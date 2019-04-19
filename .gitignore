@@ -1,0 +1,16 @@
+*.egg-info/
+*.eggs/
+*.log
+*.map
+*.min.js
+*.sqlite3
+.envrc
+dist/
+__pycache__/
+.pytest_cache/
+node_modules/*
+.coverage
+site/
+.vscode/
+pyrightconfig.json
+*.sublime-*
