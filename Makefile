@@ -9,18 +9,18 @@ install:
 
 # pytest 테스트
 test:
-	cd tests && pytest
+	uv run pytest tests/ -v
 
 test-cov:
-	cd tests && pytest --cov=wireview --cov-report=term-missing
+	uv run pytest tests/ --cov=wireview --cov-report=term-missing
 
 # 린트 및 타입 체크
 lint:
-	ruff check wireview tests
-	djlint --check .
+	uv run ruff check wireview tests
+	uv run djlint --check .
 
 check:
-	pyright wireview
+	uv run pyright wireview
 
 # 빌드
 build:
@@ -33,10 +33,10 @@ watch-js:
 
 # 개발 서버
 run:
-	cd tests && python manage.py runserver
+	cd tests && uv run python manage.py runserver
 
 shell:
-	cd tests && python manage.py shell
+	cd tests && uv run python manage.py shell
 
 # 정리
 clean:

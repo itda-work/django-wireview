@@ -1,4 +1,4 @@
-# django-reactor 로드맵
+# django-wireview 로드맵
 
 > 단계별 현대화 및 기능 확장 계획
 
@@ -102,14 +102,14 @@ install_requires =
 
 **현재 구조**:
 ```
-reactor/static/reactor/
-├── reactor.js        (349줄, 순수 JS)
-└── reactor-boost.js  (morphdom 래퍼)
+wireview/static/wireview/
+├── wireview.js        (349줄, 순수 JS)
+└── wireview-boost.js  (morphdom 래퍼)
 ```
 
 **목표 구조**:
 ```
-reactor/static/reactor/
+wireview/static/wireview/
 ├── src/
 │   ├── index.ts
 │   ├── connection.ts       # WebSocket 관리
@@ -118,7 +118,7 @@ reactor/static/reactor/
 │   ├── diff.ts             # HTML Diff 적용
 │   └── types.ts            # 타입 정의
 ├── dist/
-│   └── reactor.min.js      # 번들 결과물
+│   └── wireview.min.js      # 번들 결과물
 ├── tsconfig.json
 └── esbuild.config.ts
 ```
@@ -297,7 +297,7 @@ class ImageUploader(Component):
 ```
 
 ```html
-{% load reactor %}
+{% load wireview %}
 
 <form {% on "submit" "save_images" %}>
   {% upload_input "images" %}
@@ -374,7 +374,7 @@ window.Reactor.enableLatencySim(200);  // 200ms 지연 시뮬레이션
 
 **설계**:
 ```python
-from reactor.testing import ComponentTestCase
+from wireview.testing import ComponentTestCase
 
 class TestCounter(ComponentTestCase):
     async def test_increment(self):

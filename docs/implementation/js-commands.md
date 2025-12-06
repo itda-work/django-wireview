@@ -19,7 +19,7 @@
 </button>
 ```
 
-### 1.3 django-reactor 목표
+### 1.3 django-wireview 목표
 
 ```html
 <!-- 목표 문법 -->
@@ -35,7 +35,7 @@
 ### 2.1 JS 클래스
 
 ```python
-# reactor/features/js.py
+# wireview/features/js.py
 
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -322,7 +322,7 @@ class JS:
 ### 2.2 템플릿 태그 통합
 
 ```python
-# reactor/templatetags/reactor.py에 추가
+# wireview/templatetags/reactor.py에 추가
 
 from django import template
 from django.utils.safestring import mark_safe
@@ -932,7 +932,7 @@ class ReactorComponent {
 ```python
 # tests/test_js.py
 
-from reactor.features.js import JS
+from wireview.features.js import JS
 
 def test_js_show():
     js = JS().show("#modal")

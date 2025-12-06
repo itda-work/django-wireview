@@ -1,4 +1,4 @@
-# django-reactor 아키텍처
+# django-wireview 아키텍처
 
 > 현재 구조 분석 및 개선 방향
 
@@ -15,7 +15,7 @@
 │                                                                              │
 │  Browser                                                                     │
 │  ┌────────────────────────────────────────────────────────────────────┐     │
-│  │  reactor.js                                                        │     │
+│  │  wireview.js                                                        │     │
 │  │  ├─ ServerConnection      # WebSocket 연결 관리                    │     │
 │  │  │   ├─ open()            # 연결 시작                              │     │
 │  │  │   ├─ joinAllComponents # 컴포넌트 등록                          │     │
@@ -27,7 +27,7 @@
 │  │      ├─ dispatch()        # 이벤트 발송                            │     │
 │  │      └─ serialize()       # 폼 데이터 직렬화                       │     │
 │  │                                                                    │     │
-│  │  reactor-boost.js                                                  │     │
+│  │  wireview-boost.js                                                  │     │
 │  │  └─ morph()               # idiomorph 래퍼                         │     │
 │  └────────────────────────────────────────────────────────────────────┘     │
 │                              ↕ WebSocket                                     │
@@ -66,8 +66,8 @@
 | `templatetags/reactor.py` | ~200 | 템플릿 태그 (`{% on %}`, `{% component %}`) |
 | `event_transpiler.py` | ~100 | 이벤트 문법 파싱 |
 | `serializer.py` | ~50 | Django 모델 직렬화 |
-| `reactor.js` | 349 | 클라이언트 WebSocket, DOM 관리 |
-| `reactor-boost.js` | ~100 | morphdom/idiomorph 래퍼, 히스토리 관리 |
+| `wireview.js` | 349 | 클라이언트 WebSocket, DOM 관리 |
+| `wireview-boost.js` | ~100 | morphdom/idiomorph 래퍼, 히스토리 관리 |
 
 ### 1.3 데이터 흐름
 
@@ -553,7 +553,7 @@ class Component(BaseModel):
 
 ### 현재 구조
 ```
-reactor/
+wireview/
 ├── __init__.py
 ├── apps.py
 ├── auto_broadcast.py
@@ -570,14 +570,14 @@ reactor/
 │   └── reactor.py
 ├── urls.py
 ├── utils.py
-└── static/reactor/
-    ├── reactor.js         # 349줄, 순수 JS
-    └── reactor-boost.js
+└── static/wireview/
+    ├── wireview.js         # 349줄, 순수 JS
+    └── wireview-boost.js
 ```
 
 ### 목표 구조
 ```
-reactor/
+wireview/
 ├── __init__.py
 ├── apps.py
 ├── settings.py
@@ -610,7 +610,7 @@ reactor/
 │   ├── __init__.py
 │   └── helpers.py
 │
-└── static/reactor/
+└── static/wireview/
     ├── src/                # TypeScript 소스
     │   ├── index.ts
     │   ├── connection.ts
@@ -621,7 +621,7 @@ reactor/
     │   ├── devtools.ts
     │   └── types.ts
     ├── dist/               # 빌드 결과
-    │   └── reactor.min.js
+    │   └── wireview.min.js
     ├── tsconfig.json
     └── esbuild.config.ts
 ```
@@ -717,4 +717,4 @@ class Component:
 
 ---
 
-*이 문서는 django-reactor의 기술적 설계를 정의합니다.*
+*이 문서는 django-wireview의 기술적 설계를 정의합니다.*

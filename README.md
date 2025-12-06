@@ -1,6 +1,6 @@
-# Reactor, a LiveView library for Django
+# Wireview, a LiveView library for Django
 
-Reactor enables you to do something similar to Phoenix framework LiveView using Django Channels.
+Wireview enables you to do something similar to Phoenix framework LiveView using Django Channels.
 
 ![TODO MVC demo app](demo.gif)
 
@@ -10,21 +10,21 @@ This is no replacement for VueJS or ReactJS, or any JavaScript but it will allow
 
 ## Installation and setup
 
-Reactor requires Python >=3.9.
+Wireview requires Python >=3.10.
 
-Install reactor:
+Install wireview:
 
 ```bash
-pip install django-reactor
+pip install django-wireview
 ```
 
-Reactor makes use of `django-channels`, by default this one uses an InMemory channel layer which is not capable of a real broadcasting, so you might wanna use the Redis one, take a look here: [Channel Layers](https://channels.readthedocs.io/en/latest/topics/channel_layers.html)
+Wireview makes use of `django-channels`, by default this one uses an InMemory channel layer which is not capable of a real broadcasting, so you might wanna use the Redis one, take a look here: [Channel Layers](https://channels.readthedocs.io/en/latest/topics/channel_layers.html)
 
-Add `reactor` and `channels` to your `INSTALLED_APPS` before the Django applications so channels can override the `runserver` command.
+Add `wireview` and `channels` to your `INSTALLED_APPS` before the Django applications so channels can override the `runserver` command.
 
 ```python
 INSTALLED_APPS = [
-    'reactor',
+    'wireview',
     'channels',
     ...
 ]
@@ -46,7 +46,7 @@ django.setup()
 from channels.auth import AuthMiddlewareStack
 from channels.routing import ProtocolTypeRouter, URLRouter
 from django.core.asgi import get_asgi_application
-from reactor.urls import websocket_urlpatterns
+from wireview.urls import websocket_urlpatterns
 
 application = ProtocolTypeRouter({
     'http': get_asgi_application(),
@@ -54,16 +54,16 @@ application = ProtocolTypeRouter({
 })
 ```
 
-Note: Reactor since version 2, autoloads any `live.py` file in your applications with the hope to find there Reactor Components so they get registered and can be instantiated.
+Note: Wireview since version 2, autoloads any `live.py` file in your applications with the hope to find there Wireview Components so they get registered and can be instantiated.
 
-In the templates where you want to use reactive components you have to load the reactor static files. So do something like this so the right JavaScript gets loaded:
+In the templates where you want to use reactive components you have to load the wireview static files. So do something like this so the right JavaScript gets loaded:
 
 ```html
-{% load reactor %}
+{% load wireview %}
 <!doctype html>
 <html>
     <head>
-        ... {% reactor_header %}
+        ... {% wireview_header %}
     </head>
     ...
 </html>
@@ -76,7 +76,7 @@ Don't worry if you put this as early as possible, the scripts are loaded using `
 In your app create a template `x-counter.html`:
 
 ```html
-{% load reactor %}
+{% load wireview %}
 <div {% tag_header %}>
   {{ amount }}
   <button {% on 'click' 'inc' %}>+</button>
@@ -91,12 +91,12 @@ Each component should have an `id` so the backend knows which instance is this o
 
 Render things as usually, so you can use full Django template language, `trans`, `if`, `for` and so on. Just keep in mind that the instance of the component is referred as `this`.
 
-Forwarding events to the back-end: Notice that for event binding in-line JavaScript is used on the event handler of the HTML elements. How does this work? When the increment button receives a click event `send(this, 'inc')` is called, `send` is a reactor function that will look for the parent custom component and will dispatch to it the `inc` message, or the `set_to` message and its parameters `{amount: 0}`. The custom element then will send this message to the back-end, where the state of the component will change and then will be re-rendered back to the front-end. In the front-end `morphdom` (just like in Phoenix LiveView) is used to apply the new HTML.
+Forwarding events to the back-end: Notice that for event binding in-line JavaScript is used on the event handler of the HTML elements. How does this work? When the increment button receives a click event `send(this, 'inc')` is called, `send` is a wireview function that will look for the parent custom component and will dispatch to it the `inc` message, or the `set_to` message and its parameters `{amount: 0}`. The custom element then will send this message to the back-end, where the state of the component will change and then will be re-rendered back to the front-end. In the front-end `morphdom` (just like in Phoenix LiveView) is used to apply the new HTML.
 
 Now let's write the behavior part of the component in `live.py`:
 
 ```python
-from reactor.component import Component
+from wireview.component import Component
 
 
 class XCounter(Component):
@@ -124,11 +124,11 @@ def index(request):
 And the index template being:
 
 ```html
-{% load reactor %}
+{% load wireview %}
 <!doctype html>
 <html>
     <head>
-        .... {% reactor_header %}
+        .... {% wireview_header %}
     </head>
     <body>
         {% component 'XCounter' %}
@@ -191,18 +191,18 @@ Here `expanded.json` is a list of the expanded nodes. Notice the `.json` this in
 
 ## Settings:
 
-Default settings of reactor are:
+Default settings of wireview are:
 
 ```python
 
-from reactor.schemas import AutoBroadcast
+from wireview.schemas import AutoBroadcast
 
-REACTOR = {
+WIREVIEW = {
     "TRANSPILER_CACHE_SIZE": 1024,
     "USE_HTML_DIFF": True,
     "USE_HMIN": False,
     "BOOST_PAGES": False,
-    "TRANSPILER_CACHE_NAME": "reactor:transpiler",
+    "TRANSPILER_CACHE_NAME": "wireview:transpiler",
     "AUTO_BROADCAST": AutoBroadcast(
         # model-a
         model: bool = False
@@ -222,14 +222,14 @@ REACTOR = {
 
 -   `TRANSPILER_CACHE_SIZE`: this is the size of an LRU dict used to cache javascript event halder transpilations.
 -   `USE_HTML_DIFF`: when enabled uses `difflib` to create diffs to patch the front-end, reducing bandwidth. If disabled it sends the full HTML content every time.
--   `REACTOR_USE_HMIN`: when enabled and django-hmin is installed will use it to minified the HTML of the components and save bandwidth.
+-   `USE_HMIN`: when enabled and django-hmin is installed will use it to minified the HTML of the components and save bandwidth.
 -   `AUTO_BROADCAST`: Controls which signals are sent to `Component.mutation` when a model is mutated.
 
 ## Back-end APIs
 
-### Template tags and filters of `reactor` library
+### Template tags and filters of `wireview` library
 
--   `{% reactor_header %}`: that includes the necessary JavaScript to make this library work. ~10Kb of minified JS, compressed with gz or brotli.
+-   `{% wireview_header %}`: that includes the necessary JavaScript to make this library work. ~10Kb of minified JS, compressed with gz or brotli.
 -   `{% component 'Component' param1=1 param2=2 %}`: Renders a component by its name and passing whatever parameters you put there to the `XComponent.new` method that constructs the component instance.
 -   `{% on 'click' 'event_handler' param1=1 param2=2 %}`: Binds an event handler with paramters to some event. Look at [Event binding in the front-end](#event-binding-in-the-front-end)
 -   `cond`: Allows simple conditional presence of a string: `{% cond {'hidden': is_hidden } %}`.
@@ -261,8 +261,8 @@ When a component or its parent has joined it can send user events to the client.
 
 Every time a component joins or responds to an event the `Componet._subscriptions` set is reviewed to check if the component subscribes or not to some channel.
 
--   In case a mutation in a model occurs `Component.mutation(channel: str, action: reactor.auto_broadcast.Action, instance: Model)` will be called.
--   In case you broadcast a message using `reactor.component.broadcast(channel, **kwargs)` this message will be sent to any component subscribed to `channel` using the method `Component.notification(channel, **kwargs)`.
+-   In case a mutation in a model occurs `Component.mutation(channel: str, action: wireview.auto_broadcast.Action, instance: Model)` will be called.
+-   In case you broadcast a message using `wireview.component.broadcast(channel, **kwargs)` this message will be sent to any component subscribed to `channel` using the method `Component.notification(channel, **kwargs)`.
 
 ### Disconnection
 
@@ -282,7 +282,7 @@ Instead use the class method `new` to create the instance.
 
 -   `_subscriptions`: (default: `set()`) Defines which channels is this component subscribed to.
 -   `mutation(channel, action, instance)` Called when autobroadcast is enabled and a model you are subscribed to changes.
--   `notification(channel, **kwargs)` Called when `reactor.component.broadcast(channel, **kwargs)` is used to send an arbitrary notification to components.
+-   `notification(channel, **kwargs)` Called when `wireview.component.broadcast(channel, **kwargs)` is used to send an arbitrary notification to components.
 
 #### Actions
 
@@ -300,7 +300,7 @@ Instead use the class method `new` to create the instance.
 
 ## Front-end APIs
 
--   `reactor.send(element, name, args)`: Sends a reactor user event to `element`, where `name` is the event handler and `args` is a JS object containing the implicit arguments of the call.
+-   `wireview.send(element, name, args)`: Sends a wireview user event to `element`, where `name` is the event handler and `args` is a JS object containing the implicit arguments of the call.
 
 ### Event binding in the front-end
 
@@ -343,7 +343,7 @@ Misc:
 
 #### Event arguments
 
-Reactor sends the implicit arguments you pass on the `on` template tag, but also sends implicit arguments.
+Wireview sends the implicit arguments you pass on the `on` template tag, but also sends implicit arguments.
 The implicit arguments are taken from the `form` the element handling the event is in or from the whole component otherwise.
 
 Examples:
@@ -398,8 +398,8 @@ This example contains nested components and some more complex interactions than 
 Clone the repo and create a virtualenv or any other contained environment, get inside the repo directory, build the development environment and the run tests.
 
 ```bash
-git clone git@github.com:edelvalle/reactor.git
-cd reactor
+git clone git@github.com:itda-work/django-wireview.git
+cd django-wireview
 make install
 make test
 ```

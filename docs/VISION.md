@@ -1,4 +1,4 @@
-# django-reactor 프로젝트 비전
+# django-wireview 프로젝트 비전
 
 > **Phoenix LiveView의 개발 경험을 Django 생태계에 제공**
 
@@ -12,7 +12,7 @@
 "Django 개발자가 JavaScript 없이 실시간 인터랙티브 UI를 구축할 수 있게 한다"
 ```
 
-django-reactor는 Phoenix LiveView의 핵심 철학을 Django에 가져옵니다:
+django-wireview는 Phoenix LiveView의 핵심 철학을 Django에 가져옵니다:
 
 - **서버 중심 상태 관리**: 클라이언트-서버 상태 동기화 문제 제거
 - **HTML over WebSocket**: SPA 복잡성 없이 실시간 업데이트
@@ -30,7 +30,7 @@ django-reactor는 Phoenix LiveView의 핵심 철학을 Django에 가져옵니다
 
 ### 1.3 차별점
 
-| vs | django-reactor 차별점 |
+| vs | django-wireview 차별점 |
 |----|----------------------|
 | **React/Vue** | JavaScript 코드 작성 불필요, 서버 상태 단일화 |
 | **HTMX** | 양방향 WebSocket, Server Push 가능 |
@@ -238,5 +238,5 @@ class Counter(Component):
 
 ---
 
-*이 문서는 django-reactor 프로젝트의 방향성을 정의합니다.*
+*이 문서는 django-wireview 프로젝트의 방향성을 정의합니다.*
 *모든 기술적 결정은 이 비전에 부합해야 합니다.*

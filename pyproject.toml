@@ -54,6 +54,7 @@ dev = [
     "selenium",
     "splinter",
     "lxml",
+    "cssselect",
 ]
 
 [project.urls]

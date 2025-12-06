@@ -1,6 +1,6 @@
 # Pydantic v1 → v2 마이그레이션 가이드
 
-> django-reactor를 Pydantic v2로 업그레이드하기 위한 상세 가이드
+> django-wireview를 Pydantic v2로 업그레이드하기 위한 상세 가이드
 
 ---
 
@@ -277,7 +277,7 @@ class Component(BaseModel):
     _all: t.ClassVar[dict[str, type["Component"]]] = {}
     _name: t.ClassVar[str]
     _template_name: t.ClassVar[str]
-    _exclude_fields: t.ClassVar[set[str]] = {"user", "reactor"}
+    _exclude_fields: t.ClassVar[set[str]] = {"user", "wireview"}
     _subscriptions: t.ClassVar[set[str]] = set()
 
     # 인스턴스 필드
@@ -478,8 +478,8 @@ def serialize_user(self, user):
 
 ```bash
 # 전체 검색 및 치환
-grep -r "\.dict(" reactor/ --include="*.py"
-grep -r "\.json(" reactor/ --include="*.py"
+grep -r "\.dict(" wireview/ --include="*.py"
+grep -r "\.json(" wireview/ --include="*.py"
 
 # .dict() → .model_dump()
 # .json() → .model_dump_json()
@@ -612,9 +612,9 @@ _all: ClassVar[dict[str, type["Component"]]] = {}  # ClassVar 필수
 ```bash
 # 자동 마이그레이션 도구 사용
 pip install bump-pydantic
-bump-pydantic reactor/
+bump-pydantic wireview/
 ```
 
 ---
 
-*이 가이드는 django-reactor의 Pydantic v2 마이그레이션을 위한 참조 문서입니다.*
+*이 가이드는 django-wireview의 Pydantic v2 마이그레이션을 위한 참조 문서입니다.*

@@ -1,6 +1,6 @@
 # Phoenix LiveView 대비 기능 갭 분석
 
-> django-reactor가 Phoenix LiveView 수준에 도달하기 위해 필요한 기능 목록
+> django-wireview가 Phoenix LiveView 수준에 도달하기 위해 필요한 기능 목록
 
 ---
 
@@ -8,7 +8,7 @@
 
 ### 1.1 핵심 기능
 
-| 기능 | Phoenix LiveView | django-reactor | 갭 | 우선순위 |
+| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
 |------|:----------------:|:--------------:|:--:|:--------:|
 | WebSocket 기반 통신 | ✅ | ✅ | - | - |
 | 서버 사이드 상태 관리 | ✅ | ✅ | - | - |
@@ -20,7 +20,7 @@
 
 ### 1.2 LiveView.JS (클라이언트 명령어)
 
-| 기능 | Phoenix LiveView | django-reactor | 갭 | 우선순위 |
+| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
 |------|:----------------:|:--------------:|:--:|:--------:|
 | JS.show() | ✅ | ❌ | 구현 필요 | P1 |
 | JS.hide() | ✅ | ❌ | 구현 필요 | P1 |
@@ -41,7 +41,7 @@
 
 ### 1.3 Optimistic UI
 
-| 기능 | Phoenix LiveView | django-reactor | 갭 | 우선순위 |
+| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
 |------|:----------------:|:--------------:|:--:|:--------:|
 | phx-click-loading 클래스 | ✅ | ❌ | 구현 필요 | P1 |
 | phx-submit-loading 클래스 | ✅ | ❌ | 구현 필요 | P1 |
@@ -51,7 +51,7 @@
 
 ### 1.4 Streams (대량 데이터)
 
-| 기능 | Phoenix LiveView | django-reactor | 갭 | 우선순위 |
+| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
 |------|:----------------:|:--------------:|:--:|:--------:|
 | stream() | ✅ | ❌ | 구현 필요 | P2 |
 | stream_insert() | ✅ | ❌ | 구현 필요 | P2 |
@@ -62,7 +62,7 @@
 
 ### 1.5 파일 업로드
 
-| 기능 | Phoenix LiveView | django-reactor | 갭 | 우선순위 |
+| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
 |------|:----------------:|:--------------:|:--:|:--------:|
 | allow_upload() | ✅ | ❌ | 구현 필요 | P2 |
 | live_file_input | ✅ | ❌ | 구현 필요 | P2 |
@@ -75,7 +75,7 @@
 
 ### 1.6 비동기 작업
 
-| 기능 | Phoenix LiveView | django-reactor | 갭 | 우선순위 |
+| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
 |------|:----------------:|:--------------:|:--:|:--------:|
 | assign_async() | ✅ | ❌ | 구현 필요 | P2 |
 | start_async() | ✅ | ❌ | 구현 필요 | P2 |
@@ -84,7 +84,7 @@
 
 ### 1.7 폼 처리
 
-| 기능 | Phoenix LiveView | django-reactor | 갭 | 우선순위 |
+| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
 |------|:----------------:|:--------------:|:--:|:--------:|
 | phx-change | ✅ | ✅ on "input" | - | - |
 | phx-submit | ✅ | ✅ on "submit" | - | - |
@@ -96,7 +96,7 @@
 
 ### 1.8 라이프사이클 훅
 
-| 기능 | Phoenix LiveView | django-reactor | 갭 | 우선순위 |
+| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
 |------|:----------------:|:--------------:|:--:|:--------:|
 | mount() | ✅ | ✅ joined() | - | - |
 | handle_event() | ✅ | ✅ 메서드 직접 호출 | - | - |
@@ -107,7 +107,7 @@
 
 ### 1.9 개발자 도구
 
-| 기능 | Phoenix LiveView | django-reactor | 갭 | 우선순위 |
+| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
 |------|:----------------:|:--------------:|:--:|:--------:|
 | enableDebug() | ✅ | ❌ | 구현 필요 | P3 |
 | enableProfiling() | ✅ | ❌ | 구현 필요 | P3 |
@@ -116,7 +116,7 @@
 
 ### 1.10 템플릿 기능
 
-| 기능 | Phoenix LiveView | django-reactor | 갭 | 우선순위 |
+| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
 |------|:----------------:|:--------------:|:--:|:--------:|
 | HEEx 템플릿 | ✅ | - Django 템플릿 | 다른 접근 | - |
 | Function 컴포넌트 | ✅ | ❌ | 고려 필요 | P3 |
@@ -238,13 +238,13 @@
 </button>
 ```
 
-**현재 django-reactor**:
+**현재 django-wireview**:
 ```html
 <!-- 서버 왕복 필수, 체이닝 불가 -->
 <button {% on "click" "save" %}>저장</button>
 ```
 
-**목표 django-reactor**:
+**목표 django-wireview**:
 ```html
 <button {% on "click" JS().toggle("#modal").push("save").add_class("#form", "saving") %}>
   저장
@@ -266,7 +266,7 @@
 }
 ```
 
-**현재 django-reactor**:
+**현재 django-wireview**:
 ```javascript
 // 수동 구현 필요
 element.onclick = function() {
@@ -275,7 +275,7 @@ element.onclick = function() {
 }
 ```
 
-**목표 django-reactor**:
+**목표 django-wireview**:
 ```css
 /* 자동 적용 */
 .reactor-click-loading {
@@ -302,7 +302,7 @@ def handle_event("new_message", params, socket) do
 end
 ```
 
-**현재 django-reactor**:
+**현재 django-wireview**:
 ```python
 # 전체 리스트를 매번 재렌더링
 class MessageList(Component):
@@ -313,7 +313,7 @@ class MessageList(Component):
         self.messages = list(Message.objects.all())  # 전체 재조회
 ```
 
-**목표 django-reactor**:
+**목표 django-wireview**:
 ```python
 class MessageList(Component):
     async def joined(self):
@@ -349,10 +349,10 @@ end
 <% end %>
 ```
 
-**현재 django-reactor**:
+**현재 django-wireview**:
 지원 안 함
 
-**목표 django-reactor**:
+**목표 django-wireview**:
 ```python
 class ImageUploader(Component):
     def joined(self):
@@ -365,7 +365,7 @@ class ImageUploader(Component):
 ```
 
 ```html
-{% load reactor %}
+{% load wireview %}
 
 {% upload_input "avatar" %}
 
@@ -404,10 +404,10 @@ end
 </.async_result>
 ```
 
-**현재 django-reactor**:
+**현재 django-wireview**:
 지원 안 함 (동기 처리만)
 
-**목표 django-reactor**:
+**목표 django-wireview**:
 ```python
 class Dashboard(Component):
     stats: AsyncResult[Stats] | None = None
