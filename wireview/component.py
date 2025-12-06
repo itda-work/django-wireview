@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import difflib
 import typing as t
@@ -45,7 +47,7 @@ else:
 ComponentState = Context = MessagePayload = dict[str, t.Any]
 RedirectDestination = t.Callable[(...), t.Any] | models.Model | str
 HTMLDiff = list[str | int]
-ComponentOrHtml = t.Union["Component", SafeString]
+ComponentOrHtml: t.TypeAlias = "Component | SafeString"
 P = t.ParamSpec("P")
 
 

@@ -34,7 +34,7 @@ def on_commit(f: t.Callable[P, None]):
 
 
 @on_commit
-def send_to(channel: t.Optional[str], type: str, **kwargs: t.Any):
+def send_to(channel: str | None, type: str, **kwargs: t.Any):
     """Sends a message of `type` to the"""
     if channel:
         async_to_sync(get_channel_layer().group_send)(

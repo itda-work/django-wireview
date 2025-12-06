@@ -15,7 +15,7 @@ def transpile(event_and_modifiers: str, command: str, kwargs: dict[str, t.Any]):
     """Translates from from the tag `on` in to JavaScript"""
     name, *modifiers = event_and_modifiers.split(".")
     cache_key = f"_handler:{modifiers}.{command}.{kwargs}"
-    code: t.Optional[str] = CACHE.get(cache_key)
+    code: str | None = CACHE.get(cache_key)
     if code is None:
         if not modifiers or modifiers[-1] != "inlinejs":
             modifiers.append("_reactor_code")
@@ -23,7 +23,7 @@ def transpile(event_and_modifiers: str, command: str, kwargs: dict[str, t.Any]):
         stack: Stack = [kwargs]
         while modifiers:
             modifier = modifiers.pop()
-            handler: t.Optional[t.Callable[[str, Stack], str]] = getattr(
+            handler: t.Callable[[str, Stack], str] | None = getattr(
                 Modifiers, modifier, None
             )
             if handler:

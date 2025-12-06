@@ -58,7 +58,7 @@ def component(context, _name, **kwargs):
 
 @register.simple_tag(takes_context=True)
 def on(context, _event_and_modifiers, _command, **kwargs: t.Any):
-    component: t.Optional[Component] = context.get("this")
+    component: Component | None = context.get("this")
 
     assert component, "Can't find a component in this context"
     handler = getattr(component, _command, None)
