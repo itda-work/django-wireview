@@ -12,7 +12,7 @@ https://docs.djangoproject.com/en/2.2/ref/settings/
 
 import os
 
-from reactor.schemas import AutoBroadcast
+from wireview.schemas import AutoBroadcast
 
 up = os.path.dirname
 
@@ -46,8 +46,8 @@ ALLOWED_HOSTS = ["*"]
 # Application definition
 
 INSTALLED_APPS = [
-    "fision.todo",
-    "reactor",
+    "testproj.todo",
+    "wireview",
     "channels",
     "daphne",
     "whitenoise.runserver_nostatic",
@@ -70,7 +70,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = "fision.urls"
+ROOT_URLCONF = "testproj.urls"
 
 TEMPLATES = [
     {
@@ -88,8 +88,8 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "fision.wsgi.application"
-ASGI_APPLICATION = "fision.asgi.application"
+WSGI_APPLICATION = "testproj.wsgi.application"
+ASGI_APPLICATION = "testproj.asgi.application"
 
 # In memory
 CHANNEL_LAYERS = {
@@ -177,7 +177,7 @@ LOGGING = {
     },
     "formatters": {
         "django.server": {
-            "()": "reactor.log.ServerFormatter",
+            "()": "wireview.log.ServerFormatter",
             "format": "[{server_time}] {message}",
             "style": "{",
         }

@@ -13,8 +13,8 @@ from ..repository import ComponentRepository
 register = template.Library()
 
 
-@register.inclusion_tag("reactor_header.html")
-def reactor_header():
+@register.inclusion_tag("wireview_header.html")
+def wireview_header():
     return {"BOOST_PAGES": settings.BOOST_PAGES}
 
 

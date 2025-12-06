@@ -1,9 +1,95 @@
+[project]
+name = "django-wireview"
+version = "5.3.0b0"
+description = "Brings LiveView from Phoenix framework into Django"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Eddy Ernesto del Valle Pino", email = "eddy@edelvalle.me" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Framework :: Django",
+    "Framework :: Django :: 4.2",
+    "Framework :: Django :: 5.0",
+    "Framework :: Django :: 5.1",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+]
+dependencies = [
+    "channels>=4,<5",
+    "pydantic>=2.0,<3",
+    "lru-dict>=1.2.0,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-django>=4.5",
+    "pytest-asyncio>=0.21",
+    "pytest-cov>=4.0",
+    "black",
+    "djlint",
+    "ruff",
+    "ipython",
+    "whitenoise",
+    "channels-redis",
+    "django-hmin",
+    "django-stubs",
+    "django-stubs-ext",
+    "pyright",
+    "twine",
+    "daphne",
+    "uvicorn",
+    "selenium",
+    "splinter",
+    "lxml",
+]
+
+[project.urls]
+Homepage = "https://github.com/itda-work/django-wireview"
+Repository = "https://github.com/itda-work/django-wireview"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["wireview"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/wireview",
+    "/README.md",
+    "/CHANGELOG.md",
+]
+
+# Tool configurations
+
 [tool.isort]
 profile = "black"
 line_length = 80
 
 [tool.black]
 line-length = 80
+
+[tool.ruff]
+line-length = 80
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E203", "W503"]
 
 [tool.djlint]
 indent = 2
@@ -20,4 +106,10 @@ exclude = [".git", "tests/", "**/__pycache__", "**/migrations"]
 reportPrivateUsage = false
 
 [tool.django-stubs]
-django_settings_module = "tests.fision.settings"
+django_settings_module = "tests.testproj.settings"
+
+[tool.pytest.ini_options]
+python_files = "test*.py"
+addopts = "--ff -v --nomigrations"
+DJANGO_SETTINGS_MODULE = "testproj.settings"
+pythonpath = ["tests"]

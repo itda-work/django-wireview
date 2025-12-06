@@ -1,7 +1,7 @@
 from enum import StrEnum
 
-from reactor.component import Component
-from reactor.schemas import DomAction, ModelAction
+from wireview.component import Component
+from wireview.schemas import DomAction, ModelAction
 
 from .models import Item
 

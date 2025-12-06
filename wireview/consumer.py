@@ -7,7 +7,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.core.signing import Signer
 from django.utils.datastructures import MultiValueDict
 
-from reactor.component import Component
+from wireview.component import Component
 
 from . import serializer
 from .repository import ComponentRepository

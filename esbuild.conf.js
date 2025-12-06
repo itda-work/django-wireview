@@ -6,7 +6,7 @@ const mode = isBuild ? 'production' : 'development';
 
 
 const buildOptions = {
-    entryPoints: ['reactor/static/reactor/reactor.js'],
+    entryPoints: ['wireview/static/wireview/wireview.js'],
     define: {
         'process.env.NODE_ENV': JSON.stringify(mode),
     },
@@ -14,7 +14,7 @@ const buildOptions = {
     sourcemap: true,
     minify: isBuild,
     incremental: isWatch,
-    outfile: 'reactor/static/reactor/reactor.min.js',
+    outfile: 'wireview/static/wireview/wireview.min.js',
     watch: isWatch,
 };
 
