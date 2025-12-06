@@ -1,5 +1,5 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
-import boost from "./reactor-boost";
+import boost from "./wireview-boost";
 
 // Connection
 
@@ -8,6 +8,7 @@ const parser = new DOMParser();
 class ServerConnection {
   constructor() {
     this.components = {};
+    this.messageQueue = [];
   }
 
   open(path = "__reactor__") {
@@ -25,6 +26,11 @@ class ServerConnection {
       this.sendQueryString();
       this.components = {};
       this.joinAllComponents();
+      // Flush messages queued while the socket was connecting
+      while (this.messageQueue.length) {
+        const { command, payload } = this.messageQueue.shift();
+        this._send(command, payload);
+      }
     });
 
     this.socket.addEventListener("message", (event) =>
@@ -187,8 +193,11 @@ class ServerConnection {
   }
 
   _send(command, payload) {
+    const message = { command, payload };
     if (this.isOpen) {
-      this.socket.send(JSON.stringify({ command, payload }));
+      this.socket.send(JSON.stringify(message));
+    } else {
+      this.messageQueue.push(message);
     }
   }
 }
