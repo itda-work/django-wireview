@@ -14,3 +14,7 @@ site/
 .vscode/
 pyrightconfig.json
 *.sublime-*
+
+# Collected static files
+tests/static/
+package-lock.json
