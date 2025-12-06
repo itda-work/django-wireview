@@ -58,12 +58,22 @@ def filter_parameters(f, kwargs):
     )
     if has_kwargs:
         return kwargs
-    else:
+
+    # Check if function was decorated with validate_call (has .model attribute)
+    if hasattr(f, "model") and hasattr(f.model, "model_fields"):
         return {
             param: value
             for param, value in kwargs.items()
             if param in f.model.model_fields
         }
+
+    # Fallback: filter by function signature parameters
+    sig_params = set(inspect.signature(f).parameters.keys())
+    return {
+        param: value
+        for param, value in kwargs.items()
+        if param in sig_params
+    }
 
 
 # Decoder for client requests
