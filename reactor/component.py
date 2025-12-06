@@ -15,8 +15,14 @@ from django.shortcuts import resolve_url  # type: ignore
 from django.template import loader
 from django.utils.html import format_html
 from django.utils.safestring import SafeString, SafeText, mark_safe
-from pydantic import BaseModel, validate_arguments
-from pydantic.fields import Field, ModelField
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    model_validator,
+    validate_call,
+)
 
 from . import settings, utils
 from .schemas import DomAction, ModelAction
@@ -252,50 +258,74 @@ def compress_diff(diff: HTMLDiff, diff_item: str | int) -> HTMLDiff:
     return diff
 
 
-def load_model_instance(model, v, fields, field: ModelField, config):
-    if v is None or isinstance(v, field.type_):
-        return v
-    else:
-        return field.type_.objects.filter(pk=v).first()
-
-
-def load_queryset(model, v, fields, field: ModelField, config):
-    if isinstance(v, field.type_):
-        return v
-    else:
-        return apps.get_model(v["app"], v["model"]).objects.filter(  # type: ignore
-            pk__in=v["ids"]
-        )
-
-
 class Component(BaseModel):
     __name__: str
 
-    _all: dict[str, t.Type["Component"]] = {}
-    _urls = {}
-    _name: str = ...  # type: ignore
-    _template_name: str = ...  # type: ignore
-    _templates: dict[str, Template] = {}
-    _fqn: str
+    _all: t.ClassVar[dict[str, t.Type["Component"]]] = {}
+    _urls: t.ClassVar[dict] = {}
+    _name: t.ClassVar[str]
+    _template_name: t.ClassVar[str]
+    _templates: t.ClassVar[dict[str, Template]] = {}
+    _fqn: t.ClassVar[str]
 
     # fields to exclude from the component state during serialization
-    _exclude_fields = {"user", "reactor"}
+    _exclude_fields: t.ClassVar[set[str]] = {"user", "reactor"}
 
     # Subscriptions: you can define here which channels this component is
     # subscribed to
-    _subscriptions: set[str] = set()
+    _subscriptions: t.ClassVar[set[str]] = set()
 
-    class Config:
-        arbitrary_types_allowed = True
-        validate_assignment = True
-        json_encoders = {
-            models.Model: lambda x: x.pk,
-            models.QuerySet: lambda qs: {
-                "app": qs.model._meta.app_label,
-                "model": qs.model._meta.model_name,
-                "ids": [x.pk for x in qs],
-            },
-        }
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        validate_assignment=True,
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _load_django_models(cls, data: dict[str, t.Any]) -> dict[str, t.Any]:
+        """Auto-load Django Model/QuerySet instances from PKs."""
+        if not isinstance(data, dict):
+            return data
+
+        for field_name, field_info in cls.model_fields.items():
+            if field_name not in data:
+                continue
+
+            value = data[field_name]
+            if value is None:
+                continue
+
+            field_type = field_info.annotation
+
+            # Handle Model fields: load from PK
+            try:
+                if isinstance(field_type, type) and issubclass(field_type, models.Model):
+                    if not isinstance(value, field_type):
+                        data[field_name] = field_type.objects.filter(pk=value).first()
+            except TypeError:
+                pass
+
+            # Handle QuerySet fields: deserialize from dict
+            if isinstance(value, dict) and "app" in value and "model" in value:
+                model_class = apps.get_model(value["app"], value["model"])
+                data[field_name] = model_class.objects.filter(
+                    pk__in=value.get("ids", [])
+                )
+
+        return data
+
+    @field_serializer("*", mode="wrap")
+    def _serialize_django_types(self, value: t.Any, handler) -> t.Any:
+        """Serialize Django Model and QuerySet instances."""
+        if isinstance(value, models.Model):
+            return value.pk
+        if isinstance(value, models.QuerySet):
+            return {
+                "app": value.model._meta.app_label,
+                "model": value.model._meta.model_name,
+                "ids": list(value.values_list("pk", flat=True)),
+            }
+        return handler(value)
 
     def __init_subclass__(
         cls: t.Type["Component"], name: str | None = None, public: bool = True
@@ -315,28 +345,17 @@ class Component(BaseModel):
                 and attr_name.islower()
                 and callable(attr)
             ):
-                setattr(
-                    cls,
-                    attr_name,
-                    validate_arguments(
-                        config={"arbitrary_types_allowed": True}
-                    )(attr),
-                )
-
-        # Hook up the Model loaders
-        for field in cls.__fields__.values():
-            if field.pre_validators is None:
                 try:
-                    is_model = issubclass(field.type_, models.Model)
-                    is_qs = issubclass(field.type_, models.QuerySet)  # type: ignore
-                except TypeError:
-                    is_model = False
-                    is_qs = False
-
-                if is_model:
-                    field.pre_validators = [load_model_instance]
-                elif is_qs:
-                    field.pre_validators = [load_queryset]
+                    setattr(
+                        cls,
+                        attr_name,
+                        validate_call(
+                            config={"arbitrary_types_allowed": True}
+                        )(attr),
+                    )
+                except (NameError, TypeError):
+                    # Skip validation for methods with unresolvable type hints
+                    pass
 
         super().__init_subclass__()
 

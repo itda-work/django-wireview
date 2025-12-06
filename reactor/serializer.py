@@ -22,6 +22,6 @@ def decode(instance: str) -> Model:
 class ReactorJSONEncoder(DjangoJSONEncoder):
     def default(self, o: t.Any) -> t.Any:
         if isinstance(o, BaseModel):
-            return o.dict()
+            return o.model_dump()
         else:
             return super().default(o)

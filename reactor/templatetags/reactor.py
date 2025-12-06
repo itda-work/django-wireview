@@ -33,7 +33,7 @@ def tag_header(context):
         id=component.id,
         name=component._name,
         is_live=str(repo.is_live).lower(),
-        state=Signer().sign(component.json(exclude=component._exclude_fields)),
+        state=Signer().sign(component.model_dump_json(exclude=component._exclude_fields)),
     )
 
 
