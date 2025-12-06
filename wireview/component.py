@@ -1,6 +1,7 @@
+import asyncio
 import difflib
 import typing as t
-from asyncio import iscoroutine, iscoroutinefunction
+from asyncio import iscoroutine
 from functools import reduce
 from uuid import uuid4
 
@@ -225,6 +226,15 @@ class ReactorMeta:
                 },
             )
 
+    # Pydantic v2 class-level attributes that should not be accessed on instances
+    _PYDANTIC_CLASS_ATTRS = frozenset({
+        "model_fields",
+        "model_computed_fields",
+        "model_config",
+        "model_extra",
+        "model_fields_set",
+    })
+
     def _get_context(
         self,
         component: "Component",
@@ -232,12 +242,19 @@ class ReactorMeta:
     ) -> Context:
         context = {}
 
+        def _run_coro(coro):
+            """Helper to run a coroutine object synchronously."""
+            async def awaiter():
+                return await coro
+            return async_to_sync(awaiter)()
+
         for attr_name in dir(component):
-            if not attr_name.startswith("_"):
+            if not attr_name.startswith("_") and attr_name not in self._PYDANTIC_CLASS_ATTRS:
                 attr = getattr(component, attr_name)
                 if not callable(attr):
-                    if iscoroutine(attr) or iscoroutinefunction(attr):
-                        attr = async_to_sync(attr)
+                    # Handle async properties that return coroutine objects
+                    if iscoroutine(attr):
+                        attr = _run_coro(attr)
                     context[attr_name] = attr
         return dict(
             context,

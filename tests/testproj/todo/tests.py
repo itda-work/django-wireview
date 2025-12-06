@@ -1,5 +1,7 @@
 import asyncio
+import shutil
 import threading
+import unittest
 from os import environ as env
 from random import randint
 from urllib.parse import urljoin
@@ -15,6 +17,9 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
 
 from splinter import Browser
+
+# Check if geckodriver is available for Selenium tests
+GECKODRIVER_AVAILABLE = shutil.which("geckodriver") is not None
 from splinter.element_list import ElementList
 from splinter.driver import ElementAPI
 from splinter.driver.webdriver import WebDriverElement
@@ -170,6 +175,7 @@ class ChannelsLiveServerTestCase(TestMixin, TransactionTestCase):
         )
 
 
+@unittest.skipUnless(GECKODRIVER_AVAILABLE, "geckodriver not found")
 class SeleniumTests(ChannelsLiveServerTestCase):
 
     def test_click(self):
