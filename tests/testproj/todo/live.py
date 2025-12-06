@@ -24,14 +24,7 @@ class XTodoList(Component):
 
     @property
     def items(self):
-        match self.showing:
-            case Showing.ALL:
-                qs = self.queryset
-            case Showing.COMPLETED:
-                qs = self.queryset.filter(completed=True)
-            case Showing.ACTIVE:
-                qs = self.queryset.filter(completed=False)
-        return qs
+        return self.queryset
 
     async def mutation(
         self,
@@ -40,10 +33,7 @@ class XTodoList(Component):
         instance: Item,
     ):
         if action == ModelAction.CREATED:
-            await self.dom(
-                DomAction.APPEND, "todo-list", XTodoItem, item=instance
-            )
-        self.skip_render()
+            self.force_render()
 
     @property
     async def all_items_are_completed(self):
@@ -84,6 +74,7 @@ class XTodoItem(Component):
 
     item: Item
     editing: bool = False
+    showing: Showing = Showing.ALL
 
     async def mutation(self, channel, instance: Item, action):
         if action == ModelAction.DELETED:
