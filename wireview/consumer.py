@@ -87,8 +87,9 @@ class ReactorConsumer(AsyncJsonWebsocketConsumer):
         )
         log.debug(f"<<< USER-EVENT {id} {command} {kwargs}")
         component = await self.repo.dispatch_event(id, command, [], kwargs)
-        await self.send_render(component)
-        await self.after_mutation_chores()
+        if component:
+            await self.send_render(component)
+            await self.after_mutation_chores()
 
     # Component commands
 

@@ -70,7 +70,10 @@ class ComponentRepository:
             if component := self.components.get(component_id):
                 # override with the passed state but preserve the rest of the state
                 for key, value in state.items():
-                    setattr(component, key, value)
+                    converted = component.__class__._load_django_models(
+                        {key: value}
+                    )
+                    setattr(component, key, converted.get(key, value))
                 return component
             elif child := self.children.get(component_id):
                 child_name, child_state = child
@@ -111,7 +114,9 @@ class ComponentRepository:
 
     async def dispatch_event(self, id, command, args, kwargs):
         assert not command.startswith("_")
-        component = self.components[id]
+        component = self.components.get(id)
+        if component is None:
+            return None
         handler = getattr(component, command)
         await handler(*args, **filter_parameters(handler, kwargs))
         return component
