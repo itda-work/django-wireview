@@ -24,7 +24,30 @@ def __getattr__(name: str):
         from .js import JS
 
         return JS
+    # Testing utilities
+    if name == "mount":
+        from .testing import mount
+
+        return mount
+    if name == "MountedComponent":
+        from .testing import MountedComponent
+
+        return MountedComponent
+    if name == "ComponentTestCase":
+        from .testing import ComponentTestCase
+
+        return ComponentTestCase
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-__all__ = ("Component", "ComponentNotFound", "JS", "WireviewMeta", "broadcast")
+__all__ = (
+    "Component",
+    "ComponentNotFound",
+    "JS",
+    "WireviewMeta",
+    "broadcast",
+    # Testing utilities
+    "mount",
+    "MountedComponent",
+    "ComponentTestCase",
+)
