@@ -20,7 +20,7 @@ up = os.path.dirname
 BASE_DIR = up(up(os.path.abspath(__file__)))
 
 
-REACTOR = {
+WIREVIEW = {
     "BOOST_PAGES": True,
     "AUTO_BROADCAST": AutoBroadcast(
         model=True,

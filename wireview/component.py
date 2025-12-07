@@ -36,7 +36,7 @@ if settings.USE_HMIN:
         from hmin.base import html_minify  # type: ignore
     except ImportError as e:
         raise ImportError(
-            "If you enable REACTOR['USE_HMIN'] you need to install django-hmin"
+            "If you enable WIREVIEW['USE_HMIN'] you need to install django-hmin"
         ) from e
 else:
 

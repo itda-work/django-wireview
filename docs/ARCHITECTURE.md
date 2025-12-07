@@ -21,7 +21,7 @@
 │  │  │   ├─ joinAllComponents # 컴포넌트 등록                          │     │
 │  │  │   └─ _processMessage   # 서버 메시지 처리                       │     │
 │  │  │                                                                 │     │
-│  │  └─ ReactorComponent      # 개별 컴포넌트 관리                     │     │
+│  │  └─ WireviewComponent      # 개별 컴포넌트 관리                     │     │
 │  │      ├─ join()            # 서버에 등록                            │     │
 │  │      ├─ applyDiff()       # HTML diff 적용                         │     │
 │  │      ├─ dispatch()        # 이벤트 발송                            │     │
@@ -33,7 +33,7 @@
 │                              ↕ WebSocket                                     │
 │  Django Server                                                               │
 │  ┌────────────────────────────────────────────────────────────────────┐     │
-│  │  ReactorConsumer (consumer.py)                                     │     │
+│  │  WireviewConsumer (consumer.py)                                     │     │
 │  │  ├─ connect()             # 연결 수립                              │     │
 │  │  ├─ command_join()        # 컴포넌트 참여                          │     │
 │  │  ├─ command_user_event()  # 사용자 이벤트 처리                     │     │
@@ -47,7 +47,7 @@
 │  │                                                                    │     │
 │  │  Component (component.py)                                          │     │
 │  │  ├─ Pydantic BaseModel 기반                                        │     │
-│  │  ├─ ReactorMeta           # 렌더링 상태 관리                       │     │
+│  │  ├─ WireviewMeta           # 렌더링 상태 관리                       │     │
 │  │  ├─ _render_diff()        # HTML diff 생성                         │     │
 │  │  └─ 라이프사이클 훅       # joined, mutation, notification         │     │
 │  └────────────────────────────────────────────────────────────────────┘     │
@@ -59,11 +59,11 @@
 
 | 파일 | 줄수 | 역할 |
 |------|------|------|
-| `component.py` | 470 | 컴포넌트 베이스 클래스, ReactorMeta, HTML diff |
+| `component.py` | 470 | 컴포넌트 베이스 클래스, WireviewMeta, HTML diff |
 | `consumer.py` | 203 | WebSocket Consumer, 메시지 라우팅 |
 | `repository.py` | ~150 | 컴포넌트 인스턴스 관리, 구독 관리 |
 | `auto_broadcast.py` | ~100 | Django signals 연동, ORM 자동 브로드캐스트 |
-| `templatetags/reactor.py` | ~200 | 템플릿 태그 (`{% on %}`, `{% component %}`) |
+| `templatetags/wireview.py` | ~200 | 템플릿 태그 (`{% on %}`, `{% component %}`) |
 | `event_transpiler.py` | ~100 | 이벤트 문법 파싱 |
 | `serializer.py` | ~50 | Django 모델 직렬화 |
 | `wireview.js` | 349 | 클라이언트 WebSocket, DOM 관리 |
@@ -76,12 +76,12 @@
     │
     ▼
 ┌─────────────────┐
-│ onclick 핸들러  │  reactor.send(element, 'increment', {})
+│ onclick 핸들러  │  wireview.send(element, 'increment', {})
 └────────┬────────┘
          │
          ▼
 ┌─────────────────┐
-│ ReactorComponent│  dispatch(command, args, formScope)
+│ WireviewComponent│  dispatch(command, args, formScope)
 │   .dispatch()   │  serialize() → 폼 데이터 수집
 └────────┬────────┘
          │
@@ -93,7 +93,7 @@
          │
          ▼ WebSocket
 ┌─────────────────┐
-│ ReactorConsumer │  command_user_event(id, command, ...)
+│ WireviewConsumer │  command_user_event(id, command, ...)
 │ .receive_json() │
 └────────┬────────┘
          │
@@ -111,7 +111,7 @@
          │
          ▼
 ┌─────────────────┐
-│ ReactorMeta     │  render_diff() → difflib.ndiff
+│ WireviewMeta     │  render_diff() → difflib.ndiff
 │ .render_diff()  │  compress_diff()
 └────────┬────────┘
          │
@@ -123,7 +123,7 @@
          │
          ▼
 ┌─────────────────┐
-│ ReactorComponent│  applyDiff(diff) → getHtml(diff)
+│ WireviewComponent│  applyDiff(diff) → getHtml(diff)
 │ .applyDiff()    │  boost.morph(element, html)
 └─────────────────┘
 ```
@@ -188,10 +188,10 @@ class WireviewMeta:
 1. HTML diff 로직이 복잡하고 최적화 여지 있음
 2. `send` 메서드들의 일관성 부족
 
-### 2.3 ReactorConsumer
+### 2.3 WireviewConsumer
 
 ```python
-class ReactorConsumer(AsyncJsonWebsocketConsumer):
+class WireviewConsumer(AsyncJsonWebsocketConsumer):
     """WebSocket Consumer"""
 
     # 프론트엔드 명령
@@ -223,10 +223,10 @@ class ReactorConsumer(AsyncJsonWebsocketConsumer):
 │  Browser (TypeScript)                                                        │
 │  ┌────────────────────────────────────────────────────────────────────┐     │
 │  │  connection.ts                                                     │     │
-│  │  └─ ReactorConnection     # WebSocket + 재연결 + 상태 복구        │     │
+│  │  └─ WireviewConnection     # WebSocket + 재연결 + 상태 복구        │     │
 │  │                                                                    │     │
 │  │  component.ts                                                      │     │
-│  │  └─ ReactorComponent      # 컴포넌트 래퍼 + diff 적용             │     │
+│  │  └─ WireviewComponent      # 컴포넌트 래퍼 + diff 적용             │     │
 │  │                                                                    │     │
 │  │  commands.ts              # [신규] JS 명령어 실행 엔진             │     │
 │  │  ├─ JSCommandExecutor     # 명령어 실행기                          │     │
@@ -244,13 +244,13 @@ class ReactorConsumer(AsyncJsonWebsocketConsumer):
 │  │  └─ UploadManager         # 청크 업로드 + 프리뷰                   │     │
 │  │                                                                    │     │
 │  │  devtools.ts              # [신규] 개발자 도구                     │     │
-│  │  └─ ReactorDevtools       # 디버그/프로파일링/latency sim          │     │
+│  │  └─ WireviewDevtools       # 디버그/프로파일링/latency sim          │     │
 │  └────────────────────────────────────────────────────────────────────┘     │
 │                              ↕ WebSocket (Binary Protocol)                   │
 │  Django Server                                                               │
 │  ┌────────────────────────────────────────────────────────────────────┐     │
 │  │  consumer.py (개선)                                                │     │
-│  │  └─ ReactorConsumer                                                │     │
+│  │  └─ WireviewConsumer                                                │     │
 │  │      ├─ command_js_exec    # [신규] JS 명령어 전달                 │     │
 │  │      └─ command_upload     # [신규] 파일 업로드 처리               │     │
 │  │                                                                    │     │
@@ -567,7 +567,7 @@ wireview/
 ├── settings.py
 ├── templatetags/
 │   ├── __init__.py
-│   └── reactor.py
+│   └── wireview.py
 ├── urls.py
 ├── utils.py
 └── static/wireview/
@@ -586,7 +586,7 @@ wireview/
 ├── core/                   # 핵심 모듈 분리
 │   ├── __init__.py
 │   ├── component.py        # 기본 컴포넌트
-│   ├── meta.py             # ReactorMeta 분리
+│   ├── meta.py             # WireviewMeta 분리
 │   ├── repository.py
 │   └── consumer.py
 │
@@ -604,7 +604,7 @@ wireview/
 │
 ├── templatetags/
 │   ├── __init__.py
-│   └── reactor.py
+│   └── wireview.py
 │
 ├── testing/                # 테스트 유틸리티
 │   ├── __init__.py

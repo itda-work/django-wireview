@@ -154,8 +154,8 @@
 │  └─ 명령어 체이닝                                                           │
 │                                                                              │
 │  Optimistic UI                                                               │
-│  ├─ reactor-click-loading 클래스                                            │
-│  ├─ reactor-submit-loading 클래스                                           │
+│  ├─ wireview-click-loading 클래스                                            │
+│  ├─ wireview-submit-loading 클래스                                           │
 │  └─ 클라이언트 사이드 즉시 실행                                             │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -271,14 +271,14 @@
 // 수동 구현 필요
 element.onclick = function() {
   this.classList.add('loading');
-  reactor.send(this, 'save', {});
+  wireview.send(this, 'save', {});
 }
 ```
 
 **목표 django-wireview**:
 ```css
 /* 자동 적용 */
-.reactor-click-loading {
+.wireview-click-loading {
   opacity: 0.5;
 }
 ```

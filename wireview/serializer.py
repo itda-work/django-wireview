@@ -10,7 +10,7 @@ __all__ = ("encode", "decode")
 
 
 def encode(instance: Model) -> str:
-    return serialize("json", [instance], cls=ReactorJSONEncoder)
+    return serialize("json", [instance], cls=WireviewJSONEncoder)
 
 
 def decode(instance: str) -> Model:
@@ -19,7 +19,7 @@ def decode(instance: str) -> Model:
     return obj.object
 
 
-class ReactorJSONEncoder(DjangoJSONEncoder):
+class WireviewJSONEncoder(DjangoJSONEncoder):
     def default(self, o: t.Any) -> t.Any:
         if isinstance(o, BaseModel):
             return o.model_dump()

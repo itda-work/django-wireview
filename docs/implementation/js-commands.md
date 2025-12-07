@@ -322,7 +322,7 @@ class JS:
 ### 2.2 템플릿 태그 통합
 
 ```python
-# wireview/templatetags/reactor.py에 추가
+# wireview/templatetags/wireview.py에 추가
 
 from django import template
 from django.utils.safestring import mark_safe
@@ -343,15 +343,15 @@ def on(event: str, handler, **kwargs):
     if isinstance(handler, JS):
         js_commands = handler.to_json()
         return mark_safe(
-            f'data-reactor-event="{event}" '
-            f'data-reactor-js=\'{js_commands}\''
+            f'data-wireview-event="{event}" '
+            f'data-wireview-js=\'{js_commands}\''
         )
 
     # 문자열 핸들러인 경우 (기존 방식)
     args_str = " ".join(f'data-{k}="{v}"' for k, v in kwargs.items())
     return mark_safe(
-        f'data-reactor-event="{event}" '
-        f'data-reactor-handler="{handler}" '
+        f'data-wireview-event="{event}" '
+        f'data-wireview-handler="{handler}" '
         f'{args_str}'
     )
 ```
@@ -694,7 +694,7 @@ export class JSCommandExecutor {
   private push(cmd: PushCommand): void {
     // 서버로 이벤트 전송
     // connection.sendUserEvent() 호출
-    const event = new CustomEvent("reactor:push", {
+    const event = new CustomEvent("wireview:push", {
       bubbles: true,
       detail: {
         event: cmd.event,
@@ -806,16 +806,16 @@ export class JSCommandExecutor {
 import { JSCommandExecutor } from "./commands";
 import type { JSCommand } from "./types";
 
-class ReactorComponent {
+class WireviewComponent {
   // ...
 
   private setupEventListeners(): void {
-    const elements = this.element.querySelectorAll("[data-reactor-event]");
+    const elements = this.element.querySelectorAll("[data-wireview-event]");
 
     for (const el of elements) {
-      const eventType = el.getAttribute("data-reactor-event");
-      const jsCommands = el.getAttribute("data-reactor-js");
-      const handler = el.getAttribute("data-reactor-handler");
+      const eventType = el.getAttribute("data-wireview-event");
+      const jsCommands = el.getAttribute("data-wireview-js");
+      const handler = el.getAttribute("data-wireview-handler");
 
       if (!eventType) continue;
 

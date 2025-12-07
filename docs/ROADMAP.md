@@ -127,7 +127,7 @@ wireview/static/wireview/
 - [ ] TypeScript 설정 (`tsconfig.json`)
 - [ ] 타입 정의 (`types.ts`)
 - [ ] ServerConnection 클래스 변환
-- [ ] ReactorComponent 클래스 변환
+- [ ] WireviewComponent 클래스 변환
 - [ ] 빌드 스크립트 업데이트
 
 ---
@@ -199,9 +199,9 @@ class JS:
 
 **기능**:
 1. **CSS 로딩 클래스 자동 적용**
-   - `reactor-click-loading`
-   - `reactor-submit-loading`
-   - `reactor-change-loading`
+   - `wireview-click-loading`
+   - `wireview-submit-loading`
+   - `wireview-change-loading`
 
 2. **JS 명령어 즉시 실행**
    - 서버 이벤트 전송 전 클라이언트 명령 실행
@@ -210,14 +210,14 @@ class JS:
 ```html
 <!-- 클릭 시 자동으로 클래스 추가/제거 -->
 <button {% on "click" "save" %}
-        class="reactor-click-loading:opacity-50">
+        class="wireview-click-loading:opacity-50">
   저장
 </button>
 ```
 
 ```css
 /* 사용자 CSS */
-.reactor-click-loading {
+.wireview-click-loading {
   opacity: 0.5;
   cursor: wait;
 }
@@ -359,9 +359,9 @@ class Dashboard(Component):
 **기능**:
 ```javascript
 // 브라우저 콘솔에서
-window.Reactor.enableDebug();      // 상세 로깅
-window.Reactor.enableProfiling();  // 성능 측정
-window.Reactor.enableLatencySim(200);  // 200ms 지연 시뮬레이션
+window.Wireview.enableDebug();      // 상세 로깅
+window.Wireview.enableProfiling();  // 성능 측정
+window.Wireview.enableLatencySim(200);  // 200ms 지연 시뮬레이션
 ```
 
 **참고 문서**: [implementation/devtools.md](./implementation/devtools.md)

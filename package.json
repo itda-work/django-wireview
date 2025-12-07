@@ -1,9 +1,9 @@
 {
-  "name": "reactor",
+  "name": "django-wireview",
   "version": "1.0.0",
   "description": "Brings LiveView from Phoenix framework into Django",
   "main": "index.js",
-  "repository": "git@github.com:edelvalle/reactor.git",
+  "repository": "git@github.com:itda-work/django-wireview.git",
   "author": "Eddy Ernesto del Valle Pino <eddy@edelvalle.me>",
   "license": "MIT",
   "dependencies": {
