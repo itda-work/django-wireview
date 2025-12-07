@@ -37,6 +37,15 @@ def __getattr__(name: str):
         from .testing import ComponentTestCase
 
         return ComponentTestCase
+    # Async utilities
+    if name == "AsyncResult":
+        from .async_result import AsyncResult
+
+        return AsyncResult
+    if name == "AsyncState":
+        from .async_result import AsyncState
+
+        return AsyncState
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -50,4 +59,7 @@ __all__ = (
     "mount",
     "MountedComponent",
     "ComponentTestCase",
+    # Async utilities
+    "AsyncResult",
+    "AsyncState",
 )

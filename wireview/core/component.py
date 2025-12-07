@@ -15,6 +15,7 @@ from django.utils.safestring import SafeString
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator, validate_call
 
 from .. import settings, utils
+from ..async_result import AsyncResult
 from ..schemas import DomAction, ModelAction
 from ..utils import db
 from .meta import Repo, WireviewMeta
@@ -226,6 +227,68 @@ class Component(BaseModel):
     async def deffer(self, _f: t.Callable[P, t.Coroutine], *args: P.args, **kwargs: P.kwargs) -> None:
         """Defer a function call to be executed later."""
         await self.wire.deffer(self.id, _f, *args, **kwargs)
+
+    # Async operations
+
+    async def assign_async(
+        self,
+        coro: t.Coroutine[t.Any, t.Any, t.Any],
+        *,
+        on_error: t.Callable[[Exception], None] | None = None,
+    ) -> "AsyncResult[t.Any]":
+        """
+        Execute an async operation and track its loading/result/error state.
+
+        This method immediately returns an AsyncResult in loading state,
+        schedules the coroutine to run, and when complete, updates the
+        result and triggers a re-render.
+
+        Args:
+            coro: The coroutine to execute
+            on_error: Optional callback for error handling
+
+        Returns:
+            An AsyncResult that will be updated when the operation completes
+
+        Example:
+            class Dashboard(Component):
+                stats: AsyncResult[Stats] = None
+
+                async def joined(self):
+                    self.stats = await self.assign_async(self.load_stats())
+
+                async def load_stats(self):
+                    return await Stats.objects.aget()
+
+            # In template:
+            {% if stats.loading %}Loading...{% endif %}
+            {% if stats.ok %}{{ stats.result }}{% endif %}
+            {% if stats.failed %}Error: {{ stats.error_message }}{% endif %}
+        """
+        import asyncio
+
+        # Create initial loading state
+        result: AsyncResult[t.Any] = AsyncResult.loading_state()
+
+        async def run_and_update() -> None:
+            nonlocal result
+            try:
+                value = await coro
+                result.state = AsyncResult.success(value).state
+                result.result = value
+            except Exception as e:
+                result.state = AsyncResult.failure(e).state
+                result.error = e
+                if on_error:
+                    on_error(e)
+            finally:
+                # Trigger re-render
+                await self.send_render()
+
+        # Schedule the task to run
+        asyncio.create_task(run_and_update())
+
+        return result
 
     def freeze(self) -> None:
         """Freeze the component to prevent further rendering."""
