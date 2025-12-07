@@ -485,7 +485,8 @@ var debounceTimeout = undefined;
  * @property {boolean} [bubbles] - Whether dispatch event bubbles
  * @property {string} [display] - CSS display value for show
  * @property {boolean} [input_only] - Focus only inputs
- * @property {TransitionConfig} [transition] - Transition config
+ * @property {*} [transition] - Transition config (object) or class names (string)
+ * @property {number} [time] - Transition duration in ms (for transition command)
  * @property {TransitionConfig} [show] - Show transition for toggle
  * @property {TransitionConfig} [hide] - Hide transition for toggle
  */
@@ -586,6 +587,21 @@ async function executeCommand(cmd, element) {
         const classes = cmd.classes.split(" ").filter(Boolean);
         await applyTransition(target, cmd.transition);
         classes.forEach((cls) => target.classList.toggle(cls));
+      }
+      break;
+
+    // Transition command
+    case "transition":
+      if (target && cmd.transition) {
+        // For transition command, cmd.transition is always a string (class names)
+        const transitionClasses = /** @type {string} */ (cmd.transition);
+        const classes = transitionClasses.split(" ").filter(Boolean);
+        target.classList.add(...classes);
+        const duration = /** @type {number|undefined} */ (cmd.time);
+        if (duration && duration > 0) {
+          await new Promise((resolve) => setTimeout(resolve, duration));
+          target.classList.remove(...classes);
+        }
       }
       break;
 

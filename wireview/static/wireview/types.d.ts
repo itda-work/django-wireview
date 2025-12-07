@@ -29,7 +29,8 @@ interface JSCommand {
   bubbles?: boolean;
   display?: string;
   input_only?: boolean;
-  transition?: TransitionConfig;
+  transition?: TransitionConfig | string;  // string for standalone transition command
+  time?: number;  // for standalone transition command
   show?: TransitionConfig;
   hide?: TransitionConfig;
 }

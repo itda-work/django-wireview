@@ -240,6 +240,42 @@ class JS:
             transition=self._normalize_transition(transition),
         )
 
+    # === Transition Commands ===
+
+    def transition(
+        self,
+        selector: Selector | None = None,
+        transition: Transition = None,
+        *,
+        time: int | None = None,
+    ) -> JS:
+        """
+        Apply a CSS transition to an element.
+
+        The transition classes are applied, then removed after the duration.
+
+        Args:
+            selector: CSS selector for the target element.
+            transition: CSS class(es) to apply during the transition.
+                       Can be a string, tuple of (class, duration_ms),
+                       or TransitionConfig dict.
+            time: Duration in milliseconds (overrides transition tuple).
+
+        Example:
+            JS().transition("#card", "shake")
+            JS().transition("#btn", "pulse", time=500)
+            JS().transition("#modal", ("fade-in", 300))
+        """
+        config = self._normalize_transition(transition) or {}
+        if time is not None:
+            config["time"] = time
+        return self._add_command(
+            "transition",
+            to=selector,
+            transition=config.get("transition"),
+            time=config.get("time"),
+        )
+
     # === Attribute Commands ===
 
     def set_attr(

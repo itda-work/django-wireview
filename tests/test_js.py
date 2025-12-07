@@ -224,6 +224,41 @@ class TestFocusCommands:
         assert commands[0]["input_only"] is True
 
 
+class TestTransitionCommand:
+    """Test transition command."""
+
+    @pytest.mark.unit
+    def test_transition_basic(self):
+        """transition() should create transition command."""
+        js = JS().transition("#card", "shake")
+        commands = json.loads(js.to_json())
+        assert commands[0] == {"cmd": "transition", "to": "#card", "transition": "shake"}
+
+    @pytest.mark.unit
+    def test_transition_with_time(self):
+        """transition() with explicit time."""
+        js = JS().transition("#btn", "pulse", time=500)
+        commands = json.loads(js.to_json())
+        assert commands[0]["transition"] == "pulse"
+        assert commands[0]["time"] == 500
+
+    @pytest.mark.unit
+    def test_transition_tuple(self):
+        """transition() with tuple config."""
+        js = JS().transition("#modal", ("fade-in", 300))
+        commands = json.loads(js.to_json())
+        assert commands[0]["transition"] == "fade-in"
+        assert commands[0]["time"] == 300
+
+    @pytest.mark.unit
+    def test_transition_no_selector(self):
+        """transition() without selector targets current element."""
+        js = JS().transition(transition="bounce")
+        commands = json.loads(js.to_json())
+        assert "to" not in commands[0]
+        assert commands[0]["transition"] == "bounce"
+
+
 class TestPushCommand:
     """Test push command (server communication)."""
 
@@ -318,12 +353,7 @@ class TestComplexChaining:
     @pytest.mark.unit
     def test_form_submit_workflow(self):
         """Test form submission with UI feedback."""
-        js = (
-            JS()
-            .add_class("#submit-btn", "loading")
-            .set_attr("#submit-btn", "disabled", "true")
-            .push("submit")
-        )
+        js = JS().add_class("#submit-btn", "loading").set_attr("#submit-btn", "disabled", "true").push("submit")
         commands = json.loads(js.to_json())
         assert len(commands) == 3
         assert commands[2]["cmd"] == "push"
@@ -332,10 +362,6 @@ class TestComplexChaining:
     @pytest.mark.unit
     def test_notification_workflow(self):
         """Test notification show and auto-hide."""
-        js = (
-            JS()
-            .show("#toast", transition=("slide-in", 200))
-            .dispatch("toast:shown", detail={"type": "success"})
-        )
+        js = JS().show("#toast", transition=("slide-in", 200)).dispatch("toast:shown", detail={"type": "success"})
         commands = json.loads(js.to_json())
         assert len(commands) == 2
