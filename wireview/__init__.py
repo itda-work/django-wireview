@@ -5,13 +5,21 @@
 def __getattr__(name: str):
     """Lazy import to avoid circular import issues with Django."""
     if name == "Component":
-        from .component import Component
+        from .core.component import Component
 
         return Component
+    if name == "ComponentNotFound":
+        from .core.component import ComponentNotFound
+
+        return ComponentNotFound
     if name == "broadcast":
-        from .component import broadcast
+        from .core.component import broadcast
 
         return broadcast
+    if name == "WireviewMeta":
+        from .core.meta import WireviewMeta
+
+        return WireviewMeta
     if name == "JS":
         from .js import JS
 
@@ -19,4 +27,4 @@ def __getattr__(name: str):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-__all__ = ("Component", "JS", "broadcast")
+__all__ = ("Component", "ComponentNotFound", "JS", "WireviewMeta", "broadcast")
