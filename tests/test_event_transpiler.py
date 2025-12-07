@@ -16,6 +16,8 @@ class TestTranspileStringCommands:
         assert event == "onclick"
         assert "wireview.send" in code
         assert "'increment'" in code
+        # Event type passed for loading class support
+        assert "'click'" in code
 
     @pytest.mark.unit
     def test_command_with_kwargs(self):

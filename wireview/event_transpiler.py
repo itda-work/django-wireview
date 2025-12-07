@@ -34,13 +34,14 @@ def transpile(
         return _transpile_js_commands(name, modifiers, command)
 
     # Legacy string command handling
-    cache_key = f"_handler:{modifiers}.{command}.{kwargs}"
+    cache_key = f"_handler:{name}.{modifiers}.{command}.{kwargs}"
     code: str | None = CACHE.get(cache_key)
     if code is None:
         if not modifiers or modifiers[-1] != "inlinejs":
             modifiers.append("_wireview_code")
         code = command
-        stack: Stack = [kwargs]
+        # Stack: [kwargs, event_name] - event_name used for loading classes
+        stack: Stack = [kwargs, name]
         while modifiers:
             modifier = modifiers.pop()
             handler: t.Callable[[str, Stack], str] | None = getattr(
@@ -83,8 +84,15 @@ def _transpile_js_commands(
 class Modifiers:
     @staticmethod
     def _wireview_code(code: str, stack: Stack):
-        kwargs = json.dumps(stack.pop(), cls=DjangoJSONEncoder)
-        return f"wireview.send(event.target, '{code}', {kwargs})"
+        # Stack order: [kwargs, event_name] - pop gets last item first
+        event_type = stack.pop() if stack else None
+        kwargs = (
+            json.dumps(stack.pop(), cls=DjangoJSONEncoder) if stack else "{}"
+        )
+        base = f"wireview.send(event.target, '{code}', {kwargs}"
+        if event_type:
+            return f"{base}, '{event_type}')"
+        return f"{base})"
 
     @staticmethod
     def _add_curly(code: str):

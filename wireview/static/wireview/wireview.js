@@ -313,11 +313,35 @@ class WireviewComponent {
     window.requestAnimationFrame(() => {
       let el = this.getElemenet();
       if (el) {
+        // Remove loading classes before morphing
+        this.clearLoadingClasses();
+
         let html = this.getHtml(diff);
         boost.morph(el, html);
         boost.navEvent.sendNewContent();
       }
     });
+  }
+
+  /**
+   * Removes all loading classes from elements within this component.
+   */
+  clearLoadingClasses() {
+    const el = this.getElemenet();
+    if (!el) return;
+
+    const loadingElements = el.querySelectorAll(".wireview-loading");
+    for (const loadingEl of loadingElements) {
+      loadingEl.classList.remove(
+        "wireview-loading",
+        "wireview-click-loading",
+        "wireview-submit-loading",
+        "wireview-change-loading",
+        "wireview-input-loading",
+        "wireview-keydown-loading",
+        "wireview-keyup-loading"
+      );
+    }
   }
 
   /**
@@ -658,14 +682,21 @@ window.wireview = {
    * @param {HTMLElement} element
    * @param {string} name
    * @param {Object} [args]
+   * @param {string} [eventType] - Optional event type for loading class
    */
-  send(element, name, args) {
+  send(element, name, args, eventType) {
     const component_el = /** @type {HTMLElement|null} */ (
       element.closest("[wireview-component]")
     );
     if (component_el === null) return;
     let component = connection.components[component_el.id];
     if (component !== undefined) {
+      // Add loading classes
+      element.classList.add("wireview-loading");
+      if (eventType) {
+        element.classList.add(`wireview-${eventType}-loading`);
+      }
+
       const form = /** @type {HTMLFormElement|null} */ (element.closest("form"));
       const formScope = form && component_el.contains(form) ? form : component_el;
       component.dispatch(name, args || {}, formScope);
