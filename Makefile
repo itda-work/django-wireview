@@ -1,4 +1,4 @@
-.PHONY: all install test test-cov lint check build watch-js run shell clean
+.PHONY: all install test test-cov lint check build watch-js run shell clean collectstatic
 
 all: install build
 
@@ -7,11 +7,15 @@ install:
 	uv venv
 	uv pip install -e ".[dev]"
 
+# collectstatic
+collectstatic:
+	cd tests && uv run python manage.py collectstatic --noinput
+
 # pytest 테스트
-test:
+test: collectstatic
 	uv run pytest tests/ -v
 
-test-cov:
+test-cov: collectstatic
 	uv run pytest tests/ --cov=wireview --cov-report=term-missing
 
 # 린트 및 타입 체크
