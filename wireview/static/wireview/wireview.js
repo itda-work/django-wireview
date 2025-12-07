@@ -1,16 +1,51 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
 import boost from "./wireview-boost";
 
+/**
+ * @fileoverview Wireview client-side library for Django LiveView functionality.
+ * Provides WebSocket-based real-time component updates.
+ */
+
 // Connection
 
 const parser = new DOMParser();
 
+/**
+ * @typedef {Object} WireviewMessage
+ * @property {string} command - The command type
+ * @property {Object} payload - The message payload
+ */
+
+/**
+ * @typedef {Object} RenderPayload
+ * @property {string} id - Component ID
+ * @property {Array<string|number>} diff - Diff array for HTML reconstruction
+ */
+
+/**
+ * @typedef {Object} DOMPayload
+ * @property {string} id - Element ID
+ * @property {string} [html] - HTML content
+ */
+
+/**
+ * Manages WebSocket connection to Django backend.
+ * Handles component lifecycle, message routing, and reconnection.
+ */
 class ServerConnection {
   constructor() {
+    /** @type {Object<string, WireviewComponent>} */
     this.components = {};
+    /** @type {WireviewMessage[]} */
     this.messageQueue = [];
+    /** @type {ReconnectingWebSocket|null} */
+    this.socket = null;
   }
 
+  /**
+   * Opens WebSocket connection to the server.
+   * @param {string} [path="__wireview__"] - WebSocket endpoint path
+   */
   open(path = "__wireview__") {
     let protocol = location.protocol.replace("http", "ws");
     this.socket = new ReconnectingWebSocket(
@@ -40,7 +75,8 @@ class ServerConnection {
     this.socket.addEventListener("close", () => {
       console.log("WS: CLOSE");
       this.components = {};
-      document.querySelectorAll("[wireview-component]").forEach((element) => {
+      document.querySelectorAll("[wireview-component]").forEach((el) => {
+        const element = /** @type {HTMLElement} */ (el);
         element.classList.add("wireview-disconnected");
         element.dataset.isLive = "false";
       });
@@ -55,10 +91,18 @@ class ServerConnection {
     });
   }
 
+  /**
+   * Whether the WebSocket connection is open.
+   * @returns {boolean}
+   */
   get isOpen() {
     return this.socket?.readyState == ReconnectingWebSocket.OPEN;
   }
 
+  /**
+   * Joins all wireview components found in the DOM.
+   * Registers new components and removes stale ones.
+   */
   joinAllComponents() {
     let registeredIds = new Set(Object.keys(this.components));
     for (let element of document.querySelectorAll("[wireview-component]")) {
@@ -76,6 +120,11 @@ class ServerConnection {
     }
   }
 
+  /**
+   * Processes incoming WebSocket messages.
+   * @param {MessageEvent} event - WebSocket message event
+   * @private
+   */
   _processMessage(event) {
     let { command, payload } = JSON.parse(event.data);
     switch (command) {
@@ -170,6 +219,9 @@ class ServerConnection {
     }
   }
 
+  /**
+   * Sends the current query string to the server.
+   */
   sendQueryString() {
     // "?a=x&..." -> "a=x&..."
     let qs = document.location.search.slice(1);
@@ -177,21 +229,45 @@ class ServerConnection {
     this._send("query_string", { qs });
   }
 
+  /**
+   * Sends a join request for a component.
+   * @param {string} name - Component class name
+   * @param {string} component_id - Component element ID
+   * @param {string} state - Serialized component state
+   * @param {Object<string, [string, string]>} children - Child component info
+   */
   sendJoin(name, component_id, state, children) {
     console.log(">>> JOIN", name, component_id);
     this._send("join", { name, state, children });
   }
 
+  /**
+   * Sends a leave request for a component.
+   * @param {string} id - Component element ID
+   */
   sendLeave(id) {
     console.log(">>> LEAVE", id);
     this._send("leave", { id });
   }
 
+  /**
+   * Sends a user event to a component.
+   * @param {string} id - Component element ID
+   * @param {string} command - Event command name
+   * @param {Object} implicit_args - Form data from the component
+   * @param {Object} explicit_args - Explicit event arguments
+   */
   sendUserEvent(id, command, implicit_args, explicit_args) {
     console.log(">>> USER_EVENT", id, command, explicit_args);
     this._send("user_event", { id, command, implicit_args, explicit_args });
   }
 
+  /**
+   * Sends a message to the server.
+   * @param {string} command - Command type
+   * @param {Object} payload - Message payload
+   * @private
+   */
   _send(command, payload) {
     const message = { command, payload };
     if (this.isOpen) {
@@ -202,23 +278,37 @@ class ServerConnection {
   }
 }
 
+/** @type {ServerConnection} */
 let connection = new ServerConnection();
 
+/**
+ * Represents a client-side wireview component.
+ * Manages state synchronization with the server.
+ */
 class WireviewComponent {
   /**
-   * Returns the id of the parent component
-   *
-   * @param {HTMLElement} el
+   * Creates a new WireviewComponent instance.
+   * @param {string} id - The DOM element ID for this component
    */
   constructor(id) {
+    /** @type {string} */
     this.id = id;
+    /** @type {string[]} */
     this.lastReceivedHtml = [];
   }
 
+  /**
+   * Gets the DOM element for this component.
+   * @returns {HTMLElement|null}
+   */
   getElemenet() {
     return document.getElementById(this.id);
   }
 
+  /**
+   * Applies a diff from the server to update the component's HTML.
+   * @param {Array<string|number>} diff - Diff array for HTML reconstruction
+   */
   applyDiff(diff) {
     window.requestAnimationFrame(() => {
       let el = this.getElemenet();
@@ -230,6 +320,14 @@ class WireviewComponent {
     });
   }
 
+  /**
+   * Reconstructs HTML from a diff array.
+   * @param {Array<string|number>} diff - Diff array where:
+   *   - string: new content to add
+   *   - negative number: skip that many fragments from lastReceivedHtml
+   *   - positive number: reuse that many fragments from lastReceivedHtml
+   * @returns {string} Reconstructed HTML string
+   */
   getHtml(diff) {
     let fragments = [];
     let cursor = 0;
@@ -249,23 +347,30 @@ class WireviewComponent {
     return fragments.join(" ");
   }
 
+  /**
+   * Joins this component to the server.
+   * Only joins if the component is not already live and its parent is live.
+   */
   join() {
-    let element = this.getElemenet();
+    const element = /** @type {HTMLElement|null} */ (this.getElemenet());
     if (element && element.dataset.isLive === "false") {
-      let parent = element?.parentElement?.closest("[wireview-component]");
+      const parentEl = element?.parentElement?.closest("[wireview-component]");
+      const parent = /** @type {HTMLElement|null} */ (parentEl);
       if (!parent || parent.dataset.isLive === "true") {
         element.dataset.isLive = "true";
+        /** @type {Object<string, [string, string]>} */
         let children = Array.from(
           element.querySelectorAll("[wireview-component]")
-        ).reduce((children, el) => {
-          children[el.id] = [el.dataset.name, el.dataset.state];
-          return children;
-        }, {});
+        ).reduce((acc, node) => {
+          const el = /** @type {HTMLElement} */ (node);
+          acc[el.id] = [el.dataset.name || "", el.dataset.state || ""];
+          return acc;
+        }, /** @type {Object<string, [string, string]>} */ ({}));
 
         connection.sendJoin(
-          element.dataset.name,
+          element.dataset.name || "",
           element.id,
-          element.dataset.state,
+          element.dataset.state || "",
           children
         );
       }
@@ -274,9 +379,9 @@ class WireviewComponent {
 
   /**
    * Dispatches a command to this component and sends it to the backend
-   * @param {String} command
-   * @param {Object} args
-   * @param {?HTMLFormElement} form
+   * @param {string} command - Event command name
+   * @param {Object} args - Explicit arguments
+   * @param {HTMLElement} formScope - Form or component element to serialize
    */
   dispatch(command, args, formScope) {
     connection.sendUserEvent(this.id, command, this.serialize(formScope), args);
@@ -286,24 +391,33 @@ class WireviewComponent {
    * Serialize all elements inside `element` with a [name] attribute into
    * a an array of `[element[name], element[value]]`
    * @param {HTMLElement} element
+   * @returns {Object<string, Array<string|boolean>>}
    */
   serialize(element) {
+    /** @type {Object<string, Array<string|boolean>>} */
     let result = {};
     let thisElement = this.getElemenet();
-    for (let el of element.querySelectorAll("[name]")) {
+    for (let node of element.querySelectorAll("[name]")) {
+      const el = /** @type {HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement} */ (node);
       // Avoid serializing data of a nested component
       if (el.closest("[wireview-component]") !== thisElement) {
         continue;
       }
 
+      /** @type {string|boolean|string[]|null} */
       let value = null;
-      switch (el.type.toLowerCase()) {
+      const elType = el.type?.toLowerCase() || "";
+      switch (elType) {
         case "checkbox":
         case "radio":
-          value = el.checked ? el.value || true : null;
+          value = /** @type {HTMLInputElement} */ (el).checked
+            ? el.value || true
+            : null;
           break;
         case "select-multiple":
-          value = el.selectedOptions.map((option) => option.value);
+          value = Array.from(/** @type {HTMLSelectElement} */ (el).selectedOptions).map(
+            (option) => option.value
+          );
           break;
         default:
           value = el.value;
@@ -312,9 +426,11 @@ class WireviewComponent {
 
       if (value !== null) {
         let key = el.getAttribute("name");
-        let values = result[key] ?? [];
-        values.push(value);
-        result[key] = values;
+        if (key) {
+          let values = result[key] ?? [];
+          values.push(/** @type {string|boolean} */ (value));
+          result[key] = values;
+        }
       }
     }
     return result;
@@ -322,33 +438,37 @@ class WireviewComponent {
 }
 
 connection.open();
+/** @type {ReturnType<typeof setTimeout>|undefined} */
 var debounceTimeout = undefined;
 
 window.wireview = {
   /**
    * Forwards a user event to a component
    * @param {HTMLElement} element
-   * @param {String} name
-   * @param {Object} args
+   * @param {string} name
+   * @param {Object} [args]
    */
   send(element, name, args) {
-    let component_el = element.closest("[wireview-component]");
+    const component_el = /** @type {HTMLElement|null} */ (
+      element.closest("[wireview-component]")
+    );
+    if (component_el === null) return;
     let component = connection.components[component_el.id];
-    if (component_el !== null && component !== undefined) {
-      let form = element.closest("form");
-      let formScope = component_el.contains(form) ? form : component_el;
-      component.dispatch(name, args, formScope);
+    if (component !== undefined) {
+      const form = /** @type {HTMLFormElement|null} */ (element.closest("form"));
+      const formScope = form && component_el.contains(form) ? form : component_el;
+      component.dispatch(name, args || {}, formScope);
     }
   },
 
   /**
    * Debounce a function call
-   * @param {Number} delay
-   * @returns
+   * @param {number} delay - Delay in milliseconds
+   * @returns {<T extends (...args: any[]) => void>(f: T) => (...args: Parameters<T>) => void}
    */
   debounce(delay) {
-    return (f) => {
-      return (...args) => {
+    return (/** @type {Function} */ f) => {
+      return (/** @type {any[]} */ ...args) => {
         clearTimeout(debounceTimeout);
         debounceTimeout = setTimeout(() => f(...args), delay);
       };

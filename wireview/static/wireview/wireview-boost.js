@@ -1,32 +1,58 @@
+/**
+ * @fileoverview Wireview boost module for client-side navigation.
+ * Provides SPA-like navigation with morphing DOM updates.
+ */
+
 import _load from "idiomorph";
 
+/**
+ * Morphs an old DOM node into a new one using Idiomorph.
+ * @param {Element} oldNode - The existing DOM element
+ * @param {Element|string} newNode - The new content to morph into
+ */
 function morph(oldNode, newNode) {
   Idiomorph.morph(oldNode, newNode);
 }
 
+/** @type {boolean} */
 const BOOST_PAGES = JSON.parse(
-  document.querySelector("meta[name=wireview-boost]")?.dataset.enabled || "false"
+  /** @type {HTMLMetaElement|null} */ (document.querySelector("meta[name=wireview-boost]"))?.dataset.enabled || "false"
 );
 
 console.log("BOOST_PAGES", BOOST_PAGES);
 
+/**
+ * Event target for navigation events.
+ * Emits 'newLocation' when URL changes and 'newContent' when DOM updates.
+ */
 class NavEvents extends EventTarget {
+  /**
+   * Dispatches a newLocation event.
+   */
   sendNewLocation() {
     console.log("LOAD", document.location.href);
     this.dispatchEvent(new Event("newLocation"));
   }
 
+  /**
+   * Dispatches a newContent event.
+   */
   sendNewContent() {
     this.dispatchEvent(new Event("newContent"));
   }
 }
 
+/** @type {NavEvents} */
 let navEvent = new NavEvents();
 
+// Set up click handler for boosted navigation
 if (BOOST_PAGES) {
   document.addEventListener("click", (e) => {
-    let link = e.target;
-    link = link.tagName.toLowerCase() !== "a" ? link.closest("a") : link;
+    const target = /** @type {HTMLElement} */ (e.target);
+    /** @type {HTMLAnchorElement|null} */
+    let link = /** @type {HTMLAnchorElement|null} */ (
+      target?.tagName?.toLowerCase() !== "a" ? target?.closest("a") : target
+    );
     if (
       link &&
       link.href &&
@@ -44,11 +70,16 @@ if (BOOST_PAGES) {
   });
 }
 
+/**
+ * Replaces the document body content with morphing.
+ * @param {Element|string} newBody - The new body content
+ * @param {number} [scrollY] - Optional scroll position to restore
+ */
 function replaceBodyContent(newBody, scrollY = undefined) {
   window.requestAnimationFrame(() => {
     morph(document.body, newBody);
     if (scrollY === undefined) {
-      document.querySelector("[autofocus]")?.focus();
+      /** @type {HTMLElement|null} */ (document.querySelector("[autofocus]"))?.focus();
     } else {
       window.scrollTo(0, scrollY);
     }
@@ -56,6 +87,11 @@ function replaceBodyContent(newBody, scrollY = undefined) {
   });
 }
 
+/**
+ * Checks if a URL has the same origin as the current document.
+ * @param {string} url - The URL to check
+ * @returns {boolean} True if same origin or relative URL
+ */
 function hasSameOriginAsDocument(url) {
   if (url.startsWith("http://") || url.startsWith("https://")) {
     return new URL(url).origin === document.location.origin;
@@ -64,7 +100,15 @@ function hasSameOriginAsDocument(url) {
   }
 }
 
+/**
+ * Manages browser history with cached page content.
+ * Enables fast back/forward navigation without server requests.
+ */
 class HistoryCache {
+  /**
+   * Loads a URL, using boost navigation if enabled.
+   * @param {string} url - The URL to load
+   */
   static async load(url) {
     if (BOOST_PAGES) {
       // this._saveCurrentPage();
@@ -78,10 +122,18 @@ class HistoryCache {
     }
   }
 
+  /**
+   * Navigates back in browser history.
+   */
   static back() {
     window.history.back();
   }
 
+  /**
+   * Pushes a new URL to browser history and loads its content.
+   * Saves current page state for back navigation.
+   * @param {string} path - The path to navigate to
+   */
   static async push(path) {
     if (document.body == null) debugger;
     history.replaceState(
@@ -96,6 +148,10 @@ class HistoryCache {
     this.replaceContentFromUrl(path);
   }
 
+  /**
+   * Fetches content from a URL and replaces the body.
+   * @param {string} url - The URL to fetch content from
+   */
   static async replaceContentFromUrl(url) {
     navEvent.sendNewLocation();
     let response = await fetch(url);
@@ -105,6 +161,10 @@ class HistoryCache {
     replaceBodyContent(doc.body);
   }
 
+  /**
+   * Replaces the current URL without navigation.
+   * @param {string} path - The new path
+   */
   static replace(path) {
     history.replaceState({}, document.title, path);
   }
@@ -118,6 +178,14 @@ window.addEventListener("popstate", (event) => {
   HistoryCache.replaceContentFromUrl(document.location.href);
 });
 
+/**
+ * @typedef {Object} BoostExports
+ * @property {typeof HistoryCache} HistoryCache - History management class
+ * @property {typeof morph} morph - DOM morphing function
+ * @property {NavEvents} navEvent - Navigation event emitter
+ */
+
+/** @type {BoostExports} */
 export default {
   HistoryCache: HistoryCache,
   morph: morph,

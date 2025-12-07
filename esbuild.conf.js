@@ -4,7 +4,6 @@ const isWatch = process.argv.includes('-w');
 const isBuild = !isWatch;
 const mode = isBuild ? 'production' : 'development';
 
-
 const buildOptions = {
     entryPoints: ['wireview/static/wireview/wireview.js'],
     define: {
@@ -13,9 +12,22 @@ const buildOptions = {
     bundle: true,
     sourcemap: true,
     minify: isBuild,
-    incremental: isWatch,
+    target: ['es2020'],
     outfile: 'wireview/static/wireview/wireview.min.js',
-    watch: isWatch,
 };
 
-esbuild.build(buildOptions);
+async function main() {
+    if (isWatch) {
+        const ctx = await esbuild.context(buildOptions);
+        await ctx.watch();
+        console.log('Watching for changes...');
+    } else {
+        await esbuild.build(buildOptions);
+        console.log('Build complete.');
+    }
+}
+
+main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+});

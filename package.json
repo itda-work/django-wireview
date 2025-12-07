@@ -6,11 +6,17 @@
   "repository": "git@github.com:itda-work/django-wireview.git",
   "author": "Eddy Ernesto del Valle Pino <eddy@edelvalle.me>",
   "license": "MIT",
+  "scripts": {
+    "build": "node esbuild.conf.js",
+    "watch": "node esbuild.conf.js -w",
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "idiomorph": "^0.0.8",
     "reconnecting-websocket": "^4.4.0"
   },
   "devDependencies": {
-    "esbuild": "^0.13.9"
+    "esbuild": "^0.27.1",
+    "typescript": "^5.9.3"
   }
 }
