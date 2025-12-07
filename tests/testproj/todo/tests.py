@@ -5,48 +5,45 @@ import time
 import unittest
 from os import environ as env
 from random import randint
-from urllib.parse import urljoin
 from time import sleep
+from urllib.parse import urljoin
 
-from uvicorn.main import Server as Uvicorn
-from uvicorn.config import Config as UvicornConfig
-
-from django.test import TestCase, TransactionTestCase, Client, override_settings
+import pytest
 from channels.routing import get_default_application
-
-from selenium.webdriver.common.keys import Keys
+from django.test import Client, TestCase, TransactionTestCase, override_settings
 from selenium.webdriver.common.action_chains import ActionChains
-
+from selenium.webdriver.common.keys import Keys
 from splinter import Browser
 from splinter.config import Config
-
-# Check if geckodriver is available for Selenium tests
-GECKODRIVER_AVAILABLE = shutil.which("geckodriver") is not None
-from splinter.element_list import ElementList
 from splinter.driver import ElementAPI
+from splinter.driver.lxmldriver import LxmlDriver
 from splinter.driver.webdriver import WebDriverElement
 from splinter.driver.webdriver.firefox import WebDriver as FirefoxDriver
-from splinter.driver.lxmldriver import LxmlDriver
-from splinter.driver.djangoclient import DjangoClient as DjangoDriver
+from splinter.element_list import ElementList
+from uvicorn.config import Config as UvicornConfig
+from uvicorn.main import Server as Uvicorn
 
 from .models import Item
 
+# Check if geckodriver is available for Selenium tests
+GECKODRIVER_AVAILABLE = shutil.which("geckodriver") is not None
+
 
 class TestNormalRendering(TestCase):
-
     def setUp(self):
-        Item.objects.create(text='First task')
-        Item.objects.create(text='Second task')
+        Item.objects.create(text="First task")
+        Item.objects.create(text="Second task")
         self.c = Client()
 
     def test_everything_two_tasks_are_rendered(self):
-        response = self.c.get('/todo')
+        response = self.c.get("/todo")
         assert response.status_code == 200
-        self.assertContains(response, 'First task')
-        self.assertContains(response, 'Second task')
+        self.assertContains(response, "First task")
+        self.assertContains(response, "Second task")
 
 
 # HACK: https://github.com/cobrateam/splinter/pull/820
+
 
 def submit(self: LxmlDriver, form):
     method = form.attrib.get("method", "get").lower()
@@ -66,7 +63,6 @@ LxmlDriver.submit = submit
 
 
 class UvicornThread(threading.Thread):
-
     def __init__(self, application, host, port):
         super().__init__()
         self.host = host
@@ -96,20 +92,16 @@ class UvicornThread(threading.Thread):
 class ChannelsLiveServerTestCase(TransactionTestCase):
     """Live server test case using Uvicorn and Splinter/Selenium."""
 
-    host = '127.0.0.1'
-    driver_type = 'firefox'
+    host = "127.0.0.1"
+    driver_type = "firefox"
     x: FirefoxDriver
 
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        headless = not env.get('DISPLAY')
+        headless = not env.get("DISPLAY")
         config = Config(headless=headless)
-        cls.x = Browser(
-            cls.driver_type,
-            config=config,
-            wait_time=10 if headless else 2
-        )
+        cls.x = Browser(cls.driver_type, config=config, wait_time=10 if headless else 2)
 
     @classmethod
     def tearDownClass(cls):
@@ -127,7 +119,7 @@ class ChannelsLiveServerTestCase(TransactionTestCase):
         if isinstance(element, ElementAPI):
             element = element._element
 
-        self.x.execute_script('arguments[0].scrollIntoView(true);', element)
+        self.x.execute_script("arguments[0].scrollIntoView(true);", element)
 
     def setUp(self):
         super().setUp()
@@ -152,13 +144,7 @@ class ChannelsLiveServerTestCase(TransactionTestCase):
         return ActionChains(self.x.driver)
 
     def send_ctrl(self, key):
-        (
-            self.chain()
-            .key_down(Keys.CONTROL)
-            .send_keys(key)
-            .key_up(Keys.CONTROL)
-            .perform()
-        )
+        (self.chain().key_down(Keys.CONTROL).send_keys(key).key_up(Keys.CONTROL).perform())
 
     def assert_text_eventually(self, element, expected, timeout=5):
         deadline = time.time() + timeout
@@ -170,22 +156,19 @@ class ChannelsLiveServerTestCase(TransactionTestCase):
 
     def print_html(self):
         from pygments import highlight
-        from pygments.lexers import HtmlLexer
         from pygments.formatters import TerminalTrueColorFormatter
-        print(highlight(
-            self.x.html,
-            HtmlLexer(),
-            TerminalTrueColorFormatter()
-        ))
+        from pygments.lexers import HtmlLexer
+
+        print(highlight(self.x.html, HtmlLexer(), TerminalTrueColorFormatter()))
 
 
+@pytest.mark.e2e
 @unittest.skipUnless(GECKODRIVER_AVAILABLE, "geckodriver not found")
 class SeleniumTests(ChannelsLiveServerTestCase):
-
     def test_click(self):
         # Navigate to todo app
         self.x.visit(self.live_server_url)
-        self.x.links.find_by_text('todo view').click()
+        self.x.links.find_by_text("todo view").click()
 
         # Wait for WebSocket connection
         assert self.x.is_element_present_by_css(
@@ -193,75 +176,67 @@ class SeleniumTests(ChannelsLiveServerTestCase):
             wait_time=5,
         )
 
-        new_item_input = self.x.find_by_tag('input')[0]
+        new_item_input = self.x.find_by_tag("input")[0]
         # Add first task
-        new_item_input._element.send_keys(f'HI{Keys.ENTER}')
-        assert self.x.is_element_present_by_css(
-            '[data-name=XTodoItem]', wait_time=5
-        )
+        new_item_input._element.send_keys(f"HI{Keys.ENTER}")
+        assert self.x.is_element_present_by_css("[data-name=XTodoItem]", wait_time=5)
         assert not new_item_input.text
-        counter = self.x.find_by_css('[data-name=XTodoCounter]')
-        self.assert_text_eventually(counter, '1 item left')
-        todo_item = self.x.find_by_css('[data-name=XTodoItem]')
-        first_label = todo_item.find_by_tag('label')
-        self.assert_text_eventually(first_label, 'HI')
+        counter = self.x.find_by_css("[data-name=XTodoCounter]")
+        self.assert_text_eventually(counter, "1 item left")
+        todo_item = self.x.find_by_css("[data-name=XTodoItem]")
+        first_label = todo_item.find_by_tag("label")
+        self.assert_text_eventually(first_label, "HI")
 
         # Add second task
-        new_item_input._element.send_keys(f'Second task{Keys.ENTER}')
-        assert self.x.is_element_present_by_css(
-            '[data-name=XTodoItem]', wait_time=5
-        )
-        self.assert_text_eventually(counter, '2 items left')
-        todo_items = self.x.find_by_css('[data-name=XTodoItem]')
+        new_item_input._element.send_keys(f"Second task{Keys.ENTER}")
+        assert self.x.is_element_present_by_css("[data-name=XTodoItem]", wait_time=5)
+        self.assert_text_eventually(counter, "2 items left")
+        todo_items = self.x.find_by_css("[data-name=XTodoItem]")
         assert len(todo_items) >= 2
-        self.assert_text_eventually(todo_items[0].find_by_tag('label'), 'HI')
-        self.assert_text_eventually(
-            todo_items[1].find_by_tag('label'), 'Second task'
-        )
+        self.assert_text_eventually(todo_items[0].find_by_tag("label"), "HI")
+        self.assert_text_eventually(todo_items[1].find_by_tag("label"), "Second task")
 
         # Mark second task as done
         second_task: WebDriverElement = todo_items[1]
-        second_task.find_by_css('[name=completed]').click()
-        assert self.x.is_element_present_by_css('li.completed', wait_time=5)
-        assert counter.text == '1 item left'
+        second_task.find_by_css("[name=completed]").click()
+        assert self.x.is_element_present_by_css("li.completed", wait_time=5)
+        assert counter.text == "1 item left"
 
         # Show active items
-        self.x.links.find_by_partial_text('Active').click()
+        self.x.links.find_by_partial_text("Active").click()
         sleep(0.3)
-        assert second_task.find_by_css('li.hidden')
+        assert second_task.find_by_css("li.hidden")
         first_task: WebDriverElement = todo_items[0]
-        assert not first_task.find_by_css('li').has_class('hidden')
+        assert not first_task.find_by_css("li").has_class("hidden")
 
         # Show completed items
-        self.x.links.find_by_partial_text('Completed').click()
+        self.x.links.find_by_partial_text("Completed").click()
         sleep(0.3)
-        assert first_task.find_by_css('li.hidden')
-        assert not second_task.find_by_css('li').has_class('hidden')
+        assert first_task.find_by_css("li.hidden")
+        assert not second_task.find_by_css("li").has_class("hidden")
 
         # Show all
-        self.x.links.find_by_partial_text('All').click()
+        self.x.links.find_by_partial_text("All").click()
         sleep(0.3)
-        assert self.x.is_element_not_present_by_css('li.hidden')
+        assert self.x.is_element_not_present_by_css("li.hidden")
 
         # Clear completed tasks
-        self.x.find_by_css('button.clear-completed').click()
+        self.x.find_by_css("button.clear-completed").click()
         sleep(0.3)
-        items = self.x.find_by_css('[data-name=XTodoItem]')
+        items = self.x.find_by_css("[data-name=XTodoItem]")
         assert len(items) == 1
-        assert items['id'] == first_task['id']
+        assert items["id"] == first_task["id"]
 
         # Edit the first task.
-        first_task.find_by_tag('label').click()
+        first_task.find_by_tag("label").click()
         sleep(0.3)
-        first_task_input = first_task.find_by_css('input.edit')
+        first_task_input = first_task.find_by_css("input.edit")
         assert self.assert_focused(first_task_input)
-        self.send_ctrl('a')
-        first_task_input._element.send_keys(
-            f'{Keys.BACKSPACE}First item{Keys.ENTER}'
-        )
+        self.send_ctrl("a")
+        first_task_input._element.send_keys(f"{Keys.BACKSPACE}First item{Keys.ENTER}")
         sleep(0.3)
 
-        assert self.x.is_element_not_present_by_css('li .editing')
-        first_task.find_by_css('.destroy').click()
+        assert self.x.is_element_not_present_by_css("li .editing")
+        first_task.find_by_css(".destroy").click()
         sleep(0.3)
-        assert self.x.is_element_not_present_by_css('[data-name=XTodoItem]')
+        assert self.x.is_element_not_present_by_css("[data-name=XTodoItem]")
