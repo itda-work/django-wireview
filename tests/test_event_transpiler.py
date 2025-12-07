@@ -34,6 +34,13 @@ class TestTranspileStringCommands:
         assert "wireview.debounce(300)" in code
 
     @pytest.mark.unit
+    def test_throttle_modifier(self):
+        """throttle modifier should wrap in throttle call."""
+        event, code = transpile("scroll.throttle.100", "update_position", {})
+        assert event == "onscroll"
+        assert "wireview.throttle(100)" in code
+
+    @pytest.mark.unit
     def test_prevent_modifier(self):
         """prevent modifier should add preventDefault."""
         event, code = transpile("click.prevent", "submit", {})
@@ -98,6 +105,13 @@ class TestTranspileJSCommands:
         js = JS().push("search")
         event, code = transpile("input.debounce.300", js, {})
         assert "wireview.debounce(300)" in code
+
+    @pytest.mark.unit
+    def test_js_with_throttle_modifier(self):
+        """JS command with throttle modifier."""
+        js = JS().push("update")
+        event, code = transpile("scroll.throttle.100", js, {})
+        assert "wireview.throttle(100)" in code
 
     @pytest.mark.unit
     def test_js_with_key_modifier(self):

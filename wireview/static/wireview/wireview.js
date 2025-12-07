@@ -464,6 +464,8 @@ class WireviewComponent {
 connection.open();
 /** @type {ReturnType<typeof setTimeout>|undefined} */
 var debounceTimeout = undefined;
+/** @type {number} */
+var throttleLastCall = 0;
 
 // ============================================================================
 // JS Command Types and Executor
@@ -729,6 +731,23 @@ window.wireview = {
       return (/** @type {any[]} */ ...args) => {
         clearTimeout(debounceTimeout);
         debounceTimeout = setTimeout(() => f(...args), delay);
+      };
+    };
+  },
+
+  /**
+   * Throttle a function call (execute at most once per delay period)
+   * @param {number} delay - Minimum time between calls in milliseconds
+   * @returns {<T extends (...args: any[]) => void>(f: T) => (...args: Parameters<T>) => void}
+   */
+  throttle(delay) {
+    return (/** @type {Function} */ f) => {
+      return (/** @type {any[]} */ ...args) => {
+        const now = Date.now();
+        if (now - throttleLastCall >= delay) {
+          throttleLastCall = now;
+          f(...args);
+        }
       };
     };
   },

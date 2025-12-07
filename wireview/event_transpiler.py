@@ -44,9 +44,7 @@ def transpile(
         stack: Stack = [kwargs, name]
         while modifiers:
             modifier = modifiers.pop()
-            handler: t.Callable[[str, Stack], str] | None = getattr(
-                Modifiers, modifier, None
-            )
+            handler: t.Callable[[str, Stack], str] | None = getattr(Modifiers, modifier, None)
             if handler:
                 code = handler(code, stack)
             else:
@@ -70,9 +68,7 @@ def _transpile_js_commands(
     stack: Stack = []
     while modifiers:
         modifier = modifiers.pop()
-        handler: t.Callable[[str, Stack], str] | None = getattr(
-            Modifiers, modifier, None
-        )
+        handler: t.Callable[[str, Stack], str] | None = getattr(Modifiers, modifier, None)
         if handler:
             code = handler(code, stack)
         else:
@@ -86,9 +82,7 @@ class Modifiers:
     def _wireview_code(code: str, stack: Stack):
         # Stack order: [kwargs, event_name] - pop gets last item first
         event_type = stack.pop() if stack else None
-        kwargs = (
-            json.dumps(stack.pop(), cls=DjangoJSONEncoder) if stack else "{}"
-        )
+        kwargs = json.dumps(stack.pop(), cls=DjangoJSONEncoder) if stack else "{}"
         base = f"wireview.send(event.target, '{code}', {kwargs}"
         if event_type:
             return f"{base}, '{event_type}')"
@@ -109,6 +103,12 @@ class Modifiers:
         delay = int(stack.pop())
         code = cls._add_curly(code)
         return f"wireview.debounce({delay})(() => {code})()"
+
+    @classmethod
+    def throttle(cls, code: str, stack: Stack):
+        delay = int(stack.pop())
+        code = cls._add_curly(code)
+        return f"wireview.throttle({delay})(() => {code})()"
 
     @staticmethod
     def prevent(code: str, stack: Stack):

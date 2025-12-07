@@ -39,6 +39,7 @@ interface Window {
   wireview: {
     send(element: HTMLElement, name: string, args?: Record<string, unknown>, eventType?: string): void;
     debounce(delay: number): <T extends (...args: unknown[]) => void>(f: T) => (...args: Parameters<T>) => void;
+    throttle(delay: number): <T extends (...args: unknown[]) => void>(f: T) => (...args: Parameters<T>) => void;
     exec(element: HTMLElement, commands: JSCommand[]): Promise<void>;
   };
 }
