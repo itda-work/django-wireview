@@ -57,7 +57,7 @@ class ServerConnection {
     );
 
     this.socket.addEventListener("open", () => {
-      console.log("WS: OPEN");
+      debugLog("ws", "Connected to server");
       this.sendQueryString();
       this.components = {};
       this.joinAllComponents();
@@ -73,7 +73,7 @@ class ServerConnection {
     );
 
     this.socket.addEventListener("close", () => {
-      console.log("WS: CLOSE");
+      debugLog("ws", "Disconnected from server");
       this.components = {};
       document.querySelectorAll("[wireview-component]").forEach((el) => {
         const element = /** @type {HTMLElement} */ (el);
@@ -127,10 +127,10 @@ class ServerConnection {
    */
   _processMessage(event) {
     let { command, payload } = JSON.parse(event.data);
+    debugLog("recv", command, payload);
     switch (command) {
       case "render":
         var { id, diff } = payload;
-        console.log("<<< RENDER", id);
         this.components[id]?.applyDiff(diff);
         break;
       case "append":
@@ -139,7 +139,6 @@ class ServerConnection {
       case "insert_before":
       case "replace_with":
         var { id, html } = payload;
-        console.log(`<<< ${command.toUpperCase()}`, id);
         html = parser.parseFromString(html, "text/html").body.firstChild;
         var element = document.getElementById(id);
         if (element) {
@@ -165,17 +164,11 @@ class ServerConnection {
         break;
       case "remove":
         var { id } = payload;
-        console.log("<<< REMOVE", id);
         document.getElementById(id)?.remove();
         boost.navEvent.sendNewContent();
         break;
       case "focus_on":
         var { selector } = payload;
-        console.log(
-          "<<< FOCUS-ON",
-          `"${selector}"`,
-          document.querySelector(selector)
-        );
         window.requestAnimationFrame(() =>
           document.querySelector(selector)?.focus()
         );
@@ -190,7 +183,6 @@ class ServerConnection {
         break;
       case "url_change":
         var { url } = payload;
-        console.log("<< URL", payload.command, url);
         switch (payload.command) {
           case "redirect":
             boost.HistoryCache.load(url);
@@ -207,7 +199,6 @@ class ServerConnection {
       case "set_query_string":
         var { qs } = payload;
         qs = qs.length ? `?${qs}` : "";
-        console.log("<< SET URL PARAMS", qs);
         boost.HistoryCache.replace(document.location.pathname + qs);
         break;
 
@@ -215,7 +206,7 @@ class ServerConnection {
         boost.HistoryCache.back();
         break;
       default:
-        console.error(`Unknown command "${command}"`, payload);
+        console.warn(`[wireview] Unknown command "${command}"`, payload);
     }
   }
 
@@ -225,7 +216,6 @@ class ServerConnection {
   sendQueryString() {
     // "?a=x&..." -> "a=x&..."
     let qs = document.location.search.slice(1);
-    console.log("QS", qs);
     this._send("query_string", { qs });
   }
 
@@ -237,7 +227,7 @@ class ServerConnection {
    * @param {Object<string, [string, string]>} children - Child component info
    */
   sendJoin(name, component_id, state, children) {
-    console.log(">>> JOIN", name, component_id);
+    debugLog("send", `join ${name}`, { component_id });
     this._send("join", { name, state, children });
   }
 
@@ -246,7 +236,7 @@ class ServerConnection {
    * @param {string} id - Component element ID
    */
   sendLeave(id) {
-    console.log(">>> LEAVE", id);
+    debugLog("send", "leave", { id });
     this._send("leave", { id });
   }
 
@@ -258,7 +248,7 @@ class ServerConnection {
    * @param {Object} explicit_args - Explicit event arguments
    */
   sendUserEvent(id, command, implicit_args, explicit_args) {
-    console.log(">>> USER_EVENT", id, command, explicit_args);
+    debugLog("send", `user_event ${command}`, { id, explicit_args });
     this._send("user_event", { id, command, implicit_args, explicit_args });
   }
 
@@ -270,10 +260,20 @@ class ServerConnection {
    */
   _send(command, payload) {
     const message = { command, payload };
-    if (this.isOpen) {
-      this.socket.send(JSON.stringify(message));
+    const doSend = () => {
+      if (this.isOpen) {
+        this.socket.send(JSON.stringify(message));
+      } else {
+        this.messageQueue.push(message);
+      }
+    };
+
+    // Apply latency simulation if enabled
+    if (debugLatency > 0) {
+      debugLog("latency", `Delaying ${debugLatency}ms`, { command });
+      setTimeout(doSend, debugLatency);
     } else {
-      this.messageQueue.push(message);
+      doSend();
     }
   }
 }
@@ -466,6 +466,29 @@ connection.open();
 var debounceTimeout = undefined;
 /** @type {number} */
 var throttleLastCall = 0;
+
+// Debug state
+/** @type {boolean} */
+var debugEnabled = false;
+/** @type {number} */
+var debugLatency = 0;
+
+/**
+ * Log a debug message if debug mode is enabled.
+ * @param {string} category - Message category
+ * @param {string} message - Log message
+ * @param {*} [data] - Optional data to log
+ */
+function debugLog(category, message, data) {
+  if (!debugEnabled) return;
+  const timestamp = new Date().toISOString().substr(11, 12);
+  const prefix = `%c[wireview ${timestamp}]%c ${category}:`;
+  if (data !== undefined) {
+    console.log(prefix, "color: #7c3aed; font-weight: bold", "color: #059669", message, data);
+  } else {
+    console.log(prefix, "color: #7c3aed; font-weight: bold", "color: #059669", message);
+  }
+}
 
 // ============================================================================
 // JS Command Types and Executor
@@ -763,5 +786,102 @@ window.wireview = {
     for (const cmd of commands) {
       await executeCommand(cmd, element);
     }
+  },
+
+  /**
+   * Debug utilities for development and troubleshooting.
+   */
+  debug: {
+    /**
+     * Enable debug logging.
+     * Logs WebSocket messages, component updates, and state changes.
+     */
+    enable() {
+      debugEnabled = true;
+      console.log(
+        "%c[wireview]%c Debug mode enabled. Use wireview.debug.disable() to turn off.",
+        "color: #7c3aed; font-weight: bold",
+        "color: inherit"
+      );
+      this.status();
+    },
+
+    /**
+     * Disable debug logging.
+     */
+    disable() {
+      debugEnabled = false;
+      console.log(
+        "%c[wireview]%c Debug mode disabled.",
+        "color: #7c3aed; font-weight: bold",
+        "color: inherit"
+      );
+    },
+
+    /**
+     * Set artificial latency for testing slow connections.
+     * @param {number} ms - Latency in milliseconds (0 to disable)
+     */
+    latency(ms) {
+      debugLatency = Math.max(0, ms);
+      if (debugLatency > 0) {
+        console.log(
+          `%c[wireview]%c Latency simulation: ${debugLatency}ms`,
+          "color: #7c3aed; font-weight: bold",
+          "color: #dc2626"
+        );
+      } else {
+        console.log(
+          "%c[wireview]%c Latency simulation disabled.",
+          "color: #7c3aed; font-weight: bold",
+          "color: inherit"
+        );
+      }
+    },
+
+    /**
+     * Display current connection status and registered components.
+     */
+    status() {
+      const componentIds = Object.keys(connection.components);
+      const socketState = connection.socket
+        ? ["CONNECTING", "OPEN", "CLOSING", "CLOSED"][connection.socket.readyState]
+        : "NOT_INITIALIZED";
+
+      console.group("%c[wireview] Status", "color: #7c3aed; font-weight: bold");
+      console.log("WebSocket:", socketState);
+      console.log("Debug:", debugEnabled ? "enabled" : "disabled");
+      console.log("Latency simulation:", debugLatency > 0 ? `${debugLatency}ms` : "disabled");
+      console.log("Components:", componentIds.length);
+      if (componentIds.length > 0) {
+        console.table(
+          componentIds.map((id) => {
+            const el = document.getElementById(id);
+            return {
+              id,
+              name: el?.dataset?.name || "unknown",
+            };
+          })
+        );
+      }
+      console.groupEnd();
+    },
+
+    /**
+     * Get all registered components.
+     * @returns {Object<string, WireviewComponent>}
+     */
+    components() {
+      return connection.components;
+    },
+
+    /**
+     * Get a specific component by ID.
+     * @param {string} id - Component ID
+     * @returns {WireviewComponent|undefined}
+     */
+    component(id) {
+      return connection.components[id];
+    },
   },
 };

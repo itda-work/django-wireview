@@ -35,11 +35,21 @@ interface JSCommand {
   hide?: TransitionConfig;
 }
 
+interface WireviewDebug {
+  enable(): void;
+  disable(): void;
+  latency(ms: number): void;
+  status(): void;
+  components(): Record<string, unknown>;
+  component(id: string): unknown;
+}
+
 interface Window {
   wireview: {
     send(element: HTMLElement, name: string, args?: Record<string, unknown>, eventType?: string): void;
     debounce(delay: number): <T extends (...args: unknown[]) => void>(f: T) => (...args: Parameters<T>) => void;
     throttle(delay: number): <T extends (...args: unknown[]) => void>(f: T) => (...args: Parameters<T>) => void;
     exec(element: HTMLElement, commands: JSCommand[]): Promise<void>;
+    debug: WireviewDebug;
   };
 }
