@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "idiomorph": "^0.0.8",
+    "idiomorph": "^0.7.4",
     "reconnecting-websocket": "^4.4.0"
   },
   "devDependencies": {
