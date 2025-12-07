@@ -3,7 +3,7 @@
  * Provides SPA-like navigation with morphing DOM updates.
  */
 
-import _load from "idiomorph";
+import { Idiomorph } from "idiomorph";
 
 /**
  * Morphs an old DOM node into a new one using Idiomorph.

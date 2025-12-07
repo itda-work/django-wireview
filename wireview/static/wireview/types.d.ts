@@ -1,13 +1,10 @@
 // Type declarations for external modules and global extensions
 
 declare module "idiomorph" {
-  const _load: unknown;
-  export default _load;
+  export const Idiomorph: {
+    morph(oldNode: Element, newNode: Element | string): void;
+  };
 }
-
-declare const Idiomorph: {
-  morph(oldNode: Element, newNode: Element | string): void;
-};
 
 interface TransitionConfig {
   transition?: string;
