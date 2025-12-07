@@ -10,7 +10,7 @@ This is no replacement for VueJS or ReactJS, or any JavaScript but it will allow
 
 ## Installation and setup
 
-Wireview requires Python >=3.10.
+Wireview requires Python >=3.10 and Django >=4.2 (supports Django 4.2, 5.0, 5.1, and 6.0).
 
 Install wireview:
 
@@ -301,6 +301,10 @@ Instead use the class method `new` to create the instance.
 ## Front-end APIs
 
 -   `wireview.send(element, name, args)`: Sends a wireview user event to `element`, where `name` is the event handler and `args` is a JS object containing the implicit arguments of the call.
+-   `wireview.debounce(delay)(fn)`: Debounces a function call.
+-   `wireview.throttle(delay)(fn)`: Throttles a function call.
+-   `wireview.exec(element, commands)`: Executes an array of JS commands.
+-   `wireview.debug`: Debug utilities (see [Debug Tools](#debug-tools) below).
 
 ### Event binding in the front-end
 
@@ -330,6 +334,7 @@ Misc:
     -   `stop`: calls `event.StopPropagation()`
     -   `ctrl`, `alt`, `shift`, `meta`: continues processing the event if any of those keys is pressed
     -   `debounce`: debounces the event, it needs a delay in milliseconds. Example: `keypress.debounce.100`.
+    -   `throttle`: throttles the event (execute at most once per delay period). Example: `scroll.throttle.100`.
     -   `key.<keycode>`: continues processing the event if the key with `keycode` is pressed
     -   `enter`: alias for `key.enter`
     -   `tab`: alias for `key.tab`
@@ -392,6 +397,183 @@ It is good if you annotate the signature so the types are validated and converte
 I made a TODO list app using models that signals from the model to the respective channels to update the interface when something gets created, modified or deleted.
 
 This example contains nested components and some more complex interactions than a simple counter, the app is in the `/tests/` directory.
+
+## JS Command Builder
+
+Wireview provides a Python-side `JS` class for building client-side commands that execute without server round-trips. This is inspired by Phoenix LiveView's JS commands.
+
+```python
+from wireview import JS
+
+# In your template
+<button {% on "click" JS().toggle("#modal") %}>Toggle Modal</button>
+
+# Chaining multiple commands
+<button {% on "click" JS().add_class("#btn", "loading").push("save") %}>
+  Save
+</button>
+
+# With transitions
+<div {% on "click" JS().hide(transition=("fade-out", 300)) %}></div>
+```
+
+### Available JS Commands
+
+**Visibility:**
+- `JS().show(selector, transition=None, display=None)` - Show an element
+- `JS().hide(selector, transition=None)` - Hide an element
+- `JS().toggle(selector, show=None, hide=None)` - Toggle visibility
+
+**CSS Classes:**
+- `JS().add_class(selector, classes, transition=None)` - Add CSS classes
+- `JS().remove_class(selector, classes, transition=None)` - Remove CSS classes
+- `JS().toggle_class(selector, classes, transition=None)` - Toggle CSS classes
+
+**Attributes:**
+- `JS().set_attr(selector, attr, value)` - Set an attribute
+- `JS().remove_attr(selector, attr)` - Remove an attribute
+
+**Focus:**
+- `JS().focus(selector)` - Focus an element
+- `JS().focus_first(selector, input_only=False)` - Focus first focusable element
+
+**Transitions:**
+- `JS().transition(selector, classes, time=None)` - Apply CSS transition
+
+**Server Communication:**
+- `JS().push(event, value=None, target=None)` - Send event to server
+
+**Navigation:**
+- `JS().navigate(url, replace=False)` - Navigate to URL
+- `JS().dispatch(event, to=None, detail=None, bubbles=True)` - Dispatch custom event
+
+### Loading Classes
+
+During server requests, Wireview automatically adds loading classes to elements:
+- `wireview-loading` - Added to any element during a request
+- `wireview-click-loading` - Added for click events
+- `wireview-submit-loading` - Added for submit events
+
+Use these for loading indicators:
+
+```css
+.wireview-loading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+```
+
+## AsyncResult and Async Operations
+
+For async data loading with loading/error states:
+
+```python
+from wireview import Component, AsyncResult
+
+class Dashboard(Component):
+    _template_name = "dashboard.html"
+
+    stats: AsyncResult = None
+
+    async def joined(self):
+        self.stats = await self.assign_async(self.load_stats())
+
+    async def load_stats(self):
+        return await Stats.objects.aget()
+```
+
+In your template:
+
+```html
+{% if stats.loading %}
+  <div class="spinner">Loading...</div>
+{% elif stats.ok %}
+  <div>Total: {{ stats.result.total }}</div>
+{% elif stats.failed %}
+  <div class="error">{{ stats.error_message }}</div>
+{% endif %}
+```
+
+### AsyncResult Properties
+
+- `loading` - True while the operation is in progress
+- `ok` - True if the operation succeeded
+- `failed` - True if the operation failed
+- `done` - True if completed (success or failure)
+- `result` - The result value (if successful)
+- `error` - The exception (if failed)
+- `error_message` - String representation of the error
+
+### AsyncResult Methods
+
+- `map(func)` - Transform the result value
+- `get_or(default)` - Get result or default value
+- `get_or_raise()` - Get result or raise the error
+
+## Debug Tools
+
+Wireview includes debug utilities for development:
+
+```javascript
+// Enable debug logging
+wireview.debug.enable()
+
+// Disable debug logging
+wireview.debug.disable()
+
+// Simulate network latency (for testing slow connections)
+wireview.debug.latency(500)  // 500ms delay
+
+// Show connection status and components
+wireview.debug.status()
+
+// Get all registered components
+wireview.debug.components()
+
+// Get a specific component by ID
+wireview.debug.component("rx-123")
+```
+
+## Testing Components
+
+Wireview provides testing utilities for unit testing components without WebSocket:
+
+```python
+import pytest
+from wireview.testing import mount
+
+@pytest.mark.asyncio
+async def test_counter_increment():
+    # Mount a component
+    view = await mount(Counter, count=0)
+
+    # Call handlers
+    await view.call("increment", amount=5)
+
+    # Assert state
+    assert view.component.count == 5
+
+    # Check sent messages
+    assert len(view.sent_messages) > 0
+
+@pytest.mark.asyncio
+async def test_redirect():
+    view = await mount(MyComponent)
+    await view.call("do_redirect", url="/dashboard")
+
+    assert view.redirected_to == "/dashboard"
+    assert view.is_frozen
+```
+
+### Testing API
+
+- `mount(ComponentClass, **kwargs)` - Mount a component for testing
+- `view.component` - Access the component instance
+- `view.call(handler, **kwargs)` - Call an event handler
+- `view.sent_messages` - List of messages that would be sent
+- `view.redirected_to` - URL redirected to (if any)
+- `view.is_frozen` - Whether the component is frozen
+- `view.clear_messages()` - Clear sent messages
 
 ## Development & Contributing
 
