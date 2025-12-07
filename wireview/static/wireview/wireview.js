@@ -441,6 +441,217 @@ connection.open();
 /** @type {ReturnType<typeof setTimeout>|undefined} */
 var debounceTimeout = undefined;
 
+// ============================================================================
+// JS Command Types and Executor
+// ============================================================================
+
+/**
+ * @typedef {Object} JSCommand
+ * @property {string} cmd - Command name
+ * @property {string} [to] - Target selector
+ * @property {string} [event] - Event name for push/dispatch
+ * @property {Object} [value] - Data for push command
+ * @property {string} [target] - Target component for push
+ * @property {string} [classes] - CSS classes to add/remove
+ * @property {string} [attr] - Attribute name
+ * @property {string} [val] - Attribute value
+ * @property {string} [url] - URL for navigation
+ * @property {boolean} [replace] - Replace history for navigate
+ * @property {Object} [detail] - Detail for dispatch event
+ * @property {boolean} [bubbles] - Whether dispatch event bubbles
+ * @property {string} [display] - CSS display value for show
+ * @property {boolean} [input_only] - Focus only inputs
+ * @property {TransitionConfig} [transition] - Transition config
+ * @property {TransitionConfig} [show] - Show transition for toggle
+ * @property {TransitionConfig} [hide] - Hide transition for toggle
+ */
+
+/**
+ * @typedef {Object} TransitionConfig
+ * @property {string} [transition] - CSS class(es) to apply
+ * @property {number} [time] - Transition duration in ms
+ */
+
+/**
+ * Resolves target element(s) from a selector.
+ * @param {string|null|undefined} selector - CSS selector or null
+ * @param {HTMLElement} currentElement - Fallback element
+ * @returns {HTMLElement|null}
+ */
+function resolveTarget(selector, currentElement) {
+  if (!selector) return currentElement;
+  return document.querySelector(selector);
+}
+
+/**
+ * Applies a CSS transition to an element.
+ * @param {HTMLElement} element - Target element
+ * @param {TransitionConfig|null|undefined} config - Transition config
+ * @returns {Promise<void>}
+ */
+async function applyTransition(element, config) {
+  if (!config || !config.transition) return;
+
+  const classes = config.transition.split(" ").filter(Boolean);
+  element.classList.add(...classes);
+
+  if (config.time && config.time > 0) {
+    await new Promise((resolve) => setTimeout(resolve, config.time));
+    element.classList.remove(...classes);
+  }
+}
+
+/**
+ * Executes a single JS command.
+ * @param {JSCommand} cmd - Command to execute
+ * @param {HTMLElement} element - Context element (event target)
+ * @returns {Promise<void>}
+ */
+async function executeCommand(cmd, element) {
+  const target = resolveTarget(cmd.to, element);
+
+  switch (cmd.cmd) {
+    // Visibility commands
+    case "show":
+      if (target) {
+        target.style.display = cmd.display || "";
+        target.hidden = false;
+        await applyTransition(target, cmd.transition);
+      }
+      break;
+
+    case "hide":
+      if (target) {
+        await applyTransition(target, cmd.transition);
+        target.hidden = true;
+      }
+      break;
+
+    case "toggle":
+      if (target) {
+        if (target.hidden) {
+          target.style.display = cmd.display || "";
+          target.hidden = false;
+          await applyTransition(target, cmd.show);
+        } else {
+          await applyTransition(target, cmd.hide);
+          target.hidden = true;
+        }
+      }
+      break;
+
+    // CSS class commands
+    case "add_class":
+      if (target && cmd.classes) {
+        const classes = cmd.classes.split(" ").filter(Boolean);
+        await applyTransition(target, cmd.transition);
+        target.classList.add(...classes);
+      }
+      break;
+
+    case "remove_class":
+      if (target && cmd.classes) {
+        const classes = cmd.classes.split(" ").filter(Boolean);
+        await applyTransition(target, cmd.transition);
+        target.classList.remove(...classes);
+      }
+      break;
+
+    case "toggle_class":
+      if (target && cmd.classes) {
+        const classes = cmd.classes.split(" ").filter(Boolean);
+        await applyTransition(target, cmd.transition);
+        classes.forEach((cls) => target.classList.toggle(cls));
+      }
+      break;
+
+    // Attribute commands
+    case "set_attr":
+      if (target && cmd.attr) {
+        target.setAttribute(cmd.attr, cmd.val || "");
+      }
+      break;
+
+    case "remove_attr":
+      if (target && cmd.attr) {
+        target.removeAttribute(cmd.attr);
+      }
+      break;
+
+    // Focus commands
+    case "focus":
+      if (target) {
+        window.requestAnimationFrame(() => target.focus());
+      }
+      break;
+
+    case "focus_first":
+      if (target) {
+        const selector = cmd.input_only
+          ? "input:not([disabled]):not([type=hidden]), textarea:not([disabled])"
+          : "input:not([disabled]):not([type=hidden]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex='-1'])";
+        const firstFocusable = /** @type {HTMLElement|null} */ (
+          target.querySelector(selector)
+        );
+        if (firstFocusable) {
+          window.requestAnimationFrame(() => firstFocusable.focus());
+        }
+      }
+      break;
+
+    // Server communication
+    case "push":
+      if (cmd.event) {
+        // Resolve the component to push to
+        const pushTarget = cmd.target
+          ? document.querySelector(cmd.target)
+          : element.closest("[wireview-component]");
+        const componentEl = /** @type {HTMLElement|null} */ (pushTarget);
+
+        if (componentEl) {
+          const component = connection.components[componentEl.id];
+          if (component) {
+            const form = /** @type {HTMLFormElement|null} */ (
+              element.closest("form")
+            );
+            const formScope =
+              form && componentEl.contains(form) ? form : componentEl;
+            component.dispatch(cmd.event, cmd.value || {}, formScope);
+          }
+        }
+      }
+      break;
+
+    // Browser commands
+    case "navigate":
+      if (cmd.url) {
+        if (cmd.replace) {
+          boost.HistoryCache.replace(cmd.url);
+        } else {
+          boost.HistoryCache.load(cmd.url);
+        }
+      }
+      break;
+
+    case "dispatch":
+      if (cmd.event) {
+        const dispatchTarget = resolveTarget(cmd.to, element);
+        if (dispatchTarget) {
+          const customEvent = new CustomEvent(cmd.event, {
+            detail: cmd.detail || {},
+            bubbles: cmd.bubbles !== false,
+            cancelable: true,
+          });
+          dispatchTarget.dispatchEvent(customEvent);
+        }
+      }
+      break;
+
+    default:
+      console.warn(`Unknown JS command: ${cmd.cmd}`, cmd);
+  }
+}
+
 window.wireview = {
   /**
    * Forwards a user event to a component
@@ -473,5 +684,18 @@ window.wireview = {
         debounceTimeout = setTimeout(() => f(...args), delay);
       };
     };
+  },
+
+  /**
+   * Execute an array of JS commands.
+   * Commands are executed sequentially in the order provided.
+   * @param {HTMLElement} element - Context element (typically event.target)
+   * @param {JSCommand[]} commands - Array of commands to execute
+   * @returns {Promise<void>}
+   */
+  async exec(element, commands) {
+    for (const cmd of commands) {
+      await executeCommand(cmd, element);
+    }
   },
 };
