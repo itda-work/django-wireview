@@ -18,7 +18,7 @@ def transpile(event_and_modifiers: str, command: str, kwargs: dict[str, t.Any]):
     code: str | None = CACHE.get(cache_key)
     if code is None:
         if not modifiers or modifiers[-1] != "inlinejs":
-            modifiers.append("_reactor_code")
+            modifiers.append("_wireview_code")
         code = command
         stack: Stack = [kwargs]
         while modifiers:
@@ -37,9 +37,9 @@ def transpile(event_and_modifiers: str, command: str, kwargs: dict[str, t.Any]):
 
 class Modifiers:
     @staticmethod
-    def _reactor_code(code: str, stack: Stack):
+    def _wireview_code(code: str, stack: Stack):
         kwargs = json.dumps(stack.pop(), cls=DjangoJSONEncoder)
-        return f"reactor.send(event.target, '{code}', {kwargs})"
+        return f"wireview.send(event.target, '{code}', {kwargs})"
 
     @staticmethod
     def _add_curly(code: str):
@@ -55,7 +55,7 @@ class Modifiers:
     def debounce(cls, code: str, stack: Stack):
         delay = int(stack.pop())
         code = cls._add_curly(code)
-        return f"reactor.debounce({delay})(() => {code})()"
+        return f"wireview.debounce({delay})(() => {code})()"
 
     @staticmethod
     def prevent(code: str, stack: Stack):

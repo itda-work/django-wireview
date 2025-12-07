@@ -183,7 +183,7 @@ LOGGING = {
         }
     },
     "loggers": {
-        "reactor": {
+        "wireview": {
             "handlers": ["console"],
             "level": "DEBUG",
         },

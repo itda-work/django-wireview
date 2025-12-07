@@ -13,7 +13,7 @@ from .utils import send_to
 
 __all__ = []
 
-log = logging.getLogger("reactor")
+log = logging.getLogger("wireview")
 
 
 senders = (

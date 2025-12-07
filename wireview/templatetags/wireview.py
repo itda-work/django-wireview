@@ -21,14 +21,14 @@ def wireview_header():
 @register.simple_tag(takes_context=True)
 def tag_header(context):
     component: Component = context["this"]
-    repo: ComponentRepository = context["reactor_repository"]
+    repo: ComponentRepository = context["wireview_repository"]
     return format_html(
         (
             'id="{id}" '
             'data-name="{name}" '
             'data-state="{state}" '
             'data-is-live="{is_live}" '
-            "reactor-component"
+            "wireview-component"
         ),
         id=component.id,
         name=component._name,
@@ -39,7 +39,7 @@ def tag_header(context):
 
 @register.simple_tag(takes_context=True)
 def component(context, _name, **kwargs):
-    if (repo := context.get("reactor_repository")) is None:
+    if (repo := context.get("wireview_repository")) is None:
         qs = (
             (request := context.get("request"))
             and request.META["QUERY_STRING"]
@@ -50,7 +50,7 @@ def component(context, _name, **kwargs):
             user=context.get("user"),
             params=ComponentRepository.extract_params(qs),
         )
-        context["reactor_repository"] = repo
+        context["wireview_repository"] = repo
 
     component = repo.build(_name, state=kwargs)
     return component._render(repo) or ""

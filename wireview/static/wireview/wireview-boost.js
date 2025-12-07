@@ -5,7 +5,7 @@ function morph(oldNode, newNode) {
 }
 
 const BOOST_PAGES = JSON.parse(
-  document.querySelector("meta[name=reactor-boost]")?.dataset.enabled || "false"
+  document.querySelector("meta[name=wireview-boost]")?.dataset.enabled || "false"
 );
 
 console.log("BOOST_PAGES", BOOST_PAGES);

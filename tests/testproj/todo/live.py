@@ -50,7 +50,7 @@ class XTodoList(Component):
 
     async def show(self, showing: Showing):
         self.showing = showing
-        self.reactor.params["showing"] = showing
+        self.wire.params["showing"] = showing
 
     async def clear_completed(self):
         await self.items.completed().adelete()

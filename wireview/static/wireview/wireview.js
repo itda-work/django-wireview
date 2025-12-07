@@ -11,7 +11,7 @@ class ServerConnection {
     this.messageQueue = [];
   }
 
-  open(path = "__reactor__") {
+  open(path = "__wireview__") {
     let protocol = location.protocol.replace("http", "ws");
     this.socket = new ReconnectingWebSocket(
       `${protocol}//${location.host}/${path}`,
@@ -40,8 +40,8 @@ class ServerConnection {
     this.socket.addEventListener("close", () => {
       console.log("WS: CLOSE");
       this.components = {};
-      document.querySelectorAll("[reactor-component]").forEach((element) => {
-        element.classList.add("reactor-disconnected");
+      document.querySelectorAll("[wireview-component]").forEach((element) => {
+        element.classList.add("wireview-disconnected");
         element.dataset.isLive = "false";
       });
     });
@@ -61,11 +61,11 @@ class ServerConnection {
 
   joinAllComponents() {
     let registeredIds = new Set(Object.keys(this.components));
-    for (let element of document.querySelectorAll("[reactor-component]")) {
+    for (let element of document.querySelectorAll("[wireview-component]")) {
       if (registeredIds.delete(element.id)) {
         this.components[element.id].join();
       } else {
-        let component = new ReactorComponent(element.id);
+        let component = new WireviewComponent(element.id);
         this.components[element.id] = component;
         component.join();
       }
@@ -204,7 +204,7 @@ class ServerConnection {
 
 let connection = new ServerConnection();
 
-class ReactorComponent {
+class WireviewComponent {
   /**
    * Returns the id of the parent component
    *
@@ -252,11 +252,11 @@ class ReactorComponent {
   join() {
     let element = this.getElemenet();
     if (element && element.dataset.isLive === "false") {
-      let parent = element?.parentElement?.closest("[reactor-component]");
+      let parent = element?.parentElement?.closest("[wireview-component]");
       if (!parent || parent.dataset.isLive === "true") {
         element.dataset.isLive = "true";
         let children = Array.from(
-          element.querySelectorAll("[reactor-component]")
+          element.querySelectorAll("[wireview-component]")
         ).reduce((children, el) => {
           children[el.id] = [el.dataset.name, el.dataset.state];
           return children;
@@ -292,7 +292,7 @@ class ReactorComponent {
     let thisElement = this.getElemenet();
     for (let el of element.querySelectorAll("[name]")) {
       // Avoid serializing data of a nested component
-      if (el.closest("[reactor-component]") !== thisElement) {
+      if (el.closest("[wireview-component]") !== thisElement) {
         continue;
       }
 
@@ -324,7 +324,7 @@ class ReactorComponent {
 connection.open();
 var debounceTimeout = undefined;
 
-window.reactor = {
+window.wireview = {
   /**
    * Forwards a user event to a component
    * @param {HTMLElement} element
@@ -332,7 +332,7 @@ window.reactor = {
    * @param {Object} args
    */
   send(element, name, args) {
-    let component_el = element.closest("[reactor-component]");
+    let component_el = element.closest("[wireview-component]");
     let component = connection.components[component_el.id];
     if (component_el !== null && component !== undefined) {
       let form = element.closest("form");

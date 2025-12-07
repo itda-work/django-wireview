@@ -152,19 +152,19 @@ class SearchList(Component):
   query: str = ""
 
   @classmethod
-  def new(cls, reactor: ReactorMeta, **kwargs):
+  def new(cls, wire: WireviewMeta, **kwargs):
     # read the query parameter and initialize the object with that parameter
-    kwargs.setdefault("query", reactor.params.get("query", ""))
-    return cls(reactor=reactor, **kwargs)
+    kwargs.setdefault("query", wire.params.get("query", ""))
+    return cls(wire=wire, **kwargs)
 
   async def filter_results(self, query: str):
     self.query = query
     # update the query string in the browser
-    self.reactor.params["query"] = query
+    self.wire.params["query"] = query
 ...
 ```
 
-This will make that everytime that method gets called the query string on the browser will get updated to include "query=blahblah". Never replace the `self.reactor.params`, mutate it instead.
+This will make that everytime that method gets called the query string on the browser will get updated to include "query=blahblah". Never replace the `self.wire.params`, mutate it instead.
 
 Here is another example, suppose you have a list of items that can be expanded, like nodes in a tree view:
 
@@ -174,13 +174,13 @@ class Node(Component):
     expanded: bool = False
 
     @classmethod
-    def new(cls, reactor: ReactorMeta, id: str, **kwargs):
-        kwargs["expanded"] = id in reactor.params.get("expanded.json", [])
-        return cls(reactor=reactor, id=id, **kwargs)
+    def new(cls, wire: WireviewMeta, id: str, **kwargs):
+        kwargs["expanded"] = id in wire.params.get("expanded.json", [])
+        return cls(wire=wire, id=id, **kwargs)
 
     async def toggle_expanded(self):
         self.expanded = not self.expanded
-        expanded = self.reactor.params.setdefault("expanded.json", [])
+        expanded = self.wire.params.setdefault("expanded.json", [])
         if self.expanded:
             expanded.append(self.id)
         elif self.id in expanded:
@@ -276,7 +276,7 @@ Instead use the class method `new` to create the instance.
 ##### Rendering
 
 -   `_template_name`: Contains the path of the template of the component.
--   `_exclude_fields`: (default: `{"user", "reactor"}`) Which fields to exclude from state serialization during rendering
+-   `_exclude_fields`: (default: `{"user", "wire"}`) Which fields to exclude from state serialization during rendering
 
 #### Subscriptions
 
@@ -293,10 +293,10 @@ Instead use the class method `new` to create the instance.
 -   `dom(_action: DomAction, id: str, component_or_template, **kwargs)`: Can append, prepend, insert befor or after certain HTMLElement ID in the dom, the component or template, rendered using the `kwargs`.
 -   `freeze()`: Prevents the component from being rendered again.
 -   `deffer(f, *args, **kwargs)`: Send a message to the current event to be executed after the current function is executed.
--   `reactor.redirect_to(to, **kwargs)`: Changes the URL of the front-end and triggers a page load for that new URL
--   `reactor.replace_to(to, **kwargs)`: Changes the current URL for another one.
--   `reactor.push_to(to, **kwargs)`: Changs the URL of the front-end adding a new history entry but does not fetch the new URL from the backend.
--   `reactor.send(_channel: str, _topic: str, **kwargs)`: Sends a message over a channel.
+-   `wire.redirect_to(to, **kwargs)`: Changes the URL of the front-end and triggers a page load for that new URL
+-   `wire.replace_to(to, **kwargs)`: Changes the current URL for another one.
+-   `wire.push_to(to, **kwargs)`: Changs the URL of the front-end adding a new history entry but does not fetch the new URL from the backend.
+-   `wire.send(_channel: str, _topic: str, **kwargs)`: Sends a message over a channel.
 
 ## Front-end APIs
 

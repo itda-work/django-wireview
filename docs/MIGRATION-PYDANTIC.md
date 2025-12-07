@@ -277,13 +277,13 @@ class Component(BaseModel):
     _all: t.ClassVar[dict[str, type["Component"]]] = {}
     _name: t.ClassVar[str]
     _template_name: t.ClassVar[str]
-    _exclude_fields: t.ClassVar[set[str]] = {"user", "wireview"}
+    _exclude_fields: t.ClassVar[set[str]] = {"user", "wire"}
     _subscriptions: t.ClassVar[set[str]] = set()
 
     # 인스턴스 필드
     id: str = Field(default_factory=lambda: f"rx-{uuid4()}")
     user: t.Any  # Django User (AbstractBaseUser | AnonymousUser)
-    reactor: "ReactorMeta"
+    wire: "WireviewMeta"
 
     # 직렬화 설정
     @field_serializer('user')

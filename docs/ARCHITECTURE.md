@@ -149,7 +149,7 @@ class Component(BaseModel):
     # 인스턴스 상태
     id: str = Field(default_factory=lambda: f"rx-{uuid4()}")
     user: AnonymousUser | AbstractBaseUser
-    reactor: ReactorMeta
+    wire: WireviewMeta
 
     # 라이프사이클
     async def joined(self): ...
@@ -161,12 +161,12 @@ class Component(BaseModel):
 **현재 문제점**:
 1. Pydantic v1 의존 (`validate_arguments`, `ModelField`)
 2. `__init_subclass__`에서 복잡한 메타프로그래밍
-3. ReactorMeta와 Component의 책임 분리 불명확
+3. WireviewMeta와 Component의 책임 분리 불명확
 
-### 2.2 ReactorMeta 클래스
+### 2.2 WireviewMeta 클래스
 
 ```python
-class ReactorMeta:
+class WireviewMeta:
     """렌더링 상태 및 서버 통신 관리"""
 
     _last_sent_html: list[str]  # 마지막 전송 HTML (diff용)
@@ -480,7 +480,7 @@ class Component(BaseModel):
     # 인스턴스 필드
     id: str = Field(default_factory=lambda: f"rx-{uuid4()}")
     user: Any  # Django User
-    reactor: "ReactorMeta"
+    wire: "WireviewMeta"
 
     # 내부 상태
     _streams: StreamManager | None = None
@@ -510,7 +510,7 @@ class Component(BaseModel):
     # JS 명령어
     async def push_event(self, event: str, **payload) -> None:
         """클라이언트에 이벤트 전송"""
-        await self.reactor.send("push_event", event=event, payload=payload)
+        await self.wire.send("push_event", event=event, payload=payload)
 
     def js(self) -> JS:
         """JS 명령어 빌더 생성"""
@@ -522,17 +522,17 @@ class Component(BaseModel):
         if self._streams is None:
             self._streams = StreamManager(self.id)
         op = self._streams.init_stream(name, items)
-        await self.reactor.send_stream_op(op)
+        await self.wire.send_stream_op(op)
 
     async def stream_insert(self, name: str, item: Any, at: int = -1) -> None:
         """스트림에 아이템 추가"""
         op = self._streams.insert(name, item, at)
-        await self.reactor.send_stream_op(op)
+        await self.wire.send_stream_op(op)
 
     async def stream_delete(self, name: str, item_id: str) -> None:
         """스트림에서 아이템 제거"""
         op = self._streams.delete(name, item_id)
-        await self.reactor.send_stream_op(op)
+        await self.wire.send_stream_op(op)
 
     # Uploads (향후 구현)
     def allow_upload(

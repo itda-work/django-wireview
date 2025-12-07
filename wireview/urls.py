@@ -1,7 +1,7 @@
 from django.urls import path
 
-from .consumer import ReactorConsumer
+from .consumer import WireviewConsumer
 
 websocket_urlpatterns = [
-    path("__reactor__", ReactorConsumer.as_asgi()),  # type: ignore
+    path("__wireview__", WireviewConsumer.as_asgi()),  # type: ignore
 ]

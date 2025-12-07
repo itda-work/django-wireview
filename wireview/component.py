@@ -79,7 +79,7 @@ def broadcast(channel: str, **kwargs: t.Any):
     utils.send_to(channel, type="notification", kwargs=kwargs)
 
 
-class ReactorMeta:
+class WireviewMeta:
     _last_sent_html: list[str]
 
     def __init__(
@@ -261,7 +261,7 @@ class ReactorMeta:
         return dict(
             context,
             this=component,
-            reactor_repository=repo,
+            wireview_repository=repo,
         )
 
 
@@ -288,7 +288,7 @@ class Component(BaseModel):
     _fqn: t.ClassVar[str]
 
     # fields to exclude from the component state during serialization
-    _exclude_fields: t.ClassVar[set[str]] = {"user", "reactor"}
+    _exclude_fields: t.ClassVar[set[str]] = {"user", "wire"}
 
     # Subscriptions: you can define here which channels this component is
     # subscribed to
@@ -399,7 +399,7 @@ class Component(BaseModel):
         # TODO: rename state to initial_state
         instance = cls._all[_component_name].new(
             user=user or AnonymousUser(),
-            reactor=ReactorMeta(
+            wire=WireviewMeta(
                 params=params,
                 channel_name=channel_name,
                 channel_layer=channel_layer,
@@ -422,7 +422,7 @@ class Component(BaseModel):
     # State
     id: str = Field(default_factory=lambda: f"rx-{uuid4()}")
     user: AnonymousUser | AbstractBaseUser
-    reactor: ReactorMeta
+    wire: WireviewMeta
 
     @classmethod
     def new(cls, **kwargs: t.Any):
@@ -440,21 +440,21 @@ class Component(BaseModel):
         ...
 
     async def destroy(self):
-        await self.reactor.destroy(self.id)
+        await self.wire.destroy(self.id)
 
     async def send_render(self):
-        await self.reactor.send("send_render", id=self.id)
+        await self.wire.send("send_render", id=self.id)
 
     async def focus_on(self, selector: str):
-        await self.reactor.send("focus_on", selector=selector)
+        await self.wire.send("focus_on", selector=selector)
 
     # Dom operations
 
     def skip_render(self):
-        self.reactor.skip_render()
+        self.wire.skip_render()
 
     def force_render(self):
-        self.reactor.force_render()
+        self.wire.force_render()
 
     async def deffer(
         self,
@@ -462,10 +462,10 @@ class Component(BaseModel):
         *args: P.args,
         **kwargs: P.kwargs,
     ):
-        await self.reactor.deffer(self.id, _f, *args, **kwargs)
+        await self.wire.deffer(self.id, _f, *args, **kwargs)
 
     def freeze(self):
-        self.reactor.freeze()
+        self.wire.freeze()
 
     async def dom(
         self,
@@ -481,7 +481,7 @@ class Component(BaseModel):
             from .repository import ComponentRepository
 
             component = _component_class_or_template_name.new(
-                reactor=self.reactor.clone(),
+                wire=self.wire.clone(),
                 user=self.user,
                 **kwargs,
             )
@@ -489,18 +489,18 @@ class Component(BaseModel):
                 ComponentRepository(
                     is_live=False,
                     user=self.user,
-                    params=self.reactor.params,
+                    params=self.wire.params,
                 )
             )
-        await self.reactor.send_dom_action(_action, _id, html)
+        await self.wire.send_dom_action(_action, _id, html)
 
     # Internal render operations
 
     def _render(self, repo: Repo):
-        return self.reactor.render(self, repo)
+        return self.wire.render(self, repo)
 
     def _render_diff(self, repo: Repo):
-        return self.reactor.render_diff(self, repo)
+        return self.wire.render_diff(self, repo)
 
 
 class ComponentNotFound(LookupError):

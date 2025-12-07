@@ -9,7 +9,7 @@ from channels.db import database_sync_to_async as db
 from channels.layers import get_channel_layer
 from django.utils.datastructures import MultiValueDict
 
-log = logging.getLogger("reactor")
+log = logging.getLogger("wireview")
 
 P = t.ParamSpec("P")
 

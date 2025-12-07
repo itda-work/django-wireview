@@ -16,7 +16,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 
-from wireview.consumer import ReactorConsumer
+from wireview.consumer import WireviewConsumer
 
 urlpatterns = [
     path("", include("testproj.todo.urls")),
@@ -24,5 +24,5 @@ urlpatterns = [
 ]
 
 websocket_urlpatterns = [
-    path("__reactor__", ReactorConsumer.as_asgi()),
+    path("__wireview__", WireviewConsumer.as_asgi()),
 ]

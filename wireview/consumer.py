@@ -13,7 +13,7 @@ from . import serializer
 from .repository import ComponentRepository
 from .utils import parse_request_data
 
-log = logging.getLogger("reactor")
+log = logging.getLogger("wireview")
 
 
 class ChildComponent(t.TypedDict):
@@ -21,7 +21,7 @@ class ChildComponent(t.TypedDict):
     state: str
 
 
-class ReactorConsumer(AsyncJsonWebsocketConsumer):
+class WireviewConsumer(AsyncJsonWebsocketConsumer):
     @property
     def user(self):
         return self.scope.get("user") or AnonymousUser()
@@ -134,7 +134,7 @@ class ReactorConsumer(AsyncJsonWebsocketConsumer):
 
     async def model_mutation(self, data):
         # The signature here is coupled to:
-        #   `reactor.auto_broadcast.notify_mutation`
+        #   `wireview.auto_broadcast.notify_mutation`
         await self._dispatch_notifications(
             "mutation",
             data["channel"],
@@ -146,7 +146,7 @@ class ReactorConsumer(AsyncJsonWebsocketConsumer):
 
     async def notification(self, data):
         # The signature here is coupled to:
-        #   `reactor.utils.send_notification`
+        #   `wireview.utils.send_notification`
         await self._dispatch_notifications(
             "notification", data["channel"], data["kwargs"]
         )
