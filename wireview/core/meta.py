@@ -16,6 +16,7 @@ from django.utils.safestring import SafeText, mark_safe
 from .. import settings
 from ..schemas import DomAction
 from ..utils import db
+from .rendered import Rendered, has_markers
 
 if t.TYPE_CHECKING:
     from django.db import models
@@ -37,6 +38,8 @@ else:
 # Type aliases
 RedirectDestination = t.Union[t.Callable[..., t.Any], "models.Model", str]
 HTMLDiff = list[str | int]
+# New diff format: either legacy HTMLDiff or Phoenix-style dict
+DiffPayload = HTMLDiff | dict[str, t.Any]
 Context = dict[str, t.Any]
 P = t.ParamSpec("P")
 
@@ -54,13 +57,14 @@ class WireviewMeta:
     Manages component rendering state and server-client communication.
 
     This class handles:
-    - HTML diff generation for efficient updates
+    - HTML diff generation for efficient updates (Phoenix LiveView style)
     - URL navigation (redirect, replace, push)
     - DOM actions and scroll positioning
     - WebSocket message sending
     """
 
     _last_sent_html: list[str]
+    _last_rendered: Rendered | None
 
     def __init__(
         self,
@@ -74,15 +78,18 @@ class WireviewMeta:
         self._is_frozen: bool = False
         self._redirected_to: str | None = None
         self._last_sent_html: list[str] = []
+        self._last_rendered: Rendered | None = None
         self._skip_render: bool = False
 
     def clone(self) -> WireviewMeta:
         """Create a copy of this meta instance."""
-        return type(self)(
+        cloned = type(self)(
             params=self.params,
             channel_name=self.channel_name,
             channel_layer=self.channel_layer,
         )
+        # Don't copy render state - child components start fresh
+        return cloned
 
     def skip_render(self) -> None:
         """Skip the next render cycle."""
@@ -92,6 +99,7 @@ class WireviewMeta:
         """Force a full re-render on the next cycle."""
         self._skip_render = False
         self._last_sent_html = []
+        self._last_rendered = None
 
     async def destroy(self, component_id: str) -> None:
         """Destroy a component and notify the client."""
@@ -120,41 +128,89 @@ class WireviewMeta:
         url = resolve_url(to, **kwargs)
         await self.send("url_change", command="push", url=url)
 
-    async def render_diff(self, component: "Component", repo: Repo) -> HTMLDiff | None:
-        """Render the component and return a diff if changed."""
+    async def render_diff(self, component: "Component", repo: Repo) -> DiffPayload | None:
+        """
+        Render the component and return a diff if changed.
+
+        Uses Phoenix LiveView-style static/dynamic separation when markers
+        are present, falling back to legacy line-based diff otherwise.
+
+        Returns:
+            - dict with 's', 'd', 'f' keys for full render
+            - dict with numeric keys for partial updates
+            - list (legacy format) for unmarked templates
+            - None if no changes
+        """
         if self._skip_render:
             self._skip_render = False
-        else:
-            html = await db(self.render)(component, repo)
-            if html and self._last_sent_html != (html := html.split(" ")):
-                if settings.USE_HTML_DIFF:
-                    diff: HTMLDiff = []
-                    for x in difflib.ndiff(self._last_sent_html, html):
-                        indicator = x[0]
-                        if indicator == " ":
-                            diff.append(1)
-                        elif indicator == "+":
-                            diff.append(x[2:])
-                        elif indicator == "-":
-                            diff.append(-1)
+            return None
 
-                    if diff:
-                        diff = reduce(compress_diff, diff[1:], diff[:1])
-                else:
-                    diff = html  # type: ignore
-                self._last_sent_html = html
-                return diff
-        return None
+        html = await db(self.render)(component, repo)
+        if not html:
+            return None
+
+        html_str = str(html)
+
+        # Use Phoenix-style diff if markers are present
+        if has_markers(html_str):
+            return self._compute_rendered_diff(html_str)
+
+        # Fall back to legacy line-based diff
+        return self._compute_legacy_diff(html_str)
+
+    def _compute_rendered_diff(self, html: str) -> dict[str, t.Any] | None:
+        """Compute Phoenix-style static/dynamic diff."""
+        rendered = Rendered.from_marked_html(html)
+        diff = rendered.get_diff(self._last_rendered)
+
+        if diff is None:
+            return None
+
+        self._last_rendered = rendered
+        return diff.to_payload()
+
+    def _compute_legacy_diff(self, html: str) -> HTMLDiff | None:
+        """Compute legacy line-based diff (backward compatibility)."""
+        html_tokens = html.split(" ")
+
+        if self._last_sent_html == html_tokens:
+            return None
+
+        if not settings.USE_HTML_DIFF:
+            self._last_sent_html = html_tokens
+            return html_tokens  # type: ignore
+
+        diff: HTMLDiff = []
+        for x in difflib.ndiff(self._last_sent_html, html_tokens):
+            indicator = x[0]
+            if indicator == " ":
+                diff.append(1)
+            elif indicator == "+":
+                diff.append(x[2:])
+            elif indicator == "-":
+                diff.append(-1)
+
+        if diff:
+            diff = reduce(compress_diff, diff[1:], diff[:1])
+
+        self._last_sent_html = html_tokens
+        return diff if diff else None
 
     def render(self, component: "Component", repo: Repo) -> None | SafeText:
-        """Render the component to HTML."""
+        """Render the component to HTML with automatic marker injection."""
+        from ..template_engine import render_with_markers
+
         html = None
         if not self.channel_name and self._redirected_to:
-            html = format_html('<meta http-equiv="refresh" content="0; url={url}">', url=self._redirected_to)
+            html = format_html(
+                '<meta http-equiv="refresh" content="0; url={url}">',
+                url=self._redirected_to,
+            )
         elif not (self._is_frozen or self._redirected_to) and html is None:
             template = component._get_template()
             context = self._get_context(component, repo)
-            html = template.render(context).strip()
+            # Use marker-injected rendering for efficient diffing
+            html = render_with_markers(template, context).strip()
             html = html_minify(html)
         if html:
             return mark_safe(html)

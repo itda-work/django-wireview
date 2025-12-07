@@ -14,7 +14,7 @@
 | 서버 사이드 상태 관리 | ✅ | ✅ | - | - |
 | 컴포넌트 모델 | ✅ | ✅ | - | - |
 | DOM Diffing | ✅ morphdom | ✅ idiomorph | - | - |
-| HTML Diff 전송 | ✅ 바이너리 | ⚠️ 라인 기반 | 효율성 | P2 |
+| HTML Diff 전송 | ✅ 바이너리 | ✅ Phoenix 스타일 | - | - |
 | 자동 재연결 | ✅ | ✅ | - | - |
 | 상태 복구 | ✅ 자동 | ⚠️ 수동 | 편의성 | P2 |
 
@@ -22,32 +22,32 @@
 
 | 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
 |------|:----------------:|:--------------:|:--:|:--------:|
-| JS.show() | ✅ | ❌ | 구현 필요 | P1 |
-| JS.hide() | ✅ | ❌ | 구현 필요 | P1 |
-| JS.toggle() | ✅ | ❌ | 구현 필요 | P1 |
-| JS.add_class() | ✅ | ❌ | 구현 필요 | P1 |
-| JS.remove_class() | ✅ | ❌ | 구현 필요 | P1 |
-| JS.toggle_class() | ✅ | ❌ | 구현 필요 | P1 |
-| JS.set_attribute() | ✅ | ❌ | 구현 필요 | P2 |
-| JS.remove_attribute() | ✅ | ❌ | 구현 필요 | P2 |
-| JS.transition() | ✅ | ❌ | 구현 필요 | P2 |
-| JS.focus() | ✅ | ✅ focus_on() | - | - |
-| JS.focus_first() | ✅ | ❌ | 구현 필요 | P3 |
-| JS.push() | ✅ | ❌ | 구현 필요 | P1 |
-| JS.dispatch() | ✅ | ❌ | 구현 필요 | P2 |
-| JS.navigate() | ✅ | ✅ redirect_to | - | - |
+| JS.show() | ✅ | ✅ JS().show() | - | - |
+| JS.hide() | ✅ | ✅ JS().hide() | - | - |
+| JS.toggle() | ✅ | ✅ JS().toggle() | - | - |
+| JS.add_class() | ✅ | ✅ JS().add_class() | - | - |
+| JS.remove_class() | ✅ | ✅ JS().remove_class() | - | - |
+| JS.toggle_class() | ✅ | ✅ JS().toggle_class() | - | - |
+| JS.set_attribute() | ✅ | ✅ JS().set_attr() | - | - |
+| JS.remove_attribute() | ✅ | ✅ JS().remove_attr() | - | - |
+| JS.transition() | ✅ | ✅ JS().transition() | - | - |
+| JS.focus() | ✅ | ✅ JS().focus() | - | - |
+| JS.focus_first() | ✅ | ✅ JS().focus_first() | - | - |
+| JS.push() | ✅ | ✅ JS().push() | - | - |
+| JS.dispatch() | ✅ | ✅ JS().dispatch() | - | - |
+| JS.navigate() | ✅ | ✅ JS().navigate() | - | - |
 | JS.patch() | ✅ | ✅ push_to | - | - |
-| 명령어 체이닝 | ✅ | ❌ | 구현 필요 | P1 |
+| 명령어 체이닝 | ✅ | ✅ 지원 | - | - |
 
 ### 1.3 Optimistic UI
 
 | 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
 |------|:----------------:|:--------------:|:--:|:--------:|
-| phx-click-loading 클래스 | ✅ | ❌ | 구현 필요 | P1 |
-| phx-submit-loading 클래스 | ✅ | ❌ | 구현 필요 | P1 |
-| phx-change-loading 클래스 | ✅ | ❌ | 구현 필요 | P1 |
+| phx-click-loading 클래스 | ✅ | ✅ wireview-click-loading | - | - |
+| phx-submit-loading 클래스 | ✅ | ✅ wireview-submit-loading | - | - |
+| phx-change-loading 클래스 | ✅ | ✅ wireview-change-loading | - | - |
 | phx-disabled-with | ✅ | ❌ | 구현 필요 | P2 |
-| 클라이언트 사이드 즉시 실행 | ✅ | ❌ | 구현 필요 | P1 |
+| 클라이언트 사이드 즉시 실행 | ✅ | ✅ JS() 명령어 | - | - |
 
 ### 1.4 Streams (대량 데이터)
 
@@ -77,10 +77,10 @@
 
 | 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
 |------|:----------------:|:--------------:|:--:|:--------:|
-| assign_async() | ✅ | ❌ | 구현 필요 | P2 |
+| assign_async() | ✅ | ✅ assign_async() | - | - |
 | start_async() | ✅ | ❌ | 구현 필요 | P2 |
 | cancel_async() | ✅ | ❌ | 구현 필요 | P3 |
-| AsyncResult 상태 | ✅ loading/ok/error | ❌ | 구현 필요 | P2 |
+| AsyncResult 상태 | ✅ loading/ok/error | ✅ loading/ok/failed | - | - |
 
 ### 1.7 폼 처리
 
@@ -109,10 +109,10 @@
 
 | 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
 |------|:----------------:|:--------------:|:--:|:--------:|
-| enableDebug() | ✅ | ❌ | 구현 필요 | P3 |
+| enableDebug() | ✅ | ✅ wireview.debug.enable() | - | - |
 | enableProfiling() | ✅ | ❌ | 구현 필요 | P3 |
-| enableLatencySim() | ✅ | ❌ | 구현 필요 | P3 |
-| 테스트 헬퍼 | ✅ render_click 등 | ❌ | 구현 필요 | P2 |
+| enableLatencySim() | ✅ | ✅ wireview.debug.latency() | - | - |
+| 테스트 헬퍼 | ✅ render_click 등 | ✅ mount(), call() | - | - |
 
 ### 1.10 템플릿 기능
 
@@ -140,23 +140,23 @@
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### P1: 핵심 UX 개선
+### P1: 핵심 UX 개선 ✅ 완료
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  P1: Core UX                                                                 │
+│  P1: Core UX ✅                                                              │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  JS 명령어 시스템                                                            │
-│  ├─ JS.show/hide/toggle                                                     │
-│  ├─ JS.add_class/remove_class                                               │
-│  ├─ JS.push (서버 이벤트)                                                   │
-│  └─ 명령어 체이닝                                                           │
+│  ✅ JS 명령어 시스템                                                         │
+│  ├─ ✅ JS().show/hide/toggle                                                │
+│  ├─ ✅ JS().add_class/remove_class/toggle_class                             │
+│  ├─ ✅ JS().push (서버 이벤트)                                              │
+│  └─ ✅ 명령어 체이닝                                                        │
 │                                                                              │
-│  Optimistic UI                                                               │
-│  ├─ wireview-click-loading 클래스                                            │
-│  ├─ wireview-submit-loading 클래스                                           │
-│  └─ 클라이언트 사이드 즉시 실행                                             │
+│  ✅ Optimistic UI                                                            │
+│  ├─ ✅ wireview-click-loading 클래스                                         │
+│  ├─ ✅ wireview-submit-loading 클래스                                        │
+│  └─ ✅ 클라이언트 사이드 즉시 실행 (JS 명령어)                              │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -187,30 +187,30 @@
 │  └─ AsyncResult 상태 관리                                                   │
 │                                                                              │
 │  기타                                                                        │
-│  ├─ HTML Diff 최적화                                                        │
+│  ├─ ✅ HTML Diff 최적화 (Phoenix 스타일 static/dynamic 분리)               │
 │  ├─ phx-feedback-for 스타일 에러 표시                                       │
 │  ├─ handle_params 강화                                                      │
-│  └─ 테스트 유틸리티                                                         │
+│  └─ ✅ 테스트 유틸리티 (mount, call)                                        │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### P3: 완성도
+### P3: 완성도 (부분 완료)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  P3: Polish                                                                  │
+│  P3: Polish (부분 완료)                                                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  JS 명령어 확장                                                              │
-│  ├─ JS.transition                                                           │
-│  ├─ JS.set/remove_attribute                                                 │
-│  └─ JS.focus_first                                                          │
+│  ✅ JS 명령어 확장                                                           │
+│  ├─ ✅ JS().transition                                                      │
+│  ├─ ✅ JS().set_attr/remove_attr                                            │
+│  └─ ✅ JS().focus_first                                                     │
 │                                                                              │
-│  개발자 도구                                                                 │
-│  ├─ enableDebug()                                                           │
+│  개발자 도구 (부분 완료)                                                     │
+│  ├─ ✅ wireview.debug.enable()                                              │
 │  ├─ enableProfiling()                                                       │
-│  └─ enableLatencySim()                                                      │
+│  └─ ✅ wireview.debug.latency()                                             │
 │                                                                              │
 │  기타                                                                        │
 │  ├─ phx-throttle                                                            │

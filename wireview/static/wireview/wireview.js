@@ -19,7 +19,19 @@ const parser = new DOMParser();
 /**
  * @typedef {Object} RenderPayload
  * @property {string} id - Component ID
- * @property {Array<string|number>} diff - Diff array for HTML reconstruction
+ * @property {Array<string|number>|Object} diff - Diff array (legacy) or object (Phoenix-style)
+ */
+
+/**
+ * @typedef {Object} PhoenixFullDiff
+ * @property {string[]} s - Static parts
+ * @property {string[]} d - Dynamic parts
+ * @property {string} f - Fingerprint
+ */
+
+/**
+ * @typedef {Object<string, string>} PhoenixPartialDiff
+ * Partial diff with numeric string keys mapping to new values
  */
 
 /**
@@ -284,6 +296,9 @@ let connection = new ServerConnection();
 /**
  * Represents a client-side wireview component.
  * Manages state synchronization with the server.
+ *
+ * Supports both legacy diff format (array) and Phoenix LiveView-style
+ * diff format (object with static/dynamic parts).
  */
 class WireviewComponent {
   /**
@@ -295,6 +310,14 @@ class WireviewComponent {
     this.id = id;
     /** @type {string[]} */
     this.lastReceivedHtml = [];
+
+    // Phoenix-style state (static/dynamic separation)
+    /** @type {string[]|null} */
+    this.static = null;
+    /** @type {string[]} */
+    this.dynamic = [];
+    /** @type {string|null} */
+    this.fingerprint = null;
   }
 
   /**
@@ -307,7 +330,8 @@ class WireviewComponent {
 
   /**
    * Applies a diff from the server to update the component's HTML.
-   * @param {Array<string|number>} diff - Diff array for HTML reconstruction
+   * Supports both legacy array format and Phoenix-style object format.
+   * @param {Array<string|number>|Object} diff - Diff data
    */
   applyDiff(diff) {
     window.requestAnimationFrame(() => {
@@ -316,11 +340,76 @@ class WireviewComponent {
         // Remove loading classes before morphing
         this.clearLoadingClasses();
 
-        let html = this.getHtml(diff);
-        boost.morph(el, html);
-        boost.navEvent.sendNewContent();
+        let html;
+        if (this.isPhoenixDiff(diff)) {
+          html = this.applyPhoenixDiff(diff);
+        } else {
+          html = this.getHtml(diff);
+        }
+
+        if (html) {
+          boost.morph(el, html);
+          boost.navEvent.sendNewContent();
+        }
       }
     });
+  }
+
+  /**
+   * Check if diff is Phoenix-style format (object with 's' or numeric keys).
+   * @param {*} diff - The diff to check
+   * @returns {boolean}
+   */
+  isPhoenixDiff(diff) {
+    return (
+      diff !== null &&
+      typeof diff === "object" &&
+      !Array.isArray(diff)
+    );
+  }
+
+  /**
+   * Apply Phoenix-style diff (static/dynamic separation).
+   * @param {PhoenixFullDiff|PhoenixPartialDiff} diff - Phoenix diff object
+   * @returns {string} Reconstructed HTML
+   */
+  applyPhoenixDiff(diff) {
+    if ("s" in diff) {
+      // Full render: store static parts and dynamic values
+      this.static = diff.s;
+      this.dynamic = diff.d.slice(); // Clone to avoid mutation
+      this.fingerprint = diff.f;
+    } else {
+      // Partial update: update only changed dynamic values
+      for (const [idx, value] of Object.entries(diff)) {
+        const index = parseInt(idx, 10);
+        if (!isNaN(index) && index >= 0 && index < this.dynamic.length) {
+          this.dynamic[index] = value;
+        }
+      }
+    }
+
+    return this.buildHtmlFromStatic();
+  }
+
+  /**
+   * Build full HTML by interleaving static and dynamic parts.
+   * @returns {string} Complete HTML string
+   */
+  buildHtmlFromStatic() {
+    if (!this.static) {
+      // Fallback: return current element's HTML
+      return this.getElemenet()?.outerHTML || "";
+    }
+
+    const parts = [];
+    for (let i = 0; i < this.static.length; i++) {
+      parts.push(this.static[i]);
+      if (i < this.dynamic.length) {
+        parts.push(this.dynamic[i] || "");
+      }
+    }
+    return parts.join("");
   }
 
   /**
