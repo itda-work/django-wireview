@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import typing as t
 
@@ -6,14 +8,32 @@ from lru import LRU
 
 from .settings import TRANSPILER_CACHE_SIZE
 
+if t.TYPE_CHECKING:
+    from .js import JS
+
 Stack = list[t.Any]
 
 CACHE: dict[str, str | None] = LRU(TRANSPILER_CACHE_SIZE)
 
 
-def transpile(event_and_modifiers: str, command: str, kwargs: dict[str, t.Any]):
-    """Translates from from the tag `on` in to JavaScript"""
+def transpile(
+    event_and_modifiers: str,
+    command: str | JS,
+    kwargs: dict[str, t.Any],
+):
+    """Translates from the tag `on` in to JavaScript.
+
+    Supports both string commands (legacy) and JS command builder objects.
+    """
+    from .js import JS
+
     name, *modifiers = event_and_modifiers.split(".")
+
+    # Handle JS command builder objects
+    if isinstance(command, JS):
+        return _transpile_js_commands(name, modifiers, command)
+
+    # Legacy string command handling
     cache_key = f"_handler:{modifiers}.{command}.{kwargs}"
     code: str | None = CACHE.get(cache_key)
     if code is None:
@@ -33,6 +53,31 @@ def transpile(event_and_modifiers: str, command: str, kwargs: dict[str, t.Any]):
 
         CACHE[cache_key] = code
     return "on" + name, code
+
+
+def _transpile_js_commands(
+    event_name: str,
+    modifiers: list[str],
+    js_commands: JS,
+) -> tuple[str, str]:
+    """Transpile JS command builder to JavaScript code."""
+    # Build the base execution code
+    commands_json = js_commands.to_json()
+    code = f"wireview.exec(event.target, {commands_json})"
+
+    # Apply modifiers in reverse order
+    stack: Stack = []
+    while modifiers:
+        modifier = modifiers.pop()
+        handler: t.Callable[[str, Stack], str] | None = getattr(
+            Modifiers, modifier, None
+        )
+        if handler:
+            code = handler(code, stack)
+        else:
+            stack.append(modifier)
+
+    return "on" + event_name, code
 
 
 class Modifiers:

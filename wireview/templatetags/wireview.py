@@ -33,7 +33,9 @@ def tag_header(context):
         id=component.id,
         name=component._name,
         is_live=str(repo.is_live).lower(),
-        state=Signer().sign(component.model_dump_json(exclude=component._exclude_fields)),
+        state=Signer().sign(
+            component.model_dump_json(exclude=component._exclude_fields)
+        ),
     )
 
 
@@ -58,12 +60,41 @@ def component(context, _name, **kwargs):
 
 @register.simple_tag(takes_context=True)
 def on(context, _event_and_modifiers, _command, **kwargs: t.Any):
-    component: Component | None = context.get("this")
+    """
+    Bind an event handler to an element.
 
+    Supports both string commands (server event handlers) and JS command
+    builder objects (client-side commands).
+
+    Examples:
+        {% on "click" "increment" %}
+        {% on "click" "save" item_id=item.id %}
+        {% on "click" JS().toggle("#modal") %}
+        {% on "click" JS().push("save").hide() %}
+    """
+    from ..js import JS
+
+    component: Component | None = context.get("this")
     assert component, "Can't find a component in this context"
-    handler = getattr(component, _command, None)
-    assert handler, f"Missing handler: {component._name}.{_command}"
-    assert callable(handler), f"Not callable: {component._name}.{_command}"
+
+    # Validate handler for string commands (not JS objects)
+    if isinstance(_command, str):
+        handler = getattr(component, _command, None)
+        assert handler, f"Missing handler: {component._name}.{_command}"
+        assert callable(handler), f"Not callable: {component._name}.{_command}"
+    elif isinstance(_command, JS):
+        # Validate push events in JS commands reference valid handlers
+        for cmd in _command._commands:
+            if cmd.get("cmd") == "push":
+                event_name = cmd.get("event")
+                if event_name:
+                    handler = getattr(component, event_name, None)
+                    assert (
+                        handler
+                    ), f"Missing handler: {component._name}.{event_name}"
+                    assert callable(
+                        handler
+                    ), f"Not callable: {component._name}.{event_name}"
 
     event, code = transpile(_event_and_modifiers, _command, kwargs)
     return format_html('{event}="{code}"', event=event, code=code)
