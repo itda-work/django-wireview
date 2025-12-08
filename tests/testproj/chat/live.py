@@ -3,12 +3,12 @@ Chat App Components
 
 This module demonstrates wireview's real-time communication patterns:
 - Streams API for efficient message list updates
-- abroadcast() for cross-component notifications
+- self.broadcast() for pending-aware cross-component notifications
 - notification() hook for handling custom broadcasts
-- Real-time presence tracking
+- Real-time presence tracking with sync support
+- leaving() lifecycle hook for disconnect handling
 """
 
-from wireview import abroadcast
 from wireview.component import Component
 from wireview.js import JS
 from wireview.schemas import ModelAction
@@ -22,7 +22,8 @@ class XChatRoom(Component):
 
     Demonstrates:
     - Nested components (XMessageList, XOnlineUsers)
-    - broadcast() for presence notifications
+    - self.broadcast() for pending-aware presence notifications
+    - leaving() lifecycle hook for disconnect cleanup
     - Event modifiers (keypress.enter.prevent, input.debounce)
     - skip_render() for optimization
     """
@@ -39,11 +40,25 @@ class XChatRoom(Component):
         Called when component mounts.
 
         Broadcast presence to notify other users in the room.
-        Uses abroadcast() for async context.
+        Uses self.broadcast() which is pending-aware - the broadcast
+        will be sent after all components have subscribed.
         """
-        await abroadcast(
+        await self.broadcast(
             f"room.{self.room.id}.presence",
             action="joined",
+            username=self.username,
+        )
+
+    async def leaving(self):
+        """
+        Called when WebSocket disconnects.
+
+        Broadcast "left" action so other users can remove this user
+        from their online users list.
+        """
+        await self.broadcast(
+            f"room.{self.room.id}.presence",
+            action="left",
             username=self.username,
         )
 
@@ -73,7 +88,7 @@ class XChatRoom(Component):
         """
         if self.is_typing != typing:
             self.is_typing = typing
-            await abroadcast(
+            await self.broadcast(
                 f"room.{self.room.id}.presence",
                 action="typing",
                 username=self.username,
@@ -135,12 +150,34 @@ class XOnlineUsers(Component):
     - notification() hook for custom broadcasts
     - Dynamic @property _subscriptions
     - force_render() to update on notifications
+    - joined() for self-registration
+    - Presence sync via request-response pattern
     """
 
     _template_name = "chat/online_users.html"
 
     room: Room
+    username: str = ""  # Current user's username for self-registration
     online_users: dict[str, bool] = {}  # username -> is_typing
+
+    async def joined(self):
+        """
+        Register self in online_users when joining.
+
+        This ensures the current user appears in the online users list
+        immediately upon joining, without waiting for a broadcast.
+
+        Also requests presence sync from other users to get the current
+        list of online users.
+        """
+        if self.username:
+            self.online_users[self.username] = False
+            # Request presence sync from existing users
+            await self.broadcast(
+                f"room.{self.room.id}.presence",
+                action="sync_request",
+                requester=self.username,
+            )
 
     @property
     def _subscriptions(self):
@@ -152,6 +189,7 @@ class XOnlineUsers(Component):
         Handle presence notifications from other components.
 
         Called when any component broadcasts to the subscribed channel.
+        Supports: joined, left, typing, sync_request, sync_response
         """
         action = kwargs.get("action")
         username = kwargs.get("username")
@@ -159,10 +197,31 @@ class XOnlineUsers(Component):
         if action == "joined":
             self.online_users[username] = False
             self.force_render()
+
         elif action == "typing":
             is_typing = kwargs.get("is_typing", False)
             self.online_users[username] = is_typing
             self.force_render()
+
         elif action == "left":
             self.online_users.pop(username, None)
             self.force_render()
+
+        elif action == "sync_request":
+            # Another user is requesting presence info
+            requester = kwargs.get("requester")
+            if requester != self.username and self.username:
+                # Respond with our presence
+                await self.broadcast(
+                    f"room.{self.room.id}.presence",
+                    action="sync_response",
+                    username=self.username,
+                    is_typing=self.online_users.get(self.username, False),
+                )
+
+        elif action == "sync_response":
+            # Received presence info from another user
+            if username and username != self.username:
+                is_typing = kwargs.get("is_typing", False)
+                self.online_users[username] = is_typing
+                self.force_render()

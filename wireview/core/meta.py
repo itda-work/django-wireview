@@ -86,6 +86,8 @@ class WireviewMeta:
         # Pending operations queue for joined() lifecycle
         self._pending_mode: bool = False
         self._pending_operations: list[tuple[str, dict[str, t.Any]]] = []
+        # Pending broadcasts queue (separate from operations since they go through channel layer)
+        self._pending_broadcasts: list[tuple[str, dict[str, t.Any]]] = []
 
     def clone(self) -> WireviewMeta:
         """Create a copy of this meta instance."""
@@ -128,6 +130,34 @@ class WireviewMeta:
         for command, kwargs in self._pending_operations:
             await self._do_send(command, **kwargs)
         self._pending_operations.clear()
+
+        # Flush pending broadcasts
+        for channel, kwargs in self._pending_broadcasts:
+            await self._send_broadcast(channel, **kwargs)
+        self._pending_broadcasts.clear()
+
+    async def queue_broadcast(self, channel: str, **kwargs: t.Any) -> None:
+        """Queue or send a broadcast.
+
+        If in pending mode (during joined()), the broadcast is queued and will
+        be sent after all subscriptions are ready. Otherwise, sends immediately.
+
+        Args:
+            channel: The channel name to broadcast to.
+            **kwargs: Additional keyword arguments to include in the notification.
+        """
+        if self._pending_mode:
+            self._pending_broadcasts.append((channel, kwargs))
+        else:
+            await self._send_broadcast(channel, **kwargs)
+
+    async def _send_broadcast(self, channel: str, **kwargs: t.Any) -> None:
+        """Actually send a broadcast via channel layer."""
+        if self.channel_layer:
+            await self.channel_layer.group_send(
+                channel,
+                {"type": "notification", "channel": channel, "kwargs": kwargs},
+            )
 
     async def destroy(self, component_id: str) -> None:
         """Destroy a component and notify the client."""

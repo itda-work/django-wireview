@@ -16,6 +16,7 @@ class TestPendingModeBasics:
         meta = WireviewMeta(params={})
         assert meta._pending_mode is False
         assert meta._pending_operations == []
+        assert meta._pending_broadcasts == []
 
     @pytest.mark.unit
     def test_enter_pending_mode(self):
@@ -217,3 +218,119 @@ class TestPendingModeAfterJoined:
         view = await mount(NoPendingAfterJoinedComponent)
         assert view.component.wire._pending_mode is False
         assert view.component.wire._pending_operations == []
+
+
+class TestPendingBroadcasts:
+    """Test pending broadcast functionality."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_broadcast_queued_when_pending(self):
+        """queue_broadcast() should queue broadcasts when in pending mode."""
+        meta = WireviewMeta(params={}, channel_name="test-channel")
+        meta.enter_pending_mode()
+
+        await meta.queue_broadcast("test-channel", action="joined", user="alice")
+
+        assert len(meta._pending_broadcasts) == 1
+        assert meta._pending_broadcasts[0] == ("test-channel", {"action": "joined", "user": "alice"})
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_multiple_broadcasts_queued(self):
+        """Multiple broadcasts should be queued in order."""
+        meta = WireviewMeta(params={}, channel_name="test-channel")
+        meta.enter_pending_mode()
+
+        await meta.queue_broadcast("ch1", action="a")
+        await meta.queue_broadcast("ch2", action="b")
+        await meta.queue_broadcast("ch3", action="c")
+
+        assert len(meta._pending_broadcasts) == 3
+        assert meta._pending_broadcasts[0] == ("ch1", {"action": "a"})
+        assert meta._pending_broadcasts[1] == ("ch2", {"action": "b"})
+        assert meta._pending_broadcasts[2] == ("ch3", {"action": "c"})
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_flush_pending_clears_broadcasts(self):
+        """flush_pending() should clear pending broadcasts."""
+        meta = WireviewMeta(params={})
+        meta.enter_pending_mode()
+        meta._pending_broadcasts = [("ch", {"action": "test"})]
+
+        await meta.flush_pending()
+
+        assert meta._pending_broadcasts == []
+
+
+class BroadcastInJoinedComponent(Component):
+    """Component that calls broadcast() in joined()."""
+
+    _template_name = "streams/stream_list.html"
+
+    async def joined(self):
+        """Broadcast during join - should be queued."""
+        await self.broadcast("test-channel", action="joined", username="testuser")
+
+
+class TestComponentBroadcastMethod:
+    """Test Component.broadcast() method."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_broadcast_in_joined_is_queued(self):
+        """broadcast() called in joined() should be queued."""
+        view = await mount(BroadcastInJoinedComponent)
+
+        # After mount, pending broadcasts should have been flushed
+        # The mock channel layer won't actually send, but we can check
+        # that the component is no longer in pending mode
+        assert view.component.wire._pending_mode is False
+        assert view.component.wire._pending_broadcasts == []
+
+
+class TestLeavingLifecycleHook:
+    """Test leaving() lifecycle hook."""
+
+    @pytest.mark.unit
+    def test_component_has_leaving_method(self):
+        """Component should have leaving() method."""
+        assert hasattr(Component, "leaving")
+        import asyncio
+
+        assert asyncio.iscoroutinefunction(Component.leaving)
+
+
+class LeavingComponent(Component):
+    """Component that tracks leaving() calls."""
+
+    _template_name = "streams/stream_list.html"
+    leaving_called: bool = False
+
+    async def leaving(self):
+        """Track that leaving was called."""
+        self.leaving_called = True
+
+
+class TestLeavingHookExecution:
+    """Test that leaving() is called properly."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_leaving_default_implementation(self):
+        """Default leaving() should do nothing (not raise)."""
+        view = await mount(Component, template_name="streams/stream_list.html")
+        # Should not raise
+        await view.component.leaving()
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_custom_leaving_is_called(self):
+        """Custom leaving() implementation should be callable."""
+        view = await mount(LeavingComponent)
+        assert view.component.leaving_called is False
+
+        await view.component.leaving()
+
+        assert view.component.leaving_called is True

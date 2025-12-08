@@ -31,7 +31,7 @@
 
       <!-- Sidebar with online users -->
       <div style="width: 200px;">
-        {% component 'XOnlineUsers' id="online-"|concat:this.room.id room=this.room %}
+        {% component 'XOnlineUsers' id="online-"|concat:this.room.id room=this.room username=this.username %}
       </div>
     </div>
   </div>

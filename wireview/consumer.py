@@ -37,6 +37,30 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             channel_layer=self.channel_layer,
         )
 
+    async def disconnect(self, code):
+        """Handle WebSocket disconnect.
+
+        Calls leaving() on all registered components to allow cleanup,
+        then removes all channel subscriptions.
+        """
+        log.debug(f"<<< DISCONNECT {code}")
+
+        # Call leaving() on all registered components
+        for component in list(self.repo.components.values()):
+            try:
+                await component.leaving()
+            except Exception as e:
+                log.exception(f"Error in {component._name}.leaving(): {e}")
+
+        # Cleanup subscriptions
+        if self.channel_layer is not None and self.channel_name is not None:
+            for channel in self.subscriptions:
+                log.debug(f"::: UNSUBSCRIBE {self.channel_name} from {channel}")
+                await self.channel_layer.group_discard(channel, self.channel_name)
+            self.subscriptions.clear()
+
+        await super().disconnect(code)
+
     # Fronted commands
 
     async def receive_json(self, content):

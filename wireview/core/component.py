@@ -234,6 +234,29 @@ class Component(BaseModel):
         """Called when the component joins the page."""
         ...
 
+    async def leaving(self) -> None:
+        """Called when the component is about to leave.
+
+        This is called when:
+        - The WebSocket connection is closed (browser close, navigation, network loss)
+        - The component is explicitly destroyed
+
+        Use this hook to perform cleanup operations like:
+        - Broadcasting presence "left" notifications
+        - Releasing external resources
+        - Persisting state
+
+        Example:
+            class ChatRoom(Component):
+                async def leaving(self):
+                    await self.broadcast(
+                        f"room.{self.room.id}.presence",
+                        action="left",
+                        username=self.username,
+                    )
+        """
+        ...
+
     async def mutation(self, channel: str, action: ModelAction, instance: t.Any) -> None:
         """Called when a model mutation is broadcast."""
         ...
@@ -280,6 +303,45 @@ class Component(BaseModel):
     async def deffer(self, _f: t.Callable[P, t.Coroutine], *args: P.args, **kwargs: P.kwargs) -> None:
         """Defer a function call to be executed later."""
         await self.wire.deffer(self.id, _f, *args, **kwargs)
+
+    # Broadcasting
+
+    async def broadcast(self, channel: str, **kwargs: t.Any) -> None:
+        """Broadcast a notification to a channel.
+
+        This method is pending-aware: when called during joined(), the broadcast
+        is queued and sent after all subscriptions are registered. This ensures
+        that other components in the same WebSocket connection receive the
+        notification.
+
+        For broadcasts outside of component context, use the module-level
+        `abroadcast()` function instead.
+
+        Args:
+            channel: The channel name to broadcast to.
+            **kwargs: Additional keyword arguments to include in the notification.
+
+        Example:
+            class ChatRoom(Component):
+                async def joined(self):
+                    # This broadcast will be queued and sent after all
+                    # components have subscribed to their channels
+                    await self.broadcast(
+                        f"room.{self.room.id}.presence",
+                        action="joined",
+                        username=self.username,
+                    )
+
+                async def leaving(self):
+                    # This broadcast is sent immediately since we're not
+                    # in pending mode
+                    await self.broadcast(
+                        f"room.{self.room.id}.presence",
+                        action="left",
+                        username=self.username,
+                    )
+        """
+        await self.wire.queue_broadcast(channel, **kwargs)
 
     # Async operations
 
