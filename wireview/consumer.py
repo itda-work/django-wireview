@@ -381,6 +381,9 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
                 "render",
                 {"id": component.id, "diff": diff},
             )
+        # Clear temporary assigns after rendering to free memory
+        # This is called regardless of whether diff was sent (skip_render case)
+        component._clear_temporary_assigns()
 
     async def send_command(self, command, payload):
         await self.send_json({"command": command, "payload": payload})

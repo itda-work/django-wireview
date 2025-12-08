@@ -1,483 +1,461 @@
 # Phoenix LiveView 대비 기능 갭 분석
 
 > django-wireview가 Phoenix LiveView 수준에 도달하기 위해 필요한 기능 목록
+>
+> **최종 업데이트**: 2024-12
 
 ---
 
-## 1. 기능 비교 매트릭스
-
-### 1.1 핵심 기능
-
-| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
-|------|:----------------:|:--------------:|:--:|:--------:|
-| WebSocket 기반 통신 | ✅ | ✅ | - | - |
-| 서버 사이드 상태 관리 | ✅ | ✅ | - | - |
-| 컴포넌트 모델 | ✅ | ✅ | - | - |
-| DOM Diffing | ✅ morphdom | ✅ idiomorph | - | - |
-| HTML Diff 전송 | ✅ 바이너리 | ✅ Phoenix 스타일 | - | - |
-| 자동 재연결 | ✅ | ✅ | - | - |
-| 상태 복구 | ✅ 자동 | ⚠️ 수동 | 편의성 | P2 |
-
-### 1.2 LiveView.JS (클라이언트 명령어)
-
-| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
-|------|:----------------:|:--------------:|:--:|:--------:|
-| JS.show() | ✅ | ✅ JS().show() | - | - |
-| JS.hide() | ✅ | ✅ JS().hide() | - | - |
-| JS.toggle() | ✅ | ✅ JS().toggle() | - | - |
-| JS.add_class() | ✅ | ✅ JS().add_class() | - | - |
-| JS.remove_class() | ✅ | ✅ JS().remove_class() | - | - |
-| JS.toggle_class() | ✅ | ✅ JS().toggle_class() | - | - |
-| JS.set_attribute() | ✅ | ✅ JS().set_attr() | - | - |
-| JS.remove_attribute() | ✅ | ✅ JS().remove_attr() | - | - |
-| JS.transition() | ✅ | ✅ JS().transition() | - | - |
-| JS.focus() | ✅ | ✅ JS().focus() | - | - |
-| JS.focus_first() | ✅ | ✅ JS().focus_first() | - | - |
-| JS.push() | ✅ | ✅ JS().push() | - | - |
-| JS.dispatch() | ✅ | ✅ JS().dispatch() | - | - |
-| JS.navigate() | ✅ | ✅ JS().navigate() | - | - |
-| JS.patch() | ✅ | ✅ push_to | - | - |
-| 명령어 체이닝 | ✅ | ✅ 지원 | - | - |
-
-### 1.3 Optimistic UI
-
-| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
-|------|:----------------:|:--------------:|:--:|:--------:|
-| phx-click-loading 클래스 | ✅ | ✅ wireview-click-loading | - | - |
-| phx-submit-loading 클래스 | ✅ | ✅ wireview-submit-loading | - | - |
-| phx-change-loading 클래스 | ✅ | ✅ wireview-change-loading | - | - |
-| phx-disabled-with | ✅ | ❌ | 구현 필요 | P2 |
-| 클라이언트 사이드 즉시 실행 | ✅ | ✅ JS() 명령어 | - | - |
-
-### 1.4 Streams (대량 데이터)
-
-| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
-|------|:----------------:|:--------------:|:--:|:--------:|
-| stream() | ✅ | ❌ | 구현 필요 | P2 |
-| stream_insert() | ✅ | ❌ | 구현 필요 | P2 |
-| stream_delete() | ✅ | ❌ | 구현 필요 | P2 |
-| stream_reset() | ✅ | ❌ | 구현 필요 | P2 |
-| DOM ID 기반 업데이트 | ✅ | ❌ | 구현 필요 | P2 |
-| 메모리에서 해제 | ✅ | ❌ | 구현 필요 | P2 |
-
-### 1.5 파일 업로드
-
-| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
-|------|:----------------:|:--------------:|:--:|:--------:|
-| allow_upload() | ✅ | ❌ | 구현 필요 | P2 |
-| live_file_input | ✅ | ❌ | 구현 필요 | P2 |
-| live_img_preview | ✅ | ❌ | 구현 필요 | P2 |
-| 진행률 표시 | ✅ | ❌ | 구현 필요 | P2 |
-| 드래그 앤 드롭 | ✅ | ❌ | 구현 필요 | P3 |
-| 청크 업로드 | ✅ | ❌ | 구현 필요 | P2 |
-| 외부 스토리지 직접 업로드 | ✅ | ❌ | 구현 필요 | P3 |
-| consume_uploaded_entries() | ✅ | ❌ | 구현 필요 | P2 |
-
-### 1.6 비동기 작업
-
-| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
-|------|:----------------:|:--------------:|:--:|:--------:|
-| assign_async() | ✅ | ✅ assign_async() | - | - |
-| start_async() | ✅ | ❌ | 구현 필요 | P2 |
-| cancel_async() | ✅ | ❌ | 구현 필요 | P3 |
-| AsyncResult 상태 | ✅ loading/ok/error | ✅ loading/ok/failed | - | - |
-
-### 1.7 폼 처리
-
-| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
-|------|:----------------:|:--------------:|:--:|:--------:|
-| phx-change | ✅ | ✅ on "input" | - | - |
-| phx-submit | ✅ | ✅ on "submit" | - | - |
-| phx-feedback-for | ✅ | ❌ | 구현 필요 | P2 |
-| phx-debounce | ✅ | ✅ debounce-N | - | - |
-| phx-throttle | ✅ | ❌ | 구현 필요 | P3 |
-| phx-auto-recover | ✅ | ❌ | 구현 필요 | P3 |
-| Changeset 통합 | ✅ Ecto | ⚠️ Django Forms | 다른 접근 | P2 |
-
-### 1.8 라이프사이클 훅
-
-| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
-|------|:----------------:|:--------------:|:--:|:--------:|
-| mount() | ✅ | ✅ joined() | - | - |
-| handle_event() | ✅ | ✅ 메서드 직접 호출 | - | - |
-| handle_info() | ✅ | ✅ notification() | - | - |
-| handle_params() | ✅ | ⚠️ 부분 지원 | 강화 필요 | P2 |
-| terminate() | ✅ | ✅ destroy() | - | - |
-| update() (LiveComponent) | ✅ | ❌ | 구현 필요 | P3 |
-
-### 1.9 개발자 도구
-
-| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
-|------|:----------------:|:--------------:|:--:|:--------:|
-| enableDebug() | ✅ | ✅ wireview.debug.enable() | - | - |
-| enableProfiling() | ✅ | ❌ | 구현 필요 | P3 |
-| enableLatencySim() | ✅ | ✅ wireview.debug.latency() | - | - |
-| 테스트 헬퍼 | ✅ render_click 등 | ✅ mount(), call() | - | - |
-
-### 1.10 템플릿 기능
-
-| 기능 | Phoenix LiveView | django-wireview | 갭 | 우선순위 |
-|------|:----------------:|:--------------:|:--:|:--------:|
-| HEEx 템플릿 | ✅ | - Django 템플릿 | 다른 접근 | - |
-| Function 컴포넌트 | ✅ | ❌ | 고려 필요 | P3 |
-| Slots | ✅ | ❌ | 구현 필요 | P3 |
-| 컴파일 타임 검증 | ✅ | ❌ | 한계 | - |
-
----
-
-## 2. 우선순위별 구현 계획
-
-### P0: 기반 (필수 선행)
+## 개요
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  P0: Foundation                                                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  • Pydantic v2 마이그레이션                                                  │
-│  • TypeScript 클라이언트 재작성                                              │
-│  • Django 5.x 호환성 확보                                                    │
-│  • 테스트 인프라 구축                                                        │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### P1: 핵심 UX 개선 ✅ 완료
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  P1: Core UX ✅                                                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ✅ JS 명령어 시스템                                                         │
-│  ├─ ✅ JS().show/hide/toggle                                                │
-│  ├─ ✅ JS().add_class/remove_class/toggle_class                             │
-│  ├─ ✅ JS().push (서버 이벤트)                                              │
-│  └─ ✅ 명령어 체이닝                                                        │
-│                                                                              │
-│  ✅ Optimistic UI                                                            │
-│  ├─ ✅ wireview-click-loading 클래스                                         │
-│  ├─ ✅ wireview-submit-loading 클래스                                        │
-│  └─ ✅ 클라이언트 사이드 즉시 실행 (JS 명령어)                              │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-**구현 영향**:
-- 사용자 체감 지연: 150ms → 50ms (3x 개선)
-- 인터랙션 품질: 대폭 향상
-
-### P2: 고급 기능
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  P2: Advanced Features                                                       │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  Streams                                                                     │
-│  ├─ stream() 초기화                                                         │
-│  ├─ stream_insert/delete/reset                                              │
-│  └─ 메모리 효율적 처리                                                      │
-│                                                                              │
-│  파일 업로드                                                                 │
-│  ├─ allow_upload() 설정                                                     │
-│  ├─ 진행률 표시                                                             │
-│  └─ 이미지 프리뷰                                                           │
-│                                                                              │
-│  비동기 작업                                                                 │
-│  ├─ assign_async()                                                          │
-│  └─ AsyncResult 상태 관리                                                   │
-│                                                                              │
-│  기타                                                                        │
-│  ├─ ✅ HTML Diff 최적화 (Phoenix 스타일 static/dynamic 분리)               │
-│  ├─ phx-feedback-for 스타일 에러 표시                                       │
-│  ├─ handle_params 강화                                                      │
-│  └─ ✅ 테스트 유틸리티 (mount, call)                                        │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### P3: 완성도 (부분 완료)
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  P3: Polish (부분 완료)                                                      │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ✅ JS 명령어 확장                                                           │
-│  ├─ ✅ JS().transition                                                      │
-│  ├─ ✅ JS().set_attr/remove_attr                                            │
-│  └─ ✅ JS().focus_first                                                     │
-│                                                                              │
-│  개발자 도구 (부분 완료)                                                     │
-│  ├─ ✅ wireview.debug.enable()                                              │
-│  ├─ enableProfiling()                                                       │
-│  └─ ✅ wireview.debug.latency()                                             │
-│                                                                              │
-│  기타                                                                        │
-│  ├─ phx-throttle                                                            │
-│  ├─ phx-auto-recover                                                        │
-│  ├─ Function 컴포넌트                                                       │
-│  └─ Slots 지원                                                              │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+Phoenix LiveView 주요 기능: ~75개
+django-wireview 지원:       ~50개 (67%)
+미지원:                     ~25개 (33%)
 ```
 
 ---
 
-## 3. 기능별 상세 갭 분석
+## 1. 기능 커버리지 현황
 
-### 3.1 JS 명령어 시스템
+### 카테고리별 상태
 
-**Phoenix LiveView**:
-```elixir
-<button phx-click={
-  JS.toggle(to: "#modal")
-  |> JS.push("save")
-  |> JS.add_class("saving", to: "#form")
-}>
-  저장
-</button>
-```
-
-**현재 django-wireview**:
-```html
-<!-- 서버 왕복 필수, 체이닝 불가 -->
-<button {% on "click" "save" %}>저장</button>
-```
-
-**목표 django-wireview**:
-```html
-<button {% on "click" JS().toggle("#modal").push("save").add_class("#form", "saving") %}>
-  저장
-</button>
-```
-
-**구현 난이도**: 중
-**예상 작업량**: 2주
+| 카테고리 | 커버리지 | 상태 |
+|----------|:--------:|------|
+| Core Lifecycle | 90% | ✅ 대부분 완료 |
+| Real-time (PubSub, Presence) | 95% | ✅ 완료 |
+| JS Commands (LiveView.JS) | 95% | ✅ 완료 |
+| Optimistic UI | 80% | ✅ 대부분 완료 |
+| Streams | 80% | ✅ 기본 완료 |
+| File Uploads | 85% | ✅ 기본 완료 |
+| Async Operations | 70% | ⚠️ 부분 완료 |
+| Navigation | 70% | ⚠️ 부분 완료 |
+| **JavaScript Hooks** | 0% | ❌ 미구현 |
+| **Components (Slots, LiveComponent)** | 20% | ❌ 대부분 미구현 |
+| Testing | 80% | ✅ 기본 완료 |
+| Developer Tools | 60% | ⚠️ 부분 완료 |
 
 ---
 
-### 3.2 Optimistic UI
+## 2. 상세 기능 비교
 
-**Phoenix LiveView**:
-```css
-/* 자동 적용 */
-.phx-click-loading {
-  opacity: 0.5;
-}
-```
+### 2.1 Core Lifecycle ✅
 
-**현재 django-wireview**:
-```javascript
-// 수동 구현 필요
-element.onclick = function() {
-  this.classList.add('loading');
-  wireview.send(this, 'save', {});
-}
-```
+| 기능 | Phoenix LiveView | django-wireview | 상태 |
+|------|:----------------:|:---------------:|:----:|
+| mount/joined | `mount/3` | `joined()` | ✅ |
+| handle_event | `handle_event/3` | 메서드 직접 호출 | ✅ |
+| handle_info | `handle_info/2` | `notification()` | ✅ |
+| handle_params | `handle_params/3` | ❌ | 🔴 |
+| terminate | `terminate/2` | `leaving()` | ✅ |
+| ORM mutation | - | `mutation()` | ✅ 추가 기능 |
 
-**목표 django-wireview**:
-```css
-/* 자동 적용 */
-.wireview-click-loading {
-  opacity: 0.5;
-}
-```
+### 2.2 Real-time Features ✅
 
-**구현 난이도**: 하
-**예상 작업량**: 1주
+| 기능 | Phoenix LiveView | django-wireview | 상태 |
+|------|:----------------:|:---------------:|:----:|
+| PubSub broadcast | `Phoenix.PubSub` | `broadcast()` | ✅ |
+| Presence tracking | `Phoenix.Presence` | `PresenceMixin` | ✅ |
+| Presence list | `Presence.list/1` | `_presence_users` | ✅ |
+| Typing indicators | 수동 구현 | `presence_set_typing()` | ✅ |
+| Auto-broadcast (ORM) | 수동 구현 | `AUTO_BROADCAST` | ✅ 추가 기능 |
+
+### 2.3 LiveView.JS (Client Commands) ✅
+
+| 기능 | Phoenix LiveView | django-wireview | 상태 |
+|------|:----------------:|:---------------:|:----:|
+| show/hide/toggle | ✅ | `JS().show/hide/toggle()` | ✅ |
+| add_class/remove_class | ✅ | `JS().add_class/remove_class()` | ✅ |
+| toggle_class | ✅ | `JS().toggle_class()` | ✅ |
+| set_attribute | ✅ | `JS().set_attr()` | ✅ |
+| remove_attribute | ✅ | `JS().remove_attr()` | ✅ |
+| transition | ✅ | `JS().transition()` | ✅ |
+| focus/focus_first | ✅ | `JS().focus/focus_first()` | ✅ |
+| push (server event) | ✅ | `JS().push()` | ✅ |
+| dispatch (DOM event) | ✅ | `JS().dispatch()` | ✅ |
+| navigate | ✅ | `JS().navigate()` | ✅ |
+| Command chaining | ✅ | ✅ 지원 | ✅ |
+
+### 2.4 Optimistic UI ✅
+
+| 기능 | Phoenix LiveView | django-wireview | 상태 |
+|------|:----------------:|:---------------:|:----:|
+| phx-click-loading | ✅ | `wireview-click-loading` | ✅ |
+| phx-submit-loading | ✅ | `wireview-submit-loading` | ✅ |
+| phx-change-loading | ✅ | `wireview-change-loading` | ✅ |
+| phx-disabled-with | ✅ | ❌ | 🟡 |
+| Client-side immediate | ✅ | JS() 명령어 | ✅ |
+
+### 2.5 Streams ✅
+
+| 기능 | Phoenix LiveView | django-wireview | 상태 |
+|------|:----------------:|:---------------:|:----:|
+| stream() | ✅ | `stream()` | ✅ |
+| stream_insert() | ✅ | `stream_insert()` | ✅ |
+| stream_delete() | ✅ | `stream_delete()` | ✅ |
+| DOM ID generation | ✅ | `dom_id` param | ✅ |
+| wire-stream attribute | `phx-update="stream"` | `wire-stream` | ✅ |
+| stream :limit | ✅ | ❌ | 🟡 |
+| stream :reset | ✅ | ❌ | 🟡 |
+| phx-viewport-top/bottom | ✅ | ❌ | 🟡 |
+
+### 2.6 File Uploads ✅
+
+| 기능 | Phoenix LiveView | django-wireview | 상태 |
+|------|:----------------:|:---------------:|:----:|
+| allow_upload() | ✅ | `allow_upload()` | ✅ |
+| live_file_input | ✅ | `{% upload_input %}` | ✅ |
+| Progress tracking | ✅ | `entry.progress` | ✅ |
+| Image preview | ✅ | ❌ | 🟡 |
+| Drag and drop | ✅ | `{% upload_drop_zone %}` | ✅ |
+| Chunk upload | ✅ | ✅ | ✅ |
+| consume_uploads | ✅ | `consume_uploads()` | ✅ |
+| External upload (S3) | ✅ | ❌ | 🟠 |
+| Magic byte validation | ✅ | ✅ | ✅ |
+
+### 2.7 Async Operations ⚠️
+
+| 기능 | Phoenix LiveView | django-wireview | 상태 |
+|------|:----------------:|:---------------:|:----:|
+| assign_async() | ✅ | `assign_async()` | ✅ |
+| AsyncResult states | loading/ok/failed | loading/ok/failed | ✅ |
+| start_async() | ✅ | ❌ | 🟡 |
+| cancel_async() | ✅ | ❌ | 🟡 |
+| handle_async() | ✅ | 자동 처리 | ✅ |
+
+### 2.8 Navigation ⚠️
+
+| 기능 | Phoenix LiveView | django-wireview | 상태 |
+|------|:----------------:|:---------------:|:----:|
+| push_navigate | ✅ | `redirect_to()` | ✅ |
+| push_patch | ✅ | `push_to()` | ✅ |
+| replace | ✅ | `replace_to()` | ✅ |
+| handle_params | ✅ | ❌ | 🔴 |
+| live_session | ✅ | ❌ | 🟠 |
+| Client-side boost | ✅ | `BOOST_PAGES` | ✅ |
+
+### 2.9 JavaScript Interoperability ❌
+
+| 기능 | Phoenix LiveView | django-wireview | 상태 |
+|------|:----------------:|:---------------:|:----:|
+| **phx-hook** | ✅ 라이프사이클 훅 | ❌ | 🔴 Critical |
+| Hook.mounted | ✅ | ❌ | 🔴 |
+| Hook.updated | ✅ | ❌ | 🔴 |
+| Hook.destroyed | ✅ | ❌ | 🔴 |
+| Hook.disconnected | ✅ | ❌ | 🔴 |
+| Hook.reconnected | ✅ | ❌ | 🔴 |
+| pushEvent (client→server) | ✅ | ❌ | 🔴 |
+| handleEvent (server→client) | ✅ | 부분적 (push_event) | 🟡 |
+| Colocated hooks | ✅ | ❌ | 🟠 |
+| onBeforeElUpdated | ✅ | ❌ | 🟡 |
+
+### 2.10 Components ❌
+
+| 기능 | Phoenix LiveView | django-wireview | 상태 |
+|------|:----------------:|:---------------:|:----:|
+| Stateful component | ✅ | ✅ Component | ✅ |
+| **LiveComponent** | ✅ 중첩 상태 | ❌ | 🔴 Critical |
+| **Function components** | ✅ | ❌ | 🔴 |
+| **Slots (named)** | ✅ `<:header>` | ❌ | 🔴 |
+| Slots (default) | ✅ `inner_block` | ❌ | 🔴 |
+| @myself target | ✅ | ❌ | 🔴 |
+| update/2 callback | ✅ | ❌ | 🔴 |
+| update_many/1 | ✅ 배치 최적화 | ❌ | 🟠 |
+| Nested LiveViews | ✅ 프로세스 격리 | ❌ | 🟠 |
+
+### 2.11 Form Handling ⚠️
+
+| 기능 | Phoenix LiveView | django-wireview | 상태 |
+|------|:----------------:|:---------------:|:----:|
+| phx-change | ✅ | `{% on "input" %}` | ✅ |
+| phx-submit | ✅ | `{% on "submit" %}` | ✅ |
+| phx-debounce | ✅ | `.debounce.N` | ✅ |
+| phx-throttle | ✅ | `.throttle.N` | ✅ |
+| phx-feedback-for | ✅ | ❌ | 🟡 |
+| phx-auto-recover | ✅ | ❌ | 🟠 |
+| Form recovery | ✅ 자동 | ❌ | 🟠 |
+| Changeset integration | Ecto | Django Forms | ✅ 다른 접근 |
+
+### 2.12 Performance Features ⚠️
+
+| 기능 | Phoenix LiveView | django-wireview | 상태 |
+|------|:----------------:|:---------------:|:----:|
+| HTML Diff | ✅ 바이너리 | ✅ Phoenix 스타일 | ✅ |
+| skip_render | ✅ | `skip_render()` | ✅ |
+| force_render | ✅ | `force_render()` | ✅ |
+| **temporary_assigns** | ✅ | ✅ `_temporary_assigns` | ✅ |
+| Sticky components | ✅ | ❌ | 🟠 |
+| Keyed comprehensions | ✅ | ❌ | 🟡 |
+
+### 2.13 Testing ✅
+
+| 기능 | Phoenix LiveView | django-wireview | 상태 |
+|------|:----------------:|:---------------:|:----:|
+| render_component | ✅ | `mount()` | ✅ |
+| render_click | ✅ | `call()` | ✅ |
+| render_change | ✅ | `call()` | ✅ |
+| assert_patch | ✅ | 수동 검증 | ⚠️ |
+| follow_redirect | ✅ | 수동 검증 | ⚠️ |
+| MockChannelLayer | - | ✅ | ✅ 추가 기능 |
+
+### 2.14 Developer Tools ⚠️
+
+| 기능 | Phoenix LiveView | django-wireview | 상태 |
+|------|:----------------:|:---------------:|:----:|
+| enableDebug | ✅ | `wireview.debug.enable()` | ✅ |
+| enableLatencySim | ✅ | `wireview.debug.latency()` | ✅ |
+| enableProfiling | ✅ | ❌ | 🟡 |
+| Telemetry | ✅ | ❌ | 🟡 |
+
+### 2.15 Miscellaneous ⚠️
+
+| 기능 | Phoenix LiveView | django-wireview | 상태 |
+|------|:----------------:|:---------------:|:----:|
+| Page title | ✅ `assign(:page_title)` | ❌ | 🟡 |
+| Flash messages | ✅ `put_flash` | ❌ | 🟡 |
+| Dead views | ✅ JS 비활성화 폴백 | ❌ | 🟠 |
+| LongPolling fallback | ✅ | ❌ | 🟠 |
+| on_mount hooks | ✅ | ❌ | 🟡 |
+| attach_hook | ✅ | ❌ | 🟡 |
 
 ---
 
-### 3.3 Streams
+## 3. 미구현 기능 우선순위
 
-**Phoenix LiveView**:
-```elixir
-def mount(_params, _session, socket) do
-  {:ok, stream(socket, :messages, Messages.list_recent())}
-end
+### 🔴 P0: Critical (DX에 큰 영향)
 
-def handle_event("new_message", params, socket) do
-  message = Messages.create(params)
-  {:noreply, stream_insert(socket, :messages, message, at: 0)}
-end
-```
+| ID | 기능 | 설명 | 난이도 | 예상 작업 |
+|----|------|------|:------:|----------|
+| GAP-001 | **JavaScript Hooks** | 클라이언트 측 라이프사이클 훅 (`phx-hook`) | 상 | 2-3주 |
+| GAP-002 | **Slots** | 컴포넌트 콘텐츠 합성 (`<:header>`, `inner_block`) | 중 | 1-2주 |
+| GAP-003 | **Function Components** | 상태 없는 재사용 가능 템플릿 함수 | 중 | 1-2주 |
+| GAP-004 | **handle_params** | URL 파라미터 변경 시 콜백 | 중 | 1주 |
+| GAP-005 | **LiveComponent** | 독립 상태를 가진 중첩 컴포넌트 | 상 | 3-4주 |
+| ~~GAP-006~~ | ~~**temporary_assigns**~~ | ~~렌더 후 메모리 자동 해제~~ | ~~하~~ | ✅ 완료 |
 
-**현재 django-wireview**:
-```python
-# 전체 리스트를 매번 재렌더링
-class MessageList(Component):
-    messages: list[Message] = []
+### 🟠 P1: Important (기능적 차이)
 
-    def add_message(self, content: str):
-        Message.objects.create(content=content)
-        self.messages = list(Message.objects.all())  # 전체 재조회
-```
+| ID | 기능 | 설명 | 난이도 | 예상 작업 |
+|----|------|------|:------:|----------|
+| GAP-007 | External Uploads | S3/GCS 직접 업로드 | 중 | 1-2주 |
+| GAP-008 | Form Auto-Recovery | 재연결 시 폼 상태 복구 | 중 | 1주 |
+| GAP-009 | live_session | 인증/레이아웃 경계 관리 | 중 | 1-2주 |
+| GAP-010 | Page Title | 동적 페이지 타이틀 변경 | 하 | 2-3일 |
+| GAP-011 | Flash Messages | 일회성 알림 메시지 | 하 | 3-5일 |
+| GAP-012 | LongPolling Fallback | WebSocket 불가 시 폴백 | 중 | 1-2주 |
+| GAP-013 | pushEvent (Hook→Server) | 훅에서 서버로 이벤트 전송 | 중 | 1주 |
 
-**목표 django-wireview**:
-```python
-class MessageList(Component):
-    async def joined(self):
-        await self.stream("messages", Message.objects.order_by("-created")[:100])
+### 🟡 P2: Nice to Have (편의 기능)
 
-    async def add_message(self, content: str):
-        message = await Message.objects.acreate(content=content)
-        await self.stream_insert("messages", message, at=0)  # 단일 항목만 전송
-```
-
-**구현 난이도**: 상
-**예상 작업량**: 3주
-
----
-
-### 3.4 파일 업로드
-
-**Phoenix LiveView**:
-```elixir
-def mount(_params, _session, socket) do
-  {:ok,
-   socket
-   |> allow_upload(:avatar, accept: ~w(.jpg .png), max_entries: 2)}
-end
-```
-
-```heex
-<.live_file_input upload={@uploads.avatar} />
-
-<%= for entry <- @uploads.avatar.entries do %>
-  <.live_img_preview entry={entry} />
-  <progress value={entry.progress} max="100" />
-<% end %>
-```
-
-**현재 django-wireview**:
-지원 안 함
-
-**목표 django-wireview**:
-```python
-class ImageUploader(Component):
-    def joined(self):
-        self.allow_upload(
-            "avatar",
-            accept=[".jpg", ".png"],
-            max_entries=2,
-            max_file_size=5_000_000,
-        )
-```
-
-```html
-{% load wireview %}
-
-{% upload_input "avatar" %}
-
-{% for entry in uploads.avatar.entries %}
-  {% upload_preview entry %}
-  <progress value="{{ entry.progress }}" max="100"></progress>
-{% endfor %}
-```
-
-**구현 난이도**: 상
-**예상 작업량**: 3주
+| ID | 기능 | 설명 | 난이도 | 예상 작업 |
+|----|------|------|:------:|----------|
+| GAP-014 | stream :limit | 스트림 DOM 크기 제한 | 하 | 3-5일 |
+| GAP-015 | phx-viewport-* | 양방향 무한 스크롤 바인딩 | 중 | 1주 |
+| GAP-016 | Image Preview | 업로드 이미지 미리보기 | 하 | 3-5일 |
+| GAP-017 | start_async/cancel_async | 세밀한 비동기 제어 | 중 | 1주 |
+| GAP-018 | phx-disabled-with | 버튼 비활성화 텍스트 | 하 | 2-3일 |
+| GAP-019 | phx-feedback-for | 폼 필드 에러 표시 | 하 | 3-5일 |
+| GAP-020 | enableProfiling | 성능 프로파일링 | 중 | 1주 |
+| GAP-021 | on_mount hooks | 공통 마운트 로직 모듈화 | 중 | 1주 |
+| GAP-022 | Telemetry | 성능 측정 훅 | 중 | 1-2주 |
+| GAP-023 | onBeforeElUpdated | DOM 패치 전 콜백 | 하 | 3-5일 |
 
 ---
 
-### 3.5 비동기 작업
+## 4. 구현 로드맵
 
-**Phoenix LiveView**:
-```elixir
-def mount(_params, _session, socket) do
-  {:ok,
-   socket
-   |> assign(:stats, AsyncResult.loading())
-   |> start_async(:fetch_stats, fn -> Stats.calculate() end)}
-end
+### Phase 1: JavaScript Interop (Q1)
 
-def handle_async(:fetch_stats, {:ok, stats}, socket) do
-  {:noreply, assign(socket, :stats, AsyncResult.ok(stats))}
-end
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Phase 1: JavaScript Hooks & Interoperability               │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  GAP-001: JavaScript Hooks                                  │
+│  ├─ wire-hook="MyHook" 속성                                │
+│  ├─ Hook 라이프사이클 (mounted, updated, destroyed)        │
+│  ├─ Hook.pushEvent() → 서버 이벤트                         │
+│  └─ handleEvent 클라이언트 핸들러                          │
+│                                                             │
+│  GAP-013: pushEvent                                         │
+│  └─ Hook에서 서버로 커스텀 이벤트 전송                     │
+│                                                             │
+│  의존성: 없음                                               │
+│  예상 기간: 3-4주                                           │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-```heex
-<.async_result :let={stats} assign={@stats}>
-  <:loading>로딩 중...</:loading>
-  <:failed :let={reason}><%= reason %></:failed>
-  총 매출: <%= stats.total %>
-</.async_result>
+### Phase 2: Component System (Q1-Q2)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Phase 2: Advanced Components                               │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  GAP-002: Slots                                             │
+│  ├─ {% slot "header" %}...{% endslot %}                    │
+│  ├─ {% render_slot "header" %}                             │
+│  └─ default slot (inner_block)                             │
+│                                                             │
+│  GAP-003: Function Components                               │
+│  ├─ @register.simple_tag 기반 또는                         │
+│  └─ 커스텀 함수 컴포넌트 시스템                            │
+│                                                             │
+│  GAP-005: LiveComponent (선택적)                            │
+│  ├─ 중첩 상태 컴포넌트                                     │
+│  ├─ @myself 타겟팅                                         │
+│  └─ update/2 콜백                                          │
+│                                                             │
+│  의존성: Phase 1 완료 권장                                  │
+│  예상 기간: 4-6주                                           │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**현재 django-wireview**:
-지원 안 함 (동기 처리만)
+### Phase 3: Navigation & Forms (Q2)
 
-**목표 django-wireview**:
-```python
-class Dashboard(Component):
-    stats: AsyncResult[Stats] | None = None
-
-    async def joined(self):
-        self.stats = await self.assign_async(self.load_stats())
-
-    async def load_stats(self):
-        return await Stats.objects.acalculate()
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Phase 3: Navigation & Form Enhancement                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  GAP-004: handle_params                                     │
+│  ├─ URL 변경 감지                                          │
+│  └─ params_changed() 콜백                                  │
+│                                                             │
+│  GAP-008: Form Auto-Recovery                                │
+│  ├─ 재연결 시 폼 상태 저장/복구                            │
+│  └─ wire-auto-recover 속성                                 │
+│                                                             │
+│  GAP-010: Page Title                                        │
+│  └─ push_title() 메서드                                    │
+│                                                             │
+│  GAP-011: Flash Messages                                    │
+│  └─ put_flash() / clear_flash()                            │
+│                                                             │
+│  예상 기간: 3-4주                                           │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-```html
-{% if stats.loading %}
-  로딩 중...
-{% elif stats.failed %}
-  {{ stats.reason }}
-{% else %}
-  총 매출: {{ stats.result.total }}
-{% endif %}
-```
+### Phase 4: Performance & Polish (Q2-Q3)
 
-**구현 난이도**: 중
-**예상 작업량**: 2주
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Phase 4: Performance & Developer Experience                │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  GAP-006: temporary_assigns                                 │
+│  └─ _temporary_assigns 클래스 변수                         │
+│                                                             │
+│  GAP-007: External Uploads                                  │
+│  └─ S3/GCS presigned URL 업로드                            │
+│                                                             │
+│  GAP-014-015: Stream 고급 기능                              │
+│  ├─ :limit 옵션                                            │
+│  └─ viewport 바인딩                                        │
+│                                                             │
+│  GAP-020-022: Developer Tools                               │
+│  ├─ Profiling                                              │
+│  └─ Telemetry                                              │
+│                                                             │
+│  예상 기간: 4-6주                                           │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## 4. 구현 불가/어려운 기능
+## 5. GitHub Issue 구조
 
-### 4.1 런타임 한계
+### Label 체계
+
+```yaml
+priority:
+  - "priority: critical"   # P0
+  - "priority: high"       # P1
+  - "priority: medium"     # P2
+
+type:
+  - "type: feature"        # 새 기능
+  - "type: enhancement"    # 기존 기능 개선
+  - "type: dx"             # 개발자 경험
+
+area:
+  - "area: js-interop"     # JavaScript 연동
+  - "area: components"     # 컴포넌트 시스템
+  - "area: navigation"     # 네비게이션
+  - "area: forms"          # 폼 처리
+  - "area: uploads"        # 파일 업로드
+  - "area: performance"    # 성능
+  - "area: devtools"       # 개발자 도구
+
+phase:
+  - "phase: 1"
+  - "phase: 2"
+  - "phase: 3"
+  - "phase: 4"
+```
+
+### Milestone 구조
+
+```
+v6.0.0-alpha.1 (Phase 1)
+├── JavaScript Hooks
+└── pushEvent
+
+v6.0.0-alpha.2 (Phase 2)
+├── Slots
+├── Function Components
+└── LiveComponent (optional)
+
+v6.0.0-beta.1 (Phase 3)
+├── handle_params
+├── Form Auto-Recovery
+├── Page Title
+└── Flash Messages
+
+v6.0.0-rc.1 (Phase 4)
+├── temporary_assigns
+├── External Uploads
+├── Stream Advanced
+└── Developer Tools
+
+v6.0.0 (Release)
+└── Documentation & Polish
+```
+
+---
+
+## 6. 구현 불가/제한 사항
+
+### 런타임 한계
 
 | 기능 | 이유 | 대안 |
 |------|------|------|
-| **BEAM 수준 동시성** | Python GIL | asyncio + 수평 확장 |
-| **프로세스 격리** | Python 스레드 모델 | 컴포넌트별 상태 격리 |
-| **컴파일 타임 검증** | Python 동적 타이핑 | Pydantic + mypy |
+| BEAM 수준 동시성 | Python GIL | asyncio + 수평 확장 |
+| 프로세스 격리 | Python 스레드 모델 | 컴포넌트별 상태 격리 |
+| 컴파일 타임 검증 | Python 동적 타이핑 | Pydantic + pyright |
 
-### 4.2 프레임워크 차이
+### 프레임워크 차이
 
-| 기능 | Phoenix | Django | 대안 |
-|------|---------|--------|------|
-| **HEEx 템플릿** | 컴파일 검증 | Django 템플릿 | 런타임 검증 |
-| **Ecto Changeset** | 타입 안전 | Django Forms | Pydantic 검증 |
-| **OTP Supervisor** | 장애 복구 | - | 재연결 로직 |
+| Phoenix | Django | 접근 방식 |
+|---------|--------|----------|
+| HEEx 템플릿 | Django 템플릿 | 런타임 검증 |
+| Ecto Changeset | Django Forms | Pydantic 검증 |
+| OTP Supervisor | - | 재연결 로직 |
 
 ---
 
-## 5. 우선순위 결정 기준
+## 7. 참고 자료
 
-```
-영향도 = 사용자_체감_개선 × 0.4 + 개발자_생산성 × 0.3 + 기술_부채_해소 × 0.3
-
-P0: 영향도 높음, 선행 의존성
-P1: 영향도 높음, UX 직접 개선
-P2: 영향도 중간, 특정 사용 사례
-P3: 영향도 낮음, 완성도 향상
-```
-
-### 최종 우선순위 요약
-
-| 순위 | 기능 | 영향도 | 의존성 |
-|:----:|------|:------:|--------|
-| **P0** | Pydantic v2 | 높음 | 없음 |
-| **P0** | TypeScript 클라이언트 | 높음 | 없음 |
-| **P1** | JS 명령어 | 높음 | P0 완료 |
-| **P1** | Optimistic UI | 높음 | P0 완료 |
-| **P2** | Streams | 중간 | P1 완료 |
-| **P2** | 파일 업로드 | 중간 | P1 완료 |
-| **P2** | 비동기 작업 | 중간 | P1 완료 |
-| **P3** | 개발자 도구 | 낮음 | P2 완료 |
+- [Phoenix LiveView Documentation](https://hexdocs.pm/phoenix_live_view/)
+- [Phoenix LiveView JavaScript Interop](https://hexdocs.pm/phoenix_live_view/js-interop.html)
+- [Phoenix LiveComponent](https://hexdocs.pm/phoenix_live_view/Phoenix.LiveComponent.html)
+- [Phoenix Presence](https://hexdocs.pm/phoenix/Phoenix.Presence.html)
 
 ---
 
 *이 문서는 Phoenix LiveView와의 기능 갭을 분석하고 구현 우선순위를 정의합니다.*
+*최종 업데이트: 2024-12*

@@ -266,6 +266,25 @@ class Counter(Component):
         pass
 ```
 
+### temporary_assigns (메모리 최적화)
+
+대용량 리스트를 렌더링 후 메모리에서 해제하여 서버 메모리를 절약합니다:
+
+```python
+class MessageList(Component):
+    _template_name = "messages/list.html"
+    _temporary_assigns = {"messages"}  # 렌더 후 초기화할 필드
+
+    messages: list[Message] = []
+    total_count: int = 0  # 이 필드는 유지됨
+
+    async def joined(self):
+        self.messages = await Message.objects.all()[:100]
+        self.total_count = await Message.objects.acount()
+        # 렌더링 후 self.messages = [] 자동 초기화
+        # self.total_count는 100 유지
+```
+
 ### 템플릿 태그
 
 ```html

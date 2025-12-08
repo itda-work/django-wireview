@@ -124,6 +124,20 @@ class Component(BaseModel):
     # Subscriptions: you can define here which channels this component is subscribed to
     _subscriptions: t.ClassVar[set[str]] = set()
 
+    # Temporary assigns: fields that are reset to their default values after each render.
+    # This is useful for large collections that only need to be in memory during rendering.
+    # Similar to Phoenix LiveView's temporary_assigns option.
+    #
+    # Example:
+    #     class MessageList(Component):
+    #         _temporary_assigns = {"messages"}
+    #         messages: list[Message] = []
+    #
+    #         async def joined(self):
+    #             self.messages = await Message.objects.all()[:100]
+    #             # After rendering, self.messages will be reset to []
+    _temporary_assigns: t.ClassVar[set[str]] = set()
+
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
         validate_assignment=True,
@@ -737,6 +751,37 @@ class Component(BaseModel):
     def _render_diff(self, repo: Repo):
         """Render the component and return a diff."""
         return self.wire.render_diff(self, repo)
+
+    def _clear_temporary_assigns(self) -> None:
+        """Clear temporary assigns after rendering.
+
+        Resets fields listed in _temporary_assigns to their default values.
+        This frees memory for large collections that are only needed during rendering.
+
+        Called automatically by consumer.send_render() after each render cycle.
+        """
+        if not self._temporary_assigns:
+            return
+
+        for field_name in self._temporary_assigns:
+            if field_name not in self.model_fields:
+                continue
+
+            field_info = self.model_fields[field_name]
+            # Get the default value for this field
+            # Note: In Pydantic v2, default_factory is the actual callable (e.g., list class)
+            if field_info.default is not None:
+                default_value = field_info.default
+            elif field_info.default_factory is not None:
+                # default_factory is a callable like `list` or a lambda
+                default_value = field_info.default_factory()  # type: ignore[call-arg]
+            else:
+                # No default, skip this field
+                continue
+
+            # Set the field to its default value
+            # Use object.__setattr__ to bypass Pydantic validation for performance
+            object.__setattr__(self, field_name, default_value)
 
 
 class ComponentNotFound(LookupError):
