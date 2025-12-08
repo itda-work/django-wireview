@@ -113,6 +113,8 @@ class Component(BaseModel):
     __name__: str
 
     _all: t.ClassVar[dict[str, t.Type["Component"]]] = {}
+    _by_fqn: t.ClassVar[dict[str, t.Type["Component"]]] = {}
+    _by_app: t.ClassVar[dict[str, t.Type["Component"]]] = {}
     _urls: t.ClassVar[dict] = {}
     _name: t.ClassVar[str]
     _template_name: t.ClassVar[str]
@@ -202,12 +204,34 @@ class Component(BaseModel):
 
     def __init_subclass__(cls: t.Type["Component"], name: str | None = None, public: bool = True) -> None:
         if public:
+            import warnings
+
             name = name or cls.__name__
-            cls._all[name] = cls
-            # Component name
+            fqn = f"{cls.__module__}.{name}"
+
+            # Extract app name: 'myapp.live' -> 'myapp'
+            app_name = cls.__module__.split(".")[0]
+            app_key = f"{app_name}:{name}"
+
+            # Warn about name collisions
+            if name in cls._all and cls._all[name] is not cls:
+                existing = cls._all[name]
+                warnings.warn(
+                    f"Component name '{name}' conflicts: "
+                    f"{existing._fqn} vs {fqn}. "
+                    f"Use FQN or app prefix to disambiguate.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
+            # Register in all registries
+            cls._all[name] = cls  # 'Counter'
+            cls._by_fqn[fqn] = cls  # 'myapp.live.Counter'
+            cls._by_app[app_key] = cls  # 'myapp:Counter'
+
+            # Component name and fully qualified name
             cls._name = name
-            # Fully qualified name
-            cls._fqn = f"{cls.__module__}.{name}"
+            cls._fqn = fqn
 
         for attr_name in vars(cls):
             attr = getattr(cls, attr_name)
@@ -225,6 +249,38 @@ class Component(BaseModel):
         super().__init_subclass__()
 
     @classmethod
+    def _resolve(cls, name: str) -> t.Type["Component"]:
+        """Resolve component by name, FQN, or app prefix.
+
+        Resolution order:
+        1. FQN (e.g., 'myapp.live.Counter')
+        2. App prefix (e.g., 'myapp:Counter')
+        3. Simple name (e.g., 'Counter')
+
+        Args:
+            name: Component name in any supported format.
+
+        Returns:
+            The component class.
+
+        Raises:
+            ComponentNotFound: If no component matches the given name.
+        """
+        # 1. FQN lookup (exact module path)
+        if name in cls._by_fqn:
+            return cls._by_fqn[name]
+
+        # 2. App prefix lookup (app:Name)
+        if ":" in name and name in cls._by_app:
+            return cls._by_app[name]
+
+        # 3. Simple name lookup (backward compatible)
+        if name in cls._all:
+            return cls._all[name]
+
+        raise ComponentNotFound(f"Component '{name}' not found. " f"Available: {list(cls._all.keys())}")
+
+    @classmethod
     def _build(
         cls,
         _component_name: str,
@@ -235,12 +291,9 @@ class Component(BaseModel):
         channel_layer=None,
     ) -> "Component":
         """Build a component instance from state."""
-        if _component_name not in cls._all:
-            raise ComponentNotFound(
-                f"Could not find requested component '{_component_name}'. Did you load the component?"
-            )
+        component_class = cls._resolve(_component_name)
 
-        instance = cls._all[_component_name].new(
+        instance = component_class.new(
             user=user or AnonymousUser(),
             wire=WireviewMeta(
                 params=params,
