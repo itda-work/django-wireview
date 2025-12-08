@@ -49,7 +49,22 @@ class Rating(models.Model):
         unique_together = ["product", "session_key"]
 ```
 
-## 2. 컴포넌트 정의
+## 2. AUTO_BROADCAST 설정
+
+모델 구독을 위해 `settings.py`에 설정:
+
+```python
+from wireview.settings import AutoBroadcast
+
+WIREVIEW = {
+    "AUTO_BROADCAST": AutoBroadcast(
+        model=True,      # "rating" 채널 활성화
+        model_pk=True,   # "rating.{pk}" 채널 활성화
+    ),
+}
+```
+
+## 3. 컴포넌트 정의
 
 `rating/live.py`:
 
@@ -125,7 +140,7 @@ class XStarRating(Component):
         await self.rate(new_rating)
 ```
 
-## 3. 템플릿
+## 4. 템플릿
 
 `rating/templates/rating/star_rating.html`:
 
@@ -175,7 +190,7 @@ class XStarRating(Component):
 </div>
 ```
 
-## 4. 핵심 개념: 키보드 이벤트
+## 5. 핵심 개념: 키보드 이벤트
 
 ### 특정 키 감지
 
@@ -197,7 +212,7 @@ class XStarRating(Component):
 {% on 'mouseleave' 'clear_hover' %}
 ```
 
-## 5. wire.params - URL 상태 저장
+## 6. wire.params - URL 상태 저장
 
 ```python
 # 저장
@@ -210,7 +225,7 @@ if rating_param := self.wire.params.get("rating"):
 
 URL이 `?rating=4`로 업데이트되어 새로고침해도 상태 유지됩니다.
 
-## 6. 통계 컴포넌트
+## 7. 통계 컴포넌트
 
 평균과 분포를 보여주는 `XRatingStats` 컴포넌트:
 

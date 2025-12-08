@@ -53,7 +53,24 @@ class Option(models.Model):
         return round((self.votes / total) * 100, 1)
 ```
 
-## 2. 컴포넌트 정의
+## 2. AUTO_BROADCAST 설정
+
+모델 변경을 자동으로 컴포넌트에 브로드캐스트하려면 `settings.py`에 설정이 필요합니다:
+
+```python
+from wireview.settings import AutoBroadcast
+
+WIREVIEW = {
+    "AUTO_BROADCAST": AutoBroadcast(
+        model=True,      # 모델명 채널 활성화 (예: "option")
+        model_pk=True,   # 모델명.pk 채널 활성화 (예: "option.5")
+    ),
+}
+```
+
+> **참고**: 이 설정이 없으면 `_subscriptions`를 지정해도 `mutation()`이 호출되지 않습니다.
+
+## 3. 컴포넌트 정의
 
 `poll/live.py`:
 
@@ -97,7 +114,7 @@ class XPoll(Component):
         self.wire.params["voted"] = str(option_id)  # URL에 저장
 ```
 
-## 3. 핵심 개념: skip_render()
+## 4. 핵심 개념: skip_render()
 
 `skip_render()`는 불필요한 렌더링을 방지합니다:
 
@@ -112,7 +129,7 @@ async def vote(self, option_id: int):
 `mutation()`이 모델 변경을 감지하고 자동으로 리렌더링하므로,
 투표 후에는 `mutation()`에 맡깁니다.
 
-## 4. 템플릿
+## 5. 템플릿
 
 `poll/templates/poll/poll.html`:
 
@@ -145,7 +162,7 @@ async def vote(self, option_id: int):
 </div>
 ```
 
-## 5. 핵심 템플릿 태그
+## 6. 핵심 템플릿 태그
 
 ### `{% class %}` - 조건부 CSS 클래스
 
@@ -163,7 +180,7 @@ async def vote(self, option_id: int):
 
 `voted_option_id`가 존재하면 `disabled` 출력
 
-## 6. CSS 로딩 상태
+## 7. CSS 로딩 상태
 
 wireview는 서버 요청 중 자동으로 `.wireview-loading` 클래스를 추가합니다:
 

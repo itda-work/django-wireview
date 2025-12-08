@@ -68,7 +68,22 @@ class Submission(models.Model):
         return round((self.score / self.total_questions) * 100)
 ```
 
-## 2. 상태 머신 패턴
+## 2. AUTO_BROADCAST 설정
+
+`Submission` 모델 구독을 위해:
+
+```python
+from wireview.settings import AutoBroadcast
+
+WIREVIEW = {
+    "AUTO_BROADCAST": AutoBroadcast(
+        model=True,      # "submission" 채널 활성화
+        model_pk=True,
+    ),
+}
+```
+
+## 3. 상태 머신 패턴
 
 `quiz/live.py`:
 
@@ -169,7 +184,7 @@ class XQuiz(Component):
         self.state = QuizState.INTRO
 ```
 
-## 3. 상태별 템플릿
+## 4. 상태별 템플릿
 
 `quiz/templates/quiz/quiz.html`:
 
@@ -242,7 +257,7 @@ class XQuiz(Component):
 </div>
 ```
 
-## 4. 리더보드 컴포넌트
+## 5. 리더보드 컴포넌트
 
 ```python
 class XLeaderboard(Component):
@@ -262,7 +277,7 @@ class XLeaderboard(Component):
             self.force_render()
 ```
 
-## 5. 핵심 개념
+## 6. 핵심 개념
 
 ### 상태 머신
 
