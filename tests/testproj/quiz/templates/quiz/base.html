@@ -1,0 +1,243 @@
+{% load static wireview %}
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Quiz{% endblock %}</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+        max-width: 800px;
+        margin: 40px auto;
+        padding: 0 20px;
+        background: #1a1a2e;
+        min-height: 100vh;
+        color: #eee;
+      }
+      h1, h2, h3 {
+        color: #fff;
+      }
+      .quiz-list {
+        list-style: none;
+        padding: 0;
+      }
+      .quiz-list li {
+        margin-bottom: 15px;
+      }
+      .quiz-list a {
+        display: block;
+        padding: 20px 25px;
+        background: linear-gradient(135deg, #16213e 0%, #0f3460 100%);
+        border-radius: 12px;
+        text-decoration: none;
+        color: #fff;
+        transition: transform 0.2s, box-shadow 0.2s;
+        border: 1px solid rgba(255,255,255,0.1);
+      }
+      .quiz-list a:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+      }
+      .quiz-title {
+        font-size: 1.2rem;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+      .quiz-description {
+        color: #aaa;
+        font-size: 0.9rem;
+      }
+      .quiz-card {
+        background: linear-gradient(135deg, #16213e 0%, #0f3460 100%);
+        border-radius: 16px;
+        padding: 30px;
+        border: 1px solid rgba(255,255,255,0.1);
+      }
+      .progress-bar {
+        height: 8px;
+        background: rgba(255,255,255,0.1);
+        border-radius: 4px;
+        margin-bottom: 20px;
+        overflow: hidden;
+      }
+      .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #e94560, #f39c12);
+        transition: width 0.3s ease-out;
+      }
+      .question-number {
+        color: #e94560;
+        font-size: 0.9rem;
+        margin-bottom: 10px;
+      }
+      .question-text {
+        font-size: 1.4rem;
+        margin-bottom: 25px;
+        line-height: 1.5;
+      }
+      .choices {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .choice-btn {
+        padding: 18px 25px;
+        background: rgba(255,255,255,0.05);
+        border: 2px solid rgba(255,255,255,0.1);
+        border-radius: 12px;
+        color: #fff;
+        font-size: 1rem;
+        text-align: left;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .choice-btn:hover:not(:disabled) {
+        background: rgba(255,255,255,0.1);
+        border-color: rgba(255,255,255,0.2);
+      }
+      .choice-btn:disabled {
+        cursor: default;
+      }
+      .choice-btn.selected {
+        border-color: #3498db;
+        background: rgba(52,152,219,0.2);
+      }
+      .choice-btn.correct {
+        border-color: #27ae60;
+        background: rgba(39,174,96,0.2);
+      }
+      .choice-btn.incorrect {
+        border-color: #e74c3c;
+        background: rgba(231,76,60,0.2);
+      }
+      .choice-btn.wireview-loading {
+        opacity: 0.7;
+      }
+      .explanation {
+        margin-top: 20px;
+        padding: 15px 20px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 8px;
+        border-left: 3px solid #e94560;
+      }
+      .btn {
+        display: inline-block;
+        padding: 15px 30px;
+        background: linear-gradient(135deg, #e94560 0%, #f39c12 100%);
+        border: none;
+        border-radius: 8px;
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+      }
+      .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(233,69,96,0.4);
+      }
+      .btn-secondary {
+        background: rgba(255,255,255,0.1);
+      }
+      .btn-secondary:hover {
+        box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+      }
+      .results {
+        text-align: center;
+      }
+      .score-display {
+        font-size: 4rem;
+        font-weight: 700;
+        margin: 20px 0;
+        background: linear-gradient(135deg, #e94560, #f39c12);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      .score-label {
+        font-size: 1.2rem;
+        color: #aaa;
+      }
+      .leaderboard {
+        margin-top: 30px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 12px;
+        padding: 20px;
+      }
+      .leaderboard h3 {
+        margin-bottom: 15px;
+        font-size: 1rem;
+        color: #e94560;
+      }
+      .leaderboard-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+      }
+      .leaderboard-item:last-child {
+        border-bottom: none;
+      }
+      .leaderboard-rank {
+        width: 30px;
+        font-weight: 600;
+        color: #e94560;
+      }
+      .leaderboard-name {
+        flex: 1;
+      }
+      .leaderboard-score {
+        font-weight: 600;
+      }
+      .intro {
+        text-align: center;
+        padding: 40px 0;
+      }
+      .intro h2 {
+        font-size: 2rem;
+        margin-bottom: 15px;
+      }
+      .intro p {
+        color: #aaa;
+        margin-bottom: 30px;
+      }
+      .name-input {
+        padding: 15px 20px;
+        font-size: 1rem;
+        border: 2px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        background: rgba(255,255,255,0.05);
+        color: #fff;
+        margin-bottom: 20px;
+        width: 100%;
+        max-width: 300px;
+      }
+      .name-input::placeholder {
+        color: #666;
+      }
+      .name-input:focus {
+        outline: none;
+        border-color: #e94560;
+      }
+      .back-link {
+        display: inline-block;
+        margin-bottom: 20px;
+        color: #e94560;
+        text-decoration: none;
+      }
+      .back-link:hover {
+        text-decoration: underline;
+      }
+    </style>
+    {% wireview_header %}
+  </head>
+  <body>
+    {% block content %}{% endblock %}
+  </body>
+</html>

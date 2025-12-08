@@ -1,0 +1,19 @@
+{% extends "poll/base.html" %}
+
+{% block title %}Polls{% endblock %}
+
+{% block content %}
+<h1>Active Polls</h1>
+
+{% if polls %}
+  <ul class="poll-list">
+    {% for poll in polls %}
+      <li>
+        <a href="{% url 'poll:detail' poll.id %}">{{ poll.question }}</a>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>No active polls available.</p>
+{% endif %}
+{% endblock %}

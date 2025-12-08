@@ -1,0 +1,17 @@
+{% load wireview %}
+
+<div {% tag_header %} class="leaderboard">
+  <h3>Leaderboard</h3>
+
+  {% if this.submissions %}
+    {% for submission in this.submissions %}
+      <div class="leaderboard-item">
+        <span class="leaderboard-rank">#{{ forloop.counter }}</span>
+        <span class="leaderboard-name">{{ submission.username }}</span>
+        <span class="leaderboard-score">{{ submission.score }}/{{ submission.total_questions }}</span>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p style="color: #666; text-align: center;">No submissions yet. Be the first!</p>
+  {% endif %}
+</div>

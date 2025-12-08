@@ -1,0 +1,30 @@
+{% extends "rating/base.html" %}
+
+{% block title %}Products{% endblock %}
+
+{% block content %}
+<h1>Products</h1>
+
+{% if products %}
+  <div class="product-grid">
+    {% for product in products %}
+      <a href="{% url 'rating:detail' product.id %}" class="product-card">
+        <div class="product-name">{{ product.name }}</div>
+        {% if product.description %}
+          <div class="product-description">{{ product.description|truncatewords:20 }}</div>
+        {% endif %}
+        <div class="product-rating">
+          {% with avg=product.average_rating %}
+            {% for i in "12345" %}
+              <span class="star {% if forloop.counter <= avg %}filled{% endif %}">&#9733;</span>
+            {% endfor %}
+            <span class="rating-count">({{ product.rating_count }})</span>
+          {% endwith %}
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <p>No products available.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,77 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <div class="search-wrapper">
+    <div class="search-input-group">
+      <input
+        type="text"
+        name="q"
+        class="search-input"
+        placeholder="Search books by title, author..."
+        value="{{ query }}"
+        autocomplete="off"
+        {% on 'input.debounce.300' 'search' %}
+        {% on 'keydown.key.ArrowDown.prevent' 'navigate' direction=1 %}
+        {% on 'keydown.key.ArrowUp.prevent' 'navigate' direction=-1 %}
+        {% on 'keydown.key.Enter.prevent' 'select_current' %}
+        {% on 'keydown.key.Escape' 'close_dropdown' %}
+      />
+      {% if query %}
+        <button type="button" class="clear-btn" {% on 'click' 'clear' %}>
+          Clear
+        </button>
+      {% endif %}
+    </div>
+
+    {% if is_open %}
+      <div class="dropdown">
+        {% if results %}
+          {% for book in results %}
+            <div
+              {% class {'dropdown-item': True, 'highlighted': forloop.counter0 == selected_index} %}
+              {% on 'click' 'select_result' index=forloop.counter0 %}
+            >
+              <div class="book-title">{{ book.title }}</div>
+              <div class="book-author">by {{ book.author }}</div>
+              {% if book.published_year or book.category %}
+                <div class="book-meta">
+                  {% if book.published_year %}{{ book.published_year }}{% endif %}
+                  {% if book.published_year and book.category %} &bull; {% endif %}
+                  {% if book.category %}{{ book.category }}{% endif %}
+                </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="no-results">No results found</div>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  {% if selected_book %}
+    <div class="selected-book">
+      <h3>{{ selected_book.title }}</h3>
+      <p><strong>Author:</strong> {{ selected_book.author }}</p>
+      {% if selected_book.published_year %}
+        <p><strong>Published:</strong> {{ selected_book.published_year }}</p>
+      {% endif %}
+      {% if selected_book.category %}
+        <p><strong>Category:</strong> {{ selected_book.category }}</p>
+      {% endif %}
+      {% if selected_book.isbn %}
+        <p><strong>ISBN:</strong> {{ selected_book.isbn }}</p>
+      {% endif %}
+      {% if selected_book.description %}
+        <p>{{ selected_book.description }}</p>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  <div class="keyboard-hint">
+    <strong>Keyboard shortcuts:</strong>
+    <kbd>&uarr;</kbd> <kbd>&darr;</kbd> Navigate results &bull;
+    <kbd>Enter</kbd> Select &bull;
+    <kbd>Esc</kbd> Close
+  </div>
+</div>

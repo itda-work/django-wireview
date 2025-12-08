@@ -1,0 +1,19 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <div class="dropdown-actions" style="margin-bottom: 15px;">
+    <button {% on 'click' 'mark_all_read' %}>Mark all as read</button>
+    <button {% on 'click' 'clear_all' %} style="color: #d93025;">Clear all</button>
+  </div>
+
+  <div class="notification-list" wire-stream="notifications">
+    {% for notification in notifications %}
+      {% include "notifications/notification_list_item.html" %}
+    {% empty %}
+      <div class="empty-state">
+        <p>No notifications yet</p>
+        <p style="font-size: 0.9rem;">Create one using the form above!</p>
+      </div>
+    {% endfor %}
+  </div>
+</div>

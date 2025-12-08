@@ -1,0 +1,24 @@
+{% extends "quiz/base.html" %}
+
+{% block title %}Quizzes{% endblock %}
+
+{% block content %}
+<h1>Available Quizzes</h1>
+
+{% if quizzes %}
+  <ul class="quiz-list">
+    {% for quiz in quizzes %}
+      <li>
+        <a href="{% url 'quiz:detail' quiz.id %}">
+          <div class="quiz-title">{{ quiz.title }}</div>
+          {% if quiz.description %}
+            <div class="quiz-description">{{ quiz.description }}</div>
+          {% endif %}
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>No quizzes available.</p>
+{% endif %}
+{% endblock %}

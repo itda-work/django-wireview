@@ -1,0 +1,12 @@
+{% extends "search/base.html" %}
+{% load wireview %}
+
+{% block title %}Book Search{% endblock %}
+
+{% block content %}
+<h1>Book Search</h1>
+
+<div class="search-container">
+  {% component 'XLiveSearch' id="search" %}
+</div>
+{% endblock %}

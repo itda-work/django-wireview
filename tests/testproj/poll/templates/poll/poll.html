@@ -1,0 +1,31 @@
+{% load wireview %}
+
+<div {% tag_header %} class="poll-card">
+  <h2 class="poll-question">{{ this.poll.question }}</h2>
+
+  <div class="poll-options">
+    {% for option in this.poll.options.all %}
+      <div class="poll-option">
+        <button
+          type="button"
+          {% class {'option-button': True, 'selected': voted_option_id == option.id} %}
+          {% cond {'disabled': voted_option_id} %}
+          {% on 'click' 'vote' option_id=option.id %}
+        >
+          <div class="progress-bar" style="width: {{ option.percentage }}%"></div>
+          <div class="option-content">
+            <span class="option-text">{{ option.text }}</span>
+            <span class="option-stats">
+              <span class="option-votes">{{ option.votes }} votes</span>
+              <span class="option-percentage">{{ option.percentage }}%</span>
+            </span>
+          </div>
+        </button>
+      </div>
+    {% endfor %}
+  </div>
+
+  <p class="total-votes">
+    Total votes: <strong>{{ this.poll.total_votes }}</strong>
+  </p>
+</div>

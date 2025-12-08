@@ -1,0 +1,319 @@
+{% load static wireview %}
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Notifications{% endblock %}</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+        margin: 0;
+        padding: 0;
+        background: #f0f2f5;
+        color: #333;
+      }
+      .header {
+        background: white;
+        padding: 15px 30px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 1.5rem;
+        color: #1877f2;
+      }
+      .main {
+        max-width: 800px;
+        margin: 30px auto;
+        padding: 0 20px;
+      }
+      /* Bell Icon */
+      .bell-container {
+        position: relative;
+      }
+      .bell-button {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 10px;
+        border-radius: 50%;
+        transition: background 0.2s;
+        position: relative;
+      }
+      .bell-button:hover {
+        background: #f0f2f5;
+      }
+      .bell-icon {
+        width: 24px;
+        height: 24px;
+        fill: #65676b;
+      }
+      .bell-badge {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        background: #e41e3f;
+        color: white;
+        font-size: 11px;
+        font-weight: 600;
+        min-width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 5px;
+      }
+      /* Dropdown */
+      .notification-dropdown {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        width: 380px;
+        max-height: 500px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 12px 28px rgba(0,0,0,0.15);
+        overflow: hidden;
+        display: none;
+      }
+      .notification-dropdown.is-open {
+        display: block;
+      }
+      .dropdown-header {
+        padding: 15px 20px;
+        border-bottom: 1px solid #e4e6eb;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .dropdown-header h3 {
+        margin: 0;
+        font-size: 1.2rem;
+      }
+      .dropdown-actions {
+        display: flex;
+        gap: 10px;
+      }
+      .dropdown-actions button {
+        background: none;
+        border: none;
+        color: #1877f2;
+        cursor: pointer;
+        font-size: 0.85rem;
+        padding: 5px 10px;
+        border-radius: 4px;
+      }
+      .dropdown-actions button:hover {
+        background: #f0f2f5;
+      }
+      .notification-list {
+        max-height: 400px;
+        overflow-y: auto;
+      }
+      /* Notification Item */
+      .notification-item {
+        padding: 15px 20px;
+        border-bottom: 1px solid #f0f2f5;
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        transition: background 0.2s, opacity 0.2s, transform 0.2s;
+        cursor: pointer;
+      }
+      .notification-item:hover {
+        background: #f7f8fa;
+      }
+      .notification-item.is-read {
+        opacity: 0.7;
+      }
+      .notification-item.is-read .notification-dot {
+        display: none;
+      }
+      .notification-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .notification-icon.info { background: #e7f3ff; color: #1877f2; }
+      .notification-icon.success { background: #e6f4ea; color: #1e8e3e; }
+      .notification-icon.warning { background: #fef7e0; color: #f9a825; }
+      .notification-icon.error { background: #fce8e6; color: #d93025; }
+      .notification-content {
+        flex: 1;
+        min-width: 0;
+      }
+      .notification-title {
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .notification-message {
+        color: #65676b;
+        font-size: 0.9rem;
+        line-height: 1.4;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .notification-time {
+        font-size: 0.8rem;
+        color: #1877f2;
+        margin-top: 5px;
+      }
+      .notification-dot {
+        width: 10px;
+        height: 10px;
+        background: #1877f2;
+        border-radius: 50%;
+        flex-shrink: 0;
+        margin-top: 5px;
+      }
+      .notification-dismiss {
+        background: none;
+        border: none;
+        color: #65676b;
+        cursor: pointer;
+        padding: 5px;
+        border-radius: 50%;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      .notification-item:hover .notification-dismiss {
+        opacity: 1;
+      }
+      .notification-dismiss:hover {
+        background: #e4e6eb;
+        color: #333;
+      }
+      .empty-state {
+        padding: 40px 20px;
+        text-align: center;
+        color: #65676b;
+      }
+      /* Creator Form */
+      .creator-card {
+        background: white;
+        border-radius: 12px;
+        padding: 25px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+      }
+      .creator-card h2 {
+        margin: 0 0 20px 0;
+        font-size: 1.2rem;
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: #555;
+      }
+      .form-group input,
+      .form-group textarea,
+      .form-group select {
+        width: 100%;
+        padding: 12px 15px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: border-color 0.2s;
+      }
+      .form-group input:focus,
+      .form-group textarea:focus,
+      .form-group select:focus {
+        outline: none;
+        border-color: #1877f2;
+      }
+      .form-group textarea {
+        resize: vertical;
+        min-height: 80px;
+      }
+      .type-buttons {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .type-button {
+        padding: 10px 20px;
+        border: 2px solid #e4e6eb;
+        border-radius: 8px;
+        background: white;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 0.9rem;
+      }
+      .type-button:hover {
+        border-color: #1877f2;
+      }
+      .type-button.selected {
+        border-color: #1877f2;
+        background: #e7f3ff;
+        color: #1877f2;
+      }
+      .submit-btn {
+        background: #1877f2;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      .submit-btn:hover {
+        background: #166fe5;
+      }
+      .submit-btn:disabled {
+        background: #bcc0c4;
+        cursor: not-allowed;
+      }
+      /* Animations */
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.02); background: #e7f3ff; }
+      }
+      @keyframes slide-out-right {
+        to { transform: translateX(100%); opacity: 0; }
+      }
+      @keyframes fade-in {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes fade-out {
+        from { opacity: 1; }
+        to { opacity: 0; }
+      }
+    </style>
+    {% wireview_header %}
+  </head>
+  <body>
+    <header class="header">
+      <h1>Notification Center Demo</h1>
+      {% component 'XNotificationBell' id="bell" %}
+    </header>
+
+    <main class="main">
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

@@ -23,6 +23,11 @@ urlpatterns = [
     path("", include("testproj.todo.urls")),
     path("chat/", include("testproj.chat.urls")),
     path("dashboard/", include("testproj.dashboard.urls")),
+    path("poll/", include("testproj.poll.urls")),
+    path("rating/", include("testproj.rating.urls")),
+    path("search/", include("testproj.search.urls")),
+    path("quiz/", include("testproj.quiz.urls")),
+    path("notifications/", include("testproj.notifications.urls")),
     path("admin/", admin.site.urls),
 ]
 

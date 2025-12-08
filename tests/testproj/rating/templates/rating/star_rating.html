@@ -1,0 +1,44 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <div
+    class="star-rating {% if readonly %}readonly{% endif %}"
+    tabindex="{% if readonly %}-1{% else %}0{% endif %}"
+    role="slider"
+    aria-label="Rating"
+    aria-valuemin="1"
+    aria-valuemax="5"
+    aria-valuenow="{{ current_rating }}"
+    {% if not readonly %}
+      {% on 'keydown.key.ArrowRight' 'adjust_rating' delta=1 %}
+      {% on 'keydown.key.ArrowLeft' 'adjust_rating' delta=-1 %}
+      {% on 'mouseleave' 'clear_hover' %}
+    {% endif %}
+  >
+    {% for i in "12345" %}
+      {% with star_num=forloop.counter %}
+        <span
+          class="star {% if star_num <= hover_rating %}preview{% elif star_num <= current_rating %}filled{% endif %}"
+          {% if not readonly %}
+            {% on 'mouseenter' 'set_hover' star=star_num %}
+            {% on 'click' 'rate' score=star_num %}
+          {% endif %}
+        >&#9733;</span>
+      {% endwith %}
+    {% endfor %}
+  </div>
+
+  <div class="rating-text">
+    {% if current_rating %}
+      Your rating: <strong>{{ current_rating }}</strong> star{{ current_rating|pluralize }}
+    {% else %}
+      Click to rate
+    {% endif %}
+  </div>
+
+  {% if not readonly %}
+    <div class="keyboard-hint">
+      Use arrow keys to adjust rating
+    </div>
+  {% endif %}
+</div>

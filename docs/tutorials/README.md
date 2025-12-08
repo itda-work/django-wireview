@@ -9,15 +9,18 @@ django-wireview 단계별 학습 가이드입니다.
 
 ### 초급 (Beginner)
 - [02. Counter 컴포넌트](02-counter-component.md) - Component 기초, 이벤트, 상태 관리
+- [10. Poll 앱](10-poll-app.md) - skip_render, 조건부 클래스, 실시간 투표
+- [11. Rating 앱](11-rating-app.md) - URL 상태, 키보드 이벤트, 별점 평가
 
-### 초~중급 (Beginner to Intermediate)
+### 중급 (Intermediate)
 - [03. Todo 앱](03-todo-app.md) - CRUD, 모델 구독, 중첩 컴포넌트
-
-### 중~고급 (Intermediate to Advanced)
-- [04. Chat 앱](04-chat-app.md) - Streams API, Presence API, 라이프사이클 훅
+- [12. Live Search](12-live-search.md) - 디바운스, JS 명령어, 검색 자동완성
+- [13. Quiz 앱](13-quiz-app.md) - 상태 머신, mutation, 리더보드
 
 ### 고급 (Advanced)
+- [04. Chat 앱](04-chat-app.md) - Streams API, Presence API, 라이프사이클 훅
 - [05. Dashboard](05-dashboard.md) - AsyncResult, 복합 컴포지션
+- [14. Notifications](14-notifications.md) - broadcast, JS 명령어 체이닝, 알림 센터
 
 ### 심화 (Deep Dive)
 - [06. Streams API 심화](06-streams-api.md) - 성능 최적화, DOM ID 전략
@@ -38,12 +41,17 @@ django-wireview 단계별 학습 가이드입니다.
 |------|---------|----------|
 | 입문 | 01. 시작하기 | 30분 |
 | 초급 | 02. Counter | 1시간 |
-| 초~중급 | 03. Todo 앱 | 3시간 |
-| 중~고급 | 04. Chat 앱 | 4시간 |
+| 초급 | 10. Poll | 1시간 |
+| 초급 | 11. Rating | 1시간 |
+| 중급 | 03. Todo 앱 | 3시간 |
+| 중급 | 12. Live Search | 1.5시간 |
+| 중급 | 13. Quiz | 2시간 |
+| 고급 | 04. Chat 앱 | 4시간 |
 | 고급 | 05. Dashboard | 2시간 |
+| 고급 | 14. Notifications | 2시간 |
 | 심화 | 06-09 | 각 1-2시간 |
 
-**총 학습 시간**: 약 15-20시간
+**총 학습 시간**: 약 20-25시간
 
 ## 예제 코드
 
@@ -52,6 +60,25 @@ django-wireview 단계별 학습 가이드입니다.
 - `tests/testproj/todo/` - Todo 앱
 - `tests/testproj/chat/` - Chat 앱
 - `tests/testproj/dashboard/` - Dashboard
+- `tests/testproj/poll/` - Poll 앱 (실시간 투표)
+- `tests/testproj/rating/` - Rating 앱 (별점 평가)
+- `tests/testproj/search/` - Live Search (검색 자동완성)
+- `tests/testproj/quiz/` - Quiz 앱 (퀴즈)
+- `tests/testproj/notifications/` - Notifications (알림 센터)
+
+## 기능별 학습 가이드
+
+| 기능 | 튜토리얼 |
+|------|---------|
+| 기본 상태 관리 | 02, 10 |
+| 이벤트 핸들링 | 02, 11, 12 |
+| 모델 구독 | 03, 10, 13 |
+| Streams API | 04, 14 |
+| Presence API | 04, 07 |
+| JS 명령어 | 12, 14 |
+| URL 상태 | 10, 11 |
+| 키보드 이벤트 | 11, 12 |
+| AsyncResult | 05 |
 
 ## 피드백
 
