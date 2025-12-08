@@ -15,8 +15,13 @@ def index(request: HttpRequest) -> HttpResponse:
 def room(request: HttpRequest, room_id: uuid.UUID) -> HttpResponse:
     """Display a chat room."""
     room = get_object_or_404(Room, id=room_id)
+
+    # Ensure session exists for unique username generation
+    if not request.session.session_key:
+        request.session.create()
+
     # Generate a simple username (in production, use auth)
-    session_key = request.session.session_key or "anonymous"
+    session_key = request.session.session_key
     username = request.GET.get("username", f"User_{session_key[:6]}")
     return render(request, "chat/room.html", {"room": room, "username": username})
 
