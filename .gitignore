@@ -18,3 +18,4 @@ pyrightconfig.json
 # Collected static files
 tests/static/
 package-lock.json
+.idea/
