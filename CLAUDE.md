@@ -268,14 +268,15 @@ class Counter(Component):
 
 ### temporary_assigns (메모리 최적화)
 
-대용량 리스트를 렌더링 후 메모리에서 해제하여 서버 메모리를 절약합니다:
+대용량 리스트를 렌더링 후 메모리에서 해제하여 서버 메모리를 절약합니다.
+**상세 문서**: [docs/features/temporary-assigns.md](./docs/features/temporary-assigns.md)
 
 ```python
 class MessageList(Component):
     _template_name = "messages/list.html"
     _temporary_assigns = {"messages"}  # 렌더 후 초기화할 필드
 
-    messages: list[Message] = []
+    messages: list[Message] = []  # 기본값 필수!
     total_count: int = 0  # 이 필드는 유지됨
 
     async def joined(self):
@@ -284,6 +285,11 @@ class MessageList(Component):
         # 렌더링 후 self.messages = [] 자동 초기화
         # self.total_count는 100 유지
 ```
+
+**초기화 규칙**:
+- **시점**: 매 렌더링 완료 직후 (diff 전송 후)
+- **값**: Pydantic 필드의 기본값 (`= []`, `= {}`, `= 0` 등)
+- **조건**: 기본값이 없는 필드는 초기화되지 않음
 
 ### 템플릿 태그
 
