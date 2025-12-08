@@ -1,57 +1,57 @@
-# Wireview - Phoenix LiveView for Django
+# Wireview - Django를 위한 Phoenix LiveView
 
-Wireview enables you to build real-time, server-rendered interactive UIs using Django Channels, similar to Phoenix Framework's LiveView.
+Wireview는 Django Channels를 사용하여 실시간 서버 렌더링 인터랙티브 UI를 구축할 수 있게 해주는 라이브러리입니다. Phoenix Framework의 LiveView와 유사합니다.
 
-![TODO MVC demo app](demo.gif)
+![TODO MVC 데모 앱](demo.gif)
 
-## What's in the box?
+## 무엇이 포함되어 있나요?
 
-This is no replacement for VueJS or ReactJS, but it allows you to leverage all the potential of Django to create interactive front-ends. Everything is server-side rendered, so the interface comes with meaningful information in the first request. You can use all the power of Django templates and ORM directly in your components and update the interface in real-time by subscribing to events.
+VueJS나 ReactJS를 대체하는 것은 아니지만, Django의 모든 잠재력을 활용하여 인터랙티브한 프론트엔드를 만들 수 있습니다. 모든 것이 서버 사이드에서 렌더링되므로, 첫 번째 요청에서 의미 있는 정보가 포함된 인터페이스가 제공됩니다. Django 템플릿과 ORM의 모든 기능을 컴포넌트에서 직접 사용하고, 이벤트 구독을 통해 실시간으로 인터페이스를 업데이트할 수 있습니다.
 
-**Key Features:**
-- Server-side rendered components with real-time updates
-- Pydantic-based state management with automatic validation
-- WebSocket communication via Django Channels
-- HTML diff for efficient bandwidth usage
-- Model subscriptions for automatic UI updates
-- Streams API for efficient large list handling
-- Presence tracking for online users and typing indicators
-- File uploads with progress tracking
+**주요 기능:**
+- 실시간 업데이트가 가능한 서버 사이드 렌더링 컴포넌트
+- 자동 검증이 포함된 Pydantic 기반 상태 관리
+- Django Channels를 통한 WebSocket 통신
+- 효율적인 대역폭 사용을 위한 HTML diff
+- 자동 UI 업데이트를 위한 모델 구독
+- 대규모 리스트를 효율적으로 처리하는 Streams API
+- 온라인 사용자 및 타이핑 표시를 위한 Presence 추적
+- 진행률 추적이 가능한 파일 업로드
 
-## Improvements over django-reactor
+## django-reactor 대비 개선 사항
 
-Wireview is a modern evolution of [django-reactor](https://github.com/edelvalle/reactor), with significant improvements:
+Wireview는 [django-reactor](https://github.com/edelvalle/reactor)의 현대적인 진화 버전으로, 다음과 같은 중요한 개선 사항이 있습니다:
 
-### New Features
+### 새로운 기능
 
-| Feature | reactor | wireview | Description |
-|---------|---------|----------|-------------|
-| **Streams API** | - | ✅ | Memory-efficient large list handling with `stream()`, `stream_insert()`, `stream_delete()` |
-| **Presence API** | - | ✅ | Real-time user tracking and typing indicators with `PresenceMixin`, `PresenceTrackerMixin` |
-| **File Uploads** | - | ✅ | Chunked uploads with progress tracking, magic bytes validation |
-| **AsyncResult** | - | ✅ | Loading/success/error state management for async operations |
-| **JS Commands** | - | ✅ | Phoenix LiveView.JS-style client-side commands with `JS()` builder |
-| **Testing Utils** | - | ✅ | `mount()` utility for easy component testing without WebSocket |
-| **Debug Tools** | - | ✅ | Browser console debugging with `wireview.debug` |
+| 기능 | reactor | wireview | 설명 |
+|------|---------|----------|------|
+| **Streams API** | - | ✅ | `stream()`, `stream_insert()`, `stream_delete()`로 메모리 효율적인 대규모 리스트 처리 |
+| **Presence API** | - | ✅ | `PresenceMixin`, `PresenceTrackerMixin`으로 실시간 사용자 추적 및 타이핑 표시 |
+| **파일 업로드** | - | ✅ | 진행률 추적, 매직 바이트 검증이 포함된 청크 업로드 |
+| **AsyncResult** | - | ✅ | 비동기 작업을 위한 로딩/성공/에러 상태 관리 |
+| **JS 명령어** | - | ✅ | `JS()` 빌더로 Phoenix LiveView.JS 스타일의 클라이언트 사이드 명령어 |
+| **테스트 유틸리티** | - | ✅ | WebSocket 없이 쉽게 컴포넌트 테스트를 위한 `mount()` 유틸리티 |
+| **디버그 도구** | - | ✅ | `wireview.debug`로 브라우저 콘솔 디버깅 |
 
-### Architecture Improvements
+### 아키텍처 개선
 
-| Aspect | reactor | wireview |
-|--------|---------|----------|
-| **Pydantic** | v1 (legacy) | v2 (modern) |
-| **DOM Morphing** | morphdom | idiomorph (better attribute preservation) |
+| 항목 | reactor | wireview |
+|------|---------|----------|
+| **Pydantic** | v1 (레거시) | v2 (최신) |
+| **DOM Morphing** | morphdom | idiomorph (더 나은 속성 보존) |
 | **Python** | ≥3.9 | ≥3.10 |
 | **Django** | 3.2+ | 4.2, 5.0, 5.1, 6.0 |
-| **Module Structure** | Flat | Organized (`core/`, `features/`) |
+| **모듈 구조** | 플랫 | 체계적 (`core/`, `features/`) |
 
-### New Component Methods
+### 새로운 컴포넌트 메서드
 
 ```python
-# Lifecycle
+# 라이프사이클
 async def leaving(self):
-    """Called when component disconnects - cleanup hook"""
+    """컴포넌트 연결 해제 시 호출 - 정리 훅"""
 
-# UI Control
+# UI 제어
 await self.scroll_into_view(element_id, behavior="smooth")
 await self.push_js(JS().set_value("input", ""))
 
@@ -64,13 +64,13 @@ await self.stream_delete("items", item_id)
 await self.presence_join()
 await self.presence_set_typing(True)
 
-# Async Loading
+# 비동기 로딩
 self.data = await self.assign_async(fetch_data())
 ```
 
-### Migration from reactor
+### reactor에서 마이그레이션
 
-Most reactor components work with minimal changes:
+대부분의 reactor 컴포넌트는 최소한의 변경으로 작동합니다:
 
 ```python
 # reactor
@@ -79,50 +79,50 @@ from reactor.component import Component
 class XCounter(Component):
     _subscriptions = {"counter"}
 
-# wireview (same API)
+# wireview (동일한 API)
 from wireview.component import Component
 
 class XCounter(Component):
     _subscriptions = {"counter"}
 ```
 
-Key differences:
-- Package name: `reactor` → `wireview`
-- Settings prefix: `REACTOR_*` → `WIREVIEW` dict
-- Template tag: `{% load reactor %}` → `{% load wireview %}`
+주요 차이점:
+- 패키지 이름: `reactor` → `wireview`
+- 설정 접두사: `REACTOR_*` → `WIREVIEW` dict
+- 템플릿 태그: `{% load reactor %}` → `{% load wireview %}`
 
-## Table of Contents
+## 목차
 
-- [Improvements over django-reactor](#improvements-over-django-reactor)
-- [Installation and Setup](#installation-and-setup)
-- [Quick Start](#quick-start)
-- [Component Lifecycle](#component-lifecycle)
-- [Event Binding](#event-binding)
-- [URL State Management](#url-state-management)
-- [Model Subscriptions](#model-subscriptions)
+- [django-reactor 대비 개선 사항](#django-reactor-대비-개선-사항)
+- [설치 및 설정](#설치-및-설정)
+- [빠른 시작](#빠른-시작)
+- [컴포넌트 라이프사이클](#컴포넌트-라이프사이클)
+- [이벤트 바인딩](#이벤트-바인딩)
+- [URL 상태 관리](#url-상태-관리)
+- [모델 구독](#모델-구독)
 - [Streams API](#streams-api)
 - [Presence API](#presence-api)
-- [File Uploads](#file-uploads)
-- [AsyncResult](#asyncresult-and-async-operations)
-- [JS Command Builder](#js-command-builder)
-- [Component API Reference](#component-api-reference)
-- [Template Tags Reference](#template-tags-reference)
-- [JavaScript API](#front-end-apis)
-- [Testing](#testing-components)
-- [Debug Tools](#debug-tools)
-- [Settings](#settings)
+- [파일 업로드](#파일-업로드)
+- [AsyncResult](#asyncresult와-비동기-작업)
+- [JS 명령어 빌더](#js-명령어-빌더)
+- [컴포넌트 API 레퍼런스](#컴포넌트-api-레퍼런스)
+- [템플릿 태그 레퍼런스](#템플릿-태그-레퍼런스)
+- [JavaScript API](#프론트엔드-api)
+- [테스트](#컴포넌트-테스트)
+- [디버그 도구](#디버그-도구)
+- [설정](#설정)
 
-## Installation and Setup
+## 설치 및 설정
 
-Wireview requires Python >=3.10 and Django >=4.2 (supports Django 4.2, 5.0, 5.1, and 6.0).
+Wireview는 Python ≥3.10과 Django ≥4.2가 필요합니다 (Django 4.2, 5.0, 5.1, 6.0 지원).
 
 ```bash
 pip install django-wireview
 ```
 
-Wireview uses `django-channels`. By default, Channels uses an InMemory channel layer which doesn't support real broadcasting. For production, use Redis: [Channel Layers](https://channels.readthedocs.io/en/latest/topics/channel_layers.html)
+Wireview는 `django-channels`를 사용합니다. 기본적으로 Channels는 실제 브로드캐스팅을 지원하지 않는 InMemory 채널 레이어를 사용합니다. 프로덕션 환경에서는 Redis를 사용하세요: [Channel Layers](https://channels.readthedocs.io/en/latest/topics/channel_layers.html)
 
-Add `wireview` and `channels` to your `INSTALLED_APPS` before Django applications:
+Django 애플리케이션보다 먼저 `wireview`와 `channels`를 `INSTALLED_APPS`에 추가하세요:
 
 ```python
 INSTALLED_APPS = [
@@ -134,7 +134,7 @@ INSTALLED_APPS = [
 ASGI_APPLICATION = 'project_name.asgi.application'
 ```
 
-Modify your `project_name/asgi.py`:
+`project_name/asgi.py`를 수정하세요:
 
 ```python
 import os
@@ -154,7 +154,7 @@ application = ProtocolTypeRouter({
 })
 ```
 
-Include wireview JavaScript in your templates:
+템플릿에 wireview JavaScript를 포함하세요:
 
 ```html
 {% load wireview %}
@@ -167,9 +167,9 @@ Include wireview JavaScript in your templates:
 </html>
 ```
 
-## Quick Start
+## 빠른 시작
 
-Create a template `x-counter.html`:
+`x-counter.html` 템플릿을 생성하세요:
 
 ```html
 {% load wireview %}
@@ -181,7 +181,7 @@ Create a template `x-counter.html`:
 </div>
 ```
 
-Create the component in `live.py`:
+`live.py`에 컴포넌트를 생성하세요:
 
 ```python
 from wireview.component import Component
@@ -202,7 +202,7 @@ class XCounter(Component):
         self.amount = amount
 ```
 
-Render the component in a view template:
+뷰 템플릿에서 컴포넌트를 렌더링하세요:
 
 ```html
 {% load wireview %}
@@ -218,111 +218,111 @@ Render the component in a view template:
 </html>
 ```
 
-## Component Lifecycle
+## 컴포넌트 라이프사이클
 
-### Initialization & Rendering
+### 초기화 및 렌더링
 
-Components are initialized when included in a template:
+컴포넌트는 템플릿에 포함될 때 초기화됩니다:
 
 ```html
 {% component 'Component' param1=1 param2=2 %}
 ```
 
-Parameters are passed to `Component.new()` which returns the component instance.
+파라미터는 컴포넌트 인스턴스를 반환하는 `Component.new()`에 전달됩니다.
 
-### Joins
+### 조인 (Joins)
 
-When the component reaches the front-end, it "joins" the backend via WebSocket. The serialized state is sent to the backend, which rebuilds the component and calls `Component.joined()`.
+컴포넌트가 프론트엔드에 도달하면 WebSocket을 통해 백엔드에 "조인"합니다. 직렬화된 상태가 백엔드로 전송되고, 백엔드는 컴포넌트를 재구성하고 `Component.joined()`를 호출합니다.
 
 ```python
 class ChatRoom(Component):
     async def joined(self):
-        # Called when component connects via WebSocket
+        # 컴포넌트가 WebSocket으로 연결될 때 호출됨
         await self.broadcast(f"room.{self.room_id}", action="joined", user=self.username)
 ```
 
-### Leaving
+### 퇴장 (Leaving)
 
-When a component is destroyed or the WebSocket connection closes, `Component.leaving()` is called. Use this for cleanup:
+컴포넌트가 파괴되거나 WebSocket 연결이 닫히면 `Component.leaving()`이 호출됩니다. 정리 작업에 사용하세요:
 
 ```python
 class ChatRoom(Component):
     async def leaving(self):
-        # Called when component disconnects
+        # 컴포넌트 연결이 해제될 때 호출됨
         await self.broadcast(f"room.{self.room_id}", action="left", user=self.username)
 ```
 
-### User Events
+### 사용자 이벤트
 
-After joining, components can receive user events via the `{% on %}` template tag. Events are sent to the backend, the handler is executed, and the component is re-rendered.
+조인 후 컴포넌트는 `{% on %}` 템플릿 태그를 통해 사용자 이벤트를 받을 수 있습니다. 이벤트는 백엔드로 전송되고, 핸들러가 실행되며, 컴포넌트가 다시 렌더링됩니다.
 
-### Model Subscriptions
+### 모델 구독
 
-Components can subscribe to model changes. When a mutation occurs, `Component.mutation()` is called:
+컴포넌트는 모델 변경을 구독할 수 있습니다. 변경이 발생하면 `Component.mutation()`이 호출됩니다:
 
 ```python
 class TodoList(Component):
-    _subscriptions = {"todo-item"}  # Subscribe to todo item changes
+    _subscriptions = {"todo-item"}  # todo 아이템 변경 구독
 
     async def mutation(self, channel: str, action: ModelAction, instance):
-        # Called when subscribed model changes
+        # 구독한 모델이 변경될 때 호출됨
         self.items = await self.load_items()
 ```
 
-### Notifications
+### 알림
 
-For arbitrary messages, use `broadcast()` and `notification()`:
+임의의 메시지에는 `broadcast()`와 `notification()`을 사용하세요:
 
 ```python
-# Sender
+# 발신자
 await self.broadcast("chat.room.1", message="Hello!", sender=self.username)
 
-# Receiver (subscribed to "chat.room.1")
+# 수신자 ("chat.room.1" 구독 중)
 async def notification(self, channel: str, **kwargs):
     message = kwargs.get("message")
     sender = kwargs.get("sender")
 ```
 
-## Event Binding
+## 이벤트 바인딩
 
-### Basic Syntax
+### 기본 문법
 
 ```html
 {% on <event.modifiers> <handler> [kwargs] %}
 ```
 
-Examples:
+예제:
 
 ```html
 <button {% on "click" "increment" %}>+1</button>
 <button {% on "click" "increment" amount=5 %}>+5</button>
-<button {% on "click.prevent" "submit" %}>Submit</button>
+<button {% on "click.prevent" "submit" %}>제출</button>
 <input {% on "keypress.enter" "search" %}>
 <input {% on "input.debounce.300" "filter" %}>
 ```
 
-### Available Modifiers
+### 사용 가능한 수정자
 
-| Modifier | Description |
-|----------|-------------|
-| `prevent` | Calls `event.preventDefault()` |
-| `stop` | Calls `event.stopPropagation()` |
-| `ctrl`, `alt`, `shift`, `meta` | Requires modifier key |
-| `debounce.<ms>` | Debounces the event (e.g., `debounce.300`) |
-| `throttle.<ms>` | Throttles the event (e.g., `throttle.100`) |
-| `enter`, `tab`, `delete`, `backspace`, `space` | Key aliases |
-| `up`, `down`, `left`, `right` | Arrow key aliases |
-| `key.<keycode>` | Specific key (e.g., `key.escape`) |
-| `inlinejs` | Treats handler as literal JavaScript |
+| 수정자 | 설명 |
+|--------|------|
+| `prevent` | `event.preventDefault()` 호출 |
+| `stop` | `event.stopPropagation()` 호출 |
+| `ctrl`, `alt`, `shift`, `meta` | 수정 키 필요 |
+| `debounce.<ms>` | 이벤트 디바운스 (예: `debounce.300`) |
+| `throttle.<ms>` | 이벤트 쓰로틀 (예: `throttle.100`) |
+| `enter`, `tab`, `delete`, `backspace`, `space` | 키 별칭 |
+| `up`, `down`, `left`, `right` | 화살표 키 별칭 |
+| `key.<keycode>` | 특정 키 (예: `key.escape`) |
+| `inlinejs` | 핸들러를 리터럴 JavaScript로 처리 |
 
-### Implicit Arguments
+### 암시적 인자
 
-Form inputs within a component are automatically sent as arguments:
+컴포넌트 내의 폼 입력은 자동으로 인자로 전송됩니다:
 
 ```html
 <div {% tag_header %}>
   <input name="query">
-  <button {% on "click" "search" %}>Search</button>
+  <button {% on "click" "search" %}>검색</button>
 </div>
 ```
 
@@ -331,9 +331,9 @@ async def search(self, query: str):
     self.results = await self.do_search(query)
 ```
 
-## URL State Management
+## URL 상태 관리
 
-Persist component state in the URL query string:
+URL 쿼리 문자열에 컴포넌트 상태를 저장하세요:
 
 ```python
 class SearchList(Component):
@@ -346,10 +346,10 @@ class SearchList(Component):
 
     async def filter_results(self, query: str):
         self.query = query
-        self.wire.params["query"] = query  # Updates URL
+        self.wire.params["query"] = query  # URL 업데이트
 ```
 
-For complex values, use `.json` suffix:
+복잡한 값에는 `.json` 접미사를 사용하세요:
 
 ```python
 class TreeView(Component):
@@ -367,9 +367,9 @@ class TreeView(Component):
             expanded.remove(self.id)
 ```
 
-## Model Subscriptions
+## 모델 구독
 
-Subscribe to Django model changes for automatic UI updates:
+자동 UI 업데이트를 위해 Django 모델 변경을 구독하세요:
 
 ```python
 class TodoList(Component):
@@ -382,24 +382,24 @@ class TodoList(Component):
             self.items = [i for i in self.items if i.id != instance.id]
 ```
 
-Enable auto-broadcast in settings:
+설정에서 자동 브로드캐스트를 활성화하세요:
 
 ```python
 WIREVIEW = {
     "AUTO_BROADCAST": AutoBroadcast(
-        model=True,      # Broadcast on model changes
-        model_pk=True,   # Include PK in channel name
+        model=True,      # 모델 변경 시 브로드캐스트
+        model_pk=True,   # 채널 이름에 PK 포함
     ),
 }
 ```
 
 ## Streams API
 
-Streams provide memory-efficient handling of large lists by rendering items individually and sending incremental updates.
+Streams는 아이템을 개별적으로 렌더링하고 증분 업데이트를 전송하여 대규모 리스트를 메모리 효율적으로 처리합니다.
 
-### Basic Usage
+### 기본 사용법
 
-Template with stream container:
+스트림 컨테이너가 있는 템플릿:
 
 ```html
 {% load wireview %}
@@ -412,7 +412,7 @@ Template with stream container:
 </div>
 ```
 
-Item template (`chat/message_item.html`):
+아이템 템플릿 (`chat/message_item.html`):
 
 ```html
 <li id="messages-{{ message.pk }}">
@@ -420,7 +420,7 @@ Item template (`chat/message_item.html`):
 </li>
 ```
 
-Component:
+컴포넌트:
 
 ```python
 class MessageList(Component):
@@ -428,13 +428,13 @@ class MessageList(Component):
     messages: list = []
 
     async def joined(self):
-        # Initial load with stream
+        # 스트림으로 초기 로드
         messages = await Message.objects.order_by('-created')[:50]
         await self.stream("messages", reversed(messages))
 
     async def add_message(self, text: str):
         message = await Message.objects.acreate(sender=self.user, text=text)
-        await self.stream_insert("messages", message, at=-1)  # Append
+        await self.stream_insert("messages", message, at=-1)  # 끝에 추가
         await self.scroll_into_view(f"messages-{message.pk}")
 
     async def delete_message(self, message_id: int):
@@ -442,23 +442,23 @@ class MessageList(Component):
         await self.stream_delete("messages", message_id)
 ```
 
-### Stream Methods
+### Stream 메서드
 
-| Method | Description |
-|--------|-------------|
-| `stream(name, items)` | Reset/initialize stream with items |
-| `stream_insert(name, item, at=-1)` | Insert item (-1=append, 0=prepend, n=index) |
-| `stream_delete(name, dom_id)` | Delete item by DOM ID or PK |
+| 메서드 | 설명 |
+|--------|------|
+| `stream(name, items)` | 스트림 초기화/리셋 |
+| `stream_insert(name, item, at=-1)` | 아이템 삽입 (-1=끝, 0=처음, n=인덱스) |
+| `stream_delete(name, dom_id)` | DOM ID 또는 PK로 아이템 삭제 |
 
-### DOM ID Convention
+### DOM ID 규칙
 
-By default, DOM IDs follow the pattern `{stream_name}-{item.pk}`. Custom ID functions:
+기본적으로 DOM ID는 `{stream_name}-{item.pk}` 패턴을 따릅니다. 커스텀 ID 함수:
 
 ```python
 await self.stream("items", items, dom_id=lambda item: f"item-{item.uuid}")
 ```
 
-### Custom Item Templates
+### 커스텀 아이템 템플릿
 
 ```python
 await self.stream_insert("messages", message, template="chat/special_message.html")
@@ -466,11 +466,11 @@ await self.stream_insert("messages", message, template="chat/special_message.htm
 
 ## Presence API
 
-Track online users and typing indicators in real-time.
+온라인 사용자와 타이핑 표시를 실시간으로 추적합니다.
 
-### PresenceMixin (Producer)
+### PresenceMixin (프로듀서)
 
-For components that broadcast their own presence:
+자신의 프레즌스를 브로드캐스트하는 컴포넌트용:
 
 ```python
 from wireview.component import Component
@@ -498,12 +498,12 @@ class ChatInput(PresenceMixin, Component):
         await self.presence_leave()
 
     async def on_typing(self):
-        await self.presence_set_typing(True)  # Auto-clears after 3 seconds
+        await self.presence_set_typing(True)  # 3초 후 자동 해제
 ```
 
-### PresenceTrackerMixin (Consumer)
+### PresenceTrackerMixin (컨슈머)
 
-For components that display other users' presence:
+다른 사용자의 프레즌스를 표시하는 컴포넌트용:
 
 ```python
 from wireview.features.presence import PresenceTrackerMixin
@@ -528,49 +528,49 @@ class OnlineUsers(PresenceTrackerMixin, Component):
         await self.presence_track_self(username=self.username)
 ```
 
-Template:
+템플릿:
 
 ```html
 {% load wireview %}
 <div {% tag_header %}>
-  <h3>Online ({{ this.presence_online_count }})</h3>
+  <h3>온라인 ({{ this.presence_online_count }})</h3>
   <ul>
     {% for user in this.presence_users %}
       <li>
         {{ user.username }}
-        {% if user.is_typing %}<span class="typing">typing...</span>{% endif %}
+        {% if user.is_typing %}<span class="typing">입력 중...</span>{% endif %}
       </li>
     {% endfor %}
   </ul>
 </div>
 ```
 
-### Presence Properties
+### Presence 속성
 
-| Property | Description |
-|----------|-------------|
-| `presence_users` | List of all tracked users |
-| `presence_online_count` | Number of online users |
-| `presence_typing_users` | List of users currently typing |
+| 속성 | 설명 |
+|------|------|
+| `presence_users` | 모든 추적된 사용자 목록 |
+| `presence_online_count` | 온라인 사용자 수 |
+| `presence_typing_users` | 현재 타이핑 중인 사용자 목록 |
 
-### Configuration
+### 설정
 
 ```python
 from wireview.features.presence import PresenceConfig
 
 class MyComponent(PresenceMixin, Component):
     _presence_config = PresenceConfig(
-        typing_timeout=3.0,     # Seconds until typing auto-clears
-        sync_on_join=True,      # Request sync from others on join
+        typing_timeout=3.0,     # 타이핑 자동 해제까지 초
+        sync_on_join=True,      # 조인 시 다른 사용자에게 동기화 요청
         channel_prefix="presence",
     )
 ```
 
-## File Uploads
+## 파일 업로드
 
-Handle file uploads with progress tracking and validation.
+진행률 추적과 검증이 포함된 파일 업로드를 처리합니다.
 
-### Basic Setup
+### 기본 설정
 
 ```python
 from wireview.component import Component
@@ -594,7 +594,7 @@ class FileUploader(Component):
             self.avatar_url = path
 ```
 
-Template:
+템플릿:
 
 ```html
 {% load wireview %}
@@ -610,39 +610,39 @@ Template:
     </div>
   {% endfor %}
 
-  <button {% on "click" "save_avatar" %}>Save</button>
+  <button {% on "click" "save_avatar" %}>저장</button>
 </div>
 ```
 
-### UploadConfig Options
+### UploadConfig 옵션
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `name` | required | Upload field identifier |
-| `accept` | `[]` | Allowed extensions (e.g., `[".jpg", ".png"]`) |
-| `max_entries` | `1` | Maximum concurrent uploads |
-| `max_file_size` | `10MB` | Maximum file size in bytes |
-| `chunk_size` | `64KB` | Upload chunk size |
-| `auto_upload` | `True` | Start upload immediately on selection |
+| 옵션 | 기본값 | 설명 |
+|------|--------|------|
+| `name` | 필수 | 업로드 필드 식별자 |
+| `accept` | `[]` | 허용된 확장자 (예: `[".jpg", ".png"]`) |
+| `max_entries` | `1` | 최대 동시 업로드 수 |
+| `max_file_size` | `10MB` | 최대 파일 크기 (바이트) |
+| `chunk_size` | `64KB` | 업로드 청크 크기 |
+| `auto_upload` | `True` | 선택 시 즉시 업로드 시작 |
 
-### ConsumedUpload Methods
+### ConsumedUpload 메서드
 
-| Method | Description |
-|--------|-------------|
-| `read()` | Read entire file into memory |
-| `open(mode="rb")` | Open file handle |
-| `save_to(directory, filename=None)` | Save to Django storage |
-| `name` | Original filename |
-| `size` | File size in bytes |
-| `content_type` | MIME type |
+| 메서드 | 설명 |
+|--------|------|
+| `read()` | 전체 파일을 메모리로 읽기 |
+| `open(mode="rb")` | 파일 핸들 열기 |
+| `save_to(directory, filename=None)` | Django 스토리지에 저장 |
+| `name` | 원본 파일명 |
+| `size` | 파일 크기 (바이트) |
+| `content_type` | MIME 타입 |
 
-### Security
+### 보안
 
-Wireview validates file signatures (magic bytes) before saving to prevent extension spoofing.
+Wireview는 확장자 위조를 방지하기 위해 저장 전에 파일 시그니처(매직 바이트)를 검증합니다.
 
-## AsyncResult and Async Operations
+## AsyncResult와 비동기 작업
 
-Handle async data loading with loading/error states:
+로딩/에러 상태와 함께 비동기 데이터 로딩을 처리합니다:
 
 ```python
 from wireview import Component, AsyncResult
@@ -659,106 +659,106 @@ class Dashboard(Component):
         return await Stats.objects.aget()
 ```
 
-Template:
+템플릿:
 
 ```html
 {% if stats.loading %}
-  <div class="spinner">Loading...</div>
+  <div class="spinner">로딩 중...</div>
 {% elif stats.ok %}
-  <div>Total: {{ stats.result.total }}</div>
+  <div>총계: {{ stats.result.total }}</div>
 {% elif stats.failed %}
   <div class="error">{{ stats.error_message }}</div>
 {% endif %}
 ```
 
-### AsyncResult Properties
+### AsyncResult 속성
 
-| Property | Description |
-|----------|-------------|
-| `loading` | True while operation is in progress |
-| `ok` | True if operation succeeded |
-| `failed` | True if operation failed |
-| `done` | True if completed (success or failure) |
-| `result` | The result value (if successful) |
-| `error` | The exception (if failed) |
-| `error_message` | String representation of the error |
+| 속성 | 설명 |
+|------|------|
+| `loading` | 작업 진행 중이면 True |
+| `ok` | 작업 성공이면 True |
+| `failed` | 작업 실패면 True |
+| `done` | 완료되면 True (성공 또는 실패) |
+| `result` | 결과 값 (성공 시) |
+| `error` | 예외 (실패 시) |
+| `error_message` | 에러의 문자열 표현 |
 
-### AsyncResult Methods
+### AsyncResult 메서드
 
-| Method | Description |
-|--------|-------------|
-| `map(func)` | Transform the result value |
-| `get_or(default)` | Get result or default value |
-| `get_or_raise()` | Get result or raise the error |
+| 메서드 | 설명 |
+|--------|------|
+| `map(func)` | 결과 값 변환 |
+| `get_or(default)` | 결과 또는 기본값 가져오기 |
+| `get_or_raise()` | 결과 가져오기 또는 에러 발생 |
 
-## JS Command Builder
+## JS 명령어 빌더
 
-Build client-side commands that execute without server round-trips:
+서버 왕복 없이 실행되는 클라이언트 사이드 명령어를 빌드합니다:
 
 ```python
 from wireview import JS
 
-# In template
-<button {% on "click" JS().toggle("#modal") %}>Toggle Modal</button>
+# 템플릿에서
+<button {% on "click" JS().toggle("#modal") %}>모달 토글</button>
 
-# Chaining commands
+# 명령어 체이닝
 <button {% on "click" JS().add_class("#btn", "loading").push("save") %}>
-  Save
+  저장
 </button>
 
-# With transitions
+# 트랜지션과 함께
 <div {% on "click" JS().hide(transition=("fade-out", 300)) %}></div>
 ```
 
-### Push JS from Server
+### 서버에서 JS 푸시
 
-Send JS commands from event handlers:
+이벤트 핸들러에서 JS 명령어 전송:
 
 ```python
 async def clear_input(self):
     await self.push_js(JS().set_value("input[name=search]", ""))
 ```
 
-### Available Commands
+### 사용 가능한 명령어
 
-**Visibility:**
+**표시:**
 - `show(selector, transition=None, display=None)`
 - `hide(selector, transition=None)`
 - `toggle(selector, show=None, hide=None)`
 
-**CSS Classes:**
+**CSS 클래스:**
 - `add_class(selector, classes, transition=None)`
 - `remove_class(selector, classes, transition=None)`
 - `toggle_class(selector, classes, transition=None)`
 
-**Attributes:**
+**속성:**
 - `set_attr(selector, attr, value)`
 - `remove_attr(selector, attr)`
-- `set_value(selector, value)` - Set input value
+- `set_value(selector, value)` - 입력 값 설정
 
-**Focus:**
+**포커스:**
 - `focus(selector)`
 - `focus_first(selector, input_only=False)`
 
-**Transitions:**
+**트랜지션:**
 - `transition(selector, classes, time=None)`
 
-**Server Communication:**
-- `push(event, value=None, target=None)` - Send event to server
+**서버 통신:**
+- `push(event, value=None, target=None)` - 서버로 이벤트 전송
 
-**Navigation:**
+**네비게이션:**
 - `navigate(url, replace=False)`
 - `dispatch(event, to=None, detail=None, bubbles=True)`
 
-### Loading Classes
+### 로딩 클래스
 
-During server requests, these classes are automatically added:
+서버 요청 중 다음 클래스가 자동으로 추가됩니다:
 
-| Class | Description |
-|-------|-------------|
-| `wireview-loading` | Added during any request |
-| `wireview-click-loading` | Added for click events |
-| `wireview-submit-loading` | Added for submit events |
+| 클래스 | 설명 |
+|--------|------|
+| `wireview-loading` | 모든 요청 중에 추가 |
+| `wireview-click-loading` | 클릭 이벤트에 추가 |
+| `wireview-submit-loading` | 제출 이벤트에 추가 |
 
 ```css
 .wireview-loading {
@@ -767,114 +767,114 @@ During server requests, these classes are automatically added:
 }
 ```
 
-## Component API Reference
+## 컴포넌트 API 레퍼런스
 
-### Class Attributes
+### 클래스 속성
 
-| Attribute | Default | Description |
-|-----------|---------|-------------|
-| `_template_name` | required | Template path |
-| `_exclude_fields` | `{"user", "wire"}` | Fields excluded from serialization |
-| `_subscriptions` | `set()` | Channels to subscribe to |
+| 속성 | 기본값 | 설명 |
+|------|--------|------|
+| `_template_name` | 필수 | 템플릿 경로 |
+| `_exclude_fields` | `{"user", "wire"}` | 직렬화에서 제외할 필드 |
+| `_subscriptions` | `set()` | 구독할 채널 |
 
-### Lifecycle Methods
+### 라이프사이클 메서드
 
-| Method | Description |
-|--------|-------------|
-| `new(cls, wire, **kwargs)` | Class method to construct instance |
-| `joined()` | Called when component connects via WebSocket |
-| `leaving()` | Called when component disconnects |
-| `mutation(channel, action, instance)` | Called on model changes |
-| `notification(channel, **kwargs)` | Called on broadcast messages |
+| 메서드 | 설명 |
+|--------|------|
+| `new(cls, wire, **kwargs)` | 인스턴스 생성 클래스 메서드 |
+| `joined()` | 컴포넌트가 WebSocket으로 연결될 때 호출 |
+| `leaving()` | 컴포넌트 연결이 해제될 때 호출 |
+| `mutation(channel, action, instance)` | 모델 변경 시 호출 |
+| `notification(channel, **kwargs)` | 브로드캐스트 메시지 시 호출 |
 
-### Render Control
+### 렌더 제어
 
-| Method | Description |
-|--------|-------------|
-| `skip_render()` | Skip the next render cycle |
-| `send_render()` | Force immediate render |
-| `force_render()` | Mark for re-render |
-| `freeze()` | Prevent all future renders |
+| 메서드 | 설명 |
+|--------|------|
+| `skip_render()` | 다음 렌더 사이클 건너뛰기 |
+| `send_render()` | 즉시 렌더 강제 |
+| `force_render()` | 다시 렌더링 표시 |
+| `freeze()` | 모든 향후 렌더 방지 |
 
-### Actions
+### 액션
 
-| Method | Description |
-|--------|-------------|
-| `destroy()` | Remove component from interface |
-| `focus_on(selector)` | Focus an element |
-| `scroll_into_view(element_id, behavior="auto", block="start", inline="nearest")` | Scroll element into view |
-| `push_js(js)` | Execute JS commands on client |
-| `dom(action, id, component_or_template, **kwargs)` | DOM manipulation |
-| `deffer(func, *args, **kwargs)` | Defer function execution |
+| 메서드 | 설명 |
+|--------|------|
+| `destroy()` | 인터페이스에서 컴포넌트 제거 |
+| `focus_on(selector)` | 요소에 포커스 |
+| `scroll_into_view(element_id, behavior="auto", block="start", inline="nearest")` | 요소를 뷰로 스크롤 |
+| `push_js(js)` | 클라이언트에서 JS 명령어 실행 |
+| `dom(action, id, component_or_template, **kwargs)` | DOM 조작 |
+| `deffer(func, *args, **kwargs)` | 함수 실행 지연 |
 
-### Broadcasting
+### 브로드캐스팅
 
-| Method | Description |
-|--------|-------------|
-| `broadcast(channel, **kwargs)` | Send message to channel (queued in `joined()`) |
-| `abroadcast(channel, **kwargs)` | Send message immediately (async) |
+| 메서드 | 설명 |
+|--------|------|
+| `broadcast(channel, **kwargs)` | 채널로 메시지 전송 (`joined()`에서 큐잉) |
+| `abroadcast(channel, **kwargs)` | 즉시 메시지 전송 (비동기) |
 
-### Navigation
+### 네비게이션
 
-| Method | Description |
-|--------|-------------|
-| `wire.redirect_to(url, **kwargs)` | Navigate and fetch new page |
-| `wire.replace_to(url, **kwargs)` | Replace current URL |
-| `wire.push_to(url, **kwargs)` | Push URL without fetch |
+| 메서드 | 설명 |
+|--------|------|
+| `wire.redirect_to(url, **kwargs)` | 네비게이트하고 새 페이지 가져오기 |
+| `wire.replace_to(url, **kwargs)` | 현재 URL 교체 |
+| `wire.push_to(url, **kwargs)` | 가져오기 없이 URL 푸시 |
 
 ### Streams
 
-| Method | Description |
-|--------|-------------|
-| `stream(name, items, template=None, dom_id=None)` | Initialize/reset stream |
-| `stream_insert(name, item, at=-1, template=None, dom_id=None)` | Insert item |
-| `stream_delete(name, dom_id)` | Delete item |
+| 메서드 | 설명 |
+|--------|------|
+| `stream(name, items, template=None, dom_id=None)` | 스트림 초기화/리셋 |
+| `stream_insert(name, item, at=-1, template=None, dom_id=None)` | 아이템 삽입 |
+| `stream_delete(name, dom_id)` | 아이템 삭제 |
 
 ### Uploads
 
-| Method | Description |
-|--------|-------------|
-| `allow_upload(config)` | Register upload configuration |
-| `consume_uploads(name)` | Get completed uploads |
-| `cancel_upload(name, ref)` | Cancel an upload |
+| 메서드 | 설명 |
+|--------|------|
+| `allow_upload(config)` | 업로드 설정 등록 |
+| `consume_uploads(name)` | 완료된 업로드 가져오기 |
+| `cancel_upload(name, ref)` | 업로드 취소 |
 
-## Template Tags Reference
+## 템플릿 태그 레퍼런스
 
 ```html
 {% load wireview %}
 ```
 
-| Tag | Description |
-|-----|-------------|
-| `{% wireview_header %}` | Include required JavaScript (~10KB minified) |
-| `{% component 'Name' kwarg=value %}` | Render a component |
-| `{% on 'event.modifiers' 'handler' kwargs %}` | Bind event handler |
-| `{% tag_header %}` | Add component attributes to root element |
-| `{% cond {'hidden': is_hidden} %}` | Conditional attribute |
-| `{% class {'active': is_active} %}` | Conditional CSS classes |
+| 태그 | 설명 |
+|------|------|
+| `{% wireview_header %}` | 필요한 JavaScript 포함 (~10KB 압축) |
+| `{% component 'Name' kwarg=value %}` | 컴포넌트 렌더링 |
+| `{% on 'event.modifiers' 'handler' kwargs %}` | 이벤트 핸들러 바인딩 |
+| `{% tag_header %}` | 루트 요소에 컴포넌트 속성 추가 |
+| `{% cond {'hidden': is_hidden} %}` | 조건부 속성 |
+| `{% class {'active': is_active} %}` | 조건부 CSS 클래스 |
 
-## Front-end APIs
+## 프론트엔드 API
 
 ```javascript
-// Send event to component
+// 컴포넌트에 이벤트 전송
 wireview.send(element, 'handler_name', {arg1: value1})
 
-// Debounce/throttle
+// 디바운스/쓰로틀
 wireview.debounce(300)(fn)
 wireview.throttle(100)(fn)
 
-// Execute JS commands
+// JS 명령어 실행
 wireview.exec(element, commands)
 
-// Debug utilities
+// 디버그 유틸리티
 wireview.debug.enable()
 wireview.debug.disable()
 wireview.debug.status()
 ```
 
-## Testing Components
+## 컴포넌트 테스트
 
-Test components without WebSocket:
+WebSocket 없이 컴포넌트 테스트:
 
 ```python
 import pytest
@@ -897,67 +897,67 @@ async def test_redirect():
     assert view.is_frozen
 ```
 
-### Testing API
+### 테스트 API
 
-| Method/Property | Description |
-|----------------|-------------|
-| `mount(ComponentClass, **kwargs)` | Mount component for testing |
-| `view.component` | Access component instance |
-| `view.call(handler, **kwargs)` | Call event handler |
-| `view.sent_messages` | Messages that would be sent |
-| `view.redirected_to` | Redirect URL (if any) |
-| `view.is_frozen` | Whether component is frozen |
-| `view.clear_messages()` | Clear sent messages |
+| 메서드/속성 | 설명 |
+|-------------|------|
+| `mount(ComponentClass, **kwargs)` | 테스트용 컴포넌트 마운트 |
+| `view.component` | 컴포넌트 인스턴스 접근 |
+| `view.call(handler, **kwargs)` | 이벤트 핸들러 호출 |
+| `view.sent_messages` | 전송될 메시지들 |
+| `view.redirected_to` | 리다이렉트 URL (있는 경우) |
+| `view.is_frozen` | 컴포넌트 동결 여부 |
+| `view.clear_messages()` | 전송 메시지 초기화 |
 
-## Debug Tools
+## 디버그 도구
 
 ```javascript
-// Enable debug logging
+// 디버그 로깅 활성화
 wireview.debug.enable()
 
-// Disable debug logging
+// 디버그 로깅 비활성화
 wireview.debug.disable()
 
-// Simulate network latency
-wireview.debug.latency(500)  // 500ms delay
+// 네트워크 지연 시뮬레이션
+wireview.debug.latency(500)  // 500ms 지연
 
-// Show connection status
+// 연결 상태 표시
 wireview.debug.status()
 
-// List all components
+// 모든 컴포넌트 나열
 wireview.debug.components()
 
-// Get specific component
+// 특정 컴포넌트 가져오기
 wireview.debug.component("rx-123")
 ```
 
-## Settings
+## 설정
 
 ```python
 from wireview.schemas import AutoBroadcast
 
 WIREVIEW = {
-    "TRANSPILER_CACHE_SIZE": 1024,    # Event handler cache size
-    "USE_HTML_DIFF": True,            # Enable HTML diffing
-    "USE_HMIN": False,                # Use django-hmin minification
-    "BOOST_PAGES": False,             # Enable client-side navigation
+    "TRANSPILER_CACHE_SIZE": 1024,    # 이벤트 핸들러 캐시 크기
+    "USE_HTML_DIFF": True,            # HTML diff 활성화
+    "USE_HMIN": False,                # django-hmin 압축 사용
+    "BOOST_PAGES": False,             # 클라이언트 사이드 네비게이션 활성화
     "AUTO_BROADCAST": AutoBroadcast(
-        model=False,       # Broadcast on model changes
-        model_pk=False,    # Include PK in channel
-        related=False,     # Broadcast related model changes
-        m2m=False,         # Broadcast M2M changes
-        senders=set(),     # Models to auto-broadcast
+        model=False,       # 모델 변경 시 브로드캐스트
+        model_pk=False,    # 채널에 PK 포함
+        related=False,     # 관련 모델 변경 브로드캐스트
+        m2m=False,         # M2M 변경 브로드캐스트
+        senders=set(),     # 자동 브로드캐스트할 모델
     ),
 }
 ```
 
-## Documentation
+## 문서
 
-- [Architecture](docs/ARCHITECTURE.md) - Internal design and patterns
-- [Tutorials](docs/tutorials/) - Step-by-step guides
-- [Roadmap](docs/ROADMAP.md) - Future development plans
+- [아키텍처](docs/ARCHITECTURE.md) - 내부 설계 및 패턴
+- [튜토리얼](docs/tutorials/) - 단계별 가이드
+- [로드맵](docs/ROADMAP.md) - 향후 개발 계획
 
-## Development & Contributing
+## 개발 및 기여
 
 ```bash
 git clone git@github.com:itda-work/django-wireview.git
@@ -966,13 +966,13 @@ make install
 make test
 ```
 
-Run the test server:
+테스트 서버 실행:
 
 ```bash
 cd tests
 python manage.py runserver
 ```
 
-## License
+## 라이선스
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT 라이선스 - 자세한 내용은 [LICENSE](LICENSE)를 참조하세요.
