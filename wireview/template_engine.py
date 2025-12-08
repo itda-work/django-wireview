@@ -105,18 +105,22 @@ class TemplateMarker:
         The template is modified in-place for efficiency.
 
         Args:
-            template: Django Template instance
+            template: Django Template instance (or backend wrapper)
 
         Returns:
             The same template (modified in-place)
         """
-        template_id = id(template)
+        # Handle backend wrapper templates (from loader.get_template())
+        # which have the actual template in .template attribute
+        inner_template = getattr(template, "template", template)
+
+        template_id = id(inner_template)
 
         # Skip if already processed
         if template_id in self._processed_templates:
             return template
 
-        self._wrap_nodelist(template.nodelist)
+        self._wrap_nodelist(inner_template.nodelist)
         self._processed_templates.add(template_id)
 
         return template
@@ -169,7 +173,7 @@ class TemplateMarker:
         Render a template with dynamic markers.
 
         Args:
-            template: Django Template instance
+            template: Django Template instance (or backend wrapper)
             context: Template context dictionary
 
         Returns:
@@ -177,7 +181,16 @@ class TemplateMarker:
         """
         self.reset()
         prepared = self.prepare_template(template)
-        return prepared.render(Context(context))
+
+        # Handle backend wrapper templates vs raw templates
+        # Backend wrappers (from loader.get_template()) accept dict
+        # Raw templates (django.template.base.Template) need Context
+        if hasattr(prepared, "template"):
+            # Backend wrapper - pass dict directly
+            return prepared.render(context)
+        else:
+            # Raw template - wrap in Context
+            return prepared.render(Context(context))
 
 
 # Global template marker instance

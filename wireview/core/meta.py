@@ -22,6 +22,7 @@ if t.TYPE_CHECKING:
     from django.db import models
     from django.utils.safestring import SafeString
 
+    from ..features.streams import StreamOp
     from .component import Component
 
 if settings.USE_HMIN:
@@ -219,6 +220,10 @@ class WireviewMeta:
     async def send_dom_action(self, action: DomAction, id: str, html: "SafeString") -> None:
         """Send a DOM manipulation action to the client."""
         await self.send("dom_action", action=action.value, id=id, html=html)
+
+    async def send_stream_op(self, op: "StreamOp") -> None:
+        """Send a stream operation to the client."""
+        await self.send("stream_op", **op.to_payload())
 
     async def scroll_into_view(
         self,

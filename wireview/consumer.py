@@ -40,9 +40,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
     # Fronted commands
 
     async def receive_json(self, content):
-        await getattr(self, f'command_{content["command"]}')(
-            **content["payload"]
-        )
+        await getattr(self, f'command_{content["command"]}')(**content["payload"])
 
     async def command_join(
         self,
@@ -53,8 +51,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         signer = Signer()
         decoded_state: dict[str, t.Any] = json.loads(signer.unsign(state))
         decoded_children: dict[str, tuple[str, dict[str, t.Any]]] = {
-            id: (name, json.loads(signer.unsign(state)))
-            for id, (name, state) in (children or {}).items()
+            id: (name, json.loads(signer.unsign(state))) for id, (name, state) in (children or {}).items()
         }
         log.debug(f"<<< JOIN {name} {decoded_state}")
         try:
@@ -79,12 +76,8 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         self.query_string = qs
         self.repo.set_query_string(qs)
 
-    async def command_user_event(
-        self, id, command, implicit_args, explicit_args
-    ):
-        kwargs = dict(
-            parse_request_data(MultiValueDict(implicit_args)), **explicit_args
-        )
+    async def command_user_event(self, id, command, implicit_args, explicit_args):
+        kwargs = dict(parse_request_data(MultiValueDict(implicit_args)), **explicit_args)
         log.debug(f"<<< USER-EVENT {id} {command} {kwargs}")
         component = await self.repo.dispatch_event(id, command, [], kwargs)
         if component:
@@ -114,6 +107,10 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
     async def component_dom_action(self, action, id, html):
         log.debug(f">>> DOM {action.upper()} {id}")
         await self.send_command(action, {"id": id, "html": html})
+
+    async def component_stream_op(self, op, stream, items, at):
+        log.debug(f">>> STREAM {op.upper()} {stream}")
+        await self.send_command("stream_op", {"op": op, "stream": stream, "items": items, "at": at})
 
     async def component_scroll_into_view(self, id, behavoir, block, inline):
         log.debug(f">>> SCROLL-INTO-VIEW {id}")
@@ -147,13 +144,9 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
     async def notification(self, data):
         # The signature here is coupled to:
         #   `wireview.utils.send_notification`
-        await self._dispatch_notifications(
-            "notification", data["channel"], data["kwargs"]
-        )
+        await self._dispatch_notifications("notification", data["channel"], data["kwargs"])
 
-    async def _dispatch_notifications(
-        self, receiver: str, channel: str, kwargs: dict[str, t.Any]
-    ):
+    async def _dispatch_notifications(self, receiver: str, channel: str, kwargs: dict[str, t.Any]):
         for component in self.repo.components_subscribed_to(channel):
             await getattr(component, receiver)(channel, **kwargs)
             await self.send_render(component)
@@ -189,9 +182,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             # remove subscriptions
             for channel in self.subscriptions - subscriptions:
                 log.debug(f"::: UNSUBSCRIBE {self.channel_name} to {channel}")
-                await self.channel_layer.group_discard(
-                    channel, self.channel_name
-                )
+                await self.channel_layer.group_discard(channel, self.channel_name)
 
             self.subscriptions = subscriptions
 

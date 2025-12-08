@@ -119,3 +119,9 @@ markers = [
     "unit: marks unit tests",
     "e2e: marks end-to-end tests (requires browser)",
 ]
+
+[dependency-groups]
+dev = [
+    "selenium>=4.38.0",
+    "splinter>=0.21.0",
+]

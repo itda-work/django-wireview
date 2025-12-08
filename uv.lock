@@ -773,6 +773,12 @@ dev = [
     { name = "whitenoise" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "selenium" },
+    { name = "splinter" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "channels", specifier = ">=4,<5" },
@@ -802,6 +808,12 @@ requires-dist = [
     { name = "whitenoise", marker = "extra == 'dev'" },
 ]
 provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "selenium", specifier = ">=4.38.0" },
+    { name = "splinter", specifier = ">=0.21.0" },
+]
 
 [[package]]
 name = "djlint"

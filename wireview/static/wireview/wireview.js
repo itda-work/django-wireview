@@ -217,9 +217,85 @@ class ServerConnection {
       case "back":
         boost.HistoryCache.back();
         break;
+
+      case "stream_op":
+        var { op, stream, items, at } = payload;
+        this._handleStreamOp(op, stream, items, at);
+        break;
+
       default:
         console.warn(`[wireview] Unknown command "${command}"`, payload);
     }
+  }
+
+  /**
+   * Handle stream operations (reset, insert, delete).
+   * @param {string} op - Operation type ("reset", "insert", "delete")
+   * @param {string} stream - Stream name (matches wire-stream attribute)
+   * @param {Array<{id: string, html: string}>} items - Stream items
+   * @param {number} at - Insert position (-1 = append, 0 = prepend)
+   * @private
+   */
+  _handleStreamOp(op, stream, items, at) {
+    const container = document.querySelector(`[wire-stream="${stream}"]`);
+    if (!container) {
+      console.warn(`[wireview] Stream container not found: ${stream}`);
+      return;
+    }
+
+    switch (op) {
+      case "reset":
+        // Clear container and add all items
+        container.innerHTML = "";
+        for (const item of items) {
+          const el = this._parseHtml(item.html);
+          if (el) {
+            el.id = item.id;
+            container.appendChild(el);
+          }
+        }
+        break;
+
+      case "insert":
+        for (const item of items) {
+          const el = this._parseHtml(item.html);
+          if (el) {
+            el.id = item.id;
+            if (at === 0) {
+              // Prepend
+              container.prepend(el);
+            } else if (at === -1 || at >= container.children.length) {
+              // Append
+              container.appendChild(el);
+            } else {
+              // Insert at specific position
+              container.children[at].before(el);
+            }
+          }
+        }
+        break;
+
+      case "delete":
+        for (const item of items) {
+          const el = document.getElementById(item.id);
+          if (el) {
+            el.remove();
+          }
+        }
+        break;
+    }
+
+    boost.navEvent.sendNewContent();
+  }
+
+  /**
+   * Parse HTML string to DOM element.
+   * @param {string} html - HTML string
+   * @returns {Element|null}
+   * @private
+   */
+  _parseHtml(html) {
+    return parser.parseFromString(html, "text/html").body.firstElementChild;
   }
 
   /**

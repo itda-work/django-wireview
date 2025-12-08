@@ -322,6 +322,115 @@ class Component(BaseModel):
             )
         await self.wire.send_dom_action(_action, _id, html)
 
+    # Stream operations
+
+    async def stream(
+        self,
+        name: str,
+        items: t.Iterable[t.Any],
+        *,
+        template: str | None = None,
+        dom_id: t.Callable[[t.Any], str] | None = None,
+    ) -> None:
+        """
+        Initialize or reset a stream with items.
+
+        Streams provide memory-efficient handling of large lists by rendering
+        items individually and sending them to the client via WebSocket.
+
+        Args:
+            name: Stream name (matches wire-stream attribute in template)
+            items: Iterable of items to render
+            template: Template name for rendering items
+                     (default: {component_template}_item.html)
+            dom_id: Function to generate DOM ID for each item
+                   (default: {name}-{item.pk})
+
+        Example:
+            async def joined(self):
+                await self.stream("items", Item.objects.all()[:100])
+        """
+        from ..features.streams import StreamItem, StreamOp
+
+        template_name = template or self._get_stream_item_template()
+        dom_id_fn = dom_id or (lambda item: f"{name}-{item.pk}")
+
+        stream_items = []
+        for item in items:
+            html = await self._render_stream_item(template_name, item)
+            stream_items.append(StreamItem(dom_id=dom_id_fn(item), html=html))
+
+        op = StreamOp(op="reset", stream=name, items=stream_items)
+        await self.wire.send_stream_op(op)
+
+    async def stream_insert(
+        self,
+        name: str,
+        item: t.Any,
+        *,
+        at: int = -1,
+        template: str | None = None,
+        dom_id: t.Callable[[t.Any], str] | None = None,
+    ) -> None:
+        """
+        Insert an item into a stream.
+
+        Args:
+            name: Stream name (matches wire-stream attribute)
+            item: Item to insert
+            at: Insert position (-1 = append, 0 = prepend, n = at index)
+            template: Template name for rendering item
+            dom_id: Function to generate DOM ID
+
+        Example:
+            async def add_item(self, name: str):
+                item = await Item.objects.acreate(name=name)
+                await self.stream_insert("items", item, at=0)  # prepend
+        """
+        from ..features.streams import StreamItem, StreamOp
+
+        template_name = template or self._get_stream_item_template()
+        dom_id_fn = dom_id or (lambda i: f"{name}-{i.pk}")
+
+        html = await self._render_stream_item(template_name, item)
+        stream_item = StreamItem(dom_id=dom_id_fn(item), html=html)
+
+        op = StreamOp(op="insert", stream=name, items=[stream_item], at=at)
+        await self.wire.send_stream_op(op)
+
+    async def stream_delete(self, name: str, dom_id: str | int) -> None:
+        """
+        Delete an item from a stream by DOM ID.
+
+        Args:
+            name: Stream name (matches wire-stream attribute)
+            dom_id: DOM ID of the item to delete, or item PK (int)
+                   If int, will be converted to "{name}-{dom_id}"
+
+        Example:
+            async def remove_item(self, item_id: int):
+                await self.stream_delete("items", item_id)
+        """
+        from ..features.streams import StreamItem, StreamOp
+
+        if isinstance(dom_id, int):
+            dom_id = f"{name}-{dom_id}"
+
+        op = StreamOp(op="delete", stream=name, items=[StreamItem(dom_id=dom_id, html="")])
+        await self.wire.send_stream_op(op)
+
+    def _get_stream_item_template(self) -> str:
+        """Get the default stream item template name."""
+        # Convert "myapp/item_list.html" to "myapp/item_list_item.html"
+        base = self._template_name.rsplit(".", 1)[0]
+        return f"{base}_item.html"
+
+    async def _render_stream_item(self, template_name: str, item: t.Any) -> str:
+        """Render a single stream item to HTML."""
+        template = self._get_template(template_name)
+        context = {"item": item, "this": self}
+        return await db(template.render)(context)
+
     # Internal render operations
 
     def _render(self, repo: Repo) -> SafeString | None:

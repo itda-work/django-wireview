@@ -72,14 +72,22 @@ Django Server
 wireview/
 ├── __init__.py
 ├── apps.py
-├── component.py        # 핵심: Component, WireviewMeta 클래스
+├── component.py        # Component 재export
 ├── consumer.py         # WebSocket Consumer
 ├── repository.py       # 컴포넌트 인스턴스 관리
 ├── auto_broadcast.py   # Django signals 연동
 ├── event_transpiler.py # 이벤트 문법 파싱
+├── js.py               # JS 명령어 빌더
 ├── schemas.py          # Pydantic 스키마
 ├── serializer.py       # Django 모델 직렬화
 ├── settings.py         # 설정 관리
+├── testing.py          # 테스트 유틸리티
+├── core/               # 핵심 모듈
+│   ├── component.py    # Component 베이스 클래스
+│   ├── meta.py         # WireviewMeta 클래스
+│   └── rendered.py     # Phoenix-style diff
+├── features/           # 기능 모듈
+│   └── streams.py      # Streams 기능
 ├── templatetags/
 │   └── wireview.py     # {% component %}, {% on %} 등
 ├── static/wireview/
@@ -88,9 +96,12 @@ wireview/
 │   └── wireview.min.js # 번들링된 결과물
 └── urls.py             # WebSocket URL 라우팅
 
-tests/                  # 테스트 프로젝트
-├── testproj/           # Django 테스트 설정
-└── test_*.py           # 테스트 파일들
+tests/                  # 테스트
+├── test_*.py           # wireview 라이브러리 단위 테스트
+└── testproj/           # Django 테스트 프로젝트
+    └── todo/           # 예제 앱
+        ├── tests.py    # Django 앱 통합/E2E 테스트
+        └── templates/  # 테스트용 템플릿
 
 docs/                   # 문서
 ├── ARCHITECTURE.md     # 아키텍처 상세
@@ -203,6 +214,17 @@ send(element, name, args) { ... }
 
 ## 테스트 전략
 
+### 테스트 구조
+
+| 위치 | 용도 | 예시 |
+|------|------|------|
+| `tests/test_*.py` | wireview 라이브러리 단위 테스트 | test_js.py, test_streams.py |
+| `tests/testproj/{app}/tests.py` | Django 앱 통합/E2E 테스트 | todo/tests.py |
+
+**원칙**:
+- wireview 라이브러리 기능 테스트 → `tests/test_*.py`
+- Django 앱 특정 테스트 → 해당 앱의 `tests.py` 또는 `tests/` 폴더
+
 ### 마커
 
 | 마커 | 설명 |
@@ -258,6 +280,47 @@ class Counter(Component):
 <!-- 수정자 사용 -->
 <button {% on 'click.prevent.debounce.300' 'search' %}>Search</button>
 ```
+
+### Streams API
+
+대량 리스트를 메모리 효율적으로 처리하는 Phoenix LiveView 스타일 Streams:
+
+```python
+class ItemList(Component):
+    _template_name = "myapp/item_list.html"
+    items: list[Item] = []
+
+    async def joined(self):
+        self.items = list(await Item.objects.all()[:100])
+
+    async def add_item(self, name: str):
+        item = await Item.objects.acreate(name=name)
+        await self.stream_insert("items", item, at=0)  # prepend
+
+    async def remove_item(self, item_id: int):
+        await self.stream_delete("items", item_id)
+
+    async def refresh_all(self):
+        items = await Item.objects.all()[:100]
+        await self.stream("items", items)  # 전체 교체
+```
+
+```html
+<!-- item_list.html -->
+<ul wire-stream="items">
+  {% for item in items %}
+    {% include "myapp/item_list_item.html" %}
+  {% endfor %}
+</ul>
+
+<!-- item_list_item.html -->
+<li id="items-{{ item.pk }}">{{ item.name }}</li>
+```
+
+**Stream 메서드**:
+- `stream(name, items)`: 리스트 전체 교체 (reset)
+- `stream_insert(name, item, at=)`: 아이템 삽입 (-1=append, 0=prepend)
+- `stream_delete(name, dom_id)`: 아이템 삭제
 
 ### JavaScript API
 

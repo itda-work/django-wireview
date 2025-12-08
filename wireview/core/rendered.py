@@ -44,8 +44,14 @@ class Rendered:
             self.fingerprint = self._compute_fingerprint()
 
     def _compute_fingerprint(self) -> str:
-        """Compute a hash of the static parts to detect structural changes."""
-        content = "".join(self.static)
+        """Compute a hash of the static parts to detect structural changes.
+
+        The fingerprint must capture both the content AND structure of static parts.
+        Simply joining strings loses structure information (e.g., ['a', 'b'] vs ['ab']).
+        We use a null separator that cannot appear in HTML content.
+        """
+        # Use null character as separator to preserve structure
+        content = "\0".join(self.static)
         return hashlib.md5(content.encode()).hexdigest()[:8]
 
     def to_html(self) -> str:
