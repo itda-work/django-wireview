@@ -20,6 +20,9 @@ from ..schemas import DomAction, ModelAction
 from ..utils import db
 from .meta import Repo, WireviewMeta
 
+if t.TYPE_CHECKING:
+    from ..features.uploads import ConsumedUpload, UploadEntry, UploadRegistry
+
 # Type aliases
 ComponentState = dict[str, t.Any]
 MessagePayload = dict[str, t.Any]
@@ -430,6 +433,149 @@ class Component(BaseModel):
         template = self._get_template(template_name)
         context = {"item": item, "this": self}
         return await db(template.render)(context)
+
+    # Upload operations
+
+    _upload_registry: "UploadRegistry | None" = None
+
+    def allow_upload(
+        self,
+        name: str,
+        *,
+        accept: list[str] | None = None,
+        max_entries: int = 1,
+        max_file_size: int | None = None,
+        chunk_size: int | None = None,
+        auto_upload: bool = True,
+    ) -> None:
+        """
+        Configure an upload field for this component.
+
+        Call this in joined() to enable file uploads.
+
+        Args:
+            name: Unique name for this upload field
+            accept: List of accepted file extensions (e.g., [".jpg", ".png"])
+            max_entries: Maximum number of concurrent uploads (default 1)
+            max_file_size: Maximum file size in bytes (default from settings)
+            chunk_size: Chunk size for large file uploads (default from settings)
+            auto_upload: Start upload immediately when files are selected
+
+        Example:
+            async def joined(self):
+                self.allow_upload(
+                    "images",
+                    accept=[".jpg", ".png", ".gif"],
+                    max_entries=5,
+                    max_file_size=5 * 1024 * 1024  # 5MB
+                )
+        """
+        import asyncio
+
+        # Get defaults from settings
+        from .. import settings as wireview_settings
+        from ..features.uploads import UploadConfig, UploadOp, UploadRegistry
+
+        if max_file_size is None:
+            max_file_size = getattr(wireview_settings, "UPLOAD_MAX_FILE_SIZE", 10 * 1024 * 1024)
+        if chunk_size is None:
+            chunk_size = getattr(wireview_settings, "UPLOAD_CHUNK_SIZE", 64 * 1024)
+
+        if self._upload_registry is None:
+            self._upload_registry = UploadRegistry(self.id)
+
+        config = UploadConfig(
+            name=name,
+            accept=accept or [],
+            max_entries=max_entries,
+            max_file_size=max_file_size,
+            chunk_size=chunk_size,
+            auto_upload=auto_upload,
+        )
+        self._upload_registry.allow_upload(config)
+
+        # Send config to client asynchronously
+        async def send_config() -> None:
+            endpoint = f"/__wireview_upload__/{self.id}/{name}/"
+            op = UploadOp(
+                op="config",
+                upload=name,
+                data=config.to_client_dict(endpoint),
+            )
+            await self.wire.send_upload_op(op)
+
+        asyncio.create_task(send_config())
+
+    @property
+    def uploads(self) -> dict[str, list["UploadEntry"]]:
+        """
+        Access current upload entries grouped by upload name.
+
+        Returns:
+            Dictionary mapping upload names to lists of UploadEntry objects
+
+        Example:
+            # In template
+            {% for entry in this.uploads.images %}
+                <div>{{ entry.client_name }} - {{ entry.progress }}%</div>
+            {% endfor %}
+        """
+
+        if self._upload_registry is None:
+            return {}
+
+        return {name: self._upload_registry.get_entries(name) for name in self._upload_registry.configs}
+
+    async def cancel_upload(self, name: str, ref: str) -> None:
+        """
+        Cancel an upload entry.
+
+        Args:
+            name: Upload field name
+            ref: Entry reference from the client
+
+        Example:
+            async def cancel_image(self, ref: str):
+                await self.cancel_upload("images", ref)
+        """
+        from ..features.uploads import UploadOp
+
+        if self._upload_registry:
+            entry = self._upload_registry.cancel_entry(name, ref)
+            if entry:
+                op = UploadOp(op="cancel", upload=name, ref=ref)
+                await self.wire.send_upload_op(op)
+
+    async def consume_uploads(
+        self,
+        name: str,
+    ) -> t.AsyncIterator["ConsumedUpload"]:
+        """
+        Consume completed uploads for processing.
+
+        Yields ConsumedUpload objects for each completed file.
+        Files are cleaned up after the context exits.
+
+        Args:
+            name: Upload field name to consume
+
+        Yields:
+            ConsumedUpload objects with save methods
+
+        Example:
+            async def save_images(self):
+                async for upload in self.consume_uploads("images"):
+                    path = await upload.save_to("uploads/images/")
+                    # Create model instance with path
+        """
+        from ..features.uploads import ConsumedUpload
+
+        if not self._upload_registry:
+            return
+
+        entries = self._upload_registry.get_completed_entries(name)
+        for entry in entries:
+            yield ConsumedUpload(entry)
 
     # Internal render operations
 

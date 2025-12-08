@@ -65,11 +65,15 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             if id := decoded_state.get("id"):
                 await self.component_remove(id)
         else:
+            # Register upload registry if component has uploads
+            await self._register_upload_registry(component)
             await self.send_render(component)
             await self.after_mutation_chores()
 
     async def command_leave(self, id):
         log.debug(f"<<< LEAVE {id}")
+        # Unregister upload registry
+        await self._unregister_upload_registry(id)
         self.repo.remove(id)
 
     async def command_query_string(self, qs: str):
@@ -83,6 +87,124 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         if component:
             await self.send_render(component)
             await self.after_mutation_chores()
+
+    # Upload commands
+
+    async def command_upload_register(
+        self,
+        id: str,
+        name: str,
+        entries: list[dict[str, t.Any]],
+    ):
+        """Handle upload registration from client."""
+        from .features.uploads import UploadEntry, UploadOp, UploadStatus
+
+        log.debug(f"<<< UPLOAD-REGISTER {id} {name} ({len(entries)} entries)")
+
+        component = self.repo.get(id)
+        if not component:
+            return
+
+        registry = getattr(component, "_upload_registry", None)
+        if not registry or name not in registry.configs:
+            return
+
+        for entry_data in entries:
+            entry = UploadEntry(
+                ref=entry_data["ref"],
+                upload_name=name,
+                client_name=entry_data["name"],
+                client_size=entry_data["size"],
+                client_type=entry_data["type"],
+            )
+
+            try:
+                token = registry.add_entry(name, entry)
+
+                if entry.status == UploadStatus.ERROR:
+                    # Validation failed
+                    await self.send_command(
+                        "upload_op",
+                        UploadOp(
+                            op="error",
+                            upload=name,
+                            ref=entry.ref,
+                            data={"errors": entry.errors},
+                        ).to_payload(),
+                    )
+                else:
+                    # Send token for HTTP upload
+                    config = registry.configs[name]
+                    await self.send_command(
+                        "upload_op",
+                        UploadOp(
+                            op="registered",
+                            upload=name,
+                            ref=entry.ref,
+                            data={
+                                "token": token,
+                                "chunk_size": config.chunk_size,
+                            },
+                        ).to_payload(),
+                    )
+            except ValueError as e:
+                await self.send_command(
+                    "upload_op",
+                    UploadOp(
+                        op="error",
+                        upload=name,
+                        ref=entry_data["ref"],
+                        data={"errors": [str(e)]},
+                    ).to_payload(),
+                )
+
+        # Re-render to update uploads property
+        await self.send_render(component)
+
+    async def command_upload_cancel(self, id: str, name: str, ref: str):
+        """Handle upload cancellation from client."""
+        log.debug(f"<<< UPLOAD-CANCEL {id} {name} {ref}")
+
+        component = self.repo.get(id)
+        if component:
+            await component.cancel_upload(name, ref)
+            await self.send_render(component)
+
+    async def command_upload_complete(self, id: str, name: str, ref: str):
+        """Handle upload completion notification from client."""
+        from .features.uploads import UploadOp, UploadStatus
+
+        log.debug(f"<<< UPLOAD-COMPLETE {id} {name} {ref}")
+
+        component = self.repo.get(id)
+        if not component:
+            return
+
+        registry = getattr(component, "_upload_registry", None)
+        if not registry:
+            return
+
+        entry = registry.get_entry(name, ref)
+        if entry:
+            entry.status = UploadStatus.COMPLETED
+            entry.progress = 100
+
+            # Notify client
+            await self.send_command(
+                "upload_op",
+                UploadOp(
+                    op="complete",
+                    upload=name,
+                    ref=ref,
+                ).to_payload(),
+            )
+
+            # Call optional callback on component
+            if hasattr(component, "on_upload_complete"):
+                await component.on_upload_complete(name, entry)
+
+            # Re-render
+            await self.send_render(component)
 
     # Component commands
 
@@ -126,6 +248,69 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
     async def component_url_change(self, command: str, url: str):
         log.debug(f'>>> URL {command.upper()} "{url}"')
         await self.send_command("url_change", {"url": url, "command": command})
+
+    async def component_upload_op(self, op: str, upload: str, ref: str | None = None, **data):
+        """Handle upload operation from component."""
+        log.debug(f">>> UPLOAD-OP {op.upper()} {upload}")
+        payload = {"op": op, "upload": upload}
+        if ref:
+            payload["ref"] = ref
+        payload.update(data)
+        await self.send_command("upload_op", payload)
+
+    # Channel layer messages for uploads
+
+    async def upload_progress(self, event: dict[str, t.Any]):
+        """Handle progress from channel layer (sent by HTTP upload view)."""
+        log.debug(f">>> UPLOAD-PROGRESS {event['upload']} {event['ref']} {event['progress']}%")
+        await self.send_command(
+            "upload_op",
+            {
+                "op": "progress",
+                "upload": event["upload"],
+                "ref": event["ref"],
+                "progress": event["progress"],
+                "bytes_received": event.get("bytes_received", 0),
+            },
+        )
+
+    async def upload_error(self, event: dict[str, t.Any]):
+        """Handle error from channel layer (sent by HTTP upload view)."""
+        log.debug(f">>> UPLOAD-ERROR {event['upload']} {event['ref']}")
+        await self.send_command(
+            "upload_op",
+            {
+                "op": "error",
+                "upload": event["upload"],
+                "ref": event["ref"],
+                "errors": event.get("errors", []),
+            },
+        )
+
+    # Upload registry management
+
+    async def _register_upload_registry(self, component) -> None:
+        """Register component's upload registry for HTTP access."""
+        from .views import register_upload_registry
+
+        registry = getattr(component, "_upload_registry", None)
+        if registry and self.channel_layer and self.channel_name:
+            register_upload_registry(component.id, registry)
+            # Subscribe to upload progress group
+            group_name = f"wireview_upload_{component.id}"
+            await self.channel_layer.group_add(group_name, self.channel_name)
+            log.debug(f"Subscribed to upload group: {group_name}")
+
+    async def _unregister_upload_registry(self, component_id: str) -> None:
+        """Unregister component's upload registry."""
+        from .views import unregister_upload_registry
+
+        unregister_upload_registry(component_id)
+        if self.channel_layer and self.channel_name:
+            # Unsubscribe from upload progress group
+            group_name = f"wireview_upload_{component_id}"
+            await self.channel_layer.group_discard(group_name, self.channel_name)
+            log.debug(f"Unsubscribed from upload group: {group_name}")
 
     # Incoming messages from subscriptions
 

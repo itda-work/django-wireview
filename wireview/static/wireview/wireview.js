@@ -223,9 +223,54 @@ class ServerConnection {
         this._handleStreamOp(op, stream, items, at);
         break;
 
+      case "upload_op":
+        this._handleUploadOp(payload);
+        break;
+
       default:
         console.warn(`[wireview] Unknown command "${command}"`, payload);
     }
+  }
+
+  /**
+   * Handle upload operations from server.
+   * @param {Object} payload - Upload operation payload
+   * @private
+   */
+  _handleUploadOp(payload) {
+    const { op, upload, ref, ...data } = payload;
+
+    // Find the component that owns this upload
+    for (const [componentId, component] of Object.entries(this.components)) {
+      const manager = uploadManagers[componentId];
+      if (manager && manager.configs[upload]) {
+        switch (op) {
+          case "config":
+            manager.configure(upload, data);
+            break;
+          case "registered":
+            manager.onRegistered(upload, ref, data.token, data.chunk_size);
+            break;
+          case "progress":
+            manager.onProgress(upload, ref, data.progress, data.bytes_received);
+            break;
+          case "complete":
+            manager.onComplete(upload, ref);
+            break;
+          case "error":
+            manager.onError(upload, ref, data.errors || []);
+            break;
+          case "cancel":
+            manager.onCancel(upload, ref);
+            break;
+        }
+        return;
+      }
+    }
+
+    // If no manager found, maybe it's a config for a component that just joined
+    // Store it for later
+    debugLog("upload", `No manager for upload op: ${op} ${upload}`);
   }
 
   /**
@@ -626,6 +671,435 @@ class WireviewComponent {
   }
 }
 
+// ============================================================================
+// Upload Manager
+// ============================================================================
+
+/**
+ * @typedef {Object} UploadConfig
+ * @property {string[]} accept - Accepted file extensions
+ * @property {number} max_entries - Maximum concurrent uploads
+ * @property {number} max_file_size - Max file size in bytes
+ * @property {number} chunk_size - Chunk size for uploads
+ * @property {boolean} auto_upload - Auto-start uploads
+ * @property {string} endpoint - HTTP upload endpoint
+ */
+
+/**
+ * @typedef {Object} UploadEntry
+ * @property {string} ref - Unique reference
+ * @property {File} file - The File object
+ * @property {string} status - Upload status
+ * @property {number} progress - 0-100
+ * @property {string[]} errors - Error messages
+ * @property {string|null} token - Upload token (from server)
+ * @property {AbortController|null} controller - For cancellation
+ */
+
+/** @type {Object<string, UploadManager>} */
+const uploadManagers = {};
+
+/**
+ * Manages file uploads for a component.
+ */
+class UploadManager {
+  /**
+   * @param {string} componentId
+   */
+  constructor(componentId) {
+    this.componentId = componentId;
+    /** @type {Object<string, UploadConfig>} */
+    this.configs = {};
+    /** @type {Object<string, Object<string, UploadEntry>>} */
+    this.entries = {};
+  }
+
+  /**
+   * Configure an upload field.
+   * @param {string} name
+   * @param {UploadConfig} config
+   */
+  configure(name, config) {
+    this.configs[name] = config;
+    this.entries[name] = this.entries[name] || {};
+    debugLog("upload", `Configured upload: ${name}`, config);
+  }
+
+  /**
+   * Add files to an upload field.
+   * @param {string} name - Upload field name
+   * @param {FileList|File[]} files - Files to upload
+   */
+  addFiles(name, files) {
+    const config = this.configs[name];
+    if (!config) {
+      console.error(`[wireview] Unknown upload: ${name}`);
+      return;
+    }
+
+    const newEntries = [];
+    for (const file of Array.from(files)) {
+      // Client-side validation
+      const errors = this._validateFile(file, config);
+
+      const ref = this._generateRef();
+      /** @type {UploadEntry} */
+      const entry = {
+        ref: ref,
+        file: file,
+        status: errors.length ? "error" : "pending",
+        progress: 0,
+        errors: errors,
+        token: null,
+        controller: null,
+      };
+
+      this.entries[name][ref] = entry;
+      newEntries.push({
+        ref: ref,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+      });
+    }
+
+    // Register with server
+    if (newEntries.length > 0) {
+      connection._send("upload_register", {
+        id: this.componentId,
+        name: name,
+        entries: newEntries,
+      });
+    }
+
+    // Dispatch event for UI updates
+    this._dispatchEvent("upload:added", { upload: name });
+  }
+
+  /**
+   * Handle registered response from server.
+   * @param {string} name
+   * @param {string} ref
+   * @param {string} token
+   * @param {number} chunkSize
+   */
+  onRegistered(name, ref, token, chunkSize) {
+    const entry = this.entries[name]?.[ref];
+    if (!entry) return;
+
+    entry.token = token;
+    entry.status = "registered";
+    debugLog("upload", `Registered: ${name}/${ref}`);
+
+    const config = this.configs[name];
+    if (config?.auto_upload) {
+      this.startUpload(name, ref);
+    }
+  }
+
+  /**
+   * Handle progress update from server.
+   * @param {string} name
+   * @param {string} ref
+   * @param {number} progress
+   * @param {number} bytesReceived
+   */
+  onProgress(name, ref, progress, bytesReceived) {
+    const entry = this.entries[name]?.[ref];
+    if (entry) {
+      entry.progress = progress;
+      this._dispatchEvent("upload:progress", { upload: name, ref, progress });
+    }
+  }
+
+  /**
+   * Handle upload complete from server.
+   * @param {string} name
+   * @param {string} ref
+   */
+  onComplete(name, ref) {
+    const entry = this.entries[name]?.[ref];
+    if (entry) {
+      entry.status = "completed";
+      entry.progress = 100;
+      this._dispatchEvent("upload:complete", { upload: name, ref });
+    }
+  }
+
+  /**
+   * Handle error from server.
+   * @param {string} name
+   * @param {string} ref
+   * @param {string[]} errors
+   */
+  onError(name, ref, errors) {
+    const entry = this.entries[name]?.[ref];
+    if (entry) {
+      entry.status = "error";
+      entry.errors = errors;
+      this._dispatchEvent("upload:error", { upload: name, ref, errors });
+    }
+  }
+
+  /**
+   * Handle cancel from server.
+   * @param {string} name
+   * @param {string} ref
+   */
+  onCancel(name, ref) {
+    const entry = this.entries[name]?.[ref];
+    if (entry) {
+      entry.status = "cancelled";
+      entry.controller?.abort();
+      this._dispatchEvent("upload:cancel", { upload: name, ref });
+    }
+  }
+
+  /**
+   * Start uploading an entry.
+   * @param {string} name
+   * @param {string} ref
+   */
+  async startUpload(name, ref) {
+    const config = this.configs[name];
+    const entry = this.entries[name]?.[ref];
+    if (!entry || !entry.token || !config) return;
+
+    entry.status = "uploading";
+    entry.controller = new AbortController();
+
+    const chunkSize = config.chunk_size;
+    const file = entry.file;
+    const totalChunks = Math.ceil(file.size / chunkSize);
+
+    debugLog("upload", `Starting upload: ${name}/${ref} (${totalChunks} chunks)`);
+
+    try {
+      for (let i = 0; i < totalChunks; i++) {
+        if (entry.status === "cancelled") break;
+
+        const start = i * chunkSize;
+        const end = Math.min(start + chunkSize, file.size);
+        const chunk = file.slice(start, end);
+
+        const response = await fetch(config.endpoint, {
+          method: "POST",
+          headers: {
+            "X-Upload-Token": entry.token,
+            "X-Chunk-Index": String(i),
+            "X-Total-Chunks": String(totalChunks),
+            "X-Entry-Ref": ref,
+            "Content-Type": "application/octet-stream",
+          },
+          body: chunk,
+          signal: entry.controller.signal,
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || "Upload failed");
+        }
+
+        const result = await response.json();
+        entry.progress = result.progress;
+
+        // Update progress in UI
+        this._dispatchEvent("upload:progress", {
+          upload: name,
+          ref,
+          progress: result.progress,
+        });
+
+        if (result.complete) {
+          // Notify server that upload is complete
+          connection._send("upload_complete", {
+            id: this.componentId,
+            name: name,
+            ref: ref,
+          });
+          entry.status = "completed";
+          entry.progress = 100;
+        }
+      }
+    } catch (error) {
+      if (error.name === "AbortError") {
+        entry.status = "cancelled";
+        debugLog("upload", `Cancelled: ${name}/${ref}`);
+      } else {
+        entry.status = "error";
+        entry.errors.push(error.message);
+        debugLog("upload", `Error: ${name}/${ref}`, error.message);
+      }
+    }
+  }
+
+  /**
+   * Cancel an upload.
+   * @param {string} name
+   * @param {string} ref
+   */
+  cancel(name, ref) {
+    const entry = this.entries[name]?.[ref];
+    if (entry) {
+      entry.controller?.abort();
+      entry.status = "cancelled";
+      connection._send("upload_cancel", {
+        id: this.componentId,
+        name: name,
+        ref: ref,
+      });
+    }
+  }
+
+  /**
+   * Get preview URL for an image file.
+   * @param {string} name
+   * @param {string} ref
+   * @returns {string|null}
+   */
+  getPreviewUrl(name, ref) {
+    const entry = this.entries[name]?.[ref];
+    if (entry && entry.file.type.startsWith("image/")) {
+      return URL.createObjectURL(entry.file);
+    }
+    return null;
+  }
+
+  /**
+   * Get all entries for an upload.
+   * @param {string} name
+   * @returns {UploadEntry[]}
+   */
+  getEntries(name) {
+    return Object.values(this.entries[name] || {});
+  }
+
+  /**
+   * Validate a file against config.
+   * @param {File} file
+   * @param {UploadConfig} config
+   * @returns {string[]} Error messages
+   * @private
+   */
+  _validateFile(file, config) {
+    const errors = [];
+
+    // Check extension
+    if (config.accept && config.accept.length > 0) {
+      const ext = "." + file.name.split(".").pop()?.toLowerCase();
+      const accepted = config.accept.map((a) => a.toLowerCase());
+      if (!accepted.includes(ext)) {
+        errors.push(`Invalid file type: ${ext}`);
+      }
+    }
+
+    // Check size
+    if (file.size > config.max_file_size) {
+      errors.push(`File too large: ${this._formatSize(file.size)}`);
+    }
+
+    return errors;
+  }
+
+  /**
+   * Generate a unique upload reference.
+   * @returns {string}
+   * @private
+   */
+  _generateRef() {
+    return `upload-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Format file size for display.
+   * @param {number} bytes
+   * @returns {string}
+   * @private
+   */
+  _formatSize(bytes) {
+    const units = ["B", "KB", "MB", "GB"];
+    let i = 0;
+    while (bytes >= 1024 && i < units.length - 1) {
+      bytes /= 1024;
+      i++;
+    }
+    return `${bytes.toFixed(1)} ${units[i]}`;
+  }
+
+  /**
+   * Dispatch a custom event on the component element.
+   * @param {string} eventName
+   * @param {Object} detail
+   * @private
+   */
+  _dispatchEvent(eventName, detail) {
+    const el = document.getElementById(this.componentId);
+    if (el) {
+      el.dispatchEvent(
+        new CustomEvent(eventName, {
+          detail: { ...detail, componentId: this.componentId },
+          bubbles: true,
+        })
+      );
+    }
+  }
+}
+
+/**
+ * Get or create upload manager for a component.
+ * @param {string} componentId
+ * @returns {UploadManager}
+ */
+function getUploadManager(componentId) {
+  if (!uploadManagers[componentId]) {
+    uploadManagers[componentId] = new UploadManager(componentId);
+  }
+  return uploadManagers[componentId];
+}
+
+// Initialize drag-and-drop support
+function initUploadDropZones() {
+  document.addEventListener("dragover", (e) => {
+    const dropZone = /** @type {HTMLElement|null} */ (
+      e.target instanceof Element ? e.target.closest("[wire-upload-drop]") : null
+    );
+    if (dropZone) {
+      e.preventDefault();
+      dropZone.classList.add("wireview-drag-over");
+    }
+  });
+
+  document.addEventListener("dragleave", (e) => {
+    const dropZone = /** @type {HTMLElement|null} */ (
+      e.target instanceof Element ? e.target.closest("[wire-upload-drop]") : null
+    );
+    if (dropZone && !dropZone.contains(/** @type {Node|null} */ (e.relatedTarget))) {
+      dropZone.classList.remove("wireview-drag-over");
+    }
+  });
+
+  document.addEventListener("drop", (e) => {
+    const dropZone = /** @type {HTMLElement|null} */ (
+      e.target instanceof Element ? e.target.closest("[wire-upload-drop]") : null
+    );
+    if (dropZone) {
+      e.preventDefault();
+      dropZone.classList.remove("wireview-drag-over");
+
+      const uploadName = dropZone.getAttribute("wire-upload-drop");
+      const componentEl = dropZone.closest("[wireview-component]");
+
+      if (uploadName && componentEl && e.dataTransfer?.files.length) {
+        const manager = getUploadManager(componentEl.id);
+        manager.addFiles(uploadName, e.dataTransfer.files);
+      }
+    }
+  });
+}
+
+// Initialize on load
+initUploadDropZones();
+
 connection.open();
 /** @type {ReturnType<typeof setTimeout>|undefined} */
 var debounceTimeout = undefined;
@@ -951,6 +1425,93 @@ window.wireview = {
     for (const cmd of commands) {
       await executeCommand(cmd, element);
     }
+  },
+
+  // ============================================================================
+  // Upload API
+  // ============================================================================
+
+  /**
+   * Get upload manager for a component.
+   * @param {HTMLElement} element - Element within the component
+   * @returns {UploadManager|null}
+   */
+  getUploadManager(element) {
+    const component = element.closest("[wireview-component]");
+    if (component) {
+      return getUploadManager(component.id);
+    }
+    return null;
+  },
+
+  /**
+   * Trigger file selection for an upload.
+   * @param {HTMLElement} element - Element within the component
+   * @param {string} uploadName - Name of the upload field
+   */
+  selectFiles(element, uploadName) {
+    const manager = this.getUploadManager(element);
+    if (!manager) return;
+
+    const config = manager.configs[uploadName];
+    if (!config) {
+      console.warn(`[wireview] Unknown upload: ${uploadName}`);
+      return;
+    }
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = config.accept.join(",");
+    input.multiple = config.max_entries > 1;
+
+    input.onchange = () => {
+      if (input.files?.length) {
+        manager.addFiles(uploadName, input.files);
+      }
+    };
+
+    input.click();
+  },
+
+  /**
+   * Add files to an upload field.
+   * @param {HTMLElement} element - Element within the component
+   * @param {string} uploadName - Name of the upload field
+   * @param {FileList|File[]} files - Files to upload
+   */
+  addFiles(element, uploadName, files) {
+    const manager = this.getUploadManager(element);
+    if (manager) {
+      manager.addFiles(uploadName, files);
+    }
+  },
+
+  /**
+   * Cancel an upload.
+   * @param {HTMLElement} element - Element within the component
+   * @param {string} uploadName - Name of the upload field
+   * @param {string} ref - Upload reference
+   */
+  cancelUpload(element, uploadName, ref) {
+    const manager = this.getUploadManager(element);
+    if (manager) {
+      manager.cancel(uploadName, ref);
+    }
+  },
+
+  /**
+   * Get preview URL for an image upload.
+   * @param {HTMLElement} element - Element within the component
+   * @param {string} uploadName - Name of the upload field
+   * @param {string} ref - Upload reference
+   * @returns {string|null}
+   */
+  getPreviewUrl(element, uploadName, ref) {
+    const manager = this.getUploadManager(element);
+    if (manager) {
+      return manager.getPreviewUrl(uploadName, ref);
+    }
+    return null;
   },
 
   /**

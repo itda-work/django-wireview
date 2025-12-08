@@ -23,30 +23,18 @@ def tag_header(context):
     component: Component = context["this"]
     repo: ComponentRepository = context["wireview_repository"]
     return format_html(
-        (
-            'id="{id}" '
-            'data-name="{name}" '
-            'data-state="{state}" '
-            'data-is-live="{is_live}" '
-            "wireview-component"
-        ),
+        ('id="{id}" ' 'data-name="{name}" ' 'data-state="{state}" ' 'data-is-live="{is_live}" ' "wireview-component"),
         id=component.id,
         name=component._name,
         is_live=str(repo.is_live).lower(),
-        state=Signer().sign(
-            component.model_dump_json(exclude=component._exclude_fields)
-        ),
+        state=Signer().sign(component.model_dump_json(exclude=component._exclude_fields)),
     )
 
 
 @register.simple_tag(takes_context=True)
 def component(context, _name, **kwargs):
     if (repo := context.get("wireview_repository")) is None:
-        qs = (
-            (request := context.get("request"))
-            and request.META["QUERY_STRING"]
-            or ""
-        )
+        qs = (request := context.get("request")) and request.META["QUERY_STRING"] or ""
         repo = ComponentRepository(
             is_live=False,
             user=context.get("user"),
@@ -89,12 +77,8 @@ def on(context, _event_and_modifiers, _command, **kwargs: t.Any):
                 event_name = cmd.get("event")
                 if event_name:
                     handler = getattr(component, event_name, None)
-                    assert (
-                        handler
-                    ), f"Missing handler: {component._name}.{event_name}"
-                    assert callable(
-                        handler
-                    ), f"Not callable: {component._name}.{event_name}"
+                    assert handler, f"Missing handler: {component._name}.{event_name}"
+                    assert callable(handler), f"Not callable: {component._name}.{event_name}"
 
     event, code = transpile(_event_and_modifiers, _command, kwargs)
     return format_html('{event}="{code}"', event=event, code=code)
@@ -158,3 +142,100 @@ class ClassNode(CondNode):
     def render(self, *args, **kwargs):
         text = super().render(*args, **kwargs)
         return f'class="{text}"'
+
+
+# Upload template tags
+
+
+@register.simple_tag(takes_context=True)
+def upload_input(context, name: str, **attrs):
+    """
+    Render a file input for uploads.
+
+    Args:
+        name: Upload field name (matches allow_upload name)
+        **attrs: Additional HTML attributes (class, id, etc.)
+
+    Example:
+        {% upload_input "images" class="hidden" id="image-input" %}
+
+    Note: The component must call allow_upload(name, ...) in joined()
+    for this to work properly.
+    """
+    component: Component | None = context.get("this")
+    if not component:
+        return ""
+
+    registry = getattr(component, "_upload_registry", None)
+    if not registry or name not in registry.configs:
+        return ""
+
+    config = registry.configs[name]
+
+    # Build attributes
+    attrs_parts = []
+    for key, value in attrs.items():
+        attrs_parts.append(f'{key}="{value}"')
+    attrs_str = " ".join(attrs_parts)
+
+    accept = ",".join(config.accept) if config.accept else ""
+    multiple = "multiple" if config.max_entries > 1 else ""
+
+    return format_html(
+        '<input type="file" wire-upload="{name}" accept="{accept}" {multiple} {attrs} '
+        "onchange=\"wireview.addFiles(this, '{name}', this.files)\">",
+        name=name,
+        accept=accept,
+        multiple=multiple,
+        attrs=attrs_str,
+    )
+
+
+@register.simple_tag(takes_context=True)
+def upload_drop_zone(context, name: str):
+    """
+    Return attribute for making an element a drop zone.
+
+    Args:
+        name: Upload field name (matches allow_upload name)
+
+    Example:
+        <div {% upload_drop_zone "images" %} class="drop-area">
+            Drop files here
+        </div>
+
+    The drop zone will have 'wireview-drag-over' class added when
+    a file is dragged over it.
+    """
+    return format_html('wire-upload-drop="{name}"', name=name)
+
+
+@register.simple_tag(takes_context=True)
+def upload_button(context, name: str, **attrs):
+    """
+    Render a button that triggers file selection.
+
+    Args:
+        name: Upload field name (matches allow_upload name)
+        **attrs: Additional HTML attributes
+
+    Example:
+        {% upload_button "images" class="btn btn-primary" %}
+            Select Images
+        {% endupload_button %}
+    """
+    component: Component | None = context.get("this")
+    if not component:
+        return ""
+
+    # Build attributes
+    attrs_parts = []
+    for key, value in attrs.items():
+        attrs_parts.append(f'{key}="{value}"')
+    attrs_str = " ".join(attrs_parts)
+
+    return format_html(
+        '<button type="button" {attrs} onclick="wireview.selectFiles(this, \'{name}\')">',
+        name=name,
+        attrs=attrs_str,
+    )

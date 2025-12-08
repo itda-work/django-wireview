@@ -1,0 +1,235 @@
+"""HTTP upload endpoint for wireview file uploads.
+
+This module provides the HTTP endpoint for chunked file uploads.
+Binary data is sent here (not through WebSocket JSON).
+Progress updates are sent back to the client via the channel layer.
+"""
+
+from __future__ import annotations
+
+import logging
+import typing as t
+from pathlib import Path
+
+from asgiref.sync import sync_to_async
+from channels.layers import get_channel_layer
+from django.http import HttpRequest, JsonResponse
+from django.utils.decorators import method_decorator
+from django.views import View
+from django.views.decorators.csrf import csrf_exempt
+
+from .features.uploads import (
+    UploadRegistry,
+    UploadStatus,
+    create_temp_file,
+    validate_magic_bytes,
+)
+
+log = logging.getLogger("wireview.uploads")
+
+# Global registry mapping component IDs to their upload registries
+# This is populated by the consumer when components with uploads join
+_upload_registries: dict[str, UploadRegistry] = {}
+
+
+def register_upload_registry(component_id: str, registry: UploadRegistry) -> None:
+    """Register a component's upload registry for HTTP access.
+
+    Called by the consumer when a component with uploads joins.
+
+    Args:
+        component_id: ID of the component
+        registry: The component's upload registry
+    """
+    _upload_registries[component_id] = registry
+    log.debug(f"Registered upload registry for component {component_id}")
+
+
+def unregister_upload_registry(component_id: str) -> None:
+    """Unregister a component's upload registry.
+
+    Called when a component leaves or is destroyed.
+
+    Args:
+        component_id: ID of the component
+    """
+    if component_id in _upload_registries:
+        registry = _upload_registries.pop(component_id)
+        registry.cleanup_all()
+        log.debug(f"Unregistered upload registry for component {component_id}")
+
+
+def get_upload_registry(component_id: str) -> UploadRegistry | None:
+    """Get a component's upload registry.
+
+    Args:
+        component_id: ID of the component
+
+    Returns:
+        The registry if found, None otherwise
+    """
+    return _upload_registries.get(component_id)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class UploadView(View):
+    """HTTP endpoint for chunked file uploads.
+
+    Handles binary chunk uploads and sends progress via channel layer.
+
+    URL: /__wireview_upload__/<component_id>/<upload_name>/
+
+    Headers:
+        X-Upload-Token: Signed upload token
+        X-Chunk-Index: 0-based chunk index
+        X-Total-Chunks: Total number of chunks
+        X-Entry-Ref: Entry reference
+
+    Body:
+        Raw binary chunk data
+    """
+
+    async def post(self, request: HttpRequest, component_id: str, upload_name: str) -> JsonResponse:
+        """Handle chunk upload."""
+        # Get headers
+        token = request.headers.get("X-Upload-Token", "")
+        chunk_index = int(request.headers.get("X-Chunk-Index", "0"))
+        total_chunks = int(request.headers.get("X-Total-Chunks", "1"))
+        entry_ref = request.headers.get("X-Entry-Ref", "")
+
+        log.debug(f"Upload chunk {chunk_index + 1}/{total_chunks} for {component_id}/{upload_name}/{entry_ref}")
+
+        # Get registry
+        registry = get_upload_registry(component_id)
+        if not registry:
+            log.warning(f"Upload registry not found for component {component_id}")
+            return JsonResponse({"error": "Component not found"}, status=404)
+
+        # Validate token
+        validation = registry.validate_token(token)
+        if not validation:
+            log.warning(f"Invalid upload token for {component_id}/{upload_name}")
+            return JsonResponse({"error": "Invalid token"}, status=403)
+
+        comp_id, config_name, ref = validation
+        if comp_id != component_id or config_name != upload_name or ref != entry_ref:
+            log.warning(f"Token mismatch for {component_id}/{upload_name}/{entry_ref}")
+            return JsonResponse({"error": "Token mismatch"}, status=403)
+
+        # Get entry
+        entry = registry.get_entry(upload_name, ref)
+        if not entry:
+            log.warning(f"Upload entry not found: {upload_name}/{ref}")
+            return JsonResponse({"error": "Entry not found"}, status=404)
+
+        if entry.status == UploadStatus.CANCELLED:
+            log.info(f"Upload cancelled: {upload_name}/{ref}")
+            return JsonResponse({"error": "Upload cancelled"}, status=410)
+
+        # Get chunk data
+        chunk_data = request.body
+
+        # Initialize temp file on first chunk
+        if entry.temp_path is None:
+            entry.temp_path = create_temp_file(ref)
+            entry.status = UploadStatus.UPLOADING
+            log.debug(f"Created temp file: {entry.temp_path}")
+
+        # Write chunk to temp file
+        await self._write_chunk(entry.temp_path, chunk_data)
+
+        entry.bytes_received += len(chunk_data)
+        entry.chunk_count += 1
+        entry.progress = min(99, int((entry.bytes_received / entry.client_size) * 100))
+
+        # Send progress via channel layer
+        await self._send_progress(component_id, upload_name, entry)
+
+        # Check if this is the last chunk
+        is_last_chunk = chunk_index >= total_chunks - 1
+
+        if is_last_chunk or entry.bytes_received >= entry.client_size:
+            # Validate magic bytes
+            ext = Path(entry.client_name).suffix.lower()
+            if not validate_magic_bytes(entry.temp_path, ext):
+                entry.status = UploadStatus.ERROR
+                entry.errors.append("File content doesn't match file type")
+                await self._send_error(component_id, upload_name, entry)
+                return JsonResponse(
+                    {"error": "Invalid file content", "progress": entry.progress},
+                    status=400,
+                )
+
+            entry.status = UploadStatus.COMPLETED
+            entry.progress = 100
+            log.info(
+                f"Upload complete: {upload_name}/{ref} " f"({entry.bytes_received} bytes, {entry.chunk_count} chunks)"
+            )
+
+        return JsonResponse(
+            {
+                "status": "ok",
+                "progress": entry.progress,
+                "bytes_received": entry.bytes_received,
+                "complete": entry.status == UploadStatus.COMPLETED,
+            }
+        )
+
+    @staticmethod
+    @sync_to_async
+    def _write_chunk(path: Path, data: bytes) -> None:
+        """Write chunk data to temp file."""
+        with open(path, "ab") as f:
+            f.write(data)
+
+    @staticmethod
+    async def _send_progress(component_id: str, upload_name: str, entry: "UploadEntry") -> None:
+        """Send progress update via channel layer."""
+        channel_layer = get_channel_layer()
+        if not channel_layer:
+            return
+
+        # Find the channel name for this component
+        # We need to broadcast to a group that the consumer is subscribed to
+        group_name = f"wireview_upload_{component_id}"
+
+        try:
+            await channel_layer.group_send(
+                group_name,
+                {
+                    "type": "upload.progress",
+                    "upload": upload_name,
+                    "ref": entry.ref,
+                    "progress": entry.progress,
+                    "bytes_received": entry.bytes_received,
+                },
+            )
+        except Exception as e:
+            log.warning(f"Failed to send upload progress: {e}")
+
+    @staticmethod
+    async def _send_error(component_id: str, upload_name: str, entry: "UploadEntry") -> None:
+        """Send error via channel layer."""
+        channel_layer = get_channel_layer()
+        if not channel_layer:
+            return
+
+        group_name = f"wireview_upload_{component_id}"
+
+        try:
+            await channel_layer.group_send(
+                group_name,
+                {
+                    "type": "upload.error",
+                    "upload": upload_name,
+                    "ref": entry.ref,
+                    "errors": entry.errors,
+                },
+            )
+        except Exception as e:
+            log.warning(f"Failed to send upload error: {e}")
+
+
+# Type hint for UploadEntry
+if t.TYPE_CHECKING:
+    from .features.uploads import UploadEntry

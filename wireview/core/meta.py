@@ -23,6 +23,7 @@ if t.TYPE_CHECKING:
     from django.utils.safestring import SafeString
 
     from ..features.streams import StreamOp
+    from ..features.uploads import UploadOp
     from .component import Component
 
 if settings.USE_HMIN:
@@ -224,6 +225,10 @@ class WireviewMeta:
     async def send_stream_op(self, op: "StreamOp") -> None:
         """Send a stream operation to the client."""
         await self.send("stream_op", **op.to_payload())
+
+    async def send_upload_op(self, op: "UploadOp") -> None:
+        """Send an upload operation to the client."""
+        await self.send("upload_op", **op.to_payload())
 
     async def scroll_into_view(
         self,
