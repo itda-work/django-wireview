@@ -68,6 +68,9 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             # Register upload registry if component has uploads
             await self._register_upload_registry(component)
             await self.send_render(component)
+            # Flush pending operations queued during joined()
+            # This ensures stream(), push_js(), etc. are sent after render
+            await component.wire.flush_pending()
             await self.after_mutation_chores()
 
     async def command_leave(self, id):

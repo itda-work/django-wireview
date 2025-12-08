@@ -83,6 +83,9 @@ class WireviewMeta:
         self._last_sent_html: list[str] = []
         self._last_rendered: Rendered | None = None
         self._skip_render: bool = False
+        # Pending operations queue for joined() lifecycle
+        self._pending_mode: bool = False
+        self._pending_operations: list[tuple[str, dict[str, t.Any]]] = []
 
     def clone(self) -> WireviewMeta:
         """Create a copy of this meta instance."""
@@ -103,6 +106,28 @@ class WireviewMeta:
         self._skip_render = False
         self._last_sent_html = []
         self._last_rendered = None
+
+    def enter_pending_mode(self) -> None:
+        """Enter pending mode to queue operations during joined().
+
+        When in pending mode, all send() operations are queued instead of
+        being sent immediately. This ensures that operations like stream(),
+        push_js(), etc. are sent after the initial render is complete.
+
+        Call flush_pending() after send_render() to send all queued operations.
+        """
+        self._pending_mode = True
+
+    async def flush_pending(self) -> None:
+        """Flush all pending operations after render is complete.
+
+        This should be called after send_render() to ensure all operations
+        queued during joined() are sent in the correct order.
+        """
+        self._pending_mode = False
+        for command, kwargs in self._pending_operations:
+            await self._do_send(command, **kwargs)
+        self._pending_operations.clear()
 
     async def destroy(self, component_id: str) -> None:
         """Destroy a component and notify the client."""
@@ -263,7 +288,18 @@ class WireviewMeta:
         await self.send("dispatch_event", command=_f.__name__, id=_id, args=args, kwargs=kwargs)
 
     async def send(self, _command: str, **kwargs: t.Any) -> None:
-        """Send a command to the current channel."""
+        """Send a command to the current channel.
+
+        If in pending mode (during joined() lifecycle), the command is queued
+        and will be sent when flush_pending() is called after render.
+        """
+        if self._pending_mode:
+            self._pending_operations.append((_command, kwargs))
+        else:
+            await self._do_send(_command, **kwargs)
+
+    async def _do_send(self, _command: str, **kwargs: t.Any) -> None:
+        """Actually send a command to the current channel."""
         if self.channel_name:
             await self.send_to(self.channel_name, _command, **kwargs)
 

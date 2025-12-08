@@ -94,6 +94,9 @@ class ComponentRepository:
             name,
             state,
         )
+        # Enter pending mode before joined() to queue stream/push_js operations
+        # These will be flushed after send_render() in consumer
+        component.wire.enter_pending_mode()
         await component.joined()
         return component
 
