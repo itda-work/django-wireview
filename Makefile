@@ -11,12 +11,18 @@ install:
 collectstatic:
 	cd tests && uv run python manage.py collectstatic --noinput
 
-# pytest 테스트
+# pytest 테스트 (위치 인자 지원: make test tests/test_security.py)
+TEST_TARGET := $(filter-out test test-cov,$(MAKECMDGOALS))
+
 test: collectstatic
-	uv run pytest tests/ -v
+	uv run pytest $(if $(TEST_TARGET),$(TEST_TARGET),tests/) -v
 
 test-cov: collectstatic
-	uv run pytest tests/ --cov=wireview --cov-report=term-missing
+	uv run pytest $(if $(TEST_TARGET),$(TEST_TARGET),tests/) --cov=wireview --cov-report=term-missing
+
+# 위치 인자를 타겟으로 인식하지 않도록 처리
+%:
+	@:
 
 # 린트 및 타입 체크
 lint:
