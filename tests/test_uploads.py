@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from wireview import Component
 from wireview.features.uploads import (
     ConsumedUpload,
     UploadConfig,
@@ -16,6 +17,7 @@ from wireview.features.uploads import (
     generate_ref,
     validate_magic_bytes,
 )
+from wireview.testing import mount
 
 
 class TestUploadConfig:
@@ -567,3 +569,600 @@ class TestConsumedUpload:
             # Not consumed, so cleanup should happen on exit
 
         assert not path.exists()
+
+
+# =============================================================================
+# Component Upload Method Tests
+# =============================================================================
+
+
+class UploadComponent(Component):
+    """Test component with upload functionality."""
+
+    _template_name = "uploads/uploader.html"
+
+    async def joined(self):
+        """Configure uploads on join."""
+        self.allow_upload(
+            "images",
+            accept=[".jpg", ".png"],
+            max_entries=5,
+            max_file_size=5 * 1024 * 1024,
+        )
+
+    async def save_images(self):
+        """Consume and save uploaded images."""
+        saved = []
+        async for upload in self.consume_uploads("images"):
+            saved.append(upload.name)
+        return saved
+
+    async def cancel_image(self, ref: str):
+        """Cancel an upload."""
+        await self.cancel_upload("images", ref)
+
+
+class UploadComponentNoJoined(Component):
+    """Test component without auto-upload in joined."""
+
+    _template_name = "uploads/uploader.html"
+
+
+class TestComponentUploadMethods:
+    """Test Component upload methods."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_allow_upload_creates_registry(self):
+        """allow_upload should create an upload registry."""
+        view = await mount(UploadComponent)
+
+        assert hasattr(view.component, "_upload_registry")
+        assert view.component._upload_registry is not None
+        assert "images" in view.component._upload_registry.configs
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_allow_upload_config_values(self):
+        """allow_upload should store correct config values."""
+        view = await mount(UploadComponent)
+
+        config = view.component._upload_registry.configs["images"]
+        assert config.accept == [".jpg", ".png"]
+        assert config.max_entries == 5
+        assert config.max_file_size == 5 * 1024 * 1024
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_allow_upload_sends_config_message(self):
+        """allow_upload should send config to client."""
+        view = await mount(UploadComponent)
+
+        # Wait a bit for async task to complete
+        import asyncio
+
+        await asyncio.sleep(0.01)
+
+        # Check that upload_op config message was sent
+        upload_messages = [m for m in view.sent_messages if m.get("type") == "upload_op"]
+        assert len(upload_messages) >= 1
+
+        config_msg = upload_messages[0]
+        assert config_msg["op"] == "config"
+        assert config_msg["upload"] == "images"
+        assert ".jpg" in config_msg["accept"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_uploads_property_empty(self):
+        """uploads property should return empty dict when no registry."""
+        view = await mount(UploadComponentNoJoined)
+
+        uploads = view.component.uploads
+        assert uploads == {}
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_uploads_property_with_registry(self):
+        """uploads property should return entries grouped by name."""
+        view = await mount(UploadComponent)
+
+        uploads = view.component.uploads
+        assert isinstance(uploads, dict)
+        assert "images" in uploads
+        assert isinstance(uploads["images"], list)
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_uploads_property_with_entries(self):
+        """uploads property should include registered entries."""
+        view = await mount(UploadComponent)
+
+        # Manually add an entry
+        entry = UploadEntry(
+            ref="test-entry",
+            upload_name="images",
+            client_name="photo.jpg",
+            client_size=1024,
+            client_type="image/jpeg",
+        )
+        view.component._upload_registry.add_entry("images", entry)
+
+        uploads = view.component.uploads
+        assert len(uploads["images"]) == 1
+        assert uploads["images"][0].ref == "test-entry"
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_consume_uploads_empty(self):
+        """consume_uploads should yield nothing when no completed uploads."""
+        view = await mount(UploadComponent)
+
+        consumed = []
+        async for upload in view.component.consume_uploads("images"):
+            consumed.append(upload)
+
+        assert consumed == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_consume_uploads_with_completed(self):
+        """consume_uploads should yield completed entries."""
+        view = await mount(UploadComponent)
+
+        # Create temp file
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(b"test image data")
+            temp_path = Path(f.name)
+
+        try:
+            # Add a completed entry
+            entry = UploadEntry(
+                ref="test-entry",
+                upload_name="images",
+                client_name="photo.jpg",
+                client_size=15,
+                client_type="image/jpeg",
+                status=UploadStatus.COMPLETED,
+                temp_path=temp_path,
+            )
+            view.component._upload_registry.entries["images"]["test-entry"] = entry
+
+            consumed = []
+            async for upload in view.component.consume_uploads("images"):
+                consumed.append(upload.name)
+
+            assert consumed == ["photo.jpg"]
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_consume_uploads_no_registry(self):
+        """consume_uploads should handle missing registry gracefully."""
+        view = await mount(UploadComponentNoJoined)
+
+        consumed = []
+        async for upload in view.component.consume_uploads("images"):
+            consumed.append(upload)
+
+        assert consumed == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_cancel_upload(self):
+        """cancel_upload should mark entry as cancelled."""
+        view = await mount(UploadComponent)
+        view.clear_messages()
+
+        # Add an entry
+        entry = UploadEntry(
+            ref="test-entry",
+            upload_name="images",
+            client_name="photo.jpg",
+            client_size=1024,
+            client_type="image/jpeg",
+        )
+        view.component._upload_registry.add_entry("images", entry)
+
+        # Cancel it
+        await view.call("cancel_image", ref="test-entry")
+
+        # Check status
+        cancelled_entry = view.component._upload_registry.get_entry("images", "test-entry")
+        assert cancelled_entry.status == UploadStatus.CANCELLED
+
+        # Check that cancel message was sent
+        cancel_messages = [m for m in view.sent_messages if m.get("type") == "upload_op" and m.get("op") == "cancel"]
+        assert len(cancel_messages) == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_cancel_upload_no_registry(self):
+        """cancel_upload should handle missing registry gracefully."""
+        view = await mount(UploadComponentNoJoined)
+
+        # Should not raise
+        await view.component.cancel_upload("images", "nonexistent")
+
+
+# =============================================================================
+# Consumer Upload Handler Tests
+# =============================================================================
+
+
+class TestConsumerUploadHandlers:
+    """Test consumer upload command handlers."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_upload_register_creates_entries(self):
+        """command_upload_register should create entries and return tokens."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from wireview.consumer import WireviewConsumer
+
+        # Create mock consumer
+        consumer = WireviewConsumer()
+        consumer.channel_name = "test-channel"
+        consumer.channel_layer = MagicMock()
+        consumer.subscriptions = set()
+
+        # Create a component with upload registry
+        component = await mount(UploadComponent)
+        consumer.repo = MagicMock()
+        consumer.repo.get = MagicMock(return_value=component.component)
+
+        # Mock send_command and send_render
+        consumer.send_command = AsyncMock()
+        consumer.send_render = AsyncMock()
+
+        # Register uploads
+        await consumer.command_upload_register(
+            id=component.component.id,
+            name="images",
+            entries=[
+                {
+                    "ref": "upload-1",
+                    "name": "photo.jpg",
+                    "size": 1024,
+                    "type": "image/jpeg",
+                }
+            ],
+        )
+
+        # Check entry was added
+        entry = component.component._upload_registry.get_entry("images", "upload-1")
+        assert entry is not None
+        assert entry.client_name == "photo.jpg"
+        assert entry.upload_token != ""
+
+        # Check registered message was sent
+        consumer.send_command.assert_called()
+        call_args = consumer.send_command.call_args_list
+        upload_calls = [c for c in call_args if c[0][0] == "upload_op"]
+        assert len(upload_calls) >= 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_upload_register_validation_error(self):
+        """command_upload_register should handle validation errors."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from wireview.consumer import WireviewConsumer
+
+        consumer = WireviewConsumer()
+        consumer.channel_name = "test-channel"
+        consumer.channel_layer = MagicMock()
+
+        component = await mount(UploadComponent)
+        consumer.repo = MagicMock()
+        consumer.repo.get = MagicMock(return_value=component.component)
+        consumer.send_command = AsyncMock()
+        consumer.send_render = AsyncMock()
+
+        # Register with invalid file type
+        await consumer.command_upload_register(
+            id=component.component.id,
+            name="images",
+            entries=[
+                {
+                    "ref": "upload-1",
+                    "name": "document.pdf",  # Invalid type
+                    "size": 1024,
+                    "type": "application/pdf",
+                }
+            ],
+        )
+
+        # Entry should have error status
+        entry = component.component._upload_registry.get_entry("images", "upload-1")
+        assert entry.status == UploadStatus.ERROR
+        assert len(entry.errors) > 0
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_upload_cancel_handler(self):
+        """command_upload_cancel should cancel the upload."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from wireview.consumer import WireviewConsumer
+
+        consumer = WireviewConsumer()
+        consumer.channel_name = "test-channel"
+        consumer.channel_layer = MagicMock()
+
+        component = await mount(UploadComponent)
+        consumer.repo = MagicMock()
+        consumer.repo.get = MagicMock(return_value=component.component)
+        consumer.send_command = AsyncMock()
+        consumer.send_render = AsyncMock()
+
+        # Add an entry first
+        entry = UploadEntry(
+            ref="upload-1",
+            upload_name="images",
+            client_name="photo.jpg",
+            client_size=1024,
+            client_type="image/jpeg",
+        )
+        component.component._upload_registry.add_entry("images", entry)
+
+        # Cancel it
+        await consumer.command_upload_cancel(id=component.component.id, name="images", ref="upload-1")
+
+        # Check status
+        cancelled = component.component._upload_registry.get_entry("images", "upload-1")
+        assert cancelled.status == UploadStatus.CANCELLED
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_upload_complete_handler(self):
+        """command_upload_complete should mark upload as completed."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from wireview.consumer import WireviewConsumer
+
+        consumer = WireviewConsumer()
+        consumer.channel_name = "test-channel"
+        consumer.channel_layer = MagicMock()
+
+        component = await mount(UploadComponent)
+        consumer.repo = MagicMock()
+        consumer.repo.get = MagicMock(return_value=component.component)
+        consumer.send_command = AsyncMock()
+        consumer.send_render = AsyncMock()
+
+        # Add an uploading entry
+        entry = UploadEntry(
+            ref="upload-1",
+            upload_name="images",
+            client_name="photo.jpg",
+            client_size=1024,
+            client_type="image/jpeg",
+            status=UploadStatus.UPLOADING,
+        )
+        component.component._upload_registry.entries["images"]["upload-1"] = entry
+
+        # Complete it
+        await consumer.command_upload_complete(id=component.component.id, name="images", ref="upload-1")
+
+        # Check status
+        completed = component.component._upload_registry.get_entry("images", "upload-1")
+        assert completed.status == UploadStatus.COMPLETED
+        assert completed.progress == 100
+
+
+# =============================================================================
+# HTTP UploadView Tests
+# =============================================================================
+
+
+class TestUploadView:
+    """Test HTTP upload endpoint."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_upload_view_missing_registry(self):
+        """Upload view should return 404 for missing component."""
+        from django.test import AsyncRequestFactory
+
+        from wireview.views import UploadView
+
+        factory = AsyncRequestFactory()
+        request = factory.post(
+            "/__wireview_upload__/nonexistent/images/",
+            data=b"chunk data",
+            content_type="application/octet-stream",
+        )
+        request.META["HTTP_X_UPLOAD_TOKEN"] = "invalid"
+        request.META["HTTP_X_CHUNK_INDEX"] = "0"
+        request.META["HTTP_X_TOTAL_CHUNKS"] = "1"
+        request.META["HTTP_X_ENTRY_REF"] = "upload-1"
+
+        view = UploadView()
+        response = await view.post(request, "nonexistent", "images")
+
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_upload_view_invalid_token(self):
+        """Upload view should return 403 for invalid token."""
+        from django.test import AsyncRequestFactory
+
+        from wireview.views import UploadView, register_upload_registry
+
+        # Register a valid registry
+        registry = UploadRegistry("comp-123")
+        registry.allow_upload(UploadConfig(name="images"))
+        register_upload_registry("comp-123", registry)
+
+        try:
+            factory = AsyncRequestFactory()
+            request = factory.post(
+                "/__wireview_upload__/comp-123/images/",
+                data=b"chunk data",
+                content_type="application/octet-stream",
+            )
+            request.META["HTTP_X_UPLOAD_TOKEN"] = "invalid-token"
+            request.META["HTTP_X_CHUNK_INDEX"] = "0"
+            request.META["HTTP_X_TOTAL_CHUNKS"] = "1"
+            request.META["HTTP_X_ENTRY_REF"] = "upload-1"
+
+            view = UploadView()
+            response = await view.post(request, "comp-123", "images")
+
+            assert response.status_code == 403
+        finally:
+            from wireview.views import unregister_upload_registry
+
+            unregister_upload_registry("comp-123")
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_upload_view_valid_chunk(self):
+        """Upload view should accept valid chunks."""
+        from django.test import AsyncRequestFactory
+
+        from wireview.views import UploadView, register_upload_registry
+
+        # Create registry with entry
+        registry = UploadRegistry("comp-456")
+        registry.allow_upload(UploadConfig(name="images", accept=[".jpg"]))
+
+        entry = UploadEntry(
+            ref="upload-1",
+            upload_name="images",
+            client_name="photo.jpg",
+            client_size=100,
+            client_type="image/jpeg",
+        )
+        token = registry.add_entry("images", entry)
+        register_upload_registry("comp-456", registry)
+
+        try:
+            factory = AsyncRequestFactory()
+            request = factory.post(
+                "/__wireview_upload__/comp-456/images/",
+                data=b"x" * 50,  # First chunk
+                content_type="application/octet-stream",
+            )
+            request.META["HTTP_X_UPLOAD_TOKEN"] = token
+            request.META["HTTP_X_CHUNK_INDEX"] = "0"
+            request.META["HTTP_X_TOTAL_CHUNKS"] = "2"
+            request.META["HTTP_X_ENTRY_REF"] = "upload-1"
+
+            view = UploadView()
+            response = await view.post(request, "comp-456", "images")
+
+            assert response.status_code == 200
+
+            import json
+
+            data = json.loads(response.content)
+            assert data["status"] == "ok"
+            assert data["bytes_received"] == 50
+            assert entry.temp_path is not None
+            assert entry.temp_path.exists()
+        finally:
+            from wireview.views import unregister_upload_registry
+
+            unregister_upload_registry("comp-456")
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_upload_view_complete_upload(self):
+        """Upload view should mark upload as complete when all chunks received."""
+        from django.test import AsyncRequestFactory
+
+        from wireview.views import UploadView, register_upload_registry
+
+        # Create registry with entry
+        registry = UploadRegistry("comp-789")
+        registry.allow_upload(UploadConfig(name="images", accept=[".txt"]))
+
+        entry = UploadEntry(
+            ref="upload-1",
+            upload_name="images",
+            client_name="test.txt",
+            client_size=10,
+            client_type="text/plain",
+        )
+        token = registry.add_entry("images", entry)
+        register_upload_registry("comp-789", registry)
+
+        try:
+            factory = AsyncRequestFactory()
+            request = factory.post(
+                "/__wireview_upload__/comp-789/images/",
+                data=b"0123456789",  # All data in one chunk
+                content_type="application/octet-stream",
+            )
+            request.META["HTTP_X_UPLOAD_TOKEN"] = token
+            request.META["HTTP_X_CHUNK_INDEX"] = "0"
+            request.META["HTTP_X_TOTAL_CHUNKS"] = "1"
+            request.META["HTTP_X_ENTRY_REF"] = "upload-1"
+
+            view = UploadView()
+            response = await view.post(request, "comp-789", "images")
+
+            assert response.status_code == 200
+
+            import json
+
+            data = json.loads(response.content)
+            assert data["complete"] is True
+            assert entry.status == UploadStatus.COMPLETED
+        finally:
+            from wireview.views import unregister_upload_registry
+
+            unregister_upload_registry("comp-789")
+            if entry.temp_path:
+                entry.cleanup()
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_upload_view_cancelled_entry(self):
+        """Upload view should return 410 for cancelled uploads."""
+        from django.test import AsyncRequestFactory
+
+        from wireview.views import UploadView, register_upload_registry
+
+        # Create registry with cancelled entry
+        registry = UploadRegistry("comp-cancelled")
+        registry.allow_upload(UploadConfig(name="images"))
+
+        entry = UploadEntry(
+            ref="upload-1",
+            upload_name="images",
+            client_name="photo.jpg",
+            client_size=100,
+            client_type="image/jpeg",
+            status=UploadStatus.CANCELLED,
+        )
+        token = registry.add_entry("images", entry)
+        # Manually set status after adding (since add_entry validates)
+        entry.status = UploadStatus.CANCELLED
+        register_upload_registry("comp-cancelled", registry)
+
+        try:
+            factory = AsyncRequestFactory()
+            request = factory.post(
+                "/__wireview_upload__/comp-cancelled/images/",
+                data=b"chunk",
+                content_type="application/octet-stream",
+            )
+            request.META["HTTP_X_UPLOAD_TOKEN"] = token
+            request.META["HTTP_X_CHUNK_INDEX"] = "0"
+            request.META["HTTP_X_TOTAL_CHUNKS"] = "1"
+            request.META["HTTP_X_ENTRY_REF"] = "upload-1"
+
+            view = UploadView()
+            response = await view.post(request, "comp-cancelled", "images")
+
+            assert response.status_code == 410
+        finally:
+            from wireview.views import unregister_upload_registry
+
+            unregister_upload_registry("comp-cancelled")

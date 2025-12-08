@@ -91,11 +91,22 @@ class UploadView(View):
 
     async def post(self, request: HttpRequest, component_id: str, upload_name: str) -> JsonResponse:
         """Handle chunk upload."""
-        # Get headers
+        # Get headers with validation
         token = request.headers.get("X-Upload-Token", "")
-        chunk_index = int(request.headers.get("X-Chunk-Index", "0"))
-        total_chunks = int(request.headers.get("X-Total-Chunks", "1"))
         entry_ref = request.headers.get("X-Entry-Ref", "")
+
+        # Parse integer headers with error handling
+        try:
+            chunk_index = int(request.headers.get("X-Chunk-Index", "0"))
+            total_chunks = int(request.headers.get("X-Total-Chunks", "1"))
+        except ValueError:
+            log.warning(f"Invalid chunk headers for {component_id}/{upload_name}")
+            return JsonResponse({"error": "Invalid chunk headers"}, status=400)
+
+        # Validate header values
+        if chunk_index < 0 or total_chunks < 1 or chunk_index >= total_chunks:
+            log.warning(f"Invalid chunk range for {component_id}/{upload_name}")
+            return JsonResponse({"error": "Invalid chunk range"}, status=400)
 
         log.debug(f"Upload chunk {chunk_index + 1}/{total_chunks} for {component_id}/{upload_name}/{entry_ref}")
 
