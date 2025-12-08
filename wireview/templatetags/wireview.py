@@ -2,13 +2,15 @@ import typing as t
 
 from django import template
 from django.core.signing import Signer
-from django.template.base import Node, Parser, Token
+from django.template.base import Node, NodeList, Parser, TextNode, Token, token_kwargs
+from django.template.context import Context
 from django.utils.html import format_html
 
 from .. import settings
 from ..component import Component
 from ..event_transpiler import transpile
 from ..repository import ComponentRepository
+from ..slots import Slot, SlotContainer
 
 register = template.Library()
 
@@ -31,8 +33,13 @@ def tag_header(context):
     )
 
 
-@register.simple_tag(takes_context=True)
-def component(context, _name, **kwargs):
+def _build_and_render_component(
+    context: Context,
+    component_name: str,
+    kwargs: dict[str, t.Any],
+    slots: SlotContainer | None = None,
+) -> str:
+    """Helper function to build and render a component."""
     if (repo := context.get("wireview_repository")) is None:
         qs = (request := context.get("request")) and request.META["QUERY_STRING"] or ""
         repo = ComponentRepository(
@@ -42,8 +49,266 @@ def component(context, _name, **kwargs):
         )
         context["wireview_repository"] = repo
 
-    component = repo.build(_name, state=kwargs)
-    return component._render(repo) or ""
+    component_instance = repo.build(component_name, state=kwargs)
+
+    # Use slot-aware rendering if slots are provided
+    if slots is not None:
+        return component_instance._render_with_slots(repo, slots) or ""
+    return component_instance._render(repo) or ""
+
+
+@register.simple_tag(takes_context=True)
+def component(context, _name, **kwargs):
+    """
+    Simple tag for rendering a component without slots.
+
+    Usage:
+        {% component 'Counter' count=10 %}
+    """
+    return _build_and_render_component(context, _name, kwargs)
+
+
+# Slot-based component rendering
+
+
+@register.tag("component_block")
+def do_component_block(parser: Parser, token: Token):
+    """
+    Block tag for rendering a component with slots.
+
+    Usage:
+        {% component_block "Card" title="Hello" %}
+            {% fill header %}
+                <h1>{{ title }}</h1>
+            {% endfill %}
+
+            Default content goes here
+
+            {% fill footer %}
+                <button>Save</button>
+            {% endfill %}
+        {% endcomponent %}
+
+    The content outside {% fill %} tags becomes the default slot.
+    """
+    bits = token.split_contents()
+    tag_name = bits[0]
+
+    if len(bits) < 2:
+        raise template.TemplateSyntaxError(
+            f"'{tag_name}' tag requires a component name. "
+            f'Usage: {{% {tag_name} "ComponentName" attr=value %}}...{{% endcomponent %}}'
+        )
+
+    component_name = bits[1]
+    # Remove quotes if present
+    if len(component_name) >= 2 and component_name[0] in ('"', "'") and component_name[-1] == component_name[0]:
+        component_name = component_name[1:-1]
+
+    # Parse remaining bits as kwargs
+    remaining_bits = bits[2:]
+    kwargs = token_kwargs(remaining_bits, parser)
+
+    # Parse until {% endcomponent %}
+    nodelist = parser.parse(("endcomponent",))
+    parser.delete_first_token()  # consume {% endcomponent %}
+
+    return ComponentBlockNode(component_name, kwargs, nodelist)
+
+
+class ComponentBlockNode(Node):
+    """Node for {% component_block %}...{% endcomponent %} block tag."""
+
+    def __init__(
+        self,
+        component_name: str,
+        kwargs: dict[str, t.Any],
+        nodelist: NodeList,
+    ):
+        self.component_name = component_name
+        self.kwargs = kwargs
+        self.nodelist = nodelist
+
+    def render(self, context: Context) -> str:
+        # Resolve kwargs
+        resolved_kwargs = {}
+        for key, value in self.kwargs.items():
+            resolved_kwargs[key] = value.resolve(context)
+
+        # Extract slots from nodelist
+        slot_container = self._extract_slots(context)
+
+        # Validate required slots
+        self._validate_required_slots(slot_container)
+
+        return _build_and_render_component(
+            context,
+            self.component_name,
+            resolved_kwargs,
+            slot_container,
+        )
+
+    def _extract_slots(self, context: Context) -> SlotContainer:
+        """Extract slot definitions from the nodelist.
+
+        Slot content handling depends on whether let: bindings are used:
+        - Without let: Pre-render in parent context to capture parent variables
+        - With let: Keep nodelist for render-time binding from component
+        """
+        container = SlotContainer()
+        default_nodes = NodeList()
+
+        for node in self.nodelist:
+            if isinstance(node, FillNode):
+                if node.let_vars:
+                    # Has let: bindings - keep nodelist for render-time binding
+                    # The variables will be provided by render_slot's extra_context
+                    slot = Slot(
+                        name=node.slot_name,
+                        nodelist=node.nodelist,
+                        let_vars=node.let_vars,
+                    )
+                else:
+                    # No let: bindings - pre-render to capture parent context
+                    rendered_content = node.nodelist.render(context)
+                    slot = Slot(
+                        name=node.slot_name,
+                        nodelist=NodeList([TextNode(rendered_content)]),
+                        let_vars=[],
+                    )
+                container.add(slot)
+            else:
+                # Default slot content
+                default_nodes.append(node)
+
+        # Only set default if there's actual content
+        # Filter out whitespace-only TextNodes
+        has_content = False
+        for node in default_nodes:
+            if hasattr(node, "s"):  # TextNode
+                if node.s.strip():
+                    has_content = True
+                    break
+            else:
+                has_content = True
+                break
+
+        if has_content:
+            # Pre-render default slot content in parent context
+            rendered_default = default_nodes.render(context)
+            container.set_default(NodeList([TextNode(rendered_default)]))
+
+        return container
+
+    def _validate_required_slots(self, slots: SlotContainer) -> None:
+        """Validate that required slots are provided."""
+        # Get the component class to check for _slots definition
+        if self.component_name not in Component._all:
+            return
+
+        component_cls = Component._all[self.component_name]
+        slot_defs = getattr(component_cls, "_slots", {})
+
+        for slot_name, slot_config in slot_defs.items():
+            if slot_config.get("required") and not slots.has(slot_name):
+                doc = slot_config.get("doc", "")
+                doc_msg = f" ({doc})" if doc else ""
+                raise template.TemplateSyntaxError(
+                    f"Component '{self.component_name}' requires slot '{slot_name}'{doc_msg}. "
+                    f"Add: {{% fill {slot_name} %}}...{{% endfill %}}"
+                )
+
+
+@register.tag("fill")
+def do_fill(parser: Parser, token: Token):
+    """
+    Define slot content to fill in a parent component.
+
+    Usage:
+        {% fill header %}
+            <h1>Title</h1>
+        {% endfill %}
+
+        {% fill item let:item let:index %}
+            <li>{{ index }}. {{ item.name }}</li>
+        {% endfill %}
+
+    The let: syntax binds variables from the component's render_slot call.
+    """
+    bits = token.split_contents()
+    tag_name = bits[0]
+
+    if len(bits) < 2:
+        raise template.TemplateSyntaxError(
+            f"'{tag_name}' tag requires a slot name. " f"Usage: {{% {tag_name} slotname %}}...{{% endfill %}}"
+        )
+
+    slot_name = bits[1]
+    # Remove quotes if present (support both quoted and unquoted)
+    if len(slot_name) >= 2 and slot_name[0] in ('"', "'") and slot_name[-1] == slot_name[0]:
+        slot_name = slot_name[1:-1]
+
+    # Parse let:var syntax
+    let_vars: list[str] = []
+    for bit in bits[2:]:
+        if bit.startswith("let:"):
+            var_name = bit[4:]  # Remove "let:"
+            if not var_name:
+                raise template.TemplateSyntaxError(
+                    f"'{tag_name}' let: syntax requires a variable name. "
+                    f"Usage: {{% {tag_name} slotname let:varname %}}"
+                )
+            let_vars.append(var_name)
+        else:
+            raise template.TemplateSyntaxError(
+                f"'{tag_name}' only accepts 'let:varname' after slot name, got '{bit}'. "
+                f"Use let:varname to bind variables from the component. "
+                f"Example: {{% {tag_name} item let:item let:index %}}"
+            )
+
+    nodelist = parser.parse(("endfill",))
+    parser.delete_first_token()
+
+    return FillNode(slot_name, nodelist, let_vars)
+
+
+class FillNode(Node):
+    """
+    Node for {% fill %}...{% endfill %} tag.
+
+    This node is only used for extraction by ComponentBlockNode.
+    If rendered directly (outside a component block), it returns empty string.
+    """
+
+    def __init__(self, slot_name: str, nodelist: NodeList, let_vars: list[str]):
+        self.slot_name = slot_name
+        self.nodelist = nodelist
+        self.let_vars = let_vars
+
+    def render(self, context: Context) -> str:
+        # FillNode outside a component block is a no-op
+        return ""
+
+
+@register.simple_tag(takes_context=True)
+def render_slot(context, name: str = "", **extra_context):
+    """
+    Render a slot in the component template.
+
+    Usage:
+        {% render_slot %}                    {# Render default slot #}
+        {% render_slot "header" %}           {# Render named slot #}
+        {% render_slot "item" item=obj %}    {# With extra context for let: binding #}
+
+    Args:
+        name: Slot name (empty string for default slot)
+        **extra_context: Variables to pass to slot (for let: binding)
+    """
+    slots: SlotContainer | None = context.get("slots")
+    if not slots:
+        return ""
+
+    return slots.render_slot(context, name, extra_context)
 
 
 @register.simple_tag(takes_context=True)

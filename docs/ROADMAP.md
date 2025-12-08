@@ -1,6 +1,6 @@
 # django-wireview 로드맵
 
-> 단계별 현대화 및 기능 확장 계획
+> Phoenix LiveView 수준의 DX를 향한 개발 로드맵
 
 ---
 
@@ -10,447 +10,285 @@
 현재 버전: v5.3.0b0
 목표 버전: v6.0.0 (Phoenix LiveView 수준의 DX)
 
-Phase 1: Foundation     ████████░░░░░░░░░░░░ 기반 현대화
-Phase 2: Core Features  ░░░░░░░░░░░░░░░░░░░░ 핵심 기능
-Phase 3: Advanced       ░░░░░░░░░░░░░░░░░░░░ 고급 기능
-Phase 4: Polish         ░░░░░░░░░░░░░░░░░░░░ 완성도
+Phase 1: Foundation     ████████████████████ 완료!
+Phase 2: Core Features  ██████████████████░░ 90% (JS Commands, Optimistic UI)
+Phase 3: Advanced       ████████████████░░░░ 80% (Streams, Uploads, Async)
+Phase 4: Component      ████████████████░░░░ 80% (Slots 완료!)
+Phase 5: Polish         ░░░░░░░░░░░░░░░░░░░░ 시작 전
 ```
 
 ---
 
-## Phase 1: Foundation (기반 현대화)
+## Phase 1: Foundation (기반 현대화) - ✅ 완료
 
-### 1.1 Pydantic v2 마이그레이션
+### 1.1 Pydantic v2 마이그레이션 - ✅ 완료
 
-**목표**: Pydantic v1 → v2 완전 마이그레이션
+- ✅ BaseModel 설정 변경 (`ConfigDict`)
+- ✅ Field 문법 업데이트
+- ✅ `field_serializer` 구현
+- ✅ `.model_dump()` / `.model_dump_json()` 사용
+- ✅ `validate_call` 데코레이터 적용
 
-| 작업 | 파일 | 상태 | 난이도 |
-|------|------|:----:|:------:|
-| BaseModel 설정 변경 | `component.py` | ⬜ | 중 |
-| Field 문법 업데이트 | `component.py` | ⬜ | 중 |
-| validator → field_validator | `component.py` | ⬜ | 중 |
-| .dict() → .model_dump() | 전체 | ⬜ | 하 |
-| json_encoders → 별도 처리 | `component.py` | ⬜ | 중 |
-| ModelField → FieldInfo | `component.py` | ⬜ | 상 |
-| validate_arguments 대체 | `component.py` | ⬜ | 상 |
-
-**예상 변경 사항**:
-```python
-# Before (Pydantic v1)
-class Component(BaseModel):
-    class Config:
-        arbitrary_types_allowed = True
-        validate_assignment = True
-        json_encoders = {...}
-
-# After (Pydantic v2)
-class Component(BaseModel):
-    model_config = ConfigDict(
-        arbitrary_types_allowed=True,
-        validate_assignment=True,
-    )
-
-    @field_serializer('user')
-    def serialize_user(self, user):
-        return user.pk
-```
-
-**참고 문서**: [MIGRATION-PYDANTIC.md](./MIGRATION-PYDANTIC.md)
-
----
-
-### 1.2 의존성 업데이트
-
-**목표**: 최신 안정 버전으로 업데이트
+### 1.2 의존성 업데이트 - ✅ 완료
 
 ```toml
-# setup.cfg 변경
-[options]
 python_requires = >=3.10
-install_requires =
-    django>=4.2
-    channels>=4,<5
-    pydantic>=2.0,<3     # v1 → v2
+dependencies = [
+    django>=4.2,
+    channels>=4,<5,
+    pydantic>=2.0,<3
+]
 ```
 
-| 패키지 | 현재 | 목표 | 비고 |
-|--------|------|------|------|
-| pydantic | >=1.8,<2 | >=2.0,<3 | **핵심 변경** |
-| channels | >=4,<5 | >=4,<5 | 유지 |
-| django | 미지정 | >=4.2 | 명시 추가 |
-| lru-dict | >=1.2.0,<2 | 유지 또는 제거 | 검토 필요 |
+### 1.3 테스트 인프라 - ✅ 완료
 
-**JavaScript 의존성**:
-```json
-{
-  "dependencies": {
-    "idiomorph": "^0.3.0",           // 0.0.8 → 0.3.0
-    "reconnecting-websocket": "^4.4.0"  // 유지
-  },
-  "devDependencies": {
-    "esbuild": "^0.20.0",            // 0.13.9 → 0.20.0
-    "typescript": "^5.3.0"           // 신규 추가
-  }
-}
-```
+- ✅ pytest-asyncio 설정
+- ✅ pytest-django 설정
+- ✅ `wireview.testing` 모듈
+- ✅ 단위/통합 테스트 구조
 
 ---
 
-### 1.3 TypeScript 클라이언트 재작성
+## Phase 2: Core Features (핵심 기능) - ✅ 90% 완료
 
-**목표**: 타입 안전성 및 유지보수성 향상
+### 2.1 JS 명령어 시스템 - ✅ 완료
 
-**현재 구조**:
-```
-wireview/static/wireview/
-├── wireview.js        (349줄, 순수 JS)
-└── wireview-boost.js  (morphdom 래퍼)
-```
+**구현 완료**: `wireview/js.py`
 
-**목표 구조**:
-```
-wireview/static/wireview/
-├── src/
-│   ├── index.ts
-│   ├── connection.ts       # WebSocket 관리
-│   ├── component.ts        # 컴포넌트 클래스
-│   ├── commands.ts         # JS 명령어 시스템
-│   ├── diff.ts             # HTML Diff 적용
-│   └── types.ts            # 타입 정의
-├── dist/
-│   └── wireview.min.js      # 번들 결과물
-├── tsconfig.json
-└── esbuild.config.ts
-```
-
-**작업 목록**:
-- [ ] TypeScript 설정 (`tsconfig.json`)
-- [ ] 타입 정의 (`types.ts`)
-- [ ] ServerConnection 클래스 변환
-- [ ] WireviewComponent 클래스 변환
-- [ ] 빌드 스크립트 업데이트
-
----
-
-### 1.4 테스트 인프라 구축
-
-**목표**: 테스트 커버리지 80%+
-
-```
-tests/
-├── unit/
-│   ├── test_component.py
-│   ├── test_consumer.py
-│   ├── test_diff.py
-│   └── test_serializer.py
-├── integration/
-│   ├── test_websocket.py
-│   └── test_broadcast.py
-├── e2e/
-│   └── test_counter.py
-└── conftest.py
-```
-
-**작업 목록**:
-- [ ] pytest-asyncio 설정
-- [ ] pytest-django 설정
-- [ ] 컴포넌트 단위 테스트
-- [ ] WebSocket 통합 테스트
-- [ ] CI/CD 파이프라인 (GitHub Actions)
-
----
-
-## Phase 2: Core Features (핵심 기능)
-
-### 2.1 JS 명령어 시스템
-
-**목표**: Phoenix LiveView.JS 스타일 클라이언트 명령어
-
-**설계**:
 ```python
-# Python 측
-class JS:
-    def show(self, selector: str, transition: str = None) -> "JS": ...
-    def hide(self, selector: str, transition: str = None) -> "JS": ...
-    def toggle(self, selector: str) -> "JS": ...
-    def add_class(self, selector: str, classes: str) -> "JS": ...
-    def remove_class(self, selector: str, classes: str) -> "JS": ...
-    def set_attribute(self, selector: str, attr: str, value: str) -> "JS": ...
-    def push(self, event: str, **kwargs) -> "JS": ...
-    def dispatch(self, event: str, **kwargs) -> "JS": ...
-    def focus(self, selector: str) -> "JS": ...
-    def navigate(self, url: str) -> "JS": ...
+from wireview.js import JS
+
+# 템플릿에서 사용
+{% on "click" JS().toggle("#modal").push("save") %}
+
+# Python에서 사용
+await self.push_js(JS().set_value("input", "").focus("#next"))
 ```
 
-**사용 예시**:
+**지원 명령어**:
+- `show()`, `hide()`, `toggle()` - 요소 표시/숨김
+- `add_class()`, `remove_class()`, `toggle_class()` - 클래스 조작
+- `set_attribute()`, `remove_attribute()` - 속성 조작
+- `set_value()` - 입력 값 설정
+- `focus()` - 포커스 이동
+- `push()` - 서버 이벤트 전송
+- `dispatch()` - 브라우저 이벤트 발생
+
+### 2.2 Phoenix 스타일 HTML Diff - ✅ 완료
+
+**구현 완료**: `wireview/core/rendered.py`
+
+- ✅ 템플릿 마커 기반 정적/동적 분리
+- ✅ 변경된 슬롯만 전송하는 효율적 diff
+- ✅ `RenderedDiff` 페이로드
+
+### 2.3 이벤트 시스템 고도화 - ✅ 완료
+
+**구현 완료**: `wireview/event_transpiler.py`
+
 ```html
-<button {% on "click" JS().toggle("#modal").push("save") %}>
-  저장
-</button>
+{% on "click.prevent.stop" "handler" %}
+{% on "keydown.enter.debounce.300" "search" %}
+{% on "input.throttle.500" "filter" %}
 ```
 
-**참고 문서**: [implementation/js-commands.md](./implementation/js-commands.md)
+**지원 수정자**:
+- `.prevent`, `.stop` - 기본 동작/전파 방지
+- `.debounce.N`, `.throttle.N` - 디바운스/스로틀
+- `.capture`, `.once`, `.passive` - 이벤트 옵션
+- `.self`, `.away` - 타겟 필터링
 
 ---
 
-### 2.2 Optimistic UI
+## Phase 3: Advanced Features (고급 기능) - ✅ 80% 완료
 
-**목표**: 서버 응답 대기 중 즉각적 UI 피드백
+### 3.1 Streams (대량 데이터) - ✅ 완료
 
-**기능**:
-1. **CSS 로딩 클래스 자동 적용**
-   - `wireview-click-loading`
-   - `wireview-submit-loading`
-   - `wireview-change-loading`
+**구현 완료**: `wireview/features/streams.py`
 
-2. **JS 명령어 즉시 실행**
-   - 서버 이벤트 전송 전 클라이언트 명령 실행
-
-**구현**:
-```html
-<!-- 클릭 시 자동으로 클래스 추가/제거 -->
-<button {% on "click" "save" %}
-        class="wireview-click-loading:opacity-50">
-  저장
-</button>
-```
-
-```css
-/* 사용자 CSS */
-.wireview-click-loading {
-  opacity: 0.5;
-  cursor: wait;
-}
-```
-
----
-
-### 2.3 개선된 HTML Diff
-
-**목표**: 대역폭 효율성 향상
-
-**현재**: difflib 기반 라인 diff
-```python
-diff = [0, 1, '<div>new</div>\n', 3]  # 라인 인덱스 + 문자열
-```
-
-**목표**: 템플릿 슬롯 기반 바이너리 diff
-```python
-# 템플릿: <div>{{ count }}</div>
-# 변경 시: {"0": "5"}  # 슬롯 인덱스만 전송
-```
-
-**작업 목록**:
-- [ ] 템플릿 파싱 및 슬롯 추출
-- [ ] 슬롯 기반 diff 생성
-- [ ] 클라이언트 측 diff 적용 로직
-- [ ] 벤치마크 및 최적화
-
----
-
-## Phase 3: Advanced Features (고급 기능)
-
-### 3.1 Streams (대량 데이터)
-
-**목표**: 메모리 효율적인 대량 리스트 처리
-
-**설계**:
 ```python
 class ItemList(Component):
-    async def mount(self):
-        # 스트림 초기화 - 메모리에 저장하지 않음
+    async def joined(self):
         await self.stream("items", Item.objects.all()[:100])
 
     async def add_item(self, name: str):
         item = await Item.objects.acreate(name=name)
-        # 단일 항목만 클라이언트로 전송
         await self.stream_insert("items", item, at=0)
 
     async def remove_item(self, item_id: int):
-        await Item.objects.filter(id=item_id).adelete()
         await self.stream_delete("items", item_id)
 ```
 
-**참고 문서**: [implementation/streams.md](./implementation/streams.md)
+### 3.2 파일 업로드 - ✅ 완료
 
----
+**구현 완료**: `wireview/features/uploads.py`
 
-### 3.2 파일 업로드
-
-**목표**: 실시간 업로드 진행률 및 프리뷰
-
-**설계**:
 ```python
 class ImageUploader(Component):
-    def mount(self):
+    async def joined(self):
         self.allow_upload(
             "images",
-            accept=[".jpg", ".png", ".gif"],
+            accept=[".jpg", ".png"],
             max_entries=5,
-            max_file_size=10_000_000,  # 10MB
+            max_file_size=10_000_000,
         )
 
     async def save_images(self):
         async for entry in self.consume_uploads("images"):
             path = await entry.save_to("uploads/")
-            await Image.objects.acreate(path=path)
 ```
 
-```html
-{% load wireview %}
+### 3.3 비동기 작업 (assign_async) - ✅ 완료
 
-<form {% on "submit" "save_images" %}>
-  {% upload_input "images" %}
+**구현 완료**: `wireview/async_result.py`
 
-  {% for entry in uploads.images.entries %}
-    {% upload_preview entry %}
-    <progress value="{{ entry.progress }}" max="100"></progress>
-  {% endfor %}
-
-  <button type="submit">업로드</button>
-</form>
-```
-
-**참고 문서**: [implementation/uploads.md](./implementation/uploads.md)
-
----
-
-### 3.3 비동기 작업 (assign_async)
-
-**목표**: 비동기 데이터 로딩 패턴
-
-**설계**:
 ```python
 class Dashboard(Component):
     stats: AsyncResult[Stats] = None
-    recent_orders: AsyncResult[list[Order]] = None
 
-    async def mount(self):
-        # 비동기로 데이터 로딩 시작
+    async def joined(self):
         self.stats = await self.assign_async(self.load_stats())
-        self.recent_orders = await self.assign_async(self.load_orders())
 
     async def load_stats(self):
-        await asyncio.sleep(1)  # 느린 쿼리 시뮬레이션
         return await Stats.objects.aget()
+```
 
-    async def load_orders(self):
-        return await Order.objects.order_by('-created')[:10].alist()
+### 3.4 Temporary Assigns - ✅ 완료
+
+**메모리 최적화를 위한 임시 할당**:
+
+```python
+class MessageList(Component):
+    _temporary_assigns = {"messages"}
+    messages: list[Message] = []
+
+    async def joined(self):
+        self.messages = await Message.objects.all()[:100]
+        # 렌더링 후 자동으로 [] 초기화
+```
+
+### 3.5 URL 파라미터 처리 - ✅ 완료
+
+```python
+async def params_changed(self, params: dict[str, str], uri: str):
+    self.page = int(params.get("page", "1"))
+    await self.wire.push_to(f"?page={self.page + 1}")
+```
+
+---
+
+## Phase 4: Component System (컴포넌트 시스템) - 🔄 진행 중
+
+### 4.1 Slots (컴포넌트 콘텐츠 합성) - ✅ 완료
+
+**GitHub Issue**: #50 (GAP-002)
+
+**목표**: Phoenix LiveView 스타일의 슬롯 시스템
+
+```html
+<!-- 컴포넌트 템플릿 (card.html) -->
+<div {% tag_header %} class="card">
+  {% if slots.header %}
+    <header>{% render_slot "header" %}</header>
+  {% endif %}
+
+  <div class="card-body">
+    {% render_slot %}
+  </div>
+</div>
 ```
 
 ```html
-{% if stats.loading %}
-  <div class="skeleton">로딩 중...</div>
-{% elif stats.error %}
-  <div class="error">{{ stats.error }}</div>
-{% else %}
-  <div>총 매출: {{ stats.result.total_revenue }}</div>
-{% endif %}
+<!-- 사용 -->
+{% component_block "Card" title="Hello" %}
+  {% fill header %}
+    <h1>{{ title }}</h1>
+  {% endfill %}
+
+  Main content goes here
+{% endcomponent %}
 ```
 
----
+**구현 현황**:
+- ✅ `Slot`, `SlotContainer` 클래스 (`wireview/slots.py`)
+- ✅ `{% fill %}...{% endfill %}` 태그
+- ✅ `{% render_slot %}` 태그
+- ✅ `{% component_block %}...{% endcomponent %}` 태그
+- ✅ `let:` 변수 바인딩
+- ✅ Required slot 검증
+- ✅ 단위 테스트 (`tests/test_slots.py`)
+- ✅ 통합 테스트 (`tests/test_slots_integration.py`)
+- ✅ 테스트 컴포넌트 (`tests/testproj/slots/`)
 
-## Phase 4: Polish (완성도)
+### 4.2 JavaScript Hooks - ⬜ 예정
 
-### 4.1 개발자 도구
+**GitHub Issue**: #49 (GAP-001)
 
-**목표**: 디버깅 및 프로파일링 지원
+**목표**: 클라이언트 측 컴포넌트 lifecycle hooks
 
-**기능**:
 ```javascript
-// 브라우저 콘솔에서
-window.Wireview.enableDebug();      // 상세 로깅
-window.Wireview.enableProfiling();  // 성능 측정
-window.Wireview.enableLatencySim(200);  // 200ms 지연 시뮬레이션
+Wireview.hooks.Chart = {
+  mounted() { this.chart = new Chart(this.el, {...}) },
+  updated() { this.chart.update(this.el.dataset) },
+  destroyed() { this.chart.destroy() }
+}
 ```
 
-**참고 문서**: [implementation/devtools.md](./implementation/devtools.md)
+### 4.3 Function Components - ⬜ 예정
 
----
+**목표**: 간단한 UI를 위한 함수형 컴포넌트
 
-### 4.2 테스트 유틸리티
-
-**목표**: 컴포넌트 테스트 편의성
-
-**설계**:
 ```python
-from wireview.testing import ComponentTestCase
-
-class TestCounter(ComponentTestCase):
-    async def test_increment(self):
-        # 컴포넌트 마운트
-        view = await self.mount(Counter, count=0)
-
-        # 이벤트 발생
-        await view.click("increment")
-
-        # 상태 검증
-        assert view.component.count == 1
-
-        # 렌더링 결과 검증
-        assert "Count: 1" in view.html
+@component
+def button(variant: str = "primary", **slots):
+    return f'<button class="btn-{variant}">{slots.get("default", "")}</button>'
 ```
 
 ---
 
-### 4.3 문서화
+## Phase 5: Polish (완성도) - ⬜ 시작 전
 
-**목표**: 완전한 공식 문서
+### 5.1 개발자 도구
 
-```
-docs/
-├── getting-started/
-│   ├── installation.md
-│   ├── quickstart.md
-│   └── first-component.md
-├── guides/
-│   ├── components.md
-│   ├── events.md
-│   ├── forms.md
-│   ├── uploads.md
-│   └── testing.md
-├── reference/
-│   ├── component-api.md
-│   ├── template-tags.md
-│   └── js-commands.md
-└── examples/
-    ├── todo-app.md
-    ├── chat-app.md
-    └── dashboard.md
-```
+- ⬜ 브라우저 확장 프로그램
+- ⬜ 디버그 모드 로깅
+- ⬜ 성능 프로파일링
+
+### 5.2 문서화
+
+- ⬜ API 레퍼런스 완성
+- ⬜ 튜토리얼 작성
+- ⬜ 예제 앱 (Todo, Chat, Dashboard)
+
+### 5.3 TypeScript 클라이언트 재작성
+
+- ⬜ 타입 정의 추가
+- ⬜ 모듈화 개선
 
 ---
 
 ## 마일스톤 요약
 
-| Phase | 주요 목표 | 예상 작업량 |
-|-------|----------|------------|
-| **Phase 1** | Pydantic v2, TS 클라이언트, 테스트 | 중규모 |
-| **Phase 2** | JS 명령어, Optimistic UI | 중규모 |
-| **Phase 3** | Streams, 업로드, 비동기 | 대규모 |
-| **Phase 4** | 개발자 도구, 문서화 | 중규모 |
+| Phase | 상태 | 주요 목표 |
+|-------|:----:|----------|
+| **Phase 1** | ✅ | Pydantic v2, 의존성 업데이트, 테스트 |
+| **Phase 2** | ✅ | JS 명령어, HTML Diff, 이벤트 |
+| **Phase 3** | ✅ | Streams, Uploads, Async |
+| **Phase 4** | 🔄 | Slots, Hooks, Function Components |
+| **Phase 5** | ⬜ | DevTools, 문서화, TypeScript |
 
 ---
 
-## 작업 우선순위 매트릭스
+## 버전 계획
 
-```
-중요도
-  ↑
-  │  ┌─────────────┬─────────────┐
-  │  │ Pydantic v2 │ JS 명령어   │
-높 │  │ TS 클라이언트│ Optimistic │
-음 │  │             │             │
-  │  ├─────────────┼─────────────┤
-  │  │ Streams     │ 개발자 도구 │
-낮 │  │ 업로드      │ 문서화      │
-음 │  │ 비동기 작업 │             │
-  │  └─────────────┴─────────────┘
-  └──────────────────────────────→
-        긴급함 →                   긴급도
-        (기반)      (기능 추가)
-```
+| 버전 | 목표 | 주요 기능 |
+|------|------|----------|
+| v6.0.0-alpha.1 | ✅ | Phase 1-3 완료 |
+| v6.0.0-alpha.2 | ✅ | Slots 구현 (#50) |
+| v6.0.0-alpha.3 | ⬜ | JavaScript Hooks (#49) |
+| v6.0.0-beta.1 | ⬜ | 안정화 및 문서화 |
+| v6.0.0 | ⬜ | 정식 릴리스 |
 
 ---
 
-*이 로드맵은 프로젝트 진행에 따라 업데이트됩니다.*
+*마지막 업데이트: 2025-12-09*

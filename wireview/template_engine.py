@@ -38,6 +38,7 @@ SKIP_VARIABLE_NAMES = frozenset(
         "wireview_repository",
         "forloop",
         "block",
+        "slots",  # Slot container for component content composition
     }
 )
 

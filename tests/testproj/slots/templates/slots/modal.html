@@ -1,0 +1,25 @@
+{% load wireview %}
+<div {% tag_header %} class="modal {% if is_open %}is-open{% endif %}">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content">
+    <header class="modal-header">
+      {% render_slot "title" %}
+    </header>
+
+    {% if slots.body %}
+      <div class="modal-body">
+        {% render_slot "body" %}
+      </div>
+    {% else %}
+      <div class="modal-body">
+        {% render_slot %}
+      </div>
+    {% endif %}
+
+    {% if slots.actions %}
+      <footer class="modal-footer">
+        {% render_slot "actions" %}
+      </footer>
+    {% endif %}
+  </div>
+</div>

@@ -1,0 +1,1 @@
+# Slots test app

@@ -27,6 +27,7 @@ if t.TYPE_CHECKING:
     from ..features.streams import StreamOp
     from ..features.uploads import UploadOp
     from ..js import JS
+    from ..slots import SlotContainer
     from .component import Component
 
 if settings.USE_HMIN:
@@ -266,8 +267,22 @@ class WireviewMeta:
         self._last_sent_html = html_tokens
         return diff if diff else None
 
-    def render(self, component: "Component", repo: Repo) -> None | SafeText:
-        """Render the component to HTML with automatic marker injection."""
+    def render(
+        self,
+        component: "Component",
+        repo: Repo,
+        slots: "SlotContainer | None" = None,
+    ) -> None | SafeText:
+        """Render the component to HTML with automatic marker injection.
+
+        Args:
+            component: The component to render.
+            repo: The component repository.
+            slots: Optional slot container with slot content for composition.
+
+        Returns:
+            Rendered HTML as SafeText, or None if rendering should be skipped.
+        """
         from ..template_engine import render_with_markers
 
         html = None
@@ -278,7 +293,7 @@ class WireviewMeta:
             )
         elif not (self._is_frozen or self._redirected_to) and html is None:
             template = component._get_template()
-            context = self._get_context(component, repo)
+            context = self._get_context(component, repo, slots)
             # Use marker-injected rendering for efficient diffing
             # The template type from component matches what render_with_markers expects
             html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
@@ -433,7 +448,12 @@ class WireviewMeta:
 
         return mark_safe(html) if html else None
 
-    def _get_context(self, component: "Component", repo: Repo) -> Context:
+    def _get_context(
+        self,
+        component: "Component",
+        repo: Repo,
+        slots: "SlotContainer | None" = None,
+    ) -> Context:
         """Build the template context for rendering (sync version).
 
         WARNING: This method uses async_to_sync for async properties, which
@@ -446,10 +466,13 @@ class WireviewMeta:
         Args:
             component: The component to build context for.
             repo: The component repository.
+            slots: Optional slot container with slot content for composition.
 
         Returns:
             A dictionary containing the template context.
         """
+        from ..slots import SlotContainer
+
         context: Context = {}
 
         def _run_coro(coro: t.Coroutine) -> t.Any:
@@ -476,6 +499,10 @@ class WireviewMeta:
                         )
                         attr = _run_coro(attr)
                     context[attr_name] = attr
+
+        # Add slots to context (use empty container if not provided)
+        context["slots"] = slots if slots is not None else SlotContainer()
+
         return dict(
             context,
             this=component,

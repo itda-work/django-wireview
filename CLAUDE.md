@@ -327,6 +327,53 @@ class ProductList(Component):
 - `params`: URL 쿼리 파라미터 (`dict[str, str]`)
 - `uri`: 전체 URI (예: `/products?page=2&sort=name`)
 
+### Slots (컴포넌트 콘텐츠 합성)
+
+Phoenix LiveView 스타일의 슬롯으로 컴포넌트에 콘텐츠를 전달합니다.
+**상세 문서**: [docs/features/slots.md](./docs/features/slots.md)
+
+```python
+class Card(Component):
+    _template_name = "components/card.html"
+    _slots = {
+        "header": {"required": False, "doc": "카드 헤더"},
+        "footer": {"required": False, "doc": "카드 푸터"},
+    }
+    title: str = ""
+```
+
+```html
+<!-- 컴포넌트 템플릿 (card.html) -->
+{% load wireview %}
+<div {% tag_header %} class="card">
+    {% if slots.header %}
+        <header>{% render_slot "header" %}</header>
+    {% endif %}
+    <div class="card-body">{% render_slot %}</div>
+    {% if slots.footer %}
+        <footer>{% render_slot "footer" %}</footer>
+    {% endif %}
+</div>
+```
+
+```html
+<!-- 사용 -->
+{% component_block "Card" %}
+    {% fill header %}<h1>{{ page_title }}</h1>{% endfill %}
+    <p>본문 내용</p>
+    {% fill footer %}<button>저장</button>{% endfill %}
+{% endcomponent %}
+```
+
+**let: 변수 바인딩** (리스트 렌더링):
+```html
+{% component_block "List" items=items %}
+    {% fill item let:item let:index %}
+        <span>{{ index }}. {{ item.name }}</span>
+    {% endfill %}
+{% endcomponent %}
+```
+
 ### 템플릿 태그
 
 ```html
@@ -435,6 +482,8 @@ WIREVIEW = {
 - [README.md](./README.md) - 사용 가이드
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) - 아키텍처 상세
 - [docs/ROADMAP.md](./docs/ROADMAP.md) - 개발 로드맵
+- [docs/features/slots.md](./docs/features/slots.md) - Slots 상세 문서
+- [docs/features/temporary-assigns.md](./docs/features/temporary-assigns.md) - Temporary Assigns 상세 문서
 - [CHANGELOG.md](./CHANGELOG.md) - 변경 이력
 
 ---

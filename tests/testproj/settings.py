@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     "testproj.search",
     "testproj.quiz",
     "testproj.notifications",
+    "testproj.slots",
     "wireview",
     "channels",
     "daphne",

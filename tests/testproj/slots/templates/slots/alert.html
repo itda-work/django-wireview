@@ -1,0 +1,7 @@
+{% load wireview %}
+<div {% tag_header %} class="alert alert-{{ variant }}">
+  {% if slots.icon %}
+    <span class="alert-icon">{% render_slot "icon" %}</span>
+  {% endif %}
+  <span class="alert-message">{{ message }}</span>
+</div>

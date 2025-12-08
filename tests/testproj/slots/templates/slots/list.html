@@ -1,0 +1,14 @@
+{% load wireview %}
+<ul {% tag_header %} class="list">
+  {% if slots.item %}
+    {% for item in items %}
+      <li class="list-item">
+        {% render_slot "item" item=item index=forloop.counter %}
+      </li>
+    {% endfor %}
+  {% else %}
+    {% for item in items %}
+      <li class="list-item">{{ item.name }}</li>
+    {% endfor %}
+  {% endif %}
+</ul>

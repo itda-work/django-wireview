@@ -24,6 +24,7 @@ from .meta import Repo, WireviewMeta
 if t.TYPE_CHECKING:
     from ..features.uploads import ConsumedUpload, UploadEntry, UploadRegistry
     from ..js import JS
+    from ..slots import SlotContainer
 
 # Type aliases
 ComponentState = dict[str, t.Any]
@@ -137,6 +138,17 @@ class Component(BaseModel):
     #             self.messages = await Message.objects.all()[:100]
     #             # After rendering, self.messages will be reset to []
     _temporary_assigns: t.ClassVar[set[str]] = set()
+
+    # Slot definitions: defines expected slots for this component.
+    # Used for validation and documentation.
+    #
+    # Example:
+    #     class Card(Component):
+    #         _slots = {
+    #             "header": {"required": True, "doc": "Card header content"},
+    #             "footer": {"required": False, "doc": "Optional footer"},
+    #         }
+    _slots: t.ClassVar[dict[str, dict[str, t.Any]]] = {}
 
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
@@ -776,6 +788,25 @@ class Component(BaseModel):
     def _render(self, repo: Repo) -> SafeString | None:
         """Render the component."""
         return self.wire.render(self, repo)
+
+    def _render_with_slots(
+        self,
+        repo: Repo,
+        slots: "SlotContainer | None" = None,
+    ) -> SafeString | None:
+        """Render the component with slot content.
+
+        This method is called by the {% component_block %} template tag
+        when rendering a component with slot content.
+
+        Args:
+            repo: The component repository.
+            slots: SlotContainer with captured slot content.
+
+        Returns:
+            Rendered HTML as SafeString, or None if rendering should be skipped.
+        """
+        return self.wire.render(self, repo, slots)
 
     def _render_diff(self, repo: Repo):
         """Render the component and return a diff."""
