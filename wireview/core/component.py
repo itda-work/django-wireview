@@ -337,6 +337,67 @@ class Component(BaseModel):
         """
         ...
 
+    async def handle_hook_event(
+        self,
+        hook_id: str,
+        event: str,
+        payload: dict[str, t.Any],
+    ) -> t.Any:
+        """Handle events from client-side JavaScript hooks.
+
+        Override this method to process events sent from hooks via pushEvent().
+        The return value will be sent back to the hook's callback function.
+
+        Args:
+            hook_id: Unique identifier of the hook instance
+            event: Event name sent by the hook
+            payload: Event data from the hook
+
+        Returns:
+            Response data to send back to the hook callback (None if no response)
+
+        Example:
+            class Dashboard(Component):
+                async def handle_hook_event(self, hook_id, event, payload):
+                    if event == "chart_click":
+                        point = payload.get("point")
+                        await self.handle_point_click(point)
+                        return {"handled": True}
+                    elif event == "validate":
+                        return {"valid": self.validate(payload.get("value"))}
+                    return None
+        """
+        return None
+
+    async def push_event(
+        self,
+        event: str,
+        payload: dict[str, t.Any] | None = None,
+        hook_id: str | None = None,
+    ) -> None:
+        """Push an event to client-side JavaScript hooks.
+
+        Sends an event that can be received by hooks using handleEvent().
+        If hook_id is None, the event is broadcast to all hooks in this component.
+
+        Args:
+            event: Event name to dispatch
+            payload: Event data (default: empty dict)
+            hook_id: Target specific hook instance (None = broadcast to all)
+
+        Example:
+            # In component method
+            async def update_chart(self):
+                await self.push_event("update_data", {"values": [1, 2, 3, 4, 5]})
+
+            # On client hook
+            # this.handleEvent("update_data", ({values}) => {
+            #     this.chart.data.datasets[0].data = values;
+            #     this.chart.update();
+            # });
+        """
+        await self.wire._send_push_event(self.id, event, payload or {}, hook_id)
+
     async def destroy(self) -> None:
         """Destroy this component."""
         await self.wire.destroy(self.id)

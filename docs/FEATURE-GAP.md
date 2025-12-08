@@ -2,7 +2,7 @@
 
 > django-wireview가 Phoenix LiveView 수준에 도달하기 위해 필요한 기능 목록
 >
-> **최종 업데이트**: 2025-06
+> **최종 업데이트**: 2025-12
 
 ---
 
@@ -10,8 +10,8 @@
 
 ```
 Phoenix LiveView 주요 기능: ~75개
-django-wireview 지원:       ~50개 (67%)
-미지원:                     ~25개 (33%)
+django-wireview 지원:       ~55개 (73%)
+미지원:                     ~20개 (27%)
 ```
 
 ---
@@ -30,8 +30,8 @@ django-wireview 지원:       ~50개 (67%)
 | File Uploads | 85% | ✅ 기본 완료 |
 | Async Operations | 70% | ⚠️ 부분 완료 |
 | Navigation | 85% | ✅ 대부분 완료 |
-| **JavaScript Hooks** | 0% | ❌ 미구현 |
-| **Components (Slots, LiveComponent)** | 20% | ❌ 대부분 미구현 |
+| **JavaScript Hooks** | 95% | ✅ 완료 |
+| **Components (Slots, LiveComponent)** | 60% | ⚠️ Slots 완료 |
 | Testing | 80% | ✅ 기본 완료 |
 | Developer Tools | 60% | ⚠️ 부분 완료 |
 
@@ -134,30 +134,34 @@ django-wireview 지원:       ~50개 (67%)
 | live_session | ✅ | ❌ | 🟠 |
 | Client-side boost | ✅ | `BOOST_PAGES` | ✅ |
 
-### 2.9 JavaScript Interoperability ❌
+### 2.9 JavaScript Interoperability ✅
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 |
 |------|:----------------:|:---------------:|:----:|
-| **phx-hook** | ✅ 라이프사이클 훅 | ❌ | 🔴 Critical |
-| Hook.mounted | ✅ | ❌ | 🔴 |
-| Hook.updated | ✅ | ❌ | 🔴 |
-| Hook.destroyed | ✅ | ❌ | 🔴 |
-| Hook.disconnected | ✅ | ❌ | 🔴 |
-| Hook.reconnected | ✅ | ❌ | 🔴 |
-| pushEvent (client→server) | ✅ | ❌ | 🔴 |
-| handleEvent (server→client) | ✅ | 부분적 (push_event) | 🟡 |
+| **wire-hook** | ✅ 라이프사이클 훅 | `wire-hook="Name"` | ✅ |
+| Hook.mounted | ✅ | `mounted()` | ✅ |
+| Hook.updated | ✅ | `updated()` | ✅ |
+| Hook.destroyed | ✅ | `destroyed()` | ✅ |
+| Hook.disconnected | ✅ | `disconnected()` | ✅ |
+| Hook.reconnected | ✅ | `reconnected()` | ✅ |
+| Hook.beforeUpdate | ✅ | `beforeUpdate()` | ✅ |
+| pushEvent (client→server) | ✅ | `this.pushEvent()` | ✅ |
+| handleEvent (server→client) | ✅ | `this.handleEvent()` | ✅ |
+| handle_hook_event (server) | - | `handle_hook_event()` | ✅ |
+| push_event (server→client) | ✅ | `push_event()` | ✅ |
 | Colocated hooks | ✅ | ❌ | 🟠 |
 | onBeforeElUpdated | ✅ | ❌ | 🟡 |
 
-### 2.10 Components ❌
+### 2.10 Components ⚠️
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 |
 |------|:----------------:|:---------------:|:----:|
 | Stateful component | ✅ | ✅ Component | ✅ |
 | **LiveComponent** | ✅ 중첩 상태 | ❌ | 🔴 Critical |
 | **Function components** | ✅ | ❌ | 🔴 |
-| **Slots (named)** | ✅ `<:header>` | ❌ | 🔴 |
-| Slots (default) | ✅ `inner_block` | ❌ | 🔴 |
+| **Slots (named)** | ✅ `<:header>` | `{% fill header %}` | ✅ |
+| Slots (default) | ✅ `inner_block` | `{% render_slot %}` | ✅ |
+| Slots (let binding) | ✅ | `let:item` | ✅ |
 | @myself target | ✅ | ❌ | 🔴 |
 | update/2 callback | ✅ | ❌ | 🔴 |
 | update_many/1 | ✅ 배치 최적화 | ❌ | 🟠 |
@@ -226,8 +230,8 @@ django-wireview 지원:       ~50개 (67%)
 
 | ID | 기능 | 설명 | 난이도 | 예상 작업 |
 |----|------|------|:------:|----------|
-| GAP-001 | **JavaScript Hooks** | 클라이언트 측 라이프사이클 훅 (`phx-hook`) | 상 | 2-3주 |
-| GAP-002 | **Slots** | 컴포넌트 콘텐츠 합성 (`<:header>`, `inner_block`) | 중 | 1-2주 |
+| ~~GAP-001~~ | ~~**JavaScript Hooks**~~ | ~~클라이언트 측 라이프사이클 훅 (`wire-hook`)~~ | ~~상~~ | ✅ 완료 |
+| ~~GAP-002~~ | ~~**Slots**~~ | ~~컴포넌트 콘텐츠 합성 (`{% fill %}`, `{% render_slot %}`)~~ | ~~중~~ | ✅ 완료 |
 | GAP-003 | **Function Components** | 상태 없는 재사용 가능 템플릿 함수 | 중 | 1-2주 |
 | ~~GAP-004~~ | ~~**handle_params**~~ | ~~URL 파라미터 변경 시 콜백~~ | ~~중~~ | ✅ 완료 |
 | GAP-005 | **LiveComponent** | 독립 상태를 가진 중첩 컴포넌트 | 상 | 3-4주 |
@@ -243,7 +247,7 @@ django-wireview 지원:       ~50개 (67%)
 | GAP-010 | Page Title | 동적 페이지 타이틀 변경 | 하 | 2-3일 |
 | GAP-011 | Flash Messages | 일회성 알림 메시지 | 하 | 3-5일 |
 | GAP-012 | LongPolling Fallback | WebSocket 불가 시 폴백 | 중 | 1-2주 |
-| GAP-013 | pushEvent (Hook→Server) | 훅에서 서버로 이벤트 전송 | 중 | 1주 |
+| ~~GAP-013~~ | ~~pushEvent (Hook→Server)~~ | ~~훅에서 서버로 이벤트 전송~~ | ~~중~~ | ✅ 완료 |
 
 ### 🟡 P2: Nice to Have (편의 기능)
 
@@ -264,39 +268,39 @@ django-wireview 지원:       ~50개 (67%)
 
 ## 4. 구현 로드맵
 
-### Phase 1: JavaScript Interop (Q1)
+### Phase 1: JavaScript Interop ✅ 완료
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Phase 1: JavaScript Hooks & Interoperability               │
+│  Phase 1: JavaScript Hooks & Interoperability  ✅ 완료      │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  GAP-001: JavaScript Hooks                                  │
+│  GAP-001: JavaScript Hooks ✅                               │
 │  ├─ wire-hook="MyHook" 속성                                │
-│  ├─ Hook 라이프사이클 (mounted, updated, destroyed)        │
+│  ├─ Hook 라이프사이클 (mounted, updated, destroyed, etc.)  │
 │  ├─ Hook.pushEvent() → 서버 이벤트                         │
 │  └─ handleEvent 클라이언트 핸들러                          │
 │                                                             │
-│  GAP-013: pushEvent                                         │
+│  GAP-013: pushEvent ✅                                      │
 │  └─ Hook에서 서버로 커스텀 이벤트 전송                     │
 │                                                             │
-│  의존성: 없음                                               │
-│  예상 기간: 3-4주                                           │
+│  구현 완료: 2025-12                                         │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Phase 2: Component System (Q1-Q2)
+### Phase 2: Component System ⚠️ 진행 중
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Phase 2: Advanced Components                               │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  GAP-002: Slots                                             │
-│  ├─ {% slot "header" %}...{% endslot %}                    │
+│  GAP-002: Slots ✅ 완료                                     │
+│  ├─ {% fill "header" %}...{% endfill %}                    │
 │  ├─ {% render_slot "header" %}                             │
-│  └─ default slot (inner_block)                             │
+│  ├─ default slot ({% render_slot %})                       │
+│  └─ let: 바인딩 지원                                       │
 │                                                             │
 │  GAP-003: Function Components                               │
 │  ├─ @register.simple_tag 기반 또는                         │
@@ -307,8 +311,8 @@ django-wireview 지원:       ~50개 (67%)
 │  ├─ @myself 타겟팅                                         │
 │  └─ update/2 콜백                                          │
 │                                                             │
-│  의존성: Phase 1 완료 권장                                  │
-│  예상 기간: 4-6주                                           │
+│  의존성: Phase 1 완료 ✅                                    │
+│  예상 기간: 3-4주 (Slots 완료)                              │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```

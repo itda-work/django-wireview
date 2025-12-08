@@ -66,6 +66,8 @@ class ServerConnection {
     this.messageQueue = [];
     /** @type {ReconnectingWebSocket|null} */
     this.socket = null;
+    /** @type {boolean} Track if we've been connected before (for reconnection detection) */
+    this.wasConnected = false;
   }
 
   /**
@@ -84,6 +86,15 @@ class ServerConnection {
 
     this.socket.addEventListener("open", () => {
       debugLog("ws", "Connected to server");
+
+      // Notify hooks of reconnection (not on initial connect)
+      if (this.wasConnected) {
+        for (const component of Object.values(this.components)) {
+          component.hookManager.reconnected();
+        }
+      }
+      this.wasConnected = true;
+
       this.sendQueryString();
       this.components = {};
       this.joinAllComponents();
@@ -100,6 +111,12 @@ class ServerConnection {
 
     this.socket.addEventListener("close", () => {
       debugLog("ws", "Disconnected from server");
+
+      // Notify hooks of disconnection before clearing components
+      for (const component of Object.values(this.components)) {
+        component.hookManager.disconnected();
+      }
+
       this.components = {};
       document.querySelectorAll("[wireview-component]").forEach((el) => {
         const element = /** @type {HTMLElement} */ (el);
@@ -258,6 +275,27 @@ class ServerConnection {
         var componentEl = document.getElementById(id);
         if (componentEl && commands) {
           wireview.exec(componentEl, commands);
+        }
+        break;
+
+      case "hook_reply":
+        // Response to a hook's pushEvent call
+        var { ref, response } = payload;
+        // Find the component that owns this callback
+        for (const component of Object.values(this.components)) {
+          if (component.hookManager.callbacks.has(ref)) {
+            component.hookManager.handleReply(ref, response);
+            break;
+          }
+        }
+        break;
+
+      case "push_event":
+        // Server pushing event to hooks
+        var { component_id, hook_id, event, payload: eventPayload } = payload;
+        var targetComponent = this.components[component_id];
+        if (targetComponent) {
+          targetComponent.hookManager.handlePushEvent(hook_id, event, eventPayload);
         }
         break;
 
@@ -484,6 +522,10 @@ class WireviewComponent {
     this.dynamic = [];
     /** @type {string|null} */
     this.fingerprint = null;
+
+    // Hook manager for JavaScript hooks
+    /** @type {HookManager} */
+    this.hookManager = new HookManager(this);
   }
 
   /**
@@ -514,8 +556,14 @@ class WireviewComponent {
         }
 
         if (html) {
+          // Call beforeUpdate on all hooks
+          this.hookManager.beforeUpdate();
+
           boost.morph(el, html);
           boost.navEvent.sendNewContent();
+
+          // Call updated on all hooks (and scan for new ones)
+          this.hookManager.updated();
         }
       }
     });
@@ -652,6 +700,9 @@ class WireviewComponent {
           element.dataset.state || "",
           children
         );
+
+        // Initialize hooks after joining
+        this.hookManager.init();
       }
     }
   }
@@ -713,6 +764,409 @@ class WireviewComponent {
       }
     }
     return result;
+  }
+}
+
+// ============================================================================
+// JavaScript Hooks
+// ============================================================================
+
+/**
+ * @typedef {Object} HookDefinition
+ * @property {function(): void} [mounted] - Called after element joins
+ * @property {function(): void} [beforeUpdate] - Called before morph (sync)
+ * @property {function(): void} [updated] - Called after morph
+ * @property {function(): void} [destroyed] - Called when element removed
+ * @property {function(): void} [disconnected] - Called on WebSocket close
+ * @property {function(): void} [reconnected] - Called on WebSocket reopen
+ */
+
+/**
+ * Context object for hook callbacks.
+ * Provides access to DOM element and server communication.
+ */
+class HookContext {
+  /**
+   * @param {HTMLElement} el - The hook element
+   * @param {string} hookId - Unique identifier for this hook instance
+   * @param {string} hookName - Name of the hook definition
+   * @param {HookManager} manager - Parent manager reference
+   */
+  constructor(el, hookId, hookName, manager) {
+    /** @type {HTMLElement} The DOM element this hook is attached to */
+    this.el = el;
+    /** @private */
+    this.__hookId = hookId;
+    /** @private */
+    this.__hookName = hookName;
+    /** @private */
+    this.__manager = manager;
+    /** @private @type {Map<string, Function[]>} */
+    this.__eventHandlers = new Map();
+  }
+
+  /**
+   * Push an event to the server.
+   * @param {string} event - Event name
+   * @param {Object} [payload] - Event data
+   * @param {function(any): void} [callback] - Response callback
+   */
+  pushEvent(event, payload = {}, callback = null) {
+    this.__manager.pushEvent(this.__hookId, event, payload, callback);
+  }
+
+  /**
+   * Register a handler for server-sent events.
+   * @param {string} event - Event name to listen for
+   * @param {function(Object): void} callback - Handler function
+   */
+  handleEvent(event, callback) {
+    if (!this.__eventHandlers.has(event)) {
+      this.__eventHandlers.set(event, []);
+    }
+    this.__eventHandlers.get(event).push(callback);
+  }
+
+  /**
+   * Internal: dispatch event from server.
+   * @param {string} event - Event name
+   * @param {Object} payload - Event data
+   * @private
+   */
+  __dispatchEvent(event, payload) {
+    const handlers = this.__eventHandlers.get(event) || [];
+    handlers.forEach((cb) => {
+      try {
+        cb(payload);
+      } catch (e) {
+        console.error(`[wireview] Error in ${this.__hookName} handleEvent("${event}"):`, e);
+      }
+    });
+  }
+
+  /**
+   * Internal: cleanup handlers.
+   * @private
+   */
+  __destroy() {
+    this.__eventHandlers.clear();
+  }
+}
+
+/**
+ * Manages all hook instances for a component.
+ */
+class HookManager {
+  /**
+   * @param {WireviewComponent} component - Parent component
+   */
+  constructor(component) {
+    /** @type {WireviewComponent} */
+    this.component = component;
+    /** @type {Map<string, HookContext>} hookId -> HookContext */
+    this.instances = new Map();
+    /** @type {Map<string, Function>} ref -> callback */
+    this.callbacks = new Map();
+    /** @type {number} */
+    this.refCounter = 0;
+    /** @type {MutationObserver|null} */
+    this.observer = null;
+  }
+
+  /**
+   * Initialize hooks after component joins.
+   */
+  init() {
+    this.scanAndMount();
+    this.setupMutationObserver();
+  }
+
+  /**
+   * Scan DOM for wire-hook elements and mount hooks.
+   */
+  scanAndMount() {
+    const root = this.component.getElemenet();
+    if (!root) return;
+
+    const hookElements = root.querySelectorAll("[wire-hook]");
+    hookElements.forEach((el) => {
+      const element = /** @type {HTMLElement} */ (el);
+      // Also check the root element itself
+      if (!element.__wireviewHookIds) {
+        this.mountHooks(element);
+      }
+    });
+
+    // Check if root itself has hooks
+    if (root.hasAttribute("wire-hook") && !root.__wireviewHookIds) {
+      this.mountHooks(root);
+    }
+  }
+
+  /**
+   * Mount hooks on an element (supports multiple hooks separated by space).
+   * @param {HTMLElement} el
+   */
+  mountHooks(el) {
+    const hookAttr = el.getAttribute("wire-hook");
+    if (!hookAttr) return;
+
+    const hookNames = hookAttr.split(/\s+/).filter(Boolean);
+    /** @type {string[]} */
+    el.__wireviewHookIds = [];
+
+    for (const hookName of hookNames) {
+      const definition = window.wireview.hooks[hookName];
+      if (!definition) {
+        console.warn(`[wireview] Hook "${hookName}" not registered`);
+        continue;
+      }
+
+      const hookId = this.generateHookId(hookName);
+      el.__wireviewHookIds.push(hookId);
+
+      const context = new HookContext(el, hookId, hookName, this);
+
+      // Copy definition methods to context
+      for (const key of Object.keys(definition)) {
+        if (typeof definition[key] === "function") {
+          context[key] = definition[key].bind(context);
+        }
+      }
+
+      this.instances.set(hookId, context);
+
+      // Call mounted()
+      if (context.mounted) {
+        try {
+          context.mounted();
+        } catch (e) {
+          console.error(`[wireview] Error in ${hookName}.mounted():`, e);
+        }
+      }
+
+      debugLog("hook", `Mounted: ${hookName}`, { hookId, el: el.id || el.tagName });
+    }
+  }
+
+  /**
+   * Generate unique hook ID.
+   * @param {string} hookName
+   * @returns {string}
+   */
+  generateHookId(hookName) {
+    const componentId = this.component.id;
+    return `${componentId}:${hookName}:${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Setup MutationObserver to detect removed elements.
+   */
+  setupMutationObserver() {
+    const root = this.component.getElemenet();
+    if (!root) return;
+
+    this.observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.removedNodes) {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            this.handleRemovedNode(/** @type {HTMLElement} */ (node));
+          }
+        }
+      }
+    });
+
+    this.observer.observe(root, {
+      childList: true,
+      subtree: true,
+    });
+  }
+
+  /**
+   * Handle removed DOM node.
+   * @param {HTMLElement} node
+   */
+  handleRemovedNode(node) {
+    // Check if the node itself has hooks
+    if (node.__wireviewHookIds) {
+      for (const hookId of node.__wireviewHookIds) {
+        this.destroyHook(hookId);
+      }
+    }
+    // Check children too
+    if (node.querySelectorAll) {
+      const hookElements = node.querySelectorAll("[wire-hook]");
+      for (const el of hookElements) {
+        const element = /** @type {HTMLElement} */ (el);
+        if (element.__wireviewHookIds) {
+          for (const hookId of element.__wireviewHookIds) {
+            this.destroyHook(hookId);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Destroy a hook instance.
+   * @param {string} hookId
+   */
+  destroyHook(hookId) {
+    const context = this.instances.get(hookId);
+    if (!context) return;
+
+    if (context.destroyed) {
+      try {
+        context.destroyed();
+      } catch (e) {
+        console.error(`[wireview] Error in ${context.__hookName}.destroyed():`, e);
+      }
+    }
+
+    debugLog("hook", `Destroyed: ${context.__hookName}`, { hookId });
+    context.__destroy();
+    this.instances.delete(hookId);
+  }
+
+  /**
+   * Called before DOM morph.
+   */
+  beforeUpdate() {
+    for (const context of this.instances.values()) {
+      if (context.beforeUpdate) {
+        try {
+          context.beforeUpdate();
+        } catch (e) {
+          console.error(`[wireview] Error in ${context.__hookName}.beforeUpdate():`, e);
+        }
+      }
+    }
+  }
+
+  /**
+   * Called after DOM morph.
+   */
+  updated() {
+    // First scan for new hooks that may have been added during morph
+    this.scanAndMount();
+
+    // Then call updated() on existing hooks
+    for (const context of this.instances.values()) {
+      if (context.updated) {
+        try {
+          context.updated();
+        } catch (e) {
+          console.error(`[wireview] Error in ${context.__hookName}.updated():`, e);
+        }
+      }
+    }
+  }
+
+  /**
+   * Called when WebSocket disconnects.
+   */
+  disconnected() {
+    for (const context of this.instances.values()) {
+      if (context.disconnected) {
+        try {
+          context.disconnected();
+        } catch (e) {
+          console.error(`[wireview] Error in ${context.__hookName}.disconnected():`, e);
+        }
+      }
+    }
+  }
+
+  /**
+   * Called when WebSocket reconnects.
+   */
+  reconnected() {
+    for (const context of this.instances.values()) {
+      if (context.reconnected) {
+        try {
+          context.reconnected();
+        } catch (e) {
+          console.error(`[wireview] Error in ${context.__hookName}.reconnected():`, e);
+        }
+      }
+    }
+  }
+
+  /**
+   * Send hook event to server.
+   * @param {string} hookId
+   * @param {string} event
+   * @param {Object} payload
+   * @param {Function|null} callback
+   */
+  pushEvent(hookId, event, payload, callback) {
+    const ref = callback ? `hook-${++this.refCounter}` : null;
+
+    if (ref && callback) {
+      this.callbacks.set(ref, callback);
+    }
+
+    connection._send("hook_event", {
+      component_id: this.component.id,
+      hook_id: hookId,
+      event: event,
+      payload: payload,
+      ref: ref,
+    });
+
+    debugLog("hook", `pushEvent: ${event}`, { hookId, payload, ref });
+  }
+
+  /**
+   * Handle hook reply from server.
+   * @param {string} ref
+   * @param {any} response
+   */
+  handleReply(ref, response) {
+    const callback = this.callbacks.get(ref);
+    if (callback) {
+      this.callbacks.delete(ref);
+      try {
+        callback(response);
+      } catch (e) {
+        console.error("[wireview] Error in pushEvent callback:", e);
+      }
+    }
+  }
+
+  /**
+   * Handle push_event from server.
+   * @param {string|null} hookId - Target hook ID (null = broadcast to all)
+   * @param {string} event
+   * @param {Object} payload
+   */
+  handlePushEvent(hookId, event, payload) {
+    if (hookId) {
+      // Target specific hook
+      const context = this.instances.get(hookId);
+      if (context) {
+        context.__dispatchEvent(event, payload);
+      }
+    } else {
+      // Broadcast to all hooks
+      for (const context of this.instances.values()) {
+        context.__dispatchEvent(event, payload);
+      }
+    }
+  }
+
+  /**
+   * Cleanup all hooks.
+   */
+  destroy() {
+    if (this.observer) {
+      this.observer.disconnect();
+      this.observer = null;
+    }
+    for (const hookId of this.instances.keys()) {
+      this.destroyHook(hookId);
+    }
+    this.callbacks.clear();
   }
 }
 
@@ -1410,6 +1864,27 @@ async function executeCommand(cmd, element) {
 }
 
 window.wireview = {
+  /**
+   * User-defined hook definitions.
+   * Register hooks by adding them to this object before components join.
+   *
+   * @example
+   * window.wireview.hooks.ChartHook = {
+   *   mounted() {
+   *     this.chart = new Chart(this.el, config);
+   *   },
+   *   updated() {
+   *     this.chart.update();
+   *   },
+   *   destroyed() {
+   *     this.chart.destroy();
+   *   }
+   * };
+   *
+   * @type {Object<string, HookDefinition>}
+   */
+  hooks: {},
+
   /**
    * Forwards a user event to a component
    * @param {HTMLElement} element

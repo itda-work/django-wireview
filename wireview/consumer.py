@@ -148,6 +148,39 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             await self.send_render(component)
             await self.after_mutation_chores()
 
+    async def command_hook_event(
+        self,
+        component_id: str,
+        hook_id: str,
+        event: str,
+        payload: dict,
+        ref: str | None = None,
+    ):
+        """Handle hook event from client JavaScript hooks.
+
+        Args:
+            component_id: ID of the component containing the hook
+            hook_id: Unique identifier of the hook instance
+            event: Event name sent by the hook
+            payload: Event data from the hook
+            ref: Optional reference for callback response
+        """
+        log.debug(f"<<< HOOK-EVENT {component_id} {event} {payload}")
+        component = self.repo.get(component_id)
+        if not component:
+            return
+
+        # Call the component's hook event handler
+        response = await component.handle_hook_event(hook_id, event, payload)
+
+        # Send reply if ref was provided (callback expected)
+        if ref is not None:
+            await self.send_command("hook_reply", {"ref": ref, "response": response})
+
+        # Re-render component if state may have changed
+        await self.send_render(component)
+        await self.after_mutation_chores()
+
     # Upload commands
 
     async def command_upload_register(
@@ -324,6 +357,32 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         """Execute JS commands on the client."""
         log.debug(f">>> EXEC-JS {id}")
         await self.send_command("exec_js", {"id": id, "commands": commands})
+
+    async def component_push_event(
+        self,
+        component_id: str,
+        event: str,
+        payload: dict,
+        hook_id: str | None = None,
+    ):
+        """Push an event from server to client-side hooks.
+
+        Args:
+            component_id: ID of the component containing the hooks
+            event: Event name to dispatch
+            payload: Event data
+            hook_id: Target specific hook (None = broadcast to all)
+        """
+        log.debug(f">>> PUSH-EVENT {event} {payload}")
+        await self.send_command(
+            "push_event",
+            {
+                "component_id": component_id,
+                "hook_id": hook_id,
+                "event": event,
+                "payload": payload,
+            },
+        )
 
     # Channel layer messages for uploads
 

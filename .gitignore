@@ -9,6 +9,7 @@
 dist/
 __pycache__/
 .pytest_cache/
+htmlcov/
 node_modules/*
 .coverage
 site/

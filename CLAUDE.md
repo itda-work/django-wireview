@@ -268,6 +268,14 @@ class Counter(Component):
     async def mutation(self, channel, action, instance):
         """ORM 변경 알림"""
         pass
+
+    async def handle_hook_event(self, hook_id: str, event: str, payload: dict) -> Any:
+        """JavaScript Hook 이벤트 처리 (반환값은 hook callback으로 전송)"""
+        pass
+
+    async def push_event(self, event: str, payload: dict = None, hook_id: str = None):
+        """JavaScript Hook에 이벤트 전송 (hook_id=None이면 모든 hook에 브로드캐스트)"""
+        pass
 ```
 
 ### temporary_assigns (메모리 최적화)
@@ -389,6 +397,53 @@ class Card(Component):
 <button {% on 'click.prevent.debounce.300' 'search' %}>Search</button>
 ```
 
+### JavaScript Hooks (서드파티 라이브러리 통합)
+
+Chart.js, Mapbox, CodeMirror 등 서드파티 JavaScript 라이브러리 통합을 위한 Hook 시스템:
+**상세 문서**: [docs/features/hooks.md](./docs/features/hooks.md)
+
+```javascript
+// 클라이언트: Hook 정의
+window.wireview.hooks.ChartHook = {
+  mounted() {
+    this.chart = new Chart(this.el, JSON.parse(this.el.dataset.config));
+    this.handleEvent("update", ({data}) => this.chart.data = data);
+  },
+  updated() { this.chart.update(); },
+  destroyed() { this.chart.destroy(); }
+};
+```
+
+```html
+<!-- 템플릿: Hook 사용 -->
+<div wire-hook="ChartHook" data-config='{"type": "line"}'>
+</div>
+```
+
+```python
+# 서버: Hook 이벤트 처리
+class Dashboard(Component):
+    async def handle_hook_event(self, hook_id, event, payload):
+        if event == "chart_click":
+            return {"handled": True}
+
+    async def update_chart(self):
+        await self.push_event("update", {"data": [1, 2, 3]})
+```
+
+**Hook 라이프사이클**:
+- `mounted()`: 엘리먼트 조인 후
+- `beforeUpdate()`: DOM morph 전 (동기)
+- `updated()`: DOM morph 후
+- `destroyed()`: 엘리먼트 제거 시
+- `disconnected()`: WebSocket 연결 해제 시
+- `reconnected()`: WebSocket 재연결 시
+
+**Hook 컨텍스트**:
+- `this.el`: DOM 엘리먼트
+- `this.pushEvent(event, payload, callback)`: 서버로 이벤트 전송
+- `this.handleEvent(event, callback)`: 서버 이벤트 수신 핸들러 등록
+
 ### Streams API
 
 대량 리스트를 메모리 효율적으로 처리하는 Phoenix LiveView 스타일 Streams:
@@ -482,6 +537,7 @@ WIREVIEW = {
 - [README.md](./README.md) - 사용 가이드
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) - 아키텍처 상세
 - [docs/ROADMAP.md](./docs/ROADMAP.md) - 개발 로드맵
+- [docs/features/hooks.md](./docs/features/hooks.md) - JavaScript Hooks 상세 문서
 - [docs/features/slots.md](./docs/features/slots.md) - Slots 상세 문서
 - [docs/features/temporary-assigns.md](./docs/features/temporary-assigns.md) - Temporary Assigns 상세 문서
 - [CHANGELOG.md](./CHANGELOG.md) - 변경 이력

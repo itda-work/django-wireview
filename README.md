@@ -17,6 +17,7 @@ VueJS나 ReactJS를 대체하는 것은 아니지만, Django의 모든 잠재력
 - 대규모 리스트를 효율적으로 처리하는 Streams API
 - 온라인 사용자 및 타이핑 표시를 위한 Presence 추적
 - 진행률 추적이 가능한 파일 업로드
+- Chart.js, Mapbox 등 서드파티 라이브러리 통합을 위한 JavaScript Hooks
 
 ## django-reactor 대비 개선 사항
 
@@ -33,6 +34,7 @@ Wireview는 [django-reactor](https://github.com/edelvalle/reactor)의 현대적�
 | **JS 명령어** | - | ✅ | `JS()` 빌더로 Phoenix LiveView.JS 스타일의 클라이언트 사이드 명령어 |
 | **테스트 유틸리티** | - | ✅ | WebSocket 없이 쉽게 컴포넌트 테스트를 위한 `mount()` 유틸리티 |
 | **디버그 도구** | - | ✅ | `wireview.debug`로 브라우저 콘솔 디버깅 |
+| **JavaScript Hooks** | - | ✅ | Chart.js, Mapbox 등 서드파티 JavaScript 라이브러리 통합 |
 
 ### 아키텍처 개선
 
@@ -66,6 +68,9 @@ await self.presence_set_typing(True)
 
 # 비동기 로딩
 self.data = await self.assign_async(fetch_data())
+
+# JavaScript Hooks
+await self.push_event("update_chart", {"data": [1, 2, 3]})
 ```
 
 ### reactor에서 마이그레이션
@@ -105,6 +110,7 @@ class XCounter(Component):
 - [파일 업로드](#파일-업로드)
 - [AsyncResult](#asyncresult와-비동기-작업)
 - [JS 명령어 빌더](#js-명령어-빌더)
+- [JavaScript Hooks](#javascript-hooks)
 - [컴포넌트 API 레퍼런스](#컴포넌트-api-레퍼런스)
 - [템플릿 태그 레퍼런스](#템플릿-태그-레퍼런스)
 - [JavaScript API](#프론트엔드-api)
@@ -767,6 +773,134 @@ async def clear_input(self):
 }
 ```
 
+## JavaScript Hooks
+
+JavaScript Hooks를 사용하면 Chart.js, Mapbox, CodeMirror 등 서드파티 JavaScript 라이브러리를 wireview 컴포넌트와 통합할 수 있습니다. Phoenix LiveView의 Hooks API를 따릅니다.
+
+### Hook 정의
+
+```javascript
+window.wireview.hooks.ChartHook = {
+  mounted() {
+    // 엘리먼트가 페이지에 추가되면 호출
+    const config = JSON.parse(this.el.dataset.config);
+    this.chart = new Chart(this.el, config);
+  },
+
+  updated() {
+    // DOM 업데이트 후 호출
+    this.chart.update();
+  },
+
+  destroyed() {
+    // 엘리먼트가 제거되면 호출
+    this.chart.destroy();
+  },
+
+  disconnected() {
+    // WebSocket 연결이 끊기면 호출
+    this.el.classList.add('offline');
+  },
+
+  reconnected() {
+    // WebSocket이 재연결되면 호출
+    this.el.classList.remove('offline');
+  }
+};
+```
+
+### 템플릿에서 사용
+
+```html
+<div wire-hook="ChartHook" data-config='{"type": "line", "data": {...}}'>
+</div>
+```
+
+### 서버로 이벤트 전송 (pushEvent)
+
+```javascript
+window.wireview.hooks.InfiniteScroll = {
+  mounted() {
+    this.page = 1;
+    this.observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) {
+        this.loadMore();
+      }
+    });
+    this.observer.observe(this.el.querySelector('.sentinel'));
+  },
+
+  loadMore() {
+    this.pushEvent("load_more", { page: this.page }, (response) => {
+      if (response.hasMore) {
+        this.page++;
+      } else {
+        this.observer.disconnect();
+      }
+    });
+  },
+
+  destroyed() {
+    this.observer.disconnect();
+  }
+};
+```
+
+### 서버에서 이벤트 받기 (handleEvent)
+
+```javascript
+window.wireview.hooks.Notification = {
+  mounted() {
+    this.handleEvent("show_toast", ({ message, type }) => {
+      this.showToast(message, type);
+    });
+  },
+
+  showToast(message, type) {
+    // 토스트 표시 구현
+  }
+};
+```
+
+### 서버 사이드 핸들러
+
+```python
+class Dashboard(Component):
+    _template_name = "dashboard.html"
+
+    async def handle_hook_event(self, hook_id: str, event: str, payload: dict):
+        """JavaScript Hook에서 보낸 이벤트 처리"""
+        if event == "load_more":
+            items = await self.fetch_items(payload.get("page", 1))
+            return {"hasMore": len(items) == 20}
+        return None
+
+    async def update_chart(self, data: list):
+        """모든 Hook에 이벤트 전송"""
+        await self.push_event("update_data", {"values": data})
+```
+
+### Hook 라이프사이클
+
+| 콜백 | 호출 시점 |
+|------|----------|
+| `mounted()` | 엘리먼트가 조인되고 첫 렌더링 후 |
+| `beforeUpdate()` | DOM morph 전 (동기) |
+| `updated()` | DOM morph 완료 후 |
+| `destroyed()` | 엘리먼트가 DOM에서 제거될 때 |
+| `disconnected()` | WebSocket 연결이 닫힐 때 |
+| `reconnected()` | WebSocket이 재연결될 때 |
+
+### Hook 컨텍스트
+
+| 속성/메서드 | 설명 |
+|-------------|------|
+| `this.el` | Hook이 연결된 DOM 엘리먼트 |
+| `this.pushEvent(event, payload, callback)` | 서버로 이벤트 전송 |
+| `this.handleEvent(event, callback)` | 서버 이벤트 핸들러 등록 |
+
+자세한 내용은 [JavaScript Hooks 문서](docs/features/hooks.md)를 참조하세요.
+
 ## 컴포넌트 API 레퍼런스
 
 ### 클래스 속성
@@ -786,6 +920,7 @@ async def clear_input(self):
 | `leaving()` | 컴포넌트 연결이 해제될 때 호출 |
 | `mutation(channel, action, instance)` | 모델 변경 시 호출 |
 | `notification(channel, **kwargs)` | 브로드캐스트 메시지 시 호출 |
+| `handle_hook_event(hook_id, event, payload)` | Hook 이벤트 수신 시 호출 |
 
 ### 렌더 제어
 
@@ -806,6 +941,7 @@ async def clear_input(self):
 | `push_js(js)` | 클라이언트에서 JS 명령어 실행 |
 | `dom(action, id, component_or_template, **kwargs)` | DOM 조작 |
 | `deffer(func, *args, **kwargs)` | 함수 실행 지연 |
+| `push_event(event, payload, hook_id=None)` | Hook에 이벤트 전송 |
 
 ### 브로드캐스팅
 
@@ -865,6 +1001,13 @@ wireview.throttle(100)(fn)
 
 // JS 명령어 실행
 wireview.exec(element, commands)
+
+// Hook 정의
+wireview.hooks.MyHook = {
+  mounted() { /* ... */ },
+  updated() { /* ... */ },
+  destroyed() { /* ... */ }
+}
 
 // 디버그 유틸리티
 wireview.debug.enable()

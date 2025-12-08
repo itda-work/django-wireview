@@ -331,6 +331,29 @@ class WireviewMeta:
         commands = json.loads(js.to_json())
         await self.send("exec_js", id=component_id, commands=commands)
 
+    async def _send_push_event(
+        self,
+        component_id: str,
+        event: str,
+        payload: dict[str, t.Any],
+        hook_id: str | None = None,
+    ) -> None:
+        """Push an event to client-side JavaScript hooks.
+
+        Args:
+            component_id: The ID of the component containing the hooks
+            event: Event name to dispatch
+            payload: Event data
+            hook_id: Target specific hook (None = broadcast to all)
+        """
+        await self.send(
+            "push_event",
+            component_id=component_id,
+            event=event,
+            payload=payload,
+            hook_id=hook_id,
+        )
+
     async def scroll_into_view(
         self,
         id: str,
