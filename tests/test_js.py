@@ -199,6 +199,39 @@ class TestAttributeCommands:
         }
 
 
+class TestSetValueCommand:
+    """Test set_value command for input elements."""
+
+    @pytest.mark.unit
+    def test_set_value_empty(self):
+        """set_value() should create set_value command with empty value."""
+        js = JS().set_value("#input")
+        commands = json.loads(js.to_json())
+        assert commands[0] == {
+            "cmd": "set_value",
+            "to": "#input",
+            "value": "",
+        }
+
+    @pytest.mark.unit
+    def test_set_value_with_value(self):
+        """set_value() should create set_value command with specified value."""
+        js = JS().set_value("#name", "John")
+        commands = json.loads(js.to_json())
+        assert commands[0] == {
+            "cmd": "set_value",
+            "to": "#name",
+            "value": "John",
+        }
+
+    @pytest.mark.unit
+    def test_set_value_without_selector(self):
+        """set_value() without selector targets current element."""
+        js = JS().set_value()
+        commands = json.loads(js.to_json())
+        assert commands[0] == {"cmd": "set_value", "value": ""}
+
+
 class TestFocusCommands:
     """Test focus commands."""
 

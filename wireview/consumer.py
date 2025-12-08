@@ -258,6 +258,11 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         payload.update(data)
         await self.send_command("upload_op", payload)
 
+    async def component_exec_js(self, id: str, commands: list):
+        """Execute JS commands on the client."""
+        log.debug(f">>> EXEC-JS {id}")
+        await self.send_command("exec_js", {"id": id, "commands": commands})
+
     # Channel layer messages for uploads
 
     async def upload_progress(self, event: dict[str, t.Any]):

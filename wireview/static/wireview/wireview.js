@@ -227,6 +227,14 @@ class ServerConnection {
         this._handleUploadOp(payload);
         break;
 
+      case "exec_js":
+        var { id, commands } = payload;
+        var componentEl = document.getElementById(id);
+        if (componentEl && commands) {
+          wireview.exec(componentEl, commands);
+        }
+        break;
+
       default:
         console.warn(`[wireview] Unknown command "${command}"`, payload);
     }
@@ -1279,6 +1287,14 @@ async function executeCommand(cmd, element) {
     case "remove_attr":
       if (target && cmd.attr) {
         target.removeAttribute(cmd.attr);
+      }
+      break;
+
+    case "set_value":
+      if (target && "value" in target) {
+        /** @type {HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement} */ (
+          target
+        ).value = cmd.value ?? "";
       }
       break;
 

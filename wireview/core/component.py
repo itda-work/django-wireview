@@ -23,6 +23,7 @@ from .meta import Repo, WireviewMeta
 
 if t.TYPE_CHECKING:
     from ..features.uploads import ConsumedUpload, UploadEntry, UploadRegistry
+    from ..js import JS
 
 # Type aliases
 ComponentState = dict[str, t.Any]
@@ -262,6 +263,19 @@ class Component(BaseModel):
     def force_render(self) -> None:
         """Force a full re-render on the next cycle."""
         self.wire.force_render()
+
+    async def push_js(self, js: "JS") -> None:
+        """
+        Send JS commands to be executed on the client.
+
+        Args:
+            js: JS command builder instance
+
+        Example:
+            from wireview.js import JS
+            await self.push_js(JS().set_value("input[name=search]", ""))
+        """
+        await self.wire.push_js(self.id, js)
 
     async def deffer(self, _f: t.Callable[P, t.Coroutine], *args: P.args, **kwargs: P.kwargs) -> None:
         """Defer a function call to be executed later."""

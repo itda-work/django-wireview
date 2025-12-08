@@ -314,6 +314,28 @@ class JS:
         """
         return self._add_command("remove_attr", to=selector, attr=attr)
 
+    def set_value(
+        self,
+        selector: Selector | None = None,
+        value: str = "",
+    ) -> JS:
+        """
+        Set the value property of an input element.
+
+        Unlike set_attr, this sets the element's value property directly,
+        which is necessary for input, textarea, and select elements.
+
+        Args:
+            selector: CSS selector for the target element.
+                     If None, targets the event's current element.
+            value: Value to set (default: empty string to clear).
+
+        Example:
+            JS().set_value("#search", "")  # Clear input
+            JS().set_value("#name", "John")  # Set value
+        """
+        return self._add_command("set_value", to=selector, value=value)
+
     # === Focus Commands ===
 
     def focus(self, selector: Selector | None = None) -> JS:

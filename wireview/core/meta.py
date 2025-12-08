@@ -24,6 +24,7 @@ if t.TYPE_CHECKING:
 
     from ..features.streams import StreamOp
     from ..features.uploads import UploadOp
+    from ..js import JS
     from .component import Component
 
 if settings.USE_HMIN:
@@ -229,6 +230,23 @@ class WireviewMeta:
     async def send_upload_op(self, op: "UploadOp") -> None:
         """Send an upload operation to the client."""
         await self.send("upload_op", **op.to_payload())
+
+    async def push_js(self, component_id: str, js: "JS") -> None:
+        """
+        Send JS commands to be executed on the client.
+
+        Args:
+            component_id: The ID of the target component element
+            js: JS command builder instance
+
+        Example:
+            from wireview.js import JS
+            await self.push_js(self.wire_id, JS().set_value("input[name=content]", ""))
+        """
+        import json
+
+        commands = json.loads(js.to_json())
+        await self.send("exec_js", id=component_id, commands=commands)
 
     async def scroll_into_view(
         self,
