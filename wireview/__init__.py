@@ -16,6 +16,10 @@ def __getattr__(name: str):
         from .core.component import broadcast
 
         return broadcast
+    if name == "abroadcast":
+        from .core.component import abroadcast
+
+        return abroadcast
     if name == "WireviewMeta":
         from .core.meta import WireviewMeta
 
@@ -55,6 +59,7 @@ __all__ = (
     "JS",
     "WireviewMeta",
     "broadcast",
+    "abroadcast",
     # Testing utilities
     "mount",
     "MountedComponent",

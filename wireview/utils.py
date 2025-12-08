@@ -18,6 +18,8 @@ __all__ = (
     "db",
     "send_to",
     "send_notification",
+    "asend_to",
+    "asend_notification",
     "filter_parameters",
     "parse_request_data",
 )
@@ -34,46 +36,82 @@ def on_commit(f: t.Callable[P, None]):
 
 
 @on_commit
-def send_to(channel: str | None, type: str, **kwargs: t.Any):
-    """Sends a message of `type` to the"""
+def send_to(channel: str | None, type: str, **kwargs: t.Any) -> None:
+    """Send a message to a channel (sync version, deferred to on_commit).
+
+    This function is deferred to run after the current transaction commits.
+    Use `asend_to()` for immediate async sending.
+
+    Args:
+        channel: The channel name to send to. If None, the message is not sent.
+        type: The message type (e.g., "notification", "model_mutation").
+        **kwargs: Additional keyword arguments to include in the message.
+    """
     if channel:
-        async_to_sync(get_channel_layer().group_send)(
-            channel, dict(type=type, channel=channel, **kwargs)
-        )
+        async_to_sync(get_channel_layer().group_send)(channel, dict(type=type, channel=channel, **kwargs))
 
 
 @on_commit
 def send_notification(channel: str, **kwargs):
+    """Send a notification to a channel (sync version, deferred to on_commit).
+
+    This function is deferred to run after the current transaction commits.
+    Use `asend_notification()` for immediate async sending.
+    """
     log.debug(f"<-> NOTIFICATION {channel} {kwargs}")
     send_to(channel, "notification", kwargs=kwargs)
+
+
+async def asend_to(channel: str | None, type: str, **kwargs: t.Any) -> None:
+    """Send a message to a channel asynchronously.
+
+    This is the async version of `send_to()`. Use this in async contexts
+    like Component methods (joined, mutation, notification, etc.)
+
+    Unlike `send_to()`, this is NOT deferred to on_commit - it sends immediately.
+
+    Args:
+        channel: The channel name to send to. If None, the message is not sent.
+        type: The message type (e.g., "notification", "model_mutation").
+        **kwargs: Additional keyword arguments to include in the message.
+    """
+    if channel:
+        channel_layer = get_channel_layer()
+        await channel_layer.group_send(channel, dict(type=type, channel=channel, **kwargs))
+
+
+async def asend_notification(channel: str, **kwargs: t.Any) -> None:
+    """Send a notification to a channel asynchronously.
+
+    This is the async version of `send_notification()`. Use this in async contexts
+    like Component methods (joined, mutation, notification, etc.)
+
+    Unlike `send_notification()`, this is NOT deferred to on_commit - it sends
+    immediately.
+
+    Args:
+        channel: The channel name to send the notification to.
+        **kwargs: Additional keyword arguments to include in the notification.
+    """
+    log.debug(f"<-> NOTIFICATION (async) {channel} {kwargs}")
+    await asend_to(channel, "notification", kwargs=kwargs)
 
 
 # Introspection
 
 
 def filter_parameters(f, kwargs):
-    has_kwargs = any(
-        param.kind == inspect.Parameter.VAR_KEYWORD
-        for param in inspect.signature(f).parameters.values()
-    )
+    has_kwargs = any(param.kind == inspect.Parameter.VAR_KEYWORD for param in inspect.signature(f).parameters.values())
     if has_kwargs:
         return kwargs
 
     # Check if function was decorated with validate_call (has .model attribute)
     if hasattr(f, "model") and hasattr(f.model, "model_fields"):
-        return {
-            param: value
-            for param, value in kwargs.items()
-            if param in f.model.model_fields
-        }
+        return {param: value for param, value in kwargs.items() if param in f.model.model_fields}
 
     # Fallback: filter by function signature parameters
     sig_params = set(inspect.signature(f).parameters.keys())
-    return {
-        param: value
-        for param, value in kwargs.items()
-        if param in sig_params
-    }
+    return {param: value for param, value in kwargs.items() if param in sig_params}
 
 
 # Decoder for client requests
@@ -91,9 +129,7 @@ def _extract_data(data: MultiValueDict[str, t.Any]):
         yield key.split("."), value
 
 
-def _parse_obj(
-    data: t.Iterable[tuple[list[str], t.Any]], output=None
-) -> dict[str, t.Any] | t.Any:
+def _parse_obj(data: t.Iterable[tuple[list[str], t.Any]], output=None) -> dict[str, t.Any] | t.Any:
     output = output or {}
     arrays = defaultdict(lambda: defaultdict(dict))  # field -> index -> value
     for key, value in data:
@@ -101,18 +137,12 @@ def _parse_obj(
         if "[" in fragment:
             field_name = fragment[: fragment.index("[")]
             index = int(fragment[fragment.index("[") + 1 : -1])
-            arrays[field_name][index] = (
-                _parse_obj([(tail, value)], arrays[field_name][index])
-                if tail
-                else value
-            )
+            arrays[field_name][index] = _parse_obj([(tail, value)], arrays[field_name][index]) if tail else value
         else:
             output[fragment] = _parse_obj([(tail, value)]) if tail else value
 
     for field, items in arrays.items():
-        output[field] = [
-            v for _, v in sorted(items.items(), key=lambda kv: kv[0])
-        ]
+        output[field] = [v for _, v in sorted(items.items(), key=lambda kv: kv[0])]
     return output
 
 

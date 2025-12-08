@@ -5,6 +5,7 @@ from __future__ import annotations
 import typing as t
 from uuid import uuid4
 
+from channels.layers import get_channel_layer
 from django.apps import apps
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import AnonymousUser
@@ -39,12 +40,47 @@ class Template(t.Protocol):
     ) -> SafeString: ...
 
 
-__all__ = ("Component", "ComponentNotFound", "MessagePayload", "broadcast")
+__all__ = ("Component", "ComponentNotFound", "MessagePayload", "broadcast", "abroadcast")
 
 
 def broadcast(channel: str, **kwargs: t.Any) -> None:
-    """Broadcast a notification to a channel."""
+    """Broadcast a notification to a channel.
+
+    This is the synchronous version. Use `abroadcast()` for async contexts
+    like Component methods (joined, mutation, notification, etc.)
+
+    Args:
+        channel: The channel name to broadcast to.
+        **kwargs: Additional keyword arguments to include in the notification.
+    """
     utils.send_to(channel, type="notification", kwargs=kwargs)
+
+
+async def abroadcast(channel: str, **kwargs: t.Any) -> None:
+    """Broadcast a notification to a channel asynchronously.
+
+    This is the async version of `broadcast()`. Use this in async contexts
+    like Component methods (joined, mutation, notification, etc.)
+
+    Args:
+        channel: The channel name to broadcast to.
+        **kwargs: Additional keyword arguments to include in the notification.
+
+    Example:
+        class MyComponent(Component):
+            async def joined(self):
+                await abroadcast("my-channel", action="joined", user=self.user.username)
+
+            async def notification(self, channel: str, **kwargs):
+                # Handle broadcast notifications
+                if kwargs.get("action") == "joined":
+                    self.online_users.append(kwargs.get("user"))
+    """
+    channel_layer = get_channel_layer()
+    await channel_layer.group_send(
+        channel,
+        {"type": "notification", "channel": channel, "kwargs": kwargs},
+    )
 
 
 class Component(BaseModel):
