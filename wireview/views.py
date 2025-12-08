@@ -173,9 +173,7 @@ class UploadView(View):
 
             entry.status = UploadStatus.COMPLETED
             entry.progress = 100
-            log.info(
-                f"Upload complete: {upload_name}/{ref} " f"({entry.bytes_received} bytes, {entry.chunk_count} chunks)"
-            )
+            log.info(f"Upload complete: {upload_name}/{ref} ({entry.bytes_received} bytes, {entry.chunk_count} chunks)")
 
         return JsonResponse(
             {

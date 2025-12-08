@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import typing as t
 
+from channels.layers import BaseChannelLayer
 from django.contrib.auth.models import AnonymousUser
 
 from .core.meta import WireviewMeta
@@ -43,7 +44,7 @@ __all__ = (
 )
 
 
-class MockChannelLayer:
+class MockChannelLayer(BaseChannelLayer):
     """Mock channel layer for testing broadcasts.
 
     Tracks all group messages and subscriptions for test assertions.

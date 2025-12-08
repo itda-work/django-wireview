@@ -23,7 +23,7 @@ def tag_header(context):
     component: Component = context["this"]
     repo: ComponentRepository = context["wireview_repository"]
     return format_html(
-        ('id="{id}" ' 'data-name="{name}" ' 'data-state="{state}" ' 'data-is-live="{is_live}" ' "wireview-component"),
+        ('id="{id}" data-name="{name}" data-state="{state}" data-is-live="{is_live}" wireview-component'),
         id=component.id,
         name=component._name,
         is_live=str(repo.is_live).lower(),

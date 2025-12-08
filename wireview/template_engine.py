@@ -11,10 +11,24 @@ from __future__ import annotations
 
 import typing as t
 
+from django.http import HttpRequest
 from django.template import Context, Template
 from django.template.base import Node, NodeList, VariableNode
 
 from .core.rendered import inject_marker
+
+
+class BackendTemplate(t.Protocol):
+    """Protocol for Django template backend wrappers (e.g., from loader.get_template())."""
+
+    template: Template
+
+    def render(
+        self,
+        context: dict[str, t.Any] | None = ...,
+        request: HttpRequest | None = ...,
+    ) -> str: ...
+
 
 # Node types that should NOT be wrapped with markers
 # (they produce attributes or structural elements)
@@ -97,7 +111,7 @@ class TemplateMarker:
         self.marker_context = MarkerContext()
         self._processed_templates: set[int] = set()
 
-    def prepare_template(self, template: Template) -> Template:
+    def prepare_template(self, template: Template | BackendTemplate) -> Template | BackendTemplate:
         """
         Prepare a template for marked rendering.
 
@@ -112,7 +126,8 @@ class TemplateMarker:
         """
         # Handle backend wrapper templates (from loader.get_template())
         # which have the actual template in .template attribute
-        inner_template = getattr(template, "template", template)
+        # Get the inner template (backend wrappers have .template attribute)
+        inner_template = t.cast(Template, getattr(template, "template", template))
 
         template_id = id(inner_template)
 
@@ -120,7 +135,10 @@ class TemplateMarker:
         if template_id in self._processed_templates:
             return template
 
-        self._wrap_nodelist(inner_template.nodelist)
+        # Access nodelist from Django's base Template
+        nodelist = getattr(inner_template, "nodelist", None)
+        if nodelist is not None:
+            self._wrap_nodelist(nodelist)
         self._processed_templates.add(template_id)
 
         return template
@@ -168,7 +186,7 @@ class TemplateMarker:
         """Reset the marker context for a new render."""
         self.marker_context.reset()
 
-    def render_marked(self, template: Template, context: dict[str, t.Any]) -> str:
+    def render_marked(self, template: Template | BackendTemplate, context: dict[str, t.Any]) -> str:
         """
         Render a template with dynamic markers.
 
@@ -187,10 +205,11 @@ class TemplateMarker:
         # Raw templates (django.template.base.Template) need Context
         if hasattr(prepared, "template"):
             # Backend wrapper - pass dict directly
-            return prepared.render(context)
+            return prepared.render(context)  # type: ignore[arg-type]
         else:
             # Raw template - wrap in Context
-            return prepared.render(Context(context))
+            # Django's base Template.render() accepts Context
+            return prepared.render(Context(context))  # type: ignore[arg-type]
 
 
 # Global template marker instance
@@ -205,7 +224,7 @@ def get_template_marker() -> TemplateMarker:
     return _template_marker
 
 
-def render_with_markers(template: Template, context: dict[str, t.Any]) -> str:
+def render_with_markers(template: Template | BackendTemplate, context: dict[str, t.Any]) -> str:
     """
     Render a template with automatic dynamic markers.
 

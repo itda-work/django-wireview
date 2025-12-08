@@ -64,7 +64,9 @@ class ComponentRepository:
             if component := self.components.get(component_id):
                 # override with the passed state but preserve the rest of the state
                 for key, value in state.items():
-                    converted = component.__class__._load_django_models({key: value})
+                    # Call the model validator to convert Django models
+                    validator = component.__class__._load_django_models
+                    converted = validator({key: value})  # type: ignore[operator]
                     setattr(component, key, converted.get(key, value))
                 return component
             elif child := self.children.get(component_id):
@@ -129,7 +131,8 @@ class ComponentRepository:
         if not self._is_user_defined_method(component, command):
             raise ValueError(f"Cannot call base class method: {command}")
 
-        await handler(*args, **filter_parameters(handler, kwargs))
+        # Handler methods are async (defined in Component subclasses)
+        await handler(*args, **filter_parameters(handler, kwargs))  # type: ignore[misc]
         return component
 
     @staticmethod

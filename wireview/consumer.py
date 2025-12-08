@@ -63,8 +63,8 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
 
     # Fronted commands
 
-    async def receive_json(self, content):
-        await getattr(self, f'command_{content["command"]}')(**content["payload"])
+    async def receive_json(self, content: dict, **kwargs) -> None:  # type: ignore[override]
+        await getattr(self, f"command_{content['command']}")(**content["payload"])
 
     async def command_join(
         self,
@@ -228,7 +228,8 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
 
             # Call optional callback on component
             if hasattr(component, "on_upload_complete"):
-                await component.on_upload_complete(name, entry)
+                callback = getattr(component, "on_upload_complete")
+                await callback(name, entry)
 
             # Re-render
             await self.send_render(component)
@@ -241,7 +242,8 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
     async def component_dispatch_event(self, id, command, args, kwargs):
         log.debug(f"<<< EVENT {id} {command} {args} {kwargs}")
         component = await self.repo.dispatch_event(id, command, args, kwargs)
-        await self.send_render(component)
+        if component is not None:
+            await self.send_render(component)
         await self.after_mutation_chores()
 
     async def component_remove(self, id):

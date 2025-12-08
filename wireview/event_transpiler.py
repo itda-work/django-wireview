@@ -13,7 +13,7 @@ if t.TYPE_CHECKING:
 
 Stack = list[t.Any]
 
-CACHE: dict[str, str | None] = LRU(TRANSPILER_CACHE_SIZE)
+CACHE: t.MutableMapping[str, str | None] = t.cast(t.MutableMapping[str, str | None], LRU(TRANSPILER_CACHE_SIZE))
 
 
 def transpile(

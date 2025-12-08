@@ -32,13 +32,30 @@ P = t.ParamSpec("P")
 
 
 class Template(t.Protocol):
-    """Protocol for Django template."""
+    """Protocol for Django template (both raw and backend-wrapped)."""
 
     def render(
         self,
         context: dict[str, t.Any] | None = ...,
         request: HttpRequest | None = ...,
-    ) -> SafeString: ...
+    ) -> str: ...
+
+
+# Also support backend templates that have a .template attribute
+class BackendTemplate(t.Protocol):
+    """Protocol for Django template backend wrappers."""
+
+    template: "Template"
+
+    def render(
+        self,
+        context: dict[str, t.Any] | None = ...,
+        request: HttpRequest | None = ...,
+    ) -> str: ...
+
+
+# Union type for any template-like object
+AnyTemplate = Template | BackendTemplate
 
 
 __all__ = ("Component", "ComponentNotFound", "MessagePayload", "broadcast", "abroadcast")
@@ -98,7 +115,7 @@ class Component(BaseModel):
     _urls: t.ClassVar[dict] = {}
     _name: t.ClassVar[str]
     _template_name: t.ClassVar[str]
-    _templates: t.ClassVar[dict[str, Template]] = {}
+    _templates: t.ClassVar[dict[str, AnyTemplate]] = {}
     _fqn: t.ClassVar[str]
 
     # fields to exclude from the component state during serialization
@@ -209,14 +226,14 @@ class Component(BaseModel):
         return instance
 
     @classmethod
-    def _get_template(cls, template_name: str | None = None) -> Template:
+    def _get_template(cls, template_name: str | None = None) -> AnyTemplate:
         """Get the template for this component."""
         template_name = template_name or cls._template_name
         if settings.DEBUG:
-            return loader.get_template(template_name)
+            return loader.get_template(template_name)  # type: ignore[return-value]
         else:
             if (template := cls._templates.get(template_name)) is None:
-                template = loader.get_template(template_name)
+                template = loader.get_template(template_name)  # type: ignore[assignment]
                 cls._templates[template_name] = template
             return template
 
@@ -452,7 +469,8 @@ class Component(BaseModel):
                     params=self.wire.params,
                 )
             )
-        await self.wire.send_dom_action(_action, _id, html)
+        if html is not None:
+            await self.wire.send_dom_action(_action, _id, html)
 
     # Stream operations
 
@@ -605,10 +623,14 @@ class Component(BaseModel):
         from .. import settings as wireview_settings
         from ..features.uploads import UploadConfig, UploadOp, UploadRegistry
 
-        if max_file_size is None:
-            max_file_size = getattr(wireview_settings, "UPLOAD_MAX_FILE_SIZE", 10 * 1024 * 1024)
-        if chunk_size is None:
-            chunk_size = getattr(wireview_settings, "UPLOAD_CHUNK_SIZE", 64 * 1024)
+        actual_max_file_size: int = (
+            max_file_size
+            if max_file_size is not None
+            else getattr(wireview_settings, "UPLOAD_MAX_FILE_SIZE", 10 * 1024 * 1024)
+        )
+        actual_chunk_size: int = (
+            chunk_size if chunk_size is not None else getattr(wireview_settings, "UPLOAD_CHUNK_SIZE", 64 * 1024)
+        )
 
         if self._upload_registry is None:
             self._upload_registry = UploadRegistry(self.id)
@@ -617,8 +639,8 @@ class Component(BaseModel):
             name=name,
             accept=accept or [],
             max_entries=max_entries,
-            max_file_size=max_file_size,
-            chunk_size=chunk_size,
+            max_file_size=actual_max_file_size,
+            chunk_size=actual_chunk_size,
             auto_upload=auto_upload,
         )
         self._upload_registry.allow_upload(config)

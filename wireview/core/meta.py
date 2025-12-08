@@ -20,7 +20,6 @@ from .rendered import Rendered, has_markers
 
 if t.TYPE_CHECKING:
     from django.db import models
-    from django.utils.safestring import SafeString
 
     from ..features.streams import StreamOp
     from ..features.uploads import UploadOp
@@ -268,13 +267,14 @@ class WireviewMeta:
             template = component._get_template()
             context = self._get_context(component, repo)
             # Use marker-injected rendering for efficient diffing
-            html = render_with_markers(template, context).strip()
+            # The template type from component matches what render_with_markers expects
+            html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
             html = html_minify(html)
         if html:
             return mark_safe(html)
         return None
 
-    async def send_dom_action(self, action: DomAction, id: str, html: "SafeString") -> None:
+    async def send_dom_action(self, action: DomAction, id: str, html: str) -> None:
         """Send a DOM manipulation action to the client."""
         await self.send("dom_action", action=action.value, id=id, html=html)
 

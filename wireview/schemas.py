@@ -1,6 +1,17 @@
-from enum import StrEnum
+import sys
+from enum import Enum
 
 from pydantic import BaseModel, Field
+
+# StrEnum is available in Python 3.11+, use (str, Enum) for 3.10 compatibility
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:
+
+    class StrEnum(str, Enum):
+        """String enum for Python 3.10 compatibility."""
+
+        pass
 
 
 class AutoBroadcast(BaseModel):

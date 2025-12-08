@@ -1,8 +1,25 @@
 # Lazy imports to avoid Django AppRegistryNotReady errors
 # Import these at module level only after Django is configured
+from __future__ import annotations
+
+import typing as t
+
+# Type hints for lazy imports (helps IDE and type checkers)
+if t.TYPE_CHECKING:
+    from .async_result import AsyncResult as AsyncResult
+    from .async_result import AsyncState as AsyncState
+    from .core.component import Component as Component
+    from .core.component import ComponentNotFound as ComponentNotFound
+    from .core.component import abroadcast as abroadcast
+    from .core.component import broadcast as broadcast
+    from .core.meta import WireviewMeta as WireviewMeta
+    from .js import JS as JS
+    from .testing import ComponentTestCase as ComponentTestCase
+    from .testing import MountedComponent as MountedComponent
+    from .testing import mount as mount
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> t.Any:
     """Lazy import to avoid circular import issues with Django."""
     if name == "Component":
         from .core.component import Component

@@ -40,7 +40,7 @@ def receiver(signal: Signal, *, is_active: bool):
 def broadcast_post_save(sender, instance, created=False, **kwargs):
     name = sender._meta.label_lower
     encoded_instance = serializer.encode(instance)
-    action = ModelAction.CREATED if created else ModelAction.UPDATED
+    action: ModelAction = ModelAction.CREATED if created else ModelAction.UPDATED
     if AUTO_BROADCAST.model:
         notify_mutation([name], action, encoded_instance)
 
@@ -111,12 +111,16 @@ def get_related_fields(model):
                 if related_name != "+":
                     is_m2m = isinstance(field, models.ManyToManyField)
                     if not is_m2m or AUTO_BROADCAST.m2m and is_m2m:
+                        related_model = field.related_model
+                        # Handle self-referential relationships
+                        if related_model == "self" or not hasattr(related_model, "_meta"):
+                            related_model = model
                         fields.append(
                             {
                                 "is_m2m": is_m2m,
                                 "name": field.attname,
                                 "related_name": related_name,
-                                "related_model_name": field.related_model._meta.label_lower,
+                                "related_model_name": related_model._meta.label_lower,
                             }
                         )
         related_fields = MODEL_RELATED_FIELDS[model] = tuple(fields)
@@ -127,27 +131,28 @@ def get_related_fields(model):
 def broadcast_m2m_changed(sender, instance, action, model, pk_set, **kwargs):
     if action.startswith("post_") and instance.pk:
         encoded_instance = serializer.encode(instance)
+        m2m_action: ModelAction
         if action.endswith("_add"):
-            action = ModelAction.ADDED
+            m2m_action = ModelAction.ADDED
         elif action.endswith("_remove"):
-            action = ModelAction.REMOVED
+            m2m_action = ModelAction.REMOVED
         elif action.endswith("_clear"):
-            action = ModelAction.CLEARED
+            m2m_action = ModelAction.CLEARED
         else:
-            assert False, f"Unknown action `{action}`"
+            raise ValueError(f"Unknown action `{action}`")
 
         model_name = model._meta.label_lower
         attr_name = get_name_of(sender, model)
         updates = [f"{model_name}.{pk}.{attr_name}" for pk in pk_set or []]
-        notify_mutation(updates, action, encoded_instance)
+        notify_mutation(updates, m2m_action, encoded_instance)
 
-        model = type(instance)
-        model_name = model._meta.label_lower
-        attr_name = get_name_of(sender, model)
-        update = f"{model_name}.{instance.pk}.{attr_name}"
+        instance_model = type(instance)
+        instance_model_name = instance_model._meta.label_lower
+        instance_attr_name = get_name_of(sender, instance_model)
+        update = f"{instance_model_name}.{instance.pk}.{instance_attr_name}"
         notify_mutation(
             [f"{update}.{pk}" for pk in pk_set or []],
-            action,
+            m2m_action,
             encoded_instance,
         )
 
