@@ -1,21 +1,21 @@
 {% load wireview %}
 
 <div {% tag_header %}>
-  <div class="message-list" style="
-    height: 400px;
-    overflow-y: auto;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 16px;
-    background: #fafafa;
-  ">
+  <div class="message-list"
+       style="height: 400px;
+              overflow-y: auto;
+              border: 1px solid #ddd;
+              border-radius: 4px;
+              padding: 16px;
+              background: #fafafa">
     <ul wire-stream="messages" style="list-style: none;">
       {% for item in messages %}
         {% include "chat/message_list_item.html" %}
       {% empty %}
-        <li class="empty-message" style="color: #999; text-align: center; padding: 20px;">
-          No messages yet. Start the conversation!
-        </li>
+        <li class="empty-message"
+            style="color: #999;
+                   text-align: center;
+                   padding: 20px">No messages yet. Start the conversation!</li>
       {% endfor %}
     </ul>
   </div>

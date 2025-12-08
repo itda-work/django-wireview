@@ -3,7 +3,11 @@
 <div {% tag_header %}>
   <li {% class {"completed": item.completed, "editing": editing, "hidden": (showing == 'active' and item.completed) or (showing == 'completed' and not item.completed)} %}>
     <div class="view">
-      <input class="toggle" type="checkbox" name="completed" {% cond {"checked": item.completed} %} {% on 'change' 'completed' %}/>
+      <input class="toggle"
+             type="checkbox"
+             name="completed"
+             {% cond {"checked": item.completed} %}
+             {% on 'change' 'completed' %} />
       <label {% on 'click' 'toggle_editing' %}>{{ item.text }}</label>
       <button {% on 'click' 'delete' %} class="destroy"></button>
     </div>
@@ -11,6 +15,6 @@
            name="text"
            value="{{ item.text }}"
            {% on 'blur' 'save' %}
-           {% on 'keypress.enter' 'save' %}/>
+           {% on 'keypress.enter' 'save' %} />
   </li>
 </div>

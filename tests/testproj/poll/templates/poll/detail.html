@@ -1,10 +1,9 @@
 {% extends "poll/base.html" %}
+
 {% load wireview %}
 
 {% block title %}{{ poll.question }}{% endblock %}
-
 {% block content %}
-<a href="{% url 'poll:index' %}" class="back-link">&larr; Back to polls</a>
-
-{% component 'XPoll' id="poll" poll=poll %}
+  <a href="{% url 'poll:index' %}" class="back-link">&larr; Back to polls</a>
+  {% component 'XPoll' id="poll" poll=poll %}
 {% endblock %}

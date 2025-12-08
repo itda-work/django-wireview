@@ -5,67 +5,48 @@
     <!-- Intro State: Show quiz title and start button -->
     <div class="intro">
       <h2>{{ this.quiz.title }}</h2>
-      {% if this.quiz.description %}
-        <p>{{ this.quiz.description }}</p>
-      {% endif %}
+      {% if this.quiz.description %}<p>{{ this.quiz.description }}</p>{% endif %}
       <p>{{ this.questions|length }} questions</p>
-
-      <input
-        type="text"
-        name="name"
-        class="name-input"
-        placeholder="Enter your name (optional)"
-        value="{{ username }}"
-        {% on 'input' 'set_username' %}
-      />
+      <input type="text"
+             name="name"
+             class="name-input"
+             placeholder="Enter your name (optional)"
+             value="{{ username }}"
+             {% on 'input' 'set_username' %} />
       <br>
-      <button type="button" class="btn" {% on 'click' 'start_quiz' %}>
-        Start Quiz
-      </button>
+      <button type="button" class="btn" {% on 'click' 'start_quiz' %}>Start Quiz</button>
     </div>
-
     <!-- Show leaderboard -->
     {% if this.leaderboard %}
       {% component 'XLeaderboard' id="leaderboard" quiz=quiz %}
     {% endif %}
-
   {% elif state == 'playing' %}
     <!-- Playing State: Show current question -->
     <div class="progress-bar">
       <div class="progress-fill" style="width: {{ progress_percentage }}%"></div>
     </div>
-
     {% with question=this.current_question answer_id=this.current_answer_id %}
       {% if question %}
-        <div class="question-number">
-          Question {{ current_question_index|add:1 }} of {{ this.questions|length }}
-        </div>
+        <div class="question-number">Question {{ current_question_index|add:1 }} of {{ this.questions|length }}</div>
         <div class="question-text">{{ question.text }}</div>
-
         <div class="choices">
           {% for choice in question.choices.all %}
             <button
               type="button"
               {% class {
-                'choice-btn': True,
-                'selected': answer_id == choice.id,
-                'correct': answer_id and choice.is_correct,
-                'incorrect': answer_id == choice.id and not choice.is_correct
+              'choice-btn': True,
+              'selected': answer_id == choice.id,
+              'correct': answer_id and choice.is_correct,
+              'incorrect': answer_id == choice.id and not choice.is_correct
               } %}
               {% cond {'disabled': answer_id} %}
               {% on 'click' 'answer' choice_id=choice.id %}
-            >
+              >
               {{ choice.text }}
             </button>
           {% endfor %}
         </div>
-
-        {% if answer_id and question.explanation %}
-          <div class="explanation">
-            {{ question.explanation }}
-          </div>
-        {% endif %}
-
+        {% if answer_id and question.explanation %}<div class="explanation">{{ question.explanation }}</div>{% endif %}
         {% if answer_id %}
           <div style="margin-top: 25px; text-align: center;">
             <button type="button" class="btn" {% on 'click' 'next_question' %}>
@@ -79,7 +60,6 @@
         {% endif %}
       {% endif %}
     {% endwith %}
-
   {% elif state == 'results' %}
     <!-- Results State: Show score and leaderboard -->
     <div class="results">
@@ -89,14 +69,10 @@
         {% widthratio score this.questions|length 100 as percentage %}
         {{ percentage }}% correct
       </div>
-
       <div style="margin-top: 30px;">
-        <button type="button" class="btn" {% on 'click' 'restart' %}>
-          Try Again
-        </button>
+        <button type="button" class="btn" {% on 'click' 'restart' %}>Try Again</button>
       </div>
     </div>
-
     {% component 'XLeaderboard' id="leaderboard" quiz=quiz %}
   {% endif %}
 </div>

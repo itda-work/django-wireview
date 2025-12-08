@@ -2,28 +2,24 @@
 
 <div {% tag_header %}>
   <div class="question-text">{{ this.question.text }}</div>
-
   <div class="choices">
     {% for choice in this.choices %}
       <button
         type="button"
         {% class {
-          'choice-btn': True,
-          'selected': selected_choice_id == choice.id,
-          'correct': show_result and choice.is_correct,
-          'incorrect': show_result and selected_choice_id == choice.id and not choice.is_correct
+        'choice-btn': True,
+        'selected': selected_choice_id == choice.id,
+        'correct': show_result and choice.is_correct,
+        'incorrect': show_result and selected_choice_id == choice.id and not choice.is_correct
         } %}
         {% cond {'disabled': selected_choice_id} %}
         {% on 'click' 'select' choice_id=choice.id %}
-      >
+        >
         {{ choice.text }}
       </button>
     {% endfor %}
   </div>
-
   {% if show_result and this.question.explanation %}
-    <div class="explanation">
-      {{ this.question.explanation }}
-    </div>
+    <div class="explanation">{{ this.question.explanation }}</div>
   {% endif %}
 </div>

@@ -1,5 +1,11 @@
-<li id="messages-{{ item.pk }}" style="margin-bottom: 12px; padding: 8px; background: white; border-radius: 4px;">
-  <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+<li id="messages-{{ item.pk }}"
+    style="margin-bottom: 12px;
+           padding: 8px;
+           background: white;
+           border-radius: 4px">
+  <div style="display: flex;
+              justify-content: space-between;
+              margin-bottom: 4px">
     <strong style="color: #0066cc;">{{ item.username }}</strong>
     <span style="font-size: 12px; color: #999;">{{ item.created_at|date:"H:i" }}</span>
   </div>

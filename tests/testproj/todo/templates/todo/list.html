@@ -12,7 +12,12 @@
     </header>
     <!-- This section should be hidden by default and shown when there are todos -->
     <section class="main" {% if not this.items %}style="display:none"{% endif %}>
-      <input id="toggle-all" class="toggle-all" type="checkbox" name="toggle_all" {% cond {"checked": all_items_are_completed} %} {% on 'change' 'toggle_all' %} />
+      <input id="toggle-all"
+             class="toggle-all"
+             type="checkbox"
+             name="toggle_all"
+             {% cond {"checked": all_items_are_completed} %}
+             {% on 'change' 'toggle_all' %} />
       <label for="toggle-all">Mark all as complete</label>
       <ul class="todo-list" id="todo-list">
         <!-- These are here just to show the structure of the list items -->
@@ -28,23 +33,24 @@
         <!-- Remove this if you don't implement routing -->
         <ul class="filters">
           <li>
-            <a {% class {'selected': showing == 'all'} %} {% on 'click.prevent' 'show' showing='all' %}>All</a>
+            <a {% class {'selected': showing == 'all'} %}
+               {% on 'click.prevent' 'show' showing='all' %}>All</a>
           </li>
           <li>
-            <a {% class {'selected': showing == 'active'} %} {% on 'click.prevent' 'show' showing='active' %}>
+            <a {% class {'selected': showing == 'active'} %}
+               {% on 'click.prevent' 'show' showing='active' %}>
               Active
             </a>
           </li>
           <li>
-            <a {% class {'selected': showing == 'completed'} %} {% on 'click.prevent' 'show' showing='completed' %}>
+            <a {% class {'selected': showing == 'completed'} %}
+               {% on 'click.prevent' 'show' showing='completed' %}>
               Completed
             </a>
           </li>
         </ul>
         <!-- Hidden if no completed items are left ↓ -->
-        <button class="clear-completed" {% on 'click' 'clear_completed' %}>
-          Clear completed
-        </button>
+        <button class="clear-completed" {% on 'click' 'clear_completed' %}>Clear completed</button>
       </footer>
     {% endif %}
   </section>

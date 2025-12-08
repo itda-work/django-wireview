@@ -2,69 +2,51 @@
 
 <div {% tag_header %} class="creator-card">
   <h2>Create New Notification</h2>
-
   <div class="form-group">
     <label for="title">Title</label>
-    <input
-      type="text"
-      name="title"
-      id="title"
-      placeholder="Enter notification title"
-      value="{{ title }}"
-      {% on 'input' 'set_title' %}
-    />
+    <input type="text"
+           name="title"
+           id="title"
+           placeholder="Enter notification title"
+           value="{{ title }}"
+           {% on 'input' 'set_title' %} />
   </div>
-
   <div class="form-group">
     <label for="message">Message</label>
-    <textarea
-      name="message"
-      id="message"
-      placeholder="Enter notification message (optional)"
-      {% on 'input' 'set_message' %}
-    >{{ message }}</textarea>
+    <textarea name="message"
+              id="message"
+              placeholder="Enter notification message (optional)"
+              {% on 'input' 'set_message' %}>{{ message }}</textarea>
   </div>
-
   <div class="form-group">
     <label>Type</label>
     <div class="type-buttons">
-      <button
-        type="button"
-        {% class {'type-button': True, 'selected': type == 'info'} %}
-        {% on 'click' 'set_type' type='info' %}
-      >
+      <button type="button"
+              {% class {'type-button': True, 'selected': type == 'info'} %}
+              {% on 'click' 'set_type' type='info' %}>
         Info
       </button>
-      <button
-        type="button"
-        {% class {'type-button': True, 'selected': type == 'success'} %}
-        {% on 'click' 'set_type' type='success' %}
-      >
+      <button type="button"
+              {% class {'type-button': True, 'selected': type == 'success'} %}
+              {% on 'click' 'set_type' type='success' %}>
         Success
       </button>
-      <button
-        type="button"
-        {% class {'type-button': True, 'selected': type == 'warning'} %}
-        {% on 'click' 'set_type' type='warning' %}
-      >
+      <button type="button"
+              {% class {'type-button': True, 'selected': type == 'warning'} %}
+              {% on 'click' 'set_type' type='warning' %}>
         Warning
       </button>
-      <button
-        type="button"
-        {% class {'type-button': True, 'selected': type == 'error'} %}
-        {% on 'click' 'set_type' type='error' %}
-      >
+      <button type="button"
+              {% class {'type-button': True, 'selected': type == 'error'} %}
+              {% on 'click' 'set_type' type='error' %}>
         Error
       </button>
     </div>
   </div>
-
-  <button
-    type="button"
-    class="submit-btn"
-    {% cond {'disabled': not title} %}
-    {% on 'click' 'create' %}
-  >
+  <button type="button"
+          class="submit-btn"
+          {% cond {'disabled': not title} %}
+          {% on 'click' 'create' %}>
     Create Notification
   </button>
 </div>

@@ -1,16 +1,21 @@
 {% extends "base.html" %}
 
 {% block body %}
-  <div class="todoapp" style="max-width: 600px; margin: 40px auto; padding: 20px;">
+  <div class="todoapp"
+       style="max-width: 600px;
+              margin: 40px auto;
+              padding: 20px">
     <h1 style="text-align: center; margin-bottom: 30px;">wireview Examples</h1>
-
     <div style="display: flex; flex-direction: column; gap: 20px;">
       <!-- Todo App -->
-      <div style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+      <div style="background: white;
+                  border-radius: 8px;
+                  padding: 20px;
+                  box-shadow: 0 2px 4px rgba(0,0,0,0.1)">
         <h2 style="margin-bottom: 8px; color: #333;">
-          <a href="{% url 'todo:todo' %}" style="color: inherit; text-decoration: none;">
-            Todo App
-          </a>
+          <a href="{% url 'todo:todo' %}"
+             style="color: inherit;
+                    text-decoration: none">Todo App</a>
         </h2>
         <p style="color: #666; margin-bottom: 12px; font-size: 14px;">
           <strong>Level:</strong> Minimal &bull; <strong>Focus:</strong> Basic CRUD
@@ -23,13 +28,15 @@
           <a href="{% url 'todo:todo' %}">Launch Todo App &rarr;</a>
         </p>
       </div>
-
       <!-- Chat App -->
-      <div style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+      <div style="background: white;
+                  border-radius: 8px;
+                  padding: 20px;
+                  box-shadow: 0 2px 4px rgba(0,0,0,0.1)">
         <h2 style="margin-bottom: 8px; color: #333;">
-          <a href="{% url 'chat:index' %}" style="color: inherit; text-decoration: none;">
-            Chat App
-          </a>
+          <a href="{% url 'chat:index' %}"
+             style="color: inherit;
+                    text-decoration: none">Chat App</a>
         </h2>
         <p style="color: #666; margin-bottom: 12px; font-size: 14px;">
           <strong>Level:</strong> Practical &bull; <strong>Focus:</strong> Real-time Communication
@@ -42,13 +49,15 @@
           <a href="{% url 'chat:index' %}">Launch Chat App &rarr;</a>
         </p>
       </div>
-
       <!-- Dashboard App -->
-      <div style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+      <div style="background: white;
+                  border-radius: 8px;
+                  padding: 20px;
+                  box-shadow: 0 2px 4px rgba(0,0,0,0.1)">
         <h2 style="margin-bottom: 8px; color: #333;">
-          <a href="{% url 'dashboard:index' %}" style="color: inherit; text-decoration: none;">
-            Dashboard App
-          </a>
+          <a href="{% url 'dashboard:index' %}"
+             style="color: inherit;
+                    text-decoration: none">Dashboard App</a>
         </h2>
         <p style="color: #666; margin-bottom: 12px; font-size: 14px;">
           <strong>Level:</strong> Complete &bull; <strong>Focus:</strong> Complex Composition
@@ -62,8 +71,10 @@
         </p>
       </div>
     </div>
-
-    <footer style="margin-top: 40px; text-align: center; color: #999; font-size: 14px;">
+    <footer style="margin-top: 40px;
+                   text-align: center;
+                   color: #999;
+                   font-size: 14px">
       <p>
         <a href="https://github.com/pyhub-kr/django-wireview" target="_blank">django-wireview</a>
         &mdash; Phoenix LiveView-style components for Django

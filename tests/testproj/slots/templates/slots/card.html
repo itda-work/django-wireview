@@ -1,4 +1,5 @@
 {% load wireview %}
+
 <div {% tag_header %} class="card card-{{ variant }}">
   {% if slots.header %}
     <header class="card-header">
@@ -9,11 +10,7 @@
       <h3>{{ title }}</h3>
     </header>
   {% endif %}
-
-  <div class="card-body">
-    {% render_slot %}
-  </div>
-
+  <div class="card-body">{% render_slot %}</div>
   {% if slots.footer %}
     <footer class="card-footer">
       {% render_slot "footer" %}

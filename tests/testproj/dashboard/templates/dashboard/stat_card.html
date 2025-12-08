@@ -4,46 +4,59 @@
   <div class="card stat-card">
     {% if data.loading %}
       <!-- Loading skeleton -->
-      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+      <div style="display: flex;
+                  justify-content: space-between;
+                  align-items: flex-start">
         <div style="flex: 1;">
-          <div class="skeleton" style="width: 80px; height: 14px; margin-bottom: 8px;"></div>
-          <div class="skeleton" style="width: 120px; height: 32px; margin-bottom: 8px;"></div>
+          <div class="skeleton"
+               style="width: 80px;
+                      height: 14px;
+                      margin-bottom: 8px"></div>
+          <div class="skeleton"
+               style="width: 120px;
+                      height: 32px;
+                      margin-bottom: 8px"></div>
           <div class="skeleton" style="width: 60px; height: 14px;"></div>
         </div>
       </div>
-
     {% elif data.ok and data.result %}
       <!-- Success state -->
-      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+      <div style="display: flex;
+                  justify-content: space-between;
+                  align-items: flex-start">
         <div>
           <p style="color: #666; font-size: 14px; margin-bottom: 4px;">{{ data.result.label }}</p>
-          <p style="font-size: 28px; font-weight: 600; color: #1a1a2e; margin-bottom: 8px;">
-            {% if data.result.name == 'revenue' %}${% endif %}{{ data.result.value|floatformat:0 }}{% if data.result.name == 'conversion' %}%{% endif %}
+          <p style="font-size: 28px;
+                    font-weight: 600;
+                    color: #1a1a2e;
+                    margin-bottom: 8px">
+            {% if data.result.name == 'revenue' %}${% endif %}
+            {{ data.result.value|floatformat:0 }}
+            {% if data.result.name == 'conversion' %}
+              %
+            {% endif %}
           </p>
-          <p style="font-size: 14px; {% if data.result.change_percent >= 0 %}color: #22c55e{% else %}color: #ef4444{% endif %}">
-            {% if data.result.change_percent >= 0 %}+{% endif %}{{ data.result.change_percent }}%
+          <p style="font-size: 14px;
+                    {% if data.result.change_percent >= 0 %}color: #22c55e{% else %}color: #ef4444{% endif %}">
+            {% if data.result.change_percent >= 0 %}+{% endif %}
+            {{ data.result.change_percent }}%
             <span style="color: #999; margin-left: 4px;">vs last period</span>
           </p>
         </div>
-        <button class="btn btn-sm" {% on 'click' 'refresh' %} title="Refresh">
-          &#x21bb;
-        </button>
+        <button class="btn btn-sm" {% on 'click' 'refresh' %} title="Refresh">&#x21bb;</button>
       </div>
-
     {% elif data.ok and not data.result %}
       <!-- No data state -->
       <div style="text-align: center; padding: 20px; color: #999;">
         <p style="margin-bottom: 8px;">No data for "{{ this.stat_name }}"</p>
         <p style="font-size: 12px;">Create stats in Django admin</p>
       </div>
-
     {% elif data.failed %}
       <!-- Error state -->
       <div style="text-align: center; padding: 20px;">
         <p style="color: #ef4444; margin-bottom: 8px;">Failed to load stat</p>
         <button class="btn btn-sm" {% on 'click' 'refresh' %}>Retry</button>
       </div>
-
     {% else %}
       <!-- Initial state (no data yet) -->
       <div class="loading">Initializing...</div>

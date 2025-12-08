@@ -1,13 +1,12 @@
 {% extends "notifications/base.html" %}
+
 {% load wireview %}
 
 {% block title %}Notification Center{% endblock %}
-
 {% block content %}
-{% component 'XNotificationCreator' id="creator" %}
-
-<div class="creator-card">
-  <h2>All Notifications</h2>
-  {% component 'XNotificationList' id="list" %}
-</div>
+  {% component 'XNotificationCreator' id="creator" %}
+  <div class="creator-card">
+    <h2>All Notifications</h2>
+    {% component 'XNotificationList' id="list" %}
+  </div>
 {% endblock %}

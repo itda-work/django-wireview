@@ -2,9 +2,7 @@
 
 <div {% tag_header %} class="rating-stats">
   <div class="stats-header">
-    <div class="average-rating">
-      {{ this.product.average_rating|floatformat:1 }}
-    </div>
+    <div class="average-rating">{{ this.product.average_rating|floatformat:1 }}</div>
     <div>
       <div class="average-stars">
         {% with avg=this.product.average_rating %}
@@ -13,22 +11,17 @@
           {% endfor %}
         {% endwith %}
       </div>
-      <div class="rating-count">
-        {{ this.product.rating_count }} rating{{ this.product.rating_count|pluralize }}
-      </div>
+      <div class="rating-count">{{ this.product.rating_count }} rating{{ this.product.rating_count|pluralize }}</div>
     </div>
   </div>
-
   <div class="distribution">
     {% with dist=this.product.rating_distribution total=this.product.rating_count %}
       {% for score, count in dist.items reversed %}
         <div class="distribution-row">
           <span class="distribution-label">{{ score }} star{{ score|pluralize }}</span>
           <div class="distribution-bar-container">
-            <div
-              class="distribution-bar"
-              style="width: {% if total %}{{ count|divisibleby:total|default:0 }}{% else %}0{% endif %}%"
-            ></div>
+            <div class="distribution-bar"
+                 style="width: {% if total %}{{ count|divisibleby:total|default:0 }}{% else %}0{% endif %}%"></div>
           </div>
           <span class="distribution-count">{{ count }}</span>
         </div>

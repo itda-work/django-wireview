@@ -5,7 +5,6 @@
     <button {% on 'click' 'mark_all_read' %}>Mark all as read</button>
     <button {% on 'click' 'clear_all' %} style="color: #d93025;">Clear all</button>
   </div>
-
   <div class="notification-list" wire-stream="notifications">
     {% for notification in notifications %}
       {% include "notifications/notification_list_item.html" %}
