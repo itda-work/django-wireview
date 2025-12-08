@@ -2,7 +2,7 @@
 
 Wireview는 Django Channels를 사용하여 실시간 서버 렌더링 인터랙티브 UI를 구축할 수 있게 해주는 라이브러리입니다. Phoenix Framework의 LiveView와 유사합니다.
 
-![TODO MVC 데모 앱](demo.gif)
+![Wireview 아키텍처 개요](overview.jpg)
 
 ## 무엇이 포함되어 있나요?
 
