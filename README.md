@@ -1,26 +1,128 @@
-# Wireview, a LiveView library for Django
+# Wireview - Phoenix LiveView for Django
 
-Wireview enables you to do something similar to Phoenix framework LiveView using Django Channels.
+Wireview enables you to build real-time, server-rendered interactive UIs using Django Channels, similar to Phoenix Framework's LiveView.
 
 ![TODO MVC demo app](demo.gif)
 
 ## What's in the box?
 
-This is no replacement for VueJS or ReactJS, or any JavaScript but it will allow you use all the potential of Django to create interactive front-ends. This method has its drawbacks because if connection is lost to the server the components in the front-end go busted until connection is re-established. But also has some advantages, as everything is server side rendered the interface comes already with meaningful information in the first request response, you can use all the power of Django template and ORM directly in your component and update the interface in real-time by subscribing to events on the server. If connection is lost or a component crashes, the front-end will have enough information to rebuild their state in the last good known state and continue to operate with the connection is restored.
+This is no replacement for VueJS or ReactJS, but it allows you to leverage all the potential of Django to create interactive front-ends. Everything is server-side rendered, so the interface comes with meaningful information in the first request. You can use all the power of Django templates and ORM directly in your components and update the interface in real-time by subscribing to events.
 
-## Installation and setup
+**Key Features:**
+- Server-side rendered components with real-time updates
+- Pydantic-based state management with automatic validation
+- WebSocket communication via Django Channels
+- HTML diff for efficient bandwidth usage
+- Model subscriptions for automatic UI updates
+- Streams API for efficient large list handling
+- Presence tracking for online users and typing indicators
+- File uploads with progress tracking
+
+## Improvements over django-reactor
+
+Wireview is a modern evolution of [django-reactor](https://github.com/edelvalle/reactor), with significant improvements:
+
+### New Features
+
+| Feature | reactor | wireview | Description |
+|---------|---------|----------|-------------|
+| **Streams API** | - | ✅ | Memory-efficient large list handling with `stream()`, `stream_insert()`, `stream_delete()` |
+| **Presence API** | - | ✅ | Real-time user tracking and typing indicators with `PresenceMixin`, `PresenceTrackerMixin` |
+| **File Uploads** | - | ✅ | Chunked uploads with progress tracking, magic bytes validation |
+| **AsyncResult** | - | ✅ | Loading/success/error state management for async operations |
+| **JS Commands** | - | ✅ | Phoenix LiveView.JS-style client-side commands with `JS()` builder |
+| **Testing Utils** | - | ✅ | `mount()` utility for easy component testing without WebSocket |
+| **Debug Tools** | - | ✅ | Browser console debugging with `wireview.debug` |
+
+### Architecture Improvements
+
+| Aspect | reactor | wireview |
+|--------|---------|----------|
+| **Pydantic** | v1 (legacy) | v2 (modern) |
+| **DOM Morphing** | morphdom | idiomorph (better attribute preservation) |
+| **Python** | ≥3.9 | ≥3.10 |
+| **Django** | 3.2+ | 4.2, 5.0, 5.1, 6.0 |
+| **Module Structure** | Flat | Organized (`core/`, `features/`) |
+
+### New Component Methods
+
+```python
+# Lifecycle
+async def leaving(self):
+    """Called when component disconnects - cleanup hook"""
+
+# UI Control
+await self.scroll_into_view(element_id, behavior="smooth")
+await self.push_js(JS().set_value("input", ""))
+
+# Streams
+await self.stream("items", items)
+await self.stream_insert("items", item, at=0)
+await self.stream_delete("items", item_id)
+
+# Presence
+await self.presence_join()
+await self.presence_set_typing(True)
+
+# Async Loading
+self.data = await self.assign_async(fetch_data())
+```
+
+### Migration from reactor
+
+Most reactor components work with minimal changes:
+
+```python
+# reactor
+from reactor.component import Component
+
+class XCounter(Component):
+    _subscriptions = {"counter"}
+
+# wireview (same API)
+from wireview.component import Component
+
+class XCounter(Component):
+    _subscriptions = {"counter"}
+```
+
+Key differences:
+- Package name: `reactor` → `wireview`
+- Settings prefix: `REACTOR_*` → `WIREVIEW` dict
+- Template tag: `{% load reactor %}` → `{% load wireview %}`
+
+## Table of Contents
+
+- [Improvements over django-reactor](#improvements-over-django-reactor)
+- [Installation and Setup](#installation-and-setup)
+- [Quick Start](#quick-start)
+- [Component Lifecycle](#component-lifecycle)
+- [Event Binding](#event-binding)
+- [URL State Management](#url-state-management)
+- [Model Subscriptions](#model-subscriptions)
+- [Streams API](#streams-api)
+- [Presence API](#presence-api)
+- [File Uploads](#file-uploads)
+- [AsyncResult](#asyncresult-and-async-operations)
+- [JS Command Builder](#js-command-builder)
+- [Component API Reference](#component-api-reference)
+- [Template Tags Reference](#template-tags-reference)
+- [JavaScript API](#front-end-apis)
+- [Testing](#testing-components)
+- [Debug Tools](#debug-tools)
+- [Settings](#settings)
+
+## Installation and Setup
 
 Wireview requires Python >=3.10 and Django >=4.2 (supports Django 4.2, 5.0, 5.1, and 6.0).
-
-Install wireview:
 
 ```bash
 pip install django-wireview
 ```
 
-Wireview makes use of `django-channels`, by default this one uses an InMemory channel layer which is not capable of a real broadcasting, so you might wanna use the Redis one, take a look here: [Channel Layers](https://channels.readthedocs.io/en/latest/topics/channel_layers.html)
+Wireview uses `django-channels`. By default, Channels uses an InMemory channel layer which doesn't support real broadcasting. For production, use Redis: [Channel Layers](https://channels.readthedocs.io/en/latest/topics/channel_layers.html)
 
-Add `wireview` and `channels` to your `INSTALLED_APPS` before the Django applications so channels can override the `runserver` command.
+Add `wireview` and `channels` to your `INSTALLED_APPS` before Django applications:
 
 ```python
 INSTALLED_APPS = [
@@ -29,12 +131,10 @@ INSTALLED_APPS = [
     ...
 ]
 
-...
-
 ASGI_APPLICATION = 'project_name.asgi.application'
 ```
 
-and modify your `project_name/asgi.py` file like:
+Modify your `project_name/asgi.py`:
 
 ```python
 import os
@@ -54,26 +154,22 @@ application = ProtocolTypeRouter({
 })
 ```
 
-Note: Wireview since version 2, autoloads any `live.py` file in your applications with the hope to find there Wireview Components so they get registered and can be instantiated.
-
-In the templates where you want to use reactive components you have to load the wireview static files. So do something like this so the right JavaScript gets loaded:
+Include wireview JavaScript in your templates:
 
 ```html
 {% load wireview %}
 <!doctype html>
 <html>
     <head>
-        ... {% wireview_header %}
+        {% wireview_header %}
     </head>
     ...
 </html>
 ```
 
-Don't worry if you put this as early as possible, the scripts are loaded using `<script defer>` so they will be downloaded in parallel with the html, and when all is loaded they are executed.
+## Quick Start
 
-## Simple example of a counter
-
-In your app create a template `x-counter.html`:
+Create a template `x-counter.html`:
 
 ```html
 {% load wireview %}
@@ -85,15 +181,7 @@ In your app create a template `x-counter.html`:
 </div>
 ```
 
-Anatomy of a template: each component should be a single root tag and you need to add `{% tag_header %}` to that tag, so a set of attributes that describe the component state are added to that tag.
-
-Each component should have an `id` so the backend knows which instance is this one and a `state` attribute with the necessary information to recreate the full state of the component on first render and in case of re-connection to the back-end.
-
-Render things as usually, so you can use full Django template language, `trans`, `if`, `for` and so on. Just keep in mind that the instance of the component is referred as `this`.
-
-Forwarding events to the back-end: Notice that for event binding in-line JavaScript is used on the event handler of the HTML elements. How does this work? When the increment button receives a click event `send(this, 'inc')` is called, `send` is a wireview function that will look for the parent custom component and will dispatch to it the `inc` message, or the `set_to` message and its parameters `{amount: 0}`. The custom element then will send this message to the back-end, where the state of the component will change and then will be re-rendered back to the front-end. In the front-end `morphdom` (just like in Phoenix LiveView) is used to apply the new HTML.
-
-Now let's write the behavior part of the component in `live.py`:
+Create the component in `live.py`:
 
 ```python
 from wireview.component import Component
@@ -114,67 +202,159 @@ class XCounter(Component):
         self.amount = amount
 ```
 
-Let's now render this counter, expose a normal view that renders HTML, like:
-
-```python
-def index(request):
-    return render(request, 'index.html')
-```
-
-And the index template being:
+Render the component in a view template:
 
 ```html
 {% load wireview %}
 <!doctype html>
 <html>
     <head>
-        .... {% wireview_header %}
+        {% wireview_header %}
     </head>
     <body>
         {% component 'XCounter' %}
-
-        <!-- or passing an initial state -->
         {% component 'XCounter' amount=100 %}
     </body>
 </html>
 ```
 
-Don't forget to update your `urls.py` to call the index view.
+## Component Lifecycle
 
-### Persisting the state of the Counter in the URL as a GET parameter
+### Initialization & Rendering
 
-Add:
+Components are initialized when included in a template:
 
-```python
-...
-
-class SearchList(Component):
-  query: str = ""
-
-  @classmethod
-  def new(cls, wire: WireviewMeta, **kwargs):
-    # read the query parameter and initialize the object with that parameter
-    kwargs.setdefault("query", wire.params.get("query", ""))
-    return cls(wire=wire, **kwargs)
-
-  async def filter_results(self, query: str):
-    self.query = query
-    # update the query string in the browser
-    self.wire.params["query"] = query
-...
+```html
+{% component 'Component' param1=1 param2=2 %}
 ```
 
-This will make that everytime that method gets called the query string on the browser will get updated to include "query=blahblah". Never replace the `self.wire.params`, mutate it instead.
+Parameters are passed to `Component.new()` which returns the component instance.
 
-Here is another example, suppose you have a list of items that can be expanded, like nodes in a tree view:
+### Joins
+
+When the component reaches the front-end, it "joins" the backend via WebSocket. The serialized state is sent to the backend, which rebuilds the component and calls `Component.joined()`.
 
 ```python
-class Node(Component):
-    name: str
-    expanded: bool = False
+class ChatRoom(Component):
+    async def joined(self):
+        # Called when component connects via WebSocket
+        await self.broadcast(f"room.{self.room_id}", action="joined", user=self.username)
+```
+
+### Leaving
+
+When a component is destroyed or the WebSocket connection closes, `Component.leaving()` is called. Use this for cleanup:
+
+```python
+class ChatRoom(Component):
+    async def leaving(self):
+        # Called when component disconnects
+        await self.broadcast(f"room.{self.room_id}", action="left", user=self.username)
+```
+
+### User Events
+
+After joining, components can receive user events via the `{% on %}` template tag. Events are sent to the backend, the handler is executed, and the component is re-rendered.
+
+### Model Subscriptions
+
+Components can subscribe to model changes. When a mutation occurs, `Component.mutation()` is called:
+
+```python
+class TodoList(Component):
+    _subscriptions = {"todo-item"}  # Subscribe to todo item changes
+
+    async def mutation(self, channel: str, action: ModelAction, instance):
+        # Called when subscribed model changes
+        self.items = await self.load_items()
+```
+
+### Notifications
+
+For arbitrary messages, use `broadcast()` and `notification()`:
+
+```python
+# Sender
+await self.broadcast("chat.room.1", message="Hello!", sender=self.username)
+
+# Receiver (subscribed to "chat.room.1")
+async def notification(self, channel: str, **kwargs):
+    message = kwargs.get("message")
+    sender = kwargs.get("sender")
+```
+
+## Event Binding
+
+### Basic Syntax
+
+```html
+{% on <event.modifiers> <handler> [kwargs] %}
+```
+
+Examples:
+
+```html
+<button {% on "click" "increment" %}>+1</button>
+<button {% on "click" "increment" amount=5 %}>+5</button>
+<button {% on "click.prevent" "submit" %}>Submit</button>
+<input {% on "keypress.enter" "search" %}>
+<input {% on "input.debounce.300" "filter" %}>
+```
+
+### Available Modifiers
+
+| Modifier | Description |
+|----------|-------------|
+| `prevent` | Calls `event.preventDefault()` |
+| `stop` | Calls `event.stopPropagation()` |
+| `ctrl`, `alt`, `shift`, `meta` | Requires modifier key |
+| `debounce.<ms>` | Debounces the event (e.g., `debounce.300`) |
+| `throttle.<ms>` | Throttles the event (e.g., `throttle.100`) |
+| `enter`, `tab`, `delete`, `backspace`, `space` | Key aliases |
+| `up`, `down`, `left`, `right` | Arrow key aliases |
+| `key.<keycode>` | Specific key (e.g., `key.escape`) |
+| `inlinejs` | Treats handler as literal JavaScript |
+
+### Implicit Arguments
+
+Form inputs within a component are automatically sent as arguments:
+
+```html
+<div {% tag_header %}>
+  <input name="query">
+  <button {% on "click" "search" %}>Search</button>
+</div>
+```
+
+```python
+async def search(self, query: str):
+    self.results = await self.do_search(query)
+```
+
+## URL State Management
+
+Persist component state in the URL query string:
+
+```python
+class SearchList(Component):
+    query: str = ""
 
     @classmethod
-    def new(cls, wire: WireviewMeta, id: str, **kwargs):
+    def new(cls, wire, **kwargs):
+        kwargs.setdefault("query", wire.params.get("query", ""))
+        return cls(wire=wire, **kwargs)
+
+    async def filter_results(self, query: str):
+        self.query = query
+        self.wire.params["query"] = query  # Updates URL
+```
+
+For complex values, use `.json` suffix:
+
+```python
+class TreeView(Component):
+    @classmethod
+    def new(cls, wire, id: str, **kwargs):
         kwargs["expanded"] = id in wire.params.get("expanded.json", [])
         return cls(wire=wire, id=id, **kwargs)
 
@@ -187,292 +367,289 @@ class Node(Component):
             expanded.remove(self.id)
 ```
 
-Here `expanded.json` is a list of the expanded nodes. Notice the `.json` this indicates that the value of this key should be encoded/decoded to/from JSON, so just put there JSON serializable stuff.
+## Model Subscriptions
 
-## Settings:
-
-Default settings of wireview are:
+Subscribe to Django model changes for automatic UI updates:
 
 ```python
+class TodoList(Component):
+    _subscriptions = {"todo-item"}
 
-from wireview.schemas import AutoBroadcast
+    async def mutation(self, channel: str, action: ModelAction, instance):
+        if action == ModelAction.CREATED:
+            self.items.append(instance)
+        elif action == ModelAction.DELETED:
+            self.items = [i for i in self.items if i.id != instance.id]
+```
 
+Enable auto-broadcast in settings:
+
+```python
 WIREVIEW = {
-    "TRANSPILER_CACHE_SIZE": 1024,
-    "USE_HTML_DIFF": True,
-    "USE_HMIN": False,
-    "BOOST_PAGES": False,
-    "TRANSPILER_CACHE_NAME": "wireview:transpiler",
     "AUTO_BROADCAST": AutoBroadcast(
-        # model-a
-        model: bool = False
-        # model-a.1234
-        model_pk: bool = False
-        # model-b.9876.model-a-set
-        related: bool = False
-        # model-b.9876.model-a-set
-        # model-a.1234.model-b-set
-        m2m: bool = False
-        # this is a set of tuples of ('app_label', 'ModelName')
-        # to subscribe for the auto broadcast
-        senders: set[tuple[str, str]] = Field(default_factory=set)
+        model=True,      # Broadcast on model changes
+        model_pk=True,   # Include PK in channel name
     ),
 }
 ```
 
--   `TRANSPILER_CACHE_SIZE`: this is the size of an LRU dict used to cache javascript event halder transpilations.
--   `USE_HTML_DIFF`: when enabled uses `difflib` to create diffs to patch the front-end, reducing bandwidth. If disabled it sends the full HTML content every time.
--   `USE_HMIN`: when enabled and django-hmin is installed will use it to minified the HTML of the components and save bandwidth.
--   `AUTO_BROADCAST`: Controls which signals are sent to `Component.mutation` when a model is mutated.
+## Streams API
 
-## Back-end APIs
+Streams provide memory-efficient handling of large lists by rendering items individually and sending incremental updates.
 
-### Template tags and filters of `wireview` library
+### Basic Usage
 
--   `{% wireview_header %}`: that includes the necessary JavaScript to make this library work. ~10Kb of minified JS, compressed with gz or brotli.
--   `{% component 'Component' param1=1 param2=2 %}`: Renders a component by its name and passing whatever parameters you put there to the `XComponent.new` method that constructs the component instance.
--   `{% on 'click' 'event_handler' param1=1 param2=2 %}`: Binds an event handler with paramters to some event. Look at [Event binding in the front-end](#event-binding-in-the-front-end)
--   `cond`: Allows simple conditional presence of a string: `{% cond {'hidden': is_hidden } %}`.
--   `class`: Use it to handle conditional classes: `<div {% class {'nav_bar': True, 'hidden': is_hidden} %}></div>`.
-
-## Component live cycle
-
-### Initialization & Rendering
-
-This happens when in a "normal" template you include a component.
+Template with stream container:
 
 ```html
-{% component 'Component' param1=1 param2=2 %}
-```
-
-This passes those parameter there to `Component.new` that should return the component instance and then the component get's rendered in the template and is sent to the client.
-
-### Joins
-
-When the component arrives to the front-end it "joins" the backend. Sends it's serialized state to the backend which rebuilds the component and calls `Component.joined`.
-
-After that the component is rendered and the render is sent to the front-end. Why? Because could be that the client was online while some change in the backend happened and the component needs to be updated.
-
-### User events
-
-When a component or its parent has joined it can send user events to the client. Using the `on` template tag, this events are sent to the backend and then the componet is rendered again.
-
-### Subscriptions
-
-Every time a component joins or responds to an event the `Componet._subscriptions` set is reviewed to check if the component subscribes or not to some channel.
-
--   In case a mutation in a model occurs `Component.mutation(channel: str, action: wireview.auto_broadcast.Action, instance: Model)` will be called.
--   In case you broadcast a message using `wireview.component.broadcast(channel, **kwargs)` this message will be sent to any component subscribed to `channel` using the method `Component.notification(channel, **kwargs)`.
-
-### Disconnection
-
-If the component is destroyed using the `Component.destroy` or just desapears from the front-end it is removed from the backend. If the the websocket closes all components in that connection are removed from the backend and the state of those componets stay just in the front-end in the seralized form awaiting for the front-end to join again.
-
-#### Component API
-
-Each component is a Pydantic model so it can serialize itself. I would advice not to mess with the `__init__` method.
-Instead use the class method `new` to create the instance.
-
-##### Rendering
-
--   `_template_name`: Contains the path of the template of the component.
--   `_exclude_fields`: (default: `{"user", "wire"}`) Which fields to exclude from state serialization during rendering
-
-#### Subscriptions
-
--   `_subscriptions`: (default: `set()`) Defines which channels is this component subscribed to.
--   `mutation(channel, action, instance)` Called when autobroadcast is enabled and a model you are subscribed to changes.
--   `notification(channel, **kwargs)` Called when `wireview.component.broadcast(channel, **kwargs)` is used to send an arbitrary notification to components.
-
-#### Actions
-
--   `destroy()`: Removes the component from the interface.
--   `focus_on(selector: str)`: Makes the front-end look for that `selector` and run `.focus()` on it.
--   `skip_render()`: Prevents the component from being rendered once.
--   `send_render()`: Send a signal to request render the component ahead of time.
--   `dom(_action: DomAction, id: str, component_or_template, **kwargs)`: Can append, prepend, insert befor or after certain HTMLElement ID in the dom, the component or template, rendered using the `kwargs`.
--   `freeze()`: Prevents the component from being rendered again.
--   `deffer(f, *args, **kwargs)`: Send a message to the current event to be executed after the current function is executed.
--   `wire.redirect_to(to, **kwargs)`: Changes the URL of the front-end and triggers a page load for that new URL
--   `wire.replace_to(to, **kwargs)`: Changes the current URL for another one.
--   `wire.push_to(to, **kwargs)`: Changs the URL of the front-end adding a new history entry but does not fetch the new URL from the backend.
--   `wire.send(_channel: str, _topic: str, **kwargs)`: Sends a message over a channel.
-
-## Front-end APIs
-
--   `wireview.send(element, name, args)`: Sends a wireview user event to `element`, where `name` is the event handler and `args` is a JS object containing the implicit arguments of the call.
--   `wireview.debounce(delay)(fn)`: Debounces a function call.
--   `wireview.throttle(delay)(fn)`: Throttles a function call.
--   `wireview.exec(element, commands)`: Executes an array of JS commands.
--   `wireview.debug`: Debug utilities (see [Debug Tools](#debug-tools) below).
-
-### Event binding in the front-end
-
-Look at this:
-
-```html
-  <button {% on "click.prevent" "submit" %}>Submit</button>
-```
-
-Syntax: {% on <event-and-modifiers> <event-handler> [<event-handler-arguments-as-kwargs>] %}
-The format for event and modifiers is `@<event>[.modifier1][.modifier2][.modifier2-argument1][.modifier2-argument2]`
-
-Examples:
-
--   `{% on "click.ctrl" "decrement" %}>`: Clicking with Ctrl pressed calls "decrement".
--   `{% on "click" "increment" amount=1 %}>`: Clicking calls "increment" passing `amount=1` as argument.
-
-Misc:
-
--   `event`: is the name of the HTMLElement event: `click`, `blur`, `change`, `keypress`, `keyup`, `keydown`...
--   `modifier`: can be concatenated after the event name and represent actions or conditions to be met before the event execution. This is very similar as [how VueJS does event binding](https://vuejs.org/v2/guide/events.html#Event-Modifiers):
-
-    Available modifiers are:
-
-    -   `inlinejs`: takes the next "event handler" argument as literal JS code.
-    -   `prevent`: calls `event.preventDefault()`
-    -   `stop`: calls `event.StopPropagation()`
-    -   `ctrl`, `alt`, `shift`, `meta`: continues processing the event if any of those keys is pressed
-    -   `debounce`: debounces the event, it needs a delay in milliseconds. Example: `keypress.debounce.100`.
-    -   `throttle`: throttles the event (execute at most once per delay period). Example: `scroll.throttle.100`.
-    -   `key.<keycode>`: continues processing the event if the key with `keycode` is pressed
-    -   `enter`: alias for `key.enter`
-    -   `tab`: alias for `key.tab`
-    -   `delete`: alias for `key.delete`
-    -   `backspace`: alias for `key.backspace`
-    -   `space`: alias for `key. `
-    -   `up`: alias for `key.arrowup`
-    -   `down`: alias for `key.arrowdown`
-    -   `left`: alias for `key.arrowleft`
-    -   `right`: alias for `key.arrowright`
-
-#### Event arguments
-
-Wireview sends the implicit arguments you pass on the `on` template tag, but also sends implicit arguments.
-The implicit arguments are taken from the `form` the element handling the event is in or from the whole component otherwise.
-
-Examples:
-
-Here any event inside that component will have the implicit argument `x` being send to the backend.
-
-```html
-<div {% tag-header %}>
-  <input name="x"/>
-  <button {% on "click" "submit" %}>Send</button>
+{% load wireview %}
+<div {% tag_header %}>
+  <ul wire-stream="messages">
+    {% for message in messages %}
+      {% include "chat/message_item.html" %}
+    {% endfor %}
+  </ul>
 </div>
 ```
 
-Here any `submit_x` will send `x`, and `submit_y` will send just `y`.
+Item template (`chat/message_item.html`):
 
 ```html
-<div {% tag-header %}>
-  <input name="x"/>
-  <button {% on "click" "submit_x" %}>Send</button>
-  <form>
-    <input name="y"/>
-    <button {% on "click.prevent" "submit_y" %}>Send</button>
-  </form>
+<li id="messages-{{ message.pk }}">
+  <strong>{{ message.sender }}:</strong> {{ message.text }}
+</li>
+```
+
+Component:
+
+```python
+class MessageList(Component):
+    _template_name = "chat/message_list.html"
+    messages: list = []
+
+    async def joined(self):
+        # Initial load with stream
+        messages = await Message.objects.order_by('-created')[:50]
+        await self.stream("messages", reversed(messages))
+
+    async def add_message(self, text: str):
+        message = await Message.objects.acreate(sender=self.user, text=text)
+        await self.stream_insert("messages", message, at=-1)  # Append
+        await self.scroll_into_view(f"messages-{message.pk}")
+
+    async def delete_message(self, message_id: int):
+        await Message.objects.filter(id=message_id).adelete()
+        await self.stream_delete("messages", message_id)
+```
+
+### Stream Methods
+
+| Method | Description |
+|--------|-------------|
+| `stream(name, items)` | Reset/initialize stream with items |
+| `stream_insert(name, item, at=-1)` | Insert item (-1=append, 0=prepend, n=index) |
+| `stream_delete(name, dom_id)` | Delete item by DOM ID or PK |
+
+### DOM ID Convention
+
+By default, DOM IDs follow the pattern `{stream_name}-{item.pk}`. Custom ID functions:
+
+```python
+await self.stream("items", items, dom_id=lambda item: f"item-{item.uuid}")
+```
+
+### Custom Item Templates
+
+```python
+await self.stream_insert("messages", message, template="chat/special_message.html")
+```
+
+## Presence API
+
+Track online users and typing indicators in real-time.
+
+### PresenceMixin (Producer)
+
+For components that broadcast their own presence:
+
+```python
+from wireview.component import Component
+from wireview.features.presence import PresenceMixin
+
+
+class ChatInput(PresenceMixin, Component):
+    _template_name = "chat/input.html"
+    room_id: int
+    username: str
+
+    def _presence_topic(self) -> str:
+        return f"room.{self.room_id}"
+
+    def _presence_user_id(self) -> str:
+        return str(self.user_id)
+
+    def _presence_username(self) -> str:
+        return self.username
+
+    async def joined(self):
+        await self.presence_join()
+
+    async def leaving(self):
+        await self.presence_leave()
+
+    async def on_typing(self):
+        await self.presence_set_typing(True)  # Auto-clears after 3 seconds
+```
+
+### PresenceTrackerMixin (Consumer)
+
+For components that display other users' presence:
+
+```python
+from wireview.features.presence import PresenceTrackerMixin
+
+
+class OnlineUsers(PresenceTrackerMixin, Component):
+    _template_name = "chat/online_users.html"
+    room_id: int
+    username: str
+
+    def _presence_topic(self) -> str:
+        return f"room.{self.room_id}"
+
+    def _presence_my_user_id(self) -> str:
+        return str(self.user_id)
+
+    @property
+    def _subscriptions(self):
+        return {self._presence_channel()}
+
+    async def joined(self):
+        await self.presence_track_self(username=self.username)
+```
+
+Template:
+
+```html
+{% load wireview %}
+<div {% tag_header %}>
+  <h3>Online ({{ this.presence_online_count }})</h3>
+  <ul>
+    {% for user in this.presence_users %}
+      <li>
+        {{ user.username }}
+        {% if user.is_typing %}<span class="typing">typing...</span>{% endif %}
+      </li>
+    {% endfor %}
+  </ul>
 </div>
 ```
 
-### Event handlers in the back-end
+### Presence Properties
 
-Given:
+| Property | Description |
+|----------|-------------|
+| `presence_users` | List of all tracked users |
+| `presence_online_count` | Number of online users |
+| `presence_typing_users` | List of users currently typing |
+
+### Configuration
+
+```python
+from wireview.features.presence import PresenceConfig
+
+class MyComponent(PresenceMixin, Component):
+    _presence_config = PresenceConfig(
+        typing_timeout=3.0,     # Seconds until typing auto-clears
+        sync_on_join=True,      # Request sync from others on join
+        channel_prefix="presence",
+    )
+```
+
+## File Uploads
+
+Handle file uploads with progress tracking and validation.
+
+### Basic Setup
+
+```python
+from wireview.component import Component
+from wireview.features.uploads import UploadConfig
+
+
+class FileUploader(Component):
+    _template_name = "uploader.html"
+
+    async def joined(self):
+        self.allow_upload(UploadConfig(
+            name="avatar",
+            accept=[".jpg", ".png", ".gif"],
+            max_file_size=5 * 1024 * 1024,  # 5MB
+            max_entries=1,
+        ))
+
+    async def save_avatar(self):
+        for upload in self.consume_uploads("avatar"):
+            path = await upload.save_to("avatars/", filename=f"{self.user_id}.jpg")
+            self.avatar_url = path
+```
+
+Template:
 
 ```html
-<button {% on 'click 'inc' amount=2 %}>Increment</button>
+{% load wireview %}
+<div {% tag_header %}>
+  <input type="file" wire-upload="avatar" accept=".jpg,.png,.gif">
+
+  {% for entry in this.uploads.avatar %}
+    <div class="upload-entry">
+      {{ entry.client_name }} - {{ entry.progress }}%
+      {% if entry.errors %}
+        <span class="error">{{ entry.errors|join:", " }}</span>
+      {% endif %}
+    </div>
+  {% endfor %}
+
+  <button {% on "click" "save_avatar" %}>Save</button>
+</div>
 ```
 
-You will need an event handler in that component in the back-end:
+### UploadConfig Options
 
-```python
-async def inc(self, amount: int):
-    ...
-```
+| Option | Default | Description |
+|--------|---------|-------------|
+| `name` | required | Upload field identifier |
+| `accept` | `[]` | Allowed extensions (e.g., `[".jpg", ".png"]`) |
+| `max_entries` | `1` | Maximum concurrent uploads |
+| `max_file_size` | `10MB` | Maximum file size in bytes |
+| `chunk_size` | `64KB` | Upload chunk size |
+| `auto_upload` | `True` | Start upload immediately on selection |
 
-It is good if you annotate the signature so the types are validated and converted if they have to be.
+### ConsumedUpload Methods
 
-## More complex components
+| Method | Description |
+|--------|-------------|
+| `read()` | Read entire file into memory |
+| `open(mode="rb")` | Open file handle |
+| `save_to(directory, filename=None)` | Save to Django storage |
+| `name` | Original filename |
+| `size` | File size in bytes |
+| `content_type` | MIME type |
 
-I made a TODO list app using models that signals from the model to the respective channels to update the interface when something gets created, modified or deleted.
+### Security
 
-This example contains nested components and some more complex interactions than a simple counter, the app is in the `/tests/` directory.
-
-## JS Command Builder
-
-Wireview provides a Python-side `JS` class for building client-side commands that execute without server round-trips. This is inspired by Phoenix LiveView's JS commands.
-
-```python
-from wireview import JS
-
-# In your template
-<button {% on "click" JS().toggle("#modal") %}>Toggle Modal</button>
-
-# Chaining multiple commands
-<button {% on "click" JS().add_class("#btn", "loading").push("save") %}>
-  Save
-</button>
-
-# With transitions
-<div {% on "click" JS().hide(transition=("fade-out", 300)) %}></div>
-```
-
-### Available JS Commands
-
-**Visibility:**
-- `JS().show(selector, transition=None, display=None)` - Show an element
-- `JS().hide(selector, transition=None)` - Hide an element
-- `JS().toggle(selector, show=None, hide=None)` - Toggle visibility
-
-**CSS Classes:**
-- `JS().add_class(selector, classes, transition=None)` - Add CSS classes
-- `JS().remove_class(selector, classes, transition=None)` - Remove CSS classes
-- `JS().toggle_class(selector, classes, transition=None)` - Toggle CSS classes
-
-**Attributes:**
-- `JS().set_attr(selector, attr, value)` - Set an attribute
-- `JS().remove_attr(selector, attr)` - Remove an attribute
-
-**Focus:**
-- `JS().focus(selector)` - Focus an element
-- `JS().focus_first(selector, input_only=False)` - Focus first focusable element
-
-**Transitions:**
-- `JS().transition(selector, classes, time=None)` - Apply CSS transition
-
-**Server Communication:**
-- `JS().push(event, value=None, target=None)` - Send event to server
-
-**Navigation:**
-- `JS().navigate(url, replace=False)` - Navigate to URL
-- `JS().dispatch(event, to=None, detail=None, bubbles=True)` - Dispatch custom event
-
-### Loading Classes
-
-During server requests, Wireview automatically adds loading classes to elements:
-- `wireview-loading` - Added to any element during a request
-- `wireview-click-loading` - Added for click events
-- `wireview-submit-loading` - Added for submit events
-
-Use these for loading indicators:
-
-```css
-.wireview-loading {
-  opacity: 0.5;
-  pointer-events: none;
-}
-```
+Wireview validates file signatures (magic bytes) before saving to prevent extension spoofing.
 
 ## AsyncResult and Async Operations
 
-For async data loading with loading/error states:
+Handle async data loading with loading/error states:
 
 ```python
 from wireview import Component, AsyncResult
 
+
 class Dashboard(Component):
     _template_name = "dashboard.html"
-
     stats: AsyncResult = None
 
     async def joined(self):
@@ -482,7 +659,7 @@ class Dashboard(Component):
         return await Stats.objects.aget()
 ```
 
-In your template:
+Template:
 
 ```html
 {% if stats.loading %}
@@ -496,23 +673,243 @@ In your template:
 
 ### AsyncResult Properties
 
-- `loading` - True while the operation is in progress
-- `ok` - True if the operation succeeded
-- `failed` - True if the operation failed
-- `done` - True if completed (success or failure)
-- `result` - The result value (if successful)
-- `error` - The exception (if failed)
-- `error_message` - String representation of the error
+| Property | Description |
+|----------|-------------|
+| `loading` | True while operation is in progress |
+| `ok` | True if operation succeeded |
+| `failed` | True if operation failed |
+| `done` | True if completed (success or failure) |
+| `result` | The result value (if successful) |
+| `error` | The exception (if failed) |
+| `error_message` | String representation of the error |
 
 ### AsyncResult Methods
 
-- `map(func)` - Transform the result value
-- `get_or(default)` - Get result or default value
-- `get_or_raise()` - Get result or raise the error
+| Method | Description |
+|--------|-------------|
+| `map(func)` | Transform the result value |
+| `get_or(default)` | Get result or default value |
+| `get_or_raise()` | Get result or raise the error |
+
+## JS Command Builder
+
+Build client-side commands that execute without server round-trips:
+
+```python
+from wireview import JS
+
+# In template
+<button {% on "click" JS().toggle("#modal") %}>Toggle Modal</button>
+
+# Chaining commands
+<button {% on "click" JS().add_class("#btn", "loading").push("save") %}>
+  Save
+</button>
+
+# With transitions
+<div {% on "click" JS().hide(transition=("fade-out", 300)) %}></div>
+```
+
+### Push JS from Server
+
+Send JS commands from event handlers:
+
+```python
+async def clear_input(self):
+    await self.push_js(JS().set_value("input[name=search]", ""))
+```
+
+### Available Commands
+
+**Visibility:**
+- `show(selector, transition=None, display=None)`
+- `hide(selector, transition=None)`
+- `toggle(selector, show=None, hide=None)`
+
+**CSS Classes:**
+- `add_class(selector, classes, transition=None)`
+- `remove_class(selector, classes, transition=None)`
+- `toggle_class(selector, classes, transition=None)`
+
+**Attributes:**
+- `set_attr(selector, attr, value)`
+- `remove_attr(selector, attr)`
+- `set_value(selector, value)` - Set input value
+
+**Focus:**
+- `focus(selector)`
+- `focus_first(selector, input_only=False)`
+
+**Transitions:**
+- `transition(selector, classes, time=None)`
+
+**Server Communication:**
+- `push(event, value=None, target=None)` - Send event to server
+
+**Navigation:**
+- `navigate(url, replace=False)`
+- `dispatch(event, to=None, detail=None, bubbles=True)`
+
+### Loading Classes
+
+During server requests, these classes are automatically added:
+
+| Class | Description |
+|-------|-------------|
+| `wireview-loading` | Added during any request |
+| `wireview-click-loading` | Added for click events |
+| `wireview-submit-loading` | Added for submit events |
+
+```css
+.wireview-loading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+```
+
+## Component API Reference
+
+### Class Attributes
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `_template_name` | required | Template path |
+| `_exclude_fields` | `{"user", "wire"}` | Fields excluded from serialization |
+| `_subscriptions` | `set()` | Channels to subscribe to |
+
+### Lifecycle Methods
+
+| Method | Description |
+|--------|-------------|
+| `new(cls, wire, **kwargs)` | Class method to construct instance |
+| `joined()` | Called when component connects via WebSocket |
+| `leaving()` | Called when component disconnects |
+| `mutation(channel, action, instance)` | Called on model changes |
+| `notification(channel, **kwargs)` | Called on broadcast messages |
+
+### Render Control
+
+| Method | Description |
+|--------|-------------|
+| `skip_render()` | Skip the next render cycle |
+| `send_render()` | Force immediate render |
+| `force_render()` | Mark for re-render |
+| `freeze()` | Prevent all future renders |
+
+### Actions
+
+| Method | Description |
+|--------|-------------|
+| `destroy()` | Remove component from interface |
+| `focus_on(selector)` | Focus an element |
+| `scroll_into_view(element_id, behavior="auto", block="start", inline="nearest")` | Scroll element into view |
+| `push_js(js)` | Execute JS commands on client |
+| `dom(action, id, component_or_template, **kwargs)` | DOM manipulation |
+| `deffer(func, *args, **kwargs)` | Defer function execution |
+
+### Broadcasting
+
+| Method | Description |
+|--------|-------------|
+| `broadcast(channel, **kwargs)` | Send message to channel (queued in `joined()`) |
+| `abroadcast(channel, **kwargs)` | Send message immediately (async) |
+
+### Navigation
+
+| Method | Description |
+|--------|-------------|
+| `wire.redirect_to(url, **kwargs)` | Navigate and fetch new page |
+| `wire.replace_to(url, **kwargs)` | Replace current URL |
+| `wire.push_to(url, **kwargs)` | Push URL without fetch |
+
+### Streams
+
+| Method | Description |
+|--------|-------------|
+| `stream(name, items, template=None, dom_id=None)` | Initialize/reset stream |
+| `stream_insert(name, item, at=-1, template=None, dom_id=None)` | Insert item |
+| `stream_delete(name, dom_id)` | Delete item |
+
+### Uploads
+
+| Method | Description |
+|--------|-------------|
+| `allow_upload(config)` | Register upload configuration |
+| `consume_uploads(name)` | Get completed uploads |
+| `cancel_upload(name, ref)` | Cancel an upload |
+
+## Template Tags Reference
+
+```html
+{% load wireview %}
+```
+
+| Tag | Description |
+|-----|-------------|
+| `{% wireview_header %}` | Include required JavaScript (~10KB minified) |
+| `{% component 'Name' kwarg=value %}` | Render a component |
+| `{% on 'event.modifiers' 'handler' kwargs %}` | Bind event handler |
+| `{% tag_header %}` | Add component attributes to root element |
+| `{% cond {'hidden': is_hidden} %}` | Conditional attribute |
+| `{% class {'active': is_active} %}` | Conditional CSS classes |
+
+## Front-end APIs
+
+```javascript
+// Send event to component
+wireview.send(element, 'handler_name', {arg1: value1})
+
+// Debounce/throttle
+wireview.debounce(300)(fn)
+wireview.throttle(100)(fn)
+
+// Execute JS commands
+wireview.exec(element, commands)
+
+// Debug utilities
+wireview.debug.enable()
+wireview.debug.disable()
+wireview.debug.status()
+```
+
+## Testing Components
+
+Test components without WebSocket:
+
+```python
+import pytest
+from wireview.testing import mount
+
+
+@pytest.mark.asyncio
+async def test_counter_increment():
+    view = await mount(Counter, count=0)
+    await view.call("increment", amount=5)
+    assert view.component.count == 5
+    assert len(view.sent_messages) > 0
+
+
+@pytest.mark.asyncio
+async def test_redirect():
+    view = await mount(MyComponent)
+    await view.call("do_redirect", url="/dashboard")
+    assert view.redirected_to == "/dashboard"
+    assert view.is_frozen
+```
+
+### Testing API
+
+| Method/Property | Description |
+|----------------|-------------|
+| `mount(ComponentClass, **kwargs)` | Mount component for testing |
+| `view.component` | Access component instance |
+| `view.call(handler, **kwargs)` | Call event handler |
+| `view.sent_messages` | Messages that would be sent |
+| `view.redirected_to` | Redirect URL (if any) |
+| `view.is_frozen` | Whether component is frozen |
+| `view.clear_messages()` | Clear sent messages |
 
 ## Debug Tools
-
-Wireview includes debug utilities for development:
 
 ```javascript
 // Enable debug logging
@@ -521,63 +918,46 @@ wireview.debug.enable()
 // Disable debug logging
 wireview.debug.disable()
 
-// Simulate network latency (for testing slow connections)
+// Simulate network latency
 wireview.debug.latency(500)  // 500ms delay
 
-// Show connection status and components
+// Show connection status
 wireview.debug.status()
 
-// Get all registered components
+// List all components
 wireview.debug.components()
 
-// Get a specific component by ID
+// Get specific component
 wireview.debug.component("rx-123")
 ```
 
-## Testing Components
-
-Wireview provides testing utilities for unit testing components without WebSocket:
+## Settings
 
 ```python
-import pytest
-from wireview.testing import mount
+from wireview.schemas import AutoBroadcast
 
-@pytest.mark.asyncio
-async def test_counter_increment():
-    # Mount a component
-    view = await mount(Counter, count=0)
-
-    # Call handlers
-    await view.call("increment", amount=5)
-
-    # Assert state
-    assert view.component.count == 5
-
-    # Check sent messages
-    assert len(view.sent_messages) > 0
-
-@pytest.mark.asyncio
-async def test_redirect():
-    view = await mount(MyComponent)
-    await view.call("do_redirect", url="/dashboard")
-
-    assert view.redirected_to == "/dashboard"
-    assert view.is_frozen
+WIREVIEW = {
+    "TRANSPILER_CACHE_SIZE": 1024,    # Event handler cache size
+    "USE_HTML_DIFF": True,            # Enable HTML diffing
+    "USE_HMIN": False,                # Use django-hmin minification
+    "BOOST_PAGES": False,             # Enable client-side navigation
+    "AUTO_BROADCAST": AutoBroadcast(
+        model=False,       # Broadcast on model changes
+        model_pk=False,    # Include PK in channel
+        related=False,     # Broadcast related model changes
+        m2m=False,         # Broadcast M2M changes
+        senders=set(),     # Models to auto-broadcast
+    ),
+}
 ```
 
-### Testing API
+## Documentation
 
-- `mount(ComponentClass, **kwargs)` - Mount a component for testing
-- `view.component` - Access the component instance
-- `view.call(handler, **kwargs)` - Call an event handler
-- `view.sent_messages` - List of messages that would be sent
-- `view.redirected_to` - URL redirected to (if any)
-- `view.is_frozen` - Whether the component is frozen
-- `view.clear_messages()` - Clear sent messages
+- [Architecture](docs/ARCHITECTURE.md) - Internal design and patterns
+- [Tutorials](docs/tutorials/) - Step-by-step guides
+- [Roadmap](docs/ROADMAP.md) - Future development plans
 
 ## Development & Contributing
-
-Clone the repo and create a virtualenv or any other contained environment, get inside the repo directory, build the development environment and the run tests.
 
 ```bash
 git clone git@github.com:itda-work/django-wireview.git
@@ -586,12 +966,13 @@ make install
 make test
 ```
 
-If you want to run the included Django project used for testing do:
+Run the test server:
 
 ```bash
-make
 cd tests
 python manage.py runserver
 ```
 
-Enjoy!
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
