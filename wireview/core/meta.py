@@ -306,12 +306,12 @@ class WireviewMeta:
     async def scroll_into_view(
         self,
         id: str,
-        behavoir: t.Literal["smooth"] | t.Literal["instant"] | t.Literal["auto"] = "auto",
+        behavior: t.Literal["smooth"] | t.Literal["instant"] | t.Literal["auto"] = "auto",
         block: ScrollPosition = "start",
         inline: ScrollPosition = "nearest",
     ) -> None:
         """Scroll an element into view."""
-        await self.send("scroll_into_view", id=id, behavoir=behavoir, block=block, inline=inline)
+        await self.send("scroll_into_view", id=id, behavior=behavior, block=block, inline=inline)
 
     async def deffer(self, _id: str, _f: t.Callable[P, t.Coroutine], *args: P.args, **kwargs: P.kwargs) -> None:
         """Defer a function call to be executed later."""

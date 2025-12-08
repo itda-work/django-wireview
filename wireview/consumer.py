@@ -261,11 +261,11 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         log.debug(f">>> STREAM {op.upper()} {stream}")
         await self.send_command("stream_op", {"op": op, "stream": stream, "items": items, "at": at})
 
-    async def component_scroll_into_view(self, id, behavoir, block, inline):
+    async def component_scroll_into_view(self, id, behavior, block, inline):
         log.debug(f">>> SCROLL-INTO-VIEW {id}")
         await self.send_command(
             "scroll_into_view",
-            {"id": id, "behavoir": behavoir, "block": block, "inline": inline},
+            {"id": id, "behavior": behavior, "block": block, "inline": inline},
         )
 
     async def component_focus_on(self, selector):

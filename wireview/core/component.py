@@ -277,6 +277,23 @@ class Component(BaseModel):
         """Focus on an element matching the selector."""
         await self.wire.send("focus_on", selector=selector)
 
+    async def scroll_into_view(
+        self,
+        element_id: str,
+        behavior: t.Literal["smooth", "instant", "auto"] = "auto",
+        block: t.Literal["start", "end", "center", "nearest"] = "start",
+        inline: t.Literal["start", "end", "center", "nearest"] = "nearest",
+    ) -> None:
+        """Scroll an element into view.
+
+        Args:
+            element_id: The ID of the element to scroll to
+            behavior: Scroll animation - "smooth", "instant", or "auto"
+            block: Vertical alignment - "start", "center", "end", or "nearest"
+            inline: Horizontal alignment - "start", "center", "end", or "nearest"
+        """
+        await self.wire.scroll_into_view(element_id, behavior, block, inline)
+
     # DOM operations
 
     def skip_render(self) -> None:

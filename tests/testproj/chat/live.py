@@ -128,6 +128,12 @@ class XMessageList(Component):
         """
         if action == ModelAction.CREATED and instance.room_id == self.room.id:
             await self.stream_insert("messages", instance, at=-1)
+            # Scroll to the new message
+            await self.scroll_into_view(
+                f"messages-{instance.pk}",
+                behavior="smooth",
+                block="end",
+            )
 
     async def joined(self):
         """
@@ -140,6 +146,15 @@ class XMessageList(Component):
         messages = [m async for m in qs]
         # Reverse to show oldest first
         await self.stream("messages", list(reversed(messages)))
+
+        # Scroll to the last (newest) message
+        if messages:
+            last_msg = messages[0]  # First in -created_at order = newest
+            await self.scroll_into_view(
+                f"messages-{last_msg.pk}",
+                behavior="instant",
+                block="end",
+            )
 
 
 class XOnlineUsers(Component):
