@@ -92,6 +92,13 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             # Register upload registry if component has uploads
             await self._register_upload_registry(component)
             await self.send_render(component)
+
+            # Call params_changed if URL has params (initial load)
+            if self.repo.params:
+                uri = f"?{self.repo.get_query_string()}"
+                await component.params_changed(dict(self.repo.params), uri)
+                await self.send_render(component)
+
             # Flush pending operations queued during joined()
             # This ensures stream(), push_js(), etc. are sent after render
             await component.wire.flush_pending()
@@ -103,9 +110,35 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         await self._unregister_upload_registry(id)
         self.repo.remove(id)
 
+    async def command_params_changed(self, params: dict[str, str], uri: str):
+        """Handle URL parameter changes from client.
+
+        Called when:
+        - push_to() or replace_to() triggers URL change
+        - Browser back/forward navigation
+        - Initial page load with params
+        """
+        log.debug(f"<<< PARAMS-CHANGED {uri} {params}")
+
+        # Update repository params
+        self.repo.params.clear()
+        self.repo.params.update(params)
+
+        # Update query_string for send_query_string() sync
+        self.query_string = self.repo.get_query_string()
+
+        # Call params_changed on all live components and re-render
+        for component in list(self.repo.components.values()):
+            await component.params_changed(params, uri)
+            await self.send_render(component)
+
+        await self.after_mutation_chores()
+
     async def command_query_string(self, qs: str):
-        self.query_string = qs
-        self.repo.set_query_string(qs)
+        """Legacy command - delegates to command_params_changed."""
+        params = self.repo.extract_params(qs)
+        uri = f"?{qs}" if qs else ""
+        await self.command_params_changed(params, uri)
 
     async def command_user_event(self, id, command, implicit_args, explicit_args):
         kwargs = dict(parse_request_data(MultiValueDict(implicit_args)), **explicit_args)

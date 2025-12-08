@@ -11,6 +11,20 @@ import boost from "./wireview-boost";
 const parser = new DOMParser();
 
 /**
+ * Parses a URL search string into a params object.
+ * @param {string} search - Query string (with or without leading "?")
+ * @returns {Object<string, string>}
+ */
+function parseQueryString(search) {
+  const params = {};
+  const searchParams = new URLSearchParams(search);
+  for (const [key, value] of searchParams) {
+    params[key] = value;
+  }
+  return params;
+}
+
+/**
  * @typedef {Object} WireviewMessage
  * @property {string} command - The command type
  * @property {Object} payload - The message payload
@@ -201,9 +215,21 @@ class ServerConnection {
             break;
           case "replace":
             boost.HistoryCache.replace(url);
+            // Send params_changed after URL update
+            {
+              const urlObj = new URL(url, document.location.origin);
+              const params = parseQueryString(urlObj.search);
+              this.sendParamsChanged(url, params);
+            }
             break;
           case "push":
             boost.HistoryCache.push(url);
+            // Send params_changed after URL update
+            {
+              const urlObj = new URL(url, document.location.origin);
+              const params = parseQueryString(urlObj.search);
+              this.sendParamsChanged(url, params);
+            }
             break;
         }
         break;
@@ -352,12 +378,23 @@ class ServerConnection {
   }
 
   /**
+   * Sends URL parameter change notification to server.
+   * @param {string} [uri] - Full URI (defaults to current location)
+   * @param {Object<string, string>} [params] - Parsed params (defaults to current)
+   */
+  sendParamsChanged(uri, params) {
+    uri = uri || document.location.href;
+    params = params || parseQueryString(document.location.search);
+    debugLog("send", "params_changed", { uri, params });
+    this._send("params_changed", { uri, params });
+  }
+
+  /**
    * Sends the current query string to the server.
+   * @deprecated Use sendParamsChanged() instead
    */
   sendQueryString() {
-    // "?a=x&..." -> "a=x&..."
-    let qs = document.location.search.slice(1);
-    this._send("query_string", { qs });
+    this.sendParamsChanged();
   }
 
   /**

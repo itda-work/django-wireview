@@ -2,7 +2,7 @@
 
 > django-wireview가 Phoenix LiveView 수준에 도달하기 위해 필요한 기능 목록
 >
-> **최종 업데이트**: 2024-12
+> **최종 업데이트**: 2025-06
 
 ---
 
@@ -22,14 +22,14 @@ django-wireview 지원:       ~50개 (67%)
 
 | 카테고리 | 커버리지 | 상태 |
 |----------|:--------:|------|
-| Core Lifecycle | 90% | ✅ 대부분 완료 |
+| Core Lifecycle | 95% | ✅ 대부분 완료 |
 | Real-time (PubSub, Presence) | 95% | ✅ 완료 |
 | JS Commands (LiveView.JS) | 95% | ✅ 완료 |
 | Optimistic UI | 80% | ✅ 대부분 완료 |
 | Streams | 80% | ✅ 기본 완료 |
 | File Uploads | 85% | ✅ 기본 완료 |
 | Async Operations | 70% | ⚠️ 부분 완료 |
-| Navigation | 70% | ⚠️ 부분 완료 |
+| Navigation | 85% | ✅ 대부분 완료 |
 | **JavaScript Hooks** | 0% | ❌ 미구현 |
 | **Components (Slots, LiveComponent)** | 20% | ❌ 대부분 미구현 |
 | Testing | 80% | ✅ 기본 완료 |
@@ -46,7 +46,7 @@ django-wireview 지원:       ~50개 (67%)
 | mount/joined | `mount/3` | `joined()` | ✅ |
 | handle_event | `handle_event/3` | 메서드 직접 호출 | ✅ |
 | handle_info | `handle_info/2` | `notification()` | ✅ |
-| handle_params | `handle_params/3` | ❌ | 🔴 |
+| handle_params | `handle_params/3` | `params_changed()` | ✅ |
 | terminate | `terminate/2` | `leaving()` | ✅ |
 | ORM mutation | - | `mutation()` | ✅ 추가 기능 |
 
@@ -123,14 +123,14 @@ django-wireview 지원:       ~50개 (67%)
 | cancel_async() | ✅ | ❌ | 🟡 |
 | handle_async() | ✅ | 자동 처리 | ✅ |
 
-### 2.8 Navigation ⚠️
+### 2.8 Navigation ✅
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 |
 |------|:----------------:|:---------------:|:----:|
 | push_navigate | ✅ | `redirect_to()` | ✅ |
 | push_patch | ✅ | `push_to()` | ✅ |
 | replace | ✅ | `replace_to()` | ✅ |
-| handle_params | ✅ | ❌ | 🔴 |
+| handle_params | ✅ | `params_changed()` | ✅ |
 | live_session | ✅ | ❌ | 🟠 |
 | Client-side boost | ✅ | `BOOST_PAGES` | ✅ |
 
@@ -229,7 +229,7 @@ django-wireview 지원:       ~50개 (67%)
 | GAP-001 | **JavaScript Hooks** | 클라이언트 측 라이프사이클 훅 (`phx-hook`) | 상 | 2-3주 |
 | GAP-002 | **Slots** | 컴포넌트 콘텐츠 합성 (`<:header>`, `inner_block`) | 중 | 1-2주 |
 | GAP-003 | **Function Components** | 상태 없는 재사용 가능 템플릿 함수 | 중 | 1-2주 |
-| GAP-004 | **handle_params** | URL 파라미터 변경 시 콜백 | 중 | 1주 |
+| ~~GAP-004~~ | ~~**handle_params**~~ | ~~URL 파라미터 변경 시 콜백~~ | ~~중~~ | ✅ 완료 |
 | GAP-005 | **LiveComponent** | 독립 상태를 가진 중첩 컴포넌트 | 상 | 3-4주 |
 | ~~GAP-006~~ | ~~**temporary_assigns**~~ | ~~렌더 후 메모리 자동 해제~~ | ~~하~~ | ✅ 완료 |
 
@@ -320,7 +320,7 @@ django-wireview 지원:       ~50개 (67%)
 │  Phase 3: Navigation & Form Enhancement                     │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  GAP-004: handle_params                                     │
+│  GAP-004: handle_params ✅ 완료                             │
 │  ├─ URL 변경 감지                                          │
 │  └─ params_changed() 콜백                                  │
 │                                                             │
@@ -411,7 +411,7 @@ v6.0.0-alpha.2 (Phase 2)
 └── LiveComponent (optional)
 
 v6.0.0-beta.1 (Phase 3)
-├── handle_params
+├── handle_params ✅
 ├── Form Auto-Recovery
 ├── Page Title
 └── Flash Messages
@@ -458,4 +458,4 @@ v6.0.0 (Release)
 ---
 
 *이 문서는 Phoenix LiveView와의 기능 갭을 분석하고 구현 우선순위를 정의합니다.*
-*최종 업데이트: 2024-12*
+*최종 업데이트: 2025-06*

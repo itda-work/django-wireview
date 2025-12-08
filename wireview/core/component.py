@@ -296,6 +296,35 @@ class Component(BaseModel):
         """Called when a notification is broadcast."""
         ...
 
+    async def params_changed(self, params: dict[str, str], uri: str) -> None:
+        """Called when URL parameters change.
+
+        This callback is automatically invoked when:
+        - push_to() or replace_to() is called and the client updates the URL
+        - Browser back/forward navigation occurs
+        - Initial page load with URL parameters (after joined())
+
+        Args:
+            params: URL query parameters as a dict (e.g., {"page": "2", "sort": "name"})
+            uri: Full URI including query string (e.g., "/products?page=2&sort=name")
+
+        Example:
+            class ProductList(Component):
+                page: int = 1
+                sort: str = "created_at"
+                products: list[Product] = []
+
+                async def params_changed(self, params, uri):
+                    self.page = int(params.get("page", "1"))
+                    self.sort = params.get("sort", "created_at")
+                    self.products = await self.fetch_products()
+
+                async def next_page(self):
+                    # URL change triggers params_changed automatically
+                    await self.wire.push_to(f"?page={self.page + 1}")
+        """
+        ...
+
     async def destroy(self) -> None:
         """Destroy this component."""
         await self.wire.destroy(self.id)

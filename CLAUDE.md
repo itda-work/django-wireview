@@ -261,6 +261,10 @@ class Counter(Component):
         """컴포넌트 마운트 시 호출"""
         pass
 
+    async def params_changed(self, params: dict[str, str], uri: str):
+        """URL 파라미터 변경 시 호출"""
+        pass
+
     async def mutation(self, channel, action, instance):
         """ORM 변경 알림"""
         pass
@@ -290,6 +294,38 @@ class MessageList(Component):
 - **시점**: 매 렌더링 완료 직후 (diff 전송 후)
 - **값**: Pydantic 필드의 기본값 (`= []`, `= {}`, `= 0` 등)
 - **조건**: 기본값이 없는 필드는 초기화되지 않음
+
+### params_changed (URL 파라미터 처리)
+
+URL 파라미터가 변경되면 `params_changed()` 콜백이 자동으로 호출됩니다.
+Phoenix LiveView의 `handle_params/3`와 유사합니다.
+
+```python
+class ProductList(Component):
+    _template_name = "products/list.html"
+    page: int = 1
+    sort: str = "created_at"
+    products: list[Product] = []
+
+    async def params_changed(self, params: dict[str, str], uri: str):
+        """URL 파라미터 변경 시 자동 호출"""
+        self.page = int(params.get("page", "1"))
+        self.sort = params.get("sort", "created_at")
+        self.products = await self.fetch_products()
+
+    async def next_page(self):
+        # URL 변경 → params_changed 자동 호출
+        await self.wire.push_to(f"?page={self.page + 1}")
+```
+
+**호출 시점**:
+- `push_to()` / `replace_to()` 호출 후 클라이언트 URL 변경 시
+- 브라우저 뒤로가기/앞으로가기 (popstate)
+- 초기 페이지 로드 시 URL에 파라미터가 있을 때 (`joined()` 후 자동 호출)
+
+**인자**:
+- `params`: URL 쿼리 파라미터 (`dict[str, str]`)
+- `uri`: 전체 URI (예: `/products?page=2&sort=name`)
 
 ### 템플릿 태그
 
