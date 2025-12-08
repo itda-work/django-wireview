@@ -28,6 +28,10 @@ WIREVIEW = {
         related=True,
         m2m=True,
     ),
+    # Enable sync/async transition detection in development
+    "DEBUG_SYNC_TRANSITIONS": True,
+    "SYNC_TRANSITION_WARNING_THRESHOLD": 2,
+    "SYNC_TRANSITION_ERROR_THRESHOLD": 3,
 }
 
 
@@ -193,6 +197,10 @@ LOGGING = {
         "wireview": {
             "handlers": ["console"],
             "level": "DEBUG",
+        },
+        "wireview.sync_detector": {
+            "handlers": ["console"],
+            "level": "WARNING",
         },
     },
 }

@@ -1,3 +1,35 @@
+"""Utility functions for wireview.
+
+Sync vs Async Function Selection Guide
+======================================
+
+**Component methods (async context):**
+    Use async functions for direct await:
+    - ``asend_to()`` - Async channel message sending
+    - ``asend_notification()`` - Async notification sending
+    - ``component.broadcast()`` - Async broadcast (queued in joined())
+
+    These avoid unnecessary async_to_sync transitions and provide
+    better performance in WebSocket event handlers.
+
+**Django signal handlers (sync context):**
+    Use sync functions with @on_commit:
+    - ``send_to()`` - Sync channel message (deferred to on_commit)
+    - ``send_notification()`` - Sync notification (deferred to on_commit)
+
+    These use async_to_sync internally, which is unavoidable in
+    synchronous Django contexts like signal handlers.
+
+**Performance Note:**
+    When in an async context (Component methods), always prefer the
+    async versions (asend_to, asend_notification). Using sync versions
+    in async context creates unnecessary event loop transitions that
+    degrade performance.
+
+    Enable DEBUG_SYNC_TRANSITIONS in settings to detect these issues
+    during development.
+"""
+
 import inspect
 import logging
 import typing as t

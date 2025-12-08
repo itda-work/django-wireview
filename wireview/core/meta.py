@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import difflib
+import logging
 import typing as t
 from asyncio import iscoroutine
 from functools import reduce
@@ -17,6 +18,8 @@ from .. import settings
 from ..schemas import DomAction
 from ..utils import db
 from .rendered import Rendered, has_markers
+
+log = logging.getLogger("wireview")
 
 if t.TYPE_CHECKING:
     from django.db import models
@@ -192,6 +195,11 @@ class WireviewMeta:
         Uses Phoenix LiveView-style static/dynamic separation when markers
         are present, falling back to legacy line-based diff otherwise.
 
+        This method resolves async properties in the async context first,
+        then performs template rendering in a sync context. This avoids
+        nested async_to_sync/sync_to_async transitions which cause
+        performance degradation.
+
         Returns:
             - dict with 's', 'd', 'f' keys for full render
             - dict with numeric keys for partial updates
@@ -202,7 +210,12 @@ class WireviewMeta:
             self._skip_render = False
             return None
 
-        html = await db(self.render)(component, repo)
+        # Resolve async properties in async context first to avoid
+        # nested async_to_sync calls inside sync template rendering
+        context = await self._get_context_async(component, repo)
+
+        # Template rendering is sync (Django templates are synchronous)
+        html = await db(self._render_with_context)(component, context)
         if not html:
             return None
 
@@ -356,8 +369,87 @@ class WireviewMeta:
         }
     )
 
+    async def _get_context_async(self, component: "Component", repo: Repo) -> Context:
+        """Build the template context asynchronously.
+
+        This method resolves async properties (coroutines) directly using await,
+        avoiding the need for async_to_sync which would create nested transitions.
+        This is the preferred method for building context in async contexts.
+
+        Args:
+            component: The component to build context for.
+            repo: The component repository.
+
+        Returns:
+            A dictionary containing the template context.
+        """
+        context: Context = {}
+
+        for attr_name in dir(component):
+            if not attr_name.startswith("_") and attr_name not in self._PYDANTIC_CLASS_ATTRS:
+                attr = getattr(component, attr_name)
+                if not callable(attr):
+                    # Await coroutines directly - no async_to_sync needed
+                    if iscoroutine(attr):
+                        attr = await attr
+                    context[attr_name] = attr
+
+        return dict(
+            context,
+            this=component,
+            wireview_repository=repo,
+        )
+
+    def _render_with_context(self, component: "Component", context: Context) -> SafeText | None:
+        """Render template with pre-resolved context (sync).
+
+        This method performs the actual template rendering with a context
+        that has already had its async properties resolved. This avoids
+        the need for async_to_sync during template rendering.
+
+        Args:
+            component: The component to render.
+            context: Pre-resolved template context from _get_context_async().
+
+        Returns:
+            Rendered HTML as SafeText, or None if rendering should be skipped.
+        """
+        from ..template_engine import render_with_markers
+
+        if not self.channel_name and self._redirected_to:
+            return mark_safe(
+                format_html(
+                    '<meta http-equiv="refresh" content="0; url={url}">',
+                    url=self._redirected_to,
+                )
+            )
+
+        if self._is_frozen or self._redirected_to:
+            return None
+
+        template = component._get_template()
+        html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
+        html = html_minify(html)
+
+        return mark_safe(html) if html else None
+
     def _get_context(self, component: "Component", repo: Repo) -> Context:
-        """Build the template context for rendering."""
+        """Build the template context for rendering (sync version).
+
+        WARNING: This method uses async_to_sync for async properties, which
+        can cause performance issues when called from within a sync_to_async
+        context. Prefer using _get_context_async() in async contexts.
+
+        This method is kept for backward compatibility with sync rendering
+        paths (e.g., HTTP responses without WebSocket).
+
+        Args:
+            component: The component to build context for.
+            repo: The component repository.
+
+        Returns:
+            A dictionary containing the template context.
+        """
         context: Context = {}
 
         def _run_coro(coro: t.Coroutine) -> t.Any:
@@ -374,6 +466,14 @@ class WireviewMeta:
                 if not callable(attr):
                     # Handle async properties that return coroutine objects
                     if iscoroutine(attr):
+                        log.warning(
+                            "Sync context detected while resolving async property '%s' "
+                            "on component '%s'. This may cause performance issues. "
+                            "Consider using _get_context_async() or pre-loading data "
+                            "in joined().",
+                            attr_name,
+                            type(component).__name__,
+                        )
                         attr = _run_coro(attr)
                     context[attr_name] = attr
         return dict(

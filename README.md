@@ -951,9 +951,29 @@ WIREVIEW = {
 }
 ```
 
+## 성능 최적화
+
+최적의 성능을 위해:
+
+- **uvloop 사용**: Uvicorn에서 `--loop uvloop` 옵션으로 더 나은 비동기 성능 달성
+- **개발 중 전환 추적**: `DEBUG_SYNC_TRANSITIONS=True`로 중첩 async/sync 전환 감지
+- **컴포넌트에서 `asend_to()` 선호**: async 컨텍스트에서는 `send_to()` 대신 `asend_to()` 사용
+
+```python
+WIREVIEW = {
+    "DEBUG_SYNC_TRANSITIONS": True,  # 개발 환경에서만
+    "USE_HTML_DIFF": True,
+    "USE_HMIN": True,  # django-hmin 설치 필요
+}
+```
+
+자세한 내용은 [성능 가이드](docs/PERFORMANCE.md)를 참조하세요.
+
 ## 문서
 
 - [아키텍처](docs/ARCHITECTURE.md) - 내부 설계 및 패턴
+- [배포 가이드](docs/DEPLOYMENT.md) - 프로덕션 배포 설정
+- [성능 가이드](docs/PERFORMANCE.md) - 성능 최적화 팁
 - [튜토리얼](docs/tutorials/) - 단계별 가이드
 - [로드맵](docs/ROADMAP.md) - 향후 개발 계획
 
