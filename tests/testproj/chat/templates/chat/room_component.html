@@ -1,0 +1,38 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <div class="chat-room card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h2>{{ this.room.name }}</h2>
+      <a href="{% url 'chat:index' %}">&larr; All Rooms</a>
+    </div>
+
+    <div style="display: flex; gap: 16px;">
+      <!-- Main chat area -->
+      <div style="flex: 1;">
+        {% component 'XMessageList' id="messages-"|concat:this.room.id room=this.room %}
+
+        <!-- Message input form -->
+        <div style="margin-top: 16px; display: flex; gap: 8px;">
+          <input type="text"
+                 name="content"
+                 placeholder="Type a message... (Enter to send)"
+                 autocomplete="off"
+                 {% on 'keypress.enter.prevent' 'send_message' %}
+                 {% on 'input' 'set_typing' typing=True %}
+                 {% on 'blur' 'set_typing' typing=False %} />
+          <button class="btn" {% on 'click' 'send_message' %}>Send</button>
+        </div>
+
+        <p style="font-size: 12px; color: #666; margin-top: 8px;">
+          Logged in as: <strong>{{ this.username }}</strong>
+        </p>
+      </div>
+
+      <!-- Sidebar with online users -->
+      <div style="width: 200px;">
+        {% component 'XOnlineUsers' id="online-"|concat:this.room.id room=this.room %}
+      </div>
+    </div>
+  </div>
+</div>

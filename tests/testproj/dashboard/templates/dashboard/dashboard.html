@@ -1,0 +1,57 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <div class="dashboard">
+    <!-- Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+      <div>
+        <h1>Dashboard</h1>
+        <p style="color: #666; margin-top: 4px;">
+          <a href="{% url 'todo:index' %}">&larr; Back to Examples</a>
+        </p>
+      </div>
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <select name="range" {% on 'change' 'change_date_range' %}>
+          <option value="7d" {% if date_range == '7d' %}selected{% endif %}>Last 7 days</option>
+          <option value="30d" {% if date_range == '30d' %}selected{% endif %}>Last 30 days</option>
+          <option value="90d" {% if date_range == '90d' %}selected{% endif %}>Last 90 days</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn {% if active_tab == 'overview' %}active{% endif %}"
+              {% on 'click' 'change_tab' tab='overview' %}>
+        Overview
+      </button>
+      <button class="tab-btn {% if active_tab == 'activity' %}active{% endif %}"
+              {% on 'click' 'change_tab' tab='activity' %}>
+        Activity
+      </button>
+    </div>
+
+    <!-- Tab Content -->
+    {% if active_tab == 'overview' %}
+      <!-- Stat Cards Grid -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px;">
+        {% component 'XStatCard' id="stat-revenue" stat_name='revenue' %}
+        {% component 'XStatCard' id="stat-users" stat_name='users' %}
+        {% component 'XStatCard' id="stat-orders" stat_name='orders' %}
+        {% component 'XStatCard' id="stat-conversion" stat_name='conversion' %}
+      </div>
+
+      <!-- Activity Feed (also shown on overview) -->
+      <div class="card">
+        <h2>Recent Activity</h2>
+        {% component 'XActivityFeed' id="activity-feed" %}
+      </div>
+
+    {% elif active_tab == 'activity' %}
+      <div class="card">
+        <h2>All Activity</h2>
+        {% component 'XActivityFeed' id="activity-feed-full" %}
+      </div>
+    {% endif %}
+  </div>
+</div>

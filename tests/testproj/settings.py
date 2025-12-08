@@ -47,6 +47,8 @@ ALLOWED_HOSTS = ["*"]
 
 INSTALLED_APPS = [
     "testproj.todo",
+    "testproj.chat",
+    "testproj.dashboard",
     "wireview",
     "channels",
     "daphne",

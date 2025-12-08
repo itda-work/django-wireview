@@ -1,0 +1,8 @@
+{% extends "chat/base.html" %}
+{% load wireview %}
+
+{% block title %}{{ room.name }} - Chat{% endblock %}
+
+{% block body %}
+  {% component 'XChatRoom' room=room username=username %}
+{% endblock %}

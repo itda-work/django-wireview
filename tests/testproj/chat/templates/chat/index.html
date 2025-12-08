@@ -1,0 +1,35 @@
+{% extends "chat/base.html" %}
+
+{% block title %}Chat Rooms{% endblock %}
+
+{% block body %}
+  <h1>Chat Rooms</h1>
+
+  <div class="card">
+    <h2>Available Rooms</h2>
+    <ul style="list-style: none; margin-top: 16px;">
+      {% for room in rooms %}
+        <li style="margin-bottom: 8px;">
+          <a href="{% url 'chat:room' room.id %}">{{ room.name }}</a>
+        </li>
+      {% empty %}
+        <li>No rooms available. Create one!</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Create Room</h2>
+    <form method="post" action="{% url 'chat:create_room' %}" style="margin-top: 16px;">
+      {% csrf_token %}
+      <div style="display: flex; gap: 8px;">
+        <input type="text" name="name" placeholder="Room name" required />
+        <button type="submit" class="btn">Create</button>
+      </div>
+    </form>
+  </div>
+
+  <p style="margin-top: 20px;">
+    <a href="{% url 'todo:index' %}">&larr; Back to Examples</a>
+  </p>
+{% endblock %}

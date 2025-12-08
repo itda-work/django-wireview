@@ -10,6 +10,7 @@ This module demonstrates wireview's real-time communication patterns:
 
 from wireview import abroadcast
 from wireview.component import Component
+from wireview.js import JS
 from wireview.schemas import ModelAction
 
 from .models import Message, Room
@@ -20,14 +21,13 @@ class XChatRoom(Component):
     Main chat room component.
 
     Demonstrates:
-    - Streams API for message list (stream_insert)
+    - Nested components (XMessageList, XOnlineUsers)
     - broadcast() for presence notifications
     - Event modifiers (keypress.enter.prevent, input.debounce)
     - skip_render() for optimization
     """
 
     _template_name = "chat/room_component.html"
-    _subscriptions = {"message"}
 
     # Room is a Django model - serialized by PK automatically
     room: Room
@@ -52,7 +52,7 @@ class XChatRoom(Component):
         Send a new message to the room.
 
         Uses skip_render() because mutation() will handle the update
-        when the message is created.
+        when the message is created. Clears the input field via push_js().
         """
         content = content.strip()
         if content:
@@ -61,23 +61,9 @@ class XChatRoom(Component):
                 username=self.username,
                 content=content,
             )
+        # Clear the input field
+        await self.push_js(JS().set_value("input[name=content]", ""))
         self.skip_render()
-
-    async def mutation(
-        self,
-        channel: str,
-        action: ModelAction,
-        instance: Message,
-    ):
-        """
-        Handle message model changes.
-
-        Only processes messages for this room.
-        Uses stream_insert() to append new messages efficiently.
-        """
-        if action == ModelAction.CREATED and instance.room_id == self.room.id:
-            # Append message to the stream (at=-1 means append)
-            await self.stream_insert("messages", instance, at=-1)
 
     async def set_typing(self, typing: bool = True):
         """
@@ -102,14 +88,31 @@ class XMessageList(Component):
 
     Demonstrates:
     - stream() for initial list population
+    - stream_insert() for real-time message updates via mutation()
     - Efficient memory usage with large lists
     - Template pattern with _item.html
     """
 
     _template_name = "chat/message_list.html"
+    _subscriptions = {"message"}
 
     room: Room
     messages: list[Message] = []
+
+    async def mutation(
+        self,
+        channel: str,
+        action: ModelAction,
+        instance: Message,
+    ):
+        """
+        Handle message model changes.
+
+        Only processes messages for this room.
+        Uses stream_insert() to append new messages efficiently.
+        """
+        if action == ModelAction.CREATED and instance.room_id == self.room.id:
+            await self.stream_insert("messages", instance, at=-1)
 
     async def joined(self):
         """

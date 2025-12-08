@@ -1,0 +1,23 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <div class="activity-feed">
+    <ul wire-stream="activities" style="list-style: none;">
+      {% for item in activities %}
+        {% include "dashboard/activity_feed_item.html" %}
+      {% empty %}
+        <li class="empty" style="color: #999; text-align: center; padding: 40px;">
+          No activity yet
+        </li>
+      {% endfor %}
+    </ul>
+
+    {% if has_more %}
+      <div style="text-align: center; margin-top: 16px;">
+        <button class="btn" {% on 'click' 'load_more' %} {% if is_loading %}disabled{% endif %}>
+          {% if is_loading %}Loading...{% else %}Load More{% endif %}
+        </button>
+      </div>
+    {% endif %}
+  </div>
+</div>
