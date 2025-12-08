@@ -34,7 +34,52 @@ if t.TYPE_CHECKING:
     from .core.component import Component
 
 
-__all__ = ("MountedComponent", "mount", "ComponentTestCase")
+__all__ = (
+    "MountedComponent",
+    "mount",
+    "ComponentTestCase",
+    "MockChannelLayer",
+    "MockWireviewMeta",
+)
+
+
+class MockChannelLayer:
+    """Mock channel layer for testing broadcasts.
+
+    Tracks all group messages and subscriptions for test assertions.
+
+    Example:
+        channel_layer = MockChannelLayer()
+        # After component broadcasts...
+        assert len(channel_layer.sent_messages) == 1
+        assert channel_layer.sent_messages[0]["kwargs"]["action"] == "presence_join"
+    """
+
+    def __init__(self) -> None:
+        self.groups: dict[str, list[str]] = {}
+        self.sent_messages: list[dict[str, t.Any]] = []
+
+    async def group_send(self, group: str, message: dict[str, t.Any]) -> None:
+        """Record a group message."""
+        self.sent_messages.append({"group": group, **message})
+
+    async def group_add(self, group: str, channel: str) -> None:
+        """Add a channel to a group."""
+        self.groups.setdefault(group, []).append(channel)
+
+    async def group_discard(self, group: str, channel: str) -> None:
+        """Remove a channel from a group."""
+        if group in self.groups:
+            self.groups[group] = [c for c in self.groups[group] if c != channel]
+
+    def get_presence_broadcasts(self) -> list[dict[str, t.Any]]:
+        """Get all presence-related broadcasts for assertions."""
+        return [m for m in self.sent_messages if m.get("kwargs", {}).get("action", "").startswith("presence_")]
+
+    def clear(self) -> None:
+        """Clear all tracked messages and groups."""
+        self.groups.clear()
+        self.sent_messages.clear()
 
 
 class MockWireviewMeta(WireviewMeta):
@@ -46,14 +91,25 @@ class MockWireviewMeta(WireviewMeta):
     """
 
     def __init__(self, params: dict[str, t.Any] | None = None):
+        self._mock_channel_layer = MockChannelLayer()
         super().__init__(
             params=params or {},
-            channel_name=None,
-            channel_layer=None,
+            channel_name="test-channel",
+            channel_layer=self._mock_channel_layer,
         )
         # Track calls for assertions
         self.sent_messages: list[dict[str, t.Any]] = []
         self.dom_actions: list[dict[str, t.Any]] = []
+
+    @property
+    def broadcasts(self) -> list[dict[str, t.Any]]:
+        """Get all broadcast messages for assertions."""
+        return self._mock_channel_layer.sent_messages
+
+    @property
+    def presence_broadcasts(self) -> list[dict[str, t.Any]]:
+        """Get all presence-related broadcasts for assertions."""
+        return self._mock_channel_layer.get_presence_broadcasts()
 
     def clone(self) -> "MockWireviewMeta":
         new_meta = MockWireviewMeta(params=self.params.copy())

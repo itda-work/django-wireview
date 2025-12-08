@@ -8,10 +8,10 @@
     background: white;
   ">
     <h3 style="font-size: 14px; margin-bottom: 12px; color: #666;">
-      Online Users ({{ this.online_users|length }})
+      Online Users ({{ this.presence_online_count }})
     </h3>
     <ul style="list-style: none;">
-      {% for username, is_typing in this.online_users.items %}
+      {% for user in this.presence_users %}
         <li style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
           <span style="
             width: 8px;
@@ -20,8 +20,8 @@
             border-radius: 50%;
             display: inline-block;
           "></span>
-          <span>{{ username }}</span>
-          {% if is_typing %}
+          <span>{{ user.username }}</span>
+          {% if user.is_typing %}
             <span style="font-size: 12px; color: #999; font-style: italic;">typing...</span>
           {% endif %}
         </li>

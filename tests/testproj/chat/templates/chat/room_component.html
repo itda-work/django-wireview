@@ -19,8 +19,7 @@
                  placeholder="Type a message... (Enter to send)"
                  autocomplete="off"
                  {% on 'keypress.enter.prevent' 'send_message' %}
-                 {% on 'input' 'set_typing' typing=True %}
-                 {% on 'blur' 'set_typing' typing=False %} />
+                 {% on 'input.debounce.100' 'on_typing' %} />
           <button class="btn" {% on 'click' 'send_message' %}>Send</button>
         </div>
 
