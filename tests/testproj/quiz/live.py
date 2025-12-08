@@ -36,7 +36,7 @@ class XQuiz(Component):
     """
 
     _template_name = "quiz/quiz.html"
-    _subscriptions = {"submission"}  # Subscribe to submission updates
+    _subscriptions = {"quiz.submission"}  # Subscribe to submission updates
 
     quiz: Quiz
     state: QuizState = QuizState.INTRO
@@ -198,7 +198,7 @@ class XLeaderboard(Component):
     """
 
     _template_name = "quiz/leaderboard.html"
-    _subscriptions = {"submission"}
+    _subscriptions = {"quiz.submission"}
 
     quiz: Quiz
 

@@ -28,7 +28,7 @@ class XNotificationBell(Component):
     """
 
     _template_name = "notifications/notification_bell.html"
-    _subscriptions = {"notification", "notifications-refresh"}
+    _subscriptions = {"notifications.notification", "notifications-refresh"}
 
     is_open: bool = False
 
@@ -84,7 +84,7 @@ class XNotificationList(Component):
     """
 
     _template_name = "notifications/notification_list.html"
-    _subscriptions = {"notification"}
+    _subscriptions = {"notifications.notification"}
 
     async def joined(self):
         """Load initial notifications using Streams."""

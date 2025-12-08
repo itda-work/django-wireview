@@ -117,7 +117,7 @@ class XMessageList(Component):
     """
 
     _template_name = "chat/message_list.html"
-    _subscriptions = {"message"}
+    _subscriptions = {"chat.message"}
 
     room: Room
     messages: list[Message] = []

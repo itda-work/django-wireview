@@ -27,7 +27,7 @@ class XPoll(Component):
     """
 
     _template_name = "poll/poll.html"
-    _subscriptions = {"option"}  # Subscribe to all option changes
+    _subscriptions = {"poll.option"}  # Subscribe to all option changes
 
     poll: Poll
     voted_option_id: int | None = None  # Track which option user voted for

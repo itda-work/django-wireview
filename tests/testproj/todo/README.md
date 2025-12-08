@@ -10,7 +10,7 @@ A minimal wireview example implementing the classic [TodoMVC](https://todomvc.co
 - **Event handlers**: Async methods for user interactions
 
 ### Subscriptions & Real-time Updates
-- **Model subscriptions**: `_subscriptions = {"item"}` for ORM change notifications
+- **Model subscriptions**: `_subscriptions = {"todo.item"}` for ORM change notifications
 - **Instance subscriptions**: Dynamic `@property _subscriptions` for per-item updates
 - **mutation()**: Lifecycle hook for handling model changes
 
@@ -59,7 +59,7 @@ Main container component managing the todo list.
 ```python
 class XTodoList(Component):
     _template_name = "todo/list.html"
-    _subscriptions = {"item"}  # Subscribe to all Item changes
+    _subscriptions = {"todo.item"}  # Subscribe to all Item changes
 
     showing: Showing = Showing.ALL
 
@@ -85,7 +85,7 @@ class XTodoItem(Component):
 
     @property
     def _subscriptions(self):
-        return {f"item.{self.item.id}"}  # Subscribe to this item only
+        return {f"todo.item.{self.item.id}"}  # Subscribe to this item only
 
     item: Item
     editing: bool = False
@@ -103,7 +103,7 @@ Counter showing active items count.
 ```python
 class XTodoCounter(Component):
     _template_name = "todo/counter.html"
-    _subscriptions = {"item"}  # Auto-update on any item change
+    _subscriptions = {"todo.item"}  # Auto-update on any item change
 
     @property
     def items(self):

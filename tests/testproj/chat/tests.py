@@ -23,7 +23,7 @@ class TestXMessageList:
     @pytest.mark.unit
     def test_has_message_subscription(self):
         """XMessageList should subscribe to message model mutations."""
-        assert "message" in XMessageList._subscriptions
+        assert "chat.message" in XMessageList._subscriptions
 
 
 class TestXChatRoom:
@@ -32,9 +32,9 @@ class TestXChatRoom:
     @pytest.mark.unit
     def test_no_message_subscription(self):
         """XChatRoom should NOT subscribe to message mutations (delegated to XMessageList)."""
-        # XChatRoom should not have _subscriptions or it should not include "message"
+        # XChatRoom should not have _subscriptions or it should not include "chat.message"
         subscriptions = getattr(XChatRoom, "_subscriptions", set())
-        assert "message" not in subscriptions
+        assert "chat.message" not in subscriptions
 
     @pytest.mark.unit
     def test_template_name(self):

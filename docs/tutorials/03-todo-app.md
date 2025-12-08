@@ -324,8 +324,8 @@ from wireview.auto_broadcast import ModelAction
 class XTodoList(Component):
     _template_name = 'todo/todo_list.html'
 
-    # 모델 변경 구독
-    _subscriptions = {"todo-item"}
+    # 모델 변경 구독 ({app_label}.{model_name} 형식)
+    _subscriptions = {"todo.item"}
 
     items: list = []
     filter: str = "all"
@@ -384,10 +384,10 @@ class XTodoItem(Component):
     editing: bool = False
     edit_text: str = ""
 
-    # 이 아이템의 변경만 구독
+    # 이 아이템의 변경만 구독 ({app_label}.{model_name}.{pk} 형식)
     @property
     def _subscriptions(self):
-        return {f"todo-item.{self.item_id}"}
+        return {f"todo.item.{self.item_id}"}
 
     async def toggle(self):
         """완료 상태 토글"""
@@ -460,7 +460,7 @@ class XTodoItem(Component):
 ```python
 class XTodoList(Component):
     _template_name = 'todo/todo_list.html'
-    _subscriptions = {"todo-item"}
+    _subscriptions = {"todo.item"}
 
     items: list = []
     filter: str = "all"
@@ -512,7 +512,7 @@ class XTodoList(Component):
     """Todo 리스트 메인 컴포넌트"""
 
     _template_name = 'todo/todo_list.html'
-    _subscriptions = {"todo-item"}
+    _subscriptions = {"todo.item"}
 
     items: list = []
     filter: str = "all"

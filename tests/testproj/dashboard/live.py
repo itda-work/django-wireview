@@ -71,7 +71,7 @@ class XStatCard(Component):
     """
 
     _template_name = "dashboard/stat_card.html"
-    _subscriptions = {"stat"}
+    _subscriptions = {"dashboard.stat"}
 
     # Name of the stat to load
     stat_name: str
@@ -134,7 +134,7 @@ class XActivityFeed(Component):
     """
 
     _template_name = "dashboard/activity_feed.html"
-    _subscriptions = {"activity"}
+    _subscriptions = {"dashboard.activity"}
 
     activities: list[Activity] = []
     is_loading: bool = False

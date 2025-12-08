@@ -262,7 +262,7 @@ class ChatRoom(Component):
 
 ```python
 class TodoList(Component):
-    _subscriptions = {"todo-item"}  # todo 아이템 변경 구독
+    _subscriptions = {"todo.item"}  # todo 앱의 Item 모델 변경 구독
 
     async def mutation(self, channel: str, action: ModelAction, instance):
         # 구독한 모델이 변경될 때 호출됨
@@ -373,7 +373,7 @@ class TreeView(Component):
 
 ```python
 class TodoList(Component):
-    _subscriptions = {"todo-item"}
+    _subscriptions = {"todo.item"}  # {app_label}.{model_name} 형식
 
     async def mutation(self, channel: str, action: ModelAction, instance):
         if action == ModelAction.CREATED:

@@ -62,8 +62,8 @@ from wireview.settings import AutoBroadcast
 
 WIREVIEW = {
     "AUTO_BROADCAST": AutoBroadcast(
-        model=True,      # 모델명 채널 활성화 (예: "option")
-        model_pk=True,   # 모델명.pk 채널 활성화 (예: "option.5")
+        model=True,      # 모델명 채널 활성화 (예: "poll.option")
+        model_pk=True,   # 모델명.pk 채널 활성화 (예: "poll.option.5")
     ),
 }
 ```
@@ -85,7 +85,7 @@ class XPoll(Component):
     """실시간 투표 컴포넌트"""
 
     _template_name = "poll/poll.html"
-    _subscriptions = {"option"}  # Option 모델 변경 구독
+    _subscriptions = {"poll.option"}  # poll 앱의 Option 모델 변경 구독
 
     poll: Poll
     voted_option_id: int | None = None  # 투표한 옵션 ID

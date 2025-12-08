@@ -27,7 +27,7 @@ class XStarRating(Component):
     """
 
     _template_name = "rating/star_rating.html"
-    _subscriptions = {"rating"}
+    _subscriptions = {"rating.rating"}
 
     product: Product
     current_rating: int = 0  # User's current rating (0 = not rated)
@@ -131,7 +131,7 @@ class XRatingStats(Component):
     """
 
     _template_name = "rating/rating_stats.html"
-    _subscriptions = {"rating"}
+    _subscriptions = {"rating.rating"}
 
     product: Product
 

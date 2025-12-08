@@ -40,8 +40,8 @@ class XTodoList(Component):
     _template_name = "todo/list.html"
 
     # Subscribe to all Item model changes (create, update, delete)
-    # Channel name matches the model name in lowercase
-    _subscriptions = {"item"}
+    # Channel name format: {app_label}.{model_name}
+    _subscriptions = {"todo.item"}
 
     # Pydantic field with default value - automatically validated
     showing: Showing = Showing.ALL
@@ -66,7 +66,7 @@ class XTodoList(Component):
         Called when a subscribed model changes.
 
         Args:
-            channel: The subscription channel (e.g., "item")
+            channel: The subscription channel (e.g., "todo.item")
             action: ModelAction.CREATED, UPDATED, or DELETED
             instance: The affected model instance
         """
@@ -118,7 +118,7 @@ class XTodoCounter(Component):
     """
 
     _template_name = "todo/counter.html"
-    _subscriptions = {"item"}  # Re-renders on any item change
+    _subscriptions = {"todo.item"}  # Re-renders on any item change
 
     @property
     def items(self):
@@ -146,7 +146,7 @@ class XTodoItem(Component):
         Returns a set of channels. Using @property allows dynamic
         subscription based on component state.
         """
-        return {f"item.{self.item.id}"}
+        return {f"todo.item.{self.item.id}"}
 
     # Django model field - automatically serialized/deserialized by PK
     item: Item

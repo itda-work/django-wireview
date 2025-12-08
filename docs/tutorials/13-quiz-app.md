@@ -77,7 +77,7 @@ from wireview.settings import AutoBroadcast
 
 WIREVIEW = {
     "AUTO_BROADCAST": AutoBroadcast(
-        model=True,      # "submission" 채널 활성화
+        model=True,      # "quiz.submission" 채널 활성화
         model_pk=True,
     ),
 }
@@ -107,7 +107,7 @@ class XQuiz(Component):
     """퀴즈 컴포넌트"""
 
     _template_name = "quiz/quiz.html"
-    _subscriptions = {"submission"}  # 리더보드 업데이트용
+    _subscriptions = {"quiz.submission"}  # 리더보드 업데이트용
 
     quiz: Quiz
     state: QuizState = QuizState.INTRO
@@ -264,7 +264,7 @@ class XLeaderboard(Component):
     """실시간 리더보드"""
 
     _template_name = "quiz/leaderboard.html"
-    _subscriptions = {"submission"}
+    _subscriptions = {"quiz.submission"}
 
     quiz: Quiz
 

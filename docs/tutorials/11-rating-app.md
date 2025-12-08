@@ -58,8 +58,8 @@ from wireview.settings import AutoBroadcast
 
 WIREVIEW = {
     "AUTO_BROADCAST": AutoBroadcast(
-        model=True,      # "rating" 채널 활성화
-        model_pk=True,   # "rating.{pk}" 채널 활성화
+        model=True,      # "rating.rating" 채널 활성화
+        model_pk=True,   # "rating.rating.{pk}" 채널 활성화
     ),
 }
 ```
@@ -79,7 +79,7 @@ class XStarRating(Component):
     """인터랙티브 별점 입력"""
 
     _template_name = "rating/star_rating.html"
-    _subscriptions = {"rating"}
+    _subscriptions = {"rating.rating"}  # rating 앱의 Rating 모델
 
     product: Product
     current_rating: int = 0  # 현재 평점
@@ -232,7 +232,7 @@ URL이 `?rating=4`로 업데이트되어 새로고침해도 상태 유지됩니�
 ```python
 class XRatingStats(Component):
     _template_name = "rating/rating_stats.html"
-    _subscriptions = {"rating"}
+    _subscriptions = {"rating.rating"}
 
     product: Product
 

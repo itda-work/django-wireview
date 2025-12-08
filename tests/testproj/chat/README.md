@@ -45,7 +45,7 @@ Main container managing messages and presence.
 ```python
 class XChatRoom(Component):
     _template_name = "chat/room_component.html"
-    _subscriptions = {"message"}
+    _subscriptions = {"chat.message"}
 
     room: Room
     username: str = "Anonymous"
