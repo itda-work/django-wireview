@@ -1,54 +1,208 @@
-.PHONY: all install test test-cov lint check build watch-js run shell clean collectstatic
+.PHONY: all install test test-unit test-e2e test-cov lint format check build watch-js run shell clean collectstatic playwright-install
 
+# Default target
 all: install build
 
-# uv 기반 설치
-install:
-	uv venv
-	uv pip install -e ".[dev]"
+# =============================================================================
+# Installation
+# =============================================================================
 
-# collectstatic
+# Install dependencies using uv
+install:
+	uv sync --all-extras
+
+# Install Playwright browsers
+playwright-install:
+	uv run playwright install chromium
+
+# =============================================================================
+# Testing
+# =============================================================================
+
+# Collect static files (required for tests)
 collectstatic:
 	cd tests && uv run python manage.py collectstatic --noinput
 
-# pytest 테스트 (위치 인자 지원: make test tests/test_security.py)
-TEST_TARGET := $(filter-out test test-cov,$(MAKECMDGOALS))
-
+# Run all tests (excluding E2E and slow)
 test: collectstatic
-	uv run pytest $(if $(TEST_TARGET),$(TEST_TARGET),tests/) -v
+	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "not e2e and not slow" -v $(ARGS)
 
+# Run unit tests only
+test-unit: collectstatic
+	uv run pytest tests/ -m "unit" -v $(ARGS)
+
+# Run E2E tests with Playwright
+test-e2e: collectstatic playwright-install
+	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "e2e" -v $(ARGS)
+
+# Run all tests including E2E (runs separately to avoid async conflicts)
+test-all: test test-e2e
+
+# Run tests with coverage
 test-cov: collectstatic
-	uv run pytest $(if $(TEST_TARGET),$(TEST_TARGET),tests/) --cov=wireview --cov-report=term-missing
+	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "not e2e" --cov=wireview --cov-report=term-missing --cov-report=html $(ARGS)
 
-# 위치 인자를 타겟으로 인식하지 않도록 처리
-%:
-	@:
+# =============================================================================
+# Code Quality
+# =============================================================================
 
-# 린트 및 타입 체크
+# Lint Python code with ruff and djlint
 lint:
 	uv run ruff check wireview tests
 	uv run djlint --check .
 
+# Format code with ruff
+format:
+	uv run ruff check --fix wireview tests
+	uv run ruff format wireview tests
+	uv run djlint --reformat .
+
+# Type check with pyright
 check:
 	uv run pyright wireview
 
-# 빌드
-build:
-	node esbuild.conf.js
+# Type check JavaScript
+check-js:
+	npm run typecheck
+
+# Run all quality checks
+quality: lint check check-js
+
+# =============================================================================
+# Build
+# =============================================================================
+
+# Build JavaScript bundle
+build-js:
+	npm run build
+
+# Build Python package
+build-py:
 	uv build
 
-# JavaScript
-watch-js:
-	node esbuild.conf.js -w
+# Build everything
+build: build-js build-py
 
-# 개발 서버
+# Watch JavaScript for changes
+watch-js:
+	npm run watch
+
+# =============================================================================
+# Development Server
+# =============================================================================
+
+# Run development server
 run:
 	cd tests && uv run python manage.py runserver
 
+# Run with daphne (WebSocket support)
+run-daphne:
+	cd tests && uv run daphne testproj.asgi:application
+
+# Django shell
 shell:
 	cd tests && uv run python manage.py shell
 
-# 정리
+# Django migrations
+migrate:
+	cd tests && uv run python manage.py migrate
+
+# =============================================================================
+# Cleanup
+# =============================================================================
+
+# Clean build artifacts
 clean:
-	rm -rf dist build *.egg-info .pytest_cache .coverage
-	find . -type d -name __pycache__ -exec rm -rf {} +
+	rm -rf dist build *.egg-info .pytest_cache .coverage htmlcov .ruff_cache
+	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+	find . -type f -name "*.pyc" -delete 2>/dev/null || true
+
+# Clean test databases
+clean-db:
+	rm -f tests/db.sqlite3 tests/db_test.sqlite3
+
+# Clean everything
+clean-all: clean clean-db
+
+# =============================================================================
+# CI Targets (used by GitHub Actions)
+# =============================================================================
+
+# CI: Install dependencies
+ci-install:
+	uv sync --all-extras
+
+# CI: Run linting
+ci-lint:
+	uv run ruff check wireview tests
+	uv run ruff format --check wireview tests
+
+# CI: Run type checking
+ci-check:
+	uv run pyright wireview
+
+# CI: Run tests (non-E2E)
+ci-test:
+	cd tests && uv run python manage.py collectstatic --noinput
+	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "not e2e and not slow" -q
+
+# CI: Run E2E tests
+ci-test-e2e:
+	cd tests && uv run python manage.py collectstatic --noinput
+	uv run playwright install --with-deps chromium
+	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "e2e" -v
+
+# CI: Build and check package
+ci-build:
+	npm ci
+	npm run build
+	uv build
+	uv run twine check dist/*
+
+# =============================================================================
+# Help
+# =============================================================================
+
+help:
+	@echo "django-wireview Makefile"
+	@echo ""
+	@echo "Installation:"
+	@echo "  make install          - Install all dependencies"
+	@echo "  make playwright-install - Install Playwright browsers"
+	@echo ""
+	@echo "Testing:"
+	@echo "  make test             - Run tests (excluding E2E and slow)"
+	@echo "  make test-unit        - Run unit tests only"
+	@echo "  make test-e2e         - Run E2E tests with Playwright"
+	@echo "  make test-all         - Run all tests including E2E"
+	@echo "  make test-cov         - Run tests with coverage report"
+	@echo ""
+	@echo "Code Quality:"
+	@echo "  make lint             - Run linters (ruff, djlint)"
+	@echo "  make format           - Auto-format code"
+	@echo "  make check            - Run type checker (pyright)"
+	@echo "  make quality          - Run all quality checks"
+	@echo ""
+	@echo "Build:"
+	@echo "  make build            - Build JS and Python package"
+	@echo "  make build-js         - Build JavaScript bundle only"
+	@echo "  make build-py         - Build Python package only"
+	@echo "  make watch-js         - Watch JS for changes"
+	@echo ""
+	@echo "Development:"
+	@echo "  make run              - Run dev server"
+	@echo "  make run-daphne       - Run with daphne (WebSocket)"
+	@echo "  make shell            - Django shell"
+	@echo "  make migrate          - Run migrations"
+	@echo ""
+	@echo "Cleanup:"
+	@echo "  make clean            - Clean build artifacts"
+	@echo "  make clean-all        - Clean everything"
+	@echo ""
+	@echo "CI (used by GitHub Actions):"
+	@echo "  make ci-install       - CI: Install dependencies"
+	@echo "  make ci-lint          - CI: Run linting"
+	@echo "  make ci-check         - CI: Run type checking"
+	@echo "  make ci-test          - CI: Run tests (non-E2E)"
+	@echo "  make ci-test-e2e      - CI: Run E2E tests"
+	@echo "  make ci-build         - CI: Build package"
