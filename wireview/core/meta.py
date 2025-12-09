@@ -396,6 +396,27 @@ class WireviewMeta:
                 },
             )
 
+    async def send_to_parent(
+        self,
+        parent_id: str,
+        event: str,
+        kwargs: dict[str, t.Any],
+    ) -> None:
+        """Send an event from LiveComponent to its parent Component.
+
+        Args:
+            parent_id: The ID of the parent component
+            event: Event name (method name on parent)
+            kwargs: Event arguments
+        """
+        await self.send(
+            "dispatch_event",
+            id=parent_id,
+            command=event,
+            args=[],
+            kwargs=kwargs,
+        )
+
     # Pydantic v2 class-level attributes that should not be accessed on instances
     _PYDANTIC_CLASS_ATTRS = frozenset(
         {

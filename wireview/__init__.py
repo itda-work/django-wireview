@@ -16,6 +16,7 @@ if t.TYPE_CHECKING:
     from .function_component import FunctionComponent as FunctionComponent
     from .function_component import function_component as function_component
     from .js import JS as JS
+    from .live_component import LiveComponent as LiveComponent
     from .testing import ComponentTestCase as ComponentTestCase
     from .testing import MountedComponent as MountedComponent
     from .testing import mount as mount
@@ -78,6 +79,11 @@ def __getattr__(name: str) -> t.Any:
         from .function_component import FunctionComponent
 
         return FunctionComponent
+    # Live components
+    if name == "LiveComponent":
+        from .live_component import LiveComponent
+
+        return LiveComponent
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -91,6 +97,8 @@ __all__ = (
     # Function components
     "function_component",
     "FunctionComponent",
+    # Live components
+    "LiveComponent",
     # Testing utilities
     "mount",
     "MountedComponent",
