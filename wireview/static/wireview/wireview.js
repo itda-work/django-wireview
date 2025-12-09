@@ -282,8 +282,8 @@ class ServerConnection {
         break;
 
       case "stream_op":
-        var { op, stream, items, at } = payload;
-        this._handleStreamOp(op, stream, items, at);
+        var { op, stream, items, at, limit } = payload;
+        this._handleStreamOp(op, stream, items, at, limit);
         break;
 
       case "upload_op":
@@ -371,9 +371,10 @@ class ServerConnection {
    * @param {string} stream - Stream name (matches wire-stream attribute)
    * @param {Array<{id: string, html: string}>} items - Stream items
    * @param {number} at - Insert position (-1 = append, 0 = prepend)
+   * @param {number} limit - Maximum items to keep (0 = no limit)
    * @private
    */
-  _handleStreamOp(op, stream, items, at) {
+  _handleStreamOp(op, stream, items, at, limit = 0) {
     const container = document.querySelector(`[wire-stream="${stream}"]`);
     if (!container) {
       console.warn(`[wireview] Stream container not found: ${stream}`);
@@ -420,6 +421,21 @@ class ServerConnection {
           }
         }
         break;
+    }
+
+    // Enforce limit by removing excess items
+    if (limit > 0 && container.children.length > limit) {
+      const excess = container.children.length - limit;
+      // Remove from opposite end: if prepending (at=0), remove from end
+      // If appending (at=-1), remove from start
+      const removeFromEnd = at === 0;
+      for (let i = 0; i < excess; i++) {
+        if (removeFromEnd) {
+          container.lastElementChild?.remove();
+        } else {
+          container.firstElementChild?.remove();
+        }
+      }
     }
 
     boost.navEvent.sendNewContent();

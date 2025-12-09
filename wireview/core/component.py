@@ -710,6 +710,7 @@ class Component(BaseModel):
         *,
         template: str | None = None,
         dom_id: t.Callable[[t.Any], str] | None = None,
+        limit: int = 0,
     ) -> None:
         """
         Initialize or reset a stream with items.
@@ -724,10 +725,16 @@ class Component(BaseModel):
                      (default: {component_template}_item.html)
             dom_id: Function to generate DOM ID for each item
                    (default: {name}-{item.pk})
+            limit: Maximum number of items to keep in DOM (0 = no limit).
+                  When exceeded, oldest items are removed automatically.
 
         Example:
             async def joined(self):
                 await self.stream("items", Item.objects.all()[:100])
+
+            # With limit - keeps only 50 most recent items in DOM
+            async def joined(self):
+                await self.stream("messages", messages, limit=50)
         """
         from ..features.streams import StreamItem, StreamOp
 
@@ -739,7 +746,7 @@ class Component(BaseModel):
             html = await self._render_stream_item(template_name, item)
             stream_items.append(StreamItem(dom_id=dom_id_fn(item), html=html))
 
-        op = StreamOp(op="reset", stream=name, items=stream_items)
+        op = StreamOp(op="reset", stream=name, items=stream_items, limit=limit)
         await self.wire.send_stream_op(op)
 
     async def stream_insert(
@@ -750,6 +757,7 @@ class Component(BaseModel):
         at: int = -1,
         template: str | None = None,
         dom_id: t.Callable[[t.Any], str] | None = None,
+        limit: int = 0,
     ) -> None:
         """
         Insert an item into a stream.
@@ -760,11 +768,18 @@ class Component(BaseModel):
             at: Insert position (-1 = append, 0 = prepend, n = at index)
             template: Template name for rendering item
             dom_id: Function to generate DOM ID
+            limit: Maximum items to keep in DOM (0 = no limit).
+                  When exceeded, items are removed from the opposite end.
 
         Example:
             async def add_item(self, name: str):
                 item = await Item.objects.acreate(name=name)
                 await self.stream_insert("items", item, at=0)  # prepend
+
+            # With limit - removes oldest when prepending new items
+            async def add_message(self, text: str):
+                msg = await Message.objects.acreate(text=text)
+                await self.stream_insert("messages", msg, at=0, limit=100)
         """
         from ..features.streams import StreamItem, StreamOp
 
@@ -774,7 +789,7 @@ class Component(BaseModel):
         html = await self._render_stream_item(template_name, item)
         stream_item = StreamItem(dom_id=dom_id_fn(item), html=html)
 
-        op = StreamOp(op="insert", stream=name, items=[stream_item], at=at)
+        op = StreamOp(op="insert", stream=name, items=[stream_item], at=at, limit=limit)
         await self.wire.send_stream_op(op)
 
     async def stream_delete(self, name: str, dom_id: str | int) -> None:

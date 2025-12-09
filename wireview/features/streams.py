@@ -27,18 +27,23 @@ class StreamOp:
         stream: Stream name (matches wire-stream attribute in template)
         items: List of StreamItem objects
         at: Insert position (-1 = append, 0 = prepend, n = at index)
+        limit: Maximum number of items to keep in DOM (0 = no limit)
     """
 
     op: t.Literal["reset", "insert", "delete"]
     stream: str
     items: list[StreamItem] = field(default_factory=list)
     at: int = -1
+    limit: int = 0
 
     def to_payload(self) -> dict[str, t.Any]:
         """Convert to payload dict for WebSocket transmission."""
-        return {
+        payload: dict[str, t.Any] = {
             "op": self.op,
             "stream": self.stream,
             "items": [{"id": item.dom_id, "html": item.html} for item in self.items],
             "at": self.at,
         }
+        if self.limit > 0:
+            payload["limit"] = self.limit
+        return payload
