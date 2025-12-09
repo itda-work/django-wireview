@@ -21,3 +21,6 @@ pyrightconfig.json
 tests/static/
 package-lock.json
 .idea/
+
+# IDE LSP metadata cache
+.wireview/
