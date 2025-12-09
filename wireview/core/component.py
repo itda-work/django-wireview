@@ -159,6 +159,28 @@ class Component(BaseModel):
     #         }
     _slots: t.ClassVar[dict[str, dict[str, t.Any]]] = {}
 
+    # On-mount hooks: modules that will run during mount.
+    # Similar to Phoenix LiveView's on_mount option.
+    #
+    # Hooks are called in order during component initialization, before joined().
+    # Each hook can modify the socket, attach lifecycle hooks, or halt the mount.
+    #
+    # Example:
+    #     class ProtectedPage(Component):
+    #         _on_mount = [AuthHook, TrackingHook]
+    #
+    #     class AuthHook:
+    #         @staticmethod
+    #         async def on_mount(component, params, session):
+    #             if not component.user.is_authenticated:
+    #                 await component.wire.redirect_to("/login")
+    #                 return {"halt": True}
+    #             return {"cont": True}
+    _on_mount: t.ClassVar[list[t.Any]] = []
+
+    # Instance-level lifecycle hooks attached via attach_hook()
+    _lifecycle_hooks: dict[str, list[t.Callable[..., t.Any]]] = {}
+
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
         validate_assignment=True,
@@ -396,6 +418,135 @@ class Component(BaseModel):
                     await self.wire.push_to(f"?page={self.page + 1}")
         """
         ...
+
+    # =========================================================================
+    # Lifecycle Hooks
+    # =========================================================================
+
+    def attach_hook(
+        self,
+        name: str,
+        stage: t.Literal["handle_event", "handle_params", "after_render"],
+        callback: t.Callable[..., t.Any],
+    ) -> None:
+        """
+        Attach a lifecycle hook to intercept specific stages.
+
+        Hooks provide a mechanism to tap into key stages of the component lifecycle
+        to inject common functionality. This is similar to Phoenix LiveView's attach_hook.
+
+        Args:
+            name: Unique name for this hook (used for detaching)
+            stage: The lifecycle stage to hook into:
+                - "handle_event": Before event handlers are called
+                - "handle_params": Before params_changed is called
+                - "after_render": After the component renders
+            callback: The hook function to call
+
+        Hook Signatures:
+            - handle_event: async def hook(event: str, params: dict) -> dict
+                Returns {"halt": True} to stop event processing, or {"cont": True}
+            - handle_params: async def hook(params: dict, uri: str) -> dict
+                Returns {"halt": True} to skip params_changed, or {"cont": True}
+            - after_render: async def hook() -> None
+
+        Example:
+            class TrackingHook:
+                @staticmethod
+                async def on_mount(component, params, session):
+                    # Attach event tracking hook
+                    async def track_events(event, params):
+                        await analytics.track(event, params)
+                        return {"cont": True}
+
+                    component.attach_hook("tracking", "handle_event", track_events)
+                    return {"cont": True}
+
+            class TrackedPage(Component):
+                _on_mount = [TrackingHook]
+        """
+        if not hasattr(self, "_lifecycle_hooks") or not isinstance(self._lifecycle_hooks, dict):
+            self._lifecycle_hooks = {}
+
+        if stage not in self._lifecycle_hooks:
+            self._lifecycle_hooks[stage] = []
+
+        self._lifecycle_hooks[stage].append({"name": name, "callback": callback})
+
+    def detach_hook(self, name: str, stage: str | None = None) -> bool:
+        """
+        Detach a lifecycle hook by name.
+
+        Args:
+            name: The name of the hook to detach
+            stage: Optional stage to limit detachment (if None, removes from all stages)
+
+        Returns:
+            True if a hook was removed, False otherwise
+        """
+        if not hasattr(self, "_lifecycle_hooks") or not isinstance(self._lifecycle_hooks, dict):
+            return False
+
+        removed = False
+        stages = [stage] if stage else list(self._lifecycle_hooks.keys())
+
+        for s in stages:
+            if s in self._lifecycle_hooks:
+                before = len(self._lifecycle_hooks[s])
+                self._lifecycle_hooks[s] = [h for h in self._lifecycle_hooks[s] if h["name"] != name]
+                if len(self._lifecycle_hooks[s]) < before:
+                    removed = True
+
+        return removed
+
+    async def _run_hooks(
+        self,
+        stage: str,
+        *args: t.Any,
+        **kwargs: t.Any,
+    ) -> dict[str, t.Any]:
+        """
+        Run all hooks for a given lifecycle stage.
+
+        Returns:
+            {"halt": True} if any hook halted, otherwise {"cont": True}
+        """
+        if not hasattr(self, "_lifecycle_hooks") or not isinstance(self._lifecycle_hooks, dict):
+            return {"cont": True}
+
+        hooks = self._lifecycle_hooks.get(stage, [])
+        for hook in hooks:
+            callback = hook["callback"]
+            result = await callback(*args, **kwargs) if callable(callback) else {"cont": True}
+            if result and result.get("halt"):
+                return {"halt": True, "hook": hook["name"]}
+
+        return {"cont": True}
+
+    async def _run_on_mount_hooks(
+        self,
+        params: dict[str, t.Any] | None = None,
+        session: dict[str, t.Any] | None = None,
+    ) -> dict[str, t.Any]:
+        """
+        Run all on_mount hooks defined in _on_mount.
+
+        Called during component initialization, before joined().
+
+        Returns:
+            {"halt": True} if any hook halted, otherwise {"cont": True}
+        """
+        for hook_class in self._on_mount:
+            if hasattr(hook_class, "on_mount"):
+                on_mount = hook_class.on_mount
+                # Support both static methods and instance methods
+                if isinstance(on_mount, staticmethod):
+                    on_mount = on_mount.__func__
+                result = await on_mount(self, params or {}, session or {})
+                if result and result.get("halt"):
+                    return {"halt": True, "hook": hook_class.__name__}
+
+        return {"cont": True}
 
     async def handle_hook_event(
         self,

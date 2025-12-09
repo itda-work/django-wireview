@@ -221,8 +221,8 @@ django-wireview 지원:       ~55개 (73%)
 | Flash messages | ✅ `put_flash` | `put_flash()` | ✅ |
 | Dead views | ✅ JS 비활성화 폴백 | ❌ | 🟠 |
 | LongPolling fallback | ✅ | ❌ | 🟠 |
-| on_mount hooks | ✅ | ❌ | 🟡 |
-| attach_hook | ✅ | ❌ | 🟡 |
+| on_mount hooks | ✅ | `_on_mount` | ✅ |
+| attach_hook | ✅ | `attach_hook()` | ✅ |
 
 ---
 
@@ -262,7 +262,7 @@ django-wireview 지원:       ~55개 (73%)
 | ~~GAP-018~~ | ~~phx-disabled-with~~ | ~~버튼 비활성화 텍스트~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-019~~ | ~~phx-feedback-for~~ | ~~폼 필드 에러 표시~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-020~~ | ~~enableProfiling~~ | ~~성능 프로파일링~~ | ~~중~~ | ✅ 완료 |
-| GAP-021 | on_mount hooks | 공통 마운트 로직 모듈화 | 중 | 1주 |
+| ~~GAP-021~~ | ~~on_mount hooks~~ | ~~공통 마운트 로직 모듈화~~ | ~~중~~ | ✅ 완료 |
 | GAP-022 | Telemetry | 성능 측정 훅 | 중 | 1-2주 |
 | ~~GAP-023~~ | ~~onBeforeElUpdated~~ | ~~DOM 패치 전 콜백~~ | ~~하~~ | ✅ 완료 |
 
