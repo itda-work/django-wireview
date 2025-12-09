@@ -22,7 +22,12 @@ from ..utils import db
 from .meta import Repo, WireviewMeta
 
 if t.TYPE_CHECKING:
-    from ..features.uploads import ConsumedUpload, UploadEntry, UploadRegistry
+    from ..features.uploads import (
+        ConsumedUpload,
+        ExternalUploadCallback,
+        UploadEntry,
+        UploadRegistry,
+    )
     from ..js import JS
     from ..slots import SlotContainer
 
@@ -838,6 +843,7 @@ class Component(BaseModel):
         max_file_size: int | None = None,
         chunk_size: int | None = None,
         auto_upload: bool = True,
+        external: "ExternalUploadCallback | None" = None,
     ) -> None:
         """
         Configure an upload field for this component.
@@ -851,6 +857,9 @@ class Component(BaseModel):
             max_file_size: Maximum file size in bytes (default from settings)
             chunk_size: Chunk size for large file uploads (default from settings)
             auto_upload: Start upload immediately when files are selected
+            external: Optional callback for external uploads (S3, GCS, etc.)
+                      The callback receives (entry, component) and returns
+                      ExternalUploadMeta with presigned URL.
 
         Example:
             async def joined(self):
@@ -860,6 +869,26 @@ class Component(BaseModel):
                     max_entries=5,
                     max_file_size=5 * 1024 * 1024  # 5MB
                 )
+
+            # External upload example (S3):
+            async def joined(self):
+                self.allow_upload(
+                    "documents",
+                    accept=[".pdf", ".doc"],
+                    external=self.presign_s3_upload,
+                )
+
+            def presign_s3_upload(self, entry, component):
+                from wireview.features.uploads import ExternalUploadMeta
+                import boto3
+
+                s3 = boto3.client("s3")
+                url = s3.generate_presigned_url(
+                    "put_object",
+                    Params={"Bucket": "my-bucket", "Key": f"uploads/{entry.ref}"},
+                    ExpiresIn=3600,
+                )
+                return ExternalUploadMeta(uploader="S3", url=url)
         """
         import asyncio
 
@@ -886,6 +915,7 @@ class Component(BaseModel):
             max_file_size=actual_max_file_size,
             chunk_size=actual_chunk_size,
             auto_upload=auto_upload,
+            external=external,
         )
         self._upload_registry.allow_upload(config)
 

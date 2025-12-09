@@ -27,7 +27,7 @@ django-wireview 지원:       ~55개 (73%)
 | JS Commands (LiveView.JS) | 95% | ✅ 완료 |
 | Optimistic UI | 80% | ✅ 대부분 완료 |
 | Streams | 80% | ✅ 기본 완료 |
-| File Uploads | 85% | ✅ 기본 완료 |
+| File Uploads | 95% | ✅ 대부분 완료 |
 | Async Operations | 70% | ⚠️ 부분 완료 |
 | Navigation | 85% | ✅ 대부분 완료 |
 | **JavaScript Hooks** | 95% | ✅ 완료 |
@@ -110,7 +110,7 @@ django-wireview 지원:       ~55개 (73%)
 | Drag and drop | ✅ | `{% upload_drop_zone %}` | ✅ |
 | Chunk upload | ✅ | ✅ | ✅ |
 | consume_uploads | ✅ | `consume_uploads()` | ✅ |
-| External upload (S3) | ✅ | ❌ | 🟠 |
+| External upload (S3) | ✅ | `external=callback` | ✅ |
 | Magic byte validation | ✅ | ✅ | ✅ |
 
 ### 2.7 Async Operations ⚠️
@@ -243,7 +243,7 @@ django-wireview 지원:       ~55개 (73%)
 
 | ID | 기능 | 설명 | 난이도 | 예상 작업 |
 |----|------|------|:------:|----------|
-| GAP-007 | External Uploads | S3/GCS 직접 업로드 | 중 | 1-2주 |
+| ~~GAP-007~~ | ~~External Uploads~~ | ~~S3/GCS 직접 업로드~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-008~~ | ~~Form Auto-Recovery~~ | ~~재연결 시 폼 상태 복구~~ | ~~중~~ | ✅ 완료 |
 | GAP-009 | live_session | 인증/레이아웃 경계 관리 | 중 | 1-2주 |
 | ~~GAP-010~~ | ~~Page Title~~ | ~~동적 페이지 타이틀 변경~~ | ~~하~~ | ✅ 완료 |
@@ -357,7 +357,7 @@ django-wireview 지원:       ~55개 (73%)
 │  GAP-006: temporary_assigns ✅ 완료                         │
 │  └─ _temporary_assigns 클래스 변수                         │
 │                                                             │
-│  GAP-007: External Uploads                                  │
+│  GAP-007: External Uploads ✅ 완료                          │
 │  └─ S3/GCS presigned URL 업로드                            │
 │                                                             │
 │  GAP-014-015: Stream 고급 기능 ✅ 완료                      │

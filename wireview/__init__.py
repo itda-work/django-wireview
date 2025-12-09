@@ -13,6 +13,7 @@ if t.TYPE_CHECKING:
     from .core.component import abroadcast as abroadcast
     from .core.component import broadcast as broadcast
     from .core.meta import WireviewMeta as WireviewMeta
+    from .features.uploads import ExternalUploadMeta as ExternalUploadMeta
     from .function_component import FunctionComponent as FunctionComponent
     from .function_component import function_component as function_component
     from .js import JS as JS
@@ -84,6 +85,11 @@ def __getattr__(name: str) -> t.Any:
         from .live_component import LiveComponent
 
         return LiveComponent
+    # Upload utilities
+    if name == "ExternalUploadMeta":
+        from .features.uploads import ExternalUploadMeta
+
+        return ExternalUploadMeta
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -99,6 +105,8 @@ __all__ = (
     "FunctionComponent",
     # Live components
     "LiveComponent",
+    # Upload utilities
+    "ExternalUploadMeta",
     # Testing utilities
     "mount",
     "MountedComponent",

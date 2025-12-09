@@ -67,6 +67,39 @@ class UploadStatus(str, Enum):
     ERROR = "error"  # Failed
 
 
+# Type alias for external upload callback
+# Signature: (entry: UploadEntry, component: Component) -> ExternalUploadMeta
+ExternalUploadCallback = t.Callable[["UploadEntry", t.Any], "ExternalUploadMeta"]
+
+
+@dataclass
+class ExternalUploadMeta:
+    """Metadata for external uploads (S3, GCS, etc.).
+
+    Returned by the external upload callback to configure direct upload.
+
+    Attributes:
+        uploader: Name of the client-side uploader (e.g., "S3", "GCS")
+        url: Presigned URL for direct upload
+        method: HTTP method for upload (default "PUT")
+        headers: Additional headers to include in upload request
+    """
+
+    uploader: str
+    url: str
+    method: str = "PUT"
+    headers: dict[str, str] = field(default_factory=dict)
+
+    def to_client_dict(self) -> dict[str, t.Any]:
+        """Convert to dict for sending to client."""
+        return {
+            "uploader": self.uploader,
+            "url": self.url,
+            "method": self.method,
+            "headers": self.headers,
+        }
+
+
 @dataclass
 class UploadConfig:
     """Configuration for an upload field.
@@ -80,6 +113,7 @@ class UploadConfig:
         max_file_size: Maximum file size in bytes (default 10MB)
         chunk_size: Chunk size for uploads (default 64KB)
         auto_upload: Start upload immediately when files are selected
+        external: Optional callback for external uploads (S3, GCS, etc.)
     """
 
     name: str
@@ -88,6 +122,7 @@ class UploadConfig:
     max_file_size: int = 10 * 1024 * 1024  # 10MB default
     chunk_size: int = 64 * 1024  # 64KB chunks
     auto_upload: bool = True
+    external: ExternalUploadCallback | None = None
 
     def validate_entry(self, entry: UploadEntry) -> list[str]:
         """Validate an entry against this config.
@@ -131,6 +166,7 @@ class UploadConfig:
             "chunk_size": self.chunk_size,
             "auto_upload": self.auto_upload,
             "endpoint": endpoint,
+            "external": self.external is not None,
         }
 
 

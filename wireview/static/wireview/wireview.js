@@ -341,7 +341,7 @@ class ServerConnection {
             manager.configure(upload, data);
             break;
           case "registered":
-            manager.onRegistered(upload, ref, data.token, data.chunk_size);
+            manager.onRegistered(upload, ref, data.token, data.chunk_size, data.external);
             break;
           case "progress":
             manager.onProgress(upload, ref, data.progress, data.bytes_received);
@@ -1697,20 +1697,26 @@ class UploadManager {
    * Handle registered response from server.
    * @param {string} name
    * @param {string} ref
-   * @param {string} token
-   * @param {number} chunkSize
+   * @param {string} token - Upload token (for chunked uploads)
+   * @param {number} chunkSize - Chunk size (for chunked uploads)
+   * @param {Object} external - External upload metadata (for S3/GCS uploads)
    */
-  onRegistered(name, ref, token, chunkSize) {
+  onRegistered(name, ref, token, chunkSize, external) {
     const entry = this.entries[name]?.[ref];
     if (!entry) return;
 
     entry.token = token;
+    entry.external = external;  // Store external upload metadata
     entry.status = "registered";
-    debugLog("upload", `Registered: ${name}/${ref}`);
+    debugLog("upload", `Registered: ${name}/${ref}`, external ? "(external)" : "(chunked)");
 
     const config = this.configs[name];
     if (config?.auto_upload) {
-      this.startUpload(name, ref);
+      if (external) {
+        this.startExternalUpload(name, ref);
+      } else {
+        this.startUpload(name, ref);
+      }
     }
   }
 
@@ -1846,6 +1852,93 @@ class UploadManager {
         entry.status = "error";
         entry.errors.push(error.message);
         debugLog("upload", `Error: ${name}/${ref}`, error.message);
+      }
+    }
+  }
+
+  /**
+   * Start an external upload (S3, GCS, etc.).
+   * Uploads directly to external storage using presigned URL.
+   * @param {string} name
+   * @param {string} ref
+   */
+  async startExternalUpload(name, ref) {
+    const entry = this.entries[name]?.[ref];
+    if (!entry || !entry.external) return;
+
+    entry.status = "uploading";
+    entry.controller = new AbortController();
+
+    const { url, method = "PUT", headers = {} } = entry.external;
+    const file = entry.file;
+
+    debugLog("upload", `Starting external upload: ${name}/${ref} to ${url}`);
+
+    try {
+      const xhr = new XMLHttpRequest();
+
+      // Track progress
+      xhr.upload.addEventListener("progress", (event) => {
+        if (event.lengthComputable) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          entry.progress = progress;
+          this._dispatchEvent("upload:progress", { upload: name, ref, progress });
+        }
+      });
+
+      // Handle completion
+      const uploadPromise = new Promise((resolve, reject) => {
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
+          }
+        };
+        xhr.onerror = () => reject(new Error("Network error during upload"));
+        xhr.onabort = () => reject(new DOMException("Upload aborted", "AbortError"));
+      });
+
+      // Setup abort handling
+      entry.controller.signal.addEventListener("abort", () => xhr.abort());
+
+      // Start upload
+      xhr.open(method, url, true);
+
+      // Add custom headers
+      for (const [key, value] of Object.entries(headers)) {
+        xhr.setRequestHeader(key, value);
+      }
+
+      // Set Content-Type if not specified
+      if (!headers["Content-Type"] && file.type) {
+        xhr.setRequestHeader("Content-Type", file.type);
+      }
+
+      xhr.send(file);
+      await uploadPromise;
+
+      // Notify server that external upload is complete
+      connection._send("upload_complete", {
+        id: this.componentId,
+        name: name,
+        ref: ref,
+      });
+
+      entry.status = "completed";
+      entry.progress = 100;
+      this._dispatchEvent("upload:complete", { upload: name, ref });
+      debugLog("upload", `External upload complete: ${name}/${ref}`);
+
+    } catch (error) {
+      if (error.name === "AbortError") {
+        entry.status = "cancelled";
+        debugLog("upload", `External upload cancelled: ${name}/${ref}`);
+      } else {
+        entry.status = "error";
+        entry.errors.push(error.message);
+        debugLog("upload", `External upload error: ${name}/${ref}`, error.message);
+        this._dispatchEvent("upload:error", { upload: name, ref, errors: [error.message] });
       }
     }
   }

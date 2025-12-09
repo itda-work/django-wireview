@@ -234,20 +234,49 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
                         ).to_payload(),
                     )
                 else:
-                    # Send token for HTTP upload
                     config = registry.configs[name]
-                    await self.send_command(
-                        "upload_op",
-                        UploadOp(
-                            op="registered",
-                            upload=name,
-                            ref=entry.ref,
-                            data={
-                                "token": token,
-                                "chunk_size": config.chunk_size,
-                            },
-                        ).to_payload(),
-                    )
+
+                    # Check for external upload
+                    if config.external:
+                        # Call external callback to get presigned URL
+                        try:
+                            meta = config.external(entry, component)
+                            await self.send_command(
+                                "upload_op",
+                                UploadOp(
+                                    op="registered",
+                                    upload=name,
+                                    ref=entry.ref,
+                                    data={
+                                        "external": meta.to_client_dict(),
+                                    },
+                                ).to_payload(),
+                            )
+                        except Exception as e:
+                            log.error(f"External upload callback error: {e}")
+                            await self.send_command(
+                                "upload_op",
+                                UploadOp(
+                                    op="error",
+                                    upload=name,
+                                    ref=entry.ref,
+                                    data={"errors": [str(e)]},
+                                ).to_payload(),
+                            )
+                    else:
+                        # Send token for HTTP upload (chunked)
+                        await self.send_command(
+                            "upload_op",
+                            UploadOp(
+                                op="registered",
+                                upload=name,
+                                ref=entry.ref,
+                                data={
+                                    "token": token,
+                                    "chunk_size": config.chunk_size,
+                                },
+                            ).to_payload(),
+                        )
             except ValueError as e:
                 await self.send_command(
                     "upload_op",
