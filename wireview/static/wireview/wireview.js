@@ -885,6 +885,14 @@ class WireviewComponent {
         "wireview-keydown-loading",
         "wireview-keyup-loading"
       );
+
+      // Restore wire-disabled-with elements
+      if (loadingEl._wireOriginalText !== undefined) {
+        loadingEl.textContent = loadingEl._wireOriginalText;
+        loadingEl.disabled = loadingEl._wireOriginalDisabled || false;
+        delete loadingEl._wireOriginalText;
+        delete loadingEl._wireOriginalDisabled;
+      }
     }
   }
 
@@ -2495,6 +2503,17 @@ window.wireview = {
       element.classList.add("wireview-loading");
       if (eventType) {
         element.classList.add(`wireview-${eventType}-loading`);
+      }
+
+      // Handle wire-disabled-with: disable element and replace text
+      const disabledWithText = element.getAttribute("wire-disabled-with");
+      if (disabledWithText !== null) {
+        // Store original text and disabled state
+        element._wireOriginalText = element.textContent;
+        element._wireOriginalDisabled = element.disabled;
+        // Apply disabled state and new text
+        element.disabled = true;
+        element.textContent = disabledWithText;
       }
 
       const form = /** @type {HTMLFormElement|null} */ (element.closest("form"));
