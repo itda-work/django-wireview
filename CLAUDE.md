@@ -577,8 +577,21 @@ WIREVIEW = {
     "USE_HTML_DIFF": True,      # HTML diff 사용
     "USE_HMIN": False,          # django-hmin 사용
     "BOOST_PAGES": False,       # 클라이언트 사이드 네비게이션
+    "AUTO_GENERATE_STUBS": True,  # 타입 스텁 자동 생성 (DEBUG 모드)
 }
 ```
+
+### 타입 스텁 생성
+
+컴포넌트를 위한 `.pyi` 타입 스텁 파일을 자동 생성합니다:
+
+```bash
+python manage.py wireview_stubs           # 스텁 생성
+python manage.py wireview_stubs --check   # CI용: 스텁이 최신인지 확인
+python manage.py wireview_stubs --dry-run # 미리보기
+```
+
+**상세 문서**: [docs/features/type-stubs.md](./docs/features/type-stubs.md)
 
 ---
 
@@ -613,6 +626,7 @@ WIREVIEW = {
 - [docs/features/function-components.md](./docs/features/function-components.md) - Function Components 상세 문서
 - [docs/features/live-component.md](./docs/features/live-component.md) - LiveComponent 상세 문서
 - [docs/features/temporary-assigns.md](./docs/features/temporary-assigns.md) - Temporary Assigns 상세 문서
+- [docs/features/type-stubs.md](./docs/features/type-stubs.md) - Type Stubs 자동 생성 문서
 - [CHANGELOG.md](./CHANGELOG.md) - 변경 이력
 
 ---
