@@ -897,6 +897,40 @@ class Component(BaseModel):
         for entry in entries:
             yield ConsumedUpload(entry)
 
+    # LiveComponent communication
+
+    async def send_update(
+        self,
+        live_component_id: str,
+        **assigns: t.Any,
+    ) -> None:
+        """Send an update to a child LiveComponent.
+
+        Updates the LiveComponent's state and triggers a re-render.
+        The LiveComponent's update() callback is called with the new assigns.
+
+        Args:
+            live_component_id: ID of the target LiveComponent
+            **assigns: New values to update on the LiveComponent
+
+        Example:
+            class Dashboard(Component):
+                async def reset_counter(self):
+                    await self.send_update("counter-1", count=0)
+
+                async def update_all_counters(self, value: int):
+                    for child in self.get_live_components():
+                        await self.send_update(child.id, count=value)
+        """
+        # Note: This requires access to repository which we don't have directly.
+        # The actual update will be dispatched through the consumer.
+        await self.wire.send(
+            "update_live_component",
+            parent_id=self.id,
+            live_component_id=live_component_id,
+            assigns=assigns,
+        )
+
     # Internal render operations
 
     def _render(self, repo: Repo) -> SafeString | None:

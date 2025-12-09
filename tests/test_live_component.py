@@ -410,3 +410,43 @@ class TestMyselfTargeting:
 
         # Should NOT include _target
         assert "_target" not in result
+
+
+@pytest.mark.unit
+class TestSendUpdate:
+    """Test send_update from parent to LiveComponent."""
+
+    @pytest.mark.asyncio
+    async def test_send_update_calls_wire(self):
+        """Test that send_update sends through wire."""
+        from unittest.mock import AsyncMock
+
+        # Create a parent component
+        view = await mount(Counter, count=0)
+
+        # Mock wire.send
+        view.component.wire.send = AsyncMock()
+
+        # Call send_update
+        await view.component.send_update("counter-1", count=10)
+
+        # Verify wire.send was called with correct args
+        view.component.wire.send.assert_called_once_with(
+            "update_live_component",
+            parent_id=view.component.id,
+            live_component_id="counter-1",
+            assigns={"count": 10},
+        )
+
+    @pytest.mark.asyncio
+    async def test_send_update_with_multiple_assigns(self):
+        """Test send_update with multiple values."""
+        from unittest.mock import AsyncMock
+
+        view = await mount(Counter, count=0)
+        view.component.wire.send = AsyncMock()
+
+        await view.component.send_update("counter-1", count=10, label="New Label")
+
+        call_args = view.component.wire.send.call_args
+        assert call_args[1]["assigns"] == {"count": 10, "label": "New Label"}

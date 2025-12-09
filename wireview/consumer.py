@@ -384,6 +384,48 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             },
         )
 
+    async def component_update_live_component(
+        self,
+        parent_id: str,
+        live_component_id: str,
+        assigns: dict,
+    ):
+        """Update a LiveComponent from its parent.
+
+        Args:
+            parent_id: ID of the parent component (for verification)
+            live_component_id: ID of the target LiveComponent
+            assigns: New values to update
+        """
+        from .live_component import LiveComponent
+
+        log.debug(f">>> UPDATE-LIVE-COMPONENT {live_component_id} {assigns}")
+
+        # Get the LiveComponent
+        component = self.repo.get(live_component_id)
+        if component is None:
+            log.warning(f"LiveComponent {live_component_id} not found")
+            return
+
+        # Verify it's a LiveComponent
+        if not isinstance(component, LiveComponent):
+            log.warning(f"Component {live_component_id} is not a LiveComponent")
+            return
+
+        # Verify parent relationship
+        if component._parent_id != parent_id:
+            log.warning(
+                f"LiveComponent {live_component_id} parent mismatch: "
+                f"expected {component._parent_id}, got {parent_id}"
+            )
+            return
+
+        # Call update callback
+        await component.update(**assigns)
+
+        # Re-render the LiveComponent
+        await self.send_render(component)
+
     # Channel layer messages for uploads
 
     async def upload_progress(self, event: dict[str, t.Any]):
