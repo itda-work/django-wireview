@@ -92,6 +92,8 @@ class ServerConnection {
         for (const component of Object.values(this.components)) {
           component.hookManager.reconnected();
         }
+        // Restore form state on reconnection
+        this.restoreFormState();
       }
       this.wasConnected = true;
 
@@ -111,6 +113,9 @@ class ServerConnection {
 
     this.socket.addEventListener("close", () => {
       debugLog("ws", "Disconnected from server");
+
+      // Save form state before clearing components
+      this.saveFormState();
 
       // Notify hooks of disconnection before clearing components
       for (const component of Object.values(this.components)) {
@@ -525,6 +530,121 @@ class ServerConnection {
         setTimeout(() => el.remove(), 500);
       });
     }
+  }
+
+  /**
+   * Saves form state for forms with wire-auto-recover attribute.
+   * Called when WebSocket connection is lost.
+   */
+  saveFormState() {
+    const forms = document.querySelectorAll("form[wire-auto-recover]");
+    if (forms.length === 0) return;
+
+    debugLog("form", `Saving state for ${forms.length} form(s)`);
+
+    forms.forEach((form) => {
+      const componentEl = form.closest("[wireview-component]");
+      if (!componentEl) return;
+
+      const key = `wireview-form-${componentEl.id}-${form.id || "default"}`;
+      const formData = new FormData(/** @type {HTMLFormElement} */ (form));
+
+      // Convert to serializable object, handling multiple values
+      const data = {};
+      for (const [name, value] of formData.entries()) {
+        if (data[name]) {
+          // Handle multiple values (checkboxes, multi-select)
+          if (Array.isArray(data[name])) {
+            data[name].push(value);
+          } else {
+            data[name] = [data[name], value];
+          }
+        } else {
+          data[name] = value;
+        }
+      }
+
+      // Skip if form is empty
+      if (Object.keys(data).length === 0) return;
+
+      try {
+        sessionStorage.setItem(key, JSON.stringify(data));
+        debugLog("form", `Saved form state: ${key}`, data);
+      } catch (e) {
+        console.warn("wireview: Failed to save form state", e);
+      }
+    });
+  }
+
+  /**
+   * Restores form state for forms with wire-auto-recover attribute.
+   * Called when WebSocket connection is re-established.
+   */
+  restoreFormState() {
+    const forms = document.querySelectorAll("form[wire-auto-recover]");
+    if (forms.length === 0) return;
+
+    debugLog("form", `Restoring state for ${forms.length} form(s)`);
+
+    forms.forEach((form) => {
+      const componentEl = form.closest("[wireview-component]");
+      if (!componentEl) return;
+
+      const key = `wireview-form-${componentEl.id}-${form.id || "default"}`;
+      const saved = sessionStorage.getItem(key);
+
+      if (!saved) return;
+
+      try {
+        const data = JSON.parse(saved);
+        debugLog("form", `Restoring form state: ${key}`, data);
+
+        // Restore values to form fields
+        Object.entries(data).forEach(([name, value]) => {
+          const inputs = form.querySelectorAll(`[name="${name}"]`);
+
+          inputs.forEach((input) => {
+            const inputEl = /** @type {HTMLInputElement} */ (input);
+            const inputType = inputEl.type?.toLowerCase();
+
+            if (inputType === "checkbox" || inputType === "radio") {
+              // Handle checkbox/radio
+              const values = Array.isArray(value) ? value : [value];
+              inputEl.checked = values.includes(inputEl.value);
+            } else if (inputEl.tagName === "SELECT" && inputEl.multiple) {
+              // Handle multi-select
+              const values = Array.isArray(value) ? value : [value];
+              Array.from(inputEl.options).forEach((opt) => {
+                opt.selected = values.includes(opt.value);
+              });
+            } else {
+              // Handle text, textarea, select, etc.
+              inputEl.value = Array.isArray(value) ? value[0] : value;
+            }
+          });
+        });
+
+        // Check for custom recovery handler
+        const handler = form.getAttribute("wire-auto-recover");
+        if (handler && handler !== "" && handler !== "true") {
+          // Send recovery event to server
+          const componentId = componentEl.id;
+          debugLog("form", `Calling recovery handler: ${handler}`);
+          this._send("user_event", {
+            id: componentId,
+            command: handler,
+            implicit_args: {},
+            explicit_args: { form_data: data },
+          });
+        }
+
+        // Clear saved state after restore
+        sessionStorage.removeItem(key);
+      } catch (e) {
+        console.warn("wireview: Failed to restore form state", e);
+        sessionStorage.removeItem(key);
+      }
+    });
   }
 
   /**
