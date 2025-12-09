@@ -8,7 +8,7 @@ from wireview.testing import MockWireviewMeta, mount
 # Test fixtures - LiveComponents
 
 
-class Counter(LiveComponent):
+class MockCounter(LiveComponent):
     """Simple counter LiveComponent."""
 
     _template_name = "livecomp/counter.html"
@@ -23,7 +23,7 @@ class Counter(LiveComponent):
         self.count -= 1
 
 
-class ChildCounter(Counter):
+class MockChildCounter(MockCounter):
     """Counter that notifies parent on change."""
 
     async def increment(self, amount: int = 1):
@@ -31,12 +31,12 @@ class ChildCounter(Counter):
         await self.send_to_parent("counter_changed", count=self.count)
 
 
-def create_counter(**kwargs) -> Counter:
+def create_mock_counter(**kwargs) -> MockCounter:
     """Helper to create a Counter with mock wire."""
     from django.contrib.auth.models import AnonymousUser
 
     wire = MockWireviewMeta()
-    return Counter(user=AnonymousUser(), wire=wire, **kwargs)
+    return MockCounter(user=AnonymousUser(), wire=wire, **kwargs)
 
 
 @pytest.mark.unit
@@ -45,32 +45,32 @@ class TestLiveComponentRegistration:
 
     def test_live_component_registered_in_live_all(self):
         """Test LiveComponent is registered in _live_all."""
-        assert "Counter" in LiveComponent._live_all
-        assert LiveComponent._live_all["Counter"] is Counter
+        assert "MockCounter" in LiveComponent._live_all
+        assert LiveComponent._live_all["MockCounter"] is MockCounter
 
     def test_live_component_registered_in_component_all(self):
         """Test LiveComponent is also registered in Component._all for compatibility."""
         from wireview import Component
 
-        assert "Counter" in Component._all
+        assert "MockCounter" in Component._all
 
     def test_live_component_has_name(self):
         """Test LiveComponent has _name attribute."""
-        assert Counter._name == "Counter"
+        assert MockCounter._name == "MockCounter"
 
     def test_live_component_has_fqn(self):
         """Test LiveComponent has _fqn attribute."""
-        assert "Counter" in Counter._fqn
+        assert "MockCounter" in MockCounter._fqn
 
     def test_resolve_live_by_name(self):
         """Test resolving LiveComponent by simple name."""
-        resolved = LiveComponent._resolve_live("Counter")
-        assert resolved is Counter
+        resolved = LiveComponent._resolve_live("MockCounter")
+        assert resolved is MockCounter
 
     def test_resolve_live_by_fqn(self):
         """Test resolving LiveComponent by FQN."""
-        resolved = LiveComponent._resolve_live(Counter._fqn)
-        assert resolved is Counter
+        resolved = LiveComponent._resolve_live(MockCounter._fqn)
+        assert resolved is MockCounter
 
     def test_resolve_live_not_found(self):
         """Test error when LiveComponent not found."""
@@ -86,7 +86,7 @@ class TestLiveComponentMarker:
 
     def test_is_live_component_true(self):
         """Test is_live_component returns True for LiveComponent."""
-        counter = create_counter(id="counter-1")
+        counter = create_mock_counter(id="counter-1")
         assert is_live_component(counter) is True
 
     def test_is_live_component_false_for_component(self):
@@ -104,7 +104,7 @@ class TestLiveComponentMarker:
 
     def test_live_component_class_marker(self):
         """Test _is_live_component class attribute."""
-        assert Counter._is_live_component is True
+        assert MockCounter._is_live_component is True
 
 
 @pytest.mark.unit
@@ -113,23 +113,23 @@ class TestLiveComponentFields:
 
     def test_parent_id_none_by_default(self):
         """Test _parent_id is None by default."""
-        counter = create_counter(id="counter-1")
+        counter = create_mock_counter(id="counter-1")
         assert counter._parent_id is None
 
     def test_parent_id_can_be_set(self):
         """Test _parent_id can be set."""
-        counter = create_counter(id="counter-1")
+        counter = create_mock_counter(id="counter-1")
         counter._parent_id = "dashboard-1"
         assert counter._parent_id == "dashboard-1"
 
     def test_myself_property(self):
         """Test myself property returns component ID."""
-        counter = create_counter(id="counter-1")
+        counter = create_mock_counter(id="counter-1")
         assert counter.myself == "counter-1"
 
     def test_parent_id_excluded_from_serialization(self):
         """Test _parent_id is excluded from model dump."""
-        counter = create_counter(id="counter-1")
+        counter = create_mock_counter(id="counter-1")
         counter._parent_id = "dashboard-1"
 
         dump = counter.model_dump()
@@ -143,7 +143,7 @@ class TestLiveComponentUpdate:
     @pytest.mark.asyncio
     async def test_update_sets_attributes(self):
         """Test update() sets matching attributes."""
-        view = await mount(Counter, count=0)
+        view = await mount(MockCounter, count=0)
 
         await view.component.update(count=10, label="New Label")
 
@@ -153,7 +153,7 @@ class TestLiveComponentUpdate:
     @pytest.mark.asyncio
     async def test_update_ignores_unknown_attributes(self):
         """Test update() ignores attributes not in model_fields."""
-        view = await mount(Counter, count=0)
+        view = await mount(MockCounter, count=0)
 
         # Should not raise even with unknown attribute
         await view.component.update(count=10, unknown_field="ignored")
@@ -168,7 +168,7 @@ class TestLiveComponentEventHandlers:
     @pytest.mark.asyncio
     async def test_increment(self):
         """Test increment event handler."""
-        view = await mount(Counter, count=5)
+        view = await mount(MockCounter, count=5)
 
         await view.call("increment")
 
@@ -177,7 +177,7 @@ class TestLiveComponentEventHandlers:
     @pytest.mark.asyncio
     async def test_increment_with_amount(self):
         """Test increment with custom amount."""
-        view = await mount(Counter, count=5)
+        view = await mount(MockCounter, count=5)
 
         await view.call("increment", amount=3)
 
@@ -186,7 +186,7 @@ class TestLiveComponentEventHandlers:
     @pytest.mark.asyncio
     async def test_decrement(self):
         """Test decrement event handler."""
-        view = await mount(Counter, count=5)
+        view = await mount(MockCounter, count=5)
 
         await view.call("decrement")
 
@@ -200,17 +200,17 @@ class TestLiveComponentInheritance:
     def test_child_inherits_template(self):
         """Test child LiveComponent inherits template."""
         # ChildCounter doesn't set _template_name, so inherits from Counter
-        assert ChildCounter._template_name == "livecomp/counter.html"
+        assert MockChildCounter._template_name == "livecomp/counter.html"
 
     def test_child_registered_separately(self):
         """Test child LiveComponent has its own registration."""
-        assert "ChildCounter" in LiveComponent._live_all
-        assert LiveComponent._live_all["ChildCounter"] is ChildCounter
+        assert "MockChildCounter" in LiveComponent._live_all
+        assert LiveComponent._live_all["MockChildCounter"] is MockChildCounter
 
     @pytest.mark.asyncio
     async def test_child_can_call_send_to_parent(self):
         """Test child can call send_to_parent without error when no parent."""
-        view = await mount(ChildCounter, count=0)
+        view = await mount(MockChildCounter, count=0)
         view.component._parent_id = None  # No parent
 
         # Should not raise, just no-op
@@ -228,7 +228,7 @@ class TestLiveComponentWithMock:
         """Test send_to_parent calls wire.send_to_parent."""
         from unittest.mock import AsyncMock
 
-        view = await mount(ChildCounter, count=0)
+        view = await mount(MockChildCounter, count=0)
         view.component._parent_id = "dashboard-1"
 
         # Mock send_to_parent on the wire
@@ -252,7 +252,7 @@ class TestComponentRepositoryLiveComponent:
         repo = ComponentRepository(is_live=False, user=AnonymousUser())
 
         live_comp = repo.build_live_component(
-            name="Counter",
+            name="MockCounter",
             state={"id": "counter-1", "count": 10},
             parent_id="dashboard-1",
         )
@@ -271,7 +271,7 @@ class TestComponentRepositoryLiveComponent:
 
         with pytest.raises(ValueError) as exc_info:
             repo.build_live_component(
-                name="Counter",
+                name="MockCounter",
                 state={"count": 10},  # No id
                 parent_id="dashboard-1",
             )
@@ -287,7 +287,7 @@ class TestComponentRepositoryLiveComponent:
         repo = ComponentRepository(is_live=False, user=AnonymousUser())
 
         live_comp = repo.build_live_component(
-            name="Counter",
+            name="MockCounter",
             state={"id": "counter-1", "count": 10},
             parent_id="dashboard-1",
         )
@@ -305,7 +305,7 @@ class TestComponentRepositoryLiveComponent:
 
         # First render
         live_comp1 = repo.build_live_component(
-            name="Counter",
+            name="MockCounter",
             state={"id": "counter-1", "count": 10},
             parent_id="dashboard-1",
         )
@@ -318,7 +318,7 @@ class TestComponentRepositoryLiveComponent:
 
         # Re-render with new props
         live_comp2 = repo.build_live_component(
-            name="Counter",
+            name="MockCounter",
             state={"id": "counter-1", "count": 30},
             parent_id="dashboard-1",
         )
@@ -345,19 +345,19 @@ class TestComponentRepositoryLiveComponent:
 
         # Create multiple LiveComponents under same parent
         repo.build_live_component(
-            name="Counter",
+            name="MockCounter",
             state={"id": "counter-1", "count": 10},
             parent_id="dashboard-1",
         )
         repo.build_live_component(
-            name="Counter",
+            name="MockCounter",
             state={"id": "counter-2", "count": 20},
             parent_id="dashboard-1",
         )
 
         # Create one under different parent
         repo.build_live_component(
-            name="Counter",
+            name="MockCounter",
             state={"id": "counter-3", "count": 30},
             parent_id="dashboard-2",
         )
@@ -439,7 +439,7 @@ class TestFlushPendingLiveComponents:
 
         # Build a LiveComponent
         repo.build_live_component(
-            name="Counter",
+            name="MockCounter",
             state={"id": "counter-1", "count": 10},
             parent_id="dashboard-1",
         )
@@ -496,7 +496,7 @@ class TestFlushPendingLiveComponents:
 
         # Build a LiveComponent
         repo.build_live_component(
-            name="Counter",
+            name="MockCounter",
             state={"id": "counter-1", "count": 10},
             parent_id="dashboard-1",
         )
@@ -518,7 +518,7 @@ class TestFlushPendingLiveComponents:
 
         # First build
         repo.build_live_component(
-            name="Counter",
+            name="MockCounter",
             state={"id": "counter-1", "count": 10},
             parent_id="dashboard-1",
         )
@@ -528,7 +528,7 @@ class TestFlushPendingLiveComponents:
 
         # Re-build (simulating re-render)
         repo.build_live_component(
-            name="Counter",
+            name="MockCounter",
             state={"id": "counter-1", "count": 20},
             parent_id="dashboard-1",
         )
@@ -600,7 +600,7 @@ class TestSendUpdate:
         from unittest.mock import AsyncMock
 
         # Create a parent component
-        view = await mount(Counter, count=0)
+        view = await mount(MockCounter, count=0)
 
         # Mock wire.send
         view.component.wire.send = AsyncMock()
@@ -621,7 +621,7 @@ class TestSendUpdate:
         """Test send_update with multiple values."""
         from unittest.mock import AsyncMock
 
-        view = await mount(Counter, count=0)
+        view = await mount(MockCounter, count=0)
         view.component.wire.send = AsyncMock()
 
         await view.component.send_update("counter-1", count=10, label="New Label")
