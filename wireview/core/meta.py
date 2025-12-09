@@ -197,6 +197,38 @@ class WireviewMeta:
         """
         await self.send("title", title=title)
 
+    async def put_flash(
+        self,
+        flash_type: str,
+        message: str,
+        *,
+        timeout: int = 5000,
+        dismissible: bool = True,
+    ) -> None:
+        """Display a flash message on the client.
+
+        Args:
+            flash_type: Message type (e.g., "success", "error", "info", "warning")
+            message: The message text to display
+            timeout: Auto-dismiss timeout in milliseconds (0 = no auto-dismiss)
+            dismissible: Whether the message can be manually dismissed
+        """
+        await self.send(
+            "flash",
+            flash_type=flash_type,
+            message=message,
+            timeout=timeout,
+            dismissible=dismissible,
+        )
+
+    async def clear_flash(self, flash_id: str | None = None) -> None:
+        """Clear flash message(s).
+
+        Args:
+            flash_id: Specific flash ID to clear, or None to clear all
+        """
+        await self.send("clear_flash", flash_id=flash_id)
+
     async def render_diff(self, component: "Component", repo: Repo) -> DiffPayload | None:
         """
         Render the component and return a diff if changed.

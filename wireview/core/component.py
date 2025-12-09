@@ -498,6 +498,48 @@ class Component(BaseModel):
         """
         await self.wire.push_title(title)
 
+    async def put_flash(
+        self,
+        flash_type: str,
+        message: str,
+        *,
+        timeout: int = 5000,
+        dismissible: bool = True,
+    ) -> None:
+        """Display a flash message to the user.
+
+        Flash messages are temporary notifications that appear on the page
+        and automatically dismiss after a timeout.
+
+        Args:
+            flash_type: Message type - "success", "error", "info", or "warning"
+            message: The message text to display
+            timeout: Auto-dismiss time in ms (default: 5000, 0 = no auto-dismiss)
+            dismissible: Whether user can manually dismiss (default: True)
+
+        Example:
+            class ProductForm(Component):
+                async def save(self):
+                    try:
+                        await Product.objects.acreate(name=self.name)
+                        await self.put_flash("success", "Product saved!")
+                    except Exception as e:
+                        await self.put_flash("error", f"Failed: {e}")
+        """
+        await self.wire.put_flash(flash_type, message, timeout=timeout, dismissible=dismissible)
+
+    async def clear_flash(self, flash_id: str | None = None) -> None:
+        """Clear flash message(s).
+
+        Args:
+            flash_id: Specific flash ID to clear, or None to clear all
+
+        Example:
+            await self.clear_flash()  # Clear all flashes
+            await self.clear_flash("flash-123")  # Clear specific flash
+        """
+        await self.wire.clear_flash(flash_id)
+
     # DOM operations
 
     def skip_render(self) -> None:

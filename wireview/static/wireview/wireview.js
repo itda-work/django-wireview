@@ -256,6 +256,16 @@ class ServerConnection {
         document.title = title;
         break;
 
+      case "flash":
+        var { flash_type, message, timeout, dismissible } = payload;
+        this.showFlash(flash_type, message, timeout, dismissible);
+        break;
+
+      case "clear_flash":
+        var { flash_id } = payload;
+        this.clearFlash(flash_id);
+        break;
+
       case "set_query_string":
         var { qs } = payload;
         qs = qs.length ? `?${qs}` : "";
@@ -438,6 +448,83 @@ class ServerConnection {
    */
   sendQueryString() {
     this.sendParamsChanged();
+  }
+
+  /**
+   * Shows a flash message to the user.
+   * @param {string} flashType - Message type (success, error, info, warning)
+   * @param {string} message - Message text
+   * @param {number} timeout - Auto-dismiss timeout in ms (0 = no auto-dismiss)
+   * @param {boolean} dismissible - Whether the message can be dismissed
+   */
+  showFlash(flashType, message, timeout, dismissible) {
+    const container = document.querySelector("[wire-flash]");
+    if (!container) {
+      console.warn("wireview: No flash container found. Add an element with wire-flash attribute.");
+      return;
+    }
+
+    const id = `flash-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const el = document.createElement("div");
+    el.id = id;
+    el.className = `wireview-flash wireview-flash-${flashType}`;
+    el.setAttribute("role", "alert");
+    el.setAttribute("data-flash-type", flashType);
+
+    // Create message content
+    const messageSpan = document.createElement("span");
+    messageSpan.className = "wireview-flash-message";
+    messageSpan.textContent = message;
+    el.appendChild(messageSpan);
+
+    // Add dismiss button if dismissible
+    if (dismissible) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "wireview-flash-dismiss";
+      btn.setAttribute("aria-label", "Dismiss");
+      btn.textContent = "×";
+      btn.onclick = () => el.remove();
+      el.appendChild(btn);
+    }
+
+    container.appendChild(el);
+
+    // Trigger enter animation
+    requestAnimationFrame(() => {
+      el.classList.add("wireview-flash-enter");
+    });
+
+    // Auto-dismiss after timeout
+    if (timeout > 0) {
+      setTimeout(() => {
+        el.classList.add("wireview-flash-exit");
+        el.addEventListener("animationend", () => el.remove(), { once: true });
+        // Fallback removal if animation doesn't trigger
+        setTimeout(() => el.remove(), 500);
+      }, timeout);
+    }
+  }
+
+  /**
+   * Clears flash message(s).
+   * @param {string|null} flashId - Specific flash ID to clear, or null for all
+   */
+  clearFlash(flashId) {
+    if (flashId) {
+      const el = document.getElementById(flashId);
+      if (el) {
+        el.classList.add("wireview-flash-exit");
+        el.addEventListener("animationend", () => el.remove(), { once: true });
+        setTimeout(() => el.remove(), 500);
+      }
+    } else {
+      document.querySelectorAll(".wireview-flash").forEach((el) => {
+        el.classList.add("wireview-flash-exit");
+        el.addEventListener("animationend", () => el.remove(), { once: true });
+        setTimeout(() => el.remove(), 500);
+      });
+    }
   }
 
   /**
