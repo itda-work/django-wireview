@@ -11,7 +11,7 @@ from wireview.testing import MockWireviewMeta, mount
 class Counter(LiveComponent):
     """Simple counter LiveComponent."""
 
-    _template_name = "live_components/counter.html"
+    _template_name = "livecomp/counter.html"
 
     count: int = 0
     label: str = "Count"
@@ -200,7 +200,7 @@ class TestLiveComponentInheritance:
     def test_child_inherits_template(self):
         """Test child LiveComponent inherits template."""
         # ChildCounter doesn't set _template_name, so inherits from Counter
-        assert ChildCounter._template_name == "live_components/counter.html"
+        assert ChildCounter._template_name == "livecomp/counter.html"
 
     def test_child_registered_separately(self):
         """Test child LiveComponent has its own registration."""
@@ -459,7 +459,7 @@ class TestFlushPendingLiveComponents:
         joined_calls = []
 
         class TrackedCounter(LiveComponent):
-            _template_name = "live_components/counter.html"
+            _template_name = "livecomp/counter.html"
             count: int = 0
 
             async def joined(self):
@@ -549,7 +549,7 @@ class TestFlushPendingLiveComponents:
         update_calls = []
 
         class TrackedCounter(LiveComponent):
-            _template_name = "live_components/counter.html"
+            _template_name = "livecomp/counter.html"
             count: int = 0
             label: str = "Count"
 

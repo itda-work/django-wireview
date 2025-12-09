@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Brings LiveView from Phoenix framework into Django"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 authors = [
     { name = "Eddy Ernesto del Valle Pino", email = "eddy@edelvalle.me" },
 ]
@@ -21,8 +21,6 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Internet :: WWW/HTTP",
@@ -81,7 +79,7 @@ include = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py310"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
@@ -104,7 +102,7 @@ max_line_length = 120
 blank_line_after_tag = "load, extends"
 
 [tool.pyright]
-pythonVersion = "3.10"
+pythonVersion = "3.12"
 pythonPlatform = "Linux"
 exclude = [".git", "tests/", "**/__pycache__", "**/migrations"]
 reportPrivateUsage = false
