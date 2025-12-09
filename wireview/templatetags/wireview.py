@@ -663,3 +663,93 @@ class FuncBlockNode(Node):
                     f"requires slot '{slot_name}'{doc_msg}. "
                     f"Add: {{% fill {slot_name} %}}...{{% endfill %}}"
                 )
+
+
+# LiveComponent template tags
+
+
+@register.simple_tag(takes_context=True)
+def live_component(context, _name: str, **kwargs: t.Any):
+    """
+    Render a LiveComponent within a parent Component.
+
+    LiveComponents are stateful nested components that maintain their own
+    state while sharing the parent's WebSocket connection.
+
+    Usage:
+        {% live_component "Counter" id="counter-1" count=10 %}
+
+    Requirements:
+        - Must be used within a parent Component's template
+        - 'id' attribute is required and must be unique
+
+    The LiveComponent events use `myself=True` in {% on %} tags:
+        <button {% on "click" "increment" myself=True %}>+1</button>
+    """
+    # Get parent component from context
+    parent: Component | None = context.get("this")
+    if parent is None:
+        raise template.TemplateSyntaxError(
+            "{% live_component %} must be used within a Component template. " "No parent component found in context."
+        )
+
+    # ID is required
+    if "id" not in kwargs:
+        raise template.TemplateSyntaxError(
+            "{{% live_component %}} requires an 'id' attribute. "
+            'Usage: {{% live_component "{name}" id="unique-id" %}}'.format(name=_name)
+        )
+
+    # Get or create repository
+    repo: ComponentRepository | None = context.get("wireview_repository")
+    if repo is None:
+        raise template.TemplateSyntaxError(
+            "{% live_component %} requires a wireview_repository in context. "
+            "This usually means it's not being rendered within a wireview component."
+        )
+
+    # Build LiveComponent
+    live_comp = repo.build_live_component(
+        name=_name,
+        state=kwargs,
+        parent_id=parent.id,
+    )
+
+    # Render the LiveComponent
+    return live_comp._render(repo) or ""
+
+
+@register.simple_tag(takes_context=True)
+def live_tag_header(context):
+    """
+    Generate the tag header for a LiveComponent.
+
+    Similar to {% tag_header %} but includes LiveComponent-specific attributes.
+
+    Usage (in LiveComponent template):
+        <div {% live_tag_header %}>
+            ...
+        </div>
+    """
+    from ..live_component import LiveComponent as LC
+
+    component: Component = context["this"]
+    repo: ComponentRepository = context["wireview_repository"]
+
+    # Check if this is actually a LiveComponent
+    parent_id = ""
+    if isinstance(component, LC):
+        parent_id = component._parent_id or ""
+
+    return format_html(
+        (
+            'id="{id}" data-name="{name}" data-state="{state}" '
+            'data-is-live="{is_live}" data-parent="{parent_id}" '
+            "wireview-component wireview-live"
+        ),
+        id=component.id,
+        name=component._name,
+        is_live=str(repo.is_live).lower(),
+        state=Signer().sign(component.model_dump_json(exclude=component._exclude_fields)),
+        parent_id=parent_id,
+    )

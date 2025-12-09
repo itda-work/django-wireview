@@ -237,3 +237,121 @@ class TestLiveComponentWithMock:
         await view.component.send_to_parent("counter_changed", count=5)
 
         view.component.wire.send_to_parent.assert_called_once_with("dashboard-1", "counter_changed", {"count": 5})
+
+
+@pytest.mark.unit
+class TestComponentRepositoryLiveComponent:
+    """Test ComponentRepository LiveComponent methods."""
+
+    def test_build_live_component(self):
+        """Test building a LiveComponent via repository."""
+        from django.contrib.auth.models import AnonymousUser
+
+        from wireview.repository import ComponentRepository
+
+        repo = ComponentRepository(is_live=False, user=AnonymousUser())
+
+        live_comp = repo.build_live_component(
+            name="Counter",
+            state={"id": "counter-1", "count": 10},
+            parent_id="dashboard-1",
+        )
+
+        assert live_comp.id == "counter-1"
+        assert live_comp.count == 10
+        assert live_comp._parent_id == "dashboard-1"
+
+    def test_build_live_component_requires_id(self):
+        """Test that build_live_component requires id in state."""
+        from django.contrib.auth.models import AnonymousUser
+
+        from wireview.repository import ComponentRepository
+
+        repo = ComponentRepository(is_live=False, user=AnonymousUser())
+
+        with pytest.raises(ValueError) as exc_info:
+            repo.build_live_component(
+                name="Counter",
+                state={"count": 10},  # No id
+                parent_id="dashboard-1",
+            )
+
+        assert "requires an 'id'" in str(exc_info.value)
+
+    def test_build_live_component_registered(self):
+        """Test that built LiveComponent is registered in repo."""
+        from django.contrib.auth.models import AnonymousUser
+
+        from wireview.repository import ComponentRepository
+
+        repo = ComponentRepository(is_live=False, user=AnonymousUser())
+
+        live_comp = repo.build_live_component(
+            name="Counter",
+            state={"id": "counter-1", "count": 10},
+            parent_id="dashboard-1",
+        )
+
+        assert repo.get("counter-1") is live_comp
+
+    def test_build_live_component_reuses_existing(self):
+        """Test that build_live_component reuses existing component on re-render."""
+        from django.contrib.auth.models import AnonymousUser
+
+        from wireview.repository import ComponentRepository
+
+        repo = ComponentRepository(is_live=False, user=AnonymousUser())
+
+        # First render
+        live_comp1 = repo.build_live_component(
+            name="Counter",
+            state={"id": "counter-1", "count": 10},
+            parent_id="dashboard-1",
+        )
+
+        # Simulate state change
+        live_comp1.count = 20
+
+        # Re-render with new props
+        live_comp2 = repo.build_live_component(
+            name="Counter",
+            state={"id": "counter-1", "count": 30},
+            parent_id="dashboard-1",
+        )
+
+        # Should be same instance with updated props
+        assert live_comp1 is live_comp2
+        assert live_comp2.count == 30
+
+    def test_get_live_components(self):
+        """Test getting all LiveComponents under a parent."""
+        from django.contrib.auth.models import AnonymousUser
+
+        from wireview.repository import ComponentRepository
+
+        repo = ComponentRepository(is_live=False, user=AnonymousUser())
+
+        # Create multiple LiveComponents under same parent
+        repo.build_live_component(
+            name="Counter",
+            state={"id": "counter-1", "count": 10},
+            parent_id="dashboard-1",
+        )
+        repo.build_live_component(
+            name="Counter",
+            state={"id": "counter-2", "count": 20},
+            parent_id="dashboard-1",
+        )
+
+        # Create one under different parent
+        repo.build_live_component(
+            name="Counter",
+            state={"id": "counter-3", "count": 30},
+            parent_id="dashboard-2",
+        )
+
+        # Get children of dashboard-1
+        children = repo.get_live_components("dashboard-1")
+
+        assert len(children) == 2
+        assert all(c._parent_id == "dashboard-1" for c in children)

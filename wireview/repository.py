@@ -8,6 +8,7 @@ from channels.layers import BaseChannelLayer
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 
 from .component import Component, MessagePayload
+from .live_component import LiveComponent
 from .utils import filter_parameters
 
 ChildrenRepo = dict[str, tuple[str, dict[str, t.Any]]]
@@ -84,6 +85,71 @@ class ComponentRepository:
             channel_layer=self.channel_layer,
         )
         return self.register_component(component)
+
+    def build_live_component(
+        self,
+        name: str,
+        state: MessagePayload,
+        parent_id: str,
+    ) -> LiveComponent:
+        """Build a LiveComponent and register it under a parent.
+
+        Args:
+            name: LiveComponent class name
+            state: Initial state including 'id'
+            parent_id: ID of the parent Component
+
+        Returns:
+            Built and registered LiveComponent instance
+
+        Raises:
+            LookupError: If LiveComponent class not found
+            ValueError: If 'id' not provided in state
+        """
+        if "id" not in state:
+            raise ValueError("LiveComponent requires an 'id' in state")
+
+        component_id = state["id"]
+
+        # Check if already registered (re-render case)
+        if existing := self.components.get(component_id):
+            if isinstance(existing, LiveComponent):
+                # Update with new state (props changed)
+                for key, value in state.items():
+                    if key != "id" and key in existing.model_fields:
+                        setattr(existing, key, value)
+                return existing
+
+        # Resolve and build LiveComponent
+        component_class = LiveComponent._resolve_live(name)
+
+        component = component_class._build(
+            name,
+            state,
+            params=self.params,
+            user=self.user,
+            channel_name=self.channel_name,
+            channel_layer=self.channel_layer,
+        )
+
+        # Set parent reference
+        component._parent_id = parent_id
+
+        # Register in components dict
+        self.components[component.id] = component
+
+        return component
+
+    def get_live_components(self, parent_id: str) -> list[LiveComponent]:
+        """Get all LiveComponents under a parent.
+
+        Args:
+            parent_id: ID of the parent Component
+
+        Returns:
+            List of LiveComponent instances
+        """
+        return [c for c in self.components.values() if isinstance(c, LiveComponent) and c._parent_id == parent_id]
 
     async def join(
         self,
