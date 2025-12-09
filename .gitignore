@@ -24,3 +24,6 @@ package-lock.json
 
 # IDE LSP metadata cache
 .wireview/
+
+# Auto-generated type stubs
+*.pyi
