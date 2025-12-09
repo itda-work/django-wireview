@@ -480,6 +480,24 @@ class Component(BaseModel):
         """
         await self.wire.scroll_into_view(element_id, behavior, block, inline)
 
+    async def push_title(self, title: str) -> None:
+        """Update the page title dynamically.
+
+        Changes the browser's document.title to the specified value.
+        Useful for updating the title based on component state.
+
+        Args:
+            title: The new page title to display
+
+        Example:
+            class ProductDetail(Component):
+                product: Product
+
+                async def joined(self):
+                    await self.push_title(f"{self.product.name} - My Store")
+        """
+        await self.wire.push_title(title)
+
     # DOM operations
 
     def skip_render(self) -> None:

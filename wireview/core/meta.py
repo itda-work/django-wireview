@@ -189,6 +189,14 @@ class WireviewMeta:
         url = resolve_url(to, **kwargs)
         await self.send("url_change", command="push", url=url)
 
+    async def push_title(self, title: str) -> None:
+        """Update the page title dynamically.
+
+        Args:
+            title: The new page title to display
+        """
+        await self.send("title", title=title)
+
     async def render_diff(self, component: "Component", repo: Repo) -> DiffPayload | None:
         """
         Render the component and return a diff if changed.

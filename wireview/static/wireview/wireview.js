@@ -251,6 +251,11 @@ class ServerConnection {
         }
         break;
 
+      case "title":
+        var { title } = payload;
+        document.title = title;
+        break;
+
       case "set_query_string":
         var { qs } = payload;
         qs = qs.length ? `?${qs}` : "";
