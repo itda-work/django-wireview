@@ -30,6 +30,7 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 |------|------|------|
 | **Slots** | 컴포넌트 콘텐츠 합성 (Phoenix 스타일) | [문서](./slots.md) |
 | **Function Components** | 상태 없는 재사용 가능 컴포넌트 | [문서](./function-components.md) |
+| **LiveComponent** | 독립 상태를 가진 중첩 컴포넌트 | [문서](./live-component.md) |
 
 ## JavaScript 연동
 

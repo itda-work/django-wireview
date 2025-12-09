@@ -420,6 +420,39 @@ def card(title: str = "", variant: str = "default"):
 - **Component**: 상태 있음, WebSocket 실시간 업데이트, `{% on %}` 이벤트 지원
 - **Function Component**: 상태 없음, 정적 렌더링, 경량화
 
+### LiveComponent (중첩 상태 컴포넌트)
+
+부모 Component 내에서 독립적인 상태를 유지하는 중첩 컴포넌트:
+**상세 문서**: [docs/features/live-component.md](./docs/features/live-component.md)
+
+```python
+from wireview import LiveComponent
+
+class Counter(LiveComponent):
+    _template_name = "components/counter.html"
+
+    count: int = 0
+
+    async def increment(self):
+        self.count += 1
+        await self.send_to_parent("counter_changed", count=self.count)
+```
+
+```html
+<!-- 부모 템플릿에서 사용 -->
+{% load wireview %}
+{% live_component "Counter" id="counter-1" count=10 %}
+
+<!-- LiveComponent 내부 이벤트는 myself=True 사용 -->
+<button {% on "click" "increment" myself=True %}>+1</button>
+```
+
+**주요 특징**:
+- 부모와 WebSocket 연결 공유
+- 독립적인 상태 관리
+- `send_to_parent()`: 자식→부모 이벤트 전송
+- `send_update()`: 부모→자식 상태 업데이트
+
 ### 템플릿 태그
 
 ```html
@@ -578,6 +611,7 @@ WIREVIEW = {
 - [docs/features/hooks.md](./docs/features/hooks.md) - JavaScript Hooks 상세 문서
 - [docs/features/slots.md](./docs/features/slots.md) - Slots 상세 문서
 - [docs/features/function-components.md](./docs/features/function-components.md) - Function Components 상세 문서
+- [docs/features/live-component.md](./docs/features/live-component.md) - LiveComponent 상세 문서
 - [docs/features/temporary-assigns.md](./docs/features/temporary-assigns.md) - Temporary Assigns 상세 문서
 - [CHANGELOG.md](./CHANGELOG.md) - 변경 이력
 

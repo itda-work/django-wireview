@@ -31,7 +31,7 @@ django-wireview 지원:       ~55개 (73%)
 | Async Operations | 70% | ⚠️ 부분 완료 |
 | Navigation | 85% | ✅ 대부분 완료 |
 | **JavaScript Hooks** | 95% | ✅ 완료 |
-| **Components (Slots, Function, Live)** | 80% | ✅ 대부분 완료 |
+| **Components (Slots, Function, Live)** | 95% | ✅ 완료 |
 | Testing | 80% | ✅ 기본 완료 |
 | Developer Tools | 60% | ⚠️ 부분 완료 |
 
@@ -157,13 +157,13 @@ django-wireview 지원:       ~55개 (73%)
 | 기능 | Phoenix LiveView | django-wireview | 상태 |
 |------|:----------------:|:---------------:|:----:|
 | Stateful component | ✅ | ✅ Component | ✅ |
-| **LiveComponent** | ✅ 중첩 상태 | ❌ | 🟠 선택적 |
+| **LiveComponent** | ✅ 중첩 상태 | `{% live_component %}` | ✅ |
 | **Function components** | ✅ | `@function_component` | ✅ |
 | **Slots (named)** | ✅ `<:header>` | `{% fill header %}` | ✅ |
 | Slots (default) | ✅ `inner_block` | `{% render_slot %}` | ✅ |
 | Slots (let binding) | ✅ | `let:item` | ✅ |
-| @myself target | ✅ | ❌ | 🟠 선택적 |
-| update/2 callback | ✅ | ❌ | 🟠 선택적 |
+| @myself target | ✅ | `myself=True` | ✅ |
+| update/2 callback | ✅ | `update()` | ✅ |
 | update_many/1 | ✅ 배치 최적화 | ❌ | 🟠 |
 | Nested LiveViews | ✅ 프로세스 격리 | ❌ | 🟠 |
 
@@ -234,7 +234,7 @@ django-wireview 지원:       ~55개 (73%)
 | ~~GAP-002~~ | ~~**Slots**~~ | ~~컴포넌트 콘텐츠 합성 (`{% fill %}`, `{% render_slot %}`)~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-003~~ | ~~**Function Components**~~ | ~~상태 없는 재사용 가능 템플릿 함수~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-004~~ | ~~**handle_params**~~ | ~~URL 파라미터 변경 시 콜백~~ | ~~중~~ | ✅ 완료 |
-| GAP-005 | **LiveComponent** | 독립 상태를 가진 중첩 컴포넌트 | 상 | 3-4주 |
+| ~~GAP-005~~ | ~~**LiveComponent**~~ | ~~독립 상태를 가진 중첩 컴포넌트~~ | ~~상~~ | ✅ 완료 |
 | ~~GAP-006~~ | ~~**temporary_assigns**~~ | ~~렌더 후 메모리 자동 해제~~ | ~~하~~ | ✅ 완료 |
 
 ### 🟠 P1: Important (기능적 차이)
@@ -289,7 +289,7 @@ django-wireview 지원:       ~55개 (73%)
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Phase 2: Component System ✅ 대부분 완료
+### Phase 2: Component System ✅ 완료
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -308,10 +308,11 @@ django-wireview 지원:       ~55개 (73%)
 │  ├─ {% func_block "name" %}...{% endfunc %} 블록 태그      │
 │  └─ 타입 검증 및 슬롯 지원                                 │
 │                                                             │
-│  GAP-005: LiveComponent (선택적)                            │
-│  ├─ 중첩 상태 컴포넌트                                     │
-│  ├─ @myself 타겟팅                                         │
-│  └─ update/2 콜백                                          │
+│  GAP-005: LiveComponent ✅ 완료                             │
+│  ├─ {% live_component "Name" id="..." %} 태그              │
+│  ├─ @myself 타겟팅 (myself=True)                           │
+│  ├─ update() 콜백                                          │
+│  └─ send_update() 부모→자식 통신                           │
 │                                                             │
 │  구현 완료: 2025-12                                         │
 │                                                             │
