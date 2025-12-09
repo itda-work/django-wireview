@@ -95,7 +95,7 @@ django-wireview 지원:       ~55개 (73%)
 | stream_delete() | ✅ | `stream_delete()` | ✅ |
 | DOM ID generation | ✅ | `dom_id` param | ✅ |
 | wire-stream attribute | `phx-update="stream"` | `wire-stream` | ✅ |
-| stream :limit | ✅ | ❌ | 🟡 |
+| stream :limit | ✅ | `stream(limit=N)` | ✅ |
 | stream :reset | ✅ | ❌ | 🟡 |
 | phx-viewport-top/bottom | ✅ | ❌ | 🟡 |
 
@@ -255,7 +255,7 @@ django-wireview 지원:       ~55개 (73%)
 
 | ID | 기능 | 설명 | 난이도 | 예상 작업 |
 |----|------|------|:------:|----------|
-| GAP-014 | stream :limit | 스트림 DOM 크기 제한 | 하 | 3-5일 |
+| ~~GAP-014~~ | ~~stream :limit~~ | ~~스트림 DOM 크기 제한~~ | ~~하~~ | ✅ 완료 |
 | GAP-015 | phx-viewport-* | 양방향 무한 스크롤 바인딩 | 중 | 1주 |
 | GAP-016 | Image Preview | 업로드 이미지 미리보기 | 하 | 3-5일 |
 | GAP-017 | start_async/cancel_async | 세밀한 비동기 제어 | 중 | 1주 |
@@ -361,7 +361,7 @@ django-wireview 지원:       ~55개 (73%)
 │  └─ S3/GCS presigned URL 업로드                            │
 │                                                             │
 │  GAP-014-015: Stream 고급 기능                              │
-│  ├─ :limit 옵션 (구현 중)                                  │
+│  ├─ :limit 옵션 ✅ 완료                                    │
 │  └─ viewport 바인딩                                        │
 │                                                             │
 │  GAP-020-022: Developer Tools                               │
