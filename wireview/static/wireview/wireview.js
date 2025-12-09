@@ -805,6 +805,9 @@ class WireviewComponent {
           if (uploadManager) {
             uploadManager.updatePreviews();
           }
+
+          // Update form feedback (manage wire-no-feedback classes)
+          FeedbackManager.updated();
         }
       }
     });
@@ -2187,6 +2190,141 @@ function initUploadDropZones() {
 // Initialize on load
 initUploadDropZones();
 
+// ============================================================================
+// Form Feedback System
+// ============================================================================
+
+/**
+ * Manages form feedback visibility based on field interaction.
+ * Elements with wire-feedback-for="field_name" initially have wire-no-feedback
+ * class which hides them. When the corresponding field is touched (blurred or
+ * changed), the class is removed to show the feedback.
+ */
+const FeedbackManager = {
+  /** @type {Set<string>} */
+  touchedFields: new Set(),
+
+  /**
+   * Initialize the feedback system.
+   * Sets up event delegation for tracking field touches.
+   */
+  init() {
+    // Track blur events on form inputs (field was touched)
+    document.addEventListener("blur", (e) => {
+      const target = /** @type {HTMLElement} */ (e.target);
+      if (this.isFormInput(target)) {
+        const name = this.getFieldName(target);
+        if (name) {
+          this.markTouched(name);
+        }
+      }
+    }, true);  // Use capture to ensure we get the event
+
+    // Track change events (for select, checkbox, radio)
+    document.addEventListener("change", (e) => {
+      const target = /** @type {HTMLElement} */ (e.target);
+      if (this.isFormInput(target)) {
+        const name = this.getFieldName(target);
+        if (name) {
+          this.markTouched(name);
+        }
+      }
+    }, true);
+
+    // Track input events (for immediate feedback on typing)
+    document.addEventListener("input", (e) => {
+      const target = /** @type {HTMLElement} */ (e.target);
+      if (this.isFormInput(target)) {
+        const name = this.getFieldName(target);
+        if (name && this.touchedFields.has(name)) {
+          // Already touched - ensure feedback is shown
+          this.showFeedback(name);
+        }
+      }
+    }, true);
+
+    debugLog("feedback", "Feedback system initialized");
+  },
+
+  /**
+   * Check if element is a form input.
+   * @param {HTMLElement} el
+   * @returns {boolean}
+   */
+  isFormInput(el) {
+    return el.tagName === "INPUT" ||
+           el.tagName === "TEXTAREA" ||
+           el.tagName === "SELECT";
+  },
+
+  /**
+   * Get the field name from an input element.
+   * @param {HTMLElement} el
+   * @returns {string|null}
+   */
+  getFieldName(el) {
+    return el.getAttribute("name") || el.getAttribute("id") || null;
+  },
+
+  /**
+   * Mark a field as touched and show its feedback.
+   * @param {string} name
+   */
+  markTouched(name) {
+    if (this.touchedFields.has(name)) return;
+
+    this.touchedFields.add(name);
+    this.showFeedback(name);
+    debugLog("feedback", `Field touched: ${name}`);
+  },
+
+  /**
+   * Show feedback for a field by removing wire-no-feedback class.
+   * @param {string} name
+   */
+  showFeedback(name) {
+    // Find all feedback elements for this field
+    const feedbackEls = document.querySelectorAll(`[wire-feedback-for="${name}"]`);
+    feedbackEls.forEach((el) => {
+      el.classList.remove("wire-no-feedback");
+    });
+  },
+
+  /**
+   * Reset touched state (called on form reset or navigation).
+   */
+  reset() {
+    this.touchedFields.clear();
+    // Re-add wire-no-feedback to all feedback elements
+    const feedbackEls = document.querySelectorAll("[wire-feedback-for]");
+    feedbackEls.forEach((el) => {
+      el.classList.add("wire-no-feedback");
+    });
+    debugLog("feedback", "Feedback state reset");
+  },
+
+  /**
+   * Called after DOM morph to handle new feedback elements.
+   * New elements should have wire-no-feedback unless their field is touched.
+   */
+  updated() {
+    const feedbackEls = document.querySelectorAll("[wire-feedback-for]");
+    feedbackEls.forEach((el) => {
+      const fieldName = el.getAttribute("wire-feedback-for");
+      if (fieldName && this.touchedFields.has(fieldName)) {
+        // Field is touched - show feedback
+        el.classList.remove("wire-no-feedback");
+      } else {
+        // Field not touched - ensure feedback is hidden
+        el.classList.add("wire-no-feedback");
+      }
+    });
+  }
+};
+
+// Initialize feedback system
+FeedbackManager.init();
+
 connection.open();
 /** @type {ReturnType<typeof setTimeout>|undefined} */
 var debounceTimeout = undefined;
@@ -2748,6 +2886,48 @@ window.wireview = {
      */
     component(id) {
       return connection.components[id];
+    },
+  },
+
+  // ============================================================================
+  // Form Feedback API
+  // ============================================================================
+
+  /**
+   * Form feedback utilities for managing field validation feedback.
+   */
+  feedback: {
+    /**
+     * Mark a field as touched (show its feedback).
+     * @param {string} fieldName - The name of the field
+     */
+    touch(fieldName) {
+      FeedbackManager.markTouched(fieldName);
+    },
+
+    /**
+     * Check if a field has been touched.
+     * @param {string} fieldName - The name of the field
+     * @returns {boolean}
+     */
+    isTouched(fieldName) {
+      return FeedbackManager.touchedFields.has(fieldName);
+    },
+
+    /**
+     * Get all touched field names.
+     * @returns {string[]}
+     */
+    getTouched() {
+      return Array.from(FeedbackManager.touchedFields);
+    },
+
+    /**
+     * Reset all feedback (hide all feedback elements).
+     * Useful after form submission or reset.
+     */
+    reset() {
+      FeedbackManager.reset();
     },
   },
 };
