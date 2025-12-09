@@ -754,6 +754,10 @@ class WireviewComponent {
     // Hook manager for JavaScript hooks
     /** @type {HookManager} */
     this.hookManager = new HookManager(this);
+
+    // Viewport observer for infinite scroll
+    /** @type {ViewportObserver} */
+    this.viewportObserver = new ViewportObserver(this);
   }
 
   /**
@@ -792,6 +796,9 @@ class WireviewComponent {
 
           // Call updated on all hooks (and scan for new ones)
           this.hookManager.updated();
+
+          // Update viewport observer (scan for new viewport elements)
+          this.viewportObserver.updated();
         }
       }
     });
@@ -931,6 +938,9 @@ class WireviewComponent {
 
         // Initialize hooks after joining
         this.hookManager.init();
+
+        // Initialize viewport observer for infinite scroll
+        this.viewportObserver.init();
       }
     }
   }
@@ -1395,6 +1405,186 @@ class HookManager {
       this.destroyHook(hookId);
     }
     this.callbacks.clear();
+  }
+}
+
+// ============================================================================
+// Viewport Observer (Infinite Scroll)
+// ============================================================================
+
+/**
+ * Manages viewport bindings for infinite scroll functionality.
+ * Observes elements with wire-viewport-top and wire-viewport-bottom attributes.
+ */
+class ViewportObserver {
+  /**
+   * @param {WireviewComponent} component - Parent component
+   */
+  constructor(component) {
+    /** @type {WireviewComponent} */
+    this.component = component;
+    /** @type {IntersectionObserver|null} */
+    this.observer = null;
+    /** @type {Map<Element, {type: string, handler: string}>} */
+    this.observed = new Map();
+    /** @type {number} */
+    this.lastScrollY = 0;
+    /** @type {boolean} */
+    this.pendingTop = false;
+    /** @type {boolean} */
+    this.pendingBottom = false;
+  }
+
+  /**
+   * Initialize the viewport observer.
+   */
+  init() {
+    this.setupObserver();
+    this.scanAndObserve();
+    this.lastScrollY = window.scrollY;
+  }
+
+  /**
+   * Setup the IntersectionObserver.
+   */
+  setupObserver() {
+    if (this.observer) return;
+
+    this.observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            this.handleIntersection(entry.target);
+          }
+        }
+      },
+      {
+        root: null, // Use viewport
+        rootMargin: "0px",
+        threshold: 0,
+      }
+    );
+  }
+
+  /**
+   * Scan for viewport binding elements and observe them.
+   */
+  scanAndObserve() {
+    const root = this.component.getElemenet();
+    if (!root) return;
+
+    // Find all elements with viewport bindings
+    const topElements = root.querySelectorAll("[wire-viewport-top]");
+    const bottomElements = root.querySelectorAll("[wire-viewport-bottom]");
+
+    // Observe top viewport elements
+    topElements.forEach((el) => {
+      const handler = el.getAttribute("wire-viewport-top");
+      if (handler && !this.observed.has(el)) {
+        this.observed.set(el, { type: "top", handler });
+        this.observer?.observe(el);
+        debugLog("viewport", `Observing top: ${handler}`, { el });
+      }
+    });
+
+    // Observe bottom viewport elements
+    bottomElements.forEach((el) => {
+      const handler = el.getAttribute("wire-viewport-bottom");
+      if (handler && !this.observed.has(el)) {
+        this.observed.set(el, { type: "bottom", handler });
+        this.observer?.observe(el);
+        debugLog("viewport", `Observing bottom: ${handler}`, { el });
+      }
+    });
+  }
+
+  /**
+   * Handle element intersection with viewport.
+   * @param {Element} element
+   */
+  handleIntersection(element) {
+    const info = this.observed.get(element);
+    if (!info) return;
+
+    const currentScrollY = window.scrollY;
+    const scrollingDown = currentScrollY > this.lastScrollY;
+    const scrollingUp = currentScrollY < this.lastScrollY;
+
+    // Determine if overran (rapid scroll past boundary)
+    const overran = this.detectOverran(info.type, element);
+
+    // For top viewport, trigger when scrolling up or overran
+    // For bottom viewport, trigger when scrolling down or overran
+    const shouldTrigger =
+      (info.type === "top" && (scrollingUp || overran)) ||
+      (info.type === "bottom" && (scrollingDown || overran));
+
+    if (shouldTrigger) {
+      this.sendViewportEvent(info.handler, overran);
+    }
+
+    this.lastScrollY = currentScrollY;
+  }
+
+  /**
+   * Detect if the viewport has overran the boundary.
+   * @param {string} type - "top" or "bottom"
+   * @param {Element} element
+   * @returns {boolean}
+   */
+  detectOverran(type, element) {
+    const rect = element.getBoundingClientRect();
+
+    if (type === "top") {
+      // Overran if the element is well below the top of viewport
+      // (user scrolled rapidly to top)
+      return rect.top > window.innerHeight * 0.5;
+    } else {
+      // Overran if the element is well above the bottom of viewport
+      // (user scrolled rapidly to bottom)
+      return rect.bottom < window.innerHeight * 0.5;
+    }
+  }
+
+  /**
+   * Send viewport event to server.
+   * @param {string} handler - Event handler name
+   * @param {boolean} overran - Whether the viewport was overran
+   */
+  sendViewportEvent(handler, overran) {
+    const componentId = this.component.id;
+
+    debugLog("viewport", `Sending event: ${handler}`, { overran });
+
+    connection.sendUserEvent(componentId, handler, {}, { _overran: overran });
+  }
+
+  /**
+   * Called after DOM morph to re-scan for viewport elements.
+   */
+  updated() {
+    // Clean up removed elements
+    for (const [el, info] of this.observed) {
+      if (!document.contains(el)) {
+        this.observer?.unobserve(el);
+        this.observed.delete(el);
+        debugLog("viewport", `Unobserved: ${info.handler}`, { el });
+      }
+    }
+
+    // Scan for new elements
+    this.scanAndObserve();
+  }
+
+  /**
+   * Cleanup the observer.
+   */
+  destroy() {
+    if (this.observer) {
+      this.observer.disconnect();
+      this.observer = null;
+    }
+    this.observed.clear();
   }
 }
 
