@@ -33,6 +33,10 @@ class ComponentRepository:
         self.components: dict[str, Component] = {}
         self.children: ChildrenRepo = {}
         self.is_live = is_live
+        # Track LiveComponents that need joined() called after parent renders
+        self._pending_live_components: list[LiveComponent] = []
+        # Track LiveComponents that need update() called after parent renders
+        self._pending_updates: list[tuple[LiveComponent, dict[str, t.Any]]] = []
 
     @staticmethod
     def extract_params(qs: str):
@@ -114,10 +118,13 @@ class ComponentRepository:
         # Check if already registered (re-render case)
         if existing := self.components.get(component_id):
             if isinstance(existing, LiveComponent):
-                # Update with new state (props changed)
-                for key, value in state.items():
-                    if key != "id" and key in existing.model_fields:
-                        setattr(existing, key, value)
+                # Queue update() call with changed props
+                # (will be called after render completes)
+                changed_props = {
+                    key: value for key, value in state.items() if key != "id" and key in existing.model_fields
+                }
+                if changed_props:
+                    self._pending_updates.append((existing, changed_props))
                 return existing
 
         # Resolve and build LiveComponent
@@ -138,6 +145,9 @@ class ComponentRepository:
         # Register in components dict
         self.components[component.id] = component
 
+        # Queue for joined() call after parent render completes
+        self._pending_live_components.append(component)
+
         return component
 
     def get_live_components(self, parent_id: str) -> list[LiveComponent]:
@@ -150,6 +160,40 @@ class ComponentRepository:
             List of LiveComponent instances
         """
         return [c for c in self.components.values() if isinstance(c, LiveComponent) and c._parent_id == parent_id]
+
+    async def flush_pending_live_components(self) -> list[LiveComponent]:
+        """Call joined()/update() on all pending LiveComponents.
+
+        This should be called after the parent component renders,
+        as LiveComponents are created during template rendering (sync context).
+
+        For new components: calls joined()
+        For existing components with changed props: calls update()
+
+        Returns:
+            List of LiveComponents that had lifecycle methods called
+        """
+        result: list[LiveComponent] = []
+
+        # Handle new LiveComponents (call joined)
+        pending = self._pending_live_components
+        self._pending_live_components = []
+
+        for component in pending:
+            component.wire.enter_pending_mode()
+            await component.joined()
+            result.append(component)
+
+        # Handle existing LiveComponents with changed props (call update)
+        updates = self._pending_updates
+        self._pending_updates = []
+
+        for component, props in updates:
+            await component.update(**props)
+            if component not in result:
+                result.append(component)
+
+        return result
 
     async def join(
         self,

@@ -294,7 +294,8 @@ class TestComponentRepositoryLiveComponent:
 
         assert repo.get("counter-1") is live_comp
 
-    def test_build_live_component_reuses_existing(self):
+    @pytest.mark.asyncio
+    async def test_build_live_component_reuses_existing(self):
         """Test that build_live_component reuses existing component on re-render."""
         from django.contrib.auth.models import AnonymousUser
 
@@ -309,6 +310,9 @@ class TestComponentRepositoryLiveComponent:
             parent_id="dashboard-1",
         )
 
+        # Flush to initialize
+        await repo.flush_pending_live_components()
+
         # Simulate state change
         live_comp1.count = 20
 
@@ -319,8 +323,16 @@ class TestComponentRepositoryLiveComponent:
             parent_id="dashboard-1",
         )
 
-        # Should be same instance with updated props
+        # Should be same instance
         assert live_comp1 is live_comp2
+
+        # Props not updated yet (queued for update)
+        assert live_comp2.count == 20
+
+        # Flush to call update()
+        await repo.flush_pending_live_components()
+
+        # Now props should be updated
         assert live_comp2.count == 30
 
     def test_get_live_components(self):
@@ -410,6 +422,172 @@ class TestMyselfTargeting:
 
         # Should NOT include _target
         assert "_target" not in result
+
+
+@pytest.mark.unit
+class TestFlushPendingLiveComponents:
+    """Test flush_pending_live_components for joined() calls."""
+
+    @pytest.mark.asyncio
+    async def test_new_live_component_added_to_pending(self):
+        """Test that newly created LiveComponents are added to pending list."""
+        from django.contrib.auth.models import AnonymousUser
+
+        from wireview.repository import ComponentRepository
+
+        repo = ComponentRepository(is_live=True, user=AnonymousUser())
+
+        # Build a LiveComponent
+        repo.build_live_component(
+            name="Counter",
+            state={"id": "counter-1", "count": 10},
+            parent_id="dashboard-1",
+        )
+
+        # Should be in pending list
+        assert len(repo._pending_live_components) == 1
+        assert repo._pending_live_components[0].id == "counter-1"
+
+    @pytest.mark.asyncio
+    async def test_flush_pending_calls_joined(self):
+        """Test that flush_pending_live_components calls joined()."""
+        from django.contrib.auth.models import AnonymousUser
+
+        from wireview.repository import ComponentRepository
+
+        # Create a LiveComponent class that tracks joined() calls
+        joined_calls = []
+
+        class TrackedCounter(LiveComponent):
+            _template_name = "live_components/counter.html"
+            count: int = 0
+
+            async def joined(self):
+                joined_calls.append(self.id)
+
+        repo = ComponentRepository(is_live=True, user=AnonymousUser())
+
+        # Build a LiveComponent
+        repo.build_live_component(
+            name="TrackedCounter",
+            state={"id": "counter-1", "count": 10},
+            parent_id="dashboard-1",
+        )
+
+        # joined() not called yet
+        assert len(joined_calls) == 0
+
+        # Flush pending
+        pending = await repo.flush_pending_live_components()
+
+        # Should have called joined()
+        assert len(pending) == 1
+        assert len(joined_calls) == 1
+        assert joined_calls[0] == "counter-1"
+
+    @pytest.mark.asyncio
+    async def test_flush_pending_clears_list(self):
+        """Test that flush_pending_live_components clears the pending list."""
+        from django.contrib.auth.models import AnonymousUser
+
+        from wireview.repository import ComponentRepository
+
+        repo = ComponentRepository(is_live=True, user=AnonymousUser())
+
+        # Build a LiveComponent
+        repo.build_live_component(
+            name="Counter",
+            state={"id": "counter-1", "count": 10},
+            parent_id="dashboard-1",
+        )
+
+        # Flush pending
+        await repo.flush_pending_live_components()
+
+        # Pending list should be empty
+        assert len(repo._pending_live_components) == 0
+
+    @pytest.mark.asyncio
+    async def test_existing_component_not_added_to_pending(self):
+        """Test that existing LiveComponents are not added to pending on re-render."""
+        from django.contrib.auth.models import AnonymousUser
+
+        from wireview.repository import ComponentRepository
+
+        repo = ComponentRepository(is_live=True, user=AnonymousUser())
+
+        # First build
+        repo.build_live_component(
+            name="Counter",
+            state={"id": "counter-1", "count": 10},
+            parent_id="dashboard-1",
+        )
+
+        # Flush pending
+        await repo.flush_pending_live_components()
+
+        # Re-build (simulating re-render)
+        repo.build_live_component(
+            name="Counter",
+            state={"id": "counter-1", "count": 20},
+            parent_id="dashboard-1",
+        )
+
+        # Should not be in pending list for joined() (already exists)
+        assert len(repo._pending_live_components) == 0
+        # But should be in pending updates
+        assert len(repo._pending_updates) == 1
+
+    @pytest.mark.asyncio
+    async def test_existing_component_update_called_on_rerender(self):
+        """Test that update() is called when existing component re-renders with new props."""
+        from django.contrib.auth.models import AnonymousUser
+
+        from wireview.repository import ComponentRepository
+
+        # Track update() calls
+        update_calls = []
+
+        class TrackedCounter(LiveComponent):
+            _template_name = "live_components/counter.html"
+            count: int = 0
+            label: str = "Count"
+
+            async def update(self, **assigns):
+                update_calls.append((self.id, assigns.copy()))
+                await super().update(**assigns)
+
+        repo = ComponentRepository(is_live=True, user=AnonymousUser())
+
+        # First build
+        live_comp = repo.build_live_component(
+            name="TrackedCounter",
+            state={"id": "counter-1", "count": 10, "label": "Initial"},
+            parent_id="dashboard-1",
+        )
+
+        # Flush to call joined()
+        await repo.flush_pending_live_components()
+        assert len(update_calls) == 0
+
+        # Re-build with changed props
+        repo.build_live_component(
+            name="TrackedCounter",
+            state={"id": "counter-1", "count": 20, "label": "Updated"},
+            parent_id="dashboard-1",
+        )
+
+        # Flush to call update()
+        await repo.flush_pending_live_components()
+
+        # update() should have been called with new props
+        assert len(update_calls) == 1
+        assert update_calls[0][0] == "counter-1"
+        assert update_calls[0][1] == {"count": 20, "label": "Updated"}
+
+        # Props should be updated
+        assert live_comp.count == 20
+        assert live_comp.label == "Updated"
 
 
 @pytest.mark.unit

@@ -93,11 +93,17 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             await self._register_upload_registry(component)
             await self.send_render(component)
 
+            # Call joined() on any LiveComponents created during render
+            # This must happen after send_render() since LiveComponents are
+            # created during template rendering (synchronous context)
+            await self._flush_pending_live_components()
+
             # Call params_changed if URL has params (initial load)
             if self.repo.params:
                 uri = f"?{self.repo.get_query_string()}"
                 await component.params_changed(dict(self.repo.params), uri)
                 await self.send_render(component)
+                await self._flush_pending_live_components()
 
             # Flush pending operations queued during joined()
             # This ensures stream(), push_js(), etc. are sent after render
@@ -146,6 +152,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         component = await self.repo.dispatch_event(id, command, [], kwargs)
         if component:
             await self.send_render(component)
+            await self._flush_pending_live_components()
             await self.after_mutation_chores()
 
     async def command_hook_event(
@@ -179,6 +186,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
 
         # Re-render component if state may have changed
         await self.send_render(component)
+        await self._flush_pending_live_components()
         await self.after_mutation_chores()
 
     # Upload commands
@@ -310,6 +318,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         component = await self.repo.dispatch_event(id, command, args, kwargs)
         if component is not None:
             await self.send_render(component)
+            await self._flush_pending_live_components()
         await self.after_mutation_chores()
 
     async def component_remove(self, id):
@@ -320,6 +329,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         log.debug(f">>> SEND-RENDER {id}")
         if component := self.repo.get(id):
             await self.send_render(component)
+            await self._flush_pending_live_components()
 
     async def component_dom_action(self, action, id, html):
         log.debug(f">>> DOM {action.upper()} {id}")
@@ -383,6 +393,19 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
                 "payload": payload,
             },
         )
+
+    async def _flush_pending_live_components(self):
+        """Call joined() on LiveComponents created during render.
+
+        LiveComponents are created during template rendering (synchronous context),
+        so we can't call joined() immediately. This method should be called after
+        send_render() to initialize any newly created LiveComponents.
+        """
+        pending = await self.repo.flush_pending_live_components()
+        for component in pending:
+            # Send render for each LiveComponent after joined()
+            await self.send_render(component)
+            await component.wire.flush_pending()
 
     async def component_update_live_component(
         self,
