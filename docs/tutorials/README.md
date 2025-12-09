@@ -21,6 +21,7 @@ django-wireview 단계별 학습 가이드입니다.
 - [04. Chat 앱](04-chat-app.md) - Streams API, Presence API, 라이프사이클 훅
 - [05. Dashboard](05-dashboard.md) - AsyncResult, 복합 컴포지션
 - [14. Notifications](14-notifications.md) - broadcast, JS 명령어 체이닝, 알림 센터
+- [15. LiveComponent](15-live-components.md) - 중첩 컴포넌트, 부모-자식 통신
 
 ### 심화 (Deep Dive)
 - [06. Streams API 심화](06-streams-api.md) - 성능 최적화, DOM ID 전략
@@ -49,6 +50,7 @@ django-wireview 단계별 학습 가이드입니다.
 | 고급 | 04. Chat 앱 | 4시간 |
 | 고급 | 05. Dashboard | 2시간 |
 | 고급 | 14. Notifications | 2시간 |
+| 고급 | 15. LiveComponent | 2시간 |
 | 심화 | 06-09 | 각 1-2시간 |
 
 **총 학습 시간**: 약 20-25시간
@@ -79,6 +81,7 @@ django-wireview 단계별 학습 가이드입니다.
 | URL 상태 | 10, 11 |
 | 키보드 이벤트 | 11, 12 |
 | AsyncResult | 05 |
+| LiveComponent | 15 |
 
 ## 피드백
 
