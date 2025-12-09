@@ -150,7 +150,7 @@ django-wireview 지원:       ~55개 (73%)
 | handle_hook_event (server) | - | `handle_hook_event()` | ✅ |
 | push_event (server→client) | ✅ | `push_event()` | ✅ |
 | Colocated hooks | ✅ | ❌ | 🟠 |
-| onBeforeElUpdated | ✅ | ❌ | 🟡 |
+| onBeforeElUpdated | ✅ | `dom.onBeforeElUpdated` | ✅ |
 
 ### 2.10 Components ✅
 
@@ -264,7 +264,7 @@ django-wireview 지원:       ~55개 (73%)
 | GAP-020 | enableProfiling | 성능 프로파일링 | 중 | 1주 |
 | GAP-021 | on_mount hooks | 공통 마운트 로직 모듈화 | 중 | 1주 |
 | GAP-022 | Telemetry | 성능 측정 훅 | 중 | 1-2주 |
-| GAP-023 | onBeforeElUpdated | DOM 패치 전 콜백 | 하 | 3-5일 |
+| ~~GAP-023~~ | ~~onBeforeElUpdated~~ | ~~DOM 패치 전 콜백~~ | ~~하~~ | ✅ 완료 |
 
 ---
 

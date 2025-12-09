@@ -2930,4 +2930,41 @@ window.wireview = {
       FeedbackManager.reset();
     },
   },
+
+  // ============================================================================
+  // DOM Configuration API
+  // ============================================================================
+
+  /**
+   * DOM morphing configuration.
+   */
+  dom: {
+    /**
+     * Set a callback that runs before each element is morphed.
+     * Use this to preserve client-side attributes or state during LiveView updates.
+     *
+     * @param {function(Element, Element): void} callback - Function called with (fromEl, toEl)
+     *
+     * @example
+     * // Preserve data-js-* attributes set by JavaScript
+     * wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
+     *   for (const attr of fromEl.attributes) {
+     *     if (attr.name.startsWith('data-js-')) {
+     *       toEl.setAttribute(attr.name, attr.value);
+     *     }
+     *   }
+     * });
+     *
+     * @example
+     * // Preserve Alpine.js state
+     * wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
+     *   if (fromEl._x_dataStack) {
+     *     window.Alpine.clone(fromEl, toEl);
+     *   }
+     * });
+     */
+    onBeforeElUpdated(callback) {
+      boost.setOnBeforeElUpdated(callback);
+    },
+  },
 };

@@ -343,3 +343,68 @@ Push an event to client-side JavaScript hooks.
 - `event`: Event name to dispatch
 - `payload`: Event data (default: empty dict)
 - `hook_id`: Target specific hook instance (None = broadcast to all)
+
+## DOM Morph Callback
+
+### wireview.dom.onBeforeElUpdated()
+
+Configure a callback that runs before each element is morphed during LiveView updates.
+This allows you to preserve client-side attributes or state that would otherwise be
+overwritten by the server-rendered content.
+
+```javascript
+wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
+  // fromEl: The existing DOM element
+  // toEl: The new element that will replace it
+});
+```
+
+### Use Cases
+
+**Preserve JavaScript-Set Attributes**
+
+If your JavaScript sets attributes that aren't tracked by the server:
+
+```javascript
+// Preserve data-js-* attributes
+wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
+  for (const attr of fromEl.attributes) {
+    if (attr.name.startsWith('data-js-')) {
+      toEl.setAttribute(attr.name, attr.value);
+    }
+  }
+});
+```
+
+**Alpine.js Integration**
+
+Preserve Alpine.js component state:
+
+```javascript
+wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
+  if (fromEl._x_dataStack) {
+    window.Alpine.clone(fromEl, toEl);
+  }
+});
+```
+
+**Preserve CSS Transitions**
+
+Keep animation state during morphs:
+
+```javascript
+wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
+  if (fromEl.hasAttribute('data-transitioning')) {
+    toEl.setAttribute('data-transitioning', fromEl.getAttribute('data-transitioning'));
+  }
+});
+```
+
+### Comparison with Phoenix LiveView
+
+| Feature | Phoenix LiveView | django-wireview |
+|---------|------------------|-----------------|
+| Configuration | `LiveSocket` constructor option | `wireview.dom.onBeforeElUpdated()` |
+| Callback signature | `(fromEl, toEl)` | `(fromEl, toEl)` |
+| Return value | Ignored | Ignored |
+| Called for | All elements | Element nodes only |
