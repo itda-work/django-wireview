@@ -19,7 +19,6 @@ pyrightconfig.json
 
 # Collected static files
 tests/static/
-package-lock.json
 .idea/
 
 # IDE LSP metadata cache

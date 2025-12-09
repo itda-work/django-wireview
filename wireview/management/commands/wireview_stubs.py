@@ -437,6 +437,7 @@ def _extract_methods(cls: type[Component]) -> tuple[list[MethodInfo], list[str]]
         is_async = asyncio.iscoroutinefunction(original_func)
 
         # Get signature
+        sig = None
         try:
             sig = inspect.signature(original_func)
             parameters = extract_parameters(sig)

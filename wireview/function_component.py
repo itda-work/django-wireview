@@ -188,7 +188,7 @@ class FunctionComponent:
                             ) from e
                 validated[name] = value
             elif info["required"]:
-                raise TypeError(f"Function component '{self.name}' " f"missing required argument: '{name}'")
+                raise TypeError(f"Function component '{self.name}' missing required argument: '{name}'")
             elif "default" in info:
                 validated[name] = info["default"]
 
@@ -196,7 +196,7 @@ class FunctionComponent:
         unexpected = set(kwargs.keys()) - set(self._param_info.keys())
         if unexpected:
             raise TypeError(
-                f"Function component '{self.name}' " f"got unexpected arguments: {', '.join(sorted(unexpected))}"
+                f"Function component '{self.name}' got unexpected arguments: {', '.join(sorted(unexpected))}"
             )
 
         return validated
@@ -229,8 +229,7 @@ class FunctionComponent:
             # Template-based: result should be a dict (context)
             if not isinstance(result, dict):
                 raise TypeError(
-                    f"Function component '{self.name}' with template must return a dict, "
-                    f"got {type(result).__name__}"
+                    f"Function component '{self.name}' with template must return a dict, got {type(result).__name__}"
                 )
             template = loader.get_template(self.template)
             template_context = {**result}
@@ -245,8 +244,7 @@ class FunctionComponent:
             # Inline: result should be a string
             if not isinstance(result, str):
                 raise TypeError(
-                    f"Function component '{self.name}' without template must return a str, "
-                    f"got {type(result).__name__}"
+                    f"Function component '{self.name}' without template must return a str, got {type(result).__name__}"
                 )
             return mark_safe(result)
 
@@ -332,7 +330,7 @@ def get_function_component(name: str) -> FunctionComponent:
         return _registry[name]
 
     raise TemplateSyntaxError(
-        f"Function component '{name}' not found. " f"Available: {', '.join(sorted(_registry.keys()))}"
+        f"Function component '{name}' not found. Available: {', '.join(sorted(_registry.keys()))}"
     )
 
 

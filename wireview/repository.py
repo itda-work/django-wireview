@@ -1,6 +1,7 @@
 import json
 import typing as t
 from functools import reduce
+from typing import cast
 from urllib.parse import parse_qsl, urlencode
 
 from channels.db import database_sync_to_async as db
@@ -130,25 +131,28 @@ class ComponentRepository:
         # Resolve and build LiveComponent
         component_class = LiveComponent._resolve_live(name)
 
-        component = component_class._build(
-            name,
-            state,
-            params=self.params,
-            user=self.user,
-            channel_name=self.channel_name,
-            channel_layer=self.channel_layer,
+        live_component = cast(
+            LiveComponent,
+            component_class._build(
+                name,
+                state,
+                params=self.params,
+                user=self.user,
+                channel_name=self.channel_name,
+                channel_layer=self.channel_layer,
+            ),
         )
 
         # Set parent reference
-        component._parent_id = parent_id
+        live_component._parent_id = parent_id
 
         # Register in components dict
-        self.components[component.id] = component
+        self.components[live_component.id] = live_component
 
         # Queue for joined() call after parent render completes
-        self._pending_live_components.append(component)
+        self._pending_live_components.append(live_component)
 
-        return component
+        return live_component
 
     def get_live_components(self, parent_id: str) -> list[LiveComponent]:
         """Get all LiveComponents under a parent.

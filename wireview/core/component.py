@@ -285,7 +285,7 @@ class Component(BaseModel):
         if name in cls._all:
             return cls._all[name]
 
-        raise ComponentNotFound(f"Component '{name}' not found. " f"Available: {list(cls._all.keys())}")
+        raise ComponentNotFound(f"Component '{name}' not found. Available: {list(cls._all.keys())}")
 
     @classmethod
     def _build(

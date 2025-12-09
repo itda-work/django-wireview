@@ -168,7 +168,7 @@ class LiveComponent(Component, public=False):
         if name in cls._live_all:
             return cls._live_all[name]
 
-        raise LookupError(f"LiveComponent '{name}' not found. " f"Available: {list(cls._live_all.keys())}")
+        raise LookupError(f"LiveComponent '{name}' not found. Available: {list(cls._live_all.keys())}")
 
     async def update(self, **assigns: t.Any) -> None:
         """Called when parent re-renders with new assigns.

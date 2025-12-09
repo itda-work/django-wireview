@@ -467,8 +467,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         # Verify parent relationship
         if component._parent_id != parent_id:
             log.warning(
-                f"LiveComponent {live_component_id} parent mismatch: "
-                f"expected {component._parent_id}, got {parent_id}"
+                f"LiveComponent {live_component_id} parent mismatch: expected {component._parent_id}, got {parent_id}"
             )
             return
 

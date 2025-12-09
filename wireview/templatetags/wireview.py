@@ -188,7 +188,7 @@ class ComponentBlockNode(Node):
         has_content = False
         for node in default_nodes:
             if hasattr(node, "s"):  # TextNode
-                if node.s.strip():
+                if node.s.strip():  # type: ignore[attr-defined]
                     has_content = True
                     break
             else:
@@ -242,7 +242,7 @@ def do_fill(parser: Parser, token: Token):
 
     if len(bits) < 2:
         raise template.TemplateSyntaxError(
-            f"'{tag_name}' tag requires a slot name. " f"Usage: {{% {tag_name} slotname %}}...{{% endfill %}}"
+            f"'{tag_name}' tag requires a slot name. Usage: {{% {tag_name} slotname %}}...{{% endfill %}}"
         )
 
     slot_name = bits[1]
@@ -257,8 +257,7 @@ def do_fill(parser: Parser, token: Token):
             var_name = bit[4:]  # Remove "let:"
             if not var_name:
                 raise template.TemplateSyntaxError(
-                    f"'{tag_name}' let: syntax requires a variable name. "
-                    f"Usage: {{% {tag_name} slotname let:varname %}}"
+                    f"'{tag_name}' let: syntax requires a variable name. Usage: {{% {tag_name} slotname let:varname %}}"
                 )
             let_vars.append(var_name)
         else:
@@ -688,7 +687,7 @@ class FuncBlockNode(Node):
         has_content = False
         for node in default_nodes:
             if hasattr(node, "s"):  # TextNode
-                if node.s.strip():
+                if node.s.strip():  # type: ignore[attr-defined]
                     has_content = True
                     break
             else:
@@ -745,7 +744,7 @@ def live_component(context, _name: str, **kwargs: t.Any):
     parent: Component | None = context.get("this")
     if parent is None:
         raise template.TemplateSyntaxError(
-            "{% live_component %} must be used within a Component template. " "No parent component found in context."
+            "{% live_component %} must be used within a Component template. No parent component found in context."
         )
 
     # ID is required
