@@ -2,7 +2,7 @@
 
 > django-wireview가 Phoenix LiveView 수준에 도달하기 위해 필요한 기능 목록
 >
-> **최종 업데이트**: 2025-12
+> **최종 업데이트**: 2025-12-09
 
 ---
 
@@ -210,13 +210,15 @@ django-wireview 지원:       ~55개 (73%)
 | enableLatencySim | ✅ | `wireview.debug.latency()` | ✅ |
 | enableProfiling | ✅ | ❌ | 🟡 |
 | Telemetry | ✅ | ❌ | 🟡 |
+| **Type Stubs** | - | `wireview_stubs` | ✅ 추가 기능 |
+| **LSP Metadata** | - | `wireview_lsp` | ✅ 추가 기능 |
 
 ### 2.15 Miscellaneous ⚠️
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 |
 |------|:----------------:|:---------------:|:----:|
-| Page title | ✅ `assign(:page_title)` | ❌ | 🟡 |
-| Flash messages | ✅ `put_flash` | ❌ | 🟡 |
+| Page title | ✅ `assign(:page_title)` | `push_title()` | ✅ |
+| Flash messages | ✅ `put_flash` | `put_flash()` | ✅ |
 | Dead views | ✅ JS 비활성화 폴백 | ❌ | 🟠 |
 | LongPolling fallback | ✅ | ❌ | 🟠 |
 | on_mount hooks | ✅ | ❌ | 🟡 |
@@ -345,24 +347,26 @@ django-wireview 지원:       ~55개 (73%)
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Phase 4: Performance & Polish (Q2-Q3)
+### Phase 4: Performance & Polish (진행 중)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Phase 4: Performance & Developer Experience                │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  GAP-006: temporary_assigns                                 │
+│  GAP-006: temporary_assigns ✅ 완료                         │
 │  └─ _temporary_assigns 클래스 변수                         │
 │                                                             │
 │  GAP-007: External Uploads                                  │
 │  └─ S3/GCS presigned URL 업로드                            │
 │                                                             │
 │  GAP-014-015: Stream 고급 기능                              │
-│  ├─ :limit 옵션                                            │
+│  ├─ :limit 옵션 (구현 중)                                  │
 │  └─ viewport 바인딩                                        │
 │                                                             │
 │  GAP-020-022: Developer Tools                               │
+│  ├─ Type Stubs (.pyi) ✅ 완료                              │
+│  ├─ LSP Metadata ✅ 완료                                   │
 │  ├─ Profiling                                              │
 │  └─ Telemetry                                              │
 │                                                             │
