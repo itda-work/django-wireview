@@ -77,10 +77,12 @@ wireview/
 ├── repository.py       # 컴포넌트 인스턴스 관리
 ├── auto_broadcast.py   # Django signals 연동
 ├── event_transpiler.py # 이벤트 문법 파싱
+├── function_component.py # Function Components (GAP-003)
 ├── js.py               # JS 명령어 빌더
 ├── schemas.py          # Pydantic 스키마
 ├── serializer.py       # Django 모델 직렬화
 ├── settings.py         # 설정 관리
+├── slots.py            # Slots 시스템 (GAP-002)
 ├── testing.py          # 테스트 유틸리티
 ├── core/               # 핵심 모듈
 │   ├── component.py    # Component 베이스 클래스
@@ -89,7 +91,7 @@ wireview/
 ├── features/           # 기능 모듈
 │   └── streams.py      # Streams 기능
 ├── templatetags/
-│   └── wireview.py     # {% component %}, {% on %} 등
+│   └── wireview.py     # {% component %}, {% func %}, {% on %} 등
 ├── static/wireview/
 │   ├── wireview.js     # 메인 클라이언트 모듈
 │   ├── wireview-boost.js # 선택적 네비게이션 부스트
@@ -382,6 +384,42 @@ class Card(Component):
 {% endcomponent %}
 ```
 
+### Function Components (상태 없는 재사용 컴포넌트)
+
+WebSocket 연결이 필요 없는 간단한 UI 요소를 위한 경량 컴포넌트:
+**상세 문서**: [docs/features/function-components.md](./docs/features/function-components.md)
+
+```python
+from wireview import function_component
+
+@function_component
+def button(text: str, variant: str = "primary"):
+    """간단한 버튼 컴포넌트."""
+    return f'<button class="btn btn-{variant}">{text}</button>'
+
+@function_component(template="components/card.html")
+def card(title: str = "", variant: str = "default"):
+    """템플릿 기반 카드 컴포넌트."""
+    return {"title": title, "variant": variant}
+```
+
+```html
+{% load wireview %}
+
+<!-- 심플 태그 -->
+{% func "button" text="Click me" variant="danger" %}
+
+<!-- 블록 태그 (슬롯 지원) -->
+{% func_block "card" title="Welcome" %}
+    {% fill header %}<h2>커스텀 헤더</h2>{% endfill %}
+    <p>카드 본문 내용</p>
+{% endfunc %}
+```
+
+**Component vs Function Component**:
+- **Component**: 상태 있음, WebSocket 실시간 업데이트, `{% on %}` 이벤트 지원
+- **Function Component**: 상태 없음, 정적 렌더링, 경량화
+
 ### 템플릿 태그
 
 ```html
@@ -539,6 +577,7 @@ WIREVIEW = {
 - [docs/ROADMAP.md](./docs/ROADMAP.md) - 개발 로드맵
 - [docs/features/hooks.md](./docs/features/hooks.md) - JavaScript Hooks 상세 문서
 - [docs/features/slots.md](./docs/features/slots.md) - Slots 상세 문서
+- [docs/features/function-components.md](./docs/features/function-components.md) - Function Components 상세 문서
 - [docs/features/temporary-assigns.md](./docs/features/temporary-assigns.md) - Temporary Assigns 상세 문서
 - [CHANGELOG.md](./CHANGELOG.md) - 변경 이력
 

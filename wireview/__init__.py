@@ -13,6 +13,8 @@ if t.TYPE_CHECKING:
     from .core.component import abroadcast as abroadcast
     from .core.component import broadcast as broadcast
     from .core.meta import WireviewMeta as WireviewMeta
+    from .function_component import FunctionComponent as FunctionComponent
+    from .function_component import function_component as function_component
     from .js import JS as JS
     from .testing import ComponentTestCase as ComponentTestCase
     from .testing import MountedComponent as MountedComponent
@@ -67,6 +69,15 @@ def __getattr__(name: str) -> t.Any:
         from .async_result import AsyncState
 
         return AsyncState
+    # Function components
+    if name == "function_component":
+        from .function_component import function_component
+
+        return function_component
+    if name == "FunctionComponent":
+        from .function_component import FunctionComponent
+
+        return FunctionComponent
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -77,6 +88,9 @@ __all__ = (
     "WireviewMeta",
     "broadcast",
     "abroadcast",
+    # Function components
+    "function_component",
+    "FunctionComponent",
     # Testing utilities
     "mount",
     "MountedComponent",

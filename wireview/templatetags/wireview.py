@@ -9,6 +9,7 @@ from django.utils.html import format_html
 from .. import settings
 from ..component import Component
 from ..event_transpiler import transpile
+from ..function_component import get_function_component
 from ..repository import ComponentRepository
 from ..slots import Slot, SlotContainer
 
@@ -504,3 +505,161 @@ def upload_button(context, name: str, **attrs):
         name=name,
         attrs=attrs_str,
     )
+
+
+# Function component template tags
+
+
+@register.simple_tag(takes_context=True)
+def func(context, _name: str, **kwargs: t.Any):
+    """
+    Render a stateless function component.
+
+    Function components are simpler than full components - they don't have
+    WebSocket state and are purely for rendering reusable UI elements.
+
+    Usage:
+        {% func "button" text="Click me" variant="primary" %}
+        {% func "icon" name="check" size=24 %}
+
+    The function component must be registered with @function_component decorator.
+    """
+    fc = get_function_component(_name)
+    return fc.render(kwargs)
+
+
+@register.tag("func_block")
+def do_func_block(parser: Parser, token: Token):
+    """
+    Block tag for rendering a function component with slots.
+
+    Usage:
+        {% func_block "card" title="Hello" %}
+            {% fill header %}
+                <h1>Custom Header</h1>
+            {% endfill %}
+
+            Default content here
+
+            {% fill footer %}
+                <button>Save</button>
+            {% endfill %}
+        {% endfunc %}
+    """
+    bits = token.split_contents()
+    tag_name = bits[0]
+
+    if len(bits) < 2:
+        raise template.TemplateSyntaxError(
+            f"'{tag_name}' tag requires a component name. "
+            f'Usage: {{% {tag_name} "name" attr=value %}}...{{% endfunc %}}'
+        )
+
+    component_name = bits[1]
+    # Remove quotes if present
+    if len(component_name) >= 2 and component_name[0] in ('"', "'") and component_name[-1] == component_name[0]:
+        component_name = component_name[1:-1]
+
+    # Parse remaining bits as kwargs
+    remaining_bits = bits[2:]
+    kwargs = token_kwargs(remaining_bits, parser)
+
+    # Parse until {% endfunc %}
+    nodelist = parser.parse(("endfunc",))
+    parser.delete_first_token()  # consume {% endfunc %}
+
+    return FuncBlockNode(component_name, kwargs, nodelist)
+
+
+class FuncBlockNode(Node):
+    """Node for {% func_block %}...{% endfunc %} block tag."""
+
+    def __init__(
+        self,
+        component_name: str,
+        kwargs: dict[str, t.Any],
+        nodelist: NodeList,
+    ):
+        self.component_name = component_name
+        self.kwargs = kwargs
+        self.nodelist = nodelist
+
+    def render(self, context: Context) -> str:
+        # Get the function component
+        fc = get_function_component(self.component_name)
+
+        # Resolve kwargs
+        resolved_kwargs = {}
+        for key, value in self.kwargs.items():
+            resolved_kwargs[key] = value.resolve(context)
+
+        # Extract slots from nodelist
+        slot_container = self._extract_slots(context)
+
+        # Validate required slots
+        self._validate_required_slots(fc, slot_container)
+
+        # Render the component
+        return fc.render(resolved_kwargs, slots=slot_container, context=context)
+
+    def _extract_slots(self, context: Context) -> SlotContainer:
+        """Extract slot definitions from the nodelist."""
+        container = SlotContainer()
+        default_nodes = NodeList()
+
+        for node in self.nodelist:
+            if isinstance(node, FillNode):
+                if node.let_vars:
+                    # Has let: bindings - keep nodelist for render-time binding
+                    slot = Slot(
+                        name=node.slot_name,
+                        nodelist=node.nodelist,
+                        let_vars=node.let_vars,
+                    )
+                else:
+                    # No let: bindings - pre-render to capture parent context
+                    rendered_content = node.nodelist.render(context)
+                    slot = Slot(
+                        name=node.slot_name,
+                        nodelist=NodeList([TextNode(rendered_content)]),
+                        let_vars=[],
+                    )
+                container.add(slot)
+            else:
+                # Default slot content
+                default_nodes.append(node)
+
+        # Only set default if there's actual content
+        has_content = False
+        for node in default_nodes:
+            if hasattr(node, "s"):  # TextNode
+                if node.s.strip():
+                    has_content = True
+                    break
+            else:
+                has_content = True
+                break
+
+        if has_content:
+            rendered_default = default_nodes.render(context)
+            container.set_default(NodeList([TextNode(rendered_default)]))
+
+        return container
+
+    def _validate_required_slots(
+        self,
+        fc: t.Any,
+        slots: SlotContainer,
+    ) -> None:
+        """Validate that required slots are provided."""
+        slot_defs = fc.slots
+
+        for slot_name, slot_config in slot_defs.items():
+            if slot_config.get("required") and not slots.has(slot_name):
+                doc = slot_config.get("doc", "")
+                doc_msg = f" ({doc})" if doc else ""
+                raise template.TemplateSyntaxError(
+                    f"Function component '{self.component_name}' "
+                    f"requires slot '{slot_name}'{doc_msg}. "
+                    f"Add: {{% fill {slot_name} %}}...{{% endfill %}}"
+                )

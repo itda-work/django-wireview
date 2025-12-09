@@ -31,7 +31,7 @@ django-wireview 지원:       ~55개 (73%)
 | Async Operations | 70% | ⚠️ 부분 완료 |
 | Navigation | 85% | ✅ 대부분 완료 |
 | **JavaScript Hooks** | 95% | ✅ 완료 |
-| **Components (Slots, LiveComponent)** | 60% | ⚠️ Slots 완료 |
+| **Components (Slots, Function, Live)** | 80% | ✅ 대부분 완료 |
 | Testing | 80% | ✅ 기본 완료 |
 | Developer Tools | 60% | ⚠️ 부분 완료 |
 
@@ -152,18 +152,18 @@ django-wireview 지원:       ~55개 (73%)
 | Colocated hooks | ✅ | ❌ | 🟠 |
 | onBeforeElUpdated | ✅ | ❌ | 🟡 |
 
-### 2.10 Components ⚠️
+### 2.10 Components ✅
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 |
 |------|:----------------:|:---------------:|:----:|
 | Stateful component | ✅ | ✅ Component | ✅ |
-| **LiveComponent** | ✅ 중첩 상태 | ❌ | 🔴 Critical |
-| **Function components** | ✅ | ❌ | 🔴 |
+| **LiveComponent** | ✅ 중첩 상태 | ❌ | 🟠 선택적 |
+| **Function components** | ✅ | `@function_component` | ✅ |
 | **Slots (named)** | ✅ `<:header>` | `{% fill header %}` | ✅ |
 | Slots (default) | ✅ `inner_block` | `{% render_slot %}` | ✅ |
 | Slots (let binding) | ✅ | `let:item` | ✅ |
-| @myself target | ✅ | ❌ | 🔴 |
-| update/2 callback | ✅ | ❌ | 🔴 |
+| @myself target | ✅ | ❌ | 🟠 선택적 |
+| update/2 callback | ✅ | ❌ | 🟠 선택적 |
 | update_many/1 | ✅ 배치 최적화 | ❌ | 🟠 |
 | Nested LiveViews | ✅ 프로세스 격리 | ❌ | 🟠 |
 
@@ -232,7 +232,7 @@ django-wireview 지원:       ~55개 (73%)
 |----|------|------|:------:|----------|
 | ~~GAP-001~~ | ~~**JavaScript Hooks**~~ | ~~클라이언트 측 라이프사이클 훅 (`wire-hook`)~~ | ~~상~~ | ✅ 완료 |
 | ~~GAP-002~~ | ~~**Slots**~~ | ~~컴포넌트 콘텐츠 합성 (`{% fill %}`, `{% render_slot %}`)~~ | ~~중~~ | ✅ 완료 |
-| GAP-003 | **Function Components** | 상태 없는 재사용 가능 템플릿 함수 | 중 | 1-2주 |
+| ~~GAP-003~~ | ~~**Function Components**~~ | ~~상태 없는 재사용 가능 템플릿 함수~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-004~~ | ~~**handle_params**~~ | ~~URL 파라미터 변경 시 콜백~~ | ~~중~~ | ✅ 완료 |
 | GAP-005 | **LiveComponent** | 독립 상태를 가진 중첩 컴포넌트 | 상 | 3-4주 |
 | ~~GAP-006~~ | ~~**temporary_assigns**~~ | ~~렌더 후 메모리 자동 해제~~ | ~~하~~ | ✅ 완료 |
@@ -289,7 +289,7 @@ django-wireview 지원:       ~55개 (73%)
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Phase 2: Component System ⚠️ 진행 중
+### Phase 2: Component System ✅ 대부분 완료
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -302,17 +302,18 @@ django-wireview 지원:       ~55개 (73%)
 │  ├─ default slot ({% render_slot %})                       │
 │  └─ let: 바인딩 지원                                       │
 │                                                             │
-│  GAP-003: Function Components                               │
-│  ├─ @register.simple_tag 기반 또는                         │
-│  └─ 커스텀 함수 컴포넌트 시스템                            │
+│  GAP-003: Function Components ✅ 완료                       │
+│  ├─ @function_component 데코레이터                         │
+│  ├─ {% func "name" %} 심플 태그                            │
+│  ├─ {% func_block "name" %}...{% endfunc %} 블록 태그      │
+│  └─ 타입 검증 및 슬롯 지원                                 │
 │                                                             │
 │  GAP-005: LiveComponent (선택적)                            │
 │  ├─ 중첩 상태 컴포넌트                                     │
 │  ├─ @myself 타겟팅                                         │
 │  └─ update/2 콜백                                          │
 │                                                             │
-│  의존성: Phase 1 완료 ✅                                    │
-│  예상 기간: 3-4주 (Slots 완료)                              │
+│  구현 완료: 2025-12                                         │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
