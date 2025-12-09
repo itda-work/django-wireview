@@ -1893,11 +1893,23 @@ window.wireview = {
    * @param {string} [eventType] - Optional event type for loading class
    */
   send(element, name, args, eventType) {
+    args = args || {};
+
+    // Handle _target for LiveComponent @myself targeting
+    const targetId = args._target;
+    if (targetId) {
+      delete args._target; // Don't send _target to server as an arg
+    }
+
     const component_el = /** @type {HTMLElement|null} */ (
       element.closest("[wireview-component]")
     );
     if (component_el === null) return;
-    let component = connection.components[component_el.id];
+
+    // Use target component if specified (LiveComponent), otherwise use closest
+    let componentId = targetId || component_el.id;
+    let component = connection.components[componentId];
+
     if (component !== undefined) {
       // Add loading classes
       element.classList.add("wireview-loading");
@@ -1906,8 +1918,9 @@ window.wireview = {
       }
 
       const form = /** @type {HTMLFormElement|null} */ (element.closest("form"));
-      const formScope = form && component_el.contains(form) ? form : component_el;
-      component.dispatch(name, args || {}, formScope);
+      const targetEl = targetId ? document.getElementById(targetId) : component_el;
+      const formScope = form && targetEl && targetEl.contains(form) ? form : targetEl || component_el;
+      component.dispatch(name, args, formScope);
     }
   },
 

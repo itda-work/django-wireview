@@ -355,3 +355,58 @@ class TestComponentRepositoryLiveComponent:
 
         assert len(children) == 2
         assert all(c._parent_id == "dashboard-1" for c in children)
+
+
+@pytest.mark.unit
+class TestMyselfTargeting:
+    """Test @myself targeting via {% on %} tag."""
+
+    def test_transpile_includes_target_in_kwargs(self):
+        """Test that _target is included in transpiled kwargs."""
+        from wireview.event_transpiler import transpile
+
+        # Normal call without target
+        _, code_normal = transpile("click", "increment", {"amount": 1})
+        assert "_target" not in code_normal
+
+        # Call with _target
+        _, code_with_target = transpile("click", "increment", {"amount": 1, "_target": "counter-1"})
+        assert "_target" in code_with_target
+        assert "counter-1" in code_with_target
+
+    def test_on_tag_myself_parameter(self):
+        """Test that {% on %} tag accepts myself parameter."""
+        from unittest.mock import MagicMock
+
+        from django.template import Context, Template
+
+        # Create a mock component in context
+        mock_component = MagicMock()
+        mock_component.id = "test-live-1"
+        mock_component._name = "TestLive"
+        mock_component.increment = MagicMock()  # Method exists
+
+        # Render template with on tag using myself
+        template = Template('{% load wireview %}{% on "click" "increment" myself=True %}')
+        result = template.render(Context({"this": mock_component}))
+
+        # Should include _target with component ID
+        assert "_target" in result
+        assert "test-live-1" in result
+
+    def test_on_tag_without_myself(self):
+        """Test that {% on %} without myself doesn't add _target."""
+        from unittest.mock import MagicMock
+
+        from django.template import Context, Template
+
+        mock_component = MagicMock()
+        mock_component.id = "test-comp-1"
+        mock_component._name = "TestComp"
+        mock_component.increment = MagicMock()
+
+        template = Template('{% load wireview %}{% on "click" "increment" %}')
+        result = template.render(Context({"this": mock_component}))
+
+        # Should NOT include _target
+        assert "_target" not in result

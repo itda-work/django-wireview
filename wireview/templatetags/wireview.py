@@ -313,18 +313,27 @@ def render_slot(context, name: str = "", **extra_context):
 
 
 @register.simple_tag(takes_context=True)
-def on(context, _event_and_modifiers, _command, **kwargs: t.Any):
+def on(context, _event_and_modifiers, _command, myself: bool = False, **kwargs: t.Any):
     """
     Bind an event handler to an element.
 
     Supports both string commands (server event handlers) and JS command
     builder objects (client-side commands).
 
+    Args:
+        _event_and_modifiers: Event name with optional modifiers (e.g., "click.prevent")
+        _command: Handler name (string) or JS command builder
+        myself: If True, target the current LiveComponent instead of parent.
+                Required for events inside LiveComponent templates.
+
     Examples:
         {% on "click" "increment" %}
         {% on "click" "save" item_id=item.id %}
         {% on "click" JS().toggle("#modal") %}
         {% on "click" JS().push("save").hide() %}
+
+        {# LiveComponent event targeting itself #}
+        {% on "click" "increment" myself=True %}
     """
     from ..js import JS
 
@@ -345,6 +354,10 @@ def on(context, _event_and_modifiers, _command, **kwargs: t.Any):
                     handler = getattr(component, event_name, None)
                     assert handler, f"Missing handler: {component._name}.{event_name}"
                     assert callable(handler), f"Not callable: {component._name}.{event_name}"
+
+    # Add target ID for LiveComponent @myself targeting
+    if myself:
+        kwargs["_target"] = component.id
 
     event, code = transpile(_event_and_modifiers, _command, kwargs)
     return format_html('{event}="{code}"', event=event, code=code)
