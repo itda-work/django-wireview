@@ -33,7 +33,7 @@ django-wireview 지원:       ~55개 (73%)
 | **JavaScript Hooks** | 95% | ✅ 완료 |
 | **Components (Slots, Function, Live)** | 95% | ✅ 완료 |
 | Testing | 80% | ✅ 기본 완료 |
-| Developer Tools | 60% | ⚠️ 부분 완료 |
+| Developer Tools | 85% | ✅ 대부분 완료 |
 
 ---
 
@@ -202,13 +202,13 @@ django-wireview 지원:       ~55개 (73%)
 | follow_redirect | ✅ | 수동 검증 | ⚠️ |
 | MockChannelLayer | - | ✅ | ✅ 추가 기능 |
 
-### 2.14 Developer Tools ⚠️
+### 2.14 Developer Tools ✅
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 |
 |------|:----------------:|:---------------:|:----:|
 | enableDebug | ✅ | `wireview.debug.enable()` | ✅ |
 | enableLatencySim | ✅ | `wireview.debug.latency()` | ✅ |
-| enableProfiling | ✅ | ❌ | 🟡 |
+| enableProfiling | ✅ | `wireview.debug.enableProfiling()` | ✅ |
 | Telemetry | ✅ | ❌ | 🟡 |
 | **Type Stubs** | - | `wireview_stubs` | ✅ 추가 기능 |
 | **LSP Metadata** | - | `wireview_lsp` | ✅ 추가 기능 |
@@ -261,7 +261,7 @@ django-wireview 지원:       ~55개 (73%)
 | ~~GAP-017~~ | ~~start_async/cancel_async~~ | ~~세밀한 비동기 제어~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-018~~ | ~~phx-disabled-with~~ | ~~버튼 비활성화 텍스트~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-019~~ | ~~phx-feedback-for~~ | ~~폼 필드 에러 표시~~ | ~~하~~ | ✅ 완료 |
-| GAP-020 | enableProfiling | 성능 프로파일링 | 중 | 1주 |
+| ~~GAP-020~~ | ~~enableProfiling~~ | ~~성능 프로파일링~~ | ~~중~~ | ✅ 완료 |
 | GAP-021 | on_mount hooks | 공통 마운트 로직 모듈화 | 중 | 1주 |
 | GAP-022 | Telemetry | 성능 측정 훅 | 중 | 1-2주 |
 | ~~GAP-023~~ | ~~onBeforeElUpdated~~ | ~~DOM 패치 전 콜백~~ | ~~하~~ | ✅ 완료 |

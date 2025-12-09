@@ -178,6 +178,9 @@ class ServerConnection {
     debugLog("recv", command, payload);
     switch (command) {
       case "render":
+        // End timing for profiling (event round-trip complete)
+        endEventTiming();
+
         var { id, diff } = payload;
         this.components[id]?.applyDiff(diff);
         break;
@@ -791,7 +794,12 @@ class WireviewComponent {
           // Call beforeUpdate on all hooks
           this.hookManager.beforeUpdate();
 
+          // Profile patch time
+          const patchStart = profilingEnabled ? performance.now() : 0;
           boost.morph(el, html);
+          if (profilingEnabled) {
+            recordPatchTime(performance.now() - patchStart);
+          }
           boost.navEvent.sendNewContent();
 
           // Call updated on all hooks (and scan for new ones)
@@ -2336,6 +2344,73 @@ var throttleLastCall = 0;
 var debugEnabled = false;
 /** @type {number} */
 var debugLatency = 0;
+/** @type {boolean} */
+var profilingEnabled = false;
+
+/**
+ * Performance metrics storage for profiling.
+ * @type {{
+ *   patchTimes: number[],
+ *   roundTripTimes: number[],
+ *   eventCount: number,
+ *   lastEventStart: number,
+ *   startTime: number
+ * }}
+ */
+var profilingMetrics = {
+  patchTimes: [],
+  roundTripTimes: [],
+  eventCount: 0,
+  lastEventStart: 0,
+  startTime: 0,
+};
+
+/**
+ * Record a patch/morph operation time.
+ * @param {number} duration - Duration in milliseconds
+ */
+function recordPatchTime(duration) {
+  if (!profilingEnabled) return;
+  profilingMetrics.patchTimes.push(duration);
+  console.log(
+    `%c[wireview profiler]%c Patch: ${duration.toFixed(2)}ms`,
+    "color: #059669; font-weight: bold",
+    "color: inherit"
+  );
+}
+
+/**
+ * Record a round-trip time (event send to response receive).
+ * @param {number} duration - Duration in milliseconds
+ */
+function recordRoundTrip(duration) {
+  if (!profilingEnabled) return;
+  profilingMetrics.roundTripTimes.push(duration);
+  profilingMetrics.eventCount++;
+  console.log(
+    `%c[wireview profiler]%c Round-trip: ${duration.toFixed(2)}ms`,
+    "color: #059669; font-weight: bold",
+    "color: inherit"
+  );
+}
+
+/**
+ * Start timing an event.
+ */
+function startEventTiming() {
+  if (!profilingEnabled) return;
+  profilingMetrics.lastEventStart = performance.now();
+}
+
+/**
+ * End timing an event and record round-trip.
+ */
+function endEventTiming() {
+  if (!profilingEnabled || profilingMetrics.lastEventStart === 0) return;
+  const duration = performance.now() - profilingMetrics.lastEventStart;
+  recordRoundTrip(duration);
+  profilingMetrics.lastEventStart = 0;
+}
 
 /**
  * Log a debug message if debug mode is enabled.
@@ -2657,6 +2732,10 @@ window.wireview = {
       const form = /** @type {HTMLFormElement|null} */ (element.closest("form"));
       const targetEl = targetId ? document.getElementById(targetId) : component_el;
       const formScope = form && targetEl && targetEl.contains(form) ? form : targetEl || component_el;
+
+      // Start timing for profiling
+      startEventTiming();
+
       component.dispatch(name, args, formScope);
     }
   },
@@ -2886,6 +2965,91 @@ window.wireview = {
      */
     component(id) {
       return connection.components[id];
+    },
+
+    /**
+     * Enable performance profiling.
+     * Logs patch times and round-trip latencies for each event.
+     */
+    enableProfiling() {
+      profilingEnabled = true;
+      profilingMetrics = {
+        patchTimes: [],
+        roundTripTimes: [],
+        eventCount: 0,
+        lastEventStart: 0,
+        startTime: performance.now(),
+      };
+      console.log(
+        "%c[wireview]%c Profiling enabled. Interact with the page, then call wireview.debug.profilingReport() to see results.",
+        "color: #7c3aed; font-weight: bold",
+        "color: inherit"
+      );
+    },
+
+    /**
+     * Disable performance profiling.
+     */
+    disableProfiling() {
+      profilingEnabled = false;
+      console.log(
+        "%c[wireview]%c Profiling disabled.",
+        "color: #7c3aed; font-weight: bold",
+        "color: inherit"
+      );
+    },
+
+    /**
+     * Get a profiling report with statistics.
+     * @returns {{
+     *   enabled: boolean,
+     *   duration: number,
+     *   eventCount: number,
+     *   patch: { count: number, min: number, max: number, avg: number, median: number },
+     *   roundTrip: { count: number, min: number, max: number, avg: number, median: number }
+     * }}
+     */
+    profilingReport() {
+      const calcStats = (/** @type {number[]} */ arr) => {
+        if (arr.length === 0) {
+          return { count: 0, min: 0, max: 0, avg: 0, median: 0 };
+        }
+        const sorted = [...arr].sort((a, b) => a - b);
+        const sum = arr.reduce((a, b) => a + b, 0);
+        return {
+          count: arr.length,
+          min: Math.round(sorted[0] * 100) / 100,
+          max: Math.round(sorted[sorted.length - 1] * 100) / 100,
+          avg: Math.round((sum / arr.length) * 100) / 100,
+          median: Math.round(sorted[Math.floor(sorted.length / 2)] * 100) / 100,
+        };
+      };
+
+      const duration = profilingEnabled
+        ? (performance.now() - profilingMetrics.startTime) / 1000
+        : 0;
+
+      const report = {
+        enabled: profilingEnabled,
+        duration: Math.round(duration * 10) / 10,
+        eventCount: profilingMetrics.eventCount,
+        patch: calcStats(profilingMetrics.patchTimes),
+        roundTrip: calcStats(profilingMetrics.roundTripTimes),
+      };
+
+      console.group("%c[wireview] Profiling Report", "color: #059669; font-weight: bold");
+      console.log("Profiling enabled:", report.enabled);
+      console.log("Duration:", report.duration, "seconds");
+      console.log("Events processed:", report.eventCount);
+      console.log("");
+      console.log("Patch times (DOM morph):");
+      console.table(report.patch);
+      console.log("");
+      console.log("Round-trip times (event → response):");
+      console.table(report.roundTrip);
+      console.groupEnd();
+
+      return report;
     },
   },
 

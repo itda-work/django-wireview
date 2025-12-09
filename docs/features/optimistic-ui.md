@@ -162,6 +162,28 @@ The `JS()` command executes immediately, while `wire-disabled-with` handles the 
 | `phx-submit-loading` | `wireview-submit-loading` |
 | `phx-change-loading` | `wireview-change-loading` |
 
+## Performance Profiling
+
+Use the built-in profiling tools to measure response times:
+
+```javascript
+// Enable profiling in browser console
+wireview.debug.enableProfiling();
+
+// Interact with the page...
+
+// View the report
+wireview.debug.profilingReport();
+
+// Disable profiling
+wireview.debug.disableProfiling();
+```
+
+The profiling report includes:
+- **Patch times**: Time to apply DOM morphs
+- **Round-trip times**: Time from event send to response receive
+- **Statistics**: min, max, avg, median for each metric
+
 ## See Also
 
 - [JS Commands](../reference/js-commands.md)
