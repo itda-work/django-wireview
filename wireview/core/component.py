@@ -22,6 +22,8 @@ from ..utils import db
 from .meta import Repo, WireviewMeta
 
 if t.TYPE_CHECKING:
+    import asyncio
+
     from ..features.uploads import (
         ConsumedUpload,
         ExternalUploadCallback,
@@ -612,6 +614,123 @@ class Component(BaseModel):
         await self.wire.queue_broadcast(channel, **kwargs)
 
     # Async operations
+
+    # Track active async tasks by name
+    _async_tasks: dict[str, "asyncio.Task[t.Any]"] = {}
+
+    async def start_async(
+        self,
+        name: str,
+        coro: t.Coroutine[t.Any, t.Any, t.Any],
+    ) -> None:
+        """
+        Start a named async operation that can be cancelled or replaced.
+
+        When the operation completes, `handle_async` will be called with the
+        result or error. If an operation with the same name is already running,
+        it will be cancelled and replaced.
+
+        Args:
+            name: Unique name for this async operation
+            coro: The coroutine to execute
+
+        Example:
+            class Search(Component):
+                results: list[str] = []
+                loading: bool = False
+
+                async def search(self, query: str):
+                    self.loading = True
+                    await self.start_async("search", self.do_search(query))
+
+                async def do_search(self, query: str) -> list[str]:
+                    return await SearchService.search(query)
+
+                async def handle_async(
+                    self,
+                    name: str,
+                    result: tuple[Literal["ok"], Any] | tuple[Literal["exit"], Exception],
+                ):
+                    if name == "search":
+                        self.loading = False
+                        if result[0] == "ok":
+                            self.results = result[1]
+                        else:
+                            self.results = []
+        """
+        import asyncio
+
+        # Cancel existing task with same name
+        await self.cancel_async(name)
+
+        async def run_and_handle() -> None:
+            try:
+                value = await coro
+                # Call handle_async with success result
+                await self.handle_async(name, ("ok", value))
+            except asyncio.CancelledError:
+                # Task was cancelled - don't call handle_async
+                pass
+            except Exception as e:
+                # Call handle_async with error result
+                await self.handle_async(name, ("exit", e))
+            finally:
+                # Remove from tracking
+                self._async_tasks.pop(name, None)
+                # Trigger re-render
+                await self.send_render()
+
+        # Create and track the task
+        task = asyncio.create_task(run_and_handle())
+        self._async_tasks[name] = task
+
+    async def cancel_async(self, name: str) -> bool:
+        """
+        Cancel an in-flight async operation by name.
+
+        Args:
+            name: The name of the async operation to cancel
+
+        Returns:
+            True if a task was cancelled, False if no task was running
+
+        Example:
+            async def cancel_search(self):
+                await self.cancel_async("search")
+                self.loading = False
+        """
+        task = self._async_tasks.pop(name, None)
+        if task and not task.done():
+            task.cancel()
+            return True
+        return False
+
+    async def handle_async(
+        self,
+        name: str,
+        result: "tuple[t.Literal['ok'], t.Any] | tuple[t.Literal['exit'], Exception]",
+    ) -> None:
+        """
+        Handle the completion of a named async operation.
+
+        Override this method to process the results of async operations
+        started with `start_async`.
+
+        Args:
+            name: The name of the completed async operation
+            result: Tuple of ("ok", value) or ("exit", exception)
+
+        Example:
+            async def handle_async(self, name, result):
+                if name == "load_data":
+                    if result[0] == "ok":
+                        self.data = result[1]
+                    else:
+                        self.error = str(result[1])
+        """
+        # Default implementation does nothing
+        # Override in subclass to handle results
+        pass
 
     async def assign_async(
         self,

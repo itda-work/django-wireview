@@ -28,7 +28,7 @@ django-wireview 지원:       ~55개 (73%)
 | Optimistic UI | 95% | ✅ 완료 |
 | Streams | 80% | ✅ 기본 완료 |
 | File Uploads | 100% | ✅ 완료 |
-| Async Operations | 70% | ⚠️ 부분 완료 |
+| Async Operations | 95% | ✅ 대부분 완료 |
 | Navigation | 85% | ✅ 대부분 완료 |
 | **JavaScript Hooks** | 95% | ✅ 완료 |
 | **Components (Slots, Function, Live)** | 95% | ✅ 완료 |
@@ -113,15 +113,15 @@ django-wireview 지원:       ~55개 (73%)
 | External upload (S3) | ✅ | `external=callback` | ✅ |
 | Magic byte validation | ✅ | ✅ | ✅ |
 
-### 2.7 Async Operations ⚠️
+### 2.7 Async Operations ✅
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 |
 |------|:----------------:|:---------------:|:----:|
 | assign_async() | ✅ | `assign_async()` | ✅ |
 | AsyncResult states | loading/ok/failed | loading/ok/failed | ✅ |
-| start_async() | ✅ | ❌ | 🟡 |
-| cancel_async() | ✅ | ❌ | 🟡 |
-| handle_async() | ✅ | 자동 처리 | ✅ |
+| start_async() | ✅ | `start_async()` | ✅ |
+| cancel_async() | ✅ | `cancel_async()` | ✅ |
+| handle_async() | ✅ | `handle_async()` | ✅ |
 
 ### 2.8 Navigation ✅
 
@@ -258,7 +258,7 @@ django-wireview 지원:       ~55개 (73%)
 | ~~GAP-014~~ | ~~stream :limit~~ | ~~스트림 DOM 크기 제한~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-015~~ | ~~phx-viewport-*~~ | ~~양방향 무한 스크롤 바인딩~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-016~~ | ~~Image Preview~~ | ~~업로드 이미지 미리보기~~ | ~~하~~ | ✅ 완료 |
-| GAP-017 | start_async/cancel_async | 세밀한 비동기 제어 | 중 | 1주 |
+| ~~GAP-017~~ | ~~start_async/cancel_async~~ | ~~세밀한 비동기 제어~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-018~~ | ~~phx-disabled-with~~ | ~~버튼 비활성화 텍스트~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-019~~ | ~~phx-feedback-for~~ | ~~폼 필드 에러 표시~~ | ~~하~~ | ✅ 완료 |
 | GAP-020 | enableProfiling | 성능 프로파일링 | 중 | 1주 |
