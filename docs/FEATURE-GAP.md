@@ -242,10 +242,10 @@ django-wireview 지원:       ~55개 (73%)
 | ID | 기능 | 설명 | 난이도 | 예상 작업 |
 |----|------|------|:------:|----------|
 | GAP-007 | External Uploads | S3/GCS 직접 업로드 | 중 | 1-2주 |
-| GAP-008 | Form Auto-Recovery | 재연결 시 폼 상태 복구 | 중 | 1주 |
+| ~~GAP-008~~ | ~~Form Auto-Recovery~~ | ~~재연결 시 폼 상태 복구~~ | ~~중~~ | ✅ 완료 |
 | GAP-009 | live_session | 인증/레이아웃 경계 관리 | 중 | 1-2주 |
-| GAP-010 | Page Title | 동적 페이지 타이틀 변경 | 하 | 2-3일 |
-| GAP-011 | Flash Messages | 일회성 알림 메시지 | 하 | 3-5일 |
+| ~~GAP-010~~ | ~~Page Title~~ | ~~동적 페이지 타이틀 변경~~ | ~~하~~ | ✅ 완료 |
+| ~~GAP-011~~ | ~~Flash Messages~~ | ~~일회성 알림 메시지~~ | ~~하~~ | ✅ 완료 |
 | GAP-012 | LongPolling Fallback | WebSocket 불가 시 폴백 | 중 | 1-2주 |
 | ~~GAP-013~~ | ~~pushEvent (Hook→Server)~~ | ~~훅에서 서버로 이벤트 전송~~ | ~~중~~ | ✅ 완료 |
 
@@ -319,28 +319,28 @@ django-wireview 지원:       ~55개 (73%)
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Phase 3: Navigation & Forms (Q2)
+### Phase 3: Navigation & Forms ✅ 완료
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Phase 3: Navigation & Form Enhancement                     │
+│  Phase 3: Navigation & Form Enhancement  ✅ 완료            │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  GAP-004: handle_params ✅ 완료                             │
 │  ├─ URL 변경 감지                                          │
 │  └─ params_changed() 콜백                                  │
 │                                                             │
-│  GAP-008: Form Auto-Recovery                                │
+│  GAP-008: Form Auto-Recovery ✅ 완료                        │
 │  ├─ 재연결 시 폼 상태 저장/복구                            │
 │  └─ wire-auto-recover 속성                                 │
 │                                                             │
-│  GAP-010: Page Title                                        │
+│  GAP-010: Page Title ✅ 완료                                │
 │  └─ push_title() 메서드                                    │
 │                                                             │
-│  GAP-011: Flash Messages                                    │
+│  GAP-011: Flash Messages ✅ 완료                            │
 │  └─ put_flash() / clear_flash()                            │
 │                                                             │
-│  예상 기간: 3-4주                                           │
+│  구현 완료: 2025-12                                         │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
