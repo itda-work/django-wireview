@@ -28,6 +28,7 @@ urlpatterns = [
     path("search/", include("testproj.search.urls")),
     path("quiz/", include("testproj.quiz.urls")),
     path("notifications/", include("testproj.notifications.urls")),
+    path("livecomp/", include("testproj.livecomp.urls")),
     path("admin/", admin.site.urls),
 ]
 
