@@ -350,6 +350,181 @@ async def cancel_file(self, ref: str):
 
 `wire-upload` 속성이 있는 input은 자동으로 드래그 앤 드롭을 지원합니다.
 
+## 이미지 미리보기
+
+`{% upload_preview %}` 태그로 업로드 전 이미지 미리보기를 표시합니다.
+
+### 기본 사용법
+
+```html
+{% load wireview %}
+
+<div {% tag_header %}>
+  <h3>프로필 사진 업로드</h3>
+
+  {% upload_input "avatar" %}
+
+  <!-- 업로드된 이미지 미리보기 -->
+  {% for entry in this.uploads.avatar %}
+    <div class="preview-container">
+      {% upload_preview entry class="w-32 h-32 rounded-full object-cover" %}
+      <p>{{ entry.client_name }}</p>
+    </div>
+  {% endfor %}
+</div>
+```
+
+### 갤러리 미리보기
+
+```html
+<div class="gallery-upload">
+  {% upload_input "photos" multiple %}
+
+  <div class="grid grid-cols-4 gap-4">
+    {% for entry in this.uploads.photos %}
+      <div class="relative">
+        {% upload_preview entry class="w-full h-32 object-cover rounded" %}
+
+        <!-- 업로드 진행률 오버레이 -->
+        {% if entry.status == 'uploading' %}
+          <div class="absolute inset-0 bg-black/50 flex items-center justify-center">
+            <span class="text-white">{{ entry.progress }}%</span>
+          </div>
+        {% endif %}
+
+        <!-- 취소 버튼 -->
+        <button
+          {% on "click" "cancel_file" ref=entry.ref %}
+          class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6"
+        >×</button>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+```
+
+### 미리보기가 표시되지 않는 경우
+
+- **비이미지 파일**: PDF, DOC 등은 미리보기가 표시되지 않습니다
+- **파일 미선택**: 아직 파일을 선택하지 않은 경우
+- **브라우저 호환성**: 구형 브라우저에서는 Blob URL을 지원하지 않을 수 있습니다
+
+## 외부 스토리지 업로드 (S3/GCS)
+
+대용량 파일은 Django 서버를 거치지 않고 직접 클라우드 스토리지로 업로드할 수 있습니다.
+
+### S3 직접 업로드
+
+```python
+import boto3
+from wireview import Component, ExternalUploadMeta
+
+
+class XDocumentUploader(Component):
+    _template_name = "documents/uploader.html"
+
+    async def joined(self):
+        self.allow_upload(
+            "documents",
+            accept=[".pdf", ".doc", ".docx"],
+            max_file_size=100 * 1024 * 1024,  # 100MB
+            external=self.presign_s3_upload,  # 외부 업로드 콜백
+        )
+
+    def presign_s3_upload(self, entry, component):
+        """S3 presigned URL 생성"""
+        s3 = boto3.client("s3")
+
+        key = f"documents/{entry.ref}/{entry.client_name}"
+        url = s3.generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket": "my-bucket",
+                "Key": key,
+                "ContentType": entry.client_type,
+            },
+            ExpiresIn=3600,
+        )
+
+        return ExternalUploadMeta(
+            uploader="S3",
+            url=url,
+            headers={"Content-Type": entry.client_type},
+        )
+
+    async def save_document(self):
+        # 업로드 완료 후 DB에 기록
+        for upload in self.consume_uploads("documents"):
+            key = f"documents/{upload.ref}/{upload.name}"
+            await Document.objects.acreate(
+                name=upload.name,
+                s3_key=key,
+                size=upload.size,
+            )
+```
+
+### GCS 직접 업로드
+
+```python
+from google.cloud import storage
+from wireview import Component, ExternalUploadMeta
+
+
+class XImageUploader(Component):
+    _template_name = "images/uploader.html"
+
+    async def joined(self):
+        self.allow_upload(
+            "images",
+            accept=[".jpg", ".png", ".webp"],
+            external=self.presign_gcs_upload,
+        )
+
+    def presign_gcs_upload(self, entry, component):
+        """GCS signed URL 생성"""
+        client = storage.Client()
+        bucket = client.bucket("my-bucket")
+        blob = bucket.blob(f"images/{entry.ref}/{entry.client_name}")
+
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=3600,
+            method="PUT",
+            content_type=entry.client_type,
+        )
+
+        return ExternalUploadMeta(
+            uploader="GCS",
+            url=url,
+            headers={"Content-Type": entry.client_type},
+        )
+```
+
+### CORS 설정
+
+외부 업로드를 위해 스토리지 버킷에 CORS 설정이 필요합니다:
+
+**S3 CORS:**
+```json
+{
+  "CORSRules": [{
+    "AllowedOrigins": ["https://your-domain.com"],
+    "AllowedMethods": ["PUT"],
+    "AllowedHeaders": ["*"],
+    "MaxAgeSeconds": 3600
+  }]
+}
+```
+
+### 일반 업로드 vs 외부 업로드
+
+| 항목 | 일반 업로드 | 외부 업로드 (S3/GCS) |
+|------|------------|---------------------|
+| 서버 대역폭 | 파일이 서버를 통과 | 직접 스토리지로 전송 |
+| 속도 | 소용량 파일에 적합 | 대용량 파일에 최적 |
+| 설정 | 즉시 사용 가능 | CORS 설정 필요 |
+| 파일 처리 | 서버에서 가공 가능 | 업로드 후 별도 처리 |
+
 ## 에러 처리
 
 ### 공통 에러

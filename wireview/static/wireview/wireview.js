@@ -799,6 +799,12 @@ class WireviewComponent {
 
           // Update viewport observer (scan for new viewport elements)
           this.viewportObserver.updated();
+
+          // Update upload previews (populate src for new preview elements)
+          const uploadManager = uploadManagers[this.id];
+          if (uploadManager) {
+            uploadManager.updatePreviews();
+          }
         }
       }
     });
@@ -1689,8 +1695,69 @@ class UploadManager {
       });
     }
 
+    // Update preview images
+    this.updatePreviews(name);
+
     // Dispatch event for UI updates
     this._dispatchEvent("upload:added", { upload: name });
+  }
+
+  /**
+   * Update preview images for an upload field.
+   * Finds img elements with wire-preview attribute and sets their src.
+   * @param {string} name - Upload field name (optional, updates all if not specified)
+   */
+  updatePreviews(name) {
+    const entries = name ? this.entries[name] : null;
+
+    // Find all preview elements in the document
+    const selector = name
+      ? `[wire-preview^="${name}:"]`
+      : "[wire-preview]";
+    const previewElements = document.querySelectorAll(selector);
+
+    previewElements.forEach((img) => {
+      const previewAttr = img.getAttribute("wire-preview");
+      if (!previewAttr) return;
+
+      const [uploadName, ref] = previewAttr.split(":");
+      if (!uploadName || !ref) return;
+
+      const entry = this.entries[uploadName]?.[ref];
+      if (!entry || !entry.file) return;
+
+      // Only set preview for image files
+      if (entry.file.type.startsWith("image/")) {
+        // Check if src is already set to avoid recreating blob URL
+        if (!img.src || img.src === "" || img.src === window.location.href) {
+          const url = URL.createObjectURL(entry.file);
+          img.src = url;
+          // Store URL for cleanup
+          img._blobUrl = url;
+          debugLog("upload", `Set preview: ${uploadName}/${ref}`);
+        }
+      }
+    });
+  }
+
+  /**
+   * Clean up blob URLs for preview images.
+   * Called when entries are removed or component is destroyed.
+   * @param {string} name - Upload field name
+   * @param {string} ref - Entry reference (optional, cleans all for name if not specified)
+   */
+  cleanupPreviews(name, ref) {
+    const selector = ref
+      ? `[wire-preview="${name}:${ref}"]`
+      : `[wire-preview^="${name}:"]`;
+    const previewElements = document.querySelectorAll(selector);
+
+    previewElements.forEach((img) => {
+      if (img._blobUrl) {
+        URL.revokeObjectURL(img._blobUrl);
+        delete img._blobUrl;
+      }
+    });
   }
 
   /**
@@ -1774,6 +1841,8 @@ class UploadManager {
     if (entry) {
       entry.status = "cancelled";
       entry.controller?.abort();
+      // Clean up preview blob URL
+      this.cleanupPreviews(name, ref);
       this._dispatchEvent("upload:cancel", { upload: name, ref });
     }
   }

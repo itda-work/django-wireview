@@ -5,6 +5,7 @@ from django.core.signing import Signer
 from django.template.base import Node, NodeList, Parser, TextNode, Token, token_kwargs
 from django.template.context import Context
 from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 
 from .. import settings
 from ..component import Component
@@ -517,6 +518,47 @@ def upload_button(context, name: str, **attrs):
         '<button type="button" {attrs} onclick="wireview.selectFiles(this, \'{name}\')">',
         name=name,
         attrs=attrs_str,
+    )
+
+
+@register.simple_tag
+def upload_preview(entry, **attrs):
+    """
+    Render an image preview for an upload entry.
+
+    This creates an img element that will display a preview of the selected
+    image file before it's uploaded. The preview is generated client-side
+    using a blob URL.
+
+    Args:
+        entry: UploadEntry object from uploads.{name}
+        **attrs: Additional HTML attributes for the img element
+
+    Example:
+        {% for entry in this.uploads.images %}
+            {% upload_preview entry class="w-32 h-32 object-cover" %}
+        {% endfor %}
+
+    Note: Preview only works for image files. Non-image files will show
+    an empty img element or the alt text if provided.
+    """
+    # Build attributes
+    attrs_parts = []
+    for key, value in attrs.items():
+        # Convert underscores to hyphens for HTML attributes
+        html_key = key.replace("_", "-")
+        attrs_parts.append(f'{html_key}="{value}"')
+    attrs_str = " ".join(attrs_parts)
+
+    # Get entry ref - support both UploadEntry objects and dicts
+    ref = getattr(entry, "ref", None) or entry.get("ref", "") if isinstance(entry, dict) else ""
+    upload_name = getattr(entry, "upload_name", None) or entry.get("upload_name", "") if isinstance(entry, dict) else ""
+
+    return format_html(
+        '<img wire-preview="{upload_name}:{ref}" {attrs} />',
+        upload_name=upload_name,
+        ref=ref,
+        attrs=mark_safe(attrs_str),
     )
 
 

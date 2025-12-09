@@ -27,7 +27,7 @@ django-wireview 지원:       ~55개 (73%)
 | JS Commands (LiveView.JS) | 95% | ✅ 완료 |
 | Optimistic UI | 80% | ✅ 대부분 완료 |
 | Streams | 80% | ✅ 기본 완료 |
-| File Uploads | 95% | ✅ 대부분 완료 |
+| File Uploads | 100% | ✅ 완료 |
 | Async Operations | 70% | ⚠️ 부분 완료 |
 | Navigation | 85% | ✅ 대부분 완료 |
 | **JavaScript Hooks** | 95% | ✅ 완료 |
@@ -106,7 +106,7 @@ django-wireview 지원:       ~55개 (73%)
 | allow_upload() | ✅ | `allow_upload()` | ✅ |
 | live_file_input | ✅ | `{% upload_input %}` | ✅ |
 | Progress tracking | ✅ | `entry.progress` | ✅ |
-| Image preview | ✅ | ❌ | 🟡 |
+| Image preview | ✅ | `{% upload_preview %}` | ✅ |
 | Drag and drop | ✅ | `{% upload_drop_zone %}` | ✅ |
 | Chunk upload | ✅ | ✅ | ✅ |
 | consume_uploads | ✅ | `consume_uploads()` | ✅ |
@@ -257,7 +257,7 @@ django-wireview 지원:       ~55개 (73%)
 |----|------|------|:------:|----------|
 | ~~GAP-014~~ | ~~stream :limit~~ | ~~스트림 DOM 크기 제한~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-015~~ | ~~phx-viewport-*~~ | ~~양방향 무한 스크롤 바인딩~~ | ~~중~~ | ✅ 완료 |
-| GAP-016 | Image Preview | 업로드 이미지 미리보기 | 하 | 3-5일 |
+| ~~GAP-016~~ | ~~Image Preview~~ | ~~업로드 이미지 미리보기~~ | ~~하~~ | ✅ 완료 |
 | GAP-017 | start_async/cancel_async | 세밀한 비동기 제어 | 중 | 1주 |
 | GAP-018 | phx-disabled-with | 버튼 비활성화 텍스트 | 하 | 2-3일 |
 | GAP-019 | phx-feedback-for | 폼 필드 에러 표시 | 하 | 3-5일 |
