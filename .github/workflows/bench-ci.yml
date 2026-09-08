@@ -1,0 +1,104 @@
+name: Bench (CI runners)
+
+# Manual. Runs the WebSocket benchmark on GitHub-hosted Windows and Linux runners of the
+# same class, so the Windows + SQLite deployment premise is measured rather than assumed
+# and the OS effect is separated from the hardware: daphne vs uvicorn, in-memory vs
+# channels-nats across 4 processes. Every bench step may fail (daphne is expected to hit
+# the 512-socket select() limit on Windows). Results and server logs are uploaded as
+# artifacts; read them with `gh run download <run-id>`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      connections:
+        description: connections for the 2000-class runs
+        default: "2000"
+      channels_nats_wheel_b64:
+        description: base64 of a channels-nats wheel (the repository is private, so runners cannot clone it). Empty installs from PyPI.
+        default: ""
+      channels_nats_wheel_name:
+        description: file name of that wheel (uv checks the version in the name)
+        default: "channels_nats-0.2.0-py3-none-any.whl"
+
+env:
+  NATS_VERSION: v2.14.6
+
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv python install 3.12
+
+      - name: Install nats-server (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          curl -sL "https://github.com/nats-io/nats-server/releases/download/${NATS_VERSION}/nats-server-${NATS_VERSION}-linux-amd64.tar.gz" | tar xz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/nats-server-${NATS_VERSION}-linux-amd64" >> "$GITHUB_PATH"
+
+      - name: Install nats-server (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://github.com/nats-io/nats-server/releases/download/$env:NATS_VERSION/nats-server-$env:NATS_VERSION-windows-amd64.zip" -OutFile "$env:RUNNER_TEMP\nats.zip"
+          Expand-Archive "$env:RUNNER_TEMP\nats.zip" -DestinationPath "$env:RUNNER_TEMP\nats"
+          "$env:RUNNER_TEMP\nats\nats-server-$env:NATS_VERSION-windows-amd64" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - run: uv sync --all-extras
+
+      - name: Install channels-nats
+        shell: pwsh
+        env:
+          WHEEL_B64: ${{ inputs.channels_nats_wheel_b64 }}
+          WHEEL_NAME: ${{ inputs.channels_nats_wheel_name }}
+        run: |
+          if ($env:WHEEL_B64) {
+            $wheel = Join-Path $env:RUNNER_TEMP $env:WHEEL_NAME
+            [IO.File]::WriteAllBytes($wheel, [Convert]::FromBase64String($env:WHEEL_B64))
+            uv pip install $wheel
+          } else {
+            uv pip install channels-nats
+          }
+          uv run python -c "import importlib.metadata as m; print('channels-nats', m.version('channels-nats'))"
+
+      - name: Machine
+        run: uv run python -c "import os, platform, psutil, sys; print(sys.version); print(platform.platform()); print('cpus', os.cpu_count(), 'ram_gb', round(psutil.virtual_memory().total / 2**30, 1))"
+
+      - name: daphne, in-memory, 1 process, 400 connections
+        continue-on-error: true
+        run: uv run python -m bench.run --connections 400 --out bench/results/ci-${{ matrix.os }}-daphne-memory-1proc-400.json
+
+      - name: daphne, in-memory, 1 process, 600 connections (past the 512-socket select limit on Windows)
+        continue-on-error: true
+        run: uv run python -m bench.run --connections 600 --out bench/results/ci-${{ matrix.os }}-daphne-memory-1proc-600.json
+
+      - name: uvicorn, in-memory, 1 process, ${{ inputs.connections }} connections
+        continue-on-error: true
+        run: uv run python -m bench.run --server uvicorn --connections ${{ inputs.connections }} --out bench/results/ci-${{ matrix.os }}-uvicorn-memory-1proc.json
+
+      - name: daphne, channels-nats, 4 processes, ${{ inputs.connections }} connections
+        continue-on-error: true
+        run: uv run python -m bench.run --layer nats --processes 4 --connections ${{ inputs.connections }} --out bench/results/ci-${{ matrix.os }}-daphne-nats-4proc.json
+
+      - name: daphne, channels-nats, 4 processes, 1600 connections (400 per process)
+        continue-on-error: true
+        run: uv run python -m bench.run --layer nats --processes 4 --connections 1600 --out bench/results/ci-${{ matrix.os }}-daphne-nats-4proc-1600.json
+
+      - name: uvicorn, channels-nats, 4 processes, ${{ inputs.connections }} connections
+        continue-on-error: true
+        run: uv run python -m bench.run --server uvicorn --layer nats --processes 4 --connections ${{ inputs.connections }} --out bench/results/ci-${{ matrix.os }}-uvicorn-nats-4proc.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-${{ matrix.os }}
+          path: |
+            bench/results/ci-*.json
+            bench/.data/logs/*.log
+          if-no-files-found: warn
