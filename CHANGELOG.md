@@ -10,6 +10,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Changed
+
+- NATS is now the layer this project targets. `make test-e2e` runs the browser suite on
+  channels-nats, `WIREVIEW_TEST_LAYER` (memory by default, nats or redis) picks the layer for the
+  test project, and README and `docs/DEPLOYMENT.md` recommend it first. channels_redis stays fully
+  supported and is what CI runs until channels-nats is published on PyPI
+
 ### Added
 
 - `make bench ARGS="--layer redis"` benchmarks channels_redis next to channels-nats, so the channel-layer

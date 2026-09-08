@@ -31,9 +31,12 @@ test: collectstatic
 test-unit: collectstatic
 	uv run pytest tests/ -m "unit" -v $(ARGS)
 
-# Run E2E tests with Playwright
+# Run E2E tests with Playwright on the NATS channel layer (the layer this project targets).
+# Needs a nats-server on NATS_URL (default nats://127.0.0.1:4222) and channels-nats installed.
+# Override with LAYER=redis or LAYER=memory.
+LAYER ?= nats
 test-e2e: collectstatic playwright-install
-	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "e2e" -v $(ARGS)
+	WIREVIEW_TEST_LAYER=$(LAYER) DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "e2e" -v $(ARGS)
 
 # Run all tests including E2E (runs separately to avoid async conflicts)
 test-all: test test-e2e
@@ -162,10 +165,12 @@ ci-test:
 	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "not e2e and not slow" -q
 
 # CI: Run E2E tests
+# CI runs E2E on Redis: channels-nats is not on PyPI yet, so the runner cannot install it.
+# Flip WIREVIEW_TEST_LAYER to nats (and swap the service in ci.yml) once it is published.
 ci-test-e2e:
 	cd tests && uv run python manage.py collectstatic --noinput
 	uv run playwright install --with-deps chromium
-	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "e2e" -v
+	WIREVIEW_TEST_LAYER=redis DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "e2e" -v
 
 # CI: Build and check package
 ci-build:

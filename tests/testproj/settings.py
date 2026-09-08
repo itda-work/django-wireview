@@ -12,6 +12,8 @@ https://docs.djangoproject.com/en/2.2/ref/settings/
 
 import os
 
+from django.core.exceptions import ImproperlyConfigured
+
 from wireview.schemas import AutoBroadcast
 
 up = os.path.dirname
@@ -104,22 +106,34 @@ TEMPLATES = [
 WSGI_APPLICATION = "testproj.wsgi.application"
 ASGI_APPLICATION = "testproj.asgi.application"
 
-# In memory
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
-    },
-}
-
-# With redis
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
+# Channel layer. WIREVIEW_TEST_LAYER picks it: memory (default), nats or redis.
+#   memory -> no broker to run, single process only. The default so that the unit and
+#             integration suite never needs one: a few tests (UploadView) do reach the
+#             layer, and pointing them at an absent broker costs two minutes in connect
+#             timeouts. `make test` therefore stays on memory.
+#   nats   -> nats-server on NATS_URL (channels-nats). The layer the project targets;
+#             `make test-e2e` and the deployment recipes use it.
+#   redis  -> redis-server on REDIS_URL (channels_redis). CI uses it until channels-nats
+#             is on PyPI and can be installed there.
+_LAYER = os.environ.get("WIREVIEW_TEST_LAYER", "memory")
+if _LAYER == "nats":
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_nats.NatsChannelLayer",
+            "CONFIG": {"servers": [os.environ.get("NATS_URL", "nats://127.0.0.1:4222")]},
         },
-    },
-}
+    }
+elif _LAYER == "redis":
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {"hosts": [os.environ.get("REDIS_URL", "redis://127.0.0.1:6379")]},
+        },
+    }
+elif _LAYER == "memory":
+    CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+else:
+    raise ImproperlyConfigured(f"WIREVIEW_TEST_LAYER must be nats, redis or memory, not {_LAYER!r}")
 
 # Database
 # https://docs.djangoproject.com/en/2.2/ref/settings/#databases

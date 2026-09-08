@@ -1,15 +1,13 @@
-"""testproj settings with the NATS channel layer (channels-nats) instead of Redis.
+"""testproj on the NATS channel layer. Kept as an explicit entry point.
 
-NATS_URL=nats://127.0.0.1:4222 uv run pytest --ds=testproj.settings_nats -m e2e
+``settings`` already defaults to NATS; this module pins it so a command line that
+names it cannot be overridden by the environment.
+
+    NATS_URL=nats://127.0.0.1:4222 uv run pytest --ds=testproj.settings_nats -m e2e
 """
 
 import os
 
-from .settings import *  # noqa: F401,F403
+os.environ["WIREVIEW_TEST_LAYER"] = "nats"
 
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_nats.NatsChannelLayer",
-        "CONFIG": {"servers": [os.environ.get("NATS_URL", "nats://127.0.0.1:4222")]},
-    }
-}
+from .settings import *  # noqa: E402,F401,F403

@@ -47,7 +47,32 @@ hypercorn myproject.asgi:application --bind 0.0.0.0:8000 --workers 4
 
 ## Channel Layer Configuration
 
-### Production: Redis (Recommended)
+This project targets NATS: it is what the E2E suite runs on and what the deployment
+recipes below assume. channels_redis is fully supported and is the right choice when
+Redis is already part of the infrastructure. Measured side by side they perform the
+same (`docs/design/transport-abstraction.md` §5-3), so the choice is operational.
+
+### Production: NATS (what this project targets)
+
+`channels-nats` runs the channel layer on a NATS server: one Go binary with native builds
+for Linux, macOS and Windows, no persistence to operate. Consumers and wireview code are
+unchanged; only the settings differ.
+
+```python
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_nats.NatsChannelLayer",
+        "CONFIG": {"servers": [os.environ["NATS_URL"]]},
+    }
+}
+```
+
+Several server processes pointed at the same NATS server share one layer. That is all a
+single-server SQLite deployment needs, and it is the only piece the SQLite plus Windows
+premise was missing. See the channels-nats README for token auth, the Windows service
+setup, and how the layer differs from channels_redis.
+
+### Production: Redis
 
 ```python
 # settings.py
@@ -82,7 +107,8 @@ CHANNEL_LAYERS = {
 
 ### Development: In-Memory
 
-Only use for development/testing:
+Development and single-process testing only. With more than one process it does not fail,
+it just delivers broadcasts to the connections in the sending process and drops the rest:
 
 ```python
 CHANNEL_LAYERS = {
@@ -91,28 +117,6 @@ CHANNEL_LAYERS = {
     }
 }
 ```
-
-### Without Redis: NATS (Windows-friendly)
-
-`channels-nats` runs the channel layer on a NATS server, a single Go binary that ships
-native builds for Windows, macOS and Linux. Consumers and wireview code stay the same;
-only the settings change:
-
-```python
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_nats.NatsChannelLayer",
-        "CONFIG": {"servers": ["nats://127.0.0.1:4222"]},
-    }
-}
-```
-
-Several server processes pointed at the same server share one layer, which is all a
-single-server SQLite deployment needs. How it differs from channels_redis, and why it uses
-Core NATS rather than JetStream, is in the channels-nats README. What a dropped broadcast
-means for a component is in `docs/design/transport-abstraction.md` §5-4. See the channels-nats README for the Windows
-service setup and token auth. The package is not on PyPI yet; install it from the
-repository. `tests/testproj/settings_nats.py` runs this project's E2E suite on NATS.
 
 ### Windows single server: uvicorn × N behind Caddy, NATS, SQLite
 

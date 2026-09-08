@@ -126,7 +126,12 @@ Wireview는 Python ≥3.12과 Django ≥4.2가 필요합니다 (Django 4.2, 5.0,
 pip install django-wireview
 ```
 
-Wireview는 `django-channels`를 사용합니다. 기본적으로 Channels는 실제 브로드캐스팅을 지원하지 않는 InMemory 채널 레이어를 사용합니다. 프로덕션 환경에서는 Redis를 사용하세요: [Channel Layers](https://channels.readthedocs.io/en/latest/topics/channel_layers.html)
+Wireview는 `django-channels`를 사용합니다. 기본 InMemory 채널 레이어는 프로세스 하나 안에서만 통하므로, 프로세스를 여러 개 띄우면 브로드캐스트가 **오류 없이** 같은 프로세스의 연결에만 닿습니다. 프로덕션에서는 프로세스를 잇는 레이어를 씁니다.
+
+- [channels-nats](https://github.com/itda-work/channels-nats) — 이 프로젝트가 목표로 하는 레이어입니다. NATS 서버는 Go 바이너리 하나이고 Linux·macOS·Windows 네이티브 빌드가 있어, Redis 없이 SQLite 단일 서버와 Windows까지 같은 구성으로 갑니다.
+- [channels_redis](https://channels.readthedocs.io/en/latest/topics/channel_layers.html) — Redis가 이미 있다면 이쪽입니다. 실측상 성능은 대등합니다.
+
+배포 구성은 [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md), 두 레이어의 실측 비교는 [docs/design/transport-abstraction.md](./docs/design/transport-abstraction.md) §5-3에 있습니다.
 
 Django 애플리케이션보다 먼저 `wireview`와 `channels`를 `INSTALLED_APPS`에 추가하세요:
 

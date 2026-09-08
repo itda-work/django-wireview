@@ -57,7 +57,8 @@ wireview/
 tests/
 ├── test_*.py              라이브러리 단위·통합 테스트. WebSocket 없이 mount() 사용
 ├── js/*.test.mjs          클라이언트 순수 모듈 테스트 (node --test)
-└── testproj/              Django 테스트 프로젝트. 앱: todo, chat, dashboard, livecomp, notifications,
+└── testproj/              Django 테스트 프로젝트. settings.py의 채널 레이어는 WIREVIEW_TEST_LAYER가 고르고
+                           settings_nats.py·settings_redis.py가 이를 고정하는 진입점이다. 앱: todo, chat, dashboard, livecomp, notifications,
                            poll, quiz, rating, search, slots. E2E는 todo/tests.py, livecomp/tests.py
 
 docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEATURE-GAP.md, ARCHITECTURE.md,
@@ -92,7 +93,7 @@ typings/                   channels 타입 스텁 (pyright용)
 | 의존성 설치 | `make install` 과 `npm ci` | `uv sync --dev`는 dev 도구를 설치하지 않는다. extras를 써야 한다 |
 | JS 빌드 | `make build-js` | 개발 서버와 E2E 전에 필수. 산출물은 gitignore |
 | 테스트 (e2e·slow 제외) | `make test` 또는 `make test ARGS="-k streams"` | collectstatic과 DJANGO_ALLOW_ASYNC_UNSAFE는 Makefile이 처리 |
-| E2E | `make test-e2e` | Redis 127.0.0.1:6379, JS 빌드, `make playwright-install` |
+| E2E | `make test-e2e` (NATS), `make test-e2e LAYER=redis` | nats-server 127.0.0.1:4222와 channels-nats, JS 빌드, `make playwright-install` |
 | 린트 | `make lint` (ruff + djlint) | |
 | 타입 검사 | `make check` (pyright, tests/ 제외) | |
 | 클라이언트 테스트 | `make test-js` (`npm test`, node --test) | |
@@ -119,7 +120,8 @@ CI(`ci.yml`)는 Python×Django 매트릭스 테스트, Redis를 띄운 E2E, lint
 ## 함정
 
 - **`wireview.min.js`가 없으면 페이지에서 JS가 로드되지 않는다.** clone 직후와 `wireview.js` 수정 후 `make build-js`.
-- **testproj의 CHANNEL_LAYERS는 Redis.** Redis 없이 `make run-daphne`나 E2E를 실행하면 연결에 실패한다. 단위·통합 테스트는 채널 레이어를 쓰지 않는다. Redis 대신 NATS로 돌리려면 `--ds=testproj.settings_nats`와 `nats-server`, 그리고 `uv pip install -e ../channels-nats`(PyPI 미공개).
+- **testproj의 채널 레이어는 `WIREVIEW_TEST_LAYER`가 고른다.** 기본은 `memory`(브로커 불요), `make test-e2e`는 `nats`, CI는 `redis`다. `make test-e2e LAYER=redis`로 바꿀 수 있다. NATS로 돌리려면 `nats-server`와 `uv pip install -e ../channels-nats`(PyPI 미공개)가 필요하다.
+- **단위·통합 테스트도 일부는 채널 레이어를 쓴다.** `tests/test_uploads.py`의 `UploadView` 테스트가 세션 채널로 보낸다. 그래서 기본값이 `memory`다. 브로커가 없는 레이어를 기본으로 두면 그 두 테스트가 연결 타임아웃으로 2분씩 걸린다.
 - **클라이언트가 호출할 수 있는 메서드.** `_`로 시작하지 않는 소문자 이름의 메서드는 이벤트 핸들러로 노출되고 `validate_call`로 감싸진다. 내부 헬퍼는 반드시 `_` 접두사. 핸들러와 라이프사이클 메서드는 async.
 - **컴포넌트 이름은 클래스명으로 전역 등록.** 다른 모듈에서 같은 클래스명을 쓰면 경고가 난다. 템플릿에서 `app:Name` 또는 FQN으로 구분한다.
 - **상태 필드.** JSON 직렬화 가능해야 한다. `_temporary_assigns`는 기본값이 있는 필드만 초기화된다. `_exclude_fields` 기본값은 `{"user", "wire"}`.
