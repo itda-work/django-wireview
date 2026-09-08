@@ -264,7 +264,7 @@ django-wireview 지원:       ~55개 (73%)
 | ~~GAP-019~~ | ~~phx-feedback-for~~ | ~~폼 필드 에러 표시~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-020~~ | ~~enableProfiling~~ | ~~성능 프로파일링~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-021~~ | ~~on_mount hooks~~ | ~~공통 마운트 로직 모듈화~~ | ~~중~~ | ✅ 완료 |
-| GAP-022 | Telemetry | 성능 측정 훅 | 중 | [#57](https://github.com/itda-work/django-wireview/issues/57) |
+| ~~GAP-022~~ | ~~Telemetry~~ | ~~성능 측정 훅~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-023~~ | ~~onBeforeElUpdated~~ | ~~DOM 패치 전 콜백~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-025~~ | ~~Comprehensions~~ | ~~`{% for %}`를 항목 단위, `{% if %}`를 블록 단위 static/dynamic으로 분리해 항목·분기 변경 시 부분 diff~~ | ~~중~~ | ✅ 완료 (위치 기반, 키 기반은 미지원) |
 | ~~GAP-026~~ | ~~Transport seam~~ | ~~`Outbound`/`Broker` 인터페이스 뒤로 채널 레이어 격리, 렌더 스냅샷 직렬화, wire-protocol 문서~~ | ~~중~~ | ✅ 완료 |

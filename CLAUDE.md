@@ -44,6 +44,7 @@ wireview/
 ├── js.py                  JS() 명령 빌더
 ├── schemas.py, serializer.py  Pydantic 스키마, 모델 직렬화
 ├── settings.py            WIREVIEW 설정 기본값
+├── telemetry.py           옵트인 계측 시그널 (event_handled, component_rendered, diff_computed, broadcast_published)
 ├── testing.py             mount(), MountedComponent, ComponentTestCase
 ├── utils.py, log.py       db 헬퍼, 로깅
 ├── debug/sync_detector.py sync/async 전환 중첩 감지 (DEBUG_SYNC_TRANSITIONS)

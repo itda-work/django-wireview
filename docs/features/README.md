@@ -59,6 +59,7 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 | 기능 | 설명 | 문서 |
 |------|------|------|
 | **Type Stubs** | 컴포넌트 `.pyi` 자동 생성 (`wireview_stubs`) | [문서](./type-stubs.md) |
+| **Telemetry** | 이벤트·렌더·diff·브로드캐스트 계측 시그널 (옵트인) | [문서](./telemetry.md) |
 
 ---
 

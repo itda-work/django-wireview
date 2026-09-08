@@ -10,6 +10,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- Telemetry signals (GAP-022): `event_handled`, `component_rendered`, `diff_computed` and
+  `broadcast_published` report duration and payload size from the event, render, diff and
+  fan-out paths. Opt in with `WIREVIEW["TELEMETRY"]`; while off the instrumented paths take a
+  shared no-op span and `make bench-compare` shows no change. See `docs/features/telemetry.md`
+
 ## [0.2.1] - 2026-09-08
 
 ### Added

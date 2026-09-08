@@ -20,6 +20,8 @@ DEFAULT = {
     "SYNC_TRANSITION_ERROR_THRESHOLD": 3,
     # Type stub generation
     "AUTO_GENERATE_STUBS": True,  # Auto-generate .pyi stubs in DEBUG mode
+    # Telemetry signals (wireview.telemetry)
+    "TELEMETRY": False,
 }
 
 WIREVIEW = DEFAULT | getattr(settings, "WIREVIEW", {})
@@ -44,3 +46,6 @@ SYNC_TRANSITION_ERROR_THRESHOLD: int = WIREVIEW["SYNC_TRANSITION_ERROR_THRESHOLD
 
 # Type stub generation
 AUTO_GENERATE_STUBS: bool = WIREVIEW["AUTO_GENERATE_STUBS"]
+
+# Telemetry signals
+TELEMETRY: bool = WIREVIEW["TELEMETRY"]

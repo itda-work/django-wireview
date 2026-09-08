@@ -14,7 +14,7 @@ from django.shortcuts import resolve_url
 from django.utils.html import format_html
 from django.utils.safestring import SafeText, mark_safe
 
-from .. import settings
+from .. import settings, telemetry
 from ..schemas import DomAction
 from ..utils import db
 from .rendered import Rendered, has_markers, strip_markers
@@ -162,10 +162,10 @@ class WireviewMeta:
 
     async def _send_broadcast(self, channel: str, **kwargs: t.Any) -> None:
         """Publish a notification to every session subscribed to ``channel``."""
-        await self.broker.publish(
-            channel,
-            {"type": "notification", "channel": channel, "kwargs": kwargs},
-        )
+        message = {"type": "notification", "channel": channel, "kwargs": kwargs}
+        with telemetry.span(telemetry.broadcast_published, sender=type(self.broker), topic=channel) as span:
+            span.measure(message)
+            await self.broker.publish(channel, message)
 
     async def destroy(self, component_id: str) -> None:
         """Destroy a component and notify the client."""
@@ -256,23 +256,41 @@ class WireviewMeta:
             self._skip_render = False
             return None
 
-        # Resolve async properties in async context first to avoid
-        # nested async_to_sync calls inside sync template rendering
-        context = await self._get_context_async(component, repo)
+        with telemetry.span(
+            telemetry.component_rendered,
+            sender=type(component),
+            component_id=component.id,
+            component_name=component._name,
+            live=True,
+        ) as render_span:
+            # Resolve async properties in async context first to avoid
+            # nested async_to_sync calls inside sync template rendering
+            context = await self._get_context_async(component, repo)
 
-        # Template rendering is sync (Django templates are synchronous)
-        html = await db(self._render_with_context)(component, context)
-        if not html:
-            return None
+            # Template rendering is sync (Django templates are synchronous)
+            html = await db(self._render_with_context)(component, context)
+            if not html:
+                return None
 
-        html_str = str(html)
+            html_str = str(html)
+            render_span.measure(html_str)
 
-        # Use Phoenix-style diff if markers are present
-        if has_markers(html_str):
-            return self._compute_rendered_diff(html_str)
+        with telemetry.span(
+            telemetry.diff_computed,
+            sender=type(component),
+            component_id=component.id,
+            component_name=component._name,
+        ) as diff_span:
+            # Use Phoenix-style diff if markers are present, else fall back
+            # to the legacy line-based diff
+            if has_markers(html_str):
+                diff = self._compute_rendered_diff(html_str)
+            else:
+                diff = self._compute_legacy_diff(html_str)
+            diff_span.annotate(changed=diff is not None)
+            diff_span.measure(diff)
 
-        # Fall back to legacy line-based diff
-        return self._compute_legacy_diff(html_str)
+        return diff
 
     def _compute_rendered_diff(self, html: str) -> dict[str, t.Any] | None:
         """Compute Phoenix-style static/dynamic diff."""
@@ -330,23 +348,31 @@ class WireviewMeta:
         """
         from ..template_engine import render_with_markers
 
-        html = None
-        if not self.channel_name and self._redirected_to:
-            html = format_html(
-                '<meta http-equiv="refresh" content="0; url={url}">',
-                url=self._redirected_to,
-            )
-        elif not (self._is_frozen or self._redirected_to) and html is None:
-            template = component._get_template()
-            context = self._get_context(component, repo, slots)
-            # Use marker-injected rendering for efficient diffing
-            # The template type from component matches what render_with_markers expects
-            html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
-            if not repo.is_live:
-                # HTTP render: markers inside attributes (value="<!--$0-->…") would
-                # corrupt the page until the WebSocket join replaces the DOM.
-                html = strip_markers(html)
-            html = html_minify(html)
+        with telemetry.span(
+            telemetry.component_rendered,
+            sender=type(component),
+            component_id=component.id,
+            component_name=component._name,
+            live=repo.is_live,
+        ) as span:
+            html = None
+            if not self.channel_name and self._redirected_to:
+                html = format_html(
+                    '<meta http-equiv="refresh" content="0; url={url}">',
+                    url=self._redirected_to,
+                )
+            elif not (self._is_frozen or self._redirected_to) and html is None:
+                template = component._get_template()
+                context = self._get_context(component, repo, slots)
+                # Use marker-injected rendering for efficient diffing
+                # The template type from component matches what render_with_markers expects
+                html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
+                if not repo.is_live:
+                    # HTTP render: markers inside attributes (value="<!--$0-->…") would
+                    # corrupt the page until the WebSocket join replaces the DOM.
+                    html = strip_markers(html)
+                html = html_minify(html)
+            span.measure(html)
         if html:
             return mark_safe(html)
         return None

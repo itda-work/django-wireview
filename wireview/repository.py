@@ -8,6 +8,7 @@ from channels.db import database_sync_to_async as db
 from channels.layers import BaseChannelLayer
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 
+from . import telemetry
 from .component import Component, MessagePayload
 from .live_component import LiveComponent
 from .utils import filter_parameters
@@ -246,7 +247,15 @@ class ComponentRepository:
             raise ValueError(f"Cannot call base class method: {command}")
 
         # Handler methods are async (defined in Component subclasses)
-        await handler(*args, **filter_parameters(handler, kwargs))  # type: ignore[misc]
+        with telemetry.span(
+            telemetry.event_handled,
+            sender=type(component),
+            component_id=component.id,
+            component_name=component._name,
+            event=command,
+        ) as span:
+            span.measure(kwargs)
+            await handler(*args, **filter_parameters(handler, kwargs))  # type: ignore[misc]
         return component
 
     @staticmethod
