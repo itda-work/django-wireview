@@ -1,5 +1,6 @@
 """Settings for the benchmarks: the test project plus the bench app, no Redis."""
 
+import importlib.util
 import os
 
 from testproj.settings import *  # noqa: F401,F403
@@ -10,6 +11,10 @@ _DATA = os.path.join(_HERE, ".data")
 os.makedirs(_DATA, exist_ok=True)
 
 INSTALLED_APPS = list(INSTALLED_APPS) + ["bench.benchapp"]
+if importlib.util.find_spec("daphne") is None:
+    # The daphne app only backs runserver. Windows ARM64 cannot install daphne at all
+    # (cryptography ships no win_arm64 wheel), and the benchmark runs uvicorn there.
+    INSTALLED_APPS.remove("daphne")
 if os.environ.get("BENCH_LAYER", "memory") == "nats":
     # channels-nats: one NATS server links several daphne processes (pip install -e ../channels-nats)
     CHANNEL_LAYERS = {
