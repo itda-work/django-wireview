@@ -32,3 +32,6 @@ tests/static/
 
 # Benchmarks (results are versioned; the sqlite scratch DB is not)
 bench/.data/
+
+# Claude Code worktrees
+.claude/worktrees/
