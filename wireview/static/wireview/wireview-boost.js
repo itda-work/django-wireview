@@ -4,6 +4,7 @@
  */
 
 import { Idiomorph } from "idiomorph";
+import { isStreamContainer } from "./streams.mjs";
 
 /**
  * Callback function type for onBeforeElUpdated.
@@ -28,21 +29,22 @@ const morphConfig = {
  * @param {Element|string} newNode - The new content to morph into
  */
 function morph(oldNode, newNode) {
-  const options = {};
-
-  // Add beforeNodeMorphed callback if configured
-  if (morphConfig.onBeforeElUpdated) {
-    const callback = morphConfig.onBeforeElUpdated;
-    options.callbacks = {
+  const callback = morphConfig.onBeforeElUpdated;
+  const options = {
+    callbacks: {
       beforeNodeMorphed(fromEl, toEl) {
+        // A render carries the template's empty stream container. Morphing it
+        // over the live one would delete every streamed item, so leave it alone.
+        if (isStreamContainer(fromEl)) return false;
+
         // Only call for elements, not text nodes
-        if (fromEl.nodeType === Node.ELEMENT_NODE) {
+        if (callback && fromEl.nodeType === Node.ELEMENT_NODE) {
           callback(fromEl, toEl);
         }
         return true; // Continue with morph
       },
-    };
-  }
+    },
+  };
 
   Idiomorph.morph(oldNode, newNode, options);
 }
@@ -102,6 +104,10 @@ let navEvent = new NavEvents();
 // Set up click handler for boosted navigation
 if (BOOST_PAGES) {
   document.addEventListener("click", (e) => {
+    // A component handler ran first and called preventDefault: {% on "click.prevent" %}
+    // on an <a href="#"> is a component event, not a navigation.
+    if (e.defaultPrevented) return;
+
     const target = /** @type {HTMLElement} */ (e.target);
     /** @type {HTMLAnchorElement|null} */
     let link = /** @type {HTMLAnchorElement|null} */ (

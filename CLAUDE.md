@@ -55,7 +55,8 @@ wireview/
 ├── management/commands/   wireview_stubs (.pyi 생성), wireview_lsp (IDE 메타데이터 JSON),
 │                          wireview_agent_setup (앱 개발자용 스킬을 프로젝트 .claude/skills/ 에 설치)
 ├── templates/wireview_header.html  {% wireview_header %}가 렌더. wireview.min.js를 로드
-└── static/wireview/       wireview.js (소스), rendered.mjs (diff 적용·HTML 복원 순수 함수), wireview-boost.js, types.d.ts
+└── static/wireview/       wireview.js (소스), rendered.mjs (diff 적용·HTML 복원 순수 함수),
+                           streams.mjs (스트림 DOM 판단 순수 함수), wireview-boost.js, types.d.ts
                            wireview.min.js는 빌드 산출물이며 gitignore
 
 tests/

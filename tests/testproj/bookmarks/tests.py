@@ -220,16 +220,15 @@ class TestBookmarksE2E:
         assert "안읽음" in _items(page).first.inner_text()
         page.click('li >> button:has-text("토글")')
         page.wait_for_selector('li span:text-is("읽음")', timeout=5000)
+        # streaming the same dom id again updates the item, it does not add one (#67)
+        assert _items(page).count() == 1
 
         page.click('li >> button:has-text("삭제")')
         _wait_for_count(page, 0)
 
-    @pytest.mark.xfail(
-        reason="#67: a re-render restores the empty wire-stream container, so the reset that "
-        "follows set_filter is wiped out",
-        strict=True,
-    )
     def test_filter_switch_resets_the_stream(self, page, bookmarks_server):
+        """A handler that changes state and re-streams: the re-render must not
+        wipe the container it just filled (#67)."""
         page.goto(f"{bookmarks_server}/bookmarks/")
         _wait_for_websocket(page)
         _add(page, "이미읽음", "https://example.com/1")

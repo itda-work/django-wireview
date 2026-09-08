@@ -1,5 +1,6 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
 import { applyPartial, buildHtml } from "./rendered.mjs";
+import { planInsert, planTrim } from "./streams.mjs";
 import boost from "./wireview-boost";
 
 /**
@@ -404,15 +405,26 @@ class ServerConnection {
           const el = this._parseHtml(item.html);
           if (el) {
             el.id = item.id;
-            if (at === 0) {
-              // Prepend
-              container.prepend(el);
-            } else if (at === -1 || at >= container.children.length) {
-              // Append
-              container.appendChild(el);
-            } else {
-              // Insert at specific position
-              container.children[at].before(el);
+            const existing = container.querySelector(`#${CSS.escape(item.id)}`);
+            const plan = planInsert({
+              exists: existing !== null,
+              at,
+              childCount: container.children.length,
+            });
+            switch (plan.mode) {
+              case "replace":
+                // Same id: a newer version of an item already on screen.
+                existing.replaceWith(el);
+                break;
+              case "prepend":
+                container.prepend(el);
+                break;
+              case "append":
+                container.appendChild(el);
+                break;
+              case "before":
+                container.children[plan.index].before(el);
+                break;
             }
           }
         }
@@ -428,18 +440,13 @@ class ServerConnection {
         break;
     }
 
-    // Enforce limit by removing excess items
-    if (limit > 0 && container.children.length > limit) {
-      const excess = container.children.length - limit;
-      // Remove from opposite end: if prepending (at=0), remove from end
-      // If appending (at=-1), remove from start
-      const removeFromEnd = at === 0;
-      for (let i = 0; i < excess; i++) {
-        if (removeFromEnd) {
-          container.lastElementChild?.remove();
-        } else {
-          container.firstElementChild?.remove();
-        }
+    // Enforce limit by removing excess items from the end new items did not arrive at
+    const trim = planTrim({ childCount: container.children.length, limit, at });
+    for (let i = 0; i < trim.count; i++) {
+      if (trim.fromEnd) {
+        container.lastElementChild?.remove();
+      } else {
+        container.firstElementChild?.remove();
       }
     }
 

@@ -157,6 +157,38 @@ await self.stream_insert("notifications", notif, at=0)
 await self.stream_insert("items", item, at=5)
 ```
 
+### 이미 화면에 있는 항목이면 제자리 갱신
+
+`stream_insert`의 dom id가 이미 DOM에 있으면 `at`과 무관하게 **그 자리에서 교체**됩니다.
+생성과 갱신을 한 갈래로 쓸 수 있습니다.
+
+```python
+async def mutation(self, channel, action, instance):
+    if action == ModelAction.DELETED:
+        await self.stream_delete("items", f"items-{instance.pk}")
+    else:
+        # 새 항목이면 맨 위에, 이미 있는 항목이면 제자리 갱신
+        await self.stream_insert("items", instance, at=0)
+```
+
+**핸들러와 `mutation()` 양쪽에서 넣지 마세요.** 모델을 구독하고 있으면 저장 신호가 자기
+연결로도 돌아옵니다. 두 곳에서 넣으면 같은 항목이 두 번 들어갑니다 — 구독 중이라면
+삽입은 `mutation()` 한 곳에서만 하고 핸들러는 저장만 합니다.
+
+### 재렌더는 스트림을 지우지 않는다
+
+컴포넌트 템플릿은 **빈** 컨테이너만 렌더합니다. 그래서 `wire-stream` 컨테이너는 DOM 패치
+대상에서 제외되고, 상태를 바꾼 뒤 다시 스트리밍하는 핸들러(필터·정렬 전환)가 정상 동작합니다.
+
+```python
+async def set_filter(self, filter: str):
+    self.filter = filter                             # 재렌더가 일어나도
+    await self.stream("items", self.queryset)        # 이 결과가 남는다
+```
+
+컨테이너 자체의 속성(class 등)은 이 때문에 서버 렌더로 갱신되지 않습니다. 컨테이너 속성을
+바꿔야 한다면 바깥 엘리먼트에 두세요.
+
 ## 성능 최적화
 
 ### 1. 배치 삽입

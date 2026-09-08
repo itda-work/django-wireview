@@ -35,11 +35,10 @@ class XChatRoom(Component):
 - **핸들러와 `mutation()` 양쪽에서 넣지 않는다.** 모델을 구독하고 있으면 저장 신호가 자기
   연결에도 돌아온다. 핸들러에서 한 번, `mutation()`에서 또 한 번 넣으면 목록에 같은 항목이
   둘 생긴다. 구독 중이라면 **삽입은 `mutation()` 한 곳에서만** 하고 핸들러는 저장만 한다.
-- **`stream_insert`는 같은 dom id를 교체하지 않는다.** 이미 화면에 있는 항목을 갱신하려면
-  `stream_delete` 후 `stream_insert`한다. (Phoenix는 제자리 갱신이다 — 차이가 좁혀지면 이 줄은 사라진다.)
-- **상태를 바꾸는 핸들러에서 `stream()`을 다시 부르면 목록이 빈다.** 상태 변경이 재렌더를
-  부르고, 재렌더가 템플릿의 빈 컨테이너로 되돌린다. 필터·정렬 전환이 정확히 이 모양이라
-  현재는 동작하지 않는다: https://github.com/itda-work/django-wireview/issues/67
+- **같은 dom id로 다시 넣으면 제자리에서 갱신된다.** 항목 하나가 바뀌었을 때 `stream_delete` 후
+  `stream_insert` 할 필요가 없다. 생성과 갱신을 한 줄로 처리한다.
+- **필터·정렬 전환은 `stream()`을 다시 부르면 된다.** 상태를 바꿔 재렌더가 일어나도 스트림
+  컨테이너의 내용은 보존된다 (`wire-stream` 컨테이너는 morph 대상에서 제외된다).
 
 ## Presence — 접속자·타이핑 표시
 

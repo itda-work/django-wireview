@@ -51,13 +51,9 @@ class XBookmarkList(Component):
             await self.stream_delete("bookmarks", dom_id)
             return
 
-        if action == ModelAction.CREATED:
-            if self._visible(instance):
-                await self.stream_insert("bookmarks", instance, at=0)
-            return
-
-        # Updated: stream_insert does not replace an item that is already in the
-        # DOM under the same id, it adds a second one. Remove it first.
-        await self.stream_delete("bookmarks", dom_id)
         if self._visible(instance):
+            # An item already on screen is replaced in place, so an update and a
+            # creation are the same call.
             await self.stream_insert("bookmarks", instance, at=0)
+        else:
+            await self.stream_delete("bookmarks", dom_id)

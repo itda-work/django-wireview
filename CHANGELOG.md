@@ -12,6 +12,16 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- Streams now survive a re-render and update in place (GAP-028, `#67`). A render carries the
+  template's *empty* stream container, and morphing it over the live one deleted every streamed
+  item, so a handler that changed state and re-streamed — a filter or sort switch — ended up with
+  an empty list. `[wire-stream]` containers are now skipped by the morph. Streaming an id that is
+  already on screen also replaced the item where it stands instead of adding a second copy, which
+  is what Phoenix does and what makes a creation and an update the same call
+- Client-side navigation no longer hijacks a component event. `boost` intercepted every same-origin
+  link click without checking `defaultPrevented`, so `{% on "click.prevent" %}` on an `<a href="#">`
+  fired the event and *then* reloaded the page, resetting the component state the event had just
+  changed (`#67`)
 - `stream(limit=N)` took the WebSocket connection down. The payload carries `limit`, the client
   handles it, but `WireviewConsumer.component_stream_op()` did not accept it, so the channel-layer
   hop raised `TypeError` and killed the ASGI application — with a green unit-test suite, because

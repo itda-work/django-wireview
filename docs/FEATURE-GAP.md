@@ -86,7 +86,7 @@ django-wireview 지원:       ~55개 (73%)
 | phx-disabled-with | ✅ | `wire-disabled-with` | ✅ |
 | Client-side immediate | ✅ | JS() 명령어 | ✅ |
 
-### 2.5 Streams 🟡
+### 2.5 Streams ✅
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 |
 |------|:----------------:|:---------------:|:----:|
@@ -94,8 +94,8 @@ django-wireview 지원:       ~55개 (73%)
 | stream_insert() | ✅ | `stream_insert()` | ✅ |
 | stream_delete() | ✅ | `stream_delete()` | ✅ |
 | DOM ID generation | ✅ | `dom_id` param | ✅ |
-| wire-stream attribute | `phx-update="stream"` | `wire-stream` | 🟡 재렌더에서 내용이 지워진다 (GAP-028) |
-| 같은 dom id 재삽입 | 제자리 갱신 | 항목이 하나 더 생긴다 | 🟡 GAP-028 |
+| wire-stream attribute | `phx-update="stream"` | `wire-stream` | ✅ 재렌더에서 내용이 보존된다 |
+| 같은 dom id 재삽입 | 제자리 갱신 | 제자리 갱신 | ✅ |
 | stream :limit | ✅ | `stream(limit=N)` | ✅ |
 | stream :reset | ✅ | ❌ | 🟡 |
 | phx-viewport-top/bottom | ✅ | `wire-viewport-*` | ✅ |
@@ -269,7 +269,7 @@ django-wireview 지원:       ~55개 (73%)
 | ~~GAP-023~~ | ~~onBeforeElUpdated~~ | ~~DOM 패치 전 콜백~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-025~~ | ~~Comprehensions~~ | ~~`{% for %}`를 항목 단위, `{% if %}`를 블록 단위 static/dynamic으로 분리해 항목·분기 변경 시 부분 diff~~ | ~~중~~ | ✅ 완료 (위치 기반, 키 기반은 미지원) |
 | ~~GAP-026~~ | ~~Transport seam~~ | ~~`Outbound`/`Broker` 인터페이스 뒤로 채널 레이어 격리, 렌더 스냅샷 직렬화, wire-protocol 문서~~ | ~~중~~ | ✅ 완료 |
-| GAP-028 | Stream DOM 수명 | 재렌더가 `wire-stream` 컨테이너를 비우고, 같은 dom id 재삽입이 갱신이 아니라 중복이 된다 | 중 | [#67](https://github.com/itda-work/django-wireview/issues/67) |
+| ~~GAP-028~~ | ~~Stream DOM 수명~~ | ~~재렌더가 `wire-stream` 컨테이너를 비우고, 같은 dom id 재삽입이 갱신이 아니라 중복이 된다~~ | ~~중~~ | ✅ 완료 |
 | GAP-027 | Session extraction | 컨슈머 핸들러를 `WireviewSession`으로 분리, 세션 상태 export/import (docs/design/transport-abstraction.md) | 상 | [#60](https://github.com/itda-work/django-wireview/issues/60) 착수 기준 대기 |
 
 ---
