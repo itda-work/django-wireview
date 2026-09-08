@@ -12,9 +12,9 @@ on:
       connections:
         description: connections for the 4-process runs
         default: "2000"
-      channels_nats_ref:
-        description: channels-nats git ref to install (until it is on PyPI)
-        default: "main"
+      channels_nats_wheel_b64:
+        description: base64 of a channels-nats wheel (the repository is private, so the runner cannot clone it). Empty installs from PyPI.
+        default: ""
 
 env:
   NATS_VERSION: v2.14.6
@@ -36,7 +36,19 @@ jobs:
           "$env:RUNNER_TEMP\nats\nats-server-$env:NATS_VERSION-windows-amd64" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - run: uv sync --all-extras
-      - run: uv pip install "channels-nats @ git+https://github.com/itda-work/channels-nats@${{ inputs.channels_nats_ref }}"
+      - name: Install channels-nats
+        shell: pwsh
+        env:
+          WHEEL_B64: ${{ inputs.channels_nats_wheel_b64 }}
+        run: |
+          if ($env:WHEEL_B64) {
+            $wheel = "$env:RUNNER_TEMP\channels_nats-0.0.0-py3-none-any.whl"
+            [IO.File]::WriteAllBytes($wheel, [Convert]::FromBase64String($env:WHEEL_B64))
+            uv pip install $wheel
+          } else {
+            uv pip install channels-nats
+          }
+          uv run python -c "import channels_nats, importlib.metadata as m; print('channels-nats', m.version('channels-nats'))"
 
       - name: Machine
         shell: pwsh
