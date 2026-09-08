@@ -2,17 +2,23 @@
 
 > django-wireview가 Phoenix LiveView 수준에 도달하기 위해 필요한 기능 목록
 >
-> **최종 업데이트**: 2026-09-08
+> **최종 업데이트**: 2026-09-09
 
 ---
 
 ## 개요
 
-```
-Phoenix LiveView 주요 기능: ~75개
-django-wireview 지원:       ~55개 (73%)
-미지원:                     ~20개 (27%)
-```
+아래 2절의 비교표 112행 기준이다. 어림수가 아니라 표를 센 값이므로, 표를 고치면 이 숫자도 같이 고친다.
+
+| 상태 | 행 |
+|------|---:|
+| ✅ 지원 | 101 |
+| 🟡 부분 지원 | 3 |
+| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 7 |
+| ⚪ 설계상 제외 | 1 |
+
+101행 중 5행은 Phoenix에 없는 wireview 고유 기능이다(`mutation()`, 타입 스텁, LSP 메타데이터,
+MockChannelLayer, 시스템 체크). 남은 열 개의 갭은 3절 표에서 GAP 번호로 추적한다.
 
 ---
 
@@ -49,6 +55,7 @@ django-wireview 지원:       ~55개 (73%)
 | handle_params | `handle_params/3` | `params_changed()` | ✅ |
 | terminate | `terminate/2` | `leaving()` | ✅ |
 | ORM mutation | - | `mutation()` | ✅ 추가 기능 |
+| 세션 접근 | `mount/3`의 session | ❌ | 🟠 GAP-029 ([#68](https://github.com/itda-work/django-wireview/issues/68)) |
 
 ### 2.2 Real-time Features ✅
 
@@ -97,7 +104,7 @@ django-wireview 지원:       ~55개 (73%)
 | wire-stream attribute | `phx-update="stream"` | `wire-stream` | ✅ 재렌더에서 내용이 보존된다 |
 | 같은 dom id 재삽입 | 제자리 갱신 | 제자리 갱신 | ✅ |
 | stream :limit | ✅ | `stream(limit=N)` | ✅ |
-| stream :reset | ✅ | ❌ | 🟡 |
+| stream :reset | ✅ | `stream()`이 곧 reset이다 | ✅ |
 | phx-viewport-top/bottom | ✅ | `wire-viewport-*` | ✅ |
 
 ### 2.6 File Uploads ✅
@@ -132,7 +139,7 @@ django-wireview 지원:       ~55개 (73%)
 | push_patch | ✅ | `push_to()` | ✅ |
 | replace | ✅ | `replace_to()` | ✅ |
 | handle_params | ✅ | `params_changed()` | ✅ |
-| live_session | ✅ | ❌ | 🟠 |
+| live_session | ✅ | ❌ | 🟠 GAP-009 ([#58](https://github.com/itda-work/django-wireview/issues/58)) |
 | Client-side boost | ✅ | `BOOST_PAGES` | ✅ |
 
 ### 2.9 JavaScript Interoperability ✅
@@ -150,7 +157,7 @@ django-wireview 지원:       ~55개 (73%)
 | handleEvent (server→client) | ✅ | `this.handleEvent()` | ✅ |
 | handle_hook_event (server) | - | `handle_hook_event()` | ✅ |
 | push_event (server→client) | ✅ | `push_event()` | ✅ |
-| Colocated hooks | ✅ | ❌ | 🟠 |
+| Colocated hooks | ✅ | ❌ | 🟠 GAP-032 ([#71](https://github.com/itda-work/django-wireview/issues/71)) |
 | onBeforeElUpdated | ✅ | `dom.onBeforeElUpdated` | ✅ |
 
 ### 2.10 Components ✅
@@ -165,8 +172,14 @@ django-wireview 지원:       ~55개 (73%)
 | Slots (let binding) | ✅ | `let:item` | ✅ |
 | @myself target | ✅ | `myself=True` | ✅ |
 | update/2 callback | ✅ | `update()` | ✅ |
-| update_many/1 | ✅ 배치 최적화 | ❌ | 🟠 |
-| Nested LiveViews | ✅ 프로세스 격리 | ❌ | 🟠 |
+| update_many/1 | ✅ 배치 최적화 | ❌ | 🟠 GAP-035 ([#74](https://github.com/itda-work/django-wireview/issues/74)) |
+| Nested LiveViews | ✅ 프로세스 격리 | LiveComponent (같은 프로세스) | ⚪ 설계상 제외 |
+
+Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 프로세스 격리에서 오는
+성질이다 — 자식이 죽어도 부모가 살고, 자식마다 자기 메일박스와 스케줄링을 가진다. Django·ASGI에는
+그 단위가 없고, 연결 하나가 곧 컨슈머 하나다. wireview는 같은 프로세스 안의 `LiveComponent`로
+합성 요구를 받고, 격리 요구는 별도 연결(별도 페이지)로 받는다. 이 선을 옮기려면 GAP-027(#60)의
+세션 분리가 먼저다.
 
 ### 2.11 Form Handling ⚠️
 
@@ -177,8 +190,8 @@ django-wireview 지원:       ~55개 (73%)
 | phx-debounce | ✅ | `.debounce.N` | ✅ |
 | phx-throttle | ✅ | `.throttle.N` | ✅ |
 | phx-feedback-for | ✅ | `wire-feedback-for` | ✅ |
-| phx-auto-recover | ✅ | ❌ | 🟠 |
-| Form recovery | ✅ 자동 | ❌ | 🟠 |
+| phx-auto-recover | ✅ | `wire-auto-recover` | ✅ (GAP-008) |
+| Form recovery | ✅ 자동 | 재연결 시 폼 상태 복원 | ✅ (GAP-008) |
 | Changeset integration | Ecto | Django Forms | ✅ 다른 접근 |
 
 ### 2.12 Performance Features ⚠️
@@ -189,8 +202,8 @@ django-wireview 지원:       ~55개 (73%)
 | skip_render | ✅ | `skip_render()` | ✅ |
 | force_render | ✅ | `force_render()` | ✅ |
 | **temporary_assigns** | ✅ | ✅ `_temporary_assigns` | ✅ |
-| Sticky components | ✅ | ❌ | 🟠 |
-| Comprehensions | ✅ 키 기반 | ✅ 위치 기반 (GAP-025) | 🟡 |
+| Sticky components | ✅ | ❌ | 🟠 GAP-033 ([#72](https://github.com/itda-work/django-wireview/issues/72)) |
+| Comprehensions | ✅ 키 기반 | ✅ 위치 기반 (GAP-025) | 🟡 키 기반은 GAP-030 ([#69](https://github.com/itda-work/django-wireview/issues/69)) |
 
 ### 2.13 Testing ✅
 
@@ -199,8 +212,8 @@ django-wireview 지원:       ~55개 (73%)
 | render_component | ✅ | `mount()` | ✅ |
 | render_click | ✅ | `call()` | ✅ |
 | render_change | ✅ | `call()` | ✅ |
-| assert_patch | ✅ | 수동 검증 | ⚠️ |
-| follow_redirect | ✅ | 수동 검증 | ⚠️ |
+| assert_patch | ✅ | 수동 검증 | ⚠️ GAP-031 ([#70](https://github.com/itda-work/django-wireview/issues/70)) |
+| follow_redirect | ✅ | 수동 검증 | ⚠️ GAP-031 ([#70](https://github.com/itda-work/django-wireview/issues/70)) |
 | MockChannelLayer | - | ✅ | ✅ 추가 기능 |
 
 ### 2.14 Developer Tools ✅
@@ -210,7 +223,7 @@ django-wireview 지원:       ~55개 (73%)
 | enableDebug | ✅ | `wireview.debug.enable()` | ✅ |
 | enableLatencySim | ✅ | `wireview.debug.latency()` | ✅ |
 | enableProfiling | ✅ | `wireview.debug.enableProfiling()` | ✅ |
-| Telemetry | ✅ | ❌ | 🟡 |
+| Telemetry | ✅ | `wireview.telemetry` 시그널 | ✅ (GAP-022) |
 | **Type Stubs** | - | `wireview_stubs` | ✅ 추가 기능 |
 | **LSP Metadata** | - | `wireview_lsp` | ✅ 추가 기능 |
 
@@ -220,8 +233,8 @@ django-wireview 지원:       ~55개 (73%)
 |------|:----------------:|:---------------:|:----:|
 | Page title | ✅ `assign(:page_title)` | `push_title()` | ✅ |
 | Flash messages | ✅ `put_flash` | `put_flash()` | ✅ |
-| Dead views | ✅ JS 비활성화 폴백 | ❌ | 🟠 |
-| LongPolling fallback | ✅ | ❌ | 🟠 |
+| Dead views | ✅ JS 비활성화 폴백 | ❌ | 🟠 GAP-034 ([#73](https://github.com/itda-work/django-wireview/issues/73)) |
+| LongPolling fallback | ✅ | ❌ | 🟠 GAP-012 ([#59](https://github.com/itda-work/django-wireview/issues/59)) |
 | on_mount hooks | ✅ | `_on_mount` | ✅ |
 | attach_hook | ✅ | `attach_hook()` | ✅ |
 
@@ -270,6 +283,13 @@ django-wireview 지원:       ~55개 (73%)
 | ~~GAP-025~~ | ~~Comprehensions~~ | ~~`{% for %}`를 항목 단위, `{% if %}`를 블록 단위 static/dynamic으로 분리해 항목·분기 변경 시 부분 diff~~ | ~~중~~ | ✅ 완료 (위치 기반, 키 기반은 미지원) |
 | ~~GAP-026~~ | ~~Transport seam~~ | ~~`Outbound`/`Broker` 인터페이스 뒤로 채널 레이어 격리, 렌더 스냅샷 직렬화, wire-protocol 문서~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-028~~ | ~~Stream DOM 수명~~ | ~~재렌더가 `wire-stream` 컨테이너를 비우고, 같은 dom id 재삽입이 갱신이 아니라 중복이 된다~~ | ~~중~~ | ✅ 완료 |
+| GAP-029 | 세션 접근 | 컴포넌트가 Django 세션을 읽는다. 예제 둘이 없는 API를 상상해 쓰고 있었다 | 하 | [#68](https://github.com/itda-work/django-wireview/issues/68) |
+| GAP-030 | 키 기반 comprehension | 앞쪽 삽입이 뒤 항목 전부를 다시 보내지 않게 | 상 | [#69](https://github.com/itda-work/django-wireview/issues/69) |
+| GAP-031 | 내비게이션 테스트 헬퍼 | `assert_patch`·`follow_redirect` 상당물 | 하 | [#70](https://github.com/itda-work/django-wireview/issues/70) |
+| GAP-032 | Colocated hooks | 컴포넌트 옆의 JS 훅을 자동 등록 | 중 | [#71](https://github.com/itda-work/django-wireview/issues/71) |
+| GAP-033 | Sticky 컴포넌트 | boost 내비게이션을 건너 살아남는 컴포넌트 | 중 | [#72](https://github.com/itda-work/django-wireview/issues/72) |
+| GAP-034 | Dead view | JS 없이도 읽히는 첫 렌더. 무엇을 약속할지부터 | 중 | [#73](https://github.com/itda-work/django-wireview/issues/73) |
+| GAP-035 | LiveComponent 배치 업데이트 | 같은 컴포넌트 N개 갱신의 N+1 제거 | 중 | [#74](https://github.com/itda-work/django-wireview/issues/74) |
 | GAP-027 | Session extraction | 컨슈머 핸들러를 `WireviewSession`으로 분리, 세션 상태 export/import (docs/design/transport-abstraction.md) | 상 | [#60](https://github.com/itda-work/django-wireview/issues/60) 착수 기준 대기 |
 
 ---

@@ -12,6 +12,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- `docs/FEATURE-GAP.md` now matches the code. Three rows claimed features were missing that
+  had shipped (form auto-recovery, telemetry, `stream(reset:)`), every remaining gap carries a
+  GAP number and an issue, Nested LiveViews is marked as a deliberate exclusion with the reason,
+  and the coverage summary is a count of the table rather than a round number
+
+### Changed
+
 - Answered why uvicorn costs 4× more RSS per connection than daphne (`#61`): it negotiates
   WebSocket permessage-deflate by default and daphne does not offer it, so every uvicorn
   connection holds a zlib deflate and inflate context. Measured at 2,000 connections: daphne
