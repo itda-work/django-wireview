@@ -13,7 +13,9 @@ The django-reactor era changelog (2.x) is preserved in
 ### Changed
 
 - NATS is now the layer this project targets. `make test-e2e` runs the browser suite on
-  channels-nats, `WIREVIEW_TEST_LAYER` (memory by default, nats or redis) picks the layer for the
+  channels-nats and `tests/e2e.sh` starts a throwaway nats-server for it, so no broker has to be
+  running first;
+  `WIREVIEW_TEST_LAYER` (memory by default, nats or redis) picks the layer for the
   test project, and README and `docs/DEPLOYMENT.md` recommend it first. channels_redis stays fully
   supported and is what CI runs until channels-nats is published on PyPI
 

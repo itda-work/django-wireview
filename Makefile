@@ -32,11 +32,11 @@ test-unit: collectstatic
 	uv run pytest tests/ -m "unit" -v $(ARGS)
 
 # Run E2E tests with Playwright on the NATS channel layer (the layer this project targets).
-# Needs a nats-server on NATS_URL (default nats://127.0.0.1:4222) and channels-nats installed.
-# Override with LAYER=redis or LAYER=memory.
+# tests/e2e.sh starts a throwaway nats-server unless one is already running, and stops it
+# afterwards. Override the layer with LAYER=redis or LAYER=memory.
 LAYER ?= nats
 test-e2e: collectstatic playwright-install
-	WIREVIEW_TEST_LAYER=$(LAYER) DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "e2e" -v $(ARGS)
+	WIREVIEW_TEST_LAYER=$(LAYER) ./tests/e2e.sh $(ARGS)
 
 # Run all tests including E2E (runs separately to avoid async conflicts)
 test-all: test test-e2e
