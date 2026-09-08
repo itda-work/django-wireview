@@ -1,0 +1,19 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <form {% on 'submit.prevent' 'add' %}>
+    <input type="text" name="title" placeholder="제목" />
+    <input type="text" name="url" placeholder="URL" />
+    <button type="submit">추가</button>
+  </form>
+  <div class="filters">
+    <a href="#"
+       {% on 'click.prevent' 'set_filter' filter='all' %}
+       {% class {"selected": filter == "all"} %}>전체</a>
+    <a href="#"
+       {% on 'click.prevent' 'set_filter' filter='unread' %}
+       {% class {"selected": filter == "unread"} %}>안읽음</a>
+  </div>
+  <ul wire-stream="bookmarks">
+  </ul>
+</div>

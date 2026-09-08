@@ -1,0 +1,14 @@
+{% load wireview %}
+
+<li id="bookmarks-{{ item.pk }}">
+  <a href="{{ item.url }}">{{ item.title }}</a>
+  <span>
+    {% if item.is_read %}
+      읽음
+    {% else %}
+      안읽음
+    {% endif %}
+  </span>
+  <button {% on 'click' 'toggle_read' bookmark_id=item.pk %}>토글</button>
+  <button {% on 'click' 'delete' bookmark_id=item.pk %}>삭제</button>
+</li>

@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     "testproj.notifications",
     "testproj.slots",
     "testproj.livecomp",
+    "testproj.bookmarks",
     "wireview",
     "channels",
     "daphne",

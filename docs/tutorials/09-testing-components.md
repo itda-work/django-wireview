@@ -369,6 +369,17 @@ async def test_delete_item():
     assert not await Item.objects.filter(id=item.id).aexists()
 ```
 
+> **`django_db`는 async ORM 호출을 롤백하지 못한다.**
+> `@pytest.mark.django_db`는 각 테스트를 트랜잭션으로 감싸고 끝에 롤백한다. 동기 ORM은
+> 그대로 동작하지만, `acreate`·`asave`·`adelete`로 쓴 레코드는 그 트랜잭션 밖에서 커밋되어
+> 다음 테스트에 그대로 보인다. 컴포넌트 핸들러는 async이므로 대부분의 컴포넌트 테스트가
+> 여기에 해당한다.
+>
+> 그래서 위 예제들은 전역 개수가 아니라 **pk로 범위를 좁혀** 검사한다.
+> `await Item.objects.acount() == 0` 같은 단언은 앞선 테스트가 남긴 레코드 때문에 깨진다.
+> 격리가 꼭 필요하면 `@pytest.mark.django_db(transaction=True)`를 쓰되, 매 테스트마다
+> 테이블을 비우므로 느려진다.
+
 ## 에러 테스트
 
 ### 예외 발생 확인

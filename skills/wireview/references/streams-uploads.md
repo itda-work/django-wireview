@@ -22,6 +22,8 @@ class XChatRoom(Component):
 
 - 컨테이너에 `wire-stream="messages"`를 단다.
 - 아이템 템플릿 기본값은 `<컴포넌트 템플릿>_item.html`이고 `template=`으로 바꾼다.
+- **아이템 템플릿 안에서 아이템은 `item`이다** (컴포넌트 자신은 `this`). 이름을 잘못 쓰면
+  예외 없이 빈 칸으로 렌더된다.
 - DOM id 기본값은 `{stream_name}-{item.pk}`이고 `dom_id=`로 바꾼다. `stream_delete`에는 이 **DOM id**를 넘긴다.
 - `limit=N`이면 오래된 아이템이 DOM에서 자동으로 빠진다.
 - 상세: https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/06-streams-api.md
