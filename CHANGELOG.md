@@ -16,8 +16,9 @@ The django-reactor era changelog (2.x) is preserved in
   channels-nats and `tests/e2e.sh` starts a throwaway nats-server for it, so no broker has to be
   running first;
   `WIREVIEW_TEST_LAYER` (memory by default, nats or redis) picks the layer for the
-  test project, and README and `docs/DEPLOYMENT.md` recommend it first. channels_redis stays fully
-  supported and is what CI runs until channels-nats is published on PyPI
+  test project, and README and `docs/DEPLOYMENT.md` recommend it first. CI runs the E2E suite on
+  NATS too, and channels-nats is a dev dependency now that it is on PyPI. channels_redis stays
+  fully supported
 
 ### Added
 

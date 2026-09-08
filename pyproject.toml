@@ -44,6 +44,7 @@ dev = [
     "ipython",
     "whitenoise",
     "channels-redis",
+    "channels-nats",
     "django-hmin",
     "django-stubs",
     "django-stubs-ext",

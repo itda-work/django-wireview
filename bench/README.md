@@ -6,7 +6,7 @@ wireview의 성능 주장을 직접 재기 위한 도구입니다. 결과는 `be
 make bench                         # 현재 트리. 인프로세스 + WebSocket(daphne, 연결 500개)
 make bench ARGS="--skip-ws"        # 인프로세스만 (10초 안쪽)
 make bench-compare BASE=997ee59    # 과거 커밋을 worktree에 받아 같은 벤치를 돌리고 비교표 출력
-make bench ARGS="--layer nats --processes 4 --connections 2000"   # channels-nats 위에서 daphne 4개. nats-server와 uv pip install -e ../channels-nats 필요
+make bench ARGS="--layer nats --processes 4 --connections 2000"   # channels-nats 위에서 daphne 4개. nats-server 필요 (벤치가 임시 포트로 직접 띄운다)
 make bench ARGS="--layer redis --processes 4 --connections 2000"  # channels_redis 위에서 daphne 4개. redis-server 필요 (벤치가 임시 포트로 직접 띄운다)
 make bench ARGS="--server uvicorn"  # daphne 대신 uvicorn. Windows에서 daphne는 select() 루프(프로세스당 소켓 512개)에 묶이므로 이쪽으로 잰다
 ```

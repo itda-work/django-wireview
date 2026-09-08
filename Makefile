@@ -165,12 +165,12 @@ ci-test:
 	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "not e2e and not slow" -q
 
 # CI: Run E2E tests
-# CI runs E2E on Redis: channels-nats is not on PyPI yet, so the runner cannot install it.
-# Flip WIREVIEW_TEST_LAYER to nats (and swap the service in ci.yml) once it is published.
+# CI runs E2E on NATS, the layer this project targets. ci.yml provides the server as a
+# service container, so this does not start one (tests/e2e.sh would, locally).
 ci-test-e2e:
 	cd tests && uv run python manage.py collectstatic --noinput
 	uv run playwright install --with-deps chromium
-	WIREVIEW_TEST_LAYER=redis DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "e2e" -v
+	WIREVIEW_TEST_LAYER=nats DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "e2e" -v
 
 # CI: Build and check package
 ci-build:

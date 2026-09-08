@@ -1,5 +1,5 @@
 # Provision C:\bench inside the Parallels lab guest (run via pmlab_runps as SYSTEM).
-# Expects on \\Mac\parlab: wireview.zip, dist\channels_nats-*.whl, nats-server-windows-arm64.zip.
+# Expects on \\Mac\parlab: wireview.zip and nats-server-windows-arm64.zip. channels-nats comes from PyPI.
 # Makes two venvs: .venv (native ARM64: uvicorn stack; daphne has no ARM64 wheels for
 # autobahn/cryptography) and .venv-x64 (x64 under emulation: daphne + uvicorn).
 $root = 'C:\bench'
@@ -22,8 +22,7 @@ if (Test-Path "$root\wireview") { Remove-Item -Recurse -Force "$root\wireview" }
 Expand-Archive -Path "$share\wireview.zip" -DestinationPath "$root\wireview" -Force
 Expand-Archive -Path "$share\nats-server-windows-arm64.zip" -DestinationPath "$root\nats" -Force
 Set-Location "$root\wireview"
-$wheel = (Get-ChildItem "$share\dist\channels_nats-*.whl" | Select-Object -First 1).FullName
-$common = @('-e', '.', 'uvicorn', 'websockets', 'psutil', 'whitenoise', $wheel)
+$common = @('-e', '.', 'uvicorn', 'websockets', 'psutil', 'whitenoise', 'channels-nats')
 & $uv venv --python cpython-3.12-windows-aarch64-none .venv
 & $uv pip install --python .venv\Scripts\python.exe @common
 if ($LASTEXITCODE -ne 0) { Write-Output 'arm64 venv failed'; exit 12 }
