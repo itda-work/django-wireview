@@ -368,11 +368,11 @@ django-wireview 지원:       ~55개 (73%)
 │  ├─ :limit 옵션 ✅ 완료                                    │
 │  └─ viewport 바인딩 ✅ 완료                                │
 │                                                             │
-│  GAP-020-022: Developer Tools                               │
+│  GAP-020-022: Developer Tools ✅ 완료                       │
 │  ├─ Type Stubs (.pyi) ✅ 완료                              │
 │  ├─ LSP Metadata ✅ 완료                                   │
-│  ├─ Profiling                                              │
-│  └─ Telemetry                                              │
+│  ├─ Profiling ✅ 완료                                      │
+│  └─ Telemetry ✅ 완료                                      │
 │                                                             │
 │  예상 기간: 4-6주                                           │
 │                                                             │
