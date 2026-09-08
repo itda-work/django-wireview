@@ -9,7 +9,7 @@ These tests verify that security measures are in place to prevent:
 import pytest
 import pytest_asyncio
 
-from wireview import Component
+from wireview import Component, LiveComponent
 from wireview.repository import ComponentRepository
 from wireview.testing import mount
 
@@ -368,3 +368,99 @@ class TestValidationHelpers:
         assert ComponentRepository._is_user_defined_method(component, "dom") is False
         assert ComponentRepository._is_user_defined_method(component, "destroy") is False
         assert ComponentRepository._is_user_defined_method(component, "model_dump") is False
+
+
+# =============================================================================
+# Method Exposure Rule Tests (#63)
+# =============================================================================
+
+
+class ExposureProbe(Component):
+    """User component that overrides framework names on purpose."""
+
+    _template_name = "test.html"
+    counter: int = 0
+    joined_calls: int = 0
+
+    async def increment(self):
+        self.counter += 1
+
+    async def joined(self):
+        """Lifecycle override - still framework surface, not a client event."""
+        self.joined_calls += 1
+
+
+class ExposureLiveProbe(LiveComponent):
+    """User LiveComponent that overrides a framework callback."""
+
+    _template_name = "test.html"
+    counter: int = 0
+
+    async def increment(self):
+        self.counter += 1
+
+    async def update(self, **assigns):
+        """Documented override point - called by the parent, not by the client."""
+        await super().update(**assigns)
+
+
+class TestMethodExposureRule:
+    """The exposure rule must mean 'defined by user code', nothing wider."""
+
+    async def _repo_for(self, component_class):
+        view = await mount(component_class)
+        repo = ComponentRepository(is_live=True)
+        repo.register_component(view.component)
+        return repo, view.component.id
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_user_handler_reachable(self):
+        """A handler written by the user stays reachable."""
+        repo, comp_id = await self._repo_for(ExposureProbe)
+        component = await repo.dispatch_event(comp_id, "increment", [], {})
+        assert component.counter == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_pydantic_generated_method_blocked(self):
+        """model_post_init is injected into the user class by Pydantic, not written by the user."""
+        repo, comp_id = await self._repo_for(ExposureProbe)
+        assert "model_post_init" in type(repo.get(comp_id)).__dict__
+        with pytest.raises(ValueError, match="Cannot call base class method"):
+            await repo.dispatch_event(comp_id, "model_post_init", [], {})
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_overridden_lifecycle_method_blocked(self):
+        """Overriding a framework lifecycle name does not expose it."""
+        repo, comp_id = await self._repo_for(ExposureProbe)
+        with pytest.raises(ValueError, match="Cannot call base class method"):
+            await repo.dispatch_event(comp_id, "joined", [], {})
+        # Only the framework's own mount path called it.
+        assert repo.get(comp_id).joined_calls == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_live_component_send_to_parent_blocked(self):
+        """LiveComponent framework API must not be callable from the client."""
+        repo, comp_id = await self._repo_for(ExposureLiveProbe)
+        with pytest.raises(ValueError, match="Cannot call base class method"):
+            await repo.dispatch_event(comp_id, "send_to_parent", ["forged"], {})
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_live_component_update_blocked(self):
+        """update() is a parent-driven callback, even when the user overrides it."""
+        repo, comp_id = await self._repo_for(ExposureLiveProbe)
+        with pytest.raises(ValueError, match="Cannot call base class method"):
+            await repo.dispatch_event(comp_id, "update", [], {"counter": 99})
+        assert repo.get(comp_id).counter == 0
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_live_component_user_handler_reachable(self):
+        """LiveComponent handlers written by the user stay reachable."""
+        repo, comp_id = await self._repo_for(ExposureLiveProbe)
+        component = await repo.dispatch_event(comp_id, "increment", [], {})
+        assert component.counter == 1

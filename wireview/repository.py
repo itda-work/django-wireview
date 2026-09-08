@@ -15,6 +15,18 @@ from .utils import filter_parameters
 
 ChildrenRepo = dict[str, tuple[str, dict[str, t.Any]]]
 
+# Packages whose classes are framework surface, never client-callable handlers.
+_FRAMEWORK_ROOTS = ("wireview", "pydantic")
+
+
+def _is_framework_class(cls: type) -> bool:
+    """Whether a class comes from the framework rather than from user code."""
+    if cls is object:
+        return True
+    module = getattr(cls, "__module__", "") or ""
+    root = module.partition(".")[0]
+    return root in _FRAMEWORK_ROOTS
+
 
 class ComponentRepository:
     user: AnonymousUser | AbstractBaseUser
@@ -277,30 +289,31 @@ class ComponentRepository:
 
     @staticmethod
     def _is_user_defined_method(component: Component, command: str) -> bool:
-        """Check if method is defined on user's subclass, not on Component base.
+        """Check if a method name belongs to the user's own component code.
 
-        This blocks access to:
-        - Pydantic BaseModel methods (model_validate, model_dump, etc.)
-        - Component internal methods (dom, destroy, etc.)
-        - Only allows methods defined by the user in their component subclass
+        A name is exposed only when every class in the MRO that defines it is a
+        user class. Any name owned by a framework class blocks the call, even if
+        a subclass overrides it, because framework names are API and lifecycle
+        surface rather than client events:
+
+        - Pydantic BaseModel methods (model_validate, model_dump, model_post_init)
+        - Component internals and lifecycle (dom, destroy, mount, joined)
+        - LiveComponent API and lifecycle (send_to_parent, update)
         """
-        # Get the method resolution order (MRO) for the component
-        component_class = type(component)
+        found_on_user_class = False
 
-        # Check if the method is defined on the user's class (not inherited from Component)
-        for cls in component_class.__mro__:
-            if cls is Component:
-                # We've reached Component base class
-                # If method is defined here or below, it's not user-defined
-                if command in cls.__dict__:
-                    return False
-                break
-            if command in cls.__dict__:
-                # Method is defined on a class before Component in MRO
-                # This is the user's class or their parent classes
-                return True
+        for cls in type(component).__mro__:
+            if command not in cls.__dict__:
+                continue
+            if _is_framework_class(cls):
+                # The name is framework surface, wherever it is also overridden.
+                # Pydantic-generated methods (model_post_init) land here too:
+                # the metaclass injects them into the user class, but BaseModel
+                # owns the name.
+                return False
+            found_on_user_class = True
 
-        return False
+        return found_on_user_class
 
     def components_subscribed_to(self, channel):
         # XXX: There is a list() here because the dict can change size during

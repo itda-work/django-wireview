@@ -10,6 +10,16 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Fixed
+
+- Method exposure now means "written in user code". `ComponentRepository._is_user_defined_method`
+  stopped at `Component` in the MRO, so everything between a subclass and `Component` counted as a
+  user handler: `LiveComponent.send_to_parent` and `update` were client-callable, and the
+  `model_post_init` Pydantic injects into every component was only blocked by accident, by its
+  positional-only signature. A name owned by any `wireview` or `pydantic` class is now blocked even
+  when a subclass overrides it, so lifecycle callbacks stay parent-driven and a client can no longer
+  forge a parent event that looks like it came from a child (#63)
+
 ### Added
 
 - `tests/test_agent_docs.py` guards the agent harness against drift: every path, `make` target
