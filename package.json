@@ -9,7 +9,8 @@
   "scripts": {
     "build": "node esbuild.conf.js",
     "watch": "node esbuild.conf.js -w",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/js/*.test.mjs"
   },
   "dependencies": {
     "idiomorph": "^0.7.4",

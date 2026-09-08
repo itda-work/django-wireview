@@ -12,6 +12,11 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- Comprehensions and blocks: `{% for %}` output is one dynamic slot holding the item template's
+  statics once and per-item dynamics, and `{% if %}` output is a nested block with its own
+  statics. Adding, removing or changing items and switching branches now produce partial diffs
+  instead of full renders (GAP-025). Client side lives in `wireview/static/wireview/rendered.mjs`
+  and is unit-tested with `npm test`
 - `wireview.core.transport`: `Outbound` and `Broker` interfaces with Channels implementations.
   Every channel-layer call now goes through them, so another connection layer only has to
   implement the two interfaces (GAP-026)
@@ -36,6 +41,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- HTTP renders no longer leak diff markers into attributes (`value="<!--$0-->…"`); markers are
+  stripped for non-live renders
+- Variables inside `{% if %}` branches were never marked, so any change inside a conditional
+  was a full render; branches are now wrapped like the rest of the template
+- Empty variable output is now marked too, so a value toggling between "" and text no longer
+  shifts every following index into a full render
 - Partial HTML diffs never fired for live components: `{% tag_header %}` embedded the freshly
   signed `data-state` in the static parts, so the fingerprint changed on every render and every
   event shipped a full render. The signed state is now a dynamic part (GAP-024)

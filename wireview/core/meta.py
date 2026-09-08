@@ -17,7 +17,7 @@ from django.utils.safestring import SafeText, mark_safe
 from .. import settings
 from ..schemas import DomAction
 from ..utils import db
-from .rendered import Rendered, has_markers
+from .rendered import Rendered, has_markers, strip_markers
 from .transport import Broker, ChannelsBroker, NullBroker
 
 log = logging.getLogger("wireview")
@@ -56,7 +56,7 @@ ScrollPosition = t.Literal["start"] | t.Literal["end"] | t.Literal["center"] | t
 class Repo(t.Protocol):
     """Protocol for component repository."""
 
-    pass
+    is_live: bool
 
 
 class WireviewMeta:
@@ -342,6 +342,10 @@ class WireviewMeta:
             # Use marker-injected rendering for efficient diffing
             # The template type from component matches what render_with_markers expects
             html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
+            if not repo.is_live:
+                # HTTP render: markers inside attributes (value="<!--$0-->…") would
+                # corrupt the page until the WebSocket join replaces the DOM.
+                html = strip_markers(html)
             html = html_minify(html)
         if html:
             return mark_safe(html)

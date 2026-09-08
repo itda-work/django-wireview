@@ -189,7 +189,7 @@ django-wireview 지원:       ~55개 (73%)
 | force_render | ✅ | `force_render()` | ✅ |
 | **temporary_assigns** | ✅ | ✅ `_temporary_assigns` | ✅ |
 | Sticky components | ✅ | ❌ | 🟠 |
-| Keyed comprehensions | ✅ | ❌ (GAP-025) | 🟡 |
+| Comprehensions | ✅ 키 기반 | ✅ 위치 기반 (GAP-025) | 🟡 |
 
 ### 2.13 Testing ✅
 
@@ -266,7 +266,7 @@ django-wireview 지원:       ~55개 (73%)
 | ~~GAP-021~~ | ~~on_mount hooks~~ | ~~공통 마운트 로직 모듈화~~ | ~~중~~ | ✅ 완료 |
 | GAP-022 | Telemetry | 성능 측정 훅 | 중 | 1-2주 |
 | ~~GAP-023~~ | ~~onBeforeElUpdated~~ | ~~DOM 패치 전 콜백~~ | ~~하~~ | ✅ 완료 |
-| GAP-025 | Keyed comprehensions | 루프 항목 단위 static/dynamic 분리로 항목 추가·삭제 시에도 부분 diff | 중 | 1-2주 |
+| ~~GAP-025~~ | ~~Comprehensions~~ | ~~`{% for %}`를 항목 단위, `{% if %}`를 블록 단위 static/dynamic으로 분리해 항목·분기 변경 시 부분 diff~~ | ~~중~~ | ✅ 완료 (위치 기반, 키 기반은 미지원) |
 | ~~GAP-026~~ | ~~Transport seam~~ | ~~`Outbound`/`Broker` 인터페이스 뒤로 채널 레이어 격리, 렌더 스냅샷 직렬화, wire-protocol 문서~~ | ~~중~~ | ✅ 완료 |
 | GAP-027 | Session extraction | 컨슈머 핸들러를 `WireviewSession`으로 분리, 세션 상태 export/import (docs/design/transport-abstraction.md) | 상 | 2-3주 |
 

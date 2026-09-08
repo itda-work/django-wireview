@@ -40,7 +40,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 
 | command | payload |
 |---------|---------|
-| `render` | `id`, `diff` — 전체 `{"s", "d", "f"}` 또는 부분 `{"<index>": value}` ([html-diff](../features/html-diff.md)) |
+| `render` | `id`, `diff` — 전체 `{"s", "d", "f"}` 또는 부분 `{"<index>": value}`. value는 문자열, comprehension `{"s", "d"}`, 항목 갱신 `{"u", "n"}`, 블록 `{"r", "d"}`, 블록 부분 갱신 `{"p"}` ([html-diff](../features/html-diff.md)) |
 | `remove` | `id` |
 | `append`, `prepend`, `insert_after`, `insert_before`, `replace_with` | `id`, `html` |
 | `stream_op` | `op`, `stream`, `items`, `at` |
@@ -93,4 +93,5 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 
 ## 7. 버전
 
+- 2026-09-08: `render` 부분 diff 값에 comprehension과 블록 형태 추가 (GAP-025).
 - 2026-09-08: 첫 정본. 코드에서 추출했으며, 이후 명령을 더하거나 필드를 바꾸면 이 문서와 `CHANGELOG.md`에 남긴다.

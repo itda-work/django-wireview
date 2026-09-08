@@ -1,4 +1,4 @@
-.PHONY: all install test test-unit test-e2e test-cov lint format check build watch-js run shell clean collectstatic playwright-install
+.PHONY: all install test test-unit test-e2e test-cov test-js lint format check check-js quality build watch-js run shell clean collectstatic playwright-install
 
 # Default target
 all: install build
@@ -66,8 +66,12 @@ check:
 check-js:
 	npm run typecheck
 
+# Unit-test the pure client modules (node --test)
+test-js:
+	npm test
+
 # Run all quality checks
-quality: lint check check-js
+quality: lint check check-js test-js
 
 # =============================================================================
 # Build

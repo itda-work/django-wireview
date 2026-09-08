@@ -1,4 +1,5 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
+import { applyPartial, buildHtml } from "./rendered.mjs";
 import boost from "./wireview-boost";
 
 /**
@@ -39,13 +40,14 @@ function parseQueryString(search) {
 /**
  * @typedef {Object} PhoenixFullDiff
  * @property {string[]} s - Static parts
- * @property {string[]} d - Dynamic parts
+ * @property {Array<string|Object>} d - Dynamic parts (strings or comprehensions {s, d})
  * @property {string} f - Fingerprint
  */
 
 /**
- * @typedef {Object<string, string>} PhoenixPartialDiff
- * Partial diff with numeric string keys mapping to new values
+ * @typedef {Object<string, string|Object>} PhoenixPartialDiff
+ * Partial diff with numeric string keys mapping to new values: a string, a
+ * comprehension {s, d}, or a comprehension item update {u, n}
  */
 
 /**
@@ -846,13 +848,8 @@ class WireviewComponent {
       this.dynamic = diff.d.slice(); // Clone to avoid mutation
       this.fingerprint = diff.f;
     } else {
-      // Partial update: update only changed dynamic values
-      for (const [idx, value] of Object.entries(diff)) {
-        const index = parseInt(idx, 10);
-        if (!isNaN(index) && index >= 0 && index < this.dynamic.length) {
-          this.dynamic[index] = value;
-        }
-      }
+      // Partial update: strings, comprehensions, or comprehension item updates
+      applyPartial(this.dynamic, diff);
     }
 
     return this.buildHtmlFromStatic();
@@ -868,14 +865,7 @@ class WireviewComponent {
       return this.getElemenet()?.outerHTML || "";
     }
 
-    const parts = [];
-    for (let i = 0; i < this.static.length; i++) {
-      parts.push(this.static[i]);
-      if (i < this.dynamic.length) {
-        parts.push(this.dynamic[i] || "");
-      }
-    }
-    return parts.join("");
+    return buildHtml(this.static, this.dynamic);
   }
 
   /**

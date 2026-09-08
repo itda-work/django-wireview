@@ -51,11 +51,12 @@ wireview/
 ├── templatetags/wireview.py  템플릿 태그 전체 (아래 표)
 ├── management/commands/   wireview_stubs (.pyi 생성), wireview_lsp (IDE 메타데이터 JSON)
 ├── templates/wireview_header.html  {% wireview_header %}가 렌더. wireview.min.js를 로드
-└── static/wireview/       wireview.js (소스, 단일 파일), wireview-boost.js (내비게이션 부스트), types.d.ts
+└── static/wireview/       wireview.js (소스), rendered.mjs (diff 적용·HTML 복원 순수 함수), wireview-boost.js, types.d.ts
                            wireview.min.js는 빌드 산출물이며 gitignore
 
 tests/
 ├── test_*.py              라이브러리 단위·통합 테스트. WebSocket 없이 mount() 사용
+├── js/*.test.mjs          클라이언트 순수 모듈 테스트 (node --test)
 └── testproj/              Django 테스트 프로젝트. 앱: todo, chat, dashboard, livecomp, notifications,
                            poll, quiz, rating, search, slots. E2E는 todo/tests.py, livecomp/tests.py
 
@@ -93,6 +94,7 @@ typings/                   channels 타입 스텁 (pyright용)
 | E2E | `make test-e2e` | Redis 127.0.0.1:6379, JS 빌드, `make playwright-install` |
 | 린트 | `make lint` (ruff + djlint) | |
 | 타입 검사 | `make check` (pyright, tests/ 제외) | |
+| 클라이언트 테스트 | `make test-js` (`npm test`, node --test) | |
 | 포맷 | `make format` | |
 | 품질 일괄 | `make quality` | CI의 lint·typecheck 잡과 동일 범위 |
 | 개발 서버 | `make run-daphne` | JS 빌드, Redis |
@@ -108,7 +110,7 @@ CI(`ci.yml`)는 Python×Django 매트릭스 테스트, Redis를 띄운 E2E, lint
 - **언어.** 코드 주석과 docstring은 영어. 문서는 한국어 기본.
 - **테스트 마커.** `unit` / `integration` / `slow` / `e2e` 중 하나 이상을 붙인다 (`--strict-markers`). 라이브러리 테스트는 `tests/test_*.py`, 앱·E2E 테스트는 `tests/testproj/<app>/tests.py`.
 - **설정 키 추가** 시 `wireview/settings.py`의 `DEFAULT`에 기본값을 넣는다.
-- **JS.** `wireview.js` 단일 파일, ES2020, 2칸 들여쓰기, JSDoc. 포매터는 없다.
+- **JS.** `wireview.js`는 ES2020, 2칸 들여쓰기, JSDoc. 포매터는 없다. DOM 없이 검증 가능한 로직은 `rendered.mjs`처럼 순수 모듈로 빼고 `tests/js/`에 node 테스트를 둔다.
 - **import.** 새 코드는 `from wireview import Component, LiveComponent, JS, mount`. `wireview.component` 경로는 하위 호환용.
 
 ## 함정
