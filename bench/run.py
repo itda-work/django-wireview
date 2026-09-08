@@ -59,12 +59,17 @@ def _print(results: dict) -> None:
     for key, value in results["memory"].items():
         print(f"  {key:<30} {value:>10.1f}")
     if results.get("ws"):
+        first = next(iter(results["ws"].values()))
+        label = f"websocket ({first.get('layer', 'memory')}, {first.get('processes', 1)} proc)"
         print()
-        print(f"{'websocket':<20} {'conns':>6} {'KB/conn':>9} {'joins/s':>9} {'events/s':>9} {'render B':>9}")
+        print(
+            f"{label:<28} {'conns':>6} {'KB/conn':>9} {'joins/s':>9} {'events/s':>9} {'render B':>9} {'broadcast':>10}"
+        )
         for key, ws in results["ws"].items():
             print(
-                f"  {key:<18} {ws['connections']:>6} {ws['per_connection_kb']:>9.1f} "
-                f"{ws['joins_per_s']:>9.0f} {ws['events_per_s']:>9.0f} {ws['render_bytes']:>9,}"
+                f"  {key:<26} {ws['connections']:>6} {ws['per_connection_kb']:>9.1f} "
+                f"{ws['joins_per_s']:>9.0f} {ws['events_per_s']:>9.0f} {ws['render_bytes']:>9,} "
+                f"{ws.get('broadcast_ms', 0):>8.0f}ms"
             )
 
 
@@ -77,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--iterations", type=int, default=300)
     parser.add_argument("--connections", type=int, default=500)
     parser.add_argument("--skip-ws", action="store_true", help="skip the daphne/WebSocket benchmark")
+    parser.add_argument("--processes", type=int, default=1, help="daphne processes (needs --layer nats when > 1)")
+    parser.add_argument("--layer", choices=["memory", "nats"], default="memory", help="channel layer for the servers")
     args = parser.parse_args(argv)
 
     _setup_django()
@@ -97,6 +104,8 @@ def main(argv: list[str] | None = None) -> int:
             "platform": f"{platform.system()} {platform.machine()}",
             "items": args.items,
             "connections": None if args.skip_ws else args.connections,
+            "layer": None if args.skip_ws else args.layer,
+            "processes": None if args.skip_ws else args.processes,
         }
     }
     if args.out is None:
@@ -109,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
         from bench import ws
 
         call_command("migrate", verbosity=0, interactive=False)  # sessions table for the consumer
-        results["ws"] = ws.run(connections=args.connections)
+        results["ws"] = ws.run(connections=args.connections, processes=args.processes, layer=args.layer)
 
     _print(results)
     if args.out:

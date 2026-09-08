@@ -10,7 +10,16 @@ _DATA = os.path.join(_HERE, ".data")
 os.makedirs(_DATA, exist_ok=True)
 
 INSTALLED_APPS = list(INSTALLED_APPS) + ["bench.benchapp"]
-CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+if os.environ.get("BENCH_LAYER", "memory") == "nats":
+    # channels-nats: one NATS server links several daphne processes (pip install -e ../channels-nats)
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_nats.NatsChannelLayer",
+            "CONFIG": {"servers": [os.environ.get("NATS_URL", "nats://127.0.0.1:4222")]},
+        }
+    }
+else:
+    CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
 WIREVIEW = {**WIREVIEW, "AUTO_GENERATE_STUBS": False}
 DATABASES["default"]["NAME"] = os.path.join(_DATA, "bench.sqlite3")
 LOGGING = {

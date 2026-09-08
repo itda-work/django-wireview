@@ -12,6 +12,9 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- NATS channel layer support in the test project and the benchmark: `tests/testproj/settings_nats.py`,
+  `tests/test_nats_layer.py` (cross-process broadcast reaches a consumer through channels-nats),
+  `make bench ARGS="--layer nats --processes N"` with a broadcast fan-out measurement
 - `bench/`: reproducible benchmarks (`make bench`) for render payload sizes, per-event cost,
   memory and WebSocket connection density, plus `make bench-compare BASE=<ref>` to benchmark a
   past commit in a throwaway worktree and print a side-by-side table

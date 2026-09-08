@@ -1,6 +1,6 @@
 """Components rendered by the benchmarks. Kept deliberately plain."""
 
-from wireview import Component
+from wireview import Component, abroadcast
 
 
 class BenchFlat(Component):
@@ -24,11 +24,20 @@ class BenchList(Component):
     """A list with a conditional per item plus a top-level conditional."""
 
     _template_name = "bench/list.html"
+    _subscriptions = {"bench-shout"}
 
     title: str = "List"
     note: str = ""
     count: int = 0
+    shouts: int = 0
     items: list[dict] = []
+
+    async def shout(self):
+        """Broadcast to every BenchList in every process; each one re-renders."""
+        await abroadcast("bench-shout", n=1)
+
+    async def notification(self, channel: str, **kwargs):
+        self.shouts += 1
 
     async def increment(self):
         self.count += 1

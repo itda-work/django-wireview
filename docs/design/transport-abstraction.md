@@ -65,6 +65,17 @@ Go나 Elixir 프런트(AnyCable-Go, Centrifugo, 조직의 kraken)가 맡을 수 
 
 SQLite와 Windows(WSL2·Docker 없음)를 기본 배포 전제로 두기로 했다. 이 전제에서 빠진 부품은 Redis 없이 프로세스를 잇는 채널 레이어뿐이고, 그것은 wireview가 아니라 Channels 수준의 부품이다. 그래서 [channels-nats](https://github.com/itda-work/channels-nats)를 별도 저장소로 만들었다. NATS 서버는 그대로 쓰고 Python 레이어만 구현하며, subject(`<prefix>.ch.<channel>`, `<prefix>.grp.<group>`)가 외부 계약이다. 2단계에서 Go 프런트를 붙이더라도 그 subject로 합류하므로 wireview와 사용자 코드는 바뀌지 않는다. 7절의 goproxy 실험 코드는 `feat/go-front` 브랜치에 참고용으로 남기고 병합하지 않는다.
 
+wireview를 그 위에서 돌린 실측이다 (`make bench ARGS="--layer nats --processes 4 --connections 2000"`, 같은 기계). 브로드캐스트는 연결 하나가 `abroadcast`를 부르고 2,000개 연결의 컴포넌트가 모두 다시 렌더할 때까지의 시간이다.
+
+| 구성 | 컴포넌트 | 연결당 RSS | join/s | 이벤트/s | 브로드캐스트 |
+|------|---------|-----------:|-------:|---------:|------------:|
+| daphne 1개, InMemory | 항목 5개 | 46.2 KB | 1,086 | 3,013 | 862 ms |
+| daphne 4개, channels-nats | 항목 5개 | 61.0 KB | 1,979 | 10,485 | 221 ms |
+| daphne 1개, InMemory | 항목 50개 | 69.8 KB | 691 | 1,452 | 1,769 ms |
+| daphne 4개, channels-nats | 항목 50개 | 85.1 KB | 1,340 | 4,124 | 393 ms |
+
+프로세스를 넷으로 늘리자 이벤트 처리량이 3배, 브로드캐스트가 4배 빨라졌다. 연결당 메모리는 15 KB 늘었는데 채널마다 NATS 구독과 mailbox를 하나씩 두는 channels-nats의 현재 구현 비용이고, 프로세스당 구독 하나로 묶으면 줄일 수 있다. 브라우저 E2E도 `--ds=testproj.settings_nats`로 같은 레이어 위에서 통과했다.
+
 ## 6. 착수 기준
 
 프로세스당 동시 연결이 수천을 넘고 유휴 연결이 많은 워크로드(대시보드, 알림)가 실제로 생길 때. 지금 실측으로는 Python 워커 하나가 2,000 유휴 연결을 188 MB로 들고 초당 수천 이벤트를 처리하므로, 워커 여덟 개면 만 단위 연결까지 프런트 없이 간다. 그 전에는 4절의 준비만 유지한다.

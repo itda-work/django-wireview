@@ -3,6 +3,7 @@
 <div {% tag_header %} class="card">
   <h1>{{ title }}</h1>
   <p class="count">{{ count }}</p>
+  <p class="shouts">{{ shouts }}</p>
   <ul>
     {% for item in items %}
       <li class="{% if item.done %}done{% endif %}">{{ item.name }} × {{ item.qty }}</li>

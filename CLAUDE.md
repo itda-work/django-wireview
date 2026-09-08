@@ -118,7 +118,7 @@ CI(`ci.yml`)는 Python×Django 매트릭스 테스트, Redis를 띄운 E2E, lint
 ## 함정
 
 - **`wireview.min.js`가 없으면 페이지에서 JS가 로드되지 않는다.** clone 직후와 `wireview.js` 수정 후 `make build-js`.
-- **testproj의 CHANNEL_LAYERS는 Redis.** Redis 없이 `make run-daphne`나 E2E를 실행하면 연결에 실패한다. 단위·통합 테스트는 채널 레이어를 쓰지 않는다.
+- **testproj의 CHANNEL_LAYERS는 Redis.** Redis 없이 `make run-daphne`나 E2E를 실행하면 연결에 실패한다. 단위·통합 테스트는 채널 레이어를 쓰지 않는다. Redis 대신 NATS로 돌리려면 `--ds=testproj.settings_nats`와 `nats-server`, 그리고 `uv pip install -e ../channels-nats`(PyPI 미공개).
 - **클라이언트가 호출할 수 있는 메서드.** `_`로 시작하지 않는 소문자 이름의 메서드는 이벤트 핸들러로 노출되고 `validate_call`로 감싸진다. 내부 헬퍼는 반드시 `_` 접두사. 핸들러와 라이프사이클 메서드는 async.
 - **컴포넌트 이름은 클래스명으로 전역 등록.** 다른 모듈에서 같은 클래스명을 쓰면 경고가 난다. 템플릿에서 `app:Name` 또는 FQN으로 구분한다.
 - **상태 필드.** JSON 직렬화 가능해야 한다. `_temporary_assigns`는 기본값이 있는 필드만 초기화된다. `_exclude_fields` 기본값은 `{"user", "wire"}`.

@@ -92,6 +92,26 @@ CHANNEL_LAYERS = {
 }
 ```
 
+### Without Redis: NATS (Windows-friendly)
+
+`channels-nats` runs the channel layer on a NATS server, a single Go binary that ships
+native builds for Windows, macOS and Linux. Consumers and wireview code stay the same;
+only the settings change:
+
+```python
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_nats.NatsChannelLayer",
+        "CONFIG": {"servers": ["nats://127.0.0.1:4222"]},
+    }
+}
+```
+
+Several daphne processes pointed at the same server share one layer, which is all a
+single-server SQLite deployment needs. See the channels-nats README for the Windows
+service setup and token auth. The package is not on PyPI yet; install it from the
+repository. `tests/testproj/settings_nats.py` runs this project's E2E suite on NATS.
+
 ## Django Settings for Production
 
 ```python
