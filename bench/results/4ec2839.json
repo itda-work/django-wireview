@@ -1,0 +1,82 @@
+{
+ "meta": {
+  "sha": "4ec2839",
+  "dirty": false,
+  "ref": "heads/feat/go-front",
+  "date": "2026-09-08T06:31:47+00:00",
+  "python": "3.12.14",
+  "django": "6.0",
+  "platform": "Darwin arm64",
+  "items": 50,
+  "connections": 500
+ },
+ "payload_bytes": {
+  "flat.first_render": 614,
+  "flat.change_one_value": 194,
+  "list.first_render": 2216,
+  "list.no_change": 0,
+  "list.change_one_item": 594,
+  "list.append_item": 603,
+  "list.toggle_if_inside_item": 606,
+  "list.top_level_if_on": 636,
+  "list.change_one_value": 568
+ },
+ "timing": {
+  "list.event_ms": 0.5353859734411041,
+  "list.template_render_ms": 0.36820319675219554,
+  "flat.event_ms": 0.14970833319239318
+ },
+ "memory": {
+  "list.component_kb": 25.60072265625
+ },
+ "ws": {
+  "items_5": {
+   "connections": 500,
+   "items": 5,
+   "per_connection_kb": 47.808,
+   "per_connection_kb_by_process": {
+    "python": 47.808
+   },
+   "joins_per_s": 1223.7225947923496,
+   "events_per_s": 4128.527977780287,
+   "render_bytes": 326
+  },
+  "items_50": {
+   "connections": 500,
+   "items": 50,
+   "per_connection_kb": 72.032,
+   "per_connection_kb_by_process": {
+    "python": 72.032
+   },
+   "joins_per_s": 761.7039146385267,
+   "events_per_s": 1391.1867624200997,
+   "render_bytes": 624
+  }
+ },
+ "ws_go": {
+  "items_5": {
+   "connections": 500,
+   "items": 5,
+   "per_connection_kb": 74.272,
+   "per_connection_kb_by_process": {
+    "python": 30.88,
+    "go": 43.392
+   },
+   "joins_per_s": 1425.8287454495799,
+   "events_per_s": 4701.523763632168,
+   "render_bytes": 326
+  },
+  "items_50": {
+   "connections": 500,
+   "items": 50,
+   "per_connection_kb": 104.864,
+   "per_connection_kb_by_process": {
+    "python": 55.168,
+    "go": 49.696
+   },
+   "joins_per_s": 896.3641000980848,
+   "events_per_s": 1754.9517062664843,
+   "render_bytes": 624
+  }
+ }
+}
