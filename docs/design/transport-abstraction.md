@@ -61,6 +61,10 @@ Go나 Elixir 프런트(AnyCable-Go, Centrifugo, 조직의 kraken)가 맡을 수 
 | 업로드 레지스트리 | 프로세스 전역 `views._registries`를 세션 상태나 외부 저장소로 | B |
 | 프런트 어댑터 | kraken(gRPC) 또는 Go 구현의 `Outbound`/`Broker` | 착수 시 |
 
+## 5-1. 결정 (2026-09-08): NATS 레이어를 별도 라이브러리로
+
+SQLite와 Windows(WSL2·Docker 없음)를 기본 배포 전제로 두기로 했다. 이 전제에서 빠진 부품은 Redis 없이 프로세스를 잇는 채널 레이어뿐이고, 그것은 wireview가 아니라 Channels 수준의 부품이다. 그래서 [channels-nats](https://github.com/itda-work/channels-nats)를 별도 저장소로 만들었다. NATS 서버는 그대로 쓰고 Python 레이어만 구현하며, subject(`<prefix>.ch.<channel>`, `<prefix>.grp.<group>`)가 외부 계약이다. 2단계에서 Go 프런트를 붙이더라도 그 subject로 합류하므로 wireview와 사용자 코드는 바뀌지 않는다. 7절의 goproxy 실험 코드는 `feat/go-front` 브랜치에 참고용으로 남기고 병합하지 않는다.
+
 ## 6. 착수 기준
 
 프로세스당 동시 연결이 수천을 넘고 유휴 연결이 많은 워크로드(대시보드, 알림)가 실제로 생길 때. 지금 실측으로는 Python 워커 하나가 2,000 유휴 연결을 188 MB로 들고 초당 수천 이벤트를 처리하므로, 워커 여덟 개면 만 단위 연결까지 프런트 없이 간다. 그 전에는 4절의 준비만 유지한다.
