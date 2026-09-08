@@ -34,6 +34,8 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- The event transpiler cache is a small pure-Python LRU instead of `lru-dict`, so wireview installs
+  without a C compiler on platforms that have no `lru-dict` wheel (Windows ARM64). The dependency is gone
 - `WireviewMeta` accepts a `broker=` argument; `channel_layer=` still works and builds a
   `ChannelsBroker`. Tests that patched `get_channel_layer` should patch
   `wireview.core.transport.get_channel_layer` instead

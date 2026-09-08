@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 import typing as t
+from collections import OrderedDict
 
 from django.core.serializers.json import DjangoJSONEncoder
-from lru import LRU
 
 from .settings import TRANSPILER_CACHE_SIZE
 
@@ -13,7 +13,41 @@ if t.TYPE_CHECKING:
 
 Stack = list[t.Any]
 
-CACHE: t.MutableMapping[str, str | None] = t.cast(t.MutableMapping[str, str | None], LRU(TRANSPILER_CACHE_SIZE))
+
+class LRUCache(t.MutableMapping[str, str | None]):
+    """Bounded mapping that evicts the least recently used entry.
+
+    Pure Python on purpose: ``lru-dict`` is a C extension without wheels for
+    every platform wireview targets (Windows ARM64 has none), and the
+    transpiler cache is far too small for the difference to matter.
+    """
+
+    def __init__(self, maxsize: int) -> None:
+        self.maxsize = maxsize
+        self._data: OrderedDict[str, str | None] = OrderedDict()
+
+    def __getitem__(self, key: str) -> str | None:
+        value = self._data[key]
+        self._data.move_to_end(key)
+        return value
+
+    def __setitem__(self, key: str, value: str | None) -> None:
+        self._data[key] = value
+        self._data.move_to_end(key)
+        while len(self._data) > self.maxsize:
+            self._data.popitem(last=False)
+
+    def __delitem__(self, key: str) -> None:
+        del self._data[key]
+
+    def __iter__(self) -> t.Iterator[str]:
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+
+CACHE: t.MutableMapping[str, str | None] = LRUCache(TRANSPILER_CACHE_SIZE)
 
 
 def transpile(
