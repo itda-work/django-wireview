@@ -60,11 +60,12 @@ def _print(results: dict) -> None:
         print(f"  {key:<30} {value:>10.1f}")
     if results.get("ws"):
         first = next(iter(results["ws"].values()))
-        label = f"websocket ({first.get('layer', 'memory')}, {first.get('processes', 1)} proc)"
         print()
         print(
-            f"{label:<28} {'conns':>6} {'KB/conn':>9} {'joins/s':>9} {'events/s':>9} {'render B':>9} {'broadcast':>10}"
+            f"websocket: {first.get('server', 'daphne')}, {first.get('layer', 'memory')} layer, "
+            f"{first.get('processes', 1)} process(es)"
         )
+        print(f"{'':<28} {'conns':>6} {'KB/conn':>9} {'joins/s':>9} {'events/s':>9} {'render B':>9} {'broadcast':>10}")
         for key, ws in results["ws"].items():
             print(
                 f"  {key:<26} {ws['connections']:>6} {ws['per_connection_kb']:>9.1f} "
@@ -84,6 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-ws", action="store_true", help="skip the daphne/WebSocket benchmark")
     parser.add_argument("--processes", type=int, default=1, help="daphne processes (needs --layer nats when > 1)")
     parser.add_argument("--layer", choices=["memory", "nats"], default="memory", help="channel layer for the servers")
+    parser.add_argument("--server", choices=["daphne", "uvicorn"], default="daphne", help="ASGI server to benchmark")
     args = parser.parse_args(argv)
 
     _setup_django()
@@ -106,6 +108,7 @@ def main(argv: list[str] | None = None) -> int:
             "connections": None if args.skip_ws else args.connections,
             "layer": None if args.skip_ws else args.layer,
             "processes": None if args.skip_ws else args.processes,
+            "server": None if args.skip_ws else args.server,
         }
     }
     if args.out is None:
@@ -118,7 +121,9 @@ def main(argv: list[str] | None = None) -> int:
         from bench import ws
 
         call_command("migrate", verbosity=0, interactive=False)  # sessions table for the consumer
-        results["ws"] = ws.run(connections=args.connections, processes=args.processes, layer=args.layer)
+        results["ws"] = ws.run(
+            connections=args.connections, processes=args.processes, layer=args.layer, server=args.server
+        )
 
     _print(results)
     if args.out:

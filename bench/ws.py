@@ -1,10 +1,14 @@
-"""WebSocket benchmark: daphne processes + real connections.
+"""WebSocket benchmark: ASGI server processes + real connections.
 
 Measures per-connection memory of the server processes, join throughput,
 event throughput, the render payload size seen on the wire, and the time one
 broadcast takes to reach every connection (every subscribed component
-re-renders). With ``layer="nats"`` several daphne processes share the
+re-renders). With ``layer="nats"`` several server processes share the
 channels-nats layer, so the broadcast crosses processes.
+
+``server`` is "daphne" (default) or "uvicorn". They differ on Windows: daphne
+forces asyncio onto the selector loop, whose ``select()`` is capped at 512
+sockets per process, while a single-process uvicorn runs on IOCP.
 
 The state sent on join uses the legacy ``Signer().sign(json)`` format so the
 same client works against older wireview versions.
@@ -15,7 +19,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import resource
 import shutil
 import socket
 import subprocess
@@ -24,10 +27,30 @@ import time
 import typing as t
 from pathlib import Path
 
+import psutil
+
 ROOT = Path(__file__).resolve().parent.parent
+LOG_DIR = ROOT / "bench" / ".data" / "logs"
+
+SERVER_ARGS: dict[str, t.Callable[[int], list[str]]] = {
+    "daphne": lambda port: ["-b", "127.0.0.1", "-p", str(port), "testproj.asgi:application"],
+    "uvicorn": lambda port: [
+        "testproj.asgi:application",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        str(port),
+        "--log-level",
+        "warning",
+    ],
+}
 
 
 def _raise_fd_limit(target: int = 8192) -> None:
+    if sys.platform == "win32":
+        return  # no RLIMIT_NOFILE; the client runs on IOCP, which is not fd-limited
+    import resource
+
     soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
     wanted = min(target, hard) if hard != resource.RLIM_INFINITY else target
     if soft < wanted:
@@ -41,7 +64,7 @@ def _free_port() -> int:
 
 
 def _rss_kb(pid: int) -> int:
-    return int(subprocess.check_output(["ps", "-o", "rss=", "-p", str(pid)]).strip())
+    return psutil.Process(pid).memory_info().rss // 1024
 
 
 def _wait_for_port(port: int, timeout: float = 30.0) -> None:
@@ -67,6 +90,7 @@ def find_nats_server() -> str | None:
         os.environ.get("NATS_SERVER"),
         shutil.which("nats-server"),
         str(Path.home() / "go/bin/nats-server"),
+        str(Path.home() / "go/bin/nats-server.exe"),
     ):
         if candidate and Path(candidate).exists():
             return candidate
@@ -74,7 +98,7 @@ def find_nats_server() -> str | None:
 
 
 def start_nats() -> subprocess.Popen | None:
-    """Start a nats-server unless NATS_URL points at one. Sets NATS_URL for the daphne processes."""
+    """Start a nats-server unless NATS_URL points at one. Sets NATS_URL for the server processes."""
     if os.environ.get("NATS_URL"):
         return None
     binary = find_nats_server()
@@ -89,15 +113,22 @@ def start_nats() -> subprocess.Popen | None:
     return proc
 
 
-def start_daphne(port: int) -> subprocess.Popen:
-    daphne = shutil.which("daphne")
-    cmd = [daphne] if daphne else [sys.executable, "-m", "daphne"]
+def start_server(port: int, server: str = "daphne") -> subprocess.Popen:
+    """One daphne or uvicorn process on ``port``. Its stderr goes to bench/.data/logs.
+
+    Always a single process per port, never ``--workers``: uvicorn's multi-worker mode
+    falls back to the selector loop on Windows and inherits the 512-socket cap.
+    """
+    exe = shutil.which(server)
+    cmd = [exe] if exe else [sys.executable, "-m", server]
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log = open(LOG_DIR / f"{server}-{port}.log", "wb")  # noqa: SIM115 (lives as long as the process)
     proc = subprocess.Popen(
-        cmd + ["-b", "127.0.0.1", "-p", str(port), "testproj.asgi:application"],
+        cmd + SERVER_ARGS[server](port),
         cwd=ROOT / "tests",
         env=_env(),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log,
+        stderr=subprocess.STDOUT,
     )
     _wait_for_port(port)
     return proc
@@ -138,8 +169,12 @@ async def measure(ports: list[int], pids: dict[str, int], connections: int, item
     baseline = {name: _rss_kb(pid) for name, pid in pids.items()}
     conns = []
     t0 = time.perf_counter()
-    for start in range(0, connections, 50):
-        conns += await asyncio.gather(*(open_one(i) for i in range(start, min(start + 50, connections))))
+    try:
+        for start in range(0, connections, 50):
+            conns += await asyncio.gather(*(open_one(i) for i in range(start, min(start + 50, connections))))
+    except Exception as exc:
+        # Say how far we got: on Windows a daphne process dies at the select() limit.
+        raise RuntimeError(f"joined {len(conns)} of {connections} connections, then: {exc!r}") from exc
     join_s = time.perf_counter() - t0
     await asyncio.sleep(1.0)
     joined = {name: _rss_kb(pid) for name, pid in pids.items()}
@@ -178,6 +213,18 @@ async def measure(ports: list[int], pids: dict[str, int], connections: int, item
     }
 
 
+def _run_client(coro: t.Coroutine[t.Any, t.Any, dict[str, t.Any]]) -> dict[str, t.Any]:
+    """Run the client on a loop that can hold thousands of sockets.
+
+    ``daphne`` sits in INSTALLED_APPS, and importing it switches Windows asyncio to the
+    selector policy (512 sockets). The client must not inherit that: use IOCP.
+    """
+    if sys.platform == "win32":
+        with asyncio.Runner(loop_factory=asyncio.ProactorEventLoop) as runner:
+            return runner.run(coro)
+    return asyncio.run(coro)
+
+
 def _stop(*procs: subprocess.Popen | None) -> None:
     alive = [p for p in procs if p is not None]
     for proc in alive:
@@ -194,10 +241,13 @@ def run(
     item_counts: tuple[int, ...] = (5, 50),
     processes: int = 1,
     layer: str = "memory",
+    server: str = "daphne",
 ) -> dict[str, t.Any]:
-    """``layer`` is "memory" (one process only) or "nats" (channels-nats, any number of daphne processes)."""
+    """``layer`` is "memory" (one process only) or "nats" (channels-nats, any number of processes)."""
     if layer == "memory" and processes > 1:
         raise RuntimeError("the in-memory layer cannot link several processes; use --layer nats")
+    if server not in SERVER_ARGS:
+        raise ValueError(f"unknown server {server!r}; choose from {sorted(SERVER_ARGS)}")
     _raise_fd_limit()
     os.environ["BENCH_LAYER"] = layer
     nats = start_nats() if layer == "nats" else None
@@ -205,11 +255,11 @@ def run(
     try:
         for items in item_counts:
             ports = [_free_port() for _ in range(processes)]
-            procs = [start_daphne(port) for port in ports]  # fresh servers per variant: no memory bleed
-            pids = {f"daphne-{i}": proc.pid for i, proc in enumerate(procs)}
+            procs = [start_server(port, server) for port in ports]  # fresh servers per variant: no memory bleed
+            pids = {f"{server}-{i}": proc.pid for i, proc in enumerate(procs)}
             try:
-                result = asyncio.run(measure(ports, pids, connections, items))
-                result.update({"layer": layer, "processes": processes})
+                result = _run_client(measure(ports, pids, connections, items))
+                result.update({"layer": layer, "processes": processes, "server": server})
                 results[f"items_{items}"] = result
             finally:
                 _stop(*procs)

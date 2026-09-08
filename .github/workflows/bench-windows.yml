@@ -1,0 +1,80 @@
+name: Bench (Windows)
+
+# Manual. Runs the WebSocket benchmark on a Windows runner so the Windows + SQLite
+# deployment premise is measured, not assumed: daphne vs uvicorn, in-memory vs
+# channels-nats across 4 processes. Every run is allowed to fail (daphne is expected
+# to hit the 512-socket select() limit) and the JSON results plus server logs are
+# uploaded as an artifact. Read them with `gh run download`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      connections:
+        description: connections for the 4-process runs
+        default: "2000"
+      channels_nats_ref:
+        description: channels-nats git ref to install (until it is on PyPI)
+        default: "main"
+
+env:
+  NATS_VERSION: v2.14.6
+
+jobs:
+  bench:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv python install 3.12
+
+      - name: Install nats-server
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://github.com/nats-io/nats-server/releases/download/$env:NATS_VERSION/nats-server-$env:NATS_VERSION-windows-amd64.zip" -OutFile "$env:RUNNER_TEMP\nats.zip"
+          Expand-Archive "$env:RUNNER_TEMP\nats.zip" -DestinationPath "$env:RUNNER_TEMP\nats"
+          "$env:RUNNER_TEMP\nats\nats-server-$env:NATS_VERSION-windows-amd64" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - run: uv sync --all-extras
+      - run: uv pip install "channels-nats @ git+https://github.com/itda-work/channels-nats@${{ inputs.channels_nats_ref }}"
+
+      - name: Machine
+        shell: pwsh
+        run: |
+          uv run python -c "import sys, platform; print(sys.version); print(platform.platform())"
+          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | Format-List
+          "RAM GB: " + [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
+          nats-server --version
+
+      - name: daphne, in-memory, 1 process, 400 connections
+        continue-on-error: true
+        run: uv run python -m bench.run --connections 400 --out bench/results/windows-daphne-memory-1proc-400.json
+
+      - name: daphne, in-memory, 1 process, 600 connections (past the 512-socket select limit)
+        continue-on-error: true
+        run: uv run python -m bench.run --connections 600 --out bench/results/windows-daphne-memory-1proc-600.json
+
+      - name: uvicorn, in-memory, 1 process, ${{ inputs.connections }} connections
+        continue-on-error: true
+        run: uv run python -m bench.run --server uvicorn --connections ${{ inputs.connections }} --out bench/results/windows-uvicorn-memory-1proc.json
+
+      - name: daphne, channels-nats, 4 processes, ${{ inputs.connections }} connections
+        continue-on-error: true
+        run: uv run python -m bench.run --layer nats --processes 4 --connections ${{ inputs.connections }} --out bench/results/windows-daphne-nats-4proc.json
+
+      - name: daphne, channels-nats, 4 processes, 1600 connections (400 per process)
+        continue-on-error: true
+        run: uv run python -m bench.run --layer nats --processes 4 --connections 1600 --out bench/results/windows-daphne-nats-4proc-1600.json
+
+      - name: uvicorn, channels-nats, 4 processes, ${{ inputs.connections }} connections
+        continue-on-error: true
+        run: uv run python -m bench.run --server uvicorn --layer nats --processes 4 --connections ${{ inputs.connections }} --out bench/results/windows-uvicorn-nats-4proc.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-windows
+          path: |
+            bench/results/windows-*.json
+            bench/.data/logs/*.log
+          if-no-files-found: warn
