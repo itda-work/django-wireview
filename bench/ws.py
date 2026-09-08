@@ -74,6 +74,32 @@ def start_daphne(port: int) -> subprocess.Popen:
     return proc
 
 
+def start_uvicorn(port: int) -> subprocess.Popen:
+    """uvicorn with the `websockets` implementation, the usual daphne alternative."""
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "testproj.asgi:application",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--ws",
+            os.environ.get("BENCH_UVICORN_WS", "websockets"),
+            "--log-level",
+            "warning",
+        ],
+        cwd=ROOT / "tests",
+        env=_env(),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    _wait_for_port(port)
+    return proc
+
+
 def build_goproxy() -> Path:
     """Build goproxy/ into bench/.data/. Requires a Go toolchain."""
     out = ROOT / "bench" / ".data" / "goproxy"
@@ -174,7 +200,7 @@ def _stop(*procs: subprocess.Popen) -> None:
 
 
 def run(connections: int = 500, item_counts: tuple[int, ...] = (5, 50), front: str = "daphne") -> dict[str, t.Any]:
-    """``front`` is "daphne" (Channels' own server) or "go" (goproxy + wireview_gohost)."""
+    """``front`` is "daphne" (Channels' own server), "uvicorn", or "go" (goproxy + wireview_gohost)."""
     _raise_fd_limit()
     results: dict[str, t.Any] = {}
     for items in item_counts:
@@ -183,6 +209,9 @@ def run(connections: int = 500, item_counts: tuple[int, ...] = (5, 50), front: s
         if front == "go":
             host, go = start_go_front(port)
             procs, pids = (host, go), {"python": host.pid, "go": go.pid}
+        elif front == "uvicorn":
+            server = start_uvicorn(port)
+            procs, pids = (server,), {"python": server.pid}
         else:
             daphne = start_daphne(port)
             procs, pids = (daphne,), {"python": daphne.pid}

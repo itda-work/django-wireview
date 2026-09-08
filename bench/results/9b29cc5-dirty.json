@@ -1,0 +1,32 @@
+{
+ "meta": {
+  "sha": "9b29cc5",
+  "dirty": true,
+  "ref": "heads/feat/go-front",
+  "date": "2026-09-08T06:38:47+00:00",
+  "python": "3.12.14",
+  "django": "6.0",
+  "platform": "Darwin arm64",
+  "items": 50,
+  "connections": null
+ },
+ "payload_bytes": {
+  "flat.first_render": 612,
+  "flat.change_one_value": 192,
+  "list.first_render": 2218,
+  "list.no_change": 0,
+  "list.change_one_item": 595,
+  "list.append_item": 604,
+  "list.toggle_if_inside_item": 607,
+  "list.top_level_if_on": 639,
+  "list.change_one_value": 571
+ },
+ "timing": {
+  "list.event_ms": 0.5291140265762806,
+  "list.template_render_ms": 0.3641015264050414,
+  "flat.event_ms": 0.15138208322847882
+ },
+ "memory": {
+  "list.component_kb": 25.60087890625
+ }
+}

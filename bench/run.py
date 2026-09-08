@@ -59,7 +59,11 @@ def _print(results: dict) -> None:
     print(f"{'memory':<32} {'KB':>10}")
     for key, value in results["memory"].items():
         print(f"  {key:<30} {value:>10.1f}")
-    for section, label in (("ws", "websocket (daphne)"), ("ws_go", "websocket (goproxy)")):
+    for section, label in (
+        ("ws", "websocket (daphne)"),
+        ("ws_uvicorn", "websocket (uvicorn)"),
+        ("ws_go", "websocket (goproxy)"),
+    ):
         if not results.get(section):
             continue
         print()
@@ -83,9 +87,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-ws", action="store_true", help="skip the daphne/WebSocket benchmark")
     parser.add_argument(
         "--front",
-        choices=["daphne", "go", "both"],
+        choices=["daphne", "uvicorn", "go", "both", "all"],
         default="both",
-        help="WebSocket front to benchmark; 'both' skips go when no Go toolchain is installed",
+        help="WebSocket front(s): 'both' = daphne + go, 'all' adds uvicorn; go is skipped without a Go toolchain",
     )
     args = parser.parse_args(argv)
 
@@ -119,12 +123,13 @@ def main(argv: list[str] | None = None) -> int:
         from bench import ws
 
         call_command("migrate", verbosity=0, interactive=False)  # sessions table for the consumer
-        fronts = ["daphne", "go"] if args.front == "both" else [args.front]
+        fronts = {"both": ["daphne", "go"], "all": ["daphne", "uvicorn", "go"]}.get(args.front, [args.front])
         if "go" in fronts and not shutil.which("go"):
             print("no Go toolchain: skipping the go front")
             fronts.remove("go")
         for front in fronts:
-            results["ws" if front == "daphne" else "ws_go"] = ws.run(connections=args.connections, front=front)
+            key = "ws" if front == "daphne" else f"ws_{front}"
+            results[key] = ws.run(connections=args.connections, front=front)
 
     _print(results)
     if args.out:

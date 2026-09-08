@@ -5,7 +5,8 @@ wireview의 성능 주장을 직접 재기 위한 도구입니다. 결과는 `be
 ```bash
 make bench                         # 현재 트리. 인프로세스 + WebSocket(연결 500개). Go 툴체인이 있으면 goproxy도 나란히
 make bench ARGS="--skip-ws"        # 인프로세스만 (10초 안쪽)
-make bench ARGS="--front daphne"   # WebSocket은 daphne만 (--front go 는 goproxy만)
+make bench ARGS="--front daphne"   # WebSocket은 daphne만. go, uvicorn, both(daphne+go), all(셋 다)도 가능
+BENCH_UVICORN_WS=wsproto make bench ARGS="--front uvicorn"   # uvicorn의 WebSocket 구현 선택 (기본 websockets)
 make bench-compare BASE=997ee59    # 과거 커밋을 worktree에 받아 같은 벤치를 돌리고 비교표 출력
 ```
 
