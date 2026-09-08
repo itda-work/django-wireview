@@ -74,7 +74,7 @@ wireview를 그 위에서 돌린 실측이다 (`make bench ARGS="--layer nats --
 | daphne 1개, InMemory | 항목 50개 | 69.8 KB | 691 | 1,452 | 1,769 ms |
 | daphne 4개, channels-nats | 항목 50개 | 85.1 KB | 1,340 | 4,124 | 393 ms |
 
-프로세스를 넷으로 늘리자 이벤트 처리량이 3배, 브로드캐스트가 4배 빨라졌다. 연결당 메모리는 15 KB 늘었는데 채널마다 NATS 구독과 mailbox를 하나씩 두는 channels-nats의 현재 구현 비용이고, 프로세스당 구독 하나로 묶으면 줄일 수 있다. 브라우저 E2E도 `--ds=testproj.settings_nats`로 같은 레이어 위에서 통과했다.
+프로세스를 넷으로 늘리자 이벤트 처리량이 3배, 브로드캐스트가 4배 빨라졌다. 연결당 메모리는 channels-nats 0.1.0에서 15 KB 늘었는데 채널마다 NATS 구독을 두던 비용이었고, 0.2.0에서 프로세스당 구독 하나로 바꾸자 항목 5개 기준 55.3 KB, 브로드캐스트 143 ms로 내려왔다(`bench/results/663b3f7-nats-4proc.json`은 0.1.0 값). 남은 9 KB는 로컬 mailbox와 그룹 멤버십이다. 브라우저 E2E도 `--ds=testproj.settings_nats`로 같은 레이어 위에서 통과했다.
 
 ## 6. 착수 기준
 
