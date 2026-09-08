@@ -130,29 +130,18 @@ uvicorn 4프로세스로도 같은 경향이다.
 
 **결론.** 성능만 보면 둘 중 무엇을 골라도 된다. NATS가 브로드캐스트와 메모리에서 조금 앞서지만 배포를 뒤집을 크기는 아니다. 선택 기준은 운영이다. Redis가 이미 있으면 channels_redis를 쓴다(성숙도와 레퍼런스 구현). Redis가 없고 같은 제품이 Windows에도 나간다면 NATS로 통일하는 편이 낫다. `CHANNEL_LAYERS` 한 블록으로 개발 Windows와 운영 Linux가 같아지고, nats-server는 어느 OS에서든 바이너리 하나에 영속 저장이 없어 운영 부담이 작다. 대신 channels-nats는 0.2.0 알파이고 배포 사례가 우리뿐이다.
 
-## 5-4. 레이어의 전달 의미론 (2026-09-08)
+## 5-4. 유실이 wireview에 남기는 것 (2026-09-08)
 
-5-3은 성능만 비교했다. 성능은 대등해도 **의미론은 같지 않다**. 레이어를 고르기 전에 알아야 할 차이다.
+5-3은 성능만 비교했다. 성능이 대등해도 두 레이어의 의미론이 같지는 않다. 레이어별 규약의 정본은 각 라이브러리에 있고([channels-nats README의 "Channels 규약과 다른 점"](https://github.com/itda-work/channels-nats#channels-규약과-다른-점), `channels_redis`의 `expiry`·`capacity`), 여기에는 그 차이가 **wireview에서 무엇으로 보이는지**만 적는다.
 
-**둘 다 at-most-once지만 버퍼가 있는 곳이 다르다.** channels_redis는 메시지를 Redis 안의 큐에 넣고 `expiry`(기본 60초)까지 보관한다(`channels_redis/core.py`의 `expiry=60`, `send()`가 `EXPIRE`를 건다). 받는 쪽이 그 순간 `receive()` 중이 아니어도, 심지어 아직 없어도 60초 안에 오면 받는다. channels-nats는 Core NATS 위에 있어 **발행 시점에 구독자가 없으면 메시지가 사라진다**. 대신 구독이 생긴 뒤에는 받는 프로세스의 로컬 mailbox가 큐 역할을 한다. 즉 "NATS는 버퍼가 없다"가 아니라 "버퍼가 브로커가 아니라 구독자 안에 있고, 구독 이후에만 존재한다"가 정확하다.
+어느 레이어든 전달 보장은 at-most-once다. 그래서 브로드캐스트는 유실될 수 있고, **유실의 결과는 오류가 아니라 낡은 화면이다.** 브로드캐스트를 놓친 컴포넌트는 `notification()`이 불리지 않아 다시 렌더하지 않고, 다음 이벤트가 올 때까지 그 화면만 낡은 채로 남는다. 예외도 로그도 사용자에게는 없다.
 
-wireview에 실제로 닿는 지점은 좁다. 컨슈머는 연결할 때 `new_channel()`로 구독을 만들고 `group_add`가 `flush()`까지 기다리므로, 정상 경로에서는 발행 전에 구독이 이미 있다. 차이가 드러나는 것은 두 가지다.
+설계에 반영할 것 둘.
 
-- **`ChannelFull`이 발생하지 않는다.** Redis는 채널 큐가 `capacity`(기본 100)를 넘으면 보내는 쪽에 `ChannelFull`을 던진다. channels-nats는 pub/sub이라 보내는 쪽이 상대 대기열을 모르고, 받는 쪽이 넘치는 메시지를 경고 로그와 함께 버린다. wireview는 `ChannelFull`을 잡는 곳이 없으므로 동작이 바뀌지는 않지만, **느린 클라이언트에게 가는 브로드캐스트가 조용히 유실될 수 있다**는 뜻이다.
-- **유실의 결과는 "낡은 화면"이다.** 브로드캐스트를 놓친 컴포넌트는 `notification()`이 불리지 않아 다시 렌더하지 않는다. 다음 이벤트가 올 때까지 그 화면만 낡은 채로 남는다. 오류는 나지 않는다. 정확성이 중요한 화면이라면 브로드캐스트에 기대지 말고 주기적 갱신이나 사용자 액션 시 재조회를 둔다.
+- **정확성이 중요한 화면은 브로드캐스트에만 기대지 않는다.** 잔액, 재고, 마감 시각처럼 틀리면 곤란한 값은 사용자 액션 시 재조회하거나 주기적으로 갱신한다. 브로드캐스트는 "빨리 보여주기"이지 "정확히 보장하기"가 아니다.
+- **레이어를 바꾸면 과부하 신호가 사라진다.** `channels_redis`는 채널 큐가 넘치면 보내는 쪽에 `ChannelFull`을 던지지만 channels-nats는 pub/sub이라 받는 쪽이 조용히 버린다. wireview는 `ChannelFull`을 잡는 곳이 없어 동작이 바뀌지는 않으나, 느린 클라이언트로 가는 브로드캐스트의 유실이 예외가 아니라 로그로만 드러난다는 뜻이다.
 
-세부 규약의 정본은 [channels-nats README의 "Channels 규약과 다른 점"](https://github.com/itda-work/channels-nats#channels-규약과-다른-점)이다. 여기에 복제하지 않는다.
-
-### Jepsen NATS 2.12.1 보고서는 이 구성에 해당하지 않는다
-
-2025-12 [Jepsen의 NATS 2.12.1 분석](https://jepsen.io/analyses/nats-2.12.1)이 `.blk` 파일의 단일 비트 오류로 승인된 쓰기 1,367,069건 중 679,153건(49.7%)이 사라지는 것을 보고했다. 이 보고서를 근거로 NATS를 배제할지 물을 수 있어 확인해 둔다.
-
-- **검증 대상은 JetStream뿐이다.** 보고서 자신이 "We tested NATS JetStream"이라 밝히고, Core NATS에 대해서는 "Regular NATS streams are allowed to drop messages"라며 검증 범위에서 뺐다.
-- **손상은 파일 스토리지의 문제다.** `.blk`와 스냅샷 파일, 지연된 fsync, split-brain이 대상이고 전부 JetStream의 디스크 영속성 계층이다.
-- **channels-nats는 JetStream을 쓰지 않는다.** `client.publish`와 `client.subscribe`만 부르고 의존은 `nats-py` 하나다. 스트림도, 소비자도, `.blk` 파일도 만들지 않는다. 따라서 보고서의 결함은 이 레이어에 해당하지 않는다.
-- **다만 "in-memory는 장애에 강하다"는 것도 이 보고서의 결론이 아니다.** 그 말은 원문이 아니라 소개 글의 댓글에서 나왔고, Jepsen은 memory storage 스트림도 Core NATS도 시험하지 않았다. 시험하지 않은 것은 안전이 입증된 것이 아니다. 채널 레이어에 기대는 보장은 어느 구현이든 at-most-once 하나뿐이라는 위의 결론이 그대로 유효하다.
-
-JetStream을 쓸 일이 생긴다면(예: 재연결 중 놓친 브로드캐스트를 재생하려는 설계) 그때는 이 보고서가 정면으로 해당한다. 지금 구조에는 그런 계획이 없다.
+NATS의 영속성(JetStream)은 이 레이어가 쓰지 않는다. 그 판단과 Jepsen 보고서의 적용 범위는 [channels-nats README](https://github.com/itda-work/channels-nats#core-nats만-쓴다--jetstream을-쓰지-않는-이유)에 있다.
 
 ## 6. 착수 기준
 

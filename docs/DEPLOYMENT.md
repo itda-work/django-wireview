@@ -108,11 +108,9 @@ CHANNEL_LAYERS = {
 ```
 
 Several server processes pointed at the same server share one layer, which is all a
-single-server SQLite deployment needs. It runs on Core NATS, not JetStream, so the layer
-never writes to disk and the JetStream durability findings in Jepsen's NATS report do not
-apply; delivery is at-most-once, like every Channels layer. The semantic differences from
-channels_redis (no `ChannelFull`, no broker-side buffering before a subscriber exists) are
-in `docs/design/transport-abstraction.md` §5-4. See the channels-nats README for the Windows
+single-server SQLite deployment needs. How it differs from channels_redis, and why it uses
+Core NATS rather than JetStream, is in the channels-nats README. What a dropped broadcast
+means for a component is in `docs/design/transport-abstraction.md` §5-4. See the channels-nats README for the Windows
 service setup and token auth. The package is not on PyPI yet; install it from the
 repository. `tests/testproj/settings_nats.py` runs this project's E2E suite on NATS.
 
