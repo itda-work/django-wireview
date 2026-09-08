@@ -118,7 +118,7 @@ migrate:
 
 # Payload sizes, per-event cost, WebSocket memory/throughput. ARGS="--skip-ws" for in-process only
 bench:
-	uv run python -m bench.run --out bench/results/current.json $(ARGS)
+	uv run python -m bench.run $(ARGS)
 
 # Benchmark a past commit next to the current tree: make bench-compare BASE=997ee59
 bench-compare:
