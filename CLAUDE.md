@@ -52,7 +52,8 @@ wireview/
 ├── debug/sync_detector.py sync/async 전환 중첩 감지 (DEBUG_SYNC_TRANSITIONS)
 ├── features/              streams.py, presence.py (PresenceMixin), uploads.py (UploadRegistry)
 ├── templatetags/wireview.py  템플릿 태그 전체 (아래 표)
-├── management/commands/   wireview_stubs (.pyi 생성), wireview_lsp (IDE 메타데이터 JSON)
+├── management/commands/   wireview_stubs (.pyi 생성), wireview_lsp (IDE 메타데이터 JSON),
+│                          wireview_agent_setup (앱 개발자용 스킬을 프로젝트 .claude/skills/ 에 설치)
 ├── templates/wireview_header.html  {% wireview_header %}가 렌더. wireview.min.js를 로드
 └── static/wireview/       wireview.js (소스), rendered.mjs (diff 적용·HTML 복원 순수 함수), wireview-boost.js, types.d.ts
                            wireview.min.js는 빌드 산출물이며 gitignore
@@ -69,6 +70,9 @@ docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEAT
                            (implementation/wire-protocol.md 가 메시지 형태의 정본)
 bench/                     성능 벤치마크 (make bench, make bench-compare BASE=<ref>). windows/ 는 Parallels 게스트 실측 레인. 설명은 bench/README.md
 typings/                   channels 타입 스텁 (pyright용)
+skills/wireview/           앱 개발자용 스킬의 정본. 휠에 wireview/agent_skills/ 로 실린다.
+                           .claude/skills/wireview 는 이것을 가리키는 심링크(dogfooding)
+AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등)를 위한 포인터
 .claude/settings.json      권한 허용 목록과 ruff format 훅
 ```
 

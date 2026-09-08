@@ -12,6 +12,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- An agent skill for people *building apps* with wireview, canonical at `skills/wireview/`
+  and shipped in the wheel (`#65`). `manage.py wireview_agent_setup` copies it into a project's
+  `.claude/skills/`; it refuses to clobber an existing directory without `--force` and never
+  replaces a symlink, which is how this repository dogfoods the same files through
+  `.claude/skills/wireview`. The skill routes to `docs/features/` and `docs/tutorials/` instead
+  of copying them, and `AGENTS.md` points agents that do not read `.claude/skills/` at it.
+  See `docs/features/agent-skill.md`
 - Django system checks for the traps that fail silently (`wireview/checks.py`, `#64`).
   `manage.py check` now reports a non-async event handler (`wireview.W001`) or lifecycle
   override (`W002`), two component classes sharing a simple name (`W003`), a missing

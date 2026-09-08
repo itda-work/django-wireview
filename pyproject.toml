@@ -74,9 +74,16 @@ artifacts = ["wireview/static/wireview/*.min.js"]
 [tool.hatch.build.targets.wheel]
 packages = ["wireview"]
 
+# The agent skill lives at the repository root so this repository can dogfood it
+# through .claude/skills/wireview. Ship it inside the package as well, where
+# `manage.py wireview_agent_setup` can find it in an installed project.
+[tool.hatch.build.targets.wheel.force-include]
+"skills/wireview" = "wireview/agent_skills/wireview"
+
 [tool.hatch.build.targets.sdist]
 include = [
     "/wireview",
+    "/skills",
     "/README.md",
     "/CHANGELOG.md",
 ]
