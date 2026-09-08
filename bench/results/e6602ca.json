@@ -1,0 +1,106 @@
+{
+ "meta": {
+  "sha": "e6602ca",
+  "dirty": false,
+  "ref": "heads/feat/go-front",
+  "date": "2026-09-08T06:40:03+00:00",
+  "python": "3.12.14",
+  "django": "6.0",
+  "platform": "Darwin arm64",
+  "items": 50,
+  "connections": 500
+ },
+ "payload_bytes": {
+  "flat.first_render": 614,
+  "flat.change_one_value": 194,
+  "list.first_render": 2215,
+  "list.no_change": 0,
+  "list.change_one_item": 593,
+  "list.append_item": 601,
+  "list.toggle_if_inside_item": 605,
+  "list.top_level_if_on": 636,
+  "list.change_one_value": 567
+ },
+ "timing": {
+  "list.event_ms": 0.540358053209881,
+  "list.template_render_ms": 0.37105472331556183,
+  "flat.event_ms": 0.1527118030935526
+ },
+ "memory": {
+  "list.component_kb": 25.60091796875
+ },
+ "ws": {
+  "items_5": {
+   "connections": 500,
+   "items": 5,
+   "per_connection_kb": 47.68,
+   "per_connection_kb_by_process": {
+    "python": 47.68
+   },
+   "joins_per_s": 1269.0819675040232,
+   "events_per_s": 4244.701364168064,
+   "render_bytes": 326
+  },
+  "items_50": {
+   "connections": 500,
+   "items": 50,
+   "per_connection_kb": 72.16,
+   "per_connection_kb_by_process": {
+    "python": 72.16
+   },
+   "joins_per_s": 839.1806151743947,
+   "events_per_s": 1520.007288984145,
+   "render_bytes": 624
+  }
+ },
+ "ws_uvicorn": {
+  "items_5": {
+   "connections": 500,
+   "items": 5,
+   "per_connection_kb": 211.648,
+   "per_connection_kb_by_process": {
+    "python": 211.648
+   },
+   "joins_per_s": 1359.4204631290033,
+   "events_per_s": 3523.921701060154,
+   "render_bytes": 326
+  },
+  "items_50": {
+   "connections": 500,
+   "items": 50,
+   "per_connection_kb": 235.552,
+   "per_connection_kb_by_process": {
+    "python": 235.552
+   },
+   "joins_per_s": 837.1774890214481,
+   "events_per_s": 1548.5087783330835,
+   "render_bytes": 624
+  }
+ },
+ "ws_go": {
+  "items_5": {
+   "connections": 500,
+   "items": 5,
+   "per_connection_kb": 74.528,
+   "per_connection_kb_by_process": {
+    "python": 30.688,
+    "go": 43.84
+   },
+   "joins_per_s": 1661.5948811893918,
+   "events_per_s": 4440.5022620773125,
+   "render_bytes": 326
+  },
+  "items_50": {
+   "connections": 500,
+   "items": 50,
+   "per_connection_kb": 102.01599999999999,
+   "per_connection_kb_by_process": {
+    "python": 55.04,
+    "go": 46.976
+   },
+   "joins_per_s": 838.2950495704296,
+   "events_per_s": 1760.6656719052605,
+   "render_bytes": 624
+  }
+ }
+}
