@@ -10,15 +10,11 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
-### Changed
+## [0.2.0] - 2026-09-08
 
-- NATS is now the layer this project targets. `make test-e2e` runs the browser suite on
-  channels-nats and `tests/e2e.sh` starts a throwaway nats-server for it, so no broker has to be
-  running first;
-  `WIREVIEW_TEST_LAYER` (memory by default, nats or redis) picks the layer for the
-  test project, and README and `docs/DEPLOYMENT.md` recommend it first. CI runs the E2E suite on
-  NATS too, and channels-nats is a dev dependency now that it is on PyPI. channels_redis stays
-  fully supported
+The release that makes the SQLite-plus-Windows deployment premise real: a channel
+layer that needs no Redis, partial HTML diffs that actually fire, a transport seam,
+and reproducible benchmarks on macOS, Linux and Windows to back the claims.
 
 ### Added
 
@@ -53,6 +49,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- NATS is now the layer this project targets. `make test-e2e` runs the browser suite on
+  channels-nats and `tests/e2e.sh` starts a throwaway nats-server for it, so no broker has to be
+  running first;
+  `WIREVIEW_TEST_LAYER` (memory by default, nats or redis) picks the layer for the
+  test project, and README and `docs/DEPLOYMENT.md` recommend it first. CI runs the E2E suite on
+  NATS too, and channels-nats is a dev dependency now that it is on PyPI. channels_redis stays
+  fully supported
 - The event transpiler cache is a small pure-Python LRU instead of `lru-dict`, so wireview installs
   without a C compiler on platforms that have no `lru-dict` wheel (Windows ARM64). The dependency is gone
 - `WireviewMeta` accepts a `broker=` argument; `channel_layer=` still works and builds a
@@ -68,6 +71,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- The published wheel and sdist now contain `wireview.min.js`. hatchling honours `.gitignore`,
+  which ignores `*.min.js` as a build artifact, so every release up to v0.1.1 shipped a package
+  whose `{% wireview_header %}` pointed at a file that was not there and no JavaScript loaded.
+  `make ci-build` now fails if the wheel is missing it
 - HTTP renders no longer leak diff markers into attributes (`value="<!--$0-->…"`); markers are
   stripped for non-live renders
 - Variables inside `{% if %}` branches were never marked, so any change inside a conditional
@@ -102,6 +109,7 @@ auto-recovery, viewport bindings, optimistic UI attributes, type stub
 generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
-[Unreleased]: https://github.com/itda-work/django-wireview/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/itda-work/django-wireview/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/itda-work/django-wireview/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/itda-work/django-wireview/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/itda-work/django-wireview/releases/tag/v0.1.0

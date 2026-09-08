@@ -1,6 +1,6 @@
 [project]
 name = "django-wireview"
-version = "0.1.1"
+version = "0.2.0"
 description = "Brings LiveView from Phoenix framework into Django"
 readme = "README.md"
 license = "MIT"
@@ -65,6 +65,11 @@ Repository = "https://github.com/itda-work/django-wireview"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# wireview.min.js is a build artifact and is gitignored, so hatchling would leave it out.
+# Without it {% wireview_header %} points at a file the installed package does not have.
+[tool.hatch.build]
+artifacts = ["wireview/static/wireview/*.min.js"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["wireview"]

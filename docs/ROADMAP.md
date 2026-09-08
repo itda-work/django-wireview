@@ -8,15 +8,18 @@
 
 ```
 현재 버전: pyproject.toml 과 git 태그 v* 가 정본
-목표 마일스톤: v6.0.0 (Phoenix LiveView 수준의 DX)
-  ※ v6.0.0 은 reactor 시절 번호를 잇는 마일스톤 이름이며 패키지 버전(v0.1.x)과는 별개다.
+남은 갭 목록: docs/FEATURE-GAP.md 의 GAP-nnn 이 정본
 
-Phase 1: Foundation     ████████████████████ 완료!
-Phase 2: Core Features  ██████████████████░░ 90% (JS Commands, Optimistic UI)
-Phase 3: Advanced       ████████████████░░░░ 80% (Streams, Uploads, Async)
-Phase 4: Component      ████████████████░░░░ 80% (Slots 완료!)
-Phase 5: Polish         ░░░░░░░░░░░░░░░░░░░░ 시작 전
+Phase 1: Foundation     ████████████████████ 완료
+Phase 2: Core Features  ████████████████████ 완료
+Phase 3: Advanced       ████████████████████ 완료
+Phase 4: Component      ████████████████████ 완료
+Phase 5: Polish         ██████░░░░░░░░░░░░░░ 진행 중 (프로파일링·타입 스텁·LSP 완료, Telemetry 남음)
 ```
+
+Phoenix LiveView 대비 남은 기능은 넷이다: GAP-009 live_session, GAP-012 LongPolling
+폴백, GAP-022 Telemetry, GAP-027 세션 분리. 앞의 셋은 기능 갭이고 GAP-027 은
+`docs/design/transport-abstraction.md` 6절의 착수 기준을 만족할 때 시작한다.
 
 ---
 
@@ -275,21 +278,23 @@ def button(variant: str = "primary", **slots):
 | **Phase 1** | ✅ | Pydantic v2, 의존성 업데이트, 테스트 |
 | **Phase 2** | ✅ | JS 명령어, HTML Diff, 이벤트 |
 | **Phase 3** | ✅ | Streams, Uploads, Async |
-| **Phase 4** | 🔄 | Slots, Hooks, Function Components |
-| **Phase 5** | ⬜ | DevTools, 문서화, TypeScript |
+| **Phase 4** | ✅ | Slots, Hooks, Function Components |
+| **Phase 5** | 🔄 | DevTools, 문서화, TypeScript |
 
 ---
 
-## 버전 계획
+## 릴리스 이력과 계획
 
-| 버전 | 목표 | 주요 기능 |
-|------|------|----------|
-| v6.0.0-alpha.1 | ✅ | Phase 1-3 완료 |
-| v6.0.0-alpha.2 | ✅ | Slots 구현 (#50) |
-| v6.0.0-alpha.3 | ⬜ | JavaScript Hooks (#49) |
-| v6.0.0-beta.1 | ⬜ | 안정화 및 문서화 |
-| v6.0.0 | ⬜ | 정식 릴리스 |
+패키지 버전은 git 태그 `v*` 가 정본이다. reactor 시절의 v6.0.0 마일스톤 번호는 쓰지 않는다.
+
+| 버전 | 상태 | 내용 |
+|------|:----:|------|
+| v0.1.0 | ✅ | 첫 태그. reactor 에서 이어진 기능 전부 |
+| v0.1.1 | ✅ | 릴리스 워크플로에 wheel 빌드 |
+| v0.2.0 | ✅ | 부분 diff 정상화(GAP-024·025), transport seam(GAP-026), on_mount(GAP-021), NATS 채널 레이어 전환, bench 인프라와 Windows 실측 |
+| v0.3.0 | ⬜ | Telemetry(GAP-022) 와 남은 P1 갭 |
+| v1.0.0 | ⬜ | API 안정화 선언. 그 전까지 마이너 버전이 호환성을 깰 수 있다 |
 
 ---
 
-*마지막 업데이트: 2025-12-09*
+*마지막 업데이트: 2026-09-08*
