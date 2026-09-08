@@ -57,16 +57,22 @@ django-wireview 단계별 학습 가이드입니다.
 
 ## 예제 코드
 
-모든 튜토리얼의 완성된 예제 코드는 `tests/testproj/` 디렉토리에서 확인할 수 있습니다:
+튜토리얼이 설명하는 앱의 **동작하는 전체 코드**는 [examples/](../../examples/README.md)에 있습니다.
+CI가 매번 돌리므로 문서와 달리 조용히 낡지 않습니다. 각 예제 디렉터리의 README가 그 예제가
+가르치는 개념 하나와 대응 튜토리얼을 가리킵니다.
 
-- `tests/testproj/todo/` - Todo 앱
-- `tests/testproj/chat/` - Chat 앱
-- `tests/testproj/dashboard/` - Dashboard
-- `tests/testproj/poll/` - Poll 앱 (실시간 투표)
-- `tests/testproj/rating/` - Rating 앱 (별점 평가)
-- `tests/testproj/search/` - Live Search (검색 자동완성)
-- `tests/testproj/quiz/` - Quiz 앱 (퀴즈)
-- `tests/testproj/notifications/` - Notifications (알림 센터)
+| 예제 | 개념 | 튜토리얼 |
+|------|------|----------|
+| [todo](../../examples/todo/) | 모델 구독, 중첩 컴포넌트 | [03](03-todo-app.md) |
+| [chat](../../examples/chat/) | Streams, Presence | [04](04-chat-app.md) |
+| [dashboard](../../examples/dashboard/) | AsyncResult, 컴포지션 | [05](05-dashboard.md) |
+| [poll](../../examples/poll/) | skip_render, 조건부 클래스 | [10](10-poll-app.md) |
+| [rating](../../examples/rating/) | URL 상태, 키보드 이벤트 | [11](11-rating-app.md) |
+| [search](../../examples/search/) | 디바운스, JS 명령 | [12](12-live-search.md) |
+| [quiz](../../examples/quiz/) | 상태 머신, 리더보드 | [13](13-quiz-app.md) |
+| [notifications](../../examples/notifications/) | 브로드캐스트, JS 체이닝 | [14](14-notifications.md) |
+| [livecomp](../../examples/livecomp/) | LiveComponent, 부모-자식 | [15](15-live-components.md) |
+| [slots](../../examples/slots/) | 슬롯 합성 | [기능 문서](../features/slots.md) |
 
 ## 기능별 학습 가이드
 

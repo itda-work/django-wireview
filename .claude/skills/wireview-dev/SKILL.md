@@ -105,7 +105,9 @@ PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflow
 ### 테스트를 어디에 두는가
 
 - 라이브러리 단위·통합 테스트: `tests/test_*.py`. WebSocket 없이 `mount()`를 쓴다.
-- 앱·E2E 테스트: `tests/testproj/<app>/tests.py`. E2E는 `tests/testproj/todo/tests.py`, `tests/testproj/livecomp/tests.py`.
+- 예제 앱과 그 테스트: `examples/<app>/tests.py`. 예제는 `tests/testproj/`의 Django 프로젝트에
+  얹혀 돌아가고 `make test`가 함께 실행한다. E2E는 `examples/todo/tests.py`, `examples/livecomp/tests.py`.
+- 하네스 픽스처(예제가 아닌 것)는 `tests/testproj/`에 남는다: 설정·URLconf와 `tests/testproj/bookmarks/`.
 - 클라이언트 순수 모듈: `tests/js/*.test.mjs` (node --test).
 
 ### 벤치마크를 잴 때 주의

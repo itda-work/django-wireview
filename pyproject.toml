@@ -127,7 +127,7 @@ django_settings_module = "tests.testproj.settings"
 python_files = "test*.py"
 addopts = "--ff -v --nomigrations --strict-markers"
 DJANGO_SETTINGS_MODULE = "testproj.settings"
-pythonpath = ["tests"]
+pythonpath = [".", "tests"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks integration tests",

@@ -1,5 +1,7 @@
 # 14. Notifications - 알림 센터
 
+> 동작하는 전체 코드: [examples/notifications/](../../examples/notifications/) — CI가 매번 돌리는 예제다.
+
 이 튜토리얼에서는 알림 센터를 만들며 broadcast와 JS 명령어를 학습합니다.
 
 ## 학습 목표

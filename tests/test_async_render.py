@@ -5,6 +5,10 @@ import pytest
 from wireview.component import Component
 from wireview.testing import MockRepository, MockWireviewMeta
 
+# The render path crosses channels' ``database_sync_to_async``: see the note in
+# tests/test_diff_stability.py for why that needs the database marker here.
+pytestmark = pytest.mark.django_db
+
 
 class SimpleComponent(Component):
     """Simple component for testing."""

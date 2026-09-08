@@ -62,9 +62,13 @@ wireview/
 tests/
 ├── test_*.py              라이브러리 단위·통합 테스트. WebSocket 없이 mount() 사용
 ├── js/*.test.mjs          클라이언트 순수 모듈 테스트 (node --test)
-└── testproj/              Django 테스트 프로젝트. settings.py의 채널 레이어는 WIREVIEW_TEST_LAYER가 고르고
-                           settings_nats.py·settings_redis.py가 이를 고정하는 진입점이다. 앱: todo, chat, dashboard, livecomp, notifications,
-                           poll, quiz, rating, search, slots. E2E는 todo/tests.py, livecomp/tests.py
+└── testproj/              Django 테스트 프로젝트(설정·URLconf). 채널 레이어는 WIREVIEW_TEST_LAYER가 고르고
+                           settings_nats.py·settings_redis.py가 이를 고정하는 진입점이다.
+                           bookmarks/ 는 예제가 아니라 wireview 스킬 검증의 기준선이다
+
+examples/                  예제 앱 10개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.
+                           testproj 위에서 돌고 make test가 함께 실행한다(pytest tests examples).
+                           E2E는 todo/tests.py, livecomp/tests.py. 인덱스는 examples/README.md
 
 docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEATURE-GAP.md, ARCHITECTURE.md,
                            ROADMAP.md, DEPLOYMENT.md, PERFORMANCE.md, design/ 설계 메모, implementation/ 구현 노트

@@ -25,11 +25,11 @@ collectstatic:
 
 # Run all tests (excluding E2E and slow)
 test: collectstatic
-	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "not e2e and not slow" -v $(ARGS)
+	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests examples -m "not e2e and not slow" -v $(ARGS)
 
 # Run unit tests only
 test-unit: collectstatic
-	uv run pytest tests/ -m "unit" -v $(ARGS)
+	uv run pytest tests examples -m "unit" -v $(ARGS)
 
 # Run E2E tests with Playwright on the NATS channel layer (the layer this project targets).
 # tests/e2e.sh starts a throwaway nats-server unless one is already running, and stops it
@@ -43,7 +43,7 @@ test-all: test test-e2e
 
 # Run tests with coverage
 test-cov: collectstatic
-	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "not e2e" --cov=wireview --cov-report=term-missing --cov-report=html $(ARGS)
+	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests examples -m "not e2e" --cov=wireview --cov-report=term-missing --cov-report=html $(ARGS)
 
 # =============================================================================
 # Code Quality
@@ -162,7 +162,7 @@ ci-check:
 # CI: Run tests (non-E2E)
 ci-test:
 	cd tests && uv run python manage.py collectstatic --noinput
-	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "not e2e and not slow" -q
+	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests examples -m "not e2e and not slow" -q
 
 # CI: Run E2E tests
 # CI runs E2E on NATS, the layer this project targets. ci.yml provides the server as a
@@ -170,7 +170,7 @@ ci-test:
 ci-test-e2e:
 	cd tests && uv run python manage.py collectstatic --noinput
 	uv run playwright install --with-deps chromium
-	WIREVIEW_TEST_LAYER=nats DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests/ -m "e2e" -v
+	WIREVIEW_TEST_LAYER=nats DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests examples -m "e2e" -v
 
 # CI: Build and check package
 ci-build:

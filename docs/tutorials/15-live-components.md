@@ -1,5 +1,7 @@
 # 15. LiveComponent - 중첩 컴포넌트
 
+> 동작하는 전체 코드: [examples/livecomp/](../../examples/livecomp/) — CI가 매번 돌리는 예제다.
+
 이 튜토리얼에서는 LiveComponent를 사용하여 독립적인 상태를 가진 중첩 컴포넌트를 만드는 방법을 학습합니다.
 
 ## 학습 목표
@@ -484,4 +486,4 @@ class Counter(LiveComponent):
 
 ## 완성 코드
 
-전체 예제는 `tests/testproj/dashboard/` 디렉토리에서 확인할 수 있습니다.
+전체 예제는 [examples/livecomp/](../../examples/livecomp/)에 있습니다.

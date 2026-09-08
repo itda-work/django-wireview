@@ -222,7 +222,7 @@ async def params_changed(self, params: dict[str, str], uri: str):
 - ✅ Required slot 검증
 - ✅ 단위 테스트 (`tests/test_slots.py`)
 - ✅ 통합 테스트 (`tests/test_slots_integration.py`)
-- ✅ 테스트 컴포넌트 (`tests/testproj/slots/`)
+- ✅ 테스트 컴포넌트 (`examples/slots/`)
 
 ### 4.2 JavaScript Hooks - ⬜ 예정
 

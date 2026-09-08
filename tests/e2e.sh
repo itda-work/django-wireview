@@ -84,4 +84,4 @@ esac
 
 # Not exec: that would replace this shell and lose the EXIT trap, leaving the
 # throwaway nats-server running after the suite finishes.
-uv run pytest tests/ -m e2e -v "$@"
+uv run pytest tests examples -m e2e -v "$@"

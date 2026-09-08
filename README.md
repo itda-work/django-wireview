@@ -101,6 +101,7 @@ class XCounter(Component):
 - [django-reactor 대비 개선 사항](#django-reactor-대비-개선-사항)
 - [설치 및 설정](#설치-및-설정)
 - [빠른 시작](#빠른-시작)
+- [예제](#예제)
 - [컴포넌트 라이프사이클](#컴포넌트-라이프사이클)
 - [이벤트 바인딩](#이벤트-바인딩)
 - [URL 상태 관리](#url-상태-관리)
@@ -227,6 +228,28 @@ class XCounter(Component):
         {% component 'XCounter' amount=100 %}
     </body>
 </html>
+```
+
+## 예제
+
+동작하는 예제 앱 10개가 [examples/](./examples/)에 있습니다. 각 디렉터리가 개념 하나이고,
+테스트와 README를 함께 가지고 있으며, CI가 매번 실행합니다.
+
+| 예제 | 개념 |
+|------|------|
+| [todo](./examples/todo/) | 모델 구독으로 여러 탭이 같은 목록을 함께 본다 |
+| [poll](./examples/poll/) | 쓰기는 핸들러가, 다시 그리기는 브로드캐스트가 |
+| [rating](./examples/rating/) | 잠깐 쓰는 상태와 남는 상태를 갈라 둔다 |
+| [search](./examples/search/) | 디바운스한 입력과 키보드로 고르는 결과 |
+| [quiz](./examples/quiz/) | 컴포넌트 상태로 굴리는 상태 머신 |
+| [chat](./examples/chat/) | Streams와 Presence |
+| [dashboard](./examples/dashboard/) | AsyncResult로 느린 조회를 미룬다 |
+| [notifications](./examples/notifications/) | 이름 붙인 채널로 컴포넌트끼리 알린다 |
+| [livecomp](./examples/livecomp/) | 연결을 공유하는 중첩 컴포넌트 |
+| [slots](./examples/slots/) | 내용을 호출자가 채우는 레이아웃 컴포넌트 |
+
+```bash
+make build-js && make run-daphne     # http://localhost:8000
 ```
 
 ## 컴포넌트 라이프사이클

@@ -20,15 +20,15 @@ from django.urls import include, path
 from wireview.consumer import WireviewConsumer
 
 urlpatterns = [
-    path("", include("testproj.todo.urls")),
-    path("chat/", include("testproj.chat.urls")),
-    path("dashboard/", include("testproj.dashboard.urls")),
-    path("poll/", include("testproj.poll.urls")),
-    path("rating/", include("testproj.rating.urls")),
-    path("search/", include("testproj.search.urls")),
-    path("quiz/", include("testproj.quiz.urls")),
-    path("notifications/", include("testproj.notifications.urls")),
-    path("livecomp/", include("testproj.livecomp.urls")),
+    path("", include("examples.todo.urls")),
+    path("chat/", include("examples.chat.urls")),
+    path("dashboard/", include("examples.dashboard.urls")),
+    path("poll/", include("examples.poll.urls")),
+    path("rating/", include("examples.rating.urls")),
+    path("search/", include("examples.search.urls")),
+    path("quiz/", include("examples.quiz.urls")),
+    path("notifications/", include("examples.notifications.urls")),
+    path("livecomp/", include("examples.livecomp.urls")),
     path("bookmarks/", include("testproj.bookmarks.urls")),
     path("admin/", admin.site.urls),
 ]

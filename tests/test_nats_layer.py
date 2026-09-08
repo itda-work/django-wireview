@@ -26,7 +26,9 @@ channels_nats = pytest.importorskip("channels_nats")
 from wireview import Component, abroadcast  # noqa: E402
 from wireview.consumer import WireviewConsumer  # noqa: E402
 
-pytestmark = pytest.mark.integration
+# The render path crosses channels' ``database_sync_to_async``: see the note in
+# tests/test_diff_stability.py for why that needs the database marker here.
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 
 def _find_nats_server() -> str | None:

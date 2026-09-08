@@ -10,6 +10,22 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Changed
+
+- The teaching apps moved from `tests/testproj/` to `examples/` and became a checked
+  deliverable (`#66`). Each one is a single concept with a `tests.py` and a README that links
+  to its tutorial, `make test` runs `pytest tests examples`, and CI therefore fails when an
+  example rots. Adding those tests found four examples that were already broken: `search` and
+  `notifications` awaited a `QuerySet`, `quiz` and `rating` read a `wire.session_key` that has
+  never existed (the page passes the session key in now), the notifications stream item template
+  used `notification` where a stream item is called `item`, and the same app called a
+  `self.abroadcast()` that is not a component method. `tests/testproj/` keeps the Django project
+  it always was — settings, URLconf, and the `bookmarks` baseline that guards the agent skill
+- Library tests that render through channels' `database_sync_to_async` now carry
+  `pytest.mark.django_db`. They passed only while no earlier test in the process had left a
+  connection open inside a transaction, which made the suite sensitive to the order its two
+  halves run in
+
 ### Fixed
 
 - Streams now survive a re-render and update in place (GAP-028, `#67`). A render carries the

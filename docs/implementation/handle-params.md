@@ -358,7 +358,7 @@ async def test_params_changed_triggers_rerender():
 ### 6.2 E2E 테스트
 
 ```python
-# tests/testproj/todo/tests.py (또는 새 앱)
+# examples/todo/tests.py (또는 새 앱)
 
 @pytest.mark.e2e
 async def test_pagination_url_sync():

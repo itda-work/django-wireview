@@ -1,0 +1,9 @@
+{% extends "quiz/base.html" %}
+
+{% load wireview %}
+
+{% block title %}{{ quiz.title }}{% endblock %}
+{% block content %}
+  <a href="{% url 'quiz:index' %}" class="back-link">&larr; Back to quizzes</a>
+  {% component 'XQuiz' id="quiz" quiz=quiz session_key=session_key %}
+{% endblock %}

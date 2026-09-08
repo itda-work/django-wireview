@@ -5,6 +5,10 @@ import threading
 
 import pytest
 
+# The render path crosses channels' ``database_sync_to_async``: see the note in
+# tests/test_diff_stability.py for why that needs the database marker here.
+pytestmark = pytest.mark.django_db
+
 
 class TestSyncAsyncTracker:
     """Tests for SyncAsyncTracker depth tracking."""

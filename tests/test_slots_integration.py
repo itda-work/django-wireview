@@ -7,7 +7,7 @@ import pytest
 from django.template import Context, Template, TemplateSyntaxError
 
 # Import components to register them
-from testproj.slots.components import Alert, Card, List, Modal  # noqa: F401
+from examples.slots.components import Alert, Card, List, Modal  # noqa: F401
 
 
 @pytest.mark.django_db

@@ -1,5 +1,7 @@
 # 04. Chat 앱
 
+> 동작하는 전체 코드: [examples/chat/](../../examples/chat/) — CI가 매번 돌리는 예제다.
+
 이 튜토리얼에서는 실시간 채팅 앱을 만들며 Streams API와 Presence API를 학습합니다.
 
 ## 학습 목표

@@ -6,6 +6,15 @@ from wireview import Component
 from wireview.core.meta import WireviewMeta
 from wireview.testing import mount
 
+# Rendering crosses channels' ``database_sync_to_async``, which calls
+# ``close_old_connections()`` on the way in and out. Under pytest-django a test
+# that opened a connection leaves it inside a transaction, so this hop hits the
+# blocker and a test that never touches the ORM fails with "Database access not
+# allowed" — but only when such a test ran earlier in the same process. Asking
+# for the database here states what the render path already needs and takes the
+# ordering out of it.
+pytestmark = pytest.mark.django_db
+
 
 class TestPendingModeBasics:
     """Test basic pending mode functionality."""

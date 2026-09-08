@@ -3,6 +3,10 @@
 
 import os
 import sys
+from pathlib import Path
+
+# The example apps live in examples/ at the repository root, one directory up.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 def main():
