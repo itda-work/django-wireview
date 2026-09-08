@@ -1,636 +1,131 @@
 # django-wireview AI Guide
 
-> AI 에이전트(Claude Code, Codex 등)를 위한 프로젝트 가이드
+> 에이전트를 위한 최소 지도. API 상세와 예시는 여기에 복제하지 않고 `docs/`로 링크한다.
 
----
+## 정체성
 
-## 언어 및 커뮤니케이션
+Phoenix LiveView 스타일의 Django 실시간 컴포넌트 라이브러리. Pydantic v2 기반 `Component`가 서버에서 렌더링되고, Django Channels WebSocket으로 HTML diff를 보내 idiomorph로 DOM을 갱신한다. django-reactor의 후속 프로젝트.
 
-- **코드 주석**: 영어 (라이브러리 특성상)
-- **커밋 메시지**: 영어, Conventional Commits 형식
-- **문서**: 한국어/영어 혼용
+## 정본 (여기에 복제하지 않는다)
 
----
+| 무엇 | 정본 |
+|------|------|
+| Python·Django 지원 범위, 의존성, 패키지 버전 | `pyproject.toml`, `.github/workflows/ci.yml` 매트릭스 |
+| 코드 스타일 (ruff 120자, double quotes, djlint 2칸) | `pyproject.toml`의 `[tool.ruff]`, `[tool.djlint]`, `[tool.pyright]` |
+| 개발 명령 | `Makefile` (`make help`) |
+| 설정 키와 기본값 | `wireview/settings.py`의 `DEFAULT` |
+| 기능 로드맵과 미구현 목록 | `docs/FEATURE-GAP.md` |
+| 기능별 API 상세 | `docs/features/README.md` (인덱스) |
+| 학습 순서 | `docs/tutorials/README.md` |
+| 릴리스 버전 | git 태그 `v*`와 `pyproject.toml`의 version |
 
-## 프로젝트 컨텍스트
-
-### django-wireview란?
-
-Phoenix LiveView 스타일의 실시간 컴포넌트 라이브러리입니다. Django Channels를 활용하여 서버 사이드 렌더링된 컴포넌트가 WebSocket을 통해 실시간으로 업데이트됩니다.
-
-### 핵심 개념
-
-- **Component**: Pydantic BaseModel 기반의 서버 컴포넌트
-- **WireviewMeta**: 렌더링 상태 및 서버-클라이언트 통신 관리
-- **HTML Diff**: 변경된 부분만 전송하여 대역폭 절약
-- **Morphing**: idiomorph를 사용한 효율적인 DOM 업데이트
-
-### 아키텍처
-
-```
-Browser (JavaScript)
-├── ServerConnection    # WebSocket 연결 관리
-├── WireviewComponent   # 개별 컴포넌트 관리
-└── wireview-boost      # DOM morphing, history 관리
-        ↕ WebSocket
-Django Server
-├── WireviewConsumer    # WebSocket Consumer
-├── ComponentRepository # 컴포넌트 인스턴스 관리
-└── Component           # Pydantic 기반 컴포넌트
-```
-
----
-
-## 기술 스택
-
-### Backend
-
-- **Python**: ≥3.10
-- **Django**: 4.2, 5.0, 5.1 지원
-- **Django Channels**: WebSocket 통신
-- **Pydantic**: v2, 컴포넌트 상태 관리
-
-### Frontend
-
-- **JavaScript**: ES2020, esbuild로 번들링
-- **idiomorph**: DOM morphing
-- **reconnecting-websocket**: WebSocket 재연결
-
-### 개발 도구
-
-- **ruff**: Python 린팅/포매팅
-- **pyright**: Python 타입 체크
-- **djlint**: Django 템플릿 린팅
-- **pytest**: 테스트 프레임워크
-- **pre-commit**: Git hooks
-
----
-
-## 저장소 구조
+## 저장소 지도
 
 ```
 wireview/
-├── __init__.py
-├── apps.py
-├── component.py        # Component 재export
-├── consumer.py         # WebSocket Consumer
-├── repository.py       # 컴포넌트 인스턴스 관리
-├── auto_broadcast.py   # Django signals 연동
-├── event_transpiler.py # 이벤트 문법 파싱
-├── function_component.py # Function Components (GAP-003)
-├── js.py               # JS 명령어 빌더
-├── schemas.py          # Pydantic 스키마
-├── serializer.py       # Django 모델 직렬화
-├── settings.py         # 설정 관리
-├── slots.py            # Slots 시스템 (GAP-002)
-├── testing.py          # 테스트 유틸리티
-├── core/               # 핵심 모듈
-│   ├── component.py    # Component 베이스 클래스
-│   ├── meta.py         # WireviewMeta 클래스
-│   └── rendered.py     # Phoenix-style diff
-├── features/           # 기능 모듈
-│   └── streams.py      # Streams 기능
-├── templatetags/
-│   └── wireview.py     # {% component %}, {% func %}, {% on %} 등
-├── static/wireview/
-│   ├── wireview.js     # 메인 클라이언트 모듈
-│   ├── wireview-boost.js # 선택적 네비게이션 부스트
-│   └── wireview.min.js # 번들링된 결과물
-└── urls.py             # WebSocket URL 라우팅
+├── __init__.py            공개 API lazy export (from wireview import Component, LiveComponent, JS, mount ...)
+├── component.py           하위 호환 re-export. 새 코드는 wireview에서 import
+├── core/component.py      Component 베이스: 라이프사이클, 이벤트 디스패치, streams·uploads·async·flash·hooks 메서드
+├── core/meta.py           WireviewMeta (self.wire): push_to/replace_to, push_js, put_flash, push_title 등 클라이언트 명령
+├── core/rendered.py       동적 마커 기반 diff 구조
+├── template_engine.py     템플릿 VariableNode에 diff 마커 자동 주입
+├── consumer.py            WireviewConsumer (WebSocket, /__wireview__)
+├── views.py               UploadView (청크 업로드 HTTP 엔드포인트)
+├── urls.py                websocket_urlpatterns, urlpatterns
+├── repository.py          ComponentRepository: 연결당 컴포넌트 인스턴스 관리
+├── live_component.py      LiveComponent (부모 연결을 공유하는 중첩 상태 컴포넌트)
+├── function_component.py  @function_component (상태 없는 템플릿 함수)
+├── slots.py               슬롯 시스템 ({% fill %}, {% render_slot %})
+├── async_result.py        AsyncResult / AsyncState
+├── auto_broadcast.py      Django signals → 컴포넌트 mutation() 알림
+├── event_transpiler.py    {% on %} 수정자 파싱 (.prevent, .debounce.300 ...)
+├── js.py                  JS() 명령 빌더
+├── schemas.py, serializer.py  Pydantic 스키마, 모델 직렬화
+├── settings.py            WIREVIEW 설정 기본값
+├── testing.py             mount(), MountedComponent, ComponentTestCase
+├── utils.py, log.py       db 헬퍼, 로깅
+├── debug/sync_detector.py sync/async 전환 중첩 감지 (DEBUG_SYNC_TRANSITIONS)
+├── features/              streams.py, presence.py (PresenceMixin), uploads.py (UploadRegistry)
+├── templatetags/wireview.py  템플릿 태그 전체 (아래 표)
+├── management/commands/   wireview_stubs (.pyi 생성), wireview_lsp (IDE 메타데이터 JSON)
+├── templates/wireview_header.html  {% wireview_header %}가 렌더. wireview.min.js를 로드
+└── static/wireview/       wireview.js (소스, 단일 파일), wireview-boost.js (내비게이션 부스트), types.d.ts
+                           wireview.min.js는 빌드 산출물이며 gitignore
 
-tests/                  # 테스트
-├── test_*.py           # wireview 라이브러리 단위 테스트
-└── testproj/           # Django 테스트 프로젝트
-    └── todo/           # 예제 앱
-        ├── tests.py    # Django 앱 통합/E2E 테스트
-        └── templates/  # 테스트용 템플릿
+tests/
+├── test_*.py              라이브러리 단위·통합 테스트. WebSocket 없이 mount() 사용
+└── testproj/              Django 테스트 프로젝트. 앱: todo, chat, dashboard, livecomp, notifications,
+                           poll, quiz, rating, search, slots. E2E는 todo/tests.py, livecomp/tests.py
 
-docs/                   # 문서
-├── ARCHITECTURE.md     # 아키텍처 상세
-├── ROADMAP.md          # 로드맵
-└── VISION.md           # 비전
+docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEATURE-GAP.md, ARCHITECTURE.md,
+                           ROADMAP.md, DEPLOYMENT.md, PERFORMANCE.md, design/ 설계 메모, implementation/ 구현 노트
+typings/                   channels 타입 스텁 (pyright용)
+.claude/settings.json      권한 허용 목록과 ruff format 훅
 ```
 
----
+### 템플릿 태그 (`{% load wireview %}`)
 
-## 개발 워크플로우
-
-### 환경 설정
-
-```bash
-# 의존성 설치
-make install
-# 또는
-uv sync --dev
-
-# pre-commit 설치
-pre-commit install
-```
-
-### 빌드
-
-```bash
-# JavaScript 빌드
-make build              # esbuild로 번들링
-npm run build           # 동일
-
-# JavaScript 워치 모드
-make watch-js
-npm run watch
-```
-
-### 테스트
-
-```bash
-# 전체 테스트
-make test
-
-# 특정 마커만
-pytest -m unit          # 단위 테스트
-pytest -m integration   # 통합 테스트
-pytest -m "not slow"    # 느린 테스트 제외
-pytest -m "not e2e"     # E2E 테스트 제외
-```
-
-### 린팅
-
-```bash
-# Python
-make lint               # ruff check
-make check              # pyright
-
-# 타입 체크 (JavaScript)
-npm run typecheck       # tsc --noEmit
-```
-
-### 테스트 서버
-
-```bash
-cd tests
-python manage.py runserver
-```
-
----
-
-## 코드 스타일
-
-### Python
-
-- **포매터**: ruff format
-- **린터**: ruff
-- **라인 길이**: 80자
-- **들여쓰기**: 4 spaces
-- **따옴표**: double quotes
-- **타입 힌트**: 권장
-
-```python
-# 예시
-async def increment(self, amount: int = 1) -> None:
-    """Increment the counter by the given amount."""
-    self.count += amount
-```
-
-### JavaScript
-
-- **포매터**: 없음 (수동)
-- **라인 길이**: 80자
-- **들여쓰기**: 2 spaces
-- **타입**: JSDoc으로 문서화
-
-```javascript
-/**
- * Sends a user event to the server.
- * @param {HTMLElement} element - The triggering element
- * @param {string} name - Event handler name
- * @param {Object} args - Event arguments
- */
-send(element, name, args) { ... }
-```
-
-### Django 템플릿
-
-- **들여쓰기**: 2 spaces (djlint)
-- **프로필**: django
-
----
-
-## 테스트 전략
-
-### 테스트 구조
-
-| 위치 | 용도 | 예시 |
-|------|------|------|
-| `tests/test_*.py` | wireview 라이브러리 단위 테스트 | test_js.py, test_streams.py |
-| `tests/testproj/{app}/tests.py` | Django 앱 통합/E2E 테스트 | todo/tests.py |
-
-**원칙**:
-- wireview 라이브러리 기능 테스트 → `tests/test_*.py`
-- Django 앱 특정 테스트 → 해당 앱의 `tests.py` 또는 `tests/` 폴더
-
-### 마커
-
-| 마커 | 설명 |
+| 태그 | 용도 |
 |------|------|
-| `@pytest.mark.unit` | 단위 테스트 |
-| `@pytest.mark.integration` | 통합 테스트 |
-| `@pytest.mark.slow` | 느린 테스트 |
-| `@pytest.mark.e2e` | E2E 테스트 (브라우저 필요) |
-
-### 커버리지
-
-```bash
-pytest --cov=wireview --cov-report=html
-```
-
----
-
-## 핵심 API
-
-### Component 클래스
-
-```python
-from wireview.component import Component
-
-class Counter(Component):
-    _template_name = "counter.html"
-
-    count: int = 0
-
-    async def increment(self, amount: int = 1):
-        self.count += amount
-
-    async def joined(self):
-        """컴포넌트 마운트 시 호출"""
-        pass
-
-    async def params_changed(self, params: dict[str, str], uri: str):
-        """URL 파라미터 변경 시 호출"""
-        pass
-
-    async def mutation(self, channel, action, instance):
-        """ORM 변경 알림"""
-        pass
-
-    async def handle_hook_event(self, hook_id: str, event: str, payload: dict) -> Any:
-        """JavaScript Hook 이벤트 처리 (반환값은 hook callback으로 전송)"""
-        pass
-
-    async def push_event(self, event: str, payload: dict = None, hook_id: str = None):
-        """JavaScript Hook에 이벤트 전송 (hook_id=None이면 모든 hook에 브로드캐스트)"""
-        pass
-```
-
-### temporary_assigns (메모리 최적화)
-
-대용량 리스트를 렌더링 후 메모리에서 해제하여 서버 메모리를 절약합니다.
-**상세 문서**: [docs/features/temporary-assigns.md](./docs/features/temporary-assigns.md)
-
-```python
-class MessageList(Component):
-    _template_name = "messages/list.html"
-    _temporary_assigns = {"messages"}  # 렌더 후 초기화할 필드
-
-    messages: list[Message] = []  # 기본값 필수!
-    total_count: int = 0  # 이 필드는 유지됨
-
-    async def joined(self):
-        self.messages = await Message.objects.all()[:100]
-        self.total_count = await Message.objects.acount()
-        # 렌더링 후 self.messages = [] 자동 초기화
-        # self.total_count는 100 유지
-```
-
-**초기화 규칙**:
-- **시점**: 매 렌더링 완료 직후 (diff 전송 후)
-- **값**: Pydantic 필드의 기본값 (`= []`, `= {}`, `= 0` 등)
-- **조건**: 기본값이 없는 필드는 초기화되지 않음
-
-### params_changed (URL 파라미터 처리)
-
-URL 파라미터가 변경되면 `params_changed()` 콜백이 자동으로 호출됩니다.
-Phoenix LiveView의 `handle_params/3`와 유사합니다.
-
-```python
-class ProductList(Component):
-    _template_name = "products/list.html"
-    page: int = 1
-    sort: str = "created_at"
-    products: list[Product] = []
-
-    async def params_changed(self, params: dict[str, str], uri: str):
-        """URL 파라미터 변경 시 자동 호출"""
-        self.page = int(params.get("page", "1"))
-        self.sort = params.get("sort", "created_at")
-        self.products = await self.fetch_products()
-
-    async def next_page(self):
-        # URL 변경 → params_changed 자동 호출
-        await self.wire.push_to(f"?page={self.page + 1}")
-```
-
-**호출 시점**:
-- `push_to()` / `replace_to()` 호출 후 클라이언트 URL 변경 시
-- 브라우저 뒤로가기/앞으로가기 (popstate)
-- 초기 페이지 로드 시 URL에 파라미터가 있을 때 (`joined()` 후 자동 호출)
-
-**인자**:
-- `params`: URL 쿼리 파라미터 (`dict[str, str]`)
-- `uri`: 전체 URI (예: `/products?page=2&sort=name`)
-
-### Slots (컴포넌트 콘텐츠 합성)
-
-Phoenix LiveView 스타일의 슬롯으로 컴포넌트에 콘텐츠를 전달합니다.
-**상세 문서**: [docs/features/slots.md](./docs/features/slots.md)
-
-```python
-class Card(Component):
-    _template_name = "components/card.html"
-    _slots = {
-        "header": {"required": False, "doc": "카드 헤더"},
-        "footer": {"required": False, "doc": "카드 푸터"},
-    }
-    title: str = ""
-```
-
-```html
-<!-- 컴포넌트 템플릿 (card.html) -->
-{% load wireview %}
-<div {% tag_header %} class="card">
-    {% if slots.header %}
-        <header>{% render_slot "header" %}</header>
-    {% endif %}
-    <div class="card-body">{% render_slot %}</div>
-    {% if slots.footer %}
-        <footer>{% render_slot "footer" %}</footer>
-    {% endif %}
-</div>
-```
-
-```html
-<!-- 사용 -->
-{% component_block "Card" %}
-    {% fill header %}<h1>{{ page_title }}</h1>{% endfill %}
-    <p>본문 내용</p>
-    {% fill footer %}<button>저장</button>{% endfill %}
-{% endcomponent %}
-```
-
-**let: 변수 바인딩** (리스트 렌더링):
-```html
-{% component_block "List" items=items %}
-    {% fill item let:item let:index %}
-        <span>{{ index }}. {{ item.name }}</span>
-    {% endfill %}
-{% endcomponent %}
-```
-
-### Function Components (상태 없는 재사용 컴포넌트)
-
-WebSocket 연결이 필요 없는 간단한 UI 요소를 위한 경량 컴포넌트:
-**상세 문서**: [docs/features/function-components.md](./docs/features/function-components.md)
-
-```python
-from wireview import function_component
-
-@function_component
-def button(text: str, variant: str = "primary"):
-    """간단한 버튼 컴포넌트."""
-    return f'<button class="btn btn-{variant}">{text}</button>'
-
-@function_component(template="components/card.html")
-def card(title: str = "", variant: str = "default"):
-    """템플릿 기반 카드 컴포넌트."""
-    return {"title": title, "variant": variant}
-```
-
-```html
-{% load wireview %}
-
-<!-- 심플 태그 -->
-{% func "button" text="Click me" variant="danger" %}
-
-<!-- 블록 태그 (슬롯 지원) -->
-{% func_block "card" title="Welcome" %}
-    {% fill header %}<h2>커스텀 헤더</h2>{% endfill %}
-    <p>카드 본문 내용</p>
-{% endfunc %}
-```
-
-**Component vs Function Component**:
-- **Component**: 상태 있음, WebSocket 실시간 업데이트, `{% on %}` 이벤트 지원
-- **Function Component**: 상태 없음, 정적 렌더링, 경량화
-
-### LiveComponent (중첩 상태 컴포넌트)
-
-부모 Component 내에서 독립적인 상태를 유지하는 중첩 컴포넌트:
-**상세 문서**: [docs/features/live-component.md](./docs/features/live-component.md)
-
-```python
-from wireview import LiveComponent
-
-class Counter(LiveComponent):
-    _template_name = "components/counter.html"
-
-    count: int = 0
-
-    async def increment(self):
-        self.count += 1
-        await self.send_to_parent("counter_changed", count=self.count)
-```
-
-```html
-<!-- 부모 템플릿에서 사용 -->
-{% load wireview %}
-{% live_component "Counter" id="counter-1" count=10 %}
-
-<!-- LiveComponent 내부 이벤트는 myself=True 사용 -->
-<button {% on "click" "increment" myself=True %}>+1</button>
-```
-
-**주요 특징**:
-- 부모와 WebSocket 연결 공유
-- 독립적인 상태 관리
-- `send_to_parent()`: 자식→부모 이벤트 전송
-- `send_update()`: 부모→자식 상태 업데이트
-
-### 템플릿 태그
-
-```html
-{% load wireview %}
-
-<!-- 컴포넌트 렌더링 -->
-{% component 'Counter' count=10 %}
-
-<!-- 이벤트 바인딩 -->
-<button {% on 'click' 'increment' amount=1 %}>+1</button>
-
-<!-- 수정자 사용 -->
-<button {% on 'click.prevent.debounce.300' 'search' %}>Search</button>
-```
-
-### JavaScript Hooks (서드파티 라이브러리 통합)
-
-Chart.js, Mapbox, CodeMirror 등 서드파티 JavaScript 라이브러리 통합을 위한 Hook 시스템:
-**상세 문서**: [docs/features/hooks.md](./docs/features/hooks.md)
-
-```javascript
-// 클라이언트: Hook 정의
-window.wireview.hooks.ChartHook = {
-  mounted() {
-    this.chart = new Chart(this.el, JSON.parse(this.el.dataset.config));
-    this.handleEvent("update", ({data}) => this.chart.data = data);
-  },
-  updated() { this.chart.update(); },
-  destroyed() { this.chart.destroy(); }
-};
-```
-
-```html
-<!-- 템플릿: Hook 사용 -->
-<div wire-hook="ChartHook" data-config='{"type": "line"}'>
-</div>
-```
-
-```python
-# 서버: Hook 이벤트 처리
-class Dashboard(Component):
-    async def handle_hook_event(self, hook_id, event, payload):
-        if event == "chart_click":
-            return {"handled": True}
-
-    async def update_chart(self):
-        await self.push_event("update", {"data": [1, 2, 3]})
-```
-
-**Hook 라이프사이클**:
-- `mounted()`: 엘리먼트 조인 후
-- `beforeUpdate()`: DOM morph 전 (동기)
-- `updated()`: DOM morph 후
-- `destroyed()`: 엘리먼트 제거 시
-- `disconnected()`: WebSocket 연결 해제 시
-- `reconnected()`: WebSocket 재연결 시
-
-**Hook 컨텍스트**:
-- `this.el`: DOM 엘리먼트
-- `this.pushEvent(event, payload, callback)`: 서버로 이벤트 전송
-- `this.handleEvent(event, callback)`: 서버 이벤트 수신 핸들러 등록
-
-### Streams API
-
-대량 리스트를 메모리 효율적으로 처리하는 Phoenix LiveView 스타일 Streams:
-
-```python
-class ItemList(Component):
-    _template_name = "myapp/item_list.html"
-    items: list[Item] = []
-
-    async def joined(self):
-        self.items = list(await Item.objects.all()[:100])
-
-    async def add_item(self, name: str):
-        item = await Item.objects.acreate(name=name)
-        await self.stream_insert("items", item, at=0)  # prepend
-
-    async def remove_item(self, item_id: int):
-        await self.stream_delete("items", item_id)
-
-    async def refresh_all(self):
-        items = await Item.objects.all()[:100]
-        await self.stream("items", items)  # 전체 교체
-```
-
-```html
-<!-- item_list.html -->
-<ul wire-stream="items">
-  {% for item in items %}
-    {% include "myapp/item_list_item.html" %}
-  {% endfor %}
-</ul>
-
-<!-- item_list_item.html -->
-<li id="items-{{ item.pk }}">{{ item.name }}</li>
-```
-
-**Stream 메서드**:
-- `stream(name, items)`: 리스트 전체 교체 (reset)
-- `stream_insert(name, item, at=)`: 아이템 삽입 (-1=append, 0=prepend)
-- `stream_delete(name, dom_id)`: 아이템 삭제
-
-### JavaScript API
-
-```javascript
-// 이벤트 전송
-window.wireview.send(element, 'increment', { amount: 1 });
-
-// 디바운스
-window.wireview.debounce(300)(() => { ... });
-```
-
----
-
-## 설정
-
-```python
-# settings.py
-WIREVIEW = {
-    "TRANSPILER_CACHE_SIZE": 1024,
-    "USE_HTML_DIFF": True,      # HTML diff 사용
-    "USE_HMIN": False,          # django-hmin 사용
-    "BOOST_PAGES": False,       # 클라이언트 사이드 네비게이션
-    "AUTO_GENERATE_STUBS": True,  # 타입 스텁 자동 생성 (DEBUG 모드)
-}
-```
-
-### 타입 스텁 생성
-
-컴포넌트를 위한 `.pyi` 타입 스텁 파일을 자동 생성합니다:
-
-```bash
-python manage.py wireview_stubs           # 스텁 생성
-python manage.py wireview_stubs --check   # CI용: 스텁이 최신인지 확인
-python manage.py wireview_stubs --dry-run # 미리보기
-```
-
-**상세 문서**: [docs/features/type-stubs.md](./docs/features/type-stubs.md)
-
----
-
-## 주의사항
-
-### 컴포넌트 설계
-
-1. **상태 직렬화**: 컴포넌트 상태는 JSON 직렬화 가능해야 함
-2. **async 메서드**: 이벤트 핸들러는 async로 정의
-3. **ID 고유성**: 컴포넌트 ID는 페이지 내에서 고유해야 함
-
-### WebSocket
-
-1. **연결 끊김**: 연결이 끊기면 컴포넌트가 자동으로 재연결됨
-2. **상태 복구**: 재연결 시 마지막 상태에서 복구
-
-### 성능
-
-1. **skip_render()**: 불필요한 렌더링 방지
-2. **_exclude_fields**: 직렬화에서 제외할 필드 지정
-3. **HTML Diff**: 변경된 부분만 전송
-
----
-
-## 관련 문서
-
-- [README.md](./README.md) - 사용 가이드
-- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) - 아키텍처 상세
-- [docs/ROADMAP.md](./docs/ROADMAP.md) - 개발 로드맵
-- [docs/features/hooks.md](./docs/features/hooks.md) - JavaScript Hooks 상세 문서
-- [docs/features/slots.md](./docs/features/slots.md) - Slots 상세 문서
-- [docs/features/function-components.md](./docs/features/function-components.md) - Function Components 상세 문서
-- [docs/features/live-component.md](./docs/features/live-component.md) - LiveComponent 상세 문서
-- [docs/features/temporary-assigns.md](./docs/features/temporary-assigns.md) - Temporary Assigns 상세 문서
-- [docs/features/type-stubs.md](./docs/features/type-stubs.md) - Type Stubs 자동 생성 문서
-- [CHANGELOG.md](./CHANGELOG.md) - 변경 이력
-
----
-
-*이 문서는 AI 에이전트가 프로젝트를 이해하고 효과적으로 기여할 수 있도록 작성되었습니다.*
-
-- gh cli를 활용해서 깃허브 이슈 등을 관리
+| `wireview_header` | JS 로드와 boost 메타 |
+| `component`, `component_block` + `fill` + `render_slot` | 컴포넌트 렌더링, 슬롯 |
+| `live_component`, `live_tag_header` | LiveComponent |
+| `func`, `func_block` | Function Component |
+| `tag_header` | 컴포넌트 루트 엘리먼트 속성 |
+| `on` | 이벤트 바인딩. `{% on "click.prevent" "handler" arg=1 %}` |
+| `cond`, `class` (태그), `str`, `concat` (필터) | 조건, 클래스, 문자열 헬퍼 |
+| `upload_input`, `upload_drop_zone`, `upload_button`, `upload_preview` | 파일 업로드 |
+
+### 클라이언트 DOM 속성
+
+`wire-hook`, `wire-stream`, `wire-viewport-top/bottom`, `wire-disabled-with`, `wire-feedback-for`, `wire-no-feedback`, `wire-auto-recover`, `wire-flash`, `wire-upload-drop`, `wire-preview`. 로딩 클래스는 `wireview-click-loading` 계열. 상세는 `docs/features/`.
+
+## 명령
+
+| 할 일 | 명령 | 선행 조건 |
+|------|------|-----------|
+| 의존성 설치 | `make install` 과 `npm ci` | `uv sync --dev`는 dev 도구를 설치하지 않는다. extras를 써야 한다 |
+| JS 빌드 | `make build-js` | 개발 서버와 E2E 전에 필수. 산출물은 gitignore |
+| 테스트 (e2e·slow 제외) | `make test` 또는 `make test ARGS="-k streams"` | collectstatic과 DJANGO_ALLOW_ASYNC_UNSAFE는 Makefile이 처리 |
+| E2E | `make test-e2e` | Redis 127.0.0.1:6379, JS 빌드, `make playwright-install` |
+| 린트 | `make lint` (ruff + djlint) | |
+| 타입 검사 | `make check` (pyright, tests/ 제외) | |
+| 포맷 | `make format` | |
+| 품질 일괄 | `make quality` | CI의 lint·typecheck 잡과 동일 범위 |
+| 개발 서버 | `make run-daphne` | JS 빌드, Redis |
+| 타입 스텁 확인 | `cd tests && uv run python manage.py wireview_stubs --check` | |
+
+CI(`ci.yml`)는 Python×Django 매트릭스 테스트, Redis를 띄운 E2E, lint, typecheck, build 다섯 잡이다. PR 전에 `make quality`와 `make test`를 통과시킨다.
+
+## 작업 규약
+
+- **기능 단위는 GAP 번호.** `docs/FEATURE-GAP.md`의 GAP-nnn 항목을 고르거나 새로 만들고, 커밋 제목에 적는다. 예: `feat: Add on_mount hooks (GAP-021)`
+- **완료 정의.** 구현 + `tests/test_<feature>.py` + `docs/features/<feature>.md` + `docs/features/README.md` 인덱스 갱신 + FEATURE-GAP.md 상태 갱신 + `CHANGELOG.md` Unreleased 한 줄. 새 모듈·태그·속성이 생기면 이 문서의 지도도 갱신한다.
+- **커밋.** 영어, Conventional Commits. 이슈와 PR은 `gh` CLI로 다룬다.
+- **언어.** 코드 주석과 docstring은 영어. 문서는 한국어 기본.
+- **테스트 마커.** `unit` / `integration` / `slow` / `e2e` 중 하나 이상을 붙인다 (`--strict-markers`). 라이브러리 테스트는 `tests/test_*.py`, 앱·E2E 테스트는 `tests/testproj/<app>/tests.py`.
+- **설정 키 추가** 시 `wireview/settings.py`의 `DEFAULT`에 기본값을 넣는다.
+- **JS.** `wireview.js` 단일 파일, ES2020, 2칸 들여쓰기, JSDoc. 포매터는 없다.
+- **import.** 새 코드는 `from wireview import Component, LiveComponent, JS, mount`. `wireview.component` 경로는 하위 호환용.
+
+## 함정
+
+- **`wireview.min.js`가 없으면 페이지에서 JS가 로드되지 않는다.** clone 직후와 `wireview.js` 수정 후 `make build-js`.
+- **testproj의 CHANNEL_LAYERS는 Redis.** Redis 없이 `make run-daphne`나 E2E를 실행하면 연결에 실패한다. 단위·통합 테스트는 채널 레이어를 쓰지 않는다.
+- **클라이언트가 호출할 수 있는 메서드.** `_`로 시작하지 않는 소문자 이름의 메서드는 이벤트 핸들러로 노출되고 `validate_call`로 감싸진다. 내부 헬퍼는 반드시 `_` 접두사. 핸들러와 라이프사이클 메서드는 async.
+- **컴포넌트 이름은 클래스명으로 전역 등록.** 다른 모듈에서 같은 클래스명을 쓰면 경고가 난다. 템플릿에서 `app:Name` 또는 FQN으로 구분한다.
+- **상태 필드.** JSON 직렬화 가능해야 한다. `_temporary_assigns`는 기본값이 있는 필드만 초기화된다. `_exclude_fields` 기본값은 `{"user", "wire"}`.
+- **pyright는 `tests/`를 검사하지 않고, `tsc`는 checkJs=false라 JS 본문을 검사하지 않는다.** 둘 다 통과해도 해당 영역은 검증된 것이 아니다.
+- **gitignore 대상.** `*.pyi` (AUTO_GENERATE_STUBS가 DEBUG에서 생성), `.wireview/`, `tests/static/`, `*.min.js`.
+- **컴포넌트 ID**는 페이지 안에서 고유해야 한다.
+
+## 문서 인덱스
+
+- [README.md](./README.md) 사용 가이드와 빠른 시작
+- [docs/features/README.md](./docs/features/README.md) 기능 레퍼런스 인덱스
+- [docs/tutorials/README.md](./docs/tutorials/README.md) 튜토리얼 15편
+- [docs/FEATURE-GAP.md](./docs/FEATURE-GAP.md) Phoenix LiveView 대비 갭과 GAP 번호
+- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) 아키텍처
+- [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) 배포
+- [docs/PERFORMANCE.md](./docs/PERFORMANCE.md) 성능
+- [CHANGELOG.md](./CHANGELOG.md) 변경 이력
