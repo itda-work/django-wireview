@@ -1,4 +1,7 @@
-"""Settings for the benchmarks: the test project plus the bench app, no Redis."""
+"""Settings for the benchmarks: the test project plus the bench app.
+
+BENCH_LAYER picks the channel layer: memory (default), nats or redis.
+"""
 
 import importlib.util
 import os
@@ -15,12 +18,21 @@ if importlib.util.find_spec("daphne") is None:
     # The daphne app only backs runserver. Windows ARM64 cannot install daphne at all
     # (cryptography ships no win_arm64 wheel), and the benchmark runs uvicorn there.
     INSTALLED_APPS.remove("daphne")
-if os.environ.get("BENCH_LAYER", "memory") == "nats":
-    # channels-nats: one NATS server links several daphne processes (pip install -e ../channels-nats)
+_LAYER = os.environ.get("BENCH_LAYER", "memory")
+if _LAYER == "nats":
+    # channels-nats: one NATS server links several server processes (pip install -e ../channels-nats)
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_nats.NatsChannelLayer",
             "CONFIG": {"servers": [os.environ.get("NATS_URL", "nats://127.0.0.1:4222")]},
+        }
+    }
+elif _LAYER == "redis":
+    # channels_redis, the reference cross-process layer, for a like-for-like comparison with NATS
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {"hosts": [os.environ.get("REDIS_URL", "redis://127.0.0.1:6379")]},
         }
     }
 else:

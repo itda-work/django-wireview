@@ -3,8 +3,8 @@
 Measures per-connection memory of the server processes, join throughput,
 event throughput, the render payload size seen on the wire, and the time one
 broadcast takes to reach every connection (every subscribed component
-re-renders). With ``layer="nats"`` several server processes share the
-channels-nats layer, so the broadcast crosses processes.
+re-renders). With ``layer="nats"`` or ``layer="redis"`` several server processes
+share one channel layer, so the broadcast crosses processes.
 
 ``server`` is "daphne" (default) or "uvicorn". They differ on Windows: daphne
 forces asyncio onto the selector loop, whose ``select()`` is capped at 512
@@ -123,31 +123,47 @@ def _env() -> dict[str, str]:
     return env
 
 
-def find_nats_server() -> str | None:
-    for candidate in (
-        os.environ.get("NATS_SERVER"),
-        shutil.which("nats-server"),
-        str(Path.home() / "go/bin/nats-server"),
-        str(Path.home() / "go/bin/nats-server.exe"),
-    ):
-        if candidate and Path(candidate).exists():
-            return candidate
+def _find_binary(env_var: str, *candidates: str) -> str | None:
+    for candidate in (os.environ.get(env_var), *candidates):
+        if candidate and (Path(candidate).exists() or shutil.which(candidate)):
+            return shutil.which(candidate) or candidate
     return None
 
 
-def start_nats() -> subprocess.Popen | None:
-    """Start a nats-server unless NATS_URL points at one. Sets NATS_URL for the server processes."""
-    if os.environ.get("NATS_URL"):
-        return None
-    binary = find_nats_server()
-    if binary is None:
-        raise RuntimeError("layer=nats needs a nats-server binary (NATS_SERVER, PATH, or ~/go/bin) or NATS_URL")
-    port = _free_port()
-    proc = subprocess.Popen(
-        [binary, "-a", "127.0.0.1", "-p", str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+def find_nats_server() -> str | None:
+    return _find_binary(
+        "NATS_SERVER",
+        "nats-server",
+        str(Path.home() / "go/bin/nats-server"),
+        str(Path.home() / "go/bin/nats-server.exe"),
     )
-    _wait_for_port(port)
-    os.environ["NATS_URL"] = f"nats://127.0.0.1:{port}"
+
+
+def find_redis_server() -> str | None:
+    return _find_binary("REDIS_SERVER", "redis-server", "/opt/homebrew/bin/redis-server", "/usr/local/bin/redis-server")
+
+
+def start_broker(layer: str) -> subprocess.Popen | None:
+    """Start the broker a cross-process layer needs, unless its URL env var already points at one.
+
+    Sets ``NATS_URL`` / ``REDIS_URL`` for the server processes (bench/settings.py reads them).
+    Returns the process to stop afterwards, or None when an external broker is used.
+    """
+    if layer == "nats":
+        url_var, scheme, finder, args = "NATS_URL", "nats", find_nats_server, ["-a", "127.0.0.1", "-p"]
+    elif layer == "redis":
+        url_var, scheme, finder, args = "REDIS_URL", "redis", find_redis_server, ["--bind", "127.0.0.1", "--port"]
+    else:
+        return None
+    if os.environ.get(url_var):
+        return None
+    binary = finder()
+    if binary is None:
+        raise RuntimeError(f"layer={layer} needs a {scheme}-server binary on PATH, or {url_var} pointing at one")
+    port = _free_port()
+    proc = subprocess.Popen([binary, *args, str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _wait_for_port(port, proc=proc)
+    os.environ[url_var] = f"{scheme}://127.0.0.1:{port}"
     return proc
 
 
@@ -295,14 +311,17 @@ def run(
     layer: str = "memory",
     server: str = "daphne",
 ) -> dict[str, t.Any]:
-    """``layer`` is "memory" (one process only) or "nats" (channels-nats, any number of processes)."""
+    """``layer`` is "memory" (one process only), "nats" (channels-nats) or "redis" (channels_redis).
+
+    The cross-process layers take any number of server processes; the broker is started here.
+    """
     if layer == "memory" and processes > 1:
-        raise RuntimeError("the in-memory layer cannot link several processes; use --layer nats")
+        raise RuntimeError("the in-memory layer cannot link several processes; use --layer nats or --layer redis")
     if server not in SERVERS:
         raise ValueError(f"unknown server {server!r}; choose from {sorted(SERVERS)}")
     _raise_fd_limit()
     os.environ["BENCH_LAYER"] = layer
-    nats = start_nats() if layer == "nats" else None
+    broker = start_broker(layer)
     results: dict[str, t.Any] = {}
     try:
         for items in item_counts:
@@ -316,5 +335,5 @@ def run(
             finally:
                 _stop(*procs)
     finally:
-        _stop(nats)
+        _stop(broker)
     return results

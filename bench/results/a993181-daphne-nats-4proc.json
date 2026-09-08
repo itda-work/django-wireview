@@ -1,9 +1,9 @@
 {
  "meta": {
-  "sha": "a993181",
-  "dirty": false,
+  "sha": "234f987",
+  "dirty": true,
   "ref": "heads/main",
-  "date": "2026-09-08T13:21:22+00:00",
+  "date": "2026-09-08T13:36:27+00:00",
   "python": "3.12.14",
   "django": "6.0",
   "platform": "Darwin arm64",
@@ -15,39 +15,39 @@
  },
  "payload_bytes": {
   "flat.first_render": 613,
-  "flat.change_one_value": 195,
-  "list.first_render": 2261,
+  "flat.change_one_value": 194,
+  "list.first_render": 2259,
   "list.no_change": 0,
-  "list.change_one_item": 603,
-  "list.append_item": 612,
-  "list.toggle_if_inside_item": 614,
-  "list.top_level_if_on": 647,
-  "list.change_one_value": 579
+  "list.change_one_item": 601,
+  "list.append_item": 609,
+  "list.toggle_if_inside_item": 613,
+  "list.top_level_if_on": 644,
+  "list.change_one_value": 576
  },
  "timing": {
-  "list.event_ms": 0.5563887499738485,
-  "list.template_render_ms": 0.3765319431355844,
-  "flat.event_ms": 0.15850916660080352
+  "list.event_ms": 0.5441237501023958,
+  "list.template_render_ms": 0.37108791681627434,
+  "flat.event_ms": 0.15393055664996305
  },
  "memory": {
-  "list.component_kb": 25.67560546875
+  "list.component_kb": 25.67423828125
  },
  "ws": {
   "items_5": {
    "connections": 2000,
    "items": 5,
-   "per_connection_kb": 63.864000000000004,
+   "per_connection_kb": 54.928,
    "per_connection_kb_by_process": {
-    "daphne-0": 16.032,
-    "daphne-1": 15.952,
-    "daphne-2": 15.904,
-    "daphne-3": 15.976
+    "daphne-0": 13.776,
+    "daphne-1": 13.672,
+    "daphne-2": 13.688,
+    "daphne-3": 13.792
    },
-   "joins_per_s": 2099.639990602766,
-   "events_per_s": 9428.842001233717,
+   "joins_per_s": 2244.8603922621614,
+   "events_per_s": 12386.594918703935,
    "render_bytes": 334,
-   "broadcast_ms": 160.65254202112556,
-   "broadcast_renders_per_s": 12449.2272256545,
+   "broadcast_ms": 141.29483397118747,
+   "broadcast_renders_per_s": 14154.799179762194,
    "layer": "nats",
    "processes": 4,
    "server": "daphne"
@@ -55,18 +55,18 @@
   "items_50": {
    "connections": 2000,
    "items": 50,
-   "per_connection_kb": 79.032,
+   "per_connection_kb": 78.768,
    "per_connection_kb_by_process": {
-    "daphne-0": 19.784,
-    "daphne-1": 19.784,
-    "daphne-2": 19.76,
-    "daphne-3": 19.704
+    "daphne-0": 19.624,
+    "daphne-1": 19.744,
+    "daphne-2": 19.744,
+    "daphne-3": 19.656
    },
-   "joins_per_s": 1622.78388574228,
-   "events_per_s": 4988.141728996829,
+   "joins_per_s": 1582.1929975430728,
+   "events_per_s": 4525.616833258086,
    "render_bytes": 631,
-   "broadcast_ms": 429.8640410415828,
-   "broadcast_renders_per_s": 4652.633877339208,
+   "broadcast_ms": 381.35249994229525,
+   "broadcast_renders_per_s": 5244.491645662824,
    "layer": "nats",
    "processes": 4,
    "server": "daphne"

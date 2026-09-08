@@ -1,0 +1,75 @@
+{
+ "meta": {
+  "sha": "234f987",
+  "dirty": true,
+  "ref": "heads/main",
+  "date": "2026-09-08T13:35:39+00:00",
+  "python": "3.12.14",
+  "django": "6.0",
+  "platform": "Darwin arm64",
+  "items": 50,
+  "connections": 2000,
+  "layer": "redis",
+  "processes": 4,
+  "server": "uvicorn"
+ },
+ "payload_bytes": {
+  "flat.first_render": 613,
+  "flat.change_one_value": 195,
+  "list.first_render": 2260,
+  "list.no_change": 0,
+  "list.change_one_item": 602,
+  "list.append_item": 611,
+  "list.toggle_if_inside_item": 613,
+  "list.top_level_if_on": 645,
+  "list.change_one_value": 578
+ },
+ "timing": {
+  "list.event_ms": 0.5421708334082117,
+  "list.template_render_ms": 0.37373999987418455,
+  "flat.event_ms": 0.15360791663018367
+ },
+ "memory": {
+  "list.component_kb": 25.6744140625
+ },
+ "ws": {
+  "items_5": {
+   "connections": 2000,
+   "items": 5,
+   "per_connection_kb": 225.38400000000001,
+   "per_connection_kb_by_process": {
+    "uvicorn-0": 56.304,
+    "uvicorn-1": 56.472,
+    "uvicorn-2": 56.328,
+    "uvicorn-3": 56.28
+   },
+   "joins_per_s": 2020.9719636205064,
+   "events_per_s": 9858.287118946737,
+   "render_bytes": 334,
+   "broadcast_ms": 160.6068330584094,
+   "broadcast_renders_per_s": 12452.770295723603,
+   "layer": "redis",
+   "processes": 4,
+   "server": "uvicorn"
+  },
+  "items_50": {
+   "connections": 2000,
+   "items": 50,
+   "per_connection_kb": 249.504,
+   "per_connection_kb_by_process": {
+    "uvicorn-0": 62.392,
+    "uvicorn-1": 62.232,
+    "uvicorn-2": 62.48,
+    "uvicorn-3": 62.4
+   },
+   "joins_per_s": 1500.582273241957,
+   "events_per_s": 5236.35087865596,
+   "render_bytes": 631,
+   "broadcast_ms": 416.14616697188467,
+   "broadcast_renders_per_s": 4806.003656246874,
+   "layer": "redis",
+   "processes": 4,
+   "server": "uvicorn"
+  }
+ }
+}

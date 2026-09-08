@@ -84,7 +84,7 @@ wireview를 그 위에서 돌린 실측이다 (`make bench ARGS="--layer nats --
 |---|---|---|---:|---:|---:|---:|---:|
 | daphne | InMemory 1 | macOS 호스트 | 0.53 ms | 46.0 KB | 1,123 | 3,023 | 814 ms |
 | daphne | InMemory 1 | Windows x64 에뮬 | 1.72 ms | 51.7 KB† | 341† | 1,043† | 369 ms† |
-| daphne | NATS 4 | macOS 호스트 | 0.56 ms | 63.9 KB | 2,100 | 9,429 | 161 ms |
+| daphne | NATS 4 | macOS 호스트 | 0.54 ms | 54.9 KB | 2,245 | 12,387 | 141 ms |
 | daphne | NATS 4 | Windows x64 에뮬 | 1.57 ms | 52.1 KB | 825 | 3,543 | 437 ms |
 | uvicorn | InMemory 1 | macOS 호스트 | 0.57 ms | 211.5 KB | 1,188 | 3,263 | 728 ms |
 | uvicorn | InMemory 1 | Windows ARM64 네이티브 | 0.82 ms | 161.5 KB | 677 | 2,043 | 1,093 ms |
@@ -106,6 +106,29 @@ wireview를 그 위에서 돌린 실측이다 (`make bench ARGS="--layer nats --
 배포 결론은 `docs/DEPLOYMENT.md`의 Windows 절에 적었다: daphne 대신 uvicorn, 포트별 단일 프로세스 N개, `--workers` 금지, Caddy가 분배, nats-server는 Windows 서비스, SQLite는 WAL.
 
 설치 쪽 발견: Windows ARM64에는 `lru-dict`, `autobahn`, `cryptography`의 wheel이 없다. lru-dict는 wireview 의존에서 뺐고(순수 Python LRU), daphne(autobahn → cryptography)는 Rust 툴체인 없이는 ARM64에 설치되지 않는다. uvicorn 경로는 wheel만으로 설치된다.
+
+## 5-3. Redis 대 NATS (2026-09-08)
+
+"NATS를 왜 쓰나"는 Windows 이야기지만, macOS·Linux에서도 프로세스를 늘리면 채널 레이어가 필요하다. 그때 기본 선택지인 channels_redis와 나란히 쟀다. 같은 커밋, 같은 기계, daphne 4프로세스, 연결 2,000개, 항목 5개다. 레이어마다 3회 돌려 중앙값을 싣는다(`bench/results/a993181-daphne-layer-comparison.spread.json`에 전체 회차).
+
+| 레이어 | 연결당 RSS | join/s | 이벤트/s | 브로드캐스트 |
+|---|---:|---:|---:|---:|
+| channels_redis 4.3.0 (Redis 8.10) | 62.7 KB | 2,079 | 12,058 | 225 ms |
+| channels-nats 0.2.0 (nats-server 2.14.6) | 54.9 KB | 2,245 | 12,387 | 141 ms |
+
+uvicorn 4프로세스로도 같은 경향이다.
+
+| 레이어 | 연결당 RSS | join/s | 이벤트/s | 브로드캐스트 |
+|---|---:|---:|---:|---:|
+| channels_redis | 225.4 KB | 2,021 | 9,858 | 161 ms |
+| channels-nats | 215.8 KB | 2,324 | 12,993 | 179 ms |
+
+- **이벤트 처리량은 사실상 같다.** 회차 변동(±5%) 안이다. 예상대로 이벤트당 비용은 레이어가 아니라 Django 템플릿 렌더가 지배한다.
+- **브로드캐스트는 NATS가 37% 빠르다.** fan-out을 서버가 하는 구조는 같지만 왕복이 짧다.
+- **연결당 메모리는 NATS가 8 KB 적다.** 0.2.0의 프로세스당 구독 하나가 여기서 값을 한다.
+- 첫 회차는 두 레이어 모두 처리량이 25%쯤 낮게 나왔다(콜드 캐시). 벤치를 한 번 버리고 재는 이유다.
+
+**결론.** 성능만 보면 둘 중 무엇을 골라도 된다. NATS가 브로드캐스트와 메모리에서 조금 앞서지만 배포를 뒤집을 크기는 아니다. 선택 기준은 운영이다. Redis가 이미 있으면 channels_redis를 쓴다(성숙도와 레퍼런스 구현). Redis가 없고 같은 제품이 Windows에도 나간다면 NATS로 통일하는 편이 낫다. `CHANNEL_LAYERS` 한 블록으로 개발 Windows와 운영 Linux가 같아지고, nats-server는 어느 OS에서든 바이너리 하나에 영속 저장이 없어 운영 부담이 작다. 대신 channels-nats는 0.2.0 알파이고 배포 사례가 우리뿐이다.
 
 ## 6. 착수 기준
 

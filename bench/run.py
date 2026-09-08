@@ -84,7 +84,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--connections", type=int, default=500)
     parser.add_argument("--skip-ws", action="store_true", help="skip the daphne/WebSocket benchmark")
     parser.add_argument("--processes", type=int, default=1, help="daphne processes (needs --layer nats when > 1)")
-    parser.add_argument("--layer", choices=["memory", "nats"], default="memory", help="channel layer for the servers")
+    parser.add_argument(
+        "--layer", choices=["memory", "nats", "redis"], default="memory", help="channel layer for the servers"
+    )
     parser.add_argument(
         "--server",
         choices=["daphne", "uvicorn", "uvicorn-wsproto"],

@@ -12,6 +12,9 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- `make bench ARGS="--layer redis"` benchmarks channels_redis next to channels-nats, so the channel-layer
+  choice can be made on measurements (`docs/design/transport-abstraction.md` §5-3). The benchmark starts
+  the broker itself on a free port; `REDIS_URL` / `NATS_URL` point it at an existing one instead
 - Windows benchmark lane and results: `make bench ARGS="--server uvicorn"` (also `uvicorn-wsproto`) picks the
   ASGI server, `bench/windows/` runs the same benchmark inside a Parallels Windows guest, and
   `bench/results/win11-parlab-*.json` hold the numbers next to the macOS control group `a993181-*.json`.
