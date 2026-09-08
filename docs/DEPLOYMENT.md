@@ -10,7 +10,21 @@ For best async performance, use Uvicorn with uvloop:
 
 ```bash
 pip install uvicorn[standard] uvloop
-uvicorn myproject.asgi:application --host 0.0.0.0 --port 8000 --workers 4 --loop uvloop
+uvicorn myproject.asgi:application --host 0.0.0.0 --port 8000 --workers 4 --loop uvloop \
+    --ws-per-message-deflate false
+```
+
+**Why turn off permessage-deflate.** uvicorn negotiates WebSocket compression by default and
+each connection then holds a zlib deflate and inflate context: 159 KB of RSS per connection,
+measured. That is the whole reason uvicorn looks 4× heavier than daphne per connection
+(211 KB vs 46 KB at 2,000 connections; 51 KB with compression off). wireview sends small diffs
+that barely compress — a typical event payload only shrinks by 16% — so the memory buys almost
+no bandwidth. Keep compression on only if your first renders or streams push large HTML, and
+measure both ways first:
+
+```bash
+make bench ARGS="--connections 2000 --server uvicorn"
+make bench ARGS="--connections 2000 --server uvicorn-nodeflate"
 ```
 
 **Docker example:**
@@ -168,10 +182,11 @@ DATABASES = {
 
 On Django 4.2 and 5.0 run the same pragmas from a `connection_created` signal handler.
 
-Sizing: uvicorn costs about 160 KB of RSS per connection on Windows (daphne needs 50 KB, but
-cannot be used), so 2,000 idle connections are roughly 320 MB on top of the process baselines.
-Event throughput scales with the number of uvicorn processes: 1 → 4 processes gave 3× the
-events per second and a 3.6× faster broadcast in the benchmark.
+Sizing: uvicorn costs about 160 KB of RSS per connection on Windows, nearly all of it
+permessage-deflate — pass `--ws-per-message-deflate false` and it drops to roughly what daphne
+needs (see [ASGI server configuration](#recommended-uvicorn-with-uvloop)). Event throughput
+scales with the number of uvicorn processes: 1 → 4 processes gave 3× the events per second and
+a 3.6× faster broadcast in the benchmark.
 
 ## Django Settings for Production
 

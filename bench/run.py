@@ -89,9 +89,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--server",
-        choices=["daphne", "uvicorn", "uvicorn-wsproto"],
+        choices=["daphne", "uvicorn", "uvicorn-wsproto", "uvicorn-nodeflate"],
         default="daphne",
-        help="ASGI server to benchmark (uvicorn-wsproto: uvicorn with the wsproto WebSocket implementation)",
+        help=(
+            "ASGI server to benchmark (uvicorn-wsproto: the wsproto WebSocket implementation; "
+            "uvicorn-nodeflate: uvicorn with permessage-deflate off)"
+        ),
     )
     args = parser.parse_args(argv)
 

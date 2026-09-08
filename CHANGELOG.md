@@ -12,6 +12,17 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- Answered why uvicorn costs 4× more RSS per connection than daphne (`#61`): it negotiates
+  WebSocket permessage-deflate by default and daphne does not offer it, so every uvicorn
+  connection holds a zlib deflate and inflate context. Measured at 2,000 connections: daphne
+  45.9 KB, uvicorn 211.5 KB, uvicorn with `--ws-per-message-deflate false` 50.6 KB — a 160.9 KB
+  gap against 158.8 KB for a compressobj/decompressobj pair in the same interpreter. wireview's
+  diffs are small and compress badly (a typical event payload shrinks 16%), so `docs/DEPLOYMENT.md`
+  now recommends turning it off unless the app pushes large HTML, and the benchmark grew a
+  `--server uvicorn-nodeflate` lane to measure both ways
+
+### Changed
+
 - The teaching apps moved from `tests/testproj/` to `examples/` and became a checked
   deliverable (`#66`). Each one is a single concept with a `tests.py` and a README that links
   to its tutorial, `make test` runs `pytest tests examples`, and CI therefore fails when an

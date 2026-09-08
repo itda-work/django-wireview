@@ -33,8 +33,8 @@ ROOT = Path(__file__).resolve().parent.parent
 LOG_DIR = ROOT / "bench" / ".data" / "logs"
 
 
-def _uvicorn_args(port: int, ws: str) -> list[str]:
-    return [
+def _uvicorn_args(port: int, ws: str, deflate: bool = True) -> list[str]:
+    args = [
         "testproj.asgi:application",
         "--host",
         "127.0.0.1",
@@ -45,6 +45,11 @@ def _uvicorn_args(port: int, ws: str) -> list[str]:
         "--ws",
         ws,
     ]
+    if not deflate:
+        # uvicorn negotiates permessage-deflate by default; daphne does not offer it.
+        # Turning it off isolates what the compression contexts cost per connection.
+        args += ["--ws-per-message-deflate", "false"]
+    return args
 
 
 # server name -> (python module, argv builder). "uvicorn-wsproto" is uvicorn on its
@@ -53,6 +58,7 @@ SERVERS: dict[str, tuple[str, t.Callable[[int], list[str]]]] = {
     "daphne": ("daphne", lambda port: ["-b", "127.0.0.1", "-p", str(port), "testproj.asgi:application"]),
     "uvicorn": ("uvicorn", lambda port: _uvicorn_args(port, "websockets")),
     "uvicorn-wsproto": ("uvicorn", lambda port: _uvicorn_args(port, "wsproto")),
+    "uvicorn-nodeflate": ("uvicorn", lambda port: _uvicorn_args(port, "websockets", deflate=False)),
 }
 
 

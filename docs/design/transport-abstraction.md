@@ -101,7 +101,39 @@ wireview를 그 위에서 돌린 실측이다 (`make bench ARGS="--layer nats --
 - **Windows의 처리량 저하는 CPU 효율 차이만큼이다.** ARM64 네이티브 uvicorn은 호스트 대비 이벤트당 CPU 1.44배, 이벤트/s 0.63배, join 0.57배다. WebSocket I/O 계층이 아니라 하이퍼바이저와 Windows를 합친 CPU 효율이 병목이다. 하이퍼바이저 몫과 Windows 몫은 이 구성으로는 분리되지 않는다(베어메탈 x64 Windows가 필요하다).
 - **프로세스 확장은 Windows에서도 그대로 먹힌다.** uvicorn 1→4 프로세스에서 이벤트 3.0배, 브로드캐스트 3.6배 빨라졌다(호스트는 4.0배·4.1배).
 - **x64 에뮬레이션은 CPU만 2.2배 느리다.** 연결당 메모리는 같다. 실제 x64 서버의 수치가 아니므로 참고용이다.
-- **uvicorn의 연결당 메모리가 daphne의 3~4.5배다**(호스트 211 vs 46 KB, Windows 162 vs 52 KB). WebSocket 구현(`--server uvicorn-wsproto`: 202 KB)과도, OS와도 무관하다. 원인은 아직 조사하지 않았다. 연결 2,000개면 약 320 MB 대 100 MB로 단일 서버에서 감당되는 크기지만, 유휴 연결이 만 단위면 6절의 착수 기준이 그만큼 앞당겨진다.
+- **uvicorn의 연결당 메모리가 daphne의 3~4.5배인 것은 permessage-deflate 때문이다**(호스트 211 vs 46 KB, Windows 162 vs 52 KB). uvicorn은 이 압축 확장을 기본으로 협상하고 daphne는 제안하지 않는다. 끄고 재면 격차가 사라진다 — 아래 §5-2-1.
+
+#### 5-2-1. 연결당 메모리의 원인: permessage-deflate (2026-09-09)
+
+같은 머신(macOS 호스트, InMemory 레이어, 프로세스 1개, 항목 5개 컴포넌트)에서 연결 2,000개:
+
+| 서버 | 연결당 RSS |
+|---|---:|
+| daphne | 45.9 KB |
+| uvicorn (기본값) | 211.5 KB |
+| uvicorn `--ws-per-message-deflate false` | 50.6 KB |
+
+차이는 160.9 KB다. 연결 하나가 zlib 압축 컨텍스트 두 개(보내는 쪽 deflate, 받는 쪽 inflate)를
+잡는 값과 일치한다 — 같은 인터프리터에서 `compressobj(wbits=-15)` + `decompressobj(wbits=-15)`
+쌍 500개를 만들면 **쌍당 158.8 KB**다. daphne(autobahn)는 permessage-deflate를 제안하지 않으므로
+이 비용이 없다. 즉 서버 구현의 효율 차이가 아니라 **기본값 차이**다.
+
+압축을 끄면 대역폭은 어떻게 되는가. wireview가 보내는 것은 대부분 작은 diff라 압축률이 나쁘다.
+
+| 페이로드 | 원본 | deflate 후 |
+|---|---:|---:|
+| 항목 5개 컴포넌트의 이벤트 diff | 100 B | 84 B (84%) |
+| 항목 50개 첫 렌더(HTML 포함) | 2,349 B | 320 B (14%) |
+
+그래서 판단은 워크로드가 가른다.
+
+- **유휴 연결이 많고 diff가 작은 앱**(대시보드, 알림, 채팅 목록): 끈다. 연결당 160 KB를 돌려받고
+  대역폭은 거의 그대로다. 연결 10,000개면 1.6 GB 차이다.
+- **첫 렌더가 크거나 스트림으로 HTML을 많이 보내는 앱**: 켜 두는 편이 낫다. 다만 그 이득도
+  `make bench ARGS="--server uvicorn"`과 `--server uvicorn-nodeflate`를 나란히 돌려 실측한 뒤 정한다.
+
+재현: `make bench ARGS="--connections 2000 --server uvicorn"`, 같은 명령의 `--server uvicorn-nodeflate`.
+
 
 배포 결론은 `docs/DEPLOYMENT.md`의 Windows 절에 적었다: daphne 대신 uvicorn, 포트별 단일 프로세스 N개, `--workers` 금지, Caddy가 분배, nats-server는 Windows 서비스, SQLite는 WAL.
 
