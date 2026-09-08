@@ -1,0 +1,45 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make test*)",
+      "Bash(make lint)",
+      "Bash(make check)",
+      "Bash(make check-js)",
+      "Bash(make quality)",
+      "Bash(make format)",
+      "Bash(make build-js)",
+      "Bash(uv run pytest *)",
+      "Bash(uv run ruff *)",
+      "Bash(uv run pyright *)",
+      "Bash(uv run djlint *)",
+      "Bash(npm ci)",
+      "Bash(npm run build)",
+      "Bash(npm run typecheck)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(gh issue list*)",
+      "Bash(gh issue view*)",
+      "Bash(gh pr list*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr checks*)",
+      "Bash(gh run list*)",
+      "Bash(gh run view*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' | { read -r f; case \"$f\" in *.py) uv run ruff format \"$f\" ;; esac; } 2>/dev/null || true",
+            "timeout": 30,
+            "statusMessage": "ruff format"
+          }
+        ]
+      }
+    ]
+  }
+}

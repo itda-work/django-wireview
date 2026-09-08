@@ -18,11 +18,18 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 | **Presence** | 사용자 온라인 상태 추적 | [튜토리얼](../tutorials/07-presence-api.md) |
 | **Auto Broadcast** | Django ORM 변경 자동 알림 | 준비 중 |
 
+## 비동기 처리
+
+| 기능 | 설명 | 문서 |
+|------|------|------|
+| **Async Operations** | `assign_async`, `start_async`/`cancel_async`, AsyncResult 로딩 상태 | [문서](./async-operations.md) |
+
 ## 파일 업로드
 
 | 기능 | 설명 | 문서 |
 |------|------|------|
 | **File Uploads** | 청크 업로드, 진행률 표시 | [튜토리얼](../tutorials/08-file-uploads.md) |
+| **External Uploads** | S3/GCS 직접 업로드 | [문서](./external-uploads.md) |
 
 ## 컴포넌트 시스템
 
@@ -31,6 +38,14 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 | **Slots** | 컴포넌트 콘텐츠 합성 (Phoenix 스타일) | [문서](./slots.md) |
 | **Function Components** | 상태 없는 재사용 가능 컴포넌트 | [문서](./function-components.md) |
 | **LiveComponent** | 독립 상태를 가진 중첩 컴포넌트 | [문서](./live-component.md) |
+| **Lifecycle Hooks** | `on_mount` 훅, `attach_hook`으로 라이프사이클 가로채기 | [문서](./lifecycle-hooks.md) |
+
+## 폼과 UI 피드백
+
+| 기능 | 설명 | 문서 |
+|------|------|------|
+| **Optimistic UI** | 로딩 클래스, `wire-disabled-with` | [문서](./optimistic-ui.md) |
+| **Form Feedback** | `wire-feedback-for`로 검증 오류 표시 시점 제어 | [문서](./form-feedback.md) |
 
 ## JavaScript 연동
 
@@ -38,6 +53,12 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 |------|------|------|
 | **JS Commands** | 클라이언트 측 DOM 조작 | [구현 문서](../implementation/js-commands.md) |
 | **JavaScript Hooks** | 서드파티 JS 라이브러리 통합 | [문서](./hooks.md) |
+
+## 개발자 도구
+
+| 기능 | 설명 | 문서 |
+|------|------|------|
+| **Type Stubs** | 컴포넌트 `.pyi` 자동 생성 (`wireview_stubs`) | [문서](./type-stubs.md) |
 
 ---
 

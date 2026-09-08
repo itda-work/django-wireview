@@ -31,7 +31,7 @@ django-wireview 단계별 학습 가이드입니다.
 
 ## 전제 조건
 
-- Python 3.10+
+- Python 3.12+
 - Django 4.2+ 기본 지식
 - HTML/CSS 기본 지식
 - 비동기 프로그래밍 기초 (async/await)

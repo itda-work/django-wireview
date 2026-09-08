@@ -7,8 +7,9 @@
 ## 개요
 
 ```
-현재 버전: v5.3.0b0
-목표 버전: v6.0.0 (Phoenix LiveView 수준의 DX)
+현재 버전: pyproject.toml 과 git 태그 v* 가 정본
+목표 마일스톤: v6.0.0 (Phoenix LiveView 수준의 DX)
+  ※ v6.0.0 은 reactor 시절 번호를 잇는 마일스톤 이름이며 패키지 버전(v0.1.x)과는 별개다.
 
 Phase 1: Foundation     ████████████████████ 완료!
 Phase 2: Core Features  ██████████████████░░ 90% (JS Commands, Optimistic UI)
@@ -32,7 +33,7 @@ Phase 5: Polish         ░░░░░░░░░░░░░░░░░░�
 ### 1.2 의존성 업데이트 - ✅ 완료
 
 ```toml
-python_requires = >=3.10
+python_requires = >=3.12
 dependencies = [
     django>=4.2,
     channels>=4,<5,

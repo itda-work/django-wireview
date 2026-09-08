@@ -26,3 +26,6 @@ tests/static/
 
 # Auto-generated type stubs
 *.pyi
+
+# Claude Code personal overrides
+.claude/settings.local.json

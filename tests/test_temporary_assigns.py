@@ -191,14 +191,14 @@ class TestTemporaryAssignsInheritance:
     async def test_can_override_temporary_assigns(self):
         """Subclasses can override _temporary_assigns."""
 
-        class ChildComponent(ListComponent):
+        class OverridingChildComponent(ListComponent):
             _temporary_assigns = {"items", "extra_list"}
             extra_list: list[int] = []
 
             async def load_extra(self):
                 self.extra_list = [1, 2, 3]
 
-        view = await mount(ChildComponent)
+        view = await mount(OverridingChildComponent)
         await view.call("load_items")
         await view.call("load_extra")
 

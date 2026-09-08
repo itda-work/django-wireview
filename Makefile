@@ -46,9 +46,10 @@ test-cov: collectstatic
 # Code Quality
 # =============================================================================
 
-# Lint Python code with ruff and djlint
+# Lint Python code and templates (same checks as CI's lint job)
 lint:
 	uv run ruff check wireview tests
+	uv run ruff format --check wireview tests
 	uv run djlint --check .
 
 # Format code with ruff
@@ -132,10 +133,8 @@ clean-all: clean clean-db
 ci-install:
 	uv sync --all-extras
 
-# CI: Run linting
-ci-lint:
-	uv run ruff check wireview tests
-	uv run ruff format --check wireview tests
+# CI: Run linting (keep in sync with `lint`)
+ci-lint: lint
 
 # CI: Run type checking
 ci-check:

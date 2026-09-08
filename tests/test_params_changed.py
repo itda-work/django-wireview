@@ -6,7 +6,7 @@ from wireview import Component
 from wireview.testing import mount
 
 
-class SimpleComponent(Component):
+class ParamsSimpleComponent(Component):
     """A simple component without params_changed override."""
 
     _template_name = "todo/counter.html"
@@ -40,7 +40,7 @@ class TestParamsChangedMethod:
     @pytest.mark.unit
     async def test_params_changed_exists_on_base_component(self):
         """params_changed should exist on base Component class."""
-        view = await mount(SimpleComponent)
+        view = await mount(ParamsSimpleComponent)
         assert hasattr(view.component, "params_changed")
         assert callable(view.component.params_changed)
 
@@ -48,7 +48,7 @@ class TestParamsChangedMethod:
     @pytest.mark.unit
     async def test_params_changed_is_noop_by_default(self):
         """params_changed should be a no-op by default."""
-        view = await mount(SimpleComponent)
+        view = await mount(ParamsSimpleComponent)
         # Should not raise any exceptions
         await view.component.params_changed({"page": "2"}, "/test?page=2")
         # Component state should remain unchanged
