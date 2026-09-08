@@ -15,9 +15,10 @@ def _flatten(results: dict) -> dict[str, float]:
     for section in ("payload_bytes", "timing", "memory"):
         for key, value in results.get(section, {}).items():
             flat[f"{section}.{key}"] = value
-    for key, ws in results.get("ws", {}).items():
-        for metric in ("per_connection_kb", "joins_per_s", "events_per_s", "render_bytes"):
-            flat[f"ws.{key}.{metric}"] = ws[metric]
+    for section in ("ws", "ws_go"):
+        for key, ws in results.get(section, {}).items():
+            for metric in ("per_connection_kb", "joins_per_s", "events_per_s", "render_bytes"):
+                flat[f"{section}.{key}.{metric}"] = ws[metric]
     return flat
 
 

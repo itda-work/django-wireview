@@ -3,8 +3,9 @@
 wireview의 성능 주장을 직접 재기 위한 도구입니다. 결과는 `bench/results/`에 JSON으로 남고, 과거 커밋과 나란히 비교할 수 있습니다.
 
 ```bash
-make bench                         # 현재 트리. 인프로세스 + WebSocket(daphne, 연결 500개)
+make bench                         # 현재 트리. 인프로세스 + WebSocket(연결 500개). Go 툴체인이 있으면 goproxy도 나란히
 make bench ARGS="--skip-ws"        # 인프로세스만 (10초 안쪽)
+make bench ARGS="--front daphne"   # WebSocket은 daphne만 (--front go 는 goproxy만)
 make bench-compare BASE=997ee59    # 과거 커밋을 worktree에 받아 같은 벤치를 돌리고 비교표 출력
 ```
 
@@ -16,6 +17,7 @@ make bench-compare BASE=997ee59    # 과거 커밋을 worktree에 받아 같은 
 | timing | 이벤트당 ms, 템플릿 렌더 ms | 핸들러 + render_diff 300회 평균 |
 | memory | 항목 50개 컴포넌트 하나의 메모리 | tracemalloc, 50개 마운트 평균 |
 | ws | 연결당 서버 RSS, join/s, 이벤트/s, 페이로드 | daphne를 띄우고 실제 WebSocket 연결. 인메모리 채널 레이어라 Redis 불필요 |
+| ws_go | 위와 같되 goproxy + `wireview_gohost` | Go가 소켓을 종단하고 Python이 같은 컨슈머를 돌린다. RSS는 프로세스별로 나눠 기록 (`per_connection_kb_by_process`) |
 
 컴포넌트는 `bench/benchapp/live.py` 둘입니다. `BenchFlat`은 스칼라 7개, `BenchList`는 항목마다 `{% if %}`가 있는 루프와 최상위 `{% if %}`가 있습니다.
 

@@ -20,14 +20,22 @@ testproj를 daphne로 띄우고 실제 WebSocket 연결을 열어 쟀다 (macOS,
 | join | 1,200~1,900/s |
 | 이벤트 왕복 | 3,000~5,700/s |
 
-이벤트 하나의 CPU 비용은 0.2~0.6 ms이고 그중 60% 이상이 Django 템플릿 렌더다 (`docs/features/html-diff.md`). 연결당 메모리의 약 85%는 Python WebSocket 스택(daphne, Channels 컨슈머)이고 wireview 세션 상태는 작은 컴포넌트에서 7 KB 남짓이다.
+이벤트 하나의 CPU 비용은 0.2~0.6 ms이고 그중 60% 이상이 Django 템플릿 렌더다 (`docs/features/html-diff.md`). 연결당 메모리는 세 층으로 나뉜다. 7절의 Go 프런트 실험으로 실제 비율을 쟀다.
+
+| 층 | 항목 5개 컴포넌트, 연결당 | 근거 |
+|----|---------------------------|------|
+| daphne/twisted 소켓 처리 | 약 17 KB | daphne 46 KB에서 Go 프런트 뒤의 Python 호스트 29 KB를 뺀 값 |
+| Channels 컨슈머, asyncio 큐, 인메모리 채널 레이어, 세션 | 약 22 KB | Python 호스트 29 KB에서 컴포넌트 상태를 뺀 값 |
+| wireview 컴포넌트 상태와 렌더 스냅샷 | 약 7 KB (항목 50개면 약 27 KB) | tracemalloc |
+
+처음 추정과 달리 daphne 자체는 연결당 메모리의 3분의 1 남짓이고, 나머지는 Python 세션 기계 자체다. 연결 계층을 바꿔도 이 나머지는 그대로다.
 
 ## 2. 연결 계층이 가져갈 수 있는 것과 없는 것
 
 Go나 Elixir 프런트(AnyCable-Go, Centrifugo, 조직의 kraken)가 맡을 수 있는 것:
 
 - WebSocket 종단, TLS, 하트비트, 재연결 폭주, 백프레셔
-- 유휴 연결 보유 (연결당 메모리의 85%)
+- 소켓 처리 비용 (연결당 약 17 KB, Python 프로세스 밖으로)
 - 동일 페이로드의 fan-out: `stream_op`, `exec_js`, DOM 액션, presence
 
 맡을 수 없는 것:
@@ -66,3 +74,25 @@ Go나 Elixir 프런트(AnyCable-Go, Centrifugo, 조직의 kraken)가 맡을 수 
 프로세스당 동시 연결이 수천을 넘고 유휴 연결이 많은 워크로드(대시보드, 알림)가 실제로 생길 때. 지금 실측으로는 Python 워커 하나가 2,000 유휴 연결을 188 MB로 들고 초당 수천 이벤트를 처리하므로, 워커 여덟 개면 만 단위 연결까지 프런트 없이 간다. 그 전에는 4절의 준비만 유지한다.
 
 kraken(Elixir)을 쓸지 Go로 새로 만들지는 기술이 아니라 조직의 결정이다. Elixir는 클러스터링과 presence가 내장이고, Go는 단일 바이너리 배포와 성숙한 참조 구현(AnyCable-Go, Centrifugo)이 있으며 노드 간 pub/sub에 Redis나 NATS가 필요하다.
+
+## 7. Go 프런트 실험 (#56, 2026-09-08)
+
+선택지 A를 가장 단순한 형태로 만들어 쟀다. `goproxy/`(Go, `coder/websocket`, 연결당 goroutine)가 WebSocket을 종단해 Unix 소켓 하나로 프레임을 넘기고, `wireview/contrib/gohost.py`가 연결마다 기존 `WireviewConsumer`를 ASGI 앱으로 돌린다. 컨슈머, 채널 레이어, 인증 미들웨어는 변경 0. 같은 기계, 같은 벤치(`make bench`, 연결 2,000개).
+
+| 프런트 | 컴포넌트 | 연결당 RSS 합계 | Python | Go | join/s | 이벤트/s |
+|--------|---------|---------------:|-------:|---:|-------:|--------:|
+| daphne | 항목 5개 | 45.8 KB | 45.8 | – | 1,246 | 3,514 |
+| goproxy | 항목 5개 | 65.0 KB | 29.2 | 35.8 | 1,633 | 4,446 |
+| daphne | 항목 50개 | 69.6 KB | 69.6 | – | 778 | 1,582 |
+| goproxy | 항목 50개 | 90.8 KB | 53.4 | 37.4 | 933 | 1,665 |
+
+`GOGC=25`로 줄여도 Go 쪽은 32~34 KB로 거의 같다. net/http와 websocket 라이브러리의 연결당 버퍼와 goroutine 스택이 구조적 비용이다.
+
+**판정: 이슈의 기준(연결당 메모리 합계 40% 감소)에 미달. 채택하지 않는다.** 결과는 이렇게 읽는다.
+
+- Python 쪽 연결당 메모리는 36% 줄었지만(45.8 → 29.2 KB), Go 쪽이 그보다 더 쓴다. 합계는 30~40% 늘었다.
+- 처리량은 늘었다. join 20~30%, 이벤트 5~27%. daphne/twisted의 프레임 처리가 Go로 빠지고 Python은 JSON 줄만 읽기 때문이다.
+- Go 프런트가 진짜로 덜어 주는 것은 소켓 처리 17 KB뿐이다. 나머지 29 KB는 Channels 컨슈머와 세션 기계라서, 연결 밀도를 올리려면 프런트가 아니라 **Python 세션 자체**를 가볍게 하거나(세션 분리, GAP-027) 무상태(선택지 B)로 가야 한다.
+- Go 쪽을 5~10 KB로 내리려면 goroutine 없는 epoll 기반 서버(gobwas/ws 계열)가 필요하다. 그래도 합계는 daphne 대비 15~25% 감소에 그친다.
+
+코드는 실험 그대로 남긴다. `make bench`는 Go 툴체인이 있으면 두 프런트를 나란히 재므로 이후 변경(세션 분리 등)의 효과를 같은 표로 확인할 수 있다.

@@ -1,7 +1,9 @@
-"""WebSocket benchmark: daphne + real connections.
+"""WebSocket benchmark: a real server + real connections.
 
-Measures per-connection memory of the server process, join throughput, event
-throughput and the render payload size seen on the wire. The state sent on
+Measures per-connection memory of the server processes, join throughput,
+event throughput and the render payload size seen on the wire, for either
+front: daphne (Channels' own server) or goproxy + ``manage.py wireview_gohost``
+(Go terminates the sockets, Python runs the same consumer). The state sent on
 join uses the legacy ``Signer().sign(json)`` format so the same client works
 against older wireview versions.
 """
@@ -48,19 +50,23 @@ def _wait_for_port(port: int, timeout: float = 30.0) -> None:
                 return
         except OSError:
             time.sleep(0.2)
-    raise RuntimeError("daphne did not start")
+    raise RuntimeError("server did not start")
+
+
+def _env() -> dict[str, str]:
+    env = dict(os.environ)
+    env["DJANGO_SETTINGS_MODULE"] = os.environ.get("DJANGO_SETTINGS_MODULE", "bench.settings")
+    env["PYTHONPATH"] = os.pathsep.join([str(ROOT), str(ROOT / "tests"), env.get("PYTHONPATH", "")])
+    return env
 
 
 def start_daphne(port: int) -> subprocess.Popen:
     daphne = shutil.which("daphne")
     cmd = [daphne] if daphne else [sys.executable, "-m", "daphne"]
-    env = dict(os.environ)
-    env["DJANGO_SETTINGS_MODULE"] = os.environ.get("DJANGO_SETTINGS_MODULE", "bench.settings")
-    env["PYTHONPATH"] = os.pathsep.join([str(ROOT), str(ROOT / "tests"), env.get("PYTHONPATH", "")])
     proc = subprocess.Popen(
         cmd + ["-b", "127.0.0.1", "-p", str(port), "testproj.asgi:application"],
         cwd=ROOT / "tests",
-        env=env,
+        env=_env(),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -68,7 +74,40 @@ def start_daphne(port: int) -> subprocess.Popen:
     return proc
 
 
-async def measure(port: int, pid: int, connections: int, items: int) -> dict[str, t.Any]:
+def build_goproxy() -> Path:
+    """Build goproxy/ into bench/.data/. Requires a Go toolchain."""
+    out = ROOT / "bench" / ".data" / "goproxy"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.check_call(["go", "build", "-o", str(out), "."], cwd=ROOT / "goproxy")
+    return out
+
+
+def start_go_front(port: int) -> tuple[subprocess.Popen, subprocess.Popen]:
+    """Python host (manage.py wireview_gohost) with the Go proxy in front of it."""
+    binary = build_goproxy()
+    sock = ROOT / "bench" / ".data" / f"gohost-{port}.sock"
+    if sock.exists():
+        sock.unlink()
+    host = subprocess.Popen(
+        [sys.executable, str(ROOT / "tests" / "manage.py"), "wireview_gohost", "--socket", str(sock)],
+        cwd=ROOT / "tests",
+        env=_env(),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    deadline = time.time() + 30
+    while not sock.exists() and time.time() < deadline:
+        time.sleep(0.1)
+    go = subprocess.Popen(
+        [str(binary), "-listen", f"127.0.0.1:{port}", "-backend", str(sock)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    _wait_for_port(port)
+    return host, go
+
+
+async def measure(port: int, pids: dict[str, int], connections: int, items: int) -> dict[str, t.Any]:
     import websockets
     from django.core.signing import Signer
 
@@ -98,42 +137,57 @@ async def measure(port: int, pid: int, connections: int, items: int) -> dict[str
         raise RuntimeError("no render after event")
 
     await asyncio.sleep(0.5)
-    baseline = _rss_kb(pid)
+    baseline = {name: _rss_kb(pid) for name, pid in pids.items()}
     conns = []
     t0 = time.perf_counter()
     for start in range(0, connections, 50):
         conns += await asyncio.gather(*(open_one(i) for i in range(start, min(start + 50, connections))))
     join_s = time.perf_counter() - t0
     await asyncio.sleep(1.0)
-    joined = _rss_kb(pid)
+    joined = {name: _rss_kb(pid) for name, pid in pids.items()}
 
     t0 = time.perf_counter()
     sizes = await asyncio.gather(*(fire(cid, ws) for cid, ws in conns))
     burst_s = time.perf_counter() - t0
 
     await asyncio.gather(*(ws.close() for _, ws in conns))
+    per_process = {name: (joined[name] - baseline[name]) / connections for name in pids}
     return {
         "connections": connections,
         "items": items,
-        "per_connection_kb": (joined - baseline) / connections,
+        "per_connection_kb": sum(per_process.values()),
+        "per_connection_kb_by_process": per_process,
         "joins_per_s": connections / join_s,
         "events_per_s": connections / burst_s,
         "render_bytes": sizes[0],
     }
 
 
-def run(connections: int = 500, item_counts: tuple[int, ...] = (5, 50)) -> dict[str, t.Any]:
+def _stop(*procs: subprocess.Popen) -> None:
+    for proc in procs:
+        proc.terminate()
+    for proc in procs:
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
+def run(connections: int = 500, item_counts: tuple[int, ...] = (5, 50), front: str = "daphne") -> dict[str, t.Any]:
+    """``front`` is "daphne" (Channels' own server) or "go" (goproxy + wireview_gohost)."""
     _raise_fd_limit()
     results: dict[str, t.Any] = {}
     for items in item_counts:
         port = _free_port()
-        proc = start_daphne(port)  # a fresh server per variant so memory numbers do not bleed
+        # A fresh server per variant so memory numbers do not bleed into each other.
+        if front == "go":
+            host, go = start_go_front(port)
+            procs, pids = (host, go), {"python": host.pid, "go": go.pid}
+        else:
+            daphne = start_daphne(port)
+            procs, pids = (daphne,), {"python": daphne.pid}
         try:
-            results[f"items_{items}"] = asyncio.run(measure(port, proc.pid, connections, items))
+            results[f"items_{items}"] = asyncio.run(measure(port, pids, connections, items))
         finally:
-            proc.terminate()
-            try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+            _stop(*procs)
     return results

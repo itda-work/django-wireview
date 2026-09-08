@@ -16,6 +16,7 @@ import datetime as dt
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -58,13 +59,16 @@ def _print(results: dict) -> None:
     print(f"{'memory':<32} {'KB':>10}")
     for key, value in results["memory"].items():
         print(f"  {key:<30} {value:>10.1f}")
-    if results.get("ws"):
+    for section, label in (("ws", "websocket (daphne)"), ("ws_go", "websocket (goproxy)")):
+        if not results.get(section):
+            continue
         print()
-        print(f"{'websocket':<20} {'conns':>6} {'KB/conn':>9} {'joins/s':>9} {'events/s':>9} {'render B':>9}")
-        for key, ws in results["ws"].items():
+        print(f"{label:<20} {'conns':>6} {'KB/conn':>9} {'joins/s':>9} {'events/s':>9} {'render B':>9}  by process")
+        for key, ws in results[section].items():
+            by_process = " ".join(f"{n}={v:.1f}" for n, v in ws.get("per_connection_kb_by_process", {}).items())
             print(
                 f"  {key:<18} {ws['connections']:>6} {ws['per_connection_kb']:>9.1f} "
-                f"{ws['joins_per_s']:>9.0f} {ws['events_per_s']:>9.0f} {ws['render_bytes']:>9,}"
+                f"{ws['joins_per_s']:>9.0f} {ws['events_per_s']:>9.0f} {ws['render_bytes']:>9,}  {by_process}"
             )
 
 
@@ -77,6 +81,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--iterations", type=int, default=300)
     parser.add_argument("--connections", type=int, default=500)
     parser.add_argument("--skip-ws", action="store_true", help="skip the daphne/WebSocket benchmark")
+    parser.add_argument(
+        "--front",
+        choices=["daphne", "go", "both"],
+        default="both",
+        help="WebSocket front to benchmark; 'both' skips go when no Go toolchain is installed",
+    )
     args = parser.parse_args(argv)
 
     _setup_django()
@@ -109,7 +119,12 @@ def main(argv: list[str] | None = None) -> int:
         from bench import ws
 
         call_command("migrate", verbosity=0, interactive=False)  # sessions table for the consumer
-        results["ws"] = ws.run(connections=args.connections)
+        fronts = ["daphne", "go"] if args.front == "both" else [args.front]
+        if "go" in fronts and not shutil.which("go"):
+            print("no Go toolchain: skipping the go front")
+            fronts.remove("go")
+        for front in fronts:
+            results["ws" if front == "daphne" else "ws_go"] = ws.run(connections=args.connections, front=front)
 
     _print(results)
     if args.out:

@@ -49,7 +49,8 @@ wireview/
 ├── debug/sync_detector.py sync/async 전환 중첩 감지 (DEBUG_SYNC_TRANSITIONS)
 ├── features/              streams.py, presence.py (PresenceMixin), uploads.py (UploadRegistry)
 ├── templatetags/wireview.py  템플릿 태그 전체 (아래 표)
-├── management/commands/   wireview_stubs (.pyi 생성), wireview_lsp (IDE 메타데이터 JSON)
+├── contrib/gohost.py      goproxy 뒤에서 컨슈머를 ASGI 앱으로 돌리는 호스트 (실험, #56)
+├── management/commands/   wireview_stubs (.pyi 생성), wireview_lsp (IDE 메타데이터 JSON), wireview_gohost
 ├── templates/wireview_header.html  {% wireview_header %}가 렌더. wireview.min.js를 로드
 └── static/wireview/       wireview.js (소스), rendered.mjs (diff 적용·HTML 복원 순수 함수), wireview-boost.js, types.d.ts
                            wireview.min.js는 빌드 산출물이며 gitignore
@@ -64,6 +65,7 @@ docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEAT
                            ROADMAP.md, DEPLOYMENT.md, PERFORMANCE.md, design/ 설계 메모, implementation/ 구현 노트
                            (implementation/wire-protocol.md 가 메시지 형태의 정본)
 bench/                     성능 벤치마크 (make bench, make bench-compare BASE=<ref>). 설명은 bench/README.md
+goproxy/                   Go WebSocket 프런트 실험. 채택하지 않았고 벤치 비교용으로 유지 (docs/design/transport-abstraction.md §7)
 typings/                   channels 타입 스텁 (pyright용)
 .claude/settings.json      권한 허용 목록과 ruff format 훅
 ```

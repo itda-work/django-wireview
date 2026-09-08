@@ -12,6 +12,11 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- Experimental Go WebSocket front (#56): `goproxy/` terminates browser sockets and forwards
+  frames over a Unix socket to `manage.py wireview_gohost`, which runs the unchanged
+  `WireviewConsumer` as an ASGI app per connection (`wireview.contrib.gohost`). `make bench`
+  benchmarks it next to daphne when a Go toolchain is present. Measured: +20-30% throughput,
+  but +30-40% memory per connection, so it is not adopted (docs/design/transport-abstraction.md §7)
 - `bench/`: reproducible benchmarks (`make bench`) for render payload sizes, per-event cost,
   memory and WebSocket connection density, plus `make bench-compare BASE=<ref>` to benchmark a
   past commit in a throwaway worktree and print a side-by-side table
