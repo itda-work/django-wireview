@@ -13,6 +13,7 @@ Phoenix LiveView 스타일의 Django 실시간 컴포넌트 라이브러리. Pyd
 | Python·Django 지원 범위, 의존성, 패키지 버전 | `pyproject.toml`, `.github/workflows/ci.yml` 매트릭스 |
 | 코드 스타일 (ruff 120자, double quotes, djlint 2칸) | `pyproject.toml`의 `[tool.ruff]`, `[tool.djlint]`, `[tool.pyright]` |
 | 개발 명령 | `Makefile` (`make help`) |
+| 작업 절차 (세션 시작, 이슈·wip, 완료 정의, 커밋) | `wireview-dev` 스킬 (`.claude/skills/wireview-dev/SKILL.md`) |
 | 설정 키와 기본값 | `wireview/settings.py`의 `DEFAULT` |
 | 기능 로드맵과 미구현 목록 | `docs/FEATURE-GAP.md` (GAP 번호), 작업 추적은 GitHub Issues |
 | 기능별 API 상세 | `docs/features/README.md` (인덱스) |
@@ -89,45 +90,24 @@ typings/                   channels 타입 스텁 (pyright용)
 
 ## 명령
 
-| 할 일 | 명령 | 선행 조건 |
-|------|------|-----------|
-| 의존성 설치 | `make install` 과 `npm ci` | `uv sync --dev`는 dev 도구를 설치하지 않는다. extras를 써야 한다 |
-| JS 빌드 | `make build-js` | 개발 서버와 E2E 전에 필수. 산출물은 gitignore |
-| 테스트 (e2e·slow 제외) | `make test` 또는 `make test ARGS="-k streams"` | collectstatic과 DJANGO_ALLOW_ASYNC_UNSAFE는 Makefile이 처리 |
-| E2E | `make test-e2e` (NATS), `LAYER=redis`·`LAYER=memory`로 변경 | nats-server 바이너리와 JS 빌드. 서버 기동·정리는 `tests/e2e.sh`가 한다 |
-| 린트 | `make lint` (ruff + djlint) | |
-| 타입 검사 | `make check` (pyright, tests/ 제외) | |
-| 클라이언트 테스트 | `make test-js` (`npm test`, node --test) | |
-| 포맷 | `make format` | |
-| 품질 일괄 | `make quality` | CI의 lint·typecheck 잡과 동일 범위 |
-| 개발 서버 | `make run-daphne` | JS 빌드, Redis |
-| 타입 스텁 확인 | `cd tests && uv run python manage.py wireview_stubs --check` | |
-| 성능 실측 | `make bench`, 과거 커밋과 비교는 `make bench-compare BASE=997ee59`, 서버 선택은 `ARGS="--server uvicorn"` | WebSocket 구간은 daphne 또는 uvicorn을 직접 띄우며 Redis 불필요 |
-| Windows 실측 | `bench/windows/run.sh` (stage → provision → run → collect) | macOS + Parallels 랩 클론 + `windows-parallels-lab` 스킬. 상세는 `bench/README.md` |
+| 할 일 | 명령 |
+|------|------|
+| 테스트 (e2e·slow 제외) | `make test` |
+| 품질 일괄 (lint + typecheck) | `make quality` |
+| JS 빌드 | `make build-js` — clone 직후와 `wireview.js` 수정 후 필수 |
+| 클라이언트 테스트 | `make test-js` |
 
-CI(`ci.yml`)는 Python×Django 매트릭스 테스트, Redis를 띄운 E2E, lint, typecheck, build 다섯 잡이다. PR 전에 `make quality`와 `make test`를 통과시킨다.
+전체 표(E2E 레이어, 벤치마크, Windows 실측, 타입 스텁)와 선행 조건은 `wireview-dev` 스킬에.
+정의는 `Makefile` (`make help`)이 정본이다.
 
-## 작업 규약
+## 절차
 
-- **기능 단위는 GAP 번호.** `docs/FEATURE-GAP.md`의 GAP-nnn 항목을 고르거나 새로 만들고, 커밋 제목에 적는다. 예: `feat: Add on_mount hooks (GAP-021)`
-- **완료 정의.** 구현 + `tests/test_<feature>.py` + `docs/features/<feature>.md` + `docs/features/README.md` 인덱스 갱신 + FEATURE-GAP.md 상태 갱신 + `CHANGELOG.md` Unreleased 한 줄. 새 모듈·태그·속성이 생기면 이 문서의 지도도 갱신한다. 성능을 주장하는 변경은 `make bench-compare`로 전후 수치를 문서에 남긴다.
-- **커밋.** 영어, Conventional Commits. 이슈와 PR은 `gh` CLI로 다룬다.
-- **언어.** 코드 주석과 docstring은 영어. 문서는 한국어 기본.
-- **테스트 마커.** `unit` / `integration` / `slow` / `e2e` 중 하나 이상을 붙인다 (`--strict-markers`). 라이브러리 테스트는 `tests/test_*.py`, 앱·E2E 테스트는 `tests/testproj/<app>/tests.py`.
-- **설정 키 추가** 시 `wireview/settings.py`의 `DEFAULT`에 기본값을 넣는다.
-- **JS.** `wireview.js`는 ES2020, 2칸 들여쓰기, JSDoc. 포매터는 없다. DOM 없이 검증 가능한 로직은 `rendered.mjs`처럼 순수 모듈로 빼고 `tests/js/`에 node 테스트를 둔다.
-- **import.** 새 코드는 `from wireview import Component, LiveComponent, JS, mount`. `wireview.component` 경로는 하위 호환용.
+**작업 절차는 `wireview-dev` 스킬에 있다.** 세션 시작(진행 중인 작업 찾기), 이슈·GAP·`wip`
+라벨 규약, 완료 정의 체크리스트, 커밋과 이슈 종료, 전체 명령 표, 벤치 측정 주의.
+이 문서는 지도와 금지선만 담는다.
 
-## 세션과 이슈
-
-**추적의 진실 소스는 GitHub Issues**(`itda-work/django-wireview`)다. 대화는 끊기지만 이슈는 남는다.
-
-- **새 대화는 `gh issue list --label wip`로 시작한다.** 진행 중인 작업이 거기 있고, 마지막 코멘트가 이어받을 지점이다. 그다음 `git log --oneline -10`과 `git status --short`로 코드 쪽 현재 위치를 확인한다. 전체 조망이 필요할 때만 `docs/FEATURE-GAP.md`(남은 갭)와 `docs/ROADMAP.md`(버전 계획)를 읽는다.
-- **비자명한 작업은 착수 전에 이슈를 만든다.** 오타·한 줄 패치는 제외. 이슈 제목에 GAP 번호를 넣는다(`GAP-022: Telemetry 훅`). GAP은 기능 단위 id이고 이슈는 작업 단위다. 새 GAP이면 `docs/FEATURE-GAP.md`에도 항목을 추가한다.
-- **착수하면 `wip` 라벨을 붙이고, 중단하거나 끝내면 뗀다.** `wip`는 종류(`enhancement`·`bug`·`chore`)와 직교한 상태 표시다.
-- **대화를 끝낼 때 `wip` 이슈에 코멘트를 남긴다.** 한 것, 다음 단계, 막힌 것 세 가지. 별도 handoff 문서를 만들지 않는 이유가 이것이다.
-- **커밋 메시지에는 `#N` 평참조만 쓴다.** `Closes #N`으로 자동 종결하지 않는다. 완료 정의(위 작업 규약)를 실제로 만족했는지 확인한 뒤 `gh issue close <N> --comment "..."`로 닫는다.
-- **라벨.** 제품은 `bug`·`enhancement`·`documentation`, 인프라·툴링은 `ci`·`chore`·`testing`·`refactor`, 영역은 `area: *`를 쓴다. CI나 빌드 작업을 `bug`/`enhancement`에 억지로 넣지 않는다.
+추적의 진실 소스는 **GitHub Issues**(`itda-work/django-wireview`)다. 새 대화는
+`gh issue list --label wip`로 시작한다.
 
 ## 함정
 

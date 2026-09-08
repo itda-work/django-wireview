@@ -10,6 +10,14 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Changed
+
+- Agent harness: the working procedure moved out of `CLAUDE.md` into a `wireview-dev` skill
+  (`.claude/skills/wireview-dev/SKILL.md`). `CLAUDE.md` now carries only what an agent needs in
+  every session — the map and the prohibitions — and points at the skill for session start-up,
+  issue and `wip` conventions, the definition of done, commits, the full command table and the
+  benchmarking pitfalls
+
 ### Added
 
 - Telemetry signals (GAP-022): `event_handled`, `component_rendered`, `diff_computed` and
