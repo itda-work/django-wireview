@@ -63,8 +63,24 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+def _tree(pid: int) -> list[psutil.Process]:
+    """The process and its descendants. On Windows a venv's python.exe is a launcher
+    whose child is the real interpreter, so the server's memory lives one level down."""
+    try:
+        root = psutil.Process(pid)
+        return [root, *root.children(recursive=True)]
+    except psutil.NoSuchProcess:
+        return []
+
+
 def _rss_kb(pid: int) -> int:
-    return psutil.Process(pid).memory_info().rss // 1024
+    total = 0
+    for proc in _tree(pid):
+        try:
+            total += proc.memory_info().rss
+        except psutil.NoSuchProcess:
+            pass
+    return total // 1024
 
 
 def _wait_for_port(port: int, timeout: float = 30.0, proc: subprocess.Popen | None = None) -> None:
@@ -242,14 +258,23 @@ def _run_client(coro: t.Coroutine[t.Any, t.Any, dict[str, t.Any]]) -> dict[str, 
 
 
 def _stop(*procs: subprocess.Popen | None) -> None:
+    """Terminate each process tree, children first (the venv launcher on Windows would
+    otherwise leave the real server running)."""
     alive = [p for p in procs if p is not None]
-    for proc in alive:
-        proc.terminate()
-    for proc in alive:
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+    trees = [_tree(p.pid) for p in alive]
+    for tree in trees:
+        for proc in reversed(tree):
+            try:
+                proc.terminate()
+            except psutil.NoSuchProcess:
+                pass
+    for tree in trees:
+        _, still_alive = psutil.wait_procs(tree, timeout=10)
+        for proc in still_alive:
+            try:
+                proc.kill()
+            except psutil.NoSuchProcess:
+                pass
 
 
 def run(
