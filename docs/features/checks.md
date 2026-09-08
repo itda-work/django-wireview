@@ -1,0 +1,93 @@
+# System Checks
+
+wireview의 함정 중 상당수는 **에러를 내지 않는다.** sync 핸들러는 클라이언트가 부를 때까지
+조용하고, `wireview.min.js`가 없으면 페이지가 그냥 정적으로 남고, `USE_HMIN`은 부분 diff를
+말없이 토큰 diff로 되돌린다. 신호가 없으면 사람도 에이전트도 고칠 수 없다.
+
+이 검사들을 Django의 `checks` 프레임워크에 등록해 두면 `manage.py check`, `runserver`, CI에
+**자동으로** 걸린다. 새 명령을 기억할 필요가 없다는 것이 핵심이다.
+
+```console
+$ python manage.py check
+System check identified some issues:
+
+WARNINGS:
+<class 'todo.live.XTodoList'>: (wireview.W001) Event handler 'todo.live.XTodoList.total' is not async.
+	HINT: The client can call 'total', and wireview awaits the result, so the call fails
+	with TypeError. Make it 'async def', or rename it to '_total' if it is an internal
+	helper rather than a handler.
+```
+
+## 검사 목록
+
+| ID | 무엇을 잡나 | 조용히 실패하는 방식 |
+|----|------------|---------------------|
+| `wireview.W001` | 이벤트 핸들러가 async가 아님 | 클라이언트가 부르면 `TypeError`. 부르기 전까지는 아무 신호도 없다 |
+| `wireview.W002` | 라이프사이클 오버라이드가 async가 아님 (`joined`, `update`, `destroy`) | wireview가 `await`하므로 콜백이 아예 실행되지 않는다 |
+| `wireview.W003` | 두 클래스가 같은 단순 이름으로 등록됨 | import 시 경고 한 번뿐. 템플릿은 둘 중 하나로만 해석된다 |
+| `wireview.W004` | `wireview/wireview.min.js`를 staticfiles가 못 찾음 | JS가 로드되지 않아 페이지가 정적으로 남는다. 404 외에는 신호가 없다 |
+| `wireview.W005` | `USE_HMIN`이 켜져 있고 `USE_HTML_DIFF`도 켜짐 | django-hmin이 diff 마커(HTML 주석)를 지워 부분 diff가 토큰 diff로 퇴화한다 |
+| `wireview.W006` | 기본 채널 레이어가 `InMemoryChannelLayer` | 다중 프로세스에서 브로드캐스트가 같은 프로세스에만 닿고 오류는 나지 않는다 |
+
+전부 `Warning`이다. `manage.py check`의 기본 `--fail-level`은 `ERROR`이므로 이 검사들이
+빌드를 깨지 않는다. **오탐 하나면 팀 전체가 검사를 무시하기 시작하므로** 확신이 설 때까지
+등급을 올리지 않는다.
+
+### W006만 `--deploy`인 이유
+
+단일 프로세스 개발 환경에서 InMemory 레이어는 **옳은 선택**이다. 검사 시점에는 배포 시
+프로세스가 몇 개일지 알 수 없다. 그래서 `manage.py check --deploy`에서만 뜨는 배포 검사로
+등록했다. 개발 중에 매번 뜨는 경고는 정보가 아니라 소음이다.
+
+```console
+$ python manage.py check --deploy
+?: (wireview.W006) The default channel layer is InMemoryChannelLayer.
+```
+
+## 특정 검사만 돌리기
+
+모든 검사에 `wireview` 태그가 붙어 있다.
+
+```bash
+python manage.py check --tag wireview
+```
+
+## 끄기
+
+Django 표준대로 `SILENCED_SYSTEM_CHECKS`를 쓴다.
+
+```python
+SILENCED_SYSTEM_CHECKS = ["wireview.W005"]  # hmin 대역폭 손익을 실측하고 켜기로 결정했다면
+```
+
+## 검사는 디스패처와 같은 규칙을 쓴다
+
+W001은 "노출되는 핸들러"를 자체 판정하지 않는다. `ComponentRepository._is_valid_event_handler`와
+`_is_user_defined_method` — **클라이언트 이벤트를 실제로 받는 그 코드** — 를 그대로 호출한다.
+판정 로직을 복사했다면 규칙이 바뀔 때 검사가 조용히 거짓말을 하게 된다.
+
+노출 규칙 자체는 [LiveComponent 문서](./live-component.md#update-콜백)에 있다. 요약하면
+`_`로 시작하지 않으면서 **사용자 코드가 정의한** 이름만 노출되고, 프레임워크(`wireview.*`)와
+Pydantic이 소유한 이름은 오버라이드해도 노출되지 않는다.
+
+노출 목록을 직접 보고 싶으면 같은 헬퍼를 쓴다.
+
+```python
+from wireview.checks import iter_exposed_handlers
+from myapp.live import TodoList
+
+print([name for name, _ in iter_exposed_handlers(TodoList)])
+```
+
+## 검사하지 않는 것
+
+**상태 필드의 JSON 직렬화 가능성**은 뺐다. 상태는 `model_dump_json`으로 직렬화되고
+Pydantic은 커스텀 serializer, `field_serializer`, wireview의 Django 모델 지원까지 고려해
+런타임에 판단한다. 정적으로 흉내 내면 오탐이 나온다 — 정상 컴포넌트에 경고를 띄우는 검사는
+없느니만 못하다. 이건 런타임에 터지므로 조용한 실패도 아니다.
+
+## 관련 문서
+
+- [LiveComponent](./live-component.md) — 노출 규칙과 라이프사이클 콜백
+- [HTML Diff](./html-diff.md) — W005가 무엇을 지키는지
+- [배포](../DEPLOYMENT.md) — W006과 채널 레이어 선택

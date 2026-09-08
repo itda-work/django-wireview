@@ -10,6 +10,18 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- Django system checks for the traps that fail silently (`wireview/checks.py`, `#64`).
+  `manage.py check` now reports a non-async event handler (`wireview.W001`) or lifecycle
+  override (`W002`), two component classes sharing a simple name (`W003`), a missing
+  `wireview.min.js` (`W004`) and `USE_HMIN` degrading partial diffs to token diffs (`W005`);
+  `manage.py check --deploy` adds the in-memory channel layer (`W006`), which is the right
+  choice for single-process development and only breaks fan-out across processes. Every
+  message carries the fix, all are warnings so they cannot break a build, and the handler
+  check calls the dispatcher's own predicates rather than reimplementing them. See
+  `docs/features/checks.md`
+
 ### Fixed
 
 - Method exposure now means "written in user code". `ComponentRepository._is_user_defined_method`

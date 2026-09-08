@@ -288,8 +288,11 @@ class ComponentRepository:
         return True
 
     @staticmethod
-    def _is_user_defined_method(component: Component, command: str) -> bool:
+    def _is_user_defined_method(component: Component | type[Component], command: str) -> bool:
         """Check if a method name belongs to the user's own component code.
+
+        Accepts an instance or a class, so tooling (``wireview.checks``) can ask
+        the same question without building a component.
 
         A name is exposed only when every class in the MRO that defines it is a
         user class. Any name owned by a framework class blocks the call, even if
@@ -301,8 +304,9 @@ class ComponentRepository:
         - LiveComponent API and lifecycle (send_to_parent, update)
         """
         found_on_user_class = False
+        component_class = component if isinstance(component, type) else type(component)
 
-        for cls in type(component).__mro__:
+        for cls in component_class.__mro__:
             if command not in cls.__dict__:
                 continue
             if _is_framework_class(cls):

@@ -8,8 +8,12 @@ class WireviewConfig(AppConfig):
 
     def ready(self):
         from . import auto_broadcast  # noqa
+        from .checks import register_checks
 
         autodiscover_modules("live")
+
+        # Components must be imported before the checks run
+        register_checks()
 
         # Auto-generate type stubs in DEBUG mode
         self._auto_generate_stubs()
