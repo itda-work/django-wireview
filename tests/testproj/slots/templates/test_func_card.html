@@ -1,7 +1,12 @@
 {% load wireview %}
+
 <div class="card">
   {% if title %}<h3 class="card-title">{{ title }}</h3>{% endif %}
   <div class="card-body">
-    {% if slots %}{% render_slot %}{% else %}<p>No content</p>{% endif %}
+    {% if slots %}
+      {% render_slot %}
+    {% else %}
+      <p>No content</p>
+    {% endif %}
   </div>
 </div>

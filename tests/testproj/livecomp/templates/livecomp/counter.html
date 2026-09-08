@@ -1,22 +1,19 @@
 {% load wireview %}
-<div {% tag_header %} class="counter-widget" data-counter-id="{{ this.id }}">
+
+<div {% tag_header %}
+     class="counter-widget"
+     data-counter-id="{{ this.id }}">
   <h4 class="counter-label">{{ this.label }}</h4>
   <div class="counter-value" data-testid="count-{{ this.id }}">{{ this.count }}</div>
   <div class="counter-controls">
-    <button
-      class="btn btn-decrement"
-      {% on "click" "decrement" myself=True %}
-      data-testid="decrement-{{ this.id }}"
-    >-</button>
-    <button
-      class="btn btn-increment"
-      {% on "click" "increment" myself=True %}
-      data-testid="increment-{{ this.id }}"
-    >+</button>
-    <button
-      class="btn btn-reset"
-      {% on "click" "reset" myself=True %}
-      data-testid="reset-{{ this.id }}"
-    >Reset</button>
+    <button class="btn btn-decrement"
+            {% on "click" "decrement" myself=True %}
+            data-testid="decrement-{{ this.id }}">-</button>
+    <button class="btn btn-increment"
+            {% on "click" "increment" myself=True %}
+            data-testid="increment-{{ this.id }}">+</button>
+    <button class="btn btn-reset"
+            {% on "click" "reset" myself=True %}
+            data-testid="reset-{{ this.id }}">Reset</button>
   </div>
 </div>

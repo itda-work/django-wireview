@@ -109,6 +109,13 @@ async def abroadcast(channel: str, **kwargs: t.Any) -> None:
     )
 
 
+class LifecycleHook(t.TypedDict):
+    """Hook entry registered via Component.attach_hook()."""
+
+    name: str
+    callback: t.Callable[..., t.Any]
+
+
 class Component(BaseModel):
     """
     Base class for wireview components.
@@ -179,7 +186,7 @@ class Component(BaseModel):
     _on_mount: t.ClassVar[list[t.Any]] = []
 
     # Instance-level lifecycle hooks attached via attach_hook()
-    _lifecycle_hooks: dict[str, list[t.Callable[..., t.Any]]] = {}
+    _lifecycle_hooks: dict[str, list[LifecycleHook]] = {}
 
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
@@ -516,8 +523,7 @@ class Component(BaseModel):
 
         hooks = self._lifecycle_hooks.get(stage, [])
         for hook in hooks:
-            callback = hook["callback"]
-            result = await callback(*args, **kwargs) if callable(callback) else {"cont": True}
+            result = await hook["callback"](*args, **kwargs)
             if result and result.get("halt"):
                 return {"halt": True, "hook": hook["name"]}
 

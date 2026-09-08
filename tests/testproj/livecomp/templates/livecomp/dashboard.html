@@ -1,4 +1,5 @@
 {% load wireview %}
+
 <div {% tag_header %} class="dashboard">
   <header class="dashboard-header">
     <h1>LiveComponent Dashboard</h1>
@@ -10,20 +11,14 @@
       <span class="last-changed" data-testid="last-changed">{{ this.last_changed }}</span>
     </div>
   </header>
-
   <div class="dashboard-controls">
-    <button
-      class="btn btn-reset-all"
-      {% on "click" "reset_all" %}
-      data-testid="reset-all"
-    >Reset All</button>
-    <button
-      class="btn btn-sync-all"
-      {% on "click" "sync_all" value=5 %}
-      data-testid="sync-all"
-    >Sync All to 5</button>
+    <button class="btn btn-reset-all"
+            {% on "click" "reset_all" %}
+            data-testid="reset-all">Reset All</button>
+    <button class="btn btn-sync-all"
+            {% on "click" "sync_all" value=5 %}
+            data-testid="sync-all">Sync All to 5</button>
   </div>
-
   <div class="counters-grid" data-testid="counters-grid">
     {% for counter in this.counters %}
       {% live_component "Counter" id=counter.id label=counter.label count=counter.initial %}
