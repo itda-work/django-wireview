@@ -104,8 +104,14 @@ class TestFillTag:
 
         assert "Welcome" in result
 
-    def test_fill_accesses_component_attrs(self):
-        """Test that fill content can access component attributes."""
+    def test_fill_does_not_see_component_attrs_without_let(self):
+        """Slot content is evaluated in the parent template's context.
+
+        Component attributes are only reachable through ``let:`` bindings
+        (docs/features/slots.md, "컨텍스트 접근"). This used to pass by
+        accident because the signed ``data-state`` embedded the raw JSON,
+        which contained the literal "Card Title".
+        """
         template_str = """
         {% load wireview %}
         {% component_block "Card" title="Card Title" %}
@@ -117,7 +123,8 @@ class TestFillTag:
         template = Template(template_str)
         result = template.render(Context({}))
 
-        assert "Card Title" in result
+        assert "<h1></h1>" in result
+        assert "Card Title" not in result
 
     def test_fill_with_let_binding(self):
         """Test fill tag with let: variable binding."""

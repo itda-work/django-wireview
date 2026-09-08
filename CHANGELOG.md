@@ -17,6 +17,8 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- `data-state` now carries a compact, zlib-compressed `Signer.sign_object` payload
+  (`wireview.core.state`). The legacy `Signer().sign(json)` format is still accepted on join
 - Rewrote `CLAUDE.md` as a compact agent guide (repository map, commands, conventions, gotchas) that links to `docs/` instead of duplicating API docs
 - `make lint` now runs `ruff format --check` and djlint, and CI's lint job reuses it
 - Release workflow attaches only the wheel (sdist removed)
@@ -25,6 +27,9 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- Partial HTML diffs never fired for live components: `{% tag_header %}` embedded the freshly
+  signed `data-state` in the static parts, so the fingerprint changed on every render and every
+  event shipped a full render. The signed state is now a dynamic part (GAP-024)
 - `Component._lifecycle_hooks` type annotation so `pyright` passes
 - djlint formatting of the livecomp and slots test templates
 - Duplicate test component class names (`ChildComponent`, `SimpleComponent`) that triggered registration warnings on every test run

@@ -8,7 +8,7 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 |------|------|------|
 | **temporary_assigns** | 렌더링 후 필드 자동 초기화로 메모리 절약 | [문서](./temporary-assigns.md) |
 | **skip_render** | 불필요한 렌더링 방지 | 준비 중 |
-| **HTML Diff** | 변경된 부분만 전송 | 준비 중 |
+| **HTML Diff** | 변경된 dynamic 파트만 전송, 상태 압축 서명 | [문서](./html-diff.md) |
 
 ## 실시간 기능
 

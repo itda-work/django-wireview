@@ -2,7 +2,7 @@
 
 > django-wireview가 Phoenix LiveView 수준에 도달하기 위해 필요한 기능 목록
 >
-> **최종 업데이트**: 2025-12-09
+> **최종 업데이트**: 2026-09-08
 
 ---
 
@@ -184,12 +184,12 @@ django-wireview 지원:       ~55개 (73%)
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 |
 |------|:----------------:|:---------------:|:----:|
-| HTML Diff | ✅ 바이너리 | ✅ Phoenix 스타일 | ✅ |
+| HTML Diff | ✅ 바이너리 | ✅ Phoenix 스타일 (GAP-024로 부분 diff 실동작) | ✅ |
 | skip_render | ✅ | `skip_render()` | ✅ |
 | force_render | ✅ | `force_render()` | ✅ |
 | **temporary_assigns** | ✅ | ✅ `_temporary_assigns` | ✅ |
 | Sticky components | ✅ | ❌ | 🟠 |
-| Keyed comprehensions | ✅ | ❌ | 🟡 |
+| Keyed comprehensions | ✅ | ❌ (GAP-025) | 🟡 |
 
 ### 2.13 Testing ✅
 
@@ -238,6 +238,7 @@ django-wireview 지원:       ~55개 (73%)
 | ~~GAP-004~~ | ~~**handle_params**~~ | ~~URL 파라미터 변경 시 콜백~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-005~~ | ~~**LiveComponent**~~ | ~~독립 상태를 가진 중첩 컴포넌트~~ | ~~상~~ | ✅ 완료 |
 | ~~GAP-006~~ | ~~**temporary_assigns**~~ | ~~렌더 후 메모리 자동 해제~~ | ~~하~~ | ✅ 완료 |
+| ~~GAP-024~~ | ~~**Stable HTML Diff**~~ | ~~서명 상태를 dynamic 파트로 옮겨 부분 diff 활성화, 상태 압축 서명~~ | ~~하~~ | ✅ 완료 |
 
 ### 🟠 P1: Important (기능적 차이)
 
@@ -265,6 +266,7 @@ django-wireview 지원:       ~55개 (73%)
 | ~~GAP-021~~ | ~~on_mount hooks~~ | ~~공통 마운트 로직 모듈화~~ | ~~중~~ | ✅ 완료 |
 | GAP-022 | Telemetry | 성능 측정 훅 | 중 | 1-2주 |
 | ~~GAP-023~~ | ~~onBeforeElUpdated~~ | ~~DOM 패치 전 콜백~~ | ~~하~~ | ✅ 완료 |
+| GAP-025 | Keyed comprehensions | 루프 항목 단위 static/dynamic 분리로 항목 추가·삭제 시에도 부분 diff | 중 | 1-2주 |
 
 ---
 

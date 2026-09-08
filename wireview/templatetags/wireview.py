@@ -1,14 +1,15 @@
 import typing as t
 
 from django import template
-from django.core.signing import Signer
 from django.template.base import Node, NodeList, Parser, TextNode, Token, token_kwargs
 from django.template.context import Context
-from django.utils.html import format_html
+from django.utils.html import escape, format_html
 from django.utils.safestring import mark_safe
 
 from .. import settings
 from ..component import Component
+from ..core.rendered import inject_marker
+from ..core.state import sign_state
 from ..event_transpiler import transpile
 from ..function_component import get_function_component
 from ..repository import ComponentRepository
@@ -22,6 +23,27 @@ def wireview_header():
     return {"BOOST_PAGES": settings.BOOST_PAGES}
 
 
+def _signed_state(component: Component, repo: ComponentRepository) -> str:
+    """Return the signed component state for the ``data-state`` attribute.
+
+    The client re-sends this value on (re)connect, so it must always reflect
+    the latest state. In live (WebSocket) renders the value is wrapped in a
+    dynamic marker so the diff engine treats it as a dynamic part. Without
+    the marker the freshly signed state lands in the static parts, the
+    fingerprint changes on every render, and every event ships a full render
+    instead of a partial diff. HTTP renders are left untouched because a
+    marker inside an attribute would corrupt the value used for the initial
+    join.
+    """
+    signed = sign_state(component)
+    if not repo.is_live:
+        return signed
+    from ..template_engine import get_template_marker
+
+    index = get_template_marker().marker_context.next_index()
+    return mark_safe(inject_marker(escape(signed), index))
+
+
 @register.simple_tag(takes_context=True)
 def tag_header(context):
     component: Component = context["this"]
@@ -31,7 +53,7 @@ def tag_header(context):
         id=component.id,
         name=component._name,
         is_live=str(repo.is_live).lower(),
-        state=Signer().sign(component.model_dump_json(exclude=component._exclude_fields)),
+        state=_signed_state(component, repo),
     )
 
 
@@ -804,6 +826,6 @@ def live_tag_header(context):
         id=component.id,
         name=component._name,
         is_live=str(repo.is_live).lower(),
-        state=Signer().sign(component.model_dump_json(exclude=component._exclude_fields)),
+        state=_signed_state(component, repo),
         parent_id=parent_id,
     )

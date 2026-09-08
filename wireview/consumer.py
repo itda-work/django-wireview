@@ -1,15 +1,14 @@
-import json
 import logging
 import typing as t
 
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
-from django.core.signing import Signer
 from django.utils.datastructures import MultiValueDict
 
 from wireview.component import Component
 
 from . import serializer
+from .core.state import unsign_state
 from .repository import ComponentRepository
 from .utils import parse_request_data
 
@@ -72,10 +71,9 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         state: str,
         children: dict[str, ChildComponent] | None = None,
     ):
-        signer = Signer()
-        decoded_state: dict[str, t.Any] = json.loads(signer.unsign(state))
+        decoded_state: dict[str, t.Any] = unsign_state(state)
         decoded_children: dict[str, tuple[str, dict[str, t.Any]]] = {
-            id: (name, json.loads(signer.unsign(state))) for id, (name, state) in (children or {}).items()
+            id: (name, unsign_state(state)) for id, (name, state) in (children or {}).items()
         }
         log.debug(f"<<< JOIN {name} {decoded_state}")
         try:

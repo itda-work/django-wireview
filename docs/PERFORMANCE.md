@@ -162,6 +162,10 @@ class Counter(Component):
 
 ### HTML Diff Settings
 
+> Partial diffs depend on the marker comments emitted by `render_with_markers()`.
+> `USE_HMIN` strips HTML comments, which silently disables partial diffs.
+> See [features/html-diff.md](./features/html-diff.md) for the diff format and measured payloads.
+
 ```python
 WIREVIEW = {
     "USE_HTML_DIFF": True,   # Send only changes, not full HTML
