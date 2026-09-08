@@ -1,0 +1,8 @@
+daphne on Windows, 600 connections, one process: the select()-based loop dies at ~500 sockets.
+bench client:
+  File "C:\bench\wireview\bench\ws.py", line 209, in measure
+    raise RuntimeError(f"joined {len(conns)} of {connections} connections, then: {exc!r}") from exc
+RuntimeError: joined 500 of 600 connections, then: InvalidMessage('did not receive a valid HTTP response')
+
+server log (daphne):
+ValueError: too many file descriptors in select()

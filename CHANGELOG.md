@@ -12,6 +12,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- Windows benchmark lane and results: `make bench ARGS="--server uvicorn"` (also `uvicorn-wsproto`) picks the
+  ASGI server, `bench/windows/` runs the same benchmark inside a Parallels Windows guest, and
+  `bench/results/win11-parlab-*.json` hold the numbers next to the macOS control group `a993181-*.json`.
+  daphne dies at about 500 connections per process on Windows (`select()` limit); a single-process uvicorn
+  does not. `docs/DEPLOYMENT.md` gained the Windows single-server recipe (uvicorn × N behind Caddy,
+  channels-nats, SQLite WAL) and `docs/design/transport-abstraction.md` §5-2 the measurements
 - NATS channel layer support in the test project and the benchmark: `tests/testproj/settings_nats.py`,
   `tests/test_nats_layer.py` (cross-process broadcast reaches a consumer through channels-nats),
   `make bench ARGS="--layer nats --processes N"` with a broadcast fan-out measurement

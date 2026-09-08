@@ -1,0 +1,75 @@
+{
+ "meta": {
+  "sha": "a993181",
+  "dirty": false,
+  "ref": "heads/main",
+  "date": "2026-09-08T13:21:51+00:00",
+  "python": "3.12.14",
+  "django": "6.0",
+  "platform": "Darwin arm64",
+  "items": 50,
+  "connections": 2000,
+  "layer": "nats",
+  "processes": 4,
+  "server": "uvicorn"
+ },
+ "payload_bytes": {
+  "flat.first_render": 612,
+  "flat.change_one_value": 194,
+  "list.first_render": 2261,
+  "list.no_change": 0,
+  "list.change_one_item": 602,
+  "list.append_item": 611,
+  "list.toggle_if_inside_item": 614,
+  "list.top_level_if_on": 645,
+  "list.change_one_value": 578
+ },
+ "timing": {
+  "list.event_ms": 0.5413318064529449,
+  "list.template_render_ms": 0.3745752767038842,
+  "flat.event_ms": 0.15161416687381765
+ },
+ "memory": {
+  "list.component_kb": 25.67458984375
+ },
+ "ws": {
+  "items_5": {
+   "connections": 2000,
+   "items": 5,
+   "per_connection_kb": 215.792,
+   "per_connection_kb_by_process": {
+    "uvicorn-0": 54.032,
+    "uvicorn-1": 53.752,
+    "uvicorn-2": 54.04,
+    "uvicorn-3": 53.968
+   },
+   "joins_per_s": 2324.0302404625127,
+   "events_per_s": 12992.6972952704,
+   "render_bytes": 334,
+   "broadcast_ms": 179.0991669986397,
+   "broadcast_renders_per_s": 11166.997778472027,
+   "layer": "nats",
+   "processes": 4,
+   "server": "uvicorn"
+  },
+  "items_50": {
+   "connections": 2000,
+   "items": 50,
+   "per_connection_kb": 238.744,
+   "per_connection_kb_by_process": {
+    "uvicorn-0": 59.696,
+    "uvicorn-1": 59.544,
+    "uvicorn-2": 59.696,
+    "uvicorn-3": 59.808
+   },
+   "joins_per_s": 1663.8933378339816,
+   "events_per_s": 5604.055935769942,
+   "render_bytes": 631,
+   "broadcast_ms": 337.6911251107231,
+   "broadcast_renders_per_s": 5922.571993398507,
+   "layer": "nats",
+   "processes": 4,
+   "server": "uvicorn"
+  }
+ }
+}

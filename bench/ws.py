@@ -32,9 +32,9 @@ import psutil
 ROOT = Path(__file__).resolve().parent.parent
 LOG_DIR = ROOT / "bench" / ".data" / "logs"
 
-SERVER_ARGS: dict[str, t.Callable[[int], list[str]]] = {
-    "daphne": lambda port: ["-b", "127.0.0.1", "-p", str(port), "testproj.asgi:application"],
-    "uvicorn": lambda port: [
+
+def _uvicorn_args(port: int, ws: str) -> list[str]:
+    return [
         "testproj.asgi:application",
         "--host",
         "127.0.0.1",
@@ -42,7 +42,17 @@ SERVER_ARGS: dict[str, t.Callable[[int], list[str]]] = {
         str(port),
         "--log-level",
         "warning",
-    ],
+        "--ws",
+        ws,
+    ]
+
+
+# server name -> (python module, argv builder). "uvicorn-wsproto" is uvicorn on its
+# alternative WebSocket implementation (pip install wsproto).
+SERVERS: dict[str, tuple[str, t.Callable[[int], list[str]]]] = {
+    "daphne": ("daphne", lambda port: ["-b", "127.0.0.1", "-p", str(port), "testproj.asgi:application"]),
+    "uvicorn": ("uvicorn", lambda port: _uvicorn_args(port, "websockets")),
+    "uvicorn-wsproto": ("uvicorn", lambda port: _uvicorn_args(port, "wsproto")),
 }
 
 
@@ -149,7 +159,8 @@ def start_server(port: int, server: str = "daphne") -> subprocess.Popen:
     per port, never ``--workers``: uvicorn's multi-worker mode falls back to the
     selector loop on Windows and inherits the 512-socket cap.
     """
-    cmd = [sys.executable, "-m", server, *SERVER_ARGS[server](port)]
+    module, args = SERVERS[server]
+    cmd = [sys.executable, "-m", module, *args(port)]
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     log = open(LOG_DIR / f"{server}-{port}.log", "wb")  # noqa: SIM115 (lives as long as the process)
     log.write(f"$ {' '.join(cmd)}\n".encode())
@@ -287,8 +298,8 @@ def run(
     """``layer`` is "memory" (one process only) or "nats" (channels-nats, any number of processes)."""
     if layer == "memory" and processes > 1:
         raise RuntimeError("the in-memory layer cannot link several processes; use --layer nats")
-    if server not in SERVER_ARGS:
-        raise ValueError(f"unknown server {server!r}; choose from {sorted(SERVER_ARGS)}")
+    if server not in SERVERS:
+        raise ValueError(f"unknown server {server!r}; choose from {sorted(SERVERS)}")
     _raise_fd_limit()
     os.environ["BENCH_LAYER"] = layer
     nats = start_nats() if layer == "nats" else None

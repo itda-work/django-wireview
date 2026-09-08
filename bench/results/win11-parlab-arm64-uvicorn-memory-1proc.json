@@ -1,0 +1,82 @@
+{
+ "meta": {
+  "sha": "a993181",
+  "dirty": false,
+  "ref": "heads/main",
+  "date": "2026-09-08T13:17:05+00:00",
+  "python": "3.12.14",
+  "django": "6.1.1",
+  "platform": "Windows ARM64",
+  "items": 50,
+  "connections": 2000,
+  "layer": "memory",
+  "processes": 1,
+  "server": "uvicorn",
+  "guest": {
+   "vm": "Parallels Desktop win11-parlab (ARM Windows 11, build 26200)",
+   "vcpus": 6,
+   "ram_gb": 12,
+   "host": "Apple Silicon Mac (Darwin arm64), same machine as the macOS results",
+   "django": "6.1.1",
+   "uvicorn": "0.52.4",
+   "daphne": "4.2.3",
+   "channels-nats": "0.2.0",
+   "nats-server": "2.14.6 windows-arm64",
+   "wireview": "a993181 (library == 8b557b1, bench == a993181)",
+   "python_build": "CPython 3.12.14 windows-aarch64 (native)"
+  }
+ },
+ "payload_bytes": {
+  "flat.first_render": 616,
+  "flat.change_one_value": 194,
+  "list.first_render": 2261,
+  "list.no_change": 0,
+  "list.change_one_item": 602,
+  "list.append_item": 611,
+  "list.toggle_if_inside_item": 614,
+  "list.top_level_if_on": 645,
+  "list.change_one_value": 579
+ },
+ "timing": {
+  "list.event_ms": 0.8177294433327612,
+  "list.template_render_ms": 0.48031069333395254,
+  "flat.event_ms": 0.20000972333339936
+ },
+ "memory": {
+  "list.component_kb": 25.766796875
+ },
+ "ws": {
+  "items_5": {
+   "connections": 2000,
+   "items": 5,
+   "per_connection_kb": 161.52,
+   "per_connection_kb_by_process": {
+    "uvicorn-0": 161.52
+   },
+   "joins_per_s": 676.5876786084227,
+   "events_per_s": 2042.622555126916,
+   "render_bytes": 334,
+   "broadcast_ms": 1093.1487089999337,
+   "broadcast_renders_per_s": 1829.57724190124,
+   "layer": "memory",
+   "processes": 1,
+   "server": "uvicorn"
+  },
+  "items_50": {
+   "connections": 2000,
+   "items": 50,
+   "per_connection_kb": 186.798,
+   "per_connection_kb_by_process": {
+    "uvicorn-0": 186.798
+   },
+   "joins_per_s": 469.22778286843294,
+   "events_per_s": 950.759492733607,
+   "render_bytes": 631,
+   "broadcast_ms": 2023.3210409999174,
+   "broadcast_renders_per_s": 988.4738800579111,
+   "layer": "memory",
+   "processes": 1,
+   "server": "uvicorn"
+  }
+ }
+}

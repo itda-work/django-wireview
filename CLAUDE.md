@@ -63,7 +63,7 @@ tests/
 docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEATURE-GAP.md, ARCHITECTURE.md,
                            ROADMAP.md, DEPLOYMENT.md, PERFORMANCE.md, design/ 설계 메모, implementation/ 구현 노트
                            (implementation/wire-protocol.md 가 메시지 형태의 정본)
-bench/                     성능 벤치마크 (make bench, make bench-compare BASE=<ref>). 설명은 bench/README.md
+bench/                     성능 벤치마크 (make bench, make bench-compare BASE=<ref>). windows/ 는 Parallels 게스트 실측 레인. 설명은 bench/README.md
 typings/                   channels 타입 스텁 (pyright용)
 .claude/settings.json      권한 허용 목록과 ruff format 훅
 ```
@@ -100,7 +100,8 @@ typings/                   channels 타입 스텁 (pyright용)
 | 품질 일괄 | `make quality` | CI의 lint·typecheck 잡과 동일 범위 |
 | 개발 서버 | `make run-daphne` | JS 빌드, Redis |
 | 타입 스텁 확인 | `cd tests && uv run python manage.py wireview_stubs --check` | |
-| 성능 실측 | `make bench`, 과거 커밋과 비교는 `make bench-compare BASE=997ee59` | WebSocket 구간은 daphne를 직접 띄우며 Redis 불필요 |
+| 성능 실측 | `make bench`, 과거 커밋과 비교는 `make bench-compare BASE=997ee59`, 서버 선택은 `ARGS="--server uvicorn"` | WebSocket 구간은 daphne 또는 uvicorn을 직접 띄우며 Redis 불필요 |
+| Windows 실측 | `bench/windows/run.sh` (stage → provision → run → collect) | macOS + Parallels 랩 클론 + `windows-parallels-lab` 스킬. 상세는 `bench/README.md` |
 
 CI(`ci.yml`)는 Python×Django 매트릭스 테스트, Redis를 띄운 E2E, lint, typecheck, build 다섯 잡이다. PR 전에 `make quality`와 `make test`를 통과시킨다.
 
@@ -126,6 +127,7 @@ CI(`ci.yml`)는 Python×Django 매트릭스 테스트, Redis를 띄운 E2E, lint
 - **gitignore 대상.** `*.pyi` (AUTO_GENERATE_STUBS가 DEBUG에서 생성), `.wireview/`, `tests/static/`, `*.min.js`.
 - **컴포넌트 ID**는 페이지 안에서 고유해야 한다.
 - **채널 레이어는 core/transport.py에서만 만진다.** `get_channel_layer`, `group_add`, `group_send`를 다른 모듈에 쓰면 tests/test_transport.py의 가드가 실패한다. fan-out은 `get_broker().publish`, 세션 메시지는 `WireviewMeta.send`.
+- **Windows에서 daphne는 연결 약 500개에서 죽는다.** daphne가 selector 루프를 강제하고 CPython의 Windows select()는 소켓 512개가 상한이다. Windows 배포는 uvicorn 단일 프로세스를 포트별로 N개 띄우고 Caddy로 분배한다(`docs/DEPLOYMENT.md`). `uvicorn --workers`도 Windows에서는 selector 루프다. 실측은 `bench/results/win11-parlab-*`, 재현은 `bench/windows/run.sh`.
 - **USE_HMIN은 diff 마커를 지운다.** django-hmin이 HTML 주석을 제거하므로 부분 diff가 꺼지고 토큰 diff로 퇴화한다. 켤 때는 대역폭 손익을 실측한다.
 - **data-state는 dynamic 파트다.** `{% tag_header %}`의 서명 상태는 라이브 렌더에서 마커로 감싸진다. static에 넣으면 fingerprint가 매번 바뀌어 부분 diff가 죽는다. 회귀 테스트는 tests/test_diff_stability.py.
 

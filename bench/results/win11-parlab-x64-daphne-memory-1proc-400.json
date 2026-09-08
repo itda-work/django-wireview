@@ -1,0 +1,82 @@
+{
+ "meta": {
+  "sha": "a993181",
+  "dirty": false,
+  "ref": "heads/main",
+  "date": "2026-09-08T13:17:51+00:00",
+  "python": "3.12.14",
+  "django": "6.1.1",
+  "platform": "Windows ARM64",
+  "items": 50,
+  "connections": 400,
+  "layer": "memory",
+  "processes": 1,
+  "server": "daphne",
+  "guest": {
+   "vm": "Parallels Desktop win11-parlab (ARM Windows 11, build 26200)",
+   "vcpus": 6,
+   "ram_gb": 12,
+   "host": "Apple Silicon Mac (Darwin arm64), same machine as the macOS results",
+   "django": "6.1.1",
+   "uvicorn": "0.52.4",
+   "daphne": "4.2.3",
+   "channels-nats": "0.2.0",
+   "nats-server": "2.14.6 windows-arm64",
+   "wireview": "a993181 (library == 8b557b1, bench == a993181)",
+   "python_build": "CPython 3.12.14 windows-x86_64 under x64 emulation"
+  }
+ },
+ "payload_bytes": {
+  "flat.first_render": 616,
+  "flat.change_one_value": 194,
+  "list.first_render": 2260,
+  "list.no_change": 0,
+  "list.change_one_item": 602,
+  "list.append_item": 609,
+  "list.toggle_if_inside_item": 613,
+  "list.top_level_if_on": 644,
+  "list.change_one_value": 578
+ },
+ "timing": {
+  "list.event_ms": 1.7179994466664539,
+  "list.template_render_ms": 1.1943216666668377,
+  "flat.event_ms": 0.4847165266664888
+ },
+ "memory": {
+  "list.component_kb": 25.6741015625
+ },
+ "ws": {
+  "items_5": {
+   "connections": 400,
+   "items": 5,
+   "per_connection_kb": 51.67,
+   "per_connection_kb_by_process": {
+    "daphne-0": 51.67
+   },
+   "joins_per_s": 340.94008536541656,
+   "events_per_s": 1043.1994336177886,
+   "render_bytes": 334,
+   "broadcast_ms": 369.06699999985904,
+   "broadcast_renders_per_s": 1083.8140500238515,
+   "layer": "memory",
+   "processes": 1,
+   "server": "daphne"
+  },
+  "items_50": {
+   "connections": 400,
+   "items": 50,
+   "per_connection_kb": 81.21,
+   "per_connection_kb_by_process": {
+    "daphne-0": 81.21
+   },
+   "joins_per_s": 248.7843773362482,
+   "events_per_s": 451.26022880020685,
+   "render_bytes": 631,
+   "broadcast_ms": 1173.3337499999834,
+   "broadcast_renders_per_s": 340.90896984767176,
+   "layer": "memory",
+   "processes": 1,
+   "server": "daphne"
+  }
+ }
+}

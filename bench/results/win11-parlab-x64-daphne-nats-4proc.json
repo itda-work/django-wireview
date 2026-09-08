@@ -1,0 +1,88 @@
+{
+ "meta": {
+  "sha": "a993181",
+  "dirty": false,
+  "ref": "heads/main",
+  "date": "2026-09-08T13:18:53+00:00",
+  "python": "3.12.14",
+  "django": "6.1.1",
+  "platform": "Windows ARM64",
+  "items": 50,
+  "connections": 2000,
+  "layer": "nats",
+  "processes": 4,
+  "server": "daphne",
+  "guest": {
+   "vm": "Parallels Desktop win11-parlab (ARM Windows 11, build 26200)",
+   "vcpus": 6,
+   "ram_gb": 12,
+   "host": "Apple Silicon Mac (Darwin arm64), same machine as the macOS results",
+   "django": "6.1.1",
+   "uvicorn": "0.52.4",
+   "daphne": "4.2.3",
+   "channels-nats": "0.2.0",
+   "nats-server": "2.14.6 windows-arm64",
+   "wireview": "a993181 (library == 8b557b1, bench == a993181)",
+   "python_build": "CPython 3.12.14 windows-x86_64 under x64 emulation"
+  }
+ },
+ "payload_bytes": {
+  "flat.first_render": 610,
+  "flat.change_one_value": 192,
+  "list.first_render": 2260,
+  "list.no_change": 0,
+  "list.change_one_item": 601,
+  "list.append_item": 611,
+  "list.toggle_if_inside_item": 613,
+  "list.top_level_if_on": 644,
+  "list.change_one_value": 578
+ },
+ "timing": {
+  "list.event_ms": 1.5673533333332064,
+  "list.template_render_ms": 1.1367195833334638,
+  "flat.event_ms": 0.4100518066669186
+ },
+ "memory": {
+  "list.component_kb": 25.67404296875
+ },
+ "ws": {
+  "items_5": {
+   "connections": 2000,
+   "items": 5,
+   "per_connection_kb": 52.058,
+   "per_connection_kb_by_process": {
+    "daphne-0": 13.0,
+    "daphne-1": 13.03,
+    "daphne-2": 13.072,
+    "daphne-3": 12.956
+   },
+   "joins_per_s": 825.2584374164348,
+   "events_per_s": 3542.662888934053,
+   "render_bytes": 334,
+   "broadcast_ms": 436.6598750000321,
+   "broadcast_renders_per_s": 4580.223909970782,
+   "layer": "nats",
+   "processes": 4,
+   "server": "daphne"
+  },
+  "items_50": {
+   "connections": 2000,
+   "items": 50,
+   "per_connection_kb": 76.418,
+   "per_connection_kb_by_process": {
+    "daphne-0": 19.008,
+    "daphne-1": 19.196,
+    "daphne-2": 19.24,
+    "daphne-3": 18.974
+   },
+   "joins_per_s": 693.5330283828125,
+   "events_per_s": 1680.1057047910347,
+   "render_bytes": 631,
+   "broadcast_ms": 1155.9339169998566,
+   "broadcast_renders_per_s": 1730.2027136558604,
+   "layer": "nats",
+   "processes": 4,
+   "server": "daphne"
+  }
+ }
+}

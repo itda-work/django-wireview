@@ -32,3 +32,19 @@ make bench ARGS="--server uvicorn"  # daphne 대신 uvicorn. Windows에서 daphn
 - `list.no_change`는 0이어야 합니다. 값이 있으면 상태 없이도 diff가 나가는 회귀입니다.
 - 이벤트당 ms는 CPU 단일 코어 기준이고, 대부분 Django 템플릿 렌더입니다.
 - `ws.*.per_connection_kb`의 대부분은 daphne와 Channels 스택입니다. 연결만 열고 join하지 않으면 약 39 KB입니다.
+
+## Windows (Parallels 게스트)
+
+Windows 수치는 macOS 호스트의 Parallels 랩 클론(`win11-parlab`, ARM Windows 11)에서 같은 벤치를 돌려 얻는다. 게스트 제어는 `windows-parallels-lab` 스킬(`~/.claude/skills/`)의 `pmlab.sh`이고, 저장소 쪽 드라이버는 `bench/windows/run.sh`다.
+
+```bash
+source ~/.claude/skills/windows-parallels-lab/scripts/pmlab.sh
+pmlab_start && pmlab_wait_ready          # 랩 클론 기동 (마스터 VM은 건드리지 않는다)
+bench/windows/run.sh stage               # HEAD 아카이브, channels-nats wheel, nats-server arm64, 게스트 스크립트를 공유 폴더로
+bench/windows/run.sh provision           # C:\bench 에 uv, Python 3.12 (arm64 + x64), venv 둘, nats-server
+bench/windows/run.sh run                 # 여섯 구성을 분리 실행하고 끝날 때까지 기다린다 (약 3분)
+bench/windows/run.sh collect             # bench/results/win11-parlab-*.json 으로 복사
+pmlab_stop
+```
+
+게스트에는 venv가 둘이다. `.venv`는 네이티브 ARM64 Python으로 uvicorn 스택만 있다. daphne는 autobahn과 cryptography의 ARM64 wheel이 없어 컴파일러 없이는 설치되지 않는다. `.venv-x64`는 x64 에뮬레이션 Python으로 daphne와 uvicorn이 모두 있다. 에뮬레이션은 CPU 비용을 2배쯤 부풀리므로 x64 수치는 상대 비교용이다. 여섯 구성은 `bench/windows/seq.ps1`에 있고, 결과 해석은 `docs/design/transport-abstraction.md` §5-2에 있다. 핵심은 하나다. daphne는 Windows에서 프로세스당 연결 약 500개에서 `select()` 한계로 죽고, 단일 프로세스 uvicorn은 죽지 않는다.

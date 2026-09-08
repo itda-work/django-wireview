@@ -112,6 +112,61 @@ single-server SQLite deployment needs. See the channels-nats README for the Wind
 service setup and token auth. The package is not on PyPI yet; install it from the
 repository. `tests/testproj/settings_nats.py` runs this project's E2E suite on NATS.
 
+### Windows single server: uvicorn × N behind Caddy, NATS, SQLite
+
+Measured on 2026-09-08 in a Windows 11 guest (`docs/design/transport-abstraction.md` §5-2,
+`bench/results/win11-parlab-*.json`). Two Windows facts decide the layout:
+
+- **Do not run daphne on Windows.** daphne pins asyncio to the selector loop, and CPython's
+  Windows `select()` takes at most 512 sockets. A daphne process dies with
+  `ValueError: too many file descriptors in select()` at about 500 connections.
+- **Do not use `uvicorn --workers` on Windows.** Multi-worker mode falls back to the same
+  selector loop. A single-process uvicorn runs on IOCP and held 2,000 connections in the
+  benchmark. Run one uvicorn per port and let Caddy spread the connections.
+
+Also drop `"daphne"` from `INSTALLED_APPS` on Windows: it only backs `runserver`, and importing
+it switches the asyncio policy for the whole process.
+
+```powershell
+# One single-process uvicorn per core, each on its own port (no --workers).
+# Register each as a service with NSSM or a scheduled task in production.
+1..4 | ForEach-Object {
+    Start-Process uvicorn -ArgumentList "myproject.asgi:application --host 127.0.0.1 --port $(8000 + $_)"
+}
+```
+
+```caddyfile
+:80 {
+    reverse_proxy 127.0.0.1:8001 127.0.0.1:8002 127.0.0.1:8003 127.0.0.1:8004
+}
+```
+
+Caddy is a single binary, handles WebSocket upgrades on its own, and can also terminate TLS.
+The channel layer is channels-nats with `nats-server.exe` as a Windows service (see the
+channels-nats README). SQLite is shared by every process, so turn on WAL and a busy timeout.
+Django 5.1+ can run the pragmas itself:
+
+```python
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
+        "OPTIONS": {
+            "timeout": 20,
+            "transaction_mode": "IMMEDIATE",
+            "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;",
+        },
+    }
+}
+```
+
+On Django 4.2 and 5.0 run the same pragmas from a `connection_created` signal handler.
+
+Sizing: uvicorn costs about 160 KB of RSS per connection on Windows (daphne needs 50 KB, but
+cannot be used), so 2,000 idle connections are roughly 320 MB on top of the process baselines.
+Event throughput scales with the number of uvicorn processes: 1 → 4 processes gave 3× the
+events per second and a 3.6× faster broadcast in the benchmark.
+
 ## Django Settings for Production
 
 ```python

@@ -85,7 +85,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-ws", action="store_true", help="skip the daphne/WebSocket benchmark")
     parser.add_argument("--processes", type=int, default=1, help="daphne processes (needs --layer nats when > 1)")
     parser.add_argument("--layer", choices=["memory", "nats"], default="memory", help="channel layer for the servers")
-    parser.add_argument("--server", choices=["daphne", "uvicorn"], default="daphne", help="ASGI server to benchmark")
+    parser.add_argument(
+        "--server",
+        choices=["daphne", "uvicorn", "uvicorn-wsproto"],
+        default="daphne",
+        help="ASGI server to benchmark (uvicorn-wsproto: uvicorn with the wsproto WebSocket implementation)",
+    )
     args = parser.parse_args(argv)
 
     _setup_django()

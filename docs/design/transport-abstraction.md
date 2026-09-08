@@ -76,6 +76,37 @@ wireview를 그 위에서 돌린 실측이다 (`make bench ARGS="--layer nats --
 
 프로세스를 넷으로 늘리자 이벤트 처리량이 3배, 브로드캐스트가 4배 빨라졌다. 연결당 메모리는 channels-nats 0.1.0에서 15 KB 늘었는데 채널마다 NATS 구독을 두던 비용이었고, 0.2.0에서 프로세스당 구독 하나로 바꾸자 항목 5개 기준 55.3 KB, 브로드캐스트 143 ms로 내려왔다(`bench/results/663b3f7-nats-4proc.json`은 0.1.0 값). 남은 9 KB는 로컬 mailbox와 그룹 멤버십이다. 브라우저 E2E도 `--ds=testproj.settings_nats`로 같은 레이어 위에서 통과했다.
 
+## 5-2. Windows 실측 (2026-09-08)
+
+배포 전제가 Windows이므로 같은 기계의 Parallels Desktop 게스트(`win11-parlab`, ARM Windows 11 build 26200, 6 vCPU, 12 GB)에서 같은 벤치를 돌렸다. 재현은 `bench/windows/run.sh`(macOS 호스트 + `windows-parallels-lab` 스킬), 결과는 `bench/results/win11-parlab-*.json`, 호스트 대조군은 같은 커밋에서 잰 `bench/results/a993181-*.json`이다. 연결 2,000개, 항목 5개 컴포넌트 기준. 게스트의 Python은 네이티브 ARM64 빌드와 x64 에뮬레이션 빌드 둘을 썼다. daphne는 ARM64 wheel이 없는 의존성(autobahn, cryptography) 때문에 x64 빌드로만 돌렸다.
+
+| 서버 | 레이어·프로세스 | 플랫폼 | 이벤트당 CPU | 연결당 RSS | join/s | 이벤트/s | 브로드캐스트 |
+|---|---|---|---:|---:|---:|---:|---:|
+| daphne | InMemory 1 | macOS 호스트 | 0.53 ms | 46.0 KB | 1,123 | 3,023 | 814 ms |
+| daphne | InMemory 1 | Windows x64 에뮬 | 1.72 ms | 51.7 KB† | 341† | 1,043† | 369 ms† |
+| daphne | NATS 4 | macOS 호스트 | 0.56 ms | 63.9 KB | 2,100 | 9,429 | 161 ms |
+| daphne | NATS 4 | Windows x64 에뮬 | 1.57 ms | 52.1 KB | 825 | 3,543 | 437 ms |
+| uvicorn | InMemory 1 | macOS 호스트 | 0.57 ms | 211.5 KB | 1,188 | 3,263 | 728 ms |
+| uvicorn | InMemory 1 | Windows ARM64 네이티브 | 0.82 ms | 161.5 KB | 677 | 2,043 | 1,093 ms |
+| uvicorn | InMemory 1 | Windows x64 에뮬 | 1.81 ms | 147.4 KB | 407 | 1,129 | 1,873 ms |
+| uvicorn | NATS 4 | macOS 호스트 | 0.54 ms | 215.8 KB | 2,324 | 12,993 | 179 ms |
+| uvicorn | NATS 4 | Windows ARM64 네이티브 | 0.79 ms | 165.6 KB | 1,582 | 6,061 | 306 ms |
+
+† 연결 400개. daphne는 Windows에서 연결 600개를 시도하면 500개에서 죽는다(아래).
+
+읽는 법:
+
+- **daphne는 Windows에서 프로세스당 소켓 약 500개가 상한이다.** daphne가 import 시점에 asyncio를 selector 루프로 강제하고(`daphne/__init__.py`), CPython의 Windows `select()`는 512개까지만 받는다. 실측: 연결 600개 시도 → 500개 join 뒤 서버 로그에 `ValueError: too many file descriptors in select()`, 이후 연결 거부(`bench/results/win11-parlab-x64-daphne-memory-1proc-600.failed.txt`). NATS 4프로세스 × 500개는 간신히 통과했지만 운영에서 쓸 여유가 아니다.
+- **uvicorn은 단일 프로세스면 IOCP 루프라 이 한계가 없다.** 한 프로세스가 2,000개를 들었다. 단 `--workers N`은 Windows에서 selector 루프로 떨어지므로(uvicorn `loops/asyncio.py`), 프로세스 확장은 "포트별 단일 프로세스 N개 + 앞단 프록시"로 한다.
+- **Windows의 처리량 저하는 CPU 효율 차이만큼이다.** ARM64 네이티브 uvicorn은 호스트 대비 이벤트당 CPU 1.44배, 이벤트/s 0.63배, join 0.57배다. WebSocket I/O 계층이 아니라 하이퍼바이저와 Windows를 합친 CPU 효율이 병목이다. 하이퍼바이저 몫과 Windows 몫은 이 구성으로는 분리되지 않는다(베어메탈 x64 Windows가 필요하다).
+- **프로세스 확장은 Windows에서도 그대로 먹힌다.** uvicorn 1→4 프로세스에서 이벤트 3.0배, 브로드캐스트 3.6배 빨라졌다(호스트는 4.0배·4.1배).
+- **x64 에뮬레이션은 CPU만 2.2배 느리다.** 연결당 메모리는 같다. 실제 x64 서버의 수치가 아니므로 참고용이다.
+- **uvicorn의 연결당 메모리가 daphne의 3~4.5배다**(호스트 211 vs 46 KB, Windows 162 vs 52 KB). WebSocket 구현(`--server uvicorn-wsproto`: 202 KB)과도, OS와도 무관하다. 원인은 아직 조사하지 않았다. 연결 2,000개면 약 320 MB 대 100 MB로 단일 서버에서 감당되는 크기지만, 유휴 연결이 만 단위면 6절의 착수 기준이 그만큼 앞당겨진다.
+
+배포 결론은 `docs/DEPLOYMENT.md`의 Windows 절에 적었다: daphne 대신 uvicorn, 포트별 단일 프로세스 N개, `--workers` 금지, Caddy가 분배, nats-server는 Windows 서비스, SQLite는 WAL.
+
+설치 쪽 발견: Windows ARM64에는 `lru-dict`, `autobahn`, `cryptography`의 wheel이 없다. lru-dict는 wireview 의존에서 뺐고(순수 Python LRU), daphne(autobahn → cryptography)는 Rust 툴체인 없이는 ARM64에 설치되지 않는다. uvicorn 경로는 wheel만으로 설치된다.
+
 ## 6. 착수 기준
 
 프로세스당 동시 연결이 수천을 넘고 유휴 연결이 많은 워크로드(대시보드, 알림)가 실제로 생길 때. 지금 실측으로는 Python 워커 하나가 2,000 유휴 연결을 188 MB로 들고 초당 수천 이벤트를 처리하므로, 워커 여덟 개면 만 단위 연결까지 프런트 없이 간다. 그 전에는 4절의 준비만 유지한다.
