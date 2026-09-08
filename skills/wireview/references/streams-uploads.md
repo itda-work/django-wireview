@@ -28,6 +28,19 @@ class XChatRoom(Component):
 - `limit=N`이면 오래된 아이템이 DOM에서 자동으로 빠진다.
 - 상세: https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/06-streams-api.md
 
+### 스트림에서 실제로 물리는 것
+
+브라우저에서 확인한 것들이다. 단위 테스트는 여기까지 보지 못한다.
+
+- **핸들러와 `mutation()` 양쪽에서 넣지 않는다.** 모델을 구독하고 있으면 저장 신호가 자기
+  연결에도 돌아온다. 핸들러에서 한 번, `mutation()`에서 또 한 번 넣으면 목록에 같은 항목이
+  둘 생긴다. 구독 중이라면 **삽입은 `mutation()` 한 곳에서만** 하고 핸들러는 저장만 한다.
+- **`stream_insert`는 같은 dom id를 교체하지 않는다.** 이미 화면에 있는 항목을 갱신하려면
+  `stream_delete` 후 `stream_insert`한다. (Phoenix는 제자리 갱신이다 — 차이가 좁혀지면 이 줄은 사라진다.)
+- **상태를 바꾸는 핸들러에서 `stream()`을 다시 부르면 목록이 빈다.** 상태 변경이 재렌더를
+  부르고, 재렌더가 템플릿의 빈 컨테이너로 되돌린다. 필터·정렬 전환이 정확히 이 모양이라
+  현재는 동작하지 않는다: https://github.com/itda-work/django-wireview/issues/67
+
 ## Presence — 접속자·타이핑 표시
 
 `PresenceMixin`(자기 상태를 알리는 쪽)과 `PresenceTrackerMixin`(모아서 보여주는 쪽)을 조합한다.

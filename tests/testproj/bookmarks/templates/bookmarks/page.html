@@ -1,0 +1,14 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8">
+    <title>Bookmarks</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    <h1>Bookmarks</h1>
+    {% component 'XBookmarkList' id="bookmarks" %}
+  </body>
+</html>

@@ -10,6 +10,15 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Fixed
+
+- `stream(limit=N)` took the WebSocket connection down. The payload carries `limit`, the client
+  handles it, but `WireviewConsumer.component_stream_op()` did not accept it, so the channel-layer
+  hop raised `TypeError` and killed the ASGI application — with a green unit-test suite, because
+  `mount()` stops at `WireviewMeta.send_stream_op` and never crosses that hop. GAP-014 had been
+  marked complete on those tests. `tests/test_streams.py` now checks every stream payload's keys
+  against the consumer signature (`#65`)
+
 ### Added
 
 - An agent skill for people *building apps* with wireview, canonical at `skills/wireview/`
@@ -19,6 +28,10 @@ The django-reactor era changelog (2.x) is preserved in
   `.claude/skills/wireview`. The skill routes to `docs/features/` and `docs/tutorials/` instead
   of copying them, and `AGENTS.md` points agents that do not read `.claude/skills/` at it.
   See `docs/features/agent-skill.md`
+- `tests/testproj/bookmarks/` — the app an agent built from that skill alone, kept as the
+  baseline for the next skill change. Its E2E tests cover what `mount()` cannot: a form
+  submit delivering its `name` fields as handler arguments, and stream items reaching the
+  DOM. One is xfail against `#67`
 - Django system checks for the traps that fail silently (`wireview/checks.py`, `#64`).
   `manage.py check` now reports a non-async event handler (`wireview.W001`) or lifecycle
   override (`W002`), two component classes sharing a simple name (`W003`), a missing

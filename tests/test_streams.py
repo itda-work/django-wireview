@@ -1,8 +1,11 @@
 """Tests for Streams functionality."""
 
+import inspect
+
 import pytest
 
 from wireview import Component
+from wireview.consumer import WireviewConsumer
 from wireview.features.streams import StreamItem, StreamOp
 from wireview.testing import mount
 
@@ -125,3 +128,45 @@ class TestComponentStreamMethods:
         view = await mount(StreamComponent)
         template_name = view.component._get_stream_item_template()
         assert template_name == "streams/stream_list_item.html"
+
+
+class TestConsumerAcceptsEveryStreamPayload:
+    """The consumer is a hop the component tests never cross.
+
+    ``mount()`` stops at ``WireviewMeta.send_stream_op``. On a real connection the
+    payload travels through the channel layer and is unpacked as keyword arguments
+    into ``WireviewConsumer.component_stream_op``, so a key the method does not
+    accept raises ``TypeError`` there and takes the whole WebSocket down — with a
+    passing unit-test suite. ``limit`` did exactly that.
+    """
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "op",
+        [
+            StreamOp(op="reset", stream="items", items=[]),
+            StreamOp(op="reset", stream="items", items=[], limit=50),
+            StreamOp(op="insert", stream="items", items=[StreamItem(dom_id="items-1", html="<li></li>")], at=0),
+            StreamOp(op="insert", stream="items", items=[], at=0, limit=10),
+            StreamOp(op="delete", stream="items", items=[StreamItem(dom_id="items-1", html="")]),
+        ],
+        ids=["reset", "reset-limit", "insert", "insert-limit", "delete"],
+    )
+    def test_the_consumer_signature_accepts_what_the_component_sends(self, op: StreamOp):
+        signature = inspect.signature(WireviewConsumer.component_stream_op)
+        unexpected = set(op.to_payload()) - set(signature.parameters)
+        assert unexpected == set(), f"component_stream_op() would raise TypeError for {sorted(unexpected)}"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_limit_survives_the_consumer_hop(self):
+        consumer = WireviewConsumer()
+        sent: list[tuple[str, dict]] = []
+
+        async def fake_send_command(command, payload):
+            sent.append((command, payload))
+
+        consumer.send_command = fake_send_command  # type: ignore[method-assign]
+        await consumer.component_stream_op(**StreamOp(op="reset", stream="items", items=[], limit=50).to_payload())
+
+        assert sent == [("stream_op", {"op": "reset", "stream": "items", "items": [], "at": -1, "limit": 50})]

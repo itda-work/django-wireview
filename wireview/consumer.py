@@ -369,9 +369,12 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         log.debug(f">>> DOM {action.upper()} {id}")
         await self.send_command(action, {"id": id, "html": html})
 
-    async def component_stream_op(self, op, stream, items, at):
+    async def component_stream_op(self, op, stream, items, at, limit=0):
         log.debug(f">>> STREAM {op.upper()} {stream}")
-        await self.send_command("stream_op", {"op": op, "stream": stream, "items": items, "at": at})
+        payload = {"op": op, "stream": stream, "items": items, "at": at}
+        if limit:
+            payload["limit"] = limit
+        await self.send_command("stream_op", payload)
 
     async def component_scroll_into_view(self, id, behavior, block, inline):
         log.debug(f">>> SCROLL-INTO-VIEW {id}")

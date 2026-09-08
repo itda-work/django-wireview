@@ -29,6 +29,7 @@ urlpatterns = [
     path("quiz/", include("testproj.quiz.urls")),
     path("notifications/", include("testproj.notifications.urls")),
     path("livecomp/", include("testproj.livecomp.urls")),
+    path("bookmarks/", include("testproj.bookmarks.urls")),
     path("admin/", admin.site.urls),
 ]
 
