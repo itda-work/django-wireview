@@ -67,15 +67,17 @@ def _rss_kb(pid: int) -> int:
     return psutil.Process(pid).memory_info().rss // 1024
 
 
-def _wait_for_port(port: int, timeout: float = 30.0) -> None:
+def _wait_for_port(port: int, timeout: float = 30.0, proc: subprocess.Popen | None = None) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
+        if proc is not None and proc.poll() is not None:
+            raise RuntimeError(f"process for port {port} exited with {proc.returncode} before listening; see {LOG_DIR}")
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=0.5):
                 return
         except OSError:
             time.sleep(0.2)
-    raise RuntimeError(f"nothing listening on port {port}")
+    raise RuntimeError(f"nothing listening on port {port} after {timeout:.0f}s")
 
 
 def _env() -> dict[str, str]:
@@ -130,7 +132,8 @@ def start_server(port: int, server: str = "daphne") -> subprocess.Popen:
         stdout=log,
         stderr=subprocess.STDOUT,
     )
-    _wait_for_port(port)
+    # A cold start on Windows (Defender scanning a fresh venv) can take well over 30 s.
+    _wait_for_port(port, timeout=180.0, proc=proc)
     return proc
 
 
