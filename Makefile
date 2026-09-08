@@ -177,9 +177,9 @@ ci-build:
 	npm ci
 	npm run build
 	uv build
-	uv run twine check dist/*
+	uvx twine check dist/*
 	@# The wheel is useless without the built JS: {% wireview_header %} loads it by name.
-	@uv run python -c "import glob, sys, zipfile; \
+	@python3 -c "import glob, sys, zipfile; \
 	w = sorted(glob.glob('dist/*.whl'))[-1]; \
 	names = zipfile.ZipFile(w).namelist(); \
 	sys.exit(0) if any(n.endswith('wireview.min.js') for n in names) \
