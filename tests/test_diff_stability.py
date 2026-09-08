@@ -213,7 +213,7 @@ async def test_changing_one_loop_item_sends_only_that_item():
 
     assert diff is not None and "s" not in diff
     (change,) = [v for v in diff.values() if isinstance(v, dict) and "u" in v]
-    assert change == {"u": {"0": [{"r": [""], "d": []}, "a", "2"]}, "n": 2}
+    assert change == {"u": {"0": ["", "a", "2"]}, "n": 2}
 
 
 @pytest.mark.asyncio
@@ -228,7 +228,7 @@ async def test_toggling_a_conditional_inside_an_item_is_a_partial_diff():
 
     assert diff is not None and "s" not in diff, diff
     (change,) = [v for v in diff.values() if isinstance(v, dict) and "u" in v]
-    assert change == {"u": {"0": [{"r": ["done"], "d": []}, "a", "1"]}, "n": 2}
+    assert change == {"u": {"0": ["done", "a", "1"]}, "n": 2}
     assert 'class="done"' in wire._last_rendered.to_html()
 
 

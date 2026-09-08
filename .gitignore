@@ -29,3 +29,7 @@ tests/static/
 
 # Claude Code personal overrides
 .claude/settings.local.json
+
+# Benchmarks
+bench/results/
+bench/.data/

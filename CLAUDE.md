@@ -63,6 +63,7 @@ tests/
 docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEATURE-GAP.md, ARCHITECTURE.md,
                            ROADMAP.md, DEPLOYMENT.md, PERFORMANCE.md, design/ 설계 메모, implementation/ 구현 노트
                            (implementation/wire-protocol.md 가 메시지 형태의 정본)
+bench/                     성능 벤치마크 (make bench, make bench-compare BASE=<ref>). 설명은 bench/README.md
 typings/                   channels 타입 스텁 (pyright용)
 .claude/settings.json      권한 허용 목록과 ruff format 훅
 ```
@@ -99,13 +100,14 @@ typings/                   channels 타입 스텁 (pyright용)
 | 품질 일괄 | `make quality` | CI의 lint·typecheck 잡과 동일 범위 |
 | 개발 서버 | `make run-daphne` | JS 빌드, Redis |
 | 타입 스텁 확인 | `cd tests && uv run python manage.py wireview_stubs --check` | |
+| 성능 실측 | `make bench`, 과거 커밋과 비교는 `make bench-compare BASE=997ee59` | WebSocket 구간은 daphne를 직접 띄우며 Redis 불필요 |
 
 CI(`ci.yml`)는 Python×Django 매트릭스 테스트, Redis를 띄운 E2E, lint, typecheck, build 다섯 잡이다. PR 전에 `make quality`와 `make test`를 통과시킨다.
 
 ## 작업 규약
 
 - **기능 단위는 GAP 번호.** `docs/FEATURE-GAP.md`의 GAP-nnn 항목을 고르거나 새로 만들고, 커밋 제목에 적는다. 예: `feat: Add on_mount hooks (GAP-021)`
-- **완료 정의.** 구현 + `tests/test_<feature>.py` + `docs/features/<feature>.md` + `docs/features/README.md` 인덱스 갱신 + FEATURE-GAP.md 상태 갱신 + `CHANGELOG.md` Unreleased 한 줄. 새 모듈·태그·속성이 생기면 이 문서의 지도도 갱신한다.
+- **완료 정의.** 구현 + `tests/test_<feature>.py` + `docs/features/<feature>.md` + `docs/features/README.md` 인덱스 갱신 + FEATURE-GAP.md 상태 갱신 + `CHANGELOG.md` Unreleased 한 줄. 새 모듈·태그·속성이 생기면 이 문서의 지도도 갱신한다. 성능을 주장하는 변경은 `make bench-compare`로 전후 수치를 문서에 남긴다.
 - **커밋.** 영어, Conventional Commits. 이슈와 PR은 `gh` CLI로 다룬다.
 - **언어.** 코드 주석과 docstring은 영어. 문서는 한국어 기본.
 - **테스트 마커.** `unit` / `integration` / `slow` / `e2e` 중 하나 이상을 붙인다 (`--strict-markers`). 라이브러리 테스트는 `tests/test_*.py`, 앱·E2E 테스트는 `tests/testproj/<app>/tests.py`.

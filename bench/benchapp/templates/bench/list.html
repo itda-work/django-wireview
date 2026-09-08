@@ -1,0 +1,17 @@
+{% load wireview %}
+
+<div {% tag_header %} class="card">
+  <h1>{{ title }}</h1>
+  <p class="count">{{ count }}</p>
+  <ul>
+    {% for item in items %}
+      <li class="{% if item.done %}done{% endif %}">{{ item.name }} × {{ item.qty }}</li>
+    {% endfor %}
+  </ul>
+  {% if note %}
+    <footer>
+      {{ note }}
+    </footer>
+  {% endif %}
+  <button {% on "click" "increment" %}>+</button>
+</div>

@@ -157,7 +157,7 @@ def test_switching_if_branch_is_a_partial_diff():
     diff = off.get_diff(on)
 
     assert diff is not None and not diff.is_full
-    assert diff.to_payload() == {"0": {"r": ["no"], "d": []}}
+    assert diff.to_payload() == {"0": "no"}
 
 
 @pytest.mark.unit
@@ -182,7 +182,7 @@ def test_loop_items_with_conditionals_stay_uniform():
     comp = rendered.dynamic[0]
     assert isinstance(comp, Comprehension)
     assert comp.static == ['<li class="', '">', "</li>"]
-    assert comp.dynamics[0] == [Rendered(static=["done"], dynamic=[]), "a"]
-    assert comp.dynamics[1] == [Rendered(static=[""], dynamic=[]), "b"]
+    assert comp.dynamics[0] == ["done", "a"]
+    assert comp.dynamics[1] == ["", "b"]
     assert rendered.to_html() == '<ul><li class="done">a</li><li class="">b</li></ul>'
     assert Rendered.from_dict(rendered.to_dict()) == rendered

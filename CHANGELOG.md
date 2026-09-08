@@ -12,6 +12,9 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- `bench/`: reproducible benchmarks (`make bench`) for render payload sizes, per-event cost,
+  memory and WebSocket connection density, plus `make bench-compare BASE=<ref>` to benchmark a
+  past commit in a throwaway worktree and print a side-by-side table
 - Comprehensions and blocks: `{% for %}` output is one dynamic slot holding the item template's
   statics once and per-item dynamics, and `{% if %}` output is a nested block with its own
   statics. Adding, removing or changing items and switching branches now produce partial diffs

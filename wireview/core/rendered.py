@@ -43,6 +43,8 @@ def _fingerprint(static: list[str]) -> str:
 
 
 def _interleave(static: list[str], dynamic: list[Dynamic]) -> str:
+    if not dynamic:
+        return "".join(static)
     parts: list[str] = []
     for i, s in enumerate(static):
         parts.append(s)
@@ -85,11 +87,10 @@ class Comprehension:
 
     static: list[str] = field(default_factory=list)
     dynamics: list[list[Dynamic]] = field(default_factory=list)
-    fingerprint: str = ""
 
-    def __post_init__(self) -> None:
-        if not self.fingerprint and self.static:
-            self.fingerprint = _fingerprint(self.static)
+    @property
+    def fingerprint(self) -> str:
+        return _fingerprint(self.static) if self.static else ""
 
     def to_html(self) -> str:
         return "".join(_interleave(self.static, item) for item in self.dynamics)
@@ -107,7 +108,7 @@ class Comprehension:
         slot was not a comprehension before), ``{"u": {index: dynamics}, "n":
         count}`` with only the items that changed, or ``None`` when nothing did.
         """
-        if not isinstance(previous, Comprehension) or previous.fingerprint != self.fingerprint:
+        if not isinstance(previous, Comprehension) or previous.static != self.static:
             return self.to_payload()
 
         updates: dict[str, list[Payload]] = {}
@@ -120,7 +121,7 @@ class Comprehension:
         return {"u": updates, "n": len(self.dynamics)}
 
 
-@dataclass
+@dataclass(init=False)
 class Rendered:
     """
     Represents a rendered template with static and dynamic parts separated.
@@ -131,17 +132,29 @@ class Rendered:
     Note: len(static) == len(dynamic) + 1
     """
 
-    static: list[str] = field(default_factory=list)
-    dynamic: list[Dynamic] = field(default_factory=list)
-    fingerprint: str = ""
+    static: list[str]
+    dynamic: list[Dynamic]
+    _fingerprint: str | None = field(default=None, repr=False, compare=False)
 
-    def __post_init__(self) -> None:
-        """Compute fingerprint if not provided."""
-        if not self.fingerprint and self.static:
-            self.fingerprint = self._compute_fingerprint()
+    def __init__(
+        self,
+        static: list[str] | None = None,
+        dynamic: list[Dynamic] | None = None,
+        fingerprint: str | None = None,
+    ) -> None:
+        self.static = static if static is not None else []
+        self.dynamic = dynamic if dynamic is not None else []
+        # Hashing is deferred: nested blocks and comprehension items never need it.
+        self._fingerprint = fingerprint or None
+
+    @property
+    def fingerprint(self) -> str:
+        """Hash of the static parts, used to detect structural changes. Computed once."""
+        if self._fingerprint is None:
+            self._fingerprint = _fingerprint(self.static) if self.static else ""
+        return self._fingerprint
 
     def _compute_fingerprint(self) -> str:
-        """Hash of the static parts, used to detect structural changes."""
         return _fingerprint(self.static)
 
     def to_html(self) -> str:
@@ -163,7 +176,7 @@ class Rendered:
 
     def diff(self, previous: Dynamic | None) -> dict[str, t.Any] | None:
         """Diff as a nested block: full ``{"r", "d"}`` or partial ``{"p": changes}``."""
-        if not isinstance(previous, Rendered) or previous.fingerprint != self.fingerprint:
+        if not isinstance(previous, Rendered) or previous.static != self.static:
             return self.to_payload()
         changes = self.changes(previous)
         return {"p": changes} if changes else None
@@ -177,7 +190,7 @@ class Rendered:
             - Partial diff with only changed indices if values changed
             - None if nothing changed
         """
-        if previous is None or self.fingerprint != previous.fingerprint:
+        if previous is None or self.static != previous.static:
             return RenderedDiff(
                 is_full=True,
                 static=self.static,
@@ -206,7 +219,7 @@ class Rendered:
     @classmethod
     def from_marked_html(cls, html: str) -> Rendered:
         """Parse HTML with markers into a Rendered structure."""
-        static, dynamic = _Parser(html).parse()
+        static, dynamic = _parse(html)
         return cls(static=static, dynamic=dynamic)
 
     @classmethod
@@ -226,44 +239,49 @@ class _Item:
     rendered: Rendered
 
 
-class _Parser:
-    """Recursive-descent parser over the marker comments of a rendered template."""
+def _finish(kind: str, static: list[str], dynamic: list[t.Any]) -> t.Any:
+    """Turn a closed marker region into its dynamic value."""
+    if kind == "C":
+        return _comprehension(static, dynamic)
+    inner = [_flatten_item(v) for v in dynamic]
+    if kind == "I":
+        return _Item(Rendered(static=static, dynamic=inner))
+    if kind == "B" and inner:
+        return Rendered(static=static, dynamic=inner)
+    # A variable, or a branch with no dynamics of its own: plain text.
+    return _interleave(static, inner)
 
-    def __init__(self, html: str) -> None:
-        self.html = html
-        self.tokens = [
-            (m.group(1) == "/", m.group(2), int(m.group(3)), m.start(), m.end()) for m in _TOKEN.finditer(html)
-        ]
-        self.pos = 0
 
-    def parse(self) -> tuple[list[str], list[Dynamic]]:
-        static, dynamic, _ = self._region(None, 0)
-        return static, [_flatten_item(v) for v in dynamic]
+def _parse(html: str) -> tuple[list[str], list[Dynamic]]:
+    """Split the rendered HTML on marker comments and fold the regions.
 
-    def _region(self, closing: tuple[str, int] | None, cursor: int) -> tuple[list[str], list[Dynamic | _Item], int]:
-        """Collect statics/dynamics until ``closing`` is met. Returns the end offset."""
-        static: list[str] = []
-        dynamic: list[Dynamic | _Item] = []
-        while self.pos < len(self.tokens):
-            is_close, kind, idx, start, end = self.tokens[self.pos]
-            self.pos += 1
-            if is_close:
-                if closing is not None and (kind, idx) == closing:
-                    static.append(self.html[cursor:start])
-                    return static, dynamic, end
-                continue  # stray closing marker: keep it as text
-            static.append(self.html[cursor:start])
-            inner_static, inner_dynamic, cursor = self._region((kind, idx), end)
-            if kind == "C":
-                dynamic.append(_comprehension(inner_static, inner_dynamic))
-            elif kind == "I":
-                dynamic.append(_Item(Rendered(static=inner_static, dynamic=[_flatten_item(v) for v in inner_dynamic])))
-            elif kind == "B":
-                dynamic.append(Rendered(static=inner_static, dynamic=[_flatten_item(v) for v in inner_dynamic]))
-            else:
-                dynamic.append(_interleave(inner_static, [_flatten_item(v) for v in inner_dynamic]))
-        static.append(self.html[cursor:])
-        return static, dynamic, len(self.html)
+    ``re.split`` with the three marker groups yields
+    ``[text, close, kind, index, text, close, kind, index, ..., text]``; one pass
+    over that list with an explicit stack is several times faster than a
+    recursive parser built on ``re.Match`` objects, and this runs on every
+    render.
+    """
+    parts = _TOKEN.split(html)
+    static: list[str] = [parts[0]]
+    dynamic: list[t.Any] = []
+    stack: list[tuple[str, int, list[str], list[t.Any]]] = []
+    for i in range(1, len(parts), 4):
+        close, kind, index, text = parts[i], parts[i + 1], int(parts[i + 2]), parts[i + 3]
+        if not close:
+            stack.append((kind, index, static, dynamic))
+            static, dynamic = [text], []
+        elif stack and stack[-1][0] == kind and stack[-1][1] == index:
+            value = _finish(kind, static, dynamic)
+            _kind, _index, static, dynamic = stack.pop()
+            dynamic.append(value)
+            static.append(text)
+        else:
+            static[-1] += text  # stray closing marker: drop it, keep the text
+    while stack:  # unclosed regions: fold their content back into the parent as text
+        kind, index, parent_static, parent_dynamic = stack.pop()
+        parent_static[-1] += _interleave(static, [_flatten_item(v) for v in dynamic])
+        static, dynamic = parent_static, parent_dynamic
+    return static, [_flatten_item(v) for v in dynamic]
 
 
 def _flatten_item(value: Dynamic | _Item) -> Dynamic:
@@ -285,7 +303,7 @@ def _comprehension(static: list[str], dynamic: list[Dynamic | _Item]) -> Dynamic
     uniform = (
         len(items) == len(dynamic)
         and all(not s.strip() for s in static)
-        and len({item.rendered.fingerprint for item in items}) <= 1
+        and all(item.rendered.static == items[0].rendered.static for item in items[1:])
     )
     if not uniform:
         return _interleave(static, [_flatten_item(v) for v in dynamic])

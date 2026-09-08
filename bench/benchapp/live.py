@@ -1,0 +1,46 @@
+"""Components rendered by the benchmarks. Kept deliberately plain."""
+
+from wireview import Component
+
+
+class BenchFlat(Component):
+    """Seven scalar values, no loops."""
+
+    _template_name = "bench/flat.html"
+
+    title: str = "Flat"
+    a: int = 1
+    b: int = 2
+    c: int = 3
+    d: int = 4
+    e: int = 5
+    count: int = 0
+
+    async def increment(self):
+        self.count += 1
+
+
+class BenchList(Component):
+    """A list with a conditional per item plus a top-level conditional."""
+
+    _template_name = "bench/list.html"
+
+    title: str = "List"
+    note: str = ""
+    count: int = 0
+    items: list[dict] = []
+
+    async def increment(self):
+        self.count += 1
+
+    async def bump(self, index: int = 0):
+        self.items[index]["qty"] += 1
+
+    async def append_item(self):
+        self.items.append({"name": f"item {len(self.items)}", "qty": 0, "done": False})
+
+    async def toggle(self, index: int = 0):
+        self.items[index]["done"] = not self.items[index]["done"]
+
+    async def set_note(self, note: str = "note"):
+        self.note = note

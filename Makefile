@@ -1,4 +1,4 @@
-.PHONY: all install test test-unit test-e2e test-cov test-js lint format check check-js quality build watch-js run shell clean collectstatic playwright-install
+.PHONY: all install test test-unit test-e2e test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install
 
 # Default target
 all: install build
@@ -48,14 +48,14 @@ test-cov: collectstatic
 
 # Lint Python code and templates (same checks as CI's lint job)
 lint:
-	uv run ruff check wireview tests
-	uv run ruff format --check wireview tests
+	uv run ruff check wireview tests bench
+	uv run ruff format --check wireview tests bench
 	uv run djlint --check .
 
 # Format code with ruff
 format:
-	uv run ruff check --fix wireview tests
-	uv run ruff format wireview tests
+	uv run ruff check --fix wireview tests bench
+	uv run ruff format wireview tests bench
 	uv run djlint --reformat .
 
 # Type check with pyright
@@ -111,6 +111,18 @@ shell:
 # Django migrations
 migrate:
 	cd tests && uv run python manage.py migrate
+
+# =============================================================================
+# Benchmarks (see bench/README.md)
+# =============================================================================
+
+# Payload sizes, per-event cost, WebSocket memory/throughput. ARGS="--skip-ws" for in-process only
+bench:
+	uv run python -m bench.run --out bench/results/current.json $(ARGS)
+
+# Benchmark a past commit next to the current tree: make bench-compare BASE=997ee59
+bench-compare:
+	./bench/compare.sh $(BASE) $(ARGS)
 
 # =============================================================================
 # Cleanup

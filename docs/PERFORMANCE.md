@@ -238,6 +238,10 @@ py-spy record -o profile.svg --pid <PID>
 
 ## Performance Benchmarks
 
+> Measure instead of guessing: `make bench` runs the in-process and WebSocket benchmarks in `bench/`,
+> and `make bench-compare BASE=<ref>` benchmarks a past commit next to the current tree.
+> See [bench/README.md](../bench/README.md).
+
 ### Expected Performance
 
 | Operation | Target | Notes |
