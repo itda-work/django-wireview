@@ -41,7 +41,11 @@ def _setup_django() -> None:
 
 def _print(results: dict) -> None:
     meta = results["meta"]
-    print(f"wireview @ {meta['sha']}  {meta['date']}  python {meta['python']}  django {meta['django']}")
+    flag = " (dirty)" if meta.get("dirty") else ""
+    print(
+        f"wireview @ {meta['sha']}{flag}  {meta['date']}  python {meta['python']}  "
+        f"django {meta['django']}  {meta.get('platform', '')}"
+    )
     print()
     print(f"{'payload bytes':<32} {'bytes':>10}")
     for key, value in results["payload_bytes"].items():
@@ -66,7 +70,9 @@ def _print(results: dict) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--out", type=Path, default=None, help="write JSON results here")
+    parser.add_argument(
+        "--out", type=Path, default=None, help="JSON output (default: bench/results/<sha>[-dirty].json)"
+    )
     parser.add_argument("--items", type=int, default=50, help="list size for the in-process benchmark")
     parser.add_argument("--iterations", type=int, default=300)
     parser.add_argument("--connections", type=int, default=500)
@@ -78,17 +84,23 @@ def main(argv: list[str] | None = None) -> int:
 
     from bench import payload
 
+    sha = _git("rev-parse", "--short=7", "HEAD")
+    dirty = bool(_git("status", "--porcelain", "--", ":!bench/results"))
     results = {
         "meta": {
-            "sha": _git("rev-parse", "--short=7", "HEAD"),
+            "sha": sha,
+            "dirty": dirty,
             "ref": _git("describe", "--all", "--always"),
             "date": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
             "python": platform.python_version(),
             "django": django.get_version(),
+            "platform": f"{platform.system()} {platform.machine()}",
             "items": args.items,
             "connections": None if args.skip_ws else args.connections,
         }
     }
+    if args.out is None:
+        args.out = ROOT / "bench" / "results" / f"{sha}{'-dirty' if dirty else ''}.json"
     results.update(asyncio.run(payload.run(items=args.items, iterations=args.iterations)))
 
     if not args.skip_ws:

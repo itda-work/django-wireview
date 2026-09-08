@@ -30,6 +30,5 @@ tests/static/
 # Claude Code personal overrides
 .claude/settings.local.json
 
-# Benchmarks
-bench/results/
+# Benchmarks (results are versioned; the sqlite scratch DB is not)
 bench/.data/

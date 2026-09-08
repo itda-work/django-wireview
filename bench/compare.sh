@@ -19,8 +19,10 @@ rm -rf "$WT/bench/results" "$WT/bench/.data"
 
 echo
 echo ">>> benchmarking current tree ($(git rev-parse --short=7 HEAD))"
-( cd "$ROOT" && uv run python -m bench.run --out "$OUT/current.json" "$@" )
+HEAD_SHA="$(git rev-parse --short=7 HEAD)"
+[ -z "$(git status --porcelain -- ':!bench/results')" ] || HEAD_SHA="$HEAD_SHA-dirty"
+( cd "$ROOT" && uv run python -m bench.run --out "$OUT/$HEAD_SHA.json" "$@" )
 
 echo
 echo ">>> comparison"
-( cd "$ROOT" && uv run python -m bench.compare "$OUT/$SHA.json" "$OUT/current.json" )
+( cd "$ROOT" && uv run python -m bench.compare "$OUT/$SHA.json" "$OUT/$HEAD_SHA.json" )

@@ -1,0 +1,48 @@
+{
+ "meta": {
+  "sha": "997ee59",
+  "ref": "tags/v0.1.1-2-g997ee59",
+  "date": "2026-09-08T06:03:53+00:00",
+  "python": "3.12.14",
+  "django": "6.0",
+  "items": 50,
+  "connections": 500
+ },
+ "payload_bytes": {
+  "flat.first_render": 676,
+  "flat.change_one_value": 676,
+  "list.first_render": 8015,
+  "list.no_change": 0,
+  "list.change_one_item": 8015,
+  "list.append_item": 8161,
+  "list.toggle_if_inside_item": 8164,
+  "list.top_level_if_on": 8215,
+  "list.change_one_value": 8215
+ },
+ "timing": {
+  "list.event_ms": 0.4064487499029686,
+  "list.template_render_ms": 0.33933027647435665,
+  "flat.event_ms": 0.1426595833618194
+ },
+ "memory": {
+  "list.component_kb": 31.05087890625
+ },
+ "ws": {
+  "items_5": {
+   "connections": 500,
+   "items": 5,
+   "per_connection_kb": 46.336,
+   "joins_per_s": 997.4455420237879,
+   "events_per_s": 4824.145799380574,
+   "render_bytes": 1327
+  },
+  "items_50": {
+   "connections": 500,
+   "items": 50,
+   "per_connection_kb": 78.656,
+   "joins_per_s": 924.2367683900496,
+   "events_per_s": 1843.918732661287,
+   "render_bytes": 8012
+  }
+ }
+}
