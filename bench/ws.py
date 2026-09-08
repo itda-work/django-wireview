@@ -71,13 +71,23 @@ def _wait_for_port(port: int, timeout: float = 30.0, proc: subprocess.Popen | No
     deadline = time.time() + timeout
     while time.time() < deadline:
         if proc is not None and proc.poll() is not None:
-            raise RuntimeError(f"process for port {port} exited with {proc.returncode} before listening; see {LOG_DIR}")
+            raise RuntimeError(
+                f"process for port {port} exited with {proc.returncode} before listening; see {LOG_DIR}\n"
+                + _log_tail(port)
+            )
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=0.5):
                 return
         except OSError:
             time.sleep(0.2)
     raise RuntimeError(f"nothing listening on port {port} after {timeout:.0f}s")
+
+
+def _log_tail(port: int, lines: int = 20) -> str:
+    logs = sorted(LOG_DIR.glob(f"*-{port}.log"))
+    if not logs:
+        return "(no log)"
+    return "\n".join(logs[-1].read_text(errors="replace").splitlines()[-lines:])
 
 
 def _env() -> dict[str, str]:
@@ -116,17 +126,20 @@ def start_nats() -> subprocess.Popen | None:
 
 
 def start_server(port: int, server: str = "daphne") -> subprocess.Popen:
-    """One daphne or uvicorn process on ``port``. Its stderr goes to bench/.data/logs.
+    """One daphne or uvicorn process on ``port``. Its output goes to bench/.data/logs.
 
-    Always a single process per port, never ``--workers``: uvicorn's multi-worker mode
-    falls back to the selector loop on Windows and inherits the 512-socket cap.
+    The server runs on the same interpreter as the benchmark (``python -m``), never
+    on whatever ``daphne``/``uvicorn`` happens to be on PATH. Always a single process
+    per port, never ``--workers``: uvicorn's multi-worker mode falls back to the
+    selector loop on Windows and inherits the 512-socket cap.
     """
-    exe = shutil.which(server)
-    cmd = [exe] if exe else [sys.executable, "-m", server]
+    cmd = [sys.executable, "-m", server, *SERVER_ARGS[server](port)]
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     log = open(LOG_DIR / f"{server}-{port}.log", "wb")  # noqa: SIM115 (lives as long as the process)
+    log.write(f"$ {' '.join(cmd)}\n".encode())
+    log.flush()
     proc = subprocess.Popen(
-        cmd + SERVER_ARGS[server](port),
+        cmd,
         cwd=ROOT / "tests",
         env=_env(),
         stdout=log,
