@@ -10,6 +10,15 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-08
+
+### Added
+
+- Published on PyPI: `pip install django-wireview` works. The release workflow now builds through
+  `make ci-build` (which fails if the wheel is missing `wireview.min.js`), checks that the tag
+  matches `pyproject.toml`, and publishes the sdist and wheel with PyPI trusted publishing (OIDC,
+  environment `pypi`). No API token is stored anywhere. Releases up to v0.2.0 were GitHub-only
+
 ## [0.2.0] - 2026-09-08
 
 The release that makes the SQLite-plus-Windows deployment premise real: a channel
@@ -109,7 +118,8 @@ auto-recovery, viewport bindings, optimistic UI attributes, type stub
 generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
-[Unreleased]: https://github.com/itda-work/django-wireview/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/itda-work/django-wireview/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/itda-work/django-wireview/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/itda-work/django-wireview/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/itda-work/django-wireview/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/itda-work/django-wireview/releases/tag/v0.1.0

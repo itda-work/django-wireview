@@ -1,16 +1,18 @@
 name: Release
 
+# Tag push (v*) -> build -> publish to PyPI via trusted publishing -> GitHub release.
+# PyPI side: pypi.org > Account settings > Publishing > pending publisher with
+# owner itda-work, repository django-wireview, workflow release.yml, environment pypi.
+# No API token is stored anywhere.
+
 on:
   push:
     tags:
       - 'v*'
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
     steps:
       - uses: actions/checkout@v4
 
@@ -28,18 +30,44 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      - name: Build JavaScript assets
+      - name: Check that the tag matches pyproject.toml
         run: |
-          npm ci
-          npm run build
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME does not match pyproject version $version"
+            exit 1
+          fi
 
-      - name: Build package
-        run: uv build
+      # Builds the JS, builds the package, runs twine check, and fails if the wheel
+      # is missing wireview.min.js (hatchling would drop it as a gitignored artifact).
+      - name: Build and check
+        run: make ci-build
 
-      - name: Create GitHub Release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # PyPI trusted publishing (OIDC)
+      contents: write # GitHub release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          files: dist/*
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref_name, 'a') || contains(github.ref_name, 'b') || contains(github.ref_name, 'rc') }}
-          files: dist/*.whl
