@@ -143,6 +143,15 @@ class Rendered:
         """Check if this Rendered has any dynamic parts."""
         return len(self.dynamic) > 0
 
+    def to_dict(self) -> dict[str, t.Any]:
+        """Serialize for storage outside the process (session state, another worker)."""
+        return {"s": list(self.static), "d": list(self.dynamic), "f": self.fingerprint}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, t.Any]) -> Rendered:
+        """Rebuild from ``to_dict()`` output. The fingerprint is recomputed, never trusted."""
+        return cls(static=list(data.get("s", [])), dynamic=list(data.get("d", [])))
+
 
 @dataclass
 class RenderedDiff:

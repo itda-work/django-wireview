@@ -5,7 +5,6 @@ from __future__ import annotations
 import typing as t
 from uuid import uuid4
 
-from channels.layers import get_channel_layer
 from django.apps import apps
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import AnonymousUser
@@ -20,6 +19,7 @@ from ..async_result import AsyncResult
 from ..schemas import DomAction, ModelAction
 from ..utils import db
 from .meta import Repo, WireviewMeta
+from .transport import get_broker
 
 if t.TYPE_CHECKING:
     import asyncio
@@ -102,8 +102,7 @@ async def abroadcast(channel: str, **kwargs: t.Any) -> None:
                 if kwargs.get("action") == "joined":
                     self.online_users.append(kwargs.get("user"))
     """
-    channel_layer = get_channel_layer()
-    await channel_layer.group_send(
+    await get_broker().publish(
         channel,
         {"type": "notification", "channel": channel, "kwargs": kwargs},
     )

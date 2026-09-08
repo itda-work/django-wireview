@@ -38,8 +38,9 @@ from functools import wraps
 
 from asgiref.sync import async_to_sync
 from channels.db import database_sync_to_async as db
-from channels.layers import get_channel_layer
 from django.utils.datastructures import MultiValueDict
+
+from .core.transport import get_broker
 
 log = logging.getLogger("wireview")
 
@@ -80,7 +81,7 @@ def send_to(channel: str | None, type: str, **kwargs: t.Any) -> None:
         **kwargs: Additional keyword arguments to include in the message.
     """
     if channel:
-        async_to_sync(get_channel_layer().group_send)(channel, dict(type=type, channel=channel, **kwargs))
+        async_to_sync(get_broker().publish)(channel, dict(type=type, channel=channel, **kwargs))
 
 
 @on_commit
@@ -108,8 +109,7 @@ async def asend_to(channel: str | None, type: str, **kwargs: t.Any) -> None:
         **kwargs: Additional keyword arguments to include in the message.
     """
     if channel:
-        channel_layer = get_channel_layer()
-        await channel_layer.group_send(channel, dict(type=type, channel=channel, **kwargs))
+        await get_broker().publish(channel, dict(type=type, channel=channel, **kwargs))
 
 
 async def asend_notification(channel: str, **kwargs: t.Any) -> None:

@@ -29,6 +29,7 @@ wireview/
 ├── core/meta.py           WireviewMeta (self.wire): push_to/replace_to, push_js, put_flash, push_title 등 클라이언트 명령
 ├── core/rendered.py       동적 마커 기반 diff 구조
 ├── core/state.py          data-state 서명·복원 (압축 형식, 구형식 호환)
+├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳
 ├── template_engine.py     템플릿 VariableNode에 diff 마커 자동 주입
 ├── consumer.py            WireviewConsumer (WebSocket, /__wireview__)
 ├── views.py               UploadView (청크 업로드 HTTP 엔드포인트)
@@ -60,6 +61,7 @@ tests/
 
 docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEATURE-GAP.md, ARCHITECTURE.md,
                            ROADMAP.md, DEPLOYMENT.md, PERFORMANCE.md, design/ 설계 메모, implementation/ 구현 노트
+                           (implementation/wire-protocol.md 가 메시지 형태의 정본)
 typings/                   channels 타입 스텁 (pyright용)
 .claude/settings.json      권한 허용 목록과 ruff format 훅
 ```
@@ -119,6 +121,7 @@ CI(`ci.yml`)는 Python×Django 매트릭스 테스트, Redis를 띄운 E2E, lint
 - **pyright는 `tests/`를 검사하지 않고, `tsc`는 checkJs=false라 JS 본문을 검사하지 않는다.** 둘 다 통과해도 해당 영역은 검증된 것이 아니다.
 - **gitignore 대상.** `*.pyi` (AUTO_GENERATE_STUBS가 DEBUG에서 생성), `.wireview/`, `tests/static/`, `*.min.js`.
 - **컴포넌트 ID**는 페이지 안에서 고유해야 한다.
+- **채널 레이어는 core/transport.py에서만 만진다.** `get_channel_layer`, `group_add`, `group_send`를 다른 모듈에 쓰면 tests/test_transport.py의 가드가 실패한다. fan-out은 `get_broker().publish`, 세션 메시지는 `WireviewMeta.send`.
 - **USE_HMIN은 diff 마커를 지운다.** django-hmin이 HTML 주석을 제거하므로 부분 diff가 꺼지고 토큰 diff로 퇴화한다. 켤 때는 대역폭 손익을 실측한다.
 - **data-state는 dynamic 파트다.** `{% tag_header %}`의 서명 상태는 라이브 렌더에서 마커로 감싸진다. static에 넣으면 fingerprint가 매번 바뀌어 부분 diff가 죽는다. 회귀 테스트는 tests/test_diff_stability.py.
 

@@ -12,12 +12,12 @@ import typing as t
 from pathlib import Path
 
 from asgiref.sync import sync_to_async
-from channels.layers import get_channel_layer
 from django.http import HttpRequest, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
+from .core.transport import get_broker
 from .features.uploads import (
     UploadRegistry,
     UploadStatus,
@@ -194,16 +194,13 @@ class UploadView(View):
     @staticmethod
     async def _send_progress(component_id: str, upload_name: str, entry: "UploadEntry") -> None:
         """Send progress update via channel layer."""
-        channel_layer = get_channel_layer()
-        if not channel_layer:
-            return
 
         # Find the channel name for this component
         # We need to broadcast to a group that the consumer is subscribed to
         group_name = f"wireview_upload_{component_id}"
 
         try:
-            await channel_layer.group_send(
+            await get_broker().publish(
                 group_name,
                 {
                     "type": "upload.progress",
@@ -219,14 +216,11 @@ class UploadView(View):
     @staticmethod
     async def _send_error(component_id: str, upload_name: str, entry: "UploadEntry") -> None:
         """Send error via channel layer."""
-        channel_layer = get_channel_layer()
-        if not channel_layer:
-            return
 
         group_name = f"wireview_upload_{component_id}"
 
         try:
-            await channel_layer.group_send(
+            await get_broker().publish(
                 group_name,
                 {
                     "type": "upload.error",

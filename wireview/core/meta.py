@@ -18,6 +18,7 @@ from .. import settings
 from ..schemas import DomAction
 from ..utils import db
 from .rendered import Rendered, has_markers
+from .transport import Broker, ChannelsBroker, NullBroker
 
 log = logging.getLogger("wireview")
 
@@ -77,10 +78,14 @@ class WireviewMeta:
         params: dict[str, t.Any],
         channel_name: str | None = None,
         channel_layer: BaseChannelLayer | None = None,
+        broker: Broker | None = None,
     ):
         self.params = params
         self.channel_name = channel_name
         self.channel_layer = channel_layer
+        if broker is None:
+            broker = ChannelsBroker(channel_layer) if channel_layer is not None else NullBroker()
+        self.broker: Broker = broker
         self._is_frozen: bool = False
         self._redirected_to: str | None = None
         self._last_sent_html: list[str] = []
@@ -98,6 +103,7 @@ class WireviewMeta:
             params=self.params,
             channel_name=self.channel_name,
             channel_layer=self.channel_layer,
+            broker=self.broker,
         )
         # Don't copy render state - child components start fresh
         return cloned
@@ -155,12 +161,11 @@ class WireviewMeta:
             await self._send_broadcast(channel, **kwargs)
 
     async def _send_broadcast(self, channel: str, **kwargs: t.Any) -> None:
-        """Actually send a broadcast via channel layer."""
-        if self.channel_layer:
-            await self.channel_layer.group_send(
-                channel,
-                {"type": "notification", "channel": channel, "kwargs": kwargs},
-            )
+        """Publish a notification to every session subscribed to ``channel``."""
+        await self.broker.publish(
+            channel,
+            {"type": "notification", "channel": channel, "kwargs": kwargs},
+        )
 
     async def destroy(self, component_id: str) -> None:
         """Destroy a component and notify the client."""
@@ -425,16 +430,15 @@ class WireviewMeta:
             await self.send_to(self.channel_name, _command, **kwargs)
 
     async def send_to(self, _channel: str, _command: str, **kwargs: t.Any) -> None:
-        """Send a command to a specific channel."""
-        if self.channel_layer:
-            await self.channel_layer.send(
-                _channel,
-                {
-                    "type": "message_from_component",
-                    "command": _command,
-                    "kwargs": kwargs,
-                },
-            )
+        """Send a command to a specific session (channel name)."""
+        await self.broker.send_to_session(
+            _channel,
+            {
+                "type": "message_from_component",
+                "command": _command,
+                "kwargs": kwargs,
+            },
+        )
 
     async def send_to_parent(
         self,

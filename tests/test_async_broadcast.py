@@ -17,7 +17,7 @@ class TestAbroadcast:
         mock_channel_layer = AsyncMock()
 
         with patch(
-            "wireview.core.component.get_channel_layer",
+            "wireview.core.transport.get_channel_layer",
             return_value=mock_channel_layer,
         ):
             await abroadcast("test-channel", action="joined", user="testuser")
@@ -40,7 +40,7 @@ class TestAbroadcast:
         mock_channel_layer = AsyncMock()
 
         with patch(
-            "wireview.core.component.get_channel_layer",
+            "wireview.core.transport.get_channel_layer",
             return_value=mock_channel_layer,
         ):
             await abroadcast("my-channel")
@@ -67,7 +67,7 @@ class TestAsendTo:
         mock_channel_layer = AsyncMock()
 
         with patch(
-            "wireview.utils.get_channel_layer",
+            "wireview.core.transport.get_channel_layer",
             return_value=mock_channel_layer,
         ):
             await asend_to("test-channel", "model_mutation", action="created", instance="data")
@@ -91,7 +91,7 @@ class TestAsendTo:
         mock_channel_layer = AsyncMock()
 
         with patch(
-            "wireview.utils.get_channel_layer",
+            "wireview.core.transport.get_channel_layer",
             return_value=mock_channel_layer,
         ):
             await asend_to(None, "notification", message="test")
@@ -111,7 +111,7 @@ class TestAsendNotification:
         mock_channel_layer = AsyncMock()
 
         with patch(
-            "wireview.utils.get_channel_layer",
+            "wireview.core.transport.get_channel_layer",
             return_value=mock_channel_layer,
         ):
             await asend_notification("test-channel", message="hello", count=5)
@@ -134,7 +134,7 @@ class TestAsendNotification:
         mock_channel_layer = AsyncMock()
 
         with patch(
-            "wireview.utils.get_channel_layer",
+            "wireview.core.transport.get_channel_layer",
             return_value=mock_channel_layer,
         ):
             await asend_notification("empty-channel")

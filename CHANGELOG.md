@@ -12,11 +12,20 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- `wireview.core.transport`: `Outbound` and `Broker` interfaces with Channels implementations.
+  Every channel-layer call now goes through them, so another connection layer only has to
+  implement the two interfaces (GAP-026)
+- `Rendered.to_dict()` / `from_dict()` so render snapshots can live outside the process
+- `docs/implementation/wire-protocol.md` (message shapes in all four directions) and
+  `docs/design/transport-abstraction.md` (measurements, options, remaining steps)
 - `on_mount` hooks and `attach_hook()` / `detach_hook()` for lifecycle interception (GAP-021)
 - `.claude/settings.json` with a permission allowlist and a PostToolUse hook that runs `ruff format` on edited Python files
 
 ### Changed
 
+- `WireviewMeta` accepts a `broker=` argument; `channel_layer=` still works and builds a
+  `ChannelsBroker`. Tests that patched `get_channel_layer` should patch
+  `wireview.core.transport.get_channel_layer` instead
 - `data-state` now carries a compact, zlib-compressed `Signer.sign_object` payload
   (`wireview.core.state`). The legacy `Signer().sign(json)` format is still accepted on join
 - Rewrote `CLAUDE.md` as a compact agent guide (repository map, commands, conventions, gotchas) that links to `docs/` instead of duplicating API docs

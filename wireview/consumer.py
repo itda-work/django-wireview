@@ -9,6 +9,7 @@ from wireview.component import Component
 
 from . import serializer
 from .core.state import unsign_state
+from .core.transport import ChannelsOutbound, Outbound
 from .repository import ComponentRepository
 from .utils import parse_request_data
 
@@ -21,6 +22,13 @@ class ChildComponent(t.TypedDict):
 
 
 class WireviewConsumer(AsyncJsonWebsocketConsumer):
+    outbound: Outbound
+
+    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
+        super().__init__(*args, **kwargs)
+        # The only object that knows this session is a Channels WebSocket.
+        self.outbound = ChannelsOutbound(self)
+
     @property
     def user(self):
         return self.scope.get("user") or AnonymousUser()
@@ -52,11 +60,10 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
                 log.exception(f"Error in {component._name}.leaving(): {e}")
 
         # Cleanup subscriptions
-        if self.channel_layer is not None and self.channel_name is not None:
-            for channel in self.subscriptions:
-                log.debug(f"::: UNSUBSCRIBE {self.channel_name} from {channel}")
-                await self.channel_layer.group_discard(channel, self.channel_name)
-            self.subscriptions.clear()
+        for channel in self.subscriptions:
+            log.debug(f"::: UNSUBSCRIBE {self.channel_name} from {channel}")
+            await self.outbound.unsubscribe(channel)
+        self.subscriptions.clear()
 
         await super().disconnect(code)
 
@@ -513,9 +520,9 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         registry = getattr(component, "_upload_registry", None)
         if registry and self.channel_layer and self.channel_name:
             register_upload_registry(component.id, registry)
-            # Subscribe to upload progress group
+            # Subscribe to upload progress topic
             group_name = f"wireview_upload_{component.id}"
-            await self.channel_layer.group_add(group_name, self.channel_name)
+            await self.outbound.subscribe(group_name)
             log.debug(f"Subscribed to upload group: {group_name}")
 
     async def _unregister_upload_registry(self, component_id: str) -> None:
@@ -523,11 +530,10 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         from .views import unregister_upload_registry
 
         unregister_upload_registry(component_id)
-        if self.channel_layer and self.channel_name:
-            # Unsubscribe from upload progress group
-            group_name = f"wireview_upload_{component_id}"
-            await self.channel_layer.group_discard(group_name, self.channel_name)
-            log.debug(f"Unsubscribed from upload group: {group_name}")
+        # Unsubscribe from upload progress topic
+        group_name = f"wireview_upload_{component_id}"
+        await self.outbound.unsubscribe(group_name)
+        log.debug(f"Unsubscribed from upload group: {group_name}")
 
     # Incoming messages from subscriptions
 
@@ -569,27 +575,23 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         component._clear_temporary_assigns()
 
     async def send_command(self, command, payload):
-        await self.send_json({"command": command, "payload": payload})
+        await self.outbound.send_command(command, payload)
 
     async def after_mutation_chores(self):
         await self.update_to_which_channels_im_subscribed_to()
         await self.send_query_string()
 
     async def update_to_which_channels_im_subscribed_to(self):
-        if self.channel_layer is not None and self.channel_name is not None:
-            subscriptions = self.repo.subscriptions
-
-            # new subscriptions
-            for channel in subscriptions - self.subscriptions:
-                log.debug(f"::: SUBSCRIBE {self.channel_name} to {channel}")
-                await self.channel_layer.group_add(channel, self.channel_name)
-
-            # remove subscriptions
-            for channel in self.subscriptions - subscriptions:
-                log.debug(f"::: UNSUBSCRIBE {self.channel_name} to {channel}")
-                await self.channel_layer.group_discard(channel, self.channel_name)
-
-            self.subscriptions = subscriptions
+        subscriptions = self.repo.subscriptions
+        # new subscriptions
+        for channel in subscriptions - self.subscriptions:
+            log.debug(f"::: SUBSCRIBE {self.channel_name} to {channel}")
+            await self.outbound.subscribe(channel)
+        # remove subscriptions
+        for channel in self.subscriptions - subscriptions:
+            log.debug(f"::: UNSUBSCRIBE {self.channel_name} to {channel}")
+            await self.outbound.unsubscribe(channel)
+        self.subscriptions = subscriptions
 
     async def send_query_string(self):
         new_qs = self.repo.get_query_string()
