@@ -33,5 +33,8 @@ tests/static/
 # Benchmarks (results are versioned; the sqlite scratch DB is not)
 bench/.data/
 
+# Redis snapshot, if a redis-server ever writes one into the working directory
+dump.rdb
+
 # Claude Code worktrees
 .claude/worktrees/

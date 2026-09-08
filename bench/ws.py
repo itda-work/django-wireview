@@ -152,7 +152,9 @@ def start_broker(layer: str) -> subprocess.Popen | None:
     if layer == "nats":
         url_var, scheme, finder, args = "NATS_URL", "nats", find_nats_server, ["-a", "127.0.0.1", "-p"]
     elif layer == "redis":
-        url_var, scheme, finder, args = "REDIS_URL", "redis", find_redis_server, ["--bind", "127.0.0.1", "--port"]
+        # --save "" keeps the throwaway server from dumping dump.rdb into the working directory
+        redis_args = ["--bind", "127.0.0.1", "--save", "", "--port"]
+        url_var, scheme, finder, args = "REDIS_URL", "redis", find_redis_server, redis_args
     else:
         return None
     if os.environ.get(url_var):
