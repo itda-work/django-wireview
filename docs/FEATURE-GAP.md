@@ -230,7 +230,7 @@ django-wireview 지원:       ~55개 (73%)
 
 ### 🔴 P0: Critical (DX에 큰 영향)
 
-| ID | 기능 | 설명 | 난이도 | 예상 작업 |
+| ID | 기능 | 설명 | 난이도 | 추적 |
 |----|------|------|:------:|----------|
 | ~~GAP-001~~ | ~~**JavaScript Hooks**~~ | ~~클라이언트 측 라이프사이클 훅 (`wire-hook`)~~ | ~~상~~ | ✅ 완료 |
 | ~~GAP-002~~ | ~~**Slots**~~ | ~~컴포넌트 콘텐츠 합성 (`{% fill %}`, `{% render_slot %}`)~~ | ~~중~~ | ✅ 완료 |
@@ -242,19 +242,19 @@ django-wireview 지원:       ~55개 (73%)
 
 ### 🟠 P1: Important (기능적 차이)
 
-| ID | 기능 | 설명 | 난이도 | 예상 작업 |
+| ID | 기능 | 설명 | 난이도 | 추적 |
 |----|------|------|:------:|----------|
 | ~~GAP-007~~ | ~~External Uploads~~ | ~~S3/GCS 직접 업로드~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-008~~ | ~~Form Auto-Recovery~~ | ~~재연결 시 폼 상태 복구~~ | ~~중~~ | ✅ 완료 |
-| GAP-009 | live_session | 인증/레이아웃 경계 관리 | 중 | 1-2주 |
+| GAP-009 | live_session | 인증/레이아웃 경계 관리 | 중 | [#58](https://github.com/itda-work/django-wireview/issues/58) |
 | ~~GAP-010~~ | ~~Page Title~~ | ~~동적 페이지 타이틀 변경~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-011~~ | ~~Flash Messages~~ | ~~일회성 알림 메시지~~ | ~~하~~ | ✅ 완료 |
-| GAP-012 | LongPolling Fallback | WebSocket 불가 시 폴백 | 중 | 1-2주 |
+| GAP-012 | LongPolling Fallback | WebSocket 불가 시 폴백 | 중 | [#59](https://github.com/itda-work/django-wireview/issues/59) |
 | ~~GAP-013~~ | ~~pushEvent (Hook→Server)~~ | ~~훅에서 서버로 이벤트 전송~~ | ~~중~~ | ✅ 완료 |
 
 ### 🟡 P2: Nice to Have (편의 기능)
 
-| ID | 기능 | 설명 | 난이도 | 예상 작업 |
+| ID | 기능 | 설명 | 난이도 | 추적 |
 |----|------|------|:------:|----------|
 | ~~GAP-014~~ | ~~stream :limit~~ | ~~스트림 DOM 크기 제한~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-015~~ | ~~phx-viewport-*~~ | ~~양방향 무한 스크롤 바인딩~~ | ~~중~~ | ✅ 완료 |
@@ -264,11 +264,11 @@ django-wireview 지원:       ~55개 (73%)
 | ~~GAP-019~~ | ~~phx-feedback-for~~ | ~~폼 필드 에러 표시~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-020~~ | ~~enableProfiling~~ | ~~성능 프로파일링~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-021~~ | ~~on_mount hooks~~ | ~~공통 마운트 로직 모듈화~~ | ~~중~~ | ✅ 완료 |
-| GAP-022 | Telemetry | 성능 측정 훅 | 중 | 1-2주 |
+| GAP-022 | Telemetry | 성능 측정 훅 | 중 | [#57](https://github.com/itda-work/django-wireview/issues/57) |
 | ~~GAP-023~~ | ~~onBeforeElUpdated~~ | ~~DOM 패치 전 콜백~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-025~~ | ~~Comprehensions~~ | ~~`{% for %}`를 항목 단위, `{% if %}`를 블록 단위 static/dynamic으로 분리해 항목·분기 변경 시 부분 diff~~ | ~~중~~ | ✅ 완료 (위치 기반, 키 기반은 미지원) |
 | ~~GAP-026~~ | ~~Transport seam~~ | ~~`Outbound`/`Broker` 인터페이스 뒤로 채널 레이어 격리, 렌더 스냅샷 직렬화, wire-protocol 문서~~ | ~~중~~ | ✅ 완료 |
-| GAP-027 | Session extraction | 컨슈머 핸들러를 `WireviewSession`으로 분리, 세션 상태 export/import (docs/design/transport-abstraction.md) | 상 | 2-3주 |
+| GAP-027 | Session extraction | 컨슈머 핸들러를 `WireviewSession`으로 분리, 세션 상태 export/import (docs/design/transport-abstraction.md) | 상 | [#60](https://github.com/itda-work/django-wireview/issues/60) 착수 기준 대기 |
 
 ---
 

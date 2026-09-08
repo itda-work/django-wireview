@@ -14,7 +14,7 @@ Phoenix LiveView 스타일의 Django 실시간 컴포넌트 라이브러리. Pyd
 | 코드 스타일 (ruff 120자, double quotes, djlint 2칸) | `pyproject.toml`의 `[tool.ruff]`, `[tool.djlint]`, `[tool.pyright]` |
 | 개발 명령 | `Makefile` (`make help`) |
 | 설정 키와 기본값 | `wireview/settings.py`의 `DEFAULT` |
-| 기능 로드맵과 미구현 목록 | `docs/FEATURE-GAP.md` |
+| 기능 로드맵과 미구현 목록 | `docs/FEATURE-GAP.md` (GAP 번호), 작업 추적은 GitHub Issues |
 | 기능별 API 상세 | `docs/features/README.md` (인덱스) |
 | 학습 순서 | `docs/tutorials/README.md` |
 | 릴리스 버전 | git 태그 `v*`와 `pyproject.toml`의 version |
@@ -117,10 +117,21 @@ CI(`ci.yml`)는 Python×Django 매트릭스 테스트, Redis를 띄운 E2E, lint
 - **JS.** `wireview.js`는 ES2020, 2칸 들여쓰기, JSDoc. 포매터는 없다. DOM 없이 검증 가능한 로직은 `rendered.mjs`처럼 순수 모듈로 빼고 `tests/js/`에 node 테스트를 둔다.
 - **import.** 새 코드는 `from wireview import Component, LiveComponent, JS, mount`. `wireview.component` 경로는 하위 호환용.
 
+## 세션과 이슈
+
+**추적의 진실 소스는 GitHub Issues**(`itda-work/django-wireview`)다. 대화는 끊기지만 이슈는 남는다.
+
+- **새 대화는 `gh issue list --label wip`로 시작한다.** 진행 중인 작업이 거기 있고, 마지막 코멘트가 이어받을 지점이다. 그다음 `git log --oneline -10`과 `git status --short`로 코드 쪽 현재 위치를 확인한다. 전체 조망이 필요할 때만 `docs/FEATURE-GAP.md`(남은 갭)와 `docs/ROADMAP.md`(버전 계획)를 읽는다.
+- **비자명한 작업은 착수 전에 이슈를 만든다.** 오타·한 줄 패치는 제외. 이슈 제목에 GAP 번호를 넣는다(`GAP-022: Telemetry 훅`). GAP은 기능 단위 id이고 이슈는 작업 단위다. 새 GAP이면 `docs/FEATURE-GAP.md`에도 항목을 추가한다.
+- **착수하면 `wip` 라벨을 붙이고, 중단하거나 끝내면 뗀다.** `wip`는 종류(`enhancement`·`bug`·`chore`)와 직교한 상태 표시다.
+- **대화를 끝낼 때 `wip` 이슈에 코멘트를 남긴다.** 한 것, 다음 단계, 막힌 것 세 가지. 별도 handoff 문서를 만들지 않는 이유가 이것이다.
+- **커밋 메시지에는 `#N` 평참조만 쓴다.** `Closes #N`으로 자동 종결하지 않는다. 완료 정의(위 작업 규약)를 실제로 만족했는지 확인한 뒤 `gh issue close <N> --comment "..."`로 닫는다.
+- **라벨.** 제품은 `bug`·`enhancement`·`documentation`, 인프라·툴링은 `ci`·`chore`·`testing`·`refactor`, 영역은 `area: *`를 쓴다. CI나 빌드 작업을 `bug`/`enhancement`에 억지로 넣지 않는다.
+
 ## 함정
 
 - **`wireview.min.js`가 없으면 페이지에서 JS가 로드되지 않는다.** clone 직후와 `wireview.js` 수정 후 `make build-js`.
-- **testproj의 채널 레이어는 `WIREVIEW_TEST_LAYER`가 고른다.** 기본은 `memory`(브로커 불요), `make test-e2e`는 `nats`, CI는 `redis`다. E2E는 `tests/e2e.sh`가 nats-server를 직접 띄우고 끝나면 정리하므로 미리 켜 둘 필요가 없다(이미 떠 있으면 그것을 쓴다). 바꾸려면 `make test-e2e LAYER=redis` 또는 `LAYER=memory`. channels-nats는 dev extras에 있으므로 `make install`이면 들어온다.
+- **testproj의 채널 레이어는 `WIREVIEW_TEST_LAYER`가 고른다.** 기본은 `memory`(브로커 불요), `make test-e2e`와 CI는 `nats`다. E2E는 `tests/e2e.sh`가 nats-server를 직접 띄우고 끝나면 정리하므로 미리 켜 둘 필요가 없다(이미 떠 있으면 그것을 쓴다). 바꾸려면 `make test-e2e LAYER=redis` 또는 `LAYER=memory`. channels-nats는 dev extras에 있으므로 `make install`이면 들어온다.
 - **단위·통합 테스트도 일부는 채널 레이어를 쓴다.** `tests/test_uploads.py`의 `UploadView` 테스트가 세션 채널로 보낸다. 그래서 기본값이 `memory`다. 브로커가 없는 레이어를 기본으로 두면 그 두 테스트가 연결 타임아웃으로 2분씩 걸린다.
 - **클라이언트가 호출할 수 있는 메서드.** `_`로 시작하지 않는 소문자 이름의 메서드는 이벤트 핸들러로 노출되고 `validate_call`로 감싸진다. 내부 헬퍼는 반드시 `_` 접두사. 핸들러와 라이프사이클 메서드는 async.
 - **컴포넌트 이름은 클래스명으로 전역 등록.** 다른 모듈에서 같은 클래스명을 쓰면 경고가 난다. 템플릿에서 `app:Name` 또는 FQN으로 구분한다.
