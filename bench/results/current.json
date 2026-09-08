@@ -1,0 +1,50 @@
+{
+ "meta": {
+  "sha": "f500549",
+  "dirty": false,
+  "ref": "heads/main",
+  "date": "2026-09-08T06:19:48+00:00",
+  "python": "3.12.14",
+  "django": "6.0",
+  "platform": "Darwin arm64",
+  "items": 50,
+  "connections": 500
+ },
+ "payload_bytes": {
+  "flat.first_render": 614,
+  "flat.change_one_value": 194,
+  "list.first_render": 2214,
+  "list.no_change": 0,
+  "list.change_one_item": 593,
+  "list.append_item": 601,
+  "list.toggle_if_inside_item": 605,
+  "list.top_level_if_on": 635,
+  "list.change_one_value": 567
+ },
+ "timing": {
+  "list.event_ms": 0.5331201401228706,
+  "list.template_render_ms": 0.3667097232149293,
+  "flat.event_ms": 0.15072944341227412
+ },
+ "memory": {
+  "list.component_kb": 25.60072265625
+ },
+ "ws": {
+  "items_5": {
+   "connections": 500,
+   "items": 5,
+   "per_connection_kb": 48.288,
+   "joins_per_s": 1134.984027032793,
+   "events_per_s": 4265.981089249519,
+   "render_bytes": 326
+  },
+  "items_50": {
+   "connections": 500,
+   "items": 50,
+   "per_connection_kb": 72.096,
+   "joins_per_s": 843.7911272599787,
+   "events_per_s": 1529.056079491471,
+   "render_bytes": 624
+  }
+ }
+}
