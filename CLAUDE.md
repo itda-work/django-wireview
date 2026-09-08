@@ -94,7 +94,7 @@ typings/                   channels 타입 스텁 (pyright용)
 |------|------|
 | 테스트 (e2e·slow 제외) | `make test` |
 | 품질 일괄 (lint + typecheck) | `make quality` |
-| JS 빌드 | `make build-js` — clone 직후와 `wireview.js` 수정 후 필수 |
+| JS 빌드 | `make build-js` — clone 직후와 `wireview/static/wireview/wireview.js` 수정 후 필수 |
 | 클라이언트 테스트 | `make test-js` |
 
 전체 표(E2E 레이어, 벤치마크, Windows 실측, 타입 스텁)와 선행 조건은 `wireview-dev` 스킬에.
@@ -111,7 +111,7 @@ typings/                   channels 타입 스텁 (pyright용)
 
 ## 함정
 
-- **`wireview.min.js`가 없으면 페이지에서 JS가 로드되지 않는다.** clone 직후와 `wireview.js` 수정 후 `make build-js`.
+- **`wireview.min.js`가 없으면 페이지에서 JS가 로드되지 않는다.** clone 직후와 `wireview/static/wireview/wireview.js` 수정 후 `make build-js`.
 - **testproj의 채널 레이어는 `WIREVIEW_TEST_LAYER`가 고른다.** 기본은 `memory`(브로커 불요), `make test-e2e`와 CI는 `nats`다. E2E는 `tests/e2e.sh`가 nats-server를 직접 띄우고 끝나면 정리하므로 미리 켜 둘 필요가 없다(이미 떠 있으면 그것을 쓴다). 바꾸려면 `make test-e2e LAYER=redis` 또는 `LAYER=memory`. channels-nats는 dev extras에 있으므로 `make install`이면 들어온다.
 - **단위·통합 테스트도 일부는 채널 레이어를 쓴다.** `tests/test_uploads.py`의 `UploadView` 테스트가 세션 채널로 보낸다. 그래서 기본값이 `memory`다. 브로커가 없는 레이어를 기본으로 두면 그 두 테스트가 연결 타임아웃으로 2분씩 걸린다.
 - **클라이언트가 호출할 수 있는 메서드.** `_`로 시작하지 않는 소문자 이름의 메서드는 이벤트 핸들러로 노출되고 `validate_call`로 감싸진다. 내부 헬퍼는 반드시 `_` 접두사. 핸들러와 라이프사이클 메서드는 async.

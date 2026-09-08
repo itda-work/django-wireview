@@ -10,6 +10,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- `tests/test_agent_docs.py` guards the agent harness against drift: every path, `make` target
+  and GAP number cited by `CLAUDE.md` or a skill must exist, and each skill's frontmatter must
+  name its own directory. It runs with `make test`, so a rename that turns the map into a lie
+  fails in CI
+
 ### Changed
 
 - Agent harness: the working procedure moved out of `CLAUDE.md` into a `wireview-dev` skill
