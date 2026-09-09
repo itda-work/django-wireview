@@ -129,3 +129,57 @@ def test_skill_frontmatter_names_its_own_directory(skill: Path):
     description = re.search(r"^description:\s*(.+)$", frontmatter, re.MULTILINE)
     assert description, f"{_doc_id(skill)} frontmatter has no description"
     assert len(description.group(1)) > 40, f"{_doc_id(skill)} description is too short to route on"
+
+
+# --- documentation language -----------------------------------------------------------------
+
+#: Prose is Korean; code, identifiers and commit messages are English (CLAUDE.md "규약").
+#: Measured on prose only -- code fences and backticked spans are dropped first -- so a page
+#: that is mostly tables of API names still passes. The lowest real document sits at 22%.
+KOREAN_RATIO_FLOOR = 0.15
+
+#: English on purpose. The changelog reads alongside commit messages, and docs/legacy/ is a
+#: preserved artefact of the django-reactor era, not a document this project maintains.
+ENGLISH_BY_DESIGN = ("CHANGELOG.md", "docs/legacy/")
+
+HANGUL = re.compile(r"[가-힣]")
+LETTERS = re.compile(r"[A-Za-z가-힣]")
+CODE_SPAN = re.compile(r"`[^`\n]*`")
+CODE_FENCE = re.compile(r"```.*?```", re.S)
+
+
+def _tracked_markdown() -> list[str]:
+    import subprocess
+
+    listed = subprocess.run(["git", "ls-files", "*.md"], cwd=ROOT, capture_output=True, text=True, check=True)
+    return [
+        path
+        for path in listed.stdout.split()
+        if not path.startswith(ENGLISH_BY_DESIGN) and path not in ENGLISH_BY_DESIGN
+    ]
+
+
+def _korean_ratio(text: str) -> tuple[float, int]:
+    prose = CODE_SPAN.sub("", CODE_FENCE.sub("", text))
+    letters = LETTERS.findall(prose)
+    if not letters:
+        return 1.0, 0
+    return len(HANGUL.findall(prose)) / len(letters), len(letters)
+
+
+@pytest.mark.unit
+def test_the_documentation_is_written_in_korean():
+    """Guard: prose in tracked Markdown stays Korean.
+
+    The split is deliberate -- Korean for anything a reader reads, English for
+    anything a machine or a git log reads -- and it drifts silently, one new
+    English page at a time, because nothing about an English document looks
+    broken.
+    """
+    english = []
+    for path in _tracked_markdown():
+        ratio, letters = _korean_ratio((ROOT / path).read_text(encoding="utf-8"))
+        if letters >= 200 and ratio < KOREAN_RATIO_FLOOR:
+            english.append(f"{path} ({ratio:.0%} Korean)")
+
+    assert english == [], "documents whose prose is not Korean: " + ", ".join(english)

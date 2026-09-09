@@ -1,31 +1,35 @@
 # Optimistic UI
 
-django-wireview provides several features for creating responsive, optimistic user interfaces that give immediate feedback while server operations are in progress.
+서버 왕복이 끝나기 전에 사용자에게 반응을 돌려주는 장치들이다. 로딩 클래스, `wire-disabled-with`,
+그리고 즉시 실행되는 JS 명령 셋으로 나뉜다.
 
-## Loading Classes
+## 로딩 클래스
 
-When an event is triggered, loading classes are automatically added to the triggering element:
+이벤트가 발생하면 그것을 일으킨 엘리먼트에 로딩 클래스가 자동으로 붙는다.
 
 ```html
-<button {% on "click" "save" %} class="btn">Save</button>
+<button {% on "click" "save" %} class="btn">저장</button>
 ```
 
-During the server round-trip, the button will have these classes:
-- `wireview-loading` - Always added
-- `wireview-click-loading` - Added for click events
-- `wireview-submit-loading` - Added for form submissions
-- `wireview-change-loading` - Added for change events
+서버 왕복이 진행되는 동안 이 버튼이 갖는 클래스는 다음과 같다.
 
-### Styling Loading States
+| 클래스 | 언제 |
+|--------|------|
+| `wireview-loading` | 항상 |
+| `wireview-click-loading` | click 이벤트 |
+| `wireview-submit-loading` | 폼 제출 |
+| `wireview-change-loading` | change 이벤트 |
+
+### 로딩 상태 꾸미기
 
 ```css
-/* Show spinner during loading */
+/* 로딩 중 흐리게 */
 .wireview-loading {
   opacity: 0.7;
   cursor: wait;
 }
 
-/* Add spinner icon */
+/* 스피너 아이콘 */
 .wireview-click-loading::after {
   content: "";
   display: inline-block;
@@ -45,115 +49,115 @@ During the server round-trip, the button will have these classes:
 
 ## wire-disabled-with
 
-The `wire-disabled-with` attribute provides instant feedback by:
-1. Disabling the element immediately on click
-2. Replacing the button text with a loading message
-3. Restoring the original state when the operation completes
+`wire-disabled-with`는 세 가지를 한다.
 
-### Basic Usage
+1. 클릭 즉시 엘리먼트를 비활성화한다
+2. 버튼 텍스트를 로딩 문구로 바꾼다
+3. 작업이 끝나면 원래 상태로 되돌린다
+
+### 기본 사용
 
 ```html
 <button
   {% on "click" "save" %}
-  wire-disabled-with="Saving..."
+  wire-disabled-with="저장 중..."
 >
-  Save
+  저장
 </button>
 ```
 
-When clicked:
-1. Button becomes disabled (`disabled="true"`)
-2. Text changes from "Save" to "Saving..."
-3. After server response, text returns to "Save" and button is re-enabled
+클릭하면 버튼이 `disabled`가 되고 텍스트가 "저장 중..."으로 바뀌었다가, 서버 응답이 오면 "저장"으로
+돌아오며 다시 활성화된다.
 
-### Form Submission
+### 폼 제출
 
 ```html
 <form {% on "submit" "create_post" %}>
-  <input type="text" name="title" placeholder="Post title">
+  <input type="text" name="title" placeholder="글 제목">
   <textarea name="content"></textarea>
 
   <button
     type="submit"
-    wire-disabled-with="Creating post..."
+    wire-disabled-with="글 만드는 중..."
   >
-    Create Post
+    글 쓰기
   </button>
 </form>
 ```
 
-### With Icons (using Tailwind/Heroicons)
+### 아이콘과 함께 (Tailwind/Heroicons)
 
 ```html
 <button
   {% on "click" "delete_item" id=item.id %}
-  wire-disabled-with="Deleting..."
+  wire-disabled-with="삭제 중..."
   class="flex items-center gap-2"
 >
   <svg class="w-4 h-4"><!-- trash icon --></svg>
-  Delete
+  삭제
 </button>
 ```
 
-Note: When using `wire-disabled-with`, only the text content is replaced. If you need to preserve icons during loading, use CSS-based loading indicators instead.
+**주의.** `wire-disabled-with`는 **텍스트 콘텐츠만** 교체한다. 로딩 중에도 아이콘을 유지해야 하면
+이 속성 대신 CSS 기반 로딩 표시를 쓴다.
 
-### Combined with Loading Classes
+### 로딩 클래스와 함께
 
-You can combine `wire-disabled-with` with CSS loading styles:
+둘은 겹쳐 쓸 수 있다.
 
 ```html
 <button
   {% on "click" "process" %}
-  wire-disabled-with="Processing..."
+  wire-disabled-with="처리 중..."
   class="btn"
 >
-  Process Data
+  데이터 처리
 </button>
 ```
 
 ```css
-/* Dim the button and show cursor change */
+/* 버튼을 흐리게 하고 커서를 바꾼다 */
 .btn.wireview-loading {
   opacity: 0.6;
   cursor: wait;
 }
 ```
 
-## JS Commands for Immediate Feedback
+## 즉시 반응은 JS 명령으로
 
-For instant UI updates without waiting for the server, use JS commands:
+서버를 기다리지 않고 UI를 바로 바꾸려면 JS 명령을 쓴다.
 
 ```html
 <button
   {% on "click" "toggle_menu" %}
-  wire-disabled-with="Opening..."
+  wire-disabled-with="여는 중..."
   onclick="{{ JS().toggle_class(target='#menu', names='hidden') }}"
 >
-  Toggle Menu
+  메뉴 토글
 </button>
 ```
 
-The `JS()` command executes immediately, while `wire-disabled-with` handles the server round-trip feedback.
+`JS()` 명령은 그 자리에서 실행되고, 서버 왕복에 대한 피드백은 `wire-disabled-with`가 맡는다.
 
-## Best Practices
+## 권장 사항
 
-1. **Use meaningful loading text**: "Saving..." is better than "Loading..."
-2. **Keep it short**: Long text may cause layout shifts
-3. **Indicate the action**: Match the loading text to the operation
-4. **Provide visual feedback**: Combine with CSS styles for opacity/cursor changes
+1. **의미 있는 문구를 쓴다.** "로딩 중..."보다 "저장 중..."이 낫다
+2. **짧게 쓴다.** 긴 문구는 레이아웃을 흔든다
+3. **동작을 그대로 반영한다.** 버튼이 하는 일과 로딩 문구를 맞춘다
+4. **시각적 신호를 더한다.** opacity·cursor를 바꾸는 CSS와 함께 쓴다
 
-### Examples of Good Loading Text
+### 로딩 문구 예
 
-| Button Text | Loading Text |
-|-------------|--------------|
-| Save | Saving... |
-| Delete | Deleting... |
-| Submit | Submitting... |
-| Create Account | Creating account... |
-| Send Message | Sending... |
-| Add to Cart | Adding... |
+| 버튼 | 로딩 문구 |
+|------|-----------|
+| 저장 | 저장 중... |
+| 삭제 | 삭제 중... |
+| 제출 | 제출 중... |
+| 계정 만들기 | 계정 만드는 중... |
+| 메시지 보내기 | 보내는 중... |
+| 장바구니에 담기 | 담는 중... |
 
-## Phoenix LiveView Comparison
+## Phoenix LiveView 대응
 
 | Phoenix LiveView | django-wireview |
 |-----------------|-----------------|
@@ -162,29 +166,30 @@ The `JS()` command executes immediately, while `wire-disabled-with` handles the 
 | `phx-submit-loading` | `wireview-submit-loading` |
 | `phx-change-loading` | `wireview-change-loading` |
 
-## Performance Profiling
+## 응답 시간 측정
 
-Use the built-in profiling tools to measure response times:
+내장 프로파일링으로 실제 왕복 시간을 잴 수 있다.
 
 ```javascript
-// Enable profiling in browser console
+// 브라우저 콘솔에서 켠다
 wireview.debug.enableProfiling();
 
-// Interact with the page...
+// 페이지를 조작한 뒤...
 
-// View the report
+// 리포트를 본다
 wireview.debug.profilingReport();
 
-// Disable profiling
+// 끈다
 wireview.debug.disableProfiling();
 ```
 
-The profiling report includes:
-- **Patch times**: Time to apply DOM morphs
-- **Round-trip times**: Time from event send to response receive
-- **Statistics**: min, max, avg, median for each metric
+리포트에 담기는 것:
 
-## See Also
+- **patch 시간** — DOM morph를 적용하는 데 걸린 시간
+- **왕복 시간** — 이벤트를 보낸 시점부터 응답을 받은 시점까지
+- **통계** — 항목별 최소·최대·평균·중앙값
 
-- [JS Commands](../reference/js-commands.md)
-- [Event Handling](../tutorials/02-counter-component.md)
+## 관련
+
+- [JS 명령](../implementation/js-commands.md)
+- [튜토리얼 02 — Counter 컴포넌트](../tutorials/02-counter-component.md)

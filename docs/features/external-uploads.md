@@ -1,18 +1,19 @@
-# External Uploads (S3/GCS)
+# External 업로드 (S3/GCS)
 
-django-wireview supports external uploads directly to cloud storage services like Amazon S3 or Google Cloud Storage. This bypasses the Django server, reducing bandwidth and improving upload performance for large files.
+파일을 Django 서버가 아니라 클라우드 스토리지로 **직접** 올린다. 서버 대역폭을 쓰지 않으므로 큰
+파일에 유리하고, 청크 엔드포인트가 요구하는 공유 저장소 조건([chunked-uploads.md](./chunked-uploads.md))에서도
+자유롭다.
 
-## Overview
+## 흐름
 
-External uploads work by:
-1. Client selects files for upload
-2. Server generates presigned URLs for direct upload
-3. Client uploads directly to cloud storage
-4. Server is notified when upload completes
+1. 클라이언트가 파일을 고른다
+2. 서버가 presigned URL을 만들어 준다
+3. 클라이언트가 스토리지로 직접 올린다
+4. 업로드가 끝나면 서버에 알린다
 
-## Quick Start
+## 빠른 시작
 
-### S3 Example
+### S3
 
 ```python
 import boto3
@@ -34,7 +35,7 @@ class FileUploader(Component):
         )
 
     def presign_s3_upload(self, entry, component):
-        """Generate presigned URL for S3 upload."""
+        """Generate a presigned URL for the S3 upload."""
         s3 = boto3.client(
             "s3",
             aws_access_key_id="YOUR_ACCESS_KEY",
@@ -51,7 +52,7 @@ class FileUploader(Component):
                 "Key": key,
                 "ContentType": entry.client_type,
             },
-            ExpiresIn=3600,  # 1 hour
+            ExpiresIn=3600,  # 1시간
         )
 
         return ExternalUploadMeta(
@@ -61,19 +62,22 @@ class FileUploader(Component):
             headers={"Content-Type": entry.client_type},
         )
 
-    async def upload_completed(self):
-        """Called when all uploads complete."""
-        # Process completed uploads
-        for upload in self.uploads["documents"]:
-            self.files.append({
-                "name": upload.name,
-                "ref": upload.ref,
-                # Store the S3 key for later retrieval
-                "key": f"uploads/{upload.ref}/{upload.name}",
-            })
+    async def on_upload_complete(self, name, entry):
+        """Called for each upload the client reports as finished."""
+        self.files.append(
+            {
+                "name": entry.client_name,
+                "ref": entry.ref,
+                # 나중에 꺼내 쓸 S3 키를 기억해 둔다
+                "key": f"uploads/{entry.ref}/{entry.client_name}",
+            }
+        )
 ```
 
-### Google Cloud Storage Example
+`on_upload_complete(name, entry)`가 완료 훅이다. **external 업로드에는 서버에 파일이 없으므로**
+`consume_uploads()`로 바이트를 읽을 수 없다. 스토리지의 키를 기억해 두는 것이 이 훅의 일이다.
+
+### Google Cloud Storage
 
 ```python
 from google.cloud import storage
@@ -91,7 +95,7 @@ class GCSUploader(Component):
         )
 
     def presign_gcs_upload(self, entry, component):
-        """Generate signed URL for GCS upload."""
+        """Generate a signed URL for the GCS upload."""
         client = storage.Client()
         bucket = client.bucket("your-bucket")
         blob = bucket.blob(f"uploads/{entry.ref}/{entry.client_name}")
@@ -113,56 +117,54 @@ class GCSUploader(Component):
 
 ## ExternalUploadMeta
 
-The `ExternalUploadMeta` dataclass configures external uploads:
+콜백이 돌려주는 값이다.
 
 ```python
 from wireview import ExternalUploadMeta
 
 meta = ExternalUploadMeta(
-    uploader="S3",           # Name for debugging/logging
-    url="https://...",       # Presigned upload URL
-    method="PUT",            # HTTP method (default: "PUT")
-    headers={                # Optional additional headers
+    uploader="S3",           # 디버깅·로그용 이름
+    url="https://...",       # presigned 업로드 URL
+    method="PUT",            # HTTP 메서드 (기본 "PUT")
+    headers={                # 추가 헤더 (선택)
         "Content-Type": "application/pdf",
         "x-amz-acl": "private",
     },
 )
 ```
 
-### Parameters
+| 인자 | 타입 | 필수 | 뜻 |
+|------|------|:----:|-----|
+| `uploader` | `str` | ✅ | 업로드 서비스 식별자 ("S3", "GCS" 등) |
+| `url` | `str` | ✅ | 직접 업로드용 presigned URL |
+| `method` | `str` | | HTTP 메서드 (기본 `"PUT"`) |
+| `headers` | `dict` | | 함께 보낼 헤더 |
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `uploader` | `str` | Yes | Identifier for the upload service (e.g., "S3", "GCS") |
-| `url` | `str` | Yes | Presigned URL for direct upload |
-| `method` | `str` | No | HTTP method (default: "PUT") |
-| `headers` | `dict` | No | Additional HTTP headers to include |
-
-## Template Usage
+## 템플릿
 
 ```html
 {% load wireview %}
 
 <div {% tag_header %}>
-    <h2>Upload Files</h2>
+    <h2>파일 올리기</h2>
 
-    <!-- Upload input -->
+    <!-- 파일 선택 input -->
     {% upload_input "documents" %}
 
-    <!-- Or drag and drop zone -->
-    {% upload_drop_zone "documents" %}
-        <p>Drop files here or click to select</p>
-    {% end_upload_drop_zone %}
+    <!-- 드래그 앤 드롭 영역. 속성 태그이므로 엘리먼트에 붙인다 -->
+    <div {% upload_drop_zone "documents" %} class="drop-area">
+        <p>여기에 파일을 놓거나 클릭해서 고르세요</p>
+    </div>
 
-    <!-- Show upload progress -->
+    <!-- 진행 상황 -->
     <ul>
-    {% for entry in uploads.documents %}
+    {% for entry in this.uploads.documents %}
         <li>
             {{ entry.client_name }}
             {% if entry.status == "uploading" %}
                 <progress value="{{ entry.progress }}" max="100"></progress>
             {% elif entry.status == "completed" %}
-                ✓ Uploaded
+                ✓ 완료
             {% elif entry.status == "error" %}
                 ✗ {{ entry.errors|join:", " }}
             {% endif %}
@@ -172,11 +174,13 @@ meta = ExternalUploadMeta(
 </div>
 ```
 
-## CORS Configuration
+드래그 중인 동안 드롭 영역에는 `wireview-drag-over` 클래스가 붙는다.
 
-For external uploads to work, you must configure CORS on your storage bucket.
+## CORS 설정
 
-### S3 CORS Configuration
+external 업로드는 브라우저가 스토리지로 직접 요청하므로 버킷에 CORS가 필요하다.
+
+### S3
 
 ```json
 {
@@ -192,7 +196,7 @@ For external uploads to work, you must configure CORS on your storage bucket.
 }
 ```
 
-### GCS CORS Configuration
+### GCS
 
 ```json
 [
@@ -205,52 +209,54 @@ For external uploads to work, you must configure CORS on your storage bucket.
 ]
 ```
 
-## Comparison: External vs Chunked Uploads
+## external vs 청크 업로드
 
-| Feature | External Upload | Chunked Upload |
-|---------|-----------------|----------------|
-| Server bandwidth | None (direct to storage) | Full file passes through server |
-| Upload speed | Faster for large files | Good for small files |
-| Resumability | Depends on storage | Built-in chunk resume |
-| Configuration | Requires CORS setup | Works out of the box |
-| File size | Up to storage limits | Limited by chunk memory |
+| 항목 | external | 청크 |
+|------|----------|------|
+| 서버 대역폭 | 안 쓴다 (스토리지로 직행) | 파일 전량이 서버를 지난다 |
+| 큰 파일 | 유리하다 | 작은 파일에 적합 |
+| 이어받기 | 스토리지에 달렸다 | **없다.** 클라이언트가 순차·무재시도로 보낸다 |
+| 설정 | CORS와 자격증명이 필요하다 | 워커들이 청크 저장소와 서명 키를 공유해야 한다 |
+| 서버에서 파일 읽기 | 못 읽는다. 스토리지 키만 남는다 | `consume_uploads()`로 읽는다 |
+| 파일 크기 | 스토리지 한도까지 | `max_file_size`까지 |
 
-## Best Practices
+## 권장 사항
 
-1. **Use for large files**: External uploads are most beneficial for files >10MB
-2. **Set appropriate expiration**: Use short expiration times (1 hour) for security
-3. **Include Content-Type**: Always set the Content-Type header for proper storage
-4. **Use private ACLs**: Default to private unless public access is needed
-5. **Generate unique keys**: Use the entry `ref` to ensure unique storage keys
-6. **Handle errors gracefully**: Provide user feedback for upload failures
+1. **큰 파일에 쓴다.** 10MB를 넘으면 이점이 뚜렷하다
+2. **만료를 짧게 잡는다.** 1시간 정도
+3. **Content-Type을 반드시 넣는다.** 스토리지에 제대로 저장되게 한다
+4. **기본을 private ACL로 둔다.** 공개가 꼭 필요할 때만 연다
+5. **키를 고유하게 만든다.** `entry.ref`를 섞는다
+6. **실패를 사용자에게 알린다.** 아래 오류 처리 참고
 
-## Error Handling
+## 오류 처리
 
-The external upload callback can raise exceptions to reject uploads:
+콜백에서 예외를 던지면 그 업로드가 거절된다.
 
 ```python
 def presign_upload(self, entry, component):
-    # Reject uploads from unauthenticated users
+    # 로그인하지 않은 사용자의 업로드를 막는다
     if not component.wire.user.is_authenticated:
         raise ValueError("Authentication required for uploads")
 
-    # Reject files that are too large for your storage plan
+    # 요금제 한도를 넘는 파일을 막는다
     if entry.client_size > 100 * 1024 * 1024:
         raise ValueError("Files over 100MB are not allowed")
 
-    # Generate presigned URL...
+    # presigned URL 생성...
     return ExternalUploadMeta(...)
 ```
 
-## Security Considerations
+## 보안
 
-1. **Validate file types server-side**: Don't rely solely on client-side validation
-2. **Use short-lived URLs**: Presigned URLs should expire quickly
-3. **Implement rate limiting**: Prevent abuse by limiting upload frequency
-4. **Scan uploaded files**: Consider virus scanning for uploaded content
-5. **Authenticate users**: Ensure only authorized users can upload
+1. **파일 종류를 서버에서 검증한다.** 클라이언트 검증만 믿지 않는다
+2. **URL 수명을 짧게 한다.**
+3. **속도 제한을 건다.** 업로드 빈도를 제한해 남용을 막는다
+4. **업로드된 파일을 검사한다.** 바이러스 스캔을 고려한다
+5. **사용자를 인증한다.** 콜백 안에서 권한을 확인한다
 
-## See Also
+## 관련
 
-- [File Uploads Guide](../guides/file-uploads.md)
+- [튜토리얼 08 — 파일 업로드](../tutorials/08-file-uploads.md)
+- [chunked-uploads.md](./chunked-uploads.md) — 서버를 지나는 청크 경로
 - [Phoenix LiveView External Uploads](https://hexdocs.pm/phoenix_live_view/uploads.html#external-uploads)

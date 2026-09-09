@@ -1,86 +1,84 @@
-# Performance Guide
+# 성능 가이드
 
-Optimize django-wireview for maximum performance.
+## async/sync 전환 이해하기
 
-## Understanding Async/Sync Transitions
+### 문제
 
-### The Problem
-
-Django Channels operates in an async context, but Django templates and ORM are synchronous. This requires context transitions:
+Django Channels는 async 컨텍스트에서 돌지만 Django 템플릿과 ORM은 동기다. 그래서 전환이 생긴다.
 
 ```
 ASYNC (Consumer)
-  → sync_to_async (template render)
-    → SYNC (Django template)
+  → sync_to_async (템플릿 렌더)
+    → SYNC (Django 템플릿)
 ```
 
-When nested transitions occur, performance degrades:
+전환이 중첩되면 성능이 나빠진다.
 
 ```
 ASYNC (Consumer)
   → sync_to_async
-    → SYNC (render)
-      → async_to_sync (async property)  # Extra overhead!
-        → ASYNC (property coroutine)
+    → SYNC (렌더)
+      → async_to_sync (async 프로퍼티)  # 추가 비용!
+        → ASYNC (프로퍼티 코루틴)
 ```
 
-Each `async_to_sync` call creates a new event loop, adding ~0.5-2ms overhead.
+`async_to_sync` 호출마다 이벤트 루프가 새로 만들어지고, 대략 0.5~2ms가 붙는다.
 
-### The Solution (v0.x.x+)
+### 지금의 동작
 
-django-wireview now resolves async properties **before** entering sync context:
+wireview는 동기 컨텍스트로 들어가기 **전에** async 프로퍼티를 먼저 해소한다.
 
 ```
 ASYNC (Consumer)
-  → await async properties  # Direct await, no overhead
-  → sync_to_async (template render)
-    → SYNC (Django template)  # Context already resolved
+  → async 프로퍼티를 await  # 직접 await, 추가 비용 없음
+  → sync_to_async (템플릿 렌더)
+    → SYNC (Django 템플릿)  # 컨텍스트는 이미 해소됨
 ```
 
-## Detecting Performance Issues
+## 문제를 찾아내기
 
-### Enable Transition Tracking
+### 전환 추적 켜기
 
-During development, enable detection:
+개발 중에는 감지를 켜 둔다.
 
 ```python
 # settings.py
 WIREVIEW = {
     "DEBUG_SYNC_TRANSITIONS": True,
-    "SYNC_TRANSITION_WARNING_THRESHOLD": 2,  # Warn at depth > 2
-    "SYNC_TRANSITION_ERROR_THRESHOLD": 3,    # Error at depth > 3
+    "SYNC_TRANSITION_WARNING_THRESHOLD": 2,  # 깊이 2 초과면 경고
+    "SYNC_TRANSITION_ERROR_THRESHOLD": 3,    # 깊이 3 초과면 오류
 }
 ```
 
-This logs warnings when nested transitions are detected:
+중첩 전환이 감지되면 이런 경고가 남는다.
 
 ```
 WARNING wireview.sync_detector: Nested sync context detected (total depth=3)
 at _run_coro. This may cause performance degradation.
 ```
 
-### Disable in Production
+### 운영에서는 끈다
 
 ```python
 WIREVIEW = {
-    "DEBUG_SYNC_TRANSITIONS": False,  # Zero overhead when disabled
+    "DEBUG_SYNC_TRANSITIONS": False,  # 꺼 두면 비용 0
 }
 ```
 
-## Best Practices
+## 권장 사항
 
-### 1. Pre-load Data in `joined()`
+### 1. 데이터는 `joined()`에서 미리 읽는다
 
-Instead of async properties, load data in the `joined()` lifecycle method:
+async 프로퍼티 대신 라이프사이클 메서드에서 읽는다.
 
 ```python
-# Bad: Async property accessed during render
+# 나쁨: 렌더 중에 접근하는 async 프로퍼티
 class UserProfile(Component):
     @property
     async def recent_posts(self):
         return await Post.objects.filter(user=self.user)[:5]
 
-# Good: Pre-load in joined()
+# 좋음: joined()에서 미리 읽는다
 class UserProfile(Component):
     posts: list[Post] = []
 
@@ -90,20 +88,20 @@ class UserProfile(Component):
         )
 ```
 
-### 2. Use `asend_to()` in Components
+### 2. 컴포넌트 안에서는 `asend_to()`를 쓴다
 
-Prefer async functions when in async context:
+async 컨텍스트에서는 async 함수를 쓴다.
 
 ```python
-# Bad: Uses async_to_sync internally
+# 나쁨: 내부적으로 async_to_sync를 쓴다
 from wireview.utils import send_notification
 
 class ChatRoom(Component):
     async def send_message(self, text: str):
-        # Creates nested transition if called from async
+        # async에서 부르면 중첩 전환이 생긴다
         send_notification("chat_room_1", message=text)
 
-# Good: Pure async, no transitions
+# 좋음: 순수 async, 전환 없음
 from wireview.utils import asend_notification
 
 class ChatRoom(Component):
@@ -111,18 +109,18 @@ class ChatRoom(Component):
         await asend_notification("chat_room_1", message=text)
 ```
 
-### 3. Batch Database Queries
+### 3. 데이터베이스 질의를 묶는다
 
-Reduce sync_to_async calls by batching:
+`sync_to_async` 호출 횟수 자체를 줄인다.
 
 ```python
-# Bad: Multiple sync_to_async calls
+# 나쁨: sync_to_async를 여러 번
 async def joined(self):
     self.user = await sync_to_async(User.objects.get)(pk=self.user_id)
     self.posts = await sync_to_async(list)(self.user.posts.all())
     self.comments = await sync_to_async(list)(self.user.comments.all())
 
-# Good: Single sync_to_async call with prefetch
+# 좋음: prefetch와 함께 한 번에
 async def joined(self):
     @sync_to_async
     def load_user_data():
@@ -132,9 +130,9 @@ async def joined(self):
     self.user, self.posts, self.comments = await load_user_data()
 ```
 
-### 4. Use Streams for Large Lists
+### 4. 큰 리스트에는 Streams를 쓴다
 
-Streams avoid re-rendering entire lists:
+리스트 전체를 다시 렌더하지 않는다.
 
 ```python
 class ItemList(Component):
@@ -142,11 +140,11 @@ class ItemList(Component):
 
     async def add_item(self, name: str):
         item = await Item.objects.acreate(name=name)
-        # Only sends the new item, not the entire list
+        # 리스트 전체가 아니라 새 항목만 보낸다
         await self.stream_insert("items", item, at=0)
 ```
 
-### 5. Skip Unnecessary Renders
+### 5. 필요 없는 렌더를 건너뛴다
 
 ```python
 class Counter(Component):
@@ -154,38 +152,38 @@ class Counter(Component):
 
     async def increment_silent(self):
         self.count += 1
-        # Skip render if UI doesn't need update
+        # UI를 갱신할 필요가 없으면 렌더를 건너뛴다
         self.wire.skip_render()
 ```
 
-## Performance Tuning
+## 튜닝
 
-### HTML Diff Settings
+### HTML diff 설정
 
-> Partial diffs depend on the marker comments emitted by `render_with_markers()`.
-> `USE_HMIN` strips HTML comments, which silently disables partial diffs.
-> See [features/html-diff.md](./features/html-diff.md) for the diff format and measured payloads.
+> 부분 diff는 `render_with_markers()`가 남기는 주석 마커에 의존한다.
+> `USE_HMIN`은 HTML 주석을 제거하므로 **부분 diff를 조용히 끈다.**
+> diff 형식과 실측 페이로드는 [features/html-diff.md](./features/html-diff.md)에 있다.
 
 ```python
 WIREVIEW = {
-    "USE_HTML_DIFF": True,   # Send only changes, not full HTML
-    "USE_HMIN": True,        # Minify HTML (requires django-hmin)
+    "USE_HTML_DIFF": True,   # 전체 HTML이 아니라 변경분만 보낸다
+    "USE_HMIN": True,        # HTML 압축 (django-hmin 필요)
 }
 ```
 
-### Template Optimization
+### 템플릿
 
-1. **Use template fragments**: Smaller templates = faster renders
-2. **Avoid complex template logic**: Move to Python code
-3. **Cache template compilation**: Django does this by default
+1. **템플릿을 잘게 나눈다.** 작을수록 렌더가 빠르다
+2. **복잡한 템플릿 로직을 피한다.** Python 쪽으로 옮긴다
+3. **템플릿 컴파일 캐시는 Django가 기본으로 한다**
 
-### Database Optimization
+### 데이터베이스
 
-1. **Use `select_related()` and `prefetch_related()`**
-2. **Add database indexes for filtered fields**
-3. **Use connection pooling** (`CONN_MAX_AGE`)
+1. **`select_related()`·`prefetch_related()`를 쓴다**
+2. **필터에 쓰는 필드에 인덱스를 건다**
+3. **커넥션 풀링을 쓴다** (`CONN_MAX_AGE`)
 
-### Channel Layer Optimization
+### 채널 레이어
 
 ```python
 CHANNEL_LAYERS = {
@@ -193,18 +191,18 @@ CHANNEL_LAYERS = {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
             "hosts": [("redis", 6379)],
-            "capacity": 1500,      # Max messages in memory
-            "expiry": 10,          # Message expiry in seconds
+            "capacity": 1500,      # 메모리에 둘 최대 메시지 수
+            "expiry": 10,          # 메시지 만료(초)
         },
     },
 }
 ```
 
-## Profiling
+## 프로파일링
 
 ### Django Debug Toolbar
 
-Install and configure for development:
+개발 환경에 설치한다.
 
 ```python
 if DEBUG:
@@ -212,7 +210,7 @@ if DEBUG:
     MIDDLEWARE = ["debug_toolbar.middleware.DebugToolbarMiddleware"] + MIDDLEWARE
 ```
 
-### Custom Profiling
+### 직접 재기
 
 ```python
 import time
@@ -225,36 +223,36 @@ class ProfiledComponent(Component):
         start = time.perf_counter()
         result = await super().render_diff(*args, **kwargs)
         duration = time.perf_counter() - start
-        if duration > 0.1:  # Log slow renders
+        if duration > 0.1:  # 느린 렌더만 기록한다
             log.warning(f"Slow render: {self._name} took {duration:.3f}s")
         return result
 ```
 
-### Async Profiling with py-spy
+### py-spy
 
 ```bash
 py-spy record -o profile.svg --pid <PID>
 ```
 
-## Performance Benchmarks
+## 벤치마크
 
-> Measure instead of guessing: `make bench` runs the in-process and WebSocket benchmarks in `bench/`,
-> and `make bench-compare BASE=<ref>` benchmarks a past commit next to the current tree.
-> See [bench/README.md](../bench/README.md).
+> 짐작하지 말고 잰다. `make bench`가 `bench/`의 인프로세스·WebSocket 벤치마크를 돌리고,
+> `make bench-compare BASE=<ref>`가 과거 커밋을 현재 트리 옆에서 함께 잰다.
+> 사용법과 해석은 [bench/README.md](../bench/README.md).
 
-### Expected Performance
+### 기대치
 
-| Operation | Target | Notes |
-|-----------|--------|-------|
-| WebSocket connect | < 50ms | Initial connection |
-| Component join | < 100ms | Including joined() |
-| Event handler | < 50ms | User interaction |
-| Render diff | < 20ms | HTML generation |
-| Channel broadcast | < 10ms | Redis pub/sub |
+| 동작 | 목표 | 비고 |
+|------|------|------|
+| WebSocket 연결 | < 50ms | 최초 연결 |
+| 컴포넌트 join | < 100ms | `joined()` 포함 |
+| 이벤트 핸들러 | < 50ms | 사용자 조작 |
+| 렌더 diff | < 20ms | HTML 생성 |
+| 채널 브로드캐스트 | < 10ms | Redis pub/sub |
 
-### Load Testing
+### 부하 테스트
 
-Use `locust` for WebSocket load testing:
+WebSocket 부하는 `locust`로 잰다.
 
 ```python
 from locust import HttpUser, task
@@ -266,32 +264,32 @@ class WireviewUser(SocketIOUser):
         self.send('{"command": "join", "name": "Counter"}')
 ```
 
-## Troubleshooting
+## 문제 해결
 
-### Slow Initial Load
+### 최초 로딩이 느리다
 
-1. Check `joined()` for slow database queries
-2. Profile with Django Debug Toolbar
-3. Consider lazy loading large datasets
+1. `joined()`에 느린 질의가 있는지 본다
+2. Django Debug Toolbar로 프로파일링한다
+3. 큰 데이터셋은 지연 로딩을 고려한다
 
-### High Memory Usage
+### 메모리를 많이 쓴다
 
-1. Use streams instead of storing large lists
-2. Check for circular references
-3. Monitor component instance count
+1. 큰 리스트를 상태에 담지 말고 Streams를 쓴다
+2. 순환 참조를 확인한다
+3. 컴포넌트 인스턴스 수를 관찰한다
 
-### Frequent Disconnections
+### 연결이 자주 끊긴다
 
-1. Check WebSocket proxy timeout settings
-2. Verify Redis connection stability
-3. Monitor server resources
+1. WebSocket 프록시의 타임아웃 설정을 본다
+2. Redis 연결이 안정적인지 확인한다
+3. 서버 자원을 관찰한다
 
-### Async/Sync Warnings
+### async/sync 경고가 뜬다
 
-If you see "Nested sync context detected":
+"Nested sync context detected"가 보이면
 
-1. Check for async properties in templates
-2. Use `joined()` for data loading
-3. Review async function call chains
+1. 템플릿에서 쓰는 async 프로퍼티를 찾는다
+2. 데이터 로딩을 `joined()`로 옮긴다
+3. async 호출 사슬을 다시 본다
 
-See [Deployment Guide](DEPLOYMENT.md) for production configuration.
+운영 설정은 [배포 가이드](DEPLOYMENT.md)에 있다.

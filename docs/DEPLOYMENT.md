@@ -1,12 +1,10 @@
-# Deployment Guide
+# 배포 가이드
 
-Production deployment guide for django-wireview applications.
+django-wireview 앱을 운영에 올릴 때의 설정이다.
 
-## ASGI Server Configuration
+## ASGI 서버
 
-### Recommended: Uvicorn with uvloop
-
-For best async performance, use Uvicorn with uvloop:
+### 권장: uvicorn + uvloop
 
 ```bash
 pip install uvicorn[standard] uvloop
@@ -14,20 +12,19 @@ uvicorn myproject.asgi:application --host 0.0.0.0 --port 8000 --workers 4 --loop
     --ws-per-message-deflate false
 ```
 
-**Why turn off permessage-deflate.** uvicorn negotiates WebSocket compression by default and
-each connection then holds a zlib deflate and inflate context: 159 KB of RSS per connection,
-measured. That is the whole reason uvicorn looks 4× heavier than daphne per connection
-(211 KB vs 46 KB at 2,000 connections; 51 KB with compression off). wireview sends small diffs
-that barely compress — a typical event payload only shrinks by 16% — so the memory buys almost
-no bandwidth. Keep compression on only if your first renders or streams push large HTML, and
-measure both ways first:
+**permessage-deflate를 끄는 이유.** uvicorn은 WebSocket 압축을 기본으로 협상하고, 그러면 연결마다
+zlib의 deflate·inflate 컨텍스트를 들고 있게 된다 — 실측 연결당 159KB다. uvicorn이 연결당 daphne보다
+4배 무거워 보이는 이유가 통째로 이것이다(2,000연결에서 211KB 대 46KB, 압축을 끄면 51KB). wireview가
+보내는 것은 잘 안 줄어드는 작은 diff라서(전형적인 이벤트 페이로드가 16% 남짓 줄어든다) 그 메모리로
+사는 대역폭이 거의 없다. 첫 렌더나 스트림이 큰 HTML을 밀어내는 경우에만 켜 두고, 켜기 전에 양쪽을
+재 본다.
 
 ```bash
 make bench ARGS="--connections 2000 --server uvicorn"
 make bench ARGS="--connections 2000 --server uvicorn-nodeflate"
 ```
 
-**Docker example:**
+**Docker 예:**
 
 ```dockerfile
 FROM python:3.12-slim
@@ -41,36 +38,34 @@ COPY . .
 CMD ["uvicorn", "myproject.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--loop", "uvloop"]
 ```
 
-### Alternative: Daphne
+### 대안: Daphne
 
-Daphne is the reference ASGI server from Django Channels:
+Django Channels의 레퍼런스 ASGI 서버다.
 
 ```bash
 pip install daphne
 daphne -b 0.0.0.0 -p 8000 myproject.asgi:application
 ```
 
-### Alternative: Hypercorn
+### 대안: Hypercorn
 
-Hypercorn supports HTTP/2 and has good performance:
+HTTP/2를 지원한다.
 
 ```bash
 pip install hypercorn
 hypercorn myproject.asgi:application --bind 0.0.0.0:8000 --workers 4
 ```
 
-## Channel Layer Configuration
+## 채널 레이어
 
-This project targets NATS: it is what the E2E suite runs on and what the deployment
-recipes below assume. channels_redis is fully supported and is the right choice when
-Redis is already part of the infrastructure. Measured side by side they perform the
-same (`docs/design/transport-abstraction.md` §5-3), so the choice is operational.
+이 프로젝트가 겨냥하는 것은 NATS다. E2E 스위트가 그 위에서 돌고 아래 배포 레시피도 그것을 전제한다.
+channels_redis도 완전히 지원하며, Redis가 이미 인프라에 있다면 그쪽이 맞다. 나란히 재 보면 성능은
+대등하므로(`docs/design/transport-abstraction.md` §5-3) 선택은 운영 문제다.
 
-### Production: NATS (what this project targets)
+### 운영: NATS
 
-`channels-nats` runs the channel layer on a NATS server: one Go binary with native builds
-for Linux, macOS and Windows, no persistence to operate. Consumers and wireview code are
-unchanged; only the settings differ.
+`channels-nats`는 채널 레이어를 NATS 서버 위에서 돌린다. Go 바이너리 하나이고 Linux·macOS·Windows
+네이티브 빌드가 있으며 운영할 영속성 계층이 없다. 컨슈머와 wireview 코드는 그대로이고 설정만 다르다.
 
 ```python
 CHANNEL_LAYERS = {
@@ -81,12 +76,11 @@ CHANNEL_LAYERS = {
 }
 ```
 
-Several server processes pointed at the same NATS server share one layer. That is all a
-single-server SQLite deployment needs, and it is the only piece the SQLite plus Windows
-premise was missing. See the channels-nats README for token auth, the Windows service
-setup, and how the layer differs from channels_redis.
+같은 NATS 서버를 가리키는 서버 프로세스 여럿이 레이어 하나를 공유한다. 단일 서버 SQLite 배포에
+필요한 것은 이게 전부이고, SQLite + Windows 전제에서 빠져 있던 조각이 이것이었다. 토큰 인증,
+Windows 서비스 등록, channels_redis와의 차이는 channels-nats README에 있다.
 
-### Production: Redis
+### 운영: Redis
 
 ```python
 # settings.py
@@ -102,7 +96,7 @@ CHANNEL_LAYERS = {
 }
 ```
 
-**Redis Cluster:**
+**Redis 클러스터:**
 
 ```python
 CHANNEL_LAYERS = {
@@ -119,10 +113,10 @@ CHANNEL_LAYERS = {
 }
 ```
 
-### Development: In-Memory
+### 개발: In-Memory
 
-Development and single-process testing only. With more than one process it does not fail,
-it just delivers broadcasts to the connections in the sending process and drops the rest:
+개발과 단일 프로세스 테스트 전용이다. 프로세스가 둘 이상이면 **실패하지 않고** 보내는 프로세스의
+연결에만 브로드캐스트를 전달하고 나머지는 버린다.
 
 ```python
 CHANNEL_LAYERS = {
@@ -132,24 +126,24 @@ CHANNEL_LAYERS = {
 }
 ```
 
-### Windows single server: uvicorn × N behind Caddy, NATS, SQLite
+### Windows 단일 서버: uvicorn × N + Caddy, NATS, SQLite
 
-Measured on 2026-09-08 in a Windows 11 guest (`docs/design/transport-abstraction.md` §5-2,
-`bench/results/win11-parlab-*.json`). Two Windows facts decide the layout:
+2026-09-08에 Windows 11 게스트에서 실측했다(`docs/design/transport-abstraction.md` §5-2,
+`bench/results/win11-parlab-*.json`). 구성을 결정하는 Windows 사실이 둘이다.
 
-- **Do not run daphne on Windows.** daphne pins asyncio to the selector loop, and CPython's
-  Windows `select()` takes at most 512 sockets. A daphne process dies with
-  `ValueError: too many file descriptors in select()` at about 500 connections.
-- **Do not use `uvicorn --workers` on Windows.** Multi-worker mode falls back to the same
-  selector loop. A single-process uvicorn runs on IOCP and held 2,000 connections in the
-  benchmark. Run one uvicorn per port and let Caddy spread the connections.
+- **Windows에서 daphne를 쓰지 않는다.** daphne는 asyncio를 selector 루프로 고정하는데 CPython의
+  Windows `select()`는 소켓 512개가 상한이다. daphne 프로세스는 연결 500개 근처에서
+  `ValueError: too many file descriptors in select()`로 죽는다.
+- **Windows에서 `uvicorn --workers`를 쓰지 않는다.** 다중 워커 모드도 같은 selector 루프로 떨어진다.
+  단일 프로세스 uvicorn은 IOCP 위에서 돌아 벤치마크에서 2,000연결을 버텼다. 포트마다 uvicorn을
+  하나씩 띄우고 Caddy가 연결을 분배하게 한다.
 
-Also drop `"daphne"` from `INSTALLED_APPS` on Windows: it only backs `runserver`, and importing
-it switches the asyncio policy for the whole process.
+Windows에서는 `INSTALLED_APPS`에서 `"daphne"`도 뺀다. `runserver`를 받쳐 줄 뿐인데 import되는 것만으로
+프로세스 전체의 asyncio 정책이 바뀐다.
 
 ```powershell
-# One single-process uvicorn per core, each on its own port (no --workers).
-# Register each as a service with NSSM or a scheduled task in production.
+# 코어마다 단일 프로세스 uvicorn 하나, 각자 자기 포트에 (--workers 없이).
+# 운영에서는 NSSM이나 작업 스케줄러로 서비스 등록한다.
 1..4 | ForEach-Object {
     Start-Process uvicorn -ArgumentList "myproject.asgi:application --host 127.0.0.1 --port $(8000 + $_)"
 }
@@ -161,10 +155,10 @@ it switches the asyncio policy for the whole process.
 }
 ```
 
-Caddy is a single binary, handles WebSocket upgrades on its own, and can also terminate TLS.
-The channel layer is channels-nats with `nats-server.exe` as a Windows service (see the
-channels-nats README). SQLite is shared by every process, so turn on WAL and a busy timeout.
-Django 5.1+ can run the pragmas itself:
+Caddy는 바이너리 하나이고 WebSocket 업그레이드를 알아서 처리하며 TLS 종단도 맡을 수 있다. 채널
+레이어는 channels-nats이고 `nats-server.exe`를 Windows 서비스로 띄운다(channels-nats README).
+SQLite는 모든 프로세스가 공유하므로 WAL과 busy timeout을 켠다. Django 5.1+는 pragma를 직접 실행할 수
+있다.
 
 ```python
 DATABASES = {
@@ -180,15 +174,14 @@ DATABASES = {
 }
 ```
 
-On Django 4.2 and 5.0 run the same pragmas from a `connection_created` signal handler.
+Django 4.2와 5.0에서는 같은 pragma를 `connection_created` 시그널 핸들러에서 실행한다.
 
-Sizing: uvicorn costs about 160 KB of RSS per connection on Windows, nearly all of it
-permessage-deflate — pass `--ws-per-message-deflate false` and it drops to roughly what daphne
-needs (see [ASGI server configuration](#recommended-uvicorn-with-uvloop)). Event throughput
-scales with the number of uvicorn processes: 1 → 4 processes gave 3× the events per second and
-a 3.6× faster broadcast in the benchmark.
+용량 산정: Windows에서 uvicorn은 연결당 약 160KB의 RSS를 쓰는데 거의 전부가 permessage-deflate다.
+`--ws-per-message-deflate false`를 주면 daphne 수준으로 떨어진다([ASGI 서버](#권장-uvicorn--uvloop)).
+이벤트 처리량은 uvicorn 프로세스 수에 비례한다 — 벤치마크에서 1개에서 4개로 늘렸을 때 초당 이벤트가
+3배, 브로드캐스트가 3.6배 빨라졌다.
 
-## Django Settings for Production
+## 운영용 Django 설정
 
 ```python
 # settings.py
@@ -196,58 +189,57 @@ a 3.6× faster broadcast in the benchmark.
 DEBUG = False
 ALLOWED_HOSTS = ["yourdomain.com"]
 
-# Wireview settings
+# wireview 설정
 WIREVIEW = {
-    "USE_HTML_DIFF": True,       # Enable efficient diff updates
-    "USE_HMIN": True,            # Enable HTML minification (install django-hmin)
-    "DEBUG_SYNC_TRANSITIONS": False,  # Disable in production
-    # Signed component state (data-state)
-    "STATE_MAX_AGE": 14 * 24 * 3600,  # How long a data-state stays valid
-    "STATE_REFRESH_AFTER": None,      # None = STATE_MAX_AGE // 2
-    "STATE_ACCEPT_LEGACY": False,     # See "Upgrading" below
+    "USE_HTML_DIFF": True,            # 변경분만 보낸다
+    "USE_HMIN": True,                 # HTML 압축 (django-hmin 필요)
+    "DEBUG_SYNC_TRANSITIONS": False,  # 운영에서는 끈다
+    # 서명 상태 (data-state)
+    "STATE_MAX_AGE": 14 * 24 * 3600,  # data-state 유효 기간
+    "STATE_REFRESH_AFTER": None,      # None이면 STATE_MAX_AGE // 2
+    "STATE_ACCEPT_LEGACY": False,     # 아래 "업그레이드" 참고
+    # 서명 키. 미설정이면 SECRET_KEY를 쓴다
+    "SIGNING_KEY": None,
+    "SIGNING_KEY_FALLBACKS": None,
 }
 
-# Security
+# 보안
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_SECURE = True
 SECURE_SSL_REDIRECT = True
 
-# Database connection pooling (recommended)
+# 데이터베이스 커넥션 재사용 (권장)
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": "mydb",
-        "CONN_MAX_AGE": 60,  # Connection pooling
+        "CONN_MAX_AGE": 60,
         "CONN_HEALTH_CHECKS": True,
     }
 }
 ```
 
-## Upgrading: the signed component state
+## 업그레이드: 서명된 컴포넌트 상태
 
-Since the v1 state envelope (`#76`) the value in `data-state` is signed together with the
-component class it was issued for, and it expires after `WIREVIEW["STATE_MAX_AGE"]`
-(14 days by default). The two formats used before the envelope carry no class, so the server
-rejects them: a browser tab that was rendered by an older deploy reconnects, has its `join`
-refused, and gets a `reload` command that loads the page again from the new deploy. That is
-the intended recovery — the page comes back with the current auth context and a fresh token.
+v1 상태 봉투(`#76`) 이후 `data-state` 값은 **발급된 컴포넌트 클래스와 함께** 서명되고
+`WIREVIEW["STATE_MAX_AGE"]`(기본 14일)이 지나면 만료된다. 봉투 이전의 두 형식은 클래스를 담고 있지
+않으므로 서버가 거절한다. 예전 배포가 그린 탭이 다시 붙으면 `join`이 거절되고 `reload` 명령을 받아
+새 배포에서 페이지를 다시 읽는다. 그것이 의도된 복구다 — 현재 인증 컨텍스트와 새 토큰으로 돌아온다.
 
-Two things follow for a rolling deploy:
+롤링 배포에서 따라오는 것이 둘이다.
 
-- **Unsaved input in an open tab is lost when that tab reloads.** If that matters, set
-  `WIREVIEW["STATE_ACCEPT_LEGACY"] = True` for the length of the rollout window and turn it
-  back off afterwards. While it is on, pre-envelope states are accepted and logged at WARNING,
-  and the class binding cannot be checked for them.
-- **All processes must share `SECRET_KEY`.** They already had to; the difference is that a
-  mismatch now shows up as reload loops rather than dropped components. The client refuses to
-  reload twice within 30 seconds and logs a warning instead, so a misconfiguration is visible
-  in the browser console rather than spinning the page.
+- **열려 있던 탭의 미저장 입력은 리로드와 함께 사라진다.** 그게 문제라면 롤아웃 구간 동안
+  `WIREVIEW["STATE_ACCEPT_LEGACY"] = True`로 두고 끝나면 되돌린다. 켜 둔 동안 봉투 이전 상태를 받아
+  주고 WARNING으로 기록하며, 그 상태들은 클래스 결합을 검사할 수 없다.
+- **모든 프로세스가 `SECRET_KEY`를 공유해야 한다.** 전에도 그랬지만, 이제 어긋나면 컴포넌트가 조용히
+  사라지는 대신 리로드 루프로 드러난다. 클라이언트는 30초 안에 두 번 리로드하기를 거부하고 경고를
+  남기므로, 설정 오류가 페이지를 돌리는 대신 브라우저 콘솔에 보인다.
 
-`STATE_REFRESH_AFTER` is how old a token may get before a render re-issues it even though the
-state has not changed. It must stay below `STATE_MAX_AGE`: a component that renders at least
-once every `STATE_MAX_AGE - STATE_REFRESH_AFTER` never expires while its page is open.
+`STATE_REFRESH_AFTER`는 상태가 그대로여도 토큰을 다시 발급하기까지의 나이다. 반드시
+`STATE_MAX_AGE`보다 작아야 한다. `STATE_MAX_AGE - STATE_REFRESH_AFTER`마다 한 번이라도 렌더되는
+컴포넌트는 페이지가 열려 있는 동안 만료되지 않는다.
 
-## WebSocket Proxy Configuration
+## WebSocket 프록시
 
 ### Nginx
 
@@ -286,36 +278,25 @@ yourdomain.com {
 }
 ```
 
-Caddy automatically handles WebSocket upgrades.
+Caddy는 WebSocket 업그레이드를 알아서 처리한다.
 
 ### AWS ALB
 
-For AWS Application Load Balancer:
-- Enable sticky sessions for WebSocket connections
-- Set idle timeout to at least 3600 seconds
-- Use target groups with WebSocket health checks
+- WebSocket 연결에 sticky session을 켠다
+- idle timeout을 최소 3600초로 둔다
+- 타깃 그룹에 WebSocket 헬스체크를 건다
 
-## Monitoring Recommendations
+## 모니터링
 
-### Key Metrics
+### 볼 지표
 
-1. **WebSocket connections**
-   - Active connection count
-   - Connection duration
-   - Reconnection rate
+1. **WebSocket 연결** — 활성 연결 수, 연결 지속 시간, 재연결률
+2. **렌더 성능** — `render_diff()` 지연(P50, P95, P99), HTML diff 크기 분포
+3. **채널 레이어** — Redis 메모리, 큐 깊이, pub/sub 지연
 
-2. **Render performance**
-   - render_diff() latency (P50, P95, P99)
-   - HTML diff size distribution
+### Prometheus
 
-3. **Channel layer**
-   - Redis memory usage
-   - Message queue depth
-   - Publish/subscribe latency
-
-### Prometheus Metrics
-
-Add custom metrics with `django-prometheus`:
+`django-prometheus`로 직접 지표를 추가한다.
 
 ```python
 from prometheus_client import Counter, Histogram
@@ -332,9 +313,7 @@ render_duration = Histogram(
 )
 ```
 
-### Logging
-
-Configure logging to capture wireview events:
+### 로깅
 
 ```python
 LOGGING = {
@@ -345,7 +324,7 @@ LOGGING = {
     "loggers": {
         "wireview": {
             "handlers": ["console"],
-            "level": "WARNING",  # INFO for debugging
+            "level": "WARNING",  # 디버깅할 때는 INFO
         },
         "wireview.sync_detector": {
             "handlers": ["console"],
@@ -355,9 +334,9 @@ LOGGING = {
 }
 ```
 
-## Health Checks
+## 헬스체크
 
-### HTTP Health Check
+### HTTP
 
 ```python
 # urls.py
@@ -372,9 +351,7 @@ urlpatterns = [
 ]
 ```
 
-### WebSocket Health Check
-
-Test WebSocket connectivity:
+### WebSocket
 
 ```python
 # management/commands/check_websocket.py
@@ -390,53 +367,50 @@ class Command(BaseCommand):
         self.stdout.write(f"WebSocket OK: {result}")
 ```
 
-## Scaling Considerations
+## 확장
 
-### Horizontal Scaling
+### 수평 확장
 
-1. Use Redis channel layer (required for multi-instance)
-2. Ensure sticky sessions for WebSocket connections
-3. Use shared session storage (Redis/Memcached)
+1. 브로커 기반 채널 레이어를 쓴다 (다중 인스턴스의 필수 조건)
+2. WebSocket 연결에 sticky session을 건다
+3. 세션 저장소를 공유한다 (Redis/Memcached)
 
-### Chunked uploads and multiple processes
+### 청크 업로드와 다중 프로세스
 
-Chunks arrive over HTTP, not over the WebSocket, so a load balancer sends them wherever it
-likes. Since #83 that is fine: the endpoint keeps no per-upload state, decides from the signed
-token alone, and writes to a path computed from it. No sticky routing, no upload-only worker.
+청크는 WebSocket이 아니라 HTTP로 오므로 로드밸런서가 아무 워커에나 보낸다. #83 이후로는 그래도
+된다. 엔드포인트가 업로드 상태를 하나도 들고 있지 않고 서명된 토큰만으로 판단해, 토큰에서 계산한
+경로에 쓰기 때문이다. 스티키 라우팅도, 업로드 전용 워커도 필요 없다.
 
-Two values have to be the same on every worker.
+모든 워커에서 같아야 하는 값이 둘이다.
 
-| Value | Why |
+| 값 | 왜 |
 |---|---|
-| `WIREVIEW["UPLOAD_TEMP_DIR"]` | The chunk store. The worker that receives a chunk and the worker that reads the finished file must see the same directory. Unset means the system temp dir, which is already shared between processes on one host |
-| `WIREVIEW["SIGNING_KEY"]` (or `SECRET_KEY`) | The token is the only proof a chunk has. A worker with a different key answers 403 |
+| `WIREVIEW["UPLOAD_TEMP_DIR"]` | 청크 저장소. 청크를 받는 워커와 완성된 파일을 읽는 워커가 같은 디렉터리를 봐야 한다. 미설정이면 시스템 temp인데, 한 호스트 안에서는 그것이 이미 공유다 |
+| `WIREVIEW["SIGNING_KEY"]` (또는 `SECRET_KEY`) | 토큰이 청크의 유일한 권한 증거다. 키가 다른 워커는 403을 준다 |
 
-| Deployment | Works |
+| 배포 | 되나 |
 |---|---|
-| N workers on one host (uvicorn per port + Caddy, the Windows recipe above) | **Yes**, with no extra infrastructure |
-| Several hosts | Point `UPLOAD_TEMP_DIR` at a shared volume (NFS/EFS), or use external uploads (`external=`, presigned S3/GCS — `docs/features/external-uploads.md`), which never touch a worker |
-| Several hosts with no shared volume | Not yet. An object-storage backend would be needed; Django's storage API has no append, so chunking becomes a different write model |
+| 한 호스트에 워커 N개 (포트마다 uvicorn + Caddy — 위 Windows 구성 그대로) | **된다.** 추가 인프라 0 |
+| 여러 호스트 | `UPLOAD_TEMP_DIR`을 공유 볼륨(NFS/EFS)으로 두거나, external 업로드(`external=`, presigned S3/GCS — `docs/features/external-uploads.md`)를 쓴다. external은 워커를 아예 지나지 않는다 |
+| 공유 볼륨 없는 여러 호스트 | 아직 안 된다. 오브젝트 스토리지 백엔드가 필요한데, Django Storage API에 append가 없어 청크가 다른 쓰기 모델이 된다 |
 
-A worker that dies mid-upload leaves its chunk file behind, and the stateless endpoint accepts
-chunks for a component that is already gone until the token expires. Both are bounded by
-`UPLOAD_TOKEN_MAX_AGE`, so age is the whole cleanup rule. The write path sweeps opportunistically
-once every ten minutes per worker; a deployment that would rather do it from cron has
+업로드 중에 워커가 죽으면 그 청크 파일이 남고, 무상태 엔드포인트는 이미 떠난 컴포넌트의 청크를
+토큰이 만료될 때까지 받아 준다. 둘 다 `UPLOAD_TOKEN_MAX_AGE`로 묶이므로 정리 기준은 나이 하나다.
+쓰기 경로가 워커당 10분에 한 번 기회적으로 청소하고, cron으로 돌리고 싶으면 다음이 있다.
 
 ```bash
 python manage.py wireview_upload_gc
 ```
 
-Details in `docs/features/chunked-uploads.md`.
+상세는 `docs/features/chunked-uploads.md`.
 
-### Vertical Scaling
+### 수직 확장
 
-1. Increase worker count: `--workers N` (N = 2 * CPU cores + 1)
-2. Use uvloop for better async performance
-3. Enable connection pooling for database
+1. 워커 수를 늘린다: `--workers N` (N = CPU 코어 × 2 + 1)
+2. uvloop을 쓴다
+3. 데이터베이스 커넥션을 재사용한다
 
-### Rate Limiting
-
-Protect against abuse:
+### 속도 제한
 
 ```python
 # middleware.py
@@ -451,30 +425,31 @@ class WebSocketRateLimitMiddleware:
             ip = scope["client"][0]
             key = f"ws_rate_{ip}"
             count = cache.get(key, 0)
-            if count > 100:  # 100 connections per minute
+            if count > 100:  # 분당 연결 100개
                 await send({"type": "websocket.close", "code": 4029})
                 return
             cache.set(key, count + 1, 60)
         return await self.inner(scope, receive, send)
 ```
 
-## Troubleshooting
+## 문제 해결
 
-### Common Issues
+**WebSocket 연결이 끊긴다**
 
-**WebSocket connections dropping:**
-- Check proxy timeout settings
-- Verify Redis connection stability
-- Check server resource limits
+- 프록시 타임아웃 설정을 본다
+- 브로커 연결이 안정적인지 확인한다
+- 서버 자원 한도를 확인한다
 
-**High memory usage:**
-- Monitor component instance count
-- Check for memory leaks in event handlers
-- Review stream usage patterns
+**메모리를 많이 쓴다**
 
-**Slow renders:**
-- Enable `DEBUG_SYNC_TRANSITIONS` temporarily
-- Profile with Django Debug Toolbar
-- Check for N+1 queries
+- 컴포넌트 인스턴스 수를 관찰한다
+- 이벤트 핸들러의 누수를 찾는다
+- 스트림 사용 패턴을 다시 본다
 
-See [Performance Guide](PERFORMANCE.md) for optimization tips.
+**렌더가 느리다**
+
+- `DEBUG_SYNC_TRANSITIONS`를 잠시 켠다
+- Django Debug Toolbar로 프로파일링한다
+- N+1 질의를 찾는다
+
+최적화는 [성능 가이드](PERFORMANCE.md)에 있다.

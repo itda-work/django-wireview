@@ -1,69 +1,66 @@
-# JavaScript Hooks
+# JavaScript 훅
 
-JavaScript Hooks enable integration of third-party JavaScript libraries (Chart.js, Mapbox, CodeMirror, etc.) with wireview components. This feature follows the Phoenix LiveView hooks pattern for familiarity.
+서드파티 JS 라이브러리(Chart.js, Mapbox, CodeMirror 등)를 컴포넌트에 붙이는 장치다. Phoenix
+LiveView의 훅과 같은 모양이다.
 
-## Quick Start
+## 빠른 시작
 
-### 1. Define a Hook
+### 1. 훅을 정의한다
 
 ```javascript
 window.wireview.hooks.ChartHook = {
   mounted() {
-    // Called when element joins the page
+    // 엘리먼트가 페이지에 들어왔을 때
     const config = JSON.parse(this.el.dataset.config);
     this.chart = new Chart(this.el, config);
   },
 
   updated() {
-    // Called after DOM morph
+    // DOM morph가 끝난 뒤
     this.chart.update();
   },
 
   destroyed() {
-    // Called when element is removed
+    // 엘리먼트가 사라질 때
     this.chart.destroy();
   }
 };
 ```
 
-### 2. Use in Template
+### 2. 템플릿에서 쓴다
 
 ```html
 <div wire-hook="ChartHook" data-config='{"type": "line", "data": {...}}'>
 </div>
 ```
 
-## Hook Lifecycle
+## 훅 수명주기
 
-| Callback | When Called | Use Case |
-|----------|-------------|----------|
-| `mounted()` | After element joins and first render | Initialize third-party libraries |
-| `beforeUpdate()` | Before DOM morph (sync) | Save scroll position, selection |
-| `updated()` | After DOM morph completes | Restore state, update libraries |
-| `destroyed()` | When element removed from DOM | Cleanup resources |
-| `disconnected()` | When WebSocket closes | Show offline indicator |
-| `reconnected()` | When WebSocket reconnects | Refresh data |
+| 콜백 | 언제 | 쓰임새 |
+|------|------|--------|
+| `mounted()` | 엘리먼트가 들어오고 첫 렌더가 끝난 뒤 | 라이브러리 초기화 |
+| `beforeUpdate()` | DOM morph 직전 (동기) | 스크롤 위치·선택 영역 저장 |
+| `updated()` | DOM morph가 끝난 뒤 | 상태 복원, 라이브러리 갱신 |
+| `destroyed()` | 엘리먼트가 DOM에서 빠질 때 | 자원 정리 |
+| `disconnected()` | WebSocket이 끊겼을 때 | 오프라인 표시 |
+| `reconnected()` | WebSocket이 다시 붙었을 때 | 데이터 새로고침 |
 
-## Hook Context
+## 훅 컨텍스트
 
-Inside hook callbacks, `this` provides:
+콜백 안의 `this`가 주는 것.
 
-### Properties
+| 속성 | 타입 | 뜻 |
+|------|------|-----|
+| `this.el` | `HTMLElement` | `wire-hook` 속성이 붙은 DOM 엘리먼트 |
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `this.el` | `HTMLElement` | The DOM element with `wire-hook` attribute |
+| 메서드 | 뜻 |
+|--------|-----|
+| `this.pushEvent(event, payload, callback)` | 서버로 이벤트를 보낸다 |
+| `this.handleEvent(event, callback)` | 서버가 보내는 이벤트를 받는다 |
 
-### Methods
+## 서버와 주고받기
 
-| Method | Description |
-|--------|-------------|
-| `this.pushEvent(event, payload, callback)` | Send event to server |
-| `this.handleEvent(event, callback)` | Register handler for server events |
-
-## Server Communication
-
-### Sending Events to Server (pushEvent)
+### 서버로 보내기 (pushEvent)
 
 ```javascript
 window.wireview.hooks.InfiniteScroll = {
@@ -77,7 +74,7 @@ window.wireview.hooks.InfiniteScroll = {
   },
 
   loadMore() {
-    // Push event to server with callback
+    // 콜백과 함께 서버로 보낸다
     this.pushEvent("load_more", { page: this.page }, (response) => {
       console.log("Server response:", response);
       if (response.hasMore) {
@@ -95,12 +92,12 @@ window.wireview.hooks.InfiniteScroll = {
 };
 ```
 
-### Handling Events from Server (handleEvent)
+### 서버에서 받기 (handleEvent)
 
 ```javascript
 window.wireview.hooks.Notification = {
   mounted() {
-    // Register handler for server-pushed events
+    // 서버가 push하는 이벤트의 핸들러를 등록한다
     this.handleEvent("show_toast", ({ message, type }) => {
       this.showToast(message, type);
     });
@@ -114,15 +111,15 @@ window.wireview.hooks.Notification = {
   },
 
   showToast(message, type) {
-    // Your toast implementation
+    // 토스트 구현
   }
 };
 ```
 
-### Server-side Handler
+### 서버 쪽 핸들러
 
 ```python
-from wireview.component import Component
+from wireview import Component
 
 
 class Dashboard(Component):
@@ -155,14 +152,14 @@ class Dashboard(Component):
         return None
 
     async def notify_user(self, message: str):
-        """Push event to all hooks in this component."""
+        """Push an event to every hook in this component."""
         await self.push_event("show_toast", {
             "message": message,
             "type": "success"
         })
 
     async def highlight_item(self, hook_id: str):
-        """Push event to specific hook."""
+        """Push an event to one specific hook."""
         await self.push_event(
             "highlight",
             {"color": "yellow"},
@@ -170,21 +167,21 @@ class Dashboard(Component):
         )
 ```
 
-## Multiple Hooks on Same Element
+## 한 엘리먼트에 훅 여러 개
 
-You can attach multiple hooks to a single element by separating names with spaces:
+이름을 공백으로 나열한다.
 
 ```html
 <div wire-hook="Sortable Draggable Tooltip">
-  <!-- Content -->
+  <!-- 내용 -->
 </div>
 ```
 
-Each hook gets its own instance and lifecycle.
+각 훅은 자기 인스턴스와 수명주기를 갖는다.
 
-## Complete Examples
+## 예제
 
-### Chart.js Integration
+### Chart.js
 
 ```javascript
 window.wireview.hooks.Chart = {
@@ -192,7 +189,7 @@ window.wireview.hooks.Chart = {
     const config = JSON.parse(this.el.dataset.config);
     this.chart = new Chart(this.el, config);
 
-    // Handle server-pushed data updates
+    // 서버가 보내는 데이터 갱신을 받는다
     this.handleEvent("update_data", ({ datasets }) => {
       this.chart.data.datasets = datasets;
       this.chart.update();
@@ -200,14 +197,14 @@ window.wireview.hooks.Chart = {
   },
 
   beforeUpdate() {
-    // Save chart state before morph
+    // morph 전에 차트 상태를 저장한다
     this.chartState = {
       animation: this.chart.options.animation
     };
   },
 
   updated() {
-    // Restore animation after morph
+    // morph 후에 애니메이션을 복원한다
     this.chart.options.animation = this.chartState.animation;
   },
 
@@ -217,7 +214,7 @@ window.wireview.hooks.Chart = {
 };
 ```
 
-### CodeMirror Integration
+### CodeMirror
 
 ```javascript
 window.wireview.hooks.CodeEditor = {
@@ -227,7 +224,7 @@ window.wireview.hooks.CodeEditor = {
       lineNumbers: true
     });
 
-    // Sync to server on change (debounced)
+    // 변경을 디바운스해서 서버로 보낸다
     let timeout;
     this.editor.on("change", () => {
       clearTimeout(timeout);
@@ -238,7 +235,7 @@ window.wireview.hooks.CodeEditor = {
       }, 300);
     });
 
-    // Handle server-pushed content
+    // 서버가 보내는 내용을 받는다
     this.handleEvent("set_content", ({ content }) => {
       this.editor.setValue(content);
     });
@@ -250,23 +247,23 @@ window.wireview.hooks.CodeEditor = {
 };
 ```
 
-### Scroll Position Preservation
+### 스크롤 위치 보존
 
 ```javascript
 window.wireview.hooks.PreserveScroll = {
   beforeUpdate() {
-    // Save scroll position before morph
+    // morph 전에 저장
     this.scrollTop = this.el.scrollTop;
   },
 
   updated() {
-    // Restore scroll position after morph
+    // morph 후에 복원
     this.el.scrollTop = this.scrollTop;
   }
 };
 ```
 
-### Offline Indicator
+### 오프라인 표시
 
 ```javascript
 window.wireview.hooks.ConnectionStatus = {
@@ -285,26 +282,21 @@ window.wireview.hooks.ConnectionStatus = {
   updateStatus(connected) {
     this.el.classList.toggle('connected', connected);
     this.el.classList.toggle('disconnected', !connected);
-    this.el.textContent = connected ? 'Connected' : 'Reconnecting...';
+    this.el.textContent = connected ? '연결됨' : '다시 연결하는 중...';
   }
 };
 ```
 
-## Best Practices
+## 권장 사항
 
-1. **Always cleanup in `destroyed()`**: Disconnect observers, destroy library instances, remove event listeners.
+1. **`destroyed()`에서 반드시 정리한다.** observer 해제, 라이브러리 인스턴스 파괴, 이벤트 리스너 제거.
+2. **상태 보존은 `beforeUpdate()`에서.** 스크롤 위치·포커스·선택 영역을 morph 전에 저장한다.
+3. **초기화는 `mounted()`에서.** 엘리먼트가 페이지에 올라오기 전에 초기화하지 않는다.
+4. **재연결을 다룬다.** 끊긴 동안 바뀌었을 데이터를 `reconnected()`에서 새로 읽는다.
+5. **폴링 대신 `handleEvent()`를 쓴다.** 데이터가 바뀌면 서버가 밀어 준다.
+6. **훅 하나는 한 가지만 한다.** 필요하면 한 엘리먼트에 여러 개를 붙인다.
 
-2. **Use `beforeUpdate()` for state preservation**: Save scroll position, focus, or selection before morphing.
-
-3. **Initialize libraries in `mounted()`**: Don't initialize before the element is on the page.
-
-4. **Handle reconnection gracefully**: Use `reconnected()` to refresh data that may have changed while offline.
-
-5. **Use `handleEvent()` for push updates**: Instead of polling, let the server push updates when data changes.
-
-6. **Keep hooks focused**: Each hook should do one thing well. Use multiple hooks on an element if needed.
-
-## API Reference
+## API
 
 ### Component.handle_hook_event()
 
@@ -317,14 +309,12 @@ async def handle_hook_event(
 ) -> Any
 ```
 
-Handle events sent from client-side hooks via `pushEvent()`.
+클라이언트 훅이 `pushEvent()`로 보낸 이벤트를 받는다.
 
-**Parameters:**
-- `hook_id`: Unique identifier of the hook instance
-- `event`: Event name sent by the hook
-- `payload`: Event data from the hook
-
-**Returns:** Response data sent back to the hook's callback (or `None`)
+- `hook_id` — 훅 인스턴스의 고유 식별자
+- `event` — 훅이 보낸 이벤트 이름
+- `payload` — 훅이 보낸 데이터
+- **반환** — 훅의 콜백으로 돌아갈 응답 데이터 (없으면 `None`)
 
 ### Component.push_event()
 
@@ -337,36 +327,30 @@ async def push_event(
 ) -> None
 ```
 
-Push an event to client-side JavaScript hooks.
+클라이언트 훅으로 이벤트를 보낸다.
 
-**Parameters:**
-- `event`: Event name to dispatch
-- `payload`: Event data (default: empty dict)
-- `hook_id`: Target specific hook instance (None = broadcast to all)
+- `event` — 보낼 이벤트 이름
+- `payload` — 데이터 (기본: 빈 dict)
+- `hook_id` — 특정 훅 인스턴스만 (`None`이면 전체)
 
-## DOM Morph Callback
+## DOM morph 콜백
 
 ### wireview.dom.onBeforeElUpdated()
 
-Configure a callback that runs before each element is morphed during LiveView updates.
-This allows you to preserve client-side attributes or state that would otherwise be
-overwritten by the server-rendered content.
+갱신 중 엘리먼트가 morph되기 직전에 실행되는 콜백을 등록한다. 서버 렌더 결과가 덮어써 버릴
+클라이언트 쪽 속성이나 상태를 지키는 데 쓴다.
 
 ```javascript
 wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
-  // fromEl: The existing DOM element
-  // toEl: The new element that will replace it
+  // fromEl: 지금 DOM에 있는 엘리먼트
+  // toEl: 그것을 대체할 새 엘리먼트
 });
 ```
 
-### Use Cases
-
-**Preserve JavaScript-Set Attributes**
-
-If your JavaScript sets attributes that aren't tracked by the server:
+**JS가 붙인 속성 지키기**
 
 ```javascript
-// Preserve data-js-* attributes
+// data-js-* 속성을 보존한다
 wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
   for (const attr of fromEl.attributes) {
     if (attr.name.startsWith('data-js-')) {
@@ -376,9 +360,7 @@ wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
 });
 ```
 
-**Alpine.js Integration**
-
-Preserve Alpine.js component state:
+**Alpine.js 상태 보존**
 
 ```javascript
 wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
@@ -388,9 +370,7 @@ wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
 });
 ```
 
-**Preserve CSS Transitions**
-
-Keep animation state during morphs:
+**CSS 트랜지션 유지**
 
 ```javascript
 wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
@@ -400,11 +380,11 @@ wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
 });
 ```
 
-### Comparison with Phoenix LiveView
+### Phoenix LiveView 대응
 
-| Feature | Phoenix LiveView | django-wireview |
-|---------|------------------|-----------------|
-| Configuration | `LiveSocket` constructor option | `wireview.dom.onBeforeElUpdated()` |
-| Callback signature | `(fromEl, toEl)` | `(fromEl, toEl)` |
-| Return value | Ignored | Ignored |
-| Called for | All elements | Element nodes only |
+| 기능 | Phoenix LiveView | django-wireview |
+|------|------------------|-----------------|
+| 설정 위치 | `LiveSocket` 생성자 옵션 | `wireview.dom.onBeforeElUpdated()` |
+| 콜백 시그니처 | `(fromEl, toEl)` | `(fromEl, toEl)` |
+| 반환값 | 무시 | 무시 |
+| 호출 대상 | 모든 노드 | 엘리먼트 노드만 |

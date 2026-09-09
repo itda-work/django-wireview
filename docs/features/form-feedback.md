@@ -1,31 +1,25 @@
-# Form Feedback
+# 폼 피드백
 
-django-wireview provides a form feedback system that controls when validation
-error messages are displayed to users. This prevents showing errors for fields
-that the user hasn't interacted with yet.
+검증 오류를 **언제** 보여 줄지 통제한다. 사용자가 아직 건드리지도 않은 필드에 빨간 글씨를 띄우지
+않기 위한 장치다.
 
-## Overview
+동작은 셋으로 나뉜다.
 
-The feedback system:
+1. 어떤 필드를 "건드렸는지"(touched) 추적한다 — 포커스 후 벗어났거나, 값을 바꿨거나
+2. 건드린 필드의 오류만 보여 준다
+3. 건드리지 않은 필드의 오류는 CSS로 감춘다
 
-1. Tracks which form fields have been "touched" (focused and blurred, or changed)
-2. Only shows error messages for touched fields
-3. Hides errors for untouched fields using CSS
+## 기본 사용
 
-This provides a better user experience by not overwhelming users with error
-messages for fields they haven't filled in yet.
-
-## Basic Usage
-
-### HTML Structure
+### HTML 구조
 
 ```html
 <form {% on "submit" "save" %}>
   <div class="field">
-    <label for="email">Email</label>
+    <label for="email">이메일</label>
     <input type="email" name="email" id="email" value="{{ this.email }}">
 
-    <!-- Error message with wire-feedback-for -->
+    <!-- wire-feedback-for를 단 오류 메시지 -->
     {% if this.errors.email %}
       <span wire-feedback-for="email" class="error wire-no-feedback">
         {{ this.errors.email }}
@@ -34,7 +28,7 @@ messages for fields they haven't filled in yet.
   </div>
 
   <div class="field">
-    <label for="password">Password</label>
+    <label for="password">비밀번호</label>
     <input type="password" name="password" id="password">
 
     {% if this.errors.password %}
@@ -44,25 +38,24 @@ messages for fields they haven't filled in yet.
     {% endif %}
   </div>
 
-  <button type="submit">Register</button>
+  <button type="submit">가입</button>
 </form>
 ```
 
-### Required CSS
+### 필요한 CSS
 
-Add this CSS to hide untouched field errors:
+건드리지 않은 필드의 오류를 감추는 규칙은 앱이 정의한다.
 
 ```css
-/* Hide feedback elements until field is touched */
+/* 건드리기 전까지 피드백을 감춘다 */
 .wire-no-feedback {
   display: none !important;
 }
 ```
 
-Or with more sophisticated styling:
+부드럽게 나타나게 하려면:
 
 ```css
-/* Smooth transition for feedback elements */
 [wire-feedback-for] {
   opacity: 1;
   max-height: 100px;
@@ -76,36 +69,36 @@ Or with more sophisticated styling:
 }
 ```
 
-## How It Works
+## 작동 방식
 
-### Field Tracking
+### 필드 추적
 
-A field is marked as "touched" when:
+다음 중 하나면 그 필드는 "건드린" 것이 된다.
 
-- The user focuses on the field and then blurs (leaves) it
-- The user changes the field value (for select, checkbox, radio)
-- You programmatically mark it as touched
+- 포커스했다가 벗어났다(blur)
+- 값이 바뀌었다 (select, checkbox, radio)
+- 코드로 직접 표시했다
 
-### Feedback Display
+### 피드백 표시
 
-Elements with `wire-feedback-for="field_name"`:
+`wire-feedback-for="필드이름"`을 단 엘리먼트는
 
-1. Initially have `wire-no-feedback` class (hidden)
-2. When the matching field is touched, the class is removed (visible)
-3. After DOM updates, new feedback elements respect touched state
+1. 처음에는 `wire-no-feedback` 클래스를 갖는다 (감춰짐)
+2. 대응하는 필드를 건드리면 그 클래스가 제거된다 (보임)
+3. DOM이 갱신되어 새 피드백 엘리먼트가 들어와도 건드림 상태를 그대로 따른다
 
-### Field Name Matching
+### 필드 이름 매칭
 
-The `wire-feedback-for` attribute matches against:
+`wire-feedback-for`는 다음 순서로 대응 필드를 찾는다.
 
-- The field's `name` attribute (primary)
-- The field's `id` attribute (fallback)
+- 필드의 `name` 속성 (우선)
+- 필드의 `id` 속성 (대체)
 
-## Component Example
+## 컴포넌트 예
 
 ```python
 from wireview import Component
-from pydantic import EmailStr, field_validator
+from pydantic import field_validator
 
 
 class XRegistrationForm(Component):
@@ -122,49 +115,48 @@ class XRegistrationForm(Component):
         return v
 
     async def validate_field(self, field: str, value: str):
-        """Real-time field validation on input."""
+        """Validate one field as the user types."""
         errors = {}
 
         if field == "email":
             if not value:
-                errors["email"] = "Email is required"
+                errors["email"] = "이메일을 입력하세요"
             elif "@" not in value:
-                errors["email"] = "Invalid email address"
+                errors["email"] = "이메일 형식이 아닙니다"
         elif field == "password":
             if len(value) < 8:
-                errors["password"] = "Password must be at least 8 characters"
+                errors["password"] = "비밀번호는 8자 이상이어야 합니다"
 
         self.errors = {**self.errors, **errors}
         if not errors.get(field):
             self.errors.pop(field, None)
 
     async def save(self, email: str, password: str):
-        """Handle form submission."""
-        # Validate all fields
+        """Handle the form submission."""
         self.errors = {}
 
         if not email:
-            self.errors["email"] = "Email is required"
+            self.errors["email"] = "이메일을 입력하세요"
         if not password:
-            self.errors["password"] = "Password is required"
+            self.errors["password"] = "비밀번호를 입력하세요"
         elif len(password) < 8:
-            self.errors["password"] = "Password must be at least 8 characters"
+            self.errors["password"] = "비밀번호는 8자 이상이어야 합니다"
 
         if self.errors:
             return
 
-        # Save user...
+        # 사용자 저장...
         await self.wire.redirect_to("/welcome")
 ```
 
-Template:
+템플릿:
 
 ```html
 {% load wireview %}
 
 <form {% on "submit" "save" %} class="registration-form">
   <div class="field">
-    <label for="email">Email</label>
+    <label for="email">이메일</label>
     <input
       type="email"
       name="email"
@@ -180,7 +172,7 @@ Template:
   </div>
 
   <div class="field">
-    <label for="password">Password</label>
+    <label for="password">비밀번호</label>
     <input
       type="password"
       name="password"
@@ -194,41 +186,41 @@ Template:
     {% endif %}
   </div>
 
-  <button type="submit">Register</button>
+  <button type="submit">가입</button>
 </form>
 ```
 
 ## JavaScript API
 
-### Touch a Field Programmatically
+### 필드를 직접 건드림 처리
 
 ```javascript
-// Mark a field as touched
+// 건드린 것으로 표시한다
 wireview.feedback.touch("email");
 
-// Check if a field is touched
+// 건드렸는지 확인한다
 if (wireview.feedback.isTouched("email")) {
   console.log("Email field has been touched");
 }
 ```
 
-### Get All Touched Fields
+### 건드린 필드 전부 보기
 
 ```javascript
 const touched = wireview.feedback.getTouched();
 console.log("Touched fields:", touched);
 ```
 
-### Reset Feedback State
+### 상태 초기화
 
-After form submission or reset, you may want to clear the touched state:
+폼을 제출했거나 리셋했으면 건드림 상태를 지우고 싶을 수 있다.
 
 ```javascript
-// Reset all feedback (hide all error messages)
+// 전부 초기화한다 (오류 메시지를 모두 감춘다)
 wireview.feedback.reset();
 ```
 
-This can be called from a Hook:
+훅에서 부를 수 있다.
 
 ```javascript
 window.wireview.hooks.FormReset = {
@@ -240,9 +232,7 @@ window.wireview.hooks.FormReset = {
 };
 ```
 
-## Integration with Django Forms
-
-### Using Django Form Errors
+## Django 폼과 함께 쓰기
 
 ```python
 from django import forms
@@ -265,17 +255,17 @@ class XContactPage(Component):
         form = ContactForm(data)
 
         if form.is_valid():
-            # Process form...
+            # 폼 처리...
             await self.wire.redirect_to("/thank-you")
         else:
-            # Convert Django errors to dict
+            # Django의 오류를 dict로 옮긴다
             self.errors = {
                 field: list(errors)
                 for field, errors in form.errors.items()
             }
 ```
 
-Template:
+템플릿:
 
 ```html
 {% load wireview %}
@@ -296,40 +286,40 @@ Template:
     </div>
   {% endfor %}
 
-  <button type="submit">Send</button>
+  <button type="submit">보내기</button>
 </form>
 ```
 
-## Best Practices
+## 권장 사항
 
-### 1. Always Include wire-no-feedback Initially
+### 1. `wire-no-feedback`을 처음부터 붙인다
 
 ```html
-<!-- Good: Class present initially -->
+<!-- 좋음: 클래스가 처음부터 있다 -->
 <span wire-feedback-for="email" class="error wire-no-feedback">
-  Error message
+  오류 메시지
 </span>
 
-<!-- Bad: Missing class -->
+<!-- 나쁨: 클래스가 없어 처음부터 보인다 -->
 <span wire-feedback-for="email" class="error">
-  Error message
+  오류 메시지
 </span>
 ```
 
-### 2. Use Consistent Field Names
+### 2. 필드 이름을 일치시킨다
 
 ```html
-<!-- Input name matches feedback-for -->
+<!-- input의 name과 feedback-for가 같다 -->
 <input name="user_email" ...>
 <span wire-feedback-for="user_email">...</span>
 ```
 
-### 3. Reset Feedback on Successful Submit
+### 3. 제출에 성공하면 상태를 초기화한다
 
 ```python
 async def save(self, **data):
     if not self.errors:
-        # Clear feedback state on success
+        # 성공했으니 피드백 상태를 지운다
         await self.wire.push_event("form:success", {})
 ```
 
@@ -343,33 +333,22 @@ window.wireview.hooks.FormHandler = {
 };
 ```
 
-### 4. Show All Errors on Submit
+### 4. 제출 시에는 모든 오류를 보여 준다
 
-On form submission, you may want to show all errors regardless of touched state:
+제출 순간에는 건드림 여부와 무관하게 전부 보여 주고 싶을 수 있다.
 
 ```html
 <button
   type="submit"
   onclick="['email', 'password', 'name'].forEach(f => wireview.feedback.touch(f))"
 >
-  Submit
+  제출
 </button>
 ```
 
-Or handle in the component:
+## CSS 예
 
-```python
-async def save(self, **data):
-    # Validate all fields - server will return errors
-    # and re-render will show them all
-    self.validate_all()
-    # After validation, all feedback elements will be visible
-    # because they exist in DOM (server rendered with errors)
-```
-
-## CSS Examples
-
-### Bootstrap-Style Errors
+### Bootstrap 스타일
 
 ```css
 .wire-no-feedback {
@@ -404,11 +383,11 @@ input.is-invalid {
 }
 ```
 
-## Comparison with Phoenix LiveView
+## Phoenix LiveView 대응
 
-| Feature | Phoenix LiveView | django-wireview |
-|---------|------------------|-----------------|
-| Attribute | `phx-feedback-for` | `wire-feedback-for` |
-| Hide class | `phx-no-feedback` | `wire-no-feedback` |
-| Trigger | blur, change | blur, change |
-| JavaScript API | None | `wireview.feedback.*` |
+| 기능 | Phoenix LiveView | django-wireview |
+|------|------------------|-----------------|
+| 속성 | `phx-feedback-for` | `wire-feedback-for` |
+| 감추는 클래스 | `phx-no-feedback` | `wire-no-feedback` |
+| 계기 | blur, change | blur, change |
+| JavaScript API | 없음 | `wireview.feedback.*` |

@@ -73,7 +73,11 @@ CI나 빌드 작업을 `bug`/`enhancement`에 억지로 넣지 않는다.
 
 ## 4. 커밋과 종료
 
-- 커밋 메시지는 **영어, Conventional Commits**. 코드 주석·docstring도 영어. 문서는 한국어 기본.
+- **언어 규약: 사람이 읽는 산문은 한국어, 기계와 git log가 읽는 것은 영어.**
+  - 한국어 — `docs/` 전부, `README.md`, `CLAUDE.md`, `AGENTS.md`, `skills/`, 예제 README.
+    `tests/test_agent_docs.py`의 `test_the_documentation_is_written_in_korean`이 지킨다.
+  - 영어 — 커밋 메시지(Conventional Commits), 코드 주석·docstring, 로그·예외 메시지,
+    `CHANGELOG.md`(커밋 메시지와 나란히 읽힌다), `docs/legacy/`(보존된 과거 기록).
 - **GAP 작업이면 커밋 제목에 GAP 번호를 적는다.** 예: `feat: Add on_mount hooks (GAP-021)`
 - **커밋 메시지에는 `#N` 평참조만 쓴다.** `Closes #N`으로 자동 종결하지 않는다.
   완료 정의를 실제로 만족했는지 확인한 뒤 `gh issue close <N> --comment "..."`로 닫는다.

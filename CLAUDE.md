@@ -13,7 +13,7 @@ Phoenix LiveView 스타일의 Django 실시간 컴포넌트 라이브러리. Pyd
 | Python·Django 지원 범위, 의존성, 패키지 버전 | `pyproject.toml`, `.github/workflows/ci.yml` 매트릭스 |
 | 코드 스타일 (ruff 120자, double quotes, djlint 2칸) | `pyproject.toml`의 `[tool.ruff]`, `[tool.djlint]`, `[tool.pyright]` |
 | 개발 명령 | `Makefile` (`make help`) |
-| 작업 절차 (세션 시작, 이슈·wip, 완료 정의, 커밋) | `wireview-dev` 스킬 (`.claude/skills/wireview-dev/SKILL.md`) |
+| 작업 절차 (세션 시작, 이슈·wip, 완료 정의, 커밋, 언어 규약) | `wireview-dev` 스킬 (`.claude/skills/wireview-dev/SKILL.md`) |
 | 설정 키와 기본값 | `wireview/settings.py`의 `DEFAULT` |
 | 기능 로드맵과 미구현 목록 | `docs/FEATURE-GAP.md` (GAP 번호), 작업 추적은 GitHub Issues |
 | 기능별 API 상세 | `docs/features/README.md` (인덱스) |
