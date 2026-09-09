@@ -174,7 +174,6 @@ class TemplateMarker:
 
     def __init__(self) -> None:
         self.marker_context = MarkerContext()
-        self._processed_templates: set[int] = set()
         self._depth = 0
 
     def prepare_template(self, template: Template | BackendTemplate) -> Template | BackendTemplate:
@@ -195,17 +194,19 @@ class TemplateMarker:
         # Get the inner template (backend wrappers have .template attribute)
         inner_template = t.cast(Template, getattr(template, "template", template))
 
-        template_id = id(inner_template)
-
-        # Skip if already processed
-        if template_id in self._processed_templates:
+        # A template prepared by this marker carries a stamp. The stamp must live on
+        # the object, not in a set of id()s: with DEBUG on (or any uncached loader)
+        # every render compiles a fresh Template, a freed one's id gets reused, and
+        # an id-keyed set would skip the new object, leaving it without markers and
+        # turning its next diff into a full render at random.
+        if getattr(inner_template, "_wireview_marker", None) is self:
             return template
 
         # Access nodelist from Django's base Template
         nodelist = getattr(inner_template, "nodelist", None)
         if nodelist is not None:
             self._wrap_nodelist(nodelist)
-        self._processed_templates.add(template_id)
+        inner_template._wireview_marker = self  # type: ignore[attr-defined]
 
         return template
 
