@@ -26,8 +26,8 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 
 | command | payload | 처리 |
 |---------|---------|------|
-| `join` | `name`, `state` (서명 상태, `wireview.core.state`), `children: {id: [name, state]}` | 컴포넌트 복원, `joined()`, 첫 render, `params_changed` |
-| `leave` | `id` | 업로드 레지스트리 해제, 컴포넌트 제거 |
+| `join` | `name`, `state` (서명 상태, `wireview.core.state`), `children: {id: [name, state]}` | 컴포넌트 복원, `joined()`, 첫 render, `params_changed`. `children`에는 중첩된 일반 Component와 LiveComponent의 상태가 함께 실린다. **LiveComponent는 자기 join을 보내지 않는다** — 부모가 소유하며, 이미 등록된 LiveComponent id로 join이 오면 서버는 무시한다 |
+| `leave` | `id` | `leaving()`, 그 아래 LiveComponent에 cascade, 업로드 레지스트리 해제, 구독 재계산, 컴포넌트 제거 |
 | `user_event` | `id`, `command`, `implicit_args` (폼 직렬화), `explicit_args` | 핸들러 호출 후 render |
 | `hook_event` | `component_id`, `hook_id`, `event`, `payload`, `ref?` | `handle_hook_event()`, `ref`가 있으면 `hook_reply` |
 | `params_changed` | `params`, `uri` | 모든 컴포넌트에 `params_changed()` |
@@ -40,7 +40,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 
 | command | payload |
 |---------|---------|
-| `render` | `id`, `diff` — 전체 `{"s", "d", "f"}` 또는 부분 `{"<index>": value}`. value는 문자열, comprehension `{"s", "d"}`, 항목 갱신 `{"u", "n"}`, 블록 `{"r", "d"}`, 블록 부분 갱신 `{"p"}` ([html-diff](../features/html-diff.md)) |
+| `render` | `id`, `diff`, `children?` — `diff`는 전체 `{"s", "d", "f"}` 또는 부분 `{"<index>": value}`, 또는 자식만 바뀌었을 때 `null`. value는 문자열, comprehension `{"s", "d"}`, 항목 갱신 `{"u", "n"}`, 블록 `{"r", "d"}`, 블록 부분 갱신 `{"p"}`, LiveComponent 참조 `{"c": id}` ([html-diff](../features/html-diff.md)). `children`은 이 렌더와 함께 렌더된 LiveComponent들의 `{id: diff}` 평면 맵이다(손자식 포함). 클라이언트는 DOM을 건드리기 전에 이들을 먼저 등록하고, 부모 HTML을 만들 때 참조 자리에 자식의 현재 HTML을 넣는다 |
 | `remove` | `id` |
 | `append`, `prepend`, `insert_after`, `insert_before`, `replace_with` | `id`, `html` |
 | `stream_op` | `op`, `stream`, `items`, `at` |

@@ -1,6 +1,7 @@
 import json
 import logging
 import typing as t
+from dataclasses import dataclass, field
 from functools import reduce
 from typing import cast
 from urllib.parse import parse_qsl, urlencode
@@ -31,6 +32,23 @@ def _is_framework_class(cls: type) -> bool:
     return root in _FRAMEWORK_ROOTS
 
 
+@dataclass
+class LifecycleBatch:
+    """The lifecycle work one parent's render left behind (``ComponentRepository.take_lifecycle``)."""
+
+    new: list[LiveComponent] = field(default_factory=list)
+    updates: list[tuple[LiveComponent, dict[str, t.Any]]] = field(default_factory=list)
+    retired: list[Component] = field(default_factory=list)
+
+    @property
+    def to_render(self) -> list[LiveComponent]:
+        """Children that ran a lifecycle hook and need their own render, each once."""
+        seen: dict[str, LiveComponent] = {c.id: c for c in self.new}
+        for component, _props in self.updates:
+            seen.setdefault(component.id, component)
+        return list(seen.values())
+
+
 class ComponentRepository:
     user: AnonymousUser | AbstractBaseUser
 
@@ -56,6 +74,8 @@ class ComponentRepository:
         self._pending_updates: list[tuple[LiveComponent, dict[str, t.Any]]] = []
         # Instances replaced under a reused id; they owe a leaving() call
         self._pending_leaving: list[Component] = []
+        # Child ids each parent named in its current template pass
+        self._rendered_children: dict[str, set[str]] = {}
 
     @staticmethod
     def extract_params(qs: str):
@@ -135,6 +155,7 @@ class ComponentRepository:
         component_id = state["id"]
         component_class = LiveComponent._resolve_live(name)
         props = {key: value for key, value in state.items() if key != "id"}
+        self._rendered_children.setdefault(parent_id, set()).add(component_id)
 
         # Re-render case: the parent template names an id we already hold.
         if existing := self.components.get(component_id):
@@ -208,6 +229,37 @@ class ComponentRepository:
             List of LiveComponent instances
         """
         return [c for c in self.components.values() if isinstance(c, LiveComponent) and c._parent_id == parent_id]
+
+    def begin_render(self, parent_id: str) -> None:
+        """Forget which children ``parent_id`` named; its template pass records them again."""
+        self._rendered_children[parent_id] = set()
+
+    def take_lifecycle(self, parent_id: str) -> "LifecycleBatch":
+        """What the consumer owes the children of ``parent_id`` after its template ran.
+
+        - ``new``: created in this pass, waiting for ``joined()``
+        - ``updates``: existing children whose props changed, with only the changed props
+        - ``retired``: children the parent no longer names (and instances displaced by an
+          id reuse), already removed from the repository and waiting for ``leaving()``
+
+        Only call this after a render that evaluated the template. A skipped render
+        names no children, and treating that as "every child disappeared" would be wrong.
+        """
+        rendered = self._rendered_children.pop(parent_id, set())
+
+        new = [c for c in self._pending_live_components if c._parent_id == parent_id]
+        self._pending_live_components = [c for c in self._pending_live_components if c._parent_id != parent_id]
+
+        updates = [(c, p) for c, p in self._pending_updates if c._parent_id == parent_id]
+        self._pending_updates = [(c, p) for c, p in self._pending_updates if c._parent_id != parent_id]
+
+        retired = self._pending_leaving
+        self._pending_leaving = []
+        for child in self.get_live_components(parent_id):
+            if child.id not in rendered:
+                retired.extend(self.remove(child.id))
+
+        return LifecycleBatch(new=new, updates=updates, retired=retired)
 
     async def flush_pending_live_components(self) -> list[LiveComponent]:
         """Call joined()/update() on all pending LiveComponents.

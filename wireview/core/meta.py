@@ -91,6 +91,10 @@ class WireviewMeta:
         self._last_sent_html: list[str] = []
         self._last_rendered: Rendered | None = None
         self._skip_render: bool = False
+        # Whether the last render_diff() call evaluated the template. False when
+        # the render was skipped, frozen or redirected; the consumer only settles
+        # nested LiveComponents after a render that actually ran the template.
+        self.template_evaluated: bool = False
         # Pending operations queue for joined() lifecycle
         self._pending_mode: bool = False
         self._pending_operations: list[tuple[str, dict[str, t.Any]]] = []
@@ -252,6 +256,7 @@ class WireviewMeta:
             - list (legacy format) for unmarked templates
             - None if no changes
         """
+        self.template_evaluated = False
         if self._skip_render:
             self._skip_render = False
             return None
@@ -561,6 +566,7 @@ class WireviewMeta:
             return None
 
         template = component._get_template()
+        self.template_evaluated = True
         html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
         html = html_minify(html)
 

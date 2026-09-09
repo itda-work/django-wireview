@@ -18,9 +18,10 @@ wireview는 Phoenix LiveView의 렌더 엔진을 본떠 템플릿 출력을 두 
 3. `Rendered.from_marked_html()`이 마커를 기준으로 static 목록과 dynamic 목록을 만들고, static 목록의 해시를 fingerprint로 삼습니다 (`wireview/core/rendered.py`).
 4. `{% for %}`는 `ComprehensionNode`가 감싸 루프 전체를 `<!--$Cn-->`, 각 반복을 `<!--$In-->` 마커로 표시합니다. 파서는 이를 **comprehension** 하나로 만듭니다. 항목 템플릿의 static은 한 번만, 항목마다 dynamic 목록만 갖는 구조라 항목이 늘거나 바뀌어도 부모 fingerprint는 그대로입니다 (GAP-025).
 5. `{% if %}`는 `ConditionalNode`가 감싸 `<!--$Bn-->` 마커로 표시합니다. 파서는 이를 자체 static과 dynamic을 가진 **블록**으로 만듭니다. 분기가 바뀌어도 부모 static은 그대로이고, 루프 항목 안의 조건문도 항목 템플릿을 흐트러뜨리지 않습니다. 이전에는 조건문 안의 변수에 마커가 붙지 않아 그 안의 어떤 변화도 전체 렌더였습니다.
-6. `WireviewMeta.render_diff()`가 직전 `Rendered`와 비교합니다.
-   - fingerprint가 다르면 전체 렌더 `{"s": [...], "d": [...], "f": "..."}`. `d`의 원소는 문자열, comprehension `{"s": [...], "d": [[...], ...]}`, 블록 `{"r": [...], "d": [...]}` 중 하나입니다.
-   - 같으면 바뀐 인덱스만. 값은 문자열, comprehension 전체(항목 템플릿이 바뀌었거나 처음 생겼을 때), 항목 갱신 `{"u": {"<항목 인덱스>": [...]}, "n": 항목 수}`, 블록 전체(분기가 바뀌었을 때), 블록 부분 갱신 `{"p": {"<인덱스>": 값}}`입니다.
+6. `{% live_component %}`는 라이브 렌더에서 자식의 HTML 대신 **참조** `<!--$n--><!--@wv:id--><!--/$n-->`를 남깁니다. 파서는 이를 `ComponentRef`로 만들고 wire에서는 `{"c": "id"}`입니다. 값이 id뿐이라 부모가 몇 번 재렌더돼도 이 슬롯은 바뀌지 않고, 자식의 HTML은 자식 자신의 렌더로만 오갑니다. 클라이언트는 부모 HTML을 만들 때 참조 자리에 자식의 현재 HTML을 넣습니다 ([live-component](./live-component.md)).
+7. `WireviewMeta.render_diff()`가 직전 `Rendered`와 비교합니다.
+   - fingerprint가 다르면 전체 렌더 `{"s": [...], "d": [...], "f": "..."}`. `d`의 원소는 문자열, comprehension `{"s": [...], "d": [[...], ...]}`, 블록 `{"r": [...], "d": [...]}`, 참조 `{"c": "id"}` 중 하나입니다.
+   - 같으면 바뀐 인덱스만. 값은 문자열, comprehension 전체(항목 템플릿이 바뀌었거나 처음 생겼을 때), 항목 갱신 `{"u": {"<항목 인덱스>": [...]}, "n": 항목 수}`, 블록 전체(분기가 바뀌었을 때), 블록 부분 갱신 `{"p": {"<인덱스>": 값}}`, 다른 자식으로 바뀐 참조입니다.
    - 바뀐 값이 없으면 `None`이고 아무것도 보내지 않습니다.
 
 클라이언트는 `wireview/static/wireview/rendered.mjs`의 순수 함수로 diff를 적용하고 HTML을 복원합니다. `node --test tests/js/`로 검증합니다.

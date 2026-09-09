@@ -25,9 +25,9 @@ class TestLiveComponentRendering(TestCase):
         self.assertContains(response, "LiveComponent Dashboard")
         self.assertContains(response, 'id="main-dashboard"')
         self.assertContains(response, 'data-name="Dashboard"')
-        # Note: counters are empty on static render (joined() called after WebSocket)
-        # LiveComponents are created dynamically after WebSocket connection
+        # The HTTP response is a dead render: children are inlined without joined()
         self.assertContains(response, 'data-testid="counters-grid"')
+        self.assertContains(response, 'data-testid="count-counter-2"')
 
 
 class UvicornThread(threading.Thread):
@@ -240,6 +240,26 @@ class TestLiveComponentE2E:
 
         # Final total: 2 + 9 + 5 = 16
         expect_text_eventually(page.locator('[data-testid="total"]'), "16")
+
+    def test_a_reset_counter_survives_an_unrelated_parent_rerender(self, page, livecomp_server):
+        """A child's own state is not overwritten when the parent re-renders for another reason.
+
+        Counter.reset() changes the child without telling the parent. The parent still
+        passes count=10 for counter-2 on its next render, and that must not undo the reset.
+        """
+        page.goto(f"{livecomp_server}/livecomp/")
+        wait_for_websocket(page)
+        expect_text_eventually(page.locator('[data-testid="count-counter-2"]'), "10")
+
+        page.locator('[data-testid="reset-counter-2"]').click()
+        expect_text_eventually(page.locator('[data-testid="count-counter-2"]'), "0")
+
+        # An event on another counter makes the parent re-render (send_to_parent)
+        page.locator('[data-testid="increment-counter-1"]').click()
+        expect_text_eventually(page.locator('[data-testid="last-changed"]'), "counter-1: 1")
+
+        page.wait_for_timeout(300)
+        expect_text_eventually(page.locator('[data-testid="count-counter-2"]'), "0")
 
     def test_multiple_rapid_clicks(self, page, livecomp_server):
         """Test that rapid clicks are handled correctly."""

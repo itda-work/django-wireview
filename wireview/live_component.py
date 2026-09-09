@@ -38,9 +38,20 @@ Quick Start
 Lifecycle
 =========
 
-1. **mount**: Called once when LiveComponent is first rendered
-2. **update**: Called when parent re-renders with new assigns
-3. **joined**: (inherited) Called after mount, similar to Component
+The parent owns the child (docs/design/live-component-ownership.md). In a live
+render the parent's template only names the child; after that template pass the
+consumer runs, once per parent render:
+
+1. **joined**: once per instance, when the child first appears in a render.
+   The child's first HTML is rendered after it.
+2. **update**: when the parent re-renders and a prop it passes differs from what
+   it passed last time. Only the changed props are passed. State the child
+   changed on its own is never reset by a parent render.
+3. **leaving**: when the parent stops rendering the child, when the client
+   reports the parent gone, or when the connection closes.
+
+The children's diffs travel in the parent's ``render`` frame. An HTTP render is a
+dead render: the child is inlined and none of these run.
 
 
 Parent-Child Communication
@@ -90,7 +101,7 @@ class LiveComponent(Component, public=False):
 
     Key differences from Component:
     - Rendered within parent's template using {% live_component %}
-    - Events must use `myself=True` to target this component
+    - Owned by the parent: never joins on its own, lives while the parent renders it
     - Can communicate with parent via send_to_parent()
     - Parent can update via send_update()
 

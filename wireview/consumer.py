@@ -100,22 +100,17 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             await self._register_upload_registry(component)
             await self.send_render(component)
 
-            # Call joined() on any LiveComponents created during render
-            # This must happen after send_render() since LiveComponents are
-            # created during template rendering (synchronous context)
-            await self._flush_pending_live_components()
-
             # Call params_changed if URL has params (initial load)
             if self.repo.params:
                 uri = f"?{self.repo.get_query_string()}"
                 await component.params_changed(dict(self.repo.params), uri)
                 await self.send_render(component)
-                await self._flush_pending_live_components()
 
-            # Flush pending operations queued during joined()
-            # This ensures stream(), push_js(), etc. are sent after render
-            await component.wire.flush_pending()
+            # Subscriptions first, then the operations queued during joined():
+            # a broadcast queued there must not go out before this connection
+            # has joined the group it expects to hear it on.
             await self.after_mutation_chores()
+            await component.wire.flush_pending()
 
     async def command_leave(self, id):
         """The client saw a component disappear from the DOM.
@@ -175,7 +170,6 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         component = await self.repo.dispatch_event(id, command, [], kwargs)
         if component:
             await self.send_render(component)
-            await self._flush_pending_live_components()
             await self.after_mutation_chores()
 
     async def command_hook_event(
@@ -209,7 +203,6 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
 
         # Re-render component if state may have changed
         await self.send_render(component)
-        await self._flush_pending_live_components()
         await self.after_mutation_chores()
 
     # Upload commands
@@ -370,7 +363,6 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         component = await self.repo.dispatch_event(id, command, args, kwargs)
         if component is not None:
             await self.send_render(component)
-            await self._flush_pending_live_components()
         await self.after_mutation_chores()
 
     async def component_remove(self, id):
@@ -381,7 +373,6 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         log.debug(f">>> SEND-RENDER {id}")
         if component := self.repo.get(id):
             await self.send_render(component)
-            await self._flush_pending_live_components()
 
     async def component_dom_action(self, action, id, html):
         log.debug(f">>> DOM {action.upper()} {id}")
@@ -448,19 +439,6 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
                 "payload": payload,
             },
         )
-
-    async def _flush_pending_live_components(self):
-        """Call joined() on LiveComponents created during render.
-
-        LiveComponents are created during template rendering (synchronous context),
-        so we can't call joined() immediately. This method should be called after
-        send_render() to initialize any newly created LiveComponents.
-        """
-        pending = await self.repo.flush_pending_live_components()
-        for component in pending:
-            # Send render for each LiveComponent after joined()
-            await self.send_render(component)
-            await component.wire.flush_pending()
 
     async def component_update_live_component(
         self,
@@ -581,17 +559,81 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
 
     # Reply to front-end
 
+    # How deep {% live_component %} may nest. Deeper than this is almost certainly a
+    # template that renders a component inside itself.
+    MAX_LIVE_COMPONENT_DEPTH = 8
+
     async def send_render(self, component: Component):
-        diff = await component._render_diff(self.repo)
-        if diff is not None:
-            log.debug(f">>> RENDER {component._name} {component.id}")
-            await self.send_command(
-                "render",
-                {"id": component.id, "diff": diff},
-            )
+        """Render a component and the LiveComponents its template names, then send one message.
+
+        The parent's template pass only registers its children and leaves a
+        reference where each one goes. Here, after that pass, each new child
+        gets ``joined()``, each child whose props changed gets ``update()``,
+        each child the parent stopped naming gets ``leaving()``, and the children
+        that ran a hook are rendered (recursively, for grandchildren). Their
+        diffs travel in the same ``render`` frame as the parent's under
+        ``children``, so the client registers them before it patches the DOM.
+        """
+        diff, children, settled = await self._render_tree(component)
+        if diff is not None or children:
+            log.debug(f">>> RENDER {component._name} {component.id} (+{len(children)} children)")
+            payload: dict[str, t.Any] = {"id": component.id, "diff": diff}
+            if children:
+                payload["children"] = children
+            await self.send_command("render", payload)
+        if settled:
+            # Subscriptions before the children's queued operations, for the same
+            # reason as in command_join.
+            await self.update_to_which_channels_im_subscribed_to()
+            for child in settled:
+                await child.wire.flush_pending()
+
+    async def _render_tree(
+        self, component: Component, depth: int = 0
+    ) -> tuple[t.Any, dict[str, t.Any], list[LiveComponent]]:
+        """Render one component and settle the children its template named.
+
+        Returns the component's diff, a flat ``{id: diff}`` of every descendant
+        rendered along the way, and those descendants in render order.
+        """
+        repo = self.repo
+        repo.begin_render(component.id)
+        diff = await component._render_diff(repo)
         # Clear temporary assigns after rendering to free memory
         # This is called regardless of whether diff was sent (skip_render case)
         component._clear_temporary_assigns()
+
+        children: dict[str, t.Any] = {}
+        settled: list[LiveComponent] = []
+        if not component.wire.template_evaluated:
+            return diff, children, settled
+        if depth >= self.MAX_LIVE_COMPONENT_DEPTH:
+            log.error("LiveComponent nesting deeper than %d under %s; not rendering further", depth, component.id)
+            return diff, children, settled
+
+        batch = repo.take_lifecycle(component.id)
+        await self._call_leaving(batch.retired)
+        for gone in batch.retired:
+            await self._unregister_upload_registry(gone.id)
+        for child in batch.new:
+            child.wire.enter_pending_mode()
+            try:
+                await child.joined()
+            except Exception as e:
+                log.exception(f"Error in {child._name}.joined(): {e}")
+        for child, props in batch.updates:
+            child.wire.enter_pending_mode()
+            try:
+                await child.update(**props)
+            except Exception as e:
+                log.exception(f"Error in {child._name}.update(): {e}")
+        for child in batch.to_render:
+            child_diff, grandchildren, descendants = await self._render_tree(child, depth + 1)
+            children[child.id] = child_diff
+            children.update(grandchildren)
+            settled.append(child)
+            settled.extend(descendants)
+        return diff, children, settled
 
     async def send_command(self, command, payload):
         await self.outbound.send_command(command, payload)

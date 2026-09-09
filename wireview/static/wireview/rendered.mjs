@@ -3,21 +3,26 @@
  *
  * A render is statics interleaved with dynamics. A dynamic is a string, a
  * comprehension `{s: [...], d: [[...], ...]}` (the item template's statics
- * once and one list of dynamics per item), or a block `{r: [...], d: [...]}`
- * (an `{% if %}` branch: a nested render with its own statics). Partial diffs
- * map a dynamic index to a new string, a full comprehension, an item update
- * `{u: {index: [dynamics]}, n: count}`, a full block, or a nested block
- * partial `{p: {index: value}}`.
+ * once and one list of dynamics per item), a block `{r: [...], d: [...]}`
+ * (an `{% if %}` branch: a nested render with its own statics), or a
+ * component reference `{c: id}` (a nested LiveComponent: its HTML lives in
+ * that component's own render and is substituted through the `resolve`
+ * callback when the parent is built). Partial diffs map a dynamic index to a
+ * new string, a full comprehension, an item update `{u: {index: [dynamics]},
+ * n: count}`, a full block, a nested block partial `{p: {index: value}}`, or
+ * a reference.
  *
  * Pure functions, no DOM: tested with `node --test tests/js/`.
  */
 
 /**
- * @typedef {string | Comprehension | Block} Dynamic
+ * @typedef {string | Comprehension | Block | ComponentRef} Dynamic
  * @typedef {{s: string[], d: Dynamic[][]}} Comprehension
  * @typedef {{r: string[], d: Dynamic[]}} Block
+ * @typedef {{c: string}} ComponentRef
  * @typedef {{u: Object<string, Dynamic[]>, n: number}} ComprehensionUpdate
  * @typedef {{p: Object<string, *>}} BlockPartial
+ * @typedef {(id: string) => string} Resolve
  */
 
 /**
@@ -47,17 +52,31 @@ export function isBlock(value) {
 }
 
 /**
+ * @param {*} value
+ * @returns {value is ComponentRef}
+ */
+export function isComponentRef(value) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    typeof value.c === "string"
+  );
+}
+
+/**
  * Interleave statics and dynamics into HTML.
  * @param {string[]} statics
  * @param {Dynamic[]} dynamics
+ * @param {Resolve} [resolve] - HTML for a component reference; without it a
+ *   reference renders as nothing
  * @returns {string}
  */
-export function buildHtml(statics, dynamics) {
+export function buildHtml(statics, dynamics, resolve) {
   const parts = [];
   for (let i = 0; i < statics.length; i++) {
     parts.push(statics[i]);
     if (i < dynamics.length) {
-      parts.push(renderDynamic(dynamics[i]));
+      parts.push(renderDynamic(dynamics[i], resolve));
     }
   }
   return parts.join("");
@@ -65,15 +84,19 @@ export function buildHtml(statics, dynamics) {
 
 /**
  * @param {Dynamic | undefined | null} value
+ * @param {Resolve} [resolve]
  * @returns {string}
  */
-function renderDynamic(value) {
+function renderDynamic(value, resolve) {
   if (value === undefined || value === null) return "";
+  if (isComponentRef(value)) {
+    return resolve ? resolve(value.c) : "";
+  }
   if (isComprehension(value)) {
-    return value.d.map((item) => buildHtml(value.s, item)).join("");
+    return value.d.map((item) => buildHtml(value.s, item, resolve)).join("");
   }
   if (isBlock(value)) {
-    return buildHtml(value.r, value.d);
+    return buildHtml(value.r, value.d, resolve);
   }
   return String(value);
 }

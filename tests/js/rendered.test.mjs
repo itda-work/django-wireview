@@ -80,3 +80,47 @@ test("comprehension items may carry blocks", () => {
   applyPartial([comp], { 0: { u: { 1: [{ r: ["done"], d: [] }, "b"] }, n: 2 } });
   assert.equal(buildHtml(["<ul>", "</ul>"], [comp]), '<ul><li class="done">a</li><li class="done">b</li></ul>');
 });
+
+// --- component references: a nested LiveComponent's slot names it, its HTML comes from elsewhere ---
+
+import { isComponentRef } from "../../wireview/static/wireview/rendered.mjs";
+
+const childHtml = { c1: "<div id=\"c1\">child one</div>", c2: "<div id=\"c2\">child two</div>" };
+const resolve = (id) => childHtml[id] ?? "";
+
+test("a component ref is an object with a string c", () => {
+  assert.ok(isComponentRef({ c: "c1" }));
+  assert.ok(!isComponentRef({ s: [], d: [] }));
+  assert.ok(!isComponentRef({ r: [], d: [] }));
+  assert.ok(!isComponentRef("c1"));
+  assert.ok(!isComponentRef(null));
+});
+
+test("buildHtml substitutes a ref with the resolver's HTML", () => {
+  assert.equal(buildHtml(["<main>", "</main>"], [{ c: "c1" }], resolve), '<main><div id="c1">child one</div></main>');
+});
+
+test("a ref renders as nothing without a resolver or for an unknown id", () => {
+  assert.equal(buildHtml(["<main>", "</main>"], [{ c: "c1" }]), "<main></main>");
+  assert.equal(buildHtml(["<main>", "</main>"], [{ c: "ghost" }], resolve), "<main></main>");
+});
+
+test("refs inside comprehension items and blocks resolve too", () => {
+  const grid = { s: ["<li>", "</li>"], d: [[{ c: "c1" }], [{ c: "c2" }]] };
+  assert.equal(
+    buildHtml(["<ul>", "</ul>"], [grid], resolve),
+    '<ul><li><div id="c1">child one</div></li><li><div id="c2">child two</div></li></ul>'
+  );
+  const block = { r: ["<b>", "</b>"], d: [{ c: "c2" }] };
+  assert.equal(buildHtml(["<p>", "</p>"], [block], resolve), '<p><b><div id="c2">child two</div></b></p>');
+});
+
+test("applyPartial puts a ref into a slot and can replace it", () => {
+  const dynamics = ["T", ""];
+  applyPartial(dynamics, { 1: { c: "c1" } });
+  assert.deepEqual(dynamics, ["T", { c: "c1" }]);
+  applyPartial(dynamics, { 1: { c: "c2" } });
+  assert.deepEqual(dynamics, ["T", { c: "c2" }]);
+  applyPartial(dynamics, { 1: "" });
+  assert.deepEqual(dynamics, ["T", ""]);
+});

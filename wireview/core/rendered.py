@@ -13,6 +13,9 @@ Markers are HTML comments emitted by ``wireview.template_engine``:
 - ``<!--$Bn-->…<!--/$Bn-->`` a block (``{% if %}`` output): a nested render
   with its own statics, so switching branches never changes the parent's
   statics and loop items with conditionals stay uniform
+- ``<!--$n--><!--@wv:id--><!--/$n-->`` a component reference (``{% live_component %}``
+  output in a live render): the child renders and ships on its own, and the
+  parent's slot only names it, so the parent's diff never carries child markup
 
 A comprehension becomes a single dynamic slot whose value holds the item
 template's statics once and one list of dynamics per item, mirroring
@@ -32,8 +35,10 @@ from dataclasses import dataclass, field
 # Flat marker pattern, kept for callers that only need plain dynamic values.
 MARKER_PATTERN = re.compile(r"<!--\$(\d+)-->(.*?)<!--/\$\1-->", re.DOTALL)
 _TOKEN = re.compile(r"<!--(/?)\$([CIB]?)(\d+)-->")
+_REF_PREFIX = "<!--@wv:"
+_REF = re.compile(r"<!--@wv:([^>]+?)-->")
 
-Dynamic = t.Union[str, "Comprehension", "Rendered"]
+Dynamic = t.Union[str, "Comprehension", "Rendered", "ComponentRef"]
 Payload = t.Union[str, dict[str, t.Any]]
 
 
@@ -62,6 +67,8 @@ def _payload_value(value: Dynamic) -> Payload:
 
 def _value_from_payload(value: t.Any) -> Dynamic:
     if isinstance(value, dict):
+        if isinstance(value.get("c"), str):
+            return ComponentRef(value["c"])
         if "r" in value:
             return Rendered(
                 static=list(value.get("r", [])),
@@ -79,6 +86,38 @@ def _diff_value(new: Dynamic, old: Dynamic | None) -> Payload | None:
     if isinstance(new, str):
         return None if new == old else new
     return new.diff(old)
+
+
+@dataclass(frozen=True)
+class ComponentRef:
+    """A slot that holds a nested LiveComponent, identified by id.
+
+    The child's HTML is not here. The client keeps every component's render
+    and substitutes the child's current HTML when it builds the parent, so a
+    parent re-render never re-sends child markup and a child update never
+    touches the parent. Wire form: ``{"c": id}``.
+    """
+
+    id: str
+
+    def to_html(self) -> str:
+        return component_ref_placeholder(self.id)
+
+    def to_payload(self) -> dict[str, t.Any]:
+        return {"c": self.id}
+
+    def diff(self, previous: Dynamic | None) -> dict[str, t.Any] | None:
+        return None if previous == self else self.to_payload()
+
+
+def component_ref_placeholder(component_id: str) -> str:
+    """The comment a live render emits where a LiveComponent goes."""
+    return f"{_REF_PREFIX}{component_id}-->"
+
+
+def component_ref_marker(component_id: str, index: int) -> str:
+    """A component reference wrapped as dynamic slot ``index``."""
+    return inject_marker(component_ref_placeholder(component_id), index)
 
 
 @dataclass
@@ -249,7 +288,10 @@ def _finish(kind: str, static: list[str], dynamic: list[t.Any]) -> t.Any:
     if kind == "B" and inner:
         return Rendered(static=static, dynamic=inner)
     # A variable, or a branch with no dynamics of its own: plain text.
-    return _interleave(static, inner)
+    text = _interleave(static, inner)
+    if kind == "" and text.startswith(_REF_PREFIX) and (match := _REF.fullmatch(text)):
+        return ComponentRef(match.group(1))
+    return text
 
 
 def _parse(html: str) -> tuple[list[str], list[Dynamic]]:
@@ -363,3 +405,23 @@ def inject_marker(content: str, index: int) -> str:
 def strip_markers(html: str) -> str:
     """Remove every marker comment, leaving the plain HTML."""
     return _TOKEN.sub("", html)
+
+
+def component_refs(rendered: Rendered) -> list[str]:
+    """Ids of every LiveComponent referenced anywhere in a render, in document order."""
+    found: list[str] = []
+
+    def walk(value: Dynamic) -> None:
+        if isinstance(value, ComponentRef):
+            found.append(value.id)
+        elif isinstance(value, Rendered):
+            for v in value.dynamic:
+                walk(v)
+        elif isinstance(value, Comprehension):
+            for item in value.dynamics:
+                for v in item:
+                    walk(v)
+
+    for v in rendered.dynamic:
+        walk(v)
+    return found

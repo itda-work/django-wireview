@@ -784,15 +784,25 @@ def live_component(context, _name: str, **kwargs: t.Any):
             "This usually means it's not being rendered within a wireview component."
         )
 
-    # Build LiveComponent
+    # Build (or look up) the LiveComponent and record that this render names it
     live_comp = repo.build_live_component(
         name=_name,
         state=kwargs,
         parent_id=parent.id,
     )
 
-    # Render the LiveComponent
-    return live_comp._render(repo) or ""
+    if not repo.is_live:
+        # HTTP render: a dead render of the child, inline, like any nested component.
+        return live_comp._render(repo) or ""
+
+    # Live render: the parent only names the child. The consumer runs the child's
+    # joined()/update() after this template pass and ships the child's own diff in
+    # the same render message (docs/design/live-component-ownership.md §3).
+    from ..core.rendered import component_ref_marker
+    from ..template_engine import get_template_marker
+
+    index = get_template_marker().marker_context.next_index()
+    return mark_safe(component_ref_marker(live_comp.id, index))
 
 
 @register.simple_tag(takes_context=True)

@@ -369,8 +369,10 @@ class Component(BaseModel):
         """Called when the component is about to leave.
 
         This is called when:
+        - The client reports the component gone from the DOM (``leave``); nested
+          LiveComponents receive it too
+        - A LiveComponent's parent stops rendering it
         - The WebSocket connection is closed (browser close, navigation, network loss)
-        - The component is explicitly destroyed
 
         Use this hook to perform cleanup operations like:
         - Broadcasting presence "left" notifications

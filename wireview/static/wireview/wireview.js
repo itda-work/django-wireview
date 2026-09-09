@@ -35,20 +35,22 @@ function parseQueryString(search) {
 /**
  * @typedef {Object} RenderPayload
  * @property {string} id - Component ID
- * @property {Array<string|number>|Object} diff - Diff array (legacy) or object (Phoenix-style)
+ * @property {Array<string|number>|Object|null} diff - Diff array (legacy), object (Phoenix-style), or null when only children changed
+ * @property {Object<string, Object|null>} [children] - Diffs of the LiveComponents rendered along with this one, by id
  */
 
 /**
  * @typedef {Object} PhoenixFullDiff
  * @property {string[]} s - Static parts
- * @property {Array<string|Object>} d - Dynamic parts (strings or comprehensions {s, d})
+ * @property {Array<string|Object>} d - Dynamic parts (strings, comprehensions {s, d}, blocks {r, d}, component refs {c})
  * @property {string} f - Fingerprint
  */
 
 /**
  * @typedef {Object<string, string|Object>} PhoenixPartialDiff
  * Partial diff with numeric string keys mapping to new values: a string, a
- * comprehension {s, d}, or a comprehension item update {u, n}
+ * comprehension {s, d}, a comprehension item update {u, n}, a block, a block
+ * partial {p}, or a component ref {c}
  */
 
 /**
@@ -180,13 +182,39 @@ class ServerConnection {
     let { command, payload } = JSON.parse(event.data);
     debugLog("recv", command, payload);
     switch (command) {
-      case "render":
+      case "render": {
         // End timing for profiling (event round-trip complete)
         endEventTiming();
 
-        var { id, diff } = payload;
-        this.components[id]?.applyDiff(diff);
+        const { id, diff, children } = payload;
+        // Register the children first, before any frame is scheduled: the
+        // parent's HTML is built from their renders, and a later diff for a
+        // child must find its component whether or not the parent has patched
+        // the DOM yet.
+        const changedChildren = [];
+        for (const [childId, childDiff] of Object.entries(children || {})) {
+          let child = this.components[childId];
+          if (!child) {
+            child = new WireviewComponent(childId);
+            this.components[childId] = child;
+          }
+          if (childDiff) {
+            child.applyDiffData(childDiff);
+            changedChildren.push(child);
+          }
+        }
+        const target = this.components[id];
+        if (diff && target) {
+          // One patch: the parent's HTML embeds the children's current renders
+          target.applyDiff(diff);
+        } else {
+          // The parent did not change, so each changed child patches itself
+          for (const child of changedChildren) {
+            child.scheduleMorph();
+          }
+        }
         break;
+      }
       case "append":
       case "prepend":
       case "insert_after":
@@ -738,6 +766,16 @@ class ServerConnection {
 let connection = new ServerConnection();
 
 /**
+ * HTML for a component reference `{c: id}` inside another component's render.
+ * @param {string} id
+ * @returns {string}
+ */
+function resolveComponentHtml(id) {
+  const component = connection.components[id];
+  return component ? component.currentHtml() : "";
+}
+
+/**
  * Represents a client-side wireview component.
  * Manages state synchronization with the server.
  *
@@ -754,6 +792,8 @@ class WireviewComponent {
     this.id = id;
     /** @type {string[]} */
     this.lastReceivedHtml = [];
+    /** @type {string|null} legacy (unmarked template) render, kept whole */
+    this.legacyHtml = null;
 
     // Phoenix-style state (static/dynamic separation)
     /** @type {string[]|null} */
@@ -781,23 +821,60 @@ class WireviewComponent {
   }
 
   /**
-   * Applies a diff from the server to update the component's HTML.
+   * Applies a diff from the server and patches the DOM on the next frame.
    * Supports both legacy array format and Phoenix-style object format.
    * @param {Array<string|number>|Object} diff - Diff data
    */
   applyDiff(diff) {
+    this.applyDiffData(diff);
+    this.scheduleMorph();
+  }
+
+  /**
+   * Folds a diff into this component's render state without touching the DOM.
+   * Runs when the message arrives, so diffs for one component always apply in
+   * the order the server sent them, whether they came alone or inside a
+   * parent's `children`.
+   * @param {Array<string|number>|Object} diff - Diff data
+   */
+  applyDiffData(diff) {
+    if (this.isPhoenixDiff(diff)) {
+      this.applyPhoenixDiff(diff);
+    } else {
+      this.legacyHtml = this.getHtml(diff);
+    }
+  }
+
+  /**
+   * This component's full HTML from its current render state. Component
+   * references resolve to the referenced component's current HTML, so a
+   * parent's HTML always embeds what its children have right now.
+   * @returns {string}
+   */
+  currentHtml() {
+    if (this.static) {
+      return buildHtml(this.static, this.dynamic, resolveComponentHtml);
+    }
+    if (this.legacyHtml !== null) {
+      return this.legacyHtml;
+    }
+    // Fallback: the element as it stands
+    return this.getElemenet()?.outerHTML || "";
+  }
+
+  /**
+   * Patches this component's element with its current HTML on the next frame.
+   * Nothing happens when the element is not in the DOM yet; a parent patch
+   * that embeds this component will place it.
+   */
+  scheduleMorph() {
     window.requestAnimationFrame(() => {
       let el = this.getElemenet();
       if (el) {
         // Remove loading classes before morphing
         this.clearLoadingClasses();
 
-        let html;
-        if (this.isPhoenixDiff(diff)) {
-          html = this.applyPhoenixDiff(diff);
-        } else {
-          html = this.getHtml(diff);
-        }
+        const html = this.currentHtml();
 
         if (html) {
           // Call beforeUpdate on all hooks
@@ -844,9 +921,8 @@ class WireviewComponent {
   }
 
   /**
-   * Apply Phoenix-style diff (static/dynamic separation).
+   * Apply Phoenix-style diff (static/dynamic separation) to the render state.
    * @param {PhoenixFullDiff|PhoenixPartialDiff} diff - Phoenix diff object
-   * @returns {string} Reconstructed HTML
    */
   applyPhoenixDiff(diff) {
     if ("s" in diff) {
@@ -855,24 +931,9 @@ class WireviewComponent {
       this.dynamic = diff.d.slice(); // Clone to avoid mutation
       this.fingerprint = diff.f;
     } else {
-      // Partial update: strings, comprehensions, or comprehension item updates
+      // Partial update: strings, comprehensions, item updates, blocks, refs
       applyPartial(this.dynamic, diff);
     }
-
-    return this.buildHtmlFromStatic();
-  }
-
-  /**
-   * Build full HTML by interleaving static and dynamic parts.
-   * @returns {string} Complete HTML string
-   */
-  buildHtmlFromStatic() {
-    if (!this.static) {
-      // Fallback: return current element's HTML
-      return this.getElemenet()?.outerHTML || "";
-    }
-
-    return buildHtml(this.static, this.dynamic);
   }
 
   /**
