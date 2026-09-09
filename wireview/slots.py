@@ -146,7 +146,7 @@ from __future__ import annotations
 import typing as t
 from dataclasses import dataclass, field
 
-from django.template.base import NodeList
+from django.template.base import NodeList, TextNode
 from django.template.context import Context
 from django.utils.safestring import SafeString, mark_safe
 
@@ -298,6 +298,50 @@ class SlotContainer:
             rendered_parts.append(rendered)
 
         return mark_safe("".join(rendered_parts))
+
+    def without_markers(self) -> "SlotContainer":
+        """A copy whose pre-rendered content carries no diff markers.
+
+        Fills without ``let:`` are rendered during the parent's template pass, so
+        their text holds markers from the parent's index space. A component that
+        renders on its own later (a LiveComponent, or a nested component handling
+        its own event) parses that text in its own index space, where those
+        markers would collide with its own. The copy keeps ``let:`` slots as they
+        are: their nodelists render inside the component's own pass.
+        """
+        from .core.rendered import strip_markers
+
+        def stripped(nodelist: NodeList) -> NodeList:
+            return NodeList(
+                [TextNode(strip_markers(node.s)) if isinstance(node, TextNode) else node for node in nodelist]
+            )
+
+        copy = SlotContainer()
+        for name, slots in self._slots.items():
+            for slot in slots:
+                copy.add(slot if slot.let_vars else Slot(name, stripped(slot.nodelist), []))
+        if self._default is not None:
+            copy.set_default(stripped(self._default))
+        return copy
+
+    def content_key(self) -> tuple[t.Any, ...]:
+        """A value equal between two containers whose content would render the same.
+
+        Pre-rendered slots compare by text. ``let:`` slots compare by nodelist
+        identity, since their content is only known when the component renders.
+        """
+
+        def key(nodelist: NodeList) -> t.Any:
+            if all(isinstance(node, TextNode) for node in nodelist):
+                return "".join(node.s for node in nodelist)  # type: ignore[attr-defined]
+            return id(nodelist)
+
+        named = tuple(
+            (name, tuple((tuple(slot.let_vars), key(slot.nodelist)) for slot in slots))
+            for name, slots in sorted(self._slots.items())
+        )
+        default = key(self._default) if self._default is not None else None
+        return (named, default)
 
     def __getattr__(self, name: str) -> _SlotAccessor:
         """Enable slots.header syntax with truthiness check."""

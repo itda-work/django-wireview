@@ -239,6 +239,26 @@ LiveComponent를 렌더링합니다.
 | id | ✅ | 고유 식별자 |
 | 기타 | ❌ | 부모가 넘기는 props. 처음엔 초기값, 이후엔 달라진 것만 `update()`로 |
 
+### {% live_component_block %}
+
+슬롯을 전달하는 블록 형태입니다. `{% fill %}`과 `{% render_slot %}`, `let:` 바인딩은
+[Slots](./slots.md)와 같습니다.
+
+```html
+{% live_component_block "Modal" id="m1" title="설정" %}
+    {% fill header %}<h2>{{ page_title }}</h2>{% endfill %}
+    본문은 기본 슬롯이 됩니다.
+{% endlive_component %}
+```
+
+- `let:` 없는 fill과 기본 슬롯은 **부모의 컨텍스트**에서 부모 렌더 때 렌더되고, 그 텍스트가 자식에게
+  전달됩니다. 부모가 재렌더해 이 텍스트가 바뀌면 자식도 다시 렌더됩니다. 바뀌지 않으면 자식은
+  건드리지 않습니다. props와 같은 규칙입니다.
+- `let:` fill은 자식이 렌더될 때 `{% render_slot %}`이 넘긴 값으로 렌더됩니다. 자식의 컨텍스트에서
+  렌더되므로 부모 변수는 보이지 않습니다.
+- 자식이 자기 이벤트로 재렌더돼도 슬롯 내용은 유지됩니다.
+- `_slots`에 `required: True`로 선언한 슬롯이 빠지면 `TemplateSyntaxError`입니다.
+
 ### {% live_tag_header %}
 
 LiveComponent의 루트 엘리먼트에 필요한 속성을 생성합니다.
@@ -341,6 +361,13 @@ class Modal(LiveComponent):
 </div>
 ```
 
+```html
+<!-- 부모 템플릿: 본문을 기본 슬롯으로 넘긴다 -->
+{% live_component_block "Modal" id="settings-modal" title="설정" %}
+    <p>{{ this.settings_help }}</p>
+{% endlive_component %}
+```
+
 ---
 
 ## 제한사항
@@ -350,8 +377,8 @@ class Modal(LiveComponent):
 2. **중첩 깊이**: LiveComponent 안의 LiveComponent도 같은 절차로 초기화·렌더됩니다(손자식은 부모의
    `render` 메시지에 평면으로 함께 옵니다). 깊이는 8까지이며, 그보다 깊으면 로그를 남기고 더 그리지
    않습니다.
-3. **슬롯**: `{% live_component %}`는 슬롯 내용을 전달하지 않습니다. 위 모달 예제의 `{% render_slot %}`은
-   빈 슬롯으로 렌더됩니다.
+3. **슬롯**: 심플 태그 `{% live_component %}`는 슬롯을 전달하지 않습니다. 슬롯이 필요하면
+   `{% live_component_block %}`을 씁니다.
 
 ---
 

@@ -105,6 +105,19 @@ class Card(Component):
 - 첫 번째 인자: 컴포넌트 이름 (문자열)
 - 나머지: 컴포넌트 속성 (key=value 형태)
 
+### `{% live_component_block %}`
+
+LiveComponent용 블록 태그입니다. 슬롯 규칙은 같고 `id`가 필수이며 `{% endlive_component %}`로
+닫습니다. 슬롯 내용은 자식의 렌더에만 들어가고 부모 diff에는 참조만 남습니다. 자세한 것은
+[LiveComponent](./live-component.md#-live_component_block-).
+
+```html
+{% live_component_block "Modal" id="m1" %}
+    {% fill header %}<h2>{{ page_title }}</h2>{% endfill %}
+    본문
+{% endlive_component %}
+```
+
 ### `{% fill %}`
 
 부모 컴포넌트의 슬롯에 콘텐츠를 전달합니다.
@@ -382,6 +395,11 @@ class Accordion(Component):
 ### "Component 'X' requires slot 'Y'" 에러
 
 필수 슬롯이 누락되었습니다. `{% fill slotname %}...{% endfill %}`을 추가하세요.
+
+### 자기 이벤트로 재렌더된 뒤 슬롯이 비었다
+
+이전 버전의 한계였습니다. 중첩 컴포넌트가 자기 이벤트로 다시 렌더될 때 부모가 넘긴 슬롯을 잃었습니다.
+지금은 부모가 넘긴 슬롯 내용을 컴포넌트가 기억하므로(`wire.slots`) 자기 렌더에서도 유지됩니다.
 
 ### 슬롯이 렌더링되지 않음
 

@@ -8,16 +8,16 @@
 
 ## 개요
 
-아래 2절의 비교표 112행 기준이다. 어림수가 아니라 표를 센 값이므로, 표를 고치면 이 숫자도 같이 고친다.
+아래 2절의 비교표 113행 기준이다. 어림수가 아니라 표를 센 값이므로, 표를 고치면 이 숫자도 같이 고친다.
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 101 |
+| ✅ 지원 | 102 |
 | 🟡 부분 지원 | 3 |
 | 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 7 |
 | ⚪ 설계상 제외 | 1 |
 
-101행 중 5행은 Phoenix에 없는 wireview 고유 기능이다(`mutation()`, 타입 스텁, LSP 메타데이터,
+102행 중 5행은 Phoenix에 없는 wireview 고유 기능이다(`mutation()`, 타입 스텁, LSP 메타데이터,
 MockChannelLayer, 시스템 체크). 남은 열 개의 갭은 3절 표에서 GAP 번호로 추적한다.
 
 ---
@@ -170,6 +170,7 @@ MockChannelLayer, 시스템 체크). 남은 열 개의 갭은 3절 표에서 GAP
 | **Slots (named)** | ✅ `<:header>` | `{% fill header %}` | ✅ |
 | Slots (default) | ✅ `inner_block` | `{% render_slot %}` | ✅ |
 | Slots (let binding) | ✅ | `let:item` | ✅ |
+| Slots in LiveComponent | ✅ `<:slot>` in live_component | `{% live_component_block %}` | ✅ |
 | @myself target | ✅ | `myself=True` | ✅ |
 | update/2 callback | ✅ | `update()` | ✅ |
 | update_many/1 | ✅ 배치 최적화 | ❌ | 🟠 GAP-035 ([#74](https://github.com/itda-work/django-wireview/issues/74)) |
@@ -290,6 +291,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | GAP-033 | Sticky 컴포넌트 | boost 내비게이션을 건너 살아남는 컴포넌트 | 중 | [#72](https://github.com/itda-work/django-wireview/issues/72) |
 | GAP-034 | Dead view | JS 없이도 읽히는 첫 렌더. 무엇을 약속할지부터 | 중 | [#73](https://github.com/itda-work/django-wireview/issues/73) |
 | GAP-035 | LiveComponent 배치 업데이트 | 같은 컴포넌트 N개 갱신의 N+1 제거 | 중 | [#74](https://github.com/itda-work/django-wireview/issues/74) |
+| ~~GAP-036~~ | ~~LiveComponent 슬롯~~ | ~~`{% live_component_block %}`으로 fill·기본 슬롯·let 전달~~ | ~~중~~ | ✅ 완료 |
 | GAP-027 | Session extraction | 컨슈머 핸들러를 `WireviewSession`으로 분리, 세션 상태 export/import (docs/design/transport-abstraction.md) | 상 | [#60](https://github.com/itda-work/django-wireview/issues/60) 착수 기준 대기 |
 
 ---

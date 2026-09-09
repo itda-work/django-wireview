@@ -100,6 +100,9 @@ class WireviewMeta:
         # that instance leaves and a fresh one joins, so joined() stays once per
         # instance.
         self.has_joined: bool = False
+        # Slot content the enclosing template passed, without markers, so a render
+        # the component does on its own (render_diff) still fills its slots.
+        self.slots: SlotContainer | None = None
         # Pending operations queue for joined() lifecycle
         self._pending_mode: bool = False
         self._pending_operations: list[tuple[str, dict[str, t.Any]]] = []
@@ -373,6 +376,10 @@ class WireviewMeta:
                 )
             elif not (self._is_frozen or self._redirected_to) and html is None:
                 template = component._get_template()
+                if slots is not None:
+                    self.slots = slots.without_markers()
+                elif self.slots is not None:
+                    slots = self.slots
                 context = self._get_context(component, repo, slots)
                 # Use marker-injected rendering for efficient diffing
                 # The template type from component matches what render_with_markers expects
@@ -536,6 +543,10 @@ class WireviewMeta:
                     if iscoroutine(attr):
                         attr = await attr
                     context[attr_name] = attr
+
+        from ..slots import SlotContainer
+
+        context["slots"] = self.slots if self.slots is not None else SlotContainer()
 
         return dict(
             context,

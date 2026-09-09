@@ -10,7 +10,19 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- `{% live_component_block "Name" id="..." %}…{% endlive_component %}` passes slots to a
+  LiveComponent (GAP-036, `#82`): `{% fill %}`, the default slot and `let:` bindings work as
+  in `{% component_block %}`. Fills rendered in the parent's pass reach the child without the
+  parent's diff markers, a change in that content re-renders the child, and the parent's diff
+  still carries only the reference
+
 ### Fixed
+
+- A nested component rendered with `{% component_block %}` lost its slots when it re-rendered
+  on its own event: `render_diff` built the context without `slots`. The component now keeps
+  the slot content the enclosing template passed (`wire.slots`) and uses it in every render
 
 - LiveComponents are owned by their parent (`#78`, `#79`, `#80`,
   `docs/design/live-component-ownership.md`). `joined()` ran twice per child on every connect

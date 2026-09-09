@@ -118,6 +118,10 @@ class LiveComponent(Component, public=False):
     # the child changed on its own is not reset by an unrelated parent render.
     _last_props: dict[str, t.Any] = PrivateAttr(default_factory=dict)
 
+    # SlotContainer.content_key() of the slots the parent passed last time; a
+    # different key on re-render means the child renders again.
+    _last_slot_key: t.Any = PrivateAttr(default=None)
+
     # Marker for identification
     _is_live_component: t.ClassVar[bool] = True
 

@@ -87,7 +87,7 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 |------|------|
 | `wireview_header` | JS 로드와 boost 메타 |
 | `component`, `component_block` + `fill` + `render_slot` | 컴포넌트 렌더링, 슬롯 |
-| `live_component`, `live_tag_header` | LiveComponent |
+| `live_component`, `live_component_block` + `fill`, `live_tag_header` | LiveComponent, 슬롯 전달 |
 | `func`, `func_block` | Function Component |
 | `tag_header` | 컴포넌트 루트 엘리먼트 속성 |
 | `on` | 이벤트 바인딩. `{% on "click.prevent" "handler" arg=1 %}` |

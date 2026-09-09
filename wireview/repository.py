@@ -15,6 +15,9 @@ from .component import Component, MessagePayload
 from .live_component import LiveComponent
 from .utils import filter_parameters
 
+if t.TYPE_CHECKING:
+    from .slots import SlotContainer
+
 ChildrenRepo = dict[str, tuple[str, dict[str, t.Any]]]
 
 log = logging.getLogger("wireview")
@@ -39,12 +42,16 @@ class LifecycleBatch:
     new: list[LiveComponent] = field(default_factory=list)
     updates: list[tuple[LiveComponent, dict[str, t.Any]]] = field(default_factory=list)
     retired: list[Component] = field(default_factory=list)
+    # Existing children whose slot content changed: no hook, just a render
+    rerender: list[LiveComponent] = field(default_factory=list)
 
     @property
     def to_render(self) -> list[LiveComponent]:
-        """Children that ran a lifecycle hook and need their own render, each once."""
+        """Children that need their own render (a hook ran or their slots changed), each once."""
         seen: dict[str, LiveComponent] = {c.id: c for c in self.new}
         for component, _props in self.updates:
+            seen.setdefault(component.id, component)
+        for component in self.rerender:
             seen.setdefault(component.id, component)
         return list(seen.values())
 
@@ -76,6 +83,8 @@ class ComponentRepository:
         self._pending_leaving: list[Component] = []
         # Child ids each parent named in its current template pass
         self._rendered_children: dict[str, set[str]] = {}
+        # Existing children whose slot content changed on the parent's re-render
+        self._pending_rerender: list[LiveComponent] = []
 
     @staticmethod
     def extract_params(qs: str):
@@ -134,6 +143,7 @@ class ComponentRepository:
         name: str,
         state: MessagePayload,
         parent_id: str,
+        slots: "SlotContainer | None" = None,
     ) -> LiveComponent:
         """Build a LiveComponent and register it under a parent.
 
@@ -141,6 +151,7 @@ class ComponentRepository:
             name: LiveComponent class name
             state: Initial state including 'id'
             parent_id: ID of the parent Component
+            slots: Slot content from ``{% live_component_block %}``, if any
 
         Returns:
             Built and registered LiveComponent instance
@@ -155,6 +166,7 @@ class ComponentRepository:
         component_id = state["id"]
         component_class = LiveComponent._resolve_live(name)
         props = {key: value for key, value in state.items() if key != "id"}
+        slot_key = slots.content_key() if slots is not None else None
         self._rendered_children.setdefault(parent_id, set()).add(component_id)
 
         # Re-render case: the parent template names an id we already hold.
@@ -176,6 +188,11 @@ class ComponentRepository:
                 existing._last_props = props
                 if changed_props:
                     self._pending_updates.append((existing, changed_props))
+                if slot_key != existing._last_slot_key:
+                    existing._last_slot_key = slot_key
+                    existing.wire.slots = slots.without_markers() if slots is not None else None
+                    if not changed_props:
+                        self._pending_rerender.append(existing)
                 return existing
             # Same id, different class: the old instance leaves and a new one takes the slot.
             log.debug("Component id %s reused by %s, replacing %s", component_id, name, type(existing).__name__)
@@ -203,6 +220,9 @@ class ComponentRepository:
         # Set parent reference
         live_component._parent_id = parent_id
         live_component._last_props = props
+        live_component._last_slot_key = slot_key
+        if slots is not None:
+            live_component.wire.slots = slots.without_markers()
 
         # Register in components dict
         self.components[live_component.id] = live_component
@@ -241,6 +261,7 @@ class ComponentRepository:
         - ``updates``: existing children whose props changed, with only the changed props
         - ``retired``: children the parent no longer names (and instances displaced by an
           id reuse), already removed from the repository and waiting for ``leaving()``
+        - ``rerender``: existing children whose slot content changed; no hook, just a render
 
         Only call this after a render that evaluated the template. A skipped render
         names no children, and treating that as "every child disappeared" would be wrong.
@@ -253,13 +274,16 @@ class ComponentRepository:
         updates = [(c, p) for c, p in self._pending_updates if c._parent_id == parent_id]
         self._pending_updates = [(c, p) for c, p in self._pending_updates if c._parent_id != parent_id]
 
+        rerender = [c for c in self._pending_rerender if c._parent_id == parent_id]
+        self._pending_rerender = [c for c in self._pending_rerender if c._parent_id != parent_id]
+
         retired = self._pending_leaving
         self._pending_leaving = []
         for child in self.get_live_components(parent_id):
             if child.id not in rendered:
                 retired.extend(self.remove(child.id))
 
-        return LifecycleBatch(new=new, updates=updates, retired=retired)
+        return LifecycleBatch(new=new, updates=updates, retired=retired, rerender=rerender)
 
     async def flush_pending_live_components(self) -> list[LiveComponent]:
         """Call joined()/update() on all pending LiveComponents.

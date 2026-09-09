@@ -173,74 +173,81 @@ class ComponentBlockNode(Node):
         )
 
     def _extract_slots(self, context: Context) -> SlotContainer:
-        """Extract slot definitions from the nodelist.
-
-        Slot content handling depends on whether let: bindings are used:
-        - Without let: Pre-render in parent context to capture parent variables
-        - With let: Keep nodelist for render-time binding from component
-        """
-        container = SlotContainer()
-        default_nodes = NodeList()
-
-        for node in self.nodelist:
-            if isinstance(node, FillNode):
-                if node.let_vars:
-                    # Has let: bindings - keep nodelist for render-time binding
-                    # The variables will be provided by render_slot's extra_context
-                    slot = Slot(
-                        name=node.slot_name,
-                        nodelist=node.nodelist,
-                        let_vars=node.let_vars,
-                    )
-                else:
-                    # No let: bindings - pre-render to capture parent context
-                    rendered_content = node.nodelist.render(context)
-                    slot = Slot(
-                        name=node.slot_name,
-                        nodelist=NodeList([TextNode(rendered_content)]),
-                        let_vars=[],
-                    )
-                container.add(slot)
-            else:
-                # Default slot content
-                default_nodes.append(node)
-
-        # Only set default if there's actual content
-        # Filter out whitespace-only TextNodes
-        has_content = False
-        for node in default_nodes:
-            if hasattr(node, "s"):  # TextNode
-                if node.s.strip():  # type: ignore[attr-defined]
-                    has_content = True
-                    break
-            else:
-                has_content = True
-                break
-
-        if has_content:
-            # Pre-render default slot content in parent context
-            rendered_default = default_nodes.render(context)
-            container.set_default(NodeList([TextNode(rendered_default)]))
-
-        return container
+        return _extract_slots(self.nodelist, context)
 
     def _validate_required_slots(self, slots: SlotContainer) -> None:
-        """Validate that required slots are provided."""
-        # Get the component class to check for _slots definition
-        if self.component_name not in Component._all:
-            return
+        _validate_required_slots(self.component_name, slots)
 
-        component_cls = Component._all[self.component_name]
-        slot_defs = getattr(component_cls, "_slots", {})
 
-        for slot_name, slot_config in slot_defs.items():
-            if slot_config.get("required") and not slots.has(slot_name):
-                doc = slot_config.get("doc", "")
-                doc_msg = f" ({doc})" if doc else ""
-                raise template.TemplateSyntaxError(
-                    f"Component '{self.component_name}' requires slot '{slot_name}'{doc_msg}. "
-                    f"Add: {{% fill {slot_name} %}}...{{% endfill %}}"
+def _extract_slots(nodelist: NodeList, context: Context) -> SlotContainer:
+    """Turn the body of a block tag into a SlotContainer.
+
+    Slot content handling depends on whether let: bindings are used:
+    - Without let: Pre-render in parent context to capture parent variables
+    - With let: Keep nodelist for render-time binding from component
+    """
+    container = SlotContainer()
+    default_nodes = NodeList()
+
+    for node in nodelist:
+        if isinstance(node, FillNode):
+            if node.let_vars:
+                # Has let: bindings - keep nodelist for render-time binding
+                # The variables will be provided by render_slot's extra_context
+                slot = Slot(
+                    name=node.slot_name,
+                    nodelist=node.nodelist,
+                    let_vars=node.let_vars,
                 )
+            else:
+                # No let: bindings - pre-render to capture parent context
+                rendered_content = node.nodelist.render(context)
+                slot = Slot(
+                    name=node.slot_name,
+                    nodelist=NodeList([TextNode(rendered_content)]),
+                    let_vars=[],
+                )
+            container.add(slot)
+        else:
+            # Default slot content
+            default_nodes.append(node)
+
+    # Only set default if there's actual content
+    # Filter out whitespace-only TextNodes
+    has_content = False
+    for node in default_nodes:
+        if hasattr(node, "s"):  # TextNode
+            if node.s.strip():  # type: ignore[attr-defined]
+                has_content = True
+                break
+        else:
+            has_content = True
+            break
+
+    if has_content:
+        # Pre-render default slot content in parent context
+        rendered_default = default_nodes.render(context)
+        container.set_default(NodeList([TextNode(rendered_default)]))
+
+    return container
+
+
+def _validate_required_slots(component_name: str, slots: SlotContainer) -> None:
+    """Raise when a slot the component declares as required is missing."""
+    if component_name not in Component._all:
+        return
+
+    component_cls = Component._all[component_name]
+    slot_defs = getattr(component_cls, "_slots", {})
+
+    for slot_name, slot_config in slot_defs.items():
+        if slot_config.get("required") and not slots.has(slot_name):
+            doc = slot_config.get("doc", "")
+            doc_msg = f" ({doc})" if doc else ""
+            raise template.TemplateSyntaxError(
+                f"Component '{component_name}' requires slot '{slot_name}'{doc_msg}. "
+                f"Add: {{% fill {slot_name} %}}...{{% endfill %}}"
+            )
 
 
 @register.tag("fill")
@@ -744,6 +751,109 @@ class FuncBlockNode(Node):
 # LiveComponent template tags
 
 
+def _render_live_component(
+    context: Context,
+    name: str,
+    kwargs: dict[str, t.Any],
+    slots: SlotContainer | None = None,
+) -> str:
+    """Shared body of ``{% live_component %}`` and ``{% live_component_block %}``."""
+    # Get parent component from context
+    parent: Component | None = context.get("this")
+    if parent is None:
+        raise template.TemplateSyntaxError(
+            "{% live_component %} must be used within a Component template. No parent component found in context."
+        )
+
+    # ID is required
+    if "id" not in kwargs:
+        raise template.TemplateSyntaxError(
+            "{{% live_component %}} requires an 'id' attribute. "
+            'Usage: {{% live_component "{name}" id="unique-id" %}}'.format(name=name)
+        )
+
+    # Get or create repository
+    repo: ComponentRepository | None = context.get("wireview_repository")
+    if repo is None:
+        raise template.TemplateSyntaxError(
+            "{% live_component %} requires a wireview_repository in context. "
+            "This usually means it's not being rendered within a wireview component."
+        )
+
+    # Build (or look up) the LiveComponent and record that this render names it
+    live_comp = repo.build_live_component(
+        name=name,
+        state=kwargs,
+        parent_id=parent.id,
+        slots=slots,
+    )
+
+    if not repo.is_live:
+        # HTTP render: a dead render of the child, inline, like any nested component.
+        if slots is not None:
+            return live_comp._render_with_slots(repo, slots) or ""
+        return live_comp._render(repo) or ""
+
+    # Live render: the parent only names the child. The consumer runs the child's
+    # joined()/update() after this template pass and ships the child's own diff in
+    # the same render message (docs/design/live-component-ownership.md §3).
+    from ..core.rendered import component_ref_marker
+    from ..template_engine import get_template_marker
+
+    index = get_template_marker().marker_context.next_index()
+    return mark_safe(component_ref_marker(live_comp.id, index))
+
+
+@register.tag("live_component_block")
+def do_live_component_block(parser: Parser, token: Token):
+    """
+    Block form of ``{% live_component %}`` that passes slots to the child.
+
+    Usage:
+        {% live_component_block "Modal" id="m1" title="Hello" %}
+            {% fill header %}<h1>{{ heading }}</h1>{% endfill %}
+            Body content becomes the default slot
+        {% endlive_component %}
+
+    Fills without ``let:`` render in the parent's context during the parent's
+    pass; the child receives their text. Fills with ``let:`` render when the
+    child renders, bound to the values ``{% render_slot %}`` passes.
+    """
+    bits = token.split_contents()
+    tag_name = bits[0]
+
+    if len(bits) < 2:
+        raise template.TemplateSyntaxError(
+            f"'{tag_name}' tag requires a component name. "
+            f'Usage: {{% {tag_name} "ComponentName" id="..." %}}...{{% endlive_component %}}'
+        )
+
+    component_name = bits[1]
+    if len(component_name) >= 2 and component_name[0] in ('"', "'") and component_name[-1] == component_name[0]:
+        component_name = component_name[1:-1]
+
+    kwargs = token_kwargs(bits[2:], parser)
+    nodelist = parser.parse(("endlive_component",))
+    parser.delete_first_token()
+
+    return LiveComponentBlockNode(component_name, kwargs, nodelist)
+
+
+class LiveComponentBlockNode(Node):
+    """Node for {% live_component_block %}...{% endlive_component %}."""
+
+    def __init__(self, component_name: str, kwargs: dict[str, t.Any], nodelist: NodeList):
+        self.component_name = component_name
+        self.kwargs = kwargs
+        self.nodelist = nodelist
+
+    def render(self, context: Context) -> str:
+        resolved_kwargs = {key: value.resolve(context) for key, value in self.kwargs.items()}
+        slots = _extract_slots(self.nodelist, context)
+        _validate_required_slots(self.component_name, slots)
+        return _render_live_component(context, self.component_name, resolved_kwargs, slots)
+
+
 @register.simple_tag(takes_context=True)
 def live_component(context, _name: str, **kwargs: t.Any):
     """
@@ -761,48 +871,10 @@ def live_component(context, _name: str, **kwargs: t.Any):
 
     The LiveComponent events use `myself=True` in {% on %} tags:
         <button {% on "click" "increment" myself=True %}>+1</button>
+
+    To pass slots, use {% live_component_block %}.
     """
-    # Get parent component from context
-    parent: Component | None = context.get("this")
-    if parent is None:
-        raise template.TemplateSyntaxError(
-            "{% live_component %} must be used within a Component template. No parent component found in context."
-        )
-
-    # ID is required
-    if "id" not in kwargs:
-        raise template.TemplateSyntaxError(
-            "{{% live_component %}} requires an 'id' attribute. "
-            'Usage: {{% live_component "{name}" id="unique-id" %}}'.format(name=_name)
-        )
-
-    # Get or create repository
-    repo: ComponentRepository | None = context.get("wireview_repository")
-    if repo is None:
-        raise template.TemplateSyntaxError(
-            "{% live_component %} requires a wireview_repository in context. "
-            "This usually means it's not being rendered within a wireview component."
-        )
-
-    # Build (or look up) the LiveComponent and record that this render names it
-    live_comp = repo.build_live_component(
-        name=_name,
-        state=kwargs,
-        parent_id=parent.id,
-    )
-
-    if not repo.is_live:
-        # HTTP render: a dead render of the child, inline, like any nested component.
-        return live_comp._render(repo) or ""
-
-    # Live render: the parent only names the child. The consumer runs the child's
-    # joined()/update() after this template pass and ships the child's own diff in
-    # the same render message (docs/design/live-component-ownership.md §3).
-    from ..core.rendered import component_ref_marker
-    from ..template_engine import get_template_marker
-
-    index = get_template_marker().marker_context.next_index()
-    return mark_safe(component_ref_marker(live_comp.id, index))
+    return _render_live_component(context, _name, kwargs)
 
 
 @register.simple_tag(takes_context=True)

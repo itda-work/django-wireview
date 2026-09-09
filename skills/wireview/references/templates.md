@@ -10,7 +10,8 @@
 | `{% tag_header %}` | **컴포넌트 템플릿의 루트 엘리먼트에 필수.** id·상태·이벤트가 붙는 자리 |
 | `{% component 'Name' id="x" foo=bar %}` | 컴포넌트를 심는다 |
 | `{% component_block 'Card' %}…{% endcomponent %}` + `{% fill name %}`, `{% render_slot %}` | 슬롯 |
-| `{% live_component "Counter" id=... %}` + `{% live_tag_header %}` | LiveComponent (부모 연결 공유) |
+| `{% live_component "Counter" id=... %}` + `{% live_tag_header %}` | LiveComponent (부모 소유 중첩 컴포넌트) |
+| `{% live_component_block "Modal" id=... %}…{% endlive_component %}` + `{% fill name %}` | LiveComponent에 슬롯 전달 |
 | `{% func "button" text="OK" %}`, `{% func_block "card" %}…{% endfunc %}` | 상태 없는 함수 컴포넌트 |
 | `{% on 'click' 'handler' arg=1 %}` | 이벤트 바인딩 |
 | `{% cond {"checked": is_done} %}` | 조건부 불리언 속성 |
