@@ -20,8 +20,11 @@ paired with an admission case on the same path, because "refuses everything" and
 "refuses the right things" look identical from one side.
 """
 
+import asyncio
+import re
 import typing as t
 from dataclasses import dataclass, field
+from html import unescape
 from uuid import uuid4
 
 import pytest
@@ -29,7 +32,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.sessions.backends.cache import SessionStore as CacheSessionStore
 from django.template import Context, Template
-from django.test import override_settings
+from django.test import RequestFactory, override_settings
 
 from wireview import Component, LiveComponent, live_session, mount
 from wireview.consumer import WireviewConsumer
@@ -76,6 +79,18 @@ TEMPLATE = "{% load wireview %}<p {% tag_header %}>" + SECRET + " {{ this.note }
 TEMPLATES = {
     "cx/leaf.html": TEMPLATE,
     "cx/nest.html": "{% load wireview %}<main {% tag_header %}>{% component NAME id='target' %}</main>",
+    # The child only appears once the parent's state says so, so its first render is
+    # triggered by an event or by params rather than by the join.
+    "cx/later.html": (
+        "{% load wireview %}<main {% tag_header %}>{% if this.show %}{% component NAME id='target' %}{% endif %}</main>"
+    ),
+    # A nested tag inside a slot: the fill renders in the parent's pass, and the
+    # question is whether the repository and its boundary travel with it.
+    "cx/slotted.html": (
+        "{% load wireview %}<main {% tag_header %}>"
+        "{% component_block 'CxSlotHost' id='host' %}{% component NAME id='target' %}{% endcomponent %}</main>"
+    ),
+    "cx/slothost.html": "{% load wireview %}<div {% tag_header %}>{% render_slot slots.default %}</div>",
     "cx/live.html": "{% load wireview %}<main {% tag_header %}>{% live_component NAME id='target' %}</main>",
 }
 
@@ -130,7 +145,10 @@ def _component(name: str, base: type, **namespace: t.Any) -> type:
     field, and building these classes with ``type()`` skips the annotation a
     normal class body would have carried.
     """
-    namespace.setdefault("__annotations__", {}).setdefault("note", str)
+    annotations = namespace.setdefault("__annotations__", {})
+    annotations.setdefault("note", str)
+    if "show" in namespace:
+        annotations.setdefault("show", bool)
     return type(
         name,
         (base,),
@@ -141,6 +159,15 @@ def _component(name: str, base: type, **namespace: t.Any) -> type:
 async def _bump(self) -> None:
     """The observable an event has to fail to reach."""
     self.note = "bumped"
+
+
+async def _reveal(self) -> None:
+    """Turn on the part of the template that names the child."""
+    self.show = True
+
+
+async def _reveal_on_params(self, params, uri) -> None:
+    self.show = params.get("show") == "1"
 
 
 async def _joined(self) -> None:
@@ -1212,3 +1239,213 @@ class TestARejoinCanTakeAdmissionAway:
         assert component is not None
         await consumer.repo.dispatch_event("target", "bump", (), {})
         assert component.note == "bumped"
+
+
+# --- the topic a connection listens on is the topic a logout speaks to ------------------------
+
+
+class TestTheInvalidationReachesTheConnection:
+    """Subscribing and publishing are two halves of one claim.
+
+    Tested apart, each passes on its own terms while the message goes somewhere
+    nobody is on -- which is what happened: the re-login publish named the
+    generation with its nonce alone, and the sockets it meant to retire had
+    subscribed under a fingerprint taken from a whole session. Both tests were
+    green. So the topic is compared, once, end to end.
+
+    Synchronous, and the join is run to completion first, because that is the
+    real order: a socket exists, and then an HTTP request logs the user out. The
+    publish crosses from sync to async, which needs a thread with no loop running
+    on it -- the one Django gives a view.
+    """
+
+    @staticmethod
+    def _recording_broker(published: list[str]):
+        class RecordingBroker:
+            async def publish(self, topic, message):
+                published.append(topic)
+
+            async def send_to_session(self, session_id, message): ...
+
+        return RecordingBroker()
+
+    def _connect(self, boundary, user, session) -> list[str]:
+        """Open a connection on ``session`` and return the topics it subscribed to."""
+        consumer, outbound = make_consumer(boundary=boundary, user=user, session=dict(session.items()))
+        asyncio.run(
+            consumer.command_join(
+                "CxOk",
+                signed(CxOk, page=boundary, user=user, session=dict(session.items()), id="target"),
+            )
+        )
+        return [topic for topic in outbound.subscribed if topic.startswith(AUTH_TOPIC_PREFIX)]
+
+    def test_a_logout_publishes_where_the_connection_is_listening(self, boundary, user):
+        from django.contrib.auth import login, logout
+        from django.contrib.sessions.backends.db import SessionStore
+
+        from wireview.core.transport import set_broker
+
+        request = RequestFactory().get("/")
+        request.session = SessionStore()
+        login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+        listening_on = self._connect(boundary, user, request.session)
+
+        published: list[str] = []
+        set_broker(self._recording_broker(published))
+        try:
+            logout(request)
+        finally:
+            set_broker(None)
+
+        assert listening_on, "the connection subscribed to something"
+        assert published == listening_on, "and that is where the logout spoke"
+
+    def test_a_re_login_publishes_where_the_connection_is_listening(self, boundary, user):
+        """The half that was broken: it named the generation with less than the fingerprint."""
+        from django.contrib.auth import login
+        from django.contrib.sessions.backends.db import SessionStore
+
+        from wireview.core.transport import set_broker
+
+        request = RequestFactory().get("/")
+        request.session = SessionStore()
+        login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+        listening_on = self._connect(boundary, user, request.session)
+
+        published: list[str] = []
+        set_broker(self._recording_broker(published))
+        try:
+            login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+        finally:
+            set_broker(None)
+
+        assert listening_on
+        assert published == listening_on
+
+
+# --- a page has one boundary, and says so in three places -------------------------------------
+
+
+class TestAPageAgreesWithItself:
+    """The connection side of "one boundary" is well covered; the page side was not.
+
+    Three things carry the name -- the request the view stamped, the meta the
+    header rendered, and the envelope inside every component's ``data-state`` --
+    and they are produced by different code. A page whose meta says one thing and
+    whose tokens say another sends the browser to the wrong decision about
+    navigation while the server admits the tokens anyway.
+    """
+
+    @pytest.fixture
+    def page(self, boundary):
+        class Request:
+            META = {"QUERY_STRING": ""}
+            session: dict = {}
+            wireview_live_session = BOUNDARY
+
+        html = Template(
+            "{% load wireview %}{% wireview_header %}{% component 'CxOk' id='one' %}{% component 'CxOk' id='two' %}"
+        ).render(Context({"request": Request()}))
+        return html
+
+    def test_the_header_meta_names_the_request_boundary(self, page):
+        assert f'<meta name="wireview-live-session" content="{BOUNDARY}" />' in page
+
+    def test_every_component_on_it_signs_the_same_boundary(self, page):
+        states = re.findall(r'data-state="([^"]+)"', page)
+
+        assert len(states) == 2, "both components rendered"
+        for state in states:
+            assert unsign_envelope(unescape(state), "CxOk").live_session == BOUNDARY
+
+    def test_a_page_outside_a_boundary_agrees_the_other_way(self):
+        html = Template("{% load wireview %}{% wireview_header %}{% component 'CxOk' id='one' %}").render(Context({}))
+        states = re.findall(r'data-state="([^"]+)"', html)
+
+        assert '<meta name="wireview-live-session" content="" />' in html
+        assert states and unsign_envelope(unescape(states[0]), "CxOk").live_session == ""
+
+
+# --- a child that appears later, and a child inside a slot ---------------------------------------
+
+
+CxSlotHost = _component("CxSlotHost", Component, _template_name="cx/slothost.html")
+
+
+@pytest.mark.asyncio
+class TestAChildThatAppearsAfterTheJoin:
+    """The join is not the only moment a component can first exist.
+
+    An event, a params change or a broadcast re-renders an admitted parent, and
+    the boundary has to be applied to whatever that render names for the first
+    time. A gate that ran only on the join would be a gate on the first frame.
+    """
+
+    async def _parent_that_reveals(self, boundary, cls, trigger):
+        parent_class = _component(
+            f"CxReveal{cls.__name__}{trigger}",
+            Component,
+            _template_name="cx/later.html",
+            show=False,
+            reveal=_reveal,
+            params_changed=_reveal_on_params,
+        )
+        consumer, outbound = make_consumer(boundary=boundary)
+        with _template_naming("cx/later.html", cls):
+            parent = await consumer.repo.join(parent_class.__name__, {"id": "parent"})
+            await consumer.send_render(parent)
+            assert consumer.repo.get("target") is None, "not there yet"
+            outbound.commands.clear()
+            CALLS.clear()
+
+            if trigger == "event":
+                await consumer.repo.dispatch_event("parent", "reveal", (), {})
+            else:
+                await parent.params_changed({"show": "1"}, "?show=1")
+            await consumer.send_render(parent)
+        return consumer, outbound
+
+    @pytest.mark.parametrize("trigger", ["event", "params"])
+    async def test_a_refused_child_revealed_later_still_ships_nothing(self, boundary, trigger):
+        consumer, outbound = await self._parent_that_reveals(boundary, CxElsewhere, trigger)
+
+        assert SECRET not in str(outbound.commands)
+        assert consumer.repo.get("target") is None
+
+    @pytest.mark.parametrize("trigger", ["event", "params"])
+    async def test_an_admitted_child_revealed_later_does_appear(self, boundary, trigger):
+        """The control: the parent really does reveal it."""
+        consumer, outbound = await self._parent_that_reveals(boundary, CxOk, trigger)
+
+        assert SECRET in str(outbound.commands)
+        assert consumer.repo.get("target") is not None
+
+
+@pytest.mark.asyncio
+class TestAChildInsideASlot:
+    """Slot content renders during the parent's pass, through another component.
+
+    The repository and its boundary have to travel with it, or a component put
+    inside a slot is mounted on a page with no policy while sitting on one.
+    """
+
+    async def _render_slotted(self, boundary, cls):
+        parent_class = _component(f"CxSlotParentOf{cls.__name__}", Component, _template_name="cx/slotted.html")
+        consumer, outbound = make_consumer(boundary=boundary)
+        with _template_naming("cx/slotted.html", cls):
+            parent = await consumer.repo.join(parent_class.__name__, {"id": "parent"})
+            await consumer.send_render(parent)
+        return consumer, outbound
+
+    async def test_a_refused_child_in_a_slot_ships_nothing(self, boundary):
+        consumer, outbound = await self._render_slotted(boundary, CxElsewhere)
+
+        assert SECRET not in str(outbound.commands)
+        assert consumer.repo.get("target") is None
+
+    async def test_an_admitted_child_in_a_slot_runs_the_pages_hooks(self, boundary):
+        consumer, outbound = await self._render_slotted(boundary, CxOk)
+
+        assert SECRET in str(outbound.commands)
+        assert calls_for("target")[:1] == ["session"], "the page's policy reached into the slot"

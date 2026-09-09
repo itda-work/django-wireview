@@ -69,6 +69,10 @@ The django-reactor era changelog (2.x) is preserved in
   for a component that declares no `_live_sessions` settled the connection on "no policy" and
   skipped the view's own `authorize` entirely. `wireview.W010` reports the combination.
 
+- A logout names the right generation even when the request has no `request.user` (`#58`).
+  `logout()` sends `user=None` in that case, and the fingerprint quietly dropped the pk, so the
+  message went to a topic none of the connections it meant to retire were on. The session
+  records who is logged in, so the pk comes from there when the caller has no user object.
 - Logging in again retires the generation it replaces (`#58`). A step-up or re-auth overwrites
   the session's generation nonce, so no later logout could name the sockets still holding the
   old one. (A *different* user logging in flushes the session before any signal fires, so that

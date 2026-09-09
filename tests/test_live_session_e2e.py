@@ -66,6 +66,21 @@ class TestBoundaryNavigation:
 
         assert probe_survived(page), "two pages outside every boundary are one boundary"
 
+    def test_a_boosted_move_inside_a_named_boundary_still_morphs(self, page, server):
+        """The other control moves between two pages with no boundary at all.
+
+        A client that compared the destination against the empty string, and
+        nothing else, would pass that one. This one stays inside ``ls-members``.
+        """
+        page.goto(f"{server}/livesession/sign-in/?next=/livesession/members/")
+        page.wait_for_selector('[data-is-live="true"]', timeout=5000)
+        page.evaluate(f"{PROBE} = 'planted'")
+
+        page.locator('[data-testid="to-members2"]').click()
+        wait_for_page(page, "members2")
+
+        assert probe_survived(page), "two pages in one boundary are one boundary"
+
     def test_a_link_click_out_of_the_boundary_reloads(self, page, server):
         page.goto(f"{server}/livesession/sign-in/?next=/livesession/members/")
         page.wait_for_selector('[data-is-live="true"]', timeout=5000)

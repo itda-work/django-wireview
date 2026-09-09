@@ -142,6 +142,13 @@ def auth_fingerprint(user: AnyUser | None, session: t.Any) -> str:
     """
     view = SessionView.wrap(session)
     pk = getattr(user, "pk", None)
+    if pk is None:
+        # The session records who is logged in, and the caller does not always have
+        # the user object: ``logout()`` sends ``user=None`` when the request has no
+        # ``request.user``, and a fingerprint that quietly dropped the pk there
+        # named a different generation than the connections it meant to retire.
+        # Django stores it as a string, which is what ``str(pk)`` gives below too.
+        pk = view.get("_auth_user_id")
     parts = [
         "" if pk is None else str(pk),
         str(view.get(AUTH_GENERATION_KEY, "")),

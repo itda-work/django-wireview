@@ -38,6 +38,16 @@ def members_page(request):
     return render(request, "livesession/members.html")
 
 
+@members.view
+def members_page_two(request):
+    """A second page inside the same *named* boundary.
+
+    The other control moves between two pages that declare no boundary at all,
+    which a client that only ever compared against "" would also pass.
+    """
+    return render(request, "livesession/members2.html")
+
+
 def redirect_to_public(request):
     """A URL inside the boundary whose response is a page outside it.
 
