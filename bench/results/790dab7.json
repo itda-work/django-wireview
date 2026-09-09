@@ -1,0 +1,42 @@
+{
+ "meta": {
+  "sha": "790dab7",
+  "dirty": true,
+  "ref": "remotes/origin/HEAD-16-g790dab7",
+  "date": "2026-09-09T03:22:00+00:00",
+  "python": "3.12.14",
+  "django": "6.0",
+  "platform": "Darwin arm64",
+  "items": 50,
+  "connections": null,
+  "layer": null,
+  "processes": null,
+  "server": null
+ },
+ "payload_bytes": {
+  "flat.first_render": 612,
+  "flat.change_one_value": 192,
+  "list.first_render": 2259,
+  "list.no_change": 0,
+  "list.change_one_item": 601,
+  "list.append_item": 608,
+  "list.toggle_if_inside_item": 611,
+  "list.top_level_if_on": 643,
+  "list.change_one_value": 576,
+  "live.first_join_bytes": 4062,
+  "live.first_join_frames": 4,
+  "live.parent_only_change_bytes": 232,
+  "live.parent_only_change_frames": 1,
+  "live.child_reset_then_parent_rerender_bytes": 2095,
+  "live.child_reset_then_parent_rerender_frames": 2,
+  "live.child_state_after_parent_rerender": 2
+ },
+ "timing": {
+  "list.event_ms": 0.6079902763788899,
+  "list.template_render_ms": 0.39156930676350993,
+  "flat.event_ms": 0.15753347310237586
+ },
+ "memory": {
+  "list.component_kb": 25.6708203125
+ }
+}

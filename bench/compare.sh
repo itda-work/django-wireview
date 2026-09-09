@@ -13,7 +13,11 @@ mkdir -p "$OUT"
 echo ">>> benchmarking $BASE ($SHA) in $WT"
 git worktree add --detach --quiet "$WT" "$BASE"
 trap 'git worktree remove --force "$WT" >/dev/null 2>&1 || true' EXIT
-cp -R "$ROOT/bench" "$WT/bench"          # the bench itself comes from the current tree
+# The bench itself comes from the current tree. The worktree already has a bench/
+# directory, and `cp -R src dst` onto an existing directory would nest it as
+# dst/bench, silently running the base commit's own bench code instead.
+rm -rf "$WT/bench"
+cp -R "$ROOT/bench" "$WT/bench"
 rm -rf "$WT/bench/results" "$WT/bench/.data"
 ( cd "$WT" && uv sync --all-extras --quiet && uv run python -m bench.run --out "$OUT/$SHA.json" "$@" )
 

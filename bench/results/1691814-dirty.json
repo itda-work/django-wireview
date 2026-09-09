@@ -1,0 +1,42 @@
+{
+ "meta": {
+  "sha": "1691814",
+  "dirty": true,
+  "ref": "heads/main",
+  "date": "2026-09-09T03:22:01+00:00",
+  "python": "3.12.14",
+  "django": "6.0",
+  "platform": "Darwin arm64",
+  "items": 50,
+  "connections": null,
+  "layer": null,
+  "processes": null,
+  "server": null
+ },
+ "payload_bytes": {
+  "flat.first_render": 614,
+  "flat.change_one_value": 194,
+  "list.first_render": 2263,
+  "list.no_change": 0,
+  "list.change_one_item": 603,
+  "list.append_item": 613,
+  "list.toggle_if_inside_item": 615,
+  "list.top_level_if_on": 647,
+  "list.change_one_value": 580,
+  "live.first_join_bytes": 2409,
+  "live.first_join_frames": 1,
+  "live.parent_only_change_bytes": 232,
+  "live.parent_only_change_frames": 1,
+  "live.child_reset_then_parent_rerender_bytes": 233,
+  "live.child_reset_then_parent_rerender_frames": 1,
+  "live.child_state_after_parent_rerender": 0
+ },
+ "timing": {
+  "list.event_ms": 0.554954723144571,
+  "list.template_render_ms": 0.37486736313439906,
+  "flat.event_ms": 0.15157999975296357
+ },
+ "memory": {
+  "list.component_kb": 25.67708984375
+ }
+}

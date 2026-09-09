@@ -1,6 +1,6 @@
 """Components rendered by the benchmarks. Kept deliberately plain."""
 
-from wireview import Component, abroadcast
+from wireview import Component, LiveComponent, abroadcast
 
 
 class BenchFlat(Component):
@@ -50,6 +50,38 @@ class BenchList(Component):
 
     async def toggle(self, index: int = 0):
         self.items[index]["done"] = not self.items[index]["done"]
+
+    async def set_note(self, note: str = "note"):
+        self.note = note
+
+
+class BenchCard(LiveComponent):
+    """A nested LiveComponent: a label from the parent and a count of its own."""
+
+    _template_name = "bench/card.html"
+
+    label: str = ""
+    count: int = 0
+
+    async def bump(self):
+        self.count += 1
+
+    async def reset(self):
+        self.count = 0
+
+
+class BenchBoard(Component):
+    """A parent with three BenchCard children. The parent passes each card's count as a prop."""
+
+    _template_name = "bench/board.html"
+
+    title: str = "Board"
+    note: str = ""
+    cards: list[dict] = [
+        {"id": "card-1", "label": "one", "count": 1},
+        {"id": "card-2", "label": "two", "count": 2},
+        {"id": "card-3", "label": "three", "count": 3},
+    ]
 
     async def set_note(self, note: str = "note"):
         self.note = note

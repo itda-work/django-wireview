@@ -1,0 +1,9 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <h1>{{ title }}</h1>
+  <p>{{ note }}</p>
+  {% for card in cards %}
+    {% live_component "BenchCard" id=card.id label=card.label count=card.count %}
+  {% endfor %}
+</div>

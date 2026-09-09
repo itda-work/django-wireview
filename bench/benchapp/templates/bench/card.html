@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<div {% live_tag_header %}>
+  <h4>{{ label }}</h4>
+  <span>{{ count }}</span>
+  <button {% on "click" "bump" myself=True %}>+</button>
+  <button {% on "click" "reset" myself=True %}>0</button>
+</div>
