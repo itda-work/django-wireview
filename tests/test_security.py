@@ -232,14 +232,14 @@ class TestUploadHeaderSecurity:
         from wireview.features.uploads import UploadConfig, UploadRegistry
         from wireview.views import UploadView, register_upload_registry
 
-        registry = UploadRegistry("test-comp")
+        registry = UploadRegistry("test-comp", connection_id="conn-1")
         registry.allow_upload(UploadConfig(name="files"))
-        register_upload_registry("test-comp", registry)
+        register_upload_registry("conn-1", "test-comp", registry)
 
         try:
             factory = AsyncRequestFactory()
             request = factory.post(
-                "/__wireview_upload__/test-comp/files/",
+                "/__wireview_upload__/conn-1/test-comp/files/",
                 data=b"test",
                 content_type="application/octet-stream",
             )
@@ -249,13 +249,13 @@ class TestUploadHeaderSecurity:
             request.META["HTTP_X_ENTRY_REF"] = "ref-1"
 
             view = UploadView()
-            response = await view.post(request, "test-comp", "files")
+            response = await view.post(request, "conn-1", "test-comp", "files")
 
             assert response.status_code == 400
         finally:
             from wireview.views import unregister_upload_registry
 
-            unregister_upload_registry("test-comp")
+            unregister_upload_registry("conn-1", "test-comp")
 
     @pytest.mark.asyncio
     @pytest.mark.integration
@@ -266,14 +266,14 @@ class TestUploadHeaderSecurity:
         from wireview.features.uploads import UploadConfig, UploadRegistry
         from wireview.views import UploadView, register_upload_registry
 
-        registry = UploadRegistry("test-comp-2")
+        registry = UploadRegistry("test-comp-2", connection_id="conn-1")
         registry.allow_upload(UploadConfig(name="files"))
-        register_upload_registry("test-comp-2", registry)
+        register_upload_registry("conn-1", "test-comp-2", registry)
 
         try:
             factory = AsyncRequestFactory()
             request = factory.post(
-                "/__wireview_upload__/test-comp-2/files/",
+                "/__wireview_upload__/conn-1/test-comp-2/files/",
                 data=b"test",
                 content_type="application/octet-stream",
             )
@@ -283,13 +283,13 @@ class TestUploadHeaderSecurity:
             request.META["HTTP_X_ENTRY_REF"] = "ref-1"
 
             view = UploadView()
-            response = await view.post(request, "test-comp-2", "files")
+            response = await view.post(request, "conn-1", "test-comp-2", "files")
 
             assert response.status_code == 400
         finally:
             from wireview.views import unregister_upload_registry
 
-            unregister_upload_registry("test-comp-2")
+            unregister_upload_registry("conn-1", "test-comp-2")
 
     @pytest.mark.asyncio
     @pytest.mark.integration
@@ -300,14 +300,14 @@ class TestUploadHeaderSecurity:
         from wireview.features.uploads import UploadConfig, UploadRegistry
         from wireview.views import UploadView, register_upload_registry
 
-        registry = UploadRegistry("test-comp-3")
+        registry = UploadRegistry("test-comp-3", connection_id="conn-1")
         registry.allow_upload(UploadConfig(name="files"))
-        register_upload_registry("test-comp-3", registry)
+        register_upload_registry("conn-1", "test-comp-3", registry)
 
         try:
             factory = AsyncRequestFactory()
             request = factory.post(
-                "/__wireview_upload__/test-comp-3/files/",
+                "/__wireview_upload__/conn-1/test-comp-3/files/",
                 data=b"test",
                 content_type="application/octet-stream",
             )
@@ -317,13 +317,13 @@ class TestUploadHeaderSecurity:
             request.META["HTTP_X_ENTRY_REF"] = "ref-1"
 
             view = UploadView()
-            response = await view.post(request, "test-comp-3", "files")
+            response = await view.post(request, "conn-1", "test-comp-3", "files")
 
             assert response.status_code == 400
         finally:
             from wireview.views import unregister_upload_registry
 
-            unregister_upload_registry("test-comp-3")
+            unregister_upload_registry("conn-1", "test-comp-3")
 
 
 # =============================================================================

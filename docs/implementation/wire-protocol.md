@@ -78,7 +78,9 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 | `upload.progress` | `upload`, `ref`, `progress`, `bytes_received` | `UploadView` | `upload_op progress` 전송 |
 | `upload.error` | `upload`, `ref`, `errors` | `UploadView` | `upload_op error` 전송 |
 
-토픽 이름은 `Component._subscriptions`의 값(모델 라벨 `app.model` 또는 임의 채널 이름)과 `wireview_upload_<component_id>`다. 컨슈머는 render 뒤마다 저장소의 구독 집합과 자기 구독을 맞춘다(`update_to_which_channels_im_subscribed_to`).
+토픽 이름은 `Component._subscriptions`의 값(모델 라벨 `app.model` 또는 임의 채널 이름)과 `wireview_upload_<connection_id>`다. 컨슈머는 render 뒤마다 저장소의 구독 집합과 자기 구독을 맞춘다(`update_to_which_channels_im_subscribed_to`).
+
+업로드 진행 통지 그룹은 **연결마다 하나**이며 컴포넌트 구독과 수명이 다르다. 첫 레지스트리가 등록될 때 한 번 가입하고 `disconnect()`에서 탈퇴하므로 `self.subscriptions` 집합에는 들어가지 않는다. 업로드가 없는 페이지는 `group_add`를 한 번도 하지 않는다. 클라이언트는 payload의 `upload`와 `ref`로 대상을 가른다. 업로드 HTTP 엔드포인트도 같은 연결 id를 첫 세그먼트로 받는다: `/__wireview_upload__/<connection_id>/<component_id>/<upload_name>/`.
 
 ## 6. 세션 상태
 

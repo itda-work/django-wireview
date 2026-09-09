@@ -38,6 +38,24 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- Upload registries were keyed by component id alone, so two connections on the same page
+  interfered with each other (`#77`). Component ids are only unique within a page and
+  templates commonly fix them (`{% component 'X' id="bookmarks" %}`), so a second connection
+  overwrote the first's registry, a `leave` on either popped whatever was under that id and
+  deleted its temp files, and both shared the `wireview_upload_<component_id>` progress group.
+  `disconnect()` released nothing at all, leaking registries and temp files, because the
+  upload group is not in `self.subscriptions`. Every upload artefact is now scoped by a
+  per-connection owner id that `WireviewConsumer.connect()` mints: the index is keyed by
+  `(connection_id, component_id)`, the token signs
+  `connection_id:component_id:upload_name:ref` (salt `wireview.upload`, aged out with
+  `WIREVIEW["UPLOAD_TOKEN_MAX_AGE"]`, which was defined but unused), and the progress group is
+  one per connection, joined when the connection's first registry is registered so a page
+  without uploads costs no group on the channel layer. `disconnect()` releases every registry
+  the connection owns, a
+  LiveComponent child's registry is registered after its `joined()` (it never was), and a
+  chunk that finishes writing after a cancel returns 410 and leaves no temp file behind. The
+  index is still per process: chunked uploads must reach the process holding the WebSocket,
+  which `docs/DEPLOYMENT.md` now spells out, and a shared registry is `#83`
 - Diff markers went missing at random when templates are not cached (`DEBUG = True`, or an
   explicit loader list): the marker engine remembered prepared templates by `id()`, a freed
   template's id was reused by a fresh one, and that one was skipped, so its next diff became a
@@ -78,6 +96,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- The chunked upload endpoint took a connection segment: `/__wireview_upload__/<connection_id>/
+  <component_id>/<upload_name>/` (`#77`). The server sends the endpoint to the client in the
+  `config` upload op, so apps only notice if they hard-coded the path. Tokens issued before the
+  upgrade no longer validate (new salt and new contents); a client that reloads gets fresh ones
 - **Wire protocol.** A live render of `{% live_component %}` emits a component reference
   `{"c": id}` in the parent's diff instead of the child's markup, and the `render` frame
   carries the children's diffs under `children: {id: diff}`. The client registers the children

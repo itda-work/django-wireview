@@ -315,7 +315,24 @@ class TestUploadRegistry:
         token = registry.add_entry("files", entry)
 
         result = registry.validate_token(token)
-        assert result == ("comp-1", "files", "entry-1")
+        assert result == ("", "comp-1", "files", "entry-1")
+
+    @pytest.mark.unit
+    def test_validate_token_carries_the_owner(self):
+        """The connection that owns the registry is part of the signed token."""
+        registry = UploadRegistry("comp-1", connection_id="conn-a")
+        registry.allow_upload(UploadConfig(name="files"))
+
+        entry = UploadEntry(
+            ref="entry-1",
+            upload_name="files",
+            client_name="test.txt",
+            client_size=100,
+            client_type="text/plain",
+        )
+        token = registry.add_entry("files", entry)
+
+        assert registry.validate_token(token) == ("conn-a", "comp-1", "files", "entry-1")
 
     @pytest.mark.unit
     def test_validate_token_invalid(self):
@@ -971,7 +988,7 @@ class TestUploadView:
 
         factory = AsyncRequestFactory()
         request = factory.post(
-            "/__wireview_upload__/nonexistent/images/",
+            "/__wireview_upload__/conn-1/nonexistent/images/",
             data=b"chunk data",
             content_type="application/octet-stream",
         )
@@ -981,7 +998,7 @@ class TestUploadView:
         request.META["HTTP_X_ENTRY_REF"] = "upload-1"
 
         view = UploadView()
-        response = await view.post(request, "nonexistent", "images")
+        response = await view.post(request, "conn-1", "nonexistent", "images")
 
         assert response.status_code == 404
 
@@ -994,14 +1011,14 @@ class TestUploadView:
         from wireview.views import UploadView, register_upload_registry
 
         # Register a valid registry
-        registry = UploadRegistry("comp-123")
+        registry = UploadRegistry("comp-123", connection_id="conn-1")
         registry.allow_upload(UploadConfig(name="images"))
-        register_upload_registry("comp-123", registry)
+        register_upload_registry("conn-1", "comp-123", registry)
 
         try:
             factory = AsyncRequestFactory()
             request = factory.post(
-                "/__wireview_upload__/comp-123/images/",
+                "/__wireview_upload__/conn-1/comp-123/images/",
                 data=b"chunk data",
                 content_type="application/octet-stream",
             )
@@ -1011,13 +1028,13 @@ class TestUploadView:
             request.META["HTTP_X_ENTRY_REF"] = "upload-1"
 
             view = UploadView()
-            response = await view.post(request, "comp-123", "images")
+            response = await view.post(request, "conn-1", "comp-123", "images")
 
             assert response.status_code == 403
         finally:
             from wireview.views import unregister_upload_registry
 
-            unregister_upload_registry("comp-123")
+            unregister_upload_registry("conn-1", "comp-123")
 
     @pytest.mark.asyncio
     @pytest.mark.integration
@@ -1028,7 +1045,7 @@ class TestUploadView:
         from wireview.views import UploadView, register_upload_registry
 
         # Create registry with entry
-        registry = UploadRegistry("comp-456")
+        registry = UploadRegistry("comp-456", connection_id="conn-1")
         registry.allow_upload(UploadConfig(name="images", accept=[".jpg"]))
 
         entry = UploadEntry(
@@ -1039,12 +1056,12 @@ class TestUploadView:
             client_type="image/jpeg",
         )
         token = registry.add_entry("images", entry)
-        register_upload_registry("comp-456", registry)
+        register_upload_registry("conn-1", "comp-456", registry)
 
         try:
             factory = AsyncRequestFactory()
             request = factory.post(
-                "/__wireview_upload__/comp-456/images/",
+                "/__wireview_upload__/conn-1/comp-456/images/",
                 data=b"x" * 50,  # First chunk
                 content_type="application/octet-stream",
             )
@@ -1054,7 +1071,7 @@ class TestUploadView:
             request.META["HTTP_X_ENTRY_REF"] = "upload-1"
 
             view = UploadView()
-            response = await view.post(request, "comp-456", "images")
+            response = await view.post(request, "conn-1", "comp-456", "images")
 
             assert response.status_code == 200
 
@@ -1068,7 +1085,7 @@ class TestUploadView:
         finally:
             from wireview.views import unregister_upload_registry
 
-            unregister_upload_registry("comp-456")
+            unregister_upload_registry("conn-1", "comp-456")
 
     @pytest.mark.asyncio
     @pytest.mark.integration
@@ -1079,7 +1096,7 @@ class TestUploadView:
         from wireview.views import UploadView, register_upload_registry
 
         # Create registry with entry
-        registry = UploadRegistry("comp-789")
+        registry = UploadRegistry("comp-789", connection_id="conn-1")
         registry.allow_upload(UploadConfig(name="images", accept=[".txt"]))
 
         entry = UploadEntry(
@@ -1090,12 +1107,12 @@ class TestUploadView:
             client_type="text/plain",
         )
         token = registry.add_entry("images", entry)
-        register_upload_registry("comp-789", registry)
+        register_upload_registry("conn-1", "comp-789", registry)
 
         try:
             factory = AsyncRequestFactory()
             request = factory.post(
-                "/__wireview_upload__/comp-789/images/",
+                "/__wireview_upload__/conn-1/comp-789/images/",
                 data=b"0123456789",  # All data in one chunk
                 content_type="application/octet-stream",
             )
@@ -1105,7 +1122,7 @@ class TestUploadView:
             request.META["HTTP_X_ENTRY_REF"] = "upload-1"
 
             view = UploadView()
-            response = await view.post(request, "comp-789", "images")
+            response = await view.post(request, "conn-1", "comp-789", "images")
 
             assert response.status_code == 200
 
@@ -1117,7 +1134,7 @@ class TestUploadView:
         finally:
             from wireview.views import unregister_upload_registry
 
-            unregister_upload_registry("comp-789")
+            unregister_upload_registry("conn-1", "comp-789")
             if entry.temp_path:
                 entry.cleanup()
 
@@ -1130,7 +1147,7 @@ class TestUploadView:
         from wireview.views import UploadView, register_upload_registry
 
         # Create registry with cancelled entry
-        registry = UploadRegistry("comp-cancelled")
+        registry = UploadRegistry("comp-cancelled", connection_id="conn-1")
         registry.allow_upload(UploadConfig(name="images"))
 
         entry = UploadEntry(
@@ -1144,12 +1161,12 @@ class TestUploadView:
         token = registry.add_entry("images", entry)
         # Manually set status after adding (since add_entry validates)
         entry.status = UploadStatus.CANCELLED
-        register_upload_registry("comp-cancelled", registry)
+        register_upload_registry("conn-1", "comp-cancelled", registry)
 
         try:
             factory = AsyncRequestFactory()
             request = factory.post(
-                "/__wireview_upload__/comp-cancelled/images/",
+                "/__wireview_upload__/conn-1/comp-cancelled/images/",
                 data=b"chunk",
                 content_type="application/octet-stream",
             )
@@ -1159,10 +1176,10 @@ class TestUploadView:
             request.META["HTTP_X_ENTRY_REF"] = "upload-1"
 
             view = UploadView()
-            response = await view.post(request, "comp-cancelled", "images")
+            response = await view.post(request, "conn-1", "comp-cancelled", "images")
 
             assert response.status_code == 410
         finally:
             from wireview.views import unregister_upload_registry
 
-            unregister_upload_registry("comp-cancelled")
+            unregister_upload_registry("conn-1", "comp-cancelled")

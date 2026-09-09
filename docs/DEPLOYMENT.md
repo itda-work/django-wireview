@@ -398,6 +398,18 @@ class Command(BaseCommand):
 2. Ensure sticky sessions for WebSocket connections
 3. Use shared session storage (Redis/Memcached)
 
+### Chunked uploads and multiple processes
+
+Chunked uploads are the one part of wireview that is not fully solved by a shared channel
+layer. Each upload registry lives in the memory of the process that holds the WebSocket, so
+a chunk POSTed to `/__wireview_upload__/<connection_id>/<component_id>/<upload_name>/` must
+reach that same process; any other worker answers `404 Component not found`, valid token or
+not. Since #77 the first path segment is the connection id the consumer minted, which gives
+you three options: route those requests stickily on that segment, keep uploads on a single
+upload-capable process, or bypass the endpoint entirely with external uploads (`external=`,
+presigned S3/GCS — see `docs/features/external-uploads.md`), which upload straight to storage
+and never touch a worker. A shared registry that would remove the constraint is #83.
+
 ### Vertical Scaling
 
 1. Increase worker count: `--workers N` (N = 2 * CPU cores + 1)

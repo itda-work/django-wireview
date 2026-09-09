@@ -12,7 +12,7 @@ websocket_urlpatterns = [
 #   path("", include("wireview.urls"))
 urlpatterns = [
     path(
-        "__wireview_upload__/<str:component_id>/<str:upload_name>/",
+        "__wireview_upload__/<str:connection_id>/<str:component_id>/<str:upload_name>/",
         UploadView.as_view(),
         name="wireview_upload",
     ),

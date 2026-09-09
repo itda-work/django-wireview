@@ -1,4 +1,5 @@
 import logging
+import secrets
 import typing as t
 
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
@@ -11,6 +12,7 @@ from wireview.component import Component
 from . import serializer
 from .core.state import LegacyState, StateMismatch, unsign_state
 from .core.transport import ChannelsOutbound, Outbound
+from .features.uploads import upload_group_name
 from .live_component import LiveComponent
 from .repository import ComponentRepository
 from .utils import parse_request_data
@@ -56,6 +58,14 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         super().__init__(*args, **kwargs)
         # The only object that knows this session is a Channels WebSocket.
         self.outbound = ChannelsOutbound(self)
+        # Minted in connect(). Unlike channel_name it is safe to put in a URL, and
+        # it owns this connection's upload registries, tokens and progress group
+        # (#77). Empty until connect() runs, which is what bare test consumers get.
+        self.connection_id: str = ""
+        # Whether this connection joined its upload progress group. Set the first
+        # time a registry is registered, so a page without uploads costs no
+        # group_add on the channel layer.
+        self._upload_group_subscribed: bool = False
 
     @property
     def user(self):
@@ -65,12 +75,15 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         await super().connect()
         self.subscriptions = set()
         self.query_string: str = ""
+        self.connection_id = secrets.token_urlsafe(16)
+        self._upload_group_subscribed = False
         self.repo = ComponentRepository(
             is_live=True,
             user=self.user,
             channel_name=self.channel_name,
             channel_layer=self.channel_layer,
             session=self.scope.get("session"),
+            connection_id=self.connection_id,
         )
 
     async def disconnect(self, code):
@@ -82,6 +95,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         log.debug(f"<<< DISCONNECT {code}")
 
         await self._call_leaving(list(self.repo.components.values()))
+        await self._release_connection_uploads()
 
         # Cleanup subscriptions
         for channel in self.subscriptions:
@@ -565,26 +579,46 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
     # Upload registry management
 
     async def _register_upload_registry(self, component) -> None:
-        """Register component's upload registry for HTTP access."""
+        """Register a component's upload registry for HTTP access, if it has one.
+
+        Only ``allow_upload()`` creates a registry, so a page without uploads costs
+        nothing here. The first registry also joins this connection's progress
+        group: one group per connection, joined lazily so a no-upload page adds no
+        ``group_add`` on the channel layer. The group is deliberately outside
+        ``self.subscriptions`` -- that set mirrors what the components ask for, and
+        this one lives as long as the connection does.
+        """
         from .views import register_upload_registry
 
         registry = getattr(component, "_upload_registry", None)
-        if registry and self.channel_layer and self.channel_name:
-            register_upload_registry(component.id, registry)
-            # Subscribe to upload progress topic
-            group_name = f"wireview_upload_{component.id}"
-            await self.outbound.subscribe(group_name)
-            log.debug(f"Subscribed to upload group: {group_name}")
+        if registry:
+            if not self._upload_group_subscribed:
+                await self.outbound.subscribe(upload_group_name(self.connection_id))
+                self._upload_group_subscribed = True
+            register_upload_registry(self.connection_id, component.id, registry)
 
     async def _unregister_upload_registry(self, component_id: str) -> None:
-        """Unregister component's upload registry."""
+        """Release one component's upload registry, under this connection's key.
+
+        Scoped to the owner, so a component leaving on one connection cannot drop
+        another connection's registry or delete its temp files (#77).
+        """
         from .views import unregister_upload_registry
 
-        unregister_upload_registry(component_id)
-        # Unsubscribe from upload progress topic
-        group_name = f"wireview_upload_{component_id}"
-        await self.outbound.unsubscribe(group_name)
-        log.debug(f"Unsubscribed from upload group: {group_name}")
+        unregister_upload_registry(self.connection_id, component_id)
+
+    async def _release_connection_uploads(self) -> None:
+        """Release every upload registry this connection owns and drop its group.
+
+        The single cleanup entry point for the connection going away: disconnect
+        calls it, and discarding a connection on logout (#58) will reuse it.
+        """
+        from .views import unregister_connection_uploads
+
+        unregister_connection_uploads(self.connection_id)
+        if self._upload_group_subscribed:
+            await self.outbound.unsubscribe(upload_group_name(self.connection_id))
+            self._upload_group_subscribed = False
 
     # Incoming messages from subscriptions
 
@@ -680,6 +714,10 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
                 log.exception(f"Error in {child._name}.joined(): {e}")
             finally:
                 child.wire.has_joined = True
+            # joined() is where allow_upload() runs, so a LiveComponent's registry
+            # only exists from here on. Without this a nested component's uploads
+            # were never reachable over HTTP (#77).
+            await self._register_upload_registry(child)
         for child, props in batch.updates:
             child.wire.enter_pending_mode()
             try:

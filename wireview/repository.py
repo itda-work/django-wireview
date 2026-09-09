@@ -69,6 +69,7 @@ class ComponentRepository:
         channel_name: str | None = None,
         channel_layer: BaseChannelLayer | None = None,
         session: t.Any = None,
+        connection_id: str | None = None,
     ):
         self.params = params or {}
         # The request/connection session, handed to the ``_on_mount`` hooks. Not a
@@ -76,6 +77,9 @@ class ComponentRepository:
         self.session: t.Any = {} if session is None else session
         self.channel_name = channel_name
         self.channel_layer = channel_layer
+        # Handed to every component's WireviewMeta so upload artefacts can be
+        # scoped to the connection that owns them (#77).
+        self.connection_id = connection_id
         self.user = user or AnonymousUser()
         self.components: dict[str, Component] = {}
         self.children: ChildrenRepo = {}
@@ -150,6 +154,7 @@ class ComponentRepository:
             user=self.user,
             channel_name=self.channel_name,
             channel_layer=self.channel_layer,
+            connection_id=self.connection_id,
         )
         return self.register_component(component)
 
@@ -229,6 +234,7 @@ class ComponentRepository:
                 user=self.user,
                 channel_name=self.channel_name,
                 channel_layer=self.channel_layer,
+                connection_id=self.connection_id,
             ),
         )
 

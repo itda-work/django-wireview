@@ -33,6 +33,22 @@ MAGIC_BYTES: dict[str, list[bytes]] = {
 }
 
 
+def upload_group_name(connection_id: str) -> str:
+    """Name of the progress group for one connection.
+
+    One group per connection, not per component: the consumer subscribes once in
+    ``connect()`` and the client routes each update by the upload name and ref
+    carried in the payload (#77).
+
+    Args:
+        connection_id: ID of the connection
+
+    Returns:
+        The channel-layer group name
+    """
+    return f"wireview_upload_{connection_id}"
+
+
 def validate_magic_bytes(file_path: Path, extension: str) -> bool:
     """Validate file signature matches extension.
 
@@ -274,20 +290,25 @@ class UploadRegistry:
 
     Attributes:
         component_id: ID of the component this registry belongs to
+        connection_id: ID of the connection that owns the component
         configs: Mapping of config names to UploadConfig objects
         entries: Mapping of config names to entry dicts (ref -> UploadEntry)
     """
 
-    def __init__(self, component_id: str) -> None:
+    def __init__(self, component_id: str, connection_id: str = "") -> None:
         """Initialize the registry.
 
         Args:
             component_id: ID of the owning component
+            connection_id: ID of the connection that owns the component. Component
+                ids are only unique within a page, so the owner is what keeps two
+                connections on the same page apart (#77).
         """
         self.component_id = component_id
+        self.connection_id = connection_id
         self.configs: dict[str, UploadConfig] = {}
         self.entries: dict[str, dict[str, UploadEntry]] = {}
-        self._signer = TimestampSigner()
+        self._signer = TimestampSigner(salt="wireview.upload")
 
     def allow_upload(self, config: UploadConfig) -> None:
         """Register an upload configuration.
@@ -331,8 +352,9 @@ class UploadRegistry:
             entry.errors = errors
             entry.status = UploadStatus.ERROR
 
-        # Generate signed token
-        token_data = f"{self.component_id}:{config_name}:{entry.ref}"
+        # Generate signed token. The owner is part of the signed data, so a token
+        # issued for one connection cannot be replayed against another (#77).
+        token_data = f"{self.connection_id}:{self.component_id}:{config_name}:{entry.ref}"
         entry.upload_token = self._signer.sign(token_data)
 
         self.entries[config_name][entry.ref] = entry
@@ -366,21 +388,25 @@ class UploadRegistry:
             entry.cleanup()
         return entry
 
-    def validate_token(self, token: str, max_age: int = 3600) -> tuple[str, str, str] | None:
+    def validate_token(self, token: str, max_age: int | None = None) -> tuple[str, str, str, str] | None:
         """Validate upload token.
 
         Args:
             token: Signed token to validate
-            max_age: Maximum token age in seconds (default 1 hour)
+            max_age: Maximum token age in seconds (default ``UPLOAD_TOKEN_MAX_AGE``)
 
         Returns:
-            Tuple of (component_id, config_name, ref) if valid, None otherwise
+            Tuple of (connection_id, component_id, config_name, ref) if valid, None otherwise
         """
+        from .. import settings as wireview_settings
+
+        if max_age is None:
+            max_age = wireview_settings.UPLOAD_TOKEN_MAX_AGE
         try:
             data = self._signer.unsign(token, max_age=max_age)
             parts = data.split(":")
-            if len(parts) == 3:
-                return (parts[0], parts[1], parts[2])
+            if len(parts) == 4:
+                return (parts[0], parts[1], parts[2], parts[3])
         except Exception:
             pass
         return None

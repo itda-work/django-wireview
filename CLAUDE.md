@@ -33,7 +33,8 @@ wireview/
 ├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳
 ├── template_engine.py     템플릿 VariableNode에 diff 마커 자동 주입
 ├── consumer.py            WireviewConsumer (WebSocket, /__wireview__). send_render가 자식 LiveComponent의 joined/update/leaving과 렌더를 함께 처리
-├── views.py               UploadView (청크 업로드 HTTP 엔드포인트)
+├── views.py               UploadView (청크 업로드 HTTP 엔드포인트)와 업로드 레지스트리 인덱스.
+│                          키는 (connection_id, component_id) — 프로세스 단위이자 연결 소유
 ├── urls.py                websocket_urlpatterns, urlpatterns
 ├── repository.py          ComponentRepository: 연결당 컴포넌트 인스턴스 관리. LiveComponent의 수명주기 배치(take_lifecycle)
 ├── live_component.py      LiveComponent (부모 연결을 공유하는 중첩 상태 컴포넌트)

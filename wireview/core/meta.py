@@ -79,10 +79,15 @@ class WireviewMeta:
         channel_name: str | None = None,
         channel_layer: BaseChannelLayer | None = None,
         broker: Broker | None = None,
+        connection_id: str | None = None,
     ):
         self.params = params
         self.channel_name = channel_name
         self.channel_layer = channel_layer
+        # Identifies the WebSocket connection that owns this component, minted by
+        # the consumer. Unlike ``channel_name`` it is safe to put in a URL, and it
+        # is what scopes upload registries, tokens and progress groups (#77).
+        self.connection_id = connection_id
         if broker is None:
             broker = ChannelsBroker(channel_layer) if channel_layer is not None else NullBroker()
         self.broker: Broker = broker
@@ -127,6 +132,7 @@ class WireviewMeta:
             channel_name=self.channel_name,
             channel_layer=self.channel_layer,
             broker=self.broker,
+            connection_id=self.connection_id,
         )
         # Don't copy render state - child components start fresh
         return cloned

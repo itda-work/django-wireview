@@ -327,6 +327,7 @@ class Component(BaseModel):
         user: AnonymousUser | AbstractBaseUser | None = None,
         channel_name: str | None = None,
         channel_layer=None,
+        connection_id: str | None = None,
     ) -> "Component":
         """Build a component instance from state."""
         component_class = cls._resolve(_component_name)
@@ -337,6 +338,7 @@ class Component(BaseModel):
                 params=params,
                 channel_name=channel_name,
                 channel_layer=channel_layer,
+                connection_id=connection_id,
             ),
             **state,
         )
@@ -1219,7 +1221,7 @@ class Component(BaseModel):
         )
 
         if self._upload_registry is None:
-            self._upload_registry = UploadRegistry(self.id)
+            self._upload_registry = UploadRegistry(self.id, connection_id=self.wire.connection_id or "")
 
         config = UploadConfig(
             name=name,
@@ -1234,7 +1236,10 @@ class Component(BaseModel):
 
         # Send config to client asynchronously
         async def send_config() -> None:
-            endpoint = f"/__wireview_upload__/{self.id}/{name}/"
+            # The owner segment is what lets the HTTP endpoint tell two connections
+            # on the same page apart (#77). "-" is the unowned case (tests, mount()).
+            owner = self.wire.connection_id or "-"
+            endpoint = f"/__wireview_upload__/{owner}/{self.id}/{name}/"
             op = UploadOp(
                 op="config",
                 upload=name,
