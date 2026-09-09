@@ -1,15 +1,8 @@
-import asyncio
-import threading
 import time
-from random import randint
-from time import sleep
 
 import pytest
-from channels.routing import get_default_application
-from django.test import override_settings
-from uvicorn.config import Config as UvicornConfig
-from uvicorn.main import Server as Uvicorn
 
+from testproj.e2e_server import serve
 from wireview import mount
 from wireview.schemas import ModelAction
 
@@ -112,48 +105,11 @@ async def test_mutation_from_other_tab_streams_new_bookmark():
 # stream item ever reaches the DOM — both of which the skill claims. These do.
 
 
-class UvicornThread(threading.Thread):
-    def __init__(self, application, host: str, port: int):
-        super().__init__()
-        self.host = host
-        self.port = port
-        self.application = application
-        self.server: Uvicorn | None = None
-        self.loop: asyncio.AbstractEventLoop | None = None
-
-    @override_settings(DEBUG=True)
-    def run(self):
-        self.loop = asyncio.new_event_loop()
-        config = UvicornConfig(self.application, host=self.host, port=self.port, log_level="warning")
-        self.server = Uvicorn(config)
-        self.server.install_signal_handlers = lambda *args, **kwargs: None
-        self.loop.run_until_complete(self.server.serve())
-        self.server = None
-
-    @property
-    def started(self) -> bool:
-        return self.server is not None and self.server.started
-
-    def terminate(self):
-        if self.server:
-            self.server.force_exit = True
-            self.server.should_exit = True
-            if self.loop:
-                self.loop.create_task(self.server.shutdown())
-
-
 @pytest.fixture(scope="function")
 def bookmarks_server():
-    host = "127.0.0.1"
-    port = randint(9000, 40000)
-    server = UvicornThread(get_default_application(), host, port)
-    server.start()
-    while not server.started:
-        sleep(0.1)
-
-    yield f"http://{host}:{port}"
-
-    server.terminate()
+    """A live ASGI server for this module's E2E tests."""
+    with serve() as base_url:
+        yield base_url
 
 
 def _wait_for_websocket(page, timeout: float = 5.0):

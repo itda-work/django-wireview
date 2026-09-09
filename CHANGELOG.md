@@ -76,6 +76,15 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- The E2E suites share one live-server harness (`tests/testproj/e2e_server.py`), and it waits.
+  Four copies of the same thread each entered a global `override_settings(DEBUG=True)` on their
+  own schedule and each teardown asked the server to stop without waiting for it, so a thread
+  winding down restored settings underneath the next test and a server that had only been asked
+  to stop kept answering into it. Both failures land as a warning *after* a green summary, which
+  is how they survived in four places. The port is now bound before the thread starts rather
+  than picked at random and hoped for. `tests/test_e2e_harness.py` holds the properties -- no
+  thread left behind, no override outliving the block, no second copy of the pattern -- because
+  the race itself is not reproducible on demand and a suite run is not a test of it.
 - `wireview.testing.mount()` takes `live_session=`, so a component's boundary behaviour can be
   unit-tested the way the rest of its lifecycle already could (`#58`).
 - `@session.view` keeps an `async def` view -- and an async class-based view -- async (`#58`).

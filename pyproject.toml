@@ -134,6 +134,12 @@ markers = [
     "unit: marks unit tests",
     "e2e: marks end-to-end tests (requires browser)",
 ]
+filterwarnings = [
+    # An exception on a background thread is reported after the run, as a warning
+    # beneath a green summary, and the E2E suites all run a server on one. That is
+    # how four copies of a settings-override race lived in the harness unnoticed.
+    "error::pytest.PytestUnhandledThreadExceptionWarning",
+]
 
 [dependency-groups]
 dev = [

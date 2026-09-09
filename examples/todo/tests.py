@@ -1,14 +1,8 @@
-import asyncio
-import threading
 import time
-from random import randint
-from time import sleep
 
 import pytest
-from channels.routing import get_default_application
-from django.test import Client, TestCase, override_settings
-from uvicorn.config import Config as UvicornConfig
-from uvicorn.main import Server as Uvicorn
+from django.test import Client, TestCase
+from testproj.e2e_server import serve
 
 from .models import Item
 
@@ -26,53 +20,11 @@ class TestNormalRendering(TestCase):
         self.assertContains(response, "Second task")
 
 
-class UvicornThread(threading.Thread):
-    """Thread that runs Uvicorn ASGI server for testing."""
-
-    def __init__(self, application, host: str, port: int):
-        super().__init__()
-        self.host = host
-        self.port = port
-        self.application = application
-        self.server: Uvicorn | None = None
-        self.loop: asyncio.AbstractEventLoop | None = None
-
-    @override_settings(DEBUG=True)
-    def run(self):
-        self.loop = asyncio.new_event_loop()
-        config = UvicornConfig(self.application, host=self.host, port=self.port, log_level="warning")
-        self.server = Uvicorn(config)
-        self.server.install_signal_handlers = lambda *args, **kwargs: None
-        self.loop.run_until_complete(self.server.serve())
-        self.server = None
-
-    @property
-    def started(self) -> bool:
-        return self.server is not None and self.server.started
-
-    def terminate(self):
-        if self.server:
-            self.server.force_exit = True
-            self.server.should_exit = True
-            if self.loop:
-                self.loop.create_task(self.server.shutdown())
-
-
 @pytest.fixture(scope="function")
 def wireview_server():
     """Fixture that starts a live ASGI server for E2E tests."""
-    host = "127.0.0.1"
-    port = randint(9000, 40000)
-    server = UvicornThread(get_default_application(), host, port)
-    server.start()
-
-    # Wait for server to start
-    while not server.started:
-        sleep(0.1)
-
-    yield f"http://{host}:{port}"
-
-    server.terminate()
+    with serve() as base_url:
+        yield base_url
 
 
 def expect_text_eventually(locator, expected: str, timeout: float = 5.0):

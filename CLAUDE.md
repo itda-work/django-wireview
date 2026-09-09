@@ -69,12 +69,15 @@ wireview/
 
 tests/
 ├── test_*.py              라이브러리 단위·통합 테스트. WebSocket 없이 mount() 사용
+│                          test_e2e_harness.py 는 E2E 하네스 자체의 계약을 지킨다
 │                          test_live_session_contract.py 는 회귀가 아니라 계약을 진술한다 —
 │                          컴포넌트가 생기는 경로 8개 × 거절 사유 5종을 parametrize로 돌린다.
 │                          경로를 새로 만들면 행을 추가한다
 ├── js/*.test.mjs          클라이언트 순수 모듈 테스트 (node --test)
 └── testproj/              Django 테스트 프로젝트(설정·URLconf). 채널 레이어는 WIREVIEW_TEST_LAYER가 고르고
                            settings_nats.py·settings_redis.py가 이를 고정하는 진입점이다.
+                           e2e_server.py 가 E2E용 라이브 ASGI 서버의 정본이다 —
+                           브라우저가 필요한 모든 스위트가 이것을 쓴다 (복제하면 test_e2e_harness.py가 실패한다).
                            bookmarks/ 는 예제가 아니라 wireview 스킬 검증의 기준선이고,
                            uploadprobe/ 는 워커 둘짜리 업로드 E2E(test_multiworker_uploads.py)의 픽스처,
                            livesession/ 은 경계 넘는 이동 E2E(test_live_session_e2e.py)의 픽스처다
@@ -126,8 +129,8 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 ## 절차
 
 **작업 절차는 `wireview-dev` 스킬에 있다.** 세션 시작(진행 중인 작업 찾기), 이슈·GAP·`wip`
-라벨 규약, 완료 정의 체크리스트, 커밋과 이슈 종료, 전체 명령 표, 벤치 측정 주의.
-이 문서는 지도와 금지선만 담는다.
+라벨 규약, **도중에 발견한 결함을 다루는 법**, 완료 정의 체크리스트, 커밋과 이슈 종료,
+전체 명령 표, 벤치 측정 주의. 이 문서는 지도와 금지선만 담는다.
 
 추적의 진실 소스는 **GitHub Issues**(`itda-work/django-wireview`)다. 새 대화는
 `gh issue list --label wip`로 시작한다.
