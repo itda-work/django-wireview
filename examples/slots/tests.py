@@ -8,6 +8,7 @@ slots each component declares, and which of them a caller must fill.
 """
 
 import pytest
+
 from wireview import mount
 
 from .components import Alert, Card, List, Modal

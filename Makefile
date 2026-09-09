@@ -51,14 +51,14 @@ test-cov: collectstatic
 
 # Lint Python code and templates (same checks as CI's lint job)
 lint:
-	uv run ruff check wireview tests bench
-	uv run ruff format --check wireview tests bench
+	uv run ruff check wireview tests bench examples
+	uv run ruff format --check wireview tests bench examples
 	uv run djlint --check .
 
 # Format code with ruff
 format:
-	uv run ruff check --fix wireview tests bench
-	uv run ruff format wireview tests bench
+	uv run ruff check --fix wireview tests bench examples
+	uv run ruff format wireview tests bench examples
 	uv run djlint --reformat .
 
 # Type check with pyright

@@ -2,6 +2,7 @@
 keyboard-navigable selection in component state."""
 
 import pytest
+
 from wireview import mount
 
 from .live import XLiveSearch

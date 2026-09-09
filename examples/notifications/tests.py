@@ -2,6 +2,7 @@
 learning about it through a subscription and a named broadcast."""
 
 import pytest
+
 from wireview import mount
 
 from .live import XNotificationBell, XNotificationCreator, XNotificationList

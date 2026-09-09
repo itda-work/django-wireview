@@ -2,6 +2,7 @@
 (the rating), and URL parameters that survive a reload."""
 
 import pytest
+
 from wireview import mount
 
 from .live import XStarRating

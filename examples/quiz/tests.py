@@ -2,6 +2,7 @@
 server-side, ending in a row other components subscribe to."""
 
 import pytest
+
 from wireview import mount
 
 from .live import QuizState, XQuiz

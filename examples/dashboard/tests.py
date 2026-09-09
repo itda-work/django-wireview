@@ -3,6 +3,7 @@ loading its own slow data through AsyncResult instead of blocking the first
 render."""
 
 import pytest
+
 from wireview import mount
 
 from .live import XActivityFeed, XDashboard, XStatCard
