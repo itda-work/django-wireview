@@ -202,6 +202,51 @@ def check_channel_layer(app_configs, **kwargs) -> list[CheckMessage]:
     ]
 
 
+def check_on_mount_hooks(app_configs, **kwargs) -> list[CheckMessage]:
+    """W007: an ``_on_mount`` entry wireview cannot call.
+
+    The hooks are an authorization boundary (the documented first example is an
+    authentication guard), and a hook wireview cannot call is skipped in silence,
+    so the component mounts unprotected.
+    """
+    messages = []
+    for cls in iter_component_classes():
+        for hook_class in cls._on_mount:
+            hook_name = getattr(hook_class, "__name__", repr(hook_class))
+            on_mount = getattr(hook_class, "on_mount", None)
+            if isinstance(on_mount, staticmethod):
+                on_mount = on_mount.__func__
+            if on_mount is None or not callable(on_mount):
+                messages.append(
+                    Warning(
+                        f"'{hook_name}' in {cls._fqn}._on_mount has no 'on_mount' method.",
+                        hint=(
+                            "wireview skips such an entry without a word, so a hook meant as a "
+                            "guard lets the component mount. Define "
+                            "'async def on_mount(component, params, session)' on it."
+                        ),
+                        obj=cls,
+                        id="wireview.W007",
+                    )
+                )
+                continue
+            if asyncio.iscoroutinefunction(_unwrap(on_mount)):
+                continue
+            messages.append(
+                Warning(
+                    f"'{hook_name}.on_mount' in {cls._fqn}._on_mount is not async.",
+                    hint=(
+                        "wireview awaits every on_mount hook, so a sync one fails with "
+                        "TypeError while the component is mounting. Declare it as "
+                        "'async def on_mount'."
+                    ),
+                    obj=cls,
+                    id="wireview.W007",
+                )
+            )
+    return messages
+
+
 def register_checks() -> None:
     """Register every check. Called from ``WireviewConfig.ready()``."""
     register(check_async_handlers, WIREVIEW_TAG)
@@ -209,4 +254,5 @@ def register_checks() -> None:
     register(check_component_name_collisions, WIREVIEW_TAG)
     register(check_client_bundle, WIREVIEW_TAG)
     register(check_hmin, WIREVIEW_TAG)
+    register(check_on_mount_hooks, WIREVIEW_TAG)
     register(check_channel_layer, WIREVIEW_TAG, deploy=True)

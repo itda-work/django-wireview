@@ -274,6 +274,7 @@ async def mount(
     component_class: type["Component"],
     user: "AbstractBaseUser | AnonymousUser | None" = None,
     params: dict[str, t.Any] | None = None,
+    session: t.Any = None,
     **initial_state: t.Any,
 ) -> MountedComponent:
     """
@@ -286,6 +287,7 @@ async def mount(
         component_class: The component class to instantiate
         user: Optional user instance (defaults to AnonymousUser)
         params: Optional URL/query parameters
+        session: Optional session data handed to the ``_on_mount`` hooks
         **initial_state: Initial field values for the component
 
     Returns:
@@ -312,11 +314,15 @@ async def mount(
 
     mounted = MountedComponent(component, wire, repo)
 
-    # Call joined() if it exists and is async
-    if hasattr(component, "joined"):
-        result = component.joined()
-        if hasattr(result, "__await__"):
-            await result
+    # The _on_mount hooks run before joined(), as they do on a real mount. A halt
+    # skips joined(); the component is still returned so the test can assert on
+    # what the hook did (a redirect, a frozen component).
+    if await component._mount(params or {}, session):
+        # Call joined() if it exists and is async
+        if hasattr(component, "joined"):
+            result = component.joined()
+            if hasattr(result, "__await__"):
+                await result
 
     return mounted
 
@@ -348,6 +354,7 @@ class ComponentTestCase:
         component_class: type["Component"],
         user: "AbstractBaseUser | AnonymousUser | None" = None,
         params: dict[str, t.Any] | None = None,
+        session: t.Any = None,
         **initial_state: t.Any,
     ) -> MountedComponent:
         """
@@ -355,4 +362,4 @@ class ComponentTestCase:
 
         See module-level mount() for full documentation.
         """
-        return await mount(component_class, user=user, params=params, **initial_state)
+        return await mount(component_class, user=user, params=params, session=session, **initial_state)

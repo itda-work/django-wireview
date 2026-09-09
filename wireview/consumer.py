@@ -43,6 +43,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             user=self.user,
             channel_name=self.channel_name,
             channel_layer=self.channel_layer,
+            session=self.scope.get("session"),
         )
 
     async def disconnect(self, code):
@@ -632,7 +633,10 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         for child in batch.new:
             child.wire.enter_pending_mode()
             try:
-                await child.joined()
+                # Same boundary as the parent's join: the child's _on_mount hooks
+                # run first, and a halt skips joined() but still renders the child.
+                if await child._mount(repo.params, repo.session):
+                    await child.joined()
             except Exception as e:
                 log.exception(f"Error in {child._name}.joined(): {e}")
             finally:

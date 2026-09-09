@@ -20,6 +20,21 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- Diff markers went missing at random when templates are not cached (`DEBUG = True`, or an
+  explicit loader list): the marker engine remembered prepared templates by `id()`, a freed
+  template's id was reused by a fresh one, and that one was skipped, so its next diff became a
+  full render. Prepared templates now carry a stamp on the object. Found as a flaky test
+  after #75 added locmem-template tests
+- `_on_mount` hooks never ran: `_run_on_mount_hooks()` was defined and documented as an
+  authentication boundary but had no call site (GAP-021, `#75`). They now run once per
+  instance, before `joined()`, on every path that mounts a component — the HTTP (dead)
+  render, the WebSocket join, a LiveComponent the parent's render named, and
+  `wireview.testing.mount()`. A halt skips the remaining hooks and `joined()` while the
+  component still renders, so a hook that redirects gets its `url_change` frame over the
+  WebSocket and a `<meta http-equiv="refresh">` on an HTTP render. Hooks receive the
+  request or connection session, and `manage.py check` reports an `_on_mount` entry
+  wireview cannot call as `wireview.W007`
+
 - A nested component rendered with `{% component_block %}` lost its slots when it re-rendered
   on its own event: `render_diff` built the context without `slots`. The component now keeps
   the slot content the enclosing template passed (`wire.slots`) and uses it in every render

@@ -28,6 +28,7 @@ WARNINGS:
 | `wireview.W004` | `wireview/wireview.min.js`를 staticfiles가 못 찾음 | JS가 로드되지 않아 페이지가 정적으로 남는다. 404 외에는 신호가 없다 |
 | `wireview.W005` | `USE_HMIN`이 켜져 있고 `USE_HTML_DIFF`도 켜짐 | django-hmin이 diff 마커(HTML 주석)를 지워 부분 diff가 토큰 diff로 퇴화한다 |
 | `wireview.W006` | 기본 채널 레이어가 `InMemoryChannelLayer` | 다중 프로세스에서 브로드캐스트가 같은 프로세스에만 닿고 오류는 나지 않는다 |
+| `wireview.W007` | `_on_mount`에 올린 클래스에 `on_mount`가 없거나 async가 아님 | 훅이 말없이 건너뛰어져, 인증 가드로 올린 훅이 아무것도 막지 않는다 |
 
 전부 `Warning`이다. `manage.py check`의 기본 `--fail-level`은 `ERROR`이므로 이 검사들이
 빌드를 깨지 않는다. **오탐 하나면 팀 전체가 검사를 무시하기 시작하므로** 확신이 설 때까지
@@ -42,6 +43,20 @@ WARNINGS:
 ```console
 $ python manage.py check --deploy
 ?: (wireview.W006) The default channel layer is InMemoryChannelLayer.
+```
+
+### W007이 보안 검사인 이유
+
+`_on_mount` 훅은 [라이프사이클 훅 문서](./lifecycle-hooks.md)의 첫 예제부터 **인증 가드**다.
+그런데 `_run_on_mount_hooks`는 `on_mount`가 없는 항목을 예외 없이 건너뛴다. 메서드 이름 오타
+하나(`onmount`)면 **가드가 사라진 컴포넌트가 정상적으로 마운트된다.** 클라이언트에는 아무
+신호도 없다. `async`를 빠뜨린 훅은 조용하지는 않지만 마운트 도중 `TypeError`로 터진다.
+
+```console
+$ python manage.py check
+<class 'billing.live.XInvoice'>: (wireview.W007) 'AuthHook.on_mount' in billing.live.XInvoice._on_mount is not async.
+	HINT: wireview awaits every on_mount hook, so a sync one fails with TypeError while
+	the component is mounting. Declare it as 'async def on_mount'.
 ```
 
 ## 특정 검사만 돌리기
@@ -90,4 +105,5 @@ Pydantic은 커스텀 serializer, `field_serializer`, wireview의 Django 모델 
 
 - [LiveComponent](./live-component.md) — 노출 규칙과 라이프사이클 콜백
 - [HTML Diff](./html-diff.md) — W005가 무엇을 지키는지
+- [라이프사이클 훅](./lifecycle-hooks.md) — W007이 지키는 `_on_mount` 경계
 - [배포](../DEPLOYMENT.md) — W006과 채널 레이어 선택

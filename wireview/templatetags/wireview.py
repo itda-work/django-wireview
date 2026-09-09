@@ -1,5 +1,8 @@
+import asyncio
 import typing as t
+from concurrent.futures import ThreadPoolExecutor
 
+from asgiref.sync import async_to_sync
 from django import template
 from django.template.base import Node, NodeList, Parser, TextNode, Token, token_kwargs
 from django.template.context import Context
@@ -57,6 +60,43 @@ def tag_header(context):
     )
 
 
+def _mount_for_http(component: Component, repo: ComponentRepository) -> None:
+    """Run a component's ``_on_mount`` hooks during a dead (HTTP) render.
+
+    The hooks are an authorization boundary, so they have to cover the first
+    HTML too: skipping them here would ship the protected page once and only
+    stop the WebSocket join that follows. Components without hooks pay nothing
+    because the common case returns on the first line.
+
+    Getting an async callback out of a synchronous template pass depends on
+    which thread that pass runs on:
+
+    - A sync view, or an async view whose template pass is already wrapped in
+      ``sync_to_async``, renders on a plain worker thread. ``async_to_sync``
+      is the right bridge there.
+    - An async view that calls ``render()`` directly renders on the event-loop
+      thread itself, where ``async_to_sync`` refuses to run. Rather than fail
+      the page, the hooks get a loop of their own on a helper thread. A hook
+      that touches the ORM there opens its own connection, which is the same
+      trade Django's own sync/async bridges make.
+
+    A halt is not reported back: a dead render has no ``joined()`` to skip, and
+    ``WireviewMeta.render`` turns the redirect a hook queued into a
+    ``<meta http-equiv="refresh">``.
+    """
+    if repo.is_live or not type(component)._on_mount:
+        return
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        async_to_sync(component._mount)(repo.params, repo.session)
+        return
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(asyncio.run, component._mount(repo.params, repo.session)).result()
+
+
 def _build_and_render_component(
     context: Context,
     component_name: str,
@@ -65,15 +105,18 @@ def _build_and_render_component(
 ) -> str:
     """Helper function to build and render a component."""
     if (repo := context.get("wireview_repository")) is None:
-        qs = (request := context.get("request")) and request.META["QUERY_STRING"] or ""
+        request = context.get("request")
+        qs = request and request.META["QUERY_STRING"] or ""
         repo = ComponentRepository(
             is_live=False,
             user=context.get("user"),
             params=ComponentRepository.extract_params(qs),
+            session=getattr(request, "session", None),
         )
         context["wireview_repository"] = repo
 
     component_instance = repo.build(component_name, state=kwargs)
+    _mount_for_http(component_instance, repo)
 
     # Use slot-aware rendering if slots are provided
     if slots is not None:
@@ -790,6 +833,7 @@ def _render_live_component(
 
     if not repo.is_live:
         # HTTP render: a dead render of the child, inline, like any nested component.
+        _mount_for_http(live_comp, repo)
         if slots is not None:
             return live_comp._render_with_slots(repo, slots) or ""
         return live_comp._render(repo) or ""

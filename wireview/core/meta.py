@@ -100,6 +100,13 @@ class WireviewMeta:
         # that instance leaves and a fresh one joins, so joined() stays once per
         # instance.
         self.has_joined: bool = False
+        # Set once the _on_mount hooks have run for this instance. The hooks are a
+        # mount-time boundary (authentication, tracking), so they run once per
+        # instance no matter how many render passes name the component.
+        self.has_mounted: bool = False
+        # Whether the last _on_mount run ended in {"halt": True}. Kept so a repeat
+        # call to Component._mount() answers the same way it did the first time.
+        self.mount_halted: bool = False
         # Slot content the enclosing template passed, without markers, so a render
         # the component does on its own (render_diff) still fills its slots.
         self.slots: SlotContainer | None = None

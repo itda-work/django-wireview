@@ -236,7 +236,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | Flash messages | ✅ `put_flash` | `put_flash()` | ✅ |
 | Dead views | ✅ JS 비활성화 폴백 | ❌ | 🟠 GAP-034 ([#73](https://github.com/itda-work/django-wireview/issues/73)) |
 | LongPolling fallback | ✅ | ❌ | 🟠 GAP-012 ([#59](https://github.com/itda-work/django-wireview/issues/59)) |
-| on_mount hooks | ✅ | `_on_mount` | ✅ |
+| on_mount hooks | ✅ | `_on_mount` | ✅ (GAP-021. 호출부가 없어 훅이 실행되지 않던 것을 [#75](https://github.com/itda-work/django-wireview/issues/75)에서 붙였다) |
 | attach_hook | ✅ | `attach_hook()` | ✅ |
 
 ---

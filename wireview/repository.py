@@ -67,8 +67,12 @@ class ComponentRepository:
         params: dict[str, t.Any] | None = None,
         channel_name: str | None = None,
         channel_layer: BaseChannelLayer | None = None,
+        session: t.Any = None,
     ):
         self.params = params or {}
+        # The request/connection session, handed to the ``_on_mount`` hooks. Not a
+        # component-facing API: components do not read it (GAP-029, #68).
+        self.session: t.Any = {} if session is None else session
         self.channel_name = channel_name
         self.channel_layer = channel_layer
         self.user = user or AnonymousUser()
@@ -334,7 +338,11 @@ class ComponentRepository:
         # These will be flushed after send_render() in consumer
         component.wire.enter_pending_mode()
         try:
-            await component.joined()
+            # The _on_mount hooks are the mount-time boundary: a halt skips
+            # joined(), but the component is still returned so the consumer
+            # renders it and whatever the hook queued (a redirect) goes out.
+            if await component._mount(self.params, self.session):
+                await component.joined()
         finally:
             component.wire.has_joined = True
         return component

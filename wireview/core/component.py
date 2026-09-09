@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import typing as t
 from uuid import uuid4
 
@@ -32,6 +33,8 @@ if t.TYPE_CHECKING:
     )
     from ..js import JS
     from ..slots import SlotContainer
+
+log = logging.getLogger("wireview")
 
 # Type aliases
 ComponentState = dict[str, t.Any]
@@ -530,10 +533,43 @@ class Component(BaseModel):
 
         return {"cont": True}
 
+    async def _mount(
+        self,
+        params: dict[str, t.Any] | None = None,
+        session: t.Any = None,
+    ) -> bool:
+        """Run the ``_on_mount`` hooks for this instance, once, before ``joined()``.
+
+        Every path that produces a component the user sees calls this: the
+        WebSocket join, the LiveComponent children a parent's render named, the
+        dead (HTTP) render of a ``{% component %}`` tag, and ``testing.mount()``.
+        Running it in only some of them would let protected HTML out through the
+        others, which is what #75 was.
+
+        Args:
+            params: URL/query parameters handed to each hook
+            session: The request session, when the call site has one
+
+        Returns:
+            True when the caller should go on to ``joined()``, False when a hook
+            halted the mount. A repeat call for the same instance runs nothing
+            and answers the same way the first call did.
+        """
+        if self.wire.has_mounted or self.wire.has_joined:
+            return not self.wire.mount_halted
+
+        self.wire.has_mounted = True
+        result = await self._run_on_mount_hooks(params, session)
+        if result.get("halt"):
+            self.wire.mount_halted = True
+            log.debug("on_mount halted %s (%s): %s", self._name, self.id, result.get("hook"))
+            return False
+        return True
+
     async def _run_on_mount_hooks(
         self,
         params: dict[str, t.Any] | None = None,
-        session: dict[str, t.Any] | None = None,
+        session: t.Any = None,
     ) -> dict[str, t.Any]:
         """
         Run all on_mount hooks defined in _on_mount.
