@@ -11,7 +11,7 @@ from django.utils.datastructures import MultiValueDict
 from wireview.component import Component
 
 from . import serializer
-from .core.live_session import auth_fingerprint, auth_topic, get_live_session
+from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
 from .core.session import SessionView, load_session
 from .core.state import LegacyState, StateMismatch, StatePayload, unsign_envelope
 from .core.transport import ChannelsOutbound, Outbound
@@ -292,7 +292,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
                 return f"live_session {name!r}: the login this connection stands on has ended"
             self._auth_revalidated = True
         if payload.auth != self.auth_fingerprint:
-            return f"live_session {name!r}: the state was issued under a different authentication"
+            return f"live_session {name!r}: the state was issued under a different login"
         if not await sync_to_async(policy.allows)(self.repo.user, self.repo.session):
             return f"live_session {name!r} refused this user"
 
@@ -353,7 +353,26 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             log.exception("Could not re-read the session for connection %s", self.connection_id)
             return False
         self.repo.session = view
-        return current == self.auth_fingerprint
+        if current != self.auth_fingerprint:
+            return False
+        return self._session_still_names_this_user(view)
+
+    def _session_still_names_this_user(self, session: SessionView) -> bool:
+        """Whether the freshly read session still authenticates the connection's user.
+
+        The fingerprint alone cannot answer this for a session written before the
+        generation nonce existed: its inputs are then the pk and nothing else, and
+        the pk comes from the *connection*, not from the session. A logout empties
+        the session and leaves the fingerprint exactly where it was.
+
+        So the session is asked directly. It is the same question Django's own
+        auth middleware asks of a request, and the answer for a flushed session is
+        that it names nobody.
+        """
+        user = self.repo.user
+        if not getattr(user, "is_authenticated", False):
+            return True
+        return str(session.get(AUTH_USER_ID_KEY, "")) == str(getattr(user, "pk", ""))
 
     def _child_boundary_refusal(self, payload: StatePayload) -> str | None:
         """Why a child's stored state may not be restored here, or ``None`` if it may.

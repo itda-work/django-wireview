@@ -27,7 +27,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import socket
+import sys
 import threading
 import typing as t
 from time import monotonic, sleep
@@ -36,6 +38,8 @@ from channels.routing import get_default_application
 from django.test import override_settings
 from uvicorn.config import Config as UvicornConfig
 from uvicorn.main import Server as Uvicorn
+
+log = logging.getLogger(__name__)
 
 __all__ = ["UvicornThread", "serve"]
 
@@ -134,13 +138,28 @@ def serve(application: t.Any = None) -> t.Iterator[str]:
                 raise AssertionError(failure)
             yield f"http://{host}:{port}"
         finally:
-            thread.terminate()
             # Inside the override, so it is still in place while the thread reads
             # settings on its way out; and waited for, because a server that has
             # only been asked to stop is still bound to its port and still
             # answering, which the next test would get instead of its own.
-            thread.join(timeout=SHUTDOWN_TIMEOUT)
+            _stop(thread)
 
+
+def _stop(thread: UvicornThread) -> None:
+    """Ask the server to stop and account for whether it did.
+
+    Called from a ``finally``, so it has to be careful about what it raises: an
+    exception here would replace whatever sent us here, and the original failure
+    is the more useful one. A shutdown that did not finish is therefore reported
+    only when nothing else is on its way out -- and Python cannot force a thread
+    to end, so this reports rather than guarantees.
+    """
+    thread.terminate()
+    thread.join(timeout=SHUTDOWN_TIMEOUT)
+    if sys.exc_info()[0] is not None:
+        if thread.is_alive():
+            log.error("the test server did not stop, and something else was already failing")
+        return
     assert not thread.is_alive(), "the test server did not stop"
     if thread.error is not None:
         raise AssertionError(f"the test server failed: {thread.error!r}")

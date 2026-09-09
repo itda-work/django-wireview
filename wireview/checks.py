@@ -316,7 +316,9 @@ def check_live_sessions(app_configs, **kwargs) -> list[CheckMessage]:
                         "Its hooks run wherever it is mounted, including on a page outside "
                         "every boundary this project draws -- so a state signed on such a page "
                         'mounts it there. Add _live_sessions = {"<name>"} to say where it '
-                        "belongs, or leave it empty on purpose if it really is mountable anywhere."
+                        "belongs, or leave it empty on purpose if it really is mountable anywhere. "
+                        "This check sees classes, not the pages they sit on, so it cannot find a "
+                        "component that relies only on its page's authorize."
                     ),
                     obj=cls,
                     id="wireview.W010",

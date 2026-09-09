@@ -74,6 +74,12 @@ The django-reactor era changelog (2.x) is preserved in
   for a component that declares no `_live_sessions` settled the connection on "no policy" and
   skipped the view's own `authorize` entirely. `wireview.W010` reports the combination.
 
+- Entering a boundary asks the re-read session who it authenticates, not only what it
+  fingerprints to (`#58`). Dropping the auth hash left a session written before the generation
+  nonce with the pk as its only fingerprint input -- and the pk comes from the connection, not
+  from the session, so a flushed session fingerprinted exactly like a live one and a delayed
+  first join after a logout was admitted. A regression the same release introduced, found by
+  re-judging it.
 - The authentication generation no longer includes `_auth_user_hash` (`#58`).
   `update_session_auth_hash()` moves that hash while deliberately keeping the user logged in,
   and fires no signal -- so a password change moved the topic out from under a socket that was

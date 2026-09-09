@@ -28,6 +28,7 @@ from wireview.consumer import WireviewConsumer
 from wireview.core import live_session as live_session_module
 from wireview.core.live_session import (
     AUTH_GENERATION_KEY,
+    AUTH_USER_ID_KEY,
     LiveSession,
     auth_fingerprint,
     auth_topic,
@@ -46,11 +47,18 @@ pytestmark = [pytest.mark.unit, pytest.mark.django_db]
 CACHE_SESSIONS = "django.contrib.sessions.backends.cache"
 
 
-def _make_session() -> str:
-    """A saved session standing for one login. Returns its key."""
+def _make_session(user=None) -> str:
+    """A saved session standing for one login. Returns its key.
+
+    It names its user the way Django does, because the boundary asks the session
+    who it authenticates -- a fingerprint alone cannot tell a flushed session from
+    a full one when the login predates the generation nonce.
+    """
     store = CacheSessionStore()
     store["_auth_user_hash"] = "abc"
     store[AUTH_GENERATION_KEY] = "gen-1"
+    if user is not None:
+        store[AUTH_USER_ID_KEY] = str(user.pk)
     store.save()
     return str(store.session_key)
 
@@ -836,7 +844,7 @@ class TestLogoutInvalidation:
     async def test_a_live_session_still_joins_when_the_login_stands(self, admin_session, staff):
         """The control for the re-read: a session that is still there is not refused."""
         with override_settings(SESSION_ENGINE=CACHE_SESSIONS):
-            key = _make_session()
+            key = _make_session(staff)
             token = signed(LsxGuarded, page=admin_session, user=staff, session=CacheSessionStore(key), id="l4")
             consumer, outbound = make_consumer(user=staff, session=CacheSessionStore(key))
             await consumer.command_join("LsxGuarded", token)

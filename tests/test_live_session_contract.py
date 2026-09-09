@@ -40,6 +40,7 @@ from wireview.core import live_session as live_session_module
 from wireview.core.live_session import (
     AUTH_GENERATION_KEY,
     AUTH_TOPIC_PREFIX,
+    AUTH_USER_ID_KEY,
     LiveSession,
     auth_fingerprint,
     auth_topic,
@@ -1171,6 +1172,48 @@ class TestEnteringABoundaryRereadsTheSession:
         assert outbound.kinds() == ["reload"]
         assert consumer.repo.get("target") is None
 
+    @pytest.mark.parametrize("stamped", [True, False], ids=["with a nonce", "without one"])
+    async def test_a_flushed_session_is_refused_however_it_was_written(self, boundary, user, stamped):
+        """A logout empties the session; the connection must not still be admitted.
+
+        The nonce-less half is the one that bites. Its fingerprint inputs are the
+        pk and nothing else, and the pk comes from the *connection* -- so an empty
+        session fingerprints exactly the same as a full one, and comparing
+        fingerprints answers yes. The session has to be asked who it authenticates.
+        """
+        with override_settings(SESSION_ENGINE=CACHE_SESSIONS):
+            store = CacheSessionStore()
+            store[AUTH_USER_ID_KEY] = str(user.pk)
+            if stamped:
+                store[AUTH_GENERATION_KEY] = "g1"
+            store.save()
+            key = str(store.session_key)
+            token = signed(CxOk, page=boundary, user=user, session=CacheSessionStore(key), id="target")
+            consumer, outbound = make_consumer(boundary=boundary, user=user, session=CacheSessionStore(key))
+
+            CacheSessionStore(key).flush()
+            await consumer.command_join("CxOk", token)
+
+        assert outbound.kinds() == ["reload"]
+        assert consumer.repo.get("target") is None
+
+    @pytest.mark.parametrize("stamped", [True, False], ids=["with a nonce", "without one"])
+    async def test_a_session_that_is_still_there_is_admitted(self, boundary, user, stamped):
+        """The control for both halves: nothing was flushed, so nothing is refused."""
+        with override_settings(SESSION_ENGINE=CACHE_SESSIONS):
+            store = CacheSessionStore()
+            store[AUTH_USER_ID_KEY] = str(user.pk)
+            if stamped:
+                store[AUTH_GENERATION_KEY] = "g1"
+            store.save()
+            key = str(store.session_key)
+            token = signed(CxOk, page=boundary, user=user, session=CacheSessionStore(key), id="target")
+            consumer, outbound = make_consumer(boundary=boundary, user=user, session=CacheSessionStore(key))
+
+            await consumer.command_join("CxOk", token)
+
+        assert outbound.kinds() == ["render"]
+
     async def test_a_connection_refused_by_the_re_read_cannot_simply_ask_again(self, boundary):
         """The bookkeeping is the verdict, not the subscription.
 
@@ -1763,6 +1806,41 @@ class TestABoundaryAddedLaterDoesNotReachBackwards:
         assert consumer.repo.get("target") is not None
         assert consumer.repo.live_session is None, "the token named no boundary, so neither does the socket"
         assert strict.name == BOUNDARY
+
+    async def test_an_unbound_token_outlives_its_own_expiry_by_renewal(self, user, monkeypatch):
+        """The part that makes "wait out ``STATE_MAX_AGE``" wrong.
+
+        A component that joined unbound is re-signed on every render, and the
+        token that comes back carries a fresh timestamp -- so it is still valid
+        after the one that let it in has expired, and it still names no boundary.
+        One open tab extends the exposure indefinitely. Expiry is the lifetime of
+        a token, not a way to take access away; a transition has to close the
+        connections.
+        """
+        import time as time_module
+
+        from django.core.signing import SignatureExpired
+
+        from wireview.core import state as state_module
+
+        monkeypatch.setattr(state_module.settings, "STATE_MAX_AGE", 100)
+        monkeypatch.setattr(state_module.settings, "STATE_REFRESH_AFTER", 1)
+
+        monkeypatch.setattr(time_module, "time", lambda: 1000.0)
+        old_token = signed(CxOk, page=None, id="target")
+        live_session(BOUNDARY, authorize=lambda ctx: False)
+
+        monkeypatch.setattr(time_module, "time", lambda: 1090.0)
+        consumer, _ = make_consumer(user=user)
+        await consumer.command_join("CxOk", old_token)
+        component = consumer.repo.get("target")
+        assert component is not None, "the old token still joins, which is the premise"
+        renewed = sign_state(component)
+
+        monkeypatch.setattr(time_module, "time", lambda: 1101.0)
+        with pytest.raises(SignatureExpired):
+            unsign_envelope(old_token, "CxOk")
+        assert unsign_envelope(renewed, "CxOk").live_session == "", "the replacement still names no boundary"
 
     async def test_a_component_that_declared_its_session_refuses_the_same_token(self, user):
         """And the mitigation, stated beside it."""

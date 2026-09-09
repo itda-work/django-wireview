@@ -158,3 +158,24 @@ def test_a_state_token_cannot_be_presented_as_an_upload_token(monkeypatch):
     monkeypatch.setattr(wireview_settings, "SIGNING_KEY", "one-key")
 
     assert validate_upload_token(sign_state(make_component())) is None
+
+
+@pytest.mark.unit
+def test_an_explicit_empty_fallback_list_means_no_fallbacks(monkeypatch):
+    """``[]`` and ``None`` are different answers, and the difference is the point.
+
+    ``None`` means "follow Django", so a project that only ever rotated
+    ``SECRET_KEY`` keeps the behaviour it had. ``[]`` is what a deployment writes
+    when it rotates the signing key precisely in order to stop honouring the old
+    one -- retiring the tokens a policy change left behind, say. Reading the empty
+    list as "unset" would inherit Django's old key and keep accepting exactly the
+    tokens the rotation was for.
+    """
+    monkeypatch.setattr(wireview_settings, "SIGNING_KEY", "wireview-new")
+
+    with override_settings(SECRET_KEY="new-secret", SECRET_KEY_FALLBACKS=["old-secret"]):
+        monkeypatch.setattr(wireview_settings, "SIGNING_KEY_FALLBACKS", [])
+        assert signing_key_fallbacks() == []
+
+        monkeypatch.setattr(wireview_settings, "SIGNING_KEY_FALLBACKS", None)
+        assert signing_key_fallbacks() == ["old-secret"], "None follows Django"

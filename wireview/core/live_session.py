@@ -59,6 +59,7 @@ import typing as t
 from dataclasses import dataclass
 
 from asgiref.sync import sync_to_async
+from django.contrib.auth import SESSION_KEY
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied
@@ -76,6 +77,7 @@ log = logging.getLogger("wireview")
 
 __all__ = [
     "AUTH_GENERATION_KEY",
+    "AUTH_USER_ID_KEY",
     "LiveSession",
     "declaration_allows",
     "LiveSessionContext",
@@ -99,6 +101,10 @@ AUTH_SALT = "wireview.live_session.auth"
 #: live_session subscribe to the topic for their own fingerprint;
 #: :func:`invalidate_authentication` publishes to it.
 AUTH_TOPIC_PREFIX = "wireview.auth."
+
+#: Django's own key for "which user is logged in", re-exported so the two places
+#: that read it agree on the name.
+AUTH_USER_ID_KEY = SESSION_KEY
 
 #: Session key holding the login generation. Written once per ``login()`` and left
 #: alone afterwards, so it names *this* login without moving when unrelated session
@@ -159,7 +165,7 @@ def auth_fingerprint(user: AnyUser | None, session: t.Any) -> str:
         # out of the session there would fingerprint an anonymous socket as the
         # user whose keys the session still happens to hold, which is a state
         # Channels can leave behind when a backend declines to return the user.
-        pk = view.get("_auth_user_id")
+        pk = view.get(AUTH_USER_ID_KEY)
     parts = [
         "" if pk is None else str(pk),
         str(view.get(AUTH_GENERATION_KEY, "")),

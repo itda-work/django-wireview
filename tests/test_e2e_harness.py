@@ -132,6 +132,43 @@ def test_a_startup_that_never_finishes_is_cleaned_up_before_it_raises(monkeypatc
     assert built and not built[0].is_alive(), "the thread was joined before the settings came back"
 
 
+def test_a_shutdown_that_does_not_finish_is_reported(monkeypatch, caplog):
+    """Reported, not raised over the top of whatever sent us here.
+
+    Python cannot force a thread to end, so the harness accounts for a shutdown
+    that did not finish rather than promising one that did. When the test body is
+    already failing, that account goes to the log: the original exception is the
+    one worth keeping.
+    """
+    release = threading.Event()
+
+    class Stuck(e2e_server.UvicornThread):
+        def terminate(self):
+            pass  # ignores the request, so the join times out
+
+        def run(self):
+            self.server = _AlreadyServing()
+            release.wait(timeout=10)
+
+    monkeypatch.setattr(e2e_server, "UvicornThread", Stuck)
+    monkeypatch.setattr(e2e_server, "SHUTDOWN_TIMEOUT", 0.2)
+
+    try:
+        with pytest.raises(AssertionError, match="did not stop"):
+            with serve():
+                pass
+    finally:
+        release.set()
+
+
+class _AlreadyServing:
+    """Enough of a Uvicorn server for the harness to consider it up."""
+
+    started = True
+    force_exit = False
+    should_exit = False
+
+
 def test_the_event_loop_is_closed_with_the_thread(started_threads):
     """A joined thread is not a closed loop, and each one holds a selector."""
     with serve():
