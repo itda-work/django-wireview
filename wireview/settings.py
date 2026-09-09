@@ -10,7 +10,7 @@ DEFAULT = {
     "BOOST_PAGES": False,
     "AUTO_BROADCAST": AutoBroadcast(),
     # Upload settings
-    "UPLOAD_TEMP_DIR": None,  # None = system temp dir
+    "UPLOAD_TEMP_DIR": None,  # Where chunked uploads land. None = system temp dir; created if missing
     "UPLOAD_MAX_FILE_SIZE": 10 * 1024 * 1024,  # 10MB default
     "UPLOAD_CHUNK_SIZE": 64 * 1024,  # 64KB default
     "UPLOAD_TOKEN_MAX_AGE": 3600,  # 1 hour

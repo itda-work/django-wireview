@@ -13,7 +13,9 @@ production-only check is registered as a deploy check.
 """
 
 import asyncio
+import os
 import typing as t
+from pathlib import Path
 
 from django.core.checks import CheckMessage, Warning, register
 
@@ -247,6 +249,66 @@ def check_on_mount_hooks(app_configs, **kwargs) -> list[CheckMessage]:
     return messages
 
 
+def check_upload_temp_dir(app_configs, **kwargs) -> list[CheckMessage]:
+    """W008: ``UPLOAD_TEMP_DIR`` points somewhere uploads cannot be written.
+
+    Nothing touches the directory until the first chunk arrives, so a typo or a
+    volume that was never mounted looks fine at deploy time and then fails per
+    upload, on a code path the user only sees as an upload that never finishes.
+
+    The check has no side effects: a directory that does not exist yet is judged
+    by its nearest existing ancestor rather than by creating it.
+    """
+    from . import settings as wireview_settings
+
+    configured = wireview_settings.UPLOAD_TEMP_DIR
+    if configured is None:
+        return []
+
+    def flag(reason: str, hint: str | None = None) -> list[CheckMessage]:
+        return [
+            Warning(
+                f"WIREVIEW['UPLOAD_TEMP_DIR'] = {configured!r} {reason}.",
+                hint=hint
+                or (
+                    "wireview creates every chunked upload's temp file there. Nothing reads "
+                    "the setting until the first upload, so the misconfiguration surfaces as "
+                    "uploads that fail one by one rather than at startup. Point it at a "
+                    "writable directory, or unset it to use the system temp dir."
+                ),
+                id="wireview.W008",
+            )
+        ]
+
+    if not configured:
+        return flag(
+            "is empty, so uploads go to the system temp dir",
+            hint=(
+                "An empty value usually means an environment variable nobody set "
+                "(os.environ.get('UPLOAD_TEMP_DIR', '')). wireview treats it as unset rather "
+                "than as the working directory, so nothing breaks, but the shared volume the "
+                "setting was meant to name is not being used. Set a path, or drop the key."
+            ),
+        )
+
+    path = Path(configured)
+    if path.exists():
+        if not path.is_dir():
+            return flag("exists but is not a directory")
+        if not os.access(path, os.W_OK | os.X_OK):
+            return flag("is a directory wireview cannot write to")
+        return []
+
+    # create_temp_file() makes the directory on first use, so the question is
+    # whether the nearest existing ancestor lets it.
+    ancestor = path.parent
+    while not ancestor.exists() and ancestor != ancestor.parent:
+        ancestor = ancestor.parent
+    if not ancestor.is_dir() or not os.access(ancestor, os.W_OK | os.X_OK):
+        return flag("does not exist and cannot be created")
+    return []
+
+
 def register_checks() -> None:
     """Register every check. Called from ``WireviewConfig.ready()``."""
     register(check_async_handlers, WIREVIEW_TAG)
@@ -255,4 +317,5 @@ def register_checks() -> None:
     register(check_client_bundle, WIREVIEW_TAG)
     register(check_hmin, WIREVIEW_TAG)
     register(check_on_mount_hooks, WIREVIEW_TAG)
+    register(check_upload_temp_dir, WIREVIEW_TAG)
     register(check_channel_layer, WIREVIEW_TAG, deploy=True)

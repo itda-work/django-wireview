@@ -4,6 +4,7 @@ Each check must fire on the trap it names and stay silent otherwise: a check
 that cries wolf on a healthy project gets ignored, and then it is dead weight.
 """
 
+import os
 import warnings
 
 import pytest
@@ -18,11 +19,18 @@ from wireview.checks import (
     check_client_bundle,
     check_component_name_collisions,
     check_hmin,
+    check_upload_temp_dir,
     iter_component_classes,
     iter_exposed_handlers,
 )
 
 pytestmark = pytest.mark.unit
+
+#: A permission-based test proves nothing when the process bypasses permissions.
+needs_permissions = pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0,
+    reason="root ignores directory permissions",
+)
 
 
 def make_component(class_name: str, module: str = "probeapp.live", **namespace) -> type[Component]:
@@ -199,6 +207,92 @@ class TestChannelLayerCheck:
         assert check_channel_layer(None) == []
 
 
+class TestUploadTempDirCheck:
+    """W008: the setting is only read when a chunk arrives, never at startup."""
+
+    @pytest.fixture
+    def temp_dir(self, monkeypatch):
+        """Point WIREVIEW['UPLOAD_TEMP_DIR'] at a value for one test."""
+        from wireview import settings as wireview_settings
+
+        def _set(value):
+            monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", value)
+
+        return _set
+
+    def test_unset_is_silent(self, temp_dir):
+        temp_dir(None)
+
+        assert check_upload_temp_dir(None) == []
+
+    def test_empty_string_flagged(self, temp_dir):
+        """An unset environment variable reads as '', and nobody means the cwd."""
+        temp_dir("")
+
+        messages = check_upload_temp_dir(None)
+
+        assert [m.id for m in messages] == ["wireview.W008"]
+        assert "is empty" in messages[0].msg
+
+    def test_writable_directory_silent(self, temp_dir, tmp_path):
+        temp_dir(str(tmp_path))
+
+        assert check_upload_temp_dir(None) == []
+
+    def test_file_flagged(self, temp_dir, tmp_path):
+        target = tmp_path / "not-a-dir"
+        target.write_text("x")
+        temp_dir(str(target))
+
+        messages = check_upload_temp_dir(None)
+
+        assert [m.id for m in messages] == ["wireview.W008"]
+        assert "not a directory" in messages[0].msg
+
+    @needs_permissions
+    def test_unwritable_directory_flagged(self, temp_dir, tmp_path):
+        target = tmp_path / "locked"
+        target.mkdir(mode=0o500)
+        temp_dir(str(target))
+
+        try:
+            messages = check_upload_temp_dir(None)
+        finally:
+            target.chmod(0o700)
+
+        assert [m.id for m in messages] == ["wireview.W008"]
+        assert "cannot write" in messages[0].msg
+
+    def test_missing_but_creatable_is_silent(self, temp_dir, tmp_path):
+        """The directory is created on first upload, so this is not a problem."""
+        temp_dir(str(tmp_path / "uploads" / "chunks"))
+
+        assert check_upload_temp_dir(None) == []
+
+    @needs_permissions
+    def test_missing_and_uncreatable_flagged(self, temp_dir, tmp_path):
+        blocker = tmp_path / "locked"
+        blocker.mkdir(mode=0o500)
+        temp_dir(str(blocker / "uploads"))
+
+        try:
+            messages = check_upload_temp_dir(None)
+        finally:
+            blocker.chmod(0o700)
+
+        assert [m.id for m in messages] == ["wireview.W008"]
+        assert "does not exist" in messages[0].msg
+
+    def test_has_no_side_effects(self, temp_dir, tmp_path):
+        """A check must not create what it is checking for."""
+        target = tmp_path / "uploads"
+        temp_dir(str(target))
+
+        check_upload_temp_dir(None)
+
+        assert not target.exists()
+
+
 class TestTestprojIsClean:
     """AC3: zero false positives on the project we actually ship tests for."""
 
@@ -212,3 +306,4 @@ class TestTestprojIsClean:
         assert check_component_name_collisions(None) == []
         assert check_client_bundle(None) == []
         assert check_hmin(None) == []
+        assert check_upload_temp_dir(None) == []

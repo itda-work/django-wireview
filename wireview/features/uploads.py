@@ -6,6 +6,8 @@ Supports chunked uploads, progress tracking, and drag-and-drop.
 
 from __future__ import annotations
 
+import os
+import re
 import secrets
 import tempfile
 import typing as t
@@ -14,6 +16,7 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
 from django.core.signing import TimestampSigner
 
 # Magic bytes for file type validation
@@ -330,10 +333,15 @@ class UploadRegistry:
             Signed upload token
 
         Raises:
-            ValueError: If config is unknown or max entries reached
+            ValueError: If config is unknown, the ref is malformed, or max entries reached
         """
         if config_name not in self.configs:
             raise ValueError(f"Unknown upload config: {config_name}")
+
+        # ``ref`` comes from the client and reaches a temp filename, so it is
+        # checked here: every registration path goes through add_entry.
+        if not is_valid_ref(entry.ref):
+            raise ValueError(f"Invalid upload ref: {entry.ref!r}")
 
         config = self.configs[config_name]
 
@@ -559,6 +567,45 @@ class ConsumedUpload:
             self.entry.cleanup()
 
 
+#: Longest ``ref`` the server accepts. ``generate_ref()`` produces 23 characters.
+REF_MAX_LENGTH = 64
+
+#: A ``ref`` is a client-supplied string that ends up in a temp filename, so it
+#: is restricted to characters that carry no meaning to a filesystem.
+REF_RE = re.compile(rf"[A-Za-z0-9_-]{{1,{REF_MAX_LENGTH}}}")
+
+_REF_UNSAFE_RE = re.compile(r"[^A-Za-z0-9_-]")
+
+
+def is_valid_ref(ref: str) -> bool:
+    """Whether ``ref`` is a reference the server is willing to register.
+
+    Args:
+        ref: Candidate reference, as received from the client
+
+    Returns:
+        True if the reference is safe to use as a filename component
+    """
+    return isinstance(ref, str) and REF_RE.fullmatch(ref) is not None
+
+
+def sanitize_ref(ref: str) -> str:
+    """Reduce ``ref`` to characters that mean nothing to a filesystem.
+
+    ``UploadRegistry.add_entry`` already refuses anything ``is_valid_ref`` does
+    not accept; this is the second line of defence for the one call that puts a
+    ref into a path, so a new registration path cannot reintroduce traversal.
+
+    Args:
+        ref: Reference to sanitize
+
+    Returns:
+        A non-empty string of ``[A-Za-z0-9_-]``, at most ``REF_MAX_LENGTH`` long
+    """
+    cleaned = _REF_UNSAFE_RE.sub("_", ref)[:REF_MAX_LENGTH]
+    return cleaned or "ref"
+
+
 def generate_ref() -> str:
     """Generate a unique upload reference.
 
@@ -571,14 +618,43 @@ def generate_ref() -> str:
 def create_temp_file(ref: str) -> Path:
     """Create a temporary file for upload.
 
+    The directory is ``WIREVIEW["UPLOAD_TEMP_DIR"]``, read on every call so a
+    test or a runtime change takes effect, and created if it does not exist yet.
+    A configured directory that cannot be used raises instead of falling back to
+    the system temp dir: an operator who pointed uploads at a shared volume must
+    not silently get local disk instead.
+
+    An empty value is the unset value, not a path. ``Path("")`` is the current
+    working directory, so an empty environment variable would otherwise drop
+    every chunk into the deployed source tree without a word.
+
     Args:
         ref: Upload reference (used in filename)
 
     Returns:
         Path to the created temp file
+
+    Raises:
+        ImproperlyConfigured: If ``UPLOAD_TEMP_DIR`` is set but unusable
     """
-    fd, path = tempfile.mkstemp(prefix=f"wireview_{ref}_", suffix=".upload")
-    import os
+    from .. import settings as wireview_settings
+
+    temp_dir = wireview_settings.UPLOAD_TEMP_DIR
+    prefix = f"wireview_{sanitize_ref(ref)}_"
+
+    if not temp_dir:
+        fd, path = tempfile.mkstemp(prefix=prefix, suffix=".upload")
+        os.close(fd)
+        return Path(path)
+
+    directory = Path(temp_dir)
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        fd, path = tempfile.mkstemp(prefix=prefix, suffix=".upload", dir=directory)
+    except OSError as e:
+        raise ImproperlyConfigured(
+            f"WIREVIEW['UPLOAD_TEMP_DIR'] = {temp_dir!r} cannot be used for upload temp files: {e}"
+        ) from e
 
     os.close(fd)
     return Path(path)

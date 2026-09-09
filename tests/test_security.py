@@ -327,6 +327,87 @@ class TestUploadHeaderSecurity:
 
 
 # =============================================================================
+# Upload Ref Tests
+# =============================================================================
+
+
+class TestUploadRefSecurity:
+    """The client picks the ref, and the ref reaches a temp filename.
+
+    Without a check, ``prefix="wireview_x/../../victim/pwn_"`` escapes the temp
+    directory whenever a ``wireview_<something>`` directory already exists there,
+    which a local user can arrange on a shared host with a world-writable /tmp.
+    """
+
+    TRAVERSAL_REFS = [
+        "../../etc/x",
+        "x/../../y",
+        "sub/dir",
+        "a\\b",
+        "ref\x00",
+        "",
+        "x" * 65,
+    ]
+
+    @pytest.mark.unit
+    def test_add_entry_rejects_path_characters(self):
+        """A ref with path characters never becomes an entry."""
+        from wireview.features.uploads import UploadConfig, UploadEntry, UploadRegistry
+
+        registry = UploadRegistry("comp-ref", connection_id="conn-ref")
+        registry.allow_upload(UploadConfig(name="files"))
+
+        for ref in self.TRAVERSAL_REFS:
+            entry = UploadEntry(
+                ref=ref,
+                upload_name="files",
+                client_name="photo.jpg",
+                client_size=10,
+                client_type="image/jpeg",
+            )
+            with pytest.raises(ValueError, match="Invalid upload ref"):
+                registry.add_entry("files", entry)
+
+        assert registry.get_entries("files") == []
+
+    @pytest.mark.unit
+    def test_add_entry_accepts_generated_ref(self):
+        """The refs the server itself generates must still pass."""
+        from wireview.features.uploads import UploadConfig, UploadEntry, UploadRegistry, generate_ref
+
+        registry = UploadRegistry("comp-ref-ok", connection_id="conn-ref")
+        registry.allow_upload(UploadConfig(name="files"))
+
+        ref = generate_ref()
+        entry = UploadEntry(
+            ref=ref,
+            upload_name="files",
+            client_name="photo.jpg",
+            client_size=10,
+            client_type="image/jpeg",
+        )
+
+        assert registry.add_entry("files", entry)
+        assert registry.get_entry("files", ref) is entry
+
+    @pytest.mark.unit
+    def test_create_temp_file_stays_inside_temp_dir(self, monkeypatch, tmp_path):
+        """Even called directly, create_temp_file cannot leave the temp dir."""
+        from wireview import settings as wireview_settings
+        from wireview.features.uploads import create_temp_file
+
+        monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(tmp_path))
+        # The escape only works when the prefix's first path segment already
+        # exists as a directory, so make the attempt as favourable as possible.
+        (tmp_path / "wireview_x").mkdir()
+
+        for ref in ["../../etc/x", "x/../../y", "sub/dir"]:
+            path = create_temp_file(ref)
+
+            assert path.resolve().parent == tmp_path.resolve()
+
+
+# =============================================================================
 # Validation Helper Tests
 # =============================================================================
 

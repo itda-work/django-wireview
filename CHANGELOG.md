@@ -27,6 +27,13 @@ The django-reactor era changelog (2.x) is preserved in
   different modules (`wireview.W003`) used to mount whichever registered last; now the
   envelope names the exact class, the simple name resolves to the other one, and the join is
   refused with `reload`. Fix the collision or reference the class by `app:Name` or FQN
+- An upload `ref` is now validated on registration (`#84`). The client picks the ref and it
+  became the prefix of the upload's temp filename unchecked, so a ref like
+  `x/../../victim/pwn` escaped the temp directory whenever a `wireview_<name>` directory
+  already existed there — reachable on a shared host with a world-writable `/tmp`.
+  `UploadRegistry.add_entry()` refuses anything outside `[A-Za-z0-9_-]{1,64}` with the
+  `ValueError` the consumer already reports as an upload error, and `create_temp_file()`
+  sanitizes the ref again before it reaches a path
 
 ### Added
 
@@ -38,6 +45,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- `WIREVIEW["UPLOAD_TEMP_DIR"]` had no effect (`#84`). It was exported and documented, but
+  `create_temp_file()` never read it, so every chunked upload went to the system temp
+  directory whatever the setting said. It is now read on each call, the directory is created
+  if missing, and a configured directory that cannot be used raises `ImproperlyConfigured`
+  rather than silently falling back to local disk — the failure mode that matters for an
+  operator who pointed uploads at a shared volume. `manage.py check` reports an unusable
+  setting up front as `wireview.W008`
 - Upload registries were keyed by component id alone, so two connections on the same page
   interfered with each other (`#77`). Component ids are only unique within a page and
   templates commonly fix them (`{% component 'X' id="bookmarks" %}`), so a second connection

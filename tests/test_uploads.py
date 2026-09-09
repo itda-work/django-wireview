@@ -4,8 +4,10 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from django.core.exceptions import ImproperlyConfigured
 
 from wireview import Component
+from wireview import settings as wireview_settings
 from wireview.features.uploads import (
     ConsumedUpload,
     UploadConfig,
@@ -504,6 +506,72 @@ class TestHelperFunctions:
             assert path.suffix == ".upload"
         finally:
             path.unlink()
+
+
+class TestUploadTempDir:
+    """WIREVIEW['UPLOAD_TEMP_DIR'] must actually decide where the file lands.
+
+    The setting is read on every call, so a test can only reach it by patching
+    the module attribute wireview.settings resolved at import time.
+    """
+
+    @pytest.mark.unit
+    def test_uses_configured_directory(self, monkeypatch, tmp_path):
+        """A configured directory holds the temp file."""
+        monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(tmp_path))
+
+        path = create_temp_file("test-ref")
+
+        assert path.parent == tmp_path
+        assert path.exists()
+        assert "wireview_test-ref_" in path.name
+
+    @pytest.mark.unit
+    def test_creates_missing_directory(self, monkeypatch, tmp_path):
+        """A directory that does not exist yet is created, parents included."""
+        target = tmp_path / "uploads" / "chunks"
+        monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(target))
+
+        path = create_temp_file("test-ref")
+
+        assert target.is_dir()
+        assert path.parent == target
+
+    @pytest.mark.unit
+    def test_none_falls_back_to_system_temp(self, monkeypatch):
+        """None keeps the previous behaviour: the system temp dir."""
+        monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", None)
+
+        path = create_temp_file("test-ref")
+
+        try:
+            assert path.parent == Path(tempfile.gettempdir())
+        finally:
+            path.unlink()
+
+    @pytest.mark.unit
+    def test_empty_string_is_not_the_working_directory(self, monkeypatch, tmp_path):
+        """An empty value means unset, not Path("") — which is the cwd."""
+        monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", "")
+        monkeypatch.chdir(tmp_path)
+
+        path = create_temp_file("test-ref")
+
+        try:
+            assert path.parent == Path(tempfile.gettempdir())
+            assert list(tmp_path.iterdir()) == []
+        finally:
+            path.unlink()
+
+    @pytest.mark.unit
+    def test_unusable_directory_raises(self, monkeypatch, tmp_path):
+        """An unusable directory raises instead of quietly using local disk."""
+        blocker = tmp_path / "blocker"
+        blocker.write_text("not a directory")
+        monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(blocker / "uploads"))
+
+        with pytest.raises(ImproperlyConfigured):
+            create_temp_file("test-ref")
 
 
 class TestConsumedUpload:

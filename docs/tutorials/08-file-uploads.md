@@ -324,8 +324,10 @@ def is_safe_filename(self, name: str) -> bool:
 
 - **정상 disconnect 없이 프로세스가 죽으면** 인메모리 레지스트리는 프로세스와 함께 사라지고
   임시 파일은 남는다. 청소 데몬은 없다. 운영 환경에서는 임시 디렉터리 정리를 OS나 배포
-  스크립트에 맡긴다. (`create_temp_file`은 아직 `WIREVIEW["UPLOAD_TEMP_DIR"]`을 읽지 않고
-  시스템 임시 디렉터리를 쓴다.)
+  스크립트에 맡긴다. 임시 파일이 어디에 쌓이는지는 `WIREVIEW["UPLOAD_TEMP_DIR"]`가 정한다
+  (`None`이면 시스템 임시 디렉터리). 설정된 경로는 없으면 만들어지고, 쓸 수 없으면
+  `ImproperlyConfigured`로 실패한다 — 공유 볼륨을 지정했는데 말없이 로컬 디스크를 쓰는 일은
+  없다. `manage.py check`의 `wireview.W008`이 이 설정을 미리 확인한다.
 - **인덱스는 여전히 프로세스 단위다.** 청크 HTTP 요청은 그 WebSocket을 쥔 프로세스에 도달해야
   한다. 다중 프로세스 배포는 `docs/DEPLOYMENT.md`를 본다.
 
