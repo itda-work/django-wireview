@@ -28,6 +28,7 @@ from channels.layers import BaseChannelLayer
 from django.contrib.auth.models import AnonymousUser
 
 from .core.meta import WireviewMeta
+from .core.session import SessionView
 
 if t.TYPE_CHECKING:
     from django.contrib.auth.base_user import AbstractBaseUser
@@ -164,10 +165,12 @@ class MockRepository:
         self,
         user: "AbstractBaseUser | AnonymousUser | None" = None,
         params: dict[str, t.Any] | None = None,
+        session: SessionView | None = None,
     ):
         self.is_live = False
         self.user = user or AnonymousUser()
         self.params = params or {}
+        self.session = session if session is not None else SessionView()
 
 
 class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
@@ -275,6 +278,7 @@ async def mount(
     user: "AbstractBaseUser | AnonymousUser | None" = None,
     params: dict[str, t.Any] | None = None,
     session: t.Any = None,
+    session_key: str | None = None,
     **initial_state: t.Any,
 ) -> MountedComponent:
     """
@@ -287,7 +291,10 @@ async def mount(
         component_class: The component class to instantiate
         user: Optional user instance (defaults to AnonymousUser)
         params: Optional URL/query parameters
-        session: Optional session data handed to the ``_on_mount`` hooks
+        session: Optional session data, read by the component as ``self.session``
+            and handed to the ``_on_mount`` hooks
+        session_key: Optional session key, for code that identifies an anonymous
+            visitor by ``self.session.session_key``
         **initial_state: Initial field values for the component
 
     Returns:
@@ -300,15 +307,20 @@ async def mount(
 
         # With authenticated user
         view = await mount(Profile, user=my_user, name="Test")
+
+        # With a session
+        view = await mount(Cart, session={"items": [1, 2]}, session_key="s1")
     """
     from django.contrib.auth.models import AnonymousUser
 
+    session_view = SessionView.wrap(session, session_key=session_key)
     wire = MockWireviewMeta(params=params or {})
-    repo = MockRepository(user=user, params=params or {})
+    repo = MockRepository(user=user, params=params or {}, session=session_view)
 
     component = component_class(
         user=user or AnonymousUser(),
         wire=wire,  # type: ignore[arg-type]
+        session=session_view,
         **initial_state,
     )
 
@@ -317,7 +329,7 @@ async def mount(
     # The _on_mount hooks run before joined(), as they do on a real mount. A halt
     # skips joined(); the component is still returned so the test can assert on
     # what the hook did (a redirect, a frozen component).
-    if await component._mount(params or {}, session):
+    if await component._mount(params or {}, session_view):
         # Call joined() if it exists and is async
         if hasattr(component, "joined"):
             result = component.joined()
@@ -355,6 +367,7 @@ class ComponentTestCase:
         user: "AbstractBaseUser | AnonymousUser | None" = None,
         params: dict[str, t.Any] | None = None,
         session: t.Any = None,
+        session_key: str | None = None,
         **initial_state: t.Any,
     ) -> MountedComponent:
         """
@@ -362,4 +375,11 @@ class ComponentTestCase:
 
         See module-level mount() for full documentation.
         """
-        return await mount(component_class, user=user, params=params, session=session, **initial_state)
+        return await mount(
+            component_class,
+            user=user,
+            params=params,
+            session=session,
+            session_key=session_key,
+            **initial_state,
+        )

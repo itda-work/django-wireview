@@ -12,6 +12,7 @@ from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 
 from . import telemetry
 from .component import Component, MessagePayload
+from .core.session import SessionView
 from .core.state import StateMismatch
 from .live_component import LiveComponent
 from .utils import filter_parameters
@@ -72,9 +73,10 @@ class ComponentRepository:
         connection_id: str | None = None,
     ):
         self.params = params or {}
-        # The request/connection session, handed to the ``_on_mount`` hooks. Not a
-        # component-facing API: components do not read it (GAP-029, #68).
-        self.session: t.Any = {} if session is None else session
+        # The request/connection session. Handed to every component as
+        # ``self.session`` and to the ``_on_mount`` hooks as their third argument,
+        # read-only in both places (#68).
+        self.session: SessionView = SessionView.wrap(session)
         self.channel_name = channel_name
         self.channel_layer = channel_layer
         # Handed to every component's WireviewMeta so upload artefacts can be
@@ -155,6 +157,7 @@ class ComponentRepository:
             channel_name=self.channel_name,
             channel_layer=self.channel_layer,
             connection_id=self.connection_id,
+            session=self.session,
         )
         return self.register_component(component)
 
@@ -235,6 +238,7 @@ class ComponentRepository:
                 channel_name=self.channel_name,
                 channel_layer=self.channel_layer,
                 connection_id=self.connection_id,
+                session=self.session,
             ),
         )
 

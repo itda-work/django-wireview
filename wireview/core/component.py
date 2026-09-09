@@ -20,6 +20,7 @@ from ..async_result import AsyncResult
 from ..schemas import DomAction, ModelAction
 from ..utils import db
 from .meta import Repo, WireviewMeta
+from .session import SessionView
 from .transport import get_broker
 
 if t.TYPE_CHECKING:
@@ -137,8 +138,10 @@ class Component(BaseModel):
     _templates: t.ClassVar[dict[str, AnyTemplate]] = {}
     _fqn: t.ClassVar[str]
 
-    # fields to exclude from the component state during serialization
-    _exclude_fields: t.ClassVar[set[str]] = {"user", "wire"}
+    # fields to exclude from the component state during serialization.
+    # ``session`` belongs here for more than tidiness: signed state travels to the
+    # browser, and session data must not (#68).
+    _exclude_fields: t.ClassVar[set[str]] = {"user", "wire", "session"}
 
     # Subscriptions: you can define here which channels this component is subscribed to
     _subscriptions: t.ClassVar[set[str]] = set()
@@ -328,12 +331,14 @@ class Component(BaseModel):
         channel_name: str | None = None,
         channel_layer=None,
         connection_id: str | None = None,
+        session: SessionView | None = None,
     ) -> "Component":
         """Build a component instance from state."""
         component_class = cls._resolve(_component_name)
 
         instance = component_class.new(
             user=user or AnonymousUser(),
+            session=session if session is not None else SessionView(),
             wire=WireviewMeta(
                 params=params,
                 channel_name=channel_name,
@@ -360,6 +365,10 @@ class Component(BaseModel):
     id: str = Field(default_factory=lambda: f"rx-{uuid4()}")
     user: AnonymousUser | AbstractBaseUser
     wire: WireviewMeta
+    # Read-only view of the Django session this component was mounted from. Empty
+    # when the call site had none (a component built by hand, a project without
+    # the session middleware).
+    session: SessionView = Field(default_factory=SessionView)
 
     @classmethod
     def new(cls, **kwargs: t.Any) -> "Component":
@@ -1009,6 +1018,7 @@ class Component(BaseModel):
             component = _component_class_or_template_name.new(
                 wire=self.wire.clone(),
                 user=self.user,
+                session=self.session,
                 **kwargs,
             )
             html = await db(component._render)(
@@ -1016,6 +1026,7 @@ class Component(BaseModel):
                     is_live=False,
                     user=self.user,
                     params=self.wire.params,
+                    session=self.session,
                 )
             )
         if html is not None:

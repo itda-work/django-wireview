@@ -138,8 +138,8 @@ async def on_mount(
 ```
 
 `session`은 호출 지점이 건넬 수 있었던 값이다 — HTTP 렌더에서는 `request.session`, WebSocket에서는
-`scope["session"]`, `testing.mount()`에서는 `session=` 인자, 없으면 `{}`. **훅에만 전달된다.**
-컴포넌트에는 `self.session` API가 없다. 그것은 별도 갭이다(GAP-029).
+`scope["session"]`, `testing.mount()`에서는 `session=` 인자, 없으면 빈 세션. 훅이 받는 것은 컴포넌트가
+`self.session`으로 보는 것과 **같은 읽기 전용 객체**다. 상세는 [세션 읽기](./session.md).
 
 ### 훅 점검
 

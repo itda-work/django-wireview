@@ -13,6 +13,7 @@ if t.TYPE_CHECKING:
     from .core.component import abroadcast as abroadcast
     from .core.component import broadcast as broadcast
     from .core.meta import WireviewMeta as WireviewMeta
+    from .core.session import SessionView as SessionView
     from .features.uploads import ExternalUploadMeta as ExternalUploadMeta
     from .function_component import FunctionComponent as FunctionComponent
     from .function_component import function_component as function_component
@@ -45,6 +46,10 @@ def __getattr__(name: str) -> t.Any:
         from .core.meta import WireviewMeta
 
         return WireviewMeta
+    if name == "SessionView":
+        from .core.session import SessionView
+
+        return SessionView
     if name == "JS":
         from .js import JS
 
@@ -98,6 +103,7 @@ __all__ = (
     "ComponentNotFound",
     "JS",
     "WireviewMeta",
+    "SessionView",
     "broadcast",
     "abroadcast",
     # Function components

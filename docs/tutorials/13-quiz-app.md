@@ -175,7 +175,7 @@ class XQuiz(Component):
         """결과 저장"""
         await Submission.objects.acreate(
             quiz=self.quiz,
-            session_key=self.wire.session_key,
+            session_key=self.session.session_key or "anonymous",
             score=self.score,
             total_questions=len(self.questions),
             username=self.username or "Anonymous",
@@ -185,6 +185,18 @@ class XQuiz(Component):
         """재시작 - RESULTS → INTRO"""
         self.state = QuizState.INTRO
 ```
+
+> **세션 키는 뷰에서 만든다.** 컴포넌트의 `self.session`은 Django 세션의 읽기 전용 뷰다.
+> WebSocket에는 `Set-Cookie`를 실을 응답이 없어 세션을 만들거나 쓰는 것은 뷰의 몫이다.
+>
+> ```python
+> def quiz_detail(request, quiz_id):
+>     if not request.session.session_key:
+>         request.session.create()
+>     ...
+> ```
+>
+> 자세한 내용은 [세션 읽기](../features/session.md).
 
 ## 4. 상태별 템플릿
 

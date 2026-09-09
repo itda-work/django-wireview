@@ -87,12 +87,14 @@ class XStarRating(Component):
     current_rating: int = 0  # 현재 평점
     hover_rating: int = 0    # 호버 중인 평점
     readonly: bool = False
-    session_key: str = ""
+
+    @property
+    def visitor(self) -> str:
+        """익명 평가자 식별자. self.session은 Django 세션의 읽기 전용 뷰다"""
+        return self.session.session_key or "anonymous"
 
     async def joined(self):
         """마운트 시 기존 평점 로드"""
-        self.session_key = self.wire.session_key or "anonymous"
-
         # URL에서 복원
         if rating_param := self.wire.params.get("rating"):
             self.current_rating = int(rating_param)
@@ -100,7 +102,7 @@ class XStarRating(Component):
 
         # DB에서 로드
         existing = await Rating.objects.filter(
-            product=self.product, session_key=self.session_key
+            product=self.product, session_key=self.visitor
         ).afirst()
         if existing:
             self.current_rating = existing.score
@@ -124,7 +126,7 @@ class XStarRating(Component):
 
         await Rating.objects.aupdate_or_create(
             product=self.product,
-            session_key=self.session_key,
+            session_key=self.visitor,
             defaults={"score": score},
         )
 
@@ -141,6 +143,18 @@ class XStarRating(Component):
         new_rating = max(1, min(5, (self.current_rating or 3) + delta))
         await self.rate(new_rating)
 ```
+
+> **세션 키는 뷰에서 만든다.** 컴포넌트의 `self.session`은 Django 세션의 읽기 전용 뷰다.
+> WebSocket에는 `Set-Cookie`를 실을 응답이 없어 세션을 만들거나 쓰는 것은 뷰의 몫이다.
+>
+> ```python
+> def product_detail(request, product_id):
+>     if not request.session.session_key:
+>         request.session.create()
+>     ...
+> ```
+>
+> 자세한 내용은 [세션 읽기](../features/session.md).
 
 ## 4. 템플릿
 

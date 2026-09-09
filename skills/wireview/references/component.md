@@ -25,12 +25,14 @@ class XTodoList(Component):
 | `_template_name` | 템플릿 경로. 생략하면 클래스명에서 유추한다 |
 | `_subscriptions` | 구독 채널 집합. `{"todo.item"}`은 Item 모델 전체 변경 |
 | `_temporary_assigns` | 렌더 후 기본값으로 되돌릴 필드 이름들. **기본값이 있는 필드만** 대상 |
-| `_exclude_fields` | 상태 직렬화에서 뺄 필드. 기본 `{"user", "wire"}` |
+| `_exclude_fields` | 상태 직렬화에서 뺄 필드. 기본 `{"user", "wire", "session"}` |
 | `_slots` | 슬롯 정의 (`references/templates.md`) |
 | `_on_mount` | 마운트 시 실행할 훅 클래스 목록 |
 
-`self.user`(요청 사용자)와 `self.wire`(클라이언트 명령 채널)는 항상 있다.
-`self.wire.params`는 URL 쿼리 파라미터다.
+`self.user`(요청 사용자), `self.wire`(클라이언트 명령 채널), `self.session`(Django 세션,
+**읽기 전용**)은 항상 있다. `self.wire.params`는 URL 쿼리 파라미터다.
+익명 방문자 식별은 `self.session.session_key` — 세션을 만드는 것은 뷰만 할 수 있다
+(`request.session.create()`). 세션 쓰기는 `TypeError`다: 소켓에는 `Set-Cookie`를 실을 응답이 없다.
 
 ## 라이프사이클
 

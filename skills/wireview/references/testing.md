@@ -16,8 +16,10 @@ async def test_increment():
     assert view.component.amount == 1
 ```
 
-`mount(component_class, user=None, params=None, **initial_state)`.
-`user`를 주면 인증된 사용자로, `params`를 주면 URL 쿼리 파라미터가 있는 상태로 뜬다.
+`mount(component_class, user=None, params=None, session=None, session_key=None, **initial_state)`.
+`user`를 주면 인증된 사용자로, `params`를 주면 URL 쿼리 파라미터가 있는 상태로,
+`session={"k": v}`·`session_key="s1"`을 주면 세션이 있는 상태로 뜬다. 이 네 이름은
+`mount()`가 쓰므로 같은 이름의 컴포넌트 필드에는 전달되지 않는다.
 
 ## MountedComponent가 주는 것
 

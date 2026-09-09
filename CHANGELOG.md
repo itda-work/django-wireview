@@ -37,6 +37,21 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- Components can read the Django session as `self.session` (`#68`, GAP-029). Phoenix hands the
+  session to `mount/3`; wireview hands the same thing to every component and, unchanged, to the
+  third argument of the `_on_mount` hooks. `self.session` is a read-only mapping over the
+  session data with `self.session.session_key` beside it, which is what code identifying an
+  anonymous visitor (one vote per browser, a star rating, a cart) needs. Two examples were
+  already writing `self.wire.session_key`, an API that never existed, and died with
+  `AttributeError` on every connection. It is read-only because a WebSocket has no response to
+  carry `Set-Cookie` and Channels never flushes a session changed on the socket, so a write
+  that appeared to work would be lost; sessions are still written in a view, which is also the
+  only place that can create one. `session` joins `_exclude_fields` by default, so session data
+  never reaches the signed `data-state`. The socket reads the session once at connect, off the
+  event loop, so a later `self.session[...]` inside an async handler is a dict lookup rather
+  than a query that would raise `SynchronousOnlyOperation`; the HTTP render stays lazy and a
+  page that never looks at the session pays nothing. Tests inject one with
+  `mount(Component, session={...}, session_key="s1")`
 - Chunked uploads work on any worker (`#83`). Chunks arrive over HTTP, so nothing routes them
   to the process holding the WebSocket; the endpoint used to look the upload up in a
   process-local dict and answer `404 Component not found` on every other worker, valid token

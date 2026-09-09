@@ -33,7 +33,15 @@ class XStarRating(Component):
     current_rating: int = 0  # User's current rating (0 = not rated)
     hover_rating: int = 0  # Preview during hover (0 = not hovering)
     readonly: bool = False
-    session_key: str = ""  # Will be set from request session
+
+    @property
+    def visitor(self) -> str:
+        """Identify an anonymous rater by the Django session.
+
+        ``self.session`` is the read-only view of the session this component was
+        mounted from; the view creates it so the key exists (see views.py).
+        """
+        return self.session.session_key or "anonymous"
 
     async def joined(self):
         """
@@ -41,10 +49,6 @@ class XStarRating(Component):
 
         Load existing rating from URL params or database.
         """
-        # session_key arrives from the page (see views.py and detail.html): the
-        # component state is the seam, wireview does not carry the Django session.
-        self.session_key = self.session_key or "anonymous"
-
         # Try to restore from URL params first
         if rating_param := self.wire.params.get("rating"):
             try:
@@ -54,7 +58,7 @@ class XStarRating(Component):
 
         # Or load from database
         if not self.current_rating:
-            existing = await Rating.objects.filter(product=self.product, session_key=self.session_key).afirst()
+            existing = await Rating.objects.filter(product=self.product, session_key=self.visitor).afirst()
             if existing:
                 self.current_rating = existing.score
 
@@ -98,7 +102,7 @@ class XStarRating(Component):
         # Upsert rating
         rating, created = await Rating.objects.aupdate_or_create(
             product=self.product,
-            session_key=self.session_key,
+            session_key=self.visitor,
             defaults={"score": score},
         )
 

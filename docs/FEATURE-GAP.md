@@ -12,13 +12,13 @@
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 102 |
+| ✅ 지원 | 103 |
 | 🟡 부분 지원 | 3 |
-| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 7 |
+| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 6 |
 | ⚪ 설계상 제외 | 1 |
 
-102행 중 5행은 Phoenix에 없는 wireview 고유 기능이다(`mutation()`, 타입 스텁, LSP 메타데이터,
-MockChannelLayer, 시스템 체크). 남은 열 개의 갭은 3절 표에서 GAP 번호로 추적한다.
+103행 중 5행은 Phoenix에 없는 wireview 고유 기능이다(`mutation()`, 타입 스텁, LSP 메타데이터,
+MockChannelLayer, 시스템 체크). 남은 아홉 개의 갭은 3절 표에서 GAP 번호로 추적한다.
 
 ---
 
@@ -55,7 +55,7 @@ MockChannelLayer, 시스템 체크). 남은 열 개의 갭은 3절 표에서 GAP
 | handle_params | `handle_params/3` | `params_changed()` | ✅ |
 | terminate | `terminate/2` | `leaving()` | ✅ |
 | ORM mutation | - | `mutation()` | ✅ 추가 기능 |
-| 세션 접근 | `mount/3`의 session | ❌ | 🟠 GAP-029 ([#68](https://github.com/itda-work/django-wireview/issues/68)) |
+| 세션 접근 | `mount/3`의 session | `self.session` (읽기 전용) | ✅ GAP-029 |
 
 ### 2.2 Real-time Features ✅
 
@@ -284,7 +284,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | ~~GAP-025~~ | ~~Comprehensions~~ | ~~`{% for %}`를 항목 단위, `{% if %}`를 블록 단위 static/dynamic으로 분리해 항목·분기 변경 시 부분 diff~~ | ~~중~~ | ✅ 완료 (위치 기반, 키 기반은 미지원) |
 | ~~GAP-026~~ | ~~Transport seam~~ | ~~`Outbound`/`Broker` 인터페이스 뒤로 채널 레이어 격리, 렌더 스냅샷 직렬화, wire-protocol 문서~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-028~~ | ~~Stream DOM 수명~~ | ~~재렌더가 `wire-stream` 컨테이너를 비우고, 같은 dom id 재삽입이 갱신이 아니라 중복이 된다~~ | ~~중~~ | ✅ 완료 |
-| GAP-029 | 세션 접근 | 컴포넌트가 Django 세션을 읽는다. 예제 둘이 없는 API를 상상해 쓰고 있었다 | 하 | [#68](https://github.com/itda-work/django-wireview/issues/68) |
+| ~~GAP-029~~ | ~~세션 접근~~ | ~~컴포넌트가 Django 세션을 읽는다. 예제 둘이 없는 API를 상상해 쓰고 있었다~~ | ~~하~~ | ✅ 완료 |
 | GAP-030 | 키 기반 comprehension | 앞쪽 삽입이 뒤 항목 전부를 다시 보내지 않게 | 상 | [#69](https://github.com/itda-work/django-wireview/issues/69) |
 | GAP-031 | 내비게이션 테스트 헬퍼 | `assert_patch`·`follow_redirect` 상당물 | 하 | [#70](https://github.com/itda-work/django-wireview/issues/70) |
 | GAP-032 | Colocated hooks | 컴포넌트 옆의 JS 훅을 자동 등록 | 중 | [#71](https://github.com/itda-work/django-wireview/issues/71) |

@@ -44,7 +44,15 @@ class XQuiz(Component):
     score: int = 0
     answers: dict[int, int] = {}  # question_id -> choice_id
     username: str = ""
-    session_key: str = ""
+
+    @property
+    def visitor(self) -> str:
+        """Identify an anonymous player by the Django session.
+
+        ``self.session`` is the read-only view of the session this component was
+        mounted from; the view creates it so the key exists (see views.py).
+        """
+        return self.session.session_key or "anonymous"
 
     @property
     def questions(self):
@@ -79,14 +87,6 @@ class XQuiz(Component):
     def leaderboard(self):
         """Get top 10 submissions."""
         return list(self.quiz.submissions.all()[:10])
-
-    async def joined(self):
-        """Initialize session key on mount.
-
-        The page passes it in (see views.py): a component's state is the seam,
-        wireview does not carry the Django session into the socket.
-        """
-        self.session_key = self.session_key or "anonymous"
 
     async def mutation(self, channel: str, action: ModelAction, instance: Submission):
         """
@@ -145,7 +145,7 @@ class XQuiz(Component):
         """Save the quiz submission to database."""
         await Submission.objects.acreate(
             quiz=self.quiz,
-            session_key=self.session_key,
+            session_key=self.visitor,
             score=self.score,
             total_questions=len(self.questions),
             username=self.username or "Anonymous",

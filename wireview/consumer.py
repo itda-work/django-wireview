@@ -11,6 +11,7 @@ from django.utils.datastructures import MultiValueDict
 from wireview.component import Component
 
 from . import serializer
+from .core.session import load_session
 from .core.state import LegacyState, StateMismatch, unsign_state
 from .core.transport import ChannelsOutbound, Outbound
 from .features import upload_store
@@ -84,7 +85,10 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             user=self.user,
             channel_name=self.channel_name,
             channel_layer=self.channel_layer,
-            session=self.scope.get("session"),
+            # Read once, off the event loop. A component's ``self.session`` is a
+            # dict lookup after this; reading the store lazily from an async
+            # handler would raise SynchronousOnlyOperation instead (#68).
+            session=await load_session(self.scope.get("session")),
             connection_id=self.connection_id,
         )
 

@@ -9,7 +9,7 @@
   {% if product.description %}<p>{{ product.description }}</p>{% endif %}
   <div class="rating-container">
     <h3>Rate this product</h3>
-    {% component 'XStarRating' id="rating" product=product session_key=session_key %}
+    {% component 'XStarRating' id="rating" product=product %}
   </div>
   {% component 'XRatingStats' id="stats" product=product %}
 {% endblock %}
