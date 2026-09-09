@@ -3,26 +3,26 @@
   "sha": "790dab7",
   "dirty": true,
   "ref": "remotes/origin/HEAD-16-g790dab7",
-  "date": "2026-09-09T03:22:00+00:00",
+  "date": "2026-09-09T03:31:35+00:00",
   "python": "3.12.14",
   "django": "6.0",
   "platform": "Darwin arm64",
   "items": 50,
-  "connections": null,
-  "layer": null,
-  "processes": null,
-  "server": null
+  "connections": 500,
+  "layer": "memory",
+  "processes": 1,
+  "server": "daphne"
  },
  "payload_bytes": {
-  "flat.first_render": 612,
+  "flat.first_render": 614,
   "flat.change_one_value": 192,
-  "list.first_render": 2259,
+  "list.first_render": 2261,
   "list.no_change": 0,
-  "list.change_one_item": 601,
-  "list.append_item": 608,
-  "list.toggle_if_inside_item": 611,
-  "list.top_level_if_on": 643,
-  "list.change_one_value": 576,
+  "list.change_one_item": 603,
+  "list.append_item": 612,
+  "list.toggle_if_inside_item": 614,
+  "list.top_level_if_on": 645,
+  "list.change_one_value": 579,
   "live.first_join_bytes": 4062,
   "live.first_join_frames": 4,
   "live.parent_only_change_bytes": 232,
@@ -32,11 +32,45 @@
   "live.child_state_after_parent_rerender": 2
  },
  "timing": {
-  "list.event_ms": 0.6079902763788899,
-  "list.template_render_ms": 0.39156930676350993,
-  "flat.event_ms": 0.15753347310237586
+  "list.event_ms": 0.5462102766614407,
+  "list.template_render_ms": 0.3858055566282322,
+  "flat.event_ms": 0.15372805336179832
  },
  "memory": {
-  "list.component_kb": 25.6708203125
+  "list.component_kb": 25.67068359375
+ },
+ "ws": {
+  "items_5": {
+   "connections": 500,
+   "items": 5,
+   "per_connection_kb": 47.008,
+   "per_connection_kb_by_process": {
+    "daphne-0": 47.008
+   },
+   "joins_per_s": 886.0856414610686,
+   "events_per_s": 3843.9879056748173,
+   "render_bytes": 334,
+   "broadcast_ms": 141.85929205268621,
+   "broadcast_renders_per_s": 3524.6193094936716,
+   "layer": "memory",
+   "processes": 1,
+   "server": "daphne"
+  },
+  "items_50": {
+   "connections": 500,
+   "items": 50,
+   "per_connection_kb": 72.192,
+   "per_connection_kb_by_process": {
+    "daphne-0": 72.192
+   },
+   "joins_per_s": 832.7961229383285,
+   "events_per_s": 1437.354002437354,
+   "render_bytes": 631,
+   "broadcast_ms": 327.63874996453524,
+   "broadcast_renders_per_s": 1526.0710158799036,
+   "layer": "memory",
+   "processes": 1,
+   "server": "daphne"
+  }
  }
 }

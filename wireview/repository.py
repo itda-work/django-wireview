@@ -309,7 +309,10 @@ class ComponentRepository:
         # Enter pending mode before joined() to queue stream/push_js operations
         # These will be flushed after send_render() in consumer
         component.wire.enter_pending_mode()
-        await component.joined()
+        try:
+            await component.joined()
+        finally:
+            component.wire.has_joined = True
         return component
 
     def register_component(self, component: Component):

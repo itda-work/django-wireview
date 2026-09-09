@@ -21,6 +21,11 @@ The django-reactor era changelog (2.x) is preserved in
   elements, a parent re-render calls `update()` only with props whose value changed since the
   parent's previous render, `leave` runs `leaving()` and cascades it to nested LiveComponents,
   and a child the parent stops rendering is retired with `leaving()` by the server
+- A second `join` for an id this connection already holds (new DOM after boost navigation)
+  re-ran `joined()` on the same instance and never called `leaving()` (`#81`). The instance
+  that already joined now leaves, with its LiveComponents, and a fresh one joins, so
+  `joined()` is once per instance for Components too. An instance a parent's template pass
+  created but that never joined is still adopted by its own join
 - `examples/livecomp`: a reset counter no longer snaps back when another counter fires. The
   new E2E scenario `test_a_reset_counter_survives_an_unrelated_parent_rerender` keeps it so
 - `bench/compare.sh` copied the current bench *into* the base worktree's existing `bench/`

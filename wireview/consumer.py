@@ -79,12 +79,26 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             id: (name, unsign_state(state)) for id, (name, state) in (children or {}).items()
         }
         log.debug(f"<<< JOIN {name} {decoded_state}")
-        if isinstance(self.repo.get(decoded_state.get("id", "")), LiveComponent):
+        component_id = decoded_state.get("id", "")
+        existing = self.repo.get(component_id)
+        if isinstance(existing, LiveComponent):
             # A LiveComponent is owned by its parent: the parent's join carried its
             # state and its lifecycle runs with the parent's render. Current clients
             # do not send this; a cached older script still might.
-            log.debug("Ignoring direct join for LiveComponent %s", decoded_state.get("id"))
+            log.debug("Ignoring direct join for LiveComponent %s", component_id)
             return
+        if existing is not None and existing.wire.has_joined:
+            # The client only joins an element whose data-is-live is false, so a
+            # second join for an id that already joined means new DOM arrived for
+            # it (boost navigation). The old instance leaves with its children and
+            # a fresh one joins; joined() stays once per instance. An instance a
+            # parent's template pass created but that never joined is adopted by
+            # repo.join() instead, as its own join is what completes it.
+            log.debug("Re-join of %s: retiring the previous instance", component_id)
+            removed = self.repo.remove(component_id)
+            await self._call_leaving(removed)
+            for gone in removed:
+                await self._unregister_upload_registry(gone.id)
         try:
             component = await self.repo.join(
                 name,
@@ -621,6 +635,8 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
                 await child.joined()
             except Exception as e:
                 log.exception(f"Error in {child._name}.joined(): {e}")
+            finally:
+                child.wire.has_joined = True
         for child, props in batch.updates:
             child.wire.enter_pending_mode()
             try:

@@ -95,6 +95,11 @@ class WireviewMeta:
         # the render was skipped, frozen or redirected; the consumer only settles
         # nested LiveComponents after a render that actually ran the template.
         self.template_evaluated: bool = False
+        # Set once joined() has run for this instance. A join for an id whose
+        # instance already joined means new DOM arrived for it (boost navigation):
+        # that instance leaves and a fresh one joins, so joined() stays once per
+        # instance.
+        self.has_joined: bool = False
         # Pending operations queue for joined() lifecycle
         self._pending_mode: bool = False
         self._pending_operations: list[tuple[str, dict[str, t.Any]]] = []
