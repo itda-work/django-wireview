@@ -3,12 +3,13 @@ import typing as t
 
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
+from django.core.signing import BadSignature, SignatureExpired
 from django.utils.datastructures import MultiValueDict
 
 from wireview.component import Component
 
 from . import serializer
-from .core.state import unsign_state
+from .core.state import LegacyState, StateMismatch, unsign_state
 from .core.transport import ChannelsOutbound, Outbound
 from .live_component import LiveComponent
 from .repository import ComponentRepository
@@ -20,6 +21,32 @@ log = logging.getLogger("wireview")
 class ChildComponent(t.TypedDict):
     name: str
     state: str
+
+
+def _reload_payload(name: str, error: BadSignature) -> dict[str, t.Any]:
+    """Log a rejected root state and describe it for the client's ``reload``.
+
+    An expiry or a pre-upgrade page is ordinary traffic (INFO); a class that
+    does not match the signature, or a signature that does not verify, is not
+    (WARNING).
+    """
+    if isinstance(error, SignatureExpired):
+        log.info("JOIN %s rejected: the signed state expired", name)
+        return {"id": None, "reason": "expired"}
+    if isinstance(error, LegacyState):
+        log.info("JOIN %s rejected: pre-v1 signed state and STATE_ACCEPT_LEGACY is off", name)
+        return {"id": None, "reason": "legacy"}
+    if isinstance(error, StateMismatch):
+        log.warning(
+            "JOIN %s rejected: state signed for %s presented as %s (component %s)",
+            name,
+            error.signed_name or "<unresolved>",
+            error.asked_name or name,
+            error.component_id or "<unknown>",
+        )
+        return {"id": error.component_id or None, "reason": "invalid"}
+    log.warning("JOIN %s rejected: %s", name, error)
+    return {"id": None, "reason": "invalid"}
 
 
 class WireviewConsumer(AsyncJsonWebsocketConsumer):
@@ -75,10 +102,22 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         state: str,
         children: dict[str, ChildComponent] | None = None,
     ):
-        decoded_state: dict[str, t.Any] = unsign_state(state)
-        decoded_children: dict[str, tuple[str, dict[str, t.Any]]] = {
-            id: (name, unsign_state(state)) for id, (name, state) in (children or {}).items()
-        }
+        try:
+            decoded_state: dict[str, t.Any] = unsign_state(state, name)
+        except BadSignature as e:
+            # Nothing is mounted. A full page load is the recovery: the server
+            # re-renders with the current auth context and issues fresh tokens.
+            # Sending ``remove`` instead would silently empty an old page after
+            # a deploy.
+            await self.send_command("reload", _reload_payload(name, e))
+            return
+        decoded_children: dict[str, tuple[str, dict[str, t.Any]]] = {}
+        for child_id, (child_name, child_state) in (children or {}).items():
+            try:
+                decoded_children[child_id] = (child_name, unsign_state(child_state, child_name))
+            except BadSignature as e:
+                # The child is rebuilt from the parent's template props instead.
+                log.warning("JOIN %s: dropping child %s (%s) from the restore map: %s", name, child_id, child_name, e)
         log.debug(f"<<< JOIN {name} {decoded_state}")
         component_id = decoded_state.get("id", "")
         existing = self.repo.get(component_id)

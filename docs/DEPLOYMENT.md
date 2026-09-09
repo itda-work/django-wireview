@@ -201,6 +201,10 @@ WIREVIEW = {
     "USE_HTML_DIFF": True,       # Enable efficient diff updates
     "USE_HMIN": True,            # Enable HTML minification (install django-hmin)
     "DEBUG_SYNC_TRANSITIONS": False,  # Disable in production
+    # Signed component state (data-state)
+    "STATE_MAX_AGE": 14 * 24 * 3600,  # How long a data-state stays valid
+    "STATE_REFRESH_AFTER": None,      # None = STATE_MAX_AGE // 2
+    "STATE_ACCEPT_LEGACY": False,     # See "Upgrading" below
 }
 
 # Security
@@ -218,6 +222,30 @@ DATABASES = {
     }
 }
 ```
+
+## Upgrading: the signed component state
+
+Since the v1 state envelope (`#76`) the value in `data-state` is signed together with the
+component class it was issued for, and it expires after `WIREVIEW["STATE_MAX_AGE"]`
+(14 days by default). The two formats used before the envelope carry no class, so the server
+rejects them: a browser tab that was rendered by an older deploy reconnects, has its `join`
+refused, and gets a `reload` command that loads the page again from the new deploy. That is
+the intended recovery — the page comes back with the current auth context and a fresh token.
+
+Two things follow for a rolling deploy:
+
+- **Unsaved input in an open tab is lost when that tab reloads.** If that matters, set
+  `WIREVIEW["STATE_ACCEPT_LEGACY"] = True` for the length of the rollout window and turn it
+  back off afterwards. While it is on, pre-envelope states are accepted and logged at WARNING,
+  and the class binding cannot be checked for them.
+- **All processes must share `SECRET_KEY`.** They already had to; the difference is that a
+  mismatch now shows up as reload loops rather than dropped components. The client refuses to
+  reload twice within 30 seconds and logs a warning instead, so a misconfiguration is visible
+  in the browser console rather than spinning the page.
+
+`STATE_REFRESH_AFTER` is how old a token may get before a render re-issues it even though the
+state has not changed. It must stay below `STATE_MAX_AGE`: a component that renders at least
+once every `STATE_MAX_AGE - STATE_REFRESH_AFTER` never expires while its page is open.
 
 ## WebSocket Proxy Configuration
 

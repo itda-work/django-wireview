@@ -17,7 +17,6 @@ from pathlib import Path
 import pytest
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth.models import AnonymousUser
-from django.core.signing import Signer
 from django.template import Template
 from django.test import override_settings
 
@@ -25,6 +24,8 @@ channels_nats = pytest.importorskip("channels_nats")
 
 from wireview import Component, abroadcast  # noqa: E402
 from wireview.consumer import WireviewConsumer  # noqa: E402
+from wireview.core.meta import WireviewMeta  # noqa: E402
+from wireview.core.state import sign_state  # noqa: E402
 
 # The render path crosses channels' ``database_sync_to_async``: see the note in
 # tests/test_diff_stability.py for why that needs the database marker here.
@@ -92,7 +93,7 @@ async def _join(nats_url: str) -> WebsocketCommunicator:
     communicator.scope["user"] = AnonymousUser()
     connected, _ = await communicator.connect()
     assert connected
-    state = Signer().sign(json.dumps({"id": "probe-1", "count": 0}))
+    state = sign_state(NatsProbe(user=AnonymousUser(), wire=WireviewMeta(params={}), id="probe-1", count=0))
     await communicator.send_json_to(
         {"command": "join", "payload": {"name": "NatsProbe", "state": state, "children": {}}}
     )

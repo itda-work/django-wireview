@@ -1,6 +1,7 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
 import { applyPartial, buildHtml } from "./rendered.mjs";
 import { planInsert, planTrim } from "./streams.mjs";
+import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
 import boost from "./wireview-boost";
 
 /**
@@ -249,6 +250,12 @@ class ServerConnection {
         document.getElementById(id)?.remove();
         boost.navEvent.sendNewContent();
         break;
+
+      case "reload":
+        // The server refused a signed state (expired, pre-envelope, or invalid)
+        // and mounted nothing. Reloading re-renders the page with fresh tokens.
+        this._reloadPage(payload.reason);
+        break;
       case "focus_on":
         var { selector } = payload;
         window.requestAnimationFrame(() =>
@@ -356,6 +363,35 @@ class ServerConnection {
       default:
         console.warn(`[wireview] Unknown command "${command}"`, payload);
     }
+  }
+
+  /**
+   * Reload the page after the server refused a signed state.
+   * Guarded so a page whose fresh state is refused again cannot loop.
+   * @param {string} reason - Why the server refused it ("expired", "legacy", "invalid")
+   * @private
+   */
+  _reloadPage(reason) {
+    const now = Date.now();
+    let last = null;
+    try {
+      last = window.sessionStorage.getItem(RELOAD_STORAGE_KEY);
+    } catch (e) {
+      // Storage can be unavailable (private mode, blocked cookies): reload once.
+    }
+    if (!shouldReload(last, now)) {
+      console.warn(
+        `[wireview] Server asked for a reload (${reason}) right after the last one; not reloading again`
+      );
+      return;
+    }
+    try {
+      window.sessionStorage.setItem(RELOAD_STORAGE_KEY, String(now));
+    } catch (e) {
+      // Without storage the guard cannot arm; the reload still happens.
+    }
+    debugLog("ws", `Reloading the page (${reason})`);
+    window.location.reload();
   }
 
   /**

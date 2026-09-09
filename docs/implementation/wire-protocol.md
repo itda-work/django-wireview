@@ -26,7 +26,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 
 | command | payload | 처리 |
 |---------|---------|------|
-| `join` | `name`, `state` (서명 상태, `wireview.core.state`), `children: {id: [name, state]}` | 컴포넌트 복원, `joined()`, 첫 render, `params_changed`. `children`에는 중첩된 일반 Component와 LiveComponent의 상태가 함께 실린다. **LiveComponent는 자기 join을 보내지 않는다** — 부모가 소유하며, 이미 등록된 LiveComponent id로 join이 오면 서버는 무시한다 |
+| `join` | `name`, `state` (서명 상태, `wireview.core.state`), `children: {id: [name, state]}` | 컴포넌트 복원, `joined()`, 첫 render, `params_changed`. `state`는 v1 봉투 `{"v":1,"n":<클래스 FQN>,"d":<상태>}`를 `TimestampSigner`로 서명한 값이다. 서버는 `STATE_MAX_AGE`(기본 14일)로 만료를 검사하고 `name`이 가리키는 클래스와 봉투 안의 클래스가 같은지 확인한다. 루트 상태가 거절되면 아무것도 마운트하지 않고 `reload`를 보낸다. `children`의 항목 하나가 거절되면 그 항목만 복원 맵에서 빠지고 join은 계속된다(#76). `children`에는 중첩된 일반 Component와 LiveComponent의 상태가 함께 실린다. **LiveComponent는 자기 join을 보내지 않는다** — 부모가 소유하며, 이미 등록된 LiveComponent id로 join이 오면 서버는 무시한다 |
 | `leave` | `id` | `leaving()`, 그 아래 LiveComponent에 cascade, 업로드 레지스트리 해제, 구독 재계산, 컴포넌트 제거 |
 | `user_event` | `id`, `command`, `implicit_args` (폼 직렬화), `explicit_args` | 핸들러 호출 후 render |
 | `hook_event` | `component_id`, `hook_id`, `event`, `payload`, `ref?` | `handle_hook_event()`, `ref`가 있으면 `hook_reply` |
@@ -42,6 +42,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 |---------|---------|
 | `render` | `id`, `diff`, `children?` — `diff`는 전체 `{"s", "d", "f"}` 또는 부분 `{"<index>": value}`, 또는 자식만 바뀌었을 때 `null`. value는 문자열, comprehension `{"s", "d"}`, 항목 갱신 `{"u", "n"}`, 블록 `{"r", "d"}`, 블록 부분 갱신 `{"p"}`, LiveComponent 참조 `{"c": id}` ([html-diff](../features/html-diff.md)). `children`은 이 렌더와 함께 렌더된 LiveComponent들의 `{id: diff}` 평면 맵이다(손자식 포함). 클라이언트는 DOM을 건드리기 전에 이들을 먼저 등록하고, 부모 HTML을 만들 때 참조 자리에 자식의 현재 HTML을 넣는다 |
 | `remove` | `id` |
+| `reload` | `id` (알 수 없으면 `null`), `reason` (`expired`, `legacy`, `invalid`) — join의 루트 서명 상태를 쓸 수 없어 아무것도 마운트하지 않았다. 클라이언트는 전체 페이지 로드로 복구하며, 30초 안에 두 번 반복되면 `sessionStorage["wireview:last-reload"]` 가드가 막고 경고만 남긴다 |
 | `append`, `prepend`, `insert_after`, `insert_before`, `replace_with` | `id`, `html` |
 | `stream_op` | `op`, `stream`, `items`, `at` |
 | `exec_js` | `id`, `commands` |
@@ -93,5 +94,6 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 
 ## 7. 버전
 
+- 2026-09-09: `join`의 서명 상태가 v1 봉투가 되고 만료 검사가 붙었다. 거절 시 새 outbound 명령 `reload` (#76).
 - 2026-09-08: `render` 부분 diff 값에 comprehension과 블록 형태 추가 (GAP-025).
 - 2026-09-08: 첫 정본. 코드에서 추출했으며, 이후 명령을 더하거나 필드를 바꾸면 이 문서와 `CHANGELOG.md`에 남긴다.

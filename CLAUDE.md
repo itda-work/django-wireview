@@ -29,7 +29,7 @@ wireview/
 ├── core/component.py      Component 베이스: 라이프사이클, 이벤트 디스패치, streams·uploads·async·flash·hooks 메서드
 ├── core/meta.py           WireviewMeta (self.wire): push_to/replace_to, push_js, put_flash, push_title 등 클라이언트 명령
 ├── core/rendered.py       동적 마커 기반 diff 구조. LiveComponent 자리는 참조 dynamic {"c": id}
-├── core/state.py          data-state 서명·복원 (압축 형식, 구형식 호환)
+├── core/state.py          data-state 서명·복원 (v1 봉투: 클래스 결합·만료·토큰 재사용)
 ├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳
 ├── template_engine.py     템플릿 VariableNode에 diff 마커 자동 주입
 ├── consumer.py            WireviewConsumer (WebSocket, /__wireview__). send_render가 자식 LiveComponent의 joined/update/leaving과 렌더를 함께 처리
@@ -56,7 +56,8 @@ wireview/
 │                          wireview_agent_setup (앱 개발자용 스킬을 프로젝트 .claude/skills/ 에 설치)
 ├── templates/wireview_header.html  {% wireview_header %}가 렌더. wireview.min.js를 로드
 └── static/wireview/       wireview.js (소스), rendered.mjs (diff 적용·HTML 복원 순수 함수),
-                           streams.mjs (스트림 DOM 판단 순수 함수), wireview-boost.js, types.d.ts
+                           streams.mjs (스트림 DOM 판단 순수 함수), reload.mjs (reload 쿨다운 판단),
+                           wireview-boost.js, types.d.ts
                            wireview.min.js는 빌드 산출물이며 gitignore
 
 tests/

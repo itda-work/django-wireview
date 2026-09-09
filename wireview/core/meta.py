@@ -115,6 +115,10 @@ class WireviewMeta:
         self._pending_operations: list[tuple[str, dict[str, t.Any]]] = []
         # Pending broadcasts queue (separate from operations since they go through channel layer)
         self._pending_broadcasts: list[tuple[str, dict[str, t.Any]]] = []
+        # Last ``data-state`` token this component issued: (state_json, token, issued_at).
+        # ``sign_state`` reuses it while the state is unchanged so an unchanged
+        # render keeps producing the same attribute value (see wireview/core/state.py).
+        self._state_token: tuple[str, str, float] | None = None
 
     def clone(self) -> WireviewMeta:
         """Create a copy of this meta instance."""

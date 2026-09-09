@@ -53,12 +53,12 @@ class DiffProbe(Component):
         return _template
 
 
-def _unsigned_state(rendered_html: str) -> dict:
+def _unsigned_state(rendered_html: str, name: str = "DiffProbe") -> dict:
     match = STATE_ATTR.search(rendered_html)
     assert match, rendered_html
     raw = html.unescape(match.group(1))
     assert "<!--" not in raw, "marker leaked into the attribute value"
-    return unsign_state(raw)
+    return unsign_state(raw, name)
 
 
 @pytest.mark.asyncio
@@ -121,18 +121,22 @@ async def test_http_render_keeps_plain_state_attribute():
 
 @pytest.mark.asyncio
 @pytest.mark.unit
-async def test_signed_state_round_trips_and_accepts_legacy_format():
+async def test_signed_state_round_trips_and_rejects_legacy_format_by_default():
+    """Legacy formats carry no class, so they are refused unless the flag is on (#76)."""
     from django.core.signing import Signer
+
+    from wireview.core.state import LegacyState
 
     view = await mount(DiffProbe, count=3)
     component = view.component
 
-    state = unsign_state(sign_state(component))
+    state = unsign_state(sign_state(component), "DiffProbe")
     assert state["count"] == 3 and state["id"] == component.id
     assert "wire" not in state and "user" not in state
 
     legacy = Signer().sign(component.model_dump_json(exclude=component._exclude_fields))
-    assert unsign_state(legacy) == state
+    with pytest.raises(LegacyState):
+        unsign_state(legacy, "DiffProbe")
 
 
 @pytest.mark.asyncio
@@ -143,7 +147,10 @@ async def test_signed_state_is_deterministic_and_compact_for_lists():
     class ListProbe(DiffProbe):
         items: list[dict] = []
 
-    items = [{"name": f"item {i}", "qty": i} for i in range(50)]
+    # The v1 envelope costs a fixed ~60 bytes that do not compress (the class
+    # FQN and the timestamp, #76), so the ratio below is measured on a list
+    # long enough for the state itself to dominate.
+    items = [{"name": f"item {i}", "qty": i} for i in range(100)]
     view = await mount(ListProbe, items=items)
     component = view.component
 

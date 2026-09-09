@@ -26,7 +26,7 @@ make bench ARGS="--server uvicorn-nodeflate"  # permessage-deflate를 끈 uvicor
 
 ## 비교가 공정한 이유
 
-`bench-compare`는 과거 커밋을 별도 worktree에 받아 그 커밋의 의존성으로 venv를 만들고, 벤치 코드만 현재 트리에서 복사해 넣습니다. 벤치는 공개 API(`mount`, `render_diff`)와 wire 프로토콜만 쓰므로 GAP-024 이전 코드에서도 그대로 돕니다. join 상태는 구형식 서명을 쓰는데, 새 서버도 이를 받아들입니다.
+`bench-compare`는 과거 커밋을 별도 worktree에 받아 그 커밋의 의존성으로 venv를 만들고, 벤치 코드만 현재 트리에서 복사해 넣습니다. 벤치는 공개 API(`mount`, `render_diff`)와 wire 프로토콜만 쓰므로 GAP-024 이전 코드에서도 그대로 돕니다. join 상태는 구형식 서명(v1 봉투 이전)을 쓰므로, `bench/settings.py`가 `WIREVIEW["STATE_ACCEPT_LEGACY"] = True`로 이를 받아들이게 합니다(운영 권장 설정이 아닙니다).
 
 ## 읽는 법
 

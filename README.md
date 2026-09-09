@@ -1112,6 +1112,10 @@ WIREVIEW = {
     "USE_HTML_DIFF": True,            # HTML diff 활성화
     "USE_HMIN": False,                # django-hmin 압축 사용
     "BOOST_PAGES": False,             # 클라이언트 사이드 네비게이션 활성화
+    # 서명 상태(data-state) — docs/features/html-diff.md
+    "STATE_MAX_AGE": 14 * 24 * 3600,  # 서명 상태 유효 기간(초). 기본 14일
+    "STATE_REFRESH_AFTER": None,      # 상태가 같아도 이 시간이 지나면 토큰 재발급. None이면 STATE_MAX_AGE // 2
+    "STATE_ACCEPT_LEGACY": False,     # v1 봉투 이전 형식 허용(혼재 배포 구간에만)
     "AUTO_BROADCAST": AutoBroadcast(
         model=False,       # 모델 변경 시 브로드캐스트
         model_pk=False,    # 채널에 PK 포함

@@ -12,6 +12,7 @@ from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 
 from . import telemetry
 from .component import Component, MessagePayload
+from .core.state import StateMismatch
 from .live_component import LiveComponent
 from .utils import filter_parameters
 
@@ -119,6 +120,16 @@ class ComponentRepository:
     ) -> Component:
         if component_id := state.get("id"):
             if component := self.components.get(component_id):
+                # The id names an instance this connection already holds. Reusing
+                # it for another class would let a state signed for one component
+                # steer another (#76), so the id has to belong to the same class.
+                if type(component) is not Component._resolve(name):
+                    raise StateMismatch(
+                        f"Component id '{component_id}' is held by {type(component)._fqn}, not by '{name}'",
+                        component_id=component_id,
+                        signed_name=type(component)._fqn,
+                        asked_name=name,
+                    )
                 # override with the passed state but preserve the rest of the state
                 for key, value in state.items():
                     # Call the model validator to convert Django models

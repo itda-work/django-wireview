@@ -10,6 +10,24 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Security
+
+- The signed `data-state` is now bound to the component class it was issued for and expires
+  (`#76`). It used to sign the state alone while the class name travelled beside it unsigned,
+  so a signature issued for one component could be presented as another whose fields fit, and
+  nothing ever aged out. `sign_state()` now signs a versioned envelope
+  `{"v": 1, "n": <class FQN>, "d": <state>}` with `TimestampSigner(salt="wireview.state.v1")`,
+  and the join path verifies it with `max_age=WIREVIEW["STATE_MAX_AGE"]` (14 days by default)
+  and refuses a state whose class differs from the one the client named. The two pre-v1
+  formats carry no class, so they are rejected unless `WIREVIEW["STATE_ACCEPT_LEGACY"]` is
+  turned on for a rollout window; `docs/DEPLOYMENT.md` has the upgrade note. A render reuses
+  its token while the state is unchanged and younger than `WIREVIEW["STATE_REFRESH_AFTER"]`,
+  so `data-state` stays byte-identical across no-change renders and partial diffs are
+  unaffected. One consequence: two components registered under the same simple name in
+  different modules (`wireview.W003`) used to mount whichever registered last; now the
+  envelope names the exact class, the simple name resolves to the other one, and the join is
+  refused with `reload`. Fix the collision or reference the class by `app:Name` or FQN
+
 ### Added
 
 - `{% live_component_block "Name" id="..." %}…{% endlive_component %}` passes slots to a
@@ -76,6 +94,13 @@ The django-reactor era changelog (2.x) is preserved in
 - `wireview/static/wireview/wireview.js`: diff data is applied when the frame arrives and only
   the DOM patch waits for the next animation frame, so a component's diffs apply in the order
   the server sent them whether they came alone or inside a parent's `children`
+- **Wire protocol.** New outbound command `reload` with payload `{"id", "reason"}`
+  (`"expired"`, `"legacy"`, `"invalid"`). The server sends it instead of mounting when a join's
+  root state cannot be used, and the client does a full page load so the server can re-render
+  with the current auth context and fresh tokens. The client refuses to reload twice within 30
+  seconds (`sessionStorage["wireview:last-reload"]`) so a misconfigured server cannot loop the
+  page. A child state that fails to decode is dropped from the restore map with a warning and
+  the join continues (`#76`)
 - Rebuild `wireview.min.js` (`make build-js`) after upgrading: the new server frames need the
   new client
 
