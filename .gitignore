@@ -24,6 +24,14 @@ tests/static/
 # IDE LSP metadata cache
 .wireview/
 
+# Agent tooling mirrors what .claude/ already tracks into its own layout: Codex
+# writes .agents/skills/ and .codex/hooks.json on startup. Tracking them would
+# duplicate the sources and, worse, leave `git status` dirty after every session --
+# and "the working tree is clean" is the instruction given to an agent asked to
+# revert an experiment.
+.agents/
+.codex/
+
 # Auto-generated type stubs
 *.pyi
 
