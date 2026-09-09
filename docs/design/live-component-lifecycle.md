@@ -54,8 +54,8 @@ _flush_pending_live_components()     # 여기서 비로소 자식의 joined()
 `children`으로 함께 보낸다(`wireview.js:946-959`). LiveComponent도 `wireview-component` 속성을
 달고 있으므로 여기 포함된다.
 
-그런데 `build_live_component`는 `repo.children`을 **보지 않는다.** 일반 `build()`는
-`self.children`을 병합하는데(`repository.py:91-95`), 이 경로에는 그 분기가 없다.
+그런데 `build_live_component`는 `repo.children`을 **보지 않는다.** 일반 `build()`에는 그 분기가
+있고(`repository.py:91-95`), 이 경로에는 없다.
 
 ```python
 repo.children = {"counter-1": ("ProbeCounter", unsign_state(signed_with_count_7))}
@@ -64,9 +64,22 @@ assert rebuilt.count == 7
 # AssertionError: reconnect reset the counter to 0
 ```
 
-즉 **재연결하면 LiveComponent는 템플릿이 준 초기 prop으로 되돌아간다.** 일반 중첩 컴포넌트는
-상태가 복원된다. 클라이언트가 굳이 자식 상태를 서명해 보내는 것을 보면 복원이 의도였던 것 같은데,
-서버가 그 값을 쓰지 않는다.
+**두 경로의 차이를 정확히 적는다.** 일반 `build()`의 병합은 `state = child_state | state`라
+**템플릿이 넘긴 prop이 복원된 값을 이긴다.** 실측:
+
+| 필드 | 복원된 값 | 템플릿이 넘긴 값 | 결과 |
+|---|---|---|---|
+| `count` | 7 | 0 | **0** (prop이 이긴다) |
+| `note` | `"kept"` | 넘기지 않음 | **`"kept"`** (복원된다) |
+
+그러므로 "일반은 복원되고 LiveComponent는 안 된다"는 너무 거칠다. 정확히는
+
+- **일반 중첩 컴포넌트**: 템플릿이 넘기지 **않는** 필드만 복원된다. 자식이 스스로 쌓은 내부 상태
+  (펼침 여부, 선택, 필터)가 여기 해당한다.
+- **LiveComponent**: 복원 자체가 없다. 템플릿이 넘기지 않는 필드는 **필드 기본값**으로 돌아간다.
+
+클라이언트가 자식 상태를 서명해 보내는 것을 보면 복원이 의도였던 것 같은데, LiveComponent 경로는
+그 값을 쓰지 않는다.
 
 ### 1-5. 서버에는 고아 정리가 없다
 
