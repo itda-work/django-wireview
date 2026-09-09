@@ -17,6 +17,8 @@ from uuid import uuid4
 import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
+from django.contrib.sessions.backends.cache import SessionStore as CacheSessionStore
+from django.contrib.sessions.backends.db import SessionStore
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied
 from django.template import Context, Template
 from django.test import RequestFactory, override_settings
@@ -24,7 +26,13 @@ from django.test import RequestFactory, override_settings
 from wireview import Component, LiveComponent, live_session
 from wireview.consumer import WireviewConsumer
 from wireview.core import live_session as live_session_module
-from wireview.core.live_session import LiveSession, auth_fingerprint, auth_topic, get_live_session
+from wireview.core.live_session import (
+    AUTH_GENERATION_KEY,
+    LiveSession,
+    auth_fingerprint,
+    auth_topic,
+    get_live_session,
+)
 from wireview.core.meta import WireviewMeta
 from wireview.core.session import SessionView
 from wireview.core.state import sign_state, unsign_envelope
@@ -32,11 +40,30 @@ from wireview.repository import ComponentRepository
 
 pytestmark = [pytest.mark.unit, pytest.mark.django_db]
 
+#: Session backend for the tests that need a real store to flush mid-test. The db
+#: backend would need a write from the bridge thread while the test transaction is
+#: open, which sqlite answers with "database is locked".
+CACHE_SESSIONS = "django.contrib.sessions.backends.cache"
+
+
+def _make_session() -> str:
+    """A saved session standing for one login. Returns its key."""
+    store = CacheSessionStore()
+    store["_auth_user_hash"] = "abc"
+    store[AUTH_GENERATION_KEY] = "gen-1"
+    store.save()
+    return str(store.session_key)
+
+
 TEMPLATES = {
     "lsx/guarded.html": "{% load wireview %}<p {% tag_header %}>secret {{ this.note }}</p>",
     "lsx/free.html": "{% load wireview %}<p {% tag_header %}>free {{ this.note }}</p>",
     "lsx/parent.html": ("{% load wireview %}<main {% tag_header %}>{% live_component 'LsxChild' id='kid' %}</main>"),
     "lsx/child.html": "{% load wireview %}<span {% tag_header %}>child {{ this.note }}</span>",
+    "lsx/nest.html": ("{% load wireview %}<main {% tag_header %}>{% component 'LsxHooked' id='nested' %}</main>"),
+    "lsx/boomparent.html": (
+        "{% load wireview %}<main {% tag_header %}>{% live_component 'LsxBoomChild' id='boomkid' %}</main>"
+    ),
 }
 
 #: Every hook call, in order: (component id, label).
@@ -91,6 +118,38 @@ class LsxChild(LiveComponent):
 
 class LsxParent(Component):
     _template_name = "lsx/parent.html"
+
+
+class LsxNestParent(Component):
+    """A live parent whose template names an ordinary nested ``{% component %}``."""
+
+    _template_name = "lsx/nest.html"
+
+
+class BoomHook:
+    @staticmethod
+    async def on_mount(component, params, session):
+        CALLS.append((component.id, "boom"))
+        raise RuntimeError("the authorization query failed")
+
+
+class LsxBoomChild(LiveComponent):
+    _template_name = "lsx/child.html"
+    _on_mount: t.ClassVar[list[t.Any]] = [BoomHook]
+    note: str = "kid"
+
+
+class LsxBoomParent(Component):
+    _template_name = "lsx/boomparent.html"
+
+
+class LsxBoom(Component):
+    _template_name = "lsx/guarded.html"
+    _on_mount: t.ClassVar[list[t.Any]] = [BoomHook]
+    note: str = "boom"
+
+    async def bump(self) -> None:
+        self.note = "bumped"
 
 
 class FakeOutbound:
@@ -269,6 +328,83 @@ class TestHttpBoundary:
         assert page(request) == "rendered"
         assert seen["name"] == "lsx-admin"
 
+    def test_an_async_view_stays_async(self, admin_session, staff):
+        """Django decides how to call a view by inspecting the callable it was handed.
+
+        A sync wrapper around an ``async def`` view hands back an un-awaited
+        coroutine where a response belongs, and nothing says so until the
+        request fails.
+        """
+        import asyncio
+
+        @admin_session.view
+        async def page(req):
+            return "rendered"
+
+        assert asyncio.iscoroutinefunction(page)
+
+        request = RequestFactory().get("/panel/")
+        request.user = staff
+        request.session = {}
+        assert asyncio.run(page(request)) == "rendered"
+
+    def test_an_async_view_is_refused_the_same_way(self, admin_session, plain):
+        import asyncio
+
+        @admin_session.view
+        async def page(req):
+            raise AssertionError("the view must not run")
+
+        request = RequestFactory().get("/panel/")
+        request.user = plain
+        request.session = {}
+
+        with pytest.raises(PermissionDenied):
+            asyncio.run(page(request))
+
+    def test_an_async_class_based_view_is_refused_with_a_response(self, admin_session, plain):
+        """The allowed path hides this one.
+
+        An async CBV's ``dispatch`` is an ordinary function returning a
+        coroutine, so a sync wrapper passes an allowed request straight through
+        and looks correct. The refusal is where it breaks: a plain response
+        arrives where Django is about to ``await``.
+        """
+        import asyncio
+
+        from django.http import HttpResponse
+        from django.views import View
+
+        @admin_session.view
+        class Page(View):
+            async def get(self, request):
+                return HttpResponse("ok")
+
+        request = RequestFactory().get("/panel/")
+        request.user = AnonymousUser()
+        request.session = {}
+
+        response = asyncio.run(Page.as_view()(request))
+
+        assert response.status_code == 302
+
+    def test_an_async_class_based_view_still_serves_an_allowed_user(self, admin_session, staff):
+        import asyncio
+
+        from django.http import HttpResponse
+        from django.views import View
+
+        @admin_session.view
+        class Page(View):
+            async def get(self, request):
+                return HttpResponse("ok")
+
+        request = RequestFactory().get("/panel/")
+        request.user = staff
+        request.session = {}
+
+        assert asyncio.run(Page.as_view()(request)).status_code == 200
+
     def test_a_class_based_view_takes_the_decorator_too(self, admin_session, plain):
         from django.views import View
 
@@ -369,6 +505,31 @@ class TestEveryMountPath:
 
         assert [label for _id, label in CALLS] == ["session", "component", "session", "component"]
 
+    async def test_a_nested_ordinary_component_runs_the_session_hooks(self, admin_session):
+        """A nested ``{% component %}`` renders inline, during its parent's pass.
+
+        It used to skip the mount entirely on the live path, on the theory that
+        the join had covered the page. The join had covered the *page*: a page
+        hook meaning to refuse this one component never ran, and the component
+        became an event target as well as markup.
+        """
+        consumer, _ = make_consumer(live_session_obj=admin_session)
+        parent = await consumer.repo.join("LsxNestParent", {"id": "m6"})
+
+        await consumer.send_render(parent)
+
+        assert ("nested", "session") in CALLS
+
+    async def test_a_refused_nested_ordinary_component_ships_nothing(self):
+        """``_live_sessions`` is answered without a bridge, so it works here too."""
+        consumer, outbound = make_consumer()
+        Template("{% load wireview %}{% component 'LsxGuarded' id='m7' %}").render(
+            Context({"wireview_repository": consumer.repo})
+        )
+
+        assert consumer.repo.get("m7") is None
+        assert outbound.renders() == []
+
     async def test_a_guarded_component_is_refused_on_a_page_with_no_boundary(self):
         consumer, outbound = make_consumer()
 
@@ -409,6 +570,36 @@ class TestHaltLeavesNothingBehind:
         await consumer.command_params_changed({"q": "1"}, "?q=1")
 
         assert outbound.commands == []
+
+    async def test_a_crashing_hook_is_a_refusal_not_a_pass(self):
+        """An authorization query that fails must not be safer to trigger than one that says no.
+
+        The exception still travels -- a crashing hook is a bug and needs its
+        traceback -- but the component is gone before it does.
+        """
+        consumer, _ = make_consumer()
+
+        with pytest.raises(RuntimeError, match="authorization query failed"):
+            await consumer.repo.join("LsxBoom", {"id": "h5"})
+
+        assert consumer.repo.get("h5") is None
+        assert await consumer.repo.dispatch_event("h5", "bump", (), {}) is None
+
+    async def test_a_crashing_hook_on_a_child_keeps_it_out_of_the_render(self):
+        """On this path the exception is logged rather than propagated, as ``joined()``'s is.
+
+        Logging it must not mean rendering the child: the parent's frame would
+        carry the markup of a component whose guard never finished.
+        """
+        consumer, outbound = make_consumer()
+        parent = await consumer.repo.join("LsxBoomParent", {"id": "h6"})
+
+        await consumer.send_render(parent)
+
+        assert ("boomkid", "boom") in CALLS, "the hook did run"
+        assert consumer.repo.get("boomkid") is None
+        children = [payload.get("children") or {} for payload in outbound.renders()]
+        assert not any("boomkid" in c for c in children)
 
     async def test_hook_events_do_not_reach_it(self):
         consumer, outbound = make_consumer()
@@ -486,27 +677,55 @@ class TestValidSignaturesDoNotCombine:
         assert payload.live_session == ""
         assert payload.auth is None, "binding a public page to a login would reload it on every login"
 
-    async def test_a_v1_envelope_cannot_enter_a_boundary(self, admin_session, staff, monkeypatch):
-        """The rollout flag widens what decodes, never what a boundary admits."""
+    async def test_the_rollout_flag_stops_applying_once_a_boundary_exists(self, admin_session, staff, monkeypatch):
+        """``STATE_ACCEPT_LEGACY`` and a live_session cannot both be open.
+
+        An old token names no boundary. For a component that declares where it
+        belongs that is harmless -- it refuses to mount. For one that declares
+        nothing it is not: the connection settles on "no policy" and the page's
+        own ``authorize`` and hooks never run, even though the view carries the
+        decorator. Nothing in the token separates the two cases, so a project
+        that has declared a boundary takes the reload instead.
+        """
         from django.core.signing import BadSignature
 
         from wireview.core import state as state_module
 
+        def v1_for(component_class, component_id):
+            return state_module.get_signer(state_module.V1_SALT).sign_object(
+                '{"v":1,"n":"%s","d":{"id":"%s"}}' % (component_class._fqn, component_id),
+                serializer=state_module._JSONStringSerializer,
+                compress=True,
+            )
+
+        unbound = v1_for(LsxFree, "v9")
+        monkeypatch.setattr(state_module.settings, "STATE_ACCEPT_LEGACY", True)
+
+        with pytest.raises(BadSignature):
+            unsign_envelope(unbound, "LsxFree")
+
+        consumer, outbound = make_consumer(user=staff)
+        await consumer.command_join("LsxFree", unbound)
+
+        assert outbound.kinds() == ["reload"]
+        assert consumer.repo.get("v9") is None, "a page-level policy cannot be skipped by an old token"
+
+    async def test_the_rollout_flag_still_works_without_a_boundary(self, staff, monkeypatch):
+        """The window is only closed by boundaries, not by the upgrade itself."""
+        from wireview.core import state as state_module
+
+        live_session_module._REGISTRY.clear()
+        monkeypatch.setattr(state_module.settings, "STATE_ACCEPT_LEGACY", True)
         v1 = state_module.get_signer(state_module.V1_SALT).sign_object(
-            '{"v":1,"n":"%s","d":{"id":"v9","note":"old"}}' % LsxGuarded._fqn,
+            '{"v":1,"n":"%s","d":{"id":"v10"}}' % LsxFree._fqn,
             serializer=state_module._JSONStringSerializer,
             compress=True,
         )
-        with pytest.raises(BadSignature):
-            unsign_envelope(v1, "LsxGuarded")
 
-        monkeypatch.setattr(state_module.settings, "STATE_ACCEPT_LEGACY", True)
-        payload = unsign_envelope(v1, "LsxGuarded")
-        assert payload.live_session == "", "a v1 token knows no boundary"
+        payload = unsign_envelope(v1, "LsxFree")
 
-        consumer, outbound = make_consumer(user=staff)
-        await consumer.command_join("LsxGuarded", v1)
-        assert consumer.repo.get("v9") is None, "so the guarded component still refuses to mount"
+        assert payload.live_session == ""
+        assert payload.state["id"] == "v10"
 
 
 # --- AC6: a logout retires what it authenticated -------------------------------------------
@@ -517,20 +736,61 @@ class TestLogoutInvalidation:
 
     def test_the_fingerprint_moves_when_the_login_does(self, staff):
         anonymous = auth_fingerprint(AnonymousUser(), {})
-        logged_in = auth_fingerprint(staff, {"_auth_user_hash": "abc"})
+        logged_in = auth_fingerprint(staff, {AUTH_GENERATION_KEY: "gen-1", "_auth_user_hash": "abc"})
 
         assert anonymous != logged_in
 
-    def test_the_fingerprint_moves_when_the_session_key_does(self, staff):
-        before = auth_fingerprint(staff, SessionView({}, session_key="old-key"))
-        after = auth_fingerprint(staff, SessionView({}, session_key="new-key"))
+    def test_two_logins_by_the_same_user_fingerprint_differently(self, staff):
+        """The generation nonce is the only thing that separates them.
 
-        assert before != after, "login() cycles the key, logout() flushes it"
+        A pk is the same person on both sides of a logout and ``_auth_user_hash``
+        only moves on a password change, so without the nonce a state issued
+        before a logout would still be valid after logging back in.
+        """
+        first = auth_fingerprint(staff, {AUTH_GENERATION_KEY: "gen-1", "_auth_user_hash": "abc"})
+        second = auth_fingerprint(staff, {AUTH_GENERATION_KEY: "gen-2", "_auth_user_hash": "abc"})
+
+        assert first != second
+
+    def test_an_unrelated_session_write_does_not_move_the_fingerprint(self, staff):
+        """The signed-cookie backend's session_key is the whole cookie.
+
+        It changes whenever *anything* is written to the session, so a
+        fingerprint built on it would move for reasons that have nothing to do
+        with authentication: open pages would reload and a later logout would
+        publish to a topic nobody is listening on. The nonce does not move.
+        """
+        before = SessionView({AUTH_GENERATION_KEY: "gen-1", "cart": 1}, session_key="cookie-v1")
+        after = SessionView({AUTH_GENERATION_KEY: "gen-1", "cart": 2}, session_key="cookie-v2")
+
+        assert auth_fingerprint(staff, before) == auth_fingerprint(staff, after)
 
     def test_the_same_login_fingerprints_the_same(self, staff):
-        session = SessionView({"_auth_user_hash": "abc"}, session_key="k")
+        session = SessionView({AUTH_GENERATION_KEY: "gen-1", "_auth_user_hash": "abc"})
 
         assert auth_fingerprint(staff, session) == auth_fingerprint(staff, session)
+
+    def test_login_stamps_a_generation_on_the_session(self, staff):
+        """Django fires ``user_logged_in`` at the end of login(), after cycle_key()."""
+        from django.contrib.auth import login
+
+        request = RequestFactory().get("/")
+        request.session = SessionStore()
+        login(request, staff, backend="django.contrib.auth.backends.ModelBackend")
+
+        assert request.session.get(AUTH_GENERATION_KEY)
+
+    def test_a_second_login_stamps_a_different_generation(self, staff):
+        from django.contrib.auth import login
+
+        first = RequestFactory().get("/")
+        first.session = SessionStore()
+        login(first, staff, backend="django.contrib.auth.backends.ModelBackend")
+        second = RequestFactory().get("/")
+        second.session = SessionStore()
+        login(second, staff, backend="django.contrib.auth.backends.ModelBackend")
+
+        assert first.session[AUTH_GENERATION_KEY] != second.session[AUTH_GENERATION_KEY]
 
     @pytest.mark.asyncio
     async def test_a_connection_inside_a_boundary_listens_for_its_logout(self, admin_session, staff):
@@ -547,6 +807,96 @@ class TestLogoutInvalidation:
         await consumer.command_join("LsxFree", signed(LsxFree, id="l2"))
 
         assert outbound.subscribed == [], "an unrelated logout must not close a public page's socket"
+
+    @pytest.mark.asyncio
+    async def test_a_logout_before_the_first_join_is_not_missed(self, admin_session, staff):
+        """The subscription starts at the first join, so it cannot be the only check.
+
+        A client is free to hold an open socket and delay its join. Between
+        connect and that join the session it authenticated with can be flushed,
+        and a publish at that moment reaches nobody. So the boundary re-reads the
+        session from its backend before it admits anything.
+        """
+        with override_settings(SESSION_ENGINE=CACHE_SESSIONS):
+            key = _make_session()
+            token = signed(LsxGuarded, page=admin_session, user=staff, session=CacheSessionStore(key), id="l3")
+            # The socket read its own copy at connect; that snapshot is what it
+            # keeps, and no logout can reach into it.
+            consumer, outbound = make_consumer(user=staff, session=CacheSessionStore(key))
+
+            # The logout happens on another request, on its own store instance.
+            CacheSessionStore(key).flush()
+
+            await consumer.command_join("LsxGuarded", token)
+
+        assert outbound.kinds() == ["reload"]
+        assert consumer.repo.get("l3") is None
+
+    @pytest.mark.asyncio
+    async def test_a_live_session_still_joins_when_the_login_stands(self, admin_session, staff):
+        """The control for the re-read: a session that is still there is not refused."""
+        with override_settings(SESSION_ENGINE=CACHE_SESSIONS):
+            key = _make_session()
+            token = signed(LsxGuarded, page=admin_session, user=staff, session=CacheSessionStore(key), id="l4")
+            consumer, outbound = make_consumer(user=staff, session=CacheSessionStore(key))
+            await consumer.command_join("LsxGuarded", token)
+
+        assert outbound.kinds() == ["render"]
+
+    @pytest.mark.asyncio
+    async def test_a_policy_reading_session_data_sees_the_fresh_session(self, staff):
+        """The re-read replaces the snapshot; comparing fingerprints alone would not.
+
+        A logout moves the fingerprint, so a fingerprint comparison catches it.
+        Anything else a policy reads out of the session does not move it at all,
+        and would still be answered from data that is no longer there.
+        """
+        policy = live_session("lsx-mfa", authorize=lambda ctx: bool(ctx.session.get("mfa")))
+        with override_settings(SESSION_ENGINE=CACHE_SESSIONS):
+            store = CacheSessionStore()
+            store["mfa"] = True
+            store.save()
+            key = str(store.session_key)
+            token = signed(LsxFree, page=policy, user=staff, session=CacheSessionStore(key), id="l5")
+            consumer, outbound = make_consumer(user=staff, session=CacheSessionStore(key))
+
+            # The step-up is revoked on another request; the fingerprint does not move.
+            revoked = CacheSessionStore(key)
+            del revoked["mfa"]
+            revoked.save()
+
+            await consumer.command_join("LsxFree", token)
+
+        assert outbound.kinds() == ["reload"]
+        assert consumer.repo.get("l5") is None
+
+    def test_logging_in_again_retires_the_generation_it_replaces(self, staff):
+        """A step-up or re-auth overwrites the nonce, and no logout will ever name the old one."""
+        from django.contrib.auth import login
+
+        from wireview.core.transport import set_broker
+
+        published: list[str] = []
+
+        class RecordingBroker:
+            async def publish(self, topic, message):
+                published.append(topic)
+
+            async def send_to_session(self, session_id, message): ...
+
+        request = RequestFactory().get("/")
+        request.session = SessionStore()
+        login(request, staff, backend="django.contrib.auth.backends.ModelBackend")
+        first = request.session[AUTH_GENERATION_KEY]
+
+        set_broker(RecordingBroker())
+        try:
+            login(request, staff, backend="django.contrib.auth.backends.ModelBackend")
+        finally:
+            set_broker(None)
+
+        assert request.session[AUTH_GENERATION_KEY] != first
+        assert published == [auth_topic(auth_fingerprint(staff, {AUTH_GENERATION_KEY: first}))]
 
     @pytest.mark.asyncio
     async def test_the_invalidation_message_closes_the_socket(self):
@@ -574,7 +924,7 @@ class TestLogoutInvalidation:
 
             async def send_to_session(self, session_id, message): ...
 
-        session = SessionView({"_auth_user_hash": "abc"}, session_key="k")
+        session = SessionView({AUTH_GENERATION_KEY: "gen-1", "_auth_user_hash": "abc"})
         set_broker(RecordingBroker())
         try:
             invalidate_authentication(staff, session)

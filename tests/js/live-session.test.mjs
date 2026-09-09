@@ -1,7 +1,12 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
 
-import { META_NAME, crossesBoundary, readSessionName } from "../../wireview/static/wireview/live-session.mjs";
+import {
+  META_NAME,
+  NavigationGate,
+  crossesBoundary,
+  readSessionName,
+} from "../../wireview/static/wireview/live-session.mjs";
 
 /** A document stand-in that answers the one selector the module asks for. */
 function docWith(content) {
@@ -50,4 +55,51 @@ test("leaving a session for an unbounded page crosses the boundary", () => {
 test("entering a session from an unbounded page crosses the boundary", () => {
   assert.equal(crossesBoundary("", "admin"), true);
   assert.equal(crossesBoundary(undefined, "admin"), true);
+});
+
+
+test("work queued for the navigation in flight still runs", () => {
+  const gate = new NavigationGate();
+  gate.begin();
+  const token = gate.token;
+
+  assert.equal(gate.accepts(token), true);
+});
+
+test("a newer navigation drops what the previous one queued", () => {
+  // A boosted body morph runs on a requestAnimationFrame, so a second click
+  // during the first fetch would otherwise paint the first destination on top
+  // of the second -- and join its components.
+  const gate = new NavigationGate();
+  gate.begin();
+  const first = gate.token;
+  gate.begin();
+
+  assert.equal(gate.accepts(first), false);
+});
+
+test("abandoning ends the navigation in flight without starting another", () => {
+  // What leaving the boundary does: the browser is loading a whole new
+  // document, and nothing queued for the navigation that discovered it should
+  // paint or join in the meantime.
+  const gate = new NavigationGate();
+  gate.begin();
+  const token = gate.token;
+  gate.abandon();
+
+  assert.equal(gate.accepts(token), false);
+  assert.equal(gate.accepts(gate.token), true);
+});
+
+test("a popstate's cached body and its validating fetch share one navigation", () => {
+  // The regression this guards: bumping the token inside the fetch step rather
+  // than at the navigation's start cancelled every cached back/forward paint,
+  // because the fetch always started after the morph was queued.
+  const gate = new NavigationGate();
+  gate.begin();
+  const cachedPaint = gate.token;
+  const fetchStep = gate.token;
+
+  assert.equal(gate.accepts(cachedPaint), true);
+  assert.equal(cachedPaint, fetchStep);
 });

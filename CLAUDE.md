@@ -155,9 +155,15 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
   (`@session.view`), 한 페이지·한 연결에 하나다. `authorize` 술어는 뷰(첫 바이트 전)와
   join(마운트 전) 두 곳에서 도는 **같은 함수**여야 한다 — 둘을 따로 두면 조용히 어긋난다.
   `_live_sessions`를 선언한 컴포넌트는 경계가 없는 페이지에서도 거절된다.
-- **mount가 halt하면 아무것도 렌더되지 않는다** (#58부터). 컴포넌트는 저장소에서도 지워지므로
-  그 id로 오는 이벤트도 처리되지 않는다. 렌더를 보내는 새 경로를 만들 때 `wire.mount_halted`를
-  건너뛰면 가드가 막으려던 HTML과 `data-state`가 그대로 나간다.
+- **mount가 halt하거나 예외를 던지면 아무것도 렌더되지 않는다** (#58부터). 컴포넌트는 저장소에서도
+  지워지므로 그 id로 오는 이벤트도 처리되지 않는다. 렌더를 보내는 새 경로를 만들 때
+  `wire.mount_halted`를 건너뛰면 가드가 막으려던 HTML과 `data-state`가 그대로 나간다. 예외를
+  "미완"으로 다루면 인가 조회가 실패하는 쪽이 거절보다 통과하기 쉬워진다.
+- **인증 세대는 세션 키가 아니라 `login()`이 찍는 nonce(`_wireview_auth_gen`)다.** signed-cookie
+  백엔드의 `session_key`는 서명 쿠키 문자열 전체라 세션에 뭘 쓰든 바뀐다. 그리고 그 백엔드는
+  로그아웃을 서버에서 폐기하지 못한다 — 경계 뒤에 진짜 인가가 있으면 서버 저장형 백엔드를 쓴다.
+- **`STATE_ACCEPT_LEGACY`와 live_session은 동시에 열 수 없다.** 옛 토큰에는 그 페이지에 경계가
+  있었는지를 말해 줄 것이 없어서, 받아 주면 뷰에 붙인 정책이 통째로 빠진다(`wireview.W010`).
 - **data-state는 dynamic 파트다.** `{% tag_header %}`의 서명 상태는 라이브 렌더에서 마커로 감싸진다. static에 넣으면 fingerprint가 매번 바뀌어 부분 diff가 죽는다. 회귀 테스트는 tests/test_diff_stability.py.
 
 ## 문서 인덱스

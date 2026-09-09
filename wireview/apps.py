@@ -7,11 +7,11 @@ class WireviewConfig(AppConfig):
     verbose_name = "Django Wireview"
 
     def ready(self):
-        from django.contrib.auth.signals import user_logged_out
+        from django.contrib.auth.signals import user_logged_in, user_logged_out
 
         from . import auto_broadcast  # noqa
         from .checks import register_checks
-        from .core.live_session import _on_user_logged_out
+        from .core.live_session import _on_user_logged_in, _on_user_logged_out
 
         # ``live`` holds components, ``live_sessions`` the page boundaries they are
         # mounted inside. Both have to be imported before the checks run, and the
@@ -20,9 +20,11 @@ class WireviewConfig(AppConfig):
         autodiscover_modules("live_sessions")
         autodiscover_modules("live")
 
-        # A logout retires the connections it authenticated (#58, AC6). Registered
-        # unconditionally: a project with no live_session has no subscribers, so the
-        # publish reaches nobody and costs one no-op on the broker.
+        # A login stamps its own generation and a logout retires the connections
+        # that generation authenticated (#58, AC6). Registered unconditionally: a
+        # project with no live_session pays one session key per login, and the
+        # publish reaches nobody.
+        user_logged_in.connect(_on_user_logged_in, dispatch_uid="wireview.live_session.login")
         user_logged_out.connect(_on_user_logged_out, dispatch_uid="wireview.live_session.logout")
 
         # Components must be imported before the checks run

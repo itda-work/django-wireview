@@ -31,7 +31,7 @@ WARNINGS:
 | `wireview.W007` | `_on_mount`에 올린 클래스에 `on_mount`가 없거나 async가 아님 | 훅이 말없이 건너뛰어져, 인증 가드로 올린 훅이 아무것도 막지 않는다 |
 | `wireview.W008` | `UPLOAD_TEMP_DIR`이 가리키는 경로에 임시 파일을 만들 수 없음 | 설정은 첫 청크가 올 때에야 읽힌다. 기동 시에는 아무 신호가 없고, 업로드가 하나씩 `ImproperlyConfigured`로 실패한다 |
 | `wireview.W009` | `SIGNING_KEY`가 빈 문자열이거나, 키 없이 fallback만 설정됨 | `Signer(key="")`는 조용히 `SECRET_KEY`로 되돌아간다. 아무것도 깨지지 않는 것이 문제다 — `SECRET_KEY`를 돌리면 진행 중인 업로드와 열린 페이지의 `data-state`가 같이 죽는다 |
-| `wireview.W010` | `_live_sessions`가 아무도 선언하지 않은 이름을 가리키거나, 경계가 있는 프로젝트에서 `_on_mount`로만 자신을 지키는 컴포넌트가 소속을 선언하지 않음 | 오타는 join 거절과 reload로 나타나 서명 문제처럼 보인다. 선언이 없는 컴포넌트는 경계 밖 페이지에서도 마운트된다 |
+| `wireview.W010` | `_live_sessions`가 아무도 선언하지 않은 이름을 가리키거나, 경계가 있는 프로젝트에서 `_on_mount`로만 자신을 지키는 컴포넌트가 소속을 선언하지 않거나, `STATE_ACCEPT_LEGACY`가 경계와 함께 켜져 있음 | 오타는 join 거절과 reload로 나타나 서명 문제처럼 보인다. 선언이 없는 컴포넌트는 경계 밖 페이지에서도 마운트된다. 롤아웃 플래그는 경계가 있으면 적용되지 않는데, 켜 둔 쪽은 창이 열려 있다고 믿는다 |
 
 전부 `Warning`이다. `manage.py check`의 기본 `--fail-level`은 `ERROR`이므로 이 검사들이
 빌드를 깨지 않는다. **오탐 하나면 팀 전체가 검사를 무시하기 시작하므로** 확신이 설 때까지
@@ -48,7 +48,7 @@ $ python manage.py check --deploy
 ?: (wireview.W006) The default channel layer is InMemoryChannelLayer.
 ```
 
-### W010이 두 가지를 보는 이유
+### W010이 세 가지를 보는 이유
 
 경계는 **옵트인**이다. 그 결과 실수가 두 방향으로 난다.
 
@@ -68,8 +68,12 @@ _on_mount but declares no _live_sessions.
 ```
 
 정말로 어디서나 마운트되어도 되는 컴포넌트라면 그것이 옳은 상태다 — 그때는
-`SILENCED_SYSTEM_CHECKS`가 아니라 그 사실을 코드에 적는 편이 낫다. [live_session](./live-session.md)
-참고.
+`SILENCED_SYSTEM_CHECKS`가 아니라 그 사실을 코드에 적는 편이 낫다.
+
+세 번째는 설정 둘이 서로를 무효화하는 경우다. `STATE_ACCEPT_LEGACY`는 봉투 이전 상태를 받아 주는
+롤아웃 창인데, live_session이 선언되면 적용되지 않는다 — 옛 토큰은 경계를 담고 있지 않고, 토큰
+안에는 그 페이지에 경계가 있었는지도 없다. 켜 둔 쪽은 창이 열려 있다고 믿으므로 말해 준다.
+[live_session](./live-session.md) 참고.
 
 ### W007이 보안 검사인 이유
 

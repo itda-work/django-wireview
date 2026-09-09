@@ -50,11 +50,15 @@ they meant to opt in.
 
 from __future__ import annotations
 
+import asyncio
 import functools
+import inspect
 import logging
+import secrets
 import typing as t
 from dataclasses import dataclass
 
+from asgiref.sync import sync_to_async
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied
@@ -71,6 +75,7 @@ if t.TYPE_CHECKING:
 log = logging.getLogger("wireview")
 
 __all__ = [
+    "AUTH_GENERATION_KEY",
     "LiveSession",
     "declaration_allows",
     "LiveSessionContext",
@@ -95,22 +100,36 @@ AUTH_SALT = "wireview.live_session.auth"
 #: :func:`invalidate_authentication` publishes to it.
 AUTH_TOPIC_PREFIX = "wireview.auth."
 
+#: Session key holding the login generation. Written once per ``login()`` and left
+#: alone afterwards, so it names *this* login without moving when unrelated session
+#: data does.
+AUTH_GENERATION_KEY = "_wireview_auth_gen"
+
 AnyUser = t.Union[AbstractBaseUser, AnonymousUser]
 
 
 def auth_fingerprint(user: AnyUser | None, session: t.Any) -> str:
     """Identify the authentication *generation* a state was issued under.
 
-    A user pk is not enough, and neither is a session auth hash on its own:
-    the pk is the same person before and after a logout, and an anonymous
-    visitor has no pk at all. What changes at exactly the moments the boundary
-    cares about is the session Django hands the browser -- ``login()`` cycles
-    the key, ``logout()`` flushes it, a password change moves
-    ``_auth_user_hash`` -- so all three go in.
+    Three values go in, and the interesting one is the nonce.
 
-    Projects on the signed-cookie backend have no session key (it is always
-    ``None``); there the auth hash carries the whole weight, which still moves
-    on login, logout and password change.
+    A user pk is not enough on its own -- it is the same person before and
+    after a logout -- and neither is ``_auth_user_hash``, which moves on a
+    password change but not on an ordinary logout. So ``login()`` writes a
+    fresh :data:`AUTH_GENERATION_KEY` into the session and that nonce is what
+    separates one login from the next.
+
+    The session *key* deliberately does not go in, though it looks like the
+    obvious candidate. On the signed-cookie backend ``session_key`` is the whole
+    signed cookie, so it changes every time anything at all is written to the
+    session -- a cart, a wizard step -- and a fingerprint built on it would
+    move for reasons that have nothing to do with authentication, sending open
+    pages into reloads and pointing a later logout at a topic nobody is on.
+
+    A session written before this key existed has no nonce, and falls back to
+    pk plus auth hash. That still tells an anonymous connection from a logged-in
+    one, which is what a logout turns a connection into; what it cannot tell
+    apart is the same user's consecutive logins. The next ``login()`` fixes it.
 
     Args:
         user: the request's user, or ``None`` for a call site without one.
@@ -118,15 +137,14 @@ def auth_fingerprint(user: AnyUser | None, session: t.Any) -> str:
             store, a plain mapping, or ``None``.
 
     Returns:
-        A short hex digest. Equal digests mean "the same login, in the same
-        browser session"; the value is opaque and reveals neither the session
-        key nor the auth hash.
+        A short hex digest. Equal digests mean "the same login"; the value is
+        opaque and reveals neither the nonce nor the auth hash.
     """
     view = SessionView.wrap(session)
     pk = getattr(user, "pk", None)
     parts = [
         "" if pk is None else str(pk),
-        view.session_key or "",
+        str(view.get(AUTH_GENERATION_KEY, "")),
         str(view.get("_auth_user_hash", "")),
     ]
     return salted_hmac(AUTH_SALT, "\x1f".join(parts), secret=signing_key(), algorithm="sha256").hexdigest()[:32]
@@ -214,19 +232,56 @@ class LiveSession:
         when :meth:`allows` says no, and it records the session name on the
         request so the page's header meta and every ``data-state`` it issues
         carry it.
+
+        An ``async def`` view -- and a class-based view Django considers async --
+        gets an async wrapper, because Django decides how to call a view by
+        inspecting what it was handed. That matters most on the refusal path: an
+        allowed request passes ``dispatch``'s own coroutine straight through and
+        looks fine, while a refusal returns a plain response into an ``await``.
+        A ``PermissionDenied`` raised by :meth:`deny` travels the same way in both.
         """
         if isinstance(target, type):
-            target.dispatch = method_decorator(self.view)(target.dispatch)  # type: ignore[attr-defined]
+            # An async CBV's ``dispatch`` is an ordinary function that returns a
+            # coroutine, so asking whether *it* is a coroutine function answers
+            # the wrong question. Django asks the class, and so does this: on an
+            # async view every path out of the wrapper has to be awaitable,
+            # including the refusal, or the refusal is what breaks.
+            gate = self._async_gate if getattr(target, "view_is_async", False) else self._sync_gate
+            target.dispatch = method_decorator(gate)(target.dispatch)  # type: ignore[attr-defined]
             setattr(target, REQUEST_ATTR, self.name)
             return target
 
+        if asyncio.iscoroutinefunction(target):
+            return self._async_gate(target)
+        return self._sync_gate(target)
+
+    def _admit(self, request: "HttpRequest") -> "HttpResponse | None":
+        """Refuse the request, or stamp the session name on it and let it through."""
+        user = getattr(request, "user", None)
+        if not self.allows(user, getattr(request, "session", None)):
+            return self.deny(request)
+        setattr(request, REQUEST_ATTR, self.name)
+        return None
+
+    def _sync_gate(self, target: t.Any) -> t.Any:
         @functools.wraps(target)
         def wrapper(request: "HttpRequest", *args: t.Any, **kwargs: t.Any) -> t.Any:
-            user = getattr(request, "user", None)
-            if not self.allows(user, getattr(request, "session", None)):
-                return self.deny(request)
-            setattr(request, REQUEST_ATTR, self.name)
+            denied = self._admit(request)
+            if denied is not None:
+                return denied
             return target(request, *args, **kwargs)
+
+        return wrapper
+
+    def _async_gate(self, target: t.Any) -> t.Any:
+        @functools.wraps(target)
+        async def wrapper(request: "HttpRequest", *args: t.Any, **kwargs: t.Any) -> t.Any:
+            denied = await sync_to_async(self._admit)(request)
+            if denied is not None:
+                return denied
+            result = target(request, *args, **kwargs)
+            # ``dispatch`` hands back a coroutine; an ``async def`` view is one.
+            return await result if inspect.isawaitable(result) else result
 
         return wrapper
 
@@ -345,8 +400,43 @@ def invalidate_authentication(user: AnyUser | None, session: t.Any, *, reason: s
         log.exception("Could not publish the session invalidation for %s", topic)
 
 
+def _on_user_logged_in(sender: t.Any, request: t.Any = None, user: t.Any = None, **kwargs: t.Any) -> None:
+    """``user_logged_in`` receiver: stamp this login with a generation nonce.
+
+    Django fires this at the end of ``login()``, after ``cycle_key()`` and after
+    the auth keys are in place, so writing here lands in the session the response
+    will carry. Registered in ``WireviewConfig.ready()``.
+
+    A project with no live_session pays one session key for this. That is cheaper
+    than making the fingerprint work out its own generation from whatever the
+    session backend happens to expose.
+    """
+    session = getattr(request, "session", None)
+    if session is None:
+        return
+    try:
+        previous = session.get(AUTH_GENERATION_KEY)
+        session[AUTH_GENERATION_KEY] = secrets.token_urlsafe(16)
+    except Exception:  # pragma: no cover - a read-only session is not worth a 500 on login
+        log.exception("Could not stamp the login generation on the session")
+        return
+    if previous:
+        # Logging in again without logging out first (a step-up, a re-auth) leaves
+        # the sockets of the previous generation open, and no logout will ever name
+        # them: the nonce they hold was just overwritten. Retire them here instead.
+        #
+        # Django flushes the session when a *different* user logs in, so that nonce
+        # is already gone by the time this runs and its generation cannot be named.
+        # Logging out first is what retires it.
+        invalidate_authentication(user, {AUTH_GENERATION_KEY: previous}, reason="logged in again")
+
+
 def _on_user_logged_out(sender: t.Any, request: t.Any = None, user: t.Any = None, **kwargs: t.Any) -> None:
-    """``user_logged_out`` receiver. Registered in ``WireviewConfig.ready()``."""
+    """``user_logged_out`` receiver. Registered in ``WireviewConfig.ready()``.
+
+    Django sends this *before* ``session.flush()``, which is what lets the
+    generation being retired name its own topic.
+    """
     if request is None:
         return
     invalidate_authentication(user or getattr(request, "user", None), getattr(request, "session", None))

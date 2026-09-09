@@ -26,6 +26,52 @@ The django-reactor era changelog (2.x) is preserved in
   sockets it authenticated. `wireview.W010` reports a `_live_sessions` naming a session nobody
   declares, and a component guarded only by `_on_mount` in a project that has boundaries.
   `docs/features/live-session.md` has the whole surface.
+- A mount that raises is a refusal, not a pass (`#58`). `Component._mount` used to leave
+  `{"halt": True}` as the only refusal, so a hook whose authorization query failed with a
+  database error left the component registered and answering events, and a LiveComponent child
+  in that state was rendered along with the parent. Every path now treats an exception the way
+  it treats a halt -- nothing rendered, nothing left in the repository -- and then lets the
+  exception carry its traceback where that path already did.
+- A nested `{% component %}` runs its mount hooks on the live path too (`#58`). It used to skip
+  them on the theory that the join had covered the page. The join had covered the *page*: a
+  `live_session` hook meaning to refuse one nested component never ran, and the component became
+  an event target as well as markup. Hooks run once per instance, so this costs one sync/async
+  bridge per instance rather than one per render, and nothing at all for a component with no
+  hooks on a page with no boundary.
+- The authentication generation is a nonce written by `login()`, not the session key (`#58`).
+  On the signed-cookie backend `session_key` is the whole signed cookie, so it changes whenever
+  anything is written to the session -- a fingerprint built on it moved for reasons that had
+  nothing to do with authentication, reloading open pages and pointing a later logout at a topic
+  nobody was on.
+- Entering a boundary re-reads the session from its backend and replaces the connection's
+  snapshot with it (`#58`). The auth-invalidation topic is only subscribed on the first join
+  inside a boundary, so a client that held an open socket and delayed that join missed the
+  logout published in between. Replacing rather than only comparing matters for a policy that
+  reads something other than authentication out of the session: that does not move the
+  fingerprint, so a comparison would pass it on data that is no longer there.
+- `WIREVIEW["STATE_ACCEPT_LEGACY"]` no longer applies once a `live_session` is declared (`#58`).
+  An old token names no boundary and nothing in it says whether its page had one; accepting one
+  for a component that declares no `_live_sessions` settled the connection on "no policy" and
+  skipped the view's own `authorize` entirely. `wireview.W010` reports the combination.
+
+- Logging in again retires the generation it replaces (`#58`). A step-up or re-auth overwrites
+  the session's generation nonce, so no later logout could name the sockets still holding the
+  old one. (A *different* user logging in flushes the session before any signal fires, so that
+  generation cannot be named at all; logging out first is what retires it.)
+
+### Fixed
+
+- `@session.view` keeps an `async def` view -- and an async class-based view -- async (`#58`).
+  Django decides how to call a view by inspecting what it is handed. On a CBV the allowed path
+  hid the problem, because `dispatch`'s own coroutine passed straight through; the refusal
+  returned a plain response into an `await`.
+- Boosted navigation announces the new location only once the destination is admitted (`#58`).
+  `newLocation` is what makes the client send `params_changed`, and it fired before the fetch,
+  so the page being left handled the destination's query under the authentication it was
+  leaving behind. Work queued for a navigation (the body morph, and the component joins that
+  follow it) is now dropped when a newer navigation starts or when the destination turns out to
+  be across the boundary.
+
 - The signed `data-state` envelope is now v2 and carries the page's `live_session` and the
   authentication generation it was issued under (`#58`). Signing the policy name on its own
   would not have helped: pairing a public page's *valid* signature with a protected

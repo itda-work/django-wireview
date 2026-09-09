@@ -12,7 +12,7 @@ from wireview.component import Component
 
 from . import serializer
 from .core.live_session import auth_fingerprint, auth_topic, get_live_session
-from .core.session import load_session
+from .core.session import SessionView, load_session
 from .core.state import LegacyState, StateMismatch, StatePayload, unsign_envelope
 from .core.transport import ChannelsOutbound, Outbound
 from .features import upload_store
@@ -271,14 +271,76 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         policy = get_live_session(name)
         if policy is None:
             return f"unknown live_session {name!r}"
+        if not self._auth_topic:
+            # Subscribe first, then re-read: between them there is no window. A
+            # logout that lands after the re-read is caught by the subscription,
+            # and one that landed before it -- while the client was sitting on an
+            # open socket it had not joined on yet -- is caught by the re-read.
+            # Doing only the subscribe would leave that second case open for as
+            # long as a client cares to delay its first join.
+            await self._subscribe_auth_topic()
+            if not await self._reload_session():
+                return f"live_session {name!r}: the login this connection stands on has ended"
         if payload.auth != self.auth_fingerprint:
             return f"live_session {name!r}: the state was issued under a different authentication"
         if not await sync_to_async(policy.allows)(self.repo.user, self.repo.session):
             return f"live_session {name!r} refused this user"
 
         self.repo.live_session = policy
-        await self._subscribe_auth_topic()
         return ""
+
+    async def _reload_session(self) -> bool:
+        """Re-read the session from its backend before a boundary admits anything.
+
+        The session this connection holds was read once, at connect
+        (``core/session.py``). That snapshot cannot notice a logout, and a client
+        is free to hold an open socket and delay its first join past one.
+
+        The fresh copy *replaces* the snapshot rather than only being compared
+        against it. Comparing fingerprints alone would catch a logout and miss
+        everything else a policy might read: ``authorize=lambda ctx:
+        ctx.session.get("mfa")`` would still be answered from data that is no
+        longer there. Nothing has been built from the old snapshot yet, so this
+        is the last moment where swapping it is free.
+
+        Costs one backend read per connection that enters a boundary -- not per
+        join, and nothing at all outside one.
+
+        A session with no key was never persisted, so there is nothing to
+        re-read and nothing a logout could have removed. The signed-cookie
+        backend is the exception this cannot cover: it stores nothing server
+        side, so re-reading its cookie hands back the same data a logout was
+        supposed to retire (see ``docs/features/live-session.md``).
+
+        Returns:
+            Whether the authentication generation is still the one this
+            connection was opened under.
+        """
+        session_key = self.repo.session.session_key
+        if not session_key:
+            return True
+
+        def read_again() -> tuple[SessionView, str]:
+            from importlib import import_module
+
+            from django.conf import settings as django_settings
+
+            store = import_module(django_settings.SESSION_ENGINE).SessionStore(session_key)
+            view = SessionView.wrap(store, session_key=session_key)
+            # Materialize here, on this thread: a component reading it later is on
+            # the event loop, where the backend query would raise.
+            view._snapshot()
+            return view, auth_fingerprint(self.repo.user, view)
+
+        try:
+            view, current = await sync_to_async(read_again)()
+        except Exception:
+            # Fail closed: an unreachable session backend is not evidence that
+            # the login is still good.
+            log.exception("Could not re-read the session for connection %s", self.connection_id)
+            return False
+        self.repo.session = view
+        return current == self.auth_fingerprint
 
     def _child_boundary_refusal(self, payload: StatePayload) -> str | None:
         """Why a child's stored state may not be restored here, or ``None`` if it may.
@@ -949,23 +1011,31 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             child.wire.enter_pending_mode()
             try:
                 # Same boundary as the parent's join: the live_session gate and the
-                # child's own _on_mount hooks run first. A halt costs the child its
+                # child's own _on_mount hooks run first. A refusal costs the child its
                 # joined(), its place in the repository and its render -- the parent's
                 # output carries only a reference marker for it, so nothing of a
                 # refused child reaches the browser (docs/design/live-session.md §3-5).
-                if await child._mount(repo.params, repo.session):
-                    await child.joined()
-                else:
-                    halted.add(child.id)
-                    child.wire.freeze()
-                    repo.remove(child.id)
+                #
+                # A hook that raises is a refusal too. The exception is logged rather
+                # than propagated, the way an exception from joined() is on this path,
+                # but it must not leave the child rendered: a failed authorization
+                # query is not a pass.
+                mounted = await child._mount(repo.params, repo.session)
+            except Exception as e:
+                log.exception(f"Error mounting {child._name} ({child.id}): {e}")
+                mounted = False
+            if not mounted:
+                halted.add(child.id)
+                repo.abandon(child)
+                child.wire.has_joined = True
+                await child.wire.flush_pending()
+                continue
+            try:
+                await child.joined()
             except Exception as e:
                 log.exception(f"Error in {child._name}.joined(): {e}")
             finally:
                 child.wire.has_joined = True
-            if child.id in halted:
-                await child.wire.flush_pending()
-                continue
             # joined() is where allow_upload() runs, so a LiveComponent's registry
             # only exists from here on. Without this a nested component's uploads
             # were never heard from (#77).

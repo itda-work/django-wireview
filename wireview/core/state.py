@@ -35,11 +35,12 @@ Three older formats exist and are rejected unless ``STATE_ACCEPT_LEGACY`` is on:
 - legacy JSON: ``Signer().sign(json)`` — the raw JSON followed by the
   signature.
 
-None of them carries a boundary, so all three decode to "no live_session" and a
-page under a policy refuses them either way. The setting exists only for a
-mixed-version rollout window and for the benchmark; the default is to answer an
-old token with ``reload``, which re-renders the page under the current auth
-context and issues fresh ones.
+None of them carries a boundary, and there is nothing in a token to say whether
+its page had one, so ``STATE_ACCEPT_LEGACY`` stops applying the moment a project
+declares a ``live_session``: the rollout window and the boundary cannot both be
+open. Otherwise the setting exists for a mixed-version rollout and for the
+benchmark; the default is to answer an old token with ``reload``, which
+re-renders the page under the current auth context and issues fresh ones.
 """
 
 from __future__ import annotations
@@ -229,9 +230,35 @@ def _decode_legacy(value: str) -> dict[str, t.Any] | None:
     return decoded if isinstance(decoded, dict) else None
 
 
-def _accept_legacy(state: dict[str, t.Any]) -> StatePayload:
+def _legacy_refusal() -> str:
+    """Why an old token may not be accepted right now, or ``""`` if it may.
+
+    ``STATE_ACCEPT_LEGACY`` is the rollout window, and it stops applying the
+    moment the project declares a boundary. An old token carries no
+    ``live_session``, so it decodes as "no boundary" -- which is harmless for a
+    component that names the sessions it belongs to and is *not* harmless for
+    one that does not: the connection settles on no policy and the page's
+    ``authorize`` and hooks never run, even though the view was decorated. There
+    is nothing in the token to tell the two cases apart, so a project with
+    boundaries takes the reload.
+    """
     if not settings.STATE_ACCEPT_LEGACY:
-        raise LegacyState("Pre-v1 state format; set WIREVIEW['STATE_ACCEPT_LEGACY'] to accept it")
+        return "set WIREVIEW['STATE_ACCEPT_LEGACY'] to accept it"
+
+    from .live_session import all_live_sessions
+
+    if all_live_sessions():
+        return (
+            "WIREVIEW['STATE_ACCEPT_LEGACY'] does not apply once a live_session is declared: "
+            "an old token names no boundary, so accepting it would let a page-level policy "
+            "be skipped"
+        )
+    return ""
+
+
+def _accept_legacy(state: dict[str, t.Any]) -> StatePayload:
+    if refusal := _legacy_refusal():
+        raise LegacyState(f"Pre-v1 state format; {refusal}")
     log.warning(
         "Accepted a pre-v1 signed state for %s: it is not bound to a component class",
         state.get("id", "<unknown id>"),
@@ -243,9 +270,7 @@ def _decode_v1(value: str, name: str) -> StatePayload:
     """Decode a v1 envelope: the class binding without the boundary.
 
     Raises the same way :func:`unsign_envelope` does, and refuses the token
-    outright unless ``STATE_ACCEPT_LEGACY`` is on. Accepting it yields a payload
-    with no live_session, so a page under a policy still turns it down -- the
-    rollout window widens what decodes, never what a boundary admits.
+    unless the rollout window is open (:func:`_legacy_refusal`).
     """
     envelope = get_signer(V1_SALT).unsign_object(
         value, serializer=_JSONStringSerializer, max_age=settings.STATE_MAX_AGE
@@ -257,8 +282,8 @@ def _decode_v1(value: str, name: str) -> StatePayload:
     if not isinstance(signed_name, str) or not isinstance(state, dict):
         raise BadSignature("Malformed state envelope")
     _check_class(signed_name, name, state)
-    if not settings.STATE_ACCEPT_LEGACY:
-        raise LegacyState("A v1 state carries no live_session; set WIREVIEW['STATE_ACCEPT_LEGACY'] to accept it")
+    if refusal := _legacy_refusal():
+        raise LegacyState(f"A v1 state carries no live_session; {refusal}")
     log.warning(
         "Accepted a v1 signed state for %s: it is not bound to a live_session",
         state.get("id", "<unknown id>"),

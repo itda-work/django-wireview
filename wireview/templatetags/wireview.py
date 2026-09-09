@@ -73,27 +73,37 @@ def tag_header(context):
     )
 
 
-def _mount_for_http(component: Component, repo: ComponentRepository) -> bool:
-    """Run a component's mount-time boundary during a dead (HTTP) render.
+def _mount_in_template(component: Component, repo: ComponentRepository) -> bool:
+    """Run a component's mount-time boundary from inside a template pass.
 
-    The hooks are an authorization boundary, so they have to cover the first
-    HTML too: skipping them here would ship the protected page once and only
-    stop the WebSocket join that follows. Components without hooks pay nothing
-    because the common case returns on the first line.
+    ``{% component %}`` builds its component and renders it **inline**, in the
+    middle of whoever's template named it. That is the only seam there is, so
+    the boundary has to be applied here or not at all -- and "not at all" ships
+    the protected markup once and then refuses the join that follows, which is
+    no boundary.
+
+    Both renders come through here, and they used to be treated differently: the
+    live path skipped the hooks entirely on the theory that the join had already
+    covered the page. It had covered the *page*, not this component, so a page
+    hook that meant to refuse one nested component never ran and the component
+    became an event target as well as markup. A nested component mounts once per
+    instance (``Component._mount`` is idempotent), so running it costs one bridge
+    per instance rather than one per render.
 
     Getting an async callback out of a synchronous template pass depends on
     which thread that pass runs on:
 
-    - A sync view, or an async view whose template pass is already wrapped in
-      ``sync_to_async``, renders on a plain worker thread. ``async_to_sync``
-      is the right bridge there.
+    - A sync view, a live render (whose template pass is inside
+      ``database_sync_to_async``), or an async view whose pass is wrapped in
+      ``sync_to_async``: a plain worker thread, where ``async_to_sync`` is the
+      right bridge.
     - An async view that calls ``render()`` directly renders on the event-loop
       thread itself, where ``async_to_sync`` refuses to run. Rather than fail
       the page, the hooks get a loop of their own on a helper thread. A hook
       that touches the ORM there opens its own connection, which is the same
       trade Django's own sync/async bridges make.
 
-    A halt freezes the component and answers ``False``, and the caller renders
+    A refusal freezes the component and answers ``False``, and the caller renders
     nothing for it. Freezing rather than skipping the render outright is what
     keeps a redirect working: ``WireviewMeta.render`` still turns the URL a hook
     queued into a ``<meta http-equiv="refresh">``, and emits nothing else -- no
@@ -103,14 +113,9 @@ def _mount_for_http(component: Component, repo: ComponentRepository) -> bool:
         Whether the component may be rendered.
     """
     if not declaration_allows(type(component), repo.live_session):
-        # Checked before the async question and on the live path too: a nested
-        # {% component %} renders inline during its parent's pass, where there is
-        # no seam to await a hook in, but this much needs no awaiting.
-        component.wire.freeze()
-        repo.remove(component.id)
+        # Answered without the bridge, because it needs no awaiting.
+        repo.abandon(component)
         return False
-    if repo.is_live:
-        return True
     if not type(component)._on_mount and repo.live_session is None:
         return True
 
@@ -123,8 +128,7 @@ def _mount_for_http(component: Component, repo: ComponentRepository) -> bool:
             mounted = pool.submit(asyncio.run, component._mount(repo.params, repo.session)).result()
 
     if not mounted:
-        component.wire.freeze()
-        repo.remove(component.id)
+        repo.abandon(component)
     return mounted
 
 
@@ -151,7 +155,7 @@ def _build_and_render_component(
         context["wireview_repository"] = repo
 
     component_instance = repo.build(component_name, state=kwargs)
-    if not _mount_for_http(component_instance, repo):
+    if not _mount_in_template(component_instance, repo):
         # Frozen: whatever comes back is a redirect meta or nothing at all.
         return component_instance._render(repo) or ""
 
@@ -870,10 +874,10 @@ def _render_live_component(
 
     if not repo.is_live:
         # HTTP render: a dead render of the child, inline, like any nested component.
-        # A halt here matters more than elsewhere: the child renders *into* the
+        # A refusal here matters more than elsewhere: the child renders *into* the
         # parent's output, so refusing it after the fact would leave its HTML in
         # a response already on the wire (docs/design/live-session.md §3-5).
-        if not _mount_for_http(live_comp, repo):
+        if not _mount_in_template(live_comp, repo):
             return live_comp._render(repo) or ""
         if slots is not None:
             return live_comp._render_with_slots(repo, slots) or ""

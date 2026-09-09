@@ -373,14 +373,28 @@ class ComponentRepository:
             # the repository -- ``component_remove()`` only tells the client to
             # drop the element, and an instance left here would keep answering
             # user_event, hook_event, params_changed and uploads (#58, AC3).
-            if await component._mount(self.params, self.session):
+            try:
+                mounted = await component._mount(self.params, self.session)
+            except Exception:
+                # A crashing hook gets the same treatment as a refusing one, and
+                # then the exception goes on to the caller. Letting it travel
+                # without this would leave the instance registered and reachable
+                # by events -- an authorization query that fails would be safer
+                # for the caller than one that says no.
+                self.abandon(component)
+                raise
+            if mounted:
                 await component.joined()
             else:
-                component.wire.freeze()
-                self.remove(component.id)
+                self.abandon(component)
         finally:
             component.wire.has_joined = True
         return component
+
+    def abandon(self, component: Component) -> None:
+        """Give up on a component the boundary refused: no render, no event target."""
+        component.wire.freeze()
+        self.remove(component.id)
 
     def register_component(self, component: Component):
         self.components[component.id] = component

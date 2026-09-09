@@ -4,7 +4,7 @@
  */
 
 import { Idiomorph } from "idiomorph";
-import { crossesBoundary, readSessionName } from "./live-session.mjs";
+import { NavigationGate, crossesBoundary, readSessionName } from "./live-session.mjs";
 import { isStreamContainer } from "./streams.mjs";
 
 /**
@@ -102,6 +102,12 @@ class NavEvents extends EventTarget {
 /** @type {NavEvents} */
 let navEvent = new NavEvents();
 
+/**
+ * Which navigation the queued work belongs to. See `live-session.mjs`.
+ * @type {NavigationGate}
+ */
+const navGate = new NavigationGate();
+
 // Set up click handler for boosted navigation
 if (BOOST_PAGES) {
   document.addEventListener("click", (e) => {
@@ -137,7 +143,9 @@ if (BOOST_PAGES) {
  * @param {number} [scrollY] - Optional scroll position to restore
  */
 function replaceBodyContent(newBody, scrollY = undefined) {
+  const token = navGate.token;
   window.requestAnimationFrame(() => {
+    if (!navGate.accepts(token)) return;
     morph(document.body, newBody);
     if (scrollY === undefined) {
       /** @type {HTMLElement|null} */ (document.querySelector("[autofocus]"))?.focus();
@@ -201,6 +209,7 @@ class HistoryCache {
    */
   static async push(path) {
     if (document.body == null) debugger;
+    navGate.begin();
     history.replaceState(
       {
         content: document.body.outerHTML,
@@ -231,14 +240,27 @@ class HistoryCache {
    *   browser is doing an ordinary page load instead.
    */
   static async replaceContentFromUrl(url) {
-    navEvent.sendNewLocation();
+    // The caller began the navigation; this reads the generation rather than
+    // starting one, so the cached body a popstate queued belongs to the same
+    // navigation as the fetch that validates it.
+    const token = navGate.token;
     let response = await fetch(url);
     let content = await response.text();
     let doc = new DOMParser().parseFromString(content, "text/html");
+    if (!navGate.accepts(token)) return false;
     if (crossesBoundary(readSessionName(document), readSessionName(doc))) {
+      // Ends this navigation before handing over, so a cached body queued for
+      // it neither paints nor joins its components while the browser is still
+      // fetching the replacement document.
+      navGate.abandon();
       document.location.assign(response.url || url);
       return false;
     }
+    // Only now. `newLocation` is what makes the client tell the server its new
+    // params, and announcing it before the response was admitted had the old
+    // page's components -- under the authentication the navigation was leaving
+    // behind -- handle the destination's query (docs/design/live-session.md §3-3).
+    navEvent.sendNewLocation();
     document.title = doc.querySelector("title")?.text ?? "";
     replaceBodyContent(doc.body);
     return true;
@@ -258,11 +280,20 @@ window.addEventListener("popstate", (event) => {
   // is still in flight, so the boundary has to be settled before the morph is
   // even scheduled: by the time the fetch answers, the cached DOM is on screen.
   if (event.state?.content !== undefined && crossesBoundary(readSessionName(document), event.state.session)) {
+    // Abandon before handing over: `reload()` does not stop the JavaScript that
+    // is already running, so a fetch still in flight from an earlier navigation
+    // would otherwise resolve and morph -- and join -- while the browser is
+    // fetching the replacement document.
+    navGate.abandon();
     document.location.reload();
     return;
   }
-  navEvent.sendNewLocation();
+  navGate.begin();
   if (event.state?.content !== undefined) {
+    // The entry's own name matched, but that was true when it was captured; the
+    // fetch below may still find the URL has moved. Showing the cache meanwhile
+    // is the point of the cache, and the fetch bumps the generation, so a
+    // refused destination drops this paint instead of flashing it.
     replaceBodyContent(event.state.content, event.state.scrollY);
   }
   HistoryCache.replaceContentFromUrl(document.location.href);

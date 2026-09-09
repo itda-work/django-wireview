@@ -266,10 +266,27 @@ def check_live_sessions(app_configs, **kwargs) -> list[CheckMessage]:
     reported only once the project declares a live_session at all -- before that
     there is nothing to belong to, and every component is where it always was.
     """
+    from . import settings as wireview_settings
     from .core.live_session import all_live_sessions
 
     declared = all_live_sessions()
     messages: list[CheckMessage] = []
+
+    if declared and wireview_settings.STATE_ACCEPT_LEGACY:
+        messages.append(
+            Warning(
+                "WIREVIEW['STATE_ACCEPT_LEGACY'] is on while a live_session is declared, "
+                "so old state tokens are refused anyway.",
+                hint=(
+                    "A pre-v2 token names no boundary, and nothing in it says whether its "
+                    "page had one, so accepting it could let a page-level policy be skipped "
+                    "entirely. The rollout window and the boundary cannot both be open: open "
+                    "tabs reload once when the boundary ships. Drop the setting to say so on "
+                    "purpose, or land it in a deploy before the first live_session."
+                ),
+                id="wireview.W010",
+            )
+        )
 
     for cls in iter_component_classes():
         for name in sorted(cls._live_sessions):

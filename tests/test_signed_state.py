@@ -77,6 +77,24 @@ class FakeOutbound:
 
 
 @pytest.fixture(autouse=True)
+def _no_boundaries():
+    """This module is about the envelope, not about page boundaries.
+
+    ``STATE_ACCEPT_LEGACY`` stops applying once a project declares a
+    ``live_session`` (an old token names no boundary, so accepting it could skip
+    a page policy), and the test project declares two. Emptying the registry is
+    what "a project that has not adopted boundaries" looks like, which is the
+    only situation the rollout flag is for.
+    """
+    from wireview.core import live_session as live_session_module
+
+    saved = dict(live_session_module._REGISTRY)
+    live_session_module._REGISTRY.clear()
+    yield
+    live_session_module._REGISTRY.update(saved)
+
+
+@pytest.fixture(autouse=True)
 def _templates():
     with override_settings(
         TEMPLATES=[

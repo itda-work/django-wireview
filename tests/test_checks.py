@@ -12,6 +12,7 @@ from django.test import override_settings
 
 from wireview import Component
 from wireview import checks as wireview_checks
+from wireview import settings as wireview_checks_settings
 from wireview.checks import (
     check_async_handlers,
     check_async_lifecycle,
@@ -378,6 +379,23 @@ class TestLiveSessions:
 
         assert [m.id for m in messages] == ["wireview.W010"]
         assert "_live_sessions" in messages[0].msg
+
+    def test_the_legacy_rollout_flag_is_flagged_beside_a_boundary(self, only, registry, monkeypatch):
+        """The two settings cannot both be open, so saying both is worth a word."""
+        monkeypatch.setattr(wireview_checks_settings, "STATE_ACCEPT_LEGACY", True)
+        live_session_module.live_session("admin")
+        only(make_component("W10Legacy"))
+
+        messages = check_live_sessions(None)
+
+        assert [m.id for m in messages] == ["wireview.W010"]
+        assert "STATE_ACCEPT_LEGACY" in messages[0].msg
+
+    def test_the_legacy_rollout_flag_alone_is_silent(self, only, registry, monkeypatch):
+        monkeypatch.setattr(wireview_checks_settings, "STATE_ACCEPT_LEGACY", True)
+        only(make_component("W10LegacyAlone"))
+
+        assert check_live_sessions(None) == []
 
     def test_an_unguarded_component_without_a_boundary_is_silent(self, only, registry):
         """Most components are not guards. The nudge is for the ones that are."""

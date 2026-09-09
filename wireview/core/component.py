@@ -578,14 +578,29 @@ class Component(BaseModel):
             True when the caller should go on to ``joined()``, False when a hook
             halted the mount. A repeat call for the same instance runs nothing
             and answers the same way the first call did.
+
+        Raises:
+            Anything a hook raises, after marking the mount refused. Callers
+            treat that the same way they treat ``False`` -- the component does
+            not render and does not stay in the repository -- and then let the
+            exception carry the traceback somewhere visible.
         """
         if self.wire.has_mounted or self.wire.has_joined:
             return not self.wire.mount_halted
 
         self.wire.has_mounted = True
-        result = await self._run_live_session_gate(params, session)
-        if not result.get("halt"):
-            result = await self._run_on_mount_hooks(params, session)
+        try:
+            result = await self._run_live_session_gate(params, session)
+            if not result.get("halt"):
+                result = await self._run_on_mount_hooks(params, session)
+        except BaseException:
+            # A hook that crashes has not authorized anything. The flag is set
+            # before the exception travels so that every caller's cleanup path
+            # sees a refused mount rather than an unfinished one: an authorization
+            # query that fails with a database error must not be the difference
+            # between "refused" and "allowed through".
+            self.wire.mount_halted = True
+            raise
         if result.get("halt"):
             self.wire.mount_halted = True
             log.debug("on_mount halted %s (%s): %s", self._name, self.id, result.get("hook"))
