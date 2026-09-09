@@ -27,10 +27,12 @@ WebSocket을 쥔 워커와 다른 워커에 닿으면 유효한 토큰이어도 
 
 두 가지는 고칠 필요가 없다. 설계가 이것을 이용해야 한다.
 
-- **토큰 검증은 이미 무상태다.** `TimestampSigner(salt="wireview.upload")`는 `SECRET_KEY`로
-  서명한다(`features/uploads.py:271`). 레지스트리 인스턴스에 붙어 있을 뿐, 검증에 레지스트리
-  상태를 쓰지 않는다. 어느 워커든 `connection_id:component_id:config:ref`를 복원할 수 있다.
-  지금 코드가 **토큰 검증보다 먼저** 인덱스를 조회해 404를 내는 것이 문제의 전부다.
+- **토큰 검증은 이미 무상태다.** `TimestampSigner(salt="wireview.upload")`는 서명 키로
+  서명한다 — 지금은 Django의 `SECRET_KEY`이고, 이 작업에서 전용 설정으로 뺀다(5-6).
+  어느 쪽이든 **워커들이 공유하는 값**이라는 성질이 근거다. 레지스트리 인스턴스에 붙어 있을
+  뿐 검증에 레지스트리 상태를 쓰지 않으므로, 어느 워커든
+  `connection_id:component_id:config:ref`를 복원할 수 있다. 지금 코드가 **토큰 검증보다 먼저**
+  인덱스를 조회해 404를 내는 것이 문제의 전부다.
 - **통지 경로는 이미 브로커다.** 진행률·오류는 `wireview_upload_<connection_id>` 그룹으로
   publish되고 소유 워커가 그 그룹에 가입해 있다(#77). AC2는 지금도 만족한다.
 
@@ -119,6 +121,31 @@ A는 "브로커만 있으면 어디서든 된다"가 **아니다**. 청크 저�
 만들고 완료 시 조립해야 하는데(100MB·64KB면 객체 1600개), 그건 같은 인터페이스의 다른 구현이
 아니라 다른 쓰기 모델이다. 경로 계산과 append를 `features/upload_store.py`의 함수 몇 개로 모아
 두면 나중에 백엔드를 끼울 자리는 남는다. 플러그인 기구는 만들지 않는다.
+
+### 5-6. 서명 키를 전용 설정으로 뺀다
+
+5-1이 토큰을 유일한 권한 증거로 삼으므로, 그 키의 수명이 곧 업로드의 수명이 된다. 지금은
+`Signer.key = key or settings.SECRET_KEY`라 Django의 `SECRET_KEY`를 그대로 쓴다.
+
+```python
+"SIGNING_KEY": None,            # None = settings.SECRET_KEY
+"SIGNING_KEY_FALLBACKS": None,  # None = settings.SECRET_KEY_FALLBACKS
+```
+
+- `wireview/core/signing.py`의 `get_signer(salt)` 하나를 두고 서명 지점 둘이 그것만 쓴다 —
+  업로드 토큰(`features/uploads.py`)과 data-state(`core/state.py`). 구형 state 경로
+  (`STATE_ACCEPT_LEGACY`)도 같은 키를 쓴다.
+- **fallback을 같이 두는 것이 조건이다.** 지금은 `SECRET_KEY_FALLBACKS`를 공짜로 받아 키
+  로테이션이 되므로, 자체 키만 만들고 fallback을 빠뜨리면 관리성이 지금보다 나빠진다.
+- 호출 시점에 읽는다. 레지스트리 `__init__`에서 signer를 굳혀 두는 지금 방식은 헬퍼로 대체한다.
+- 이득은 두 방향이다. `SECRET_KEY`를 돌려도 살아 있는 페이지의 data-state(14일)와 진행 중인
+  업로드 토큰이 죽지 않고, 반대로 wireview 키만 돌려도 세션·CSRF가 죽지 않는다.
+  salt가 이미 분리되어 있으므로 이것은 **취약점 수정이 아니라 키 수명 관리**다.
+- 검사 후보: `SIGNING_KEY`가 빈 문자열이면 `key or settings.SECRET_KEY` 때문에 **조용히**
+  `SECRET_KEY`로 되돌아간다. W 시리즈가 잡는 종류의 실패다.
+- **대가를 적어 둔다.** "워커마다 동일해야 하는 값"이 하나 는다. `SECRET_KEY`는 Django 배포가
+  이미 보장하지만 새 키는 아니다. 워커마다 다르면 청크가 403으로 실패한다 —
+  `DEPLOYMENT.md`에 적는다.
 
 ## 6. 인수 조건 대응
 
