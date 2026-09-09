@@ -61,8 +61,9 @@ class Counter(LiveComponent):
 </div>
 ```
 
-**중요**: LiveComponent 내부의 이벤트는 반드시 `myself=True`를 사용해야 합니다.
-그렇지 않으면 이벤트가 부모 Component로 전달됩니다.
+`myself=True`는 이 LiveComponent를 이벤트 대상으로 명시합니다. 생략하면 클라이언트가 가장 가까운
+`wireview-component` 요소, 즉 이 LiveComponent 자신을 대상으로 삼으므로 위 예제에서는 결과가 같습니다.
+명시해 두면 버튼이 슬롯 등으로 다른 컴포넌트 안에 놓여도 대상이 바뀌지 않습니다.
 
 ### 3. 부모 템플릿에서 사용
 
@@ -79,17 +80,45 @@ class Counter(LiveComponent):
 
 **`id`는 필수**입니다. 각 LiveComponent는 고유한 ID를 가져야 합니다.
 
+`count=10` 같은 나머지 인자는 **부모가 넘기는 props**입니다. 처음 만들 때 초기값이 되고, 그 뒤로는
+부모가 재렌더할 때 **직전에 넘긴 값과 달라진 것만** `update()`로 전달됩니다. 부모가 같은 값을 계속
+넘기는 동안 자식이 스스로 바꾼 상태는 그대로 남습니다.
+
+---
+
+## 수명주기
+
+LiveComponent는 **부모가 소유**합니다. 부모 템플릿이 이름을 붙이는 동안 살고, 부모가 더는 그리지
+않으면 사라집니다. 클라이언트가 자식을 따로 join하지 않으므로 초기화 경로는 하나입니다.
+
+| 시점 | 호출 | 비고 |
+|------|------|------|
+| 부모 렌더에 처음 등장 | `joined()` | 인스턴스당 한 번. 자식의 첫 HTML은 이 뒤에 렌더된다 |
+| 부모가 다른 props를 넘김 | `update(**changed)` | 값이 달라진 props만. `send_update()`는 항상 호출 |
+| 부모가 더는 그리지 않음 | `leaving()` | 서버가 제거한다. 조건부로 사라진 자식은 상태를 잃는다 |
+| 부모가 화면에서 사라짐 (`leave`) | `leaving()` | 부모에서 자식으로 cascade |
+| 연결 종료 | `leaving()` | Component와 같다 |
+
+라이브 렌더에서 부모 diff에는 자식의 HTML이 아니라 **참조** `{"c": "counter-1"}`만 들어갑니다.
+자식의 diff는 부모의 `render` 메시지 안 `children`으로 함께 오고, 클라이언트가 부모 HTML을 만들 때
+참조 자리에 자식의 현재 HTML을 넣습니다. 그래서 부모가 재렌더돼도 자식 마크업은 다시 전송되지 않고,
+자식만 바뀌면 자식 diff만 갑니다 ([html-diff](./html-diff.md), 설계는
+[live-component-ownership](../design/live-component-ownership.md)).
+
+**HTTP 최초 응답은 dead render**입니다. 자식이 인라인으로 그려지고 `joined()`는 호출되지 않습니다.
+WebSocket이 붙으면 새 인스턴스가 만들어지고 `joined()`가 한 번 돕니다. Component와 같은 계약입니다.
+
 ---
 
 ## @myself 타겟팅
 
-LiveComponent 내부의 이벤트 핸들러는 `myself=True`를 사용합니다.
+`myself=True`는 이벤트 대상을 이 LiveComponent로 고정합니다.
 
 ```html
-<!-- myself=True 사용 (권장) -->
+<!-- 대상을 명시 -->
 <button {% on "click" "save" myself=True %}>Save</button>
 
-<!-- myself 없이 (이벤트가 부모로 전달됨) -->
+<!-- 생략: 가장 가까운 wireview-component 요소가 대상. LiveComponent 안이면 곧 자신 -->
 <button {% on "click" "save" %}>Save</button>
 ```
 
@@ -97,8 +126,11 @@ LiveComponent 내부의 이벤트 핸들러는 `myself=True`를 사용합니다.
 
 | myself | 타겟 |
 |:------:|------|
-| `True` | 현재 LiveComponent |
-| `False` / 없음 | 가장 가까운 부모 Component |
+| `True` | 현재 LiveComponent (어디에 놓이든) |
+| `False` / 없음 | 버튼을 감싸는 가장 가까운 `wireview-component` 요소 |
+
+부모에게 알릴 일은 핸들러 안에서 `send_to_parent()`로 합니다. `myself`를 생략하는 것은 부모 통신
+수단이 아닙니다.
 
 ---
 
@@ -106,7 +138,9 @@ LiveComponent 내부의 이벤트 핸들러는 `myself=True`를 사용합니다.
 
 ### 부모 → 자식 (send_update)
 
-부모 Component에서 자식 LiveComponent의 상태를 업데이트합니다.
+부모 Component에서 자식 LiveComponent의 상태를 업데이트합니다. `await`는 세션에 메시지를 넣는 데서
+끝나며, 자식의 `update()`와 렌더는 현재 핸들러가 끝난 뒤 처리됩니다. 호출 직후 자식 상태를 읽어도
+아직 바뀌지 않았을 수 있습니다.
 
 ```python
 class Dashboard(Component):
@@ -150,7 +184,9 @@ class Dashboard(Component):
 
 ## update() 콜백
 
-부모에서 `send_update()`를 호출하면 LiveComponent의 `update()` 콜백이 호출됩니다.
+부모가 재렌더하면서 다른 props를 넘기거나 `send_update()`를 호출하면 LiveComponent의 `update()`
+콜백이 호출됩니다. 템플릿 경로에서는 값이 달라진 props만, `send_update()`에서는 넘긴 assigns 전부가
+전달됩니다.
 
 ```python
 class Counter(LiveComponent):
@@ -201,7 +237,7 @@ LiveComponent를 렌더링합니다.
 |---------|:----:|------|
 | 이름 | ✅ | LiveComponent 클래스 이름 |
 | id | ✅ | 고유 식별자 |
-| 기타 | ❌ | 초기 props |
+| 기타 | ❌ | 부모가 넘기는 props. 처음엔 초기값, 이후엔 달라진 것만 `update()`로 |
 
 ### {% live_tag_header %}
 
@@ -216,27 +252,31 @@ LiveComponent의 루트 엘리먼트에 필요한 속성을 생성합니다.
 생성되는 속성:
 - `id`: 컴포넌트 ID
 - `data-name`: 컴포넌트 이름
-- `data-state`: 서명된 상태
+- `data-state`: 서명된 상태. 재연결 때 부모의 join에 실려 자식의 상태를 복원한다
 - `data-is-live`: live 여부
 - `data-parent`: 부모 컴포넌트 ID
-- `wireview-component wireview-live`: 클래스
+- `wireview-component`, `wireview-live`: 불리언 속성(CSS 클래스가 아니다). `wireview-live`가 있는 요소는
+  클라이언트가 따로 join하지 않는다
 
 ---
 
 ## Component vs LiveComponent
 
+한 페이지의 모든 컴포넌트는 WebSocket 연결 하나를 공유합니다. 차이는 연결이 아니라 **누가 수명을
+쥐는가**입니다.
+
 | 특성 | Component | LiveComponent |
 |------|-----------|---------------|
-| WebSocket | 독립 연결 | 부모 공유 |
-| 상태 | 독립 | 독립 |
-| 중첩 | ❌ | ✅ |
-| 이벤트 타겟 | 자신 | `myself=True` 필요 |
-| 부모 통신 | N/A | `send_to_parent()` |
+| 수명 | 클라이언트가 join·leave | 부모가 그리는 동안 |
+| 상태 | 독립 | 독립. 부모가 넘기는 props는 부모가 진실 |
+| 템플릿 안 중첩 | 가능 (`{% component %}`) | 가능 (`{% live_component %}`) |
+| 초기화 | 자기 join 뒤 `joined()` | 부모 렌더 뒤 `joined()`, 부모의 render 메시지에 함께 |
+| 부모 통신 | 없음 | `send_to_parent()`, `send_update()` |
 
 ### 선택 가이드
 
-- **Component**: 페이지 최상위, 독립 WebSocket 필요
-- **LiveComponent**: 부모 내 중첩, 재사용 가능한 상태 컴포넌트
+- **Component**: 페이지 최상위, 또는 부모와 무관하게 스스로 join·leave해야 하는 조각
+- **LiveComponent**: 부모가 만들고 props를 넘기는 재사용 가능한 상태 컴포넌트
 
 ---
 
@@ -305,9 +345,13 @@ class Modal(LiveComponent):
 
 ## 제한사항
 
-1. **중첩 제한**: LiveComponent 내부에 다른 LiveComponent를 중첩할 수 없습니다 (v1).
-2. **ID 필수**: 모든 LiveComponent는 고유한 `id`가 필요합니다.
-3. **myself 필수**: LiveComponent 내부 이벤트는 `myself=True`를 사용해야 합니다.
+1. **ID 필수**: 모든 LiveComponent는 고유한 `id`가 필요합니다. 같은 id를 다른 클래스가 쓰면 이전
+   인스턴스는 `leaving()` 뒤 교체됩니다.
+2. **중첩 깊이**: LiveComponent 안의 LiveComponent도 같은 절차로 초기화·렌더됩니다(손자식은 부모의
+   `render` 메시지에 평면으로 함께 옵니다). 깊이는 8까지이며, 그보다 깊으면 로그를 남기고 더 그리지
+   않습니다.
+3. **슬롯**: `{% live_component %}`는 슬롯 내용을 전달하지 않습니다. 위 모달 예제의 `{% render_slot %}`은
+   빈 슬롯으로 렌더됩니다.
 
 ---
 
@@ -318,4 +362,4 @@ class Modal(LiveComponent):
 
 ---
 
-*마지막 업데이트: 2025-12-09*
+*마지막 업데이트: 2026-09-09*

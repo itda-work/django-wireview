@@ -28,14 +28,14 @@ wireview/
 ├── component.py           하위 호환 re-export. 새 코드는 wireview에서 import
 ├── core/component.py      Component 베이스: 라이프사이클, 이벤트 디스패치, streams·uploads·async·flash·hooks 메서드
 ├── core/meta.py           WireviewMeta (self.wire): push_to/replace_to, push_js, put_flash, push_title 등 클라이언트 명령
-├── core/rendered.py       동적 마커 기반 diff 구조
+├── core/rendered.py       동적 마커 기반 diff 구조. LiveComponent 자리는 참조 dynamic {"c": id}
 ├── core/state.py          data-state 서명·복원 (압축 형식, 구형식 호환)
 ├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳
 ├── template_engine.py     템플릿 VariableNode에 diff 마커 자동 주입
-├── consumer.py            WireviewConsumer (WebSocket, /__wireview__)
+├── consumer.py            WireviewConsumer (WebSocket, /__wireview__). send_render가 자식 LiveComponent의 joined/update/leaving과 렌더를 함께 처리
 ├── views.py               UploadView (청크 업로드 HTTP 엔드포인트)
 ├── urls.py                websocket_urlpatterns, urlpatterns
-├── repository.py          ComponentRepository: 연결당 컴포넌트 인스턴스 관리
+├── repository.py          ComponentRepository: 연결당 컴포넌트 인스턴스 관리. LiveComponent의 수명주기 배치(take_lifecycle)
 ├── live_component.py      LiveComponent (부모 연결을 공유하는 중첩 상태 컴포넌트)
 ├── function_component.py  @function_component (상태 없는 템플릿 함수)
 ├── slots.py               슬롯 시스템 ({% fill %}, {% render_slot %})
@@ -132,6 +132,7 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 - **pyright는 `tests/`를 검사하지 않고, `tsc`는 checkJs=false라 JS 본문을 검사하지 않는다.** 둘 다 통과해도 해당 영역은 검증된 것이 아니다.
 - **gitignore 대상.** `*.pyi` (AUTO_GENERATE_STUBS가 DEBUG에서 생성), `.wireview/`, `tests/static/`, `*.min.js`.
 - **컴포넌트 ID**는 페이지 안에서 고유해야 한다.
+- **LiveComponent는 부모가 소유한다.** 클라이언트는 `wireview-live` 요소에 join을 보내지 않고, 자식의 `joined()`·`update()`·`leaving()`과 렌더는 `consumer.send_render`가 부모 렌더 뒤에 처리해 같은 `render` 메시지의 `children`으로 보낸다. 렌더를 보내는 새 경로를 만들 때 `send_render`를 우회하면 자식 초기화가 조용히 빠진다. 계약은 `docs/design/live-component-ownership.md`.
 - **채널 레이어는 core/transport.py에서만 만진다.** `get_channel_layer`, `group_add`, `group_send`를 다른 모듈에 쓰면 tests/test_transport.py의 가드가 실패한다. fan-out은 `get_broker().publish`, 세션 메시지는 `WireviewMeta.send`.
 - **프로세스를 늘리면 InMemory 레이어는 조용히 깨진다.** 브로드캐스트가 같은 프로세스의 연결에만 닿고 오류는 나지 않는다. 다중 프로세스에는 channels_redis나 channels-nats가 필수다. 성능은 둘이 대등하다(`docs/design/transport-abstraction.md` §5-3).
 - **Windows에서 daphne는 연결 약 500개에서 죽는다.** daphne가 selector 루프를 강제하고 CPython의 Windows select()는 소켓 512개가 상한이다. Windows 배포는 uvicorn 단일 프로세스를 포트별로 N개 띄우고 Caddy로 분배한다(`docs/DEPLOYMENT.md`). `uvicorn --workers`도 Windows에서는 selector 루프다. 실측은 `bench/results/win11-parlab-*`, 재현은 `bench/windows/run.sh`.

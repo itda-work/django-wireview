@@ -1,7 +1,7 @@
 # LiveComponent 소유권과 렌더 분리 — 결정
 
 > 2026-09-09. [live-component-lifecycle.md](./live-component-lifecycle.md)가 남긴 여덟 질문에 대한 답과,
-> #78·#79·#80을 한 원인으로 묶어 고치는 계획. 착수 전 결정 문서이며 구현이 끝나면 상태를 갱신한다.
+> #78·#79·#80을 한 원인으로 묶어 고치는 계획. **구현됨** (같은 날, 아래 §6의 순서대로). 실측 전후는 §5.
 
 ## 1. 결정
 
@@ -100,12 +100,14 @@
 | 7 | 초기화 실패 시 롤백 | 자식 단위 격리와 로깅. 이미 보낸 것은 되돌리지 않는다 |
 | 8 | 자식 join에 부모 증거를 요구할까 | 자식 join 자체를 없앤다 |
 
-## 5. 착수 전 실측
+## 5. 실측
+
+### 5-1. 착수 전 관찰
 
 `examples/livecomp`의 Dashboard(자식 Counter 3개)를 저장소 수준에서 돌린 값이다. WebSocket 없이
 `repo.join` → `_render_diff` → flush 순서를 그대로 밟았다.
 
-| 시나리오 | 지금 |
+| 시나리오 | 착수 전 |
 |---|---|
 | 첫 join의 부모 diff | 4,913B. 자식 마크업과 자식 `data-state` 3개가 안에 있다 |
 | 첫 join의 자식 render | 1,273B × 3. 부모 diff와 **이중 전송** |
@@ -113,11 +115,34 @@
 | 부모만 바뀐 재렌더 | 244B. 이 경우는 이미 좋다 |
 | 부모 이벤트당 render 호출 | 1 + N |
 
-마지막에서 두 번째 줄은 예제 자체의 버그다. counter-2를 reset해 0으로 만든 뒤 다른 카운터를 누르면
-counter-2가 10으로 돌아간다. E2E에 이 시나리오가 없어 잡히지 않았다.
+셋째 줄은 예제 자체의 버그다. counter-2를 reset해 0으로 만든 뒤 다른 카운터를 누르면 counter-2가
+10으로 돌아간다. E2E에 이 시나리오가 없어 잡히지 않았다. 이제
+`examples/livecomp/tests.py::test_a_reset_counter_survives_an_unrelated_parent_rerender`가 지킨다.
 
-기대치는 첫 join의 자식 이중 전송 제거, 무관한 부모 재렌더에서 자식 `update()`·render 0건, 이벤트당
-메시지 1개다. 완료 정의대로 `make bench-compare`로 전후를 남긴다.
+### 5-2. 전후 비교
+
+`make bench-compare BASE=790dab7 ARGS="--skip-ws"` (2026-09-09, macOS arm64, Python 3.12, Django 6.0).
+790dab7은 이 작업 직전의 main이다. 시나리오는 `bench/payload.py`의 `_live_component_scenarios`로,
+부모 `BenchBoard` 아래 `BenchCard` 3개를 컨슈머의 `send_render` 경로로 돌려 **브라우저가 받는 render
+프레임의 바이트와 개수**를 잰다. 구 코드에서는 별도 flush 단계까지 포함한 값이다.
+
+| 지표 | 790dab7 | 이 작업 | 변화 |
+|---|--:|--:|--:|
+| 첫 join 바이트 | 4,062 | 2,409 | −41% |
+| 첫 join 프레임 | 4 | 1 | −75% |
+| 부모만 바뀐 재렌더 바이트 | 232 | 232 | 0% |
+| 자식 reset 뒤 무관한 부모 재렌더 바이트 | 2,095 | 233 | −89% |
+| 같은 시나리오 프레임 | 2 | 1 | −50% |
+| 같은 시나리오 뒤 자식 count (reset했으니 0이어야) | **2** | 0 | 버그 수정 |
+| list.event_ms (LiveComponent 없는 기존 벤치) | 0.608 | 0.555 | −9% |
+
+기존 `flat.*`·`list.*` 페이로드는 ±1%(2~4B) 안에서 같다. 이 작업이 LiveComponent가 없는 컴포넌트의
+diff를 건드리지 않았다는 확인이다.
+
+같은 실행에서 `bench/compare.sh`의 버그도 하나 잡았다. `cp -R "$ROOT/bench" "$WT/bench"`는 대상
+디렉터리가 이미 있으면 그 **안에** 복사하므로, 과거 커밋은 자기 벤치 코드로 돌고 있었다. 새 시나리오가
+비교표에 나타나지 않아 발견했다. 이전 비교(`997ee59` 대 GAP-024)는 양쪽 벤치 코드가 같아 결과에는
+영향이 없었다.
 
 ## 6. 착수 순서
 

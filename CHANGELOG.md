@@ -10,6 +10,43 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Fixed
+
+- LiveComponents are owned by their parent (`#78`, `#79`, `#80`,
+  `docs/design/live-component-ownership.md`). `joined()` ran twice per child on every connect
+  (once through the parent's render, once through the child's own join), a child that first
+  appeared through `params_changed` or a broadcast never got `joined()` at all, a parent
+  re-render reset whatever the child had changed on its own, and a component that left the
+  page normally never received `leaving()`. Now the client does not join `wireview-live`
+  elements, a parent re-render calls `update()` only with props whose value changed since the
+  parent's previous render, `leave` runs `leaving()` and cascades it to nested LiveComponents,
+  and a child the parent stops rendering is retired with `leaving()` by the server
+- `examples/livecomp`: a reset counter no longer snaps back when another counter fires. The
+  new E2E scenario `test_a_reset_counter_survives_an_unrelated_parent_rerender` keeps it so
+- `bench/compare.sh` copied the current bench *into* the base worktree's existing `bench/`
+  directory, so the base commit ran its own bench code. New scenarios never showed up
+
+### Changed
+
+- **Wire protocol.** A live render of `{% live_component %}` emits a component reference
+  `{"c": id}` in the parent's diff instead of the child's markup, and the `render` frame
+  carries the children's diffs under `children: {id: diff}`. The client registers the children
+  before it patches the DOM and substitutes each child's current HTML when it builds the
+  parent. One frame and one paint per event; the parent's diff never carries child markup
+  again. Measured with `make bench-compare BASE=790dab7 ARGS="--skip-ws"`: first join 4,062 B in
+  4 frames → 2,409 B in 1 frame; a child reset followed by an unrelated parent re-render
+  2,095 B in 2 frames → 233 B in 1 frame (`docs/design/live-component-ownership.md` §5)
+- `consumer.send_render` is the one place that runs a child's `joined()`/`update()`/`leaving()`
+  and renders it; the six `_flush_pending_live_components()` call sites are gone. Nested
+  LiveComponents (grandchildren) are handled by the same recursion, up to depth 8
+- Subscriptions are synced before the operations queued during `joined()` are flushed, so a
+  broadcast sent from `joined()` cannot leave before this connection has joined the group
+- `wireview/static/wireview/wireview.js`: diff data is applied when the frame arrives and only
+  the DOM patch waits for the next animation frame, so a component's diffs apply in the order
+  the server sent them whether they came alone or inside a parent's `children`
+- Rebuild `wireview.min.js` (`make build-js`) after upgrading: the new server frames need the
+  new client
+
 ### Changed
 
 - `docs/FEATURE-GAP.md` now matches the code. Three rows claimed features were missing that

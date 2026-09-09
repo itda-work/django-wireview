@@ -245,14 +245,22 @@ class WireviewComponent {
 
 ### 4.1 초기 렌더링
 
+> 2026-09-09 개정. 구현은 [live-component-ownership.md](./live-component-ownership.md)를 따른다. 원안의
+> "부모 HTML에 삽입"은 동기 템플릿 안에서 `joined()`를 기다릴 수 없어 실현되지 않았고, 그 결과가
+> [live-component-lifecycle.md](./live-component-lifecycle.md)의 결함들이었다.
+
 ```
-1. 부모 Component 렌더링
-2. {% live_component %} 태그 만남
-3. LiveComponent 빌드 (ID로 식별)
-4. LiveComponent.joined() 호출
-5. LiveComponent 렌더링 (부모 HTML에 삽입)
-6. 클라이언트로 전송
+1. 부모 Component 템플릿 평가 (동기)
+2. {% live_component %} 태그 만남 → LiveComponent 빌드·등록, 참조 {"c": id}만 출력
+3. 부모 diff 계산
+4. 이번 렌더가 이름 붙인 자식마다: 새 자식 joined(), props가 바뀐 자식 update(),
+   사라진 자식 leaving() (비동기, consumer.send_render 안)
+5. 훅이 돈 자식 렌더 (손자식은 재귀)
+6. 부모 diff + children {id: diff}를 render 메시지 하나로 전송
+7. 클라이언트: 자식 등록 → 부모 HTML 합성(참조 자리에 자식 HTML) → morph 한 번
 ```
+
+HTTP 최초 렌더는 dead render라 자식을 인라인으로 그리고 `joined()`는 없다.
 
 ### 4.2 LiveComponent 업데이트
 
