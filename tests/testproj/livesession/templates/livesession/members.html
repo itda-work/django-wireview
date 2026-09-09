@@ -1,0 +1,13 @@
+{% extends "livesession/_base.html" %}
+
+{% load wireview %}
+
+{% block title %}
+  members
+{% endblock title %}
+{% block heading %}
+  members
+{% endblock heading %}
+{% block content %}
+  {% component 'LsPublicNote' id="note" %}
+{% endblock content %}

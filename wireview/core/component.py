@@ -34,6 +34,7 @@ if t.TYPE_CHECKING:
     )
     from ..js import JS
     from ..slots import SlotContainer
+    from .live_session import LiveSession
 
 log = logging.getLogger("wireview")
 
@@ -190,6 +191,16 @@ class Component(BaseModel):
     #             return {"cont": True}
     _on_mount: t.ClassVar[list[t.Any]] = []
 
+    # The ``live_session`` names this component may be mounted inside (#58).
+    # Empty means "anywhere", which is what every component did before the
+    # boundary existed. Naming one or more sessions makes the component refuse
+    # to mount outside them -- including on a page that declares no boundary at
+    # all, since that is what a public page looks like.
+    #
+    #     class AdminPanel(Component):
+    #         _live_sessions = {"admin"}
+    _live_sessions: t.ClassVar[set[str]] = set()
+
     # Instance-level lifecycle hooks attached via attach_hook()
     _lifecycle_hooks: dict[str, list[LifecycleHook]] = {}
 
@@ -332,6 +343,7 @@ class Component(BaseModel):
         channel_layer=None,
         connection_id: str | None = None,
         session: SessionView | None = None,
+        live_session: "LiveSession | None" = None,
     ) -> "Component":
         """Build a component instance from state."""
         component_class = cls._resolve(_component_name)
@@ -344,6 +356,7 @@ class Component(BaseModel):
                 channel_name=channel_name,
                 channel_layer=channel_layer,
                 connection_id=connection_id,
+                live_session=live_session,
             ),
             **state,
         )
@@ -570,12 +583,53 @@ class Component(BaseModel):
             return not self.wire.mount_halted
 
         self.wire.has_mounted = True
-        result = await self._run_on_mount_hooks(params, session)
+        result = await self._run_live_session_gate(params, session)
+        if not result.get("halt"):
+            result = await self._run_on_mount_hooks(params, session)
         if result.get("halt"):
             self.wire.mount_halted = True
             log.debug("on_mount halted %s (%s): %s", self._name, self.id, result.get("hook"))
             return False
         return True
+
+    async def _run_live_session_gate(
+        self,
+        params: dict[str, t.Any] | None = None,
+        session: t.Any = None,
+    ) -> dict[str, t.Any]:
+        """Apply the page's ``live_session`` before this component's own hooks (#58).
+
+        Two things happen here, and both have to happen on *every* path that
+        produces a component -- the join, a children restore, a LiveComponent a
+        parent's render created, and a re-join -- which is why they sit in
+        ``_mount`` rather than in the consumer.
+
+        1. ``_live_sessions``, when the class declares it, says where the
+           component is allowed to live. A component declaring ``{"admin"}``
+           halts on a page with no boundary, so the safe answer is the default
+           one.
+        2. The session's own ``on_mount`` hooks run, before the component's.
+
+        The ``authorize`` predicate is *not* re-run here. It is answered once
+        per request by the view decorator and once per connection by
+        ``command_join``, which are the points where a refusal can still stop
+        the first byte.
+        """
+        from .live_session import declaration_allows
+
+        policy = getattr(self.wire, "live_session", None)
+        if not declaration_allows(type(self), policy):
+            log.debug(
+                "%s (%s) is declared for %s and the page is in %r",
+                self._name,
+                self.id,
+                sorted(type(self)._live_sessions),
+                policy.name if policy is not None else "",
+            )
+            return {"halt": True, "hook": "_live_sessions"}
+        if policy is None:
+            return {"cont": True}
+        return await policy.run_on_mount(self, params, session)
 
     async def _run_on_mount_hooks(
         self,

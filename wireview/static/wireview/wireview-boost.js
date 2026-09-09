@@ -4,6 +4,7 @@
  */
 
 import { Idiomorph } from "idiomorph";
+import { crossesBoundary, readSessionName } from "./live-session.mjs";
 import { isStreamContainer } from "./streams.mjs";
 
 /**
@@ -168,18 +169,15 @@ class HistoryCache {
   /**
    * Loads a URL, using boost navigation if enabled.
    * @param {string} url - The URL to load
+   * @returns {Promise<boolean>} False when the page is being replaced outright,
+   *   which is also what leaving a live_session looks like.
    */
   static async load(url) {
-    if (BOOST_PAGES) {
-      // this._saveCurrentPage();
-      if (hasSameOriginAsDocument(url)) {
-        this.push(url);
-      } else {
-        document.location.assign(url);
-      }
-    } else {
-      document.location.assign(url);
+    if (BOOST_PAGES && hasSameOriginAsDocument(url)) {
+      return this.push(url);
     }
+    document.location.assign(url);
+    return false;
   }
 
   /**
@@ -192,7 +190,14 @@ class HistoryCache {
   /**
    * Pushes a new URL to browser history and loads its content.
    * Saves current page state for back navigation.
+   *
+   * The cached entry records the live_session it was captured under, so a later
+   * popstate can tell whether restoring it would carry a page from one boundary
+   * into another.
+   *
    * @param {string} path - The path to navigate to
+   * @returns {Promise<boolean>} False when the navigation left the boundary and
+   *   a full page load took over.
    */
   static async push(path) {
     if (document.body == null) debugger;
@@ -200,25 +205,43 @@ class HistoryCache {
       {
         content: document.body.outerHTML,
         scrollY: window.scrollY,
+        session: readSessionName(document),
       },
       document.title,
       document.location.href
     );
     history.pushState({}, document.title, path);
-    this.replaceContentFromUrl(path);
+    return this.replaceContentFromUrl(path);
   }
 
   /**
    * Fetches content from a URL and replaces the body.
+   *
+   * This is where every boosted navigation meets: a link click, a popstate and a
+   * server-sent redirect/push all end up here. So the boundary is checked here
+   * and nowhere else -- a check on the click handler would miss the other two
+   * (docs/design/live-session.md §3-3).
+   *
+   * The check runs on the *response*, not on the requested URL, so a redirect
+   * chain that ends outside the boundary is caught by its final page. Nothing is
+   * morphed and no `newContent` fires before it passes.
+   *
    * @param {string} url - The URL to fetch content from
+   * @returns {Promise<boolean>} False when the boundary was crossed and the
+   *   browser is doing an ordinary page load instead.
    */
   static async replaceContentFromUrl(url) {
     navEvent.sendNewLocation();
     let response = await fetch(url);
     let content = await response.text();
     let doc = new DOMParser().parseFromString(content, "text/html");
+    if (crossesBoundary(readSessionName(document), readSessionName(doc))) {
+      document.location.assign(response.url || url);
+      return false;
+    }
     document.title = doc.querySelector("title")?.text ?? "";
     replaceBodyContent(doc.body);
+    return true;
   }
 
   /**
@@ -231,6 +254,13 @@ class HistoryCache {
 }
 
 window.addEventListener("popstate", (event) => {
+  // The cached body is morphed in a requestAnimationFrame while the fetch below
+  // is still in flight, so the boundary has to be settled before the morph is
+  // even scheduled: by the time the fetch answers, the cached DOM is on screen.
+  if (event.state?.content !== undefined && crossesBoundary(readSessionName(document), event.state.session)) {
+    document.location.reload();
+    return;
+  }
   navEvent.sendNewLocation();
   if (event.state?.content !== undefined) {
     replaceBodyContent(event.state.content, event.state.scrollY);

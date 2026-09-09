@@ -12,6 +12,29 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Security
 
+- `live_session` draws an authentication boundary around a page (`GAP-009`, `#58`). A project
+  declares one with `live_session("admin", authorize=...)`, puts views inside it with
+  `@admin.view`, and a component says where it belongs with `_live_sessions = {"admin"}`. The
+  `authorize` predicate is one function with two enforcement points -- the view runs it before
+  it produces a byte, and `command_join` runs it before it mounts anything -- because a join
+  that refuses later cannot recall HTML that already shipped. A halted mount now renders
+  nothing and leaves the repository, where it used to skip `joined()` and render anyway; that
+  applies to a `{% component %}` in a dead render, a LiveComponent a parent's render created,
+  and the root of a join. Crossing a boundary in the browser becomes a full page load rather
+  than a body morph, checked where a link click, a `popstate` and a server `push`/`redirect`
+  meet, and against the response rather than the requested URL. `user_logged_out` closes the
+  sockets it authenticated. `wireview.W010` reports a `_live_sessions` naming a session nobody
+  declares, and a component guarded only by `_on_mount` in a project that has boundaries.
+  `docs/features/live-session.md` has the whole surface.
+- The signed `data-state` envelope is now v2 and carries the page's `live_session` and the
+  authentication generation it was issued under (`#58`). Signing the policy name on its own
+  would not have helped: pairing a public page's *valid* signature with a protected
+  component's *valid* state needs no forgery at all, so both have to travel inside the same
+  envelope as the state. A page outside every boundary writes neither field and keeps the
+  token it always had. v1 tokens are refused like the pre-v1 formats -- pages open across the
+  upgrade reload once -- and `WIREVIEW["STATE_ACCEPT_LEGACY"]` decodes them as "no boundary",
+  so a page under a policy still turns them down.
+
 - The signed `data-state` is now bound to the component class it was issued for and expires
   (`#76`). It used to sign the state alone while the class name travelled beside it unsigned,
   so a signature issued for one component could be presented as another whose fields fit, and

@@ -19,11 +19,13 @@ from wireview.checks import (
     check_client_bundle,
     check_component_name_collisions,
     check_hmin,
+    check_live_sessions,
     check_signing_key,
     check_upload_temp_dir,
     iter_component_classes,
     iter_exposed_handlers,
 )
+from wireview.core import live_session as live_session_module
 
 pytestmark = pytest.mark.unit
 
@@ -337,6 +339,54 @@ class TestSigningKeyCheck:
         assert "SIGNING_KEY_FALLBACKS" in messages[0].msg
 
 
+class TestLiveSessions:
+    """W010: ``_live_sessions`` and the declared boundaries have to line up."""
+
+    @pytest.fixture
+    def registry(self):
+        """Each test sees only the boundaries it declares."""
+        saved = dict(live_session_module._REGISTRY)
+        live_session_module._REGISTRY.clear()
+        yield live_session_module._REGISTRY
+        live_session_module._REGISTRY.clear()
+        live_session_module._REGISTRY.update(saved)
+
+    def test_a_project_without_boundaries_is_silent(self, only, registry):
+        only(make_component("W10Plain", _on_mount=[object()]))
+
+        assert check_live_sessions(None) == []
+
+    def test_a_name_no_session_declares_is_flagged(self, only, registry):
+        only(make_component("W10Typo", _live_sessions={"admn"}))
+
+        messages = check_live_sessions(None)
+
+        assert [m.id for m in messages] == ["wireview.W010"]
+        assert "'admn'" in messages[0].msg
+
+    def test_a_declared_name_is_silent(self, only, registry):
+        live_session_module.live_session("admin")
+        only(make_component("W10Bound", _live_sessions={"admin"}))
+
+        assert check_live_sessions(None) == []
+
+    def test_a_guarded_component_without_a_boundary_is_flagged(self, only, registry):
+        live_session_module.live_session("admin")
+        only(make_component("W10Unbound", _on_mount=[object()]))
+
+        messages = check_live_sessions(None)
+
+        assert [m.id for m in messages] == ["wireview.W010"]
+        assert "_live_sessions" in messages[0].msg
+
+    def test_an_unguarded_component_without_a_boundary_is_silent(self, only, registry):
+        """Most components are not guards. The nudge is for the ones that are."""
+        live_session_module.live_session("admin")
+        only(make_component("W10Ordinary"))
+
+        assert check_live_sessions(None) == []
+
+
 class TestTestprojIsClean:
     """AC3: zero false positives on the project we actually ship tests for."""
 
@@ -352,3 +402,4 @@ class TestTestprojIsClean:
         assert check_hmin(None) == []
         assert check_upload_temp_dir(None) == []
         assert check_signing_key(None) == []
+        assert check_live_sessions(None) == []

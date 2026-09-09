@@ -1,0 +1,6 @@
+{% load wireview %}
+
+<div {% tag_header %} data-testid="note">
+  <span data-testid="value">{{ this.note }}</span>
+  <button data-testid="bump" {% on "click" "bump" %}>bump</button>
+</div>

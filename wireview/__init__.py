@@ -12,6 +12,9 @@ if t.TYPE_CHECKING:
     from .core.component import ComponentNotFound as ComponentNotFound
     from .core.component import abroadcast as abroadcast
     from .core.component import broadcast as broadcast
+    from .core.live_session import LiveSession as LiveSession
+    from .core.live_session import LiveSessionContext as LiveSessionContext
+    from .core.live_session import live_session as live_session
     from .core.meta import WireviewMeta as WireviewMeta
     from .core.session import SessionView as SessionView
     from .features.uploads import ExternalUploadMeta as ExternalUploadMeta
@@ -46,6 +49,18 @@ def __getattr__(name: str) -> t.Any:
         from .core.meta import WireviewMeta
 
         return WireviewMeta
+    if name == "live_session":
+        from .core.live_session import live_session
+
+        return live_session
+    if name == "LiveSession":
+        from .core.live_session import LiveSession
+
+        return LiveSession
+    if name == "LiveSessionContext":
+        from .core.live_session import LiveSessionContext
+
+        return LiveSessionContext
     if name == "SessionView":
         from .core.session import SessionView
 
@@ -104,6 +119,10 @@ __all__ = (
     "JS",
     "WireviewMeta",
     "SessionView",
+    # Page boundaries
+    "live_session",
+    "LiveSession",
+    "LiveSessionContext",
     "broadcast",
     "abroadcast",
     # Function components

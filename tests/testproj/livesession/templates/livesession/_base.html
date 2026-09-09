@@ -1,0 +1,29 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8">
+    <title>
+      {% block title %}
+        live_session
+      {% endblock title %}
+    </title>
+    {% wireview_header %}
+  </head>
+  <body>
+    <h1 data-testid="page">
+      {% block heading %}
+      {% endblock heading %}
+    </h1>
+    <nav>
+      <a href="{% url 'livesession:public' %}" data-testid="to-public">public</a>
+      <a href="{% url 'livesession:public2' %}" data-testid="to-public2">public2</a>
+      <a href="{% url 'livesession:staff' %}" data-testid="to-staff">staff</a>
+      <a href="{% url 'livesession:members' %}" data-testid="to-members">members</a>
+      <a href="{% url 'livesession:bounce' %}" data-testid="to-bounce">bounce</a>
+    </nav>
+    {% block content %}
+    {% endblock content %}
+  </body>
+</html>

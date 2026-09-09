@@ -31,6 +31,7 @@ WARNINGS:
 | `wireview.W007` | `_on_mount`에 올린 클래스에 `on_mount`가 없거나 async가 아님 | 훅이 말없이 건너뛰어져, 인증 가드로 올린 훅이 아무것도 막지 않는다 |
 | `wireview.W008` | `UPLOAD_TEMP_DIR`이 가리키는 경로에 임시 파일을 만들 수 없음 | 설정은 첫 청크가 올 때에야 읽힌다. 기동 시에는 아무 신호가 없고, 업로드가 하나씩 `ImproperlyConfigured`로 실패한다 |
 | `wireview.W009` | `SIGNING_KEY`가 빈 문자열이거나, 키 없이 fallback만 설정됨 | `Signer(key="")`는 조용히 `SECRET_KEY`로 되돌아간다. 아무것도 깨지지 않는 것이 문제다 — `SECRET_KEY`를 돌리면 진행 중인 업로드와 열린 페이지의 `data-state`가 같이 죽는다 |
+| `wireview.W010` | `_live_sessions`가 아무도 선언하지 않은 이름을 가리키거나, 경계가 있는 프로젝트에서 `_on_mount`로만 자신을 지키는 컴포넌트가 소속을 선언하지 않음 | 오타는 join 거절과 reload로 나타나 서명 문제처럼 보인다. 선언이 없는 컴포넌트는 경계 밖 페이지에서도 마운트된다 |
 
 전부 `Warning`이다. `manage.py check`의 기본 `--fail-level`은 `ERROR`이므로 이 검사들이
 빌드를 깨지 않는다. **오탐 하나면 팀 전체가 검사를 무시하기 시작하므로** 확신이 설 때까지
@@ -46,6 +47,29 @@ WARNINGS:
 $ python manage.py check --deploy
 ?: (wireview.W006) The default channel layer is InMemoryChannelLayer.
 ```
+
+### W010이 두 가지를 보는 이유
+
+경계는 **옵트인**이다. 그 결과 실수가 두 방향으로 난다.
+
+이름이 어긋나면 조용하지 않지만 엉뚱하게 보인다. `_live_sessions = {"admn"}`인 컴포넌트가 실린
+페이지는 join에서 "unknown live_session"으로 거절되고 브라우저가 reload한다 — 화면에는 서명이
+깨진 것처럼 보인다. 검사가 오타를 이름으로 짚는다.
+
+반대로 선언을 빠뜨리면 아무 신호가 없다. `_on_mount` 훅으로만 자신을 지키는 컴포넌트는 경계 밖
+페이지에서도 마운트되고, 훅은 돌지만 "여기 있으면 안 된다"고 말하는 것은 아무것도 없다. 이 경고는
+**프로젝트가 live_session을 하나라도 선언한 뒤에만** 뜬다. 선언하기 전에는 속할 곳이 없으므로 모든
+컴포넌트가 원래 있던 자리에 있는 것이다.
+
+```console
+$ python manage.py check
+<class 'billing.live.XInvoice'>: (wireview.W010) billing.live.XInvoice guards itself with
+_on_mount but declares no _live_sessions.
+```
+
+정말로 어디서나 마운트되어도 되는 컴포넌트라면 그것이 옳은 상태다 — 그때는
+`SILENCED_SYSTEM_CHECKS`가 아니라 그 사실을 코드에 적는 편이 낫다. [live_session](./live-session.md)
+참고.
 
 ### W007이 보안 검사인 이유
 
@@ -108,4 +132,5 @@ Pydantic은 커스텀 serializer, `field_serializer`, wireview의 Django 모델 
 - [LiveComponent](./live-component.md) — 노출 규칙과 라이프사이클 콜백
 - [HTML Diff](./html-diff.md) — W005가 무엇을 지키는지
 - [라이프사이클 훅](./lifecycle-hooks.md) — W007이 지키는 `_on_mount` 경계
+- [live_session](./live-session.md) — W010이 지키는 페이지 경계
 - [배포](../DEPLOYMENT.md) — W006과 채널 레이어 선택

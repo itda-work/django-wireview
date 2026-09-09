@@ -30,6 +30,7 @@ urlpatterns = [
     path("notifications/", include("examples.notifications.urls")),
     path("livecomp/", include("examples.livecomp.urls")),
     path("bookmarks/", include("testproj.bookmarks.urls")),
+    path("livesession/", include("testproj.livesession.urls")),
     path("uploadprobe/", include("testproj.uploadprobe.urls")),
     # The chunk endpoint. A project that leaves this out has no uploads at all,
     # so the test project carries it the way a real one would.

@@ -11,8 +11,9 @@ from django.utils.datastructures import MultiValueDict
 from wireview.component import Component
 
 from . import serializer
+from .core.live_session import auth_fingerprint, auth_topic, get_live_session
 from .core.session import load_session
-from .core.state import LegacyState, StateMismatch, unsign_state
+from .core.state import LegacyState, StateMismatch, StatePayload, unsign_envelope
 from .core.transport import ChannelsOutbound, Outbound
 from .features import upload_store
 from .features.uploads import upload_group_name
@@ -69,6 +70,15 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         # time a registry is registered, so a page without uploads costs no
         # group_add on the channel layer.
         self._upload_group_subscribed: bool = False
+        # The boundary this connection is in. ``None`` until the first join names
+        # one; after that every join has to agree, because a page has one
+        # live_session and mixing two on one socket is how a public policy would
+        # be made to cover a protected component (#58, AC4).
+        self.live_session_name: str | None = None
+        # Which login this socket stands on, and the topic that retires it. Both are
+        # settled in connect(); the defaults are what a bare consumer in a test gets.
+        self.auth_fingerprint: str = ""
+        self._auth_topic: str = ""
 
     @property
     def user(self):
@@ -80,6 +90,8 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         self.query_string: str = ""
         self.connection_id = secrets.token_urlsafe(16)
         self._upload_group_subscribed = False
+        self.live_session_name = None
+        self._auth_topic = ""
         self.repo = ComponentRepository(
             is_live=True,
             user=self.user,
@@ -91,6 +103,9 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             session=await load_session(self.scope.get("session")),
             connection_id=self.connection_id,
         )
+        # Which login this socket stands on. Compared against the fingerprint inside
+        # every state a live_session page issued, and the topic a logout publishes to.
+        self.auth_fingerprint = auth_fingerprint(self.user, self.repo.session)
 
     async def disconnect(self, code):
         """Handle WebSocket disconnect.
@@ -108,6 +123,9 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             log.debug(f"::: UNSUBSCRIBE {self.channel_name} from {channel}")
             await self.outbound.unsubscribe(channel)
         self.subscriptions.clear()
+        if self._auth_topic:
+            await self.outbound.unsubscribe(self._auth_topic)
+            self._auth_topic = ""
 
         await super().disconnect(code)
 
@@ -123,7 +141,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         children: dict[str, ChildComponent] | None = None,
     ):
         try:
-            decoded_state: dict[str, t.Any] = unsign_state(state, name)
+            payload: StatePayload = unsign_envelope(state, name)
         except BadSignature as e:
             # Nothing is mounted. A full page load is the recovery: the server
             # re-renders with the current auth context and issues fresh tokens.
@@ -131,13 +149,31 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             # a deploy.
             await self.send_command("reload", _reload_payload(name, e))
             return
+        decoded_state: dict[str, t.Any] = payload.state
+        if refusal := await self._enter_live_session(payload):
+            # Same recovery as a bad signature, and for the same reason: the page
+            # has to be re-rendered by a view that can apply the policy from the
+            # start. Reloading lands on the view decorator, which redirects an
+            # unauthorized visitor rather than serving an empty page.
+            log.warning("JOIN %s refused: %s", name, refusal)
+            await self.send_command("reload", {"id": decoded_state.get("id") or None, "reason": "live_session"})
+            return
         decoded_children: dict[str, tuple[str, dict[str, t.Any]]] = {}
         for child_id, (child_name, child_state) in (children or {}).items():
             try:
-                decoded_children[child_id] = (child_name, unsign_state(child_state, child_name))
+                child_payload = unsign_envelope(child_state, child_name)
             except BadSignature as e:
                 # The child is rebuilt from the parent's template props instead.
                 log.warning("JOIN %s: dropping child %s (%s) from the restore map: %s", name, child_id, child_name, e)
+                continue
+            if (child_refusal := self._child_boundary_refusal(child_payload)) is not None:
+                # Dropping the state, not the child: the parent's template still
+                # names it and it will be built from the props, mounted through the
+                # same policy as everything else. What must not survive is a
+                # protected component's stored state arriving under another page.
+                log.warning("JOIN %s: dropping child %s (%s): %s", name, child_id, child_name, child_refusal)
+                continue
+            decoded_children[child_id] = (child_name, child_payload.state)
         log.debug(f"<<< JOIN {name} {decoded_state}")
         component_id = decoded_state.get("id", "")
         existing = self.repo.get(component_id)
@@ -169,6 +205,13 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             if id := decoded_state.get("id"):
                 await self.component_remove(id)
         else:
+            if component.wire.mount_halted:
+                # The boundary refused it. Nothing of the component goes out: no
+                # render, no signed state. Whatever the hook queued (a redirect to
+                # a login page) still does, and the client drops the element.
+                await self.component_remove(component.id)
+                await component.wire.flush_pending()
+                return
             # Hear this connection's upload progress, if the component has uploads
             await self._subscribe_upload_group(component)
             await self.send_render(component)
@@ -184,6 +227,97 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             # has joined the group it expects to hear it on.
             await self.after_mutation_chores()
             await component.wire.flush_pending()
+
+    async def _enter_live_session(self, payload: StatePayload) -> str:
+        """Settle which ``live_session`` this connection is in, for one join.
+
+        The name is not taken from the client as a separate field: it rides
+        inside the same signed envelope as the state (``core/state.py``), so a
+        public page's *valid* policy and a protected component's *valid* state
+        cannot be presented together. That combination needs no forgery, which
+        is why signing the name on its own would not close it.
+
+        Four things are settled here, in this order:
+
+        1. **One boundary per connection.** The first join fixes it; a later
+           join naming a different one is refused rather than mixed.
+        2. **The name resolves.** A page rendered before a session was renamed
+           or removed reloads instead of falling back to "no policy".
+        3. **The authentication generation still matches.** A state issued
+           before a logout, a login or a password change no longer does.
+        4. **The predicate still passes.** Run here, per join, rather than per
+           component: it answers on (user, session), which every component on
+           the page shares.
+
+        What it does *not* do is re-answer while the socket is open. A logout
+        closes the connection outright (:meth:`session_invalidated`); a
+        permission taken away without a logout is only noticed by the next
+        connection. ``docs/features/live-session.md`` says so out loud.
+
+        Returns:
+            An empty string when the join may proceed, otherwise the reason it
+            may not. The caller answers a refusal with ``reload``.
+        """
+        name = payload.live_session
+        if self.live_session_name is None:
+            self.live_session_name = name
+        elif name != self.live_session_name:
+            return f"state from live_session {name!r} on a connection already in {self.live_session_name!r}"
+
+        if not name:
+            self.repo.live_session = None
+            return ""
+
+        policy = get_live_session(name)
+        if policy is None:
+            return f"unknown live_session {name!r}"
+        if payload.auth != self.auth_fingerprint:
+            return f"live_session {name!r}: the state was issued under a different authentication"
+        if not await sync_to_async(policy.allows)(self.repo.user, self.repo.session):
+            return f"live_session {name!r} refused this user"
+
+        self.repo.live_session = policy
+        await self._subscribe_auth_topic()
+        return ""
+
+    def _child_boundary_refusal(self, payload: StatePayload) -> str | None:
+        """Why a child's stored state may not be restored here, or ``None`` if it may.
+
+        A child envelope has to name the connection's own boundary and the same
+        authentication. The parent's join has already settled both, so this is a
+        comparison rather than a decision.
+        """
+        if payload.live_session != (self.live_session_name or ""):
+            return f"state from live_session {payload.live_session!r}, connection is in {self.live_session_name!r}"
+        if payload.live_session and payload.auth != self.auth_fingerprint:
+            return "the state was issued under a different authentication"
+        return None
+
+    async def _subscribe_auth_topic(self) -> None:
+        """Listen for "this login is over", once per connection.
+
+        Only pages inside a live_session subscribe. Outside one nothing binds a
+        state to an authentication generation, so there would be nothing for the
+        message to invalidate -- and every socket on a public page would close
+        on an unrelated logout.
+        """
+        if self._auth_topic:
+            return
+        self._auth_topic = auth_topic(self.auth_fingerprint)
+        await self.outbound.subscribe(self._auth_topic)
+
+    async def session_invalidated(self, event: dict[str, t.Any]) -> None:
+        """The authentication this connection stands on ended somewhere else.
+
+        A full page load is how an honest client picks up a new auth context, but
+        it is the client's move to make: it does nothing about a socket somebody
+        is holding open. So the socket closes here. What the client does next is
+        already covered -- it reconnects, presents states carrying the old
+        fingerprint, and every one of them is refused into a reload that lands on
+        the view decorator.
+        """
+        log.info("Closing connection %s: %s", self.connection_id, event.get("reason", "session invalidated"))
+        await self.close(code=4001)
 
     async def command_leave(self, id):
         """The client saw a component disappear from the DOM.
@@ -810,17 +944,28 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         batch = repo.take_lifecycle(component.id)
         await self._call_leaving(batch.retired)
         self._release_uploads(batch.retired)
+        halted: set[str] = set()
         for child in batch.new:
             child.wire.enter_pending_mode()
             try:
-                # Same boundary as the parent's join: the child's _on_mount hooks
-                # run first, and a halt skips joined() but still renders the child.
+                # Same boundary as the parent's join: the live_session gate and the
+                # child's own _on_mount hooks run first. A halt costs the child its
+                # joined(), its place in the repository and its render -- the parent's
+                # output carries only a reference marker for it, so nothing of a
+                # refused child reaches the browser (docs/design/live-session.md §3-5).
                 if await child._mount(repo.params, repo.session):
                     await child.joined()
+                else:
+                    halted.add(child.id)
+                    child.wire.freeze()
+                    repo.remove(child.id)
             except Exception as e:
                 log.exception(f"Error in {child._name}.joined(): {e}")
             finally:
                 child.wire.has_joined = True
+            if child.id in halted:
+                await child.wire.flush_pending()
+                continue
             # joined() is where allow_upload() runs, so a LiveComponent's registry
             # only exists from here on. Without this a nested component's uploads
             # were never heard from (#77).
@@ -832,6 +977,8 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             except Exception as e:
                 log.exception(f"Error in {child._name}.update(): {e}")
         for child in batch.to_render:
+            if child.id in halted:
+                continue
             child_diff, grandchildren, descendants = await self._render_tree(child, depth + 1)
             children[child.id] = child_diff
             children.update(grandchildren)

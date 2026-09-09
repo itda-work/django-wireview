@@ -286,13 +286,16 @@ class ServerConnection {
             }
             break;
           case "push":
-            boost.HistoryCache.push(url);
-            // Send params_changed after URL update
-            {
+            // params_changed only once the new page is actually on screen. A push
+            // that leaves the live_session becomes a full page load, and telling
+            // the old connection about the new URL would have it re-render under
+            // the policy the navigation was leaving behind (#58).
+            boost.HistoryCache.push(url).then((sameSession) => {
+              if (!sameSession) return;
               const urlObj = new URL(url, document.location.origin);
               const params = parseQueryString(urlObj.search);
               this.sendParamsChanged(url, params);
-            }
+            });
             break;
         }
         break;

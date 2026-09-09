@@ -35,6 +35,7 @@ Wireview는 [django-reactor](https://github.com/edelvalle/reactor)의 현대적�
 | **테스트 유틸리티** | - | ✅ | WebSocket 없이 쉽게 컴포넌트 테스트를 위한 `mount()` 유틸리티 |
 | **디버그 도구** | - | ✅ | `wireview.debug`로 브라우저 콘솔 디버깅 |
 | **JavaScript Hooks** | - | ✅ | Chart.js, Mapbox 등 서드파티 JavaScript 라이브러리 통합 |
+| **live_session** | - | ✅ | 페이지 단위 인증 경계. 같은 술어가 뷰와 join 양쪽에서 돌고, 경계를 넘는 이동은 전체 페이지 로드가 된다 ([문서](./docs/features/live-session.md)) |
 
 ### 아키텍처 개선
 

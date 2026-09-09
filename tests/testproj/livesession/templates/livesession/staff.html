@@ -1,0 +1,13 @@
+{% extends "livesession/_base.html" %}
+
+{% load wireview %}
+
+{% block title %}
+  staff
+{% endblock title %}
+{% block heading %}
+  staff
+{% endblock heading %}
+{% block content %}
+  {% component 'LsStaffPanel' id="panel" %}
+{% endblock content %}

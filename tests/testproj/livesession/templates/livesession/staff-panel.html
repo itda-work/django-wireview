@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<div {% tag_header %} data-testid="panel">
+  <span data-testid="secret">{{ this.secret }}</span>
+  <button data-testid="bump" {% on "click" "bump" %}>bump</button>
+  <button data-testid="leave" {% on "click" "leave_the_boundary" %}>leave</button>
+</div>

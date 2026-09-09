@@ -8,7 +8,7 @@
 | [transport-abstraction.md](./transport-abstraction.md) | 전송 추상화(`Outbound`/`Broker`), 채널 레이어 선택, Windows·NATS 실측, 연결당 메모리의 원인 | 결정됨 (GAP-026 완료). 5절 이후가 실측 기록이다 |
 | [distributed-uploads.md](./distributed-uploads.md) | 청크 업로드를 어느 워커에서나 받는 방법: 무상태 HTTP + 계산된 경로 + 브로커로 오는 가변 상태. 버린 갈래 셋(스티키·브로커 RPC·공유 레지스트리)과 이유 | 결정됨, 구현 완료 ([#83](https://github.com/itda-work/django-wireview/issues/83)) |
 | [session-extraction.md](./session-extraction.md) | 컨슈머에서 세션 로직을 떼어 내는 계획과 착수 기준 | 착수 대상 아님 ([#60](https://github.com/itda-work/django-wireview/issues/60)) |
-| [live-session.md](./live-session.md) | 페이지 단위 인증·정책 경계 (Phoenix의 live_session) | 설계 초안, 구현 전 ([#58](https://github.com/itda-work/django-wireview/issues/58)) |
+| [live-session.md](./live-session.md) | 페이지 단위 인증·정책 경계 (Phoenix의 live_session) | 구현 완료. 사용법은 [features/live-session.md](../features/live-session.md) |
 | [live-session-review-2026-09-09.md](./live-session-review-2026-09-09.md) | 위 두 문서 초안에 대한 적대적 리뷰 원문 (Codex gpt-6-astra) | 반영 완료 |
 | [live-session-review-2026-09-09-round2.md](./live-session-review-2026-09-09-round2.md) | 1라운드 반영 결과를 다시 검증한 2라운드 | 반영 완료. 여기서 내 수정 자체의 오류 셋이 나왔다 |
 | [live-component-lifecycle.md](./live-component-lifecycle.md) | LiveComponent가 **지금 실제로** 어떻게 만들어지고 렌더되고 사라지는가, 그리고 그로부터 나오는 설계 질문 | 현황 조사. 답은 각 이슈에서 |

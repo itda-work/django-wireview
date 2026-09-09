@@ -143,5 +143,29 @@ https://github.com/itda-work/django-wireview/blob/main/docs/features/live-compon
 
 ## 라이프사이클 훅 (`_on_mount`, `attach_hook`)
 
-인증·추적처럼 여러 컴포넌트에 공통으로 얹는 것. 마운트를 중단시킬 수 있다.
+인증·추적처럼 여러 컴포넌트에 공통으로 얹는 것. 마운트를 중단시킬 수 있고, 중단하면 그 컴포넌트는
+HTML도 상태도 내보내지 않는다.
 상세: https://github.com/itda-work/django-wireview/blob/main/docs/features/lifecycle-hooks.md
+
+## 페이지 경계 (`live_session`)
+
+인증이 페이지 전체에 걸리는 것이면 컴포넌트마다 훅을 붙이지 말고 경계를 선언한다. 같은 술어가
+뷰(첫 HTML 전)와 WebSocket join 두 곳에서 돌고, 경계를 벗어나는 boost 이동은 전체 페이지 로드가
+된다.
+
+```python
+# myapp/live_sessions.py
+from wireview import live_session
+
+admin = live_session("admin", authorize=lambda ctx: ctx.user.is_staff)
+
+# myapp/views.py
+@admin.view
+def dashboard(request): ...
+
+# myapp/live.py
+class AdminPanel(Component):
+    _live_sessions = {"admin"}    # 이 경계 밖에서는 렌더되지 않는다
+```
+
+상세: https://github.com/itda-work/django-wireview/blob/main/docs/features/live-session.md

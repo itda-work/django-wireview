@@ -249,6 +249,63 @@ def check_on_mount_hooks(app_configs, **kwargs) -> list[CheckMessage]:
     return messages
 
 
+def check_live_sessions(app_configs, **kwargs) -> list[CheckMessage]:
+    """W010: a component's ``_live_sessions`` does not line up with what the project declares.
+
+    Two mistakes, both silent, both only visible once somebody looks at two files
+    at once.
+
+    The first is a name that does not resolve. A page declaring the boundary is
+    refused at join with "unknown live_session" and reloads, which reads as a
+    signing problem rather than as a typo.
+
+    The second is the boundary being opt-in. A component guarded only by its own
+    ``_on_mount`` hooks mounts anywhere, including on a page with no policy: the
+    hooks run, but nothing says the component belongs behind the boundary the
+    project drew, so a state signed on a public page mounts it there. That is
+    reported only once the project declares a live_session at all -- before that
+    there is nothing to belong to, and every component is where it always was.
+    """
+    from .core.live_session import all_live_sessions
+
+    declared = all_live_sessions()
+    messages: list[CheckMessage] = []
+
+    for cls in iter_component_classes():
+        for name in sorted(cls._live_sessions):
+            if name in declared:
+                continue
+            messages.append(
+                Warning(
+                    f"{cls._fqn}._live_sessions names '{name}', which no live_session declares.",
+                    hint=(
+                        "A page carrying that name is refused at join and the browser reloads, "
+                        f"which looks like a signing failure. Declared: {sorted(declared) or 'none'}. "
+                        "Check the spelling, or make sure the module calling live_session() is "
+                        "imported (wireview autodiscovers 'live_sessions.py' in each app)."
+                    ),
+                    obj=cls,
+                    id="wireview.W010",
+                )
+            )
+        if declared and cls._on_mount and not cls._live_sessions:
+            messages.append(
+                Warning(
+                    f"{cls._fqn} guards itself with _on_mount but declares no _live_sessions.",
+                    hint=(
+                        "Its hooks run wherever it is mounted, including on a page outside "
+                        "every boundary this project draws -- so a state signed on such a page "
+                        'mounts it there. Add _live_sessions = {"<name>"} to say where it '
+                        "belongs, or leave it empty on purpose if it really is mountable anywhere."
+                    ),
+                    obj=cls,
+                    id="wireview.W010",
+                )
+            )
+
+    return messages
+
+
 def check_upload_temp_dir(app_configs, **kwargs) -> list[CheckMessage]:
     """W008: ``UPLOAD_TEMP_DIR`` points somewhere uploads cannot be written.
 
@@ -365,6 +422,7 @@ def register_checks() -> None:
     register(check_client_bundle, WIREVIEW_TAG)
     register(check_hmin, WIREVIEW_TAG)
     register(check_on_mount_hooks, WIREVIEW_TAG)
+    register(check_live_sessions, WIREVIEW_TAG)
     register(check_upload_temp_dir, WIREVIEW_TAG)
     register(check_signing_key, WIREVIEW_TAG)
     register(check_channel_layer, WIREVIEW_TAG, deploy=True)

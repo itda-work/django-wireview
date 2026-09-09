@@ -18,6 +18,7 @@ from .live_component import LiveComponent
 from .utils import filter_parameters
 
 if t.TYPE_CHECKING:
+    from .core.live_session import LiveSession
     from .slots import SlotContainer
 
 ChildrenRepo = dict[str, tuple[str, dict[str, t.Any]]]
@@ -71,6 +72,7 @@ class ComponentRepository:
         channel_layer: BaseChannelLayer | None = None,
         session: t.Any = None,
         connection_id: str | None = None,
+        live_session: "LiveSession | None" = None,
     ):
         self.params = params or {}
         # The request/connection session. Handed to every component as
@@ -82,6 +84,10 @@ class ComponentRepository:
         # Handed to every component's WireviewMeta so upload artefacts can be
         # scoped to the connection that owns them (#77).
         self.connection_id = connection_id
+        # The page boundary every component built here belongs to (#58). A page
+        # has one: the view decorator sets it on the HTTP side, and on a socket
+        # the first join's envelope names it and later joins have to agree.
+        self.live_session = live_session
         self.user = user or AnonymousUser()
         self.components: dict[str, Component] = {}
         self.children: ChildrenRepo = {}
@@ -158,6 +164,7 @@ class ComponentRepository:
             channel_layer=self.channel_layer,
             connection_id=self.connection_id,
             session=self.session,
+            live_session=self.live_session,
         )
         return self.register_component(component)
 
@@ -239,6 +246,7 @@ class ComponentRepository:
                 channel_layer=self.channel_layer,
                 connection_id=self.connection_id,
                 session=self.session,
+                live_session=self.live_session,
             ),
         )
 
@@ -359,11 +367,17 @@ class ComponentRepository:
         # These will be flushed after send_render() in consumer
         component.wire.enter_pending_mode()
         try:
-            # The _on_mount hooks are the mount-time boundary: a halt skips
-            # joined(), but the component is still returned so the consumer
-            # renders it and whatever the hook queued (a redirect) goes out.
+            # The mount hooks are the boundary: a halt skips joined() and gives
+            # up the instance. The component still comes back so the caller can
+            # flush whatever the hook queued (a redirect), but it is gone from
+            # the repository -- ``component_remove()`` only tells the client to
+            # drop the element, and an instance left here would keep answering
+            # user_event, hook_event, params_changed and uploads (#58, AC3).
             if await component._mount(self.params, self.session):
                 await component.joined()
+            else:
+                component.wire.freeze()
+                self.remove(component.id)
         finally:
             component.wire.has_joined = True
         return component

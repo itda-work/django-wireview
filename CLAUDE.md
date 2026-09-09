@@ -30,7 +30,9 @@ wireview/
 ├── core/meta.py           WireviewMeta (self.wire): push_to/replace_to, push_js, put_flash, push_title 등 클라이언트 명령
 ├── core/rendered.py       동적 마커 기반 diff 구조. LiveComponent 자리는 참조 dynamic {"c": id}
 ├── core/session.py        SessionView. Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다
-├── core/state.py          data-state 서명·복원 (v1 봉투: 클래스 결합·만료·토큰 재사용)
+├── core/live_session.py   페이지 경계 정본. live_session() 선언과 레지스트리, @session.view,
+│                          인증 세대 지문(auth_fingerprint), 로그아웃 무효화 발행 (GAP-009)
+├── core/state.py          data-state 서명·복원 (v2 봉투: 클래스·경계·인증 세대 결합, 만료, 토큰 재사용)
 ├── core/signing.py        서명 키 정본. get_signer(salt) 하나로 모든 서명 지점이 SIGNING_KEY와 fallback을 공유
 ├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳
 ├── template_engine.py     템플릿 VariableNode에 diff 마커 자동 주입
@@ -62,7 +64,7 @@ wireview/
 ├── templates/wireview_header.html  {% wireview_header %}가 렌더. wireview.min.js를 로드
 └── static/wireview/       wireview.js (소스), rendered.mjs (diff 적용·HTML 복원 순수 함수),
                            streams.mjs (스트림 DOM 판단 순수 함수), reload.mjs (reload 쿨다운 판단),
-                           wireview-boost.js, types.d.ts
+                           live-session.mjs (경계 넘음 판단 순수 함수), wireview-boost.js, types.d.ts
                            wireview.min.js는 빌드 산출물이며 gitignore
 
 tests/
@@ -71,7 +73,8 @@ tests/
 └── testproj/              Django 테스트 프로젝트(설정·URLconf). 채널 레이어는 WIREVIEW_TEST_LAYER가 고르고
                            settings_nats.py·settings_redis.py가 이를 고정하는 진입점이다.
                            bookmarks/ 는 예제가 아니라 wireview 스킬 검증의 기준선이고,
-                           uploadprobe/ 는 워커 둘짜리 업로드 E2E(test_multiworker_uploads.py)의 픽스처다
+                           uploadprobe/ 는 워커 둘짜리 업로드 E2E(test_multiworker_uploads.py)의 픽스처,
+                           livesession/ 은 경계 넘는 이동 E2E(test_live_session_e2e.py)의 픽스처다
 
 examples/                  예제 앱 10개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.
                            testproj 위에서 돌고 make test가 함께 실행한다(pytest tests examples).
@@ -128,7 +131,7 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 
 ## 함정
 
-아래 중 아홉 개는 `manage.py check`가 잡는다 (`wireview.W001`~`W009`, `docs/features/checks.md`).
+아래 중 열 개는 `manage.py check`가 잡는다 (`wireview.W001`~`W010`, `docs/features/checks.md`).
 
 - **`wireview.min.js`가 없으면 페이지에서 JS가 로드되지 않는다.** clone 직후와 `wireview/static/wireview/wireview.js` 수정 후 `make build-js`.
 - **testproj의 채널 레이어는 `WIREVIEW_TEST_LAYER`가 고른다.** 기본은 `memory`(브로커 불요), `make test-e2e`와 CI는 `nats`다. E2E는 `tests/e2e.sh`가 nats-server를 직접 띄우고 끝나면 정리하므로 미리 켜 둘 필요가 없다(이미 떠 있으면 그것을 쓴다). 바꾸려면 `make test-e2e LAYER=redis` 또는 `LAYER=memory`. channels-nats는 dev extras에 있으므로 `make install`이면 들어온다.
@@ -148,6 +151,13 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 - **청크 업로드가 워커 사이에서 공유해야 하는 것은 둘뿐이다.** 청크 저장소(`UPLOAD_TEMP_DIR`, 한 호스트면 시스템 temp가 이미 공유)와 서명 키. 엔드포인트는 상태를 안 들고 있으므로 스티키 라우팅은 필요 없다. 키가 어긋나면 403, 디렉터리가 어긋나면 200을 받고도 완료되지 않는다. 상세는 `docs/features/chunked-uploads.md`.
 - **서명은 `wireview/core/signing.py`의 `get_signer(salt)`로만 한다.** `TimestampSigner(salt=...)`를 직접 만들면 `SIGNING_KEY`와 fallback을 무시해 키 로테이션이 조용히 깨진다. 서명 지점은 둘 — 업로드 토큰과 data-state.
 - **async 뷰와 `ATOMIC_REQUESTS`.** Django 핸들러는 async 뷰를 트랜잭션으로 감쌀 수 없어 뷰를 부르기 전에 500을 낸다. 업로드 엔드포인트는 `wireview/urls.py`에서 모든 alias에 `non_atomic_requests`로 등록해 피한다. 새 async 뷰를 추가하면 같은 처리가 필요하고, **뷰를 직접 호출하는 테스트는 이 실패를 못 잡는다**.
+- **페이지 경계는 페이지가 선언한다.** `live_session`은 컴포넌트가 아니라 Django 뷰에 붙고
+  (`@session.view`), 한 페이지·한 연결에 하나다. `authorize` 술어는 뷰(첫 바이트 전)와
+  join(마운트 전) 두 곳에서 도는 **같은 함수**여야 한다 — 둘을 따로 두면 조용히 어긋난다.
+  `_live_sessions`를 선언한 컴포넌트는 경계가 없는 페이지에서도 거절된다.
+- **mount가 halt하면 아무것도 렌더되지 않는다** (#58부터). 컴포넌트는 저장소에서도 지워지므로
+  그 id로 오는 이벤트도 처리되지 않는다. 렌더를 보내는 새 경로를 만들 때 `wire.mount_halted`를
+  건너뛰면 가드가 막으려던 HTML과 `data-state`가 그대로 나간다.
 - **data-state는 dynamic 파트다.** `{% tag_header %}`의 서명 상태는 라이브 렌더에서 마커로 감싸진다. static에 넣으면 fingerprint가 매번 바뀌어 부분 diff가 죽는다. 회귀 테스트는 tests/test_diff_stability.py.
 
 ## 문서 인덱스

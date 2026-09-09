@@ -12,9 +12,9 @@
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 103 |
+| ✅ 지원 | 104 |
 | 🟡 부분 지원 | 3 |
-| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 6 |
+| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 5 |
 | ⚪ 설계상 제외 | 1 |
 
 103행 중 5행은 Phoenix에 없는 wireview 고유 기능이다(`mutation()`, 타입 스텁, LSP 메타데이터,
@@ -139,7 +139,7 @@ MockChannelLayer, 시스템 체크). 남은 아홉 개의 갭은 3절 표에서 
 | push_patch | ✅ | `push_to()` | ✅ |
 | replace | ✅ | `replace_to()` | ✅ |
 | handle_params | ✅ | `params_changed()` | ✅ |
-| live_session | ✅ | ❌ | 🟠 GAP-009 ([#58](https://github.com/itda-work/django-wireview/issues/58)) |
+| live_session | ✅ | `live_session()` + `@session.view` | ✅ (GAP-009. 경계는 페이지 단위다 — Django 뷰가 라우트이기 때문. [문서](./features/live-session.md)) |
 | Client-side boost | ✅ | `BOOST_PAGES` | ✅ |
 
 ### 2.9 JavaScript Interoperability ✅
@@ -261,7 +261,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 |----|------|------|:------:|----------|
 | ~~GAP-007~~ | ~~External Uploads~~ | ~~S3/GCS 직접 업로드~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-008~~ | ~~Form Auto-Recovery~~ | ~~재연결 시 폼 상태 복구~~ | ~~중~~ | ✅ 완료 |
-| GAP-009 | live_session | 인증/레이아웃 경계 관리 | 중 | [#58](https://github.com/itda-work/django-wireview/issues/58) |
+| ~~GAP-009~~ | ~~live_session~~ | ~~인증/레이아웃 경계 관리~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-010~~ | ~~Page Title~~ | ~~동적 페이지 타이틀 변경~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-011~~ | ~~Flash Messages~~ | ~~일회성 알림 메시지~~ | ~~하~~ | ✅ 완료 |
 | GAP-012 | LongPolling Fallback | WebSocket 불가 시 폴백 | 중 | [#59](https://github.com/itda-work/django-wireview/issues/59) |

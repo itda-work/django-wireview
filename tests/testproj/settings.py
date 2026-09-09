@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     "examples.slots",
     "examples.livecomp",
     "testproj.bookmarks",
+    "testproj.livesession",
     "testproj.uploadprobe",
     "wireview",
     "channels",

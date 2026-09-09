@@ -323,15 +323,23 @@ class TestWebSocketJoin:
 
         assert kinds("ws2") == ["one", "two", "joined"]
 
-    async def test_a_halting_hook_skips_joined_but_still_returns_the_component(self):
+    async def test_a_halting_hook_gives_up_the_component_instead_of_rendering_it(self):
+        """#58 narrowed this: a halt used to skip ``joined()`` and render anyway.
+
+        Rendering a refused component ships exactly what the hook was refusing --
+        its HTML and a freshly signed ``data-state``. The instance leaves the
+        repository with it, because ``component_remove()`` only tells the client
+        to drop the element and an instance left behind keeps taking events.
+        """
         consumer, outbound = make_consumer()
 
         component = await consumer.repo.join("LhHalted", {"id": "ws3"})
 
         assert kinds("ws3") == ["halt"]
-        assert component.id == "ws3"
+        assert component.id == "ws3", "the caller still gets it, to flush what the hook queued"
+        assert consumer.repo.get("ws3") is None, "a refused component is not an event target"
         await consumer.send_render(component)
-        assert "halted" in str(outbound.renders())
+        assert "halted" not in str(outbound.renders())
 
     async def test_a_redirecting_hook_sends_url_change_and_no_render(self):
         layer = RecordingLayer()
@@ -379,7 +387,14 @@ class TestLiveComponentChildren:
 
         assert kinds("child") == ["one", "joined"]
 
-    async def test_a_halting_child_skips_joined_and_still_renders(self):
+    async def test_a_halting_child_never_ships_its_diff(self):
+        """A refused child leaves a reference marker in the parent and nothing else.
+
+        The parent's template registers and names the child during its own pass,
+        so a check that ran later would run after the child's HTML had already
+        left (``docs/design/live-session.md`` §3-5). The child's diff travels
+        separately, under ``children``, which is where the refusal takes effect.
+        """
         consumer, outbound = make_consumer()
         parent = await consumer.repo.join("LhHaltParent", {"id": "p2"})
 
@@ -387,7 +402,8 @@ class TestLiveComponentChildren:
 
         assert kinds("child") == ["halt"], "the second hook and joined() must not run"
         children = [payload.get("children") or {} for payload in outbound.renders()]
-        assert any("child" in c for c in children), "the child still ships its own diff"
+        assert not any("child" in c for c in children), "a refused child ships no diff"
+        assert consumer.repo.get("child") is None, "and is not an event target"
 
     async def test_a_child_mounts_once_across_the_parents_re_renders(self):
         consumer, _ = make_consumer()
@@ -454,14 +470,21 @@ class TestHttpRender:
         assert kinds("h7") == ["one", "two"]
         assert "ordered" in html
 
-    def test_a_halt_on_the_loop_thread_still_renders(self):
+    def test_a_halt_on_the_loop_thread_renders_nothing(self):
+        """The helper-thread path reaches the same verdict as the ordinary one.
+
+        A dead render is the first HTML and the first ``data-state``: a halt that
+        still rendered would put both in a response no join can recall (#58, AC2).
+        """
+
         async def async_view_like() -> str:
             return render_page("{% component 'LhHalted' id='h8' %}")
 
         html = asyncio.run(async_view_like())
 
         assert kinds("h8") == ["halt"]
-        assert "halted" in html
+        assert "halted" not in html
+        assert "data-state" not in html
 
     def test_the_repository_carries_the_request_session(self):
         class FakeRequest:

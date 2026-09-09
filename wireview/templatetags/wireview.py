@@ -11,6 +11,8 @@ from django.utils.safestring import mark_safe
 
 from .. import settings
 from ..component import Component
+from ..core.live_session import REQUEST_ATTR as LIVE_SESSION_REQUEST_ATTR
+from ..core.live_session import declaration_allows, get_live_session
 from ..core.rendered import inject_marker
 from ..core.state import sign_state
 from ..event_transpiler import transpile
@@ -21,9 +23,20 @@ from ..slots import Slot, SlotContainer
 register = template.Library()
 
 
-@register.inclusion_tag("wireview_header.html")
-def wireview_header():
-    return {"BOOST_PAGES": settings.BOOST_PAGES}
+@register.inclusion_tag("wireview_header.html", takes_context=True)
+def wireview_header(context):
+    """Load the client bundle and publish the page's navigation facts.
+
+    The ``live_session`` name goes in a meta tag because the client has to know
+    it before it decides whether a boosted navigation may morph the body: the
+    boundary is what forces a full page load, and a full load is what gives the
+    next page a fresh handshake under the current cookies (#58).
+    """
+    request = context.get("request")
+    return {
+        "BOOST_PAGES": settings.BOOST_PAGES,
+        "LIVE_SESSION": getattr(request, LIVE_SESSION_REQUEST_ATTR, "") if request is not None else "",
+    }
 
 
 def _signed_state(component: Component, repo: ComponentRepository) -> str:
@@ -60,8 +73,8 @@ def tag_header(context):
     )
 
 
-def _mount_for_http(component: Component, repo: ComponentRepository) -> None:
-    """Run a component's ``_on_mount`` hooks during a dead (HTTP) render.
+def _mount_for_http(component: Component, repo: ComponentRepository) -> bool:
+    """Run a component's mount-time boundary during a dead (HTTP) render.
 
     The hooks are an authorization boundary, so they have to cover the first
     HTML too: skipping them here would ship the protected page once and only
@@ -80,21 +93,39 @@ def _mount_for_http(component: Component, repo: ComponentRepository) -> None:
       that touches the ORM there opens its own connection, which is the same
       trade Django's own sync/async bridges make.
 
-    A halt is not reported back: a dead render has no ``joined()`` to skip, and
-    ``WireviewMeta.render`` turns the redirect a hook queued into a
-    ``<meta http-equiv="refresh">``.
+    A halt freezes the component and answers ``False``, and the caller renders
+    nothing for it. Freezing rather than skipping the render outright is what
+    keeps a redirect working: ``WireviewMeta.render`` still turns the URL a hook
+    queued into a ``<meta http-equiv="refresh">``, and emits nothing else -- no
+    template output, no ``data-state``.
+
+    Returns:
+        Whether the component may be rendered.
     """
-    if repo.is_live or not type(component)._on_mount:
-        return
+    if not declaration_allows(type(component), repo.live_session):
+        # Checked before the async question and on the live path too: a nested
+        # {% component %} renders inline during its parent's pass, where there is
+        # no seam to await a hook in, but this much needs no awaiting.
+        component.wire.freeze()
+        repo.remove(component.id)
+        return False
+    if repo.is_live:
+        return True
+    if not type(component)._on_mount and repo.live_session is None:
+        return True
 
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        async_to_sync(component._mount)(repo.params, repo.session)
-        return
+        mounted = async_to_sync(component._mount)(repo.params, repo.session)
+    else:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            mounted = pool.submit(asyncio.run, component._mount(repo.params, repo.session)).result()
 
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        pool.submit(asyncio.run, component._mount(repo.params, repo.session)).result()
+    if not mounted:
+        component.wire.freeze()
+        repo.remove(component.id)
+    return mounted
 
 
 def _build_and_render_component(
@@ -112,11 +143,17 @@ def _build_and_render_component(
             user=context.get("user"),
             params=ComponentRepository.extract_params(qs),
             session=getattr(request, "session", None),
+            # The view decorator put the name here. Reading it off the request
+            # rather than off a setting is what makes the boundary a property of
+            # the page rather than of the project (#58).
+            live_session=get_live_session(getattr(request, LIVE_SESSION_REQUEST_ATTR, "")) if request else None,
         )
         context["wireview_repository"] = repo
 
     component_instance = repo.build(component_name, state=kwargs)
-    _mount_for_http(component_instance, repo)
+    if not _mount_for_http(component_instance, repo):
+        # Frozen: whatever comes back is a redirect meta or nothing at all.
+        return component_instance._render(repo) or ""
 
     # Use slot-aware rendering if slots are provided
     if slots is not None:
@@ -833,7 +870,11 @@ def _render_live_component(
 
     if not repo.is_live:
         # HTTP render: a dead render of the child, inline, like any nested component.
-        _mount_for_http(live_comp, repo)
+        # A halt here matters more than elsewhere: the child renders *into* the
+        # parent's output, so refusing it after the fact would leave its HTML in
+        # a response already on the wire (docs/design/live-session.md §3-5).
+        if not _mount_for_http(live_comp, repo):
+            return live_comp._render(repo) or ""
         if slots is not None:
             return live_comp._render_with_slots(repo, slots) or ""
         return live_comp._render(repo) or ""

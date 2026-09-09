@@ -30,6 +30,7 @@ if t.TYPE_CHECKING:
     from ..js import JS
     from ..slots import SlotContainer
     from .component import Component
+    from .live_session import LiveSession
 
 if settings.USE_HMIN:
     try:
@@ -80,6 +81,7 @@ class WireviewMeta:
         channel_layer: BaseChannelLayer | None = None,
         broker: Broker | None = None,
         connection_id: str | None = None,
+        live_session: "LiveSession | None" = None,
     ):
         self.params = params
         self.channel_name = channel_name
@@ -88,6 +90,11 @@ class WireviewMeta:
         # the consumer. Unlike ``channel_name`` it is safe to put in a URL, and it
         # is what scopes upload registries, tokens and progress groups (#77).
         self.connection_id = connection_id
+        # The page boundary this component was mounted inside, or None when the
+        # page declared none (#58). It decides what ``sign_state`` writes into the
+        # envelope and which hooks ``Component._mount`` runs before the component's
+        # own, so every path that builds a component has to carry it.
+        self.live_session = live_session
         if broker is None:
             broker = ChannelsBroker(channel_layer) if channel_layer is not None else NullBroker()
         self.broker: Broker = broker
@@ -133,6 +140,7 @@ class WireviewMeta:
             channel_layer=self.channel_layer,
             broker=self.broker,
             connection_id=self.connection_id,
+            live_session=self.live_session,
         )
         # Don't copy render state - child components start fresh
         return cloned
