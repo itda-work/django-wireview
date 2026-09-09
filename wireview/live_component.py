@@ -102,6 +102,11 @@ class LiveComponent(Component, public=False):
     # Parent component reference (set by repository)
     _parent_id: str | None = PrivateAttr(default=None)
 
+    # The props the parent template passed on its last render. A re-render
+    # calls update() only for props whose value differs from these, so state
+    # the child changed on its own is not reset by an unrelated parent render.
+    _last_props: dict[str, t.Any] = PrivateAttr(default_factory=dict)
+
     # Marker for identification
     _is_live_component: t.ClassVar[bool] = True
 
@@ -192,7 +197,7 @@ class LiveComponent(Component, public=False):
                         await self.on_count_changed()
         """
         for key, value in assigns.items():
-            if key in self.model_fields:
+            if key in type(self).model_fields:
                 setattr(self, key, value)
 
     async def send_to_parent(self, event: str, **kwargs: t.Any) -> None:

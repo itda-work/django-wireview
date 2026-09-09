@@ -10,6 +10,7 @@ from wireview.component import Component
 from . import serializer
 from .core.state import unsign_state
 from .core.transport import ChannelsOutbound, Outbound
+from .live_component import LiveComponent
 from .repository import ComponentRepository
 from .utils import parse_request_data
 
@@ -78,6 +79,12 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             id: (name, unsign_state(state)) for id, (name, state) in (children or {}).items()
         }
         log.debug(f"<<< JOIN {name} {decoded_state}")
+        if isinstance(self.repo.get(decoded_state.get("id", "")), LiveComponent):
+            # A LiveComponent is owned by its parent: the parent's join carried its
+            # state and its lifecycle runs with the parent's render. Current clients
+            # do not send this; a cached older script still might.
+            log.debug("Ignoring direct join for LiveComponent %s", decoded_state.get("id"))
+            return
         try:
             component = await self.repo.join(
                 name,
@@ -468,8 +475,6 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             live_component_id: ID of the target LiveComponent
             assigns: New values to update
         """
-        from .live_component import LiveComponent
-
         log.debug(f">>> UPDATE-LIVE-COMPONENT {live_component_id} {assigns}")
 
         # Get the LiveComponent

@@ -934,6 +934,8 @@ class WireviewComponent {
   /**
    * Joins this component to the server.
    * Only joins if the component is not already live and its parent is live.
+   * A LiveComponent (`wireview-live`) never joins on its own: its parent's
+   * join carries its state and its lifecycle runs with the parent's render.
    */
   join() {
     const element = /** @type {HTMLElement|null} */ (this.getElemenet());
@@ -942,6 +944,11 @@ class WireviewComponent {
       const parent = /** @type {HTMLElement|null} */ (parentEl);
       if (!parent || parent.dataset.isLive === "true") {
         element.dataset.isLive = "true";
+        if (element.hasAttribute("wireview-live")) {
+          this.hookManager.init();
+          this.viewportObserver.init();
+          return;
+        }
         /** @type {Object<string, [string, string]>} */
         let children = Array.from(
           element.querySelectorAll("[wireview-component]")

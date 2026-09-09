@@ -1,4 +1,5 @@
 import json
+import logging
 import typing as t
 from functools import reduce
 from typing import cast
@@ -14,6 +15,8 @@ from .live_component import LiveComponent
 from .utils import filter_parameters
 
 ChildrenRepo = dict[str, tuple[str, dict[str, t.Any]]]
+
+log = logging.getLogger("wireview")
 
 # Packages whose classes are framework surface, never client-callable handlers.
 _FRAMEWORK_ROOTS = ("wireview", "pydantic")
@@ -51,6 +54,8 @@ class ComponentRepository:
         self._pending_live_components: list[LiveComponent] = []
         # Track LiveComponents that need update() called after parent renders
         self._pending_updates: list[tuple[LiveComponent, dict[str, t.Any]]] = []
+        # Instances replaced under a reused id; they owe a leaving() call
+        self._pending_leaving: list[Component] = []
 
     @staticmethod
     def extract_params(qs: str):
@@ -128,21 +133,39 @@ class ComponentRepository:
             raise ValueError("LiveComponent requires an 'id' in state")
 
         component_id = state["id"]
+        component_class = LiveComponent._resolve_live(name)
+        props = {key: value for key, value in state.items() if key != "id"}
 
-        # Check if already registered (re-render case)
+        # Re-render case: the parent template names an id we already hold.
         if existing := self.components.get(component_id):
-            if isinstance(existing, LiveComponent):
-                # Queue update() call with changed props
-                # (will be called after render completes)
+            if type(existing) is component_class:
+                existing = cast(LiveComponent, existing)
+                if existing._parent_id != parent_id:
+                    log.debug("LiveComponent %s moved from %s to %s", component_id, existing._parent_id, parent_id)
+                    existing._parent_id = parent_id
+                # update() only for props whose value differs from what the
+                # parent passed last time. Comparing against the child's current
+                # state would reset whatever the child changed on its own.
                 changed_props = {
-                    key: value for key, value in state.items() if key != "id" and key in existing.model_fields
+                    key: value
+                    for key, value in props.items()
+                    if key in type(existing).model_fields
+                    and (key not in existing._last_props or existing._last_props[key] != value)
                 }
+                existing._last_props = props
                 if changed_props:
                     self._pending_updates.append((existing, changed_props))
                 return existing
+            # Same id, different class: the old instance leaves and a new one takes the slot.
+            log.debug("Component id %s reused by %s, replacing %s", component_id, name, type(existing).__name__)
+            self._pending_leaving.extend(self.remove(component_id))
 
-        # Resolve and build LiveComponent
-        component_class = LiveComponent._resolve_live(name)
+        # A reconnect carries the child's signed state in the parent's join. The
+        # parent's props win, everything else is the child's own and comes back.
+        if (restored := self.children.pop(component_id, None)) is not None:
+            restored_name, restored_state = restored
+            if self._same_live_class(restored_name, component_class):
+                state = restored_state | state
 
         live_component = cast(
             LiveComponent,
@@ -158,6 +181,7 @@ class ComponentRepository:
 
         # Set parent reference
         live_component._parent_id = parent_id
+        live_component._last_props = props
 
         # Register in components dict
         self.components[live_component.id] = live_component
@@ -166,6 +190,13 @@ class ComponentRepository:
         self._pending_live_components.append(live_component)
 
         return live_component
+
+    @staticmethod
+    def _same_live_class(name: str, component_class: type[LiveComponent]) -> bool:
+        try:
+            return LiveComponent._resolve_live(name) is component_class
+        except LookupError:
+            return False
 
     def get_live_components(self, parent_id: str) -> list[LiveComponent]:
         """Get all LiveComponents under a parent.
