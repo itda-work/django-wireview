@@ -400,15 +400,33 @@ class Command(BaseCommand):
 
 ### Chunked uploads and multiple processes
 
-Chunked uploads are the one part of wireview that is not fully solved by a shared channel
-layer. Each upload registry lives in the memory of the process that holds the WebSocket, so
-a chunk POSTed to `/__wireview_upload__/<connection_id>/<component_id>/<upload_name>/` must
-reach that same process; any other worker answers `404 Component not found`, valid token or
-not. Since #77 the first path segment is the connection id the consumer minted, which gives
-you three options: route those requests stickily on that segment, keep uploads on a single
-upload-capable process, or bypass the endpoint entirely with external uploads (`external=`,
-presigned S3/GCS — see `docs/features/external-uploads.md`), which upload straight to storage
-and never touch a worker. A shared registry that would remove the constraint is #83.
+Chunks arrive over HTTP, not over the WebSocket, so a load balancer sends them wherever it
+likes. Since #83 that is fine: the endpoint keeps no per-upload state, decides from the signed
+token alone, and writes to a path computed from it. No sticky routing, no upload-only worker.
+
+Two values have to be the same on every worker.
+
+| Value | Why |
+|---|---|
+| `WIREVIEW["UPLOAD_TEMP_DIR"]` | The chunk store. The worker that receives a chunk and the worker that reads the finished file must see the same directory. Unset means the system temp dir, which is already shared between processes on one host |
+| `WIREVIEW["SIGNING_KEY"]` (or `SECRET_KEY`) | The token is the only proof a chunk has. A worker with a different key answers 403 |
+
+| Deployment | Works |
+|---|---|
+| N workers on one host (uvicorn per port + Caddy, the Windows recipe above) | **Yes**, with no extra infrastructure |
+| Several hosts | Point `UPLOAD_TEMP_DIR` at a shared volume (NFS/EFS), or use external uploads (`external=`, presigned S3/GCS — `docs/features/external-uploads.md`), which never touch a worker |
+| Several hosts with no shared volume | Not yet. An object-storage backend would be needed; Django's storage API has no append, so chunking becomes a different write model |
+
+A worker that dies mid-upload leaves its chunk file behind, and the stateless endpoint accepts
+chunks for a component that is already gone until the token expires. Both are bounded by
+`UPLOAD_TOKEN_MAX_AGE`, so age is the whole cleanup rule. The write path sweeps opportunistically
+once every ten minutes per worker; a deployment that would rather do it from cron has
+
+```bash
+python manage.py wireview_upload_gc
+```
+
+Details in `docs/features/chunked-uploads.md`.
 
 ### Vertical Scaling
 

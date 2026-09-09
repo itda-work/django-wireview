@@ -37,6 +37,30 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- Chunked uploads work on any worker (`#83`). Chunks arrive over HTTP, so nothing routes them
+  to the process holding the WebSocket; the endpoint used to look the upload up in a
+  process-local dict and answer `404 Component not found` on every other worker, valid token
+  or not. It now keeps no per-upload state: the signed token is the only authority, and the
+  bytes go to a path computed from it (`<UPLOAD_TEMP_DIR or system temp>/wireview-uploads/
+  <connection>/<digest>.part`). The worker that owns the connection learns what happened from
+  the `upload.progress`, `upload.completed` and `upload.error` messages the endpoint publishes
+  to the group it already joined, so `this.uploads` and `consume_uploads()` stay true across
+  processes. N workers on one host need no extra infrastructure; several hosts need a shared
+  volume as `UPLOAD_TEMP_DIR`, or external uploads. `docs/features/chunked-uploads.md`
+- `WIREVIEW["SIGNING_KEY"]` and `WIREVIEW["SIGNING_KEY_FALLBACKS"]`, defaulting to Django's
+  `SECRET_KEY` and `SECRET_KEY_FALLBACKS` (`#83`). With the chunk endpoint stateless, the
+  upload token is the only proof a chunk has, and its key's lifetime is the upload's lifetime.
+  A dedicated key separates that from Django's: rotating `SECRET_KEY` no longer kills uploads
+  in flight or the `data-state` of open pages (14 days), and rotating wireview's key does not
+  end everyone's session. Both are read at call time, so a rotation needs no restart. A key
+  set to the empty string silently means `SECRET_KEY`, so `manage.py check` reports it as
+  `wireview.W009`
+- `manage.py wireview_upload_gc` removes chunk files older than
+  `WIREVIEW["UPLOAD_TOKEN_MAX_AGE"]` (`--dry-run` to look first). A stateless endpoint accepts
+  chunks for a component that is already gone until its token expires, and a worker that dies
+  takes its cancel path with it, so what can be left behind is bounded by that age. The write
+  path also sweeps once every ten minutes per process, so a deployment without cron is still
+  bounded
 - `{% live_component_block "Name" id="..." %}…{% endlive_component %}` passes slots to a
   LiveComponent (GAP-036, `#82`): `{% fill %}`, the default slot and `let:` bindings work as
   in `{% component_block %}`. Fills rendered in the parent's pass reach the child without the
@@ -45,6 +69,17 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- The chunk endpoint returned 500 on every request in a project with
+  `DATABASES[...]["ATOMIC_REQUESTS"] = True` (`#83`). `UploadView.post` is async and Django's
+  handler refuses to wrap an async view in a transaction, raising before the view runs. The
+  endpoint opens no database connection at all, so `wireview.urls` now registers it as
+  non-atomic on every configured alias. Only the two-worker end-to-end test found this: every
+  other test called the view directly, walking past the handler that raises
+- A chunk was never checked against any size limit (`#83`). The endpoint wrote whatever
+  arrived and only stopped calling the upload incomplete once `client_size` bytes had come in,
+  so a client that under-reported its size could write past the limit its entry was validated
+  against. The signed token now carries the size the entry was accepted with, and a chunk that
+  would exceed it is refused with 413 and the partial file dropped
 - `WIREVIEW["UPLOAD_TEMP_DIR"]` had no effect (`#84`). It was exported and documented, but
   `create_temp_file()` never read it, so every chunked upload went to the system temp
   directory whatever the setting said. It is now read on each call, the directory is created

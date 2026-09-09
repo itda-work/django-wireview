@@ -1,8 +1,21 @@
 """HTTP upload endpoint for wireview file uploads.
 
-This module provides the HTTP endpoint for chunked file uploads.
-Binary data is sent here (not through WebSocket JSON).
-Progress updates are sent back to the client via the channel layer.
+Chunks arrive over HTTP, not over the WebSocket, so nothing routes them to the
+worker that holds the connection. Since #83 nothing has to: this endpoint keeps
+no per-upload state. The signed token is the whole authority -- it says which
+connection, component, upload and entry the chunk belongs to, how many bytes may
+arrive and what the finished file has to look like -- and the bytes go to a path
+computed from that identity (``features/upload_store.py``). Any worker reaches
+the same verdict and the same file.
+
+What the endpoint cannot do from here is keep the *component's* view of the
+upload true, because that object lives on the owning worker. So it publishes what
+it did to the connection's progress group, and the consumer applies it to the
+entry (see ``WireviewConsumer.upload_progress`` and friends). Before #83 the two
+were the same object in the same process and this happened for free.
+
+The one thing that does not follow from the token is a shared chunk directory;
+``docs/DEPLOYMENT.md`` says what that means for one host and for several.
 """
 
 from __future__ import annotations
@@ -18,92 +31,23 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
 from .core.transport import get_broker
+from .features import upload_store
 from .features.uploads import (
-    UploadRegistry,
-    UploadStatus,
-    create_temp_file,
+    UploadToken,
     upload_group_name,
     validate_magic_bytes,
+    validate_upload_token,
 )
 
 log = logging.getLogger("wireview.uploads")
-
-# Process-local index of upload registries, keyed by (connection_id, component_id).
-# The consumer populates it when a component with uploads joins.
-#
-# Component ids are only unique within a page and templates commonly fix them
-# (``{% component 'X' id="bookmarks" %}``), so the owning connection is part of the
-# key: two connections on the same page get their own entry, and neither can drop
-# or clean up the other's (#77). The index is still per process; a chunk has to
-# reach the process that holds the WebSocket (see docs/DEPLOYMENT.md).
-_upload_registries: dict[tuple[str, str], UploadRegistry] = {}
-
-
-def register_upload_registry(connection_id: str, component_id: str, registry: UploadRegistry) -> None:
-    """Register a component's upload registry for HTTP access.
-
-    Called by the consumer when a component with uploads joins.
-
-    Args:
-        connection_id: ID of the connection that owns the component
-        component_id: ID of the component
-        registry: The component's upload registry
-    """
-    _upload_registries[(connection_id, component_id)] = registry
-    log.debug(f"Registered upload registry for component {component_id} of connection {connection_id}")
-
-
-def unregister_upload_registry(connection_id: str, component_id: str) -> None:
-    """Unregister one component's upload registry and clean up its temp files.
-
-    Called when a component leaves, is retired, or is replaced by a re-join. Only
-    the owning connection's entry is touched.
-
-    Args:
-        connection_id: ID of the connection that owns the component
-        component_id: ID of the component
-    """
-    registry = _upload_registries.pop((connection_id, component_id), None)
-    if registry is not None:
-        registry.cleanup_all()
-        log.debug(f"Unregistered upload registry for component {component_id} of connection {connection_id}")
-
-
-def unregister_connection_uploads(connection_id: str) -> None:
-    """Release every upload registry a connection owns and clean up its temp files.
-
-    The single cleanup entry point for a connection going away: the consumer calls
-    it on disconnect, and discarding a connection on logout (#58) will reuse it.
-
-    Args:
-        connection_id: ID of the connection whose uploads should be released
-    """
-    keys = [key for key in _upload_registries if key[0] == connection_id]
-    for key in keys:
-        registry = _upload_registries.pop(key)
-        registry.cleanup_all()
-    if keys:
-        log.debug(f"Released {len(keys)} upload registries of connection {connection_id}")
-
-
-def get_upload_registry(connection_id: str, component_id: str) -> UploadRegistry | None:
-    """Get a component's upload registry.
-
-    Args:
-        connection_id: ID of the connection that owns the component
-        component_id: ID of the component
-
-    Returns:
-        The registry if found, None otherwise
-    """
-    return _upload_registries.get((connection_id, component_id))
 
 
 @method_decorator(csrf_exempt, name="dispatch")
 class UploadView(View):
     """HTTP endpoint for chunked file uploads.
 
-    Handles binary chunk uploads and sends progress via channel layer.
+    Handles binary chunk uploads and publishes progress to the connection's
+    group, where the worker that owns the WebSocket picks it up.
 
     URL: /__wireview_upload__/<connection_id>/<component_id>/<upload_name>/
 
@@ -125,7 +69,6 @@ class UploadView(View):
         upload_name: str,
     ) -> JsonResponse:
         """Handle chunk upload."""
-        # Get headers with validation
         token = request.headers.get("X-Upload-Token", "")
         entry_ref = request.headers.get("X-Entry-Ref", "")
 
@@ -144,137 +87,112 @@ class UploadView(View):
 
         log.debug(f"Upload chunk {chunk_index + 1}/{total_chunks} for {component_id}/{upload_name}/{entry_ref}")
 
-        # Get registry
-        registry = get_upload_registry(connection_id, component_id)
-        if not registry:
-            log.warning(f"Upload registry not found for component {component_id}")
-            return JsonResponse({"error": "Component not found"}, status=404)
-
-        # Validate token
-        validation = registry.validate_token(token)
-        if not validation:
+        # The token, and only the token. Consulting an index here is what made a
+        # chunk that reached the wrong worker a 404 before #83.
+        validated = validate_upload_token(token)
+        if validated is None:
             log.warning(f"Invalid upload token for {component_id}/{upload_name}")
             return JsonResponse({"error": "Invalid token"}, status=403)
 
-        conn_id, comp_id, config_name, ref = validation
-        if conn_id != connection_id or comp_id != component_id or config_name != upload_name or ref != entry_ref:
+        if (
+            validated.connection_id != connection_id
+            or validated.component_id != component_id
+            or validated.config_name != upload_name
+            or validated.ref != entry_ref
+        ):
             log.warning(f"Token mismatch for {component_id}/{upload_name}/{entry_ref}")
             return JsonResponse({"error": "Token mismatch"}, status=403)
 
-        # Get entry
-        entry = registry.get_entry(upload_name, ref)
-        if not entry:
-            log.warning(f"Upload entry not found: {upload_name}/{ref}")
-            return JsonResponse({"error": "Entry not found"}, status=404)
+        try:
+            path = upload_store.chunk_path(connection_id, component_id, upload_name, entry_ref)
+        except upload_store.InvalidConnectionId:
+            # A signed token names it, so this is not reachable from a browser;
+            # the check stays because the value becomes a directory name.
+            log.warning(f"Invalid connection id on an upload URL: {connection_id!r}")
+            return JsonResponse({"error": "Invalid connection"}, status=400)
 
-        if entry.status == UploadStatus.CANCELLED:
-            log.info(f"Upload cancelled: {upload_name}/{ref}")
+        # A cancel, a leave or a disconnect on the owning worker leaves a marker
+        # here, since it cannot reach into this process to stop the write.
+        if upload_store.is_discarded(path):
+            log.info(f"Upload cancelled: {upload_name}/{entry_ref}")
             return JsonResponse({"error": "Upload cancelled"}, status=410)
 
-        # Get chunk data
         chunk_data = request.body
+        written = upload_store.size_of(path)
 
-        # Initialize temp file on first chunk
-        if entry.temp_path is None:
-            entry.temp_path = create_temp_file(ref)
-            entry.status = UploadStatus.UPLOADING
-            log.debug(f"Created temp file: {entry.temp_path}")
+        if written == 0:
+            # First chunk of this entry: a cheap moment to collect what a worker
+            # that died mid-upload left behind, throttled per process.
+            await sync_to_async(upload_store.sweep_if_due)()
 
-        # Write chunk to temp file
-        await self._write_chunk(entry.temp_path, chunk_data)
+        if written + len(chunk_data) > validated.max_bytes:
+            # The size the client announced is what the entry was validated
+            # against, so exceeding it means the announcement was a lie. Before
+            # #83 nothing checked the size here at all.
+            log.warning(f"Upload exceeds its announced size: {upload_name}/{entry_ref}")
+            upload_store.discard(path)
+            await self._publish(validated, "upload.error", errors=["Upload exceeds the announced file size"])
+            return JsonResponse({"error": "Upload too large"}, status=413)
 
-        # The write is the only await between the check above and here, so a cancel
-        # or a leave can land in the middle of it. Checking again keeps a chunk that
-        # raced a cancel from leaving the temp file behind (#77).
-        if entry.status == UploadStatus.CANCELLED:
-            log.info(f"Upload cancelled mid-chunk: {upload_name}/{ref}")
-            entry.cleanup()
+        written = await self._write_chunk(path, chunk_data)
+
+        # The write is the only await between the check above and here, so a
+        # cancel can land in the middle of it. Checking again keeps a chunk that
+        # raced a cancel from leaving the file behind (#77, now across processes).
+        if upload_store.is_discarded(path):
+            log.info(f"Upload cancelled mid-chunk: {upload_name}/{entry_ref}")
+            upload_store.remove(path)
             return JsonResponse({"error": "Upload cancelled"}, status=410)
 
-        entry.bytes_received += len(chunk_data)
-        entry.chunk_count += 1
-        entry.progress = min(99, int((entry.bytes_received / entry.client_size) * 100))
+        progress = min(99, int((written / max(1, validated.max_bytes)) * 100))
+        await self._publish(validated, "upload.progress", progress=progress, bytes_received=written)
 
-        # Send progress via channel layer
-        await self._send_progress(connection_id, upload_name, entry)
-
-        # Check if this is the last chunk
         is_last_chunk = chunk_index >= total_chunks - 1
+        complete = is_last_chunk or written >= validated.max_bytes
 
-        if is_last_chunk or entry.bytes_received >= entry.client_size:
-            # Validate magic bytes
-            ext = Path(entry.client_name).suffix.lower()
-            if not validate_magic_bytes(entry.temp_path, ext):
-                entry.status = UploadStatus.ERROR
-                entry.errors.append("File content doesn't match file type")
-                await self._send_error(connection_id, upload_name, entry)
-                return JsonResponse(
-                    {"error": "Invalid file content", "progress": entry.progress},
-                    status=400,
-                )
+        if complete:
+            if not await sync_to_async(validate_magic_bytes)(path, validated.extension):
+                upload_store.discard(path)
+                await self._publish(validated, "upload.error", errors=["File content doesn't match file type"])
+                return JsonResponse({"error": "Invalid file content", "progress": progress}, status=400)
 
-            entry.status = UploadStatus.COMPLETED
-            entry.progress = 100
-            log.info(f"Upload complete: {upload_name}/{ref} ({entry.bytes_received} bytes, {entry.chunk_count} chunks)")
+            progress = 100
+            await self._publish(validated, "upload.completed", bytes_received=written, path=str(path))
+            log.info(f"Upload complete: {upload_name}/{entry_ref} ({written} bytes)")
 
         return JsonResponse(
             {
                 "status": "ok",
-                "progress": entry.progress,
-                "bytes_received": entry.bytes_received,
-                "complete": entry.status == UploadStatus.COMPLETED,
+                "progress": progress,
+                "bytes_received": written,
+                "complete": complete,
             }
         )
 
     @staticmethod
     @sync_to_async
-    def _write_chunk(path: Path, data: bytes) -> None:
-        """Write chunk data to temp file."""
-        with open(path, "ab") as f:
-            f.write(data)
+    def _write_chunk(path: Path, data: bytes) -> int:
+        """Append chunk data to the entry's file, returning its new size."""
+        return upload_store.append_chunk(path, data)
 
     @staticmethod
-    async def _send_progress(connection_id: str, upload_name: str, entry: "UploadEntry") -> None:
-        """Send progress update via channel layer."""
+    async def _publish(token: UploadToken, message_type: str, **payload: t.Any) -> None:
+        """Tell the owning worker what happened to one of its uploads.
 
-        # One group per connection, subscribed once in the consumer's connect().
-        # The client routes the update by upload name and ref, both in the payload.
-        group_name = upload_group_name(connection_id)
-
+        One group per connection, subscribed once in the consumer's ``connect()``.
+        The component id travels in the payload because the owner has to find the
+        entry this concerns, not just forward a number to the browser.
+        """
         try:
             await get_broker().publish(
-                group_name,
+                upload_group_name(token.connection_id),
                 {
-                    "type": "upload.progress",
-                    "upload": upload_name,
-                    "ref": entry.ref,
-                    "progress": entry.progress,
-                    "bytes_received": entry.bytes_received,
+                    "type": message_type,
+                    "component": token.component_id,
+                    "upload": token.config_name,
+                    "ref": token.ref,
+                    **payload,
                 },
             )
         except Exception as e:
-            log.warning(f"Failed to send upload progress: {e}")
-
-    @staticmethod
-    async def _send_error(connection_id: str, upload_name: str, entry: "UploadEntry") -> None:
-        """Send error via channel layer."""
-
-        group_name = upload_group_name(connection_id)
-
-        try:
-            await get_broker().publish(
-                group_name,
-                {
-                    "type": "upload.error",
-                    "upload": upload_name,
-                    "ref": entry.ref,
-                    "errors": entry.errors,
-                },
-            )
-        except Exception as e:
-            log.warning(f"Failed to send upload error: {e}")
-
-
-# Type hint for UploadEntry
-if t.TYPE_CHECKING:
-    from .features.uploads import UploadEntry
+            log.warning(f"Failed to publish {message_type}: {e}")

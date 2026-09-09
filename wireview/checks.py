@@ -299,14 +299,62 @@ def check_upload_temp_dir(app_configs, **kwargs) -> list[CheckMessage]:
             return flag("is a directory wireview cannot write to")
         return []
 
-    # create_temp_file() makes the directory on first use, so the question is
-    # whether the nearest existing ancestor lets it.
+    # The chunk store is created on first use, so the question is whether the
+    # nearest existing ancestor lets it.
     ancestor = path.parent
     while not ancestor.exists() and ancestor != ancestor.parent:
         ancestor = ancestor.parent
     if not ancestor.is_dir() or not os.access(ancestor, os.W_OK | os.X_OK):
         return flag("does not exist and cannot be created")
     return []
+
+
+def check_signing_key(app_configs, **kwargs) -> list[CheckMessage]:
+    """W009: ``SIGNING_KEY`` is set to something that silently means "unset".
+
+    ``Signer(key=...)`` treats a falsy key as absent and reaches for
+    ``SECRET_KEY``, so an environment variable nobody set leaves wireview signing
+    with Django's key while the settings file says otherwise. Nothing breaks --
+    which is the problem: rotating ``SECRET_KEY`` then invalidates every upload
+    in flight and the ``data-state`` of every open page, exactly what the
+    dedicated key was meant to prevent (#83).
+
+    Fallbacks without a key are the same mistake read the other way: they only
+    take effect on the key wireview actually signs with.
+    """
+    from . import settings as wireview_settings
+
+    configured = wireview_settings.SIGNING_KEY
+    fallbacks = wireview_settings.SIGNING_KEY_FALLBACKS
+    messages: list[CheckMessage] = []
+
+    if configured is not None and not configured:
+        messages.append(
+            Warning(
+                f"WIREVIEW['SIGNING_KEY'] = {configured!r} is empty, so wireview signs with SECRET_KEY.",
+                hint=(
+                    "An empty value usually means an environment variable nobody set. Django's "
+                    "signers treat a falsy key as absent, so this reads as 'use SECRET_KEY' "
+                    "rather than as an error. Set a key, or drop the setting to say so on purpose."
+                ),
+                id="wireview.W009",
+            )
+        )
+
+    if configured is None and fallbacks:
+        messages.append(
+            Warning(
+                "WIREVIEW['SIGNING_KEY_FALLBACKS'] is set while WIREVIEW['SIGNING_KEY'] is not.",
+                hint=(
+                    "Fallbacks are checked against the key wireview signs with, which without "
+                    "SIGNING_KEY is Django's SECRET_KEY. Set SIGNING_KEY too, or use "
+                    "SECRET_KEY_FALLBACKS instead."
+                ),
+                id="wireview.W009",
+            )
+        )
+
+    return messages
 
 
 def register_checks() -> None:
@@ -318,4 +366,5 @@ def register_checks() -> None:
     register(check_hmin, WIREVIEW_TAG)
     register(check_on_mount_hooks, WIREVIEW_TAG)
     register(check_upload_temp_dir, WIREVIEW_TAG)
+    register(check_signing_key, WIREVIEW_TAG)
     register(check_channel_layer, WIREVIEW_TAG, deploy=True)

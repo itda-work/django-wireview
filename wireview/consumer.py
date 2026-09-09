@@ -2,6 +2,7 @@ import logging
 import secrets
 import typing as t
 
+from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
 from django.core.signing import BadSignature, SignatureExpired
@@ -12,6 +13,7 @@ from wireview.component import Component
 from . import serializer
 from .core.state import LegacyState, StateMismatch, unsign_state
 from .core.transport import ChannelsOutbound, Outbound
+from .features import upload_store
 from .features.uploads import upload_group_name
 from .live_component import LiveComponent
 from .repository import ComponentRepository
@@ -151,8 +153,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             log.debug("Re-join of %s: retiring the previous instance", component_id)
             removed = self.repo.remove(component_id)
             await self._call_leaving(removed)
-            for gone in removed:
-                await self._unregister_upload_registry(gone.id)
+            self._release_uploads(removed)
         try:
             component = await self.repo.join(
                 name,
@@ -164,8 +165,8 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             if id := decoded_state.get("id"):
                 await self.component_remove(id)
         else:
-            # Register upload registry if component has uploads
-            await self._register_upload_registry(component)
+            # Hear this connection's upload progress, if the component has uploads
+            await self._subscribe_upload_group(component)
             await self.send_render(component)
 
             # Call params_changed if URL has params (initial load)
@@ -184,14 +185,13 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         """The client saw a component disappear from the DOM.
 
         The component and every LiveComponent nested under it get their
-        ``leaving()`` hook, their upload registries are released, and the
-        subscriptions the connection no longer needs are dropped.
+        ``leaving()`` hook, their uploads are ended, and the subscriptions the
+        connection no longer needs are dropped.
         """
         log.debug(f"<<< LEAVE {id}")
         removed = self.repo.remove(id)
         await self._call_leaving(removed)
-        for component_id in [id, *(c.id for c in removed if c.id != id)]:
-            await self._unregister_upload_registry(component_id)
+        self._release_uploads(removed)
         await self.after_mutation_chores()
 
     async def _call_leaving(self, components: list[Component]) -> None:
@@ -385,8 +385,15 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             await self.send_render(component)
 
     async def command_upload_complete(self, id: str, name: str, ref: str):
-        """Handle upload completion notification from client."""
-        from .features.uploads import UploadOp, UploadStatus
+        """Handle upload completion notification from client.
+
+        The client sends this after the chunk endpoint told it the upload was
+        complete, and the endpoint may be on another worker, so this arrives
+        without any ordering relative to the ``upload.completed`` the endpoint
+        published. Neither is trusted on its own: the entry is promoted only if
+        the bytes are actually on disk (#83).
+        """
+        from .features.uploads import UploadOp
 
         log.debug(f"<<< UPLOAD-COMPLETE {id} {name} {ref}")
 
@@ -399,27 +406,40 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             return
 
         entry = registry.get_entry(name, ref)
-        if entry:
-            entry.status = UploadStatus.COMPLETED
-            entry.progress = 100
+        if not entry:
+            return
 
-            # Notify client
+        if not self._promote_completed(entry):
+            log.warning(f"Upload {name}/{ref} reported complete, but its file is not: {entry.temp_path}")
             await self.send_command(
                 "upload_op",
                 UploadOp(
-                    op="complete",
+                    op="error",
                     upload=name,
                     ref=ref,
+                    data={"errors": ["Upload did not finish on the server"]},
                 ).to_payload(),
             )
-
-            # Call optional callback on component
-            if hasattr(component, "on_upload_complete"):
-                callback = getattr(component, "on_upload_complete")
-                await callback(name, entry)
-
-            # Re-render
             await self.send_render(component)
+            return
+
+        # Notify client
+        await self.send_command(
+            "upload_op",
+            UploadOp(
+                op="complete",
+                upload=name,
+                ref=ref,
+            ).to_payload(),
+        )
+
+        # Call optional callback on component
+        if hasattr(component, "on_upload_complete"):
+            callback = getattr(component, "on_upload_complete")
+            await callback(name, entry)
+
+        # Re-render
+        await self.send_render(component)
 
     # Component commands
 
@@ -548,10 +568,23 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         await self.send_render(component)
 
     # Channel layer messages for uploads
+    #
+    # The chunk endpoint holds no state (#83), so these are not only relayed to
+    # the browser: they are how the entry on this worker learns what happened to
+    # it. Without that, ``this.uploads`` and ``consume_uploads()`` would describe
+    # an upload that never started.
 
     async def upload_progress(self, event: dict[str, t.Any]):
         """Handle progress from channel layer (sent by HTTP upload view)."""
+        from .features.uploads import UploadStatus
+
         log.debug(f">>> UPLOAD-PROGRESS {event['upload']} {event['ref']} {event['progress']}%")
+        entry = self._find_upload_entry(event)
+        if entry is not None:
+            entry.bytes_received = event.get("bytes_received", entry.bytes_received)
+            entry.progress = event["progress"]
+            if entry.status is UploadStatus.PENDING:
+                entry.status = UploadStatus.UPLOADING
         await self.send_command(
             "upload_op",
             {
@@ -563,59 +596,130 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             },
         )
 
+    async def upload_completed(self, event: dict[str, t.Any]):
+        """Handle the last chunk landing, wherever it landed.
+
+        State only. The browser is told an upload finished by its own
+        ``upload_complete`` command, which also runs ``on_upload_complete`` --
+        firing it from here as well would run it twice.
+        """
+        log.debug(f">>> UPLOAD-COMPLETED {event['upload']} {event['ref']}")
+        entry = self._find_upload_entry(event)
+        if entry is not None:
+            entry.bytes_received = event.get("bytes_received", entry.bytes_received)
+            self._promote_completed(entry)
+
     async def upload_error(self, event: dict[str, t.Any]):
         """Handle error from channel layer (sent by HTTP upload view)."""
+        from .features.uploads import UploadStatus
+
         log.debug(f">>> UPLOAD-ERROR {event['upload']} {event['ref']}")
+        errors = event.get("errors", [])
+        entry = self._find_upload_entry(event)
+        if entry is not None:
+            entry.status = UploadStatus.ERROR
+            entry.errors.extend(e for e in errors if e not in entry.errors)
         await self.send_command(
             "upload_op",
             {
                 "op": "error",
                 "upload": event["upload"],
                 "ref": event["ref"],
-                "errors": event.get("errors", []),
+                "errors": errors,
             },
         )
 
-    # Upload registry management
+    def _find_upload_entry(self, event: dict[str, t.Any]):
+        """The entry a broker message is about, or None if it is not ours.
 
-    async def _register_upload_registry(self, component) -> None:
-        """Register a component's upload registry for HTTP access, if it has one.
+        A message names its component because one connection's group carries
+        every upload it owns.
+        """
+        component = self.repo.get(event.get("component", ""))
+        registry = getattr(component, "_upload_registry", None) if component else None
+        if registry is None:
+            return None
+        return registry.get_entry(event["upload"], event["ref"])
+
+    @staticmethod
+    def _promote_completed(entry) -> bool:
+        """Mark an entry complete, but only with the bytes to back it up.
+
+        Both the client's ``upload_complete`` and the endpoint's
+        ``upload.completed`` claim an upload finished, and they can arrive in
+        either order or, for the first, without the second ever arriving. The
+        file itself settles it.
+
+        Returns:
+            True if the entry is complete (now or already), False if the bytes
+            are not there
+        """
+        from .features.uploads import UploadStatus
+
+        if entry.status in (UploadStatus.COMPLETED, UploadStatus.CONSUMED):
+            return True
+        if entry.status in (UploadStatus.CANCELLED, UploadStatus.ERROR):
+            return False
+        if entry.external:
+            # The bytes went straight to S3/GCS; no worker ever saw them, and the
+            # presigned PUT succeeding is the only evidence there is.
+            entry.status = UploadStatus.COMPLETED
+            entry.progress = 100
+            return True
+        path = entry.temp_path
+        if path is None:
+            return False
+        try:
+            written = path.stat().st_size
+        except OSError:
+            return False
+        if written < entry.client_size:
+            return False
+        entry.bytes_received = written
+        entry.status = UploadStatus.COMPLETED
+        entry.progress = 100
+        return True
+
+    # Upload lifecycle
+
+    async def _subscribe_upload_group(self, component) -> None:
+        """Join this connection's upload progress group, if the component uploads.
 
         Only ``allow_upload()`` creates a registry, so a page without uploads costs
-        nothing here. The first registry also joins this connection's progress
-        group: one group per connection, joined lazily so a no-upload page adds no
-        ``group_add`` on the channel layer. The group is deliberately outside
-        ``self.subscriptions`` -- that set mirrors what the components ask for, and
-        this one lives as long as the connection does.
+        nothing here. One group per connection, joined lazily so a no-upload page
+        adds no ``group_add`` on the channel layer. The group is deliberately
+        outside ``self.subscriptions`` -- that set mirrors what the components ask
+        for, and this one lives as long as the connection does.
+
+        Nothing is registered anywhere: since #83 the chunk endpoint finds an
+        upload by computing where it lives, not by looking it up in this process.
         """
-        from .views import register_upload_registry
+        if getattr(component, "_upload_registry", None) and not self._upload_group_subscribed:
+            await self.outbound.subscribe(upload_group_name(self.connection_id))
+            self._upload_group_subscribed = True
 
-        registry = getattr(component, "_upload_registry", None)
-        if registry:
-            if not self._upload_group_subscribed:
-                await self.outbound.subscribe(upload_group_name(self.connection_id))
-                self._upload_group_subscribed = True
-            register_upload_registry(self.connection_id, component.id, registry)
+    @staticmethod
+    def _release_uploads(components: list[Component]) -> None:
+        """End the uploads of components that just left, and drop their files.
 
-    async def _unregister_upload_registry(self, component_id: str) -> None:
-        """Release one component's upload registry, under this connection's key.
-
-        Scoped to the owner, so a component leaving on one connection cannot drop
-        another connection's registry or delete its temp files (#77).
+        Each entry leaves a cancellation marker rather than only losing its file:
+        a chunk of it may be in flight on another worker, which has no other way
+        to learn that the component is gone (#83).
         """
-        from .views import unregister_upload_registry
-
-        unregister_upload_registry(self.connection_id, component_id)
+        for component in components:
+            registry = getattr(component, "_upload_registry", None)
+            if registry:
+                registry.cleanup_all()
 
     async def _release_connection_uploads(self) -> None:
-        """Release every upload registry this connection owns and drop its group.
+        """End every upload this connection owns and drop its group.
 
         The single cleanup entry point for the connection going away: disconnect
-        calls it, and discarding a connection on logout (#58) will reuse it.
+        calls it, and discarding a connection on logout (#58) will reuse it. The
+        connection's whole chunk directory goes, marker included, so a chunk that
+        was in flight on another worker finds nowhere to write.
         """
-        from .views import unregister_connection_uploads
-
-        unregister_connection_uploads(self.connection_id)
+        await sync_to_async(upload_store.discard_connection)(self.connection_id)
         if self._upload_group_subscribed:
             await self.outbound.unsubscribe(upload_group_name(self.connection_id))
             self._upload_group_subscribed = False
@@ -701,8 +805,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
 
         batch = repo.take_lifecycle(component.id)
         await self._call_leaving(batch.retired)
-        for gone in batch.retired:
-            await self._unregister_upload_registry(gone.id)
+        self._release_uploads(batch.retired)
         for child in batch.new:
             child.wire.enter_pending_mode()
             try:
@@ -716,8 +819,8 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
                 child.wire.has_joined = True
             # joined() is where allow_upload() runs, so a LiveComponent's registry
             # only exists from here on. Without this a nested component's uploads
-            # were never reachable over HTTP (#77).
-            await self._register_upload_registry(child)
+            # were never heard from (#77).
+            await self._subscribe_upload_group(child)
         for child, props in batch.updates:
             child.wire.enter_pending_mode()
             try:

@@ -94,6 +94,10 @@ class ChatInput(PresenceMixin, Component):
 - 진행 중 항목은 `this.uploads.<name>`으로 읽는다. 취소는 `await self.cancel_upload(name, ref)`.
 - 청크 업로드는 WebSocket이 아니라 HTTP 엔드포인트를 쓴다. 프로젝트 URLconf에
   `path("", include("wireview.urls"))`를 넣지 않으면 업로드만 조용히 404가 난다.
+- 워커가 여럿이어도 스티키 라우팅은 필요 없다. 대신 워커들이 청크 저장소
+  (`WIREVIEW["UPLOAD_TEMP_DIR"]`, 미설정이면 시스템 temp — 한 호스트면 이미 공유)와 서명 키를
+  공유해야 한다. 여러 호스트라면 공유 볼륨을 지정하거나 external 업로드를 쓴다:
+  https://github.com/itda-work/django-wireview/blob/main/docs/features/chunked-uploads.md
 - S3·GCS 직행은 `external=` 콜백으로 presigned URL을 돌려준다:
   https://github.com/itda-work/django-wireview/blob/main/docs/features/external-uploads.md
 - 상세: https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/08-file-uploads.md

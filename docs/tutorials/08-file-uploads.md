@@ -298,9 +298,9 @@ def is_safe_filename(self, name: str) -> bool:
 | 무엇 | 모양 |
 |------|------|
 | HTTP 엔드포인트 | `/__wireview_upload__/<connection_id>/<component_id>/<upload_name>/` |
-| 업로드 토큰 (서명 대상) | `connection_id:component_id:upload_name:ref` (salt `wireview.upload`, 유효기간 `UPLOAD_TOKEN_MAX_AGE`) |
-| 진행률 통지 그룹 | `wireview_upload_<connection_id>` — 연결마다 하나, 첫 레지스트리가 등록될 때 가입 |
-| 레지스트리 인덱스 | `(connection_id, component_id)` |
+| 업로드 토큰 | `connection_id`·`component_id`·`upload_name`·`ref`에 더해 허용 크기와 확장자를 서명한 객체 (salt `wireview.upload`, 유효기간 `UPLOAD_TOKEN_MAX_AGE`) |
+| 진행률 통지 그룹 | `wireview_upload_<connection_id>` — 연결마다 하나, 업로드가 있는 첫 컴포넌트가 join할 때 가입 |
+| 청크 파일 | `<UPLOAD_TEMP_DIR 또는 시스템 temp>/wireview-uploads/<connection_id>/<digest>.part` |
 
 엔드포인트는 서버가 `config` 업로드 op으로 클라이언트에 보내 준다. **경로를 직접 적어 두지
 않았다면 앱에서 고칠 것은 없다.**
@@ -309,27 +309,30 @@ def is_safe_filename(self, name: str) -> bool:
 
 | 시점 | 일어나는 일 |
 |------|-------------|
-| join | 컴포넌트에 레지스트리가 있으면 그 연결의 키로 등록한다. 이때 진행 통지 그룹에도 가입한다(연결당 한 번) |
-| LiveComponent 자식의 joined | 부모 렌더 중에 자식의 레지스트리도 같은 방식으로 등록된다 |
-| leave / 재join으로 교체 | 그 컴포넌트의 레지스트리만 해제하고 임시 파일을 지운다 |
-| disconnect | 그 연결의 레지스트리를 **전부** 해제하고, 가입했다면 통지 그룹에서 탈퇴한다 |
-| 취소 뒤 도착한 청크 | 410. 청크를 쓰는 도중에 취소가 나도 임시 파일을 남기지 않는다 |
-| leave 뒤 도착한 청크 | 레지스트리가 없으므로 404 |
+| join | 컴포넌트에 업로드가 있으면 이 연결이 진행 통지 그룹에 가입한다(연결당 한 번) |
+| LiveComponent 자식의 joined | 부모 렌더 중에 자식의 업로드도 같은 방식으로 준비된다 |
+| leave / 재join으로 교체 | 그 컴포넌트의 엔트리마다 취소 마커(`.cancelled`)를 남기고 청크 파일을 지운다 |
+| disconnect | 연결 디렉터리에 `.gone`을 남기고 그 안의 청크 파일을 전부 지운 뒤, 가입했다면 통지 그룹에서 탈퇴한다 |
+| 취소 뒤 도착한 청크 | 410. 청크를 쓰는 도중에 취소가 나도 파일을 남기지 않는다 |
+| leave·disconnect 뒤 도착한 청크 | 410. 마커는 그 청크를 쓰는 워커가 다른 프로세스여도 보인다 |
 
-키에 소유자가 들어가므로 **한 연결의 leave가 다른 연결의 레지스트리나 임시 파일을 건드릴 수
-없다.** 토큰도 마찬가지다. A에서 받은 토큰을 B의 URL로 보내면 서명은 검증되지만 소유자가 URL과
-달라 403이다.
+경로와 토큰 양쪽에 소유자가 들어가므로 **한 연결의 leave가 다른 연결의 파일을 건드릴 수 없다.**
+A에서 받은 토큰을 B의 URL로 보내면 서명은 검증되지만 소유자가 URL과 달라 403이다.
 
-### 아직 남은 것
+### 워커가 여럿일 때
 
-- **정상 disconnect 없이 프로세스가 죽으면** 인메모리 레지스트리는 프로세스와 함께 사라지고
-  임시 파일은 남는다. 청소 데몬은 없다. 운영 환경에서는 임시 디렉터리 정리를 OS나 배포
-  스크립트에 맡긴다. 임시 파일이 어디에 쌓이는지는 `WIREVIEW["UPLOAD_TEMP_DIR"]`가 정한다
-  (`None`이면 시스템 임시 디렉터리). 설정된 경로는 없으면 만들어지고, 쓸 수 없으면
-  `ImproperlyConfigured`로 실패한다 — 공유 볼륨을 지정했는데 말없이 로컬 디스크를 쓰는 일은
-  없다. `manage.py check`의 `wireview.W008`이 이 설정을 미리 확인한다.
-- **인덱스는 여전히 프로세스 단위다.** 청크 HTTP 요청은 그 WebSocket을 쥔 프로세스에 도달해야
-  한다. 다중 프로세스 배포는 `docs/DEPLOYMENT.md`를 본다.
+청크 HTTP 요청은 아무 워커에나 닿아도 된다([#83](https://github.com/itda-work/django-wireview/issues/83)).
+엔드포인트는 업로드 상태를 하나도 들고 있지 않고, 서명된 토큰만으로 판단해 토큰에서 계산한 경로에
+쓴다. 대신 워커들이 **청크 저장소**(`WIREVIEW["UPLOAD_TEMP_DIR"]`, `None`이면 시스템 임시
+디렉터리 — 한 호스트라면 이미 공유다)와 **서명 키**를 공유해야 한다.
+
+- 설정된 경로는 없으면 만들어지고, 쓸 수 없으면 `ImproperlyConfigured`로 실패한다 — 공유 볼륨을
+  지정했는데 말없이 로컬 디스크를 쓰는 일은 없다. `manage.py check`의 `wireview.W008`이 미리 잡는다.
+- **정상 disconnect 없이 프로세스가 죽으면** 청크 파일이 남는다. 남는 양은 `UPLOAD_TOKEN_MAX_AGE`로
+  묶이고, 쓰기 경로가 프로세스당 10분에 한 번 청소한다. cron으로 돌리려면
+  `manage.py wireview_upload_gc`.
+- 서버 쪽 동작 전체는 [docs/features/chunked-uploads.md](../features/chunked-uploads.md), 배포
+  조건은 `docs/DEPLOYMENT.md`.
 
 ## 다중 업로드 필드
 

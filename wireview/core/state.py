@@ -7,7 +7,7 @@ state to the class it was issued for::
 
     {"v": 1, "n": "<component FQN>", "d": {<state>}}
 
-``TimestampSigner(salt="wireview.state.v1")`` signs it, so the token also
+A ``TimestampSigner`` on the ``wireview.state.v1`` salt signs it, so the token also
 carries an issue time and ``unsign_state`` rejects anything older than
 ``STATE_MAX_AGE``. Binding the class matters because the name travels beside
 the token in the ``join`` frame: without it a signature issued for one class
@@ -33,9 +33,10 @@ import logging
 import time
 import typing as t
 
-from django.core.signing import BadSignature, SignatureExpired, Signer, TimestampSigner
+from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 
 from .. import settings
+from .signing import get_signer
 
 if t.TYPE_CHECKING:
     from .component import Component
@@ -57,6 +58,10 @@ ENVELOPE_VERSION = 1
 #: Salt for the state signer. Namespaced by version so a future envelope
 #: cannot be verified with this one's key material.
 STATE_SALT = "wireview.state.v1"
+
+#: Salt the pre-v1 formats were signed under: they used a bare ``Signer()``, whose
+#: default salt is its own dotted path.
+LEGACY_STATE_SALT = "django.core.signing.Signer"
 
 
 class StateMismatch(BadSignature):
@@ -98,7 +103,7 @@ class _JSONStringSerializer:
 
 
 def _signer() -> TimestampSigner:
-    return TimestampSigner(salt=STATE_SALT)
+    return get_signer(STATE_SALT)
 
 
 def _envelope_json(name: str, state_json: str) -> str:
@@ -144,10 +149,13 @@ def _decode_legacy(value: str) -> dict[str, t.Any] | None:
     format.
     """
     try:
+        # Pre-v1 tokens carry no salt, but they do use wireview's key: a project
+        # that moves to a dedicated SIGNING_KEY moves its old pages with it.
+        legacy_signer = get_signer(LEGACY_STATE_SALT, timestamp=False)
         if value.startswith("{"):
-            decoded = json.loads(Signer().unsign(value))
+            decoded = json.loads(legacy_signer.unsign(value))
         else:
-            decoded = Signer().unsign_object(value, serializer=_JSONStringSerializer)
+            decoded = legacy_signer.unsign_object(value, serializer=_JSONStringSerializer)
     except (BadSignature, ValueError):
         return None
     return decoded if isinstance(decoded, dict) else None

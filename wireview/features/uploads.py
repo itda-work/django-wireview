@@ -6,18 +6,16 @@ Supports chunked uploads, progress tracking, and drag-and-drop.
 
 from __future__ import annotations
 
-import os
 import re
 import secrets
-import tempfile
 import typing as t
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
-from django.core.exceptions import ImproperlyConfigured
-from django.core.signing import TimestampSigner
+from ..core.signing import get_signer
+from . import upload_store
 
 # Magic bytes for file type validation
 MAGIC_BYTES: dict[str, list[bytes]] = {
@@ -73,6 +71,142 @@ def validate_magic_bytes(file_path: Path, extension: str) -> bool:
         return False
 
     return any(header.startswith(sig) for sig in signatures)
+
+
+#: Salt for the upload token. Separate from the state salt, so neither token can
+#: be presented as the other even though both ride on the same key.
+UPLOAD_SALT = "wireview.upload"
+
+#: Version stored in the token. v2 carries what the stateless HTTP endpoint needs
+#: to judge a chunk without consulting any registry (#83).
+TOKEN_VERSION = 2
+
+
+@dataclass(frozen=True)
+class UploadToken:
+    """What a signed upload token says, once it verifies.
+
+    This is the whole authority behind a chunk. The HTTP endpoint holds no
+    per-upload state -- that is what lets any worker serve the upload -- so
+    everything it has to decide comes from here: which upload the chunk belongs
+    to (and therefore which file it lands in), how many bytes may arrive, and
+    which file type the finished bytes have to look like.
+
+    Attributes:
+        connection_id: Connection that owns the upload
+        component_id: Component that declared it
+        config_name: Name given to ``allow_upload()``
+        ref: Entry reference
+        max_bytes: Size the client announced at registration. The endpoint
+            refuses to write past it and calls the upload complete on reaching it
+        extension: Lowercased suffix of the client filename, for the magic-byte
+            check on the last chunk
+    """
+
+    connection_id: str
+    component_id: str
+    config_name: str
+    ref: str
+    max_bytes: int
+    extension: str = ""
+
+
+def sign_upload_token(
+    *,
+    connection_id: str,
+    component_id: str,
+    config_name: str,
+    ref: str,
+    max_bytes: int,
+    extension: str = "",
+) -> str:
+    """Sign one upload's identity for the HTTP endpoint.
+
+    Signed as an object rather than a delimited string: component ids and upload
+    names come from application templates, and a colon in either would make a
+    packed string ambiguous exactly where it decides who may write what.
+
+    Returns:
+        The token the client sends back in ``X-Upload-Token``
+    """
+    return get_signer(UPLOAD_SALT).sign_object(
+        {
+            "v": TOKEN_VERSION,
+            "conn": connection_id,
+            "comp": component_id,
+            "cfg": config_name,
+            "ref": ref,
+            "max": int(max_bytes),
+            "ext": extension,
+        },
+        compress=True,
+    )
+
+
+def validate_upload_token(token: str, max_age: int | None = None) -> UploadToken | None:
+    """Verify an upload token, on any worker.
+
+    Verification needs the signing key and nothing else, which is the point: the
+    worker holding the WebSocket and the worker receiving the chunk reach the
+    same verdict without sharing state.
+
+    Args:
+        token: Value of the ``X-Upload-Token`` header
+        max_age: Maximum token age in seconds (default ``UPLOAD_TOKEN_MAX_AGE``)
+
+    Returns:
+        The token's contents, or None if it does not verify
+    """
+    from .. import settings as wireview_settings
+
+    if max_age is None:
+        max_age = wireview_settings.UPLOAD_TOKEN_MAX_AGE
+    signer = get_signer(UPLOAD_SALT)
+    try:
+        payload = signer.unsign_object(token, max_age=max_age)
+    except Exception:
+        return _validate_legacy_token(signer, token, max_age)
+
+    if not isinstance(payload, dict) or payload.get("v") != TOKEN_VERSION:
+        return None
+    try:
+        return UploadToken(
+            connection_id=str(payload["conn"]),
+            component_id=str(payload["comp"]),
+            config_name=str(payload["cfg"]),
+            ref=str(payload["ref"]),
+            max_bytes=int(payload["max"]),
+            extension=str(payload.get("ext", "")),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _validate_legacy_token(signer: t.Any, token: str, max_age: int) -> UploadToken | None:
+    """Accept the pre-#83 ``conn:comp:config:ref`` token during a rolling deploy.
+
+    A page rendered by an older worker holds tokens in the old shape, and its
+    uploads should finish rather than fail on the way to the new one. The old
+    token says nothing about size, so the global limit applies, and nothing about
+    the filename, so the magic-byte check has no extension to go on -- both
+    weaker than v2, which is why this is a transition, not a supported format.
+    """
+    from .. import settings as wireview_settings
+
+    try:
+        data = signer.unsign(token, max_age=max_age)
+    except Exception:
+        return None
+    parts = data.split(":")
+    if len(parts) != 4:
+        return None
+    return UploadToken(
+        connection_id=parts[0],
+        component_id=parts[1],
+        config_name=parts[2],
+        ref=parts[3],
+        max_bytes=wireview_settings.UPLOAD_MAX_FILE_SIZE,
+    )
 
 
 class UploadStatus(str, Enum):
@@ -205,6 +339,8 @@ class UploadEntry:
         progress: Upload progress (0-100)
         errors: List of error messages
         upload_token: Signed token for HTTP upload
+        external: Whether the bytes go straight to external storage (S3, GCS),
+            in which case no chunk file exists on any worker
         temp_path: Temporary file path
         bytes_received: Number of bytes received
         chunk_count: Number of chunks received
@@ -223,6 +359,7 @@ class UploadEntry:
 
     # Server-side tracking
     upload_token: str = ""
+    external: bool = False
     temp_path: Path | None = None
     bytes_received: int = 0
     chunk_count: int = 0
@@ -245,12 +382,24 @@ class UploadEntry:
         }
 
     def cleanup(self) -> None:
-        """Clean up temporary file if it exists."""
-        if self.temp_path and self.temp_path.exists():
-            try:
-                self.temp_path.unlink()
-            except OSError:
-                pass
+        """Drop the bytes of an upload that ended on its own terms.
+
+        For an upload nobody is still writing to -- consumed, or abandoned by a
+        context manager. Use ``discard()`` when a writer in another process has
+        to be told to stop.
+        """
+        if self.temp_path:
+            upload_store.forget(self.temp_path)
+
+    def discard(self) -> None:
+        """Cancel the upload and leave the marker that stops a writer elsewhere.
+
+        The chunk endpoint holds no state, so deleting the file cannot cancel
+        anything: the next chunk would recreate it. The marker is what crosses
+        the process boundary (#83).
+        """
+        if self.temp_path:
+            upload_store.discard(self.temp_path)
 
 
 @dataclass
@@ -311,7 +460,6 @@ class UploadRegistry:
         self.connection_id = connection_id
         self.configs: dict[str, UploadConfig] = {}
         self.entries: dict[str, dict[str, UploadEntry]] = {}
-        self._signer = TimestampSigner(salt="wireview.upload")
 
     def allow_upload(self, config: UploadConfig) -> None:
         """Register an upload configuration.
@@ -361,12 +509,37 @@ class UploadRegistry:
             entry.status = UploadStatus.ERROR
 
         # Generate signed token. The owner is part of the signed data, so a token
-        # issued for one connection cannot be replayed against another (#77).
-        token_data = f"{self.connection_id}:{self.component_id}:{config_name}:{entry.ref}"
-        entry.upload_token = self._signer.sign(token_data)
+        # issued for one connection cannot be replayed against another (#77), and
+        # the size and file type ride along so the stateless chunk endpoint can
+        # judge a chunk without reaching for this registry (#83).
+        entry.upload_token = sign_upload_token(
+            connection_id=self.connection_id,
+            component_id=self.component_id,
+            config_name=config_name,
+            ref=entry.ref,
+            max_bytes=min(entry.client_size, config.max_file_size),
+            extension=Path(entry.client_name).suffix.lower(),
+        )
+
+        # The path is computed, not allocated: the worker that receives the chunks
+        # derives the same one from the token without asking anyone (#83). An
+        # external upload never passes through a worker at all, so it has none.
+        entry.external = config.external is not None
+        if not entry.external:
+            entry.temp_path = self.chunk_path(config_name, entry.ref)
 
         self.entries[config_name][entry.ref] = entry
         return entry.upload_token
+
+    def chunk_path(self, config_name: str, ref: str) -> Path:
+        """Where one entry's bytes land.
+
+        ``allow_upload`` hands the client an endpoint under ``connection_id or
+        "-"``, so a component rendered outside a connection (``mount()``) uses
+        the same stand-in here. Nothing can upload to it -- its token carries an
+        empty owner, which no URL matches -- but the path stays well-formed.
+        """
+        return upload_store.chunk_path(self.connection_id or "-", self.component_id, config_name, ref)
 
     def get_entry(self, config_name: str, ref: str) -> UploadEntry | None:
         """Get an entry by config name and ref.
@@ -393,11 +566,18 @@ class UploadRegistry:
         entry = self.get_entry(config_name, ref)
         if entry:
             entry.status = UploadStatus.CANCELLED
-            entry.cleanup()
+            entry.discard()
         return entry
 
-    def validate_token(self, token: str, max_age: int | None = None) -> tuple[str, str, str, str] | None:
-        """Validate upload token.
+    @staticmethod
+    def validate_token(token: str, max_age: int | None = None) -> tuple[str, str, str, str] | None:
+        """Validate an upload token and return who it was issued to.
+
+        Kept as a convenience for callers that only want the identity; the HTTP
+        endpoint uses ``validate_upload_token`` directly, because it also needs
+        the size limit and the file type the token carries. Static because
+        verification never depended on this registry -- which is what makes the
+        chunk endpoint work on any worker (#83).
 
         Args:
             token: Signed token to validate
@@ -406,18 +586,10 @@ class UploadRegistry:
         Returns:
             Tuple of (connection_id, component_id, config_name, ref) if valid, None otherwise
         """
-        from .. import settings as wireview_settings
-
-        if max_age is None:
-            max_age = wireview_settings.UPLOAD_TOKEN_MAX_AGE
-        try:
-            data = self._signer.unsign(token, max_age=max_age)
-            parts = data.split(":")
-            if len(parts) == 4:
-                return (parts[0], parts[1], parts[2], parts[3])
-        except Exception:
-            pass
-        return None
+        validated = validate_upload_token(token, max_age)
+        if validated is None:
+            return None
+        return (validated.connection_id, validated.component_id, validated.config_name, validated.ref)
 
     def get_entries(self, config_name: str) -> list[UploadEntry]:
         """Get all entries for a config.
@@ -442,10 +614,18 @@ class UploadRegistry:
         return [e for e in self.get_entries(config_name) if e.status == UploadStatus.COMPLETED]
 
     def cleanup_all(self) -> None:
-        """Clean up all temporary files."""
+        """End every upload this component owns and drop its files.
+
+        Called when the component leaves or its connection goes away. Entries the
+        application already consumed have nothing left to write, so they are
+        cleared rather than marked cancelled.
+        """
         for entries in self.entries.values():
             for entry in entries.values():
-                entry.cleanup()
+                if entry.status is UploadStatus.CONSUMED:
+                    entry.cleanup()
+                else:
+                    entry.discard()
 
 
 class ConsumedUpload:
@@ -570,11 +750,10 @@ class ConsumedUpload:
 #: Longest ``ref`` the server accepts. ``generate_ref()`` produces 23 characters.
 REF_MAX_LENGTH = 64
 
-#: A ``ref`` is a client-supplied string that ends up in a temp filename, so it
-#: is restricted to characters that carry no meaning to a filesystem.
+#: A ``ref`` is a client-supplied string. It no longer reaches a filename -- the
+#: chunk path hashes it (#83) -- but it is still an identity the server hands back
+#: out, so it is held to characters that mean nothing to a filesystem or a URL.
 REF_RE = re.compile(rf"[A-Za-z0-9_-]{{1,{REF_MAX_LENGTH}}}")
-
-_REF_UNSAFE_RE = re.compile(r"[^A-Za-z0-9_-]")
 
 
 def is_valid_ref(ref: str) -> bool:
@@ -584,26 +763,9 @@ def is_valid_ref(ref: str) -> bool:
         ref: Candidate reference, as received from the client
 
     Returns:
-        True if the reference is safe to use as a filename component
+        True if the reference is safe to hand back out and to hash into a path
     """
     return isinstance(ref, str) and REF_RE.fullmatch(ref) is not None
-
-
-def sanitize_ref(ref: str) -> str:
-    """Reduce ``ref`` to characters that mean nothing to a filesystem.
-
-    ``UploadRegistry.add_entry`` already refuses anything ``is_valid_ref`` does
-    not accept; this is the second line of defence for the one call that puts a
-    ref into a path, so a new registration path cannot reintroduce traversal.
-
-    Args:
-        ref: Reference to sanitize
-
-    Returns:
-        A non-empty string of ``[A-Za-z0-9_-]``, at most ``REF_MAX_LENGTH`` long
-    """
-    cleaned = _REF_UNSAFE_RE.sub("_", ref)[:REF_MAX_LENGTH]
-    return cleaned or "ref"
 
 
 def generate_ref() -> str:
@@ -613,48 +775,3 @@ def generate_ref() -> str:
         Unique reference string
     """
     return f"upload-{secrets.token_urlsafe(12)}"
-
-
-def create_temp_file(ref: str) -> Path:
-    """Create a temporary file for upload.
-
-    The directory is ``WIREVIEW["UPLOAD_TEMP_DIR"]``, read on every call so a
-    test or a runtime change takes effect, and created if it does not exist yet.
-    A configured directory that cannot be used raises instead of falling back to
-    the system temp dir: an operator who pointed uploads at a shared volume must
-    not silently get local disk instead.
-
-    An empty value is the unset value, not a path. ``Path("")`` is the current
-    working directory, so an empty environment variable would otherwise drop
-    every chunk into the deployed source tree without a word.
-
-    Args:
-        ref: Upload reference (used in filename)
-
-    Returns:
-        Path to the created temp file
-
-    Raises:
-        ImproperlyConfigured: If ``UPLOAD_TEMP_DIR`` is set but unusable
-    """
-    from .. import settings as wireview_settings
-
-    temp_dir = wireview_settings.UPLOAD_TEMP_DIR
-    prefix = f"wireview_{sanitize_ref(ref)}_"
-
-    if not temp_dir:
-        fd, path = tempfile.mkstemp(prefix=prefix, suffix=".upload")
-        os.close(fd)
-        return Path(path)
-
-    directory = Path(temp_dir)
-    try:
-        directory.mkdir(parents=True, exist_ok=True)
-        fd, path = tempfile.mkstemp(prefix=prefix, suffix=".upload", dir=directory)
-    except OSError as e:
-        raise ImproperlyConfigured(
-            f"WIREVIEW['UPLOAD_TEMP_DIR'] = {temp_dir!r} cannot be used for upload temp files: {e}"
-        ) from e
-
-    os.close(fd)
-    return Path(path)

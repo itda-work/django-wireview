@@ -1116,6 +1116,14 @@ WIREVIEW = {
     "STATE_MAX_AGE": 14 * 24 * 3600,  # 서명 상태 유효 기간(초). 기본 14일
     "STATE_REFRESH_AFTER": None,      # 상태가 같아도 이 시간이 지나면 토큰 재발급. None이면 STATE_MAX_AGE // 2
     "STATE_ACCEPT_LEGACY": False,     # v1 봉투 이전 형식 허용(혼재 배포 구간에만)
+    # 서명 키 — docs/features/chunked-uploads.md
+    "SIGNING_KEY": None,              # None이면 Django의 SECRET_KEY. 업로드 토큰과 data-state의 수명을 분리한다
+    "SIGNING_KEY_FALLBACKS": None,    # None이면 SECRET_KEY_FALLBACKS. 자체 키를 두면 이것도 같이 둔다
+    # 청크 업로드 — docs/features/chunked-uploads.md
+    "UPLOAD_TEMP_DIR": None,          # 청크 저장소. None이면 시스템 temp. 워커들이 공유해야 한다
+    "UPLOAD_MAX_FILE_SIZE": 10 * 1024 * 1024,
+    "UPLOAD_CHUNK_SIZE": 64 * 1024,
+    "UPLOAD_TOKEN_MAX_AGE": 3600,     # 업로드 토큰 유효 기간이자 청소 기준 나이
     "AUTO_BROADCAST": AutoBroadcast(
         model=False,       # 모델 변경 시 브로드캐스트
         model_pk=False,    # 채널에 PK 포함

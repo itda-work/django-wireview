@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     "examples.slots",
     "examples.livecomp",
     "testproj.bookmarks",
+    "testproj.uploadprobe",
     "wireview",
     "channels",
     "daphne",

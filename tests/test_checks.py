@@ -19,6 +19,7 @@ from wireview.checks import (
     check_client_bundle,
     check_component_name_collisions,
     check_hmin,
+    check_signing_key,
     check_upload_temp_dir,
     iter_component_classes,
     iter_exposed_handlers,
@@ -293,6 +294,49 @@ class TestUploadTempDirCheck:
         assert not target.exists()
 
 
+class TestSigningKeyCheck:
+    """W009: a key that reads as set but silently is not (#83)."""
+
+    @pytest.fixture
+    def signing(self, monkeypatch):
+        """Set WIREVIEW['SIGNING_KEY'] and its fallbacks for one test."""
+        from wireview import settings as wireview_settings
+
+        def _set(key, fallbacks=None):
+            monkeypatch.setattr(wireview_settings, "SIGNING_KEY", key)
+            monkeypatch.setattr(wireview_settings, "SIGNING_KEY_FALLBACKS", fallbacks)
+
+        return _set
+
+    def test_unset_is_silent(self, signing):
+        """Riding on SECRET_KEY is the default, not a mistake."""
+        signing(None)
+
+        assert check_signing_key(None) == []
+
+    def test_a_real_key_is_silent(self, signing):
+        signing("a-dedicated-key", ["an-older-key"])
+
+        assert check_signing_key(None) == []
+
+    def test_an_empty_key_is_flagged(self, signing):
+        """Django's signers read a falsy key as absent, so nothing would break."""
+        signing("")
+
+        messages = check_signing_key(None)
+
+        assert [m.id for m in messages] == ["wireview.W009"]
+        assert "SECRET_KEY" in messages[0].msg
+
+    def test_fallbacks_without_a_key_are_flagged(self, signing):
+        signing(None, ["an-older-key"])
+
+        messages = check_signing_key(None)
+
+        assert [m.id for m in messages] == ["wireview.W009"]
+        assert "SIGNING_KEY_FALLBACKS" in messages[0].msg
+
+
 class TestTestprojIsClean:
     """AC3: zero false positives on the project we actually ship tests for."""
 
@@ -307,3 +351,4 @@ class TestTestprojIsClean:
         assert check_client_bundle(None) == []
         assert check_hmin(None) == []
         assert check_upload_temp_dir(None) == []
+        assert check_signing_key(None) == []

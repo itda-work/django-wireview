@@ -1,13 +1,16 @@
 """Tests for Upload functionality."""
 
+import json
 import tempfile
 from pathlib import Path
 
 import pytest
 from django.core.exceptions import ImproperlyConfigured
+from django.test import AsyncRequestFactory
 
 from wireview import Component
 from wireview import settings as wireview_settings
+from wireview.features import upload_store
 from wireview.features.uploads import (
     ConsumedUpload,
     UploadConfig,
@@ -15,11 +18,19 @@ from wireview.features.uploads import (
     UploadOp,
     UploadRegistry,
     UploadStatus,
-    create_temp_file,
     generate_ref,
     validate_magic_bytes,
 )
 from wireview.testing import mount
+from wireview.views import UploadView
+
+
+@pytest.fixture
+def store(monkeypatch, tmp_path):
+    """Point the chunk store at a directory this test owns."""
+    monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(tmp_path))
+    upload_store.reset_sweep_clock()
+    return tmp_path / upload_store.STORE_DIR_NAME
 
 
 class TestUploadConfig:
@@ -496,20 +507,32 @@ class TestHelperFunctions:
         assert ref1 != ref2
 
     @pytest.mark.unit
-    def test_create_temp_file(self):
-        """create_temp_file should create a file."""
-        path = create_temp_file("test-ref")
+    def test_chunk_path_is_derived_not_allocated(self, store):
+        """The same identity gives the same path, in any process."""
+        path = upload_store.chunk_path("conn-a", "comp-1", "images", "upload-1")
 
-        try:
-            assert path.exists()
-            assert "wireview_test-ref_" in path.name
-            assert path.suffix == ".upload"
-        finally:
-            path.unlink()
+        assert path == upload_store.chunk_path("conn-a", "comp-1", "images", "upload-1")
+        assert path.parent == store / "conn-a"
+        assert path.suffix == upload_store.CHUNK_SUFFIX
+
+    @pytest.mark.unit
+    def test_chunk_path_keeps_client_input_out_of_the_name(self, store):
+        """Component id, upload name and ref are hashed, never spelled out."""
+        path = upload_store.chunk_path("conn-a", "../../etc", "images", "upload-1")
+
+        assert path.parent == store / "conn-a"
+        assert ".." not in path.name
+        assert path != upload_store.chunk_path("conn-a", "comp-1", "images", "upload-1")
+
+    @pytest.mark.unit
+    def test_a_connection_id_that_is_not_a_name_is_refused(self, store):
+        """The connection segment becomes a directory, so it is checked."""
+        with pytest.raises(upload_store.InvalidConnectionId):
+            upload_store.chunk_path("../escape", "comp-1", "images", "upload-1")
 
 
 class TestUploadTempDir:
-    """WIREVIEW['UPLOAD_TEMP_DIR'] must actually decide where the file lands.
+    """WIREVIEW['UPLOAD_TEMP_DIR'] must actually decide where the chunks land.
 
     The setting is read on every call, so a test can only reach it by patching
     the module attribute wireview.settings resolved at import time.
@@ -517,14 +540,13 @@ class TestUploadTempDir:
 
     @pytest.mark.unit
     def test_uses_configured_directory(self, monkeypatch, tmp_path):
-        """A configured directory holds the temp file."""
+        """A configured directory holds the chunk store."""
         monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(tmp_path))
 
-        path = create_temp_file("test-ref")
+        root = upload_store.store_root()
 
-        assert path.parent == tmp_path
-        assert path.exists()
-        assert "wireview_test-ref_" in path.name
+        assert root == tmp_path / upload_store.STORE_DIR_NAME
+        assert root.is_dir()
 
     @pytest.mark.unit
     def test_creates_missing_directory(self, monkeypatch, tmp_path):
@@ -532,22 +554,19 @@ class TestUploadTempDir:
         target = tmp_path / "uploads" / "chunks"
         monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(target))
 
-        path = create_temp_file("test-ref")
+        root = upload_store.store_root()
 
-        assert target.is_dir()
-        assert path.parent == target
+        assert root.is_dir()
+        assert root.parent == target
 
     @pytest.mark.unit
     def test_none_falls_back_to_system_temp(self, monkeypatch):
         """None keeps the previous behaviour: the system temp dir."""
         monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", None)
 
-        path = create_temp_file("test-ref")
+        root = upload_store.store_root()
 
-        try:
-            assert path.parent == Path(tempfile.gettempdir())
-        finally:
-            path.unlink()
+        assert root.parent == Path(tempfile.gettempdir())
 
     @pytest.mark.unit
     def test_empty_string_is_not_the_working_directory(self, monkeypatch, tmp_path):
@@ -555,13 +574,10 @@ class TestUploadTempDir:
         monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", "")
         monkeypatch.chdir(tmp_path)
 
-        path = create_temp_file("test-ref")
+        root = upload_store.store_root()
 
-        try:
-            assert path.parent == Path(tempfile.gettempdir())
-            assert list(tmp_path.iterdir()) == []
-        finally:
-            path.unlink()
+        assert root.parent == Path(tempfile.gettempdir())
+        assert list(tmp_path.iterdir()) == []
 
     @pytest.mark.unit
     def test_unusable_directory_raises(self, monkeypatch, tmp_path):
@@ -571,7 +587,7 @@ class TestUploadTempDir:
         monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(blocker / "uploads"))
 
         with pytest.raises(ImproperlyConfigured):
-            create_temp_file("test-ref")
+            upload_store.store_root()
 
 
 class TestConsumedUpload:
@@ -1002,7 +1018,7 @@ class TestConsumerUploadHandlers:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_upload_complete_handler(self):
+    async def test_upload_complete_handler(self, store):
         """command_upload_complete should mark upload as completed."""
         from unittest.mock import AsyncMock, MagicMock
 
@@ -1018,24 +1034,62 @@ class TestConsumerUploadHandlers:
         consumer.send_command = AsyncMock()
         consumer.send_render = AsyncMock()
 
-        # Add an uploading entry
+        # Add an uploading entry whose bytes are all there: the client saying an
+        # upload finished is a claim the server checks against the file (#83).
+        registry = component.component._upload_registry
+        entry = UploadEntry(
+            ref="upload-1",
+            upload_name="images",
+            client_name="photo.jpg",
+            client_size=4,
+            client_type="image/jpeg",
+        )
+        registry.add_entry("images", entry)
+        entry.status = UploadStatus.UPLOADING
+        assert entry.temp_path is not None
+        upload_store.append_chunk(entry.temp_path, b"\xff\xd8\xff\x00")
+
+        # Complete it
+        await consumer.command_upload_complete(id=component.component.id, name="images", ref="upload-1")
+
+        # Check status
+        completed = registry.get_entry("images", "upload-1")
+        assert completed.status == UploadStatus.COMPLETED
+        assert completed.progress == 100
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_upload_complete_without_the_bytes_is_an_error(self, store):
+        """A client can claim completion; only the file settles it."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from wireview.consumer import WireviewConsumer
+
+        consumer = WireviewConsumer()
+        consumer.channel_name = "test-channel"
+        consumer.channel_layer = MagicMock()
+
+        component = await mount(UploadComponent)
+        consumer.repo = MagicMock()
+        consumer.repo.get = MagicMock(return_value=component.component)
+        consumer.send_command = AsyncMock()
+        consumer.send_render = AsyncMock()
+
+        registry = component.component._upload_registry
         entry = UploadEntry(
             ref="upload-1",
             upload_name="images",
             client_name="photo.jpg",
             client_size=1024,
             client_type="image/jpeg",
-            status=UploadStatus.UPLOADING,
         )
-        component.component._upload_registry.entries["images"]["upload-1"] = entry
+        registry.add_entry("images", entry)
 
-        # Complete it
         await consumer.command_upload_complete(id=component.component.id, name="images", ref="upload-1")
 
-        # Check status
-        completed = component.component._upload_registry.get_entry("images", "upload-1")
-        assert completed.status == UploadStatus.COMPLETED
-        assert completed.progress == 100
+        assert entry.status != UploadStatus.COMPLETED
+        ops = [call.args[1] for call in consumer.send_command.call_args_list if call.args[0] == "upload_op"]
+        assert any(op["op"] == "error" for op in ops)
 
 
 # =============================================================================
@@ -1043,211 +1097,151 @@ class TestConsumerUploadHandlers:
 # =============================================================================
 
 
+def post_chunk(
+    view: UploadView,
+    connection_id: str,
+    component_id: str,
+    upload_name: str,
+    token: str,
+    data: bytes,
+    ref: str = "upload-1",
+    index: int = 0,
+    total: int = 1,
+):
+    """POST one chunk the way the client does."""
+    factory = AsyncRequestFactory()
+    request = factory.post(
+        f"/__wireview_upload__/{connection_id}/{component_id}/{upload_name}/",
+        data=data,
+        content_type="application/octet-stream",
+    )
+    request.META["HTTP_X_UPLOAD_TOKEN"] = token
+    request.META["HTTP_X_CHUNK_INDEX"] = str(index)
+    request.META["HTTP_X_TOTAL_CHUNKS"] = str(total)
+    request.META["HTTP_X_ENTRY_REF"] = ref
+    return view.post(request, connection_id, component_id, upload_name)
+
+
+def registered_entry(
+    connection_id: str = "conn-1",
+    component_id: str = "comp-1",
+    name: str = "photo.jpg",
+    size: int = 100,
+) -> tuple[UploadRegistry, UploadEntry, str]:
+    """A registry with one pending entry, as the consumer would make it."""
+    registry = UploadRegistry(component_id, connection_id=connection_id)
+    registry.allow_upload(UploadConfig(name="images", accept=[Path(name).suffix]))
+    entry = UploadEntry(
+        ref="upload-1",
+        upload_name="images",
+        client_name=name,
+        client_size=size,
+        client_type="application/octet-stream",
+    )
+    token = registry.add_entry("images", entry)
+    return registry, entry, token
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
 class TestUploadView:
-    """Test HTTP upload endpoint."""
+    """The HTTP chunk endpoint, which holds no per-upload state (#83)."""
 
-    @pytest.mark.asyncio
-    @pytest.mark.integration
-    async def test_upload_view_missing_registry(self):
-        """Upload view should return 404 for missing component."""
-        from django.test import AsyncRequestFactory
+    async def test_an_unsigned_token_is_refused(self, store):
+        """Nothing is looked up before the token: a bad one is 403, not 404."""
+        response = await post_chunk(UploadView(), "conn-1", "comp-1", "images", "invalid", b"chunk data")
 
-        from wireview.views import UploadView
+        assert response.status_code == 403
 
-        factory = AsyncRequestFactory()
-        request = factory.post(
-            "/__wireview_upload__/conn-1/nonexistent/images/",
-            data=b"chunk data",
-            content_type="application/octet-stream",
-        )
-        request.META["HTTP_X_UPLOAD_TOKEN"] = "invalid"
-        request.META["HTTP_X_CHUNK_INDEX"] = "0"
-        request.META["HTTP_X_TOTAL_CHUNKS"] = "1"
-        request.META["HTTP_X_ENTRY_REF"] = "upload-1"
+    async def test_a_token_for_another_url_is_refused(self, store):
+        """The signature verifies, but what it says must match the URL."""
+        _, _, token = registered_entry(component_id="comp-1")
 
+        response = await post_chunk(UploadView(), "conn-1", "comp-other", "images", token, b"chunk data")
+
+        assert response.status_code == 403
+
+    async def test_a_valid_chunk_is_written(self, store):
+        """The bytes land on the computed path, and the response says so."""
+        _, entry, token = registered_entry()
+
+        response = await post_chunk(UploadView(), "conn-1", "comp-1", "images", token, b"x" * 50, total=2)
+
+        assert response.status_code == 200
+        data = json.loads(response.content)
+        assert data["status"] == "ok"
+        assert data["bytes_received"] == 50
+        assert data["complete"] is False
+        assert entry.temp_path is not None and entry.temp_path.read_bytes() == b"x" * 50
+
+    async def test_no_registry_anywhere_is_still_a_completed_upload(self, store):
+        """The heart of #83: nothing in this process knows about the upload.
+
+        The registry is thrown away before the chunk arrives, which is what a
+        worker that never held the WebSocket looks like. It used to be a 404.
+        """
+        _, entry, token = registered_entry(name="test.txt", size=10)
+        path = entry.temp_path
+        del entry
+
+        response = await post_chunk(UploadView(), "conn-1", "comp-1", "images", token, b"0123456789")
+
+        assert response.status_code == 200
+        assert json.loads(response.content)["complete"] is True
+        assert path is not None and path.read_bytes() == b"0123456789"
+
+    async def test_the_last_chunk_completes_the_upload(self, store):
+        """Completion is judged by the chunk index and the size in the token."""
+        _, entry, token = registered_entry(name="test.txt", size=10)
         view = UploadView()
-        response = await view.post(request, "conn-1", "nonexistent", "images")
 
-        assert response.status_code == 404
+        first = await post_chunk(view, "conn-1", "comp-1", "images", token, b"01234", index=0, total=2)
+        second = await post_chunk(view, "conn-1", "comp-1", "images", token, b"56789", index=1, total=2)
 
-    @pytest.mark.asyncio
-    @pytest.mark.integration
-    async def test_upload_view_invalid_token(self):
-        """Upload view should return 403 for invalid token."""
-        from django.test import AsyncRequestFactory
+        assert json.loads(first.content)["complete"] is False
+        assert json.loads(second.content)["complete"] is True
+        assert json.loads(second.content)["progress"] == 100
 
-        from wireview.views import UploadView, register_upload_registry
+    async def test_a_chunk_past_the_announced_size_is_refused(self, store):
+        """The size the entry was validated against is enforced on the wire.
 
-        # Register a valid registry
-        registry = UploadRegistry("comp-123", connection_id="conn-1")
-        registry.allow_upload(UploadConfig(name="images"))
-        register_upload_registry("conn-1", "comp-123", registry)
+        Before #83 the endpoint never checked a chunk against any limit; it only
+        stopped calling the upload incomplete once enough bytes had arrived.
+        """
+        _, entry, token = registered_entry(name="test.txt", size=10)
 
-        try:
-            factory = AsyncRequestFactory()
-            request = factory.post(
-                "/__wireview_upload__/conn-1/comp-123/images/",
-                data=b"chunk data",
-                content_type="application/octet-stream",
-            )
-            request.META["HTTP_X_UPLOAD_TOKEN"] = "invalid-token"
-            request.META["HTTP_X_CHUNK_INDEX"] = "0"
-            request.META["HTTP_X_TOTAL_CHUNKS"] = "1"
-            request.META["HTTP_X_ENTRY_REF"] = "upload-1"
+        response = await post_chunk(UploadView(), "conn-1", "comp-1", "images", token, b"x" * 11)
 
-            view = UploadView()
-            response = await view.post(request, "conn-1", "comp-123", "images")
+        assert response.status_code == 413
+        assert entry.temp_path is not None and not entry.temp_path.exists()
 
-            assert response.status_code == 403
-        finally:
-            from wireview.views import unregister_upload_registry
+    async def test_content_that_does_not_match_the_extension_is_refused(self, store):
+        """The token carries the extension, so a stateless worker can still check."""
+        _, entry, token = registered_entry(name="photo.jpg", size=4)
 
-            unregister_upload_registry("conn-1", "comp-123")
+        response = await post_chunk(UploadView(), "conn-1", "comp-1", "images", token, b"NOPE")
 
-    @pytest.mark.asyncio
-    @pytest.mark.integration
-    async def test_upload_view_valid_chunk(self):
-        """Upload view should accept valid chunks."""
-        from django.test import AsyncRequestFactory
+        assert response.status_code == 400
+        assert entry.temp_path is not None and not entry.temp_path.exists()
 
-        from wireview.views import UploadView, register_upload_registry
+    async def test_a_cancelled_upload_is_gone(self, store):
+        """A cancel leaves a marker, because the writer may be another process."""
+        registry, entry, token = registered_entry()
+        registry.cancel_entry("images", "upload-1")
 
-        # Create registry with entry
-        registry = UploadRegistry("comp-456", connection_id="conn-1")
-        registry.allow_upload(UploadConfig(name="images", accept=[".jpg"]))
+        response = await post_chunk(UploadView(), "conn-1", "comp-1", "images", token, b"chunk")
 
-        entry = UploadEntry(
-            ref="upload-1",
-            upload_name="images",
-            client_name="photo.jpg",
-            client_size=100,
-            client_type="image/jpeg",
-        )
-        token = registry.add_entry("images", entry)
-        register_upload_registry("conn-1", "comp-456", registry)
+        assert response.status_code == 410
+        assert entry.temp_path is not None and not entry.temp_path.exists()
 
-        try:
-            factory = AsyncRequestFactory()
-            request = factory.post(
-                "/__wireview_upload__/conn-1/comp-456/images/",
-                data=b"x" * 50,  # First chunk
-                content_type="application/octet-stream",
-            )
-            request.META["HTTP_X_UPLOAD_TOKEN"] = token
-            request.META["HTTP_X_CHUNK_INDEX"] = "0"
-            request.META["HTTP_X_TOTAL_CHUNKS"] = "2"
-            request.META["HTTP_X_ENTRY_REF"] = "upload-1"
+    async def test_a_gone_connection_takes_its_uploads_with_it(self, store):
+        """Disconnect marks the whole connection, not one entry at a time."""
+        _, entry, token = registered_entry()
+        assert entry.temp_path is not None
+        upload_store.append_chunk(entry.temp_path, b"x")
+        upload_store.discard_connection("conn-1")
 
-            view = UploadView()
-            response = await view.post(request, "conn-1", "comp-456", "images")
+        response = await post_chunk(UploadView(), "conn-1", "comp-1", "images", token, b"chunk")
 
-            assert response.status_code == 200
-
-            import json
-
-            data = json.loads(response.content)
-            assert data["status"] == "ok"
-            assert data["bytes_received"] == 50
-            assert entry.temp_path is not None
-            assert entry.temp_path.exists()
-        finally:
-            from wireview.views import unregister_upload_registry
-
-            unregister_upload_registry("conn-1", "comp-456")
-
-    @pytest.mark.asyncio
-    @pytest.mark.integration
-    async def test_upload_view_complete_upload(self):
-        """Upload view should mark upload as complete when all chunks received."""
-        from django.test import AsyncRequestFactory
-
-        from wireview.views import UploadView, register_upload_registry
-
-        # Create registry with entry
-        registry = UploadRegistry("comp-789", connection_id="conn-1")
-        registry.allow_upload(UploadConfig(name="images", accept=[".txt"]))
-
-        entry = UploadEntry(
-            ref="upload-1",
-            upload_name="images",
-            client_name="test.txt",
-            client_size=10,
-            client_type="text/plain",
-        )
-        token = registry.add_entry("images", entry)
-        register_upload_registry("conn-1", "comp-789", registry)
-
-        try:
-            factory = AsyncRequestFactory()
-            request = factory.post(
-                "/__wireview_upload__/conn-1/comp-789/images/",
-                data=b"0123456789",  # All data in one chunk
-                content_type="application/octet-stream",
-            )
-            request.META["HTTP_X_UPLOAD_TOKEN"] = token
-            request.META["HTTP_X_CHUNK_INDEX"] = "0"
-            request.META["HTTP_X_TOTAL_CHUNKS"] = "1"
-            request.META["HTTP_X_ENTRY_REF"] = "upload-1"
-
-            view = UploadView()
-            response = await view.post(request, "conn-1", "comp-789", "images")
-
-            assert response.status_code == 200
-
-            import json
-
-            data = json.loads(response.content)
-            assert data["complete"] is True
-            assert entry.status == UploadStatus.COMPLETED
-        finally:
-            from wireview.views import unregister_upload_registry
-
-            unregister_upload_registry("conn-1", "comp-789")
-            if entry.temp_path:
-                entry.cleanup()
-
-    @pytest.mark.asyncio
-    @pytest.mark.integration
-    async def test_upload_view_cancelled_entry(self):
-        """Upload view should return 410 for cancelled uploads."""
-        from django.test import AsyncRequestFactory
-
-        from wireview.views import UploadView, register_upload_registry
-
-        # Create registry with cancelled entry
-        registry = UploadRegistry("comp-cancelled", connection_id="conn-1")
-        registry.allow_upload(UploadConfig(name="images"))
-
-        entry = UploadEntry(
-            ref="upload-1",
-            upload_name="images",
-            client_name="photo.jpg",
-            client_size=100,
-            client_type="image/jpeg",
-            status=UploadStatus.CANCELLED,
-        )
-        token = registry.add_entry("images", entry)
-        # Manually set status after adding (since add_entry validates)
-        entry.status = UploadStatus.CANCELLED
-        register_upload_registry("conn-1", "comp-cancelled", registry)
-
-        try:
-            factory = AsyncRequestFactory()
-            request = factory.post(
-                "/__wireview_upload__/conn-1/comp-cancelled/images/",
-                data=b"chunk",
-                content_type="application/octet-stream",
-            )
-            request.META["HTTP_X_UPLOAD_TOKEN"] = token
-            request.META["HTTP_X_CHUNK_INDEX"] = "0"
-            request.META["HTTP_X_TOTAL_CHUNKS"] = "1"
-            request.META["HTTP_X_ENTRY_REF"] = "upload-1"
-
-            view = UploadView()
-            response = await view.post(request, "conn-1", "comp-cancelled", "images")
-
-            assert response.status_code == 410
-        finally:
-            from wireview.views import unregister_upload_registry
-
-            unregister_upload_registry("conn-1", "comp-cancelled")
+        assert response.status_code == 410
+        assert not entry.temp_path.exists()

@@ -29,6 +29,7 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 | 기능 | 설명 | 문서 |
 |------|------|------|
 | **File Uploads** | 청크 업로드, 진행률 표시 | [튜토리얼](../tutorials/08-file-uploads.md) |
+| **Chunked Uploads (서버)** | 무상태 청크 엔드포인트, 다중 워커, 정리와 서명 키 | [문서](./chunked-uploads.md) |
 | **External Uploads** | S3/GCS 직접 업로드 | [문서](./external-uploads.md) |
 
 ## 컴포넌트 시스템

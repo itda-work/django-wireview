@@ -9,11 +9,14 @@ DEFAULT = {
     "USE_HMIN": False,
     "BOOST_PAGES": False,
     "AUTO_BROADCAST": AutoBroadcast(),
+    # Signing (wireview.core.signing). None = Django's SECRET_KEY / SECRET_KEY_FALLBACKS
+    "SIGNING_KEY": None,
+    "SIGNING_KEY_FALLBACKS": None,
     # Upload settings
     "UPLOAD_TEMP_DIR": None,  # Where chunked uploads land. None = system temp dir; created if missing
     "UPLOAD_MAX_FILE_SIZE": 10 * 1024 * 1024,  # 10MB default
     "UPLOAD_CHUNK_SIZE": 64 * 1024,  # 64KB default
-    "UPLOAD_TOKEN_MAX_AGE": 3600,  # 1 hour
+    "UPLOAD_TOKEN_MAX_AGE": 3600,  # 1 hour. Also how long an abandoned chunk file survives a sweep
     # Debug settings for async/sync transition tracking
     "DEBUG_SYNC_TRANSITIONS": False,
     "SYNC_TRANSITION_WARNING_THRESHOLD": 2,
@@ -36,6 +39,11 @@ USE_HTML_DIFF: bool = WIREVIEW["USE_HTML_DIFF"]
 USE_HMIN: bool = WIREVIEW["USE_HMIN"]
 BOOST_PAGES: bool = WIREVIEW["BOOST_PAGES"]
 AUTO_BROADCAST: AutoBroadcast = WIREVIEW["AUTO_BROADCAST"]
+
+# Signing key material. Reached through wireview.core.signing rather than directly,
+# so that every signing site shares one policy and a rotation needs no restart.
+SIGNING_KEY: str | None = WIREVIEW["SIGNING_KEY"]
+SIGNING_KEY_FALLBACKS: list[str] | None = WIREVIEW["SIGNING_KEY_FALLBACKS"]
 
 # Upload settings
 UPLOAD_TEMP_DIR: str | None = WIREVIEW["UPLOAD_TEMP_DIR"]

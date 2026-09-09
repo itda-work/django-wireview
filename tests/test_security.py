@@ -229,33 +229,23 @@ class TestUploadHeaderSecurity:
         """Invalid chunk index should be rejected."""
         from django.test import AsyncRequestFactory
 
-        from wireview.features.uploads import UploadConfig, UploadRegistry
-        from wireview.views import UploadView, register_upload_registry
+        from wireview.views import UploadView
 
-        registry = UploadRegistry("test-comp", connection_id="conn-1")
-        registry.allow_upload(UploadConfig(name="files"))
-        register_upload_registry("conn-1", "test-comp", registry)
+        factory = AsyncRequestFactory()
+        request = factory.post(
+            "/__wireview_upload__/conn-1/test-comp/files/",
+            data=b"test",
+            content_type="application/octet-stream",
+        )
+        request.META["HTTP_X_UPLOAD_TOKEN"] = "test"
+        request.META["HTTP_X_CHUNK_INDEX"] = "invalid"  # Not a number
+        request.META["HTTP_X_TOTAL_CHUNKS"] = "1"
+        request.META["HTTP_X_ENTRY_REF"] = "ref-1"
 
-        try:
-            factory = AsyncRequestFactory()
-            request = factory.post(
-                "/__wireview_upload__/conn-1/test-comp/files/",
-                data=b"test",
-                content_type="application/octet-stream",
-            )
-            request.META["HTTP_X_UPLOAD_TOKEN"] = "test"
-            request.META["HTTP_X_CHUNK_INDEX"] = "invalid"  # Not a number
-            request.META["HTTP_X_TOTAL_CHUNKS"] = "1"
-            request.META["HTTP_X_ENTRY_REF"] = "ref-1"
+        view = UploadView()
+        response = await view.post(request, "conn-1", "test-comp", "files")
 
-            view = UploadView()
-            response = await view.post(request, "conn-1", "test-comp", "files")
-
-            assert response.status_code == 400
-        finally:
-            from wireview.views import unregister_upload_registry
-
-            unregister_upload_registry("conn-1", "test-comp")
+        assert response.status_code == 400
 
     @pytest.mark.asyncio
     @pytest.mark.integration
@@ -263,33 +253,23 @@ class TestUploadHeaderSecurity:
         """Negative chunk index should be rejected."""
         from django.test import AsyncRequestFactory
 
-        from wireview.features.uploads import UploadConfig, UploadRegistry
-        from wireview.views import UploadView, register_upload_registry
+        from wireview.views import UploadView
 
-        registry = UploadRegistry("test-comp-2", connection_id="conn-1")
-        registry.allow_upload(UploadConfig(name="files"))
-        register_upload_registry("conn-1", "test-comp-2", registry)
+        factory = AsyncRequestFactory()
+        request = factory.post(
+            "/__wireview_upload__/conn-1/test-comp-2/files/",
+            data=b"test",
+            content_type="application/octet-stream",
+        )
+        request.META["HTTP_X_UPLOAD_TOKEN"] = "test"
+        request.META["HTTP_X_CHUNK_INDEX"] = "-1"  # Negative
+        request.META["HTTP_X_TOTAL_CHUNKS"] = "1"
+        request.META["HTTP_X_ENTRY_REF"] = "ref-1"
 
-        try:
-            factory = AsyncRequestFactory()
-            request = factory.post(
-                "/__wireview_upload__/conn-1/test-comp-2/files/",
-                data=b"test",
-                content_type="application/octet-stream",
-            )
-            request.META["HTTP_X_UPLOAD_TOKEN"] = "test"
-            request.META["HTTP_X_CHUNK_INDEX"] = "-1"  # Negative
-            request.META["HTTP_X_TOTAL_CHUNKS"] = "1"
-            request.META["HTTP_X_ENTRY_REF"] = "ref-1"
+        view = UploadView()
+        response = await view.post(request, "conn-1", "test-comp-2", "files")
 
-            view = UploadView()
-            response = await view.post(request, "conn-1", "test-comp-2", "files")
-
-            assert response.status_code == 400
-        finally:
-            from wireview.views import unregister_upload_registry
-
-            unregister_upload_registry("conn-1", "test-comp-2")
+        assert response.status_code == 400
 
     @pytest.mark.asyncio
     @pytest.mark.integration
@@ -297,33 +277,23 @@ class TestUploadHeaderSecurity:
         """Chunk index >= total_chunks should be rejected."""
         from django.test import AsyncRequestFactory
 
-        from wireview.features.uploads import UploadConfig, UploadRegistry
-        from wireview.views import UploadView, register_upload_registry
+        from wireview.views import UploadView
 
-        registry = UploadRegistry("test-comp-3", connection_id="conn-1")
-        registry.allow_upload(UploadConfig(name="files"))
-        register_upload_registry("conn-1", "test-comp-3", registry)
+        factory = AsyncRequestFactory()
+        request = factory.post(
+            "/__wireview_upload__/conn-1/test-comp-3/files/",
+            data=b"test",
+            content_type="application/octet-stream",
+        )
+        request.META["HTTP_X_UPLOAD_TOKEN"] = "test"
+        request.META["HTTP_X_CHUNK_INDEX"] = "5"  # >= total_chunks
+        request.META["HTTP_X_TOTAL_CHUNKS"] = "3"
+        request.META["HTTP_X_ENTRY_REF"] = "ref-1"
 
-        try:
-            factory = AsyncRequestFactory()
-            request = factory.post(
-                "/__wireview_upload__/conn-1/test-comp-3/files/",
-                data=b"test",
-                content_type="application/octet-stream",
-            )
-            request.META["HTTP_X_UPLOAD_TOKEN"] = "test"
-            request.META["HTTP_X_CHUNK_INDEX"] = "5"  # >= total_chunks
-            request.META["HTTP_X_TOTAL_CHUNKS"] = "3"
-            request.META["HTTP_X_ENTRY_REF"] = "ref-1"
+        view = UploadView()
+        response = await view.post(request, "conn-1", "test-comp-3", "files")
 
-            view = UploadView()
-            response = await view.post(request, "conn-1", "test-comp-3", "files")
-
-            assert response.status_code == 400
-        finally:
-            from wireview.views import unregister_upload_registry
-
-            unregister_upload_registry("conn-1", "test-comp-3")
+        assert response.status_code == 400
 
 
 # =============================================================================
@@ -391,20 +361,30 @@ class TestUploadRefSecurity:
         assert registry.get_entry("files", ref) is entry
 
     @pytest.mark.unit
-    def test_create_temp_file_stays_inside_temp_dir(self, monkeypatch, tmp_path):
-        """Even called directly, create_temp_file cannot leave the temp dir."""
+    def test_a_chunk_path_stays_inside_the_store(self, monkeypatch, tmp_path):
+        """The path is computed from a hash, so no ref can climb out of it."""
         from wireview import settings as wireview_settings
-        from wireview.features.uploads import create_temp_file
+        from wireview.features import upload_store
 
         monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(tmp_path))
-        # The escape only works when the prefix's first path segment already
-        # exists as a directory, so make the attempt as favourable as possible.
-        (tmp_path / "wireview_x").mkdir()
+        expected = (tmp_path / upload_store.STORE_DIR_NAME / "conn-1").resolve()
 
         for ref in ["../../etc/x", "x/../../y", "sub/dir"]:
-            path = create_temp_file(ref)
+            path = upload_store.chunk_path("conn-1", "comp-1", "files", ref)
 
-            assert path.resolve().parent == tmp_path.resolve()
+            assert path.resolve().parent == expected
+
+    @pytest.mark.unit
+    def test_a_connection_id_cannot_climb_out_of_the_store(self, monkeypatch, tmp_path):
+        """The connection segment is a directory name, so it is not hashed."""
+        from wireview import settings as wireview_settings
+        from wireview.features import upload_store
+
+        monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(tmp_path))
+
+        for connection_id in ["../escape", "a/b", "", "."]:
+            with pytest.raises(upload_store.InvalidConnectionId):
+                upload_store.chunk_path(connection_id, "comp-1", "files", "ref-1")
 
 
 # =============================================================================
