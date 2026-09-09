@@ -1,7 +1,14 @@
 # live_session 설계 (GAP-009, #58)
 
 > 상태: 설계 초안. 2026-09-09. 구현 착수 전 합의용.
-> 선행: [#75](https://github.com/itda-work/django-wireview/issues/75) (`_on_mount`가 호출되지 않는다), [#68](https://github.com/itda-work/django-wireview/issues/68) (세션 접근)
+> 선행: [#75](https://github.com/itda-work/django-wireview/issues/75) (`_on_mount`가 호출되지 않는다),
+> [#76](https://github.com/itda-work/django-wireview/issues/76) (서명이 클래스에 묶이지 않는다),
+> [#68](https://github.com/itda-work/django-wireview/issues/68) (세션 접근)
+>
+> 셋은 실행 순서일 뿐 엄격한 직렬 의존은 아니다. #76은 봉투 버전과 발급 문맥 인터페이스만 먼저
+> 합의하면 나머지를 기다리지 않고 고칠 수 있고, #75의 호출 누락도 세션 인자 없이 먼저 고칠 수 있다.
+> 다만 **구형 서명 호환 규칙은 #76 설계 때 정해야 한다** — 보호 정책이 구형 봉투를 계속 받아들이면
+> 이 문서의 경계가 그대로 우회된다.
 
 ## 0. 먼저 확인된 사실
 
@@ -58,8 +65,10 @@ def dashboard(request):
     return render(request, "admin/dashboard.html")
 ```
 
-렌더된 페이지는 `{% wireview_header %}`가 세션 이름과 서명을 메타로 심는다. 이름은 서명되어야
-한다 — 클라이언트가 `admin`을 자칭할 수 있으면 정책 전체가 장식이 된다.
+렌더된 페이지는 `{% wireview_header %}`가 세션 이름과 서명을 메타로 심는다. 이름은 서명되어야 한다.
+다만 서명의 값은 "`admin`을 자칭하지 못하게" 하는 데 있지 않다 — 서버가 그 이름의 훅을 반드시
+실행한다면 이름을 고르는 것 자체는 인가가 아니다. 서명이 막는 것은 **정책과 컴포넌트의 짝을
+바꿔치기하는 것**이다(§3-2).
 
 ### 3-2. join이 정책을 받는다
 
@@ -96,14 +105,15 @@ boost가 링크를 가로챌 때 새 문서의 세션 이름을 비교한다. �
 구현 위치는 클릭 인터셉터가 **아니다.** 링크 클릭만 막아서는 새지 않는 곳이 없다.
 
 - 서버가 보내는 `redirect`/`push`는 `wireview.js`에서 HistoryCache를 직접 부른다.
-- `popstate`(뒤로/앞으로)는 **캐시된 body를 먼저 morph한 뒤** fetch하고, 그 캐시에는 body와
-  스크롤만 있고 head의 정책 메타가 없다.
+- `popstate`(뒤로/앞으로)는 캐시된 body의 morph를 `requestAnimationFrame`으로 **예약한 뒤**
+  fetch를 시작한다. 둘의 완료 순서는 보장되지 않는다. 그 캐시에는 body와 스크롤만 있고 head의
+  정책 메타가 없다.
 - fetch 경로도 title과 body만 반영한다. head의 메타를 갱신하지 않으면 같은 정책 안에서 이동한
   뒤의 서명 관리가 불명확해진다.
 
 따라서 검증은 **fetch 결과·history 캐시·서버 내비게이션이 합류하는 공통 지점**에 있어야 하고,
 통과 전에는 DOM 반영과 기존 컴포넌트의 `params_changed` 전파를 막아야 한다. 클릭 링크 E2E 하나로
-AC2를 증명할 수 없다 — 메타 없음, 최종 redirect 응답, popstate, 서버 push까지 덮어야 한다.
+AC5를 증명할 수 없다 — 메타 없음, 최종 redirect 응답, popstate, 서버 push까지 덮어야 한다.
 (참고로 `isStreamContainer`는 클릭 처리부가 아니라 morph의 노드 콜백에 있다.)
 
 ### 3-4. HTTP 렌더가 먼저다
@@ -124,12 +134,19 @@ JavaScript를 끈 채 GET하면 WebSocket join 없이도 초기 렌더가 응답
 받는다(`repository.py:245-270`). 기존 join 오류 경로를 halt 구현으로 재사용하면 **거절된 컴포넌트가
 계속 살아 있다.**
 
-또 `command_join`에 훅을 다는 것만으로는 부족하다. LiveComponent는 부모 렌더 **뒤** 별도 경로로
-등록되고(`repository.py:107-168`, `consumer.py:99-104`), children 복원도 별도다. 정책은 그 세 경로
-모두에 상속되어야 하고, 거절된 객체는 이벤트 대상으로 등록되지 않아야 하며, 이미 등록했다면
-자식·구독·실행 중 작업까지 되돌려야 한다.
+또 `command_join`에 훅을 다는 것만으로는 부족하고, **훅을 늦게 돌리면 이미 늦다.**
+`{% live_component %}`는 부모 템플릿을 평가하는 **도중** `repo.build_live_component()`로 자식을
+등록하고 그 자리에서 `_render()`한다(`templatetags/wireview.py:787-795`). 부모 렌더 뒤에 실행되는
+것은 joined/update 대기 큐다(`consumer.py:99-104`). 그러므로 joined 시점에 정책을 검사하는 구현은
+**거절할 자식의 HTML이 이미 부모 렌더에 실려 나간 뒤**에 검사한다. 서버 저장소에서 지워도 보낸
+출력은 회수되지 않는다.
 
-## 4. `_on_mount`와의 경계 (AC3)
+정책은 일반 join·children 복원·LiveComponent 생성·재join 네 경로 모두에 상속되어야 하고, 통과
+전에는 자식의 HTML과 상태가 밖으로 나가지 않아야 한다. 거절된 객체는 이벤트 대상으로 등록되지
+않아야 하며, 재join이라 기존 객체가 이미 있었다면 무엇을 되돌릴지(필드 변경, children 병합,
+구독, 실행 중 작업, 대기 메일) 정해야 한다 — `repository.py:82-90`은 기존 객체를 **먼저** 고친다.
+
+## 4. `_on_mount`와의 경계 (AC7)
 
 | | `_on_mount` | `live_session` |
 |---|---|---|
@@ -177,7 +194,24 @@ JavaScript를 끈 채 GET하면 WebSocket join 없이도 초기 렌더가 응답
 - AC7: `_on_mount`와의 역할 구분을 `docs/features/lifecycle-hooks.md`에 적는다(4절 표).
 - AC8: 완료 정의 준수.
 
-> 3절과 이 절은 Codex(gpt-6-astra) 리뷰(2026-09-09)로 크게 고쳤다. 초안은 위협 모델을 "세션 이름
+각 AC는 대표 테스트 하나로 축소되면 안 된다. 2라운드 리뷰가 든 예: 만료 없는 `TimestampSigner`
+(기본값은 만료를 검사하지 않는다), 기존 탭만 끊고 보관한 쿠키로 새 연결은 허용하는 구현,
+정상 내비게이션 세 경로만 시험하고 캐시 morph 예약 경쟁은 방치하는 구현 — 셋 다 위 문장을
+좁게 읽으면 통과한다. 각 AC에 붙는 구체 조건은 6-1절에 적는다.
+
+### 6-1. 각 AC가 실제로 덮어야 하는 것
+
+| AC | 빠지기 쉬운 조건 |
+|---|---|
+| AC1 | 자식 **생성**만이 아니라 재사용·update·재join에서도 정책 유지. 거절된 자식의 HTML이 부모 출력에 실리지 않음 |
+| AC2 | 비로그인뿐 아니라 **인증됐지만 인가되지 않은** 사용자(로그인한 비staff). HTTP 정책과 WS 정책이 같은 판정을 내림 |
+| AC3 | 기존 id 재join 실패 시 기존 객체의 상태·children·구독·작업·대기 메일 처리. `user_event` 외 `hook_event`·`params_changed`·업로드 경로도 거절 객체에 닿지 않음 |
+| AC4 | root와 children 각각의 버전·용도·만료·클래스·id 검증. 구형 형식으로의 fallback 차단. 인증 문맥이 다른 **정상** 봉투의 재사용 거절 |
+| AC5 | 메타 없음·구형·만료, 최종 redirect URL, 캐시 morph와 fetch의 경쟁, 같은 정책 안에서 인증만 바뀐 경우, 서버 `replace`. 검증 전 DOM 반영과 `params_changed` 전파 없음 |
+| AC6 | 기존 연결 차단만이 아니라 로그아웃 **후 새 연결**, 권한 회수, 재로그인, 익명↔로그인 전환. 세션 백엔드별 폐기 방법(signed-cookie는 서버에 폐기 기록이 없다) |
+| AC7 | 컴포넌트 훅 / HTTP 접근 정책 / 객체별 이벤트 인가 셋의 책임 구분. 정책 통과가 객체 접근 권한을 뜻하지 않음 |
+
+> 3절과 이 절은 Codex(gpt-6-astra) 리뷰 두 라운드(2026-09-09)로 크게 고쳤다. 초안은 위협 모델을 "세션 이름
 > 위조"로 잡았는데, 정상 서명 둘을 조합하는 쪽이 더 쉽고 서명 검증으로 막히지 않는다. HTTP 렌더,
 > halt의 서버 측 효과, LiveComponent 경로, 로그아웃 무효화, boost의 세 진입점은 초안에 아예
 > 없었다.
