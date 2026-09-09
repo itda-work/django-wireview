@@ -306,7 +306,16 @@ class Outcome:
 
 
 @pytest.fixture(autouse=True)
-def _templates():
+def _templates(request):
+    """The probe templates, unless a test asked for the project's own.
+
+    The override has no context processors, and the header tag reads the request
+    out of the context -- so a test that renders through a real view has to keep
+    the project's engine or it measures the override instead of the product.
+    """
+    if request.node.get_closest_marker("real_templates"):
+        yield
+        return
     with override_settings(
         TEMPLATES=[
             {
@@ -1449,3 +1458,99 @@ class TestAChildInsideASlot:
 
         assert SECRET in str(outbound.commands)
         assert calls_for("target")[:1] == ["session"], "the page's policy reached into the slot"
+
+
+# --- the same claim, driven through a real decorated view ---------------------------------------
+
+
+@pytest.mark.django_db
+@pytest.mark.real_templates
+class TestARealPageAgreesWithItself:
+    """``TestAPageAgreesWithItself`` fills the request attribute in by hand.
+
+    That checks the half after the decorator and assumes the half before it. The
+    chain that matters in production is longer -- ``@session.view`` stamps the
+    request, the header reads it, and every component's envelope is signed from
+    the repository the same request built -- and each link is separate code. So
+    this one asks a real view, over HTTP, and reads what came back.
+    """
+
+    @pytest.fixture
+    def real_pages(self):
+        """Put the fixture app's own boundaries back.
+
+        The module-wide fixture empties the registry so each test sees only what
+        it declares; these tests need what ``testproj/livesession`` declares.
+        """
+        import importlib
+
+        from testproj.livesession import live_sessions
+
+        importlib.reload(live_sessions)
+        return live_sessions
+
+    def _fetch(self, path: str) -> str:
+        from django.test import Client
+
+        client = Client()
+        response = client.get(f"/livesession/sign-in/?next={path}", follow=True)
+        assert response.status_code == 200, response.status_code
+        return response.content.decode()
+
+    def test_the_meta_and_every_token_name_the_boundary_the_view_declared(self, real_pages):
+        html = self._fetch("/livesession/staff/")
+
+        assert 'content="ls-staff"' in html, "the header published the view's boundary"
+        states = re.findall(r'data-state="([^"]+)"', html)
+        assert states, "the page rendered a component"
+        for state in states:
+            assert unsign_envelope(unescape(state), "LsStaffPanel").live_session == "ls-staff"
+
+    def test_a_page_outside_every_boundary_says_so_in_both_places(self, real_pages):
+        html = self._fetch("/livesession/public/")
+
+        assert 'name="wireview-live-session" content=""' in html
+        states = re.findall(r'data-state="([^"]+)"', html)
+        assert states
+        for state in states:
+            assert unsign_envelope(unescape(state), "LsPublicNote").live_session == ""
+
+    def test_the_protected_markup_is_absent_for_a_visitor_the_view_refuses(self, real_pages):
+        from django.test import Client
+
+        response = Client().get("/livesession/staff/")
+
+        assert response.status_code in (302, 403)
+        assert b"staff-only-payload" not in response.content
+
+
+# --- the invalidation message names something the consumer can answer ---------------------------
+
+
+def test_the_invalidation_message_names_a_handler_the_consumer_has():
+    """Channels routes a group message by its ``type`` to the method of that name.
+
+    The topic tests compare names and the close test calls the handler directly;
+    between them sits the assumption that the message and the method agree. A
+    rename on either side would leave both green and the socket open.
+    """
+    from wireview.core.live_session import invalidate_authentication
+    from wireview.core.transport import set_broker
+
+    messages: list[dict[str, t.Any]] = []
+
+    class RecordingBroker:
+        async def publish(self, topic, message):
+            messages.append(message)
+
+        async def send_to_session(self, session_id, message): ...
+
+    set_broker(RecordingBroker())
+    try:
+        invalidate_authentication(None, {AUTH_GENERATION_KEY: "g1"})
+    finally:
+        set_broker(None)
+
+    assert messages, "something was published"
+    handler = getattr(WireviewConsumer, messages[0]["type"], None)
+    assert callable(handler), f"no consumer handler named {messages[0]['type']!r}"

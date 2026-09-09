@@ -272,6 +272,9 @@ def check_live_sessions(app_configs, **kwargs) -> list[CheckMessage]:
     declared = all_live_sessions()
     messages: list[CheckMessage] = []
 
+    if declared:
+        messages.extend(_check_request_context_processor())
+
     if declared and wireview_settings.STATE_ACCEPT_LEGACY:
         messages.append(
             Warning(
@@ -321,6 +324,46 @@ def check_live_sessions(app_configs, **kwargs) -> list[CheckMessage]:
             )
 
     return messages
+
+
+def _check_request_context_processor() -> list[CheckMessage]:
+    """W010: a boundary is declared but templates cannot see the request.
+
+    ``{% wireview_header %}`` and ``{% component %}`` both read the page's
+    boundary off ``context["request"]``, which is only there when
+    ``django.template.context_processors.request`` is enabled. Without it the
+    whole feature turns itself off without a word: the header publishes an empty
+    name so the browser stops treating any navigation as a boundary crossing,
+    every component signs a state that names no boundary, and a component that
+    declared ``_live_sessions`` disappears from the page it belongs on.
+
+    The view decorator still refuses unauthorized requests, so this is not an
+    open door -- it is the rest of the boundary quietly missing.
+    """
+    from django.conf import settings as django_settings
+
+    processor = "django.template.context_processors.request"
+    offenders = [
+        engine.get("NAME") or engine.get("BACKEND", "<unnamed>")
+        for engine in getattr(django_settings, "TEMPLATES", [])
+        if engine.get("BACKEND") == "django.template.backends.django.DjangoTemplates"
+        and processor not in engine.get("OPTIONS", {}).get("context_processors", [])
+    ]
+    if not offenders:
+        return []
+    return [
+        Warning(
+            f"A live_session is declared, but {processor} is not enabled for: {', '.join(offenders)}.",
+            hint=(
+                "The template tags read the page's boundary off the request, so without this "
+                "processor the header publishes an empty name, every state is signed with no "
+                "boundary, and a component that declared _live_sessions vanishes from the page "
+                "it belongs on. Nothing raises. Add it to the engine's "
+                "OPTIONS['context_processors']."
+            ),
+            id="wireview.W010",
+        )
+    ]
 
 
 def check_upload_temp_dir(app_configs, **kwargs) -> list[CheckMessage]:

@@ -77,6 +77,13 @@ Django 인증을 거는 데코레이터**이고, 거절은 뷰가 돌기 전에 
 선언은 각 앱의 `live_sessions.py`에 둔다 — `live.py`와 같은 방식으로 앱 준비 시점에 자동
 임포트되므로 손으로 import할 필요가 없다.
 
+> **`django.template.context_processors.request`가 켜져 있어야 한다.** 템플릿 태그는 페이지의 경계를
+> `context["request"]`에서 읽는다. 이 프로세서가 없으면 **기능 전체가 말없이 꺼진다** — 헤더가 빈
+> 이름을 심어 브라우저가 어떤 이동도 경계 넘음으로 보지 않고, 모든 상태가 경계 없이 서명되며,
+> `_live_sessions`를 선언한 컴포넌트는 자기가 속한 페이지에서 사라진다. 뷰 데코레이터는 그대로
+> 동작하므로 문이 열리는 것은 아니지만, 경계의 나머지가 없어진다. `manage.py check`의
+> `wireview.W010`이 잡는다.
+
 ### `LiveSessionContext`
 
 ```python
@@ -243,7 +250,8 @@ invalidate_authentication(user, request.session)   # 그 인증 세대의 소켓
 
 ## 점검
 
-`manage.py check`가 `wireview.W010`으로 셋을 본다 — 아무도 선언하지 않은 이름을 `_live_sessions`가
+`manage.py check`가 `wireview.W010`으로 넷을 본다 — `django.template.context_processors.request`가
+꺼져 있는 경우(위), 아무도 선언하지 않은 이름을 `_live_sessions`가
 가리키는 경우(오타가 join 거절과 reload로 나타나 서명 문제처럼 보인다), 프로젝트가 경계를 선언했는데
 `_on_mount`로만 자신을 지키는 컴포넌트가 `_live_sessions`를 선언하지 않은 경우, 그리고
 `STATE_ACCEPT_LEGACY`가 경계와 함께 켜져 있는 경우(아래).

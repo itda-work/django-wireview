@@ -31,7 +31,7 @@ WARNINGS:
 | `wireview.W007` | `_on_mount`에 올린 클래스에 `on_mount`가 없거나 async가 아님 | 훅이 말없이 건너뛰어져, 인증 가드로 올린 훅이 아무것도 막지 않는다 |
 | `wireview.W008` | `UPLOAD_TEMP_DIR`이 가리키는 경로에 임시 파일을 만들 수 없음 | 설정은 첫 청크가 올 때에야 읽힌다. 기동 시에는 아무 신호가 없고, 업로드가 하나씩 `ImproperlyConfigured`로 실패한다 |
 | `wireview.W009` | `SIGNING_KEY`가 빈 문자열이거나, 키 없이 fallback만 설정됨 | `Signer(key="")`는 조용히 `SECRET_KEY`로 되돌아간다. 아무것도 깨지지 않는 것이 문제다 — `SECRET_KEY`를 돌리면 진행 중인 업로드와 열린 페이지의 `data-state`가 같이 죽는다 |
-| `wireview.W010` | `_live_sessions`가 아무도 선언하지 않은 이름을 가리키거나, 경계가 있는 프로젝트에서 `_on_mount`로만 자신을 지키는 컴포넌트가 소속을 선언하지 않거나, `STATE_ACCEPT_LEGACY`가 경계와 함께 켜져 있음 | 오타는 join 거절과 reload로 나타나 서명 문제처럼 보인다. 선언이 없는 컴포넌트는 경계 밖 페이지에서도 마운트된다. 롤아웃 플래그는 경계가 있으면 적용되지 않는데, 켜 둔 쪽은 창이 열려 있다고 믿는다 |
+| `wireview.W010` | 경계가 선언됐는데 `context_processors.request`가 꺼져 있거나, `_live_sessions`가 아무도 선언하지 않은 이름을 가리키거나, 경계가 있는 프로젝트에서 `_on_mount`로만 자신을 지키는 컴포넌트가 소속을 선언하지 않거나, `STATE_ACCEPT_LEGACY`가 경계와 함께 켜져 있음 | 프로세서가 없으면 경계가 통째로 조용히 꺼진다. 오타는 join 거절과 reload로 나타나 서명 문제처럼 보인다. 선언이 없는 컴포넌트는 경계 밖 페이지에서도 마운트된다. 롤아웃 플래그는 경계가 있으면 적용되지 않는데, 켜 둔 쪽은 창이 열려 있다고 믿는다 |
 
 전부 `Warning`이다. `manage.py check`의 기본 `--fail-level`은 `ERROR`이므로 이 검사들이
 빌드를 깨지 않는다. **오탐 하나면 팀 전체가 검사를 무시하기 시작하므로** 확신이 설 때까지
@@ -48,7 +48,13 @@ $ python manage.py check --deploy
 ?: (wireview.W006) The default channel layer is InMemoryChannelLayer.
 ```
 
-### W010이 세 가지를 보는 이유
+### W010이 네 가지를 보는 이유
+
+첫째는 전제 조건이다. 템플릿 태그는 페이지의 경계를 `context["request"]`에서 읽으므로
+`django.template.context_processors.request`가 꺼져 있으면 **기능 전체가 말없이 꺼진다** — 헤더는 빈
+이름을 심고, 모든 상태가 경계 없이 서명되고, `_live_sessions`를 선언한 컴포넌트는 자기 페이지에서
+사라진다. 페이지는 200으로 그려지고 아무것도 예외를 던지지 않는다.
+
 
 경계는 **옵트인**이다. 그 결과 실수가 두 방향으로 난다.
 

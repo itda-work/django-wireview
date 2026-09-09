@@ -69,6 +69,13 @@ The django-reactor era changelog (2.x) is preserved in
   for a component that declares no `_live_sessions` settled the connection on "no policy" and
   skipped the view's own `authorize` entirely. `wireview.W010` reports the combination.
 
+- `wireview.W010` reports a `live_session` declared without
+  `django.template.context_processors.request` (`#58`). The template tags read the page's
+  boundary off the request, so without that processor the whole feature turns itself off in
+  silence: the header publishes an empty name, every state is signed with no boundary, and a
+  component that declared `_live_sessions` vanishes from the page it belongs on. The view
+  decorator still refuses unauthorized requests, so it is not an open door -- it is the rest of
+  the boundary quietly missing, on a page that renders 200.
 - A logout names the right generation even when the request has no `request.user` (`#58`).
   `logout()` sends `user=None` in that case, and the fingerprint quietly dropped the pk, so the
   message went to a topic none of the connections it meant to retire were on. The session

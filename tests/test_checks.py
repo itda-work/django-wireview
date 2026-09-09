@@ -380,6 +380,40 @@ class TestLiveSessions:
         assert [m.id for m in messages] == ["wireview.W010"]
         assert "_live_sessions" in messages[0].msg
 
+    def test_a_boundary_without_the_request_context_processor_is_flagged(self, only, registry):
+        """The trap: everything still renders, and the boundary is simply not there."""
+        live_session_module.live_session("admin")
+        only(make_component("W10NoProcessor"))
+        engine = {
+            "BACKEND": "django.template.backends.django.DjangoTemplates",
+            "NAME": "main",
+            "OPTIONS": {"context_processors": ["django.contrib.auth.context_processors.auth"]},
+        }
+
+        with override_settings(TEMPLATES=[engine]):
+            messages = check_live_sessions(None)
+
+        assert [m.id for m in messages] == ["wireview.W010"]
+        assert "context_processors.request" in messages[0].msg
+
+    def test_the_processor_being_present_is_silent(self, only, registry):
+        live_session_module.live_session("admin")
+        only(make_component("W10WithProcessor"))
+        engine = {
+            "BACKEND": "django.template.backends.django.DjangoTemplates",
+            "OPTIONS": {"context_processors": ["django.template.context_processors.request"]},
+        }
+
+        with override_settings(TEMPLATES=[engine]):
+            assert check_live_sessions(None) == []
+
+    def test_a_project_without_boundaries_is_not_told_about_the_processor(self, only, registry):
+        only(make_component("W10NoBoundaryNoProcessor"))
+        engine = {"BACKEND": "django.template.backends.django.DjangoTemplates", "OPTIONS": {}}
+
+        with override_settings(TEMPLATES=[engine]):
+            assert check_live_sessions(None) == []
+
     def test_the_legacy_rollout_flag_is_flagged_beside_a_boundary(self, only, registry, monkeypatch):
         """The two settings cannot both be open, so saying both is worth a word."""
         monkeypatch.setattr(wireview_checks_settings, "STATE_ACCEPT_LEGACY", True)

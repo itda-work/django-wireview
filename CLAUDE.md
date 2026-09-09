@@ -137,7 +137,7 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 
 ## 함정
 
-아래 중 열 개는 `manage.py check`가 잡는다 (`wireview.W001`~`W010`, `docs/features/checks.md`).
+아래 중 열한 개는 `manage.py check`가 잡는다 (`wireview.W001`~`W010`, `docs/features/checks.md`).
 
 - **`wireview.min.js`가 없으면 페이지에서 JS가 로드되지 않는다.** clone 직후와 `wireview/static/wireview/wireview.js` 수정 후 `make build-js`.
 - **testproj의 채널 레이어는 `WIREVIEW_TEST_LAYER`가 고른다.** 기본은 `memory`(브로커 불요), `make test-e2e`와 CI는 `nats`다. E2E는 `tests/e2e.sh`가 nats-server를 직접 띄우고 끝나면 정리하므로 미리 켜 둘 필요가 없다(이미 떠 있으면 그것을 쓴다). 바꾸려면 `make test-e2e LAYER=redis` 또는 `LAYER=memory`. channels-nats는 dev extras에 있으므로 `make install`이면 들어온다.
@@ -157,6 +157,9 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 - **청크 업로드가 워커 사이에서 공유해야 하는 것은 둘뿐이다.** 청크 저장소(`UPLOAD_TEMP_DIR`, 한 호스트면 시스템 temp가 이미 공유)와 서명 키. 엔드포인트는 상태를 안 들고 있으므로 스티키 라우팅은 필요 없다. 키가 어긋나면 403, 디렉터리가 어긋나면 200을 받고도 완료되지 않는다. 상세는 `docs/features/chunked-uploads.md`.
 - **서명은 `wireview/core/signing.py`의 `get_signer(salt)`로만 한다.** `TimestampSigner(salt=...)`를 직접 만들면 `SIGNING_KEY`와 fallback을 무시해 키 로테이션이 조용히 깨진다. 서명 지점은 둘 — 업로드 토큰과 data-state.
 - **async 뷰와 `ATOMIC_REQUESTS`.** Django 핸들러는 async 뷰를 트랜잭션으로 감쌀 수 없어 뷰를 부르기 전에 500을 낸다. 업로드 엔드포인트는 `wireview/urls.py`에서 모든 alias에 `non_atomic_requests`로 등록해 피한다. 새 async 뷰를 추가하면 같은 처리가 필요하고, **뷰를 직접 호출하는 테스트는 이 실패를 못 잡는다**.
+- **live_session은 `django.template.context_processors.request`에 의존한다.** 템플릿 태그가 경계를
+  `context["request"]`에서 읽는다. 없으면 기능이 통째로 조용히 꺼진다 — 페이지는 200으로 그려지고
+  경계만 없다. `wireview.W010`이 잡는다.
 - **페이지 경계는 페이지가 선언한다.** `live_session`은 컴포넌트가 아니라 Django 뷰에 붙고
   (`@session.view`), 한 페이지·한 연결에 하나다. `authorize` 술어는 뷰(첫 바이트 전)와
   join(마운트 전) 두 곳에서 도는 **같은 함수**여야 한다 — 둘을 따로 두면 조용히 어긋난다.
