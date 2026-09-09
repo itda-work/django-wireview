@@ -829,11 +829,38 @@ class TestTheGenerationMovesExactlyWhenItShould:
             user, **{AUTH_GENERATION_KEY: "g2"}
         )
 
-    def test_it_moves_when_the_password_changes(self, user):
+    def test_it_does_not_move_when_a_password_change_keeps_the_login(self, user):
+        """``_auth_user_hash`` is deliberately not an input, and this is why.
+
+        ``update_session_auth_hash()`` moves that hash while keeping the user
+        logged in on purpose, and fires no signal. A fingerprint that followed it
+        left the socket listening on the topic it had subscribed to while the
+        eventual ``logout()`` published to the new one -- so a password change
+        made every later logout miss its own socket, on a healthy broker, every
+        time. A binding that breaks the retirement path is worth less than the
+        retirement path.
+        """
         before = self._fingerprint(user, **{AUTH_GENERATION_KEY: "g1", "_auth_user_hash": "a"})
         after = self._fingerprint(user, **{AUTH_GENERATION_KEY: "g1", "_auth_user_hash": "b"})
 
-        assert before != after
+        assert before == after
+
+    def test_an_anonymous_connection_is_not_the_user_the_session_still_names(self, user):
+        """An explicit ``AnonymousUser`` is an answer, not a missing argument.
+
+        Channels leaves a session's auth keys in place when a backend declines to
+        return the user -- an inactive account, for instance. Reading the pk out
+        of the session there would fingerprint an anonymous socket as that user.
+        """
+        session = {AUTH_GENERATION_KEY: "g1", "_auth_user_id": str(user.pk)}
+
+        assert auth_fingerprint(AnonymousUser(), session) != auth_fingerprint(user, session)
+
+    def test_a_caller_with_no_user_object_still_names_the_generation(self, user):
+        """The other side of it: ``logout()`` hands its signal ``user=None``."""
+        session = {AUTH_GENERATION_KEY: "g1", "_auth_user_id": str(user.pk)}
+
+        assert auth_fingerprint(None, session) == auth_fingerprint(user, session)
 
     def test_it_moves_between_two_users(self, user):
         other = get_user_model().objects.create_user(f"cx-other-{uuid4().hex[:8]}", password="x")
@@ -1082,6 +1109,34 @@ class TestTheEnvelopeBindsClassBoundaryAndLogin:
 
 @pytest.mark.asyncio
 class TestEnteringABoundaryRereadsTheSession:
+    async def test_the_subscription_is_installed_before_the_read(self, boundary, monkeypatch):
+        """Order, not just the pair.
+
+        Reading first and subscribing after re-opens the window the re-read was
+        added to close: a logout landing between them reaches nobody and is not
+        seen by the read either. Both orders compute the same topic, so a test
+        that only compares topics cannot tell them apart.
+        """
+        order: list[str] = []
+        original_subscribe = WireviewConsumer._subscribe_auth_topic
+        original_reload = WireviewConsumer._reload_session
+
+        async def note_subscribe(self):
+            order.append("subscribe")
+            return await original_subscribe(self)
+
+        async def note_reload(self):
+            order.append("read")
+            return await original_reload(self)
+
+        monkeypatch.setattr(WireviewConsumer, "_subscribe_auth_topic", note_subscribe)
+        monkeypatch.setattr(WireviewConsumer, "_reload_session", note_reload)
+        consumer, _ = make_consumer(boundary=boundary)
+
+        await consumer.command_join("CxOk", signed(CxOk, page=boundary, id="target"))
+
+        assert order == ["subscribe", "read"]
+
     async def test_it_happens_once_per_connection_not_once_per_join(self, boundary, monkeypatch):
         reads: list[str] = []
 
@@ -1310,6 +1365,62 @@ class TestTheInvalidationReachesTheConnection:
         assert listening_on, "the connection subscribed to something"
         assert published == listening_on, "and that is where the logout spoke"
 
+    def test_a_password_change_does_not_take_the_socket_off_the_map(self, boundary, user):
+        """The deterministic miss: ``update_session_auth_hash()`` keeps the user
+        logged in, fires no signal, and used to move the topic out from under a
+        socket that was already listening."""
+        from django.contrib.auth import login, logout, update_session_auth_hash
+        from django.contrib.sessions.backends.db import SessionStore
+
+        from wireview.core.transport import set_broker
+
+        request = RequestFactory().get("/")
+        request.session = SessionStore()
+        request.user = user
+        login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+        listening_on = self._connect(boundary, user, request.session)
+
+        user.set_password("something-else")
+        user.save()
+        update_session_auth_hash(request, user)
+
+        published: list[str] = []
+        set_broker(self._recording_broker(published))
+        try:
+            logout(request)
+        finally:
+            set_broker(None)
+
+        assert listening_on
+        assert published == listening_on, "the logout still finds the socket the password change kept"
+
+    def test_the_first_login_after_the_upgrade_retires_what_had_no_nonce(self, boundary, user):
+        """A session from before the nonce existed subscribed under the pk alone.
+
+        Skipping the publish because the key was missing left exactly the
+        connections the upgrade could not otherwise reach.
+        """
+        from django.contrib.auth import login
+        from django.contrib.sessions.backends.db import SessionStore
+
+        from wireview.core.transport import set_broker
+
+        request = RequestFactory().get("/")
+        request.session = SessionStore()
+        login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+        del request.session[AUTH_GENERATION_KEY]  # as a pre-upgrade login looks
+        listening_on = self._connect(boundary, user, request.session)
+
+        published: list[str] = []
+        set_broker(self._recording_broker(published))
+        try:
+            login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+        finally:
+            set_broker(None)
+
+        assert listening_on
+        assert published == listening_on
+
     def test_a_re_login_publishes_where_the_connection_is_listening(self, boundary, user):
         """The half that was broken: it named the generation with less than the fingerprint."""
         from django.contrib.auth import login
@@ -1408,11 +1519,14 @@ class TestAChildThatAppearsAfterTheJoin:
             outbound.commands.clear()
             CALLS.clear()
 
+            # Through the consumer's own commands, not by calling the handler and
+            # rendering by hand: the link from a command to a frame is part of what
+            # makes a late child appear, and a test that supplies that link itself
+            # keeps passing when the command stops rendering.
             if trigger == "event":
-                await consumer.repo.dispatch_event("parent", "reveal", (), {})
+                await consumer.command_user_event("parent", "reveal", {}, {})
             else:
-                await parent.params_changed({"show": "1"}, "?show=1")
-            await consumer.send_render(parent)
+                await consumer.command_params_changed({"show": "1"}, "?show=1")
         return consumer, outbound
 
     @pytest.mark.parametrize("trigger", ["event", "params"])
@@ -1618,3 +1732,45 @@ class TestTheBridgeIsCrossedOncePerInstance:
 
         assert crossings == []
         assert isinstance(repo.get("target"), plain)
+
+
+# --- what a page gaining a boundary does not retroactively cover ----------------------------------
+
+
+@pytest.mark.asyncio
+class TestABoundaryAddedLaterDoesNotReachBackwards:
+    """The server reads the boundary the *token* names, and cannot date it.
+
+    So a token issued while a page was public keeps working after the page gains
+    a policy, for as long as the token lives. That is the shape of the design --
+    the boundary travels in the envelope, and old envelopes say "none" -- and it
+    is exactly why ``_live_sessions`` exists: it is the only thing that refuses a
+    token on the component's own authority rather than the page's.
+
+    Pinned rather than fixed, because the fix would be a token that carries a
+    policy generation, and the transition procedure is cheaper. The docs say the
+    same thing in ``docs/features/live-session.md``.
+    """
+
+    async def test_a_component_that_declared_nothing_still_joins_on_an_old_token(self, user):
+        """The exposure, stated. A boundary added to the view does not reach it."""
+        old_token = signed(CxOk, page=None, id="target")
+        strict = live_session(BOUNDARY, authorize=lambda ctx: False)
+        consumer, outbound = make_consumer(user=user)
+
+        await consumer.command_join("CxOk", old_token)
+
+        assert consumer.repo.get("target") is not None
+        assert consumer.repo.live_session is None, "the token named no boundary, so neither does the socket"
+        assert strict.name == BOUNDARY
+
+    async def test_a_component_that_declared_its_session_refuses_the_same_token(self, user):
+        """And the mitigation, stated beside it."""
+        old_token = signed(CxElsewhere, page=None, id="target")
+        live_session(ELSEWHERE, authorize=lambda ctx: False)
+        consumer, outbound = make_consumer(user=user)
+
+        await consumer.command_join("CxElsewhere", old_token)
+
+        assert consumer.repo.get("target") is None
+        assert SECRET not in str(outbound.commands)

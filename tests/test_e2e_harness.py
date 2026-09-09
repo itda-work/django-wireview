@@ -78,6 +78,70 @@ def test_a_failure_inside_the_thread_reaches_the_caller(monkeypatch):
             pass
 
 
+def test_a_failure_after_startup_reaches_the_caller(started_threads):
+    """The other half: a server that came up and then fell over.
+
+    Reported on the way out rather than swallowed, so the test that was using it
+    fails instead of the next one behaving strangely.
+    """
+    with pytest.raises(AssertionError, match="fell over"):
+        with serve():
+            started_threads[0].error = RuntimeError("it fell over mid-test")
+
+
+def test_a_startup_that_never_finishes_is_cleaned_up_before_it_raises(monkeypatch):
+    """The branch the original bug lived in.
+
+    Guarding only the body left the timeout path returning a live thread and then
+    restoring settings out from under it -- and the exception it raises hides
+    that, because a suite full of green tests reports it as a warning at the end.
+    """
+    release = threading.Event()
+
+    class NeverReady(e2e_server.UvicornThread):
+        @property
+        def started(self):
+            return False
+
+        def run(self):
+            release.wait(timeout=10)
+
+        def terminate(self):
+            release.set()
+
+    built: list[NeverReady] = []
+    original_init = NeverReady.__init__
+
+    def record(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        built.append(self)
+
+    monkeypatch.setattr(NeverReady, "__init__", record)
+    monkeypatch.setattr(e2e_server, "UvicornThread", NeverReady)
+    monkeypatch.setattr(e2e_server, "STARTUP_TIMEOUT", 0.3)
+    before = settings.DEBUG
+
+    try:
+        with pytest.raises(AssertionError, match="did not start within"):
+            with serve():
+                pass
+    finally:
+        release.set()
+
+    assert settings.DEBUG == before
+    assert built and not built[0].is_alive(), "the thread was joined before the settings came back"
+
+
+def test_the_event_loop_is_closed_with_the_thread(started_threads):
+    """A joined thread is not a closed loop, and each one holds a selector."""
+    with serve():
+        pass
+
+    loop = started_threads[0].loop
+    assert loop is not None
+    assert loop.is_closed()
+
+
 def test_no_test_module_runs_a_server_thread_of_its_own():
     """Guard against a fifth copy.
 

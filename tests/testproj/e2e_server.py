@@ -64,27 +64,40 @@ class UvicornThread(threading.Thread):
         self.error: BaseException | None = None
 
     def run(self) -> None:
+        loop = None
         try:
-            self.loop = asyncio.new_event_loop()
+            loop = asyncio.new_event_loop()
+            self.loop = loop
             config = UvicornConfig(self.application, host=self.host, port=self.port, log_level="warning")
             self.server = Uvicorn(config)
             self.server.install_signal_handlers = lambda *args, **kwargs: None
-            self.loop.run_until_complete(self.server.serve(sockets=[self.sock] if self.sock else None))
+            loop.run_until_complete(self.server.serve(sockets=[self.sock] if self.sock else None))
         except BaseException as e:  # noqa: BLE001 - carried out through .error
             self.error = e
         finally:
             self.server = None
+            if loop is not None:
+                # A joined thread is not a closed loop, and an unclosed loop keeps
+                # its selector and its descriptors. One per test adds up.
+                loop.close()
 
     @property
     def started(self) -> bool:
         return self.server is not None and self.server.started
 
     def terminate(self) -> None:
-        if self.server:
-            self.server.force_exit = True
-            self.server.should_exit = True
-            if self.loop:
-                self.loop.create_task(self.server.shutdown())
+        server, loop = self.server, self.loop
+        if not server:
+            return
+        server.force_exit = True
+        server.should_exit = True
+        if loop is not None and not loop.is_closed():
+            # From another thread, which is the only place this is called from.
+            # ``create_task`` is not safe across threads; this is the way in.
+            try:
+                loop.call_soon_threadsafe(lambda: loop.create_task(server.shutdown()))
+            except RuntimeError:  # pragma: no cover - the loop closed first
+                pass
 
 
 @contextlib.contextmanager
@@ -110,17 +123,15 @@ def serve(application: t.Any = None) -> t.Iterator[str]:
     port = sock.getsockname()[1]
     thread = UvicornThread(application or get_default_application(), host, port, sock=sock)
     with override_settings(DEBUG=True), contextlib.closing(sock):
+        # Everything after ``start()`` is inside the same cleanup, the wait for
+        # startup included. Guarding only the body left the timeout path handing
+        # back a live thread and then restoring settings out from under it --
+        # the original bug, in the branch nobody was looking at.
         thread.start()
-        deadline = monotonic() + STARTUP_TIMEOUT
-        while not thread.started:
-            if thread.error is not None:
-                raise AssertionError(f"the test server did not start: {thread.error!r}")
-            if monotonic() > deadline:
-                thread.terminate()
-                raise AssertionError(f"the test server did not start within {STARTUP_TIMEOUT}s")
-            sleep(0.05)
-
         try:
+            failure = _wait_until_serving(thread)
+            if failure:
+                raise AssertionError(failure)
             yield f"http://{host}:{port}"
         finally:
             thread.terminate()
@@ -133,3 +144,15 @@ def serve(application: t.Any = None) -> t.Iterator[str]:
     assert not thread.is_alive(), "the test server did not stop"
     if thread.error is not None:
         raise AssertionError(f"the test server failed: {thread.error!r}")
+
+
+def _wait_until_serving(thread: UvicornThread) -> str:
+    """Block until the server is up. Returns why it is not, or ``""`` if it is."""
+    deadline = monotonic() + STARTUP_TIMEOUT
+    while not thread.started:
+        if thread.error is not None:
+            return f"the test server did not start: {thread.error!r}"
+        if monotonic() > deadline:
+            return f"the test server did not start within {STARTUP_TIMEOUT}s"
+        sleep(0.05)
+    return ""

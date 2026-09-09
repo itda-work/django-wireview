@@ -111,48 +111,58 @@ AnyUser = t.Union[AbstractBaseUser, AnonymousUser]
 def auth_fingerprint(user: AnyUser | None, session: t.Any) -> str:
     """Identify the authentication *generation* a state was issued under.
 
-    Three values go in, and the interesting one is the nonce.
+    Two values go in: who, and which login.
 
-    A user pk is not enough on its own -- it is the same person before and
-    after a logout -- and neither is ``_auth_user_hash``, which moves on a
-    password change but not on an ordinary logout. So ``login()`` writes a
-    fresh :data:`AUTH_GENERATION_KEY` into the session and that nonce is what
-    separates one login from the next.
+    A user pk is not enough on its own -- it is the same person before and after
+    a logout -- so ``login()`` writes a fresh :data:`AUTH_GENERATION_KEY` into
+    the session and that nonce is what separates one login from the next.
 
-    The session *key* deliberately does not go in, though it looks like the
-    obvious candidate. On the signed-cookie backend ``session_key`` is the whole
-    signed cookie, so it changes every time anything at all is written to the
-    session -- a cart, a wizard step -- and a fingerprint built on it would
-    move for reasons that have nothing to do with authentication, sending open
-    pages into reloads and pointing a later logout at a topic nobody is on.
+    Two candidates are deliberately left out, and both were tried.
 
-    A session written before this key existed has no nonce, and falls back to
-    pk plus auth hash. That still tells an anonymous connection from a logged-in
-    one, which is what a logout turns a connection into; what it cannot tell
-    apart is the same user's consecutive logins. The next ``login()`` fixes it.
+    ``session_key`` looks obvious and is wrong: on the signed-cookie backend it
+    *is* the whole signed cookie, so it changes every time anything at all is
+    written to the session -- a cart, a wizard step -- and a fingerprint built on
+    it moves for reasons that have nothing to do with authentication, sending
+    open pages into reloads and pointing a later logout at a topic nobody is on.
+
+    ``_auth_user_hash`` is wrong for a subtler reason. It moves on a password
+    change, which sounds like exactly what a generation should notice -- but
+    ``update_session_auth_hash()`` moves it while deliberately *keeping the user
+    logged in*, and fires no signal. The socket keeps listening on the topic it
+    subscribed to and the eventual ``logout()`` publishes to the new one, so a
+    password change made every later logout miss its own socket, on a healthy
+    broker, every time. A binding that breaks the retirement path is worth less
+    than the retirement path.
+
+    A session written before the nonce existed has neither, and falls back to the
+    pk alone. That still tells an anonymous connection from a logged-in one,
+    which is what a logout turns a connection into; what it cannot tell apart is
+    that user's concurrent logins, so retiring one retires them all. The first
+    ``login()`` after the upgrade ends that, and retires what came before it.
 
     Args:
-        user: the request's user, or ``None`` for a call site without one.
+        user: the request's user, or ``None`` for a call site with no user object
+            to consult -- which is what ``logout()`` hands its signal when the
+            request has no ``request.user``.
         session: a :class:`~wireview.core.session.SessionView`, a Django session
             store, a plain mapping, or ``None``.
 
     Returns:
         A short hex digest. Equal digests mean "the same login"; the value is
-        opaque and reveals neither the nonce nor the auth hash.
+        opaque and reveals neither the nonce nor the session.
     """
     view = SessionView.wrap(session)
     pk = getattr(user, "pk", None)
-    if pk is None:
-        # The session records who is logged in, and the caller does not always have
-        # the user object: ``logout()`` sends ``user=None`` when the request has no
-        # ``request.user``, and a fingerprint that quietly dropped the pk there
-        # named a different generation than the connections it meant to retire.
-        # Django stores it as a string, which is what ``str(pk)`` gives below too.
+    if user is None and pk is None:
+        # Only when there is no user object at all. An explicit ``AnonymousUser``
+        # is an answer -- the connection is not authenticated -- and reading the pk
+        # out of the session there would fingerprint an anonymous socket as the
+        # user whose keys the session still happens to hold, which is a state
+        # Channels can leave behind when a backend declines to return the user.
         pk = view.get("_auth_user_id")
     parts = [
         "" if pk is None else str(pk),
         str(view.get(AUTH_GENERATION_KEY, "")),
-        str(view.get("_auth_user_hash", "")),
     ]
     return salted_hmac(AUTH_SALT, "\x1f".join(parts), secret=signing_key(), algorithm="sha256").hexdigest()[:32]
 
@@ -427,21 +437,30 @@ def _on_user_logged_in(sender: t.Any, request: t.Any = None, user: t.Any = None,
     except Exception:  # pragma: no cover - a read-only session is not worth a 500 on login
         log.exception("Could not stamp the login generation on the session")
         return
+
+    # Logging in again without logging out first (a step-up, a re-auth) leaves the
+    # sockets of the previous generation open, and no logout will ever name them:
+    # the nonce they hold was just overwritten. Retire them here instead.
+    #
+    # This runs whether or not there *was* a nonce. A session that predates the
+    # upgrade has none, and its sockets subscribed under the pk alone; skipping
+    # them because the key was missing left exactly the connections the upgrade
+    # could not otherwise retire.
+    #
+    # The topic is computed from the session as it stands with the old value put
+    # back, not from the nonce alone: the fingerprint those sockets subscribed
+    # under was taken from a whole session, so naming it with anything less
+    # publishes somewhere nobody is listening.
+    #
+    # Django flushes the session when a *different* user logs in, so that
+    # generation is already gone by the time this runs and cannot be named.
+    # Logging out first is what retires it.
+    retired = dict(session.items())
     if previous:
-        # Logging in again without logging out first (a step-up, a re-auth) leaves
-        # the sockets of the previous generation open, and no logout will ever name
-        # them: the nonce they hold was just overwritten. Retire them here instead.
-        #
-        # The topic is computed from the session as it stands with the old nonce put
-        # back, not from the nonce alone: the fingerprint those sockets subscribed
-        # under was taken from a whole session, so naming it with anything less
-        # publishes somewhere nobody is listening.
-        #
-        # Django flushes the session when a *different* user logs in, so that nonce
-        # is already gone by the time this runs and its generation cannot be named.
-        # Logging out first is what retires it.
-        retired = dict(session.items()) | {AUTH_GENERATION_KEY: previous}
-        invalidate_authentication(user, retired, reason="logged in again")
+        retired[AUTH_GENERATION_KEY] = previous
+    else:
+        retired.pop(AUTH_GENERATION_KEY, None)
+    invalidate_authentication(user, retired, reason="logged in again")
 
 
 def _on_user_logged_out(sender: t.Any, request: t.Any = None, user: t.Any = None, **kwargs: t.Any) -> None:

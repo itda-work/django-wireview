@@ -74,6 +74,20 @@ The django-reactor era changelog (2.x) is preserved in
   for a component that declares no `_live_sessions` settled the connection on "no policy" and
   skipped the view's own `authorize` entirely. `wireview.W010` reports the combination.
 
+- The authentication generation no longer includes `_auth_user_hash` (`#58`).
+  `update_session_auth_hash()` moves that hash while deliberately keeping the user logged in,
+  and fires no signal -- so a password change moved the topic out from under a socket that was
+  already listening, and every later logout published somewhere else. On a healthy broker,
+  every time. A binding that breaks the retirement path is worth less than the retirement path.
+- Logging in retires the previous generation even when there was no nonce to name it (`#58`).
+  Sessions from before the upgrade subscribed under the pk alone, and skipping the publish
+  because the key was missing left exactly the connections the upgrade could not otherwise
+  reach.
+- An explicit `AnonymousUser` no longer takes the pk out of the session (`#58`). That fallback
+  is for a caller with no user object -- which is what `logout()` hands its signal when the
+  request has no `request.user` -- and applying it to an anonymous connection fingerprinted the
+  socket as whoever the session's leftover keys named. Channels leaves those keys in place when
+  a backend declines to return the user, an inactive account for instance.
 - `wireview.W010` reports a `live_session` declared without
   `django.template.context_processors.request` (`#58`). The template tags read the page's
   boundary off the request, so without that processor the whole feature turns itself off in
@@ -92,6 +106,9 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- The E2E harness cleans up on every exit, not just the successful one (`#58`). A startup that
+  timed out handed back a live thread and then restored settings out from under it -- the
+  original defect, in the branch nobody was looking at -- and the event loop was never closed.
 - The E2E suites share one live-server harness (`tests/testproj/e2e_server.py`), and it waits.
   Four copies of the same thread each entered a global `override_settings(DEBUG=True)` on their
   own schedule and each teardown asked the server to stop without waiting for it, so a thread
