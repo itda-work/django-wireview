@@ -233,8 +233,19 @@ class ComponentRepository:
         self.components[component.id] = component
         return component
 
-    def remove(self, id):
-        self.components.pop(id, None)
+    def remove(self, id: str) -> list[Component]:
+        """Remove a component and every LiveComponent nested under it.
+
+        Returns the removed instances, parent first, so the caller can run
+        ``leaving()`` on each. Removing an unknown id returns an empty list.
+        """
+        component = self.components.pop(id, None)
+        if component is None:
+            return []
+        removed = [component]
+        for child in self.get_live_components(id):
+            removed.extend(self.remove(child.id))
+        return removed
 
     async def dispatch_event(self, id, command, args, kwargs):
         # Security: Validate command name to prevent unauthorized method access

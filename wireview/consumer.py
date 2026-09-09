@@ -52,12 +52,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         """
         log.debug(f"<<< DISCONNECT {code}")
 
-        # Call leaving() on all registered components
-        for component in list(self.repo.components.values()):
-            try:
-                await component.leaving()
-            except Exception as e:
-                log.exception(f"Error in {component._name}.leaving(): {e}")
+        await self._call_leaving(list(self.repo.components.values()))
 
         # Cleanup subscriptions
         for channel in self.subscriptions:
@@ -116,10 +111,26 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             await self.after_mutation_chores()
 
     async def command_leave(self, id):
+        """The client saw a component disappear from the DOM.
+
+        The component and every LiveComponent nested under it get their
+        ``leaving()`` hook, their upload registries are released, and the
+        subscriptions the connection no longer needs are dropped.
+        """
         log.debug(f"<<< LEAVE {id}")
-        # Unregister upload registry
-        await self._unregister_upload_registry(id)
-        self.repo.remove(id)
+        removed = self.repo.remove(id)
+        await self._call_leaving(removed)
+        for component_id in [id, *(c.id for c in removed if c.id != id)]:
+            await self._unregister_upload_registry(component_id)
+        await self.after_mutation_chores()
+
+    async def _call_leaving(self, components: list[Component]) -> None:
+        """Run ``leaving()`` on each component, logging instead of propagating errors."""
+        for component in components:
+            try:
+                await component.leaving()
+            except Exception as e:
+                log.exception(f"Error in {component._name}.leaving(): {e}")
 
     async def command_params_changed(self, params: dict[str, str], uri: str):
         """Handle URL parameter changes from client.
