@@ -47,6 +47,11 @@ The django-reactor era changelog (2.x) is preserved in
   in that state was rendered along with the parent. Every path now treats an exception the way
   it treats a halt -- nothing rendered, nothing left in the repository -- and then lets the
   exception carry its traceback where that path already did.
+- A nested `{% component %}` crosses the sync/async bridge once per instance, not once per
+  render (`#58`). The guard that answers "already mounted" sat behind the bridge rather than in
+  front of it, so a parent inside a boundary paid ~194us per nested component on every
+  re-render. Measured: 88us with no boundary, 308us on the instance's first render inside one,
+  56us on every render after it.
 - A nested `{% component %}` runs its mount hooks on the live path too (`#58`). It used to skip
   them on the theory that the join had covered the page. The join had covered the *page*: a
   `live_session` hook meaning to refuse one nested component never ran, and the component became

@@ -1554,3 +1554,67 @@ def test_the_invalidation_message_names_a_handler_the_consumer_has():
     assert messages, "something was published"
     handler = getattr(WireviewConsumer, messages[0]["type"], None)
     assert callable(handler), f"no consumer handler named {messages[0]['type']!r}"
+
+
+# --- what the boundary costs a render ------------------------------------------------------------
+
+
+class TestTheBridgeIsCrossedOncePerInstance:
+    """A nested ``{% component %}`` mounts through a sync/async bridge, and a parent
+    re-renders far more often than it mounts.
+
+    Measured, because the claim is a performance one: the crossing costs about
+    220us, so paying it per render rather than per instance is the difference
+    between a page inside a boundary being free to re-render and not. The guard
+    that answers "already mounted" has to sit on the cheap side of the bridge --
+    ``_mount`` answers the same question from a flag, but only after the hop.
+
+    Synchronous, like the render it models: a live template pass runs inside
+    ``database_sync_to_async``, on a thread with no loop of its own, which is the
+    branch that uses ``async_to_sync``.
+    """
+
+    @pytest.fixture
+    def crossings(self, monkeypatch):
+        """Every hop into async this template pass makes, by either route."""
+        from wireview.templatetags import wireview as tags
+
+        seen: list[str] = []
+        original_bridge = tags.async_to_sync
+        original_pool = tags.ThreadPoolExecutor
+        monkeypatch.setattr(tags, "async_to_sync", lambda fn: seen.append("bridge") or original_bridge(fn))
+        monkeypatch.setattr(tags, "ThreadPoolExecutor", lambda *a, **kw: seen.append("pool") or original_pool(*a, **kw))
+        return seen
+
+    def test_a_re_render_crosses_nothing(self, boundary, crossings):
+        repo = ComponentRepository(is_live=True, live_session=boundary)
+        template = Template("{% load wireview %}{% component 'CxOk' id='target' %}")
+        context = Context({"wireview_repository": repo})
+
+        template.render(context)
+        assert len(crossings) == 1, "the first render mounts it"
+
+        template.render(context)
+        template.render(context)
+
+        assert len(crossings) == 1, "and the rest ask the flag, not the loop"
+
+    def test_a_second_instance_crosses_again(self, boundary, crossings):
+        """The control: the saving is per instance, not a global latch."""
+        repo = ComponentRepository(is_live=True, live_session=boundary)
+        for cid in ("one", "two"):
+            Template("{% load wireview %}{% component 'CxOk' id=cid %}").render(
+                Context({"wireview_repository": repo, "cid": cid})
+            )
+
+        assert len(crossings) == 2
+
+    def test_a_page_with_no_boundary_crosses_nothing_at_all(self, crossings):
+        repo = ComponentRepository(is_live=True, live_session=None)
+        plain = _component("CxCostPlain", Component)
+        Template("{% load wireview %}{% component 'CxCostPlain' id='target' %}").render(
+            Context({"wireview_repository": repo})
+        )
+
+        assert crossings == []
+        assert isinstance(repo.get("target"), plain)

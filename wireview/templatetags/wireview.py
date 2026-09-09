@@ -118,6 +118,13 @@ def _mount_in_template(component: Component, repo: ComponentRepository) -> bool:
         return False
     if not type(component)._on_mount and repo.live_session is None:
         return True
+    wire = component.wire
+    if wire.has_mounted or wire.has_joined:
+        # Already decided, and ``_mount`` would answer from the flag without
+        # awaiting anything -- but the bridge would already have been paid for by
+        # then. A parent re-renders far more often than it mounts, so the cheap
+        # question has to be asked on this side of it.
+        return not wire.mount_halted
 
     try:
         try:
