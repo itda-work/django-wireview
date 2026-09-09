@@ -120,12 +120,20 @@ def _mount_in_template(component: Component, repo: ComponentRepository) -> bool:
         return True
 
     try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        mounted = async_to_sync(component._mount)(repo.params, repo.session)
-    else:
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            mounted = pool.submit(asyncio.run, component._mount(repo.params, repo.session)).result()
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            mounted = async_to_sync(component._mount)(repo.params, repo.session)
+        else:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                mounted = pool.submit(asyncio.run, component._mount(repo.params, repo.session)).result()
+    except Exception:
+        # A crashing hook is a refusal here too, and the exception on its way out
+        # is not the cleanup. On a live render it unwinds to the join, which
+        # removes the *parent*; an instance left registered here would keep
+        # answering events for a component whose guard never finished.
+        repo.abandon(component)
+        raise
 
     if not mounted:
         repo.abandon(component)

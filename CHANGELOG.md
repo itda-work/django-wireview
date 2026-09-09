@@ -26,6 +26,21 @@ The django-reactor era changelog (2.x) is preserved in
   sockets it authenticated. `wireview.W010` reports a `_live_sessions` naming a session nobody
   declares, and a component guarded only by `_on_mount` in a project that has boundaries.
   `docs/features/live-session.md` has the whole surface.
+- A connection the session re-read refused cannot simply ask again (`#58`). The bookkeeping was
+  keyed on "have we subscribed" rather than on the re-read's verdict, so a second join skipped
+  the check the first one had failed. The re-read also kept the store it had just loaded, and a
+  backend clears the key when it finds nothing there -- which erased the key this connection got
+  from the cookie and made every later check vacuous.
+- Re-login invalidation publishes to the topic the retired connections are actually on (`#58`).
+  It named the generation with the nonce alone while those sockets had subscribed under a
+  fingerprint taken from the whole session, so the message went somewhere nobody was listening.
+- `testing.mount()` refuses what the server refuses (`#58`). It set the halt flag but left the
+  component renderable, so a unit test could show a guard letting markup through on a path where
+  the server stops it. A test helper that disagrees with the server about a boundary is worse
+  than no test.
+- A mount that raises is a refusal on the template paths too (`#58`). `{% component %}` and
+  `{% live_component %}` let the exception out without giving up the instance, so on a live
+  render it stayed registered and answering events while the join above it was torn down.
 - A mount that raises is a refusal, not a pass (`#58`). `Component._mount` used to leave
   `{"halt": True}` as the only refusal, so a hook whose authorization query failed with a
   database error left the component registered and answering events, and a LiveComponent child
@@ -61,6 +76,8 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- `wireview.testing.mount()` takes `live_session=`, so a component's boundary behaviour can be
+  unit-tested the way the rest of its lifecycle already could (`#58`).
 - `@session.view` keeps an `async def` view -- and an async class-based view -- async (`#58`).
   Django decides how to call a view by inspecting what it is handed. On a CBV the allowed path
   hid the problem, because `dispatch`'s own coroutine passed straight through; the refusal

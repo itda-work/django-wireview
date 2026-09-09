@@ -69,6 +69,9 @@ wireview/
 
 tests/
 ├── test_*.py              라이브러리 단위·통합 테스트. WebSocket 없이 mount() 사용
+│                          test_live_session_contract.py 는 회귀가 아니라 계약을 진술한다 —
+│                          컴포넌트가 생기는 경로 8개 × 거절 사유 5종을 parametrize로 돌린다.
+│                          경로를 새로 만들면 행을 추가한다
 ├── js/*.test.mjs          클라이언트 순수 모듈 테스트 (node --test)
 └── testproj/              Django 테스트 프로젝트(설정·URLconf). 채널 레이어는 WIREVIEW_TEST_LAYER가 고르고
                            settings_nats.py·settings_redis.py가 이를 고정하는 진입점이다.

@@ -270,12 +270,18 @@ class TestMountHelper:
 
         assert kinds("m2") == ["one", "two", "joined"]
 
-    async def test_halt_skips_the_remaining_hooks_and_joined(self):
+    async def test_halt_skips_the_remaining_hooks_joined_and_the_render(self):
+        """``mount()`` has to reach the same verdict a request would.
+
+        It used to render a halted component, which made a unit test say the
+        guard let the markup through on a path where the server does not. A test
+        helper that disagrees with the server about a boundary is worse than no
+        test.
+        """
         view = await mount(LhHalted, id="m3")
 
         assert kinds("m3") == ["halt"], "the second hook and joined() must not run"
-        # The component still renders: a halt is a boundary, not a crash.
-        assert "halted" in (view.render() or "")
+        assert "halted" not in (view.render() or "")
 
     async def test_a_repeat_mount_answers_the_same_way_it_did_first(self):
         view = await mount(LhHalted, id="m4")

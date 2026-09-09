@@ -425,10 +425,16 @@ def _on_user_logged_in(sender: t.Any, request: t.Any = None, user: t.Any = None,
         # the sockets of the previous generation open, and no logout will ever name
         # them: the nonce they hold was just overwritten. Retire them here instead.
         #
+        # The topic is computed from the session as it stands with the old nonce put
+        # back, not from the nonce alone: the fingerprint those sockets subscribed
+        # under was taken from a whole session, so naming it with anything less
+        # publishes somewhere nobody is listening.
+        #
         # Django flushes the session when a *different* user logs in, so that nonce
         # is already gone by the time this runs and its generation cannot be named.
         # Logging out first is what retires it.
-        invalidate_authentication(user, {AUTH_GENERATION_KEY: previous}, reason="logged in again")
+        retired = dict(session.items()) | {AUTH_GENERATION_KEY: previous}
+        invalidate_authentication(user, retired, reason="logged in again")
 
 
 def _on_user_logged_out(sender: t.Any, request: t.Any = None, user: t.Any = None, **kwargs: t.Any) -> None:

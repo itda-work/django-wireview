@@ -79,6 +79,10 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         # settled in connect(); the defaults are what a bare consumer in a test gets.
         self.auth_fingerprint: str = ""
         self._auth_topic: str = ""
+        # Whether the session behind this connection has been read again since
+        # connect and still names the same login. False until it has, and it stays
+        # False when the read fails, so a refused connection cannot retry past it.
+        self._auth_revalidated: bool = False
 
     @property
     def user(self):
@@ -92,6 +96,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         self._upload_group_subscribed = False
         self.live_session_name = None
         self._auth_topic = ""
+        self._auth_revalidated = False
         self.repo = ComponentRepository(
             is_live=True,
             user=self.user,
@@ -271,16 +276,21 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         policy = get_live_session(name)
         if policy is None:
             return f"unknown live_session {name!r}"
-        if not self._auth_topic:
+        if not self._auth_revalidated:
             # Subscribe first, then re-read: between them there is no window. A
             # logout that lands after the re-read is caught by the subscription,
             # and one that landed before it -- while the client was sitting on an
             # open socket it had not joined on yet -- is caught by the re-read.
             # Doing only the subscribe would leave that second case open for as
             # long as a client cares to delay its first join.
+            #
+            # The flag is the re-read's verdict, not the subscription's: keying
+            # this on "have we subscribed" let a refused connection simply ask
+            # again and skip the check the second time.
             await self._subscribe_auth_topic()
             if not await self._reload_session():
                 return f"live_session {name!r}: the login this connection stands on has ended"
+            self._auth_revalidated = True
         if payload.auth != self.auth_fingerprint:
             return f"live_session {name!r}: the state was issued under a different authentication"
         if not await sync_to_async(policy.allows)(self.repo.user, self.repo.session):
@@ -326,10 +336,13 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             from django.conf import settings as django_settings
 
             store = import_module(django_settings.SESSION_ENGINE).SessionStore(session_key)
-            view = SessionView.wrap(store, session_key=session_key)
-            # Materialize here, on this thread: a component reading it later is on
-            # the event loop, where the backend query would raise.
-            view._snapshot()
+            # Read here, on this thread, and keep only the data: a component
+            # reading it later is on the event loop, where the backend query would
+            # raise. Keeping the *store* would also lose the key -- a backend
+            # clears it when a load finds nothing -- and this connection's key
+            # comes from the cookie, so a missing session must not erase it and
+            # make the next check vacuous.
+            view = SessionView(dict(store.items()), session_key=session_key)
             return view, auth_fingerprint(self.repo.user, view)
 
         try:

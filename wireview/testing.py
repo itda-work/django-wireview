@@ -92,10 +92,11 @@ class MockWireviewMeta(WireviewMeta):
     for test assertions.
     """
 
-    def __init__(self, params: dict[str, t.Any] | None = None):
+    def __init__(self, params: dict[str, t.Any] | None = None, live_session: t.Any = None):
         self._mock_channel_layer = MockChannelLayer()
         super().__init__(
             params=params or {},
+            live_session=live_session,
             channel_name="test-channel",
             channel_layer=self._mock_channel_layer,
         )
@@ -166,11 +167,13 @@ class MockRepository:
         user: "AbstractBaseUser | AnonymousUser | None" = None,
         params: dict[str, t.Any] | None = None,
         session: SessionView | None = None,
+        live_session: t.Any = None,
     ):
         self.is_live = False
         self.user = user or AnonymousUser()
         self.params = params or {}
         self.session = session if session is not None else SessionView()
+        self.live_session = live_session
 
 
 class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
@@ -279,6 +282,7 @@ async def mount(
     params: dict[str, t.Any] | None = None,
     session: t.Any = None,
     session_key: str | None = None,
+    live_session: t.Any = None,
     **initial_state: t.Any,
 ) -> MountedComponent:
     """
@@ -295,6 +299,10 @@ async def mount(
             and handed to the ``_on_mount`` hooks
         session_key: Optional session key, for code that identifies an anonymous
             visitor by ``self.session.session_key``
+        live_session: The page boundary to mount inside, as a ``LiveSession`` (or
+            its name). Without it the component mounts on a page that declares
+            none, which is what refuses a component that named its
+            ``_live_sessions``
         **initial_state: Initial field values for the component
 
     Returns:
@@ -310,12 +318,22 @@ async def mount(
 
         # With a session
         view = await mount(Cart, session={"items": [1, 2]}, session_key="s1")
+
+        # Inside a page boundary, so the session hooks run and _live_sessions passes
+        view = await mount(AdminPanel, user=staff, live_session="admin")
     """
     from django.contrib.auth.models import AnonymousUser
 
+    from .core.live_session import LiveSession, get_live_session
+
     session_view = SessionView.wrap(session, session_key=session_key)
-    wire = MockWireviewMeta(params=params or {})
-    repo = MockRepository(user=user, params=params or {}, session=session_view)
+    policy = live_session if isinstance(live_session, LiveSession) or live_session is None else None
+    if policy is None and live_session is not None:
+        policy = get_live_session(str(live_session))
+        if policy is None:
+            raise LookupError(f"No live_session is declared under {live_session!r}")
+    wire = MockWireviewMeta(params=params or {}, live_session=policy)
+    repo = MockRepository(user=user, params=params or {}, session=session_view, live_session=policy)
 
     component = component_class(
         user=user or AnonymousUser(),
@@ -326,15 +344,18 @@ async def mount(
 
     mounted = MountedComponent(component, wire, repo)
 
-    # The _on_mount hooks run before joined(), as they do on a real mount. A halt
-    # skips joined(); the component is still returned so the test can assert on
-    # what the hook did (a redirect, a frozen component).
+    # The mount hooks run before joined(), as they do on a real mount. A refusal
+    # skips joined() and freezes the component, so ``render()`` here answers the
+    # way the server would: with the redirect a hook queued, or with nothing. The
+    # component is still returned so the test can assert on what the hook did.
     if await component._mount(params or {}, session_view):
         # Call joined() if it exists and is async
         if hasattr(component, "joined"):
             result = component.joined()
             if hasattr(result, "__await__"):
                 await result
+    else:
+        wire.freeze()
 
     return mounted
 

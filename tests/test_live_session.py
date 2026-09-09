@@ -871,7 +871,14 @@ class TestLogoutInvalidation:
         assert consumer.repo.get("l5") is None
 
     def test_logging_in_again_retires_the_generation_it_replaces(self, staff):
-        """A step-up or re-auth overwrites the nonce, and no logout will ever name the old one."""
+        """A step-up or re-auth overwrites the nonce, and no logout will ever name the old one.
+
+        The expected topic is taken from the session as it stood after the first
+        login -- which is what a connection opened then would have subscribed to.
+        Recomputing it from the nonce alone would repeat whatever the
+        implementation forgot to include, and pass while publishing somewhere
+        nobody is listening.
+        """
         from django.contrib.auth import login
 
         from wireview.core.transport import set_broker
@@ -888,6 +895,7 @@ class TestLogoutInvalidation:
         request.session = SessionStore()
         login(request, staff, backend="django.contrib.auth.backends.ModelBackend")
         first = request.session[AUTH_GENERATION_KEY]
+        listening_on = auth_topic(auth_fingerprint(staff, dict(request.session.items())))
 
         set_broker(RecordingBroker())
         try:
@@ -896,7 +904,7 @@ class TestLogoutInvalidation:
             set_broker(None)
 
         assert request.session[AUTH_GENERATION_KEY] != first
-        assert published == [auth_topic(auth_fingerprint(staff, {AUTH_GENERATION_KEY: first}))]
+        assert published == [listening_on]
 
     @pytest.mark.asyncio
     async def test_the_invalidation_message_closes_the_socket(self):

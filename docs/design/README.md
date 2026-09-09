@@ -12,6 +12,7 @@
 | [live-session-review-2026-09-09.md](./live-session-review-2026-09-09.md) | 위 두 문서 초안에 대한 적대적 리뷰 원문 (Codex gpt-6-astra) | 반영 완료 |
 | [live-session-review-2026-09-09-round2.md](./live-session-review-2026-09-09-round2.md) | 1라운드 반영 결과를 다시 검증한 2라운드 | 반영 완료. 여기서 내 수정 자체의 오류 셋이 나왔다 |
 | [live-session-review-2026-09-09-round3.md](./live-session-review-2026-09-09-round3.md) | 구현 완료본에 대한 3라운드. 재현 테스트를 붙여 왔다 | 반영 완료. 봉투 결합이 아니라 그 옆(예외 경로·중첩 컴포넌트·인증 수명)에서 여덟 개가 나왔다 |
+| [live-session-test-review-2026-09-09.md](./live-session-test-review-2026-09-09.md) | 계약 테스트 자체에 대한 리뷰. 구현 변이 25개로 "무엇이 통과하는가"를 쟀다 | 반영 완료. 테스트 결함 열하나와 구현 버그 넷이 나왔다 |
 | [live-component-lifecycle.md](./live-component-lifecycle.md) | LiveComponent가 **지금 실제로** 어떻게 만들어지고 렌더되고 사라지는가, 그리고 그로부터 나오는 설계 질문 | 현황 조사. 답은 각 이슈에서 |
 | [live-component-lifecycle-review.md](./live-component-lifecycle-review.md) | 위 조사의 검증 리뷰 원문 | 반영 완료. 초판의 결론 하나가 틀렸다 |
 | [live-component-ownership.md](./live-component-ownership.md) | 위 조사에 대한 답: 자식은 부모 소유, 부모 템플릿에는 참조만, 자식 렌더는 비동기 단계에서 같은 메시지에 묶는다 | 결정됨, 구현 완료 ([#78](https://github.com/itda-work/django-wireview/issues/78) [#79](https://github.com/itda-work/django-wireview/issues/79) [#80](https://github.com/itda-work/django-wireview/issues/80)) |
