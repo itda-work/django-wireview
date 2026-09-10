@@ -12,13 +12,13 @@
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 104 |
-| 🟡 부분 지원 | 3 |
+| ✅ 지원 | 106 |
+| 🟡 부분 지원 | 1 |
 | 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 4 |
 | ⚪ 설계상 제외 | 2 |
 
 103행 중 5행은 Phoenix에 없는 wireview 고유 기능이다(`mutation()`, 타입 스텁, LSP 메타데이터,
-MockChannelLayer, 시스템 체크). 남은 일곱 개의 갭은 3절 표에서 GAP 번호로 추적한다.
+MockChannelLayer, 시스템 체크). 남은 여섯 개의 갭은 3절 표에서 GAP 번호로 추적한다.
 
 ---
 
@@ -213,8 +213,9 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | render_component | ✅ | `mount()` | ✅ |
 | render_click | ✅ | `call()` | ✅ |
 | render_change | ✅ | `call()` | ✅ |
-| assert_patch | ✅ | 수동 검증 | ⚠️ GAP-031 ([#70](https://github.com/itda-work/django-wireview/issues/70)) |
-| follow_redirect | ✅ | 수동 검증 | ⚠️ GAP-031 ([#70](https://github.com/itda-work/django-wireview/issues/70)) |
+| assert_patch | ✅ | `assert_pushed_to()` · `assert_replaced_to()` · `follow_push()` | ✅ (GAP-031) |
+| follow_redirect | ✅ | `follow_redirect()` | ✅ (GAP-031) |
+| 스트림 검사 | - | `stream_html()` · `stream_items()` · `stream_ops()` | ✅ 추가 기능 |
 | MockChannelLayer | - | ✅ | ✅ 추가 기능 |
 
 ### 2.14 Developer Tools ✅
@@ -286,7 +287,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | ~~GAP-028~~ | ~~Stream DOM 수명~~ | ~~재렌더가 `wire-stream` 컨테이너를 비우고, 같은 dom id 재삽입이 갱신이 아니라 중복이 된다~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-029~~ | ~~세션 접근~~ | ~~컴포넌트가 Django 세션을 읽는다. 예제 둘이 없는 API를 상상해 쓰고 있었다~~ | ~~하~~ | ✅ 완료 |
 | GAP-030 | 키 기반 comprehension | 앞쪽 삽입이 뒤 항목 전부를 다시 보내지 않게 | 상 | [#69](https://github.com/itda-work/django-wireview/issues/69) |
-| GAP-031 | 내비게이션 테스트 헬퍼 | `assert_patch`·`follow_redirect` 상당물 | 하 | [#70](https://github.com/itda-work/django-wireview/issues/70) |
+| ~~GAP-031~~ | ~~내비게이션 테스트 헬퍼~~ | ~~`assert_patch`·`follow_redirect` 상당물~~ | ~~하~~ | ✅ 완료 |
 | GAP-032 | Colocated hooks | 컴포넌트 옆의 JS 훅을 자동 등록 | 중 | [#71](https://github.com/itda-work/django-wireview/issues/71) |
 | GAP-033 | Sticky 컴포넌트 | boost 내비게이션을 건너 살아남는 컴포넌트 | 중 | [#72](https://github.com/itda-work/django-wireview/issues/72) |
 | GAP-034 | Dead view | JS 없이도 읽히는 첫 렌더. 무엇을 약속할지부터 | 중 | [#73](https://github.com/itda-work/django-wireview/issues/73) |

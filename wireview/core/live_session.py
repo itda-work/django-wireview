@@ -57,12 +57,14 @@ import logging
 import secrets
 import typing as t
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from asgiref.sync import sync_to_async
 from django.contrib.auth import SESSION_KEY
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied
+from django.urls import resolve
 from django.utils.crypto import salted_hmac
 from django.utils.decorators import method_decorator
 
@@ -294,6 +296,7 @@ class LiveSession:
                 return denied
             return target(request, *args, **kwargs)
 
+        setattr(wrapper, REQUEST_ATTR, self.name)
         return wrapper
 
     def _async_gate(self, target: t.Any) -> t.Any:
@@ -306,6 +309,7 @@ class LiveSession:
             # ``dispatch`` hands back a coroutine; an ``async def`` view is one.
             return await result if inspect.isawaitable(result) else result
 
+        setattr(wrapper, REQUEST_ATTR, self.name)
         return wrapper
 
     def deny(self, request: "HttpRequest") -> "HttpResponse":
@@ -383,6 +387,37 @@ def live_session(
 def get_live_session(name: str) -> LiveSession | None:
     """The session declared under ``name``, or ``None`` if there is none."""
     return _REGISTRY.get(name) if name else None
+
+
+def session_for_view(view: t.Any) -> "LiveSession | None":
+    """The boundary a resolved view sits inside, or ``None`` for a page with none.
+
+    Reads the name the decorator left behind. A function view carries it on the
+    wrapper, a class-based one on the class -- ``as_view()`` does not copy class
+    attributes onto the function it returns, so the class is where to look.
+
+    This is introspection of a *route*, not of a request. It answers "which
+    boundary would this page render under", which is what a redirect has to know
+    before anything is mounted at the other end.
+    """
+    name = getattr(view, REQUEST_ATTR, None)
+    if name is None:
+        name = getattr(getattr(view, "view_class", None), REQUEST_ATTR, None)
+    return get_live_session(name) if name else None
+
+
+def session_for_path(path: str) -> "LiveSession | None":
+    """The boundary the page at ``path`` renders under.
+
+    Args:
+        path: a path within this project, with or without a query string.
+
+    Raises:
+        Resolver404: the project's URLconf serves nothing at that path. Left to
+            propagate on purpose -- following a URL nothing serves is a broken
+            test, not an unbounded page.
+    """
+    return session_for_view(resolve(urlsplit(path).path).func)
 
 
 def all_live_sessions() -> dict[str, LiveSession]:

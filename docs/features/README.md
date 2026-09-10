@@ -65,6 +65,7 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 | **Telemetry** | 이벤트·렌더·diff·브로드캐스트 계측 시그널 (옵트인) | [문서](./telemetry.md) |
 | **System Checks** | 조용히 실패하는 함정을 `manage.py check`가 잡는다 | [문서](./checks.md) |
 | **Agent Skill** | 앱 개발자용 에이전트 스킬 배포 (`wireview_agent_setup`) | [문서](./agent-skill.md) |
+| **테스트 헬퍼** | `mount()`, 내비게이션 단언, 리다이렉트 따라가기, 스트림 검사 | [문서](./testing.md) |
 
 ---
 

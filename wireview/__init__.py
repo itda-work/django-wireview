@@ -24,6 +24,7 @@ if t.TYPE_CHECKING:
     from .live_component import LiveComponent as LiveComponent
     from .testing import ComponentTestCase as ComponentTestCase
     from .testing import MountedComponent as MountedComponent
+    from .testing import Navigation as Navigation
     from .testing import mount as mount
 
 
@@ -78,6 +79,10 @@ def __getattr__(name: str) -> t.Any:
         from .testing import MountedComponent
 
         return MountedComponent
+    if name == "Navigation":
+        from .testing import Navigation
+
+        return Navigation
     if name == "ComponentTestCase":
         from .testing import ComponentTestCase
 
@@ -135,6 +140,7 @@ __all__ = (
     # Testing utilities
     "mount",
     "MountedComponent",
+    "Navigation",
     "ComponentTestCase",
     # Async utilities
     "AsyncResult",

@@ -10,6 +10,19 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- Navigation and stream assertions in `wireview.testing` (GAP-031, #70). `assert_pushed_to()`,
+  `assert_replaced_to()`, `assert_redirected_to()` and `assert_no_navigation()` compare a
+  destination and its query params and, on a miss, report every URL change that did happen;
+  `follow_redirect()` mounts the destination page's component with the redirect's params, the
+  same user and session, and **the boundary read from the URLconf** -- refusing when that
+  boundary refuses the user, as the server would; `follow_push()` runs the `params_changed` a
+  client sends after a push, and refuses a push that leaves the live_session because that one
+  is a full page load. `stream_html()`, `stream_items()` and `stream_ops()` replace the
+  `sent_messages` filtering the docs had been teaching. `docs/features/testing.md`.
+- `ComponentTestCase.mount()` forwards `live_session=`, which `mount()` has taken since 0.3.0.
+
 ### Fixed
 
 - A navigation to a query-only destination (`push_to("?page=2")` -- what `params_changed`'s own

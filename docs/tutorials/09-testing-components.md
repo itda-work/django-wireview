@@ -7,7 +7,7 @@ wireview 컴포넌트의 효과적인 테스트 방법을 다룹니다.
 - `mount()` 유틸리티 사용법
 - 이벤트 핸들러 테스트
 - 상태 검증
-- 메시지 및 리다이렉트 테스트
+- 메시지와 내비게이션 테스트 (`assert_pushed_to`, `follow_redirect`, `follow_push`)
 - Streams/Presence 테스트
 
 ## 테스트 환경 설정
@@ -67,6 +67,11 @@ async def test_counter_with_initial_value():
 | `view.redirected_to` | 리다이렉트 URL |
 | `view.is_frozen` | freeze 상태 |
 | `view.clear_messages()` | 메시지 초기화 |
+| `view.assert_pushed_to(...)` | 내비게이션 단언 (아래 참조) |
+| `view.follow_redirect(...)` / `view.follow_push()` | 이동을 따라간다 |
+| `view.stream_html(...)` | 스트림으로 나간 아이템 HTML |
+
+전체 목록은 [기능 레퍼런스](../features/testing.md)에 있다.
 
 ## 이벤트 핸들러 테스트
 
@@ -196,7 +201,7 @@ async def test_multiple_messages():
     assert len(view.sent_messages) == 1
 ```
 
-## 리다이렉트 테스트
+## 내비게이션 테스트
 
 ### 리다이렉트 확인
 
@@ -207,46 +212,103 @@ async def test_redirect_after_save():
 
     await view.call("submit")
 
-    assert view.redirected_to == "/success/"
-    assert view.is_frozen  # 리다이렉트 후 freeze됨
+    view.assert_redirected_to("/success/")
+    assert view.is_frozen  # 리다이렉트 후 freeze된다
 ```
 
-### 조건부 리다이렉트
+`view.redirected_to`로 문자열을 직접 비교해도 되지만, 단언 헬퍼는 실패했을 때 **실제로 일어난
+이동을 전부 나열해 준다.**
+
+### push와 replace
 
 ```python
 @pytest.mark.asyncio
-async def test_redirect_on_error():
+async def test_paging_changes_the_url():
+    view = await mount(XProductList)
+
+    await view.call("next_page")
+
+    view.assert_pushed_to("/products/", params={"page": "2"})
+```
+
+`params`는 통째로 비교한다. `"/products/?page=2"`처럼 URL에 쿼리를 붙여도 같은 뜻이고, 이때
+순서는 상관없다.
+
+### 이동하지 않았음을 확인
+
+```python
+@pytest.mark.asyncio
+async def test_an_invalid_form_stays_put():
     view = await mount(XLogin)
 
     await view.call("login", username="wrong", password="wrong")
 
-    # 실패 시 리다이렉트 없음
-    assert view.redirected_to is None
+    assert view.component.error
+    view.assert_no_navigation()
+```
+
+"이동했다"와 "여기로 이동했다"는 통과하는 테스트만 보면 구별되지 않는다. 이동하면 안 되는
+경로에는 이 단언을 짝지어 둔다.
+
+### 리다이렉트를 따라가기
+
+```python
+@pytest.mark.asyncio
+async def test_login_lands_on_the_dashboard():
+    view = await mount(XLogin)
 
     await view.call("login", username="admin", password="correct")
 
-    # 성공 시 리다이렉트
-    assert view.redirected_to == "/dashboard/"
+    landed = await view.follow_redirect(XDashboard)
+    assert landed.component.username == "admin"
 ```
+
+리다이렉트는 페이지 로드다. `follow_redirect()`는 대상 페이지의 컴포넌트를 새로 마운트하되,
+대상 URL의 쿼리를 params로 넘기고 user·session을 이어 주며 **대상 페이지의 live_session을
+URLconf에서 읽는다.** 그 경계가 이 사용자를 거절하면 여기서도 거절한다 — 서버가 컴포넌트를
+그리지 않을 상황에서 테스트만 통과하는 일이 없도록.
+
+### push를 따라가기
+
+```python
+@pytest.mark.asyncio
+async def test_paging_reloads_the_page_of_products():
+    view = await mount(XProductList)
+
+    await view.call("next_page")        # wire.push_to("?page=2")
+    await view.follow_push()            # 클라이언트가 하는 나머지 절반
+
+    assert view.component.page == 2
+```
+
+`push_to()`는 절반이다. 나머지 절반은 클라이언트가 새 params를 서버에 알리는 것이고, 그것이
+`params_changed()`를 돌린다. 경계를 넘는 push는 전체 페이지 로드라 `params_changed`가 아예
+가지 않으므로, 그 경우 `follow_push()`는 콜백을 돌리는 대신 실패한다.
 
 ## Streams 테스트
 
-### Stream 작업 확인
+### 스트림에 실린 것 확인
+
+스트림 아이템은 `view.render()`에도 `view.dom_actions`에도 없다. 템플릿은 빈 컨테이너만
+렌더하고 아이템 HTML은 별도 메시지로 간다.
 
 ```python
 @pytest.mark.asyncio
 async def test_stream_insert():
     view = await mount(XMessageList, room_id=1)
+    view.clear_messages()          # joined()의 초기 stream()을 비운다
 
     await view.call("add_message", text="Hello")
 
-    # stream_insert가 호출되었는지 확인
-    stream_ops = [
-        m for m in view.sent_messages
-        if m.get("type") == "stream"
-    ]
-    assert len(stream_ops) > 0
+    assert "Hello" in view.stream_html("messages")
+    assert [op["op"] for op in view.stream_ops("messages")] == ["insert"]
 ```
+
+`view.stream_items()`는 `{"id", "html"}` 목록을, `view.stream_ops()`는 원본 연산을 준다.
+이름을 주지 않으면 모든 스트림이 대상이다.
+
+**`clear_messages()`를 잊지 않는다.** `stream()`을 다시 부르는 핸들러(필터·정렬·페이지 전환)는
+이전 메시지 위에 누적되므로, 비우지 않으면 방금 걸러 낸 아이템이 앞선 메시지에 남아 있다.
 
 ### Stream 상태
 
@@ -514,6 +576,8 @@ async def test_toggle():
 ## 다음 단계
 
 축하합니다! wireview 튜토리얼을 모두 완료했습니다.
+
+테스트 헬퍼의 전체 목록과 세부 규칙은 [기능 레퍼런스](../features/testing.md)에 있습니다.
 
 더 많은 정보는 [README](../../README.md)와 [Architecture](../ARCHITECTURE.md) 문서를 참조하세요.
 

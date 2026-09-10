@@ -52,7 +52,8 @@ wireview/
 ├── settings.py            WIREVIEW 설정 기본값
 ├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W006)
 ├── telemetry.py           옵트인 계측 시그널 (event_handled, component_rendered, diff_computed, broadcast_published)
-├── testing.py             mount(), MountedComponent, ComponentTestCase
+├── testing.py             mount(), MountedComponent, ComponentTestCase.
+│                          내비게이션 단언·follow_redirect·follow_push·스트림 검사
 ├── utils.py, log.py       db 헬퍼, 로깅
 ├── debug/sync_detector.py sync/async 전환 중첩 감지 (DEBUG_SYNC_TRANSITIONS)
 ├── features/              streams.py, presence.py (PresenceMixin), uploads.py (UploadRegistry·토큰 v2),
