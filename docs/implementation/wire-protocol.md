@@ -93,10 +93,20 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 | 구독 집합 | `WireviewConsumer.subscriptions` | 토픽 이름 목록 |
 | 쿼리스트링 | `WireviewConsumer.query_string` | 문자열 |
 | 업로드 레지스트리 | `views._registries` (프로세스 전역) | 미지원 |
+| 페이지 경계 | `WireviewConsumer.live_session_name` | 이름 문자열. 첫 join이 정하고 이후 join은 일치해야 한다 |
+| 인증 세대 | `WireviewConsumer.auth_fingerprint` | 지문 문자열. connect 때 계산한다 |
+| 인증 토픽 구독 | `WireviewConsumer._auth_topic` | 토픽 이름. 경계 안에서만 생긴다 |
+| 세션 재확인 여부 | `WireviewConsumer._auth_revalidated` | bool. **거절된 연결이 다시 물어 통과하지 못하게 하는 값이다** |
+
+아래 넷은 #58이 더했고 **외부화 목록의 일부다**. 세션을 프로세스 밖으로 옮기면서 이것을 빠뜨리면
+경계가 조용히 사라진다 — 새 워커가 경계 없는 연결로 세션을 이어받고, 그 연결에는 정책도 인증 세대도
+로그아웃 구독도 붙지 않는다. `_auth_revalidated`를 `False`로 복원하면 재확인이 한 번 더 도는 것뿐이라
+안전하지만, `True`로 복원하면 그 검사를 건너뛴다.
 
 ## 7. 버전
 
 - 2026-09-09: `join`의 서명 상태가 v1 봉투가 되고 만료 검사가 붙었다. 거절 시 새 outbound 명령 `reload` (#76).
+- 2026-09-10: 6절의 세션 상태에 페이지 경계·인증 세대·인증 토픽·재확인 여부를 더했다. #58이 만든 연결당 상태이고, 세션 외부화(GAP-027)가 함께 옮겨야 하는 것들이다.
 - 2026-09-09: 봉투가 v2가 되어 페이지의 `live_session`과 인증 세대를 싣는다. `reload`에 `live_session` 사유가 붙었고, 서버가 인증 세대 토픽으로 보내는 `session_invalidated`가 그 세대의 소켓을 닫는다 (#58).
 - 2026-09-08: `render` 부분 diff 값에 comprehension과 블록 형태 추가 (GAP-025).
 - 2026-09-08: 첫 정본. 코드에서 추출했으며, 이후 명령을 더하거나 필드를 바꾸면 이 문서와 `CHANGELOG.md`에 남긴다.
