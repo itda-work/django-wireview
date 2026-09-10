@@ -54,6 +54,21 @@ P = t.ParamSpec("P")
 ScrollPosition = t.Literal["start"] | t.Literal["end"] | t.Literal["center"] | t.Literal["nearest"]
 
 
+def resolve_destination(to: RedirectDestination, **kwargs: t.Any) -> str:
+    """Where a navigation is headed, as a URL.
+
+    ``resolve_url`` reverses any string without a ``/`` or a ``.`` in it, so a
+    destination that is only a query string -- ``"?page=2"``, the natural way to
+    say "this page, a different query", and what ``params_changed``'s own
+    docstring shows -- would raise ``NoReverseMatch``. Same for a bare fragment.
+    Everything else keeps ``resolve_url``'s behaviour: a view name, a model with
+    ``get_absolute_url``, a path.
+    """
+    if isinstance(to, str) and to[:1] in ("?", "#"):
+        return to
+    return resolve_url(to, **kwargs)
+
+
 class Repo(t.Protocol):
     """Protocol for component repository."""
 
@@ -215,7 +230,7 @@ class WireviewMeta:
 
     async def redirect_to(self, to: RedirectDestination, **kwargs: t.Any) -> None:
         """Redirect the client to a new URL."""
-        url = resolve_url(to, **kwargs)
+        url = resolve_destination(to, **kwargs)
         self._redirected_to = url
         if self.channel_name:
             self.freeze()
@@ -223,12 +238,12 @@ class WireviewMeta:
 
     async def replace_to(self, to: RedirectDestination, **kwargs: t.Any) -> None:
         """Replace the current URL without navigation."""
-        url = resolve_url(to, **kwargs)
+        url = resolve_destination(to, **kwargs)
         await self.send("url_change", command="replace", url=url)
 
     async def push_to(self, to: RedirectDestination, **kwargs: t.Any) -> None:
         """Push a new URL to browser history."""
-        url = resolve_url(to, **kwargs)
+        url = resolve_destination(to, **kwargs)
         await self.send("url_change", command="push", url=url)
 
     async def push_title(self, title: str) -> None:

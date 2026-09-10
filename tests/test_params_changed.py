@@ -1,9 +1,39 @@
 """Tests for the params_changed lifecycle callback."""
 
+from urllib.parse import parse_qsl
+
 import pytest
 
 from wireview import Component
+from wireview.consumer import WireviewConsumer
+from wireview.core.meta import WireviewMeta
+from wireview.repository import ComponentRepository
 from wireview.testing import mount
+
+
+def make_consumer() -> WireviewConsumer:
+    """A consumer with just enough state for ``command_params_changed``."""
+    consumer = WireviewConsumer()
+    consumer.repo = ComponentRepository(is_live=True)
+    consumer.subscriptions = set()
+    consumer.query_string = ""
+    consumer.channel_name = "test-channel"
+    return consumer
+
+
+class RecordingMeta(WireviewMeta):
+    """A real ``WireviewMeta`` whose ``send`` is captured rather than transported.
+
+    The mock in ``wireview.testing`` overrides the three navigation methods, so a
+    test that went through it would not see this module's own behaviour.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.sent: list[tuple[str, str]] = []
+
+    async def send(self, _command: str, **kwargs) -> None:
+        self.sent.append((kwargs["command"], kwargs["url"]))
 
 
 class ParamsSimpleComponent(Component):
@@ -128,6 +158,80 @@ class TestParamsChangedWithWire:
         assert len(url_changes) == 1
         assert url_changes[0]["command"] == "replace"
         assert "sort=price" in url_changes[0]["url"]
+
+
+class TestAQueryOnlyDestination:
+    """``push_to("?page=2")`` is the documented way to say "this page, new query".
+
+    ``resolve_url`` reverses any string with no ``/`` and no ``.`` in it, so
+    before ``resolve_destination`` these three raised ``NoReverseMatch`` -- while
+    ``params_changed``'s own docstring taught the call.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_push_keeps_it_literal(self):
+        wire = RecordingMeta(params={}, channel_name="c")
+        await wire.push_to("?page=2")
+
+        assert wire.sent == [("push", "?page=2")]
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_replace_keeps_it_literal(self):
+        wire = RecordingMeta(params={}, channel_name="c")
+        await wire.replace_to("?tab=open")
+
+        assert wire.sent == [("replace", "?tab=open")]
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_redirect_keeps_it_literal(self):
+        wire = RecordingMeta(params={}, channel_name="c")
+        await wire.redirect_to("#section")
+
+        assert wire.sent == [("redirect", "#section")]
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_view_name_still_reverses(self):
+        """The control: the exception is for ``?`` and ``#``, not for every string."""
+        wire = RecordingMeta(params={}, channel_name="c")
+        await wire.push_to("livesession:public")
+
+        assert wire.sent == [("push", "/livesession/public/")]
+
+
+class TestJsonParamsSurviveANavigation:
+    """A ``.json`` key decodes on the first load; it has to decode after a push too.
+
+    The client hands back plain strings from the address bar, and
+    ``get_query_string`` re-encodes with the ``.json`` rule, so without decoding
+    on the way in the same key is a dict on load and a string afterwards.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_the_repository_decodes_what_the_client_sends(self):
+        consumer = make_consumer()
+
+        await consumer.command_params_changed({"filter.json": '{"tag": "x"}'}, "?filter.json=...")
+
+        assert consumer.repo.params == {"filter.json": {"tag": "x"}}
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_it_matches_what_the_first_load_produced(self):
+        consumer = make_consumer()
+        qs = 'filter.json={"tag": "x"}&page=2'
+
+        await consumer.command_params_changed(dict(parse_qsl(qs)), f"?{qs}")
+
+        assert consumer.repo.params == ComponentRepository.extract_params(qs)
+
+    @pytest.mark.unit
+    def test_a_plain_key_is_left_alone(self):
+        assert ComponentRepository.decode_params({"page": "2"}) == {"page": "2"}
 
 
 class TestParamsChangedSignature:

@@ -460,6 +460,12 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         """
         log.debug(f"<<< PARAMS-CHANGED {uri} {params}")
 
+        # The client parses a query string into plain strings; the first load went
+        # through ``extract_params``. Decoding here is what keeps a ``.json`` key
+        # from being a dict on load and a string after a navigation --
+        # ``get_query_string`` re-encodes with the same rule.
+        params = self.repo.decode_params(params)
+
         # Update repository params
         self.repo.params.clear()
         self.repo.params.update(params)

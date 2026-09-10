@@ -10,6 +10,15 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Fixed
+
+- A navigation to a query-only destination (`push_to("?page=2")` -- what `params_changed`'s own
+  docstring shows) raised `NoReverseMatch`. `resolve_url` reverses any string with no `/` and no
+  `.` in it; `resolve_destination` now passes `?` and `#` through unchanged.
+- A `.json` query key decoded to a value on the first load and arrived as a raw string after a
+  navigation, because the client hands back what it read from the address bar. The consumer
+  decodes with the same rule the first load used.
+
 ## [0.3.0] - 2026-09-10
 
 Page-level authentication boundaries (`live_session`, GAP-009), and the reworking of the mount

@@ -104,8 +104,23 @@ class ComponentRepository:
         self._pending_rerender: list[LiveComponent] = []
 
     @staticmethod
+    def decode_params(params: t.Mapping[str, t.Any]) -> dict[str, t.Any]:
+        """Apply the ``.json`` suffix convention to already-parsed pairs.
+
+        Split out of :meth:`extract_params` because params reach the repository
+        two ways -- parsed here from a query string on the first load, and handed
+        over by the client after a navigation -- and a key that decoded to a dict
+        on one path must not arrive as a string on the other. ``get_query_string``
+        re-encodes with the same rule, so the round trip closes.
+        """
+        return {
+            key: json.loads(value) if key.endswith(".json") and isinstance(value, str) else value
+            for key, value in params.items()
+        }
+
+    @staticmethod
     def extract_params(qs: str):
-        return {key: json.loads(value) if key.endswith(".json") else value for key, value in parse_qsl(qs)}
+        return ComponentRepository.decode_params(dict(parse_qsl(qs)))
 
     def set_query_string(self, qs: str):
         params = self.extract_params(qs)
