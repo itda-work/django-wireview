@@ -59,11 +59,15 @@ morph가 아니라 전체 페이지 로드**다. 전체 로드는 JavaScript 문
 의존을 하나 더 만드는 것이고, 그 의존이 없을 때 조용히 꺼지는 것이 어떤 모습인지는 `wireview.W010`이
 이미 보여 준다. 다시 물을 것: 훅 수집도 요청에 의존해야 하는가, 아니면 요청과 무관한 경로가 있는가.
 
-### [#70](https://github.com/itda-work/django-wireview/issues/70) GAP-031 내비게이션 테스트 헬퍼 — 재료가 늘었다
+### [#70](https://github.com/itda-work/django-wireview/issues/70) GAP-031 내비게이션 테스트 헬퍼 — 끝났다
 
-0.3.0이 `wireview.testing.mount()`에 `live_session=`을 더했고, 거절된 마운트를 freeze하게 바꿨다
-(그 전에는 `mount()`만 서버와 다른 답을 냈다). AC3이 "스트림 검사 헬퍼도 함께 검토한다"이므로,
-`tests/test_live_session_contract.py`가 쓰려고 만든 것들 중 사용자에게 줄 만한 것이 있는지 함께 본다.
+2026-09-10 완료. `assert_pushed_to` 계열과 `assert_no_navigation`, `follow_redirect`,
+`follow_push`, 스트림 검사 헬퍼. 레퍼런스는 [features/testing.md](../features/testing.md).
+
+**남은 이슈가 쓸 만한 것이 하나 생겼다**: `core/live_session.py` 의 `session_for_path()` 가
+URL 에서 그 페이지의 경계를 되찾는다. 경계를 넘는지 판단해야 하는 곳 — #72 의 sticky 범위,
+#73 의 "이 페이지에 무엇이 렌더되는가" — 이 서버 쪽에서 같은 질문을 할 때 쓴다.
+(클라이언트 쪽 판단은 여전히 `live-session.mjs` 의 `crossesBoundary` 다.)
 
 ### [#69](https://github.com/itda-work/django-wireview/issues/69) GAP-030 키 기반 comprehension diff — 거의 그대로
 
