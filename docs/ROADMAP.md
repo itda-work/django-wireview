@@ -14,12 +14,14 @@ Phase 1: Foundation     ██████████████████�
 Phase 2: Core Features  ████████████████████ 완료
 Phase 3: Advanced       ████████████████████ 완료
 Phase 4: Component      ████████████████████ 완료
-Phase 5: Polish         ██████░░░░░░░░░░░░░░ 진행 중 (프로파일링·타입 스텁·LSP 완료, Telemetry 남음)
+Phase 5: Polish         ████████████████░░░░ 진행 중 (프로파일링·타입 스텁·LSP·Telemetry 완료)
 ```
 
-Phoenix LiveView 대비 남은 기능은 넷이다: GAP-009 live_session, GAP-012 LongPolling
-폴백, GAP-022 Telemetry, GAP-027 세션 분리. 앞의 셋은 기능 갭이고 GAP-027 은
-`docs/design/transport-abstraction.md` 6절의 착수 기준을 만족할 때 시작한다.
+Phoenix LiveView 대비 남은 P1 기능 갭은 없다. GAP-009 live_session 과 GAP-022 Telemetry 는
+`v0.3.0` 에서 끝났고, **GAP-012 LongPolling 폴백은 만들지 않기로 했다** —
+WebSocket 을 필수 전제로 둔다(`docs/design/longpolling-fallback.md` §5).
+GAP-027 세션 분리는 `docs/design/transport-abstraction.md` 6절의 착수 기준을 만족할 때 시작한다.
+남은 것은 P2·P3 이고 `docs/FEATURE-GAP.md` 3절이 정본이다.
 
 ---
 
@@ -292,9 +294,9 @@ def button(variant: str = "primary", **slots):
 | v0.1.0 | ✅ | 첫 태그. reactor 에서 이어진 기능 전부 |
 | v0.1.1 | ✅ | 릴리스 워크플로에 wheel 빌드 |
 | v0.2.0 | ✅ | 부분 diff 정상화(GAP-024·025), transport seam(GAP-026), on_mount(GAP-021), NATS 채널 레이어 전환, bench 인프라와 Windows 실측 |
-| v0.3.0 | ⬜ | Telemetry(GAP-022) 와 남은 P1 갭 |
+| v0.3.0 | ✅ | live_session(GAP-009), Telemetry(GAP-022). GAP-012 는 설계상 제외로 정리 |
 | v1.0.0 | ⬜ | API 안정화 선언. 그 전까지 마이너 버전이 호환성을 깰 수 있다 |
 
 ---
 
-*마지막 업데이트: 2026-09-08*
+*마지막 업데이트: 2026-09-10*

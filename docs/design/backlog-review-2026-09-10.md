@@ -46,12 +46,11 @@ morph가 아니라 전체 페이지 로드**다. 전체 로드는 JavaScript 문
   빠뜨리면 **경계가 조용히 사라진다.** 새 워커가 경계 없는 연결로 세션을 이어받고, 정책도 인증
   세대도 로그아웃 구독도 붙지 않는다. §6에 그렇게 적어 뒀다.
 
-### [#59](https://github.com/itda-work/django-wireview/issues/59) GAP-012 WebSocket 폴백 — 답을 기다리는 중
+### [#59](https://github.com/itda-work/django-wireview/issues/59) GAP-012 WebSocket 폴백 — 닫혔다
 
-[설계 메모](./longpolling-fallback.md)와 이슈 코멘트에 결정할 것 셋이 있다. **그 셋이 정해지기 전에는
-착수하지 않는다.** 요약: 액면대로의 롱폴링은 스티키 라우팅이나 세션 외부화(#60) 중 하나를 요구하고,
-둘 다 이 저장소가 미루거나 거부한 것이다. 세 번째 길(SSE + POST)은 둘 다 피하지만 **이슈가 적은 것과
-다른 기능**이다.
+**만들지 않기로 결정했다(2026-09-10).** WebSocket 이 필수 전제이고, GAP-012 는 미구현이 아니라
+설계상 제외다. 근거와 버린 길 셋은 [설계 메모](./longpolling-fallback.md) §5 에 있다.
+다시 열 조건도 거기 적혀 있다 — 추정이 아니라 "막힌 배포에서 쓸 수 없다"는 구체적인 보고다.
 
 ### [#71](https://github.com/itda-work/django-wireview/issues/71) GAP-032 Colocated hooks — 헤더 태그가 문맥을 읽는다
 

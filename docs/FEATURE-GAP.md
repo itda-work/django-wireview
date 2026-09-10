@@ -2,7 +2,7 @@
 
 > django-wireview가 Phoenix LiveView 수준에 도달하기 위해 필요한 기능 목록
 >
-> **최종 업데이트**: 2026-09-09
+> **최종 업데이트**: 2026-09-10
 
 ---
 
@@ -14,11 +14,11 @@
 |------|---:|
 | ✅ 지원 | 104 |
 | 🟡 부분 지원 | 3 |
-| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 5 |
-| ⚪ 설계상 제외 | 1 |
+| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 4 |
+| ⚪ 설계상 제외 | 2 |
 
 103행 중 5행은 Phoenix에 없는 wireview 고유 기능이다(`mutation()`, 타입 스텁, LSP 메타데이터,
-MockChannelLayer, 시스템 체크). 남은 아홉 개의 갭은 3절 표에서 GAP 번호로 추적한다.
+MockChannelLayer, 시스템 체크). 남은 일곱 개의 갭은 3절 표에서 GAP 번호로 추적한다.
 
 ---
 
@@ -235,7 +235,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | Page title | ✅ `assign(:page_title)` | `push_title()` | ✅ |
 | Flash messages | ✅ `put_flash` | `put_flash()` | ✅ |
 | Dead views | ✅ JS 비활성화 폴백 | ❌ | 🟠 GAP-034 ([#73](https://github.com/itda-work/django-wireview/issues/73)) |
-| LongPolling fallback | ✅ | ❌ | 🟠 GAP-012 ([#59](https://github.com/itda-work/django-wireview/issues/59)) |
+| LongPolling fallback | ✅ | ❌ | ⚪ 설계상 제외 (GAP-012, [설계 메모](./design/longpolling-fallback.md)) |
 | on_mount hooks | ✅ | `_on_mount` | ✅ (GAP-021. 호출부가 없어 훅이 실행되지 않던 것을 [#75](https://github.com/itda-work/django-wireview/issues/75)에서 붙였다) |
 | attach_hook | ✅ | `attach_hook()` | ✅ |
 
@@ -264,7 +264,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | ~~GAP-009~~ | ~~live_session~~ | ~~인증/레이아웃 경계 관리~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-010~~ | ~~Page Title~~ | ~~동적 페이지 타이틀 변경~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-011~~ | ~~Flash Messages~~ | ~~일회성 알림 메시지~~ | ~~하~~ | ✅ 완료 |
-| GAP-012 | LongPolling Fallback | WebSocket 불가 시 폴백 | 중 | [#59](https://github.com/itda-work/django-wireview/issues/59) |
+| ~~GAP-012~~ | ~~LongPolling Fallback~~ | ~~WebSocket 불가 시 폴백~~ | ~~중~~ | ⚪ 설계상 제외. WebSocket을 필수 전제로 둔다 ([설계 메모](./design/longpolling-fallback.md), [#59](https://github.com/itda-work/django-wireview/issues/59)) |
 | ~~GAP-013~~ | ~~pushEvent (Hook→Server)~~ | ~~훅에서 서버로 이벤트 전송~~ | ~~중~~ | ✅ 완료 |
 
 ### 🟡 P2: Nice to Have (편의 기능)

@@ -264,6 +264,12 @@ v1 봉투(`#76`)와 그 이전의 두 형식은 경계를 담고 있지 않으�
 
 ## WebSocket 프록시
 
+**WebSocket 은 선택이 아니라 요구사항이다.** django-wireview 에는 HTTP 폴백이 없다 —
+프록시가 업그레이드를 통과시키지 못하면 페이지는 첫 HTML 만 그려지고 그 뒤로 아무것도 하지 않는다.
+폴백을 만들지 않기로 한 근거는 `docs/design/longpolling-fallback.md` §5 에 있다.
+
+아래 설정은 "권장"이 아니라 **최소 조건**이다.
+
 ### Nginx
 
 ```nginx
