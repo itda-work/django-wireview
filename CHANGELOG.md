@@ -10,6 +10,31 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-10
+
+Page-level authentication boundaries (`live_session`, GAP-009), and the reworking of the mount
+path that making them real required.
+
+**Upgrading.** Four things change for a project that is already running wireview:
+
+- **Every open page reloads once.** The signed `data-state` envelope goes from v1 to v2, and v1
+  is refused. That is the designed recovery -- the page re-renders under the current auth
+  context and gets a fresh token -- but unsaved input in an open tab goes with it.
+  `WIREVIEW["STATE_ACCEPT_LEGACY"]` widens the window, unless the project declares a
+  `live_session` (see below).
+- **A halted `_on_mount` hook now stops the render.** It used to skip `joined()` and draw the
+  component anyway, which shipped the markup and the state a guard was refusing. If a hook of
+  yours halts for a reason that was never meant to hide anything, it now hides it. The same
+  applies to `wireview.testing.mount()`, which had been the one path that disagreed.
+- **A hook that raises is a refusal**, not an unfinished mount: nothing renders and nothing stays
+  in the repository.
+- **`login()` writes one key into the session** (`_wireview_auth_gen`), whether or not the
+  project uses boundaries.
+
+`manage.py check` reports the new traps as `wireview.W010`. `docs/features/live-session.md` has
+the feature; `docs/DEPLOYMENT.md` has the upgrade and the transition procedure for putting a
+boundary around a page that was public.
+
 ### Fixed
 
 - The sdist carries `skills/wireview` again, so the release build works. Hatchling's sdist walk
