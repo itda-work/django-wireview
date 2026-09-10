@@ -185,6 +185,16 @@ ci-build:
 	sys.exit(0) if any(n.endswith('wireview.min.js') for n in names) \
 	else sys.exit(f'{w} has no wireview.min.js - run npm run build before uv build')"
 	@echo "ci-build: wheel contains wireview.min.js"
+	@# And the agent skill, which `manage.py wireview_agent_setup` installs from the
+	@# package. It is force-included from a directory the sdist has to carry, and the
+	@# wheel is built from the sdist -- a mismatch there fails the build rather than
+	@# shipping quietly, but only if something looks.
+	@python3 -c "import glob, sys, zipfile; \
+	w = sorted(glob.glob('dist/*.whl'))[-1]; \
+	names = zipfile.ZipFile(w).namelist(); \
+	sys.exit(0) if any(n.endswith('agent_skills/wireview/SKILL.md') for n in names) \
+	else sys.exit(f'{w} has no agent_skills/wireview/SKILL.md - check the sdist include patterns')"
+	@echo "ci-build: wheel contains the agent skill"
 
 # =============================================================================
 # Help

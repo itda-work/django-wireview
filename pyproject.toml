@@ -40,6 +40,9 @@ dev = [
     "pytest-playwright>=0.4.0",
     "djlint",
     "ruff",
+    # The build backend, so the packaging guard in tests/test_agent_skill.py can ask it
+    # what the sdist would contain instead of asking pyproject what it says.
+    "hatchling",
     "pre-commit",
     "ipython",
     "whitenoise",
@@ -82,11 +85,20 @@ packages = ["wireview"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "/wireview",
-    "/skills",
-    "/README.md",
-    "/CHANGELOG.md",
+    "wireview",
+    "skills",
+    "README.md",
+    "CHANGELOG.md",
 ]
+
+# The sdist has to carry skills/wireview, and `include` cannot make it: hatchling's
+# walk skips a nested directory whose name matches the package, so `skills/wireview`
+# is invisible to it while `skills/anything-else` is not. Without this the sdist
+# shipped without the skill, and since `uv build` builds the wheel *from the sdist*,
+# the wheel's own force-include then failed on a directory that was right there in
+# the working tree. It failed the same way at v0.2.1.
+[tool.hatch.build.targets.sdist.force-include]
+"skills/wireview" = "skills/wireview"
 
 # Tool configurations
 

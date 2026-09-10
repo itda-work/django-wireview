@@ -43,10 +43,35 @@ def test_the_repository_dogfoods_the_canonical_skill():
 
 @pytest.mark.unit
 def test_the_wheel_carries_the_skill():
-    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
-    force_include = pyproject["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
-    assert force_include["skills/wireview"] == "wireview/agent_skills/wireview"
-    assert "/skills" in pyproject["tool"]["hatch"]["build"]["targets"]["sdist"]["include"]
+    """Both targets have to name it, and the sdist has to *force* it.
+
+    This used to assert that ``/skills`` appeared in the sdist ``include`` list,
+    which it did -- while the sdist shipped without the skill for two releases.
+    Hatchling's walk skips a nested directory whose name matches the package, so
+    ``skills/wireview`` is never offered to the include patterns at all, and
+    ``uv build`` builds the wheel from that sdist. A pattern in a list is not
+    evidence that a file is in an archive; ``make ci-build`` checks the archive.
+    """
+    build = tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"]["hatch"]["build"]
+
+    assert build["targets"]["wheel"]["force-include"]["skills/wireview"] == "wireview/agent_skills/wireview"
+    assert build["targets"]["sdist"]["force-include"]["skills/wireview"] == "skills/wireview"
+
+
+@pytest.mark.unit
+def test_the_sdist_actually_selects_the_skill():
+    """Ask the builder, not the configuration.
+
+    Hatchling is a build dependency rather than a test one, so this skips where it
+    is absent -- but it runs in the environment that cuts releases, which is where
+    it matters.
+    """
+    hatchling_sdist = pytest.importorskip("hatchling.builders.sdist")
+
+    selected = {f.relative_path for f in hatchling_sdist.SdistBuilder(str(ROOT)).recurse_included_files()}
+
+    assert "skills/wireview/SKILL.md" in selected
+    assert any(p.startswith("skills/wireview/references/") for p in selected)
 
 
 @pytest.mark.unit
