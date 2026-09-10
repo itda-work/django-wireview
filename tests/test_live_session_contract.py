@@ -360,6 +360,11 @@ def user():
     return get_user_model().objects.create_user(f"cx-{uuid4().hex[:8]}", password="x", is_staff=True)
 
 
+@pytest.fixture
+def other_user():
+    return get_user_model().objects.create_user(f"cx-other-{uuid4().hex[:8]}", password="x")
+
+
 class FakeOutbound:
     def __init__(self) -> None:
         self.commands: list[tuple[str, dict[str, t.Any]]] = []
@@ -1213,6 +1218,62 @@ class TestEnteringABoundaryRereadsTheSession:
             await consumer.command_join("CxOk", token)
 
         assert outbound.kinds() == ["render"]
+
+    async def test_a_session_naming_a_different_user_is_refused(self, boundary, user, other_user):
+        """The session names somebody, just not the person on this connection."""
+        with override_settings(SESSION_ENGINE=CACHE_SESSIONS):
+            store = CacheSessionStore()
+            store[AUTH_USER_ID_KEY] = str(user.pk)
+            store[AUTH_GENERATION_KEY] = "g1"
+            store.save()
+            key = str(store.session_key)
+            token = signed(CxOk, page=boundary, user=user, session=CacheSessionStore(key), id="target")
+            consumer, outbound = make_consumer(boundary=boundary, user=user, session=CacheSessionStore(key))
+
+            switched = CacheSessionStore(key)
+            switched[AUTH_USER_ID_KEY] = str(other_user.pk)
+            switched.save()
+            await consumer.command_join("CxOk", token)
+
+        assert outbound.kinds() == ["reload"]
+        assert consumer.repo.get("target") is None
+
+    async def test_the_stored_id_is_read_through_the_field_that_wrote_it(self, user):
+        """Django writes the pk with ``value_to_string`` and reads it back with
+        ``to_python``, and this comparison goes the same way.
+
+        For every primary-key type in practice that is the same answer a string
+        comparison gives -- so this pins the contract rather than a difference,
+        and a mutation swapping the two survives on purpose. It is here because
+        the next reader will check this against ``django.contrib.auth``, and it
+        should match what they find.
+        """
+        consumer, _ = make_consumer(user=user)
+
+        assert consumer._session_still_names_this_user(SessionView({AUTH_USER_ID_KEY: str(user.pk)}))
+        assert consumer._session_still_names_this_user(SessionView({AUTH_USER_ID_KEY: user.pk})), (
+            "the same key, written as the field's own type"
+        )
+        assert not consumer._session_still_names_this_user(SessionView({}))
+        assert not consumer._session_still_names_this_user(SessionView({AUTH_USER_ID_KEY: "not-a-key"})), (
+            "a value the field cannot read is not this user"
+        )
+
+    async def test_the_user_on_a_connection_is_lazy_and_that_has_to_work(self, boundary, user):
+        """What a real connection actually holds.
+
+        ``AuthMiddlewareStack`` puts a ``SimpleLazyObject`` in the scope, so
+        ``type(user)`` is the wrapper and has no ``_meta`` at all. A unit test that
+        hands the consumer a plain model instance never sees that; the browser
+        suite did, as five timeouts and an ``AttributeError`` in the log.
+        """
+        from django.utils.functional import SimpleLazyObject
+
+        lazy = SimpleLazyObject(lambda: user)
+        consumer, _ = make_consumer(user=lazy)
+
+        assert consumer._session_still_names_this_user(SessionView({AUTH_USER_ID_KEY: str(user.pk)}))
+        assert not consumer._session_still_names_this_user(SessionView({}))
 
     async def test_a_connection_refused_by_the_re_read_cannot_simply_ask_again(self, boundary):
         """The bookkeeping is the verdict, not the subscription.

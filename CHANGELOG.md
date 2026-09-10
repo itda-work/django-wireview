@@ -74,6 +74,9 @@ The django-reactor era changelog (2.x) is preserved in
   for a component that declares no `_live_sessions` settled the connection on "no policy" and
   skipped the view's own `authorize` entirely. `wireview.W010` reports the combination.
 
+- The session's user id is compared through the model's own primary-key field (`#58`), the way
+  `django.contrib.auth` reads it back -- and through `get_user_model()`, because the user on a
+  connection is a `SimpleLazyObject` whose type has no `_meta`.
 - Entering a boundary asks the re-read session who it authenticates, not only what it
   fingerprints to (`#58`). Dropping the auth hash left a session written before the generation
   nonce with the pk as its only fingerprint input -- and the pk comes from the connection, not

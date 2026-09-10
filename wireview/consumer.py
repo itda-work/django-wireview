@@ -4,7 +4,9 @@ import typing as t
 
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
+from django.core.exceptions import ValidationError
 from django.core.signing import BadSignature, SignatureExpired
 from django.utils.datastructures import MultiValueDict
 
@@ -372,7 +374,21 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         user = self.repo.user
         if not getattr(user, "is_authenticated", False):
             return True
-        return str(session.get(AUTH_USER_ID_KEY, "")) == str(getattr(user, "pk", ""))
+        stored = session.get(AUTH_USER_ID_KEY)
+        if stored is None:
+            return False
+        try:
+            # Through the field, the way Django reads it back: it writes the pk with
+            # ``value_to_string`` and converts it again on the way out.
+            #
+            # ``get_user_model()`` rather than ``type(user)`` -- the user on a
+            # connection is a ``SimpleLazyObject``, so its type is the wrapper and
+            # has no ``_meta`` at all. Django's own ``_get_user_session_key`` asks
+            # the model for the same reason.
+            return get_user_model()._meta.pk.to_python(stored) == user.pk
+        except (ValidationError, ValueError, TypeError):
+            # A value the field cannot read is not this user.
+            return False
 
     def _child_boundary_refusal(self, payload: StatePayload) -> str | None:
         """Why a child's stored state may not be restored here, or ``None`` if it may.
