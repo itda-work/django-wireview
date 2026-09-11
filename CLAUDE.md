@@ -79,6 +79,8 @@ tests/
                            settings_nats.py·settings_redis.py가 이를 고정하는 진입점이다.
                            e2e_server.py 가 E2E용 라이브 ASGI 서버의 정본이다 —
                            브라우저가 필요한 모든 스위트가 이것을 쓴다 (복제하면 test_e2e_harness.py가 실패한다).
+                           server_errors() 가 블록 동안 서버가 남긴 ERROR 를 돌려준다: 핸들러가 터지면
+                           소켓이 죽고 페이지가 멈출 뿐이라 브라우저 쪽에서는 느린 것과 구별되지 않는다.
                            bookmarks/ 는 예제가 아니라 wireview 스킬 검증의 기준선이고,
                            uploadprobe/ 는 워커 둘짜리 업로드 E2E(test_multiworker_uploads.py)의 픽스처,
                            livesession/ 은 경계 넘는 이동 E2E(test_live_session_e2e.py)의 픽스처다

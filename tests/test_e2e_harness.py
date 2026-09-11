@@ -12,6 +12,7 @@ hide. They are deterministic on purpose: the race itself is not, which is exactl
 why nobody caught it by running the suite.
 """
 
+import logging
 import pathlib
 import re
 import threading
@@ -228,3 +229,48 @@ def test_nothing_is_left_running_between_two_blocks(started_threads):
         assert len(alive) == 1
 
     assert [t.is_alive() for t in started_threads] == [False, False]
+
+
+def test_what_the_server_logs_is_readable_from_the_test(started_threads):
+    """A handler that raises kills the socket and nothing on the page moves again.
+
+    ``receive_json`` has no catch, so the exception goes out through Channels and
+    the page simply stops updating -- which, from a browser waiting for an
+    element, is indistinguishable from a slow machine (#85). The log is the only
+    place the difference exists, so it has to reach the failure message.
+    """
+    with serve():
+        logging.getLogger("wireview").error("handler blew up")
+        assert any("handler blew up" in line for line in e2e_server.server_errors())
+
+
+def test_errors_do_not_leak_between_blocks(started_threads):
+    with serve():
+        logging.getLogger("wireview").error("from the first block")
+
+    assert e2e_server.server_errors() == []
+
+    with serve():
+        assert e2e_server.server_errors() == []
+
+
+def test_the_collector_is_taken_off_the_root_logger(started_threads):
+    """Reading empty is not the same as being gone.
+
+    ``server_errors()`` answers from the current block, so a collector that is
+    never detached still reads empty afterwards while every log record in the
+    process keeps paying for it -- one more handler per E2E test.
+    """
+    before = list(logging.getLogger().handlers)
+
+    with serve():
+        assert len(logging.getLogger().handlers) == len(before) + 1
+
+    assert logging.getLogger().handlers == before
+
+
+def test_only_errors_are_collected(started_threads):
+    """A warning is not a failure. Reporting one under a timeout sends the reader chasing it."""
+    with serve():
+        logging.getLogger("wireview").warning("a rejoin was refused")
+        assert e2e_server.server_errors() == []

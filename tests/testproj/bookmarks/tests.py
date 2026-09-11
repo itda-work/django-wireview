@@ -1,30 +1,12 @@
-import time
-
 import pytest
+from playwright.sync_api import expect
 
-from testproj.e2e_server import serve
+from testproj.e2e_server import serve, server_errors
 from wireview import mount
 from wireview.schemas import ModelAction
 
 from .live import XBookmarkList
 from .models import Bookmark
-
-
-def _stream_html(view) -> str:
-    """view.sent_messages에 쌓인 stream_op 메시지의 아이템 HTML을 모아 돌려준다.
-
-    stream_insert()로 넣은 아이템은 view.render()의 전체 템플릿 출력에는 포함되지
-    않는다 (컨테이너만 정적으로 렌더된다) — 개별 아이템은 클라이언트로 보내는
-    stream_op 메시지에만 담긴다. testing.md의 표에는 있었지만("view.dom_actions |
-    스트림·DOM 조작 목록") 실제로는 view.dom_actions가 아니라 view.sent_messages에
-    stream_op 타입으로 쌓였다.
-    """
-    html = ""
-    for message in view.sent_messages:
-        if message.get("type") == "stream_op":
-            for item in message.get("items", []):
-                html += item.get("html", "")
-    return html
 
 
 @pytest.mark.unit
@@ -67,7 +49,7 @@ async def test_filter_unread_excludes_read_items():
     await view.call("set_filter", filter="unread")
 
     assert view.component.filter == "unread"
-    stream_html = _stream_html(view)
+    stream_html = view.stream_html()
     assert "아직안읽음" in stream_html
     assert "이미읽음" not in stream_html
 
@@ -95,7 +77,7 @@ async def test_mutation_from_other_tab_streams_new_bookmark():
     # 알림을 컴포넌트의 mutation() 라이프사이클 메서드를 직접 호출해 흉내낸다.
     await view.component.mutation("bookmarks.bookmark", ModelAction.CREATED, bookmark)
 
-    assert "다른 탭에서 추가" in _stream_html(view)
+    assert "다른 탭에서 추가" in view.stream_html()
 
 
 # --- E2E ---------------------------------------------------------------------
@@ -112,8 +94,16 @@ def bookmarks_server():
         yield base_url
 
 
-def _wait_for_websocket(page, timeout: float = 5.0):
-    page.wait_for_selector('[data-is-live="true"]', timeout=timeout * 1000)
+#: How long a browser-side wait may take. The same budget the harness gives the
+#: server to start (``e2e_server.STARTUP_TIMEOUT``), and for the same reason: the
+#: first interaction of a cold run pays for the browser, the first template
+#: compile and the first database connection at once. A tighter budget does not
+#: catch a bug, it reports the machine (#85).
+WAIT_TIMEOUT = 15.0
+
+
+def _wait_for_websocket(page):
+    page.wait_for_selector('[data-is-live="true"]', timeout=WAIT_TIMEOUT * 1000)
 
 
 def _items(page):
@@ -130,13 +120,24 @@ def _add(page, title: str, url: str):
     _wait_for_count(page, before + 1)
 
 
-def _wait_for_count(page, expected: int, timeout: float = 5.0):
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if _items(page).count() == expected:
-            return
-        time.sleep(0.1)
-    assert _items(page).count() == expected, f"expected {expected} items, got {_items(page).count()}"
+def _wait_for_count(page, expected: int):
+    """Wait for the stream to hold exactly ``expected`` items.
+
+    Playwright retries this itself, so the wait is driven by the assertion rather
+    than by a sleep loop guessing an interval. What the sleep loop could not do is
+    say *why* nothing arrived: a handler that raises tears the socket down
+    (``receive_json`` has no catch) and the page simply stops updating, which from
+    here looks exactly like a slow machine. So a failure carries what the server
+    logged.
+    """
+    try:
+        expect(_items(page)).to_have_count(expected, timeout=WAIT_TIMEOUT * 1000)
+    except AssertionError as failure:
+        errors = server_errors()
+        if not errors:
+            raise
+        reported = "\n".join(f"  {line}" for line in errors)
+        raise AssertionError(f"{failure}\n\nThe server logged, while this was waiting:\n{reported}") from None
 
 
 @pytest.mark.e2e

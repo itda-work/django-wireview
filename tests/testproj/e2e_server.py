@@ -21,6 +21,13 @@ hardest to chase: once, and never again on the retry.
 
 Anything that fails in the thread is carried back out so a dead server fails the
 test that needed it rather than looking like a slow one.
+
+**What the server logs is carried out too.** A handler that raises does not fail
+the request the browser can see -- ``receive_json`` has no catch, so Channels
+tears the socket down and the page simply stops updating. From the test that
+looks identical to a slow one: an element that never appears. So the errors the
+server logs while the block runs are collected, and a test that is about to fail
+on a missing element can say what the server said (:func:`server_errors`).
 """
 
 from __future__ import annotations
@@ -41,11 +48,41 @@ from uvicorn.main import Server as Uvicorn
 
 log = logging.getLogger(__name__)
 
-__all__ = ["UvicornThread", "serve"]
+__all__ = ["UvicornThread", "serve", "server_errors"]
 
 #: How long to wait for the server to come up, and to go away again.
 STARTUP_TIMEOUT = 15.0
 SHUTDOWN_TIMEOUT = 15.0
+
+
+class _ErrorCollector(logging.Handler):
+    """Keeps the formatted ERROR records logged anywhere while a server runs."""
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.ERROR)
+        self.records: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self.records.append(self.format(record))
+        except Exception:  # pragma: no cover - a broken formatter must not break the test
+            self.records.append(f"{record.name}: {record.getMessage()}")
+
+
+#: The collector for the ``serve()`` block currently running, if any. One at a
+#: time because a test runs one server; nested blocks would need a stack and no
+#: suite has ever wanted one.
+_collector: "_ErrorCollector | None" = None
+
+
+def server_errors() -> list[str]:
+    """Errors logged since the current ``serve()`` block started.
+
+    Empty outside a block. Meant for a failure message -- "the element never
+    appeared" and "the socket died on an exception" look the same to a browser,
+    and only one of them is a timeout worth retrying.
+    """
+    return list(_collector.records) if _collector is not None else []
 
 
 class UvicornThread(threading.Thread):
@@ -126,7 +163,7 @@ def serve(application: t.Any = None) -> t.Iterator[str]:
     sock.listen(128)
     port = sock.getsockname()[1]
     thread = UvicornThread(application or get_default_application(), host, port, sock=sock)
-    with override_settings(DEBUG=True), contextlib.closing(sock):
+    with override_settings(DEBUG=True), contextlib.closing(sock), _collecting_errors():
         # Everything after ``start()`` is inside the same cleanup, the wait for
         # startup included. Guarding only the body left the timeout path handing
         # back a live thread and then restoring settings out from under it --
@@ -143,6 +180,27 @@ def serve(application: t.Any = None) -> t.Iterator[str]:
             # only been asked to stop is still bound to its port and still
             # answering, which the next test would get instead of its own.
             _stop(thread)
+
+
+@contextlib.contextmanager
+def _collecting_errors() -> t.Iterator[None]:
+    """Attach the collector to the root logger for the length of the block.
+
+    On the root logger rather than on ``wireview``: the exception that kills a
+    socket is logged by whoever caught it last, and that is Channels or Uvicorn,
+    not this package.
+    """
+    global _collector
+    handler = _ErrorCollector()
+    handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
+    root = logging.getLogger()
+    root.addHandler(handler)
+    previous, _collector = _collector, handler
+    try:
+        yield
+    finally:
+        _collector = previous
+        root.removeHandler(handler)
 
 
 def _stop(thread: UvicornThread) -> None:
