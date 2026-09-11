@@ -17,6 +17,7 @@
 | [live-session-rejudge-2026-09-10.md](./live-session-rejudge-2026-09-10.md) | 5라운드 재판정. 다시 보류였다 | 반영 완료. 4라운드 수정이 만든 회귀 하나와, 전환 계약이 딛고 있던 틀린 전제(무경계 토큰은 스스로 갱신된다) |
 | [live-session-rejudge2-2026-09-10.md](./live-session-rejudge2-2026-09-10.md) | 6라운드. **릴리스 가능** | 남은 것은 세션 저장소·브로커·연결 수명의 일반적 한계이고 문서에 범위가 적혀 있다 |
 | [longpolling-fallback.md](./longpolling-fallback.md) | WebSocket 폴백 (GAP-012, [#59](https://github.com/itda-work/django-wireview/issues/59)) | **결정됨: 만들지 않는다.** WebSocket 이 필수 전제다. 버린 길 셋(스티키 라우팅·무상태 세션·SSE)과 그 이유가 여기 있다 |
+| [colocated-hooks.md](./colocated-hooks.md) | 컴포넌트 옆의 JS 훅 (GAP-032, [#71](https://github.com/itda-work/django-wireview/issues/71)) | 설계 초안. **결정 셋이 이슈에 있고 그 전에는 착수하지 않는다.** §7: 훅에는 아직 사용자도 클라이언트 테스트도 없다 |
 | [backlog-review-2026-09-10.md](./backlog-review-2026-09-10.md) | `v0.3.0` 이후 잔여 이슈에 무엇을 다시 물어야 하는지 | 이슈가 정본이고 이 문서는 빠져 있는 사실만 적는다 |
 | [live-component-lifecycle.md](./live-component-lifecycle.md) | LiveComponent가 **지금 실제로** 어떻게 만들어지고 렌더되고 사라지는가, 그리고 그로부터 나오는 설계 질문 | 현황 조사. 답은 각 이슈에서 |
 | [live-component-lifecycle-review.md](./live-component-lifecycle-review.md) | 위 조사의 검증 리뷰 원문 | 반영 완료. 초판의 결론 하나가 틀렸다 |
