@@ -65,7 +65,8 @@ wireview/
 ├── templates/wireview_header.html  {% wireview_header %}가 렌더. wireview.min.js를 로드
 └── static/wireview/       wireview.js (소스), rendered.mjs (diff 적용·HTML 복원 순수 함수),
                            streams.mjs (스트림 DOM 판단 순수 함수), reload.mjs (reload 쿨다운 판단),
-                           live-session.mjs (경계 넘음 판단 순수 함수), wireview-boost.js, types.d.ts
+                           live-session.mjs (경계 넘음 판단 순수 함수), ready.mjs (defer 스크립트가 다 돌았는가),
+                           wireview-boost.js, types.d.ts
                            wireview.min.js는 빌드 산출물이며 gitignore
 
 tests/
@@ -85,9 +86,10 @@ tests/
                            uploadprobe/ 는 워커 둘짜리 업로드 E2E(test_multiworker_uploads.py)의 픽스처,
                            livesession/ 은 경계 넘는 이동 E2E(test_live_session_e2e.py)의 픽스처다
 
-examples/                  예제 앱 10개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.
+examples/                  예제 앱 11개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.
                            testproj 위에서 돌고 make test가 함께 실행한다(pytest tests examples).
-                           E2E는 todo/tests.py, livecomp/tests.py. 인덱스는 examples/README.md
+                           E2E는 todo/tests.py, livecomp/tests.py, hooks/tests.py. 인덱스는 examples/README.md
+                           hooks/ 는 wire-hook 의 유일한 사용자이자 클라이언트 훅 경로의 유일한 검증이다
 
 docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEATURE-GAP.md, ARCHITECTURE.md,
                            ROADMAP.md, DEPLOYMENT.md, PERFORMANCE.md, design/ 설계 메모(README.md 인덱스), implementation/ 구현 노트

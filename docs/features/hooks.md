@@ -34,6 +34,28 @@ window.wireview.hooks.ChartHook = {
 </div>
 ```
 
+## 훅 파일을 언제 싣나
+
+**`{% wireview_header %}` 뒤에 `defer`로 싣는다.**
+
+```html
+{% wireview_header %}
+<script defer src="{% static 'myapp/hooks.js' %}"></script>
+```
+
+`defer` 스크립트는 문서 순서대로 실행되므로 그때 `window.wireview`는 이미 있다. 그리고
+wireview는 **`defer` 스크립트가 전부 실행된 뒤에야 컴포넌트를 join한다** — 훅 파일이 조금
+늦게 도착해도 첫 렌더 때 훅이 자리에 있다는 뜻이다.
+
+이 보장이 필요한 이유는 실패가 조용하기 때문이다. 등록되지 않은 훅은 오류를 내지 않고
+콘솔 경고 한 줄(`Hook "X" not registered`)만 남기며, 컴포넌트는 정상으로 보인다.
+
+인라인 `<script>`는 `defer`가 안 되므로 **번들보다 먼저 실행된다.** 훅 등록을 인라인으로
+쓰면 `window.wireview`가 없어서 실패한다. 파일로 빼서 `defer`로 싣는다.
+
+동작하는 예제는 [`examples/hooks/`](../../examples/hooks/)에 있다. 훅 파일을 프로젝트가
+직접 싣지 않아도 되게 만드는 일은 [GAP-032](../design/colocated-hooks.md)다.
+
 ## 훅 수명주기
 
 | 콜백 | 언제 | 쓰임새 |

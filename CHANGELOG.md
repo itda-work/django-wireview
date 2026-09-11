@@ -12,6 +12,11 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- A `hooks` example, and with it the first test anywhere of the client half of
+  JavaScript hooks (#71). Nothing in this repository used `wire-hook` -- the
+  server side had unit tests, while `mountHooks`, the lifecycle callbacks and the
+  `pushEvent` round trip had never run. `examples/hooks/`.
+
 - Navigation and stream assertions in `wireview.testing` (GAP-031, #70). `assert_pushed_to()`,
   `assert_replaced_to()`, `assert_redirected_to()` and `assert_no_navigation()` compare a
   destination and its query params and, on a miss, report every URL change that did happen;
@@ -25,6 +30,11 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- Components no longer join before the page's own deferred scripts have run.
+  The bundle opens the socket as soon as it executes, which is inside the
+  deferred phase, so a page registering a JavaScript hook from its own `defer`
+  script was racing the handshake -- and losing it is silent, since an
+  unregistered hook is a console warning and nothing else. `ready.mjs`.
 - A navigation to a query-only destination (`push_to("?page=2")` -- what `params_changed`'s own
   docstring shows) raised `NoReverseMatch`. `resolve_url` reverses any string with no `/` and no
   `.` in it; `resolve_destination` now passes `?` and `#` through unchanged.

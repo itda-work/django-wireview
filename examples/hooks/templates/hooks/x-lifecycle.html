@@ -1,0 +1,29 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <p>
+    서버가 찍은 순간:
+    <code data-testid="stamp-raw">{{ stamp }}</code>
+  </p>
+  {% if visible %}
+    <p>
+      브라우저가 읽은 것:
+      <time wire-hook="Timeago" data-testid="timeago" data-at="{{ stamp }}">{{ stamp }}</time>
+    </p>
+  {% else %}
+    <p data-testid="gone">시계가 페이지에서 빠졌다.</p>
+  {% endif %}
+  <p>
+    <button data-testid="touch" {% on "click" "touch" %}>새로 찍기</button>
+    {% if visible %}
+      <button data-testid="hide" {% on "click" "hide" %}>시계 빼기</button>
+    {% else %}
+      <button data-testid="reveal" {% on "click" "reveal" %}>시계 되돌리기</button>
+    {% endif %}
+    <button data-testid="highlight" {% on "click" "highlight" %}>서버에서 훅으로 보내기</button>
+  </p>
+  <p>
+    <button wire-hook="Noter" data-testid="noter">훅에서 서버로 보내기</button>
+    서버가 센 횟수: <output data-testid="notes">{{ notes }}</output>
+  </p>
+</div>

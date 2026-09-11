@@ -29,6 +29,7 @@ urlpatterns = [
     path("quiz/", include("examples.quiz.urls")),
     path("notifications/", include("examples.notifications.urls")),
     path("livecomp/", include("examples.livecomp.urls")),
+    path("hooks/", include("examples.hooks.urls")),
     path("bookmarks/", include("testproj.bookmarks.urls")),
     path("livesession/", include("testproj.livesession.urls")),
     path("uploadprobe/", include("testproj.uploadprobe.urls")),

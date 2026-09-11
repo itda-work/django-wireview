@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     "examples.notifications",
     "examples.slots",
     "examples.livecomp",
+    "examples.hooks",
     "testproj.bookmarks",
     "testproj.livesession",
     "testproj.uploadprobe",

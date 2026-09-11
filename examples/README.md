@@ -14,6 +14,7 @@
 | [notifications](./notifications/) | 이름 붙인 채널로 컴포넌트끼리 알린다 | [14](../docs/tutorials/14-notifications.md) |
 | [livecomp](./livecomp/) | 연결을 공유하는 중첩 컴포넌트 | [15](../docs/tutorials/15-live-components.md) |
 | [slots](./slots/) | 내용을 호출자가 채우는 레이아웃 컴포넌트 | [기능 문서](../docs/features/slots.md) |
+| [hooks](./hooks/) | 브라우저만 할 수 있는 일을 컴포넌트에 붙인다 | [기능 문서](../docs/features/hooks.md) |
 
 ## 예제는 테스트다
 
@@ -37,5 +38,5 @@ WebSocket이 필요하므로 `runserver`가 아니라 daphne로 띄운다.
 ```bash
 make test                        # 예제 테스트까지 전부
 make test ARGS="-k quiz"         # 예제 하나
-make test-e2e LAYER=memory       # 브라우저 (todo, livecomp, bookmarks)
+make test-e2e LAYER=memory       # 브라우저 (todo, livecomp, hooks, bookmarks)
 ```

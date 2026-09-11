@@ -1,6 +1,7 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
 import { applyPartial, buildHtml } from "./rendered.mjs";
 import { planInsert, planTrim } from "./streams.mjs";
+import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
 import boost from "./wireview-boost";
 
@@ -60,6 +61,11 @@ function parseQueryString(search) {
  * @property {string} [html] - HTML content
  */
 
+//: Captured here, while this bundle is still inside the deferred phase. Asking
+//: later would be too late to tell the two meanings of "interactive" apart --
+//: see ready.mjs.
+const whenDocumentReady = createDocumentReady(document, window);
+
 /**
  * Manages WebSocket connection to Django backend.
  * Handles component lifecycle, message routing, and reconnection.
@@ -104,13 +110,17 @@ class ServerConnection {
       this.wasConnected = true;
 
       this.sendQueryString();
-      this.components = {};
-      this.joinAllComponents();
-      // Flush messages queued while the socket was connecting
-      while (this.messageQueue.length) {
-        const { command, payload } = this.messageQueue.shift();
-        this._send(command, payload);
-      }
+      // Held until the document is ready so that every deferred script -- a
+      // page's own hook definitions among them -- has run before anything joins.
+      whenDocumentReady(() => {
+        this.components = {};
+        this.joinAllComponents();
+        // Flush messages queued while the socket was connecting
+        while (this.messageQueue.length) {
+          const { command, payload } = this.messageQueue.shift();
+          this._send(command, payload);
+        }
+      });
     });
 
     this.socket.addEventListener("message", (event) =>

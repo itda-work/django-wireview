@@ -1,0 +1,62 @@
+{% load static wireview %}
+
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>JavaScript Hooks</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        max-width: 720px;
+        margin: 40px auto;
+        padding: 0 20px;
+        color: #222;
+      }
+      code, time { background: #f2f2f2; padding: 2px 6px; border-radius: 4px; }
+      button { padding: 6px 12px; margin-right: 6px; }
+      table { border-collapse: collapse; margin-top: 24px; }
+      th, td { border: 1px solid #ddd; padding: 6px 14px; text-align: left; }
+      caption { text-align: left; font-weight: 600; padding-bottom: 8px; }
+    </style>
+    {% wireview_header %}
+    {# defer, and after the header: deferred scripts run in document order, so
+       window.wireview exists by the time this file registers its hooks. #}
+    <script defer src="{% static 'hooks/lifecycle.js' %}"></script>
+  </head>
+  <body>
+    <h1>JavaScript Hooks</h1>
+    {% component "XLifecycle" id="lifecycle" %}
+    <table>
+      <caption>훅 콜백이 몇 번 돌았나</caption>
+      <tbody>
+        <tr>
+          <th>mounted</th>
+          <td data-testid="count-mounted">0</td>
+        </tr>
+        <tr>
+          <th>beforeUpdate</th>
+          <td data-testid="count-beforeUpdate">0</td>
+        </tr>
+        <tr>
+          <th>updated</th>
+          <td data-testid="count-updated">0</td>
+        </tr>
+        <tr>
+          <th>destroyed</th>
+          <td data-testid="count-destroyed">0</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      서버가 훅에 보낸 것: <span data-testid="pushed">-</span>
+      <br />
+      훅이 서버에게 받은 답: <span data-testid="reply">-</span>
+    </p>
+    <p>
+      이 숫자들은 컴포넌트 <em>밖</em>에 있다. 안에 두면 서버가 다시 그릴 때마다
+      서버가 아는 값으로 덮인다.
+    </p>
+  </body>
+</html>
