@@ -1,7 +1,7 @@
 import pytest
-from playwright.sync_api import expect
 
-from testproj.e2e_server import serve, server_errors
+from testproj.e2e_browser import expect_count, open_live
+from testproj.e2e_server import serve
 from wireview import mount
 from wireview.schemas import ModelAction
 
@@ -94,18 +94,6 @@ def bookmarks_server():
         yield base_url
 
 
-#: How long a browser-side wait may take. The same budget the harness gives the
-#: server to start (``e2e_server.STARTUP_TIMEOUT``), and for the same reason: the
-#: first interaction of a cold run pays for the browser, the first template
-#: compile and the first database connection at once. A tighter budget does not
-#: catch a bug, it reports the machine (#85).
-WAIT_TIMEOUT = 15.0
-
-
-def _wait_for_websocket(page):
-    page.wait_for_selector('[data-is-live="true"]', timeout=WAIT_TIMEOUT * 1000)
-
-
 def _items(page):
     return page.locator('ul[wire-stream="bookmarks"] li')
 
@@ -121,23 +109,7 @@ def _add(page, title: str, url: str):
 
 
 def _wait_for_count(page, expected: int):
-    """Wait for the stream to hold exactly ``expected`` items.
-
-    Playwright retries this itself, so the wait is driven by the assertion rather
-    than by a sleep loop guessing an interval. What the sleep loop could not do is
-    say *why* nothing arrived: a handler that raises tears the socket down
-    (``receive_json`` has no catch) and the page simply stops updating, which from
-    here looks exactly like a slow machine. So a failure carries what the server
-    logged.
-    """
-    try:
-        expect(_items(page)).to_have_count(expected, timeout=WAIT_TIMEOUT * 1000)
-    except AssertionError as failure:
-        errors = server_errors()
-        if not errors:
-            raise
-        reported = "\n".join(f"  {line}" for line in errors)
-        raise AssertionError(f"{failure}\n\nThe server logged, while this was waiting:\n{reported}") from None
+    expect_count(_items(page), expected)
 
 
 @pytest.mark.e2e
@@ -148,8 +120,7 @@ class TestBookmarksE2E:
 
     def test_form_submit_delivers_named_inputs_as_handler_arguments(self, page, bookmarks_server):
         """The skill claims a form field's `name` becomes the handler argument."""
-        page.goto(f"{bookmarks_server}/bookmarks/")
-        _wait_for_websocket(page)
+        open_live(page, f"{bookmarks_server}/bookmarks/")
         _wait_for_count(page, 0)
 
         _add(page, "위키", "https://wikipedia.org")
@@ -159,8 +130,7 @@ class TestBookmarksE2E:
         assert "https://wikipedia.org" in _items(page).first.inner_html()
 
     def test_stream_insert_reaches_the_dom(self, page, bookmarks_server):
-        page.goto(f"{bookmarks_server}/bookmarks/")
-        _wait_for_websocket(page)
+        open_live(page, f"{bookmarks_server}/bookmarks/")
 
         _add(page, "첫째", "https://example.com/1")
         _add(page, "둘째", "https://example.com/2")
@@ -169,16 +139,15 @@ class TestBookmarksE2E:
         assert "둘째" in _items(page).first.inner_text(), "at=0 should prepend"
 
     def test_toggle_and_delete_round_trip(self, page, bookmarks_server):
-        page.goto(f"{bookmarks_server}/bookmarks/")
-        _wait_for_websocket(page)
+        open_live(page, f"{bookmarks_server}/bookmarks/")
         _add(page, "토글대상", "https://example.com/t")
         _wait_for_count(page, 1)
 
         assert "안읽음" in _items(page).first.inner_text()
         page.click('li >> button:has-text("토글")')
-        page.wait_for_selector('li span:text-is("읽음")', timeout=5000)
+        expect_count(page.locator('li span:text-is("읽음")'), 1)
         # streaming the same dom id again updates the item, it does not add one (#67)
-        assert _items(page).count() == 1
+        expect_count(_items(page), 1)
 
         page.click('li >> button:has-text("삭제")')
         _wait_for_count(page, 0)
@@ -186,15 +155,14 @@ class TestBookmarksE2E:
     def test_filter_switch_resets_the_stream(self, page, bookmarks_server):
         """A handler that changes state and re-streams: the re-render must not
         wipe the container it just filled (#67)."""
-        page.goto(f"{bookmarks_server}/bookmarks/")
-        _wait_for_websocket(page)
+        open_live(page, f"{bookmarks_server}/bookmarks/")
         _add(page, "이미읽음", "https://example.com/1")
         _add(page, "아직안읽음", "https://example.com/2")
         _wait_for_count(page, 2)
 
         # mark the first one read through the UI
         page.click('li:has-text("이미읽음") >> button:has-text("토글")')
-        page.wait_for_selector('li:has-text("이미읽음") span:text-is("읽음")', timeout=5000)
+        expect_count(page.locator('li:has-text("이미읽음") span:text-is("읽음")'), 1)
 
         page.click('.filters a:has-text("안읽음")')
         _wait_for_count(page, 1)

@@ -12,15 +12,10 @@ import time
 
 import pytest
 from playwright.sync_api import expect
+from testproj.e2e_browser import expect_text, open_live
 from testproj.e2e_server import serve, server_errors
 
 from .live import XLifecycle
-
-#: The same budget the harness gives the server to start. A cold first
-#: interaction pays for the browser, the first template compile and the first
-#: database connection at once (#85).
-WAIT_TIMEOUT = 15.0
-
 
 # --- Without a browser -------------------------------------------------------
 
@@ -101,21 +96,8 @@ def hooks_server():
         yield base_url
 
 
-def _expect(locator, text: str):
-    """Assert a locator's text, and say what the server said if it never arrives."""
-    try:
-        expect(locator).to_have_text(text, timeout=WAIT_TIMEOUT * 1000)
-    except AssertionError as failure:
-        errors = server_errors()
-        if not errors:
-            raise
-        reported = "\n".join(f"  {line}" for line in errors)
-        raise AssertionError(f"{failure}\n\nThe server logged, while this was waiting:\n{reported}") from None
-
-
 def _open(page, server):
-    page.goto(f"{server}/hooks/")
-    page.wait_for_selector('[data-is-live="true"]', timeout=WAIT_TIMEOUT * 1000)
+    open_live(page, f"{server}/hooks/")
 
 
 @pytest.mark.e2e
@@ -128,7 +110,7 @@ class TestHookLifecycle:
         """The whole point: the server sent an instant, the browser shows a duration."""
         _open(page, hooks_server)
 
-        _expect(page.locator('[data-testid="count-mounted"]'), "1")
+        expect_text(page.locator('[data-testid="count-mounted"]'), "1")
         expect(page.locator('[data-testid="timeago"]')).to_contain_text("초 전")
 
     def test_a_hook_is_mounted_before_the_first_render_lands(self, page, hooks_server):
@@ -142,7 +124,7 @@ class TestHookLifecycle:
         """
         _open(page, hooks_server)
 
-        _expect(page.locator('[data-testid="count-mounted"]'), "1")
+        expect_text(page.locator('[data-testid="count-mounted"]'), "1")
         assert "not registered" not in "\n".join(server_errors())
 
     def test_a_slow_hook_file_still_registers_before_the_first_join(self, page, hooks_server):
@@ -158,62 +140,62 @@ class TestHookLifecycle:
 
         _open(page, hooks_server)
 
-        _expect(page.locator('[data-testid="count-mounted"]'), "1")
+        expect_text(page.locator('[data-testid="count-mounted"]'), "1")
 
     def test_a_morph_runs_beforeupdate_then_updated(self, page, hooks_server):
         _open(page, hooks_server)
-        _expect(page.locator('[data-testid="count-mounted"]'), "1")
+        expect_text(page.locator('[data-testid="count-mounted"]'), "1")
 
         page.click('[data-testid="touch"]')
 
-        _expect(page.locator('[data-testid="count-updated"]'), "1")
-        _expect(page.locator('[data-testid="count-beforeUpdate"]'), "1")
+        expect_text(page.locator('[data-testid="count-updated"]'), "1")
+        expect_text(page.locator('[data-testid="count-beforeUpdate"]'), "1")
         # Still the hook's text, not the ISO instant the server just wrote.
         expect(page.locator('[data-testid="timeago"]')).to_contain_text("초 전")
 
     def test_a_morph_does_not_mount_a_second_time(self, page, hooks_server):
         """The element survived the morph, so the hook instance did too."""
         _open(page, hooks_server)
-        _expect(page.locator('[data-testid="count-mounted"]'), "1")
+        expect_text(page.locator('[data-testid="count-mounted"]'), "1")
 
         page.click('[data-testid="touch"]')
-        _expect(page.locator('[data-testid="count-updated"]'), "1")
+        expect_text(page.locator('[data-testid="count-updated"]'), "1")
 
         expect(page.locator('[data-testid="count-mounted"]')).to_have_text("1")
 
     def test_removing_the_element_destroys_the_hook(self, page, hooks_server):
         _open(page, hooks_server)
-        _expect(page.locator('[data-testid="count-mounted"]'), "1")
+        expect_text(page.locator('[data-testid="count-mounted"]'), "1")
 
         page.click('[data-testid="hide"]')
 
-        _expect(page.locator('[data-testid="count-destroyed"]'), "1")
+        expect_text(page.locator('[data-testid="count-destroyed"]'), "1")
         expect(page.locator('[data-testid="gone"]')).to_be_visible()
 
     def test_putting_it_back_mounts_a_new_instance(self, page, hooks_server):
         _open(page, hooks_server)
-        _expect(page.locator('[data-testid="count-mounted"]'), "1")
+        expect_text(page.locator('[data-testid="count-mounted"]'), "1")
 
         page.click('[data-testid="hide"]')
-        _expect(page.locator('[data-testid="count-destroyed"]'), "1")
+        expect_text(page.locator('[data-testid="count-destroyed"]'), "1")
         page.click('[data-testid="reveal"]')
 
-        _expect(page.locator('[data-testid="count-mounted"]'), "2")
+        expect_text(page.locator('[data-testid="count-mounted"]'), "2")
 
     def test_the_hook_pushes_an_event_and_reads_the_answer(self, page, hooks_server):
         _open(page, hooks_server)
-        _expect(page.locator('[data-testid="count-mounted"]'), "1")
+        expect_text(page.locator('[data-testid="count-mounted"]'), "1")
 
         page.click('[data-testid="noter"]')
 
         # The hook's callback, and the server's own render, agree.
-        _expect(page.locator('[data-testid="reply"]'), "1")
-        _expect(page.locator('[data-testid="notes"]'), "1")
+        expect_text(page.locator('[data-testid="reply"]'), "1")
+        expect_text(page.locator('[data-testid="notes"]'), "1")
 
     def test_the_server_pushes_an_event_the_hook_is_listening_for(self, page, hooks_server):
         _open(page, hooks_server)
-        _expect(page.locator('[data-testid="count-mounted"]'), "1")
+        expect_text(page.locator('[data-testid="count-mounted"]'), "1")
 
         page.click('[data-testid="highlight"]')
 
-        _expect(page.locator('[data-testid="pushed"]'), "서버가 보냈다")
+        expect_text(page.locator('[data-testid="pushed"]'), "서버가 보냈다")

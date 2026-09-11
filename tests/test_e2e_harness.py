@@ -201,6 +201,29 @@ def test_no_test_module_runs_a_server_thread_of_its_own():
     assert offenders == []
 
 
+def test_no_browser_suite_waits_on_its_own_terms():
+    """Guard against a sixth copy.
+
+    Five suites each had their own "poll until the page says what I expect", and
+    each picked its own budget. A five-second deadline does not catch a bug, it
+    reports the machine (#85) -- and none of them could say whether the server
+    had died while they waited, which is the one thing that distinguishes a
+    broken page from a slow one.
+
+    ``page.wait_for_selector`` is the shape they all had in common, so it belongs
+    to ``testproj.e2e_browser`` and nowhere else.
+    """
+    root = pathlib.Path(__file__).resolve().parent.parent
+    exempt = {root / "tests" / "testproj" / "e2e_browser.py", pathlib.Path(__file__).resolve()}
+    offenders = [
+        str(path.relative_to(root))
+        for path in list(root.glob("tests/**/*.py")) + list(root.glob("examples/**/*.py"))
+        if path.resolve() not in exempt and "page.wait_for_selector(" in path.read_text()
+    ]
+
+    assert offenders == []
+
+
 def test_the_port_is_one_the_os_handed_out(started_threads):
     """Not a number somebody picked and hoped was free.
 
