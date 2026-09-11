@@ -52,12 +52,15 @@ morph가 아니라 전체 페이지 로드**다. 전체 로드는 JavaScript 문
 설계상 제외다. 근거와 버린 길 셋은 [설계 메모](./longpolling-fallback.md) §5 에 있다.
 다시 열 조건도 거기 적혀 있다 — 추정이 아니라 "막힌 배포에서 쓸 수 없다"는 구체적인 보고다.
 
-### [#71](https://github.com/itda-work/django-wireview/issues/71) GAP-032 Colocated hooks — 헤더 태그가 문맥을 읽는다
+### [#71](https://github.com/itda-work/django-wireview/issues/71) GAP-032 Colocated hooks — 끝났다
 
-후보 셋 중 "`{% wireview_header %}`가 수집해 로드"가 있다. 그 태그는 이제 `takes_context=True`이고
-**`context["request"]`에 의존한다**(경계 이름을 거기서 읽는다). 훅 수집을 그 태그에 얹는다면 같은
-의존을 하나 더 만드는 것이고, 그 의존이 없을 때 조용히 꺼지는 것이 어떤 모습인지는 `wireview.W010`이
-이미 보여 준다. 다시 물을 것: 훅 수집도 요청에 의존해야 하는가, 아니면 요청과 무관한 경로가 있는가.
+2026-09-12 완료. 여기서 물었던 것("훅 수집도 요청에 의존해야 하는가")의 답은 **아니오**였고,
+이유는 이 문서가 예상한 것과 달랐다. boost 가 body 만 갈아 끼우므로 **훅 목록은 페이지가 아니라
+프로젝트의 성질이어야 하고**, 그러면 요청과 무관해진다. 설계와 버린 길은
+[colocated-hooks.md](./colocated-hooks.md).
+
+그 작업의 1 단계에서 `wire-hook` 이 저장소에 사용자가 없다는 것이 드러나 `examples/hooks` 와
+E2E 를 먼저 만들었다. 훅 클라이언트 절반의 첫 검증이다.
 
 ### [#70](https://github.com/itda-work/django-wireview/issues/70) GAP-031 내비게이션 테스트 헬퍼 — 끝났다
 
