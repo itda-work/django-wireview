@@ -29,6 +29,8 @@ DEFAULT = {
     "AUTO_GENERATE_STUBS": True,  # Auto-generate .pyi stubs in DEBUG mode
     # Telemetry signals (wireview.telemetry)
     "TELEMETRY": False,
+    # Load each app's static/<app_label>/hooks/*.js from {% wireview_header %}
+    "COLLECT_HOOKS": True,
 }
 
 WIREVIEW = DEFAULT | getattr(settings, "WIREVIEW", {})
@@ -68,3 +70,7 @@ AUTO_GENERATE_STUBS: bool = WIREVIEW["AUTO_GENERATE_STUBS"]
 
 # Telemetry signals
 TELEMETRY: bool = WIREVIEW["TELEMETRY"]
+
+# JavaScript hook files an app ships (wireview.features.hooks). Turn it off in a
+# project that puts the same files through its own bundler.
+COLLECT_HOOKS: bool = WIREVIEW["COLLECT_HOOKS"]

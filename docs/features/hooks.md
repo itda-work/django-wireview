@@ -34,27 +34,59 @@ window.wireview.hooks.ChartHook = {
 </div>
 ```
 
-## 훅 파일을 언제 싣나
+## 훅 파일을 어디에 두나
 
-**`{% wireview_header %}` 뒤에 `defer`로 싣는다.**
+**앱의 static 아래 `hooks/`에 둔다.** 프로젝트가 `<script>` 태그를 쓸 필요가 없다.
 
-```html
-{% wireview_header %}
-<script defer src="{% static 'myapp/hooks.js' %}"></script>
+```
+myapp/
+└── static/
+    └── myapp/          ← 앱 라벨 (Django의 정적 파일 네임스페이스)
+        └── hooks/      ← wireview의 규약
+            └── chart.js
 ```
 
-`defer` 스크립트는 문서 순서대로 실행되므로 그때 `window.wireview`는 이미 있다. 그리고
-wireview는 **`defer` 스크립트가 전부 실행된 뒤에야 컴포넌트를 join한다** — 훅 파일이 조금
-늦게 도착해도 첫 렌더 때 훅이 자리에 있다는 뜻이다.
+`{% wireview_header %}`가 설치된 앱 전부에서 이 디렉터리를 찾아 `defer`로 싣는다. 파일은
+자기 훅 이름을 자기가 쓴다.
 
-이 보장이 필요한 이유는 실패가 조용하기 때문이다. 등록되지 않은 훅은 오류를 내지 않고
-콘솔 경고 한 줄(`Hook "X" not registered`)만 남기며, 컴포넌트는 정상으로 보인다.
+```javascript
+// myapp/static/myapp/hooks/chart.js
+window.wireview.hooks.Chart = {
+  mounted() { ... },
+};
+```
 
-인라인 `<script>`는 `defer`가 안 되므로 **번들보다 먼저 실행된다.** 훅 등록을 인라인으로
-쓰면 `window.wireview`가 없어서 실패한다. 파일로 빼서 `defer`로 싣는다.
+### 왜 페이지마다 전부 싣나
 
-동작하는 예제는 [`examples/hooks/`](../../examples/hooks/)에 있다. 훅 파일을 프로젝트가
-직접 싣지 않아도 되게 만드는 일은 [GAP-032](../design/colocated-hooks.md)다.
+수집은 **페이지가 아니라 프로젝트 단위**다. 그 페이지가 쓰는 훅만 실으면 boost 내비게이션에서
+깨진다 — 경계 안에서 이동할 때 wireview는 body만 갈아 끼우므로 **목적지 문서의 `<head>`에 있던
+`<script>`는 실행되지 않는다.** 첫 로드에서는 되고 이동해서 들어가면 안 되는 결함이 된다.
+
+부수 효과로 수집이 요청과 무관해진다 — 기동 때 한 번 정해진다.
+
+### 순서는 보장된다
+
+`defer` 스크립트는 문서 순서대로 실행되므로 훅 파일이 도는 시점에 `window.wireview`는 이미 있다.
+그리고 **wireview는 `defer` 스크립트가 전부 실행된 뒤에야 컴포넌트를 join한다** — 훅 파일이 늦게
+도착해도 첫 렌더 때 훅이 자리에 있다는 뜻이다.
+
+이 보장이 필요한 이유는 실패가 조용하기 때문이다. 등록되지 않은 훅은 오류를 내지 않고 콘솔 경고
+한 줄(`Hook "X" not registered`)만 남기며, 컴포넌트는 정상으로 보인다. `manage.py check`의
+`wireview.W011`이 그 짝을 먼저 잡는다 — 템플릿이 부르는 이름을 등록하는 파일이 없을 때.
+
+### 직접 싣고 싶다면
+
+번들러가 있는 프로젝트는 수집을 끄고 같은 파일들을 자기 번들에 넣으면 된다.
+
+```python
+WIREVIEW = {"COLLECT_HOOKS": False}
+```
+
+끄면 `wireview.W011`도 함께 조용해진다 — 비교할 대상이 없기 때문이다. 직접 실을 때도
+**번들이 wireview보다 먼저 실행되지 않게** 해야 한다. 인라인 `<script>`는 `defer`가 안 되므로
+`window.wireview`가 없는 시점에 돌아 실패한다.
+
+동작하는 예제는 [`examples/hooks/`](../../examples/hooks/)에 있다.
 
 ## 훅 수명주기
 

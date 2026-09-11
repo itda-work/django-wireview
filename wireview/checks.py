@@ -476,6 +476,52 @@ def check_signing_key(app_configs, **kwargs) -> list[CheckMessage]:
     return messages
 
 
+def check_hook_files(app_configs, **kwargs) -> list[CheckMessage]:
+    """W011: a template asks for a JavaScript hook that nothing registers.
+
+    An unregistered hook is the quietest failure wireview has: the client warns
+    to the console and the component renders exactly as it should, so the page
+    looks right and one behaviour is missing. Moving a component between
+    projects and leaving its JavaScript behind produces precisely this.
+
+    Both halves are read from source, which is what makes this a warning rather
+    than an error. A name a template builds at render time is invisible to the
+    scan, and a project may register some hooks through its own bundler while
+    shipping others under the convention -- so the hint says how to silence it
+    instead of pretending the reading is complete.
+    """
+    from . import settings as wireview_settings
+    from .features.hooks import hook_names, required_hook_names
+
+    if not wireview_settings.COLLECT_HOOKS:
+        return []
+    provided = hook_names()
+    if not provided:
+        # No app ships hooks under the convention, so the project registers them
+        # some other way and this check has nothing to compare against.
+        return []
+
+    messages: list[CheckMessage] = []
+    for name, templates in sorted(required_hook_names().items()):
+        if name in provided:
+            continue
+        where = ", ".join(sorted(set(templates))[:3])
+        messages.append(
+            Warning(
+                f'wire-hook="{name}" is used in {where}, but no collected hook file registers it.',
+                hint=(
+                    f"wireview loads each app's static/<app_label>/hooks/*.js and expects one of "
+                    f"them to do window.wireview.hooks.{name} = {{...}}. Without it the element "
+                    f"renders and the hook silently does not run -- the only trace is a console "
+                    f"warning. If this hook is registered somewhere this check cannot read, add "
+                    f"'wireview.W011' to SILENCED_SYSTEM_CHECKS."
+                ),
+                id="wireview.W011",
+            )
+        )
+    return messages
+
+
 def register_checks() -> None:
     """Register every check. Called from ``WireviewConfig.ready()``."""
     register(check_async_handlers, WIREVIEW_TAG)
@@ -487,4 +533,5 @@ def register_checks() -> None:
     register(check_live_sessions, WIREVIEW_TAG)
     register(check_upload_temp_dir, WIREVIEW_TAG)
     register(check_signing_key, WIREVIEW_TAG)
+    register(check_hook_files, WIREVIEW_TAG)
     register(check_channel_layer, WIREVIEW_TAG, deploy=True)

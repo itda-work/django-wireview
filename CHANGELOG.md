@@ -12,6 +12,17 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- JavaScript hook files load themselves (GAP-032, #71). An app puts them in
+  `static/<app_label>/hooks/*.js` and `{% wireview_header %}` loads every app's,
+  deferred and after the bundle; the file still names its own hook. The list is a
+  property of the project rather than of the page, because a boosted move
+  replaces the body and a script in the destination's head never runs -- loading
+  only a page's own hooks would work on first load and break after a navigation.
+  `WIREVIEW["COLLECT_HOOKS"] = False` turns it off for a project that bundles the
+  same files itself. `docs/features/hooks.md`.
+- `wireview.W011` reports a template asking for a hook no collected file
+  registers -- until now the quietest failure in the library, since the client
+  warns to the console and the component renders exactly as it should.
 - A `hooks` example, and with it the first test anywhere of the client half of
   JavaScript hooks (#71). Nothing in this repository used `wire-hook` -- the
   server side had unit tests, while `mountHooks`, the lifecycle callbacks and the

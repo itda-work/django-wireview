@@ -8,3 +8,6 @@
   }
 </style>
 <script defer src="{% static "wireview/wireview.min.js" %}?v=1"></script>
+{% for path in HOOK_FILES %}
+  <script defer src="{% static path %}"></script>
+{% endfor %}

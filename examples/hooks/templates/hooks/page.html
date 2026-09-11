@@ -1,4 +1,4 @@
-{% load static wireview %}
+{% load wireview %}
 
 <!DOCTYPE html>
 <html lang="ko">
@@ -20,10 +20,11 @@
       th, td { border: 1px solid #ddd; padding: 6px 14px; text-align: left; }
       caption { text-align: left; font-weight: 600; padding-bottom: 8px; }
     </style>
+    {% comment %}
+      The hook file is not named here. The header tag finds every app's
+      static/<app_label>/hooks/*.js and loads them, in order, after the bundle.
+    {% endcomment %}
     {% wireview_header %}
-    {# defer, and after the header: deferred scripts run in document order, so
-       window.wireview exists by the time this file registers its hooks. #}
-    <script defer src="{% static 'hooks/lifecycle.js' %}"></script>
   </head>
   <body>
     <h1>JavaScript Hooks</h1>

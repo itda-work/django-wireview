@@ -2,7 +2,7 @@
 
 > django-wireview가 Phoenix LiveView 수준에 도달하기 위해 필요한 기능 목록
 >
-> **최종 업데이트**: 2026-09-10
+> **최종 업데이트**: 2026-09-12
 
 ---
 
@@ -12,13 +12,13 @@
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 106 |
+| ✅ 지원 | 107 |
 | 🟡 부분 지원 | 1 |
-| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 4 |
+| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 3 |
 | ⚪ 설계상 제외 | 2 |
 
 103행 중 5행은 Phoenix에 없는 wireview 고유 기능이다(`mutation()`, 타입 스텁, LSP 메타데이터,
-MockChannelLayer, 시스템 체크). 남은 여섯 개의 갭은 3절 표에서 GAP 번호로 추적한다.
+MockChannelLayer, 시스템 체크). 남은 다섯 개의 갭은 3절 표에서 GAP 번호로 추적한다.
 
 ---
 
@@ -157,7 +157,7 @@ MockChannelLayer, 시스템 체크). 남은 여섯 개의 갭은 3절 표에서 
 | handleEvent (server→client) | ✅ | `this.handleEvent()` | ✅ |
 | handle_hook_event (server) | - | `handle_hook_event()` | ✅ |
 | push_event (server→client) | ✅ | `push_event()` | ✅ |
-| Colocated hooks | ✅ | ❌ | 🟠 GAP-032 ([#71](https://github.com/itda-work/django-wireview/issues/71)) |
+| Colocated hooks | ✅ | 앱의 `static/<app_label>/hooks/*.js` | ✅ (GAP-032) |
 | onBeforeElUpdated | ✅ | `dom.onBeforeElUpdated` | ✅ |
 
 ### 2.10 Components ✅
@@ -288,7 +288,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | ~~GAP-029~~ | ~~세션 접근~~ | ~~컴포넌트가 Django 세션을 읽는다. 예제 둘이 없는 API를 상상해 쓰고 있었다~~ | ~~하~~ | ✅ 완료 |
 | GAP-030 | 키 기반 comprehension | 앞쪽 삽입이 뒤 항목 전부를 다시 보내지 않게 | 상 | [#69](https://github.com/itda-work/django-wireview/issues/69) |
 | ~~GAP-031~~ | ~~내비게이션 테스트 헬퍼~~ | ~~`assert_patch`·`follow_redirect` 상당물~~ | ~~하~~ | ✅ 완료 |
-| GAP-032 | Colocated hooks | 컴포넌트 옆의 JS 훅을 자동 등록 | 중 | [#71](https://github.com/itda-work/django-wireview/issues/71) |
+| ~~GAP-032~~ | ~~Colocated hooks~~ | ~~컴포넌트 옆의 JS 훅을 자동 등록~~ | ~~중~~ | ✅ 완료 |
 | GAP-033 | Sticky 컴포넌트 | boost 내비게이션을 건너 살아남는 컴포넌트 | 중 | [#72](https://github.com/itda-work/django-wireview/issues/72) |
 | GAP-034 | Dead view | JS 없이도 읽히는 첫 렌더. 무엇을 약속할지부터 | 중 | [#73](https://github.com/itda-work/django-wireview/issues/73) |
 | GAP-035 | LiveComponent 배치 업데이트 | 같은 컴포넌트 N개 갱신의 N+1 제거 | 중 | [#74](https://github.com/itda-work/django-wireview/issues/74) |

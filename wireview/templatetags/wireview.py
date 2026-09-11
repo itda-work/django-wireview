@@ -16,6 +16,7 @@ from ..core.live_session import declaration_allows, get_live_session
 from ..core.rendered import inject_marker
 from ..core.state import sign_state
 from ..event_transpiler import transpile
+from ..features.hooks import hook_files
 from ..function_component import get_function_component
 from ..repository import ComponentRepository
 from ..slots import Slot, SlotContainer
@@ -36,6 +37,11 @@ def wireview_header(context):
     return {
         "BOOST_PAGES": settings.BOOST_PAGES,
         "LIVE_SESSION": getattr(request, LIVE_SESSION_REQUEST_ATTR, "") if request is not None else "",
+        # Every page carries every app's hooks, not the ones this page uses: a
+        # boosted move replaces the body, so a script in the destination's head
+        # never runs (docs/design/colocated-hooks.md §2). Settled at startup and
+        # independent of the request, unlike the boundary name above.
+        "HOOK_FILES": hook_files() if settings.COLLECT_HOOKS else (),
     }
 
 
