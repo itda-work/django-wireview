@@ -26,7 +26,7 @@ make bench ARGS="--server uvicorn-nodeflate"  # permessage-deflate를 끈 uvicor
 
 ## 비교가 공정한 이유
 
-`bench-compare`는 과거 커밋을 별도 worktree에 받아 그 커밋의 의존성으로 venv를 만들고, 벤치 코드만 현재 트리에서 복사해 넣습니다. 벤치는 공개 API(`mount`, `render_diff`)와 wire 프로토콜만 쓰므로 GAP-024 이전 코드에서도 그대로 돕니다. join 상태는 구형식 서명(v1 봉투 이전)을 쓰므로, `bench/settings.py`가 `WIREVIEW["STATE_ACCEPT_LEGACY"] = True`로 이를 받아들이게 합니다(운영 권장 설정이 아닙니다).
+`bench-compare`는 과거 커밋을 별도 worktree에 받아 그 커밋의 의존성으로 venv를 만들고, 벤치 코드만 현재 트리에서 복사해 넣습니다. 벤치는 공개 API(`mount`, `render_diff`)와 wire 프로토콜만 쓰므로 GAP-024 이전 코드에서도 그대로 돕니다. join 상태는 **재는 트리 자신의 `sign_state`로** 서명합니다(`bench/ws.py`의 `join_state`) — 커밋마다 그 커밋이 `data-state`에 넣었을 토큰을 받고, 서명 봉투 이전의 트리는 그 시절의 `Signer().sign(json)`을 받습니다. 예전에는 무조건 구형식으로 서명하고 `STATE_ACCEPT_LEGACY`에 기댔는데, 0.3.0부터 live_session을 선언한 프로젝트는 그 플래그와 무관하게 옛 토큰을 거절하고 testproj가 경계를 선언하므로 WebSocket 구간이 첫 join에서 죽어 있었습니다. `tests/test_bench_harness.py`가 이것을 지킵니다.
 
 ## 읽는 법
 

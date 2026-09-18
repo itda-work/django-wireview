@@ -201,18 +201,45 @@ def start_server(port: int, server: str = "daphne") -> subprocess.Popen:
     return proc
 
 
+def join_state(i: int, items: int) -> str:
+    """The signed state connection ``i`` joins with, in the format the tree under test issues.
+
+    compare.sh copies this file into a base worktree, so it also runs against commits
+    from before the signed envelope: asking the tree's own ``sign_state`` gives each
+    commit the token it would have put in ``data-state`` itself, and a tree without
+    one gets the bare ``Signer().sign(json)`` of that era.
+
+    This used to sign the old way unconditionally and lean on STATE_ACCEPT_LEGACY. That
+    stopped working in 0.3.0 without anyone noticing: a project that declares a
+    live_session refuses legacy tokens whatever the flag says, and testproj declares
+    one, so every join came back as ``reload`` and the WebSocket half never ran.
+    """
+    state = {
+        "id": f"bench-{i}",
+        "items": [{"name": f"item {k}", "qty": k, "done": k % 3 == 0} for k in range(items)],
+    }
+    try:
+        from wireview.core.state import sign_state
+    except ImportError:
+        from django.core.signing import Signer
+
+        return Signer().sign(json.dumps(state))
+
+    from django.contrib.auth.models import AnonymousUser
+
+    from bench.benchapp.live import BenchList
+    from wireview.core.meta import WireviewMeta
+
+    return sign_state(BenchList(user=AnonymousUser(), wire=WireviewMeta(params={}), **state))
+
+
 async def measure(ports: list[int], pids: dict[str, int], connections: int, items: int) -> dict[str, t.Any]:
     import websockets
-    from django.core.signing import Signer
 
     async def open_one(i: int):
         port = ports[i % len(ports)]
         ws = await websockets.connect(f"ws://127.0.0.1:{port}/__wireview__", max_size=None, open_timeout=30)
-        state = {
-            "id": f"bench-{i}",
-            "items": [{"name": f"item {k}", "qty": k, "done": k % 3 == 0} for k in range(items)],
-        }
-        signed = Signer().sign(json.dumps(state))
+        signed = join_state(i, items)
         await ws.send(
             json.dumps({"command": "join", "payload": {"name": "BenchList", "state": signed, "children": {}}})
         )

@@ -52,6 +52,11 @@ The django-reactor era changelog (2.x) is preserved in
 - A `.json` query key decoded to a value on the first load and arrived as a raw string after a
   navigation, because the client hands back what it read from the address bar. The consumer
   decodes with the same rule the first load used.
+- `make bench` runs again. Its WebSocket half had died at the first join since 0.3.0: the bench
+  signed its join state the pre-v1 way and relied on `STATE_ACCEPT_LEGACY`, which stops applying
+  once a project declares a `live_session` -- and testproj, the project the bench runs on,
+  declares one. It now signs with the tree's own `sign_state`, and `tests/test_bench_harness.py`
+  joins the way the bench does, since CI never ran the bench and nothing else noticed.
 - A project with no `CHANNEL_LAYERS` had every WebSocket accepted and then killed by
   `AttributeError: 'WireviewConsumer' object has no attribute 'channel_name'` (#87). Channels has no
   default layer -- it resolves a missing `default` alias to `None` and then never sets that

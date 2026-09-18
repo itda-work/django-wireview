@@ -37,11 +37,11 @@ elif _LAYER == "redis":
     }
 else:
     CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
-# STATE_ACCEPT_LEGACY: bench/ws.py signs the join state with the pre-v1
-# ``Signer().sign(json)`` format on purpose, so the same bench script runs
-# against commits from before the v1 envelope (bench/compare.sh copies the
-# bench into the base worktree). The flag is what lets the current server
-# accept it; it is not a recommended production setting.
+# STATE_ACCEPT_LEGACY only matters to base worktrees now. bench/ws.py signs the join
+# state with the tree's own ``sign_state``; a commit from the window where a pre-v1
+# token met a server that wanted the flag still needs it (bench/compare.sh copies the
+# bench into the base worktree). On a current tree it is inert -- testproj declares a
+# live_session, and that switches the flag off. Not a recommended production setting.
 WIREVIEW = {**WIREVIEW, "AUTO_GENERATE_STUBS": False, "STATE_ACCEPT_LEGACY": True}
 DATABASES["default"]["NAME"] = os.path.join(_DATA, "bench.sqlite3")
 LOGGING = {
