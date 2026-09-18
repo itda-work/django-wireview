@@ -35,6 +35,19 @@ jobs:
           uv sync --all-extras
           uv pip install "django~=${{ matrix.django-version }}.0"
 
+      # wireview.W004's tests and testproj's clean-checks bar look for the built bundle,
+      # which is gitignored. Without this step they fail on every runner.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install npm dependencies and build JS
+        run: |
+          npm ci
+          npm run build
+
       - name: Run tests
         run: make ci-test
 
