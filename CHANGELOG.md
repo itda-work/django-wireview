@@ -10,6 +10,20 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-19
+
+JavaScript hooks that load themselves (GAP-032), navigation and stream assertions for tests
+(GAP-031), and three more silent failures turned into `manage.py check` warnings (W011-W013).
+It also fixes the README's own quick start, which led to a connection that died on arrival (#87).
+
+**Upgrading.** Two things change for a project that is already running wireview:
+
+- **Django 4.2 is no longer supported.** The requirement is `django>=5.0`; 5.0 through 6.1 are
+  tested.
+- **Hook files under `static/<app_label>/hooks/*.js` now load on every page by themselves.** A
+  project that already includes them with its own `<script>` tags loads them twice. Remove the
+  tags, or set `WIREVIEW["COLLECT_HOOKS"] = False` to keep loading them your way.
+
 ### Added
 
 - JavaScript hook files load themselves (GAP-032, #71). An app puts them in
@@ -27,7 +41,6 @@ The django-reactor era changelog (2.x) is preserved in
   JavaScript hooks (#71). Nothing in this repository used `wire-hook` -- the
   server side had unit tests, while `mountHooks`, the lifecycle callbacks and the
   `pushEvent` round trip had never run. `examples/hooks/`.
-
 - Navigation and stream assertions in `wireview.testing` (GAP-031, #70). `assert_pushed_to()`,
   `assert_replaced_to()`, `assert_redirected_to()` and `assert_no_navigation()` compare a
   destination and its query params and, on a miss, report every URL change that did happen;
@@ -659,7 +672,9 @@ auto-recovery, viewport bindings, optimistic UI attributes, type stub
 generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
-[Unreleased]: https://github.com/itda-work/django-wireview/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/itda-work/django-wireview/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/itda-work/django-wireview/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/itda-work/django-wireview/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/itda-work/django-wireview/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/itda-work/django-wireview/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/itda-work/django-wireview/compare/v0.1.0...v0.1.1
