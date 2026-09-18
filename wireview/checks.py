@@ -204,6 +204,32 @@ def check_channel_layer(app_configs, **kwargs) -> list[CheckMessage]:
     ]
 
 
+def check_channel_layer_configured(app_configs, **kwargs) -> list[CheckMessage]:
+    """W012: no default channel layer at all, so no WebSocket connection survives.
+
+    Not a deploy check like W006: a missing layer is wrong on a single process
+    too. Channels resolves an absent ``default`` alias to ``None`` rather than
+    to an in-memory layer, and the consumer refuses the connection.
+    """
+    from django.conf import settings
+
+    from .core.transport import NO_CHANNEL_LAYER
+
+    if "default" in (getattr(settings, "CHANNEL_LAYERS", None) or {}):
+        return []
+
+    return [
+        Warning(
+            "No default channel layer is configured.",
+            hint=(
+                f"{NO_CHANNEL_LAYER} Until then pages render over HTTP and every WebSocket "
+                "connection is refused, so no component ever becomes live."
+            ),
+            id="wireview.W012",
+        )
+    ]
+
+
 def check_on_mount_hooks(app_configs, **kwargs) -> list[CheckMessage]:
     """W007: an ``_on_mount`` entry wireview cannot call.
 
@@ -534,4 +560,5 @@ def register_checks() -> None:
     register(check_upload_temp_dir, WIREVIEW_TAG)
     register(check_signing_key, WIREVIEW_TAG)
     register(check_hook_files, WIREVIEW_TAG)
+    register(check_channel_layer_configured, WIREVIEW_TAG)
     register(check_channel_layer, WIREVIEW_TAG, deploy=True)

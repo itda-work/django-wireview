@@ -52,6 +52,12 @@ The django-reactor era changelog (2.x) is preserved in
 - A `.json` query key decoded to a value on the first load and arrived as a raw string after a
   navigation, because the client hands back what it read from the address bar. The consumer
   decodes with the same rule the first load used.
+- A project with no `CHANNEL_LAYERS` had every WebSocket accepted and then killed by
+  `AttributeError: 'WireviewConsumer' object has no attribute 'channel_name'` (#87). Channels has no
+  default layer -- it resolves a missing `default` alias to `None` and then never sets that
+  attribute -- and the README's setup never asked for one, so its own quick start led here. The
+  consumer now refuses before accepting, with an `ImproperlyConfigured` that names the setting and
+  the three-line fix, and `wireview.W012` reports the same sentence from `manage.py check`.
 
 ## [0.3.0] - 2026-09-10
 

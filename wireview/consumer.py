@@ -6,7 +6,7 @@ from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.core.signing import BadSignature, SignatureExpired
 from django.utils.datastructures import MultiValueDict
 
@@ -16,7 +16,7 @@ from . import serializer
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
 from .core.session import SessionView, load_session
 from .core.state import LegacyState, StateMismatch, StatePayload, unsign_envelope
-from .core.transport import ChannelsOutbound, Outbound
+from .core.transport import NO_CHANNEL_LAYER, ChannelsOutbound, Outbound
 from .features import upload_store
 from .features.uploads import upload_group_name
 from .live_component import LiveComponent
@@ -89,6 +89,15 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
     @property
     def user(self):
         return self.scope.get("user") or AnonymousUser()
+
+    async def websocket_connect(self, message):
+        # Channels has no default layer: without CHANNEL_LAYERS it leaves
+        # channel_layer as None and never sets channel_name, so connect() used to
+        # accept the socket and then die on that attribute, which says nothing
+        # about the cause (#87). Refuse before accepting, and say why.
+        if self.channel_layer is None:
+            raise ImproperlyConfigured(NO_CHANNEL_LAYER)
+        await super().websocket_connect(message)
 
     async def connect(self):
         await super().connect()

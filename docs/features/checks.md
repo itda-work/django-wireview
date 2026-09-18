@@ -33,6 +33,7 @@ WARNINGS:
 | `wireview.W009` | `SIGNING_KEY`가 빈 문자열이거나, 키 없이 fallback만 설정됨 | `Signer(key="")`는 조용히 `SECRET_KEY`로 되돌아간다. 아무것도 깨지지 않는 것이 문제다 — `SECRET_KEY`를 돌리면 진행 중인 업로드와 열린 페이지의 `data-state`가 같이 죽는다 |
 | `wireview.W010` | 경계가 선언됐는데 `context_processors.request`가 꺼져 있거나, `_live_sessions`가 아무도 선언하지 않은 이름을 가리키거나, 경계가 있는 프로젝트에서 `_on_mount`로만 자신을 지키는 컴포넌트가 소속을 선언하지 않거나, `STATE_ACCEPT_LEGACY`가 경계와 함께 켜져 있음 | 프로세서가 없으면 경계가 통째로 조용히 꺼진다. 오타는 join 거절과 reload로 나타나 서명 문제처럼 보인다. 선언이 없는 컴포넌트는 경계 밖 페이지에서도 마운트된다. 롤아웃 플래그는 경계가 있으면 적용되지 않는데, 켜 둔 쪽은 창이 열려 있다고 믿는다 |
 | `wireview.W011` | 템플릿의 `wire-hook="X"`를 등록하는 훅 파일이 수집된 것 중에 없음 | 클라이언트가 콘솔 경고 한 줄만 남긴다. 컴포넌트는 정상으로 렌더되고 동작 하나가 빠진다 |
+| `wireview.W012` | `CHANNEL_LAYERS`에 `default` 레이어가 없음 | 페이지는 HTTP로 정상 렌더되는데 WebSocket 연결이 전부 거절되어 어떤 컴포넌트도 살아나지 않는다. Channels에는 기본 레이어가 없다 |
 
 전부 `Warning`이다. `manage.py check`의 기본 `--fail-level`은 `ERROR`이므로 이 검사들이
 빌드를 깨지 않는다. **오탐 하나면 팀 전체가 검사를 무시하기 시작하므로** 확신이 설 때까지
@@ -47,6 +48,27 @@ WARNINGS:
 ```console
 $ python manage.py check --deploy
 ?: (wireview.W006) The default channel layer is InMemoryChannelLayer.
+```
+
+### W012는 왜 `--deploy`가 아닌가
+
+W006과 같은 설정을 보지만 묻는 것이 다르다. InMemory는 프로세스가 하나면 옳고, **레이어가 아예
+없는 것은 프로세스가 하나여도 틀리다.** Channels는 `CHANNEL_LAYERS`에 `default`가 없으면 InMemory로
+물러서지 않고 `None`을 돌려주며, 그 경우 컨슈머에 `channel_name`도 만들지 않는다. 예전에는
+`connect()`가 소켓을 accept한 뒤 그 속성을 읽다가 `AttributeError`로 죽었고, 그 트레이스백은 설정도
+해법도 말해 주지 않았다([#87](https://github.com/itda-work/django-wireview/issues/87)).
+
+지금은 두 곳에서 같은 문장으로 말한다. 검사가 기동 전에 알려 주고, 검사를 거치지 않는 경로
+(`uvicorn myproject.asgi:application`을 직접 띄운 경우)에서는 컨슈머가 accept 전에
+`ImproperlyConfigured`로 연결을 거절한다. 문장의 정본은 `wireview/core/transport.py`의
+`NO_CHANNEL_LAYER` 하나다.
+
+단일 프로세스라면 고칠 것은 세 줄이다.
+
+```python
+CHANNEL_LAYERS = {
+    "default": {"BACKEND": "channels.layers.InMemoryChannelLayer"},
+}
 ```
 
 ### W010이 네 가지를 보는 이유

@@ -56,6 +56,17 @@ class Broker(t.Protocol):
         ...
 
 
+#: What a project without a channel layer is told. The consumer refuses the
+#: connection with it and the W012 system check reports it, so the two cannot drift.
+NO_CHANNEL_LAYER = (
+    "CHANNEL_LAYERS has no 'default' layer, and Channels has no built-in default. "
+    "wireview cannot subscribe, broadcast or reach a session without one. For a single "
+    "process, set CHANNEL_LAYERS = {'default': {'BACKEND': "
+    "'channels.layers.InMemoryChannelLayer'}}; across processes use channels-nats or "
+    "channels_redis."
+)
+
+
 class ChannelsBroker:
     """``Broker`` on top of the Django Channels channel layer.
 

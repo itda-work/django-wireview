@@ -10,7 +10,7 @@
 
 ## 전제 조건
 
-- Python 3.10 이상
+- Python 3.12 이상
 - Django 4.2 이상 프로젝트
 - 기본적인 Django 지식
 
@@ -19,20 +19,25 @@
 ### 패키지 설치
 
 ```bash
-pip install django-wireview
+pip install django-wireview daphne
 ```
 
-이 명령은 다음 의존성을 함께 설치합니다:
+`django-wireview`는 다음 의존성을 함께 설치합니다:
 - `channels` - Django Channels (WebSocket 지원)
 - `pydantic` - 데이터 검증 및 상태 관리
 
-### (권장) Redis 설치
+`daphne`는 따로 설치합니다. **Django의 `runserver`는 WSGI 서버라 WebSocket을 받지 못하고**,
+`daphne` 앱이 `INSTALLED_APPS` 맨 위에 있을 때에만 ASGI로 바뀝니다. 빠뜨려도 오류는 나지 않습니다 —
+페이지는 그려지는데 아무 버튼도 반응하지 않습니다.
 
-개발 환경에서는 InMemory channel layer를 사용할 수 있지만, 실제 브로드캐스팅을 테스트하려면 Redis가 필요합니다:
+daphne를 쓰지 않으려면(Windows에서는 쓰지 않습니다 — [배포 가이드](../DEPLOYMENT.md)) `uvicorn`을
+설치하고 4절의 `runserver` 대신 `uvicorn myproject.asgi:application --reload`로 띄웁니다.
 
-```bash
-pip install channels-redis
-```
+### 채널 레이어
+
+이 튜토리얼처럼 프로세스가 하나면 아래 설정의 InMemory 레이어로 브로드캐스트까지 전부 동작합니다.
+프로세스를 여러 개 띄우는 순간부터는 프로세스를 잇는 레이어가 필요합니다 —
+[channels-nats](https://github.com/itda-work/channels-nats)나 `channels_redis`입니다.
 
 ## 2. Django 설정
 
@@ -40,6 +45,7 @@ pip install channels-redis
 
 ```python
 INSTALLED_APPS = [
+    'daphne',        # 맨 위. runserver가 WebSocket을 받게 한다
     'wireview',      # wireview를 먼저 추가
     'channels',      # channels도 추가
     'django.contrib.admin',
@@ -228,6 +234,10 @@ urlpatterns = [
 ```bash
 python manage.py runserver
 ```
+
+기동 로그에 `Starting ASGI/Daphne ... development server`가 보여야 합니다. `Starting development
+server`만 보인다면 `daphne`가 `INSTALLED_APPS` 맨 위에 없는 것이고, 그 서버는 WebSocket을 받지
+못합니다.
 
 `http://localhost:8000`에 접속하면:
 1. "Hello, World!" 메시지가 표시됩니다

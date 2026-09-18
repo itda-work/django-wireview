@@ -50,7 +50,7 @@ wireview/
 ├── js.py                  JS() 명령 빌더
 ├── schemas.py, serializer.py  Pydantic 스키마, 모델 직렬화
 ├── settings.py            WIREVIEW 설정 기본값
-├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W011)
+├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W012)
 ├── telemetry.py           옵트인 계측 시그널 (event_handled, component_rendered, diff_computed, broadcast_published)
 ├── testing.py             mount(), MountedComponent, ComponentTestCase.
 │                          내비게이션 단언·follow_redirect·follow_push·스트림 검사
@@ -145,7 +145,9 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 
 ## 함정
 
-아래 중 열두 개는 `manage.py check`가 잡는다 (`wireview.W001`~`W011`, `docs/features/checks.md`).
+아래 중 열세 개는 `manage.py check`가 잡는다 (`wireview.W001`~`W012`, `docs/features/checks.md`).
+
+- **채널 레이어가 없으면 어떤 연결도 살아남지 못한다.** Channels에는 기본 레이어가 없다 — `CHANNEL_LAYERS`에 `default`가 없으면 `get_channel_layer()`가 `None`이고 컨슈머에 `channel_name`도 생기지 않는다. 컨슈머는 accept 전에 `ImproperlyConfigured`로 거절하고 `wireview.W012`가 같은 문장(`wireview/core/transport.py`의 `NO_CHANNEL_LAYER`)으로 미리 알린다(#87). 가드는 `connect()`가 아니라 `websocket_connect()`에 있다 — 단위 테스트는 레이어 없는 bare 컨슈머로 `connect()`를 직접 부르고, **그래서 그 테스트들은 이 실패를 한 번도 보지 못했다.**
 
 - **`wireview.min.js`가 없으면 페이지에서 JS가 로드되지 않는다.** clone 직후와 `wireview/static/wireview/wireview.js` 수정 후 `make build-js`.
 - **testproj의 채널 레이어는 `WIREVIEW_TEST_LAYER`가 고른다.** 기본은 `memory`(브로커 불요), `make test-e2e`와 CI는 `nats`다. E2E는 `tests/e2e.sh`가 nats-server를 직접 띄우고 끝나면 정리하므로 미리 켜 둘 필요가 없다(이미 떠 있으면 그것을 쓴다). 바꾸려면 `make test-e2e LAYER=redis` 또는 `LAYER=memory`. channels-nats는 dev extras에 있으므로 `make install`이면 들어온다.

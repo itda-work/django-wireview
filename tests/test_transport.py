@@ -159,3 +159,27 @@ async def test_channel_layer_is_only_touched_by_the_transport_module():
 async def test_mounted_component_keeps_working_with_recording_broker():
     view = await mount(TransportProbe, value=1)
     assert view.component.value == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_a_project_without_a_channel_layer_is_told_so_before_the_socket_opens():
+    """Channels resolves a missing ``default`` layer to ``None`` and never sets ``channel_name``.
+
+    connect() then accepted the socket and died on that attribute, which names
+    neither the setting nor the fix (#87). This goes through the ASGI entry point
+    on purpose: a bare ``consumer.connect()`` with a hand-set ``channel_name`` is
+    what the unit tests use, and it never saw the failure.
+    """
+    from channels.testing import WebsocketCommunicator
+    from django.contrib.auth.models import AnonymousUser
+    from django.core.exceptions import ImproperlyConfigured
+    from django.test import override_settings
+
+    from wireview.consumer import WireviewConsumer
+
+    with override_settings(CHANNEL_LAYERS={}):
+        communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), "/__wireview__")
+        communicator.scope["user"] = AnonymousUser()
+        with pytest.raises(ImproperlyConfigured, match="CHANNEL_LAYERS"):
+            await communicator.connect()

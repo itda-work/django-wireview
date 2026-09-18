@@ -17,6 +17,7 @@ from wireview.checks import (
     check_async_handlers,
     check_async_lifecycle,
     check_channel_layer,
+    check_channel_layer_configured,
     check_client_bundle,
     check_component_name_collisions,
     check_hmin,
@@ -209,6 +210,41 @@ class TestChannelLayerCheck:
     @override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels_redis.core.RedisChannelLayer"}})
     def test_broker_backed_layer_silent(self):
         assert check_channel_layer(None) == []
+
+
+class TestChannelLayerConfiguredCheck:
+    """W012: Channels has no default layer, and without one no connection survives (#87)."""
+
+    @override_settings()
+    def test_unset_flagged(self):
+        from django.conf import settings
+
+        del settings.CHANNEL_LAYERS
+        messages = check_channel_layer_configured(None)
+
+        assert [m.id for m in messages] == ["wireview.W012"]
+        assert "InMemoryChannelLayer" in messages[0].hint
+
+    @override_settings(CHANNEL_LAYERS={})
+    def test_empty_flagged(self):
+        assert [m.id for m in check_channel_layer_configured(None)] == ["wireview.W012"]
+
+    @override_settings(CHANNEL_LAYERS={"other": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+    def test_only_a_non_default_alias_flagged(self):
+        """The consumer asks for ``default``; another alias does not answer it."""
+        assert [m.id for m in check_channel_layer_configured(None)] == ["wireview.W012"]
+
+    @override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+    def test_in_memory_silent(self):
+        """In-memory is the right answer for one process. That case is W006's, on deploy."""
+        assert check_channel_layer_configured(None) == []
+
+    def test_runs_without_deploy(self):
+        """Unlike W006 this is wrong on a single process too, so plain ``check`` reports it."""
+        from django.core.checks.registry import registry
+
+        assert check_channel_layer_configured in registry.get_checks(include_deployment_checks=False)
+        assert check_channel_layer not in registry.get_checks(include_deployment_checks=False)
 
 
 class TestUploadTempDirCheck:
