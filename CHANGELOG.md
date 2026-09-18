@@ -38,6 +38,9 @@ The django-reactor era changelog (2.x) is preserved in
   is a full page load. `stream_html()`, `stream_items()` and `stream_ops()` replace the
   `sent_messages` filtering the docs had been teaching. `docs/features/testing.md`.
 - `ComponentTestCase.mount()` forwards `live_session=`, which `mount()` has taken since 0.3.0.
+- Django 5.2 LTS and 6.1 join the CI matrix and the classifiers. The matrix had skipped from 5.1
+  to 6.0, so the current LTS and the current release were the two versions nothing tested; the
+  suite passes on both unchanged.
 
 ### Fixed
 
@@ -57,6 +60,9 @@ The django-reactor era changelog (2.x) is preserved in
   once a project declares a `live_session` -- and testproj, the project the bench runs on,
   declares one. It now signs with the tree's own `sign_state`, and `tests/test_bench_harness.py`
   joins the way the bench does, since CI never ran the bench and nothing else noticed.
+- The client bundle no longer prints `BOOST_PAGES false` to the console on every page load,
+  nor `LOAD <url>` on every boosted move. Two debug lines inherited from reactor sat outside
+  `wireview.debug`, in a module every page runs whether or not `BOOST_PAGES` is on.
 - A project with no `CHANNEL_LAYERS` had every WebSocket accepted and then killed by
   `AttributeError: 'WireviewConsumer' object has no attribute 'channel_name'` (#87). Channels has no
   default layer -- it resolves a missing `default` alias to `None` and then never sets that
@@ -97,31 +103,6 @@ boundary around a page that was public.
   so the wheel's force-include then failed on a directory sitting in the working tree. It failed
   the same way at v0.2.1. `make ci-build` now checks the wheel for the agent skill as well as
   for `wireview.min.js`.
-
-
-
-Page-level authentication boundaries (`live_session`, GAP-009), and the reworking of the mount
-path that making them real required.
-
-**Upgrading.** Four things change for a project that is already running wireview:
-
-- **Every open page reloads once.** The signed `data-state` envelope goes from v1 to v2, and v1
-  is refused. That is the designed recovery -- the page re-renders under the current auth
-  context and gets a fresh token -- but unsaved input in an open tab goes with it.
-  `WIREVIEW["STATE_ACCEPT_LEGACY"]` widens the window, unless the project declares a
-  `live_session` (see below).
-- **A halted `_on_mount` hook now stops the render.** It used to skip `joined()` and draw the
-  component anyway, which shipped the markup and the state a guard was refusing. If a hook of
-  yours halts for a reason that was never meant to hide anything, it now hides it. The same
-  applies to `wireview.testing.mount()`, which had been the one path that disagreed.
-- **A hook that raises is a refusal**, not an unfinished mount: nothing renders and nothing stays
-  in the repository.
-- **`login()` writes one key into the session** (`_wireview_auth_gen`), whether or not the
-  project uses boundaries.
-
-`manage.py check` reports the new traps as `wireview.W010`. `docs/features/live-session.md` has
-the feature; `docs/DEPLOYMENT.md` has the upgrade and the transition procedure for putting a
-boundary around a page that was public.
 
 ### Security
 

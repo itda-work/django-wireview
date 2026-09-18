@@ -76,8 +76,6 @@ const BOOST_PAGES = JSON.parse(
   /** @type {HTMLMetaElement|null} */ (document.querySelector("meta[name=wireview-boost]"))?.dataset.enabled || "false"
 );
 
-console.log("BOOST_PAGES", BOOST_PAGES);
-
 /**
  * Event target for navigation events.
  * Emits 'newLocation' when URL changes and 'newContent' when DOM updates.
@@ -87,7 +85,6 @@ class NavEvents extends EventTarget {
    * Dispatches a newLocation event.
    */
   sendNewLocation() {
-    console.log("LOAD", document.location.href);
     this.dispatchEvent(new Event("newLocation"));
   }
 

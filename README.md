@@ -44,7 +44,7 @@ Wireview는 [django-reactor](https://github.com/edelvalle/reactor)의 현대적�
 | **Pydantic** | v1 (레거시) | v2 (최신) |
 | **DOM Morphing** | morphdom | idiomorph (더 나은 속성 보존) |
 | **Python** | ≥3.9 | ≥3.12 |
-| **Django** | 3.2+ | 4.2, 5.0, 5.1, 6.0 |
+| **Django** | 3.2+ | 4.2, 5.0, 5.1, 5.2, 6.0, 6.1 |
 | **모듈 구조** | 플랫 | 체계적 (`core/`, `features/`) |
 
 ### 새로운 컴포넌트 메서드
@@ -122,7 +122,7 @@ class XCounter(Component):
 
 ## 설치 및 설정
 
-Wireview는 Python ≥3.12과 Django ≥4.2가 필요합니다 (Django 4.2, 5.0, 5.1, 6.0 지원).
+Wireview는 Python ≥3.12과 Django ≥4.2가 필요합니다 (Django 4.2, 5.0, 5.1, 5.2 LTS, 6.0, 6.1 지원).
 
 ```bash
 pip install django-wireview daphne
@@ -241,7 +241,7 @@ class XCounter(Component):
 
 ## 예제
 
-동작하는 예제 앱 10개가 [examples/](./examples/)에 있습니다. 각 디렉터리가 개념 하나이고,
+동작하는 예제 앱 11개가 [examples/](./examples/)에 있습니다. 각 디렉터리가 개념 하나이고,
 테스트와 README를 함께 가지고 있으며, CI가 매번 실행합니다.
 
 | 예제 | 개념 |
@@ -256,6 +256,7 @@ class XCounter(Component):
 | [notifications](./examples/notifications/) | 이름 붙인 채널로 컴포넌트끼리 알린다 |
 | [livecomp](./examples/livecomp/) | 연결을 공유하는 중첩 컴포넌트 |
 | [slots](./examples/slots/) | 내용을 호출자가 채우는 레이아웃 컴포넌트 |
+| [hooks](./examples/hooks/) | 브라우저만 할 수 있는 일을 컴포넌트에 붙인다 |
 
 ```bash
 make build-js && make run-daphne     # http://localhost:8000
