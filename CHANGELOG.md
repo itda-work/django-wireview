@@ -41,6 +41,9 @@ The django-reactor era changelog (2.x) is preserved in
 - Django 5.2 LTS and 6.1 join the CI matrix and the classifiers. The matrix had skipped from 5.1
   to 6.0, so the current LTS and the current release were the two versions nothing tested; the
   suite passes on both unchanged.
+- A `LICENSE` file. The package metadata has said MIT all along, but the repository had no text
+  to point at and the README linked to a file that did not exist. It carries the original
+  django-reactor notice alongside wireview's.
 
 ### Removed
 

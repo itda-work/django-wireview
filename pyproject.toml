@@ -90,6 +90,7 @@ include = [
     "skills",
     "README.md",
     "CHANGELOG.md",
+    "LICENSE",
 ]
 
 # The sdist has to carry skills/wireview, and `include` cannot make it: hatchling's
