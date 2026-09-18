@@ -311,9 +311,10 @@ Caddy는 WebSocket 업그레이드를 알아서 처리한다.
 
 ### AWS ALB
 
-- WebSocket 연결에 sticky session을 켠다
 - idle timeout을 최소 3600초로 둔다
-- 타깃 그룹에 WebSocket 헬스체크를 건다
+- 타깃 그룹 헬스체크는 [HTTP 헬스체크](#http) 경로로 건다. ALB 헬스체크는 HTTP/HTTPS만 지원해
+  WebSocket으로는 걸 수 없다
+- sticky session(타깃 그룹 stickiness)은 켜지 않아도 된다 — [수평 확장](#수평-확장) 참고
 
 ## 모니터링
 
@@ -382,27 +383,44 @@ urlpatterns = [
 
 ### WebSocket
 
+핸드셰이크만 해 보고 닫는다. 핸드셰이크가 끝났다면 ASGI 서버, 라우팅, 채널 레이어가 다 갖춰진
+것이다 — 채널 레이어가 없으면 컨슈머가 accept 전에 거절한다. 메시지를 보낼 필요는 없고, wireview
+프로토콜에는 `ping` 같은 명령도 없다.
+
 ```python
 # management/commands/check_websocket.py
+import websocket  # pip install websocket-client
 from django.core.management.base import BaseCommand
-import websocket
 
 class Command(BaseCommand):
     def handle(self, *args, **options):
-        ws = websocket.create_connection("ws://localhost:8000/ws/")
-        ws.send('{"command": "ping"}')
-        result = ws.recv()
+        ws = websocket.create_connection("ws://localhost:8000/__wireview__", timeout=5)
         ws.close()
-        self.stdout.write(f"WebSocket OK: {result}")
+        self.stdout.write("WebSocket OK")
 ```
+
+`AllowedHostsOriginValidator`로 감싼 경우 `Origin` 헤더의 호스트가 `ALLOWED_HOSTS`에 있어야 한다.
+websocket-client는 접속 주소로 `Origin`을 채운다.
 
 ## 확장
 
 ### 수평 확장
 
 1. 브로커 기반 채널 레이어를 쓴다 (다중 인스턴스의 필수 조건)
-2. WebSocket 연결에 sticky session을 건다
-3. 세션 저장소를 공유한다 (Redis/Memcached)
+2. 세션 저장소를 공유한다 (DB, Redis/Memcached. signed-cookie 백엔드는 저장소가 필요 없다)
+3. 서명 키(`SECRET_KEY` 또는 `WIREVIEW["SIGNING_KEY"]`)를 모든 인스턴스에 같게 둔다
+
+**sticky session은 필요 없다.** 로드밸런서가 요청마다 아무 인스턴스에나 보내도 된다.
+
+- WebSocket은 101 업그레이드 뒤 TCP 연결 하나가 끝날 때까지 한 인스턴스에 머문다. sticky 설정은 여러
+  HTTP 요청에 걸치는 전송(long-polling 등)을 위한 것인데, wireview는 WebSocket만 쓴다
+  ([longpolling-fallback.md](./design/longpolling-fallback.md)).
+- 페이지를 그린 인스턴스와 join을 받는 인스턴스가 달라도 된다. join은 페이지에 실린 서명된 `data-state`만으로
+  컴포넌트를 복원한다. 재연결도 같은 상태로 다시 join하므로 어디에 붙어도 된다.
+- 청크 업로드도 무상태다(아래 절).
+
+인스턴스 사이에서 같아야 하는 것은 위의 세 가지와 업로드 디렉터리뿐이다. sticky를 켜도 동작은 하지만
+롤링 배포 뒤 새 인스턴스로 부하가 고르게 퍼지지 않고, 켜야만 동작하는 것처럼 읽힌다.
 
 ### 청크 업로드와 다중 프로세스
 

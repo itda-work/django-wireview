@@ -55,6 +55,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- `docs/DEPLOYMENT.md` no longer asks for sticky sessions, which it did in two places while saying
+  the opposite a few lines further down. A WebSocket stays on one instance by itself, and a join
+  restores from the signed state on any instance. It also stopped asking for a WebSocket health
+  check on an AWS ALB target group, which only speaks HTTP, and its WebSocket probe now opens
+  `/__wireview__` and closes it rather than sending a `ping` command the protocol does not have
+  to a path wireview does not serve.
+
 - Components no longer join before the page's own deferred scripts have run.
   The bundle opens the socket as soon as it executes, which is inside the
   deferred phase, so a page registering a JavaScript hook from its own `defer`
