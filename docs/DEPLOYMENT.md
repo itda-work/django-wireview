@@ -174,7 +174,7 @@ DATABASES = {
 }
 ```
 
-Django 4.2와 5.0에서는 같은 pragma를 `connection_created` 시그널 핸들러에서 실행한다.
+Django 5.0에서는 같은 pragma를 `connection_created` 시그널 핸들러에서 실행한다.
 
 용량 산정: Windows에서 uvicorn은 연결당 약 160KB의 RSS를 쓰는데 거의 전부가 permessage-deflate다.
 `--ws-per-message-deflate false`를 주면 daphne 수준으로 떨어진다([ASGI 서버](#권장-uvicorn--uvloop)).

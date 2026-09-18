@@ -42,6 +42,10 @@ The django-reactor era changelog (2.x) is preserved in
   to 6.0, so the current LTS and the current release were the two versions nothing tested; the
   suite passes on both unchanged.
 
+### Removed
+
+- Django 4.2. Supported versions are now 5.0 through 6.1, and `django>=5.0` is the requirement.
+
 ### Fixed
 
 - Components no longer join before the page's own deferred scripts have run.

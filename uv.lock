@@ -596,7 +596,7 @@ requires-dist = [
     { name = "channels-redis", marker = "extra == 'dev'" },
     { name = "cssselect", marker = "extra == 'dev'" },
     { name = "daphne", marker = "extra == 'dev'" },
-    { name = "django", specifier = ">=4.2" },
+    { name = "django", specifier = ">=5.0" },
     { name = "django-hmin", marker = "extra == 'dev'" },
     { name = "django-stubs", marker = "extra == 'dev'" },
     { name = "django-stubs-ext", marker = "extra == 'dev'" },

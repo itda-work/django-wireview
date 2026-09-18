@@ -44,7 +44,7 @@ Wireview는 [django-reactor](https://github.com/edelvalle/reactor)의 현대적�
 | **Pydantic** | v1 (레거시) | v2 (최신) |
 | **DOM Morphing** | morphdom | idiomorph (더 나은 속성 보존) |
 | **Python** | ≥3.9 | ≥3.12 |
-| **Django** | 3.2+ | 4.2, 5.0, 5.1, 5.2, 6.0, 6.1 |
+| **Django** | 3.2+ | 5.0, 5.1, 5.2, 6.0, 6.1 |
 | **모듈 구조** | 플랫 | 체계적 (`core/`, `features/`) |
 
 ### 새로운 컴포넌트 메서드
@@ -122,7 +122,7 @@ class XCounter(Component):
 
 ## 설치 및 설정
 
-Wireview는 Python ≥3.12과 Django ≥4.2가 필요합니다 (Django 4.2, 5.0, 5.1, 5.2 LTS, 6.0, 6.1 지원).
+Wireview는 Python ≥3.12과 Django ≥5.0이 필요합니다 (Django 5.0, 5.1, 5.2 LTS, 6.0, 6.1 지원).
 
 ```bash
 pip install django-wireview daphne
