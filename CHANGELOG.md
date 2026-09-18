@@ -61,6 +61,10 @@ The django-reactor era changelog (2.x) is preserved in
   check on an AWS ALB target group, which only speaks HTTP, and its WebSocket probe now opens
   `/__wireview__` and closes it rather than sending a `ping` command the protocol does not have
   to a path wireview does not serve.
+- The opportunistic upload sweep ran late on a freshly booted machine. It marked "never swept" as
+  0.0 on a clock that counts from boot, so on a host up for less than the ten-minute interval --
+  a new container host, an autoscaled instance -- the first sweep waited until the machine had
+  been up that long. CI's test job had failed on this for a week.
 
 - Components no longer join before the page's own deferred scripts have run.
   The bundle opens the socket as soon as it executes, which is inside the
