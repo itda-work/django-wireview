@@ -5,6 +5,7 @@ that cries wolf on a healthy project gets ignored, and then it is dead weight.
 """
 
 import os
+import sys
 import warnings
 
 import pytest
@@ -22,6 +23,7 @@ from wireview.checks import (
     check_component_name_collisions,
     check_hmin,
     check_live_sessions,
+    check_runserver_is_asgi,
     check_signing_key,
     check_upload_temp_dir,
     iter_component_classes,
@@ -245,6 +247,60 @@ class TestChannelLayerConfiguredCheck:
 
         assert check_channel_layer_configured in registry.get_checks(include_deployment_checks=False)
         assert check_channel_layer not in registry.get_checks(include_deployment_checks=False)
+
+
+class TestRunserverIsAsgiCheck:
+    """W013: Django's own runserver is WSGI and never accepts the WebSocket."""
+
+    @pytest.fixture
+    def started_as(self, monkeypatch):
+        """Pretend the process was started as ``manage.py <argv>``, with ``runserver`` from ``provider``."""
+
+        def _started_as(*argv: str, provider: str | None = None):
+            monkeypatch.setattr(sys, "argv", ["manage.py", *argv])
+            if provider is not None:
+                monkeypatch.setattr("django.core.management.get_commands", lambda: {"runserver": provider})
+
+        return _started_as
+
+    @pytest.mark.parametrize(
+        "provider",
+        [
+            "django.core",
+            # Both wrap the stock command -- still WSGI.
+            "django.contrib.staticfiles",
+            "whitenoise.runserver_nostatic",
+        ],
+    )
+    def test_a_wsgi_runserver_flagged(self, started_as, provider):
+        started_as("runserver", provider=provider)
+        messages = check_runserver_is_asgi(None)
+
+        assert [m.id for m in messages] == ["wireview.W013"]
+        assert provider in messages[0].msg
+        assert "'daphne' at the top of INSTALLED_APPS" in messages[0].hint
+        # daphne has to outrank the app that provides the command, which Django itself is not one of.
+        assert (f"above '{provider}'" in messages[0].hint) is (provider != "django.core")
+
+    def test_daphne_silent(self, started_as):
+        started_as("runserver", "0.0.0.0:8000", provider="daphne")
+        assert check_runserver_is_asgi(None) == []
+
+    @pytest.mark.parametrize("argv", [("check",), ("migrate",), ()])
+    def test_other_commands_silent(self, started_as, argv):
+        """uvicorn and friends never run the command, so INSTALLED_APPS says nothing about them."""
+        started_as(*argv, provider="django.core")
+        assert check_runserver_is_asgi(None) == []
+
+    def test_testproj_runserver_is_daphne(self, started_as):
+        """testproj lists daphne above whitenoise and staticfiles, so its real registry is clean."""
+        started_as("runserver")
+        assert check_runserver_is_asgi(None) == []
+
+    def test_registered_without_deploy(self):
+        from django.core.checks.registry import registry
+
+        assert check_runserver_is_asgi in registry.get_checks(include_deployment_checks=False)
 
 
 class TestUploadTempDirCheck:

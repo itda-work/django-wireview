@@ -62,7 +62,7 @@ class XCounter(Component):
 - **컴포넌트 이름은 클래스명으로 전역 등록된다.** 다른 앱에 같은 클래스명이 있으면 경고가 나고 템플릿은 둘 중 하나로만 해석된다(`wireview.W003`). 그럴 때는 `{% component 'myapp:XCounter' %}`처럼 앱 이름을 붙인다.
 - **`{% tag_header %}`가 없으면 그 컴포넌트는 살아나지 않는다.** 이벤트도 diff도 붙을 자리가 없다.
 - **JS가 로드되지 않으면 페이지는 조용히 정적으로 남는다.** `{% wireview_header %}`와 staticfiles 설정을 확인한다(`wireview.W004`).
-- **`runserver`는 `daphne` 앱이 `INSTALLED_APPS` 맨 위에 있을 때에만 WebSocket을 받는다.** 없으면 WSGI 서버가 뜨고, 페이지는 그려지는데 아무것도 반응하지 않는다. 오류도 없다. 기동 로그의 `Starting ASGI/Daphne`로 확인한다. daphne를 안 쓰면 `uvicorn <project>.asgi:application --reload`.
+- **`runserver`는 `daphne` 앱이 `INSTALLED_APPS` 맨 위에 있을 때에만 WebSocket을 받는다.** 없으면 WSGI 서버가 뜨고, 페이지는 그려지는데 아무것도 반응하지 않는다. 오류도 없다. 기동 로그의 `Starting ASGI/Daphne`로 확인하고, WSGI로 뜨면 `wireview.W013`이 기동 로그에 경고한다. daphne를 안 쓰면 `uvicorn <project>.asgi:application --reload`.
 - **`CHANNEL_LAYERS`가 없으면 아무것도 살아나지 않는다.** Channels에는 기본 레이어가 없어서, 비워 두면 WebSocket 연결이 전부 `ImproperlyConfigured`로 거절된다(`wireview.W012`). 개발과 단일 프로세스에는 `{'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}`면 된다.
 - **프로덕션에서 InMemory 채널 레이어는 조용히 깨진다.** 프로세스를 둘 이상 띄우면 브로드캐스트가 같은 프로세스의 연결에만 닿고 오류는 나지 않는다. `channels-nats`나 `channels_redis`를 쓴다(`manage.py check --deploy`의 `wireview.W006`).
 - **블로킹 ORM 호출을 핸들러에서 그냥 하지 않는다.** 핸들러는 async 컨텍스트다. `await Model.objects.aget(...)` 같은 async ORM API를 쓰거나 `sync_to_async`로 감싼다. 템플릿 안에서 지연 평가되는 QuerySet도 같은 문제를 만든다.
@@ -75,7 +75,7 @@ class XCounter(Component):
 |---|---|
 | 기능 레퍼런스 인덱스 | https://github.com/itda-work/django-wireview/blob/main/docs/features/README.md |
 | 튜토리얼 15편 (학습 순서) | https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/README.md |
-| 시스템 체크 W001~W012 | https://github.com/itda-work/django-wireview/blob/main/docs/features/checks.md |
+| 시스템 체크 W001~W013 | https://github.com/itda-work/django-wireview/blob/main/docs/features/checks.md |
 | 설치·설정·API 전체 | https://github.com/itda-work/django-wireview/blob/main/README.md |
 | 배포 (채널 레이어, Windows) | https://github.com/itda-work/django-wireview/blob/main/docs/DEPLOYMENT.md |
 | 동작하는 예제 앱 | https://github.com/itda-work/django-wireview/tree/main/tests/testproj |

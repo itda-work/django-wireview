@@ -128,7 +128,7 @@ Wireview는 Python ≥3.12과 Django ≥5.0이 필요합니다 (Django 5.0, 5.1,
 pip install django-wireview daphne
 ```
 
-`daphne`는 개발 서버용입니다. Django의 `runserver`는 WSGI 서버라 WebSocket을 받지 못하고, `daphne` 앱이 `INSTALLED_APPS` 맨 위에 있을 때에만 ASGI로 바뀝니다. 빠뜨려도 오류는 나지 않고 페이지가 반응 없이 남습니다. daphne 대신 `uvicorn project_name.asgi:application --reload`로 띄워도 됩니다(Windows에서는 이쪽입니다 — [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)).
+`daphne`는 개발 서버용입니다. Django의 `runserver`는 WSGI 서버라 WebSocket을 받지 못하고, `daphne` 앱이 `INSTALLED_APPS` 맨 위에 있을 때에만 ASGI로 바뀝니다. 빠뜨려도 오류는 나지 않고 페이지가 반응 없이 남습니다(`runserver` 기동 로그의 `wireview.W013` 경고가 유일한 신호입니다). daphne 대신 `uvicorn project_name.asgi:application --reload`로 띄워도 됩니다(Windows에서는 이쪽입니다 — [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)).
 
 Wireview는 `django-channels`를 사용하고, **채널 레이어가 반드시 있어야 합니다.** Channels에는 기본 레이어가 없어서 `CHANNEL_LAYERS`를 비워 두면 WebSocket 연결이 전부 거절됩니다(`manage.py check`의 `wireview.W012`). 개발과 단일 프로세스에는 아래 설정의 InMemory 레이어면 충분합니다. 다만 InMemory는 프로세스 하나 안에서만 통하므로, 프로세스를 여러 개 띄우면 브로드캐스트가 **오류 없이** 같은 프로세스의 연결에만 닿습니다. 프로덕션에서는 프로세스를 잇는 레이어를 씁니다.
 

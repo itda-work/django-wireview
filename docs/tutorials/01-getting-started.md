@@ -237,7 +237,7 @@ python manage.py runserver
 
 기동 로그에 `Starting ASGI/Daphne ... development server`가 보여야 합니다. `Starting development
 server`만 보인다면 `daphne`가 `INSTALLED_APPS` 맨 위에 없는 것이고, 그 서버는 WebSocket을 받지
-못합니다.
+못합니다. 그때는 기동 로그 위쪽에 `wireview.W013` 경고가 함께 나옵니다.
 
 `http://localhost:8000`에 접속하면:
 1. "Hello, World!" 메시지가 표시됩니다

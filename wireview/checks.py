@@ -14,6 +14,7 @@ production-only check is registered as a deploy check.
 
 import asyncio
 import os
+import sys
 import typing as t
 from pathlib import Path
 
@@ -226,6 +227,62 @@ def check_channel_layer_configured(app_configs, **kwargs) -> list[CheckMessage]:
                 "connection is refused, so no component ever becomes live."
             ),
             id="wireview.W012",
+        )
+    ]
+
+
+def _invoked_subcommand() -> str | None:
+    """The management command this process was started with, read the way Django reads it.
+
+    ``ManagementUtility`` takes ``argv[1]`` as the subcommand, whether the entry
+    point is ``manage.py``, ``django-admin`` or ``python -m django``.
+    """
+    return sys.argv[1] if len(sys.argv) > 1 else None
+
+
+def check_runserver_is_asgi(app_configs, **kwargs) -> list[CheckMessage]:
+    """W013: ``runserver`` is about to serve WSGI, which cannot accept a WebSocket.
+
+    Django's own ``runserver`` is a WSGI server; it only becomes ASGI when an app
+    such as ``daphne`` replaces the command, and only if that app sits above
+    ``django.contrib.staticfiles`` in ``INSTALLED_APPS`` (the first app to provide
+    a command wins). Leave it out and nothing raises: pages render, the socket
+    upgrade is refused with nothing but a line in the browser console, and no component
+    ever becomes live.
+
+    Reported only while ``runserver`` itself is starting -- ``runserver`` runs the
+    checks on startup, so that is where the warning is seen -- because the command
+    in ``INSTALLED_APPS`` says nothing about a project served by uvicorn. The
+    command counts as WSGI when it still runs Django's ``inner_run``: staticfiles
+    and whitenoise wrap the stock command without replacing it, while an ASGI
+    server has to, so an ASGI provider this check has never heard of is not flagged.
+    """
+    if _invoked_subcommand() != "runserver":
+        return []
+
+    from django.core.management import get_commands, load_command_class
+    from django.core.management.commands.runserver import Command as StockRunserver
+
+    app_name = get_commands().get("runserver")
+    if app_name is None:
+        return []
+    command = type(load_command_class(app_name, "runserver"))
+    if getattr(command, "inner_run", None) is not StockRunserver.inner_run:
+        return []
+
+    # 'django.core' is Django itself, not an entry in INSTALLED_APPS to move daphne above.
+    above = "" if app_name == "django.core" else f", above '{app_name}'"
+    return [
+        Warning(
+            f"runserver (from '{app_name}') is a WSGI server, so no WebSocket connection reaches wireview.",
+            hint=(
+                "Pages render and nothing raises, but the socket upgrade is refused and no "
+                "component becomes live. Install daphne and put 'daphne' at the top of "
+                f"INSTALLED_APPS{above} -- the startup line then reads "
+                "'Starting ASGI/Daphne' -- or run 'uvicorn <project>.asgi:application --reload' "
+                "instead of runserver."
+            ),
+            id="wireview.W013",
         )
     ]
 
@@ -561,4 +618,5 @@ def register_checks() -> None:
     register(check_signing_key, WIREVIEW_TAG)
     register(check_hook_files, WIREVIEW_TAG)
     register(check_channel_layer_configured, WIREVIEW_TAG)
+    register(check_runserver_is_asgi, WIREVIEW_TAG)
     register(check_channel_layer, WIREVIEW_TAG, deploy=True)

@@ -34,6 +34,7 @@ WARNINGS:
 | `wireview.W010` | 경계가 선언됐는데 `context_processors.request`가 꺼져 있거나, `_live_sessions`가 아무도 선언하지 않은 이름을 가리키거나, 경계가 있는 프로젝트에서 `_on_mount`로만 자신을 지키는 컴포넌트가 소속을 선언하지 않거나, `STATE_ACCEPT_LEGACY`가 경계와 함께 켜져 있음 | 프로세서가 없으면 경계가 통째로 조용히 꺼진다. 오타는 join 거절과 reload로 나타나 서명 문제처럼 보인다. 선언이 없는 컴포넌트는 경계 밖 페이지에서도 마운트된다. 롤아웃 플래그는 경계가 있으면 적용되지 않는데, 켜 둔 쪽은 창이 열려 있다고 믿는다 |
 | `wireview.W011` | 템플릿의 `wire-hook="X"`를 등록하는 훅 파일이 수집된 것 중에 없음 | 클라이언트가 콘솔 경고 한 줄만 남긴다. 컴포넌트는 정상으로 렌더되고 동작 하나가 빠진다 |
 | `wireview.W012` | `CHANNEL_LAYERS`에 `default` 레이어가 없음 | 페이지는 HTTP로 정상 렌더되는데 WebSocket 연결이 전부 거절되어 어떤 컴포넌트도 살아나지 않는다. Channels에는 기본 레이어가 없다 |
+| `wireview.W013` | `runserver`로 기동하는데 그 명령이 Django의 WSGI 서버 그대로임 (`daphne`가 없거나 `INSTALLED_APPS`에서 너무 아래에 있음) | 페이지는 그려지고 오류도 없다. WebSocket 업그레이드가 거절되어 버튼이 아무 반응도 하지 않고, 흔적은 브라우저 콘솔 한 줄뿐이다 |
 
 전부 `Warning`이다. `manage.py check`의 기본 `--fail-level`은 `ERROR`이므로 이 검사들이
 빌드를 깨지 않는다. **오탐 하나면 팀 전체가 검사를 무시하기 시작하므로** 확신이 설 때까지
@@ -70,6 +71,26 @@ CHANNEL_LAYERS = {
     "default": {"BACKEND": "channels.layers.InMemoryChannelLayer"},
 }
 ```
+
+### W013은 `runserver`를 띄울 때만 뜬다
+
+Django의 `runserver`는 WSGI 서버다. ASGI로 바뀌는 것은 `daphne` 같은 앱이 명령을 **갈아 끼울** 때뿐이고,
+명령은 `INSTALLED_APPS`에서 먼저 나오는 앱의 것이 이기므로 `daphne`는 `django.contrib.staticfiles`와
+`whitenoise.runserver_nostatic`보다 위에 있어야 한다. 아래에 두면 설치는 됐는데 여전히 WSGI다.
+
+이 검사는 프로세스가 `runserver`로 시작됐을 때만 본다(`sys.argv[1]`, Django가 하위 명령을 읽는 방식
+그대로). `INSTALLED_APPS`의 `runserver`는 uvicorn으로 띄우는 프로젝트에 대해 아무것도 말해 주지 않기
+때문이다 — 평소의 `manage.py check`나 CI에서는 뜨지 않는다. `runserver`는 기동할 때 검사를 돌리므로
+경고는 기동 로그 맨 위에 나온다.
+
+```console
+$ python manage.py runserver
+?: (wireview.W013) runserver (from 'django.contrib.staticfiles') is a WSGI server, so no WebSocket connection reaches wireview.
+```
+
+판정은 제공자 이름 목록이 아니라 **로드되는 명령이 Django의 `inner_run`을 그대로 쓰는가**다.
+staticfiles와 whitenoise는 stock 명령을 감싸기만 하므로 잡히고, ASGI 서버는 `inner_run`을 바꿔야
+하므로 이 검사가 모르는 ASGI 제공자도 오탐하지 않는다.
 
 ### W010이 네 가지를 보는 이유
 
