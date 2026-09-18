@@ -467,6 +467,23 @@ def test_the_opportunistic_sweep_runs_at_most_once_per_interval(store):
     assert upload_store.sweep_if_due(interval=3600) == 1
 
 
+def test_the_first_sweep_does_not_wait_for_the_machine_to_have_been_up_an_interval(store, monkeypatch):
+    """The monotonic clock counts from boot, so "never swept" cannot be spelled 0.0.
+
+    A fresh CI runner or container host is minutes old, and a zero there put the
+    first sweep off until the machine had been up a whole interval. CI failed on
+    the test above for a week while every developer machine, up for days, passed.
+    """
+    monkeypatch.setattr(upload_store.time, "monotonic", lambda: 120.0)  # two minutes after boot
+    upload_store.reset_sweep_clock()
+    stale = upload_store.chunk_path("conn-1", "comp-1", "images", "old")
+    upload_store.append_chunk(stale, b"x")
+    old = time.time() - 7200
+    os.utime(stale, (old, old))
+
+    assert upload_store.sweep_if_due(interval=3600) == 1
+
+
 # --- through the real URLconf and handler ----------------------------------------------------
 
 

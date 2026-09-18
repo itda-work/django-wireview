@@ -294,7 +294,10 @@ def sweep(max_age: int | None = None, *, root: Path | None = None) -> int:
 #: without the management command still collects what a crash left behind.
 SWEEP_INTERVAL = 600
 
-_last_sweep = 0.0
+#: ``time.monotonic()`` of the last sweep, or None before the first. Not 0.0: the
+#: monotonic clock counts from boot, so on a machine up for less than an interval
+#: a zero would put the first sweep off until the machine had been up that long.
+_last_sweep: float | None = None
 
 
 def sweep_if_due(interval: int = SWEEP_INTERVAL) -> int:
@@ -309,7 +312,7 @@ def sweep_if_due(interval: int = SWEEP_INTERVAL) -> int:
     global _last_sweep
 
     now = time.monotonic()
-    if now - _last_sweep < interval:
+    if _last_sweep is not None and now - _last_sweep < interval:
         return 0
     _last_sweep = now
     try:
@@ -323,7 +326,7 @@ def reset_sweep_clock() -> None:
     """Forget when the last sweep ran. For tests."""
     global _last_sweep
 
-    _last_sweep = 0.0
+    _last_sweep = None
 
 
 __all__ = [
