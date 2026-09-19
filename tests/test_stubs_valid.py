@@ -19,6 +19,7 @@ import builtins
 import datetime
 import typing as t
 from decimal import Decimal
+from enum import Enum
 
 import pytest
 
@@ -152,3 +153,175 @@ def test_every_stub_this_project_generates_is_valid_python():
             problems[module_path] = f"undefined {sorted(undefined)}, unused {sorted(unused)}"
 
     assert not problems, problems
+
+
+# --- Follow-up from the implementation review (docs/design/stubs-input-values-review-codex-2026-09-19.md) ---
+
+P = t.ParamSpec("P")
+
+
+class Outer:
+    class Widget:
+        """A nested class with the same name as a component of this module."""
+
+
+class Widget(Component, public=False):
+    """A component whose name a nested class of the module also has."""
+
+    _template_name = "widget.html"
+
+    async def take(self, inner: Outer.Widget) -> None: ...
+
+
+# A class named like a builtin, from another module: importing it would rebind int.
+ShadowInt = type("int", (), {"__module__": "stub_review_external", "__qualname__": "int"})
+
+
+class Color(Enum):
+    RED = (1, 2)
+    BLUE = object()
+
+
+class ReviewProbe(Component, public=False):
+    """Docstring with \"\"\"triple quotes\"\"\" and a backslash \\ in it"""
+
+    _template_name = "review_probe.html"
+
+    ratio: float = float("inf")
+    missing: float = float("nan")
+    color: Color = Color.BLUE
+
+    async def hook(self, callback: t.Callable[P, int], prefixed: t.Callable[t.Concatenate[str, P], int]) -> None: ...
+
+    async def stream(self, handle: t.IO[str], binary: t.BinaryIO) -> t.TextIO: ...
+
+    async def shadow(self, weird: ShadowInt, real: int) -> None: ...
+
+    async def accepts(self, cls: int, /) -> None: ...
+
+    @staticmethod
+    def utility(self: int) -> int:
+        return self
+
+    async def receiver_only(self, /, **options: t.Any) -> None: ...
+
+
+def test_review_findings_all_render_valid_stubs():
+    source = stub_for(ReviewProbe, Widget)
+
+    ast.parse(source)
+    undefined, unused = undefined_and_unused(source)
+    assert not undefined, f"{sorted(undefined)}\n{source}"
+    assert not unused, f"{sorted(unused)}\n{source}"
+
+
+def test_a_paramspec_callable_is_written_with_dots_not_a_wrong_arity():
+    source = stub_for(ReviewProbe)
+
+    assert "callback: Callable[..., int], prefixed: Callable[..., int]" in source
+
+
+def test_classes_from_typing_itself_are_imported_from_typing():
+    source = stub_for(ReviewProbe)
+
+    assert "handle: IO[str], binary: BinaryIO) -> TextIO" in source
+    typing_line = next(line for line in source.splitlines() if line.startswith("from typing import"))
+    assert {"IO", "BinaryIO", "TextIO"} <= set(typing_line.removeprefix("from typing import ").split(", "))
+
+
+def test_an_import_never_shadows_a_builtin_or_a_component():
+    source = stub_for(ReviewProbe, Widget)
+
+    assert "weird: Any, real: int" in source
+    assert "stub_review_external" not in source
+    assert "async def take(self, inner: Any) -> None: ..." in source
+
+
+def test_parameters_are_dropped_by_position_not_by_name():
+    source = stub_for(ReviewProbe)
+
+    assert "async def accepts(self, cls: int, /) -> None: ..." in source
+    assert "    @staticmethod\n    def utility(self: int) -> int: ..." in source
+    assert "async def receiver_only(self, /, **options: Any) -> None: ..." in source
+
+
+def test_defaults_that_are_not_literals_become_ellipsis():
+    source = stub_for(ReviewProbe)
+    attrs = next(line for line in source.splitlines() if "__wireview_attrs__" in line)
+
+    assert "inf" not in attrs and "nan" not in attrs and "object at" not in attrs
+    assert "'ratio': {'type': 'float', 'required': False, 'default': ...}" in attrs
+
+
+def test_a_docstring_with_triple_quotes_stays_valid():
+    source = stub_for(ReviewProbe)
+
+    ast.parse(source)
+    assert "triple quotes" in source
+
+
+def test_a_class_without_a_docstring_does_not_inherit_the_base_ones():
+    class Bare(Component, public=False):
+        _template_name = "bare.html"
+
+    source = stub_for(Bare)
+
+    assert "Base class for wireview components" not in source
+
+
+def test_a_component_named_any_does_not_clash_with_typing_any():
+    namespace: dict = {}
+    exec(  # noqa: S102 -- a class that must be literally named Any
+        "from wireview.component import Component\n"
+        "class Any(Component, public=False):\n"
+        "    _template_name = 'any.html'\n"
+        "    value: int = 0\n"
+        "    async def act(self, payload: dict) -> None: ...\n",
+        namespace,
+    )
+    any_component = namespace["Any"]
+    any_component.__module__ = __name__
+
+    source = stub_for(any_component)
+
+    ast.parse(source)
+    undefined, unused = undefined_and_unused(source)
+    assert not undefined and not unused, source
+    assert "import typing as _typing" in source and "_typing.Any" in source
+
+
+def test_a_field_that_is_not_an_identifier_is_left_out_of_the_declarations():
+    from pydantic import create_model
+
+    keyworded = create_model(
+        "KeywordFields", __base__=Component, __cls_kwargs__={"public": False}, **{"class": (int, 1)}
+    )
+    keyworded.__module__ = __name__
+
+    source = stub_for(keyworded)
+
+    ast.parse(source)
+    assert "'class':" in source  # still in the metadata
+
+
+def test_each_annotation_is_evaluated_once():
+    from wireview.management.commands.wireview_stubs import _resolved_signature
+
+    calls = []
+
+    def side_effect():
+        calls.append(1)
+        return int
+
+    def handler(a, b): ...
+
+    handler.__annotations__ = {"a": "side_effect()", "b": "Unbound"}
+    handler.__globals__["side_effect"] = side_effect
+    try:
+        sig = _resolved_signature(handler)
+    finally:
+        del handler.__globals__["side_effect"]
+
+    assert calls == [1]
+    assert sig.parameters["a"].annotation is int
+    assert sig.parameters["b"].annotation == "Unbound"

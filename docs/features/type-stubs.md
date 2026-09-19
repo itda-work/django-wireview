@@ -223,15 +223,24 @@ class XTodoItem(Component):
 | 애너테이션 | 스텁 |
 |---|---|
 | 내장 타입, `list[str]`, `dict[str, Any]`, `X \| None` | 그대로 (`t.List`·`t.Optional`도 이 모양으로) |
-| `typing.Any`, `Literal[...]` | `from typing import ...` |
+| `typing.Any`, `Literal[...]`, `typing.IO`·`BinaryIO`·`TextIO` | `from typing import ...` |
 | `Callable`, `Awaitable` 등 | `from collections.abc import ...` |
+| `Callable[P, R]`, `Callable[Concatenate[X, P], R]` (ParamSpec) | `Callable[..., R]` — 매개변수 목록을 쓸 수 없으므로 개수를 틀리게 쓰는 대신 비운다 |
 | 다른 모듈의 클래스 (`datetime.date`, 다른 앱의 모델) | `from <모듈> import <이름>` |
 | 같은 스텁에 선언되는 컴포넌트 | 이름 그대로 |
-| 같은 모듈에만 있는 다른 클래스, TypeVar, 함수 안에서 정의한 클래스, 해석되지 않는 이름, 다른 import와 겹치는 이름 | `Any` |
+| 같은 모듈에만 있는 다른 클래스, 중첩 클래스, TypeVar, 함수 안에서 정의한 클래스, 해석되지 않는 이름 | `Any` |
+| 내장 이름·베이스 클래스·컴포넌트·typing 이름·다른 모듈의 같은 이름 클래스와 겹치는 클래스 | `Any` — import가 다른 이름을 덮지 않게 |
 
-마지막 줄은 원본보다 느슨하지만 틀리지 않는다. 같은 모듈의 모델을 정확한 타입으로 받고 싶으면 모델을
+마지막 두 줄은 원본보다 느슨하지만 틀리지 않는다. 컴포넌트 이름이 `Any`처럼 typing 이름과 같으면 typing 쪽을
+`import typing as _typing`으로 가져와 `_typing.Any`로 쓴다. 같은 모듈의 모델을 정확한 타입으로 받고 싶으면 모델을
 `models.py`처럼 다른 모듈에 두면 된다. 애너테이션이 없는 파라미터도 `Any`다.
 
 `*args`, `**kwargs`, 키워드 전용(`*,`)과 위치 전용(`/`) 표시, `@classmethod`·`@staticmethod`는 원본대로
-남는다. 생성된 스텁은 저장소의 테스트가 파싱되는지, 읽는 이름이 모두 바인딩되는지, import한 이름을 모두
+남는다. 받는 쪽(`self`·`cls`)은 이름이 아니라 위치로 빠지므로 `cls`라는 매개변수를 받는 메서드나 `self`라는
+매개변수를 받는 staticmethod도 그대로다.
+
+메타데이터의 기본값은 리터럴로 쓸 수 있는 것만 싣고(`inf`·`nan`, 임의 객체를 값으로 가진 Enum은 `...`), 파이썬
+식별자가 아닌 필드 이름(`pydantic.create_model`로 만든 `class` 같은)은 선언에서 빼고 메타데이터에만 남긴다.
+클래스 docstring은 그 클래스 자신의 것만 싣고, 삼중 따옴표나 역슬래시가 들어 있으면 일반 문자열 리터럴로 쓴다.
+애너테이션은 각각 한 번씩만 평가한다. 생성된 스텁은 저장소의 테스트가 파싱되는지, 읽는 이름이 모두 바인딩되는지, import한 이름을 모두
 쓰는지를 검사한다(`tests/test_stubs_valid.py`).

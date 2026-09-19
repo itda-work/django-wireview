@@ -14,9 +14,12 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import builtins
 import collections.abc
 import enum
 import inspect
+import keyword
+import math
 import sys
 import types
 import typing as t
@@ -33,7 +36,6 @@ from wireview.live_component import LiveComponent
 
 # Reuse utilities from wireview_lsp
 from .wireview_lsp import (
-    extract_parameters,
     get_class_attribute_safe,
     get_type_string,
     is_dynamic_property,
@@ -66,6 +68,8 @@ class MethodInfo:
     return_annotation: t.Any = inspect.Parameter.empty
     # "method", "classmethod" or "staticmethod": decides the decorator and first parameter.
     binding: str = "method"
+    # The source's receiver was positional-only (``def f(self, /, ...)``).
+    receiver_positional_only: bool = False
 
 
 @dataclass
@@ -320,7 +324,8 @@ def extract_component_stub_info(cls: type[Component], component_type: str) -> Co
         module=cls.__module__,
         file_path=_get_source_file(cls) or "",
         component_type=component_type,
-        docstring=inspect.getdoc(cls),
+        # The class's own docstring: getdoc() falls back to the base class's.
+        docstring=inspect.cleandoc(cls.__dict__["__doc__"]) if cls.__dict__.get("__doc__") else None,
         fields=fields,
         methods=methods,
         class_vars=class_vars,
@@ -439,10 +444,6 @@ def _extract_methods(cls: type[Component]) -> tuple[list[MethodInfo], list[str]]
         if not callable(attr):
             continue
 
-        # Unwrap validate_call decorator
-        original_func = getattr(attr, "__wrapped__", attr)
-        is_async = asyncio.iscoroutinefunction(original_func)
-
         static = inspect.getattr_static(cls, name, None)
         if isinstance(static, classmethod):
             binding = "classmethod"
@@ -450,15 +451,31 @@ def _extract_methods(cls: type[Component]) -> tuple[list[MethodInfo], list[str]]
             binding = "staticmethod"
         else:
             binding = "method"
+        # The function as written, past the descriptor and the validate_call wrapper.
+        raw = static.__func__ if isinstance(static, (classmethod, staticmethod)) else static
+        original_func = inspect.unwrap(raw) if callable(raw) else attr
+        is_async = asyncio.iscoroutinefunction(original_func)
 
         # Get signature
         sig = None
+        receiver_positional_only = False
         try:
             sig = _resolved_signature(original_func)
-            parameters = extract_parameters(sig)
-            for param_name, param in sig.parameters.items():
-                if param_name in parameters:
-                    parameters[param_name]["annotation"] = param.annotation
+            params = list(sig.parameters.values())
+            # The receiver goes by position, not by name: a method may take a
+            # parameter called cls, and a staticmethod one called self.
+            if (
+                binding != "staticmethod"
+                and params
+                and params[0].kind
+                in (
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                )
+            ):
+                receiver_positional_only = params[0].kind is inspect.Parameter.POSITIONAL_ONLY
+                params = params[1:]
+            parameters = _stub_parameters(params)
         except (ValueError, TypeError):
             parameters = {}
 
@@ -478,6 +495,7 @@ def _extract_methods(cls: type[Component]) -> tuple[list[MethodInfo], list[str]]
                 docstring=inspect.getdoc(original_func),
                 return_annotation=return_annotation,
                 binding=binding,
+                receiver_positional_only=receiver_positional_only,
             )
         )
 
@@ -569,17 +587,30 @@ def _collect_imports(module_stubs: ModuleStubs) -> list[str]:
     return types_.import_lines()
 
 
+def _stub_parameters(params: list[inspect.Parameter]) -> dict[str, dict[str, t.Any]]:
+    """Parameter details for a stub, in order, with the resolved annotation of each."""
+    return {
+        param.name: {
+            "type": get_type_string(param.annotation) if param.annotation is not inspect.Parameter.empty else None,
+            "default": None,
+            "has_default": param.default is not inspect.Parameter.empty,
+            "kind": param.kind.name,
+            "annotation": param.annotation,
+        }
+        for param in params
+    }
+
+
 def _resolved_signature(func: t.Callable[..., t.Any]) -> inspect.Signature:
     """A signature whose string annotations (``from __future__ import annotations``) are evaluated.
 
-    ``eval_str`` fails as a whole when one annotation names something only a
-    ``TYPE_CHECKING`` block imports; then each annotation is tried on its own and
-    the ones that still fail stay strings, which the stub writes as ``Any``.
+    Each annotation is evaluated once, on its own, in the function's module: one
+    naming something only a ``TYPE_CHECKING`` block imports stays a string, which
+    the stub writes as ``Any``, and does not take the others down with it. (An
+    earlier version tried ``eval_str`` first and, when that failed, evaluated
+    every annotation again, running any call inside them twice.)
     """
-    try:
-        return inspect.signature(func, eval_str=True)
-    except Exception:
-        sig = inspect.signature(func)
+    sig = inspect.signature(func)
     namespace = getattr(inspect.unwrap(func), "__globals__", {})
 
     def resolve(annotation: t.Any) -> t.Any:
@@ -610,10 +641,16 @@ class _StubTypes:
     the source, never wrong.
     """
 
+    #: Names every stub may write that no imported class can take.
+    RESERVED = frozenset(dir(builtins)) | {"Component", "LiveComponent", "FunctionComponent", "_typing"}
+
     def __init__(self, module: str, local_names: set[str]) -> None:
         self.module = module
         self.local_names = local_names
         self.typing: set[str] = set()
+        # A typing name clashing with a component of this module (a component
+        # called Any) is written through the module: ``_typing.Any``.
+        self.typing_module = False
         self.bases: set[str] = set()
         self.from_imports: dict[str, set[str]] = {}
         self._bound: dict[str, str] = {}
@@ -624,7 +661,10 @@ class _StubTypes:
         return cls(module_stubs.module_path, local)
 
     def use(self, name: str) -> str:
-        """Mark a ``typing`` name as used and return it."""
+        """Mark a ``typing`` name as used and return how to write it."""
+        if name in self.local_names or name in self._bound:
+            self.typing_module = True
+            return f"_typing.{name}"
         self.typing.add(name)
         return name
 
@@ -657,7 +697,13 @@ class _StubTypes:
                 return base
             if origin is collections.abc.Callable:
                 params, result = args[0], args[-1]
-                params_str = "..." if params is Ellipsis else f"[{', '.join(self.render(p) for p in params)}]"
+                # Only a concrete parameter list can be written out. A ParamSpec
+                # or Concatenate[..., P] accepts more than any list says, so it
+                # becomes "..." rather than a wrong arity.
+                if isinstance(params, (list, tuple)):
+                    params_str = f"[{', '.join(self.render(p) for p in params)}]"
+                else:
+                    params_str = "..."
                 return f"{base}[{params_str}, {self.render(result)}]"
             return f"{base}[{', '.join('...' if arg is Ellipsis else self.render(arg) for arg in args)}]"
         return self._class_name(annotation) or self.any()
@@ -669,12 +715,20 @@ class _StubTypes:
         module = cls.__module__
         if module == "builtins":
             return None if name in self.local_names else name
+        if module == "typing":
+            # typing.IO, BinaryIO, TextIO: classes that live in typing itself.
+            return self.use(name)
         if module == self.module:
-            # Only the classes this stub itself declares exist in it.
-            return name if name in self.local_names else None
+            # Only the classes this stub itself declares exist in it, and a
+            # nested class with a component's name is not that component.
+            return name if name in self.local_names and cls.__qualname__ == name else None
         if module == "__main__" or "<" in cls.__qualname__ or "." in cls.__qualname__:
             return None
-        if name in self.local_names or self._bound.get(name, module) != module:
+        # One name, one meaning: an import may not shadow a builtin, a base
+        # class, a component or a typing name, nor a class from another module.
+        if name in self.RESERVED or name in self.local_names or name in self.typing:
+            return None
+        if self._bound.get(name, module) != module:
             return None
         self._bound[name] = module
         self.from_imports.setdefault(module, set()).add(name)
@@ -684,12 +738,27 @@ class _StubTypes:
         lines = []
         if self.typing:
             lines.append(f"from typing import {', '.join(sorted(self.typing))}")
+        if self.typing_module:
+            lines.append("import typing as _typing")
         lines.extend(sorted(self.bases))
         for module in sorted(self.from_imports):
-            if module == "typing":
-                continue
             lines.append(f"from {module} import {', '.join(sorted(self.from_imports[module]))}")
         return lines
+
+
+def _docstring_lines(doc: str, indent: str) -> list[str]:
+    """A docstring as stub lines, valid whatever it contains.
+
+    Written as triple-quoted text when that is safe; a docstring holding
+    triple quotes, a backslash or ending in a quote is written as a plain
+    string literal instead, which is always valid Python.
+    """
+    if '"""' in doc or "\\" in doc or doc.endswith('"'):
+        return [f"{indent}{doc!r}"]
+    doc_lines = doc.split("\n")
+    if len(doc_lines) == 1:
+        return [f'{indent}"""{doc}"""']
+    return [f'{indent}"""', *(f"{indent}{line}".rstrip() for line in doc_lines), f'{indent}"""']
 
 
 def _generate_class_stub(comp: ComponentStubInfo, types_: _StubTypes | None = None) -> list[str]:
@@ -708,40 +777,35 @@ def _generate_class_stub(comp: ComponentStubInfo, types_: _StubTypes | None = No
 
     # Docstring
     if comp.docstring:
-        # Handle multiline docstrings
-        doc_lines = comp.docstring.split("\n")
-        if len(doc_lines) == 1:
-            lines.append(f'    """{comp.docstring}"""')
-        else:
-            lines.append('    """')
-            for doc_line in doc_lines:
-                lines.append(f"    {doc_line}")
-            lines.append('    """')
+        lines.extend(_docstring_lines(comp.docstring, "    "))
         lines.append("")
 
-    # Every class stub ends with two ClassVar[... Any ...] metadata lines.
-    types_.use("ClassVar")
-    types_.use("Any")
+    # Every class stub ends with two ClassVar[... Any ...] metadata lines. The
+    # names go through use(): a component of this module may be called Any.
+    class_var = types_.use("ClassVar")
+    any_ = types_.any()
 
     # Class variables
     if comp.class_vars:
         if comp.class_vars.get("_template_name"):
-            lines.append("    _template_name: ClassVar[str]")
+            lines.append(f"    _template_name: {class_var}[str]")
         if comp.class_vars.get("_slots"):
-            lines.append("    _slots: ClassVar[dict[str, dict[str, Any]]]")
+            lines.append(f"    _slots: {class_var}[dict[str, dict[str, {any_}]]]")
         if comp.class_vars.get("_subscriptions_dynamic"):
             lines.append("    # Note: _subscriptions is a dynamic property")
             lines.append("    @property")
             lines.append("    def _subscriptions(self) -> set[str]: ...")
         elif comp.class_vars.get("_subscriptions"):
-            lines.append("    _subscriptions: ClassVar[set[str]]")
+            lines.append(f"    _subscriptions: {class_var}[set[str]]")
         if comp.class_vars.get("_temporary_assigns"):
-            lines.append("    _temporary_assigns: ClassVar[set[str]]")
+            lines.append(f"    _temporary_assigns: {class_var}[set[str]]")
         lines.append("")
 
-    # Instance fields
-    if comp.fields:
-        for field in comp.fields:
+    # Instance fields. A field whose name is not a Python identifier (possible
+    # with pydantic.create_model) cannot be declared; the metadata still names it.
+    declarable = [f for f in comp.fields if f.name.isidentifier() and not keyword.iskeyword(f.name)]
+    if declarable:
+        for field in declarable:
             type_str = types_.render(field.annotation) if field.annotation is not None else field.type_str
             lines.append(f"    {field.name}: {type_str}")
         lines.append("")
@@ -760,8 +824,10 @@ def _generate_class_stub(comp: ComponentStubInfo, types_: _StubTypes | None = No
 
     # Meta attributes for IDE/LSP support
     lines.append("    # Wireview metadata for IDE support")
-    lines.append(f"    __wireview_attrs__: ClassVar[dict[str, dict[str, Any]]] = {_format_attrs_dict(comp.fields)}")
-    lines.append(f"    __wireview_handlers__: ClassVar[list[str]] = {comp.handlers!r}")
+    lines.append(
+        f"    __wireview_attrs__: {class_var}[dict[str, dict[str, {any_}]]] = {_format_attrs_dict(comp.fields)}"
+    )
+    lines.append(f"    __wireview_handlers__: {class_var}[list[str]] = {comp.handlers!r}")
 
     return lines
 
@@ -777,7 +843,7 @@ def _generate_function_component_stub(comp: ComponentStubInfo, types_: _StubType
 
     # Docstring as comment
     if comp.docstring:
-        lines.append(f'"""{comp.docstring}"""')
+        lines.extend(_docstring_lines(comp.docstring, ""))
 
     return lines
 
@@ -792,12 +858,11 @@ def _format_method_signature(method: MethodInfo, types_: _StubTypes | None = Non
     types_ = types_ or _StubTypes("", set())
     first = {"method": "self", "classmethod": "cls"}.get(method.binding)
     params = [first] if first else []
-    positional_only = False
+    # A positional-only receiver keeps its "/" when nothing else is positional-only.
+    positional_only = bool(first) and method.receiver_positional_only
     star_written = False
 
     for name, param in method.parameters.items():
-        if name in ("self", "cls") and first:
-            continue
         kind = param.get("kind", "POSITIONAL_OR_KEYWORD")
         if positional_only and kind != "POSITIONAL_ONLY":
             params.append("/")
@@ -853,17 +918,20 @@ def _serialize_default_for_stub(value: t.Any) -> str:
     if value is None:
         return "None"
 
-    # Handle Enum FIRST (before str check, since StrEnum is both str and Enum)
+    # Handle Enum FIRST (before str check, since StrEnum is both str and Enum).
+    # Its value goes through the same rules: an arbitrary object's repr is not
+    # a literal the stub can hold.
     if isinstance(value, enum.Enum):
-        # For string enums, use the value
-        enum_value = value.value
-        return repr(enum_value)
+        return _serialize_default_for_stub(value.value)
 
     # Handle basic types
     if isinstance(value, bool):
         return repr(value)
-    if isinstance(value, (int, float)):
-        return repr(value)
+    if isinstance(value, int):
+        return repr(int(value))
+    if isinstance(value, float):
+        # repr(inf) is "inf", an unbound name in the stub (F821).
+        return repr(value) if math.isfinite(value) else "..."
     if isinstance(value, str):
         return repr(value)
 

@@ -76,7 +76,15 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
   modules with a real `from ... import`, where they used to be a commented-out
   `# from . import X`. What cannot be written faithfully (a TypeVar, a class only the
   source module has) becomes `Any`. `*args`, `**kwargs`, `*,` and `/` are kept, and so
-  are `@classmethod` and `@staticmethod`.
+  are `@classmethod` and `@staticmethod`. An implementation review then found more inputs
+  that still produced invalid stubs, now fixed: a `ParamSpec` in `Callable` stopped generation
+  (and `Concatenate` got the wrong arity; both are now `Callable[..., R]`), `typing.IO`/
+  `BinaryIO`/`TextIO` were written but not imported, an imported class could shadow a builtin
+  or a component (a class named `int`, a nested class named like a component, a component
+  named `Any`), a parameter called `cls` or `self` was dropped by name, `inf`/`nan` defaults
+  and keyword field names were not valid Python, a docstring holding triple quotes broke the
+  file and a class without one inherited the base class's, and an annotation that failed to
+  evaluate made every other one run twice.
 - A component's own `@classmethod` and `@staticmethod` work again (found while fixing
   #89). Wrapping public methods in `validate_call` stored them back as plain functions:
   a classmethod stayed bound to the class that defined it, so a subclass building
