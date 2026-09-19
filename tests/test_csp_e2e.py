@@ -67,8 +67,18 @@ def test_every_binding_works_under_a_strict_policy(page, server):
     expect_text(by(page, "count"), "1")
 
     # Two debounced inputs typed within one debounce window: each keeps its own timer.
-    by(page, "first").fill("one")
-    by(page, "second").fill("two")
+    # Both in one tick, so neither timer can fire (and its render land) before the
+    # other input has its value; a render resets inputs the server does not render
+    # (#91), which is not what this checks.
+    page.evaluate(
+        """() => {
+          for (const [id, value] of [["first", "one"], ["second", "two"]]) {
+            const input = document.querySelector(`[data-testid="${id}"]`);
+            input.value = value;
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+        }"""
+    )
     expect_text(by(page, "first-value"), "one")
     expect_text(by(page, "second-value"), "two")
 
