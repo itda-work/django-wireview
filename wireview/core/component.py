@@ -285,18 +285,22 @@ class Component(BaseModel):
             cls._name = name
             cls._fqn = fqn
 
-        for attr_name in vars(cls):
-            attr = getattr(cls, attr_name)
-            if not attr_name.startswith("_") and attr_name.islower() and callable(attr):
-                try:
-                    setattr(
-                        cls,
-                        attr_name,
-                        validate_call(config={"arbitrary_types_allowed": True})(attr),
-                    )
-                except (NameError, TypeError):
-                    # Skip validation for methods with unresolvable type hints
-                    pass
+        for attr_name, raw in list(vars(cls).items()):
+            if attr_name.startswith("_") or not attr_name.islower():
+                continue
+            validate = validate_call(config={"arbitrary_types_allowed": True})
+            try:
+                if isinstance(raw, (classmethod, staticmethod)):
+                    # Validate the function and put the descriptor back. Wrapping
+                    # what getattr() returns instead stored a plain function: a
+                    # classmethod stayed bound to this class in every subclass,
+                    # and a staticmethod got the instance as its first argument.
+                    setattr(cls, attr_name, type(raw)(validate(raw.__func__)))
+                elif callable(raw):
+                    setattr(cls, attr_name, validate(raw))
+            except (NameError, TypeError):
+                # Skip validation for methods with unresolvable type hints
+                pass
 
         super().__init_subclass__()
 
