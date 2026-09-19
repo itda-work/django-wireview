@@ -2,12 +2,15 @@
 
 <meta name="wireview-boost" data-enabled="{{ BOOST_PAGES|lower }}" />
 <meta name="wireview-live-session" content="{{ LIVE_SESSION }}" />
-<style>
+{# The nonce goes inside each tag; reformatting would spread the rendered tags over lines. #}
+{# djlint:off #}
+<style{% if CSP_NONCE %} nonce="{{ CSP_NONCE }}"{% endif %}>
   .wireview-disconnected, .wireview-disconnected * {
     opacity: 0.8; cursor: wait; pointer-events: none;
   }
 </style>
-<script defer src="{% static "wireview/wireview.min.js" %}?v=1"></script>
+<script defer src="{% static "wireview/wireview.min.js" %}?v=2"{% if CSP_NONCE %} nonce="{{ CSP_NONCE }}"{% endif %}></script>
 {% for path in HOOK_FILES %}
-  <script defer src="{% static path %}"></script>
+  <script defer src="{% static path %}"{% if CSP_NONCE %} nonce="{{ CSP_NONCE }}"{% endif %}></script>
 {% endfor %}
+{# djlint:on #}

@@ -1328,6 +1328,7 @@ class Component(BaseModel):
                 op="config",
                 upload=name,
                 data=config.to_client_dict(endpoint),
+                component_id=self.id,
             )
             await self.wire.send_upload_op(op)
 

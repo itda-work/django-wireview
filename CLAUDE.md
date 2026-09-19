@@ -67,6 +67,7 @@ wireview/
 └── static/wireview/       wireview.js (소스), rendered.mjs (diff 적용·HTML 복원 순수 함수),
                            streams.mjs (스트림 DOM 판단 순수 함수), reload.mjs (reload 쿨다운 판단),
                            live-session.mjs (경계 넘음 판단 순수 함수), ready.mjs (defer 스크립트가 다 돌았는가),
+                           events.mjs (wire-on-* 바인딩의 수정자 해석 순수 함수),
                            wireview-boost.js, types.d.ts
                            wireview.min.js는 빌드 산출물이며 gitignore
 
@@ -90,7 +91,8 @@ tests/
                            bookmarks/ 는 예제가 아니라 wireview 스킬 검증의 기준선이고,
                            uploadprobe/ 는 워커 둘짜리 업로드 E2E(test_multiworker_uploads.py)의 픽스처,
                            livesession/ 은 경계 넘는 이동 E2E(test_live_session_e2e.py)의 픽스처다,
-                           listprobe/ 는 항목 재배열 diff 를 옛 형태와 비교하는 E2E(test_comprehension_moves_e2e.py)의 픽스처다
+                           listprobe/ 는 항목 재배열 diff 를 옛 형태와 비교하는 E2E(test_comprehension_moves_e2e.py)의 픽스처,
+                           cspprobe/ 는 인라인 허용 없는 CSP 아래 모든 바인딩 모양과 브라우저 업로드를 도는 E2E(test_csp_e2e.py)의 픽스처다
 
 examples/                  예제 앱 11개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.
                            testproj 위에서 돌고 make test가 함께 실행한다(pytest tests examples).
@@ -123,7 +125,7 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 
 ### 클라이언트 DOM 속성
 
-`wire-hook`, `wire-stream`, `wire-viewport-top/bottom`, `wire-disabled-with`, `wire-feedback-for`, `wire-no-feedback`, `wire-auto-recover`, `wire-flash`, `wire-upload-drop`, `wire-preview`. 로딩 클래스는 `wireview-click-loading` 계열. 상세는 `docs/features/`.
+`wire-on-<이벤트>[.<수정자>…]`(`{% on %}`의 출력, 값은 JSON), `wire-hook`, `wire-stream`, `wire-viewport-top/bottom`, `wire-disabled-with`, `wire-feedback-for`, `wire-no-feedback`, `wire-auto-recover`, `wire-flash`, `wire-upload`, `wire-upload-select`, `wire-upload-drop`, `wire-preview`. 로딩 클래스는 `wireview-click-loading` 계열. 상세는 `docs/features/`.
 
 ## 명령
 
@@ -186,6 +188,10 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
   로그아웃을 서버에서 폐기하지 못한다 — 경계 뒤에 진짜 인가가 있으면 서버 저장형 백엔드를 쓴다.
 - **`STATE_ACCEPT_LEGACY`와 live_session은 동시에 열 수 없다.** 옛 토큰에는 그 페이지에 경계가
   있었는지를 말해 줄 것이 없어서, 받아 주면 뷰에 붙인 정책이 통째로 빠진다(`wireview.W010`).
+- **마크업에 스크립트를 넣지 않는다.** 이벤트는 `wire-on-*` 속성과 `<html>`의 위임 리스너로 간다(#90). 태그가
+  `on*="…"`이나 인라인 `<script>`를 렌더하면 `'unsafe-inline'` 없는 CSP에서 조용히 죽는다 — 페이지는 그려지고 클릭만
+  아무 일도 하지 않는다. tests/test_csp_e2e.py가 브라우저의 위반 보고로 지킨다. 헤더의 `<style>`·`<script>`는 요청의
+  CSP nonce를 단다.
 - **diff 형태를 새로 더하면 `PROTOCOL_VERSION`을 올린다.** 서버는 클라이언트가 소켓 URL의 `?vsn=`으로
   말한 버전 이하의 형태만 보낸다(`repo.vsn`, 없으면 0). 올리지 않고 새 형태를 보내면 옛 번들로 열린 페이지가
   그것을 모르는 값으로 넣어 `[object Object]`를 그린다. `wireview/core/rendered.py`와 `wireview/static/wireview/rendered.mjs`의 두 상수가

@@ -402,9 +402,8 @@ class TestMyselfTargeting:
         template = Template('{% load wireview %}{% on "click" "increment" myself=True %}')
         result = template.render(Context({"this": mock_component}))
 
-        # Should include _target with component ID
-        assert "_target" in result
-        assert "test-live-1" in result
+        # The binding names the LiveComponent it targets
+        assert "&quot;t&quot;:&quot;test-live-1&quot;" in result
 
     def test_on_tag_without_myself(self):
         """Test that {% on %} without myself doesn't add _target."""
@@ -420,8 +419,8 @@ class TestMyselfTargeting:
         template = Template('{% load wireview %}{% on "click" "increment" %}')
         result = template.render(Context({"this": mock_component}))
 
-        # Should NOT include _target
-        assert "_target" not in result
+        # Should NOT name a target
+        assert "&quot;t&quot;" not in result and "_target" not in result
 
 
 @pytest.mark.unit

@@ -419,6 +419,11 @@ class UploadOp:
     upload: str
     ref: str | None = None
     data: dict[str, t.Any] = field(default_factory=dict)
+    # The component the upload belongs to. The client needs it for "config",
+    # the op that creates the upload on its side: without it the client looked
+    # for a component that already had the upload, found none, and dropped the
+    # config, so no upload tag ever worked in a browser (found with #90).
+    component_id: str | None = None
 
     def to_payload(self) -> dict[str, t.Any]:
         """Convert to payload dict for WebSocket transmission.
@@ -427,6 +432,8 @@ class UploadOp:
             Payload dict suitable for JSON serialization
         """
         payload: dict[str, t.Any] = {"op": self.op, "upload": self.upload}
+        if self.component_id:
+            payload["id"] = self.component_id
         if self.ref:
             payload["ref"] = self.ref
         if self.data:

@@ -1,5 +1,6 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
 import { PROTOCOL_VERSION, applyPartial, buildHtml } from "./rendered.mjs";
+import { BINDING_PREFIX, bindingsFor, parseBinding, runSteps } from "./events.mjs";
 import { planInsert, planTrim } from "./streams.mjs";
 import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
@@ -225,6 +226,12 @@ class ServerConnection {
           for (const child of changedChildren) {
             child.scheduleMorph();
           }
+          // An event whose handler changed nothing still ends here: without a
+          // morph to clear it, its loading state would stay (a button left
+          // disabled by wire-disabled-with).
+          if (target && changedChildren.length === 0) {
+            window.requestAnimationFrame(() => target.clearLoadingClasses());
+          }
         }
         break;
       }
@@ -415,7 +422,14 @@ class ServerConnection {
    * @private
    */
   _handleUploadOp(payload) {
-    const { op, upload, ref, ...data } = payload;
+    const { op, upload, ref, id, ...data } = payload;
+
+    // "config" creates the upload on this side, so it names its component:
+    // searching for a component that already has the upload finds none.
+    if (op === "config" && id) {
+      getUploadManager(id).configure(upload, data);
+      return;
+    }
 
     // Find the component that owns this upload
     for (const [componentId, component] of Object.entries(this.components)) {
@@ -2448,6 +2462,206 @@ const FeedbackManager = {
 
 // Initialize feedback system
 FeedbackManager.init();
+
+// ============================================================================
+// Event bindings: delegated, no inline script (#90)
+// ============================================================================
+
+/**
+ * `{% on %}` renders `wire-on-<event>[.<modifier>...]="<json>"` instead of an
+ * inline `on<event>` attribute, which a Content Security Policy blocks.
+ * Listeners live on `<html>`: before `document`, where boost intercepts link
+ * clicks, so a `.prevent` still lands first. docs/design/csp-event-binding.md.
+ */
+const EventBindings = {
+  /** @type {Set<string>} */
+  listened: new Set(),
+  /** @type {Map<string, import("./events.mjs").Binding | null>} */
+  parsed: new Map(),
+  /** @type {WeakMap<Element, Map<string, {timer?: ReturnType<typeof setTimeout>, last?: number}>>} */
+  state: new WeakMap(),
+
+  init() {
+    // The upload tags bind through their own attributes (wire-upload, wire-upload-select).
+    this.listen("click");
+    this.listen("change");
+    this.scan(document.documentElement);
+    new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === "attributes") {
+          if (record.attributeName?.startsWith(BINDING_PREFIX)) this.learn(record.attributeName);
+        } else {
+          record.addedNodes.forEach((node) => {
+            if (node.nodeType === Node.ELEMENT_NODE) this.scan(/** @type {Element} */ (node));
+          });
+        }
+      }
+    }).observe(document.documentElement, { subtree: true, childList: true, attributes: true });
+  },
+
+  /**
+   * Listen for every event type a binding under `root` names.
+   * @param {Element} root
+   */
+  scan(root) {
+    for (const el of [root, ...root.querySelectorAll("*")]) {
+      for (const name of el.getAttributeNames()) {
+        if (name.startsWith(BINDING_PREFIX)) this.learn(name);
+      }
+    }
+  },
+
+  /** @param {string} attribute */
+  learn(attribute) {
+    const binding = this.binding(attribute);
+    if (binding) this.listen(binding.type);
+  },
+
+  /** @param {string} attribute */
+  binding(attribute) {
+    let binding = this.parsed.get(attribute);
+    if (binding === undefined) {
+      binding = parseBinding(attribute);
+      this.parsed.set(attribute, binding);
+    }
+    return binding;
+  },
+
+  /** @param {string} type */
+  listen(type) {
+    if (this.listened.has(type)) return;
+    this.listened.add(type);
+    const root = document.documentElement;
+    // A bubbling event is handled on its way up, target first, like the inline
+    // handlers were. One that does not bubble (focus, mouseenter) still passes
+    // through the root while capturing; only its target's bindings apply.
+    root.addEventListener(type, (event) => {
+      if (event.bubbles) this.bubble(event);
+    });
+    root.addEventListener(
+      type,
+      (event) => {
+        if (!event.bubbles && event.target instanceof Element) this.run(event.target, event);
+      },
+      true
+    );
+  },
+
+  /** @param {Event} event */
+  bubble(event) {
+    const start = event.target instanceof Element ? event.target : /** @type {Node|null} */ (event.target)?.parentElement;
+    for (let el = start; el; el = el.parentElement) {
+      if (this.run(el, event)) break;
+    }
+  },
+
+  /**
+   * Run `el`'s bindings for `event`.
+   * @param {Element} el
+   * @param {Event} event
+   * @returns {boolean} whether a binding stopped propagation
+   */
+  run(el, event) {
+    let stopped = false;
+    this.runUpload(el, event);
+    for (const attribute of bindingsFor(el.getAttributeNames(), event.type)) {
+      const binding = this.binding(attribute);
+      if (!binding) continue;
+      /** @type {{h?: string, a?: Object, t?: string, js?: JSCommand[]}} */
+      let value;
+      try {
+        value = JSON.parse(el.getAttribute(attribute) || "{}");
+      } catch (error) {
+        console.error(`[wireview] unreadable binding ${attribute}`, error);
+        continue;
+      }
+      // A server handler runs only on a live component. Otherwise nothing
+      // happens, not even .prevent: the form submits to its action and the
+      // link navigates, which is what the page does without JavaScript.
+      if (value.h !== undefined && !this.isLive(el, value.t)) continue;
+      const element = /** @type {HTMLElement} */ (el);
+      runSteps(binding.steps, /** @type {KeyboardEvent} */ (event), {
+        prevent: () => event.preventDefault(),
+        stop: () => {
+          stopped = true;
+          event.stopPropagation();
+        },
+        debounce: (delay, rest) => {
+          const state = this.stateOf(el, attribute);
+          clearTimeout(state.timer);
+          state.timer = setTimeout(rest, delay);
+        },
+        throttle: (delay) => {
+          const state = this.stateOf(el, attribute);
+          const now = Date.now();
+          if (state.last !== undefined && now - state.last < delay) return false;
+          state.last = now;
+          return true;
+        },
+        fire: () => {
+          if (value.js) {
+            window.wireview.exec(element, value.js);
+          } else if (value.h !== undefined) {
+            const args = { ...(value.a || {}) };
+            if (value.t) args._target = value.t;
+            window.wireview.send(element, value.h, args, event.type);
+          }
+        },
+      });
+    }
+    return stopped;
+  },
+
+  /**
+   * The upload tags' two actions: files chosen in an upload input, and a
+   * button that opens the file picker.
+   * @param {Element} el
+   * @param {Event} event
+   */
+  runUpload(el, event) {
+    if (event.type === "change" && el instanceof HTMLInputElement && el.hasAttribute("wire-upload")) {
+      if (el.files?.length) window.wireview.addFiles(el, /** @type {string} */ (el.getAttribute("wire-upload")), el.files);
+    } else if (event.type === "click" && el.hasAttribute("wire-upload-select")) {
+      window.wireview.selectFiles(/** @type {HTMLElement} */ (el), /** @type {string} */ (el.getAttribute("wire-upload-select")));
+    }
+  },
+
+  /**
+   * Debounce and throttle state, one per element and binding. It used to be
+   * one timer for the whole page, so two debounced inputs cancelled each other.
+   * @param {Element} el
+   * @param {string} attribute
+   */
+  stateOf(el, attribute) {
+    let perElement = this.state.get(el);
+    if (!perElement) {
+      perElement = new Map();
+      this.state.set(el, perElement);
+    }
+    let state = perElement.get(attribute);
+    if (!state) {
+      state = {};
+      perElement.set(attribute, state);
+    }
+    return state;
+  },
+
+  /**
+   * Whether the component a server binding belongs to can take the event.
+   * @param {Element} el
+   * @param {string} [target] - a LiveComponent id (`myself`)
+   */
+  isLive(el, target) {
+    const componentEl = /** @type {HTMLElement|null} */ (
+      target ? document.getElementById(target) : el.closest("[wireview-component]")
+    );
+    return Boolean(
+      connection.isOpen && componentEl && componentEl.dataset.isLive === "true" && connection.components[componentEl.id]
+    );
+  },
+};
+
+EventBindings.init();
 
 connection.open();
 /** @type {ReturnType<typeof setTimeout>|undefined} */

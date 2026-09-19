@@ -1,0 +1,40 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <button data-testid="increment" {% on "click" "increment" %}>+</button>
+  <span data-testid="count">{{ this.count }}</span>
+  <input data-testid="first"
+         name="first"
+         {% on "input.debounce.300" "set_first" %}>
+  <input data-testid="second"
+         name="second"
+         {% on "input.debounce.300" "set_second" %}>
+  <span data-testid="first-value">{{ this.first }}</span>
+  <span data-testid="second-value">{{ this.second }}</span>
+  <input data-testid="keys"
+         {% on "keyup.enter" "key" name="E" %}
+         {% on "keyup.esc" "key" name="X" %}>
+  <span data-testid="keys-value">{{ this.keys }}</span>
+  <div data-testid="outer" {% on "click" "click_outer" %}>
+    <button data-testid="inner" {% on "click.stop" "click_inner" %}>inner</button>
+  </div>
+  <span data-testid="inner-count">{{ this.inner }}</span>
+  <span data-testid="outer-count">{{ this.outer }}</span>
+  <button data-testid="slow"
+          wire-disabled-with="Saving"
+          {% on "click" "slow_save" %}>
+    <span data-testid="slow-label">Save</span>
+  </button>
+  <button data-testid="toggle" {% on "click" this.toggle_panel %}>toggle</button>
+  <div id="panel" data-testid="panel">panel</div>
+  <form action="{% url 'cspprobe:submitted' %}"
+        method="get"
+        {% on "submit.prevent" "save" %}>
+    <input data-testid="q" name="q">
+  </form>
+  <span data-testid="submitted">{{ this.submitted }}</span>
+  {% upload_button "files" data_testid="pick" %}pick
+</button>
+{% upload_input "files" data_testid="file-input" %}
+<span data-testid="received">{{ this.received }}</span>
+</div>

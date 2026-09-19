@@ -34,9 +34,15 @@
 
 - 첫 인자는 `이벤트.수정자.수정자`, 둘째는 핸들러 이름, 나머지 kwargs는 핸들러 인자로 간다.
 - 폼 요소의 `name` 속성은 같은 이름의 핸들러 인자로 전달된다.
-- 수정자: `prevent`, `stop`, `debounce.<ms>`, `throttle.<ms>`, `key.<name>`, `key_code.<n>`,
-  단축키 `enter`, `tab`, `delete`, `backspace`, `escape`, `space`, `arrowup`, `arrowdown`, `arrowleft`, `arrowright`.
+- 수정자: `prevent`, `stop`, `ctrl`, `alt`, `shift`, `meta`, `debounce.<ms>`, `throttle.<ms>`, `key.<name>`,
+  `key_code.<n>`, 단축키 `enter`, `tab`, `delete`, `backspace`, `esc`, `space`, `up`, `down`, `left`, `right`.
+  **모르는 수정자는 조용히 무시된다** — `keyup.escape`는 조건 없이 모든 키에 반응한다. Escape는 `esc` 또는 `key.escape`.
+- 수정자는 왼쪽부터 적용된다. `prevent`는 `debounce`보다 앞에 둔다.
+- 같은 요소에 `keyup.enter`와 `keyup.esc`처럼 같은 이벤트를 수정자만 달리해 여러 번 걸 수 있다. 이름까지 같은 두
+  바인딩은 하나만 남으므로, 클라이언트 동작과 서버 호출은 `JS().….push("handler")` 한 체인으로 묶는다.
 - 중첩 컴포넌트에서 자기 자신을 대상으로 하려면 `myself=True`.
+- 출력은 인라인 JS가 아니라 `wire-on-…` 데이터 속성이라 `'unsafe-inline'` 없는 CSP에서도 돈다. 템플릿에 `onclick="…"`을
+  직접 쓰면 그것은 CSP에 막히므로 `JS()`나 훅으로 쓴다(`docs/features/csp.md`).
 
 ## 슬롯
 

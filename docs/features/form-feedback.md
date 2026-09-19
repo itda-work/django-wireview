@@ -346,6 +346,9 @@ window.wireview.hooks.FormHandler = {
 </button>
 ```
 
+이 예는 직접 쓴 인라인 `onclick`이라 `'unsafe-inline'` 없는 CSP에서는 막힌다. 그런 페이지에서는 같은 코드를
+[훅](./hooks.md)의 `mounted()`에서 `this.el.addEventListener("click", …)`로 단다([CSP](./csp.md)).
+
 ## CSS 예
 
 ### Bootstrap 스타일

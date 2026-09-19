@@ -505,7 +505,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         log.debug(f"<<< USER-EVENT {id} {command} {kwargs}")
         component = await self.repo.dispatch_event(id, command, [], kwargs)
         if component:
-            await self.send_render(component)
+            await self.send_render(component, acknowledge=True)
             await self.after_mutation_chores()
 
     async def command_hook_event(
@@ -1023,7 +1023,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
     # template that renders a component inside itself.
     MAX_LIVE_COMPONENT_DEPTH = 8
 
-    async def send_render(self, component: Component):
+    async def send_render(self, component: Component, acknowledge: bool = False):
         """Render a component and the LiveComponents its template names, then send one message.
 
         The parent's template pass only registers its children and leaves a
@@ -1033,9 +1033,14 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         that ran a hook are rendered (recursively, for grandchildren). Their
         diffs travel in the same ``render`` frame as the parent's under
         ``children``, so the client registers them before it patches the DOM.
+
+        ``acknowledge`` sends the message even when nothing changed, with a
+        ``null`` diff: the client clears the loading state an event started
+        (loading classes, ``wire-disabled-with``) when a render arrives, so a
+        handler that changed nothing used to leave its button disabled.
         """
         diff, children, settled = await self._render_tree(component)
-        if diff is not None or children:
+        if diff is not None or children or acknowledge:
             log.debug(f">>> RENDER {component._name} {component.id} (+{len(children)} children)")
             payload: dict[str, t.Any] = {"id": component.id, "diff": diff}
             if children:

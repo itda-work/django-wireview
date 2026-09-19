@@ -10,7 +10,25 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+**Upgrading.** `{% on %}` renders a `wire-on-<event>` data attribute instead of an inline
+`on<event>` handler, and only the new bundle understands it. `{% wireview_header %}` bumps the
+bundle's cache key; a page that serves the bundle some other way has to drop its cached copy.
+
 ### Changed
+
+- Event bindings no longer put script in the markup, so a Content Security Policy without
+  `'unsafe-inline'` holds (#90). `{% on "keyup.enter" "save" %}` renders
+  `wire-on-keyup.enter="{…json…}"` and the bundle delegates from `<html>`; the upload tags lose
+  their inline `onchange`/`onclick` the same way, and `{% wireview_header %}` puts the request's
+  CSP nonce on its `<style>` and `<script>` tags. Modifiers keep their meaning. Along the way:
+  the same event can now be bound twice on one element (`keyup.enter` and `keyup.esc`; the
+  second inline `onkeyup` used to be dropped, which left three of `examples/search`'s four key
+  bindings dead), debounce and throttle keep one timer per element and binding instead of one
+  for the page, and loading classes, `wire-disabled-with` and `JS()` act on the element that
+  carries the binding rather than the innermost element clicked. A server binding on a page
+  that is not live does nothing, not even `.prevent`, so a form submits to its `action` as it
+  would without JavaScript. `.inlinejs`, which never worked through the tag, is now a clear
+  template error pointing at `JS()`. `docs/features/csp.md`.
 
 - List items that move no longer resend the list (GAP-030, #69). Inserting, removing
   or reordering items in a `{% for %}` loop used to resend every item after the edit
@@ -27,6 +45,19 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- Uploads through `{% upload_input %}` and `{% upload_button %}` work in a browser (found with
+  #90). The `upload_op` that creates an upload on the client carried no component id, and the
+  client applied it to "the component that already has this upload", which on the first message
+  is none, so the config was dropped and no file ever went up. Nothing in the repository
+  uploaded through a browser; the new CSP end-to-end test does.
+- The upload tags escape their extra attributes, once (found with #90). `upload_input` and
+  `upload_button` escaped them twice (`class="btn"` arrived as `class=&quot;btn&quot;`), and
+  `upload_preview` not at all, so a file name the client chose, passed as `alt`, could close
+  the attribute and add an event handler. Underscores become hyphens in all three
+  (`data_id=` → `data-id`). `upload_preview` also always read an UploadEntry's ref as empty.
+- A handler that changes nothing no longer leaves its button disabled (found with #90). Loading
+  classes and `wire-disabled-with` clear when a render arrives, and no render was sent for an
+  event with no diff; now the event is acknowledged with `{"diff": null}`.
 - Generated type stubs are valid Python that binds every name it uses (#89). Annotations
   were copied as source text, so `t.Any` from `import typing as t` (or any
   `from __future__ import annotations` module) reached the `.pyi` with `t` unbound, and

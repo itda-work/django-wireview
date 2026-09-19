@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     "testproj.livesession",
     "testproj.uploadprobe",
     "testproj.listprobe",
+    "testproj.cspprobe",
     "wireview",
     "channels",
     "daphne",

@@ -76,7 +76,8 @@
     │
     ▼
 ┌─────────────────┐
-│ onclick 핸들러  │  wireview.send(element, 'increment', {})
+│ 위임 리스너     │  <html>이 click을 받아 wire-on-click 속성을 찾고
+│ (wire-on-click) │  wireview.send(element, 'increment', {})
 └────────┬────────┘
          │
          ▼

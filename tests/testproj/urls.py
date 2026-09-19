@@ -34,6 +34,7 @@ urlpatterns = [
     path("livesession/", include("testproj.livesession.urls")),
     path("uploadprobe/", include("testproj.uploadprobe.urls")),
     path("listprobe/", include("testproj.listprobe.urls")),
+    path("cspprobe/", include("testproj.cspprobe.urls")),
     # The chunk endpoint. A project that leaves this out has no uploads at all,
     # so the test project carries it the way a real one would.
     path("", include("wireview.urls")),

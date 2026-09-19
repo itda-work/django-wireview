@@ -357,7 +357,11 @@ async def notification(self, channel: str, **kwargs):
 | `enter`, `tab`, `delete`, `backspace`, `space` | 키 별칭 |
 | `up`, `down`, `left`, `right` | 화살표 키 별칭 |
 | `key.<keycode>` | 특정 키 (예: `key.escape`) |
-| `inlinejs` | 핸들러를 리터럴 JavaScript로 처리 |
+
+`{% on %}`은 인라인 JavaScript가 아니라 `wire-on-<이벤트>[.<수정자>…]` 데이터 속성을 렌더하고, 번들이 문서 루트에서
+이벤트를 위임받아 처리합니다. 그래서 `'unsafe-inline'` 없는 Content Security Policy와 함께 돕니다. 수정자는 왼쪽부터
+적용되므로 `prevent`는 `debounce`보다 앞에 둡니다. 한 요소에 `keyup.enter`와 `keyup.esc`처럼 같은 이벤트를 여러 번
+걸 수 있습니다. 자세한 것은 [CSP](docs/features/csp.md)를 보세요.
 
 ### 암시적 인자
 

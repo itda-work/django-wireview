@@ -427,7 +427,7 @@ async def cancel_file(self, ref: str):
 
 ```html
 <div class="gallery-upload">
-  {% upload_input "photos" multiple %}
+  {% upload_input "photos" %}  {# max_entries가 1보다 크면 multiple이 자동으로 붙는다 #}
 
   <div class="grid grid-cols-4 gap-4">
     {% for entry in this.uploads.photos %}

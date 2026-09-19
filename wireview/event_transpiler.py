@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import typing as t
 from collections import OrderedDict
 
@@ -48,6 +49,49 @@ class LRUCache(t.MutableMapping[str, str | None]):
 
 
 CACHE: t.MutableMapping[str, str | None] = LRUCache(TRANSPILER_CACHE_SIZE)
+
+#: Every event binding is an attribute ``wire-on-<event>[.<modifier>...]``. The
+#: client delegates from the document root, so no script lives in the markup and
+#: a CSP without ``'unsafe-inline'`` holds (#90, docs/design/csp-event-binding.md).
+BINDING_PREFIX = "wire-on-"
+# What may follow the prefix: safe in an attribute name, and a template value
+# cannot close the attribute or open another one.
+_BINDING_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_:-]*(\.[A-Za-z0-9_:-]+)*")
+
+
+def binding(event_and_modifiers: str, command: str | JS, kwargs: dict[str, t.Any]) -> tuple[str, str]:
+    """The attribute ``{% on %}`` renders: its name and its JSON value.
+
+    The name carries the event and its modifiers exactly as written in the
+    template, so ``keyup.enter`` and ``keyup.esc`` on one element are two
+    attributes (as inline ``onkeyup`` they were one, and the browser kept the
+    first). The value says what to run: ``{"h": handler, "a": args, "t":
+    target}`` for a server handler, ``{"js": commands}`` for a ``JS()`` chain.
+    """
+    from .js import JS
+
+    if not _BINDING_NAME.fullmatch(event_and_modifiers):
+        raise ValueError(
+            f"{event_and_modifiers!r} is not an event binding: use letters, digits, '_', ':' and '-', "
+            "with modifiers after dots, like 'keyup.enter' or 'input.debounce.300'"
+        )
+    if "inlinejs" in event_and_modifiers.split(".")[1:]:
+        raise ValueError(
+            "the inlinejs modifier is not supported: inline JavaScript cannot run under a Content Security "
+            "Policy. Use a JS() command chain, or a hook for anything JS() cannot express"
+        )
+
+    if isinstance(command, JS):
+        value: dict[str, t.Any] = {"js": command._commands}
+    else:
+        args = dict(kwargs)
+        value = {"h": command}
+        target = args.pop("_target", None)
+        if args:
+            value["a"] = args
+        if target:
+            value["t"] = target
+    return BINDING_PREFIX + event_and_modifiers, json.dumps(value, cls=DjangoJSONEncoder, separators=(",", ":"))
 
 
 def transpile(

@@ -127,17 +127,26 @@
 
 서버를 기다리지 않고 UI를 바로 바꾸려면 JS 명령을 쓴다.
 
+```python
+from wireview import JS, Component
+
+
+class Menu(Component):
+    @property
+    def toggle_menu_js(self) -> JS:
+        # 템플릿은 인자를 받는 호출을 쓸 수 없으므로 JS 체인은 컴포넌트가 만든다
+        return JS().toggle_class("#menu", "hidden").push("toggle_menu")
+```
+
 ```html
-<button
-  {% on "click" "toggle_menu" %}
-  wire-disabled-with="여는 중..."
-  onclick="{{ JS().toggle_class(target='#menu', names='hidden') }}"
->
+<button {% on "click" this.toggle_menu_js %} wire-disabled-with="여는 중...">
   메뉴 토글
 </button>
 ```
 
-`JS()` 명령은 그 자리에서 실행되고, 서버 왕복에 대한 피드백은 `wire-disabled-with`가 맡는다.
+`JS()` 명령은 그 자리에서 실행되고, 끝의 `push`가 서버 핸들러를 부른다. 서버 왕복에 대한 피드백은
+`wire-disabled-with`가 맡는다. 같은 요소에 `{% on "click" … %}`을 두 번 쓰면 속성 이름이 같아 브라우저가 두 번째를
+버리므로, 클라이언트 동작과 서버 호출은 이렇게 한 체인으로 묶는다.
 
 ## 권장 사항
 

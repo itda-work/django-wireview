@@ -6,7 +6,7 @@ from asgiref.sync import async_to_sync
 from django import template
 from django.template.base import Node, NodeList, Parser, TextNode, Token, token_kwargs
 from django.template.context import Context
-from django.utils.html import escape, format_html
+from django.utils.html import escape, format_html, format_html_join
 from django.utils.safestring import mark_safe
 
 from .. import settings
@@ -15,7 +15,7 @@ from ..core.live_session import REQUEST_ATTR as LIVE_SESSION_REQUEST_ATTR
 from ..core.live_session import declaration_allows, get_live_session
 from ..core.rendered import inject_marker
 from ..core.state import sign_state
-from ..event_transpiler import transpile
+from ..event_transpiler import binding
 from ..features.hooks import hook_files
 from ..function_component import get_function_component
 from ..repository import ComponentRepository
@@ -42,6 +42,12 @@ def wireview_header(context):
         # never runs (docs/design/colocated-hooks.md §2). Settled at startup and
         # independent of the request, unlike the boundary name above.
         "HOOK_FILES": hook_files() if settings.COLLECT_HOOKS else (),
+        # Django's CSP middleware (6.0+) puts a per-request nonce here; the
+        # header's <style> needs it under a style-src without 'unsafe-inline'
+        # and the scripts carry it for policies built on nonces (#90). Reading
+        # it makes the middleware include it in the header. Absent on older
+        # Django or without the middleware, and then nothing is added.
+        "CSP_NONCE": getattr(request, "_csp_nonce", None) if request is not None else None,
     }
 
 
@@ -493,8 +499,8 @@ def on(context, _event_and_modifiers, _command, myself: bool = False, **kwargs: 
     if myself:
         kwargs["_target"] = component.id
 
-    event, code = transpile(_event_and_modifiers, _command, kwargs)
-    return format_html('{event}="{code}"', event=event, code=code)
+    name, value = binding(_event_and_modifiers, _command, kwargs)
+    return format_html('{name}="{value}"', name=name, value=value)
 
 
 @register.filter(name="str")
@@ -560,6 +566,25 @@ class ClassNode(CondNode):
 # Upload template tags
 
 
+def _html_attrs(attrs: dict[str, t.Any]) -> str:
+    """Extra attributes from a tag's keyword arguments, every value escaped.
+
+    Underscores become hyphens: a template keyword cannot contain one, and
+    without this ``data_id=`` could never become ``data-id``.
+
+    The upload tags used to join ``key="value"`` themselves and then either
+    pass the result through ``format_html`` (escaping the quotes, so
+    ``class="btn"`` arrived as ``class=&quot;btn&quot;``) or ``mark_safe`` it
+    (so a value the client chose, like an upload's file name, could close the
+    attribute and add an event handler).
+    """
+    return format_html_join(
+        " ",
+        '{}="{}"',
+        ((key.replace("_", "-"), value) for key, value in attrs.items()),
+    )
+
+
 @register.simple_tag(takes_context=True)
 def upload_input(context, name: str, **attrs):
     """
@@ -585,22 +610,17 @@ def upload_input(context, name: str, **attrs):
 
     config = registry.configs[name]
 
-    # Build attributes
-    attrs_parts = []
-    for key, value in attrs.items():
-        attrs_parts.append(f'{key}="{value}"')
-    attrs_str = " ".join(attrs_parts)
-
     accept = ",".join(config.accept) if config.accept else ""
     multiple = "multiple" if config.max_entries > 1 else ""
 
+    # No inline handler: the client picks up changes on [wire-upload] inputs
+    # from its delegated listener, which a Content Security Policy allows (#90).
     return format_html(
-        '<input type="file" wire-upload="{name}" accept="{accept}" {multiple} {attrs} '
-        "onchange=\"wireview.addFiles(this, '{name}', this.files)\">",
+        '<input type="file" wire-upload="{name}" accept="{accept}" {multiple} {attrs}>',
         name=name,
         accept=accept,
         multiple=multiple,
-        attrs=attrs_str,
+        attrs=_html_attrs(attrs),
     )
 
 
@@ -632,25 +652,19 @@ def upload_button(context, name: str, **attrs):
         name: Upload field name (matches allow_upload name)
         **attrs: Additional HTML attributes
 
+    The tag renders the opening ``<button>`` only; close it yourself.
+
     Example:
-        {% upload_button "images" class="btn btn-primary" %}
-            Select Images
-        {% endupload_button %}
+        {% upload_button "images" class="btn btn-primary" %}Select Images</button>
     """
     component: Component | None = context.get("this")
     if not component:
         return ""
 
-    # Build attributes
-    attrs_parts = []
-    for key, value in attrs.items():
-        attrs_parts.append(f'{key}="{value}"')
-    attrs_str = " ".join(attrs_parts)
-
     return format_html(
-        '<button type="button" {attrs} onclick="wireview.selectFiles(this, \'{name}\')">',
+        '<button type="button" wire-upload-select="{name}" {attrs}>',
         name=name,
-        attrs=attrs_str,
+        attrs=_html_attrs(attrs),
     )
 
 
@@ -675,23 +689,19 @@ def upload_preview(entry, **attrs):
     Note: Preview only works for image files. Non-image files will show
     an empty img element or the alt text if provided.
     """
-    # Build attributes
-    attrs_parts = []
-    for key, value in attrs.items():
-        # Convert underscores to hyphens for HTML attributes
-        html_key = key.replace("_", "-")
-        attrs_parts.append(f'{html_key}="{value}"')
-    attrs_str = " ".join(attrs_parts)
-
-    # Get entry ref - support both UploadEntry objects and dicts
-    ref = getattr(entry, "ref", None) or entry.get("ref", "") if isinstance(entry, dict) else ""
-    upload_name = getattr(entry, "upload_name", None) or entry.get("upload_name", "") if isinstance(entry, dict) else ""
+    # Support both UploadEntry objects and dicts. The conditional expression
+    # this replaces bound as ``(a or b) if is_dict else ""`` and so gave every
+    # UploadEntry an empty ref, a preview that never found its file.
+    if isinstance(entry, dict):
+        ref, upload_name = entry.get("ref", ""), entry.get("upload_name", "")
+    else:
+        ref, upload_name = getattr(entry, "ref", ""), getattr(entry, "upload_name", "")
 
     return format_html(
         '<img wire-preview="{upload_name}:{ref}" {attrs} />',
         upload_name=upload_name,
         ref=ref,
-        attrs=mark_safe(attrs_str),
+        attrs=_html_attrs(attrs),
     )
 
 
