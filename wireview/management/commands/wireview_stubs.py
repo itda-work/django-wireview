@@ -14,8 +14,11 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import collections.abc
+import enum
 import inspect
 import sys
+import types
 import typing as t
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -59,6 +62,10 @@ class MethodInfo:
     parameters: dict[str, dict[str, t.Any]]
     return_type: str | None = None
     docstring: str | None = None
+    # The resolved return annotation; ``return_type`` is its display string.
+    return_annotation: t.Any = inspect.Parameter.empty
+    # "method", "classmethod" or "staticmethod": decides the decorator and first parameter.
+    binding: str = "method"
 
 
 @dataclass
@@ -436,11 +443,22 @@ def _extract_methods(cls: type[Component]) -> tuple[list[MethodInfo], list[str]]
         original_func = getattr(attr, "__wrapped__", attr)
         is_async = asyncio.iscoroutinefunction(original_func)
 
+        static = inspect.getattr_static(cls, name, None)
+        if isinstance(static, classmethod):
+            binding = "classmethod"
+        elif isinstance(static, staticmethod):
+            binding = "staticmethod"
+        else:
+            binding = "method"
+
         # Get signature
         sig = None
         try:
-            sig = inspect.signature(original_func)
+            sig = _resolved_signature(original_func)
             parameters = extract_parameters(sig)
+            for param_name, param in sig.parameters.items():
+                if param_name in parameters:
+                    parameters[param_name]["annotation"] = param.annotation
         except (ValueError, TypeError):
             parameters = {}
 
@@ -458,6 +476,8 @@ def _extract_methods(cls: type[Component]) -> tuple[list[MethodInfo], list[str]]
                 parameters=parameters,
                 return_type=return_type,
                 docstring=inspect.getdoc(original_func),
+                return_annotation=return_annotation,
+                binding=binding,
             )
         )
 
@@ -521,116 +541,169 @@ def generate_stub_content(module_stubs: ModuleStubs) -> str:
     lines.append(f"# Generated: {timestamp}")
     lines.append("")
 
-    # Collect imports
-    imports = _collect_imports(module_stubs)
-    lines.extend(imports)
-    lines.append("")
-
-    # Generate stubs for each component
+    types_ = _StubTypes.for_module(module_stubs)
+    body: list[str] = []
     for comp in module_stubs.components:
         if comp.component_type == "FunctionComponent":
-            lines.extend(_generate_function_component_stub(comp))
+            body.extend(_generate_function_component_stub(comp, types_))
         else:
-            lines.extend(_generate_class_stub(comp))
-        lines.append("")
+            body.extend(_generate_class_stub(comp, types_))
+        body.append("")
+
+    # Imports last: they are exactly the names the body used.
+    lines.extend(types_.import_lines())
+    lines.append("")
+    lines.extend(body)
 
     return "\n".join(lines)
 
 
 def _collect_imports(module_stubs: ModuleStubs) -> list[str]:
-    """Collect required import statements."""
-    imports: set[str] = set()
-    typing_imports: set[str] = {"Any"}
-    local_types: set[str] = set()  # Types defined in the same module
-
-    # Check component types present
-    has_component = any(c.component_type == "Component" for c in module_stubs.components)
-    has_live_component = any(c.component_type == "LiveComponent" for c in module_stubs.components)
-    has_function_component = any(c.component_type == "FunctionComponent" for c in module_stubs.components)
-
-    if has_component:
-        imports.add("from wireview.component import Component")
-    if has_live_component:
-        imports.add("from wireview.live_component import LiveComponent")
-    if has_function_component:
-        imports.add("from wireview.function_component import FunctionComponent")
-
-    # Check for ClassVar usage
-    has_class_vars = any(c.class_vars for c in module_stubs.components)
-    if has_class_vars:
-        typing_imports.add("ClassVar")
-
-    # Scan for typing imports in field and method types
+    """The import lines a module's stub needs: every name its body uses, and nothing else."""
+    types_ = _StubTypes.for_module(module_stubs)
     for comp in module_stubs.components:
-        for fld in comp.fields:
-            _collect_type_imports(fld.type_str, typing_imports, imports, local_types)
-        for method in comp.methods:
-            for param in method.parameters.values():
-                if param.get("type"):
-                    _collect_type_imports(param["type"], typing_imports, imports, local_types)
-
-    # Build import lines
-    result = []
-    if typing_imports:
-        result.append(f"from typing import {', '.join(sorted(typing_imports))}")
-
-    result.extend(sorted(imports))
-
-    # Add placeholder comments for local types that need manual imports
-    if local_types:
-        result.append("")
-        result.append("# Local types (may need manual import)")
-        for lt in sorted(local_types):
-            result.append(f"# from . import {lt}")
-
-    return result
+        if comp.component_type == "FunctionComponent":
+            _generate_function_component_stub(comp, types_)
+        else:
+            _generate_class_stub(comp, types_)
+    return types_.import_lines()
 
 
-def _collect_type_imports(
-    type_str: str,
-    typing_imports: set[str],
-    other_imports: set[str],
-    local_types: set[str],
-) -> None:
-    """Collect typing imports from a type string."""
-    import re
+def _resolved_signature(func: t.Callable[..., t.Any]) -> inspect.Signature:
+    """A signature whose string annotations (``from __future__ import annotations``) are evaluated.
 
-    # Check for common typing constructs
-    typing_constructs = [
-        "list",
-        "dict",
-        "set",
-        "tuple",
-        "Optional",
-        "Union",
-        "Callable",
-        "Awaitable",
-        "Iterable",
-        "Sequence",
-    ]
+    ``eval_str`` fails as a whole when one annotation names something only a
+    ``TYPE_CHECKING`` block imports; then each annotation is tried on its own and
+    the ones that still fail stay strings, which the stub writes as ``Any``.
+    """
+    try:
+        return inspect.signature(func, eval_str=True)
+    except Exception:
+        sig = inspect.signature(func)
+    namespace = getattr(inspect.unwrap(func), "__globals__", {})
 
-    for construct in typing_constructs:
-        if construct in type_str:
-            # For Python 3.9+, list/dict/set/tuple are builtin
-            if construct in {"list", "dict", "set", "tuple"}:
+    def resolve(annotation: t.Any) -> t.Any:
+        if not isinstance(annotation, str):
+            return annotation
+        try:
+            return eval(annotation, namespace)  # noqa: S307 -- the module's own annotation text
+        except Exception:
+            return annotation
+
+    return sig.replace(
+        parameters=[p.replace(annotation=resolve(p.annotation)) for p in sig.parameters.values()],
+        return_annotation=resolve(sig.return_annotation),
+    )
+
+
+class _StubTypes:
+    """Renders annotations for one stub file and records the imports they need.
+
+    A stub replaces its module for the type checker, so every name it writes has
+    to be bound in the stub itself (#89): the source's ``import typing as t``
+    does not exist there. So nothing is copied as text. Each annotation is
+    rendered from the resolved object: builtins by name, ``typing`` constructs
+    with their own imports, and classes from other modules with a
+    ``from module import Name``. What cannot be written faithfully, a TypeVar, a
+    class nested in a function, a class defined in the same module but not
+    stubbed, a name that would clash with another, becomes ``Any``: vaguer than
+    the source, never wrong.
+    """
+
+    def __init__(self, module: str, local_names: set[str]) -> None:
+        self.module = module
+        self.local_names = local_names
+        self.typing: set[str] = set()
+        self.bases: set[str] = set()
+        self.from_imports: dict[str, set[str]] = {}
+        self._bound: dict[str, str] = {}
+
+    @classmethod
+    def for_module(cls, module_stubs: ModuleStubs) -> _StubTypes:
+        local = {c.name for c in module_stubs.components if c.component_type != "FunctionComponent"}
+        return cls(module_stubs.module_path, local)
+
+    def use(self, name: str) -> str:
+        """Mark a ``typing`` name as used and return it."""
+        self.typing.add(name)
+        return name
+
+    def any(self) -> str:
+        return self.use("Any")
+
+    def render(self, annotation: t.Any) -> str:
+        if annotation is inspect.Parameter.empty or annotation is t.Any:
+            return self.any()
+        if annotation is None or annotation is type(None):
+            return "None"
+        if isinstance(annotation, str):
+            return self.any()
+
+        origin = t.get_origin(annotation)
+        args = t.get_args(annotation)
+        if origin is t.Annotated:
+            return self.render(args[0])
+        if origin is t.Union or origin is types.UnionType:
+            return " | ".join(self.render(arg) for arg in args)
+        if origin is t.Literal:
+            if all(isinstance(arg, (str, int, bool)) and not isinstance(arg, enum.Enum) for arg in args):
+                return f"{self.use('Literal')}[{', '.join(repr(arg) for arg in args)}]"
+            return self.any()
+        if origin is not None:
+            base = self._class_name(origin)
+            if base is None:
+                return self.any()
+            if not args:
+                return base
+            if origin is collections.abc.Callable:
+                params, result = args[0], args[-1]
+                params_str = "..." if params is Ellipsis else f"[{', '.join(self.render(p) for p in params)}]"
+                return f"{base}[{params_str}, {self.render(result)}]"
+            return f"{base}[{', '.join('...' if arg is Ellipsis else self.render(arg) for arg in args)}]"
+        return self._class_name(annotation) or self.any()
+
+    def _class_name(self, cls: t.Any) -> str | None:
+        if not isinstance(cls, type):
+            return None
+        name = cls.__name__
+        module = cls.__module__
+        if module == "builtins":
+            return None if name in self.local_names else name
+        if module == self.module:
+            # Only the classes this stub itself declares exist in it.
+            return name if name in self.local_names else None
+        if module == "__main__" or "<" in cls.__qualname__ or "." in cls.__qualname__:
+            return None
+        if name in self.local_names or self._bound.get(name, module) != module:
+            return None
+        self._bound[name] = module
+        self.from_imports.setdefault(module, set()).add(name)
+        return name
+
+    def import_lines(self) -> list[str]:
+        lines = []
+        if self.typing:
+            lines.append(f"from typing import {', '.join(sorted(self.typing))}")
+        lines.extend(sorted(self.bases))
+        for module in sorted(self.from_imports):
+            if module == "typing":
                 continue
-            typing_imports.add(construct)
-
-    # Extract capitalized type names (likely custom types)
-    # Match words starting with uppercase that aren't builtin
-    builtins = {"Any", "None", "bool", "int", "float", "str", "bytes", "list", "dict", "set", "tuple", "type"}
-    type_names = re.findall(r"\b([A-Z][A-Za-z0-9_]*)\b", type_str)
-    for name in type_names:
-        if name not in builtins and name not in typing_constructs:
-            local_types.add(name)
+            lines.append(f"from {module} import {', '.join(sorted(self.from_imports[module]))}")
+        return lines
 
 
-def _generate_class_stub(comp: ComponentStubInfo) -> list[str]:
+def _generate_class_stub(comp: ComponentStubInfo, types_: _StubTypes | None = None) -> list[str]:
     """Generate stub for a Component or LiveComponent class."""
+    types_ = types_ or _StubTypes(comp.module, {comp.name})
     lines: list[str] = []
 
     # Class definition
-    base_class = "LiveComponent" if comp.component_type == "LiveComponent" else "Component"
+    if comp.component_type == "LiveComponent":
+        base_class = "LiveComponent"
+        types_.bases.add("from wireview.live_component import LiveComponent")
+    else:
+        base_class = "Component"
+        types_.bases.add("from wireview.component import Component")
     lines.append(f"class {comp.name}({base_class}):")
 
     # Docstring
@@ -645,6 +718,10 @@ def _generate_class_stub(comp: ComponentStubInfo) -> list[str]:
                 lines.append(f"    {doc_line}")
             lines.append('    """')
         lines.append("")
+
+    # Every class stub ends with two ClassVar[... Any ...] metadata lines.
+    types_.use("ClassVar")
+    types_.use("Any")
 
     # Class variables
     if comp.class_vars:
@@ -665,13 +742,16 @@ def _generate_class_stub(comp: ComponentStubInfo) -> list[str]:
     # Instance fields
     if comp.fields:
         for field in comp.fields:
-            lines.append(f"    {field.name}: {field.type_str}")
+            type_str = types_.render(field.annotation) if field.annotation is not None else field.type_str
+            lines.append(f"    {field.name}: {type_str}")
         lines.append("")
 
     # Methods
     if comp.methods:
         for method in comp.methods:
-            sig = _format_method_signature(method)
+            sig = _format_method_signature(method, types_)
+            if method.binding != "method":
+                lines.append(f"    @{method.binding}")
             if method.is_async:
                 lines.append(f"    async def {method.name}{sig}: ...")
             else:
@@ -686,8 +766,10 @@ def _generate_class_stub(comp: ComponentStubInfo) -> list[str]:
     return lines
 
 
-def _generate_function_component_stub(comp: ComponentStubInfo) -> list[str]:
+def _generate_function_component_stub(comp: ComponentStubInfo, types_: _StubTypes | None = None) -> list[str]:
     """Generate stub for a FunctionComponent."""
+    if types_ is not None:
+        types_.bases.add("from wireview.function_component import FunctionComponent")
     lines: list[str] = []
 
     # Variable declaration
@@ -700,22 +782,49 @@ def _generate_function_component_stub(comp: ComponentStubInfo) -> list[str]:
     return lines
 
 
-def _format_method_signature(method: MethodInfo) -> str:
-    """Format method signature for stub file."""
-    params = ["self"]
+def _format_method_signature(method: MethodInfo, types_: _StubTypes | None = None) -> str:
+    """Format a method signature for a stub, keeping every parameter's kind.
+
+    ``*args``, ``**kwargs``, keyword-only and positional-only parameters keep
+    their markers: dropping the stars turned ``(q: str = "", **rest)`` into
+    ``(q: str = ..., rest: Any)``, a SyntaxError (#89).
+    """
+    types_ = types_ or _StubTypes("", set())
+    first = {"method": "self", "classmethod": "cls"}.get(method.binding)
+    params = [first] if first else []
+    positional_only = False
+    star_written = False
 
     for name, param in method.parameters.items():
-        if name == "self":
+        if name in ("self", "cls") and first:
             continue
+        kind = param.get("kind", "POSITIONAL_OR_KEYWORD")
+        if positional_only and kind != "POSITIONAL_ONLY":
+            params.append("/")
+            positional_only = False
+        if kind == "POSITIONAL_ONLY":
+            positional_only = True
+        if kind == "KEYWORD_ONLY" and not star_written:
+            params.append("*")
+            star_written = True
 
-        type_str = param.get("type", "Any")
-        if param.get("has_default"):
-            params.append(f"{name}: {type_str} = ...")
+        if "annotation" in param:
+            type_str = types_.render(param["annotation"])
         else:
-            params.append(f"{name}: {type_str}")
+            type_str = param.get("type") or types_.any()
+        prefix = {"VAR_POSITIONAL": "*", "VAR_KEYWORD": "**"}.get(kind, "")
+        if kind == "VAR_POSITIONAL":
+            star_written = True
+        default = " = ..." if param.get("has_default") and not prefix else ""
+        params.append(f"{prefix}{name}: {type_str}{default}")
+    if positional_only:
+        params.append("/")
 
     params_str = ", ".join(params)
-    return_type = method.return_type or "None"
+    if method.return_annotation is not inspect.Parameter.empty:
+        return_type = types_.render(method.return_annotation)
+    else:
+        return_type = method.return_type or "None"
 
     return f"({params_str}) -> {return_type}"
 

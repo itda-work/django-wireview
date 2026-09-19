@@ -25,6 +25,25 @@ The django-reactor era changelog (2.x) is preserved in
   none and keeps receiving exactly what it did, so a rolling deploy cannot hand it a
   shape it would render as `[object Object]`. `docs/implementation/wire-protocol.md`.
 
+### Fixed
+
+- Generated type stubs are valid Python that binds every name it uses (#89). Annotations
+  were copied as source text, so `t.Any` from `import typing as t` (or any
+  `from __future__ import annotations` module) reached the `.pyi` with `t` unbound, and
+  `**kwargs` lost its stars, which after a parameter with a default is a SyntaxError. A
+  project running `ruff check` failed on files regenerated at every DEBUG reload. Stubs
+  now render each annotation from the resolved object and import what they name:
+  builtins as they are, `typing` and `collections.abc` names, and classes from other
+  modules with a real `from ... import`, where they used to be a commented-out
+  `# from . import X`. What cannot be written faithfully (a TypeVar, a class only the
+  source module has) becomes `Any`. `*args`, `**kwargs`, `*,` and `/` are kept, and so
+  are `@classmethod` and `@staticmethod`.
+- A component's own `@classmethod` and `@staticmethod` work again (found while fixing
+  #89). Wrapping public methods in `validate_call` stored them back as plain functions:
+  a classmethod stayed bound to the class that defined it, so a subclass building
+  itself through an overridden `new` got an instance of the parent, and a staticmethod
+  called through `self` received the instance as its first argument.
+
 ## [0.4.0] - 2026-09-19
 
 JavaScript hooks that load themselves (GAP-032), navigation and stream assertions for tests

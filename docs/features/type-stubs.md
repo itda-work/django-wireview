@@ -214,29 +214,24 @@ class XTodoItem(Component):
 2. 라이브러리 경로(site-packages, venv) 밖에 있다
 3. 소스 파일 경로가 유효하다
 
-### 지역 타입이 주석으로 나온다
+### 타입은 import되거나 `Any`가 된다
 
-같은 모듈에 정의된 타입은 주석으로 표시된다.
+스텁은 타입 검사기가 모듈 대신 읽는 파일이라, 원본 모듈의 import가 스텁에는 없다. 그래서 생성기는
+애너테이션을 **소스 텍스트로 복사하지 않고** 해석된 객체에서 다시 쓴다(`from __future__ import annotations`로
+문자열이 된 애너테이션도 먼저 해석한다). 스텁이 읽는 이름은 모두 스텁 안에서 import된다.
 
-```python
-# Local types (may need manual import)
-# from . import Item
-# from . import ModelAction
-```
+| 애너테이션 | 스텁 |
+|---|---|
+| 내장 타입, `list[str]`, `dict[str, Any]`, `X \| None` | 그대로 (`t.List`·`t.Optional`도 이 모양으로) |
+| `typing.Any`, `Literal[...]` | `from typing import ...` |
+| `Callable`, `Awaitable` 등 | `from collections.abc import ...` |
+| 다른 모듈의 클래스 (`datetime.date`, 다른 앱의 모델) | `from <모듈> import <이름>` |
+| 같은 스텁에 선언되는 컴포넌트 | 이름 그대로 |
+| 같은 모듈에만 있는 다른 클래스, TypeVar, 함수 안에서 정의한 클래스, 해석되지 않는 이름, 다른 import와 겹치는 이름 | `Any` |
 
-필요하면 직접 주석을 풀고 import를 맞춘다.
+마지막 줄은 원본보다 느슨하지만 틀리지 않는다. 같은 모듈의 모델을 정확한 타입으로 받고 싶으면 모델을
+`models.py`처럼 다른 모듈에 두면 된다. 애너테이션이 없는 파라미터도 `Any`다.
 
-### 파라미터 타입이 `None`으로 나온다
-
-타입 힌트가 없는 메서드는 파라미터 타입이 `None`이 된다. 컴포넌트 메서드에 애너테이션을 달면
-스텁도 그만큼 정확해진다.
-
-```python
-async def mutation(
-    self,
-    channel: str,  # 타입 힌트를 단다
-    action: ModelAction,
-    instance: Item,
-) -> None:
-    ...
-```
+`*args`, `**kwargs`, 키워드 전용(`*,`)과 위치 전용(`/`) 표시, `@classmethod`·`@staticmethod`는 원본대로
+남는다. 생성된 스텁은 저장소의 테스트가 파싱되는지, 읽는 이름이 모두 바인딩되는지, import한 이름을 모두
+쓰는지를 검사한다(`tests/test_stubs_valid.py`).
