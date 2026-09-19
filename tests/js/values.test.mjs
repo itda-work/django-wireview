@@ -35,3 +35,19 @@ test("editable fields are text-like inputs and textareas", () => {
   assert.equal(isEditableField("TEXTAREA"), true);
   assert.equal(isEditableField("SELECT"), false);
 });
+
+test("submit, change, leaving a field and Enter commit; other events do not (#92)", async () => {
+  const { isCommitAction } = await import("../../wireview/static/wireview/values.mjs");
+  const { parseBinding } = await import("../../wireview/static/wireview/events.mjs");
+  const steps = (attr) => parseBinding(attr).steps;
+
+  for (const type of ["submit", "change", "blur", "focusout"]) assert.equal(isCommitAction(type), true, type);
+  assert.equal(isCommitAction("keypress", steps("wire-on-keypress.enter")), true);
+  assert.equal(isCommitAction("keydown", steps("wire-on-keydown.key.enter.prevent")), true);
+  assert.equal(isCommitAction("keydown", steps("wire-on-keydown.key.arrowdown.prevent")), false, "arrow keys only move a selection");
+  assert.equal(isCommitAction("keydown", steps("wire-on-keydown.esc")), false);
+  assert.equal(isCommitAction("keypress"), false, "a key event without a key filter could be any key");
+  for (const type of ["input", "click", "mouseenter", "custom:thing", undefined]) {
+    assert.equal(isCommitAction(type), false, String(type));
+  }
+});

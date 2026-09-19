@@ -8,7 +8,18 @@ purpose too: their answers are meant to empty them, as examples/todo does.
 
 import asyncio
 
-from wireview import Component
+from wireview import JS, Component, LiveComponent
+
+# The child's label comes from here, not from the parent's state, so a handler
+# that bumps it changes the child's render and leaves the parent's HTML (and so
+# its diff) empty: the answer is children-only (#92).
+CHILD_COUNTER = {"n": 0}
+
+
+class ValueChild(LiveComponent):
+    _template_name = "valueprobe/child.html"
+
+    label: str = ""
 
 
 class ValueProbe(Component):
@@ -19,6 +30,19 @@ class ValueProbe(Component):
     added: str = ""
     submitted: str = ""
     server_set: str = ""
+    typed_slowly: str = ""
+    added_after: str = ""
+    pushed: str = ""
+    query: str = ""
+    selected: int = 0
+
+    @property
+    def child_label(self) -> str:
+        return str(CHILD_COUNTER["n"])
+
+    @property
+    def add_by_push(self) -> JS:
+        return JS().push("add_pushed")
 
     # Every named input of the component rides along with each event.
     async def ping(self, **_rest):
@@ -39,3 +63,22 @@ class ValueProbe(Component):
     async def slow_set_from_server(self, **_rest):
         await asyncio.sleep(0.3)
         self.server_set = "late server value"
+
+    async def type_slowly(self, racing: str = "", **_rest):
+        await asyncio.sleep(0.4)
+        self.typed_slowly = racing
+
+    async def add_after(self, racing: str = "", **_rest):
+        self.added_after = racing
+
+    async def bump_child(self, **_rest):
+        CHILD_COUNTER["n"] += 1
+
+    async def add_pushed(self, pushing: str = "", **_rest):
+        self.pushed = pushing
+
+    async def search(self, query: str = "", **_rest):
+        self.query = query
+
+    async def navigate(self, **_rest):
+        self.selected += 1

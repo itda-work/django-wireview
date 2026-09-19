@@ -26,36 +26,82 @@ const morphConfig = {
 };
 
 /**
- * What the user typed survives a render (#91, values.mjs has the rule).
+ * What the user typed survives a render (#91, #92; values.mjs has the rule,
+ * docs/design/input-values.md the reasoning).
  *
- * `committing` holds the fields an action was just sent from (the element
- * that fired it and, inside a form, the form's fields): the render that
- * answers it takes the server's value. The mark goes with the first morph
- * that touches the field, or with an acknowledgement that changed nothing.
+ * A committing action records its fields with the values it sent, under the
+ * event's `ref`. Only the render that carries that `ref` opens them to the
+ * server's value, and then only the fields the user has not typed in since.
+ * The marks close when that component's morph is done, whichever fields it
+ * visited, so no mark is left for an unrelated render to use later.
+ *
+ * A server too old to echo refs gets the #91 behaviour: the fields are marked
+ * without a ref and the first morph that touches them takes the server value.
  */
 const valueGuard = {
-  /** @type {Set<Element>} */
-  committing: new Set(),
+  /** @type {Map<number, Map<Element, string>>} fields and the values sent, per ref */
+  pending: new Map(),
+  /** @type {Map<Element, string>} fields a render just answered, until their component's morph */
+  answered: new Map(),
+  /** @type {Set<Element>} fields marked without a ref (a server that does not echo refs) */
+  unpaired: new Set(),
 
   /**
-   * An action fired from `element`: its answer may overwrite these fields.
+   * The editable fields an action from `element` commits: the element, or
+   * inside a form the form's fields, with their values as sent.
    * @param {Element} element
+   * @returns {Map<Element, string>}
    */
-  commit(element) {
+  fieldsOf(element) {
     const form = element instanceof HTMLFormElement ? element : element.closest("form");
     const fields = form ? Array.from(form.elements) : [element];
+    const result = new Map();
     for (const field of fields) {
-      if (isEditableField(field.tagName, /** @type {HTMLInputElement} */ (field).type)) this.committing.add(field);
+      if (isEditableField(field.tagName, /** @type {HTMLInputElement} */ (field).type)) {
+        result.set(field, /** @type {HTMLInputElement} */ (field).value);
+      }
+    }
+    return result;
+  },
+
+  /**
+   * @param {number | null} ref - the event's ref, or null when the server does not echo refs
+   * @param {Map<Element, string>} fields
+   */
+  commit(ref, fields) {
+    if (ref === null) {
+      for (const field of fields.keys()) this.unpaired.add(field);
+    } else {
+      this.pending.set(ref, fields);
     }
   },
 
   /**
-   * The answer came and changed nothing: drop the marks under `root`.
+   * The render answering `ref` arrived. When it will morph its component, its
+   * fields may take the server's value in that morph; when it will not (no
+   * change, or only children changed), the server's value for them is what
+   * the page already shows, and the marks simply go.
+   * @param {number} ref
+   * @param {boolean} morphing
+   */
+  answer(ref, morphing) {
+    const fields = this.pending.get(ref);
+    this.pending.delete(ref);
+    if (!fields || !morphing) return;
+    for (const [field, sent] of fields) this.answered.set(field, sent);
+  },
+
+  /**
+   * A component's morph is done, or its answer changed nothing: close every
+   * mark under it, visited or not (a stream container is never visited).
    * @param {Element} root
    */
-  release(root) {
-    for (const field of this.committing) {
-      if (!field.isConnected || root.contains(field)) this.committing.delete(field);
+  settle(root) {
+    for (const field of this.answered.keys()) {
+      if (!field.isConnected || root.contains(field)) this.answered.delete(field);
+    }
+    for (const field of this.unpaired) {
+      if (!field.isConnected || root.contains(field)) this.unpaired.delete(field);
     }
   },
 
@@ -72,7 +118,9 @@ const valueGuard = {
     const field = /** @type {HTMLInputElement|HTMLTextAreaElement} */ (fromEl);
     const next = /** @type {HTMLInputElement|HTMLTextAreaElement} */ (toEl);
     if (!isEditableField(field.tagName, field.type) || field.tagName !== next.tagName) return false;
-    const committing = this.committing.delete(field);
+    const sent = this.answered.get(field);
+    // The answer covers what was sent; keystrokes after that are the user's.
+    const committing = (sent !== undefined && sent === field.value) || this.unpaired.delete(field);
     const keep = keepsUserValue({
       edited: field.value !== field.defaultValue,
       focused: field === document.activeElement,

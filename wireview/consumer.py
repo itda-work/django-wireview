@@ -14,7 +14,7 @@ from wireview.component import Component
 
 from . import serializer
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
-from .core.rendered import protocol_version
+from .core.rendered import PROTOCOL_VERSION, protocol_version
 from .core.session import SessionView, load_session
 from .core.state import LegacyState, StateMismatch, StatePayload, unsign_envelope
 from .core.transport import NO_CHANNEL_LAYER, ChannelsOutbound, Outbound
@@ -235,7 +235,9 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
                 return
             # Hear this connection's upload progress, if the component has uploads
             await self._subscribe_upload_group(component)
-            await self.send_render(component)
+            # The render that answers a join says which protocol this server
+            # speaks, so the client knows what it may send (user_event refs).
+            await self.send_render(component, announce=True)
 
             # Call params_changed if URL has params (initial load)
             if self.repo.params:
@@ -500,12 +502,16 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         uri = f"?{qs}" if qs else ""
         await self.command_params_changed(params, uri)
 
-    async def command_user_event(self, id, command, implicit_args, explicit_args):
+    async def command_user_event(self, id, command, implicit_args, explicit_args, ref=None):
         kwargs = dict(parse_request_data(MultiValueDict(implicit_args)), **explicit_args)
         log.debug(f"<<< USER-EVENT {id} {command} {kwargs}")
         component = await self.repo.dispatch_event(id, command, [], kwargs)
         if component:
-            await self.send_render(component, acknowledge=True)
+            # The ref comes back on the render that answers this event: the
+            # client reads it to know which of its fields the answer may reset
+            # (#92). Only an integer; anything else is dropped rather than echoed.
+            answer = ref if isinstance(ref, int) and not isinstance(ref, bool) else None
+            await self.send_render(component, acknowledge=True, ref=answer)
             await self.after_mutation_chores()
 
     async def command_hook_event(
@@ -1023,7 +1029,9 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
     # template that renders a component inside itself.
     MAX_LIVE_COMPONENT_DEPTH = 8
 
-    async def send_render(self, component: Component, acknowledge: bool = False):
+    async def send_render(
+        self, component: Component, acknowledge: bool = False, ref: int | None = None, announce: bool = False
+    ):
         """Render a component and the LiveComponents its template names, then send one message.
 
         The parent's template pass only registers its children and leaves a
@@ -1038,13 +1046,19 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         ``null`` diff: the client clears the loading state an event started
         (loading classes, ``wire-disabled-with``) when a render arrives, so a
         handler that changed nothing used to leave its button disabled.
+        ``ref`` names the user event this render answers; ``announce`` adds this
+        server's protocol version (the render that answers a join).
         """
         diff, children, settled = await self._render_tree(component)
-        if diff is not None or children or acknowledge:
+        if diff is not None or children or acknowledge or announce:
             log.debug(f">>> RENDER {component._name} {component.id} (+{len(children)} children)")
             payload: dict[str, t.Any] = {"id": component.id, "diff": diff}
             if children:
                 payload["children"] = children
+            if ref is not None:
+                payload["ref"] = ref
+            if announce:
+                payload["vsn"] = PROTOCOL_VERSION
             await self.send_command("render", payload)
         if settled:
             # Subscriptions before the children's queued operations, for the same

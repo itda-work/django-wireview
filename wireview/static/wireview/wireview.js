@@ -1,5 +1,6 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
-import { PROTOCOL_VERSION, applyPartial, buildHtml } from "./rendered.mjs";
+import { PROTOCOL_VERSION, REFS_SINCE, applyPartial, buildHtml } from "./rendered.mjs";
+import { isCommitAction } from "./values.mjs";
 import { BINDING_PREFIX, bindingsFor, parseBinding, runSteps } from "./events.mjs";
 import { planInsert, planTrim } from "./streams.mjs";
 import { createDocumentReady } from "./ready.mjs";
@@ -81,6 +82,10 @@ class ServerConnection {
     this.socket = null;
     /** @type {boolean} Track if we've been connected before (for reconnection detection) */
     this.wasConnected = false;
+    /** @type {number} The protocol version this socket's server announced (0 until a join is answered) */
+    this.serverVsn = 0;
+    /** @type {number} The last ref given to a user event on this connection */
+    this.lastRef = 0;
   }
 
   /**
@@ -131,6 +136,8 @@ class ServerConnection {
     );
 
     this.socket.addEventListener("close", () => {
+      // The next socket may reach another server; it announces itself again.
+      this.serverVsn = 0;
       debugLog("ws", "Disconnected from server");
 
       // Save form state before clearing components
@@ -200,7 +207,8 @@ class ServerConnection {
         // End timing for profiling (event round-trip complete)
         endEventTiming();
 
-        const { id, diff, children } = payload;
+        const { id, diff, children, ref, vsn } = payload;
+        if (typeof vsn === "number") this.serverVsn = vsn;
         // Register the children first, before any frame is scheduled: the
         // parent's HTML is built from their renders, and a later diff for a
         // child must find its component whether or not the parent has patched
@@ -218,6 +226,9 @@ class ServerConnection {
           }
         }
         const target = this.components[id];
+        // The answer to a committing event opens its fields to the server's
+        // value, for the morph this render causes (#92).
+        if (typeof ref === "number") boost.valueGuard.answer(ref, Boolean(diff && target));
         if (diff && target) {
           // One patch: the parent's HTML embeds the children's current renders
           target.applyDiff(diff);
@@ -226,14 +237,15 @@ class ServerConnection {
           for (const child of changedChildren) {
             child.scheduleMorph();
           }
-          // An event whose handler changed nothing still ends here: without a
-          // morph to clear it, its loading state would stay (a button left
-          // disabled by wire-disabled-with).
-          if (target && changedChildren.length === 0) {
+          // An event that did not change its component still ends here, with
+          // nothing morphed to clear the loading state it started (a button
+          // left disabled by wire-disabled-with), whether its answer changed
+          // nothing or only the children.
+          if (target) {
             window.requestAnimationFrame(() => {
               target.clearLoadingClasses();
               const el = target.getElemenet();
-              if (el) boost.valueGuard.release(el);
+              if (el) boost.valueGuard.settle(el);
             });
           }
         }
@@ -800,9 +812,12 @@ class ServerConnection {
    * @param {Object} implicit_args - Form data from the component
    * @param {Object} explicit_args - Explicit event arguments
    */
-  sendUserEvent(id, command, implicit_args, explicit_args) {
-    debugLog("send", `user_event ${command}`, { id, explicit_args });
-    this._send("user_event", { id, command, implicit_args, explicit_args });
+  sendUserEvent(id, command, implicit_args, explicit_args, ref) {
+    debugLog("send", `user_event ${command}`, { id, explicit_args, ref });
+    /** @type {{id: string, command: string, implicit_args: Object, explicit_args: Object, ref?: number}} */
+    const payload = { id, command, implicit_args, explicit_args };
+    if (ref !== undefined) payload.ref = ref;
+    this._send("user_event", payload);
   }
 
   /**
@@ -952,6 +967,8 @@ class WireviewComponent {
           // Profile patch time
           const patchStart = profilingEnabled ? performance.now() : 0;
           boost.morph(el, html);
+          // The answered fields had their chance in this morph; close the marks.
+          boost.valueGuard.settle(el);
           if (profilingEnabled) {
             recordPatchTime(performance.now() - patchStart);
           }
@@ -1109,9 +1126,21 @@ class WireviewComponent {
    * @param {string} command - Event command name
    * @param {Object} args - Explicit arguments
    * @param {HTMLElement} formScope - Form or component element to serialize
+   * @param {Element|null} [commitFrom] - the element of a committing action (values.mjs)
    */
-  dispatch(command, args, formScope) {
-    connection.sendUserEvent(this.id, command, this.serialize(formScope), args);
+  dispatch(command, args, formScope, commitFrom = null) {
+    /** @type {number|undefined} */
+    let ref;
+    if (commitFrom) {
+      // A committing action: its answer may reset the fields it came from,
+      // paired with it by ref when this server echoes refs (#92).
+      const fields = boost.valueGuard.fieldsOf(commitFrom);
+      if (fields.size) {
+        ref = connection.serverVsn >= REFS_SINCE ? ++connection.lastRef : undefined;
+        boost.valueGuard.commit(ref ?? null, fields);
+      }
+    }
+    connection.sendUserEvent(this.id, command, this.serialize(formScope), args, ref);
   }
 
   /**
@@ -2603,17 +2632,16 @@ const EventBindings = {
           return true;
         },
         fire: () => {
+          // A submit, a change, leaving the field or Enter commits the fields
+          // it comes from: its answer may reset them (a todo input emptied
+          // after Enter). Anything else leaves them to the user (#91, #92).
+          const commit = isCommitAction(event.type, binding.steps);
           if (value.js) {
-            window.wireview.exec(element, value.js);
+            window.wireview.exec(element, value.js, { commit });
           } else if (value.h !== undefined) {
             const args = { ...(value.a || {}) };
             if (value.t) args._target = value.t;
-            // Anything but `input` is an action: its answer may reset the
-            // fields it came from (a todo input emptied after Enter). An
-            // `input` event is the user still typing, and its answer must
-            // not erase what they typed since (#91).
-            if (event.type !== "input") boost.valueGuard.commit(element);
-            window.wireview.send(element, value.h, args, event.type);
+            window.wireview.send(element, value.h, args, event.type, { commit });
           }
         },
       });
@@ -2833,9 +2861,10 @@ async function applyTransition(element, config) {
  * Executes a single JS command.
  * @param {JSCommand} cmd - Command to execute
  * @param {HTMLElement} element - Context element (event target)
+ * @param {{commit?: boolean}} [options] - a `push` commits the fields it comes from (#92)
  * @returns {Promise<void>}
  */
-async function executeCommand(cmd, element) {
+async function executeCommand(cmd, element, options = {}) {
   const target = resolveTarget(cmd.to, element);
 
   switch (cmd.cmd) {
@@ -2967,7 +2996,8 @@ async function executeCommand(cmd, element) {
             );
             const formScope =
               form && componentEl.contains(form) ? form : componentEl;
-            component.dispatch(cmd.event, cmd.value || {}, formScope);
+            // A push inside a committing binding commits like the binding would (#92).
+            component.dispatch(cmd.event, cmd.value || {}, formScope, options.commit ? element : null);
           }
         }
       }
@@ -3031,9 +3061,12 @@ window.wireview = {
    * @param {string} name
    * @param {Object} [args]
    * @param {string} [eventType] - Optional event type for loading class
+   * @param {{commit?: boolean}} [options] - whether the event commits the fields it
+   *   comes from (their answer may reset them); by default decided from `eventType`
    */
-  send(element, name, args, eventType) {
+  send(element, name, args, eventType, options = {}) {
     args = args || {};
+    const commit = options.commit ?? isCommitAction(eventType);
 
     // Handle _target for LiveComponent @myself targeting
     const targetId = args._target;
@@ -3075,7 +3108,7 @@ window.wireview = {
       // Start timing for profiling
       startEventTiming();
 
-      component.dispatch(name, args, formScope);
+      component.dispatch(name, args, formScope, commit ? element : null);
     }
   },
 
@@ -3115,11 +3148,12 @@ window.wireview = {
    * Commands are executed sequentially in the order provided.
    * @param {HTMLElement} element - Context element (typically event.target)
    * @param {JSCommand[]} commands - Array of commands to execute
+   * @param {{commit?: boolean}} [options] - whether a `push` in the chain commits its fields (#92)
    * @returns {Promise<void>}
    */
-  async exec(element, commands) {
+  async exec(element, commands, options = {}) {
     for (const cmd of commands) {
-      await executeCommand(cmd, element);
+      await executeCommand(cmd, element, options);
     }
   },
 

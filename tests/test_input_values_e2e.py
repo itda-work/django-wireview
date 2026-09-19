@@ -10,6 +10,11 @@ sends a new value for a field that is not focused.
 The first three tests failed before; the last three pin what must not change:
 the answer to Enter or a submit still empties the field, and the server can
 still set a field the user is not in.
+
+The rest are #92, where the first version of that rule marked the fields of a
+committing action and let the first morph to touch them use the mark. Now the
+mark is paired with the action by ``ref`` and closes when its answer is done
+(docs/design/input-values.md).
 """
 
 import pytest
@@ -103,3 +108,61 @@ def test_the_server_can_set_a_field_the_user_is_not_in(probe):
     by(page, "set-from-server").click()  # focus leaves the field
 
     expect(by(page, "server-set")).to_have_value("from server")
+
+
+# --- #92: the mark belongs to the action's own answer ---------------------------
+
+
+def test_an_earlier_events_answer_does_not_take_the_enter_mark(probe):
+    """A slow typing event is still out when Enter goes; its answer lands first."""
+    page = probe
+    racing = by(page, "racing")
+    racing.fill("abc")
+    page.wait_for_timeout(150)  # the debounced event is on its way; its handler sleeps 0.4 s
+    racing.press("Enter")
+    racing.press_sequentially("z")
+
+    expect_text(by(page, "added-after"), "abc")
+    expect_text(by(page, "typed-slowly"), "abc")
+    # Neither answer erased the z: the first was not Enter's, and Enter's covers "abc" only.
+    expect(racing).to_have_value("abcz")
+
+
+def test_an_answer_that_changes_only_a_child_leaves_no_mark_behind(probe):
+    page = probe
+    field = by(page, "child-field")
+    field.fill("hello")
+    before = by(page, "child-label").inner_text()
+    field.press("Enter")
+    expect(by(page, "child-label")).not_to_have_text(before)
+
+    field.press_sequentially("!")
+    page.evaluate("() => document.querySelector('[data-testid=ping]').click()")
+    expect_text(by(page, "pings"), "1")
+
+    expect(field).to_have_value("hello!")
+
+
+def test_enter_through_a_js_push_empties_the_field_like_a_handler_binding(probe):
+    page = probe
+    field = by(page, "pushing")
+    field.fill("buy milk")
+    field.press("Enter")
+
+    expect_text(by(page, "pushed"), "buy milk")
+    expect(field).to_have_value("")
+
+
+def test_an_arrow_key_does_not_undo_a_query_not_yet_sent(probe):
+    """examples/search: ArrowDown only moves the selection."""
+    page = probe
+    query = by(page, "query")
+    query.fill("python")
+    expect_text(by(page, "query-value"), "python")
+
+    query.press_sequentially(" new")
+    query.press("ArrowDown")
+    expect_text(by(page, "selected"), "1")
+
+    expect(query).to_have_value("python new")
+    expect_text(by(page, "query-value"), "python new")

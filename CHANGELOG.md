@@ -53,6 +53,17 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
   or its form, which is how Enter still empties a todo input and a submit its form, or when
   the server renders a new value for a field that is not focused. `JS().set_value` still sets
   a field anywhere. `docs/features/html-diff.md`.
+- The input-value rule answers the right event (#92, from an implementation review of #91).
+  The first version marked a committing action's fields and let the first morph to touch
+  them use the mark, so an earlier event's late answer (or a broadcast) could empty a field
+  in the Enter's place, and an answer that changed only a child left the mark behind for an
+  unrelated render. Events are now paired with their render by `ref` (protocol version 3:
+  the server announces its version on the render answering a join, and the client sends a
+  `ref` only to a server that did), and an answer resets only what was sent: keystrokes
+  typed after the action stay. Only a submit, a change, leaving a field or Enter commits;
+  an arrow key in a search box no longer undoes a query still waiting on its debounce. A
+  `JS().push` inside a binding commits like a handler binding. An event whose answer changed
+  only a child no longer leaves its button in the loading state.
 - Uploads through `{% upload_input %}` and `{% upload_button %}` work in a browser (found with
   #90). The `upload_op` that creates an upload on the client carried no component id, and the
   client applied it to "the component that already has this upload", which on the first message

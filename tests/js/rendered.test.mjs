@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   PROTOCOL_VERSION,
+  REFS_SINCE,
   applyPartial,
   buildHtml,
   isBlock,
@@ -133,8 +134,9 @@ test("applyPartial puts a ref into a slot and can replace it", () => {
 
 // --- item rearrangement {k: [...]} (protocol version 2, GAP-030) ---
 
-test("PROTOCOL_VERSION is 2", () => {
-  assert.equal(PROTOCOL_VERSION, 2);
+test("the client speaks a version with refs (the exact value is pinned against the server's in Python)", () => {
+  assert.ok(PROTOCOL_VERSION >= REFS_SINCE);
+  assert.equal(REFS_SINCE, 3);
 });
 
 test("applyPartial rebuilds a list from runs of the old items and new items", () => {

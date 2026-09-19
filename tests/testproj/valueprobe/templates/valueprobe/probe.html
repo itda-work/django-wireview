@@ -20,4 +20,25 @@
          name="server_set_field"
          value="{{ this.server_set }}">
   <button data-testid="set-from-server" {% on "click" "set_from_server" %}>set</button>
+  <input data-testid="racing"
+         name="racing"
+         {% on "input.debounce.50" "type_slowly" %}
+         {% on "keypress.enter" "add_after" %}>
+  <span data-testid="typed-slowly">{{ this.typed_slowly }}</span>
+  <span data-testid="added-after">{{ this.added_after }}</span>
+  <input data-testid="child-field"
+         name="child_field"
+         {% on "keypress.enter" "bump_child" %}>
+  {% live_component "ValueChild" id="value-child" label=this.child_label %}
+  <input data-testid="pushing"
+         name="pushing"
+         {% on "keypress.enter" this.add_by_push %}>
+  <span data-testid="pushed">{{ this.pushed }}</span>
+  <input data-testid="query"
+         name="query"
+         value="{{ this.query }}"
+         {% on "input.debounce.300" "search" %}
+         {% on "keydown.key.arrowdown.prevent" "navigate" %}>
+  <span data-testid="query-value">{{ this.query }}</span>
+  <span data-testid="selected">{{ this.selected }}</span>
 </div>
