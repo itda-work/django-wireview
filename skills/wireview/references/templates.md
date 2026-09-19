@@ -41,6 +41,10 @@
 - 같은 요소에 `keyup.enter`와 `keyup.esc`처럼 같은 이벤트를 수정자만 달리해 여러 번 걸 수 있다. 이름까지 같은 두
   바인딩은 하나만 남으므로, 클라이언트 동작과 서버 호출은 `JS().….push("handler")` 한 체인으로 묶는다.
 - 중첩 컴포넌트에서 자기 자신을 대상으로 하려면 `myself=True`.
+- **사용자가 고친 입력칸은 렌더를 건너 그 값을 지킨다.** 예외는 그 칸이나 그 칸의 폼에서 온 **액션**(`input`이
+  아닌 이벤트: Enter, submit, blur, click)에 대한 응답과, 포커스가 없는 칸에 서버가 새 값을 렌더한 경우다. 그래서
+  `{% on 'keypress.enter' 'add' %}`나 `submit` 뒤에는 값을 렌더하지 않는 입력칸이 비고, 다른 버튼을 누르거나
+  브로드캐스트가 와도 치던 글자는 남는다. 어디서든 확실히 비우려면 `await self.push_js(JS().set_value(selector, ""))`.
 - 출력은 인라인 JS가 아니라 `wire-on-…` 데이터 속성이라 `'unsafe-inline'` 없는 CSP에서도 돈다. 템플릿에 `onclick="…"`을
   직접 쓰면 그것은 CSP에 막히므로 `JS()`나 훅으로 쓴다(`docs/features/csp.md`).
 

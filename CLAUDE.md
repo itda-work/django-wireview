@@ -68,6 +68,7 @@ wireview/
                            streams.mjs (스트림 DOM 판단 순수 함수), reload.mjs (reload 쿨다운 판단),
                            live-session.mjs (경계 넘음 판단 순수 함수), ready.mjs (defer 스크립트가 다 돌았는가),
                            events.mjs (wire-on-* 바인딩의 수정자 해석 순수 함수),
+                           values.mjs (morph가 사용자가 고친 입력값을 덮어써도 되는가),
                            wireview-boost.js, types.d.ts
                            wireview.min.js는 빌드 산출물이며 gitignore
 
@@ -92,7 +93,8 @@ tests/
                            uploadprobe/ 는 워커 둘짜리 업로드 E2E(test_multiworker_uploads.py)의 픽스처,
                            livesession/ 은 경계 넘는 이동 E2E(test_live_session_e2e.py)의 픽스처다,
                            listprobe/ 는 항목 재배열 diff 를 옛 형태와 비교하는 E2E(test_comprehension_moves_e2e.py)의 픽스처,
-                           cspprobe/ 는 인라인 허용 없는 CSP 아래 모든 바인딩 모양과 브라우저 업로드를 도는 E2E(test_csp_e2e.py)의 픽스처다
+                           cspprobe/ 는 인라인 허용 없는 CSP 아래 모든 바인딩 모양과 브라우저 업로드를 도는 E2E(test_csp_e2e.py)의 픽스처,
+                           valueprobe/ 는 렌더가 입력 중인 값을 지우지 않는지 보는 E2E(test_input_values_e2e.py)의 픽스처다
 
 examples/                  예제 앱 11개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.
                            testproj 위에서 돌고 make test가 함께 실행한다(pytest tests examples).

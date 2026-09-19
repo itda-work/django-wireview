@@ -6,6 +6,7 @@
 import { Idiomorph } from "idiomorph";
 import { NavigationGate, crossesBoundary, readSessionName } from "./live-session.mjs";
 import { isStreamContainer } from "./streams.mjs";
+import { isEditableField, keepsUserValue } from "./values.mjs";
 
 /**
  * Callback function type for onBeforeElUpdated.
@@ -25,12 +26,73 @@ const morphConfig = {
 };
 
 /**
+ * What the user typed survives a render (#91, values.mjs has the rule).
+ *
+ * `committing` holds the fields an action was just sent from (the element
+ * that fired it and, inside a form, the form's fields): the render that
+ * answers it takes the server's value. The mark goes with the first morph
+ * that touches the field, or with an acknowledgement that changed nothing.
+ */
+const valueGuard = {
+  /** @type {Set<Element>} */
+  committing: new Set(),
+
+  /**
+   * An action fired from `element`: its answer may overwrite these fields.
+   * @param {Element} element
+   */
+  commit(element) {
+    const form = element instanceof HTMLFormElement ? element : element.closest("form");
+    const fields = form ? Array.from(form.elements) : [element];
+    for (const field of fields) {
+      if (isEditableField(field.tagName, /** @type {HTMLInputElement} */ (field).type)) this.committing.add(field);
+    }
+  },
+
+  /**
+   * The answer came and changed nothing: drop the marks under `root`.
+   * @param {Element} root
+   */
+  release(root) {
+    for (const field of this.committing) {
+      if (!field.isConnected || root.contains(field)) this.committing.delete(field);
+    }
+  },
+
+  /**
+   * Decide for one field about to be morphed. When it keeps the user's value,
+   * the server's value still goes to the attribute (`defaultValue`): a field
+   * the user edited does not change what it shows when its attribute changes,
+   * and the next render compares against what the server actually sent.
+   * @param {Element} fromEl
+   * @param {Element} toEl
+   * @returns {boolean} true when the value must not be touched
+   */
+  keep(fromEl, toEl) {
+    const field = /** @type {HTMLInputElement|HTMLTextAreaElement} */ (fromEl);
+    const next = /** @type {HTMLInputElement|HTMLTextAreaElement} */ (toEl);
+    if (!isEditableField(field.tagName, field.type) || field.tagName !== next.tagName) return false;
+    const committing = this.committing.delete(field);
+    const keep = keepsUserValue({
+      edited: field.value !== field.defaultValue,
+      focused: field === document.activeElement,
+      committing,
+      serverChanged: next.defaultValue !== field.defaultValue,
+    });
+    if (keep) field.defaultValue = next.defaultValue;
+    return keep;
+  },
+};
+
+/**
  * Morphs an old DOM node into a new one using Idiomorph.
  * @param {Element} oldNode - The existing DOM element
  * @param {Element|string} newNode - The new content to morph into
  */
 function morph(oldNode, newNode) {
   const callback = morphConfig.onBeforeElUpdated;
+  /** @type {WeakSet<Element>} */
+  const kept = new WeakSet();
   const options = {
     callbacks: {
       beforeNodeMorphed(fromEl, toEl) {
@@ -38,11 +100,21 @@ function morph(oldNode, newNode) {
         // over the live one would delete every streamed item, so leave it alone.
         if (isStreamContainer(fromEl)) return false;
 
+        if (fromEl.nodeType === Node.ELEMENT_NODE && valueGuard.keep(fromEl, toEl)) kept.add(fromEl);
+
         // Only call for elements, not text nodes
         if (callback && fromEl.nodeType === Node.ELEMENT_NODE) {
           callback(fromEl, toEl);
         }
         return true; // Continue with morph
+      },
+      /**
+       * @param {string} attributeName
+       * @param {Element} element
+       */
+      beforeAttributeUpdated(attributeName, element) {
+        // The value a field keeps is left alone; its attribute was synced above.
+        return !(attributeName === "value" && kept.has(element));
       },
     },
   };
@@ -308,6 +380,7 @@ window.addEventListener("popstate", (event) => {
 export default {
   HistoryCache: HistoryCache,
   morph: morph,
+  valueGuard: valueGuard,
   navEvent: navEvent,
   setOnBeforeElUpdated: setOnBeforeElUpdated,
 };

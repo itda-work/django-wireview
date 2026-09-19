@@ -67,9 +67,9 @@ def test_every_binding_works_under_a_strict_policy(page, server):
     expect_text(by(page, "count"), "1")
 
     # Two debounced inputs typed within one debounce window: each keeps its own timer.
-    # Both in one tick, so neither timer can fire (and its render land) before the
-    # other input has its value; a render resets inputs the server does not render
-    # (#91), which is not what this checks.
+    # Both in one tick, so this checks the timers and nothing else: typed separately,
+    # the first render would land while the second is being edited, which is #91's
+    # case and has its own test (test_input_values_e2e.py).
     page.evaluate(
         """() => {
           for (const [id, value] of [["first", "one"], ["second", "two"]]) {

@@ -45,6 +45,14 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
 
 ### Fixed
 
+- What the user types is no longer erased by a render that is not about it (#91). A morph
+  copied the server's value into every input, so a field the server does not render (or has
+  not heard from yet) was reset to empty by any render: another field's debounced event, a
+  click elsewhere, a broadcast, the focused field included. A field the user edited now keeps
+  its value, except when the render answers an action (any event but `input`) from that field
+  or its form, which is how Enter still empties a todo input and a submit its form, or when
+  the server renders a new value for a field that is not focused. `JS().set_value` still sets
+  a field anywhere. `docs/features/html-diff.md`.
 - Uploads through `{% upload_input %}` and `{% upload_button %}` work in a browser (found with
   #90). The `upload_op` that creates an upload on the client carried no component id, and the
   client applied it to "the component that already has this upload", which on the first message

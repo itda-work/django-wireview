@@ -12,9 +12,10 @@ run must have received the form it was meant to, or the comparison is between
 two copies of one path.
 
 What the comparison found about the state itself, the same on both paths: the
-row elements survive the moves (idiomorph matches them by id), and values typed
-into inputs the server does not render are reset to the server's HTML on the
-next render. That second part predates GAP-030 and is not changed by it.
+row elements survive the moves (idiomorph matches them by id), and so do the
+values typed into them. Those values used to be reset to the server's empty
+value on the next render; since #91 a field the user edited keeps its value
+through a render that is not an answer to it.
 """
 
 import json
@@ -134,3 +135,6 @@ def test_moving_rows_ends_in_the_same_dom_with_either_form(browser, server):
     # by id. Only the row inserted by the edit is new.
     after_rotate = current_snapshots[0]
     assert after_rotate["markers"] == after_rotate["rows"], after_rotate
+    # The typed values moved with their rows (#91).
+    final = current_snapshots[-1]["values"]
+    assert final["in-r3"] == "typed r3" and final["in-r7"] == "typed r7", final

@@ -1,0 +1,23 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <button data-testid="ping" {% on "click" "ping" %}>ping</button>
+  <span data-testid="pings">{{ this.pings }}</span>
+  <input data-testid="draft"
+         name="draft"
+         {% on "input.debounce.100" "typing" %}>
+  <span data-testid="typed">{{ this.typed }}</span>
+  <input data-testid="other" name="other">
+  <input data-testid="item" name="item" {% on "keypress.enter" "add" %}>
+  <span data-testid="added">{{ this.added }}</span>
+  <form data-testid="form" {% on "submit.prevent" "submit" %}>
+    <input data-testid="first" name="first">
+    <input data-testid="second" name="second">
+    <button data-testid="submit">submit</button>
+  </form>
+  <span data-testid="submitted">{{ this.submitted }}</span>
+  <input data-testid="server-set"
+         name="server_set_field"
+         value="{{ this.server_set }}">
+  <button data-testid="set-from-server" {% on "click" "set_from_server" %}>set</button>
+</div>

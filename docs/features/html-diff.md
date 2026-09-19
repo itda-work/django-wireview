@@ -77,6 +77,15 @@ wireview는 Phoenix LiveView의 렌더 엔진을 본떠 템플릿 출력을 두 
 
 읽는 법: 항목 500개의 3.9 KB는 거의 전부 서명 상태이고 diff 자체는 60~70 B입니다. 항목을 상태에 들고 있는 컴포넌트는 `_exclude_fields`나 조회로 목록을 서명 상태에서 빼는 편이 더 큰 절감입니다(`_temporary_assigns`는 그 렌더의 토큰을 줄이지 않습니다. 비우는 것이 diff 뒤이기 때문입니다). 시간의 +6~9%는 항목을 내용으로 짝짓는 비용(500개 회전에서 약 0.15 ms)이고, 같은 실행에서 무관한 `flat.event_ms`가 +7% 흔들린 폭 안팎입니다. 전송이 16 KB 줄어 컨슈머의 JSON 직렬화가 가벼워지는 몫은 이 벤치에 들어 있지 않습니다. 회귀 테스트는 `tests/test_comprehension_moves.py`, `tests/test_diff_roundtrip.py`, 브라우저 비교는 `tests/test_comprehension_moves_e2e.py`입니다.
 
+## 입력 중인 값
+
+morph는 새 HTML의 값을 입력칸에 옮긴다. 그대로 두면 서버가 아직 모르는 값, 즉 사용자가 치고 있는 값이 **아무 렌더에나** 지워진다(#91). 그래서 사용자가 고친 입력칸(`value`가 서버가 마지막으로 렌더한 값과 다른 텍스트 입력과 textarea)은 렌더를 건너 값을 지킨다. 예외는 둘이다.
+
+- **그 칸이나 그 칸의 폼에서 온 액션에 대한 응답.** 액션은 `input`이 아닌 모든 이벤트다(Enter, submit, blur, click). 그 응답의 값이 결과이므로, 서버가 값을 렌더하지 않는 입력칸은 Enter 뒤에 비고 폼은 submit 뒤에 빈다. `input` 이벤트는 "아직 치는 중"이라 그 응답은 값을 지운다고 보지 않는다.
+- **포커스가 없는 칸에 서버가 새 값을 렌더했을 때.** 포커스된 칸은 커서 아래에서 바뀌지 않는다(Phoenix LiveView와 같다).
+
+서버가 입력칸을 확실히 비우거나 바꾸려면 `push_js(JS().set_value(...))`를 쓴다. morph를 거치지 않으므로 이 규칙과 무관하다. `examples/chat`이 메시지를 보낸 뒤 이렇게 비운다. 규칙의 정본은 `wireview/static/wireview/values.mjs`이고, 회귀 테스트는 `tests/test_input_values_e2e.py`다.
+
 ## 주의사항
 
 - **루프는 항목 단위로 diff됩니다.** 항목 추가·삭제·변경·이동은 해당 항목의 dynamic만 보냅니다(8번). 바뀐 항목은 dynamics 전체를 보내고, 항목 안의 일부만 보내지는 않습니다. 항목마다 구조가 달라지는 구성(`{% include %}`로 다른 템플릿을 고르는 경우, `{% cycle %}`처럼 마커 없이 static을 바꾸는 태그)은 루프 전체가 문자열 하나로 취급됩니다. 대량 목록은 [Streams](../tutorials/06-streams-api.md)를 쓰세요.

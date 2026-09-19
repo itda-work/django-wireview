@@ -230,7 +230,11 @@ class ServerConnection {
           // morph to clear it, its loading state would stay (a button left
           // disabled by wire-disabled-with).
           if (target && changedChildren.length === 0) {
-            window.requestAnimationFrame(() => target.clearLoadingClasses());
+            window.requestAnimationFrame(() => {
+              target.clearLoadingClasses();
+              const el = target.getElemenet();
+              if (el) boost.valueGuard.release(el);
+            });
           }
         }
         break;
@@ -2604,6 +2608,11 @@ const EventBindings = {
           } else if (value.h !== undefined) {
             const args = { ...(value.a || {}) };
             if (value.t) args._target = value.t;
+            // Anything but `input` is an action: its answer may reset the
+            // fields it came from (a todo input emptied after Enter). An
+            // `input` event is the user still typing, and its answer must
+            // not erase what they typed since (#91).
+            if (event.type !== "input") boost.valueGuard.commit(element);
             window.wireview.send(element, value.h, args, event.type);
           }
         },
