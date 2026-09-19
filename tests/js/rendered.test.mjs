@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { applyPartial, buildHtml, isBlock, isComprehension } from "../../wireview/static/wireview/rendered.mjs";
+import {
+  PROTOCOL_VERSION,
+  applyPartial,
+  buildHtml,
+  isBlock,
+  isComprehension,
+} from "../../wireview/static/wireview/rendered.mjs";
 
 const list = () => ({ s: ["<li>", " x ", "</li>"], d: [["a", "1"], ["b", "2"]] });
 
@@ -123,4 +129,58 @@ test("applyPartial puts a ref into a slot and can replace it", () => {
   assert.deepEqual(dynamics, ["T", { c: "c2" }]);
   applyPartial(dynamics, { 1: "" });
   assert.deepEqual(dynamics, ["T", ""]);
+});
+
+// --- item rearrangement {k: [...]} (protocol version 2, GAP-030) ---
+
+test("PROTOCOL_VERSION is 2", () => {
+  assert.equal(PROTOCOL_VERSION, 2);
+});
+
+test("applyPartial rebuilds a list from runs of the old items and new items", () => {
+  const dynamics = ["T", { s: ["<li>", "</li>"], d: [["a"], ["b"], ["c"]] }];
+  applyPartial(dynamics, { 1: { k: [[2, 1], { d: ["new"] }, [0, 2]] } });
+  assert.deepEqual(dynamics[1].d, [["c"], ["new"], ["a"], ["b"]]);
+  assert.equal(buildHtml(["", "", ""], dynamics), "T<li>c</li><li>new</li><li>a</li><li>b</li>");
+});
+
+test("runs read the old list, never the one being built (reversal)", () => {
+  const before = [["a"], ["b"], ["c"], ["d"]];
+  const comp = { s: ["<i>", "</i>"], d: before };
+  applyPartial([comp], { 0: { k: [[3, 1], [2, 1], [1, 1], [0, 1]] } });
+  assert.deepEqual(comp.d, [["d"], ["c"], ["b"], ["a"]]);
+  assert.deepEqual(before, [["a"], ["b"], ["c"], ["d"]], "the previous array is left as it was");
+});
+
+test("a rearrangement then a positional update apply in turn", () => {
+  const dynamics = [{ s: ["<i>", "</i>"], d: [["a"], ["b"]] }];
+  applyPartial(dynamics, { 0: { k: [{ d: ["x"] }, [0, 2]] } });
+  applyPartial(dynamics, { 0: { u: { 2: ["B"] }, n: 3 } });
+  assert.deepEqual(dynamics[0].d, [["x"], ["a"], ["B"]]);
+  applyPartial(dynamics, { 0: { k: [[1, 2]] } });
+  assert.deepEqual(dynamics[0].d, [["a"], ["B"]]);
+});
+
+test("a rearrangement inside a block partial", () => {
+  const block = { r: ["<div>", "", "</div>"], d: ["t", { s: ["<i>", "</i>"], d: [["a"], ["b"]] }] };
+  const dynamics = [block];
+  applyPartial(dynamics, { 0: { p: { 1: { k: [[1, 1], [0, 1]] } } } });
+  assert.equal(buildHtml(["", ""], dynamics), "<div>t<i>b</i><i>a</i></div>");
+});
+
+test("a range outside the current list, or an unknown segment, is refused whole", (t) => {
+  const errors = t.mock.method(console, "error", () => {});
+  for (const bad of [[[0, 3]], [[-1, 1]], [[1, 0]], [[0.5, 1]], [{ d: ["x"] }, [2, 1]], [{ x: 1 }], [null]]) {
+    const comp = { s: ["<i>", "</i>"], d: [["a"], ["b"]] };
+    applyPartial([comp], { 0: { k: bad } });
+    assert.deepEqual(comp.d, [["a"], ["b"]], JSON.stringify(bad));
+  }
+  assert.equal(errors.mock.callCount(), 7);
+});
+
+test("a rearrangement for a slot that holds no list is refused", (t) => {
+  t.mock.method(console, "error", () => {});
+  const dynamics = ["plain"];
+  applyPartial(dynamics, { 0: { k: [[0, 1]] } });
+  assert.deepEqual(dynamics, ["plain"]);
 });

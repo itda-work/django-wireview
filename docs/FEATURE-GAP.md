@@ -204,7 +204,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | force_render | ✅ | `force_render()` | ✅ |
 | **temporary_assigns** | ✅ | ✅ `_temporary_assigns` | ✅ |
 | Sticky components | ✅ | ❌ | 🟠 GAP-033 ([#72](https://github.com/itda-work/django-wireview/issues/72)) |
-| Comprehensions | ✅ 키 기반 | ✅ 위치 기반 (GAP-025) | 🟡 키 기반은 GAP-030 ([#69](https://github.com/itda-work/django-wireview/issues/69)) |
+| Comprehensions | ✅ 키 기반 | ✅ 내용 기반 짝짓기 (GAP-025, GAP-030). 템플릿 키 없이 이동·삽입·삭제가 그 항목만의 페이로드 | ✅ |
 
 ### 2.13 Testing ✅
 
@@ -286,7 +286,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | ~~GAP-026~~ | ~~Transport seam~~ | ~~`Outbound`/`Broker` 인터페이스 뒤로 채널 레이어 격리, 렌더 스냅샷 직렬화, wire-protocol 문서~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-028~~ | ~~Stream DOM 수명~~ | ~~재렌더가 `wire-stream` 컨테이너를 비우고, 같은 dom id 재삽입이 갱신이 아니라 중복이 된다~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-029~~ | ~~세션 접근~~ | ~~컴포넌트가 Django 세션을 읽는다. 예제 둘이 없는 API를 상상해 쓰고 있었다~~ | ~~하~~ | ✅ 완료 |
-| GAP-030 | 키 기반 comprehension | 앞쪽 삽입이 뒤 항목 전부를 다시 보내지 않게 | 상 | [#69](https://github.com/itda-work/django-wireview/issues/69) |
+| ~~GAP-030~~ | ~~키 기반 comprehension~~ | ~~앞쪽 삽입이 뒤 항목 전부를 다시 보내지 않게~~ | ~~상~~ | ✅ 완료 (키 대신 내용으로 짝짓는다. `docs/design/keyed-comprehension.md`) |
 | ~~GAP-031~~ | ~~내비게이션 테스트 헬퍼~~ | ~~`assert_patch`·`follow_redirect` 상당물~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-032~~ | ~~Colocated hooks~~ | ~~컴포넌트 옆의 JS 훅을 자동 등록~~ | ~~중~~ | ✅ 완료 |
 | GAP-033 | Sticky 컴포넌트 | boost 내비게이션을 건너 살아남는 컴포넌트 | 중 | [#72](https://github.com/itda-work/django-wireview/issues/72) |

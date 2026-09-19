@@ -20,6 +20,8 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 | (3) session mail | `{"type": "message_from_component", "command": str, "kwargs": {...}}` | `Broker.send_to_session` → `WireviewConsumer.message_from_component` → `component_<command>(**kwargs)` |
 | (4) fan-out | `{"type": <아래 표>, "channel": str, ...}` | `Broker.publish` → 컨슈머의 `type` 핸들러 |
 
+브라우저는 `/__wireview__?vsn=<n>`으로 연결한다. `vsn`은 클라이언트가 적용할 수 있는 diff 형태의 버전이고(현재 2, `PROTOCOL_VERSION`), 서버는 그보다 새 형태를 보내지 않는다. 없거나 잘못된 값(정수 아님, 음수, 여러 번)은 0으로 읽는다. 규칙은 7절에 있다.
+
 세션 식별자는 Channels에서 `channel_name`이다. 토픽은 채널 레이어 그룹 이름이다. 다른 연결 계층은 `Outbound`와 `Broker` 두 인터페이스만 구현하면 된다.
 
 ## 2. Inbound (브라우저 → 세션)
@@ -40,7 +42,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 
 | command | payload |
 |---------|---------|
-| `render` | `id`, `diff`, `children?` — `diff`는 전체 `{"s", "d", "f"}` 또는 부분 `{"<index>": value}`, 또는 자식만 바뀌었을 때 `null`. value는 문자열, comprehension `{"s", "d"}`, 항목 갱신 `{"u", "n"}`, 블록 `{"r", "d"}`, 블록 부분 갱신 `{"p"}`, LiveComponent 참조 `{"c": id}` ([html-diff](../features/html-diff.md)). `children`은 이 렌더와 함께 렌더된 LiveComponent들의 `{id: diff}` 평면 맵이다(손자식 포함). 클라이언트는 DOM을 건드리기 전에 이들을 먼저 등록하고, 부모 HTML을 만들 때 참조 자리에 자식의 현재 HTML을 넣는다 |
+| `render` | `id`, `diff`, `children?` — `diff`는 전체 `{"s", "d", "f"}` 또는 부분 `{"<index>": value}`, 또는 자식만 바뀌었을 때 `null`. value는 문자열, comprehension `{"s", "d"}`, 항목 갱신 `{"u", "n"}`, 항목 재배열 `{"k": [[시작, 길이] \| {"d": [...]}, ...]}`(`vsn` 2 이상에만), 블록 `{"r", "d"}`, 블록 부분 갱신 `{"p"}`, LiveComponent 참조 `{"c": id}` ([html-diff](../features/html-diff.md)). `children`은 이 렌더와 함께 렌더된 LiveComponent들의 `{id: diff}` 평면 맵이다(손자식 포함). 클라이언트는 DOM을 건드리기 전에 이들을 먼저 등록하고, 부모 HTML을 만들 때 참조 자리에 자식의 현재 HTML을 넣는다 |
 | `remove` | `id` |
 | `reload` | `id` (알 수 없으면 `null`), `reason` (`expired`, `legacy`, `invalid`, `live_session`) — join의 루트 서명 상태를 쓸 수 없어 아무것도 마운트하지 않았다. 클라이언트는 전체 페이지 로드로 복구하며, 30초 안에 두 번 반복되면 `sessionStorage["wireview:last-reload"]` 가드가 막고 경고만 남긴다 |
 | `append`, `prepend`, `insert_after`, `insert_before`, `replace_with` | `id`, `html` |
@@ -97,6 +99,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 | 인증 세대 | `WireviewConsumer.auth_fingerprint` | 지문 문자열. connect 때 계산한다 |
 | 인증 토픽 구독 | `WireviewConsumer._auth_topic` | 토픽 이름. 경계 안에서만 생긴다 |
 | 세션 재확인 여부 | `WireviewConsumer._auth_revalidated` | bool. **거절된 연결이 다시 물어 통과하지 못하게 하는 값이다** |
+| 프로토콜 버전 | `ComponentRepository.vsn` | 정수. connect 때 소켓 URL에서 읽고, 페이지 쿼리스트링(`query_string`)과는 섞지 않는다. 0으로 복원하면 옛 형태만 보낼 뿐이라 안전하다 |
 
 아래 넷은 #58이 더했고 **외부화 목록의 일부다**. 세션을 프로세스 밖으로 옮기면서 이것을 빠뜨리면
 경계가 조용히 사라진다 — 새 워커가 경계 없는 연결로 세션을 이어받고, 그 연결에는 정책도 인증 세대도
@@ -105,6 +108,17 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 
 ## 7. 버전
 
+**diff 형태의 규칙: 클라이언트가 이해한다고 말한 형태만 보낸다.** 클라이언트는 연결 URL의 `vsn`으로 자기 버전을 말하고, 버전 n의 클라이언트는 n 이하의 모든 형태를 이해한다. 서버의 기본값은 0("아무것도 모르는 클라이언트")이다. 새 형태를 더하면 `wireview/core/rendered.py`와 `rendered.mjs`의 `PROTOCOL_VERSION`을 함께 올린다(`tests/test_comprehension_moves.py`가 둘이 같은지 본다).
+
+| vsn | 더한 형태 |
+|----:|-----------|
+| 0 | 버전 신호 이전의 전부: 전체 `{"s","d","f"}`, 문자열, `{"s","d"}`, `{"u","n"}`, `{"r","d"}`, `{"p"}`, `{"c"}` |
+| 1 | 없음(번호만 비워 둔다) |
+| 2 | 항목 재배열 `{"k"}` (GAP-030) |
+
+구버전이 섞이면: 옛 클라이언트와 새 서버는 옛 클라이언트가 `vsn`을 보내지 않으므로 지금까지와 바이트까지 같은 메시지를 받는다. 새 클라이언트와 옛 서버는 옛 서버가 `vsn`을 읽지 않고 옛 형태만 보내며, 새 클라이언트는 그것을 그대로 읽는다. 버전 신호가 없었다면 옛 클라이언트는 `{"k"}`를 모르는 값으로 슬롯에 넣고 `[object Object]`를 그렸을 것이다 — 롤링 배포 중 옛 JS로 열린 페이지가 새 서버에 재연결하는 흔한 경우다.
+
+- 2026-09-19: 연결 URL의 `vsn`과 위의 규칙. `render` 부분 diff 값에 항목 재배열 `{"k"}` 추가, 세션 상태에 프로토콜 버전 (GAP-030, #69).
 - 2026-09-09: `join`의 서명 상태가 v1 봉투가 되고 만료 검사가 붙었다. 거절 시 새 outbound 명령 `reload` (#76).
 - 2026-09-10: 6절의 세션 상태에 페이지 경계·인증 세대·인증 토픽·재확인 여부를 더했다. #58이 만든 연결당 상태이고, 세션 외부화(GAP-027)가 함께 옮겨야 하는 것들이다.
 - 2026-09-09: 봉투가 v2가 되어 페이지의 `live_session`과 인증 세대를 싣는다. `reload`에 `live_session` 사유가 붙었고, 서버가 인증 세대 토픽으로 보내는 `session_invalidated`가 그 세대의 소켓을 닫는다 (#58).

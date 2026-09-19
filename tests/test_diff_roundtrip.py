@@ -31,7 +31,7 @@ import pytest
 from django.template import Template
 from django.utils.safestring import mark_safe
 
-from wireview.core.rendered import Rendered, component_ref_placeholder, strip_markers
+from wireview.core.rendered import PROTOCOL_VERSION, Rendered, component_ref_placeholder, strip_markers
 from wireview.template_engine import TemplateMarker
 
 pytestmark = pytest.mark.integration
@@ -58,6 +58,9 @@ TEMPLATE_SOURCE = (
 
 SEQUENCES = 40
 STEPS = 30
+# Every protocol version a client may speak: the oldest (positional updates
+# only) and the current one (items may also be rearranged, GAP-030).
+VERSIONS = (0, PROTOCOL_VERSION)
 CHILDREN = ("child-1", "child-2", "child-3")
 
 
@@ -97,6 +100,7 @@ def _mutate(state: dict[str, t.Any], rng: random.Random) -> None:
             "headline",
             "notes",
             "globals",
+            "rotate_globals",
             "show_globals",
             "child_html",
             "child_assign",
@@ -146,6 +150,8 @@ def _mutate(state: dict[str, t.Any], rng: random.Random) -> None:
         state["notes"] = [rng.choice("pq") for _ in range(rng.randint(0, 3))]
     elif op == "globals":
         state["globals"] = [rng.choice("gh") for _ in range(rng.randint(0, 3))]
+    elif op == "rotate_globals" and state["globals"]:
+        state["globals"].insert(0, state["globals"].pop())
     elif op == "show_globals":
         state["show_globals"] = not state["show_globals"]
     elif op == "child_html":
@@ -170,7 +176,7 @@ def _resolve(html: str, children: dict[str, str]) -> str:
     return html
 
 
-def _sequence(seed: int) -> tuple[list[dict[str, t.Any]], list[str]]:
+def _sequence(seed: int, vsn: int) -> tuple[list[dict[str, t.Any]], list[str]]:
     """Steps (diff plus the children's HTML) and the HTML the browser should show, one per render."""
     rng = random.Random(seed)
     marker = TemplateMarker()
@@ -204,7 +210,7 @@ def _sequence(seed: int) -> tuple[list[dict[str, t.Any]], list[str]]:
             previous = restored
         elif rng.random() < 0.05:
             previous = None  # a reconnect: the server has no snapshot and sends a full render
-        diff = rendered.get_diff(previous)
+        diff = rendered.get_diff(previous, vsn)
         # Through JSON, as the consumer sends it: tuples, non-str keys and the like
         # must not survive into what the client sees.
         payload = json.loads(json.dumps(diff.to_payload())) if diff is not None else None
@@ -231,9 +237,10 @@ def _replay(sequences: list[list[dict[str, t.Any]]]) -> list[list[str]]:
     return json.loads(result.stdout)
 
 
-def test_the_client_rebuilds_every_render_from_the_diffs():
+@pytest.mark.parametrize("vsn", VERSIONS)
+def test_the_client_rebuilds_every_render_from_the_diffs(vsn):
     seeds = range(SEQUENCES)
-    runs = [_sequence(seed) for seed in seeds]
+    runs = [_sequence(seed, vsn) for seed in seeds]
 
     replayed = _replay([steps for steps, _expected in runs])
 
@@ -259,6 +266,9 @@ def _kinds(value: t.Any, inside_block: bool = False) -> set[str]:
     elif "u" in value:
         found.add("block>u" if inside_block else "u")
         nested = [v for item in value["u"].values() for v in item]
+    elif "k" in value:
+        found.add("block>k" if inside_block else "k")
+        nested = [v for segment in value["k"] if isinstance(segment, dict) for v in segment["d"]]
     elif "p" in value:
         found.add("p2" if len(value["p"]) > 1 else "p")
         found.update(k for v in value["p"].values() for k in _kinds(v, inside_block=True))
@@ -267,11 +277,10 @@ def _kinds(value: t.Any, inside_block: bool = False) -> set[str]:
     return found
 
 
-def test_the_walk_exercises_every_diff_form():
-    """Guard the test itself: a walk that never produced a form proves nothing about it."""
+def _walk_kinds(vsn: int) -> set[str]:
     kinds: set[str] = set()
     for seed in range(SEQUENCES):
-        steps, expected = _sequence(seed)
+        steps, expected = _sequence(seed, vsn)
         for before, after, step in zip(expected, expected[1:], steps[1:]):
             diff = step["diff"]
             if diff is None:
@@ -281,9 +290,24 @@ def test_the_walk_exercises_every_diff_form():
             else:
                 for value in diff.values():
                     kinds.update(_kinds(value))
+    return kinds
 
-    wanted = {"none", "children only", "full", "string", "ref", "comprehension", "block", "u", "p", "p2", "block>u"}
+
+BASE_FORMS = {"none", "children only", "full", "string", "ref", "comprehension", "block", "u", "p", "p2", "block>u"}
+
+
+def test_the_walk_exercises_every_diff_form():
+    """Guard the test itself: a walk that never produced a form proves nothing about it."""
+    kinds = _walk_kinds(PROTOCOL_VERSION)
+    wanted = BASE_FORMS | {"k", "block>k"}
     assert wanted <= kinds, wanted - kinds
+
+
+def test_an_old_client_never_sees_a_newer_form():
+    """Version 0 gets exactly the forms it always did, at every depth."""
+    kinds = _walk_kinds(0)
+    assert BASE_FORMS <= kinds, BASE_FORMS - kinds
+    assert not kinds & {"k", "block>k"}, kinds
 
 
 def test_the_driver_catches_a_client_that_drops_an_update():

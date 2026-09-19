@@ -1,5 +1,5 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
-import { applyPartial, buildHtml } from "./rendered.mjs";
+import { PROTOCOL_VERSION, applyPartial, buildHtml } from "./rendered.mjs";
 import { planInsert, planTrim } from "./streams.mjs";
 import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
@@ -89,7 +89,9 @@ class ServerConnection {
   open(path = "__wireview__") {
     let protocol = location.protocol.replace("http", "ws");
     this.socket = new ReconnectingWebSocket(
-      `${protocol}//${location.host}/${path}`,
+      // The diff forms this client applies. Without it the server assumes
+      // the oldest, so an older bundle never receives a form it cannot read.
+      `${protocol}//${location.host}/${path}?vsn=${PROTOCOL_VERSION}`,
       [],
       {
         maxEnqueuedMessages: 0,

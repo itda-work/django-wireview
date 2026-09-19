@@ -14,6 +14,7 @@ from wireview.component import Component
 
 from . import serializer
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
+from .core.rendered import protocol_version
 from .core.session import SessionView, load_session
 from .core.state import LegacyState, StateMismatch, StatePayload, unsign_envelope
 from .core.transport import NO_CHANNEL_LAYER, ChannelsOutbound, Outbound
@@ -118,6 +119,10 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             # handler would raise SynchronousOnlyOperation instead (#68).
             session=await load_session(self.scope.get("session")),
             connection_id=self.connection_id,
+            # Read from the socket URL once and kept apart from the page's query
+            # string, which navigation changes: moving between pages must not
+            # change which diff forms this client can apply (GAP-030).
+            vsn=protocol_version(self.scope.get("query_string", b"")),
         )
         # Which login this socket stands on. Compared against the fingerprint inside
         # every state a live_session page issued, and the topic a logout publishes to.

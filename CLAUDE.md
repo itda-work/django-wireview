@@ -89,7 +89,8 @@ tests/
                            page.wait_for_selector 를 다른 곳에 쓰면 test_e2e_harness.py 의 가드가 실패한다
                            bookmarks/ 는 예제가 아니라 wireview 스킬 검증의 기준선이고,
                            uploadprobe/ 는 워커 둘짜리 업로드 E2E(test_multiworker_uploads.py)의 픽스처,
-                           livesession/ 은 경계 넘는 이동 E2E(test_live_session_e2e.py)의 픽스처다
+                           livesession/ 은 경계 넘는 이동 E2E(test_live_session_e2e.py)의 픽스처다,
+                           listprobe/ 는 항목 재배열 diff 를 옛 형태와 비교하는 E2E(test_comprehension_moves_e2e.py)의 픽스처다
 
 examples/                  예제 앱 11개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.
                            testproj 위에서 돌고 make test가 함께 실행한다(pytest tests examples).
@@ -185,6 +186,10 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
   로그아웃을 서버에서 폐기하지 못한다 — 경계 뒤에 진짜 인가가 있으면 서버 저장형 백엔드를 쓴다.
 - **`STATE_ACCEPT_LEGACY`와 live_session은 동시에 열 수 없다.** 옛 토큰에는 그 페이지에 경계가
   있었는지를 말해 줄 것이 없어서, 받아 주면 뷰에 붙인 정책이 통째로 빠진다(`wireview.W010`).
+- **diff 형태를 새로 더하면 `PROTOCOL_VERSION`을 올린다.** 서버는 클라이언트가 소켓 URL의 `?vsn=`으로
+  말한 버전 이하의 형태만 보낸다(`repo.vsn`, 없으면 0). 올리지 않고 새 형태를 보내면 옛 번들로 열린 페이지가
+  그것을 모르는 값으로 넣어 `[object Object]`를 그린다. `wireview/core/rendered.py`와 `wireview/static/wireview/rendered.mjs`의 두 상수가
+  같은지는 tests/test_comprehension_moves.py가 본다. 규칙은 `docs/implementation/wire-protocol.md` §7.
 - **data-state는 dynamic 파트다.** `{% tag_header %}`의 서명 상태는 라이브 렌더에서 마커로 감싸진다. static에 넣으면 fingerprint가 매번 바뀌어 부분 diff가 죽는다. 회귀 테스트는 tests/test_diff_stability.py.
 
 ## 문서 인덱스

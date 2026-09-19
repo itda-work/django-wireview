@@ -22,15 +22,24 @@ template's statics once and one list of dynamics per item, mirroring
 Phoenix's comprehensions. Adding or changing an item therefore never changes
 the parent's fingerprint.
 
+Items are diffed positionally, or, for a client that speaks protocol version
+``MOVES_SINCE`` or later, matched by content: two items with equal dynamics
+render the same HTML, so an item that only moved is sent as a range of the
+previous list instead of its dynamics (GAP-030,
+docs/design/keyed-comprehension.md).
+
 Reference: https://hexdocs.pm/phoenix_live_view/Phoenix.LiveView.Engine.html
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import typing as t
+from collections import deque
 from dataclasses import dataclass, field
+from urllib.parse import parse_qs
 
 # Flat marker pattern, kept for callers that only need plain dynamic values.
 MARKER_PATTERN = re.compile(r"<!--\$(\d+)-->(.*?)<!--/\$\1-->", re.DOTALL)
@@ -40,6 +49,29 @@ _REF = re.compile(r"<!--@wv:([^>]+?)-->")
 
 Dynamic = t.Union[str, "Comprehension", "Rendered", "ComponentRef"]
 Payload = t.Union[str, dict[str, t.Any]]
+
+# The diff protocol this server speaks. A client names the version it
+# understands in the WebSocket URL (``?vsn=``); the server never sends a form
+# newer than that, and a client that names none gets version 0. Keep in step
+# with ``PROTOCOL_VERSION`` in static/wireview/rendered.mjs.
+PROTOCOL_VERSION = 2
+# First version whose clients apply ``{"k": [...]}`` comprehension updates.
+MOVES_SINCE = 2
+
+
+def protocol_version(query_string: bytes | str) -> int:
+    """The protocol version a client named in its WebSocket URL, conservatively.
+
+    Anything but exactly one non-negative decimal ``vsn`` reads as 0, a client
+    that understands only the oldest forms: guessing high would send an old
+    page shapes it renders as ``[object Object]``.
+    """
+    if isinstance(query_string, bytes):
+        query_string = query_string.decode("latin-1")
+    values = parse_qs(query_string, keep_blank_values=True).get("vsn", [])
+    if len(values) != 1 or not (values[0].isascii() and values[0].isdigit()):
+        return 0
+    return int(values[0])
 
 
 def _fingerprint(static: list[str]) -> str:
@@ -81,11 +113,118 @@ def _value_from_payload(value: t.Any) -> Dynamic:
     return "" if value is None else str(value)
 
 
-def _diff_value(new: Dynamic, old: Dynamic | None) -> Payload | None:
+def _diff_value(new: Dynamic, old: Dynamic | None, moves: bool = False) -> Payload | None:
     """Change payload for one dynamic slot, or ``None`` when it is unchanged."""
     if isinstance(new, str):
         return None if new == old else new
-    return new.diff(old)
+    return new.diff(old, moves)
+
+
+def _identity(value: Dynamic) -> t.Hashable:
+    """A hashable stand-in for a dynamic: equal identities mean equal dynamics.
+
+    Tags keep the kinds apart (a block and a comprehension with the same
+    parts are not the same thing), and a component reference is its own
+    identity because it is frozen.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, Rendered):
+        return ("r", tuple(value.static), tuple(_identity(v) for v in value.dynamic))
+    if isinstance(value, Comprehension):
+        return ("s", tuple(value.static), tuple(tuple(_identity(v) for v in item) for item in value.dynamics))
+    return value
+
+
+def _item_identity(item: list[Dynamic]) -> t.Hashable:
+    # Most items hold only strings and references, which hash as they are. The
+    # tagged tuples the slow path builds never equal a string or a reference, so
+    # the two kinds of key cannot collide.
+    key = tuple(item)
+    try:
+        hash(key)
+    except TypeError:
+        return tuple(_identity(v) for v in item)
+    return key
+
+
+def _longer_than(positional: dict[str, t.Any], limit: int) -> bool:
+    """Whether ``json.dumps(positional)`` is longer than ``limit``, serializing no more than it must.
+
+    Counts the characters ``json.dumps`` would write for ``{"u": {...}, "n": n}``
+    with its default separators, one entry at a time, and stops as soon as the
+    total passes ``limit``. A rotation of a long list would otherwise serialize
+    every item only to learn that two runs are smaller.
+    """
+    size = len('{"u": {}, "n": }') + len(str(positional["n"]))
+    for i, (key, value) in enumerate(positional["u"].items()):
+        size += len(key) + len('"": ') + len(json.dumps(value)) + (len(", ") if i else 0)
+        if size > limit:
+            return True
+    return size > limit
+
+
+def _matched_segments(old: list[list[Dynamic]], new: list[list[Dynamic]]) -> list[t.Any]:
+    """Describe ``new`` as ranges of ``old`` and new items, matching items by content.
+
+    The common prefix and suffix are compared with ``==`` only; the middle is
+    matched through a map from item identity to the old positions holding it.
+    Among equal items the earliest is taken: any of them renders the same HTML.
+    No old position is used twice, so the client may reuse old item objects.
+    """
+    top = min(len(old), len(new))
+    lo = 0
+    while lo < top and old[lo] == new[lo]:
+        lo += 1
+    hi = 0
+    while hi < top - lo and old[len(old) - 1 - hi] == new[len(new) - 1 - hi]:
+        hi += 1
+
+    where: dict[t.Hashable, deque[int]] = {}
+    for j in range(lo, len(old) - hi):
+        where.setdefault(_item_identity(old[j]), deque()).append(j)
+
+    segments: list[t.Any] = [[0, lo]] if lo else []
+
+    def take(j: int) -> None:
+        last = segments[-1] if segments else None
+        if isinstance(last, list) and last[0] + last[1] == j:
+            last[1] += 1
+        else:
+            segments.append([j, 1])
+
+    for item in new[lo : len(new) - hi]:
+        slots = where.get(_item_identity(item))
+        if slots:
+            take(slots.popleft())
+        else:
+            segments.append({"d": [_payload_value(v) for v in item]})
+    if hi:
+        tail = len(old) - hi
+        last = segments[-1] if segments else None
+        if isinstance(last, list) and last[0] + last[1] == tail:
+            last[1] += hi
+        else:
+            segments.append([tail, hi])
+    return segments
+
+
+def _positional_suffices(old: list[list[Dynamic]], new: list[list[Dynamic]]) -> bool:
+    """True when the positional form needs no comparison: it is the smaller one, or kept on purpose.
+
+    That is when one list is a prefix of the other (an append, a truncation,
+    no change at all) or the lists have the same length and differ in at most
+    one position. Both stay byte-identical to what older clients receive.
+    """
+    top = min(len(old), len(new))
+    lo = 0
+    while lo < top and old[lo] == new[lo]:
+        lo += 1
+    if lo == top:
+        return True
+    if len(old) != len(new):
+        return False
+    return all(old[i] == new[i] for i in range(lo + 1, len(new)))
 
 
 @dataclass(frozen=True)
@@ -106,7 +245,7 @@ class ComponentRef:
     def to_payload(self) -> dict[str, t.Any]:
         return {"c": self.id}
 
-    def diff(self, previous: Dynamic | None) -> dict[str, t.Any] | None:
+    def diff(self, previous: Dynamic | None, moves: bool = False) -> dict[str, t.Any] | None:
         return None if previous == self else self.to_payload()
 
 
@@ -140,16 +279,27 @@ class Comprehension:
             "d": [[_payload_value(v) for v in item] for item in self.dynamics],
         }
 
-    def diff(self, previous: Dynamic | None) -> dict[str, t.Any] | None:
+    def diff(self, previous: Dynamic | None, moves: bool = False) -> dict[str, t.Any] | None:
         """Diff against the previous value of the same slot.
 
         Returns the full comprehension when the item template changed (or the
-        slot was not a comprehension before), ``{"u": {index: dynamics}, "n":
-        count}`` with only the items that changed, or ``None`` when nothing did.
+        slot was not a comprehension before), or ``None`` when nothing changed.
+        Otherwise the positional form ``{"u": {index: dynamics}, "n": count}``
+        with only the items that changed; or, when ``moves`` is on and it is
+        smaller on the wire, ``{"k": [segment, ...]}`` where a segment is
+        ``[start, length]`` (a run of the previous items) or ``{"d": dynamics}``
+        (a new item). Ties go to the positional form.
         """
         if not isinstance(previous, Comprehension) or previous.static != self.static:
             return self.to_payload()
+        positional = self._positional(previous)
+        if positional is None or not moves or _positional_suffices(previous.dynamics, self.dynamics):
+            return positional
+        matched = {"k": _matched_segments(previous.dynamics, self.dynamics)}
+        # Sizes as the consumer sends them: Channels serializes with json.dumps defaults.
+        return matched if _longer_than(positional, len(json.dumps(matched))) else positional
 
+    def _positional(self, previous: Comprehension) -> dict[str, t.Any] | None:
         updates: dict[str, list[Payload]] = {}
         for i, item in enumerate(self.dynamics):
             if i >= len(previous.dynamics) or item != previous.dynamics[i]:
@@ -204,25 +354,28 @@ class Rendered:
         """Wire form when this render is a nested block inside another render."""
         return {"r": list(self.static), "d": [_payload_value(v) for v in self.dynamic]}
 
-    def changes(self, previous: Rendered) -> dict[str, Payload]:
+    def changes(self, previous: Rendered, moves: bool = False) -> dict[str, Payload]:
         """Changed dynamic slots against a render with the same structure."""
         changes: dict[str, Payload] = {}
         for i, (new_val, old_val) in enumerate(zip(self.dynamic, previous.dynamic)):
-            change = _diff_value(new_val, old_val)
+            change = _diff_value(new_val, old_val, moves)
             if change is not None:
                 changes[str(i)] = change
         return changes
 
-    def diff(self, previous: Dynamic | None) -> dict[str, t.Any] | None:
+    def diff(self, previous: Dynamic | None, moves: bool = False) -> dict[str, t.Any] | None:
         """Diff as a nested block: full ``{"r", "d"}`` or partial ``{"p": changes}``."""
         if not isinstance(previous, Rendered) or previous.static != self.static:
             return self.to_payload()
-        changes = self.changes(previous)
+        changes = self.changes(previous, moves)
         return {"p": changes} if changes else None
 
-    def get_diff(self, previous: Rendered | None) -> RenderedDiff | None:
+    def get_diff(self, previous: Rendered | None, vsn: int = 0) -> RenderedDiff | None:
         """
         Compute the diff between this render and the previous one.
+
+        ``vsn`` is the protocol version the receiving client speaks; forms newer
+        than that are never produced.
 
         Returns:
             - Full render if first render or structure changed
@@ -237,7 +390,7 @@ class Rendered:
                 fingerprint=self.fingerprint,
             )
 
-        changes = self.changes(previous)
+        changes = self.changes(previous, moves=vsn >= MOVES_SINCE)
         if not changes:
             return None
 

@@ -10,6 +10,21 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Changed
+
+- List items that move no longer resend the list (GAP-030, #69). Inserting, removing
+  or reordering items in a `{% for %}` loop used to resend every item after the edit
+  point; now the unchanged items go as runs of the previous list, `{"k": [[start,
+  length] | {"d": [...]}, ...]}`, and only new or changed items carry their dynamics.
+  Items are matched by their rendered content, so templates need no keys. On 500 items
+  an insert at the front is 3.9 KB instead of 20 KB (most of what is left is the
+  signed state). The positional form stays wherever it is as small (an edit in place,
+  an append, a truncation), byte for byte.
+- The client names the diff protocol it speaks when it connects (`/__wireview__?vsn=2`),
+  and the server never sends a newer form. A page still running an older bundle names
+  none and keeps receiving exactly what it did, so a rolling deploy cannot hand it a
+  shape it would render as `[object Object]`. `docs/implementation/wire-protocol.md`.
+
 ## [0.4.0] - 2026-09-19
 
 JavaScript hooks that load themselves (GAP-032), navigation and stream assertions for tests

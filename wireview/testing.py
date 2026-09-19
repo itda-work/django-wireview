@@ -32,6 +32,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.urls import Resolver404
 
 from .core.meta import WireviewMeta
+from .core.rendered import PROTOCOL_VERSION
 from .core.session import SessionView
 
 if t.TYPE_CHECKING:
@@ -221,6 +222,8 @@ class MockRepository:
         self.params = params or {}
         self.session = session if session is not None else SessionView()
         self.live_session = live_session
+        # A mounted component talks to the client this release ships.
+        self.vsn = PROTOCOL_VERSION
 
 
 class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):

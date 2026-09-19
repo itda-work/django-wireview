@@ -73,6 +73,8 @@ class Repo(t.Protocol):
     """Protocol for component repository."""
 
     is_live: bool
+    # The diff protocol version the connection's client speaks (``?vsn=``).
+    vsn: int
 
 
 class WireviewMeta:
@@ -337,7 +339,7 @@ class WireviewMeta:
             # Use Phoenix-style diff if markers are present, else fall back
             # to the legacy line-based diff
             if has_markers(html_str):
-                diff = self._compute_rendered_diff(html_str)
+                diff = self._compute_rendered_diff(html_str, repo.vsn)
             else:
                 diff = self._compute_legacy_diff(html_str)
             diff_span.annotate(changed=diff is not None)
@@ -345,10 +347,10 @@ class WireviewMeta:
 
         return diff
 
-    def _compute_rendered_diff(self, html: str) -> dict[str, t.Any] | None:
-        """Compute Phoenix-style static/dynamic diff."""
+    def _compute_rendered_diff(self, html: str, vsn: int = 0) -> dict[str, t.Any] | None:
+        """Compute Phoenix-style static/dynamic diff in the forms protocol ``vsn`` allows."""
         rendered = Rendered.from_marked_html(html)
-        diff = rendered.get_diff(self._last_rendered)
+        diff = rendered.get_diff(self._last_rendered, vsn)
 
         if diff is None:
             return None

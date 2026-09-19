@@ -73,8 +73,12 @@ class ComponentRepository:
         session: t.Any = None,
         connection_id: str | None = None,
         live_session: "LiveSession | None" = None,
+        vsn: int = 0,
     ):
         self.params = params or {}
+        # The diff protocol version this connection's client speaks. Zero, the
+        # oldest, unless the client said otherwise when it connected (GAP-030).
+        self.vsn = vsn
         # The request/connection session. Handed to every component as
         # ``self.session`` and to the ``_on_mount`` hooks as their third argument,
         # read-only in both places (#68).

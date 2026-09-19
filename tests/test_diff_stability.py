@@ -316,3 +316,57 @@ async def test_http_render_has_no_markers_in_attributes():
 
     assert "<!--$" not in rendered
     assert '<li class="">a x 1</li>' in rendered
+
+
+# --- GAP-030: the positional form stays byte for byte where it suffices ---------
+
+_list_template: Template | None = None
+
+
+class ListDiffProbe(Component):
+    _template_name = "list_diff_probe.html"
+
+    names: list[str] = [f"n{i}" for i in range(20)]
+
+    async def rename(self, index: int = 0):
+        self.names[index] = f"{self.names[index]}!"
+
+    async def append(self):
+        self.names.append(f"n{len(self.names)}")
+
+    async def truncate(self):
+        self.names.pop()
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        global _list_template
+        if _list_template is None:
+            _list_template = Template(
+                "{% load wireview %}<ul {% tag_header %}>{% for n in names %}<li>{{ n }}</li>{% endfor %}</ul>"
+            )
+        return _list_template
+
+
+async def _edit_diff(vsn: int, handler: str, **kwargs) -> dict:
+    view = await mount(ListDiffProbe)
+    view._repo.is_live = True
+    view._repo.vsn = vsn
+    await view.wire.render_diff(view.component, view._repo)
+    await view.call(handler, **kwargs)
+    diff = await view.wire.render_diff(view.component, view._repo)
+    assert diff is not None
+    # Only the list's slot: the signed state differs between two mounts by its timestamp.
+    return {k: v for k, v in diff.items() if isinstance(v, dict)}
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+@pytest.mark.parametrize(("handler", "kwargs"), [("rename", {"index": 5}), ("append", {}), ("truncate", {})])
+async def test_edits_the_positional_form_covers_are_the_same_for_every_protocol_version(handler, kwargs):
+    from wireview.core.rendered import PROTOCOL_VERSION
+
+    current = await _edit_diff(PROTOCOL_VERSION, handler, **kwargs)
+    oldest = await _edit_diff(0, handler, **kwargs)
+
+    assert json.dumps(current) == json.dumps(oldest)
+    assert current, "the list slot must be in the diff"

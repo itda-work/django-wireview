@@ -1,0 +1,15 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <ul>
+    {% for row in this.rows %}
+      <li id="row-{{ row }}">
+        <label>{{ row }}</label>
+        <input id="in-{{ row }}" name="in-{{ row }}">
+      </li>
+    {% endfor %}
+  </ul>
+  <button data-testid="rotate" {% on "click" "rotate" %}>rotate</button>
+  <button data-testid="insert-front" {% on "click" "insert_front" %}>insert</button>
+  <button data-testid="remove-first" {% on "click" "remove_first" %}>remove</button>
+</div>

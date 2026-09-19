@@ -1,0 +1,57 @@
+{
+ "meta": {
+  "sha": "e3815b1",
+  "dirty": true,
+  "ref": "heads/main",
+  "date": "2026-09-19T07:21:46+00:00",
+  "python": "3.12.14",
+  "django": "6.0",
+  "platform": "Darwin arm64",
+  "items": 50,
+  "connections": null,
+  "layer": null,
+  "processes": null,
+  "server": null
+ },
+ "payload_bytes": {
+  "flat.first_render": 657,
+  "flat.change_one_value": 239,
+  "list.first_render": 2315,
+  "list.no_change": 0,
+  "list.change_one_item": 657,
+  "list.append_item": 666,
+  "list.toggle_if_inside_item": 669,
+  "list.top_level_if_on": 700,
+  "list.change_one_value": 637,
+  "list.insert_front": 682,
+  "list.insert_middle": 692,
+  "list.remove_first": 627,
+  "list.move_last_to_first": 641,
+  "list.swap_middle": 660,
+  "list.reverse": 1046,
+  "list500.insert_front": 3934,
+  "list500.insert_middle": 3939,
+  "list500.remove_first": 3880,
+  "list500.move_last_to_first": 3897,
+  "list500.swap_middle": 3913,
+  "list500.reverse": 8563,
+  "live.first_join_bytes": 2649,
+  "live.first_join_frames": 1,
+  "live.parent_only_change_bytes": 275,
+  "live.parent_only_change_frames": 1,
+  "live.child_reset_then_parent_rerender_bytes": 276,
+  "live.child_reset_then_parent_rerender_frames": 1,
+  "live.child_state_after_parent_rerender": 0
+ },
+ "timing": {
+  "list500.insert_remove_front_ms": 4.12966082978528,
+  "list500.rotate_ms": 4.288432909816038,
+  "list500.rotate_duplicates_ms": 3.972180840210058,
+  "list.event_ms": 0.5317448600544594,
+  "list.template_render_ms": 0.35102708333094296,
+  "flat.event_ms": 0.17266083334106952
+ },
+ "memory": {
+  "list.component_kb": 28.49478515625
+ }
+}
