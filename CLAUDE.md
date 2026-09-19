@@ -77,6 +77,8 @@ tests/
 │                          컴포넌트가 생기는 경로 8개 × 거절 사유 5종을 parametrize로 돌린다.
 │                          경로를 새로 만들면 행을 추가한다
 ├── js/*.test.mjs          클라이언트 순수 모듈 테스트 (node --test)
+│                          js/roundtrip.mjs 는 테스트가 아니라 test_diff_roundtrip.py 의 드라이버다 —
+│                          서버 diff 를 실제 rendered.mjs 로 적용해 매 단계 HTML 이 렌더와 같은지 본다
 └── testproj/              Django 테스트 프로젝트(설정·URLconf). 채널 레이어는 WIREVIEW_TEST_LAYER가 고르고
                            settings_nats.py·settings_redis.py가 이를 고정하는 진입점이다.
                            e2e_server.py 가 E2E용 라이브 ASGI 서버의 정본이다 —
