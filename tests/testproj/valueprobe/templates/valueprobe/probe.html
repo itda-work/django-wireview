@@ -22,7 +22,7 @@
   <button data-testid="set-from-server" {% on "click" "set_from_server" %}>set</button>
   <input data-testid="racing"
          name="racing"
-         {% on "input.debounce.50" "type_slowly" %}
+         {% on "input" "type_slowly" %}
          {% on "keypress.enter" "add_after" %}>
   <span data-testid="typed-slowly">{{ this.typed_slowly }}</span>
   <span data-testid="added-after">{{ this.added_after }}</span>
@@ -37,8 +37,14 @@
   <input data-testid="query"
          name="query"
          value="{{ this.query }}"
-         {% on "input.debounce.300" "search" %}
+         {% on "input.debounce.1000" "search" %}
          {% on "keydown.key.arrowdown.prevent" "navigate" %}>
+  <span data-testid="server-set-rendered">{{ this.server_set_rendered }}</span>
   <span data-testid="query-value">{{ this.query }}</span>
   <span data-testid="selected">{{ this.selected }}</span>
+  <input data-testid="normalizing"
+         name="normalizing"
+         value="{{ this.normalized }}"
+         {% on "keypress.enter" "normalize" %}>
+  <span data-testid="normalized">{{ this.normalized }}</span>
 </div>

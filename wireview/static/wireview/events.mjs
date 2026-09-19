@@ -89,7 +89,7 @@ export function bindingsFor(names, type) {
  * the run to its timer, so a modifier after it runs late: `prevent` there is
  * too late to matter, exactly as it always was.
  * @param {Step[]} steps
- * @param {{key?: string, keyCode?: number, ctrlKey?: boolean, altKey?: boolean, shiftKey?: boolean, metaKey?: boolean}} event
+ * @param {{key?: string, keyCode?: number, isComposing?: boolean, ctrlKey?: boolean, altKey?: boolean, shiftKey?: boolean, metaKey?: boolean}} event
  * @param {StepOps} ops
  * @param {number} [from=0]
  */
@@ -110,9 +110,13 @@ export function runSteps(steps, event, ops, from = 0) {
         if (!event[/** @type {"ctrlKey"} */ (`${name}Key`)]) return;
         break;
       case "key":
+        // A key an IME is composing with belongs to the IME: the Enter that
+        // picks a Hangul syllable is not the Enter that submits.
+        if (event.isComposing) return;
         if (String(event.key).toLowerCase() !== String(arg).toLowerCase()) return;
         break;
       case "key_code":
+        if (event.isComposing) return;
         if (String(event.keyCode) !== String(arg)) return;
         break;
       case "debounce":

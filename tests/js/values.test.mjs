@@ -51,3 +51,14 @@ test("submit, change, leaving a field and Enter commit; other events do not (#92
     assert.equal(isCommitAction(type), false, String(type));
   }
 });
+
+test("a click on a form's submit button commits, and so does key_code 13 (#92 review)", async () => {
+  const { isCommitAction } = await import("../../wireview/static/wireview/values.mjs");
+  const { parseBinding } = await import("../../wireview/static/wireview/events.mjs");
+
+  assert.equal(isCommitAction("click", [], { submitter: true }), true, "click.prevent on a save button in a form");
+  assert.equal(isCommitAction("click", [], { submitter: false }), false);
+  assert.equal(isCommitAction("click"), false);
+  assert.equal(isCommitAction("keydown", parseBinding("wire-on-keydown.key_code.13").steps), true);
+  assert.equal(isCommitAction("keydown", parseBinding("wire-on-keydown.key_code.40").steps), false);
+});

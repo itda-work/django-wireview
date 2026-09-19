@@ -43,10 +43,20 @@ interface WireviewDebug {
 
 interface Window {
   wireview: {
-    send(element: HTMLElement, name: string, args?: Record<string, unknown>, eventType?: string): void;
+    /**
+     * `options.commit`: the event commits the fields it comes from, so its answer may reset
+     * them (docs/features/html-diff.md, "입력 중인 값"). By default decided from `eventType`.
+     */
+    send(
+      element: HTMLElement,
+      name: string,
+      args?: Record<string, unknown>,
+      eventType?: string,
+      options?: { commit?: boolean },
+    ): void;
     debounce(delay: number): <T extends (...args: unknown[]) => void>(f: T) => (...args: Parameters<T>) => void;
     throttle(delay: number): <T extends (...args: unknown[]) => void>(f: T) => (...args: Parameters<T>) => void;
-    exec(element: HTMLElement, commands: JSCommand[]): Promise<void>;
+    exec(element: HTMLElement, commands: JSCommand[], options?: { commit?: boolean }): Promise<void>;
     debug: WireviewDebug;
   };
 }

@@ -63,7 +63,16 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
   typed after the action stay. Only a submit, a change, leaving a field or Enter commits;
   an arrow key in a search box no longer undoes a query still waiting on its debounce. A
   `JS().push` inside a binding commits like a handler binding. An event whose answer changed
-  only a child no longer leaves its button in the loading state.
+  only a child no longer leaves its button in the loading state. A second review of that
+  change found the answer's permission and the morph were not tied together: two answers
+  arriving within one frame could lose the later one's, a later render folded into the same
+  morph could use it, the fields marked under `myself` were not the ones sent, and an edit
+  made after sending was still overwritten once the field lost focus or was emptied. The
+  permission now goes only to the morph of the render that carries it, which runs at once;
+  the marked fields are exactly the ones sent; a field changed since it was sent is always
+  kept; and a ref never answered is dropped when a later one is. Key modifiers no longer fire
+  while an IME is composing, so the Enter that completes a Hangul syllable does not submit.
+  A click on a form's submit button and `key_code.13` count as committing.
 - Uploads through `{% upload_input %}` and `{% upload_button %}` work in a browser (found with
   #90). The `upload_op` that creates an upload on the client carried no component id, and the
   client applied it to "the component that already has this upload", which on the first message

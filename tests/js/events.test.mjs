@@ -120,3 +120,19 @@ test("an unknown modifier is ignored", () => {
   runSteps(parseBinding("wire-on-click.once").steps, {}, r.ops);
   assert.deepEqual(r.log, ["fire"]);
 });
+
+test("a key filter does not match while an IME is composing (Enter that picks a Hangul syllable)", () => {
+  const steps = parseBinding("wire-on-keydown.enter").steps;
+
+  const composing = recorder();
+  runSteps(steps, { key: "Enter", isComposing: true }, composing.ops);
+  assert.deepEqual(composing.log, [], "the Enter belongs to the IME");
+
+  const typed = recorder();
+  runSteps(parseBinding("wire-on-keydown.key_code.13").steps, { keyCode: 13, isComposing: true }, typed.ops);
+  assert.deepEqual(typed.log, []);
+
+  const done = recorder();
+  runSteps(steps, { key: "Enter", isComposing: false }, done.ops);
+  assert.deepEqual(done.log, ["fire"]);
+});

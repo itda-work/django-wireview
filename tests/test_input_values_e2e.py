@@ -77,7 +77,7 @@ def test_the_server_does_not_change_the_field_under_the_cursor(probe):
     field.focus()
     # A render that changes this field's server value, not answering anything from it.
     page.evaluate("() => wireview.send(document.querySelector('[data-testid=ping]'), 'slow_set_from_server', {})")
-    page.wait_for_timeout(600)  # the handler sleeps 0.3 s; nothing to wait on but the clock
+    expect_text(by(page, "server-set-rendered"), "late server value")  # the render that carries it has landed
 
     expect(field).to_have_value("mine")
 
@@ -114,17 +114,32 @@ def test_the_server_can_set_a_field_the_user_is_not_in(probe):
 
 
 def test_an_earlier_events_answer_does_not_take_the_enter_mark(probe):
-    """A slow typing event is still out when Enter goes; its answer lands first."""
+    """A slow typing event is still out when Enter goes; its answer lands first.
+
+    The typing handler sleeps 0.4 s and Enter's 1.5 s, and the server takes a
+    connection's events in order, so the typing answer lands while Enter's is
+    still 1.5 s away.
+    """
+    page = probe
+    racing = by(page, "racing")
+    racing.fill("abc")  # its input event goes at once
+    racing.press("Enter")
+
+    expect_text(by(page, "typed-slowly"), "abc")  # the typing answer, not Enter's
+    expect(racing).to_have_value("abc")  # it did not empty the field in Enter's place
+    expect_text(by(page, "added-after"), "abc")
+    expect(racing).to_have_value("")  # Enter's own answer did
+
+
+def test_keystrokes_after_enter_survive_its_answer(probe):
     page = probe
     racing = by(page, "racing")
     racing.fill("abc")
-    page.wait_for_timeout(150)  # the debounced event is on its way; its handler sleeps 0.4 s
     racing.press("Enter")
     racing.press_sequentially("z")
 
     expect_text(by(page, "added-after"), "abc")
-    expect_text(by(page, "typed-slowly"), "abc")
-    # Neither answer erased the z: the first was not Enter's, and Enter's covers "abc" only.
+    # Enter's answer covers what was sent, "abc"; the z is the user's.
     expect(racing).to_have_value("abcz")
 
 
@@ -136,11 +151,11 @@ def test_an_answer_that_changes_only_a_child_leaves_no_mark_behind(probe):
     field.press("Enter")
     expect(by(page, "child-label")).not_to_have_text(before)
 
-    field.press_sequentially("!")
+    # No more typing: a mark left behind would let this unrelated render reset "hello".
     page.evaluate("() => document.querySelector('[data-testid=ping]').click()")
     expect_text(by(page, "pings"), "1")
 
-    expect(field).to_have_value("hello!")
+    expect(field).to_have_value("hello")
 
 
 def test_enter_through_a_js_push_empties_the_field_like_a_handler_binding(probe):
@@ -166,3 +181,20 @@ def test_an_arrow_key_does_not_undo_a_query_not_yet_sent(probe):
 
     expect(query).to_have_value("python new")
     expect_text(by(page, "query-value"), "python new")
+
+
+def test_typing_after_enter_survives_a_normalized_answer_after_focus_left(probe):
+    """The answer sends a new value (ABC), the field has moved on (abcz) and lost focus.
+
+    Without the post-send check the answer covered the field because the
+    server's value changed and the field was no longer focused (review of #92).
+    """
+    page = probe
+    field = by(page, "normalizing")
+    field.fill("abc")
+    field.press("Enter")
+    field.press_sequentially("z")
+    by(page, "other").focus()
+
+    expect_text(by(page, "normalized"), "ABC")
+    expect(field).to_have_value("abcz")

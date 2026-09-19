@@ -30,10 +30,12 @@ class ValueProbe(Component):
     added: str = ""
     submitted: str = ""
     server_set: str = ""
+    server_set_rendered: str = ""
     typed_slowly: str = ""
     added_after: str = ""
     pushed: str = ""
     query: str = ""
+    normalized: str = ""
     selected: int = 0
 
     @property
@@ -63,12 +65,17 @@ class ValueProbe(Component):
     async def slow_set_from_server(self, **_rest):
         await asyncio.sleep(0.3)
         self.server_set = "late server value"
+        self.server_set_rendered = self.server_set
 
     async def type_slowly(self, racing: str = "", **_rest):
         await asyncio.sleep(0.4)
         self.typed_slowly = racing
 
     async def add_after(self, racing: str = "", **_rest):
+        # Slower than the typing handler, so the test can look at the field
+        # between the two answers. Playwright polls with growing intervals
+        # (0, 100, 250, 500 ms), so the window has to outlast that.
+        await asyncio.sleep(1.5)
         self.added_after = racing
 
     async def bump_child(self, **_rest):
@@ -82,3 +89,8 @@ class ValueProbe(Component):
 
     async def navigate(self, **_rest):
         self.selected += 1
+
+    async def normalize(self, normalizing: str = "", **_rest):
+        # The server's answer is a different value than was sent (upper case).
+        await asyncio.sleep(0.8)
+        self.normalized = normalizing.upper()

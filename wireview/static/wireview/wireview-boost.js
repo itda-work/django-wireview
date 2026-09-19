@@ -6,7 +6,7 @@
 import { Idiomorph } from "idiomorph";
 import { NavigationGate, crossesBoundary, readSessionName } from "./live-session.mjs";
 import { isStreamContainer } from "./streams.mjs";
-import { isEditableField, keepsUserValue } from "./values.mjs";
+import { ValueGuard } from "./values.mjs";
 
 /**
  * Callback function type for onBeforeElUpdated.
@@ -26,118 +26,19 @@ const morphConfig = {
 };
 
 /**
- * What the user typed survives a render (#91, #92; values.mjs has the rule,
- * docs/design/input-values.md the reasoning).
- *
- * A committing action records its fields with the values it sent, under the
- * event's `ref`. Only the render that carries that `ref` opens them to the
- * server's value, and then only the fields the user has not typed in since.
- * The marks close when that component's morph is done, whichever fields it
- * visited, so no mark is left for an unrelated render to use later.
- *
- * A server too old to echo refs gets the #91 behaviour: the fields are marked
- * without a ref and the first morph that touches them takes the server value.
+ * What the user typed survives a render (#91, #92). The rule and its
+ * bookkeeping are in values.mjs; this is the page's one instance.
  */
-const valueGuard = {
-  /** @type {Map<number, Map<Element, string>>} fields and the values sent, per ref */
-  pending: new Map(),
-  /** @type {Map<Element, string>} fields a render just answered, until their component's morph */
-  answered: new Map(),
-  /** @type {Set<Element>} fields marked without a ref (a server that does not echo refs) */
-  unpaired: new Set(),
-
-  /**
-   * The editable fields an action from `element` commits: the element, or
-   * inside a form the form's fields, with their values as sent.
-   * @param {Element} element
-   * @returns {Map<Element, string>}
-   */
-  fieldsOf(element) {
-    const form = element instanceof HTMLFormElement ? element : element.closest("form");
-    const fields = form ? Array.from(form.elements) : [element];
-    const result = new Map();
-    for (const field of fields) {
-      if (isEditableField(field.tagName, /** @type {HTMLInputElement} */ (field).type)) {
-        result.set(field, /** @type {HTMLInputElement} */ (field).value);
-      }
-    }
-    return result;
-  },
-
-  /**
-   * @param {number | null} ref - the event's ref, or null when the server does not echo refs
-   * @param {Map<Element, string>} fields
-   */
-  commit(ref, fields) {
-    if (ref === null) {
-      for (const field of fields.keys()) this.unpaired.add(field);
-    } else {
-      this.pending.set(ref, fields);
-    }
-  },
-
-  /**
-   * The render answering `ref` arrived. When it will morph its component, its
-   * fields may take the server's value in that morph; when it will not (no
-   * change, or only children changed), the server's value for them is what
-   * the page already shows, and the marks simply go.
-   * @param {number} ref
-   * @param {boolean} morphing
-   */
-  answer(ref, morphing) {
-    const fields = this.pending.get(ref);
-    this.pending.delete(ref);
-    if (!fields || !morphing) return;
-    for (const [field, sent] of fields) this.answered.set(field, sent);
-  },
-
-  /**
-   * A component's morph is done, or its answer changed nothing: close every
-   * mark under it, visited or not (a stream container is never visited).
-   * @param {Element} root
-   */
-  settle(root) {
-    for (const field of this.answered.keys()) {
-      if (!field.isConnected || root.contains(field)) this.answered.delete(field);
-    }
-    for (const field of this.unpaired) {
-      if (!field.isConnected || root.contains(field)) this.unpaired.delete(field);
-    }
-  },
-
-  /**
-   * Decide for one field about to be morphed. When it keeps the user's value,
-   * the server's value still goes to the attribute (`defaultValue`): a field
-   * the user edited does not change what it shows when its attribute changes,
-   * and the next render compares against what the server actually sent.
-   * @param {Element} fromEl
-   * @param {Element} toEl
-   * @returns {boolean} true when the value must not be touched
-   */
-  keep(fromEl, toEl) {
-    const field = /** @type {HTMLInputElement|HTMLTextAreaElement} */ (fromEl);
-    const next = /** @type {HTMLInputElement|HTMLTextAreaElement} */ (toEl);
-    if (!isEditableField(field.tagName, field.type) || field.tagName !== next.tagName) return false;
-    const sent = this.answered.get(field);
-    // The answer covers what was sent; keystrokes after that are the user's.
-    const committing = (sent !== undefined && sent === field.value) || this.unpaired.delete(field);
-    const keep = keepsUserValue({
-      edited: field.value !== field.defaultValue,
-      focused: field === document.activeElement,
-      committing,
-      serverChanged: next.defaultValue !== field.defaultValue,
-    });
-    if (keep) field.defaultValue = next.defaultValue;
-    return keep;
-  },
-};
+const valueGuard = new ValueGuard();
 
 /**
  * Morphs an old DOM node into a new one using Idiomorph.
  * @param {Element} oldNode - The existing DOM element
  * @param {Element|string} newNode - The new content to morph into
+ * @param {{permission?: Map<Element, string>}} [options] - the fields this morph's render
+ *   answers (ValueGuard.answer), which may take the server's value
  */
-function morph(oldNode, newNode) {
+function morph(oldNode, newNode, { permission } = {}) {
   const callback = morphConfig.onBeforeElUpdated;
   /** @type {WeakSet<Element>} */
   const kept = new WeakSet();
@@ -148,7 +49,7 @@ function morph(oldNode, newNode) {
         // over the live one would delete every streamed item, so leave it alone.
         if (isStreamContainer(fromEl)) return false;
 
-        if (fromEl.nodeType === Node.ELEMENT_NODE && valueGuard.keep(fromEl, toEl)) kept.add(fromEl);
+        if (fromEl.nodeType === Node.ELEMENT_NODE && valueGuard.keep(fromEl, toEl, permission)) kept.add(fromEl);
 
         // Only call for elements, not text nodes
         if (callback && fromEl.nodeType === Node.ELEMENT_NODE) {

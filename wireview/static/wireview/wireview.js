@@ -1,6 +1,6 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
 import { PROTOCOL_VERSION, REFS_SINCE, applyPartial, buildHtml } from "./rendered.mjs";
-import { isCommitAction } from "./values.mjs";
+import { commitScope, isCommitAction } from "./values.mjs";
 import { BINDING_PREFIX, bindingsFor, parseBinding, runSteps } from "./events.mjs";
 import { planInsert, planTrim } from "./streams.mjs";
 import { createDocumentReady } from "./ready.mjs";
@@ -138,6 +138,8 @@ class ServerConnection {
     this.socket.addEventListener("close", () => {
       // The next socket may reach another server; it announces itself again.
       this.serverVsn = 0;
+      // Nothing sent on this socket will be answered.
+      boost.valueGuard.clear();
       debugLog("ws", "Disconnected from server");
 
       // Save form state before clearing components
@@ -226,12 +228,18 @@ class ServerConnection {
           }
         }
         const target = this.components[id];
-        // The answer to a committing event opens its fields to the server's
-        // value, for the morph this render causes (#92).
-        if (typeof ref === "number") boost.valueGuard.answer(ref, Boolean(diff && target));
+        // The answer to a committing event may reset the fields it came from,
+        // in the morph this render causes and no other (#92). That morph runs
+        // now, not on the next frame, so no later render folds into it.
+        const permission = typeof ref === "number" ? boost.valueGuard.answer(ref) : undefined;
         if (diff && target) {
           // One patch: the parent's HTML embeds the children's current renders
-          target.applyDiff(diff);
+          target.applyDiffData(diff);
+          if (permission && permission.size) {
+            target.morphNow(permission);
+          } else {
+            target.scheduleMorph();
+          }
         } else {
           // The parent did not change, so each changed child patches itself
           for (const child of changedChildren) {
@@ -242,11 +250,7 @@ class ServerConnection {
           // left disabled by wire-disabled-with), whether its answer changed
           // nothing or only the children.
           if (target) {
-            window.requestAnimationFrame(() => {
-              target.clearLoadingClasses();
-              const el = target.getElemenet();
-              if (el) boost.valueGuard.settle(el);
-            });
+            window.requestAnimationFrame(() => target.clearLoadingClasses());
           }
         }
         break;
@@ -952,45 +956,50 @@ class WireviewComponent {
    * that embeds this component will place it.
    */
   scheduleMorph() {
-    window.requestAnimationFrame(() => {
-      let el = this.getElemenet();
-      if (el) {
-        // Remove loading classes before morphing
-        this.clearLoadingClasses();
+    window.requestAnimationFrame(() => this.morphNow());
+  }
 
-        const html = this.currentHtml();
+  /**
+   * Patches this component's element with its current HTML now.
+   * @param {Map<Element, string>} [permission] - fields the render being applied
+   *   answers, which may take the server's value (ValueGuard.answer)
+   */
+  morphNow(permission) {
+    let el = this.getElemenet();
+    if (el) {
+      // Remove loading classes before morphing
+      this.clearLoadingClasses();
 
-        if (html) {
-          // Call beforeUpdate on all hooks
-          this.hookManager.beforeUpdate();
+      const html = this.currentHtml();
 
-          // Profile patch time
-          const patchStart = profilingEnabled ? performance.now() : 0;
-          boost.morph(el, html);
-          // The answered fields had their chance in this morph; close the marks.
-          boost.valueGuard.settle(el);
-          if (profilingEnabled) {
-            recordPatchTime(performance.now() - patchStart);
-          }
-          boost.navEvent.sendNewContent();
+      if (html) {
+        // Call beforeUpdate on all hooks
+        this.hookManager.beforeUpdate();
 
-          // Call updated on all hooks (and scan for new ones)
-          this.hookManager.updated();
-
-          // Update viewport observer (scan for new viewport elements)
-          this.viewportObserver.updated();
-
-          // Update upload previews (populate src for new preview elements)
-          const uploadManager = uploadManagers[this.id];
-          if (uploadManager) {
-            uploadManager.updatePreviews();
-          }
-
-          // Update form feedback (manage wire-no-feedback classes)
-          FeedbackManager.updated();
+        // Profile patch time
+        const patchStart = profilingEnabled ? performance.now() : 0;
+        boost.morph(el, html, { permission });
+        if (profilingEnabled) {
+          recordPatchTime(performance.now() - patchStart);
         }
+        boost.navEvent.sendNewContent();
+
+        // Call updated on all hooks (and scan for new ones)
+        this.hookManager.updated();
+
+        // Update viewport observer (scan for new viewport elements)
+        this.viewportObserver.updated();
+
+        // Update upload previews (populate src for new preview elements)
+        const uploadManager = uploadManagers[this.id];
+        if (uploadManager) {
+          uploadManager.updatePreviews();
+        }
+
+        // Update form feedback (manage wire-no-feedback classes)
+        FeedbackManager.updated();
       }
-    });
+    }
   }
 
   /**
@@ -1132,12 +1141,12 @@ class WireviewComponent {
     /** @type {number|undefined} */
     let ref;
     if (commitFrom) {
-      // A committing action: its answer may reset the fields it came from,
-      // paired with it by ref when this server echoes refs (#92).
-      const fields = boost.valueGuard.fieldsOf(commitFrom);
+      // A committing action: its answer may reset the fields it sends, paired
+      // with it by ref when this server echoes refs (#92).
+      const fields = commitScope(commitFrom, formScope);
       if (fields.size) {
         ref = connection.serverVsn >= REFS_SINCE ? ++connection.lastRef : undefined;
-        boost.valueGuard.commit(ref ?? null, fields);
+        boost.valueGuard.record(ref ?? null, fields);
       }
     }
     connection.sendUserEvent(this.id, command, this.serialize(formScope), args, ref);
@@ -2496,6 +2505,18 @@ const FeedbackManager = {
 // Initialize feedback system
 FeedbackManager.init();
 
+/**
+ * Whether `el` submits its form when clicked: a click on it is a committing
+ * action even when a `click.prevent` binding handles the save (#92).
+ * @param {Element} el
+ * @returns {boolean}
+ */
+function isSubmitter(el) {
+  if (el instanceof HTMLButtonElement) return el.type === "submit" && el.form !== null;
+  if (el instanceof HTMLInputElement) return (el.type === "submit" || el.type === "image") && el.form !== null;
+  return false;
+}
+
 // ============================================================================
 // Event bindings: delegated, no inline script (#90)
 // ============================================================================
@@ -2635,7 +2656,7 @@ const EventBindings = {
           // A submit, a change, leaving the field or Enter commits the fields
           // it comes from: its answer may reset them (a todo input emptied
           // after Enter). Anything else leaves them to the user (#91, #92).
-          const commit = isCommitAction(event.type, binding.steps);
+          const commit = isCommitAction(event.type, binding.steps, { submitter: isSubmitter(element) });
           if (value.js) {
             window.wireview.exec(element, value.js, { commit });
           } else if (value.h !== undefined) {
@@ -3066,7 +3087,7 @@ window.wireview = {
    */
   send(element, name, args, eventType, options = {}) {
     args = args || {};
-    const commit = options.commit ?? isCommitAction(eventType);
+    const commit = options.commit ?? isCommitAction(eventType, [], { submitter: isSubmitter(element) });
 
     // Handle _target for LiveComponent @myself targeting
     const targetId = args._target;
