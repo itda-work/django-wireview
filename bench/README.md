@@ -32,6 +32,7 @@ make bench ARGS="--server uvicorn-nodeflate"  # permessage-deflate를 끈 uvicor
 
 - `list.first_render`는 첫 렌더라 항상 전체입니다. 나머지 `list.*`가 부분 diff인지가 핵심입니다.
 - `list.no_change`는 0이어야 합니다. 값이 있으면 상태 없이도 diff가 나가는 회귀입니다.
+- `list.insert_front`·`remove_first`·`move_last_to_first`·`reverse` 등 목록 편집(항목 50개, `list500.*`은 500개)은 항목의 위치가 밀리는 변경입니다. 위치 기반 diff는 편집 지점 뒤의 항목을 전부 다시 보냅니다(GAP-030, `docs/design/keyed-comprehension.md`). 바이트는 서명 상태를 포함한 diff 객체 JSON이고, 500개 목록에서는 그 대부분이 서명 상태입니다. `list500.*_ms`는 그 편집의 렌더당 시간이고, `rotate_duplicates`는 내용으로 짝짓는 diff의 최악 경우(모든 항목이 같음)입니다.
 - 이벤트당 ms는 CPU 단일 코어 기준이고, 대부분 Django 템플릿 렌더입니다.
 - `ws.*.per_connection_kb`의 대부분은 daphne와 Channels 스택입니다. 연결만 열고 join하지 않으면 약 39 KB입니다.
 

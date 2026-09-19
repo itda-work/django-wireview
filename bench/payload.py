@@ -101,6 +101,69 @@ async def _live_component_scenarios() -> dict[str, int]:
     return result
 
 
+def _list_items(count: int, start: int = 0) -> list[dict[str, t.Any]]:
+    return [{"name": f"item {i}", "qty": i, "done": i % 3 == 0} for i in range(start, start + count)]
+
+
+def _swap_middle(items: list) -> None:
+    mid = len(items) // 2
+    items[mid - 1], items[mid] = items[mid], items[mid - 1]
+
+
+# Edits that move items relative to their old positions. A positional diff
+# resends every item after the edit point; these are what GAP-030 is about.
+# Each mutates the component's list directly: the bench runs against older
+# trees too, so it cannot rely on handlers that only exist in this one.
+_LIST_EDITS: dict[str, t.Callable[[list], None]] = {
+    "insert_front": lambda items: items.insert(0, _list_items(1, 9999)[0]),
+    "insert_middle": lambda items: items.insert(len(items) // 2, _list_items(1, 9999)[0]),
+    "remove_first": lambda items: items.pop(0),
+    "move_last_to_first": lambda items: items.insert(0, items.pop()),
+    "swap_middle": _swap_middle,
+    "reverse": lambda items: items.reverse(),
+}
+
+
+async def _list_edit_scenarios(component_class, count: int, prefix: str = "list") -> dict[str, int]:
+    """Bytes of the diff (signed state included) for each edit, from a fresh list of ``count`` items."""
+    result: dict[str, int] = {}
+    for name, edit in _LIST_EDITS.items():
+        view = await _live(component_class, items=_list_items(count))
+        await _diff(view)
+        edit(view.component.items)
+        result[f"{prefix}.{name}"] = _size(await _diff(view))
+    return result
+
+
+async def _list_edit_timing(component_class, count: int, iterations: int) -> dict[str, float]:
+    """Per-render ms for the costliest edits on ``count`` items, template render included.
+
+    ``rotate_duplicates`` is the worst case for matching by content: every item
+    identical, so trimming the common prefix and suffix removes nothing.
+    """
+    result: dict[str, float] = {}
+    cases: dict[str, tuple[list[dict[str, t.Any]], t.Callable[[list, int], None]]] = {
+        "insert_remove_front": (
+            _list_items(count),
+            lambda items, i: items.insert(0, _list_items(1, 9999)[0]) if i % 2 == 0 else items.pop(0),
+        ),
+        "rotate": (_list_items(count), lambda items, i: items.insert(0, items.pop())),
+        "rotate_duplicates": (
+            [{"name": "same", "qty": 0, "done": False}] * (count - 1) + [{"name": "odd", "qty": 1, "done": True}],
+            lambda items, i: items.insert(0, items.pop()),
+        ),
+    }
+    for name, (initial, edit) in cases.items():
+        view = await _live(component_class, items=[dict(item) for item in initial])
+        await _diff(view)
+        t0 = time.perf_counter()
+        for i in range(iterations):
+            edit(view.component.items, i)
+            await _diff(view)
+        result[f"list{count}.{name}_ms"] = (time.perf_counter() - t0) * 1000 / iterations
+    return result
+
+
 async def run(items: int = 50, iterations: int = 300) -> dict[str, t.Any]:
     from bench.benchapp.live import BenchFlat, BenchList
 
@@ -130,6 +193,11 @@ async def run(items: int = 50, iterations: int = 300) -> dict[str, t.Any]:
     payload["list.top_level_if_on"] = _size(await _diff(view))
     await view.call("increment")
     payload["list.change_one_value"] = _size(await _diff(view))
+
+    # --- list edits that shift item positions (GAP-030) ---
+    payload.update(await _list_edit_scenarios(BenchList, items))
+    payload.update(await _list_edit_scenarios(BenchList, 500, prefix="list500"))
+    timing.update(await _list_edit_timing(BenchList, 500, iterations=100))
 
     # --- a parent with nested LiveComponents, through the consumer's render path ---
     payload.update(await _live_component_scenarios())
