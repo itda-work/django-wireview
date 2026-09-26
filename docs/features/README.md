@@ -42,6 +42,7 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 | **Lifecycle Hooks** | `on_mount` 훅, `attach_hook`으로 라이프사이클 가로채기 | [문서](./lifecycle-hooks.md) |
 | **live_session** | 페이지 단위 인증 경계. 경계를 넘는 이동은 전체 로드 | [문서](./live-session.md) |
 | **세션 읽기** | `self.session`으로 Django 세션 읽기 (읽기 전용) | [문서](./session.md) |
+| **서버 오류 처리** | 핸들러 예외는 그 컴포넌트만 이벤트 전 상태로 다시 join, 연결은 유지. `wireview-error`, `wireview:error` | [문서](./errors.md) |
 
 ## 폼과 UI 피드백
 

@@ -290,6 +290,30 @@ class ServerConnection {
         boost.navEvent.sendNewContent();
         break;
 
+      case "error": {
+        // Server code raised for this component (#94). The connection lives on.
+        const { id, during, ref } = payload;
+        // The event is over: its answer will not come as a render, and the
+        // fields it came from keep what the user typed.
+        if (typeof ref === "number") boost.valueGuard.answer(ref);
+        const target = this.components[id];
+        const element = document.getElementById(id);
+        target?.clearLoadingClasses();
+        if (during === "event" && target && element) {
+          // The instance that raised is gone. The element still carries the
+          // state from before the event, so joining with it is the rollback.
+          target.rejoin();
+        } else if (element) {
+          // A join that failed is not retried: it would fail again. The page
+          // keeps what the server rendered, and the next connection tries.
+          delete this.components[id];
+          element.classList.add("wireview-error");
+        }
+        element?.dispatchEvent(
+          new CustomEvent("wireview:error", { bubbles: true, detail: { id, during } })
+        );
+        break;
+      }
       case "reload":
         // The server refused a signed state (expired, pre-envelope, or invalid)
         // and mounted nothing. Reloading re-renders the page with fresh tokens.
@@ -1105,21 +1129,7 @@ class WireviewComponent {
           this.viewportObserver.init();
           return;
         }
-        /** @type {Object<string, [string, string]>} */
-        let children = Array.from(
-          element.querySelectorAll("[wireview-component]")
-        ).reduce((acc, node) => {
-          const el = /** @type {HTMLElement} */ (node);
-          acc[el.id] = [el.dataset.name || "", el.dataset.state || ""];
-          return acc;
-        }, /** @type {Object<string, [string, string]>} */ ({}));
-
-        connection.sendJoin(
-          element.dataset.name || "",
-          element.id,
-          element.dataset.state || "",
-          children
-        );
+        this.sendJoin(element);
 
         // Initialize hooks after joining
         this.hookManager.init();
@@ -1128,6 +1138,48 @@ class WireviewComponent {
         this.viewportObserver.init();
       }
     }
+  }
+
+  /**
+   * Joins this component again after the server discarded it (`error` during
+   * an event, #94). The element and its hooks stay; only the render state is
+   * dropped, since the join's answer is a full render.
+   */
+  rejoin() {
+    const element = /** @type {HTMLElement|null} */ (this.getElemenet());
+    if (!element) return;
+    // A render that arrived before the error may still wait for its frame;
+    // its state is the one to join with.
+    this.morphNow();
+    this.static = null;
+    this.dynamic = [];
+    this.fingerprint = null;
+    this.legacyHtml = null;
+    this.sendJoin(element);
+  }
+
+  /**
+   * Sends a join with the element's signed state and its nested components'.
+   * @param {HTMLElement} element
+   */
+  sendJoin(element) {
+    // A join that failed before is tried again on a new connection
+    element.classList.remove("wireview-error");
+    /** @type {Object<string, [string, string]>} */
+    let children = Array.from(
+      element.querySelectorAll("[wireview-component]")
+    ).reduce((acc, node) => {
+      const el = /** @type {HTMLElement} */ (node);
+      acc[el.id] = [el.dataset.name || "", el.dataset.state || ""];
+      return acc;
+    }, /** @type {Object<string, [string, string]>} */ ({}));
+
+    connection.sendJoin(
+      element.dataset.name || "",
+      element.id,
+      element.dataset.state || "",
+      children
+    );
   }
 
   /**

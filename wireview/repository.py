@@ -25,6 +25,15 @@ ChildrenRepo = dict[str, tuple[str, dict[str, t.Any]]]
 
 log = logging.getLogger("wireview")
 
+
+class InvalidEvent(ValueError):
+    """An event names something that is not one of the component's handlers.
+
+    No handler ran, so the component is as it was: the connection answers with
+    a log line, not the crash recovery a raising handler gets (#94).
+    """
+
+
 # Packages whose classes are framework surface, never client-callable handlers.
 _FRAMEWORK_ROOTS = ("wireview", "pydantic")
 
@@ -437,7 +446,7 @@ class ComponentRepository:
         # Security: Validate command name to prevent unauthorized method access
         # This replaces `assert` which can be disabled with `python -O`
         if not self._is_valid_event_handler(command):
-            raise ValueError(f"Invalid event handler: {command}")
+            raise InvalidEvent(f"Invalid event handler: {command}")
 
         component = self.components.get(id)
         if component is None:
@@ -445,15 +454,15 @@ class ComponentRepository:
 
         # Security: Verify the method exists and is callable
         if not hasattr(component, command):
-            raise ValueError(f"Unknown event handler: {command}")
+            raise InvalidEvent(f"Unknown event handler: {command}")
 
         handler = getattr(component, command)
         if not callable(handler):
-            raise ValueError(f"Event handler is not callable: {command}")
+            raise InvalidEvent(f"Event handler is not callable: {command}")
 
         # Security: Block methods defined on Component base class (Pydantic methods, etc.)
         if not self._is_user_defined_method(component, command):
-            raise ValueError(f"Cannot call base class method: {command}")
+            raise InvalidEvent(f"Cannot call base class method: {command}")
 
         # Handler methods are async (defined in Component subclasses)
         with telemetry.span(

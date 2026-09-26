@@ -45,6 +45,20 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
 
 ### Fixed
 
+- Server code that raises costs its component, not the connection (#94). A handler that
+  raised used to escape the consumer and close the socket, so the page reconnected and
+  joined every component again. Now the component that raised is discarded (`leaving()`
+  runs) and the client joins it again from the state its element carries, which is the
+  state before the event: what the handler changed before raising is gone, the button it
+  disabled comes back, and the other components and the socket carry on. The same holds for
+  broadcast receivers, `params_changed`, hook events, upload callbacks, a LiveComponent's
+  `update()` (its root joins again) and rendering. A join that fails (mount, an `on_mount`
+  hook, `joined()`) is no longer answered with `remove`: the element keeps what the page
+  rendered and gets `wireview-error`, without a retry. Both dispatch a bubbling
+  `wireview:error` event. A message no client sends (an unknown command, a payload that
+  does not fit) and an event naming no handler are logged and dropped instead of closing
+  the socket. The new outbound `error` is protocol version 4; an older bundle gets the old
+  behaviour. `docs/features/errors.md`.
 - What the user types is no longer erased by a render that is not about it (#91). A morph
   copied the server's value into every input, so a field the server does not render (or has
   not heard from yet) was reset to empty by any render: another field's debounced event, a

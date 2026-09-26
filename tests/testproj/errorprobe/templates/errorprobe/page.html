@@ -1,0 +1,14 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>error probe</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    {% component 'ErrorBox' id="box" %}
+    {% component 'ErrorBox' id="other" %}
+    {% component 'ErrorJoin' id="broken" %}
+  </body>
+</html>

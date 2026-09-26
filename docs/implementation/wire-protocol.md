@@ -20,7 +20,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 | (3) session mail | `{"type": "message_from_component", "command": str, "kwargs": {...}}` | `Broker.send_to_session` → `WireviewConsumer.message_from_component` → `component_<command>(**kwargs)` |
 | (4) fan-out | `{"type": <아래 표>, "channel": str, ...}` | `Broker.publish` → 컨슈머의 `type` 핸들러 |
 
-브라우저는 `/__wireview__?vsn=<n>`으로 연결한다. `vsn`은 클라이언트가 적용할 수 있는 diff 형태의 버전이고(현재 2, `PROTOCOL_VERSION`), 서버는 그보다 새 형태를 보내지 않는다. 없거나 잘못된 값(정수 아님, 음수, 여러 번)은 0으로 읽는다. 규칙은 7절에 있다.
+브라우저는 `/__wireview__?vsn=<n>`으로 연결한다. `vsn`은 클라이언트가 적용할 수 있는 형태의 버전이고(`PROTOCOL_VERSION`, 번호별 내용은 7절의 표), 서버는 그보다 새 형태를 보내지 않는다. 없거나 잘못된 값(정수 아님, 음수, 여러 번)은 0으로 읽는다. 규칙은 7절에 있다.
 
 세션 식별자는 Channels에서 `channel_name`이다. 토픽은 채널 레이어 그룹 이름이다. 다른 연결 계층은 `Outbound`와 `Broker` 두 인터페이스만 구현하면 된다.
 
@@ -38,12 +38,17 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 | `upload_cancel` | `id`, `name`, `ref` | 항목 취소 |
 | `upload_complete` | `id`, `name`, `ref` | 항목 완료 처리 |
 
+표에 없는 command, 또는 payload가 그 명령의 인자와 맞지 않는 메시지는 WARNING 로그를 남기고 버린다. 연결은 닫지 않는다(#94). 전에는 예외가 컨슈머 밖으로 나가 소켓이 닫혔고, 한 릴리스 어긋난 번들이 그런 메시지를 보낼 때마다 페이지의 모든 컴포넌트가 다시 join했다.
+
+`user_event`의 `id`가 이 연결에 등록된 컴포넌트가 아니면(모르는 id, 경계가 거절한 id, 이미 떠난 id) 아무것도 보내지 않는다. `command`가 핸들러가 아니면(밑줄로 시작, 없는 이름, 프레임워크 메서드) 아무것도 호출하지 않고 `diff: null`인 render로 답한다. 로딩 상태를 풀고 `ref`를 정리하게 하기 위해서다.
+
 ## 3. Outbound (세션 → 브라우저)
 
 | command | payload |
 |---------|---------|
 | `render` | `id`, `diff`, `children?`, `ref?`, `vsn?` — `ref`는 이 render가 답하는 `user_event`의 것, `vsn`은 join에 답하는 render에만 실리는 서버의 프로토콜 버전이다. `diff`는 전체 `{"s", "d", "f"}` 또는 부분 `{"<index>": value}`, 또는 자식만 바뀌었거나 사용자 이벤트가 아무것도 바꾸지 않았을 때 `null`(후자는 이벤트가 끝났다는 알림이라 클라이언트가 로딩 상태를 지운다). value는 문자열, comprehension `{"s", "d"}`, 항목 갱신 `{"u", "n"}`, 항목 재배열 `{"k": [[시작, 길이] \| {"d": [...]}, ...]}`(`vsn` 2 이상에만), 블록 `{"r", "d"}`, 블록 부분 갱신 `{"p"}`, LiveComponent 참조 `{"c": id}` ([html-diff](../features/html-diff.md)). `children`은 이 렌더와 함께 렌더된 LiveComponent들의 `{id: diff}` 평면 맵이다(손자식 포함). 클라이언트는 DOM을 건드리기 전에 이들을 먼저 등록하고, 부모 HTML을 만들 때 참조 자리에 자식의 현재 HTML을 넣는다 |
 | `remove` | `id` |
+| `error` | `id`, `during` (`event` 또는 `join`), `ref?` — 서버 코드가 이 컴포넌트를 처리하다 예외를 던졌다(#94). `vsn` 4 이상의 클라이언트에만 보낸다. `event`: 핸들러, 브로드캐스트 수신, `params_changed`, 훅 이벤트, 업로드 콜백, LiveComponent `update()`, 렌더 중 하나가 던졌다. 서버는 인스턴스를 버렸고(`leaving()`을 부른다), `id`는 루트 컴포넌트다(LiveComponent가 던졌으면 그 루트). 클라이언트는 렌더 상태를 비우고 요소의 `data-state`로 다시 join한다. 그 상태는 이벤트 전의 것이라 핸들러가 던지기 전에 바꾼 값은 남지 않는다. `ref`는 그 이벤트의 것이고, 답이 render로 오지 않으므로 클라이언트는 여기서 정리한다. `join`: join이 첫 렌더까지 가지 못했다. 다시 시도하지 않고, 클라이언트는 요소를 그대로 둔 채 `wireview-error` 클래스를 붙이고 컴포넌트 등록에서 뺀다. 두 경우 모두 요소에서 버블링되는 `wireview:error` 이벤트(`detail: {id, during}`)를 보낸다. `vsn` 3 이하 클라이언트에는 `event`면 소켓을 코드 1011로 닫고(전부 다시 join), `join`이면 `remove`를 보낸다 — 둘 다 이전의 동작이다 |
 | `reload` | `id` (알 수 없으면 `null`), `reason` (`expired`, `legacy`, `invalid`, `live_session`) — join의 루트 서명 상태를 쓸 수 없어 아무것도 마운트하지 않았다. 클라이언트는 전체 페이지 로드로 복구하며, 30초 안에 두 번 반복되면 `sessionStorage["wireview:last-reload"]` 가드가 막고 경고만 남긴다 |
 | `append`, `prepend`, `insert_after`, `insert_before`, `replace_with` | `id`, `html` |
 | `stream_op` | `op`, `stream`, `items`, `at` |
@@ -116,11 +121,13 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 | 1 | 없음(번호만 비워 둔다) |
 | 2 | 항목 재배열 `{"k"}` (GAP-030) |
 | 3 | `user_event`의 `ref`와 그것을 돌려주는 render의 `ref`, join 응답의 `vsn` (#92) |
+| 4 | outbound `error` (#94) |
 
 `vsn` 3은 방향이 반대인 첫 기능이다. `ref`는 클라이언트가 서버로 보내는 필드라, 옛 서버(모르는 인자에 TypeError)에 보내면 안 된다. 그래서 서버가 먼저 join 응답의 `vsn`으로 자기 버전을 알리고, 클라이언트는 그 연결에서만 `ref`를 싣는다. 옛 클라이언트는 render의 모르는 필드를 무시한다.
 
 구버전이 섞이면: 옛 클라이언트와 새 서버는 옛 클라이언트가 `vsn`을 보내지 않으므로 지금까지와 바이트까지 같은 메시지를 받는다. 새 클라이언트와 옛 서버는 옛 서버가 `vsn`을 읽지 않고 옛 형태만 보내며, 새 클라이언트는 그것을 그대로 읽는다. 버전 신호가 없었다면 옛 클라이언트는 `{"k"}`를 모르는 값으로 슬롯에 넣고 `[object Object]`를 그렸을 것이다 — 롤링 배포 중 옛 JS로 열린 페이지가 새 서버에 재연결하는 흔한 경우다.
 
+- 2026-09-26: `vsn` 4. outbound `error`. 표에 없는 inbound 메시지와 핸들러가 아닌 `user_event`는 연결을 닫지 않는다 (#94).
 - 2026-09-19: `vsn` 3. `user_event`의 `ref`, render의 `ref`와 `vsn` (#92).
 - 2026-09-19: 사용자 이벤트가 아무것도 바꾸지 않아도 `render`(`diff: null`)를 보낸다. `upload_op config`에 `id` (#90). 둘 다 옛 클라이언트가 이미 읽는 모양이라 `vsn`을 올리지 않는다.
 - 2026-09-19: 연결 URL의 `vsn`과 위의 규칙. `render` 부분 diff 값에 항목 재배열 `{"k"}` 추가, 세션 상태에 프로토콜 버전 (GAP-030, #69).

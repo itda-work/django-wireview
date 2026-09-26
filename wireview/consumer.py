@@ -1,3 +1,4 @@
+import inspect
 import logging
 import secrets
 import typing as t
@@ -14,14 +15,14 @@ from wireview.component import Component
 
 from . import serializer
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
-from .core.rendered import PROTOCOL_VERSION, protocol_version
+from .core.rendered import ERRORS_SINCE, PROTOCOL_VERSION, protocol_version
 from .core.session import SessionView, load_session
 from .core.state import LegacyState, StateMismatch, StatePayload, unsign_envelope
 from .core.transport import NO_CHANNEL_LAYER, ChannelsOutbound, Outbound
 from .features import upload_store
 from .features.uploads import upload_group_name
 from .live_component import LiveComponent
-from .repository import ComponentRepository
+from .repository import ComponentRepository, InvalidEvent
 from .utils import parse_request_data
 
 log = logging.getLogger("wireview")
@@ -56,6 +57,11 @@ def _reload_payload(name: str, error: BadSignature) -> dict[str, t.Any]:
         return {"id": error.component_id or None, "reason": "invalid"}
     log.warning("JOIN %s rejected: %s", name, error)
     return {"id": None, "reason": "invalid"}
+
+
+def _event_ref(ref: t.Any) -> int | None:
+    """The ``ref`` of a user event if it is one the client can pair, else ``None``."""
+    return ref if isinstance(ref, int) and not isinstance(ref, bool) else None
 
 
 class WireviewConsumer(AsyncJsonWebsocketConsumer):
@@ -153,7 +159,72 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
     # Fronted commands
 
     async def receive_json(self, content: dict, **kwargs) -> None:  # type: ignore[override]
-        await getattr(self, f"command_{content['command']}")(**content["payload"])
+        # A message no client of ours sends -- an unknown command, a payload
+        # that does not fit it -- is logged and dropped. It used to raise out of
+        # the consumer and close the socket, so a cached bundle one release off
+        # reloaded every component on the page for each such message (#94).
+        command = content.get("command") if isinstance(content, dict) else None
+        payload = content.get("payload") if isinstance(content, dict) else None
+        handler = (
+            getattr(self, f"command_{command}", None) if isinstance(command, str) and command.isidentifier() else None
+        )
+        if handler is None or not isinstance(payload, dict):
+            log.warning("Ignoring a message with no known command: %r", str(content)[:200])
+            return
+        try:
+            inspect.signature(handler).bind(**payload)
+        except TypeError as e:
+            log.warning("Ignoring %s with a payload that does not fit it: %s", command, e)
+            return
+        await handler(**payload)
+
+    async def _crashed(self, component: Component, ref: t.Any = None) -> None:
+        """Recover from user code that raised while handling ``component``.
+
+        Call from an ``except`` block. The instance is discarded -- whatever the
+        code changed before raising is not trusted -- and the client joins the
+        component again from the state its element still carries, which is the
+        state before the event. The connection and every other component on it
+        carry on. A LiveComponent has no join of its own, so its root is the one
+        joined again, with the whole tree under it.
+
+        A client older than ``error`` gets what every client used to get: the
+        socket closes and it joins everything again.
+        """
+        log.exception("%s (%s) raised; joining it again from its last rendered state", component._name, component.id)
+        root = component
+        while isinstance(root, LiveComponent) and (parent := self.repo.get(root._parent_id or "")) is not None:
+            root = parent
+        removed = self.repo.remove(root.id)
+        await self._call_leaving(removed)
+        self._release_uploads(removed)
+        if self.repo.vsn < ERRORS_SINCE:
+            await self.close(code=1011)
+            return
+        payload: dict[str, t.Any] = {"id": root.id, "during": "event"}
+        if (answer := _event_ref(ref)) is not None:
+            payload["ref"] = answer
+        await self.send_command("error", payload)
+        await self.after_mutation_chores()
+
+    async def _join_failed(self, id: str) -> None:
+        """Tell the client a component could not join. Call from an ``except`` block.
+
+        It is not retried: a mount that raises raises again, and joining again
+        on every render of the page would be a loop. The element stays as the
+        page rendered it, marked, and joins again on the next connection.
+        """
+        log.exception("Could not join %s", id or "<no id>")
+        if not id:
+            return
+        # Whatever got as far as the repository goes, so no event reaches it.
+        removed = self.repo.remove(id)
+        await self._call_leaving(removed)
+        self._release_uploads(removed)
+        if self.repo.vsn < ERRORS_SINCE:
+            await self.component_remove(id)
+            return
+        await self.send_command("error", {"id": id, "during": "join"})
 
     async def command_join(
         self,
@@ -221,11 +292,6 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
                 decoded_state,
                 children=decoded_children,
             )
-        except Exception as e:
-            log.exception(e)
-            if id := decoded_state.get("id"):
-                await self.component_remove(id)
-        else:
             if component.wire.mount_halted:
                 # The boundary refused it. Nothing of the component goes out: no
                 # render, no signed state. Whatever the hook queued (a redirect to
@@ -250,6 +316,10 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             # has joined the group it expects to hear it on.
             await self.after_mutation_chores()
             await component.wire.flush_pending()
+        except Exception:
+            # Everything up to the first render counts as the join: a failure
+            # here is not retried, where a handler's is (#94).
+            await self._join_failed(component_id or "")
 
     async def _enter_live_session(self, payload: StatePayload) -> str:
         """Settle which ``live_session`` this connection is in, for one join.
@@ -491,8 +561,14 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
 
         # Call params_changed on all live components and re-render
         for component in list(self.repo.components.values()):
-            await component.params_changed(params, uri)
-            await self.send_render(component)
+            if self.repo.get(component.id) is not component:
+                # Went with an ancestor that raised earlier in this loop
+                continue
+            try:
+                await component.params_changed(params, uri)
+                await self.send_render(component)
+            except Exception:
+                await self._crashed(component)
 
         await self.after_mutation_chores()
 
@@ -505,14 +581,27 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
     async def command_user_event(self, id, command, implicit_args, explicit_args, ref=None):
         kwargs = dict(parse_request_data(MultiValueDict(implicit_args)), **explicit_args)
         log.debug(f"<<< USER-EVENT {id} {command} {kwargs}")
-        component = await self.repo.dispatch_event(id, command, [], kwargs)
-        if component:
-            # The ref comes back on the render that answers this event: the
-            # client reads it to know which of its fields the answer may reset
-            # (#92). Only an integer; anything else is dropped rather than echoed.
-            answer = ref if isinstance(ref, int) and not isinstance(ref, bool) else None
+        # The ref comes back on the render that answers this event: the client
+        # reads it to know which of its fields the answer may reset (#92). Only
+        # an integer; anything else is dropped rather than echoed.
+        answer = _event_ref(ref)
+        component = self.repo.get(id)
+        if component is None:
+            # Unknown, refused or already gone: nothing is sent, not even an
+            # empty answer (tests/test_live_session_contract.py).
+            return
+        try:
+            await self.repo.dispatch_event(id, command, [], kwargs)
             await self.send_render(component, acknowledge=True, ref=answer)
-            await self.after_mutation_chores()
+        except InvalidEvent as e:
+            # No handler ran. The answer still goes out, so the client clears
+            # the loading state the event started and settles its ref.
+            log.warning("Ignoring user_event for %s: %s", id, e)
+            await self.send_render(component, acknowledge=True, ref=answer)
+        except Exception:
+            await self._crashed(component, ref)
+            return
+        await self.after_mutation_chores()
 
     async def command_hook_event(
         self,
@@ -536,15 +625,19 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         if not component:
             return
 
-        # Call the component's hook event handler
-        response = await component.handle_hook_event(hook_id, event, payload)
+        try:
+            # Call the component's hook event handler
+            response = await component.handle_hook_event(hook_id, event, payload)
 
-        # Send reply if ref was provided (callback expected)
-        if ref is not None:
-            await self.send_command("hook_reply", {"ref": ref, "response": response})
+            # Send reply if ref was provided (callback expected)
+            if ref is not None:
+                await self.send_command("hook_reply", {"ref": ref, "response": response})
 
-        # Re-render component if state may have changed
-        await self.send_render(component)
+            # Re-render component if state may have changed
+            await self.send_render(component)
+        except Exception:
+            await self._crashed(component)
+            return
         await self.after_mutation_chores()
 
     # Upload commands
@@ -655,8 +748,11 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
 
         component = self.repo.get(id)
         if component:
-            await component.cancel_upload(name, ref)
-            await self.send_render(component)
+            try:
+                await component.cancel_upload(name, ref)
+                await self.send_render(component)
+            except Exception:
+                await self._crashed(component)
 
     async def command_upload_complete(self, id: str, name: str, ref: str):
         """Handle upload completion notification from client.
@@ -707,13 +803,16 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             ).to_payload(),
         )
 
-        # Call optional callback on component
-        if hasattr(component, "on_upload_complete"):
-            callback = getattr(component, "on_upload_complete")
-            await callback(name, entry)
+        try:
+            # Call optional callback on component
+            if hasattr(component, "on_upload_complete"):
+                callback = getattr(component, "on_upload_complete")
+                await callback(name, entry)
 
-        # Re-render
-        await self.send_render(component)
+            # Re-render
+            await self.send_render(component)
+        except Exception:
+            await self._crashed(component)
 
     # Component commands
 
@@ -722,9 +821,19 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
 
     async def component_dispatch_event(self, id, command, args, kwargs):
         log.debug(f"<<< EVENT {id} {command} {args} {kwargs}")
-        component = await self.repo.dispatch_event(id, command, args, kwargs)
-        if component is not None:
-            await self.send_render(component)
+        target = self.repo.get(id)
+        try:
+            component = await self.repo.dispatch_event(id, command, args, kwargs)
+            if component is not None:
+                await self.send_render(component)
+        except InvalidEvent as e:
+            log.warning("Ignoring event for %s: %s", id, e)
+        except Exception:
+            if target is None:
+                log.exception("Event for %s raised with no component to recover", id)
+            else:
+                await self._crashed(target)
+                return
         await self.after_mutation_chores()
 
     async def component_remove(self, id):
@@ -734,7 +843,10 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
     async def component_send_render(self, id):
         log.debug(f">>> SEND-RENDER {id}")
         if component := self.repo.get(id):
-            await self.send_render(component)
+            try:
+                await self.send_render(component)
+            except Exception:
+                await self._crashed(component)
 
     async def component_dom_action(self, action, id, html):
         log.debug(f">>> DOM {action.upper()} {id}")
@@ -835,11 +947,14 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             )
             return
 
-        # Call update callback
-        await component.update(**assigns)
+        try:
+            # Call update callback
+            await component.update(**assigns)
 
-        # Re-render the LiveComponent
-        await self.send_render(component)
+            # Re-render the LiveComponent
+            await self.send_render(component)
+        except Exception:
+            await self._crashed(component)
 
     # Channel layer messages for uploads
     #
@@ -1019,8 +1134,14 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
 
     async def _dispatch_notifications(self, receiver: str, channel: str, kwargs: dict[str, t.Any]):
         for component in self.repo.components_subscribed_to(channel):
-            await getattr(component, receiver)(channel, **kwargs)
-            await self.send_render(component)
+            if self.repo.get(component.id) is not component:
+                # Went with an ancestor that raised earlier in this loop
+                continue
+            try:
+                await getattr(component, receiver)(channel, **kwargs)
+                await self.send_render(component)
+            except Exception:
+                await self._crashed(component)
         await self.after_mutation_chores()
 
     # Reply to front-end

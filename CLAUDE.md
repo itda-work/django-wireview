@@ -94,7 +94,8 @@ tests/
                            livesession/ 은 경계 넘는 이동 E2E(test_live_session_e2e.py)의 픽스처다,
                            listprobe/ 는 항목 재배열 diff 를 옛 형태와 비교하는 E2E(test_comprehension_moves_e2e.py)의 픽스처,
                            cspprobe/ 는 인라인 허용 없는 CSP 아래 모든 바인딩 모양과 브라우저 업로드를 도는 E2E(test_csp_e2e.py)의 픽스처,
-                           valueprobe/ 는 렌더가 입력 중인 값을 지우지 않는지 보는 E2E(test_input_values_e2e.py)의 픽스처다
+                           valueprobe/ 는 렌더가 입력 중인 값을 지우지 않는지 보는 E2E(test_input_values_e2e.py)의 픽스처,
+                           errorprobe/ 는 예외를 던지는 핸들러와 join을 보는 E2E(test_errors_e2e.py)의 픽스처다
 
 examples/                  예제 앱 11개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.
                            testproj 위에서 돌고 make test가 함께 실행한다(pytest tests examples).
@@ -181,6 +182,10 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
   (`@session.view`), 한 페이지·한 연결에 하나다. `authorize` 술어는 뷰(첫 바이트 전)와
   join(마운트 전) 두 곳에서 도는 **같은 함수**여야 한다 — 둘을 따로 두면 조용히 어긋난다.
   `_live_sessions`를 선언한 컴포넌트는 경계가 없는 페이지에서도 거절된다.
+- **컴포넌트 코드를 부르는 새 경로는 예외를 `_crashed`로 받는다.** 핸들러·수신자·콜백의 예외가 컨슈머 밖으로 나가면
+  소켓이 닫히고 페이지 전체가 다시 join한다. 컨슈머의 `_crashed(component, ref)`가 그 컴포넌트만 버리고 클라이언트에
+  `error`를 보내 이벤트 전 상태로 다시 join하게 한다. join 단계의 예외는 `_join_failed`(재시도 없음 — 재시도하면 루프다).
+  클라이언트가 보내지 않는 메시지는 `receive_json`이 로그 후 버린다. 계약은 `docs/features/errors.md`, 테스트는 tests/test_errors.py(#94).
 - **mount가 halt하거나 예외를 던지면 아무것도 렌더되지 않는다** (#58부터). 컴포넌트는 저장소에서도
   지워지므로 그 id로 오는 이벤트도 처리되지 않는다. 렌더를 보내는 새 경로를 만들 때
   `wire.mount_halted`를 건너뛰면 가드가 막으려던 HTML과 `data-state`가 그대로 나간다. 예외를

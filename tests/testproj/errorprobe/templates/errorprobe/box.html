@@ -1,0 +1,10 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <span data-testid="{{ this.id }}-count">{{ this.count }}</span>
+  <button data-testid="{{ this.id }}-bump" {% on "click" "bump" %}>bump</button>
+  <button data-testid="{{ this.id }}-raise"
+          wire-disabled-with="working"
+          {% on "click" "bump_then_raise" %}>raise</button>
+  <input data-testid="{{ this.id }}-draft" name="draft">
+</div>
