@@ -185,7 +185,7 @@ Pydantic이 소유한 이름은 오버라이드해도 노출되지 않는다.
 노출 목록을 직접 보고 싶으면 같은 헬퍼를 쓴다.
 
 ```python
-from wireview.checks import iter_exposed_handlers
+from wireview import iter_exposed_handlers
 from myapp.live import TodoList
 
 print([name for name, _ in iter_exposed_handlers(TodoList)])

@@ -14,6 +14,23 @@ The django-reactor era changelog (2.x) is preserved in
 `on<event>` handler, and only the new bundle understands it. `{% wireview_header %}` bumps the
 bundle's cache key; a page that serves the bundle some other way has to drop its cached copy.
 
+### Added
+
+- The public API is `wireview.__all__` and nothing else (#98). `docs/COMPATIBILITY.md` says
+  what is public and how it is retired. Names the documentation used to import from
+  submodules are exported: `PresenceMixin`, `PresenceTrackerMixin`, `PresenceConfig`,
+  `PresenceUser`, `PresenceState`, `UploadConfig`, `UploadEntry`, `ConsumedUpload`,
+  `AutoBroadcast`, `ModelAction`, `send_notification`, `asend_notification`,
+  `invalidate_authentication`, `get_function_component`, `list_function_components`,
+  `iter_exposed_handlers` and the `telemetry` module. Every example in the docs now imports
+  `from wireview`; tests/test_public_api.py keeps it that way.
+- `wireview.WireviewDeprecationWarning`, raised by everything on its way out.
+- `py.typed`, so type checkers read the package's annotations (#98).
+
+### Deprecated
+
+- `wireview.component`: import from `wireview` instead. It warns and is removed in 2.0.
+
 ### Changed
 
 - Event bindings no longer put script in the markup, so a Content Security Policy without
@@ -45,6 +62,10 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
 
 ### Fixed
 
+- `from wireview import function_component` could return a module (#98). The decorator's
+  submodule had the same name, and importing it (the template tags do) replaced the
+  package attribute with the module, so `@function_component` failed with "module is not
+  callable" in a running project. The submodule is now `function_components`.
 - A page that loses its connection no longer submits its forms natively (#97). While the
   socket was down a server binding did nothing, `.prevent` included, which is the rule for
   a page that was never live: Enter in a `submit.prevent` form reloaded the page and lost

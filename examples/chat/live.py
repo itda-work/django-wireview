@@ -9,14 +9,14 @@ This module demonstrates wireview's real-time communication patterns:
 - leaving() lifecycle hook for disconnect handling
 """
 
-from wireview.component import Component
-from wireview.features.presence import (
+from wireview import (
+    JS,
+    Component,
+    ModelAction,
     PresenceConfig,
     PresenceMixin,
     PresenceTrackerMixin,
 )
-from wireview.js import JS
-from wireview.schemas import ModelAction
 
 from .models import Message, Room
 

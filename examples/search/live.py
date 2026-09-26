@@ -11,8 +11,7 @@ This module demonstrates wireview's form and input handling patterns:
 
 from django.db.models import Q
 
-from wireview.component import Component
-from wireview.js import JS
+from wireview import JS, Component
 
 from .models import Book
 

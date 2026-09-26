@@ -2,7 +2,7 @@
 
 import pytest
 
-from wireview.component import Component
+from wireview import Component
 from wireview.testing import MockRepository, MockWireviewMeta
 
 # The render path crosses channels' ``database_sync_to_async``: see the note in

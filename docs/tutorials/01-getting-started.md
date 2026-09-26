@@ -119,7 +119,7 @@ myapp/
 `myapp/live.py` 파일을 생성합니다:
 
 ```python
-from wireview.component import Component
+from wireview import Component
 
 
 class XHello(Component):

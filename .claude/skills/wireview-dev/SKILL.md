@@ -149,7 +149,8 @@ PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflow
   `group_send`를 다른 모듈에 쓰면 `tests/test_transport.py`의 가드가 실패한다.
   fan-out은 `get_broker().publish`, 세션 메시지는 `WireviewMeta.send`.
 - **import.** 새 코드는 `from wireview import Component, LiveComponent, JS, mount`.
-  `wireview.component` 경로는 하위 호환용이다.
+  하위 모듈은 전부 내부다. 사용자에게 보이는 이름은 `wireview/__init__.py`의 `_EXPORTS`와 `__all__`에
+  함께 추가한다(`tests/test_public_api.py`, `docs/COMPATIBILITY.md`). `wireview.component`는 폐기 예정이다.
 - **JS.** `wireview/static/wireview/wireview.js`는 ES2020, 2칸 들여쓰기, JSDoc. 포매터는 없다.
   DOM 없이 검증 가능한 로직은 `wireview/static/wireview/rendered.mjs`처럼 순수 모듈로 빼고 `tests/js/`에 node 테스트를 둔다.
 - **pyright는 `tests/`를 검사하지 않고, `tsc`는 checkJs=false라 JS 본문을 검사하지 않는다.**

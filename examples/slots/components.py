@@ -1,6 +1,6 @@
 """Test components for slots functionality."""
 
-from wireview.component import Component
+from wireview import Component
 
 
 class Card(Component):

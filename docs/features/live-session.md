@@ -260,7 +260,7 @@ signed-cookie 세션은 서버에 아무 기록이 없다. Django 자신이
 시그널을 내지 않는다). 즉시 끊어야 한다면 직접 부른다.
 
 ```python
-from wireview.core.live_session import invalidate_authentication
+from wireview import invalidate_authentication
 
 user.is_staff = False
 user.save()

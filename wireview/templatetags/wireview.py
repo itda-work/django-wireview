@@ -10,14 +10,14 @@ from django.utils.html import escape, format_html, format_html_join
 from django.utils.safestring import mark_safe
 
 from .. import settings
-from ..component import Component
+from ..core.component import Component
 from ..core.live_session import REQUEST_ATTR as LIVE_SESSION_REQUEST_ATTR
 from ..core.live_session import declaration_allows, get_live_session
 from ..core.rendered import inject_marker
 from ..core.state import sign_state
 from ..event_transpiler import binding
 from ..features.hooks import hook_files
-from ..function_component import get_function_component
+from ..function_components import get_function_component
 from ..repository import ComponentRepository
 from ..slots import Slot, SlotContainer
 

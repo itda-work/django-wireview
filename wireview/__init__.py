@@ -1,148 +1,166 @@
-# Lazy imports to avoid Django AppRegistryNotReady errors
-# Import these at module level only after Django is configured
+"""django-wireview's public API.
+
+Everything a project imports comes from here: ``from wireview import
+Component``. The submodules are implementation, free to move between minor
+releases; only the names in ``__all__`` are covered by the compatibility
+policy (docs/COMPATIBILITY.md, #98). tests/test_public_api.py keeps
+``__all__``, this table and the documentation in step.
+
+The names load lazily: importing ``wireview`` must not import Django models
+before the app registry is ready.
+"""
+
 from __future__ import annotations
 
+import importlib
 import typing as t
 
 # Type hints for lazy imports (helps IDE and type checkers)
 if t.TYPE_CHECKING:
+    from . import telemetry as telemetry
     from .async_result import AsyncResult as AsyncResult
     from .async_result import AsyncState as AsyncState
+    from .checks import iter_exposed_handlers as iter_exposed_handlers
     from .core.component import Component as Component
     from .core.component import ComponentNotFound as ComponentNotFound
     from .core.component import abroadcast as abroadcast
     from .core.component import broadcast as broadcast
     from .core.live_session import LiveSession as LiveSession
     from .core.live_session import LiveSessionContext as LiveSessionContext
+    from .core.live_session import invalidate_authentication as invalidate_authentication
     from .core.live_session import live_session as live_session
     from .core.meta import WireviewMeta as WireviewMeta
     from .core.session import SessionView as SessionView
+    from .deprecation import WireviewDeprecationWarning as WireviewDeprecationWarning
+    from .features.presence import PresenceConfig as PresenceConfig
+    from .features.presence import PresenceMixin as PresenceMixin
+    from .features.presence import PresenceState as PresenceState
+    from .features.presence import PresenceTrackerMixin as PresenceTrackerMixin
+    from .features.presence import PresenceUser as PresenceUser
+    from .features.uploads import ConsumedUpload as ConsumedUpload
     from .features.uploads import ExternalUploadMeta as ExternalUploadMeta
-    from .function_component import FunctionComponent as FunctionComponent
-    from .function_component import function_component as function_component
+    from .features.uploads import UploadConfig as UploadConfig
+    from .features.uploads import UploadEntry as UploadEntry
+    from .function_components import FunctionComponent as FunctionComponent
+    from .function_components import function_component as function_component
+    from .function_components import get_function_component as get_function_component
+    from .function_components import list_function_components as list_function_components
     from .js import JS as JS
     from .live_component import LiveComponent as LiveComponent
+    from .schemas import AutoBroadcast as AutoBroadcast
+    from .schemas import ModelAction as ModelAction
     from .testing import ComponentTestCase as ComponentTestCase
     from .testing import MountedComponent as MountedComponent
     from .testing import Navigation as Navigation
     from .testing import mount as mount
+    from .utils import asend_notification as asend_notification
+    from .utils import send_notification as send_notification
 
+#: Public name -> the module that defines it. A name that is its module's own
+#: name exports the module: ``telemetry`` is a namespace of signals.
+_EXPORTS: dict[str, str] = {
+    # Components
+    "Component": ".core.component",
+    "ComponentNotFound": ".core.component",
+    "LiveComponent": ".live_component",
+    "function_component": ".function_components",
+    "FunctionComponent": ".function_components",
+    "get_function_component": ".function_components",
+    "list_function_components": ".function_components",
+    "WireviewMeta": ".core.meta",
+    "SessionView": ".core.session",
+    "JS": ".js",
+    # Page boundaries
+    "live_session": ".core.live_session",
+    "LiveSession": ".core.live_session",
+    "LiveSessionContext": ".core.live_session",
+    "invalidate_authentication": ".core.live_session",
+    # Broadcasts and notifications
+    "broadcast": ".core.component",
+    "abroadcast": ".core.component",
+    "send_notification": ".utils",
+    "asend_notification": ".utils",
+    "AutoBroadcast": ".schemas",
+    "ModelAction": ".schemas",
+    # Presence
+    "PresenceMixin": ".features.presence",
+    "PresenceTrackerMixin": ".features.presence",
+    "PresenceConfig": ".features.presence",
+    "PresenceUser": ".features.presence",
+    "PresenceState": ".features.presence",
+    # Uploads
+    "UploadConfig": ".features.uploads",
+    "UploadEntry": ".features.uploads",
+    "ConsumedUpload": ".features.uploads",
+    "ExternalUploadMeta": ".features.uploads",
+    # Async
+    "AsyncResult": ".async_result",
+    "AsyncState": ".async_result",
+    # Testing
+    "mount": ".testing",
+    "MountedComponent": ".testing",
+    "Navigation": ".testing",
+    "ComponentTestCase": ".testing",
+    # Tooling
+    "iter_exposed_handlers": ".checks",
+    "telemetry": ".telemetry",
+    "WireviewDeprecationWarning": ".deprecation",
+}
 
-def __getattr__(name: str) -> t.Any:
-    """Lazy import to avoid circular import issues with Django."""
-    if name == "Component":
-        from .core.component import Component
-
-        return Component
-    if name == "ComponentNotFound":
-        from .core.component import ComponentNotFound
-
-        return ComponentNotFound
-    if name == "broadcast":
-        from .core.component import broadcast
-
-        return broadcast
-    if name == "abroadcast":
-        from .core.component import abroadcast
-
-        return abroadcast
-    if name == "WireviewMeta":
-        from .core.meta import WireviewMeta
-
-        return WireviewMeta
-    if name == "live_session":
-        from .core.live_session import live_session
-
-        return live_session
-    if name == "LiveSession":
-        from .core.live_session import LiveSession
-
-        return LiveSession
-    if name == "LiveSessionContext":
-        from .core.live_session import LiveSessionContext
-
-        return LiveSessionContext
-    if name == "SessionView":
-        from .core.session import SessionView
-
-        return SessionView
-    if name == "JS":
-        from .js import JS
-
-        return JS
-    # Testing utilities
-    if name == "mount":
-        from .testing import mount
-
-        return mount
-    if name == "MountedComponent":
-        from .testing import MountedComponent
-
-        return MountedComponent
-    if name == "Navigation":
-        from .testing import Navigation
-
-        return Navigation
-    if name == "ComponentTestCase":
-        from .testing import ComponentTestCase
-
-        return ComponentTestCase
-    # Async utilities
-    if name == "AsyncResult":
-        from .async_result import AsyncResult
-
-        return AsyncResult
-    if name == "AsyncState":
-        from .async_result import AsyncState
-
-        return AsyncState
-    # Function components
-    if name == "function_component":
-        from .function_component import function_component
-
-        return function_component
-    if name == "FunctionComponent":
-        from .function_component import FunctionComponent
-
-        return FunctionComponent
-    # Live components
-    if name == "LiveComponent":
-        from .live_component import LiveComponent
-
-        return LiveComponent
-    # Upload utilities
-    if name == "ExternalUploadMeta":
-        from .features.uploads import ExternalUploadMeta
-
-        return ExternalUploadMeta
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
+# Written out, not computed, so static checkers see it. tests/test_public_api.py
+# checks it against _EXPORTS.
 __all__ = (
     "Component",
     "ComponentNotFound",
-    "JS",
+    "LiveComponent",
+    "function_component",
+    "FunctionComponent",
+    "get_function_component",
+    "list_function_components",
     "WireviewMeta",
     "SessionView",
-    # Page boundaries
+    "JS",
     "live_session",
     "LiveSession",
     "LiveSessionContext",
+    "invalidate_authentication",
     "broadcast",
     "abroadcast",
-    # Function components
-    "function_component",
-    "FunctionComponent",
-    # Live components
-    "LiveComponent",
-    # Upload utilities
+    "send_notification",
+    "asend_notification",
+    "AutoBroadcast",
+    "ModelAction",
+    "PresenceMixin",
+    "PresenceTrackerMixin",
+    "PresenceConfig",
+    "PresenceUser",
+    "PresenceState",
+    "UploadConfig",
+    "UploadEntry",
+    "ConsumedUpload",
     "ExternalUploadMeta",
-    # Testing utilities
+    "AsyncResult",
+    "AsyncState",
     "mount",
     "MountedComponent",
     "Navigation",
     "ComponentTestCase",
-    # Async utilities
-    "AsyncResult",
-    "AsyncState",
+    "iter_exposed_handlers",
+    "telemetry",
+    "WireviewDeprecationWarning",
 )
+
+
+def __getattr__(name: str) -> t.Any:
+    """Load a public name on first use (see the module docstring)."""
+    module = _EXPORTS.get(name)
+    if module is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    loaded = importlib.import_module(module, __name__)
+    value = loaded if module == f".{name}" else getattr(loaded, name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted([*globals(), *__all__])

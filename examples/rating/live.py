@@ -9,8 +9,7 @@ This module demonstrates wireview's interactive UI patterns:
 - Model subscriptions for real-time updates
 """
 
-from wireview.component import Component
-from wireview.schemas import ModelAction
+from wireview import Component, ModelAction
 
 from .models import Product, Rating
 

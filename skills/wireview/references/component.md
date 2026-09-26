@@ -47,7 +47,7 @@ class XTodoList(Component):
 | `params_changed(params, uri)` | 브라우저 URL이 바뀜 (뒤로가기, `push_to`) |
 
 ```python
-from wireview.schemas import ModelAction
+from wireview import ModelAction
 
 class XTodoList(Component):
     _subscriptions = {"todo.item"}
@@ -98,7 +98,7 @@ class XTodoList(Component):
 컴포넌트 밖(뷰, 셀러리 태스크 등)에서는 모듈 함수를 쓴다.
 
 ```python
-from wireview import broadcast          # 동기 컨텍스트
+from wireview import broadcast
 broadcast("room.42", event="new_message")
 
 # 컴포넌트 안에서

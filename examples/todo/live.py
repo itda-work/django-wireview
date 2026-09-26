@@ -10,8 +10,7 @@ This module demonstrates wireview's core component patterns:
 
 from enum import StrEnum
 
-from wireview.component import Component
-from wireview.schemas import ModelAction
+from wireview import Component, ModelAction
 
 from .models import Item
 

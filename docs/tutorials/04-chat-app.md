@@ -88,7 +88,7 @@ Streams:
 `chat/live.py`:
 
 ```python
-from wireview.component import Component
+from wireview import Component
 from .models import Room, Message
 
 
@@ -185,9 +185,7 @@ class XMessageList(Component):
 ### 채팅방 컴포넌트 (Producer)
 
 ```python
-from wireview.component import Component
-from wireview.features.presence import PresenceMixin
-from wireview.js import JS
+from wireview import Component, PresenceMixin, JS
 from .models import Room, Message
 
 
@@ -240,7 +238,7 @@ class XChatRoom(PresenceMixin, Component):
 ### 온라인 사용자 컴포넌트 (Consumer)
 
 ```python
-from wireview.features.presence import PresenceTrackerMixin
+from wireview import PresenceTrackerMixin
 
 
 class XOnlineUsers(PresenceTrackerMixin, Component):
@@ -313,9 +311,7 @@ class XOnlineUsers(PresenceTrackerMixin, Component):
 ### 전체 live.py
 
 ```python
-from wireview.component import Component
-from wireview.features.presence import PresenceMixin, PresenceTrackerMixin
-from wireview.js import JS
+from wireview import Component, PresenceMixin, PresenceTrackerMixin, JS
 from .models import Room, Message
 
 

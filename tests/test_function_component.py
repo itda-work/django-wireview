@@ -3,7 +3,7 @@
 import pytest
 from django.template import Context, Template, TemplateSyntaxError
 
-from wireview.function_component import (
+from wireview.function_components import (
     FunctionComponent,
     _registry,
     function_component,

@@ -7,7 +7,7 @@ components, enabling:
 - Presence synchronization between users
 
 Example:
-    from wireview.component import Component
+    from wireview.core.component import Component
     from wireview.features.presence import PresenceMixin, PresenceTrackerMixin
 
     class ChatInput(PresenceMixin, Component):

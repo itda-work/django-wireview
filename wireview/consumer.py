@@ -11,7 +11,7 @@ from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.core.signing import BadSignature, SignatureExpired
 from django.utils.datastructures import MultiValueDict
 
-from wireview.component import Component
+from wireview.core.component import Component
 
 from . import serializer
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session

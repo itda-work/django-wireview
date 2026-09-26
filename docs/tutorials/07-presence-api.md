@@ -111,7 +111,7 @@ class XGlobalPresence(PresenceTrackerMixin, Component):
 ### 기본 설정
 
 ```python
-from wireview.features.presence import PresenceConfig
+from wireview import PresenceConfig
 
 class XChatInput(PresenceMixin, Component):
     _presence_config = PresenceConfig(

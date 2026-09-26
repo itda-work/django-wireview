@@ -75,7 +75,7 @@ class Submission(models.Model):
 `Submission` 모델 구독을 위해:
 
 ```python
-from wireview.settings import AutoBroadcast
+from wireview import AutoBroadcast
 
 WIREVIEW = {
     "AUTO_BROADCAST": AutoBroadcast(
@@ -92,8 +92,7 @@ WIREVIEW = {
 ```python
 from enum import StrEnum
 
-from wireview.component import Component
-from wireview.schemas import ModelAction
+from wireview import Component, ModelAction
 
 from .models import Choice, Quiz, Submission
 

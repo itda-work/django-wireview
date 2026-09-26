@@ -184,6 +184,11 @@ ci-build:
 	names = zipfile.ZipFile(w).namelist(); \
 	sys.exit(0) if any(n.endswith('wireview.min.js') for n in names) \
 	else sys.exit(f'{w} has no wireview.min.js - run npm run build before uv build')"
+	@# Without py.typed a type checker ignores the package's annotations (#98).
+	@python3 -c "import glob, sys, zipfile; \
+	w = sorted(glob.glob('dist/*.whl'))[-1]; \
+	sys.exit(0) if 'wireview/py.typed' in zipfile.ZipFile(w).namelist() \
+	else sys.exit(f'{w} has no wireview/py.typed')"
 	@echo "ci-build: wheel contains wireview.min.js"
 	@# And the agent skill, which `manage.py wireview_agent_setup` installs from the
 	@# package. It is force-included from a directory the sdist has to carry, and the

@@ -8,7 +8,7 @@ Quick Start
 
 1. 컴포넌트 클래스 정의 (components.py):
 
-    from wireview.component import Component
+    from wireview.core.component import Component
 
     class Card(Component):
         _template_name = "components/card.html"

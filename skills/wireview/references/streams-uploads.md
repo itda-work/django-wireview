@@ -45,7 +45,7 @@ class XChatRoom(Component):
 `PresenceMixin`(자기 상태를 알리는 쪽)과 `PresenceTrackerMixin`(모아서 보여주는 쪽)을 조합한다.
 
 ```python
-from wireview.features.presence import PresenceMixin
+from wireview import PresenceMixin
 
 class ChatInput(PresenceMixin, Component):
     def _presence_topic(self) -> str: return f"room:{self.room_id}"

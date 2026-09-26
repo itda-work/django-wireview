@@ -24,7 +24,7 @@ Slots는 컴포넌트에 콘텐츠를 유연하게 전달하는 기능입니다.
 
 ```python
 # myapp/components.py
-from wireview.component import Component
+from wireview import Component
 
 class Card(Component):
     _template_name = "myapp/card.html"

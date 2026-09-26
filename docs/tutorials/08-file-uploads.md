@@ -15,7 +15,7 @@
 ### UploadConfig 옵션
 
 ```python
-from wireview.features.uploads import UploadConfig
+from wireview import UploadConfig
 
 config = UploadConfig(
     name="avatar",              # 업로드 필드 식별자
@@ -62,8 +62,7 @@ gallery_config = UploadConfig(
 ### 기본 구조
 
 ```python
-from wireview.component import Component
-from wireview.features.uploads import UploadConfig
+from wireview import Component, UploadConfig
 
 
 class XFileUploader(Component):

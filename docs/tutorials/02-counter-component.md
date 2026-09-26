@@ -17,7 +17,7 @@
 `myapp/live.py`:
 
 ```python
-from wireview.component import Component
+from wireview import Component
 
 
 class XCounter(Component):
@@ -193,8 +193,7 @@ async def change_by(self, amount: int):
 ### 컴포넌트
 
 ```python
-from wireview.component import Component
-from wireview.core.meta import WireviewMeta
+from wireview import Component, WireviewMeta
 
 
 class XCounter(Component):
@@ -276,8 +275,7 @@ items = self.wire.params.get("items.json", [])
 ### 컴포넌트 (live.py)
 
 ```python
-from wireview.component import Component
-from wireview.core.meta import WireviewMeta
+from wireview import Component, WireviewMeta
 
 
 class XCounter(Component):

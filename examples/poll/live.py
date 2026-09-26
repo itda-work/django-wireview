@@ -9,8 +9,7 @@ This module demonstrates wireview's basic patterns:
 - CSS loading states (.wireview-loading)
 """
 
-from wireview.component import Component
-from wireview.schemas import ModelAction
+from wireview import Component, ModelAction
 
 from .models import Option, Poll
 

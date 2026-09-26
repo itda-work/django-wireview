@@ -56,7 +56,7 @@ python manage.py migrate
 `todo/live.py`:
 
 ```python
-from wireview.component import Component
+from wireview import Component
 from .models import Item
 
 
@@ -203,7 +203,7 @@ async def delete_item(self, item_id: int):
 ### 필터 상태 추가
 
 ```python
-from wireview.core.meta import WireviewMeta
+from wireview import WireviewMeta
 
 
 class XTodoList(Component):
@@ -307,7 +307,7 @@ class XTodoList(Component):
 `settings.py`:
 
 ```python
-from wireview.schemas import AutoBroadcast
+from wireview import AutoBroadcast
 
 WIREVIEW = {
     "AUTO_BROADCAST": AutoBroadcast(
@@ -320,7 +320,7 @@ WIREVIEW = {
 ### 구독 설정
 
 ```python
-from wireview.auto_broadcast import ModelAction
+from wireview import ModelAction
 
 
 class XTodoList(Component):
@@ -504,9 +504,7 @@ class XTodoList(Component):
 ### 최종 live.py
 
 ```python
-from wireview.component import Component
-from wireview.core.meta import WireviewMeta
-from wireview.auto_broadcast import ModelAction
+from wireview import Component, WireviewMeta, ModelAction
 from .models import Item
 
 

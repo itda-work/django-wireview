@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from wireview.component import Component
+from wireview import Component
 from wireview.management.commands.wireview_stubs import (
     ComponentStubInfo,
     FieldInfo,
@@ -403,7 +403,7 @@ class TestCollectImports:
         imports = _collect_imports(module_stubs)
         import_text = "\n".join(imports)
 
-        assert "from wireview.component import Component" in import_text
+        assert "from wireview import Component" in import_text
         assert "from typing import" in import_text
 
     def test_collect_classvar_import(self):
@@ -474,7 +474,7 @@ class TestGenerateStubContent:
 
         # Check imports
         assert "from typing import" in content
-        assert "from wireview.component import Component" in content
+        assert "from wireview import Component" in content
 
         # Check class
         assert "class TestComponent(Component):" in content

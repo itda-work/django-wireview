@@ -23,7 +23,7 @@ from enum import Enum
 
 import pytest
 
-from wireview.component import Component
+from wireview import Component
 from wireview.management.commands.wireview_stubs import (
     ModuleStubs,
     collect_components_by_module,
@@ -272,7 +272,7 @@ def test_a_class_without_a_docstring_does_not_inherit_the_base_ones():
 def test_a_component_named_any_does_not_clash_with_typing_any():
     namespace: dict = {}
     exec(  # noqa: S102 -- a class that must be literally named Any
-        "from wireview.component import Component\n"
+        "from wireview import Component\n"
         "class Any(Component, public=False):\n"
         "    _template_name = 'any.html'\n"
         "    value: int = 0\n"

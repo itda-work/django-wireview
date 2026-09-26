@@ -86,7 +86,7 @@ class XCounter(Component):
     _subscriptions = {"counter"}
 
 # wireview (동일한 API)
-from wireview.component import Component
+from wireview import Component
 
 class XCounter(Component):
     _subscriptions = {"counter"}
@@ -205,7 +205,7 @@ application = ProtocolTypeRouter({
 `live.py`에 컴포넌트를 생성하세요:
 
 ```python
-from wireview.component import Component
+from wireview import Component
 
 
 class XCounter(Component):
@@ -521,8 +521,7 @@ await self.stream_insert("messages", message, template="chat/special_message.htm
 자신의 프레즌스를 브로드캐스트하는 컴포넌트용:
 
 ```python
-from wireview.component import Component
-from wireview.features.presence import PresenceMixin
+from wireview import Component, PresenceMixin
 
 
 class ChatInput(PresenceMixin, Component):
@@ -554,7 +553,7 @@ class ChatInput(PresenceMixin, Component):
 다른 사용자의 프레즌스를 표시하는 컴포넌트용:
 
 ```python
-from wireview.features.presence import PresenceTrackerMixin
+from wireview import PresenceTrackerMixin
 
 
 class OnlineUsers(PresenceTrackerMixin, Component):
@@ -604,7 +603,7 @@ class OnlineUsers(PresenceTrackerMixin, Component):
 ### 설정
 
 ```python
-from wireview.features.presence import PresenceConfig
+from wireview import PresenceConfig
 
 class MyComponent(PresenceMixin, Component):
     _presence_config = PresenceConfig(
@@ -621,8 +620,7 @@ class MyComponent(PresenceMixin, Component):
 ### 기본 설정
 
 ```python
-from wireview.component import Component
-from wireview.features.uploads import UploadConfig
+from wireview import Component, UploadConfig
 
 
 class FileUploader(Component):
@@ -745,8 +743,6 @@ class Dashboard(Component):
 
 ```python
 from wireview import JS
-
-# 템플릿에서
 <button {% on "click" JS().toggle("#modal") %}>모달 토글</button>
 
 # 명령어 체이닝
@@ -1063,7 +1059,7 @@ WebSocket 없이 컴포넌트 테스트:
 
 ```python
 import pytest
-from wireview.testing import mount
+from wireview import mount
 
 
 @pytest.mark.asyncio
@@ -1119,7 +1115,7 @@ wireview.debug.component("rx-123")
 ## 설정
 
 ```python
-from wireview.schemas import AutoBroadcast
+from wireview import AutoBroadcast
 
 WIREVIEW = {
     "TRANSPILER_CACHE_SIZE": 1024,    # 이벤트 핸들러 캐시 크기

@@ -37,7 +37,7 @@ pip install pytest pytest-asyncio pytest-django
 
 ```python
 import pytest
-from wireview.testing import mount
+from wireview import mount
 from myapp.live import XCounter
 
 
@@ -366,7 +366,7 @@ async def test_typing_indicator():
 
 ```python
 import pytest
-from wireview.testing import mount
+from wireview import mount
 
 
 @pytest.fixture

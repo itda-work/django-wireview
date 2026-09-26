@@ -11,7 +11,7 @@ import asyncio
 
 import pytest
 
-from wireview.component import Component
+from wireview import Component
 from wireview.features.presence import (
     PresenceConfig,
     PresenceMixin,

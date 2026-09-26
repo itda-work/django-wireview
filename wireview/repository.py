@@ -11,7 +11,7 @@ from channels.layers import BaseChannelLayer
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 
 from . import telemetry
-from .component import Component, MessagePayload
+from .core.component import Component, MessagePayload
 from .core.session import SessionView
 from .core.state import StateMismatch
 from .live_component import LiveComponent

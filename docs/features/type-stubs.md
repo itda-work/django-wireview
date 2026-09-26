@@ -87,7 +87,7 @@ DO NOT EDIT - regenerate with: python manage.py wireview_stubs
 """
 
 from typing import Any, ClassVar
-from wireview.component import Component
+from wireview import Component
 
 class Counter(Component):
     """A simple counter component."""

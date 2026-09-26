@@ -22,7 +22,7 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandParser
 
-from wireview.component import Component
+from wireview.core.component import Component
 from wireview.event_transpiler import Modifiers
 
 

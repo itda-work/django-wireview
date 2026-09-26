@@ -35,7 +35,7 @@
 ### 2.1 JS 클래스
 
 ```python
-# wireview/features/js.py
+# wireview/js.py
 
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -932,7 +932,7 @@ class WireviewComponent {
 ```python
 # tests/test_js.py
 
-from wireview.features.js import JS
+from wireview import JS
 
 def test_js_show():
     js = JS().show("#modal")

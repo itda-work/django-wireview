@@ -69,8 +69,6 @@ AsyncResult는 비동기 작업의 상태를 추적합니다:
 
 ```python
 from wireview import AsyncResult
-
-# 상태
 result.loading  # 로딩 중
 result.ok       # 성공
 result.failed   # 실패
@@ -174,7 +172,7 @@ stat = AsyncResult.failure(exception)
 ### 탭 네비게이션
 
 ```python
-from wireview.core.meta import WireviewMeta
+from wireview import WireviewMeta
 
 
 class XDashboard(Component):
@@ -381,8 +379,6 @@ class XStatCard(Component):
 
 ```python
 from wireview import broadcast
-
-# 어디서든 브로드캐스트 가능
 async def update_stat(stat):
     await stat.asave()
     await broadcast(f"dashboard-stat.{stat.name}", action="updated", instance=stat)
@@ -393,9 +389,7 @@ async def update_stat(stat):
 ### 전체 live.py
 
 ```python
-from wireview import Component, AsyncResult
-from wireview.core.meta import WireviewMeta
-from wireview.auto_broadcast import ModelAction
+from wireview import Component, AsyncResult, WireviewMeta, ModelAction
 from .models import Stat, Activity
 import asyncio
 

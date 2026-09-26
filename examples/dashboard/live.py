@@ -11,9 +11,7 @@ This module demonstrates wireview's advanced patterns:
 
 import asyncio
 
-from wireview.async_result import AsyncResult
-from wireview.component import Component
-from wireview.schemas import ModelAction
+from wireview import AsyncResult, Component, ModelAction
 
 from .models import Activity, Stat
 

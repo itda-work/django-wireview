@@ -44,8 +44,7 @@ class Book(models.Model):
 ```python
 from django.db.models import Q
 
-from wireview.component import Component
-from wireview.js import JS
+from wireview import Component, JS
 
 from .models import Book
 
@@ -216,7 +215,7 @@ class XLiveSearch(Component):
 `push_js()`로 클라이언트에 JavaScript 명령을 보냅니다:
 
 ```python
-from wireview.js import JS
+from wireview import JS
 
 await self.push_js(
     JS()

@@ -29,9 +29,9 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandParser
 
-from wireview.component import Component
-from wireview.function_component import FunctionComponent
-from wireview.function_component import _registry as function_registry
+from wireview.core.component import Component
+from wireview.function_components import FunctionComponent
+from wireview.function_components import _registry as function_registry
 from wireview.live_component import LiveComponent
 
 # Reuse utilities from wireview_lsp
@@ -772,7 +772,7 @@ def _generate_class_stub(comp: ComponentStubInfo, types_: _StubTypes | None = No
         types_.bases.add("from wireview.live_component import LiveComponent")
     else:
         base_class = "Component"
-        types_.bases.add("from wireview.component import Component")
+        types_.bases.add("from wireview import Component")
     lines.append(f"class {comp.name}({base_class}):")
 
     # Docstring
@@ -835,7 +835,7 @@ def _generate_class_stub(comp: ComponentStubInfo, types_: _StubTypes | None = No
 def _generate_function_component_stub(comp: ComponentStubInfo, types_: _StubTypes | None = None) -> list[str]:
     """Generate stub for a FunctionComponent."""
     if types_ is not None:
-        types_.bases.add("from wireview.function_component import FunctionComponent")
+        types_.bases.add("from wireview import FunctionComponent")
     lines: list[str] = []
 
     # Variable declaration

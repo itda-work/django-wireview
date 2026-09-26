@@ -56,7 +56,7 @@ class Rating(models.Model):
 모델 구독을 위해 `settings.py`에 설정:
 
 ```python
-from wireview.settings import AutoBroadcast
+from wireview import AutoBroadcast
 
 WIREVIEW = {
     "AUTO_BROADCAST": AutoBroadcast(
@@ -71,8 +71,7 @@ WIREVIEW = {
 `rating/live.py`:
 
 ```python
-from wireview.component import Component
-from wireview.schemas import ModelAction
+from wireview import Component, ModelAction
 
 from .models import Product, Rating
 

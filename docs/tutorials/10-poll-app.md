@@ -60,7 +60,7 @@ class Option(models.Model):
 모델 변경을 자동으로 컴포넌트에 브로드캐스트하려면 `settings.py`에 설정이 필요합니다:
 
 ```python
-from wireview.settings import AutoBroadcast
+from wireview import AutoBroadcast
 
 WIREVIEW = {
     "AUTO_BROADCAST": AutoBroadcast(
@@ -77,8 +77,7 @@ WIREVIEW = {
 `poll/live.py`:
 
 ```python
-from wireview.component import Component
-from wireview.schemas import ModelAction
+from wireview import Component, ModelAction
 
 from .models import Option, Poll
 

@@ -269,7 +269,7 @@ class TestSlotValidation:
 
     def test_component_block_validates_required_slots(self):
         """Test that required slots are validated."""
-        from wireview.component import Component
+        from wireview import Component
 
         # Create a component with required slot
         class TestCard(Component):

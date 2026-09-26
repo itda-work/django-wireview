@@ -34,7 +34,7 @@ BUNDLE_STATIC_PATH = "wireview/wireview.min.js"
 
 def iter_component_classes() -> t.Iterator[type["Component"]]:
     """Every publicly registered component class, each yielded once."""
-    from .component import Component
+    from .core.component import Component
 
     seen: set[int] = set()
     for cls in Component._by_fqn.values():
@@ -113,7 +113,7 @@ def check_async_lifecycle(app_configs, **kwargs) -> list[CheckMessage]:
 
 def check_component_name_collisions(app_configs, **kwargs) -> list[CheckMessage]:
     """W003: two component classes registered under the same simple name."""
-    from .component import Component
+    from .core.component import Component
 
     by_name: dict[str, list[type[Component]]] = {}
     for cls in iter_component_classes():

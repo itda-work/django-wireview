@@ -56,9 +56,7 @@ class Notification(models.Model):
 `notifications/live.py`:
 
 ```python
-from wireview.component import Component
-from wireview.js import JS
-from wireview.schemas import ModelAction
+from wireview import Component, JS, ModelAction
 
 from .models import Notification
 

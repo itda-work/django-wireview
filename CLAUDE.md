@@ -19,13 +19,17 @@ Phoenix LiveView 스타일의 Django 실시간 컴포넌트 라이브러리. Pyd
 | 기능별 API 상세 | `docs/features/README.md` (인덱스) |
 | 학습 순서 | `docs/tutorials/README.md` |
 | 릴리스 버전 | git 태그 `v*`와 `pyproject.toml`의 version |
+| 무엇이 공개 API인가, 폐기 절차 | `docs/COMPATIBILITY.md` |
 
 ## 저장소 지도
 
 ```
 wireview/
-├── __init__.py            공개 API lazy export (from wireview import Component, LiveComponent, JS, mount ...)
-├── component.py           하위 호환 re-export. 새 코드는 wireview에서 import
+├── __init__.py            공개 API의 전부. _EXPORTS 표로 지연 로딩한다. 하위 모듈은 모두 내부다
+│                          (docs/COMPATIBILITY.md, tests/test_public_api.py가 문서의 import까지 지킨다. #98)
+├── component.py           폐기 예정 re-export. import하면 WireviewDeprecationWarning, 2.0에서 제거
+├── deprecation.py         WireviewDeprecationWarning, warn_deprecated(). 공개 API를 없애는 유일한 경로
+├── py.typed               타입 검사기가 패키지의 주석을 읽게 한다. ci-build가 wheel에 있는지 본다
 ├── core/component.py      Component 베이스: 라이프사이클, 이벤트 디스패치, streams·uploads·async·flash·hooks 메서드
 ├── core/meta.py           WireviewMeta (self.wire): push_to/replace_to, push_js, put_flash, push_title 등 클라이언트 명령
 ├── core/rendered.py       동적 마커 기반 diff 구조. LiveComponent 자리는 참조 dynamic {"c": id}
@@ -42,7 +46,7 @@ wireview/
 ├── urls.py                websocket_urlpatterns, urlpatterns
 ├── repository.py          ComponentRepository: 연결당 컴포넌트 인스턴스 관리. LiveComponent의 수명주기 배치(take_lifecycle)
 ├── live_component.py      LiveComponent (부모 연결을 공유하는 중첩 상태 컴포넌트)
-├── function_component.py  @function_component (상태 없는 템플릿 함수)
+├── function_components.py  @function_component (상태 없는 템플릿 함수). 공개 이름과 겹치지 않게 복수형이다(#98)
 ├── slots.py               슬롯 시스템 ({% fill %}, {% render_slot %})
 ├── async_result.py        AsyncResult / AsyncState
 ├── auto_broadcast.py      Django signals → 컴포넌트 mutation() 알림
@@ -214,5 +218,6 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 - [docs/FEATURE-GAP.md](./docs/FEATURE-GAP.md) Phoenix LiveView 대비 갭과 GAP 번호
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) 아키텍처
 - [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) 배포
+- [docs/COMPATIBILITY.md](./docs/COMPATIBILITY.md) 공개 API와 폐기 절차
 - [docs/PERFORMANCE.md](./docs/PERFORMANCE.md) 성능
 - [CHANGELOG.md](./CHANGELOG.md) 변경 이력

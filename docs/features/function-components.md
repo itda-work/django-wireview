@@ -37,7 +37,7 @@ def button(text: str, variant: str = "primary"):
 
 ```python
 # myapp/components.py
-from wireview.function_component import function_component
+from wireview import function_component
 
 @function_component
 def icon(name: str, size: int = 24):
@@ -69,7 +69,7 @@ def badge(text: str, color: str = "gray"):
 
 ```python
 # myapp/components.py
-from wireview.function_component import function_component
+from wireview import function_component
 
 @function_component(template="myapp/components/alert.html")
 def alert(message: str, type: str = "info", dismissible: bool = False):
@@ -375,14 +375,7 @@ def my_component(...):
 ### Python API
 
 ```python
-from wireview.function_component import (
-    function_component,       # 데코레이터
-    FunctionComponent,        # 클래스
-    get_function_component,   # 이름으로 조회
-    list_function_components, # 전체 목록
-)
-
-# 직접 렌더링
+from wireview import function_component
 fc = get_function_component("button")
 html = fc.render({"text": "Click", "variant": "primary"})
 

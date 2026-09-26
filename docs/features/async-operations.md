@@ -15,8 +15,7 @@ UI를 막지 않고 데이터를 읽어 오는 장치다. 읽는 동안 로딩 �
 가장 단순한 방법이다. 로딩·성공·실패를 추적하는 `AsyncResult`를 돌려준다.
 
 ```python
-from wireview import Component
-from wireview.async_result import AsyncResult
+from wireview import Component, AsyncResult
 
 
 class Dashboard(Component):

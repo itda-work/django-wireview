@@ -9,9 +9,7 @@ This module demonstrates wireview's advanced communication patterns:
 - JS().show(), JS().hide(), JS().toggle(), JS().transition()
 """
 
-from wireview.component import Component
-from wireview.js import JS
-from wireview.schemas import ModelAction
+from wireview import JS, Component, ModelAction
 
 from .models import Notification, NotificationType
 
