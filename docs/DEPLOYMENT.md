@@ -216,6 +216,22 @@ DATABASES = {
 }
 ```
 
+## WebSocket의 Origin
+
+WebSocket 핸드셰이크에는 브라우저의 쿠키가 실린다. 막지 않으면 로그인한 사용자가 방문한 **다른 사이트의 페이지**가
+이 사이트로 소켓을 열어 그 사용자로 행동할 수 있다(교차 사이트 WebSocket 하이재킹, CSWSH). `SameSite=Lax` 세션
+쿠키가 일부를 막지만, 같은 사이트의 다른 서브도메인이나 `SameSite=None` 설정에서는 막지 못한다.
+
+그래서 wireview의 컨슈머는 **소켓을 받기 전에** `Origin` 헤더의 호스트를 `ALLOWED_HOSTS`와 대조한다(#96).
+Django가 `Host` 헤더에 쓰는 규칙과 같고, `DEBUG`이면서 `ALLOWED_HOSTS`가 비어 있으면 localhost를 허용한다.
+`asgi.py`에서 `AllowedHostsOriginValidator`로 감쌌는지와 상관없이 켜져 있다.
+
+- **`Origin`이 없는 연결은 통과한다.** 브라우저는 WebSocket 핸드셰이크에 항상 `Origin`을 보내므로, 없다는 것은
+  브라우저가 아니라는 뜻이다(서버 간 호출, 헬스체크). CSWSH에는 남의 쿠키를 실어 줄 브라우저가 필요하다.
+- **페이지와 소켓의 호스트가 다르면**(예: 페이지는 `www.example.com`, 소켓은 `ws.example.com`) 페이지의
+  호스트도 `ALLOWED_HOSTS`에 있어야 한다.
+- 끄려면 `WIREVIEW["CHECK_ORIGIN"] = False`. 앞단 프록시가 같은 검사를 확실히 할 때만 끈다.
+
 ## 업그레이드: 서명된 컴포넌트 상태
 
 v2 상태 봉투(`#58`) 이후 `data-state` 값은 **발급된 컴포넌트 클래스, 페이지의 `live_session`, 발급
@@ -392,7 +408,7 @@ class Command(BaseCommand):
         self.stdout.write("WebSocket OK")
 ```
 
-`AllowedHostsOriginValidator`로 감싼 경우 `Origin` 헤더의 호스트가 `ALLOWED_HOSTS`에 있어야 한다.
+wireview는 `Origin` 헤더가 있으면 그 호스트가 `ALLOWED_HOSTS`에 있어야 연결을 받는다([WebSocket의 Origin](#websocket의-origin)).
 websocket-client는 접속 주소로 `Origin`을 채운다.
 
 ## 확장

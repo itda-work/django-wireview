@@ -15,6 +15,7 @@ from wireview.core.component import Component
 
 from . import serializer
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
+from .core.origin import origin_refusal
 from .core.rendered import ERRORS_SINCE, PROTOCOL_VERSION, protocol_version
 from .core.session import SessionView, load_session
 from .core.state import StateMismatch, StatePayload, unsign_envelope
@@ -101,6 +102,12 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         # about the cause (#87). Refuse before accepting, and say why.
         if self.channel_layer is None:
             raise ImproperlyConfigured(NO_CHANNEL_LAYER)
+        # Before accepting: a page on another site must not get a socket that
+        # carries this site's cookies (#96). Closing now is a 403 to the browser.
+        if refusal := origin_refusal(self.scope):
+            log.warning("Refusing a WebSocket: %s", refusal)
+            await self.close()
+            return
         await super().websocket_connect(message)
 
     async def connect(self):
@@ -138,6 +145,9 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         then removes all channel subscriptions.
         """
         log.debug(f"<<< DISCONNECT {code}")
+        if not hasattr(self, "repo"):
+            # Refused before connect() ran (an Origin, #96): nothing to clean up
+            return
 
         await self._call_leaving(list(self.repo.components.values()))
         await self._release_connection_uploads()

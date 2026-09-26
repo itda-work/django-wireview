@@ -37,6 +37,7 @@ wireview/
 ├── core/session.py        SessionView. Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다
 ├── core/live_session.py   페이지 경계 정본. live_session() 선언과 레지스트리, @session.view,
 │                          인증 세대 지문(auth_fingerprint), 로그아웃 무효화 발행 (GAP-009)
+├── core/origin.py         WebSocket Origin 검사. 컨슈머가 accept 전에 ALLOWED_HOSTS와 대조한다(CSWSH, #96)
 ├── core/state.py          data-state 서명·복원 (v2 봉투: 클래스·경계·인증 세대 결합, 만료, 토큰 재사용)
 ├── core/signing.py        서명 키 정본. get_signer(salt) 하나로 모든 서명 지점이 SIGNING_KEY와 fallback을 공유
 ├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳

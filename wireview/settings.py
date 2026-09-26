@@ -32,6 +32,8 @@ DEFAULT: dict[str, t.Any] = {
     "TRANSPILER_CACHE_SIZE": 1024,
     # Links and forms navigate without a full page load (static/wireview/wireview-boost.js)
     "BOOST_PAGES": False,
+    # Refuse a socket whose Origin is not in ALLOWED_HOSTS (wireview.core.origin, #96)
+    "CHECK_ORIGIN": True,
     "AUTO_BROADCAST": AutoBroadcast(),
     # Signing (wireview.core.signing). None = Django's SECRET_KEY / SECRET_KEY_FALLBACKS
     "SIGNING_KEY": None,
@@ -124,6 +126,7 @@ if t.TYPE_CHECKING:
     WIREVIEW: dict[str, t.Any]
     TRANSPILER_CACHE_SIZE: int
     BOOST_PAGES: bool
+    CHECK_ORIGIN: bool
     AUTO_BROADCAST: AutoBroadcast
     SIGNING_KEY: str | None
     SIGNING_KEY_FALLBACKS: list[str] | None

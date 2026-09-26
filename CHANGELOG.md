@@ -103,6 +103,13 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
 
 ### Fixed
 
+- **Security:** a page on another site could open this site's socket with the user's
+  cookies (cross-site WebSocket hijacking, #96). The quick start's `asgi.py` had no Origin
+  validation, and nothing in wireview checked. The consumer now refuses, before accepting,
+  a handshake whose Origin host is not in `ALLOWED_HOSTS` (Django's rule for Host, with
+  localhost under DEBUG when it is empty), whatever `asgi.py` wraps around it. A handshake
+  without an Origin header is not from a browser and connects. `WIREVIEW["CHECK_ORIGIN"]`
+  turns it off. `docs/DEPLOYMENT.md`, and `SECURITY.md` for reporting vulnerabilities.
 - Three documented examples did not run (#99): `self.wire.push_event` (form feedback) and
   `component.wire.user` (external uploads) do not exist, and the LiveComponent tutorial
   summed its children through `self.wire.repo`, which is not there either. The tutorial now

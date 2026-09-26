@@ -177,6 +177,8 @@ application = ProtocolTypeRouter({
 })
 ```
 
+wireview의 컨슈머는 소켓을 받기 전에 `Origin` 헤더를 `ALLOWED_HOSTS`와 대조한다. 다른 사이트의 페이지가 사용자의 쿠키로 소켓을 여는 것을 막기 위해서다([배포 가이드](docs/DEPLOYMENT.md#websocket의-origin)). 그래서 `AllowedHostsOriginValidator`로 따로 감쌀 필요는 없다.
+
 템플릿에 wireview JavaScript를 포함하세요:
 
 ```html
@@ -1145,6 +1147,7 @@ from wireview import AutoBroadcast
 WIREVIEW = {
     "TRANSPILER_CACHE_SIZE": 1024,    # 이벤트 핸들러 캐시 크기
     "BOOST_PAGES": False,             # 링크·폼 이동을 전체 로드 없이 처리 (htmx의 hx-boost와 같은 뜻)
+    "CHECK_ORIGIN": True,             # Origin이 ALLOWED_HOSTS가 아닌 소켓을 거절 (docs/DEPLOYMENT.md)
     # 서명 상태(data-state) — docs/features/html-diff.md
     "STATE_MAX_AGE": 14 * 24 * 3600,  # 서명 상태 유효 기간(초). 기본 14일
     "STATE_REFRESH_AFTER": None,      # 상태가 같아도 이 시간이 지나면 토큰 재발급. None이면 STATE_MAX_AGE // 2
