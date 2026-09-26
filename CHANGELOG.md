@@ -10,6 +10,14 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-27
+
+The release that gathers every breaking change before 1.0 (#93): component configuration
+in `class Meta:`, `wireview.__all__` as the whole public API, the legacy paths and
+`USE_HMIN` removed, and Django 5.2 or newer. It also closes a cross-site WebSocket hijacking
+hole (#96), keeps the connection when component code raises (#94), and ends a component's
+async tasks with it (#95).
+
 **Upgrading from 0.4:** `docs/UPGRADING.md` walks through every breaking change below.
 
 **Upgrading.** `{% on %}` renders a `wire-on-<event>` data attribute instead of an inline
@@ -896,7 +904,8 @@ auto-recovery, viewport bindings, optimistic UI attributes, type stub
 generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
-[Unreleased]: https://github.com/itda-work/django-wireview/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/itda-work/django-wireview/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/itda-work/django-wireview/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/itda-work/django-wireview/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/itda-work/django-wireview/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/itda-work/django-wireview/compare/v0.2.0...v0.2.1
