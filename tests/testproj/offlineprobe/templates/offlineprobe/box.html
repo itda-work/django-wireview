@@ -1,0 +1,14 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <span data-testid="count">{{ this.count }}</span>
+  <button data-testid="bump" {% on "click" "bump" %}>bump</button>
+  <form data-testid="form" {% on "submit.prevent" "add" %}>
+    <input data-testid="item" name="item">
+  </form>
+  <span data-testid="added">{{ this.added }}</span>
+  <span data-testid="pings" wire-hook="Pinger">{{ this.pings }}</span>
+  <a data-testid="link"
+     href="/offlineprobe/elsewhere/"
+     {% on "click.prevent" "bump" %}>link</a>
+</div>

@@ -70,6 +70,7 @@ INSTALLED_APPS = [
     "testproj.cspprobe",
     "testproj.valueprobe",
     "testproj.errorprobe",
+    "testproj.offlineprobe",
     "wireview",
     "channels",
     "daphne",

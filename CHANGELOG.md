@@ -45,6 +45,15 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
 
 ### Fixed
 
+- A page that loses its connection no longer submits its forms natively (#97). While the
+  socket was down a server binding did nothing, `.prevent` included, which is the rule for
+  a page that was never live: Enter in a `submit.prevent` form reloaded the page and lost
+  its state, and a `click.prevent` link reached by keyboard navigated away. A page that has
+  been live now keeps `.prevent` and `.stop` while disconnected and sends nothing; before
+  the first connection nothing changes. What was sent on the socket while it was down (a
+  hook's `pushEvent`, upload messages) was queued without a bound and delivered after the
+  reconnect to instances that no longer existed; it is now dropped, and only what was sent
+  before the first connection waits for it. `docs/features/csp.md`.
 - A component's async tasks end when it leaves (#95). Nothing cancelled what `start_async`
   and `assign_async` started, so after a closed tab, a `leave`, a replaced instance or a
   handler that raised, the task ran to the end, kept the instance in memory and then asked

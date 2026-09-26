@@ -859,8 +859,14 @@ class ServerConnection {
     const doSend = () => {
       if (this.isOpen) {
         this.socket.send(JSON.stringify(message));
-      } else {
+      } else if (!this.wasConnected) {
+        // Before the first connection: sent once it opens.
         this.messageQueue.push(message);
+      } else {
+        // Disconnected after being live. The reconnect joins every component
+        // again from the DOM and sends the URL again, so a message for the
+        // instances this socket had has nowhere to go (#97).
+        debugLog("send", `dropped ${command}: disconnected`, payload);
       }
     };
 
@@ -2681,10 +2687,27 @@ const EventBindings = {
         console.error(`[wireview] unreadable binding ${attribute}`, error);
         continue;
       }
-      // A server handler runs only on a live component. Otherwise nothing
-      // happens, not even .prevent: the form submits to its action and the
-      // link navigates, which is what the page does without JavaScript.
-      if (value.h !== undefined && !this.isLive(el, value.t)) continue;
+      // A server handler runs only on a live component. Before the page
+      // was ever live nothing happens, not even .prevent: the form submits to
+      // its action and the link navigates, which is what the page does
+      // without JavaScript. A page that was live and lost its connection
+      // keeps .prevent and .stop and sends nothing: Enter in a form must not
+      // reload the page over a dropped socket (#97).
+      if (value.h !== undefined && !this.isLive(el, value.t)) {
+        if (connection.wasConnected) {
+          runSteps(binding.steps, /** @type {KeyboardEvent} */ (event), {
+            prevent: () => event.preventDefault(),
+            stop: () => {
+              stopped = true;
+              event.stopPropagation();
+            },
+            debounce: () => {},
+            throttle: () => true,
+            fire: () => {},
+          });
+        }
+        continue;
+      }
       const element = /** @type {HTMLElement} */ (el);
       runSteps(binding.steps, /** @type {KeyboardEvent} */ (event), {
         prevent: () => event.preventDefault(),
@@ -2705,6 +2728,8 @@ const EventBindings = {
           return true;
         },
         fire: () => {
+          // A debounce may end after the connection did
+          if (value.h !== undefined && !this.isLive(el, value.t)) return;
           // A submit, a change, leaving the field or Enter commits the fields
           // it comes from: its answer may reset them (a todo input emptied
           // after Enter). Anything else leaves them to the user (#91, #92).
