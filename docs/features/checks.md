@@ -2,7 +2,7 @@
 
 wireview의 함정 중 상당수는 **에러를 내지 않는다.** sync 핸들러는 클라이언트가 부를 때까지
 조용하고, `wireview.min.js`가 없으면 페이지가 그냥 정적으로 남고, `USE_HMIN`은 부분 diff를
-말없이 토큰 diff로 되돌린다. 신호가 없으면 사람도 에이전트도 고칠 수 없다.
+말없이 전체 HTML 전송으로 되돌린다. 신호가 없으면 사람도 에이전트도 고칠 수 없다.
 
 이 검사들을 Django의 `checks` 프레임워크에 등록해 두면 `manage.py check`, `runserver`, CI에
 **자동으로** 걸린다. 새 명령을 기억할 필요가 없다는 것이 핵심이다.
@@ -26,12 +26,12 @@ WARNINGS:
 | `wireview.W002` | 라이프사이클 오버라이드가 async가 아님 (`joined`, `update`, `destroy`) | wireview가 `await`하므로 콜백이 아예 실행되지 않는다 |
 | `wireview.W003` | 두 클래스가 같은 단순 이름으로 등록됨 | import 시 경고 한 번뿐. 템플릿은 둘 중 하나로만 해석된다 |
 | `wireview.W004` | `wireview/wireview.min.js`를 staticfiles가 못 찾음 | JS가 로드되지 않아 페이지가 정적으로 남는다. 404 외에는 신호가 없다 |
-| `wireview.W005` | `USE_HMIN`이 켜져 있고 `USE_HTML_DIFF`도 켜짐 | django-hmin이 diff 마커(HTML 주석)를 지워 부분 diff가 토큰 diff로 퇴화한다 |
+| `wireview.W005` | `USE_HMIN`이 켜짐 | django-hmin이 diff 마커(HTML 주석)를 지워, 바뀔 때마다 컴포넌트 HTML 전체가 나간다 |
 | `wireview.W006` | 기본 채널 레이어가 `InMemoryChannelLayer` | 다중 프로세스에서 브로드캐스트가 같은 프로세스에만 닿고 오류는 나지 않는다 |
 | `wireview.W007` | `Meta.on_mount`에 올린 클래스에 `on_mount`가 없거나 async가 아님 | 훅이 말없이 건너뛰어져, 인증 가드로 올린 훅이 아무것도 막지 않는다 |
 | `wireview.W008` | `UPLOAD_TEMP_DIR`이 가리키는 경로에 임시 파일을 만들 수 없음 | 설정은 첫 청크가 올 때에야 읽힌다. 기동 시에는 아무 신호가 없고, 업로드가 하나씩 `ImproperlyConfigured`로 실패한다 |
 | `wireview.W009` | `SIGNING_KEY`가 빈 문자열이거나, 키 없이 fallback만 설정됨 | `Signer(key="")`는 조용히 `SECRET_KEY`로 되돌아간다. 아무것도 깨지지 않는 것이 문제다 — `SECRET_KEY`를 돌리면 진행 중인 업로드와 열린 페이지의 `data-state`가 같이 죽는다 |
-| `wireview.W010` | 경계가 선언됐는데 `context_processors.request`가 꺼져 있거나, `Meta.live_sessions`가 아무도 선언하지 않은 이름을 가리키거나, 경계가 있는 프로젝트에서 `Meta.on_mount`로만 자신을 지키는 컴포넌트가 소속을 선언하지 않거나, `STATE_ACCEPT_LEGACY`가 경계와 함께 켜져 있음 | 프로세서가 없으면 경계가 통째로 조용히 꺼진다. 오타는 join 거절과 reload로 나타나 서명 문제처럼 보인다. 선언이 없는 컴포넌트는 경계 밖 페이지에서도 마운트된다. 롤아웃 플래그는 경계가 있으면 적용되지 않는데, 켜 둔 쪽은 창이 열려 있다고 믿는다 |
+| `wireview.W010` | 경계가 선언됐는데 `context_processors.request`가 꺼져 있거나, `Meta.live_sessions`가 아무도 선언하지 않은 이름을 가리키거나, 경계가 있는 프로젝트에서 `Meta.on_mount`로만 자신을 지키는 컴포넌트가 소속을 선언하지 않음 | 프로세서가 없으면 경계가 통째로 조용히 꺼진다. 오타는 join 거절과 reload로 나타나 서명 문제처럼 보인다. 선언이 없는 컴포넌트는 경계 밖 페이지에서도 마운트된다 |
 | `wireview.W011` | 템플릿의 `wire-hook="X"`를 등록하는 훅 파일이 수집된 것 중에 없음 | 클라이언트가 콘솔 경고 한 줄만 남긴다. 컴포넌트는 정상으로 렌더되고 동작 하나가 빠진다 |
 | `wireview.W012` | `CHANNEL_LAYERS`에 `default` 레이어가 없음 | 페이지는 HTTP로 정상 렌더되는데 WebSocket 연결이 전부 거절되어 어떤 컴포넌트도 살아나지 않는다. Channels에는 기본 레이어가 없다 |
 | `wireview.W013` | `runserver`로 기동하는데 그 명령이 Django의 WSGI 서버 그대로임 (`daphne`가 없거나 `INSTALLED_APPS`에서 너무 아래에 있음) | 페이지는 그려지고 오류도 없다. WebSocket 업그레이드가 거절되어 버튼이 아무 반응도 하지 않고, 흔적은 브라우저 콘솔 한 줄뿐이다 |
@@ -92,7 +92,7 @@ $ python manage.py runserver
 staticfiles와 whitenoise는 stock 명령을 감싸기만 하므로 잡히고, ASGI 서버는 `inner_run`을 바꿔야
 하므로 이 검사가 모르는 ASGI 제공자도 오탐하지 않는다.
 
-### W010이 네 가지를 보는 이유
+### W010이 세 가지를 보는 이유
 
 첫째는 전제 조건이다. 템플릿 태그는 페이지의 경계를 `context["request"]`에서 읽으므로
 `django.template.context_processors.request`가 꺼져 있으면 **기능 전체가 말없이 꺼진다** — 헤더는 빈
@@ -124,11 +124,6 @@ Meta.on_mount but declares no Meta.live_sessions.
 컴포넌트는 여기에 걸리지 않는다 — 검사가 볼 수 있는 것은 클래스이지 그 클래스가 어느 페이지에
 얹히는지가 아니다. 경계를 도입하는 배포에서는 목록을 직접 확인해야 한다
 ([live_session](./live-session.md)의 전환 절차).
-
-세 번째는 설정 둘이 서로를 무효화하는 경우다. `STATE_ACCEPT_LEGACY`는 봉투 이전 상태를 받아 주는
-롤아웃 창인데, live_session이 선언되면 적용되지 않는다 — 옛 토큰은 경계를 담고 있지 않고, 토큰
-안에는 그 페이지에 경계가 있었는지도 없다. 켜 둔 쪽은 창이 열려 있다고 믿으므로 말해 준다.
-[live_session](./live-session.md) 참고.
 
 ### W011이 놓치는 것
 

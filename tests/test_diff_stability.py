@@ -122,11 +122,9 @@ async def test_http_render_keeps_plain_state_attribute():
 
 @pytest.mark.asyncio
 @pytest.mark.unit
-async def test_signed_state_round_trips_and_rejects_legacy_format_by_default():
-    """Legacy formats carry no class, so they are refused unless the flag is on (#76)."""
-    from django.core.signing import Signer
-
-    from wireview.core.state import LegacyState
+async def test_signed_state_round_trips_and_rejects_legacy_format():
+    """Legacy formats carry no class, so they are refused (#76); since #99 always."""
+    from django.core.signing import BadSignature, Signer
 
     view = await mount(DiffProbe, count=3)
     component = view.component
@@ -136,7 +134,7 @@ async def test_signed_state_round_trips_and_rejects_legacy_format_by_default():
     assert "wire" not in state and "user" not in state
 
     legacy = Signer().sign(component.model_dump_json(exclude=set(component._meta.exclude_fields)))
-    with pytest.raises(LegacyState):
+    with pytest.raises(BadSignature):
         unsign_state(legacy, "DiffProbe")
 
 

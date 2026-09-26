@@ -13,7 +13,6 @@ from django.test import override_settings
 
 from wireview import Component
 from wireview import checks as wireview_checks
-from wireview import settings as wireview_checks_settings
 from wireview.checks import (
     check_async_handlers,
     check_async_lifecycle,
@@ -188,18 +187,9 @@ class TestHminCheck:
         from wireview import settings as wireview_settings
 
         monkeypatch.setattr(wireview_settings, "USE_HMIN", True)
-        monkeypatch.setattr(wireview_settings, "USE_HTML_DIFF", True)
         messages = check_hmin(None)
 
         assert [m.id for m in messages] == ["wireview.W005"]
-
-    def test_not_flagged_when_diffing_is_off(self, monkeypatch):
-        """Without partial diffs there is nothing for hmin to degrade."""
-        from wireview import settings as wireview_settings
-
-        monkeypatch.setattr(wireview_settings, "USE_HMIN", True)
-        monkeypatch.setattr(wireview_settings, "USE_HTML_DIFF", False)
-        assert check_hmin(None) == []
 
 
 class TestChannelLayerCheck:
@@ -508,23 +498,6 @@ class TestLiveSessions:
 
         with override_settings(TEMPLATES=[engine]):
             assert check_live_sessions(None) == []
-
-    def test_the_legacy_rollout_flag_is_flagged_beside_a_boundary(self, only, registry, monkeypatch):
-        """The two settings cannot both be open, so saying both is worth a word."""
-        monkeypatch.setattr(wireview_checks_settings, "STATE_ACCEPT_LEGACY", True)
-        live_session_module.live_session("admin")
-        only(make_component("W10Legacy"))
-
-        messages = check_live_sessions(None)
-
-        assert [m.id for m in messages] == ["wireview.W010"]
-        assert "STATE_ACCEPT_LEGACY" in messages[0].msg
-
-    def test_the_legacy_rollout_flag_alone_is_silent(self, only, registry, monkeypatch):
-        monkeypatch.setattr(wireview_checks_settings, "STATE_ACCEPT_LEGACY", True)
-        only(make_component("W10LegacyAlone"))
-
-        assert check_live_sessions(None) == []
 
     def test_an_unguarded_component_without_a_boundary_is_silent(self, only, registry):
         """Most components are not guards. The nudge is for the ones that are."""

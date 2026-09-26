@@ -39,7 +39,7 @@ function parseQueryString(search) {
 /**
  * @typedef {Object} RenderPayload
  * @property {string} id - Component ID
- * @property {Array<string|number>|Object|null} diff - Diff array (legacy), object (Phoenix-style), or null when only children changed
+ * @property {Object|null} diff - Phoenix-style diff, or null when only children changed
  * @property {Object<string, Object|null>} [children] - Diffs of the LiveComponents rendered along with this one, by id
  */
 
@@ -434,7 +434,7 @@ class ServerConnection {
   /**
    * Reload the page after the server refused a signed state.
    * Guarded so a page whose fresh state is refused again cannot loop.
-   * @param {string} reason - Why the server refused it ("expired", "legacy", "invalid")
+   * @param {string} reason - Why the server refused it ("expired", "invalid", "live_session")
    * @private
    */
   _reloadPage(reason) {
@@ -897,8 +897,7 @@ function resolveComponentHtml(id) {
  * Represents a client-side wireview component.
  * Manages state synchronization with the server.
  *
- * Supports both legacy diff format (array) and Phoenix LiveView-style
- * diff format (object with static/dynamic parts).
+ * Keeps the Phoenix LiveView-style render state (static and dynamic parts).
  */
 class WireviewComponent {
   /**
@@ -908,10 +907,6 @@ class WireviewComponent {
   constructor(id) {
     /** @type {string} */
     this.id = id;
-    /** @type {string[]} */
-    this.lastReceivedHtml = [];
-    /** @type {string|null} legacy (unmarked template) render, kept whole */
-    this.legacyHtml = null;
 
     // Phoenix-style state (static/dynamic separation)
     /** @type {string[]|null} */
@@ -940,8 +935,7 @@ class WireviewComponent {
 
   /**
    * Applies a diff from the server and patches the DOM on the next frame.
-   * Supports both legacy array format and Phoenix-style object format.
-   * @param {Array<string|number>|Object} diff - Diff data
+   * @param {Object} diff - Phoenix-style diff
    */
   applyDiff(diff) {
     this.applyDiffData(diff);
@@ -953,14 +947,10 @@ class WireviewComponent {
    * Runs when the message arrives, so diffs for one component always apply in
    * the order the server sent them, whether they came alone or inside a
    * parent's `children`.
-   * @param {Array<string|number>|Object} diff - Diff data
+   * @param {Object} diff - Phoenix-style diff
    */
   applyDiffData(diff) {
-    if (this.isPhoenixDiff(diff)) {
-      this.applyPhoenixDiff(diff);
-    } else {
-      this.legacyHtml = this.getHtml(diff);
-    }
+    this.applyPhoenixDiff(diff);
   }
 
   /**
@@ -972,9 +962,6 @@ class WireviewComponent {
   currentHtml() {
     if (this.static) {
       return buildHtml(this.static, this.dynamic, resolveComponentHtml);
-    }
-    if (this.legacyHtml !== null) {
-      return this.legacyHtml;
     }
     // Fallback: the element as it stands
     return this.getElemenet()?.outerHTML || "";
@@ -1033,19 +1020,6 @@ class WireviewComponent {
   }
 
   /**
-   * Check if diff is Phoenix-style format (object with 's' or numeric keys).
-   * @param {*} diff - The diff to check
-   * @returns {boolean}
-   */
-  isPhoenixDiff(diff) {
-    return (
-      diff !== null &&
-      typeof diff === "object" &&
-      !Array.isArray(diff)
-    );
-  }
-
-  /**
    * Apply Phoenix-style diff (static/dynamic separation) to the render state.
    * @param {PhoenixFullDiff|PhoenixPartialDiff} diff - Phoenix diff object
    */
@@ -1091,33 +1065,6 @@ class WireviewComponent {
   }
 
   /**
-   * Reconstructs HTML from a diff array.
-   * @param {Array<string|number>} diff - Diff array where:
-   *   - string: new content to add
-   *   - negative number: skip that many fragments from lastReceivedHtml
-   *   - positive number: reuse that many fragments from lastReceivedHtml
-   * @returns {string} Reconstructed HTML string
-   */
-  getHtml(diff) {
-    let fragments = [];
-    let cursor = 0;
-    for (let fragment of diff) {
-      if (typeof fragment === "string") {
-        fragments.push(fragment);
-      } else if (fragment < 0) {
-        cursor -= fragment;
-      } else {
-        fragments.push(
-          ...this.lastReceivedHtml.slice(cursor, cursor + fragment)
-        );
-        cursor += fragment;
-      }
-    }
-    this.lastReceivedHtml = fragments;
-    return fragments.join(" ");
-  }
-
-  /**
    * Joins this component to the server.
    * Only joins if the component is not already live and its parent is live.
    * A LiveComponent (`wireview-live`) never joins on its own: its parent's
@@ -1160,7 +1107,6 @@ class WireviewComponent {
     this.static = null;
     this.dynamic = [];
     this.fingerprint = null;
-    this.legacyHtml = null;
     this.sendJoin(element);
   }
 

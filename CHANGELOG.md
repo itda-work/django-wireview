@@ -27,6 +27,17 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
 - `wireview.WireviewDeprecationWarning`, raised by everything on its way out.
 - `py.typed`, so type checkers read the package's annotations (#98).
 
+### Removed
+
+- The legacy paths, before 1.0 fixes the API (#99). `WIREVIEW["STATE_ACCEPT_LEGACY"]` and
+  every state format before the v2 envelope: a page carrying one reloads, and the refusal
+  is logged as `invalid` (the `legacy` reload reason is gone). The pre-#83 upload token,
+  which carried no size or extension and so skipped both checks. The inbound `query_string`
+  command, which no client sent. The token diff for HTML without markers, and with it
+  `WIREVIEW["USE_HTML_DIFF"]`, which only ever switched that diff: such HTML is now one
+  static part, sent whole when it changes. That costs bandwidth where django-hmin
+  (`USE_HMIN`) strips the markers; `wireview.W005` still says so.
+
 ### Deprecated
 
 - `wireview.component`: import from `wireview` instead. It warns and is removed in 2.0.

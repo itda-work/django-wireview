@@ -17,7 +17,7 @@ from . import serializer
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
 from .core.rendered import ERRORS_SINCE, PROTOCOL_VERSION, protocol_version
 from .core.session import SessionView, load_session
-from .core.state import LegacyState, StateMismatch, StatePayload, unsign_envelope
+from .core.state import StateMismatch, StatePayload, unsign_envelope
 from .core.transport import NO_CHANNEL_LAYER, ChannelsOutbound, Outbound
 from .features import upload_store
 from .features.uploads import upload_group_name
@@ -36,16 +36,13 @@ class ChildComponent(t.TypedDict):
 def _reload_payload(name: str, error: BadSignature) -> dict[str, t.Any]:
     """Log a rejected root state and describe it for the client's ``reload``.
 
-    An expiry or a pre-upgrade page is ordinary traffic (INFO); a class that
-    does not match the signature, or a signature that does not verify, is not
-    (WARNING).
+    An expiry is ordinary traffic (INFO); a class that does not match the
+    signature, or a signature that does not verify, is not (WARNING). A page
+    from before the v2 envelope lands in the second group since #99.
     """
     if isinstance(error, SignatureExpired):
         log.info("JOIN %s rejected: the signed state expired", name)
         return {"id": None, "reason": "expired"}
-    if isinstance(error, LegacyState):
-        log.info("JOIN %s rejected: pre-v1 signed state and STATE_ACCEPT_LEGACY is off", name)
-        return {"id": None, "reason": "legacy"}
     if isinstance(error, StateMismatch):
         log.warning(
             "JOIN %s rejected: state signed for %s presented as %s (component %s)",
@@ -574,12 +571,6 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
                 await self._crashed(component)
 
         await self.after_mutation_chores()
-
-    async def command_query_string(self, qs: str):
-        """Legacy command - delegates to command_params_changed."""
-        params = self.repo.extract_params(qs)
-        uri = f"?{qs}" if qs else ""
-        await self.command_params_changed(params, uri)
 
     async def command_user_event(self, id, command, implicit_args, explicit_args, ref=None):
         kwargs = dict(parse_request_data(MultiValueDict(implicit_args)), **explicit_args)

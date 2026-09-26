@@ -21,7 +21,6 @@ from wireview.core.meta import WireviewMeta
 from wireview.core.state import (
     ENVELOPE_VERSION,
     STATE_SALT,
-    LegacyState,
     StateMismatch,
     _JSONStringSerializer,
     sign_state,
@@ -85,13 +84,11 @@ class FakeOutbound:
 
 @pytest.fixture(autouse=True)
 def _no_boundaries():
-    """This module is about the envelope, not about page boundaries.
+    r"""This module is about the envelope, not about page boundaries.
 
-    ``STATE_ACCEPT_LEGACY`` stops applying once a project declares a
-    ``live_session`` (an old token names no boundary, so accepting it could skip
-    a page policy), and the test project declares two. Emptying the registry is
-    what "a project that has not adopted boundaries" looks like, which is the
-    only situation the rollout flag is for.
+    The test project declares two ``live_session``\ s. Emptying the registry is
+    what "a project that has not adopted boundaries" looks like, where a state
+    carries no boundary at all.
     """
     from wireview.core import live_session as live_session_module
 
@@ -243,41 +240,41 @@ def legacy_compact_format(component: Component) -> str:
     )
 
 
-@pytest.mark.parametrize("make_legacy", [legacy_json_format, legacy_compact_format])
-async def test_legacy_formats_are_rejected_by_default(make_legacy):
+def v1_format(component: Component) -> str:
+    """The envelope before #58: the class binding without the boundary."""
+    envelope = '{"v":1,"n":"%s","d":%s}' % (
+        component._fqn,
+        component.model_dump_json(exclude=set(component._meta.exclude_fields)),
+    )
+    from wireview.core.signing import get_signer
+
+    return get_signer("wireview.state.v1").sign_object(envelope, serializer=_JSONStringSerializer, compress=True)
+
+
+OLD_FORMATS = [legacy_json_format, legacy_compact_format, v1_format]
+
+
+@pytest.mark.parametrize("make_old", OLD_FORMATS)
+async def test_a_token_from_before_the_v2_envelope_is_not_read(make_old):
+    """No format before v2 is read since #99: the rollout window went before 1.0."""
     component = build(SsPublic, id="p1", note="hello")
 
-    with pytest.raises(LegacyState):
-        unsign_state(make_legacy(component), "SsPublic")
+    with pytest.raises(BadSignature):
+        unsign_state(make_old(component), "SsPublic")
 
 
-@pytest.mark.parametrize("make_legacy", [legacy_json_format, legacy_compact_format])
-async def test_legacy_formats_are_accepted_with_the_flag(monkeypatch, make_legacy):
-    # wireview.settings binds its names at import time, so the module attribute
-    # is what the decoder reads; override_settings(WIREVIEW=...) would not reach it.
-    monkeypatch.setattr(wireview_settings, "STATE_ACCEPT_LEGACY", True)
-    component = build(SsPublic, id="p1", note="hello")
-
-    assert unsign_state(make_legacy(component), "SsPublic")["note"] == "hello"
-
-
-async def test_a_legacy_join_asks_for_a_reload_with_its_own_reason():
+@pytest.mark.parametrize("make_old", OLD_FORMATS)
+async def test_an_old_join_mounts_nothing_and_asks_for_a_reload(make_old):
     consumer, outbound = make_consumer()
 
-    await consumer.command_join("SsPublic", legacy_json_format(build(SsPublic, id="p1")))
+    await consumer.command_join("SsPublic", make_old(build(SsPublic, id="p1")))
 
     assert consumer.repo.components == {}
-    assert outbound.commands == [("reload", {"id": None, "reason": "legacy"})]
+    assert outbound.commands == [("reload", {"id": None, "reason": "invalid"})]
 
 
-async def test_a_legacy_join_mounts_when_the_flag_is_on(monkeypatch):
-    monkeypatch.setattr(wireview_settings, "STATE_ACCEPT_LEGACY", True)
-    consumer, outbound = make_consumer()
-
-    await consumer.command_join("SsPublic", legacy_json_format(build(SsPublic, id="p1", note="hello")))
-
-    assert consumer.repo.get("p1") is not None
-    assert [command for command, _ in outbound.commands] == ["render"]
+def test_the_rollout_setting_is_gone():
+    assert not hasattr(wireview_settings, "STATE_ACCEPT_LEGACY")
 
 
 # --- token reuse ------------------------------------------------------------

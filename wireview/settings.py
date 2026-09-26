@@ -5,7 +5,6 @@ from .schemas import AutoBroadcast
 DEBUG = settings.DEBUG
 DEFAULT = {
     "TRANSPILER_CACHE_SIZE": 1024,
-    "USE_HTML_DIFF": True,
     "USE_HMIN": False,
     "BOOST_PAGES": False,
     "AUTO_BROADCAST": AutoBroadcast(),
@@ -24,7 +23,6 @@ DEFAULT = {
     # Signed component state (data-state)
     "STATE_MAX_AGE": 14 * 24 * 3600,  # 14 days, like Phoenix LiveView's session default
     "STATE_REFRESH_AFTER": None,  # None = STATE_MAX_AGE // 2. Must stay below STATE_MAX_AGE
-    "STATE_ACCEPT_LEGACY": False,  # Accept pre-v1 (unbound) state formats during a rollout
     # Type stub generation
     "AUTO_GENERATE_STUBS": True,  # Auto-generate .pyi stubs in DEBUG mode
     # Telemetry signals (wireview.telemetry)
@@ -37,7 +35,6 @@ WIREVIEW = DEFAULT | getattr(settings, "WIREVIEW", {})
 LOGIN_URL = settings.LOGIN_URL
 
 TRANSPILER_CACHE_SIZE: int = WIREVIEW["TRANSPILER_CACHE_SIZE"]
-USE_HTML_DIFF: bool = WIREVIEW["USE_HTML_DIFF"]
 USE_HMIN: bool = WIREVIEW["USE_HMIN"]
 BOOST_PAGES: bool = WIREVIEW["BOOST_PAGES"]
 AUTO_BROADCAST: AutoBroadcast = WIREVIEW["AUTO_BROADCAST"]
@@ -63,7 +60,6 @@ STATE_MAX_AGE: int = WIREVIEW["STATE_MAX_AGE"]
 # A render re-issues the token once it is this old, even with an unchanged state.
 # Half the lifetime by default, so a page that renders at all keeps a valid token.
 STATE_REFRESH_AFTER: int = WIREVIEW["STATE_REFRESH_AFTER"] or STATE_MAX_AGE // 2
-STATE_ACCEPT_LEGACY: bool = WIREVIEW["STATE_ACCEPT_LEGACY"]
 
 # Type stub generation
 AUTO_GENERATE_STUBS: bool = WIREVIEW["AUTO_GENERATE_STUBS"]

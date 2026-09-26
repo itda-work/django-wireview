@@ -279,11 +279,10 @@ invalidate_authentication(user, request.session)   # 그 인증 세대의 소켓
 
 ## 점검
 
-`manage.py check`가 `wireview.W010`으로 넷을 본다 — `django.template.context_processors.request`가
+`manage.py check`가 `wireview.W010`으로 셋을 본다 — `django.template.context_processors.request`가
 꺼져 있는 경우(위), 아무도 선언하지 않은 이름을 `Meta.live_sessions`가
 가리키는 경우(오타가 join 거절과 reload로 나타나 서명 문제처럼 보인다), 프로젝트가 경계를 선언했는데
-`Meta.on_mount`로만 자신을 지키는 컴포넌트가 `Meta.live_sessions`를 선언하지 않은 경우, 그리고
-`STATE_ACCEPT_LEGACY`가 경계와 함께 켜져 있는 경우(아래).
+`Meta.on_mount`로만 자신을 지키는 컴포넌트가 `Meta.live_sessions`를 선언하지 않은 경우.
 [시스템 체크](./checks.md) 참고.
 
 ## 옛 페이지와의 호환
@@ -291,15 +290,10 @@ invalidate_authentication(user, request.session)   # 그 인증 세대의 소켓
 상태 봉투가 v2로 올라간다. 업그레이드 시점에 열려 있던 페이지의 v1 토큰은 거절되고 클라이언트가
 reload한다 — 새 페이지는 현재 인증 문맥으로 다시 렌더되고 새 토큰을 받는다.
 
-**`STATE_ACCEPT_LEGACY`와 경계는 동시에 열 수 없다.** live_session이 하나라도 선언된 프로젝트에서는
-이 플래그가 적용되지 않고 옛 토큰은 그대로 거절된다. 옛 토큰은 경계 이름을 담고 있지 않은데, 토큰
-안에는 "이 페이지에 경계가 있었는지"를 말해 주는 것도 없다. 소속을 선언한 컴포넌트라면 마운트를
-거절해서 끝나지만, 선언하지 않은 컴포넌트는 연결의 경계를 "없음"으로 정해 버리고 **뷰에 붙인
-`authorize`와 세션 훅이 통째로 빠진다**. 둘을 구분할 근거가 토큰에 없으므로 경계가 있는 쪽이
-reload를 택한다.
-
-경계를 도입하는 배포에서 롤아웃 창이 꼭 필요하다면 순서를 나눈다 — 먼저 v2만 배포해 옛 토큰을
-`STATE_MAX_AGE` 동안 소진시키고, 그다음 배포에서 live_session을 켠다.
+옛 토큰을 받아 주던 `STATE_ACCEPT_LEGACY`는 1.0 전에 없어졌다(#99). 옛 토큰은 경계 이름을 담고 있지
+않고, 토큰 안에는 "이 페이지에 경계가 있었는지"를 말해 주는 것도 없다. 받아 주면 경계를 선언하지
+않은 컴포넌트가 연결의 경계를 "없음"으로 정해 **뷰에 붙인 `authorize`와 세션 훅이 통째로 빠질 수**
+있었다. 이제 그런 창은 없다.
 
 ## 경계를 나중에 도입할 때
 
@@ -315,11 +309,9 @@ reload를 택한다.
 1. **보호할 컴포넌트에 `Meta.live_sessions`를 선언한다.** 이것만이 옛 토큰을 컴포넌트 자신의 권한으로
    거절한다. `manage.py check`의 `wireview.W010`은 `Meta.on_mount`로 자신을 지키는 컴포넌트를 알려 주지만,
    **페이지의 `authorize`에만 의존하던 컴포넌트는 찾지 못한다** — 보호 대상 목록은 직접 확인한다.
-2. **`STATE_ACCEPT_LEGACY`는 끈다.** 경계가 선언되면 자동으로 무력화되지만, 켜 둔 채로 두면 W010이
-   경고한다.
-3. **이미 열려 있는 연결을 끊는다.** 배포로 워커를 교체하면 소켓도 끊긴다. 롤링 배포라면 옛 워커가
+2. **이미 열려 있는 연결을 끊는다.** 배포로 워커를 교체하면 소켓도 끊긴다. 롤링 배포라면 옛 워커가
    전부 내려간 뒤에야 전환이 끝난다 — 옛 워커는 계속 경계 없는 토큰을 발급한다.
-4. 즉시 끊어야 한다면 **`WIREVIEW["SIGNING_KEY"]`를 교체하되 `SIGNING_KEY_FALLBACKS = []`를 명시한다.**
+3. 즉시 끊어야 한다면 **`WIREVIEW["SIGNING_KEY"]`를 교체하되 `SIGNING_KEY_FALLBACKS = []`를 명시한다.**
    `None`은 "fallback 없음"이 아니라 **Django의 `SECRET_KEY_FALLBACKS`를 상속**한다는 뜻이라, 옛 키가
    거기 있으면 옛 토큰이 계속 통과한다. 그리고 키 교체는 **이미 join한 연결을 닫지 않는다** — 이벤트
    경로는 서명을 다시 보지 않는다. 3번이 함께 필요하다.

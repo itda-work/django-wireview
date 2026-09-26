@@ -700,56 +700,6 @@ class TestValidSignaturesDoNotCombine:
         assert payload.live_session == ""
         assert payload.auth is None, "binding a public page to a login would reload it on every login"
 
-    async def test_the_rollout_flag_stops_applying_once_a_boundary_exists(self, admin_session, staff, monkeypatch):
-        """``STATE_ACCEPT_LEGACY`` and a live_session cannot both be open.
-
-        An old token names no boundary. For a component that declares where it
-        belongs that is harmless -- it refuses to mount. For one that declares
-        nothing it is not: the connection settles on "no policy" and the page's
-        own ``authorize`` and hooks never run, even though the view carries the
-        decorator. Nothing in the token separates the two cases, so a project
-        that has declared a boundary takes the reload instead.
-        """
-        from django.core.signing import BadSignature
-
-        from wireview.core import state as state_module
-
-        def v1_for(component_class, component_id):
-            return state_module.get_signer(state_module.V1_SALT).sign_object(
-                '{"v":1,"n":"%s","d":{"id":"%s"}}' % (component_class._fqn, component_id),
-                serializer=state_module._JSONStringSerializer,
-                compress=True,
-            )
-
-        unbound = v1_for(LsxFree, "v9")
-        monkeypatch.setattr(state_module.settings, "STATE_ACCEPT_LEGACY", True)
-
-        with pytest.raises(BadSignature):
-            unsign_envelope(unbound, "LsxFree")
-
-        consumer, outbound = make_consumer(user=staff)
-        await consumer.command_join("LsxFree", unbound)
-
-        assert outbound.kinds() == ["reload"]
-        assert consumer.repo.get("v9") is None, "a page-level policy cannot be skipped by an old token"
-
-    async def test_the_rollout_flag_still_works_without_a_boundary(self, staff, monkeypatch):
-        """The window is only closed by boundaries, not by the upgrade itself."""
-        from wireview.core import state as state_module
-
-        live_session_module._REGISTRY.clear()
-        monkeypatch.setattr(state_module.settings, "STATE_ACCEPT_LEGACY", True)
-        v1 = state_module.get_signer(state_module.V1_SALT).sign_object(
-            '{"v":1,"n":"%s","d":{"id":"v10"}}' % LsxFree._fqn,
-            serializer=state_module._JSONStringSerializer,
-            compress=True,
-        )
-
-        payload = unsign_envelope(v1, "LsxFree")
-
-        assert payload.live_session == ""
-        assert payload.state["id"] == "v10"
-
 
 # --- AC6: a logout retires what it authenticated -------------------------------------------
 

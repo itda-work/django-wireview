@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import difflib
 import logging
 import typing as t
 from asyncio import iscoroutine
-from functools import reduce
 
 from asgiref.sync import async_to_sync
 from channels.layers import BaseChannelLayer
@@ -17,7 +15,7 @@ from django.utils.safestring import SafeText, mark_safe
 from .. import settings, telemetry
 from ..schemas import DomAction
 from ..utils import db
-from .rendered import Rendered, has_markers, strip_markers
+from .rendered import Rendered, strip_markers
 from .transport import Broker, ChannelsBroker, NullBroker
 
 log = logging.getLogger("wireview")
@@ -45,9 +43,8 @@ else:
 
 # Type aliases
 RedirectDestination = t.Union[t.Callable[..., t.Any], "models.Model", str]
-HTMLDiff = list[str | int]
-# New diff format: either legacy HTMLDiff or Phoenix-style dict
-DiffPayload = HTMLDiff | dict[str, t.Any]
+# A render's diff: a full render {"s", "d", "f"} or a partial {"<index>": value}
+DiffPayload = dict[str, t.Any]
 Context = dict[str, t.Any]
 P = t.ParamSpec("P")
 
@@ -96,7 +93,6 @@ class WireviewMeta:
     Only ``PUBLIC_MEMBERS`` are public API.
     """
 
-    _last_sent_html: list[str]
     _last_rendered: Rendered | None
 
     def __init__(
@@ -125,7 +121,6 @@ class WireviewMeta:
         self.broker: Broker = broker
         self._is_frozen: bool = False
         self._redirected_to: str | None = None
-        self._last_sent_html: list[str] = []
         self._last_rendered: Rendered | None = None
         self._skip_render: bool = False
         # Whether the last render_diff() call evaluated the template. False when
@@ -177,7 +172,6 @@ class WireviewMeta:
     def force_render(self) -> None:
         """Force a full re-render on the next cycle."""
         self._skip_render = False
-        self._last_sent_html = []
         self._last_rendered = None
 
     def enter_pending_mode(self) -> None:
@@ -300,8 +294,9 @@ class WireviewMeta:
         """
         Render the component and return a diff if changed.
 
-        Uses Phoenix LiveView-style static/dynamic separation when markers
-        are present, falling back to legacy line-based diff otherwise.
+        Uses Phoenix LiveView-style static/dynamic separation. HTML without
+        markers (django-hmin strips them) is one static part, so any change to
+        it is a full render (#99 removed the token diff that used to cover it).
 
         This method resolves async properties in the async context first,
         then performs template rendering in a sync context. This avoids
@@ -311,7 +306,6 @@ class WireviewMeta:
         Returns:
             - dict with 's', 'd', 'f' keys for full render
             - dict with numeric keys for partial updates
-            - list (legacy format) for unmarked templates
             - None if no changes
         """
         self.template_evaluated = False
@@ -344,12 +338,7 @@ class WireviewMeta:
             component_id=component.id,
             component_name=component._name,
         ) as diff_span:
-            # Use Phoenix-style diff if markers are present, else fall back
-            # to the legacy line-based diff
-            if has_markers(html_str):
-                diff = self._compute_rendered_diff(html_str, repo.vsn)
-            else:
-                diff = self._compute_legacy_diff(html_str)
+            diff = self._compute_rendered_diff(html_str, repo.vsn)
             diff_span.annotate(changed=diff is not None)
             diff_span.measure(diff)
 
@@ -365,33 +354,6 @@ class WireviewMeta:
 
         self._last_rendered = rendered
         return diff.to_payload()
-
-    def _compute_legacy_diff(self, html: str) -> HTMLDiff | None:
-        """Compute legacy line-based diff (backward compatibility)."""
-        html_tokens = html.split(" ")
-
-        if self._last_sent_html == html_tokens:
-            return None
-
-        if not settings.USE_HTML_DIFF:
-            self._last_sent_html = html_tokens
-            return html_tokens  # type: ignore
-
-        diff: HTMLDiff = []
-        for x in difflib.ndiff(self._last_sent_html, html_tokens):
-            indicator = x[0]
-            if indicator == " ":
-                diff.append(1)
-            elif indicator == "+":
-                diff.append(x[2:])
-            elif indicator == "-":
-                diff.append(-1)
-
-        if diff:
-            diff = reduce(compress_diff, diff[1:], diff[:1])
-
-        self._last_sent_html = html_tokens
-        return diff if diff else None
 
     def render(
         self,
@@ -698,16 +660,3 @@ class WireviewMeta:
             this=component,
             wireview_repository=repo,
         )
-
-
-def compress_diff(diff: HTMLDiff, diff_item: str | int) -> HTMLDiff:
-    """Compress consecutive same-type diff items."""
-    if isinstance(diff_item, str) or isinstance(diff[-1], str):
-        diff.append(diff_item)
-    else:
-        same_sign = not (diff[-1] > 0) ^ (diff_item > 0)
-        if same_sign:
-            diff[-1] += diff_item
-        else:
-            diff.append(diff_item)
-    return diff

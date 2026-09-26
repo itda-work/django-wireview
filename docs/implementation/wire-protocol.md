@@ -33,7 +33,6 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 | `user_event` | `id`, `command`, `implicit_args` (폼 직렬화), `explicit_args`, `ref?` | 핸들러 호출 후 render. `ref`(정수)는 확정 액션에만 실리고, 서버는 그 이벤트의 render에 그대로 돌려준다(#92). 클라이언트는 서버가 join 응답에서 `vsn` 3 이상을 알렸을 때만 싣는다 |
 | `hook_event` | `component_id`, `hook_id`, `event`, `payload`, `ref?` | `handle_hook_event()`, `ref`가 있으면 `hook_reply` |
 | `params_changed` | `params`, `uri` | 모든 컴포넌트에 `params_changed()` |
-| `query_string` | `qs` | 저장소 params 갱신 |
 | `upload_register` | `id`, `name`, `entries: [{ref, name, size, type}]` | 검증 후 `upload_op` 응답 |
 | `upload_cancel` | `id`, `name`, `ref` | 항목 취소 |
 | `upload_complete` | `id`, `name`, `ref` | 항목 완료 처리 |
@@ -49,7 +48,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 | `render` | `id`, `diff`, `children?`, `ref?`, `vsn?` — `ref`는 이 render가 답하는 `user_event`의 것, `vsn`은 join에 답하는 render에만 실리는 서버의 프로토콜 버전이다. `diff`는 전체 `{"s", "d", "f"}` 또는 부분 `{"<index>": value}`, 또는 자식만 바뀌었거나 사용자 이벤트가 아무것도 바꾸지 않았을 때 `null`(후자는 이벤트가 끝났다는 알림이라 클라이언트가 로딩 상태를 지운다). value는 문자열, comprehension `{"s", "d"}`, 항목 갱신 `{"u", "n"}`, 항목 재배열 `{"k": [[시작, 길이] \| {"d": [...]}, ...]}`(`vsn` 2 이상에만), 블록 `{"r", "d"}`, 블록 부분 갱신 `{"p"}`, LiveComponent 참조 `{"c": id}` ([html-diff](../features/html-diff.md)). `children`은 이 렌더와 함께 렌더된 LiveComponent들의 `{id: diff}` 평면 맵이다(손자식 포함). 클라이언트는 DOM을 건드리기 전에 이들을 먼저 등록하고, 부모 HTML을 만들 때 참조 자리에 자식의 현재 HTML을 넣는다 |
 | `remove` | `id` |
 | `error` | `id`, `during` (`event` 또는 `join`), `ref?` — 서버 코드가 이 컴포넌트를 처리하다 예외를 던졌다(#94). `vsn` 4 이상의 클라이언트에만 보낸다. `event`: 핸들러, 브로드캐스트 수신, `params_changed`, 훅 이벤트, 업로드 콜백, LiveComponent `update()`, 렌더 중 하나가 던졌다. 서버는 인스턴스를 버렸고(`leaving()`을 부른다), `id`는 루트 컴포넌트다(LiveComponent가 던졌으면 그 루트). 클라이언트는 렌더 상태를 비우고 요소의 `data-state`로 다시 join한다. 그 상태는 이벤트 전의 것이라 핸들러가 던지기 전에 바꾼 값은 남지 않는다. `ref`는 그 이벤트의 것이고, 답이 render로 오지 않으므로 클라이언트는 여기서 정리한다. `join`: join이 첫 렌더까지 가지 못했다. 다시 시도하지 않고, 클라이언트는 요소를 그대로 둔 채 `wireview-error` 클래스를 붙이고 컴포넌트 등록에서 뺀다. 두 경우 모두 요소에서 버블링되는 `wireview:error` 이벤트(`detail: {id, during}`)를 보낸다. `vsn` 3 이하 클라이언트에는 `event`면 소켓을 코드 1011로 닫고(전부 다시 join), `join`이면 `remove`를 보낸다 — 둘 다 이전의 동작이다 |
-| `reload` | `id` (알 수 없으면 `null`), `reason` (`expired`, `legacy`, `invalid`, `live_session`) — join의 루트 서명 상태를 쓸 수 없어 아무것도 마운트하지 않았다. 클라이언트는 전체 페이지 로드로 복구하며, 30초 안에 두 번 반복되면 `sessionStorage["wireview:last-reload"]` 가드가 막고 경고만 남긴다 |
+| `reload` | `id` (알 수 없으면 `null`), `reason` (`expired`, `invalid`, `live_session`) — join의 루트 서명 상태를 쓸 수 없어 아무것도 마운트하지 않았다. 클라이언트는 전체 페이지 로드로 복구하며, 30초 안에 두 번 반복되면 `sessionStorage["wireview:last-reload"]` 가드가 막고 경고만 남긴다 |
 | `append`, `prepend`, `insert_after`, `insert_before`, `replace_with` | `id`, `html` |
 | `stream_op` | `op`, `stream`, `items`, `at` |
 | `exec_js` | `id`, `commands` |
@@ -127,6 +126,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 
 구버전이 섞이면: 옛 클라이언트와 새 서버는 옛 클라이언트가 `vsn`을 보내지 않으므로 지금까지와 바이트까지 같은 메시지를 받는다. 새 클라이언트와 옛 서버는 옛 서버가 `vsn`을 읽지 않고 옛 형태만 보내며, 새 클라이언트는 그것을 그대로 읽는다. 버전 신호가 없었다면 옛 클라이언트는 `{"k"}`를 모르는 값으로 슬롯에 넣고 `[object Object]`를 그렸을 것이다 — 롤링 배포 중 옛 JS로 열린 페이지가 새 서버에 재연결하는 흔한 경우다.
 
+- 2026-09-26: inbound `query_string`(클라이언트가 보내지 않은 지 오래된 명령)과 `reload`의 `legacy` 사유를 없앴다. v2 이전 서명 상태는 `invalid`다 (#99).
 - 2026-09-26: `vsn` 4. outbound `error`. 표에 없는 inbound 메시지와 핸들러가 아닌 `user_event`는 연결을 닫지 않는다 (#94).
 - 2026-09-19: `vsn` 3. `user_event`의 `ref`, render의 `ref`와 `vsn` (#92).
 - 2026-09-19: 사용자 이벤트가 아무것도 바꾸지 않아도 `render`(`diff: null`)를 보낸다. `upload_op config`에 `id` (#90). 둘 다 옛 클라이언트가 이미 읽는 모양이라 `vsn`을 올리지 않는다.

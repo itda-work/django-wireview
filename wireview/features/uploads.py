@@ -165,7 +165,9 @@ def validate_upload_token(token: str, max_age: int | None = None) -> UploadToken
     try:
         payload = signer.unsign_object(token, max_age=max_age)
     except Exception:
-        return _validate_legacy_token(signer, token, max_age)
+        # Including the pre-#83 ``conn:comp:config:ref`` token, which carried
+        # no size and no extension and is not read since #99.
+        return None
 
     if not isinstance(payload, dict) or payload.get("v") != TOKEN_VERSION:
         return None
@@ -180,33 +182,6 @@ def validate_upload_token(token: str, max_age: int | None = None) -> UploadToken
         )
     except (KeyError, TypeError, ValueError):
         return None
-
-
-def _validate_legacy_token(signer: t.Any, token: str, max_age: int) -> UploadToken | None:
-    """Accept the pre-#83 ``conn:comp:config:ref`` token during a rolling deploy.
-
-    A page rendered by an older worker holds tokens in the old shape, and its
-    uploads should finish rather than fail on the way to the new one. The old
-    token says nothing about size, so the global limit applies, and nothing about
-    the filename, so the magic-byte check has no extension to go on -- both
-    weaker than v2, which is why this is a transition, not a supported format.
-    """
-    from .. import settings as wireview_settings
-
-    try:
-        data = signer.unsign(token, max_age=max_age)
-    except Exception:
-        return None
-    parts = data.split(":")
-    if len(parts) != 4:
-        return None
-    return UploadToken(
-        connection_id=parts[0],
-        component_id=parts[1],
-        config_name=parts[2],
-        ref=parts[3],
-        max_bytes=wireview_settings.UPLOAD_MAX_FILE_SIZE,
-    )
 
 
 class UploadStatus(str, Enum):

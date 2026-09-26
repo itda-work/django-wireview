@@ -191,13 +191,11 @@ ALLOWED_HOSTS = ["yourdomain.com"]
 
 # wireview 설정
 WIREVIEW = {
-    "USE_HTML_DIFF": True,            # 변경분만 보낸다
     "USE_HMIN": True,                 # HTML 압축 (django-hmin 필요)
     "DEBUG_SYNC_TRANSITIONS": False,  # 운영에서는 끈다
     # 서명 상태 (data-state)
     "STATE_MAX_AGE": 14 * 24 * 3600,  # data-state 유효 기간
     "STATE_REFRESH_AFTER": None,      # None이면 STATE_MAX_AGE // 2
-    "STATE_ACCEPT_LEGACY": False,     # 아래 "업그레이드" 참고
     # 서명 키. 미설정이면 SECRET_KEY를 쓴다
     "SIGNING_KEY": None,
     "SIGNING_KEY_FALLBACKS": None,
@@ -228,13 +226,9 @@ v1 봉투(`#76`)와 그 이전의 두 형식은 경계를 담고 있지 않으�
 
 롤링 배포에서 따라오는 것이 둘이다.
 
-- **열려 있던 탭의 미저장 입력은 리로드와 함께 사라진다.** 그게 문제라면 롤아웃 구간 동안
-  `WIREVIEW["STATE_ACCEPT_LEGACY"] = True`로 두고 끝나면 되돌린다. 켜 둔 동안 옛 상태를 받아 주고
-  WARNING으로 기록한다. v1은 클래스는 검사하지만 경계는 모르고, 그 이전 형식은 클래스도 검사할 수
-  없다. **`live_session`을 하나라도 선언한 프로젝트에서는 이 플래그가 적용되지 않는다** — 옛 토큰에는
-  그 페이지에 경계가 있었는지를 말해 줄 것이 없어서, 받아 주면 뷰에 붙인 정책이 통째로 빠질 수 있다.
-  경계와 롤아웃 창이 둘 다 필요하면 배포를 나눈다: 먼저 v2만 내보내 `STATE_MAX_AGE` 동안 옛 토큰을
-  소진시키고, 그다음 배포에서 live_session을 켠다. `manage.py check`의 `wireview.W010`이 이 조합을 잡는다.
+- **열려 있던 탭의 미저장 입력은 리로드와 함께 사라진다.** 옛 토큰을 받아 주던 롤아웃 창
+  (`STATE_ACCEPT_LEGACY`)은 1.0 전에 없어졌다(#99). v2 봉투 이전 토큰은 0.3.0 이전 배포가 그린 탭에만
+  있고, 그 탭은 한 번 새로 읽힌다. 이 거절은 서명 불일치(`invalid`)로 기록된다.
 - **모든 프로세스가 `SECRET_KEY`를 공유해야 한다.** 전에도 그랬지만, 이제 어긋나면 컴포넌트가 조용히
   사라지는 대신 리로드 루프로 드러난다. 클라이언트는 30초 안에 두 번 리로드하기를 거부하고 경고를
   남기므로, 설정 오류가 페이지를 돌리는 대신 브라우저 콘솔에 보인다.

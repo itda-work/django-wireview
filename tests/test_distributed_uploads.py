@@ -386,19 +386,14 @@ def test_an_expired_token_is_refused():
 
 
 @pytest.mark.unit
-def test_the_pre_83_token_is_still_accepted():
-    """A page rendered by an older worker keeps uploading during a rollout."""
+def test_the_pre_83_token_is_not_read():
+    """It carried no size and no extension, so it bypassed both checks (#99)."""
     from wireview.core.signing import get_signer
     from wireview.features.uploads import UPLOAD_SALT
 
     legacy = get_signer(UPLOAD_SALT).sign("conn-1:comp-1:images:upload-1")
 
-    validated = validate_upload_token(legacy)
-
-    assert validated is not None
-    assert (validated.connection_id, validated.component_id) == ("conn-1", "comp-1")
-    assert validated.max_bytes == wireview_settings.UPLOAD_MAX_FILE_SIZE, "no size in the old token"
-    assert validated.extension == ""
+    assert validate_upload_token(legacy) is None
 
 
 @pytest.mark.unit

@@ -176,7 +176,7 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 - **채널 레이어는 core/transport.py에서만 만진다.** `get_channel_layer`, `group_add`, `group_send`를 다른 모듈에 쓰면 tests/test_transport.py의 가드가 실패한다. fan-out은 `get_broker().publish`, 세션 메시지는 `WireviewMeta.send`.
 - **프로세스를 늘리면 InMemory 레이어는 조용히 깨진다.** 브로드캐스트가 같은 프로세스의 연결에만 닿고 오류는 나지 않는다. 다중 프로세스에는 channels_redis나 channels-nats가 필수다. 성능은 둘이 대등하다(`docs/design/transport-abstraction.md` §5-3).
 - **Windows에서 daphne는 연결 약 500개에서 죽는다.** daphne가 selector 루프를 강제하고 CPython의 Windows select()는 소켓 512개가 상한이다. Windows 배포는 uvicorn 단일 프로세스를 포트별로 N개 띄우고 Caddy로 분배한다(`docs/DEPLOYMENT.md`). `uvicorn --workers`도 Windows에서는 selector 루프다. 실측은 `bench/results/win11-parlab-*`, 재현은 `bench/windows/run.sh`.
-- **USE_HMIN은 diff 마커를 지운다.** django-hmin이 HTML 주석을 제거하므로 부분 diff가 꺼지고 토큰 diff로 퇴화한다. 켤 때는 대역폭 손익을 실측한다.
+- **USE_HMIN은 diff 마커를 지운다.** django-hmin이 HTML 주석을 제거하므로 부분 diff가 꺼지고 바뀔 때마다 컴포넌트 HTML 전체가 나간다. 켤 때는 대역폭 손익을 실측한다.
 - **`UPLOAD_TEMP_DIR`은 첫 청크가 올 때에야 읽힌다.** 잘못된 경로나 마운트되지 않은 볼륨은 기동 시 아무 신호도 없고, 업로드가 하나씩 `ImproperlyConfigured`로 실패한다. 빈 문자열은 미설정과 같게 다뤄 시스템 temp로 간다(`Path("")`가 cwd이기 때문이다). `manage.py check`의 `wireview.W008`이 미리 잡는다.
 - **청크 업로드가 워커 사이에서 공유해야 하는 것은 둘뿐이다.** 청크 저장소(`UPLOAD_TEMP_DIR`, 한 호스트면 시스템 temp가 이미 공유)와 서명 키. 엔드포인트는 상태를 안 들고 있으므로 스티키 라우팅은 필요 없다. 키가 어긋나면 403, 디렉터리가 어긋나면 200을 받고도 완료되지 않는다. 상세는 `docs/features/chunked-uploads.md`.
 - **서명은 `wireview/core/signing.py`의 `get_signer(salt)`로만 한다.** `TimestampSigner(salt=...)`를 직접 만들면 `SIGNING_KEY`와 fallback을 무시해 키 로테이션이 조용히 깨진다. 서명 지점은 둘 — 업로드 토큰과 data-state.
@@ -199,8 +199,6 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 - **인증 세대는 세션 키가 아니라 `login()`이 찍는 nonce(`_wireview_auth_gen`)다.** signed-cookie
   백엔드의 `session_key`는 서명 쿠키 문자열 전체라 세션에 뭘 쓰든 바뀐다. 그리고 그 백엔드는
   로그아웃을 서버에서 폐기하지 못한다 — 경계 뒤에 진짜 인가가 있으면 서버 저장형 백엔드를 쓴다.
-- **`STATE_ACCEPT_LEGACY`와 live_session은 동시에 열 수 없다.** 옛 토큰에는 그 페이지에 경계가
-  있었는지를 말해 줄 것이 없어서, 받아 주면 뷰에 붙인 정책이 통째로 빠진다(`wireview.W010`).
 - **마크업에 스크립트를 넣지 않는다.** 이벤트는 `wire-on-*` 속성과 `<html>`의 위임 리스너로 간다(#90). 태그가
   `on*="…"`이나 인라인 `<script>`를 렌더하면 `'unsafe-inline'` 없는 CSP에서 조용히 죽는다 — 페이지는 그려지고 클릭만
   아무 일도 하지 않는다. tests/test_csp_e2e.py가 브라우저의 위반 보고로 지킨다. 헤더의 `<style>`·`<script>`는 요청의

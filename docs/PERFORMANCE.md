@@ -166,7 +166,6 @@ class Counter(Component):
 
 ```python
 WIREVIEW = {
-    "USE_HTML_DIFF": True,   # 전체 HTML이 아니라 변경분만 보낸다
     "USE_HMIN": True,        # HTML 압축 (django-hmin 필요)
 }
 ```

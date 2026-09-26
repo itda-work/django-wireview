@@ -31,7 +31,9 @@ wireview는 Phoenix LiveView의 렌더 엔진을 본떠 템플릿 출력을 두 
 
 **토큰 재사용이 diff 안정성을 지킵니다.** 타임스탬프가 매 렌더마다 갱신되면 상태가 같아도 `data-state`가 달라지고, 이 값은 dynamic 파트이므로 무변경 렌더가 매번 diff를 만듭니다. 그래서 `sign_state()`는 상태 JSON이 같고 토큰이 `STATE_REFRESH_AFTER`(기본 `STATE_MAX_AGE // 2`)보다 젊으면 같은 토큰을 그대로 돌려줍니다. `STATE_MAX_AGE - STATE_REFRESH_AFTER`마다 한 번이라도 렌더되는 컴포넌트는 페이지가 열려 있는 동안 만료되지 않습니다. 회귀 테스트는 `tests/test_diff_stability.py`와 `tests/test_signed_state.py`입니다.
 
-봉투 이전의 두 구형식(`Signer().sign(json)`과 버전 없는 compact 서명)은 클래스를 담지 않으므로 기본으로 거절합니다. 혼재 배포 구간에만 `WIREVIEW["STATE_ACCEPT_LEGACY"] = True`로 받아들일 수 있고, 거절되면 서버는 `reload` 명령으로 전체 로드를 시킵니다([배포 가이드](../DEPLOYMENT.md)).
+v2 봉투 이전의 형식은 읽지 않습니다(#99). 그런 토큰으로 join하면 서버는 `reload` 명령으로 전체 로드를 시킵니다([배포 가이드](../DEPLOYMENT.md)).
+
+마커가 없는 HTML(django-hmin이 주석을 지운 경우)은 정적 조각 하나짜리 렌더로 다뤄집니다. 바뀌면 컴포넌트 HTML 전체가 나가고, 같으면 아무것도 나가지 않습니다. 예전의 토큰 단위 diff는 #99에서 없어졌습니다.
 
 ## 실측
 

@@ -28,19 +28,10 @@ is what keeps the feature opt-in.
 ``sign_object`` keeps the value base64 (no quotes, so it does not inflate when
 HTML-escaped into an attribute) and zlib-compresses it when that is smaller.
 
-Three older formats exist and are rejected unless ``STATE_ACCEPT_LEGACY`` is on:
-
-- v1: the same envelope without ``s`` and ``a``, on the ``wireview.state.v1`` salt.
-- unversioned compact: ``Signer().sign_object`` of the bare state JSON.
-- legacy JSON: ``Signer().sign(json)`` — the raw JSON followed by the
-  signature.
-
-None of them carries a boundary, and there is nothing in a token to say whether
-its page had one, so ``STATE_ACCEPT_LEGACY`` stops applying the moment a project
-declares a ``live_session``: the rollout window and the boundary cannot both be
-open. Otherwise the setting exists for a mixed-version rollout and for the
-benchmark; the default is to answer an old token with ``reload``, which
-re-renders the page under the current auth context and issues fresh ones.
+Older formats (the v1 envelope without ``s`` and ``a``, and the unversioned
+tokens before it) are not read: a page that carries one reloads, which renders
+it under the current auth context with fresh tokens. The window that used to
+accept them, ``STATE_ACCEPT_LEGACY``, went before 1.0 (#99).
 """
 
 from __future__ import annotations
@@ -63,7 +54,6 @@ log = logging.getLogger("wireview")
 
 __all__ = [
     "ENVELOPE_VERSION",
-    "LegacyState",
     "SignatureExpired",
     "StateMismatch",
     "StatePayload",
@@ -76,17 +66,9 @@ __all__ = [
 ENVELOPE_VERSION = 2
 
 #: Salt for the state signer. Namespaced by version so one envelope cannot be
-#: verified with another's key material -- which is also what makes a v1 token
-#: fail the v2 signer instead of decoding into a policy-free payload.
+#: verified with another's key material: a v1 token fails the v2 signer instead
+#: of decoding into a policy-free payload.
 STATE_SALT = "wireview.state.v2"
-
-#: The pre-#58 envelope: same shape without ``s`` and ``a``.
-V1_VERSION = 1
-V1_SALT = "wireview.state.v1"
-
-#: Salt the pre-v1 formats were signed under: they used a bare ``Signer()``, whose
-#: default salt is its own dotted path.
-LEGACY_STATE_SALT = "django.core.signing.Signer"
 
 
 class StateMismatch(BadSignature):
@@ -122,15 +104,6 @@ class StatePayload:
     live_session: str = ""
     auth: str | None = None
     version: int = ENVELOPE_VERSION
-
-
-class LegacyState(BadSignature):
-    """A correctly signed pre-v2 state arrived while ``STATE_ACCEPT_LEGACY`` is off.
-
-    The signature is valid, so this is not tampering: it is a page rendered
-    before the upgrade. The class cannot be checked, so the state is refused
-    and the client reloads.
-    """
 
 
 class _JSONStringSerializer:
@@ -210,87 +183,6 @@ def sign_state(component: "Component") -> str:
     return token
 
 
-def _decode_legacy(value: str) -> dict[str, t.Any] | None:
-    """Decode one of the two pre-v1 formats, or return ``None`` if it is neither.
-
-    ``None`` means the value is not a validly signed legacy state, so the
-    caller reports the original failure (tampering) rather than blaming the
-    format.
-    """
-    try:
-        # Pre-v1 tokens carry no salt, but they do use wireview's key: a project
-        # that moves to a dedicated SIGNING_KEY moves its old pages with it.
-        legacy_signer = get_signer(LEGACY_STATE_SALT, timestamp=False)
-        if value.startswith("{"):
-            decoded = json.loads(legacy_signer.unsign(value))
-        else:
-            decoded = legacy_signer.unsign_object(value, serializer=_JSONStringSerializer)
-    except (BadSignature, ValueError):
-        return None
-    return decoded if isinstance(decoded, dict) else None
-
-
-def _legacy_refusal() -> str:
-    """Why an old token may not be accepted right now, or ``""`` if it may.
-
-    ``STATE_ACCEPT_LEGACY`` is the rollout window, and it stops applying the
-    moment the project declares a boundary. An old token carries no
-    ``live_session``, so it decodes as "no boundary" -- which is harmless for a
-    component that names the sessions it belongs to and is *not* harmless for
-    one that does not: the connection settles on no policy and the page's
-    ``authorize`` and hooks never run, even though the view was decorated. There
-    is nothing in the token to tell the two cases apart, so a project with
-    boundaries takes the reload.
-    """
-    if not settings.STATE_ACCEPT_LEGACY:
-        return "set WIREVIEW['STATE_ACCEPT_LEGACY'] to accept it"
-
-    from .live_session import all_live_sessions
-
-    if all_live_sessions():
-        return (
-            "WIREVIEW['STATE_ACCEPT_LEGACY'] does not apply once a live_session is declared: "
-            "an old token names no boundary, so accepting it would let a page-level policy "
-            "be skipped"
-        )
-    return ""
-
-
-def _accept_legacy(state: dict[str, t.Any]) -> StatePayload:
-    if refusal := _legacy_refusal():
-        raise LegacyState(f"Pre-v1 state format; {refusal}")
-    log.warning(
-        "Accepted a pre-v1 signed state for %s: it is not bound to a component class",
-        state.get("id", "<unknown id>"),
-    )
-    return StatePayload(state=state, version=0)
-
-
-def _decode_v1(value: str, name: str) -> StatePayload:
-    """Decode a v1 envelope: the class binding without the boundary.
-
-    Raises the same way :func:`unsign_envelope` does, and refuses the token
-    unless the rollout window is open (:func:`_legacy_refusal`).
-    """
-    envelope = get_signer(V1_SALT).unsign_object(
-        value, serializer=_JSONStringSerializer, max_age=settings.STATE_MAX_AGE
-    )
-    if not isinstance(envelope, dict) or envelope.get("v") != V1_VERSION:
-        raise BadSignature(f"Unsupported state envelope: {envelope!r:.80}")
-    signed_name = envelope.get("n")
-    state = envelope.get("d")
-    if not isinstance(signed_name, str) or not isinstance(state, dict):
-        raise BadSignature("Malformed state envelope")
-    _check_class(signed_name, name, state)
-    if refusal := _legacy_refusal():
-        raise LegacyState(f"A v1 state carries no live_session; {refusal}")
-    log.warning(
-        "Accepted a v1 signed state for %s: it is not bound to a live_session",
-        state.get("id", "<unknown id>"),
-    )
-    return StatePayload(state=state, version=V1_VERSION)
-
-
 def unsign_envelope(value: str, name: str) -> StatePayload:
     """Decode a ``data-state`` value and check it was issued for ``name``.
 
@@ -307,35 +199,9 @@ def unsign_envelope(value: str, name: str) -> StatePayload:
     Raises:
         SignatureExpired: the token is older than ``STATE_MAX_AGE``.
         StateMismatch: the envelope was issued for another class.
-        LegacyState: a valid pre-v2 token while ``STATE_ACCEPT_LEGACY`` is off.
         BadSignature: anything else (tampered, truncated, malformed).
     """
-    if value.startswith("{"):
-        legacy = _decode_legacy(value)
-        if legacy is None:
-            raise BadSignature("Invalid signature on the legacy JSON state format")
-        return _accept_legacy(legacy)
-
-    try:
-        envelope = _signer().unsign_object(value, serializer=_JSONStringSerializer, max_age=settings.STATE_MAX_AGE)
-    except SignatureExpired:
-        raise
-    except BadSignature as current:
-        # Not a v2 envelope. Older formats are tried in age order; if none of
-        # them verifies either, the original failure stands.
-        try:
-            return _decode_v1(value, name)
-        except (LegacyState, SignatureExpired, StateMismatch):
-            # These mean the v1 signature verified: the token is genuinely old,
-            # genuinely expired or genuinely for another class, and saying so
-            # beats reporting the v2 signature failure that came first.
-            raise
-        except BadSignature:
-            pass
-        legacy = _decode_legacy(value)
-        if legacy is None:
-            raise current
-        return _accept_legacy(legacy)
+    envelope = _signer().unsign_object(value, serializer=_JSONStringSerializer, max_age=settings.STATE_MAX_AGE)
 
     if not isinstance(envelope, dict) or envelope.get("v") != ENVELOPE_VERSION:
         raise BadSignature(f"Unsupported state envelope: {envelope!r:.80}")

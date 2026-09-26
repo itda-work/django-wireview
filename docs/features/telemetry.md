@@ -133,7 +133,7 @@ def observe(sender, component_name, duration_ms, **kwargs):
 |------|------|
 | 이벤트 | `ComponentRepository.dispatch_event` — 핸들러 호출을 감싼다 |
 | 렌더 | `WireviewMeta.render_diff`의 렌더 구간(라이브)과 `WireviewMeta.render`(HTTP·컴포넌트 태그) |
-| diff | `WireviewMeta.render_diff`의 diff 구간. 마커 기반이든 레거시 토큰 diff든 같은 시그널 |
+| diff | `WireviewMeta.render_diff`의 diff 구간 |
 | 브로드캐스트 | `WireviewMeta._send_broadcast`와 `wireview.utils`의 `send_to`/`asend_to` — 어떤 `Broker` 구현이든 계측된다 |
 
 각 지점은 `telemetry.span(...)` 컨텍스트 매니저를 쓴다. 켜져 있으면 `Span`이 시계를 읽고

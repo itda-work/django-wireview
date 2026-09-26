@@ -166,7 +166,7 @@ def check_hmin(app_configs, **kwargs) -> list[CheckMessage]:
     """W005: django-hmin strips the comment markers partial diffs rely on."""
     from . import settings as wireview_settings
 
-    if not (wireview_settings.USE_HMIN and wireview_settings.USE_HTML_DIFF):
+    if not wireview_settings.USE_HMIN:
         return []
 
     return [
@@ -174,8 +174,8 @@ def check_hmin(app_configs, **kwargs) -> list[CheckMessage]:
             "WIREVIEW['USE_HMIN'] is on, which disables partial HTML diffs.",
             hint=(
                 "django-hmin removes the HTML comments wireview uses as diff markers, so "
-                "updates degrade to token diffs. Measure the bandwidth trade-off before "
-                "keeping it on, or set USE_HMIN to False."
+                "every change sends the component's whole HTML. Measure the bandwidth "
+                "trade-off before keeping it on, or set USE_HMIN to False."
             ),
             id="wireview.W005",
         )
@@ -349,7 +349,6 @@ def check_live_sessions(app_configs, **kwargs) -> list[CheckMessage]:
     reported only once the project declares a live_session at all -- before that
     there is nothing to belong to, and every component is where it always was.
     """
-    from . import settings as wireview_settings
     from .core.live_session import all_live_sessions
 
     declared = all_live_sessions()
@@ -357,22 +356,6 @@ def check_live_sessions(app_configs, **kwargs) -> list[CheckMessage]:
 
     if declared:
         messages.extend(_check_request_context_processor())
-
-    if declared and wireview_settings.STATE_ACCEPT_LEGACY:
-        messages.append(
-            Warning(
-                "WIREVIEW['STATE_ACCEPT_LEGACY'] is on while a live_session is declared, "
-                "so old state tokens are refused anyway.",
-                hint=(
-                    "A pre-v2 token names no boundary, and nothing in it says whether its "
-                    "page had one, so accepting it could let a page-level policy be skipped "
-                    "entirely. The rollout window and the boundary cannot both be open: open "
-                    "tabs reload once when the boundary ships. Drop the setting to say so on "
-                    "purpose, or land it in a deploy before the first live_session."
-                ),
-                id="wireview.W010",
-            )
-        )
 
     for cls in iter_component_classes():
         for name in sorted(cls._meta.live_sessions):
