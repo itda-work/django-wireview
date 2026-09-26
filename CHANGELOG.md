@@ -83,7 +83,9 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
   its value, except when the render answers an action (any event but `input`) from that field
   or its form, which is how Enter still empties a todo input and a submit its form, or when
   the server renders a new value for a field that is not focused. `JS().set_value` still sets
-  a field anywhere. `docs/features/html-diff.md`.
+  a field anywhere. It was also why the todo E2E now and then added an item with an empty
+  label (#86): the test typed before the join's answer, whose morph emptied the field.
+  `docs/features/html-diff.md`.
 - The input-value rule answers the right event (#92, from an implementation review of #91).
   The first version marked a committing action's fields and let the first morph to touch
   them use the mark, so an earlier event's late answer (or a broadcast) could empty a field

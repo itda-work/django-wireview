@@ -198,3 +198,56 @@ def test_typing_after_enter_survives_a_normalized_answer_after_focus_left(probe)
 
     expect_text(by(page, "normalized"), "ABC")
     expect(field).to_have_value("abcz")
+
+
+#: Holds every message the server sends until the test releases them, so the
+#: answer to the join lands after whatever the test does first.
+HOLD_ANSWERS = """
+(() => {
+  const Native = window.WebSocket;
+  window.__hold = {
+    held: [],
+    release() {
+      const held = this.held;
+      this.held = null;
+      held.forEach((deliver) => deliver());
+    },
+  };
+  window.WebSocket = class extends Native {
+    addEventListener(type, listener, options) {
+      if (type !== "message") return super.addEventListener(type, listener, options);
+      return super.addEventListener(
+        type,
+        (event) => {
+          if (window.__hold.held) window.__hold.held.push(() => listener.call(this, event));
+          else listener.call(this, event);
+        },
+        options
+      );
+    }
+  };
+})();
+"""
+
+
+def test_what_was_typed_before_the_first_render_survives_it(page, server):
+    """#86: the todo E2E sometimes added an item with an empty label.
+
+    ``wait_live`` sees ``data-is-live="true"``, which the client sets when it
+    *sends* the join, so a test (or a user) can type before the join's answer
+    arrives. Before #91 that answer's morph copied the server's value -- empty
+    -- into the field, and Enter then added an empty item. It showed only when
+    the first render was slow, as on a cold run right after a code change.
+    Holding the answer makes it deterministic.
+    """
+    page.add_init_script(HOLD_ANSWERS)
+    open_live(page, f"{server}/valueprobe/")
+    page.wait_for_function("window.__hold.held.length > 0")
+
+    by(page, "item").fill("typed before the answer")
+    page.evaluate("window.__hold.release()")
+    expect_text(by(page, "pings"), "0")
+    page.evaluate("() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))")
+    by(page, "item").press("Enter")
+
+    expect_text(by(page, "added"), "typed before the answer")
