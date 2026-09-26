@@ -273,7 +273,7 @@ async def test_an_old_join_mounts_nothing_and_asks_for_a_reload(make_old):
     assert outbound.commands == [("reload", {"id": None, "reason": "invalid"})]
 
 
-def test_the_rollout_setting_is_gone():
+async def test_the_rollout_setting_is_gone():
     assert not hasattr(wireview_settings, "STATE_ACCEPT_LEGACY")
 
 

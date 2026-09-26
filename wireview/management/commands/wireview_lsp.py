@@ -12,7 +12,6 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import json
 import sys
@@ -201,7 +200,7 @@ def extract_methods(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
         # Check if it's a coroutine function (async method)
         # Need to unwrap validate_call decorator if present
         original_func = getattr(attr, "__wrapped__", attr)
-        is_async = asyncio.iscoroutinefunction(original_func)
+        is_async = inspect.iscoroutinefunction(original_func)
 
         # Get signature
         try:

@@ -19,7 +19,7 @@ class Counter(LiveComponent):
     async def update(self, **assigns):
         """Called when parent updates props."""
         for key, value in assigns.items():
-            if key in self.model_fields:
+            if key in type(self).model_fields:
                 setattr(self, key, value)
 
     async def increment(self):

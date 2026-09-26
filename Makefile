@@ -1,4 +1,4 @@
-.PHONY: all install test test-unit test-e2e test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install
+.PHONY: all install test test-unit test-e2e test-matrix test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install
 
 # Default target
 all: install build
@@ -159,6 +159,17 @@ ci-lint: lint
 ci-check:
 	uv run pyright wireview
 
+# Unit and integration tests on every supported Python x Django pair (docs/COMPATIBILITY.md).
+# CI only runs when dispatched by hand, so this is how the range gets checked.
+MATRIX_PYTHON ?= 3.12 3.13 3.14
+MATRIX_DJANGO ?= 5.2 6.0 6.1
+test-matrix: collectstatic
+	@set -e; for py in $(MATRIX_PYTHON); do for dj in $(MATRIX_DJANGO); do \
+		echo "== Python $$py, Django $$dj"; \
+		DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run --isolated --python $$py --extra dev --with "django~=$$dj.0" \
+			pytest tests examples -m "not e2e and not slow" -q --no-header -p no:warnings $(ARGS); \
+	done; done
+
 # CI: Run tests (non-E2E)
 ci-test:
 	cd tests && uv run python manage.py collectstatic --noinput
@@ -216,6 +227,7 @@ help:
 	@echo "  make test             - Run tests (excluding E2E and slow)"
 	@echo "  make test-unit        - Run unit tests only"
 	@echo "  make test-e2e         - Run E2E tests with Playwright"
+	@echo "  make test-matrix      - Run tests on every supported Python x Django pair"
 	@echo "  make test-all         - Run all tests including E2E"
 	@echo "  make test-cov         - Run tests with coverage report"
 	@echo ""

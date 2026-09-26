@@ -1,5 +1,7 @@
 """Tests for scroll_into_view functionality."""
 
+import inspect
+
 import pytest
 
 from wireview import Component
@@ -88,10 +90,9 @@ class TestComponentScrollIntoView:
     @pytest.mark.unit
     def test_component_has_scroll_into_view_method(self):
         """Component should have scroll_into_view() method."""
-        import asyncio
 
         assert hasattr(Component, "scroll_into_view")
-        assert asyncio.iscoroutinefunction(Component.scroll_into_view)
+        assert inspect.iscoroutinefunction(Component.scroll_into_view)
 
     @pytest.mark.asyncio
     @pytest.mark.unit

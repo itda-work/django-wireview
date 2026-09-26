@@ -72,6 +72,11 @@ warnings.simplefilter("error", WireviewDeprecationWarning)
 
 ## 지원 범위
 
-지원하는 Python·Django 버전의 정본은 `pyproject.toml`과 `.github/workflows/ci.yml`의 매트릭스다. 1.0에서
-어떤 버전을 얼마나 오래 지원할지는 [#93](https://github.com/itda-work/django-wireview/issues/93)의 1.0rc
-항목에서 정한다.
+**Django가 보안 지원하는 Django 버전**과, 그 버전들이 지원하는 Python 중 **3.12 이상**을 지원한다. 지금은
+Django 5.2 LTS·6.0·6.1, Python 3.12·3.13·3.14다.
+
+- Django가 한 버전의 지원을 끝내면 그다음 **마이너** 릴리스에서 그 버전을 뺀다. 메이저를 올리지 않는다 —
+  Django가 이미 끝낸 버전을 붙잡는 것은 사용자를 지키는 일이 아니다.
+- 새 Django·Python 버전은 매트릭스를 통과하면 패치 릴리스로 더한다.
+- 정본은 `pyproject.toml`(의존성·classifier)과 `.github/workflows/ci.yml`의 매트릭스다. 같은 격자를 로컬에서
+  `make test-matrix`로 돈다(CI는 수동으로만 돈다).

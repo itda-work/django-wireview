@@ -50,7 +50,6 @@ they meant to opt in.
 
 from __future__ import annotations
 
-import asyncio
 import functools
 import inspect
 import logging
@@ -276,7 +275,7 @@ class LiveSession:
             setattr(target, REQUEST_ATTR, self.name)
             return target
 
-        if asyncio.iscoroutinefunction(target):
+        if inspect.iscoroutinefunction(target):
             return self._async_gate(target)
         return self._sync_gate(target)
 

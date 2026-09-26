@@ -12,8 +12,8 @@ worse than no check, so everything starts at ``Warning`` level and the
 production-only check is registered as a deploy check.
 """
 
-import asyncio
 import difflib
+import inspect
 import os
 import sys
 import typing as t
@@ -74,7 +74,7 @@ def check_async_handlers(app_configs, **kwargs) -> list[CheckMessage]:
     messages = []
     for cls in iter_component_classes():
         for name, func in iter_exposed_handlers(cls):
-            if asyncio.iscoroutinefunction(_unwrap(func)):
+            if inspect.iscoroutinefunction(_unwrap(func)):
                 continue
             messages.append(
                 Warning(
@@ -99,7 +99,7 @@ def check_async_lifecycle(app_configs, **kwargs) -> list[CheckMessage]:
             func = cls.__dict__.get(name)
             if func is None or not callable(func):
                 continue
-            if asyncio.iscoroutinefunction(_unwrap(func)):
+            if inspect.iscoroutinefunction(_unwrap(func)):
                 continue
             messages.append(
                 Warning(
@@ -329,7 +329,7 @@ def check_on_mount_hooks(app_configs, **kwargs) -> list[CheckMessage]:
                     )
                 )
                 continue
-            if asyncio.iscoroutinefunction(_unwrap(on_mount)):
+            if inspect.iscoroutinefunction(_unwrap(on_mount)):
                 continue
             messages.append(
                 Warning(

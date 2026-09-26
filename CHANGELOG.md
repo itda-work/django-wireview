@@ -49,6 +49,10 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
 
 ### Changed
 
+- **Breaking:** Django 5.2 or newer (#93). wireview supports the Django releases Django
+  supports, on Python 3.12 and up: today Django 5.2 LTS, 6.0 and 6.1 on Python 3.12, 3.13
+  and 3.14. Django 5.0 and 5.1 are past their end of life. `make test-matrix` runs the
+  whole grid locally, since CI only runs when dispatched. `docs/COMPATIBILITY.md`.
 - **Breaking:** component configuration moved into `class Meta:` (#99). The underscore
   class attributes read as private and sat among the registry's own underscore names.
   `_template_name`, `_subscriptions`, `_temporary_assigns`, `_exclude_fields`, `_slots`,
@@ -103,6 +107,9 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
 
 ### Fixed
 
+- The system checks and the stub and LSP generators called `asyncio.iscoroutinefunction`,
+  deprecated in Python 3.14 and removed in 3.16; they use `inspect.iscoroutinefunction`. On
+  3.14 the test suite went from 129,088 warnings to 3.
 - **Security:** a page on another site could open this site's socket with the user's
   cookies (cross-site WebSocket hijacking, #96). The quick start's `asgi.py` had no Origin
   validation, and nothing in wireview checked. The consumer now refuses, before accepting,

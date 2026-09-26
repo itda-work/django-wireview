@@ -13,7 +13,6 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
 import builtins
 import collections.abc
 import enum
@@ -452,7 +451,7 @@ def _extract_methods(cls: type[Component]) -> tuple[list[MethodInfo], list[str]]
         # The function as written, past the descriptor and the validate_call wrapper.
         raw = static.__func__ if isinstance(static, (classmethod, staticmethod)) else static
         original_func = inspect.unwrap(raw) if callable(raw) else attr
-        is_async = asyncio.iscoroutinefunction(original_func)
+        is_async = inspect.iscoroutinefunction(original_func)
 
         # Get signature
         sig = None

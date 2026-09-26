@@ -1,5 +1,7 @@
 """Tests for pending operations queue in WireviewMeta."""
 
+import inspect
+
 import pytest
 
 from wireview import Component
@@ -314,9 +316,8 @@ class TestLeavingLifecycleHook:
     def test_component_has_leaving_method(self):
         """Component should have leaving() method."""
         assert hasattr(Component, "leaving")
-        import asyncio
 
-        assert asyncio.iscoroutinefunction(Component.leaving)
+        assert inspect.iscoroutinefunction(Component.leaving)
 
 
 class LeavingComponent(Component):

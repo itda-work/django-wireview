@@ -1576,10 +1576,10 @@ class Component(BaseModel):
             return
 
         for field_name in self._meta.temporary_assigns:
-            if field_name not in self.model_fields:
+            if field_name not in type(self).model_fields:
                 continue
 
-            field_info = self.model_fields[field_name]
+            field_info = type(self).model_fields[field_name]
             # Get the default value for this field
             # Note: In Pydantic v2, default_factory is the actual callable (e.g., list class)
             if field_info.default is not None:

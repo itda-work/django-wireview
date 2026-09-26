@@ -11,6 +11,7 @@ every signed state carries the boundary and the login it was issued under, so
 two individually valid pieces cannot be combined into a third thing.
 """
 
+import inspect
 import typing as t
 from uuid import uuid4
 
@@ -364,7 +365,7 @@ class TestHttpBoundary:
         async def page(req):
             return "rendered"
 
-        assert asyncio.iscoroutinefunction(page)
+        assert inspect.iscoroutinefunction(page)
 
         request = RequestFactory().get("/panel/")
         request.user = staff
