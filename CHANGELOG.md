@@ -24,6 +24,8 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
   `invalidate_authentication`, `get_function_component`, `list_function_components`,
   `iter_exposed_handlers` and the `telemetry` module. Every example in the docs now imports
   `from wireview`; tests/test_public_api.py keeps it that way.
+- `wireview.W014`: a key in `settings.WIREVIEW` wireview does not read (#100). A typo names
+  the key it resembles; a removed key says what replaced it.
 - `wireview.WireviewDeprecationWarning`, raised by everything on its way out.
 - `py.typed`, so type checkers read the package's annotations (#98).
 
@@ -35,8 +37,11 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
   which carried no size or extension and so skipped both checks. The inbound `query_string`
   command, which no client sent. The token diff for HTML without markers, and with it
   `WIREVIEW["USE_HTML_DIFF"]`, which only ever switched that diff: such HTML is now one
-  static part, sent whole when it changes. That costs bandwidth where django-hmin
-  (`USE_HMIN`) strips the markers; `wireview.W005` still says so.
+  static part, sent whole when it changes.
+- `WIREVIEW["USE_HMIN"]` and `wireview.W005` (#100). django-hmin stripped the diff markers, so
+  every change sent the component's whole HTML: a trade that loses, which the recommended
+  settings in the deployment and performance guides nonetheless made. Compress the socket
+  (permessage-deflate) instead.
 
 ### Deprecated
 
@@ -57,6 +62,15 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
   `exclude_fields` adds to `user`, `wire` and `session` instead of replacing them.
   Subscriptions that depend on state come from overriding `get_subscriptions()`, which
   replaces `@property def _subscriptions`.
+- Settings are read when used (#100). `wireview.settings` copied `settings.WIREVIEW` into
+  constants at import, so `override_settings(WIREVIEW=...)` changed nothing and tests had to
+  monkeypatch the module, which pinned values past the test. An assignment to the module is
+  now an `AttributeError` pointing at `override_settings`. The merged settings are cached
+  against the `settings.WIREVIEW` object, so a running project pays an identity check.
+  Components no longer keep their own template cache, which outlived a change to
+  `TEMPLATES` and switched on with `DEBUG`; Django's cached loader (on by default) does
+  that job. A project that lists `loaders` without the cached loader now compiles on each
+  render, as its Django views already do.
 - **Breaking:** `Component.deffer` is `defer` (#99). The public part of `self.wire` is
   `params`, `redirect_to`, `replace_to` and `push_to`; the rest is plumbing, reached
   through `Component`'s own methods (`docs/COMPATIBILITY.md`).

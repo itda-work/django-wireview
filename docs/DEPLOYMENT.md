@@ -191,7 +191,6 @@ ALLOWED_HOSTS = ["yourdomain.com"]
 
 # wireview 설정
 WIREVIEW = {
-    "USE_HMIN": True,                 # HTML 압축 (django-hmin 필요)
     "DEBUG_SYNC_TRANSITIONS": False,  # 운영에서는 끈다
     # 서명 상태 (data-state)
     "STATE_MAX_AGE": 14 * 24 * 3600,  # data-state 유효 기간

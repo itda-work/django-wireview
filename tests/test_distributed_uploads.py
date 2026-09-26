@@ -24,8 +24,8 @@ from pathlib import Path
 
 import pytest
 from django.test import AsyncRequestFactory
+from testproj.wireview_setting import set_wireview
 
-from wireview import settings as wireview_settings
 from wireview.features import upload_store
 from wireview.features.uploads import (
     UploadConfig,
@@ -46,7 +46,7 @@ JPEG_HEADER = b"\xff\xd8\xff\xe0"
 @pytest.fixture
 def store(monkeypatch, tmp_path):
     """Point the chunk store at a directory this test owns."""
-    monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(tmp_path))
+    set_wireview(monkeypatch, UPLOAD_TEMP_DIR=str(tmp_path))
     upload_store.reset_sweep_clock()
     return tmp_path / upload_store.STORE_DIR_NAME
 
@@ -87,11 +87,12 @@ django.setup()
 
 from django.test import AsyncRequestFactory
 
-from wireview import settings as wireview_settings
+from django.conf import settings
+
 from wireview.views import UploadView
 
 # The one thing the two processes must agree on besides the signing key.
-wireview_settings.UPLOAD_TEMP_DIR = os.environ["WV_UPLOAD_DIR"]
+settings.WIREVIEW = {**getattr(settings, "WIREVIEW", {}), "UPLOAD_TEMP_DIR": os.environ["WV_UPLOAD_DIR"]}
 
 job = json.loads(sys.argv[1])
 

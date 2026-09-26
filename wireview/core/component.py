@@ -17,7 +17,7 @@ from django.template import loader
 from django.utils.safestring import SafeString
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator, validate_call
 
-from .. import settings, utils
+from .. import utils
 from ..async_result import AsyncResult
 from ..schemas import DomAction, ModelAction
 from ..utils import db
@@ -254,7 +254,6 @@ class Component(BaseModel):
     _by_app: t.ClassVar[dict[str, t.Type["Component"]]] = {}
     _urls: t.ClassVar[dict] = {}
     _name: t.ClassVar[str]
-    _templates: t.ClassVar[dict[str, AnyTemplate]] = {}
     _fqn: t.ClassVar[str]
 
     # The class's resolved ``class Meta`` (#99). Set by __init_subclass__ from
@@ -435,13 +434,10 @@ class Component(BaseModel):
         template_name = template_name or cls._meta.template_name
         if not template_name:
             raise ImproperlyConfigured(f"{cls.__qualname__} has no template: set `template_name` in its `class Meta:`.")
-        if settings.DEBUG:
-            return loader.get_template(template_name)  # type: ignore[return-value]
-        else:
-            if (template := cls._templates.get(template_name)) is None:
-                template = loader.get_template(template_name)  # type: ignore[assignment]
-                cls._templates[template_name] = template
-            return template
+        # Django's cached loader already keeps compiled templates, and drops them
+        # when TEMPLATES changes. A cache of our own did neither: it outlived an
+        # override_settings(TEMPLATES=...), and switched on with DEBUG (#100).
+        return loader.get_template(template_name)  # type: ignore[return-value]
 
     # State
     id: str = Field(default_factory=lambda: f"rx-{uuid4()}")

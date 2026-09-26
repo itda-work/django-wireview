@@ -12,7 +12,7 @@ from django.shortcuts import resolve_url
 from django.utils.html import format_html
 from django.utils.safestring import SafeText, mark_safe
 
-from .. import settings, telemetry
+from .. import telemetry
 from ..schemas import DomAction
 from ..utils import db
 from .rendered import Rendered, strip_markers
@@ -29,17 +29,6 @@ if t.TYPE_CHECKING:
     from ..slots import SlotContainer
     from .component import Component
     from .live_session import LiveSession
-
-if settings.USE_HMIN:
-    try:
-        from hmin.base import html_minify  # type: ignore
-    except ImportError as e:
-        raise ImportError("If you enable WIREVIEW['USE_HMIN'] you need to install django-hmin") from e
-else:
-
-    def html_minify(html: str) -> str:
-        return html
-
 
 # Type aliases
 RedirectDestination = t.Union[t.Callable[..., t.Any], "models.Model", str]
@@ -400,7 +389,6 @@ class WireviewMeta:
                     # HTTP render: markers inside attributes (value="<!--$0-->…") would
                     # corrupt the page until the WebSocket join replaces the DOM.
                     html = strip_markers(html)
-                html = html_minify(html)
             span.measure(html)
         if html:
             return mark_safe(html)
@@ -596,7 +584,6 @@ class WireviewMeta:
         template = component._get_template()
         self.template_evaluated = True
         html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
-        html = html_minify(html)
 
         return mark_safe(html) if html else None
 

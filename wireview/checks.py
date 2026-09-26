@@ -1,8 +1,8 @@
 """Django system checks for wireview's silent failure modes.
 
 Most of wireview's traps do not raise: a sync handler only breaks when a client
-calls it, a missing ``wireview.min.js`` just leaves the page inert, ``USE_HMIN``
-quietly degrades partial diffs. Registering them here means ``manage.py check``,
+calls it, a missing ``wireview.min.js`` just leaves the page inert, a misspelled
+``WIREVIEW`` key is kept and never read. Registering them here means ``manage.py check``,
 ``runserver`` and CI report them without anyone remembering a new command.
 
 Every check reuses the dispatcher's own rules (``ComponentRepository``) rather
@@ -13,6 +13,7 @@ production-only check is registered as a deploy check.
 """
 
 import asyncio
+import difflib
 import os
 import sys
 import typing as t
@@ -162,24 +163,37 @@ def check_client_bundle(app_configs, **kwargs) -> list[CheckMessage]:
     ]
 
 
-def check_hmin(app_configs, **kwargs) -> list[CheckMessage]:
-    """W005: django-hmin strips the comment markers partial diffs rely on."""
+def check_settings_keys(app_configs, **kwargs) -> list[CheckMessage]:
+    """W014: a key in ``settings.WIREVIEW`` that wireview does not read.
+
+    ``WIREVIEW`` is a plain dict merged over the defaults, so a typo or a key
+    an upgrade removed is kept and never looked at: the setting silently does
+    nothing (#100). A removed key says what replaced it.
+    """
+    from django.conf import settings as django_settings
+
     from . import settings as wireview_settings
 
-    if not wireview_settings.USE_HMIN:
-        return []
-
-    return [
-        Warning(
-            "WIREVIEW['USE_HMIN'] is on, which disables partial HTML diffs.",
-            hint=(
-                "django-hmin removes the HTML comments wireview uses as diff markers, so "
-                "every change sends the component's whole HTML. Measure the bandwidth "
-                "trade-off before keeping it on, or set USE_HMIN to False."
-            ),
-            id="wireview.W005",
+    configured = getattr(django_settings, "WIREVIEW", {})
+    messages: list[CheckMessage] = []
+    for key in sorted(set(configured) - set(wireview_settings.DEFAULT)):
+        if key in wireview_settings.REMOVED:
+            hint = wireview_settings.REMOVED[key]
+        else:
+            close = difflib.get_close_matches(key, wireview_settings.DEFAULT, n=1)
+            hint = (
+                f"Did you mean {close[0]!r}?"
+                if close
+                else f"Known keys: {', '.join(sorted(wireview_settings.DEFAULT))}."
+            )
+        messages.append(
+            Warning(
+                f"WIREVIEW[{key!r}] is not a wireview setting and is ignored.",
+                hint=hint,
+                id="wireview.W014",
+            )
         )
-    ]
+    return messages
 
 
 def check_channel_layer(app_configs, **kwargs) -> list[CheckMessage]:
@@ -594,7 +608,7 @@ def register_checks() -> None:
     register(check_async_lifecycle, WIREVIEW_TAG)
     register(check_component_name_collisions, WIREVIEW_TAG)
     register(check_client_bundle, WIREVIEW_TAG)
-    register(check_hmin, WIREVIEW_TAG)
+    register(check_settings_keys, WIREVIEW_TAG)
     register(check_on_mount_hooks, WIREVIEW_TAG)
     register(check_live_sessions, WIREVIEW_TAG)
     register(check_upload_temp_dir, WIREVIEW_TAG)

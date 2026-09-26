@@ -8,6 +8,7 @@ These tests verify that security measures are in place to prevent:
 
 import pytest
 import pytest_asyncio
+from testproj.wireview_setting import set_wireview
 
 from wireview import Component, LiveComponent
 from wireview.repository import ComponentRepository
@@ -380,10 +381,9 @@ class TestUploadRefSecurity:
     @pytest.mark.unit
     def test_a_chunk_path_stays_inside_the_store(self, monkeypatch, tmp_path):
         """The path is computed from a hash, so no ref can climb out of it."""
-        from wireview import settings as wireview_settings
         from wireview.features import upload_store
 
-        monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(tmp_path))
+        set_wireview(monkeypatch, UPLOAD_TEMP_DIR=str(tmp_path))
         expected = (tmp_path / upload_store.STORE_DIR_NAME / "conn-1").resolve()
 
         for ref in ["../../etc/x", "x/../../y", "sub/dir"]:
@@ -394,10 +394,9 @@ class TestUploadRefSecurity:
     @pytest.mark.unit
     def test_a_connection_id_cannot_climb_out_of_the_store(self, monkeypatch, tmp_path):
         """The connection segment is a directory name, so it is not hashed."""
-        from wireview import settings as wireview_settings
         from wireview.features import upload_store
 
-        monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(tmp_path))
+        set_wireview(monkeypatch, UPLOAD_TEMP_DIR=str(tmp_path))
 
         for connection_id in ["../escape", "a/b", "", "."]:
             with pytest.raises(upload_store.InvalidConnectionId):

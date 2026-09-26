@@ -510,15 +510,6 @@ wheels = [
 ]
 
 [[package]]
-name = "django-hmin"
-version = "0.5.4"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ca/24/fa3d5b42d1cc25dfd513ab7d0a6d7481661a70335e89f093dfb59e89a296/django-hmin-0.5.4.tar.gz", hash = "sha256:8b79c4ef7fea4b03f7bc6aa0eddab0d3147e432148f30475be11d4a591f73bcd", size = 451738, upload-time = "2020-11-15T01:15:20.694Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/2b/c0/a73f39571a09e7333e5c2498344aaf9f027571a4758a78249a0fecab92d1/django_hmin-0.5.4-py3-none-any.whl", hash = "sha256:66354707e67f5c89a70267658dbf8962ce3d9fbcc03fa8ea08746070accefe1e", size = 454055, upload-time = "2020-11-15T01:15:19.222Z" },
-]
-
-[[package]]
 name = "django-stubs"
 version = "5.2.8"
 source = { registry = "https://pypi.org/simple" }
@@ -562,7 +553,6 @@ dev = [
     { name = "channels-redis" },
     { name = "cssselect" },
     { name = "daphne" },
-    { name = "django-hmin" },
     { name = "django-stubs" },
     { name = "django-stubs-ext" },
     { name = "djlint" },
@@ -597,7 +587,6 @@ requires-dist = [
     { name = "cssselect", marker = "extra == 'dev'" },
     { name = "daphne", marker = "extra == 'dev'" },
     { name = "django", specifier = ">=5.0" },
-    { name = "django-hmin", marker = "extra == 'dev'" },
     { name = "django-stubs", marker = "extra == 'dev'" },
     { name = "django-stubs-ext", marker = "extra == 'dev'" },
     { name = "djlint", marker = "extra == 'dev'" },

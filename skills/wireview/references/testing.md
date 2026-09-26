@@ -106,6 +106,11 @@ async def test_paging():
 `@pytest.mark.django_db(transaction=True)`를 쓰되 느려진다.
 배경: https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/09-testing-components.md
 
+## wireview 설정을 바꿔야 할 때
+
+`override_settings(WIREVIEW={...})`를 쓴다. wireview는 설정을 쓰는 시점에 읽는다. `wireview.settings`에
+값을 대입하면(monkeypatch 포함) `AttributeError`가 난다.
+
 ## 무엇을 테스트하나
 
 - **핸들러의 상태 전이**: 이벤트 → 필드 값. 가장 값싸고 가장 많이 잡는다.

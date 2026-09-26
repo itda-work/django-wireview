@@ -8,8 +8,8 @@ what the header emits, and what ``manage.py check`` can see.
 
 import pytest
 from django.template import Context, Template
+from testproj.wireview_setting import set_wireview
 
-from wireview import settings as wireview_settings
 from wireview.checks import check_hook_files
 from wireview.features.hooks import hook_files, hook_names, required_hook_names, reset_caches
 
@@ -77,7 +77,7 @@ class TestWhatTheHeaderEmits:
 
     def test_the_setting_turns_collection_off(self, monkeypatch):
         """For a project that puts the same files through its own bundler."""
-        monkeypatch.setattr(wireview_settings, "COLLECT_HOOKS", False)
+        set_wireview(monkeypatch, COLLECT_HOOKS=False)
         html = self.render()
 
         assert EXAMPLE_FILE not in html
@@ -111,7 +111,7 @@ class TestTheCheck:
         assert check_hook_files(None) == []
 
     def test_nothing_is_said_when_collection_is_off(self, monkeypatch):
-        monkeypatch.setattr(wireview_settings, "COLLECT_HOOKS", False)
+        set_wireview(monkeypatch, COLLECT_HOOKS=False)
         monkeypatch.setattr(
             "wireview.features.hooks.required_hook_names",
             lambda: {"NoSuchHook": ["myapp/templates/thing.html"]},

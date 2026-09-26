@@ -1,11 +1,36 @@
-from django.conf import settings
+"""wireview's settings: ``settings.WIREVIEW`` on top of ``DEFAULT``.
+
+Read when used, not when this module is imported (#100): ``settings.STATE_MAX_AGE``
+looks the value up, so ``override_settings(WIREVIEW={...})`` reaches every read
+site. The merged dict is cached against the ``settings.WIREVIEW`` object it came
+from, so replacing that object (as ``override_settings`` does) is seen at once and
+a running project pays an identity check.
+
+A few settings only mean something at startup, and changing them later does
+nothing: ``TRANSPILER_CACHE_SIZE`` sizes a cache built at import,
+``AUTO_BROADCAST`` decides which model signals get receivers,
+``DEBUG_SYNC_TRANSITIONS`` and its thresholds install the detector,
+``AUTO_GENERATE_STUBS`` runs when the app is ready, and ``TELEMETRY`` is the
+initial state that ``wireview.telemetry.enable()`` changes at runtime.
+
+Assigning a setting on this module (``monkeypatch.setattr``) would pin a value
+that later reads, and later overrides, could not get past -- a monkeypatch's undo
+pins the old one. The module refuses it; use ``override_settings``.
+"""
+
+from __future__ import annotations
+
+import sys
+import types
+import typing as t
+
+from django.conf import settings as django_settings
 
 from .schemas import AutoBroadcast
 
-DEBUG = settings.DEBUG
-DEFAULT = {
+DEFAULT: dict[str, t.Any] = {
     "TRANSPILER_CACHE_SIZE": 1024,
-    "USE_HMIN": False,
+    # Links and forms navigate without a full page load (static/wireview/wireview-boost.js)
     "BOOST_PAGES": False,
     "AUTO_BROADCAST": AutoBroadcast(),
     # Signing (wireview.core.signing). None = Django's SECRET_KEY / SECRET_KEY_FALLBACKS
@@ -31,42 +56,86 @@ DEFAULT = {
     "COLLECT_HOOKS": True,
 }
 
-WIREVIEW = DEFAULT | getattr(settings, "WIREVIEW", {})
-LOGIN_URL = settings.LOGIN_URL
+#: Keys that existed and are gone, and what to do instead. ``wireview.W014``
+#: names them, so an upgrade does not leave a setting that silently does nothing.
+REMOVED: dict[str, str] = {
+    "STATE_ACCEPT_LEGACY": "Removed in #99: a page with a pre-v2 state reloads instead.",
+    "USE_HTML_DIFF": "Removed in #99: diffs are always on.",
+    "USE_HMIN": (
+        "Removed in #100: django-hmin stripped the diff markers, so every change sent the "
+        "component's whole HTML. Compress the socket instead (permessage-deflate)."
+    ),
+}
 
-TRANSPILER_CACHE_SIZE: int = WIREVIEW["TRANSPILER_CACHE_SIZE"]
-USE_HMIN: bool = WIREVIEW["USE_HMIN"]
-BOOST_PAGES: bool = WIREVIEW["BOOST_PAGES"]
-AUTO_BROADCAST: AutoBroadcast = WIREVIEW["AUTO_BROADCAST"]
+#: The ``settings.WIREVIEW`` object the cache was built from, and the result.
+_cache: tuple[object, dict[str, t.Any]] | None = None
+_MISSING = object()
 
-# Signing key material. Reached through wireview.core.signing rather than directly,
-# so that every signing site shares one policy and a rotation needs no restart.
-SIGNING_KEY: str | None = WIREVIEW["SIGNING_KEY"]
-SIGNING_KEY_FALLBACKS: list[str] | None = WIREVIEW["SIGNING_KEY_FALLBACKS"]
 
-# Upload settings
-UPLOAD_TEMP_DIR: str | None = WIREVIEW["UPLOAD_TEMP_DIR"]
-UPLOAD_MAX_FILE_SIZE: int = WIREVIEW["UPLOAD_MAX_FILE_SIZE"]
-UPLOAD_CHUNK_SIZE: int = WIREVIEW["UPLOAD_CHUNK_SIZE"]
-UPLOAD_TOKEN_MAX_AGE: int = WIREVIEW["UPLOAD_TOKEN_MAX_AGE"]
+def _wireview() -> dict[str, t.Any]:
+    """``DEFAULT`` with ``settings.WIREVIEW`` on top, rebuilt when that object changes.
 
-# Debug settings for async/sync transition tracking
-DEBUG_SYNC_TRANSITIONS: bool = WIREVIEW["DEBUG_SYNC_TRANSITIONS"]
-SYNC_TRANSITION_WARNING_THRESHOLD: int = WIREVIEW["SYNC_TRANSITION_WARNING_THRESHOLD"]
-SYNC_TRANSITION_ERROR_THRESHOLD: int = WIREVIEW["SYNC_TRANSITION_ERROR_THRESHOLD"]
+    Keyed by identity rather than by a signal, so any way of replacing the
+    setting -- ``override_settings``, pytest-django's ``settings``, a monkeypatch
+    of ``django.conf.settings`` -- is seen by the next read.
+    """
+    global _cache
+    source = getattr(django_settings, "WIREVIEW", _MISSING)
+    cache = _cache
+    if cache is None or cache[0] is not source:
+        configured: dict[str, t.Any] = {} if source is _MISSING else t.cast(dict, source)
+        cache = _cache = (source, DEFAULT | configured)
+    return cache[1]
 
-# Signed component state (wireview.core.state)
-STATE_MAX_AGE: int = WIREVIEW["STATE_MAX_AGE"]
-# A render re-issues the token once it is this old, even with an unchanged state.
-# Half the lifetime by default, so a page that renders at all keeps a valid token.
-STATE_REFRESH_AFTER: int = WIREVIEW["STATE_REFRESH_AFTER"] or STATE_MAX_AGE // 2
 
-# Type stub generation
-AUTO_GENERATE_STUBS: bool = WIREVIEW["AUTO_GENERATE_STUBS"]
+def __getattr__(name: str) -> t.Any:
+    if name == "WIREVIEW":
+        return _wireview()
+    if name in ("DEBUG", "LOGIN_URL"):
+        return getattr(django_settings, name)
+    if name == "STATE_REFRESH_AFTER":
+        # A render re-issues the token once it is this old, even with an unchanged
+        # state. Half the lifetime by default, so a page that renders keeps a valid one.
+        values = _wireview()
+        return values["STATE_REFRESH_AFTER"] or values["STATE_MAX_AGE"] // 2
+    if name in DEFAULT:
+        return _wireview()[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-# Telemetry signals
-TELEMETRY: bool = WIREVIEW["TELEMETRY"]
 
-# JavaScript hook files an app ships (wireview.features.hooks). Turn it off in a
-# project that puts the same files through its own bundler.
-COLLECT_HOOKS: bool = WIREVIEW["COLLECT_HOOKS"]
+class _SettingsModule(types.ModuleType):
+    """Refuses an assignment that would pin a setting (see the module docstring)."""
+
+    def __setattr__(self, name: str, value: t.Any) -> None:
+        if name.isupper() and name not in ("DEFAULT", "REMOVED"):
+            raise AttributeError(
+                f"wireview.settings.{name} is read from settings.WIREVIEW when used; change it with "
+                f"override_settings(WIREVIEW={{...}}) instead of assigning it here (#100)."
+            )
+        super().__setattr__(name, value)
+
+
+sys.modules[__name__].__class__ = _SettingsModule
+
+
+if t.TYPE_CHECKING:
+    DEBUG: bool
+    LOGIN_URL: str
+    WIREVIEW: dict[str, t.Any]
+    TRANSPILER_CACHE_SIZE: int
+    BOOST_PAGES: bool
+    AUTO_BROADCAST: AutoBroadcast
+    SIGNING_KEY: str | None
+    SIGNING_KEY_FALLBACKS: list[str] | None
+    UPLOAD_TEMP_DIR: str | None
+    UPLOAD_MAX_FILE_SIZE: int
+    UPLOAD_CHUNK_SIZE: int
+    UPLOAD_TOKEN_MAX_AGE: int
+    DEBUG_SYNC_TRANSITIONS: bool
+    SYNC_TRANSITION_WARNING_THRESHOLD: int
+    SYNC_TRANSITION_ERROR_THRESHOLD: int
+    STATE_MAX_AGE: int
+    STATE_REFRESH_AFTER: int
+    AUTO_GENERATE_STUBS: bool
+    TELEMETRY: bool
+    COLLECT_HOOKS: bool

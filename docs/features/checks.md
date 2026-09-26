@@ -1,8 +1,8 @@
 # System Checks
 
 wireview의 함정 중 상당수는 **에러를 내지 않는다.** sync 핸들러는 클라이언트가 부를 때까지
-조용하고, `wireview.min.js`가 없으면 페이지가 그냥 정적으로 남고, `USE_HMIN`은 부분 diff를
-말없이 전체 HTML 전송으로 되돌린다. 신호가 없으면 사람도 에이전트도 고칠 수 없다.
+조용하고, `wireview.min.js`가 없으면 페이지가 그냥 정적으로 남고, `WIREVIEW`의 키를 잘못 쓰면
+말없이 무시된다. 신호가 없으면 사람도 에이전트도 고칠 수 없다.
 
 이 검사들을 Django의 `checks` 프레임워크에 등록해 두면 `manage.py check`, `runserver`, CI에
 **자동으로** 걸린다. 새 명령을 기억할 필요가 없다는 것이 핵심이다.
@@ -26,7 +26,7 @@ WARNINGS:
 | `wireview.W002` | 라이프사이클 오버라이드가 async가 아님 (`joined`, `update`, `destroy`) | wireview가 `await`하므로 콜백이 아예 실행되지 않는다 |
 | `wireview.W003` | 두 클래스가 같은 단순 이름으로 등록됨 | import 시 경고 한 번뿐. 템플릿은 둘 중 하나로만 해석된다 |
 | `wireview.W004` | `wireview/wireview.min.js`를 staticfiles가 못 찾음 | JS가 로드되지 않아 페이지가 정적으로 남는다. 404 외에는 신호가 없다 |
-| `wireview.W005` | `USE_HMIN`이 켜짐 | django-hmin이 diff 마커(HTML 주석)를 지워, 바뀔 때마다 컴포넌트 HTML 전체가 나간다 |
+| `wireview.W005` | (없어짐) | `USE_HMIN`과 함께 #100에서 없어졌다. 번호는 다시 쓰지 않는다 |
 | `wireview.W006` | 기본 채널 레이어가 `InMemoryChannelLayer` | 다중 프로세스에서 브로드캐스트가 같은 프로세스에만 닿고 오류는 나지 않는다 |
 | `wireview.W007` | `Meta.on_mount`에 올린 클래스에 `on_mount`가 없거나 async가 아님 | 훅이 말없이 건너뛰어져, 인증 가드로 올린 훅이 아무것도 막지 않는다 |
 | `wireview.W008` | `UPLOAD_TEMP_DIR`이 가리키는 경로에 임시 파일을 만들 수 없음 | 설정은 첫 청크가 올 때에야 읽힌다. 기동 시에는 아무 신호가 없고, 업로드가 하나씩 `ImproperlyConfigured`로 실패한다 |
@@ -35,6 +35,7 @@ WARNINGS:
 | `wireview.W011` | 템플릿의 `wire-hook="X"`를 등록하는 훅 파일이 수집된 것 중에 없음 | 클라이언트가 콘솔 경고 한 줄만 남긴다. 컴포넌트는 정상으로 렌더되고 동작 하나가 빠진다 |
 | `wireview.W012` | `CHANNEL_LAYERS`에 `default` 레이어가 없음 | 페이지는 HTTP로 정상 렌더되는데 WebSocket 연결이 전부 거절되어 어떤 컴포넌트도 살아나지 않는다. Channels에는 기본 레이어가 없다 |
 | `wireview.W013` | `runserver`로 기동하는데 그 명령이 Django의 WSGI 서버 그대로임 (`daphne`가 없거나 `INSTALLED_APPS`에서 너무 아래에 있음) | 페이지는 그려지고 오류도 없다. WebSocket 업그레이드가 거절되어 버튼이 아무 반응도 하지 않고, 흔적은 브라우저 콘솔 한 줄뿐이다 |
+| `wireview.W014` | `settings.WIREVIEW`에 wireview가 읽지 않는 키가 있음 | 오타나 업그레이드로 없어진 키는 조용히 무시된다. 비슷한 키 이름이나 없어진 키의 대안을 알려 준다(#100) |
 
 전부 `Warning`이다. `manage.py check`의 기본 `--fail-level`은 `ERROR`이므로 이 검사들이
 빌드를 깨지 않는다. **오탐 하나면 팀 전체가 검사를 무시하기 시작하므로** 확신이 설 때까지
@@ -164,7 +165,7 @@ python manage.py check --tag wireview
 Django 표준대로 `SILENCED_SYSTEM_CHECKS`를 쓴다.
 
 ```python
-SILENCED_SYSTEM_CHECKS = ["wireview.W005"]  # hmin 대역폭 손익을 실측하고 켜기로 결정했다면
+SILENCED_SYSTEM_CHECKS = ["wireview.W006"]  # InMemory 레이어를 쓰는 단일 프로세스 배포라면
 ```
 
 ## 검사는 디스패처와 같은 규칙을 쓴다
@@ -196,7 +197,7 @@ Pydantic은 커스텀 serializer, `field_serializer`, wireview의 Django 모델 
 ## 관련 문서
 
 - [LiveComponent](./live-component.md) — 노출 규칙과 라이프사이클 콜백
-- [HTML Diff](./html-diff.md) — W005가 무엇을 지키는지
+- [HTML Diff](./html-diff.md) — 부분 diff가 무엇에 기대는지
 - [라이프사이클 훅](./lifecycle-hooks.md) — W007이 지키는 `Meta.on_mount` 경계
 - [live_session](./live-session.md) — W010이 지키는 페이지 경계
 - [배포](../DEPLOYMENT.md) — W006과 채널 레이어 선택

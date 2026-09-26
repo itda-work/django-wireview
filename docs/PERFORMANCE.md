@@ -160,15 +160,9 @@ class Counter(Component):
 
 ### HTML diff 설정
 
-> 부분 diff는 `render_with_markers()`가 남기는 주석 마커에 의존한다.
-> `USE_HMIN`은 HTML 주석을 제거하므로 **부분 diff를 조용히 끈다.**
-> diff 형식과 실측 페이로드는 [features/html-diff.md](./features/html-diff.md)에 있다.
-
-```python
-WIREVIEW = {
-    "USE_HMIN": True,        # HTML 압축 (django-hmin 필요)
-}
-```
+> 부분 diff는 `render_with_markers()`가 남기는 주석 마커에 의존한다. HTML 압축기로 주석을 지우면 부분 diff가
+> 꺼져 바뀔 때마다 HTML 전체가 나간다. 그래서 django-hmin 연동(`USE_HMIN`)은 #100에서 없앴다. 전송량을 줄이려면
+> WebSocket 압축(permessage-deflate)을 켠다. diff 형식과 실측 페이로드는 [features/html-diff.md](./features/html-diff.md)에 있다.
 
 ### 템플릿
 

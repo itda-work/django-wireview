@@ -1137,13 +1137,14 @@ wireview.debug.component("rx-123")
 
 ## 설정
 
+설정은 쓰는 시점에 읽는다. 테스트에서는 `override_settings(WIREVIEW={...})`로 바꾸면 되고, `settings.WIREVIEW`에 모르는 키가 있으면 `manage.py check`가 `wireview.W014`로 알려 준다.
+
 ```python
 from wireview import AutoBroadcast
 
 WIREVIEW = {
     "TRANSPILER_CACHE_SIZE": 1024,    # 이벤트 핸들러 캐시 크기
-    "USE_HMIN": False,                # django-hmin 압축 사용
-    "BOOST_PAGES": False,             # 클라이언트 사이드 네비게이션 활성화
+    "BOOST_PAGES": False,             # 링크·폼 이동을 전체 로드 없이 처리 (htmx의 hx-boost와 같은 뜻)
     # 서명 상태(data-state) — docs/features/html-diff.md
     "STATE_MAX_AGE": 14 * 24 * 3600,  # 서명 상태 유효 기간(초). 기본 14일
     "STATE_REFRESH_AFTER": None,      # 상태가 같아도 이 시간이 지나면 토큰 재발급. None이면 STATE_MAX_AGE // 2
@@ -1176,7 +1177,6 @@ WIREVIEW = {
 ```python
 WIREVIEW = {
     "DEBUG_SYNC_TRANSITIONS": True,  # 개발 환경에서만
-    "USE_HMIN": True,  # django-hmin 설치 필요
 }
 ```
 

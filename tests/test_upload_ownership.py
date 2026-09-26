@@ -18,9 +18,9 @@ import pytest
 from django.contrib.auth.models import AnonymousUser
 from django.test import AsyncRequestFactory, override_settings
 from django.urls import reverse
+from testproj.wireview_setting import set_wireview
 
 from wireview import Component, LiveComponent
-from wireview import settings as wireview_settings
 from wireview.consumer import WireviewConsumer
 from wireview.core.component import WireviewMeta
 from wireview.features import upload_store
@@ -88,7 +88,7 @@ def _templates():
 @pytest.fixture(autouse=True)
 def _store(monkeypatch, tmp_path):
     """Point the chunk store at a directory this test owns."""
-    monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(tmp_path))
+    set_wireview(monkeypatch, UPLOAD_TEMP_DIR=str(tmp_path))
     upload_store.reset_sweep_clock()
     return tmp_path / upload_store.STORE_DIR_NAME
 

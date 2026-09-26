@@ -159,7 +159,7 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 
 ## 함정
 
-아래 중 열세 개는 `manage.py check`가 잡는다 (`wireview.W001`~`W012`, `docs/features/checks.md`).
+아래 중 여럿은 `manage.py check`가 잡는다 (`wireview.W001`~`W014`, `docs/features/checks.md`).
 
 - **채널 레이어가 없으면 어떤 연결도 살아남지 못한다.** Channels에는 기본 레이어가 없다 — `CHANNEL_LAYERS`에 `default`가 없으면 `get_channel_layer()`가 `None`이고 컨슈머에 `channel_name`도 생기지 않는다. 컨슈머는 accept 전에 `ImproperlyConfigured`로 거절하고 `wireview.W012`가 같은 문장(`wireview/core/transport.py`의 `NO_CHANNEL_LAYER`)으로 미리 알린다(#87). 가드는 `connect()`가 아니라 `websocket_connect()`에 있다 — 단위 테스트는 레이어 없는 bare 컨슈머로 `connect()`를 직접 부르고, **그래서 그 테스트들은 이 실패를 한 번도 보지 못했다.**
 
@@ -176,7 +176,9 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 - **채널 레이어는 core/transport.py에서만 만진다.** `get_channel_layer`, `group_add`, `group_send`를 다른 모듈에 쓰면 tests/test_transport.py의 가드가 실패한다. fan-out은 `get_broker().publish`, 세션 메시지는 `WireviewMeta.send`.
 - **프로세스를 늘리면 InMemory 레이어는 조용히 깨진다.** 브로드캐스트가 같은 프로세스의 연결에만 닿고 오류는 나지 않는다. 다중 프로세스에는 channels_redis나 channels-nats가 필수다. 성능은 둘이 대등하다(`docs/design/transport-abstraction.md` §5-3).
 - **Windows에서 daphne는 연결 약 500개에서 죽는다.** daphne가 selector 루프를 강제하고 CPython의 Windows select()는 소켓 512개가 상한이다. Windows 배포는 uvicorn 단일 프로세스를 포트별로 N개 띄우고 Caddy로 분배한다(`docs/DEPLOYMENT.md`). `uvicorn --workers`도 Windows에서는 selector 루프다. 실측은 `bench/results/win11-parlab-*`, 재현은 `bench/windows/run.sh`.
-- **USE_HMIN은 diff 마커를 지운다.** django-hmin이 HTML 주석을 제거하므로 부분 diff가 꺼지고 바뀔 때마다 컴포넌트 HTML 전체가 나간다. 켤 때는 대역폭 손익을 실측한다.
+- **설정은 쓰는 시점에 읽는다(#100).** `wireview.settings.X`는 모듈 `__getattr__`가 `settings.WIREVIEW`에서 찾고,
+  테스트는 `override_settings`나 `tests/testproj/wireview_setting.py`의 `set_wireview`로 바꾼다. 모듈에 대입하면(monkeypatch 포함)
+  `AttributeError`다 — 대입된 값이 이후의 override를 가렸기 때문이다. 새 설정 키는 `DEFAULT`에, 없앤 키는 `REMOVED`에 둔다(W014가 읽는다).
 - **`UPLOAD_TEMP_DIR`은 첫 청크가 올 때에야 읽힌다.** 잘못된 경로나 마운트되지 않은 볼륨은 기동 시 아무 신호도 없고, 업로드가 하나씩 `ImproperlyConfigured`로 실패한다. 빈 문자열은 미설정과 같게 다뤄 시스템 temp로 간다(`Path("")`가 cwd이기 때문이다). `manage.py check`의 `wireview.W008`이 미리 잡는다.
 - **청크 업로드가 워커 사이에서 공유해야 하는 것은 둘뿐이다.** 청크 저장소(`UPLOAD_TEMP_DIR`, 한 호스트면 시스템 temp가 이미 공유)와 서명 키. 엔드포인트는 상태를 안 들고 있으므로 스티키 라우팅은 필요 없다. 키가 어긋나면 403, 디렉터리가 어긋나면 200을 받고도 완료되지 않는다. 상세는 `docs/features/chunked-uploads.md`.
 - **서명은 `wireview/core/signing.py`의 `get_signer(salt)`로만 한다.** `TimestampSigner(salt=...)`를 직접 만들면 `SIGNING_KEY`와 fallback을 무시해 키 로테이션이 조용히 깨진다. 서명 지점은 둘 — 업로드 토큰과 data-state.

@@ -10,6 +10,7 @@ import warnings
 
 import pytest
 from django.test import override_settings
+from testproj.wireview_setting import set_wireview
 
 from wireview import Component
 from wireview import checks as wireview_checks
@@ -20,9 +21,9 @@ from wireview.checks import (
     check_channel_layer_configured,
     check_client_bundle,
     check_component_name_collisions,
-    check_hmin,
     check_live_sessions,
     check_runserver_is_asgi,
+    check_settings_keys,
     check_signing_key,
     check_upload_temp_dir,
     iter_component_classes,
@@ -177,19 +178,26 @@ class TestClientBundleCheck:
         assert "make build-js" in messages[0].hint
 
 
-class TestHminCheck:
-    """W005: django-hmin strips the markers partial diffs are built on."""
+class TestSettingsKeysCheck:
+    """W014: a WIREVIEW key wireview never reads (#100)."""
 
-    def test_off_by_default(self):
-        assert check_hmin(None) == []
+    def test_known_keys_are_silent(self, monkeypatch):
+        set_wireview(monkeypatch, STATE_MAX_AGE=60)
+        assert check_settings_keys(None) == []
 
-    def test_enabled_flagged(self, monkeypatch):
-        from wireview import settings as wireview_settings
+    def test_a_typo_names_the_key_it_resembles(self, monkeypatch):
+        set_wireview(monkeypatch, STATE_MAXAGE=60)
+        (message,) = check_settings_keys(None)
 
-        monkeypatch.setattr(wireview_settings, "USE_HMIN", True)
-        messages = check_hmin(None)
+        assert message.id == "wireview.W014"
+        assert "STATE_MAXAGE" in message.msg and "STATE_MAX_AGE" in message.hint
 
-        assert [m.id for m in messages] == ["wireview.W005"]
+    @pytest.mark.parametrize("key", ["USE_HMIN", "USE_HTML_DIFF", "STATE_ACCEPT_LEGACY"])
+    def test_a_removed_key_says_what_replaced_it(self, monkeypatch, key):
+        set_wireview(monkeypatch, **{key: True})
+        (message,) = check_settings_keys(None)
+
+        assert message.hint.startswith("Removed in #")
 
 
 class TestChannelLayerCheck:
@@ -302,10 +310,9 @@ class TestUploadTempDirCheck:
     @pytest.fixture
     def temp_dir(self, monkeypatch):
         """Point WIREVIEW['UPLOAD_TEMP_DIR'] at a value for one test."""
-        from wireview import settings as wireview_settings
 
         def _set(value):
-            monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", value)
+            set_wireview(monkeypatch, UPLOAD_TEMP_DIR=value)
 
         return _set
 
@@ -388,11 +395,10 @@ class TestSigningKeyCheck:
     @pytest.fixture
     def signing(self, monkeypatch):
         """Set WIREVIEW['SIGNING_KEY'] and its fallbacks for one test."""
-        from wireview import settings as wireview_settings
 
         def _set(key, fallbacks=None):
-            monkeypatch.setattr(wireview_settings, "SIGNING_KEY", key)
-            monkeypatch.setattr(wireview_settings, "SIGNING_KEY_FALLBACKS", fallbacks)
+            set_wireview(monkeypatch, SIGNING_KEY=key)
+            set_wireview(monkeypatch, SIGNING_KEY_FALLBACKS=fallbacks)
 
         return _set
 
@@ -519,7 +525,7 @@ class TestTestprojIsClean:
         assert check_async_lifecycle(None) == []
         assert check_component_name_collisions(None) == []
         assert check_client_bundle(None) == []
-        assert check_hmin(None) == []
+        assert check_settings_keys(None) == []
         assert check_upload_temp_dir(None) == []
         assert check_signing_key(None) == []
         assert check_live_sessions(None) == []

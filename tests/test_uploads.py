@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 from django.test import AsyncRequestFactory
+from testproj.wireview_setting import set_wireview
 
 from wireview import Component
-from wireview import settings as wireview_settings
 from wireview.features import upload_store
 from wireview.features.uploads import (
     ConsumedUpload,
@@ -28,7 +28,7 @@ from wireview.views import UploadView
 @pytest.fixture
 def store(monkeypatch, tmp_path):
     """Point the chunk store at a directory this test owns."""
-    monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(tmp_path))
+    set_wireview(monkeypatch, UPLOAD_TEMP_DIR=str(tmp_path))
     upload_store.reset_sweep_clock()
     return tmp_path / upload_store.STORE_DIR_NAME
 
@@ -541,7 +541,7 @@ class TestUploadTempDir:
     @pytest.mark.unit
     def test_uses_configured_directory(self, monkeypatch, tmp_path):
         """A configured directory holds the chunk store."""
-        monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(tmp_path))
+        set_wireview(monkeypatch, UPLOAD_TEMP_DIR=str(tmp_path))
 
         root = upload_store.store_root()
 
@@ -552,7 +552,7 @@ class TestUploadTempDir:
     def test_creates_missing_directory(self, monkeypatch, tmp_path):
         """A directory that does not exist yet is created, parents included."""
         target = tmp_path / "uploads" / "chunks"
-        monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(target))
+        set_wireview(monkeypatch, UPLOAD_TEMP_DIR=str(target))
 
         root = upload_store.store_root()
 
@@ -562,7 +562,7 @@ class TestUploadTempDir:
     @pytest.mark.unit
     def test_none_falls_back_to_system_temp(self, monkeypatch):
         """None keeps the previous behaviour: the system temp dir."""
-        monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", None)
+        set_wireview(monkeypatch, UPLOAD_TEMP_DIR=None)
 
         root = upload_store.store_root()
 
@@ -571,7 +571,7 @@ class TestUploadTempDir:
     @pytest.mark.unit
     def test_empty_string_is_not_the_working_directory(self, monkeypatch, tmp_path):
         """An empty value means unset, not Path("") — which is the cwd."""
-        monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", "")
+        set_wireview(monkeypatch, UPLOAD_TEMP_DIR="")
         monkeypatch.chdir(tmp_path)
 
         root = upload_store.store_root()
@@ -584,7 +584,7 @@ class TestUploadTempDir:
         """An unusable directory raises instead of quietly using local disk."""
         blocker = tmp_path / "blocker"
         blocker.write_text("not a directory")
-        monkeypatch.setattr(wireview_settings, "UPLOAD_TEMP_DIR", str(blocker / "uploads"))
+        set_wireview(monkeypatch, UPLOAD_TEMP_DIR=str(blocker / "uploads"))
 
         with pytest.raises(ImproperlyConfigured):
             upload_store.store_root()

@@ -33,6 +33,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.contrib.sessions.backends.cache import SessionStore as CacheSessionStore
 from django.template import Context, Template
 from django.test import RequestFactory, override_settings
+from testproj.wireview_setting import set_wireview
 
 from wireview import Component, LiveComponent, live_session, mount
 from wireview.consumer import WireviewConsumer
@@ -1889,10 +1890,7 @@ class TestABoundaryAddedLaterDoesNotReachBackwards:
 
         from django.core.signing import SignatureExpired
 
-        from wireview.core import state as state_module
-
-        monkeypatch.setattr(state_module.settings, "STATE_MAX_AGE", 100)
-        monkeypatch.setattr(state_module.settings, "STATE_REFRESH_AFTER", 1)
+        set_wireview(monkeypatch, STATE_MAX_AGE=100, STATE_REFRESH_AFTER=1)
 
         monkeypatch.setattr(time_module, "time", lambda: 1000.0)
         old_token = signed(CxOk, page=None, id="target")

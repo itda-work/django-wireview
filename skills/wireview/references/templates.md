@@ -81,8 +81,7 @@
 ## 부분 diff를 죽이지 않으려면
 
 - 서버는 템플릿의 **동적 파트만** 골라 보낸다. `{% tag_header %}`의 서명 상태도 동적 파트다.
-- `WIREVIEW["USE_HMIN"]`을 켜면 HTML 주석 기반 diff 마커가 지워져, 바뀔 때마다 컴포넌트 HTML 전체가 나간다
-  (`manage.py check`의 `wireview.W005`). 켤 거면 대역폭 손익을 실측한다.
+- HTML 압축기(주석 제거)를 렌더 결과에 걸지 않는다. diff 마커가 지워져 바뀔 때마다 컴포넌트 HTML 전체가 나간다.
 - 상세: https://github.com/itda-work/django-wireview/blob/main/docs/features/html-diff.md
 
 ## 관련 정본
