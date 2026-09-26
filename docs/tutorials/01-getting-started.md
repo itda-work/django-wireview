@@ -125,7 +125,8 @@ from wireview import Component
 class XHello(Component):
     """첫 번째 wireview 컴포넌트"""
 
-    _template_name = 'myapp/hello.html'
+    class Meta:
+        template_name = 'myapp/hello.html'
 
     name: str = "World"
 
@@ -136,7 +137,7 @@ class XHello(Component):
 
 **핵심 포인트:**
 - `Component`를 상속합니다
-- `_template_name`으로 템플릿 경로를 지정합니다
+- `Meta.template_name`으로 템플릿 경로를 지정합니다
 - Pydantic 스타일로 상태(필드)를 정의합니다
 - 이벤트 핸들러는 `async def`로 정의합니다
 

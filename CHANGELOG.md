@@ -33,6 +33,19 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
 
 ### Changed
 
+- **Breaking:** component configuration moved into `class Meta:` (#99). The underscore
+  class attributes read as private and sat among the registry's own underscore names.
+  `_template_name`, `_subscriptions`, `_temporary_assigns`, `_exclude_fields`, `_slots`,
+  `_on_mount`, `_live_sessions` and `_presence_config` are now `template_name`,
+  `subscriptions`, `temporary_assigns`, `exclude_fields`, `slots`, `on_mount`,
+  `live_sessions` and `presence` in the Meta. There is no compatibility path before 1.0:
+  an old name is a `TypeError` that says where it went (Pydantic had turned it into a
+  private attribute, so it would otherwise have configured nothing in silence), and so is
+  a key the Meta does not know. A subclass inherits each key its Meta does not set, so a
+  base that guards itself with `on_mount` or `live_sessions` keeps guarding.
+  `exclude_fields` adds to `user`, `wire` and `session` instead of replacing them.
+  Subscriptions that depend on state come from overriding `get_subscriptions()`, which
+  replaces `@property def _subscriptions`.
 - Event bindings no longer put script in the markup, so a Content Security Policy without
   `'unsafe-inline'` holds (#90). `{% on "keyup.enter" "save" %}` renders
   `wire-on-keyup.enter="{…json…}"` and the bundle delegates from `<html>`; the upload tags lose
@@ -62,6 +75,13 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
 
 ### Fixed
 
+- A client could call a class defined in a component's body (#99). The exposure rule
+  took any callable the user's class defined, and a class is callable, so a `user_event`
+  naming a nested class instantiated it. `class Meta:` made every component have one; a
+  class is never a handler now.
+- `LiveComponent` wrapped its handlers the way `Component` did before a76836c: a
+  classmethod stayed bound to the class that defined it and a staticmethod received the
+  instance. It shares `Component`'s wrapping now.
 - `from wireview import function_component` could return a module (#98). The decorator's
   submodule had the same name, and importing it (the template tags do) replaced the
   package attribute with the module, so `@function_component` failed with "module is not

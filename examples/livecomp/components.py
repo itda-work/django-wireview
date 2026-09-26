@@ -6,7 +6,8 @@ from wireview import Component, LiveComponent
 class Counter(LiveComponent):
     """A counter LiveComponent that maintains independent state."""
 
-    _template_name = "livecomp/counter.html"
+    class Meta:
+        template_name = "livecomp/counter.html"
 
     count: int = 0
     label: str = "Counter"
@@ -40,7 +41,8 @@ class Counter(LiveComponent):
 class Dashboard(Component):
     """Parent component that contains multiple Counter LiveComponents."""
 
-    _template_name = "livecomp/dashboard.html"
+    class Meta:
+        template_name = "livecomp/dashboard.html"
 
     total: int = 15  # Pre-calculated: 0 + 10 + 5
     last_changed: str = ""

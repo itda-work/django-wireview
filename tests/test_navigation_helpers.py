@@ -30,7 +30,8 @@ STAFF = "ls-staff"
 class Navigator(Component):
     """Navigates on demand, and records what it was told about the URL."""
 
-    _template_name = "todo/counter.html"
+    class Meta:
+        template_name = "todo/counter.html"
 
     count: int = 0
     seen_params: dict = {}
@@ -53,7 +54,8 @@ class Navigator(Component):
 class Destination(Component):
     """What a redirect lands on."""
 
-    _template_name = "todo/counter.html"
+    class Meta:
+        template_name = "todo/counter.html"
 
     count: int = 0
 
@@ -61,8 +63,9 @@ class Destination(Component):
 class MembersOnly(Component):
     """Refuses to exist outside ``ls-members``. Proves the boundary really carried."""
 
-    _template_name = "todo/counter.html"
-    _live_sessions = {MEMBERS}
+    class Meta:
+        template_name = "todo/counter.html"
+        live_sessions = {MEMBERS}
 
     count: int = 0
 
@@ -74,7 +77,8 @@ class Streamer(Component):
     ``tests/test_streams.py``'s subject, not this one's.
     """
 
-    _template_name = "todo/counter.html"
+    class Meta:
+        template_name = "todo/counter.html"
 
     count: int = 0
 

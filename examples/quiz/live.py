@@ -34,8 +34,9 @@ class XQuiz(Component):
     - force_render() when state changes
     """
 
-    _template_name = "quiz/quiz.html"
-    _subscriptions = {"quiz.submission"}  # Subscribe to submission updates
+    class Meta:
+        template_name = "quiz/quiz.html"
+        subscriptions = {"quiz.submission"}  # Subscribe to submission updates
 
     quiz: Quiz
     state: QuizState = QuizState.INTRO
@@ -168,7 +169,8 @@ class XQuestion(Component):
     - Conditional rendering based on answer state
     """
 
-    _template_name = "quiz/question.html"
+    class Meta:
+        template_name = "quiz/question.html"
 
     question: Question
     selected_choice_id: int | None = None
@@ -200,8 +202,9 @@ class XLeaderboard(Component):
     - destroy() when quiz ends
     """
 
-    _template_name = "quiz/leaderboard.html"
-    _subscriptions = {"quiz.submission"}
+    class Meta:
+        template_name = "quiz/leaderboard.html"
+        subscriptions = {"quiz.submission"}
 
     quiz: Quiz
 

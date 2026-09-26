@@ -6,7 +6,8 @@ from wireview import Component, LiveComponent, abroadcast
 class BenchFlat(Component):
     """Seven scalar values, no loops."""
 
-    _template_name = "bench/flat.html"
+    class Meta:
+        template_name = "bench/flat.html"
 
     title: str = "Flat"
     a: int = 1
@@ -23,8 +24,9 @@ class BenchFlat(Component):
 class BenchList(Component):
     """A list with a conditional per item plus a top-level conditional."""
 
-    _template_name = "bench/list.html"
-    _subscriptions = {"bench-shout"}
+    class Meta:
+        template_name = "bench/list.html"
+        subscriptions = {"bench-shout"}
 
     title: str = "List"
     note: str = ""
@@ -58,7 +60,8 @@ class BenchList(Component):
 class BenchCard(LiveComponent):
     """A nested LiveComponent: a label from the parent and a count of its own."""
 
-    _template_name = "bench/card.html"
+    class Meta:
+        template_name = "bench/card.html"
 
     label: str = ""
     count: int = 0
@@ -73,7 +76,8 @@ class BenchCard(LiveComponent):
 class BenchBoard(Component):
     """A parent with three BenchCard children. The parent passes each card's count as a prop."""
 
-    _template_name = "bench/board.html"
+    class Meta:
+        template_name = "bench/board.html"
 
     title: str = "Board"
     note: str = ""

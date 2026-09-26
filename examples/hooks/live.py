@@ -18,7 +18,8 @@ from wireview import Component
 class XLifecycle(Component):
     """A timestamp the browser formats, and a counter the hook talks to the server about."""
 
-    _template_name = "hooks/x-lifecycle.html"
+    class Meta:
+        template_name = "hooks/x-lifecycle.html"
 
     #: An ISO instant. The server decides *when*; the hook decides how it reads.
     stamp: str = Field(default_factory=lambda: timezone.now().isoformat())

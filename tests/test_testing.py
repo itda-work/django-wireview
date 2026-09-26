@@ -9,7 +9,8 @@ from wireview.testing import ComponentTestCase, MountedComponent, mount
 class SimpleCounter(Component):
     """A simple counter component for testing."""
 
-    _template_name = "todo/counter.html"  # Use existing template
+    class Meta:
+        template_name = "todo/counter.html"  # Use existing template
 
     count: int = 0
 
@@ -26,7 +27,8 @@ class SimpleCounter(Component):
 class RedirectComponent(Component):
     """Component that tests redirect functionality."""
 
-    _template_name = "todo/counter.html"
+    class Meta:
+        template_name = "todo/counter.html"
 
     async def do_redirect(self, url: str = "/home"):
         await self.wire.redirect_to(url)

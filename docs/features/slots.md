@@ -27,11 +27,12 @@ Slots는 컴포넌트에 콘텐츠를 유연하게 전달하는 기능입니다.
 from wireview import Component
 
 class Card(Component):
-    _template_name = "myapp/card.html"
-    _slots = {
-        "header": {"required": False, "doc": "카드 헤더 영역"},
-        "footer": {"required": False, "doc": "카드 푸터 영역"},
-    }
+    class Meta:
+        template_name = "myapp/card.html"
+        slots = {
+            "header": {"required": False, "doc": "카드 헤더 영역"},
+            "footer": {"required": False, "doc": "카드 푸터 영역"},
+        }
 
     title: str = ""
     variant: str = "default"  # default, primary, danger
@@ -160,10 +161,11 @@ LiveComponent용 블록 태그입니다. 슬롯 규칙은 같고 `id`가 필수�
 
 ```python
 class ProductList(Component):
-    _template_name = "products/list.html"
-    _slots = {
-        "item": {"required": False, "doc": "각 상품 아이템 템플릿"},
-    }
+    class Meta:
+        template_name = "products/list.html"
+        slots = {
+            "item": {"required": False, "doc": "각 상품 아이템 템플릿"},
+        }
 
     products: list[dict] = []
 ```
@@ -208,12 +210,13 @@ class ProductList(Component):
 
 ```python
 class Modal(Component):
-    _template_name = "components/modal.html"
-    _slots = {
-        "title": {"required": True, "doc": "모달 제목 - 필수"},
-        "body": {"required": False, "doc": "모달 본문"},
-        "actions": {"required": False, "doc": "액션 버튼"},
-    }
+    class Meta:
+        template_name = "components/modal.html"
+        slots = {
+            "title": {"required": True, "doc": "모달 제목 - 필수"},
+            "body": {"required": False, "doc": "모달 본문"},
+            "actions": {"required": False, "doc": "액션 버튼"},
+        }
 
     is_open: bool = False
 ```
@@ -319,11 +322,12 @@ Add: {% fill title %}...{% endfill %}
 
 ```python
 class Tabs(Component):
-    _template_name = "components/tabs.html"
-    _slots = {
-        "tab": {"required": True, "doc": "탭 버튼들"},
-        "panel": {"required": True, "doc": "탭 패널들"},
-    }
+    class Meta:
+        template_name = "components/tabs.html"
+        slots = {
+            "tab": {"required": True, "doc": "탭 버튼들"},
+            "panel": {"required": True, "doc": "탭 패널들"},
+        }
 
     active_tab: str = ""
 ```
@@ -359,10 +363,11 @@ class Tabs(Component):
 
 ```python
 class Accordion(Component):
-    _template_name = "components/accordion.html"
-    _slots = {
-        "item": {"required": True, "doc": "아코디언 아이템"},
-    }
+    class Meta:
+        template_name = "components/accordion.html"
+        slots = {
+            "item": {"required": True, "doc": "아코디언 아이템"},
+        }
 
     items: list[dict] = []  # [{"id": "1", "title": "...", "open": True}]
 ```

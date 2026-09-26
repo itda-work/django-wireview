@@ -39,14 +39,17 @@ class RecordingMeta(WireviewMeta):
 class ParamsSimpleComponent(Component):
     """A simple component without params_changed override."""
 
-    _template_name = "todo/counter.html"
+    class Meta:
+        template_name = "todo/counter.html"
+
     count: int = 0
 
 
 class ParamsAwareComponent(Component):
     """A component that tracks params_changed calls."""
 
-    _template_name = "todo/counter.html"
+    class Meta:
+        template_name = "todo/counter.html"
 
     page: int = 1
     sort: str = "created_at"

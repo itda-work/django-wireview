@@ -40,18 +40,21 @@ needs_permissions = pytest.mark.skipif(
 )
 
 
-def make_component(class_name: str, module: str = "probeapp.live", **namespace) -> type[Component]:
+def make_component(
+    class_name: str, module: str = "probeapp.live", meta: dict | None = None, **namespace
+) -> type[Component]:
     """Build a component class off the registry's beaten path.
 
     Registration warns on name collisions, which two of these tests want on
     purpose, so the warning is silenced here rather than in each test.
     """
+    meta = meta or {}
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return type(
             class_name,
             (Component,),
-            {"__module__": module, "_template_name": "test.html", **namespace},
+            {"__module__": module, "Meta": type("Meta", (), {"template_name": "test.html", **meta}), **namespace},
         )
 
 
@@ -445,12 +448,12 @@ class TestLiveSessions:
         live_session_module._REGISTRY.update(saved)
 
     def test_a_project_without_boundaries_is_silent(self, only, registry):
-        only(make_component("W10Plain", _on_mount=[object()]))
+        only(make_component("W10Plain", meta={"on_mount": [object()]}))
 
         assert check_live_sessions(None) == []
 
     def test_a_name_no_session_declares_is_flagged(self, only, registry):
-        only(make_component("W10Typo", _live_sessions={"admn"}))
+        only(make_component("W10Typo", meta={"live_sessions": {"admn"}}))
 
         messages = check_live_sessions(None)
 
@@ -459,18 +462,18 @@ class TestLiveSessions:
 
     def test_a_declared_name_is_silent(self, only, registry):
         live_session_module.live_session("admin")
-        only(make_component("W10Bound", _live_sessions={"admin"}))
+        only(make_component("W10Bound", meta={"live_sessions": {"admin"}}))
 
         assert check_live_sessions(None) == []
 
     def test_a_guarded_component_without_a_boundary_is_flagged(self, only, registry):
         live_session_module.live_session("admin")
-        only(make_component("W10Unbound", _on_mount=[object()]))
+        only(make_component("W10Unbound", meta={"on_mount": [object()]}))
 
         messages = check_live_sessions(None)
 
         assert [m.id for m in messages] == ["wireview.W010"]
-        assert "_live_sessions" in messages[0].msg
+        assert "Meta.live_sessions" in messages[0].msg
 
     def test_a_boundary_without_the_request_context_processor_is_flagged(self, only, registry):
         """The trap: everything still renders, and the boundary is simply not there."""

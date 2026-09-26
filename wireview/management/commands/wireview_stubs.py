@@ -36,9 +36,7 @@ from wireview.live_component import LiveComponent
 
 # Reuse utilities from wireview_lsp
 from .wireview_lsp import (
-    get_class_attribute_safe,
     get_type_string,
-    is_dynamic_property,
     serialize_default,
 )
 
@@ -84,7 +82,7 @@ class ComponentStubInfo:
     docstring: str | None
     fields: list[FieldInfo]
     methods: list[MethodInfo]
-    class_vars: dict[str, t.Any]  # _template_name, _slots, etc.
+    class_vars: dict[str, t.Any]  # the class's Meta: template_name, slots, ...
     handlers: list[str]  # Event handler names
 
 
@@ -373,7 +371,7 @@ def _extract_fields(cls: type[Component]) -> list[FieldInfo]:
 
     # Skip internal fields
     internal_fields = {"id", "user", "wire"}
-    exclude_fields = getattr(cls, "_exclude_fields", set())
+    exclude_fields = set(cls._meta.exclude_fields)
     skip_fields = internal_fields | exclude_fields
 
     for name, field_info in cls.model_fields.items():
@@ -517,31 +515,21 @@ def _extract_methods(cls: type[Component]) -> tuple[list[MethodInfo], list[str]]
 
 
 def _extract_class_vars(cls: type[Component]) -> dict[str, t.Any]:
-    """Extract class variable values."""
-    class_vars = {}
+    """The class's Meta, as far as it can be read without an instance."""
+    from .wireview_lsp import subscriptions_are_dynamic
 
-    # Template name
-    if hasattr(cls, "_template_name"):
-        class_vars["_template_name"] = getattr(cls, "_template_name", "")
-
-    # Slots
-    slots = get_class_attribute_safe(cls, "_slots", {})
-    if slots:
-        class_vars["_slots"] = slots
-
-    # Subscriptions (may be dynamic property)
-    if is_dynamic_property(cls, "_subscriptions"):
-        class_vars["_subscriptions_dynamic"] = True
-    else:
-        subscriptions = get_class_attribute_safe(cls, "_subscriptions", set())
-        if subscriptions:
-            class_vars["_subscriptions"] = list(subscriptions) if not callable(subscriptions) else []
-
-    # Temporary assigns
-    temp_assigns = get_class_attribute_safe(cls, "_temporary_assigns", set())
-    if temp_assigns:
-        class_vars["_temporary_assigns"] = list(temp_assigns) if not callable(temp_assigns) else []
-
+    meta = cls._meta
+    class_vars: dict[str, t.Any] = {}
+    if meta.template_name:
+        class_vars["template_name"] = meta.template_name
+    if meta.slots:
+        class_vars["slots"] = dict(meta.slots)
+    if subscriptions_are_dynamic(cls):
+        class_vars["subscriptions_dynamic"] = True
+    elif meta.subscriptions:
+        class_vars["subscriptions"] = sorted(meta.subscriptions)
+    if meta.temporary_assigns:
+        class_vars["temporary_assigns"] = sorted(meta.temporary_assigns)
     return class_vars
 
 
@@ -785,21 +773,8 @@ def _generate_class_stub(comp: ComponentStubInfo, types_: _StubTypes | None = No
     class_var = types_.use("ClassVar")
     any_ = types_.any()
 
-    # Class variables
-    if comp.class_vars:
-        if comp.class_vars.get("_template_name"):
-            lines.append(f"    _template_name: {class_var}[str]")
-        if comp.class_vars.get("_slots"):
-            lines.append(f"    _slots: {class_var}[dict[str, dict[str, {any_}]]]")
-        if comp.class_vars.get("_subscriptions_dynamic"):
-            lines.append("    # Note: _subscriptions is a dynamic property")
-            lines.append("    @property")
-            lines.append("    def _subscriptions(self) -> set[str]: ...")
-        elif comp.class_vars.get("_subscriptions"):
-            lines.append(f"    _subscriptions: {class_var}[set[str]]")
-        if comp.class_vars.get("_temporary_assigns"):
-            lines.append(f"    _temporary_assigns: {class_var}[set[str]]")
-        lines.append("")
+    # The class's Meta needs no stub: Component declares ``_meta`` and
+    # ``get_subscriptions()``, and the stub's base is Component (#99).
 
     # Instance fields. A field whose name is not a Python identifier (possible
     # with pydantic.create_model) cannot be declared; the metadata still names it.

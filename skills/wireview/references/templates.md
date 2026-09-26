@@ -58,7 +58,7 @@
 {% endcomponent %}
 ```
 
-컴포넌트 쪽에서 `_slots = {"header": {"required": False}}`로 선언하고, 템플릿에서
+컴포넌트 쪽에서 `Meta.slots = {"header": {"required": False}}`로 선언하고, 템플릿에서
 `{% if slots.header %}{% render_slot "header" %}{% endif %}`, 이름 없는 본문은 `{% render_slot %}`.
 
 ## 클라이언트 DOM 속성

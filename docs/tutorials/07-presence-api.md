@@ -93,8 +93,7 @@ class XGlobalPresence(PresenceTrackerMixin, Component):
 
     room_ids: list[int]
 
-    @property
-    def _subscriptions(self):
+    def get_subscriptions(self) -> set[str]:
         # 여러 채널 구독
         channels = set()
         for room_id in self.room_ids:
@@ -114,9 +113,10 @@ class XGlobalPresence(PresenceTrackerMixin, Component):
 from wireview import PresenceConfig
 
 class XChatInput(PresenceMixin, Component):
-    _presence_config = PresenceConfig(
-        typing_timeout=3.0,  # 3초 후 자동 해제
-    )
+    class Meta:
+        presence = PresenceConfig(
+            typing_timeout=3.0,  # 3초 후 자동 해제
+        )
 ```
 
 ### 긴 타임아웃
@@ -125,9 +125,10 @@ class XChatInput(PresenceMixin, Component):
 
 ```python
 class XDocEditor(PresenceMixin, Component):
-    _presence_config = PresenceConfig(
-        typing_timeout=10.0,  # 10초
-    )
+    class Meta:
+        presence = PresenceConfig(
+            typing_timeout=10.0,  # 10초
+        )
 ```
 
 ### 수동 타이핑 해제
@@ -148,9 +149,10 @@ async def on_input(self, text: str):
 새 사용자가 입장하면 기존 사용자 정보 요청:
 
 ```python
-_presence_config = PresenceConfig(
-    sync_on_join=True,  # 기본값
-)
+class Meta:
+    presence = PresenceConfig(
+        sync_on_join=True,  # 기본값
+    )
 ```
 
 ### 동기화 흐름
@@ -252,8 +254,7 @@ class XOnlineUsers(PresenceTrackerMixin, Component):
 
 1. **구독 확인**
    ```python
-   @property
-   def _subscriptions(self):
+   def get_subscriptions(self) -> set[str]:
        return {self._presence_channel()}  # 필수
    ```
 

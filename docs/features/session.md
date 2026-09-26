@@ -8,7 +8,8 @@ from wireview import Component
 
 
 class XCart(Component):
-    _template_name = "shop/cart.html"
+    class Meta:
+        template_name = "shop/cart.html"
 
     coupon: str = ""
 
@@ -25,7 +26,7 @@ class XCart(Component):
 |------|-----|
 | `self.session` | 세션 데이터의 **읽기 전용** 매핑. `["k"]`, `.get()`, `in`, 순회, `len()` |
 | `self.session.session_key` | 쿠키에 든 세션 키. 세션이 아직 만들어지지 않았으면 `None` |
-| `_on_mount` 훅의 세 번째 인자 | 같은 객체 ([라이프사이클 훅](./lifecycle-hooks.md)) |
+| `Meta.on_mount` 훅의 세 번째 인자 | 같은 객체 ([라이프사이클 훅](./lifecycle-hooks.md)) |
 
 템플릿에서도 그대로 읽는다.
 
@@ -58,15 +59,14 @@ def product_detail(request, product_id):
 
 ## 클라이언트로 가지 않는다
 
-`session`은 `_exclude_fields`의 기본값에 들어 있다. 서명된 `data-state`는 브라우저를
-왕복하므로 세션 데이터가 거기 실리면 안 된다. `_exclude_fields`를 직접 덮어쓸 때는
-기본값을 함께 넣는다.
+`session`은 서명된 상태에서 **항상** 빠진다. 서명된 `data-state`는 브라우저를 왕복하므로
+세션 데이터가 거기 실리면 안 된다. `Meta.exclude_fields`로 필드를 더 빼도 `user`·`wire`·`session`은
+그대로 빠진다(#99). 덮어써서 실수로 되살릴 수 없다.
 
 ```python
-_exclude_fields = {"user", "wire", "session", "secret_field"}
+class Meta:
+    exclude_fields = {"secret_field"}  # user, wire, session에 더해진다
 ```
-
-빠뜨리면 조용히 새지 않고 직렬화가 `PydanticSerializationError`로 터진다.
 
 ## 스냅샷 시점
 
@@ -113,5 +113,5 @@ async def test_the_coupon_comes_from_the_session():
 
 ## 관련 문서
 
-- [라이프사이클 훅](./lifecycle-hooks.md) — `_on_mount` 훅이 받는 세션
+- [라이프사이클 훅](./lifecycle-hooks.md) — `Meta.on_mount` 훅이 받는 세션
 - [시스템 체크](./checks.md)

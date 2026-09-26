@@ -7,7 +7,7 @@
 ## 학습 목표
 
 - 상태 머신 패턴 (intro → playing → results)
-- `_subscriptions` 모델 구독
+- `Meta.subscriptions` 모델 구독
 - `mutation()` 훅 활용
 - `force_render()` vs `skip_render()`
 - 실시간 리더보드
@@ -107,8 +107,9 @@ class QuizState(StrEnum):
 class XQuiz(Component):
     """퀴즈 컴포넌트"""
 
-    _template_name = "quiz/quiz.html"
-    _subscriptions = {"quiz.submission"}  # 리더보드 업데이트용
+    class Meta:
+        template_name = "quiz/quiz.html"
+        subscriptions = {"quiz.submission"}  # 리더보드 업데이트용
 
     quiz: Quiz
     state: QuizState = QuizState.INTRO
@@ -276,8 +277,9 @@ class XQuiz(Component):
 class XLeaderboard(Component):
     """실시간 리더보드"""
 
-    _template_name = "quiz/leaderboard.html"
-    _subscriptions = {"quiz.submission"}
+    class Meta:
+        template_name = "quiz/leaderboard.html"
+        subscriptions = {"quiz.submission"}
 
     quiz: Quiz
 

@@ -57,7 +57,8 @@ from wireview import LiveComponent
 class Counter(LiveComponent):
     """재사용 가능한 카운터 위젯."""
 
-    _template_name = "widgets/counter.html"
+    class Meta:
+        template_name = "widgets/counter.html"
 
     # 상태
     count: int = 0
@@ -102,7 +103,8 @@ from wireview import Component
 
 
 class Dashboard(Component):
-    _template_name = "dashboard/dashboard.html"
+    class Meta:
+        template_name = "dashboard/dashboard.html"
 
     title: str = "My Dashboard"
 ```
@@ -137,7 +139,8 @@ class Dashboard(Component):
 
 ```python
 class Counter(LiveComponent):
-    _template_name = "widgets/counter.html"
+    class Meta:
+        template_name = "widgets/counter.html"
 
     count: int = 0
     label: str = "Count"
@@ -156,7 +159,8 @@ class Counter(LiveComponent):
 
 ```python
 class Dashboard(Component):
-    _template_name = "dashboard/dashboard.html"
+    class Meta:
+        template_name = "dashboard/dashboard.html"
 
     title: str = "My Dashboard"
     total: int = 0
@@ -175,7 +179,8 @@ class Dashboard(Component):
 
 ```python
 class Dashboard(Component):
-    _template_name = "dashboard/dashboard.html"
+    class Meta:
+        template_name = "dashboard/dashboard.html"
 
     async def reset_all(self):
         """모든 카운터를 0으로 리셋."""
@@ -232,8 +237,9 @@ from .models import Stat
 class StatCounter(LiveComponent):
     """통계 카운터 위젯 - DB와 동기화."""
 
-    _template_name = "myapp/stat_counter.html"
-    _subscriptions = {"myapp.stat"}  # DB 변경 구독
+    class Meta:
+        template_name = "myapp/stat_counter.html"
+        subscriptions = {"myapp.stat"}  # DB 변경 구독
 
     stat_name: str
     value: int = 0
@@ -278,7 +284,8 @@ class StatCounter(LiveComponent):
 class StatsDashboard(Component):
     """통계 대시보드."""
 
-    _template_name = "myapp/dashboard.html"
+    class Meta:
+        template_name = "myapp/dashboard.html"
 
     stats: list[str] = ["visitors", "orders", "revenue"]
     last_updated: str = ""

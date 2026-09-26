@@ -177,7 +177,8 @@ from wireview import Component
 
 
 class Dashboard(Component):
-    _template_name = "dashboard.html"
+    class Meta:
+        template_name = "dashboard.html"
 
     items: list = []
     page: int = 1

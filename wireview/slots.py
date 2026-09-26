@@ -11,11 +11,13 @@ Quick Start
     from wireview.core.component import Component
 
     class Card(Component):
-        _template_name = "components/card.html"
-        _slots = {
-            "header": {"required": False, "doc": "카드 헤더 영역"},
-            "footer": {"required": False, "doc": "카드 푸터 영역"},
-        }
+        class Meta:
+            template_name = "components/card.html"
+            slots = {
+                "header": {"required": False, "doc": "카드 헤더 영역"},
+                "footer": {"required": False, "doc": "카드 푸터 영역"},
+            }
+
         title: str = ""
 
 2. 컴포넌트 템플릿 정의 (card.html):
@@ -104,13 +106,14 @@ let: Variable Binding
 Required Slots
 ==============
 
-_slots 딕셔너리에 required: True를 설정하면 해당 슬롯이 필수가 됩니다:
+Meta.slots 딕셔너리에 required: True를 설정하면 해당 슬롯이 필수가 됩니다:
 
     class Modal(Component):
-        _slots = {
-            "title": {"required": True, "doc": "모달 제목 - 필수"},
-            "body": {"required": False},
-        }
+        class Meta:
+            slots = {
+                "title": {"required": True, "doc": "모달 제목 - 필수"},
+                "body": {"required": False},
+            }
 
 필수 슬롯이 누락되면 TemplateSyntaxError가 발생합니다.
 

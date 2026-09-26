@@ -63,7 +63,8 @@ from .models import Item
 class XTodoList(Component):
     """Todo 리스트 메인 컴포넌트"""
 
-    _template_name = 'todo/todo_list.html'
+    class Meta:
+        template_name = 'todo/todo_list.html'
 
     items: list = []
 
@@ -101,7 +102,8 @@ class XTodoList(Component):
 
 ```python
 class XTodoList(Component):
-    _template_name = 'todo/todo_list.html'
+    class Meta:
+        template_name = 'todo/todo_list.html'
 
     items: list = []
     new_item_text: str = ""
@@ -207,7 +209,8 @@ from wireview import WireviewMeta
 
 
 class XTodoList(Component):
-    _template_name = 'todo/todo_list.html'
+    class Meta:
+        template_name = 'todo/todo_list.html'
 
     items: list = []
     new_item_text: str = ""
@@ -324,10 +327,10 @@ from wireview import ModelAction
 
 
 class XTodoList(Component):
-    _template_name = 'todo/todo_list.html'
-
-    # 모델 변경 구독 ({app_label}.{model_name} 형식)
-    _subscriptions = {"todo.item"}
+    class Meta:
+        template_name = 'todo/todo_list.html'
+        # 모델 변경 구독 ({app_label}.{model_name} 형식)
+        subscriptions = {"todo.item"}
 
     items: list = []
     filter: str = "all"
@@ -378,7 +381,8 @@ class XTodoList(Component):
 class XTodoItem(Component):
     """개별 Todo 아이템 컴포넌트"""
 
-    _template_name = 'todo/todo_item.html'
+    class Meta:
+        template_name = 'todo/todo_item.html'
 
     item_id: int
     text: str
@@ -387,8 +391,7 @@ class XTodoItem(Component):
     edit_text: str = ""
 
     # 이 아이템의 변경만 구독 ({app_label}.{model_name}.{pk} 형식)
-    @property
-    def _subscriptions(self):
+    def get_subscriptions(self) -> set[str]:
         return {f"todo.item.{self.item_id}"}
 
     async def toggle(self):
@@ -461,8 +464,9 @@ class XTodoItem(Component):
 
 ```python
 class XTodoList(Component):
-    _template_name = 'todo/todo_list.html'
-    _subscriptions = {"todo.item"}
+    class Meta:
+        template_name = 'todo/todo_list.html'
+        subscriptions = {"todo.item"}
 
     items: list = []
     filter: str = "all"
@@ -511,8 +515,9 @@ from .models import Item
 class XTodoList(Component):
     """Todo 리스트 메인 컴포넌트"""
 
-    _template_name = 'todo/todo_list.html'
-    _subscriptions = {"todo.item"}
+    class Meta:
+        template_name = 'todo/todo_list.html'
+        subscriptions = {"todo.item"}
 
     items: list = []
     filter: str = "all"
@@ -578,15 +583,15 @@ class XTodoList(Component):
 class XTodoItem(Component):
     """개별 Todo 아이템 컴포넌트"""
 
-    _template_name = 'todo/todo_item.html'
+    class Meta:
+        template_name = 'todo/todo_item.html'
 
     item_id: int
     text: str
     completed: bool
     editing: bool = False
 
-    @property
-    def _subscriptions(self):
+    def get_subscriptions(self) -> set[str]:
         return {f"todo-item.{self.item_id}"}
 
     async def toggle(self):

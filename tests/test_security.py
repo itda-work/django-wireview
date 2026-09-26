@@ -21,7 +21,9 @@ from wireview.testing import mount
 class SecureComponent(Component):
     """Test component with user-defined methods."""
 
-    _template_name = "test.html"
+    class Meta:
+        template_name = "test.html"
+
     counter: int = 0
 
     async def increment(self):
@@ -35,6 +37,9 @@ class SecureComponent(Component):
     def sync_method(self):
         """Sync method - should also be callable."""
         return self.counter
+
+    class Helper:
+        """A nested class: callable, and not a handler."""
 
 
 # =============================================================================
@@ -77,6 +82,18 @@ class TestEventHandlerSecurity:
         assert component.counter == 1
 
     # Private method blocking tests
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    @pytest.mark.parametrize("name", ["Meta", "Helper"])
+    async def test_a_nested_class_is_not_a_handler(self, repo_and_id, name):
+        """A class is callable, so the exposure rule let a client instantiate it (#99).
+
+        Every component has one now: ``class Meta:``.
+        """
+        repo, comp_id = repo_and_id
+        with pytest.raises(ValueError, match=name):
+            await repo.dispatch_event(comp_id, name, [], {})
 
     @pytest.mark.asyncio
     @pytest.mark.unit
@@ -439,7 +456,9 @@ class TestValidationHelpers:
 class ExposureProbe(Component):
     """User component that overrides framework names on purpose."""
 
-    _template_name = "test.html"
+    class Meta:
+        template_name = "test.html"
+
     counter: int = 0
     joined_calls: int = 0
 
@@ -454,7 +473,9 @@ class ExposureProbe(Component):
 class ExposureLiveProbe(LiveComponent):
     """User LiveComponent that overrides a framework callback."""
 
-    _template_name = "test.html"
+    class Meta:
+        template_name = "test.html"
+
     counter: int = 0
 
     async def increment(self):

@@ -23,7 +23,7 @@ async def test_increment():
 이 여섯 이름은 `mount()`가 쓰므로 같은 이름의 컴포넌트 필드에는 전달되지 않는다.
 `ComponentTestCase`를 상속하면 pytest·unittest 클래스 안에서 `self.mount(...)`으로 같은 것을 쓴다.
 
-**거절된 마운트는 freeze된다.** `_on_mount` 훅이 halt하거나 `_live_sessions`가 그 페이지를
+**거절된 마운트는 freeze된다.** `Meta.on_mount` 훅이 halt하거나 `Meta.live_sessions`가 그 페이지를
 허용하지 않으면 서버는 아무것도 그리지 않는다. `mount()`도 그렇게 답한다 — `view.render()`가
 `None`이거나 리다이렉트 메타뿐이고, `view.is_frozen`이 참이다. 컴포넌트 인스턴스는 그대로
 돌려주므로 훅이 무엇을 했는지는 검사할 수 있다.
@@ -157,7 +157,7 @@ view = await mount(XAdminPanel, user=staff, live_session="admin")
 ```
 
 `live_session=`에는 `LiveSession` 객체나 그 이름을 준다. 주지 않으면 **경계를 선언하지 않은
-페이지**에 마운트한 것이고, 그것은 `_live_sessions`를 선언한 컴포넌트가 거절되는 상황이다.
+페이지**에 마운트한 것이고, 그것은 `Meta.live_sessions`를 선언한 컴포넌트가 거절되는 상황이다.
 경계의 `on_mount` 훅도 이때 돈다. 자세한 것은 [live_session](./live-session.md).
 
 ## 주의사항

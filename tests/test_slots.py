@@ -273,9 +273,10 @@ class TestSlotValidation:
 
         # Create a component with required slot
         class TestCard(Component):
-            _template_name = "test_card.html"
-            _slots = {"header": {"required": True}}
+            class Meta:
+                template_name = "test_card.html"
+                slots = {"header": {"required": True}}
 
         # The validation happens in ComponentBlockNode._validate_required_slots
         # which is called during render. We'll test this in integration tests.
-        assert TestCard._slots["header"]["required"] is True
+        assert TestCard._meta.slots["header"]["required"] is True

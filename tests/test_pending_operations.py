@@ -103,7 +103,9 @@ class MockItem:
 class StreamInJoinedComponent(Component):
     """Component that calls stream() in joined()."""
 
-    _template_name = "streams/stream_list.html"
+    class Meta:
+        template_name = "streams/stream_list.html"
+
     items: list = []
 
     async def joined(self):
@@ -115,7 +117,8 @@ class StreamInJoinedComponent(Component):
 class PushJsInJoinedComponent(Component):
     """Component that calls push_js() in joined()."""
 
-    _template_name = "streams/stream_list.html"
+    class Meta:
+        template_name = "streams/stream_list.html"
 
     async def joined(self):
         """Push JS during join."""
@@ -127,7 +130,9 @@ class PushJsInJoinedComponent(Component):
 class MultipleOpsInJoinedComponent(Component):
     """Component that calls multiple operations in joined()."""
 
-    _template_name = "streams/stream_list.html"
+    class Meta:
+        template_name = "streams/stream_list.html"
+
     items: list = []
 
     async def joined(self):
@@ -187,7 +192,9 @@ class TestComponentJoinedPendingOperations:
 class NoPendingAfterJoinedComponent(Component):
     """Component that calls operations after joined() completes."""
 
-    _template_name = "streams/stream_list.html"
+    class Meta:
+        template_name = "streams/stream_list.html"
+
     items: list = []
 
     async def joined(self):
@@ -276,7 +283,8 @@ class TestPendingBroadcasts:
 class BroadcastInJoinedComponent(Component):
     """Component that calls broadcast() in joined()."""
 
-    _template_name = "streams/stream_list.html"
+    class Meta:
+        template_name = "streams/stream_list.html"
 
     async def joined(self):
         """Broadcast during join - should be queued."""
@@ -314,7 +322,9 @@ class TestLeavingLifecycleHook:
 class LeavingComponent(Component):
     """Component that tracks leaving() calls."""
 
-    _template_name = "streams/stream_list.html"
+    class Meta:
+        template_name = "streams/stream_list.html"
+
     leaving_called: bool = False
 
     async def leaving(self):

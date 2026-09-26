@@ -39,7 +39,9 @@ TEMPLATES = {
 
 
 class OwnUploader(Component):
-    _template_name = "own/uploader.html"
+    class Meta:
+        template_name = "own/uploader.html"
+
     title: str = "uploader"
 
     async def joined(self):
@@ -47,7 +49,9 @@ class OwnUploader(Component):
 
 
 class OwnChildUploader(LiveComponent):
-    _template_name = "own/child.html"
+    class Meta:
+        template_name = "own/child.html"
+
     label: str = "child"
 
     async def joined(self):
@@ -55,13 +59,16 @@ class OwnChildUploader(LiveComponent):
 
 
 class OwnBoard(Component):
-    _template_name = "own/board.html"
+    class Meta:
+        template_name = "own/board.html"
 
 
 class OwnPlain(Component):
     """No uploads, so no registry and no progress group."""
 
-    _template_name = "own/uploader.html"
+    class Meta:
+        template_name = "own/uploader.html"
+
     title: str = "plain"
 
 

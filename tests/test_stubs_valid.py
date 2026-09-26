@@ -43,7 +43,8 @@ class Local:
 class StubProbe(Component, public=False):
     """Written the way #89's component was: an aliased typing module, keyword catch-alls."""
 
-    _template_name = "stub_probe.html"
+    class Meta:
+        template_name = "stub_probe.html"
 
     when: datetime.date | None = None
     price: Decimal = Decimal(0)
@@ -168,7 +169,8 @@ class Outer:
 class Widget(Component, public=False):
     """A component whose name a nested class of the module also has."""
 
-    _template_name = "widget.html"
+    class Meta:
+        template_name = "widget.html"
 
     async def take(self, inner: Outer.Widget) -> None: ...
 
@@ -185,7 +187,8 @@ class Color(Enum):
 class ReviewProbe(Component, public=False):
     """Docstring with \"\"\"triple quotes\"\"\" and a backslash \\ in it"""
 
-    _template_name = "review_probe.html"
+    class Meta:
+        template_name = "review_probe.html"
 
     ratio: float = float("inf")
     missing: float = float("nan")
@@ -262,7 +265,8 @@ def test_a_docstring_with_triple_quotes_stays_valid():
 
 def test_a_class_without_a_docstring_does_not_inherit_the_base_ones():
     class Bare(Component, public=False):
-        _template_name = "bare.html"
+        class Meta:
+            template_name = "bare.html"
 
     source = stub_for(Bare)
 
@@ -274,7 +278,8 @@ def test_a_component_named_any_does_not_clash_with_typing_any():
     exec(  # noqa: S102 -- a class that must be literally named Any
         "from wireview import Component\n"
         "class Any(Component, public=False):\n"
-        "    _template_name = 'any.html'\n"
+        "    class Meta:\n"
+        "        template_name = 'any.html'\n"
         "    value: int = 0\n"
         "    async def act(self, payload: dict) -> None: ...\n",
         namespace,

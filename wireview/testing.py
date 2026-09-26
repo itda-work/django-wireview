@@ -575,13 +575,13 @@ async def mount(
         user: Optional user instance (defaults to AnonymousUser)
         params: Optional URL/query parameters
         session: Optional session data, read by the component as ``self.session``
-            and handed to the ``_on_mount`` hooks
+            and handed to the ``Meta.on_mount`` hooks
         session_key: Optional session key, for code that identifies an anonymous
             visitor by ``self.session.session_key``
         live_session: The page boundary to mount inside, as a ``LiveSession`` (or
             its name). Without it the component mounts on a page that declares
             none, which is what refuses a component that named its
-            ``_live_sessions``
+            ``Meta.live_sessions``
         **initial_state: Initial field values for the component
 
     Returns:
@@ -598,7 +598,7 @@ async def mount(
         # With a session
         view = await mount(Cart, session={"items": [1, 2]}, session_key="s1")
 
-        # Inside a page boundary, so the session hooks run and _live_sessions passes
+        # Inside a page boundary, so the session hooks run and Meta.live_sessions passes
         view = await mount(AdminPanel, user=staff, live_session="admin")
     """
     from django.contrib.auth.models import AnonymousUser

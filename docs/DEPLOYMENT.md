@@ -250,7 +250,7 @@ v1 봉투(`#76`)와 그 이전의 두 형식은 경계를 담고 있지 않으�
 
 **공개로 돌던 페이지에 경계를 붙일 때는 순서가 있다.** 서버는 토큰이 말하는 경계만 보고 발급 시점은
 모르므로, 그 전에 발급된 경계 없는 토큰은 새 정책을 지나지 않는다. 보호할 컴포넌트에
-`_live_sessions`를 먼저 선언하고, 즉시 끊어야 하면 `SIGNING_KEY`를 fallback 없이 교체한다. 상세는
+`Meta.live_sessions`를 먼저 선언하고, 즉시 끊어야 하면 `SIGNING_KEY`를 fallback 없이 교체한다. 상세는
 [live_session](./features/live-session.md).
 
 **세션 백엔드가 로그아웃의 의미를 정한다.** `signed_cookies` 백엔드는 서버에 아무 기록을 남기지

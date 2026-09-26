@@ -70,6 +70,15 @@ def is_dynamic_property(cls: type, attr_name: str) -> bool:
     return False
 
 
+def subscriptions_are_dynamic(cls: type) -> bool:
+    """Whether the component overrides ``get_subscriptions()`` (#99).
+
+    Its channels then depend on the instance, so ``Meta.subscriptions`` is not
+    the whole answer and a tool cannot list them.
+    """
+    return any("get_subscriptions" in vars(klass) for klass in cls.__mro__ if klass is not Component)
+
+
 def get_class_attribute_safe(cls: type, attr_name: str, default: t.Any = None) -> t.Any:
     """Safely get a class attribute, handling properties gracefully.
 
@@ -115,12 +124,7 @@ def extract_component_metadata(cls: type[Component]) -> dict[str, t.Any]:
     module = cls.__module__
     app_name = module.split(".")[0]
 
-    # Handle _subscriptions (may be class var or property)
-    subscriptions = get_class_attribute_safe(cls, "_subscriptions", set())
-
-    # Handle _temporary_assigns
-    temporary_assigns = get_class_attribute_safe(cls, "_temporary_assigns", set())
-
+    meta = cls._meta
     return {
         "name": cls._name,
         "fqn": cls._fqn,
@@ -129,13 +133,13 @@ def extract_component_metadata(cls: type[Component]) -> dict[str, t.Any]:
         "file_path": file_path,
         "line_number": line_number,
         "docstring": inspect.getdoc(cls),
-        "template_name": getattr(cls, "_template_name", ""),
+        "template_name": meta.template_name or "",
         "fields": extract_fields(cls),
         "methods": extract_methods(cls),
-        "slots": getattr(cls, "_slots", {}),
-        "subscriptions": list(subscriptions) if not callable(subscriptions) else [],
-        "subscriptions_is_dynamic": is_dynamic_property(cls, "_subscriptions"),
-        "temporary_assigns": list(temporary_assigns) if not callable(temporary_assigns) else [],
+        "slots": dict(meta.slots),
+        "subscriptions": sorted(meta.subscriptions),
+        "subscriptions_is_dynamic": subscriptions_are_dynamic(cls),
+        "temporary_assigns": sorted(meta.temporary_assigns),
     }
 
 
@@ -145,7 +149,7 @@ def extract_fields(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
 
     # Skip internal fields
     internal_fields = {"id", "user", "wire"}
-    exclude_fields = getattr(cls, "_exclude_fields", set())
+    exclude_fields = set(cls._meta.exclude_fields)
     skip_fields = internal_fields | exclude_fields
 
     for name, field_info in cls.model_fields.items():

@@ -55,7 +55,8 @@ class ErrorProbe(Component):
 
 
 class ErrorProbeListener(ErrorProbe):
-    _subscriptions = {"error-probe-topic"}
+    class Meta:
+        subscriptions = {"error-probe-topic"}
 
     async def notification(self, channel, **kwargs):
         if kwargs.get("fail") == self.id:

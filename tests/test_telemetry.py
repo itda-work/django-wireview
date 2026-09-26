@@ -25,7 +25,8 @@ _template: Template | None = None
 
 
 class TelemetryProbe(Component):
-    _template_name = "telemetry_probe.html"
+    class Meta:
+        template_name = "telemetry_probe.html"
 
     count: int = 0
 

@@ -7,7 +7,8 @@
 
 ```python
 class XChatRoom(Component):
-    _template_name = "chat/room.html"
+    class Meta:
+        template_name = "chat/room.html"
 
     async def joined(self):
         await self.stream("messages", Message.objects.filter(...)[:50], limit=50)

@@ -27,7 +27,8 @@ class XLiveSearch(Component):
     - Loading state with .wireview-loading
     """
 
-    _template_name = "search/live_search.html"
+    class Meta:
+        template_name = "search/live_search.html"
 
     query: str = ""
     results: list[Book] = []

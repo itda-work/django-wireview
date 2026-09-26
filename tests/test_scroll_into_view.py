@@ -74,7 +74,8 @@ class TestWireviewMetaScrollIntoView:
 class ScrollInJoinedComponent(Component):
     """Component that calls scroll_into_view() in joined()."""
 
-    _template_name = "streams/stream_list.html"
+    class Meta:
+        template_name = "streams/stream_list.html"
 
     async def joined(self):
         """Scroll to element during join."""

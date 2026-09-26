@@ -48,7 +48,7 @@ async def test_a_stat_card_starts_loading_and_does_not_block_the_mount():
 @pytest.mark.asyncio
 @pytest.mark.django_db
 async def test_the_activity_feed_subscribes_to_its_model():
-    assert "dashboard.activity" in XActivityFeed._subscriptions
+    assert "dashboard.activity" in XActivityFeed._meta.subscriptions
 
     await Activity.objects.acreate(type="login", description="로그인")
     view = await mount(XActivityFeed)

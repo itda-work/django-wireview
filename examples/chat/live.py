@@ -33,10 +33,10 @@ class XChatRoom(PresenceMixin, Component):
     - skip_render() for optimization
     """
 
-    _template_name = "chat/room_component.html"
-
-    # Presence configuration: 3 second typing timeout
-    _presence_config = PresenceConfig(typing_timeout=3.0)
+    class Meta:
+        template_name = "chat/room_component.html"
+        # Presence configuration: 3 second typing timeout
+        presence = PresenceConfig(typing_timeout=3.0)
 
     # Room is a Django model - serialized by PK automatically
     room: Room
@@ -116,8 +116,9 @@ class XMessageList(Component):
     - Template pattern with _item.html
     """
 
-    _template_name = "chat/message_list.html"
-    _subscriptions = {"chat.message"}
+    class Meta:
+        template_name = "chat/message_list.html"
+        subscriptions = {"chat.message"}
 
     room: Room
     messages: list[Message] = []
@@ -176,7 +177,8 @@ class XOnlineUsers(PresenceTrackerMixin, Component):
     - Presence sync via request-response pattern
     """
 
-    _template_name = "chat/online_users.html"
+    class Meta:
+        template_name = "chat/online_users.html"
 
     room: Room
     username: str = ""  # Current user's username for self-registration
@@ -189,8 +191,7 @@ class XOnlineUsers(PresenceTrackerMixin, Component):
         """Use username as user ID."""
         return self.username
 
-    @property
-    def _subscriptions(self):
+    def get_subscriptions(self) -> set[str]:
         """Subscribe to room-specific presence channel."""
         return {self._presence_channel()}
 

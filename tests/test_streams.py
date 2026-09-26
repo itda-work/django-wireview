@@ -83,7 +83,8 @@ class MockItem:
 class StreamComponent(Component):
     """Test component with stream methods."""
 
-    _template_name = "streams/stream_list.html"
+    class Meta:
+        template_name = "streams/stream_list.html"
 
     async def add_item(self, name: str):
         """Add an item to the stream."""

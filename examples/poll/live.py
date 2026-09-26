@@ -25,8 +25,9 @@ class XPoll(Component):
     - .wireview-loading CSS state during server calls
     """
 
-    _template_name = "poll/poll.html"
-    _subscriptions = {"poll.option"}  # Subscribe to all option changes
+    class Meta:
+        template_name = "poll/poll.html"
+        subscriptions = {"poll.option"}  # Subscribe to all option changes
 
     poll: Poll
     voted_option_id: int | None = None  # Track which option user voted for

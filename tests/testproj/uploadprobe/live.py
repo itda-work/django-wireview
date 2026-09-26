@@ -13,7 +13,8 @@ from wireview import Component
 
 
 class UploadProbe(Component):
-    _template_name = "uploadprobe/probe.html"
+    class Meta:
+        template_name = "uploadprobe/probe.html"
 
     received: int = 0
     digest: str = ""

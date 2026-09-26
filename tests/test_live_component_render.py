@@ -38,8 +38,10 @@ CALLS: list[tuple[str, str, t.Any]] = []
 
 
 class RsBoard(Component):
-    _template_name = "rs/board.html"
-    _subscriptions = {"rs-topic"}
+    class Meta:
+        template_name = "rs/board.html"
+        subscriptions = {"rs-topic"}
+
     title: str = "Board"
     label: str = "a"
     cards: list[str] = ["c1", "c2"]
@@ -66,7 +68,9 @@ class RsBoard(Component):
 
 
 class RsCard(LiveComponent):
-    _template_name = "rs/card.html"
+    class Meta:
+        template_name = "rs/card.html"
+
     label: str = ""
     count: int = 0
     loaded: str = ""
@@ -93,7 +97,9 @@ class RsCard(LiveComponent):
 
 
 class RsLeaf(LiveComponent):
-    _template_name = "rs/leaf.html"
+    class Meta:
+        template_name = "rs/leaf.html"
+
     loaded: str = ""
 
     async def joined(self):
@@ -102,7 +108,9 @@ class RsLeaf(LiveComponent):
 
 
 class RsFailingCard(LiveComponent):
-    _template_name = "rs/card.html"
+    class Meta:
+        template_name = "rs/card.html"
+
     label: str = ""
     count: int = 0
     loaded: str = ""
@@ -114,7 +122,8 @@ class RsFailingCard(LiveComponent):
 
 
 class RsFailBoard(Component):
-    _template_name = "rs/failboard.html"
+    class Meta:
+        template_name = "rs/failboard.html"
 
 
 TEMPLATES["rs/failboard.html"] = (
@@ -401,15 +410,18 @@ async def test_subscriptions_are_synced_before_the_childrens_queued_operations_f
     order: list[str] = []
 
     class RsSubCard(LiveComponent):
-        _template_name = "rs/leaf.html"
-        _subscriptions = {"rs-sub-topic"}
+        class Meta:
+            template_name = "rs/leaf.html"
+            subscriptions = {"rs-sub-topic"}
+
         loaded: str = ""
 
         async def joined(self):
             await self.broadcast("rs-sub-topic", hello=1)
 
     class RsSubBoard(Component):
-        _template_name = "rs/subboard.html"
+        class Meta:
+            template_name = "rs/subboard.html"
 
     TEMPLATES["rs/subboard.html"] = (
         "{% load wireview %}<section {% tag_header %}>{% live_component 'RsSubCard' id='s1' %}</section>"

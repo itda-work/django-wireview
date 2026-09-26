@@ -121,7 +121,8 @@ class TestAsyncResult:
 class AsyncComponent(Component):
     """Test component for async operations."""
 
-    _template_name = "todo/counter.html"
+    class Meta:
+        template_name = "todo/counter.html"
 
     data: AsyncResult[str] | None = None
     load_delay: float = 0.01

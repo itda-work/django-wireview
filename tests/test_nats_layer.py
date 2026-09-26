@@ -72,8 +72,9 @@ _template: Template | None = None
 
 
 class NatsProbe(Component):
-    _template_name = "nats_probe.html"
-    _subscriptions = {"nats-probe"}
+    class Meta:
+        template_name = "nats_probe.html"
+        subscriptions = {"nats-probe"}
 
     count: int = 0
 

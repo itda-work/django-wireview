@@ -42,9 +42,8 @@ Example:
         def _presence_my_user_id(self) -> str:
             return self.username
 
-        @property
-        def _subscriptions(self):
-            return {self._presence_channel()}
+        def get_subscriptions(self) -> set[str]:
+            return super().get_subscriptions() | {self._presence_channel()}
 
         async def joined(self):
             await self.presence_track_self(username=self.username)
@@ -148,8 +147,10 @@ class PresenceMixin:
             await self.presence_set_typing(True)
     """
 
-    # Configuration (override in subclass if needed)
-    _presence_config: t.ClassVar[PresenceConfig] = PresenceConfig()
+    # Configuration: ``presence = PresenceConfig(...)`` in the component's Meta
+    @property
+    def _presence_config(self) -> PresenceConfig:
+        return self._meta.presence or PresenceConfig()  # type: ignore[attr-defined]
 
     # Internal state stored in __dict__ to avoid Pydantic serialization
     @property
@@ -310,9 +311,8 @@ class PresenceTrackerMixin:
         _presence_my_user_id(): Return current user's ID
 
     Usage:
-        @property
-        def _subscriptions(self):
-            return {self._presence_channel()}
+        def get_subscriptions(self) -> set[str]:
+            return super().get_subscriptions() | {self._presence_channel()}
 
         async def joined(self):
             await self.presence_track_self(username=self.username)
@@ -324,8 +324,10 @@ class PresenceTrackerMixin:
         {% endfor %}
     """
 
-    # Configuration
-    _presence_config: t.ClassVar[PresenceConfig] = PresenceConfig()
+    # Configuration: ``presence = PresenceConfig(...)`` in the component's Meta
+    @property
+    def _presence_config(self) -> PresenceConfig:
+        return self._meta.presence or PresenceConfig()  # type: ignore[attr-defined]
 
     # Internal state stored in __dict__ to avoid Pydantic serialization
     @property

@@ -50,8 +50,8 @@ async def test_dismissing_deletes_and_tells_the_bell():
 @pytest.mark.asyncio
 @pytest.mark.django_db
 async def test_the_bell_subscribes_to_both_the_model_and_the_refresh_channel():
-    assert "notifications.notification" in XNotificationBell._subscriptions
-    assert "notifications-refresh" in XNotificationBell._subscriptions
+    assert "notifications.notification" in XNotificationBell._meta.subscriptions
+    assert "notifications-refresh" in XNotificationBell._meta.subscriptions
 
     view = await mount(XNotificationBell)
     await view.call("toggle_dropdown")

@@ -97,8 +97,10 @@ class HaltHook:
 
 
 class LsxGuarded(Component):
-    _template_name = "lsx/guarded.html"
-    _live_sessions: t.ClassVar[set[str]] = {"lsx-admin"}
+    class Meta:
+        template_name = "lsx/guarded.html"
+        live_sessions = {"lsx-admin"}
+
     note: str = "guarded"
 
     async def bump(self) -> None:
@@ -108,30 +110,38 @@ class LsxGuarded(Component):
 class LsxFree(Component):
     """Declares nothing, so it mounts wherever it is put -- the pre-#58 default."""
 
-    _template_name = "lsx/free.html"
+    class Meta:
+        template_name = "lsx/free.html"
+
     note: str = "free"
 
 
 class LsxHooked(Component):
-    _template_name = "lsx/free.html"
-    _on_mount: t.ClassVar[list[t.Any]] = [marks("component")]
+    class Meta:
+        template_name = "lsx/free.html"
+        on_mount = [marks("component")]
+
     note: str = "hooked"
 
 
 class LsxChild(LiveComponent):
-    _template_name = "lsx/child.html"
-    _live_sessions: t.ClassVar[set[str]] = {"lsx-admin"}
+    class Meta:
+        template_name = "lsx/child.html"
+        live_sessions = {"lsx-admin"}
+
     note: str = "kid"
 
 
 class LsxParent(Component):
-    _template_name = "lsx/parent.html"
+    class Meta:
+        template_name = "lsx/parent.html"
 
 
 class LsxNestParent(Component):
     """A live parent whose template names an ordinary nested ``{% component %}``."""
 
-    _template_name = "lsx/nest.html"
+    class Meta:
+        template_name = "lsx/nest.html"
 
 
 class BoomHook:
@@ -142,18 +152,23 @@ class BoomHook:
 
 
 class LsxBoomChild(LiveComponent):
-    _template_name = "lsx/child.html"
-    _on_mount: t.ClassVar[list[t.Any]] = [BoomHook]
+    class Meta:
+        template_name = "lsx/child.html"
+        on_mount = [BoomHook]
+
     note: str = "kid"
 
 
 class LsxBoomParent(Component):
-    _template_name = "lsx/boomparent.html"
+    class Meta:
+        template_name = "lsx/boomparent.html"
 
 
 class LsxBoom(Component):
-    _template_name = "lsx/guarded.html"
-    _on_mount: t.ClassVar[list[t.Any]] = [BoomHook]
+    class Meta:
+        template_name = "lsx/guarded.html"
+        on_mount = [BoomHook]
+
     note: str = "boom"
 
     async def bump(self) -> None:

@@ -93,7 +93,8 @@ import asyncio
 class XStatCard(Component):
     """통계 카드 - AsyncResult 사용"""
 
-    _template_name = 'dashboard/stat_card.html'
+    class Meta:
+        template_name = 'dashboard/stat_card.html'
 
     stat_name: str
     stat: AsyncResult = None
@@ -178,7 +179,8 @@ from wireview import WireviewMeta
 class XDashboard(Component):
     """대시보드 메인 컴포넌트"""
 
-    _template_name = 'dashboard/dashboard.html'
+    class Meta:
+        template_name = 'dashboard/dashboard.html'
 
     active_tab: str = "overview"
     stats: list = []
@@ -251,8 +253,9 @@ class XDashboard(Component):
 class XActivityFeed(Component):
     """활동 피드 - Streams + 무한 스크롤"""
 
-    _template_name = 'dashboard/activity_feed.html'
-    _subscriptions = {"dashboard-activity"}
+    class Meta:
+        template_name = 'dashboard/activity_feed.html'
+        subscriptions = {"dashboard-activity"}
 
     activities: list = []
     has_more: bool = True
@@ -357,14 +360,14 @@ class XActivityFeed(Component):
 
 ```python
 class XStatCard(Component):
-    _template_name = 'dashboard/stat_card.html'
-    _subscriptions = {"dashboard-stat"}
+    class Meta:
+        template_name = 'dashboard/stat_card.html'
+        subscriptions = {"dashboard-stat"}
 
     stat_name: str
     stat: AsyncResult = None
 
-    @property
-    def _subscriptions(self):
+    def get_subscriptions(self) -> set[str]:
         # 특정 통계만 구독
         return {f"dashboard-stat.{self.stat_name}"}
 
@@ -397,7 +400,8 @@ import asyncio
 class XDashboard(Component):
     """대시보드 메인 컴포넌트"""
 
-    _template_name = 'dashboard/dashboard.html'
+    class Meta:
+        template_name = 'dashboard/dashboard.html'
 
     active_tab: str = "overview"
     stats: list = []
@@ -418,13 +422,13 @@ class XDashboard(Component):
 class XStatCard(Component):
     """통계 카드 컴포넌트"""
 
-    _template_name = 'dashboard/stat_card.html'
+    class Meta:
+        template_name = 'dashboard/stat_card.html'
 
     stat_name: str
     stat: AsyncResult = None
 
-    @property
-    def _subscriptions(self):
+    def get_subscriptions(self) -> set[str]:
         return {f"dashboard-stat.{self.stat_name}"}
 
     async def joined(self):
@@ -445,8 +449,9 @@ class XStatCard(Component):
 class XActivityFeed(Component):
     """활동 피드 컴포넌트"""
 
-    _template_name = 'dashboard/activity_feed.html'
-    _subscriptions = {"dashboard-activity"}
+    class Meta:
+        template_name = 'dashboard/activity_feed.html'
+        subscriptions = {"dashboard-activity"}
 
     activities: list = []
     has_more: bool = True

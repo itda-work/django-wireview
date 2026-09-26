@@ -5,8 +5,9 @@ from .models import Bookmark
 
 
 class XBookmarkList(Component):
-    _template_name = "bookmarks/x-bookmark-list.html"
-    _subscriptions = {"bookmarks.bookmark"}
+    class Meta:
+        template_name = "bookmarks/x-bookmark-list.html"
+        subscriptions = {"bookmarks.bookmark"}
 
     filter: str = "all"
 

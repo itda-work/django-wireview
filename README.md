@@ -83,13 +83,15 @@ await self.push_event("update_chart", {"data": [1, 2, 3]})
 from reactor.component import Component
 
 class XCounter(Component):
-    _subscriptions = {"counter"}
+    class Meta:
+        subscriptions = {"counter"}
 
 # wireview (동일한 API)
 from wireview import Component
 
 class XCounter(Component):
-    _subscriptions = {"counter"}
+    class Meta:
+        subscriptions = {"counter"}
 ```
 
 주요 차이점:
@@ -209,7 +211,8 @@ from wireview import Component
 
 
 class XCounter(Component):
-    _template_name = 'x-counter.html'
+    class Meta:
+        template_name = 'x-counter.html'
 
     amount: int = 0
 
@@ -306,7 +309,8 @@ class ChatRoom(Component):
 
 ```python
 class TodoList(Component):
-    _subscriptions = {"todo.item"}  # todo 앱의 Item 모델 변경 구독
+    class Meta:
+        subscriptions = {"todo.item"}  # todo 앱의 Item 모델 변경 구독
 
     async def mutation(self, channel: str, action: ModelAction, instance):
         # 구독한 모델이 변경될 때 호출됨
@@ -421,7 +425,8 @@ class TreeView(Component):
 
 ```python
 class TodoList(Component):
-    _subscriptions = {"todo.item"}  # {app_label}.{model_name} 형식
+    class Meta:
+        subscriptions = {"todo.item"}  # {app_label}.{model_name} 형식
 
     async def mutation(self, channel: str, action: ModelAction, instance):
         if action == ModelAction.CREATED:
@@ -472,7 +477,9 @@ Streams는 아이템을 개별적으로 렌더링하고 증분 업데이트를 �
 
 ```python
 class MessageList(Component):
-    _template_name = "chat/message_list.html"
+    class Meta:
+        template_name = "chat/message_list.html"
+
     messages: list = []
 
     async def joined(self):
@@ -525,7 +532,9 @@ from wireview import Component, PresenceMixin
 
 
 class ChatInput(PresenceMixin, Component):
-    _template_name = "chat/input.html"
+    class Meta:
+        template_name = "chat/input.html"
+
     room_id: int
     username: str
 
@@ -557,7 +566,9 @@ from wireview import PresenceTrackerMixin
 
 
 class OnlineUsers(PresenceTrackerMixin, Component):
-    _template_name = "chat/online_users.html"
+    class Meta:
+        template_name = "chat/online_users.html"
+
     room_id: int
     username: str
 
@@ -567,8 +578,7 @@ class OnlineUsers(PresenceTrackerMixin, Component):
     def _presence_my_user_id(self) -> str:
         return str(self.user_id)
 
-    @property
-    def _subscriptions(self):
+    def get_subscriptions(self) -> set[str]:
         return {self._presence_channel()}
 
     async def joined(self):
@@ -606,11 +616,12 @@ class OnlineUsers(PresenceTrackerMixin, Component):
 from wireview import PresenceConfig
 
 class MyComponent(PresenceMixin, Component):
-    _presence_config = PresenceConfig(
-        typing_timeout=3.0,     # 타이핑 자동 해제까지 초
-        sync_on_join=True,      # 조인 시 다른 사용자에게 동기화 요청
-        channel_prefix="presence",
-    )
+    class Meta:
+        presence = PresenceConfig(
+            typing_timeout=3.0,     # 타이핑 자동 해제까지 초
+            sync_on_join=True,      # 조인 시 다른 사용자에게 동기화 요청
+            channel_prefix="presence",
+        )
 ```
 
 ## 파일 업로드
@@ -624,7 +635,8 @@ from wireview import Component, UploadConfig
 
 
 class FileUploader(Component):
-    _template_name = "uploader.html"
+    class Meta:
+        template_name = "uploader.html"
 
     async def joined(self):
         self.allow_upload(UploadConfig(
@@ -695,7 +707,9 @@ from wireview import Component, AsyncResult
 
 
 class Dashboard(Component):
-    _template_name = "dashboard.html"
+    class Meta:
+        template_name = "dashboard.html"
+
     stats: AsyncResult = None
 
     async def joined(self):
@@ -904,7 +918,8 @@ window.wireview.hooks.Notification = {
 
 ```python
 class Dashboard(Component):
-    _template_name = "dashboard.html"
+    class Meta:
+        template_name = "dashboard.html"
 
     async def handle_hook_event(self, hook_id: str, event: str, payload: dict):
         """JavaScript Hook에서 보낸 이벤트 처리"""
@@ -941,13 +956,21 @@ class Dashboard(Component):
 
 ## 컴포넌트 API 레퍼런스
 
-### 클래스 속성
+### `class Meta:`
 
-| 속성 | 기본값 | 설명 |
-|------|--------|------|
-| `_template_name` | 필수 | 템플릿 경로 |
-| `_exclude_fields` | `{"user", "wire"}` | 직렬화에서 제외할 필드 |
-| `_subscriptions` | `set()` | 구독할 채널 |
+컴포넌트 설정은 클래스 안의 `class Meta:`에 둔다. 하위 클래스는 자기 Meta에 적지 않은 키를 부모에게서 물려받는다.
+모르는 키는 `TypeError`다.
+
+| 키 | 기본값 | 설명 |
+|----|--------|------|
+| `template_name` | 필수 | 템플릿 경로 |
+| `subscriptions` | `set()` | 구독할 채널. 상태에 따라 달라지면 `get_subscriptions()`를 오버라이드한다 |
+| `temporary_assigns` | `set()` | 렌더 뒤 기본값으로 되돌릴 필드 |
+| `exclude_fields` | `set()` | 서명 상태에서 뺄 필드. `user`·`wire`·`session`은 항상 빠진다 |
+| `slots` | `{}` | 슬롯 정의 |
+| `on_mount` | `[]` | `joined()` 전에 도는 훅 |
+| `live_sessions` | `set()` | 마운트될 수 있는 `live_session` 이름 |
+| `presence` | `None` | `PresenceMixin` 설정(`PresenceConfig`) |
 
 ### 라이프사이클 메서드
 

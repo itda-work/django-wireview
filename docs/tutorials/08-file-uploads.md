@@ -66,7 +66,8 @@ from wireview import Component, UploadConfig
 
 
 class XFileUploader(Component):
-    _template_name = 'uploader/upload_form.html'
+    class Meta:
+        template_name = 'uploader/upload_form.html'
 
     async def joined(self):
         self.allow_upload(UploadConfig(
@@ -469,7 +470,8 @@ from wireview import Component, ExternalUploadMeta
 
 
 class XDocumentUploader(Component):
-    _template_name = "documents/uploader.html"
+    class Meta:
+        template_name = "documents/uploader.html"
 
     async def joined(self):
         self.allow_upload(
@@ -519,7 +521,8 @@ from wireview import Component, ExternalUploadMeta
 
 
 class XImageUploader(Component):
-    _template_name = "images/uploader.html"
+    class Meta:
+        template_name = "images/uploader.html"
 
     async def joined(self):
         self.allow_upload(
@@ -600,7 +603,8 @@ class XImageUploader(Component):
 
 ```python
 class XProfileEditor(Component):
-    _template_name = 'profile/editor.html'
+    class Meta:
+        template_name = 'profile/editor.html'
 
     user_id: int
     avatar_url: str = ""

@@ -30,7 +30,9 @@ CALLS: list[tuple[str, str, int]] = []
 
 
 class RjPage(Component):
-    _template_name = "rj/page.html"
+    class Meta:
+        template_name = "rj/page.html"
+
     n: int = 0
 
     async def joined(self):
@@ -41,7 +43,9 @@ class RjPage(Component):
 
 
 class RjChild(Component):
-    _template_name = "rj/child.html"
+    class Meta:
+        template_name = "rj/child.html"
+
     n: int = 0
 
     async def joined(self):
@@ -52,11 +56,13 @@ class RjChild(Component):
 
 
 class RjParent(Component):
-    _template_name = "rj/parent.html"
+    class Meta:
+        template_name = "rj/parent.html"
 
 
 class RjLive(LiveComponent):
-    _template_name = "rj/live.html"
+    class Meta:
+        template_name = "rj/live.html"
 
     async def leaving(self):
         CALLS.append(("leaving", self.id, id(self)))

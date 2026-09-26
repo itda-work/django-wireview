@@ -36,11 +36,11 @@ class XTodoList(Component):
     """
 
     # Template path relative to TEMPLATES directories
-    _template_name = "todo/list.html"
-
-    # Subscribe to all Item model changes (create, update, delete)
-    # Channel name format: {app_label}.{model_name}
-    _subscriptions = {"todo.item"}
+    class Meta:
+        template_name = "todo/list.html"
+        # Subscribe to all Item model changes (create, update, delete)
+        # Channel name format: {app_label}.{model_name}
+        subscriptions = {"todo.item"}
 
     # Pydantic field with default value - automatically validated
     showing: Showing = Showing.ALL
@@ -116,8 +116,9 @@ class XTodoCounter(Component):
     - Auto-updates when any item changes
     """
 
-    _template_name = "todo/counter.html"
-    _subscriptions = {"todo.item"}  # Re-renders on any item change
+    class Meta:
+        template_name = "todo/counter.html"
+        subscriptions = {"todo.item"}  # Re-renders on any item change
 
     @property
     def items(self):
@@ -129,16 +130,16 @@ class XTodoItem(Component):
     Individual todo item component.
 
     Demonstrates:
-    - Dynamic subscriptions via @property
+    - Dynamic subscriptions via get_subscriptions()
     - Instance-level subscriptions (per-item updates)
     - destroy() to remove component from DOM
     - focus_on() for focusing elements after render
     """
 
-    _template_name = "todo/item.html"
+    class Meta:
+        template_name = "todo/item.html"
 
-    @property
-    def _subscriptions(self):
+    def get_subscriptions(self) -> set[str]:
         """
         Subscribe to changes for this specific item only.
 

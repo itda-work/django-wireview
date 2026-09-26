@@ -24,7 +24,8 @@ _template: Template | None = None
 
 
 class RefProbe(Component):
-    _template_name = "ref_probe.html"
+    class Meta:
+        template_name = "ref_probe.html"
 
     count: int = 0
 

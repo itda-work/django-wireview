@@ -11,7 +11,8 @@ from wireview import Component
 
 
 class OfflineBox(Component):
-    _template_name = "offlineprobe/box.html"
+    class Meta:
+        template_name = "offlineprobe/box.html"
 
     count: int = 0
     added: str = ""

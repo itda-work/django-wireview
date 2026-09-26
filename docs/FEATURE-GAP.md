@@ -202,7 +202,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | HTML Diff | ✅ 바이너리 | ✅ Phoenix 스타일 (GAP-024로 부분 diff 실동작) | ✅ |
 | skip_render | ✅ | `skip_render()` | ✅ |
 | force_render | ✅ | `force_render()` | ✅ |
-| **temporary_assigns** | ✅ | ✅ `_temporary_assigns` | ✅ |
+| **temporary_assigns** | ✅ | ✅ `Meta.temporary_assigns` | ✅ |
 | Sticky components | ✅ | ❌ | 🟠 GAP-033 ([#72](https://github.com/itda-work/django-wireview/issues/72)) |
 | Comprehensions | ✅ 키 기반 | ✅ 내용 기반 짝짓기 (GAP-025, GAP-030). 템플릿 키 없이 이동·삽입·삭제가 그 항목만의 페이로드 | ✅ |
 
@@ -237,7 +237,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | Flash messages | ✅ `put_flash` | `put_flash()` | ✅ |
 | Dead views | ✅ JS 비활성화 폴백 | ❌ | 🟠 GAP-034 ([#73](https://github.com/itda-work/django-wireview/issues/73)) |
 | LongPolling fallback | ✅ | ❌ | ⚪ 설계상 제외 (GAP-012, [설계 메모](./design/longpolling-fallback.md)) |
-| on_mount hooks | ✅ | `_on_mount` | ✅ (GAP-021. 호출부가 없어 훅이 실행되지 않던 것을 [#75](https://github.com/itda-work/django-wireview/issues/75)에서 붙였다) |
+| on_mount hooks | ✅ | `Meta.on_mount` | ✅ (GAP-021. 호출부가 없어 훅이 실행되지 않던 것을 [#75](https://github.com/itda-work/django-wireview/issues/75)에서 붙였다) |
 | attach_hook | ✅ | `attach_hook()` | ✅ |
 
 ---
@@ -384,7 +384,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  GAP-006: temporary_assigns ✅ 완료                         │
-│  └─ _temporary_assigns 클래스 변수                         │
+│  └─ Meta.temporary_assigns                                 │
 │                                                             │
 │  GAP-007: External Uploads ✅ 완료                          │
 │  └─ S3/GCS presigned URL 업로드                            │

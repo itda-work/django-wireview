@@ -8,7 +8,8 @@ Pydantic v2 모델이다. 필드가 곧 상태이고, 서명된 `data-state`로 
 
 ```python
 class XTodoList(Component):
-    _template_name = "todo/list.html"
+    class Meta:
+        template_name = "todo/list.html"
 
     showing: Showing = Showing.ALL          # JSON 직렬화 가능해야 한다
     item: Item | None = None                # Django 모델 필드는 pk로 직렬화·복원된다
@@ -18,16 +19,19 @@ class XTodoList(Component):
         return Item.objects.filter(...)
 ```
 
-클래스 변수로 동작을 바꾼다.
+설정은 클래스 안의 `class Meta:`에 둔다. 하위 클래스는 적지 않은 키를 부모에게서 물려받고,
+모르는 키나 옛 밑줄 이름(`_template_name` 등)은 `TypeError`다.
 
-| 클래스 변수 | 뜻 |
+| `Meta` 키 | 뜻 |
 |---|---|
-| `_template_name` | 템플릿 경로. 생략하면 클래스명에서 유추한다 |
-| `_subscriptions` | 구독 채널 집합. `{"todo.item"}`은 Item 모델 전체 변경 |
-| `_temporary_assigns` | 렌더 후 기본값으로 되돌릴 필드 이름들. **기본값이 있는 필드만** 대상 |
-| `_exclude_fields` | 상태 직렬화에서 뺄 필드. 기본 `{"user", "wire", "session"}` |
-| `_slots` | 슬롯 정의 (`references/templates.md`) |
-| `_on_mount` | 마운트 시 실행할 훅 클래스 목록 |
+| `template_name` | 템플릿 경로. **필수** — 없으면 렌더할 때 `ImproperlyConfigured` |
+| `subscriptions` | 구독 채널 집합. `{"todo.item"}`은 Item 모델 전체 변경. 상태에 따라 달라지면 `def get_subscriptions(self) -> set[str]`를 오버라이드한다 |
+| `temporary_assigns` | 렌더 후 기본값으로 되돌릴 필드 이름들. **기본값이 있는 필드만** 대상 |
+| `exclude_fields` | 상태 직렬화에서 **더** 뺄 필드. `user`·`wire`·`session`은 항상 빠진다 |
+| `slots` | 슬롯 정의 (`references/templates.md`) |
+| `on_mount` | 마운트 시 실행할 훅 클래스 목록 |
+| `live_sessions` | 마운트될 수 있는 `live_session` 이름들 |
+| `presence` | `PresenceMixin`의 `PresenceConfig` |
 
 `self.user`(요청 사용자), `self.wire`(클라이언트 명령 채널), `self.session`(Django 세션,
 **읽기 전용**)은 항상 있다. `self.wire.params`는 URL 쿼리 파라미터다.
@@ -42,7 +46,7 @@ class XTodoList(Component):
 |---|---|
 | `joined()` | WebSocket 연결 후 첫 진입. 구독 설정, Streams 초기화, `allow_upload()` 자리 |
 | `leaving()` | 연결 해제. 정리 훅 |
-| `mutation(channel, action, instance)` | `_subscriptions`의 모델이 변경됨. `action`은 `ModelAction.CREATED/UPDATED/DELETED` |
+| `mutation(channel, action, instance)` | `Meta.subscriptions`의 모델이 변경됨. `action`은 `ModelAction.CREATED/UPDATED/DELETED` |
 | `notification(channel, **kwargs)` | `broadcast(channel, ...)`로 보낸 사용자 정의 알림 |
 | `params_changed(params, uri)` | 브라우저 URL이 바뀜 (뒤로가기, `push_to`) |
 
@@ -50,7 +54,8 @@ class XTodoList(Component):
 from wireview import ModelAction
 
 class XTodoList(Component):
-    _subscriptions = {"todo.item"}
+    class Meta:
+        subscriptions = {"todo.item"}
 
     async def mutation(self, channel, action, instance):
         if action == ModelAction.DELETED:
@@ -105,7 +110,7 @@ broadcast("room.42", event="new_message")
 await self.broadcast("room.42", event="new_message")
 ```
 
-받는 쪽은 `_subscriptions = {"room.42"}` + `async def notification(self, channel, **kwargs)`.
+받는 쪽은 `Meta.subscriptions = {"room.42"}` + `async def notification(self, channel, **kwargs)`.
 모델 변경 자동 브로드캐스트는 `WIREVIEW["AUTO_BROADCAST"]`가 켜고 끈다.
 
 ## 비동기 작업
@@ -142,7 +147,7 @@ class Dashboard(Component):
 `send_to_parent`로 한다. 상세:
 https://github.com/itda-work/django-wireview/blob/main/docs/features/live-component.md
 
-## 라이프사이클 훅 (`_on_mount`, `attach_hook`)
+## 라이프사이클 훅 (`Meta.on_mount`, `attach_hook`)
 
 인증·추적처럼 여러 컴포넌트에 공통으로 얹는 것. 마운트를 중단시킬 수 있고, 중단하면 그 컴포넌트는
 HTML도 상태도 내보내지 않는다.
@@ -166,7 +171,8 @@ def dashboard(request): ...
 
 # myapp/live.py
 class AdminPanel(Component):
-    _live_sessions = {"admin"}    # 이 경계 밖에서는 렌더되지 않는다
+    class Meta:
+        live_sessions = {"admin"}  # 이 경계 밖에서는 렌더되지 않는다
 ```
 
 상세: https://github.com/itda-work/django-wireview/blob/main/docs/features/live-session.md

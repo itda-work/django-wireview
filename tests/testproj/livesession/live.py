@@ -1,15 +1,14 @@
 """Components for the live_session E2E pages."""
 
-import typing as t
-
 from wireview import Component
 
 
 class LsStaffPanel(Component):
     """Only ever mountable inside the staff boundary."""
 
-    _template_name = "livesession/staff-panel.html"
-    _live_sessions: t.ClassVar[set[str]] = {"ls-staff"}
+    class Meta:
+        template_name = "livesession/staff-panel.html"
+        live_sessions = {"ls-staff"}
 
     secret: str = "staff-only-payload"
 
@@ -24,7 +23,8 @@ class LsStaffPanel(Component):
 class LsPublicNote(Component):
     """Mountable anywhere: the page outside every boundary."""
 
-    _template_name = "livesession/public-note.html"
+    class Meta:
+        template_name = "livesession/public-note.html"
 
     note: str = "public"
 

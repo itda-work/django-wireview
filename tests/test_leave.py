@@ -15,15 +15,18 @@ CALLS: list[tuple[str, str]] = []
 
 
 class LeaveProbeParent(Component):
-    _template_name = "livecomp/dashboard.html"
-    _subscriptions = {"leave-probe-topic"}
+    class Meta:
+        template_name = "livecomp/dashboard.html"
+        subscriptions = {"leave-probe-topic"}
 
     async def leaving(self):
         CALLS.append(("leaving", self.id))
 
 
 class LeaveProbeChild(LiveComponent):
-    _template_name = "livecomp/counter.html"
+    class Meta:
+        template_name = "livecomp/counter.html"
+
     count: int = 0
 
     async def leaving(self):
@@ -31,7 +34,8 @@ class LeaveProbeChild(LiveComponent):
 
 
 class LeaveProbeFailing(Component):
-    _template_name = "livecomp/dashboard.html"
+    class Meta:
+        template_name = "livecomp/dashboard.html"
 
     async def leaving(self):
         CALLS.append(("leaving", self.id))

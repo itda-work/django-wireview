@@ -274,7 +274,8 @@ _template: Template | None = None
 
 
 class MovesProbe(Component):
-    _template_name = "moves_probe.html"
+    class Meta:
+        template_name = "moves_probe.html"
 
     names: list[str] = []
 

@@ -7,14 +7,14 @@ Phoenix LiveView의 `live_session`에 해당한다(GAP-009). 다만 붙는 자�
 곧 라우트지만, wireview는 Django 뷰가 라우트이고 한 페이지에 컴포넌트가 여럿이다. 그래서 경계는
 컴포넌트 사이가 아니라 **페이지 사이**에 그어진다.
 
-| | `_on_mount` | `live_session` |
+| | `Meta.on_mount` | `live_session` |
 |---|---|---|
 | 붙는 곳 | 컴포넌트 클래스 | 페이지(Django 뷰) |
 | 답하는 질문 | "이 컴포넌트가 마운트될 때 무엇을 먼저 하나" | "이 페이지에 들어올 수 있는가, 어디서 나갈 때 연결을 끊어야 하나" |
 | 실행 순서 | 세션 훅 **다음** | 컴포넌트 훅보다 **먼저** |
 | 없으면 | 컴포넌트마다 같은 목록을 반복 선언 | 페이지 경계에서 인증이 재검증되지 않는다 |
 
-`live_session`은 `_on_mount`를 대체하지 않고 그 위에 층을 얹는다. 훅 프로토콜은 같다.
+`live_session`은 `Meta.on_mount`를 대체하지 않고 그 위에 층을 얹는다. 훅 프로토콜은 같다.
 
 ## 30초 요약
 
@@ -37,7 +37,8 @@ def dashboard(request):
 ```python
 # myapp/live.py
 class AdminPanel(Component):
-    _live_sessions = {"admin"}   # 이 경계 안에서만 산다
+    class Meta:
+        live_sessions = {"admin"}  # 이 경계 안에서만 산다
 ```
 
 이제 네 가지가 성립한다.
@@ -49,7 +50,7 @@ class AdminPanel(Component):
 
 ## 왜 훅만으로는 부족한가
 
-`_on_mount`에 인증 훅을 붙이면 컴포넌트마다 붙여야 하고, 하나 빠뜨려도 아무 신호가 없다. 그보다
+`Meta.on_mount`에 인증 훅을 붙이면 컴포넌트마다 붙여야 하고, 하나 빠뜨려도 아무 신호가 없다. 그보다
 중요한 문제가 둘 더 있다.
 
 **첫 HTML은 회수되지 않는다.** `{% component %}`는 HTTP 응답에 초기 렌더와 `data-state`를 같이
@@ -71,7 +72,7 @@ Django 인증을 거는 데코레이터**이고, 거절은 뷰가 돌기 전에 
 | 인자 | 뜻 |
 |------|-----|
 | `authorize` | `LiveSessionContext`를 받아 bool을 돌려주는 술어. 뷰가 렌더하기 전에 한 번, join이 마운트하기 전에 한 번 돈다. `None`이면 모두 허용 |
-| `on_mount` | 이 페이지의 모든 컴포넌트에 적용되는 훅 목록. 컴포넌트 자신의 `_on_mount`보다 **먼저** 돈다 |
+| `on_mount` | 이 페이지의 모든 컴포넌트에 적용되는 훅 목록. 컴포넌트 자신의 `Meta.on_mount`보다 **먼저** 돈다 |
 | `login_url` | 익명 방문자를 보낼 곳. 기본은 Django의 `LOGIN_URL` |
 
 선언은 각 앱의 `live_sessions.py`에 둔다 — `live.py`와 같은 방식으로 앱 준비 시점에 자동
@@ -80,12 +81,12 @@ Django 인증을 거는 데코레이터**이고, 거절은 뷰가 돌기 전에 
 > **`django.template.context_processors.request`가 켜져 있어야 한다.** 템플릿 태그는 페이지의 경계를
 > `context["request"]`에서 읽는다. 이 프로세서가 없으면 **기능 전체가 말없이 꺼진다** — 헤더가 빈
 > 이름을 심어 브라우저가 어떤 이동도 경계 넘음으로 보지 않고, 모든 상태가 경계 없이 서명되며,
-> `_live_sessions`를 선언한 컴포넌트는 자기가 속한 페이지에서 사라진다.
+> `Meta.live_sessions`를 선언한 컴포넌트는 자기가 속한 페이지에서 사라진다.
 >
 > 소속을 선언하지 않은 컴포넌트에게는 이것이 실제 우회가 된다. 인가된 사용자가 그렇게 받은 경계 없는
 > 토큰은 **익명 소켓에서 재사용할 수 있고**, 그 연결에는 페이지 정책도 인증 세대도 로그아웃 구독도
 > 붙지 않는다. `manage.py check`의 `wireview.W010`이 설정을 보고하지만 **경고일 뿐 실행을 막지
-> 않는다.** 프로세서를 켜고, 보호할 컴포넌트에는 `_live_sessions`를 선언한다.
+> 않는다.** 프로세서를 켜고, 보호할 컴포넌트에는 `Meta.live_sessions`를 선언한다.
 
 ### `LiveSessionContext`
 
@@ -131,11 +132,12 @@ class Dashboard(TemplateView): ...
 거절의 모양은 `django.contrib.auth`를 따른다 — 로그인하지 않은 방문자는 로그인 페이지로 보내고
 (로그인이 부족한 전부일 수 있으므로), 로그인했는데도 술어를 통과하지 못하면 403이다.
 
-### `Component._live_sessions`
+### `Meta.live_sessions`
 
 ```python
 class AdminPanel(Component):
-    _live_sessions = {"admin"}
+    class Meta:
+        live_sessions = {"admin"}
 ```
 
 "나는 이 세션 안에서만 산다"는 선언이다. 비워 두면 어디서나 산다(경계가 생기기 전의 기본값).
@@ -278,9 +280,9 @@ invalidate_authentication(user, request.session)   # 그 인증 세대의 소켓
 ## 점검
 
 `manage.py check`가 `wireview.W010`으로 넷을 본다 — `django.template.context_processors.request`가
-꺼져 있는 경우(위), 아무도 선언하지 않은 이름을 `_live_sessions`가
+꺼져 있는 경우(위), 아무도 선언하지 않은 이름을 `Meta.live_sessions`가
 가리키는 경우(오타가 join 거절과 reload로 나타나 서명 문제처럼 보인다), 프로젝트가 경계를 선언했는데
-`_on_mount`로만 자신을 지키는 컴포넌트가 `_live_sessions`를 선언하지 않은 경우, 그리고
+`Meta.on_mount`로만 자신을 지키는 컴포넌트가 `Meta.live_sessions`를 선언하지 않은 경우, 그리고
 `STATE_ACCEPT_LEGACY`가 경계와 함께 켜져 있는 경우(아래).
 [시스템 체크](./checks.md) 참고.
 
@@ -310,8 +312,8 @@ reload를 택한다.
 > 갖는다. 열려 있는 탭 하나가 그렇게 노출을 무한히 연장할 수 있다. 만료는 **토큰 하나의 수명**이지
 > 권한 회수 수단이 아니다.
 
-1. **보호할 컴포넌트에 `_live_sessions`를 선언한다.** 이것만이 옛 토큰을 컴포넌트 자신의 권한으로
-   거절한다. `manage.py check`의 `wireview.W010`은 `_on_mount`로 자신을 지키는 컴포넌트를 알려 주지만,
+1. **보호할 컴포넌트에 `Meta.live_sessions`를 선언한다.** 이것만이 옛 토큰을 컴포넌트 자신의 권한으로
+   거절한다. `manage.py check`의 `wireview.W010`은 `Meta.on_mount`로 자신을 지키는 컴포넌트를 알려 주지만,
    **페이지의 `authorize`에만 의존하던 컴포넌트는 찾지 못한다** — 보호 대상 목록은 직접 확인한다.
 2. **`STATE_ACCEPT_LEGACY`는 끈다.** 경계가 선언되면 자동으로 무력화되지만, 켜 둔 채로 두면 W010이
    경고한다.
@@ -328,13 +330,13 @@ reload를 택한다.
 |---|---|---|
 | 선언 | 라우터의 `live_session :admin, on_mount: [...]` | `live_session("admin", authorize=..., on_mount=[...])` |
 | 적용 | 라우트 묶음 | Django 뷰(`@session.view`) |
-| 소속 선언 | LiveView가 라우트에 속한다 | `Component._live_sessions` |
+| 소속 선언 | LiveView가 라우트에 속한다 | `Meta.live_sessions` |
 | 경계 이동 | live navigation이 전체 로드로 퇴화 | boost가 전체 로드로 퇴화 |
 | 로그아웃 | 소켓에 disconnect 브로드캐스트 | `user_logged_out` → 인증 토픽 발행 → 소켓 닫힘 |
 
 ## 관련
 
-- [라이프사이클 훅](./lifecycle-hooks.md) — `_on_mount`와 역할 구분
+- [라이프사이클 훅](./lifecycle-hooks.md) — `Meta.on_mount`와 역할 구분
 - [세션 읽기](./session.md) — `authorize`가 보는 `ctx.session`
 - [시스템 체크](./checks.md) — `wireview.W010`
 - [HTML Diff](./html-diff.md) — `data-state` 봉투

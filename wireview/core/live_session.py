@@ -33,7 +33,7 @@ Around that predicate sit three further bindings:
   fingerprint** (``core/state.py`` v2). Without them a *validly* signed public
   page state and a protected component could be presented together, which
   needs no forgery at all.
-- **A component may declare where it lives** with ``_live_sessions``. Declaring
+- **A component may declare where it lives** with ``Meta.live_sessions``. Declaring
   it means "only inside these sessions", and the check runs in
   ``Component._mount``, so it covers every path that produces a component: the
   join, a children restore, a LiveComponent a parent's render created, and a
@@ -176,7 +176,7 @@ def auth_fingerprint(user: AnyUser | None, session: t.Any) -> str:
 
 
 def declaration_allows(component_class: type, policy: "LiveSession | None") -> bool:
-    """Whether ``_live_sessions`` lets this class mount inside ``policy``.
+    """Whether ``Meta.live_sessions`` lets this class mount inside ``policy``.
 
     Declaring nothing means "anywhere", which is where every component stood
     before boundaries existed. Declaring one or more names means *only* there --
@@ -186,7 +186,7 @@ def declaration_allows(component_class: type, policy: "LiveSession | None") -> b
     of a nested ``{% component %}`` has no async seam to run hooks in, and this
     much can still be enforced there.
     """
-    allowed = getattr(component_class, "_live_sessions", None)
+    allowed = component_class._meta.live_sessions
     if not allowed:
         return True
     return (policy.name if policy is not None else "") in allowed
@@ -330,7 +330,7 @@ class LiveSession:
     async def run_on_mount(self, component: t.Any, params: dict[str, t.Any], session: t.Any) -> dict[str, t.Any]:
         """Run this session's hooks against one component, before the component's own.
 
-        Same protocol as ``_on_mount``: ``{"cont": True}`` or ``{"halt": True}``.
+        Same protocol as ``Meta.on_mount``: ``{"cont": True}`` or ``{"halt": True}``.
         """
         for hook_class in self.on_mount:
             hook = getattr(hook_class, "on_mount", None)
@@ -362,7 +362,7 @@ def live_session(
             authorizes everyone, which is what a boundary that only groups hooks
             or only forces full loads wants.
         on_mount: hooks applied to every component on the page, before that
-            component's own ``_on_mount``. Same protocol.
+            component's own ``Meta.on_mount``. Same protocol.
         login_url: where :meth:`deny` sends an anonymous visitor. Defaults to
             Django's ``LOGIN_URL``.
 

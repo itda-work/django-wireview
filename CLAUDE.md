@@ -30,7 +30,8 @@ wireview/
 ├── component.py           폐기 예정 re-export. import하면 WireviewDeprecationWarning, 2.0에서 제거
 ├── deprecation.py         WireviewDeprecationWarning, warn_deprecated(). 공개 API를 없애는 유일한 경로
 ├── py.typed               타입 검사기가 패키지의 주석을 읽게 한다. ci-build가 wheel에 있는지 본다
-├── core/component.py      Component 베이스: 라이프사이클, 이벤트 디스패치, streams·uploads·async·flash·hooks 메서드
+├── core/component.py      Component 베이스: 라이프사이클, 이벤트 디스패치, streams·uploads·async·flash·hooks 메서드.
+│                          ComponentOptions가 `class Meta:`를 해석해 cls._meta에 둔다(키 단위 상속, #99)
 ├── core/meta.py           WireviewMeta (self.wire): push_to/replace_to, push_js, put_flash, push_title 등 클라이언트 명령
 ├── core/rendered.py       동적 마커 기반 diff 구조. LiveComponent 자리는 참조 dynamic {"c": id}
 ├── core/session.py        SessionView. Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다
@@ -165,9 +166,9 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 - **`wireview.min.js`가 없으면 페이지에서 JS가 로드되지 않는다.** clone 직후와 `wireview/static/wireview/wireview.js` 수정 후 `make build-js`.
 - **testproj의 채널 레이어는 `WIREVIEW_TEST_LAYER`가 고른다.** 기본은 `memory`(브로커 불요), `make test-e2e`와 CI는 `nats`다. E2E는 `tests/e2e.sh`가 nats-server를 직접 띄우고 끝나면 정리하므로 미리 켜 둘 필요가 없다(이미 떠 있으면 그것을 쓴다). 바꾸려면 `make test-e2e LAYER=redis` 또는 `LAYER=memory`. channels-nats는 dev extras에 있으므로 `make install`이면 들어온다.
 - **단위·통합 테스트도 일부는 채널 레이어를 쓴다.** `tests/test_uploads.py`의 `UploadView` 테스트가 세션 채널로 보낸다. 그래서 기본값이 `memory`다. 브로커가 없는 레이어를 기본으로 두면 그 두 테스트가 연결 타임아웃으로 2분씩 걸린다.
-- **클라이언트가 호출할 수 있는 메서드.** `_`로 시작하지 않고 **사용자 코드에서 정의한** 메서드만 이벤트 핸들러로 노출되고 `validate_call`로 감싸진다. 프레임워크(`wireview.*`)와 Pydantic이 소유한 이름은 서브클래스에서 오버라이드해도 노출되지 않는다 — `mount`·`joined`·`update`·`send_to_parent`·`model_post_init`은 클라이언트가 부를 수 없다. 판정은 `ComponentRepository._is_user_defined_method`, 회귀 테스트는 tests/test_security.py. 내부 헬퍼는 반드시 `_` 접두사. 핸들러와 라이프사이클 메서드는 async.
+- **클라이언트가 호출할 수 있는 메서드.** `_`로 시작하지 않고 **사용자 코드에서 정의한** 메서드만 이벤트 핸들러로 노출되고 `validate_call`로 감싸진다. 프레임워크(`wireview.*`)와 Pydantic이 소유한 이름은 서브클래스에서 오버라이드해도 노출되지 않는다 — `mount`·`joined`·`update`·`send_to_parent`·`model_post_init`은 클라이언트가 부를 수 없다. 판정은 `ComponentRepository._is_user_defined_method`, 회귀 테스트는 tests/test_security.py. 내부 헬퍼는 반드시 `_` 접두사. 클래스 본문에 정의된 **클래스**(`class Meta:` 포함)는 호출 가능해도 노출되지 않는다(#99). 핸들러와 라이프사이클 메서드는 async.
 - **컴포넌트 이름은 클래스명으로 전역 등록.** 다른 모듈에서 같은 클래스명을 쓰면 경고가 난다. 템플릿에서 `app:Name` 또는 FQN으로 구분한다.
-- **상태 필드.** JSON 직렬화 가능해야 한다. `_temporary_assigns`는 기본값이 있는 필드만 초기화된다. `_exclude_fields` 기본값은 `{"user", "wire"}`.
+- **상태 필드.** JSON 직렬화 가능해야 한다. `Meta.temporary_assigns`는 기본값이 있는 필드만 초기화된다. `Meta.exclude_fields`는 `user`·`wire`·`session`에 **더해진다**(뺄 수 없다).
 - **pyright는 `tests/`를 검사하지 않고, `tsc`는 checkJs=false라 JS 본문을 검사하지 않는다.** 둘 다 통과해도 해당 영역은 검증된 것이 아니다.
 - **gitignore 대상.** `*.pyi` (AUTO_GENERATE_STUBS가 DEBUG에서 생성), `.wireview/`, `tests/static/`, `*.min.js`.
 - **컴포넌트 ID**는 페이지 안에서 고유해야 한다.
@@ -186,7 +187,7 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 - **페이지 경계는 페이지가 선언한다.** `live_session`은 컴포넌트가 아니라 Django 뷰에 붙고
   (`@session.view`), 한 페이지·한 연결에 하나다. `authorize` 술어는 뷰(첫 바이트 전)와
   join(마운트 전) 두 곳에서 도는 **같은 함수**여야 한다 — 둘을 따로 두면 조용히 어긋난다.
-  `_live_sessions`를 선언한 컴포넌트는 경계가 없는 페이지에서도 거절된다.
+  `Meta.live_sessions`를 선언한 컴포넌트는 경계가 없는 페이지에서도 거절된다.
 - **컴포넌트 코드를 부르는 새 경로는 예외를 `_crashed`로 받는다.** 핸들러·수신자·콜백의 예외가 컨슈머 밖으로 나가면
   소켓이 닫히고 페이지 전체가 다시 join한다. 컨슈머의 `_crashed(component, ref)`가 그 컴포넌트만 버리고 클라이언트에
   `error`를 보내 이벤트 전 상태로 다시 join하게 한다. join 단계의 예외는 `_join_failed`(재시도 없음 — 재시도하면 루프다).

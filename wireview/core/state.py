@@ -194,7 +194,7 @@ def sign_state(component: "Component") -> str:
     means a component that renders at least once per
     ``STATE_MAX_AGE - STATE_REFRESH_AFTER`` never expires while its page is open.
     """
-    state_json = component.model_dump_json(exclude=component._exclude_fields)
+    state_json = component.model_dump_json(exclude=set(component._meta.exclude_fields))
     wire = component.wire
     now = time.time()
     cached = getattr(wire, "_state_token", None)

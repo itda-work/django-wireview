@@ -18,7 +18,8 @@ Phoenix LiveView의 LiveComponent에서 영감을 받았습니다.
 from wireview import LiveComponent
 
 class Counter(LiveComponent):
-    _template_name = "components/counter.html"
+    class Meta:
+        template_name = "components/counter.html"
 
     count: int = 0
     label: str = "Count"
@@ -38,7 +39,8 @@ class Counter(LiveComponent):
 from wireview import LiveComponent
 
 class Counter(LiveComponent):
-    _template_name = "myapp/counter.html"
+    class Meta:
+        template_name = "myapp/counter.html"
 
     count: int = 0
 
@@ -144,7 +146,8 @@ WebSocket이 붙으면 새 인스턴스가 만들어지고 `joined()`가 한 번
 
 ```python
 class Dashboard(Component):
-    _template_name = "myapp/dashboard.html"
+    class Meta:
+        template_name = "myapp/dashboard.html"
 
     async def reset_all(self):
         """모든 카운터를 0으로 리셋."""
@@ -162,7 +165,9 @@ LiveComponent에서 부모에게 이벤트를 전송합니다.
 
 ```python
 class Counter(LiveComponent):
-    _template_name = "myapp/counter.html"
+    class Meta:
+        template_name = "myapp/counter.html"
+
     count: int = 0
 
     async def increment(self):
@@ -171,7 +176,9 @@ class Counter(LiveComponent):
         await self.send_to_parent("counter_changed", counter_id=self.id, count=self.count)
 
 class Dashboard(Component):
-    _template_name = "myapp/dashboard.html"
+    class Meta:
+        template_name = "myapp/dashboard.html"
+
     total: int = 0
 
     async def counter_changed(self, counter_id: str, count: int):
@@ -257,7 +264,7 @@ LiveComponent를 렌더링합니다.
 - `let:` fill은 자식이 렌더될 때 `{% render_slot %}`이 넘긴 값으로 렌더됩니다. 자식의 컨텍스트에서
   렌더되므로 부모 변수는 보이지 않습니다.
 - 자식이 자기 이벤트로 재렌더돼도 슬롯 내용은 유지됩니다.
-- `_slots`에 `required: True`로 선언한 슬롯이 빠지면 `TemplateSyntaxError`입니다.
+- `Meta.slots`에 `required: True`로 선언한 슬롯이 빠지면 `TemplateSyntaxError`입니다.
 
 ### {% live_tag_header %}
 
@@ -306,7 +313,8 @@ LiveComponent의 루트 엘리먼트에 필요한 속성을 생성합니다.
 
 ```python
 class Toggle(LiveComponent):
-    _template_name = "components/toggle.html"
+    class Meta:
+        template_name = "components/toggle.html"
 
     is_on: bool = False
     label: str = ""
@@ -331,7 +339,8 @@ class Toggle(LiveComponent):
 
 ```python
 class Modal(LiveComponent):
-    _template_name = "components/modal.html"
+    class Meta:
+        template_name = "components/modal.html"
 
     is_open: bool = False
     title: str = ""

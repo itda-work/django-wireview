@@ -27,7 +27,9 @@ class RecordingBroker:
 
 
 class TransportProbe(Component):
-    _template_name = "transport_probe.html"
+    class Meta:
+        template_name = "transport_probe.html"
+
     value: int = 0
 
 

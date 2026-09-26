@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import typing as t
 from uuid import uuid4
@@ -9,6 +10,7 @@ from uuid import uuid4
 from django.apps import apps
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import AnonymousUser
+from django.core.exceptions import ImproperlyConfigured
 from django.db import models
 from django.http import HttpRequest
 from django.template import loader
@@ -120,6 +122,123 @@ class LifecycleHook(t.TypedDict):
     callback: t.Callable[..., t.Any]
 
 
+#: Fields that never go into the signed state, whatever a Meta says. ``session``
+#: is here for more than tidiness: signed state travels to the browser, and
+#: session data must not (#68).
+ALWAYS_EXCLUDED = frozenset({"user", "wire", "session"})
+
+#: Where each configuration attribute used to live, for the error that says so.
+_MOVED_TO_META = {
+    "_template_name": "template_name",
+    "_exclude_fields": "exclude_fields",
+    "_subscriptions": "subscriptions",
+    "_temporary_assigns": "temporary_assigns",
+    "_slots": "slots",
+    "_on_mount": "on_mount",
+    "_live_sessions": "live_sessions",
+    "_presence_config": "presence",
+}
+
+
+@dataclasses.dataclass(frozen=True)
+class ComponentOptions:
+    """A component class's configuration, read from its ``class Meta`` (#99).
+
+    ::
+
+        class Inbox(Component):
+            class Meta:
+                template_name = "mail/inbox.html"
+                subscriptions = {"mail"}
+                temporary_assigns = {"messages"}
+
+    A subclass inherits each key it does not set: a base that guards itself
+    with ``on_mount`` or ``live_sessions`` keeps guarding its subclasses. A
+    key a Meta does not know is an error, so a typo is not silently ignored.
+    """
+
+    #: The template the component renders.
+    template_name: str | None = None
+    #: Fields left out of the signed state, on top of ``user``, ``wire`` and ``session``.
+    exclude_fields: frozenset[str] = ALWAYS_EXCLUDED
+    #: Channels every instance listens on. For channels that depend on the
+    #: instance's state, override ``get_subscriptions()``.
+    subscriptions: frozenset[str] = frozenset()
+    #: Fields reset to their default after each render, like Phoenix's temporary_assigns.
+    temporary_assigns: frozenset[str] = frozenset()
+    #: Expected slots: ``{"header": {"required": True, "doc": "..."}}``.
+    slots: t.Mapping[str, t.Mapping[str, t.Any]] = dataclasses.field(default_factory=dict)
+    #: Hooks run in order before ``joined()``, like Phoenix's on_mount.
+    on_mount: tuple[t.Any, ...] = ()
+    #: The ``live_session`` names the component may mount in. Empty means anywhere (#58).
+    live_sessions: frozenset[str] = frozenset()
+    #: Presence settings for ``PresenceMixin`` and ``PresenceTrackerMixin``.
+    presence: t.Any = None
+
+    def extended(self, meta: type, owner: type) -> "ComponentOptions":
+        """These options with ``meta``'s attributes on top."""
+        given = {name: value for name, value in vars(meta).items() if not name.startswith("__")}
+        known = {f.name for f in dataclasses.fields(self)}
+        if unknown := sorted(set(given) - known):
+            raise TypeError(
+                f"{owner.__qualname__}.Meta has no option {', '.join(map(repr, unknown))}. "
+                f"Known options: {', '.join(sorted(known))}."
+            )
+        for name in ("exclude_fields", "subscriptions", "temporary_assigns", "live_sessions"):
+            if name in given:
+                given[name] = frozenset(given[name])
+        if "exclude_fields" in given:
+            given["exclude_fields"] |= ALWAYS_EXCLUDED
+        if "on_mount" in given:
+            given["on_mount"] = tuple(given["on_mount"])
+        if "slots" in given:
+            given["slots"] = dict(given["slots"])
+        return dataclasses.replace(self, **given)
+
+
+def _validate_handlers(cls: type) -> None:
+    """Wrap the methods a class defines, the ones a client may call, in ``validate_call``.
+
+    Shared by Component and LiveComponent, which register differently but must
+    expose and validate their handlers the same way.
+    """
+    for attr_name, raw in list(vars(cls).items()):
+        if attr_name.startswith("_") or not attr_name.islower():
+            continue
+        validate = validate_call(config={"arbitrary_types_allowed": True})
+        try:
+            if isinstance(raw, (classmethod, staticmethod)):
+                # Validate the function and put the descriptor back. Wrapping
+                # what getattr() returns instead stored a plain function: a
+                # classmethod stayed bound to this class in every subclass,
+                # and a staticmethod got the instance as its first argument.
+                setattr(cls, attr_name, type(raw)(validate(raw.__func__)))
+            elif callable(raw):
+                setattr(cls, attr_name, validate(raw))
+        except (NameError, TypeError):
+            # Skip validation for methods with unresolvable type hints
+            pass
+
+
+def _resolve_options(cls: type) -> "ComponentOptions":
+    """``cls``'s options: the nearest component base's, extended by its own Meta."""
+    # Pydantic takes ``_name = value`` out of the class namespace and makes it a
+    # private attribute, so vars() alone would let an old spelling through in
+    # silence: the value would sit on every instance and configure nothing.
+    declared = set(vars(cls)) | set(getattr(cls, "__private_attributes__", {}))
+    if moved := sorted(name for name in _MOVED_TO_META if name in declared):
+        raise TypeError(
+            f"{cls.__qualname__} sets {', '.join(moved)}; component configuration lives in "
+            f"`class Meta:` now ({', '.join(f'{name} -> Meta.{_MOVED_TO_META[name]}' for name in moved)})."
+        )
+    inherited = next(
+        (base.__dict__["_meta"] for base in cls.__mro__[1:] if "_meta" in base.__dict__),
+        ComponentOptions(),
+    )
+    meta = vars(cls).get("Meta")
+    return inherited.extended(meta, cls) if meta is not None else inherited
+
+
 class Component(BaseModel):
     """
     Base class for wireview components.
@@ -135,71 +254,12 @@ class Component(BaseModel):
     _by_app: t.ClassVar[dict[str, t.Type["Component"]]] = {}
     _urls: t.ClassVar[dict] = {}
     _name: t.ClassVar[str]
-    _template_name: t.ClassVar[str]
     _templates: t.ClassVar[dict[str, AnyTemplate]] = {}
     _fqn: t.ClassVar[str]
 
-    # fields to exclude from the component state during serialization.
-    # ``session`` belongs here for more than tidiness: signed state travels to the
-    # browser, and session data must not (#68).
-    _exclude_fields: t.ClassVar[set[str]] = {"user", "wire", "session"}
-
-    # Subscriptions: you can define here which channels this component is subscribed to
-    _subscriptions: t.ClassVar[set[str]] = set()
-
-    # Temporary assigns: fields that are reset to their default values after each render.
-    # This is useful for large collections that only need to be in memory during rendering.
-    # Similar to Phoenix LiveView's temporary_assigns option.
-    #
-    # Example:
-    #     class MessageList(Component):
-    #         _temporary_assigns = {"messages"}
-    #         messages: list[Message] = []
-    #
-    #         async def joined(self):
-    #             self.messages = await Message.objects.all()[:100]
-    #             # After rendering, self.messages will be reset to []
-    _temporary_assigns: t.ClassVar[set[str]] = set()
-
-    # Slot definitions: defines expected slots for this component.
-    # Used for validation and documentation.
-    #
-    # Example:
-    #     class Card(Component):
-    #         _slots = {
-    #             "header": {"required": True, "doc": "Card header content"},
-    #             "footer": {"required": False, "doc": "Optional footer"},
-    #         }
-    _slots: t.ClassVar[dict[str, dict[str, t.Any]]] = {}
-
-    # On-mount hooks: modules that will run during mount.
-    # Similar to Phoenix LiveView's on_mount option.
-    #
-    # Hooks are called in order during component initialization, before joined().
-    # Each hook can modify the socket, attach lifecycle hooks, or halt the mount.
-    #
-    # Example:
-    #     class ProtectedPage(Component):
-    #         _on_mount = [AuthHook, TrackingHook]
-    #
-    #     class AuthHook:
-    #         @staticmethod
-    #         async def on_mount(component, params, session):
-    #             if not component.user.is_authenticated:
-    #                 await component.wire.redirect_to("/login")
-    #                 return {"halt": True}
-    #             return {"cont": True}
-    _on_mount: t.ClassVar[list[t.Any]] = []
-
-    # The ``live_session`` names this component may be mounted inside (#58).
-    # Empty means "anywhere", which is what every component did before the
-    # boundary existed. Naming one or more sessions makes the component refuse
-    # to mount outside them -- including on a page that declares no boundary at
-    # all, since that is what a public page looks like.
-    #
-    #     class AdminPanel(Component):
-    #         _live_sessions = {"admin"}
-    _live_sessions: t.ClassVar[set[str]] = set()
+    # The class's resolved ``class Meta`` (#99). Set by __init_subclass__ from
+    # the nearest component base's options and the class's own Meta.
+    _meta: t.ClassVar["ComponentOptions"]
 
     # Instance-level lifecycle hooks attached via attach_hook()
     _lifecycle_hooks: dict[str, list[LifecycleHook]] = {}
@@ -207,7 +267,24 @@ class Component(BaseModel):
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
         validate_assignment=True,
+        # A class-valued attribute is never a field. Pydantic already skips a
+        # ``class Meta:`` written in the body, but not ``Meta = SharedMeta`` or
+        # one built with type() (#99).
+        ignored_types=(type,),
     )
+
+    def get_subscriptions(self) -> set[str]:
+        """The channels this instance listens on: ``Meta.subscriptions`` by default.
+
+        Override it when they depend on the instance's state; a mixin adds its
+        own with ``super()``::
+
+            def get_subscriptions(self) -> set[str]:
+                return {f"room.{self.room_id}"}
+
+        The name belongs to the framework, so a client cannot call it.
+        """
+        return set(self._meta.subscriptions)
 
     @model_validator(mode="before")
     @classmethod
@@ -255,6 +332,7 @@ class Component(BaseModel):
         return handler(value)
 
     def __init_subclass__(cls: t.Type["Component"], name: str | None = None, public: bool = True) -> None:
+        cls._meta = _resolve_options(cls)
         if public:
             import warnings
 
@@ -285,22 +363,7 @@ class Component(BaseModel):
             cls._name = name
             cls._fqn = fqn
 
-        for attr_name, raw in list(vars(cls).items()):
-            if attr_name.startswith("_") or not attr_name.islower():
-                continue
-            validate = validate_call(config={"arbitrary_types_allowed": True})
-            try:
-                if isinstance(raw, (classmethod, staticmethod)):
-                    # Validate the function and put the descriptor back. Wrapping
-                    # what getattr() returns instead stored a plain function: a
-                    # classmethod stayed bound to this class in every subclass,
-                    # and a staticmethod got the instance as its first argument.
-                    setattr(cls, attr_name, type(raw)(validate(raw.__func__)))
-                elif callable(raw):
-                    setattr(cls, attr_name, validate(raw))
-            except (NameError, TypeError):
-                # Skip validation for methods with unresolvable type hints
-                pass
+        _validate_handlers(cls)
 
         super().__init_subclass__()
 
@@ -369,7 +432,9 @@ class Component(BaseModel):
     @classmethod
     def _get_template(cls, template_name: str | None = None) -> AnyTemplate:
         """Get the template for this component."""
-        template_name = template_name or cls._template_name
+        template_name = template_name or cls._meta.template_name
+        if not template_name:
+            raise ImproperlyConfigured(f"{cls.__qualname__} has no template: set `template_name` in its `class Meta:`.")
         if settings.DEBUG:
             return loader.get_template(template_name)  # type: ignore[return-value]
         else:
@@ -502,7 +567,8 @@ class Component(BaseModel):
                     return {"cont": True}
 
             class TrackedPage(Component):
-                _on_mount = [TrackingHook]
+                class Meta:
+                    on_mount = [TrackingHook]
         """
         if not hasattr(self, "_lifecycle_hooks") or not isinstance(self._lifecycle_hooks, dict):
             self._lifecycle_hooks = {}
@@ -566,7 +632,7 @@ class Component(BaseModel):
         params: dict[str, t.Any] | None = None,
         session: t.Any = None,
     ) -> bool:
-        """Run the ``_on_mount`` hooks for this instance, once, before ``joined()``.
+        """Run the ``Meta.on_mount`` hooks for this instance, once, before ``joined()``.
 
         Every path that produces a component the user sees calls this: the
         WebSocket join, the LiveComponent children a parent's render named, the
@@ -623,7 +689,7 @@ class Component(BaseModel):
         parent's render created, and a re-join -- which is why they sit in
         ``_mount`` rather than in the consumer.
 
-        1. ``_live_sessions``, when the class declares it, says where the
+        1. ``Meta.live_sessions``, when the class declares it, says where the
            component is allowed to live. A component declaring ``{"admin"}``
            halts on a page with no boundary, so the safe answer is the default
            one.
@@ -642,10 +708,10 @@ class Component(BaseModel):
                 "%s (%s) is declared for %s and the page is in %r",
                 self._name,
                 self.id,
-                sorted(type(self)._live_sessions),
+                sorted(self._meta.live_sessions),
                 policy.name if policy is not None else "",
             )
-            return {"halt": True, "hook": "_live_sessions"}
+            return {"halt": True, "hook": "Meta.live_sessions"}
         if policy is None:
             return {"cont": True}
         return await policy.run_on_mount(self, params, session)
@@ -656,14 +722,14 @@ class Component(BaseModel):
         session: t.Any = None,
     ) -> dict[str, t.Any]:
         """
-        Run all on_mount hooks defined in _on_mount.
+        Run the hooks in ``Meta.on_mount``, in order.
 
         Called during component initialization, before joined().
 
         Returns:
             {"halt": True} if any hook halted, otherwise {"cont": True}
         """
-        for hook_class in self._on_mount:
+        for hook_class in self._meta.on_mount:
             if hasattr(hook_class, "on_mount"):
                 on_mount = hook_class.on_mount
                 # Support both static methods and instance methods
@@ -1249,7 +1315,7 @@ class Component(BaseModel):
     def _get_stream_item_template(self) -> str:
         """Get the default stream item template name."""
         # Convert "myapp/item_list.html" to "myapp/item_list_item.html"
-        base = self._template_name.rsplit(".", 1)[0]
+        base = (self._meta.template_name or "").rsplit(".", 1)[0]
         return f"{base}_item.html"
 
     async def _render_stream_item(self, template_name: str, item: t.Any) -> str:
@@ -1500,15 +1566,15 @@ class Component(BaseModel):
     def _clear_temporary_assigns(self) -> None:
         """Clear temporary assigns after rendering.
 
-        Resets fields listed in _temporary_assigns to their default values.
+        Resets the fields listed in ``Meta.temporary_assigns`` to their default values.
         This frees memory for large collections that are only needed during rendering.
 
         Called automatically by consumer.send_render() after each render cycle.
         """
-        if not self._temporary_assigns:
+        if not self._meta.temporary_assigns:
             return
 
-        for field_name in self._temporary_assigns:
+        for field_name in self._meta.temporary_assigns:
             if field_name not in self.model_fields:
                 continue
 
@@ -1527,6 +1593,9 @@ class Component(BaseModel):
             # Set the field to its default value
             # Use object.__setattr__ to bypass Pydantic validation for performance
             object.__setattr__(self, field_name, default_value)
+
+
+Component._meta = ComponentOptions()
 
 
 class ComponentNotFound(LookupError):

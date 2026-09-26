@@ -68,7 +68,8 @@ from wireview import Component
 
 class Counter(Component):
     """A simple counter component."""
-    _template_name = "counter.html"
+    class Meta:
+        template_name = "counter.html"
 
     count: int = 0
     step: int = 1
@@ -91,8 +92,6 @@ from wireview import Component
 
 class Counter(Component):
     """A simple counter component."""
-
-    _template_name: ClassVar[str]
 
     count: int
     step: int
@@ -147,8 +146,6 @@ __wireview_handlers__ = ['increment', 'decrement', 'reset']
 class Counter(LiveComponent):
     """LiveComponent stub with proper inheritance."""
 
-    _template_name: ClassVar[str]
-
     count: int
 
     async def increment(self) -> None: ...
@@ -164,14 +161,14 @@ button: FunctionComponent
 
 ## 동적 구독
 
-`_subscriptions`를 `@property`로 정의했다면 스텁이 그 사실을 적어 둔다.
+`get_subscriptions()`를 오버라이드했다면 스텁에 일반 메서드로 적힌다. `class Meta:`의 값은 스텁에 적지
+않는다. 기반 클래스 `Component`가 `_meta`의 타입을 이미 선언하고 있다.
 
 ```python
 class XTodoItem(Component):
-    _template_name: ClassVar[str]
-    # Note: _subscriptions is a dynamic property
-    @property
-    def _subscriptions(self) -> set[str]: ...
+    item: Item
+
+    def get_subscriptions(self) -> set[str]: ...
 ```
 
 ## CI 연동

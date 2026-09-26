@@ -165,7 +165,9 @@ class Dashboard(Component):
 
 ```python
 class MessageList(Component):
-    _temporary_assigns = {"messages"}
+    class Meta:
+        temporary_assigns = {"messages"}
+
     messages: list[Message] = []
 
     async def joined(self):

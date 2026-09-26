@@ -32,7 +32,8 @@ HANDLED: list[tuple[str, str]] = []
 
 
 class Slow(Component):
-    _template_name = "todo/counter.html"
+    class Meta:
+        template_name = "todo/counter.html"
 
     async def forever(self) -> None:
         await asyncio.Event().wait()

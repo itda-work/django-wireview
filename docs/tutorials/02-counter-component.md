@@ -23,7 +23,8 @@ from wireview import Component
 class XCounter(Component):
     """숫자를 증가/감소시키는 카운터 컴포넌트"""
 
-    _template_name = 'myapp/counter.html'
+    class Meta:
+        template_name = 'myapp/counter.html'
 
     count: int = 0
 
@@ -68,7 +69,8 @@ class XCounter(Component):
 
 ```python
 class XCounter(Component):
-    _template_name = 'myapp/counter.html'
+    class Meta:
+        template_name = 'myapp/counter.html'
 
     count: int = 0
 
@@ -197,7 +199,8 @@ from wireview import Component, WireviewMeta
 
 
 class XCounter(Component):
-    _template_name = 'myapp/counter.html'
+    class Meta:
+        template_name = 'myapp/counter.html'
 
     count: int = 0
 
@@ -281,7 +284,8 @@ from wireview import Component, WireviewMeta
 class XCounter(Component):
     """기능이 풍부한 카운터 컴포넌트"""
 
-    _template_name = 'myapp/counter.html'
+    class Meta:
+        template_name = 'myapp/counter.html'
 
     count: int = 0
     step: int = 1

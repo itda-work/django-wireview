@@ -9,7 +9,8 @@ from wireview import Component
 
 
 class ErrorBox(Component):
-    _template_name = "errorprobe/box.html"
+    class Meta:
+        template_name = "errorprobe/box.html"
 
     count: int = 0
 
@@ -22,7 +23,8 @@ class ErrorBox(Component):
 
 
 class ErrorJoin(Component):
-    _template_name = "errorprobe/join.html"
+    class Meta:
+        template_name = "errorprobe/join.html"
 
     async def joined(self):
         raise RuntimeError("errorprobe: joined() raised on purpose")

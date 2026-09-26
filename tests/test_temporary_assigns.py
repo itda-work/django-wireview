@@ -13,8 +13,9 @@ from wireview.testing import mount
 class ListComponent(Component):
     """Component with a temporary list field."""
 
-    _template_name = "todo/counter.html"
-    _temporary_assigns = {"items"}
+    class Meta:
+        template_name = "todo/counter.html"
+        temporary_assigns = {"items"}
 
     items: list[str] = []
     count: int = 0  # Not temporary, should persist
@@ -29,8 +30,9 @@ class ListComponent(Component):
 class DictComponent(Component):
     """Component with a temporary dict field."""
 
-    _template_name = "todo/counter.html"
-    _temporary_assigns = {"data"}
+    class Meta:
+        template_name = "todo/counter.html"
+        temporary_assigns = {"data"}
 
     data: dict = {}
     name: str = "test"
@@ -42,8 +44,9 @@ class DictComponent(Component):
 class MultipleTemporaryComponent(Component):
     """Component with multiple temporary fields."""
 
-    _template_name = "todo/counter.html"
-    _temporary_assigns = {"items", "metadata"}
+    class Meta:
+        template_name = "todo/counter.html"
+        temporary_assigns = {"items", "metadata"}
 
     items: list[int] = []
     metadata: dict = {}
@@ -58,7 +61,8 @@ class MultipleTemporaryComponent(Component):
 class NoTemporaryComponent(Component):
     """Component without temporary assigns."""
 
-    _template_name = "todo/counter.html"
+    class Meta:
+        template_name = "todo/counter.html"
 
     items: list[str] = []
 
@@ -192,7 +196,9 @@ class TestTemporaryAssignsInheritance:
         """Subclasses can override _temporary_assigns."""
 
         class OverridingChildComponent(ListComponent):
-            _temporary_assigns = {"items", "extra_list"}
+            class Meta:
+                temporary_assigns = {"items", "extra_list"}
+
             extra_list: list[int] = []
 
             async def load_extra(self):
@@ -220,8 +226,9 @@ class TestTemporaryAssignsWithDefaultFactory:
         """Should use default_factory when clearing."""
 
         class FactoryComponent(Component):
-            _template_name = "todo/counter.html"
-            _temporary_assigns = {"items"}
+            class Meta:
+                template_name = "todo/counter.html"
+                temporary_assigns = {"items"}
 
             # Using list as default_factory (implicit via = [])
             items: list[str] = []

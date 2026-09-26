@@ -11,7 +11,8 @@ from wireview import Component
 
 
 class ListProbe(Component):
-    _template_name = "listprobe/probe.html"
+    class Meta:
+        template_name = "listprobe/probe.html"
 
     rows: list[str] = [f"r{n}" for n in range(8)]
 

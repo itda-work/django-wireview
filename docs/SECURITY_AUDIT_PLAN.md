@@ -101,7 +101,7 @@
 ### Phase 5: JavaScript 직렬화/역직렬화
 
 - [ ] Django 모델 → JSON 변환 시 민감 정보 노출?
-- [ ] `_exclude_fields` 우회 가능성?
+- [ ] `Meta.exclude_fields` 우회 가능성?
 
 ---
 

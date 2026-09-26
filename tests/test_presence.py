@@ -26,8 +26,9 @@ from wireview.testing import mount
 class XProducerComponent(PresenceMixin, Component):
     """Test component that produces presence updates."""
 
-    _template_name = "test_presence.html"
-    _presence_config = PresenceConfig(typing_timeout=0.1)  # Fast timeout for tests
+    class Meta:
+        template_name = "test_presence.html"
+        presence = PresenceConfig(typing_timeout=0.1)  # Fast timeout for tests
 
     room_id: int = 1
     username: str = "test_user"
@@ -49,7 +50,8 @@ class XProducerComponent(PresenceMixin, Component):
 class XTrackerComponent(PresenceTrackerMixin, Component):
     """Test component that tracks presence of other users."""
 
-    _template_name = "test_presence.html"
+    class Meta:
+        template_name = "test_presence.html"
 
     room_id: int = 1
     username: str = "tracker_user"
@@ -60,8 +62,7 @@ class XTrackerComponent(PresenceTrackerMixin, Component):
     def _presence_my_user_id(self) -> str:
         return self.username
 
-    @property
-    def _subscriptions(self):
+    def get_subscriptions(self) -> set[str]:
         return {self._presence_channel()}
 
 

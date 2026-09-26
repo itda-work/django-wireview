@@ -44,24 +44,31 @@ TEMPLATES = {
 
 
 class SsPublic(Component):
-    _template_name = "ss/public.html"
+    class Meta:
+        template_name = "ss/public.html"
+
     note: str = "public"
 
 
 class SsProtected(Component):
     """Field-compatible with ``SsPublic``: the issue's substitution target."""
 
-    _template_name = "ss/protected.html"
+    class Meta:
+        template_name = "ss/protected.html"
+
     note: str = "protected"
 
 
 class SsChild(Component):
-    _template_name = "ss/child.html"
+    class Meta:
+        template_name = "ss/child.html"
+
     note: str = "default"
 
 
 class SsRoot(Component):
-    _template_name = "ss/root.html"
+    class Meta:
+        template_name = "ss/root.html"
 
 
 class FakeOutbound:
@@ -225,12 +232,12 @@ async def test_an_expired_join_mounts_nothing_and_asks_for_a_reload(monkeypatch)
 
 
 def legacy_json_format(component: Component) -> str:
-    return Signer().sign(component.model_dump_json(exclude=component._exclude_fields))
+    return Signer().sign(component.model_dump_json(exclude=set(component._meta.exclude_fields)))
 
 
 def legacy_compact_format(component: Component) -> str:
     return Signer().sign_object(
-        component.model_dump_json(exclude=component._exclude_fields),
+        component.model_dump_json(exclude=set(component._meta.exclude_fields)),
         serializer=_JSONStringSerializer,
         compress=True,
     )

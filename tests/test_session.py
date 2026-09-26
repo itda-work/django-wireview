@@ -22,7 +22,7 @@ from wireview import Component, LiveComponent
 from wireview.consumer import WireviewConsumer
 from wireview.core.meta import WireviewMeta
 from wireview.core.session import SessionView, load_session
-from wireview.core.state import sign_state, unsign_state
+from wireview.core.state import sign_state, unsign_envelope, unsign_state
 from wireview.repository import ComponentRepository
 from wireview.testing import mount
 
@@ -36,7 +36,8 @@ TEMPLATES = {
 
 
 class SessProbe(Component):
-    _template_name = "sess/probe.html"
+    class Meta:
+        template_name = "sess/probe.html"
 
     seen: str = ""
 
@@ -48,7 +49,8 @@ class SessProbe(Component):
 
 
 class SessChild(LiveComponent):
-    _template_name = "sess/child.html"
+    class Meta:
+        template_name = "sess/child.html"
 
     seen: str = ""
 
@@ -57,7 +59,8 @@ class SessChild(LiveComponent):
 
 
 class SessParent(Component):
-    _template_name = "sess/parent.html"
+    class Meta:
+        template_name = "sess/parent.html"
 
 
 @pytest.fixture(autouse=True)
@@ -176,7 +179,8 @@ class TestMount:
                 return {"cont": True}
 
         class Hooked(SessProbe):
-            _on_mount = [Recorder]
+            class Meta:
+                on_mount = [Recorder]
 
         view = await mount(Hooked, session={"cart": "abc"}, session_key="s1")
 
@@ -197,12 +201,17 @@ async def test_the_session_is_not_in_the_signed_state():
     assert "session" not in unsign_state(state, "SessProbe")
 
 
-def test_dropping_session_from_exclude_fields_fails_loudly():
-    """A subclass that overrides ``_exclude_fields`` cannot leak the session in silence."""
-    from pydantic_core import PydanticSerializationError
+def test_a_meta_cannot_put_the_session_back_into_the_state():
+    """``Meta.exclude_fields`` adds to user, wire and session; it cannot drop them (#99).
+
+    Overriding the old ``_exclude_fields`` replaced the set, so leaving
+    ``session`` out put the session one step from the browser (it failed
+    loudly only because a SessionView does not serialize).
+    """
 
     class Leaky(SessProbe):
-        _exclude_fields = {"user", "wire"}
+        class Meta:
+            exclude_fields = {"user", "wire"}
 
     component = Leaky(
         user=AnonymousUser(),
@@ -210,8 +219,8 @@ def test_dropping_session_from_exclude_fields_fails_loudly():
         session=SessionView({"cart": "S3CRET"}),
     )
 
-    with pytest.raises(PydanticSerializationError):
-        sign_state(component)
+    assert "session" in Leaky._meta.exclude_fields
+    assert "session" not in unsign_envelope(sign_state(component), "Leaky").state
 
 
 @pytest.mark.asyncio

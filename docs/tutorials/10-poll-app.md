@@ -70,7 +70,7 @@ WIREVIEW = {
 }
 ```
 
-> **참고**: 이 설정이 없으면 `_subscriptions`를 지정해도 `mutation()`이 호출되지 않습니다.
+> **참고**: 이 설정이 없으면 `Meta.subscriptions`를 지정해도 `mutation()`이 호출되지 않습니다.
 
 ## 3. 컴포넌트 정의
 
@@ -85,8 +85,9 @@ from .models import Option, Poll
 class XPoll(Component):
     """실시간 투표 컴포넌트"""
 
-    _template_name = "poll/poll.html"
-    _subscriptions = {"poll.option"}  # poll 앱의 Option 모델 변경 구독
+    class Meta:
+        template_name = "poll/poll.html"
+        subscriptions = {"poll.option"}  # poll 앱의 Option 모델 변경 구독
 
     poll: Poll
     voted_option_id: int | None = None  # 투표한 옵션 ID

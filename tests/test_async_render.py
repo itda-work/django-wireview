@@ -13,14 +13,18 @@ pytestmark = pytest.mark.django_db
 class SimpleComponent(Component):
     """Simple component for testing."""
 
-    _template_name = "todo/todo_list.html"  # Use existing template
+    class Meta:
+        template_name = "todo/todo_list.html"  # Use existing template
+
     value: int = 0
 
 
 class ComponentWithAsyncProperty(Component):
     """Component with async property for testing."""
 
-    _template_name = "todo/todo_list.html"  # Use existing template
+    class Meta:
+        template_name = "todo/todo_list.html"  # Use existing template
+
     base_value: int = 0
 
     @property

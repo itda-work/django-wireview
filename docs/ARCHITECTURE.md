@@ -144,8 +144,7 @@ class Component(BaseModel):
 
     # 컴포넌트 메타데이터
     _name: str
-    _template_name: str
-    _subscriptions: set[str] = set()
+    _meta: ComponentOptions  # class Meta: 를 해석한 결과 (#99)
 
     # 인스턴스 상태
     id: str = Field(default_factory=lambda: f"rx-{uuid4()}")
@@ -475,8 +474,7 @@ class Component(BaseModel):
     # 클래스 레벨
     _all: ClassVar[dict[str, type[Self]]] = {}
     _name: ClassVar[str]
-    _template_name: ClassVar[str]
-    _subscriptions: ClassVar[set[str]] = set()
+    _meta: ClassVar[ComponentOptions]  # class Meta: 를 부모 것과 키 단위로 합친 결과 (#99)
 
     # 인스턴스 필드
     id: str = Field(default_factory=lambda: f"rx-{uuid4()}")
@@ -709,7 +707,8 @@ async def handle_click(self):
 
 # temporary_assigns로 렌더링 후 메모리 해제
 class Component:
-    _temporary_assigns = {"large_data"}
+    class Meta:
+        temporary_assigns = {"large_data"}
 
     async def mount(self):
         self.large_data = await get_large_data()

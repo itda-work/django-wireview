@@ -29,7 +29,7 @@ myapp/
 ```
 
 1. **템플릿**을 만든다. 루트 엘리먼트에 `{% tag_header %}`가 반드시 있어야 한다.
-2. **컴포넌트 클래스**를 만든다: `from wireview import Component`, `_template_name`, Pydantic 필드, `async def` 핸들러.
+2. **컴포넌트 클래스**를 만든다: `from wireview import Component`, `Meta.template_name`, Pydantic 필드, `async def` 핸들러.
 3. **페이지 템플릿**에서 `{% component 'XCounter' id="counter" %}`로 심는다. 베이스 템플릿 `<head>`에 `{% wireview_header %}`.
 4. **`manage.py check`를 돌린다.** 아래 함정 중 여섯 개를 여기서 잡는다.
 
@@ -37,7 +37,9 @@ myapp/
 from wireview import Component
 
 class XCounter(Component):
-    _template_name = "myapp/x-counter.html"
+    class Meta:
+        template_name = "myapp/x-counter.html"
+
     amount: int = 0
 
     async def inc(self):

@@ -28,10 +28,10 @@ WARNINGS:
 | `wireview.W004` | `wireview/wireview.min.js`를 staticfiles가 못 찾음 | JS가 로드되지 않아 페이지가 정적으로 남는다. 404 외에는 신호가 없다 |
 | `wireview.W005` | `USE_HMIN`이 켜져 있고 `USE_HTML_DIFF`도 켜짐 | django-hmin이 diff 마커(HTML 주석)를 지워 부분 diff가 토큰 diff로 퇴화한다 |
 | `wireview.W006` | 기본 채널 레이어가 `InMemoryChannelLayer` | 다중 프로세스에서 브로드캐스트가 같은 프로세스에만 닿고 오류는 나지 않는다 |
-| `wireview.W007` | `_on_mount`에 올린 클래스에 `on_mount`가 없거나 async가 아님 | 훅이 말없이 건너뛰어져, 인증 가드로 올린 훅이 아무것도 막지 않는다 |
+| `wireview.W007` | `Meta.on_mount`에 올린 클래스에 `on_mount`가 없거나 async가 아님 | 훅이 말없이 건너뛰어져, 인증 가드로 올린 훅이 아무것도 막지 않는다 |
 | `wireview.W008` | `UPLOAD_TEMP_DIR`이 가리키는 경로에 임시 파일을 만들 수 없음 | 설정은 첫 청크가 올 때에야 읽힌다. 기동 시에는 아무 신호가 없고, 업로드가 하나씩 `ImproperlyConfigured`로 실패한다 |
 | `wireview.W009` | `SIGNING_KEY`가 빈 문자열이거나, 키 없이 fallback만 설정됨 | `Signer(key="")`는 조용히 `SECRET_KEY`로 되돌아간다. 아무것도 깨지지 않는 것이 문제다 — `SECRET_KEY`를 돌리면 진행 중인 업로드와 열린 페이지의 `data-state`가 같이 죽는다 |
-| `wireview.W010` | 경계가 선언됐는데 `context_processors.request`가 꺼져 있거나, `_live_sessions`가 아무도 선언하지 않은 이름을 가리키거나, 경계가 있는 프로젝트에서 `_on_mount`로만 자신을 지키는 컴포넌트가 소속을 선언하지 않거나, `STATE_ACCEPT_LEGACY`가 경계와 함께 켜져 있음 | 프로세서가 없으면 경계가 통째로 조용히 꺼진다. 오타는 join 거절과 reload로 나타나 서명 문제처럼 보인다. 선언이 없는 컴포넌트는 경계 밖 페이지에서도 마운트된다. 롤아웃 플래그는 경계가 있으면 적용되지 않는데, 켜 둔 쪽은 창이 열려 있다고 믿는다 |
+| `wireview.W010` | 경계가 선언됐는데 `context_processors.request`가 꺼져 있거나, `Meta.live_sessions`가 아무도 선언하지 않은 이름을 가리키거나, 경계가 있는 프로젝트에서 `Meta.on_mount`로만 자신을 지키는 컴포넌트가 소속을 선언하지 않거나, `STATE_ACCEPT_LEGACY`가 경계와 함께 켜져 있음 | 프로세서가 없으면 경계가 통째로 조용히 꺼진다. 오타는 join 거절과 reload로 나타나 서명 문제처럼 보인다. 선언이 없는 컴포넌트는 경계 밖 페이지에서도 마운트된다. 롤아웃 플래그는 경계가 있으면 적용되지 않는데, 켜 둔 쪽은 창이 열려 있다고 믿는다 |
 | `wireview.W011` | 템플릿의 `wire-hook="X"`를 등록하는 훅 파일이 수집된 것 중에 없음 | 클라이언트가 콘솔 경고 한 줄만 남긴다. 컴포넌트는 정상으로 렌더되고 동작 하나가 빠진다 |
 | `wireview.W012` | `CHANNEL_LAYERS`에 `default` 레이어가 없음 | 페이지는 HTTP로 정상 렌더되는데 WebSocket 연결이 전부 거절되어 어떤 컴포넌트도 살아나지 않는다. Channels에는 기본 레이어가 없다 |
 | `wireview.W013` | `runserver`로 기동하는데 그 명령이 Django의 WSGI 서버 그대로임 (`daphne`가 없거나 `INSTALLED_APPS`에서 너무 아래에 있음) | 페이지는 그려지고 오류도 없다. WebSocket 업그레이드가 거절되어 버튼이 아무 반응도 하지 않고, 흔적은 브라우저 콘솔 한 줄뿐이다 |
@@ -96,17 +96,17 @@ staticfiles와 whitenoise는 stock 명령을 감싸기만 하므로 잡히고, A
 
 첫째는 전제 조건이다. 템플릿 태그는 페이지의 경계를 `context["request"]`에서 읽으므로
 `django.template.context_processors.request`가 꺼져 있으면 **기능 전체가 말없이 꺼진다** — 헤더는 빈
-이름을 심고, 모든 상태가 경계 없이 서명되고, `_live_sessions`를 선언한 컴포넌트는 자기 페이지에서
+이름을 심고, 모든 상태가 경계 없이 서명되고, `Meta.live_sessions`를 선언한 컴포넌트는 자기 페이지에서
 사라진다. 페이지는 200으로 그려지고 아무것도 예외를 던지지 않는다.
 
 
 경계는 **옵트인**이다. 그 결과 실수가 두 방향으로 난다.
 
-이름이 어긋나면 조용하지 않지만 엉뚱하게 보인다. `_live_sessions = {"admn"}`인 컴포넌트가 실린
+이름이 어긋나면 조용하지 않지만 엉뚱하게 보인다. `Meta.live_sessions = {"admn"}`인 컴포넌트가 실린
 페이지는 join에서 "unknown live_session"으로 거절되고 브라우저가 reload한다 — 화면에는 서명이
 깨진 것처럼 보인다. 검사가 오타를 이름으로 짚는다.
 
-반대로 선언을 빠뜨리면 아무 신호가 없다. `_on_mount` 훅으로만 자신을 지키는 컴포넌트는 경계 밖
+반대로 선언을 빠뜨리면 아무 신호가 없다. `Meta.on_mount` 훅으로만 자신을 지키는 컴포넌트는 경계 밖
 페이지에서도 마운트되고, 훅은 돌지만 "여기 있으면 안 된다"고 말하는 것은 아무것도 없다. 이 경고는
 **프로젝트가 live_session을 하나라도 선언한 뒤에만** 뜬다. 선언하기 전에는 속할 곳이 없으므로 모든
 컴포넌트가 원래 있던 자리에 있는 것이다.
@@ -114,7 +114,7 @@ staticfiles와 whitenoise는 stock 명령을 감싸기만 하므로 잡히고, A
 ```console
 $ python manage.py check
 <class 'billing.live.XInvoice'>: (wireview.W010) billing.live.XInvoice guards itself with
-_on_mount but declares no _live_sessions.
+Meta.on_mount but declares no Meta.live_sessions.
 ```
 
 정말로 어디서나 마운트되어도 되는 컴포넌트라면 그것이 옳은 상태다 — 그때는
@@ -144,14 +144,14 @@ _on_mount but declares no _live_sessions.
 
 ### W007이 보안 검사인 이유
 
-`_on_mount` 훅은 [라이프사이클 훅 문서](./lifecycle-hooks.md)의 첫 예제부터 **인증 가드**다.
+`Meta.on_mount` 훅은 [라이프사이클 훅 문서](./lifecycle-hooks.md)의 첫 예제부터 **인증 가드**다.
 그런데 `_run_on_mount_hooks`는 `on_mount`가 없는 항목을 예외 없이 건너뛴다. 메서드 이름 오타
 하나(`onmount`)면 **가드가 사라진 컴포넌트가 정상적으로 마운트된다.** 클라이언트에는 아무
 신호도 없다. `async`를 빠뜨린 훅은 조용하지는 않지만 마운트 도중 `TypeError`로 터진다.
 
 ```console
 $ python manage.py check
-<class 'billing.live.XInvoice'>: (wireview.W007) 'AuthHook.on_mount' in billing.live.XInvoice._on_mount is not async.
+<class 'billing.live.XInvoice'>: (wireview.W007) 'AuthHook.on_mount' in billing.live.XInvoice.Meta.on_mount is not async.
 	HINT: wireview awaits every on_mount hook, so a sync one fails with TypeError while
 	the component is mounting. Declare it as 'async def on_mount'.
 ```
@@ -202,6 +202,6 @@ Pydantic은 커스텀 serializer, `field_serializer`, wireview의 Django 모델 
 
 - [LiveComponent](./live-component.md) — 노출 규칙과 라이프사이클 콜백
 - [HTML Diff](./html-diff.md) — W005가 무엇을 지키는지
-- [라이프사이클 훅](./lifecycle-hooks.md) — W007이 지키는 `_on_mount` 경계
+- [라이프사이클 훅](./lifecycle-hooks.md) — W007이 지키는 `Meta.on_mount` 경계
 - [live_session](./live-session.md) — W010이 지키는 페이지 경계
 - [배포](../DEPLOYMENT.md) — W006과 채널 레이어 선택

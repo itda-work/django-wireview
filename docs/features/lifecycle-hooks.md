@@ -1,11 +1,11 @@
 # 라이프사이클 훅
 
-컴포넌트 사이에 공통 동작을 나눠 쓰는 장치다. 초기화 시점의 `_on_mount`와, 이후 단계를 가로채는
+컴포넌트 사이에 공통 동작을 나눠 쓰는 장치다. 초기화 시점의 `Meta.on_mount`와, 이후 단계를 가로채는
 `attach_hook` 둘로 나뉜다.
 
 | 기능 | 뜻 |
 |------|-----|
-| `_on_mount` | 클래스 단위 훅. `joined()`보다 먼저 돈다 |
+| `Meta.on_mount` | 클래스 단위 훅. `joined()`보다 먼저 돈다 |
 | `attach_hook()` | 인스턴스 단위 훅. 이벤트를 가로챈다 |
 | `detach_hook()` | 붙인 훅을 뗀다 |
 | [`live_session`](./live-session.md) | 페이지 단위 경계. 세션 훅이 컴포넌트 훅보다 먼저 돈다 |
@@ -47,8 +47,9 @@ from wireview import Component
 
 
 class ProtectedDashboard(Component):
-    _template_name = "dashboard.html"
-    _on_mount = [AuthHook, TrackingHook]
+    class Meta:
+        template_name = "dashboard.html"
+        on_mount = [AuthHook, TrackingHook]
 
     async def joined(self):
         # on_mount 훅이 전부 {"cont": True}를 돌려줬을 때만 실행된다
@@ -58,7 +59,7 @@ class ProtectedDashboard(Component):
 ### 훅이 도는 자리
 
 사용자가 볼 수 있는 컴포넌트 인스턴스를 만드는 **모든 경로**에서 돈다. 일부만 덮는 인가 훅은
-경계가 아니기 때문이다. #75 이전에는 이 호출 지점들이 아예 없어서 `_on_mount`가 아무 일도 하지
+경계가 아니기 때문이다. #75 이전에는 이 호출 지점들이 아예 없어서 `Meta.on_mount`가 아무 일도 하지
 않았다.
 
 | 경로 | 언제 | 뒤이어 `joined()`? |
@@ -78,7 +79,7 @@ join만 지키면 페이지를 한 번 보내 놓고 나서 리다이렉트하�
 자기 루프를 만들어 돈다. 어느 쪽이든 페이지는 그려진다. 그 보조 스레드에서 ORM을 건드리는 훅은
 자기 커넥션을 새로 연다.
 
-`_on_mount`가 비어 있고 페이지에 경계도 없는 컴포넌트는 이 경로에 들어가지도 않는다.
+`Meta.on_mount`가 비어 있고 페이지에 경계도 없는 컴포넌트는 이 경로에 들어가지도 않는다.
 
 ### 중첩된 일반 Component
 
@@ -107,8 +108,8 @@ join이 덮은 것은 *페이지*였다 — 특정 자식 하나를 거절하려
 다리 **앞에서** 물어야 한다 — `_mount`도 같은 질문을 플래그로 답하지만 그때는 이미 다리를 건넌 뒤다.
 회귀는 `tests/test_live_session_contract.py`의 `TestTheBridgeIsCrossedOncePerInstance`가 막는다.
 
-`_on_mount`가 비어 있고 페이지에 경계도 **둘 다** 없어야 다리를 건너지 않는다. 경계를 쓰지 않아도
-`_on_mount`를 쓰는 컴포넌트는 건넌다 — 그 전에도 HTTP 렌더에서는 건너던 다리다.
+`Meta.on_mount`가 비어 있고 페이지에 경계도 **둘 다** 없어야 다리를 건너지 않는다. 경계를 쓰지 않아도
+`Meta.on_mount`를 쓰는 컴포넌트는 건넌다 — 그 전에도 HTTP 렌더에서는 건너던 다리다.
 
 ### 인스턴스당 한 번
 
@@ -123,7 +124,7 @@ mount하므로, 새 인스턴스가 훅을 돈다. HTTP 렌더와 그 뒤의 Web
 ### 실행 순서
 
 1. 페이지가 [`live_session`](./live-session.md) 안이면 그 세션의 훅이 **먼저** 돈다
-2. 그다음 `_on_mount`에 적은 순서대로 돈다
+2. 그다음 `Meta.on_mount`에 적은 순서대로 돈다
 3. 어느 하나가 `{"halt": True}`를 돌려주면 나머지는 건너뛴다
 4. halt하면 `joined()`는 호출되지 않고, 컴포넌트는 **렌더되지 않는다**
 5. 훅 안의 예외는 **halt와 같은 거절**이다. 예외 자체는 경로에 따라 올라가거나(HTTP 렌더는 500)
@@ -166,7 +167,7 @@ async def on_mount(
 
 ### 훅 점검
 
-`manage.py check`는 wireview가 부를 수 없는 `_on_mount` 항목을 `wireview.W007`로 보고한다.
+`manage.py check`는 wireview가 부를 수 없는 `Meta.on_mount` 항목을 `wireview.W007`로 보고한다.
 `on_mount` 메서드가 없는 클래스(런타임이 조용히 건너뛰어 컴포넌트가 무방비가 된다)나, async가
 아닌 `on_mount`가 그것이다. [시스템 체크](./checks.md) 참고.
 
@@ -330,7 +331,7 @@ class AuditLog:
 
 | 기능 | Phoenix LiveView | django-wireview |
 |------|------------------|-----------------|
-| 클래스 훅 | `on_mount: [Hook]` | `_on_mount = [Hook]` |
+| 클래스 훅 | `on_mount: [Hook]` | `Meta.on_mount = [Hook]` |
 | 인스턴스 훅 | `attach_hook/4` | `attach_hook()` |
 | 훅 떼기 | `detach_hook/3` | `detach_hook()` |
 | 단계 | `:handle_event`, `:handle_params`, `:handle_info`, `:handle_async`, `:after_render` | `handle_event`, `handle_params`, `after_render` |
@@ -344,20 +345,20 @@ class AuditLog:
 | | 무엇을 판정하나 | 어디서 | 통과하면 |
 |---|---|---|---|
 | `live_session`의 `authorize` | 이 사용자가 **이 페이지**에 들어올 수 있는가 | 뷰(첫 바이트 전)와 join(마운트 전) | 페이지의 컴포넌트들이 만들어지기 시작한다 |
-| `_on_mount` / 세션 `on_mount` | 이 컴포넌트를 마운트할 때 **무엇을 먼저 하나** | 컴포넌트를 만드는 모든 경로 | `joined()`가 돌고 컴포넌트가 렌더된다 |
+| `Meta.on_mount` / 세션 `on_mount` | 이 컴포넌트를 마운트할 때 **무엇을 먼저 하나** | 컴포넌트를 만드는 모든 경로 | `joined()`가 돌고 컴포넌트가 렌더된다 |
 | 이벤트 인가 | 이 사용자가 **이 객체**를 건드릴 수 있는가 | 핸들러 안 (직접 쓴다) | 그 한 번의 조작이 일어난다 |
 
 **페이지에 들어왔다는 것이 그 안의 객체를 건드릴 권한을 뜻하지 않는다.** `live_session`은 페이지의
 문이지 행마다 붙는 자물쇠가 아니다. 남의 주문서 id로 이벤트를 보내는 것은 여전히 핸들러가 막아야
 한다.
 
-`live_session`을 쓸 때 `_on_mount`가 없어지지는 않는다. 페이지 전체에 걸리는 것(인증, 감사 로그)은
-세션의 `on_mount`로 올리고, 컴포넌트 하나에만 해당하는 것은 그대로 `_on_mount`에 둔다. 상세는
+`live_session`을 쓸 때 `Meta.on_mount`가 없어지지는 않는다. 페이지 전체에 걸리는 것(인증, 감사 로그)은
+세션의 `on_mount`로 올리고, 컴포넌트 하나에만 해당하는 것은 그대로 `Meta.on_mount`에 둔다. 상세는
 [live_session](./live-session.md).
 
 ## 관련
 
 - [live_session](./live-session.md) — 페이지 단위 경계. 세션 훅이 컴포넌트 훅보다 먼저 돈다
-- [시스템 체크](./checks.md) — 부를 수 없는 `_on_mount` 항목을 잡는 `wireview.W007`,
+- [시스템 체크](./checks.md) — 부를 수 없는 `Meta.on_mount` 항목을 잡는 `wireview.W007`,
   경계와 어긋난 선언을 잡는 `wireview.W010`
 - [LiveComponent](./live-component.md) — 중첩 컴포넌트와 그 수명주기

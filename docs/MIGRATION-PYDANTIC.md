@@ -277,8 +277,9 @@ class Component(BaseModel):
     _all: t.ClassVar[dict[str, type["Component"]]] = {}
     _name: t.ClassVar[str]
     _template_name: t.ClassVar[str]
-    _exclude_fields: t.ClassVar[set[str]] = {"user", "wire"}
-    _subscriptions: t.ClassVar[set[str]] = set()
+    class Meta:
+        exclude_fields = {"user", "wire"}
+        subscriptions = set()
 
     # 인스턴스 필드
     id: str = Field(default_factory=lambda: f"rx-{uuid4()}")

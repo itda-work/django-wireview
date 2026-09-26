@@ -64,8 +64,9 @@ from .models import Notification
 class XNotificationBell(Component):
     """알림 벨 아이콘"""
 
-    _template_name = "notifications/notification_bell.html"
-    _subscriptions = {"notification", "notifications-refresh"}
+    class Meta:
+        template_name = "notifications/notification_bell.html"
+        subscriptions = {"notification", "notifications-refresh"}
 
     is_open: bool = False
 
@@ -108,8 +109,9 @@ class XNotificationBell(Component):
 class XNotificationList(Component):
     """알림 목록 (Streams 사용)"""
 
-    _template_name = "notifications/notification_list.html"
-    _subscriptions = {"notification"}
+    class Meta:
+        template_name = "notifications/notification_list.html"
+        subscriptions = {"notification"}
 
     async def joined(self):
         """초기 알림 로드"""
@@ -259,7 +261,8 @@ await self.push_js(
 class XNotificationCreator(Component):
     """알림 생성 폼 (데모용)"""
 
-    _template_name = "notifications/notification_creator.html"
+    class Meta:
+        template_name = "notifications/notification_creator.html"
 
     title: str = ""
     message: str = ""

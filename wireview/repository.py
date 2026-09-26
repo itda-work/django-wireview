@@ -89,7 +89,7 @@ class ComponentRepository:
         # oldest, unless the client said otherwise when it connected (GAP-030).
         self.vsn = vsn
         # The request/connection session. Handed to every component as
-        # ``self.session`` and to the ``_on_mount`` hooks as their third argument,
+        # ``self.session`` and to the ``Meta.on_mount`` hooks as their third argument,
         # read-only in both places (#68).
         self.session: SessionView = SessionView.wrap(session)
         self.channel_name = channel_name
@@ -515,6 +515,10 @@ class ComponentRepository:
         for cls in component_class.__mro__:
             if command not in cls.__dict__:
                 continue
+            if isinstance(cls.__dict__[command], type):
+                # A nested class -- ``class Meta:`` above all -- is callable and
+                # not a handler: a client naming it would instantiate it (#99).
+                return False
             if _is_framework_class(cls):
                 # The name is framework surface, wherever it is also overridden.
                 # Pydantic-generated methods (model_post_init) land here too:
@@ -529,13 +533,13 @@ class ComponentRepository:
         # XXX: There is a list() here because the dict can change size during
         # iteration
         for component in list(self.components.values()):
-            if channel in component._subscriptions:
+            if channel in component.get_subscriptions():
                 yield component
 
     @property
     def subscriptions(self):
         return reduce(
             lambda a, b: a.union(b),
-            (component._subscriptions for component in list(self.components.values())),
+            (component.get_subscriptions() for component in list(self.components.values())),
             set(),
         )

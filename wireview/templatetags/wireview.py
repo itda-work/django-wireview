@@ -128,7 +128,7 @@ def _mount_in_template(component: Component, repo: ComponentRepository) -> bool:
         # Answered without the bridge, because it needs no awaiting.
         repo.abandon(component)
         return False
-    if not type(component)._on_mount and repo.live_session is None:
+    if not component._meta.on_mount and repo.live_session is None:
         return True
     wire = component.wire
     if wire.has_mounted or wire.has_joined:
@@ -349,7 +349,7 @@ def _validate_required_slots(component_name: str, slots: SlotContainer) -> None:
         return
 
     component_cls = Component._all[component_name]
-    slot_defs = getattr(component_cls, "_slots", {})
+    slot_defs = component_cls._meta.slots
 
     for slot_name, slot_config in slot_defs.items():
         if slot_config.get("required") and not slots.has(slot_name):

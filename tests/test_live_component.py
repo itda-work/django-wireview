@@ -11,7 +11,8 @@ from wireview.testing import MockWireviewMeta, mount
 class MockCounter(LiveComponent):
     """Simple counter LiveComponent."""
 
-    _template_name = "livecomp/counter.html"
+    class Meta:
+        template_name = "livecomp/counter.html"
 
     count: int = 0
     label: str = "Count"
@@ -96,7 +97,8 @@ class TestLiveComponentMarker:
         from wireview import Component
 
         class RegularComponent(Component):
-            _template_name = "test.html"
+            class Meta:
+                template_name = "test.html"
 
         wire = MockWireviewMeta()
         component = RegularComponent(id="regular-1", user=AnonymousUser(), wire=wire)
@@ -199,8 +201,8 @@ class TestLiveComponentInheritance:
 
     def test_child_inherits_template(self):
         """Test child LiveComponent inherits template."""
-        # ChildCounter doesn't set _template_name, so inherits from Counter
-        assert MockChildCounter._template_name == "livecomp/counter.html"
+        # ChildCounter has no Meta of its own, so it inherits Counter's template
+        assert MockChildCounter._meta.template_name == "livecomp/counter.html"
 
     def test_child_registered_separately(self):
         """Test child LiveComponent has its own registration."""
@@ -458,7 +460,9 @@ class TestFlushPendingLiveComponents:
         joined_calls = []
 
         class TrackedCounter(LiveComponent):
-            _template_name = "livecomp/counter.html"
+            class Meta:
+                template_name = "livecomp/counter.html"
+
             count: int = 0
 
             async def joined(self):
@@ -548,7 +552,9 @@ class TestFlushPendingLiveComponents:
         update_calls = []
 
         class TrackedCounter(LiveComponent):
-            _template_name = "livecomp/counter.html"
+            class Meta:
+                template_name = "livecomp/counter.html"
+
             count: int = 0
             label: str = "Count"
 

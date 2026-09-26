@@ -95,7 +95,8 @@ from .models import Room, Message
 class XMessageList(Component):
     """메시지 리스트 컴포넌트 - Streams API 사용"""
 
-    _template_name = 'chat/message_list.html'
+    class Meta:
+        template_name = 'chat/message_list.html'
 
     room_id: int
     messages: list = []  # 초기 렌더링용
@@ -192,7 +193,8 @@ from .models import Room, Message
 class XChatRoom(PresenceMixin, Component):
     """채팅방 메인 컴포넌트"""
 
-    _template_name = 'chat/room_component.html'
+    class Meta:
+        template_name = 'chat/room_component.html'
 
     room_id: int
     room_name: str
@@ -244,7 +246,8 @@ from wireview import PresenceTrackerMixin
 class XOnlineUsers(PresenceTrackerMixin, Component):
     """온라인 사용자 목록 컴포넌트"""
 
-    _template_name = 'chat/online_users.html'
+    class Meta:
+        template_name = 'chat/online_users.html'
 
     room_id: int
     username: str  # 현재 사용자 (자기 자신 식별용)
@@ -255,8 +258,7 @@ class XOnlineUsers(PresenceTrackerMixin, Component):
     def _presence_my_user_id(self) -> str:
         return self.username
 
-    @property
-    def _subscriptions(self):
+    def get_subscriptions(self) -> set[str]:
         # Presence 채널 구독
         return {self._presence_channel()}
 
@@ -318,7 +320,8 @@ from .models import Room, Message
 class XChatRoom(PresenceMixin, Component):
     """채팅방 메인 컴포넌트"""
 
-    _template_name = 'chat/room_component.html'
+    class Meta:
+        template_name = 'chat/room_component.html'
 
     room_id: int
     room_name: str
@@ -372,7 +375,8 @@ class XChatRoom(PresenceMixin, Component):
 class XOnlineUsers(PresenceTrackerMixin, Component):
     """온라인 사용자 목록"""
 
-    _template_name = 'chat/online_users.html'
+    class Meta:
+        template_name = 'chat/online_users.html'
 
     room_id: int
     username: str
@@ -383,8 +387,7 @@ class XOnlineUsers(PresenceTrackerMixin, Component):
     def _presence_my_user_id(self) -> str:
         return self.username
 
-    @property
-    def _subscriptions(self):
+    def get_subscriptions(self) -> set[str]:
         return {self._presence_channel()}
 
     async def joined(self):
@@ -562,8 +565,7 @@ class XChatRoom(PresenceMixin, Component):
 
     _subscriptions_base = {"chat-message"}
 
-    @property
-    def _subscriptions(self):
+    def get_subscriptions(self) -> set[str]:
         return self._subscriptions_base | {f"chat-message.room.{self.room_id}"}
 
     async def mutation(self, channel: str, action, instance):

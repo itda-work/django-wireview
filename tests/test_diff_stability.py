@@ -37,7 +37,8 @@ STATE_ATTR = re.compile(r'data-state="([^"]*)"')
 
 
 class DiffProbe(Component):
-    _template_name = "diff_probe.html"
+    class Meta:
+        template_name = "diff_probe.html"
 
     title: str = "Probe"
     count: int = 0
@@ -134,7 +135,7 @@ async def test_signed_state_round_trips_and_rejects_legacy_format_by_default():
     assert state["count"] == 3 and state["id"] == component.id
     assert "wire" not in state and "user" not in state
 
-    legacy = Signer().sign(component.model_dump_json(exclude=component._exclude_fields))
+    legacy = Signer().sign(component.model_dump_json(exclude=set(component._meta.exclude_fields)))
     with pytest.raises(LegacyState):
         unsign_state(legacy, "DiffProbe")
 
@@ -155,7 +156,7 @@ async def test_signed_state_is_deterministic_and_compact_for_lists():
     component = view.component
 
     assert sign_state(component) == sign_state(component)
-    legacy = Signer().sign(component.model_dump_json(exclude=component._exclude_fields))
+    legacy = Signer().sign(component.model_dump_json(exclude=set(component._meta.exclude_fields)))
     assert len(sign_state(component)) < len(legacy) / 3
 
 
@@ -172,7 +173,8 @@ _loop_template: Template | None = None
 
 
 class LoopProbe(Component):
-    _template_name = "loop_probe.html"
+    class Meta:
+        template_name = "loop_probe.html"
 
     title: str = "Loop"
     note: str = ""
@@ -324,7 +326,8 @@ _list_template: Template | None = None
 
 
 class ListDiffProbe(Component):
-    _template_name = "list_diff_probe.html"
+    class Meta:
+        template_name = "list_diff_probe.html"
 
     names: list[str] = [f"n{i}" for i in range(20)]
 

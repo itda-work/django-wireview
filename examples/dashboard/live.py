@@ -27,7 +27,8 @@ class XDashboard(Component):
     - Conditional rendering based on active tab
     """
 
-    _template_name = "dashboard/dashboard.html"
+    class Meta:
+        template_name = "dashboard/dashboard.html"
 
     active_tab: str = "overview"
     date_range: str = "7d"
@@ -68,8 +69,9 @@ class XStatCard(Component):
     - Manual refresh capability
     """
 
-    _template_name = "dashboard/stat_card.html"
-    _subscriptions = {"dashboard.stat"}
+    class Meta:
+        template_name = "dashboard/stat_card.html"
+        subscriptions = {"dashboard.stat"}
 
     # Name of the stat to load
     stat_name: str
@@ -131,8 +133,9 @@ class XActivityFeed(Component):
     - Model subscriptions for real-time updates
     """
 
-    _template_name = "dashboard/activity_feed.html"
-    _subscriptions = {"dashboard.activity"}
+    class Meta:
+        template_name = "dashboard/activity_feed.html"
+        subscriptions = {"dashboard.activity"}
 
     activities: list[Activity] = []
     is_loading: bool = False

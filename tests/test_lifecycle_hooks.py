@@ -89,8 +89,10 @@ class SeenHook:
 
 
 class LhOrdered(Component):
-    _template_name = "lh/plain.html"
-    _on_mount = [HookOne, HookTwo]
+    class Meta:
+        template_name = "lh/plain.html"
+        on_mount = [HookOne, HookTwo]
+
     label: str = "ordered"
 
     async def joined(self):
@@ -98,8 +100,10 @@ class LhOrdered(Component):
 
 
 class LhHalted(Component):
-    _template_name = "lh/plain.html"
-    _on_mount = [HaltHook, HookTwo]
+    class Meta:
+        template_name = "lh/plain.html"
+        on_mount = [HaltHook, HookTwo]
+
     label: str = "halted"
 
     async def joined(self):
@@ -107,8 +111,10 @@ class LhHalted(Component):
 
 
 class LhRedirect(Component):
-    _template_name = "lh/plain.html"
-    _on_mount = [RedirectHook]
+    class Meta:
+        template_name = "lh/plain.html"
+        on_mount = [RedirectHook]
+
     label: str = "redirect"
 
     async def joined(self):
@@ -116,36 +122,45 @@ class LhRedirect(Component):
 
 
 class LhSeen(Component):
-    _template_name = "lh/plain.html"
-    _on_mount = [SeenHook]
+    class Meta:
+        template_name = "lh/plain.html"
+        on_mount = [SeenHook]
+
     label: str = "seen"
 
 
 class LhPage(Component):
-    _template_name = "lh/page.html"
-    _on_mount = [HookOne]
+    class Meta:
+        template_name = "lh/page.html"
+        on_mount = [HookOne]
 
 
 class LhTwice(Component):
-    _template_name = "lh/twice.html"
+    class Meta:
+        template_name = "lh/twice.html"
 
 
 class LhNested(Component):
-    _template_name = "lh/nested.html"
-    _on_mount = [HookTwo]
+    class Meta:
+        template_name = "lh/nested.html"
+        on_mount = [HookTwo]
 
 
 class LhParent(Component):
-    _template_name = "lh/parent.html"
+    class Meta:
+        template_name = "lh/parent.html"
 
 
 class LhHaltParent(Component):
-    _template_name = "lh/halt_parent.html"
+    class Meta:
+        template_name = "lh/halt_parent.html"
 
 
 class LhChild(LiveComponent):
-    _template_name = "lh/child.html"
-    _on_mount = [HookOne]
+    class Meta:
+        template_name = "lh/child.html"
+        on_mount = [HookOne]
+
     loaded: str = ""
 
     async def joined(self):
@@ -154,8 +169,10 @@ class LhChild(LiveComponent):
 
 
 class LhHaltChild(LiveComponent):
-    _template_name = "lh/child.html"
-    _on_mount = [HaltHook, HookTwo]
+    class Meta:
+        template_name = "lh/child.html"
+        on_mount = [HaltHook, HookTwo]
+
     loaded: str = ""
 
     async def joined(self):
@@ -301,8 +318,9 @@ class TestMountHelper:
                 raise RuntimeError("hook blew up")
 
         class LhBoom(Component):
-            _template_name = "lh/plain.html"
-            _on_mount = [Boom]
+            class Meta:
+                template_name = "lh/plain.html"
+                on_mount = [Boom]
 
         with pytest.raises(RuntimeError, match="hook blew up"):
             await mount(LhBoom, id="m6")
@@ -527,11 +545,16 @@ async def test_connect_hands_the_scope_session_to_the_repository():
 # --- wireview.W007 ----------------------------------------------------------------------------
 
 
-def make_component(class_name: str, **namespace) -> type[Component]:
+def make_component(class_name: str, meta: dict | None = None, **namespace) -> type[Component]:
+    meta = meta or {}
     return type(
         class_name,
         (Component,),
-        {"__module__": "probeapp.live", "_template_name": "lh/plain.html", **namespace},
+        {
+            "__module__": "probeapp.live",
+            "Meta": type("Meta", (), {"template_name": "lh/plain.html", **meta}),
+            **namespace,
+        },
     )
 
 
@@ -549,7 +572,7 @@ class TestOnMountCheck:
     """W007: an ``_on_mount`` entry wireview cannot call is skipped in silence."""
 
     def test_a_valid_hook_is_silent(self, only):
-        only(make_component("ProbeHookOk", _on_mount=[HookOne]))
+        only(make_component("ProbeHookOk", meta={"on_mount": [HookOne]}))
 
         assert check_on_mount_hooks(None) == []
 
@@ -562,7 +585,7 @@ class TestOnMountCheck:
         class NotAHook:
             pass
 
-        only(make_component("ProbeHookMissing", _on_mount=[NotAHook]))
+        only(make_component("ProbeHookMissing", meta={"on_mount": [NotAHook]}))
 
         messages = check_on_mount_hooks(None)
         assert [m.id for m in messages] == ["wireview.W007"]
@@ -574,7 +597,7 @@ class TestOnMountCheck:
             def on_mount(component, params, session):
                 return {"cont": True}
 
-        only(make_component("ProbeHookSync", _on_mount=[SyncHook]))
+        only(make_component("ProbeHookSync", meta={"on_mount": [SyncHook]}))
 
         messages = check_on_mount_hooks(None)
         assert [m.id for m in messages] == ["wireview.W007"]

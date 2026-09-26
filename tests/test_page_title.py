@@ -9,7 +9,8 @@ from wireview.testing import mount
 class TitleComponent(Component):
     """Test component for page title."""
 
-    _template_name = "simple.html"
+    class Meta:
+        template_name = "simple.html"
 
     page: int = 1
     product_name: str = "Widget"

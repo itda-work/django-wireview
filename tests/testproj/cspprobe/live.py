@@ -11,7 +11,8 @@ from wireview import JS, Component
 
 
 class CspProbe(Component):
-    _template_name = "cspprobe/probe.html"
+    class Meta:
+        template_name = "cspprobe/probe.html"
 
     count: int = 0
     first: str = ""

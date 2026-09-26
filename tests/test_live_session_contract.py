@@ -139,8 +139,10 @@ def hook(label: str, *, outcome: str = "cont"):
     return Hook
 
 
-def _component(name: str, base: type, **namespace: t.Any) -> type:
+def _component(name: str, base: type, meta: dict[str, t.Any] | None = None, **namespace: t.Any) -> type:
     """Declare a component class under a name unique to this module.
+
+    ``meta`` becomes the class's ``Meta``, on top of the default template.
 
     ``note`` is annotated rather than assigned: Pydantic wants a type for every
     field, and building these classes with ``type()`` skips the annotation a
@@ -153,7 +155,12 @@ def _component(name: str, base: type, **namespace: t.Any) -> type:
     return type(
         name,
         (base,),
-        {"__module__": "cxprobe.live", "_template_name": "cx/leaf.html", "note": "ok", **namespace},
+        {
+            "__module__": "cxprobe.live",
+            "Meta": type("Meta", (), {"template_name": "cx/leaf.html", **(meta or {})}),
+            "note": "ok",
+            **namespace,
+        },
     )
 
 
@@ -199,7 +206,7 @@ def _parent(name: str, template: str) -> type:
     class colliding with itself.
     """
     if name not in _PARENTS:
-        _PARENTS[name] = _component(name, Component, _template_name=template)
+        _PARENTS[name] = _component(name, Component, meta={"template_name": template})
     return _PARENTS[name]
 
 
@@ -232,10 +239,10 @@ def _pair(suffix: str, **namespace: t.Any) -> tuple[type, type]:
     )
 
 
-CxOk, CxLiveOk = _pair("Ok", _on_mount=[hook("component")])
-CxElsewhere, CxLiveElsewhere = _pair("Elsewhere", _live_sessions={ELSEWHERE})
-CxHalts, CxLiveHalts = _pair("Halts", _on_mount=[hook("component", outcome="halt")])
-CxCrashes, CxLiveCrashes = _pair("Crashes", _on_mount=[hook("component", outcome="raise")])
+CxOk, CxLiveOk = _pair("Ok", meta={"on_mount": [hook("component")]})
+CxElsewhere, CxLiveElsewhere = _pair("Elsewhere", meta={"live_sessions": {ELSEWHERE}})
+CxHalts, CxLiveHalts = _pair("Halts", meta={"on_mount": [hook("component", outcome="halt")]})
+CxCrashes, CxLiveCrashes = _pair("Crashes", meta={"on_mount": [hook("component", outcome="raise")]})
 
 
 @dataclass(frozen=True)
@@ -1380,7 +1387,7 @@ class TestARejoinCanTakeAdmissionAway:
                 CALLS.append((component.id, "gate"))
                 return next(verdicts)
 
-        cls = _component("CxTurnsAway", Component, _on_mount=[OnceThenNo], bump=_bump, joined=_joined)
+        cls = _component("CxTurnsAway", Component, meta={"on_mount": [OnceThenNo]}, bump=_bump, joined=_joined)
         token = signed(cls, page=boundary, id="target")
         consumer, outbound = make_consumer(boundary=boundary)
 
@@ -1594,7 +1601,7 @@ class TestAPageAgreesWithItself:
 # --- a child that appears later, and a child inside a slot ---------------------------------------
 
 
-CxSlotHost = _component("CxSlotHost", Component, _template_name="cx/slothost.html")
+CxSlotHost = _component("CxSlotHost", Component, meta={"template_name": "cx/slothost.html"})
 
 
 @pytest.mark.asyncio
@@ -1610,7 +1617,7 @@ class TestAChildThatAppearsAfterTheJoin:
         parent_class = _component(
             f"CxReveal{cls.__name__}{trigger}",
             Component,
-            _template_name="cx/later.html",
+            meta={"template_name": "cx/later.html"},
             show=False,
             reveal=_reveal,
             params_changed=_reveal_on_params,
@@ -1658,7 +1665,7 @@ class TestAChildInsideASlot:
     """
 
     async def _render_slotted(self, boundary, cls):
-        parent_class = _component(f"CxSlotParentOf{cls.__name__}", Component, _template_name="cx/slotted.html")
+        parent_class = _component(f"CxSlotParentOf{cls.__name__}", Component, meta={"template_name": "cx/slotted.html"})
         consumer, outbound = make_consumer(boundary=boundary)
         with _template_naming("cx/slotted.html", cls):
             parent = await consumer.repo.join(parent_class.__name__, {"id": "parent"})

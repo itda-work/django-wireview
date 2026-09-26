@@ -19,7 +19,8 @@ from wireview import Component, AsyncResult
 
 
 class Dashboard(Component):
-    _template_name = "dashboard.html"
+    class Meta:
+        template_name = "dashboard.html"
 
     stats: AsyncResult[dict] | None = None
 
@@ -87,7 +88,8 @@ result.get_or_raise()        # 결과 또는 예외 발생
 
 ```python
 class Search(Component):
-    _template_name = "search.html"
+    class Meta:
+        template_name = "search.html"
 
     query: str = ""
     results: list[dict] = []
@@ -179,7 +181,8 @@ async def search(self, query: str):
 
 ```python
 class Typeahead(Component):
-    _template_name = "typeahead.html"
+    class Meta:
+        template_name = "typeahead.html"
 
     query: str = ""
     suggestions: list[str] = []
@@ -212,7 +215,8 @@ class Typeahead(Component):
 
 ```python
 class Dashboard(Component):
-    _template_name = "dashboard.html"
+    class Meta:
+        template_name = "dashboard.html"
 
     users: AsyncResult[list] | None = None
     orders: AsyncResult[list] | None = None
@@ -238,7 +242,8 @@ class Dashboard(Component):
 
 ```python
 class FileProcessor(Component):
-    _template_name = "processor.html"
+    class Meta:
+        template_name = "processor.html"
 
     progress: int = 0
     processing: bool = False

@@ -24,11 +24,13 @@ WebSocket 연결이 유지되는 동안(사용자가 페이지에 머무르는 �
 
 ### 해결: temporary_assigns
 
-`_temporary_assigns`를 사용하면 **렌더링이 완료된 직후** 지정된 필드가 기본값으로 자동 초기화됩니다:
+`Meta.temporary_assigns`를 사용하면 **렌더링이 완료된 직후** 지정된 필드가 기본값으로 자동 초기화됩니다:
 
 ```python
 class MessageList(Component):
-    _temporary_assigns = {"messages"}  # 이 필드는 렌더 후 초기화됨
+    class Meta:
+        temporary_assigns = {"messages"}  # 이 필드는 렌더 후 초기화됨
+
     messages: list[Message] = []
 
     async def joined(self):
@@ -44,7 +46,7 @@ class MessageList(Component):
 
 ### 초기화 시점
 
-`_temporary_assigns`에 지정된 필드는 **매 렌더링 직후** 초기화됩니다:
+`Meta.temporary_assigns`에 지정된 필드는 **매 렌더링 직후** 초기화됩니다:
 
 ```
 이벤트 발생 (예: joined, 버튼 클릭)
@@ -55,7 +57,7 @@ class MessageList(Component):
     ↓
 HTML diff 계산 및 클라이언트 전송
     ↓
-★ _temporary_assigns 필드 초기화 ★  ← 이 시점
+★ Meta.temporary_assigns 필드 초기화 ★  ← 이 시점
     ↓
 다음 이벤트 대기
 ```
@@ -79,7 +81,7 @@ HTML diff 계산 및 클라이언트 전송
 ```python
 # wireview/core/component.py
 def _clear_temporary_assigns(self) -> None:
-    for field_name in self._temporary_assigns:
+    for field_name in self._meta.temporary_assigns:
         field_info = self.model_fields[field_name]
 
         if field_info.default is not None:
@@ -104,8 +106,9 @@ def _clear_temporary_assigns(self) -> None:
 from wireview import Component
 
 class ProductList(Component):
-    _template_name = "products/list.html"
-    _temporary_assigns = {"products"}  # set으로 필드명 지정
+    class Meta:
+        template_name = "products/list.html"
+        temporary_assigns = {"products"}  # set으로 필드명 지정
 
     products: list[Product] = []
     total_count: int = 0
@@ -125,7 +128,8 @@ class ProductList(Component):
 
 ```python
 class Dashboard(Component):
-    _temporary_assigns = {"orders", "analytics", "logs"}
+    class Meta:
+        temporary_assigns = {"orders", "analytics", "logs"}
 
     orders: list[Order] = []
     analytics: dict = {}
@@ -139,7 +143,9 @@ class Dashboard(Component):
 
 ```python
 class MessageList(Component):
-    _temporary_assigns = {"messages"}
+    class Meta:
+        temporary_assigns = {"messages"}
+
     messages: list[Message] = []
     page: int = 1
 
@@ -161,23 +167,27 @@ class MessageList(Component):
 
 ### 1. 기본값 필수
 
-`_temporary_assigns`에 지정된 필드는 반드시 기본값이 있어야 합니다:
+`Meta.temporary_assigns`에 지정된 필드는 반드시 기본값이 있어야 합니다:
 
 ```python
 # ✅ 올바른 사용
 class Good(Component):
-    _temporary_assigns = {"items"}
+    class Meta:
+        temporary_assigns = {"items"}
+
     items: list[str] = []  # 기본값 있음
 
 # ❌ 작동하지 않음
 class Bad(Component):
-    _temporary_assigns = {"items"}
+    class Meta:
+        temporary_assigns = {"items"}
+
     items: list[str]  # 기본값 없음 - 초기화되지 않음
 ```
 
 ### 2. 렌더링마다 초기화됨
 
-`skip_render()`를 호출해도 `_temporary_assigns`는 초기화됩니다:
+`skip_render()`를 호출해도 `Meta.temporary_assigns`는 초기화됩니다:
 
 ```python
 async def some_handler(self):
@@ -203,16 +213,20 @@ async def some_handler(self):
 
 ```python
 class Parent(Component):
-    _temporary_assigns = {"items"}
+    class Meta:
+        temporary_assigns = {"items"}
+
     items: list = []
 
 class Child(Parent):
-    # Parent의 _temporary_assigns 상속됨
+    # Parent의 Meta.temporary_assigns 상속됨 (Meta는 키 단위로 상속된다)
     # items는 여전히 초기화됨
     pass
 
 class ChildOverride(Parent):
-    _temporary_assigns = {"items", "extra"}  # 재정의
+    class Meta:
+        temporary_assigns = {"items", "extra"}  # 재정의
+
     extra: list = []
 ```
 
@@ -224,8 +238,9 @@ class ChildOverride(Parent):
 
 ```python
 class BoardList(Component):
-    _template_name = "board/list.html"
-    _temporary_assigns = {"posts"}
+    class Meta:
+        template_name = "board/list.html"
+        temporary_assigns = {"posts"}
 
     posts: list[Post] = []
     page: int = 1
@@ -250,8 +265,9 @@ class BoardList(Component):
 
 ```python
 class AnalyticsDashboard(Component):
-    _template_name = "dashboard/analytics.html"
-    _temporary_assigns = {"chart_data", "recent_events"}
+    class Meta:
+        template_name = "dashboard/analytics.html"
+        temporary_assigns = {"chart_data", "recent_events"}
 
     chart_data: list[dict] = []
     recent_events: list[Event] = []

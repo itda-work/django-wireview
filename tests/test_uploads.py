@@ -680,7 +680,8 @@ class TestConsumedUpload:
 class UploadComponent(Component):
     """Test component with upload functionality."""
 
-    _template_name = "uploads/uploader.html"
+    class Meta:
+        template_name = "uploads/uploader.html"
 
     async def joined(self):
         """Configure uploads on join."""
@@ -706,7 +707,8 @@ class UploadComponent(Component):
 class UploadComponentNoJoined(Component):
     """Test component without auto-upload in joined."""
 
-    _template_name = "uploads/uploader.html"
+    class Meta:
+        template_name = "uploads/uploader.html"
 
 
 class TestComponentUploadMethods:

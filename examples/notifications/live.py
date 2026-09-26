@@ -25,8 +25,9 @@ class XNotificationBell(Component):
     - Dynamic badge updates
     """
 
-    _template_name = "notifications/notification_bell.html"
-    _subscriptions = {"notifications.notification", "notifications-refresh"}
+    class Meta:
+        template_name = "notifications/notification_bell.html"
+        subscriptions = {"notifications.notification", "notifications-refresh"}
 
     is_open: bool = False
 
@@ -81,8 +82,9 @@ class XNotificationList(Component):
     - Model subscriptions for real-time updates
     """
 
-    _template_name = "notifications/notification_list.html"
-    _subscriptions = {"notifications.notification"}
+    class Meta:
+        template_name = "notifications/notification_list.html"
+        subscriptions = {"notifications.notification"}
 
     async def joined(self):
         """Load initial notifications using Streams."""
@@ -168,7 +170,8 @@ class XNotificationCreator(Component):
     - push_js() for form reset
     """
 
-    _template_name = "notifications/notification_creator.html"
+    class Meta:
+        template_name = "notifications/notification_creator.html"
 
     title: str = ""
     message: str = ""

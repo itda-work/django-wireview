@@ -52,7 +52,8 @@ from .models import Book
 class XLiveSearch(Component):
     """실시간 검색 컴포넌트"""
 
-    _template_name = "search/live_search.html"
+    class Meta:
+        template_name = "search/live_search.html"
 
     query: str = ""
     results: list[Book] = []

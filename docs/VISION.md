@@ -52,8 +52,9 @@ class Counter(Component):
         self.count += 1  # 의도가 명확함
 
 # 2. Django 관례 존중
-_template_name = "components/counter.html"  # Django 템플릿 시스템 사용
-_subscriptions = {"myapp.item"}  # Django 앱 네이밍 컨벤션
+class Meta:
+    template_name = "components/counter.html"  # Django 템플릿 시스템 사용
+    subscriptions = {"myapp.item"}  # Django 앱 네이밍 컨벤션
 
 # 3. 타입 안전성
 count: int = 0  # Pydantic 검증

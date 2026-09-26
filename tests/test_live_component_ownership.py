@@ -22,7 +22,9 @@ CALLS: list[tuple[str, str, t.Any]] = []
 
 
 class OwnedCounter(LiveComponent):
-    _template_name = "livecomp/counter.html"
+    class Meta:
+        template_name = "livecomp/counter.html"
+
     count: int = 0
     note: str = "default"
 
@@ -41,12 +43,15 @@ class OwnedCounter(LiveComponent):
 
 
 class OtherCounter(LiveComponent):
-    _template_name = "livecomp/counter.html"
+    class Meta:
+        template_name = "livecomp/counter.html"
+
     count: int = 0
 
 
 class OwnerDashboard(Component):
-    _template_name = "livecomp/dashboard.html"
+    class Meta:
+        template_name = "livecomp/dashboard.html"
 
 
 class FakeOutbound:

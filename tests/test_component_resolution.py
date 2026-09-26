@@ -18,21 +18,27 @@ from wireview.core.component import ComponentNotFound
 class PrivateCounter(Component, public=False):
     """Base test counter - not registered in registry."""
 
-    _template_name = "todo/counter.html"
+    class Meta:
+        template_name = "todo/counter.html"
+
     count: int = 0
 
 
 class ResolveTestComponent(Component):
     """Component for testing resolution."""
 
-    _template_name = "todo/counter.html"
+    class Meta:
+        template_name = "todo/counter.html"
+
     value: int = 0
 
 
 class AnotherTestComponent(Component, name="CustomName"):
     """Component with custom name for testing."""
 
-    _template_name = "todo/counter.html"
+    class Meta:
+        template_name = "todo/counter.html"
+
     data: str = ""
 
 
@@ -137,7 +143,8 @@ class TestNameCollisionWarning:
             warnings.simplefilter("always")
 
             class UniqueNameComponent(Component):
-                _template_name = "todo/counter.html"
+                class Meta:
+                    template_name = "todo/counter.html"
 
             # Should not have any warnings about conflicts
             conflict_warnings = [warning for warning in w if "conflicts" in str(warning.message)]
@@ -148,7 +155,9 @@ class TestNameCollisionWarning:
 
         # First, create a component
         class DuplicateTestComponent(Component):
-            _template_name = "todo/counter.html"
+            class Meta:
+                template_name = "todo/counter.html"
+
             original: bool = True
 
         # Now create another with the same name - should warn
@@ -156,7 +165,9 @@ class TestNameCollisionWarning:
             warnings.simplefilter("always")
 
             class DuplicateTestComponent(Component):  # noqa: F811
-                _template_name = "todo/counter.html"
+                class Meta:
+                    template_name = "todo/counter.html"
+
                 original: bool = False
 
             # Check for conflict warning

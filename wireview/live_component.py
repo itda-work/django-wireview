@@ -11,7 +11,8 @@ Quick Start
     from wireview import LiveComponent
 
     class Counter(LiveComponent):
-        _template_name = "counter.html"
+        class Meta:
+            template_name = "counter.html"
 
         count: int = 0
 
@@ -135,6 +136,9 @@ class LiveComponent(Component, public=False):
         public: bool = True,
     ) -> None:
         """Register LiveComponent in separate registries."""
+        from .core.component import _resolve_options, _validate_handlers
+
+        cls._meta = _resolve_options(cls)
         if public:
             name = name or cls.__name__
             fqn = f"{cls.__module__}.{name}"
@@ -151,21 +155,8 @@ class LiveComponent(Component, public=False):
             cls._name = name
             cls._fqn = fqn
 
-        # Skip Component's __init_subclass__ public registration
-        # but still do method validation
-        for attr_name in vars(cls):
-            attr = getattr(cls, attr_name)
-            if not attr_name.startswith("_") and attr_name.islower() and callable(attr):
-                from pydantic import validate_call
-
-                try:
-                    setattr(
-                        cls,
-                        attr_name,
-                        validate_call(config={"arbitrary_types_allowed": True})(attr),
-                    )
-                except (NameError, TypeError):
-                    pass
+        # Component's registration is skipped, its handler validation is not
+        _validate_handlers(cls)
 
     @classmethod
     def _resolve_live(cls, name: str) -> t.Type["LiveComponent"]:

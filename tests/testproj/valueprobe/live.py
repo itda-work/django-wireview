@@ -17,13 +17,15 @@ CHILD_COUNTER = {"n": 0}
 
 
 class ValueChild(LiveComponent):
-    _template_name = "valueprobe/child.html"
+    class Meta:
+        template_name = "valueprobe/child.html"
 
     label: str = ""
 
 
 class ValueProbe(Component):
-    _template_name = "valueprobe/probe.html"
+    class Meta:
+        template_name = "valueprobe/probe.html"
 
     pings: int = 0
     typed: str = ""

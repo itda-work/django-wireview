@@ -9,7 +9,8 @@ from wireview.testing import mount
 class FlashComponent(Component):
     """Test component for flash messages."""
 
-    _template_name = "simple.html"
+    class Meta:
+        template_name = "simple.html"
 
     async def save_success(self):
         """Simulate successful save."""

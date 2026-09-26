@@ -20,7 +20,9 @@ class MockChannelLayer:
 class HookTestComponent(Component):
     """Test component with hook event handling."""
 
-    _template_name = "test_hooks.html"
+    class Meta:
+        template_name = "test_hooks.html"
+
     count: int = 0
     last_hook_event: dict | None = None
 
@@ -56,7 +58,8 @@ class TestHandleHookEvent:
         """Base Component.handle_hook_event() returns None."""
 
         class BaseTestComponent(Component):
-            _template_name = "test.html"
+            class Meta:
+                template_name = "test.html"
 
         component = BaseTestComponent(
             user=AnonymousUser(),

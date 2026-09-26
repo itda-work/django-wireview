@@ -34,7 +34,8 @@ from wireview.management.commands.wireview_stubs import (
 class SimpleTestComponent(Component, public=False):
     """A simple test component."""
 
-    _template_name = "test/simple.html"
+    class Meta:
+        template_name = "test/simple.html"
 
     count: int = 0
     name: str = "default"
@@ -47,11 +48,12 @@ class SimpleTestComponent(Component, public=False):
 class ComponentWithSlots(Component, public=False):
     """Component with slot definitions."""
 
-    _template_name = "test/slots.html"
-    _slots = {
-        "header": {"required": True, "doc": "Header content"},
-        "footer": {"required": False},
-    }
+    class Meta:
+        template_name = "test/slots.html"
+        slots = {
+            "header": {"required": True, "doc": "Header content"},
+            "footer": {"required": False},
+        }
 
     title: str = ""
 
@@ -59,8 +61,9 @@ class ComponentWithSlots(Component, public=False):
 class ComponentWithSubscriptions(Component, public=False):
     """Component with subscriptions."""
 
-    _template_name = "test/subs.html"
-    _subscriptions = {"test.model", "other.model"}
+    class Meta:
+        template_name = "test/subs.html"
+        subscriptions = {"test.model", "other.model"}
 
 
 # =============================================================================
@@ -295,19 +298,19 @@ class TestExtractClassVars:
     def test_extract_template_name(self):
         """Test extracting template name."""
         class_vars = _extract_class_vars(SimpleTestComponent)
-        assert class_vars.get("_template_name") == "test/simple.html"
+        assert class_vars.get("template_name") == "test/simple.html"
 
     def test_extract_slots(self):
         """Test extracting slots."""
         class_vars = _extract_class_vars(ComponentWithSlots)
-        assert "_slots" in class_vars
-        assert "header" in class_vars["_slots"]
+        assert "slots" in class_vars
+        assert "header" in class_vars["slots"]
 
     def test_extract_subscriptions(self):
         """Test extracting subscriptions."""
         class_vars = _extract_class_vars(ComponentWithSubscriptions)
-        assert "_subscriptions" in class_vars
-        assert "test.model" in class_vars["_subscriptions"]
+        assert "subscriptions" in class_vars
+        assert "test.model" in class_vars["subscriptions"]
 
 
 @pytest.mark.unit
@@ -340,7 +343,7 @@ class TestGenerateClassStub:
                     return_type="None",
                 )
             ],
-            class_vars={"_template_name": "test.html"},
+            class_vars={"template_name": "test.html"},
             handlers=["increment"],
         )
 
@@ -421,7 +424,7 @@ class TestCollectImports:
                     docstring=None,
                     fields=[],
                     methods=[],
-                    class_vars={"_template_name": "test.html"},
+                    class_vars={"template_name": "test.html"},
                     handlers=[],
                 )
             ],
@@ -460,7 +463,7 @@ class TestGenerateStubContent:
                         )
                     ],
                     methods=[],
-                    class_vars={"_template_name": "test.html"},
+                    class_vars={"template_name": "test.html"},
                     handlers=[],
                 )
             ],

@@ -21,7 +21,8 @@ from wireview import Component, ExternalUploadMeta
 
 
 class FileUploader(Component):
-    _template_name = "uploads/file_uploader.html"
+    class Meta:
+        template_name = "uploads/file_uploader.html"
 
     files: list[dict] = []
 
@@ -85,7 +86,8 @@ from wireview import Component, ExternalUploadMeta
 
 
 class GCSUploader(Component):
-    _template_name = "uploads/gcs_uploader.html"
+    class Meta:
+        template_name = "uploads/gcs_uploader.html"
 
     async def joined(self):
         self.allow_upload(

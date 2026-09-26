@@ -102,7 +102,8 @@ from pydantic import field_validator
 
 
 class XRegistrationForm(Component):
-    _template_name = "registration/form.html"
+    class Meta:
+        template_name = "registration/form.html"
 
     email: str = ""
     password: str = ""
@@ -246,7 +247,8 @@ class ContactForm(forms.Form):
 
 
 class XContactPage(Component):
-    _template_name = "contact/page.html"
+    class Meta:
+        template_name = "contact/page.html"
 
     form_data: dict = {}
     errors: dict[str, list[str]] = {}

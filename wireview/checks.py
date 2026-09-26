@@ -288,7 +288,7 @@ def check_runserver_is_asgi(app_configs, **kwargs) -> list[CheckMessage]:
 
 
 def check_on_mount_hooks(app_configs, **kwargs) -> list[CheckMessage]:
-    """W007: an ``_on_mount`` entry wireview cannot call.
+    """W007: a ``Meta.on_mount`` entry wireview cannot call.
 
     The hooks are an authorization boundary (the documented first example is an
     authentication guard), and a hook wireview cannot call is skipped in silence,
@@ -296,7 +296,7 @@ def check_on_mount_hooks(app_configs, **kwargs) -> list[CheckMessage]:
     """
     messages = []
     for cls in iter_component_classes():
-        for hook_class in cls._on_mount:
+        for hook_class in cls._meta.on_mount:
             hook_name = getattr(hook_class, "__name__", repr(hook_class))
             on_mount = getattr(hook_class, "on_mount", None)
             if isinstance(on_mount, staticmethod):
@@ -304,7 +304,7 @@ def check_on_mount_hooks(app_configs, **kwargs) -> list[CheckMessage]:
             if on_mount is None or not callable(on_mount):
                 messages.append(
                     Warning(
-                        f"'{hook_name}' in {cls._fqn}._on_mount has no 'on_mount' method.",
+                        f"'{hook_name}' in {cls._fqn}.Meta.on_mount has no 'on_mount' method.",
                         hint=(
                             "wireview skips such an entry without a word, so a hook meant as a "
                             "guard lets the component mount. Define "
@@ -319,7 +319,7 @@ def check_on_mount_hooks(app_configs, **kwargs) -> list[CheckMessage]:
                 continue
             messages.append(
                 Warning(
-                    f"'{hook_name}.on_mount' in {cls._fqn}._on_mount is not async.",
+                    f"'{hook_name}.on_mount' in {cls._fqn}.Meta.on_mount is not async.",
                     hint=(
                         "wireview awaits every on_mount hook, so a sync one fails with "
                         "TypeError while the component is mounting. Declare it as "
@@ -333,7 +333,7 @@ def check_on_mount_hooks(app_configs, **kwargs) -> list[CheckMessage]:
 
 
 def check_live_sessions(app_configs, **kwargs) -> list[CheckMessage]:
-    """W010: a component's ``_live_sessions`` does not line up with what the project declares.
+    """W010: a component's ``Meta.live_sessions`` does not line up with what the project declares.
 
     Two mistakes, both silent, both only visible once somebody looks at two files
     at once.
@@ -375,12 +375,12 @@ def check_live_sessions(app_configs, **kwargs) -> list[CheckMessage]:
         )
 
     for cls in iter_component_classes():
-        for name in sorted(cls._live_sessions):
+        for name in sorted(cls._meta.live_sessions):
             if name in declared:
                 continue
             messages.append(
                 Warning(
-                    f"{cls._fqn}._live_sessions names '{name}', which no live_session declares.",
+                    f"{cls._fqn}.Meta.live_sessions names '{name}', which no live_session declares.",
                     hint=(
                         "A page carrying that name is refused at join and the browser reloads, "
                         f"which looks like a signing failure. Declared: {sorted(declared) or 'none'}. "
@@ -391,14 +391,14 @@ def check_live_sessions(app_configs, **kwargs) -> list[CheckMessage]:
                     id="wireview.W010",
                 )
             )
-        if declared and cls._on_mount and not cls._live_sessions:
+        if declared and cls._meta.on_mount and not cls._meta.live_sessions:
             messages.append(
                 Warning(
-                    f"{cls._fqn} guards itself with _on_mount but declares no _live_sessions.",
+                    f"{cls._fqn} guards itself with Meta.on_mount but declares no Meta.live_sessions.",
                     hint=(
                         "Its hooks run wherever it is mounted, including on a page outside "
                         "every boundary this project draws -- so a state signed on such a page "
-                        'mounts it there. Add _live_sessions = {"<name>"} to say where it '
+                        'mounts it there. Add live_sessions = {"<name>"} to its Meta to say where it '
                         "belongs, or leave it empty on purpose if it really is mountable anywhere. "
                         "This check sees classes, not the pages they sit on, so it cannot find a "
                         "component that relies only on its page's authorize."
@@ -420,7 +420,7 @@ def _check_request_context_processor() -> list[CheckMessage]:
     whole feature turns itself off without a word: the header publishes an empty
     name so the browser stops treating any navigation as a boundary crossing,
     every component signs a state that names no boundary, and a component that
-    declared ``_live_sessions`` disappears from the page it belongs on.
+    declared ``Meta.live_sessions`` disappears from the page it belongs on.
 
     The view decorator still refuses unauthorized requests, so this is not an
     open door -- it is the rest of the boundary quietly missing.
@@ -442,7 +442,7 @@ def _check_request_context_processor() -> list[CheckMessage]:
             hint=(
                 "The template tags read the page's boundary off the request, so without this "
                 "processor the header publishes an empty name, every state is signed with no "
-                "boundary, and a component that declared _live_sessions vanishes from the page "
+                "boundary, and a component that declared Meta.live_sessions vanishes from the page "
                 "it belongs on. Nothing raises. Add it to the engine's "
                 "OPTIONS['context_processors']."
             ),

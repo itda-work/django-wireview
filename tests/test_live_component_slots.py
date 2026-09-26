@@ -66,7 +66,9 @@ TEMPLATES = {
 
 
 class SlPage(Component):
-    _template_name = "sl/page.html"
+    class Meta:
+        template_name = "sl/page.html"
+
     title: str = "Page"
     heading: str = "Hello"
     body: str = "body text"
@@ -83,7 +85,9 @@ class SlPage(Component):
 
 
 class SlModal(LiveComponent):
-    _template_name = "sl/modal.html"
+    class Meta:
+        template_name = "sl/modal.html"
+
     open: bool = False
     clicks: int = 0
 
@@ -92,11 +96,14 @@ class SlModal(LiveComponent):
 
 
 class SlListPage(Component):
-    _template_name = "sl/listpage.html"
+    class Meta:
+        template_name = "sl/listpage.html"
 
 
 class SlList(LiveComponent):
-    _template_name = "sl/list.html"
+    class Meta:
+        template_name = "sl/list.html"
+
     items: list[str] = ["a", "b"]
 
     async def add(self):
@@ -104,13 +111,17 @@ class SlList(LiveComponent):
 
 
 class SlCardPage(Component):
-    _template_name = "sl/cardpage.html"
+    class Meta:
+        template_name = "sl/cardpage.html"
+
     heading: str = "Card head"
     body: str = "card body"
 
 
 class SlCard(Component):
-    _template_name = "sl/card.html"
+    class Meta:
+        template_name = "sl/card.html"
+
     clicks: int = 0
 
     async def click(self):
@@ -118,12 +129,14 @@ class SlCard(Component):
 
 
 class SlStrictPage(Component):
-    _template_name = "sl/strictpage.html"
+    class Meta:
+        template_name = "sl/strictpage.html"
 
 
 class SlStrict(LiveComponent):
-    _template_name = "sl/modal.html"
-    _slots = {"header": {"required": True, "doc": "the header"}}
+    class Meta:
+        template_name = "sl/modal.html"
+        slots = {"header": {"required": True, "doc": "the header"}}
 
 
 class FakeOutbound:

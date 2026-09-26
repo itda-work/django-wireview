@@ -36,7 +36,7 @@ from wireview import Component, LiveComponent, JS, mount
 | 설정 | `settings.WIREVIEW`의 키 (`wireview/settings.py`의 `DEFAULT`) |
 | 관리 명령 | `wireview_stubs`, `wireview_lsp`, `wireview_agent_setup`, `wireview_upload_gc` |
 | 시스템 체크 id | `wireview.W001`~ |
-| 컴포넌트 클래스 설정 | `class Meta:`의 키 (#99에서 정해진다) |
+| 컴포넌트 클래스 설정 | `class Meta:`의 키(`ComponentOptions`의 필드)와 `get_subscriptions()` |
 | 클라이언트 | `window.wireview`의 문서화된 멤버, `wire-*` DOM 속성, `wireview-*` CSS 클래스, `wireview:*` DOM 이벤트 |
 
 ### 와이어 프로토콜
