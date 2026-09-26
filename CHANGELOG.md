@@ -45,6 +45,14 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
 
 ### Fixed
 
+- A component's async tasks end when it leaves (#95). Nothing cancelled what `start_async`
+  and `assign_async` started, so after a closed tab, a `leave`, a replaced instance or a
+  handler that raised, the task ran to the end, kept the instance in memory and then asked
+  for a render nobody would receive. They are now cancelled after `leaving()`. A task
+  replaced under the same name no longer drops its replacement from the bookkeeping when
+  its cancellation finishes (the replacement could not be cancelled any more), a cancelled
+  task no longer triggers a render, and `assign_async` holds its task so it cannot be
+  garbage collected while it runs. `docs/features/async-operations.md`.
 - Server code that raises costs its component, not the connection (#94). A handler that
   raised used to escape the consumer and close the socket, so the page reconnected and
   joined every component again. Now the component that raised is discarded (`leaving()`

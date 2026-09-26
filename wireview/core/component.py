@@ -895,6 +895,9 @@ class Component(BaseModel):
 
     # Track active async tasks by name
     _async_tasks: dict[str, "asyncio.Task[t.Any]"] = {}
+    # assign_async tasks: held so a running one is not garbage collected, and
+    # cancelled with the named ones when the component leaves (#95)
+    _assign_tasks: set["asyncio.Task[t.Any]"] = set()
 
     async def start_async(
         self,
@@ -943,23 +946,30 @@ class Component(BaseModel):
 
         async def run_and_handle() -> None:
             try:
-                value = await coro
-                # Call handle_async with success result
-                await self.handle_async(name, ("ok", value))
-            except asyncio.CancelledError:
-                # Task was cancelled - don't call handle_async
-                pass
-            except Exception as e:
-                # Call handle_async with error result
-                await self.handle_async(name, ("exit", e))
-            finally:
-                # Remove from tracking
-                self._async_tasks.pop(name, None)
+                try:
+                    value = await coro
+                except asyncio.CancelledError:
+                    # Replaced, cancel_async(), or the component left: nothing
+                    # to hand over and nothing to render.
+                    return
+                except Exception as e:
+                    # Call handle_async with error result
+                    await self.handle_async(name, ("exit", e))
+                else:
+                    # Call handle_async with success result
+                    await self.handle_async(name, ("ok", value))
                 # Trigger re-render
                 await self.send_render()
+            finally:
+                # Only this task's entry: a task that replaced it under the same
+                # name must stay tracked, or nothing could cancel it (#95).
+                if self._async_tasks.get(name) is task:
+                    del self._async_tasks[name]
 
         # Create and track the task
         task = asyncio.create_task(run_and_handle())
+        # A task cancelled before its first step never awaits coro
+        task.add_done_callback(lambda _: coro.close())
         self._async_tasks[name] = task
 
     async def cancel_async(self, name: str) -> bool:
@@ -1056,19 +1066,38 @@ class Component(BaseModel):
                 value = await coro
                 result.state = AsyncResult.success(value).state
                 result.result = value
+            except asyncio.CancelledError:
+                # The component left (#95): nobody to render for
+                return
             except Exception as e:
                 result.state = AsyncResult.failure(e).state
                 result.error = e
                 if on_error:
                     on_error(e)
-            finally:
-                # Trigger re-render
-                await self.send_render()
+            # Trigger re-render
+            await self.send_render()
 
-        # Schedule the task to run
-        asyncio.create_task(run_and_update())
+        # Schedule the task to run, and hold it while it does
+        task = asyncio.create_task(run_and_update())
+        task.add_done_callback(lambda _: coro.close())
+        self._assign_tasks.add(task)
+        task.add_done_callback(self._assign_tasks.discard)
 
         return result
+
+    def _cancel_async_tasks(self) -> None:
+        """Cancel what ``start_async`` and ``assign_async`` left running.
+
+        The consumer calls it when the component leaves, after ``leaving()``
+        (#95). A task that outlived its component kept doing its work, held the
+        instance in memory, and at the end asked a session that no longer had
+        the component (or no longer existed) for a render.
+        """
+        for task in [*self._async_tasks.values(), *self._assign_tasks]:
+            if not task.done():
+                task.cancel()
+        self._async_tasks.clear()
+        self._assign_tasks.clear()
 
     def freeze(self) -> None:
         """Freeze the component to prevent further rendering."""

@@ -529,12 +529,15 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         await self.after_mutation_chores()
 
     async def _call_leaving(self, components: list[Component]) -> None:
-        """Run ``leaving()`` on each component, logging instead of propagating errors."""
+        """Run ``leaving()`` on each component and cancel its async tasks, logging instead of propagating errors."""
         for component in components:
             try:
                 await component.leaving()
             except Exception as e:
                 log.exception(f"Error in {component._name}.leaving(): {e}")
+            finally:
+                # After leaving(), which may still want them (#95)
+                component._cancel_async_tasks()
 
     async def command_params_changed(self, params: dict[str, str], uri: str):
         """Handle URL parameter changes from client.

@@ -270,6 +270,32 @@ class FileProcessor(Component):
                 self.result = result[1]
 ```
 
+## 작업의 수명
+
+작업은 그것을 시작한 **컴포넌트보다 오래 살지 않는다**(#95). 컴포넌트가 떠나면 `leaving()`이 끝난 뒤
+남은 `start_async`·`assign_async` 작업이 모두 취소된다. 컴포넌트가 떠나는 경우는 다음과 같다.
+
+- 탭이 닫히거나 연결이 끊긴다
+- 요소가 DOM에서 사라진다(`leave`). 부모가 더 이상 그리지 않는 LiveComponent도 여기에 든다
+- 내비게이션으로 같은 id의 새 인스턴스가 join한다
+- 핸들러가 예외를 던져 인스턴스가 버려진다([errors](./errors.md))
+
+취소된 작업에는 `handle_async`가 불리지 않고 렌더도 요청되지 않는다. `cancel_async()`로 직접
+취소할 때도 같다. 작업 안에서 정리가 필요하면 `asyncio.CancelledError`를 받아 처리하고 다시 던진다.
+
+```python
+async def export(self):
+    try:
+        await self._write_rows()
+    except asyncio.CancelledError:
+        await self._remove_partial_file()
+        raise
+```
+
+재연결하면 진행 중이던 작업은 이어지지 않는다. 다시 join한 인스턴스는 서명 상태에서 복원된 새
+인스턴스이고, 작업은 옛 인스턴스와 함께 취소됐다. 재연결 뒤에도 필요한 작업이면 `joined()`에서 다시
+시작한다.
+
 ## 오류 처리
 
 ### assign_async
@@ -304,3 +330,4 @@ async def handle_async(self, name, result):
 | 결과 처리 | `handle_async/3` | `handle_async()` |
 | 결과 래퍼 | `AsyncResult` 구조체 | `AsyncResult` dataclass |
 | 자동 취소 | 같은 이름이면 교체 | 같은 이름이면 교체 |
+| 떠날 때 | 프로세스와 함께 종료 | `leaving()` 뒤 취소 |

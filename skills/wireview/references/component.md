@@ -133,6 +133,7 @@ class Dashboard(Component):
 ```
 
 템플릿에서는 `{% if stats.loading %}` / `{{ stats.result }}` / `{{ stats.error_message }}`로 분기한다.
+태스크는 컴포넌트가 떠나면(탭 닫힘, 요소 제거, 재연결) 취소되고 이어지지 않는다. 재연결 뒤에도 필요하면 `joined()`에서 다시 시작한다.
 상세: https://github.com/itda-work/django-wireview/blob/main/docs/features/async-operations.md
 
 ## LiveComponent
