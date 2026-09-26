@@ -322,7 +322,7 @@ class XContactPage(Component):
 async def save(self, **data):
     if not self.errors:
         # 성공했으니 피드백 상태를 지운다
-        await self.wire.push_event("form:success", {})
+        await self.push_event("form:success", {})
 ```
 
 ```javascript

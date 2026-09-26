@@ -37,6 +37,7 @@ from wireview import Component, LiveComponent, JS, mount
 | 관리 명령 | `wireview_stubs`, `wireview_lsp`, `wireview_agent_setup`, `wireview_upload_gc` |
 | 시스템 체크 id | `wireview.W001`~ |
 | 컴포넌트 클래스 설정 | `class Meta:`의 키(`ComponentOptions`의 필드)와 `get_subscriptions()` |
+| `self.wire` | `params`, `redirect_to`, `replace_to`, `push_to`만. 나머지는 프레임워크 내부이고, 같은 일은 `Component`의 메서드(`put_flash`, `push_js`, `push_title`, `defer` 등)로 한다 |
 | 클라이언트 | `window.wireview`의 문서화된 멤버, `wire-*` DOM 속성, `wireview-*` CSS 클래스, `wireview:*` DOM 이벤트 |
 
 ### 와이어 프로토콜

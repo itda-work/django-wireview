@@ -46,6 +46,9 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
   `exclude_fields` adds to `user`, `wire` and `session` instead of replacing them.
   Subscriptions that depend on state come from overriding `get_subscriptions()`, which
   replaces `@property def _subscriptions`.
+- **Breaking:** `Component.deffer` is `defer` (#99). The public part of `self.wire` is
+  `params`, `redirect_to`, `replace_to` and `push_to`; the rest is plumbing, reached
+  through `Component`'s own methods (`docs/COMPATIBILITY.md`).
 - Event bindings no longer put script in the markup, so a Content Security Policy without
   `'unsafe-inline'` holds (#90). `{% on "keyup.enter" "save" %}` renders
   `wire-on-keyup.enter="{…json…}"` and the bundle delegates from `<html>`; the upload tags lose
@@ -75,6 +78,11 @@ bundle's cache key; a page that serves the bundle some other way has to drop its
 
 ### Fixed
 
+- Three documented examples did not run (#99): `self.wire.push_event` (form feedback) and
+  `component.wire.user` (external uploads) do not exist, and the LiveComponent tutorial
+  summed its children through `self.wire.repo`, which is not there either. The tutorial now
+  keeps what the children report, as `examples/livecomp` does. A test holds the
+  documentation to the public part of `self.wire`.
 - A client could call a class defined in a component's body (#99). The exposure rule
   took any callable the user's class defined, and a class is callable, so a `user_event`
   naming a nested class instantiated it. `class Meta:` made every component have one; a

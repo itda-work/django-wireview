@@ -163,15 +163,18 @@ class Dashboard(Component):
         template_name = "dashboard/dashboard.html"
 
     title: str = "My Dashboard"
-    total: int = 0
+    # 자식이 알려 준 값. 초기값은 템플릿이 넘긴 count와 같다
+    counts: dict[str, int] = {"counter-1": 100, "counter-2": 42, "counter-3": 1234}
+    total: int = 1376
 
     async def counter_changed(self, counter_id: str, count: int):
         """자식 Counter가 변경되면 호출됨."""
-        # 총합 재계산
-        self.total = sum(
-            c.count for c in self.wire.repo.get_live_components(self.id)
-        )
+        self.counts = {**self.counts, counter_id: count}
+        self.total = sum(self.counts.values())
 ```
+
+부모는 자식 인스턴스를 직접 읽지 않는다. 자식이 `send_to_parent`로 알려 준 값을 자기 상태로 들고 있는다.
+자식의 상태는 자식 것이고, 둘 사이의 약속은 메시지뿐이다(`examples/livecomp`가 같은 방식이다).
 
 ### 3.2 부모 → 자식 (send_update)
 
@@ -184,8 +187,8 @@ class Dashboard(Component):
 
     async def reset_all(self):
         """모든 카운터를 0으로 리셋."""
-        for counter in self.wire.repo.get_live_components(self.id):
-            await self.send_update(counter.id, count=0)
+        for counter_id in self.counts:
+            await self.send_update(counter_id, count=0)
 
     async def set_counter(self, counter_id: str, value: int):
         """특정 카운터 값 설정."""

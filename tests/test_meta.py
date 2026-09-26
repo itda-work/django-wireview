@@ -131,3 +131,26 @@ def test_get_subscriptions_can_depend_on_state():
             return {f"room.{self.room_id}"}
 
     assert _instance(Room, room_id=7).get_subscriptions() == {"room.7"}
+
+
+@pytest.mark.asyncio
+async def test_defer_queues_the_handler_on_the_connection():
+    """``defer`` (was ``deffer``, #99) sends the call through the connection."""
+    from wireview import mount
+
+    class Later(Component, public=False):
+        class Meta:
+            template_name = "todo/counter.html"
+
+        async def start(self, **_):
+            await self.defer(self.finish, 5)
+
+        async def finish(self, n: int = 0, **_):
+            pass
+
+    view = await mount(Later)
+    view.clear_messages()
+    await view.call("start")
+
+    deferred = [m for m in view.sent_messages if m.get("type") == "dispatch_event"]
+    assert [(m["command"], tuple(m["args"])) for m in deferred] == [("finish", (5,))]

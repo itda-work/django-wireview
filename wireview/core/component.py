@@ -909,14 +909,19 @@ class Component(BaseModel):
             js: JS command builder instance
 
         Example:
-            from wireview.js import JS
+            from wireview import JS
             await self.push_js(JS().set_value("input[name=search]", ""))
         """
         await self.wire.push_js(self.id, js)
 
-    async def deffer(self, _f: t.Callable[P, t.Coroutine], *args: P.args, **kwargs: P.kwargs) -> None:
-        """Defer a function call to be executed later."""
-        await self.wire.deffer(self.id, _f, *args, **kwargs)
+    async def defer(self, _f: t.Callable[P, t.Coroutine], *args: P.args, **kwargs: P.kwargs) -> None:
+        """Run one of this component's handlers after the current event is done.
+
+        The call goes through the connection like a client event, so ``_f``
+        has to be a handler the client could call too (#99 renamed it from
+        ``deffer``).
+        """
+        await self.wire.defer(self.id, _f, *args, **kwargs)
 
     # Broadcasting
 

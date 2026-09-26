@@ -98,6 +98,36 @@ def test_the_documentation_imports_only_public_names(path):
         assert not missing, f"{path.relative_to(ROOT)} imports {missing}, which wireview does not export"
 
 
+_FENCE = re.compile(r"```(?:python|py)\n(.*?)```", re.S)
+_WIRE = re.compile(r"\b(?:self|component)\.wire\.(\w+)")
+
+
+def _code(path: Path) -> str:
+    text = path.read_text()
+    return text if path.suffix == ".py" else "\n".join(_FENCE.findall(text))
+
+
+@pytest.mark.parametrize("path", USER_FACING, ids=lambda p: str(p.relative_to(ROOT)))
+def test_the_documentation_uses_only_the_public_part_of_wire(path):
+    """``self.wire`` is mostly plumbing (#99).
+
+    Three examples reached past the public part and did not run:
+    ``self.wire.push_event`` and ``component.wire.user`` do not exist, and
+    ``self.wire.repo`` is not an attribute of it at all.
+    """
+    from wireview.core.meta import PUBLIC_MEMBERS
+
+    used = set(_WIRE.findall(_code(path)))
+    assert used <= PUBLIC_MEMBERS, f"{path.relative_to(ROOT)} uses self.wire.{sorted(used - PUBLIC_MEMBERS)}"
+
+
+def test_the_public_part_of_wire_exists():
+    from wireview.core.meta import PUBLIC_MEMBERS, WireviewMeta
+
+    wire = WireviewMeta(params={})
+    assert all(hasattr(wire, name) for name in PUBLIC_MEMBERS)
+
+
 def test_the_library_does_not_import_its_deprecated_module():
     for path in (ROOT / "wireview").rglob("*.py"):
         if path.name == "component.py" and path.parent.name == "wireview":

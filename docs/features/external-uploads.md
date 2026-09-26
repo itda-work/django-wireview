@@ -238,7 +238,7 @@ external 업로드는 브라우저가 스토리지로 직접 요청하므로 버
 ```python
 def presign_upload(self, entry, component):
     # 로그인하지 않은 사용자의 업로드를 막는다
-    if not component.wire.user.is_authenticated:
+    if not component.user.is_authenticated:
         raise ValueError("Authentication required for uploads")
 
     # 요금제 한도를 넘는 파일을 막는다

@@ -77,6 +77,12 @@ class Repo(t.Protocol):
     vsn: int
 
 
+#: What a component's code may use on ``self.wire`` (docs/COMPATIBILITY.md, #99).
+#: The rest of this class is the framework's plumbing; a component reaches that
+#: behaviour through Component's own methods (put_flash, push_js, defer ...).
+PUBLIC_MEMBERS = frozenset({"params", "redirect_to", "replace_to", "push_to"})
+
+
 class WireviewMeta:
     """
     Manages component rendering state and server-client communication.
@@ -86,6 +92,8 @@ class WireviewMeta:
     - URL navigation (redirect, replace, push)
     - DOM actions and scroll positioning
     - WebSocket message sending
+
+    Only ``PUBLIC_MEMBERS`` are public API.
     """
 
     _last_sent_html: list[str]
@@ -498,7 +506,7 @@ class WireviewMeta:
         """Scroll an element into view."""
         await self.send("scroll_into_view", id=id, behavior=behavior, block=block, inline=inline)
 
-    async def deffer(self, _id: str, _f: t.Callable[P, t.Coroutine], *args: P.args, **kwargs: P.kwargs) -> None:
+    async def defer(self, _id: str, _f: t.Callable[P, t.Coroutine], *args: P.args, **kwargs: P.kwargs) -> None:
         """Defer a function call to be executed later."""
         await self.send("dispatch_event", command=_f.__name__, id=_id, args=args, kwargs=kwargs)
 

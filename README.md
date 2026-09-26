@@ -1001,7 +1001,7 @@ class Dashboard(Component):
 | `scroll_into_view(element_id, behavior="auto", block="start", inline="nearest")` | 요소를 뷰로 스크롤 |
 | `push_js(js)` | 클라이언트에서 JS 명령어 실행 |
 | `dom(action, id, component_or_template, **kwargs)` | DOM 조작 |
-| `deffer(func, *args, **kwargs)` | 함수 실행 지연 |
+| `defer(handler, *args, **kwargs)` | 지금 이벤트가 끝난 뒤 핸들러 실행 |
 | `push_event(event, payload, hook_id=None)` | Hook에 이벤트 전송 |
 
 ### 브로드캐스팅
