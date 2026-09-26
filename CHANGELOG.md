@@ -10,6 +10,8 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+**Upgrading from 0.4:** `docs/UPGRADING.md` walks through every breaking change below.
+
 **Upgrading.** `{% on %}` renders a `wire-on-<event>` data attribute instead of an inline
 `on<event>` handler, and only the new bundle understands it. `{% wireview_header %}` bumps the
 bundle's cache key; a page that serves the bundle some other way has to drop its cached copy.

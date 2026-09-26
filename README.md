@@ -1192,6 +1192,8 @@ WIREVIEW = {
 - [성능 가이드](docs/PERFORMANCE.md) - 성능 최적화 팁
 - [튜토리얼](docs/tutorials/) - 단계별 가이드
 - [로드맵](docs/ROADMAP.md) - 향후 개발 계획
+- [업그레이드 가이드](docs/UPGRADING.md) - 0.4에서 1.0으로
+- [호환성 정책](docs/COMPATIBILITY.md) - 공개 API, 폐기 절차, 지원 범위
 
 ## 개발 및 기여
 

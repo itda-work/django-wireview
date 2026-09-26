@@ -8,6 +8,9 @@ requires-python = ">=3.12"
 authors = [
     { name = "Eddy Ernesto del Valle Pino", email = "eddy@edelvalle.me" },
 ]
+maintainers = [
+    { name = "Chinseok Lee", email = "dev@itda.work" },
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Web Environment",

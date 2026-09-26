@@ -221,6 +221,7 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 - [docs/FEATURE-GAP.md](./docs/FEATURE-GAP.md) Phoenix LiveView 대비 갭과 GAP 번호
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) 아키텍처
 - [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) 배포
-- [docs/COMPATIBILITY.md](./docs/COMPATIBILITY.md) 공개 API와 폐기 절차
+- [docs/COMPATIBILITY.md](./docs/COMPATIBILITY.md) 공개 API, 폐기 절차, 지원 범위
+- [docs/UPGRADING.md](./docs/UPGRADING.md) 0.4에서 1.0으로
 - [docs/PERFORMANCE.md](./docs/PERFORMANCE.md) 성능
 - [CHANGELOG.md](./CHANGELOG.md) 변경 이력

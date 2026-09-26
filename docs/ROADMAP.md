@@ -297,8 +297,20 @@ def button(variant: str = "primary", **slots):
 | v0.1.1 | ✅ | 릴리스 워크플로에 wheel 빌드 |
 | v0.2.0 | ✅ | 부분 diff 정상화(GAP-024·025), transport seam(GAP-026), on_mount(GAP-021), NATS 채널 레이어 전환, bench 인프라와 Windows 실측 |
 | v0.3.0 | ✅ | live_session(GAP-009), Telemetry(GAP-022). GAP-012 는 설계상 제외로 정리 |
-| v1.0.0 | ⬜ | API 안정화 선언. 그 전까지 마이너 버전이 호환성을 깰 수 있다 |
+| v0.4.0 | ✅ | 이벤트 바인딩의 인라인 스크립트 제거(CSP, #90), 입력값 보존(#91·#92), 항목 재배열 diff(GAP-030) |
+| v0.5.0 | ⬜ | 1.0 전의 호환 파괴를 한 번에(#93): `class Meta:`, 공개 API 경계, 레거시 경로·`USE_HMIN` 제거, Django 5.2+. 핸들러 예외 복구(#94), Origin 검사(#96). [업그레이드 가이드](./UPGRADING.md) |
+| v1.0.0rc1 | ⬜ | 0.5.0에서 호환을 깨지 않는 수정만. RC 동안 새 `bug` 이슈가 잦아드는지 본다 |
+| v1.0.0 | ⬜ | API 안정화 선언. 이후 규칙은 [호환성 정책](./COMPATIBILITY.md) |
+
+### 릴리스 절차
+
+1. `CHANGELOG.md`의 Unreleased를 버전 절로 옮긴다.
+2. `pyproject.toml`과 `package.json`의 `version`을 함께 올린다(`tests/test_packaging.py`가 둘을 비교한다).
+   1.0.0에서는 classifier를 `Development Status :: 5 - Production/Stable`로 바꾼다.
+3. `make quality`, `make test`, `make test-e2e`, `make test-matrix`, `make ci-build`.
+4. 태그 `v<버전>`을 push한다. `.github/workflows/release.yml`이 태그와 `pyproject.toml`의 버전이 같은지 보고
+   PyPI에 올린다.
 
 ---
 
-*마지막 업데이트: 2026-09-10*
+*마지막 업데이트: 2026-09-26*
