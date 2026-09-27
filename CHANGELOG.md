@@ -10,6 +10,19 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Fixed
+
+- `JS().navigate(url, replace=True)` navigates. It only replaced the URL in the address bar;
+  it now loads the page in place of the current history entry (#110).
+- `wire-disabled-with` on a form's submit button works, as the documentation shows it. The
+  form carries the binding, so only the form was marked; a submit now also marks the form's
+  submit buttons that ask for it (#110).
+- A `JS()` chain that ends in `push` gets the loading classes and `wire-disabled-with`, like a
+  binding that names a handler. It sent the event with no feedback at all (#110).
+- `transition="fade-in 200ms"` raises `ValueError` instead of leaving a class named `200ms`
+  on the element and not waiting. The string is class names; the duration is the tuple's
+  second item. The notifications example and tutorial used the string form (#110).
+
 ## [0.5.0] - 2026-09-27
 
 The release that gathers every breaking change before 1.0 (#93): component configuration

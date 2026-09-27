@@ -261,6 +261,13 @@ class TestTransitionCommand:
     """Test transition command."""
 
     @pytest.mark.unit
+    @pytest.mark.parametrize("value", ["fade-in 200ms", "fade-out 1.5s", "pulse 300"])
+    def test_a_duration_inside_the_class_string_is_refused(self, value):
+        # The string is class names only; the duration would stay on the element as a class.
+        with pytest.raises(ValueError, match="duration separately"):
+            JS().show("#x", transition=value)
+
+    @pytest.mark.unit
     def test_transition_basic(self):
         """transition() should create transition command."""
         js = JS().transition("#card", "shake")

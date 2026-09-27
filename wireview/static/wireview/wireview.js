@@ -2521,6 +2521,39 @@ function isSubmitter(el) {
   return false;
 }
 
+/**
+ * Show that an event is on its way to the server, until its component answers
+ * (`clearLoadingClasses`): the loading classes, and `wire-disabled-with`.
+ *
+ * A submit is marked on its submit buttons too, since that is where
+ * `wire-disabled-with` goes in a form (docs/features/optimistic-ui.md). Every
+ * path that sends an event for an element calls this -- a binding with a
+ * handler and a JS() chain that pushes alike -- or the feedback depends on how
+ * the event was written.
+ * @param {HTMLElement} element - the element that carries the binding
+ * @param {string} [eventType]
+ */
+function markLoading(element, eventType) {
+  const marked = [element];
+  if (eventType === "submit" && element instanceof HTMLFormElement) {
+    for (const button of element.querySelectorAll("[wire-disabled-with]")) {
+      if (isSubmitter(button)) marked.push(/** @type {HTMLElement} */ (button));
+    }
+  }
+  for (const el of marked) {
+    el.classList.add("wireview-loading");
+    if (eventType) el.classList.add(`wireview-${eventType}-loading`);
+
+    const disabledWithText = el.getAttribute("wire-disabled-with");
+    if (disabledWithText !== null && el._wireOriginalText === undefined) {
+      el._wireOriginalText = el.textContent;
+      el._wireOriginalDisabled = /** @type {HTMLButtonElement} */ (el).disabled;
+      /** @type {HTMLButtonElement} */ (el).disabled = true;
+      el.textContent = disabledWithText;
+    }
+  }
+}
+
 // ============================================================================
 // Event bindings: delegated, no inline script (#90)
 // ============================================================================
@@ -2681,7 +2714,7 @@ const EventBindings = {
           // after Enter). Anything else leaves them to the user (#91, #92).
           const commit = isCommitAction(event.type, binding.steps, { submitter: isSubmitter(element) });
           if (value.js) {
-            window.wireview.exec(element, value.js, { commit });
+            window.wireview.exec(element, value.js, { commit, eventType: event.type });
           } else if (value.h !== undefined) {
             const args = { ...(value.a || {}) };
             if (value.t) args._target = value.t;
@@ -2905,7 +2938,8 @@ async function applyTransition(element, config) {
  * Executes a single JS command.
  * @param {JSCommand} cmd - Command to execute
  * @param {HTMLElement} element - Context element (event target)
- * @param {{commit?: boolean}} [options] - a `push` commits the fields it comes from (#92)
+ * @param {{commit?: boolean, eventType?: string}} [options] - a `push` commits the fields it comes
+ *   from (#92) and marks its element loading for `eventType`
  * @returns {Promise<void>}
  */
 async function executeCommand(cmd, element, options = {}) {
@@ -3040,6 +3074,7 @@ async function executeCommand(cmd, element, options = {}) {
             );
             const formScope =
               form && componentEl.contains(form) ? form : componentEl;
+            markLoading(element, options.eventType);
             // A push inside a committing binding commits like the binding would (#92).
             component.dispatch(cmd.event, cmd.value || {}, formScope, options.commit ? element : null);
           }
@@ -3050,11 +3085,8 @@ async function executeCommand(cmd, element, options = {}) {
     // Browser commands
     case "navigate":
       if (cmd.url) {
-        if (cmd.replace) {
-          boost.HistoryCache.replace(cmd.url);
-        } else {
-          boost.HistoryCache.load(cmd.url);
-        }
+        // replace=True still navigates; it only takes this history entry's place.
+        boost.HistoryCache.load(cmd.url, { replace: Boolean(cmd.replace) });
       }
       break;
 
@@ -3128,22 +3160,7 @@ window.wireview = {
     let component = connection.components[componentId];
 
     if (component !== undefined) {
-      // Add loading classes
-      element.classList.add("wireview-loading");
-      if (eventType) {
-        element.classList.add(`wireview-${eventType}-loading`);
-      }
-
-      // Handle wire-disabled-with: disable element and replace text
-      const disabledWithText = element.getAttribute("wire-disabled-with");
-      if (disabledWithText !== null) {
-        // Store original text and disabled state
-        element._wireOriginalText = element.textContent;
-        element._wireOriginalDisabled = element.disabled;
-        // Apply disabled state and new text
-        element.disabled = true;
-        element.textContent = disabledWithText;
-      }
+      markLoading(element, eventType);
 
       const form = /** @type {HTMLFormElement|null} */ (element.closest("form"));
       const targetEl = targetId ? document.getElementById(targetId) : component_el;
@@ -3192,7 +3209,8 @@ window.wireview = {
    * Commands are executed sequentially in the order provided.
    * @param {HTMLElement} element - Context element (typically event.target)
    * @param {JSCommand[]} commands - Array of commands to execute
-   * @param {{commit?: boolean}} [options] - whether a `push` in the chain commits its fields (#92)
+   * @param {{commit?: boolean, eventType?: string}} [options] - whether a `push` in the chain
+   *   commits its fields (#92), and the event that started the chain
    * @returns {Promise<void>}
    */
   async exec(element, commands, options = {}) {

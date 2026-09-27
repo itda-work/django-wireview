@@ -13,6 +13,7 @@ Example usage in templates:
 from __future__ import annotations
 
 import json
+import re
 import typing as t
 
 from django.core.serializers.json import DjangoJSONEncoder
@@ -29,6 +30,8 @@ class TransitionConfig(t.TypedDict, total=False):
 
 
 Transition = str | tuple[str, int] | TransitionConfig | None
+
+_DURATION = re.compile(r"\d+(\.\d+)?(ms|s)?")
 Selector = str
 
 
@@ -65,6 +68,14 @@ class JS:
         if transition is None:
             return None
         if isinstance(transition, str):
+            # "fade-in 200ms" reads like CSS shorthand, but the string is only class names:
+            # "200ms" would stay on the element as a class and nothing would wait (#110).
+            durations = [token for token in transition.split() if _DURATION.fullmatch(token)]
+            if durations:
+                raise ValueError(
+                    f"transition={transition!r}: {durations[0]!r} is not a class name. "
+                    f"Pass the duration separately: ({transition.split()[0]!r}, 200)"
+                )
             return {"transition": transition}
         if isinstance(transition, tuple):
             return {"transition": transition[0], "time": transition[1]}

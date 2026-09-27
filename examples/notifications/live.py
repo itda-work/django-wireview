@@ -46,16 +46,16 @@ class XNotificationBell(Component):
 
         if self.is_open:
             # Show dropdown with animation
-            await self.push_js(JS().show(f"#{self.id} .notification-dropdown", transition="fade-in 200ms"))
+            await self.push_js(JS().show(f"#{self.id} .notification-dropdown", transition=("fade-in", 200)))
         else:
             # Hide dropdown
-            await self.push_js(JS().hide(f"#{self.id} .notification-dropdown", transition="fade-out 150ms"))
+            await self.push_js(JS().hide(f"#{self.id} .notification-dropdown", transition=("fade-out", 150)))
 
     async def close_dropdown(self):
         """Close the dropdown."""
         if self.is_open:
             self.is_open = False
-            await self.push_js(JS().hide(f"#{self.id} .notification-dropdown", transition="fade-out 150ms"))
+            await self.push_js(JS().hide(f"#{self.id} .notification-dropdown", transition=("fade-out", 150)))
 
     async def mutation(self, channel: str, action: ModelAction, instance: Notification):
         """Update badge when notifications change."""
@@ -121,7 +121,7 @@ class XNotificationList(Component):
         Demonstrates stream_delete with animation.
         """
         # Animate out
-        await self.push_js(JS().transition(f"#notifications-{notification_id}", "slide-out-right 200ms"))
+        await self.push_js(JS().transition(f"#notifications-{notification_id}", ("slide-out-right", 200)))
 
         # Delete from database
         await Notification.objects.filter(id=notification_id).adelete()

@@ -1,0 +1,5 @@
+{% load wireview %}
+
+<div {% tag_header %} data-testid="card" {% on "click" "slow_click" %}>
+  <span data-testid="clicks">{{ this.clicks }}</span>
+</div>

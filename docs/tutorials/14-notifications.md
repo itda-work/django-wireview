@@ -82,14 +82,14 @@ class XNotificationBell(Component):
             await self.push_js(
                 JS().show(
                     f"#{self.id} .notification-dropdown",
-                    transition="fade-in 200ms"
+                    transition=("fade-in", 200)
                 )
             )
         else:
             await self.push_js(
                 JS().hide(
                     f"#{self.id} .notification-dropdown",
-                    transition="fade-out 150ms"
+                    transition=("fade-out", 150)
                 )
             )
 
@@ -136,7 +136,7 @@ class XNotificationList(Component):
         await self.push_js(
             JS().transition(
                 f"#notifications-{notification_id}",
-                "slide-out-right 200ms"
+                ("slide-out-right", 200)
             )
         )
         await Notification.objects.filter(id=notification_id).adelete()

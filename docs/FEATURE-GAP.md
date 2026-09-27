@@ -86,27 +86,27 @@ GAP 번호로 추적한다.
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
-| show/hide/toggle | ✅ | `JS().show/hide/toggle()` | ✅ |  |
-| add_class/remove_class | ✅ | `JS().add_class/remove_class()` | ✅ |  |
-| toggle_class | ✅ | `JS().toggle_class()` | ✅ |  |
-| set_attribute | ✅ | `JS().set_attr()` | ✅ |  |
-| remove_attribute | ✅ | `JS().remove_attr()` | ✅ |  |
-| transition | ✅ | `JS().transition()` | ✅ |  |
-| focus/focus_first | ✅ | `JS().focus/focus_first()` | ✅ |  |
-| push (server event) | ✅ | `JS().push()` | ✅ |  |
-| dispatch (DOM event) | ✅ | `JS().dispatch()` | ✅ |  |
-| navigate | ✅ | `JS().navigate()` | ✅ |  |
-| Command chaining | ✅ | ✅ 지원 | ✅ |  |
+| show/hide/toggle | ✅ | `JS().show/hide/toggle()` | ✅ | `tests/test_js_commands_e2e.py::test_show_and_hide`<br>`tests/test_csp_e2e.py::test_every_binding_works_under_a_strict_policy` |
+| add_class/remove_class | ✅ | `JS().add_class/remove_class()` | ✅ | `tests/test_js_commands_e2e.py::test_add_and_remove_class` |
+| toggle_class | ✅ | `JS().toggle_class()` | ✅ | `tests/test_js_commands_e2e.py::test_toggle_class` |
+| set_attribute | ✅ | `JS().set_attr()` | ✅ | `tests/test_js_commands_e2e.py::test_set_and_remove_attribute` |
+| remove_attribute | ✅ | `JS().remove_attr()` | ✅ | `tests/test_js_commands_e2e.py::test_set_and_remove_attribute` |
+| transition | ✅ | `JS().transition()` | ✅ | `tests/test_js_commands_e2e.py::test_transition_adds_its_classes_for_the_duration` |
+| focus/focus_first | ✅ | `JS().focus/focus_first()` | ✅ | `tests/test_js_commands_e2e.py::test_focus`<br>`tests/test_js_commands_e2e.py::test_focus_first_skips_what_cannot_take_focus` |
+| push (server event) | ✅ | `JS().push()` | ✅ | `tests/test_input_values_e2e.py::test_enter_through_a_js_push_empties_the_field_like_a_handler_binding`<br>`tests/test_js_commands_e2e.py::test_a_chain_runs_every_command_in_order` |
+| dispatch (DOM event) | ✅ | `JS().dispatch()` | ✅ | `tests/test_js_commands_e2e.py::test_dispatch_fires_a_dom_event_with_its_detail` |
+| navigate | ✅ | `JS().navigate()` | ✅ | `tests/test_js_commands_e2e.py::test_navigate_pushes_a_history_entry`<br>`tests/test_js_commands_e2e.py::test_navigate_with_replace_goes_there_in_place_of_this_entry` |
+| Command chaining | ✅ | ✅ 지원 | ✅ | `tests/test_js_commands_e2e.py::test_a_chain_runs_every_command_in_order` |
 
 ### 2.4 Optimistic UI ✅
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
-| phx-click-loading | ✅ | `wireview-click-loading` | ✅ |  |
-| phx-submit-loading | ✅ | `wireview-submit-loading` | ✅ |  |
-| phx-change-loading | ✅ | `wireview-change-loading` | ✅ |  |
-| phx-disabled-with | ✅ | `wire-disabled-with` | ✅ |  |
-| Client-side immediate | ✅ | JS() 명령어 | ✅ |  |
+| phx-click-loading | ✅ | `wireview-click-loading` | ✅ | `tests/test_js_commands_e2e.py::test_a_click_marks_its_element_loading_until_the_answer`<br>`tests/test_js_commands_e2e.py::test_a_binding_on_the_component_root_is_cleared_too` |
+| phx-submit-loading | ✅ | `wireview-submit-loading` | ✅ | `tests/test_js_commands_e2e.py::test_a_submit_marks_the_form_loading_until_the_answer` |
+| phx-change-loading | ✅ | `wireview-change-loading` | ✅ | `tests/test_js_commands_e2e.py::test_a_change_marks_its_element_loading_until_the_answer` |
+| phx-disable-with | ✅ | `wire-disabled-with` | ✅ | `tests/test_csp_e2e.py::test_every_binding_works_under_a_strict_policy`<br>`tests/test_js_commands_e2e.py::test_the_submit_button_of_a_form_is_disabled_with_its_text`<br>`tests/test_js_commands_e2e.py::test_a_chain_that_pushes_is_disabled_with_its_text` |
+| Client-side immediate | ✅ | JS() 명령어 | ✅ | `tests/test_csp_e2e.py::test_every_binding_works_under_a_strict_policy`<br>`tests/test_js_commands_e2e.py::test_a_chain_that_pushes_is_disabled_with_its_text` |
 
 ### 2.5 Streams ✅
 

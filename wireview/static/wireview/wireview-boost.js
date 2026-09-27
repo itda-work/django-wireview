@@ -195,14 +195,20 @@ class HistoryCache {
   /**
    * Loads a URL, using boost navigation if enabled.
    * @param {string} url - The URL to load
+   * @param {{replace?: boolean}} [options] - take the current history entry's
+   *   place instead of pushing a new one
    * @returns {Promise<boolean>} False when the page is being replaced outright,
    *   which is also what leaving a live_session looks like.
    */
-  static async load(url) {
+  static async load(url, { replace = false } = {}) {
     if (BOOST_PAGES && hasSameOriginAsDocument(url)) {
-      return this.push(url);
+      return replace ? this.swap(url) : this.push(url);
     }
-    document.location.assign(url);
+    if (replace) {
+      document.location.replace(url);
+    } else {
+      document.location.assign(url);
+    }
     return false;
   }
 
@@ -238,6 +244,18 @@ class HistoryCache {
       document.location.href
     );
     history.pushState({}, document.title, path);
+    return this.replaceContentFromUrl(path);
+  }
+
+  /**
+   * Loads a URL in place of the current history entry: `push` without the
+   * entry it would leave behind, so there is no page to cache for back.
+   * @param {string} path - The path to navigate to
+   * @returns {Promise<boolean>} as `push`
+   */
+  static async swap(path) {
+    navGate.begin();
+    history.replaceState({}, document.title, path);
     return this.replaceContentFromUrl(path);
   }
 

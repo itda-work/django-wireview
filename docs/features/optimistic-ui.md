@@ -20,6 +20,9 @@
 | `wireview-submit-loading` | 폼 제출 |
 | `wireview-change-loading` | change 이벤트 |
 
+폼 제출이면 폼과 함께, 폼 안에서 `wire-disabled-with`를 단 submit 버튼에도 붙는다. 서버 핸들러를 부르는
+바인딩뿐 아니라 끝에 `push`가 있는 `JS()` 체인도 같다. 클래스는 그 컴포넌트의 응답이 오면 지워진다.
+
 ### 로딩 상태 꾸미기
 
 ```css
@@ -70,6 +73,9 @@
 돌아오며 다시 활성화된다.
 
 ### 폼 제출
+
+바인딩은 폼에 있어도 `wire-disabled-with`는 submit 버튼에 둔다. 제출하는 동안 그 버튼이 비활성화되고
+문구가 바뀐다.
 
 ```html
 <form {% on "submit" "create_post" %}>

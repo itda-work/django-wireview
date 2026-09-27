@@ -1,0 +1,41 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <div id="box" data-testid="box">box</div>
+  <button data-testid="show" {% on "click" this.show_box %}>show</button>
+  <button data-testid="hide" {% on "click" this.hide_box %}>hide</button>
+  <button data-testid="add-class" {% on "click" this.add_hot %}>add</button>
+  <button data-testid="remove-class" {% on "click" this.remove_hot %}>remove</button>
+  <button data-testid="toggle-class" {% on "click" this.toggle_hot %}>toggle</button>
+  <button data-testid="set-attr" {% on "click" this.mark %}>mark</button>
+  <button data-testid="remove-attr" {% on "click" this.unmark %}>unmark</button>
+  <button data-testid="transition" {% on "click" this.pulse %}>pulse</button>
+  <input id="name" data-testid="name">
+  <button data-testid="focus" {% on "click" this.focus_name %}>focus</button>
+  <fieldset id="fields">
+    <input type="hidden" name="skip">
+    <input data-testid="first-field" name="first">
+    <input name="second">
+  </fieldset>
+  <button data-testid="focus-first" {% on "click" this.focus_fields %}>focus first</button>
+  <button data-testid="dispatch" {% on "click" this.ping %}>ping</button>
+  <button data-testid="navigate" {% on "click" this.go %}>go</button>
+  <button data-testid="navigate-replace" {% on "click" this.go_replace %}>go replace</button>
+  <button data-testid="chain" {% on "click" this.chain %}>chain</button>
+  <span data-testid="count">{{ this.count }}</span>
+  <button data-testid="slow" {% on "click" "slow_save" %}>slow</button>
+  <button data-testid="slow-chain"
+          wire-disabled-with="Opening"
+          {% on "click" this.slow_chain %}>open</button>
+  <span data-testid="saved">{{ this.saved }}</span>
+  <form data-testid="form" {% on "submit.prevent" "slow_submit" %}>
+    <input data-testid="q" name="q">
+    <button type="submit" data-testid="submit" wire-disabled-with="Sending">send</button>
+  </form>
+  <span data-testid="submitted">{{ this.submitted }}</span>
+  <select data-testid="pick" name="pick" {% on "change" "slow_change" %}>
+    <option value="a">a</option>
+    <option value="b">b</option>
+  </select>
+  <span data-testid="changed">{{ this.changed }}</span>
+</div>

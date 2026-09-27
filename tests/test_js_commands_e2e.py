@@ -1,0 +1,173 @@
+"""Every JS() command and every loading class, run in a real browser (#110).
+
+``tests/test_js.py`` checks what the builder serializes; nothing checked that the
+client does anything with it. The optimistic-UI half -- loading classes and
+``wire-disabled-with`` -- had no test at all.
+"""
+
+import re
+
+import pytest
+from playwright.sync_api import expect
+from testproj.e2e_browser import expect_text, open_live
+from testproj.e2e_server import serve
+
+pytestmark = pytest.mark.e2e
+
+SLOW = re.compile(r"\bwireview-loading\b")
+
+
+@pytest.fixture(scope="function")
+def server():
+    with serve() as base_url:
+        yield base_url
+
+
+@pytest.fixture(autouse=True)
+def _db(transactional_db):
+    pass
+
+
+@pytest.fixture
+def probe(page, server):
+    open_live(page, f"{server}/jsprobe/")
+    return page
+
+
+def by(page, testid: str):
+    return page.get_by_test_id(testid)
+
+
+def test_show_and_hide(probe):
+    by(probe, "hide").click()
+    expect(by(probe, "box")).to_be_hidden()
+    by(probe, "show").click()
+    expect(by(probe, "box")).to_be_visible()
+
+
+def test_add_and_remove_class(probe):
+    by(probe, "add-class").click()
+    expect(by(probe, "box")).to_have_class("hot big")
+    by(probe, "remove-class").click()
+    expect(by(probe, "box")).not_to_have_class(re.compile(r"\b(hot|big)\b"))
+
+
+def test_toggle_class(probe):
+    by(probe, "toggle-class").click()
+    expect(by(probe, "box")).to_have_class("hot")
+    by(probe, "toggle-class").click()
+    expect(by(probe, "box")).not_to_have_class(re.compile(r"\bhot\b"))
+
+
+def test_set_and_remove_attribute(probe):
+    by(probe, "set-attr").click()
+    expect(by(probe, "box")).to_have_attribute("data-mark", "on")
+    by(probe, "remove-attr").click()
+    expect(by(probe, "box")).not_to_have_attribute("data-mark", re.compile(".*"))
+
+
+def test_transition_adds_its_classes_for_the_duration(probe):
+    by(probe, "transition").click()
+    expect(by(probe, "box")).to_have_class(re.compile(r"\bpulse\b"))
+    expect(by(probe, "box")).not_to_have_class(re.compile(r"\bpulse\b"))
+
+
+def test_focus(probe):
+    by(probe, "focus").click()
+    expect(by(probe, "name")).to_be_focused()
+
+
+def test_focus_first_skips_what_cannot_take_focus(probe):
+    by(probe, "focus-first").click()
+    expect(by(probe, "first-field")).to_be_focused()
+
+
+def test_dispatch_fires_a_dom_event_with_its_detail(probe):
+    probe.evaluate(
+        """document.addEventListener("probe:ping", (e) => {
+             document.documentElement.dataset.pinged = JSON.stringify(e.detail);
+           })"""
+    )
+    by(probe, "dispatch").click()
+    expect(probe.locator("html")).to_have_attribute("data-pinged", '{"n":1}')
+
+
+def test_navigate_pushes_a_history_entry(probe):
+    before = probe.evaluate("history.length")
+    by(probe, "navigate").click()
+    expect(by(probe, "landed")).to_be_visible()
+    assert probe.url.endswith("/jsprobe/landed/")
+    assert probe.evaluate("history.length") == before + 1
+
+
+def test_navigate_with_replace_goes_there_in_place_of_this_entry(probe):
+    before = probe.evaluate("history.length")
+    by(probe, "navigate-replace").click()
+    expect(by(probe, "landed")).to_be_visible()
+    assert probe.url.endswith("/jsprobe/landed/")
+    assert probe.evaluate("history.length") == before
+
+
+def test_a_chain_runs_every_command_in_order(probe):
+    by(probe, "chain").click()
+    expect(by(probe, "box")).to_have_class(re.compile(r"\bchained\b"))
+    expect(by(probe, "box")).to_have_attribute("data-step", "2")
+    expect_text(by(probe, "count"), "1")
+
+
+def test_a_click_marks_its_element_loading_until_the_answer(probe):
+    button = by(probe, "slow")
+    button.click()
+    expect(button).to_have_class(re.compile(r"\bwireview-click-loading\b"))
+    expect(button).to_have_class(SLOW)
+    expect_text(by(probe, "saved"), "1")
+    expect(button).not_to_have_class(re.compile(r"wireview-"))
+
+
+def test_a_submit_marks_the_form_loading_until_the_answer(probe):
+    by(probe, "q").fill("hello")
+    by(probe, "q").press("Enter")
+    form = by(probe, "form")
+    expect(form).to_have_class(re.compile(r"\bwireview-submit-loading\b"))
+    expect_text(by(probe, "submitted"), "hello")
+    expect(form).not_to_have_class(re.compile(r"wireview-"))
+
+
+def test_a_change_marks_its_element_loading_until_the_answer(probe):
+    pick = by(probe, "pick")
+    pick.select_option("b")
+    expect(pick).to_have_class(re.compile(r"\bwireview-change-loading\b"))
+    expect_text(by(probe, "changed"), "b")
+    expect(pick).not_to_have_class(re.compile(r"wireview-"))
+
+
+def test_a_binding_on_the_component_root_is_cleared_too(probe):
+    card = by(probe, "card")
+    card.click()
+    expect(card).to_have_class(re.compile(r"\bwireview-click-loading\b"))
+    expect_text(by(probe, "clicks"), "1")
+    expect(card).not_to_have_class(re.compile(r"wireview-"))
+
+
+def test_the_submit_button_of_a_form_is_disabled_with_its_text(probe):
+    # docs/features/optimistic-ui.md puts wire-disabled-with on the submit button, not the form.
+    button = by(probe, "submit")
+    by(probe, "q").fill("hello")
+    button.click()
+    expect(button).to_be_disabled()
+    expect(button).to_have_text("Sending")
+    expect_text(by(probe, "submitted"), "hello")
+    expect(button).to_be_enabled()
+    expect(button).to_have_text("send")
+
+
+def test_a_chain_that_pushes_is_disabled_with_its_text(probe):
+    # The doc's JS() example: a client-side toggle, then a push to the server.
+    button = by(probe, "slow-chain")
+    button.click()
+    expect(by(probe, "box")).to_have_class(re.compile(r"\bopened\b"))
+    expect(button).to_be_disabled()
+    expect(button).to_have_text("Opening")
+    expect_text(by(probe, "saved"), "1")
+    expect(button).to_be_enabled()
+    expect(button).to_have_text("open")
