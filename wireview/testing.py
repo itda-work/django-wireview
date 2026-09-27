@@ -473,7 +473,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         # server updates it in place rather than rebinding. Same here.
         self._repo.params.clear()
         self._repo.params.update(params)
-        await self._component.params_changed(params, nav.url)
+        await self._component._handle_params(params, nav.url)
         return nav
 
     # Streams
@@ -528,6 +528,10 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             raise AttributeError(f"Component {self._component._name} has no handler '{handler_name}'")
         if not callable(handler):
             raise AssertionError(f"'{handler_name}' on {self._component._name} is not callable")
+
+        # The server runs attached handle_event hooks first; a test must not get past one.
+        if (await self._component._run_hooks("handle_event", handler_name, kwargs)).get("halt"):
+            return None
 
         result = handler(**kwargs)
         # Handle async handlers

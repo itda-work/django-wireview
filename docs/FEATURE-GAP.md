@@ -248,12 +248,12 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
-| Page title | ✅ `assign(:page_title)` | `push_title()` | ✅ |  |
-| Flash messages | ✅ `put_flash` | `put_flash()` | ✅ |  |
+| Page title | ✅ `assign(:page_title)` | `push_title()` | ✅ | `tests/test_js_commands_e2e.py::test_push_title_sets_the_documents_title`<br>`tests/test_session_commands.py::test_title_and_flash_reach_the_client` |
+| Flash messages | ✅ `put_flash` | `put_flash()` | ✅ | `tests/test_js_commands_e2e.py::test_put_flash_shows_a_dismissible_message`<br>`tests/test_session_commands.py::test_title_and_flash_reach_the_client` |
 | Dead views | ✅ JS 비활성화 폴백 | ❌ | 🟠 GAP-034 ([#73](https://github.com/itda-work/django-wireview/issues/73)) |  |
 | LongPolling fallback | ✅ | ❌ | ⚪ 설계상 제외 (GAP-012, [설계 메모](./design/longpolling-fallback.md)) |  |
-| on_mount hooks | ✅ | `Meta.on_mount` | ✅ (GAP-021. 호출부가 없어 훅이 실행되지 않던 것을 [#75](https://github.com/itda-work/django-wireview/issues/75)에서 붙였다) |  |
-| attach_hook | ✅ | `attach_hook()` | ✅ |  |
+| on_mount hooks | ✅ | `Meta.on_mount` | ✅ (GAP-021. 호출부가 없어 훅이 실행되지 않던 것을 [#75](https://github.com/itda-work/django-wireview/issues/75)에서 붙였다) | `tests/test_lifecycle_hooks.py::TestWebSocketJoin::test_a_redirecting_hook_sends_url_change_and_no_render`<br>`tests/test_lifecycle_hooks.py::TestHttpRender::test_the_page_component_runs_its_hooks` |
+| attach_hook | ✅ | `attach_hook()` | ✅ | `tests/test_attach_hook.py::test_a_halting_handle_event_hook_stops_the_handler`<br>`tests/test_attach_hook.py::test_a_handle_params_hook_runs_before_params_changed`<br>`tests/test_attach_hook.py::test_an_after_render_hook_runs_after_each_render` |
 
 ---
 

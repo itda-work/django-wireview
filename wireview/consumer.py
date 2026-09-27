@@ -315,7 +315,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             # Call params_changed if URL has params (initial load)
             if self.repo.params:
                 uri = f"?{self.repo.get_query_string()}"
-                await component.params_changed(dict(self.repo.params), uri)
+                await component._handle_params(dict(self.repo.params), uri)
                 await self.send_render(component)
 
             # Subscriptions first, then the operations queued during joined():
@@ -575,7 +575,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
                 # Went with an ancestor that raised earlier in this loop
                 continue
             try:
-                await component.params_changed(params, uri)
+                await component._handle_params(params, uri)
                 await self.send_render(component)
             except Exception:
                 await self._crashed(component)
@@ -821,7 +821,14 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
     # Component commands
 
     async def message_from_component(self, data):
-        await getattr(self, f"component_{data['command']}")(**data["kwargs"])
+        handler = getattr(self, f"component_{data['command']}", None)
+        if handler is None:
+            # A command with no handler used to raise here and take the socket down,
+            # so push_title() and put_flash() closed the connection they were for (#110).
+            # tests/test_session_commands.py checks every command the server sends has one.
+            log.error("No handler for the component command %r; dropped", data["command"])
+            return
+        await handler(**data["kwargs"])
 
     async def component_dispatch_event(self, id, command, args, kwargs):
         log.debug(f"<<< EVENT {id} {command} {args} {kwargs}")
@@ -886,6 +893,21 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             payload["ref"] = ref
         payload.update(data)
         await self.send_command("upload_op", payload)
+
+    async def component_title(self, title: str):
+        log.debug(f'>>> TITLE "{title}"')
+        await self.send_command("title", {"title": title})
+
+    async def component_flash(self, flash_type: str, message: str, timeout: int, dismissible: bool):
+        log.debug(f">>> FLASH {flash_type}")
+        await self.send_command(
+            "flash",
+            {"flash_type": flash_type, "message": message, "timeout": timeout, "dismissible": dismissible},
+        )
+
+    async def component_clear_flash(self, flash_id: str | None = None):
+        log.debug(f">>> CLEAR-FLASH {flash_id}")
+        await self.send_command("clear_flash", {"flash_id": flash_id})
 
     async def component_exec_js(self, id: str, commands: list):
         """Execute JS commands on the client."""
@@ -1203,6 +1225,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         repo = self.repo
         repo.begin_render(component.id)
         diff = await component._render_diff(repo)
+        await component._run_hooks("after_render")
         # Clear temporary assigns after rendering to free memory
         # This is called regardless of whether diff was sent (skip_render case)
         component._clear_temporary_assigns()

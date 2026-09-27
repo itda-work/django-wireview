@@ -81,6 +81,10 @@ class JsProbe(Component):
     def slow_chain(self) -> JS:
         return JS().toggle_class("#box", "opened").push("slow_save")
 
+    async def announce(self, **_rest):
+        await self.push_title("Announced")
+        await self.put_flash("info", "Saved", timeout=0)
+
     async def increment(self, **_rest):
         self.count += 1
 

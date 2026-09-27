@@ -12,6 +12,15 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- `push_title()`, `put_flash()` and `clear_flash()` work on a live page. The consumer had no
+  handler for their messages, so the lookup raised and closed the socket: calling one dropped
+  the connection it was meant for. A command without a handler is now logged and dropped, and
+  a test reads every command the server sends from the source and checks it has one (#110).
+- `attach_hook()` hooks run. They were registered and documented -- the lifecycle guide uses
+  them for rate limiting and an audit log -- but nothing called them, so a `handle_event` hook
+  that halted stopped nothing. `handle_event` runs before the handler (also in
+  `MountedComponent.call()`), `handle_params` before `params_changed` on every path, and
+  `after_render` after each live render (#110).
 - `JS().navigate(url, replace=True)` navigates. It only replaced the URL in the address bar;
   it now loads the page in place of the current history entry (#110).
 - `wire-disabled-with` on a form's submit button works, as the documentation shows it. The

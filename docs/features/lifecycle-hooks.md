@@ -188,7 +188,7 @@ class EventLoggingHook:
     @staticmethod
     async def on_mount(component, params, session):
         async def log_events(event: str, params: dict):
-            await logger.info(f"Event: {event}", extra=params)
+            logger.info("Event: %s", event, extra=params)
             return {"cont": True}
 
         component.attach_hook("event_logger", "handle_event", log_events)
@@ -205,6 +205,8 @@ async def hook(event: str, params: dict) -> dict:
     # {"cont": True}면 계속한다
     return {"cont": True}
 ```
+
+halt해도 그 이벤트에 대한 응답은 간다. 버튼의 로딩 표시와 `wire-disabled-with`가 풀린다.
 
 **handle_params**
 

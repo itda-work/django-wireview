@@ -1,4 +1,4 @@
-"""Every JS() command and every loading class, run in a real browser (#110).
+"""Every JS() command, loading class and page-level command, run in a real browser (#110).
 
 ``tests/test_js.py`` checks what the builder serializes; nothing checked that the
 client does anything with it. The optimistic-UI half -- loading classes and
@@ -171,3 +171,17 @@ def test_a_chain_that_pushes_is_disabled_with_its_text(probe):
     expect_text(by(probe, "saved"), "1")
     expect(button).to_be_enabled()
     expect(button).to_have_text("open")
+
+
+def test_push_title_sets_the_documents_title(probe):
+    by(probe, "announce").click()
+    expect(probe).to_have_title("Announced")
+
+
+def test_put_flash_shows_a_dismissible_message(probe):
+    by(probe, "announce").click()
+    flash = by(probe, "flashes").get_by_role("alert")
+    expect(flash).to_have_text(re.compile("Saved"))
+    expect(flash).to_have_attribute("data-flash-type", "info")
+    flash.get_by_role("button", name="Dismiss").click()
+    expect(flash).to_have_count(0)

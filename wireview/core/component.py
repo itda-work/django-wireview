@@ -623,6 +623,16 @@ class Component(BaseModel):
 
         return {"cont": True}
 
+    async def _handle_params(self, params: dict[str, t.Any], uri: str) -> None:
+        """Run the handle_params hooks, then ``params_changed`` unless one halted.
+
+        Every path that tells a component its URL changed comes through here, so
+        an attached hook cannot be skipped by one of them (#110).
+        """
+        if (await self._run_hooks("handle_params", params, uri)).get("halt"):
+            return
+        await self.params_changed(params, uri)
+
     async def _mount(
         self,
         params: dict[str, t.Any] | None = None,

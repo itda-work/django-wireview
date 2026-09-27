@@ -464,6 +464,10 @@ class ComponentRepository:
         if not self._is_user_defined_method(component, command):
             raise InvalidEvent(f"Cannot call base class method: {command}")
 
+        # An attached handle_event hook sees the event first and may stop it (#110).
+        if (await component._run_hooks("handle_event", command, kwargs)).get("halt"):
+            return component
+
         # Handler methods are async (defined in Component subclasses)
         with telemetry.span(
             telemetry.event_handled,
