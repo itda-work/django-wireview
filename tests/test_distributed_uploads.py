@@ -214,6 +214,8 @@ class FakeConsumer:
         self.upload_completed = WireviewConsumer.upload_completed.__get__(self)
         self.upload_error = WireviewConsumer.upload_error.__get__(self)
         self._find_upload_entry = WireviewConsumer._find_upload_entry.__get__(self)
+        self._render_upload_owner = WireviewConsumer._render_upload_owner.__get__(self)
+        self.rendered: list[t.Any] = []
         self._promote_completed = WireviewConsumer._promote_completed
 
         class Repo:
@@ -227,6 +229,9 @@ class FakeConsumer:
 
     async def send_command(self, command: str, payload: dict[str, t.Any]) -> None:
         self.sent.append((command, payload))
+
+    async def send_render(self, component) -> None:
+        self.rendered.append(component)
 
 
 class OwningComponent:
@@ -258,6 +263,7 @@ async def test_progress_from_another_worker_updates_the_entry(store):
     assert entry.bytes_received == 42
     assert entry.progress == 42
     assert consumer.sent[0][1]["op"] == "progress", "the browser still hears about it"
+    assert consumer.rendered == [consumer.component], "a template showing entry.progress sees it"
 
 
 @pytest.mark.integration

@@ -1,0 +1,15 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  {% upload_input "files" data_testid="files" %}
+  <div data-testid="drop" {% upload_drop_zone "files" %}>drop here</div>
+  <ul data-testid="received">
+    {% for item in this.received %}<li>{{ item }}</li>{% endfor %}
+  </ul>
+  {% upload_input "images" data_testid="images" %}
+  {% for entry in this.uploads.images %}
+    {% upload_preview entry data_testid="preview" %}
+  {% endfor %}
+  {% upload_input "outside" data_testid="outside" %}
+  <span data-testid="external-done">{{ this.external_done }}</span>
+</div>

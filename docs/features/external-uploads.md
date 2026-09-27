@@ -163,9 +163,7 @@ meta = ExternalUploadMeta(
     {% for entry in this.uploads.documents %}
         <li>
             {{ entry.client_name }}
-            {% if entry.status == "uploading" %}
-                <progress value="{{ entry.progress }}" max="100"></progress>
-            {% elif entry.status == "completed" %}
+            {% if entry.status == "completed" %}
                 ✓ 완료
             {% elif entry.status == "error" %}
                 ✗ {{ entry.errors|join:", " }}
@@ -177,6 +175,17 @@ meta = ExternalUploadMeta(
 ```
 
 드래그 중인 동안 드롭 영역에는 `wireview-drag-over` 클래스가 붙는다.
+
+**진행률은 서버에 오지 않는다.** 바이트가 서버를 거치지 않으므로 서버의 `entry.progress`는 완료될 때까지
+0이고, 템플릿으로는 진행률을 그릴 수 없다. 브라우저에서는 컴포넌트 요소에서 올라오는 `upload:progress`
+이벤트로 받는다.
+
+```javascript
+document.addEventListener("upload:progress", (e) => {
+  const { upload, ref, progress } = e.detail;  // progress는 0-100
+  document.querySelector(`[data-ref="${ref}"] progress`)?.setAttribute("value", progress);
+});
+```
 
 ## CORS 설정
 

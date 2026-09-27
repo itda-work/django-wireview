@@ -712,12 +712,14 @@ class ConsumedUpload:
             content = ContentFile(src.read())
             saved_path = default_storage.save(final_path, content)
 
-        # Mark as consumed and cleanup
+        self.finish()
+        return Path(saved_path)
+
+    def finish(self) -> None:
+        """Mark the upload consumed and delete its temp file. Idempotent."""
         self.entry.status = UploadStatus.CONSUMED
         self._consumed = True
         self.entry.cleanup()
-
-        return Path(saved_path)
 
     def __enter__(self) -> "ConsumedUpload":
         """Context manager entry."""

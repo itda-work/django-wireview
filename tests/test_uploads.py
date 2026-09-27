@@ -841,6 +841,28 @@ class TestComponentUploadMethods:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
+    async def test_an_upload_read_in_the_loop_is_consumed(self, store):
+        """Not only save_to(): read() left the entry "completed", holding its max_entries
+        slot and coming back on the next call (#110)."""
+        view = await mount(UploadComponent)
+        registry = view.component._upload_registry
+        entry = UploadEntry(
+            ref="r1", upload_name="images", client_name="a.jpg", client_size=4, client_type="image/jpeg"
+        )
+        registry.add_entry("images", entry)
+        assert entry.temp_path is not None
+        upload_store.append_chunk(entry.temp_path, b"\xff\xd8\xff\x00")
+        entry.status = UploadStatus.COMPLETED
+
+        async for upload in view.component.consume_uploads("images"):
+            upload.read()
+
+        assert entry.status is UploadStatus.CONSUMED
+        assert not entry.temp_path.exists()
+        assert [u async for u in view.component.consume_uploads("images")] == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
     async def test_consume_uploads_no_registry(self):
         """consume_uploads should handle missing registry gracefully."""
         view = await mount(UploadComponentNoJoined)

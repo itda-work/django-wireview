@@ -12,49 +12,53 @@
 
 ## 업로드 설정
 
-### UploadConfig 옵션
+### allow_upload 옵션
+
+업로드 필드는 `joined()`에서 `allow_upload()`로 연다. 첫 인자가 필드 이름이고 나머지는 키워드다.
 
 ```python
-from wireview import UploadConfig
-
-config = UploadConfig(
-    name="avatar",              # 업로드 필드 식별자
-    accept=[".jpg", ".png"],    # 허용 확장자
-    max_entries=1,              # 동시 업로드 수
-    max_file_size=5*1024*1024,  # 5MB
-    chunk_size=64*1024,         # 64KB 청크
-    auto_upload=True,           # 선택 즉시 업로드
-)
+async def joined(self):
+    self.allow_upload(
+        "avatar",                    # 업로드 필드 식별자
+        accept=[".jpg", ".png"],     # 허용 확장자
+        max_entries=1,               # 동시에 진행할 수 있는 업로드 수
+        max_file_size=5*1024*1024,   # 5MB
+        chunk_size=64*1024,          # 64KB 청크
+        auto_upload=True,            # 선택 즉시 업로드
+    )
 ```
+
+`max_entries`는 진행 중인 업로드의 수다. `consume_uploads()`로 소비한 업로드는 세지 않으므로,
+한 개짜리 필드로도 파일을 하나씩 계속 올릴 수 있다.
 
 ### 다양한 설정 예
 
 ```python
-# 프로필 이미지 (단일, 작은 파일)
-avatar_config = UploadConfig(
-    name="avatar",
-    accept=[".jpg", ".jpeg", ".png", ".gif", ".webp"],
-    max_entries=1,
-    max_file_size=2 * 1024 * 1024,  # 2MB
-)
+async def joined(self):
+    # 프로필 이미지 (단일, 작은 파일)
+    self.allow_upload(
+        "avatar",
+        accept=[".jpg", ".jpeg", ".png", ".gif", ".webp"],
+        max_file_size=2 * 1024 * 1024,  # 2MB
+    )
 
-# 문서 업로드 (다중, 큰 파일)
-docs_config = UploadConfig(
-    name="documents",
-    accept=[".pdf", ".doc", ".docx", ".xls", ".xlsx"],
-    max_entries=10,
-    max_file_size=50 * 1024 * 1024,  # 50MB
-    chunk_size=256 * 1024,  # 256KB 청크
-)
+    # 문서 업로드 (다중, 큰 파일)
+    self.allow_upload(
+        "documents",
+        accept=[".pdf", ".doc", ".docx", ".xls", ".xlsx"],
+        max_entries=10,
+        max_file_size=50 * 1024 * 1024,  # 50MB
+        chunk_size=256 * 1024,  # 256KB 청크
+    )
 
-# 갤러리 이미지 (다중)
-gallery_config = UploadConfig(
-    name="photos",
-    accept=[".jpg", ".jpeg", ".png"],
-    max_entries=20,
-    max_file_size=10 * 1024 * 1024,  # 10MB
-    auto_upload=False,  # 수동 업로드
-)
+    # 갤러리 이미지 (다중)
+    self.allow_upload(
+        "photos",
+        accept=[".jpg", ".jpeg", ".png"],
+        max_entries=20,
+        max_file_size=10 * 1024 * 1024,  # 10MB
+        auto_upload=False,  # 수동 업로드
+    )
 ```
 
 ## 컴포넌트 구현
@@ -62,7 +66,7 @@ gallery_config = UploadConfig(
 ### 기본 구조
 
 ```python
-from wireview import Component, UploadConfig
+from wireview import Component
 
 
 class XFileUploader(Component):
@@ -70,16 +74,16 @@ class XFileUploader(Component):
         template_name = 'uploader/upload_form.html'
 
     async def joined(self):
-        self.allow_upload(UploadConfig(
-            name="files",
+        self.allow_upload(
+            "files",
             accept=[".pdf", ".jpg", ".png"],
             max_entries=5,
             max_file_size=10 * 1024 * 1024,
-        ))
+        )
 
     async def upload_files(self):
         """업로드된 파일 처리"""
-        for upload in self.consume_uploads("files"):
+        async for upload in self.consume_uploads("files"):
             # upload는 ConsumedUpload 인스턴스
             path = await upload.save_to("uploads/")
             print(f"Saved: {path}")
@@ -90,13 +94,8 @@ class XFileUploader(Component):
 ```html
 {% load wireview %}
 <div {% tag_header %} class="uploader">
-  <div class="upload-zone">
-    <input
-      type="file"
-      wire-upload="files"
-      accept=".pdf,.jpg,.png"
-      multiple
-    >
+  <div class="upload-zone" {% upload_drop_zone "files" %}>
+    {% upload_input "files" %}
     <p>Drop files here or click to browse</p>
   </div>
 
@@ -170,7 +169,7 @@ class XFileUploader(Component):
 
 ```python
 async def process_upload(self):
-    for upload in self.consume_uploads("files"):
+    async for upload in self.consume_uploads("files"):
         # 파일 정보
         print(upload.name)         # 원본 파일명
         print(upload.size)         # 크기 (bytes)
@@ -200,11 +199,14 @@ async def process_upload(self):
 
 ```python
 # settings.py
-DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+STORAGES = {
+    "default": {"BACKEND": "storages.backends.s3boto3.S3Boto3Storage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
 
 # 컴포넌트
 async def save_to_s3(self):
-    for upload in self.consume_uploads("files"):
+    async for upload in self.consume_uploads("files"):
         # S3에 저장됨
         path = await upload.save_to("media/uploads/")
 ```
@@ -215,7 +217,7 @@ async def save_to_s3(self):
 from PIL import Image
 
 async def process_image(self):
-    for upload in self.consume_uploads("avatar"):
+    async for upload in self.consume_uploads("avatar"):
         # Pillow로 이미지 처리
         with upload.open("rb") as f:
             img = Image.open(f)
@@ -233,10 +235,7 @@ async def process_image(self):
 ### 확장자 검증
 
 ```python
-UploadConfig(
-    name="images",
-    accept=[".jpg", ".png"],  # 허용된 확장자만
-)
+self.allow_upload("images", accept=[".jpg", ".png"])  # 허용된 확장자만
 ```
 
 ### Magic Bytes 검증
@@ -258,23 +257,23 @@ MAGIC_BYTES = {
 ### 크기 제한
 
 ```python
-UploadConfig(
-    max_file_size=5 * 1024 * 1024,  # 5MB
-)
+self.allow_upload("images", max_file_size=5 * 1024 * 1024)  # 5MB
 ```
 
 ### 수동 검증
 
 ```python
+errors: list[str] = []
+
 async def save_files(self):
-    for upload in self.consume_uploads("files"):
-        # 추가 검증
+    async for upload in self.consume_uploads("files"):
+        # 추가 검증. 건너뛴 업로드도 소비된 것이라 임시 파일은 지워진다
         if upload.size > 1024 * 1024:
-            self.add_error("File too large")
+            self.errors = [*self.errors, f"{upload.name}: too large"]
             continue
 
         if not self.is_safe_filename(upload.name):
-            self.add_error("Invalid filename")
+            self.errors = [*self.errors, f"{upload.name}: invalid filename"]
             continue
 
         await upload.save_to("uploads/")
@@ -340,9 +339,9 @@ A에서 받은 토큰을 B의 URL로 보내면 서명은 검증되지만 소유�
 
 ```python
 async def joined(self):
-    self.allow_upload(UploadConfig(name="avatar", max_entries=1))
-    self.allow_upload(UploadConfig(name="documents", max_entries=10))
-    self.allow_upload(UploadConfig(name="gallery", max_entries=20))
+    self.allow_upload("avatar", max_entries=1)
+    self.allow_upload("documents", max_entries=10)
+    self.allow_upload("gallery", max_entries=20)
 ```
 
 ### 필드별 처리
@@ -350,15 +349,15 @@ async def joined(self):
 ```python
 async def save_all(self):
     # 아바타
-    for upload in self.consume_uploads("avatar"):
+    async for upload in self.consume_uploads("avatar"):
         await upload.save_to("avatars/")
 
     # 문서
-    for upload in self.consume_uploads("documents"):
+    async for upload in self.consume_uploads("documents"):
         await upload.save_to("documents/")
 
     # 갤러리
-    for upload in self.consume_uploads("gallery"):
+    async for upload in self.consume_uploads("gallery"):
         await upload.save_to("gallery/")
 ```
 
@@ -369,7 +368,7 @@ async def save_all(self):
 ```python
 async def cancel_file(self, ref: str):
     """특정 파일 업로드 취소"""
-    self.cancel_upload("files", ref)
+    await self.cancel_upload("files", ref)
 ```
 
 ### 템플릿
@@ -380,7 +379,15 @@ async def cancel_file(self, ref: str):
 
 ## 드래그 앤 드롭
 
-### CSS
+`{% upload_drop_zone "필드" %}`를 단 요소에 파일을 떨어뜨리면 그 필드로 업로드된다. 파일을 끌고
+들어오는 동안 요소에 `wireview-drag-over` 클래스가 붙는다.
+
+```html
+<div class="upload-zone" {% upload_drop_zone "files" %}>
+  여기에 파일을 놓으세요
+  {% upload_input "files" %}
+</div>
+```
 
 ```css
 .upload-zone {
@@ -389,15 +396,11 @@ async def cancel_file(self, ref: str):
   text-align: center;
 }
 
-.upload-zone.dragover {
+.upload-zone.wireview-drag-over {
   border-color: #007bff;
   background: #f0f7ff;
 }
 ```
-
-### JavaScript (자동 처리)
-
-`wire-upload` 속성이 있는 input은 자동으로 드래그 앤 드롭을 지원합니다.
 
 ## 이미지 미리보기
 
@@ -504,7 +507,7 @@ class XDocumentUploader(Component):
 
     async def save_document(self):
         # 업로드 완료 후 DB에 기록
-        for upload in self.consume_uploads("documents"):
+        async for upload in self.consume_uploads("documents"):
             key = f"documents/{upload.ref}/{upload.name}"
             await Document.objects.acreate(
                 name=upload.name,
@@ -610,21 +613,20 @@ class XProfileEditor(Component):
     avatar_url: str = ""
 
     async def joined(self):
-        self.allow_upload(UploadConfig(
-            name="avatar",
+        self.allow_upload(
+            "avatar",
             accept=[".jpg", ".jpeg", ".png", ".gif"],
             max_file_size=2 * 1024 * 1024,
-            max_entries=1,
-        ))
+        )
 
     async def save_avatar(self):
-        for upload in self.consume_uploads("avatar"):
+        async for upload in self.consume_uploads("avatar"):
             try:
                 path = await upload.save_to(
                     "avatars/",
                     filename=f"user_{self.user_id}.jpg"
                 )
-                self.avatar_url = path
+                self.avatar_url = str(path)
 
                 # DB 업데이트
                 await User.objects.filter(id=self.user_id).aupdate(
@@ -632,7 +634,7 @@ class XProfileEditor(Component):
                 )
 
             except ValueError as e:
-                self.add_flash_message(str(e), "error")
+                await self.put_flash("error", str(e))
 ```
 
 ## 다음 단계

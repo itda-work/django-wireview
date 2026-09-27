@@ -1487,8 +1487,10 @@ class Component(BaseModel):
         """
         Consume completed uploads for processing.
 
-        Yields ConsumedUpload objects for each completed file.
-        Files are cleaned up after the context exits.
+        Yields ConsumedUpload objects for each completed file. Once the loop
+        moves past an upload it is consumed: its temp file is deleted, it no
+        longer counts against ``max_entries``, and no later call yields it
+        again -- however it was read (``save_to``, ``read``, ``open``).
 
         Args:
             name: Upload field name to consume
@@ -1509,7 +1511,13 @@ class Component(BaseModel):
 
         entries = self._upload_registry.get_completed_entries(name)
         for entry in entries:
-            yield ConsumedUpload(entry)
+            upload = ConsumedUpload(entry)
+            try:
+                yield upload
+            finally:
+                # Only save_to() used to mark it: an upload read() left "completed"
+                # held its max_entries slot and came back on the next call (#110).
+                upload.finish()
 
     # LiveComponent communication
 

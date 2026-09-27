@@ -126,15 +126,15 @@ GAP 번호로 추적한다.
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
-| allow_upload() | ✅ | `allow_upload()` | ✅ |  |
-| live_file_input | ✅ | `{% upload_input %}` | ✅ |  |
-| Progress tracking | ✅ | `entry.progress` | ✅ |  |
-| Image preview | ✅ | `{% upload_preview %}` | ✅ |  |
-| Drag and drop | ✅ | `{% upload_drop_zone %}` | ✅ |  |
-| Chunk upload | ✅ | ✅ | ✅ |  |
-| consume_uploads | ✅ | `consume_uploads()` | ✅ |  |
-| External upload (S3) | ✅ | `external=callback` | ✅ |  |
-| Magic byte validation | ✅ | ✅ | ✅ |  |
+| allow_upload() | ✅ | `allow_upload()` | ✅ | `tests/test_uploads_e2e.py::test_one_upload_after_another_past_max_entries`<br>`tests/test_uploads.py::TestComponentUploadMethods::test_allow_upload_sends_config_message` |
+| live_file_input | ✅ | `{% upload_input %}` | ✅ | `tests/test_uploads_e2e.py::test_one_upload_after_another_past_max_entries`<br>`tests/test_csp_e2e.py::test_every_binding_works_under_a_strict_policy` |
+| Progress tracking | ✅ | `entry.progress` | ✅ | `tests/test_upload_render.py::test_progress_is_rendered`<br>`tests/test_distributed_uploads.py::test_progress_from_another_worker_updates_the_entry` |
+| Image preview | ✅ | `{% upload_preview %}` | ✅ | `tests/test_uploads_e2e.py::test_the_preview_shows_the_chosen_image_before_it_is_uploaded` |
+| Drag and drop | ✅ | `{% upload_drop_zone %}` | ✅ | `tests/test_uploads_e2e.py::test_the_drop_zone_uploads_what_is_dropped` |
+| Chunk upload | ✅ | ✅ | ✅ | `tests/test_multiworker_uploads.py::test_the_chunks_go_to_the_other_worker`<br>`tests/test_uploads.py::TestUploadView::test_the_last_chunk_completes_the_upload` |
+| consume_uploads | ✅ | `consume_uploads()` | ✅ | `tests/test_uploads_e2e.py::test_one_upload_after_another_past_max_entries`<br>`tests/test_uploads.py::TestComponentUploadMethods::test_an_upload_read_in_the_loop_is_consumed` |
+| External upload (S3) | ✅ | `external=callback` | ✅ | `tests/test_uploads_e2e.py::test_an_external_upload_goes_to_the_presigned_url`<br>`tests/test_upload_render.py::test_an_async_external_callback_is_awaited` |
+| Magic byte validation | ✅ | ✅ | ✅ | `tests/test_uploads.py::TestUploadView::test_content_that_does_not_match_the_extension_is_refused` |
 
 ### 2.7 Async Operations ✅
 

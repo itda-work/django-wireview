@@ -18,6 +18,18 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- An upload consumed with `read()`, `open()` or a `with` block is consumed. Only `save_to()`
+  marked it, so an upload read in `consume_uploads()` kept its `max_entries` slot -- with the
+  default of one, the second upload was refused -- and came back on the next call. Every upload
+  the loop moves past is now consumed and its temp file deleted (#110).
+- A component is rendered when an upload's progress or error arrives, so `{{ entry.progress }}`
+  and `entry.errors` in a template change as the upload goes, as the upload tutorial shows them.
+  They stayed as they were until the upload finished (#110).
+- The `external=` upload callback may be `async def`; its result was never awaited (#110).
+- The upload tutorial uses the API that exists: `allow_upload(name, ...)` rather than an
+  `UploadConfig` argument, `async for` over `consume_uploads()`, `{% upload_drop_zone %}` for
+  drag and drop, `STORAGES` instead of the removed `DEFAULT_FILE_STORAGE`. The external upload
+  guide no longer draws a server-side progress bar the server has no numbers for (#110).
 - The Django form example in `docs/features/form-feedback.md` runs. Its template looped over a
   `form` the component never exposes and used a `get_item` filter that does not exist (#110).
 - Hooks keep working across a reconnect. `reconnected()` was never called, and a hook's

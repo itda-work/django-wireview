@@ -696,6 +696,8 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
                         # Call external callback to get presigned URL
                         try:
                             meta = config.external(entry, component)
+                            if inspect.isawaitable(meta):
+                                meta = await meta
                             await self.send_command(
                                 "upload_op",
                                 UploadOp(
@@ -1000,6 +1002,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             entry.progress = event["progress"]
             if entry.status is UploadStatus.PENDING:
                 entry.status = UploadStatus.UPLOADING
+            await self._render_upload_owner(event)
         await self.send_command(
             "upload_op",
             {
@@ -1034,6 +1037,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         if entry is not None:
             entry.status = UploadStatus.ERROR
             entry.errors.extend(e for e in errors if e not in entry.errors)
+            await self._render_upload_owner(event)
         await self.send_command(
             "upload_op",
             {
@@ -1043,6 +1047,17 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
                 "errors": errors,
             },
         )
+
+    async def _render_upload_owner(self, event: dict[str, t.Any]) -> None:
+        """Render the component an upload message changed.
+
+        Templates show ``entry.progress`` and ``entry.errors`` (the upload guide
+        does); without a render they stayed as they were until something else
+        rendered the component, typically the upload's completion (#110).
+        """
+        component = self.repo.get(event.get("component", ""))
+        if component is not None:
+            await self.send_render(component)
 
     def _find_upload_entry(self, event: dict[str, t.Any]):
         """The entry a broker message is about, or None if it is not ours.
