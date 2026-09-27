@@ -84,6 +84,8 @@ tests/
 │                          test_live_session_contract.py 는 회귀가 아니라 계약을 진술한다 —
 │                          컴포넌트가 생기는 경로 8개 × 거절 사유 5종을 parametrize로 돌린다.
 │                          경로를 새로 만들면 행을 추가한다
+│                          test_feature_gap.py 는 docs/FEATURE-GAP.md 의 ✅ 행마다 근거 칸의 테스트가
+│                          실제로 있는지, 개요의 숫자가 표를 센 값인지 본다(#110)
 ├── js/*.test.mjs          클라이언트 순수 모듈 테스트 (node --test)
 │                          js/roundtrip.mjs 는 테스트가 아니라 test_diff_roundtrip.py 의 드라이버다 —
 │                          서버 diff 를 실제 rendered.mjs 로 적용해 매 단계 HTML 이 렌더와 같은지 본다

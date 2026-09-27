@@ -2,23 +2,38 @@
 
 > django-wireview가 Phoenix LiveView 수준에 도달하기 위해 필요한 기능 목록
 >
-> **최종 업데이트**: 2026-09-12
+> **최종 업데이트**: 2026-09-27
 
 ---
 
 ## 개요
 
-아래 2절의 비교표 113행 기준이다. 어림수가 아니라 표를 센 값이므로, 표를 고치면 이 숫자도 같이 고친다.
+아래 2절의 비교표 114행 기준이다. 어림수가 아니라 표를 센 값이고, `tests/test_feature_gap.py`가
+표를 다시 세어 이 숫자와 비교한다.
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 107 |
-| 🟡 부분 지원 | 1 |
+| ✅ 지원 | 109 |
+| 🟡 부분 지원 | 0 |
 | 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 3 |
 | ⚪ 설계상 제외 | 2 |
 
-103행 중 5행은 Phoenix에 없는 wireview 고유 기능이다(`mutation()`, 타입 스텁, LSP 메타데이터,
-MockChannelLayer, 시스템 체크). 남은 다섯 개의 갭은 3절 표에서 GAP 번호로 추적한다.
+✅ 중 6행은 Phoenix에 없는 wireview 고유 기능이다(상태 칸이 `✅ 추가 기능`인 행). 🟠 행은 3절 표에서
+GAP 번호로 추적한다.
+
+### ✅의 근거
+
+2절 표의 마지막 칸은 그 행의 기능을 **실제로 실행하는** 테스트의 pytest 노드 id다
+(`tests/test_x.py::test_y`, 여럿이면 `<br>`로 구분). ✅ 행은 근거가 있어야 하고, 적힌 테스트가
+존재해야 한다 — `tests/test_feature_gap.py`가 둘 다 검사한다. 근거로 인정하는 것:
+
+- 기능의 **공개 경로**를 탄다. 내부 함수를 직접 부르는 테스트는 근거가 아니다. on_mount 훅(#75)은
+  훅 실행 함수가 테스트돼 있었지만 그 함수를 부르는 곳이 없어 한 번도 돌지 않았다.
+- 브라우저가 있어야 의미가 있는 기능(JS 명령, 클라이언트 훅, 로딩 클래스)은 E2E가 근거다.
+- 다중 프로세스나 채널 레이어가 핵심인 기능은 그 조건을 만드는 테스트가 근거다.
+- 근거 테스트는 기능 코드를 되돌리면 실패해야 한다.
+
+근거를 댈 수 없는 기능은 ✅를 붙이지 않는다.
 
 ---
 
@@ -47,134 +62,134 @@ MockChannelLayer, 시스템 체크). 남은 다섯 개의 갭은 3절 표에서 
 
 ### 2.1 Core Lifecycle ✅
 
-| 기능 | Phoenix LiveView | django-wireview | 상태 |
-|------|:----------------:|:---------------:|:----:|
-| mount/joined | `mount/3` | `joined()` | ✅ |
-| handle_event | `handle_event/3` | 메서드 직접 호출 | ✅ |
-| handle_info | `handle_info/2` | `notification()` | ✅ |
-| handle_params | `handle_params/3` | `params_changed()` | ✅ |
-| terminate | `terminate/2` | `leaving()` | ✅ |
-| ORM mutation | - | `mutation()` | ✅ 추가 기능 |
-| 세션 접근 | `mount/3`의 session | `self.session` (읽기 전용) | ✅ GAP-029 |
+| 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
+|------|:----------------:|:---------------:|:----:|------|
+| mount/joined | `mount/3` | `joined()` | ✅ |  |
+| handle_event | `handle_event/3` | 메서드 직접 호출 | ✅ |  |
+| handle_info | `handle_info/2` | `notification()` | ✅ |  |
+| handle_params | `handle_params/3` | `params_changed()` | ✅ |  |
+| terminate | `terminate/2` | `leaving()` | ✅ |  |
+| ORM mutation | - | `mutation()` | ✅ 추가 기능 |  |
+| 세션 접근 | `mount/3`의 session | `self.session` (읽기 전용) | ✅ GAP-029 |  |
 
 ### 2.2 Real-time Features ✅
 
-| 기능 | Phoenix LiveView | django-wireview | 상태 |
-|------|:----------------:|:---------------:|:----:|
-| PubSub broadcast | `Phoenix.PubSub` | `broadcast()` | ✅ |
-| Presence tracking | `Phoenix.Presence` | `PresenceMixin` | ✅ |
-| Presence list | `Presence.list/1` | `_presence_users` | ✅ |
-| Typing indicators | 수동 구현 | `presence_set_typing()` | ✅ |
-| Auto-broadcast (ORM) | 수동 구현 | `AUTO_BROADCAST` | ✅ 추가 기능 |
+| 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
+|------|:----------------:|:---------------:|:----:|------|
+| PubSub broadcast | `Phoenix.PubSub` | `broadcast()` | ✅ |  |
+| Presence tracking | `Phoenix.Presence` | `PresenceMixin` | ✅ |  |
+| Presence list | `Presence.list/1` | `_presence_users` | ✅ |  |
+| Typing indicators | 수동 구현 | `presence_set_typing()` | ✅ |  |
+| Auto-broadcast (ORM) | 수동 구현 | `AUTO_BROADCAST` | ✅ 추가 기능 |  |
 
 ### 2.3 LiveView.JS (Client Commands) ✅
 
-| 기능 | Phoenix LiveView | django-wireview | 상태 |
-|------|:----------------:|:---------------:|:----:|
-| show/hide/toggle | ✅ | `JS().show/hide/toggle()` | ✅ |
-| add_class/remove_class | ✅ | `JS().add_class/remove_class()` | ✅ |
-| toggle_class | ✅ | `JS().toggle_class()` | ✅ |
-| set_attribute | ✅ | `JS().set_attr()` | ✅ |
-| remove_attribute | ✅ | `JS().remove_attr()` | ✅ |
-| transition | ✅ | `JS().transition()` | ✅ |
-| focus/focus_first | ✅ | `JS().focus/focus_first()` | ✅ |
-| push (server event) | ✅ | `JS().push()` | ✅ |
-| dispatch (DOM event) | ✅ | `JS().dispatch()` | ✅ |
-| navigate | ✅ | `JS().navigate()` | ✅ |
-| Command chaining | ✅ | ✅ 지원 | ✅ |
+| 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
+|------|:----------------:|:---------------:|:----:|------|
+| show/hide/toggle | ✅ | `JS().show/hide/toggle()` | ✅ |  |
+| add_class/remove_class | ✅ | `JS().add_class/remove_class()` | ✅ |  |
+| toggle_class | ✅ | `JS().toggle_class()` | ✅ |  |
+| set_attribute | ✅ | `JS().set_attr()` | ✅ |  |
+| remove_attribute | ✅ | `JS().remove_attr()` | ✅ |  |
+| transition | ✅ | `JS().transition()` | ✅ |  |
+| focus/focus_first | ✅ | `JS().focus/focus_first()` | ✅ |  |
+| push (server event) | ✅ | `JS().push()` | ✅ |  |
+| dispatch (DOM event) | ✅ | `JS().dispatch()` | ✅ |  |
+| navigate | ✅ | `JS().navigate()` | ✅ |  |
+| Command chaining | ✅ | ✅ 지원 | ✅ |  |
 
 ### 2.4 Optimistic UI ✅
 
-| 기능 | Phoenix LiveView | django-wireview | 상태 |
-|------|:----------------:|:---------------:|:----:|
-| phx-click-loading | ✅ | `wireview-click-loading` | ✅ |
-| phx-submit-loading | ✅ | `wireview-submit-loading` | ✅ |
-| phx-change-loading | ✅ | `wireview-change-loading` | ✅ |
-| phx-disabled-with | ✅ | `wire-disabled-with` | ✅ |
-| Client-side immediate | ✅ | JS() 명령어 | ✅ |
+| 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
+|------|:----------------:|:---------------:|:----:|------|
+| phx-click-loading | ✅ | `wireview-click-loading` | ✅ |  |
+| phx-submit-loading | ✅ | `wireview-submit-loading` | ✅ |  |
+| phx-change-loading | ✅ | `wireview-change-loading` | ✅ |  |
+| phx-disabled-with | ✅ | `wire-disabled-with` | ✅ |  |
+| Client-side immediate | ✅ | JS() 명령어 | ✅ |  |
 
 ### 2.5 Streams ✅
 
-| 기능 | Phoenix LiveView | django-wireview | 상태 |
-|------|:----------------:|:---------------:|:----:|
-| stream() | ✅ | `stream()` | ✅ |
-| stream_insert() | ✅ | `stream_insert()` | ✅ |
-| stream_delete() | ✅ | `stream_delete()` | ✅ |
-| DOM ID generation | ✅ | `dom_id` param | ✅ |
-| wire-stream attribute | `phx-update="stream"` | `wire-stream` | ✅ 재렌더에서 내용이 보존된다 |
-| 같은 dom id 재삽입 | 제자리 갱신 | 제자리 갱신 | ✅ |
-| stream :limit | ✅ | `stream(limit=N)` | ✅ |
-| stream :reset | ✅ | `stream()`이 곧 reset이다 | ✅ |
-| phx-viewport-top/bottom | ✅ | `wire-viewport-*` | ✅ |
+| 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
+|------|:----------------:|:---------------:|:----:|------|
+| stream() | ✅ | `stream()` | ✅ |  |
+| stream_insert() | ✅ | `stream_insert()` | ✅ |  |
+| stream_delete() | ✅ | `stream_delete()` | ✅ |  |
+| DOM ID generation | ✅ | `dom_id` param | ✅ |  |
+| wire-stream attribute | `phx-update="stream"` | `wire-stream` | ✅ 재렌더에서 내용이 보존된다 |  |
+| 같은 dom id 재삽입 | 제자리 갱신 | 제자리 갱신 | ✅ |  |
+| stream :limit | ✅ | `stream(limit=N)` | ✅ |  |
+| stream :reset | ✅ | `stream()`이 곧 reset이다 | ✅ |  |
+| phx-viewport-top/bottom | ✅ | `wire-viewport-*` | ✅ |  |
 
 ### 2.6 File Uploads ✅
 
-| 기능 | Phoenix LiveView | django-wireview | 상태 |
-|------|:----------------:|:---------------:|:----:|
-| allow_upload() | ✅ | `allow_upload()` | ✅ |
-| live_file_input | ✅ | `{% upload_input %}` | ✅ |
-| Progress tracking | ✅ | `entry.progress` | ✅ |
-| Image preview | ✅ | `{% upload_preview %}` | ✅ |
-| Drag and drop | ✅ | `{% upload_drop_zone %}` | ✅ |
-| Chunk upload | ✅ | ✅ | ✅ |
-| consume_uploads | ✅ | `consume_uploads()` | ✅ |
-| External upload (S3) | ✅ | `external=callback` | ✅ |
-| Magic byte validation | ✅ | ✅ | ✅ |
+| 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
+|------|:----------------:|:---------------:|:----:|------|
+| allow_upload() | ✅ | `allow_upload()` | ✅ |  |
+| live_file_input | ✅ | `{% upload_input %}` | ✅ |  |
+| Progress tracking | ✅ | `entry.progress` | ✅ |  |
+| Image preview | ✅ | `{% upload_preview %}` | ✅ |  |
+| Drag and drop | ✅ | `{% upload_drop_zone %}` | ✅ |  |
+| Chunk upload | ✅ | ✅ | ✅ |  |
+| consume_uploads | ✅ | `consume_uploads()` | ✅ |  |
+| External upload (S3) | ✅ | `external=callback` | ✅ |  |
+| Magic byte validation | ✅ | ✅ | ✅ |  |
 
 ### 2.7 Async Operations ✅
 
-| 기능 | Phoenix LiveView | django-wireview | 상태 |
-|------|:----------------:|:---------------:|:----:|
-| assign_async() | ✅ | `assign_async()` | ✅ |
-| AsyncResult states | loading/ok/failed | loading/ok/failed | ✅ |
-| start_async() | ✅ | `start_async()` | ✅ |
-| cancel_async() | ✅ | `cancel_async()` | ✅ |
-| handle_async() | ✅ | `handle_async()` | ✅ |
+| 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
+|------|:----------------:|:---------------:|:----:|------|
+| assign_async() | ✅ | `assign_async()` | ✅ |  |
+| AsyncResult states | loading/ok/failed | loading/ok/failed | ✅ |  |
+| start_async() | ✅ | `start_async()` | ✅ |  |
+| cancel_async() | ✅ | `cancel_async()` | ✅ |  |
+| handle_async() | ✅ | `handle_async()` | ✅ |  |
 
 ### 2.8 Navigation ✅
 
-| 기능 | Phoenix LiveView | django-wireview | 상태 |
-|------|:----------------:|:---------------:|:----:|
-| push_navigate | ✅ | `redirect_to()` | ✅ |
-| push_patch | ✅ | `push_to()` | ✅ |
-| replace | ✅ | `replace_to()` | ✅ |
-| handle_params | ✅ | `params_changed()` | ✅ |
-| live_session | ✅ | `live_session()` + `@session.view` | ✅ (GAP-009. 경계는 페이지 단위다 — Django 뷰가 라우트이기 때문. [문서](./features/live-session.md)) |
-| Client-side boost | ✅ | `BOOST_PAGES` | ✅ |
+| 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
+|------|:----------------:|:---------------:|:----:|------|
+| push_navigate | ✅ | `redirect_to()` | ✅ |  |
+| push_patch | ✅ | `push_to()` | ✅ |  |
+| replace | ✅ | `replace_to()` | ✅ |  |
+| handle_params | ✅ | `params_changed()` | ✅ |  |
+| live_session | ✅ | `live_session()` + `@session.view` | ✅ (GAP-009. 경계는 페이지 단위다 — Django 뷰가 라우트이기 때문. [문서](./features/live-session.md)) |  |
+| Client-side boost | ✅ | `BOOST_PAGES` | ✅ |  |
 
 ### 2.9 JavaScript Interoperability ✅
 
-| 기능 | Phoenix LiveView | django-wireview | 상태 |
-|------|:----------------:|:---------------:|:----:|
-| **wire-hook** | ✅ 라이프사이클 훅 | `wire-hook="Name"` | ✅ |
-| Hook.mounted | ✅ | `mounted()` | ✅ |
-| Hook.updated | ✅ | `updated()` | ✅ |
-| Hook.destroyed | ✅ | `destroyed()` | ✅ |
-| Hook.disconnected | ✅ | `disconnected()` | ✅ |
-| Hook.reconnected | ✅ | `reconnected()` | ✅ |
-| Hook.beforeUpdate | ✅ | `beforeUpdate()` | ✅ |
-| pushEvent (client→server) | ✅ | `this.pushEvent()` | ✅ |
-| handleEvent (server→client) | ✅ | `this.handleEvent()` | ✅ |
-| handle_hook_event (server) | - | `handle_hook_event()` | ✅ |
-| push_event (server→client) | ✅ | `push_event()` | ✅ |
-| Colocated hooks | ✅ | 앱의 `static/<app_label>/hooks/*.js` | ✅ (GAP-032) |
-| onBeforeElUpdated | ✅ | `dom.onBeforeElUpdated` | ✅ |
+| 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
+|------|:----------------:|:---------------:|:----:|------|
+| **wire-hook** | ✅ 라이프사이클 훅 | `wire-hook="Name"` | ✅ |  |
+| Hook.mounted | ✅ | `mounted()` | ✅ |  |
+| Hook.updated | ✅ | `updated()` | ✅ |  |
+| Hook.destroyed | ✅ | `destroyed()` | ✅ |  |
+| Hook.disconnected | ✅ | `disconnected()` | ✅ |  |
+| Hook.reconnected | ✅ | `reconnected()` | ✅ |  |
+| Hook.beforeUpdate | ✅ | `beforeUpdate()` | ✅ |  |
+| pushEvent (client→server) | ✅ | `this.pushEvent()` | ✅ |  |
+| handleEvent (server→client) | ✅ | `this.handleEvent()` | ✅ |  |
+| handle_hook_event (server) | - | `handle_hook_event()` | ✅ |  |
+| push_event (server→client) | ✅ | `push_event()` | ✅ |  |
+| Colocated hooks | ✅ | 앱의 `static/<app_label>/hooks/*.js` | ✅ (GAP-032) |  |
+| onBeforeElUpdated | ✅ | `dom.onBeforeElUpdated` | ✅ |  |
 
 ### 2.10 Components ✅
 
-| 기능 | Phoenix LiveView | django-wireview | 상태 |
-|------|:----------------:|:---------------:|:----:|
-| Stateful component | ✅ | ✅ Component | ✅ |
-| **LiveComponent** | ✅ 중첩 상태 | `{% live_component %}` | ✅ |
-| **Function components** | ✅ | `@function_component` | ✅ |
-| **Slots (named)** | ✅ `<:header>` | `{% fill header %}` | ✅ |
-| Slots (default) | ✅ `inner_block` | `{% render_slot %}` | ✅ |
-| Slots (let binding) | ✅ | `let:item` | ✅ |
-| Slots in LiveComponent | ✅ `<:slot>` in live_component | `{% live_component_block %}` | ✅ |
-| @myself target | ✅ | `myself=True` | ✅ |
-| update/2 callback | ✅ | `update()` | ✅ |
-| update_many/1 | ✅ 배치 최적화 | ❌ | 🟠 GAP-035 ([#74](https://github.com/itda-work/django-wireview/issues/74)) |
-| Nested LiveViews | ✅ 프로세스 격리 | LiveComponent (같은 프로세스) | ⚪ 설계상 제외 |
+| 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
+|------|:----------------:|:---------------:|:----:|------|
+| Stateful component | ✅ | ✅ Component | ✅ |  |
+| **LiveComponent** | ✅ 중첩 상태 | `{% live_component %}` | ✅ |  |
+| **Function components** | ✅ | `@function_component` | ✅ |  |
+| **Slots (named)** | ✅ `<:header>` | `{% fill header %}` | ✅ |  |
+| Slots (default) | ✅ `inner_block` | `{% render_slot %}` | ✅ |  |
+| Slots (let binding) | ✅ | `let:item` | ✅ |  |
+| Slots in LiveComponent | ✅ `<:slot>` in live_component | `{% live_component_block %}` | ✅ |  |
+| @myself target | ✅ | `myself=True` | ✅ |  |
+| update/2 callback | ✅ | `update()` | ✅ |  |
+| update_many/1 | ✅ 배치 최적화 | ❌ | 🟠 GAP-035 ([#74](https://github.com/itda-work/django-wireview/issues/74)) |  |
+| Nested LiveViews | ✅ 프로세스 격리 | LiveComponent (같은 프로세스) | ⚪ 설계상 제외 |  |
 
 Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 프로세스 격리에서 오는
 성질이다 — 자식이 죽어도 부모가 살고, 자식마다 자기 메일박스와 스케줄링을 가진다. Django·ASGI에는
@@ -182,63 +197,63 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 합성 요구를 받고, 격리 요구는 별도 연결(별도 페이지)로 받는다. 이 선을 옮기려면 GAP-027(#60)의
 세션 분리가 먼저다.
 
-### 2.11 Form Handling ⚠️
+### 2.11 Form Handling ✅
 
-| 기능 | Phoenix LiveView | django-wireview | 상태 |
-|------|:----------------:|:---------------:|:----:|
-| phx-change | ✅ | `{% on "input" %}` | ✅ |
-| phx-submit | ✅ | `{% on "submit" %}` | ✅ |
-| phx-debounce | ✅ | `.debounce.N` | ✅ |
-| phx-throttle | ✅ | `.throttle.N` | ✅ |
-| phx-feedback-for | ✅ | `wire-feedback-for` | ✅ |
-| phx-auto-recover | ✅ | `wire-auto-recover` | ✅ (GAP-008) |
-| Form recovery | ✅ 자동 | 재연결 시 폼 상태 복원 | ✅ (GAP-008) |
-| Changeset integration | Ecto | Django Forms | ✅ 다른 접근 |
+| 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
+|------|:----------------:|:---------------:|:----:|------|
+| phx-change | ✅ | `{% on "input" %}` | ✅ |  |
+| phx-submit | ✅ | `{% on "submit" %}` | ✅ |  |
+| phx-debounce | ✅ | `.debounce.N` | ✅ |  |
+| phx-throttle | ✅ | `.throttle.N` | ✅ |  |
+| phx-feedback-for | ✅ | `wire-feedback-for` | ✅ |  |
+| phx-auto-recover | ✅ | `wire-auto-recover` | ✅ (GAP-008) |  |
+| Form recovery | ✅ 자동 | 재연결 시 폼 상태 복원 | ✅ (GAP-008) |  |
+| Changeset integration | Ecto | Django Forms | ✅ 다른 접근 |  |
 
 ### 2.12 Performance Features ⚠️
 
-| 기능 | Phoenix LiveView | django-wireview | 상태 |
-|------|:----------------:|:---------------:|:----:|
-| HTML Diff | ✅ 바이너리 | ✅ Phoenix 스타일 (GAP-024로 부분 diff 실동작) | ✅ |
-| skip_render | ✅ | `skip_render()` | ✅ |
-| force_render | ✅ | `force_render()` | ✅ |
-| **temporary_assigns** | ✅ | ✅ `Meta.temporary_assigns` | ✅ |
-| Sticky components | ✅ | ❌ | 🟠 GAP-033 ([#72](https://github.com/itda-work/django-wireview/issues/72)) |
-| Comprehensions | ✅ 키 기반 | ✅ 내용 기반 짝짓기 (GAP-025, GAP-030). 템플릿 키 없이 이동·삽입·삭제가 그 항목만의 페이로드 | ✅ |
+| 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
+|------|:----------------:|:---------------:|:----:|------|
+| HTML Diff | ✅ 바이너리 | ✅ Phoenix 스타일 (GAP-024로 부분 diff 실동작) | ✅ |  |
+| skip_render | ✅ | `skip_render()` | ✅ |  |
+| force_render | ✅ | `force_render()` | ✅ |  |
+| **temporary_assigns** | ✅ | ✅ `Meta.temporary_assigns` | ✅ |  |
+| Sticky components | ✅ | ❌ | 🟠 GAP-033 ([#72](https://github.com/itda-work/django-wireview/issues/72)) |  |
+| Comprehensions | ✅ 키 기반 | ✅ 내용 기반 짝짓기 (GAP-025, GAP-030). 템플릿 키 없이 이동·삽입·삭제가 그 항목만의 페이로드 | ✅ |  |
 
 ### 2.13 Testing ✅
 
-| 기능 | Phoenix LiveView | django-wireview | 상태 |
-|------|:----------------:|:---------------:|:----:|
-| render_component | ✅ | `mount()` | ✅ |
-| render_click | ✅ | `call()` | ✅ |
-| render_change | ✅ | `call()` | ✅ |
-| assert_patch | ✅ | `assert_pushed_to()` · `assert_replaced_to()` · `follow_push()` | ✅ (GAP-031) |
-| follow_redirect | ✅ | `follow_redirect()` | ✅ (GAP-031) |
-| 스트림 검사 | - | `stream_html()` · `stream_items()` · `stream_ops()` | ✅ 추가 기능 |
-| MockChannelLayer | - | ✅ | ✅ 추가 기능 |
+| 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
+|------|:----------------:|:---------------:|:----:|------|
+| render_component | ✅ | `mount()` | ✅ |  |
+| render_click | ✅ | `call()` | ✅ |  |
+| render_change | ✅ | `call()` | ✅ |  |
+| assert_patch | ✅ | `assert_pushed_to()` · `assert_replaced_to()` · `follow_push()` | ✅ (GAP-031) |  |
+| follow_redirect | ✅ | `follow_redirect()` | ✅ (GAP-031) |  |
+| 스트림 검사 | - | `stream_html()` · `stream_items()` · `stream_ops()` | ✅ 추가 기능 |  |
+| MockChannelLayer | - | ✅ | ✅ 추가 기능 |  |
 
 ### 2.14 Developer Tools ✅
 
-| 기능 | Phoenix LiveView | django-wireview | 상태 |
-|------|:----------------:|:---------------:|:----:|
-| enableDebug | ✅ | `wireview.debug.enable()` | ✅ |
-| enableLatencySim | ✅ | `wireview.debug.latency()` | ✅ |
-| enableProfiling | ✅ | `wireview.debug.enableProfiling()` | ✅ |
-| Telemetry | ✅ | `wireview.telemetry` 시그널 | ✅ (GAP-022) |
-| **Type Stubs** | - | `wireview_stubs` | ✅ 추가 기능 |
-| **LSP Metadata** | - | `wireview_lsp` | ✅ 추가 기능 |
+| 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
+|------|:----------------:|:---------------:|:----:|------|
+| enableDebug | ✅ | `wireview.debug.enable()` | ✅ |  |
+| enableLatencySim | ✅ | `wireview.debug.latency()` | ✅ |  |
+| enableProfiling | ✅ | `wireview.debug.enableProfiling()` | ✅ |  |
+| Telemetry | ✅ | `wireview.telemetry` 시그널 | ✅ (GAP-022) |  |
+| **Type Stubs** | - | `wireview_stubs` | ✅ 추가 기능 |  |
+| **LSP Metadata** | - | `wireview_lsp` | ✅ 추가 기능 |  |
 
 ### 2.15 Miscellaneous ⚠️
 
-| 기능 | Phoenix LiveView | django-wireview | 상태 |
-|------|:----------------:|:---------------:|:----:|
-| Page title | ✅ `assign(:page_title)` | `push_title()` | ✅ |
-| Flash messages | ✅ `put_flash` | `put_flash()` | ✅ |
-| Dead views | ✅ JS 비활성화 폴백 | ❌ | 🟠 GAP-034 ([#73](https://github.com/itda-work/django-wireview/issues/73)) |
-| LongPolling fallback | ✅ | ❌ | ⚪ 설계상 제외 (GAP-012, [설계 메모](./design/longpolling-fallback.md)) |
-| on_mount hooks | ✅ | `Meta.on_mount` | ✅ (GAP-021. 호출부가 없어 훅이 실행되지 않던 것을 [#75](https://github.com/itda-work/django-wireview/issues/75)에서 붙였다) |
-| attach_hook | ✅ | `attach_hook()` | ✅ |
+| 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
+|------|:----------------:|:---------------:|:----:|------|
+| Page title | ✅ `assign(:page_title)` | `push_title()` | ✅ |  |
+| Flash messages | ✅ `put_flash` | `put_flash()` | ✅ |  |
+| Dead views | ✅ JS 비활성화 폴백 | ❌ | 🟠 GAP-034 ([#73](https://github.com/itda-work/django-wireview/issues/73)) |  |
+| LongPolling fallback | ✅ | ❌ | ⚪ 설계상 제외 (GAP-012, [설계 메모](./design/longpolling-fallback.md)) |  |
+| on_mount hooks | ✅ | `Meta.on_mount` | ✅ (GAP-021. 호출부가 없어 훅이 실행되지 않던 것을 [#75](https://github.com/itda-work/django-wireview/issues/75)에서 붙였다) |  |
+| attach_hook | ✅ | `attach_hook()` | ✅ |  |
 
 ---
 
