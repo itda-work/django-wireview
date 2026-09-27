@@ -308,7 +308,8 @@ def button(variant: str = "primary", **slots):
 2. `pyproject.toml`과 `package.json`의 `version`을 함께 올린다(`tests/test_packaging.py`가 둘을 비교한다).
    1.0.0에서는 classifier를 `Development Status :: 5 - Production/Stable`로 바꾼다.
 3. `make quality`, `make test`, `make test-e2e`, `make test-matrix`, `make ci-build`.
-4. 태그 `v<버전>`을 push한다. `.github/workflows/release.yml`이 태그와 `pyproject.toml`의 버전이 같은지 보고
+4. 워크플로나 액션 버전을 바꿨다면 태그 전에 `gh workflow run release.yml`로 dry run을 돌린다(빌드와 아티팩트 왕복만 하고 배포하지 않는다).
+5. 태그 `v<버전>`을 push한다. `.github/workflows/release.yml`이 태그와 `pyproject.toml`의 버전이 같은지 보고
    PyPI에 올린다.
 
 ---
