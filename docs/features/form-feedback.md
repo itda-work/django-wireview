@@ -388,6 +388,32 @@ input.is-invalid {
 }
 ```
 
+## 재연결 뒤 폼 복구 (`wire-auto-recover`)
+
+연결이 끊겼다 다시 붙으면 서버는 마지막 렌더의 상태만 가지고 있다. 서명된 `data-state`가 join에서
+그것을 되돌린다. 그 사이 사용자가 폼에 입력한 것은 페이지에는 남아 있지만 서버에는 없다.
+`wire-auto-recover`를 단 폼은 컴포넌트가 다시 join한 뒤 그 값을 서버에 돌려준다.
+
+```html
+<!-- 핸들러를 적으면 그 핸들러가 폼의 값을 form_data로 받는다 -->
+<form wire-auto-recover="recover_draft">
+  <textarea name="body"></textarea>
+</form>
+
+<!-- 값 없이 달면 폼의 change 이벤트를 다시 일으켜 폼 자신의 바인딩이 돈다 -->
+<form wire-auto-recover {% on "change" "validate" %}>
+  <input name="email">
+</form>
+```
+
+```python
+async def recover_draft(self, form_data: dict):
+    self.body = form_data.get("body", "")
+```
+
+값 없이 다는 형태는 Phoenix의 `phx-auto-recover` 기본 동작과 같다. 그 폼에 `{% on "change" %}` 바인딩이
+있어야 한다. 이름이 여러 값을 가지면(체크박스) `form_data`에서 리스트다.
+
 ## Phoenix LiveView 대응
 
 | 기능 | Phoenix LiveView | django-wireview |

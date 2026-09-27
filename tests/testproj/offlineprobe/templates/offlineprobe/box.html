@@ -8,6 +8,16 @@
   </form>
   <span data-testid="added">{{ this.added }}</span>
   <span data-testid="pings" wire-hook="Pinger">{{ this.pings }}</span>
+  <span data-testid="watched" wire-hook="Watcher">{{ this.count }}</span>
+  <button data-testid="nudge" {% on "click" "nudge" %}>nudge</button>
+  <form id="draft-form" wire-auto-recover="recover">
+    <input data-testid="draft" name="draft">
+  </form>
+  <span data-testid="recovered">{{ this.recovered }}</span>
+  <form id="city-form" wire-auto-recover {% on "change" "set_city" %}>
+    <input data-testid="city" name="city">
+  </form>
+  <span data-testid="city-value">{{ this.city }}</span>
   <a data-testid="link"
      href="/offlineprobe/elsewhere/"
      {% on "click.prevent" "bump" %}>link</a>

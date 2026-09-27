@@ -24,6 +24,20 @@ class OfflineBox(Component):
     async def add(self, item: str = "", **_rest):
         self.added = item
 
+    recovered: str = ""
+    city: str = ""
+
     async def handle_hook_event(self, hook_id, event, payload):
         if event == "ping":
             self.pings += 1
+        if event == "echo":
+            return {"echo": payload.get("n")}
+
+    async def nudge(self, **_rest):
+        await self.push_event("nudge", {"n": 1})
+
+    async def recover(self, form_data: dict | None = None, **_rest):
+        self.recovered = (form_data or {}).get("draft", "")
+
+    async def set_city(self, city: str = "", **_rest):
+        self.city = city

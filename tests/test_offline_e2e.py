@@ -125,3 +125,57 @@ def test_the_page_works_again_after_the_reconnect(link):
 
     expect_text(by(page, "added"), "after")
     assert page.evaluate("window.__samePage === true")
+
+
+# --- what a reconnect gives back (#110) --------------------------------------------------
+
+
+def test_a_hook_hears_the_disconnect_and_the_reconnect(link):
+    page = link.page
+    link.cut()
+    expect(page.locator("html")).to_have_attribute("data-disconnected", "1")
+    link.restore()
+    expect(page.locator("html")).to_have_attribute("data-reconnected", "1")
+
+
+def test_a_hook_keeps_its_callbacks_after_the_reconnect(link):
+    page = link.page
+    html = page.locator("html")
+    link.cut()
+    link.restore()
+
+    # handleEvent: the server pushes to it. Pushed after the rejoin's render, since
+    # the server answers one socket in order, so that render is on the page now.
+    by(page, "nudge").click()
+    expect(html).to_have_attribute("data-nudge1", "1")
+    # updated: counted from here, because the rejoin's render ran it already
+    before = int(html.get_attribute("data-updated") or 0)
+    by(page, "bump").click()
+    expect_text(by(page, "count"), "1")
+    expect(html).to_have_attribute("data-updated", str(before + 1))
+    # pushEvent's reply callback
+    page.evaluate(
+        """() => window.__watcher.pushEvent("echo", {n: 7}, (reply) => {
+             document.documentElement.dataset.echo = String(reply.echo);
+           })"""
+    )
+    expect(html).to_have_attribute("data-echo", "7")
+
+
+def test_auto_recover_sends_the_forms_values_to_its_handler(link):
+    page = link.page
+    link.cut()
+    by(page, "draft").fill("half a sentence")
+    link.restore()
+
+    expect_text(by(page, "recovered"), "half a sentence")
+
+
+def test_auto_recover_without_a_handler_replays_the_forms_change_binding(link):
+    # What Phoenix does for phx-auto-recover's default: the form's own change event.
+    page = link.page
+    link.cut()
+    by(page, "city").fill("Seoul")
+    link.restore()
+
+    expect_text(by(page, "city-value"), "Seoul")

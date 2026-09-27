@@ -12,6 +12,15 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- Hooks keep working across a reconnect. `reconnected()` was never called, and a hook's
+  instance was stranded: the component that joined again had a new hook manager, so the hook
+  got no `updated`, no `handleEvent` and no `pushEvent` reply. The joining component now takes
+  the hooks over and calls `reconnected()` (#110).
+- `wire-auto-recover` recovers. Its handler was sent before the component joined again and
+  the server dropped it, and without a handler it only put back values the page still had. It
+  now runs after the join with the form's current values: `wire-auto-recover="handler"` calls
+  the handler with `form_data`, a bare `wire-auto-recover` fires the form's change binding, as
+  Phoenix does (#110).
 - `push_title()`, `put_flash()` and `clear_flash()` work on a live page. The consumer had no
   handler for their messages, so the lookup raised and closed the socket: calling one dropped
   the connection it was meant for. A command without a handler is now logged and dropped, and

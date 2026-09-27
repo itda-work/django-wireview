@@ -185,3 +185,26 @@ def test_put_flash_shows_a_dismissible_message(probe):
     expect(flash).to_have_attribute("data-flash-type", "info")
     flash.get_by_role("button", name="Dismiss").click()
     expect(flash).to_have_count(0)
+
+
+KEEP_DATA_JS = """wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
+  for (const attr of fromEl.attributes) {
+    if (attr.name.startsWith("data-js-")) toEl.setAttribute(attr.name, attr.value);
+  }
+})"""
+
+
+def test_a_render_drops_what_javascript_added_to_an_element(probe):
+    # The control for the next test: the server's HTML wins the morph.
+    by(probe, "hide").evaluate("el => el.setAttribute('data-js-seen', 'yes')")
+    by(probe, "increment-server").click()
+    expect_text(by(probe, "count"), "1")
+    expect(by(probe, "hide")).not_to_have_attribute("data-js-seen", "yes")
+
+
+def test_on_before_el_updated_keeps_it(probe):
+    probe.evaluate(KEEP_DATA_JS)
+    by(probe, "hide").evaluate("el => el.setAttribute('data-js-seen', 'yes')")
+    by(probe, "increment-server").click()
+    expect_text(by(probe, "count"), "1")
+    expect(by(probe, "hide")).to_have_attribute("data-js-seen", "yes")

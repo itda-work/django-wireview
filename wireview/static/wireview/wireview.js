@@ -86,6 +86,8 @@ class ServerConnection {
     this.serverVsn = 0;
     /** @type {number} The last ref given to a user event on this connection */
     this.lastRef = 0;
+    /** @type {Object<string, WireviewComponent>} components a dropped connection left, until they join again */
+    this.detached = {};
   }
 
   /**
@@ -107,14 +109,7 @@ class ServerConnection {
     this.socket.addEventListener("open", () => {
       debugLog("ws", "Connected to server");
 
-      // Notify hooks of reconnection (not on initial connect)
-      if (this.wasConnected) {
-        for (const component of Object.values(this.components)) {
-          component.hookManager.reconnected();
-        }
-        // Restore form state on reconnection
-        this.restoreFormState();
-      }
+      const reconnecting = this.wasConnected;
       this.wasConnected = true;
 
       this.sendQueryString();
@@ -122,12 +117,19 @@ class ServerConnection {
       // page's own hook definitions among them -- has run before anything joins.
       whenDocumentReady(() => {
         this.components = {};
+        // A component that joins again takes its hooks back from the one the
+        // drop left behind (`adopt`) and tells them `reconnected()`.
         this.joinAllComponents();
+        this.releaseDetached();
         // Flush messages queued while the socket was connecting
         while (this.messageQueue.length) {
           const { command, payload } = this.messageQueue.shift();
           this._send(command, payload);
         }
+        // After the joins: the server handles one socket's messages in order,
+        // and a recovery event sent before its component's join found nothing
+        // to reach and was dropped (#110).
+        if (reconnecting) this.recoverForms();
       });
     });
 
@@ -142,14 +144,14 @@ class ServerConnection {
       boost.valueGuard.clear();
       debugLog("ws", "Disconnected from server");
 
-      // Save form state before clearing components
-      this.saveFormState();
-
       // Notify hooks of disconnection before clearing components
       for (const component of Object.values(this.components)) {
         component.hookManager.disconnected();
       }
 
+      // Kept, not dropped: the hook instances live on their elements, and the
+      // components that join after the reconnect take them over (#110).
+      Object.assign(this.detached, this.components);
       this.components = {};
       document.querySelectorAll("[wireview-component]").forEach((el) => {
         const element = /** @type {HTMLElement} */ (el);
@@ -179,13 +181,44 @@ class ServerConnection {
    * Joins all wireview components found in the DOM.
    * Registers new components and removes stale ones.
    */
+  /**
+   * Hand a new component the hooks of the one a dropped connection left on
+   * the same element. Their instances are tied to the element (it carries
+   * their ids), so a fresh HookManager would neither mount them again nor
+   * reach them: after a reconnect they got no `updated`, no `handleEvent` and
+   * no `pushEvent` reply, and `reconnected()` was never called (#110).
+   * @param {WireviewComponent} component
+   * @returns {WireviewComponent}
+   */
+  adopt(component) {
+    const previous = this.detached[component.id];
+    if (previous === undefined) return component;
+    delete this.detached[component.id];
+    if (previous.getElemenet() !== component.getElemenet()) {
+      previous.hookManager.teardown();
+      return component;
+    }
+    component.hookManager = previous.hookManager;
+    component.hookManager.component = component;
+    component.hookManager.rejoining = true;
+    return component;
+  }
+
+  /** The components a reconnect did not bring back: their elements are gone. */
+  releaseDetached() {
+    for (const previous of Object.values(this.detached)) {
+      previous.hookManager.teardown();
+    }
+    this.detached = {};
+  }
+
   joinAllComponents() {
     let registeredIds = new Set(Object.keys(this.components));
     for (let element of document.querySelectorAll("[wireview-component]")) {
       if (registeredIds.delete(element.id)) {
         this.components[element.id].join();
       } else {
-        let component = new WireviewComponent(element.id);
+        let component = this.adopt(new WireviewComponent(element.id));
         this.components[element.id] = component;
         component.join();
       }
@@ -219,7 +252,7 @@ class ServerConnection {
         for (const [childId, childDiff] of Object.entries(children || {})) {
           let child = this.components[childId];
           if (!child) {
-            child = new WireviewComponent(childId);
+            child = this.adopt(new WireviewComponent(childId));
             this.components[childId] = child;
           }
           if (childDiff) {
@@ -698,118 +731,33 @@ class ServerConnection {
   }
 
   /**
-   * Saves form state for forms with wire-auto-recover attribute.
-   * Called when WebSocket connection is lost.
+   * Gives the server back what a `wire-auto-recover` form holds after a
+   * reconnect. The form is still on the page with what the user typed; the
+   * server has only the state of the last render, which a signed state
+   * restores on join. So once the component has joined again:
+   *
+   * - `wire-auto-recover="handler"` calls that handler with `form_data`,
+   * - a bare `wire-auto-recover` fires the form's change event, so its own
+   *   `{% on "change" %}` binding runs -- Phoenix's phx-auto-recover default.
    */
-  saveFormState() {
-    const forms = document.querySelectorAll("form[wire-auto-recover]");
-    if (forms.length === 0) return;
-
-    debugLog("form", `Saving state for ${forms.length} form(s)`);
-
-    forms.forEach((form) => {
+  recoverForms() {
+    for (const form of document.querySelectorAll("form[wire-auto-recover]")) {
       const componentEl = form.closest("[wireview-component]");
-      if (!componentEl) return;
+      if (!componentEl || !this.components[componentEl.id]) continue;
 
-      const key = `wireview-form-${componentEl.id}-${form.id || "default"}`;
-      const formData = new FormData(/** @type {HTMLFormElement} */ (form));
-
-      // Convert to serializable object, handling multiple values
-      const data = {};
-      for (const [name, value] of formData.entries()) {
-        if (data[name]) {
-          // Handle multiple values (checkboxes, multi-select)
-          if (Array.isArray(data[name])) {
-            data[name].push(value);
-          } else {
-            data[name] = [data[name], value];
-          }
-        } else {
-          data[name] = value;
-        }
-      }
-
-      // Skip if form is empty
-      if (Object.keys(data).length === 0) return;
-
-      try {
-        sessionStorage.setItem(key, JSON.stringify(data));
-        debugLog("form", `Saved form state: ${key}`, data);
-      } catch (e) {
-        console.warn("wireview: Failed to save form state", e);
-      }
-    });
-  }
-
-  /**
-   * Restores form state for forms with wire-auto-recover attribute.
-   * Called when WebSocket connection is re-established.
-   */
-  restoreFormState() {
-    const forms = document.querySelectorAll("form[wire-auto-recover]");
-    if (forms.length === 0) return;
-
-    debugLog("form", `Restoring state for ${forms.length} form(s)`);
-
-    forms.forEach((form) => {
-      const componentEl = form.closest("[wireview-component]");
-      if (!componentEl) return;
-
-      const key = `wireview-form-${componentEl.id}-${form.id || "default"}`;
-      const saved = sessionStorage.getItem(key);
-
-      if (!saved) return;
-
-      try {
-        const data = JSON.parse(saved);
-        debugLog("form", `Restoring form state: ${key}`, data);
-
-        // Restore values to form fields
-        Object.entries(data).forEach(([name, value]) => {
-          const inputs = form.querySelectorAll(`[name="${name}"]`);
-
-          inputs.forEach((input) => {
-            const inputEl = /** @type {HTMLInputElement} */ (input);
-            const inputType = inputEl.type?.toLowerCase();
-
-            if (inputType === "checkbox" || inputType === "radio") {
-              // Handle checkbox/radio
-              const values = Array.isArray(value) ? value : [value];
-              inputEl.checked = values.includes(inputEl.value);
-            } else if (inputEl.tagName === "SELECT" && inputEl.multiple) {
-              // Handle multi-select
-              const values = Array.isArray(value) ? value : [value];
-              Array.from(inputEl.options).forEach((opt) => {
-                opt.selected = values.includes(opt.value);
-              });
-            } else {
-              // Handle text, textarea, select, etc.
-              inputEl.value = Array.isArray(value) ? value[0] : value;
-            }
-          });
+      const handler = form.getAttribute("wire-auto-recover");
+      if (handler && handler !== "true") {
+        debugLog("form", `Recovering ${componentEl.id} through ${handler}`);
+        this._send("user_event", {
+          id: componentEl.id,
+          command: handler,
+          implicit_args: {},
+          explicit_args: { form_data: formValues(/** @type {HTMLFormElement} */ (form)) },
         });
-
-        // Check for custom recovery handler
-        const handler = form.getAttribute("wire-auto-recover");
-        if (handler && handler !== "" && handler !== "true") {
-          // Send recovery event to server
-          const componentId = componentEl.id;
-          debugLog("form", `Calling recovery handler: ${handler}`);
-          this._send("user_event", {
-            id: componentId,
-            command: handler,
-            implicit_args: {},
-            explicit_args: { form_data: data },
-          });
-        }
-
-        // Clear saved state after restore
-        sessionStorage.removeItem(key);
-      } catch (e) {
-        console.warn("wireview: Failed to restore form state", e);
-        sessionStorage.removeItem(key);
+      } else {
+        form.dispatchEvent(new Event("change", { bubbles: true }));
       }
-    });
+    }
   }
 
   /**
@@ -1310,6 +1258,8 @@ class HookManager {
     this.refCounter = 0;
     /** @type {MutationObserver|null} */
     this.observer = null;
+    /** @type {boolean} set by `adopt`: the next `init` is a reconnect */
+    this.rejoining = false;
   }
 
   /**
@@ -1318,6 +1268,16 @@ class HookManager {
   init() {
     this.scanAndMount();
     this.setupMutationObserver();
+    if (this.rejoining) {
+      this.rejoining = false;
+      this.reconnected();
+    }
+  }
+
+  /** Stop watching: the component these hooks belonged to is gone for good. */
+  teardown() {
+    this.observer?.disconnect();
+    this.observer = null;
   }
 
   /**
@@ -1404,6 +1364,8 @@ class HookManager {
   setupMutationObserver() {
     const root = this.component.getElemenet();
     if (!root) return;
+    // A HookManager adopted after a reconnect is initialized again
+    this.observer?.disconnect();
 
     this.observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
@@ -2508,6 +2470,23 @@ const FeedbackManager = {
 
 // Initialize feedback system
 FeedbackManager.init();
+
+/**
+ * A form's values as a plain object; a name with several values maps to a list.
+ * @param {HTMLFormElement} form
+ * @returns {Object<string, FormDataEntryValue | FormDataEntryValue[]>}
+ */
+function formValues(form) {
+  /** @type {Object<string, FormDataEntryValue | FormDataEntryValue[]>} */
+  const data = {};
+  for (const [name, value] of new FormData(form).entries()) {
+    const seen = data[name];
+    if (seen === undefined) data[name] = value;
+    else if (Array.isArray(seen)) seen.push(value);
+    else data[name] = [seen, value];
+  }
+  return data;
+}
 
 /**
  * Whether `el` submits its form when clicked: a click on it is a committing

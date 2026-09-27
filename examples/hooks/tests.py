@@ -12,7 +12,7 @@ import time
 
 import pytest
 from playwright.sync_api import expect
-from testproj.e2e_browser import expect_text, open_live
+from testproj.e2e_browser import WAIT_TIMEOUT, expect_text, open_live
 from testproj.e2e_server import serve, server_errors
 
 from .live import XLifecycle
@@ -145,11 +145,29 @@ class TestHookLifecycle:
     def test_a_morph_runs_beforeupdate_then_updated(self, page, hooks_server):
         _open(page, hooks_server)
         expect_text(page.locator('[data-testid="count-mounted"]'), "1")
+        # The counters live outside the component; record the order they change in.
+        page.evaluate(
+            """() => {
+              // On the whole document: a counter element may be replaced, not only rewritten.
+              window.__order = [];
+              new MutationObserver((mutations) => {
+                for (const { target } of mutations) {
+                  const el = (target.nodeType === Node.TEXT_NODE ? target.parentElement : target)
+                    ?.closest?.('[data-testid="count-beforeUpdate"], [data-testid="count-updated"]');
+                  const name = el?.dataset.testid.slice("count-".length);
+                  if (name && window.__order.at(-1) !== name) window.__order.push(name);
+                }
+              }).observe(document.documentElement, { childList: true, characterData: true, subtree: true });
+            }"""
+        )
 
         page.click('[data-testid="touch"]')
 
-        expect_text(page.locator('[data-testid="count-updated"]'), "1")
-        expect_text(page.locator('[data-testid="count-beforeUpdate"]'), "1")
+        # Not the counters' values: the join's own render can land after the hook
+        # mounted and run the pair once already, so "1" may be the page load's.
+        page.wait_for_function("window.__order.length >= 2", timeout=WAIT_TIMEOUT * 1000)
+        order = page.evaluate("window.__order")
+        assert order == ["beforeUpdate", "updated"] * (len(order) // 2), order
         # Still the hook's text, not the ISO instant the server just wrote.
         expect(page.locator('[data-testid="timeago"]')).to_contain_text("초 전")
 

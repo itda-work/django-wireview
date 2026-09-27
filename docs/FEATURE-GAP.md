@@ -161,19 +161,19 @@ GAP 번호로 추적한다.
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
-| **wire-hook** | ✅ 라이프사이클 훅 | `wire-hook="Name"` | ✅ |  |
-| Hook.mounted | ✅ | `mounted()` | ✅ |  |
-| Hook.updated | ✅ | `updated()` | ✅ |  |
-| Hook.destroyed | ✅ | `destroyed()` | ✅ |  |
-| Hook.disconnected | ✅ | `disconnected()` | ✅ |  |
-| Hook.reconnected | ✅ | `reconnected()` | ✅ |  |
-| Hook.beforeUpdate | ✅ | `beforeUpdate()` | ✅ |  |
-| pushEvent (client→server) | ✅ | `this.pushEvent()` | ✅ |  |
-| handleEvent (server→client) | ✅ | `this.handleEvent()` | ✅ |  |
-| handle_hook_event (server) | - | `handle_hook_event()` | ✅ |  |
-| push_event (server→client) | ✅ | `push_event()` | ✅ |  |
-| Colocated hooks | ✅ | 앱의 `static/<app_label>/hooks/*.js` | ✅ (GAP-032) |  |
-| onBeforeElUpdated | ✅ | `dom.onBeforeElUpdated` | ✅ |  |
+| **wire-hook** | ✅ 라이프사이클 훅 | `wire-hook="Name"` | ✅ | `examples/hooks/tests.py::TestHookLifecycle::test_a_registered_hook_mounts_and_rewrites_its_element` |
+| Hook.mounted | ✅ | `mounted()` | ✅ | `examples/hooks/tests.py::TestHookLifecycle::test_a_registered_hook_mounts_and_rewrites_its_element`<br>`examples/hooks/tests.py::TestHookLifecycle::test_putting_it_back_mounts_a_new_instance` |
+| Hook.updated | ✅ | `updated()` | ✅ | `examples/hooks/tests.py::TestHookLifecycle::test_a_morph_runs_beforeupdate_then_updated`<br>`tests/test_offline_e2e.py::test_a_hook_keeps_its_callbacks_after_the_reconnect` |
+| Hook.destroyed | ✅ | `destroyed()` | ✅ | `examples/hooks/tests.py::TestHookLifecycle::test_removing_the_element_destroys_the_hook` |
+| Hook.disconnected | ✅ | `disconnected()` | ✅ | `tests/test_offline_e2e.py::test_a_hook_hears_the_disconnect_and_the_reconnect` |
+| Hook.reconnected | ✅ | `reconnected()` | ✅ | `tests/test_offline_e2e.py::test_a_hook_hears_the_disconnect_and_the_reconnect` |
+| Hook.beforeUpdate | ✅ | `beforeUpdate()` | ✅ | `examples/hooks/tests.py::TestHookLifecycle::test_a_morph_runs_beforeupdate_then_updated` |
+| pushEvent (client→server) | ✅ | `this.pushEvent()` | ✅ | `examples/hooks/tests.py::TestHookLifecycle::test_the_hook_pushes_an_event_and_reads_the_answer`<br>`tests/test_offline_e2e.py::test_a_hook_keeps_its_callbacks_after_the_reconnect` |
+| handleEvent (server→client) | ✅ | `this.handleEvent()` | ✅ | `examples/hooks/tests.py::TestHookLifecycle::test_the_server_pushes_an_event_the_hook_is_listening_for`<br>`tests/test_offline_e2e.py::test_a_hook_keeps_its_callbacks_after_the_reconnect` |
+| handle_hook_event (server) | - | `handle_hook_event()` | ✅ | `examples/hooks/tests.py::TestHookLifecycle::test_the_hook_pushes_an_event_and_reads_the_answer`<br>`tests/test_live_session_contract.py::TestARefusedIdAnswersNothing::test_the_control_reaches_an_admitted_component` |
+| push_event (server→client) | ✅ | `push_event()` | ✅ | `examples/hooks/tests.py::TestHookLifecycle::test_the_server_pushes_an_event_the_hook_is_listening_for`<br>`examples/hooks/tests.py::test_highlight_pushes_to_every_hook_of_this_component` |
+| Colocated hooks | ✅ | 앱의 `static/<app_label>/hooks/*.js` | ✅ (GAP-032) | `tests/test_hook_collection.py::TestWhatTheHeaderEmits::test_every_hook_file_gets_a_deferred_script`<br>`examples/hooks/tests.py::TestHookLifecycle::test_a_slow_hook_file_still_registers_before_the_first_join` |
+| onBeforeElUpdated | ✅ | `wireview.dom.onBeforeElUpdated()` | ✅ | `tests/test_js_commands_e2e.py::test_on_before_el_updated_keeps_it`<br>`tests/test_js_commands_e2e.py::test_a_render_drops_what_javascript_added_to_an_element` |
 
 ### 2.10 Components ✅
 

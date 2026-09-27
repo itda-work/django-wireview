@@ -23,6 +23,7 @@
   <button data-testid="navigate-replace" {% on "click" this.go_replace %}>go replace</button>
   <button data-testid="chain" {% on "click" this.chain %}>chain</button>
   <span data-testid="count">{{ this.count }}</span>
+  <button data-testid="increment-server" {% on "click" "increment" %}>+</button>
   <button data-testid="slow" {% on "click" "slow_save" %}>slow</button>
   <button data-testid="slow-chain"
           wire-disabled-with="Opening"

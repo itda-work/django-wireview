@@ -72,7 +72,7 @@
 | `wire-viewport-top` / `wire-viewport-bottom` | 무한 스크롤 |
 | `wire-disabled-with` | 요청 중 버튼 비활성화 + 대체 문구 |
 | `wire-feedback-for` / `wire-no-feedback` | 폼 검증 오류 표시 시점 제어 |
-| `wire-auto-recover` | 재연결 시 입력값 복원 |
+| `wire-auto-recover` | 재연결 뒤 폼의 값을 서버에 돌려줌 (핸들러 또는 폼의 change 바인딩) |
 | `wire-flash` | 플래시 메시지 표시 자리 |
 | `wire-upload-drop` / `wire-preview` | 업로드 드롭존·미리보기 |
 
