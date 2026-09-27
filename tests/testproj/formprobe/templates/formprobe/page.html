@@ -1,0 +1,11 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>form probe</title>
+    {% wireview_header %}
+    <style>.wire-no-feedback { display: none !important; }</style>
+  </head>
+  <body>{% component 'FormProbe' id="probe" %}</body>
+</html>

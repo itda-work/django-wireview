@@ -1,0 +1,32 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <form data-testid="form" {% on "submit.prevent" "save" %}>
+    <input data-testid="email" name="email">
+    {% if this.errors.email %}
+      <ul data-testid="email-errors"
+          wire-feedback-for="email"
+          class="wire-no-feedback">
+        {% for error in this.errors.email %}<li>{{ error }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+    <input data-testid="name" name="name">
+    {% if this.errors.name %}
+      <ul data-testid="name-errors"
+          wire-feedback-for="name"
+          class="wire-no-feedback">
+        {% for error in this.errors.name %}<li>{{ error }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+    <button type="submit" data-testid="submit">sign up</button>
+  </form>
+  <span data-testid="saved">{{ this.saved }}</span>
+  <input data-testid="debounced"
+         name="d"
+         {% on "input.debounce.300" "debounced" %}>
+  <span data-testid="typed">{{ this.typed }}</span>
+  <input data-testid="throttled"
+         name="t"
+         {% on "input.throttle.500" "throttle" %}>
+  <span data-testid="throttled-count">{{ this.throttled }}</span>
+</div>

@@ -10,8 +10,16 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Changed
+
+- Submitting a form shows the `wire-feedback-for` feedback of all its fields, touched or not,
+  as Phoenix does. The guide told applications to do this with an inline `onclick`, which a
+  strict CSP blocks (#110).
+
 ### Fixed
 
+- The Django form example in `docs/features/form-feedback.md` runs. Its template looped over a
+  `form` the component never exposes and used a `get_item` filter that does not exist (#110).
 - Hooks keep working across a reconnect. `reconnected()` was never called, and a hook's
   instance was stranded: the component that joined again had a new hook manager, so the hook
   got no `updated`, no `handleEvent` and no `pushEvent` reply. The joining component now takes

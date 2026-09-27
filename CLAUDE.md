@@ -105,7 +105,8 @@ tests/
                            valueprobe/ 는 렌더가 입력 중인 값을 지우지 않는지 보는 E2E(test_input_values_e2e.py)의 픽스처,
                            errorprobe/ 는 예외를 던지는 핸들러와 join을 보는 E2E(test_errors_e2e.py)의 픽스처,
                            offlineprobe/ 는 연결이 끊긴 페이지의 바인딩·큐와 재연결 뒤의 훅·폼 복구를 보는 E2E(test_offline_e2e.py)의 픽스처,
-                           jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처다
+                           jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,
+                           formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처다
 
 examples/                  예제 앱 11개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.
                            testproj 위에서 돌고 make test가 함께 실행한다(pytest tests examples).

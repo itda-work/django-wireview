@@ -2377,6 +2377,17 @@ const FeedbackManager = {
       }
     }, true);
 
+    // A submit shows every field's feedback, touched or not: the user asked for
+    // the verdict on the whole form. Phoenix does the same for phx-feedback-for.
+    document.addEventListener("submit", (e) => {
+      if (!(e.target instanceof HTMLFormElement)) return;
+      for (const field of e.target.elements) {
+        const el = /** @type {HTMLElement} */ (field);
+        const name = this.isFormInput(el) ? this.getFieldName(el) : null;
+        if (name) this.markTouched(name);
+      }
+    }, true);
+
     // Track input events (for immediate feedback on typing)
     document.addEventListener("input", (e) => {
       const target = /** @type {HTMLElement} */ (e.target);

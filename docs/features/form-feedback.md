@@ -77,7 +77,11 @@
 
 - 포커스했다가 벗어났다(blur)
 - 값이 바뀌었다 (select, checkbox, radio)
+- 그 필드가 든 폼을 제출했다 — 건드리지 않은 필드의 오류도 이때 보인다
 - 코드로 직접 표시했다
+
+건드림 상태는 필드 이름 단위이고 페이지 전체에서 하나다. 한 페이지의 두 폼에 같은 이름의 필드가 있으면
+한쪽을 건드리면 다른 쪽도 건드린 것이 된다.
 
 ### 피드백 표시
 
@@ -267,30 +271,31 @@ class XContactPage(Component):
             }
 ```
 
-템플릿:
+템플릿은 필드마다 오류를 `wire-feedback-for` 아래 둔다. `this.errors`의 키가 필드 이름이다.
 
 ```html
 {% load wireview %}
 
-<form {% on "submit" "save" %}>
-  {% for field in form %}
-    <div class="field">
-      {{ field.label_tag }}
-      {{ field }}
+<form {% on "submit.prevent" "save" %}>
+  <input name="email">
+  {% if this.errors.email %}
+    <ul wire-feedback-for="email" class="errorlist wire-no-feedback">
+      {% for error in this.errors.email %}<li>{{ error }}</li>{% endfor %}
+    </ul>
+  {% endif %}
 
-      {% if field.name in this.errors %}
-        <ul wire-feedback-for="{{ field.name }}" class="errorlist wire-no-feedback">
-          {% for error in this.errors|get_item:field.name %}
-            <li>{{ error }}</li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-    </div>
-  {% endfor %}
+  <input name="name">
+  {% if this.errors.name %}
+    <ul wire-feedback-for="name" class="errorlist wire-no-feedback">
+      {% for error in this.errors.name %}<li>{{ error }}</li>{% endfor %}
+    </ul>
+  {% endif %}
 
   <button type="submit">보내기</button>
 </form>
 ```
+
+이 형태는 `tests/testproj/formprobe/`가 브라우저에서 그대로 돌린다.
 
 ## 권장 사항
 
@@ -335,21 +340,10 @@ window.wireview.hooks.FormHandler = {
 };
 ```
 
-### 4. 제출 시에는 모든 오류를 보여 준다
+### 4. 제출하면 전부 보인다
 
-제출 순간에는 건드림 여부와 무관하게 전부 보여 주고 싶을 수 있다.
-
-```html
-<button
-  type="submit"
-  onclick="['email', 'password', 'name'].forEach(f => wireview.feedback.touch(f))"
->
-  제출
-</button>
-```
-
-이 예는 직접 쓴 인라인 `onclick`이라 `'unsafe-inline'` 없는 CSP에서는 막힌다. 그런 페이지에서는 같은 코드를
-[훅](./hooks.md)의 `mounted()`에서 `this.el.addEventListener("click", …)`로 단다([CSP](./csp.md)).
+폼을 제출하면 그 폼의 필드가 모두 건드린 것이 되어, 아직 손대지 않은 필드의 오류도 보인다. Phoenix의
+`phx-feedback-for`와 같은 동작이라 따로 할 일이 없다.
 
 ## CSS 예
 
