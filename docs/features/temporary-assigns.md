@@ -91,17 +91,10 @@ HTML diff 계산 및 클라이언트 전송
 # wireview/core/component.py
 def _clear_temporary_assigns(self) -> None:
     for field_name in self._meta.temporary_assigns:
-        field_info = self.model_fields[field_name]
-
-        if field_info.default is not None:
-            # 직접 지정된 기본값 사용
-            default_value = field_info.default
-        elif field_info.default_factory is not None:
-            # default_factory 호출하여 새 인스턴스 생성
-            default_value = field_info.default_factory()
-        else:
-            continue  # 기본값 없으면 스킵
-
+        field_info = type(self).model_fields[field_name]
+        if field_info.is_required():
+            continue  # 기본값이 없으면 건드리지 않는다
+        default_value = field_info.get_default(call_default_factory=True)
         object.__setattr__(self, field_name, default_value)
 ```
 

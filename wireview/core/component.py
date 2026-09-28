@@ -1602,16 +1602,12 @@ class Component(BaseModel):
                 continue
 
             field_info = type(self).model_fields[field_name]
-            # Get the default value for this field
-            # Note: In Pydantic v2, default_factory is the actual callable (e.g., list class)
-            if field_info.default is not None:
-                default_value = field_info.default
-            elif field_info.default_factory is not None:
-                # default_factory is a callable like `list` or a lambda
-                default_value = field_info.default_factory()  # type: ignore[call-arg]
-            else:
-                # No default, skip this field
+            # A field with no default is left alone. The test used to be
+            # ``default is not None``, which a required field's PydanticUndefined
+            # passes (it was assigned) and a field defaulting to None fails (#113).
+            if field_info.is_required():
                 continue
+            default_value = field_info.get_default(call_default_factory=True)
 
             # Set the field to its default value
             # Use object.__setattr__ to bypass Pydantic validation for performance

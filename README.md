@@ -407,6 +407,8 @@ class SearchList(Component):
 
 ```python
 class TreeView(Component):
+    expanded: bool = False
+
     @classmethod
     def new(cls, wire, id: str, **kwargs):
         kwargs["expanded"] = id in wire.params.get("expanded.json", [])
@@ -482,11 +484,9 @@ class MessageList(Component):
     class Meta:
         template_name = "chat/message_list.html"
 
-    messages: list = []
-
     async def joined(self):
-        # 스트림으로 초기 로드
-        messages = await Message.objects.order_by('-created')[:50]
+        # 스트림으로 초기 로드. 항목은 컴포넌트 상태가 아니라 클라이언트에 남는다
+        messages = [m async for m in Message.objects.order_by('-created')[:50]]
         await self.stream("messages", reversed(messages))
 
     async def add_message(self, text: str):
@@ -544,7 +544,7 @@ class ChatInput(PresenceMixin, Component):
         return f"room.{self.room_id}"
 
     def _presence_user_id(self) -> str:
-        return str(self.user_id)
+        return str(self.user.pk)
 
     def _presence_username(self) -> str:
         return self.username
@@ -578,7 +578,7 @@ class OnlineUsers(PresenceTrackerMixin, Component):
         return f"room.{self.room_id}"
 
     def _presence_my_user_id(self) -> str:
-        return str(self.user_id)
+        return str(self.user.pk)
 
     def get_subscriptions(self) -> set[str]:
         return {self._presence_channel()}
@@ -633,25 +633,26 @@ class MyComponent(PresenceMixin, Component):
 ### 기본 설정
 
 ```python
-from wireview import Component, UploadConfig
+from wireview import Component
 
 
 class FileUploader(Component):
     class Meta:
         template_name = "uploader.html"
 
+    avatar_url: str = ""
+
     async def joined(self):
-        self.allow_upload(UploadConfig(
-            name="avatar",
+        self.allow_upload(
+            "avatar",
             accept=[".jpg", ".png", ".gif"],
             max_file_size=5 * 1024 * 1024,  # 5MB
-            max_entries=1,
-        ))
+        )
 
     async def save_avatar(self):
-        for upload in self.consume_uploads("avatar"):
-            path = await upload.save_to("avatars/", filename=f"{self.user_id}.jpg")
-            self.avatar_url = path
+        async for upload in self.consume_uploads("avatar"):
+            path = await upload.save_to("avatars/", filename=f"{self.user.pk}.jpg")
+            self.avatar_url = str(path)
 ```
 
 템플릿:
@@ -757,17 +758,35 @@ class Dashboard(Component):
 
 서버 왕복 없이 실행되는 클라이언트 사이드 명령어를 빌드합니다:
 
+템플릿은 인자를 받는 호출을 쓸 수 없으므로, 체인은 컴포넌트의 속성이 만들고 템플릿은 그 이름을 쓴다:
+
 ```python
-from wireview import JS
-<button {% on "click" JS().toggle("#modal") %}>모달 토글</button>
+from wireview import JS, Component
 
-# 명령어 체이닝
-<button {% on "click" JS().add_class("#btn", "loading").push("save") %}>
-  저장
-</button>
 
-# 트랜지션과 함께
-<div {% on "click" JS().hide(transition=("fade-out", 300)) %}></div>
+class Toolbar(Component):
+    @property
+    def toggle_modal(self) -> JS:
+        return JS().toggle("#modal")
+
+    @property
+    def save_with_feedback(self) -> JS:
+        # 명령어 체이닝: 클래스를 바로 붙이고, 이어서 서버 핸들러를 부른다
+        return JS().add_class("#btn", "loading").push("save")
+
+    @property
+    def fade_away(self) -> JS:
+        # 트랜지션과 함께: (클래스, 밀리초)
+        return JS().hide(transition=("fade-out", 300))
+
+    async def save(self):
+        ...
+```
+
+```html
+<button {% on "click" this.toggle_modal %}>모달 토글</button>
+<button id="btn" {% on "click" this.save_with_feedback %}>저장</button>
+<div {% on "click" this.fade_away %}></div>
 ```
 
 ### 서버에서 JS 푸시
@@ -1092,7 +1111,6 @@ async def test_counter_increment():
     view = await mount(Counter, count=0)
     await view.call("increment", amount=5)
     assert view.component.count == 5
-    assert len(view.sent_messages) > 0
 
 
 @pytest.mark.asyncio

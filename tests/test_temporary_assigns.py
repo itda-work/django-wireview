@@ -244,3 +244,36 @@ class TestTemporaryAssignsWithDefaultFactory:
         # Should be a new empty list (not None)
         assert view.component.items == []
         assert view.component.items is not None
+
+
+class TestWhichFieldsAreReset:
+    """What the guide promises: a field with no default is left alone (#113)."""
+
+    class Mixed(Component):
+        class Meta:
+            temporary_assigns = {"required", "optional", "listed"}
+
+        required: list[str]
+        optional: str | None = None
+        listed: list[str] = []
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_a_required_field_keeps_its_value(self):
+        view = await mount(self.Mixed, required=["a"])
+        view.component._clear_temporary_assigns()
+        assert view.component.required == ["a"]
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_a_field_defaulting_to_none_is_reset_to_none(self):
+        view = await mount(self.Mixed, required=[], optional="x")
+        view.component._clear_temporary_assigns()
+        assert view.component.optional is None
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_a_default_factory_gives_a_fresh_value(self):
+        view = await mount(self.Mixed, required=[], listed=["b"])
+        view.component._clear_temporary_assigns()
+        assert view.component.listed == []

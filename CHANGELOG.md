@@ -31,6 +31,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A `temporary_assigns` field with no default is left alone, as the guide says; it was set to
+  Pydantic's `PydanticUndefined`. A field defaulting to `None` is reset to `None`; it was never
+  reset (#113).
+- README examples run: undeclared fields (`expanded`, `user_id`), an awaited QuerySet, the old
+  upload API, and a JS section that called `JS()` with arguments inside a template, which Django
+  cannot parse (#113).
 - A page reconnects every component after a drop. A render painted just after the socket
   closed re-ran the joins on the dead socket, marking the elements live; the reconnect then
   skipped them, so they never joined again and their events were dropped. A component joins
