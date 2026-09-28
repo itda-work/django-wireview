@@ -209,7 +209,7 @@ await self.stream("items", items)
 ```python
 async def joined(self):
     # 최근 50개만 로드
-    messages = await Message.objects.order_by('-id')[:50]
+    messages = [m async for m in Message.objects.order_by('-id')[:50]]
     await self.stream("messages", list(reversed(messages)))
 
 async def load_more(self):
@@ -249,10 +249,8 @@ async def add_item(self, item):
    <ul wire-stream="items">  <!-- 이름 일치 확인 -->
    ```
 
-2. **DOM ID 확인**
-   ```html
-   <li id="items-{{ item.pk }}">  <!-- id 필수 -->
-   ```
+2. **DOM ID 확인** — 항목 템플릿에 `id`를 적지 않아도 된다. 클라이언트가 `dom_id`(기본
+   `{name}-{item.pk}`)로 붙인다. `pk`가 없는 항목(dict 등)이면 `dom_id=`를 넘겨야 한다.
 
 3. **템플릿 경로 확인**
    - `{app}/templates/{app}/{name}_item.html`
@@ -270,17 +268,35 @@ await self.stream_insert("items", item, at=-1)
 
 ### 메모리 누수
 
-오래된 아이템 정리:
+화면에 남길 개수는 `limit`으로 정한다. 넘치면 클라이언트가 반대쪽 끝부터 지운다. 서버는 항목을 들고
+있지 않으므로 컴포넌트 상태에 목록을 따로 둘 필요가 없다.
+
 ```python
 async def add_message(self, message):
-    await self.stream_insert("messages", message)
-
-    # 1000개 초과 시 오래된 것 삭제
-    if len(self.messages) > 1000:
-        old = self.messages[0]
-        await self.stream_delete("messages", old.pk)
-        self.messages.pop(0)
+    # 최신 1000개만 화면에 남긴다
+    await self.stream_insert("messages", message, limit=1000)
 ```
+
+## 무한 스크롤 (`wire-viewport-top` / `wire-viewport-bottom`)
+
+목록 아래(또는 위)에 둔 요소가 화면에 들어오면 그 속성에 적은 핸들러가 불린다. 아래로 스크롤하다
+바닥 요소가 보이면 `wire-viewport-bottom`, 위로 스크롤하다 꼭대기 요소가 보이면 `wire-viewport-top`이다.
+
+```html
+<ul wire-stream="rows"></ul>
+<div wire-viewport-bottom="load_more">불러오는 중...</div>
+```
+
+```python
+async def load_more(self):
+    self.page += 1
+    async for row in Row.objects.all()[self.page * 20:(self.page + 1) * 20]:
+        await self.stream_insert("rows", row)
+```
+
+스크롤 방향과 맞을 때만 불린다. 페이지를 열었을 때 이미 보이는 요소는 부르지 않지만, 요소가 화면
+가운데를 이미 지나 있으면(목록이 짧을 때) 방향과 무관하게 부른다. 그 구분이 필요하면 핸들러가
+`_overran` 인자를 받는다. 받지 않는 핸들러에는 넘어가지 않는다.
 
 ## 고급 패턴
 

@@ -18,6 +18,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A `handle_async` that raises recovers like a raising handler: logged, and the component is
+  joined again from its last rendered state. It used to vanish inside the task -- not logged,
+  and the render skipped (#110).
+- `wire-viewport-top` and `wire-viewport-bottom` are documented, in the streams tutorial,
+  which also stops awaiting a QuerySet and keeps the page short with `limit=` instead of a
+  list held in state (#110).
 - An upload consumed with `read()`, `open()` or a `with` block is consumed. Only `save_to()`
   marked it, so an upload read in `consume_uploads()` kept its `max_entries` slot -- with the
   default of one, the second upload was refused -- and came back on the next call. Every upload

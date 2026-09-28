@@ -199,6 +199,10 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
         socket closes and it joins everything again.
         """
         log.exception("%s (%s) raised; joining it again from its last rendered state", component._name, component.id)
+        await self._join_again(component, ref)
+
+    async def _join_again(self, component: Component, ref: t.Any = None) -> None:
+        """What ``_crashed`` does once the exception is logged."""
         root = component
         while isinstance(root, LiveComponent) and (parent := self.repo.get(root._parent_id or "")) is not None:
             root = parent
@@ -895,6 +899,16 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             payload["ref"] = ref
         payload.update(data)
         await self.send_command("upload_op", payload)
+
+    async def component_crashed(self, id: str):
+        """A component's own background task raised (``start_async``'s ``handle_async``).
+
+        The task logged the exception where it happened; the recovery is the same
+        as for a handler that raised (#94).
+        """
+        component = self.repo.get(id)
+        if component is not None:
+            await self._join_again(component)
 
     async def component_title(self, title: str):
         log.debug(f'>>> TITLE "{title}"')

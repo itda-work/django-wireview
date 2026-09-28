@@ -73,6 +73,7 @@ INSTALLED_APPS = [
     "testproj.jsprobe",
     "testproj.formprobe",
     "testproj.fileprobe",
+    "testproj.streamprobe",
     "testproj.offlineprobe",
     "wireview",
     "channels",

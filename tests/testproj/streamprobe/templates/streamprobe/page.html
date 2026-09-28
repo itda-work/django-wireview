@@ -1,0 +1,11 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>stream probe</title>
+    {% wireview_header %}
+    <style>li.row { height: 80px; }</style>
+  </head>
+  <body>{% component 'StreamProbe' id="probe" %}</body>
+</html>

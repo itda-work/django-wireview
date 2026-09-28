@@ -1023,19 +1023,23 @@ class Component(BaseModel):
 
         async def run_and_handle() -> None:
             try:
+                result: tuple[str, t.Any]
                 try:
-                    value = await coro
+                    result = ("ok", await coro)
                 except asyncio.CancelledError:
                     # Replaced, cancel_async(), or the component left: nothing
                     # to hand over and nothing to render.
                     return
                 except Exception as e:
-                    # Call handle_async with error result
-                    await self.handle_async(name, ("exit", e))
-                else:
-                    # Call handle_async with success result
-                    await self.handle_async(name, ("ok", value))
-                # Trigger re-render
+                    result = ("exit", e)
+                try:
+                    await self.handle_async(name, result)  # type: ignore[arg-type]
+                except Exception:
+                    # Raised inside a task nobody awaits, it was never even logged,
+                    # and the render was skipped. Recover as for a raising handler (#94).
+                    log.exception("%s (%s) raised in handle_async(%r)", self._name, self.id, name)
+                    await self.wire.send("crashed", id=self.id)
+                    return
                 await self.send_render()
             finally:
                 # Only this task's entry: a task that replaced it under the same

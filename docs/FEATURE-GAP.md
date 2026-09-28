@@ -112,15 +112,15 @@ GAP 번호로 추적한다.
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
-| stream() | ✅ | `stream()` | ✅ |  |
-| stream_insert() | ✅ | `stream_insert()` | ✅ |  |
-| stream_delete() | ✅ | `stream_delete()` | ✅ |  |
-| DOM ID generation | ✅ | `dom_id` param | ✅ |  |
-| wire-stream attribute | `phx-update="stream"` | `wire-stream` | ✅ 재렌더에서 내용이 보존된다 |  |
-| 같은 dom id 재삽입 | 제자리 갱신 | 제자리 갱신 | ✅ |  |
-| stream :limit | ✅ | `stream(limit=N)` | ✅ |  |
-| stream :reset | ✅ | `stream()`이 곧 reset이다 | ✅ |  |
-| phx-viewport-top/bottom | ✅ | `wire-viewport-*` | ✅ |  |
+| stream() | ✅ | `stream()` | ✅ | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_filter_switch_resets_the_stream`<br>`tests/test_streams_e2e.py::test_dom_id_names_each_item` |
+| stream_insert() | ✅ | `stream_insert()` | ✅ | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_stream_insert_reaches_the_dom`<br>`tests/test_streams_e2e.py::test_scrolling_to_the_bottom_loads_more` |
+| stream_delete() | ✅ | `stream_delete()` | ✅ | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_toggle_and_delete_round_trip`<br>`tests/test_streams.py::TestComponentStreamMethods::test_stream_delete_with_int_id` |
+| DOM ID generation | ✅ | `dom_id=` 함수 (기본 `{name}-{pk}`) | ✅ | `tests/test_streams_e2e.py::test_dom_id_names_each_item`<br>`tests/test_streams.py::TestComponentStreamMethods::test_stream_delete_with_int_id` |
+| wire-stream attribute | `phx-update="stream"` | `wire-stream` | ✅ 재렌더에서 내용이 보존된다 | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_stream_insert_reaches_the_dom`<br>`tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_filter_switch_resets_the_stream` |
+| 같은 dom id 재삽입 | 제자리 갱신 | 제자리 갱신 | ✅ | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_toggle_and_delete_round_trip` |
+| stream :limit | ✅ | `stream(limit=N)` | ✅ | `tests/test_streams_e2e.py::test_limit_keeps_only_the_newest` |
+| stream :reset | ✅ | `stream()`이 곧 reset이다 | ✅ | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_filter_switch_resets_the_stream`<br>`tests/testproj/bookmarks/tests.py::test_filter_unread_excludes_read_items` |
+| phx-viewport-top/bottom | ✅ | `wire-viewport-*` ([튜토리얼](./tutorials/06-streams-api.md)) | ✅ | `tests/test_streams_e2e.py::test_scrolling_to_the_bottom_loads_more`<br>`tests/test_streams_e2e.py::test_scrolling_back_to_the_top_calls_the_top_binding` |
 
 ### 2.6 File Uploads ✅
 
@@ -140,11 +140,11 @@ GAP 번호로 추적한다.
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
-| assign_async() | ✅ | `assign_async()` | ✅ |  |
-| AsyncResult states | loading/ok/failed | loading/ok/failed | ✅ |  |
-| start_async() | ✅ | `start_async()` | ✅ |  |
-| cancel_async() | ✅ | `cancel_async()` | ✅ |  |
-| handle_async() | ✅ | `handle_async()` | ✅ |  |
+| assign_async() | ✅ | `assign_async()` | ✅ | `tests/test_async_result.py::TestAssignAsync::test_updates_to_success_after_completion`<br>`tests/test_async_result.py::TestAssignAsync::test_triggers_rerender_on_completion` |
+| AsyncResult states | loading/ok/failed | loading/ok/failed | ✅ | `tests/test_async_result.py::TestAssignAsync::test_returns_loading_state_immediately`<br>`tests/test_async_result.py::TestAssignAsync::test_updates_to_error_on_failure` |
+| start_async() | ✅ | `start_async()` | ✅ | `tests/test_start_async.py::test_the_result_reaches_handle_async_and_renders`<br>`tests/test_async_lifetime.py::test_a_replaced_task_leaves_its_replacement_tracked` |
+| cancel_async() | ✅ | `cancel_async()` | ✅ | `tests/test_start_async.py::test_cancel_async_stops_the_operation_before_handle_async` |
+| handle_async() | ✅ | `handle_async()` | ✅ | `tests/test_start_async.py::test_the_result_reaches_handle_async_and_renders`<br>`tests/test_start_async.py::test_a_failed_operation_reaches_handle_async_as_exit`<br>`tests/test_start_async.py::test_a_handle_async_that_raises_joins_the_component_again` |
 
 ### 2.8 Navigation ✅
 

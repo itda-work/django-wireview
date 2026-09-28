@@ -1,0 +1,13 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <button data-testid="tick" {% on "click" "tick" %}>tick</button>
+  <ul data-testid="ticks" wire-stream="ticks">
+  </ul>
+  <div data-testid="top-sentinel" wire-viewport-top="load_newer">newer</div>
+  <span data-testid="newer">{{ this.newer }}</span>
+  <span data-testid="pages">{{ this.pages }}</span>
+  <ul data-testid="rows" wire-stream="rows">
+  </ul>
+  <div data-testid="sentinel" wire-viewport-bottom="load_more">more</div>
+</div>
