@@ -39,5 +39,9 @@
     <option value="b">b</option>
   </select>
   <span data-testid="changed">{{ this.changed }}</span>
+  <button data-testid="redirect" {% on "click" "go_redirect" %}>redirect</button>
+  <button data-testid="push" {% on "click" "go_push" %}>push</button>
+  <button data-testid="replace-url" {% on "click" "go_replace_url" %}>replace</button>
+  <span data-testid="page">{{ this.page }}</span>
   <button data-testid="announce" {% on "click" "announce" %}>announce</button>
 </div>

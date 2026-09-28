@@ -208,3 +208,28 @@ def test_on_before_el_updated_keeps_it(probe):
     by(probe, "increment-server").click()
     expect_text(by(probe, "count"), "1")
     expect(by(probe, "hide")).to_have_attribute("data-js-seen", "yes")
+
+
+# --- server-sent navigation ----------------------------------------------------------------
+
+
+def test_redirect_to_navigates(probe):
+    by(probe, "redirect").click()
+    expect(by(probe, "landed")).to_be_visible()
+    assert probe.url.endswith("/jsprobe/landed/")
+
+
+def test_push_to_adds_an_entry_and_runs_params_changed(probe):
+    before = probe.evaluate("history.length")
+    by(probe, "push").click()
+    expect_text(by(probe, "page"), "2")
+    assert probe.url.endswith("/jsprobe/?page=2")
+    assert probe.evaluate("history.length") == before + 1
+
+
+def test_replace_to_changes_the_url_in_place_and_runs_params_changed(probe):
+    before = probe.evaluate("history.length")
+    by(probe, "replace-url").click()
+    expect_text(by(probe, "page"), "3")
+    assert probe.url.endswith("/jsprobe/?page=3")
+    assert probe.evaluate("history.length") == before

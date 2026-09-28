@@ -150,12 +150,12 @@ GAP 번호로 추적한다.
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
-| push_navigate | ✅ | `redirect_to()` | ✅ |  |
-| push_patch | ✅ | `push_to()` | ✅ |  |
-| replace | ✅ | `replace_to()` | ✅ |  |
-| handle_params | ✅ | `params_changed()` | ✅ |  |
-| live_session | ✅ | `live_session()` + `@session.view` | ✅ (GAP-009. 경계는 페이지 단위다 — Django 뷰가 라우트이기 때문. [문서](./features/live-session.md)) |  |
-| Client-side boost | ✅ | `BOOST_PAGES` | ✅ |  |
+| push_navigate | ✅ | `self.wire.redirect_to()` | ✅ | `tests/test_js_commands_e2e.py::test_redirect_to_navigates`<br>`tests/test_lifecycle_hooks.py::TestWebSocketJoin::test_a_redirecting_hook_sends_url_change_and_no_render` |
+| push_patch | ✅ | `self.wire.push_to()` | ✅ | `tests/test_js_commands_e2e.py::test_push_to_adds_an_entry_and_runs_params_changed`<br>`tests/test_live_session_e2e.py::TestBoundaryNavigation::test_a_server_push_out_of_the_boundary_reloads` |
+| replace | ✅ | `self.wire.replace_to()` | ✅ | `tests/test_js_commands_e2e.py::test_replace_to_changes_the_url_in_place_and_runs_params_changed`<br>`tests/test_params_changed.py::TestAQueryOnlyDestination::test_replace_keeps_it_literal` |
+| handle_params | ✅ | `params_changed()` | ✅ | `tests/test_js_commands_e2e.py::test_push_to_adds_an_entry_and_runs_params_changed`<br>`tests/test_live_component_render.py::test_a_child_that_appears_through_params_changed_is_joined` |
+| live_session | ✅ | `live_session()` + `@session.view` | ✅ (GAP-009. 경계는 페이지 단위다 — Django 뷰가 라우트이기 때문. [문서](./features/live-session.md)) | `tests/test_live_session_e2e.py::TestBoundaryNavigation::test_a_link_click_out_of_the_boundary_reloads`<br>`tests/test_live_session.py::TestValidSignaturesDoNotCombine::test_a_state_from_another_boundary_is_refused` |
+| Client-side boost | ✅ | `WIREVIEW["BOOST_PAGES"]` | ✅ | `tests/test_live_session_e2e.py::TestBoundaryNavigation::test_a_boosted_move_inside_the_boundary_still_morphs` |
 
 ### 2.9 JavaScript Interoperability ✅
 
@@ -179,15 +179,15 @@ GAP 번호로 추적한다.
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
-| Stateful component | ✅ | ✅ Component | ✅ |  |
-| **LiveComponent** | ✅ 중첩 상태 | `{% live_component %}` | ✅ |  |
-| **Function components** | ✅ | `@function_component` | ✅ |  |
-| **Slots (named)** | ✅ `<:header>` | `{% fill header %}` | ✅ |  |
-| Slots (default) | ✅ `inner_block` | `{% render_slot %}` | ✅ |  |
-| Slots (let binding) | ✅ | `let:item` | ✅ |  |
-| Slots in LiveComponent | ✅ `<:slot>` in live_component | `{% live_component_block %}` | ✅ |  |
-| @myself target | ✅ | `myself=True` | ✅ |  |
-| update/2 callback | ✅ | `update()` | ✅ |  |
+| Stateful component | ✅ | ✅ Component | ✅ | `tests/test_testing.py::TestMountedComponent::test_call_multiple_handlers`<br>`tests/test_csp_e2e.py::test_every_binding_works_under_a_strict_policy` |
+| **LiveComponent** | ✅ 중첩 상태 | `{% live_component %}` | ✅ | `tests/test_live_component_render.py::test_join_sends_one_render_frame_with_the_children_inside`<br>`examples/livecomp/tests.py::TestLiveComponentE2E::test_independent_counter_state` |
+| **Function components** | ✅ | `@function_component` + `{% func %}` | ✅ | `tests/test_function_component.py::TestFuncTemplateTag::test_simple_func_tag`<br>`tests/test_function_component.py::TestFuncTemplateTag::test_func_tag_with_context_variable` |
+| **Slots (named)** | ✅ `<:header>` | `{% fill header %}` | ✅ | `tests/test_slots_integration.py::TestComponentBlockTag::test_component_block_with_multiple_fills`<br>`tests/test_live_component_slots.py::test_slot_content_renders_inside_the_child_and_stays_out_of_the_parent_diff` |
+| Slots (default) | ✅ `inner_block` | `{% render_slot %}` | ✅ | `tests/test_slots_integration.py::TestRenderSlotTag::test_render_slot_default`<br>`tests/test_live_component_slots.py::test_slot_content_renders_inside_the_child_and_stays_out_of_the_parent_diff` |
+| Slots (let binding) | ✅ | `let:item` | ✅ | `tests/test_slots_integration.py::TestFillTag::test_fill_with_let_binding`<br>`tests/test_live_component_slots.py::test_a_let_fill_renders_with_the_values_render_slot_passes` |
+| Slots in LiveComponent | ✅ `<:slot>` in live_component | `{% live_component_block %}` | ✅ | `tests/test_live_component_slots.py::test_slot_content_renders_inside_the_child_and_stays_out_of_the_parent_diff`<br>`tests/test_live_component_slots.py::test_the_childs_own_event_keeps_the_slot_content` |
+| @myself target | ✅ | `myself=True` | ✅ | `examples/livecomp/tests.py::TestLiveComponentE2E::test_increment_counter_with_myself_targeting` |
+| update/2 callback | ✅ | `update()` | ✅ | `tests/test_live_component_render.py::test_a_changed_prop_updates_and_rerenders_only_the_children_it_reaches`<br>`examples/livecomp/tests.py::TestLiveComponentE2E::test_parent_sync_all_updates_children` |
 | update_many/1 | ✅ 배치 최적화 | ❌ | 🟠 GAP-035 ([#74](https://github.com/itda-work/django-wireview/issues/74)) |  |
 | Nested LiveViews | ✅ 프로세스 격리 | LiveComponent (같은 프로세스) | ⚪ 설계상 제외 |  |
 

@@ -81,6 +81,20 @@ class JsProbe(Component):
     def slow_chain(self) -> JS:
         return JS().toggle_class("#box", "opened").push("slow_save")
 
+    page: str = ""
+
+    async def params_changed(self, params, uri):
+        self.page = params.get("page", "")
+
+    async def go_redirect(self, **_rest):
+        await self.wire.redirect_to("/jsprobe/landed/")
+
+    async def go_push(self, **_rest):
+        await self.wire.push_to("?page=2")
+
+    async def go_replace_url(self, **_rest):
+        await self.wire.replace_to("?page=3")
+
     async def announce(self, **_rest):
         await self.push_title("Announced")
         await self.put_flash("info", "Saved", timeout=0)
