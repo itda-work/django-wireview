@@ -64,23 +64,23 @@ GAP 번호로 추적한다.
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
-| mount/joined | `mount/3` | `joined()` | ✅ |  |
-| handle_event | `handle_event/3` | 메서드 직접 호출 | ✅ |  |
-| handle_info | `handle_info/2` | `notification()` | ✅ |  |
-| handle_params | `handle_params/3` | `params_changed()` | ✅ |  |
-| terminate | `terminate/2` | `leaving()` | ✅ |  |
-| ORM mutation | - | `mutation()` | ✅ 추가 기능 |  |
-| 세션 접근 | `mount/3`의 session | `self.session` (읽기 전용) | ✅ GAP-029 |  |
+| mount/joined | `mount/3` | `joined()` | ✅ | `tests/test_lifecycle_hooks.py::TestWebSocketJoin::test_a_rejoin_replaces_the_instance_so_the_hooks_run_again`<br>`tests/test_errors.py::test_a_join_that_raises_is_marked_not_retried` |
+| handle_event | `handle_event/3` | 메서드 직접 호출 | ✅ | `tests/test_event_refs.py::test_the_answer_carries_the_events_ref_whether_or_not_it_changed_anything`<br>`tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_form_submit_delivers_named_inputs_as_handler_arguments` |
+| handle_info | `handle_info/2` | `notification()` | ✅ | `tests/test_connections.py::test_a_broadcast_from_one_connection_rerenders_another`<br>`tests/test_live_component_render.py::test_a_child_that_appears_through_a_broadcast_is_joined` |
+| handle_params | `handle_params/3` | `params_changed()` | ✅ | `tests/test_live_component_render.py::test_a_child_that_appears_through_params_changed_is_joined`<br>`tests/test_attach_hook.py::test_a_handle_params_hook_runs_before_params_changed` |
+| terminate | `terminate/2` | `leaving()` | ✅ | `tests/test_leave.py::test_leave_calls_leaving_and_removes_the_component`<br>`tests/test_connections.py::test_closing_the_socket_calls_leaving` |
+| ORM mutation | - | `mutation()` | ✅ 추가 기능 | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_stream_insert_reaches_the_dom`<br>`tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_toggle_and_delete_round_trip` |
+| 세션 접근 | `mount/3`의 session | `self.session` (읽기 전용) | ✅ GAP-029 | `tests/test_session.py::test_connect_snapshots_the_session_so_reads_cost_nothing`<br>`tests/test_session.py::test_the_dead_render_reads_the_request_session` |
 
 ### 2.2 Real-time Features ✅
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
-| PubSub broadcast | `Phoenix.PubSub` | `broadcast()` | ✅ |  |
-| Presence tracking | `Phoenix.Presence` | `PresenceMixin` | ✅ |  |
-| Presence list | `Presence.list/1` | `_presence_users` | ✅ |  |
-| Typing indicators | 수동 구현 | `presence_set_typing()` | ✅ |  |
-| Auto-broadcast (ORM) | 수동 구현 | `AUTO_BROADCAST` | ✅ 추가 기능 |  |
+| PubSub broadcast | `Phoenix.PubSub` | `self.broadcast()` · `abroadcast()` · `broadcast()` | ✅ | `tests/test_connections.py::test_a_broadcast_from_one_connection_rerenders_another`<br>`tests/test_connections.py::test_the_module_broadcast_reaches_a_connection_from_sync_code` |
+| Presence tracking | `Phoenix.Presence` | `PresenceMixin` | ✅ | `tests/test_connections.py::test_presence_join_typing_and_leave_reach_the_tracker` |
+| Presence list | `Presence.list/1` | `presence_users` | ✅ | `tests/test_connections.py::test_presence_join_typing_and_leave_reach_the_tracker` |
+| Typing indicators | 수동 구현 | `presence_set_typing()` | ✅ | `tests/test_connections.py::test_presence_join_typing_and_leave_reach_the_tracker`<br>`tests/test_presence.py::TestPresenceMixin::test_typing_auto_timeout` |
+| Auto-broadcast (ORM) | 수동 구현 | `AUTO_BROADCAST` | ✅ 추가 기능 | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_stream_insert_reaches_the_dom`<br>`tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_toggle_and_delete_round_trip` |
 
 ### 2.3 LiveView.JS (Client Commands) ✅
 
