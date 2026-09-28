@@ -233,3 +233,43 @@ def test_replace_to_changes_the_url_in_place_and_runs_params_changed(probe):
     expect_text(by(probe, "page"), "3")
     assert probe.url.endswith("/jsprobe/?page=3")
     assert probe.evaluate("history.length") == before
+
+
+# --- wireview.debug -----------------------------------------------------------------------
+
+
+def test_debug_enable_logs_what_the_socket_carries_until_disabled(probe):
+    logged: list[str] = []
+    probe.on("console", lambda message: logged.append(message.text))
+    probe.evaluate("wireview.debug.enable()")
+    by(probe, "increment-server").click()
+    expect_text(by(probe, "count"), "1")
+    assert any("recv:" in line for line in logged), logged
+
+    probe.evaluate("wireview.debug.disable()")
+    logged.clear()
+    by(probe, "increment-server").click()
+    expect_text(by(probe, "count"), "2")
+    assert not any("recv:" in line for line in logged), logged
+
+
+def test_debug_latency_holds_back_what_the_page_sends(probe):
+    import time
+
+    probe.evaluate("wireview.debug.latency(800)")
+    started = time.monotonic()
+    by(probe, "increment-server").click()
+    expect_text(by(probe, "count"), "1")
+    assert time.monotonic() - started >= 0.8
+
+
+def test_debug_profiling_counts_events_and_patches(probe):
+    probe.evaluate("wireview.debug.enableProfiling()")
+    for n in ("1", "2"):
+        by(probe, "increment-server").click()
+        expect_text(by(probe, "count"), n)
+    report = probe.evaluate("wireview.debug.profilingReport()")
+    assert report["enabled"] is True
+    assert report["eventCount"] >= 2
+    assert report["roundTrip"]["count"] >= 2
+    assert report["patch"]["count"] >= 2

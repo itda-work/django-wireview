@@ -225,24 +225,24 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
-| render_component | ✅ | `mount()` | ✅ |  |
-| render_click | ✅ | `call()` | ✅ |  |
-| render_change | ✅ | `call()` | ✅ |  |
-| assert_patch | ✅ | `assert_pushed_to()` · `assert_replaced_to()` · `follow_push()` | ✅ (GAP-031) |  |
-| follow_redirect | ✅ | `follow_redirect()` | ✅ (GAP-031) |  |
-| 스트림 검사 | - | `stream_html()` · `stream_items()` · `stream_ops()` | ✅ 추가 기능 |  |
-| MockChannelLayer | - | ✅ | ✅ 추가 기능 |  |
+| render_component | ✅ | `mount()` | ✅ | `tests/test_testing.py::TestMount::test_mount_with_initial_state`<br>`examples/slots/tests.py::test_a_card_renders_without_any_fill` |
+| render_click | ✅ | `call()` | ✅ | `tests/test_testing.py::TestMountedComponent::test_call_handler_with_args`<br>`tests/test_testing.py::TestCallMeetsTheEventChecks::test_a_private_or_framework_method_is_refused` |
+| render_change | ✅ | `call()` | ✅ | `tests/test_testing.py::TestCallMeetsTheEventChecks::test_arguments_the_handler_does_not_take_are_dropped`<br>`examples/search/tests.py::test_a_query_matches_title_or_author` |
+| assert_patch | ✅ | `assert_pushed_to()` · `assert_replaced_to()` · `follow_push()` | ✅ (GAP-031) | `tests/test_navigation_helpers.py::TestAssertingWhereItNavigated::test_it_does_not_confuse_the_three_commands`<br>`tests/test_navigation_helpers.py::TestFollowingAPush::test_it_runs_params_changed` |
+| follow_redirect | ✅ | `follow_redirect()` | ✅ (GAP-031) | `tests/test_navigation_helpers.py::TestFollowingARedirect::test_it_mounts_the_destination`<br>`tests/test_navigation_helpers.py::TestFollowingARedirect::test_a_refusing_destination_refuses_here_too` |
+| 스트림 검사 | - | `stream_html()` · `stream_items()` · `stream_ops()` | ✅ 추가 기능 | `tests/test_navigation_helpers.py::TestStreamHelpers::test_it_collects_the_html`<br>`tests/test_navigation_helpers.py::TestStreamHelpers::test_it_exposes_the_operations` |
+| MockChannelLayer | - | `mount()`이 채널 레이어를 흉내 내고 `view.wire.broadcasts`에 남긴다 | ✅ 추가 기능 | `tests/test_presence.py::TestPresenceMixin::test_presence_join_broadcasts`<br>`examples/notifications/tests.py::test_dismissing_deletes_and_tells_the_bell` |
 
 ### 2.14 Developer Tools ✅
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
-| enableDebug | ✅ | `wireview.debug.enable()` | ✅ |  |
-| enableLatencySim | ✅ | `wireview.debug.latency()` | ✅ |  |
-| enableProfiling | ✅ | `wireview.debug.enableProfiling()` | ✅ |  |
-| Telemetry | ✅ | `wireview.telemetry` 시그널 | ✅ (GAP-022) |  |
-| **Type Stubs** | - | `wireview_stubs` | ✅ 추가 기능 |  |
-| **LSP Metadata** | - | `wireview_lsp` | ✅ 추가 기능 |  |
+| enableDebug | ✅ | `wireview.debug.enable()` | ✅ | `tests/test_js_commands_e2e.py::test_debug_enable_logs_what_the_socket_carries_until_disabled` |
+| enableLatencySim | ✅ | `wireview.debug.latency()` | ✅ | `tests/test_js_commands_e2e.py::test_debug_latency_holds_back_what_the_page_sends` |
+| enableProfiling | ✅ | `wireview.debug.enableProfiling()` | ✅ | `tests/test_js_commands_e2e.py::test_debug_profiling_counts_events_and_patches` |
+| Telemetry | ✅ | `wireview.telemetry` 시그널 | ✅ (GAP-022) | `tests/test_telemetry.py::test_event_handling_is_measured`<br>`tests/test_telemetry.py::test_render_and_diff_are_measured_separately` |
+| **Type Stubs** | - | `wireview_stubs` | ✅ 추가 기능 | `tests/test_stubs.py::TestTheCommand::test_it_writes_a_stub_whose_handlers_are_what_a_client_can_call`<br>`tests/test_stubs.py::TestTheCommand::test_check_fails_when_a_stub_is_stale` |
+| **LSP Metadata** | - | `wireview_lsp` | ✅ 추가 기능 | `tests/test_lsp_metadata.py::TestWireviewLspCommand::test_component_metadata`<br>`tests/test_lsp_metadata.py::test_is_handler_says_what_a_client_can_call` |
 
 ### 2.15 Miscellaneous ⚠️
 

@@ -23,6 +23,7 @@ from django.core.management.base import BaseCommand, CommandParser
 
 from wireview.core.component import Component
 from wireview.event_transpiler import Modifiers
+from wireview.repository import ComponentRepository
 
 
 class Command(BaseCommand):
@@ -219,6 +220,9 @@ def extract_methods(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
             method_line = 0
 
         methods[name] = {
+            # Whether a client can call it: the check every event meets (#110)
+            "is_handler": ComponentRepository._is_valid_event_handler(name)
+            and ComponentRepository._is_user_defined_method(cls, name),
             "is_async": is_async,
             "parameters": parameters,
             "docstring": docstring,

@@ -23,11 +23,6 @@ pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parent.parent
 DOC = ROOT / "docs" / "FEATURE-GAP.md"
 
-# Sections whose rows have not been audited yet (#110). A row here is expected to
-# lack evidence; once its section is filled the xfail turns into a strict XPASS
-# and the section must come off this list.
-UNAUDITED = {"2.13", "2.14"}
-
 SECTION = re.compile(r"^### (2\.\d+) ")
 DIVIDER = re.compile(r"^\|[-:| ]+\|$")
 STATUS_KINDS = {"✅": "지원", "🟡": "부분 지원", "🟠": "미지원", "⚪": "설계상 제외"}
@@ -98,20 +93,7 @@ def test_the_table_is_parsed():
     assert {row[0] for row in ROWS} == {f"2.{n}" for n in range(1, 16)}
 
 
-def test_the_unaudited_sections_exist():
-    assert UNAUDITED <= {row[0] for row in ROWS}
-
-
-@pytest.mark.parametrize(
-    "row",
-    [
-        pytest.param(row, marks=pytest.mark.xfail(strict=True, reason="not audited yet (#110)"))
-        if row[0] in UNAUDITED
-        else row
-        for row in SUPPORTED
-    ],
-    ids=_row_id,
-)
+@pytest.mark.parametrize("row", SUPPORTED, ids=_row_id)
 def test_every_supported_feature_names_its_evidence(row):
     section, feature, _, evidence = row
     node_ids = _node_ids(evidence)

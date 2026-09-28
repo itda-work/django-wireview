@@ -523,17 +523,31 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             await view.call("increment", amount=5)
             await view.call("save", text="Updated text")
         """
+        from .repository import ComponentRepository
+        from .utils import filter_parameters
+
         handler = getattr(self._component, handler_name, None)
         if handler is None:
             raise AttributeError(f"Component {self._component._name} has no handler '{handler_name}'")
         if not callable(handler):
             raise AssertionError(f"'{handler_name}' on {self._component._name} is not callable")
+        # The checks a browser's event meets (repository.dispatch_event): a test must
+        # not be able to call what no client can (#110).
+        if not ComponentRepository._is_valid_event_handler(
+            handler_name
+        ) or not ComponentRepository._is_user_defined_method(self._component, handler_name):
+            raise AssertionError(
+                f"'{handler_name}' on {self._component._name} is not an event handler: a client cannot call it. "
+                f"Call the component's method directly if the test means the method, not the event."
+            )
 
         # The server runs attached handle_event hooks first; a test must not get past one.
         if (await self._component._run_hooks("handle_event", handler_name, kwargs)).get("halt"):
             return None
 
-        result = handler(**kwargs)
+        # Arguments the handler does not take are dropped, as they are for an event
+        # that carries a form's other fields.
+        result = handler(**filter_parameters(handler, kwargs))
         # Handle async handlers
         import inspect
 

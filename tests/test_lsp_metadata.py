@@ -162,3 +162,15 @@ class TestWireviewLspCommand:
             parts = component["app_key"].split(":")
             assert len(parts) == 2
             assert parts[1] == component["name"]
+
+
+@pytest.mark.unit
+def test_is_handler_says_what_a_client_can_call():
+    # #110: a mixin's framework methods were listed like handlers
+    out = StringIO()
+    call_command("wireview_lsp", stdout=out)
+    (chat,) = [c for c in json.loads(out.getvalue())["components"].values() if c["name"] == "XChatRoom"]
+
+    assert chat["methods"]["send_message"]["is_handler"] is True
+    assert chat["methods"]["presence_join"]["is_handler"] is False
+    assert chat["methods"]["model_dump"]["is_handler"] is False

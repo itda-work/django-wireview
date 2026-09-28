@@ -529,3 +529,35 @@ class TestStubsCommand:
                     ast.parse(content)
                 except SyntaxError as e:
                     pytest.fail(f"Generated stub has syntax error: {pyi_file}\n{e}")
+
+
+class TestTheCommand:
+    """``manage.py wireview_stubs`` itself, not the functions it calls (#110)."""
+
+    @pytest.mark.unit
+    def test_it_writes_a_stub_whose_handlers_are_what_a_client_can_call(self, tmp_path):
+        from django.core.management import call_command
+
+        call_command("wireview_stubs", "--output-dir", str(tmp_path), "--app", "chat")
+
+        (stub,) = tmp_path.rglob("live.pyi")
+        text = stub.read_text(encoding="utf-8")
+        handlers = next(
+            line for line in text.splitlines() if "__wireview_handlers__" in line and "send_message" in line
+        )
+        assert "on_typing" in handlers
+        # A mixin's framework methods: a client cannot call them, whatever a stub says
+        assert "presence_join" not in handlers and "presence_set_typing" not in handlers
+
+    @pytest.mark.unit
+    def test_check_fails_when_a_stub_is_stale(self, tmp_path):
+        from django.core.management import call_command
+
+        call_command("wireview_stubs", "--output-dir", str(tmp_path), "--app", "chat")
+        call_command("wireview_stubs", "--output-dir", str(tmp_path), "--app", "chat", "--check")
+
+        (stub,) = tmp_path.rglob("live.pyi")
+        stub.write_text(stub.read_text(encoding="utf-8") + "\n# edited\n", encoding="utf-8")
+        with pytest.raises(SystemExit) as exit_:
+            call_command("wireview_stubs", "--output-dir", str(tmp_path), "--app", "chat", "--check")
+        assert exit_.value.code == 1

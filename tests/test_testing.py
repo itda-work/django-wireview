@@ -165,3 +165,33 @@ class TestComponentTestCase(ComponentTestCase):
 
         assert view1.component.count == 11
         assert view2.component.count == 19
+
+
+class TestCallMeetsTheEventChecks:
+    """``call()`` refuses what a browser's event cannot reach, and drops extra arguments (#110)."""
+
+    class CallProbe(Component):
+        count: int = 0
+
+        async def add(self, by: int = 1):
+            self.count += by
+
+        async def _secret(self):
+            self.count = -1
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_a_private_or_framework_method_is_refused(self):
+        view = await mount(self.CallProbe)
+        for name in ("_secret", "joined", "model_dump"):
+            with pytest.raises(AssertionError, match="not an event handler"):
+                await view.call(name)
+        assert view.component.count == 0
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_arguments_the_handler_does_not_take_are_dropped(self):
+        # A form's other fields ride along with every event
+        view = await mount(self.CallProbe)
+        await view.call("add", by=2, title="unrelated")
+        assert view.component.count == 2

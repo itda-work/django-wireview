@@ -26,12 +26,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from django.apps import apps as django_apps
 from django.core.management.base import BaseCommand, CommandParser
 
 from wireview.core.component import Component
 from wireview.function_components import FunctionComponent
 from wireview.function_components import _registry as function_registry
 from wireview.live_component import LiveComponent
+from wireview.repository import ComponentRepository
 
 # Reuse utilities from wireview_lsp
 from .wireview_lsp import (
@@ -229,8 +231,11 @@ def collect_components_by_module(app_filter: list[str] | None = None) -> dict[st
 
         # Apply app filter
         if app_filter:
-            app_name = cls.__module__.split(".")[0]
-            if app_name not in app_filter:
+            # The app's label or its name, as INSTALLED_APPS has it. The first
+            # segment of the module path was neither for a nested app: --app blog
+            # found nothing in apps.blog, and --app apps took every app under it.
+            config = django_apps.get_containing_app_config(cls.__module__)
+            if config is None or not {config.label, config.name} & set(app_filter):
                 continue
 
         # Skip library components (in site-packages or wireview itself)
@@ -496,18 +501,10 @@ def _extract_methods(cls: type[Component]) -> tuple[list[MethodInfo], list[str]]
             )
         )
 
-        # Track as handler if async (event handler convention)
-        # Exclude lifecycle methods from handlers list
-        lifecycle_methods = {
-            "joined",
-            "leaving",
-            "mutation",
-            "notification",
-            "params_changed",
-            "handle_hook_event",
-            "update",
-        }
-        if is_async and name not in lifecycle_methods:
+        # A handler is what a client can call: the question the repository answers
+        # for every event, asked of the class. A mixin's framework method
+        # (presence_join) or an overridden lifecycle method is not one (#110).
+        if ComponentRepository._is_valid_event_handler(name) and ComponentRepository._is_user_defined_method(cls, name):
             handlers.append(name)
 
     return methods, handlers

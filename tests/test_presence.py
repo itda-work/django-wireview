@@ -138,7 +138,7 @@ class TestPresenceMixin:
         view.wire._mock_channel_layer.clear()
 
         # Set typing
-        await view.call("presence_set_typing", typing=True)
+        await view.component.presence_set_typing(typing=True)
 
         typing_broadcasts = [
             b for b in view.wire.presence_broadcasts if b.get("kwargs", {}).get("action") == "presence_typing"
@@ -154,8 +154,8 @@ class TestPresenceMixin:
         view.wire._mock_channel_layer.clear()
 
         # Set typing twice
-        await view.call("presence_set_typing", typing=True)
-        await view.call("presence_set_typing", typing=True)
+        await view.component.presence_set_typing(typing=True)
+        await view.component.presence_set_typing(typing=True)
 
         # Should only broadcast once (state didn't change second time)
         typing_broadcasts = [
@@ -171,7 +171,7 @@ class TestPresenceMixin:
         view.wire._mock_channel_layer.clear()
 
         # Set typing
-        await view.call("presence_set_typing", typing=True)
+        await view.component.presence_set_typing(typing=True)
         assert view.component._presence_is_typing is True
 
         # Wait for timeout (0.1s + small buffer)
@@ -196,13 +196,13 @@ class TestPresenceMixin:
         view.wire._mock_channel_layer.clear()
 
         # Set typing
-        await view.call("presence_set_typing", typing=True)
+        await view.component.presence_set_typing(typing=True)
 
         # Wait partial timeout
         await asyncio.sleep(0.05)
 
         # Type again (should reset timer)
-        await view.call("presence_set_typing", typing=True)
+        await view.component.presence_set_typing(typing=True)
 
         # Wait another partial timeout
         await asyncio.sleep(0.05)
@@ -217,11 +217,11 @@ class TestPresenceMixin:
         view = await mount(XProducerComponent, room_id=1, username="frank")
 
         # Set typing
-        await view.call("presence_set_typing", typing=True)
+        await view.component.presence_set_typing(typing=True)
         assert view.component._presence_typing_task is not None
 
         # Leave
-        await view.call("presence_leave")
+        await view.component.presence_leave()
 
         # Task should be cancelled
         assert view.component._presence_typing_task is None or view.component._presence_typing_task.done()
@@ -245,7 +245,7 @@ class TestPresenceTrackerMixin:
         view = await mount(XTrackerComponent, room_id=1, username="alice")
 
         # Call track_self
-        await view.call("presence_track_self", username="alice")
+        await view.component.presence_track_self(username="alice")
 
         # Should be in registry
         assert "alice" in view.component._presence_registry
@@ -410,11 +410,11 @@ class TestPresenceIntegration:
 
         # Create tracker
         tracker = await mount(XTrackerComponent, room_id=1, username="bob")
-        await tracker.call("presence_track_self", username="bob")
+        await tracker.component.presence_track_self(username="bob")
 
         # Simulate producer typing by getting the broadcast data
         producer.wire._mock_channel_layer.clear()
-        await producer.call("presence_set_typing", typing=True)
+        await producer.component.presence_set_typing(typing=True)
 
         # Get the broadcast
         broadcasts = producer.wire.presence_broadcasts
@@ -443,7 +443,7 @@ class TestPresenceIntegration:
 
         # Producer starts typing
         producer.wire._mock_channel_layer.clear()
-        await producer.call("presence_set_typing", typing=True)
+        await producer.component.presence_set_typing(typing=True)
 
         # Tracker receives typing notification
         broadcast = producer.wire.presence_broadcasts[0]

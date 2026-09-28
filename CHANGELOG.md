@@ -12,12 +12,23 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- `MountedComponent.call()` meets the checks a browser's event meets: a name a client cannot
+  call (`_private`, a lifecycle method, a mixin's framework method such as
+  `presence_set_typing`) raises `AssertionError`, and arguments the handler does not take are
+  dropped. A test that passed through `call()` could exercise what no page can. **Upgrading:**
+  a test that meant the method, not the event, calls it directly:
+  `await view.component.presence_set_typing(True)` (#110).
 - Submitting a form shows the `wire-feedback-for` feedback of all its fields, touched or not,
   as Phoenix does. The guide told applications to do this with an inline `onclick`, which a
   strict CSP blocks (#110).
 
 ### Fixed
 
+- `wireview_stubs` lists in `__wireview_handlers__`, and `wireview_lsp` marks `is_handler` on,
+  only what a client can call -- the check every event meets. Both counted a mixin's framework
+  methods (`presence_join`) as handlers. `wireview_stubs --app` takes an app's label or name;
+  it compared the first segment of the module path, so `--app blog` found nothing in
+  `apps.blog` (#110).
 - `docs/features/temporary-assigns.md` says what happens: the next render, whatever it is for,
   empties a cleared field on the page too, and the field rides in that render's signed state.
   FEATURE-GAP marks `temporary_assigns` partial until #111 (#110).
