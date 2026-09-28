@@ -86,8 +86,8 @@ class ServerConnection {
     this.serverVsn = 0;
     /** @type {number} The last ref given to a user event on this connection */
     this.lastRef = 0;
-    /** @type {Object<string, WireviewComponent>} components a dropped connection left, until they join again */
-    this.detached = {};
+    /** @type {number} how many times a socket has opened; a hook manager remembers the one it was live in */
+    this.epoch = 0;
   }
 
   /**
@@ -111,16 +111,14 @@ class ServerConnection {
 
       const reconnecting = this.wasConnected;
       this.wasConnected = true;
+      this.epoch += 1;
 
       this.sendQueryString();
       // Held until the document is ready so that every deferred script -- a
       // page's own hook definitions among them -- has run before anything joins.
       whenDocumentReady(() => {
         this.components = {};
-        // A component that joins again takes its hooks back from the one the
-        // drop left behind (`adopt`) and tells them `reconnected()`.
         this.joinAllComponents();
-        this.releaseDetached();
         // Flush messages queued while the socket was connecting
         while (this.messageQueue.length) {
           const { command, payload } = this.messageQueue.shift();
@@ -149,9 +147,6 @@ class ServerConnection {
         component.hookManager.disconnected();
       }
 
-      // Kept, not dropped: the hook instances live on their elements, and the
-      // components that join after the reconnect take them over (#110).
-      Object.assign(this.detached, this.components);
       this.components = {};
       document.querySelectorAll("[wireview-component]").forEach((el) => {
         const element = /** @type {HTMLElement} */ (el);
@@ -181,44 +176,13 @@ class ServerConnection {
    * Joins all wireview components found in the DOM.
    * Registers new components and removes stale ones.
    */
-  /**
-   * Hand a new component the hooks of the one a dropped connection left on
-   * the same element. Their instances are tied to the element (it carries
-   * their ids), so a fresh HookManager would neither mount them again nor
-   * reach them: after a reconnect they got no `updated`, no `handleEvent` and
-   * no `pushEvent` reply, and `reconnected()` was never called (#110).
-   * @param {WireviewComponent} component
-   * @returns {WireviewComponent}
-   */
-  adopt(component) {
-    const previous = this.detached[component.id];
-    if (previous === undefined) return component;
-    delete this.detached[component.id];
-    if (previous.getElemenet() !== component.getElemenet()) {
-      previous.hookManager.teardown();
-      return component;
-    }
-    component.hookManager = previous.hookManager;
-    component.hookManager.component = component;
-    component.hookManager.rejoining = true;
-    return component;
-  }
-
-  /** The components a reconnect did not bring back: their elements are gone. */
-  releaseDetached() {
-    for (const previous of Object.values(this.detached)) {
-      previous.hookManager.teardown();
-    }
-    this.detached = {};
-  }
-
   joinAllComponents() {
     let registeredIds = new Set(Object.keys(this.components));
     for (let element of document.querySelectorAll("[wireview-component]")) {
       if (registeredIds.delete(element.id)) {
         this.components[element.id].join();
       } else {
-        let component = this.adopt(new WireviewComponent(element.id));
+        let component = new WireviewComponent(element.id);
         this.components[element.id] = component;
         component.join();
       }
@@ -252,7 +216,7 @@ class ServerConnection {
         for (const [childId, childDiff] of Object.entries(children || {})) {
           let child = this.components[childId];
           if (!child) {
-            child = this.adopt(new WireviewComponent(childId));
+            child = new WireviewComponent(childId);
             this.components[childId] = child;
           }
           if (childDiff) {
@@ -864,9 +828,17 @@ class WireviewComponent {
     /** @type {string|null} */
     this.fingerprint = null;
 
-    // Hook manager for JavaScript hooks
+    // Hook manager for JavaScript hooks. The hook instances belong to the element
+    // (it carries their ids), so a component made for an element that already has
+    // a manager -- after a reconnect, the old component is gone -- takes that one
+    // over. A fresh manager would neither mount them again nor reach them: no
+    // updated, no handleEvent, no pushEvent reply, no reconnected (#110).
+    const prior = /** @type {HTMLElement & {__wireviewHookManager?: HookManager}} */ (
+      document.getElementById(id) ?? {}
+    ).__wireviewHookManager;
     /** @type {HookManager} */
-    this.hookManager = new HookManager(this);
+    this.hookManager = prior ?? new HookManager(this);
+    this.hookManager.component = this;
 
     // Viewport observer for infinite scroll
     /** @type {ViewportObserver} */
@@ -1258,26 +1230,23 @@ class HookManager {
     this.refCounter = 0;
     /** @type {MutationObserver|null} */
     this.observer = null;
-    /** @type {boolean} set by `adopt`: the next `init` is a reconnect */
-    this.rejoining = false;
+    /** @type {number|null} the connection epoch this manager was last initialized in */
+    this.epoch = null;
   }
 
   /**
    * Initialize hooks after component joins.
    */
   init() {
+    const root = /** @type {(HTMLElement & {__wireviewHookManager?: HookManager}) | null} */ (
+      this.component.getElemenet()
+    );
+    if (root) root.__wireviewHookManager = this;
     this.scanAndMount();
     this.setupMutationObserver();
-    if (this.rejoining) {
-      this.rejoining = false;
-      this.reconnected();
-    }
-  }
-
-  /** Stop watching: the component these hooks belonged to is gone for good. */
-  teardown() {
-    this.observer?.disconnect();
-    this.observer = null;
+    // Live before, on an earlier socket: this join is a reconnect
+    if (this.epoch !== null && this.epoch !== connection.epoch) this.reconnected();
+    this.epoch = connection.epoch;
   }
 
   /**
