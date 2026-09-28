@@ -193,6 +193,7 @@ class ProductList(Component):
 **사용:**
 
 ```html
+{% load wireview humanize %}  {# intcomma: django.contrib.humanize가 INSTALLED_APPS에 있어야 한다 #}
 {% component_block "ProductList" products=products %}
     {% fill item let:product let:index %}
         <div class="product-card">

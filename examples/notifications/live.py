@@ -106,7 +106,7 @@ class XNotificationList(Component):
             # Prepend new notification at the top
             await self.stream_insert("notifications", instance, at=0)
             # Add attention animation
-            await self.push_js(JS().transition(f"#notifications-{instance.id}", "pulse 500ms"))
+            await self.push_js(JS().transition(f"#notifications-{instance.id}", ("pulse", 500)))
         elif action == ModelAction.DELETED:
             # Remove from list
             await self.stream_delete("notifications", instance.id)

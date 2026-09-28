@@ -53,14 +53,20 @@ async def test_increment():
 @pytest.mark.asyncio
 @pytest.mark.django_db
 async def test_filter_hides_read_items():
+    await Bookmark.objects.acreate(title="새 글", url="https://example.com/new")
+    await Bookmark.objects.acreate(title="지난 글", url="https://example.com/old", is_read=True)
+
     view = await mount(XBookmarkList)
     view.clear_messages()          # joined()의 초기 stream()을 비우지 않으면 그 아이템까지 잡힌다
     await view.call("set_filter", filter="unread")
 
     html = view.stream_html("bookmarks")
-    assert "안 읽은 것" in html
-    assert "읽은 것" not in html
+    assert "새 글" in html
+    assert "지난 글" not in html
 ```
+
+`not in`에 쓰는 문자열이 남아야 할 항목의 부분 문자열이면("읽은 것"과 "안 읽은 것") 필터가 옳아도 실패한다.
+서로 겹치지 않는 제목을 쓴다.
 
 `stream()`을 다시 부르는 핸들러(필터·정렬·페이지 전환)는 이전 메시지 위에 **누적**된다.
 `clear_messages()`를 빼면 방금 걸러 낸 아이템이 앞선 메시지에 남아 있어, 통과해야 할

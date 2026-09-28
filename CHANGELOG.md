@@ -31,6 +31,30 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A component whose `assign_async` failed can be rendered. `AsyncResult` kept the exception in
+  a field the signed state could not hold, so the failure path -- the one the docs show with
+  `{% if stats.failed %}` -- raised on every render. The state carries the state, the result
+  and `error_message`; the exception stays on the server (#113).
+- `{% class %}` and `{% cond %}` read a dotted name the way the rest of a template does:
+  `forloop.counter0` and a `.values()` row's `row.title` failed as attribute lookups on a dict
+  (#113).
+- Examples: the search and dashboard examples kept model instances in state and failed to
+  render once they had results; poll and quiz counted ids the browser sent without checking they
+  belonged to that poll or question (and quiz scored the same answer twice); the notifications
+  example's `"pulse 500ms"` transition, left over from the #110 guard, raised on every new
+  notification. Their tests now render and try foreign ids (#113).
+- The documentation's code runs. Every Python block of the user-facing docs was executed by a
+  second model and each finding reproduced before it was fixed: about seventy, across the
+  tutorials (03-06, 08-10, 12-15), the feature guides, README, ARCHITECTURE, PERFORMANCE,
+  DEPLOYMENT and ROADMAP. Two findings about `self.wire.params` were not defects: the consumer
+  sends the new query string after each event (#113).
+
+### Added
+
+- `tests/test_doc_examples.py`: every Python block of the user-facing docs parses, and the
+  mistakes that recurred -- an awaited QuerySet, `self.abroadcast`, an awaited `skip_render()`,
+  a plain `for` over `consume_uploads()`, `allow_upload(UploadConfig(...))`, a template calling
+  `JS()` with arguments -- are refused (#113).
 - A `temporary_assigns` field with no default is left alone, as the guide says; it was set to
   Pydantic's `PydanticUndefined`. A field defaulting to `None` is reset to `None`; it was never
   reset (#113).

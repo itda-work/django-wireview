@@ -25,7 +25,7 @@
 | 특성 | Component | LiveComponent |
 |-----|-----------|---------------|
 | 상태 | 독립적 | 독립적 |
-| WebSocket | 자체 연결 | 부모와 공유 |
+| WebSocket | 페이지 연결에 직접 join | join 없이 부모를 통해 |
 | 렌더링 | 페이지 레벨 | 부모 내부 |
 | 이벤트 타겟 | 자동 | `myself=True` 필요 |
 | 용도 | 페이지 컴포넌트 | 재사용 가능 위젯 |
@@ -147,7 +147,14 @@ class Counter(LiveComponent):
 
     async def increment(self):
         self.count += 1
-        # 부모에게 알림
+        await self._notify_parent()
+
+    async def decrement(self):
+        self.count -= 1
+        await self._notify_parent()
+
+    async def _notify_parent(self):
+        # 부모에게 알림. `_`로 시작하므로 클라이언트가 부를 수 없다
         await self.send_to_parent(
             "counter_changed",
             counter_id=self.id,
@@ -246,7 +253,6 @@ class StatCounter(LiveComponent):
 
     stat_name: str
     value: int = 0
-    is_loading: bool = False
 
     async def joined(self):
         """초기 데이터 로드."""
@@ -262,9 +268,6 @@ class StatCounter(LiveComponent):
 
     async def increment(self, amount: int = 1):
         """값 증가 및 DB 저장."""
-        self.is_loading = True
-        await self.skip_render()  # 로딩 표시
-
         stat, _ = await Stat.objects.aget_or_create(
             name=self.stat_name,
             defaults={"value": 0}
@@ -273,7 +276,6 @@ class StatCounter(LiveComponent):
         await stat.asave()
 
         self.value = stat.value
-        self.is_loading = False
 
         # 부모에게 알림
         await self.send_to_parent("stat_updated", name=self.stat_name, value=self.value)
@@ -308,6 +310,10 @@ class StatsDashboard(Component):
         await Stat.objects.filter(name__in=self.stats).aupdate(value=0)
 ```
 
+핸들러가 도는 동안 렌더는 한 번도 나가지 않는다 — 렌더는 핸들러가 끝난 뒤 한 번이다. 그래서 핸들러 앞머리에서
+`is_loading = True`를 세워도 화면에는 보이지 않는다. 로딩 표시는 클라이언트가 맡는다. 이벤트를 보낸 요소에는
+응답이 올 때까지 `wireview-loading` 클래스가 붙는다(아래 스타일).
+
 ### 4.4 템플릿
 
 `templates/myapp/stat_counter.html`:
@@ -315,22 +321,13 @@ class StatsDashboard(Component):
 ```html
 {% load wireview %}
 
-<div {% live_tag_header %} class="stat-card {% if is_loading %}loading{% endif %}">
+<div {% live_tag_header %} class="stat-card">
   <h3>{{ stat_name|title }}</h3>
   <div class="stat-value">{{ value }}</div>
   <div class="stat-actions">
-    <button {% on "click" "increment" amount=-1 myself=True %}
-            {% if is_loading %}disabled{% endif %}>
-      -1
-    </button>
-    <button {% on "click" "increment" myself=True %}
-            {% if is_loading %}disabled{% endif %}>
-      +1
-    </button>
-    <button {% on "click" "increment" amount=10 myself=True %}
-            {% if is_loading %}disabled{% endif %}>
-      +10
-    </button>
+    <button {% on "click" "increment" amount=-1 myself=True %}>-1</button>
+    <button {% on "click" "increment" myself=True %}>+1</button>
+    <button {% on "click" "increment" amount=10 myself=True %}>+10</button>
   </div>
 </div>
 ```
@@ -381,8 +378,9 @@ class StatsDashboard(Component):
   transition: opacity 0.2s;
 }
 
-.stat-card.loading {
+.stat-actions button.wireview-loading {
   opacity: 0.6;
+  pointer-events: none;
 }
 
 .stat-value {
@@ -406,11 +404,6 @@ class StatsDashboard(Component):
   background: #007bff;
   color: white;
 }
-
-.stat-actions button:disabled {
-  background: #ccc;
-  cursor: not-allowed;
-}
 ```
 
 ---
@@ -429,9 +422,12 @@ class StatsDashboard(Component):
 
 ```html
 {% for item in items %}
-  {% live_component "ItemWidget" id="item-"|add:item.pk item_id=item.pk %}
+  {% live_component "ItemWidget" id="item-"|concat:item.pk item_id=item.pk %}
 {% endfor %}
 ```
+
+숫자를 붙일 때는 `add`가 아니라 `concat`을 쓴다. Django의 `add`는 `"item-"`과 정수를 더하지 못하면 빈 문자열을
+돌려주므로 모든 위젯의 id가 `""`로 겹친다. 문자열끼리라면(`"stat-"|add:stat_name`) `add`도 된다.
 
 ### 5.3 update() 콜백 활용
 
@@ -447,10 +443,10 @@ class Counter(LiveComponent):
 
         # 변경 감지
         if self.count != self.previous_count:
-            await self.on_count_changed()
+            await self._on_count_changed()
 
-    async def on_count_changed(self):
-        """count가 변경되면 호출."""
+    async def _on_count_changed(self):
+        """count가 변경되면 호출. `_`가 없으면 클라이언트가 부를 수 있는 핸들러가 된다."""
         print(f"Count changed: {self.previous_count} → {self.count}")
 ```
 

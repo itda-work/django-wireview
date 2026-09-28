@@ -38,11 +38,12 @@ GAP-027 세션 분리는 `docs/design/transport-abstraction.md` 6절의 착수 �
 ### 1.2 의존성 업데이트 - ✅ 완료
 
 ```toml
-python_requires = >=3.12
+# 정본은 pyproject.toml
+requires-python = ">=3.12"
 dependencies = [
-    django>=4.2,
-    channels>=4,<5,
-    pydantic>=2.0,<3
+    "django>=5.2",
+    "channels>=4,<5",
+    "pydantic>=2.0,<3",
 ]
 ```
 
@@ -55,30 +56,44 @@ dependencies = [
 
 ---
 
-## Phase 2: Core Features (핵심 기능) - ✅ 90% 완료
+## Phase 2: Core Features (핵심 기능) - ✅ 완료
 
 ### 2.1 JS 명령어 시스템 - ✅ 완료
 
 **구현 완료**: `wireview/js.py`
 
 ```python
-from wireview.js import JS
+from wireview import JS, Component
 
-# 템플릿에서 사용
-{% on "click" JS().toggle("#modal").push("save") %}
 
-# Python에서 사용
-await self.push_js(JS().set_value("input", "").focus("#next"))
+class Editor(Component):
+    # 템플릿은 인자를 받는 호출을 못 하므로 체인은 컴포넌트의 속성이 만든다
+    @property
+    def save_js(self) -> JS:
+        return JS().toggle("#modal").push("save")
+
+    async def save(self):
+        ...
+
+    async def reset(self):
+        # Python에서 바로 실행
+        await self.push_js(JS().set_value("input", "").focus("#next"))
+```
+
+```html
+<button {% on "click" this.save_js %}>저장</button>
 ```
 
 **지원 명령어**:
 - `show()`, `hide()`, `toggle()` - 요소 표시/숨김
 - `add_class()`, `remove_class()`, `toggle_class()` - 클래스 조작
-- `set_attribute()`, `remove_attribute()` - 속성 조작
+- `set_attr()`, `remove_attr()` - 속성 조작
 - `set_value()` - 입력 값 설정
-- `focus()` - 포커스 이동
+- `focus()`, `focus_first()` - 포커스 이동
+- `transition()` - CSS 전환 클래스 적용
 - `push()` - 서버 이벤트 전송
 - `dispatch()` - 브라우저 이벤트 발생
+- `navigate()` - 페이지 이동
 
 ### 2.2 Phoenix 스타일 HTML Diff - ✅ 완료
 
@@ -106,7 +121,7 @@ await self.push_js(JS().set_value("input", "").focus("#next"))
 
 ---
 
-## Phase 3: Advanced Features (고급 기능) - ✅ 80% 완료
+## Phase 3: Advanced Features (고급 기능) - ✅ 완료
 
 ### 3.1 Streams (대량 데이터) - ✅ 완료
 
@@ -115,7 +130,8 @@ await self.push_js(JS().set_value("input", "").focus("#next"))
 ```python
 class ItemList(Component):
     async def joined(self):
-        await self.stream("items", Item.objects.all()[:100])
+        # QuerySet은 async 컨텍스트에서 동기로 순회할 수 없으므로 먼저 목록으로 만든다
+        await self.stream("items", [item async for item in Item.objects.all()[:100]])
 
     async def add_item(self, name: str):
         item = await Item.objects.acreate(name=name)
@@ -140,8 +156,8 @@ class ImageUploader(Component):
         )
 
     async def save_images(self):
-        async for entry in self.consume_uploads("images"):
-            path = await entry.save_to("uploads/")
+        async for upload in self.consume_uploads("images"):
+            path = await upload.save_to("uploads/")
 ```
 
 ### 3.3 비동기 작업 (assign_async) - ✅ 완료
@@ -149,14 +165,18 @@ class ImageUploader(Component):
 **구현 완료**: `wireview/async_result.py`
 
 ```python
+from wireview import AsyncResult, Component
+
+
 class Dashboard(Component):
-    stats: AsyncResult[Stats] = None
+    stats: AsyncResult[dict] | None = None
 
     async def joined(self):
-        self.stats = await self.assign_async(self.load_stats())
+        self.stats = await self.assign_async(self._load_stats())
 
-    async def load_stats(self):
-        return await Stats.objects.aget()
+    async def _load_stats(self):
+        # 결과는 상태로 서명되므로 JSON이 되는 값으로 돌려준다
+        return {"users": await User.objects.acount()}
 ```
 
 ### 3.4 Temporary Assigns - ✅ 완료
@@ -168,24 +188,27 @@ class MessageList(Component):
     class Meta:
         temporary_assigns = {"messages"}
 
-    messages: list[Message] = []
+    messages: list[dict] = []  # 상태는 서명되므로 모델 인스턴스가 아니라 JSON이 되는 값
 
     async def joined(self):
-        self.messages = await Message.objects.all()[:100]
-        # 렌더링 후 자동으로 [] 초기화
+        self.messages = [message async for message in Message.objects.values("id", "body")[:100]]
+        # 렌더링 후 선언한 기본값 []으로 돌아간다
 ```
 
 ### 3.5 URL 파라미터 처리 - ✅ 완료
 
 ```python
 async def params_changed(self, params: dict[str, str], uri: str):
+    # URL이 바뀔 때마다 불린다. 여기서 다시 push_to하면 params_changed가 또 불려 끝나지 않는다
     self.page = int(params.get("page", "1"))
+
+async def next_page(self):
     await self.wire.push_to(f"?page={self.page + 1}")
 ```
 
 ---
 
-## Phase 4: Component System (컴포넌트 시스템) - 🔄 진행 중
+## Phase 4: Component System (컴포넌트 시스템) - ✅ 완료
 
 ### 4.1 Slots (컴포넌트 콘텐츠 합성) - ✅ 완료
 
@@ -228,50 +251,61 @@ async def params_changed(self, params: dict[str, str], uri: str):
 - ✅ 통합 테스트 (`tests/test_slots_integration.py`)
 - ✅ 테스트 컴포넌트 (`examples/slots/`)
 
-### 4.2 JavaScript Hooks - ⬜ 예정
+### 4.2 JavaScript Hooks - ✅ 완료
 
-**GitHub Issue**: #49 (GAP-001)
-
-**목표**: 클라이언트 측 컴포넌트 lifecycle hooks
+**GitHub Issue**: #49 (GAP-001). 상세는 [features/hooks.md](./features/hooks.md)
 
 ```javascript
-Wireview.hooks.Chart = {
-  mounted() { this.chart = new Chart(this.el, {...}) },
-  updated() { this.chart.update(this.el.dataset) },
+// myapp/static/myapp/hooks/chart.js — {% wireview_header %}가 모아 싣는다
+window.wireview.hooks.Chart = {
+  mounted() { this.chart = new Chart(this.el, JSON.parse(this.el.dataset.config)) },
+  updated() { this.chart.update() },
   destroyed() { this.chart.destroy() }
 }
 ```
 
-### 4.3 Function Components - ⬜ 예정
+```html
+<canvas wire-hook="Chart" data-config='{"type": "line"}'></canvas>
+```
 
-**목표**: 간단한 UI를 위한 함수형 컴포넌트
+### 4.3 Function Components - ✅ 완료
+
+상세는 [features/function-components.md](./features/function-components.md)
 
 ```python
-@component
-def button(variant: str = "primary", **slots):
-    return f'<button class="btn-{variant}">{slots.get("default", "")}</button>'
+from wireview import function_component
+
+
+@function_component
+def button(text: str, variant: str = "primary"):
+    return f'<button class="btn btn-{variant}">{text}</button>'
+```
+
+```html
+{% func "button" text="Click me" variant="danger" %}
 ```
 
 ---
 
-## Phase 5: Polish (완성도) - ⬜ 시작 전
+## Phase 5: Polish (완성도) - 🔄 진행 중
 
 ### 5.1 개발자 도구
 
 - ⬜ 브라우저 확장 프로그램
-- ⬜ 디버그 모드 로깅
-- ⬜ 성능 프로파일링
+- ✅ 클라이언트 디버그 로깅과 프로파일링 (`wireview.js`)
+- ✅ 서버 계측: Telemetry 시그널(GAP-022, [features/telemetry.md](./features/telemetry.md)), sync/async 전환 감지(`DEBUG_SYNC_TRANSITIONS`)
+- ✅ 타입 스텁·LSP 메타데이터 (`wireview_stubs`, `wireview_lsp`)
 
 ### 5.2 문서화
 
-- ⬜ API 레퍼런스 완성
-- ⬜ 튜토리얼 작성
-- ⬜ 예제 앱 (Todo, Chat, Dashboard)
+- ✅ 기능 레퍼런스 ([features/](./features/README.md))
+- ✅ 튜토리얼 15편 ([tutorials/](./tutorials/README.md))
+- ✅ 예제 앱 11개 (`examples/`)
 
 ### 5.3 TypeScript 클라이언트 재작성
 
-- ⬜ 타입 정의 추가
-- ⬜ 모듈화 개선
+- ✅ 타입 정의 (`static/wireview/types.d.ts`)
+- 🔄 모듈화: 판단 로직을 순수 함수 모듈(`*.mjs`)로 분리하는 중. TypeScript 재작성은 하지 않았다
 
 ---
 

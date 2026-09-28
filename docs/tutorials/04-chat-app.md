@@ -99,13 +99,12 @@ class XMessageList(Component):
         template_name = 'chat/message_list.html'
 
     room_id: int
-    messages: list = []  # 초기 렌더링용
 
     async def joined(self):
         """컴포넌트 연결 시 메시지 로드"""
         messages = await self._load_messages()
         # stream()으로 초기화 - 아이템별로 렌더링
-        await self.stream("messages", messages)
+        await self.stream("messages", messages, template="chat/message_item.html")
 
     async def _load_messages(self, limit: int = 50):
         """최근 메시지 로드"""
@@ -123,29 +122,30 @@ class XMessageList(Component):
 ```html
 {% load wireview %}
 <div {% tag_header %} class="message-list">
-  <ul wire-stream="messages">
-    {% for message in messages %}
-      {% include "chat/message_item.html" %}
-    {% endfor %}
-  </ul>
+  <ul wire-stream="messages"></ul>
 </div>
 ```
 
-**핵심**: `wire-stream="messages"` 속성이 stream 컨테이너를 지정합니다.
+**핵심**: `wire-stream="messages"` 속성이 stream 컨테이너를 지정합니다. 항목은 컴포넌트 상태가 아니므로
+템플릿이 반복문으로 그리지 않는다. `joined()`의 `stream()`이 이 컨테이너를 채운다.
 
 ### 메시지 아이템 템플릿
 
 `chat/templates/chat/message_item.html`:
 
 ```html
-<li id="messages-{{ message.pk }}" class="message">
-  <span class="sender">{{ message.sender }}</span>
-  <span class="text">{{ message.text }}</span>
-  <span class="time">{{ message.created_at|time:"H:i" }}</span>
+<li id="messages-{{ item.pk }}" class="message">
+  <span class="sender">{{ item.sender }}</span>
+  <span class="text">{{ item.text }}</span>
+  <span class="time">{{ item.created_at|time:"H:i" }}</span>
 </li>
 ```
 
-**핵심**: `id="messages-{{ message.pk }}"` - stream 이름과 pk로 DOM ID 생성
+**핵심**: `id="messages-{{ item.pk }}"` - stream 이름과 pk로 DOM ID 생성
+
+항목 템플릿이 받는 컨텍스트는 `item`(그 항목)과 `this`(스트림을 보낸 컴포넌트) 둘뿐이다. `template=`을 생략하면
+`{컴포넌트 템플릿}_item.html`(여기서는 `chat/message_list_item.html`)을 찾는다. 이 튜토리얼은 뒤의
+`XChatRoom`도 같은 항목 템플릿을 쓰므로 매번 `template=`으로 지정한다.
 
 ### 메시지 추가
 
@@ -162,7 +162,7 @@ class XMessageList(Component):
         )
 
         # stream_insert로 아이템 추가 (append)
-        await self.stream_insert("messages", message, at=-1)
+        await self.stream_insert("messages", message, at=-1, template="chat/message_item.html")
 
         # 새 메시지로 스크롤
         await self.scroll_into_view(f"messages-{message.pk}", behavior="smooth")
@@ -172,8 +172,8 @@ class XMessageList(Component):
 
 | 메서드 | 용도 | at 파라미터 |
 |--------|------|-------------|
-| `stream(name, items)` | 초기화/리셋 | - |
-| `stream_insert(name, item, at=-1)` | 삽입 | -1: 끝, 0: 처음, n: 인덱스 |
+| `stream(name, items, template=None)` | 초기화/리셋 | - |
+| `stream_insert(name, item, at=-1, template=None)` | 삽입 | -1: 끝, 0: 처음, n: 인덱스 |
 | `stream_delete(name, dom_id)` | 삭제 | - |
 
 ## Part 3: Presence API - 온라인 사용자
@@ -326,7 +326,6 @@ class XChatRoom(PresenceMixin, Component):
     room_id: int
     room_name: str
     username: str
-    messages: list = []
 
     def _presence_topic(self) -> str:
         return f"chat.room.{self.room_id}"
@@ -340,7 +339,7 @@ class XChatRoom(PresenceMixin, Component):
     async def joined(self):
         # 메시지 로드
         messages = await self._load_messages()
-        await self.stream("messages", messages)
+        await self.stream("messages", messages, template="chat/message_item.html")
 
         # 입장 알림
         await self.presence_join()
@@ -364,7 +363,7 @@ class XChatRoom(PresenceMixin, Component):
             text=text.strip()
         )
 
-        await self.stream_insert("messages", message, at=-1)
+        await self.stream_insert("messages", message, at=-1, template="chat/message_item.html")
         await self.scroll_into_view(f"messages-{message.pk}", behavior="smooth")
         await self.push_js(JS().set_value("input[name=text]", ""))
 
@@ -405,11 +404,7 @@ class XOnlineUsers(PresenceTrackerMixin, Component):
 
   <div class="chat-body">
     <div class="messages-container">
-      <ul wire-stream="messages" class="message-list">
-        {% for message in messages %}
-          {% include "chat/message_item.html" %}
-        {% endfor %}
-      </ul>
+      <ul wire-stream="messages" class="message-list"></ul>
     </div>
 
     <aside class="sidebar">
@@ -436,14 +431,16 @@ class XOnlineUsers(PresenceTrackerMixin, Component):
 ### message_item.html
 
 ```html
-<li id="messages-{{ message.pk }}" class="message {% if message.sender == username %}own{% endif %}">
+<li id="messages-{{ item.pk }}" class="message {% if item.sender == this.username %}own{% endif %}">
   <div class="message-content">
-    <span class="sender">{{ message.sender }}</span>
-    <p class="text">{{ message.text }}</p>
-    <span class="time">{{ message.created_at|time:"H:i" }}</span>
+    <span class="sender">{{ item.sender }}</span>
+    <p class="text">{{ item.text }}</p>
+    <span class="time">{{ item.created_at|time:"H:i" }}</span>
   </div>
 </li>
 ```
+
+컴포넌트 필드는 `this`로 읽는다. 스트림 항목의 컨텍스트에 `username`은 없다.
 
 ### online_users.html
 
@@ -557,25 +554,38 @@ class XOnlineUsers(PresenceTrackerMixin, Component):
 
 ### 메시지 실시간 수신 (다른 사용자)
 
-모델 구독을 추가해 다른 사용자의 메시지도 실시간 수신:
+모델 구독을 추가해 다른 사용자의 메시지도 실시간 수신한다. 자동 브로드캐스트는 `Message`가 저장될 때
+`chat.message`(모델 전체) 말고도 외래 키가 가리키는 쪽의 채널 `chat.room.{room_pk}.messages`
+(`{관계 모델}.{pk}.{related_name}`)에 알린다. 이 채널을 쓰려면 설정에서 `related`를 켠다:
 
 ```python
+WIREVIEW = {
+    "AUTO_BROADCAST": AutoBroadcast(model=True, model_pk=True, related=True),
+}
+```
+
+```python
+from wireview import ModelAction
+
+
 class XChatRoom(PresenceMixin, Component):
     # ...
 
-    _subscriptions_base = {"chat-message"}
-
     def get_subscriptions(self) -> set[str]:
-        return self._subscriptions_base | {f"chat-message.room.{self.room_id}"}
+        # 이 방의 메시지만 받는다
+        return super().get_subscriptions() | {f"chat.room.{self.room_id}.messages"}
 
-    async def mutation(self, channel: str, action, instance):
-        """다른 사용자의 메시지 수신"""
-        if instance.sender != self.username:
-            await self.stream_insert("messages", instance, at=-1)
+    async def mutation(self, channel: str, action: ModelAction, instance):
+        """다른 사용자의 메시지 수신 (내 메시지는 send_message가 이미 넣었다)"""
+        if action == ModelAction.CREATED and instance.sender != self.username:
+            await self.stream_insert("messages", instance, at=-1, template="chat/message_item.html")
             await self.scroll_into_view(f"messages-{instance.pk}", behavior="smooth")
 ```
 
 ### 메시지 로드 더 보기
+
+처음 불러온 메시지 중 가장 오래된 것이 기준점이다. `joined()`에서 기록해 두지 않으면 첫 "더 보기"가
+이미 보이는 최신 메시지를 다시 불러온다.
 
 ```python
 class XChatRoom(PresenceMixin, Component):
@@ -583,25 +593,31 @@ class XChatRoom(PresenceMixin, Component):
     oldest_message_id: int | None = None
     has_more: bool = True
 
+    async def joined(self):
+        messages = await self._load_messages()
+        await self.stream("messages", messages, template="chat/message_item.html")
+        if messages:
+            self.oldest_message_id = messages[0].id
+        self.has_more = len(messages) == 50
+        await self.presence_join()
+
     async def load_more(self):
         """이전 메시지 로드"""
-        if not self.has_more:
+        if not self.has_more or self.oldest_message_id is None:
             return
 
-        qs = Message.objects.filter(room_id=self.room_id)
-        if self.oldest_message_id:
-            qs = qs.filter(id__lt=self.oldest_message_id)
-
-        messages = await qs.order_by('-created_at')[:20]
-        messages = list(reversed([m async for m in messages]))
+        qs = Message.objects.filter(room_id=self.room_id, id__lt=self.oldest_message_id)
+        # QuerySet은 await할 수 없다. async for로 모은다. 최신 것부터 20개
+        messages = [m async for m in qs.order_by('-id')[:20]]
 
         if len(messages) < 20:
             self.has_more = False
 
+        # 최신 것부터 하나씩 맨 앞에 붙이면 가장 오래된 것이 맨 위에 온다
+        for message in messages:
+            await self.stream_insert("messages", message, at=0, template="chat/message_item.html")
         if messages:
-            self.oldest_message_id = messages[0].id
-            for message in messages:
-                await self.stream_insert("messages", message, at=0)  # prepend
+            self.oldest_message_id = messages[-1].id
 ```
 
 ## 연습 문제

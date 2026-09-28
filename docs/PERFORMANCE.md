@@ -76,25 +76,23 @@ async 프로퍼티 대신 라이프사이클 메서드에서 읽는다.
 class UserProfile(Component):
     @property
     async def recent_posts(self):
-        return await Post.objects.filter(user=self.user)[:5]
+        return [post async for post in Post.objects.filter(user=self.user)[:5]]
 
 # 좋음: joined()에서 미리 읽는다
 class UserProfile(Component):
-    posts: list[Post] = []
+    posts: list[dict] = []  # 상태는 data-state로 서명되므로 JSON이 되는 값을 담는다
 
     async def joined(self):
-        self.posts = await sync_to_async(list)(
-            Post.objects.filter(user=self.user)[:5]
-        )
+        self.posts = [post async for post in Post.objects.filter(user=self.user).values("id", "title")[:5]]
 ```
 
-### 2. 컴포넌트 안에서는 `asend_to()`를 쓴다
+### 2. 컴포넌트 안에서는 `asend_notification()`을 쓴다
 
 async 컨텍스트에서는 async 함수를 쓴다.
 
 ```python
 # 나쁨: 내부적으로 async_to_sync를 쓴다
-from wireview.utils import send_notification
+from wireview import send_notification
 
 class ChatRoom(Component):
     async def send_message(self, text: str):
@@ -102,7 +100,7 @@ class ChatRoom(Component):
         send_notification("chat_room_1", message=text)
 
 # 좋음: 순수 async, 전환 없음
-from wireview.utils import asend_notification
+from wireview import asend_notification
 
 class ChatRoom(Component):
     async def send_message(self, text: str):
@@ -116,18 +114,18 @@ class ChatRoom(Component):
 ```python
 # 나쁨: sync_to_async를 여러 번
 async def joined(self):
-    self.user = await sync_to_async(User.objects.get)(pk=self.user_id)
-    self.posts = await sync_to_async(list)(self.user.posts.all())
-    self.comments = await sync_to_async(list)(self.user.comments.all())
+    profile = await sync_to_async(Profile.objects.get)(user=self.user)
+    self.posts = await sync_to_async(list)(profile.posts.values("id", "title"))
+    self.comments = await sync_to_async(list)(profile.comments.values("id", "body"))
 
-# 좋음: prefetch와 함께 한 번에
+# 좋음: 한 번의 전환 안에서 전부 읽는다
 async def joined(self):
     @sync_to_async
-    def load_user_data():
-        user = User.objects.prefetch_related('posts', 'comments').get(pk=self.user_id)
-        return user, list(user.posts.all()), list(user.comments.all())
+    def load_profile_data():
+        profile = Profile.objects.get(user=self.user)
+        return list(profile.posts.values("id", "title")), list(profile.comments.values("id", "body"))
 
-    self.user, self.posts, self.comments = await load_user_data()
+    self.posts, self.comments = await load_profile_data()
 ```
 
 ### 4. 큰 리스트에는 Streams를 쓴다
@@ -136,8 +134,7 @@ async def joined(self):
 
 ```python
 class ItemList(Component):
-    items: list[Item] = []
-
+    # 항목은 상태 필드에 두지 않는다. 스트림으로 보낸 항목은 클라이언트 DOM에만 있다
     async def add_item(self, name: str):
         item = await Item.objects.acreate(name=name)
         # 리스트 전체가 아니라 새 항목만 보낸다
@@ -153,7 +150,7 @@ class Counter(Component):
     async def increment_silent(self):
         self.count += 1
         # UI를 갱신할 필요가 없으면 렌더를 건너뛴다
-        self.wire.skip_render()
+        self.skip_render()
 ```
 
 ## 튜닝
@@ -205,21 +202,32 @@ if DEBUG:
 
 ### 직접 재기
 
+렌더·diff·이벤트 핸들러의 소요 시간은 옵트인 telemetry 시그널로 받는다. 컴포넌트를 오버라이드할 필요가 없다.
+렌더 경로는 `Component`가 아니라 컨슈머와 `WireviewMeta`에 있어서, 컴포넌트에 메서드를 덮어써도 불리지 않는다.
+
 ```python
-import time
+# settings.py
+WIREVIEW = {"TELEMETRY": True}
+```
+
+```python
+# myapp/telemetry_receivers.py (AppConfig.ready()에서 import한다)
 import logging
+
+from django.dispatch import receiver
+
+from wireview import telemetry
 
 log = logging.getLogger("wireview.profiling")
 
-class ProfiledComponent(Component):
-    async def render_diff(self, *args, **kwargs):
-        start = time.perf_counter()
-        result = await super().render_diff(*args, **kwargs)
-        duration = time.perf_counter() - start
-        if duration > 0.1:  # 느린 렌더만 기록한다
-            log.warning(f"Slow render: {self._name} took {duration:.3f}s")
-        return result
+
+@receiver(telemetry.component_rendered)
+def log_slow_renders(sender, component_name, duration_ms, **kwargs):
+    if duration_ms > 100:  # 느린 렌더만 기록한다
+        log.warning("Slow render: %s took %.1fms", component_name, duration_ms)
 ```
+
+시그널과 인자 목록은 [features/telemetry.md](features/telemetry.md).
 
 ### py-spy
 
@@ -245,17 +253,61 @@ py-spy record -o profile.svg --pid <PID>
 
 ### 부하 테스트
 
-WebSocket 부하는 `locust`로 잰다.
+wireview의 WebSocket은 Socket.IO가 아니라 `{"command", "payload"}` JSON 프레임을 주고받는 날 WebSocket이다
+([wire-protocol](implementation/wire-protocol.md)). join에는 페이지가 발급한 서명 상태(`data-state`)가 필요하므로,
+가상 사용자는 페이지를 먼저 받고 거기서 컴포넌트의 이름·id·상태를 읽는다. `locust`와 `websocket-client`로 쓰면 다음과 같다.
 
 ```python
-from locust import HttpUser, task
-from locust_plugins.users import SocketIOUser
+import html
+import json
+import re
+import time
 
-class WireviewUser(SocketIOUser):
+import websocket  # pip install websocket-client
+from locust import HttpUser, between, task
+
+COMPONENT_TAG = re.compile(r"<[^>]*\bwireview-component\b[^>]*>")
+ATTRIBUTE = re.compile(r'([\w-]+)="([^"]*)"')
+
+
+class WireviewUser(HttpUser):
+    wait_time = between(1, 3)
+
+    def on_start(self):
+        page = self.client.get("/counter/")
+        attrs = dict(ATTRIBUTE.findall(COMPONENT_TAG.search(page.text).group(0)))
+        self.component_id = attrs["id"]
+        cookie = "; ".join(f"{name}={value}" for name, value in self.client.cookies.items())
+        self.ws = websocket.create_connection(self.host.replace("http", "ws", 1) + "/__wireview__", cookie=cookie)
+        # 중첩 컴포넌트가 있는 페이지라면 children에 {id: [name, state]}를 채운다
+        self.request("join", {"name": attrs["data-name"], "state": html.unescape(attrs["data-state"]), "children": {}})
+
+    def on_stop(self):
+        self.ws.close()
+
     @task
-    def join_component(self):
-        self.send('{"command": "join", "name": "Counter"}')
+    def increment(self):
+        event = {"id": self.component_id, "command": "increment", "implicit_args": {}, "explicit_args": {}}
+        self.request("user_event", event)
+
+    def request(self, command, payload):
+        """명령 하나를 보내고 그에 답하는 render가 올 때까지의 시간을 잰다."""
+        start = time.perf_counter()
+        self.ws.send(json.dumps({"command": command, "payload": payload}))
+        while (message := json.loads(self.ws.recv()))["command"] != "render":
+            pass
+        self.environment.events.request.fire(
+            request_type="WS",
+            name=command,
+            response_time=(time.perf_counter() - start) * 1000,
+            response_length=len(json.dumps(message)),
+            exception=None,
+            context={},
+        )
 ```
+
+핸들러가 아무것도 바꾸지 않아도 서버는 `diff: null`인 render로 답하므로 위의 대기는 끝난다. 연결 수당 메모리·join 처리량·
+이벤트 처리량은 `make bench`의 WebSocket 벤치마크(`bench/ws.py`)가 같은 프로토콜로 이미 잰다.
 
 ## 문제 해결
 

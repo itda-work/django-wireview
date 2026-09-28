@@ -65,6 +65,7 @@ class XTodoList(Component):
 
     class Meta:
         template_name = 'todo/todo_list.html'
+        exclude_fields = {"items"}
 
     items: list = []
 
@@ -72,6 +73,10 @@ class XTodoList(Component):
         """컴포넌트가 연결되면 아이템 로드"""
         self.items = [item async for item in Item.objects.all()]
 ```
+
+`items`에는 모델 인스턴스가 들어간다. 서명 상태는 JSON이라 인스턴스 목록을 담지 못하므로
+`Meta.exclude_fields`로 뺀다. 빠진 필드는 연결 동안 서버의 인스턴스에만 있고, 다시 연결하면 `joined()`가
+새로 불러온다.
 
 ### 템플릿
 
@@ -104,6 +109,7 @@ class XTodoList(Component):
 class XTodoList(Component):
     class Meta:
         template_name = 'todo/todo_list.html'
+        exclude_fields = {"items"}
 
     items: list = []
     new_item_text: str = ""
@@ -211,6 +217,7 @@ from wireview import WireviewMeta
 class XTodoList(Component):
     class Meta:
         template_name = 'todo/todo_list.html'
+        exclude_fields = {"items"}
 
     items: list = []
     new_item_text: str = ""
@@ -329,6 +336,7 @@ from wireview import ModelAction
 class XTodoList(Component):
     class Meta:
         template_name = 'todo/todo_list.html'
+        exclude_fields = {"items"}
         # 모델 변경 구독 ({app_label}.{model_name} 형식)
         subscriptions = {"todo.item"}
 
@@ -338,8 +346,8 @@ class XTodoList(Component):
     async def mutation(self, channel: str, action: ModelAction, instance):
         """모델 변경 시 호출"""
         if action == ModelAction.CREATED:
-            # 필터에 맞으면 추가
-            if self.filter == "all" or (self.filter == "active" and not instance.completed):
+            # 현재 필터에 맞으면 추가
+            if self._should_show(instance):
                 self.items.insert(0, instance)
 
         elif action == ModelAction.UPDATED:
@@ -403,7 +411,8 @@ class XTodoItem(Component):
         """편집 모드 시작"""
         self.editing = True
         self.edit_text = self.text
-        self.focus_on(f"edit-{self.item_id}")
+        # 인자는 CSS 선택자다. 포커스는 이 핸들러의 렌더가 입력 칸을 그린 뒤에 적용된다
+        await self.focus_on(f"#edit-{self.item_id}")
 
     async def save_edit(self, text: str):
         """편집 저장"""
@@ -420,7 +429,7 @@ class XTodoItem(Component):
     async def delete(self):
         """아이템 삭제"""
         await Item.objects.filter(id=self.item_id).adelete()
-        self.destroy()  # 컴포넌트 제거
+        await self.destroy()  # 컴포넌트 제거
 
     async def mutation(self, channel: str, action: ModelAction, instance):
         """다른 곳에서 변경된 경우"""
@@ -428,7 +437,7 @@ class XTodoItem(Component):
             self.text = instance.text
             self.completed = instance.completed
         elif action == ModelAction.DELETED:
-            self.destroy()
+            await self.destroy()
 ```
 
 ### XTodoItem 템플릿
@@ -466,6 +475,7 @@ class XTodoItem(Component):
 class XTodoList(Component):
     class Meta:
         template_name = 'todo/todo_list.html'
+        exclude_fields = {"items"}
         subscriptions = {"todo.item"}
 
     items: list = []
@@ -517,6 +527,7 @@ class XTodoList(Component):
 
     class Meta:
         template_name = 'todo/todo_list.html'
+        exclude_fields = {"items"}
         subscriptions = {"todo.item"}
 
     items: list = []
@@ -572,7 +583,7 @@ class XTodoList(Component):
 
     @property
     def active_count(self) -> int:
-        # 필터와 관계없이 전체 활성 개수
+        # 지금 보이는 목록 안의 미완료 개수 (Completed 필터에서는 0)
         return sum(1 for item in self.items if not item.completed)
 
     @property
@@ -592,7 +603,7 @@ class XTodoItem(Component):
     editing: bool = False
 
     def get_subscriptions(self) -> set[str]:
-        return {f"todo-item.{self.item_id}"}
+        return {f"todo.item.{self.item_id}"}
 
     async def toggle(self):
         self.completed = not self.completed
@@ -600,7 +611,7 @@ class XTodoItem(Component):
 
     async def start_edit(self):
         self.editing = True
-        self.focus_on(f"edit-{self.item_id}")
+        await self.focus_on(f"#edit-{self.item_id}")
 
     async def save_edit(self, text: str):
         text = text.strip()
@@ -614,14 +625,14 @@ class XTodoItem(Component):
 
     async def delete(self):
         await Item.objects.filter(id=self.item_id).adelete()
-        self.destroy()
+        await self.destroy()
 
     async def mutation(self, channel: str, action: ModelAction, instance):
         if action == ModelAction.UPDATED:
             self.text = instance.text
             self.completed = instance.completed
         elif action == ModelAction.DELETED:
-            self.destroy()
+            await self.destroy()
 ```
 
 ### 최종 템플릿

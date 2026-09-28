@@ -5,9 +5,15 @@ This module provides a fluent API for building client-side JavaScript commands
 that can be executed in the browser without a server round-trip, or combined
 with server events.
 
-Example usage in templates:
-    <button {% on "click" JS().toggle("#modal").push("save") %}>Save</button>
-    <div {% on "click" JS().hide(transition=("fade-out", 300)) %}></div>
+A template cannot call with arguments, so a component builds the chain in a
+property and the template names it:
+
+    class Editor(Component):
+        @property
+        def save_js(self) -> JS:
+            return JS().toggle("#modal").push("save")
+
+    <button {% on "click" this.save_js %}>Save</button>
 """
 
 from __future__ import annotations

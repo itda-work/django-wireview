@@ -327,6 +327,7 @@ def list_group(items: list, bordered: bool = True):
 ```
 
 ```html
+{% load wireview humanize %}  {# intcomma: django.contrib.humanize가 INSTALLED_APPS에 있어야 한다 #}
 {% func_block "list_group" items=products %}
   {% fill item let:item let:index %}
     <span class="badge">{{ index }}</span>
@@ -342,13 +343,13 @@ def list_group(items: list, bordered: bool = True):
 ### `@function_component` 데코레이터
 
 ```python
-@function_component(
+def function_component(
+    func=None,                    # 인자 없이 @function_component로 쓸 때의 함수
+    *,
     name: str | None = None,      # 컴포넌트 이름 (기본: 함수 이름)
     template: str | None = None,  # 템플릿 경로
     slots: dict | None = None,    # 슬롯 정의
-)
-def my_component(...):
-    ...
+): ...
 ```
 
 ### Template Tags

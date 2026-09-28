@@ -6,7 +6,7 @@
 
 ## 학습 목표
 
-- `broadcast()` / `abroadcast()` 알림 전송
+- `self.broadcast()`, 모듈 수준 `broadcast()` / `abroadcast()` 알림 전송
 - `notification()` 훅 커스텀 이벤트 수신
 - `push_js()` 고급 활용
 - Streams API로 알림 목록 관리
@@ -58,7 +58,7 @@ class Notification(models.Model):
 ```python
 from wireview import Component, JS, ModelAction
 
-from .models import Notification
+from .models import Notification, NotificationType
 
 
 class XNotificationBell(Component):
@@ -66,7 +66,8 @@ class XNotificationBell(Component):
 
     class Meta:
         template_name = "notifications/notification_bell.html"
-        subscriptions = {"notification", "notifications-refresh"}
+        # 모델 채널 이름은 "<앱 label>.<모델 이름>" 소문자다
+        subscriptions = {"notifications.notification", "notifications-refresh"}
 
     is_open: bool = False
 
@@ -111,11 +112,12 @@ class XNotificationList(Component):
 
     class Meta:
         template_name = "notifications/notification_list.html"
-        subscriptions = {"notification"}
+        subscriptions = {"notifications.notification"}
 
     async def joined(self):
         """초기 알림 로드"""
-        notifications = list(await Notification.objects.all()[:20])
+        # QuerySet은 await할 수 없다. async for로 모은다
+        notifications = [n async for n in Notification.objects.all()[:20]]
         await self.stream("notifications", notifications)
 
     async def mutation(self, channel, action, instance: Notification):
@@ -123,9 +125,9 @@ class XNotificationList(Component):
         if action == ModelAction.CREATED:
             # 새 알림을 맨 위에 추가
             await self.stream_insert("notifications", instance, at=0)
-            # 펄스 애니메이션
+            # 펄스 애니메이션. 시간은 문자열이 아니라 (클래스, 밀리초) 튜플로 준다
             await self.push_js(
-                JS().transition(f"#notifications-{instance.id}", "pulse 500ms")
+                JS().transition(f"#notifications-{instance.id}", ("pulse", 500))
             )
         elif action == ModelAction.DELETED:
             await self.stream_delete("notifications", instance.id)
@@ -140,7 +142,7 @@ class XNotificationList(Component):
             )
         )
         await Notification.objects.filter(id=notification_id).adelete()
-        await self.abroadcast("notifications-refresh")
+        await self.broadcast("notifications-refresh")
 
     async def mark_as_read(self, notification_id: int):
         """읽음 표시"""
@@ -148,7 +150,7 @@ class XNotificationList(Component):
         await self.push_js(
             JS().add_class(f"#notifications-{notification_id}", "is-read")
         )
-        await self.abroadcast("notifications-refresh")
+        await self.broadcast("notifications-refresh")
 
     async def mark_all_read(self):
         """전체 읽음"""
@@ -156,26 +158,38 @@ class XNotificationList(Component):
         await self.push_js(
             JS().add_class(f"#{self.id} .notification-item", "is-read")
         )
-        await self.abroadcast("notifications-refresh")
+        await self.broadcast("notifications-refresh")
 
     async def clear_all(self):
         """전체 삭제"""
         await Notification.objects.all().adelete()
         await self.stream("notifications", [])  # 목록 비우기
-        await self.abroadcast("notifications-refresh")
+        await self.broadcast("notifications-refresh")
 ```
 
 ## 4. 핵심 개념: broadcast
 
-### broadcast() vs abroadcast()
+### self.broadcast()와 모듈 수준 broadcast() / abroadcast()
 
 ```python
-# 동기 (모델 시그널 등에서)
-self.broadcast("notifications-refresh")
-
-# 비동기 (async 메서드에서)
-await self.abroadcast("notifications-refresh")
+# 컴포넌트 메서드 안에서. async다
+await self.broadcast("notifications-refresh")
 ```
+
+컴포넌트 밖에서는 모듈 수준 함수를 쓴다. `self.abroadcast()`는 없다.
+
+```python
+from wireview import abroadcast, broadcast
+
+# 동기 코드 (모델 시그널, 관리 명령 등)
+broadcast("notifications-refresh")
+
+# 비동기 코드
+await abroadcast("notifications-refresh")
+```
+
+`aupdate()`·`abulk_create()` 같은 대량 쿼리는 `post_save`를 보내지 않으므로 모델 채널로 알림이 가지
+않는다. 위 `mark_as_read`가 `notifications-refresh`를 직접 보내는 이유다.
 
 ### notification() 훅
 
@@ -208,7 +222,7 @@ await self.push_js(
 | `add_class(sel, cls)` | 클래스 추가 |
 | `remove_class(sel, cls)` | 클래스 제거 |
 | `toggle_class(sel, cls)` | 클래스 토글 |
-| `transition(sel, effect)` | 애니메이션 |
+| `transition(sel, effect)` | 애니메이션. 시간은 `(클래스, 밀리초)` 튜플 또는 `time=` |
 | `set_value(sel, val)` | input 값 설정 |
 | `focus(sel)` | 포커스 |
 | `set_attr(sel, attr, val)` | 속성 설정 |
@@ -227,30 +241,29 @@ await self.push_js(
     <button {% on 'click' 'clear_all' %}>Clear all</button>
   </div>
 
-  <div class="notification-list" wire-stream="notifications">
-    {% for notification in notifications %}
-      {% include "notifications/notification_list_item.html" %}
-    {% endfor %}
-  </div>
+  {# 스트림 컨테이너는 비워 둔다. 항목은 stream()·stream_insert()가 채운다 #}
+  <div class="notification-list" wire-stream="notifications"></div>
 </div>
 ```
 
-`notifications/notification_list_item.html`:
+`notifications/notification_list_item.html` — 스트림 항목 템플릿이다. 기본 경로는 컴포넌트 템플릿 이름에
+`_item`을 붙인 것이고, 항목은 `item`으로 들어온다. 항목 템플릿은 따로 렌더되므로 `{% load wireview %}`가
+따로 필요하다. `id`는 적지 않아도 클라이언트가 `notifications-<pk>`로 붙인다 — 위 `JS()` 선택자가 그 id를 쓴다.
 
 ```html
+{% load wireview %}
 <div
-  id="notifications-{{ notification.id }}"
-  {% class {'notification-item': True, 'is-read': notification.is_read} %}
-  {% on 'click' 'mark_as_read' notification_id=notification.id %}
+  {% class {'notification-item': True, 'is-read': item.is_read} %}
+  {% on 'click' 'mark_as_read' notification_id=item.id %}
 >
-  <div class="notification-icon {{ notification.type }}">...</div>
+  <div class="notification-icon {{ item.type }}">...</div>
   <div class="notification-content">
-    <div class="notification-title">{{ notification.title }}</div>
-    <div class="notification-message">{{ notification.message }}</div>
+    <div class="notification-title">{{ item.title }}</div>
+    <div class="notification-message">{{ item.message }}</div>
   </div>
   <button
     class="dismiss-btn"
-    {% on 'click.stop' 'dismiss' notification_id=notification.id %}
+    {% on 'click.stop' 'dismiss' notification_id=item.id %}
   >×</button>
 </div>
 ```
@@ -266,7 +279,19 @@ class XNotificationCreator(Component):
 
     title: str = ""
     message: str = ""
-    type: str = "info"
+    type: str = NotificationType.INFO
+
+    async def set_title(self, title: str):
+        self.title = title
+        self.skip_render()  # 입력마다 다시 그릴 필요는 없다
+
+    async def set_message(self, message: str):
+        self.message = message
+        self.skip_render()
+
+    async def set_type(self, type: str):
+        if type in NotificationType.values:
+            self.type = type
 
     async def create(self):
         """알림 생성"""
@@ -282,12 +307,27 @@ class XNotificationCreator(Component):
         # 폼 초기화
         self.title = ""
         self.message = ""
+        self.type = NotificationType.INFO
         await self.push_js(
             JS()
             .set_value(f"#{self.id} input[name=title]", "")
             .set_value(f"#{self.id} textarea[name=message]", "")
             .focus(f"#{self.id} input[name=title]")
         )
+```
+
+`notifications/notification_creator.html`. 입력의 `name`이 핸들러 인자 이름과 같아야 값이 들어온다.
+
+```html
+{% load wireview %}
+
+<div {% tag_header %}>
+  <input type="text" name="title" value="{{ title }}" {% on 'input' 'set_title' %} />
+  <textarea name="message" {% on 'input' 'set_message' %}>{{ message }}</textarea>
+  <button type="button" {% on 'click' 'set_type' type='info' %}>Info</button>
+  <button type="button" {% on 'click' 'set_type' type='warning' %}>Warning</button>
+  <button type="button" {% cond {'disabled': not title} %} {% on 'click' 'create' %}>Create</button>
+</div>
 ```
 
 ## 연습 문제

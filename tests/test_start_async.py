@@ -14,14 +14,21 @@ import pytest
 from django.contrib.auth.models import AnonymousUser
 from django.test import override_settings
 
-from wireview import Component
+from wireview import AsyncResult, Component
 from wireview.consumer import WireviewConsumer
 from wireview.core.rendered import PROTOCOL_VERSION
 from wireview.repository import ComponentRepository
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio, pytest.mark.django_db]
 
-TEMPLATES = {"sa/page.html": "{% load wireview %}<div {% tag_header %}>{{ this.result }}</div>"}
+TEMPLATES = {
+    "sa/page.html": "{% load wireview %}<div {% tag_header %}>{{ this.result }}</div>",
+    "sa/stats.html": (
+        "{% load wireview %}<div {% tag_header %}>"
+        "{% if this.stats.failed %}error: {{ this.stats.error_message }}{% elif this.stats.ok %}"
+        "{{ this.stats.result.n }}{% endif %}</div>"
+    ),
+}
 
 HANDLED: list[tuple[str, str]] = []
 
@@ -59,6 +66,22 @@ class SaPage(Component):
         if name == "explode":
             raise RuntimeError("handle_async broke")
         self.result = result[1] if result[0] == "ok" else f"failed: {result[1]}"
+
+
+class SaStats(Component):
+    class Meta:
+        template_name = "sa/stats.html"
+
+    stats: AsyncResult | None = None
+
+    async def load(self, fail: bool = False):
+        self.stats = await self.assign_async(self._fetch(fail))
+
+    async def _fetch(self, fail: bool) -> dict:
+        await asyncio.sleep(0)
+        if fail:
+            raise LookupError("stats offline")
+        return {"n": 7}
 
 
 class FakeOutbound:
@@ -165,3 +188,33 @@ async def test_a_handle_async_that_raises_joins_the_component_again(caplog):
     assert ("error", {"id": "p", "during": "event"}) in outbound.commands
     assert consumer.repo.get("p") is None
     assert "handle_async broke" in caplog.text
+
+
+async def test_a_failed_assign_async_renders_its_message_and_survives_a_rejoin():
+    # #113: the exception in AsyncResult.error made the state unsignable, so a
+    # component whose load failed could not be rendered at all
+    consumer, outbound, _ = await joined_page()
+    stats = await consumer.repo.join("SaStats", {"id": "s"})
+    stats.wire.broker = LoopbackBroker(consumer)  # type: ignore[assignment]
+    await consumer.send_render(stats)
+    await stats.wire.flush_pending()
+
+    await consumer.command_user_event("s", "load", {}, {"fail": True})
+    await asyncio.wait_for(asyncio.gather(*list(stats._assign_tasks), return_exceptions=True), 2)
+
+    assert "stats offline" in outbound.last_render()
+    again = await consumer.repo.join("SaStats", {"id": "s2", **stats.model_dump(include={"stats"}, mode="json")})
+    assert again.stats.failed and again.stats.error_message == "stats offline"
+
+
+async def test_a_loaded_assign_async_renders_its_result():
+    consumer, outbound, _ = await joined_page()
+    stats = await consumer.repo.join("SaStats", {"id": "s"})
+    stats.wire.broker = LoopbackBroker(consumer)  # type: ignore[assignment]
+    await consumer.send_render(stats)
+    await stats.wire.flush_pending()
+
+    await consumer.command_user_event("s", "load", {}, {})
+    await asyncio.wait_for(asyncio.gather(*list(stats._assign_tasks), return_exceptions=True), 2)
+
+    assert "7" in outbound.last_render()

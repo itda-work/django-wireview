@@ -1123,13 +1123,14 @@ class Component(BaseModel):
 
         Example:
             class Dashboard(Component):
-                stats: AsyncResult[Stats] = None
+                # The result goes into the signed state: JSON values, not a model instance
+                stats: AsyncResult[dict] | None = None
 
                 async def joined(self):
-                    self.stats = await self.assign_async(self.load_stats())
+                    self.stats = await self.assign_async(self._load_stats())
 
-                async def load_stats(self):
-                    return await Stats.objects.aget()
+                async def _load_stats(self):  # underscore: not an event handler
+                    return await Stats.objects.values("visits", "orders").aget()
 
             # In template:
             {% if stats.loading %}Loading...{% endif %}
@@ -1244,7 +1245,7 @@ class Component(BaseModel):
 
         Example:
             async def joined(self):
-                await self.stream("items", Item.objects.all()[:100])
+                await self.stream("items", [item async for item in Item.objects.all()[:100]])
 
             # With limit - keeps only 50 most recent items in DOM
             async def joined(self):
@@ -1384,11 +1385,12 @@ class Component(BaseModel):
                 self.allow_upload(
                     "documents",
                     accept=[".pdf", ".doc"],
-                    external=self.presign_s3_upload,
+                    # Underscore: a public name would be an event handler a client can call
+                    external=self._presign_s3_upload,
                 )
 
-            def presign_s3_upload(self, entry, component):
-                from wireview.features.uploads import ExternalUploadMeta
+            def _presign_s3_upload(self, entry, component):
+                from wireview import ExternalUploadMeta
                 import boto3
 
                 s3 = boto3.client("s3")

@@ -73,8 +73,12 @@ class XPoll(Component):
             self.skip_render()
             return
 
-        # Record the vote
-        option = await Option.objects.aget(id=option_id)
+        # Record the vote. The id comes from the browser, so it is looked up among
+        # this poll's options only: any other id would count for another poll.
+        option = await Option.objects.filter(id=option_id, poll_id=self.poll.id).afirst()
+        if option is None:
+            self.skip_render()
+            return
         option.votes += 1
         await option.asave()
 

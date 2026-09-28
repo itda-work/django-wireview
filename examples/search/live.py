@@ -15,6 +15,11 @@ from wireview import JS, Component
 
 from .models import Book
 
+#: What the dropdown and the detail panel show. The component keeps these as
+#: plain dicts: its state is signed into the page as JSON, and a model instance
+#: is not JSON (rendering failed once a search had results, #113).
+BOOK_FIELDS = ("id", "title", "author", "published_year", "category", "isbn", "description")
+
 
 class XLiveSearch(Component):
     """
@@ -31,10 +36,10 @@ class XLiveSearch(Component):
         template_name = "search/live_search.html"
 
     query: str = ""
-    results: list[Book] = []
+    results: list[dict] = []
     selected_index: int = -1  # Currently highlighted result (-1 = none)
     is_open: bool = False  # Dropdown visibility
-    selected_book: Book | None = None  # Book selected by user
+    selected_book: dict | None = None  # Book selected by user
 
     async def search(self, q: str):
         """
@@ -55,7 +60,7 @@ class XLiveSearch(Component):
             book
             async for book in Book.objects.filter(
                 Q(title__icontains=q) | Q(author__icontains=q) | Q(description__icontains=q)
-            )[:10]
+            ).values(*BOOK_FIELDS)[:10]
         ]
         self.is_open = len(self.results) > 0
 
@@ -89,7 +94,7 @@ class XLiveSearch(Component):
         if 0 <= index < len(self.results):
             self.selected_book = self.results[index]
             self.is_open = False
-            self.query = self.selected_book.title
+            self.query = self.selected_book["title"]
 
     async def select_current(self):
         """

@@ -361,7 +361,7 @@ async def handle_hook_event(
     hook_id: str,
     event: str,
     payload: dict[str, Any],
-) -> Any
+) -> Any: ...
 ```
 
 클라이언트 훅이 `pushEvent()`로 보낸 이벤트를 받는다.
@@ -379,7 +379,7 @@ async def push_event(
     event: str,
     payload: dict[str, Any] | None = None,
     hook_id: str | None = None,
-) -> None
+) -> None: ...
 ```
 
 클라이언트 훅으로 이벤트를 보낸다.

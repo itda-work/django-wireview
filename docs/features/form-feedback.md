@@ -102,7 +102,6 @@
 
 ```python
 from wireview import Component
-from pydantic import field_validator
 
 
 class XRegistrationForm(Component):
@@ -113,39 +112,36 @@ class XRegistrationForm(Component):
     password: str = ""
     errors: dict[str, str] = {}
 
-    @field_validator("email")
-    def validate_email(cls, v):
-        if v and "@" not in v:
-            raise ValueError("Invalid email address")
-        return v
-
-    async def validate_field(self, field: str, value: str):
-        """Validate one field as the user types."""
-        errors = {}
-
+    @staticmethod
+    def _field_error(field: str, value: str) -> str | None:
+        """필드 하나의 오류 문구. 입력 중 검사와 제출이 같은 규칙을 쓴다."""
         if field == "email":
             if not value:
-                errors["email"] = "이메일을 입력하세요"
-            elif "@" not in value:
-                errors["email"] = "이메일 형식이 아닙니다"
+                return "이메일을 입력하세요"
+            if "@" not in value:
+                return "이메일 형식이 아닙니다"
         elif field == "password":
+            if not value:
+                return "비밀번호를 입력하세요"
             if len(value) < 8:
-                errors["password"] = "비밀번호는 8자 이상이어야 합니다"
+                return "비밀번호는 8자 이상이어야 합니다"
+        return None
 
-        self.errors = {**self.errors, **errors}
-        if not errors.get(field):
-            self.errors.pop(field, None)
+    async def validate_field(self, field: str, email: str = "", password: str = ""):
+        """Validate one field as the user types."""
+        # 폼 안의 필드 값은 name대로 인자에 실려 온다. field는 {% on %}이 넘긴 값이다
+        self.email, self.password = email, password
+        values = {"email": email, "password": password}
+        errors = {name: error for name, error in self.errors.items() if name != field}
+        if error := self._field_error(field, values[field]):
+            errors[field] = error
+        self.errors = errors
 
-    async def save(self, email: str, password: str):
+    async def save(self, email: str = "", password: str = ""):
         """Handle the form submission."""
-        self.errors = {}
-
-        if not email:
-            self.errors["email"] = "이메일을 입력하세요"
-        if not password:
-            self.errors["password"] = "비밀번호를 입력하세요"
-        elif len(password) < 8:
-            self.errors["password"] = "비밀번호는 8자 이상이어야 합니다"
+        self.email, self.password = email, password
+        values = {"email": email, "password": password}
+        self.errors = {name: error for name, value in values.items() if (error := self._field_error(name, value))}
 
         if self.errors:
             return

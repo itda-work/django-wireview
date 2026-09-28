@@ -58,6 +58,7 @@ class Submission(models.Model):
     session_key = models.CharField(max_length=40)
     score = models.PositiveSmallIntegerField(default=0)
     total_questions = models.PositiveSmallIntegerField(default=0)
+    completed_at = models.DateTimeField(auto_now_add=True)
     username = models.CharField(max_length=50, blank=True)
 
     class Meta:
@@ -142,6 +143,10 @@ class XQuiz(Component):
         if instance.quiz_id == self.quiz.id:
             self.force_render()
 
+    async def set_username(self, name: str):
+        """이름 입력. 인자 이름은 input의 name="name"과 같아야 값이 들어온다"""
+        self.username = name.strip()[:50]
+
     async def start_quiz(self):
         """퀴즈 시작 - INTRO → PLAYING"""
         self.state = QuizState.PLAYING
@@ -152,14 +157,18 @@ class XQuiz(Component):
     async def answer(self, choice_id: int):
         """답변 제출"""
         question = self.current_question
-        if not question:
+        if not question or question.id in self.answers:
+            # 질문이 없거나 이미 답했다. 같은 정답을 다시 눌러 점수를 올릴 수 없다
+            self.skip_render()
+            return
+
+        # choice_id는 클라이언트가 보낸 값이다. 이 질문의 선택지인지 확인한다
+        choice = await Choice.objects.filter(id=choice_id, question=question).afirst()
+        if choice is None:
             self.skip_render()
             return
 
         self.answers[question.id] = choice_id
-
-        # 정답 확인
-        choice = await Choice.objects.aget(id=choice_id)
         if choice.is_correct:
             self.score += 1
 
@@ -292,6 +301,27 @@ class XLeaderboard(Component):
             self.force_render()
 ```
 
+`quiz/templates/quiz/leaderboard.html`:
+
+```html
+{% load wireview %}
+
+<div {% tag_header %} class="leaderboard">
+  <h3>Leaderboard</h3>
+  {% for submission in this.submissions %}
+    <div class="leaderboard-item">
+      #{{ forloop.counter }} {{ submission.username }}
+      {{ submission.score }}/{{ submission.total_questions }}
+    </div>
+  {% empty %}
+    <p>No submissions yet. Be the first!</p>
+  {% endfor %}
+</div>
+```
+
+`Submission.Meta.ordering`(`-score`, `completed_at`) 덕분에 `self.quiz.submissions.all()[:10]`이 점수 높은 순,
+동점이면 먼저 끝낸 순이다.
+
 ## 6. 핵심 개념
 
 ### 상태 머신
@@ -307,14 +337,16 @@ INTRO → start_quiz() → PLAYING → next_question() → RESULTS
 ### force_render() vs skip_render()
 
 ```python
-async def mutation(self, ...):
+async def mutation(self, channel, action, instance):
     # 다른 사용자 제출 시 리더보드 업데이트 필요
     self.force_render()
 
 async def answer(self, choice_id):
-    if not question:
+    question = self.current_question
+    if not question or question.id in self.answers:
         # 불필요한 렌더링 방지
         self.skip_render()
+        return
 ```
 
 ## 연습 문제

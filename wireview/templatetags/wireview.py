@@ -547,12 +547,31 @@ def class_cond(parser: Parser, token: Token):
     return ClassNode(dict_expression)
 
 
+class _Dotted(dict):
+    """A dict whose keys read as attributes, the way a template's dots read them.
+
+    The expression is Python, so ``forloop.counter0`` was an attribute lookup on
+    Django's ``forloop`` dict and failed, as did ``item.title`` on a row from
+    ``.values()`` -- the two things a class list inside a loop reaches for (#113).
+    """
+
+    def __getattr__(self, name: str) -> t.Any:
+        try:
+            return _dotted(self[name])
+        except KeyError:
+            raise AttributeError(name) from None
+
+
+def _dotted(value: t.Any) -> t.Any:
+    return _Dotted(value) if isinstance(value, dict) and not isinstance(value, _Dotted) else value
+
+
 class CondNode(Node):
     def __init__(self, dict_expression):
         self.dict_expression = dict_expression
 
     def render(self, context):
-        variables: dict[str, t.Any] = context.flatten()  # type: ignore
+        variables: dict[str, t.Any] = {name: _dotted(value) for name, value in context.flatten().items()}  # type: ignore
         terms = eval(self.dict_expression, variables)
         return " ".join(term for term, ok in terms.items() if ok)
 

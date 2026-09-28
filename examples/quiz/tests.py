@@ -80,3 +80,23 @@ async def test_restart_returns_to_the_intro():
     assert view.component.state == QuizState.INTRO
     assert view.component.score == 0
     assert view.component.answers == {}
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db
+async def test_an_answer_scores_once_and_only_with_this_questions_choices():
+    # choice_id comes from the browser
+    quiz, right, _ = await _quiz_with_one_question()
+    foreign = await Choice.objects.acreate(
+        question=await Question.objects.acreate(quiz=quiz, text="다른 질문"), text="정답", is_correct=True
+    )
+    view = await mount(XQuiz, quiz=quiz)
+    await view.call("start_quiz")
+
+    await view.call("answer", choice_id=foreign.pk)
+    assert view.component.score == 0
+
+    await view.call("answer", choice_id=right.pk)
+    await view.call("answer", choice_id=right.pk)
+    assert view.component.score == 1

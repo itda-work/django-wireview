@@ -117,20 +117,20 @@ class XQuiz(Component):
         - skip_render() for optimization
         """
         question = self.current_question
-        if not question:
+        # Once per question: pressing the right answer again must not score again
+        if not question or question.id in self.answers:
             self.skip_render()
             return
 
-        # Record the answer
-        self.answers[question.id] = choice_id
+        # The id comes from the browser: only this question's choices count
+        choice = await Choice.objects.filter(id=choice_id, question_id=question.id).afirst()
+        if choice is None:
+            self.skip_render()
+            return
 
-        # Check if correct
-        try:
-            choice = await Choice.objects.aget(id=choice_id)
-            if choice.is_correct:
-                self.score += 1
-        except Choice.DoesNotExist:
-            pass
+        self.answers[question.id] = choice_id
+        if choice.is_correct:
+            self.score += 1
 
     async def next_question(self):
         """Move to the next question or finish."""

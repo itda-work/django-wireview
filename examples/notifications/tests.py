@@ -3,7 +3,7 @@ learning about it through a subscription and a named broadcast."""
 
 import pytest
 
-from wireview import mount
+from wireview import ModelAction, mount
 
 from .live import XNotificationBell, XNotificationCreator, XNotificationList
 from .models import Notification
@@ -56,3 +56,18 @@ async def test_the_bell_subscribes_to_both_the_model_and_the_refresh_channel():
     view = await mount(XNotificationBell)
     await view.call("toggle_dropdown")
     assert view.component.is_open is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db
+async def test_a_new_notification_is_streamed_in_and_pulses():
+    # The path auto-broadcast takes when a row is created anywhere
+    view = await mount(XNotificationList)
+    notification = await Notification.objects.acreate(title="새 알림", message="…")
+
+    await view.component.mutation("notifications.notification", ModelAction.CREATED, notification)
+
+    assert "새 알림" in view.stream_html("notifications")
+    (js,) = [m for m in view.sent_messages if m.get("type") == "exec_js"]
+    assert js["commands"][0]["transition"] == "pulse"

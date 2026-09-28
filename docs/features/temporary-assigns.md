@@ -12,11 +12,11 @@
 
 ```python
 class MessageList(Component):
-    messages: list[Message] = []
+    messages: list[dict] = []
 
     async def joined(self):
         # 10,000개의 메시지 로드 → ~10MB 메모리 점유
-        self.messages = [row async for row in Message.objects.all()[:10000]]
+        self.messages = [row async for row in Message.objects.values("id", "body")[:10000]]
         # 이 데이터는 컴포넌트가 종료될 때까지 메모리에 유지됨
 ```
 
@@ -31,10 +31,10 @@ class MessageList(Component):
     class Meta:
         temporary_assigns = {"messages"}  # 이 필드는 렌더 후 초기화됨
 
-    messages: list[Message] = []
+    messages: list[dict] = []
 
     async def joined(self):
-        self.messages = [row async for row in Message.objects.all()[:10000]]
+        self.messages = [row async for row in Message.objects.values("id", "body")[:10000]]
         # 렌더링 완료 후 → self.messages = [] (메모리 해제)
 ```
 
@@ -48,6 +48,8 @@ class MessageList(Component):
 - 화면에 계속 남아야 하는 목록이면 [Streams](../tutorials/06-streams-api.md)를 쓴다.
 
 또 그 렌더의 서명 상태(`data-state`)에는 필드 값이 그대로 실린다. 큰 목록이면 페이지도 그만큼 커진다.
+그래서 필드는 JSON이 되는 값이어야 한다 — 모델 인스턴스 목록(`list[Message]`)은 서명할 수 없어 렌더가 실패하므로,
+이 문서의 예는 `values()`로 뽑은 dict 목록을 담는다.
 
 ---
 
@@ -112,12 +114,12 @@ class ProductList(Component):
         template_name = "products/list.html"
         temporary_assigns = {"products"}  # set으로 필드명 지정
 
-    products: list[Product] = []
+    products: list[dict] = []
     total_count: int = 0
     current_page: int = 1
 
     async def joined(self):
-        self.products = [row async for row in Product.objects.all()[:100]]
+        self.products = [row async for row in Product.objects.values("id", "name", "price")[:100]]
         self.total_count = await Product.objects.acount()
 ```
 
@@ -133,9 +135,9 @@ class Dashboard(Component):
     class Meta:
         temporary_assigns = {"orders", "analytics", "logs"}
 
-    orders: list[Order] = []
+    orders: list[dict] = []
     analytics: dict = {}
-    logs: list[LogEntry] = []
+    logs: list[dict] = []
     user_name: str = ""  # 이 필드는 유지됨
 ```
 
@@ -148,7 +150,7 @@ class MessageList(Component):
     class Meta:
         temporary_assigns = {"messages"}
 
-    messages: list[Message] = []
+    messages: list[dict] = []
     page: int = 1
 
     async def joined(self):
@@ -160,7 +162,7 @@ class MessageList(Component):
 
     async def _load_messages(self):
         offset = (self.page - 1) * 50
-        self.messages = [row async for row in Message.objects.all()[offset:offset + 50]]
+        self.messages = [row async for row in Message.objects.values("id", "body")[offset:offset + 50]]
 ```
 
 ---
@@ -244,7 +246,7 @@ class BoardList(Component):
         template_name = "board/list.html"
         temporary_assigns = {"posts"}
 
-    posts: list[Post] = []
+    posts: list[dict] = []
     page: int = 1
     total_pages: int = 1
     per_page: int = 20
@@ -258,7 +260,7 @@ class BoardList(Component):
 
     async def _load_posts(self):
         offset = (self.page - 1) * self.per_page
-        self.posts = [row async for row in Post.objects.order_by("-created")[offset:offset + self.per_page]]
+        self.posts = [row async for row in Post.objects.order_by("-created").values("id", "title")[offset:offset + self.per_page]]
         total = await Post.objects.acount()
         self.total_pages = (total + self.per_page - 1) // self.per_page
 ```
@@ -272,7 +274,7 @@ class AnalyticsDashboard(Component):
         temporary_assigns = {"chart_data", "recent_events"}
 
     chart_data: list[dict] = []
-    recent_events: list[Event] = []
+    recent_events: list[dict] = []
     summary: dict = {}  # 이건 유지 (작은 데이터)
 
     async def joined(self):
@@ -284,7 +286,7 @@ class AnalyticsDashboard(Component):
     async def _load_data(self):
         # 대용량 데이터
         self.chart_data = await self._fetch_chart_data()
-        self.recent_events = [row async for row in Event.objects.order_by("-timestamp")[:100]]
+        self.recent_events = [row async for row in Event.objects.order_by("-timestamp").values("id", "name", "timestamp")[:100]]
         # 작은 요약 데이터
         self.summary = await self._calculate_summary()
 ```
@@ -323,7 +325,7 @@ temporary_assigns 사용:
 ## 관련 기능
 
 - [Streams API](../tutorials/06-streams-api.md) - 실시간 리스트 조작
-- [skip_render()](./skip-render.md) - 불필요한 렌더링 방지
+- `skip_render()` - 불필요한 렌더링 방지 (전용 문서는 준비 중이다)
 - [Performance Guide](../PERFORMANCE.md) - 성능 최적화 가이드
 
 ---

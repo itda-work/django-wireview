@@ -50,3 +50,19 @@ async def test_the_choice_is_remembered_in_the_url():
     await view.call("vote", option_id=option.pk)
 
     assert view.wire.params["voted"] == str(option.pk)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db
+async def test_an_option_of_another_poll_is_not_counted():
+    # option_id comes from the browser
+    poll = await Poll.objects.acreate(question="점심?")
+    other = await Option.objects.acreate(poll=await Poll.objects.acreate(question="저녁?"), text="라면")
+
+    view = await mount(XPoll, poll=poll)
+    await view.call("vote", option_id=other.pk)
+
+    await other.arefresh_from_db()
+    assert other.votes == 0
+    assert view.component.voted_option_id is None

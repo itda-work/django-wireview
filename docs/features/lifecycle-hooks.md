@@ -51,9 +51,15 @@ class ProtectedDashboard(Component):
         template_name = "dashboard.html"
         on_mount = [AuthHook, TrackingHook]
 
+    data: dict = {}  # 대입할 상태는 필드로 선언한다 (선언하지 않은 이름에 대입하면 ValidationError)
+
     async def joined(self):
         # on_mount 훅이 전부 {"cont": True}를 돌려줬을 때만 실행된다
-        self.data = await self.load_dashboard_data()
+        self.data = await self._load_dashboard_data()
+
+    async def _load_dashboard_data(self) -> dict:
+        # 밑줄로 시작하는 메서드는 클라이언트가 부를 수 없다
+        return {"orders": await Order.objects.filter(user=self.user).acount()}
 ```
 
 ### 훅이 도는 자리

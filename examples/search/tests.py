@@ -34,9 +34,11 @@ async def test_a_query_matches_title_or_author():
     view = await mount(XLiveSearch)
     await view.call("search", q="장고")
 
-    titles = [book.title for book in view.component.results]
+    titles = [book["title"] for book in view.component.results]
     assert "장고 실전" in titles
     assert view.component.is_open is True
+    # The results go into the signed state; a model instance there failed the render (#113)
+    assert "장고 실전" in view.render()
 
 
 @pytest.mark.unit
@@ -67,4 +69,5 @@ async def test_selecting_a_result_closes_the_dropdown():
 
     assert view.component.is_open is False
     assert view.component.selected_book is not None
-    assert view.component.query == view.component.selected_book.title
+    assert view.component.query == view.component.selected_book["title"]
+    assert view.component.selected_book["title"] in view.render()

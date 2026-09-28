@@ -6,13 +6,15 @@ in wireview components.
 
 Example:
     class Dashboard(Component):
-        stats: AsyncResult[Stats] = None
+        # The result goes into the signed state: JSON values, not a model instance
+        stats: AsyncResult[dict] | None = None
 
         async def joined(self):
-            self.stats = await self.assign_async(self.load_stats())
+            self.stats = await self.assign_async(self._load_stats())
 
     # In template:
-    {% if stats.loading %}Loading...{% elif stats.error %}Error{% else %}{{ stats.result }}{% endif %}
+    {% if stats.loading %}Loading...{% elif stats.failed %}{{ stats.error_message }}
+    {% else %}{{ stats.result }}{% endif %}
 """
 
 from __future__ import annotations
@@ -55,6 +57,35 @@ class AsyncResult(t.Generic[T]):
     result: T | None = None
     error: Exception | None = None
     _error_message: str | None = field(default=None, repr=False)
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source: t.Any, handler: t.Any) -> t.Any:
+        """How a component field of this type goes into the signed state and back.
+
+        As a plain dataclass it carried ``error`` -- an exception, which JSON cannot
+        hold -- so a component whose operation failed could not be rendered at all:
+        signing its state raised (#113). The exception stays on the server; what
+        travels is its message.
+        """
+        from pydantic_core import core_schema
+
+        def validate(value: t.Any) -> AsyncResult[t.Any]:
+            if isinstance(value, AsyncResult):
+                return value
+            if isinstance(value, dict):
+                return cls(
+                    state=AsyncState(value.get("state", AsyncState.PENDING)),
+                    result=value.get("result"),
+                    _error_message=value.get("error_message"),
+                )
+            raise ValueError(f"not an AsyncResult: {value!r}")
+
+        def serialize(value: AsyncResult[t.Any]) -> dict[str, t.Any]:
+            return {"state": value.state.value, "result": value.result, "error_message": value.error_message}
+
+        return core_schema.no_info_plain_validator_function(
+            validate, serialization=core_schema.plain_serializer_function_ser_schema(serialize)
+        )
 
     @property
     def loading(self) -> bool:

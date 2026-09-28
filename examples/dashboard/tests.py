@@ -2,6 +2,8 @@
 loading its own slow data through AsyncResult instead of blocking the first
 render."""
 
+import asyncio
+
 import pytest
 
 from wireview import mount
@@ -42,6 +44,19 @@ async def test_a_stat_card_starts_loading_and_does_not_block_the_mount():
     # joined() hands the query to assign_async, so the card is renderable at once
     assert view.component.data is not None
     assert view.component.data.loading or view.component.data.ok
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_a_loaded_stat_card_renders():
+    # The loaded value goes into the signed state; a Stat instance there failed the render (#113)
+    await Stat.objects.acreate(name="signups", label="가입", value=100, change_percent=5)
+    view = await mount(XStatCard, stat_name="signups")
+    await asyncio.gather(*list(view.component._assign_tasks))
+
+    assert view.component.data.ok
+    assert "가입" in view.render()
 
 
 @pytest.mark.unit

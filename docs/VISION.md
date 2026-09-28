@@ -48,22 +48,18 @@ django-wireview는 Phoenix LiveView의 핵심 철학을 Django에 가져옵니�
 class Counter(Component):
     count: int = 0  # 상태가 명확히 보임
 
-    def increment(self):
-        self.count += 1  # 의도가 명확함
+    # 2. Django 관례 존중
+    class Meta:
+        template_name = "components/counter.html"  # Django 템플릿 시스템 사용
+        subscriptions = {"myapp.item"}  # Django 앱 네이밍 컨벤션
 
-# 2. Django 관례 존중
-class Meta:
-    template_name = "components/counter.html"  # Django 템플릿 시스템 사용
-    subscriptions = {"myapp.item"}  # Django 앱 네이밍 컨벤션
+    # 3. 타입 안전성
+    step: int = 1  # Pydantic 검증: 필드와 핸들러 인자 모두
 
-# 3. 타입 안전성
-count: int = 0  # Pydantic 검증
-user: User      # Django 모델 타입 힌트
-
-# 4. 최소 놀라움
-def increment(self):
-    self.count += 1
-    # 자동 재렌더링 - 직관적 동작
+    # 4. 최소 놀라움
+    async def increment(self):
+        self.count += self.step
+        # 자동 재렌더링 - 직관적 동작
 ```
 
 ### 2.2 아키텍처 원칙
@@ -90,7 +86,7 @@ def increment(self):
 
 ### 3.1 Phoenix LiveView 수준의 DX
 
-**현재 (v5.3.0)**:
+**출발점 (reactor v5.3.0)**: 동기 핸들러. 지금은 핸들러가 async여야 한다.
 ```python
 class Counter(Component):
     count: int = 0
@@ -99,20 +95,19 @@ class Counter(Component):
         self.count += 1
 ```
 
-**목표 (v6.0)**:
+**지금**:
 ```python
 class Counter(Component):
     count: int = 0
-    items: list[Item] = []
 
     async def increment(self):
         self.count += 1
-        # JS 명령어로 즉시 피드백
-        await self.push_event("flash", {"message": "Updated!"})
+        # 서버가 보내는 알림
+        await self.put_flash("success", "Updated!")
 
     async def load_items(self):
-        # 비동기 데이터 로딩
-        self.items = await self.stream(Item.objects.all())
+        # 대량 목록은 상태에 두지 않고 스트림으로 보낸다
+        await self.stream("items", [item async for item in Item.objects.all()])
 ```
 
 ### 3.2 목표 템플릿 DX
@@ -122,33 +117,31 @@ class Counter(Component):
 <button {% on "click" "increment" %}>+</button>
 ```
 
-**목표**:
+**지금**: 로딩 상태는 태그가 아니라 클래스와 속성이다. 이벤트를 보낸 요소에 `wireview-click-loading`
+(제출이면 `wireview-submit-loading`)이 붙고 답이 오면 빠진다([features/optimistic-ui.md](./features/optimistic-ui.md)).
 ```html
-<!-- JS 명령어 지원 -->
-<button {% on "click" "increment" %}
-        {% js_loading "opacity-50 cursor-wait" %}>
-  +
-</button>
+<!-- 로딩 중 스타일은 CSS에서: .wireview-click-loading { opacity: .5; cursor: wait } -->
+<button {% on "click" "increment" %}>+</button>
 
 <!-- Optimistic UI -->
-<form {% on "submit" "save" %}
-      {% js_loading "submitting" %}>
+<form {% on "submit" "save" %}>
   ...
+  <button type="submit" wire-disabled-with="저장 중...">저장</button>
 </form>
 ```
 
 ### 3.3 목표 기능 목록
 
-| 기능 | 현재 | 목표 | 우선순위 |
+| 기능 | 출발점 | 지금 | 우선순위 |
 |------|:----:|:----:|:--------:|
 | Pydantic v2 | ❌ | ✅ | P0 |
-| TypeScript 클라이언트 | ❌ | ✅ | P1 |
+| TypeScript 클라이언트 | ❌ | ❌ (타입 정의 `types.d.ts`만) | P1 |
 | JS 명령어 | ❌ | ✅ | P1 |
 | Optimistic UI | ❌ | ✅ | P1 |
 | Streams | ❌ | ✅ | P2 |
 | 파일 업로드 | ❌ | ✅ | P2 |
-| 개발자 도구 | ❌ | ✅ | P3 |
-| Latency 시뮬레이터 | ❌ | ✅ | P3 |
+| 개발자 도구 | ❌ | 일부 (디버그 로깅, Telemetry) | P3 |
+| Latency 시뮬레이터 | ❌ | ✅ (클라이언트 디버그 옵션) | P3 |
 
 ---
 

@@ -108,13 +108,23 @@ class XPoll(Component):
             self.skip_render()  # 이미 투표함
             return
 
-        option = await Option.objects.aget(id=option_id)
+        # option_id는 클라이언트가 보낸 값이다. 이 투표의 옵션인지 확인한다
+        option = await Option.objects.filter(id=option_id, poll_id=self.poll.id).afirst()
+        if option is None:
+            self.skip_render()
+            return
         option.votes += 1
-        await option.asave()
+        await option.asave()  # post_save가 "poll.option" 채널로 브로드캐스트된다
 
         self.voted_option_id = option_id
         self.wire.params["voted"] = str(option_id)  # URL에 저장
 ```
+
+`self.wire.params`에 넣은 값은 핸들러가 끝나면 브라우저 URL의 쿼리 문자열이 된다(`?voted=3`).
+새로고침하면 `joined()`가 그 값을 다시 읽는다.
+
+핸들러 인자는 클라이언트가 보낸 값이라 위조할 수 있다. `Option.objects.aget(id=option_id)`로만 찾으면 다른
+투표의 옵션에도 표가 들어간다 — 조회에 `poll_id=self.poll.id`를 함께 건다.
 
 ## 4. 핵심 개념: skip_render()
 

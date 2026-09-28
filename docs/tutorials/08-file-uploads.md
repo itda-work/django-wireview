@@ -135,7 +135,7 @@ class XFileUploader(Component):
 | `client_name` | str | 원본 파일명 |
 | `client_size` | int | 파일 크기 (bytes) |
 | `client_type` | str | MIME 타입 |
-| `status` | str | pending/uploading/completed/error |
+| `status` | str | pending/uploading/completed/error/cancelled/consumed |
 | `progress` | int | 0-100 |
 | `errors` | list | 에러 메시지 목록 |
 
@@ -176,22 +176,23 @@ async def process_upload(self):
         print(upload.content_type) # MIME 타입
         print(upload.ref)          # 참조 ID
 
-        # 파일 읽기
+        # 내용 읽기. 임시 파일을 읽을 뿐이라 몇 번이든 된다
         content = upload.read()    # bytes로 읽기
-
-        # 파일 핸들
         with upload.open("rb") as f:
-            data = f.read()
+            header = f.read(16)
 
-        # 저장
+        # 저장. 한 업로드에 한 번만 — save_to가 임시 파일을 지우고 업로드를 소비한다
         path = await upload.save_to("uploads/")
-
-        # 커스텀 파일명으로 저장
-        path = await upload.save_to(
-            "avatars/",
-            filename=f"user_{self.user_id}.jpg"
-        )
 ```
+
+원래 이름 대신 다른 이름으로 저장하려면 `filename=`을 넘긴다. 같은 업로드를 두 번 `save_to()`하면
+두 번째는 `RuntimeError("Upload already consumed")`다 — 두 곳에 저장하려면 `read()`한 바이트를 직접 쓴다.
+
+```python
+path = await upload.save_to("avatars/", filename=f"user_{self.user.pk}.jpg")
+```
+
+`save_to()`를 부르지 않아도 루프가 다음 업로드로 넘어가면 그 업로드는 소비되고 임시 파일은 지워진다.
 
 ### Django Storage 통합
 
@@ -467,6 +468,8 @@ async def cancel_file(self, ref: str):
 
 ### S3 직접 업로드
 
+콜백 이름은 `_`로 시작한다. `_`가 없는 메서드는 클라이언트가 부를 수 있는 이벤트 핸들러로 노출된다.
+
 ```python
 import boto3
 from wireview import Component, ExternalUploadMeta
@@ -481,10 +484,10 @@ class XDocumentUploader(Component):
             "documents",
             accept=[".pdf", ".doc", ".docx"],
             max_file_size=100 * 1024 * 1024,  # 100MB
-            external=self.presign_s3_upload,  # 외부 업로드 콜백
+            external=self._presign_s3_upload,  # 외부 업로드 콜백
         )
 
-    def presign_s3_upload(self, entry, component):
+    def _presign_s3_upload(self, entry, component):
         """S3 presigned URL 생성"""
         s3 = boto3.client("s3")
 
@@ -531,10 +534,10 @@ class XImageUploader(Component):
         self.allow_upload(
             "images",
             accept=[".jpg", ".png", ".webp"],
-            external=self.presign_gcs_upload,
+            external=self._presign_gcs_upload,
         )
 
-    def presign_gcs_upload(self, entry, component):
+    def _presign_gcs_upload(self, entry, component):
         """GCS signed URL 생성"""
         client = storage.Client()
         bucket = client.bucket("my-bucket")

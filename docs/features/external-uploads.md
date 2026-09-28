@@ -32,10 +32,11 @@ class FileUploader(Component):
             accept=[".pdf", ".doc", ".docx"],
             max_entries=5,
             max_file_size=50 * 1024 * 1024,  # 50MB
-            external=self.presign_s3_upload,
+            # 이름이 _로 시작해야 한다: 아니면 클라이언트가 부를 수 있는 이벤트 핸들러가 된다
+            external=self._presign_s3_upload,
         )
 
-    def presign_s3_upload(self, entry, component):
+    def _presign_s3_upload(self, entry, component):
         """Generate a presigned URL for the S3 upload."""
         s3 = boto3.client(
             "s3",
@@ -93,10 +94,10 @@ class GCSUploader(Component):
         self.allow_upload(
             "images",
             accept=[".jpg", ".png", ".gif"],
-            external=self.presign_gcs_upload,
+            external=self._presign_gcs_upload,
         )
 
-    def presign_gcs_upload(self, entry, component):
+    def _presign_gcs_upload(self, entry, component):
         """Generate a signed URL for the GCS upload."""
         client = storage.Client()
         bucket = client.bucket("your-bucket")
@@ -245,7 +246,7 @@ external 업로드는 브라우저가 스토리지로 직접 요청하므로 버
 콜백에서 예외를 던지면 그 업로드가 거절된다.
 
 ```python
-def presign_upload(self, entry, component):
+def _presign_upload(self, entry, component):
     # 로그인하지 않은 사용자의 업로드를 막는다
     if not component.user.is_authenticated:
         raise ValueError("Authentication required for uploads")

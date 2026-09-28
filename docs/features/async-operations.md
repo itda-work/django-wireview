@@ -14,6 +14,8 @@ UI를 막지 않고 데이터를 읽어 오는 장치다. 읽는 동안 로딩 �
 
 가장 단순한 방법이다. 로딩·성공·실패를 추적하는 `AsyncResult`를 돌려준다.
 
+작업 코루틴을 만드는 메서드는 `_`로 시작한다. 밑줄 없는 메서드는 클라이언트가 이벤트로 부를 수 있는 핸들러가 된다.
+
 ```python
 from wireview import Component, AsyncResult
 
@@ -27,9 +29,9 @@ class Dashboard(Component):
     async def joined(self):
         # 즉시 loading 상태의 AsyncResult를 받고,
         # 끝나면 success/error로 바뀐다
-        self.stats = await self.assign_async(self.load_stats())
+        self.stats = await self.assign_async(self._load_stats())
 
-    async def load_stats(self):
+    async def _load_stats(self):
         # 느린 작업을 흉내 낸다
         import asyncio
         await asyncio.sleep(1)
@@ -103,9 +105,9 @@ class Search(Component):
 
         # 이름 붙은 비동기 작업을 시작한다.
         # "search"가 이미 돌고 있으면 그것은 취소된다
-        await self.start_async("search", self.do_search(query))
+        await self.start_async("search", self._do_search(query))
 
-    async def do_search(self, query: str) -> list[dict]:
+    async def _do_search(self, query: str) -> list[dict]:
         import asyncio
         await asyncio.sleep(0.5)  # 디바운스
         return await SearchService.search(query)
@@ -155,9 +157,9 @@ async def handle_async(
 
 ```python
 # 좋음: 설명적인 이름
-await self.start_async("load_user_profile", self.fetch_profile(user_id))
-await self.start_async("search_products", self.search(query))
-await self.start_async(f"load_page_{page}", self.fetch_page(page))
+await self.start_async("load_user_profile", self._fetch_profile(user_id))
+await self.start_async("search_products", self._search_products(query))
+await self.start_async(f"load_page_{page}", self._fetch_page(page))
 
 # 취소되었는지 확인할 수 있다
 if await self.cancel_async("search_products"):
@@ -172,7 +174,7 @@ if await self.cancel_async("search_products"):
 async def search(self, query: str):
     # 키를 누를 때마다 새 검색이 시작되고
     # 앞선 검색은 저절로 취소된다
-    await self.start_async("search", self.do_search(query))
+    await self.start_async("search", self._do_search(query))
 ```
 
 ## 사용 예
@@ -193,13 +195,15 @@ class Typeahead(Component):
 
         if len(query) < 2:
             self.suggestions = []
+            # 취소된 작업은 handle_async를 부르지 않으므로 로딩 표시는 여기서 끈다
             await self.cancel_async("suggest")
+            self.loading = False
             return
 
         self.loading = True
-        await self.start_async("suggest", self.fetch_suggestions(query))
+        await self.start_async("suggest", self._fetch_suggestions(query))
 
-    async def fetch_suggestions(self, query: str) -> list[str]:
+    async def _fetch_suggestions(self, query: str) -> list[str]:
         import asyncio
         await asyncio.sleep(0.3)  # 자연스러운 디바운스
         return await SuggestionService.get(query)
@@ -224,17 +228,19 @@ class Dashboard(Component):
 
     async def joined(self):
         # 세 가지를 동시에 읽는다
-        self.users = await self.assign_async(self.load_users())
-        self.orders = await self.assign_async(self.load_orders())
-        self.stats = await self.assign_async(self.load_stats())
+        self.users = await self.assign_async(self._load_users())
+        self.orders = await self.assign_async(self._load_orders())
+        self.stats = await self.assign_async(self._load_stats())
 
-    async def load_users(self):
-        return await User.objects.all()[:10]
+    async def _load_users(self):
+        # QuerySet은 await할 수 없다. async for로 목록을 만든다.
+        # 결과는 상태로 서명되므로 모델 인스턴스가 아니라 JSON이 되는 값(values())으로 담는다
+        return [user async for user in User.objects.values("id", "username")[:10]]
 
-    async def load_orders(self):
-        return await Order.objects.filter(status="pending")[:10]
+    async def _load_orders(self):
+        return [order async for order in Order.objects.filter(status="pending").values("id", "status")[:10]]
 
-    async def load_stats(self):
+    async def _load_stats(self):
         return {"total_users": await User.objects.acount()}
 ```
 
@@ -252,9 +258,9 @@ class FileProcessor(Component):
     async def process_file(self, file_id: str):
         self.processing = True
         self.progress = 0
-        await self.start_async("process", self.do_process(file_id))
+        await self.start_async("process", self._do_process(file_id))
 
-    async def do_process(self, file_id: str):
+    async def _do_process(self, file_id: str):
         import asyncio
         for i in range(100):
             await asyncio.sleep(0.1)
@@ -307,7 +313,7 @@ async def export(self):
 ```python
 async def joined(self):
     self.data = await self.assign_async(
-        self.load_data(),
+        self._load_data(),
         on_error=lambda e: logger.error(f"Load failed: {e}")
     )
 ```
@@ -321,7 +327,7 @@ async def handle_async(self, name, result):
             error = result[1]
             logger.error(f"Critical task failed: {error}")
             # 필요하면 재시도한다
-            await self.start_async("critical_task", self.retry_task())
+            await self.start_async("critical_task", self._retry_task())
 ```
 
 ## Phoenix LiveView 대응

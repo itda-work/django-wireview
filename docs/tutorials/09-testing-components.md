@@ -57,7 +57,14 @@ async def test_counter_with_initial_value():
     assert view.component.count == 10
 ```
 
-### MountedView API
+아래 예제는 앞선 튜토리얼의 컴포넌트를 테스트한다 — `XCounter`는 [02](02-counter-component.md)의 완성본,
+`XTodoList`·`XTodoItem`과 모델 `Item`은 [03](03-todo-app.md), `XChatRoom`·`XMessageList`와 모델 `Room`은
+[04](04-chat-app.md), `XStatCard`·`XActivityFeed`와 모델 `Activity`는 [05](05-dashboard.md). 위의 `XCounter`처럼
+각자의 앱에서 import한다. `XForm`·`XLogin`·`XDashboard`·`XProductList`는 설명을 위한 가상의 컴포넌트다.
+
+DB를 읽거나 쓰는 컴포넌트는 `joined()`에서 이미 DB에 닿으므로, 그 테스트에는 `@pytest.mark.django_db`가 필요하다.
+
+### MountedComponent API
 
 | 속성/메서드 | 설명 |
 |-------------|------|
@@ -89,14 +96,18 @@ async def test_increment():
 
 
 @pytest.mark.asyncio
-async def test_increment_with_amount():
+async def test_set_to():
     """인자가 있는 핸들러"""
     view = await mount(XCounter, count=0)
 
-    await view.call("increment", amount=5)
+    await view.call("set_to", value=5)
 
     assert view.component.count == 5
 ```
+
+인자 이름은 핸들러의 매개변수 이름과 같아야 한다. `view.call()`은 핸들러가 받지 않는 인자를 버린다 —
+폼의 다른 필드가 함께 실려 오는 클라이언트 이벤트와 같게. 그래서 `view.call("increment", amount=5)`처럼
+없는 매개변수를 넘기면 오류 없이 무시되고 `increment()`만 돈다.
 
 ### 여러 호출
 
@@ -116,12 +127,15 @@ async def test_multiple_increments():
 ### 비동기 핸들러
 
 ```python
+@pytest.mark.django_db
 @pytest.mark.asyncio
-async def test_async_handler():
+async def test_joined_loads_items():
     """비동기 데이터 로딩"""
+    await Item.objects.acreate(text="Buy milk")
+
     view = await mount(XTodoList)
 
-    # joined()가 자동으로 호출됨
+    # mount()가 joined()까지 호출한다
     assert len(view.component.items) > 0
 ```
 
@@ -130,23 +144,39 @@ async def test_async_handler():
 ### 단순 상태
 
 ```python
+@pytest.mark.django_db
 @pytest.mark.asyncio
 async def test_state_changes():
-    view = await mount(XTodoItem, text="Buy milk", completed=False)
+    item = await Item.objects.acreate(text="Buy milk")
+    view = await mount(XTodoItem, item_id=item.id, text=item.text, completed=False)
 
     await view.call("toggle")
 
     assert view.component.completed is True
 ```
 
+기본값이 없는 필드(`item_id`·`text`·`completed`)는 템플릿에서 넘기듯 `mount()`에도 모두 넘긴다.
+
 ### 복잡한 상태
 
+03의 `add_item()`은 DB에 저장만 한다. 목록은 모델 브로드캐스트가 부르는 `mutation()`이 채운다.
+`mount()`는 채널 레이어를 흉내 낼 뿐 모델 브로드캐스트를 컴포넌트에 전달하지 않으므로, 테스트가
+`mutation()`을 직접 부른다. 채널 이름은 모델의 `label_lower`(`todo.item`)다.
+
 ```python
+from wireview import ModelAction
+
+
+@pytest.mark.django_db
 @pytest.mark.asyncio
 async def test_list_state():
     view = await mount(XTodoList)
 
     await view.call("add_item", text="New item")
+
+    # 브로드캐스트가 할 일을 대신한다
+    item = await Item.objects.filter(text="New item").afirst()
+    await view.component.mutation("todo.item", ModelAction.CREATED, item)
 
     # 리스트에 아이템 추가됨
     assert any(
@@ -158,6 +188,7 @@ async def test_list_state():
 ### 속성 검증
 
 ```python
+@pytest.mark.django_db
 @pytest.mark.asyncio
 async def test_computed_property():
     view = await mount(XTodoList)
@@ -168,37 +199,43 @@ async def test_computed_property():
 
 ## 메시지 테스트
 
+`view.sent_messages`에는 클라이언트로 나간 원본 메시지가 모두 쌓인다. 04의 `send_message()` 한 번이면
+스트림 삽입, 스크롤, 입력창을 비우는 JS 명령 세 개다. 그 모양은 wire 프로토콜이므로 직접 뒤지기보다
+`stream_html()` 같은 헬퍼로 본다.
+
 ### 전송된 메시지 확인
 
 ```python
+@pytest.mark.django_db
 @pytest.mark.asyncio
-async def test_broadcast_message():
-    view = await mount(XChatRoom, room_id=1, username="alice")
+async def test_send_message():
+    room = await Room.objects.acreate(name="general")
+    view = await mount(XChatRoom, room_id=room.id, room_name=room.name, username="alice")
 
     await view.call("send_message", text="Hello!")
 
-    # 메시지가 전송되었는지 확인
-    assert len(view.sent_messages) > 0
-
-    # 특정 메시지 확인
-    messages = [m for m in view.sent_messages if m.get("text") == "Hello!"]
-    assert len(messages) == 1
+    # 새 메시지가 스트림으로 나갔다
+    assert "Hello!" in view.stream_html("messages")
 ```
 
 ### 메시지 초기화
 
 ```python
+@pytest.mark.django_db
 @pytest.mark.asyncio
 async def test_multiple_messages():
-    view = await mount(XChatRoom, room_id=1, username="alice")
+    room = await Room.objects.acreate(name="general")
+    view = await mount(XChatRoom, room_id=room.id, room_name=room.name, username="alice")
 
     await view.call("send_message", text="First")
     view.clear_messages()
 
     await view.call("send_message", text="Second")
 
-    # 두 번째 메시지만
-    assert len(view.sent_messages) == 1
+    # 두 번째 호출이 보낸 것만 남는다
+    html = view.stream_html("messages")
+    assert "Second" in html
+    assert "First" not in html
 ```
 
 ## 내비게이션 테스트
@@ -293,12 +330,14 @@ async def test_paging_reloads_the_page_of_products():
 렌더하고 아이템 HTML은 별도 메시지로 간다.
 
 ```python
+@pytest.mark.django_db
 @pytest.mark.asyncio
 async def test_stream_insert():
-    view = await mount(XMessageList, room_id=1)
+    room = await Room.objects.acreate(name="general")
+    view = await mount(XMessageList, room_id=room.id)
     view.clear_messages()          # joined()의 초기 stream()을 비운다
 
-    await view.call("add_message", text="Hello")
+    await view.call("add_message", sender="alice", text="Hello")
 
     assert "Hello" in view.stream_html("messages")
     assert [op["op"] for op in view.stream_ops("messages")] == ["insert"]
@@ -313,51 +352,65 @@ async def test_stream_insert():
 ### Stream 상태
 
 ```python
+@pytest.mark.django_db
 @pytest.mark.asyncio
 async def test_stream_state():
+    for i in range(25):            # 한 번에 20개씩 읽으므로 그보다 많이
+        await Activity.objects.acreate(user="alice", action="create", target=f"doc-{i}")
+
     view = await mount(XActivityFeed)
 
     # joined()에서 stream() 호출됨
     assert view.component.has_more is True
 
-    # load_more 호출
+    view.clear_messages()
     await view.call("load_more")
 
-    # 더 많은 아이템 로드됨
-    assert len(view.component.activities) > 0
+    # 다음 묶음이 스트림 끝에 붙었다
+    assert len(view.stream_items("activities")) > 0
+    assert all(op["at"] == -1 for op in view.stream_ops("activities"))
 ```
 
+스트림에 보낸 항목은 컴포넌트 상태에 남지 않는다. 무엇이 나갔는지는 필드가 아니라 `stream_items()`로 본다.
+
 ## Presence 테스트
+
+Presence 알림은 클라이언트가 아니라 채널로 가는 브로드캐스트다. 그래서 `view.sent_messages`가 아니라
+`view.wire.presence_broadcasts`에 남는다. 항목마다 `kwargs`에 `action`과 사용자 정보가 있다.
 
 ### Presence 메시지
 
 ```python
+@pytest.mark.django_db
 @pytest.mark.asyncio
 async def test_presence_join():
-    view = await mount(XChatInput, room_id=1, username="alice")
+    room = await Room.objects.acreate(name="general")
+    view = await mount(XChatRoom, room_id=room.id, room_name=room.name, username="alice")
 
     # joined()에서 presence_join() 호출됨
-    presence_msgs = [
-        m for m in view.sent_messages
-        if m.get("action") == "presence_join"
+    joins = [
+        b["kwargs"] for b in view.wire.presence_broadcasts
+        if b["kwargs"]["action"] == "presence_join"
     ]
-    assert len(presence_msgs) > 0
+    assert joins[0]["username"] == "alice"
 ```
 
 ### 타이핑 표시
 
 ```python
+@pytest.mark.django_db
 @pytest.mark.asyncio
 async def test_typing_indicator():
-    view = await mount(XChatInput, room_id=1, username="alice")
+    room = await Room.objects.acreate(name="general")
+    view = await mount(XChatRoom, room_id=room.id, room_name=room.name, username="alice")
 
     await view.call("on_typing")
 
-    typing_msgs = [
-        m for m in view.sent_messages
-        if m.get("action") == "presence_typing"
+    typing = [
+        b["kwargs"] for b in view.wire.presence_broadcasts
+        if b["kwargs"]["action"] == "presence_typing"
     ]
-    assert len(typing_msgs) > 0
+    assert typing[-1]["state"] == "typing"
 ```
 
 ## 픽스처 활용
@@ -423,7 +476,7 @@ async def test_delete_item():
     # 테스트 아이템 생성
     item = await Item.objects.acreate(text="To delete")
 
-    view = await mount(XTodoItem, item_id=item.id, text=item.text)
+    view = await mount(XTodoItem, item_id=item.id, text=item.text, completed=item.completed)
 
     await view.call("delete")
 
@@ -458,14 +511,28 @@ async def test_invalid_input():
 ### 에러 상태 확인
 
 ```python
+import asyncio
+
+
+@pytest.mark.django_db
 @pytest.mark.asyncio
 async def test_error_state():
     view = await mount(XStatCard, stat_name="nonexistent")
 
+    # assign_async()는 로딩 상태를 먼저 돌려주고, 작업은 뒤에서 돈다
+    stat = view.component.stat
+    assert stat.loading
+    async with asyncio.timeout(2):
+        while stat.loading:
+            await asyncio.sleep(0.05)
+
     # AsyncResult가 실패 상태인지
-    assert view.component.stat.failed is True
-    assert view.component.stat.error is not None
+    assert stat.failed is True
+    assert stat.error is not None
 ```
+
+`mount()`는 `joined()`가 돌아오면 끝나지만 `assign_async()`의 작업은 그때 아직 돌고 있다. 결과를 단언하기
+전에 끝나기를 기다린다. 작업이 끝나면 같은 `AsyncResult` 객체의 상태가 바뀐다.
 
 ## 테스트 마커
 
@@ -473,12 +540,14 @@ async def test_error_state():
 
 ```python
 # conftest.py
-import pytest
-
-pytest.mark.unit = pytest.mark.mark(name="unit")
-pytest.mark.integration = pytest.mark.mark(name="integration")
-pytest.mark.slow = pytest.mark.mark(name="slow")
+def pytest_configure(config):
+    config.addinivalue_line("markers", "unit: 단위 테스트")
+    config.addinivalue_line("markers", "integration: DB를 쓰는 통합 테스트")
+    config.addinivalue_line("markers", "slow: 느린 테스트")
 ```
+
+`pytest.ini`의 `markers =` 항목에 적어도 같다. 등록하지 않은 마커는 경고가 나고, `--strict-markers`에서는
+수집 오류다.
 
 ### 마커 사용
 

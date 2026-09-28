@@ -137,15 +137,22 @@ assert view.component.page == 2
 
 ```python
 @pytest.mark.asyncio
+@pytest.mark.django_db
 async def test_filter_hides_read_items():
+    await Bookmark.objects.acreate(title="새 글", url="https://example.com/new")
+    await Bookmark.objects.acreate(title="지난 글", url="https://example.com/old", is_read=True)
+
     view = await mount(XBookmarkList)
     view.clear_messages()          # joined()의 초기 stream()을 비운다
     await view.call("set_filter", filter="unread")
 
     html = view.stream_html("bookmarks")
-    assert "안 읽은 것" in html
-    assert "읽은 것" not in html
+    assert "새 글" in html
+    assert "지난 글" not in html
 ```
+
+`not in` 단언에 쓰는 문자열은 남아야 할 항목의 HTML에 부분 문자열로 들어 있지 않아야 한다.
+"읽은 것"은 "안 읽은 것" 안에 있으므로 그 단언은 필터가 옳아도 실패한다.
 
 **`clear_messages()`를 잊지 않는다.** `stream()`을 다시 부르는 핸들러(필터·정렬·페이지 전환)는
 이전 메시지 위에 누적되므로, 비우지 않으면 방금 걸러 낸 아이템이 앞선 메시지에 남아 있다.
@@ -164,7 +171,9 @@ view = await mount(XAdminPanel, user=staff, live_session="admin")
 
 - **`@pytest.mark.django_db`는 async ORM 호출을 롤백하지 못한다.** `acreate`·`asave`·`adelete`로
   쓴 레코드는 다음 테스트에 보인다. 개수 단언 대신 이 테스트가 만든 레코드를 직접 집는다.
-- **마커가 필수다.** `--strict-markers`이므로 `unit`·`integration`·`slow`·`e2e` 중 하나를 붙인다.
+- **마커는 등록해서 쓴다.** `--strict-markers`에서는 등록하지 않은 마커가 수집 오류다(등록 방법은
+  [튜토리얼 09](../tutorials/09-testing-components.md#테스트-마커)). 이 저장소의 테스트는 `unit`·`integration`·`slow`·`e2e`
+  중 하나를 반드시 붙인다.
 - `mount()`는 저장소도 채널 레이어도 흉내 낸 것이다. 컨슈머 경로 전체(join, 재접속, 자식
   LiveComponent의 수명주기)를 검사하려면 `tests/test_live_session_contract.py`처럼 컨슈머를
   직접 만든다.

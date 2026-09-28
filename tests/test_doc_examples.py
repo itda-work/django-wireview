@@ -1,0 +1,190 @@
+"""Guard: the code the documentation shows is code that can run (#113).
+
+Running every Python block of the user-facing docs found about seventy that
+could not: an awaited QuerySet in eight places, ``self.abroadcast`` (there is no
+such method), a plain ``for`` over the ``consume_uploads()`` async generator, an
+upload API that never existed, and templates calling ``JS()`` with arguments,
+which Django cannot parse. ``tests/test_public_api.py`` read only the imports,
+so none of it showed.
+
+Running every block again on each test run is not possible -- most are
+fragments that live inside a class the reader already has. So this guard keeps
+what can be kept mechanically: every Python block parses, and the mistakes that
+recurred are named and refused. A new kind of mistake still needs a person, or
+another run like #113's.
+"""
+
+import ast
+import re
+import textwrap
+from pathlib import Path
+
+import pytest
+
+pytestmark = pytest.mark.unit
+
+ROOT = Path(__file__).resolve().parent.parent
+
+#: The same reader-facing set tests/test_public_api.py guards; docs/design,
+#: docs/implementation and docs/legacy are records of how the library was built.
+DOCS = [
+    ROOT / "README.md",
+    *sorted((ROOT / "docs" / "features").glob("*.md")),
+    *sorted((ROOT / "docs" / "tutorials").glob("*.md")),
+    *sorted((ROOT / "skills").rglob("*.md")),
+    *sorted((ROOT / "examples").rglob("*.md")),
+]
+
+FENCE = re.compile(r"^\s*```(\w*)\s*$")
+
+#: Django's async QuerySet, manager and related-manager methods: the only ones that can be awaited.
+#: ``all`` begins with an "a" too, which is why this is a list and not a pattern.
+ASYNC_ORM = {
+    "aget",
+    "acreate",
+    "aget_or_create",
+    "aupdate_or_create",
+    "abulk_create",
+    "abulk_update",
+    "acount",
+    "ain_bulk",
+    "aiterator",
+    "alatest",
+    "aearliest",
+    "afirst",
+    "alast",
+    "aaggregate",
+    "aexists",
+    "acontains",
+    "aupdate",
+    "adelete",
+    "aexplain",
+    "aadd",
+    "aremove",
+    "aclear",
+    "aset",
+}
+
+
+def _blocks(language: str) -> list[tuple[str, str]]:
+    """(``file:line``, dedented code) for every fenced block in ``language``."""
+    found = []
+    for path in DOCS:
+        lines = path.read_text(encoding="utf-8").split("\n")
+        i = 0
+        while i < len(lines):
+            match = FENCE.match(lines[i])
+            if match and match.group(1):
+                start, body = i + 1, []
+                i += 1
+                while i < len(lines) and not FENCE.match(lines[i]):
+                    body.append(lines[i])
+                    i += 1
+                if match.group(1) == language:
+                    found.append((f"{path.relative_to(ROOT)}:{start + 1}", textwrap.dedent("\n".join(body))))
+            i += 1
+    return found
+
+
+PYTHON = _blocks("python")
+HTML = _blocks("html")
+
+
+def _parse(code: str) -> ast.Module:
+    return ast.parse(code)
+
+
+def _chain(node: ast.AST) -> list[str]:
+    """``Model.objects.filter(x)[:5]`` → ["Model", "objects", "filter"]; calls and slices are looked through."""
+    names: list[str] = []
+    while True:
+        if isinstance(node, ast.Call):
+            node = node.func
+        elif isinstance(node, ast.Subscript):
+            node = node.value
+        elif isinstance(node, ast.Attribute):
+            names.append(node.attr)
+            node = node.value
+        elif isinstance(node, ast.Name):
+            names.append(node.id)
+            return names[::-1]
+        else:
+            return names[::-1]
+
+
+def _mistakes(tree: ast.Module) -> list[str]:
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Await):
+            chain = _chain(node.value)
+            if "objects" in chain and chain[-1] not in ASYNC_ORM and not isinstance(node.value, ast.Call):
+                found.append(f"awaits a QuerySet ({'.'.join(chain)}[...]); iterate it: [x async for x in qs]")
+            elif "objects" in chain and isinstance(node.value, ast.Call) and chain[-1] not in ASYNC_ORM:
+                found.append(f"awaits {'.'.join(chain)}(), which is not an async ORM method")
+            if chain[-2:] in (["self", "skip_render"], ["self", "force_render"]):
+                found.append(f"awaits {chain[-1]}(), which is synchronous")
+        if isinstance(node, ast.Attribute) and node.attr == "abroadcast" and _chain(node) == ["self", "abroadcast"]:
+            found.append("self.abroadcast does not exist: await self.broadcast(...)")
+        if isinstance(node, ast.For) and _chain(node.iter)[-1:] == ["consume_uploads"]:
+            found.append("consume_uploads() is an async generator: async for")
+        if isinstance(node, ast.Call) and _chain(node.func)[-1:] == ["allow_upload"]:
+            if node.args and isinstance(node.args[0], ast.Call) and _chain(node.args[0].func)[-1:] == ["UploadConfig"]:
+                found.append("allow_upload takes the name and keywords, not an UploadConfig")
+    return found
+
+
+@pytest.mark.parametrize(("where", "code"), PYTHON, ids=[where for where, _ in PYTHON])
+def test_every_python_block_parses(where, code):
+    try:
+        _parse(code)
+    except SyntaxError as error:
+        pytest.fail(f"{where}: {error.msg} at block line {error.lineno}. A signature listing ends in ': ...'.")
+
+
+@pytest.mark.parametrize(("where", "code"), PYTHON, ids=[where for where, _ in PYTHON])
+def test_no_python_block_repeats_a_known_mistake(where, code):
+    try:
+        tree = _parse(code)
+    except SyntaxError:
+        pytest.skip("reported by test_every_python_block_parses")
+    assert not _mistakes(tree), f"{where}: {_mistakes(tree)}"
+
+
+@pytest.mark.parametrize(("where", "code"), HTML, ids=[where for where, _ in HTML])
+def test_no_template_calls_js_with_arguments(where, code):
+    # A template cannot call with arguments; the chain is a component property (docs/features/optimistic-ui.md)
+    assert not re.search(r"\{%[^%]*\bJS\(", code), f"{where}: build the JS() chain in a @property"
+
+
+def test_the_docs_are_read():
+    assert len(PYTHON) > 200 and len(HTML) > 50
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "async def f(self):\n    rows = await Row.objects.all()[:10]",
+        "async def f(self):\n    rows = await Row.objects.filter(a=1)",
+        "async def f(self):\n    await self.skip_render()",
+        "async def f(self):\n    await self.abroadcast('x')",
+        "async def f(self):\n    for u in self.consume_uploads('a'):\n        pass",
+        "async def f(self):\n    self.allow_upload(UploadConfig(name='a'))",
+    ],
+)
+def test_each_rule_catches_its_mistake(code):
+    assert _mistakes(_parse(code))
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "async def f(self):\n    rows = [r async for r in Row.objects.all()[:10]]",
+        "async def f(self):\n    row = await Row.objects.aget(pk=1)",
+        "async def f(self):\n    n = await Row.objects.filter(a=1).acount()",
+        "async def f(self):\n    self.skip_render()\n    await self.broadcast('x')",
+        "async def f(self):\n    async for u in self.consume_uploads('a'):\n        pass",
+        "async def f(self):\n    self.allow_upload('a', accept=['.png'])",
+    ],
+)
+def test_no_rule_refuses_the_right_way(code):
+    assert not _mistakes(_parse(code))

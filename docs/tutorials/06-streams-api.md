@@ -72,12 +72,17 @@ async def joined(self):
 
 #### UUID 사용
 
+`stream()`과 `stream_insert()`는 같은 `dom_id`를 써야 한다. 삽입과 초기 로딩이 다른 규칙으로 id를 만들면
+같은 항목이 두 번 들어간다. 헬퍼 하나로 묶어 둔다. 이름은 `_`로 시작해야 한다 — `stream_insert`를
+오버라이드하면 자기 자신을 부르게 된다.
+
 ```python
-async def stream_insert(self, name, item):
+async def _insert(self, name, item, **kwargs):
     await self.stream_insert(
         name,
         item,
-        dom_id=lambda i: f"{name}-{i.uuid}"
+        dom_id=lambda i: f"{name}-{i.uuid}",
+        **kwargs,
     )
 ```
 
@@ -100,11 +105,14 @@ class XList1(Component):
 
 ### 기본 템플릿 경로
 
+컴포넌트 템플릿 이름에 `_item`을 붙인 것이다. 스트림 이름과는 무관하다.
+
 ```
-{app}/templates/{app}/{stream_name}_item.html
+{컴포넌트 template_name에서 확장자를 뺀 것}_item.html
 ```
 
-예: `chat/templates/chat/messages_item.html`
+예: 컴포넌트의 `template_name`이 `chat/x_chat.html`이면 `chat/x_chat_item.html`. 한 컴포넌트에 스트림이
+둘 이상이면 기본 경로를 함께 쓰게 되므로 `template=`으로 나눈다. 항목 템플릿의 컨텍스트 변수는 `item`이다.
 
 ### 명시적 템플릿 지정
 
@@ -253,7 +261,7 @@ async def add_item(self, item):
    `{name}-{item.pk}`)로 붙인다. `pk`가 없는 항목(dict 등)이면 `dom_id=`를 넘겨야 한다.
 
 3. **템플릿 경로 확인**
-   - `{app}/templates/{app}/{name}_item.html`
+   - 기본은 컴포넌트 템플릿 이름 + `_item.html` (예: `chat/x_chat.html` → `chat/x_chat_item.html`)
 
 ### 순서가 잘못됨
 

@@ -480,13 +480,21 @@ class WebSocketRateLimitMiddleware:
         if scope["type"] == "websocket":
             ip = scope["client"][0]
             key = f"ws_rate_{ip}"
-            count = cache.get(key, 0)
-            if count > 100:  # 분당 연결 100개
+            # add()는 키가 없을 때만 만들므로 창은 첫 연결에서 60초로 고정되고 연결마다 늘어나지 않는다
+            await cache.aadd(key, 0, 60)
+            try:
+                count = await cache.aincr(key)
+            except ValueError:  # add와 incr 사이에 창이 끝났다
+                await cache.aset(key, 1, 60)
+                count = 1
+            if count > 100:  # 분당 연결 100개. 101번째부터 거절한다
                 await send({"type": "websocket.close", "code": 4029})
                 return
-            cache.set(key, count + 1, 60)
         return await self.inner(scope, receive, send)
 ```
+
+`incr`이 원자적인 캐시(Redis, Memcached)여야 동시 연결이 같은 값을 읽고 한도를 넘기지 않는다. 프로세스가 여럿이면
+`LocMemCache`는 프로세스마다 따로 센다.
 
 ## 문제 해결
 

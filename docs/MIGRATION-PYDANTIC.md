@@ -2,6 +2,10 @@
 
 > django-wireview를 Pydantic v2로 업그레이드하기 위한 상세 가이드
 
+> **상태: 끝난 작업의 기록.** 마이그레이션은 끝났고 `pyproject.toml`은 `pydantic>=2.0,<3`이다. 지금 구현은
+> `wireview/core/component.py`가 정본이다. 아래 "After (v2)" 코드는 v2 관용구를 보이기 위한 스케치이고, 컴포넌트
+> 설정은 그 뒤 `class Meta:`로 옮겨졌다(#99). 스케치의 설정 참조는 지금 형태(`_meta.exclude_fields`)로 맞춰 두었다.
+
 ---
 
 ## 1. 개요
@@ -128,14 +132,16 @@ def increment(self, amount: int = 1):
 
 **Before (v1)**:
 ```python
-state = component.dict(exclude=self._exclude_fields)
-json_state = component.json(exclude=self._exclude_fields)
+state = component.dict(exclude=component._exclude_fields)
+json_state = component.json(exclude=component._exclude_fields)
 ```
 
 **After (v2)**:
 ```python
-state = component.model_dump(exclude=self._exclude_fields)
-json_state = component.model_dump_json(exclude=self._exclude_fields)
+# 제외할 필드는 class Meta: 의 exclude_fields에 user·wire·session을 더한 것이다 (#99)
+exclude = set(component._meta.exclude_fields)
+state = component.model_dump(exclude=exclude)
+json_state = component.model_dump_json(exclude=exclude)
 ```
 
 ---
@@ -276,10 +282,12 @@ class Component(BaseModel):
     # 클래스 레벨 속성
     _all: t.ClassVar[dict[str, type["Component"]]] = {}
     _name: t.ClassVar[str]
-    _template_name: t.ClassVar[str]
+    # 설정은 class Meta: 에 둔다. __init_subclass__가 해석해 cls._meta에 둔다 (#99)
+    _meta: t.ClassVar["ComponentOptions"]
+
     class Meta:
-        exclude_fields = {"user", "wire"}
-        subscriptions = set()
+        template_name = "counter.html"
+        exclude_fields = {"secret"}  # user·wire·session에 더해진다
 
     # 인스턴스 필드
     id: str = Field(default_factory=lambda: f"rx-{uuid4()}")
@@ -301,6 +309,7 @@ class Component(BaseModel):
         **kwargs,
     ):
         super().__init_subclass__(**kwargs)
+        cls._meta = _resolve_options(cls)  # class Meta: → ComponentOptions
 
         if public:
             name = name or cls.__name__
@@ -358,14 +367,14 @@ class Component(BaseModel):
     def get_state(self) -> ComponentState:
         """컴포넌트 상태 반환 (직렬화용)"""
         return self.model_dump(
-            exclude=self._exclude_fields,
+            exclude=set(self._meta.exclude_fields),
             mode='json',
         )
 
     def get_state_json(self) -> str:
         """컴포넌트 상태를 JSON 문자열로 반환"""
         return self.model_dump_json(
-            exclude=self._exclude_fields,
+            exclude=set(self._meta.exclude_fields),
         )
 
     # ... 나머지 메서드들은 동일
