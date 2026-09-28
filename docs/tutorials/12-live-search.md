@@ -56,10 +56,10 @@ class XLiveSearch(Component):
         template_name = "search/live_search.html"
 
     query: str = ""
-    results: list[dict] = []  # 검색 결과. 모델 목록이 아니라 값을 둔다(아래)
+    results: list[Book] = []
     selected_index: int = -1  # 현재 선택된 결과
     is_open: bool = False     # 드롭다운 표시 여부
-    selected_book: dict | None = None
+    selected_book: Book | None = None
 
     async def search(self, q: str):
         """검색 실행 (디바운스됨)"""
@@ -78,7 +78,7 @@ class XLiveSearch(Component):
                 Q(title__icontains=q) |
                 Q(author__icontains=q) |
                 Q(description__icontains=q)
-            ).values("id", "title", "author")[:10]
+            )[:10]
         ]
         self.is_open = len(self.results) > 0
 
@@ -105,7 +105,7 @@ class XLiveSearch(Component):
         if 0 <= index < len(self.results):
             self.selected_book = self.results[index]
             self.is_open = False
-            self.query = self.selected_book["title"]
+            self.query = self.selected_book.title
 
     async def select_current(self):
         """현재 선택 항목 확정 (Enter)"""
@@ -135,9 +135,8 @@ class XLiveSearch(Component):
         )
 ```
 
-상태 필드는 렌더마다 JSON으로 서명되어 페이지에 실린다. 모델 하나를 담는 필드(10장의 `poll: Poll`)는 pk로 저장되지만
-`list[Book]`은 JSON으로 만들 수 없어 결과가 들어간 뒤의 렌더에서 `PydanticSerializationError`가 난다. 그래서 결과는
-`.values()`로 뽑은 dict 목록으로 둔다. 템플릿의 `{{ book.title }}`은 dict에도 그대로 통한다.
+`results`와 `selected_book`은 모델 인스턴스를 그대로 담는다. 서명 상태에는 pk(목록)만 실리고, 다시 join할 때
+타입 표기를 따라 다시 읽힌다(상세는 [03. Todo 앱](03-todo-app.md)).
 
 ## 3. 템플릿
 

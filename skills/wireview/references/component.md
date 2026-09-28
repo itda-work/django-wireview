@@ -12,12 +12,16 @@ class XTodoList(Component):
         template_name = "todo/list.html"
 
     showing: Showing = Showing.ALL          # JSON 직렬화 가능해야 한다
-    item: Item | None = None                # Django 모델 필드는 pk로 직렬화·복원된다
+    item: Item | None = None                # 모델 인스턴스는 pk로 서명되고 재join 때 다시 읽힌다
+    recent: list[Item] = []                 # list·dict·AsyncResult 안이어도 같다. 목록은 쿼리 한 번
 
     @property
     def items(self):                        # 큰 QuerySet은 필드가 아니라 property로
         return Item.objects.filter(...)
 ```
+
+상태에 남는 것은 행의 정체(pk)라 재join 때 그 순간의 행을 읽는다. 그 사이 삭제된 행은 목록에서 빠지고
+단일 필드는 `None`이 된다. 타입 표기가 무엇을 다시 읽을지 정하므로 `list`가 아니라 `list[Item]`으로 적는다.
 
 설정은 클래스 안의 `class Meta:`에 둔다. 하위 클래스는 적지 않은 키를 부모에게서 물려받고,
 모르는 키나 옛 밑줄 이름(`_template_name` 등)은 `TypeError`다.

@@ -222,8 +222,8 @@ class Dashboard(Component):
     class Meta:
         template_name = "dashboard.html"
 
-    users: AsyncResult[list] | None = None
-    orders: AsyncResult[list] | None = None
+    users: AsyncResult[list[User]] | None = None
+    orders: AsyncResult[list[Order]] | None = None
     stats: AsyncResult[dict] | None = None
 
     async def joined(self):
@@ -234,11 +234,11 @@ class Dashboard(Component):
 
     async def _load_users(self):
         # QuerySet은 await할 수 없다. async for로 목록을 만든다.
-        # 결과는 상태로 서명되므로 모델 인스턴스가 아니라 JSON이 되는 값(values())으로 담는다
-        return [user async for user in User.objects.values("id", "username")[:10]]
+        # 결과의 모델 인스턴스는 서명 상태에 pk로 실리고, 다시 join할 때 AsyncResult[list[User]]를 따라 다시 읽힌다
+        return [user async for user in User.objects.all()[:10]]
 
     async def _load_orders(self):
-        return [order async for order in Order.objects.filter(status="pending").values("id", "status")[:10]]
+        return [order async for order in Order.objects.filter(status="pending")[:10]]
 
     async def _load_stats(self):
         return {"total_users": await User.objects.acount()}

@@ -38,8 +38,7 @@ The django-reactor era changelog (2.x) is preserved in
 - `{% class %}` and `{% cond %}` read a dotted name the way the rest of a template does:
   `forloop.counter0` and a `.values()` row's `row.title` failed as attribute lookups on a dict
   (#113).
-- Examples: the search and dashboard examples kept model instances in state and failed to
-  render once they had results; poll and quiz counted ids the browser sent without checking they
+- Examples: poll and quiz counted ids the browser sent without checking they
   belonged to that poll or question (and quiz scored the same answer twice); the notifications
   example's `"pulse 500ms"` transition, left over from the #110 guard, raised on every new
   notification. Their tests now render and try foreign ids (#113).
@@ -51,6 +50,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- Model instances in component state, wherever they are: a single field, a list, a dict's
+  values, an `AsyncResult`'s result. They are signed as their pks and loaded back on join by
+  following the field's annotation -- one query per list, in order; a row deleted meanwhile
+  drops out of a list and leaves a single field `None`. Only a field typed exactly as a model
+  was handled before, so `list[Book]` or `AsyncResult[Stat]` failed to sign and the component
+  could not render; the search and dashboard examples and several tutorials had been reworked
+  around dicts to avoid it, and are back to model instances (#113).
 - `tests/test_doc_examples.py`: every Python block of the user-facing docs parses, and the
   mistakes that recurred -- an awaited QuerySet, `self.abroadcast`, an awaited `skip_render()`,
   a plain `for` over `consume_uploads()`, `allow_upload(UploadConfig(...))`, a template calling

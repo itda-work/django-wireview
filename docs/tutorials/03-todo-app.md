@@ -65,18 +65,19 @@ class XTodoList(Component):
 
     class Meta:
         template_name = 'todo/todo_list.html'
-        exclude_fields = {"items"}
 
-    items: list = []
+    items: list[Item] = []
 
     async def joined(self):
         """컴포넌트가 연결되면 아이템 로드"""
         self.items = [item async for item in Item.objects.all()]
 ```
 
-`items`에는 모델 인스턴스가 들어간다. 서명 상태는 JSON이라 인스턴스 목록을 담지 못하므로
-`Meta.exclude_fields`로 뺀다. 빠진 필드는 연결 동안 서버의 인스턴스에만 있고, 다시 연결하면 `joined()`가
-새로 불러온다.
+`items`에는 모델 인스턴스가 그대로 들어간다. 상태는 서명된 `data-state`로 페이지에 실리는데, 모델 인스턴스는
+어디에 있든(단일 필드, `list`·`tuple`·`set`, `dict`의 값, `AsyncResult`의 결과) **pk로 서명되고**, 다시 join할 때
+필드의 타입 표기(`list[Item]`)를 따라 다시 읽힌다. 목록은 쿼리 한 번이고 순서를 지킨다. 상태에 남는 것은 행의
+정체(pk)뿐이라 재join 때는 그 순간의 행을 읽는다 — 그 사이 삭제된 행은 목록에서 빠지고, 단일 필드(`item: Item | None`)는
+`None`이 된다. 그래서 타입 표기가 필요하다: 그냥 `list`라고 적으면 무엇을 다시 읽을지 몰라 pk가 그대로 남는다.
 
 ### 템플릿
 
@@ -109,9 +110,8 @@ class XTodoList(Component):
 class XTodoList(Component):
     class Meta:
         template_name = 'todo/todo_list.html'
-        exclude_fields = {"items"}
 
-    items: list = []
+    items: list[Item] = []
     new_item_text: str = ""
 
     async def joined(self):
@@ -217,9 +217,8 @@ from wireview import WireviewMeta
 class XTodoList(Component):
     class Meta:
         template_name = 'todo/todo_list.html'
-        exclude_fields = {"items"}
 
-    items: list = []
+    items: list[Item] = []
     new_item_text: str = ""
     filter: str = "all"  # all, active, completed
 
@@ -336,11 +335,10 @@ from wireview import ModelAction
 class XTodoList(Component):
     class Meta:
         template_name = 'todo/todo_list.html'
-        exclude_fields = {"items"}
         # 모델 변경 구독 ({app_label}.{model_name} 형식)
         subscriptions = {"todo.item"}
 
-    items: list = []
+    items: list[Item] = []
     filter: str = "all"
 
     async def mutation(self, channel: str, action: ModelAction, instance):
@@ -475,10 +473,9 @@ class XTodoItem(Component):
 class XTodoList(Component):
     class Meta:
         template_name = 'todo/todo_list.html'
-        exclude_fields = {"items"}
         subscriptions = {"todo.item"}
 
-    items: list = []
+    items: list[Item] = []
     filter: str = "all"
 
     # ... 기존 코드 ...
@@ -527,10 +524,9 @@ class XTodoList(Component):
 
     class Meta:
         template_name = 'todo/todo_list.html'
-        exclude_fields = {"items"}
         subscriptions = {"todo.item"}
 
-    items: list = []
+    items: list[Item] = []
     filter: str = "all"
 
     @classmethod

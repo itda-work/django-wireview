@@ -67,25 +67,14 @@ class AsyncResult(t.Generic[T]):
         signing its state raised (#113). The exception stays on the server; what
         travels is its message.
         """
-        from pydantic_core import core_schema
+        return _core_schema()
 
-        def validate(value: t.Any) -> AsyncResult[t.Any]:
-            if isinstance(value, AsyncResult):
-                return value
-            if isinstance(value, dict):
-                return cls(
-                    state=AsyncState(value.get("state", AsyncState.PENDING)),
-                    result=value.get("result"),
-                    _error_message=value.get("error_message"),
-                )
-            raise ValueError(f"not an AsyncResult: {value!r}")
-
-        def serialize(value: AsyncResult[t.Any]) -> dict[str, t.Any]:
-            return {"state": value.state.value, "result": value.result, "error_message": value.error_message}
-
-        return core_schema.no_info_plain_validator_function(
-            validate, serialization=core_schema.plain_serializer_function_ser_schema(serialize)
-        )
+    def __class_getitem__(cls, item: t.Any) -> t.Any:
+        # ``AsyncResult[Book]`` is a typing alias, and an alias does not hand
+        # __get_pydantic_core_schema__ on to its class: pydantic built a plain
+        # dataclass schema and the exception came back (#113). Annotated carries
+        # the same schema to every parametrized form.
+        return t.Annotated[super().__class_getitem__(item), _Schema()]  # type: ignore[misc]
 
     @property
     def loading(self) -> bool:
@@ -178,3 +167,35 @@ class AsyncResult(t.Generic[T]):
 
 # Type alias for generic type variable
 R = t.TypeVar("R")
+
+
+def _core_schema() -> t.Any:
+    from pydantic_core import core_schema
+
+    def validate(value: t.Any) -> AsyncResult[t.Any]:
+        if isinstance(value, AsyncResult):
+            return value
+        if isinstance(value, dict):
+            return AsyncResult(
+                state=AsyncState(value.get("state", AsyncState.PENDING)),
+                result=value.get("result"),
+                _error_message=value.get("error_message"),
+            )
+        raise ValueError(f"not an AsyncResult: {value!r}")
+
+    def serialize(value: AsyncResult[t.Any]) -> dict[str, t.Any]:
+        from .core.model_state import dump
+
+        # dump: a model instance as the result goes in as its pk, like any field's
+        return dump(value)
+
+    return core_schema.no_info_plain_validator_function(
+        validate, serialization=core_schema.plain_serializer_function_ser_schema(serialize)
+    )
+
+
+class _Schema:
+    """The pydantic schema of every ``AsyncResult[...]``: see ``AsyncResult.__class_getitem__``."""
+
+    def __get_pydantic_core_schema__(self, source: t.Any, handler: t.Any) -> t.Any:
+        return _core_schema()

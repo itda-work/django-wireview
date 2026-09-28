@@ -78,7 +78,7 @@ class XStatCard(Component):
 
     # AsyncResult provides loading, ok, failed states
     # Type hint for what the result will contain (Stat or None if not found)
-    data: AsyncResult[dict | None] | None = None
+    data: AsyncResult[Stat | None] | None = None
 
     async def joined(self):
         """
@@ -89,18 +89,7 @@ class XStatCard(Component):
         """
         self.data = await self.assign_async(self._load_stat())
 
-    @staticmethod
-    def _card(stat: Stat) -> dict:
-        """What the card shows, as plain values: the state is signed into the page as
-        JSON, which a model instance and a Decimal are not (#113)."""
-        return {
-            "name": stat.name,
-            "label": stat.label,
-            "value": float(stat.value),
-            "change_percent": float(stat.change_percent),
-        }
-
-    async def _load_stat(self) -> dict | None:
+    async def _load_stat(self) -> Stat | None:
         """
         Simulate loading stat with potential delay.
 
@@ -109,7 +98,7 @@ class XStatCard(Component):
         # Simulate network delay for demo purposes
         await asyncio.sleep(0.3)
         try:
-            return self._card(await Stat.objects.aget(name=self.stat_name))
+            return await Stat.objects.aget(name=self.stat_name)
         except Stat.DoesNotExist:
             return None
 
@@ -122,7 +111,7 @@ class XStatCard(Component):
         """Update when this stat changes in the database."""
         if instance.name == self.stat_name:
             # Update with new value directly (no loading state)
-            self.data = AsyncResult.success(self._card(instance))
+            self.data = AsyncResult.success(instance)
 
     async def refresh(self):
         """

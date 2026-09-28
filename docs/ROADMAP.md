@@ -169,14 +169,13 @@ from wireview import AsyncResult, Component
 
 
 class Dashboard(Component):
-    stats: AsyncResult[dict] | None = None
+    stats: AsyncResult[Stats] | None = None  # 결과의 모델 인스턴스는 pk로 서명된다
 
     async def joined(self):
         self.stats = await self.assign_async(self._load_stats())
 
     async def _load_stats(self):
-        # 결과는 상태로 서명되므로 JSON이 되는 값으로 돌려준다
-        return {"users": await User.objects.acount()}
+        return await Stats.objects.aget()
 ```
 
 ### 3.4 Temporary Assigns - ✅ 완료
@@ -188,10 +187,10 @@ class MessageList(Component):
     class Meta:
         temporary_assigns = {"messages"}
 
-    messages: list[dict] = []  # 상태는 서명되므로 모델 인스턴스가 아니라 JSON이 되는 값
+    messages: list[Message] = []  # 서명 상태에는 pk 목록이 실린다
 
     async def joined(self):
-        self.messages = [message async for message in Message.objects.values("id", "body")[:100]]
+        self.messages = [message async for message in Message.objects.all()[:100]]
         # 렌더링 후 선언한 기본값 []으로 돌아간다
 ```
 

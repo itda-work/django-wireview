@@ -13,7 +13,9 @@ from django.test import override_settings
 from wireview.consumer import WireviewConsumer
 from wireview.core.origin import origin_refusal
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
+# Through the consumer: channels closes stale DB connections on every message
+# (channels.db), which needs the database even when the test never queries it.
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio, pytest.mark.django_db]
 
 
 async def _connect(*headers: tuple[bytes, bytes]) -> bool:

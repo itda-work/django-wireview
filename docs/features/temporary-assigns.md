@@ -12,11 +12,11 @@
 
 ```python
 class MessageList(Component):
-    messages: list[dict] = []
+    messages: list[Message] = []
 
     async def joined(self):
         # 10,000개의 메시지 로드 → ~10MB 메모리 점유
-        self.messages = [row async for row in Message.objects.values("id", "body")[:10000]]
+        self.messages = [message async for message in Message.objects.all()[:10000]]
         # 이 데이터는 컴포넌트가 종료될 때까지 메모리에 유지됨
 ```
 
@@ -31,10 +31,10 @@ class MessageList(Component):
     class Meta:
         temporary_assigns = {"messages"}  # 이 필드는 렌더 후 초기화됨
 
-    messages: list[dict] = []
+    messages: list[Message] = []
 
     async def joined(self):
-        self.messages = [row async for row in Message.objects.values("id", "body")[:10000]]
+        self.messages = [message async for message in Message.objects.all()[:10000]]
         # 렌더링 완료 후 → self.messages = [] (메모리 해제)
 ```
 
@@ -47,9 +47,8 @@ class MessageList(Component):
 - 목록을 그리는 렌더마다 다시 불러오거나(아래 "이벤트 핸들러에서 다시 로드"),
 - 화면에 계속 남아야 하는 목록이면 [Streams](../tutorials/06-streams-api.md)를 쓴다.
 
-또 그 렌더의 서명 상태(`data-state`)에는 필드 값이 그대로 실린다. 큰 목록이면 페이지도 그만큼 커진다.
-그래서 필드는 JSON이 되는 값이어야 한다 — 모델 인스턴스 목록(`list[Message]`)은 서명할 수 없어 렌더가 실패하므로,
-이 문서의 예는 `values()`로 뽑은 dict 목록을 담는다.
+또 그 렌더의 서명 상태(`data-state`)에는 필드 값이 그대로 실린다. 모델 인스턴스 목록(`list[Message]`)이면
+pk 목록이 실린다([03. Todo 앱](../tutorials/03-todo-app.md)). 큰 목록이면 페이지도 그만큼 커진다.
 
 ---
 
@@ -114,12 +113,12 @@ class ProductList(Component):
         template_name = "products/list.html"
         temporary_assigns = {"products"}  # set으로 필드명 지정
 
-    products: list[dict] = []
+    products: list[Product] = []
     total_count: int = 0
     current_page: int = 1
 
     async def joined(self):
-        self.products = [row async for row in Product.objects.values("id", "name", "price")[:100]]
+        self.products = [product async for product in Product.objects.all()[:100]]
         self.total_count = await Product.objects.acount()
 ```
 
@@ -135,9 +134,9 @@ class Dashboard(Component):
     class Meta:
         temporary_assigns = {"orders", "analytics", "logs"}
 
-    orders: list[dict] = []
+    orders: list[Order] = []
     analytics: dict = {}
-    logs: list[dict] = []
+    logs: list[LogEntry] = []
     user_name: str = ""  # 이 필드는 유지됨
 ```
 
@@ -150,7 +149,7 @@ class MessageList(Component):
     class Meta:
         temporary_assigns = {"messages"}
 
-    messages: list[dict] = []
+    messages: list[Message] = []
     page: int = 1
 
     async def joined(self):
@@ -162,7 +161,7 @@ class MessageList(Component):
 
     async def _load_messages(self):
         offset = (self.page - 1) * 50
-        self.messages = [row async for row in Message.objects.values("id", "body")[offset:offset + 50]]
+        self.messages = [message async for message in Message.objects.all()[offset:offset + 50]]
 ```
 
 ---
@@ -246,7 +245,7 @@ class BoardList(Component):
         template_name = "board/list.html"
         temporary_assigns = {"posts"}
 
-    posts: list[dict] = []
+    posts: list[Post] = []
     page: int = 1
     total_pages: int = 1
     per_page: int = 20
@@ -260,7 +259,7 @@ class BoardList(Component):
 
     async def _load_posts(self):
         offset = (self.page - 1) * self.per_page
-        self.posts = [row async for row in Post.objects.order_by("-created").values("id", "title")[offset:offset + self.per_page]]
+        self.posts = [post async for post in Post.objects.order_by("-created")[offset:offset + self.per_page]]
         total = await Post.objects.acount()
         self.total_pages = (total + self.per_page - 1) // self.per_page
 ```
@@ -274,7 +273,7 @@ class AnalyticsDashboard(Component):
         temporary_assigns = {"chart_data", "recent_events"}
 
     chart_data: list[dict] = []
-    recent_events: list[dict] = []
+    recent_events: list[Event] = []
     summary: dict = {}  # 이건 유지 (작은 데이터)
 
     async def joined(self):
@@ -286,7 +285,7 @@ class AnalyticsDashboard(Component):
     async def _load_data(self):
         # 대용량 데이터
         self.chart_data = await self._fetch_chart_data()
-        self.recent_events = [row async for row in Event.objects.order_by("-timestamp").values("id", "name", "timestamp")[:100]]
+        self.recent_events = [event async for event in Event.objects.order_by("-timestamp")[:100]]
         # 작은 요약 데이터
         self.summary = await self._calculate_summary()
 ```

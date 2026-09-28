@@ -95,10 +95,9 @@ class XStatCard(Component):
 
     class Meta:
         template_name = 'dashboard/stat_card.html'
-        exclude_fields = {"stat"}
 
     stat_name: str
-    stat: AsyncResult = None
+    stat: AsyncResult[Stat] | None = None
 
     async def joined(self):
         """컴포넌트 연결 시 데이터 로드 시작"""
@@ -118,9 +117,9 @@ class XStatCard(Component):
 
 `_load_stat`은 `_`로 시작한다. 밑줄 없는 메서드는 클라이언트가 이벤트로 부를 수 있는 핸들러가 된다.
 
-`stat`은 `Meta.exclude_fields`로 서명 상태에서 뺀다. 성공하면 모델 인스턴스를, 실패하면 예외를 담는데 서명
-상태는 JSON이라 둘 다 담지 못한다. 빠진 필드는 연결 동안 서버의 인스턴스에만 있고, 다시 연결하면 `joined()`가
-새로 불러온다. 뒤에 나오는 `XDashboard`의 `stats`(모델 인스턴스 목록)도 같은 이유로 뺀다.
+`stat`의 타입은 `AsyncResult[Stat] | None`으로 적는다. 성공한 결과의 모델 인스턴스는 서명 상태에 pk로 실리고,
+다시 join할 때 이 표기를 따라 `Stat`으로 다시 읽힌다. 실패했으면 예외 자체는 서버에 남고 `error_message`만 실린다.
+뒤에 나오는 `XDashboard`의 `stats: list[Stat]`도 같은 방식으로 pk 목록이 된다(상세는 [03. Todo 앱](03-todo-app.md)).
 
 ### StatCard 템플릿
 
@@ -190,10 +189,9 @@ class XDashboard(Component):
 
     class Meta:
         template_name = 'dashboard/dashboard.html'
-        exclude_fields = {"stats"}
 
     active_tab: str = "overview"
-    stats: list = []
+    stats: list[Stat] = []
 
     @classmethod
     def new(cls, wire: WireviewMeta, **kwargs):
@@ -378,11 +376,10 @@ Auto Broadcast). 카드는 이름으로 구분되므로 모델 채널을 구독�
 class XStatCard(Component):
     class Meta:
         template_name = 'dashboard/stat_card.html'
-        exclude_fields = {"stat"}
         subscriptions = {"dashboard.stat"}
 
     stat_name: str
-    stat: AsyncResult = None
+    stat: AsyncResult[Stat] | None = None
 
     async def mutation(self, channel: str, action: ModelAction, instance):
         """통계 업데이트 수신"""
@@ -409,7 +406,6 @@ async def refresh_stat(name: str):
 class XStatCard(Component):
     class Meta:
         template_name = 'dashboard/stat_card.html'
-        exclude_fields = {"stat"}
         subscriptions = {"dashboard.stat", "dashboard-stats"}
 
     # ...
@@ -434,10 +430,9 @@ class XDashboard(Component):
 
     class Meta:
         template_name = 'dashboard/dashboard.html'
-        exclude_fields = {"stats"}
 
     active_tab: str = "overview"
-    stats: list = []
+    stats: list[Stat] = []
 
     @classmethod
     def new(cls, wire: WireviewMeta, **kwargs):
@@ -457,11 +452,10 @@ class XStatCard(Component):
 
     class Meta:
         template_name = 'dashboard/stat_card.html'
-        exclude_fields = {"stat"}
         subscriptions = {"dashboard.stat"}
 
     stat_name: str
-    stat: AsyncResult = None
+    stat: AsyncResult[Stat] | None = None
 
     async def joined(self):
         self.stat = await self.assign_async(self._load_stat())

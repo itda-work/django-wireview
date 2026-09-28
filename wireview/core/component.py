@@ -7,11 +7,9 @@ import logging
 import typing as t
 from uuid import uuid4
 
-from django.apps import apps
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import AnonymousUser
 from django.core.exceptions import ImproperlyConfigured
-from django.db import models
 from django.http import HttpRequest
 from django.template import loader
 from django.utils.safestring import SafeString
@@ -21,6 +19,7 @@ from .. import utils
 from ..async_result import AsyncResult
 from ..schemas import DomAction, ModelAction
 from ..utils import db
+from . import model_state
 from .meta import Repo, WireviewMeta
 from .session import SessionView
 from .transport import get_broker
@@ -288,46 +287,27 @@ class Component(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _load_django_models(cls, data: dict[str, t.Any]) -> dict[str, t.Any]:
-        """Auto-load Django Model/QuerySet instances from PKs."""
+        """Load the model instances a signed state holds as primary keys.
+
+        Anywhere the field's annotation names a model -- ``Book``, ``Book | None``,
+        ``list[Book]``, ``dict[str, Book]``, ``AsyncResult[Book]`` -- and any
+        QuerySet (wireview/core/model_state.py).
+        """
         if not isinstance(data, dict):
             return data
-
         for field_name, field_info in cls.model_fields.items():
-            if field_name not in data:
-                continue
-
-            value = data[field_name]
+            value = data.get(field_name)
             if value is None:
                 continue
-
-            field_type = field_info.annotation
-
-            # Handle Model fields: load from PK
-            try:
-                if isinstance(field_type, type) and issubclass(field_type, models.Model):
-                    if not isinstance(value, field_type):
-                        data[field_name] = field_type.objects.filter(pk=value).first()
-            except TypeError:
-                pass
-
-            # Handle QuerySet fields: deserialize from dict
-            if isinstance(value, dict) and "app" in value and "model" in value:
-                model_class = apps.get_model(value["app"], value["model"])
-                data[field_name] = model_class.objects.filter(pk__in=value.get("ids", []))
-
+            if model_state.mentions_models(field_info.annotation) or model_state.has_queryset_marker(value):
+                data[field_name] = model_state.load(field_info.annotation, value)
         return data
 
     @field_serializer("*", mode="wrap")
     def _serialize_django_types(self, value: t.Any, handler: t.Callable) -> t.Any:
-        """Serialize Django Model and QuerySet instances."""
-        if isinstance(value, models.Model):
-            return value.pk
-        if isinstance(value, models.QuerySet):
-            return {
-                "app": value.model._meta.app_label,
-                "model": value.model._meta.model_name,
-                "ids": list(value.values_list("pk", flat=True)),
-            }
+        """Model instances go into the signed state as their pks, however deep (#113)."""
+        if model_state.has_models(value):
+            return model_state.dump(value)
         return handler(value)
 
     def __init_subclass__(cls: t.Type["Component"], name: str | None = None, public: bool = True) -> None:

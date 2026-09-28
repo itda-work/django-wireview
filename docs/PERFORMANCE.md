@@ -80,10 +80,10 @@ class UserProfile(Component):
 
 # 좋음: joined()에서 미리 읽는다
 class UserProfile(Component):
-    posts: list[dict] = []  # 상태는 data-state로 서명되므로 JSON이 되는 값을 담는다
+    posts: list[Post] = []  # 서명 상태에는 pk 목록만 실린다
 
     async def joined(self):
-        self.posts = [post async for post in Post.objects.filter(user=self.user).values("id", "title")[:5]]
+        self.posts = [post async for post in Post.objects.filter(user=self.user)[:5]]
 ```
 
 ### 2. 컴포넌트 안에서는 `asend_notification()`을 쓴다
@@ -115,15 +115,15 @@ class ChatRoom(Component):
 # 나쁨: sync_to_async를 여러 번
 async def joined(self):
     profile = await sync_to_async(Profile.objects.get)(user=self.user)
-    self.posts = await sync_to_async(list)(profile.posts.values("id", "title"))
-    self.comments = await sync_to_async(list)(profile.comments.values("id", "body"))
+    self.posts = await sync_to_async(list)(profile.posts.all())
+    self.comments = await sync_to_async(list)(profile.comments.all())
 
 # 좋음: 한 번의 전환 안에서 전부 읽는다
 async def joined(self):
     @sync_to_async
     def load_profile_data():
-        profile = Profile.objects.get(user=self.user)
-        return list(profile.posts.values("id", "title")), list(profile.comments.values("id", "body"))
+        profile = Profile.objects.prefetch_related("posts", "comments").get(user=self.user)
+        return list(profile.posts.all()), list(profile.comments.all())
 
     self.posts, self.comments = await load_profile_data()
 ```

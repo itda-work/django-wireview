@@ -273,6 +273,7 @@ async def _swallow(message: dict[str, t.Any]) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.django_db  # through the consumer, which closes stale DB connections
 async def test_load_session_passes_through_what_it_is_given():
     assert dict(await load_session(None)) == {}
     assert dict(await load_session({"cart": "abc"})) == {"cart": "abc"}

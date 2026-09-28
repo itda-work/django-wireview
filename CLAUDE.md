@@ -40,6 +40,7 @@ wireview/
 ├── core/origin.py         WebSocket Origin 검사. 컨슈머가 accept 전에 ALLOWED_HOSTS와 대조한다(CSWSH, #96)
 ├── core/state.py          data-state 서명·복원 (v2 봉투: 클래스·경계·인증 세대 결합, 만료, 토큰 재사용)
 ├── core/signing.py        서명 키 정본. get_signer(salt) 하나로 모든 서명 지점이 SIGNING_KEY와 fallback을 공유
+├── core/model_state.py    상태 안의 모델 인스턴스를 pk로 서명하고(어디에 있든) 필드 타입 표기를 따라 다시 불러온다 (#113)
 ├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳
 ├── template_engine.py     템플릿 VariableNode에 diff 마커 자동 주입
 ├── consumer.py            WireviewConsumer (WebSocket, /__wireview__). send_render가 자식 LiveComponent의 joined/update/leaving과 렌더를 함께 처리
@@ -176,7 +177,7 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 - **단위·통합 테스트도 일부는 채널 레이어를 쓴다.** `tests/test_uploads.py`의 `UploadView` 테스트가 세션 채널로 보낸다. 그래서 기본값이 `memory`다. 브로커가 없는 레이어를 기본으로 두면 그 두 테스트가 연결 타임아웃으로 2분씩 걸린다.
 - **클라이언트가 호출할 수 있는 메서드.** `_`로 시작하지 않고 **사용자 코드에서 정의한** 메서드만 이벤트 핸들러로 노출되고 `validate_call`로 감싸진다. 프레임워크(`wireview.*`)와 Pydantic이 소유한 이름은 서브클래스에서 오버라이드해도 노출되지 않는다 — `mount`·`joined`·`update`·`send_to_parent`·`model_post_init`은 클라이언트가 부를 수 없다. 판정은 `ComponentRepository._is_user_defined_method`, 회귀 테스트는 tests/test_security.py. 내부 헬퍼는 반드시 `_` 접두사. 클래스 본문에 정의된 **클래스**(`class Meta:` 포함)는 호출 가능해도 노출되지 않는다(#99). 핸들러와 라이프사이클 메서드는 async.
 - **컴포넌트 이름은 클래스명으로 전역 등록.** 다른 모듈에서 같은 클래스명을 쓰면 경고가 난다. 템플릿에서 `app:Name` 또는 FQN으로 구분한다.
-- **상태 필드.** JSON 직렬화 가능해야 한다. `Meta.temporary_assigns`는 기본값이 있는 필드만 초기화된다. `Meta.exclude_fields`는 `user`·`wire`·`session`에 **더해진다**(뺄 수 없다).
+- **상태 필드.** JSON 직렬화 가능해야 한다. 모델 인스턴스는 예외다: 단일 필드·목록·dict 값·`AsyncResult`의 결과 어디에 있든 pk로 서명되고, join 때 필드의 타입 표기를 따라 다시 읽힌다(`wireview/core/model_state.py`). 그래서 타입 표기가 곧 복원 규칙이다 — `list` 같은 맨 타입으로 적으면 pk 목록으로 돌아온다. `Meta.temporary_assigns`는 기본값이 있는 필드만 초기화된다. `Meta.exclude_fields`는 `user`·`wire`·`session`에 **더해진다**(뺄 수 없다).
 - **pyright는 `tests/`를 검사하지 않고, `tsc`는 checkJs=false라 JS 본문을 검사하지 않는다.** 둘 다 통과해도 해당 영역은 검증된 것이 아니다.
 - **gitignore 대상.** `*.pyi` (AUTO_GENERATE_STUBS가 DEBUG에서 생성), `.wireview/`, `tests/static/`, `*.min.js`.
 - **컴포넌트 ID**는 페이지 안에서 고유해야 한다.

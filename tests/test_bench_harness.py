@@ -15,7 +15,9 @@ from django.test import override_settings
 
 from wireview.consumer import WireviewConsumer
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
+# Through the consumer: channels closes stale DB connections on every message
+# (channels.db), which needs the database even when the test never queries it.
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio, pytest.mark.django_db]
 
 
 async def test_the_bench_joins_with_a_state_a_project_with_boundaries_accepts():
