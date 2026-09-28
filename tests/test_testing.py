@@ -195,3 +195,30 @@ class TestCallMeetsTheEventChecks:
         view = await mount(self.CallProbe)
         await view.call("add", by=2, title="unrelated")
         assert view.component.count == 2
+
+
+class TestBroadcastsAreOnTheMountedComponent:
+    """The testing surface is MountedComponent's; ``view.wire`` is not public beyond navigation (#114)."""
+
+    class Shouter(Component):
+        async def shout(self):
+            await self.broadcast("room", text="hi")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_view_broadcasts_records_what_the_component_broadcast(self):
+        view = await mount(self.Shouter)
+        await view.call("shout")
+        assert [(b["channel"], b["kwargs"]) for b in view.broadcasts] == [("room", {"text": "hi"})]
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_the_old_path_still_works_and_warns(self):
+        from wireview import WireviewDeprecationWarning
+
+        view = await mount(self.Shouter)
+        await view.call("shout")
+        with pytest.warns(WireviewDeprecationWarning, match=r"view\.broadcasts"):
+            assert view.wire.broadcasts == view.broadcasts
+        with pytest.warns(WireviewDeprecationWarning, match=r"view\.presence_broadcasts"):
+            assert view.wire.presence_broadcasts == []

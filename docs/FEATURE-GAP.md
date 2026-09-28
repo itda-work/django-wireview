@@ -231,7 +231,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | assert_patch | ✅ | `assert_pushed_to()` · `assert_replaced_to()` · `follow_push()` | ✅ (GAP-031) | `tests/test_navigation_helpers.py::TestAssertingWhereItNavigated::test_it_does_not_confuse_the_three_commands`<br>`tests/test_navigation_helpers.py::TestFollowingAPush::test_it_runs_params_changed` |
 | follow_redirect | ✅ | `follow_redirect()` | ✅ (GAP-031) | `tests/test_navigation_helpers.py::TestFollowingARedirect::test_it_mounts_the_destination`<br>`tests/test_navigation_helpers.py::TestFollowingARedirect::test_a_refusing_destination_refuses_here_too` |
 | 스트림 검사 | - | `stream_html()` · `stream_items()` · `stream_ops()` | ✅ 추가 기능 | `tests/test_navigation_helpers.py::TestStreamHelpers::test_it_collects_the_html`<br>`tests/test_navigation_helpers.py::TestStreamHelpers::test_it_exposes_the_operations` |
-| MockChannelLayer | - | `mount()`이 채널 레이어를 흉내 내고 `view.wire.broadcasts`에 남긴다 | ✅ 추가 기능 | `tests/test_presence.py::TestPresenceMixin::test_presence_join_broadcasts`<br>`examples/notifications/tests.py::test_dismissing_deletes_and_tells_the_bell` |
+| MockChannelLayer | - | `mount()`이 채널 레이어를 흉내 내고 `view.broadcasts`에 남긴다 | ✅ 추가 기능 | `tests/test_presence.py::TestPresenceMixin::test_presence_join_broadcasts`<br>`examples/notifications/tests.py::test_dismissing_deletes_and_tells_the_bell` |
 
 ### 2.14 Developer Tools ✅
 

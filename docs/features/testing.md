@@ -38,7 +38,8 @@ async def test_increment():
 | `view.is_frozen` | `freeze()` 여부 |
 | `view.sent_messages` | 클라이언트로 나간 메시지 목록 (원본) |
 | `view.dom_actions` | 서버가 지시한 DOM 조작. **스트림은 여기 없다** |
-| `view.wire.broadcasts` | 이 컴포넌트가 낸 브로드캐스트 |
+| `view.broadcasts` | 이 컴포넌트가 낸 브로드캐스트 |
+| `view.presence_broadcasts` | 그중 `PresenceMixin`이 낸 것(입장·퇴장·타이핑). 항목마다 `kwargs`에 `action` |
 | `view.clear_messages()` / `view.clear_dom_actions()` | 다음 단계 전에 비운다 |
 
 아래 헬퍼는 전부 `sent_messages` 위에 있다. 직접 뒤져도 되지만, 그러면 **테스트가 wire

@@ -12,10 +12,19 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- `view.broadcasts` and `view.presence_broadcasts` on what `mount()` returns: what the component
+  broadcast, for a test to assert on. The testing guide sent readers to `view.wire.broadcasts`,
+  though `self.wire` is public only for its navigation; `docs/COMPATIBILITY.md` now says the
+  testing surface is `MountedComponent`'s documented members (#114).
 - Every supported row of `docs/FEATURE-GAP.md` names the tests that run the feature, and
   `tests/test_feature_gap.py` fails when a row has none, names one that does not exist, or the
   overview's counts drift from the table. The audit that filled it found and fixed the defects
   below; two it could not fix in place are #111 and #112 (#110).
+
+### Deprecated
+
+- `view.wire.broadcasts` and `view.wire.presence_broadcasts`: use `view.broadcasts` and
+  `view.presence_broadcasts`. They raise `WireviewDeprecationWarning` and go in 2.0 (#114).
 
 ### Changed
 

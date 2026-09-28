@@ -43,7 +43,7 @@ async def test_dismissing_deletes_and_tells_the_bell():
     await view.call("dismiss", notification_id=notification.pk)
 
     assert not await Notification.objects.filter(pk=notification.pk).aexists()
-    assert any(b["channel"] == "notifications-refresh" for b in view.wire.broadcasts)
+    assert any(b["channel"] == "notifications-refresh" for b in view.broadcasts)
 
 
 @pytest.mark.unit

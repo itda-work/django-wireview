@@ -121,9 +121,7 @@ class TestPresenceMixin:
         view = await mount(XProducerComponent, room_id=1, username="alice")
 
         # Find the join broadcast
-        join_broadcasts = [
-            b for b in view.wire.presence_broadcasts if b.get("kwargs", {}).get("action") == "presence_join"
-        ]
+        join_broadcasts = [b for b in view.presence_broadcasts if b.get("kwargs", {}).get("action") == "presence_join"]
         assert len(join_broadcasts) == 1
         assert join_broadcasts[0]["kwargs"]["username"] == "alice"
         assert join_broadcasts[0]["kwargs"]["state"] == "online"
@@ -141,7 +139,7 @@ class TestPresenceMixin:
         await view.component.presence_set_typing(typing=True)
 
         typing_broadcasts = [
-            b for b in view.wire.presence_broadcasts if b.get("kwargs", {}).get("action") == "presence_typing"
+            b for b in view.presence_broadcasts if b.get("kwargs", {}).get("action") == "presence_typing"
         ]
         assert len(typing_broadcasts) == 1
         assert typing_broadcasts[0]["kwargs"]["state"] == "typing"
@@ -159,7 +157,7 @@ class TestPresenceMixin:
 
         # Should only broadcast once (state didn't change second time)
         typing_broadcasts = [
-            b for b in view.wire.presence_broadcasts if b.get("kwargs", {}).get("action") == "presence_typing"
+            b for b in view.presence_broadcasts if b.get("kwargs", {}).get("action") == "presence_typing"
         ]
         assert len(typing_broadcasts) == 1
 
@@ -183,7 +181,7 @@ class TestPresenceMixin:
         # Should have broadcast the clear
         clear_broadcasts = [
             b
-            for b in view.wire.presence_broadcasts
+            for b in view.presence_broadcasts
             if b.get("kwargs", {}).get("action") == "presence_typing" and b.get("kwargs", {}).get("state") == "online"
         ]
         assert len(clear_broadcasts) >= 1
@@ -417,7 +415,7 @@ class TestPresenceIntegration:
         await producer.component.presence_set_typing(typing=True)
 
         # Get the broadcast
-        broadcasts = producer.wire.presence_broadcasts
+        broadcasts = producer.presence_broadcasts
         assert len(broadcasts) == 1
 
         # Simulate tracker receiving the notification
@@ -446,7 +444,7 @@ class TestPresenceIntegration:
         await producer.component.presence_set_typing(typing=True)
 
         # Tracker receives typing notification
-        broadcast = producer.wire.presence_broadcasts[0]
+        broadcast = producer.presence_broadcasts[0]
         await tracker.component.notification("presence.room.1", **broadcast["kwargs"])
 
         assert tracker.component._presence_registry["alice"].is_typing()
@@ -455,9 +453,7 @@ class TestPresenceIntegration:
         await asyncio.sleep(0.15)
 
         # Get the clear broadcast
-        clear_broadcasts = [
-            b for b in producer.wire.presence_broadcasts if b.get("kwargs", {}).get("state") == "online"
-        ]
+        clear_broadcasts = [b for b in producer.presence_broadcasts if b.get("kwargs", {}).get("state") == "online"]
         assert len(clear_broadcasts) >= 1
 
         # Tracker receives clear notification

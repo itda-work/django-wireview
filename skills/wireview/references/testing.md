@@ -38,7 +38,8 @@ async def test_increment():
 | `await view.follow_push()` | push·replace 뒤에 클라이언트가 하는 `params_changed`를 돌린다 |
 | `view.stream_html(name)` | 스트림으로 나간 아이템 HTML (`stream_items`·`stream_ops`도 있다) |
 | `view.is_frozen` | `freeze()` 여부 |
-| `view.wire.broadcasts` | 이 컴포넌트가 낸 브로드캐스트 |
+| `view.broadcasts` | 이 컴포넌트가 낸 브로드캐스트 |
+| `view.presence_broadcasts` | 그중 `PresenceMixin`이 낸 것(입장·퇴장·타이핑). 항목마다 `kwargs`에 `action` |
 | `view.clear_messages()` / `view.clear_dom_actions()` | 다음 단계 전에 비운다. 필터 전환처럼 `stream()`을 다시 부르는 핸들러를 검사하기 전에 필수 |
 
 `ComponentTestCase`를 상속하면 pytest·unittest 클래스 안에서 같은 유틸을 쓸 수 있다.
@@ -122,7 +123,7 @@ async def test_paging():
 - **핸들러의 상태 전이**: 이벤트 → 필드 값. 가장 값싸고 가장 많이 잡는다.
 - **권한**: 남의 객체 id를 넘겼을 때 거부되는지. 클라이언트 인자는 신뢰할 수 없다.
 - **렌더 결과**: `view.render()`에 기대하는 텍스트·클래스가 있는지.
-- **브로드캐스트**: 알림을 보내야 하는 핸들러가 실제로 보냈는지 (`view.wire.broadcasts`).
+- **브로드캐스트**: 알림을 보내야 하는 핸들러가 실제로 보냈는지 (`view.broadcasts`).
 
 브라우저가 실제로 필요한 것(idiomorph 갱신, 업로드 진행률, JS Hook)만 Playwright E2E로 남긴다.
 

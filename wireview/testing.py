@@ -34,6 +34,7 @@ from django.urls import Resolver404
 from .core.meta import WireviewMeta
 from .core.rendered import PROTOCOL_VERSION
 from .core.session import SessionView
+from .deprecation import warn_deprecated
 
 if t.TYPE_CHECKING:
     from django.contrib.auth.base_user import AbstractBaseUser
@@ -154,12 +155,14 @@ class MockWireviewMeta(WireviewMeta):
 
     @property
     def broadcasts(self) -> list[dict[str, t.Any]]:
-        """Get all broadcast messages for assertions."""
+        """Deprecated: ``view.broadcasts``. ``self.wire`` is not public beyond its navigation (#114)."""
+        warn_deprecated("view.wire.broadcasts", "view.broadcasts")
         return self._mock_channel_layer.sent_messages
 
     @property
     def presence_broadcasts(self) -> list[dict[str, t.Any]]:
-        """Get all presence-related broadcasts for assertions."""
+        """Deprecated: ``view.presence_broadcasts`` (#114)."""
+        warn_deprecated("view.wire.presence_broadcasts", "view.presence_broadcasts")
         return self._mock_channel_layer.get_presence_broadcasts()
 
     def clone(self) -> "MockWireviewMeta":
@@ -254,6 +257,20 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         """Access the mock wire for inspecting sent messages."""
         # Use the component's wire, which is the same MockWireviewMeta we passed in
         return t.cast(MockWireviewMeta, self._component.wire)
+
+    @property
+    def broadcasts(self) -> list[dict[str, t.Any]]:
+        """What the component broadcast, in order. Each has ``channel`` and ``kwargs``.
+
+        ``mount()`` stands in for the channel layer, so a broadcast is recorded here
+        instead of reaching anyone.
+        """
+        return self.wire._mock_channel_layer.sent_messages
+
+    @property
+    def presence_broadcasts(self) -> list[dict[str, t.Any]]:
+        """The broadcasts a ``PresenceMixin`` sent: join, leave, typing, sync."""
+        return self.wire._mock_channel_layer.get_presence_broadcasts()
 
     @property
     def sent_messages(self) -> list[dict[str, t.Any]]:

@@ -376,7 +376,7 @@ async def test_stream_state():
 ## Presence 테스트
 
 Presence 알림은 클라이언트가 아니라 채널로 가는 브로드캐스트다. 그래서 `view.sent_messages`가 아니라
-`view.wire.presence_broadcasts`에 남는다. 항목마다 `kwargs`에 `action`과 사용자 정보가 있다.
+`view.presence_broadcasts`에 남는다. 항목마다 `kwargs`에 `action`과 사용자 정보가 있다.
 
 ### Presence 메시지
 
@@ -389,7 +389,7 @@ async def test_presence_join():
 
     # joined()에서 presence_join() 호출됨
     joins = [
-        b["kwargs"] for b in view.wire.presence_broadcasts
+        b["kwargs"] for b in view.presence_broadcasts
         if b["kwargs"]["action"] == "presence_join"
     ]
     assert joins[0]["username"] == "alice"
@@ -407,7 +407,7 @@ async def test_typing_indicator():
     await view.call("on_typing")
 
     typing = [
-        b["kwargs"] for b in view.wire.presence_broadcasts
+        b["kwargs"] for b in view.presence_broadcasts
         if b["kwargs"]["action"] == "presence_typing"
     ]
     assert typing[-1]["state"] == "typing"

@@ -39,6 +39,7 @@ from wireview import Component, LiveComponent, JS, mount
 | 컴포넌트 클래스 설정 | `class Meta:`의 키(`ComponentOptions`의 필드)와 `get_subscriptions()` |
 | `self.wire` | `params`, `redirect_to`, `replace_to`, `push_to`만. 나머지는 프레임워크 내부이고, 같은 일은 `Component`의 메서드(`put_flash`, `push_js`, `push_title`, `defer` 등)로 한다 |
 | 클라이언트 | `window.wireview`의 문서화된 멤버, `wire-*` DOM 속성, `wireview-*` CSS 클래스, `wireview:*` DOM 이벤트 |
+| 테스트 도구 | `mount()`가 돌려주는 `MountedComponent`의 문서화된 멤버([testing](./features/testing.md)). 그 `view.wire`는 컴포넌트의 `self.wire`와 같은 범위만 공개다 |
 
 ### 와이어 프로토콜
 
