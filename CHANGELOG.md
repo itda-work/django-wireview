@@ -10,6 +10,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- Every supported row of `docs/FEATURE-GAP.md` names the tests that run the feature, and
+  `tests/test_feature_gap.py` fails when a row has none, names one that does not exist, or the
+  overview's counts drift from the table. The audit that filled it found and fixed the defects
+  below; two it could not fix in place are #111 and #112 (#110).
+
 ### Changed
 
 - `MountedComponent.call()` meets the checks a browser's event meets: a name a client cannot
