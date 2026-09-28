@@ -289,7 +289,11 @@ class HistoryCache {
       // it neither paints nor joins its components while the browser is still
       // fetching the replacement document.
       navGate.abandon();
-      document.location.assign(response.url || url);
+      // replace, not assign: the navigation already has its history entry (a push
+      // made one, a popstate returned to one). assign added a second whenever a
+      // redirect made the URL differ, and Back then led to the redirecting URL,
+      // which redirected forward again (#110).
+      document.location.replace(response.url || url);
       return false;
     }
     // Only now. `newLocation` is what makes the client tell the server its new

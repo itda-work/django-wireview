@@ -921,6 +921,13 @@ class WireviewComponent {
         }
         boost.navEvent.sendNewContent();
 
+        // A render that arrived before a disconnect and is painted after it: the
+        // server's HTML has no idea the page is offline
+        if (!connection.isOpen) {
+          el.classList.add("wireview-disconnected");
+          el.dataset.isLive = "false";
+        }
+
         // Call updated on all hooks (and scan for new ones)
         this.hookManager.updated();
 
@@ -991,6 +998,12 @@ class WireviewComponent {
    * join carries its state and its lifecycle runs with the parent's render.
    */
   join() {
+    // Only on an open socket. A morph queued before a disconnect can run after it,
+    // and its newContent re-runs joinAllComponents: joining then marked the element
+    // live and sent a join nowhere, and the reconnect skipped the element as
+    // already live -- no join, events dropped, hooks never told (#110). The open
+    // handler joins everything once the socket is back.
+    if (!connection.isOpen) return;
     const element = /** @type {HTMLElement|null} */ (this.getElemenet());
     if (element && element.dataset.isLive === "false") {
       const parentEl = element?.parentElement?.closest("[wireview-component]");

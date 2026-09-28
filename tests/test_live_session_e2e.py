@@ -91,6 +91,32 @@ class TestBoundaryNavigation:
 
         assert not probe_survived(page), "leaving ls-members must hand the page to the browser"
 
+    def test_crossing_the_boundary_adds_one_history_entry(self, page, server):
+        """The boosted click pushes an entry before it learns the page is across the
+        boundary; the full load that follows must take that entry's place, not add
+        another. With two, Back lands on the same page again -- or, when the browser
+        happens to keep the old document in its back-forward cache, on the old
+        body under the new URL (#110)."""
+        page.goto(f"{server}/livesession/sign-in/?next=/livesession/public/")
+        wait_live(page)
+        before = page.evaluate("history.length")
+
+        page.locator('[data-testid="to-members"]').click()
+        wait_for_page(page, "members")
+
+        assert page.evaluate("history.length") == before + 1
+
+    def test_a_redirect_across_the_boundary_adds_one_history_entry(self, page, server):
+        # The load goes to where the redirect ended, not the URL that was pushed
+        page.goto(f"{server}/livesession/sign-in/?next=/livesession/members/")
+        wait_live(page)
+        before = page.evaluate("history.length")
+
+        page.locator('[data-testid="to-bounce"]').click()
+        wait_for_page(page, "public")
+
+        assert page.evaluate("history.length") == before + 1
+
     def test_going_back_across_the_boundary_reloads(self, page, server):
         """popstate morphs the cached body before the fetch answers, so the
         boundary has to be settled from the history entry itself."""

@@ -24,6 +24,14 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A page reconnects every component after a drop. A render painted just after the socket
+  closed re-ran the joins on the dead socket, marking the elements live; the reconnect then
+  skipped them, so they never joined again and their events were dropped. A component joins
+  only on an open socket, and a late paint keeps the offline marks (#110).
+- Leaving a `live_session` through a redirect adds one history entry, not two. The full page
+  load that hands the page over used `location.assign`, which added an entry for the
+  redirect's destination after the one the boosted click had pushed; Back then went to the
+  redirecting URL, which sent the browser forward again (#110).
 - `wireview_stubs` lists in `__wireview_handlers__`, and `wireview_lsp` marks `is_handler` on,
   only what a client can call -- the check every event meets. Both counted a mixin's framework
   methods (`presence_join`) as handlers. `wireview_stubs --app` takes an app's label or name;
