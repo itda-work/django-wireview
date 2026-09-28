@@ -13,8 +13,8 @@
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 109 |
-| 🟡 부분 지원 | 0 |
+| ✅ 지원 | 108 |
+| 🟡 부분 지원 | 1 |
 | 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 3 |
 | ⚪ 설계상 제외 | 2 |
 
@@ -214,12 +214,12 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
-| HTML Diff | ✅ 바이너리 | ✅ Phoenix 스타일 (GAP-024로 부분 diff 실동작) | ✅ |  |
-| skip_render | ✅ | `skip_render()` | ✅ |  |
-| force_render | ✅ | `force_render()` | ✅ |  |
-| **temporary_assigns** | ✅ | ✅ `Meta.temporary_assigns` | ✅ |  |
+| HTML Diff | ✅ 바이너리 | ✅ Phoenix 스타일 (GAP-024로 부분 diff 실동작) | ✅ | `tests/test_diff_stability.py::test_live_render_diff_is_partial_after_state_change`<br>`tests/test_live_component_render.py::test_a_changed_prop_updates_and_rerenders_only_the_children_it_reaches` |
+| skip_render | ✅ | `skip_render()` | ✅ | `tests/test_render_control.py::test_skip_render_answers_without_a_diff_and_the_next_render_catches_up` |
+| force_render | ✅ | `force_render()` | ✅ | `tests/test_render_control.py::test_force_render_sends_a_full_render_with_nothing_changed` |
+| **temporary_assigns** | ✅ | `Meta.temporary_assigns` | 🟡 다음 렌더가 초기화된 필드를 화면에서 비운다 ([#111](https://github.com/itda-work/django-wireview/issues/111)) | `tests/test_render_control.py::test_temporary_assigns_are_cleared_after_a_live_render`<br>`tests/test_render_control.py::test_the_next_render_empties_a_cleared_temporary_assign` |
 | Sticky components | ✅ | ❌ | 🟠 GAP-033 ([#72](https://github.com/itda-work/django-wireview/issues/72)) |  |
-| Comprehensions | ✅ 키 기반 | ✅ 내용 기반 짝짓기 (GAP-025, GAP-030). 템플릿 키 없이 이동·삽입·삭제가 그 항목만의 페이로드 | ✅ |  |
+| Comprehensions | ✅ 키 기반 | ✅ 내용 기반 짝짓기 (GAP-025, GAP-030). 템플릿 키 없이 이동·삽입·삭제가 그 항목만의 페이로드 | ✅ | `tests/test_comprehension_moves.py::test_a_client_that_names_the_version_gets_moves`<br>`tests/test_comprehension_moves_e2e.py::test_moving_rows_ends_in_the_same_dom_with_either_form` |
 
 ### 2.13 Testing ✅
 
@@ -268,7 +268,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | ~~GAP-003~~ | ~~**Function Components**~~ | ~~상태 없는 재사용 가능 템플릿 함수~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-004~~ | ~~**handle_params**~~ | ~~URL 파라미터 변경 시 콜백~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-005~~ | ~~**LiveComponent**~~ | ~~독립 상태를 가진 중첩 컴포넌트~~ | ~~상~~ | ✅ 완료 |
-| ~~GAP-006~~ | ~~**temporary_assigns**~~ | ~~렌더 후 메모리 자동 해제~~ | ~~하~~ | ✅ 완료 |
+| GAP-006 | **temporary_assigns** | 렌더 후 메모리 자동 해제. 다음 렌더가 화면에서 비우지 않게 | 중 | 🟡 [#111](https://github.com/itda-work/django-wireview/issues/111) |
 | ~~GAP-024~~ | ~~**Stable HTML Diff**~~ | ~~서명 상태를 dynamic 파트로 옮겨 부분 diff 활성화, 상태 압축 서명~~ | ~~하~~ | ✅ 완료 |
 
 ### 🟠 P1: Important (기능적 차이)
@@ -398,7 +398,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 │  Phase 4: Performance & Developer Experience                │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  GAP-006: temporary_assigns ✅ 완료                         │
+│  GAP-006: temporary_assigns 🟡 #111                         │
 │  └─ Meta.temporary_assigns                                 │
 │                                                             │
 │  GAP-007: External Uploads ✅ 완료                          │

@@ -16,7 +16,7 @@ class MessageList(Component):
 
     async def joined(self):
         # 10,000개의 메시지 로드 → ~10MB 메모리 점유
-        self.messages = await Message.objects.all()[:10000]
+        self.messages = [row async for row in Message.objects.all()[:10000]]
         # 이 데이터는 컴포넌트가 종료될 때까지 메모리에 유지됨
 ```
 
@@ -34,11 +34,20 @@ class MessageList(Component):
     messages: list[Message] = []
 
     async def joined(self):
-        self.messages = await Message.objects.all()[:10000]
+        self.messages = [row async for row in Message.objects.all()[:10000]]
         # 렌더링 완료 후 → self.messages = [] (메모리 해제)
 ```
 
-클라이언트에는 이미 HTML이 전송되었으므로 화면에는 10,000개의 메시지가 정상적으로 표시됩니다.
+클라이언트에는 이미 HTML이 전송되었으므로 화면에는 10,000개의 메시지가 표시됩니다.
+
+**단, 다음 렌더까지만이다.** 그 뒤의 렌더는 무엇 때문이든 초기화된 빈 목록을 그리므로 화면에서도
+목록이 사라진다. Phoenix는 초기화를 변경으로 치지 않아 그 부분을 다시 보내지 않지만, wireview는
+아직 그렇지 않다([#111](https://github.com/itda-work/django-wireview/issues/111)). 그래서 지금은
+
+- 목록을 그리는 렌더마다 다시 불러오거나(아래 "이벤트 핸들러에서 다시 로드"),
+- 화면에 계속 남아야 하는 목록이면 [Streams](../tutorials/06-streams-api.md)를 쓴다.
+
+또 그 렌더의 서명 상태(`data-state`)에는 필드 값이 그대로 실린다. 큰 목록이면 페이지도 그만큼 커진다.
 
 ---
 
@@ -115,7 +124,7 @@ class ProductList(Component):
     current_page: int = 1
 
     async def joined(self):
-        self.products = await Product.objects.all()[:100]
+        self.products = [row async for row in Product.objects.all()[:100]]
         self.total_count = await Product.objects.acount()
 ```
 
@@ -158,7 +167,7 @@ class MessageList(Component):
 
     async def _load_messages(self):
         offset = (self.page - 1) * 50
-        self.messages = await Message.objects.all()[offset:offset + 50]
+        self.messages = [row async for row in Message.objects.all()[offset:offset + 50]]
 ```
 
 ---
@@ -256,7 +265,7 @@ class BoardList(Component):
 
     async def _load_posts(self):
         offset = (self.page - 1) * self.per_page
-        self.posts = await Post.objects.order_by("-created")[offset:offset + self.per_page]
+        self.posts = [row async for row in Post.objects.order_by("-created")[offset:offset + self.per_page]]
         total = await Post.objects.acount()
         self.total_pages = (total + self.per_page - 1) // self.per_page
 ```
@@ -282,7 +291,7 @@ class AnalyticsDashboard(Component):
     async def _load_data(self):
         # 대용량 데이터
         self.chart_data = await self._fetch_chart_data()
-        self.recent_events = await Event.objects.order_by("-timestamp")[:100]
+        self.recent_events = [row async for row in Event.objects.order_by("-timestamp")[:100]]
         # 작은 요약 데이터
         self.summary = await self._calculate_summary()
 ```

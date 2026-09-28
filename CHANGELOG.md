@@ -18,6 +18,9 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- `docs/features/temporary-assigns.md` says what happens: the next render, whatever it is for,
+  empties a cleared field on the page too, and the field rides in that render's signed state.
+  FEATURE-GAP marks `temporary_assigns` partial until #111 (#110).
 - A `handle_async` that raises recovers like a raising handler: logged, and the component is
   joined again from its last rendered state. It used to vanish inside the task -- not logged,
   and the render skipped (#110).

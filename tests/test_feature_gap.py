@@ -26,7 +26,7 @@ DOC = ROOT / "docs" / "FEATURE-GAP.md"
 # Sections whose rows have not been audited yet (#110). A row here is expected to
 # lack evidence; once its section is filled the xfail turns into a strict XPASS
 # and the section must come off this list.
-UNAUDITED = {"2.12", "2.13", "2.14"}
+UNAUDITED = {"2.13", "2.14"}
 
 SECTION = re.compile(r"^### (2\.\d+) ")
 DIVIDER = re.compile(r"^\|[-:| ]+\|$")
