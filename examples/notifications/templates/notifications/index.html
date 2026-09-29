@@ -4,9 +4,26 @@
 
 {% block title %}Notification Center{% endblock %}
 {% block content %}
-  {% component 'XNotificationCreator' id="creator" %}
-  <div class="creator-card">
-    <h2>All Notifications</h2>
-    {% component 'XNotificationList' id="list" %}
-  </div>
+  {% if user.is_authenticated %}
+    {% component 'XNotificationCreator' id="creator" %}
+    <div class="creator-card">
+      <h2>My Notifications</h2>
+      {% component 'XNotificationList' id="list" %}
+    </div>
+  {% else %}
+    <div class="creator-card">
+      <h2>Sign in</h2>
+      <p>
+        Notifications belong to a user. Sign in here as one person and in a private window as the other: windows that share cookies share a user.
+      </p>
+      <div class="type-buttons">
+        {% for username in demo_users %}
+          <form method="post" action="{% url 'notifications:sign_in' username %}">
+            {% csrf_token %}
+            <button type="submit" class="type-button">Sign in as {{ username }}</button>
+          </form>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
 {% endblock %}

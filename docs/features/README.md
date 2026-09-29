@@ -17,6 +17,7 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 | **Streams** | 대용량 리스트 실시간 조작 | [튜토리얼](../tutorials/06-streams-api.md) |
 | **Presence** | 사용자 온라인 상태 추적 | [튜토리얼](../tutorials/07-presence-api.md) |
 | **Auto Broadcast** | Django ORM 변경 자동 알림 | 준비 중 |
+| **플래시와 토스트** | `put_flash()`, `[wire-flash]`, 다른 사용자에게 보내는 토스트 | [문서](./flash.md) |
 
 ## 비동기 처리
 

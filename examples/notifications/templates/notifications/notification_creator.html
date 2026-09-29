@@ -1,7 +1,20 @@
 {% load wireview %}
 
 <div {% tag_header %} class="creator-card">
-  <h2>Create New Notification</h2>
+  <h2>Send a Notification</h2>
+  <div class="form-group">
+    <label for="recipient">To</label>
+    <select name="recipient" id="recipient" {% on 'change' 'set_recipient' %}>
+      <option value="" {% cond {'selected': not recipient} %}>Me
+      </option>
+      {% for username in this.usernames %}
+        {% if username != this.user.username %}
+          <option value="{{ username }}" {% cond {'selected': recipient == username} %}>{{ username }}
+          </option>
+        {% endif %}
+      {% endfor %}
+    </select>
+  </div>
   <div class="form-group">
     <label for="title">Title</label>
     <input type="text"
@@ -45,8 +58,19 @@
   </div>
   <button type="button"
           class="submit-btn"
-          {% cond {'disabled': not title} %}
+          data-testid="send-notification"
+          {% cond {'disabled': not this.can_send} %}
           {% on 'click' 'create' %}>
-    Create Notification
+    Send Notification
   </button>
+  <button type="button"
+          class="submit-btn"
+          data-testid="send-toast"
+          {% cond {'disabled': not this.can_send} %}
+          {% on 'click' 'send_toast' %}>
+    Send Toast
+  </button>
+  <p style="color: #65676b; font-size: 0.9rem;">
+    A notification is stored and waits in the list. A toast shows on the pages open right now and is gone.
+  </p>
 </div>

@@ -289,6 +289,61 @@
         background: #bcc0c4;
         cursor: not-allowed;
       }
+      /* Toasts: put_flash() appends them to the [wire-flash] element */
+      .toasts {
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        z-index: 200;
+      }
+      .wireview-flash {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        min-width: 260px;
+        padding: 12px 16px;
+        border-radius: 8px;
+        background: white;
+        border-left: 4px solid #1877f2;
+        box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+      }
+      .wireview-flash-success { border-left-color: #1e8e3e; }
+      .wireview-flash-warning { border-left-color: #f9a825; }
+      .wireview-flash-error { border-left-color: #d93025; }
+      .wireview-flash-message {
+        flex: 1;
+      }
+      .wireview-flash-dismiss {
+        background: none;
+        border: none;
+        font-size: 1.2rem;
+        cursor: pointer;
+        color: #65676b;
+      }
+      .wireview-flash-enter {
+        animation: fade-in 200ms;
+      }
+      .wireview-flash-exit {
+        animation: fade-out 200ms forwards;
+      }
+      .user-bar {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+      }
+      .user-bar form {
+        margin: 0;
+      }
+      .link-button {
+        background: none;
+        border: none;
+        color: #1877f2;
+        cursor: pointer;
+        font-size: 0.9rem;
+      }
       /* Animations */
       @keyframes pulse {
         0%, 100% { transform: scale(1); }
@@ -311,8 +366,19 @@
   <body>
     <header class="header">
       <h1>Notification Center Demo</h1>
-      {% component 'XNotificationBell' id="bell" %}
+      {% if user.is_authenticated %}
+        <div class="user-bar">
+          <span data-testid="signed-in-as">{{ user.username }}</span>
+          <form method="post" action="{% url 'notifications:sign_out' %}">
+            {% csrf_token %}
+            <button type="submit" class="link-button">Sign out</button>
+          </form>
+          {% component 'XNotificationBell' id="bell" %}
+        </div>
+      {% endif %}
     </header>
+    {# Outside every component, so no render morphs a toast away #}
+    <div class="toasts" wire-flash></div>
     <main class="main">
       {% block content %}{% endblock %}
     </main>

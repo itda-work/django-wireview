@@ -2,39 +2,51 @@
 Notifications App Components
 
 This module demonstrates wireview's advanced communication patterns:
+- Per-user channels from get_subscriptions() and self.user
+- mutation() for stored notifications, notification() for toasts
 - broadcast() / abroadcast() for sending messages
-- notification() hook for receiving custom events
 - push_js() with JS() command builder
 - Streams API for notification list
 - JS().show(), JS().hide(), JS().toggle(), JS().transition()
 """
 
+from django.contrib.auth import get_user_model
+
 from wireview import JS, Component, ModelAction
 
 from .models import Notification, NotificationType
+from .services import anotify, atoast, notifications_channel, refresh_channel, toast_channel
 
 
 class XNotificationBell(Component):
     """
-    Notification bell icon with unread count badge.
+    Notification bell icon with unread count badge, and where toasts land.
 
     Demonstrates:
+    - get_subscriptions() naming the signed-in user's channels
     - notification() hook for custom events
-    - broadcast() to send messages to other components
+    - put_flash() for a toast someone else sent
     - push_js() with JS() commands
     - Dynamic badge updates
     """
 
     class Meta:
         template_name = "notifications/notification_bell.html"
-        subscriptions = {"notifications.notification", "notifications-refresh"}
 
     is_open: bool = False
 
+    def get_subscriptions(self) -> set[str]:
+        # Only this user's channels. An anonymous visitor has none.
+        if not self.user.is_authenticated:
+            return set()
+        return {notifications_channel(self.user), refresh_channel(self.user), toast_channel(self.user)}
+
     @property
     def unread_count(self):
-        """Count of unread notifications."""
-        return Notification.objects.filter(is_read=False).count()
+        """Count of this user's unread notifications."""
+        if not self.user.is_authenticated:
+            return 0
+        return Notification.objects.filter(user=self.user, is_read=False).count()
 
     async def toggle_dropdown(self):
         """
@@ -65,9 +77,13 @@ class XNotificationBell(Component):
         """
         Handle custom notifications.
 
-        This is called when broadcast() sends to 'notifications-refresh'.
+        A toast is shown and forgotten: the bell itself does not change. The
+        refresh channel is for changes auto-broadcast does not see.
         """
-        if channel == "notifications-refresh":
+        if channel == toast_channel(self.user):
+            await self.put_flash(kwargs["flash_type"], kwargs["message"])
+            self.skip_render()
+        elif channel == refresh_channel(self.user):
             self.force_render()
 
 
@@ -84,11 +100,26 @@ class XNotificationList(Component):
 
     class Meta:
         template_name = "notifications/notification_list.html"
-        subscriptions = {"notifications.notification"}
+
+    def get_subscriptions(self) -> set[str]:
+        if not self.user.is_authenticated:
+            return set()
+        return {notifications_channel(self.user)}
+
+    def _mine(self):
+        """This user's notifications. Every handler starts here.
+
+        The ids a handler receives come from the browser, and a browser can send
+        any id; filtering by the owner is what keeps one user from reading or
+        deleting another's notifications.
+        """
+        if not self.user.is_authenticated:
+            return Notification.objects.none()
+        return Notification.objects.filter(user=self.user)
 
     async def joined(self):
         """Load initial notifications using Streams."""
-        notifications = [n async for n in Notification.objects.all()[:20]]
+        notifications = [n async for n in self._mine()[:20]]
         await self.stream("notifications", notifications)
 
     async def mutation(
@@ -123,64 +154,88 @@ class XNotificationList(Component):
         # Animate out
         await self.push_js(JS().transition(f"#notifications-{notification_id}", ("slide-out-right", 200)))
 
-        # Delete from database
-        await Notification.objects.filter(id=notification_id).adelete()
-
-        # Broadcast refresh to update bell badge
-        await self.broadcast("notifications-refresh")
+        # Delete from database. The delete is announced on the user's channel,
+        # which updates the bell as well.
+        await self._mine().filter(id=notification_id).adelete()
 
     async def mark_as_read(self, notification_id: int):
         """Mark a notification as read."""
-        await Notification.objects.filter(id=notification_id).aupdate(is_read=True)
+        if not await self._mine().filter(id=notification_id).aupdate(is_read=True):
+            return
 
         # Update styling
         await self.push_js(JS().add_class(f"#notifications-{notification_id}", "is-read"))
 
-        # Broadcast to update badge
-        await self.broadcast("notifications-refresh")
+        # aupdate() sends no signal, so the bell has to be told
+        await self.broadcast(refresh_channel(self.user))
 
     async def mark_all_read(self):
         """Mark all notifications as read."""
-        await Notification.objects.filter(is_read=False).aupdate(is_read=True)
+        if not await self._mine().filter(is_read=False).aupdate(is_read=True):
+            return
 
         # Update all items
         await self.push_js(JS().add_class(f"#{self.id} .notification-item", "is-read"))
 
-        # Broadcast refresh
-        await self.broadcast("notifications-refresh")
+        # aupdate() sends no signal, so the bell has to be told
+        await self.broadcast(refresh_channel(self.user))
 
     async def clear_all(self):
         """Delete all notifications."""
-        await Notification.objects.all().adelete()
+        await self._mine().adelete()
 
         # Clear the stream
         await self.stream("notifications", [])
 
-        # Broadcast refresh
-        await self.broadcast("notifications-refresh")
-
 
 class XNotificationCreator(Component):
     """
-    Form to create new notifications (for demo purposes).
+    Form that sends a notification or a toast to any user (for demo purposes).
 
     Demonstrates:
     - Form handling
-    - Creating notifications that trigger real-time updates
+    - Creating notifications that trigger real-time updates on the recipient's pages
+    - Sending a toast that is shown and never stored
     - push_js() for form reset
     """
 
     class Meta:
         template_name = "notifications/notification_creator.html"
 
+    recipient: str = ""
     title: str = ""
     message: str = ""
     type: str = NotificationType.INFO
 
+    @property
+    def usernames(self) -> list[str]:
+        """Who can be sent to: everyone, so two signed-in windows can talk."""
+        return list(get_user_model().objects.order_by("username").values_list("username", flat=True))
+
+    async def _recipient(self):
+        """The chosen user, or the sender when none is chosen."""
+        if not self.recipient:
+            return self.user if self.user.is_authenticated else None
+        return await get_user_model().objects.filter(username=self.recipient).afirst()
+
+    async def set_recipient(self, recipient: str):
+        self.recipient = recipient
+
+    @property
+    def can_send(self) -> bool:
+        return bool(self.title.strip())
+
     async def set_title(self, title: str):
-        """Set title from input."""
+        """Set title from input.
+
+        The input already shows what was typed, so most keystrokes need no
+        render -- but the send buttons are disabled until there is a title, and
+        a skipped render would leave them disabled.
+        """
+        could_send = self.can_send
         self.title = title
-        self.skip_render()
+        if self.can_send == could_send:
+            self.skip_render()
 
     async def set_message(self, message: str):
         """Set message from input."""
@@ -189,7 +244,8 @@ class XNotificationCreator(Component):
 
     async def set_type(self, type: str):
         """Set notification type."""
-        self.type = type
+        if type in NotificationType.values:
+            self.type = type
 
     async def create(self):
         """
@@ -197,14 +253,14 @@ class XNotificationCreator(Component):
 
         The model subscription will automatically update the list.
         """
-        if not self.title.strip():
+        if not self.can_send:
+            return
+        recipient = await self._recipient()
+        if recipient is None:
+            await self.put_flash("error", "Choose who gets it.")
             return
 
-        await Notification.objects.acreate(
-            title=self.title.strip(),
-            message=self.message.strip(),
-            type=self.type,
-        )
+        await anotify(recipient, self.title.strip(), self.message.strip(), self.type)
 
         # Reset form
         self.title = ""
@@ -218,3 +274,21 @@ class XNotificationCreator(Component):
             .set_value(f"#{self.id} textarea[name=message]", "")
             .focus(f"#{self.id} input[name=title]")
         )
+
+    async def send_toast(self):
+        """
+        Show the title to the recipient right now, without storing anything.
+
+        Nothing is written, so auto-broadcast has nothing to announce; the toast
+        goes on the recipient's channel directly. The sender's own form is
+        unchanged, which is why this render is skipped.
+        """
+        if not self.can_send:
+            return
+        recipient = await self._recipient()
+        if recipient is None:
+            await self.put_flash("error", "Choose who gets it.")
+            return
+
+        await atoast(recipient, self.title.strip(), self.type)
+        self.skip_render()

@@ -4,6 +4,7 @@ Notifications App Models
 Notification model for real-time notification demonstration.
 """
 
+from django.conf import settings
 from django.db import models
 
 
@@ -17,8 +18,12 @@ class NotificationType(models.TextChoices):
 
 
 class Notification(models.Model):
-    """A notification that can be shown to users."""
+    """A notification kept for one user until they read or dismiss it."""
 
+    # The foreign key is what makes the notifications per user: with
+    # AUTO_BROADCAST.related, saving a row announces it on the recipient's own
+    # channel, "auth.user.<pk>.notifications" ({related model}.{pk}.{related_name}).
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications")
     title = models.CharField(max_length=100)
     message = models.TextField()
     type = models.CharField(

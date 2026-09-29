@@ -11,7 +11,7 @@
 | [quiz](./quiz/) | 컴포넌트 상태로 굴리는 상태 머신 | [13](../docs/tutorials/13-quiz-app.md) |
 | [chat](./chat/) | Streams와 Presence | [04](../docs/tutorials/04-chat-app.md) |
 | [dashboard](./dashboard/) | AsyncResult로 느린 조회를 미룬다 | [05](../docs/tutorials/05-dashboard.md) |
-| [notifications](./notifications/) | 이름 붙인 채널로 컴포넌트끼리 알린다 | [14](../docs/tutorials/14-notifications.md) |
+| [notifications](./notifications/) | 알림은 한 사용자에게 간다. 저장하는 알림과 저장하지 않는 토스트 | [14](../docs/tutorials/14-notifications.md) |
 | [livecomp](./livecomp/) | 연결을 공유하는 중첩 컴포넌트 | [15](../docs/tutorials/15-live-components.md) |
 | [slots](./slots/) | 내용을 호출자가 채우는 레이아웃 컴포넌트 | [기능 문서](../docs/features/slots.md) |
 | [hooks](./hooks/) | 브라우저만 할 수 있는 일을 컴포넌트에 붙인다 | [기능 문서](../docs/features/hooks.md) |

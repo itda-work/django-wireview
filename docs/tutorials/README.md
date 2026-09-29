@@ -20,7 +20,7 @@ django-wireview 단계별 학습 가이드입니다.
 ### 고급 (Advanced)
 - [04. Chat 앱](04-chat-app.md) - Streams API, Presence API, 라이프사이클 훅
 - [05. Dashboard](05-dashboard.md) - AsyncResult, 복합 컴포지션
-- [14. Notifications](14-notifications.md) - broadcast, JS 명령어 체이닝, 알림 센터
+- [14. Notifications](14-notifications.md) - 사용자별 채널, 알림과 토스트, broadcast, JS 명령어 체이닝
 - [15. LiveComponent](15-live-components.md) - 중첩 컴포넌트, 부모-자식 통신
 
 ### 심화 (Deep Dive)
@@ -70,7 +70,7 @@ CI가 매번 돌리므로 문서와 달리 조용히 낡지 않습니다. 각 �
 | [rating](../../examples/rating/) | URL 상태, 키보드 이벤트 | [11](11-rating-app.md) |
 | [search](../../examples/search/) | 디바운스, JS 명령 | [12](12-live-search.md) |
 | [quiz](../../examples/quiz/) | 상태 머신, 리더보드 | [13](13-quiz-app.md) |
-| [notifications](../../examples/notifications/) | 브로드캐스트, JS 체이닝 | [14](14-notifications.md) |
+| [notifications](../../examples/notifications/) | 사용자별 알림과 토스트, 브로드캐스트 | [14](14-notifications.md) |
 | [livecomp](../../examples/livecomp/) | LiveComponent, 부모-자식 | [15](15-live-components.md) |
 | [slots](../../examples/slots/) | 슬롯 합성 | [기능 문서](../features/slots.md) |
 

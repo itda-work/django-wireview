@@ -20,6 +20,9 @@ The django-reactor era changelog (2.x) is preserved in
   `tests/test_feature_gap.py` fails when a row has none, names one that does not exist, or the
   overview's counts drift from the table. The audit that filled it found and fixed the defects
   below; two it could not fix in place are #111 and #112 (#110).
+- `docs/features/flash.md`: `put_flash()`, the `[wire-flash]` container and its classes, and
+  where a flash ends and a toast begins -- a toast is a flash sent from somewhere else, over a
+  channel the recipient's component subscribes to. GAP-011 shipped without a guide (#41).
 
 ### Deprecated
 
@@ -59,6 +62,13 @@ The django-reactor era changelog (2.x) is preserved in
   belonged to that poll or question (and quiz scored the same answer twice); the notifications
   example's `"pulse 500ms"` transition, left over from the #110 guard, raised on every new
   notification. Their tests now render and try foreign ids (#113).
+- Examples: notifications belong to a user. Everyone saw everyone's notifications, and a
+  handler deleted or marked read whatever id the browser sent. Components now listen on the
+  signed-in user's channels only -- the stored notification on auto-broadcast's related
+  channel `auth.user.<pk>.notifications`, the toast on `toasts.user.<pk>` -- and every handler
+  starts from the user's own rows. The send buttons never enabled in a browser: `set_title`
+  skipped every render, so the one that should drop `disabled` never went out. A two-browser
+  E2E covers both (#41).
 - The documentation's code runs. Every Python block of the user-facing docs was executed by a
   second model and each finding reproduced before it was fixed: about seventy, across the
   tutorials (03-06, 08-10, 12-15), the feature guides, README, ARCHITECTURE, PERFORMANCE,
