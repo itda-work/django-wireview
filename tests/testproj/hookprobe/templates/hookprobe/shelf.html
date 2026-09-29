@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  {% if show %}
+    {% component 'HookProbeRooted' id="rooted" %}
+  {% endif %}
+  <button data-testid="take-away" {% on "click" "take_away" %}>take away</button>
+</div>

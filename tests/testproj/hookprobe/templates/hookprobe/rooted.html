@@ -1,0 +1,6 @@
+{% load wireview %}
+
+<div {% tag_header %} wire-hook="ProbeLog" data-who="rooted-root">
+  <span wire-hook="ProbeLog" data-who="rooted-inner">inner</span>
+  <button data-testid="ping" {% on "click" "ping" %}>ping</button>
+</div>

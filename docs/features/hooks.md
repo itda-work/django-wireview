@@ -95,9 +95,13 @@ WIREVIEW = {"COLLECT_HOOKS": False}
 | `mounted()` | 엘리먼트가 들어오고 첫 렌더가 끝난 뒤 | 라이브러리 초기화 |
 | `beforeUpdate()` | DOM morph 직전 (동기) | 스크롤 위치·선택 영역 저장 |
 | `updated()` | DOM morph가 끝난 뒤 | 상태 복원, 라이브러리 갱신 |
-| `destroyed()` | 엘리먼트가 DOM에서 빠질 때 | 자원 정리 |
+| `destroyed()` | 엘리먼트가 DOM에서 빠질 때. 컴포넌트가 페이지를 떠날 때(부모가 그리지 않음, boost 이동)도 뿌리에 단 훅까지 모두 | 자원 정리 |
 | `disconnected()` | WebSocket이 끊겼을 때 | 오프라인 표시 |
-| `reconnected()` | WebSocket이 다시 붙었을 때 | 데이터 새로고침 |
+| `reconnected()` | WebSocket이 다시 붙고 컴포넌트가 다시 join할 때. 같은 훅 인스턴스다 | 데이터 새로고침 |
+
+훅은 **자기를 감싼 가장 가까운 컴포넌트**의 것이다. 중첩된 컴포넌트 안의 훅은 바깥 컴포넌트가 아니라 안쪽
+컴포넌트의 `push_event`를 받는다. 렌더가 엘리먼트를 옮기기만 하면(id가 같은 목록 항목의 순서가 바뀜)
+훅은 그대로 살아 있고 `destroyed()`도 `mounted()`도 다시 불리지 않는다.
 
 ## 훅 컨텍스트
 

@@ -86,6 +86,12 @@ class ServerConnection {
     this.serverVsn = 0;
     /** @type {number} The last ref given to a user event on this connection */
     this.lastRef = 0;
+    /**
+     * @type {number} The last ref given to a hook's pushEvent. One counter for
+     * the page, not one per component: a reply finds its callback by the ref
+     * alone, and two components counting from 1 swapped answers (#108).
+     */
+    this.lastHookRef = 0;
     /** @type {number} how many times a socket has opened; a hook manager remembers the one it was live in */
     this.epoch = 0;
   }
@@ -188,6 +194,9 @@ class ServerConnection {
       }
     }
     for (let id of registeredIds.keys()) {
+      // Its root left the page, which the hook manager's MutationObserver --
+      // watching inside the root -- never sees (#107)
+      this.components[id].hookManager.destroy();
       delete this.components[id];
       this.sendLeave(id);
     }
@@ -1239,8 +1248,6 @@ class HookManager {
     this.instances = new Map();
     /** @type {Map<string, Function>} ref -> callback */
     this.callbacks = new Map();
-    /** @type {number} */
-    this.refCounter = 0;
     /** @type {MutationObserver|null} */
     this.observer = null;
     /** @type {number|null} the connection epoch this manager was last initialized in */
@@ -1272,7 +1279,9 @@ class HookManager {
     const hookElements = root.querySelectorAll("[wire-hook]");
     hookElements.forEach((el) => {
       const element = /** @type {HTMLElement} */ (el);
-      // Also check the root element itself
+      // A nested component's hooks are its own. The parent joins first, and a
+      // hook it took was one the nested component's push_event never reached (#107).
+      if (element.closest("[wireview-component]") !== root) return;
       if (!element.__wireviewHookIds) {
         this.mountHooks(element);
       }
@@ -1370,22 +1379,15 @@ class HookManager {
    * @param {HTMLElement} node
    */
   handleRemovedNode(node) {
-    // Check if the node itself has hooks
-    if (node.__wireviewHookIds) {
-      for (const hookId of node.__wireviewHookIds) {
+    // A morph that moves an element (idiomorph matches rows by id) removes and
+    // inserts it, and this runs after the morph: an element back in the document
+    // was moved, not removed, and its hook lives on.
+    if (node.isConnected) return;
+    const elements = [node, ...(node.querySelectorAll?.("[wire-hook]") ?? [])];
+    for (const el of elements) {
+      const element = /** @type {HTMLElement} */ (el);
+      for (const hookId of [...(element.__wireviewHookIds ?? [])]) {
         this.destroyHook(hookId);
-      }
-    }
-    // Check children too
-    if (node.querySelectorAll) {
-      const hookElements = node.querySelectorAll("[wire-hook]");
-      for (const el of hookElements) {
-        const element = /** @type {HTMLElement} */ (el);
-        if (element.__wireviewHookIds) {
-          for (const hookId of element.__wireviewHookIds) {
-            this.destroyHook(hookId);
-          }
-        }
       }
     }
   }
@@ -1483,7 +1485,7 @@ class HookManager {
    * @param {Function|null} callback
    */
   pushEvent(hookId, event, payload, callback) {
-    const ref = callback ? `hook-${++this.refCounter}` : null;
+    const ref = callback ? `hook-${++connection.lastHookRef}` : null;
 
     if (ref && callback) {
       this.callbacks.set(ref, callback);
@@ -1539,14 +1541,14 @@ class HookManager {
   }
 
   /**
-   * Cleanup all hooks.
+   * Cleanup all hooks: the component left the page.
    */
   destroy() {
     if (this.observer) {
       this.observer.disconnect();
       this.observer = null;
     }
-    for (const hookId of this.instances.keys()) {
+    for (const hookId of [...this.instances.keys()]) {
       this.destroyHook(hookId);
     }
     this.callbacks.clear();

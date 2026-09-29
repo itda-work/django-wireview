@@ -1,0 +1,16 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>hook probe</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    {% component 'HookProbeShelf' id="shelf" %}
+    {% component 'HookProbeRows' id="rows" %}
+    {% component 'HookProbeAsker' id="ask-first" who="first" %}
+    {% component 'HookProbeAsker' id="ask-second" who="second" %}
+    <a href="/hookprobe/elsewhere/" data-testid="leave">elsewhere</a>
+  </body>
+</html>

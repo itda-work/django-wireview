@@ -1,0 +1,9 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <ul>
+    {% for row in rows %}<li id="row-{{ row }}" wire-hook="ProbeLog" data-who="row-{{ row }}">{{ row }}</li>{% endfor %}
+  </ul>
+  <button data-testid="rotate" {% on "click" "rotate" %}>rotate</button>
+  <button data-testid="ping-rows" {% on "click" "ping_rows" %}>ping rows</button>
+</div>

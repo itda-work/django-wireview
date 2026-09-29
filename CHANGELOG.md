@@ -43,6 +43,19 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- Hooks: a hook belongs to the component it sits in. A parent joins before its nested
+  components and its scan took their hooks, so what a nested component pushed reached
+  nothing (#107).
+- Hooks: a component that leaves the page -- its parent stops rendering it, a boost
+  navigation -- calls `destroyed()` on all its hooks. The MutationObserver watches inside the
+  root and never saw the root go, so a hook on the root, and every hook under a root removed
+  whole, kept its timer or microphone (#107).
+- Hooks: a row that a render moves keeps its hook. The MutationObserver reports a move as a
+  removal after the morph, so the hook was destroyed on an element still on the page and
+  never mounted again (#107).
+- Hooks: a `pushEvent` reply reaches the callback that asked. Refs were counted per component
+  from `hook-1` and a reply went to the first component holding the ref, so two components
+  waiting at once swapped answers. One counter serves the page (#108).
 - `view.render()` draws a component whose template holds `{% component %}` or
   `{% live_component %}`. It raised `AttributeError` from the stand-in repository, so such
   components were tested without their HTML. `mount()` now renders with the real repository in
