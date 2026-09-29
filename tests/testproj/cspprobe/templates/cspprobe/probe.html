@@ -33,8 +33,7 @@
     <input data-testid="q" name="q">
   </form>
   <span data-testid="submitted">{{ this.submitted }}</span>
-  {% upload_button "files" data_testid="pick" %}pick
-</button>
-{% upload_input "files" data_testid="file-input" %}
-<span data-testid="received">{{ this.received }}</span>
+  <button type="button" {% upload_button "files" %} data-testid="pick">pick</button>
+  {% upload_input "files" data_testid="file-input" %}
+  <span data-testid="received">{{ this.received }}</span>
 </div>

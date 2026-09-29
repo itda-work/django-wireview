@@ -32,6 +32,9 @@ What 1.0 promises, settled before it is frozen (#119).
 
 ### Changed
 
+- `{% upload_button "name" %}` is an attribute, like `{% upload_drop_zone %}`:
+  `<button type="button" {% upload_button "images" %}>Select</button>`. It rendered an opening
+  `<button>` whose closing tag the template supplied, and took extra attributes as arguments.
 - `Component.scroll_into_view(element_id, *, behavior, block, inline)`: the options are
   keyword-only. `/__wireview__` and `/__wireview_upload__/` are declared public paths that must be
   mounted at the root (`docs/COMPATIBILITY.md`).

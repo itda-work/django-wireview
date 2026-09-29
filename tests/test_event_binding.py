@@ -125,16 +125,15 @@ class TestUploadTags:
         assert 'class="hidden"' in html and 'id="pick"' in html
 
     def test_the_button_opens_the_picker_through_an_attribute(self):
-        html = Template('{% load wireview %}{% upload_button "images" class="btn btn-primary" %}').render(
-            Context({"this": _upload_component()})
-        )
+        html = Template(
+            '{% load wireview %}<button type="button" {% upload_button "images" %} class="btn">pick</button>'
+        ).render(Context({"this": _upload_component()}))
 
         assert not inline_handlers(html), html
-        assert 'wire-upload-select="images"' in html
-        assert 'class="btn btn-primary"' in html
+        assert html == '<button type="button" wire-upload-select="images" class="btn">pick</button>'
 
     def test_underscores_become_hyphens_so_data_attributes_can_be_written(self):
-        html = Template('{% load wireview %}{% upload_button "images" data_testid="pick" %}').render(
+        html = Template('{% load wireview %}{% upload_input "images" data_testid="pick" %}').render(
             Context({"this": _upload_component()})
         )
 

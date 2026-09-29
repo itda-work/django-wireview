@@ -676,29 +676,21 @@ def upload_drop_zone(context, name: str):
     return format_html('wire-upload-drop="{name}"', name=name)
 
 
-@register.simple_tag(takes_context=True)
-def upload_button(context, name: str, **attrs):
+@register.simple_tag
+def upload_button(name: str):
     """
-    Render a button that triggers file selection.
+    Return the attribute that makes an element open the file picker.
 
     Args:
         name: Upload field name (matches allow_upload name)
-        **attrs: Additional HTML attributes
-
-    The tag renders the opening ``<button>`` only; close it yourself.
 
     Example:
-        {% upload_button "images" class="btn btn-primary" %}Select Images</button>
-    """
-    component: Component | None = context.get("this")
-    if not component:
-        return ""
+        <button type="button" {% upload_button "images" %} class="btn">Select images</button>
 
-    return format_html(
-        '<button type="button" wire-upload-select="{name}" {attrs}>',
-        name=name,
-        attrs=_html_attrs(attrs),
-    )
+    Like ``upload_drop_zone``, an attribute on an element you write. It rendered
+    an opening ``<button>`` whose closing tag the template had to supply (#119).
+    """
+    return format_html('wire-upload-select="{name}"', name=name)
 
 
 @register.simple_tag

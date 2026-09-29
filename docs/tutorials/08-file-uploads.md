@@ -380,6 +380,16 @@ async def cancel_file(self, ref: str):
 
 ## 드래그 앤 드롭
 
+업로드 태그는 넷이다. `upload_input`과 `upload_preview`는 요소를 그리고, `upload_drop_zone`과
+`upload_button`은 사용자가 쓴 요소에 붙일 속성을 낸다.
+
+| 태그 | 내는 것 |
+|------|---------|
+| `{% upload_input "필드" class="…" %}` | `<input type="file">`. `accept`와 `multiple`은 `allow_upload()` 설정에서 온다 |
+| `<div {% upload_drop_zone "필드" %}>` | 파일을 떨어뜨릴 영역 |
+| `<button type="button" {% upload_button "필드" %}>` | 누르면 파일 선택 창이 열리는 요소 |
+| `{% upload_preview entry class="…" %}` | 고른 이미지의 미리보기 `<img>` |
+
 `{% upload_drop_zone "필드" %}`를 단 요소에 파일을 떨어뜨리면 그 필드로 업로드된다. 파일을 끌고
 들어오는 동안 요소에 `wireview-drag-over` 클래스가 붙는다.
 
