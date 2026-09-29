@@ -182,7 +182,7 @@ class TestRenderDiffOptimization:
             await wire.render_diff(component, repo)
 
         # Verify _get_context_async was called
-        wire._get_context_async.assert_called_once_with(component, repo)
+        wire._get_context_async.assert_called_once_with(component, repo, None)
 
     @pytest.mark.asyncio
     @pytest.mark.integration

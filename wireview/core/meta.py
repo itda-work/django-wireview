@@ -15,6 +15,7 @@ from django.utils.safestring import SafeText, mark_safe
 from .. import telemetry
 from ..schemas import DomAction
 from ..utils import db
+from .render_reads import RenderReads
 from .rendered import Rendered, strip_markers
 from .transport import Broker, ChannelsBroker, NullBroker
 
@@ -309,12 +310,17 @@ class WireviewMeta:
             component_name=component._name,
             live=True,
         ) as render_span:
+            # Temporary assigns reset after the last render and not assigned since:
+            # what reads them renders as it did then (#111)
+            stale = component._stale_temporaries()
+            reads = RenderReads(id(component), stale, type(component).model_fields) if stale else None
+
             # Resolve async properties in async context first to avoid
             # nested async_to_sync calls inside sync template rendering
-            context = await self._get_context_async(component, repo)
+            context = await self._get_context_async(component, repo, reads)
 
             # Template rendering is sync (Django templates are synchronous)
-            html = await db(self._render_with_context)(component, context)
+            html = await db(self._render_with_context)(component, context, reads)
             if not html:
                 return None
 
@@ -327,15 +333,20 @@ class WireviewMeta:
             component_id=component.id,
             component_name=component._name,
         ) as diff_span:
-            diff = self._compute_rendered_diff(html_str, repo.vsn)
+            diff = self._compute_rendered_diff(html_str, repo.vsn, reads.slots if reads else ())
             diff_span.annotate(changed=diff is not None)
             diff_span.measure(diff)
 
         return diff
 
-    def _compute_rendered_diff(self, html: str, vsn: int = 0) -> dict[str, t.Any] | None:
-        """Compute Phoenix-style static/dynamic diff in the forms protocol ``vsn`` allows."""
-        rendered = Rendered.from_marked_html(html)
+    def _compute_rendered_diff(self, html: str, vsn: int = 0, stale: t.Collection[int] = ()) -> dict[str, t.Any] | None:
+        """Compute Phoenix-style static/dynamic diff in the forms protocol ``vsn`` allows.
+
+        ``stale`` names the parts that read a reset temporary assign; they keep
+        the previous render's value.
+        """
+        rendered = Rendered.from_marked_html(html, stale)
+        rendered.settle(self._last_rendered)
         diff = rendered.get_diff(self._last_rendered, vsn)
 
         if diff is None:
@@ -519,7 +530,7 @@ class WireviewMeta:
         }
     )
 
-    async def _get_context_async(self, component: "Component", repo: Repo) -> Context:
+    async def _get_context_async(self, component: "Component", repo: Repo, reads: RenderReads | None = None) -> Context:
         """Build the template context asynchronously.
 
         This method resolves async properties (coroutines) directly using await,
@@ -537,7 +548,16 @@ class WireviewMeta:
 
         for attr_name in dir(component):
             if not attr_name.startswith("_") and attr_name not in self._PYDANTIC_CLASS_ATTRS:
-                attr = getattr(component, attr_name)
+                if reads is None:
+                    attr = getattr(component, attr_name)
+                else:
+                    # A property computed from stale fields alone is stale too
+                    with reads:
+                        slot = reads.open()
+                        attr = getattr(component, attr_name)
+                        reads.close(slot)
+                    if attr_name not in reads.stale and attr_name not in reads.other:
+                        (reads.stale if slot.stale and not slot.other else reads.other).add(attr_name)
                 if not callable(attr):
                     # Await coroutines directly - no async_to_sync needed
                     if iscoroutine(attr):
@@ -554,7 +574,9 @@ class WireviewMeta:
             wireview_repository=repo,
         )
 
-    def _render_with_context(self, component: "Component", context: Context) -> SafeText | None:
+    def _render_with_context(
+        self, component: "Component", context: Context, reads: RenderReads | None = None
+    ) -> SafeText | None:
         """Render template with pre-resolved context (sync).
 
         This method performs the actual template rendering with a context
@@ -583,7 +605,11 @@ class WireviewMeta:
 
         template = component._get_template()
         self.template_evaluated = True
-        html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
+        if reads is None:
+            html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
+        else:
+            with reads:
+                html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
 
         return mark_safe(html) if html else None
 

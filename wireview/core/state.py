@@ -167,7 +167,12 @@ def sign_state(component: "Component") -> str:
     means a component that renders at least once per
     ``STATE_MAX_AGE - STATE_REFRESH_AFTER`` never expires while its page is open.
     """
-    state_json = component.model_dump_json(exclude=set(component._meta.exclude_fields))
+    # A temporary assign is left out as well: it is reset after this render, and
+    # a join loads it again in joined(). Carried, a list of ten thousand rows went
+    # into a page attribute (#111).
+    state_json = component.model_dump_json(
+        exclude=set(component._meta.exclude_fields | component._meta.temporary_assigns)
+    )
     wire = component.wire
     now = time.time()
     cached = getattr(wire, "_state_token", None)

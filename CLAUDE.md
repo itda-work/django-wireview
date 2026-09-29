@@ -34,6 +34,7 @@ wireview/
 │                          ComponentOptions가 `class Meta:`를 해석해 cls._meta에 둔다(키 단위 상속, #99)
 ├── core/meta.py           WireviewMeta (self.wire): push_to/replace_to, push_js, put_flash, push_title 등 클라이언트 명령
 ├── core/rendered.py       동적 마커 기반 diff 구조. LiveComponent 자리는 참조 dynamic {"c": id}
+├── core/render_reads.py   초기화된 temporary assign만 읽은 동적 부분을 렌더 중에 찾는다. 그 부분은 이전 값 그대로(#111)
 ├── core/session.py        SessionView. Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다
 ├── core/live_session.py   페이지 경계 정본. live_session() 선언과 레지스트리, @session.view,
 │                          인증 세대 지문(auth_fingerprint), 로그아웃 무효화 발행 (GAP-009)
@@ -108,6 +109,7 @@ tests/
                            errorprobe/ 는 예외를 던지는 핸들러와 join을 보는 E2E(test_errors_e2e.py)의 픽스처,
                            offlineprobe/ 는 연결이 끊긴 페이지의 바인딩·큐와 재연결 뒤의 훅·폼 복구를 보는 E2E(test_offline_e2e.py)의 픽스처,
                            hookprobe/ 는 훅의 소유(중첩 컴포넌트)·이동·떠날 때의 destroyed·pushEvent 응답 짝을 보는 E2E(test_hooks_e2e.py)의 픽스처,
+                           tempprobe/ 는 초기화된 temporary assign이 다음 렌더에 화면에 남는지 보는 E2E(test_temporary_assigns_e2e.py)의 픽스처,
                            jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,
                            formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처,
                            fileprobe/ 는 업로드의 모든 입구(입력·드롭 존·미리보기·external)를 보는 E2E(test_uploads_e2e.py)의 픽스처,
@@ -179,7 +181,7 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 - **단위·통합 테스트도 일부는 채널 레이어를 쓴다.** `tests/test_uploads.py`의 `UploadView` 테스트가 세션 채널로 보낸다. 그래서 기본값이 `memory`다. 브로커가 없는 레이어를 기본으로 두면 그 두 테스트가 연결 타임아웃으로 2분씩 걸린다.
 - **클라이언트가 호출할 수 있는 메서드.** `_`로 시작하지 않고 **사용자 코드에서 정의한** 메서드만 이벤트 핸들러로 노출되고 `validate_call`로 감싸진다. 프레임워크(`wireview.*`)와 Pydantic이 소유한 이름은 서브클래스에서 오버라이드해도 노출되지 않는다 — `mount`·`joined`·`update`·`send_to_parent`·`model_post_init`은 클라이언트가 부를 수 없다. 판정은 `ComponentRepository._is_user_defined_method`, 회귀 테스트는 tests/test_security.py. 내부 헬퍼는 반드시 `_` 접두사. 클래스 본문에 정의된 **클래스**(`class Meta:` 포함)는 호출 가능해도 노출되지 않는다(#99). 핸들러와 라이프사이클 메서드는 async.
 - **컴포넌트 이름은 클래스명으로 전역 등록.** 다른 모듈에서 같은 클래스명을 쓰면 경고가 난다. 템플릿에서 `app:Name` 또는 FQN으로 구분한다.
-- **상태 필드.** JSON 직렬화 가능해야 한다. 모델 인스턴스는 예외다: 단일 필드·목록·dict 값·`AsyncResult`의 결과 어디에 있든 pk로 서명되고, join 때 필드의 타입 표기를 따라 다시 읽힌다(`wireview/core/model_state.py`). 그래서 타입 표기가 곧 복원 규칙이다 — `list` 같은 맨 타입으로 적으면 pk 목록으로 돌아온다. `Meta.temporary_assigns`는 기본값이 있는 필드만 초기화된다. `Meta.exclude_fields`는 `user`·`wire`·`session`에 **더해진다**(뺄 수 없다).
+- **상태 필드.** JSON 직렬화 가능해야 한다. 모델 인스턴스는 예외다: 단일 필드·목록·dict 값·`AsyncResult`의 결과 어디에 있든 pk로 서명되고, join 때 필드의 타입 표기를 따라 다시 읽힌다(`wireview/core/model_state.py`). 그래서 타입 표기가 곧 복원 규칙이다 — `list` 같은 맨 타입으로 적으면 pk 목록으로 돌아온다. `Meta.temporary_assigns`는 기본값이 있는 필드만 초기화되고, 서명 상태에 실리지 않으며, 초기화는 변경으로 치지 않는다(`wireview/core/render_reads.py`, #111). `Meta.exclude_fields`는 `user`·`wire`·`session`에 **더해진다**(뺄 수 없다).
 - **pyright는 `tests/`를 검사하지 않고, `tsc`는 checkJs=false라 JS 본문을 검사하지 않는다.** 둘 다 통과해도 해당 영역은 검증된 것이 아니다.
 - **gitignore 대상.** `*.pyi` (AUTO_GENERATE_STUBS가 DEBUG에서 생성), `.wireview/`, `tests/static/`, `*.min.js`.
 - **컴포넌트 ID**는 페이지 안에서 고유해야 한다.

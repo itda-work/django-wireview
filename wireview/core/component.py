@@ -19,7 +19,7 @@ from .. import utils
 from ..async_result import AsyncResult
 from ..schemas import DomAction, ModelAction
 from ..utils import db
-from . import model_state
+from . import model_state, render_reads
 from .meta import Repo, WireviewMeta
 from .session import SessionView
 from .transport import get_broker
@@ -262,6 +262,10 @@ class Component(BaseModel):
     # Instance-level lifecycle hooks attached via attach_hook()
     _lifecycle_hooks: dict[str, list[LifecycleHook]] = {}
 
+    # What _clear_temporary_assigns() put back, by field: a field still holding
+    # that object, unchanged, is stale (#111)
+    _temporary_defaults: dict[str, t.Any] = {}
+
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
         validate_assignment=True,
@@ -312,6 +316,7 @@ class Component(BaseModel):
 
     def __init_subclass__(cls: t.Type["Component"], name: str | None = None, public: bool = True) -> None:
         cls._meta = _resolve_options(cls)
+        render_reads.install(cls)
         if public:
             import warnings
 
@@ -1594,6 +1599,24 @@ class Component(BaseModel):
             # Set the field to its default value
             # Use object.__setattr__ to bypass Pydantic validation for performance
             object.__setattr__(self, field_name, default_value)
+            self._temporary_defaults[field_name] = default_value
+
+    def _stale_temporaries(self) -> frozenset[str]:
+        """The temporary assigns nothing has touched since they were reset.
+
+        The page still shows what the render before the reset drew from them,
+        and the next render must not count the default as a change (#111). A
+        field assigned again holds another object; one changed in place no
+        longer equals its default.
+        """
+        stale = set()
+        for field_name, default_value in self._temporary_defaults.items():
+            value = self.__dict__.get(field_name)
+            if value is default_value and value == type(self).model_fields[field_name].get_default(
+                call_default_factory=True
+            ):
+                stale.add(field_name)
+        return frozenset(stale)
 
 
 Component._meta = ComponentOptions()

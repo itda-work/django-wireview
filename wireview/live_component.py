@@ -136,9 +136,11 @@ class LiveComponent(Component, public=False):
         public: bool = True,
     ) -> None:
         """Register LiveComponent in separate registries."""
+        from .core import render_reads
         from .core.component import _resolve_options, _validate_handlers
 
         cls._meta = _resolve_options(cls)
+        render_reads.install(cls)
         if public:
             name = name or cls.__name__
             fqn = f"{cls.__module__}.{name}"

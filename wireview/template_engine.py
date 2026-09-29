@@ -13,8 +13,10 @@ import typing as t
 
 from django.http import HttpRequest
 from django.template import Context, Template
-from django.template.base import Node, NodeList, VariableNode
+from django.template.base import FilterExpression, Node, NodeList, Variable, VariableNode
+from django.template.smartif import TokenBase
 
+from .core import render_reads
 from .core.rendered import inject_marker
 
 
@@ -46,11 +48,14 @@ SKIP_VARIABLE_NAMES = frozenset(
 class MarkerContext:
     """Tracks marker indices and the enclosing comprehensions during a render."""
 
-    __slots__ = ("_counter", "_comprehensions")
+    __slots__ = ("_counter", "_comprehensions", "reads")
 
     def __init__(self) -> None:
         self._counter = 0
         self._comprehensions: list[int] = []
+        #: The reads this render tracks (#111), read once per render rather than
+        #: once per node: every dynamic node of every render asks
+        self.reads: render_reads.RenderReads | None = None
 
     def next_index(self) -> int:
         """Get the next marker index."""
@@ -101,8 +106,16 @@ class MarkedVariableNode(Node):
         static parts and shift every following index, turning a value that
         toggles between "" and text into a full render.
         """
-        output = self.original_node.render(context)
-        return inject_marker(output, self.marker_context.next_index())
+        reads = self.marker_context.reads
+        slot = reads.open() if reads else None
+        try:
+            output = self.original_node.render(context)
+        finally:
+            # The index follows the output, as the parser numbers it
+            index = self.marker_context.next_index()
+            if reads and slot:
+                reads.close(slot, index)
+        return inject_marker(output, index)
 
     def __repr__(self) -> str:
         return f"<MarkedVariableNode: {self.filter_expression!r}>"
@@ -119,14 +132,64 @@ class ComprehensionNode(Node):
     def render(self, context: Context) -> str:
         index = self.marker_context.next_index()
         self.marker_context.push_comprehension(index)
+        reads = self.marker_context.reads
+        slot = reads.open(index) if reads else None
         try:
             output = self.for_node.render(context)
         finally:
+            if reads and slot:
+                reads.close(slot)
             self.marker_context.pop_comprehension()
         return f"<!--$C{index}-->{output}<!--/$C{index}-->"
 
     def __repr__(self) -> str:
         return f"<ComprehensionNode: {self.for_node!r}>"
+
+
+def referenced_names(node: Node) -> frozenset[str]:
+    """Every name ``node`` and the nodes inside it can resolve, in every branch.
+
+    ``this.count`` counts as ``count``. Found statically, so a branch that did
+    not render is included: a block whose condition reads a stale temporary
+    assign may hold something else, which a render that took the other branch
+    never read (#111). Only template structures are walked -- a node's
+    ``origin`` leads to the loader and every template it holds.
+    """
+    cached = getattr(node, "_wireview_names", None)
+    if cached is not None:
+        return cached
+    names: set[str] = set()
+    seen: set[int] = set()
+
+    def walk(value: t.Any) -> None:
+        if id(value) in seen:
+            return
+        seen.add(id(value))
+        if isinstance(value, Variable):
+            lookups = list(value.lookups or ())
+            if lookups:
+                root = lookups[0]
+                names.add(lookups[1] if root == "this" and len(lookups) > 1 else root)
+        elif isinstance(value, FilterExpression):
+            walk(value.var)
+            for _func, args in value.filters:
+                for _lookup, arg in args:
+                    walk(arg)
+        elif isinstance(value, (Node, TokenBase)) or type(value).__name__ == "TemplateLiteral":
+            for name, attr in vars(value).items():
+                if name not in ("origin", "token"):
+                    walk(attr)
+        elif isinstance(value, (list, tuple, NodeList)):
+            for item in value:
+                walk(item)
+        elif isinstance(value, dict):
+            for item in value.values():
+                walk(item)
+
+    walk(node)
+    frozen = frozenset(names)
+    node._wireview_names = frozen  # type: ignore[attr-defined]
+    return frozen
 
 
 class ConditionalNode(Node):
@@ -139,7 +202,16 @@ class ConditionalNode(Node):
 
     def render(self, context: Context) -> str:
         index = self.marker_context.next_index()
-        output = self.if_node.render(context)
+        reads = self.marker_context.reads
+        slot = reads.open(index) if reads else None
+        try:
+            output = self.if_node.render(context)
+        finally:
+            if reads and slot:
+                # Kept whole, a block would keep whatever else its branches show
+                if slot.stale and not slot.other and referenced_names(self.if_node) & reads.other:
+                    slot.other = True
+                reads.close(slot)
         return f"<!--$B{index}-->{output}<!--/$B{index}-->"
 
     def __repr__(self) -> str:
@@ -282,12 +354,20 @@ class TemplateMarker:
         # the enclosing comprehension.
         if self._depth == 0:
             self.reset()
+            self.marker_context.reads = render_reads.active()
         prepared = self.prepare_template(template)
 
         self._depth += 1
         try:
             # Backend wrappers (from loader.get_template()) accept a dict,
             # raw django.template.base.Template needs a Context.
+            reads = self.marker_context.reads if self._depth == 1 else None
+            if reads is not None:
+                # The names the template resolves are reported (#111). A backend
+                # wrapper builds a plain Context itself, so build this one as it would.
+                inner = t.cast(Template, getattr(prepared, "template", prepared))
+                autoescape = getattr(getattr(prepared, "backend", None), "engine", inner.engine).autoescape
+                return inner.render(render_reads.TrackingContext(context, autoescape=autoescape))
             if hasattr(prepared, "template"):
                 return prepared.render(context)  # type: ignore[arg-type]
             return prepared.render(Context(context))  # type: ignore[arg-type]

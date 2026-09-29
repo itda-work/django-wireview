@@ -1,0 +1,11 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <b data-testid="count">{{ count }}</b>
+  <ul data-testid="messages">
+    {% for m in messages %}<li>{{ m }}</li>{% endfor %}
+  </ul>
+  <p data-testid="how-many">{{ messages|length }}</p>
+  <button data-testid="load" {% on "click" "load" %}>load</button>
+  <button data-testid="bump" {% on "click" "bump" %}>bump</button>
+</div>

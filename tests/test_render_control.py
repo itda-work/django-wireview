@@ -118,12 +118,14 @@ async def test_temporary_assigns_are_cleared_after_a_live_render():
     assert component.messages == []
 
 
-async def test_the_next_render_empties_a_cleared_temporary_assign():
-    # #111: Phoenix leaves that part of the page alone; here the next render,
-    # whatever it was for, sends the emptied list. When #111 is fixed, this flips.
+async def test_the_next_render_leaves_a_cleared_temporary_assign_on_the_page():
+    # #111: the reset is not a change, as in Phoenix. The render for the other
+    # field sends that field and nothing of the list.
     consumer, outbound, _ = await joined_page()
     await consumer.command_user_event("p", "load", {}, {})
 
     await consumer.command_user_event("p", "loudly", {}, {})
 
-    assert {"s": [], "d": []} in outbound.last_diff().values()
+    diff = json.dumps(outbound.last_diff())
+    assert '"1"' in diff
+    assert '"s": []' not in diff and '"d": []' not in diff, diff

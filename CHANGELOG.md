@@ -42,6 +42,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- The signed state (`data-state`) leaves out `Meta.temporary_assigns` fields. A list reset after
+  the render was signed while the render held it, so ten thousand rows went into a page
+  attribute. **Upgrading:** a component joined again (a reconnect) starts such a field from its
+  default; load it in `joined()`, as the guide does, not only in `mount()` (#111).
 - `MountedComponent.call()` meets the checks a browser's event meets: a name a client cannot
   call (`_private`, a lifecycle method, a mixin's framework method such as
   `presence_set_typing`) raises `AssertionError`, and arguments the handler does not take are
@@ -54,6 +58,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A temporary assign that was reset is not a change, as in Phoenix. The next render -- for
+  whatever reason -- sent the reset list and the list vanished from the page, so
+  `temporary_assigns` held for one render only. A part that read nothing but reset fields now
+  keeps its previous value and is not sent; a part that also read another field renders from
+  what it has, so no change is hidden. The rule, and what a `{% if %}` or a loop over the list
+  does, is in `docs/features/temporary-assigns.md`; the design in
+  `docs/design/temporary-assigns-change-tracking.md` (#111).
 - Hooks: a hook belongs to the component it sits in. A parent joins before its nested
   components and its scan took their hooks, so what a nested component pushed reached
   nothing (#107).

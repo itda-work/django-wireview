@@ -417,10 +417,32 @@ class Rendered:
         )
 
     @classmethod
-    def from_marked_html(cls, html: str) -> Rendered:
-        """Parse HTML with markers into a Rendered structure."""
-        static, dynamic = _parse(html)
+    def from_marked_html(cls, html: str, stale: t.Collection[int] = ()) -> Rendered:
+        """Parse HTML with markers into a Rendered structure.
+
+        ``stale`` names the marker indices of the parts that read a temporary
+        assign that was reset (wireview/core/render_reads.py); they come out
+        as ``Stale`` until ``settle()``.
+        """
+        static, dynamic = _parse(html, set(stale))
         return cls(static=static, dynamic=dynamic)
+
+    def settle(self, previous: Rendered | None) -> None:
+        """Give each ``Stale`` part the value it had in ``previous``, so it is unchanged.
+
+        A part is matched by position, which only means something while the
+        statics around it are the same; otherwise -- a first render, another
+        branch, another template -- it keeps what it rendered now.
+        """
+        aligned = previous is not None and previous.static == self.static
+        for i, value in enumerate(self.dynamic):
+            before = previous.dynamic[i] if aligned and previous is not None else None
+            if isinstance(value, Stale):
+                self.dynamic[i] = before if before is not None else value.value
+                if isinstance(self.dynamic[i], Rendered) and before is None:
+                    self.dynamic[i].settle(None)  # type: ignore[union-attr]
+            elif isinstance(value, Rendered):
+                value.settle(before if isinstance(before, Rendered) else None)
 
     @classmethod
     def from_html_without_markers(cls, html: str) -> Rendered:
@@ -439,6 +461,19 @@ class _Item:
     rendered: Rendered
 
 
+@dataclass
+class Stale:
+    """A part that read a reset temporary assign: unchanged, whatever it rendered (#111).
+
+    Only alive between parsing and ``Rendered.settle()``.
+    """
+
+    value: Dynamic
+
+    def to_html(self) -> str:
+        return self.value if isinstance(self.value, str) else self.value.to_html()
+
+
 def _finish(kind: str, static: list[str], dynamic: list[t.Any]) -> t.Any:
     """Turn a closed marker region into its dynamic value."""
     if kind == "C":
@@ -455,7 +490,7 @@ def _finish(kind: str, static: list[str], dynamic: list[t.Any]) -> t.Any:
     return text
 
 
-def _parse(html: str) -> tuple[list[str], list[Dynamic]]:
+def _parse(html: str, stale: set[int] | None = None) -> tuple[list[str], list[Dynamic]]:
     """Split the rendered HTML on marker comments and fold the regions.
 
     ``re.split`` with the three marker groups yields
@@ -476,6 +511,10 @@ def _parse(html: str) -> tuple[list[str], list[Dynamic]]:
         elif stack and stack[-1][0] == kind and stack[-1][1] == index:
             value = _finish(kind, static, dynamic)
             _kind, _index, static, dynamic = stack.pop()
+            # Inside a loop the item is compared whole, so a part there cannot keep
+            # its own value; only the loop can (wireview/core/render_reads.py).
+            if stale and kind != "I" and index in stale and not any(entry[0] in ("I", "C") for entry in stack):
+                value = Stale(value)
             dynamic.append(value)
             static.append(text)
         else:

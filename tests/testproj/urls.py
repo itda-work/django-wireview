@@ -43,6 +43,7 @@ urlpatterns = [
     path("streamprobe/", include("testproj.streamprobe.urls")),
     path("offlineprobe/", include("testproj.offlineprobe.urls")),
     path("hookprobe/", include("testproj.hookprobe.urls")),
+    path("tempprobe/", include("testproj.tempprobe.urls")),
     # The chunk endpoint. A project that leaves this out has no uploads at all,
     # so the test project carries it the way a real one would.
     path("", include("wireview.urls")),

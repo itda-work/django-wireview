@@ -77,7 +77,7 @@ v2 봉투 이전의 형식은 읽지 않습니다(#99). 그런 토큰으로 join
 | 항목 500개, 모두 같은 항목의 회전 (ms) | 3.69 | 3.97 | +8% |
 | 이벤트당 CPU, 항목 50개 (ms) | 0.536 | 0.532 | −1% |
 
-읽는 법: 항목 500개의 3.9 KB는 거의 전부 서명 상태이고 diff 자체는 60~70 B입니다. 항목을 상태에 들고 있는 컴포넌트는 `Meta.exclude_fields`나 조회로 목록을 서명 상태에서 빼는 편이 더 큰 절감입니다(`Meta.temporary_assigns`는 그 렌더의 토큰을 줄이지 않습니다. 비우는 것이 diff 뒤이기 때문입니다). 시간의 +6~9%는 항목을 내용으로 짝짓는 비용(500개 회전에서 약 0.15 ms)이고, 같은 실행에서 무관한 `flat.event_ms`가 +7% 흔들린 폭 안팎입니다. 전송이 16 KB 줄어 컨슈머의 JSON 직렬화가 가벼워지는 몫은 이 벤치에 들어 있지 않습니다. 회귀 테스트는 `tests/test_comprehension_moves.py`, `tests/test_diff_roundtrip.py`, 브라우저 비교는 `tests/test_comprehension_moves_e2e.py`입니다.
+읽는 법: 항목 500개의 3.9 KB는 거의 전부 서명 상태이고 diff 자체는 60~70 B입니다. 항목을 상태에 들고 있는 컴포넌트는 목록을 서명 상태에서 빼는 편이 더 큰 절감입니다. `Meta.exclude_fields`나 `Meta.temporary_assigns`에 넣은 필드는 서명 상태에 실리지 않습니다(#111). 시간의 +6~9%는 항목을 내용으로 짝짓는 비용(500개 회전에서 약 0.15 ms)이고, 같은 실행에서 무관한 `flat.event_ms`가 +7% 흔들린 폭 안팎입니다. 전송이 16 KB 줄어 컨슈머의 JSON 직렬화가 가벼워지는 몫은 이 벤치에 들어 있지 않습니다. 회귀 테스트는 `tests/test_comprehension_moves.py`, `tests/test_diff_roundtrip.py`, 브라우저 비교는 `tests/test_comprehension_moves_e2e.py`입니다.
 
 ## 입력 중인 값
 
@@ -100,7 +100,7 @@ morph는 새 HTML의 값을 입력칸에 옮긴다. 그대로 두면 서버가 �
 - **DOM 요소를 옮기려면 항목 루트에 `id`를 두세요.** diff는 HTML 문자열을 복원할 뿐이고, 어느 요소가 옮겨 갔는지는 idiomorph가 `id`로 판단합니다. `id`가 없으면 요소는 위치대로 morph됩니다.
 - **`{% include %}`된 템플릿 안의 변수는 마커가 없습니다.** 그 내용이 바뀌면 부모의 static이 달라져 전체 렌더가 됩니다.
 - **HTML 압축기는 마커를 지웁니다.** 주석을 제거하면 부분 diff가 꺼지고 바뀔 때마다 HTML 전체가 나갑니다. django-hmin 연동(`USE_HMIN`)은 그래서 #100에서 없어졌습니다. 전송량은 WebSocket 압축으로 줄이세요.
-- **서명 상태는 상태가 바뀔 때마다 다시 전송됩니다.** 재연결 시 클라이언트가 이 값을 돌려보내 컴포넌트를 복원하기 때문입니다. 렌더에 필요 없는 큰 필드는 `Meta.exclude_fields`로 빼거나 `Meta.temporary_assigns`로 렌더 후 비우세요.
+- **서명 상태는 상태가 바뀔 때마다 다시 전송됩니다.** 재연결 시 클라이언트가 이 값을 돌려보내 컴포넌트를 복원하기 때문입니다. 렌더에 필요 없는 큰 필드는 `Meta.exclude_fields`로 빼세요. 렌더에만 필요한 큰 목록은 `Meta.temporary_assigns`에 넣으면 서명 상태에서 빠지고 렌더 후 비워지며, 다음 렌더가 그 목록을 화면에서 지우지 않습니다.
 - **HTTP 렌더에는 마커가 없습니다.** `is_live`가 아닌 렌더는 `strip_markers()`를 거칩니다. 예전에는 `value="<!--$0-->…"`처럼 속성 안에 마커 텍스트가 남아 WebSocket 연결 전까지 입력값과 링크가 깨졌습니다.
 
 ## 관련 기능
