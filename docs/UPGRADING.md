@@ -2,7 +2,7 @@
 
 ## 1.0.0rc1에서 1.0으로
 
-1.0이 공개 API를 굳히기 전에 모양을 한 번 더 정리했다(#119). 1.0.0rc1을 쓰던 프로젝트는 아래를 확인한다.
+1.0이 공개 API를 굳히기 전에 모양을 한 번 더 정리했다(#119, 1.0.0rc2). 0.7이나 1.0.0rc1을 쓰던 프로젝트는 아래를 확인한다.
 대부분은 `TypeError`·`ImportError`·`manage.py check`로 드러나고, 조용히 달라지는 것은 **조용함**으로 표시했다.
 전체 목록은 [CHANGELOG](../CHANGELOG.md).
 
@@ -73,14 +73,15 @@ async def handle_async(self, name, result):
 
 고칠 것이 없다. 0.7.0과 1.0.0rc1은 호환을 깨는 변경이 없다([CHANGELOG](../CHANGELOG.md)).
 
-릴리스 후보는 사전 릴리스라 버전 범위를 평소처럼 적으면 설치되지 않는다. 하한에 rc를 적는다.
+릴리스 후보는 사전 릴리스라 버전 범위를 평소처럼 적으면 설치되지 않는다. 하한에 rc를 적는다. rc2는 rc1과 호환되지 않으므로
+(위 절) 하한은 rc2로 둔다.
 
 ```toml
-dependencies = ["django-wireview>=1.0.0rc1,<1.1"]
+dependencies = ["django-wireview>=1.0.0rc2,<1.1"]
 ```
 
 `>=1.0,<1.1`로 적으면 uv는 해를 찾지 못한다. pip는 `pip install --pre django-wireview` 또는
-`pip install django-wireview==1.0.0rc1`로 설치한다. 1.0.0이 나온 뒤에는 하한을 `1.0`으로 바꿔도 된다.
+`pip install django-wireview==1.0.0rc2`로 설치한다. 1.0.0이 나온 뒤에는 하한을 `1.0`으로 바꿔도 된다.
 
 ## 0.5에서 0.6으로
 

@@ -10,7 +10,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
-What 1.0 promises, settled before it is frozen (#119).
+## [1.0.0rc2] - 2026-09-30
+
+What 1.0 promises, settled before it is frozen (#119). A 1.0.0rc1 project has changes to make;
+`docs/UPGRADING.md` walks through them.
 
 ### Removed
 
@@ -1210,7 +1213,8 @@ auto-recovery, viewport bindings, optimistic UI attributes, type stub
 generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
-[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc1...HEAD
+[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc2...HEAD
+[1.0.0rc2]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc1...v1.0.0rc2
 [1.0.0rc1]: https://github.com/itda-work/django-wireview/compare/v0.7.0...v1.0.0rc1
 [0.7.0]: https://github.com/itda-work/django-wireview/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/itda-work/django-wireview/compare/v0.5.0...v0.6.0
