@@ -224,9 +224,13 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('', include('wireview.urls')),
     path('', include('myapp.urls')),
 ]
 ```
+
+`include('wireview.urls')`는 파일 업로드가 청크를 보내는 HTTP 경로입니다. 이 튜토리얼에서는 쓰지 않지만
+8편(업로드)에서 필요하고, 빠뜨리면 업로드만 조용히 404가 나므로 지금 넣어 둡니다. 루트(`''`)에 두어야 합니다.
 
 ## 4. 실행
 

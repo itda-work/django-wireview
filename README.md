@@ -124,7 +124,7 @@ class XCounter(Component):
 
 ## 설치 및 설정
 
-Wireview는 Python ≥3.12과 Django ≥5.0이 필요합니다 (Django 5.0, 5.1, 5.2 LTS, 6.0, 6.1 지원).
+Wireview는 Python ≥3.12과 Django ≥5.2가 필요합니다 (Django 5.2 LTS, 6.0, 6.1 지원. 범위는 [호환성 정책](./docs/COMPATIBILITY.md#지원-범위)).
 
 ```bash
 pip install django-wireview daphne
@@ -178,6 +178,19 @@ application = ProtocolTypeRouter({
 ```
 
 wireview의 컨슈머는 소켓을 받기 전에 `Origin` 헤더를 `ALLOWED_HOSTS`와 대조한다. 다른 사이트의 페이지가 사용자의 쿠키로 소켓을 여는 것을 막기 위해서다([배포 가이드](docs/DEPLOYMENT.md#websocket의-origin)). 그래서 `AllowedHostsOriginValidator`로 따로 감쌀 필요는 없다.
+
+프로젝트의 `urls.py`에 wireview의 HTTP 경로를 **루트에** 넣으세요. 파일 업로드가 이 경로로 청크를 보냅니다.
+빠뜨려도 다른 기능은 모두 동작하고 업로드만 조용히 404가 납니다. 경로가 `/__wireview_upload__/`로 고정되어
+있어 `path("wireview/", ...)`처럼 접두사 아래에 두어도 404입니다.
+
+```python
+from django.urls import include, path
+
+urlpatterns = [
+    path("", include("wireview.urls")),
+    ...
+]
+```
 
 템플릿에 wireview JavaScript를 포함하세요:
 
@@ -987,7 +1000,7 @@ class Dashboard(Component):
 | `template_name` | 필수 | 템플릿 경로 |
 | `subscriptions` | `set()` | 구독할 채널. 상태에 따라 달라지면 `get_subscriptions()`를 오버라이드한다 |
 | `temporary_assigns` | `set()` | 렌더 뒤 기본값으로 되돌릴 필드 |
-| `exclude_fields` | `set()` | 서명 상태에서 뺄 필드. `user`·`wire`·`session`은 항상 빠진다 |
+| `exclude_fields` | `user`·`wire`·`session` | 서명 상태에서 뺄 필드. `user`·`wire`·`session`은 항상 빠진다 |
 | `slots` | `{}` | 슬롯 정의 |
 | `on_mount` | `[]` | `joined()` 전에 도는 훅 |
 | `live_sessions` | `set()` | 마운트될 수 있는 `live_session` 이름 |

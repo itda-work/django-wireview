@@ -58,7 +58,7 @@ wireview/
 ├── js.py                  JS() 명령 빌더
 ├── schemas.py, serializer.py  Pydantic 스키마, 모델 직렬화
 ├── settings.py            WIREVIEW 설정 기본값
-├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W013)
+├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W014)
 ├── telemetry.py           옵트인 계측 시그널 (event_handled, component_rendered, diff_computed, broadcast_published)
 ├── testing.py             mount(), MountedComponent, ComponentTestCase.
 │                          render()는 실제 저장소의 HTTP 렌더 모드로 자식까지 그린다(자식 수명주기는 컨슈머 몫, #115).

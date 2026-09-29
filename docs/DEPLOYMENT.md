@@ -296,7 +296,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
     }
 
-    location /ws/ {
+    location /__wireview__ {
         proxy_pass http://django;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
