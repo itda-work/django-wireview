@@ -47,6 +47,8 @@ What 1.0 promises, settled before it is frozen (#119).
 
 ### Fixed
 
+- `mount()` builds the component through `new()`, as a page and a join do. The tutorials teach
+  overriding `new()` to read `wire.params`, and under `mount()` that override never ran.
 - `abroadcast` fires `broadcast_published` like every other fan-out.
 - `wireview.W002` checks every callback wireview awaits, not only `joined`, `update` and `destroy`.
 - The client bundle's URL carries the package version instead of a fixed `?v=2`.

@@ -34,7 +34,7 @@ sync로 쓰면 실행되지 않고 `manage.py check`가 `wireview.W002`로 알�
 | `handle_async(name, result)` | `start_async()`가 끝났을 때. `result`는 끝난 `AsyncResult`(`ok`/`failed`) ([async-operations](./async-operations.md)) |
 | `handle_hook_event(hook_id, event, payload)` | 클라이언트 훅이 `pushEvent`로 보냈을 때 ([hooks](./hooks.md)) |
 | `get_subscriptions()` | 구독 채널을 상태에 따라 정할 때. 기본은 `Meta.subscriptions` |
-| `new(**kwargs)` (classmethod) | 인스턴스를 만들 때 |
+| `new(**kwargs)` (classmethod) | 인스턴스를 만들 때. 페이지 렌더, join, 테스트의 `mount()` 모두 이것을 거친다. `wire`·`user`·`session`과 상태 필드를 키워드로 받고 `cls(**kwargs)`를 돌려줘야 한다 |
 | `LiveComponent.update(**assigns)` | 부모가 새 값을 줄 때 ([live-component](./live-component.md)) |
 
 ## 부르는 것

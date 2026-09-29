@@ -684,7 +684,9 @@ async def mount(
     wire = MockWireviewMeta(params=param_map, live_session=policy)
     repo = MockRepository(user=user, params=param_map, session=session_view, live_session=policy)
 
-    component = component_class(
+    # Through new(), as a page builds it: the tutorials override new() to read
+    # params, and a test that built the class directly skipped it (#119).
+    component = component_class.new(
         user=user or AnonymousUser(),
         wire=wire,  # type: ignore[arg-type]
         session=session_view,

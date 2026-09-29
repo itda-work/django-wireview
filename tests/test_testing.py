@@ -37,8 +37,29 @@ class RedirectComponent(Component):
         await self.wire.replace_to(url)
 
 
+class PageFromParams(Component):
+    """Reads the page's query in new(), as tutorials 02, 03 and 05 teach."""
+
+    class Meta:
+        template_name = "todo/counter.html"
+
+    page: int = 1
+
+    @classmethod
+    def new(cls, wire, **kwargs):
+        kwargs.setdefault("page", int(wire.params.get("page", 1)))
+        return cls(wire=wire, **kwargs)
+
+
 class TestMount:
     """Test the mount() function."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_mount_builds_the_component_through_new(self):
+        """A component that reads params in new() got its default under mount() (#119)."""
+        view = await mount(PageFromParams, params={"page": "3"})
+        assert view.component.page == 3
 
     @pytest.mark.asyncio
     @pytest.mark.unit
