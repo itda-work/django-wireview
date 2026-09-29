@@ -32,6 +32,9 @@ What 1.0 promises, settled before it is frozen (#119).
 
 ### Changed
 
+- Upload DOM events are `wireview:upload-added`, `-progress`, `-complete`, `-error` and `-cancel`,
+  inside the `wireview:` namespace the public events use. The 0.x `upload:*` names are sent too
+  until 2.0. All five are documented in `docs/features/external-uploads.md`.
 - `window.wireview.send(element, name, args, options)` takes `eventType`, `commit` and `target` in
   one options object. It took `eventType` as a fourth argument, an options object fifth, and the
   LiveComponent target hidden in `args._target`.

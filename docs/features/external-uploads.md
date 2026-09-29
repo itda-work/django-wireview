@@ -178,15 +178,28 @@ meta = ExternalUploadMeta(
 드래그 중인 동안 드롭 영역에는 `wireview-drag-over` 클래스가 붙는다.
 
 **진행률은 서버에 오지 않는다.** 바이트가 서버를 거치지 않으므로 서버의 `entry.progress`는 완료될 때까지
-0이고, 템플릿으로는 진행률을 그릴 수 없다. 브라우저에서는 컴포넌트 요소에서 올라오는 `upload:progress`
+0이고, 템플릿으로는 진행률을 그릴 수 없다. 브라우저에서는 컴포넌트 요소에서 올라오는 `wireview:upload-progress`
 이벤트로 받는다.
 
 ```javascript
-document.addEventListener("upload:progress", (e) => {
+document.addEventListener("wireview:upload-progress", (e) => {
   const { upload, ref, progress } = e.detail;  // progress는 0-100
   document.querySelector(`[data-ref="${ref}"] progress`)?.setAttribute("value", progress);
 });
 ```
+
+업로드 이벤트는 모두 컴포넌트 요소에서 버블링되고, `detail`에 `upload`(이름)와 `componentId`가 있다.
+external이 아닌 업로드도 같은 이벤트를 낸다.
+
+| 이벤트 | 언제 | `detail`에 더 있는 것 |
+|--------|------|------------------------|
+| `wireview:upload-added` | 파일을 골랐거나 떨어뜨렸다 | |
+| `wireview:upload-progress` | 진행률이 바뀌었다 | `ref`, `progress`(0–100) |
+| `wireview:upload-complete` | 한 항목이 끝났다 | `ref` |
+| `wireview:upload-error` | 한 항목이 실패했다 | `ref`, `errors` |
+| `wireview:upload-cancel` | 한 항목이 취소됐다 | `ref` |
+
+0.x의 이름(`upload:progress` 등)도 2.0까지 함께 나간다.
 
 ## CORS 설정
 

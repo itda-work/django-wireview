@@ -2240,20 +2240,22 @@ class UploadManager {
   }
 
   /**
-   * Dispatch a custom event on the component element.
-   * @param {string} eventName
+   * Dispatch an upload event on the component element.
+   *
+   * `upload:progress` goes out as `wireview:upload-progress`: the public events
+   * are the `wireview:` ones, and a bare `upload:` could be anyone's. The 0.x
+   * name goes out too until 2.0 (#119).
+   *
+   * @param {string} eventName - the 0.x name, `upload:<what>`
    * @param {Object} detail
    * @private
    */
   _dispatchEvent(eventName, detail) {
     const el = document.getElementById(this.componentId);
     if (el) {
-      el.dispatchEvent(
-        new CustomEvent(eventName, {
-          detail: { ...detail, componentId: this.componentId },
-          bubbles: true,
-        })
-      );
+      const init = { detail: { ...detail, componentId: this.componentId }, bubbles: true };
+      el.dispatchEvent(new CustomEvent(`wireview:${eventName.replace(":", "-")}`, init));
+      el.dispatchEvent(new CustomEvent(eventName, init));
     }
   }
 }

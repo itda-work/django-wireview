@@ -80,3 +80,20 @@ def test_an_external_upload_goes_to_the_presigned_url(probe):
     by(probe, "outside").set_input_files(text_file("e.txt", "external"))
     expect_text(by(probe, "external-done"), "e.txt")
     assert list(RECEIVED.values()) == [b"external"]
+
+
+def test_upload_events_carry_the_wireview_prefix_and_the_old_name_until_2_0(probe):
+    """``upload:*`` was outside the public ``wireview:*`` events (#119)."""
+    probe.evaluate(
+        """() => {
+          window.__seen = [];
+          for (const name of ["wireview:upload-added", "wireview:upload-complete", "upload:complete"]) {
+            document.addEventListener(name, (e) => window.__seen.push(name + ":" + e.detail.upload));
+          }
+        }"""
+    )
+    by(probe, "files").set_input_files(text_file("a.txt", "x"))
+    expect_count(by(probe, "received").locator("li"), 1)
+
+    seen = probe.evaluate("() => window.__seen")
+    assert {"wireview:upload-added:files", "wireview:upload-complete:files", "upload:complete:files"} <= set(seen)

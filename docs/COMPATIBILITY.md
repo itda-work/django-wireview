@@ -91,6 +91,7 @@ warnings.simplefilter("error", WireviewDeprecationWarning)
 | `wireview.component` 모듈 | `from wireview import Component` | 2.0 |
 | 테스트의 `view.wire.broadcasts` | `view.broadcasts` | 2.0 |
 | 테스트의 `view.wire.presence_broadcasts` | `view.presence_broadcasts` | 2.0 |
+| DOM 이벤트 `upload:added`·`progress`·`complete`·`error`·`cancel` | `wireview:upload-added` 등 (둘 다 나간다) | 2.0 |
 
 ## 지원 범위
 
