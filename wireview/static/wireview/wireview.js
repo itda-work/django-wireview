@@ -3134,6 +3134,17 @@ async function executeCommand(cmd, element, options = {}) {
 
 window.wireview = {
   /**
+   * Go to a URL the way a boosted link does: in place when `BOOST_PAGES` is on
+   * and the URL is this site's, otherwise an ordinary page load (#103).
+   * @param {string} url
+   * @param {{replace?: boolean}} [options] - take the current history entry's place
+   * @returns {Promise<boolean>} false when a full page load took over
+   */
+  visit(url, options = {}) {
+    return boost.HistoryCache.load(url, options);
+  },
+
+  /**
    * User-defined hook definitions.
    * Register hooks by adding them to this object before components join.
    *

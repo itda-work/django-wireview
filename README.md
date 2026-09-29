@@ -1077,6 +1077,9 @@ class Dashboard(Component):
 // 컴포넌트에 이벤트 전송
 wireview.send(element, 'handler_name', {arg1: value1})
 
+// 링크처럼 이동 (BOOST_PAGES면 전체 로드 없이)
+wireview.visit('/rooms/3/')
+
 // 디바운스/쓰로틀
 wireview.debounce(300)(fn)
 wireview.throttle(100)(fn)
@@ -1164,7 +1167,7 @@ from wireview import AutoBroadcast
 
 WIREVIEW = {
     "TRANSPILER_CACHE_SIZE": 1024,    # 이벤트 핸들러 캐시 크기
-    "BOOST_PAGES": False,             # 링크·폼 이동을 전체 로드 없이 처리 (htmx의 hx-boost와 같은 뜻)
+    "BOOST_PAGES": False,             # 링크 이동과 wire-boost 폼을 전체 로드 없이 처리 (docs/features/boost.md)
     "CHECK_ORIGIN": True,             # Origin이 ALLOWED_HOSTS가 아닌 소켓을 거절 (docs/DEPLOYMENT.md)
     # 서명 상태(data-state) — docs/features/html-diff.md
     "STATE_MAX_AGE": 14 * 24 * 3600,  # 서명 상태 유효 기간(초). 기본 14일

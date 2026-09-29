@@ -158,6 +158,25 @@ if (BOOST_PAGES) {
       HistoryCache.load(link.href);
     }
   });
+
+  // A form boosts only when it asks to (`wire-boost`). A link changes the page;
+  // a form can change who is signed in, and a boosted navigation keeps the
+  // socket -- a login or logout form that boosted would leave it speaking for
+  // the old identity. So the form that knows it is safe opts in (#103).
+  document.addEventListener("submit", (e) => {
+    // A component's {% on "submit.prevent" %} handled it
+    if (e.defaultPrevented) return;
+    const form = e.target;
+    if (!(form instanceof HTMLFormElement) || !form.hasAttribute("wire-boost")) return;
+    const submitter = /** @type {HTMLButtonElement|HTMLInputElement|null} */ (e.submitter);
+    const target = submitter?.getAttribute("formtarget") ?? form.getAttribute("target");
+    if (target && target !== "_self") return;
+    const action = submitter?.getAttribute("formaction") ? submitter.formAction : form.action;
+    const method = (submitter?.getAttribute("formmethod") || form.getAttribute("method") || "get").toLowerCase();
+    if (method === "dialog" || !hasSameOriginAsDocument(action)) return;
+    e.preventDefault();
+    HistoryCache.submit(action, method, new FormData(form, submitter ?? undefined));
+  });
 }
 
 /**
@@ -253,6 +272,40 @@ class HistoryCache {
   }
 
   /**
+   * Submits a form as a boosted navigation (`wire-boost`, #103).
+   *
+   * A GET goes where the browser would, with the fields as the query. Anything
+   * else is sent with fetch; the page it ends on -- a redirect's, as a form
+   * should answer with (post/redirect/get) -- gets a history entry of its own.
+   * An answer that did not redirect (a form re-rendered with its errors) stays
+   * on the current URL: reloading it must not send the form again.
+   *
+   * @param {string} action
+   * @param {string} method - lower case
+   * @param {FormData} data
+   * @returns {Promise<boolean>} as `push`
+   */
+  static async submit(action, method, data) {
+    if (method === "get") {
+      const url = new URL(action, document.location.href);
+      url.search = new URLSearchParams(/** @type {any} */ (data)).toString();
+      return this.push(url.href);
+    }
+    navGate.begin();
+    // What Back returns to, as `push` keeps it
+    history.replaceState(
+      {
+        content: document.body.outerHTML,
+        scrollY: window.scrollY,
+        session: readSessionName(document),
+      },
+      document.title,
+      document.location.href
+    );
+    return this.replaceContentFromUrl(action, { method: method.toUpperCase(), body: data }, "push");
+  }
+
+  /**
    * Loads a URL in place of the current history entry: `push` without the
    * entry it would leave behind, so there is no page to cache for back.
    * @param {string} path - The path to navigate to
@@ -277,15 +330,19 @@ class HistoryCache {
    * morphed and no `newContent` fires before it passes.
    *
    * @param {string} url - The URL to fetch content from
+   * @param {RequestInit} [init] - a form's method and body (`submit`)
+   * @param {"current"|"push"} [entry] - "current": the caller made the history
+   *   entry, and a redirect only corrects its URL; "push": the entry is made
+   *   here, for where the response ended, when it moved
    * @returns {Promise<boolean>} False when the boundary was crossed and the
    *   browser is doing an ordinary page load instead.
    */
-  static async replaceContentFromUrl(url) {
+  static async replaceContentFromUrl(url, init = undefined, entry = "current") {
     // The caller began the navigation; this reads the generation rather than
     // starting one, so the cached body a popstate queued belongs to the same
     // navigation as the fetch that validates it.
     const token = navGate.token;
-    let response = await fetch(url);
+    let response = await fetch(url, init);
     let content = await response.text();
     let doc = new DOMParser().parseFromString(content, "text/html");
     if (!navGate.accepts(token)) return false;
@@ -297,8 +354,12 @@ class HistoryCache {
       // replace, not assign: the navigation already has its history entry (a push
       // made one, a popstate returned to one). assign added a second whenever a
       // redirect made the URL differ, and Back then led to the redirecting URL,
-      // which redirected forward again (#110).
-      document.location.replace(response.url || url);
+      // which redirected forward again (#110). A submitted form has no entry yet.
+      if (entry === "push") {
+        document.location.assign(response.url || url);
+      } else {
+        document.location.replace(response.url || url);
+      }
       return false;
     }
     // The entry names the URL that was asked for. After a redirect the page is
@@ -306,7 +367,9 @@ class HistoryCache {
     // view -- and whatever it does -- again (#104). Before `newLocation`, which
     // reads the params from the address bar. The state stays: after a popstate
     // it is the cached page Back returns to.
-    if (response.redirected && response.url) {
+    if (entry === "push") {
+      if (response.redirected && response.url) history.pushState({}, document.title, response.url);
+    } else if (response.redirected && response.url) {
       history.replaceState(history.state, document.title, response.url);
     }
     // Only now. `newLocation` is what makes the client tell the server its new

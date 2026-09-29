@@ -41,6 +41,7 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 | **Function Components** | 상태 없는 재사용 가능 컴포넌트 | [문서](./function-components.md) |
 | **LiveComponent** | 독립 상태를 가진 중첩 컴포넌트 | [문서](./live-component.md) |
 | **Lifecycle Hooks** | `on_mount` 훅, `attach_hook`으로 라이프사이클 가로채기 | [문서](./lifecycle-hooks.md) |
+| **Boost** | `BOOST_PAGES`: 링크와 `wire-boost` 폼을 전체 로드 없이, `wireview.visit()` | [문서](./boost.md) |
 | **live_session** | 페이지 단위 인증 경계. 경계를 넘는 이동은 전체 로드 | [문서](./live-session.md) |
 | **세션 읽기** | `self.session`으로 Django 세션 읽기 (읽기 전용) | [문서](./session.md) |
 | **서버 오류 처리** | 핸들러 예외는 그 컴포넌트만 이벤트 전 상태로 다시 join, 연결은 유지. `wireview-error`, `wireview:error` | [문서](./errors.md) |

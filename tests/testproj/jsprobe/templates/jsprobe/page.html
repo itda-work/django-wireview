@@ -11,5 +11,22 @@
     {% component 'JsProbe' id="probe" %}
     {% component 'JsProbeCard' id="card" %}
     <a href="/jsprobe/bounce/" data-testid="bounce">bounce</a>
+    <form method="post"
+          action="/jsprobe/say/"
+          wire-boost
+          data-testid="boosted-post">
+      {% csrf_token %}
+      <input name="word" data-testid="boosted-post-word">
+      <button type="submit" data-testid="boosted-post-send">say</button>
+    </form>
+    <form action="/jsprobe/said/" wire-boost data-testid="boosted-get">
+      <input name="word" data-testid="boosted-get-word">
+      <button type="submit" data-testid="boosted-get-send">search</button>
+    </form>
+    <form method="post" action="/jsprobe/say/" data-testid="plain-post">
+      {% csrf_token %}
+      <input name="word" data-testid="plain-post-word">
+      <button type="submit" data-testid="plain-post-send">say</button>
+    </form>
   </body>
 </html>

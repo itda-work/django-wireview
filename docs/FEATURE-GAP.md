@@ -156,7 +156,7 @@ GAP 번호로 추적한다.
 | replace | ✅ | `self.wire.replace_to()` | ✅ | `tests/test_js_commands_e2e.py::test_replace_to_changes_the_url_in_place_and_runs_params_changed`<br>`tests/test_params_changed.py::TestAQueryOnlyDestination::test_replace_keeps_it_literal` |
 | handle_params | ✅ | `params_changed()` | ✅ | `tests/test_js_commands_e2e.py::test_push_to_adds_an_entry_and_runs_params_changed`<br>`tests/test_live_component_render.py::test_a_child_that_appears_through_params_changed_is_joined` |
 | live_session | ✅ | `live_session()` + `@session.view` | ✅ (GAP-009. 경계는 페이지 단위다 — Django 뷰가 라우트이기 때문. [문서](./features/live-session.md)) | `tests/test_live_session_e2e.py::TestBoundaryNavigation::test_a_link_click_out_of_the_boundary_reloads`<br>`tests/test_live_session.py::TestValidSignaturesDoNotCombine::test_a_state_from_another_boundary_is_refused` |
-| Client-side boost | ✅ | `WIREVIEW["BOOST_PAGES"]` | ✅ | `tests/test_live_session_e2e.py::TestBoundaryNavigation::test_a_boosted_move_inside_the_boundary_still_morphs` |
+| Client-side boost | ✅ | `WIREVIEW["BOOST_PAGES"]`. 폼은 `wire-boost`로 청한다, `wireview.visit()` | ✅ | `tests/test_live_session_e2e.py::TestBoundaryNavigation::test_a_boosted_move_inside_the_boundary_still_morphs`<br>`tests/test_js_commands_e2e.py::test_a_boosted_post_form_lands_where_it_redirected` |
 
 ### 2.9 JavaScript Interoperability ✅
 

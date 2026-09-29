@@ -44,6 +44,11 @@ interface WireviewDebug {
 interface Window {
   wireview: {
     /**
+     * Go to a URL as a boosted link does (in place under `BOOST_PAGES`, otherwise a page load).
+     * Resolves to false when a full page load took over.
+     */
+    visit(url: string, options?: { replace?: boolean }): Promise<boolean>;
+    /**
      * `options.commit`: the event commits the fields it comes from, so its answer may reset
      * them (docs/features/html-diff.md, "입력 중인 값"). By default decided from `eventType`.
      */

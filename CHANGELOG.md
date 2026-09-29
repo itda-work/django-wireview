@@ -12,6 +12,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- Boosted forms and a navigation API. A form with `wire-boost` is submitted without a page
+  load under `BOOST_PAGES` -- a GET to its query, anything else by fetch, the history entry at
+  the page its redirect ended on. Forms opt in, since a login or logout form that boosted would
+  keep a socket speaking for the old identity. `wireview.visit(url, {replace})` navigates the
+  way a boosted link does, for code that had to click a hidden `<a>`.
+  `docs/features/boost.md` documents boost for the first time (#103).
 - `wire-update="ignore"`: after its first render no render touches the element -- its
   attributes, children or text -- as Phoenix's `phx-update="ignore"`. What a hook or a widget did
   to it stays, where `updated()` could only put it back after a morph had shown the gap (#102).

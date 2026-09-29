@@ -208,6 +208,69 @@ def test_a_render_leaves_an_ignored_element_as_the_page_made_it(probe):
     expect(by(probe, "ignored")).to_have_attribute("data-count", "0")
 
 
+def _boosted(page) -> None:
+    """A marker a page load would lose and a boosted navigation keeps."""
+    page.evaluate("window.__samePage = true")
+
+
+def _still_boosted(page) -> bool:
+    return page.evaluate("window.__samePage === true")
+
+
+def test_a_boosted_post_form_lands_where_it_redirected(probe):
+    """``wire-boost``: sent with fetch, the page swapped in place, and the history
+    entry is the redirect's -- a reload shows the result, not the form again (#103)."""
+    _boosted(probe)
+    by(probe, "boosted-post-word").fill("hello")
+    by(probe, "boosted-post-send").click()
+
+    expect_text(by(probe, "said"), "hello")
+    assert _still_boosted(probe)
+    assert probe.url.endswith("/jsprobe/said/?word=hello")
+    probe.go_back()
+    expect(by(probe, "boosted-post")).to_be_visible()
+
+
+def test_a_boosted_post_that_does_not_redirect_stays_on_its_url(probe):
+    """A form answered with its errors: reloading must not send it again."""
+    _boosted(probe)
+    before = probe.url
+    by(probe, "boosted-post-send").click()
+
+    expect_text(by(probe, "said"), "a word is required")
+    assert _still_boosted(probe)
+    assert probe.url == before
+
+
+def test_a_boosted_get_form_goes_to_its_query(probe):
+    _boosted(probe)
+    by(probe, "boosted-get-word").fill("hi")
+    by(probe, "boosted-get-send").click()
+
+    expect_text(by(probe, "said"), "hi")
+    assert _still_boosted(probe)
+    assert probe.url.endswith("/jsprobe/said/?word=hi")
+
+
+def test_a_form_that_does_not_ask_is_an_ordinary_submit(probe):
+    """The control: a login form must reload the page, so boosting is opt-in."""
+    _boosted(probe)
+    by(probe, "plain-post-word").fill("plain")
+    by(probe, "plain-post-send").click()
+
+    expect_text(by(probe, "said"), "plain")
+    assert not _still_boosted(probe)
+
+
+def test_visit_navigates_as_a_boosted_link_does(probe):
+    _boosted(probe)
+    probe.evaluate("wireview.visit('/jsprobe/said/?word=visited')")
+
+    expect_text(by(probe, "said"), "visited")
+    assert _still_boosted(probe)
+    assert probe.url.endswith("/jsprobe/said/?word=visited")
+
+
 def test_a_submit_marks_the_form_loading_until_the_answer(probe):
     by(probe, "q").fill("hello")
     by(probe, "q").press("Enter")
