@@ -168,6 +168,23 @@ def test_a_broadcasts_render_does_not_end_a_click_paired_by_ref(page, server):
     expect(button).to_have_text("save")
 
 
+def test_a_boosted_link_that_redirects_shows_where_it_landed(probe):
+    """The address bar said the requested URL, so a reload ran the redirecting
+    view again -- and its side effect with it (#104)."""
+    probe.evaluate("window.__samePage = true")
+    before = probe.evaluate("history.length")
+
+    by(probe, "bounce").click()
+
+    expect(by(probe, "landed")).to_be_visible()
+    assert probe.evaluate("window.__samePage === true"), "a boosted navigation, not a page load"
+    assert probe.url.endswith("/jsprobe/landed/")
+    assert probe.evaluate("history.length") == before + 1
+    probe.go_back()
+    expect(by(probe, "bounce")).to_be_visible()
+    assert probe.url.endswith("/jsprobe/")
+
+
 def test_a_submit_marks_the_form_loading_until_the_answer(probe):
     by(probe, "q").fill("hello")
     by(probe, "q").press("Enter")

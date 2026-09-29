@@ -296,6 +296,14 @@ class HistoryCache {
       document.location.replace(response.url || url);
       return false;
     }
+    // The entry names the URL that was asked for. After a redirect the page is
+    // another one, and a reload from the address bar would run the redirecting
+    // view -- and whatever it does -- again (#104). Before `newLocation`, which
+    // reads the params from the address bar. The state stays: after a popstate
+    // it is the cached page Back returns to.
+    if (response.redirected && response.url) {
+      history.replaceState(history.state, document.title, response.url);
+    }
     // Only now. `newLocation` is what makes the client tell the server its new
     // params, and announcing it before the response was admitted had the old
     // page's components -- under the authentication the navigation was leaving

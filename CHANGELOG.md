@@ -12,6 +12,9 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A boosted navigation that follows a redirect shows where it landed in the address bar. The
+  entry kept the requested URL, so a reload ran the redirecting view -- and its side effect --
+  again (#104).
 - The loading state an event starts -- the loading classes and `wire-disabled-with` -- ends
   with that event's answer, the render or `error` carrying its `ref`. Any render of the
   component ended it, so the join's answer landing after a click, or the render of a broadcast
