@@ -1,5 +1,74 @@
 # 업그레이드 가이드
 
+## 1.0.0rc1에서 1.0으로
+
+1.0이 공개 API를 굳히기 전에 모양을 한 번 더 정리했다(#119). 1.0.0rc1을 쓰던 프로젝트는 아래를 확인한다.
+대부분은 `TypeError`·`ImportError`·`manage.py check`로 드러나고, 조용히 달라지는 것은 **조용함**으로 표시했다.
+전체 목록은 [CHANGELOG](../CHANGELOG.md).
+
+### 1. `handle_async`는 `AsyncResult`를 받는다
+
+```python
+# 전
+async def handle_async(self, name, result):
+    if result[0] == "ok":
+        self.data = result[1]
+
+# 후
+async def handle_async(self, name, result):
+    if result.ok:
+        self.data = result.result      # 실패면 result.failed, result.error
+```
+
+옛 코드는 `TypeError`를 던지고, 컨슈머가 그 컴포넌트를 버리고 다시 join시킨다(로그에 남는다).
+
+### 2. m2m 채널 이름 (**조용함**)
+
+`AUTO_BROADCAST.m2m`의 알림은 이제 양쪽 행 모두 `<app_label>.<model>.<pk>.<field>`로 간다. 끝에 상대 pk가 붙은
+`<...>.<field>.<pk>` 형식을 구독했다면 아무것도 받지 못한다. 접미사 없는 형식으로 바꾼다.
+
+### 3. 테스트의 `mount()`
+
+옵션은 키워드로만 받는다. `mount(Cls, user)`는 `mount(Cls, user=user)`로. 이름이 옵션과 같은 필드(`params` 등)는
+`state={"params": ...}`로 준다. `view.dom_actions`와 `view.clear_dom_actions()`는 없어졌다(항상 비어 있었다).
+
+### 4. 없어진 이름
+
+| 옛 것 | 대신 |
+|-------|------|
+| `from wireview import send_notification`, `asend_notification` | `broadcast`, `abroadcast` |
+| `from wireview import ComponentNotFound`, `list_function_components` | 없음 (내부) |
+| `telemetry.span`, `telemetry.payload_size` | 없음 (내부) |
+| `Component.dom()` | 없음 |
+| `wireview.debounce()`, `wireview.throttle()` (브라우저) | `{% on "input.debounce.300" ... %}` 또는 직접 만든 타이머 |
+
+### 5. 템플릿의 `{% upload_button %}`
+
+```html
+<!-- 전 -->
+{% upload_button "images" class="btn" %}Select</button>
+<!-- 후 -->
+<button type="button" {% upload_button "images" %} class="btn">Select</button>
+```
+
+### 6. 브라우저 API (**조용함**)
+
+- `wireview.send(el, name, args, "click")`처럼 넷째 인자로 이벤트 종류를 넘겼다면 `{eventType: "click"}`로 바꾼다.
+  문자열은 무시되어 로딩 클래스가 붙지 않는다. 대상 LiveComponent는 `args._target` 대신 `{target: id}`.
+- `wireview.dom.onBeforeElUpdated(cb)`는 콜백을 **더한다**. `null`을 넘겨 지우던 코드는 돌려받은 함수를 부른다.
+- 업로드 이벤트는 `wireview:upload-progress` 등으로도 나간다. 옛 `upload:progress`도 2.0까지 나가므로 급하지 않다.
+
+### 7. 그 밖의 시그니처
+
+- `self.scroll_into_view(id, "smooth")` → `self.scroll_into_view(id, behavior="smooth")`
+- `self.wire.redirect_to(to="/x")` → `self.wire.redirect_to("/x")`. `push_to`·`replace_to`도 같다.
+
+### 8. 설정
+
+`SYNC_TRANSITION_WARNING_THRESHOLD`·`SYNC_TRANSITION_ERROR_THRESHOLD`는
+`DEBUG_SYNC_TRANSITIONS_WARNING_THRESHOLD`·`DEBUG_SYNC_TRANSITIONS_ERROR_THRESHOLD`로 바뀌었고
+`TRANSPILER_CACHE_SIZE`는 없어졌다. 남아 있으면 `manage.py check`가 `wireview.W014`로 알린다.
+
 ## 0.6에서 0.7, 1.0 릴리스 후보로
 
 고칠 것이 없다. 0.7.0과 1.0.0rc1은 호환을 깨는 변경이 없다([CHANGELOG](../CHANGELOG.md)).
