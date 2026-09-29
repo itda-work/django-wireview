@@ -10,6 +10,15 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-29
+
+Bug fixes and small additions gathered from building an application on 0.6, with nothing to
+change on upgrade. A loading state ends with its own answer (#118); a boosted navigation shows
+where it landed after a redirect (#104); infinite scroll judges the list once the join has
+landed, which takes protocol 5 (#112); type stubs are the same on every run (#109). Added:
+`wire-update="ignore"` (#102), boosted forms with `wire-boost` and `wireview.visit()` (#103),
+and `view.render_diff()` for tests (#117).
+
 ### Added
 
 - Boosted forms and a navigation API. A form with `wire-boost` is submitted without a page
@@ -1106,7 +1115,8 @@ auto-recovery, viewport bindings, optimistic UI attributes, type stub
 generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
-[Unreleased]: https://github.com/itda-work/django-wireview/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/itda-work/django-wireview/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/itda-work/django-wireview/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/itda-work/django-wireview/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/itda-work/django-wireview/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/itda-work/django-wireview/compare/v0.3.0...v0.4.0
