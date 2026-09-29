@@ -52,7 +52,7 @@ sync로 쓰면 실행되지 않고 `manage.py check`가 `wireview.W002`로 알�
 | `await push_title(title)` | 문서 제목을 바꾼다 |
 | `await put_flash(flash_type, message, *, timeout=5000, dismissible=True)` / `await clear_flash(flash_id=None)` | 플래시 ([flash](./flash.md)) |
 | `await focus_on(selector)` | 요소에 포커스 |
-| `await scroll_into_view(element_id, behavior="auto", block="start", inline="nearest")` | 요소를 보이게 스크롤 |
+| `await scroll_into_view(element_id, *, behavior="auto", block="start", inline="nearest")` | 요소를 보이게 스크롤 |
 | `await defer(f, *args, **kwargs)` | 지금 이벤트가 끝난 뒤 `f`를 부른다 |
 | `await start_async(name, coro)` / `await cancel_async(name)` | 백그라운드 작업 ([async-operations](./async-operations.md)) |
 | `await assign_async(coro, *, on_error=None)` | 결과를 `AsyncResult` 필드로 받는다 |

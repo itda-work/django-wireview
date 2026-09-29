@@ -37,7 +37,7 @@ from wireview import Component, LiveComponent, JS, mount
 | 무엇 | 형태 |
 |------|------|
 | Django 앱 | `INSTALLED_APPS`의 `"wireview"` |
-| URL | `include("wireview.urls")`, `wireview.urls.websocket_urlpatterns` |
+| URL | `include("wireview.urls")`, `wireview.urls.websocket_urlpatterns`, 그리고 둘이 여는 경로 `/__wireview__`(WebSocket)와 `/__wireview_upload__/…`(업로드). 프록시·CSP `connect-src`·방화벽이 이 경로를 적으므로 경로도 약속이다. **루트에 마운트해야 한다** — 클라이언트와 업로드 토큰이 이 경로를 루트에서 찾으므로, 접두사 아래(`path("app/", include(...))`)나 하위 경로 배포(`SCRIPT_NAME`)에서는 동작하지 않는다 |
 | 템플릿 태그 | `{% load wireview %}`와 그 태그들 |
 | 설정 | `settings.WIREVIEW`의 키 (`wireview/settings.py`의 `DEFAULT`) |
 | 관리 명령 | `wireview_stubs`, `wireview_lsp`, `wireview_agent_setup`, `wireview_upload_gc`와 문서화된 옵션. `wireview_lsp`의 출력 JSON은 그 안의 `version` 필드로 따로 관리한다 — 모양을 바꾸면 `version`을 올린다 |

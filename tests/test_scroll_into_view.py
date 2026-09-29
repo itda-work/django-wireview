@@ -125,3 +125,12 @@ class TestComponentScrollIntoView:
         assert len(scroll_messages) == 1
         assert scroll_messages[0]["id"] == "another-element"
         assert scroll_messages[0]["behavior"] == "smooth"
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_the_scroll_options_are_keyword_only():
+    """``focus_on`` takes a selector and this an id; positional options hid the difference (#119)."""
+    view = await mount(ScrollInJoinedComponent)
+    with pytest.raises(TypeError):
+        await view.component.scroll_into_view("x", "smooth")  # type: ignore[misc]

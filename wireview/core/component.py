@@ -805,6 +805,7 @@ class Component(BaseModel):
     async def scroll_into_view(
         self,
         element_id: str,
+        *,
         behavior: t.Literal["smooth", "instant", "auto"] = "auto",
         block: t.Literal["start", "end", "center", "nearest"] = "start",
         inline: t.Literal["start", "end", "center", "nearest"] = "nearest",

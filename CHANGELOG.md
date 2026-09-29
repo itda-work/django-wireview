@@ -32,6 +32,9 @@ What 1.0 promises, settled before it is frozen (#119).
 
 ### Changed
 
+- `Component.scroll_into_view(element_id, *, behavior, block, inline)`: the options are
+  keyword-only. `/__wireview__` and `/__wireview_upload__/` are declared public paths that must be
+  mounted at the root (`docs/COMPATIBILITY.md`).
 - `wireview.dom.onBeforeElUpdated(callback)` adds a callback and returns a function that removes
   it. It replaced the one callback there was, so a second library's registration silently evicted
   the first's (Alpine's, say). Passing `null` no longer clears anything; call the returned function.
