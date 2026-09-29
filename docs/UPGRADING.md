@@ -1,5 +1,32 @@
 # 업그레이드 가이드
 
+## 0.5에서 0.6으로
+
+0.6은 1.0 전에 계약을 바로잡은 릴리스다. 대부분 결함 수정이지만 아래 넷은 코드나 테스트를 고쳐야 할 수 있다.
+전체 목록은 [CHANGELOG](../CHANGELOG.md).
+
+### 1. `temporary_assigns`는 `joined()`에서 불러온다 (**조용함**)
+
+`Meta.temporary_assigns` 필드는 이제 서명 상태(`data-state`)에 실리지 않는다. 재접속으로 다시 join하면 그
+필드는 기본값에서 시작한다. 템플릿 태그 인자로만 채우던 필드(`{% component "X" messages=... %}`)는 재접속 뒤
+비므로, 불러오는 코드를 `joined()`로 옮긴다. 대신 초기화는 더 이상 변경이 아니어서, 목록과 무관한 렌더가 목록을 지우지 않는다
+([temporary_assigns](./features/temporary-assigns.md)).
+
+### 2. 중첩 컴포넌트 안의 훅은 그 컴포넌트의 것이다 (**조용함**)
+
+부모가 먼저 join하면서 자식 컴포넌트 안의 훅까지 가져가던 결함을 고쳤다. 그래서 부모의 `push_event`가 자식
+안의 훅에 닿던 코드는 이제 닿지 않는다. 훅을 가진 컴포넌트에서 보내거나, 훅을 부모 자신의 마크업으로 옮긴다
+([훅](./features/hooks.md#훅-수명주기)).
+
+### 3. 테스트: `call()`은 클라이언트가 부를 수 있는 것만 부른다
+
+`MountedComponent.call()`이 `_`로 시작하는 메서드, 라이프사이클 메서드, 믹스인의 프레임워크 메서드를 부르면
+`AssertionError`를 낸다. 메서드 자체를 시험하려던 테스트는 `await view.component.method(...)`로 직접 부른다.
+
+### 4. 테스트: `view.wire.broadcasts`는 `view.broadcasts`로
+
+`view.wire.broadcasts`·`view.wire.presence_broadcasts`는 `WireviewDeprecationWarning`을 내고 2.0에서 없어진다.
+
 ## 0.4에서 1.0으로
 
 1.0 전에 API를 굳히면서 호환을 깨는 변경을 한 번에 모았다(#93). 아래 순서대로 하면 된다. 대부분은 틀리면

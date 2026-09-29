@@ -45,13 +45,18 @@ The django-reactor era changelog (2.x) is preserved in
 - The signed state (`data-state`) leaves out `Meta.temporary_assigns` fields. A list reset after
   the render was signed while the render held it, so ten thousand rows went into a page
   attribute. **Upgrading:** a component joined again (a reconnect) starts such a field from its
-  default; load it in `joined()`, as the guide does, not only in `mount()` (#111).
+  default. Load it in `joined()`, as the guide does; a field filled only by the template tag
+  (`{% component "X" messages=... %}`) is empty after a reconnect (#111).
 - `MountedComponent.call()` meets the checks a browser's event meets: a name a client cannot
   call (`_private`, a lifecycle method, a mixin's framework method such as
   `presence_set_typing`) raises `AssertionError`, and arguments the handler does not take are
   dropped. A test that passed through `call()` could exercise what no page can. **Upgrading:**
   a test that meant the method, not the event, calls it directly:
   `await view.component.presence_set_typing(True)` (#110).
+- A hook inside a nested component belongs to that component. A parent's `push_event` reached
+  the hooks of the components it rendered, because the parent joined first and took them.
+  **Upgrading:** push from the component that holds the hook, or move the hook to the parent's
+  own markup (#107).
 - Submitting a form shows the `wire-feedback-for` feedback of all its fields, touched or not,
   as Phoenix does. The guide told applications to do this with an inline `onclick`, which a
   strict CSP blocks (#110).
