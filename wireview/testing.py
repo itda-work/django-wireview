@@ -392,9 +392,11 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
     async def follow_redirect(
         self,
         component_class: type["Component"],
+        /,
         *,
         params: dict[str, t.Any] | None = None,
         live_session: t.Any = _UNSET,
+        state: dict[str, t.Any] | None = None,
         **initial_state: t.Any,
     ) -> "MountedComponent":
         """Follow the redirect and mount ``component_class`` on the destination page.
@@ -417,6 +419,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             live_session: override the boundary. Pass ``None`` for a page that
                 declares none -- useful when the destination is not in this
                 project's URLconf at all.
+            state: initial field values as a dict, as in :func:`mount`.
             **initial_state: initial field values, as in :func:`mount`.
 
         Raises:
@@ -453,6 +456,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             params=nav.params if params is None else params,
             session=self._repo.session,
             live_session=policy,
+            state=state,
             **initial_state,
         )
 
@@ -622,11 +626,14 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
 
 async def mount(
     component_class: type["Component"],
+    /,
+    *,
     user: "AbstractBaseUser | AnonymousUser | None" = None,
     params: dict[str, t.Any] | None = None,
     session: t.Any = None,
     session_key: str | None = None,
     live_session: t.Any = None,
+    state: dict[str, t.Any] | None = None,
     **initial_state: t.Any,
 ) -> MountedComponent:
     """
@@ -647,6 +654,11 @@ async def mount(
             its name). Without it the component mounts on a page that declares
             none, which is what refuses a component that named its
             ``Meta.live_sessions``
+        state: Initial field values, as a dict. The keyword arguments below say
+            the same thing more briefly, but they share a namespace with the
+            options above: a field called ``params`` can only be given here. So
+            can a field named like an option a later release adds -- the options
+            are keyword-only so that adding one breaks nothing else (#119).
         **initial_state: Initial field values for the component
 
     Returns:
@@ -669,6 +681,11 @@ async def mount(
     from django.contrib.auth.models import AnonymousUser
 
     from .core.live_session import LiveSession, get_live_session
+
+    if state:
+        if both := set(state) & set(initial_state):
+            raise TypeError(f"mount() got {sorted(both)} both in state= and as keywords")
+        initial_state = {**state, **initial_state}
 
     session_view = SessionView.wrap(session, session_key=session_key)
     policy = live_session if isinstance(live_session, LiveSession) or live_session is None else None
@@ -735,11 +752,14 @@ class ComponentTestCase:
     async def mount(
         self,
         component_class: type["Component"],
+        /,
+        *,
         user: "AbstractBaseUser | AnonymousUser | None" = None,
         params: dict[str, t.Any] | None = None,
         session: t.Any = None,
         session_key: str | None = None,
         live_session: t.Any = None,
+        state: dict[str, t.Any] | None = None,
         **initial_state: t.Any,
     ) -> MountedComponent:
         """
@@ -754,5 +774,6 @@ class ComponentTestCase:
             session=session,
             session_key=session_key,
             live_session=live_session,
+            state=state,
             **initial_state,
         )

@@ -51,8 +51,36 @@ class PageFromParams(Component):
         return cls(wire=wire, **kwargs)
 
 
+class FieldNamedLikeAnOption(Component):
+    class Meta:
+        template_name = "todo/counter.html"
+
+    params: str = ""
+
+
 class TestMount:
     """Test the mount() function."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_the_options_are_keyword_only(self):
+        """A positional user= would pin the option order, and adding an option would shift it (#119)."""
+        with pytest.raises(TypeError):
+            await mount(SimpleCounter, None)  # type: ignore[misc]
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_field_named_like_an_option_is_given_through_state(self):
+        view = await mount(FieldNamedLikeAnOption, params={"q": "1"}, state={"params": "field value"})
+
+        assert view.component.params == "field value"
+        assert view.component.wire.params == {"q": "1"}
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_field_given_twice_is_refused(self):
+        with pytest.raises(TypeError, match="both"):
+            await mount(SimpleCounter, state={"count": 1}, count=2)
 
     @pytest.mark.asyncio
     @pytest.mark.unit

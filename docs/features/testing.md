@@ -19,8 +19,10 @@ async def test_increment():
     assert view.component.count == 1
 ```
 
-`mount(component_class, user=None, params=None, session=None, session_key=None, live_session=None, **initial_state)`.
-이 여섯 이름은 `mount()`가 쓰므로 같은 이름의 컴포넌트 필드에는 전달되지 않는다.
+`mount(component_class, /, *, user=None, params=None, session=None, session_key=None, live_session=None, state=None, **initial_state)`.
+옵션은 모두 키워드로 준다. 필드 초깃값은 키워드(`count=0`)나 `state={"count": 0}`로 준다. 옵션과 이름이 같은
+필드(`params` 같은)는 `state=`로만 줄 수 있다 — 이후 릴리스가 옵션을 더해도 그 필드는 `state=`로 계속 줄 수 있다.
+같은 필드를 두 곳에 주면 `TypeError`다.
 `ComponentTestCase`를 상속하면 pytest·unittest 클래스 안에서 `self.mount(...)`으로 같은 것을 쓴다.
 
 **거절된 마운트는 freeze된다.** `Meta.on_mount` 훅이 halt하거나 `Meta.live_sessions`가 그 페이지를

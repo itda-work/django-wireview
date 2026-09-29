@@ -25,6 +25,11 @@ What 1.0 promises, settled before it is frozen (#119).
 
 ### Changed
 
+- `mount()`, `ComponentTestCase.mount()` and `follow_redirect()` take their options as keywords
+  only, and field values also through `state={...}`. The options shared a namespace with the
+  fields, so a field called `params` could not be set, and every option a later release added
+  would have broken the component with a field of that name. `mount(Cls, user)` is a
+  `TypeError`; write `mount(Cls, user=user)`.
 - `handle_async(name, result)` receives an `AsyncResult`, the type `assign_async` already fills,
   instead of an Elixir-style `("ok", value)`/`("exit", exc)` tuple: read `result.ok` and
   `result.result`, or `result.failed` and `result.error`. An override that indexes the tuple
