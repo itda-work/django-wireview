@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_valid
 
 from .. import utils
 from ..async_result import AsyncResult
-from ..schemas import DomAction, ModelAction
+from ..schemas import ModelAction
 from ..utils import db
 from . import model_state, render_reads
 from .meta import Repo, WireviewMeta
@@ -1166,39 +1166,6 @@ class Component(BaseModel):
     def freeze(self) -> None:
         """Freeze the component to prevent further rendering."""
         self.wire.freeze()
-
-    async def dom(
-        self,
-        _action: DomAction,
-        _id: str,
-        _component_class_or_template_name: t.Type["Component"] | str,
-        **kwargs: t.Any,
-    ) -> None:
-        """Perform a DOM manipulation action."""
-        if isinstance(_component_class_or_template_name, str):
-            template = self._get_template(_component_class_or_template_name)
-            html = await db(template.render)(kwargs)
-        else:
-            from ..repository import ComponentRepository
-
-            component = _component_class_or_template_name.new(
-                wire=self.wire.clone(),
-                user=self.user,
-                session=self.session,
-                **kwargs,
-            )
-            html = await db(component._render)(
-                ComponentRepository(
-                    is_live=False,
-                    user=self.user,
-                    params=self.wire.params,
-                    session=self.session,
-                )
-            )
-        if html is not None:
-            await self.wire.send_dom_action(_action, _id, html)
-
-    # Stream operations
 
     async def stream(
         self,

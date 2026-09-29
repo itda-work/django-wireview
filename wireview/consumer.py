@@ -873,10 +873,6 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             except Exception:
                 await self._crashed(component)
 
-    async def component_dom_action(self, action, id, html):
-        log.debug(f">>> DOM {action.upper()} {id}")
-        await self.send_command(action, {"id": id, "html": html})
-
     async def component_stream_op(self, op, stream, items, at, limit=0):
         log.debug(f">>> STREAM {op.upper()} {stream}")
         payload = {"op": op, "stream": stream, "items": items, "at": at}

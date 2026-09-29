@@ -166,14 +166,6 @@ class TestEventHandlerSecurity:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_dom_blocked(self, repo_and_id):
-        """Component dom method should be blocked."""
-        repo, comp_id = repo_and_id
-        with pytest.raises(ValueError, match="Cannot call base class method"):
-            await repo.dispatch_event(comp_id, "dom", [], {})
-
-    @pytest.mark.asyncio
-    @pytest.mark.unit
     async def test_destroy_blocked(self, repo_and_id):
         """Component destroy method should be blocked."""
         repo, comp_id = repo_and_id

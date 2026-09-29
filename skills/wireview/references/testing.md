@@ -30,7 +30,6 @@ async def test_increment():
 | `view.component` | 컴포넌트 인스턴스. 상태를 직접 검사한다 |
 | `view.render()` | 렌더된 HTML 문자열 |
 | `view.sent_messages` | 클라이언트로 나간 메시지 목록 |
-| `view.dom_actions` | 서버가 지시한 DOM 조작 목록. **스트림은 여기 안 들어간다** (아래 참조) |
 | `view.redirected_to` | 리다이렉트 대상 URL (없으면 `None`) |
 | `view.assert_pushed_to(url, params=...)` | push 단언. `assert_replaced_to`·`assert_redirected_to`도 같은 모양 |
 | `view.assert_no_navigation()` | URL을 건드리지 않았다 |
@@ -40,13 +39,13 @@ async def test_increment():
 | `view.is_frozen` | `freeze()` 여부 |
 | `view.broadcasts` | 이 컴포넌트가 낸 브로드캐스트 |
 | `view.presence_broadcasts` | 그중 `PresenceMixin`이 낸 것(입장·퇴장·타이핑). 항목마다 `kwargs`에 `action` |
-| `view.clear_messages()` / `view.clear_dom_actions()` | 다음 단계 전에 비운다. 필터 전환처럼 `stream()`을 다시 부르는 핸들러를 검사하기 전에 필수 |
+| `view.clear_messages()` | 다음 단계 전에 비운다. 필터 전환처럼 `stream()`을 다시 부르는 핸들러를 검사하기 전에 필수 |
 
 `ComponentTestCase`를 상속하면 pytest·unittest 클래스 안에서 같은 유틸을 쓸 수 있다.
 
 ## 스트림을 테스트할 때
 
-스트림 아이템은 `view.render()`에도 `view.dom_actions`에도 없다. 컴포넌트 템플릿은 빈
+스트림 아이템은 `view.render()`에 없다. 컴포넌트 템플릿은 빈
 컨테이너만 렌더하고, 아이템 HTML은 별도 메시지로 간다. `view.stream_html(name)`이 그것을
 모아 준다.
 

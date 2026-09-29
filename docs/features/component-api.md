@@ -66,5 +66,5 @@ sync로 쓰면 실행되지 않고 `manage.py check`가 `wireview.W002`로 알�
 
 ## 내부
 
-밑줄이 없지만 공개가 아닌 것: `dom()`, `LiveComponent.myself`. Pydantic `BaseModel`에서 온 멤버
+밑줄이 없지만 공개가 아닌 것: `LiveComponent.myself`. Pydantic `BaseModel`에서 온 멤버
 (`model_dump` 등)는 Pydantic의 것이고 wireview가 약속하지 않는다.

@@ -45,14 +45,13 @@ async def test_increment():
 | `view.is_frozen` | `freeze()` 여부 |
 | `view.redirected_to` | `wire.redirect_to()`로 간 URL. 없으면 `None`. 단언은 `assert_redirected_to()`가 낫다 — 실패하면 일어난 이동을 나열한다 |
 | `view.sent_messages` | 클라이언트로 나간 메시지 목록 (원본. 항목의 모양은 공개가 아니다) |
-| `view.dom_actions` | 서버가 지시한 DOM 조작 (항목의 모양은 공개가 아니다). **스트림은 여기 없다** |
 | `view.broadcasts` | 이 컴포넌트가 낸 브로드캐스트 |
 | `view.presence_broadcasts` | 그중 `PresenceMixin`이 낸 것(입장·퇴장·타이핑). 항목마다 `kwargs`에 `action` |
-| `view.clear_messages()` / `view.clear_dom_actions()` | 다음 단계 전에 비운다 |
+| `view.clear_messages()` | 다음 단계 전에 비운다 |
 
 아래 헬퍼는 전부 `sent_messages` 위에 있다. 직접 뒤져도 되지만, 그러면 **테스트가 wire
 프로토콜의 메시지 모양을 알게 된다** — 그건 라이브러리 내부지 사용자 API가 아니다. `sent_messages`,
-`dom_actions`, `render_diff()`의 diff, 스트림 검사가 돌려주는 항목은 [호환성 정책](../COMPATIBILITY.md)의
+`render_diff()`의 diff, 스트림 검사가 돌려주는 항목은 [호환성 정책](../COMPATIBILITY.md)의
 와이어 프로토콜에 속한다. 마이너 릴리스에서 모양이 바뀔 수 있으니 단언은 헬퍼로 한다.
 
 ## 내비게이션 단언
@@ -146,7 +145,7 @@ assert view.component.page == 2
 
 ## 스트림 검사
 
-스트림 아이템은 `view.render()`에도 `view.dom_actions`에도 없다. 템플릿은 빈 컨테이너만 렌더하고
+스트림 아이템은 `view.render()`에 없다. 템플릿은 빈 컨테이너만 렌더하고
 아이템 HTML은 별도 메시지로 간다.
 
 | 헬퍼 | 반환 |

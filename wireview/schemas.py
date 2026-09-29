@@ -38,11 +38,3 @@ class ModelAction(StrEnum):
     ADDED = "ADDED"
     REMOVED = "REMOVED"
     CLEARED = "CLEARED"
-
-
-class DomAction(StrEnum):
-    APPEND = "append"
-    PREPEND = "prepend"
-    INSERT_AFTER = "insert_after"
-    INSERT_BEFORE = "insert_before"
-    REPLACE_WITH = "replace_with"

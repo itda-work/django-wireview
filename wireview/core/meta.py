@@ -13,7 +13,6 @@ from django.utils.html import format_html
 from django.utils.safestring import SafeText, mark_safe
 
 from .. import telemetry
-from ..schemas import DomAction
 from ..utils import db
 from .render_reads import RenderReads
 from .rendered import Rendered, strip_markers
@@ -404,10 +403,6 @@ class WireviewMeta:
         if html:
             return mark_safe(html)
         return None
-
-    async def send_dom_action(self, action: DomAction, id: str, html: str) -> None:
-        """Send a DOM manipulation action to the client."""
-        await self.send("dom_action", action=action.value, id=id, html=html)
 
     async def send_stream_op(self, op: "StreamOp") -> None:
         """Send a stream operation to the client."""

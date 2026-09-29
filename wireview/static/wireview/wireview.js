@@ -293,35 +293,6 @@ class ServerConnection {
         }
         break;
       }
-      case "append":
-      case "prepend":
-      case "insert_after":
-      case "insert_before":
-      case "replace_with":
-        var { id, html } = payload;
-        html = parser.parseFromString(html, "text/html").body.firstChild;
-        var element = document.getElementById(id);
-        if (element) {
-          switch (command) {
-            case "append":
-              element.append(html);
-              break;
-            case "prepend":
-              element.prepend(html);
-              break;
-            case "insert_after":
-              element.after(html);
-              break;
-            case "insert_before":
-              element.before(html);
-              break;
-            case "replace_with":
-              boost.morph(element, html);
-              break;
-          }
-          boost.navEvent.sendNewContent();
-        }
-        break;
       case "remove":
         var { id } = payload;
         document.getElementById(id)?.remove();

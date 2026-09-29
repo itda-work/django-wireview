@@ -50,7 +50,6 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 | `joined` | `id` — 그 join과 `joined()`가 쌓아 둔 작업(스트림의 첫 페이지, 제목 등)이 모두 나갔다. 그 작업들과 같은 세션 큐로 보내 맨 뒤에 도착한다. 클라이언트는 이때부터 `wire-viewport-*`를 판단한다(#112). `vsn` 5 이상의 클라이언트에만 보낸다. 옛 서버에서는 클라이언트가 그 컴포넌트의 첫 render를 신호로 쓴다 |
 | `error` | `id`, `during` (`event` 또는 `join`), `ref?` — 서버 코드가 이 컴포넌트를 처리하다 예외를 던졌다(#94). `vsn` 4 이상의 클라이언트에만 보낸다. `event`: 핸들러, 브로드캐스트 수신, `params_changed`, 훅 이벤트, 업로드 콜백, LiveComponent `update()`, 렌더 중 하나가 던졌다. 서버는 인스턴스를 버렸고(`leaving()`을 부른다), `id`는 루트 컴포넌트다(LiveComponent가 던졌으면 그 루트). 클라이언트는 렌더 상태를 비우고 요소의 `data-state`로 다시 join한다. 그 상태는 이벤트 전의 것이라 핸들러가 던지기 전에 바꾼 값은 남지 않는다. `ref`는 그 이벤트의 것이고, 답이 render로 오지 않으므로 클라이언트는 여기서 정리한다. `join`: join이 첫 렌더까지 가지 못했다. 다시 시도하지 않고, 클라이언트는 요소를 그대로 둔 채 `wireview-error` 클래스를 붙이고 컴포넌트 등록에서 뺀다. 두 경우 모두 요소에서 버블링되는 `wireview:error` 이벤트(`detail: {id, during}`)를 보낸다. `vsn` 3 이하 클라이언트에는 `event`면 소켓을 코드 1011로 닫고(전부 다시 join), `join`이면 `remove`를 보낸다 — 둘 다 이전의 동작이다 |
 | `reload` | `id` (알 수 없으면 `null`), `reason` (`expired`, `invalid`, `live_session`) — join의 루트 서명 상태를 쓸 수 없어 아무것도 마운트하지 않았다. 클라이언트는 전체 페이지 로드로 복구하며, 30초 안에 두 번 반복되면 `sessionStorage["wireview:last-reload"]` 가드가 막고 경고만 남긴다 |
-| `append`, `prepend`, `insert_after`, `insert_before`, `replace_with` | `id`, `html` |
 | `stream_op` | `op`, `stream`, `items`, `at` |
 | `exec_js` | `id`, `commands` |
 | `push_event` | `component_id`, `hook_id`, `event`, `payload` |
@@ -74,7 +73,6 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 | `dispatch_event` | `id`, `command`, `args`, `kwargs` | 세션 안에서 핸들러를 다시 호출하고 render |
 | `send_render` | `id` | 강제 render |
 | `update_live_component` | `parent_id`, `live_component_id`, `assigns` | LiveComponent `update()` 후 render |
-| `dom_action` | `action`, `id`, `html` | `action` 이름의 outbound 명령으로 전달 |
 
 ## 5. Fan-out (세션들 사이)
 

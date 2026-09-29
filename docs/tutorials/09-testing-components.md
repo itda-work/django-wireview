@@ -326,7 +326,7 @@ async def test_paging_reloads_the_page_of_products():
 
 ### 스트림에 실린 것 확인
 
-스트림 아이템은 `view.render()`에도 `view.dom_actions`에도 없다. 템플릿은 빈 컨테이너만
+스트림 아이템은 `view.render()`에 없다. 템플릿은 빈 컨테이너만
 렌더하고 아이템 HTML은 별도 메시지로 간다.
 
 ```python

@@ -152,7 +152,6 @@ class MockWireviewMeta(WireviewMeta):
         )
         # Track calls for assertions
         self.sent_messages: list[dict[str, t.Any]] = []
-        self.dom_actions: list[dict[str, t.Any]] = []
 
     @property
     def broadcasts(self) -> list[dict[str, t.Any]]:
@@ -200,15 +199,6 @@ class MockWireviewMeta(WireviewMeta):
     async def send_to(self, _channel: str, _command: str, **kwargs: t.Any) -> None:
         """Override to track messages instead of sending via WebSocket."""
         self.sent_messages.append({"channel": _channel, "command": _command, **kwargs})
-
-    async def send_dom_action(
-        self,
-        action: t.Any,
-        id: str,
-        html: str,
-    ) -> None:
-        """Override to track DOM actions."""
-        self.dom_actions.append({"action": action, "id": id, "html": html})
 
 
 class MockRepository(ComponentRepository):
@@ -307,11 +297,6 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
     def sent_messages(self) -> list[dict[str, t.Any]]:
         """Get all messages that would have been sent to the client."""
         return self.wire.sent_messages
-
-    @property
-    def dom_actions(self) -> list[dict[str, t.Any]]:
-        """Get all DOM actions that would have been performed."""
-        return self.wire.dom_actions
 
     @property
     def is_frozen(self) -> bool:
@@ -529,7 +514,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
     def stream_ops(self, stream: str | None = None) -> list[dict[str, t.Any]]:
         """Stream operations sent so far, optionally narrowed to one stream.
 
-        Stream items are in neither :meth:`render` nor :attr:`dom_actions` -- the
+        Stream items are not in :meth:`render` -- the
         template renders an empty container and the items travel as their own
         messages. That is a protocol detail every project was re-deriving.
         """
@@ -633,10 +618,6 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
     def clear_messages(self) -> None:
         """Clear the list of sent messages."""
         self._wire.sent_messages.clear()
-
-    def clear_dom_actions(self) -> None:
-        """Clear the list of DOM actions."""
-        self._wire.dom_actions.clear()
 
 
 async def mount(

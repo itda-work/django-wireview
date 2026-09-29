@@ -14,6 +14,10 @@ What 1.0 promises, settled before it is frozen (#119).
 
 ### Removed
 
+- `Component.dom()` and the test helpers `view.dom_actions` and `view.clear_dom_actions()`.
+  `dom()` was the only way to send a DOM action, nothing documented or tested it, and it took an
+  internal enum, so `dom_actions` was always empty. The client no longer handles `append`,
+  `prepend`, `insert_after`, `insert_before` or `replace_with` messages.
 - `send_notification` and `asend_notification` from `wireview`. They did what `broadcast` and
   `abroadcast` do; use those. Also `ComponentNotFound` and `list_function_components`, which
   nothing documented, and `span` and `payload_size` from `wireview.telemetry`, which are its own
