@@ -9,7 +9,7 @@
     opacity: 0.8; cursor: wait; pointer-events: none;
   }
 </style>
-<script defer src="{% static "wireview/wireview.min.js" %}?v=2"{% if CSP_NONCE %} nonce="{{ CSP_NONCE }}"{% endif %}></script>
+<script defer src="{% static "wireview/wireview.min.js" %}?v={{ BUNDLE_VERSION }}"{% if CSP_NONCE %} nonce="{{ CSP_NONCE }}"{% endif %}></script>
 {% for path in HOOK_FILES %}
   <script defer src="{% static path %}"{% if CSP_NONCE %} nonce="{{ CSP_NONCE }}"{% endif %}></script>
 {% endfor %}

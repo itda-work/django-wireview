@@ -1,6 +1,7 @@
 import asyncio
 import typing as t
 from concurrent.futures import ThreadPoolExecutor
+from importlib import metadata
 
 from asgiref.sync import async_to_sync
 from django import template
@@ -24,6 +25,18 @@ from ..slots import Slot, SlotContainer
 register = template.Library()
 
 
+def _bundle_version() -> str:
+    try:
+        return metadata.version("django-wireview")
+    except metadata.PackageNotFoundError:
+        return ""
+
+
+#: The bundle's cache key. It was a fixed ``?v=2``, so after an upgrade a browser
+#: could keep the old bundle under the same URL until its cache expired.
+BUNDLE_VERSION = _bundle_version()
+
+
 @register.inclusion_tag("wireview_header.html", takes_context=True)
 def wireview_header(context):
     """Load the client bundle and publish the page's navigation facts.
@@ -36,6 +49,7 @@ def wireview_header(context):
     request = context.get("request")
     return {
         "BOOST_PAGES": settings.BOOST_PAGES,
+        "BUNDLE_VERSION": BUNDLE_VERSION,
         "LIVE_SESSION": getattr(request, LIVE_SESSION_REQUEST_ATTR, "") if request is not None else "",
         # Every page carries every app's hooks, not the ones this page uses: a
         # boosted move replaces the body, so a script in the destination's head

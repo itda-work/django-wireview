@@ -166,7 +166,15 @@ class TestHeaderNonce:
         html = self._header(request)
 
         assert re.search(r'<style\s+nonce="n0nce">', html), html
-        assert re.search(r'src="[^"]*wireview\.min\.js\?v=2"\s+nonce="n0nce">', html), html
+        assert re.search(r'src="[^"]*wireview\.min\.js\?v=[^"]*"\s+nonce="n0nce">', html), html
+
+    def test_the_bundle_url_changes_with_the_package_version(self):
+        """A fixed ``?v=2`` let a browser keep the old bundle across an upgrade."""
+        from importlib import metadata
+
+        html = self._header(RequestFactory().get("/"))
+
+        assert f'wireview.min.js?v={metadata.version("django-wireview")}"' in html, html
 
     def test_without_a_nonce_nothing_is_added(self):
         html = self._header(RequestFactory().get("/"))
