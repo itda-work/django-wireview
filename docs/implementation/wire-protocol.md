@@ -99,7 +99,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 | 마지막 렌더 스냅샷 (`Rendered`) | `WireviewMeta._last_rendered` | `Rendered.to_dict()` / `from_dict()` |
 | 구독 집합 | `WireviewConsumer.subscriptions` | 토픽 이름 목록 |
 | 쿼리스트링 | `WireviewConsumer.query_string` | 문자열 |
-| 업로드 레지스트리 | `views._registries` (프로세스 전역) | 미지원 |
+| 업로드 레지스트리 | 컴포넌트의 `_upload_registry` (연결에 묶인다, #77) | 컴포넌트와 함께 옮긴다. 청크 파일은 `UPLOAD_TEMP_DIR`에 있고 엔드포인트는 서명 토큰만 보므로 프로세스 전역 상태는 없다(#83) |
 | 페이지 경계 | `WireviewConsumer.live_session_name` | 이름 문자열. 첫 join이 정하고 이후 join은 일치해야 한다 |
 | 인증 세대 | `WireviewConsumer.auth_fingerprint` | 지문 문자열. connect 때 계산한다 |
 | 인증 토픽 구독 | `WireviewConsumer._auth_topic` | 토픽 이름. 경계 안에서만 생긴다 |
