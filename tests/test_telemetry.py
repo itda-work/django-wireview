@@ -237,6 +237,19 @@ async def test_fan_out_through_the_process_broker_is_measured(telemetry_on, brok
 
 @pytest.mark.asyncio
 @pytest.mark.unit
+async def test_the_public_abroadcast_is_measured(telemetry_on, broker):
+    """``abroadcast`` published through the broker directly and skipped the signal."""
+    from wireview import abroadcast
+
+    await abroadcast("orders", action="created")
+
+    (published,) = telemetry_on.of(telemetry.broadcast_published)
+    assert published["topic"] == "orders"
+    assert broker.published[0][1] == {"type": "notification", "channel": "orders", "kwargs": {"action": "created"}}
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
 async def test_component_broadcast_is_measured(telemetry_on):
     from wireview.core.meta import WireviewMeta
 

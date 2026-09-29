@@ -22,7 +22,6 @@ from ..utils import db
 from . import model_state, render_reads
 from .meta import Repo, WireviewMeta
 from .session import SessionView
-from .transport import get_broker
 
 if t.TYPE_CHECKING:
     import asyncio
@@ -108,10 +107,8 @@ async def abroadcast(channel: str, **kwargs: t.Any) -> None:
                 if kwargs.get("action") == "joined":
                     self.online_users.append(kwargs.get("user"))
     """
-    await get_broker().publish(
-        channel,
-        {"type": "notification", "channel": channel, "kwargs": kwargs},
-    )
+    # Through utils like every other fan-out, so broadcast_published fires for it too.
+    await utils.asend_to(channel, "notification", kwargs=kwargs)
 
 
 class LifecycleHook(t.TypedDict):
