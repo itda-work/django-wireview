@@ -16,7 +16,7 @@ from wireview.core.component import Component
 from . import serializer
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
 from .core.origin import origin_refusal
-from .core.rendered import ERRORS_SINCE, PROTOCOL_VERSION, protocol_version
+from .core.rendered import ERRORS_SINCE, JOINED_SINCE, PROTOCOL_VERSION, protocol_version
 from .core.session import SessionView, load_session
 from .core.state import StateMismatch, StatePayload, unsign_envelope
 from .core.transport import NO_CHANNEL_LAYER, ChannelsOutbound, Outbound
@@ -327,6 +327,11 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             # has joined the group it expects to hear it on.
             await self.after_mutation_chores()
             await component.wire.flush_pending()
+            # Through the same queue as what was just flushed, so it arrives last:
+            # the stream items joined() sent are on the page when the client
+            # hears it. Infinite scroll judges the list then, not before (#112).
+            if self.repo.vsn >= JOINED_SINCE:
+                await component.wire.send("joined", id=component.id)
         except Exception:
             # Everything up to the first render counts as the join: a failure
             # here is not retried, where a handler's is (#94).
@@ -852,6 +857,9 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
                 await self._crashed(target)
                 return
         await self.after_mutation_chores()
+
+    async def component_joined(self, id):
+        await self.send_command("joined", {"id": id})
 
     async def component_remove(self, id):
         log.debug(f">>> REMOVE {id}")

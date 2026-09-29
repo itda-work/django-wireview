@@ -5,6 +5,8 @@ tests/test_streams_e2e.py drives it. The items are plain dicts, so the default
 ``wire-viewport-bottom`` calls as the sentinel under the list comes into view.
 """
 
+import asyncio
+
 from wireview import Component
 
 PAGE = 15
@@ -18,17 +20,24 @@ class StreamProbe(Component):
     class Meta:
         template_name = "streamprobe/probe.html"
 
+    #: Rows per page. The default fills a 600px viewport (rows are 80px); ``?size=1`` does not.
+    size: int = PAGE
+    #: Seconds joined() waits before the first page: long enough for the viewport
+    #: bindings to be judged before the rows arrive, as a slow query would (#112).
+    delay: float = 0
     pages: int = 1
     ticks: int = 0
     newer: int = 0
 
     async def joined(self):
-        await self.stream("rows", [{"n": n} for n in range(PAGE)], template="streamprobe/row.html", dom_id=row_id)
+        if self.delay:
+            await asyncio.sleep(self.delay)
+        await self.stream("rows", [{"n": n} for n in range(self.size)], template="streamprobe/row.html", dom_id=row_id)
 
     async def load_more(self, **_rest):
-        start = self.pages * PAGE
+        start = self.pages * self.size
         self.pages += 1
-        for n in range(start, start + PAGE):
+        for n in range(start, start + self.size):
             await self.stream_insert("rows", {"n": n}, template="streamprobe/row.html", dom_id=row_id)
 
     async def load_newer(self, **_rest):

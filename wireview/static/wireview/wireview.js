@@ -1,5 +1,5 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
-import { PROTOCOL_VERSION, REFS_SINCE, applyPartial, buildHtml } from "./rendered.mjs";
+import { JOINED_SINCE, PROTOCOL_VERSION, REFS_SINCE, applyPartial, buildHtml } from "./rendered.mjs";
 import { commitScope, isCommitAction } from "./values.mjs";
 import { LoadingLedger } from "./loading.mjs";
 import { BINDING_PREFIX, bindingsFor, parseBinding, runSteps } from "./events.mjs";
@@ -178,6 +178,21 @@ class ServerConnection {
   }
 
   /**
+   * Starts infinite scroll for a component and the LiveComponents inside it,
+   * after the morph already scheduled, so it sees the list as it now is.
+   * @param {string} id
+   */
+  startViewports(id) {
+    window.requestAnimationFrame(() => {
+      const root = document.getElementById(id);
+      if (!root) return;
+      for (const el of [root, ...root.querySelectorAll("[wireview-live]")]) {
+        this.components[el.id]?.viewportObserver.start();
+      }
+    });
+  }
+
+  /**
    * Whether the WebSocket connection is open.
    * @returns {boolean}
    */
@@ -259,6 +274,9 @@ class ServerConnection {
               ? []
               : this.loading.answerUnpaired(id);
         released.forEach(unmarkLoading);
+        // A server that does not say `joined`: the first render is the best sign
+        // the join has landed
+        if (this.serverVsn < JOINED_SINCE) this.startViewports(id);
         if (diff && target) {
           // One patch: the parent's HTML embeds the children's current renders
           target.applyDiffData(diff);
@@ -427,6 +445,12 @@ class ServerConnection {
         if (componentEl && commands) {
           wireview.exec(componentEl, commands);
         }
+        break;
+
+      case "joined":
+        // The join and everything its joined() queued -- a stream's first
+        // page -- have arrived: infinite scroll may judge the list now (#112)
+        this.startViewports(payload.id);
         break;
 
       case "hook_reply":
@@ -1012,18 +1036,16 @@ class WireviewComponent {
       const parent = /** @type {HTMLElement|null} */ (parentEl);
       if (!parent || parent.dataset.isLive === "true") {
         element.dataset.isLive = "true";
+        // The viewport observer starts once the join has landed (`joined`), not
+        // here: the list it judges is still empty until then (#112)
         if (element.hasAttribute("wireview-live")) {
           this.hookManager.init();
-          this.viewportObserver.init();
           return;
         }
         this.sendJoin(element);
 
         // Initialize hooks after joining
         this.hookManager.init();
-
-        // Initialize viewport observer for infinite scroll
-        this.viewportObserver.init();
       }
     }
   }
@@ -1572,12 +1594,19 @@ class ViewportObserver {
     this.pendingTop = false;
     /** @type {boolean} */
     this.pendingBottom = false;
+    /** @type {boolean} whether the join has landed and bindings are watched (#112) */
+    this.started = false;
   }
 
   /**
-   * Initialize the viewport observer.
+   * Start watching the viewport bindings. Once the join has landed: before
+   * that a stream's items are not on the page, the bottom binding sits near
+   * the top, and its first callback asked for a second page before the first
+   * arrived (#112).
    */
-  init() {
+  start() {
+    if (this.started) return;
+    this.started = true;
     this.setupObserver();
     this.scanAndObserve();
     this.lastScrollY = window.scrollY;
@@ -1702,6 +1731,7 @@ class ViewportObserver {
    * Called after DOM morph to re-scan for viewport elements.
    */
   updated() {
+    if (!this.started) return;
     // Clean up removed elements
     for (const [el, info] of this.observed) {
       if (!document.contains(el)) {

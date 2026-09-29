@@ -12,6 +12,11 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- Infinite scroll judges the list once the join has landed. `wire-viewport-bottom` was watched
+  from the moment the join was sent, when a stream's first page had not arrived: the binding sat
+  near the top and a long list asked for a second page, or not, depending on timing. The server
+  now sends `joined` after everything `joined()` queued, to clients that speak protocol 5; with
+  an older server the component's first render stands in for it (#112).
 - A boosted navigation that follows a redirect shows where it landed in the address bar. The
   entry kept the requested URL, so a reload ran the redirecting view -- and its side effect --
   again (#104).

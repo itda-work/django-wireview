@@ -34,13 +34,19 @@
  * opens. The server never sends a newer form. Keep in step with
  * `PROTOCOL_VERSION` in wireview/core/rendered.py.
  */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 /**
  * First server version that echoes a user event's `ref` on its render (#92).
  * The server announces its version on the render answering a join.
  */
 export const REFS_SINCE = 3;
+
+/**
+ * First server version that sends `joined` once a join and everything its
+ * joined() queued have gone out (#112).
+ */
+export const JOINED_SINCE = 5;
 
 /**
  * @param {*} value
