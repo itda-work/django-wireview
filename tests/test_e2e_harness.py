@@ -224,6 +224,22 @@ def test_no_browser_suite_waits_on_its_own_terms():
     assert offenders == []
 
 
+def test_the_browser_runs_the_bundle_built_from_the_source():
+    """``wireview.min.js`` is gitignored, so nothing makes it follow ``wireview.js``.
+
+    Before a release, ``make test-e2e`` ran the bundle from before a pull: fourteen
+    tests of the features the pull brought failed with ``wireview.visit is not a
+    function``, which reads as a regression in them. The target builds first.
+    """
+    makefile = (pathlib.Path(__file__).resolve().parent.parent / "Makefile").read_text()
+    rule = re.search(r"^test-e2e:(.*)$", makefile, re.MULTILINE)
+
+    assert rule is not None
+    prerequisites = rule.group(1).split()
+    assert "build-js" in prerequisites
+    assert prerequisites.index("build-js") < prerequisites.index("collectstatic")
+
+
 def test_the_port_is_one_the_os_handed_out(started_threads):
     """Not a number somebody picked and hoped was free.
 

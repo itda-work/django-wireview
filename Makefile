@@ -1,4 +1,4 @@
-.PHONY: all install test test-unit test-e2e test-matrix test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install
+.PHONY: all install test test-unit test-e2e test-matrix test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js
 
 # Default target
 all: install build
@@ -35,7 +35,9 @@ test-unit: collectstatic
 # tests/e2e.sh starts a throwaway nats-server unless one is already running, and stops it
 # afterwards. Override the layer with LAYER=redis or LAYER=memory.
 LAYER ?= nats
-test-e2e: collectstatic playwright-install
+# build-js first: wireview.min.js is gitignored, so after a pull the browser would
+# otherwise run the bundle from before it and fail on whatever the pull added.
+test-e2e: build-js collectstatic playwright-install
 	WIREVIEW_TEST_LAYER=$(LAYER) ./tests/e2e.sh $(ARGS)
 
 # Run all tests including E2E (runs separately to avoid async conflicts)
