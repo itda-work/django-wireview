@@ -88,7 +88,7 @@ morph는 새 HTML의 값을 입력칸에 옮긴다. 그대로 두면 서버가 �
   - 응답이 덮는 것은 **보낸 값**까지다. 액션을 보낸 뒤 사용자가 더 치거나 지운 칸은, 포커스가 떠났든 서버가 새 값을 보냈든 값을 지킨다.
   - 표시되는 칸은 그 이벤트가 **실제로 보내는 칸**이다. `myself`로 자식을 부르면 자식 범위만 보내므로 조상 폼의 다른 칸은 건드리지 않는다.
   - IME가 조합 중인 키에는 키 수정자가 반응하지 않는다. 한글을 조합하며 누른 Enter는 `keydown.enter` 핸들러를 부르지 않는다.
-  - `{% on "keypress.enter" this.chain %}`의 `JS().push`도 같은 규칙을 따른다. `window.wireview.send(el, name, args, eventType)`는 `eventType`으로 판정하고, 다섯 번째 인자로 `{commit: true}`를 넘기면 확정이 된다.
+  - `{% on "keypress.enter" this.chain %}`의 `JS().push`도 같은 규칙을 따른다. `window.wireview.send(el, name, args, {eventType})`는 `eventType`으로 판정하고, `{commit: true}`를 넘기면 확정이 된다.
 - **포커스가 없는 칸에 서버가 새 값을 렌더했을 때.** 포커스된 칸은 커서 아래에서 바뀌지 않는다(Phoenix LiveView와 같다).
 
 서버가 입력칸을 확실히 비우거나 바꾸려면 `push_js(JS().set_value(...))`를 쓴다. morph를 거치지 않으므로 이 규칙과 무관하다. `examples/chat`이 메시지를 보낸 뒤 이렇게 비운다. 규칙의 정본은 `wireview/static/wireview/values.mjs`, 설계는 [input-values.md](../design/input-values.md), 회귀 테스트는 `tests/test_input_values_e2e.py`다.

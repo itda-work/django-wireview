@@ -117,6 +117,7 @@ class TestWireviewLspCommand:
         assert "description" in modifier
         assert "has_argument" in modifier
         assert modifier["has_argument"] is True
+        assert "inlinejs" not in modifiers, "{% on %} refuses inlinejs; the editor must not offer it"
 
     def test_dynamic_subscriptions_flag(self):
         """Components with @property _subscriptions should be flagged."""

@@ -6,8 +6,8 @@ and sync_to_async transitions, which can cause performance degradation.
 Enable detection by setting:
     WIREVIEW = {
         "DEBUG_SYNC_TRANSITIONS": True,
-        "SYNC_TRANSITION_WARNING_THRESHOLD": 2,  # optional
-        "SYNC_TRANSITION_ERROR_THRESHOLD": 3,    # optional
+        "DEBUG_SYNC_TRANSITIONS_WARNING_THRESHOLD": 2,  # optional
+        "DEBUG_SYNC_TRANSITIONS_ERROR_THRESHOLD": 3,    # optional
     }
 
 Note on tracking limitations:

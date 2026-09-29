@@ -2707,9 +2707,7 @@ const EventBindings = {
           if (value.js) {
             window.wireview.exec(element, value.js, { commit, eventType: event.type });
           } else if (value.h !== undefined) {
-            const args = { ...(value.a || {}) };
-            if (value.t) args._target = value.t;
-            window.wireview.send(element, value.h, args, event.type, { commit });
+            window.wireview.send(element, value.h, { ...(value.a || {}) }, { eventType: event.type, commit, target: value.t });
           }
         },
       });
@@ -2769,10 +2767,6 @@ const EventBindings = {
 EventBindings.init();
 
 connection.open();
-/** @type {ReturnType<typeof setTimeout>|undefined} */
-var debounceTimeout = undefined;
-/** @type {number} */
-var throttleLastCall = 0;
 
 // Debug state
 /** @type {boolean} */
@@ -3137,23 +3131,22 @@ window.wireview = {
   hooks: {},
 
   /**
-   * Forwards a user event to a component
+   * Forwards a user event to a component.
+   *
+   * The options were a positional `eventType` then an object, with the target
+   * hidden in `args._target`; one object leaves room to add more (#119).
+   *
    * @param {HTMLElement} element
    * @param {string} name
    * @param {Object} [args]
-   * @param {string} [eventType] - Optional event type for loading class
-   * @param {{commit?: boolean}} [options] - whether the event commits the fields it
-   *   comes from (their answer may reset them); by default decided from `eventType`
+   * @param {{eventType?: string, commit?: boolean, target?: string}} [options] -
+   *   `eventType` picks the loading class; `commit` says whether the event commits
+   *   the fields it comes from (their answer may reset them), by default decided
+   *   from `eventType`; `target` is the id of the LiveComponent to send to
    */
-  send(element, name, args, eventType, options = {}) {
-    args = args || {};
+  send(element, name, args = {}, options = {}) {
+    const { eventType, target: targetId } = options;
     const commit = options.commit ?? isCommitAction(eventType, [], { submitter: isSubmitter(element) });
-
-    // Handle _target for LiveComponent @myself targeting
-    const targetId = args._target;
-    if (targetId) {
-      delete args._target; // Don't send _target to server as an arg
-    }
 
     const component_el = /** @type {HTMLElement|null} */ (
       element.closest("[wireview-component]")
@@ -3176,37 +3169,6 @@ window.wireview = {
 
       component.dispatch(name, args, formScope, commit ? element : null, { elements: marked, eventType });
     }
-  },
-
-  /**
-   * Debounce a function call
-   * @param {number} delay - Delay in milliseconds
-   * @returns {<T extends (...args: any[]) => void>(f: T) => (...args: Parameters<T>) => void}
-   */
-  debounce(delay) {
-    return (/** @type {Function} */ f) => {
-      return (/** @type {any[]} */ ...args) => {
-        clearTimeout(debounceTimeout);
-        debounceTimeout = setTimeout(() => f(...args), delay);
-      };
-    };
-  },
-
-  /**
-   * Throttle a function call (execute at most once per delay period)
-   * @param {number} delay - Minimum time between calls in milliseconds
-   * @returns {<T extends (...args: any[]) => void>(f: T) => (...args: Parameters<T>) => void}
-   */
-  throttle(delay) {
-    return (/** @type {Function} */ f) => {
-      return (/** @type {any[]} */ ...args) => {
-        const now = Date.now();
-        if (now - throttleLastCall >= delay) {
-          throttleLastCall = now;
-          f(...args);
-        }
-      };
-    };
   },
 
   /**

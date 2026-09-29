@@ -375,18 +375,16 @@ class TestComponentRepositoryLiveComponent:
 class TestMyselfTargeting:
     """Test @myself targeting via {% on %} tag."""
 
-    def test_transpile_includes_target_in_kwargs(self):
-        """Test that _target is included in transpiled kwargs."""
-        from wireview.event_transpiler import transpile
+    def test_the_binding_carries_the_target_apart_from_the_arguments(self):
+        import json
 
-        # Normal call without target
-        _, code_normal = transpile("click", "increment", {"amount": 1})
-        assert "_target" not in code_normal
+        from wireview.event_transpiler import binding
 
-        # Call with _target
-        _, code_with_target = transpile("click", "increment", {"amount": 1, "_target": "counter-1"})
-        assert "_target" in code_with_target
-        assert "counter-1" in code_with_target
+        _, plain = binding("click", "increment", {"amount": 1})
+        _, targeted = binding("click", "increment", {"amount": 1, "_target": "counter-1"})
+
+        assert json.loads(plain) == {"h": "increment", "a": {"amount": 1}}
+        assert json.loads(targeted) == {"h": "increment", "a": {"amount": 1}, "t": "counter-1"}
 
     def test_on_tag_myself_parameter(self):
         """Test that {% on %} tag accepts myself parameter."""

@@ -14,6 +14,13 @@ What 1.0 promises, settled before it is frozen (#119).
 
 ### Removed
 
+- `window.wireview.debounce()` and `throttle()`. Only the inline-script bindings #90 retired
+  called them, and they shared one timer across the page, so two wrapped functions cancelled each
+  other. Use `{% on "input.debounce.300" ... %}`, or your own timer.
+- `window.wireview.exec()` from the documented API. Its argument is the JSON a `JS()` chain
+  becomes, which is wire format; call `JS()` from the server or `{% on %}` instead.
+- The `TRANSPILER_CACHE_SIZE` setting, and the inline transpiler it sized, which nothing had called
+  since #90. `manage.py check` names the key if a project still sets it (`wireview.W014`).
 - `Component.dom()` and the test helpers `view.dom_actions` and `view.clear_dom_actions()`.
   `dom()` was the only way to send a DOM action, nothing documented or tested it, and it took an
   internal enum, so `dom_actions` was always empty. The client no longer handles `append`,
@@ -25,6 +32,14 @@ What 1.0 promises, settled before it is frozen (#119).
 
 ### Changed
 
+- `window.wireview.send(element, name, args, options)` takes `eventType`, `commit` and `target` in
+  one options object. It took `eventType` as a fourth argument, an options object fifth, and the
+  LiveComponent target hidden in `args._target`.
+- `SYNC_TRANSITION_WARNING_THRESHOLD` and `SYNC_TRANSITION_ERROR_THRESHOLD` are
+  `DEBUG_SYNC_TRANSITIONS_WARNING_THRESHOLD` and `DEBUG_SYNC_TRANSITIONS_ERROR_THRESHOLD`, next to
+  the `DEBUG_SYNC_TRANSITIONS` switch they belong to. `wireview.W014` names the old keys.
+- `wireview_lsp` lists the modifiers the client runs. It read the retired transpiler's, which
+  offered `inlinejs`, a modifier `{% on %}` refuses.
 - `mount()`, `ComponentTestCase.mount()` and `follow_redirect()` take their options as keywords
   only, and field values also through `state={...}`. The options shared a namespace with the
   fields, so a field called `params` could not be set, and every option a later release added

@@ -45,8 +45,8 @@ ASYNC (Consumer)
 # settings.py
 WIREVIEW = {
     "DEBUG_SYNC_TRANSITIONS": True,
-    "SYNC_TRANSITION_WARNING_THRESHOLD": 2,  # 깊이 2 초과면 경고
-    "SYNC_TRANSITION_ERROR_THRESHOLD": 3,    # 깊이 3 초과면 오류
+    "DEBUG_SYNC_TRANSITIONS_WARNING_THRESHOLD": 2,  # 깊이 2 초과면 경고
+    "DEBUG_SYNC_TRANSITIONS_ERROR_THRESHOLD": 3,    # 깊이 3 초과면 오류
 }
 ```
 

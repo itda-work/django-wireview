@@ -6,8 +6,8 @@ based on settings. In production, these tools have zero overhead.
 Configuration:
     WIREVIEW = {
         "DEBUG_SYNC_TRANSITIONS": True,  # Enable sync/async tracking
-        "SYNC_TRANSITION_WARNING_THRESHOLD": 2,
-        "SYNC_TRANSITION_ERROR_THRESHOLD": 3,
+        "DEBUG_SYNC_TRANSITIONS_WARNING_THRESHOLD": 2,
+        "DEBUG_SYNC_TRANSITIONS_ERROR_THRESHOLD": 3,
     }
 """
 
@@ -74,8 +74,8 @@ if settings.DEBUG_SYNC_TRANSITIONS:
 
     # Configure thresholds from settings
     SyncAsyncTracker.configure(
-        warning_threshold=settings.SYNC_TRANSITION_WARNING_THRESHOLD,
-        error_threshold=settings.SYNC_TRANSITION_ERROR_THRESHOLD,
+        warning_threshold=settings.DEBUG_SYNC_TRANSITIONS_WARNING_THRESHOLD,
+        error_threshold=settings.DEBUG_SYNC_TRANSITIONS_ERROR_THRESHOLD,
     )
 else:
     # No-op implementations for production - zero overhead

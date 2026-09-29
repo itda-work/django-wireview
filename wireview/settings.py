@@ -7,8 +7,7 @@ from, so replacing that object (as ``override_settings`` does) is seen at once a
 a running project pays an identity check.
 
 A few settings only mean something at startup, and changing them later does
-nothing: ``TRANSPILER_CACHE_SIZE`` sizes a cache built at import,
-``AUTO_BROADCAST`` decides which model signals get receivers,
+nothing: ``AUTO_BROADCAST`` decides which model signals get receivers,
 ``DEBUG_SYNC_TRANSITIONS`` and its thresholds install the detector,
 ``AUTO_GENERATE_STUBS`` runs when the app is ready, and ``TELEMETRY`` is the
 initial state that ``wireview.telemetry.enable()`` changes at runtime.
@@ -29,7 +28,6 @@ from django.conf import settings as django_settings
 from .schemas import AutoBroadcast
 
 DEFAULT: dict[str, t.Any] = {
-    "TRANSPILER_CACHE_SIZE": 1024,
     # Links and forms navigate without a full page load (static/wireview/wireview-boost.js)
     "BOOST_PAGES": False,
     # Refuse a socket whose Origin is not in ALLOWED_HOSTS (wireview.core.origin, #96)
@@ -45,8 +43,8 @@ DEFAULT: dict[str, t.Any] = {
     "UPLOAD_TOKEN_MAX_AGE": 3600,  # 1 hour. Also how long an abandoned chunk file survives a sweep
     # Debug settings for async/sync transition tracking
     "DEBUG_SYNC_TRANSITIONS": False,
-    "SYNC_TRANSITION_WARNING_THRESHOLD": 2,
-    "SYNC_TRANSITION_ERROR_THRESHOLD": 3,
+    "DEBUG_SYNC_TRANSITIONS_WARNING_THRESHOLD": 2,
+    "DEBUG_SYNC_TRANSITIONS_ERROR_THRESHOLD": 3,
     # Signed component state (data-state)
     "STATE_MAX_AGE": 14 * 24 * 3600,  # 14 days, like Phoenix LiveView's session default
     "STATE_REFRESH_AFTER": None,  # None = STATE_MAX_AGE // 2. Must stay below STATE_MAX_AGE
@@ -61,6 +59,9 @@ DEFAULT: dict[str, t.Any] = {
 #: Keys that existed and are gone, and what to do instead. ``wireview.W014``
 #: names them, so an upgrade does not leave a setting that silently does nothing.
 REMOVED: dict[str, str] = {
+    "TRANSPILER_CACHE_SIZE": "Removed in #119: it sized the cache of the inline-script transpiler #90 retired.",
+    "SYNC_TRANSITION_WARNING_THRESHOLD": "Renamed in #119: DEBUG_SYNC_TRANSITIONS_WARNING_THRESHOLD.",
+    "SYNC_TRANSITION_ERROR_THRESHOLD": "Renamed in #119: DEBUG_SYNC_TRANSITIONS_ERROR_THRESHOLD.",
     "STATE_ACCEPT_LEGACY": "Removed in #99: a page with a pre-v2 state reloads instead.",
     "USE_HTML_DIFF": "Removed in #99: diffs are always on.",
     "USE_HMIN": (
@@ -124,7 +125,6 @@ if t.TYPE_CHECKING:
     DEBUG: bool
     LOGIN_URL: str
     WIREVIEW: dict[str, t.Any]
-    TRANSPILER_CACHE_SIZE: int
     BOOST_PAGES: bool
     CHECK_ORIGIN: bool
     AUTO_BROADCAST: AutoBroadcast
@@ -135,8 +135,8 @@ if t.TYPE_CHECKING:
     UPLOAD_CHUNK_SIZE: int
     UPLOAD_TOKEN_MAX_AGE: int
     DEBUG_SYNC_TRANSITIONS: bool
-    SYNC_TRANSITION_WARNING_THRESHOLD: int
-    SYNC_TRANSITION_ERROR_THRESHOLD: int
+    DEBUG_SYNC_TRANSITIONS_WARNING_THRESHOLD: int
+    DEBUG_SYNC_TRANSITIONS_ERROR_THRESHOLD: int
     STATE_MAX_AGE: int
     STATE_REFRESH_AFTER: int
     AUTO_GENERATE_STUBS: bool

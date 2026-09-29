@@ -57,6 +57,5 @@ WIREVIEW = {
 | `AUTO_GENERATE_STUBS` | `True` | `DEBUG`에서 컴포넌트 타입 스텁(`.pyi`)을 만든다 ([type-stubs](./type-stubs.md)). **기동 시** |
 | `TELEMETRY` | `False` | 계측 시그널을 켠 채로 시작한다. 실행 중에는 `telemetry.enable()`·`disable()` ([telemetry](./telemetry.md)). **기동 시** |
 | `DEBUG_SYNC_TRANSITIONS` | `False` | sync/async 전환이 겹치는지 감시한다 ([성능](../PERFORMANCE.md)). **기동 시** |
-| `SYNC_TRANSITION_WARNING_THRESHOLD` | `2` | 이 깊이를 넘으면 경고 |
-| `SYNC_TRANSITION_ERROR_THRESHOLD` | `3` | 이 깊이를 넘으면 오류 |
-| `TRANSPILER_CACHE_SIZE` | `1024` | 이벤트 바인딩 캐시 크기. **기동 시** |
+| `DEBUG_SYNC_TRANSITIONS_WARNING_THRESHOLD` | `2` | 이 깊이를 넘으면 경고 |
+| `DEBUG_SYNC_TRANSITIONS_ERROR_THRESHOLD` | `3` | 이 깊이를 넘으면 오류 |

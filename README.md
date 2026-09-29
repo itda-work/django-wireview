@@ -1031,18 +1031,12 @@ class Dashboard(Component):
 ## 프론트엔드 API
 
 ```javascript
-// 컴포넌트에 이벤트 전송
+// 컴포넌트에 이벤트 전송. 옵션: eventType(로딩 클래스), commit, target(LiveComponent id)
 wireview.send(element, 'handler_name', {arg1: value1})
+wireview.send(element, 'save', {}, {eventType: 'submit'})
 
 // 링크처럼 이동 (BOOST_PAGES면 전체 로드 없이)
 wireview.visit('/rooms/3/')
-
-// 디바운스/쓰로틀
-wireview.debounce(300)(fn)
-wireview.throttle(100)(fn)
-
-// JS 명령어 실행
-wireview.exec(element, commands)
 
 // Hook 정의
 wireview.hooks.MyHook = {

@@ -56,12 +56,8 @@ interface Window {
       element: HTMLElement,
       name: string,
       args?: Record<string, unknown>,
-      eventType?: string,
-      options?: { commit?: boolean },
+      options?: { eventType?: string; commit?: boolean; target?: string },
     ): void;
-    debounce(delay: number): <T extends (...args: unknown[]) => void>(f: T) => (...args: Parameters<T>) => void;
-    throttle(delay: number): <T extends (...args: unknown[]) => void>(f: T) => (...args: Parameters<T>) => void;
-    exec(element: HTMLElement, commands: JSCommand[], options?: { commit?: boolean }): Promise<void>;
     debug: WireviewDebug;
   };
 }

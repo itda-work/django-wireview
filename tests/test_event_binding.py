@@ -18,13 +18,14 @@ import json
 import re
 from html import unescape
 from html.parser import HTMLParser
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 from django.template import Context, Template
 from django.test import RequestFactory
 
-from wireview.event_transpiler import binding
+from wireview.event_transpiler import MODIFIER_ARGUMENTS, MODIFIERS, binding
 from wireview.features.uploads import UploadEntry
 from wireview.js import JS
 from wireview.templatetags.wireview import upload_preview
@@ -180,3 +181,23 @@ class TestHeaderNonce:
         html = self._header(RequestFactory().get("/"))
 
         assert "nonce" not in html
+
+
+EVENTS_MJS = Path(__file__).resolve().parent.parent / "wireview" / "static" / "wireview" / "events.mjs"
+
+
+def _client_modifiers() -> tuple[set[str], set[str]]:
+    source = EVENTS_MJS.read_text()
+    arity = set(re.findall(r"(\w+): 1", re.search(r"const ARITY = \{([^}]*)\}", source).group(1)))
+    keys = set(re.findall(r"^\s+(\w+):", re.search(r"const KEYS = \{(.*?)\};", source, re.S).group(1), re.M))
+    run_steps = source[source.index("export function runSteps") :]
+    cases = set(re.findall(r'case "(\w+)":', run_steps))
+    return cases | keys, arity
+
+
+def test_the_listed_modifiers_are_the_ones_the_client_runs():
+    """The LSP read them from the inline transpiler, which also offered ``inlinejs`` (#119)."""
+    names, with_argument = _client_modifiers()
+
+    assert set(MODIFIERS) == names
+    assert MODIFIER_ARGUMENTS == with_argument

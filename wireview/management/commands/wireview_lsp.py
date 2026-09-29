@@ -22,7 +22,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandParser
 
 from wireview.core.component import Component
-from wireview.event_transpiler import Modifiers
+from wireview.event_transpiler import MODIFIER_ARGUMENTS, MODIFIERS
 from wireview.repository import ComponentRepository
 
 
@@ -266,55 +266,16 @@ def extract_parameters(sig: inspect.Signature) -> dict[str, dict[str, t.Any]]:
 
 
 def extract_modifiers() -> dict[str, dict[str, t.Any]]:
-    """Extract available event modifiers from the Modifiers class."""
-    modifiers: dict[str, dict[str, t.Any]] = {}
+    """The event modifiers the client understands.
 
-    # Get all public methods from Modifiers class
-    for name in dir(Modifiers):
-        if name.startswith("_"):
-            continue
-
-        attr = getattr(Modifiers, name)
-        if callable(attr):
-            docstring = inspect.getdoc(attr)
-
-            # Determine modifier type and provide description
-            description = get_modifier_description(name)
-
-            modifiers[name] = {
-                "docstring": docstring,
-                "description": description,
-                "has_argument": name in ("debounce", "throttle", "key", "key_code"),
-            }
-
-    return modifiers
-
-
-def get_modifier_description(name: str) -> str:
-    """Get a human-readable description for a modifier."""
-    descriptions = {
-        "prevent": "Calls event.preventDefault()",
-        "stop": "Calls event.stopPropagation()",
-        "debounce": "Debounce the event handler (requires delay in ms)",
-        "throttle": "Throttle the event handler (requires delay in ms)",
-        "ctrl": "Only trigger if Ctrl key is pressed",
-        "alt": "Only trigger if Alt key is pressed",
-        "shift": "Only trigger if Shift key is pressed",
-        "meta": "Only trigger if Meta (Cmd/Win) key is pressed",
-        "key": "Only trigger for specific key (requires key name)",
-        "key_code": "Only trigger for specific keyCode (requires code)",
-        "enter": "Only trigger on Enter key",
-        "tab": "Only trigger on Tab key",
-        "delete": "Only trigger on Delete key",
-        "backspace": "Only trigger on Backspace key",
-        "esc": "Only trigger on Escape key",
-        "space": "Only trigger on Space key",
-        "up": "Only trigger on Arrow Up key",
-        "down": "Only trigger on Arrow Down key",
-        "left": "Only trigger on Arrow Left key",
-        "right": "Only trigger on Arrow Right key",
+    Read from the Modifiers class of the inline transpiler, which also listed
+    ``inlinejs`` -- a modifier ``{% on %}`` refuses (#90). The list is the
+    client's now (#119).
+    """
+    return {
+        name: {"docstring": description, "description": description, "has_argument": name in MODIFIER_ARGUMENTS}
+        for name, description in MODIFIERS.items()
     }
-    return descriptions.get(name, "")
 
 
 def get_type_string(annotation: t.Any) -> str:
