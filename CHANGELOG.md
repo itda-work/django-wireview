@@ -10,6 +10,20 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+## [1.0.0rc1] - 2026-09-29
+
+The first release candidate for 1.0: the code of 0.7.0, with nothing to change on upgrade. The
+public API is what `docs/COMPATIBILITY.md` lists; from 1.0 it changes only through the
+deprecation path described there. The candidate stays out while new bug reports are watched and
+the library is used in an application.
+
+### Changed
+
+- The session state table in `docs/implementation/wire-protocol.md` and the remaining steps of
+  `docs/design/transport-abstraction.md` said the upload registry was a process-wide
+  `views._registries` a session move could not carry. It has been the component's since #77, and
+  the chunk endpoint keeps no state since #83 (#60).
+
 ## [0.7.0] - 2026-09-29
 
 Bug fixes and small additions gathered from building an application on 0.6, with nothing to
@@ -1115,7 +1129,8 @@ auto-recovery, viewport bindings, optimistic UI attributes, type stub
 generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
-[Unreleased]: https://github.com/itda-work/django-wireview/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc1...HEAD
+[1.0.0rc1]: https://github.com/itda-work/django-wireview/compare/v0.7.0...v1.0.0rc1
 [0.7.0]: https://github.com/itda-work/django-wireview/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/itda-work/django-wireview/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/itda-work/django-wireview/compare/v0.4.0...v0.5.0

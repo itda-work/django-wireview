@@ -1,7 +1,7 @@
 {
   "name": "django-wireview",
   "private": true,
-  "version": "0.7.0",
+  "version": "1.0.0rc1",
   "description": "Brings LiveView from Phoenix framework into Django",
   "repository": "git@github.com:itda-work/django-wireview.git",
   "author": "Eddy Ernesto del Valle Pino <eddy@edelvalle.me>",

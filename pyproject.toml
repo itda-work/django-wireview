@@ -1,6 +1,6 @@
 [project]
 name = "django-wireview"
-version = "0.7.0"
+version = "1.0.0rc1"
 description = "Brings LiveView from Phoenix framework into Django"
 readme = "README.md"
 license = "MIT"
