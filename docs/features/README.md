@@ -2,6 +2,9 @@
 
 django-wireview의 주요 기능에 대한 상세 문서입니다.
 
+**[Component API](./component-api.md)** — `Component`·`LiveComponent`의 공개 멤버 전부. 여기 없으면 내부다.
+**[설정](./settings.md)** — `settings.WIREVIEW`의 키 전부와 기본값.
+
 ## 성능 최적화
 
 | 기능 | 설명 | 문서 |

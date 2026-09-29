@@ -83,6 +83,21 @@ def test_no_public_name_is_also_a_submodule():
     assert not submodules & (set(wireview.__all__) - modules)
 
 
+#: Taken out of ``__all__`` before 1.0 froze it (#119): a second name for what
+#: ``broadcast``/``abroadcast`` do, a lookup error nothing documented, a registry
+#: listing and the telemetry module's own instruments. They stay importable from
+#: their modules as internals.
+WITHDRAWN = {
+    "wireview": ["send_notification", "asend_notification", "ComponentNotFound", "list_function_components"],
+    "wireview.telemetry": ["span", "payload_size"],
+}
+
+
+@pytest.mark.parametrize("module,name", [(m, n) for m, names in WITHDRAWN.items() for n in names])
+def test_what_was_withdrawn_before_1_0_stays_out(module, name):
+    assert name not in importlib.import_module(module).__all__
+
+
 def test_an_unknown_name_is_an_attribute_error():
     with pytest.raises(AttributeError):
         wireview.NoSuchThing  # noqa: B018
@@ -126,6 +141,43 @@ def test_the_public_part_of_wire_exists():
 
     wire = WireviewMeta(params={})
     assert all(hasattr(wire, name) for name in PUBLIC_MEMBERS)
+
+
+COMPONENT_API = ROOT / "docs" / "features" / "component-api.md"
+
+
+def _component_members() -> dict[str, set[str]]:
+    from pydantic import BaseModel
+
+    from wireview import Component, LiveComponent
+
+    pydantic = set(dir(BaseModel))
+    component = {n for n in dir(Component) if not n.startswith("_")} - pydantic
+    live = {n for n in dir(LiveComponent) if not n.startswith("_")} - pydantic - component
+    return {"Component": component, "LiveComponent": live}
+
+
+def test_every_component_member_is_listed_as_public_or_internal():
+    """Without underscores every member looked public, so 1.0 would have frozen all of them (#119).
+
+    ``docs/features/component-api.md`` is the list. A new member has to be put in its
+    public tables or its internal line before it ships.
+    """
+    text = COMPONENT_API.read_text()
+    missing = []
+    for owner, names in _component_members().items():
+        for name in sorted(names):
+            prefix = "LiveComponent." if owner == "LiveComponent" else ""
+            if not re.search(rf"`(?:await )?{re.escape(prefix)}{name}\b", text):
+                missing.append(f"{owner}.{name}")
+    assert missing == []
+
+
+def test_the_component_api_lists_no_member_that_does_not_exist():
+    members = set().union(*_component_members().values())
+    fields = {"id", "user", "wire", "session"}
+    listed = set(re.findall(r"^\| `(?:await )?(?:LiveComponent\.)?(\w+)", COMPONENT_API.read_text(), re.M))
+    assert listed - members - fields == set()
 
 
 def test_the_library_does_not_import_its_deprecated_module():

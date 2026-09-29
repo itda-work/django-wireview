@@ -22,7 +22,6 @@ if t.TYPE_CHECKING:
     from .async_result import AsyncState as AsyncState
     from .checks import iter_exposed_handlers as iter_exposed_handlers
     from .core.component import Component as Component
-    from .core.component import ComponentNotFound as ComponentNotFound
     from .core.component import abroadcast as abroadcast
     from .core.component import broadcast as broadcast
     from .core.live_session import LiveSession as LiveSession
@@ -44,7 +43,6 @@ if t.TYPE_CHECKING:
     from .function_components import FunctionComponent as FunctionComponent
     from .function_components import function_component as function_component
     from .function_components import get_function_component as get_function_component
-    from .function_components import list_function_components as list_function_components
     from .js import JS as JS
     from .live_component import LiveComponent as LiveComponent
     from .schemas import AutoBroadcast as AutoBroadcast
@@ -53,20 +51,16 @@ if t.TYPE_CHECKING:
     from .testing import MountedComponent as MountedComponent
     from .testing import Navigation as Navigation
     from .testing import mount as mount
-    from .utils import asend_notification as asend_notification
-    from .utils import send_notification as send_notification
 
 #: Public name -> the module that defines it. A name that is its module's own
 #: name exports the module: ``telemetry`` is a namespace of signals.
 _EXPORTS: dict[str, str] = {
     # Components
     "Component": ".core.component",
-    "ComponentNotFound": ".core.component",
     "LiveComponent": ".live_component",
     "function_component": ".function_components",
     "FunctionComponent": ".function_components",
     "get_function_component": ".function_components",
-    "list_function_components": ".function_components",
     "WireviewMeta": ".core.meta",
     "SessionView": ".core.session",
     "JS": ".js",
@@ -78,8 +72,6 @@ _EXPORTS: dict[str, str] = {
     # Broadcasts and notifications
     "broadcast": ".core.component",
     "abroadcast": ".core.component",
-    "send_notification": ".utils",
-    "asend_notification": ".utils",
     "AutoBroadcast": ".schemas",
     "ModelAction": ".schemas",
     # Presence
@@ -111,12 +103,10 @@ _EXPORTS: dict[str, str] = {
 # checks it against _EXPORTS.
 __all__ = (
     "Component",
-    "ComponentNotFound",
     "LiveComponent",
     "function_component",
     "FunctionComponent",
     "get_function_component",
-    "list_function_components",
     "WireviewMeta",
     "SessionView",
     "JS",
@@ -126,8 +116,6 @@ __all__ = (
     "invalidate_authentication",
     "broadcast",
     "abroadcast",
-    "send_notification",
-    "asend_notification",
     "AutoBroadcast",
     "ModelAction",
     "PresenceMixin",

@@ -93,6 +93,7 @@ HTTP 워커는 컴포넌트 객체를 갖고 있지 않으므로 `this.uploads`�
 ```bash
 python manage.py wireview_upload_gc            # 지금 청소
 python manage.py wireview_upload_gc --dry-run  # 뭐가 지워질지만
+python manage.py wireview_upload_gc --max-age 600  # 기준 나이(초). 기본은 UPLOAD_TOKEN_MAX_AGE
 ```
 
 쓰기 경로도 프로세스당 10분에 한 번 기회적으로 청소하므로, cron을 걸지 않아도 남는 양은 유계다.

@@ -66,6 +66,7 @@ class Dashboard(Component):
 | `failed` | bool | 오류로 끝났다 |
 | `done` | bool | 끝났다 (성공이든 실패든) |
 | `pending` | bool | 아직 시작하지 않았다 |
+| `state` | `AsyncState` | 위 넷을 하나로: `AsyncState.PENDING`·`LOADING`·`SUCCESS`·`ERROR` (`str` 열거형이라 `"loading"`과도 같다) |
 | `result` | T | 결과값 (`ok`일 때) |
 | `error` | Exception | 예외 (`failed`일 때) |
 | `error_message` | str | 사람이 읽을 오류 메시지 |

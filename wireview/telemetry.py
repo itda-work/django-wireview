@@ -41,8 +41,6 @@ __all__ = (
     "is_enabled",
     "enable",
     "disable",
-    "span",
-    "payload_size",
 )
 
 

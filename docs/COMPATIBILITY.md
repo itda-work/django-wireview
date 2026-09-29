@@ -20,6 +20,12 @@ from wireview import Component, LiveComponent, JS, mount
 `telemetry`는 모듈 자체가 공개 이름이다(`from wireview import telemetry`). 시그널을 모아 둔 네임스페이스이고,
 그 모듈의 `__all__`이 공개 범위다.
 
+`Component`와 `LiveComponent`는 이름뿐 아니라 **멤버**도 약속한다. 무엇이 공개인지는
+[Component API](./features/component-api.md)가 정본이다. 밑줄이 없어도 거기 없는 멤버는 내부다.
+
+`WireviewMeta`는 **타입 주석용 이름으로만** 공개다(`wire: WireviewMeta`). 생성자와 멤버는 아래 `self.wire`
+행이 정한 넷만 공개다.
+
 `tests/test_public_api.py`가 이 경계를 지킨다. `__all__`, 지연 로딩 표, 타입 검사용 import가 서로 같은지 보고,
 사용자용 문서(`README.md`, `docs/features/`, `docs/tutorials/`, 앱 개발자용 스킬)와 `examples/`가
 `from wireview import ...`로만 import하며 그 이름이 모두 공개인지 본다.
@@ -34,12 +40,25 @@ from wireview import Component, LiveComponent, JS, mount
 | URL | `include("wireview.urls")`, `wireview.urls.websocket_urlpatterns` |
 | 템플릿 태그 | `{% load wireview %}`와 그 태그들 |
 | 설정 | `settings.WIREVIEW`의 키 (`wireview/settings.py`의 `DEFAULT`) |
-| 관리 명령 | `wireview_stubs`, `wireview_lsp`, `wireview_agent_setup`, `wireview_upload_gc` |
-| 시스템 체크 id | `wireview.W001`~ |
+| 관리 명령 | `wireview_stubs`, `wireview_lsp`, `wireview_agent_setup`, `wireview_upload_gc`와 문서화된 옵션. `wireview_lsp`의 출력 JSON은 그 안의 `version` 필드로 따로 관리한다 — 모양을 바꾸면 `version`을 올린다 |
+| 시스템 체크 id | `wireview.W001`~. 없앤 번호는 다시 쓰지 않는다 |
 | 컴포넌트 클래스 설정 | `class Meta:`의 키(`ComponentOptions`의 필드)와 `get_subscriptions()` |
+| 템플릿 컨텍스트 | 컴포넌트 템플릿의 `this`, 슬롯의 `let` 이름 |
+| 훅 파일 위치 | 앱의 `static/<app_label>/hooks/*.js` ([hooks](./features/hooks.md)) |
+| 모델 채널 이름 | `AUTO_BROADCAST`가 알리는 채널: `<app_label>.<model>`, `<app_label>.<model>.<pk>`, 가리키는 행의 `<app_label>.<model>.<pk>.<related_name>`. 밑줄은 하이픈이 된다. m2m 형식은 #119에서 정한다 |
 | `self.wire` | `params`, `redirect_to`, `replace_to`, `push_to`만. 나머지는 프레임워크 내부이고, 같은 일은 `Component`의 메서드(`put_flash`, `push_js`, `push_title`, `defer` 등)로 한다 |
-| 클라이언트 | `window.wireview`의 문서화된 멤버, `wire-*` DOM 속성, `wireview-*` CSS 클래스, `wireview:*` DOM 이벤트 |
-| 테스트 도구 | `mount()`가 돌려주는 `MountedComponent`의 문서화된 멤버([testing](./features/testing.md)). 그 `view.wire`는 컴포넌트의 `self.wire`와 같은 범위만 공개다 |
+| 클라이언트 | `window.wireview`의 문서화된 멤버, `docs/features/`에 문서화된 `wire-*` DOM 속성·`wireview-*` CSS 클래스·`wireview:*` DOM 이벤트, 훅 객체의 문서화된 멤버([hooks](./features/hooks.md)). 접두사가 맞는다고 공개가 아니다 — 아래 "내부" 참고 |
+| 테스트 도구 | `mount()`가 돌려주는 `MountedComponent`의 문서화된 멤버([testing](./features/testing.md)). 그 `view.wire`는 컴포넌트의 `self.wire`와 같은 범위만 공개다. `sent_messages`·`dom_actions`·`stream_ops`의 항목과 `render_diff()`의 diff는 와이어 메시지라 **모양은 공개가 아니다** — `render_diff()`는 `None`인지만 약속한다 |
+
+### 내부 (공개처럼 보이지만 아닌 것)
+
+| 무엇 | 왜 |
+|------|----|
+| 템플릿 태그가 출력하는 마크업 | 계약은 태그다. `{% on %}`이 내는 `wire-on-*` 속성과 그 JSON 값, 업로드 태그가 내는 `wire-upload`·`wire-upload-select`·`wire-upload-drop`·`wire-preview`(값 `name:ref`), `{% tag_header %}`가 내는 `wireview-component`·`wireview-live` 표식과 `data-name`·`data-state`·`data-is-live`·`data-parent`, `{% wireview_header %}`의 `<meta>` |
+| 훅 객체의 `__` 멤버 | `__hookId`, `__manager` 등 |
+| `window.wireview.debug`의 반환값 | 개발 도구다. 함수 이름은 남기지만 돌려주는 객체의 모양은 약속하지 않는다 |
+| static의 번들 밖 파일 | `wireview.min.js`만 페이지가 싣는다. `wireview.js`, `*.mjs`, `types.d.ts`, `.map`은 빌드 재료다 |
+| 하위 모듈 | 위 Python API 절 |
 
 ### 와이어 프로토콜
 
@@ -70,6 +89,8 @@ warnings.simplefilter("error", WireviewDeprecationWarning)
 | 옛 것 | 새 것 | 제거 |
 |-------|-------|------|
 | `wireview.component` 모듈 | `from wireview import Component` | 2.0 |
+| 테스트의 `view.wire.broadcasts` | `view.broadcasts` | 2.0 |
+| 테스트의 `view.wire.presence_broadcasts` | `view.presence_broadcasts` | 2.0 |
 
 ## 지원 범위
 

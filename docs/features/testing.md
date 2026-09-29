@@ -41,16 +41,19 @@ async def test_increment():
 | `await view.call("handler", **kwargs)` | 핸들러 호출. 클라이언트가 보내는 것과 같은 경로 |
 | `view.component` | 컴포넌트 인스턴스 |
 | `view.render()` | 렌더된 HTML (freeze됐으면 `None`). 페이지의 첫 응답처럼 그린다 — 아래 참고 |
-| `await view.render_diff()` | 다음 라이브 렌더가 클라이언트에 보낼 diff. 건너뛰었거나(`skip_render()`) 바뀐 것이 없으면 `None`. 첫 호출은 전체 렌더이고 그 뒤는 앞 호출 대비다. 컨슈머처럼 끝나면 `temporary_assigns`를 비운다. LiveComponent 자식은 참조(`{"c": id}`)로만 나온다. 컨슈머와 같은 경로로 렌더하므로 pytest-django에서는 `django_db` 표시가 필요하다 |
+| `await view.render_diff()` | 다음 라이브 렌더가 클라이언트에 보낼 diff. 건너뛰었거나(`skip_render()`) 바뀐 것이 없으면 `None`. **약속하는 것은 `None`인지 아닌지뿐이고**, diff의 모양은 와이어 프로토콜이라 공개가 아니다. 첫 호출은 전체 렌더이고 그 뒤는 앞 호출 대비다. 컨슈머처럼 끝나면 `temporary_assigns`를 비운다. LiveComponent 자식은 참조(`{"c": id}`)로만 나온다. 컨슈머와 같은 경로로 렌더하므로 pytest-django에서는 `django_db` 표시가 필요하다 |
 | `view.is_frozen` | `freeze()` 여부 |
-| `view.sent_messages` | 클라이언트로 나간 메시지 목록 (원본) |
-| `view.dom_actions` | 서버가 지시한 DOM 조작. **스트림은 여기 없다** |
+| `view.redirected_to` | `wire.redirect_to()`로 간 URL. 없으면 `None`. 단언은 `assert_redirected_to()`가 낫다 — 실패하면 일어난 이동을 나열한다 |
+| `view.sent_messages` | 클라이언트로 나간 메시지 목록 (원본. 항목의 모양은 공개가 아니다) |
+| `view.dom_actions` | 서버가 지시한 DOM 조작 (항목의 모양은 공개가 아니다). **스트림은 여기 없다** |
 | `view.broadcasts` | 이 컴포넌트가 낸 브로드캐스트 |
 | `view.presence_broadcasts` | 그중 `PresenceMixin`이 낸 것(입장·퇴장·타이핑). 항목마다 `kwargs`에 `action` |
 | `view.clear_messages()` / `view.clear_dom_actions()` | 다음 단계 전에 비운다 |
 
 아래 헬퍼는 전부 `sent_messages` 위에 있다. 직접 뒤져도 되지만, 그러면 **테스트가 wire
-프로토콜의 메시지 모양을 알게 된다** — 그건 라이브러리 내부지 사용자 API가 아니다.
+프로토콜의 메시지 모양을 알게 된다** — 그건 라이브러리 내부지 사용자 API가 아니다. `sent_messages`,
+`dom_actions`, `render_diff()`의 diff, 스트림 검사가 돌려주는 항목은 [호환성 정책](../COMPATIBILITY.md)의
+와이어 프로토콜에 속한다. 마이너 릴리스에서 모양이 바뀔 수 있으니 단언은 헬퍼로 한다.
 
 ## 내비게이션 단언
 
@@ -72,9 +75,18 @@ view.assert_pushed_to("/products/", params={"page": "2"})
   `"/items/?b=2&a=1"`은 같은 이동에 맞는다.
 - `params`는 **통째로** 비교한다. `{"page": "2"}`는 `?page=2&sort=name`에 맞지 않는다 —
   붙어 온 파라미터 하나가 테스트가 잡아야 할 바로 그것이기 때문이다. 쿼리가 없다는 단언은 `params={}`.
-- 값은 `ComponentRepository.extract_params`가 읽은 것이다. `.json`으로 끝나는 키는 컴포넌트가
+- 값은 컴포넌트가 `params`로 받는 것과 같게 읽는다. `.json`으로 끝나는 키는 컴포넌트가
   받을 모습 그대로 디코드되어 보인다.
 - 실패 메시지는 **실제로 일어난 이동을 전부 나열한다.**
+
+`Navigation`의 필드:
+
+| 필드 | 뜻 |
+|------|----|
+| `command` | `"push"`, `"replace"`, `"redirect"` |
+| `url` | 컴포넌트가 준 URL 그대로 |
+| `path` | 경로 부분. `?page=2`처럼 쿼리만 있으면 `""` |
+| `params` | 쿼리를 컴포넌트가 받는 모습으로 읽은 dict (`.json` 키는 디코드) |
 
 `assert_no_navigation()`이 따로 있는 이유는 하나다. "이동했다"와 "여기로 이동했다"는 통과하는
 테스트만 보면 구별되지 않는다. 이동하면 안 되는 경로에는 짝을 지어 둔다.
@@ -141,7 +153,7 @@ assert view.component.page == 2
 |------|------|
 | `view.stream_html(stream=None)` | 보내진 아이템 HTML 전부를 이어 붙인 문자열 |
 | `view.stream_items(stream=None)` | `{"id", "html"}` 목록 |
-| `view.stream_ops(stream=None)` | 원본 연산 목록 (`op`, `stream`, `items`, `at`, `limit`) |
+| `view.stream_ops(stream=None)` | 원본 연산 목록 (`op`, `stream`, `items`, `at`, `limit`). 와이어 메시지 그대로라 모양은 공개가 아니다 — 단언은 위 둘로 한다 |
 
 ```python
 @pytest.mark.asyncio

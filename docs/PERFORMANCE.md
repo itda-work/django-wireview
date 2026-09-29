@@ -86,25 +86,25 @@ class UserProfile(Component):
         self.posts = [post async for post in Post.objects.filter(user=self.user)[:5]]
 ```
 
-### 2. 컴포넌트 안에서는 `asend_notification()`을 쓴다
+### 2. 컴포넌트 안에서는 `abroadcast()`를 쓴다
 
 async 컨텍스트에서는 async 함수를 쓴다.
 
 ```python
 # 나쁨: 내부적으로 async_to_sync를 쓴다
-from wireview import send_notification
+from wireview import broadcast
 
 class ChatRoom(Component):
     async def send_message(self, text: str):
         # async에서 부르면 중첩 전환이 생긴다
-        send_notification("chat_room_1", message=text)
+        broadcast("chat_room_1", message=text)
 
 # 좋음: 순수 async, 전환 없음
-from wireview import asend_notification
+from wireview import abroadcast
 
 class ChatRoom(Component):
     async def send_message(self, text: str):
-        await asend_notification("chat_room_1", message=text)
+        await abroadcast("chat_room_1", message=text)
 ```
 
 ### 3. 데이터베이스 질의를 묶는다

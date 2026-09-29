@@ -1,0 +1,62 @@
+# 설정
+
+`settings.WIREVIEW`의 키 전부다. 여기 적힌 키가 공개이고([호환성 정책](../COMPATIBILITY.md)), 기본값의 정본은
+`wireview/settings.py`의 `DEFAULT`다. `tests/test_settings_reference.py`가 이 표와 `DEFAULT`를 대조한다.
+
+설정은 쓰는 시점에 읽는다. 테스트에서는 `override_settings(WIREVIEW={...})`로 바꾼다. 모르는 키나 없어진 키가
+있으면 `manage.py check`가 `wireview.W014`로 알린다. 기동할 때만 의미가 있는 키는 **기동 시**로 표시했다 —
+실행 중에 바꿔도 아무 일도 일어나지 않는다.
+
+```python
+from wireview import AutoBroadcast
+
+WIREVIEW = {
+    "BOOST_PAGES": True,
+    "AUTO_BROADCAST": AutoBroadcast(model=True, model_pk=True),
+}
+```
+
+## 페이지와 연결
+
+| 키 | 기본값 | 뜻 |
+|----|--------|----|
+| `BOOST_PAGES` | `False` | 링크와 `wire-boost` 폼을 전체 로드 없이 이동한다 ([boost](./boost.md)) |
+| `CHECK_ORIGIN` | `True` | `Origin`이 `ALLOWED_HOSTS`에 없는 소켓을 거절한다 ([배포](../DEPLOYMENT.md#websocket의-origin)) |
+| `COLLECT_HOOKS` | `True` | 각 앱의 `static/<app_label>/hooks/*.js`를 `{% wireview_header %}`가 싣는다 ([hooks](./hooks.md)). **기동 시** |
+
+## 서명
+
+| 키 | 기본값 | 뜻 |
+|----|--------|----|
+| `SIGNING_KEY` | `None` | 서명 키. `None`이면 Django의 `SECRET_KEY`. 업로드 토큰과 `data-state`가 쓴다 |
+| `SIGNING_KEY_FALLBACKS` | `None` | 키 로테이션용 옛 키 목록. `None`이면 `SECRET_KEY_FALLBACKS`. 자체 키를 두면 이것도 둔다 |
+| `STATE_MAX_AGE` | `1209600` (14일) | 서명 상태(`data-state`)의 유효 기간(초) ([html-diff](./html-diff.md)) |
+| `STATE_REFRESH_AFTER` | `None` | 상태가 같아도 이 시간(초)이 지나면 다시 서명한다. `None`이면 `STATE_MAX_AGE // 2`. `STATE_MAX_AGE`보다 작아야 한다 |
+
+## 업로드
+
+[chunked-uploads](./chunked-uploads.md)
+
+| 키 | 기본값 | 뜻 |
+|----|--------|----|
+| `UPLOAD_TEMP_DIR` | `None` | 청크 저장소. `None`(또는 `""`)이면 시스템 temp. 워커들이 공유해야 한다. 첫 청크가 올 때 읽힌다(`wireview.W008`) |
+| `UPLOAD_MAX_FILE_SIZE` | `10485760` (10MB) | `allow_upload()`에 `max_file_size`가 없을 때의 상한(바이트) |
+| `UPLOAD_CHUNK_SIZE` | `65536` (64KB) | `allow_upload()`에 `chunk_size`가 없을 때의 청크 크기(바이트) |
+| `UPLOAD_TOKEN_MAX_AGE` | `3600` | 업로드 토큰의 유효 기간(초). 버려진 청크 파일을 지우는 나이이기도 하다(`wireview_upload_gc`) |
+
+## 모델 알림
+
+| 키 | 기본값 | 뜻 |
+|----|--------|----|
+| `AUTO_BROADCAST` | `AutoBroadcast()` (모두 꺼짐) | 모델 저장·삭제를 채널로 알린다. `model`, `model_pk`, `related`, `m2m`, `senders`(알릴 모델의 `(app_label, ModelName)` 집합, 비우면 전부). 채널 이름은 [호환성 정책](../COMPATIBILITY.md)의 "모델 채널 이름". **기동 시** |
+
+## 개발 도구
+
+| 키 | 기본값 | 뜻 |
+|----|--------|----|
+| `AUTO_GENERATE_STUBS` | `True` | `DEBUG`에서 컴포넌트 타입 스텁(`.pyi`)을 만든다 ([type-stubs](./type-stubs.md)). **기동 시** |
+| `TELEMETRY` | `False` | 계측 시그널을 켠 채로 시작한다. 실행 중에는 `telemetry.enable()`·`disable()` ([telemetry](./telemetry.md)). **기동 시** |
+| `DEBUG_SYNC_TRANSITIONS` | `False` | sync/async 전환이 겹치는지 감시한다 ([성능](../PERFORMANCE.md)). **기동 시** |
+| `SYNC_TRANSITION_WARNING_THRESHOLD` | `2` | 이 깊이를 넘으면 경고 |
+| `SYNC_TRANSITION_ERROR_THRESHOLD` | `3` | 이 깊이를 넘으면 오류 |
+| `TRANSPILER_CACHE_SIZE` | `1024` | 이벤트 바인딩 캐시 크기. **기동 시** |

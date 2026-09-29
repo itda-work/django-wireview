@@ -10,6 +10,37 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+What 1.0 promises, settled before it is frozen (#119).
+
+### Removed
+
+- `send_notification` and `asend_notification` from `wireview`. They did what `broadcast` and
+  `abroadcast` do; use those. Also `ComponentNotFound` and `list_function_components`, which
+  nothing documented, and `span` and `payload_size` from `wireview.telemetry`, which are its own
+  instruments. All stay importable from their modules as internals.
+
+### Changed
+
+- `docs/COMPATIBILITY.md` says what is public in fewer words that cover less: a `wire-*` attribute
+  or a `wireview-*` class is public when `docs/features/` documents it, not because of its prefix.
+  The markup template tags print (`wire-on-*` and its JSON, the upload attributes, `data-state`
+  and the other root markers), hook members starting with `__`, what `wireview.debug` returns and
+  the shape of the wire messages test helpers hand back are internal.
+- `Component`'s public members are listed in `docs/features/component-api.md`; one without an
+  underscore is internal unless it is there. The README's method tables, which had the wrong
+  `allow_upload` signature and missed twelve methods, point there now.
+- Every setting is in `docs/features/settings.md`; the README's block missed seven.
+- `AUTO_BROADCAST`'s channel names for a model, a row and a row it points at are public and
+  tested. The m2m names are not yet: they depend on which side made the change.
+
+### Fixed
+
+- `abroadcast` fires `broadcast_published` like every other fan-out.
+- `wireview.W002` checks every callback wireview awaits, not only `joined`, `update` and `destroy`.
+- The client bundle's URL carries the package version instead of a fixed `?v=2`.
+- The README and the first tutorial install `wireview.urls`; without it uploads 404. The nginx
+  example upgrades `/__wireview__`, not `/ws/`.
+
 ## [1.0.0rc1] - 2026-09-29
 
 The first release candidate for 1.0: the code of 0.7.0, with nothing to change on upgrade. The

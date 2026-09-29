@@ -116,6 +116,10 @@ WIREVIEW = {"COLLECT_HOOKS": False}
 | `this.pushEvent(event, payload, callback)` | 서버로 이벤트를 보낸다 |
 | `this.handleEvent(event, callback)` | 서버가 보내는 이벤트를 받는다 |
 
+정의 객체에서는 **함수만** `this`로 복사된다. 위 이름(`pushEvent`, `handleEvent`)과 `__`로 시작하는 이름은
+wireview의 것이다 — 같은 이름으로 메서드를 쓰면 내장 동작을 덮는다. `this.__hookId` 같은 `__` 멤버는 내부이고
+바뀔 수 있다.
+
 ## 서버와 주고받기
 
 ### 서버로 보내기 (pushEvent)

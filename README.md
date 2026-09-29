@@ -1006,68 +1006,11 @@ class Dashboard(Component):
 | `live_sessions` | `set()` | 마운트될 수 있는 `live_session` 이름 |
 | `presence` | `None` | `PresenceMixin` 설정(`PresenceConfig`) |
 
-### 라이프사이클 메서드
+### 메서드와 필드
 
-| 메서드 | 설명 |
-|--------|------|
-| `new(cls, wire, **kwargs)` | 인스턴스 생성 클래스 메서드 |
-| `joined()` | 컴포넌트가 WebSocket으로 연결될 때 호출 |
-| `leaving()` | 컴포넌트 연결이 해제될 때 호출 |
-| `mutation(channel, action, instance)` | 모델 변경 시 호출 |
-| `notification(channel, **kwargs)` | 브로드캐스트 메시지 시 호출 |
-| `handle_hook_event(hook_id, event, payload)` | Hook 이벤트 수신 시 호출 |
-
-### 렌더 제어
-
-| 메서드 | 설명 |
-|--------|------|
-| `skip_render()` | 다음 렌더 사이클 건너뛰기 |
-| `send_render()` | 즉시 렌더 강제 |
-| `force_render()` | 다시 렌더링 표시 |
-| `freeze()` | 모든 향후 렌더 방지 |
-
-### 액션
-
-| 메서드 | 설명 |
-|--------|------|
-| `destroy()` | 인터페이스에서 컴포넌트 제거 |
-| `focus_on(selector)` | 요소에 포커스 |
-| `scroll_into_view(element_id, behavior="auto", block="start", inline="nearest")` | 요소를 뷰로 스크롤 |
-| `push_js(js)` | 클라이언트에서 JS 명령어 실행 |
-| `dom(action, id, component_or_template, **kwargs)` | DOM 조작 |
-| `defer(handler, *args, **kwargs)` | 지금 이벤트가 끝난 뒤 핸들러 실행 |
-| `push_event(event, payload, hook_id=None)` | Hook에 이벤트 전송 |
-
-### 브로드캐스팅
-
-| 메서드 | 설명 |
-|--------|------|
-| `broadcast(channel, **kwargs)` | 채널로 메시지 전송 (`joined()`에서 큐잉) |
-| `abroadcast(channel, **kwargs)` | 즉시 메시지 전송 (비동기) |
-
-### 네비게이션
-
-| 메서드 | 설명 |
-|--------|------|
-| `wire.redirect_to(url, **kwargs)` | 네비게이트하고 새 페이지 가져오기 |
-| `wire.replace_to(url, **kwargs)` | 현재 URL 교체 |
-| `wire.push_to(url, **kwargs)` | 가져오기 없이 URL 푸시 |
-
-### Streams
-
-| 메서드 | 설명 |
-|--------|------|
-| `stream(name, items, template=None, dom_id=None)` | 스트림 초기화/리셋 |
-| `stream_insert(name, item, at=-1, template=None, dom_id=None)` | 아이템 삽입 |
-| `stream_delete(name, dom_id)` | 아이템 삭제 |
-
-### Uploads
-
-| 메서드 | 설명 |
-|--------|------|
-| `allow_upload(config)` | 업로드 설정 등록 |
-| `consume_uploads(name)` | 완료된 업로드 가져오기 |
-| `cancel_upload(name, ref)` | 업로드 취소 |
+오버라이드하는 콜백, 부르는 메서드, 필드의 전체 목록과 시그니처는 [Component API](docs/features/component-api.md)에
+있다. 거기 없는 멤버는 밑줄이 없어도 내부다. 내비게이션은 `self.wire`의 `redirect_to`·`replace_to`·`push_to`,
+모듈 수준 브로드캐스트는 `broadcast(channel, **kwargs)`(sync)·`abroadcast(channel, **kwargs)`(async)다.
 
 ## 템플릿 태그 레퍼런스
 
@@ -1079,10 +1022,11 @@ class Dashboard(Component):
 |------|------|
 | `{% wireview_header %}` | 필요한 JavaScript 포함 (~10KB 압축) |
 | `{% component 'Name' kwarg=value %}` | 컴포넌트 렌더링 |
-| `{% on 'event.modifiers' 'handler' kwargs %}` | 이벤트 핸들러 바인딩 |
+| `{% on 'event.modifiers' 'handler' kwargs %}` | 이벤트 핸들러 바인딩. `myself`와 `_target`은 예약 인자라 핸들러 인자 이름으로 쓸 수 없다 |
 | `{% tag_header %}` | 루트 요소에 컴포넌트 속성 추가 |
 | `{% cond {'hidden': is_hidden} %}` | 조건부 속성 |
 | `{% class {'active': is_active} %}` | 조건부 CSS 클래스 |
+| `{{ value\|str }}`, `{{ a\|concat:b }}` | 문자열로 바꾸기, 이어 붙이기 (`{% on %}` 인자를 만들 때) |
 
 ## 프론트엔드 API
 
@@ -1173,33 +1117,16 @@ wireview.debug.component("rx-123")
 
 ## 설정
 
-설정은 쓰는 시점에 읽는다. 테스트에서는 `override_settings(WIREVIEW={...})`로 바꾸면 되고, `settings.WIREVIEW`에 모르는 키가 있으면 `manage.py check`가 `wireview.W014`로 알려 준다.
+`settings.WIREVIEW`의 키 전부와 기본값은 [설정 레퍼런스](docs/features/settings.md)에 있다. 설정은 쓰는 시점에
+읽으므로 테스트에서는 `override_settings(WIREVIEW={...})`로 바꾸고, 모르는 키는 `manage.py check`가
+`wireview.W014`로 알려 준다.
 
 ```python
 from wireview import AutoBroadcast
 
 WIREVIEW = {
-    "TRANSPILER_CACHE_SIZE": 1024,    # 이벤트 핸들러 캐시 크기
-    "BOOST_PAGES": False,             # 링크 이동과 wire-boost 폼을 전체 로드 없이 처리 (docs/features/boost.md)
-    "CHECK_ORIGIN": True,             # Origin이 ALLOWED_HOSTS가 아닌 소켓을 거절 (docs/DEPLOYMENT.md)
-    # 서명 상태(data-state) — docs/features/html-diff.md
-    "STATE_MAX_AGE": 14 * 24 * 3600,  # 서명 상태 유효 기간(초). 기본 14일
-    "STATE_REFRESH_AFTER": None,      # 상태가 같아도 이 시간이 지나면 토큰 재발급. None이면 STATE_MAX_AGE // 2
-    # 서명 키 — docs/features/chunked-uploads.md
-    "SIGNING_KEY": None,              # None이면 Django의 SECRET_KEY. 업로드 토큰과 data-state의 수명을 분리한다
-    "SIGNING_KEY_FALLBACKS": None,    # None이면 SECRET_KEY_FALLBACKS. 자체 키를 두면 이것도 같이 둔다
-    # 청크 업로드 — docs/features/chunked-uploads.md
-    "UPLOAD_TEMP_DIR": None,          # 청크 저장소. None이면 시스템 temp. 워커들이 공유해야 한다
-    "UPLOAD_MAX_FILE_SIZE": 10 * 1024 * 1024,
-    "UPLOAD_CHUNK_SIZE": 64 * 1024,
-    "UPLOAD_TOKEN_MAX_AGE": 3600,     # 업로드 토큰 유효 기간이자 청소 기준 나이
-    "AUTO_BROADCAST": AutoBroadcast(
-        model=False,       # 모델 변경 시 브로드캐스트
-        model_pk=False,    # 채널에 PK 포함
-        related=False,     # 관련 모델 변경 브로드캐스트
-        m2m=False,         # M2M 변경 브로드캐스트
-        senders=set(),     # 자동 브로드캐스트할 모델
-    ),
+    "BOOST_PAGES": True,
+    "AUTO_BROADCAST": AutoBroadcast(model=True, model_pk=True),
 }
 ```
 
