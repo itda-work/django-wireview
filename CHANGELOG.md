@@ -10,6 +10,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- `await view.render_diff()` on what `mount()` returns: what the next live render sends the
+  client, or `None` when the render is skipped or nothing changed. `view.render()` always draws
+  the whole page, so a handler that skipped the render its page needed -- a button left
+  disabled -- passed every unit test; only a browser caught it (#117).
+
 ### Fixed
 
 - Infinite scroll judges the list once the join has landed. `wire-viewport-bottom` was watched

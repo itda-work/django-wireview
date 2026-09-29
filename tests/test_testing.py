@@ -222,3 +222,70 @@ class TestBroadcastsAreOnTheMountedComponent:
             assert view.wire.broadcasts == view.broadcasts
         with pytest.warns(WireviewDeprecationWarning, match=r"view\.presence_broadcasts"):
             assert view.wire.presence_broadcasts == []
+
+
+class QuietCounter(SimpleCounter):
+    async def quietly(self):
+        self.count += 1
+        self.skip_render()
+
+    async def nothing(self):
+        pass
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        from django.template import Template
+
+        return Template("{% load wireview %}<p {% tag_header %}><b>{{ count }}</b></p>")
+
+
+@pytest.mark.django_db
+class TestRenderDiff:
+    """``render_diff()``: what the next live render sends the client (#117).
+
+    It renders the way the consumer does, through ``database_sync_to_async``,
+    so pytest-django wants the database mark.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_the_first_is_the_full_render(self):
+        view = await mount(QuietCounter)
+
+        diff = await view.render_diff()
+
+        assert diff is not None and "s" in diff
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_change_goes_out_and_only_the_change(self):
+        view = await mount(QuietCounter)
+        await view.render_diff()
+
+        await view.call("increment")
+        diff = await view.render_diff()
+
+        assert diff is not None and "s" not in diff
+        assert "1" in diff.values()
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_skipped_render_sends_nothing_and_the_next_catches_up(self):
+        view = await mount(QuietCounter)
+        await view.render_diff()
+
+        await view.call("quietly")
+        assert await view.render_diff() is None
+
+        await view.call("increment")
+        assert "2" in (await view.render_diff() or {}).values()
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_handler_that_changes_nothing_sends_nothing(self):
+        view = await mount(QuietCounter)
+        await view.render_diff()
+
+        await view.call("nothing")
+
+        assert await view.render_diff() is None

@@ -232,10 +232,11 @@ class MockRepository(ComponentRepository):
         params: dict[str, t.Any] | None = None,
         session: SessionView | None = None,
         live_session: t.Any = None,
+        is_live: bool = False,
     ):
         # A mounted component talks to the client this release ships.
         super().__init__(
-            is_live=False,
+            is_live=is_live,
             user=user,
             params=params,
             session=session,
@@ -243,11 +244,19 @@ class MockRepository(ComponentRepository):
             vsn=PROTOCOL_VERSION,
         )
 
-    def for_render(self, root: "Component") -> "MockRepository":
+    def for_render(self, root: "Component", live: bool = False) -> "MockRepository":
         """A repository holding only ``root``, as the first response's does when it
-        reaches the root's template. Params are the same dict, not a copy."""
-        repo = MockRepository(user=self.user, params=self.params, session=self.session, live_session=self.live_session)
+        reaches the root's template. Params are the same dict, not a copy.
+
+        ``live`` renders as a socket does: the signed state is a dynamic part, and
+        a LiveComponent child is a reference (``{"c": id}``) rather than its HTML.
+        """
+        repo = MockRepository(
+            user=self.user, params=self.params, session=self.session, live_session=self.live_session, is_live=live
+        )
         repo.register_component(root)
+        if live:
+            repo.begin_render(root.id)
         return repo
 
 
@@ -602,6 +611,24 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             The rendered HTML string, or None if frozen/redirected
         """
         return self._wire.render(self._component, self._repo.for_render(self._component))
+
+    async def render_diff(self) -> dict[str, t.Any] | None:
+        """What the next live render sends the client (#117).
+
+        The diff, or ``None`` when nothing goes out: the render was skipped with
+        ``skip_render()``, or nothing on the page changed. The first call is the
+        full render and each later one is relative to the call before, as a page
+        is. Like the consumer, it clears ``Meta.temporary_assigns`` afterwards.
+        A LiveComponent child is a reference (``{"c": id}``); its own render is
+        not included.
+
+        ``render()`` always draws the whole page, so it cannot tell a handler
+        that skipped the render its page needed -- a button left disabled -- from
+        one that did not.
+        """
+        diff = await self._wire.render_diff(self._component, self._repo.for_render(self._component, live=True))
+        self._component._clear_temporary_assigns()
+        return diff
 
     def clear_messages(self) -> None:
         """Clear the list of sent messages."""

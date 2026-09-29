@@ -86,6 +86,21 @@ async def test_with_no_recipient_the_sender_gets_it(alice):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_the_keystroke_that_enables_the_buttons_is_rendered(alice):
+    """set_title skips the render of most keystrokes; the one that ends the
+    disabled state must go out, or the buttons stay disabled (#41, #117)."""
+    view = await mount(XNotificationCreator, user=alice)
+    await view.render_diff()  # the page as it was first drawn
+
+    await view.call("set_title", title="첫")
+    assert await view.render_diff() is not None
+
+    await view.call("set_title", title="첫 글자")
+    assert await view.render_diff() is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_an_empty_title_writes_nothing(alice):
     view = await mount(XNotificationCreator, user=alice, title="   ", message="본문")
 

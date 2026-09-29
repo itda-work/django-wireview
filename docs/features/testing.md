@@ -41,6 +41,7 @@ async def test_increment():
 | `await view.call("handler", **kwargs)` | 핸들러 호출. 클라이언트가 보내는 것과 같은 경로 |
 | `view.component` | 컴포넌트 인스턴스 |
 | `view.render()` | 렌더된 HTML (freeze됐으면 `None`). 페이지의 첫 응답처럼 그린다 — 아래 참고 |
+| `await view.render_diff()` | 다음 라이브 렌더가 클라이언트에 보낼 diff. 건너뛰었거나(`skip_render()`) 바뀐 것이 없으면 `None`. 첫 호출은 전체 렌더이고 그 뒤는 앞 호출 대비다. 컨슈머처럼 끝나면 `temporary_assigns`를 비운다. LiveComponent 자식은 참조(`{"c": id}`)로만 나온다. 컨슈머와 같은 경로로 렌더하므로 pytest-django에서는 `django_db` 표시가 필요하다 |
 | `view.is_frozen` | `freeze()` 여부 |
 | `view.sent_messages` | 클라이언트로 나간 메시지 목록 (원본) |
 | `view.dom_actions` | 서버가 지시한 DOM 조작. **스트림은 여기 없다** |
