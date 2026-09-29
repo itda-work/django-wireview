@@ -10,6 +10,15 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-29
+
+The release that makes the documented contracts hold before 1.0. A temporary assign that was
+reset no longer erases what the page shows (GAP-006, #111); hooks belong to the component
+they sit in, hear `destroyed()` when it leaves, and get their own `pushEvent` replies (#107,
+#108); every supported row of `docs/FEATURE-GAP.md` now names the test that runs it (#110),
+and the documentation's code runs (#113). Four changes can need a code or test change; see
+`docs/UPGRADING.md` ("0.5에서 0.6으로").
+
 ### Added
 
 - `view.broadcasts` and `view.presence_broadcasts` on what `mount()` returns: what the component
@@ -1057,7 +1066,8 @@ auto-recovery, viewport bindings, optimistic UI attributes, type stub
 generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
-[Unreleased]: https://github.com/itda-work/django-wireview/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/itda-work/django-wireview/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/itda-work/django-wireview/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/itda-work/django-wireview/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/itda-work/django-wireview/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/itda-work/django-wireview/compare/v0.2.1...v0.3.0
