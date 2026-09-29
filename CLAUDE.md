@@ -78,6 +78,7 @@ wireview/
                            live-session.mjs (경계 넘음 판단 순수 함수), ready.mjs (defer 스크립트가 다 돌았는가),
                            events.mjs (wire-on-* 바인딩의 수정자 해석 순수 함수),
                            values.mjs (morph가 사용자가 고친 입력값을 덮어써도 되는가),
+                           loading.mjs (로딩 표시를 어느 응답이 끝내는가. ref로 짝짓는다),
                            wireview-boost.js, types.d.ts
                            wireview.min.js는 빌드 산출물이며 gitignore
 

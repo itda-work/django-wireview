@@ -126,3 +126,38 @@ class JsProbeCard(Component):
     async def slow_click(self, **_rest):
         await asyncio.sleep(SLOW)
         self.clicks += 1
+
+
+class JsProbeSlowJoin(Component):
+    """A join that takes long enough for a click to go out before its answer (#118).
+
+    The page counts as live once the join is sent, so an event can reach the
+    server behind the join. The join's answer then arrives while the event
+    waits for its own, and it answers nothing the event started. A broadcast
+    it receives does the same after the join: its render lands between a click
+    and the click's answer.
+    """
+
+    class Meta:
+        template_name = "jsprobe/slow_join.html"
+        subscriptions = {"jsprobe-nudge"}
+
+    ready: bool = False
+    saved: int = 0
+    nudged: int = 0
+
+    async def joined(self):
+        await asyncio.sleep(SLOW)
+        self.ready = True
+
+    async def save(self, **_rest):
+        await asyncio.sleep(SLOW)
+        self.saved += 1
+
+    async def nudge(self, **_rest):
+        await self.broadcast("jsprobe-nudge")
+
+    async def notification(self, channel, **kwargs):
+        # Slow, so a click sent now waits behind it and its render lands first
+        await asyncio.sleep(SLOW)
+        self.nudged += 1

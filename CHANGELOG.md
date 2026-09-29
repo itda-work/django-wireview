@@ -10,6 +10,18 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Fixed
+
+- The loading state an event starts -- the loading classes and `wire-disabled-with` -- ends
+  with that event's answer, the render or `error` carrying its `ref`. Any render of the
+  component ended it, so the join's answer landing after a click, or the render of a broadcast
+  the component was busy with, brought a button back enabled mid-save; under load
+  `test_a_change_marks_its_element_loading_until_the_answer` failed on it now and then. A morph
+  that rewrites a waiting element puts its mark back, a closed connection or a component that
+  joins again after an error clears its marks, and a server that does not echo refs is answered
+  by the component's next render other than the join's. The release removes every
+  `wireview-<event>-loading` class it finds rather than a fixed list (#118).
+
 ## [0.6.0] - 2026-09-29
 
 The release that makes the documented contracts hold before 1.0. A temporary assign that was

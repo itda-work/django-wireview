@@ -124,6 +124,50 @@ def test_a_click_marks_its_element_loading_until_the_answer(probe):
     expect(button).not_to_have_class(re.compile(r"wireview-"))
 
 
+def test_the_joins_answer_does_not_end_a_click_that_went_out_before_it(page, server):
+    """The page is live once the join is sent. A click then reaches the server
+    behind the join, and the join's answer lands while the click still waits.
+    Every render used to clear every loading state of its component, so the
+    button came back enabled mid-save: the flake this test's neighbour showed
+    under load, made deterministic by a slow ``joined()`` (#118)."""
+    open_live(page, f"{server}/jsprobe/slow-join/")
+    button = by(page, "save")
+    button.click()
+    expect(button).to_be_disabled()
+
+    expect_text(by(page, "ready"), "ready")  # the join's answer has landed
+
+    expect(button).to_have_class(re.compile(r"\bwireview-click-loading\b"))
+    expect(button).to_be_disabled()
+    expect(button).to_have_text("Saving")
+
+    expect_text(by(page, "saved"), "1")  # the click's own answer
+    expect(button).not_to_have_class(re.compile(r"wireview-"))
+    expect(button).to_be_enabled()
+    expect(button).to_have_text("save")
+
+
+def test_a_broadcasts_render_does_not_end_a_click_paired_by_ref(page, server):
+    """After the join the click carries a ref. The render of a broadcast the
+    component was busy with lands before the click's answer; it answers
+    nothing the click started (#118)."""
+    open_live(page, f"{server}/jsprobe/slow-join/")
+    expect_text(by(page, "ready"), "ready")
+    by(page, "nudge").click()
+    expect(by(page, "nudge")).not_to_have_class(re.compile(r"wireview-"))
+    button = by(page, "save")
+    button.click()
+
+    expect_text(by(page, "nudged"), "1")  # the broadcast's render has landed
+
+    expect(button).to_have_class(re.compile(r"\bwireview-click-loading\b"))
+    expect(button).to_have_text("Saving")
+
+    expect_text(by(page, "saved"), "1")
+    expect(button).not_to_have_class(re.compile(r"wireview-"))
+    expect(button).to_have_text("save")
+
+
 def test_a_submit_marks_the_form_loading_until_the_answer(probe):
     by(probe, "q").fill("hello")
     by(probe, "q").press("Enter")

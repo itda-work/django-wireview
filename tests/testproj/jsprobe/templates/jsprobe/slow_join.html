@@ -1,0 +1,17 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <span data-testid="ready">
+    {% if ready %}
+      ready
+    {% else %}
+      joining
+    {% endif %}
+  </span>
+  <button data-testid="save"
+          wire-disabled-with="Saving"
+          {% on "click" "save" %}>save</button>
+  <span data-testid="saved">{{ saved }}</span>
+  <button data-testid="nudge" {% on "click" "nudge" %}>nudge</button>
+  <span data-testid="nudged">{{ nudged }}</span>
+</div>

@@ -1,6 +1,7 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
 import { PROTOCOL_VERSION, REFS_SINCE, applyPartial, buildHtml } from "./rendered.mjs";
 import { commitScope, isCommitAction } from "./values.mjs";
+import { LoadingLedger } from "./loading.mjs";
 import { BINDING_PREFIX, bindingsFor, parseBinding, runSteps } from "./events.mjs";
 import { planInsert, planTrim } from "./streams.mjs";
 import { createDocumentReady } from "./ready.mjs";
@@ -92,6 +93,11 @@ class ServerConnection {
      * alone, and two components counting from 1 swapped answers (#108).
      */
     this.lastHookRef = 0;
+    /**
+     * @type {LoadingLedger<HTMLElement>} which elements show a loading state
+     * until which answer (#118)
+     */
+    this.loading = new LoadingLedger();
     /** @type {number} how many times a socket has opened; a hook manager remembers the one it was live in */
     this.epoch = 0;
   }
@@ -146,6 +152,7 @@ class ServerConnection {
       this.serverVsn = 0;
       // Nothing sent on this socket will be answered.
       boost.valueGuard.clear();
+      this.loading.clear().forEach(unmarkLoading);
       debugLog("ws", "Disconnected from server");
 
       // Notify hooks of disconnection before clearing components
@@ -238,6 +245,20 @@ class ServerConnection {
         // in the morph this render causes and no other (#92). That morph runs
         // now, not on the next frame, so no later render folds into it.
         const permission = typeof ref === "number" ? boost.valueGuard.answer(ref) : undefined;
+        // The loading state an event started ends with its own answer (#118),
+        // released before the morph so the server's HTML has the last word on
+        // the element's text. A render that answers something else leaves it.
+        // An event sent without a ref -- to a server that does not echo them,
+        // or before the join said which server this is -- is answered by the
+        // next render of its component, except the join's own (it carries
+        // vsn), which the server sent before it read the event.
+        const released =
+          typeof ref === "number"
+            ? this.loading.answer(ref)
+            : typeof vsn === "number"
+              ? []
+              : this.loading.answerUnpaired(id);
+        released.forEach(unmarkLoading);
         if (diff && target) {
           // One patch: the parent's HTML embeds the children's current renders
           target.applyDiffData(diff);
@@ -250,13 +271,6 @@ class ServerConnection {
           // The parent did not change, so each changed child patches itself
           for (const child of changedChildren) {
             child.scheduleMorph();
-          }
-          // An event that did not change its component still ends here, with
-          // nothing morphed to clear the loading state it started (a button
-          // left disabled by wire-disabled-with), whether its answer changed
-          // nothing or only the children.
-          if (target) {
-            window.requestAnimationFrame(() => target.clearLoadingClasses());
           }
         }
         break;
@@ -301,10 +315,14 @@ class ServerConnection {
         const { id, during, ref } = payload;
         // The event is over: its answer will not come as a render, and the
         // fields it came from keep what the user typed.
-        if (typeof ref === "number") boost.valueGuard.answer(ref);
+        if (typeof ref === "number") {
+          boost.valueGuard.answer(ref);
+          this.loading.answer(ref).forEach(unmarkLoading);
+        }
         const target = this.components[id];
         const element = document.getElementById(id);
-        target?.clearLoadingClasses();
+        // The instance is gone; nothing it was waiting for will be answered
+        this.loading.abandon(id).forEach(unmarkLoading);
         if (during === "event" && target && element) {
           // The instance that raised is gone. The element still carries the
           // state from before the event, so joining with it is the rollback.
@@ -913,9 +931,6 @@ class WireviewComponent {
   morphNow(permission) {
     let el = this.getElemenet();
     if (el) {
-      // Remove loading classes before morphing
-      this.clearLoadingClasses();
-
       const html = this.currentHtml();
 
       if (html) {
@@ -925,6 +940,13 @@ class WireviewComponent {
         // Profile patch time
         const patchStart = profilingEnabled ? performance.now() : 0;
         boost.morph(el, html, { permission });
+        // The server's HTML has no loading classes: put back the marks of the
+        // events still waiting for their answer (#118)
+        for (const mark of connection.loading.pending()) {
+          for (const marked of mark.elements) {
+            if (el.contains(marked)) markLoading(marked, mark.eventType, true);
+          }
+        }
         if (profilingEnabled) {
           recordPatchTime(performance.now() - patchStart);
         }
@@ -968,35 +990,6 @@ class WireviewComponent {
     } else {
       // Partial update: strings, comprehensions, item updates, blocks, refs
       applyPartial(this.dynamic, diff);
-    }
-  }
-
-  /**
-   * Removes all loading classes from elements within this component.
-   */
-  clearLoadingClasses() {
-    const el = this.getElemenet();
-    if (!el) return;
-
-    const loadingElements = el.querySelectorAll(".wireview-loading");
-    for (const loadingEl of loadingElements) {
-      loadingEl.classList.remove(
-        "wireview-loading",
-        "wireview-click-loading",
-        "wireview-submit-loading",
-        "wireview-change-loading",
-        "wireview-input-loading",
-        "wireview-keydown-loading",
-        "wireview-keyup-loading"
-      );
-
-      // Restore wire-disabled-with elements
-      if (loadingEl._wireOriginalText !== undefined) {
-        loadingEl.textContent = loadingEl._wireOriginalText;
-        loadingEl.disabled = loadingEl._wireOriginalDisabled || false;
-        delete loadingEl._wireOriginalText;
-        delete loadingEl._wireOriginalDisabled;
-      }
     }
   }
 
@@ -1082,19 +1075,18 @@ class WireviewComponent {
    * @param {Object} args - Explicit arguments
    * @param {HTMLElement} formScope - Form or component element to serialize
    * @param {Element|null} [commitFrom] - the element of a committing action (values.mjs)
+   * @param {{elements: HTMLElement[], eventType?: string}} [loading] - what markLoading marked
    */
-  dispatch(command, args, formScope, commitFrom = null) {
+  dispatch(command, args, formScope, commitFrom = null, loading = undefined) {
+    const fields = commitFrom ? commitScope(commitFrom, formScope) : new Map();
+    // Paired with its answer by ref when this server echoes refs: the answer
+    // may reset the fields a committing action sends (#92), and ends the
+    // loading state the event started (#118).
     /** @type {number|undefined} */
-    let ref;
-    if (commitFrom) {
-      // A committing action: its answer may reset the fields it sends, paired
-      // with it by ref when this server echoes refs (#92).
-      const fields = commitScope(commitFrom, formScope);
-      if (fields.size) {
-        ref = connection.serverVsn >= REFS_SINCE ? ++connection.lastRef : undefined;
-        boost.valueGuard.record(ref ?? null, fields);
-      }
-    }
+    const ref =
+      (fields.size || loading?.elements.length) && connection.serverVsn >= REFS_SINCE ? ++connection.lastRef : undefined;
+    if (fields.size) boost.valueGuard.record(ref ?? null, fields);
+    if (loading) connection.loading.track(ref ?? null, this.id, loading.elements, loading.eventType);
     connection.sendUserEvent(this.id, command, this.serialize(formScope), args, ref);
   }
 
@@ -2496,8 +2488,8 @@ function isSubmitter(el) {
 }
 
 /**
- * Show that an event is on its way to the server, until its component answers
- * (`clearLoadingClasses`): the loading classes, and `wire-disabled-with`.
+ * Show that an event is on its way to the server, until its answer arrives
+ * (`LoadingLedger`, #118): the loading classes, and `wire-disabled-with`.
  *
  * A submit is marked on its submit buttons too, since that is where
  * `wire-disabled-with` goes in a form (docs/features/optimistic-ui.md). Every
@@ -2506,10 +2498,13 @@ function isSubmitter(el) {
  * the event was written.
  * @param {HTMLElement} element - the element that carries the binding
  * @param {string} [eventType]
+ * @param {boolean} [again] - a morph just rewrote the element from the server's
+ *   HTML: what it shows now is what to restore once the answer comes
+ * @returns {HTMLElement[]} the elements marked, for the ledger
  */
-function markLoading(element, eventType) {
+function markLoading(element, eventType, again = false) {
   const marked = [element];
-  if (eventType === "submit" && element instanceof HTMLFormElement) {
+  if (!again && eventType === "submit" && element instanceof HTMLFormElement) {
     for (const button of element.querySelectorAll("[wire-disabled-with]")) {
       if (isSubmitter(button)) marked.push(/** @type {HTMLElement} */ (button));
     }
@@ -2519,12 +2514,33 @@ function markLoading(element, eventType) {
     if (eventType) el.classList.add(`wireview-${eventType}-loading`);
 
     const disabledWithText = el.getAttribute("wire-disabled-with");
-    if (disabledWithText !== null && el._wireOriginalText === undefined) {
-      el._wireOriginalText = el.textContent;
-      el._wireOriginalDisabled = /** @type {HTMLButtonElement} */ (el).disabled;
+    if (disabledWithText !== null && (again || el._wireOriginalText === undefined)) {
+      if (!again || el.textContent !== disabledWithText) {
+        el._wireOriginalText = el.textContent;
+        el._wireOriginalDisabled = /** @type {HTMLButtonElement} */ (el).disabled;
+      }
       /** @type {HTMLButtonElement} */ (el).disabled = true;
       el.textContent = disabledWithText;
     }
+  }
+  return marked;
+}
+
+/**
+ * End the loading state `markLoading` started on `el`.
+ * @param {HTMLElement} el
+ */
+function unmarkLoading(el) {
+  for (const name of [...el.classList]) {
+    if (name === "wireview-loading" || (name.startsWith("wireview-") && name.endsWith("-loading"))) {
+      el.classList.remove(name);
+    }
+  }
+  if (el._wireOriginalText !== undefined) {
+    el.textContent = el._wireOriginalText;
+    /** @type {HTMLButtonElement} */ (el).disabled = el._wireOriginalDisabled || false;
+    delete el._wireOriginalText;
+    delete el._wireOriginalDisabled;
   }
 }
 
@@ -3048,9 +3064,12 @@ async function executeCommand(cmd, element, options = {}) {
             );
             const formScope =
               form && componentEl.contains(form) ? form : componentEl;
-            markLoading(element, options.eventType);
+            const marked = markLoading(element, options.eventType);
             // A push inside a committing binding commits like the binding would (#92).
-            component.dispatch(cmd.event, cmd.value || {}, formScope, options.commit ? element : null);
+            component.dispatch(cmd.event, cmd.value || {}, formScope, options.commit ? element : null, {
+              elements: marked,
+              eventType: options.eventType,
+            });
           }
         }
       }
@@ -3134,7 +3153,7 @@ window.wireview = {
     let component = connection.components[componentId];
 
     if (component !== undefined) {
-      markLoading(element, eventType);
+      const marked = markLoading(element, eventType);
 
       const form = /** @type {HTMLFormElement|null} */ (element.closest("form"));
       const targetEl = targetId ? document.getElementById(targetId) : component_el;
@@ -3143,7 +3162,7 @@ window.wireview = {
       // Start timing for profiling
       startEventTiming();
 
-      component.dispatch(name, args, formScope, commit ? element : null);
+      component.dispatch(name, args, formScope, commit ? element : null, { elements: marked, eventType });
     }
   },
 
