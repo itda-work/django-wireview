@@ -4,6 +4,7 @@ Each check must fire on the trap it names and stay silent otherwise: a check
 that cries wolf on a healthy project gets ignored, and then it is dead weight.
 """
 
+import inspect
 import os
 import sys
 import warnings
@@ -114,6 +115,21 @@ class TestAsyncHandlerCheck:
         assert check_async_handlers(None) == []
 
 
+#: Every callback wireview awaits, written out here rather than imported: the check
+#: once covered three of them and a test reading its list could not notice.
+AWAITED_CALLBACKS = (
+    "joined",
+    "leaving",
+    "update",
+    "destroy",
+    "mutation",
+    "notification",
+    "params_changed",
+    "handle_async",
+    "handle_hook_event",
+)
+
+
 class TestAsyncLifecycleCheck:
     """W002: wireview awaits lifecycle callbacks, so a sync override never runs."""
 
@@ -133,6 +149,24 @@ class TestAsyncLifecycleCheck:
 
         assert [m.id for m in messages] == ["wireview.W002"]
         assert "joined" in messages[0].msg
+
+    @pytest.mark.parametrize("name", AWAITED_CALLBACKS)
+    def test_every_awaited_callback_is_checked(self, only, name):
+        """It checked three names; a sync ``leaving`` or ``notification`` went unreported."""
+
+        def callback(self, *args, **kwargs):
+            pass
+
+        only(make_component(f"ProbeLifecycleSync_{name}", **{name: callback}))
+
+        assert [m.id for m in check_async_lifecycle(None)] == ["wireview.W002"]
+
+    @pytest.mark.parametrize("name", AWAITED_CALLBACKS)
+    def test_every_checked_name_is_a_framework_coroutine(self, name):
+        from wireview import Component, LiveComponent
+
+        owner = LiveComponent if name == "update" else Component
+        assert inspect.iscoroutinefunction(getattr(owner, name))
 
     def test_inherited_lifecycle_is_silent(self, only):
         """Not overriding it must not report the framework's own definition."""

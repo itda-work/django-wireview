@@ -27,7 +27,17 @@ if t.TYPE_CHECKING:
 WIREVIEW_TAG = "wireview"
 
 #: Framework callbacks that wireview awaits. A sync override never runs.
-LIFECYCLE_METHODS = ("joined", "update", "destroy")
+LIFECYCLE_METHODS = (
+    "joined",
+    "leaving",
+    "update",
+    "destroy",
+    "mutation",
+    "notification",
+    "params_changed",
+    "handle_async",
+    "handle_hook_event",
+)
 
 #: The client bundle referenced by ``{% wireview_header %}``.
 BUNDLE_STATIC_PATH = "wireview/wireview.min.js"

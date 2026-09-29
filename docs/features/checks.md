@@ -23,7 +23,7 @@ WARNINGS:
 | ID | 무엇을 잡나 | 조용히 실패하는 방식 |
 |----|------------|---------------------|
 | `wireview.W001` | 이벤트 핸들러가 async가 아님 | 클라이언트가 부르면 `TypeError`. 부르기 전까지는 아무 신호도 없다 |
-| `wireview.W002` | 라이프사이클 오버라이드가 async가 아님 (`joined`, `update`, `destroy`) | wireview가 `await`하므로 콜백이 아예 실행되지 않는다 |
+| `wireview.W002` | wireview가 await하는 콜백의 오버라이드가 async가 아님 (`joined`, `leaving`, `update`, `destroy`, `mutation`, `notification`, `params_changed`, `handle_async`, `handle_hook_event`) | wireview가 `await`하므로 콜백이 아예 실행되지 않는다 |
 | `wireview.W003` | 두 클래스가 같은 단순 이름으로 등록됨 | import 시 경고 한 번뿐. 템플릿은 둘 중 하나로만 해석된다 |
 | `wireview.W004` | `wireview/wireview.min.js`를 staticfiles가 못 찾음 | JS가 로드되지 않아 페이지가 정적으로 남는다. 404 외에는 신호가 없다 |
 | `wireview.W005` | (없어짐) | `USE_HMIN`과 함께 #100에서 없어졌다. 번호는 다시 쓰지 않는다 |
