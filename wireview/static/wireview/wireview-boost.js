@@ -18,12 +18,12 @@ import { ValueGuard } from "./values.mjs";
  */
 
 /**
- * Global configuration for morph callbacks.
- * @type {{onBeforeElUpdated: OnBeforeElUpdatedCallback|null}}
+ * The callbacks every morph runs before an element is updated, in the order
+ * they were added. One slot that a second registration replaced let Alpine and
+ * a project's own callback silently evict each other (#119).
+ * @type {Set<OnBeforeElUpdatedCallback>}
  */
-const morphConfig = {
-  onBeforeElUpdated: null,
-};
+const beforeElUpdated = new Set();
 
 /**
  * What the user typed survives a render (#91, #92). The rule and its
@@ -39,7 +39,6 @@ const valueGuard = new ValueGuard();
  *   answers (ValueGuard.answer), which may take the server's value
  */
 function morph(oldNode, newNode, { permission } = {}) {
-  const callback = morphConfig.onBeforeElUpdated;
   /** @type {WeakSet<Element>} */
   const kept = new WeakSet();
   const options = {
@@ -57,8 +56,8 @@ function morph(oldNode, newNode, { permission } = {}) {
         if (fromEl.nodeType === Node.ELEMENT_NODE && valueGuard.keep(fromEl, toEl, permission)) kept.add(fromEl);
 
         // Only call for elements, not text nodes
-        if (callback && fromEl.nodeType === Node.ELEMENT_NODE) {
-          callback(fromEl, toEl);
+        if (fromEl.nodeType === Node.ELEMENT_NODE) {
+          for (const callback of beforeElUpdated) callback(fromEl, toEl);
         }
         return true; // Continue with morph
       },
@@ -77,24 +76,13 @@ function morph(oldNode, newNode, { permission } = {}) {
 }
 
 /**
- * Set the onBeforeElUpdated callback.
- * This callback is called before each element is morphed, allowing you to
- * preserve attributes or state from the old element to the new one.
- *
- * @param {OnBeforeElUpdatedCallback|null} callback - The callback function
- *
- * @example
- * // Preserve data-js-* attributes
- * setOnBeforeElUpdated((fromEl, toEl) => {
- *   for (const attr of fromEl.attributes) {
- *     if (attr.name.startsWith('data-js-')) {
- *       toEl.setAttribute(attr.name, attr.value);
- *     }
- *   }
- * });
+ * Add a callback that runs before each element is morphed.
+ * @param {OnBeforeElUpdatedCallback} callback
+ * @returns {() => void} removes this callback again
  */
-function setOnBeforeElUpdated(callback) {
-  morphConfig.onBeforeElUpdated = callback;
+function addBeforeElUpdated(callback) {
+  beforeElUpdated.add(callback);
+  return () => beforeElUpdated.delete(callback);
 }
 
 /** @type {boolean} */
@@ -420,7 +408,7 @@ window.addEventListener("popstate", (event) => {
  * @property {typeof HistoryCache} HistoryCache - History management class
  * @property {typeof morph} morph - DOM morphing function
  * @property {NavEvents} navEvent - Navigation event emitter
- * @property {typeof setOnBeforeElUpdated} setOnBeforeElUpdated - Configure morph callback
+ * @property {typeof addBeforeElUpdated} addBeforeElUpdated - Add a morph callback
  */
 
 /** @type {BoostExports} */
@@ -429,5 +417,5 @@ export default {
   morph: morph,
   valueGuard: valueGuard,
   navEvent: navEvent,
-  setOnBeforeElUpdated: setOnBeforeElUpdated,
+  addBeforeElUpdated: addBeforeElUpdated,
 };

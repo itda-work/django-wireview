@@ -32,6 +32,9 @@ What 1.0 promises, settled before it is frozen (#119).
 
 ### Changed
 
+- `wireview.dom.onBeforeElUpdated(callback)` adds a callback and returns a function that removes
+  it. It replaced the one callback there was, so a second library's registration silently evicted
+  the first's (Alpine's, say). Passing `null` no longer clears anything; call the returned function.
 - Upload DOM events are `wireview:upload-added`, `-progress`, `-complete`, `-error` and `-cancel`,
   inside the `wireview:` namespace the public events use. The 0.x `upload:*` names are sent too
   until 2.0. All five are documented in `docs/features/external-uploads.md`.

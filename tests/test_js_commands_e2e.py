@@ -334,11 +334,13 @@ def test_put_flash_shows_a_dismissible_message(probe):
     expect(flash).to_have_count(0)
 
 
-KEEP_DATA_JS = """wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
+# Wrapped in a function returning nothing: onBeforeElUpdated returns its remover,
+# and Playwright calls a function an evaluated expression comes to.
+KEEP_DATA_JS = """() => { wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
   for (const attr of fromEl.attributes) {
     if (attr.name.startsWith("data-js-")) toEl.setAttribute(attr.name, attr.value);
   }
-})"""
+}); }"""
 
 
 def test_a_render_drops_what_javascript_added_to_an_element(probe):
@@ -358,6 +360,29 @@ def test_on_before_el_updated_keeps_it(probe):
 
 
 # --- server-sent navigation ----------------------------------------------------------------
+
+
+def test_a_second_before_el_updated_callback_does_not_evict_the_first(probe):
+    """The slot held one callback, so Alpine's and a project's replaced each other (#119)."""
+    probe.evaluate(KEEP_DATA_JS)
+    remove = """() => { window.__removeSecond = wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
+      if (fromEl.hasAttribute("data-other")) toEl.setAttribute("data-other", fromEl.getAttribute("data-other"));
+    }); }"""
+    probe.evaluate(remove)
+    by(probe, "hide").evaluate(
+        "el => { el.setAttribute('data-js-seen', 'yes'); el.setAttribute('data-other', 'kept'); }"
+    )
+    by(probe, "increment-server").click()
+    expect_text(by(probe, "count"), "1")
+    expect(by(probe, "hide")).to_have_attribute("data-js-seen", "yes")
+    expect(by(probe, "hide")).to_have_attribute("data-other", "kept")
+
+    probe.evaluate("window.__removeSecond()")
+    by(probe, "hide").evaluate("el => el.setAttribute('data-other', 'again')")
+    by(probe, "increment-server").click()
+    expect_text(by(probe, "count"), "2")
+    expect(by(probe, "hide")).not_to_have_attribute("data-other", "again")
+    expect(by(probe, "hide")).to_have_attribute("data-js-seen", "yes")
 
 
 def test_redirect_to_navigates(probe):

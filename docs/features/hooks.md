@@ -414,14 +414,16 @@ async def push_event(
 
 ### wireview.dom.onBeforeElUpdated()
 
-갱신 중 엘리먼트가 morph되기 직전에 실행되는 콜백을 등록한다. 서버 렌더 결과가 덮어써 버릴
-클라이언트 쪽 속성이나 상태를 지키는 데 쓴다.
+갱신 중 엘리먼트가 morph되기 직전에 실행되는 콜백을 더한다. 서버 렌더 결과가 덮어써 버릴
+클라이언트 쪽 속성이나 상태를 지키는 데 쓴다. 여러 번 부르면 콜백이 모두 더해져 더한 순서대로 돌고,
+돌려받은 함수를 부르면 그 콜백만 빠진다.
 
 ```javascript
-wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
+const remove = wireview.dom.onBeforeElUpdated((fromEl, toEl) => {
   // fromEl: 지금 DOM에 있는 엘리먼트
   // toEl: 그것을 대체할 새 엘리먼트
 });
+remove();  // 더 이상 필요 없을 때
 ```
 
 **JS가 붙인 속성 지키기**

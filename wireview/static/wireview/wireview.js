@@ -3508,10 +3508,13 @@ window.wireview = {
    */
   dom: {
     /**
-     * Set a callback that runs before each element is morphed.
+     * Add a callback that runs before each element is morphed.
      * Use this to preserve client-side attributes or state during LiveView updates.
+     * Every added callback runs, in the order added; the returned function
+     * removes this one.
      *
      * @param {function(Element, Element): void} callback - Function called with (fromEl, toEl)
+     * @returns {() => void}
      *
      * @example
      * // Preserve data-js-* attributes set by JavaScript
@@ -3532,7 +3535,7 @@ window.wireview = {
      * });
      */
     onBeforeElUpdated(callback) {
-      boost.setOnBeforeElUpdated(callback);
+      return boost.addBeforeElUpdated(callback);
     },
   },
 };
