@@ -21,8 +21,7 @@ class AutoBroadcast(BaseModel):
     model_pk: bool = False
     # model-b.9876.model-a-set
     related: bool = False
-    # model-b.9876.model-a-set
-    # model-a.1234.model-b-set
+    # model-b.9876.model-a-set and model-a.1234.model-b-set, whichever side changed
     m2m: bool = False
     # this is a set of tuples of ('app_label', 'ModelName')
     # to subscribe for the auto broadcast

@@ -146,12 +146,16 @@ def broadcast_m2m_changed(sender, instance, action, model, pk_set, **kwargs):
         updates = [f"{model_name}.{pk}.{attr_name}" for pk in pk_set or []]
         notify_mutation(updates, m2m_action, encoded_instance)
 
+        # Both sides in one form, whichever side's manager made the change. The
+        # instance's side carried a trailing ``.<pk>`` per related row, so a
+        # subscriber of ``auth.user.1.groups`` missed ``user.groups.add(g)`` and saw
+        # only ``group.user_set.add(user)`` -- and a clear, with no pks, reached
+        # no channel at all (#119).
         instance_model = type(instance)
         instance_model_name = instance_model._meta.label_lower
         instance_attr_name = get_name_of(sender, instance_model)
-        update = f"{instance_model_name}.{instance.pk}.{instance_attr_name}"
         notify_mutation(
-            [f"{update}.{pk}" for pk in pk_set or []],
+            [f"{instance_model_name}.{instance.pk}.{instance_attr_name}"],
             m2m_action,
             encoded_instance,
         )

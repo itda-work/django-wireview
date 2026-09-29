@@ -30,8 +30,12 @@ What 1.0 promises, settled before it is frozen (#119).
   underscore is internal unless it is there. The README's method tables, which had the wrong
   `allow_upload` signature and missed twelve methods, point there now.
 - Every setting is in `docs/features/settings.md`; the README's block missed seven.
-- `AUTO_BROADCAST`'s channel names for a model, a row and a row it points at are public and
-  tested. The m2m names are not yet: they depend on which side made the change.
+- `AUTO_BROADCAST`'s channel names are public and tested.
+- An m2m change is announced on `<model>.<pk>.<field>` for both rows, whichever side's manager
+  made it. The row the change was made from used a trailing `.<pk>` per related row instead, so
+  a subscriber of `auth.user.1.groups` saw `group.user_set.add(user)` but not
+  `user.groups.add(group)`, and a `clear()` reached no channel. A subscription to the old
+  `<model>.<pk>.<field>.<pk>` form hears nothing now.
 
 ### Fixed
 

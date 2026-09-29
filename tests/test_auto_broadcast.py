@@ -54,8 +54,34 @@ def test_a_deleted_row_is_announced_on_the_same_channels(published):
     }
 
 
-# m2m names are not pinned here: they depend on which side of the relation made the
-# change, so a subscriber of one form misses the other (#119, A12). Decided there.
+@pytest.mark.parametrize("side", ["user", "group"])
+def test_an_m2m_change_is_announced_on_both_rows_whichever_side_made_it(published, side):
+    """The instance's side used to carry a trailing ``.<pk>``, so the channel depended on the manager used."""
+    from django.contrib.auth.models import Group, User
+
+    user = User.objects.create(username="alice")
+    group = Group.objects.create(name="staff")
+    published.clear()
+
+    if side == "user":
+        user.groups.add(group)
+    else:
+        group.user_set.add(user)
+
+    added = {channel for channel, action in published if action == ModelAction.ADDED}
+    assert added == {f"auth.user.{user.pk}.groups", f"auth.group.{group.pk}.user"}
+
+
+def test_clearing_an_m2m_is_announced_on_the_row_that_was_cleared(published):
+    from django.contrib.auth.models import Group, User
+
+    user = User.objects.create(username="alice")
+    user.groups.add(Group.objects.create(name="staff"))
+    published.clear()
+
+    user.groups.clear()
+
+    assert (f"auth.user.{user.pk}.groups", ModelAction.CLEARED) in published
 
 
 def test_underscores_in_a_channel_name_become_hyphens(monkeypatch):
