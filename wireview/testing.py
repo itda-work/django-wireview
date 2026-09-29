@@ -35,6 +35,7 @@ from .core.meta import WireviewMeta
 from .core.rendered import PROTOCOL_VERSION
 from .core.session import SessionView
 from .deprecation import warn_deprecated
+from .repository import ComponentRepository
 
 if t.TYPE_CHECKING:
     from django.contrib.auth.base_user import AbstractBaseUser
@@ -144,7 +145,7 @@ class MockWireviewMeta(WireviewMeta):
     def __init__(self, params: dict[str, t.Any] | None = None, live_session: t.Any = None):
         self._mock_channel_layer = MockChannelLayer()
         super().__init__(
-            params=params or {},
+            params=params if params is not None else {},
             live_session=live_session,
             channel_name="test-channel",
             channel_layer=self._mock_channel_layer,
@@ -210,8 +211,20 @@ class MockWireviewMeta(WireviewMeta):
         self.dom_actions.append({"action": action, "id": id, "html": html})
 
 
-class MockRepository:
-    """Mock repository for testing."""
+class MockRepository(ComponentRepository):
+    """The repository a mounted component renders with: the HTTP first render's.
+
+    It is the real repository, not an imitation, so the tags that build children
+    during a render -- ``{% component %}`` and ``{% live_component %}`` -- draw them
+    the way the page's first response does (#115). Like that response, it draws a
+    LiveComponent child inline and runs none of its ``joined()``/``update()``: on a
+    socket those belong to the consumer, which a mounted component does not have.
+
+    Each ``MountedComponent.render()`` draws with a fresh one (:meth:`for_render`).
+    A repository kept across renders would hand back the children it built the
+    first time, and a LiveComponent child takes new props only through the
+    ``update()`` that nothing here runs -- so it would draw the parent's old props.
+    """
 
     def __init__(
         self,
@@ -220,13 +233,22 @@ class MockRepository:
         session: SessionView | None = None,
         live_session: t.Any = None,
     ):
-        self.is_live = False
-        self.user = user or AnonymousUser()
-        self.params = params or {}
-        self.session = session if session is not None else SessionView()
-        self.live_session = live_session
         # A mounted component talks to the client this release ships.
-        self.vsn = PROTOCOL_VERSION
+        super().__init__(
+            is_live=False,
+            user=user,
+            params=params,
+            session=session,
+            live_session=live_session,
+            vsn=PROTOCOL_VERSION,
+        )
+
+    def for_render(self, root: "Component") -> "MockRepository":
+        """A repository holding only ``root``, as the first response's does when it
+        reaches the root's template. Params are the same dict, not a copy."""
+        repo = MockRepository(user=self.user, params=self.params, session=self.session, live_session=self.live_session)
+        repo.register_component(root)
+        return repo
 
 
 class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
@@ -579,7 +601,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         Returns:
             The rendered HTML string, or None if frozen/redirected
         """
-        return self._wire.render(self._component, self._repo)
+        return self._wire.render(self._component, self._repo.for_render(self._component))
 
     def clear_messages(self) -> None:
         """Clear the list of sent messages."""
@@ -660,7 +682,6 @@ async def mount(
         session=session_view,
         **initial_state,
     )
-
     mounted = MountedComponent(component, wire, repo)
 
     # The mount hooks run before joined(), as they do on a real mount. A refusal

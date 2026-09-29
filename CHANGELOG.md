@@ -40,6 +40,14 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- `view.render()` draws a component whose template holds `{% component %}` or
+  `{% live_component %}`. It raised `AttributeError` from the stand-in repository, so such
+  components were tested without their HTML. `mount()` now renders with the real repository in
+  its HTTP-render mode: children are drawn inline as the page's first response draws them, and a
+  LiveComponent child's `joined()`/`update()` still belong to the consumer (#115).
+- `mount()` without `params` shares one params dict between the component and its repository, as
+  its docstring said. An empty dict was swapped for a fresh one, so after `follow_push()` the
+  component's `self.wire.params` kept the old query (#115).
 - A component whose `assign_async` failed can be rendered. `AsyncResult` kept the exception in
   a field the signed state could not hold, so the failure path -- the one the docs show with
   `{% if stats.failed %}` -- raised on every render. The state carries the state, the result

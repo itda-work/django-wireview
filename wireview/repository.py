@@ -84,7 +84,9 @@ class ComponentRepository:
         live_session: "LiveSession | None" = None,
         vsn: int = 0,
     ):
-        self.params = params or {}
+        # The caller's dict itself, even an empty one: whoever handed it over may
+        # update it in place and expect the repository to see the change.
+        self.params = params if params is not None else {}
         # The diff protocol version this connection's client speaks. Zero, the
         # oldest, unless the client said otherwise when it connected (GAP-030).
         self.vsn = vsn

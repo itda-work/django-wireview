@@ -25,6 +25,20 @@ async def test_the_dashboard_starts_from_url_parameters():
 @pytest.mark.unit
 @pytest.mark.asyncio
 @pytest.mark.django_db
+async def test_the_page_draws_its_cards_before_any_of_them_has_loaded():
+    """The first response holds every nested component, each in its loading state."""
+    view = await mount(XDashboard)
+
+    html = view.render() or ""
+
+    for card in ("stat-revenue", "stat-users", "stat-orders", "stat-conversion", "activity-feed"):
+        assert f'id="{card}"' in html
+    assert html.count("Initializing...") == 4
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db
 async def test_changing_a_tab_writes_it_back_to_the_url():
     view = await mount(XDashboard)
 

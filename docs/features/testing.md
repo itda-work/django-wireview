@@ -28,13 +28,19 @@ async def test_increment():
 `None`이거나 리다이렉트 메타뿐이고, `view.is_frozen`이 참이다. 컴포넌트 인스턴스는 그대로
 돌려주므로 훅이 무엇을 했는지는 검사할 수 있다.
 
+**`view.render()`는 페이지의 첫 응답(HTTP 렌더)과 같게 그린다.** 템플릿의 `{% component %}`와
+`{% live_component %}` 자식도 그 자리에 함께 그려지고, 자식의 `Meta.on_mount` 훅도 돈다. 첫 응답이
+그렇듯 **LiveComponent 자식의 `joined()`·`update()`는 돌지 않는다** — 소켓에서 그것을 돌리는 것은
+컨슈머이고 `mount()`에는 컨슈머가 없다. 그래서 자식은 부모가 넘긴 props와 기본값으로 그려진다.
+`render()`를 부를 때마다 처음부터 다시 그리므로, 부모가 바뀐 뒤의 `render()`는 바뀐 props로 그린다.
+
 ## MountedComponent
 
 | 무엇 | 설명 |
 |------|------|
 | `await view.call("handler", **kwargs)` | 핸들러 호출. 클라이언트가 보내는 것과 같은 경로 |
 | `view.component` | 컴포넌트 인스턴스 |
-| `view.render()` | 렌더된 HTML (freeze됐으면 `None`) |
+| `view.render()` | 렌더된 HTML (freeze됐으면 `None`). 페이지의 첫 응답처럼 그린다 — 아래 참고 |
 | `view.is_frozen` | `freeze()` 여부 |
 | `view.sent_messages` | 클라이언트로 나간 메시지 목록 (원본) |
 | `view.dom_actions` | 서버가 지시한 DOM 조작. **스트림은 여기 없다** |
@@ -175,9 +181,12 @@ view = await mount(XAdminPanel, user=staff, live_session="admin")
 - **마커는 등록해서 쓴다.** `--strict-markers`에서는 등록하지 않은 마커가 수집 오류다(등록 방법은
   [튜토리얼 09](../tutorials/09-testing-components.md#테스트-마커)). 이 저장소의 테스트는 `unit`·`integration`·`slow`·`e2e`
   중 하나를 반드시 붙인다.
-- `mount()`는 저장소도 채널 레이어도 흉내 낸 것이다. 컨슈머 경로 전체(join, 재접속, 자식
-  LiveComponent의 수명주기)를 검사하려면 `tests/test_live_session_contract.py`처럼 컨슈머를
-  직접 만든다.
+- `mount()`에는 컨슈머가 없고 채널 레이어는 흉내 낸 것이다. 렌더는 첫 응답의 것이라 자식이
+  그려지지만, 컨슈머 경로 전체(join, 재접속, 자식 LiveComponent의 `joined()`·`update()`·`leaving()`)를
+  검사하려면 `tests/test_live_component_render.py`나 `tests/test_live_session_contract.py`처럼
+  컨슈머를 직접 만든다. `view.call()`은 부모의 핸들러만 부른다.
+- 자식은 `mount()`가 만든 것이 아니라 렌더가 만든 것이다. 자식이 낸 브로드캐스트는
+  `view.broadcasts`에 남지 않는다.
 
 ## 관련 기능
 
