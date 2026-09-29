@@ -19,6 +19,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- Type stubs are the same on every run. A field typed with `AsyncResult` carried its schema
+  object's repr, memory address included, into the stub, so `AUTO_GENERATE_STUBS` rewrote a
+  tracked `live.pyi` on every DEBUG start -- noise in git and a conflict between worktrees. The
+  LSP metadata had the same string (#109).
 - Infinite scroll judges the list once the join has landed. `wire-viewport-bottom` was watched
   from the moment the join was sent, when a stream's first page had not arrived: the binding sat
   near the top and a long list asked for a second page, or not, depending on timing. The server

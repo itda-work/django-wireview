@@ -332,6 +332,10 @@ def get_type_string(annotation: t.Any) -> str:
 
     # Handle typing module types
     origin = t.get_origin(annotation)
+    # Annotated's metadata is for validators, not readers, and its repr may hold
+    # a memory address: the stub then differed on every run (#109)
+    if origin is t.Annotated:
+        return get_type_string(t.get_args(annotation)[0])
     if origin is not None:
         args = t.get_args(annotation)
         origin_name = getattr(origin, "__name__", str(origin))

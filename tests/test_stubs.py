@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+import typing as t
 from pathlib import Path
 
 import pytest
@@ -561,3 +562,51 @@ class TestTheCommand:
         with pytest.raises(SystemExit) as exit_:
             call_command("wireview_stubs", "--output-dir", str(tmp_path), "--app", "chat", "--check")
         assert exit_.value.code == 1
+
+
+@pytest.mark.unit
+def test_annotated_metadata_is_left_out_of_a_type_string():
+    """``AsyncResult`` fields are ``Annotated`` with a schema object whose repr has a
+    memory address; it went into the stub, which differed on every run (#109)."""
+    from wireview.management.commands.wireview_lsp import get_type_string
+
+    assert get_type_string(t.Annotated[int, object()]) == "int"
+    assert get_type_string(t.Optional[t.Annotated[list[int], object()]]) == "Union[list[int], None]"
+
+
+_STUBS_OF_EVERY_COMPONENT = """
+import django
+django.setup()
+from wireview.management.commands.wireview_stubs import (
+    _strip_timestamp, collect_components_by_module, generate_stub_content,
+)
+modules = collect_components_by_module()
+print("".join(_strip_timestamp(generate_stub_content(modules[name])) for name in sorted(modules)))
+"""
+
+
+@pytest.mark.integration
+def test_the_stubs_are_the_same_in_every_process():
+    """A tracked stub rewritten on every DEBUG start is noise in git and a conflict
+    between worktrees (#109). A string set's order and an object's address change
+    with the process; the stubs must not."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    tests_dir = Path(__file__).resolve().parent
+    outputs = []
+    for seed in ("1", "2"):
+        env = {**os.environ, "PYTHONHASHSEED": seed, "DJANGO_SETTINGS_MODULE": "testproj.settings"}
+        result = subprocess.run(
+            [sys.executable, "-c", _STUBS_OF_EVERY_COMPONENT],
+            cwd=tests_dir,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        outputs.append(result.stdout)
+    assert outputs[0], "no stubs were generated"
+    assert outputs[0] == outputs[1]
