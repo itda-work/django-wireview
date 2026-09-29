@@ -31,7 +31,7 @@ sync로 쓰면 실행되지 않고 `manage.py check`가 `wireview.W002`로 알�
 | `params_changed(params, uri)` | URL 쿼리가 바뀌었을 때 |
 | `mutation(channel, action, instance)` | 구독한 모델이 바뀌었을 때 (`AUTO_BROADCAST`) |
 | `notification(channel, **kwargs)` | 구독한 채널로 브로드캐스트가 왔을 때 |
-| `handle_async(name, result)` | `start_async()`가 끝났을 때. `result`는 `("ok", 값)` 또는 `("exit", 예외)` ([async-operations](./async-operations.md)) |
+| `handle_async(name, result)` | `start_async()`가 끝났을 때. `result`는 끝난 `AsyncResult`(`ok`/`failed`) ([async-operations](./async-operations.md)) |
 | `handle_hook_event(hook_id, event, payload)` | 클라이언트 훅이 `pushEvent`로 보냈을 때 ([hooks](./hooks.md)) |
 | `get_subscriptions()` | 구독 채널을 상태에 따라 정할 때. 기본은 `Meta.subscriptions` |
 | `new(**kwargs)` (classmethod) | 인스턴스를 만들 때 |

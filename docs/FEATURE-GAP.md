@@ -145,7 +145,7 @@ GAP 번호로 추적한다.
 | AsyncResult states | loading/ok/failed | loading/ok/failed | ✅ | `tests/test_async_result.py::TestAssignAsync::test_returns_loading_state_immediately`<br>`tests/test_async_result.py::TestAssignAsync::test_updates_to_error_on_failure` |
 | start_async() | ✅ | `start_async()` | ✅ | `tests/test_start_async.py::test_the_result_reaches_handle_async_and_renders`<br>`tests/test_async_lifetime.py::test_a_replaced_task_leaves_its_replacement_tracked` |
 | cancel_async() | ✅ | `cancel_async()` | ✅ | `tests/test_start_async.py::test_cancel_async_stops_the_operation_before_handle_async` |
-| handle_async() | ✅ | `handle_async()` | ✅ | `tests/test_start_async.py::test_the_result_reaches_handle_async_and_renders`<br>`tests/test_start_async.py::test_a_failed_operation_reaches_handle_async_as_exit`<br>`tests/test_start_async.py::test_a_handle_async_that_raises_joins_the_component_again` |
+| handle_async() | ✅ | `handle_async()` | ✅ | `tests/test_start_async.py::test_the_result_reaches_handle_async_and_renders`<br>`tests/test_start_async.py::test_a_failed_operation_reaches_handle_async_as_failed`<br>`tests/test_start_async.py::test_a_handle_async_that_raises_joins_the_component_again` |
 
 ### 2.8 Navigation ✅
 

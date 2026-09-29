@@ -986,17 +986,10 @@ class Component(BaseModel):
                 async def do_search(self, query: str) -> list[str]:
                     return await SearchService.search(query)
 
-                async def handle_async(
-                    self,
-                    name: str,
-                    result: tuple[Literal["ok"], Any] | tuple[Literal["exit"], Exception],
-                ):
+                async def handle_async(self, name: str, result: AsyncResult):
                     if name == "search":
                         self.loading = False
-                        if result[0] == "ok":
-                            self.results = result[1]
-                        else:
-                            self.results = []
+                        self.results = result.result if result.ok else []
         """
         import asyncio
 
@@ -1005,17 +998,17 @@ class Component(BaseModel):
 
         async def run_and_handle() -> None:
             try:
-                result: tuple[str, t.Any]
+                result: AsyncResult[t.Any]
                 try:
-                    result = ("ok", await coro)
+                    result = AsyncResult.success(await coro)
                 except asyncio.CancelledError:
                     # Replaced, cancel_async(), or the component left: nothing
                     # to hand over and nothing to render.
                     return
                 except Exception as e:
-                    result = ("exit", e)
+                    result = AsyncResult.failure(e)
                 try:
-                    await self.handle_async(name, result)  # type: ignore[arg-type]
+                    await self.handle_async(name, result)
                 except Exception:
                     # Raised inside a task nobody awaits, it was never even logged,
                     # and the render was skipped. Recover as for a raising handler (#94).
@@ -1056,11 +1049,7 @@ class Component(BaseModel):
             return True
         return False
 
-    async def handle_async(
-        self,
-        name: str,
-        result: "tuple[t.Literal['ok'], t.Any] | tuple[t.Literal['exit'], Exception]",
-    ) -> None:
+    async def handle_async(self, name: str, result: AsyncResult[t.Any]) -> None:
         """
         Handle the completion of a named async operation.
 
@@ -1069,15 +1058,17 @@ class Component(BaseModel):
 
         Args:
             name: The name of the completed async operation
-            result: Tuple of ("ok", value) or ("exit", exception)
+            result: The same ``AsyncResult`` ``assign_async`` fills: ``ok`` with
+                ``result``, or ``failed`` with ``error``. It was an Elixir-style
+                ``("ok", value)``/``("exit", exc)`` tuple before 1.0 (#119).
 
         Example:
             async def handle_async(self, name, result):
                 if name == "load_data":
-                    if result[0] == "ok":
-                        self.data = result[1]
+                    if result.ok:
+                        self.data = result.result
                     else:
-                        self.error = str(result[1])
+                        self.error = result.error_message
         """
         # Default implementation does nothing
         # Override in subclass to handle results

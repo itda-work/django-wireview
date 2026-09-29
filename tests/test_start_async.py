@@ -62,10 +62,11 @@ class SaPage(Component):
         raise LookupError("index offline")
 
     async def handle_async(self, name, result):
-        HANDLED.append((name, result[0]))
+        assert isinstance(result, AsyncResult) and result.done
+        HANDLED.append((name, "ok" if result.ok else "failed"))
         if name == "explode":
             raise RuntimeError("handle_async broke")
-        self.result = result[1] if result[0] == "ok" else f"failed: {result[1]}"
+        self.result = result.result if result.ok else f"failed: {result.error}"
 
 
 class SaStats(Component):
@@ -156,13 +157,13 @@ async def test_the_result_reaches_handle_async_and_renders():
     assert "found tea" in outbound.last_render()
 
 
-async def test_a_failed_operation_reaches_handle_async_as_exit():
+async def test_a_failed_operation_reaches_handle_async_as_failed():
     consumer, outbound, component = await joined_page()
 
     await consumer.command_user_event("p", "fail", {}, {})
     await settle(component, "search")
 
-    assert HANDLED == [("search", "exit")]
+    assert HANDLED == [("search", "failed")]
     assert "failed: index offline" in outbound.last_render()
 
 

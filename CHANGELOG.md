@@ -25,6 +25,10 @@ What 1.0 promises, settled before it is frozen (#119).
 
 ### Changed
 
+- `handle_async(name, result)` receives an `AsyncResult`, the type `assign_async` already fills,
+  instead of an Elixir-style `("ok", value)`/`("exit", exc)` tuple: read `result.ok` and
+  `result.result`, or `result.failed` and `result.error`. An override that indexes the tuple
+  raises `TypeError`, which the consumer reports as a crash.
 - `docs/COMPATIBILITY.md` says what is public in fewer words that cover less: a `wire-*` attribute
   or a `wireview-*` class is public when `docs/features/` documents it, not because of its prefix.
   The markup template tags print (`wire-on-*` and its JSON, the upload attributes, `data-state`

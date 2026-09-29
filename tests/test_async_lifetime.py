@@ -45,7 +45,7 @@ class Slow(Component):
         await self.assign_async(self.forever())
 
     async def handle_async(self, name, result):
-        HANDLED.append((name, result[0]))
+        HANDLED.append((name, result.state))
 
 
 class FakeOutbound:

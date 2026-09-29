@@ -117,10 +117,10 @@ class Search(Component):
         """start_async가 끝나면 호출된다."""
         if name == "search":
             self.loading = False
-            if result[0] == "ok":
-                self.results = result[1]
+            if result.ok:
+                self.results = result.result
             else:
-                self.error = str(result[1])
+                self.error = result.error_message
                 self.results = []
 
     async def clear_search(self):
@@ -133,23 +133,19 @@ class Search(Component):
 
 ### handle_async() 콜백
 
-`start_async` 작업이 끝나면 호출된다.
+`start_async` 작업이 끝나면 호출된다. `result`는 `assign_async`가 채우는 것과 같은 `AsyncResult`이고,
+끝난 상태(`ok` 또는 `failed`)로만 온다. 취소된 작업은 `handle_async`를 부르지 않는다.
 
 ```python
-async def handle_async(
-    self,
-    name: str,
-    result: tuple[Literal["ok"], Any] | tuple[Literal["exit"], Exception],
-) -> None:
-    # name: start_async에 넘긴 이름
-    # result: ("ok", 값) 또는 ("exit", 예외)
+from wireview import AsyncResult
 
+async def handle_async(self, name: str, result: AsyncResult) -> None:
+    # name: start_async에 넘긴 이름
     if name == "load_data":
-        status, value = result
-        if status == "ok":
-            self.data = value
+        if result.ok:
+            self.data = result.result
         else:
-            self.error = f"Failed to load: {value}"
+            self.error = f"Failed to load: {result.error_message}"  # 예외는 result.error
 ```
 
 ### 작업 이름
@@ -212,8 +208,8 @@ class Typeahead(Component):
     async def handle_async(self, name, result):
         if name == "suggest":
             self.loading = False
-            if result[0] == "ok":
-                self.suggestions = result[1]
+            if result.ok:
+                self.suggestions = result.result
 ```
 
 ### 병렬 로딩
@@ -277,8 +273,8 @@ class FileProcessor(Component):
     async def handle_async(self, name, result):
         if name == "process":
             self.processing = False
-            if result[0] == "ok":
-                self.result = result[1]
+            if result.ok:
+                self.result = result.result
 ```
 
 ## 작업의 수명
@@ -324,9 +320,8 @@ async def joined(self):
 ```python
 async def handle_async(self, name, result):
     if name == "critical_task":
-        if result[0] == "exit":
-            error = result[1]
-            logger.error(f"Critical task failed: {error}")
+        if result.failed:
+            logger.error(f"Critical task failed: {result.error}")
             # 필요하면 재시도한다
             await self.start_async("critical_task", self._retry_task())
 ```
