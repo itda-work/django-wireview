@@ -4,6 +4,7 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 
 **[Component API](./component-api.md)** — `Component`·`LiveComponent`의 공개 멤버 전부. 여기 없으면 내부다.
 **[설정](./settings.md)** — `settings.WIREVIEW`의 키 전부와 기본값.
+**[내비게이션](./navigation.md)** — `redirect_to`·`push_to`·`replace_to`·`params`가 각각 무엇을 다시 그리고 연결을 어떻게 하는지.
 
 ## 성능 최적화
 

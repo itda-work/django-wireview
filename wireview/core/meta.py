@@ -221,7 +221,7 @@ class WireviewMeta:
         """Freeze the component to prevent further rendering."""
         self._is_frozen = True
 
-    async def redirect_to(self, to: RedirectDestination, **kwargs: t.Any) -> None:
+    async def redirect_to(self, to: RedirectDestination, /, **kwargs: t.Any) -> None:
         """Redirect the client to a new URL."""
         url = resolve_destination(to, **kwargs)
         self._redirected_to = url
@@ -229,12 +229,12 @@ class WireviewMeta:
             self.freeze()
             await self.send("url_change", command="redirect", url=url)
 
-    async def replace_to(self, to: RedirectDestination, **kwargs: t.Any) -> None:
+    async def replace_to(self, to: RedirectDestination, /, **kwargs: t.Any) -> None:
         """Replace the current URL without navigation."""
         url = resolve_destination(to, **kwargs)
         await self.send("url_change", command="replace", url=url)
 
-    async def push_to(self, to: RedirectDestination, **kwargs: t.Any) -> None:
+    async def push_to(self, to: RedirectDestination, /, **kwargs: t.Any) -> None:
         """Push a new URL to browser history."""
         url = resolve_destination(to, **kwargs)
         await self.send("url_change", command="push", url=url)

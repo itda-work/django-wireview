@@ -455,3 +455,14 @@ class TestTheMixinMountsTheSameWay:
         view = await self.Case().mount(MembersOnly, user=member())
 
         assert view.is_frozen is True
+
+
+@pytest.mark.parametrize("name", ["redirect_to", "push_to", "replace_to"])
+def test_the_destination_is_positional_only_so_every_keyword_reaches_reverse(name):
+    """A URL argument called ``to`` collided with the destination (#119)."""
+    import inspect
+
+    from wireview import WireviewMeta
+
+    to = inspect.signature(getattr(WireviewMeta, name)).parameters["to"]
+    assert to.kind is inspect.Parameter.POSITIONAL_ONLY

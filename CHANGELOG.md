@@ -32,6 +32,10 @@ What 1.0 promises, settled before it is frozen (#119).
 
 ### Changed
 
+- `docs/features/navigation.md` says what `redirect_to`, `push_to`, `replace_to` and writing
+  `self.wire.params` each fetch, keep and record. The README described `push_to` as pushing a URL
+  "without fetching"; it fetches the page and swaps the body. `to` is positional-only, so a URL
+  pattern argument called `to` reaches `reverse()`.
 - `{% upload_button "name" %}` is an attribute, like `{% upload_drop_zone %}`:
   `<button type="button" {% upload_button "images" %}>Select</button>`. It rendered an opening
   `<button>` whose closing tag the template supplied, and took extra attributes as arguments.

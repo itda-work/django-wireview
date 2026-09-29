@@ -13,7 +13,7 @@
 | `id` | 페이지 안에서 고유한 컴포넌트 id |
 | `user` | 연결의 사용자 (`AnonymousUser` 포함) |
 | `session` | Django 세션의 읽기 전용 뷰 ([session](./session.md)) |
-| `wire` | 내비게이션과 쿼리. 공개는 `params`, `redirect_to`, `replace_to`, `push_to`뿐이다 |
+| `wire` | 내비게이션과 쿼리. 공개는 `params`, `redirect_to`, `replace_to`, `push_to`뿐이다 ([navigation](./navigation.md)) |
 | `uploads` | 업로드 항목. 템플릿의 `this.uploads.<name>` ([external-uploads](./external-uploads.md)) |
 
 선언한 필드는 상태다. JSON으로 직렬화되어야 하고 모델 인스턴스는 pk로 서명된다. 설정은 `class Meta:`에
