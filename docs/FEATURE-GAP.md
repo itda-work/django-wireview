@@ -8,12 +8,12 @@
 
 ## 개요
 
-아래 2절의 비교표 114행 기준이다. 어림수가 아니라 표를 센 값이고, `tests/test_feature_gap.py`가
+아래 2절의 비교표 115행 기준이다. 어림수가 아니라 표를 센 값이고, `tests/test_feature_gap.py`가
 표를 다시 세어 이 숫자와 비교한다.
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 109 |
+| ✅ 지원 | 110 |
 | 🟡 부분 지원 | 0 |
 | 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 3 |
 | ⚪ 설계상 제외 | 2 |
@@ -117,6 +117,7 @@ GAP 번호로 추적한다.
 | stream_delete() | ✅ | `stream_delete()` | ✅ | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_toggle_and_delete_round_trip`<br>`tests/test_streams.py::TestComponentStreamMethods::test_stream_delete_with_int_id` |
 | DOM ID generation | ✅ | `dom_id=` 함수 (기본 `{name}-{pk}`) | ✅ | `tests/test_streams_e2e.py::test_dom_id_names_each_item`<br>`tests/test_streams.py::TestComponentStreamMethods::test_stream_delete_with_int_id` |
 | wire-stream attribute | `phx-update="stream"` | `wire-stream` | ✅ 재렌더에서 내용이 보존된다 | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_stream_insert_reaches_the_dom`<br>`tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_filter_switch_resets_the_stream` |
+| DOM ignore | `phx-update="ignore"` | `wire-update="ignore"` | ✅ 첫 렌더 뒤로 렌더가 그 요소와 속성·자식을 건드리지 않는다 | `tests/test_js_commands_e2e.py::test_a_render_leaves_an_ignored_element_as_the_page_made_it` |
 | 같은 dom id 재삽입 | 제자리 갱신 | 제자리 갱신 | ✅ | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_toggle_and_delete_round_trip` |
 | stream :limit | ✅ | `stream(limit=N)` | ✅ | `tests/test_streams_e2e.py::test_limit_keeps_only_the_newest` |
 | stream :reset | ✅ | `stream()`이 곧 reset이다 | ✅ | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_filter_switch_resets_the_stream`<br>`tests/testproj/bookmarks/tests.py::test_filter_unread_excludes_read_items` |

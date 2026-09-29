@@ -12,6 +12,9 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- `wire-update="ignore"`: after its first render no render touches the element -- its
+  attributes, children or text -- as Phoenix's `phx-update="ignore"`. What a hook or a widget did
+  to it stays, where `updated()` could only put it back after a morph had shown the gap (#102).
 - `await view.render_diff()` on what `mount()` returns: what the next live render sends the
   client, or `None` when the render is skipped or nothing changed. `view.render()` always draws
   the whole page, so a handler that skipped the render its page needed -- a button left

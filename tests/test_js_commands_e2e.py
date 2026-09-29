@@ -185,6 +185,29 @@ def test_a_boosted_link_that_redirects_shows_where_it_landed(probe):
     assert probe.url.endswith("/jsprobe/")
 
 
+def test_a_render_leaves_an_ignored_element_as_the_page_made_it(probe):
+    """``wire-update="ignore"``: what a hook or widget did to the element stays. Its
+    neighbour, without the attribute, is the control -- the render reaches it (#102)."""
+    probe.evaluate(
+        """() => {
+          for (const testid of ["ignored", "morphed"]) {
+            const el = document.querySelector(`[data-testid=${testid}]`);
+            el.textContent = "changed by the page";
+            el.classList.add("opened");
+          }
+        }"""
+    )
+
+    by(probe, "increment-server").click()
+    expect_text(by(probe, "count"), "1")
+
+    expect_text(by(probe, "morphed"), "server 1")
+    expect(by(probe, "morphed")).to_have_attribute("data-count", "1")
+    expect_text(by(probe, "ignored"), "changed by the page")
+    expect(by(probe, "ignored")).to_have_class("opened")
+    expect(by(probe, "ignored")).to_have_attribute("data-count", "0")
+
+
 def test_a_submit_marks_the_form_loading_until_the_answer(probe):
     by(probe, "q").fill("hello")
     by(probe, "q").press("Enter")

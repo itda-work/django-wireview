@@ -147,7 +147,7 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 
 ### 클라이언트 DOM 속성
 
-`wire-on-<이벤트>[.<수정자>…]`(`{% on %}`의 출력, 값은 JSON), `wire-hook`, `wire-stream`, `wire-viewport-top/bottom`, `wire-disabled-with`, `wire-feedback-for`, `wire-no-feedback`, `wire-auto-recover`, `wire-flash`, `wire-upload`, `wire-upload-select`, `wire-upload-drop`, `wire-preview`. 로딩 클래스는 `wireview-click-loading` 계열. 상세는 `docs/features/`.
+`wire-on-<이벤트>[.<수정자>…]`(`{% on %}`의 출력, 값은 JSON), `wire-hook`, `wire-update="ignore"`, `wire-stream`, `wire-viewport-top/bottom`, `wire-disabled-with`, `wire-feedback-for`, `wire-no-feedback`, `wire-auto-recover`, `wire-flash`, `wire-upload`, `wire-upload-select`, `wire-upload-drop`, `wire-preview`. 로딩 클래스는 `wireview-click-loading` 계열. 상세는 `docs/features/`.
 
 ## 명령
 

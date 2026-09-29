@@ -49,6 +49,11 @@ function morph(oldNode, newNode, { permission } = {}) {
         // over the live one would delete every streamed item, so leave it alone.
         if (isStreamContainer(fromEl)) return false;
 
+        // `wire-update="ignore"`: after its first render the element is the
+        // page's -- a hook's, a widget's -- and no render touches it or what is
+        // inside it, attributes included (Phoenix's phx-update="ignore", #102).
+        if (fromEl.nodeType === Node.ELEMENT_NODE && fromEl.getAttribute("wire-update") === "ignore") return false;
+
         if (fromEl.nodeType === Node.ELEMENT_NODE && valueGuard.keep(fromEl, toEl, permission)) kept.add(fromEl);
 
         // Only call for elements, not text nodes

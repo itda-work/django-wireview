@@ -29,6 +29,10 @@
           wire-disabled-with="Opening"
           {% on "click" this.slow_chain %}>open</button>
   <span data-testid="saved">{{ this.saved }}</span>
+  <div data-testid="ignored"
+       wire-update="ignore"
+       data-count="{{ this.count }}">server {{ this.count }}</div>
+  <div data-testid="morphed" data-count="{{ this.count }}">server {{ this.count }}</div>
   <form data-testid="form" {% on "submit.prevent" "slow_submit" %}>
     <input data-testid="q" name="q">
     <button type="submit" data-testid="submit" wire-disabled-with="Sending">send</button>
