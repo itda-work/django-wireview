@@ -238,7 +238,8 @@ ci-test-e2e:
 ci-build:
 	npm ci
 	npm run build
-	uv build
+	@# --clear: ci-smoke runs every wheel in dist/, and an older one left there fails it
+	uv build --clear
 	uvx twine check dist/*
 	@# The wheel is useless without the built JS: {% wireview_header %} loads it by name.
 	@python3 -c "import glob, sys, zipfile; \

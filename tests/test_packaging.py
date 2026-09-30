@@ -68,3 +68,13 @@ def test_publishing_waits_for_the_whole_ci_workflow():
     assert "smoke" in needs, "publish does not wait for the wheel smoke test"
     assert "make ci-smoke" in [step.get("run") for step in jobs["smoke"]["steps"]]
     assert "if" not in jobs["smoke"], "the smoke test is skipped on some runs"
+
+
+def test_the_build_starts_from_an_empty_dist():
+    """``ci-smoke`` installs every wheel in ``dist/`` and ``ci-build`` checks the last by
+    name, so a wheel an older build left there was smoked in place of the new one (it
+    failed on the starter template, which older wheels do not have)."""
+    makefile = (ROOT / "Makefile").read_text()
+    recipe = makefile.split("\nci-build:", 1)[1].split("\n\n", 1)[0]
+
+    assert "uv build --clear" in recipe
