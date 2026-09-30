@@ -139,7 +139,10 @@ PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflow
 - async 테스트가 태스크·채널 레이어가 나중에 할 일을 기다릴 때는 고정 `asyncio.sleep` 대신
   `testproj.waiting.eventually(조건)`을 쓴다. 느린 러너에서만 실패하는 테스트가 여기서 나왔다(#143).
   고친 테스트는 그 경로에 지연을 넣은 파라미터로도 돌린다(`tests/test_presence.py`의 `broadcast_pace`).
-  타이머 자체(debounce·throttle·만료)를 재는 테스트만 sleep을 둔다.
+  메시지를 "조용해질 때까지" 모으는 루프(`receive_nothing`, `wait_for(..., 0.2)`)도 같은 문제다 — 기대하는
+  메시지는 끝까지 기다리고, 조용한 창은 "그 뒤에 더 없음"을 확인하는 데만 쓴다(`tests/test_joined.py`).
+  타이머 자체(만료·리셋·충전)는 벽시계 대신 테스트가 움직이는 시계로 잰다(`tests/test_presence.py`의
+  `presence_clock`, `tests/test_lifecycle_hooks.py`의 `TestRateLimitExample.clock`). 브라우저의 debounce·throttle만 sleep을 둔다.
 
 ### 벤치마크를 잴 때 주의
 

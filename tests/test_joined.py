@@ -32,8 +32,14 @@ class JoinedProbe(Component):
         return Template("{% load wireview %}<p {% tag_header %}></p>")
 
 
-async def _session(vsn: int) -> list[str]:
-    """The commands a client hears for one join, in order, until nothing more comes."""
+async def _session(vsn: int, last: str) -> list[str]:
+    """The commands a client hears for one join, in order: up to ``last``, then until nothing more comes.
+
+    Each message up to ``last`` is waited for as long as it takes, so a slow
+    runner cannot cut the list short. Only what follows ``last`` is judged by a
+    short quiet window: that part is a check that nothing else comes, and no
+    message can say so (#143).
+    """
     communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={vsn}")
     communicator.scope["user"] = AnonymousUser()
     connected, _ = await communicator.connect()
@@ -44,6 +50,8 @@ async def _session(vsn: int) -> list[str]:
             {"command": "join", "payload": {"name": "JoinedProbe", "state": state, "children": {}}}
         )
         heard: list[dict[str, t.Any]] = []
+        while not heard or heard[-1]["command"] != last:
+            heard.append(await communicator.receive_json_from(timeout=5))
         while not await communicator.receive_nothing(timeout=0.3):
             heard.append(await communicator.receive_json_from())
         return [m["command"] + (f":{m['payload']['id']}" if m["command"] == "joined" else "") for m in heard]
@@ -52,8 +60,10 @@ async def _session(vsn: int) -> list[str]:
 
 
 async def test_joined_comes_after_everything_the_join_sent():
-    assert await _session(JOINED_SINCE) == ["render", "title", "joined:j-1"]
+    assert await _session(JOINED_SINCE, last="joined") == ["render", "title", "joined:j-1"]
 
 
 async def test_a_client_that_does_not_know_it_does_not_get_it():
-    assert await _session(JOINED_SINCE - 1) == ["render", "title"]
+    # No end signal for this client -- that is the point. The title is the last
+    # thing joined() queues; the quiet window after it is where joined would be.
+    assert await _session(JOINED_SINCE - 1, last="title") == ["render", "title"]

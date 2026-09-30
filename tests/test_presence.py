@@ -41,6 +41,48 @@ def broadcast_pace(request, monkeypatch):
     return request.param
 
 
+class _Clock:
+    """A clock the test moves by hand, for the typing timer's sleep."""
+
+    def __init__(self):
+        self.now = 0.0
+        self._sleepers: list[tuple[float, asyncio.Future[None]]] = []
+
+    async def sleep(self, delay: float) -> None:
+        wake = asyncio.get_running_loop().create_future()
+        self._sleepers.append((self.now + delay, wake))
+        await wake
+
+    async def advance(self, seconds: float) -> None:
+        await asyncio.sleep(0)  # a timer just created starts, and sleeps from now
+        self.now = round(self.now + seconds, 6)
+        for when, wake in self._sleepers:
+            if round(when, 6) <= self.now and not wake.done():
+                wake.set_result(None)
+        await asyncio.sleep(0)  # let the woken timers start
+
+
+@pytest.fixture
+def presence_clock(monkeypatch):
+    """The typing timer sleeps on a hand-moved clock instead of the wall clock.
+
+    Only the presence module sees it: its ``asyncio`` is swapped for one whose
+    ``sleep`` is the clock's, so the test's own waits stay real.
+    """
+    from wireview.features import presence
+
+    clock = _Clock()
+
+    class _Asyncio:
+        sleep = staticmethod(clock.sleep)
+
+        def __getattr__(self, name):
+            return getattr(asyncio, name)
+
+    monkeypatch.setattr(presence, "asyncio", _Asyncio())
+    return clock
+
+
 # Test Components (prefixed with X to avoid pytest collection)
 class XProducerComponent(PresenceMixin, Component):
     """Test component that produces presence updates."""
@@ -207,25 +249,28 @@ class TestPresenceMixin:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_typing_reset_timer_on_new_input(self):
-        """Typing again should reset the auto-timeout timer."""
+    async def test_typing_reset_timer_on_new_input(self, presence_clock):
+        """Typing again should reset the auto-timeout timer.
+
+        The timer runs on ``presence_clock``, so the test says exactly when the
+        first timeout has passed and the second has not -- however slow the runner.
+        """
         view = await mount(XProducerComponent, room_id=1, username="eve")
         view.wire._mock_channel_layer.clear()
 
-        # Set typing
-        await view.component.presence_set_typing(typing=True)
+        await view.component.presence_set_typing(typing=True)  # times out at 0.10
+        first = view.component._presence_typing_task
+        await presence_clock.advance(0.06)
+        await view.component.presence_set_typing(typing=True)  # resets: times out at 0.16
+        await presence_clock.advance(0.06)  # 0.12: past the first timeout, short of the second
 
-        # Wait partial timeout
-        await asyncio.sleep(0.05)
-
-        # Type again (should reset timer)
-        await view.component.presence_set_typing(typing=True)
-
-        # Wait another partial timeout
-        await asyncio.sleep(0.05)
-
-        # Should still be typing (timer was reset)
+        # Kept running, the first timer has now cleared typing; reset, it ended in the second call
+        await asyncio.wait({first}, timeout=5)
         assert view.component._presence_is_typing is True
+
+        await presence_clock.advance(0.04)  # 0.16
+        await asyncio.wait({view.component._presence_typing_task}, timeout=5)
+        assert view.component._presence_is_typing is False
 
     @pytest.mark.asyncio
     @pytest.mark.unit

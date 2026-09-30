@@ -102,7 +102,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | 인증 세대 | `WireviewSession.auth_fingerprint` | 지문 문자열. connect 때 계산한다 |
 | 인증 토픽 구독 | `WireviewSession._auth_topic` | 토픽 이름. 경계 안에서만 생긴다 |
 | 세션 재확인 여부 | `WireviewSession._auth_revalidated` | bool. **거절된 연결이 다시 물어 통과하지 못하게 하는 값이다** |
-| 업로드 인스턴스 번호 | `WireviewMeta.instance`, `WireviewMeta.instance_announced` | 정수와 bool. 컴포넌트와 함께 옮긴다. 번호는 무작위라 새 프로세스가 새로 뽑아도 옛 번호와 겹치지 않는다 — 프로세스마다 처음부터 세는 카운터였다면 겹쳐서, 옛 인스턴스가 늦게 보낸 `config`를 페이지가 새 인스턴스의 것으로 받는다(#141). 번호를 새로 뽑으면 `instance_announced`는 `False`로 복원해 다음 render가 새 번호를 알리게 한다 — 알리지 않은 번호의 `config`는 페이지가 버린다 |
+| 업로드 인스턴스 번호 | `WireviewMeta.instance`, `WireviewMeta.instance_announced` | 정수와 bool. 컴포넌트와 함께 옮긴다. 번호는 무작위라 새 프로세스가 새로 뽑아도 옛 번호와 겹치지 않는다 — 프로세스마다 처음부터 세는 카운터였다면 겹쳐서, 옛 인스턴스가 늦게 보낸 `config`를 페이지가 새 인스턴스의 것으로 받는다(#141). **번호와 `instance_announced`는 둘 다 그대로 옮긴다.** 번호를 새로 뽑으면 같은 인스턴스가 새 인스턴스로 취급된다 — 다음 render가 새 번호를 알리면 페이지가 그 id의 업로드 manager를 버려 진행 중인 업로드가 끝나고, 옛 번호로 오는 `config`(옮기기 전에 시작한 태스크가 보낸 것)는 세션이 버린다 |
 | 프로토콜 버전 | `ComponentRepository.vsn` | 정수. connect 때 소켓 URL에서 읽고, 페이지 쿼리스트링(`query_string`)과는 섞지 않는다. 0으로 복원하면 옛 형태만 보낼 뿐이라 안전하다 |
 
 아래 넷은 #58이 더했고 **외부화 목록의 일부다**. 세션을 프로세스 밖으로 옮기면서 이것을 빠뜨리면

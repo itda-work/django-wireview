@@ -128,8 +128,12 @@ The django-reactor era changelog (2.x) is preserved in
 - Tests: no test waits for background work with a fixed sleep any more. Presence typing
   timeouts, `allow_upload`'s config and the NATS layer tests guessed how long the work took and
   would fail on a slow runner; they now wait for the result (`testproj.waiting.eventually`) or
-  for `joined`, and each runs again with the work held back. Tests of timers -- debounce,
-  throttle, rate limits, the typing timer's reset -- keep theirs (#143).
+  for `joined`, and each runs again with the work held back. Loops that gathered messages until
+  a quiet window (`test_joined.py`, the toast and notification listeners) now wait for each
+  expected message and keep the window only for the check that nothing follows. The typing
+  timer's reset and the documented rate limit's refill run on a clock the test moves by hand:
+  the reset test used to pass with the reset removed. Browser tests of debounce and throttle
+  keep their sleeps (#143).
 
 - Test harness: two test runs in one checkout no longer break each other. The test database was
   one fixed file, so concurrent runs created, flushed and dropped it under each other and failed

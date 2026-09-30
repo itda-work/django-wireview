@@ -27,8 +27,14 @@ async def _listen(group: str):
     return layer, channel
 
 
-async def _heard(layer, channel: str) -> list[dict]:
-    messages = []
+async def _heard(layer, channel: str, expected: int) -> list[dict]:
+    """The ``expected`` messages on ``channel``, and whatever else follows them.
+
+    Each expected message is waited for as long as it takes (#143); only the
+    check that nothing follows is a short quiet window, since no message says
+    that nothing more is coming.
+    """
+    messages = [await asyncio.wait_for(layer.receive(channel), 5) for _ in range(expected)]
     while True:
         try:
             messages.append(await asyncio.wait_for(layer.receive(channel), 0.2))
@@ -58,9 +64,9 @@ async def test_atoast_reaches_the_recipients_channel_only():
 
     await atoast(bob, "회의 들어와요", flash_type="warning", timeout=0)
 
-    (heard,) = await _heard(layer, bobs)
+    (heard,) = await _heard(layer, bobs, 1)
     assert heard["kwargs"] == {"flash_type": "warning", "message": "회의 들어와요", "timeout": 0, "dismissible": True}
-    assert await _heard(layer, alices) == []
+    assert await _heard(layer, alices, 0) == []
 
 
 @pytest.mark.django_db  # inside the test's transaction, where on_commit waits

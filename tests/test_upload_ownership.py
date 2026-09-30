@@ -12,6 +12,7 @@ computation, the token and the cleanup all agree on who the owner is.
 """
 
 import asyncio
+import os
 import sys
 import typing as t
 from pathlib import Path
@@ -607,7 +608,7 @@ async def test_instances_made_in_two_processes_are_told_apart():
             "-c",
             script,
             stdout=asyncio.subprocess.PIPE,
-            env={"DJANGO_SETTINGS_MODULE": "testproj.settings", "PYTHONPATH": str(ROOT / "tests")},
+            env={**os.environ, "DJANGO_SETTINGS_MODULE": "testproj.settings", "PYTHONPATH": str(ROOT / "tests")},
             cwd=ROOT,
         )
         out, _ = await process.communicate()

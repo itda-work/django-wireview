@@ -49,8 +49,14 @@ async def _listen(*groups: str) -> tuple[object, str]:
     return layer, channel
 
 
-async def _heard(layer, channel: str) -> list[dict]:
-    messages = []
+async def _heard(layer, channel: str, expected: int) -> list[dict]:
+    """The ``expected`` messages on ``channel``, and whatever else follows them.
+
+    Each expected message is waited for as long as it takes (#143); only the
+    check that nothing follows is a short quiet window, since no message says
+    that nothing more is coming.
+    """
+    messages = [await asyncio.wait_for(layer.receive(channel), 5) for _ in range(expected)]
     while True:
         try:
             messages.append(await asyncio.wait_for(layer.receive(channel), 0.2))
@@ -128,11 +134,11 @@ def test_a_saved_notification_is_announced_on_its_owners_channel_only(alice, bob
     with django_capture_on_commit_callbacks(execute=True):
         notification = notify(alice, "alice 것")
 
-    (heard,) = async_to_sync(_heard)(layer, alices)
+    (heard,) = async_to_sync(_heard)(layer, alices, 1)
     assert heard["type"] == "model_mutation"
     assert heard["action"] == ModelAction.CREATED
     assert str(notification.pk) in heard["instance"]
-    assert async_to_sync(_heard)(layer, bobs) == []
+    assert async_to_sync(_heard)(layer, bobs, 0) == []
 
 
 @pytest.mark.unit
@@ -232,10 +238,10 @@ async def test_a_toast_goes_to_the_recipients_channel_and_stores_nothing(alice, 
 
     await view.call("send_toast")
 
-    (heard,) = await _heard(layer, bobs)
+    (heard,) = await _heard(layer, bobs, 1)
     assert heard["type"] == "notification"
     assert heard["kwargs"] == {"flash_type": "warning", "message": "잠깐 볼래?", "timeout": 5000, "dismissible": True}
-    assert await _heard(layer, alices) == []
+    assert await _heard(layer, alices, 0) == []
     assert not await Notification.objects.aexists()
 
 

@@ -8,6 +8,7 @@ render too, and they have to run exactly once per instance.
 
 import asyncio
 import re
+import types
 import typing as t
 from pathlib import Path
 
@@ -643,9 +644,20 @@ class TestOnMountCheck:
 
 
 class TestRateLimitExample:
-    """The ``RateLimitHook`` block in docs/features/lifecycle-hooks.md does what the text says."""
+    """The ``RateLimitHook`` block in docs/features/lifecycle-hooks.md does what the text says.
+
+    The block reads ``time.monotonic()`` from its own namespace, and the tests
+    give it a clock that moves only when they say: a burst takes no time and a
+    wait takes exactly as long as written, however slow the runner.
+    """
 
     pytestmark = pytest.mark.asyncio
+
+    @pytest.fixture(autouse=True)
+    def clock(self, monkeypatch):
+        clock = types.SimpleNamespace(now=0.0)
+        monkeypatch.setitem(DOC_RATE_LIMIT, "time", types.SimpleNamespace(monotonic=lambda: clock.now))
+        return clock
 
     async def test_a_burst_past_the_limit_never_reaches_the_handler(self):
         view = await mount(LhRateLimited, id="rl1")
@@ -656,17 +668,17 @@ class TestRateLimitExample:
 
         assert view.component.hits == burst
 
-    async def test_the_bucket_refills_with_time(self):
+    async def test_the_bucket_refills_with_time(self, clock):
         view = await mount(LhRateLimited, id="rl2")
         burst = DOC_RATE_LIMIT["RateLimitHook"].BURST
         for _ in range(burst + 5):
             await view.call("hit")
 
-        await asyncio.sleep(0.2)  # RATE=10: about two events' worth
+        clock.now += 0.25  # RATE=10: two events' worth, and half of a third
         for _ in range(5):
             await view.call("hit")
 
-        assert burst < view.component.hits < burst + 5
+        assert view.component.hits == burst + 2
 
     async def test_each_component_has_its_own_bucket(self):
         first = await mount(LhRateLimited, id="rl3")
