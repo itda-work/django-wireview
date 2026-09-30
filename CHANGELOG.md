@@ -49,6 +49,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- `docs/COMPATIBILITY.md` lists the supported channel layers with the versions tested, what each does
+  when full, and that InMemory is single-process only. CI's E2E job now runs once per layer, on NATS and
+  on Redis (a Redis service container next to NATS), so the release gate covers both (#130).
+
 - An upload's instance number (`instances` on `render`, `instance` on an `upload_op` config) is
   a random 53-bit integer instead of a per-process count. A count starts over in every process,
   so once a session can move to another worker (GAP-027) the next instance under an id could

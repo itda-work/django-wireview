@@ -106,7 +106,7 @@ CI나 빌드 작업을 `bug`/`enhancement`에 억지로 넣지 않는다.
 ## 6. 명령
 
 PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflows/ci.yml`)는 Python×Django 매트릭스
-테스트, 의존성 최신 해 테스트(`make test-latest`), NATS를 띄운 E2E, lint, typecheck, build 여섯 잡이다.
+테스트, 의존성 최신 해 테스트(`make test-latest`), NATS·Redis 레이어마다 한 번씩 도는 E2E, lint, typecheck, build 여섯 잡이다.
 평소에는 수동 실행 전용이고, 태그 push 때 `.github/workflows/release.yml`이 이 전체를 불러 통과해야만 PyPI에 올린다(#122).
 릴리스 절차는 `docs/ROADMAP.md`의 "릴리스 절차".
 
@@ -117,7 +117,7 @@ PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflow
 | 테스트 (e2e·slow 제외) | `make test` 또는 `make test ARGS="-k streams"` | collectstatic은 Makefile이 처리. `DJANGO_ALLOW_ASYNC_UNSAFE`를 켜면 스위트가 시작을 거절한다(#120) |
 | 동시 실행 확인 | `make test-concurrent` | 같은 사본에서 테스트 스위트 둘을 동시에 돌린다. 테스트 DB는 프로세스마다 따로라 둘 다 통과해야 한다(#125). `--ff`는 `addopts`가 아니라 Makefile 타깃에 있다 |
 | 최신 의존성 테스트 | `make test-latest` | `uv.lock`을 무시하고 새로 설치하는 사람이 받는 최신 해로 돈다. lock이 옛 버전에 묶여 있으면 기본 레인은 새 설치의 결함을 못 본다(#127) |
-| E2E | `make test-e2e` (NATS), `LAYER=redis`·`LAYER=memory`로 변경 | nats-server 바이너리와 JS 빌드. 서버 기동·정리는 `tests/e2e.sh`가 한다 |
+| E2E | `make test-e2e` (NATS), `LAYER=redis`·`LAYER=memory`로 변경 | nats-server 바이너리와 JS 빌드. 서버 기동·정리는 `tests/e2e.sh`가 한다. redis는 `REDIS_URL`에 떠 있는 서버를 쓴다 |
 | 빌드한 wheel 스모크 | `make ci-build` 뒤 `make ci-smoke` | wheel을 lock 없이 새 의존성에 설치해 import·`check`. 릴리스 게이트의 마지막 단계 |
 | 린트 | `make lint` (ruff + djlint) | |
 | 타입 검사 | `make check` (pyright, `tests/` 제외) | |
@@ -128,6 +128,9 @@ PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflow
 | 타입 스텁 확인 | `cd tests && uv run python manage.py wireview_stubs --check` | |
 | 성능 실측 | `make bench`, 비교는 `make bench-compare BASE=<ref>`, 서버 선택은 `ARGS="--server uvicorn"` | WebSocket 구간은 daphne 또는 uvicorn을 직접 띄우며 Redis 불필요 |
 | Windows 실측 | `bench/windows/run.sh` (stage → provision → run → collect) | macOS + Parallels 랩 클론 + `windows-parallels-lab` 스킬. 상세는 `bench/README.md` |
+
+`uv.lock`에서 채널 레이어 패키지(`channels-nats`, `channels-redis`)를 올리면 그 레이어의 E2E 레인을 돌리고
+`docs/COMPATIBILITY.md`의 채널 레이어 표를 같은 커밋에서 고친다. 표와 lock이 어긋나면 `tests/test_supported_versions.py`가 실패한다(#130).
 
 ### 테스트를 어디에 두는가
 

@@ -104,3 +104,22 @@ Django 5.2 LTS·6.0·6.1, Python 3.12·3.13·3.14다.
 - 새 Django·Python 버전은 매트릭스를 통과하면 패치 릴리스로 더한다.
 - 정본은 `pyproject.toml`(의존성·classifier)과 `.github/workflows/ci.yml`의 매트릭스다. 같은 격자를 로컬에서
   `make test-matrix`로 돈다(CI는 수동으로만 돈다).
+
+### 채널 레이어
+
+프로세스가 둘 이상이면 브로커가 있는 레이어가 필요하다. 지원하는 것은 아래 둘이고, 둘 다 E2E 스위트 전체를 돈다(#130).
+
+| 레이어 | 패키지 | 검증한 버전 | 브로커 | 여러 프로세스 | 가득 찼을 때 |
+|--------|--------|-------------|--------|---------------|--------------|
+| NATS | `channels-nats` | 0.2.0 | nats-server 2.14 | 된다 | 받는 쪽 프로세스가 `channels_nats` 로거에 WARNING을 남기고 버린다 |
+| Redis | `channels-redis` | 4.3.0 | Redis 8 | 된다 | `send`는 `ChannelFull`, `group_send`는 `channels_redis.core` 로거에 INFO를 남기고 버린다 |
+| InMemory | `channels`에 포함 | — | 없음 | **안 된다** | `group_send`가 아무 흔적 없이 버린다 |
+
+- **InMemory는 단일 프로세스 전용이다.** 여러 프로세스에 두면 브로드캐스트가 같은 프로세스의 연결에만 닿고 오류는
+  나지 않는다. 개발 서버와 단일 프로세스 배포에만 쓴다.
+- **검증한 버전**은 `uv.lock`이 고정한 버전이다. CI의 E2E 잡이 레이어마다 한 번씩 그 버전으로 돈다
+  (`make ci-test-e2e LAYER=nats|redis`, 브로커는 표의 버전을 서비스 컨테이너로 띄운다). 로컬에서는
+  `make test-e2e`(NATS)와 `make test-e2e LAYER=redis`(`REDIS_URL`의 redis-server)다.
+- 유실을 세는 방법은 [배포 가이드](./DEPLOYMENT.md)의 관측 절이다.
+- `uv.lock`에서 레이어 패키지를 올리면 두 E2E 레인을 돌리고 이 표의 버전을 같이 고친다.
+  `tests/test_supported_versions.py`가 표와 `uv.lock`, 그리고 CI의 E2E 매트릭스가 같은 레이어를 말하는지 본다.

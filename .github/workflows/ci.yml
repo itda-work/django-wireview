@@ -81,14 +81,25 @@ jobs:
       - name: Run tests on the newest dependencies
         run: make test-latest
 
+  # E2E on every channel layer docs/COMPATIBILITY.md supports across processes (#130).
+  # Both brokers start on every leg; a service cannot follow the matrix, and the one a
+  # leg does not use costs a few seconds.
   test-e2e:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        layer: ["nats", "redis"]
 
     services:
       nats:
         image: nats:2.14-alpine
         ports:
           - 4222:4222
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
 
     steps:
       - uses: actions/checkout@v7
@@ -118,8 +129,8 @@ jobs:
       - name: Install Playwright browsers
         run: uv run playwright install --with-deps chromium
 
-      - name: Run E2E tests
-        run: make ci-test-e2e
+      - name: Run E2E tests on ${{ matrix.layer }}
+        run: make ci-test-e2e LAYER=${{ matrix.layer }}
 
   lint:
     runs-on: ubuntu-24.04

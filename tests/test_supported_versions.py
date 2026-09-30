@@ -107,3 +107,30 @@ def test_no_document_asks_for_less_than_the_package_does(where, name, version):
 def test_the_documents_are_read():
     """The pattern still matches what the tutorials write, so the guard above is not empty."""
     assert {"Django", "Python"} <= {name for _, name, _ in CLAIMS}
+
+
+#: The channel layers docs/COMPATIBILITY.md supports across processes: its table row's
+#: package and verified version, and the WIREVIEW_TEST_LAYER that runs E2E on it (#130).
+LAYER_ROW = re.compile(r"^\| \w+ \| `(channels-[a-z]+)` \| ([\d.]+) \|", re.MULTILINE)
+LAYER_OF_PACKAGE = {"channels-nats": "nats", "channels-redis": "redis"}
+
+
+def _layer_table() -> dict[str, str]:
+    text = (ROOT / "docs" / "COMPATIBILITY.md").read_text(encoding="utf-8")
+    return dict(LAYER_ROW.findall(text))
+
+
+def test_the_layer_table_says_the_versions_the_lock_tests():
+    """Bumping a layer in uv.lock without rerunning its E2E lane and updating the table fails here."""
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    locked = {package["name"]: package["version"] for package in lock["package"]}
+    table = _layer_table()
+
+    assert set(table) == set(LAYER_OF_PACKAGE), table
+    assert table == {name: locked[name] for name in table}
+
+
+def test_ci_runs_e2e_on_every_layer_the_table_supports():
+    match = re.search(r"^\s*layer: \[(.*)\]\s*$", CI, re.MULTILINE)
+    assert match, "ci.yml has no E2E layer matrix"
+    assert set(re.findall(r'"(\w+)"', match.group(1))) == {LAYER_OF_PACKAGE[name] for name in _layer_table()}

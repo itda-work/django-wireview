@@ -144,8 +144,8 @@ ASGI_APPLICATION = "testproj.asgi.application"
 #             timeouts. `make test` therefore stays on memory.
 #   nats   -> nats-server on NATS_URL (channels-nats). The layer the project targets;
 #             `make test-e2e` and the deployment recipes use it.
-#   redis  -> redis-server on REDIS_URL (channels_redis). CI uses it until channels-nats
-#             is on PyPI and can be installed there.
+#   redis  -> redis-server on REDIS_URL (channels_redis). CI's E2E runs on it as well as
+#             on nats (docs/COMPATIBILITY.md, #130); locally `make test-e2e LAYER=redis`.
 _LAYER = os.environ.get("WIREVIEW_TEST_LAYER", "memory")
 if _LAYER == "nats":
     CHANNEL_LAYERS = {

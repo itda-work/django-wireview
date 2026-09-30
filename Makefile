@@ -208,12 +208,13 @@ ci-test:
 	uv run --no-sync pytest tests examples -m "not e2e and not slow" -q
 
 # CI: Run E2E tests
-# CI runs E2E on NATS, the layer this project targets. ci.yml provides the server as a
-# service container, so this does not start one (tests/e2e.sh would, locally).
+# On LAYER (nats by default, the layer this project targets); ci.yml runs it once per
+# layer docs/COMPATIBILITY.md supports (#130). ci.yml provides the brokers as service
+# containers, so this does not start one (tests/e2e.sh would, locally).
 ci-test-e2e:
 	cd tests && uv run python manage.py collectstatic --noinput
 	uv run playwright install --with-deps chromium
-	WIREVIEW_TEST_LAYER=nats uv run pytest tests examples -m "e2e" -v
+	WIREVIEW_TEST_LAYER=$(LAYER) uv run pytest tests examples -m "e2e" -v
 
 # CI: Build and check package
 ci-build:
@@ -310,6 +311,6 @@ help:
 	@echo "  make ci-lint          - CI: Run linting"
 	@echo "  make ci-check         - CI: Run type checking"
 	@echo "  make ci-test          - CI: Run tests (non-E2E)"
-	@echo "  make ci-test-e2e      - CI: Run E2E tests"
+	@echo "  make ci-test-e2e      - CI: Run E2E tests (LAYER=nats|redis)"
 	@echo "  make ci-build         - CI: Build package"
 	@echo "  make ci-smoke         - CI: Import the built wheel on fresh dependencies"

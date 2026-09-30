@@ -1,6 +1,6 @@
 """testproj on the Redis channel layer (channels_redis).
 
-The fallback while channels-nats is not installable everywhere; CI uses it.
+One of the two layers CI's E2E runs on, next to nats (#130).
 
     uv run pytest --ds=testproj.settings_redis -m e2e
 """
