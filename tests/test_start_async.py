@@ -21,7 +21,6 @@ from testproj.waiting import eventually
 
 from wireview import AsyncResult, Component
 from wireview.consumer import WireviewConsumer
-from wireview.core import render_gate
 from wireview.core.meta import WireviewMeta
 from wireview.core.rendered import PROTOCOL_VERSION, strip_markers
 from wireview.core.state import unsign_state
@@ -651,6 +650,46 @@ async def test_work_after_a_stream_item_render_that_raised_runs():
 STALLED = "awaited its async properties"
 
 
+class StallChecks:
+    """The render gate's stall checks, held for the test to run.
+
+    The gate arms a timer while a render awaits async properties. Waiting that
+    long for real guesses how late the check may run; here the timer never
+    fires on its own and ``fire()`` runs every check that is still armed.
+    """
+
+    def __init__(self) -> None:
+        self.armed: list[tuple[asyncio.TimerHandle, t.Callable[[], object]]] = []
+
+    @property
+    def pending(self) -> list[t.Callable[[], object]]:
+        return [check for handle, check in self.armed if not handle.cancelled()]
+
+    def fire(self) -> None:
+        due = self.pending
+        for handle, _ in self.armed:
+            handle.cancel()
+        self.armed = []
+        for check in due:
+            check()
+
+
+@pytest.fixture
+def stall_checks(monkeypatch) -> StallChecks:
+    checks = StallChecks()
+    call_later = asyncio.BaseEventLoop.call_later
+
+    def held(loop, delay, callback, *args, **kwargs):
+        if not callback.__qualname__.startswith("RenderGate.awaiting_properties"):
+            return call_later(loop, delay, callback, *args, **kwargs)
+        handle = call_later(loop, 3600, callback, *args, **kwargs)
+        checks.armed.append((handle, lambda: callback(*args)))
+        return handle
+
+    monkeypatch.setattr(asyncio.BaseEventLoop, "call_later", held)
+    return checks
+
+
 async def joined_stuck(consumer: WireviewConsumer) -> Component:
     stuck = await consumer.repo.join("SaStuck", {"id": "s"})
     stuck.wire.broker = LoopbackBroker(consumer)  # type: ignore[assignment]
@@ -660,18 +699,20 @@ async def joined_stuck(consumer: WireviewConsumer) -> Component:
     return stuck
 
 
-async def test_an_async_property_that_waits_for_the_components_work_is_warned_about(caplog, monkeypatch):
+async def test_an_async_property_that_waits_for_the_components_work_is_warned_about(caplog, stall_checks):
     # The render awaits the property on the loop, the property waits for the
     # work, and the work waits for the render: nothing moves and nothing says
     # why (#147). A warning names the component once the render has waited
-    monkeypatch.setattr(render_gate, "STALL_WARNING_SECONDS", 0.05)
     consumer, _, _ = await joined_page()
     stuck = await joined_stuck(consumer)
     stuck._waits = True
 
     click = asyncio.create_task(consumer.command_user_event("s", "load", {}, {}))
     try:
-        await eventually(lambda: STALLED in caplog.text)
+        await eventually(lambda: stall_checks.pending and stuck.wire._render_gate._idle is not None)
+        stall_checks.fire()
+        # Once: the check does not arm itself again after it has warned
+        stall_checks.fire()
     finally:
         # Break the cycle by hand, as the work would have
         stuck._loaded.set()
@@ -684,10 +725,9 @@ async def test_an_async_property_that_waits_for_the_components_work_is_warned_ab
     assert "SaStuck (s)" in warnings[0].getMessage()
 
 
-async def test_a_long_read_on_the_worker_thread_is_not_warned_about(caplog, monkeypatch):
+async def test_a_long_read_on_the_worker_thread_is_not_warned_about(caplog, stall_checks):
     # A slow query holds the work as long, but it cannot be waiting for the
     # work: only a render awaiting on the loop can (#147)
-    monkeypatch.setattr(render_gate, "STALL_WARNING_SECONDS", 0.05)
     consumer, _, _ = await joined_page()
     stuck = await joined_stuck(consumer)
     stuck._hold = threading.Event()
@@ -696,7 +736,7 @@ async def test_a_long_read_on_the_worker_thread_is_not_warned_about(caplog, monk
         click = asyncio.create_task(consumer.command_user_event("s", "load", {}, {}))
         await eventually(lambda: stuck._async_tasks.get("load") is not None)
         await eventually(lambda: stuck.wire._render_gate._idle is not None)
-        await asyncio.sleep(0.2)  # four times the threshold: the timer is what is measured
+        stall_checks.fire()
     finally:
         stuck._hold.set()
     await asyncio.wait_for(click, 2)
@@ -705,15 +745,19 @@ async def test_a_long_read_on_the_worker_thread_is_not_warned_about(caplog, monk
     assert STALLED not in caplog.text
 
 
-async def test_a_slow_async_property_with_no_work_waiting_is_not_warned_about(caplog, monkeypatch):
-    monkeypatch.setattr(render_gate, "STALL_WARNING_SECONDS", 0.05)
+async def test_a_slow_async_property_with_no_work_waiting_is_not_warned_about(caplog, stall_checks):
     consumer, _, _ = await joined_page()
     stuck = await joined_stuck(consumer)
     stuck._waits = True
 
     render = asyncio.create_task(consumer.send_render(stuck))
-    await asyncio.sleep(0.2)  # four times the threshold: the timer is what is measured
+    await eventually(lambda: stall_checks.pending)
+    stall_checks.fire()
+    # Nothing waits yet, so the check looks again later
+    assert stall_checks.pending
+    stall_checks.fire()
     stuck._loaded.set()
     await asyncio.wait_for(render, 2)
 
     assert STALLED not in caplog.text
+    assert not stall_checks.pending
