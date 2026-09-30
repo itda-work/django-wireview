@@ -10,6 +10,14 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- A boosted navigation now says it has landed, once, after the new page's components have
+  joined: hooks that were on the page before it and still are get `navigated()`, and `document`
+  gets a `wireview:navigated` event with `detail: { url, previousUrl }`. A sticky component's
+  hook had no way to know the page around it changed -- an effect it put on `<body>` was gone
+  after the move. A Back that paints the cached page first still announces once (#128).
+
 ### Fixed
 
 - A sticky component rendered without an `id` was silently not sticky: `{% component %}` gave it

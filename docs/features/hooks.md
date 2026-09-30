@@ -98,6 +98,7 @@ WIREVIEW = {"COLLECT_HOOKS": False}
 | `destroyed()` | 엘리먼트가 DOM에서 빠질 때. 컴포넌트가 페이지를 떠날 때(부모가 그리지 않음, boost 이동)도 뿌리에 단 훅까지 모두 | 자원 정리 |
 | `disconnected()` | WebSocket이 끊겼을 때 | 오프라인 표시 |
 | `reconnected()` | WebSocket이 다시 붙고 컴포넌트가 다시 join할 때. 같은 훅 인스턴스다 | 데이터 새로고침 |
+| `navigated()` | boost 이동이 끝난 뒤, 이동 전부터 있었고 이동 뒤에도 남은 훅에게 한 번. 주로 sticky 컴포넌트의 훅 | 새 `<body>`에 페이지 전체 효과 다시 걸기 ([boost](./boost.md#이동을-알기-wireviewnavigated-navigated)) |
 
 훅은 **자기를 감싼 가장 가까운 컴포넌트**의 것이다. 중첩된 컴포넌트 안의 훅은 바깥 컴포넌트가 아니라 안쪽
 컴포넌트의 `push_event`를 받는다. 렌더가 엘리먼트를 옮기기만 하면(id가 같은 목록 항목의 순서가 바뀜)

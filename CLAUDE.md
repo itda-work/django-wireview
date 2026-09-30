@@ -83,6 +83,7 @@ wireview/
                            events.mjs (wire-on-* 바인딩의 수정자 해석 순수 함수),
                            values.mjs (morph가 사용자가 고친 입력값을 덮어써도 되는가),
                            loading.mjs (로딩 표시를 어느 응답이 끝내는가. ref로 짝짓는다),
+                           navigation.mjs (boost 이동이 끝났음을 누구에게 알리는가: 훅의 navigated()와 wireview:navigated),
                            wireview-boost.js, types.d.ts
                            wireview.min.js는 빌드 산출물이며 gitignore
 
@@ -118,7 +119,8 @@ tests/
                            offlineprobe/ 는 연결이 끊긴 페이지의 바인딩·큐와 재연결 뒤의 훅·폼 복구를 보는 E2E(test_offline_e2e.py)의 픽스처,
                            hookprobe/ 는 훅의 소유(중첩 컴포넌트)·이동·떠날 때의 destroyed·pushEvent 응답 짝을 보는 E2E(test_hooks_e2e.py)의 픽스처,
                            tempprobe/ 는 초기화된 temporary assign이 다음 렌더에 화면에 남는지 보는 E2E(test_temporary_assigns_e2e.py)의 픽스처,
-                           stickyprobe/ 는 sticky 컴포넌트가 boost 이동을 건너 이어지는지 보는 E2E(test_sticky_e2e.py)의 픽스처,
+                           stickyprobe/ 는 sticky 컴포넌트가 boost 이동을 건너 이어지는지(id 없는 것 포함), 그 훅과 페이지가
+                           이동마다 한 번 navigated 알림을 받는지 보는 E2E(test_sticky_e2e.py)의 픽스처,
                            deadprobe/ 는 JavaScript를 끈 브라우저가 첫 렌더를 읽고 폼으로 뷰에 가는지 보는 E2E(test_dead_view_e2e.py)의 픽스처,
                            jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,
                            formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처,

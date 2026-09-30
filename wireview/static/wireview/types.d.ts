@@ -41,6 +41,30 @@ interface WireviewDebug {
   component(id: string): unknown;
 }
 
+/** `wireview:navigated`: a boosted navigation landed (docs/features/boost.md, #128). */
+interface WireviewNavigatedDetail {
+  /** Where the navigation ended, after any redirect. */
+  url: string;
+  /** The page it left. */
+  previousUrl: string;
+}
+
+interface DocumentEventMap {
+  "wireview:navigated": CustomEvent<WireviewNavigatedDetail>;
+}
+
+/** What `window.wireview.hooks.<Name>` may define (docs/features/hooks.md). `this` is the hook's context. */
+interface WireviewHook {
+  mounted?(): void;
+  beforeUpdate?(): void;
+  updated?(): void;
+  destroyed?(): void;
+  disconnected?(): void;
+  reconnected?(): void;
+  /** After a boosted navigation the hook stayed on the page through: a sticky component's (#128). */
+  navigated?(): void;
+}
+
 interface Window {
   wireview: {
     /**
@@ -59,5 +83,6 @@ interface Window {
       options?: { eventType?: string; commit?: boolean; target?: string },
     ): void;
     debug: WireviewDebug;
+    hooks: Record<string, WireviewHook & ThisType<any>>;
   };
 }

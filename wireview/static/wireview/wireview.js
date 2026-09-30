@@ -6,6 +6,7 @@ import { BINDING_PREFIX, bindingsFor, parseBinding, runSteps } from "./events.mj
 import { planInsert, planTrim } from "./streams.mjs";
 import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
+import { NAVIGATED_EVENT, NavigationLog, carriedAcross } from "./navigation.mjs";
 import boost from "./wireview-boost";
 
 /**
@@ -100,6 +101,8 @@ class ServerConnection {
     this.loading = new LoadingLedger();
     /** @type {number} how many times a socket has opened; a hook manager remembers the one it was live in */
     this.epoch = 0;
+    /** @type {NavigationLog} where the last boosted navigation landed, for `wireview:navigated` */
+    this.navigations = new NavigationLog(document.location.href);
   }
 
   /**
@@ -172,9 +175,27 @@ class ServerConnection {
       this.sendQueryString();
     });
 
-    boost.navEvent.addEventListener("newContent", () => {
+    boost.navEvent.addEventListener("newContent", (event) => {
       this.joinAllComponents();
+      const { token, landed } = /** @type {CustomEvent} */ (event).detail;
+      if (landed) this.announceNavigation(token);
     });
+  }
+
+  /**
+   * Tells the page a boosted navigation has landed, once, after the new page's
+   * components have joined (#128): `navigated()` to the hooks it carried over
+   * -- a sticky component's among them, which nothing else tells -- and then
+   * `wireview:navigated` on `document`.
+   * @param {number} token - the navigation that landed
+   */
+  announceNavigation(token) {
+    for (const component of Object.values(this.components)) {
+      component.hookManager.navigated(token);
+    }
+    document.dispatchEvent(
+      new CustomEvent(NAVIGATED_EVENT, { detail: this.navigations.landed(document.location.href) })
+    );
   }
 
   /**
@@ -1145,6 +1166,8 @@ class WireviewComponent {
  * @property {function(): void} [destroyed] - Called when element removed
  * @property {function(): void} [disconnected] - Called on WebSocket close
  * @property {function(): void} [reconnected] - Called on WebSocket reopen
+ * @property {function(): void} [navigated] - Called after a boosted navigation the hook
+ *   stayed on the page through (a sticky component's, #128)
  */
 
 /**
@@ -1169,6 +1192,8 @@ class HookContext {
     this.__manager = manager;
     /** @private @type {Map<string, Function[]>} */
     this.__eventHandlers = new Map();
+    /** @private the navigation current when it mounted (navigation.mjs) */
+    this.__navigation = boost.navigationToken();
   }
 
   /**
@@ -1457,6 +1482,27 @@ class HookManager {
           context.reconnected();
         } catch (e) {
           console.error(`[wireview] Error in ${context.__hookName}.reconnected():`, e);
+        }
+      }
+    }
+  }
+
+  /**
+   * Called after a boosted navigation landed: the hooks that were here before it.
+   * @param {number} token - the navigation
+   */
+  navigated(token) {
+    const entries = [...this.instances.values()].map((context) => ({
+      navigation: context.__navigation,
+      connected: context.el.isConnected,
+      hook: context,
+    }));
+    for (const context of carriedAcross(entries, token)) {
+      if (context.navigated) {
+        try {
+          context.navigated();
+        } catch (e) {
+          console.error(`[wireview] Error in ${context.__hookName}.navigated():`, e);
         }
       }
     }

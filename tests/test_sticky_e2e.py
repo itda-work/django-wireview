@@ -91,3 +91,40 @@ def test_a_sticky_component_without_an_id_sticks_all_the_same(page, server):
     by(page, "ticker-inc").click()
     expect_text(by(page, "ticker-count"), "2")
 
+
+def html_attr(page, name: str):
+    return page.evaluate("(name) => document.documentElement.getAttribute(name)", name)
+
+
+def test_a_sticky_hook_and_the_page_hear_each_navigation_once(page, server):
+    """navigated() is how a sticky hook puts back what the next page's <body> dropped (#128)."""
+    html = page.locator("html")
+    open_live(page, f"{server}/stickyprobe/a/")
+    expect(html).to_have_attribute("data-mounted-player", "1")
+    expect(page.locator("body")).to_have_class("with-player")
+
+    go(page, "b")
+    expect(html).to_have_attribute("data-navigated-document", "1")
+    expect(html).to_have_attribute("data-navigated-url", "/stickyprobe/b/")
+    expect(html).to_have_attribute("data-navigated-from", "/stickyprobe/a/")
+    expect(html).to_have_attribute("data-navigated-player", "1")
+    # The hook put its class back on the new page's <body>
+    expect(page.locator("body")).to_have_class("with-player")
+    assert html_attr(page, "data-mounted-player") == "1", "the same hook, not a new one"
+    assert html_attr(page, "data-destroyed-player") is None
+
+    # Back paints the cached page and then the fetched one: still one navigation
+    page.go_back()
+    expect_text(by(page, "page"), "a")
+    expect(html).to_have_attribute("data-navigated-document", "2")
+    expect(html).to_have_attribute("data-navigated-from", "/stickyprobe/b/")
+    expect(html).to_have_attribute("data-navigated-player", "2")
+    page.wait_for_timeout(300)  # a second announcement would have landed by now
+    assert html_attr(page, "data-navigated-document") == "2"
+    assert html_attr(page, "data-navigated-player") == "2"
+
+    # A page without the player: its hook is destroyed, not told it moved
+    go(page, "c")
+    expect(html).to_have_attribute("data-navigated-document", "3")
+    expect(html).to_have_attribute("data-destroyed-player", "1")
+    assert html_attr(page, "data-navigated-player") == "2"

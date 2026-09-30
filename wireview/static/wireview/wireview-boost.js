@@ -113,9 +113,12 @@ class NavEvents extends EventTarget {
 
   /**
    * Dispatches a newContent event.
+   * @param {number} token - the navigation this content belongs to
+   * @param {boolean} landed - the navigation's own page, not a cached paint
+   *   shown while it is fetched: what `wireview:navigated` announces, once
    */
-  sendNewContent() {
-    this.dispatchEvent(new Event("newContent"));
+  sendNewContent(token, landed) {
+    this.dispatchEvent(new CustomEvent("newContent", { detail: { token, landed } }));
   }
 }
 
@@ -177,11 +180,22 @@ if (BOOST_PAGES) {
 }
 
 /**
+ * The navigation in flight, or the last one. A hook records it when it mounts,
+ * so the navigation that follows can tell it was already there (navigation.mjs).
+ * @returns {number}
+ */
+function navigationToken() {
+  return navGate.token;
+}
+
+/**
  * Replaces the document body content with morphing.
  * @param {Element|string} newBody - The new body content
  * @param {number} [scrollY] - Optional scroll position to restore
+ * @param {boolean} [landed] - the navigation's own page; false for the cached
+ *   page a popstate shows until the fetch answers
  */
-function replaceBodyContent(newBody, scrollY = undefined) {
+function replaceBodyContent(newBody, scrollY = undefined, landed = true) {
   const token = navGate.token;
   window.requestAnimationFrame(() => {
     if (!navGate.accepts(token)) return;
@@ -191,7 +205,7 @@ function replaceBodyContent(newBody, scrollY = undefined) {
     } else {
       window.scrollTo(0, scrollY);
     }
-    navEvent.sendNewContent();
+    navEvent.sendNewContent(token, landed);
   });
 }
 
@@ -407,7 +421,7 @@ window.addEventListener("popstate", (event) => {
     // fetch below may still find the URL has moved. Showing the cache meanwhile
     // is the point of the cache, and the fetch bumps the generation, so a
     // refused destination drops this paint instead of flashing it.
-    replaceBodyContent(event.state.content, event.state.scrollY);
+    replaceBodyContent(event.state.content, event.state.scrollY, false);
   }
   HistoryCache.replaceContentFromUrl(document.location.href);
 });
@@ -418,6 +432,7 @@ window.addEventListener("popstate", (event) => {
  * @property {typeof morph} morph - DOM morphing function
  * @property {NavEvents} navEvent - Navigation event emitter
  * @property {typeof addBeforeElUpdated} addBeforeElUpdated - Add a morph callback
+ * @property {typeof navigationToken} navigationToken - The navigation in flight
  */
 
 /** @type {BoostExports} */
@@ -427,4 +442,5 @@ export default {
   valueGuard: valueGuard,
   navEvent: navEvent,
   addBeforeElUpdated: addBeforeElUpdated,
+  navigationToken: navigationToken,
 };

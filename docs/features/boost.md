@@ -81,10 +81,35 @@ class Player(Component):
   그곳에서는 모든 것이 새 핸드셰이크를 탄다([live-session](./live-session.md)). `BOOST_PAGES`가 꺼져 있어도
   모든 이동이 전체 로드라 살아남지 않는다.
 - **이어지는 것은 sticky 요소 안뿐이다.** 그 밖은 `<body>`의 속성과 class까지 새 페이지의 것으로 바뀐다. sticky 안의
-  훅은 이동 중에 `mounted`·`updated`·`destroyed` 어느 것도 받지 않으므로, 훅이 페이지 전체에 건 효과(body class,
-  스크롤 잠금 같은 것)는 이동 뒤 풀려도 훅이 알 길이 없다. 그런 효과는 페이지마다 서버 템플릿이 그리게 둔다.
+  훅은 이동 중에 `mounted`·`updated`·`destroyed` 어느 것도 받지 않는다. 훅이 페이지 전체에 건 효과(body class,
+  스크롤 잠금 같은 것)는 이동 뒤 풀리므로, 훅의 `navigated()`에서 다시 건다(아래 「이동을 알기」).
+  페이지마다 서버 템플릿이 그리게 둘 수 있으면 그쪽이 더 단순하다.
 - 이동한 뒤 쿼리가 바뀌었으면 sticky 컴포넌트도 `params_changed()`를 받는다.
 - `Component`에만 쓴다. `LiveComponent`는 부모가 소유하므로 부모와 함께 간다.
+
+## 이동을 알기 (`wireview:navigated`, `navigated()`)
+
+boost 이동이 끝나면 — 새 페이지가 morph되고 그 컴포넌트들이 join을 보낸 뒤 — 두 가지가 **이동마다 한 번** 온다(#128).
+
+1. 이동 전부터 페이지에 있었고 이동 뒤에도 남은 훅의 `navigated()`. sticky 컴포넌트의 훅이 이동을 아는 유일한
+   길이다. 새 페이지가 가져온 훅은 `mounted()`를, 빠진 훅은 `destroyed()`를 받고 `navigated()`는 받지 않는다.
+2. `document`에 `wireview:navigated` 이벤트. `detail`은 `{ url, previousUrl }`이다. `url`은 리다이렉트를 따라
+   도착한 주소다.
+
+```javascript
+window.wireview.hooks.Player = {
+  mounted() { document.body.classList.add("with-player"); },
+  navigated() { document.body.classList.add("with-player"); },  // 새 <body>에 다시
+};
+
+document.addEventListener("wireview:navigated", (e) => {
+  analytics.page(e.detail.url);
+});
+```
+
+- 뒤로 가기는 캐시된 페이지를 먼저 그리고 서버의 페이지로 다시 맞추지만, 알림은 서버의 페이지가 그려진 뒤 한 번이다.
+- `live_session` 경계를 넘는 이동과 `BOOST_PAGES`가 꺼진 이동은 전체 로드라서 오지 않는다. 새 문서가 처음부터 시작한다.
+- 리다이렉트·`push_to`처럼 서버가 보낸 이동도 boost로 가면 똑같이 온다.
 
 ## 리다이렉트
 
