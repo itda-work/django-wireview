@@ -77,6 +77,7 @@ INSTALLED_APPS = [
     "testproj.offlineprobe",
     "testproj.hookprobe",
     "testproj.tempprobe",
+    "testproj.stickyprobe",
     "wireview",
     "channels",
     "daphne",

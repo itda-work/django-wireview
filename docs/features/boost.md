@@ -50,6 +50,32 @@ wireview.visit("/rooms/3/", { replace: true }); // 지금 항목을 바꾼다
 boost가 켜져 있고 같은 사이트면 링크처럼 이동하고, 아니면 평소처럼 페이지를 연다. 전체 로드로 넘어갔으면
 `false`로 끝나는 Promise를 돌려준다. 숨긴 `<a>`를 만들어 `click()`하던 우회가 필요 없다.
 
+## 이동을 건너 살아남기 (`sticky`)
+
+boost 이동은 body를 새 페이지로 morph하고, 두 페이지에 다 있는 컴포넌트도 새 페이지의 상태로 다시 join한다.
+음악 플레이어, 채팅 창, 진행 중인 업로드처럼 **페이지를 가로질러 이어져야 하는 컴포넌트**는 `sticky`로 선언한다.
+
+```python
+class Player(Component):
+    class Meta:
+        template_name = "player.html"
+        sticky = True
+```
+
+```html
+{# 두 페이지의 레이아웃에 같은 id로 #}
+{% component 'Player' id="player" %}
+```
+
+- 다음 페이지에도 **같은 id**로 있으면 요소를 건드리지 않는다. 서버 인스턴스와 상태, 구독, 요소의 DOM,
+  그 안의 훅이 그대로 이어진다. 새 페이지가 그 컴포넌트에 준 HTML과 값은 쓰이지 않는다.
+- 다음 페이지에 없으면 보통 컴포넌트처럼 떠난다(`leaving()`). 그 뒤 다시 나오면 새로 시작한다.
+- **`live_session` 경계를 넘는 이동은 전체 로드라서 살아남지 않는다.** 경계는 인증 가정이 바뀌는 곳이고,
+  그곳에서는 모든 것이 새 핸드셰이크를 탄다([live-session](./live-session.md)). `BOOST_PAGES`가 꺼져 있어도
+  모든 이동이 전체 로드라 살아남지 않는다.
+- 이동한 뒤 쿼리가 바뀌었으면 sticky 컴포넌트도 `params_changed()`를 받는다.
+- `Component`에만 쓴다. `LiveComponent`는 부모가 소유하므로 부모와 함께 간다.
+
 ## 리다이렉트
 
 이동이 리다이렉트를 따라가면 주소창은 **도착한 주소**다. 요청한 주소가 남아 있으면 새로고침이

@@ -12,6 +12,9 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- Sticky components: `class Meta: sticky = True` keeps a component's instance, state, element and
+  hooks across a boosted navigation to a page that has it under the same id, as Phoenix's sticky
+  LiveView. A move across a `live_session` boundary is a full load and ends it (GAP-033, #72).
 - Toasts: `toast(user, message)` and `await atoast(...)` show a flash on the pages the recipient has
   open, and `{% wireview_toasts %}` in the layout receives them. A session key reaches a visitor
   who has not signed in, and `toast_channel()` names the channel for a receiver of your own. Taken

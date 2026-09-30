@@ -35,10 +35,11 @@ const valueGuard = new ValueGuard();
  * Morphs an old DOM node into a new one using Idiomorph.
  * @param {Element} oldNode - The existing DOM element
  * @param {Element|string} newNode - The new content to morph into
- * @param {{permission?: Map<Element, string>}} [options] - the fields this morph's render
- *   answers (ValueGuard.answer), which may take the server's value
+ * @param {{permission?: Map<Element, string>, navigation?: boolean}} [options] - the fields
+ *   this morph's render answers (ValueGuard.answer), which may take the server's value;
+ *   `navigation` for a boosted page change, which keeps sticky components
  */
-function morph(oldNode, newNode, { permission } = {}) {
+function morph(oldNode, newNode, { permission, navigation = false } = {}) {
   /** @type {WeakSet<Element>} */
   const kept = new WeakSet();
   const options = {
@@ -52,6 +53,14 @@ function morph(oldNode, newNode, { permission } = {}) {
         // page's -- a hook's, a widget's -- and no render touches it or what is
         // inside it, attributes included (Phoenix's phx-update="ignore", #102).
         if (fromEl.nodeType === Node.ELEMENT_NODE && fromEl.getAttribute("wire-update") === "ignore") return false;
+
+        // A sticky component the next page has too (idiomorph pairs them by id) is
+        // the same component: its element stays as it is, still live, so the join
+        // that follows skips it and the server keeps the instance (#72). Only on a
+        // navigation -- the component's own renders morph it as usual.
+        if (navigation && fromEl.nodeType === Node.ELEMENT_NODE && fromEl.hasAttribute("wire-sticky")) {
+          return /** @type {Element} */ (toEl).id !== fromEl.id;
+        }
 
         if (fromEl.nodeType === Node.ELEMENT_NODE && valueGuard.keep(fromEl, toEl, permission)) kept.add(fromEl);
 
@@ -176,7 +185,7 @@ function replaceBodyContent(newBody, scrollY = undefined) {
   const token = navGate.token;
   window.requestAnimationFrame(() => {
     if (!navGate.accepts(token)) return;
-    morph(document.body, newBody);
+    morph(document.body, newBody, { navigation: true });
     if (scrollY === undefined) {
       /** @type {HTMLElement|null} */ (document.querySelector("[autofocus]"))?.focus();
     } else {

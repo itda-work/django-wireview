@@ -1,0 +1,21 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>sticky probe {{ name }}</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    <h1 data-testid="page">{{ name }}</h1>
+    <nav>
+      <a href="{% url 'stickyprobe:page' 'a' %}" data-testid="to-a">a</a>
+      <a href="{% url 'stickyprobe:page' 'b' %}" data-testid="to-b">b</a>
+      <a href="{% url 'stickyprobe:page' 'c' %}" data-testid="to-c">c</a>
+    </nav>
+    {% if with_player %}
+      {% component 'StickyPlayer' id="player" %}
+    {% endif %}
+    {% component 'PlainCounter' id="plain" %}
+  </body>
+</html>

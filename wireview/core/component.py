@@ -170,6 +170,9 @@ class ComponentOptions:
     live_sessions: frozenset[str] = frozenset()
     #: Presence settings for ``PresenceMixin`` and ``PresenceTrackerMixin``.
     presence: t.Any = None
+    #: Survive a boosted navigation to a page that has it again, as Phoenix's
+    #: sticky LiveView: same instance, same DOM, same hooks (GAP-033, #72).
+    sticky: bool = False
 
     def extended(self, meta: type, owner: type) -> "ComponentOptions":
         """These options with ``meta``'s attributes on top."""

@@ -13,9 +13,9 @@
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 111 |
+| ✅ 지원 | 112 |
 | 🟡 부분 지원 | 0 |
-| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 2 |
+| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 1 |
 | ⚪ 설계상 제외 | 2 |
 
 ✅ 중 6행은 Phoenix에 없는 wireview 고유 기능이다(상태 칸이 `✅ 추가 기능`인 행). 🟠 행은 3절 표에서
@@ -219,7 +219,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | skip_render | ✅ | `skip_render()` | ✅ | `tests/test_render_control.py::test_skip_render_answers_without_a_diff_and_the_next_render_catches_up` |
 | force_render | ✅ | `force_render()` | ✅ | `tests/test_render_control.py::test_force_render_sends_a_full_render_with_nothing_changed` |
 | **temporary_assigns** | ✅ | `Meta.temporary_assigns`. 초기화는 변경이 아니다 — 초기화된 필드만 읽은 조각은 다시 보내지 않는다(GAP-006) | ✅ | `tests/test_render_control.py::test_temporary_assigns_are_cleared_after_a_live_render`<br>`tests/test_temporary_assigns_diff.py::test_an_unrelated_render_leaves_the_list_on_the_page`<br>`tests/test_temporary_assigns_e2e.py::test_the_list_stays_on_the_page_after_an_unrelated_event` |
-| Sticky components | ✅ | ❌ | 🟠 GAP-033 ([#72](https://github.com/itda-work/django-wireview/issues/72)) |  |
+| Sticky components | ✅ | `Meta.sticky` (같은 live_session 안) | ✅ | `tests/test_sticky_e2e.py::test_the_sticky_component_carries_its_state_and_element_across_a_boosted_move` |
 | Comprehensions | ✅ 키 기반 | ✅ 내용 기반 짝짓기 (GAP-025, GAP-030). 템플릿 키 없이 이동·삽입·삭제가 그 항목만의 페이로드 | ✅ | `tests/test_comprehension_moves.py::test_a_client_that_names_the_version_gets_moves`<br>`tests/test_comprehension_moves_e2e.py::test_moving_rows_ends_in_the_same_dom_with_either_form` |
 
 ### 2.13 Testing ✅
@@ -305,7 +305,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | ~~GAP-030~~ | ~~키 기반 comprehension~~ | ~~앞쪽 삽입이 뒤 항목 전부를 다시 보내지 않게~~ | ~~상~~ | ✅ 완료 (키 대신 내용으로 짝짓는다. `docs/design/keyed-comprehension.md`) |
 | ~~GAP-031~~ | ~~내비게이션 테스트 헬퍼~~ | ~~`assert_patch`·`follow_redirect` 상당물~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-032~~ | ~~Colocated hooks~~ | ~~컴포넌트 옆의 JS 훅을 자동 등록~~ | ~~중~~ | ✅ 완료 |
-| GAP-033 | Sticky 컴포넌트 | boost 내비게이션을 건너 살아남는 컴포넌트 | 중 | [#72](https://github.com/itda-work/django-wireview/issues/72) |
+| ~~GAP-033~~ | ~~Sticky 컴포넌트~~ | ~~boost 내비게이션을 건너 살아남는 컴포넌트~~ | ~~중~~ | ✅ 완료 (경계 안에서만) |
 | GAP-034 | Dead view | JS 없이도 읽히는 첫 렌더. 무엇을 약속할지부터 | 중 | [#73](https://github.com/itda-work/django-wireview/issues/73) |
 | ~~GAP-035~~ | ~~LiveComponent 배치 업데이트~~ | ~~같은 컴포넌트 N개 갱신의 N+1 제거~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-036~~ | ~~LiveComponent 슬롯~~ | ~~`{% live_component_block %}`으로 fill·기본 슬롯·let 전달~~ | ~~중~~ | ✅ 완료 |

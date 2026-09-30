@@ -90,12 +90,16 @@ def _signed_state(component: Component, repo: ComponentRepository) -> str:
 def tag_header(context):
     component: Component = context["this"]
     repo: ComponentRepository = context["wireview_repository"]
+    # A sticky component's element is left alone by a boosted navigation's morph
+    # (wireview-boost.js), so the instance, its DOM and its hooks carry over (#72).
+    sticky = " wire-sticky" if component._meta.sticky else ""
     return format_html(
-        ('id="{id}" data-name="{name}" data-state="{state}" data-is-live="{is_live}" wireview-component'),
+        ('id="{id}" data-name="{name}" data-state="{state}" data-is-live="{is_live}" wireview-component{sticky}'),
         id=component.id,
         name=component._name,
         is_live=str(repo.is_live).lower(),
         state=_signed_state(component, repo),
+        sticky=sticky,
     )
 
 

@@ -1005,6 +1005,7 @@ class Dashboard(Component):
 | `on_mount` | `[]` | `joined()` 전에 도는 훅 |
 | `live_sessions` | `set()` | 마운트될 수 있는 `live_session` 이름 |
 | `presence` | `None` | `PresenceMixin` 설정(`PresenceConfig`) |
+| `sticky` | `False` | boost 이동으로 같은 id가 있는 페이지에 가면 인스턴스·DOM·훅이 이어진다 ([boost](docs/features/boost.md)) |
 
 ### 메서드와 필드
 

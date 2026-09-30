@@ -111,6 +111,7 @@ tests/
                            offlineprobe/ 는 연결이 끊긴 페이지의 바인딩·큐와 재연결 뒤의 훅·폼 복구를 보는 E2E(test_offline_e2e.py)의 픽스처,
                            hookprobe/ 는 훅의 소유(중첩 컴포넌트)·이동·떠날 때의 destroyed·pushEvent 응답 짝을 보는 E2E(test_hooks_e2e.py)의 픽스처,
                            tempprobe/ 는 초기화된 temporary assign이 다음 렌더에 화면에 남는지 보는 E2E(test_temporary_assigns_e2e.py)의 픽스처,
+                           stickyprobe/ 는 sticky 컴포넌트가 boost 이동을 건너 이어지는지 보는 E2E(test_sticky_e2e.py)의 픽스처,
                            jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,
                            formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처,
                            fileprobe/ 는 업로드의 모든 입구(입력·드롭 존·미리보기·external)를 보는 E2E(test_uploads_e2e.py)의 픽스처,
