@@ -46,17 +46,17 @@ class _Clock:
 
     def __init__(self):
         self.now = 0.0
-        self._sleepers: list[tuple[float, asyncio.Future[None]]] = []
+        self.sleepers: list[tuple[float, asyncio.Future[None]]] = []
 
     async def sleep(self, delay: float) -> None:
         wake = asyncio.get_running_loop().create_future()
-        self._sleepers.append((self.now + delay, wake))
+        self.sleepers.append((self.now + delay, wake))
         await wake
 
     async def advance(self, seconds: float) -> None:
         await asyncio.sleep(0)  # a timer just created starts, and sleeps from now
         self.now = round(self.now + seconds, 6)
-        for when, wake in self._sleepers:
+        for when, wake in self.sleepers:
             if round(when, 6) <= self.now and not wake.done():
                 wake.set_result(None)
         await asyncio.sleep(0)  # let the woken timers start
@@ -261,6 +261,7 @@ class TestPresenceMixin:
         await view.component.presence_set_typing(typing=True)  # times out at 0.10
         first = view.component._presence_typing_task
         await presence_clock.advance(0.06)
+        assert presence_clock.sleepers, "the timer sleeps on the test's clock, not the wall clock"
         await view.component.presence_set_typing(typing=True)  # resets: times out at 0.16
         await presence_clock.advance(0.06)  # 0.12: past the first timeout, short of the second
 
