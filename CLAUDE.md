@@ -92,7 +92,8 @@ wireview/
                            같은 config만 받는다. 끝난 인스턴스의 upload_op는 세션이 먼저 버린다.
                            join·join 실패·렌더가 알린 인스턴스에서 페이지가 할 일도 여기 있다: joining·joinFailed·named, #142),
                            joins.mjs (같은 id로 다시 보낸 join의 응답을 기다리는 동안 어느 render·error가 지금 join의 것인가.
-                           join의 ref로 짝짓는다. vsn 6 이상의 서버에만 싣는다),
+                           join의 ref로 짝짓는다. vsn 6 이상의 서버에만 싣는다. settledEvent가 join의 ref를
+                           이벤트 정산(로딩·valueGuard)에서 뺀다),
                            wireview-boost.js, types.d.ts
                            wireview.min.js는 빌드 산출물이며 gitignore
 

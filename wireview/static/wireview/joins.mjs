@@ -16,6 +16,8 @@
  * that answer the join. Until the answer comes, everything else for the id is
  * the replaced instance's. After it, the id is the new instance's: the server
  * retired the old one when it read the join, so nothing of it follows.
+ * What this holds back is the render and the `error`, the two that carry the
+ * ref; `remove`, `joined`, `stream_op` and `exec_js` still land as they come.
  *
  * A join sent without a ref -- the first on a connection, before any answer
  * said which server this is, or to an older server -- pairs nothing, and every
@@ -27,6 +29,27 @@
 /**
  * @typedef {{ ref: number | null, answered: boolean }} Join
  */
+
+/**
+ * The user event a `render` or an `error` answers, by its ref -- the one whose
+ * loading state and value guard the message settles. Joins and events share
+ * one counter, so a join's ref must not be read as an event's: taken as one,
+ * a component's join answer would settle every event up to it (the value
+ * guard settles by `<=`), and another component's committing event would lose
+ * the permission to reset its fields.
+ * @param {string} command - "render" or "error"
+ * @param {{ ref?: number, vsn?: number, during?: string }} payload
+ * @returns {number | undefined} undefined when the message answers no event
+ *   by ref: a join's answer (a render carrying vsn, a `during: "join"` error),
+ *   or a ref the server did not echo
+ */
+export function settledEvent(command, payload) {
+  const { ref } = payload;
+  if (typeof ref !== "number") return undefined;
+  if (command === "render") return typeof payload.vsn === "number" ? undefined : ref;
+  if (command === "error") return payload.during === "event" ? ref : undefined;
+  return undefined;
+}
 
 export class Joins {
   constructor() {

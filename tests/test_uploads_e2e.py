@@ -344,19 +344,22 @@ def test_a_live_component_shown_again_under_its_id_uploads_with_its_new_config(p
 
 def test_the_page_sends_no_leave_for_a_live_component_its_parent_hid(page, server):
     # #140: the parent's render already retired the child, and a leave arriving
-    # after the child was shown again removed the new instance.
+    # after the child was shown again removed the new instance. Twice: the child
+    # on the page at load and the one a render brought back register apart.
     sent: list[str] = []
     page.on("websocket", lambda ws: ws.on("framesent", lambda payload: sent.append(payload)))
     open_live(page, f"{server}/fileprobe/nested/")
-    by(page, "toggle").click()
-    expect_text(by(page, "shown"), "False")
-    expect_count(by(page, "child-files"), 0)
-    by(page, "toggle").click()
-    expect_text(by(page, "shown"), "True")
+    for _ in range(2):
+        by(page, "toggle").click()
+        expect_text(by(page, "shown"), "False")
+        expect_count(by(page, "child-files"), 0)
+        by(page, "toggle").click()
+        expect_text(by(page, "shown"), "True")
+        expect_count(by(page, "child-files"), 1)
 
     commands = [json.loads(frame)["command"] for frame in sent if isinstance(frame, str)]
-    # The second toggle went out after anything the hiding morph sent
-    assert commands.count("user_event") == 2
+    # Each showing toggle went out after anything the hiding morph before it sent
+    assert commands.count("user_event") == 4
     assert "leave" not in commands
 
 

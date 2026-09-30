@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { Joins } from "../../wireview/static/wireview/joins.mjs";
+import { Joins, settledEvent } from "../../wireview/static/wireview/joins.mjs";
 
 test("the first join under an id replaces nothing; the next one does", () => {
   const joins = new Joins();
@@ -94,4 +94,23 @@ test("an event's error is the new instance's only once its join is answered", ()
   joins.render("box", 2, true);
   assert.equal(joins.error("box", 7, "event"), true);
   assert.equal(joins.error("box", undefined, "event"), true);
+});
+
+test("a join's answer settles no event, though it carries a ref", () => {
+  // Joins and events share one counter. Read as an event's, a join answer's
+  // ref settled every event up to it, and another component's committing
+  // event lost the permission to reset its fields.
+  assert.equal(settledEvent("render", { id: "box", ref: 6, vsn: 6 }), undefined);
+  assert.equal(settledEvent("error", { id: "box", ref: 6, during: "join" }), undefined);
+});
+
+test("an event's answer settles that event", () => {
+  assert.equal(settledEvent("render", { id: "box", ref: 5 }), 5);
+  assert.equal(settledEvent("error", { id: "box", ref: 5, during: "event" }), 5);
+});
+
+test("an answer without a ref settles nothing by ref", () => {
+  assert.equal(settledEvent("render", { id: "box" }), undefined);
+  assert.equal(settledEvent("render", { id: "box", vsn: 6 }), undefined);
+  assert.equal(settledEvent("error", { id: "box", during: "event" }), undefined);
 });

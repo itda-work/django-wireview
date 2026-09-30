@@ -331,7 +331,7 @@ wireview/
 
 ```typescript
 // Client → Server
-{ command: "join", payload: { name, state, children } }
+{ command: "join", payload: { name, state, children, ref? } }
 { command: "leave", payload: { id } }
 { command: "user_event", payload: { id, command, implicit_args, explicit_args, ref? } }
 { command: "hook_event", payload: { component_id, hook_id, event, payload, ref? } }
@@ -339,7 +339,7 @@ wireview/
 // upload_register, upload_cancel, upload_complete
 
 // Server → Client
-{ command: "render", payload: { id, diff, children?, ref?, vsn? } }
+{ command: "render", payload: { id, diff, children?, ref?, vsn?, instances? } }
 { command: "remove", payload: { id } }
 { command: "error", payload: { id, during, ref? } }
 { command: "stream_op", payload: { op, stream, items, at, limit? } }

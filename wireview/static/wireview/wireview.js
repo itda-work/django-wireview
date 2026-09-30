@@ -1,6 +1,6 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
 import { JOINED_SINCE, JOIN_REFS_SINCE, PROTOCOL_VERSION, REFS_SINCE, applyPartial, buildHtml } from "./rendered.mjs";
-import { Joins } from "./joins.mjs";
+import { Joins, settledEvent } from "./joins.mjs";
 import { commitScope, isCommitAction } from "./values.mjs";
 import { LoadingLedger } from "./loading.mjs";
 import { BINDING_PREFIX, bindingsFor, parseBinding, runSteps } from "./events.mjs";
@@ -288,7 +288,7 @@ class ServerConnection {
         if (typeof vsn === "number") this.serverVsn = vsn;
         const target = this.components[id];
         // The render answering a join carries vsn, and its ref is the join's
-        const eventRef = typeof vsn === "number" ? undefined : ref;
+        const eventRef = settledEvent("render", payload);
         // The answer to a committing event may reset the fields it came from,
         // in the morph this render causes and no other (#92). That morph runs
         // now, not on the next frame, so no later render folds into it.
@@ -362,9 +362,10 @@ class ServerConnection {
         const { id, during, ref } = payload;
         // The event is over: its answer will not come as a render, and the
         // fields it came from keep what the user typed.
-        if (during === "event" && typeof ref === "number") {
-          boost.valueGuard.answer(ref);
-          this.loading.answer(ref).forEach(unmarkLoading);
+        const eventRef = settledEvent("error", payload);
+        if (eventRef !== undefined) {
+          boost.valueGuard.answer(eventRef);
+          this.loading.answer(eventRef).forEach(unmarkLoading);
         }
         // About the instance a join the page has since sent replaces: the new
         // one, and the element it is for, are not hurt (#139)
