@@ -67,12 +67,18 @@ class Player(Component):
 {% component 'Player' id="player" %}
 ```
 
+- **id를 반드시 명시한다.** 짝은 id로만 맞춘다. `id=`를 빼면 렌더마다 새 id(`rx-<uuid>`)가 붙어 다음 페이지의
+  컴포넌트와 짝이 맞지 않고, `sticky = True`가 **아무 신호 없이 꺼진다** — 경고도 `manage.py check`도 없이 보통
+  컴포넌트처럼 morph되고 다시 join한다(#128).
 - 다음 페이지에도 **같은 id**로 있으면 요소를 건드리지 않는다. 서버 인스턴스와 상태, 구독, 요소의 DOM,
   그 안의 훅이 그대로 이어진다. 새 페이지가 그 컴포넌트에 준 HTML과 값은 쓰이지 않는다.
 - 다음 페이지에 없으면 보통 컴포넌트처럼 떠난다(`leaving()`). 그 뒤 다시 나오면 새로 시작한다.
 - **`live_session` 경계를 넘는 이동은 전체 로드라서 살아남지 않는다.** 경계는 인증 가정이 바뀌는 곳이고,
   그곳에서는 모든 것이 새 핸드셰이크를 탄다([live-session](./live-session.md)). `BOOST_PAGES`가 꺼져 있어도
   모든 이동이 전체 로드라 살아남지 않는다.
+- **이어지는 것은 sticky 요소 안뿐이다.** 그 밖은 `<body>`의 속성과 class까지 새 페이지의 것으로 바뀐다. sticky 안의
+  훅은 이동 중에 `mounted`·`updated`·`destroyed` 어느 것도 받지 않으므로, 훅이 페이지 전체에 건 효과(body class,
+  스크롤 잠금 같은 것)는 이동 뒤 풀려도 훅이 알 길이 없다. 그런 효과는 페이지마다 서버 템플릿이 그리게 둔다.
 - 이동한 뒤 쿼리가 바뀌었으면 sticky 컴포넌트도 `params_changed()`를 받는다.
 - `Component`에만 쓴다. `LiveComponent`는 부모가 소유하므로 부모와 함께 간다.
 

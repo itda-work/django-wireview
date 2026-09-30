@@ -30,7 +30,8 @@ async def handle_async(self, name, result):
 ### 3. 테스트의 `mount()`
 
 옵션은 키워드로만 받는다. `mount(Cls, user)`는 `mount(Cls, user=user)`로. 이름이 옵션과 같은 필드(`params` 등)는
-`state={"params": ...}`로 준다. `view.dom_actions`와 `view.clear_dom_actions()`는 없어졌다(항상 비어 있었다).
+`state={"params": ...}`로 준다. 필드 값은 전처럼 키워드로 줘도 된다 — `mount(Counter, count=3)`은 그대로 동작하고,
+`state=`는 옵션과 이름이 겹칠 때만 쓴다. `view.dom_actions`와 `view.clear_dom_actions()`는 없어졌다(항상 비어 있었다).
 
 ### 4. 없어진 이름
 
@@ -73,15 +74,16 @@ async def handle_async(self, name, result):
 
 고칠 것이 없다. 0.7.0과 1.0.0rc1은 호환을 깨는 변경이 없다([CHANGELOG](../CHANGELOG.md)).
 
-릴리스 후보는 사전 릴리스라 버전 범위를 평소처럼 적으면 설치되지 않는다. 하한에 rc를 적는다. rc2는 rc1과 호환되지 않으므로
-(위 절) 하한은 rc2로 둔다.
+릴리스 후보는 사전 릴리스라 버전 범위를 평소처럼 적으면 설치되지 않는다. 하한에 rc를 적는다. **하한은 쓰는 기능이
+들어간 rc 중 가장 이른 것, 단 철회(yank)된 rc는 건너뛴다.** rc2는 rc1과 호환되지 않고(위 절), rc3는 pydantic 2.13
+이상에서 import가 실패해 철회됐다(#127). 그래서 지금은 rc4가 하한이다.
 
 ```toml
-dependencies = ["django-wireview>=1.0.0rc2,<1.1"]
+dependencies = ["django-wireview>=1.0.0rc4,<1.1"]
 ```
 
 `>=1.0,<1.1`로 적으면 uv는 해를 찾지 못한다. pip는 `pip install --pre django-wireview` 또는
-`pip install django-wireview==1.0.0rc2`로 설치한다. 1.0.0이 나온 뒤에는 하한을 `1.0`으로 바꿔도 된다.
+`pip install django-wireview==1.0.0rc4`로 설치한다. 1.0.0이 나온 뒤에는 하한을 `1.0`으로 바꿔도 된다.
 
 ## 0.5에서 0.6으로
 
