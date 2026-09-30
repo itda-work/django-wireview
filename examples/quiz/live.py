@@ -56,8 +56,20 @@ class XQuiz(Component):
 
     @property
     def questions(self):
-        """Get all questions for this quiz."""
+        """Get all questions for this quiz.
+
+        Templates render off the event loop, so they may read this. Handlers run
+        on it and use the async helpers below instead.
+        """
         return list(self.quiz.questions.all())
+
+    async def _acurrent_question(self) -> Question | None:
+        if self.current_question_index < 0:
+            return None
+        return await self.quiz.questions.all()[self.current_question_index : self.current_question_index + 1].afirst()
+
+    async def _aquestion_count(self) -> int:
+        return await self.quiz.questions.acount()
 
     @property
     def current_question(self):
@@ -116,7 +128,7 @@ class XQuiz(Component):
         - State transitions
         - skip_render() for optimization
         """
-        question = self.current_question
+        question = await self._acurrent_question()
         # Once per question: pressing the right answer again must not score again
         if not question or question.id in self.answers:
             self.skip_render()
@@ -136,7 +148,7 @@ class XQuiz(Component):
         """Move to the next question or finish."""
         self.current_question_index += 1
 
-        if self.current_question_index >= len(self.questions):
+        if self.current_question_index >= await self._aquestion_count():
             # Quiz complete - save submission and show results
             await self._save_submission()
             self.state = QuizState.RESULTS
@@ -147,7 +159,7 @@ class XQuiz(Component):
             quiz=self.quiz,
             session_key=self.visitor,
             score=self.score,
-            total_questions=len(self.questions),
+            total_questions=await self._aquestion_count(),
             username=self.username or "Anonymous",
         )
 
