@@ -12,6 +12,11 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A sticky component rendered without an `id` was silently not sticky: `{% component %}` gave it
+  a fresh `rx-<uuid>` on every page, which never paired with the next page's. It now gets an id
+  derived from its class (`sticky-<module path>-<Class>`), the same on every page. A second
+  id-less instance of the same sticky class on one page keeps a random id and logs a warning on
+  the `wireview` logger, since two elements cannot share an id (#128).
 - `import wireview` failed on pydantic 2.13 and later (1.0.0rc3, which is yanked):
   `LiveComponent.update_many` is annotated with `t.Self`, handler validation wrapped it in
   `validate_call`, and pydantic's refusal stopped being a `TypeError` in 2.13. Handler validation

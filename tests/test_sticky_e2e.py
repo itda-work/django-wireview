@@ -76,3 +76,18 @@ def test_its_own_renders_still_reach_it(page, server):
     open_live(page, f"{server}/stickyprobe/b/")
     by(page, "player-inc").click()
     expect_text(by(page, "player-count"), "1")
+
+
+def test_a_sticky_component_without_an_id_sticks_all_the_same(page, server):
+    """The template gave it no id; the one derived from its class pairs it across the move (#128)."""
+    open_live(page, f"{server}/stickyprobe/a/")
+    ticker = page.locator("[wire-sticky]", has=by(page, "ticker-count"))
+    expect(ticker).to_have_id("sticky-testproj-stickyprobe-live-StickyTicker")
+    by(page, "ticker-inc").click()
+    expect_text(by(page, "ticker-count"), "1")
+
+    go(page, "b")
+    expect_text(by(page, "ticker-count"), "1")
+    by(page, "ticker-inc").click()
+    expect_text(by(page, "ticker-count"), "2")
+

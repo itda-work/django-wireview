@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import re
 import typing as t
 from concurrent.futures import ThreadPoolExecutor
 from importlib import metadata
@@ -23,6 +25,8 @@ from ..repository import ComponentRepository
 from ..slots import Slot, SlotContainer
 
 register = template.Library()
+
+log = logging.getLogger("wireview")
 
 
 def _bundle_version() -> str:
@@ -177,6 +181,41 @@ def _mount_in_template(component: Component, repo: ComponentRepository) -> bool:
     return mounted
 
 
+def _sticky_default_id(component_class: type[Component]) -> str:
+    """The id a sticky component rendered without one gets: the same on every page.
+
+    A boosted navigation pairs a sticky element with the next page's by id. The
+    per-render ``rx-<uuid>`` never pairs, so without this ``sticky = True`` was
+    switched off in silence (#128). Derived from the fully qualified name, so two
+    sticky classes that share a class name in different apps do not collide.
+    """
+    return "sticky-" + re.sub(r"[^A-Za-z0-9_-]+", "-", component_class._fqn)
+
+
+def _default_sticky_id(component_name: str, repo: ComponentRepository) -> str | None:
+    """A sticky component's id when the template gave none, or None to keep the random one.
+
+    A second id-less instance of the same sticky class on one page would share
+    the first one's id -- and ``repo.build`` would hand back the first instance.
+    Only a page render (a fresh repository) can tell a second instance from a
+    re-render of the first, so that is where it is caught: the second keeps a
+    random id and does not stick, and the log says why and what to write.
+    """
+    component_class = Component._resolve(component_name)
+    if not component_class._meta.sticky:
+        return None
+    sticky_id = _sticky_default_id(component_class)
+    if not repo.is_live and sticky_id in repo.components:
+        log.warning(
+            "%s is sticky and rendered more than once on this page without an id; only the first "
+            "one survives a boosted navigation. Give each one its own id: {%% component '%s' id=\"...\" %%}",
+            component_class._fqn,
+            component_name,
+        )
+        return None
+    return sticky_id
+
+
 def _build_and_render_component(
     context: Context,
     component_name: str,
@@ -199,6 +238,8 @@ def _build_and_render_component(
         )
         context["wireview_repository"] = repo
 
+    if "id" not in kwargs and (sticky_id := _default_sticky_id(component_name, repo)):
+        kwargs = {**kwargs, "id": sticky_id}
     component_instance = repo.build(component_name, state=kwargs)
     if not _mount_in_template(component_instance, repo):
         # Frozen: whatever comes back is a redirect meta or nothing at all.

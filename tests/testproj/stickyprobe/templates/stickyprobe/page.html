@@ -15,6 +15,7 @@
     </nav>
     {% if with_player %}
       {% component 'StickyPlayer' id="player" %}
+      {% component 'StickyTicker' %}
     {% endif %}
     {% component 'PlainCounter' id="plain" %}
   </body>
