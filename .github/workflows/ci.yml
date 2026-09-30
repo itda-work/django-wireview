@@ -48,6 +48,36 @@ jobs:
       - name: Run tests
         run: make ci-test
 
+  # The lock pins what the job above installs; a fresh install resolves anew and gets
+  # the newest releases. This job runs what a new user gets (#127).
+  test-latest:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0 # publishes no floating major tag since v8
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install npm dependencies and build JS
+        run: |
+          npm ci
+          npm run build
+
+      - name: Run tests on the newest dependencies
+        run: make test-latest
+
   test-e2e:
     runs-on: ubuntu-24.04
 

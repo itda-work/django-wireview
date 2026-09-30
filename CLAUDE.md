@@ -162,6 +162,7 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 |------|------|
 | 테스트 (e2e·slow 제외) | `make test` |
 | 지원 버전 격자 (Python × Django) | `make test-matrix` |
+| 최신 의존성으로 (uv.lock 무시) | `make test-latest` |
 | 품질 일괄 (lint + typecheck) | `make quality` |
 | JS 빌드 | `make build-js` — clone 직후와 `wireview/static/wireview/wireview.js` 수정 후 필수 |
 | 클라이언트 테스트 | `make test-js` |

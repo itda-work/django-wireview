@@ -1,4 +1,4 @@
-.PHONY: all install test test-unit test-e2e test-matrix test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js
+.PHONY: all install test test-unit test-e2e test-matrix test-latest test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js
 
 # Default target
 all: install build
@@ -172,6 +172,13 @@ test-matrix: collectstatic
 			pytest tests examples -m "not e2e and not slow" -q --no-header -p no:warnings $(ARGS); \
 	done; done
 
+# The dependencies a fresh `pip install django-wireview` gets today, not uv.lock's:
+# the newest release of each within pyproject.toml's bounds. uv.lock held pydantic
+# at 2.12 while new installs got 2.13, which broke the import (#127).
+test-latest: collectstatic
+	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run --no-project --isolated --python $(or $(PYTHON),3.12) --with-editable ".[dev]" \
+		pytest tests examples -m "not e2e and not slow" -q --no-header -p no:warnings $(ARGS)
+
 # CI: Run tests (non-E2E)
 ci-test:
 	cd tests && uv run python manage.py collectstatic --noinput
@@ -230,6 +237,7 @@ help:
 	@echo "  make test-unit        - Run unit tests only"
 	@echo "  make test-e2e         - Run E2E tests with Playwright"
 	@echo "  make test-matrix      - Run tests on every supported Python x Django pair"
+	@echo "  make test-latest      - Run tests on the newest dependencies, ignoring uv.lock"
 	@echo "  make test-all         - Run all tests including E2E"
 	@echo "  make test-cov         - Run tests with coverage report"
 	@echo ""

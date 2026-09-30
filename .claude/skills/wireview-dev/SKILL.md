@@ -106,13 +106,14 @@ CI나 빌드 작업을 `bug`/`enhancement`에 억지로 넣지 않는다.
 ## 6. 명령
 
 PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflows/ci.yml`)는 Python×Django 매트릭스
-테스트, Redis를 띄운 E2E, lint, typecheck, build 다섯 잡이다.
+테스트, 의존성 최신 해 테스트(`make test-latest`), NATS를 띄운 E2E, lint, typecheck, build 여섯 잡이다.
 
 | 할 일 | 명령 | 선행 조건 |
 |------|------|-----------|
 | 의존성 설치 | `make install` 과 `npm ci` | `uv sync --dev`는 dev 도구를 설치하지 않는다. extras를 써야 한다 |
 | JS 빌드 | `make build-js` | 개발 서버와 E2E 전에 필수. 산출물은 gitignore |
 | 테스트 (e2e·slow 제외) | `make test` 또는 `make test ARGS="-k streams"` | collectstatic과 `DJANGO_ALLOW_ASYNC_UNSAFE`는 Makefile이 처리 |
+| 최신 의존성 테스트 | `make test-latest` | `uv.lock`을 무시하고 새로 설치하는 사람이 받는 최신 해로 돈다. lock이 옛 버전에 묶여 있으면 기본 레인은 새 설치의 결함을 못 본다(#127) |
 | E2E | `make test-e2e` (NATS), `LAYER=redis`·`LAYER=memory`로 변경 | nats-server 바이너리와 JS 빌드. 서버 기동·정리는 `tests/e2e.sh`가 한다 |
 | 린트 | `make lint` (ruff + djlint) | |
 | 타입 검사 | `make check` (pyright, `tests/` 제외) | |
