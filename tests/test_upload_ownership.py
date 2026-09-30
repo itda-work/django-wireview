@@ -12,7 +12,9 @@ computation, the token and the cleanup all agree on who the owner is.
 """
 
 import asyncio
+import sys
 import typing as t
+from pathlib import Path
 
 import pytest
 from django.contrib.auth.models import AnonymousUser
@@ -28,6 +30,8 @@ from wireview.features.uploads import UploadEntry, UploadStatus, upload_group_na
 from wireview.views import UploadView
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio, pytest.mark.django_db]
+
+ROOT = Path(__file__).resolve().parent.parent
 
 TEMPLATES = {
     "own/uploader.html": "{% load wireview %}<div {% tag_header %}>{{ this.title }}</div>",
@@ -580,3 +584,35 @@ async def test_a_live_component_shown_again_is_named_as_a_new_instance():
     ]
     assert again.wire.instance != first.wire.instance
     await consumer.disconnect(1000)
+
+
+async def test_instances_made_in_two_processes_are_told_apart():
+    """#141: an instance's number stays unique when the session moves to another process.
+
+    Externalising the session (GAP-027) lets a connection's next instance under
+    an id be made by another worker. Numbers that only one process keeps apart
+    -- a counter each process starts afresh -- come out the same there, and the
+    page would take the old instance's late config as the new one's. Two fresh
+    interpreters are the two workers.
+    """
+    script = (
+        "import django; django.setup()\n"
+        "from wireview.core.meta import WireviewMeta\n"
+        "print(WireviewMeta(params={}).instance)"
+    )
+
+    async def made_in_a_new_process() -> str:
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-c",
+            script,
+            stdout=asyncio.subprocess.PIPE,
+            env={"DJANGO_SETTINGS_MODULE": "testproj.settings", "PYTHONPATH": str(ROOT / "tests")},
+            cwd=ROOT,
+        )
+        out, _ = await process.communicate()
+        assert process.returncode == 0
+        return out.decode().strip()
+
+    first, second = await asyncio.gather(made_in_a_new_process(), made_in_a_new_process())
+    assert first != second

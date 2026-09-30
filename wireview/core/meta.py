@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import itertools
 import logging
+import secrets
 import typing as t
 from asyncio import iscoroutine
 
@@ -37,9 +37,6 @@ RedirectDestination = t.Union[t.Callable[..., t.Any], "models.Model", str]
 DiffPayload = dict[str, t.Any]
 Context = dict[str, t.Any]
 P = t.ParamSpec("P")
-
-# One number per WireviewMeta, so per component instance, for this process's life
-_instance_numbers = itertools.count(1)
 
 ScrollPosition = t.Literal["start"] | t.Literal["end"] | t.Literal["center"] | t.Literal["nearest"]
 
@@ -114,9 +111,11 @@ class WireviewMeta:
         # or been replaced by a new join, and the page takes an upload config only
         # from the instance it holds under the id: the first render of each
         # instance names it (``instance_announced``), and the config carries it.
-        # A component lives in the process its session runs in, so a counter is
-        # unique enough.
-        self.instance: int = next(_instance_numbers)
+        # Random, not counted: a number has to stay unique within the connection
+        # even when the session moves to another process (GAP-027), and a
+        # per-process counter starts over there (#141). 53 bits keeps it a safe
+        # integer in JavaScript, where the page compares it with ``===``.
+        self.instance: int = secrets.randbits(53)
         self.instance_announced: bool = False
         if broker is None:
             broker = ChannelsBroker(channel_layer) if channel_layer is not None else NullBroker()

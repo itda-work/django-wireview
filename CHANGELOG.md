@@ -34,6 +34,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- An upload's instance number (`instances` on `render`, `instance` on an `upload_op` config) is
+  a random 53-bit integer instead of a per-process count. A count starts over in every process,
+  so once a session can move to another worker (GAP-027) the next instance under an id could
+  get the number the old one had, and the page would take the old instance's late config. It is
+  still a JSON number that pages compare with `===`, so older pages are unaffected (#141).
+
 - `AUTO_BROADCAST` broadcasts only the models `senders` names. An empty `senders` no longer
   connects any receiver, whatever flags are on; name the models to broadcast. A many-to-many
   change is broadcast when the model whose manager made it is named. A `senders` entry that is

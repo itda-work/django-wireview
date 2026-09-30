@@ -45,7 +45,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 
 | command | payload |
 |---------|---------|
-| `render` | `id`, `diff`, `children?`, `ref?`, `vsn?`, `instances?` — `ref`는 이 render가 답하는 `user_event`의 것, `vsn`은 join에 답하는 render에만 실리는 서버의 프로토콜 버전이다. `instances`는 `{id: 번호}`로, 이 render가 첫 렌더인 인스턴스(join의 응답이면 그 컴포넌트, 이 render에서 join된 LiveComponent)의 번호다. 번호는 서버 프로세스 안에서 인스턴스마다 다르고, 클라이언트는 같은 번호를 실은 `upload_op config`만 받는다(#137). `diff`는 전체 `{"s", "d", "f"}` 또는 부분 `{"<index>": value}`, 또는 자식만 바뀌었거나 사용자 이벤트가 아무것도 바꾸지 않았을 때 `null`(후자는 이벤트가 끝났다는 알림이라 클라이언트가 로딩 상태를 지운다). value는 문자열, comprehension `{"s", "d"}`, 항목 갱신 `{"u", "n"}`, 항목 재배열 `{"k": [[시작, 길이] \| {"d": [...]}, ...]}`(`vsn` 2 이상에만), 블록 `{"r", "d"}`, 블록 부분 갱신 `{"p"}`, LiveComponent 참조 `{"c": id}` ([html-diff](../features/html-diff.md)). `children`은 이 렌더와 함께 렌더된 LiveComponent들의 `{id: diff}` 평면 맵이다(손자식 포함). 클라이언트는 DOM을 건드리기 전에 이들을 먼저 등록하고, 부모 HTML을 만들 때 참조 자리에 자식의 현재 HTML을 넣는다 |
+| `render` | `id`, `diff`, `children?`, `ref?`, `vsn?`, `instances?` — `ref`는 이 render가 답하는 `user_event`의 것, `vsn`은 join에 답하는 render에만 실리는 서버의 프로토콜 버전이다. `instances`는 `{id: 번호}`로, 이 render가 첫 렌더인 인스턴스(join의 응답이면 그 컴포넌트, 이 render에서 join된 LiveComponent)의 번호다. 번호는 53비트 무작위 정수라 세션이 다른 프로세스로 옮겨도 연결 안에서 겹치지 않고(#141), 클라이언트는 `===`로만 비교하며 같은 번호를 실은 `upload_op config`만 받는다(#137). `diff`는 전체 `{"s", "d", "f"}` 또는 부분 `{"<index>": value}`, 또는 자식만 바뀌었거나 사용자 이벤트가 아무것도 바꾸지 않았을 때 `null`(후자는 이벤트가 끝났다는 알림이라 클라이언트가 로딩 상태를 지운다). value는 문자열, comprehension `{"s", "d"}`, 항목 갱신 `{"u", "n"}`, 항목 재배열 `{"k": [[시작, 길이] \| {"d": [...]}, ...]}`(`vsn` 2 이상에만), 블록 `{"r", "d"}`, 블록 부분 갱신 `{"p"}`, LiveComponent 참조 `{"c": id}` ([html-diff](../features/html-diff.md)). `children`은 이 렌더와 함께 렌더된 LiveComponent들의 `{id: diff}` 평면 맵이다(손자식 포함). 클라이언트는 DOM을 건드리기 전에 이들을 먼저 등록하고, 부모 HTML을 만들 때 참조 자리에 자식의 현재 HTML을 넣는다 |
 | `remove` | `id` |
 | `joined` | `id` — 그 join과 `joined()`가 쌓아 둔 작업(스트림의 첫 페이지, 제목 등)이 모두 나갔다. 그 작업들과 같은 세션 큐로 보내 맨 뒤에 도착한다. 클라이언트는 이때부터 `wire-viewport-*`를 판단한다(#112). `vsn` 5 이상의 클라이언트에만 보낸다. 옛 서버에서는 클라이언트가 그 컴포넌트의 첫 render를 신호로 쓴다 |
 | `error` | `id`, `during` (`event` 또는 `join`), `ref?` — 서버 코드가 이 컴포넌트를 처리하다 예외를 던졌다(#94). `vsn` 4 이상의 클라이언트에만 보낸다. `event`: 핸들러, 브로드캐스트 수신, `params_changed`, 훅 이벤트, 업로드 콜백, LiveComponent `update()`, 렌더 중 하나가 던졌다. 서버는 인스턴스를 버렸고(`leaving()`을 부른다), `id`는 루트 컴포넌트다(LiveComponent가 던졌으면 그 루트). 클라이언트는 렌더 상태를 비우고 요소의 `data-state`로 다시 join한다. 그 상태는 이벤트 전의 것이라 핸들러가 던지기 전에 바꾼 값은 남지 않는다. `ref`는 그 이벤트의 것이고, 답이 render로 오지 않으므로 클라이언트는 여기서 정리한다. `join`: join이 첫 렌더까지 가지 못했다. 다시 시도하지 않고, 클라이언트는 요소를 그대로 둔 채 `wireview-error` 클래스를 붙이고 컴포넌트 등록에서 뺀다. 두 경우 모두 요소에서 버블링되는 `wireview:error` 이벤트(`detail: {id, during}`)를 보낸다. `vsn` 3 이하 클라이언트에는 `event`면 소켓을 코드 1011로 닫고(전부 다시 join), `join`이면 `remove`를 보낸다 — 둘 다 이전의 동작이다 |
@@ -102,6 +102,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | 인증 세대 | `WireviewSession.auth_fingerprint` | 지문 문자열. connect 때 계산한다 |
 | 인증 토픽 구독 | `WireviewSession._auth_topic` | 토픽 이름. 경계 안에서만 생긴다 |
 | 세션 재확인 여부 | `WireviewSession._auth_revalidated` | bool. **거절된 연결이 다시 물어 통과하지 못하게 하는 값이다** |
+| 업로드 인스턴스 번호 | `WireviewMeta.instance`, `WireviewMeta.instance_announced` | 정수와 bool. 컴포넌트와 함께 옮긴다. 번호는 무작위라 새 프로세스가 새로 뽑아도 옛 번호와 겹치지 않는다 — 프로세스마다 처음부터 세는 카운터였다면 겹쳐서, 옛 인스턴스가 늦게 보낸 `config`를 페이지가 새 인스턴스의 것으로 받는다(#141). 번호를 새로 뽑으면 `instance_announced`는 `False`로 복원해 다음 render가 새 번호를 알리게 한다 — 알리지 않은 번호의 `config`는 페이지가 버린다 |
 | 프로토콜 버전 | `ComponentRepository.vsn` | 정수. connect 때 소켓 URL에서 읽고, 페이지 쿼리스트링(`query_string`)과는 섞지 않는다. 0으로 복원하면 옛 형태만 보낼 뿐이라 안전하다 |
 
 아래 넷은 #58이 더했고 **외부화 목록의 일부다**. 세션을 프로세스 밖으로 옮기면서 이것을 빠뜨리면
@@ -126,6 +127,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 
 구버전이 섞이면: 옛 클라이언트와 새 서버는 옛 클라이언트가 `vsn`을 보내지 않으므로 지금까지와 바이트까지 같은 메시지를 받는다. 새 클라이언트와 옛 서버는 옛 서버가 `vsn`을 읽지 않고 옛 형태만 보내며, 새 클라이언트는 그것을 그대로 읽는다. 버전 신호가 없었다면 옛 클라이언트는 `{"k"}`를 모르는 값으로 슬롯에 넣고 `[object Object]`를 그렸을 것이다 — 롤링 배포 중 옛 JS로 열린 페이지가 새 서버에 재연결하는 흔한 경우다.
 
+- 2026-09-30: 인스턴스 번호가 프로세스 카운터에서 53비트 무작위 정수로 바뀌었다. 형태는 그대로 JSON 정수라 `vsn`을 올리지 않는다 (#141).
 - 2026-09-30: `render`의 `instances`와 `upload_op config`의 `instance`. 세션은 떠났거나 대체된 인스턴스의 `upload_op`를 버린다. 둘 다 새 필드일 뿐 diff 형태가 아니고, 옛 클라이언트는 render의 모르는 필드를 무시하며 `config`의 남는 필드는 설정에 섞여도 읽지 않으므로 `vsn`을 올리지 않는다. 새 클라이언트는 `instance`가 없는 `config`를 옛 서버의 것으로 보고 그대로 받는다 (#137).
 - 2026-09-29: `vsn` 5. outbound `joined` (#112).
 - 2026-09-29: `user_event`의 `ref`가 로딩 표시를 거는 이벤트에도 실린다. `vsn` 3 이상의 서버가 이미 받던 필드라 `vsn`을 올리지 않는다 (#118).
