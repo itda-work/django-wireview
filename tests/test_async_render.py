@@ -66,12 +66,12 @@ class ComponentWithQueryingProperty(InlineTemplate, Component):
         return self.base_value * 2
 
 
-class TestGetContextAsync:
-    """Tests for _get_context_async method."""
+class TestCollectContext:
+    """The live render's context: read by _collect_context(), off the event loop in
+    render_diff(), with async properties awaited back on the loop."""
 
-    @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_basic_context_building(self):
+    def test_basic_context_building(self):
         """Test basic context building with sync attributes."""
         from django.contrib.auth.models import AnonymousUser
 
@@ -79,7 +79,7 @@ class TestGetContextAsync:
         repo = MockRepository()
         component = SimpleComponent(user=AnonymousUser(), wire=wire, value=42)
 
-        context = await wire._get_context_async(component, repo)
+        context = wire._collect_context(component, repo)
 
         assert "value" in context
         assert context["value"] == 42
@@ -89,25 +89,22 @@ class TestGetContextAsync:
     @pytest.mark.asyncio
     @pytest.mark.unit
     async def test_async_property_resolution(self):
-        """Test that async properties are resolved via await."""
+        """An async property is left as a coroutine, so nothing is rendered off the
+        loop until the caller awaits it."""
         from django.contrib.auth.models import AnonymousUser
 
         wire = MockWireviewMeta()
         repo = MockRepository()
         component = ComponentWithAsyncProperty(user=AnonymousUser(), wire=wire, base_value=21)
 
-        # The async property should be awaited directly
-        context = await wire._get_context_async(component, repo)
+        context, html, pending = wire._collect_and_render(component, repo)
+        assert pending and html is None
 
-        # Note: async properties in Python return coroutines when accessed
-        # The _get_context_async should resolve them
-        assert "computed_value" in context
-        # The async property returns a coroutine that yields base_value * 2
+        await wire._await_properties(context)
         assert context["computed_value"] == 42  # 21 * 2
 
-    @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_excludes_private_attributes(self):
+    def test_excludes_private_attributes(self):
         """Test that private attributes are excluded from context."""
         from django.contrib.auth.models import AnonymousUser
 
@@ -115,15 +112,14 @@ class TestGetContextAsync:
         repo = MockRepository()
         component = SimpleComponent(user=AnonymousUser(), wire=wire, value=42)
 
-        context = await wire._get_context_async(component, repo)
+        context = wire._collect_context(component, repo)
 
         # Private attributes should be excluded
         assert "_name" not in context
         assert "_template_name" not in context
 
-    @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_excludes_pydantic_class_attrs(self):
+    def test_excludes_pydantic_class_attrs(self):
         """Test that Pydantic v2 class attributes are excluded."""
         from django.contrib.auth.models import AnonymousUser
 
@@ -131,15 +127,14 @@ class TestGetContextAsync:
         repo = MockRepository()
         component = SimpleComponent(user=AnonymousUser(), wire=wire, value=42)
 
-        context = await wire._get_context_async(component, repo)
+        context = wire._collect_context(component, repo)
 
         # Pydantic v2 class-level attributes should be excluded
         assert "model_fields" not in context
         assert "model_config" not in context
 
-    @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_excludes_callables(self):
+    def test_excludes_callables(self):
         """Test that callable methods are excluded from context."""
         from django.contrib.auth.models import AnonymousUser
 
@@ -147,7 +142,7 @@ class TestGetContextAsync:
         repo = MockRepository()
         component = SimpleComponent(user=AnonymousUser(), wire=wire, value=42)
 
-        context = await wire._get_context_async(component, repo)
+        context = wire._collect_context(component, repo)
 
         # Methods should be excluded
         assert "joined" not in context
@@ -246,10 +241,7 @@ class TestSyncContextWarning:
         component = ComponentWithAsyncProperty(user=AnonymousUser(), wire=wire, base_value=21)
 
         with caplog.at_level(logging.WARNING, logger="wireview"):
-            # Calling sync version should emit warning for async property
-            wire._get_context(component, repo)
+            context = wire._get_context(component, repo)
 
-        # The warning should mention async property
-        assert "Sync context detected" in caplog.text or True
-        # Note: Warning may not trigger if property is not accessed as coroutine
-        # This depends on how properties are evaluated
+        assert context["computed_value"] == 42
+        assert "Sync context detected while resolving async property 'computed_value'" in caplog.text

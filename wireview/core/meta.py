@@ -546,17 +546,6 @@ class WireviewMeta:
         }
     )
 
-    async def _get_context_async(self, component: "Component", repo: Repo, reads: RenderReads | None = None) -> Context:
-        """Build the template context from an async context.
-
-        Properties are read in a worker thread, since a plain property may use
-        the ORM and Django refuses that on the event loop (#120). Async
-        properties come back as coroutines and are awaited here, on the loop.
-        """
-        context = await db(self._collect_context)(component, repo, reads)
-        await self._await_properties(context)
-        return context
-
     def _collect_and_render(
         self, component: "Component", repo: Repo, reads: RenderReads | None = None
     ) -> tuple[Context, SafeText | None, bool]:
@@ -620,7 +609,8 @@ class WireviewMeta:
 
         Args:
             component: The component to render.
-            context: Pre-resolved template context from _get_context_async().
+            context: Template context from _collect_context(), its async
+                properties already awaited (see render_diff()).
 
         Returns:
             Rendered HTML as SafeText, or None if rendering should be skipped.
@@ -656,12 +646,11 @@ class WireviewMeta:
     ) -> Context:
         """Build the template context for rendering (sync version).
 
-        WARNING: This method uses async_to_sync for async properties, which
-        can cause performance issues when called from within a sync_to_async
-        context. Prefer using _get_context_async() in async contexts.
-
-        This method is kept for backward compatibility with sync rendering
-        paths (e.g., HTTP responses without WebSocket).
+        Used by render(), the synchronous render (the HTTP response among
+        others). An async property is resolved here with async_to_sync, one
+        event-loop trip per property. The live render,
+        render_diff(), reads the context off the loop with _collect_context()
+        and awaits async properties on the loop instead.
 
         Args:
             component: The component to build context for.
@@ -691,9 +680,9 @@ class WireviewMeta:
                     if iscoroutine(attr):
                         log.warning(
                             "Sync context detected while resolving async property '%s' "
-                            "on component '%s'. This may cause performance issues. "
-                            "Consider using _get_context_async() or pre-loading data "
-                            "in joined().",
+                            "on component '%s'. The synchronous render awaits it with "
+                            "async_to_sync, which may cause performance issues. Consider "
+                            "a plain property, or pre-loading the data in joined().",
                             attr_name,
                             type(component).__name__,
                         )
