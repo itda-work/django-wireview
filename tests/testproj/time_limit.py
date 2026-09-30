@@ -21,8 +21,9 @@ Ending the process skips every teardown after it. What that leaves behind:
 - coverage data, under ``make test-cov``.
 
 A debugger stops the timer: ``pytest_enter_pdb`` covers ``--pdb`` and
-``breakpoint()``, and a test that starts under another debugger's trace function
-(an IDE's) gets none. ``-o test_time_limit=0`` turns it off for the run.
+``breakpoint()``, and a test that starts under another debugger (one in
+``sys.monitoring``'s debugger slot, as an IDE's or 3.14's pdb is, or one with a
+trace function) gets none. ``-o test_time_limit=0`` turns it off for the run.
 
 The timer is a thread, so it needs the GIL: a hang in C code that holds it is
 not stopped.
@@ -70,6 +71,11 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def _debugging() -> bool:
+    # Python 3.12+ debuggers (pydevd, debugpy, 3.14's pdb) attach through
+    # sys.monitoring's debugger slot and leave no trace function. Coverage uses
+    # its own slot, so it keeps the limit
+    if sys.monitoring.get_tool(sys.monitoring.DEBUGGER_ID) is not None:
+        return True
     trace = sys.gettrace()
     if trace is None:
         return False
@@ -113,7 +119,7 @@ def _stop(item: pytest.Item, limit: float) -> None:
         sys.stderr.write(f"\n\n{item.nodeid} took more than {limit:g}s (setup, call and teardown). Every thread:\n\n")
         sys.stderr.flush()
         faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
-        for proc in _children:
+        for proc in list(_children):
             if proc.poll() is None:
                 proc.terminate()
         sys.stderr.write(

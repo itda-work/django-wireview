@@ -260,7 +260,7 @@ The django-reactor era changelog (2.x) is preserved in
   limit. pytest-timeout and pytest's `faulthandler_timeout` were not enough: both stop their
   timer when a test fails, and the render gate's always-blocked mutation hung in the teardown of
   a test that had already failed (`tests/testproj/time_limit.py`). Entering pdb (`--pdb`,
-  `breakpoint()`) stops the timer, and a test started under another debugger has none; a stop
+  `breakpoint()`) stops the timer, and a test started under another debugger (in `sys.monitoring`'s debugger slot or as a trace function) has none; a stop
   terminates the child processes handed to `own()` (the two workers of the multi-worker upload
   test) and says how to turn it off, `-o test_time_limit=0`. `eventually(..., task=)`
   raises the watched task's exception at once instead of reporting only that the wait ran out.

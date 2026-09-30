@@ -161,10 +161,28 @@ def test_a_debugger_prompt_is_not_a_hang(tmp_path):
     assert "took more than" not in stderr
 
 
-def test_a_test_under_another_debugger_has_no_limit(tmp_path):
-    """An IDE's debugger shows as the trace function of the thread the test starts on."""
+def test_a_test_under_a_trace_function_debugger_has_no_limit(tmp_path):
+    """An older debugger shows as the trace function of the thread the test starts on."""
     (tmp_path / "pydevd_probe.py").write_text("def trace(frame, event, arg):\n    return None\n")
     (tmp_path / "conftest.py").write_text("import sys\n\nfrom pydevd_probe import trace\n\nsys.settrace(trace)\n")
+    result = subprocess.run(
+        _command(tmp_path, UNDER_A_DEBUGGER, limit=1),
+        cwd=tmp_path,
+        env={**_env(), "PYTHONPATH": os.pathsep.join([str(ROOT / "tests"), str(tmp_path)])},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "took more than" not in result.stderr
+
+
+def test_a_test_under_a_monitoring_debugger_has_no_limit(tmp_path):
+    """Python 3.12+ debuggers (an IDE's, 3.14's pdb) take sys.monitoring's debugger slot."""
+    (tmp_path / "conftest.py").write_text(
+        "import sys\n\nsys.monitoring.use_tool_id(sys.monitoring.DEBUGGER_ID, 'pydevd')\n"
+    )
     result = subprocess.run(
         _command(tmp_path, UNDER_A_DEBUGGER, limit=1),
         cwd=tmp_path,
