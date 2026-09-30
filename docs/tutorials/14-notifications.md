@@ -100,10 +100,6 @@ def refresh_channel(user) -> str:
     return f"notifications-refresh.user.{user.pk}"
 
 
-def toast_channel(user) -> str:
-    return f"toasts.user.{user.pk}"
-
-
 def notify(user, title, message="", type=NotificationType.INFO):
     """알림 (패턴 A): 행을 저장하면 받는 사람의 열린 페이지가 알아서 듣는다"""
     return Notification.objects.create(user=user, title=title, message=message, type=type)
@@ -111,21 +107,16 @@ def notify(user, title, message="", type=NotificationType.INFO):
 
 async def anotify(user, title, message="", type=NotificationType.INFO):
     return await Notification.objects.acreate(user=user, title=title, message=message, type=type)
-
-
-def toast(user, message, type=NotificationType.INFO):
-    """토스트 (패턴 B): 지금 열린 페이지에만 뜨고 저장하지 않는다. 동기 코드용"""
-    broadcast(toast_channel(user), flash_type=type, message=message)
-
-
-async def atoast(user, message, type=NotificationType.INFO):
-    await abroadcast(toast_channel(user), flash_type=type, message=message)
 ```
+
+토스트(패턴 B)는 wireview가 보낸다. `from wireview import toast, atoast`로 쓰고, 받는 쪽은 레이아웃의
+`{% wireview_toasts %}` 하나다(6절). 지금 열린 페이지에만 뜨고 저장하지 않는다.
 
 뷰나 시그널에서도 같은 함수를 쓴다:
 
 ```python
-from notifications.services import notify, toast
+from notifications.services import notify
+from wireview import toast
 
 
 def approve_order(request, order_id):
@@ -133,7 +124,7 @@ def approve_order(request, order_id):
     order.status = "approved"
     order.save()
     notify(order.customer, "주문이 승인되었습니다", f"주문 #{order.pk}가 곧 배송됩니다.", "success")
-    toast(request.user, "승인했습니다", "success")
+    toast(request.user, "승인했습니다", flash_type="success")
     return redirect("orders:list")
 ```
 
@@ -147,11 +138,11 @@ def approve_order(request, order_id):
 from wireview import Component, JS, ModelAction
 
 from .models import Notification
-from .services import notifications_channel, refresh_channel, toast_channel
+from .services import notifications_channel, refresh_channel
 
 
 class XNotificationBell(Component):
-    """알림 벨 아이콘. 토스트도 여기서 받는다"""
+    """알림 벨 아이콘"""
 
     class Meta:
         template_name = "notifications/notification_bell.html"
@@ -162,7 +153,7 @@ class XNotificationBell(Component):
         # 로그인한 사용자의 채널만. 익명 방문자는 아무것도 듣지 않는다
         if not self.user.is_authenticated:
             return set()
-        return {notifications_channel(self.user), refresh_channel(self.user), toast_channel(self.user)}
+        return {notifications_channel(self.user), refresh_channel(self.user)}
 
     @property
     def unread_count(self):
@@ -194,11 +185,7 @@ class XNotificationBell(Component):
         self.force_render()
 
     async def notification(self, channel: str, **kwargs):
-        if channel == toast_channel(self.user):
-            # 토스트는 띄우고 잊는다. 벨 자체는 바뀌지 않았다
-            await self.put_flash(kwargs["flash_type"], kwargs["message"])
-            self.skip_render()
-        elif channel == refresh_channel(self.user):
+        if channel == refresh_channel(self.user):
             self.force_render()
 ```
 
@@ -299,10 +286,10 @@ await self.broadcast(refresh_channel(self.user))
 from wireview import abroadcast, broadcast
 
 # 동기 코드 (뷰, 모델 시그널, 관리 명령 등)
-broadcast(toast_channel(user), flash_type="info", message="다시 오신 것을 환영합니다")
+broadcast(refresh_channel(user))
 
 # 비동기 코드
-await abroadcast(toast_channel(user), flash_type="info", message="다시 오신 것을 환영합니다")
+await abroadcast(refresh_channel(user))
 ```
 
 `aupdate()`·`abulk_create()` 같은 대량 쿼리는 `post_save`를 보내지 않으므로 모델 채널로 알림이 가지
@@ -315,8 +302,8 @@ await abroadcast(toast_channel(user), flash_type="info", message="다시 오신 
 
 ```python
 async def notification(self, channel: str, **kwargs):
-    if channel == toast_channel(self.user):
-        await self.put_flash(kwargs["flash_type"], kwargs["message"])
+    if channel == refresh_channel(self.user):
+        self.force_render()
 ```
 
 ## 6. 토스트를 띄울 자리
@@ -335,9 +322,13 @@ async def notification(self, channel: str, **kwargs):
     {% endif %}
   </header>
   <div class="toasts" wire-flash></div>
+  {% wireview_toasts %}
   <main class="main">{% block content %}{% endblock %}</main>
 </body>
 ```
+
+`{% wireview_toasts %}`는 보이지 않는 컴포넌트 하나를 둔다. 로그인한 사용자와 세션의 토스트 채널만
+구독하고, 받은 토스트를 `put_flash()`로 `[wire-flash]`에 띄운다. 모든 페이지의 레이아웃에 한 번 둔다.
 
 모양은 `.wireview-flash`, `.wireview-flash-<종류>` 같은 클래스에 CSS로 준다. 클래스 목록은
 [플래시와 토스트](../features/flash.md#작동-방식)에 있다.
@@ -417,7 +408,9 @@ await self.push_js(
 ```python
 from django.contrib.auth import get_user_model
 
-from .services import anotify, atoast
+from wireview import atoast
+
+from .services import anotify
 
 
 class XNotificationCreator(Component):
@@ -494,7 +487,7 @@ class XNotificationCreator(Component):
             await self.put_flash("error", "Choose who gets it.")
             return
 
-        await atoast(recipient, self.title.strip(), self.type)
+        await atoast(recipient, self.title.strip(), flash_type=self.type)
         self.skip_render()  # 보낸 쪽 폼은 바뀌지 않았다
 ```
 

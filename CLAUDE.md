@@ -137,6 +137,7 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 | 태그 | 용도 |
 |------|------|
 | `wireview_header` | JS 로드와 boost 메타 |
+| `wireview_toasts` | `toast()`·`atoast()`를 받아 플래시로 띄우는 보이지 않는 컴포넌트. 레이아웃에 한 번 |
 | `component`, `component_block` + `fill` + `render_slot` | 컴포넌트 렌더링, 슬롯 |
 | `live_component`, `live_component_block` + `fill`, `live_tag_header` | LiveComponent, 슬롯 전달 |
 | `func`, `func_block` | Function Component |

@@ -3,7 +3,7 @@ Notifications App Components
 
 This module demonstrates wireview's advanced communication patterns:
 - Per-user channels from get_subscriptions() and self.user
-- mutation() for stored notifications, notification() for toasts
+- mutation() for stored notifications, atoast() for toasts ({% wireview_toasts %} shows them)
 - broadcast() / abroadcast() for sending messages
 - push_js() with JS() command builder
 - Streams API for notification list
@@ -12,20 +12,19 @@ This module demonstrates wireview's advanced communication patterns:
 
 from django.contrib.auth import get_user_model
 
-from wireview import JS, Component, ModelAction
+from wireview import JS, Component, ModelAction, atoast
 
 from .models import Notification, NotificationType
-from .services import anotify, atoast, notifications_channel, refresh_channel, toast_channel
+from .services import anotify, notifications_channel, refresh_channel
 
 
 class XNotificationBell(Component):
     """
-    Notification bell icon with unread count badge, and where toasts land.
+    Notification bell icon with unread count badge.
 
     Demonstrates:
     - get_subscriptions() naming the signed-in user's channels
     - notification() hook for custom events
-    - put_flash() for a toast someone else sent
     - push_js() with JS() commands
     - Dynamic badge updates
     """
@@ -39,7 +38,7 @@ class XNotificationBell(Component):
         # Only this user's channels. An anonymous visitor has none.
         if not self.user.is_authenticated:
             return set()
-        return {notifications_channel(self.user), refresh_channel(self.user), toast_channel(self.user)}
+        return {notifications_channel(self.user), refresh_channel(self.user)}
 
     @property
     def unread_count(self):
@@ -74,16 +73,8 @@ class XNotificationBell(Component):
         self.force_render()
 
     async def notification(self, channel: str, **kwargs):
-        """
-        Handle custom notifications.
-
-        A toast is shown and forgotten: the bell itself does not change. The
-        refresh channel is for changes auto-broadcast does not see.
-        """
-        if channel == toast_channel(self.user):
-            await self.put_flash(kwargs["flash_type"], kwargs["message"])
-            self.skip_render()
-        elif channel == refresh_channel(self.user):
+        """The refresh channel is for changes auto-broadcast does not see."""
+        if channel == refresh_channel(self.user):
             self.force_render()
 
 
@@ -290,5 +281,5 @@ class XNotificationCreator(Component):
             await self.put_flash("error", "Choose who gets it.")
             return
 
-        await atoast(recipient, self.title.strip(), self.type)
+        await atoast(recipient, self.title.strip(), flash_type=self.type)
         self.skip_render()

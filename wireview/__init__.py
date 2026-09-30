@@ -36,6 +36,9 @@ if t.TYPE_CHECKING:
     from .features.presence import PresenceState as PresenceState
     from .features.presence import PresenceTrackerMixin as PresenceTrackerMixin
     from .features.presence import PresenceUser as PresenceUser
+    from .features.toasts import atoast as atoast
+    from .features.toasts import toast as toast
+    from .features.toasts import toast_channel as toast_channel
     from .features.uploads import ConsumedUpload as ConsumedUpload
     from .features.uploads import ExternalUploadMeta as ExternalUploadMeta
     from .features.uploads import UploadConfig as UploadConfig
@@ -72,6 +75,9 @@ _EXPORTS: dict[str, str] = {
     # Broadcasts and notifications
     "broadcast": ".core.component",
     "abroadcast": ".core.component",
+    "toast": ".features.toasts",
+    "atoast": ".features.toasts",
+    "toast_channel": ".features.toasts",
     "AutoBroadcast": ".schemas",
     "ModelAction": ".schemas",
     # Presence
@@ -116,6 +122,9 @@ __all__ = (
     "invalidate_authentication",
     "broadcast",
     "abroadcast",
+    "toast",
+    "atoast",
+    "toast_channel",
     "AutoBroadcast",
     "ModelAction",
     "PresenceMixin",

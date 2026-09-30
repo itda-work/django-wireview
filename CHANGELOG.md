@@ -12,6 +12,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- Toasts: `toast(user, message)` and `await atoast(...)` show a flash on the pages the recipient has
+  open, and `{% wireview_toasts %}` in the layout receives them. A session key reaches a visitor
+  who has not signed in, and `toast_channel()` names the channel for a receiver of your own. Taken
+  from the notifications example, which every app copying it had to rewrite (#116).
 - `LiveComponent.update_many(updates)`, a classmethod that receives every child of its class whose
   props changed in one parent render, as `(component, assigns)` pairs, so rows can load what they
   show in one query rather than one each. The default calls each `update()`. Phoenix's

@@ -17,11 +17,11 @@ from playwright.sync_api import expect
 from testproj.e2e_browser import expect_count, expect_text, wait_live
 from testproj.e2e_server import serve
 
-from wireview import ModelAction, mount
+from wireview import ModelAction, mount, toast_channel
 
 from .live import XNotificationBell, XNotificationCreator, XNotificationList
 from .models import Notification
-from .services import notifications_channel, notify, refresh_channel, toast_channel
+from .services import notifications_channel, notify, refresh_channel
 
 # Handlers write from the executor thread, on a connection of its own, so a test
 # transaction on this thread would neither see those rows nor roll them back --
@@ -156,7 +156,6 @@ async def test_components_listen_on_the_users_channels_and_an_anonymous_visitor_
     assert bell.component.get_subscriptions() == {
         notifications_channel(alice),
         refresh_channel(alice),
-        toast_channel(alice),
     }
     assert listing.component.get_subscriptions() == {notifications_channel(alice)}
 
@@ -235,20 +234,9 @@ async def test_a_toast_goes_to_the_recipients_channel_and_stores_nothing(alice, 
 
     (heard,) = await _heard(layer, bobs)
     assert heard["type"] == "notification"
-    assert heard["kwargs"] == {"flash_type": "warning", "message": "잠깐 볼래?"}
+    assert heard["kwargs"] == {"flash_type": "warning", "message": "잠깐 볼래?", "timeout": 5000, "dismissible": True}
     assert await _heard(layer, alices) == []
     assert not await Notification.objects.aexists()
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_the_bell_shows_a_toast_as_a_flash(alice):
-    view = await mount(XNotificationBell, user=alice)
-
-    await view.component.notification(toast_channel(alice), flash_type="success", message="배포 끝")
-
-    (flash,) = [m for m in view.sent_messages if m.get("type") == "flash"]
-    assert (flash["flash_type"], flash["message"]) == ("success", "배포 끝")
 
 
 # In a browser: two people, two pages, two sets of cookies
@@ -268,6 +256,8 @@ def _signed_in(browser, server: str, username: str):
     expect_text(page.get_by_test_id("signed-in-as"), username)
     wait_live(page, '[data-name=XNotificationList][data-is-live="true"]')
     wait_live(page, '[data-name=XNotificationBell][data-is-live="true"]')
+    # Hidden by design, so counted rather than waited on as visible
+    expect_count(page.locator('[data-name=WireviewToasts][data-is-live="true"]'), 1)
     return page
 
 

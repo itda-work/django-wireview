@@ -7,7 +7,7 @@
 - `get_subscriptions()`가 `self.user`의 채널만 부른다 — 다른 사람에게 보낸 것은 이 연결에 오지 않는다
 - 알림(패턴 A): `Notification` 행을 저장하면 자동 브로드캐스트가 받는 사람의 채널
   `auth.user.<pk>.notifications`로 알리고, 목록(Streams)과 벨 배지가 바뀐다
-- 토스트(패턴 B): 저장 없이 `toasts.user.<pk>`로 브로드캐스트하고, 벨의 `notification()`이 `put_flash()`로 띄운다
+- 토스트(패턴 B): 저장 없이 `atoast(user, ...)`로 보내고, 레이아웃의 `{% wireview_toasts %}`가 `put_flash()`로 띄운다
 - 브라우저가 보낸 id는 믿지 않는다: 모든 핸들러가 소유자로 거른 쿼리에서 시작한다
 - `JS()` 체이닝으로 사라지는 애니메이션
 

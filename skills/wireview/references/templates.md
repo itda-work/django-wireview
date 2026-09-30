@@ -7,6 +7,7 @@
 | 태그 | 용도 |
 |---|---|
 | `{% wireview_header %}` | 베이스 템플릿 `<head>`에 한 번. JS를 로드한다 |
+| `{% wireview_toasts %}` | 베이스 템플릿 `<body>`에 한 번. `toast(user, ...)`로 보낸 토스트를 `[wire-flash]`에 띄운다 |
 | `{% tag_header %}` | **컴포넌트 템플릿의 루트 엘리먼트에 필수.** id·상태·이벤트가 붙는 자리 |
 | `{% component 'Name' id="x" foo=bar %}` | 컴포넌트를 심는다 |
 | `{% component_block 'Card' %}…{% endcomponent %}` + `{% fill name %}`, `{% render_slot %}` | 슬롯 |

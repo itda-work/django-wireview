@@ -13,6 +13,10 @@ class WireviewConfig(AppConfig):
         from .checks import register_checks
         from .core.live_session import _on_user_logged_in, _on_user_logged_out
 
+        # The toast receiver joins like any component, so every process has to know
+        # its class -- a socket worker may never have rendered {% wireview_toasts %}.
+        from .features import toasts  # noqa
+
         # ``live`` holds components, ``live_sessions`` the page boundaries they are
         # mounted inside. Both have to be imported before the checks run, and the
         # boundaries before the first request: a name that is not in the registry

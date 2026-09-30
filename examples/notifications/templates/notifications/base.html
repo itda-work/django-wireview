@@ -379,6 +379,8 @@
     </header>
     {# Outside every component, so no render morphs a toast away #}
     <div class="toasts" wire-flash></div>
+    {# Receives toast()/atoast() for this user and shows them in [wire-flash] #}
+    {% wireview_toasts %}
     <main class="main">
       {% block content %}{% endblock %}
     </main>

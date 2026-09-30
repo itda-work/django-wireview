@@ -207,6 +207,18 @@ def _build_and_render_component(
 
 
 @register.simple_tag(takes_context=True)
+def wireview_toasts(context):
+    """Put the toast receiver on the page: ``toast()`` and ``atoast()`` land here.
+
+    Once per page, in the layout. It renders an empty hidden element; the
+    messages go into the page's ``[wire-flash]`` container like any flash (#116).
+    """
+    from ..features.toasts import WireviewToasts
+
+    return _build_and_render_component(context, WireviewToasts._fqn, {"id": "wireview-toasts"})
+
+
+@register.simple_tag(takes_context=True)
 def component(context, _name, **kwargs):
     """
     Simple tag for rendering a component without slots.

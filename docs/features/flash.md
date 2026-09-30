@@ -9,12 +9,11 @@
 | | 플래시 | 토스트 |
 |---|---|---|
 | 일으키는 쪽 | 그 화면의 사용자 자신 ("저장했습니다") | 다른 곳 — 다른 사용자, 뷰, 백그라운드 작업 ("bob이 리뷰를 요청했습니다") |
-| 경로 | 이벤트를 처리한 연결로 바로 | 채널 → 구독한 컴포넌트의 `notification()` → 그 연결 |
-| 코드 | 핸들러에서 `await self.put_flash(...)` | 보내는 쪽 `broadcast(channel, ...)`, 받는 쪽 `notification()`에서 `put_flash()` |
+| 경로 | 이벤트를 처리한 연결로 바로 | 받는 사람의 채널 → 레이아웃의 `{% wireview_toasts %}` → 그 연결 |
+| 코드 | 핸들러에서 `await self.put_flash(...)` | 보내는 쪽 `toast(user, ...)`·`await atoast(user, ...)`, 받는 쪽은 레이아웃에 `{% wireview_toasts %}` 한 줄 |
 
-wireview에 토스트 전용 API는 없다. **토스트는 다른 곳에서 보낸 플래시다.** 화면에 그리는 일은
-`put_flash()` 하나가 하고, 토스트가 더하는 것은 "누구의 어느 연결로 가는가"뿐이다. 그래서 스타일·
-자동 닫힘·닫기 버튼이 둘 사이에 어긋나지 않는다.
+**토스트는 다른 곳에서 보낸 플래시다.** 화면에 그리는 일은 `put_flash()` 하나가 하고, 토스트가 더하는 것은
+"누구의 어느 연결로 가는가"뿐이다. 그래서 스타일·자동 닫힘·닫기 버튼이 둘 사이에 어긋나지 않는다.
 
 둘 다 저장되지 않는다. 지금 열려 있는 페이지에만 뜨고, 나중에 연 페이지는 보지 못한다. 사용자가
 나중에 확인해야 하는 것이면 모델에 저장하는 알림이 맞다 — 예제의 `Notification`이 그 모양이다.
@@ -79,41 +78,48 @@ class ProductForm(Component):
 
 ### 토스트
 
-받는 쪽: 모든 페이지에 있는 컴포넌트 하나가 사용자의 채널을 구독하고, 받은 것을 플래시로 띄운다.
+받는 쪽: 모든 페이지의 레이아웃에 `{% wireview_toasts %}`를 한 번 둔다. 보이지 않는 컴포넌트 하나가
+그 연결의 사용자와 세션의 토스트 채널을 구독하고, 받은 것을 플래시로 띄운다.
 
-```python
-class NotificationBell(Component):
-    def get_subscriptions(self) -> set[str]:
-        if not self.user.is_authenticated:
-            return set()
-        return {f"toasts.user.{self.user.pk}"}
-
-    async def notification(self, channel: str, **kwargs):
-        if channel == f"toasts.user.{self.user.pk}":
-            await self.put_flash(kwargs["flash_type"], kwargs["message"])
-            self.skip_render()  # 컴포넌트 자체는 바뀌지 않았다
+```html
+<body>
+  <div class="toasts" wire-flash></div>
+  {% wireview_toasts %}
+  ...
+</body>
 ```
 
-보내는 쪽: 어디서든 그 채널에 브로드캐스트한다.
+보내는 쪽: 어디서든 받을 사람을 이름으로 부른다.
 
 ```python
-from wireview import abroadcast, broadcast
+from wireview import atoast, toast
 
-# 뷰·시그널·관리 명령 같은 동기 코드
-broadcast(f"toasts.user.{user.pk}", flash_type="info", message="다시 오신 것을 환영합니다")
+# 뷰·시그널·관리 명령 같은 동기 코드. 트랜잭션이 커밋된 뒤에 나간다
+toast(user, "다시 오신 것을 환영합니다")
 
-# 컴포넌트 핸들러 같은 비동기 코드
-await abroadcast(f"toasts.user.{user.pk}", flash_type="warning", message="지금 회의 들어와요")
+# 컴포넌트 핸들러 같은 비동기 코드. 바로 나간다
+await atoast(user, "지금 회의 들어와요", flash_type="warning", timeout=0)
+
+# 로그인하지 않은 방문자: 세션 키로
+toast(request.session.session_key, "장바구니에 담았습니다")
 ```
 
-채널 이름은 문자열일 뿐이라 누구에게 가는지는 이름이 정한다. **사용자 pk처럼 받을 사람을 가리키는
-값을 채널 이름에 넣고, 받는 컴포넌트는 `self.user`의 채널만 구독한다.** 구독이 곧 접근 제어다.
+| 인자 | 기본값 | 뜻 |
+|------|--------|----|
+| 첫째 (받는 사람) | — | 저장된 사용자, 또는 세션 키 문자열. 세션이 아직 없으면(`None`, `""`) `ValueError` |
+| `message` | — | 텍스트 |
+| `flash_type`, `timeout`, `dismissible` | `"info"`, `5000`, `True` | `put_flash()`와 같다 |
+
+**구독이 곧 접근 제어다.** 받는 컴포넌트는 자기 연결의 `user`와 세션의 채널만 구독하므로, 한 사람에게 보낸
+토스트는 다른 사람의 페이지에 닿지 않는다. 채널 이름은 `toast_channel(user_or_session_key)`가 돌려준다 —
+토스트를 자기 컴포넌트에서 직접 받고 싶으면 이 채널을 구독하고 `notification()`에서 `put_flash()`한다.
 
 ## 주의사항
 
 - **`[wire-flash]`가 없으면 메시지는 버려진다.** 브라우저 콘솔에 경고 한 줄이 남을 뿐 서버는 모른다.
-- **토스트는 구독자가 있는 페이지에만 간다.** 받는 컴포넌트가 없는 페이지, 로그인 전 페이지, 닫힌
-  탭에는 가지 않고 다시 오지도 않는다. 같은 사용자의 탭이 여럿이면 모든 탭에 뜬다.
+- **토스트는 `{% wireview_toasts %}`가 있는 열린 페이지에만 간다.** 그 태그가 없는 페이지, 닫힌 탭에는
+  가지 않고 다시 오지도 않는다. 세션 키로 보낸 것은 그 세션이 연결될 때 이미 있던 키여야 한다 — 로그인하면
+  Django가 세션 키를 바꾼다. 같은 사용자의 탭이 여럿이면 모든 탭에 뜬다.
 - **동기 `broadcast()`는 트랜잭션이 커밋된 뒤에 나간다.** 롤백되면 나가지 않는다.
 - **리다이렉트 뒤에 보여줄 메시지는 플래시가 아니다.** 플래시는 연결에 가므로 전체 페이지 이동이
   끝나면 사라진다. 그 경우는 Django의 `messages` 프레임워크로 다음 페이지에 그린다.
