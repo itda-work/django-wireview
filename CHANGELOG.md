@@ -299,6 +299,13 @@ The django-reactor era changelog (2.x) is preserved in
   Playwright times out with its own error, not an AssertionError, and only AssertionError was
   caught, so a join that raised read like a slow machine (#151).
 
+- Test harness: the multi-worker upload test took a worker as ready when its port accepted a
+  connection. The port is free when chosen and bound by the worker later, so another server that
+  took it in between was taken for the worker, while the worker logged that it could not bind and
+  exited with 1. Ready is now the worker's own access log showing a request that carried a fresh
+  token, as the starter's runserver already did; a bind failure or an exit fails at once with the
+  worker's log. Both use `testproj.server_process` (#152).
+
 - Test harness: the test project served HTTP through asgiref's `WsgiToAsgi`, which sends each
   response through `async_to_sync`; Uvicorn started the next request on a kept-alive connection
   inside that call, and it died with "CurrentThreadExecutor already quit or is broken" -- an

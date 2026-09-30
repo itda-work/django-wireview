@@ -24,7 +24,6 @@ import hashlib
 import json
 import os
 import re
-import socket
 import subprocess
 import sys
 import time
@@ -34,6 +33,7 @@ import urllib.request
 from pathlib import Path
 
 import pytest
+from testproj.server_process import free_port, held_port, wait_until_serving
 from testproj.time_limit import disown, own
 
 pytestmark = pytest.mark.e2e
@@ -46,52 +46,59 @@ PAYLOAD = ("wireview #83 multi-worker upload\n" * 400).encode()
 CHUNK_SIZE = 4096
 
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 # Well inside the per-test limit (testproj/time_limit.py), so a worker that is slow
 # to start is reported here, with its log, rather than as a stopped run.
-def _wait_for_port(port: int, proc: subprocess.Popen, timeout: float = 30.0) -> None:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if proc.poll() is not None:
-            raise RuntimeError(f"worker on port {port} exited with {proc.returncode}")
-        try:
-            with socket.create_connection(("127.0.0.1", port), timeout=0.5):
-                return
-        except OSError:
-            time.sleep(0.2)
-    raise RuntimeError(f"nothing listening on port {port} after {timeout:.0f}s")
+READY_TIMEOUT = 30.0
 
 
 def _start_worker(port: int, log_dir: Path) -> subprocess.Popen:
-    """One uvicorn process, on this interpreter, sharing the configured layer.
+    """One uvicorn process, on this interpreter, sharing the configured layer, and ready.
 
     Its output goes to a file rather than to the void: when a chunk comes back
-    500 the traceback is on the worker, not in the test.
+    500 the traceback is on the worker, not in the test. At ``info`` and
+    unbuffered, because the access log in that file is what says this worker,
+    not another process on its port, answered (``testproj.server_process``).
+    A worker that did not serve is stopped before the error leaves.
     """
-    log = open(log_dir / f"worker-{port}.log", "wb")  # noqa: SIM115 (lives as long as the process)
-    return subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "testproj.asgi:application",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-            "--log-level",
-            "warning",
-        ],
-        cwd=TESTS,
-        env={**os.environ, "PYTHONPATH": os.pathsep.join([str(ROOT), str(TESTS)])},
-        stdout=log,
-        stderr=subprocess.STDOUT,
-    )
+    log = log_dir / f"worker-{port}.log"
+    with log.open("wb") as out:
+        # A stopped run skips the fixture's teardown; the stop terminates what it owns.
+        proc = own(
+            subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "testproj.asgi:application",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(port),
+                    "--log-level",
+                    "info",
+                ],
+                cwd=TESTS,
+                env={**os.environ, "PYTHONPATH": os.pathsep.join([str(ROOT), str(TESTS)]), "PYTHONUNBUFFERED": "1"},
+                stdout=out,
+                stderr=subprocess.STDOUT,
+            )
+        )
+    try:
+        wait_until_serving(port, proc, log, READY_TIMEOUT)
+    except BaseException:
+        _stop(proc)
+        raise
+    return proc
+
+
+def _stop(proc: subprocess.Popen) -> None:
+    proc.terminate()
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:  # pragma: no cover - a wedged worker
+        proc.kill()
+        proc.wait()
+    disown(proc)
 
 
 @pytest.fixture(scope="module")
@@ -102,30 +109,18 @@ def workers(tmp_path_factory):
     pytest.importorskip("uvicorn")
 
     log_dir = tmp_path_factory.mktemp("workers")
-    ports = [_free_port(), _free_port()]
-    # A stopped run skips this fixture's teardown; the stop terminates what it owns.
-    procs = [own(_start_worker(port, log_dir)) for port in ports]
+    ports = [free_port(), free_port()]
+    procs: list[subprocess.Popen] = []
     try:
-        for port, proc in zip(ports, procs):
-            _wait_for_port(port, proc)
+        for port in ports:
+            procs.append(_start_worker(port, log_dir))
         yield ports
-    except Exception:  # pragma: no cover - only when a worker misbehaves
-        for port in ports:
-            print((log_dir / f"worker-{port}.log").read_text())
-        raise
     finally:
-        for port in ports:
-            log = log_dir / f"worker-{port}.log"
+        for log in log_dir.glob("worker-*.log"):
             if "Traceback" in log.read_text():
-                print(f"--- worker {port} ---\n{log.read_text()}")
+                print(f"--- {log.name} ---\n{log.read_text()}")
         for proc in procs:
-            proc.terminate()
-        for proc in procs:
-            try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:  # pragma: no cover - a wedged worker
-                proc.kill()
-            disown(proc)
+            _stop(proc)
 
 
 def _get(url: str) -> str:
@@ -218,3 +213,16 @@ def test_the_chunks_go_to_the_other_worker(workers):
         digest = hashlib.sha256(PAYLOAD).hexdigest()[:16]
         render = _next_command(ws, "render", lambda p: digest in json.dumps(p))
         assert str(len(PAYLOAD)) in json.dumps(render), "the owning worker read what the other one wrote"
+
+
+def test_a_port_another_server_holds_is_not_taken_for_a_worker(tmp_path):
+    """The port is free when chosen and the worker binds it later; in between another server can take it.
+
+    Uvicorn then logs that it could not bind and exits with 1 -- but the port
+    already answers, for the other server, before the worker gets that far. Needs
+    no broker, so it runs on every layer.
+    """
+    pytest.importorskip("uvicorn")
+    with held_port() as port:
+        with pytest.raises(AssertionError, match="did not serve"):
+            _start_worker(port, tmp_path)

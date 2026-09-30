@@ -16,23 +16,18 @@ still stops it.
 from __future__ import annotations
 
 import contextlib
-import http.server
 import os
 import re
-import socket
 import subprocess
 import sys
-import threading
-import time
 import typing as t
-import urllib.request
-import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from testproj.e2e_browser import WAIT_TIMEOUT, expect_text, open_live
+from testproj.server_process import free_port, held_port, wait_until_serving
 from testproj.time_limit import disown, own
 
 import wireview
@@ -59,15 +54,6 @@ def _manage(project: Path, *args: str) -> None:
         [sys.executable, *args], cwd=project, env=_env(), capture_output=True, text=True, timeout=120
     )
     assert result.returncode == 0, result.stdout + result.stderr
-
-
-def _free_port() -> int:
-    # runserver binds its own socket, so the port cannot be handed over as serve()
-    # does. Chosen by the OS rather than picked; the gap until runserver binds it
-    # is the one left.
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 class Starter:
@@ -97,30 +83,6 @@ class Starter:
             raise AssertionError(f"{failure}\n\nThe starter's runserver printed:\n{self.output()}") from None
 
 
-def _wait_until_serving(port: int, proc: subprocess.Popen, log: Path) -> None:
-    """Until this runserver has answered a request of ours -- not until something answers on the port.
-
-    The port is closed between ``_free_port()`` and runserver binding it, so another
-    server can hold it by then. Daphne prints its startup line, logs "Listen
-    failure" and exits with 0, while the port answers for the other server. So each
-    try carries a token, and ready is the token in this runserver's access log.
-    """
-    token = uuid.uuid4().hex
-    deadline = time.monotonic() + WAIT_TIMEOUT
-    while time.monotonic() < deadline:
-        output = log.read_text(errors="replace")
-        if "Listen failure" in output or proc.poll() is not None:
-            raise AssertionError(f"runserver did not serve (exit code {proc.poll()}):\n{output}")
-        if f"?ready={token} " in output:
-            return
-        try:
-            urllib.request.urlopen(f"http://127.0.0.1:{port}/?ready={token}", timeout=2).close()  # noqa: S310
-        except OSError:
-            pass
-        time.sleep(0.2)
-    raise AssertionError(f"runserver did not answer within {WAIT_TIMEOUT:g}s:\n{log.read_text(errors='replace')}")
-
-
 @contextlib.contextmanager
 def _running(project: Path, port: int) -> t.Iterator[Starter]:
     """``runserver`` of the project on ``port``, stopped on the way out."""
@@ -138,7 +100,7 @@ def _running(project: Path, port: int) -> t.Iterator[Starter]:
             )
         )
     try:
-        _wait_until_serving(port, proc, log)
+        wait_until_serving(port, proc, log, WAIT_TIMEOUT)
         yield Starter(f"http://127.0.0.1:{port}", log)
     finally:
         proc.terminate()
@@ -160,7 +122,7 @@ def project(tmp_path_factory) -> Path:
 
 @pytest.fixture(scope="module")
 def starter(project) -> t.Iterator[Starter]:
-    with _running(project, _free_port()) as running:
+    with _running(project, free_port()) as running:
         yield running
 
 
@@ -195,18 +157,6 @@ def test_the_first_page_is_live_and_answers_typing(page, starter):
     assert re.search(r"^Starting ASGI/Daphne version ", starter.output(), re.MULTILINE), starter.output()
 
 
-class _Answering(http.server.BaseHTTPRequestHandler):
-    """Another server, answering every request with a 200."""
-
-    def do_GET(self) -> None:
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"someone else")
-
-    def log_message(self, *args: t.Any) -> None:
-        pass
-
-
 def test_a_port_another_server_holds_is_not_taken_for_the_starter(project, browser_name):
     """The port is free when chosen and runserver binds it later; in between another server can take it.
 
@@ -215,14 +165,7 @@ def test_a_port_another_server_holds_is_not_taken_for_the_starter(project, brows
     keeps this in the browser parametrization's group, so the module fixtures are
     made once.
     """
-    other = http.server.HTTPServer(("127.0.0.1", 0), _Answering)
-    thread = threading.Thread(target=other.serve_forever, daemon=True)
-    thread.start()
-    try:
+    with held_port() as port:
         with pytest.raises(AssertionError, match="did not serve"):
-            with _running(project, other.server_address[1]):
+            with _running(project, port):
                 pass
-    finally:
-        other.shutdown()
-        other.server_close()
-        thread.join()
