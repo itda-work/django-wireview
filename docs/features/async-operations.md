@@ -287,6 +287,9 @@ class FileProcessor(Component):
 - 내비게이션으로 같은 id의 새 인스턴스가 join한다
 - 핸들러가 예외를 던져 인스턴스가 버려진다([errors](./errors.md))
 
+`handle_async`가 예외를 던져 인스턴스가 버려질 때, 그 `handle_async`를 돌던 작업은 취소하지 않는다.
+작업은 이미 끝나는 중이고, 그 작업을 기다리던 쪽은 `CancelledError` 없이 끝을 본다(#147).
+
 취소된 작업에는 `handle_async`가 불리지 않고 렌더도 요청되지 않는다. `cancel_async()`로 직접
 취소할 때도 같다. 작업 안에서 정리가 필요하면 `asyncio.CancelledError`를 받아 처리하고 다시 던진다.
 

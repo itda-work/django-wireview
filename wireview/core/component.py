@@ -1169,9 +1169,17 @@ class Component(BaseModel):
         (#95). A task that outlived its component kept doing its work, held the
         instance in memory, and at the end asked a session that no longer had
         the component (or no longer existed) for a render.
+
+        The task running this is spared: a ``handle_async`` that raised reaches
+        here through its own recovery when the broker delivers at once, and the
+        task cancelled itself, so whoever awaited it got ``CancelledError``
+        (#147). It is past its operation, and ends on its own.
         """
+        import asyncio
+
+        current = asyncio.current_task()
         for task in [*self._async_tasks.values(), *self._assign_tasks]:
-            if not task.done():
+            if task is not current and not task.done():
                 task.cancel()
         self._async_tasks.clear()
         self._assign_tasks.clear()

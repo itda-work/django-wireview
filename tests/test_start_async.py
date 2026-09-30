@@ -297,9 +297,8 @@ async def joined_page() -> tuple[WireviewConsumer, FakeOutbound, Component]:
 async def settle(component: Component, name: str) -> None:
     """Wait for the task under ``name`` to end, however it ends.
 
-    A handle_async that raises ends its own task cancelled: the component is
-    discarded and its tasks with it. The task may still be running when the
-    event returns -- it waits out the event's render (#138).
+    The task may still be running when the event returns -- it waits out the
+    event's render (#138).
     """
     task = component._async_tasks.get(name)
     if task is not None:
@@ -353,6 +352,20 @@ async def test_a_handle_async_that_raises_joins_the_component_again(caplog):
     assert ("error", {"id": "p", "during": "event"}) in outbound.commands
     assert consumer.repo.get("p") is None
     assert "handle_async broke" in caplog.text
+
+
+async def test_a_handle_async_that_raises_ends_its_task_without_cancelling_it(caplog):
+    # The recovery discards the component and cancels its tasks. With a broker
+    # that delivers at once the recovery runs inside the raising task itself,
+    # which cancelled itself: whoever awaited it got CancelledError (#147)
+    consumer, outbound, component = await joined_page()
+
+    await consumer.command_user_event("p", "explode", {}, {})
+    task = component._async_tasks["explode"]
+    await asyncio.wait_for(task, 2)
+
+    assert not task.cancelled()
+    assert ("error", {"id": "p", "during": "event"}) in outbound.commands
 
 
 async def test_a_failed_assign_async_renders_its_message_and_survives_a_rejoin(render_thread):

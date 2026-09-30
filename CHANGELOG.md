@@ -106,6 +106,11 @@ The django-reactor era changelog (2.x) is preserved in
   `Field "model_pk" has conflict with protected namespace "model_"`. `AutoBroadcast` opts out of
   the namespace, and a test imports every module with warnings as errors (#132).
 
+- A `handle_async` that raised could cancel its own task: the recovery discards the component and
+  cancels its tasks, and when the broker delivered at once (as in tests) that ran inside the
+  raising task, so awaiting it raised `CancelledError`. The task that is running the recovery is
+  no longer cancelled; it is past its operation and ends by itself (#147).
+
 - Tutorial 13 (quiz) taught handlers that read a synchronous ORM property: `answer()` read
   `self.current_question` and `next_question()` read `len(self.questions)`, so a quiz built from
   it raised `SynchronousOnlyOperation` at the first answer in production. The tutorial now uses
