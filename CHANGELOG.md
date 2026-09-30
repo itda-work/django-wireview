@@ -132,7 +132,7 @@ The django-reactor era changelog (2.x) is preserved in
   a quiet window (`test_joined.py`, the toast and notification listeners) now wait for each
   expected message and keep the window only for the check that nothing follows. The typing
   timer's reset and the documented rate limit's refill run on a clock the test moves by hand:
-  the reset test used to pass with the reset removed. Browser tests of debounce and throttle
+  the reset test's 50 ms margin could be outrun by a slow runner. Browser tests of debounce and throttle
   keep their sleeps (#143).
 
 - Test harness: two test runs in one checkout no longer break each other. The test database was

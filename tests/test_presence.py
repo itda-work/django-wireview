@@ -266,11 +266,14 @@ class TestPresenceMixin:
         await presence_clock.advance(0.06)  # 0.12: past the first timeout, short of the second
 
         # Kept running, the first timer has now cleared typing; reset, it ended in the second call
-        await asyncio.wait({first}, timeout=5)
+        done, _ = await asyncio.wait({first}, timeout=5)
+        assert first in done
         assert view.component._presence_is_typing is True
 
         await presence_clock.advance(0.04)  # 0.16
-        await asyncio.wait({view.component._presence_typing_task}, timeout=5)
+        second = view.component._presence_typing_task
+        done, _ = await asyncio.wait({second}, timeout=5)
+        assert second in done
         assert view.component._presence_is_typing is False
 
     @pytest.mark.asyncio
