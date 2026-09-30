@@ -3,5 +3,9 @@
 <div {% tag_header %}>
   <p>{{ progress }}</p>
   <p>{{ found }}</p>
-  {% if stats.ok %}<p>{{ stats.result }}</p>{% elif stats.loading %}<p>loading</p>{% endif %}
+  {% if stats.ok %}
+    <p>{{ stats.result }}</p>
+  {% elif stats.loading %}
+    <p>loading</p>
+  {% endif %}
 </div>
