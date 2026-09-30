@@ -5,16 +5,23 @@ that cries wolf on a healthy project gets ignored, and then it is dead weight.
 """
 
 import inspect
+import json
 import os
+import re
+import shutil
+import subprocess
 import sys
 import warnings
+from pathlib import Path
 
 import pytest
+from django.template import Context, Template
 from django.test import override_settings
 from testproj.wireview_setting import set_wireview
 
 from wireview import AutoBroadcast, Component
 from wireview import checks as wireview_checks
+from wireview import settings as wireview_settings
 from wireview.checks import (
     check_async_handlers,
     check_async_lifecycle,
@@ -24,12 +31,14 @@ from wireview.checks import (
     check_client_bundle,
     check_component_name_collisions,
     check_live_sessions,
+    check_reconnect_settings,
     check_runserver_is_asgi,
     check_settings_keys,
     check_signing_key,
     check_upload_temp_dir,
     iter_component_classes,
     iter_exposed_handlers,
+    reconnect_value,
 )
 from wireview.core import live_session as live_session_module
 
@@ -256,6 +265,160 @@ class TestAutoBroadcastSendersCheck:
 
     def test_the_test_project_is_silent(self):
         assert check_auto_broadcast_senders(None) == []
+
+
+#: The client module W016 must agree with.
+RECONNECT_MJS = Path(__file__).resolve().parent.parent / "wireview" / "static" / "wireview" / "reconnect.mjs"
+
+#: Each setting's name in what ``readReconnectSettings`` returns.
+RECONNECT_CLIENT_NAMES = {
+    "RECONNECT_MIN_DELAY_MS": "minDelay",
+    "RECONNECT_JITTER_MS": "jitter",
+    "RECONNECT_MAX_DELAY_MS": "maxDelay",
+    "RECONNECT_GROW_FACTOR": "growFactor",
+}
+
+#: Values an operator might write. None of the numbers equals a default, so a
+#: client that returns the default has fallen back.
+RECONNECT_PROBES = [
+    0,
+    1,
+    2,
+    2.5,
+    750,
+    30000,
+    1e20,
+    0.9,
+    -1,
+    -0.5,
+    float("nan"),
+    float("inf"),
+    float("-inf"),
+    10**400,
+    True,
+    False,
+    None,
+    "",
+    "abc",
+    "30000",
+    "1,000",
+    [30000],
+]
+
+
+def client_reads(cases: list[tuple[str, object]]) -> list[float]:
+    """What ``readReconnectSettings`` makes of each setting, through the real header."""
+    documents = []
+    for key, value in cases:
+        with override_settings(WIREVIEW={key: value}):
+            html = Template("{% load wireview %}{% wireview_header %}").render(Context({}))
+        meta = re.search(r'<meta name="wireview-reconnect"(.*?)/>', html, re.S)
+        assert meta, html
+        attributes = dict(re.findall(r'(data-[\w-]+)="([^"]*)"', meta.group(1)))
+        documents.append({"attributes": attributes, "name": RECONNECT_CLIENT_NAMES[key]})
+
+    script = f"""
+import {{ readReconnectSettings }} from {json.dumps(RECONNECT_MJS.as_uri())};
+let input = "";
+for await (const chunk of process.stdin) input += chunk;
+const out = JSON.parse(input).map(({{ attributes, name }}) => {{
+  const doc = {{ querySelector: () => ({{ getAttribute: (a) => (a in attributes ? attributes[a] : null) }}) }};
+  return readReconnectSettings(doc)[name];
+}});
+process.stdout.write(JSON.stringify(out));
+"""
+    node = shutil.which("node")
+    # Not a skip, as in test_diff_roundtrip.py: node already builds the client bundle.
+    assert node, "node is required: the check is compared against reconnect.mjs"
+    result = subprocess.run(
+        [node, "--input-type=module", "-e", script],
+        input=json.dumps(documents),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(result.stdout)
+
+
+class TestReconnectSettingsCheck:
+    """W016: a RECONNECT_* value the client falls back from, or a first wait cut at the cap (#134)."""
+
+    def test_the_defaults_are_silent(self):
+        assert check_reconnect_settings(None) == []
+
+    def test_the_deployment_example_is_silent(self, monkeypatch):
+        """docs/DEPLOYMENT.md's slower backoff for a rolling deploy."""
+        set_wireview(
+            monkeypatch,
+            RECONNECT_MIN_DELAY_MS=1000,
+            RECONNECT_JITTER_MS=10000,
+            RECONNECT_GROW_FACTOR=1.5,
+            RECONNECT_MAX_DELAY_MS=30000,
+        )
+        assert check_reconnect_settings(None) == []
+
+    @pytest.mark.parametrize(
+        ("key", "value"),
+        [
+            ("RECONNECT_MIN_DELAY_MS", -1),
+            ("RECONNECT_JITTER_MS", "4000"),
+            ("RECONNECT_MAX_DELAY_MS", None),
+            ("RECONNECT_GROW_FACTOR", 0.5),
+            ("RECONNECT_GROW_FACTOR", True),
+        ],
+    )
+    def test_a_value_the_client_falls_back_from_is_named(self, monkeypatch, key, value):
+        set_wireview(monkeypatch, **{key: value})
+        (message,) = check_reconnect_settings(None)
+
+        assert message.id == "wireview.W016"
+        assert key in message.msg and repr(wireview_settings.DEFAULT[key]) in message.msg
+
+    def test_a_first_wait_above_the_cap_is_flagged(self, monkeypatch):
+        set_wireview(monkeypatch, RECONNECT_JITTER_MS=20000)
+        (message,) = check_reconnect_settings(None)
+
+        assert message.id == "wireview.W016"
+        assert "1000 to 21000 ms" in message.msg and "together" in message.msg
+
+    def test_a_least_wait_above_the_cap_says_it_has_no_effect(self, monkeypatch):
+        set_wireview(monkeypatch, RECONNECT_MIN_DELAY_MS=20000, RECONNECT_JITTER_MS=0)
+        (message,) = check_reconnect_settings(None)
+
+        assert "every reconnect waits 10000 ms" in message.msg
+
+    def test_a_first_wait_that_reaches_the_cap_exactly_is_silent(self, monkeypatch):
+        set_wireview(monkeypatch, RECONNECT_MIN_DELAY_MS=0, RECONNECT_JITTER_MS=0, RECONNECT_MAX_DELAY_MS=0)
+        assert check_reconnect_settings(None) == []
+        set_wireview(monkeypatch, RECONNECT_MAX_DELAY_MS=5000)
+        assert check_reconnect_settings(None) == []
+
+    def test_the_cap_is_judged_with_what_the_client_uses(self, monkeypatch):
+        """A max the client falls back from is compared as the default it uses instead."""
+        set_wireview(monkeypatch, RECONNECT_MIN_DELAY_MS=20000, RECONNECT_MAX_DELAY_MS="30000")
+        messages = check_reconnect_settings(None)
+
+        assert [m.id for m in messages] == ["wireview.W016", "wireview.W016"]
+        assert "RECONNECT_MAX_DELAY_MS" in messages[0].msg and "(10000 ms)" in messages[1].msg
+
+    def test_the_check_and_the_client_agree(self):
+        """Every value the check passes, the client uses as the same number; for numbers they agree both ways.
+
+        A string the client can parse (``"30000"``) is the one place they differ:
+        the check refuses it, because ``"1,000"`` looks as right and is not.
+        """
+        cases = [(key, value) for key in RECONNECT_CLIENT_NAMES for value in RECONNECT_PROBES]
+        reads = client_reads(cases)
+
+        for (key, value), read in zip(cases, reads, strict=True):
+            number = reconnect_value(value, wireview_checks.RECONNECT_FLOORS[key])
+            client_fell_back = read == wireview_settings.DEFAULT[key]
+            if number is not None:
+                assert read == number, (key, value, read)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                assert (number is None) == client_fell_back, (key, value, read)
+            elif client_fell_back:
+                assert number is None, (key, value)
 
 
 class TestChannelLayerCheck:
@@ -584,6 +747,7 @@ class TestTestprojIsClean:
         assert check_component_name_collisions(None) == []
         assert check_client_bundle(None) == []
         assert check_settings_keys(None) == []
+        assert check_reconnect_settings(None) == []
         assert check_upload_temp_dir(None) == []
         assert check_signing_key(None) == []
         assert check_live_sessions(None) == []

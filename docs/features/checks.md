@@ -37,6 +37,7 @@ WARNINGS:
 | `wireview.W013` | `runserver`로 기동하는데 그 명령이 Django의 WSGI 서버 그대로임 (`daphne`가 없거나 `INSTALLED_APPS`에서 너무 아래에 있음) | 페이지는 그려지고 오류도 없다. WebSocket 업그레이드가 거절되어 버튼이 아무 반응도 하지 않고, 흔적은 브라우저 콘솔 한 줄뿐이다 |
 | `wireview.W014` | `settings.WIREVIEW`에 wireview가 읽지 않는 키가 있음 | 오타나 업그레이드로 없어진 키는 조용히 무시된다. 비슷한 키 이름이나 없어진 키의 대안을 알려 준다(#100) |
 | `wireview.W015` | `AUTO_BROADCAST`의 `model`·`model_pk`·`related`·`m2m` 중 하나를 켰는데 `senders`가 비어 있음 | 비어 있는 `senders`는 아무 모델도 알리지 않는다. 구독한 컴포넌트의 `mutation()`이 한 번도 불리지 않고 오류도 없다. 알릴 모델을 적으라고 알려 준다([설정](./settings.md#모델-알림)) |
+| `wireview.W016` | `RECONNECT_*` 값을 클라이언트가 쓸 수 없음(음수, 숫자가 아닌 값, 1보다 작은 `RECONNECT_GROW_FACTOR`), 또는 첫 재연결 대기(`RECONNECT_MIN_DELAY_MS` + `RECONNECT_JITTER_MS`)가 `RECONNECT_MAX_DELAY_MS`를 넘음 | 클라이언트는 읽을 수 없는 값을 기본값으로 바꿔 쓰므로 설정이 아무 일도 하지 않는다. 상한을 넘는 대기는 상한으로 잘려, 흩으려던 페이지들이 상한에서 다시 한꺼번에 붙는다([배포](../DEPLOYMENT.md#롤링-배포와-재연결)) |
 
 전부 `Warning`이다. `manage.py check`의 기본 `--fail-level`은 `ERROR`이므로 이 검사들이
 빌드를 깨지 않는다. **오탐 하나면 팀 전체가 검사를 무시하기 시작하므로** 확신이 설 때까지
@@ -93,6 +94,28 @@ $ python manage.py runserver
 판정은 제공자 이름 목록이 아니라 **로드되는 명령이 Django의 `inner_run`을 그대로 쓰는가**다.
 staticfiles와 whitenoise는 stock 명령을 감싸기만 하므로 잡히고, ASGI 서버는 `inner_run`을 바꿔야
 하므로 이 검사가 모르는 ASGI 제공자도 오탐하지 않는다.
+
+### W016은 클라이언트와 같은 규칙으로 본다
+
+`{% wireview_header %}`는 `RECONNECT_*` 값을 문자열로 메타 태그에 싣고, 클라이언트(`reconnect.mjs`)는
+유한한 숫자이고 하한(대기는 0, `RECONNECT_GROW_FACTOR`는 1) 이상인 값만 받는다. 나머지는 경고 없이
+기본값으로 바꾼다 — 잘못된 설정이 촘촘한 재연결 루프가 되는 것보다 낫지만, 그래서 설정이 먹지 않았다는
+신호가 아무 데도 없다([#134](https://github.com/itda-work/django-wireview/issues/134)).
+
+검사는 int와 float만 숫자로 친다. 클라이언트가 우연히 읽어 내는 문자열(`"30000"`)도 경고한다 — `"1,000"`도
+똑같이 맞아 보이지만 읽히지 않는다. 그 밖의 값에서는 두 판정이 같다: 검사가 통과시킨 값은 클라이언트가
+같은 숫자로 쓰고, 숫자에 대해서는 검사가 경고하는 값만 클라이언트가 버린다. `tests/test_checks.py`가 실제 헤더를
+렌더해 `reconnect.mjs`에 넣고 이것을 확인한다.
+
+두 번째 경고는 값끼리의 관계다. 첫 대기는 `RECONNECT_MIN_DELAY_MS`부터 그 값에 `RECONNECT_JITTER_MS`를 더한 값까지인데
+어떤 대기도 `RECONNECT_MAX_DELAY_MS`를 넘지 못한다. 넘는 쪽을 뽑은 페이지는 모두 상한에서 함께 다시 붙어, 지터가 흩으려던
+무리가 그대로 돌아온다. 최소 대기부터 상한을 넘으면 모든 대기가 상한이고 앞의 두 설정은 아무 효과가 없다.
+관계는 클라이언트가 실제로 쓰는 값(버린 값 대신 기본값)으로 따진다.
+
+```console
+$ python manage.py check
+?: (wireview.W016) The first reconnect waits 1000 to 21000 ms but no wait is longer than RECONNECT_MAX_DELAY_MS (10000 ms), so pages that draw a wait above 10000 ms all reconnect at 10000 ms together, which the jitter was to spread apart.
+```
 
 ### W010이 세 가지를 보는 이유
 

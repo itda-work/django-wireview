@@ -14,6 +14,7 @@ production-only check is registered as a deploy check.
 
 import difflib
 import inspect
+import math
 import os
 import sys
 import typing as t
@@ -226,6 +227,93 @@ def check_auto_broadcast_senders(app_configs, **kwargs) -> list[CheckMessage]:
             id="wireview.W015",
         )
     ]
+
+
+#: The reconnect settings and the least value the client takes for each
+#: (``static/wireview/reconnect.mjs``): a delay may be 0, a factor below 1
+#: would shrink the wait on every retry.
+RECONNECT_FLOORS = {
+    "RECONNECT_MIN_DELAY_MS": 0,
+    "RECONNECT_JITTER_MS": 0,
+    "RECONNECT_MAX_DELAY_MS": 0,
+    "RECONNECT_GROW_FACTOR": 1,
+}
+
+
+def reconnect_value(value: object, floor: float) -> float | None:
+    """The number the client reads from a reconnect setting, or None if it falls back.
+
+    The header renders the value with ``str()`` and the client takes it only if
+    it is a finite number at or above ``floor``. Anything that is not an int or
+    a float is refused here, even a string the client happens to parse: the
+    setting is a number, and ``"1,000"`` looks as right as ``"1000"``.
+    ``tests/test_checks.py`` runs both sides on the same values.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        number = float(value)
+    except OverflowError:  # an int too large for a double reads as Infinity
+        return None
+    if not math.isfinite(number) or number < floor:
+        return None
+    return number
+
+
+def check_reconnect_settings(app_configs, **kwargs) -> list[CheckMessage]:
+    """W016: a ``RECONNECT_*`` setting the client cannot use as written.
+
+    The client falls back to the default for a value it cannot read rather than
+    reconnect in a tight loop (#124), so a bad value changes nothing and says
+    nothing. And a first wait that can exceed the cap is cut to the cap: the
+    jitter that was to spread the pages a deploy disconnects puts them back
+    together at ``RECONNECT_MAX_DELAY_MS``.
+    """
+    from . import settings as wireview_settings
+
+    messages: list[CheckMessage] = []
+    used: dict[str, float] = {}
+    for key, floor in RECONNECT_FLOORS.items():
+        value = getattr(wireview_settings, key)
+        number = reconnect_value(value, floor)
+        if number is None:
+            default = wireview_settings.DEFAULT[key]
+            number = float(default)
+            messages.append(
+                Warning(
+                    f"WIREVIEW[{key!r}] = {value!r} is not a number the client can use, "
+                    f"so the client uses the default {default!r}.",
+                    hint=f"Set it to an int or a float of at least {floor}.",
+                    id="wireview.W016",
+                )
+            )
+        used[key] = number
+
+    least = used["RECONNECT_MIN_DELAY_MS"]
+    most = least + used["RECONNECT_JITTER_MS"]
+    cap = used["RECONNECT_MAX_DELAY_MS"]
+    if most > cap:
+        if least > cap:
+            effect = (
+                f"every reconnect waits {cap:g} ms and RECONNECT_MIN_DELAY_MS and RECONNECT_JITTER_MS have no effect"
+            )
+        else:
+            effect = (
+                f"pages that draw a wait above {cap:g} ms all reconnect at {cap:g} ms together, "
+                "which the jitter was to spread apart"
+            )
+        messages.append(
+            Warning(
+                f"The first reconnect waits {least:g} to {most:g} ms but no wait is longer than "
+                f"RECONNECT_MAX_DELAY_MS ({cap:g} ms), so {effect}.",
+                hint=(
+                    "Keep RECONNECT_MIN_DELAY_MS + RECONNECT_JITTER_MS at or below RECONNECT_MAX_DELAY_MS: "
+                    "raise the cap or lower the first wait."
+                ),
+                id="wireview.W016",
+            )
+        )
+    return messages
 
 
 def check_channel_layer(app_configs, **kwargs) -> list[CheckMessage]:
@@ -642,6 +730,7 @@ def register_checks() -> None:
     register(check_client_bundle, WIREVIEW_TAG)
     register(check_settings_keys, WIREVIEW_TAG)
     register(check_auto_broadcast_senders, WIREVIEW_TAG)
+    register(check_reconnect_settings, WIREVIEW_TAG)
     register(check_on_mount_hooks, WIREVIEW_TAG)
     register(check_live_sessions, WIREVIEW_TAG)
     register(check_upload_temp_dir, WIREVIEW_TAG)

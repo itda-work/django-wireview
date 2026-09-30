@@ -28,6 +28,12 @@ The django-reactor era changelog (2.x) is preserved in
   `RECONNECT_MAX_DELAY_MS` and `RECONNECT_GROW_FACTOR`, published by `{% wireview_header %}`. The
   defaults are the values every page used before, so nothing changes unless you set them (#124).
 
+- New check `wireview.W016`: a `RECONNECT_*` value the client cannot use (negative, not an int or
+  a float, a grow factor below 1), which the client silently replaces with the default, and a
+  first wait (`RECONNECT_MIN_DELAY_MS + RECONNECT_JITTER_MS`) above `RECONNECT_MAX_DELAY_MS`, which
+  the cap cuts so the pages the jitter spread reconnect together again. A test runs the check and
+  `reconnect.mjs` on the same rendered values (#134).
+
 - `docs/DEPLOYMENT.md`: wiring the signals to Prometheus and OpenTelemetry, a readiness check that
   round-trips the channel layer, draining on SIGTERM in a rolling deploy, and sizing capacity by
   joins per second. The code examples there run in the test suite (#124).
