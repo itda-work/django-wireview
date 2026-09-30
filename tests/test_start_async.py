@@ -44,6 +44,7 @@ TEMPLATES = {
     "sa/feed_item.html": "<li>{{ item.label }}</li>",
     "sa/n.html": "{% load wireview %}<div {% tag_header %}>n={{ n }}</div>",
     "sa/stuck.html": "{% load wireview %}<div {% tag_header %}>{{ total }} {{ count }}</div>",
+    "sa/shown.html": "{% load wireview %}<div {% tag_header %}>shown={{ shown }}</div>",
 }
 
 HANDLED: list[tuple[str, str]] = []
@@ -268,6 +269,66 @@ class SaPoll(Component):
             self.retries += 1
 
 
+class SaEnrich(Component):
+    """A handle_async that awaits before it shows the result -- a lookup, a save -- as many do."""
+
+    class Meta:
+        template_name = "sa/shown.html"
+
+    shown: str = ""
+    _log: list[str] = []
+    _handling: list[asyncio.Task[t.Any]] = []
+    _enriched: asyncio.Event = asyncio.Event()
+    _cancelled: bool | None = None
+
+    async def search(self, q: str):
+        await self.start_async("search", self._find(q))
+
+    async def stop(self):
+        self._cancelled = await self.cancel_async("search")
+        self.shown = "cancelled"
+
+    async def _find(self, q: str) -> str:
+        await asyncio.sleep(0)
+        return q
+
+    async def handle_async(self, name, result):
+        self._handling.append(t.cast("asyncio.Task[t.Any]", asyncio.current_task()))
+        self._log.append(f"handle {result.result}")
+        if result.result == "a":
+            await self._enriched.wait()
+        self.shown = result.result
+        self._log.append(f"shown {result.result}")
+
+
+class SaRestart(Component):
+    """An operation that starts its own name again before it has a result: it is replaced like any other."""
+
+    class Meta:
+        template_name = "sa/n.html"
+
+    n: int = 0
+    _log: list[str] = []
+
+    async def go(self):
+        self._log = []
+        await self.start_async("op", self._first())
+
+    async def _first(self) -> int:
+        await self.start_async("op", self._second())
+        await asyncio.sleep(0)
+        self._log.append("first went on")
+        return 1
+
+    async def _second(self) -> int:
+        await asyncio.sleep(0)
+        return 2
+
+    async def handle_async(self, name, result):
+        self._log.append(f"handle {result.result}")
+        self.n = result.result
+
+
 class FakeOutbound:
     def __init__(self) -> None:
         self.commands: list[tuple[str, dict[str, t.Any]]] = []
@@ -309,6 +370,17 @@ class LoopbackBroker:
 
     async def send_to_session(self, channel: str, message: dict[str, t.Any]) -> None:
         await getattr(self.consumer, message["type"])(message)
+
+
+class QueuedBroker:
+    """Delivers a session message on a later step of the loop, as the channel layer does."""
+
+    def __init__(self, consumer: WireviewConsumer) -> None:
+        self.consumer = consumer
+
+    async def send_to_session(self, channel: str, message: dict[str, t.Any]) -> None:
+        handler = getattr(self.consumer, message["type"])
+        asyncio.get_running_loop().call_soon(lambda: asyncio.ensure_future(handler(message)))
 
 
 @pytest.fixture(autouse=True)
@@ -390,8 +462,8 @@ async def settle(component: Component, name: str) -> None:
     """Wait for the task under ``name`` to end, however it ends.
 
     The task may still be running when the event returns -- it waits out the
-    event's render (#138). In its handle_async it no longer holds the name, and
-    is among the unnamed tasks (#147).
+    event's render (#138). In its handle_async it is also among the unnamed
+    tasks, and stays there if handle_async starts its name again (#147).
     """
     tasks = [*filter(None, [component._async_tasks.get(name)]), *component._assign_tasks]
     if tasks:
@@ -496,6 +568,72 @@ async def test_a_handle_async_that_starts_its_operation_again_goes_on_and_render
     assert poll.retries == 2
     assert [task.cancelled() for task in poll._handling] == [False, False, False]
     assert "n=3" in shown(poll)
+
+
+async def test_an_operation_that_starts_its_own_name_again_is_replaced():
+    # Only handle_async keeps its task when it starts its name again (#147);
+    # the operation is still under way, and the new one replaces it
+    consumer, _, _ = await joined_page()
+    restart = await consumer.repo.join("SaRestart", {"id": "r"})
+    restart.wire.broker = LoopbackBroker(consumer)  # type: ignore[assignment]
+    await consumer.send_render(restart)
+    await restart.wire.flush_pending()
+
+    await consumer.command_user_event("r", "go", {}, {})
+    await eventually(lambda: not restart._async_tasks and not restart._assign_tasks)
+
+    assert restart._log == ["handle 2"]
+    assert "n=2" in shown(restart)
+
+
+async def joined_enrich(consumer: WireviewConsumer) -> SaEnrich:
+    enrich = t.cast(SaEnrich, await consumer.repo.join("SaEnrich", {"id": "e"}))
+    enrich._log = []
+    enrich._handling = []
+    enrich._enriched = asyncio.Event()
+    enrich.wire.broker = QueuedBroker(consumer)  # type: ignore[assignment]
+    await consumer.send_render(enrich)
+    await enrich.wire.flush_pending()
+    return enrich
+
+
+async def test_a_new_search_cancels_the_last_one_in_its_handle_async():
+    # Replacing the name cancels the operation's task in its handle_async too:
+    # freeing the name before handle_async let the stale result land after the
+    # new one, and stay on the page (#147)
+    consumer, _, _ = await joined_page()
+    enrich = await joined_enrich(consumer)
+
+    await consumer.command_user_event("e", "search", {"q": "a"}, {})
+    await eventually(lambda: "handle a" in enrich._log)
+    first = enrich._handling[0]
+    await consumer.command_user_event("e", "search", {"q": "b"}, {})
+    await eventually(lambda: "shown b" in enrich._log)
+    enrich._enriched.set()
+    await asyncio.wait([first], timeout=2)
+    await settle(enrich, "search")
+
+    assert enrich._log == ["handle a", "handle b", "shown b"]
+    assert "shown=b" in shown(enrich)
+    assert first.cancelled()
+
+
+async def test_cancel_async_cancels_an_operation_in_its_handle_async():
+    consumer, _, _ = await joined_page()
+    enrich = await joined_enrich(consumer)
+
+    await consumer.command_user_event("e", "search", {"q": "a"}, {})
+    await eventually(lambda: "handle a" in enrich._log)
+    task = enrich._handling[0]
+    await consumer.command_user_event("e", "stop", {}, {})
+    enrich._enriched.set()
+    await asyncio.wait([task], timeout=2)
+    await settle(enrich, "search")
+
+    assert enrich._cancelled is True
+    assert enrich._log == ["handle a"]
+    assert "shown=cancelled" in shown(enrich)
+    assert task.cancelled()
 
 
 async def test_a_failed_assign_async_renders_its_message_and_survives_a_rejoin(render_thread):
@@ -736,6 +874,8 @@ async def test_a_long_read_on_the_worker_thread_is_not_warned_about(caplog, stal
         click = asyncio.create_task(consumer.command_user_event("s", "load", {}, {}))
         await eventually(lambda: stuck._async_tasks.get("load") is not None)
         await eventually(lambda: stuck.wire._render_gate._idle is not None)
+        # The worker thread's render arms no check: there is nothing to fire
+        assert not stall_checks.pending
         stall_checks.fire()
     finally:
         stuck._hold.set()

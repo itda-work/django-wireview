@@ -174,9 +174,14 @@ async def search(self, query: str):
     await self.start_async("search", self._do_search(query))
 ```
 
-작업이 끝나 `handle_async`가 불릴 때는 이름이 이미 비어 있다. 그래서 `handle_async` 안에서 같은
-이름으로 다시 시작해도(재시도, 폴링) 지금 돌고 있는 `handle_async`는 취소되지 않고 끝까지 돌며 렌더도
-나간다(#147). 같은 까닭에 `handle_async` 안에서 제 이름으로 `cancel_async`를 부르면 `False`다.
+앞의 작업이 이미 결과를 내고 `handle_async`에 있어도 취소된다. `handle_async`가 결과를 반영하기 전에
+`await`하는 동안(보강 조회, 저장) 새 검색이 시작되면, 낡은 결과는 반영되지 않고 새 결과만 화면에
+남는다. `cancel_async`도 같다.
+
+예외는 `handle_async` **자신**이 제 이름을 다시 부를 때 하나다. `handle_async` 안에서 같은 이름으로
+다시 시작해도(재시도, 폴링) 지금 돌고 있는 `handle_async`는 취소되지 않고 끝까지 돌며 렌더도 나간다(#147).
+같은 까닭에 `handle_async` 안에서 제 이름으로 `cancel_async`를 부르면 취소하지 않고 `False`를 돌려준다.
+작업 코루틴이 아직 결과를 내기 전에 제 이름으로 다시 시작하면 여느 교체처럼 취소된다.
 
 ## 사용 예
 
@@ -293,8 +298,8 @@ class FileProcessor(Component):
 
 `handle_async`를 돌고 있는 작업도 취소된다. 작업이 아직 결과를 내는 중이면 다음 `await`에서 취소된다.
 
-취소된 작업에는 `handle_async`가 불리지 않고 렌더도 요청되지 않는다. `cancel_async()`로 직접
-취소할 때도 같다. 작업 안에서 정리가 필요하면 `asyncio.CancelledError`를 받아 처리하고 다시 던진다.
+취소된 작업에는 `handle_async`가 불리지 않고 렌더도 요청되지 않는다. `handle_async` 도중에 취소되면
+그 다음 `await`부터는 돌지 않고 렌더도 요청되지 않는다. `cancel_async()`로 직접 취소할 때도 같다. 작업 안에서 정리가 필요하면 `asyncio.CancelledError`를 받아 처리하고 다시 던진다.
 
 ```python
 async def export(self):
