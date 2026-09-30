@@ -1078,7 +1078,7 @@ class Component(BaseModel):
         task = asyncio.create_task(self.wire._render_gate.run(handled))
         # A task cancelled before its first step never awaits coro
         task.add_done_callback(lambda _: (coro.close(), handled.close()))
-        task.add_done_callback(_log_failure("%s (%s) start_async(%r) raised", self._name, self.id, name))
+        task.add_done_callback(_log_failure("%s (%s) could not finish start_async(%r)", self._name, self.id, name))
         self._async_tasks[name] = task
 
     async def cancel_async(self, name: str) -> bool:
@@ -1198,7 +1198,14 @@ class Component(BaseModel):
         updated = run_and_update()
         task = asyncio.create_task(self.wire._render_gate.run(updated))
         task.add_done_callback(lambda _: (coro.close(), updated.close()))
-        task.add_done_callback(_log_failure("%s (%s) assign_async raised", self._name, self.id))
+        task.add_done_callback(
+            _log_failure(
+                "%s (%s) could not finish assign_async(%s)",
+                self._name,
+                self.id,
+                getattr(coro, "__qualname__", coro),
+            )
+        )
         self._assign_tasks.add(task)
         task.add_done_callback(self._assign_tasks.discard)
 

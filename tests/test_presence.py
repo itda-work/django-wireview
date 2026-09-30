@@ -249,6 +249,28 @@ class TestPresenceMixin:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
+    async def test_a_typing_timeout_that_fails_is_logged_at_once(self, caplog, monkeypatch):
+        """The timer's broadcast is the only thing that clears typing for the others (#151)."""
+        view = await mount(XProducerComponent, room_id=1, username="erin")
+        await view.component.presence_set_typing(typing=True)
+        task = view.component._presence_typing_task
+
+        async def fails(*args, **kwargs):
+            raise ConnectionError("the layer is gone")
+
+        monkeypatch.setattr(XProducerComponent, "broadcast", fails)
+        with caplog.at_level("ERROR", logger="wireview"):
+            await asyncio.wait({task}, timeout=5)
+            await asyncio.sleep(0)
+
+        records = [r for r in caplog.records if r.name == "wireview" and r.exc_info]
+        assert len(records) == 1, caplog.text
+        assert "could not clear typing" in records[0].getMessage()
+        assert "XProducerComponent" in records[0].getMessage()
+        assert isinstance(records[0].exc_info[1], ConnectionError)
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
     async def test_typing_reset_timer_on_new_input(self, presence_clock):
         """Typing again should reset the auto-timeout timer.
 

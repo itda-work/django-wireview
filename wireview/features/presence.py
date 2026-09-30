@@ -277,7 +277,14 @@ class PresenceMixin:
 
         # Start auto-timeout if typing
         if typing:
+            from wireview.core.component import _log_failure
+
             self._presence_typing_task = asyncio.create_task(self._presence_typing_timeout())
+            # Its broadcast can fail; left alone that surfaced only when the task
+            # was replaced or collected (#151)
+            self._presence_typing_task.add_done_callback(
+                _log_failure("%s (%s) could not clear typing", component._name, component.id)
+            )
 
         # Optimize: don't re-render just for typing state change
         component.skip_render()
