@@ -244,6 +244,43 @@ def test_a_live_components_remove_for_a_parent_the_page_replaced_leaves_the_new_
     expect_text(by(page, "nest-child-count"), "1")
 
 
+def test_a_live_component_that_destroys_itself_leaves_the_page(page, server):
+    # #146: a LiveComponent's remove waits with its root's join; once that is
+    # answered, the instance's own remove is taken
+    open_live(page, f"{server}/errorprobe/late/", selector="#nest[data-is-live='true']")
+    by(page, "second").click()
+    expect_text(by(page, "visit"), "second")
+    by(page, "nest-child-vanish").click()
+    expect(page.locator("#nest-child")).to_have_count(0)
+
+
+@pytest.fixture
+def next_nest_child_destroys_in_joined(monkeypatch):
+    from testproj.errorprobe.live import ErrorNestChild
+
+    armed = threading.Event()
+
+    async def joined(self):
+        if self.wire.channel_name and armed.is_set():
+            armed.clear()
+            await self.destroy()
+
+    monkeypatch.setattr(ErrorNestChild, "joined", joined)
+    return armed
+
+
+def test_a_live_component_that_destroys_itself_in_its_parents_join_leaves_the_page(
+    next_nest_child_destroys_in_joined, page, server
+):
+    # #146: the remove comes while the page waits for the parent's named join,
+    # after the render that answers it, so it is the new instance's and is taken
+    open_live(page, f"{server}/errorprobe/late/", selector="#nest[data-is-live='true']")
+    next_nest_child_destroys_in_joined.set()
+    by(page, "second").click()
+    expect_text(by(page, "visit"), "second")
+    expect(page.locator("#nest-child")).to_have_count(0)
+
+
 def test_an_id_that_was_a_live_component_joins_as_the_root_it_now_is(page, server):
     # #146: the page joined the root under the id before it let the old parent
     # go, so the server still held the LiveComponent under it and ignored the

@@ -18,9 +18,8 @@
  * the answer comes, whatever else arrives for the id is the replaced
  * instance's -- a render of an event, a `remove` its handler asked for -- and
  * a render or a `remove` of one of its LiveComponents is held back by the
- * root's join. After
- * it, the id is the new instance's: the server retired the old one when it
- * read the join, so nothing of it follows.
+ * root's join. After it, the id is the new instance's: the server retired the
+ * old one when it read the join, so nothing of it follows.
  *
  * What this holds back is those answers and renders. A `stream_op`, an
  * `exec_js` or a navigation the replaced instance sent still lands as it
