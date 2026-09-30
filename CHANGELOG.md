@@ -80,6 +80,14 @@ The django-reactor era changelog (2.x) is preserved in
   the async helpers `examples/quiz` has had since #120, and says why the template may read the
   property while a handler may not (#145).
 
+- A live render could send a frame whose `data-state` and body described different states: the
+  worker thread signed the root tag, then read the body while the loop finished an
+  `assign_async` or ran `handle_async`, so a frame signed "loading" showed the failure. The work
+  `start_async` and `assign_async` start now runs between the component's renders -- each step
+  waits while a render of that component is in flight; the loop, other components and other
+  connections do not wait. A task the application creates with `asyncio.create_task()` is not
+  covered (#138).
+
 - A sticky component rendered without an `id` was silently not sticky: `{% component %}` gave it
   a fresh `rx-<uuid>` on every page, which never paired with the next page's. It now gets an id
   derived from its class (`sticky-<module path>-<Class>`), the same on every page. A second

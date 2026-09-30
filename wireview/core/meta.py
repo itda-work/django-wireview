@@ -15,6 +15,7 @@ from django.utils.safestring import SafeText, mark_safe
 
 from .. import telemetry
 from ..utils import db
+from .render_gate import RenderGate
 from .render_reads import RenderReads
 from .rendered import Rendered, strip_markers
 from .transport import Broker, ChannelsBroker, NullBroker
@@ -124,6 +125,8 @@ class WireviewMeta:
         self._redirected_to: str | None = None
         self._last_rendered: Rendered | None = None
         self._skip_render: bool = False
+        # Holds the component's background work while a worker thread renders it (#138)
+        self._render_gate = RenderGate()
         # Whether the last render_diff() call evaluated the template. False when
         # the render was skipped, frozen or redirected; the consumer only settles
         # nested LiveComponents after a render that actually ran the template.
@@ -329,11 +332,15 @@ class WireviewMeta:
             # Properties are read and the template rendered off the event loop,
             # where a property may query the database (#120). An async property
             # is awaited back on the loop between the two, and only then does
-            # the render take a second trip.
-            context, html, pending = await db(self._collect_and_render)(component, repo, reads)
-            if pending:
-                await self._await_properties(context)
-                html = await db(self._render_with_context)(component, context, reads)
+            # the render take a second trip. The loop runs on meanwhile, so the
+            # component's own background work waits for the render to finish:
+            # a step of it in between signed data-state from one state and drew
+            # the body from another (#138).
+            with self._render_gate.rendering():
+                context, html, pending = await db(self._collect_and_render)(component, repo, reads)
+                if pending:
+                    await self._await_properties(context)
+                    html = await db(self._render_with_context)(component, context, reads)
             if not html:
                 return None
 

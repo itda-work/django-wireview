@@ -1040,10 +1040,12 @@ class Component(BaseModel):
                 if self._async_tasks.get(name) is task:
                     del self._async_tasks[name]
 
-        # Create and track the task
-        task = asyncio.create_task(run_and_handle())
+        # Create and track the task. Its steps -- the operation's and
+        # handle_async's -- run between the component's renders (#138).
+        handled = run_and_handle()
+        task = asyncio.create_task(self.wire._render_gate.run(handled))
         # A task cancelled before its first step never awaits coro
-        task.add_done_callback(lambda _: coro.close())
+        task.add_done_callback(lambda _: (coro.close(), handled.close()))
         self._async_tasks[name] = task
 
     async def cancel_async(self, name: str) -> bool:
@@ -1150,9 +1152,11 @@ class Component(BaseModel):
             # Trigger re-render
             await self.send_render()
 
-        # Schedule the task to run, and hold it while it does
-        task = asyncio.create_task(run_and_update())
-        task.add_done_callback(lambda _: coro.close())
+        # Schedule the task to run, and hold it while it does. Its steps run
+        # between the component's renders, the result landing included (#138).
+        updated = run_and_update()
+        task = asyncio.create_task(self.wire._render_gate.run(updated))
+        task.add_done_callback(lambda _: (coro.close(), updated.close()))
         self._assign_tasks.add(task)
         task.add_done_callback(self._assign_tasks.discard)
 
@@ -1304,7 +1308,10 @@ class Component(BaseModel):
         """Render a single stream item to HTML."""
         template = self._get_template(template_name)
         context = {"item": item, "this": self}
-        return await db(template.render)(context)
+        # Read off the loop like the component's own render, and kept apart from
+        # its background work the same way (#138)
+        with self.wire._render_gate.rendering():
+            return await db(template.render)(context)
 
     # Upload operations
 

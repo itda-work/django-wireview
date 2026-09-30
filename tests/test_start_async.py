@@ -20,7 +20,8 @@ from django.test import override_settings
 
 from wireview import AsyncResult, Component
 from wireview.consumer import WireviewConsumer
-from wireview.core.rendered import PROTOCOL_VERSION
+from wireview.core.meta import WireviewMeta
+from wireview.core.rendered import PROTOCOL_VERSION, strip_markers
 from wireview.core.state import unsign_state
 from wireview.repository import ComponentRepository
 
@@ -33,6 +34,7 @@ TEMPLATES = {
         "{% if this.stats.failed %}error: {{ this.stats.error_message }}{% elif this.stats.ok %}"
         "{{ this.stats.result.n }}{% endif %}</div>"
     ),
+    "sa/progress.html": "{% load wireview %}<div {% tag_header %}>{{ this.progress }} {{ this.note }}</div>",
 }
 
 HANDLED: list[tuple[str, str]] = []
@@ -90,6 +92,28 @@ class SaStats(Component):
         return {"n": 7}
 
 
+class SaProgress(Component):
+    class Meta:
+        template_name = "sa/progress.html"
+
+    progress: int = 0
+    note: str = ""
+
+    async def run(self):
+        await self.start_async("run", self._work())
+
+    async def _work(self) -> str:
+        # The documented progress pattern: the operation itself changes the state
+        for step in range(1, 4):
+            await asyncio.sleep(0)
+            self.progress = step
+            await self.send_render()
+        return "done"
+
+    async def handle_async(self, name, result):
+        self.note = result.result
+
+
 class FakeOutbound:
     def __init__(self) -> None:
         self.commands: list[tuple[str, dict[str, t.Any]]] = []
@@ -109,11 +133,10 @@ class FakeOutbound:
     def rendered_since(self, mark: int) -> str:
         """Every render sent after ``mark``, as one string.
 
-        Not the last one: a background task's render can go out before the
-        event's (#135). The live render signs data-state and reads the body on
-        a worker thread, and a slow runner lets the loop finish the task between
-        the two -- that frame shows the result, and the event's own render,
-        second, carries only the new data-state.
+        Not the last one: which render carries a change depends on when the
+        task ran (#135). A task that finished before the event's render lets
+        that render show the result, and its own render then changes nothing.
+        It can no longer finish in the middle of a render (#138).
         """
         return str([payload for command, payload in self.commands[mark:] if command == "render"])
 
@@ -153,9 +176,10 @@ def render_thread(request, monkeypatch):
     """A render thread that keeps up with the loop, and one that does not (#135).
 
     "late" pauses the worker thread at every ``this.`` lookup in a template, after
-    the root tag has signed data-state: the loop runs the background task in the
-    gap, as a slow CI runner let it. The tests below failed that way on half the
-    grid while passing on every laptop.
+    the root tag has signed data-state: the loop would run the background task in
+    the gap, as a slow CI runner let it. The tests below failed that way on half
+    the grid while passing on every laptop, and a frame came out signed with one
+    state and drawn from another until the task was held for the render (#138).
     """
     if request.param == "late":
         resolve = Variable._resolve_lookup
@@ -167,6 +191,30 @@ def render_thread(request, monkeypatch):
 
         monkeypatch.setattr(Variable, "_resolve_lookup", late)
     return request.param
+
+
+@pytest.fixture
+def frames(monkeypatch) -> list[str]:
+    """The HTML of every live render, as the server diffed it: one frame each."""
+    seen: list[str] = []
+    diff = WireviewMeta._compute_rendered_diff
+
+    def record(self, html, *args, **kwargs):
+        seen.append(strip_markers(html))
+        return diff(self, html, *args, **kwargs)
+
+    monkeypatch.setattr(WireviewMeta, "_compute_rendered_diff", record)
+    return seen
+
+
+def signed_in(frame: str, name: str) -> dict[str, t.Any]:
+    signed = re.search(r'data-state="([^"]+)"', frame)
+    assert signed is not None
+    return unsign_state(signed[1], name)
+
+
+def body_of(frame: str) -> str:
+    return frame.split(">", 1)[1].rsplit("<", 1)[0]
 
 
 async def joined_page() -> tuple[WireviewConsumer, FakeOutbound, Component]:
@@ -185,9 +233,16 @@ async def joined_page() -> tuple[WireviewConsumer, FakeOutbound, Component]:
 
 
 async def settle(component: Component, name: str) -> None:
+    """Wait for the task under ``name`` to end, however it ends.
+
+    A handle_async that raises ends its own task cancelled: the component is
+    discarded and its tasks with it. The task may still be running when the
+    event returns -- it waits out the event's render (#138).
+    """
     task = component._async_tasks.get(name)
     if task is not None:
-        await asyncio.wait_for(asyncio.shield(task), 2)
+        done, _ = await asyncio.wait([task], timeout=2)
+        assert done, f"{name} did not finish"
 
 
 async def test_the_result_reaches_handle_async_and_renders(render_thread):
@@ -253,8 +308,8 @@ async def test_a_failed_assign_async_renders_its_message_and_survives_a_rejoin(r
 
     assert "stats offline" in outbound.rendered_since(mark)
     assert "error: stats offline" in shown(stats)
-    # From the page's data-state, not the instance: a frame signed before the
-    # task finished and showing its result is not what the page may end on
+    # From the page's data-state, not the instance: what a rejoin starts from.
+    # A frame signed before the task finished once showed its result (#138).
     signed = re.search(r'data-state="([^"]+)"', shown(stats))
     assert signed is not None
     state = unsign_state(signed[1], "SaStats")
@@ -275,3 +330,41 @@ async def test_a_loaded_assign_async_renders_its_result(render_thread):
 
     assert "7" in outbound.rendered_since(mark)
     assert ">7</div>" in shown(stats)
+
+
+async def test_every_frame_of_an_assign_async_shows_the_state_it_signs(render_thread, frames):
+    # #138: the worker thread signed data-state, then read the body while the loop
+    # finished the task -- a frame signed "loading" showed the failure
+    consumer, _, _ = await joined_page()
+    stats = await consumer.repo.join("SaStats", {"id": "s"})
+    stats.wire.broker = LoopbackBroker(consumer)  # type: ignore[assignment]
+    await consumer.send_render(stats)
+    await stats.wire.flush_pending()
+
+    await consumer.command_user_event("s", "load", {}, {"fail": True})
+    await asyncio.wait_for(asyncio.gather(*list(stats._assign_tasks), return_exceptions=True), 2)
+
+    shown_frames = [frame for frame in frames if 'data-name="SaStats"' in frame]
+    assert any("error: stats offline" in frame for frame in shown_frames)
+    for frame in shown_frames:
+        failed = (signed_in(frame, "SaStats")["stats"] or {}).get("state") == "error"
+        assert ("error: stats offline" in body_of(frame)) is failed, frame
+
+
+async def test_every_frame_of_a_start_async_shows_the_state_it_signs(render_thread, frames):
+    # The operation and handle_async both change the component on the loop; no
+    # frame may carry a body from one state and a data-state from another
+    consumer, _, _ = await joined_page()
+    progress = await consumer.repo.join("SaProgress", {"id": "g"})
+    progress.wire.broker = LoopbackBroker(consumer)  # type: ignore[assignment]
+    await consumer.send_render(progress)
+    await progress.wire.flush_pending()
+
+    await consumer.command_user_event("g", "run", {}, {})
+    await settle(progress, "run")
+
+    shown_frames = [frame for frame in frames if 'data-name="SaProgress"' in frame]
+    assert "3 done" in body_of(shown_frames[-1])
+    for frame in shown_frames:
+        state = signed_in(frame, "SaProgress")
+        assert body_of(frame).strip() == f"{state['progress']} {state['note']}".strip(), frame
