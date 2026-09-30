@@ -10,6 +10,7 @@ page rendered and is marked ``wireview-error``.
 Fixture: tests/testproj/errorprobe/.
 """
 
+import json
 import threading
 
 import pytest
@@ -132,3 +133,105 @@ def test_an_error_for_a_join_the_page_replaced_leaves_the_new_element_alive(next
     by(page, "late-bump").click()
     expect_text(by(page, "late-count"), "1")
     expect(page.locator("#late")).not_to_have_class("wireview-error")
+
+
+@pytest.fixture
+def next_late_join_halts(monkeypatch):
+    """Once set, the next join of ``#late`` over the socket halts, as an ``on_mount`` hook
+    would, which answers it with a ``remove``. The page's own render of it does not."""
+    from testproj.errorprobe.live import ErrorBox
+
+    armed = threading.Event()
+    mount = ErrorBox._mount
+
+    async def once(self, params=None, session=None):
+        if self.id == "late" and self.wire.channel_name and armed.is_set():
+            armed.clear()
+            self.wire.has_mounted = True
+            self.wire.mount_halted = True
+            return False
+        return await mount(self, params, session)
+
+    monkeypatch.setattr(ErrorBox, "_mount", once)
+    return armed
+
+
+def test_a_remove_for_a_join_the_page_replaced_leaves_the_new_element(next_late_join_halts, page, server):
+    # #146: the halted join's remove reached the page after it had sent the next
+    # join under the id. It took the new element away, and the page's leave for
+    # it retired the instance the next join had made.
+    page.add_init_script(INBOX_SHIM)
+    open_live(page, f"{server}/errorprobe/late/", selector="#late[data-is-live='true']")
+    page.wait_for_function("window.__inbox.seen.some((m) => m.command === 'render' && 'vsn' in m.payload)")
+
+    next_late_join_halts.set()
+    page.evaluate("window.__inbox.holding = true")
+    by(page, "second").click()
+    expect_text(by(page, "visit"), "second")
+    _held(page, "m.command === 'remove' && m.payload.id === 'late'")
+    by(page, "third").click()
+    expect_text(by(page, "visit"), "third")
+    _held(page, "m.command === 'render' && m.payload.id === 'late'")
+    page.evaluate("window.__inbox.release()")
+
+    by(page, "late-bump").click()
+    expect_text(by(page, "late-count"), "1")
+
+
+def test_a_live_components_render_for_a_parent_the_page_replaced_is_not_painted(page, server):
+    # #146: a LiveComponent's own render, from the instance its parent's next
+    # join replaced, painted the old instance's state over the new element: the
+    # render is named by the child's id, which no join is.
+    page.add_init_script(INBOX_SHIM)
+    open_live(page, f"{server}/errorprobe/late/", selector="#nest[data-is-live='true']")
+    page.wait_for_function("window.__inbox.seen.some((m) => m.command === 'render' && 'vsn' in m.payload)")
+
+    page.evaluate("window.__inbox.holding = true")
+    by(page, "nest-child-bump").click()
+    _held(page, "m.command === 'render' && m.payload.id === 'nest-child'")
+    by(page, "second").click()
+    expect_text(by(page, "visit"), "second")
+    _held(page, "m.command === 'render' && m.payload.id === 'nest'")
+    page.evaluate(
+        """() => new Promise((done) => {
+          window.__inbox.release(window.__inbox.held.findIndex((m) => m.payload.id === 'nest-child') + 1);
+          requestAnimationFrame(() => requestAnimationFrame(done));
+        })"""
+    )
+    expect_text(by(page, "nest-child-count"), "0")
+    page.evaluate("window.__inbox.release()")
+
+    by(page, "nest-child-bump").click()
+    expect_text(by(page, "nest-child-count"), "1")
+
+
+def test_an_id_that_was_a_live_component_joins_as_the_root_it_now_is(page, server):
+    # #146: the page joined the root under the id before it let the old parent
+    # go, so the server still held the LiveComponent under it and ignored the
+    # join. The root never went live.
+    sent = []
+    page.on("websocket", lambda ws: ws.on("framesent", lambda frame: sent.append(json.loads(frame))))
+    open_live(page, f"{server}/errorprobe/late/", selector="#nest[data-is-live='true']")
+    by(page, "nest-child-bump").click()
+    expect_text(by(page, "nest-child-count"), "1")
+
+    by(page, "swap").click()
+    expect_text(by(page, "visit"), "swap")
+    expect_text(by(page, "nest-child-count"), "0")
+    by(page, "nest-child-bump").click()
+    expect_text(by(page, "nest-child-count"), "1")
+
+    # The root leaves as a root, not as the LiveComponent the page once knew
+    # under the id; else the server kept it and the id could not be a
+    # LiveComponent again
+    by(page, "bare").click()
+    expect_text(by(page, "visit"), "bare")
+    # A round trip after it, so the frames the page sent before are all seen
+    by(page, "late-bump").click()
+    expect_text(by(page, "late-count"), "1")
+    assert {"command": "leave", "payload": {"id": "nest-child"}} in sent
+    by(page, "second").click()
+    expect_text(by(page, "visit"), "second")
+    expect_text(by(page, "nest-child-count"), "0")
+    by(page, "nest-child-bump").click()
+    expect_text(by(page, "nest-child-count"), "1")

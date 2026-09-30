@@ -31,10 +31,20 @@ CALLS: list[tuple[str, str]] = []
 _TEMPLATE = "{% load wireview %}<p {% tag_header %}>{{ count }}</p>"
 
 
+class HaltWhenAsked:
+    @staticmethod
+    async def on_mount(component, params, session):
+        return {"halt": True} if component.halt else {"cont": True}
+
+
 class ErrorProbe(Component):
+    class Meta:
+        on_mount = [HaltWhenAsked]
+
     count: int = 0
     fail_to_join: bool = False
     fail_on_params: bool = False
+    halt: bool = False
 
     async def joined(self):
         if self.fail_to_join:
@@ -273,6 +283,55 @@ async def test_a_join_without_a_ref_is_answered_without_one():
         await communicator.disconnect()
 
     assert "ref" not in message["payload"]
+
+
+async def test_every_other_answer_to_a_join_carries_its_ref():
+    """#146: the ``joined`` that ends a join, and the ``remove`` of one that halted, name it too.
+
+    A halted join's ``remove`` that reached the page after its next join under
+    the id took the new element away; a replaced join's ``joined`` started the
+    new element's infinite scroll.
+    """
+    communicator = await _connect()
+    try:
+        await _join(communicator, "e-1", ref=5)
+        await _next(communicator, "render")
+        joined = await _next(communicator, "joined")
+        await _join(communicator, "e-2", ref=6, halt=True)
+        removed = await _next(communicator, "remove", "render")
+    finally:
+        await communicator.disconnect()
+
+    assert joined == {"command": "joined", "payload": {"id": "e-1", "ref": 5}}
+    assert removed == {"command": "remove", "payload": {"id": "e-2", "ref": 6}}
+
+
+async def test_a_join_refused_with_a_reload_answers_with_its_ref():
+    communicator = await _connect()
+    try:
+        await _send(communicator, "join", name="ErrorProbe", state="not-signed", children={}, ref=9)
+        message = await _next(communicator, "reload")
+    finally:
+        await communicator.disconnect()
+
+    assert message["payload"]["ref"] == 9
+
+
+async def test_the_other_answers_to_a_join_without_a_ref_carry_none():
+    communicator = await _connect()
+    try:
+        await _join(communicator, "e-1")
+        joined = await _next(communicator, "joined")
+        await _join(communicator, "e-2", halt=True)
+        removed = await _next(communicator, "remove", "render")
+        await _send(communicator, "join", name="ErrorProbe", state="not-signed", children={})
+        reload = await _next(communicator, "reload")
+    finally:
+        await communicator.disconnect()
+
+    assert joined["payload"] == {"id": "e-1"}
+    assert removed["payload"] == {"id": "e-2"}
+    assert "ref" not in reload["payload"]
 
 
 async def test_a_join_that_raises_removes_the_element_for_an_older_client():

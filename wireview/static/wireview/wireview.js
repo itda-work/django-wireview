@@ -243,23 +243,20 @@ class ServerConnection {
    * Registers new components and removes stale ones.
    */
   joinAllComponents() {
-    let registeredIds = new Set(Object.keys(this.components));
-    for (let element of document.querySelectorAll("[wireview-component]")) {
-      if (registeredIds.delete(element.id)) {
-        this.components[element.id].join();
-      } else {
-        let component = new WireviewComponent(element.id, element.hasAttribute("wireview-live"));
-        this.components[element.id] = component;
-        component.join();
-      }
-    }
-    for (let id of registeredIds.keys()) {
-      const component = this.components[id];
+    const elements = Array.from(document.querySelectorAll("[wireview-component]"));
+    const onPage = new Set(elements.map((element) => element.id));
+    // The ones that left go first: an id a LiveComponent had on the page
+    // before can name a root now, and the server takes its join only once the
+    // parent's leave has taken the LiveComponent along (#146)
+    for (const [id, component] of Object.entries(this.components)) {
+      if (onPage.has(id)) continue;
       // Its root left the page, which the hook manager's MutationObserver --
       // watching inside the root -- never sees (#107)
       component.hookManager.destroy();
       delete this.components[id];
       this.joins.forget(id);
+      // Nothing it was waiting for is for the page any more (#146)
+      this.loading.abandon(id).forEach(unmarkLoading);
       // Its files, requests and previews too: a config it was still owed must
       // not register them later (#137)
       uploadManagers.dispose(id);
@@ -268,6 +265,17 @@ class ServerConnection {
       // shown again since (#140). Its root's leave, if the root went too,
       // takes it along.
       if (!component.owned) this.sendLeave(id);
+    }
+    for (const element of elements) {
+      let component = this.components[element.id];
+      if (!component) {
+        component = new WireviewComponent(element.id);
+        this.components[element.id] = component;
+      }
+      // What the element is now: new DOM under the id can make a LiveComponent
+      // a root, or a root a LiveComponent (#146)
+      component.owned = element.hasAttribute("wireview-live");
+      component.join();
     }
   }
 
@@ -311,8 +319,9 @@ class ServerConnection {
         // its way when the page let it go, and its LiveComponents went with it
         // (#140). Nor, while the page waits for the answer to a join it sent,
         // for the instance that join replaces (#139): its render would name
-        // that instance as current, and paint it over the new one.
-        if (!this.joins.render(id, ref, Boolean(target))) break;
+        // that instance as current, and paint it over the new one. A
+        // LiveComponent's own render is its root's instance's (#146).
+        if (!this.joins.render(target?.owned ? rootIdOf(id) : id, ref, Boolean(target))) break;
         // The instances this render is the first of: whose upload configs to
         // take (#137)
         if (instances) uploadManagers.named(instances);
@@ -351,11 +360,13 @@ class ServerConnection {
         }
         break;
       }
-      case "remove":
-        var { id } = payload;
-        document.getElementById(id)?.remove();
+      case "remove": {
+        // A halted join's, or its instance's own; not the replaced one's (#146)
+        if (!this.joins.about(payload.id, payload.ref)) break;
+        document.getElementById(payload.id)?.remove();
         boost.navEvent.sendNewContent();
         break;
+      }
 
       case "error": {
         // Server code raised for this component (#94). The connection lives on.
@@ -395,6 +406,8 @@ class ServerConnection {
       case "reload":
         // The server refused a signed state (expired, pre-envelope, or invalid)
         // and mounted nothing. Reloading re-renders the page with fresh tokens.
+        // A join the page has since replaced is answered on its own (#146).
+        if (!this.joins.about(payload.id, payload.ref)) break;
         this._reloadPage(payload.reason);
         break;
       case "focus_on":
@@ -485,7 +498,9 @@ class ServerConnection {
 
       case "joined":
         // The join and everything its joined() queued -- a stream's first
-        // page -- have arrived: infinite scroll may judge the list now (#112)
+        // page -- have arrived: infinite scroll may judge the list now (#112).
+        // Not the replaced join's: its list is not the one on the page (#146).
+        if (!this.joins.about(payload.id, payload.ref)) break;
         this.startViewports(payload.id);
         break;
 
@@ -1878,6 +1893,16 @@ const uploadManagers = new UploadManagers((id) => new UploadManager(id));
  */
 function liveIdsIn(element) {
   return Array.from(element.querySelectorAll("[wireview-live]"), (live) => live.id);
+}
+
+/**
+ * The root component a LiveComponent's element sits in: the one whose join
+ * made its instance (#146).
+ * @param {string} id
+ * @returns {string} the root's id, or `id` when its element is not on the page
+ */
+function rootIdOf(id) {
+  return document.getElementById(id)?.closest("[wireview-component]:not([wireview-live])")?.id ?? id;
 }
 
 /**

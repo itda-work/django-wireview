@@ -1,0 +1,6 @@
+{% load wireview %}
+
+<div {% live_tag_header %}>
+  <span data-testid="{{ this.id }}-count">{{ this.count }}</span>
+  <button data-testid="{{ this.id }}-bump" {% on "click" "bump" myself=True %}>bump</button>
+</div>

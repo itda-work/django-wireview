@@ -63,6 +63,17 @@ def _event_ref(ref: t.Any) -> int | None:
     return ref if isinstance(ref, int) and not isinstance(ref, bool) else None
 
 
+def _with_ref(payload: dict[str, t.Any], ref: int | None) -> dict[str, t.Any]:
+    """``payload`` naming the join it answers, when the join was named.
+
+    Every answer to a join carries its ref -- the render or the ``error``, and
+    the ``remove``, ``reload`` or ``joined`` -- so a page that has since sent
+    another join under the id takes none of them for the new one's (#139, #146).
+    A join sent without one is answered without one, byte for byte as before.
+    """
+    return payload if ref is None else {**payload, "ref": ref}
+
+
 def _log_update_error(cls: type, component: t.Any, error: Exception) -> None:
     """A child's update() is logged, not propagated, as joined()'s is on this path."""
     where = f"{cls.__name__}.update()" if component is not None else f"{cls.__name__}.update_many()"
@@ -278,10 +289,7 @@ class WireviewSession:
         if self.repo.vsn < ERRORS_SINCE:
             await self.component_remove(id)
             return
-        payload: dict[str, t.Any] = {"id": id, "during": "join"}
-        if ref is not None:
-            payload["ref"] = ref
-        await self.send_command("error", payload)
+        await self.send_command("error", _with_ref({"id": id, "during": "join"}, ref))
 
     async def command_join(
         self,
@@ -304,7 +312,7 @@ class WireviewSession:
             # a deploy.
             reload = _reload_payload(name, e)
             self._join_rejected(reload["reason"], name, str(e))
-            await self.send_command("reload", reload)
+            await self.send_command("reload", _with_ref(reload, answer))
             return
         decoded_state: dict[str, t.Any] = payload.state
         if refusal := await self._enter_live_session(payload):
@@ -314,7 +322,8 @@ class WireviewSession:
             # unauthorized visitor rather than serving an empty page.
             log.warning("JOIN %s refused: %s", name, refusal)
             self._join_rejected("live_session", name, refusal)
-            await self.send_command("reload", {"id": decoded_state.get("id") or None, "reason": "live_session"})
+            reload = {"id": decoded_state.get("id") or None, "reason": "live_session"}
+            await self.send_command("reload", _with_ref(reload, answer))
             return
         decoded_children: dict[str, tuple[str, dict[str, t.Any]]] = {}
         for child_id, (child_name, child_state) in (children or {}).items():
@@ -363,7 +372,7 @@ class WireviewSession:
                 # render, no signed state. Whatever the hook queued (a redirect to
                 # a login page) still does, and the client drops the element.
                 self._join_rejected("halted", name, "an on_mount hook halted the mount")
-                await self.component_remove(component.id)
+                await self.component_remove(component.id, answer)
                 await component.wire.flush_pending()
                 return
             # Hear this connection's upload progress, if the component has uploads
@@ -387,7 +396,7 @@ class WireviewSession:
             # the stream items joined() sent are on the page when the client
             # hears it. Infinite scroll judges the list then, not before (#112).
             if self.repo.vsn >= JOINED_SINCE:
-                await component.wire.send("joined", id=component.id)
+                await component.wire.send("joined", **_with_ref({"id": component.id}, answer))
         except Exception:
             # Everything up to the first render counts as the join: a failure
             # here is not retried, where a handler's is (#94).
@@ -921,12 +930,12 @@ class WireviewSession:
                 return
         await self.after_mutation_chores()
 
-    async def component_joined(self, id):
-        await self.send_command("joined", {"id": id})
+    async def component_joined(self, id, ref=None):
+        await self.send_command("joined", _with_ref({"id": id}, ref))
 
-    async def component_remove(self, id):
+    async def component_remove(self, id, ref=None):
         log.debug(f">>> REMOVE {id}")
-        await self.send_command("remove", {"id": id})
+        await self.send_command("remove", _with_ref({"id": id}, ref))
 
     async def component_send_render(self, id):
         log.debug(f">>> SEND-RENDER {id}")

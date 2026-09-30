@@ -12,12 +12,18 @@
  * instance as current, and a file chosen then went to its config.
  *
  * So the page names each join with a ref, to a server that announced it takes
- * one (JOIN_REFS_SINCE), and the server returns it on the render and the error
- * that answer the join. Until the answer comes, everything else for the id is
- * the replaced instance's. After it, the id is the new instance's: the server
- * retired the old one when it read the join, so nothing of it follows.
- * What this holds back is the render and the `error`, the two that carry the
- * ref; `remove`, `joined`, `stream_op` and `exec_js` still land as they come.
+ * one (JOIN_REFS_SINCE), and the server returns it on every answer to the
+ * join: its render or its `error`, and the `remove` of a mount that halted, the
+ * `reload` of a state refused, the `joined` of one that landed (#146). Until
+ * the answer comes, whatever else arrives for the id is the replaced
+ * instance's -- a render of an event, a `remove` its handler asked for -- and
+ * a render of one of its LiveComponents is held back by the root's join. After
+ * it, the id is the new instance's: the server retired the old one when it
+ * read the join, so nothing of it follows.
+ *
+ * What this holds back is those answers and renders. A `stream_op`, an
+ * `exec_js` or a navigation the replaced instance sent still lands as it
+ * comes.
  *
  * A join sent without a ref -- the first on a connection, before any answer
  * said which server this is, or to an older server -- pairs nothing, and every
@@ -84,12 +90,25 @@ export class Joins {
    * @returns {boolean}
    */
   render(id, ref, registered) {
-    if (!registered) return false;
+    if (!registered || !this.about(id, ref)) return false;
     const join = this.byId.get(id);
-    if (!join || join.ref === null || join.answered) return true;
-    if (ref !== join.ref) return false;
-    join.answered = true;
+    if (join && ref === join.ref) join.answered = true;
     return true;
+  }
+
+  /**
+   * Whether an answer for `id` -- a render, or a `remove`, `reload` or
+   * `joined` (#146) -- is about the instance the page holds: until the join
+   * the page holds is answered, only an answer that carries its ref is.
+   * Without one it is the replaced instance's own: a render of an event, a
+   * `remove` its handler asked for.
+   * @param {string | null} id - a `reload` for a state that did not verify names none
+   * @param {number} [ref] - the join's, a user event's, or none
+   * @returns {boolean}
+   */
+  about(id, ref) {
+    const join = id === null ? undefined : this.byId.get(id);
+    return !join || join.ref === null || join.answered || ref === join.ref;
   }
 
   /**

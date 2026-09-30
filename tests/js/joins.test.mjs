@@ -114,3 +114,49 @@ test("an answer without a ref settles nothing by ref", () => {
   assert.equal(settledEvent("render", { id: "box", vsn: 6 }), undefined);
   assert.equal(settledEvent("error", { id: "box", during: "event" }), undefined);
 });
+
+test("while a named join waits, a remove, reload or joined is its own only with its ref", () => {
+  // #146: a halted join's remove took the element the next join was for, and a
+  // replaced join's joined started the new element's infinite scroll
+  const joins = new Joins();
+  joins.sent("box", 1);
+  joins.sent("box", 2);
+
+  assert.equal(joins.about("box", 1), false, "the replaced join's");
+  assert.equal(joins.about("box", undefined), false, "the replaced instance's own");
+  assert.equal(joins.about("box", 2), true, "the waiting join's: a halt, a refusal");
+  assert.equal(joins.render("box", 2, true), true);
+  assert.equal(joins.about("box", undefined), true, "after the answer, the id is the new instance's");
+});
+
+test("asking about an answer answers no join", () => {
+  // A remove or reload with the join's ref ends it without a render: the page
+  // lets the element go (forget) or loads again, and nothing else is expected
+  const joins = new Joins();
+  joins.sent("box", 1);
+  joins.sent("box", 2);
+  assert.equal(joins.about("box", 2), true);
+  assert.equal(joins.render("box", undefined, true), false);
+});
+
+test("a remove, reload or joined for an id with no named join is taken", () => {
+  const joins = new Joins();
+  assert.equal(joins.about("box", undefined), true, "never joined on this connection");
+  assert.equal(joins.about(null, 4), true, "a reload for a state that did not verify names no id");
+  joins.sent("box", undefined);
+  joins.sent("box", undefined);
+  assert.equal(joins.about("box", undefined), true, "a join to a server that takes no ref");
+});
+
+test("a LiveComponent's own render waits with its root's join", () => {
+  // #146: the page asks about the root (rootIdOf in wireview.js); the render
+  // carries an event's ref or none, never the root's join ref
+  const joins = new Joins();
+  joins.sent("root", 1);
+  joins.render("root", 1, true);
+  joins.sent("root", 2);
+  assert.equal(joins.render("root", 7, true), false, "the replaced child answering an event");
+  assert.equal(joins.render("root", undefined, true), false);
+  assert.equal(joins.render("root", 2, true), true);
+  assert.equal(joins.render("root", 8, true), true, "the new child's");
+});

@@ -4,10 +4,13 @@ tests/test_errors_e2e.py drives it. ``bump_then_raise`` changes the state and
 then raises, so the page shows whether that change was rolled back;
 ``ErrorJoin`` cannot join at all. The ``late/`` page holds one ``ErrorBox``
 and links back to itself, so a test can join it again under its id while an
-answer to the join before is still on its way (#139).
+answer to the join before is still on its way (#139). Its ``ErrorNest`` holds
+a LiveComponent, ``nest-child``, whose own render can be on its way when the
+parent joins again; ``?visit=swap`` puts a root ``ErrorBox`` under that id
+instead (#146).
 """
 
-from wireview import Component
+from wireview import Component, LiveComponent
 
 
 class ErrorBox(Component):
@@ -33,3 +36,18 @@ class ErrorJoin(Component):
 
     async def poke(self, **_rest):
         pass
+
+
+class ErrorNest(Component):
+    class Meta:
+        template_name = "errorprobe/nest.html"
+
+
+class ErrorNestChild(LiveComponent):
+    class Meta:
+        template_name = "errorprobe/nest_child.html"
+
+    count: int = 0
+
+    async def bump(self, **_rest):
+        self.count += 1

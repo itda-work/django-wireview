@@ -6,5 +6,5 @@ def index(request):
 
 
 def late(request):
-    """One component and two links back to this page: each visit joins it again under its id."""
+    """Components and links back to this page: each visit joins them again under their ids."""
     return render(request, "errorprobe/late.html")

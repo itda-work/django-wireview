@@ -11,7 +11,15 @@
     <nav>
       <a href="{% url 'errorprobe:late' %}?visit=second" data-testid="second">second</a>
       <a href="{% url 'errorprobe:late' %}?visit=third" data-testid="third">third</a>
+      <a href="{% url 'errorprobe:late' %}?visit=swap" data-testid="swap">swap</a>
+      <a href="{% url 'errorprobe:late' %}?visit=bare" data-testid="bare">bare</a>
     </nav>
     {% component 'ErrorBox' id="late" %}
+    {% if request.GET.visit == "swap" %}
+      {% component 'ErrorBox' id="nest-child" %}
+    {% elif request.GET.visit == "bare" %}
+    {% else %}
+      {% component 'ErrorNest' id="nest" %}
+    {% endif %}
   </body>
 </html>

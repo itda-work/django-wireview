@@ -340,7 +340,8 @@ wireview/
 
 // Server → Client
 { command: "render", payload: { id, diff, children?, ref?, vsn?, instances? } }
-{ command: "remove", payload: { id } }
+{ command: "remove", payload: { id, ref? } }
+{ command: "joined", payload: { id, ref? } }
 { command: "error", payload: { id, during, ref? } }
 { command: "stream_op", payload: { op, stream, items, at, limit? } }
 { command: "exec_js", payload: { id, commands } }
