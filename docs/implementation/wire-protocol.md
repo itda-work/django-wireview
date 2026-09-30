@@ -126,10 +126,10 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 
 구버전이 섞이면: 옛 클라이언트와 새 서버는 옛 클라이언트가 `vsn`을 보내지 않으므로 지금까지와 바이트까지 같은 메시지를 받는다. 새 클라이언트와 옛 서버는 옛 서버가 `vsn`을 읽지 않고 옛 형태만 보내며, 새 클라이언트는 그것을 그대로 읽는다. 버전 신호가 없었다면 옛 클라이언트는 `{"k"}`를 모르는 값으로 슬롯에 넣고 `[object Object]`를 그렸을 것이다 — 롤링 배포 중 옛 JS로 열린 페이지가 새 서버에 재연결하는 흔한 경우다.
 
-- 2026-09-26: inbound `query_string`(클라이언트가 보내지 않은 지 오래된 명령)과 `reload`의 `legacy` 사유를 없앴다. v2 이전 서명 상태는 `invalid`다 (#99).
 - 2026-09-30: `render`의 `instances`와 `upload_op config`의 `instance`. 세션은 떠났거나 대체된 인스턴스의 `upload_op`를 버린다. 둘 다 새 필드일 뿐 diff 형태가 아니고, 옛 클라이언트는 render의 모르는 필드를 무시하며 `config`의 남는 필드는 설정에 섞여도 읽지 않으므로 `vsn`을 올리지 않는다. 새 클라이언트는 `instance`가 없는 `config`를 옛 서버의 것으로 보고 그대로 받는다 (#137).
 - 2026-09-29: `vsn` 5. outbound `joined` (#112).
 - 2026-09-29: `user_event`의 `ref`가 로딩 표시를 거는 이벤트에도 실린다. `vsn` 3 이상의 서버가 이미 받던 필드라 `vsn`을 올리지 않는다 (#118).
+- 2026-09-26: inbound `query_string`(클라이언트가 보내지 않은 지 오래된 명령)과 `reload`의 `legacy` 사유를 없앴다. v2 이전 서명 상태는 `invalid`다 (#99).
 - 2026-09-26: `vsn` 4. outbound `error`. 표에 없는 inbound 메시지와 핸들러가 아닌 `user_event`는 연결을 닫지 않는다 (#94).
 - 2026-09-19: `vsn` 3. `user_event`의 `ref`, render의 `ref`와 `vsn` (#92).
 - 2026-09-19: 사용자 이벤트가 아무것도 바꾸지 않아도 `render`(`diff: null`)를 보낸다. `upload_op config`에 `id` (#90). 둘 다 옛 클라이언트가 이미 읽는 모양이라 `vsn`을 올리지 않는다.
