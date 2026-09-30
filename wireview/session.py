@@ -3,6 +3,7 @@
 import inspect
 import logging
 import secrets
+import time
 import typing as t
 
 from asgiref.sync import sync_to_async
@@ -14,7 +15,7 @@ from django.utils.datastructures import MultiValueDict
 
 from wireview.core.component import Component
 
-from . import serializer
+from . import serializer, telemetry
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
 from .core.rendered import ERRORS_SINCE, JOINED_SINCE, PROTOCOL_VERSION
 from .core.session import SessionView
@@ -105,6 +106,9 @@ class WireviewSession:
 
     def _init_session_state(self) -> None:
         """The attributes a session has before ``start()``: what a bare instance in a test gets."""
+        # When start() ran, for connection_closed's duration. Read only while
+        # telemetry is on, so an unmeasured session reads no clock (#124).
+        self._opened_at: float | None = None
         # Minted in connect(). Unlike channel_name it is safe to put in a URL, and
         # it owns this connection's upload registries, tokens and progress group
         # (#77). Empty until connect() runs, which is what bare test consumers get.
@@ -162,9 +166,22 @@ class WireviewSession:
         # Which login this socket stands on. Compared against the fingerprint inside
         # every state a live_session page issued, and the topic a logout publishes to.
         self.auth_fingerprint = auth_fingerprint(self.user, self.repo.session)
+        if telemetry.is_enabled():
+            self._opened_at = time.monotonic()
+            telemetry.emit(telemetry.connection_opened, type(self), connection_id=self.connection_id)
 
-    async def stop(self) -> None:
-        """End: every component leaves, and every subscription goes."""
+    async def stop(self, code: int | None = None) -> None:
+        """End: every component leaves, and every subscription goes. ``code`` is the socket's close code."""
+        if telemetry.is_enabled():
+            opened_at = self._opened_at
+            telemetry.emit(
+                telemetry.connection_closed,
+                type(self),
+                connection_id=self.connection_id,
+                code=code,
+                duration_ms=None if opened_at is None else (time.monotonic() - opened_at) * 1000,
+                components=len(self.repo.components),
+            )
         await self._call_leaving(list(self.repo.components.values()))
         await self._release_connection_uploads()
 
@@ -237,7 +254,11 @@ class WireviewSession:
         await self.send_command("error", payload)
         await self.after_mutation_chores()
 
-    async def _join_failed(self, id: str) -> None:
+    def _join_rejected(self, reason: str, name: str | None, detail: str) -> None:
+        """Report a refused socket or join to telemetry (#124). Logging it stays with the caller."""
+        telemetry.emit(telemetry.join_rejected, type(self), reason=reason, component_name=name, detail=detail)
+
+    async def _join_failed(self, id: str, name: str | None = None) -> None:
         """Tell the client a component could not join. Call from an ``except`` block.
 
         It is not retried: a mount that raises raises again, and joining again
@@ -245,6 +266,7 @@ class WireviewSession:
         page rendered it, marked, and joins again on the next connection.
         """
         log.exception("Could not join %s", id or "<no id>")
+        self._join_rejected("error", name, "mounting raised")
         if not id:
             return
         # Whatever got as far as the repository goes, so no event reaches it.
@@ -269,7 +291,9 @@ class WireviewSession:
             # re-renders with the current auth context and issues fresh tokens.
             # Sending ``remove`` instead would silently empty an old page after
             # a deploy.
-            await self.send_command("reload", _reload_payload(name, e))
+            reload = _reload_payload(name, e)
+            self._join_rejected(reload["reason"], name, str(e))
+            await self.send_command("reload", reload)
             return
         decoded_state: dict[str, t.Any] = payload.state
         if refusal := await self._enter_live_session(payload):
@@ -278,6 +302,7 @@ class WireviewSession:
             # start. Reloading lands on the view decorator, which redirects an
             # unauthorized visitor rather than serving an empty page.
             log.warning("JOIN %s refused: %s", name, refusal)
+            self._join_rejected("live_session", name, refusal)
             await self.send_command("reload", {"id": decoded_state.get("id") or None, "reason": "live_session"})
             return
         decoded_children: dict[str, tuple[str, dict[str, t.Any]]] = {}
@@ -326,6 +351,7 @@ class WireviewSession:
                 # The boundary refused it. Nothing of the component goes out: no
                 # render, no signed state. Whatever the hook queued (a redirect to
                 # a login page) still does, and the client drops the element.
+                self._join_rejected("halted", name, "an on_mount hook halted the mount")
                 await self.component_remove(component.id)
                 await component.wire.flush_pending()
                 return
@@ -354,7 +380,7 @@ class WireviewSession:
         except Exception:
             # Everything up to the first render counts as the join: a failure
             # here is not retried, where a handler's is (#94).
-            await self._join_failed(component_id or "")
+            await self._join_failed(component_id or "", name)
 
     async def _enter_live_session(self, payload: StatePayload) -> str:
         """Settle which ``live_session`` this connection is in, for one join.

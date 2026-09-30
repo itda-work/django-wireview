@@ -13,6 +13,11 @@
 크기**를 Django 시그널로 내보내, 어떤 컴포넌트가 느린지 어떤 렌더가 큰지를 앱이 직접
 관측하게 한다.
 
+여기에 더해 운영자가 먼저 묻는 것 넷을 이벤트 시그널로 낸다(#124). 소켓이 몇 개 열려 있는가
+(`connection_opened`·`connection_closed`), join이 왜 거절되는가(`join_rejected`), 채널 레이어가
+메시지를 버리고 있는가(`publish_failed`). 전에는 로그 문자열로만 있었거나, 채널이 가득 찬 경우에는
+핸들러를 죽이는 예외였다.
+
 wireview는 아무것도 기록하지 않는다. 시그널을 보낼 뿐이고, 무엇을 어디에 쌓을지는
 전적으로 앱의 몫이다.
 
@@ -46,8 +51,14 @@ telemetry.disable()
 | `component_rendered` | 템플릿 렌더가 끝났을 때 | 컴포넌트 클래스 |
 | `diff_computed` | 렌더 결과에서 diff를 계산했을 때 | 컴포넌트 클래스 |
 | `broadcast_published` | 토픽으로 팬아웃 메시지를 발행했을 때 | 브로커 클래스 |
+| `connection_opened` | 수락된 소켓에서 세션이 시작됐을 때 | 세션 클래스(`WireviewConsumer`) |
+| `connection_closed` | 그 세션이 끝났을 때(소켓이 닫혔을 때) | 세션 클래스 |
+| `join_rejected` | 소켓이나 join이 거절됐을 때 | 세션 클래스 |
+| `publish_failed` | 채널 레이어가 발행이나 세션 전송을 거부했을 때 | 브로커 클래스(`ChannelsBroker`) |
 
-모든 시그널이 공통으로 싣는 것:
+### 구간 시그널
+
+위의 네 개(`event_handled`~`broadcast_published`)는 구간을 잰다. 공통으로 싣는 것:
 
 | 키워드 | 뜻 |
 |--------|-----|
@@ -63,6 +74,49 @@ telemetry.disable()
 | `component_rendered` | `component_id`, `component_name`, `live` (WebSocket 렌더면 `True`, HTTP 최초 렌더면 `False`). `payload_size`는 렌더된 HTML 크기 |
 | `diff_computed` | `component_id`, `component_name`, `changed` (보낼 diff가 있으면 `True`). `payload_size`는 diff 페이로드 크기이고 `changed`가 `False`면 `None` |
 | `broadcast_published` | `topic`. `payload_size`는 발행 메시지 크기 |
+
+### 이벤트 시그널
+
+아래 네 개는 일어난 일을 알린다. `duration_ms`·`payload_size`·`error` 공통 키가 없고 자기 키만 싣는다.
+
+| 시그널 | 키워드 |
+|--------|--------|
+| `connection_opened` | `connection_id` |
+| `connection_closed` | `connection_id`, `code`(닫힘 코드, 모르면 `None`), `duration_ms`(세션이 산 시간, 세션이 열린 뒤에 telemetry를 켰으면 `None`), `components`(닫힐 때 살아 있던 컴포넌트 수) |
+| `join_rejected` | `reason`(아래 표), `component_name`(`origin`이면 `None`), `detail`(로그와 같은 설명 문장) |
+| `publish_failed` | `kind`(`"publish"` 또는 `"send_to_session"`), `target`(토픽 또는 세션의 채널 이름), `error`(예외), `dropped`(아래) |
+
+`connection_opened`는 Origin 검사를 통과하고 수락된 소켓에만 난다. 거절된 소켓은 `join_rejected(reason="origin")`
+하나만 남기고 `connection_closed`도 내지 않으므로, 둘을 빼면 열린 소켓 수가 된다.
+
+`join_rejected`의 `reason`은 **닫힌 집합**이다(`telemetry.JOIN_REJECTED_REASONS`). 지표 라벨로 써도 카디널리티가
+늘지 않는다. 새 사유를 내는 코드를 넣으면 이 집합에도 넣어야 `tests/test_telemetry.py`가 통과한다.
+
+| `reason` | 뜻 | 클라이언트가 받는 것 |
+|----------|----|------------------------|
+| `origin` | 소켓의 `Origin`이 `ALLOWED_HOSTS`에 없다. 수락 전에 거절(#96) | 핸드셰이크 403 |
+| `expired` | 서명 상태가 `STATE_MAX_AGE`보다 오래됐다 | `reload` |
+| `invalid` | 서명이 맞지 않거나 다른 클래스용으로 서명됐다. 키가 어긋난 배포가 여기로 온다 | `reload` |
+| `live_session` | 페이지 경계가 거절했다(다른 경계, 로그아웃, 인가 술어) | `reload` |
+| `halted` | `on_mount` 훅이 마운트를 멈췄다 | 요소 제거, 훅이 보낸 리다이렉트 |
+| `error` | 마운트가 예외를 던졌다. 로그에 트레이스백이 있다 | `error` |
+
+`expired`는 오래 열어 둔 탭이면 평범하다. `invalid`가 늘면 서명 키가 프로세스마다 다르거나 배포 사이에 바뀐
+것이다. 부모의 join에 딸려 온 자식 상태를 버리는 경우(서명 불일치·경계)는 거절이 아니다 — 자식은 부모 템플릿의
+props로 다시 만들어지고 경고 로그만 남는다.
+
+`publish_failed`의 `dropped`는 wireview가 그 메시지를 어떻게 했는지다.
+
+- `True` — 채널이 가득 찼다(`ChannelFull`). 받는 쪽이 따라오지 못한다는 뜻이고, 그 메시지 하나를 버리고 부른
+  쪽은 계속한다. `wireview` 로거에 WARNING도 남는다. 레이어의 `group_send`가 가득 찬 멤버에게 하는 것과 같다.
+- `False` — 그 밖의 오류(브로커 연결 끊김 등). 시그널을 낸 뒤 예외를 다시 던진다. 발행한 핸들러는 전처럼
+  실패하고, 세션은 그 컴포넌트만 격리해 다시 join시킨다([errors](./errors.md)).
+
+**보이는 것은 레이어가 던지는 것뿐이다.** `group_send`는 가득 찬 멤버에 대해 아무것도 던지지 않는다 —
+channels_redis는 버리고 INFO로 로그하고, in-memory 레이어는 말없이 버리고, channels-nats는 받는 쪽에서 WARNING
+로그와 함께 버린다(pub/sub이라 보내는 쪽은 알 수 없다). `ChannelFull`을 던지는 것은 채널 하나로 보내는 `send`,
+즉 `send_to_session`이다. 그러니 브로드캐스트 유실은 이 시그널이 아니라 레이어의 로그(`channels_nats`,
+`channels_redis.core` 로거)에서 센다.
 
 ## 사용법
 
@@ -114,7 +168,8 @@ def watch_dashboard_payloads(sender, payload_size, changed, **kwargs):
         statsd.histogram("wireview.dashboard.diff_bytes", payload_size)
 ```
 
-Prometheus로 내보낸다면 히스토그램 하나에 컴포넌트 이름을 라벨로 붙이는 편이 낫다.
+Prometheus로 내보낸다면 히스토그램 하나에 컴포넌트 이름을 라벨로 붙이는 편이 낫다. 운영 지표까지
+연결한 전체 예시는 [배포 문서의 모니터링](../DEPLOYMENT.md#telemetry-시그널을-지표로)에 있다.
 
 ```python
 RENDER = Histogram("wireview_render_seconds", "render duration", ["component"])
@@ -127,7 +182,7 @@ def observe(sender, component_name, duration_ms, **kwargs):
 
 ## 작동 방식
 
-계측 지점은 네 곳이다.
+계측 지점:
 
 | 단계 | 위치 |
 |------|------|
@@ -135,11 +190,15 @@ def observe(sender, component_name, duration_ms, **kwargs):
 | 렌더 | `WireviewMeta.render_diff`의 렌더 구간(라이브)과 `WireviewMeta.render`(HTTP·컴포넌트 태그) |
 | diff | `WireviewMeta.render_diff`의 diff 구간 |
 | 브로드캐스트 | `WireviewMeta._send_broadcast`와 `wireview.utils`의 `send_to`/`asend_to` — 어떤 `Broker` 구현이든 계측된다 |
+| 연결 | `WireviewSession.start`·`stop`. 닫힘 코드는 컨슈머의 `disconnect`가 넘긴다 |
+| 거절 | `WireviewSession.command_join`·`_join_failed`, Origin은 `WireviewConsumer.websocket_connect` |
+| 레이어 거부 | `ChannelsBroker.publish`·`send_to_session`. 직접 만든 `Broker`는 스스로 내야 한다 |
 
 각 지점은 `telemetry.span(...)` 컨텍스트 매니저를 쓴다. 켜져 있으면 `Span`이 시계를 읽고
 빠져나갈 때 시그널을 한 번 보낸다. 꺼져 있으면 공유 no-op 스팬 하나를 돌려주므로
 시계도 읽지 않고 페이로드 크기도 계산하지 않는다. 남는 비용은 `with` 문과 no-op 메서드
-호출 몇 개뿐이다.
+호출 몇 개뿐이다. 이벤트 시그널은 `telemetry.emit`을 거치고, 꺼져 있으면 플래그 확인 하나로 끝난다 —
+연결 수명을 재는 시계도 켜져 있을 때만 읽는다. 로그는 telemetry와 무관하게 늘 남는다.
 
 예외가 나도 시그널은 나간다. `error`에 예외가 담기고, 예외 자체는 그대로 전파된다.
 

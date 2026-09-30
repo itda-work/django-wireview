@@ -47,6 +47,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
         # carries this site's cookies (#96). Closing now is a 403 to the browser.
         if refusal := origin_refusal(self.scope):
             log.warning("Refusing a WebSocket: %s", refusal)
+            self._join_rejected("origin", None, refusal)
             await self.close()
             return
         await super().websocket_connect(message)
@@ -67,7 +68,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
         log.debug(f"<<< DISCONNECT {code}")
         if hasattr(self, "repo"):
             # Refused before connect() ran (an Origin, #96) leaves nothing to stop
-            await self.stop()
+            await self.stop(code)
         await super().disconnect(code)
 
     async def receive_json(self, content: dict, **kwargs) -> None:  # type: ignore[override]

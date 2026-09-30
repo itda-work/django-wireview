@@ -18,12 +18,18 @@ only has to implement these two interfaces. The message shapes are fixed in
 
 from __future__ import annotations
 
+import logging
 import typing as t
 
+from channels.exceptions import ChannelFull
 from channels.layers import get_channel_layer
+
+from .. import telemetry
 
 if t.TYPE_CHECKING:
     from channels.layers import BaseChannelLayer
+
+log = logging.getLogger("wireview")
 
 Message = dict[str, t.Any]
 
@@ -75,6 +81,18 @@ class ChannelsBroker:
     """``Broker`` on top of the Django Channels channel layer.
 
     Topics map to channel-layer groups and session ids to channel names.
+
+    A layer that refuses a message is not silent here (#124). ``ChannelFull``
+    -- the receiver is not keeping up -- drops that one message: it is logged,
+    reported as ``telemetry.publish_failed`` and the caller carries on, as a
+    layer's own ``group_send`` already does for each full member. Any other
+    error (the broker is down) is reported the same way and re-raised, so the
+    handler that published fails as it did before and the session isolates it.
+
+    Only what the layer raises can be seen, and ``group_send`` raises nothing
+    for a full member: channels_redis drops it and logs at INFO, the in-memory
+    layer drops it without a word, and channels-nats drops on the receiving
+    side with a WARNING. ``send`` to one channel is what raises ``ChannelFull``.
     """
 
     def __init__(self, channel_layer: BaseChannelLayer | None = None) -> None:
@@ -89,12 +107,30 @@ class ChannelsBroker:
     async def publish(self, topic: str, message: Message) -> None:
         layer = self.channel_layer
         if layer is not None:
-            await layer.group_send(topic, message)
+            try:
+                await layer.group_send(topic, message)
+            except Exception as error:
+                if not self._dropped("publish", topic, message, error):
+                    raise
 
     async def send_to_session(self, session_id: str, message: Message) -> None:
         layer = self.channel_layer
         if layer is not None:
-            await layer.send(session_id, message)
+            try:
+                await layer.send(session_id, message)
+            except Exception as error:
+                if not self._dropped("send_to_session", session_id, message, error):
+                    raise
+
+    def _dropped(self, kind: str, target: str, message: Message, error: Exception) -> bool:
+        """Report a refused message. True when it is dropped (a full channel); False when the caller re-raises."""
+        dropped = isinstance(error, ChannelFull)
+        telemetry.emit(telemetry.publish_failed, type(self), kind=kind, target=target, error=error, dropped=dropped)
+        if dropped:
+            log.warning(
+                "Dropped a %r message: the channel layer reports %s full (%s)", message.get("type"), target, kind
+            )
+        return dropped
 
 
 class NullBroker:

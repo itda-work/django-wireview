@@ -241,7 +241,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | enableDebug | ✅ | `wireview.debug.enable()` | ✅ | `tests/test_js_commands_e2e.py::test_debug_enable_logs_what_the_socket_carries_until_disabled` |
 | enableLatencySim | ✅ | `wireview.debug.latency()` | ✅ | `tests/test_js_commands_e2e.py::test_debug_latency_holds_back_what_the_page_sends` |
 | enableProfiling | ✅ | `wireview.debug.enableProfiling()` | ✅ | `tests/test_js_commands_e2e.py::test_debug_profiling_counts_events_and_patches` |
-| Telemetry | ✅ | `wireview.telemetry` 시그널 | ✅ (GAP-022) | `tests/test_telemetry.py::test_event_handling_is_measured`<br>`tests/test_telemetry.py::test_render_and_diff_are_measured_separately` |
+| Telemetry | ✅ | `wireview.telemetry` 시그널 | ✅ (GAP-022) | `tests/test_telemetry.py::test_event_handling_is_measured`<br>`tests/test_telemetry.py::test_render_and_diff_are_measured_separately`<br>`tests/test_operational_telemetry.py::test_a_session_reports_opening_and_closing`<br>`tests/test_operational_telemetry.py::test_a_full_channel_drops_the_message_and_says_so` |
 | **Type Stubs** | - | `wireview_stubs` | ✅ 추가 기능 | `tests/test_stubs.py::TestTheCommand::test_it_writes_a_stub_whose_handlers_are_what_a_client_can_call`<br>`tests/test_stubs.py::TestTheCommand::test_check_fails_when_a_stub_is_stale` |
 | **LSP Metadata** | - | `wireview_lsp` | ✅ 추가 기능 | `tests/test_lsp_metadata.py::TestWireviewLspCommand::test_component_metadata`<br>`tests/test_lsp_metadata.py::test_is_handler_says_what_a_client_can_call` |
 

@@ -171,7 +171,7 @@ uvicorn 4프로세스로도 같은 경향이다.
 설계에 반영할 것 둘.
 
 - **정확성이 중요한 화면은 브로드캐스트에만 기대지 않는다.** 잔액, 재고, 마감 시각처럼 틀리면 곤란한 값은 사용자 액션 시 재조회하거나 주기적으로 갱신한다. 브로드캐스트는 "빨리 보여주기"이지 "정확히 보장하기"가 아니다.
-- **레이어를 바꾸면 과부하 신호가 사라진다.** `channels_redis`는 채널 큐가 넘치면 보내는 쪽에 `ChannelFull`을 던지지만 channels-nats는 pub/sub이라 받는 쪽이 조용히 버린다. wireview는 `ChannelFull`을 잡는 곳이 없어 동작이 바뀌지는 않으나, 느린 클라이언트로 가는 브로드캐스트의 유실이 예외가 아니라 로그로만 드러난다는 뜻이다.
+- **과부하 신호는 레이어마다 다른 곳에 나타난다.** 한 채널로 보내는 `send`는 큐가 넘치면 보내는 쪽에 `ChannelFull`을 던진다(channels_redis, InMemory). 그룹으로 보내는 `group_send`는 어느 레이어도 던지지 않는다 — channels_redis는 넘친 멤버를 버리고 `channels_redis.core`에 INFO 로그를, InMemory는 말없이 버리고, channels-nats는 pub/sub이라 받는 쪽이 `channels_nats` 로거에 WARNING을 남기고 버린다. wireview는 던져진 `ChannelFull`을 `ChannelsBroker`에서 잡아 그 메시지만 버리고 WARNING 로그와 `telemetry.publish_failed`로 알린다(#124). 그래서 느린 클라이언트로 가는 **브로드캐스트**의 유실은 여전히 레이어 로그로만 드러난다. 세는 법은 `docs/DEPLOYMENT.md`의 모니터링 절.
 
 NATS의 영속성(JetStream)은 이 레이어가 쓰지 않는다. 그 판단과 Jepsen 보고서의 적용 범위는 [channels-nats README](https://github.com/itda-work/channels-nats#core-nats만-쓴다--jetstream을-쓰지-않는-이유)에 있다.
 

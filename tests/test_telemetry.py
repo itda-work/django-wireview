@@ -1,6 +1,8 @@
 """Telemetry signals (GAP-022): opt-in, measured once, and off by default."""
 
+import ast
 import typing as t
+from pathlib import Path
 
 import pytest
 from django.template import Template
@@ -292,3 +294,28 @@ def test_a_disabled_span_measures_nothing():
             assert span.enabled is True
     finally:
         telemetry.disable()
+
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def _reasons_in_code() -> set[str]:
+    reasons = set()
+    for path in (ROOT / "wireview" / "session.py", ROOT / "wireview" / "consumer.py"):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "_join_rejected"
+                and node.args
+            ):
+                first = node.args[0]
+                # A computed reason is the root state's reload reason: expired or invalid
+                reasons |= {first.value} if isinstance(first, ast.Constant) else {"expired", "invalid"}
+    return reasons
+
+
+@pytest.mark.unit
+def test_the_reasons_are_a_closed_set_the_code_matches():
+    """A receiver labels a metric by reason, so a new one must be declared, and a declared one emitted."""
+    assert _reasons_in_code() == telemetry.JOIN_REJECTED_REASONS
