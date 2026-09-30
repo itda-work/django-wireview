@@ -72,9 +72,17 @@ class Notification(models.Model):
 
 ```python
 WIREVIEW = {
-    "AUTO_BROADCAST": AutoBroadcast(model=True, model_pk=True, related=True),
+    "AUTO_BROADCAST": AutoBroadcast(
+        model=True,
+        model_pk=True,
+        related=True,
+        senders={("notifications", "Notification")},
+    ),
 }
 ```
+
+`senders`에는 `Notification`만 적는다. `auth.user.{user_pk}.notifications` 채널은 `Notification`이 저장될 때
+알리는 것이라 `User`를 적을 필요가 없고, 적으면 `User`의 모든 필드가 채널 레이어로 간다.
 
 `model=True`는 모델 전체 채널 `notifications.notification`에도 알린다. 모든 사용자의 알림이 그리로
 가므로 **사용자별 컴포넌트는 그 채널을 구독하지 않는다.**

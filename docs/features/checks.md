@@ -36,6 +36,7 @@ WARNINGS:
 | `wireview.W012` | `CHANNEL_LAYERS`에 `default` 레이어가 없음 | 페이지는 HTTP로 정상 렌더되는데 WebSocket 연결이 전부 거절되어 어떤 컴포넌트도 살아나지 않는다. Channels에는 기본 레이어가 없다 |
 | `wireview.W013` | `runserver`로 기동하는데 그 명령이 Django의 WSGI 서버 그대로임 (`daphne`가 없거나 `INSTALLED_APPS`에서 너무 아래에 있음) | 페이지는 그려지고 오류도 없다. WebSocket 업그레이드가 거절되어 버튼이 아무 반응도 하지 않고, 흔적은 브라우저 콘솔 한 줄뿐이다 |
 | `wireview.W014` | `settings.WIREVIEW`에 wireview가 읽지 않는 키가 있음 | 오타나 업그레이드로 없어진 키는 조용히 무시된다. 비슷한 키 이름이나 없어진 키의 대안을 알려 준다(#100) |
+| `wireview.W015` | `AUTO_BROADCAST`의 `model`·`model_pk`·`related`·`m2m` 중 하나를 켰는데 `senders`가 비어 있음 | 비어 있는 `senders`는 아무 모델도 알리지 않는다. 구독한 컴포넌트의 `mutation()`이 한 번도 불리지 않고 오류도 없다. 알릴 모델을 적으라고 알려 준다([설정](./settings.md#모델-알림)) |
 
 전부 `Warning`이다. `manage.py check`의 기본 `--fail-level`은 `ERROR`이므로 이 검사들이
 빌드를 깨지 않는다. **오탐 하나면 팀 전체가 검사를 무시하기 시작하므로** 확신이 설 때까지

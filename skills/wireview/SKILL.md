@@ -78,7 +78,7 @@ class XCounter(Component):
 |---|---|
 | 기능 레퍼런스 인덱스 | https://github.com/itda-work/django-wireview/blob/main/docs/features/README.md |
 | 튜토리얼 15편 (학습 순서) | https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/README.md |
-| 시스템 체크 W001~W013 | https://github.com/itda-work/django-wireview/blob/main/docs/features/checks.md |
+| 시스템 체크 W001~W015 | https://github.com/itda-work/django-wireview/blob/main/docs/features/checks.md |
 | 설치·설정·API 전체 | https://github.com/itda-work/django-wireview/blob/main/README.md |
 | 배포 (채널 레이어, Windows) | https://github.com/itda-work/django-wireview/blob/main/docs/DEPLOYMENT.md |
 | 동작하는 예제 앱 | https://github.com/itda-work/django-wireview/tree/main/tests/testproj |

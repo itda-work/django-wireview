@@ -30,6 +30,19 @@ WIREVIEW = {
         model_pk=True,
         related=True,
         m2m=True,
+        # The models the examples and fixtures subscribe to. Nothing else is broadcast.
+        senders={
+            ("bookmarks", "Bookmark"),
+            ("chat", "Message"),
+            ("dashboard", "Activity"),
+            ("dashboard", "Stat"),
+            ("notifications", "Notification"),
+            ("poll", "Option"),
+            ("quiz", "Submission"),
+            ("rating", "Product"),
+            ("rating", "Rating"),
+            ("todo", "Item"),
+        },
     ),
     # Enable sync/async transition detection in development
     "DEBUG_SYNC_TRANSITIONS": True,

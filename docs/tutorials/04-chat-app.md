@@ -560,7 +560,7 @@ class XOnlineUsers(PresenceTrackerMixin, Component):
 
 ```python
 WIREVIEW = {
-    "AUTO_BROADCAST": AutoBroadcast(model=True, model_pk=True, related=True),
+    "AUTO_BROADCAST": AutoBroadcast(model=True, model_pk=True, related=True, senders={("chat", "Message")}),
 }
 ```
 

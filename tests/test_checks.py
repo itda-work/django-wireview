@@ -13,11 +13,12 @@ import pytest
 from django.test import override_settings
 from testproj.wireview_setting import set_wireview
 
-from wireview import Component
+from wireview import AutoBroadcast, Component
 from wireview import checks as wireview_checks
 from wireview.checks import (
     check_async_handlers,
     check_async_lifecycle,
+    check_auto_broadcast_senders,
     check_channel_layer,
     check_channel_layer_configured,
     check_client_bundle,
@@ -232,6 +233,29 @@ class TestSettingsKeysCheck:
         (message,) = check_settings_keys(None)
 
         assert message.hint.startswith("Removed in #")
+
+
+class TestAutoBroadcastSendersCheck:
+    """W015: a broadcast flag is on and senders is empty, so nothing is broadcast."""
+
+    @pytest.mark.parametrize("flag", ["model", "model_pk", "related", "m2m"])
+    def test_a_flag_without_senders_is_flagged(self, monkeypatch, flag):
+        set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast(**{flag: True}))
+        (message,) = check_auto_broadcast_senders(None)
+
+        assert message.id == "wireview.W015"
+        assert flag in message.msg and "senders" in message.hint
+
+    def test_named_senders_are_silent(self, monkeypatch):
+        set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast(model=True, senders={("todo", "Item")}))
+        assert check_auto_broadcast_senders(None) == []
+
+    def test_everything_off_is_silent(self, monkeypatch):
+        set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast())
+        assert check_auto_broadcast_senders(None) == []
+
+    def test_the_test_project_is_silent(self):
+        assert check_auto_broadcast_senders(None) == []
 
 
 class TestChannelLayerCheck:

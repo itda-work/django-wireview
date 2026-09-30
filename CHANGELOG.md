@@ -34,6 +34,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- `AUTO_BROADCAST` broadcasts only the models `senders` names. An empty `senders` no longer
+  connects any receiver, whatever flags are on; name the models to broadcast. A many-to-many
+  change is broadcast when the model whose manager made it is named. A `senders` entry that is
+  not an installed model raises `ImproperlyConfigured` at startup. New check `wireview.W015`
+  reports flags turned on with no senders. The documentation's examples name their senders.
+
 - A channel layer that reports a channel full (`ChannelFull`) no longer fails the handler that
   published: that one message is dropped, logged at WARNING on the `wireview` logger and reported
   as `telemetry.publish_failed`. Any other layer error is reported the same way and still raised,

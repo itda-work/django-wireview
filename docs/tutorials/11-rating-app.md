@@ -62,6 +62,7 @@ WIREVIEW = {
     "AUTO_BROADCAST": AutoBroadcast(
         model=True,      # "rating.rating" 채널 활성화
         model_pk=True,   # "rating.rating.{pk}" 채널 활성화
+        senders={("rating", "Rating")},  # 알릴 모델. 비우면 아무것도 알리지 않는다
     ),
 }
 ```

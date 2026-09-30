@@ -9,7 +9,7 @@ class WireviewConfig(AppConfig):
     def ready(self):
         from django.contrib.auth.signals import user_logged_in, user_logged_out
 
-        from . import auto_broadcast  # noqa
+        from . import auto_broadcast
         from .checks import register_checks
         from .core.live_session import _on_user_logged_in, _on_user_logged_out
 
@@ -30,6 +30,9 @@ class WireviewConfig(AppConfig):
         # publish reaches nobody.
         user_logged_in.connect(_on_user_logged_in, dispatch_uid="wireview.live_session.login")
         user_logged_out.connect(_on_user_logged_out, dispatch_uid="wireview.live_session.logout")
+
+        # Model signals -> channel messages, for the models AUTO_BROADCAST.senders names
+        auto_broadcast.connect()
 
         # Components must be imported before the checks run
         register_checks()

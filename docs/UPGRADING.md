@@ -70,6 +70,26 @@ async def handle_async(self, name, result):
 `DEBUG_SYNC_TRANSITIONS_WARNING_THRESHOLD`·`DEBUG_SYNC_TRANSITIONS_ERROR_THRESHOLD`로 바뀌었고
 `TRANSPILER_CACHE_SIZE`는 없어졌다. 남아 있으면 `manage.py check`가 `wireview.W014`로 알린다.
 
+### 9. `AUTO_BROADCAST`는 `senders`에 적은 모델만 알린다
+
+`senders`를 비워 두면 전에는 모든 모델을 알렸고, 이제는 **아무것도 알리지 않는다.** 구독한 컴포넌트의
+`mutation()`이 더는 불리지 않으므로, 알릴 모델을 적는다.
+
+```python
+# 전
+"AUTO_BROADCAST": AutoBroadcast(model=True, model_pk=True)
+
+# 후
+"AUTO_BROADCAST": AutoBroadcast(model=True, model_pk=True, senders={("todo", "Item")})
+```
+
+플래그를 켜고 `senders`를 비워 두면 `manage.py check`가 `wireview.W015`로 알린다. 설치되지 않은 모델을 적으면
+기동 때 `ImproperlyConfigured`다. `senders`에 적은 모델은 모든 필드가 채널 레이어로 직렬화되므로 `User`처럼
+민감한 필드가 있는 모델은 넣지 않는다.
+
+m2m 변경은 바꾼 쪽의 모델이 `senders`에 있을 때 알린다(**조용함**). `user.groups.add(g)`와 `group.user_set.add(u)`를
+모두 알리려면 두 모델을 다 적는다. 상세는 [설정](./features/settings.md#모델-알림).
+
 ## 0.6에서 0.7, 1.0 릴리스 후보로
 
 고칠 것이 없다. 0.7.0과 1.0.0rc1은 호환을 깨는 변경이 없다([CHANGELOG](../CHANGELOG.md)).

@@ -200,6 +200,34 @@ def check_settings_keys(app_configs, **kwargs) -> list[CheckMessage]:
     return messages
 
 
+def check_auto_broadcast_senders(app_configs, **kwargs) -> list[CheckMessage]:
+    """W015: ``AUTO_BROADCAST`` turns a kind of broadcast on and names no model to broadcast.
+
+    An empty ``senders`` connects no receiver, so the flags do nothing and a
+    component's ``mutation()`` is never called.
+    """
+    from . import settings as wireview_settings
+
+    config = wireview_settings.AUTO_BROADCAST
+    flags = [name for name in ("model", "model_pk", "related", "m2m") if getattr(config, name)]
+    if not flags or config.senders:
+        return []
+
+    return [
+        Warning(
+            f"WIREVIEW['AUTO_BROADCAST'] turns on {', '.join(flags)} but names no senders, "
+            "so no model change is broadcast.",
+            hint=(
+                "List the models to broadcast in senders as (app_label, ModelName) pairs, "
+                "for example senders={('todo', 'Item')}. Every field of a listed model is "
+                "serialized onto the channel layer, so leave out models whose fields should "
+                "not travel there."
+            ),
+            id="wireview.W015",
+        )
+    ]
+
+
 def check_channel_layer(app_configs, **kwargs) -> list[CheckMessage]:
     """W006 (deploy): the in-memory layer cannot broadcast across processes."""
     from django.conf import settings
@@ -613,6 +641,7 @@ def register_checks() -> None:
     register(check_component_name_collisions, WIREVIEW_TAG)
     register(check_client_bundle, WIREVIEW_TAG)
     register(check_settings_keys, WIREVIEW_TAG)
+    register(check_auto_broadcast_senders, WIREVIEW_TAG)
     register(check_on_mount_hooks, WIREVIEW_TAG)
     register(check_live_sessions, WIREVIEW_TAG)
     register(check_upload_temp_dir, WIREVIEW_TAG)

@@ -57,12 +57,13 @@ wireview/
 ├── function_components.py  @function_component (상태 없는 템플릿 함수). 공개 이름과 겹치지 않게 복수형이다(#98)
 ├── slots.py               슬롯 시스템 ({% fill %}, {% render_slot %})
 ├── async_result.py        AsyncResult / AsyncState
-├── auto_broadcast.py      Django signals → 컴포넌트 mutation() 알림
+├── auto_broadcast.py      Django signals → 컴포넌트 mutation() 알림. senders에 적은 모델만, 비우면 아무것도 연결하지 않는다.
+│                          connect()가 ready()에서 한 번 연결한다(테스트는 다른 AutoBroadcast로 다시 부른다)
 ├── event_transpiler.py    {% on %} 수정자 파싱 (.prevent, .debounce.300 ...)
 ├── js.py                  JS() 명령 빌더
 ├── schemas.py, serializer.py  Pydantic 스키마, 모델 직렬화
 ├── settings.py            WIREVIEW 설정 기본값
-├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W014)
+├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W015)
 ├── telemetry.py           옵트인 계측 시그널 (event_handled, component_rendered, diff_computed, broadcast_published 구간과
 │                          connection_opened·connection_closed·join_rejected(닫힌 사유 집합)·publish_failed 이벤트, #124)
 ├── testing.py             mount(), MountedComponent, ComponentTestCase.
@@ -190,7 +191,7 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 
 ## 함정
 
-아래 중 여럿은 `manage.py check`가 잡는다 (`wireview.W001`~`W014`, `docs/features/checks.md`).
+아래 중 여럿은 `manage.py check`가 잡는다 (`wireview.W001`~`W015`, `docs/features/checks.md`).
 
 - **채널 레이어가 없으면 어떤 연결도 살아남지 못한다.** Channels에는 기본 레이어가 없다 — `CHANNEL_LAYERS`에 `default`가 없으면 `get_channel_layer()`가 `None`이고 컨슈머에 `channel_name`도 생기지 않는다. 컨슈머는 accept 전에 `ImproperlyConfigured`로 거절하고 `wireview.W012`가 같은 문장(`wireview/core/transport.py`의 `NO_CHANNEL_LAYER`)으로 미리 알린다(#87). 가드는 `connect()`가 아니라 `websocket_connect()`에 있다 — 단위 테스트는 레이어 없는 bare 컨슈머로 `connect()`를 직접 부르고, **그래서 그 테스트들은 이 실패를 한 번도 보지 못했다.**
 

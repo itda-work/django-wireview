@@ -66,11 +66,12 @@ WIREVIEW = {
     "AUTO_BROADCAST": AutoBroadcast(
         model=True,      # 모델명 채널 활성화 (예: "poll.option")
         model_pk=True,   # 모델명.pk 채널 활성화 (예: "poll.option.5")
+        senders={("poll", "Option")},  # 알릴 모델. 비우면 아무것도 알리지 않는다
     ),
 }
 ```
 
-> **참고**: 이 설정이 없으면 `Meta.subscriptions`를 지정해도 `mutation()`이 호출되지 않습니다.
+> **참고**: 이 설정이 없거나 `senders`에 모델이 없으면 `Meta.subscriptions`를 지정해도 `mutation()`이 호출되지 않습니다.
 
 ## 3. 컴포넌트 정의
 

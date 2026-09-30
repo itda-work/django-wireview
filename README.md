@@ -459,9 +459,13 @@ WIREVIEW = {
     "AUTO_BROADCAST": AutoBroadcast(
         model=True,      # 모델 변경 시 브로드캐스트
         model_pk=True,   # 채널 이름에 PK 포함
+        senders={("todo", "Item")},  # 알릴 모델. 비우면 아무것도 알리지 않는다
     ),
 }
 ```
+
+`senders`에 적은 모델만 알린다. 알림에는 인스턴스의 모든 필드가 직렬화되어 채널 레이어로 가므로,
+민감한 필드가 있는 모델(`User` 등)은 넣지 말고 필요한 필드만 담은 별도 모델을 쓴다.
 
 ## Streams API
 
@@ -1122,7 +1126,7 @@ from wireview import AutoBroadcast
 
 WIREVIEW = {
     "BOOST_PAGES": True,
-    "AUTO_BROADCAST": AutoBroadcast(model=True, model_pk=True),
+    "AUTO_BROADCAST": AutoBroadcast(model=True, model_pk=True, senders={("todo", "Item")}),
 }
 ```
 

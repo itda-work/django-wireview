@@ -1,57 +1,117 @@
+"""Django model signals -> ``model_mutation`` messages on the channel layer.
+
+Only the models named in ``AUTO_BROADCAST.senders`` are broadcast. An empty
+``senders`` connects nothing, whatever flags are on (``wireview.W015`` reports
+it). ``connect()`` runs once from ``WireviewConfig.ready()``; tests call it again
+with another ``AutoBroadcast`` to change what is connected.
+"""
+
 import logging
 import typing as t
 
 from django.apps import apps
+from django.core.exceptions import ImproperlyConfigured
 from django.db import models
 from django.db.models.signals import m2m_changed, post_save, pre_delete
 from django.dispatch import Signal
 
 from . import serializer
-from .schemas import ModelAction
-from .settings import AUTO_BROADCAST
+from .schemas import AutoBroadcast, ModelAction
 from .utils import send_to
 
 __all__ = []
 
 log = logging.getLogger("wireview")
 
-
-senders = (
-    [apps.get_model(app_label, model_name) for app_label, model_name in AUTO_BROADCAST.senders]
-    if AUTO_BROADCAST.senders
-    else [None]
-)
-
-
-def receiver(signal: Signal, *, is_active: bool):
-    def _decorator(f):
-        if is_active:
-            for sender in senders:
-                signal.connect(f, sender=sender)
-        return f
-
-    return _decorator
+#: The configuration ``connect()`` last installed. The receivers read their flags from it.
+_config: AutoBroadcast = AutoBroadcast()
+#: The models named in ``_config.senders``.
+_senders: frozenset[type[models.Model]] = frozenset()
+#: ``(signal, sender, dispatch_uid)`` for every receiver ``connect()`` attached.
+_connections: list[tuple[Signal, type[models.Model], str]] = []
 
 
-@receiver(
-    post_save,
-    is_active=AUTO_BROADCAST.model or AUTO_BROADCAST.model_pk or AUTO_BROADCAST.related,
-)
+def resolve_senders(config: AutoBroadcast) -> list[type[models.Model]]:
+    """The model classes ``config.senders`` names, in a stable order."""
+    resolved = []
+    for app_label, model_name in sorted(config.senders):
+        try:
+            resolved.append(apps.get_model(app_label, model_name))
+        except LookupError as e:
+            raise ImproperlyConfigured(
+                f"WIREVIEW['AUTO_BROADCAST'].senders names ({app_label!r}, {model_name!r}), "
+                f"which is not an installed model: {e}"
+            ) from e
+    return resolved
+
+
+def _m2m_throughs(senders: t.Iterable[type[models.Model]]) -> list[type[models.Model]]:
+    """The through models of every many-to-many relation that touches a sender, either side."""
+    throughs: list[type[models.Model]] = []
+    for model in senders:
+        for field in model._meta.get_fields():
+            if not field.many_to_many:
+                continue
+            through = getattr(field, "through", None) or getattr(field.remote_field, "through", None)
+            if isinstance(through, type) and through not in throughs:
+                throughs.append(through)
+    return throughs
+
+
+def connect(config: AutoBroadcast | None = None) -> None:
+    """Connect the receivers ``config`` asks for, replacing any connected before.
+
+    ``config`` defaults to ``WIREVIEW['AUTO_BROADCAST']``, read now.
+    """
+    global _config, _senders
+    from . import settings
+
+    disconnect()
+    config = settings.AUTO_BROADCAST if config is None else config
+    senders = resolve_senders(config)
+    _config = config
+    _senders = frozenset(senders)
+    MODEL_RELATED_FIELDS.clear()
+
+    receivers: list[tuple[Signal, t.Callable[..., t.Any], list[type[models.Model]]]] = []
+    if config.model or config.model_pk or config.related:
+        receivers.append((post_save, broadcast_post_save, senders))
+        receivers.append((pre_delete, broadcast_pre_delete, senders))
+    if config.m2m:
+        receivers.append((m2m_changed, broadcast_m2m_changed, _m2m_throughs(senders)))
+
+    for signal, receiver, models_ in receivers:
+        for sender in models_:
+            uid = f"wireview.auto_broadcast.{receiver.__name__}.{sender._meta.label_lower}"
+            signal.connect(receiver, sender=sender, dispatch_uid=uid)
+            _connections.append((signal, sender, uid))
+
+
+def disconnect() -> None:
+    """Disconnect every receiver ``connect()`` attached."""
+    global _config, _senders
+    while _connections:
+        signal, sender, uid = _connections.pop()
+        signal.disconnect(sender=sender, dispatch_uid=uid)
+    _config = AutoBroadcast()
+    _senders = frozenset()
+
+
 def broadcast_post_save(sender, instance, created=False, **kwargs):
     name = sender._meta.label_lower
     encoded_instance = serializer.encode(instance)
     action: ModelAction = ModelAction.CREATED if created else ModelAction.UPDATED
-    if AUTO_BROADCAST.model:
+    if _config.model:
         notify_mutation([name], action, encoded_instance)
 
     if instance.pk is not None:
-        if AUTO_BROADCAST.model_pk:
+        if _config.model_pk:
             notify_mutation(
                 [f"{name}.{instance.pk}"],
                 action,
                 encoded_instance,
             )
-        if AUTO_BROADCAST.related:
+        if _config.related:
             broadcast_related(
                 sender,
                 action,
@@ -60,24 +120,20 @@ def broadcast_post_save(sender, instance, created=False, **kwargs):
             )
 
 
-@receiver(
-    pre_delete,
-    is_active=AUTO_BROADCAST.model or AUTO_BROADCAST.model_pk or AUTO_BROADCAST.related,
-)
 def broadcast_pre_delete(sender, instance, **kwargs):
     name = sender._meta.label_lower
     encoded_instance = serializer.encode(instance)
-    if AUTO_BROADCAST.model:
+    if _config.model:
         notify_mutation([name], ModelAction.DELETED, encoded_instance)
 
     if instance.pk is not None:
-        if AUTO_BROADCAST.model_pk:
+        if _config.model_pk:
             notify_mutation(
                 [f"{name}.{instance.pk}"],
                 ModelAction.DELETED,
                 encoded_instance,
             )
-        if AUTO_BROADCAST.related:
+        if _config.related:
             broadcast_related(
                 sender,
                 ModelAction.DELETED,
@@ -110,7 +166,7 @@ def get_related_fields(model):
                 related_name = field.related_query_name()
                 if related_name != "+":
                     is_m2m = isinstance(field, models.ManyToManyField)
-                    if not is_m2m or AUTO_BROADCAST.m2m and is_m2m:
+                    if not is_m2m or _config.m2m and is_m2m:
                         related_model = field.related_model
                         # Handle self-referential relationships
                         if related_model == "self" or not hasattr(related_model, "_meta"):
@@ -127,8 +183,11 @@ def get_related_fields(model):
     return related_fields
 
 
-@receiver(m2m_changed, is_active=AUTO_BROADCAST.m2m)
 def broadcast_m2m_changed(sender, instance, action, model, pk_set, **kwargs):
+    # The message carries ``instance``, so the side whose manager made the change
+    # has to be a sender too. Name both models to hear a change from either side.
+    if type(instance) not in _senders:
+        return
     if action.startswith("post_") and instance.pk:
         encoded_instance = serializer.encode(instance)
         m2m_action: ModelAction

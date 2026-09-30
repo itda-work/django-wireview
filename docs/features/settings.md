@@ -12,7 +12,7 @@ from wireview import AutoBroadcast
 
 WIREVIEW = {
     "BOOST_PAGES": True,
-    "AUTO_BROADCAST": AutoBroadcast(model=True, model_pk=True),
+    "AUTO_BROADCAST": AutoBroadcast(model=True, model_pk=True, senders={("todo", "Item")}),
 }
 ```
 
@@ -52,7 +52,15 @@ WIREVIEW = {
 
 | 키 | 기본값 | 뜻 |
 |----|--------|----|
-| `AUTO_BROADCAST` | `AutoBroadcast()` (모두 꺼짐) | 모델 저장·삭제를 채널로 알린다. `model`, `model_pk`, `related`, `m2m`, `senders`(알릴 모델의 `(app_label, ModelName)` 집합, 비우면 전부). 채널 이름은 [호환성 정책](../COMPATIBILITY.md)의 "모델 채널 이름". **기동 시** |
+| `AUTO_BROADCAST` | `AutoBroadcast()` (모두 꺼짐) | 모델 저장·삭제를 채널로 알린다. `model`, `model_pk`, `related`, `m2m`, `senders`(알릴 모델의 `(app_label, ModelName)` 집합). **`senders`를 비우면 아무것도 알리지 않는다** — 플래그를 켰는데 비어 있으면 `wireview.W015`가 알린다. 설치되지 않은 모델을 적으면 기동 때 `ImproperlyConfigured`다. 채널 이름은 [호환성 정책](../COMPATIBILITY.md)의 "모델 채널 이름". **기동 시** |
+
+`senders`에 적은 모델은 저장·삭제될 때마다 **인스턴스의 모든 필드가** 직렬화되어 채널 레이어로 가고, 구독한
+컴포넌트의 `mutation()`이 그것을 받는다. 민감한 필드가 있는 모델(`User`, `Session` 등)은 넣지 않는다. 그런 모델의
+변경을 알려야 하면 필요한 필드만 담은 별도 모델을 만들어 그것을 적는다.
+
+m2m 변경(`m2m`)은 **바꾼 쪽의 모델**이 `senders`에 있을 때 알린다. 알림에 실리는 인스턴스가 그쪽이기 때문이다.
+`user.groups.add(g)`는 `User`를, `group.user_set.add(u)`는 `Group`을 적어야 알린다. 어느 쪽에서 바꿔도 알리려면
+두 모델을 모두 적는다.
 
 ## 개발 도구
 

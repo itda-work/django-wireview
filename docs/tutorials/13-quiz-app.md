@@ -82,6 +82,7 @@ WIREVIEW = {
     "AUTO_BROADCAST": AutoBroadcast(
         model=True,      # "quiz.submission" 채널 활성화
         model_pk=True,
+        senders={("quiz", "Submission")},  # 알릴 모델. 비우면 아무것도 알리지 않는다
     ),
 }
 ```
