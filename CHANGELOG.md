@@ -10,6 +10,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Changed
+
+- The session logic is `wireview.session.WireviewSession`, answering only through an `Outbound`;
+  `WireviewConsumer` is its Channels WebSocket adapter. Nothing changes for an application --
+  both are internal -- but a session can now be driven with no socket, scope or channel layer
+  (GAP-027 step 1, #60).
+
 ### Added
 
 - `docs/features/dead-view.md` says what a browser without JavaScript gets: the complete first

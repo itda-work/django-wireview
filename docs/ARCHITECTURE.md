@@ -69,7 +69,8 @@
 | `core/live_session.py` | 페이지 경계(`live_session`)와 인증 세대 |
 | `core/transport.py` | `Outbound`·`Broker` 인터페이스와 Channels 구현 |
 | `template_engine.py` | 템플릿 변수 출력에 diff 마커 주입 |
-| `consumer.py` | `WireviewConsumer`: 메시지 라우팅, 렌더 전송, 업로드·브로드캐스트 수신 |
+| `consumer.py` | `WireviewConsumer`: Channels WebSocket 어댑터. 소켓을 받고 세션을 시작·종료한다 |
+| `session.py` | `WireviewSession`: 메시지 라우팅, 렌더 전송, 업로드·브로드캐스트 수신. `Outbound`로만 내보낸다 (#60) |
 | `repository.py` | `ComponentRepository`: 연결당 컴포넌트 인스턴스, 핸들러 판정, LiveComponent 수명주기 배치 |
 | `live_component.py` | `LiveComponent`: 부모 연결을 공유하는 중첩 상태 컴포넌트 |
 | `js.py` | `JS()` 클라이언트 명령 빌더 |

@@ -44,7 +44,10 @@ wireview/
 ├── core/model_state.py    상태 안의 모델 인스턴스를 pk로 서명하고(어디에 있든) 필드 타입 표기를 따라 다시 불러온다 (#113)
 ├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳
 ├── template_engine.py     템플릿 VariableNode에 diff 마커 자동 주입
-├── consumer.py            WireviewConsumer (WebSocket, /__wireview__). send_render가 자식 LiveComponent의 joined/update/leaving과 렌더를 함께 처리
+├── consumer.py            WireviewConsumer: Channels WebSocket 어댑터(/__wireview__). 소켓 수락·거절과 세션 시작·종료, JSON 전달만
+├── session.py             WireviewSession: 세션 로직 전부(inbound command_*, 메일 component_*, 렌더). Outbound로만 내보낸다.
+│                          channels를 import하지 않는다(tests/test_session_extraction.py). send_render가 자식 LiveComponent의
+│                          joined/update(update_many)/leaving과 렌더를 함께 처리 (GAP-027, #60)
 ├── views.py               UploadView (청크 업로드 HTTP 엔드포인트). 무상태 — 서명 토큰만으로 판단하고
 │                          토큰에서 계산한 경로에 쓴다. 어느 워커에 닿아도 된다 (#83)
 ├── urls.py                websocket_urlpatterns, urlpatterns
@@ -189,7 +192,7 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 - **pyright는 `tests/`를 검사하지 않고, `tsc`는 checkJs=false라 JS 본문을 검사하지 않는다.** 둘 다 통과해도 해당 영역은 검증된 것이 아니다.
 - **gitignore 대상.** `*.pyi` (AUTO_GENERATE_STUBS가 DEBUG에서 생성), `.wireview/`, `tests/static/`, `*.min.js`.
 - **컴포넌트 ID**는 페이지 안에서 고유해야 한다.
-- **LiveComponent는 부모가 소유한다.** 클라이언트는 `wireview-live` 요소에 join을 보내지 않고, 자식의 `joined()`·`update()`·`leaving()`과 렌더는 `consumer.send_render`가 부모 렌더 뒤에 처리해 같은 `render` 메시지의 `children`으로 보낸다. 렌더를 보내는 새 경로를 만들 때 `send_render`를 우회하면 자식 초기화가 조용히 빠진다. 계약은 `docs/design/live-component-ownership.md`.
+- **LiveComponent는 부모가 소유한다.** 클라이언트는 `wireview-live` 요소에 join을 보내지 않고, 자식의 `joined()`·`update()`·`leaving()`과 렌더는 `WireviewSession.send_render`가 부모 렌더 뒤에 처리해 같은 `render` 메시지의 `children`으로 보낸다. 렌더를 보내는 새 경로를 만들 때 `send_render`를 우회하면 자식 초기화가 조용히 빠진다. 계약은 `docs/design/live-component-ownership.md`.
 - **채널 레이어는 core/transport.py에서만 만진다.** `get_channel_layer`, `group_add`, `group_send`를 다른 모듈에 쓰면 tests/test_transport.py의 가드가 실패한다. fan-out은 `get_broker().publish`, 세션 메시지는 `WireviewMeta.send`.
 - **프로세스를 늘리면 InMemory 레이어는 조용히 깨진다.** 브로드캐스트가 같은 프로세스의 연결에만 닿고 오류는 나지 않는다. 다중 프로세스에는 channels_redis나 channels-nats가 필수다. 성능은 둘이 대등하다(`docs/design/transport-abstraction.md` §5-3).
 - **Windows에서 daphne는 연결 약 500개에서 죽는다.** daphne가 selector 루프를 강제하고 CPython의 Windows select()는 소켓 512개가 상한이다. Windows 배포는 uvicorn 단일 프로세스를 포트별로 N개 띄우고 Caddy로 분배한다(`docs/DEPLOYMENT.md`). `uvicorn --workers`도 Windows에서는 selector 루프다. 실측은 `bench/results/win11-parlab-*`, 재현은 `bench/windows/run.sh`.
@@ -207,8 +210,8 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
   (`@session.view`), 한 페이지·한 연결에 하나다. `authorize` 술어는 뷰(첫 바이트 전)와
   join(마운트 전) 두 곳에서 도는 **같은 함수**여야 한다 — 둘을 따로 두면 조용히 어긋난다.
   `Meta.live_sessions`를 선언한 컴포넌트는 경계가 없는 페이지에서도 거절된다.
-- **컴포넌트 코드를 부르는 새 경로는 예외를 `_crashed`로 받는다.** 핸들러·수신자·콜백의 예외가 컨슈머 밖으로 나가면
-  소켓이 닫히고 페이지 전체가 다시 join한다. 컨슈머의 `_crashed(component, ref)`가 그 컴포넌트만 버리고 클라이언트에
+- **컴포넌트 코드를 부르는 새 경로는 예외를 `_crashed`로 받는다.** 핸들러·수신자·콜백의 예외가 세션 밖으로 나가면
+  소켓이 닫히고 페이지 전체가 다시 join한다. 세션의 `_crashed(component, ref)`가 그 컴포넌트만 버리고 클라이언트에
   `error`를 보내 이벤트 전 상태로 다시 join하게 한다. join 단계의 예외는 `_join_failed`(재시도 없음 — 재시도하면 루프다).
   클라이언트가 보내지 않는 메시지는 `receive_json`이 로그 후 버린다. 계약은 `docs/features/errors.md`, 테스트는 tests/test_errors.py(#94).
 - **mount가 halt하거나 예외를 던지면 아무것도 렌더되지 않는다** (#58부터). 컴포넌트는 저장소에서도

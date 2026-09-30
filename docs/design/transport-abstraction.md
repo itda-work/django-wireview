@@ -56,7 +56,7 @@ Go나 Elixir 프런트(AnyCable-Go, Centrifugo, 조직의 kraken)가 맡을 수 
 
 | 단계 | 내용 | 필요한 때 |
 |------|------|-----------|
-| 세션 분리 | `WireviewConsumer`의 `command_*`/`component_*` 핸들러를 `Outbound`만 받는 `WireviewSession`으로 옮기고 컨슈머는 어댑터로 남긴다 | A, B 공통 |
+| ~~세션 분리~~ | ~~`WireviewConsumer`의 `command_*`/`component_*` 핸들러를 `Outbound`만 받는 `WireviewSession`으로 옮기고 컨슈머는 어댑터로 남긴다~~ — #60에서 끝났다(`wireview/session.py`) | — |
 | 세션 상태 export/import | 컴포넌트 상태 + `Rendered` 스냅샷 + 구독 집합 + 쿼리스트링을 한 덩어리로 (wire-protocol §6) | B |
 | ~~업로드 레지스트리~~ | ~~프로세스 전역 `views._registries`를 세션 상태나 외부 저장소로~~ — #77·#83에서 끝났다. 레지스트리는 컴포넌트에 있고 청크 엔드포인트는 무상태다 | — |
 | 프런트 어댑터 | kraken(gRPC) 또는 Go 구현의 `Outbound`/`Broker` | 착수 시 |

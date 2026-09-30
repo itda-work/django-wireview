@@ -309,7 +309,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | ~~GAP-034~~ | ~~Dead view~~ | ~~JS 없이도 읽히는 첫 렌더. 무엇을 약속할지부터~~ | ~~중~~ | ✅ 완료 (첫 렌더·링크·폼. `docs/features/dead-view.md`) |
 | ~~GAP-035~~ | ~~LiveComponent 배치 업데이트~~ | ~~같은 컴포넌트 N개 갱신의 N+1 제거~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-036~~ | ~~LiveComponent 슬롯~~ | ~~`{% live_component_block %}`으로 fill·기본 슬롯·let 전달~~ | ~~중~~ | ✅ 완료 |
-| GAP-027 | Session extraction | 컨슈머 핸들러를 `WireviewSession`으로 분리, 세션 상태 export/import (docs/design/transport-abstraction.md) | 상 | [#60](https://github.com/itda-work/django-wireview/issues/60) 착수 기준 대기 |
+| GAP-027 | Session extraction | ~~컨슈머 핸들러를 `WireviewSession`으로 분리~~(1단계 완료, #60). 남은 것: 세션 상태 export/import, 프런트 어댑터 (docs/design/session-extraction.md §4·5) | 상 | 워크로드 기준 대기 |
 
 ---
 

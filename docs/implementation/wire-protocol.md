@@ -7,7 +7,7 @@
 ## 1. 구조
 
 ```
-Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
+Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via WireviewConsumer)
              ◀─(2) outbound command──  │
                                        │ (3) session mail  ──▶ 자기 세션 (message_from_component)
                                        │ (4) fan-out       ──▶ 토픽을 구독한 모든 세션
@@ -15,7 +15,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 
 | 종류 | 형태 | 코드 지점 |
 |------|------|-----------|
-| (1) inbound | `{"command": str, "payload": {...}}` JSON 프레임 | `WireviewConsumer.receive_json` → `command_<name>(**payload)` |
+| (1) inbound | `{"command": str, "payload": {...}}` JSON 프레임 | `WireviewConsumer.receive_json` → `WireviewSession.handle_message` → `command_<name>(**payload)` |
 | (2) outbound | `{"command": str, "payload": {...}}` JSON 프레임 | `Outbound.send_command` (`wireview/core/transport.py`) |
 | (3) session mail | `{"type": "message_from_component", "command": str, "kwargs": {...}}` | `Broker.send_to_session` → `WireviewConsumer.message_from_component` → `component_<command>(**kwargs)` |
 | (4) fan-out | `{"type": <아래 표>, "channel": str, ...}` | `Broker.publish` → 컨슈머의 `type` 핸들러 |
@@ -95,13 +95,13 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewConsumer)
 |------|------|--------|
 | 컴포넌트 인스턴스와 필드 | `ComponentRepository.components` | `data-state`로 이미 클라이언트에 복제됨 |
 | 마지막 렌더 스냅샷 (`Rendered`) | `WireviewMeta._last_rendered` | `Rendered.to_dict()` / `from_dict()` |
-| 구독 집합 | `WireviewConsumer.subscriptions` | 토픽 이름 목록 |
-| 쿼리스트링 | `WireviewConsumer.query_string` | 문자열 |
+| 구독 집합 | `WireviewSession.subscriptions` | 토픽 이름 목록 |
+| 쿼리스트링 | `WireviewSession.query_string` | 문자열 |
 | 업로드 레지스트리 | 컴포넌트의 `_upload_registry` (연결에 묶인다, #77) | 컴포넌트와 함께 옮긴다. 청크 파일은 `UPLOAD_TEMP_DIR`에 있고 엔드포인트는 서명 토큰만 보므로 프로세스 전역 상태는 없다(#83) |
-| 페이지 경계 | `WireviewConsumer.live_session_name` | 이름 문자열. 첫 join이 정하고 이후 join은 일치해야 한다 |
-| 인증 세대 | `WireviewConsumer.auth_fingerprint` | 지문 문자열. connect 때 계산한다 |
-| 인증 토픽 구독 | `WireviewConsumer._auth_topic` | 토픽 이름. 경계 안에서만 생긴다 |
-| 세션 재확인 여부 | `WireviewConsumer._auth_revalidated` | bool. **거절된 연결이 다시 물어 통과하지 못하게 하는 값이다** |
+| 페이지 경계 | `WireviewSession.live_session_name` | 이름 문자열. 첫 join이 정하고 이후 join은 일치해야 한다 |
+| 인증 세대 | `WireviewSession.auth_fingerprint` | 지문 문자열. connect 때 계산한다 |
+| 인증 토픽 구독 | `WireviewSession._auth_topic` | 토픽 이름. 경계 안에서만 생긴다 |
+| 세션 재확인 여부 | `WireviewSession._auth_revalidated` | bool. **거절된 연결이 다시 물어 통과하지 못하게 하는 값이다** |
 | 프로토콜 버전 | `ComponentRepository.vsn` | 정수. connect 때 소켓 URL에서 읽고, 페이지 쿼리스트링(`query_string`)과는 섞지 않는다. 0으로 복원하면 옛 형태만 보낼 뿐이라 안전하다 |
 
 아래 넷은 #58이 더했고 **외부화 목록의 일부다**. 세션을 프로세스 밖으로 옮기면서 이것을 빠뜨리면

@@ -43,6 +43,10 @@ class Outbound(t.Protocol):
         """Stop receiving messages for ``topic``."""
         ...
 
+    async def close(self, code: int | None = None) -> None:
+        """End the connection: a logout retired it (4001), or an old client after a crash (1011)."""
+        ...
+
 
 class Broker(t.Protocol):
     """Process-wide message routing between sessions."""
@@ -124,6 +128,9 @@ class ChannelsOutbound:
         consumer = self._consumer
         if consumer.channel_layer is not None and consumer.channel_name is not None:
             await consumer.channel_layer.group_discard(topic, consumer.channel_name)
+
+    async def close(self, code: int | None = None) -> None:
+        await self._consumer.close(code=code)
 
 
 _broker: Broker | None = None

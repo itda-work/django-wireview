@@ -1,6 +1,7 @@
 # 세션 분리 설계 (GAP-027, #60)
 
-> 상태: 설계 정리. 2026-09-09. **착수 대상이 아니다** — 기준은 5절.
+> 상태: **1단계 완료(2026-09-30, #60)** — `wireview/session.py`의 `WireviewSession`, 컨슈머는 그 어댑터.
+> 2단계(export/import)와 4단계(프런트 어댑터)는 5절의 기준대로 워크로드가 생길 때 연다. 설계 정리는 2026-09-09.
 > 배경: `docs/design/transport-abstraction.md` 4~6절, `docs/implementation/wire-protocol.md`
 
 ## 1. 무엇을 분리하는가
