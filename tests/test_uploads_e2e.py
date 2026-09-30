@@ -10,7 +10,7 @@ import threading
 
 import pytest
 from playwright.sync_api import expect
-from testproj.e2e_browser import WAIT_TIMEOUT, expect_count, expect_text, open_live
+from testproj.e2e_browser import WAIT_TIMEOUT, expect_count, expect_text, open_live, wait_live
 from testproj.e2e_server import serve
 
 pytestmark = pytest.mark.e2e
@@ -59,25 +59,47 @@ def test_one_upload_after_another_past_max_entries(probe):
 
 @pytest.fixture
 def held_config(monkeypatch):
-    """Hold every upload config back until the test sets the returned event (#137).
+    """Hold every upload config at the session until the test sets the returned event (#137).
 
-    The config reaches the browser one channel-layer trip after the render that
-    makes the page live. On CI's NATS that trip outlasted the test's first move,
-    and the file chosen in between was dropped: the five tests above failed there
-    and passed on every laptop.
+    A config reaches the browser after the render that makes the page live: it
+    is sent from a task, through the channel layer. Delaying every config by
+    500 ms failed the five tests above on the memory layer the way they failed on
+    CI's NATS lane, while they passed on every laptop; that the broker's trip was
+    the delay on CI is the likeliest explanation, not a confirmed one. What is
+    certain is what the page did: a file chosen before the config was dropped.
+
+    Held where the session hands it to the socket, the config also stays behind
+    whatever the page sends meanwhile -- the session reads one socket in order --
+    so a test can end the instance before its config arrives.
     """
-    from wireview.core.meta import WireviewMeta
+    from wireview.session import WireviewSession
 
     release = threading.Event()
-    send = WireviewMeta.send_upload_op
+    forward = WireviewSession.component_upload_op
 
-    async def held(self, op):
-        if op.op == "config":
+    async def held(self, op, upload, ref=None, **data):
+        if op == "config":
             await asyncio.to_thread(release.wait, WAIT_TIMEOUT)
-        await send(self, op)
+        await forward(self, op, upload, ref, **data)
 
-    monkeypatch.setattr(WireviewMeta, "send_upload_op", held)
+    monkeypatch.setattr(WireviewSession, "component_upload_op", held)
     return release
+
+
+@pytest.fixture
+def registered(monkeypatch):
+    """The names of the files the page registers, in the order the server hears them."""
+    from wireview.session import WireviewSession
+
+    names: list[str] = []
+    register = WireviewSession.command_upload_register
+
+    async def recording(self, id, name, entries):
+        names.extend(entry["name"] for entry in entries)
+        await register(self, id, name, entries)
+
+    monkeypatch.setattr(WireviewSession, "command_upload_register", recording)
+    return names
 
 
 def test_a_file_chosen_before_the_upload_config_arrives_is_uploaded_when_it_does(held_config, page, server):
@@ -92,6 +114,56 @@ def test_a_file_chosen_before_the_upload_config_arrives_is_uploaded_when_it_does
 
     expect_text(by(page, "received").locator("li"), "early.txt:5")
     expect_text(by(page, "external-done"), "e.txt")
+
+
+def test_the_upload_button_opens_the_picker_before_the_config_arrives(held_config, page, server):
+    # The picker opens only inside the click's user activation; the button used
+    # to do nothing at all until the config had come.
+    open_live(page, f"{server}/fileprobe/")
+    with page.expect_file_chooser(timeout=WAIT_TIMEOUT * 1000) as chooser:
+        by(page, "pick").click()
+    chooser.value.set_files(text_file("picked.txt", "picked"))
+
+    held_config.set()
+
+    expect_text(by(page, "received").locator("li"), "picked.txt:6")
+
+
+def test_a_file_held_for_a_component_that_left_is_not_registered_by_its_late_config(
+    held_config, registered, page, server
+):
+    open_live(page, f"{server}/fileprobe/")
+    by(page, "files").set_input_files(text_file("gone.txt", "gone"))
+    by(page, "to-other").click()
+    expect_text(by(page, "page"), "other")
+
+    # The configs reach a page the component has left
+    held_config.set()
+
+    # Whatever they made the page send reaches the server before this join does
+    by(page, "to-probe").click()
+    wait_live(page)
+    by(page, "files").set_input_files(text_file("new.txt", "new"))
+    expect_text(by(page, "received").locator("li"), "new.txt:3")
+    assert registered == ["new.txt"]
+
+
+def test_a_file_held_for_an_instance_a_new_join_replaced_does_not_pass_to_the_new_one(
+    held_config, registered, page, server
+):
+    open_live(page, f"{server}/fileprobe/")
+    by(page, "files").set_input_files(text_file("old.txt", "old"))
+    # The same component id on the next page: the server retires the old
+    # instance and mounts a new one under it
+    by(page, "again").click()
+    expect_text(by(page, "page"), "again")
+
+    held_config.set()
+
+    wait_live(page)
+    by(page, "files").set_input_files(text_file("new.txt", "new"))
+    expect_text(by(page, "received").locator("li"), "new.txt:3")
+    assert registered == ["new.txt"]
 
 
 def test_the_drop_zone_uploads_what_is_dropped(probe):

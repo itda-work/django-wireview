@@ -1,0 +1,15 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>file probe</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    <h1 data-testid="page">other</h1>
+    <nav>
+      <a href="{% url 'fileprobe:index' %}" data-testid="to-probe">probe</a>
+    </nav>
+  </body>
+</html>

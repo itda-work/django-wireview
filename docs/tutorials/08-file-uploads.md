@@ -316,6 +316,9 @@ def is_safe_filename(self, name: str) -> bool:
 | 취소 뒤 도착한 청크 | 410. 청크를 쓰는 도중에 취소가 나도 파일을 남기지 않는다 |
 | leave·disconnect 뒤 도착한 청크 | 410. 마커는 그 청크를 쓰는 워커가 다른 프로세스여도 보인다 |
 
+브라우저도 같은 때 그 컴포넌트의 업로드 상태(기다리는 파일, 진행 중인 요청, 미리보기)를 버린다.
+상세는 [chunked-uploads.md의 「브라우저 쪽 수명」](../features/chunked-uploads.md#브라우저-쪽-수명).
+
 경로와 토큰 양쪽에 소유자가 들어가므로 **한 연결의 leave가 다른 연결의 파일을 건드릴 수 없다.**
 A에서 받은 토큰을 B의 URL로 보내면 서명은 검증되지만 소유자가 URL과 달라 403이다.
 
@@ -387,7 +390,7 @@ async def cancel_file(self, ref: str):
 |------|---------|
 | `{% upload_input "필드" class="…" %}` | `<input type="file">`. `accept`와 `multiple`은 `allow_upload()` 설정에서 온다 |
 | `<div {% upload_drop_zone "필드" %}>` | 파일을 떨어뜨릴 영역 |
-| `<button type="button" {% upload_button "필드" %}>` | 누르면 파일 선택 창이 열리는 요소 |
+| `<button type="button" {% upload_button "필드" %}>` | 누르면 파일 선택 창이 열리는 요소. 페이지가 막 live가 되어 업로드 설정이 아직 없을 때는 `accept` 필터 없이 한 파일만 고르는 창이 열린다([chunked-uploads.md](../features/chunked-uploads.md#브라우저-쪽-수명)) |
 | `{% upload_preview entry class="…" %}` | 고른 이미지의 미리보기 `<img>` |
 
 `{% upload_drop_zone "필드" %}`를 단 요소에 파일을 떨어뜨리면 그 필드로 업로드된다. 파일을 끌고

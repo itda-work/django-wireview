@@ -3,6 +3,7 @@
 <div {% tag_header %}>
   {% upload_input "files" data_testid="files" %}
   <div data-testid="drop" {% upload_drop_zone "files" %}>drop here</div>
+  <button type="button" data-testid="pick" {% upload_button "files" %}>pick</button>
   <ul data-testid="received">
     {% for item in this.received %}<li>{{ item }}</li>{% endfor %}
   </ul>

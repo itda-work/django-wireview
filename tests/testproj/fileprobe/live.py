@@ -1,8 +1,10 @@
 """A component that uploads every way the library offers, in a real browser.
 
 tests/test_uploads_e2e.py drives it: the file input one file after another past
-``max_entries=1``, the drop zone, the image preview, and an external upload
-whose "presigned URL" is a view of this fixture (``views.put_target``).
+``max_entries=1``, the drop zone, the upload button, the image preview, and an
+external upload whose "presigned URL" is a view of this fixture
+(``views.put_target``). The page links to itself and to a page without the
+component, so a test can end the instance while its uploads are in the air.
 """
 
 from django.urls import reverse

@@ -8,6 +8,7 @@ import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
 import { readReconnectSettings, reconnectOptions } from "./reconnect.mjs";
 import { NAVIGATED_EVENT, NavigationLog, carriedAcross } from "./navigation.mjs";
+import { UploadManagers } from "./uploads.mjs";
 import boost from "./wireview-boost";
 
 /**
@@ -168,6 +169,9 @@ class ServerConnection {
       }
 
       this.components = {};
+      // The instances the uploads belonged to ended with the connection (#137).
+      // A file chosen while offline waits for the next instance's config.
+      uploadManagers.disposeAll();
       document.querySelectorAll("[wireview-component]").forEach((el) => {
         const element = /** @type {HTMLElement} */ (el);
         element.classList.add("wireview-disconnected");
@@ -245,6 +249,9 @@ class ServerConnection {
       // watching inside the root -- never sees (#107)
       this.components[id].hookManager.destroy();
       delete this.components[id];
+      // Its files, requests and previews too: a config it was still owed must
+      // not register them later (#137)
+      uploadManagers.dispose(id);
       this.sendLeave(id);
     }
   }
@@ -269,7 +276,9 @@ class ServerConnection {
         // child must find its component whether or not the parent has patched
         // the DOM yet.
         const changedChildren = [];
+        uploadManagers.rendered(id);
         for (const [childId, childDiff] of Object.entries(children || {})) {
+          uploadManagers.rendered(childId);
           let child = this.components[childId];
           if (!child) {
             child = new WireviewComponent(childId);
@@ -345,6 +354,7 @@ class ServerConnection {
           // A join that failed is not retried: it would fail again. The page
           // keeps what the server rendered, and the next connection tries.
           delete this.components[id];
+          uploadManagers.dispose(id);
           element.classList.add("wireview-error");
         }
         element?.dispatchEvent(
@@ -515,13 +525,16 @@ class ServerConnection {
     // "config" creates the upload on this side, so it names its component:
     // searching for a component that already has the upload finds none.
     if (op === "config" && id) {
-      getUploadManager(id).configure(upload, data);
+      // Sent by an instance that has since ended -- it left, or a new join
+      // replaced it -- and dropped: it would bring the manager back, or hand
+      // the old instance's files to the new one (#137)
+      uploadManagers.forConfig(id)?.configure(upload, data);
       return;
     }
 
     // Find the component that owns this upload
-    for (const [componentId, component] of Object.entries(this.components)) {
-      const manager = uploadManagers[componentId];
+    for (const componentId of Object.keys(this.components)) {
+      const manager = uploadManagers.find(componentId);
       if (manager && manager.configs[upload]) {
         switch (op) {
           case "config":
@@ -890,6 +903,13 @@ class WireviewComponent {
     // Viewport observer for infinite scroll
     /** @type {ViewportObserver} */
     this.viewportObserver = new ViewportObserver(this);
+
+    /**
+     * Whether this component has sent a join on this connection. A reconnect
+     * makes new components, so it is per connection.
+     * @type {boolean}
+     */
+    this.hasJoined = false;
   }
 
   /**
@@ -986,7 +1006,7 @@ class WireviewComponent {
         this.viewportObserver.updated();
 
         // Update upload previews (populate src for new preview elements)
-        const uploadManager = uploadManagers[this.id];
+        const uploadManager = uploadManagers.find(this.id);
         if (uploadManager) {
           uploadManager.updatePreviews();
         }
@@ -1068,6 +1088,15 @@ class WireviewComponent {
    * @param {HTMLElement} element
    */
   sendJoin(element) {
+    // A second join on this connection replaces the instance: new DOM from a
+    // boosted navigation, or the rollback after a crash. The server retires the
+    // old one with its LiveComponents and their uploads, and so does the page:
+    // a file chosen for the old instance is not the new one's (#137).
+    if (this.hasJoined) {
+      uploadManagers.dispose(this.id);
+      element.querySelectorAll("[wireview-live]").forEach((live) => uploadManagers.dispose(live.id));
+    }
+    this.hasJoined = true;
     // A join that failed before is tried again on a new connection
     element.classList.remove("wireview-error");
     /** @type {Object<string, [string, string]>} */
@@ -1803,8 +1832,8 @@ class ViewportObserver {
  * @property {AbortController|null} controller - For cancellation
  */
 
-/** @type {Object<string, UploadManager>} */
-const uploadManagers = {};
+/** @type {UploadManagers<UploadManager>} */
+const uploadManagers = new UploadManagers((id) => new UploadManager(id));
 
 /**
  * Manages file uploads for a component.
@@ -1824,6 +1853,32 @@ class UploadManager {
      * @type {Object<string, File[]>}
      */
     this.waiting = {};
+    /**
+     * The preview blob URLs this manager made. Kept here as well as on the
+     * img: the img may have left the page by the time the manager ends.
+     * @type {Set<string>}
+     */
+    this.previewUrls = new Set();
+  }
+
+  /**
+   * Ends this manager with its component's instance (uploads.mjs): the files
+   * still waiting for a config, the requests in flight and the preview URLs.
+   * Nothing is sent to the server, which ends the instance's uploads itself.
+   */
+  dispose() {
+    this.waiting = {};
+    for (const entries of Object.values(this.entries)) {
+      for (const entry of Object.values(entries)) {
+        entry.status = "cancelled";
+        entry.controller?.abort();
+      }
+    }
+    this.entries = {};
+    this.configs = {};
+    this.previewUrls.forEach((url) => URL.revokeObjectURL(url));
+    this.previewUrls.clear();
+    debugLog("upload", `Disposed uploads of ${this.componentId}`);
   }
 
   /**
@@ -1932,6 +1987,7 @@ class UploadManager {
           img.src = url;
           // Store URL for cleanup
           img._blobUrl = url;
+          this.previewUrls.add(url);
           debugLog("upload", `Set preview: ${uploadName}/${ref}`);
         }
       }
@@ -1953,6 +2009,7 @@ class UploadManager {
     previewElements.forEach((img) => {
       if (img._blobUrl) {
         URL.revokeObjectURL(img._blobUrl);
+        this.previewUrls.delete(img._blobUrl);
         delete img._blobUrl;
       }
     });
@@ -2091,6 +2148,8 @@ class UploadManager {
         }
 
         const result = await response.json();
+        // The component's instance ended while the chunk was on its way
+        if (entry.status === "cancelled") break;
         entry.progress = result.progress;
 
         // Update progress in UI
@@ -2330,10 +2389,7 @@ class UploadManager {
  * @returns {UploadManager}
  */
 function getUploadManager(componentId) {
-  if (!uploadManagers[componentId]) {
-    uploadManagers[componentId] = new UploadManager(componentId);
-  }
-  return uploadManagers[componentId];
+  return uploadManagers.get(componentId);
 }
 
 // Initialize drag-and-drop support
@@ -3278,20 +3334,25 @@ window.wireview = {
     const manager = this.getUploadManager(element);
     if (!manager) return;
 
+    // The picker opens now, inside the click: a browser opens one only while
+    // the user's activation lasts, so waiting for a config that has not arrived
+    // yet would open nothing. Without the config there is no accept filter and
+    // one file at a time; what is chosen waits for the config like any file
+    // (#137), and is checked against it then.
     const config = manager.configs[uploadName];
-    if (!config) {
-      console.warn(`[wireview] Unknown upload: ${uploadName}`);
-      return;
-    }
-
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = config.accept.join(",");
-    input.multiple = config.max_entries > 1;
+    if (config) {
+      input.accept = config.accept.join(",");
+      input.multiple = config.max_entries > 1;
+    }
 
     input.onchange = () => {
-      if (input.files?.length) {
-        manager.addFiles(uploadName, input.files);
+      // The manager at the time of the choice: the one the click saw may have
+      // ended with its instance while the picker was open. A button that left
+      // the page has no instance to give the files to.
+      if (input.files?.length && element.isConnected) {
+        this.getUploadManager(element)?.addFiles(uploadName, input.files);
       }
     };
 

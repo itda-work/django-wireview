@@ -6,5 +6,12 @@
     <title>file probe</title>
     {% wireview_header %}
   </head>
-  <body>{% component 'FileProbe' id="probe" %}</body>
+  <body>
+    <h1 data-testid="page">{{ request.GET.visit|default:"probe" }}</h1>
+    <nav>
+      <a href="{% url 'fileprobe:other' %}" data-testid="to-other">other</a>
+      <a href="{% url 'fileprobe:index' %}?visit=again" data-testid="again">again</a>
+    </nav>
+    {% component 'FileProbe' id="probe" %}
+  </body>
 </html>

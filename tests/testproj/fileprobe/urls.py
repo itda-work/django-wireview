@@ -7,5 +7,6 @@ app_name = "fileprobe"
 
 urlpatterns = [
     path("", lambda request: render(request, "fileprobe/page.html"), name="index"),
+    path("other/", lambda request: render(request, "fileprobe/other.html"), name="other"),
     path("put/<str:ref>/", views.put_target, name="put"),
 ]

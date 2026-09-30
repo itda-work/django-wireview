@@ -84,9 +84,18 @@ The django-reactor era changelog (2.x) is preserved in
   An upload's config reaches the browser one channel-layer trip after the render that makes the
   page live, and a file picked in between was refused as an unknown upload (a console error, no
   upload, nothing on the page). The client now holds it and registers it when the config
-  arrives. On a broker with a few milliseconds of latency -- CI's NATS -- that was enough to fail
-  every browser upload test. `allow_upload` also keeps a reference to the task that sends the
-  config, which the event loop alone does not (#137).
+  arrives, and the upload button opens the file picker before the config too (without an
+  `accept` filter, one file) instead of doing nothing. Delaying every config by 500 ms fails the
+  same five browser upload tests that failed on CI's NATS lane; that the broker's latency was the
+  delay there is the likely cause, not a confirmed one. `allow_upload` also keeps a reference to
+  the task that sends the config, which the event loop alone does not (#137).
+
+- What the browser keeps for a component's uploads -- held files, entries and their requests,
+  preview blob URLs -- now ends with the component's server instance: when it leaves the page,
+  its join fails, the connection drops, or a new join replaces it under the same id. A config
+  sent before the instance ended is ignored when it arrives after. Before, the upload state
+  outlived the component, and a file held for one instance could be registered by a late config
+  or with the next instance under the same id (#137).
 
 - CI: the Python x Django grid tested Django 6.0 in every lane. Each job installed its Django
   over the lock's and then ran the tests through a syncing `uv run`, which put 6.0 back before
