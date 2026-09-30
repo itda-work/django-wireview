@@ -40,7 +40,8 @@ The django-reactor era changelog (2.x) is preserved in
   not do what they say -- none at all (a reconnect loop while the server is down), a first wait
   (`RECONNECT_MIN_DELAY_MS + RECONNECT_JITTER_MS`) above `RECONNECT_MAX_DELAY_MS`, which the cap
   cuts so the pages the jitter spread reconnect together again, and a wait past the 2**31 - 1 ms a
-  browser timer holds. A test runs the check and `reconnect.mjs` on the same rendered values (#134).
+  browser timer holds. A wait of none at all is named even beside a string, when the numbers
+  alone make it 0. A test runs the check and `reconnect.mjs` on the same rendered values (#134, #151).
 
 - A starter template for `django-admin startproject --template`, shipped in the package at
   `wireview/project_template/`: daphne above staticfiles, an in-memory channel layer, an `asgi.py`

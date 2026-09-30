@@ -280,7 +280,8 @@ def check_reconnect_settings(app_configs, **kwargs) -> list[CheckMessage]:
     JavaScript's ``Number()`` to tell which.
 
     Then the waits the client will use. None at all is the tight loop the
-    fallback was to prevent; a first wait that can exceed the cap is cut to the
+    fallback was to prevent, and is judged even beside a string when the numbers
+    alone make it so; a first wait that can exceed the cap is cut to the
     cap, so the jitter that was to spread the pages a deploy disconnects puts
     them back together at ``RECONNECT_MAX_DELAY_MS``; and a wait past what a
     browser timer holds does not wait at all.
@@ -294,7 +295,7 @@ def check_reconnect_settings(app_configs, **kwargs) -> list[CheckMessage]:
         if value is not None and not isinstance(value, (int, float)):
             messages.append(
                 Warning(
-                    f"WIREVIEW[{key!r}] = {_shown(value)} is a {type(value).__name__}, not a number.",
+                    f"WIREVIEW[{key!r}] = {_shown(value)} is a {type(value).__name__}, not an int or a float.",
                     hint=(
                         f"Set it to an int or a float of at least {floor}. The client reads the value "
                         'with JavaScript\'s Number(), which takes "1000" but not "1,000" or "30s".'
@@ -316,25 +317,32 @@ def check_reconnect_settings(app_configs, **kwargs) -> list[CheckMessage]:
                 )
             )
         used[key] = number
-    if len(used) < len(RECONNECT_FLOORS):
-        # What the client makes of a string is not known here, so neither are its waits.
-        return messages
 
-    least = used["RECONNECT_MIN_DELAY_MS"]
-    most = least + used["RECONNECT_JITTER_MS"]
-    cap = used["RECONNECT_MAX_DELAY_MS"]
-    grows = used["RECONNECT_GROW_FACTOR"] > 1
+    # A wait of 0 needs only one side: no first wait, or no cap, and the factor
+    # cannot grow either. So it is judged even when a string hides the rest.
+    least = used.get("RECONNECT_MIN_DELAY_MS")
+    jitter = used.get("RECONNECT_JITTER_MS")
+    most = None if least is None or jitter is None else least + jitter
+    cap = used.get("RECONNECT_MAX_DELAY_MS")
     if most == 0 or cap == 0:
+        waits = [
+            f"RECONNECT_MIN_DELAY_MS + RECONNECT_JITTER_MS = {most:g}" if most is not None else None,
+            f"RECONNECT_MAX_DELAY_MS = {cap:g}" if cap is not None else None,
+        ]
         messages.append(
             Warning(
-                f"Every reconnect waits 0 ms (RECONNECT_MIN_DELAY_MS + RECONNECT_JITTER_MS = {most:g}, "
-                f"RECONNECT_MAX_DELAY_MS = {cap:g}), so while the server is down each page retries "
-                "in a tight loop.",
+                f"Every reconnect waits 0 ms ({', '.join(w for w in waits if w)}), so while the server is "
+                "down each page retries in a tight loop.",
                 hint="Give RECONNECT_MAX_DELAY_MS and RECONNECT_MIN_DELAY_MS + RECONNECT_JITTER_MS a value above 0.",
                 id="wireview.W016",
             )
         )
         return messages
+    if least is None or most is None or cap is None or len(used) < len(RECONNECT_FLOORS):
+        # What the client makes of a string is not known here, so neither are the other waits.
+        return messages
+
+    grows = used["RECONNECT_GROW_FACTOR"] > 1
     if most > cap:
         if least > cap:
             effect = (

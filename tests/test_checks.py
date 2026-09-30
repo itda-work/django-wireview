@@ -12,6 +12,8 @@ import shutil
 import subprocess
 import sys
 import warnings
+from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -457,8 +459,49 @@ class TestReconnectSettingsCheck:
         (message,) = check_reconnect_settings(None)
 
         assert message.id == "wireview.W016"
-        assert "RECONNECT_MAX_DELAY_MS" in message.msg and "not a number" in message.msg
+        assert "RECONNECT_MAX_DELAY_MS" in message.msg and "not an int or a float" in message.msg
         assert "default" not in message.msg
+
+    @pytest.mark.parametrize("value", [Decimal("1000"), Fraction(1000)])
+    def test_another_numeric_type_is_not_called_not_a_number(self, monkeypatch, value):
+        """A Decimal is a number; what the check cannot vouch for is a type other than int and float."""
+        set_wireview(monkeypatch, RECONNECT_MIN_DELAY_MS=value)
+        (message,) = check_reconnect_settings(None)
+
+        assert f"is a {type(value).__name__}, not an int or a float" in message.msg
+
+    @pytest.mark.parametrize(
+        ("settings", "shown"),
+        [
+            (
+                {"RECONNECT_MIN_DELAY_MS": 0, "RECONNECT_JITTER_MS": 0, "RECONNECT_MAX_DELAY_MS": "30000"},
+                "(RECONNECT_MIN_DELAY_MS + RECONNECT_JITTER_MS = 0)",
+            ),
+            (
+                {"RECONNECT_MIN_DELAY_MS": 0, "RECONNECT_JITTER_MS": 0, "RECONNECT_GROW_FACTOR": "2"},
+                "(RECONNECT_MIN_DELAY_MS + RECONNECT_JITTER_MS = 0, RECONNECT_MAX_DELAY_MS = 10000)",
+            ),
+            (
+                {"RECONNECT_JITTER_MS": "4000", "RECONNECT_MAX_DELAY_MS": 0},
+                "(RECONNECT_MAX_DELAY_MS = 0)",
+            ),
+        ],
+    )
+    def test_a_wait_of_nothing_is_flagged_beside_a_string(self, monkeypatch, settings, shown):
+        """A string hides what the client waits, except where one side already makes every wait 0."""
+        set_wireview(monkeypatch, **settings)
+        messages = check_reconnect_settings(None)
+
+        assert [m.id for m in messages] == ["wireview.W016", "wireview.W016"]
+        assert "not an int or a float" in messages[0].msg
+        assert "tight loop" in messages[1].msg and shown in messages[1].msg
+
+    def test_a_wait_the_string_could_make_nonzero_is_not_flagged(self, monkeypatch):
+        """``RECONNECT_JITTER_MS="4000"`` may be read as 4000, so a 0 minimum says nothing yet."""
+        set_wireview(monkeypatch, RECONNECT_MIN_DELAY_MS=0, RECONNECT_JITTER_MS="4000")
+        (message,) = check_reconnect_settings(None)
+
+        assert "not an int or a float" in message.msg
 
     def test_the_check_and_the_client_agree(self):
         """For numbers, None and bools the check and the client agree both ways.
