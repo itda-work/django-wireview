@@ -61,6 +61,10 @@ The django-reactor era changelog (2.x) is preserved in
   fails on async code that evaluates a QuerySet synchronously (`list(qs)`, `reversed(qs)`,
   `[x for x in qs]`, `for x in qs:`) or passes one to `stream_insert()`. Handing a QuerySet to
   `stream()` as is stays the documented pattern (#121).
+  It also fails on async code that reads a synchronous property that runs a query -- through
+  `list()`, `len()`, a loop, an index, `.get()`, `.count()` and the like, directly or through
+  another such property -- or that evaluates a property returning a QuerySet synchronously. A
+  property that returns a QuerySet as is passes (#145).
 
 - A release tag no longer goes to PyPI untested. `release.yml` calls the whole `ci.yml` on the
   tagged commit -- the Python x Django matrix, the newest-dependencies run, E2E on NATS, lint,
