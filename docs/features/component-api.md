@@ -29,7 +29,7 @@ sync로 쓰면 실행되지 않고 `manage.py check`가 `wireview.W002`로 알�
 | `joined()` | 소켓에 연결되어 첫 렌더를 보내기 전 |
 | `leaving()` | 컴포넌트가 떠날 때 (소켓이 닫힘, 페이지 이동, 부모가 뺌) |
 | `params_changed(params, uri)` | URL 쿼리가 바뀌었을 때 |
-| `mutation(channel, action, instance)` | 구독한 모델이 바뀌었을 때 (`AUTO_BROADCAST`) |
+| `mutation(channel, action, instance)` | 구독한 모델이 바뀌었을 때 (`AUTO_BROADCAST`). `instance`는 알림에 실려 온 값에서 복원한 것이다 — DB에서 다시 읽지 않고, 관계는 id만 있다 |
 | `notification(channel, **kwargs)` | 구독한 채널로 브로드캐스트가 왔을 때 |
 | `handle_async(name, result)` | `start_async()`가 끝났을 때. `result`는 끝난 `AsyncResult`(`ok`/`failed`) ([async-operations](./async-operations.md)) |
 | `handle_hook_event(hook_id, event, payload)` | 클라이언트 훅이 `pushEvent`로 보냈을 때 ([hooks](./hooks.md)) |
