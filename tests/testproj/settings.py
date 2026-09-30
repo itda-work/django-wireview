@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/2.2/ref/settings/
 """
 
 import os
+import tempfile
 
 from django.core.exceptions import ImproperlyConfigured
 
@@ -164,7 +165,12 @@ DATABASES = {
             "timeout": 20,
         },
         "TEST": {
-            "NAME": os.path.join(BASE_DIR, "db_test.sqlite3"),
+            # One file per test process. A fixed name let two runs in the same checkout
+            # create, flush and drop each other's database, and the result read as a
+            # flaky suite: "readonly database", "no such table", a different count each
+            # time (#125). A file rather than SQLite's memory database because the E2E
+            # server answers from its own thread and has to see the same data.
+            "NAME": os.path.join(tempfile.gettempdir(), f"wireview-test-{os.getpid()}.sqlite3"),
         },
     }
 }

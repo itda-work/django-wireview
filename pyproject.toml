@@ -141,7 +141,7 @@ django_settings_module = "tests.testproj.settings"
 
 [tool.pytest.ini_options]
 python_files = "test*.py"
-addopts = "--ff -v --nomigrations --strict-markers"
+addopts = "-v --nomigrations --strict-markers"
 DJANGO_SETTINGS_MODULE = "testproj.settings"
 pythonpath = [".", "tests"]
 markers = [

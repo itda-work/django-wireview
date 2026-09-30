@@ -1,4 +1,4 @@
-.PHONY: all install test test-unit test-e2e test-matrix test-latest test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js
+.PHONY: all install test test-unit test-e2e test-concurrent test-matrix test-latest test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js
 
 # Default target
 all: install build
@@ -23,13 +23,27 @@ playwright-install:
 collectstatic:
 	cd tests && uv run python manage.py collectstatic --noinput
 
-# Run all tests (excluding E2E and slow)
+# Run all tests (excluding E2E and slow). --ff lives on the targets, not in addopts:
+# there it made `pytest -p no:cacheprovider` refuse to start (#125).
 test: collectstatic
-	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests examples -m "not e2e and not slow" -v $(ARGS)
+	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests examples -m "not e2e and not slow" --ff -v $(ARGS)
 
 # Run unit tests only
 test-unit: collectstatic
-	uv run pytest tests examples -m "unit" -v $(ARGS)
+	uv run pytest tests examples -m "unit" --ff -v $(ARGS)
+
+# Two copies of the `make test` suite at once, in this one checkout -- what several agents
+# verifying the same copy do. Each run has its own test database, so both must pass; with a
+# shared one they failed each other with "readonly database" and "no such table" (#125).
+# No cache provider: two runs writing .pytest_cache at once is its own race.
+test-concurrent: collectstatic
+	@set -e; export DJANGO_ALLOW_ASYNC_UNSAFE=1; \
+	uv run pytest tests examples -m "not e2e and not slow" -q --no-header -p no:cacheprovider $(ARGS) > .test-concurrent-1.log 2>&1 & first=$$!; \
+	uv run pytest tests examples -m "not e2e and not slow" -q --no-header -p no:cacheprovider $(ARGS) > .test-concurrent-2.log 2>&1 & second=$$!; \
+	status=0; wait $$first || status=1; wait $$second || status=1; \
+	tail -n 1 .test-concurrent-1.log .test-concurrent-2.log; \
+	if [ $$status -ne 0 ]; then echo "a concurrent run failed; the logs are .test-concurrent-{1,2}.log"; exit 1; fi; \
+	rm -f .test-concurrent-1.log .test-concurrent-2.log
 
 # Run E2E tests with Playwright on the NATS channel layer (the layer this project targets).
 # tests/e2e.sh starts a throwaway nats-server unless one is already running, and stops it
@@ -38,14 +52,14 @@ LAYER ?= nats
 # build-js first: wireview.min.js is gitignored, so after a pull the browser would
 # otherwise run the bundle from before it and fail on whatever the pull added.
 test-e2e: build-js collectstatic playwright-install
-	WIREVIEW_TEST_LAYER=$(LAYER) ./tests/e2e.sh $(ARGS)
+	WIREVIEW_TEST_LAYER=$(LAYER) ./tests/e2e.sh --ff $(ARGS)
 
 # Run all tests including E2E (runs separately to avoid async conflicts)
 test-all: test test-e2e
 
 # Run tests with coverage
 test-cov: collectstatic
-	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests examples -m "not e2e" --cov=wireview --cov-report=term-missing --cov-report=html $(ARGS)
+	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests examples -m "not e2e" --ff --cov=wireview --cov-report=term-missing --cov-report=html $(ARGS)
 
 # =============================================================================
 # Code Quality
@@ -236,6 +250,7 @@ help:
 	@echo "  make test             - Run tests (excluding E2E and slow)"
 	@echo "  make test-unit        - Run unit tests only"
 	@echo "  make test-e2e         - Run E2E tests with Playwright"
+	@echo "  make test-concurrent  - Run the test suite twice at once, as agents sharing a checkout do"
 	@echo "  make test-matrix      - Run tests on every supported Python x Django pair"
 	@echo "  make test-latest      - Run tests on the newest dependencies, ignoring uv.lock"
 	@echo "  make test-all         - Run all tests including E2E"

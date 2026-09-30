@@ -21,6 +21,12 @@ The django-reactor era changelog (2.x) is preserved in
   in the `wireview` log instead of breaking the class. The test suite now runs on pydantic 2.13
   (`uv.lock`), and `make test-latest` and a CI job run it on the newest dependencies a fresh
   install gets (#127).
+- Test harness: two test runs in one checkout no longer break each other. The test database was
+  one fixed file, so concurrent runs created, flushed and dropped it under each other and failed
+  with "readonly database" and "no such table", differently each time; each test process now has
+  its own. `--ff` moved from pytest's `addopts` to the Makefile targets, so
+  `pytest -p no:cacheprovider` starts again, and `make test-concurrent` runs the suite twice at
+  once (#125).
 
 ## [1.0.0rc3] - 2026-09-30
 
