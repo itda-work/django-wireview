@@ -46,19 +46,20 @@ PAYLOAD = ("wireview #83 multi-worker upload\n" * 400).encode()
 CHUNK_SIZE = 4096
 
 
-# Well inside the per-test limit (testproj/time_limit.py), so a worker that is slow
-# to start is reported here, with its log, rather than as a stopped run.
+# For every worker together, and well inside the per-test limit
+# (testproj/time_limit.py): a worker that is slow to start is reported here, with its
+# log, rather than as a stopped run. The workers start at once and share this budget.
 READY_TIMEOUT = 30.0
 
 
-def _start_worker(port: int, log_dir: Path) -> subprocess.Popen:
-    """One uvicorn process, on this interpreter, sharing the configured layer, and ready.
+def _launch_worker(port: int, log_dir: Path) -> tuple[subprocess.Popen, Path]:
+    """One uvicorn process, on this interpreter, sharing the configured layer.
 
     Its output goes to a file rather than to the void: when a chunk comes back
-    500 the traceback is on the worker, not in the test. At ``info`` and
-    unbuffered, because the access log in that file is what says this worker,
-    not another process on its port, answered (``testproj.server_process``).
-    A worker that did not serve is stopped before the error leaves.
+    500 the traceback is on the worker, not in the test. At ``info``, because the
+    access log in that file is what says this worker, not another process on its
+    port, answered (``testproj.server_process``); unbuffered, so what the
+    application prints lands in order with it.
     """
     log = log_dir / f"worker-{port}.log"
     with log.open("wb") as out:
@@ -83,12 +84,21 @@ def _start_worker(port: int, log_dir: Path) -> subprocess.Popen:
                 stderr=subprocess.STDOUT,
             )
         )
+    return proc, log
+
+
+def _start_workers(ports: list[int], log_dir: Path) -> list[subprocess.Popen]:
+    """Launch every worker, then wait for each against one deadline; stop them all if one did not serve."""
+    launched = [_launch_worker(port, log_dir) for port in ports]
+    deadline = time.monotonic() + READY_TIMEOUT
     try:
-        wait_until_serving(port, proc, log, READY_TIMEOUT)
+        for port, (proc, log) in zip(ports, launched):
+            wait_until_serving(port, proc, log, max(deadline - time.monotonic(), 0.0))
     except BaseException:
-        _stop(proc)
+        for proc, _ in launched:
+            _stop(proc)
         raise
-    return proc
+    return [proc for proc, _ in launched]
 
 
 def _stop(proc: subprocess.Popen) -> None:
@@ -112,8 +122,7 @@ def workers(tmp_path_factory):
     ports = [free_port(), free_port()]
     procs: list[subprocess.Popen] = []
     try:
-        for port in ports:
-            procs.append(_start_worker(port, log_dir))
+        procs = _start_workers(ports, log_dir)
         yield ports
     finally:
         for log in log_dir.glob("worker-*.log"):
@@ -225,4 +234,4 @@ def test_a_port_another_server_holds_is_not_taken_for_a_worker(tmp_path):
     pytest.importorskip("uvicorn")
     with held_port() as port:
         with pytest.raises(AssertionError, match="did not serve"):
-            _start_worker(port, tmp_path)
+            _start_workers([port], tmp_path)
