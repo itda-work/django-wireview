@@ -103,6 +103,7 @@ def test_a_failed_async_result_keeps_its_message(marks):
 
 
 @pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
 async def test_a_component_holding_rows_renders():
     # What the search example could not do once it had results
     rows = [await Bookmark.objects.acreate(title=f"t{n}", url=f"https://y/{n}") for n in range(2)]

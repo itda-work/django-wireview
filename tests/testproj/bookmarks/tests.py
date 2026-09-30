@@ -11,7 +11,7 @@ from .models import Bookmark
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_add_bookmark_transitions_state():
     view = await mount(XBookmarkList)
     await view.call("add", title="장고 문서", url="https://docs.djangoproject.com")
@@ -23,7 +23,7 @@ async def test_add_bookmark_transitions_state():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_toggle_read_flips_flag():
     bookmark = await Bookmark.objects.acreate(title="예제", url="https://example.com")
     view = await mount(XBookmarkList)
@@ -39,7 +39,7 @@ async def test_toggle_read_flips_flag():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_filter_unread_excludes_read_items():
     await Bookmark.objects.acreate(title="이미읽음", url="https://example.com/1", is_read=True)
     await Bookmark.objects.acreate(title="아직안읽음", url="https://example.com/2", is_read=False)
@@ -68,7 +68,7 @@ async def test_delete_removes_bookmark():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_mutation_from_other_tab_streams_new_bookmark():
     view = await mount(XBookmarkList)
 

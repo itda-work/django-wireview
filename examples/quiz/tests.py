@@ -19,7 +19,7 @@ async def _quiz_with_one_question():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_the_quiz_starts_in_the_intro_state():
     quiz, _, _ = await _quiz_with_one_question()
     view = await mount(XQuiz, quiz=quiz)
@@ -33,7 +33,7 @@ async def test_the_quiz_starts_in_the_intro_state():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_a_correct_answer_scores_and_a_wrong_one_does_not():
     quiz, right, wrong = await _quiz_with_one_question()
 
@@ -50,7 +50,7 @@ async def test_a_correct_answer_scores_and_a_wrong_one_does_not():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_finishing_the_last_question_records_a_submission():
     quiz, right, _ = await _quiz_with_one_question()
     view = await mount(XQuiz, quiz=quiz, session_key="s1", username="철수")
@@ -68,7 +68,7 @@ async def test_finishing_the_last_question_records_a_submission():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_restart_returns_to_the_intro():
     quiz, right, _ = await _quiz_with_one_question()
     view = await mount(XQuiz, quiz=quiz)
@@ -84,7 +84,7 @@ async def test_restart_returns_to_the_intro():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_an_answer_scores_once_and_only_with_this_questions_choices():
     # choice_id comes from the browser
     quiz, right, _ = await _quiz_with_one_question()

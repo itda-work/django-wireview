@@ -11,7 +11,7 @@ from .models import Product, Rating
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_rating_saves_once_per_session():
     product = await Product.objects.acreate(name="키보드")
     view = await mount(XStarRating, product=product, session_key="s1")
@@ -25,7 +25,7 @@ async def test_rating_saves_once_per_session():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_a_score_outside_one_to_five_is_ignored():
     product = await Product.objects.acreate(name="마우스")
     view = await mount(XStarRating, product=product, session_key="s2")
@@ -38,7 +38,7 @@ async def test_a_score_outside_one_to_five_is_ignored():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_hover_is_preview_only():
     product = await Product.objects.acreate(name="모니터")
     view = await mount(XStarRating, product=product, session_key="s3")
@@ -53,7 +53,7 @@ async def test_hover_is_preview_only():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_a_readonly_widget_does_not_save():
     product = await Product.objects.acreate(name="스피커")
     view = await mount(XStarRating, product=product, session_key="s4", readonly=True)

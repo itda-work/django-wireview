@@ -50,7 +50,7 @@ async def test_changing_a_tab_writes_it_back_to_the_url():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_a_stat_card_starts_loading_and_does_not_block_the_mount():
     await Stat.objects.acreate(name="revenue", label="매출", value=100)
     view = await mount(XStatCard, stat_name="revenue")
@@ -75,7 +75,7 @@ async def test_a_loaded_stat_card_renders():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_the_activity_feed_subscribes_to_its_model():
     assert "dashboard.activity" in XActivityFeed._meta.subscriptions
 

@@ -23,8 +23,8 @@ import typing as t
 import pytest
 
 # Fails the run on a sync iterator served under the ASGI handler (#129 follow-up),
-# and stops it when a test hangs (#148).
-pytest_plugins = ["testproj.warning_guard", "testproj.time_limit"]
+# stops it when a test hangs (#148), and fails a test that leaves rows behind (#133).
+pytest_plugins = ["testproj.warning_guard", "testproj.time_limit", "testproj.row_guard"]
 
 FLAG = "DJANGO_ALLOW_ASYNC_UNSAFE"
 

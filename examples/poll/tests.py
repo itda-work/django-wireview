@@ -11,7 +11,7 @@ from .models import Option, Poll
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_a_vote_is_counted_once():
     poll = await Poll.objects.acreate(question="점심?")
     option = await Option.objects.acreate(poll=poll, text="국밥")
@@ -26,7 +26,7 @@ async def test_a_vote_is_counted_once():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_voting_twice_changes_nothing():
     poll = await Poll.objects.acreate(question="저녁?")
     option = await Option.objects.acreate(poll=poll, text="라면")
@@ -41,7 +41,7 @@ async def test_voting_twice_changes_nothing():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_the_choice_is_remembered_in_the_url():
     poll = await Poll.objects.acreate(question="야식?")
     option = await Option.objects.acreate(poll=poll, text="치킨")
@@ -54,7 +54,7 @@ async def test_the_choice_is_remembered_in_the_url():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_an_option_of_another_poll_is_not_counted():
     # option_id comes from the browser
     poll = await Poll.objects.acreate(question="점심?")

@@ -239,6 +239,12 @@ The django-reactor era changelog (2.x) is preserved in
   the reset test's 50 ms margin could be outrun by a slow runner. Browser tests of debounce and throttle
   keep their sleeps (#143).
 
+- Test harness: a test that leaves committed rows behind fails at its teardown
+  (`tests/testproj/row_guard.py`). Under a plain `django_db` mark, an async test's ORM writes
+  commit on a worker thread's connection, outside the transaction that is rolled back, and stay
+  for the tests after it. 23 tests did -- the poll, quiz, rating, search and dashboard examples,
+  the bookmarks baseline and one model-state test; they are now `transaction=True` (#133).
+
 - Test harness: a test that hangs stops the run after 60 seconds (`test_time_limit` in
   `pyproject.toml`) and prints every thread's stack, instead of holding it until the CI job's
   limit. pytest-timeout and pytest's `faulthandler_timeout` were not enough: both stop their

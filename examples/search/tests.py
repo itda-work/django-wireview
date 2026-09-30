@@ -28,7 +28,7 @@ async def test_a_short_query_searches_nothing():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_a_query_matches_title_or_author():
     await _seed_books()
     view = await mount(XLiveSearch)
@@ -43,7 +43,7 @@ async def test_a_query_matches_title_or_author():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_arrow_keys_wrap_around_the_results():
     await _seed_books()
     view = await mount(XLiveSearch)
@@ -60,7 +60,7 @@ async def test_arrow_keys_wrap_around_the_results():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 async def test_selecting_a_result_closes_the_dropdown():
     await _seed_books()
     view = await mount(XLiveSearch)
