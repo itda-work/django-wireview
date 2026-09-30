@@ -152,7 +152,7 @@ def test_ci_runs_the_broker_releases_the_table_names():
             for service in job.get("services", {}).values()
             if service["image"].partition(":")[0] == name
         }
-        tags |= {tag for job in CI_JOBS.values() for tag in re.findall(rf"(?<![\w-]){name}:(\S+)", _runs(job))}
+        tags |= {tag for job in CI_JOBS.values() for tag in re.findall(rf"(?<![\w/:=-]){name}:(?!//)(\S+)", _runs(job))}
 
         assert tags, f"ci.yml never runs {name}"
         assert {tag.partition("-")[0] for tag in tags} == {release}, (

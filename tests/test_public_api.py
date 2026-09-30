@@ -217,17 +217,22 @@ def test_importing_the_library_warns_nothing():
     the lane that installs those releases runs with the warnings plugin off (#132).
 
     Every UserWarning is an error, whoever raises it; a DeprecationWarning is one when it
-    points at wireview. The deprecated module warns on purpose and is left out.
+    points at wireview or any of its modules. The deprecated module warns on purpose and is
+    left out.
     """
     script = (
-        "import importlib, pkgutil, django, wireview\n"
+        "import importlib, pkgutil, warnings\n"
+        "warnings.simplefilter('error', UserWarning)\n"
+        # A -W module field matches the top-level name only; this matches every wireview module
+        "warnings.filterwarnings('error', category=DeprecationWarning, module=r'wireview(\\.|$)')\n"
+        "import django, wireview\n"
         "django.setup()\n"
         "for module in pkgutil.walk_packages(wireview.__path__, 'wireview.'):\n"
         "    if module.name != 'wireview.component':\n"
         "        importlib.import_module(module.name)\n"
     )
     result = subprocess.run(
-        [sys.executable, "-W", "error::UserWarning", "-W", "error::DeprecationWarning:wireview", "-c", script],
+        [sys.executable, "-c", script],
         capture_output=True,
         text=True,
         check=False,

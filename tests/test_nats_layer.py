@@ -26,7 +26,7 @@ from django.test import override_settings
 
 def _missing(reason: str) -> t.NoReturn:
     """Skip on a developer's machine; fail where CI runs (GitHub Actions sets ``CI``)."""
-    if os.environ.get("CI"):
+    if os.environ.get("CI", "").lower() not in ("", "0", "false"):
         pytest.fail(f"{reason}, and CI must run these tests", pytrace=False)
     pytest.skip(reason, allow_module_level=True)
 
