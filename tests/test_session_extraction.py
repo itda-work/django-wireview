@@ -22,7 +22,7 @@ from wireview.core.session import SessionView
 from wireview.core.state import sign_state
 from wireview.session import WireviewSession
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio, pytest.mark.django_db]
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 TEMPLATES = {"sess/count.html": "{% load wireview %}<p {% tag_header %}>count={{ this.count }}</p>"}
 
@@ -89,6 +89,7 @@ def signed(count: int = 0) -> str:
     return sign_state(SessCounter(id="c", count=count, user=AnonymousUser(), wire=WireviewMeta(params={})))
 
 
+@pytest.mark.asyncio
 async def test_a_session_joins_handles_an_event_and_renders_with_only_an_outbound():
     session, outbound = await started()
 
@@ -107,6 +108,7 @@ async def test_a_session_joins_handles_an_event_and_renders_with_only_an_outboun
     assert "5" in outbound.renders()[-1]["diff"].values(), "a partial diff with the new count"
 
 
+@pytest.mark.asyncio
 async def test_a_message_no_client_sends_is_dropped_not_raised():
     session, outbound = await started()
 
@@ -116,6 +118,7 @@ async def test_a_message_no_client_sends_is_dropped_not_raised():
     assert outbound.commands == []
 
 
+@pytest.mark.asyncio
 async def test_stop_lets_every_component_leave_and_every_topic_go():
     session, outbound = await started()
     await session.handle_message({"command": "join", "payload": {"name": "SessCounter", "state": signed()}})
@@ -129,6 +132,7 @@ async def test_stop_lets_every_component_leave_and_every_topic_go():
     assert outbound.topics == set()
 
 
+@pytest.mark.asyncio
 async def test_the_session_closes_through_its_outbound():
     session, outbound = await started()
 
