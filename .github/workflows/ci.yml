@@ -48,6 +48,17 @@ jobs:
           npm ci
           npm run build
 
+      # tests/test_nats_layer.py starts this binary itself, and fails without it where CI is
+      # set: channels' floor rests on those tests (#132). Lifted from the image test-e2e runs
+      # as a service, the release docs/COMPATIBILITY.md names; the binary is static.
+      - name: Install nats-server
+        run: |
+          docker create --name nats-server nats:2.14-alpine
+          docker cp nats-server:/usr/local/bin/nats-server "$RUNNER_TEMP/nats-server"
+          docker rm nats-server
+          "$RUNNER_TEMP/nats-server" --version
+          echo "NATS_SERVER=$RUNNER_TEMP/nats-server" >> "$GITHUB_ENV"
+
       - name: Run tests
         run: make ci-test DJANGO=${{ matrix.django-version }}
 
@@ -77,6 +88,17 @@ jobs:
         run: |
           npm ci
           npm run build
+
+      # tests/test_nats_layer.py starts this binary itself, and fails without it where CI is
+      # set: channels' floor rests on those tests (#132). Lifted from the image test-e2e runs
+      # as a service, the release docs/COMPATIBILITY.md names; the binary is static.
+      - name: Install nats-server
+        run: |
+          docker create --name nats-server nats:2.14-alpine
+          docker cp nats-server:/usr/local/bin/nats-server "$RUNNER_TEMP/nats-server"
+          docker rm nats-server
+          "$RUNNER_TEMP/nats-server" --version
+          echo "NATS_SERVER=$RUNNER_TEMP/nats-server" >> "$GITHUB_ENV"
 
       - name: Run tests on the newest dependencies
         run: make test-latest
@@ -108,12 +130,23 @@ jobs:
           npm ci
           npm run build
 
+      # tests/test_nats_layer.py starts this binary itself, and fails without it where CI is
+      # set: channels' floor rests on those tests (#132). Lifted from the image test-e2e runs
+      # as a service, the release docs/COMPATIBILITY.md names; the binary is static.
+      - name: Install nats-server
+        run: |
+          docker create --name nats-server nats:2.14-alpine
+          docker cp nats-server:/usr/local/bin/nats-server "$RUNNER_TEMP/nats-server"
+          docker rm nats-server
+          "$RUNNER_TEMP/nats-server" --version
+          echo "NATS_SERVER=$RUNNER_TEMP/nats-server" >> "$GITHUB_ENV"
+
       - name: Run tests on the lowest dependencies
         run: make test-lowest
 
   # E2E on every channel layer docs/COMPATIBILITY.md supports across processes (#130).
-  # Both brokers start on every leg; a service cannot follow the matrix, and the one a
-  # leg does not use costs a few seconds.
+  # Both brokers start on every leg, which keeps the job simple; the one a leg does not
+  # use costs a few seconds. The image tags are the broker releases the table names.
   test-e2e:
     runs-on: ubuntu-24.04
     strategy:

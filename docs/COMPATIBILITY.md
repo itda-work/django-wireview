@@ -107,6 +107,10 @@ Django 5.2 LTS·6.0·6.1, Python 3.12·3.13·3.14다.
 - **의존성의 하한도 약속이다.** `pyproject.toml`이 허용하는 가장 오래된 조합(지금은 Django 5.2, channels 4.2.1,
   pydantic 2.7.0)을 `make test-lowest`가 Python 3.12에서 설치해 스위트를 돈다. CI의 `test-lowest` 잡이 같은 것이다.
   하한 조합이 깨지면 하한을 올리고 `CHANGELOG.md`에 적는다(#132). 반대쪽 끝, 새 설치가 받는 최신 해는 `make test-latest`다.
+- **설치되지 않거나 동작하지 않던 하한을 올리는 것은 패치 릴리스다.** 그 하한에 머문 사용자는 이미 동작하는
+  조합을 갖고 있지 않았으므로 깨지는 것이 없다. 동작하던 하한을 올리는 것은 마이너 릴리스다.
+- channels의 하한은 `tests/test_nats_layer.py`가 지킨다. 그 테스트는 nats-server 바이너리가 없으면 로컬에서는
+  건너뛰지만 CI(`CI` 환경 변수)에서는 실패한다. CI의 단위 테스트 잡들은 E2E와 같은 nats 이미지에서 바이너리를 꺼내 쓴다.
 
 ### 채널 레이어
 
@@ -121,10 +125,11 @@ Django 5.2 LTS·6.0·6.1, Python 3.12·3.13·3.14다.
 - **InMemory는 단일 프로세스 전용이다.** 여러 프로세스에 두면 브로드캐스트가 같은 프로세스의 연결에만 닿고 오류는
   나지 않는다. 개발 서버와 단일 프로세스 배포에만 쓴다.
 - **검증한 버전**은 `uv.lock`이 고정한 버전이다. CI의 E2E 잡이 레이어마다 한 번씩 그 버전으로 돈다
-  (`make ci-test-e2e LAYER=nats|redis`, 브로커는 표의 버전을 서비스 컨테이너로 띄운다). 로컬에서는
+  (`make ci-test-e2e LAYER=nats|redis`, 브로커는 표의 릴리스 태그 이미지를 서비스 컨테이너로 띄운다). 로컬에서는
   `make test-e2e`(NATS)와 `make test-e2e LAYER=redis`(`REDIS_URL`의 redis-server)다.
 - **channels-nats는 channels 4.2.1 이상에서만 동작한다.** 자신은 `channels>=4`라고 선언하지만 4.2.1에서 생긴
   `require_valid_channel_name`을 부른다. django-wireview의 하한이 `channels>=4.2.1`인 이유다(#132).
 - 유실을 세는 방법은 [배포 가이드](./DEPLOYMENT.md)의 관측 절이다.
 - `uv.lock`에서 레이어 패키지를 올리면 두 E2E 레인을 돌리고 이 표의 버전을 같이 고친다.
-  `tests/test_supported_versions.py`가 표와 `uv.lock`, 그리고 CI의 E2E 매트릭스가 같은 레이어를 말하는지 본다.
+  `tests/test_supported_versions.py`가 표와 `uv.lock`, CI의 E2E 매트릭스가 같은 레이어를 말하는지, `ci.yml`이 쓰는
+  브로커 이미지 태그가 표의 브로커 릴리스와 같은지 본다.

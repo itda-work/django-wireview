@@ -13,12 +13,13 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from test_packaging import _workflow
 
 pytestmark = pytest.mark.unit
 
 ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-CI = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+CI_JOBS = _workflow("ci.yml")["jobs"]
 
 #: What a reader acts on. docs/design, docs/implementation and docs/legacy are records
 #: of how the library was built, and VISION.md is the plan it started from.
@@ -39,10 +40,10 @@ def _version(text: str) -> tuple[int, ...]:
     return tuple(int(part) for part in text.split("."))
 
 
-def _matrix(key: str) -> list[str]:
-    match = re.search(rf"^\s*{key}: \[(.*)\]\s*$", CI, re.MULTILINE)
-    assert match, f"ci.yml has no {key} matrix"
-    return re.findall(r'"([\d.]+)"', match.group(1))
+def _matrix(job: str, key: str) -> list[str]:
+    matrix = CI_JOBS[job]["strategy"]["matrix"]
+    assert key in matrix, f"ci.yml's {job} job has no {key} matrix"
+    return [str(value) for value in matrix[key]]
 
 
 def _classifiers(framework: str) -> list[str]:
@@ -57,8 +58,8 @@ def _bound(requirement: str) -> str:
     return match.group(1)
 
 
-DJANGO = _matrix("django-version")
-PYTHON = _matrix("python-version")
+DJANGO = _matrix("test", "django-version")
+PYTHON = _matrix("test", "python-version")
 DJANGO_MIN = _bound(next(d for d in PYPROJECT["project"]["dependencies"] if d.startswith("django")))
 PYTHON_MIN = _bound(PYPROJECT["project"]["requires-python"])
 
@@ -110,27 +111,62 @@ def test_the_documents_are_read():
 
 
 #: The channel layers docs/COMPATIBILITY.md supports across processes: its table row's
-#: package and verified version, and the WIREVIEW_TEST_LAYER that runs E2E on it (#130).
-LAYER_ROW = re.compile(r"^\| \w+ \| `(channels-[a-z]+)` \| ([\d.]+) \|", re.MULTILINE)
+#: package, verified version and broker release, and the WIREVIEW_TEST_LAYER that runs
+#: E2E on it (#130).
+LAYER_ROW = re.compile(r"^\| \w+ \| `(channels-[a-z]+)` \| ([\d.]+) \| [^|]*?([\d.]+) \|", re.MULTILINE)
 LAYER_OF_PACKAGE = {"channels-nats": "nats", "channels-redis": "redis"}
+#: The image each layer's broker runs from in ci.yml.
+BROKER_IMAGE = {"channels-nats": "nats", "channels-redis": "redis"}
 
 
-def _layer_table() -> dict[str, str]:
+def _layer_table() -> dict[str, tuple[str, str]]:
     text = (ROOT / "docs" / "COMPATIBILITY.md").read_text(encoding="utf-8")
-    return dict(LAYER_ROW.findall(text))
+    return {package: (version, broker) for package, version, broker in LAYER_ROW.findall(text)}
+
+
+def _runs(job: dict) -> str:
+    return "\n".join(step.get("run", "") for step in job["steps"])
 
 
 def test_the_layer_table_says_the_versions_the_lock_tests():
     """Bumping a layer in uv.lock without rerunning its E2E lane and updating the table fails here."""
     lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
     locked = {package["name"]: package["version"] for package in lock["package"]}
-    table = _layer_table()
+    table = {package: version for package, (version, _) in _layer_table().items()}
 
     assert set(table) == set(LAYER_OF_PACKAGE), table
     assert table == {name: locked[name] for name in table}
 
 
 def test_ci_runs_e2e_on_every_layer_the_table_supports():
-    match = re.search(r"^\s*layer: \[(.*)\]\s*$", CI, re.MULTILINE)
-    assert match, "ci.yml has no E2E layer matrix"
-    assert set(re.findall(r'"(\w+)"', match.group(1))) == {LAYER_OF_PACKAGE[name] for name in _layer_table()}
+    assert set(_matrix("test-e2e", "layer")) == {LAYER_OF_PACKAGE[name] for name in _layer_table()}
+
+
+def test_ci_runs_the_broker_releases_the_table_names():
+    """Every image ci.yml starts a broker from, as a service or to lift nats-server out of, is the table's release."""
+    for package, (_, release) in _layer_table().items():
+        name = BROKER_IMAGE[package]
+        tags = {
+            service["image"].partition(":")[2]
+            for job in CI_JOBS.values()
+            for service in job.get("services", {}).values()
+            if service["image"].partition(":")[0] == name
+        }
+        tags |= {tag for job in CI_JOBS.values() for tag in re.findall(rf"(?<![\w-]){name}:(\S+)", _runs(job))}
+
+        assert tags, f"ci.yml never runs {name}"
+        assert {tag.partition("-")[0] for tag in tags} == {release}, (
+            f"{package}: the table says {release}, ci.yml {tags}"
+        )
+
+
+def test_every_ci_job_that_runs_the_nats_layer_tests_has_nats_server():
+    """tests/test_nats_layer.py fails in CI without the binary, rather than skipping the floor's only check (#132)."""
+    unit = {
+        name
+        for name, job in CI_JOBS.items()
+        if re.search(r"make (ci-test|test-latest|test-lowest)(?![\w-])", _runs(job))
+    }
+
+    assert unit >= {"test", "test-latest", "test-lowest"}, unit
+    assert {name for name in unit if "NATS_SERVER=" not in _runs(CI_JOBS[name])} == set()

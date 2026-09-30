@@ -1,7 +1,7 @@
 import sys
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # StrEnum is available in Python 3.11+, use (str, Enum) for 3.10 compatibility
 if sys.version_info >= (3, 11):
@@ -15,6 +15,9 @@ else:
 
 
 class AutoBroadcast(BaseModel):
+    # pydantic before 2.10 reserves every model_ name and warned about model_pk at import.
+    model_config = ConfigDict(protected_namespaces=())
+
     # model-a
     model: bool = False
     # model-a.1234

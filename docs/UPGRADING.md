@@ -142,6 +142,9 @@ dependencies = ["django-wireview>=1.0.0rc4,<1.1"]
 Django 5.0과 5.1은 Django의 지원이 끝나 지원 범위에서 빠졌다. 지원 범위는 Django가 보안 지원하는 버전과
 Python 3.12 이상이다([호환성 정책](./COMPATIBILITY.md#지원-범위)).
 
+함께 `channels>=4.2.1`, `pydantic>=2.7,!=2.9.0`이 필요하다. 1.0 rc까지 선언했던 `channels>=4`, `pydantic>=2.0`의
+옛 버전들은 설치되지 않거나 import에서 실패했다(#132). 둘 중 하나를 옛 버전에 고정했다면 풀어 준다.
+
 ### 2. import는 `wireview`에서
 
 공개 API는 `wireview.__all__`뿐이다. 하위 모듈에서 import하던 이름은 모두 최상위에서 가져온다.

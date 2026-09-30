@@ -211,5 +211,30 @@ def test_the_old_module_warns_at_the_line_that_imports_it(tmp_path):
     assert result.stdout.split() == ["1", "True", "6"]
 
 
+def test_importing_the_library_warns_nothing():
+    """A warning at import is one every user sees on every start. pydantic before 2.10
+    warned that ``AutoBroadcast.model_pk`` sits in its protected ``model_`` namespace, and
+    the lane that installs those releases runs with the warnings plugin off (#132).
+
+    Every UserWarning is an error, whoever raises it; a DeprecationWarning is one when it
+    points at wireview. The deprecated module warns on purpose and is left out.
+    """
+    script = (
+        "import importlib, pkgutil, django, wireview\n"
+        "django.setup()\n"
+        "for module in pkgutil.walk_packages(wireview.__path__, 'wireview.'):\n"
+        "    if module.name != 'wireview.component':\n"
+        "        importlib.import_module(module.name)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-W", "error::UserWarning", "-W", "error::DeprecationWarning:wireview", "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"DJANGO_SETTINGS_MODULE": "testproj.settings", "PYTHONPATH": str(ROOT / "tests")},
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_the_warning_class_is_a_deprecation_warning():
     assert issubclass(WireviewDeprecationWarning, DeprecationWarning)

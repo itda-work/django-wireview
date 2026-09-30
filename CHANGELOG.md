@@ -54,7 +54,9 @@ The django-reactor era changelog (2.x) is preserved in
   `pydantic>=2.7,!=2.9.0` (pydantic 2.0 and 2.0.1 have no wheel for Python 3.12, before 2.7
   `import wireview` fails on `Component`'s field serializer, and 2.9.0 cannot evaluate its `ClassVar`
   annotations). `make test-lowest` and a CI job run the suite on the floors, so the release gate
-  checks them (#132).
+  checks them (#132). The channels floor rests on the NATS layer tests, which now fail in CI instead
+  of skipping when there is no nats-server; the unit test jobs take the binary from the same image
+  as the E2E job's broker.
 
 - `docs/COMPATIBILITY.md` lists the supported channel layers with the versions tested, what each does
   when full, and that InMemory is single-process only. CI's E2E job now runs once per layer, on NATS and
@@ -99,6 +101,10 @@ The django-reactor era changelog (2.x) is preserved in
   1.0.0rc3 wheel fails the smoke job (#122).
 
 ### Fixed
+
+- `import wireview` warned on pydantic 2.7 to 2.9, which reserve every `model_` field name:
+  `Field "model_pk" has conflict with protected namespace "model_"`. `AutoBroadcast` opts out of
+  the namespace, and a test imports every module with warnings as errors (#132).
 
 - Tutorial 13 (quiz) taught handlers that read a synchronous ORM property: `answer()` read
   `self.current_question` and `next_question()` read `len(self.questions)`, so a quiz built from

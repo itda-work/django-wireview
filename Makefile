@@ -203,7 +203,8 @@ test-latest:
 # Only the runtime dependencies go to their floors -- the promise is to users. The dev
 # extras have no lower bounds (lowest-direct on them picked ipython 0.10), so they resolve
 # to the newest release that fits the pinned floors. On Python 3.12, the oldest supported:
-# a floor with no wheel there is a floor nobody can install.
+# a floor with no wheel there is a floor nobody can install. The warnings plugin stays on,
+# as in `make test`: with it off, a warning the floors raise at every import went unseen.
 LOWEST_PYTHON = 3.12
 test-lowest:
 	@set -ef; \
@@ -212,7 +213,7 @@ test-lowest:
 	echo "test-lowest:" $$floors; \
 	run="uv run --no-project --isolated --python $(LOWEST_PYTHON) --with-editable .[dev] $$(printf -- '--with %s ' $$floors)"; \
 	$$run python tests/manage.py collectstatic --noinput; \
-	$$run pytest tests examples -m "not e2e and not slow" -q --no-header -p no:warnings $(ARGS)
+	$$run pytest tests examples -m "not e2e and not slow" -q --no-header $(ARGS)
 
 # CI: Run tests (non-E2E). --no-sync: ci.yml installs one Django over the lock's, and a
 # syncing `uv run` put the lock's back before the first test -- every lane of the grid ran

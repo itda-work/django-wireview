@@ -1,6 +1,8 @@
 """wireview on the NATS channel layer (channels-nats): cross-process broadcasts reach consumers.
 
 Needs the ``channels_nats`` package and a ``nats-server`` binary (NATS_SERVER env, PATH, or ~/go/bin).
+Without either this skips locally but fails in CI: channels' floor rests on these tests (#132), and a
+runner without the binary once skipped them all and passed on a floor that did not work.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ import shutil
 import socket
 import subprocess
 import time
+import typing as t
 from pathlib import Path
 
 import pytest
@@ -20,7 +23,18 @@ from django.contrib.auth.models import AnonymousUser
 from django.template import Template
 from django.test import override_settings
 
-channels_nats = pytest.importorskip("channels_nats")
+
+def _missing(reason: str) -> t.NoReturn:
+    """Skip on a developer's machine; fail where CI runs (GitHub Actions sets ``CI``)."""
+    if os.environ.get("CI"):
+        pytest.fail(f"{reason}, and CI must run these tests", pytrace=False)
+    pytest.skip(reason, allow_module_level=True)
+
+
+try:
+    import channels_nats
+except ImportError:
+    _missing("channels_nats is not installed")
 
 from wireview import Component, abroadcast  # noqa: E402
 from wireview.consumer import WireviewConsumer  # noqa: E402
@@ -48,7 +62,7 @@ def _find_nats_server() -> str | None:
 def nats_url():
     binary = _find_nats_server()
     if binary is None:
-        pytest.skip("nats-server binary not found")
+        _missing("nats-server binary not found")
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]

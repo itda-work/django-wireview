@@ -14,7 +14,7 @@ cd "$(dirname "$0")/.."
 LAYER="${WIREVIEW_TEST_LAYER:-nats}"
 export WIREVIEW_TEST_LAYER="$LAYER"
 
-listening() { nc -z 127.0.0.1 "$1" >/dev/null 2>&1; }
+listening() { nc -z "${2:-127.0.0.1}" "$1" >/dev/null 2>&1; }
 
 free_port() {
   python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'
@@ -69,7 +69,12 @@ MSG
     ;;
   redis)
     export REDIS_URL="${REDIS_URL:-redis://127.0.0.1:6379}"
-    listening "${REDIS_URL##*:}" || {
+    # Parsed, not cut at the last colon: redis://host:6379/0 names a database after the
+    # port, and the host need not be this machine.
+    read -r redis_host redis_port < <(python3 -c 'import sys, urllib.parse as u
+url = u.urlsplit(sys.argv[1])
+print(url.hostname or "127.0.0.1", url.port or 6379)' "$REDIS_URL")
+    listening "$redis_port" "$redis_host" || {
       echo "tests/e2e.sh: the redis layer needs a redis-server on $REDIS_URL" >&2
       exit 1
     }
