@@ -256,14 +256,22 @@ def test_a_live_component_that_destroys_itself_leaves_the_page(page, server):
 
 @pytest.fixture
 def next_nest_child_destroys_in_joined(monkeypatch):
+    """Arms the child's next ``joined()`` to destroy it; ``.joined`` is set by each one.
+
+    The child's ``joined()`` runs after the render that shows it, through the
+    session's mailbox -- on NATS, well after the page reads as live. A test arms
+    it only once the first page's child has joined, or that one is destroyed.
+    """
     from testproj.errorprobe.live import ErrorNestChild
 
     armed = threading.Event()
+    armed.joined = threading.Event()
 
     async def joined(self):
         if self.wire.channel_name and armed.is_set():
             armed.clear()
             await self.destroy()
+        armed.joined.set()
 
     monkeypatch.setattr(ErrorNestChild, "joined", joined)
     return armed
@@ -275,6 +283,7 @@ def test_a_live_component_that_destroys_itself_in_its_parents_join_leaves_the_pa
     # #146: the remove comes while the page waits for the parent's named join,
     # after the render that answers it, so it is the new instance's and is taken
     open_live(page, f"{server}/errorprobe/late/", selector="#nest[data-is-live='true']")
+    assert next_nest_child_destroys_in_joined.joined.wait(15), "the first page's child never joined"
     next_nest_child_destroys_in_joined.set()
     by(page, "second").click()
     expect_text(by(page, "visit"), "second")
