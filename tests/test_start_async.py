@@ -141,7 +141,16 @@ class SaFeed(Component):
 
     stats: AsyncResult | None = None
     _item: t.Any = None
+    _go: t.Any = None
+    _ticked: bool = False
     _fetched: bool = False
+
+    async def tick(self):
+        await self.start_async("tick", self._tick())
+
+    async def _tick(self) -> None:
+        await self._go.wait()
+        self._ticked = True
 
     async def feed(self):
         await self.start_async("feed", self._feed())
@@ -426,10 +435,17 @@ async def test_a_stream_item_rendered_by_the_work_overlapping_an_event_render_le
     await consumer.send_render(feed)
     await feed.wire.flush_pending()
     item = feed._item = SlowItem()
+    feed._go = asyncio.Event()
 
+    await consumer.command_user_event("f", "tick", {}, {})
     await consumer.command_user_event("f", "feed", {}, {})
     op = feed._async_tasks["feed"]
     await asyncio.wait_for(item.reading.wait(), 2)
+    # Other work wakes up while the item renders: the stream item's render holds it
+    feed._go.set()
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert not feed._ticked, "other work ran while the stream item rendered"
     # A click while the item renders: its handler starts an assign_async, and
     # its render waits for the worker thread
     click = asyncio.create_task(consumer.command_user_event("f", "load", {}, {}))
@@ -440,8 +456,10 @@ async def test_a_stream_item_rendered_by_the_work_overlapping_an_event_render_le
 
     item.release.set()
     await asyncio.wait_for(click, 2)
-    done, _ = await asyncio.wait([op, *feed._assign_tasks], timeout=2)
+    tick = feed._async_tasks["tick"]
+    done, _ = await asyncio.wait([op, tick, *feed._assign_tasks], timeout=2)
     assert op in done, "the operation never got past its stream render"
-    assert len(done) == 2, "the assign_async never ran"
+    assert tick in done and feed._ticked
+    assert len(done) == 3, "the assign_async never ran"
     assert any("items-a" in str(payload) for command, payload in outbound.commands if command == "stream_op")
     assert "loaded" in shown(feed)
