@@ -36,6 +36,7 @@ sync로 쓰면 실행되지 않고 `manage.py check`가 `wireview.W002`로 알�
 | `get_subscriptions()` | 구독 채널을 상태에 따라 정할 때. 기본은 `Meta.subscriptions` |
 | `new(**kwargs)` (classmethod) | 인스턴스를 만들 때. 페이지 렌더, join, 테스트의 `mount()` 모두 이것을 거친다. `wire`·`user`·`session`과 상태 필드를 키워드로 받고 `cls(**kwargs)`를 돌려줘야 한다 |
 | `LiveComponent.update(**assigns)` | 부모가 새 값을 줄 때 ([live-component](./live-component.md)) |
+| `LiveComponent.update_many(updates)` (classmethod) | 부모 렌더 한 번에 값이 바뀐 같은 클래스 자식 전부를 `[(component, assigns), ...]`로. 기본은 각자의 `update()` |
 
 ## 부르는 것
 

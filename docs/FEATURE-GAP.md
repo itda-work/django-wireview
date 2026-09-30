@@ -2,7 +2,7 @@
 
 > django-wireview가 Phoenix LiveView 수준에 도달하기 위해 필요한 기능 목록
 >
-> **최종 업데이트**: 2026-09-27
+> **최종 업데이트**: 2026-09-30
 
 ---
 
@@ -13,9 +13,9 @@
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 110 |
+| ✅ 지원 | 111 |
 | 🟡 부분 지원 | 0 |
-| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 3 |
+| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 2 |
 | ⚪ 설계상 제외 | 2 |
 
 ✅ 중 6행은 Phoenix에 없는 wireview 고유 기능이다(상태 칸이 `✅ 추가 기능`인 행). 🟠 행은 3절 표에서
@@ -189,7 +189,7 @@ GAP 번호로 추적한다.
 | Slots in LiveComponent | ✅ `<:slot>` in live_component | `{% live_component_block %}` | ✅ | `tests/test_live_component_slots.py::test_slot_content_renders_inside_the_child_and_stays_out_of_the_parent_diff`<br>`tests/test_live_component_slots.py::test_the_childs_own_event_keeps_the_slot_content` |
 | @myself target | ✅ | `myself=True` | ✅ | `examples/livecomp/tests.py::TestLiveComponentE2E::test_increment_counter_with_myself_targeting` |
 | update/2 callback | ✅ | `update()` | ✅ | `tests/test_live_component_render.py::test_a_changed_prop_updates_and_rerenders_only_the_children_it_reaches`<br>`examples/livecomp/tests.py::TestLiveComponentE2E::test_parent_sync_all_updates_children` |
-| update_many/1 | ✅ 배치 최적화 | ❌ | 🟠 GAP-035 ([#74](https://github.com/itda-work/django-wireview/issues/74)) |  |
+| update_many/1 | ✅ 배치 최적화 | `update_many()` (classmethod) | ✅ | `tests/test_update_many.py::test_every_changed_row_of_a_class_arrives_in_one_call_and_loads_in_one_query` |
 | Nested LiveViews | ✅ 프로세스 격리 | LiveComponent (같은 프로세스) | ⚪ 설계상 제외 |  |
 
 Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 프로세스 격리에서 오는
@@ -307,7 +307,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | ~~GAP-032~~ | ~~Colocated hooks~~ | ~~컴포넌트 옆의 JS 훅을 자동 등록~~ | ~~중~~ | ✅ 완료 |
 | GAP-033 | Sticky 컴포넌트 | boost 내비게이션을 건너 살아남는 컴포넌트 | 중 | [#72](https://github.com/itda-work/django-wireview/issues/72) |
 | GAP-034 | Dead view | JS 없이도 읽히는 첫 렌더. 무엇을 약속할지부터 | 중 | [#73](https://github.com/itda-work/django-wireview/issues/73) |
-| GAP-035 | LiveComponent 배치 업데이트 | 같은 컴포넌트 N개 갱신의 N+1 제거 | 중 | [#74](https://github.com/itda-work/django-wireview/issues/74) |
+| ~~GAP-035~~ | ~~LiveComponent 배치 업데이트~~ | ~~같은 컴포넌트 N개 갱신의 N+1 제거~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-036~~ | ~~LiveComponent 슬롯~~ | ~~`{% live_component_block %}`으로 fill·기본 슬롯·let 전달~~ | ~~중~~ | ✅ 완료 |
 | GAP-027 | Session extraction | 컨슈머 핸들러를 `WireviewSession`으로 분리, 세션 상태 export/import (docs/design/transport-abstraction.md) | 상 | [#60](https://github.com/itda-work/django-wireview/issues/60) 착수 기준 대기 |
 

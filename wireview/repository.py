@@ -375,8 +375,13 @@ class ComponentRepository:
         updates = self._pending_updates
         self._pending_updates = []
 
-        for component, props in updates:
-            await component.update(**props)
+        from .live_component import run_updates
+
+        def _raise(cls, component, error):
+            raise error
+
+        await run_updates(updates, _raise)
+        for component, _props in updates:
             if component not in result:
                 result.append(component)
 

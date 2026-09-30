@@ -229,6 +229,36 @@ class Counter(LiveComponent):
 
 ---
 
+## update_many(): 같은 클래스 자식을 한 번에
+
+목록의 행마다 LiveComponent가 있고 각자 `update()`에서 자기 데이터를 조회하면, 부모가 한 번 렌더할 때 조회가
+행 수만큼 돈다. `update_many()`를 오버라이드하면 **부모 렌더 한 번에 값이 바뀐 같은 클래스 자식 전부**를 한
+호출로 받으므로 한 번의 조회로 채울 수 있다. Phoenix의 `update_many/1`이다.
+
+```python
+class Row(LiveComponent):
+    class Meta:
+        template_name = "rows/row.html"
+
+    item_id: int
+    title: str = ""
+
+    @classmethod
+    async def update_many(cls, updates):
+        await super().update_many(updates)   # 각자의 update()로 새 값을 반영한다
+        ids = [component.item_id for component, _assigns in updates]
+        titles = {pk: title async for pk, title in Item.objects.filter(pk__in=ids).values_list("pk", "title")}
+        for component, _assigns in updates:
+            component.title = titles.get(component.item_id, "")
+```
+
+- `updates`는 `(component, assigns)`의 목록이다. `assigns`는 `update()`가 받았을 **바뀐 값만**이다.
+- 기본 구현은 각자의 `update()`를 부른다. 오버라이드하고 `super().update_many()`를 부르지 않으면 값 반영도 직접 한다.
+- 오버라이드하지 않은 클래스는 지금처럼 자식마다 `update()`가 불리고, 한 자식이 예외를 던져도 나머지는 갱신된다.
+  오버라이드한 `update_many()`가 던지면 그 클래스의 호출 전체가 로그에 남는다.
+- 새로 생긴 자식은 `update_many()`가 아니라 `joined()`를 받는다. 첫 렌더의 N+1은 부모가 미리 불러 props로 넘겨 피한다.
+- `send_update()`로 한 자식에게 보낸 값은 그 자식의 `update()`로 간다.
+
 ## 템플릿 태그
 
 ### {% live_component %}

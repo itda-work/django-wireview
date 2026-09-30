@@ -22,7 +22,7 @@ from .core.state import StateMismatch, StatePayload, unsign_envelope
 from .core.transport import NO_CHANNEL_LAYER, ChannelsOutbound, Outbound
 from .features import upload_store
 from .features.uploads import upload_group_name
-from .live_component import LiveComponent
+from .live_component import LiveComponent, run_updates
 from .repository import ComponentRepository, InvalidEvent
 from .utils import parse_request_data
 
@@ -60,6 +60,12 @@ def _reload_payload(name: str, error: BadSignature) -> dict[str, t.Any]:
 def _event_ref(ref: t.Any) -> int | None:
     """The ``ref`` of a user event if it is one the client can pair, else ``None``."""
     return ref if isinstance(ref, int) and not isinstance(ref, bool) else None
+
+
+def _log_update_error(cls: type, component: t.Any, error: Exception) -> None:
+    """A child's update() is logged, not propagated, as joined()'s is on this path."""
+    where = f"{cls.__name__}.update()" if component is not None else f"{cls.__name__}.update_many()"
+    log.error("Error in %s", where, exc_info=error)
 
 
 class WireviewConsumer(AsyncJsonWebsocketConsumer):
@@ -1308,12 +1314,11 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer):
             # only exists from here on. Without this a nested component's uploads
             # were never heard from (#77).
             await self._subscribe_upload_group(child)
-        for child, props in batch.updates:
+        for child, _props in batch.updates:
             child.wire.enter_pending_mode()
-            try:
-                await child.update(**props)
-            except Exception as e:
-                log.exception(f"Error in {child._name}.update(): {e}")
+        # One update_many() per child class: a list of N rows loads what they show
+        # in one query instead of N (GAP-035, #74).
+        await run_updates(batch.updates, _log_update_error)
         for child in batch.to_render:
             if child.id in halted:
                 continue

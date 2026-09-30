@@ -208,6 +208,32 @@ class LiveComponent(Component, public=False):
             if key in type(self).model_fields:
                 setattr(self, key, value)
 
+    @classmethod
+    async def update_many(cls, updates: "list[tuple[t.Self, dict[str, t.Any]]]") -> None:
+        """Called once per parent render with every instance of this class whose props changed.
+
+        Each entry is ``(component, assigns)``, the ``update()`` call it stands for.
+        Override it to load what those components need in one query instead of one
+        each -- Phoenix's ``update_many/1`` (GAP-035, #74). The default calls
+        ``update()`` on each; an override that does not call it replaces it, so
+        apply the assigns yourself (``await super().update_many(updates)`` does).
+
+        Example:
+            class Row(LiveComponent):
+                item_id: int
+                item: dict = {}
+
+                @classmethod
+                async def update_many(cls, updates):
+                    ids = [assigns.get("item_id", c.item_id) for c, assigns in updates]
+                    rows = {r.pk: r for r in Item.objects.filter(pk__in=ids)}
+                    await super().update_many(updates)
+                    for component, _ in updates:
+                        component.item = model_to_dict(rows[component.item_id])
+        """
+        for component, assigns in updates:
+            await component.update(**assigns)
+
     async def send_to_parent(self, event: str, **kwargs: t.Any) -> None:
         """Send an event to the parent component.
 
@@ -256,3 +282,30 @@ class LiveComponent(Component, public=False):
 def is_live_component(component: Component) -> bool:
     """Check if a component is a LiveComponent."""
     return getattr(component.__class__, "_is_live_component", False)
+
+
+async def run_updates(
+    updates: "t.Iterable[tuple[LiveComponent, dict[str, t.Any]]]",
+    on_error: "t.Callable[[type[LiveComponent], LiveComponent | None, Exception], None]",
+) -> None:
+    """Deliver a parent render's prop changes: one ``update_many()`` per child class.
+
+    A class that keeps the default gets each ``update()`` on its own, so one child
+    that raises does not stop its siblings' updates, as before update_many existed.
+    An override is called once, and what it raises is reported for the class.
+    """
+    groups: dict[type[LiveComponent], list[tuple[LiveComponent, dict[str, t.Any]]]] = {}
+    for component, assigns in updates:
+        groups.setdefault(type(component), []).append((component, assigns))
+    for cls, group in groups.items():
+        if getattr(cls.update_many, "__func__", None) is LiveComponent.update_many.__func__:  # type: ignore[attr-defined]
+            for component, assigns in group:
+                try:
+                    await component.update(**assigns)
+                except Exception as e:
+                    on_error(cls, component, e)
+        else:
+            try:
+                await cls.update_many(group)
+            except Exception as e:
+                on_error(cls, None, e)

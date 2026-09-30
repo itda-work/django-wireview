@@ -10,6 +10,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- `LiveComponent.update_many(updates)`, a classmethod that receives every child of its class whose
+  props changed in one parent render, as `(component, assigns)` pairs, so rows can load what they
+  show in one query rather than one each. The default calls each `update()`. Phoenix's
+  `update_many/1` (GAP-035, #74).
+
 ## [1.0.0rc2] - 2026-09-30
 
 What 1.0 promises, settled before it is frozen (#119). A 1.0.0rc1 project has changes to make;
