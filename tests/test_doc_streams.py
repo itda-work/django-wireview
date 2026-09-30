@@ -387,6 +387,18 @@ _QUESTIONS = (
         "    async def clear(self):\n        for item in self.items:\n            await item.adelete()",
         "class A(Component):\n    @property\n    def items(self):\n        return self.list.items.all()\n"
         "    async def joined(self):\n        self.n = self.items.count()",
+        # The property that runs the query declared after the one that reads it: one pass
+        # over the properties in order is not enough, for an evaluation or a lazy chain.
+        # (Not named ``queryset``: that name alone reads as a QuerySet, pass or no pass.)
+        "class Quiz(Component):\n    @property\n    def current(self):\n        return self.questions[self.index]\n"
+        "    @property\n    def questions(self):\n        return list(self.quiz.questions.all())\n"
+        "    async def answer(self, choice_id: int):\n        question = self.current",
+        "class A(Component):\n    @property\n    def items(self):\n        return self.pending\n"
+        "    @property\n    def pending(self):\n        return Item.objects.filter(done=False)\n"
+        "    async def joined(self):\n        for item in self.items:\n            await item.adelete()",
+        # No property at all: the handler runs the query itself.
+        "class A(Component):\n    async def joined(self):\n        self.owner = User.objects.get(pk=1)",
+        "class A(Component):\n    async def joined(self):\n        self.seen = self.room.messages.count()",
     ],
 )
 def test_the_property_scan_catches_a_query_on_the_event_loop(source):
