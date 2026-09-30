@@ -118,8 +118,9 @@ async def test_leaving_cancels_the_tasks_a_component_started(handler):
 
 
 async def test_leaving_cancels_a_task_still_in_its_handle_async():
-    # Past its operation the task no longer holds the name, so handle_async can
-    # start it again (#147). It must still end with the component (#95)
+    # In its handle_async the task is also among the component's unnamed tasks, so
+    # handle_async can start its name again (#147). It must still end with the
+    # component (#95), and be cancelled once, not once per place it is held
     consumer = _consumer()
     component = consumer.repo.build("SlowToHandle", {"id": "s-1"})
     await component.begin()
@@ -130,7 +131,7 @@ async def test_leaving_cancels_a_task_still_in_its_handle_async():
     await consumer.command_leave("s-1")
     await asyncio.sleep(0)
 
-    assert task.done()
+    assert task.done() and task.cancelling() == 1
     assert component._async_tasks == {} and component._assign_tasks == set()
     assert HANDLED == [("work", "handling")]
 
