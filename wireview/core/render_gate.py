@@ -27,17 +27,33 @@ and end in any order. The gate is open only while no task but the current one
 has a render in flight, and every render that ends wakes the waiting steps to
 look again.
 
+A render that awaits an async property does so on the loop, and a property
+that waits for the component's own work never returns: the work waits for the
+render. Nothing raises and nothing is cancelled. ``awaiting_properties()`` marks
+that stretch, and if it outlasts ``STALL_WARNING_SECONDS`` while work of the
+component waits at the gate, the gate logs a warning once. A render reading on
+the worker thread is not watched: it cannot wait for work on the loop, so a
+slow query is only slow (#147).
+
 Work the gate does not drive -- a task the application creates itself -- is not
 kept off the render. ``docs/features/async-operations.md`` says so.
 """
 
 import asyncio
+import logging
 import types
 import typing as t
 from collections.abc import Coroutine, Generator, Iterator
 from contextlib import contextmanager
 
 T = t.TypeVar("T")
+
+log = logging.getLogger("wireview")
+
+# How long a render may await its async properties while the component's work
+# waits for it before the gate says so. A property that waits for that work
+# never returns; one that is merely slow is slower than any page should be.
+STALL_WARNING_SECONDS = 10.0
 
 
 class RenderGate:
@@ -68,6 +84,36 @@ class RenderGate:
             if self._idle is not None:
                 self._idle.set()
                 self._idle = None
+
+    @contextmanager
+    def awaiting_properties(self, component: str) -> Iterator[None]:
+        """Mark a render as awaiting ``component``'s async properties on the loop.
+
+        Warns once if it lasts ``STALL_WARNING_SECONDS`` or more with work of
+        the component waiting at the gate. Work that starts waiting later is
+        seen later: the check repeats until the properties are in.
+        """
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+
+        def check() -> None:
+            nonlocal timer
+            if self._idle is None:
+                timer = loop.call_later(STALL_WARNING_SECONDS, check)
+                return
+            log.warning(
+                "A render of %s has awaited its async properties for %.0fs while work the component started "
+                "with start_async or assign_async waits for the render to end. If a property waits for that "
+                "work, neither ends: take the result in handle_async or an AsyncResult field instead.",
+                component,
+                loop.time() - started,
+            )
+
+        timer = loop.call_later(STALL_WARNING_SECONDS, check)
+        try:
+            yield
+        finally:
+            timer.cancel()
 
     async def run(self, coro: Coroutine[t.Any, t.Any, T]) -> T:
         """Await ``coro``, each of its steps started only between renders."""

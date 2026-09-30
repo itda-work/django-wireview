@@ -12,6 +12,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- A render that has awaited its async properties for 10 seconds while work the component started
+  with `start_async` or `assign_async` waits for it now logs a warning, once, naming the
+  component. A property that waits for that work never returns -- nothing raised and nothing said
+  why the page stopped. A long read on the worker thread is not warned about: it cannot be
+  waiting for the work (#147).
+
 - A boosted navigation now says it has landed, once, after the new page's components have
   joined: hooks that were on the page before it and still are get `navigated()`, and `document`
   gets a `wireview:navigated` event with `detail: { url, previousUrl }`. A sticky component's

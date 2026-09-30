@@ -339,7 +339,8 @@ class WireviewMeta:
             with self._render_gate.rendering():
                 context, html, pending = await db(self._collect_and_render)(component, repo, reads)
                 if pending:
-                    await self._await_properties(context)
+                    with self._render_gate.awaiting_properties(f"{component._name} ({component.id})"):
+                        await self._await_properties(context)
                     html = await db(self._render_with_context)(component, context, reads)
             if not html:
                 return None

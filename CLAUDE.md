@@ -36,7 +36,8 @@ wireview/
 ├── core/meta.py           WireviewMeta (self.wire): push_to/replace_to, push_js, put_flash, push_title 등 클라이언트 명령
 ├── core/rendered.py       동적 마커 기반 diff 구조. LiveComponent 자리는 참조 dynamic {"c": id}
 ├── core/render_reads.py   초기화된 temporary assign만 읽은 동적 부분을 렌더 중에 찾는다. 그 부분은 이전 값 그대로(#111)
-├── core/render_gate.py    RenderGate. 워커 스레드가 렌더하는 동안 그 컴포넌트의 start_async·assign_async 작업 단계를 렌더 뒤로 미룬다(#138)
+├── core/render_gate.py    RenderGate. 워커 스레드가 렌더하는 동안 그 컴포넌트의 start_async·assign_async 작업 단계를 렌더 뒤로 미룬다(#138).
+│                          렌더가 async property를 오래 기다리는 동안 작업이 막혀 있으면 경고한다(교착 의심, #147)
 ├── core/session.py        SessionView. Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다
 ├── core/live_session.py   페이지 경계 정본. live_session() 선언과 레지스트리, @session.view,
 │                          인증 세대 지문(auth_fingerprint), 로그아웃 무효화 발행 (GAP-009)

@@ -17,9 +17,11 @@ import pytest
 from django.contrib.auth.models import AnonymousUser
 from django.template.base import Variable
 from django.test import override_settings
+from testproj.waiting import eventually
 
 from wireview import AsyncResult, Component
 from wireview.consumer import WireviewConsumer
+from wireview.core import render_gate
 from wireview.core.meta import WireviewMeta
 from wireview.core.rendered import PROTOCOL_VERSION, strip_markers
 from wireview.core.state import unsign_state
@@ -41,6 +43,7 @@ TEMPLATES = {
         '<ul id="items" wire-stream="items"></ul></div>'
     ),
     "sa/feed_item.html": "<li>{{ item.label }}</li>",
+    "sa/stuck.html": "{% load wireview %}<div {% tag_header %}>{{ total }} {{ count }}</div>",
 }
 
 HANDLED: list[tuple[str, str]] = []
@@ -174,6 +177,42 @@ class SaFeed(Component):
         self._fetched = True
         await asyncio.sleep(0)
         return "loaded"
+
+
+class SaStuck(Component):
+    """An async property that can wait for the component's own work, and a sync one that can hold the thread."""
+
+    class Meta:
+        template_name = "sa/stuck.html"
+
+    _loaded: t.Any = None
+    _hold: t.Any = None
+    _waits: bool = False
+
+    async def load(self):
+        await self.start_async("load", self._load())
+
+    async def _load(self) -> int:
+        await asyncio.sleep(0)
+        self._loaded.set()
+        return 1
+
+    async def handle_async(self, name, result):
+        pass
+
+    @property
+    async def total(self) -> int:
+        if self._waits:
+            # The documented mistake: the render waits for the work, which waits for the render
+            await self._loaded.wait()
+        return 7
+
+    @property
+    def count(self) -> int:
+        if self._hold is not None:
+            # A long read on the worker thread, as a slow query would be
+            assert self._hold.wait(2)
+        return 1
 
 
 class FakeOutbound:
@@ -515,3 +554,74 @@ async def test_work_after_a_stream_item_render_that_raised_runs():
     assert done, "the assign_async waited for a stream item render that had raised"
     assert gate._renders == {}
     assert "loaded" in shown(feed)
+
+
+STALLED = "awaited its async properties"
+
+
+async def joined_stuck(consumer: WireviewConsumer) -> Component:
+    stuck = await consumer.repo.join("SaStuck", {"id": "s"})
+    stuck.wire.broker = LoopbackBroker(consumer)  # type: ignore[assignment]
+    await consumer.send_render(stuck)
+    await stuck.wire.flush_pending()
+    stuck._loaded = asyncio.Event()
+    return stuck
+
+
+async def test_an_async_property_that_waits_for_the_components_work_is_warned_about(caplog, monkeypatch):
+    # The render awaits the property on the loop, the property waits for the
+    # work, and the work waits for the render: nothing moves and nothing says
+    # why (#147). A warning names the component once the render has waited
+    monkeypatch.setattr(render_gate, "STALL_WARNING_SECONDS", 0.05)
+    consumer, _, _ = await joined_page()
+    stuck = await joined_stuck(consumer)
+    stuck._waits = True
+
+    click = asyncio.create_task(consumer.command_user_event("s", "load", {}, {}))
+    try:
+        await eventually(lambda: STALLED in caplog.text)
+    finally:
+        # Break the cycle by hand, as the work would have
+        stuck._loaded.set()
+        await asyncio.wait_for(click, 2)
+    await settle(stuck, "load")
+
+    warnings = [r for r in caplog.records if STALLED in r.getMessage()]
+    assert len(warnings) == 1
+    assert warnings[0].levelname == "WARNING"
+    assert "SaStuck (s)" in warnings[0].getMessage()
+
+
+async def test_a_long_read_on_the_worker_thread_is_not_warned_about(caplog, monkeypatch):
+    # A slow query holds the work as long, but it cannot be waiting for the
+    # work: only a render awaiting on the loop can (#147)
+    monkeypatch.setattr(render_gate, "STALL_WARNING_SECONDS", 0.05)
+    consumer, _, _ = await joined_page()
+    stuck = await joined_stuck(consumer)
+    stuck._hold = threading.Event()
+
+    try:
+        click = asyncio.create_task(consumer.command_user_event("s", "load", {}, {}))
+        await eventually(lambda: stuck._async_tasks.get("load") is not None)
+        await eventually(lambda: stuck.wire._render_gate._idle is not None)
+        await asyncio.sleep(0.2)  # four times the threshold: the timer is what is measured
+    finally:
+        stuck._hold.set()
+    await asyncio.wait_for(click, 2)
+    await settle(stuck, "load")
+
+    assert STALLED not in caplog.text
+
+
+async def test_a_slow_async_property_with_no_work_waiting_is_not_warned_about(caplog, monkeypatch):
+    monkeypatch.setattr(render_gate, "STALL_WARNING_SECONDS", 0.05)
+    consumer, _, _ = await joined_page()
+    stuck = await joined_stuck(consumer)
+    stuck._waits = True
+
+    render = asyncio.create_task(consumer.send_render(stuck))
+    await asyncio.sleep(0.2)  # four times the threshold: the timer is what is measured
+    stuck._loaded.set()
+    await asyncio.wait_for(render, 2)
+
+    assert STALLED not in caplog.text
