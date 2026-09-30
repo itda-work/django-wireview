@@ -1,6 +1,8 @@
 """Components rendered by the benchmarks. Kept deliberately plain."""
 
-from wireview import Component, LiveComponent, abroadcast
+import asyncio
+
+from wireview import AsyncResult, Component, LiveComponent, abroadcast
 
 
 class BenchFlat(Component):
@@ -89,3 +91,24 @@ class BenchBoard(Component):
 
     async def set_note(self, note: str = "note"):
         self.note = note
+
+
+class BenchAsync(Component):
+    """Background work through ``start_async`` and ``assign_async``, the path the render gate holds."""
+
+    class Meta:
+        template_name = "bench/async.html"
+
+    progress: int = 0
+    found: str = ""
+    stats: AsyncResult | None = None
+
+    async def _search(self, steps: int) -> str:
+        # The progress pattern: every step changes the state the render reads
+        for step in range(steps):
+            self.progress = step
+            await asyncio.sleep(0)
+        return "found"
+
+    async def handle_async(self, name, result):
+        self.found = str(result.result if isinstance(result, AsyncResult) else result)

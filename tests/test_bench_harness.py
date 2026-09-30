@@ -56,3 +56,8 @@ async def test_the_in_process_bench_runs_every_scenario():
 
     assert results["timing"]["list.template_render_ms"] >= 0
     assert results["payload_bytes"]["list.first_render"] > 0
+    # The work start_async/assign_async run is held by the render gate (#147):
+    # each step of it waits out a render in flight, and it still finishes
+    assert results["timing"]["async.start_async_idle_ms"] >= 0
+    assert results["timing"]["async.assign_async_idle_ms"] >= 0
+    assert results["timing"]["async.busy_renders_per_op"] >= 1

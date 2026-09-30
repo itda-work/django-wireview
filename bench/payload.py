@@ -7,6 +7,7 @@ exactly what would go over the wire.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import tracemalloc
@@ -115,6 +116,55 @@ async def _live_component_scenarios() -> dict[str, int]:
     return result
 
 
+async def _async_scenarios(iterations: int, steps: int = 10) -> dict[str, float]:
+    """Per-operation ms of work started with ``start_async``/``assign_async``, its result's render included.
+
+    The work takes ``steps`` steps and changes the state at each. ``*_idle_ms``:
+    nothing else renders meanwhile, the render gate's path when no render is in
+    flight. ``start_async_busy_ms``: the component renders over and
+    over while the work runs, one loop turn apart as the consumer's messages are,
+    so its steps meet renders in flight and wait for them (#138, #147).
+    """
+    from bench.benchapp.live import BenchAsync
+
+    view = await _live(BenchAsync)
+    component = view.component
+    await _diff(view)
+
+    async def settle() -> None:
+        tasks = [*component._async_tasks.values(), *getattr(component, "_assign_tasks", ())]
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    result: dict[str, float] = {}
+    t0 = time.perf_counter()
+    for _ in range(iterations):
+        await component.start_async("search", component._search(steps))
+        await settle()
+        await _diff(view)
+    result["async.start_async_idle_ms"] = (time.perf_counter() - t0) * 1000 / iterations
+
+    t0 = time.perf_counter()
+    for _ in range(iterations):
+        component.stats = await component.assign_async(component._search(steps))
+        await settle()
+        await _diff(view)
+    result["async.assign_async_idle_ms"] = (time.perf_counter() - t0) * 1000 / iterations
+
+    renders = 0
+    t0 = time.perf_counter()
+    for _ in range(iterations):
+        await component.start_async("search", component._search(steps))
+        task = component._async_tasks["search"]
+        while not task.done():
+            await _diff(view)
+            renders += 1
+            await asyncio.sleep(0)
+        await _diff(view)
+    result["async.start_async_busy_ms"] = (time.perf_counter() - t0) * 1000 / iterations
+    result["async.busy_renders_per_op"] = renders / iterations
+    return result
+
+
 def _list_items(count: int, start: int = 0) -> list[dict[str, t.Any]]:
     return [{"name": f"item {i}", "qty": i, "done": i % 3 == 0} for i in range(start, start + count)]
 
@@ -218,6 +268,9 @@ async def run(
 
     # --- a parent with nested LiveComponents, through the consumer's render path ---
     payload.update(await _live_component_scenarios())
+
+    # --- background work through the render gate ---
+    timing.update(await _async_scenarios(iterations))
 
     # --- per-event cost on the list template ---
     view = await _live(BenchList, items=make_items())

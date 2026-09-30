@@ -19,10 +19,11 @@ make bench ARGS="--server uvicorn-nodeflate"  # permessage-deflate를 끈 uvicor
 | payload_bytes | 이벤트별 render 페이로드 크기 | `WireviewMeta.render_diff`를 라이브 저장소로 호출. 컨슈머가 보내는 것과 같은 JSON |
 | timing | 이벤트당 ms, 템플릿 렌더 ms | 핸들러 + render_diff 300회 평균 |
 | memory | 항목 50개 컴포넌트 하나의 메모리 | tracemalloc, 50개 마운트 평균 |
+| async | `start_async`·`assign_async` 작업 하나의 ms(결과 렌더 포함) | `BenchAsync`의 작업은 10단계를 돌며 단계마다 상태를 바꾼다. `*_idle_ms`는 다른 렌더가 없을 때(게이트가 바로 열리는 경로), `start_async_busy_ms`는 컴포넌트가 루프 한 바퀴 간격으로 계속 렌더하는 동안이다. 이때 작업의 단계는 진행 중인 렌더를 기다린다(#138). `busy_renders_per_op`는 작업 하나가 끝날 때까지 돈 렌더 수로, ms가 아니라 횟수다 |
 | ws | 연결당 서버 RSS, join/s, 이벤트/s, 페이로드, 브로드캐스트 ms | daphne(또는 `--server uvicorn`)를 띄우고 실제 WebSocket 연결. 기본은 인메모리 레이어(프로세스 1개). `--layer nats`·`--layer redis`면 여러 서버 프로세스가 그 레이어를 공유하며 브로커는 벤치가 임시 포트로 띄운다. 서버 로그는 `bench/.data/logs/` |
 | ws.broadcast_ms | 브로드캐스트 하나가 모든 연결에 닿는 시간 | 연결 하나가 `abroadcast`를 부르고, 구독한 모든 컴포넌트가 다시 렌더할 때까지의 벽시계 시간. 프로세스가 늘면 렌더가 병렬화된다 |
 
-컴포넌트는 `bench/benchapp/live.py` 둘입니다. `BenchFlat`은 스칼라 7개, `BenchList`는 항목마다 `{% if %}`가 있는 루프와 최상위 `{% if %}`가 있습니다.
+컴포넌트는 `bench/benchapp/live.py`에 있습니다. `BenchFlat`은 스칼라 7개, `BenchList`는 항목마다 `{% if %}`가 있는 루프와 최상위 `{% if %}`가 있습니다. `BenchBoard`는 LiveComponent `BenchCard` 셋을 둔 부모이고, `BenchAsync`는 `start_async`·`assign_async`로 작업을 돌립니다.
 
 ## 비교가 공정한 이유
 
