@@ -17,14 +17,17 @@ The django-reactor era changelog (2.x) is preserved in
   gets a `wireview:navigated` event with `detail: { url, previousUrl }`. A sticky component's
   hook had no way to know the page around it changed -- an effect it put on `<body>` was gone
   after the move. A Back that paints the cached page first still announces once (#128).
+
 - Operational telemetry (#124): four event signals in `wireview.telemetry` --
   `connection_opened`, `connection_closed` (close code, lifetime, live components),
   `join_rejected` (a `reason` from the closed set `JOIN_REJECTED_REASONS`: `origin`, `expired`,
   `invalid`, `live_session`, `halted`, `error`, safe as a metric label) and `publish_failed`.
   Like the existing signals they cost one flag check while `WIREVIEW["TELEMETRY"]` is off.
+
 - The client's reconnect backoff is a setting: `RECONNECT_MIN_DELAY_MS`, `RECONNECT_JITTER_MS`,
   `RECONNECT_MAX_DELAY_MS` and `RECONNECT_GROW_FACTOR`, published by `{% wireview_header %}`. The
   defaults are the values every page used before, so nothing changes unless you set them (#124).
+
 - `docs/DEPLOYMENT.md`: wiring the signals to Prometheus and OpenTelemetry, a readiness check that
   round-trips the channel layer, draining on SIGTERM in a rolling deploy, and sizing capacity by
   joins per second. The code examples there run in the test suite (#124).
@@ -36,6 +39,23 @@ The django-reactor era changelog (2.x) is preserved in
   as `telemetry.publish_failed`. Any other layer error is reported the same way and still raised,
   as before (#124).
 
+- The test suite, E2E and benchmarks no longer set `DJANGO_ALLOW_ASYNC_UNSAFE`, which hid every
+  failure above while the suite was green. The suite refuses to start with it set; E2E tests exempt
+  only Playwright's own thread, so the live server keeps Django's check as production has it
+  (`conftest.py`, #120).
+
+- `tests/test_doc_streams.py` reads every example a reader or an agent copies from -- the
+  documentation's Python blocks, the `wireview` skill, the examples and the test project -- and
+  fails on async code that evaluates a QuerySet synchronously (`list(qs)`, `reversed(qs)`,
+  `[x for x in qs]`, `for x in qs:`) or passes one to `stream_insert()`. Handing a QuerySet to
+  `stream()` as is stays the documented pattern (#121).
+
+- A release tag no longer goes to PyPI untested. `release.yml` calls the whole `ci.yml` on the
+  tagged commit -- the Python x Django matrix, the newest-dependencies run, E2E on NATS, lint,
+  typecheck and the package build -- and a `smoke` job installs the built wheel on freshly
+  resolved dependencies and imports it (`make ci-smoke`); `publish` waits for both. The yanked
+  1.0.0rc3 wheel fails the smoke job (#122).
+
 ### Fixed
 
 - A sticky component rendered without an `id` was silently not sticky: `{% component %}` gave it
@@ -43,6 +63,7 @@ The django-reactor era changelog (2.x) is preserved in
   derived from its class (`sticky-<module path>-<Class>`), the same on every page. A second
   id-less instance of the same sticky class on one page keeps a random id and logs a warning on
   the `wireview` logger, since two elements cannot share an id (#128).
+
 - `import wireview` failed on pydantic 2.13 and later (1.0.0rc3, which is yanked):
   `LiveComponent.update_many` is annotated with `t.Self`, handler validation wrapped it in
   `validate_call`, and pydantic's refusal stopped being a `TypeError` in 2.13. Handler validation
@@ -52,32 +73,39 @@ The django-reactor era changelog (2.x) is preserved in
   in the `wireview` log instead of breaking the class. The test suite now runs on pydantic 2.13
   (`uv.lock`), and `make test-latest` and a CI job run it on the newest dependencies a fresh
   install gets (#127).
+
 - Test harness: two test runs in one checkout no longer break each other. The test database was
   one fixed file, so concurrent runs created, flushed and dropped it under each other and failed
   with "readonly database" and "no such table", differently each time; each test process now has
   its own. `--ff` moved from pytest's `addopts` to the Makefile targets, so
   `pytest -p no:cacheprovider` starts again, and `make test-concurrent` runs the suite twice at
   once (#125).
+
 - Test harness: the test project served HTTP through asgiref's `WsgiToAsgi`, which sends each
   response through `async_to_sync`; Uvicorn started the next request on a kept-alive connection
   inside that call, and it died with "CurrentThreadExecutor already quit or is broken" -- an
   ordinary form POST failing once in a full E2E run. It uses Django's ASGI handler now, as
   projects are told to, and `server_errors()` sees what Uvicorn logs, which it silently did not
   (#129).
+
 - Test harness: with Django's ASGI handler, WhiteNoise's sync-only middleware served every static
   file as a sync iterator, and each one warned "StreamingHttpResponse must consume synchronous
   iterators" (126 more warnings per E2E run). The test project serves static files through
   Django's `ASGIStaticFilesHandler`, as daphne's and Channels' runserver do, and a run that records
   that warning now fails (`tests/testproj/warning_guard.py`).
+
 - A live render read the component's properties on the event loop, so a plain property that used
   the ORM raised `SynchronousOnlyOperation` on a real server and the component could not join (the
   notifications example's recipient list). Properties are now read in the same worker thread as the
   template; async properties are still awaited on the loop (#120).
+
 - `Component.stream()` iterated a QuerySet synchronously on the event loop, so every join of a page
   that streamed one failed on a real server (the bookmarks page). A QuerySet or any other async
   iterable is now consumed with `async for` (#120).
+
 - The quiz example's handlers read a property that queried the database on the event loop; they use
   async queries now (#120).
+
 - Documentation: the README comparison table and the tutorials no longer name Django 5.0 and 5.1,
   which pip refuses; `tests/test_supported_versions.py` checks every stated range against
   `pyproject.toml` and the CI matrix. `docs/features/html-diff.md` describes the v2 state envelope
@@ -86,6 +114,7 @@ The django-reactor era changelog (2.x) is preserved in
   is a token bucket that the tests run as written, and the deployment guide says `.throttle` and
   `.debounce` stop at the browser, drops the WSGI `cores × 2 + 1` worker formula, and separates the
   broadcast target from the benchmark's fan-out `broadcast_ms` (#123).
+
 - Documentation: the tutorials had two reading orders -- the index recommended 01→02→10→11→03…,
   while each page's "next" link ran 01→02→…→09 and stopped there, so 10–15 could not be reached by
   following it. Every tutorial now ends with the same previous/contents/next line, derived from the
@@ -95,23 +124,6 @@ The django-reactor era changelog (2.x) is preserved in
   banner, `manage.py check` W012/W013, the browser's WS tab, `wireview.debug`), and names idiomorph
   instead of morphdom. `examples/README.md` says to pass `-m "not e2e"` when running pytest by hand
   (#126).
-
-### Changed
-
-- The test suite, E2E and benchmarks no longer set `DJANGO_ALLOW_ASYNC_UNSAFE`, which hid every
-  failure above while the suite was green. The suite refuses to start with it set; E2E tests exempt
-  only Playwright's own thread, so the live server keeps Django's check as production has it
-  (`conftest.py`, #120).
-- `tests/test_doc_streams.py` reads every example a reader or an agent copies from -- the
-  documentation's Python blocks, the `wireview` skill, the examples and the test project -- and
-  fails on async code that evaluates a QuerySet synchronously (`list(qs)`, `reversed(qs)`,
-  `[x for x in qs]`, `for x in qs:`) or passes one to `stream_insert()`. Handing a QuerySet to
-  `stream()` as is stays the documented pattern (#121).
-- A release tag no longer goes to PyPI untested. `release.yml` calls the whole `ci.yml` on the
-  tagged commit -- the Python x Django matrix, the newest-dependencies run, E2E on NATS, lint,
-  typecheck and the package build -- and a `smoke` job installs the built wheel on freshly
-  resolved dependencies and imports it (`make ci-smoke`); `publish` waits for both. The yanked
-  1.0.0rc3 wheel fails the smoke job (#122).
 
 ## [1.0.0rc3] - 2026-09-30
 
