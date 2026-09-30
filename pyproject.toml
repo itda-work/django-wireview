@@ -32,7 +32,7 @@ classifiers = [
 dependencies = [
     "django>=5.2",
     # The floors are what `make test-lowest` installs and passes on (#132). channels-nats
-    # declares channels>=4 but calls require_valid_channel_name, new in channels 4.2.1.
+    # 0.2.0 declares channels>=4 but calls require_valid_channel_name, new in channels 4.2.1.
     # pydantic before 2.7 rejects Component's field serializer at import; 2.9.0 cannot
     # evaluate its ClassVar annotations, which 2.9.1 fixed.
     "channels>=4.2.1,<5",
@@ -55,7 +55,9 @@ dev = [
     "ipython",
     "whitenoise",
     "channels-redis",
-    "channels-nats",
+    # 0.7.0 requires Python 3.13, and without the cap the lock forks: CI's E2E lane runs on
+    # 3.12 and would verify one version while 3.13+ dev environments ran another (#150).
+    "channels-nats<0.7",
     "django-stubs",
     "django-stubs-ext",
     "pyright",

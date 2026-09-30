@@ -1,6 +1,10 @@
 version = 1
 revision = 3
 requires-python = ">=3.12"
+resolution-markers = [
+    "python_full_version >= '3.13'",
+    "python_full_version < '3.13'",
+]
 
 [[package]]
 name = "annotated-types"
@@ -197,15 +201,16 @@ wheels = [
 
 [[package]]
 name = "channels-nats"
-version = "0.2.0"
+version = "0.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "channels" },
+    { name = "msgpack" },
     { name = "nats-py" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/04/7b/c7b35da00dc787d77db8336477eec4ec617a39d42a9f43b0b53fdb4893c8/channels_nats-0.2.0.tar.gz", hash = "sha256:a2a31400331e9ff8c397973874c5499253385b42f4637e7525ccaf3a5f136369", size = 39692, upload-time = "2026-09-08T14:25:35.503Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e4/ac/8fe92ba2899a44a896a5b0278a81c09d1730232b8dc6a50d84c8fed42995/channels_nats-0.6.1.tar.gz", hash = "sha256:243080fb71c453cfabd15d52e7a5288e0b4912556278e3927b72f07bc9950fe0", size = 80756, upload-time = "2026-09-09T12:23:42.173Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fd/dc/3e70e606b4461b903b910010064392a092948497a5bdc2953de28b8992ac/channels_nats-0.2.0-py3-none-any.whl", hash = "sha256:bf9259d865747ece1123a370c38d39d765b72f09ab92fb2e370683ea05600f69", size = 10335, upload-time = "2026-09-08T14:25:33.961Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/1a/10be4966ca7959d134d1b44161fe1bfdbbb8783e105e24b95bc3683cf492/channels_nats-0.6.1-py3-none-any.whl", hash = "sha256:3f33ef00f6a4f9532d0b4c8e4da84555a22fb5161fa348ce83802102e209eca6", size = 26137, upload-time = "2026-09-09T12:23:40.727Z" },
 ]
 
 [[package]]
@@ -582,7 +587,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "channels", specifier = ">=4.2.1,<5" },
-    { name = "channels-nats", marker = "extra == 'dev'" },
+    { name = "channels-nats", marker = "extra == 'dev'", specifier = "<0.7" },
     { name = "channels-redis", marker = "extra == 'dev'" },
     { name = "cssselect", marker = "extra == 'dev'" },
     { name = "daphne", marker = "extra == 'dev'" },

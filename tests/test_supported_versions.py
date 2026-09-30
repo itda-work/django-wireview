@@ -131,11 +131,15 @@ def _runs(job: dict) -> str:
 def test_the_layer_table_says_the_versions_the_lock_tests():
     """Bumping a layer in uv.lock without rerunning its E2E lane and updating the table fails here."""
     lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
-    locked = {package["name"]: package["version"] for package in lock["package"]}
+    locked: dict[str, list[str]] = {}
+    for package in lock["package"]:
+        locked.setdefault(package["name"], []).append(package["version"])
     table = {package: version for package, (version, _) in _layer_table().items()}
 
     assert set(table) == set(LAYER_OF_PACKAGE), table
-    assert table == {name: locked[name] for name in table}
+    # One version per layer: a lock that forks by Python version runs the E2E lane on one of
+    # them and the other only where nobody looks (#150).
+    assert {name: locked[name] for name in table} == {name: [version] for name, version in table.items()}
 
 
 def test_ci_runs_e2e_on_every_layer_the_table_supports():

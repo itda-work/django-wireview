@@ -118,7 +118,7 @@ Django 5.2 LTS·6.0·6.1, Python 3.12·3.13·3.14다.
 
 | 레이어 | 패키지 | 검증한 버전 | 브로커 | 여러 프로세스 | 가득 찼을 때 |
 |--------|--------|-------------|--------|---------------|--------------|
-| NATS | `channels-nats` | 0.2.0 | nats-server 2.14 | 된다 | 받는 쪽 프로세스가 `channels_nats` 로거에 WARNING을 남기고 버린다 |
+| NATS | `channels-nats` | 0.6.1 | nats-server 2.14 | 된다 | 받는 쪽 프로세스가 `channels_nats` 로거에 WARNING을 남기고 버린다 |
 | Redis | `channels-redis` | 4.3.0 | Redis 8 | 된다 | `send`는 `ChannelFull`, `group_send`는 `channels_redis.core` 로거에 INFO를 남기고 버린다 |
 | InMemory | `channels`에 포함 | — | 없음 | **안 된다** | `group_send`가 아무 흔적 없이 버린다 |
 
@@ -127,8 +127,15 @@ Django 5.2 LTS·6.0·6.1, Python 3.12·3.13·3.14다.
 - **검증한 버전**은 `uv.lock`이 고정한 버전이다. CI의 E2E 잡이 레이어마다 한 번씩 그 버전으로 돈다
   (`make ci-test-e2e LAYER=nats|redis`, 브로커는 표의 릴리스 태그 이미지를 서비스 컨테이너로 띄운다). 로컬에서는
   `make test-e2e`(NATS)와 `make test-e2e LAYER=redis`(`REDIS_URL`의 redis-server)다.
-- **channels-nats는 channels 4.2.1 이상에서만 동작한다.** 자신은 `channels>=4`라고 선언하지만 4.2.1에서 생긴
-  `require_valid_channel_name`을 부른다. django-wireview의 하한이 `channels>=4.2.1`인 이유다(#132).
+- **channels-nats는 channels 4.2.1 이상에서만 동작한다.** 4.2.1에서 생긴 `require_valid_channel_name`을 부른다.
+  0.2.1부터는 자신도 `channels>=4.2.1`을 선언하지만 0.2.0은 `channels>=4`라고 선언했고 여전히 설치된다.
+  django-wireview의 하한이 `channels>=4.2.1`인 이유다(#132).
+- **channels-nats 0.7.0부터는 Python 3.13 이상이 필요하다.** 그래서 표의 버전은 Python 3.12에서도 설치되는
+  0.6.x다. 저장소의 dev 의존성이 `channels-nats<0.7`로 묶여 있어 `uv.lock`이 Python 버전에 따라 갈라지지 않는다 —
+  갈라지면 CI의 E2E 레인(Python 3.12)이 한 버전만 검증한다(#150). 3.13 이상에서 pip가 고르는 0.7 이후 버전은
+  이 표가 검증한 것이 아니다.
+- **channels-nats 0.3.0에서 와이어 형식이 바뀌었다**(본문 msgpack 고정, 일반 채널의 그룹 구독을 큐 그룹으로).
+  0.2.x와 0.3.0 이상의 프로세스를 한 NATS에 섞으면 서로의 메시지를 읽지 못하므로 모든 프로세스를 함께 올린다.
 - 유실을 세는 방법은 [배포 가이드](./DEPLOYMENT.md)의 관측 절이다.
 - `uv.lock`에서 레이어 패키지를 올리면 두 E2E 레인을 돌리고 이 표의 버전을 같이 고친다.
   `tests/test_supported_versions.py`가 표와 `uv.lock`, CI의 E2E 매트릭스가 같은 레이어를 말하는지, `ci.yml`이 쓰는

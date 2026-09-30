@@ -55,6 +55,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- The NATS layer is verified on channels-nats 0.6.1, up from 0.2.0: the lock, the E2E lane and the
+  table in `docs/COMPATIBILITY.md` move together. 0.6.x is the last line that installs on Python
+  3.12 -- 0.7.0 requires 3.13 -- so the dev extra caps it at `<0.7` and the lock stays one version
+  across the supported Pythons (#150). If you run channels-nats yourself: 0.3.0 changed its wire
+  format, so upgrade every process on one NATS together.
+
 - The dependency floors are raised to what the suite passes on: `channels>=4.2.1` (channels-nats calls
   `require_valid_channel_name`, new in channels 4.2.1, while declaring `channels>=4`) and
   `pydantic>=2.7,!=2.9.0` (pydantic 2.0 and 2.0.1 have no wheel for Python 3.12, before 2.7
