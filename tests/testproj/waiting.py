@@ -18,11 +18,25 @@ import typing as t
 T = t.TypeVar("T")
 
 
-async def eventually(condition: t.Callable[[], T], *, timeout: float = 5.0, interval: float = 0.01) -> T:
-    """Return ``condition()`` once it is truthy; fail if it is not within ``timeout`` seconds."""
+async def eventually(
+    condition: t.Callable[[], T],
+    *,
+    task: asyncio.Future[t.Any] | None = None,
+    timeout: float = 5.0,
+    interval: float = 0.01,
+) -> T:
+    """Return ``condition()`` once it is truthy; fail if it is not within ``timeout`` seconds.
+
+    ``task`` is the work the condition waits on. If it ends by raising, that
+    exception is raised here at once: otherwise the test waits out the timeout and
+    reports only that nothing happened, while the cause goes to a garbage-collection
+    log line nobody reads (#148).
+    """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
     while not (value := condition()):
+        if task is not None and task.done() and not task.cancelled() and task.exception() is not None:
+            task.result()
         if loop.time() > deadline:
             name = getattr(condition, "__name__", condition)
             raise AssertionError(f"not true within {timeout}s: {name}, last returned {value!r}")

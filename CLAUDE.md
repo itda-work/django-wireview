@@ -127,6 +127,9 @@ tests/
                            page.wait_for_selector 를 다른 곳에 쓰면 test_e2e_harness.py 의 가드가 실패한다
                            waiting.py 의 eventually() 가 async 테스트에서 백그라운드 작업의 결과를 기다리는 정본이다 —
                            고정 sleep 으로 기다리지 않는다. 타이머(debounce·throttle·만료)를 재는 테스트만 sleep 을 둔다(#143).
+                           기다리는 일을 하는 태스크가 있으면 task= 로 넘긴다 — 그 태스크가 던지면 그 예외가 바로 올라온다(#148).
+                           time_limit.py 는 테스트 하나(setup·teardown 포함)가 test_time_limit 초를 넘기면 모든 스레드의
+                           스택을 찍고 실행을 끝내는 플러그인이다. 실패한 테스트의 teardown 멈춤까지 잡는다(#148).
                            bookmarks/ 는 예제가 아니라 wireview 스킬 검증의 기준선이고,
                            uploadprobe/ 는 워커 둘짜리 업로드 E2E(test_multiworker_uploads.py)의 픽스처,
                            livesession/ 은 경계 넘는 이동 E2E(test_live_session_e2e.py)의 픽스처다,

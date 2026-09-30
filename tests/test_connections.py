@@ -10,7 +10,6 @@ so they run wherever the suite does.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import typing as t
 
@@ -185,6 +184,5 @@ async def test_closing_the_socket_calls_leaving():
     communicator = await connect(CnBoard, "b1")
 
     await communicator.disconnect()
-    await asyncio.sleep(0)
 
     assert CALLS == [("leaving", "b1")]

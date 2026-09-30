@@ -146,6 +146,9 @@ django_settings_module = "tests.testproj.settings"
 [tool.pytest.ini_options]
 python_files = "test*.py"
 addopts = "-v --nomigrations --strict-markers"
+# A hung test stops the run with every thread's stack instead of holding it until the CI
+# job's limit (testproj/time_limit.py, #148). The slowest test takes about five seconds.
+test_time_limit = 60
 DJANGO_SETTINGS_MODULE = "testproj.settings"
 pythonpath = [".", "tests"]
 markers = [

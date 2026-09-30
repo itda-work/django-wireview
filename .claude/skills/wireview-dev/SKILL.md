@@ -114,7 +114,7 @@ PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflow
 |------|------|-----------|
 | 의존성 설치 | `make install` 과 `npm ci` | `uv sync --dev`는 dev 도구를 설치하지 않는다. extras를 써야 한다 |
 | JS 빌드 | `make build-js` | 개발 서버와 E2E 전에 필수. 산출물은 gitignore |
-| 테스트 (e2e·slow 제외) | `make test` 또는 `make test ARGS="-k streams"` | collectstatic은 Makefile이 처리. `DJANGO_ALLOW_ASYNC_UNSAFE`를 켜면 스위트가 시작을 거절한다(#120) |
+| 테스트 (e2e·slow 제외) | `make test` 또는 `make test ARGS="-k streams"` | collectstatic은 Makefile이 처리. `DJANGO_ALLOW_ASYNC_UNSAFE`를 켜면 스위트가 시작을 거절한다(#120). 테스트 하나가 60초를 넘기면 모든 스레드의 스택을 찍고 실행이 끝난다 — 디버거를 붙일 때는 `-o test_time_limit=0`(#148) |
 | 동시 실행 확인 | `make test-concurrent` | 같은 사본에서 테스트 스위트 둘을 동시에 돌린다. 테스트 DB는 프로세스마다 따로라 둘 다 통과해야 한다(#125). `--ff`는 `addopts`가 아니라 Makefile 타깃에 있다 |
 | 최신 의존성 테스트 | `make test-latest` | `uv.lock`을 무시하고 새로 설치하는 사람이 받는 최신 해로 돈다. lock이 옛 버전에 묶여 있으면 기본 레인은 새 설치의 결함을 못 본다(#127) |
 | 하한 의존성 테스트 | `make test-lowest` | `pyproject.toml`이 허용하는 가장 오래된 런타임 의존성(django·channels·pydantic)으로 돈다. dev 도구는 그에 맞는 최신이다. 깨지면 하한을 올린다(#132). channels 하한은 nats-server 바이너리가 있어야 검증된다 |
@@ -142,6 +142,7 @@ PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflow
 - 클라이언트 순수 모듈: `tests/js/*.test.mjs` (node --test).
 - async 테스트가 태스크·채널 레이어가 나중에 할 일을 기다릴 때는 고정 `asyncio.sleep` 대신
   `testproj.waiting.eventually(조건)`을 쓴다. 느린 러너에서만 실패하는 테스트가 여기서 나왔다(#143).
+  그 일을 하는 태스크를 쥘 수 있으면 `task=`로 넘긴다 — 태스크가 던진 예외가 "시간 안에 참이 아니다" 대신 바로 올라온다(#148).
   고친 테스트는 그 경로에 지연을 넣은 파라미터로도 돌린다(`tests/test_presence.py`의 `broadcast_pace`).
   메시지를 "조용해질 때까지" 모으는 루프(`receive_nothing`, `wait_for(..., 0.2)`)도 같은 문제다 — 기대하는
   메시지는 끝까지 기다리고, 조용한 창은 "그 뒤에 더 없음"을 확인하는 데만 쓴다(`tests/test_joined.py`).

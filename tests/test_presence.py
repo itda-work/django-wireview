@@ -242,7 +242,7 @@ class TestPresenceMixin:
             ]
 
         # The timeout broadcasts the clear, whenever the runner gets to it
-        await eventually(clear_broadcasts)
+        await eventually(clear_broadcasts, task=view.component._presence_typing_task)
 
         # Should have auto-cleared
         assert view.component._presence_is_typing is False
@@ -519,7 +519,8 @@ class TestPresenceIntegration:
 
         # Wait for the timeout's clear broadcast
         clear_broadcasts = await eventually(
-            lambda: [b for b in producer.presence_broadcasts if b.get("kwargs", {}).get("state") == "online"]
+            lambda: [b for b in producer.presence_broadcasts if b.get("kwargs", {}).get("state") == "online"],
+            task=producer.component._presence_typing_task,
         )
 
         # Tracker receives clear notification

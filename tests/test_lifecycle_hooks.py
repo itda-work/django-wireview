@@ -680,6 +680,17 @@ class TestRateLimitExample:
 
         assert view.component.hits == burst + 2
 
+    async def test_a_long_idle_fills_the_bucket_only_to_the_burst(self, clock):
+        """``min(BURST, ...)``: an hour of quiet buys one burst, not 36,000 events."""
+        view = await mount(LhRateLimited, id="rl5")
+        burst = DOC_RATE_LIMIT["RateLimitHook"].BURST
+
+        clock.now += 3600
+        for _ in range(burst + 5):
+            await view.call("hit")
+
+        assert view.component.hits == burst
+
     async def test_each_component_has_its_own_bucket(self):
         first = await mount(LhRateLimited, id="rl3")
         second = await mount(LhRateLimited, id="rl4")

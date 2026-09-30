@@ -239,6 +239,15 @@ The django-reactor era changelog (2.x) is preserved in
   the reset test's 50 ms margin could be outrun by a slow runner. Browser tests of debounce and throttle
   keep their sleeps (#143).
 
+- Test harness: a test that hangs stops the run after 60 seconds (`test_time_limit` in
+  `pyproject.toml`) and prints every thread's stack, instead of holding it until the CI job's
+  limit. pytest-timeout and pytest's `faulthandler_timeout` were not enough: both stop their
+  timer when a test fails, and the render gate's always-blocked mutation hung in the teardown of
+  a test that had already failed (`tests/testproj/time_limit.py`). `eventually(..., task=)`
+  raises the watched task's exception at once instead of reporting only that the wait ran out.
+  The documented rate limit's test now checks the bucket stops at `BURST` after a long idle;
+  removing the cap passed all its tests before (#148).
+
 - Test harness: two test runs in one checkout no longer break each other. The test database was
   one fixed file, so concurrent runs created, flushed and dropped it under each other and failed
   with "readonly database" and "no such table", differently each time; each test process now has
