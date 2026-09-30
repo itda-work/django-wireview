@@ -1,0 +1,14 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Wireview Hello</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    <h1>My First Wireview App</h1>
+    {% component 'XHello' %}
+    {% component 'XHello' name="Django" %}
+  </body>
+</html>

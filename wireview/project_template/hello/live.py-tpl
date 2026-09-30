@@ -1,0 +1,13 @@
+from wireview import Component
+
+
+class XHello(Component):
+    """The first wireview component: its state lives on the server."""
+
+    class Meta:
+        template_name = "hello/hello.html"
+
+    name: str = "World"
+
+    async def change_name(self, name: str):
+        self.name = name

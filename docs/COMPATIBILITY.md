@@ -41,6 +41,7 @@ from wireview import Component, LiveComponent, JS, mount
 | 템플릿 태그 | `{% load wireview %}`와 그 태그들 |
 | 설정 | `settings.WIREVIEW`의 키 (`wireview/settings.py`의 `DEFAULT`) |
 | 관리 명령 | `wireview_stubs`, `wireview_lsp`, `wireview_agent_setup`, `wireview_upload_gc`와 문서화된 옵션. `wireview_lsp`의 출력 JSON은 그 안의 `version` 필드로 따로 관리한다 — 모양을 바꾸면 `version`을 올린다 |
+| 스타터 템플릿 | 설치된 패키지의 `wireview/project_template/` 디렉터리(`startproject --template`의 대상, [튜토리얼 01](./tutorials/01-getting-started.md)). 약속은 그 경로와, 만든 프로젝트가 `manage.py check`에 아무것도 보고하지 않는다는 것이다. 만들어진 파일은 사용자의 코드이므로 안의 내용은 릴리스마다 바뀔 수 있다 |
 | 시스템 체크 id | `wireview.W001`~. 없앤 번호는 다시 쓰지 않는다 |
 | 컴포넌트 클래스 설정 | `class Meta:`의 키(`ComponentOptions`의 필드)와 `get_subscriptions()` |
 | 템플릿 컨텍스트 | 컴포넌트 템플릿의 `this`, 슬롯의 `let` 이름 |

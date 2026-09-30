@@ -1,0 +1,28 @@
+"""
+ASGI entry point for {{ project_name }}: HTTP to Django, WebSocket to wireview.
+
+https://docs.djangoproject.com/en/{{ docs_version }}/howto/deployment/asgi/
+"""
+
+import os
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "{{ project_name }}.settings")
+
+import django
+
+# Before wireview.urls: it imports the consumer, which imports Django models,
+# and that fails with AppRegistryNotReady until the apps are set up.
+django.setup()
+
+from channels.auth import AuthMiddlewareStack
+from channels.routing import ProtocolTypeRouter, URLRouter
+from django.core.asgi import get_asgi_application
+
+from wireview.urls import websocket_urlpatterns
+
+application = ProtocolTypeRouter(
+    {
+        "http": get_asgi_application(),
+        "websocket": AuthMiddlewareStack(URLRouter(websocket_urlpatterns)),
+    }
+)

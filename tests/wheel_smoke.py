@@ -72,6 +72,20 @@ class XSmoke(wireview.Component):
         self.count += by
 
 
+# The starter template renders from the installed package (#131). Only rendered:
+# the project it makes runs on daphne, which the wheel does not depend on, and
+# tests/test_project_template.py runs it.
+import tempfile  # noqa: E402
+
+with tempfile.TemporaryDirectory() as target:
+    call_command("startproject", "smokesite", target, template=str(installed.parent / "project_template"))
+    made = Path(target)
+    if "smokesite.settings" not in (made / "manage.py").read_text():
+        sys.exit("the starter template did not render manage.py")
+    expected = [made / "smokesite" / "asgi.py", made / "hello" / "templates" / "hello" / "index.html"]
+    if not all(path.is_file() for path in expected):
+        sys.exit(f"the starter template made {sorted(str(p.relative_to(made)) for p in made.rglob('*'))}")
+
 import pydantic  # noqa: E402
 
 print(f"wheel smoke: {installed.parent} on Django {django.get_version()}, pydantic {pydantic.VERSION}")

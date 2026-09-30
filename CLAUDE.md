@@ -79,6 +79,8 @@ wireview/
 ├── management/commands/   wireview_stubs (.pyi 생성), wireview_lsp (IDE 메타데이터 JSON),
 │                          wireview_agent_setup (앱 개발자용 스킬을 프로젝트 .claude/skills/ 에 설치),
 │                          wireview_upload_gc (토큰 만료보다 오래된 청크 파일 정리)
+├── project_template/       startproject --template 용 스타터(튜토리얼 01의 프로젝트). *.py-tpl 과 html 뿐, 모듈이 아니다.
+│                          tests/test_project_template.py 가 스크래치에 만들어 check·첫 화면을 보고, ci-build 가 wheel 에 있는지 본다(#131)
 ├── templates/wireview_header.html  {% wireview_header %}가 렌더. wireview.min.js를 로드
 └── static/wireview/       wireview.js (소스), rendered.mjs (diff 적용·HTML 복원 순수 함수),
                            streams.mjs (스트림 DOM 판단 순수 함수), reload.mjs (reload 쿨다운 판단),

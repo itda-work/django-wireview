@@ -14,6 +14,27 @@
 - Django 5.2 이상 프로젝트
 - 기본적인 Django 지식
 
+## 새 프로젝트라면: 스타터 템플릿
+
+새로 시작하는 프로젝트라면 1~3절의 배선을 옮겨 적지 않아도 됩니다. wireview 패키지에 실린 스타터 템플릿으로
+`startproject`를 하면 이 튜토리얼이 만드는 프로젝트가 그대로 생깁니다.
+
+```bash
+pip install django-wireview daphne
+django-admin startproject mysite --template "$(python -c 'import wireview, pathlib; print(pathlib.Path(wireview.__file__).parent / "project_template")')"
+cd mysite
+python manage.py migrate
+python manage.py runserver
+```
+
+`--template` 뒤의 `python -c ...`는 설치된 패키지 안의 `project_template` 디렉터리 경로를 출력합니다.
+`http://localhost:8000`에 4절과 같은 화면이 뜹니다. 생기는 것은 1~3절이 설명하는 그대로입니다 —
+`INSTALLED_APPS` 맨 위의 `daphne`, InMemory `CHANNEL_LAYERS`, `django.setup()`이 먼저 오는 `asgi.py`,
+`include('wireview.urls')`, 그리고 `XHello` 컴포넌트가 든 `hello` 앱(튜토리얼의 `myapp`)입니다. 첫 페이지는
+`views.py` 대신 `TemplateView`로 그립니다. 만든 직후의 `python manage.py check`는 아무것도 보고하지 않습니다.
+
+이미 있는 프로젝트에 붙이거나 각 줄이 왜 필요한지 보려면 1절부터 읽습니다.
+
 ## 1. 설치
 
 ### 패키지 설치

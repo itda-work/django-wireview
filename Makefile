@@ -243,6 +243,15 @@ ci-build:
 	sys.exit(0) if any(n.endswith('agent_skills/wireview/SKILL.md') for n in names) \
 	else sys.exit(f'{w} has no agent_skills/wireview/SKILL.md - check the sdist include patterns')"
 	@echo "ci-build: wheel contains the agent skill"
+	@# And the starter template tutorial 01 points `startproject --template` at (#131):
+	@# data files with no Python module among them, so nothing imports them to notice.
+	@python3 -c "import glob, sys, zipfile; \
+	w = sorted(glob.glob('dist/*.whl'))[-1]; \
+	names = set(zipfile.ZipFile(w).namelist()); \
+	want = {'wireview/project_template/' + n for n in ('manage.py-tpl', 'project_name/settings.py-tpl', \
+	'project_name/asgi.py-tpl', 'project_name/urls.py-tpl', 'hello/live.py-tpl', 'hello/templates/hello/index.html')}; \
+	sys.exit(0) if want <= names else sys.exit(f'{w} lacks {sorted(want - names)}')"
+	@echo "ci-build: wheel contains the starter template"
 
 # The built wheel in a fresh environment that resolves its dependencies anew, as a
 # user's install does -- not uv.lock's versions. rc3 passed every test on the lock
