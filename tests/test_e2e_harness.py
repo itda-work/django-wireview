@@ -440,7 +440,7 @@ def test_a_wait_that_times_out_says_what_the_server_logged(page, transactional_d
     monkeypatch.setattr(e2e_browser, "WAIT_TIMEOUT", 2.0)
     with serve() as base_url:
         page.goto(f"{base_url}/errorprobe/")
-        expect(page.locator("#broken")).to_have_class("wireview-error")
+        expect(page.locator("#broken")).to_have_class(re.compile(r"\bwireview-error\b"))
         with pytest.raises(AssertionError) as failure:
             e2e_browser.wait_live(page, "#broken:not(.wireview-error)")
 

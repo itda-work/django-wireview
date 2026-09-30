@@ -16,13 +16,17 @@ still stops it.
 from __future__ import annotations
 
 import contextlib
+import http.server
 import os
 import re
 import socket
 import subprocess
 import sys
+import threading
 import time
 import typing as t
+import urllib.request
+import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -93,41 +97,48 @@ class Starter:
             raise AssertionError(f"{failure}\n\nThe starter's runserver printed:\n{self.output()}") from None
 
 
-def _wait_until_listening(port: int, proc: subprocess.Popen, log: Path) -> None:
+def _wait_until_serving(port: int, proc: subprocess.Popen, log: Path) -> None:
+    """Until this runserver has answered a request of ours -- not until something answers on the port.
+
+    The port is closed between ``_free_port()`` and runserver binding it, so another
+    server can hold it by then. Daphne prints its startup line, logs "Listen
+    failure" and exits with 0, while the port answers for the other server. So each
+    try carries a token, and ready is the token in this runserver's access log.
+    """
+    token = uuid.uuid4().hex
     deadline = time.monotonic() + WAIT_TIMEOUT
     while time.monotonic() < deadline:
-        if proc.poll() is not None:
-            raise AssertionError(f"runserver exited with {proc.returncode}:\n{log.read_text(errors='replace')}")
+        output = log.read_text(errors="replace")
+        if "Listen failure" in output or proc.poll() is not None:
+            raise AssertionError(f"runserver did not serve (exit code {proc.poll()}):\n{output}")
+        if f"?ready={token} " in output:
+            return
         try:
-            with socket.create_connection(("127.0.0.1", port), timeout=0.5):
-                return
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/?ready={token}", timeout=2).close()  # noqa: S310
         except OSError:
-            time.sleep(0.2)
-    raise AssertionError(f"runserver did not listen within {WAIT_TIMEOUT:g}s:\n{log.read_text(errors='replace')}")
+            pass
+        time.sleep(0.2)
+    raise AssertionError(f"runserver did not answer within {WAIT_TIMEOUT:g}s:\n{log.read_text(errors='replace')}")
 
 
-@pytest.fixture(scope="module")
-def starter(tmp_path_factory) -> t.Iterator[Starter]:
-    root = tmp_path_factory.mktemp("starter")
-    _manage(root, "-m", "django", "startproject", "mysite", str(root), "--template", str(TEMPLATE))
-    _manage(root, "manage.py", "migrate")
-
-    port = _free_port()
-    log = root / "runserver.log"
+@contextlib.contextmanager
+def _running(project: Path, port: int) -> t.Iterator[Starter]:
+    """``runserver`` of the project on ``port``, stopped on the way out."""
+    log = project / f"runserver-{port}.log"
     with log.open("wb") as out:
         # --noreload: the autoreloader serves from a child process, which
         # terminating this one would leave running.
         proc = own(
             subprocess.Popen(
                 [sys.executable, "manage.py", "runserver", f"127.0.0.1:{port}", "--noreload"],
-                cwd=root,
+                cwd=project,
                 env={**_env(), "PYTHONUNBUFFERED": "1"},
                 stdout=out,
                 stderr=subprocess.STDOUT,
             )
         )
     try:
-        _wait_until_listening(port, proc, log)
+        _wait_until_serving(port, proc, log)
         yield Starter(f"http://127.0.0.1:{port}", log)
     finally:
         proc.terminate()
@@ -139,8 +150,22 @@ def starter(tmp_path_factory) -> t.Iterator[Starter]:
         disown(proc)
 
 
+@pytest.fixture(scope="module")
+def project(tmp_path_factory) -> Path:
+    root = tmp_path_factory.mktemp("starter")
+    _manage(root, "-m", "django", "startproject", "mysite", str(root), "--template", str(TEMPLATE))
+    _manage(root, "manage.py", "migrate")
+    return root
+
+
+@pytest.fixture(scope="module")
+def starter(project) -> t.Iterator[Starter]:
+    with _running(project, _free_port()) as running:
+        yield running
+
+
 def test_the_first_page_is_live_and_answers_typing(page, starter):
-    """Tutorial 01's page: both components join, and typing reaches the server and back."""
+    """Tutorial 01's page from daphne's runserver: both components join, and typing reaches the server and back."""
     # By path: the header asks for the bundle with a ?v= cache buster.
     statics: dict[str, int] = {}
     page.on("response", lambda r: statics.setdefault(urlsplit(r.url).path, r.status))
@@ -163,10 +188,41 @@ def test_the_first_page_is_live_and_answers_typing(page, starter):
     assert statics.get("/static/wireview/wireview.min.js") == 200, statics
     assert crashes == []
     assert starter.trouble() == [], starter.output()
-
-
-def test_runserver_is_daphne(starter):
-    """Not staticfiles' WSGI runserver: then the page draws and no socket connects (W013)."""
-    # The startup line itself: W013's hint quotes the phrase, so it is in the output
-    # exactly when runserver is not daphne's.
+    # Not staticfiles' WSGI runserver, where the page draws and no socket connects
+    # (W013). The startup line itself: W013's hint quotes the phrase. Asserted
+    # here rather than in a test of its own, which pytest-playwright's browser
+    # parametrization would reorder into a second instance of the module fixtures.
     assert re.search(r"^Starting ASGI/Daphne version ", starter.output(), re.MULTILINE), starter.output()
+
+
+class _Answering(http.server.BaseHTTPRequestHandler):
+    """Another server, answering every request with a 200."""
+
+    def do_GET(self) -> None:
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"someone else")
+
+    def log_message(self, *args: t.Any) -> None:
+        pass
+
+
+def test_a_port_another_server_holds_is_not_taken_for_the_starter(project, browser_name):
+    """The port is free when chosen and runserver binds it later; in between another server can take it.
+
+    Daphne then logs "Listen failure" and exits with 0, while the port answers --
+    so "something answers on the port" is not "the starter is up". ``browser_name``
+    keeps this in the browser parametrization's group, so the module fixtures are
+    made once.
+    """
+    other = http.server.HTTPServer(("127.0.0.1", 0), _Answering)
+    thread = threading.Thread(target=other.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with pytest.raises(AssertionError, match="did not serve"):
+            with _running(project, other.server_address[1]):
+                pass
+    finally:
+        other.shutdown()
+        other.server_close()
+        thread.join()
