@@ -19,7 +19,11 @@ off the loop, so ``list(self.quiz.questions.all())`` is fine there; a handler th
 reads it runs the query on the loop. Tutorial 13 taught that after the example was
 fixed (#145), so properties that evaluate the ORM, directly or through another
 property, are collected and every async function that reads one fails. A property
-that returns a QuerySet as is stays lazy and passes.
+that returns a QuerySet as is stays lazy and passes. A plain helper method the
+handler calls is read the same way, and so is the truth of a QuerySet (#149).
+
+Not caught: a foreign key followed by attribute, ``self.post.author.name``. Whether
+``author`` is a relation or a column is the model's to say, not the syntax's.
 """
 
 import ast
@@ -50,7 +54,7 @@ SOURCES = [
 _FENCE = re.compile(r"```(?:python|py)\n(.*?)```", re.S)
 
 #: Calls that iterate their argument synchronously.
-SYNC_CONSUMERS = {"list", "tuple", "reversed", "sorted", "set", "len"}
+SYNC_CONSUMERS = {"list", "tuple", "reversed", "sorted", "set", "len", "bool"}
 
 
 def _blocks(path: Path) -> list[str]:
@@ -137,7 +141,12 @@ QUERYSET_METHODS = {
     "distinct",
     "only",
     "defer",
+    "values_list",
 }
+
+#: Methods a dict has too, told apart by their arguments: ``dict.values()`` takes none,
+#: ``qs.values("name")`` names fields.
+FIELD_QUERYSET_METHODS = {"values"}
 
 #: Methods that run the query when called on a QuerySet or a manager.
 EVALUATING_METHODS = {
@@ -163,6 +172,15 @@ EVALUATING_METHODS = {
 
 #: Evaluating methods that a list, a dict or a str never calls without an argument.
 ZERO_ARGUMENT_QUERIES = {"count", "exists", "first", "last", "iterator"}
+
+
+def _key(func: ast.FunctionDef) -> str | None:
+    """How a handler reaches ``func``: ``name`` for a property, ``name()`` for a plain
+    method it calls. A decorated method is neither -- ``@database_sync_to_async``
+    makes it one to await, which runs off the loop."""
+    if _is_property(func):
+        return func.name
+    return None if func.decorator_list else f"{func.name}()"
 
 
 def _is_property(func: ast.FunctionDef) -> bool:
@@ -194,12 +212,21 @@ def _own_nodes(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.AST]:
 
 def _is_orm(node: ast.expr, lazy: set[str]) -> bool:
     """Whether ``node`` is an unevaluated QuerySet or manager, counting ``self.<name>``
-    for a property that returns one as is."""
+    for a property and ``self.<name>()`` for a method that returns one as is."""
     while isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice):  # qs[:10] stays lazy
         node = node.value
     if _self_attr(node) in lazy:
         return True
+    if isinstance(node, ast.Call) and f"{_self_attr(node.func)}()" in lazy:
+        return True
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in QUERYSET_METHODS:
+        return True
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in FIELD_QUERYSET_METHODS
+        and (node.args or node.keywords)
+    ):
         return True
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
         return _is_orm(node.func.value, lazy) and node.func.attr not in EVALUATING_METHODS
@@ -208,8 +235,10 @@ def _is_orm(node: ast.expr, lazy: set[str]) -> bool:
 
 def _looks_like_a_query(call: ast.Call) -> bool:
     """A query on a related manager, ``self.room.messages.count()``, whose receiver has no
-    telling name. Told by its arguments: ``list.count(x)`` and ``dict.get(key)`` take one."""
-    if call.args:
+    telling name. Told by its arguments: ``list.count(x)`` and ``dict.get(key)`` take one.
+    A component's own attribute is not a manager unless a property makes it one, which
+    ``_is_orm`` knows: ``self.history.first()`` is a list's."""
+    if call.args or _self_attr(call.func.value):
         return False
     return call.func.attr in ZERO_ARGUMENT_QUERIES or (call.func.attr == "get" and bool(call.keywords))
 
@@ -225,8 +254,23 @@ def _evaluations(func: ast.FunctionDef | ast.AsyncFunctionDef, lazy: set[str], e
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in SYNC_CONSUMERS:
             found += [ast.unparse(node) for arg in node.args if _is_orm(arg, lazy)]
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            if node.func.attr in EVALUATING_METHODS and (_is_orm(node.func.value, lazy) or _looks_like_a_query(node)):
+            if f"{_self_attr(node.func)}()" in evaluating or (
+                node.func.attr in EVALUATING_METHODS and (_is_orm(node.func.value, lazy) or _looks_like_a_query(node))
+            ):
                 found.append(ast.unparse(node))
+        # Truth and membership run the query too: ``if qs:``, ``not qs``, ``qs or []``, ``x in qs``.
+        elif isinstance(node, (ast.If, ast.While, ast.IfExp, ast.Assert)) and _is_orm(node.test, lazy):
+            found.append(f"bool({ast.unparse(node.test)})")
+        elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not) and _is_orm(node.operand, lazy):
+            found.append(ast.unparse(node))
+        elif isinstance(node, ast.BoolOp):
+            found += [f"bool({ast.unparse(v)})" for v in node.values if _is_orm(v, lazy)]
+        elif isinstance(node, ast.Compare):
+            found += [
+                ast.unparse(node)
+                for op, right in zip(node.ops, node.comparators, strict=True)
+                if isinstance(op, (ast.In, ast.NotIn)) and _is_orm(right, lazy)
+            ]
         elif isinstance(node, ast.Subscript) and not isinstance(node.slice, ast.Slice):
             if _is_orm(node.value, lazy):  # qs[0]
                 found.append(ast.unparse(node))
@@ -235,18 +279,43 @@ def _evaluations(func: ast.FunctionDef | ast.AsyncFunctionDef, lazy: set[str], e
     return found
 
 
+def _classify(funcs: list[ast.FunctionDef], lazy: set[str], evaluating: set[str]) -> None:
+    """Add to ``lazy`` the properties and methods that return a QuerySet as is, and to
+    ``evaluating`` those that run one, until nothing changes: one may reach the ORM
+    through another, declared before or after it."""
+    changed = True
+    while changed:
+        changed = False
+        for func in funcs:
+            key = _key(func)
+            if key is None or key in evaluating:
+                continue
+            if _evaluations(func, lazy, evaluating):
+                evaluating.add(key)
+                lazy.discard(key)
+                changed = True
+            elif key not in lazy and any(
+                isinstance(n, ast.Return) and n.value is not None and _is_orm(n.value, lazy) for n in _own_nodes(func)
+            ):
+                lazy.add(key)
+                changed = True
+
+
 def _property_offenders(blocks: list[str]) -> list[str]:
-    """Async functions that run a query through a synchronous property (#145).
+    """Async functions that run a query through a synchronous property or helper (#145, #149).
 
     A property the template reads runs off the event loop. The same property read by
     a handler runs on it, and ``SynchronousOnlyOperation`` is raised in production
-    however innocent ``self.current_question`` looks. A property that only returns a
-    QuerySet is fine -- nothing runs until someone evaluates it -- so a handler
-    that evaluates *that* synchronously is caught too.
+    however innocent ``self.current_question`` looks; so does a plain method it
+    calls. A property that only returns a QuerySet is fine -- nothing runs until
+    someone evaluates it -- so a handler that evaluates *that* synchronously is
+    caught too.
 
     ``blocks`` are one document's: a tutorial defines the class in one block and
-    quotes a handler on its own further down, so properties are told by name
-    across all of them. A block that does not parse on its own is skipped.
+    quotes a handler on its own further down, so a handler outside a class reads
+    the names of the whole document. One inside a class reads its own class's
+    first, where two classes give one name different answers. A block that does
+    not parse on its own is skipped.
     """
     trees = []
     for block in blocks:
@@ -254,37 +323,28 @@ def _property_offenders(blocks: list[str]) -> list[str]:
             trees.append(ast.parse(block))
         except SyntaxError:
             continue
-    props = [
-        node
-        for tree in trees
-        for cls in ast.walk(tree)
-        if isinstance(cls, ast.ClassDef)
-        for node in cls.body
-        if isinstance(node, ast.FunctionDef) and _is_property(node)
-    ]
+    classes = [cls for tree in trees for cls in ast.walk(tree) if isinstance(cls, ast.ClassDef)]
+    members = {cls: [n for n in cls.body if isinstance(n, ast.FunctionDef)] for cls in classes}
+
     lazy: set[str] = set()
     evaluating: set[str] = set()
-    changed = True
-    while changed:  # A property may reach the ORM through another property.
-        changed = False
-        for func in props:
-            if func.name in evaluating:
-                continue
-            if _evaluations(func, lazy, evaluating):
-                evaluating.add(func.name)
-                lazy.discard(func.name)
-                changed = True
-            elif func.name not in lazy and any(
-                isinstance(n, ast.Return) and n.value is not None and _is_orm(n.value, lazy) for n in _own_nodes(func)
-            ):
-                lazy.add(func.name)
-                changed = True
+    _classify([f for funcs in members.values() for f in funcs], lazy, evaluating)
+
+    scope: dict[ast.AsyncFunctionDef, tuple[set[str], set[str]]] = {}
+    for cls in classes:  # outer before inner, so a nested class's handlers end up with its own
+        own = {_key(f) for f in members[cls]} - {None}
+        cls_lazy, cls_evaluating = lazy - own, evaluating - own
+        _classify(members[cls], cls_lazy, cls_evaluating)
+        for node in ast.walk(cls):
+            if isinstance(node, ast.AsyncFunctionDef):
+                scope[node] = (cls_lazy, cls_evaluating)
+
     return [
         f"{func.name}: {found}"
         for tree in trees
         for func in ast.walk(tree)
         if isinstance(func, ast.AsyncFunctionDef)
-        for found in _evaluations(func, lazy, evaluating)
+        for found in _evaluations(func, *scope.get(func, (lazy, evaluating)))
     ]
 
 
@@ -325,6 +385,7 @@ def test_no_example_evaluates_a_queryset_on_the_event_loop(path):
         "async def joined(self):\n    n = len(Item.objects.all())",
         'await self.stream_insert("i", Item.objects.filter(pk=1))',
         'await self.stream_insert(name="i", item=self.queryset)',
+        "async def joined(self):\n    self.any = bool(Item.objects.filter(done=False))",
     ],
 )
 def test_the_scan_catches_a_synchronous_evaluation(source):
@@ -399,6 +460,28 @@ _QUESTIONS = (
         # No property at all: the handler runs the query itself.
         "class A(Component):\n    async def joined(self):\n        self.owner = User.objects.get(pk=1)",
         "class A(Component):\n    async def joined(self):\n        self.seen = self.room.messages.count()",
+        # Through a synchronous helper method rather than a property (#149).
+        "class Quiz(Component):\n    def _current(self):\n        return self.quiz.questions.all()[self.index]\n"
+        "    async def answer(self, choice_id: int):\n        question = self._current()",
+        "class A(Component):\n    def _pending(self):\n        return Item.objects.filter(done=False)\n"
+        "    async def clear(self):\n        for item in self._pending():\n            await item.adelete()",
+        # values_list() is the ORM's alone; values() is when it names fields (#149).
+        "class A(Component):\n    async def joined(self):\n"
+        "        self.tags = list(self.post.tags.values_list('name', flat=True))",
+        "class A(Component):\n    async def joined(self):\n        self.rows = list(self.post.tags.values('name'))",
+        # Truth and membership evaluate a QuerySet as much as a loop does (#149).
+        "class A(Component):\n    @property\n    def items(self):\n        return self.list.items.all()\n"
+        "    async def joined(self):\n        if self.items:\n            pass",
+        "class A(Component):\n    @property\n    def items(self):\n        return self.list.items.all()\n"
+        "    async def pick(self, item):\n        self.ok = item in self.items",
+        "class A(Component):\n    @property\n    def items(self):\n        return self.list.items.all()\n"
+        "    async def joined(self):\n        self.empty = not self.items",
+        "class A(Component):\n    async def joined(self):\n"
+        "        self.any = self.ready and Item.objects.filter(done=False)",
+        # One document, two classes, one name: each handler is judged by its own class (#149).
+        "class A(Component):\n    @property\n    def items(self):\n        return list(Item.objects.all())\n"
+        "    async def joined(self):\n        self.n = len(self.items)\n"
+        "class B(Component):\n    @property\n    def items(self):\n        return self.cached\n",
     ],
 )
 def test_the_property_scan_catches_a_query_on_the_event_loop(source):
@@ -434,6 +517,22 @@ def test_the_property_scan_catches_a_query_on_the_event_loop(source):
         "        self.n = await sync_to_async(lambda: len(self.questions))()\n"
         "        def count():\n            return len(self.questions)\n"
         "        self.n = await sync_to_async(count)()",
+        # A helper method handed to sync_to_async rather than called, or one decorated to be awaited (#149).
+        "class A(Component):\n    def _count(self):\n        return len(list(Item.objects.all()))\n"
+        "    async def joined(self):\n        self.n = await sync_to_async(self._count)()",
+        "class A(Component):\n    @database_sync_to_async\n    def _count(self):\n        return Item.objects.count()\n"
+        "    async def joined(self):\n        self.n = await self._count()",
+        # A component's own list or dict, not a manager: its first() and get() are not queries (#149).
+        "class A(Component):\n    async def undo(self):\n        self.last = self.history.first()\n"
+        "        self.page = self.params.get(default=1)",
+        # Truth of a list the handler built, and of a property that queries nothing (#149).
+        "class A(Component):\n    @property\n    def picked(self):\n        return list(self.answers.values())\n"
+        "    async def joined(self):\n        rows = [r async for r in Item.objects.all()]\n"
+        "        if rows and not self.picked:\n            pass",
+        # One document, two classes, one name: B's handler reads B's property, which queries nothing (#149).
+        "class A(Component):\n    @property\n    def items(self):\n        return list(Item.objects.all())\n"
+        "class B(Component):\n    @property\n    def items(self):\n        return self.cached\n"
+        "    async def joined(self):\n        self.n = len(self.items)",
     ],
 )
 def test_the_property_scan_passes_what_does_not_block(source):

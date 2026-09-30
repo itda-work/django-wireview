@@ -98,7 +98,12 @@ The django-reactor era changelog (2.x) is preserved in
   (#121). It also fails on async code that reads a synchronous property that runs a query -- through
   `list()`, `len()`, a loop, an index, `.get()`, `.count()` and the like, directly or through
   another such property -- or that evaluates a property returning a QuerySet synchronously. A
-  property that returns a QuerySet as is passes (#145).
+  property that returns a QuerySet as is passes (#145). The same holds for a plain helper method
+  the handler calls, `values_list()` and `values()` with fields, and the truth of a QuerySet
+  (`if qs:`, `not qs`, `qs or []`, `x in qs`, `bool(qs)`). `first()` or `get(k=...)` on a
+  component's own attribute (`self.history.first()`) is no longer taken for a query, and two
+  classes in one document that give a property name different answers are judged each by its own.
+  A foreign key followed by attribute (`self.post.author.name`) is still not caught (#149).
 
 - A release tag no longer goes to PyPI untested. `release.yml` calls the whole `ci.yml` on the
   tagged commit -- the Python x Django matrix, the newest-dependencies run, E2E on NATS, lint,
