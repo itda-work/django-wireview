@@ -32,6 +32,7 @@ wireview/
 ├── py.typed               타입 검사기가 패키지의 주석을 읽게 한다. ci-build가 wheel에 있는지 본다
 ├── core/component.py      Component 베이스: 라이프사이클, 이벤트 디스패치, streams·uploads·async·flash·hooks 메서드.
 │                          ComponentOptions가 `class Meta:`를 해석해 cls._meta에 둔다(키 단위 상속, #99)
+├── core/handlers.py       클라이언트가 부를 수 있는 메서드의 판정 정본(is_client_callable). 디스패처·check·validate_call 감싸기가 함께 쓴다(#127)
 ├── core/meta.py           WireviewMeta (self.wire): push_to/replace_to, push_js, put_flash, push_title 등 클라이언트 명령
 ├── core/rendered.py       동적 마커 기반 diff 구조. LiveComponent 자리는 참조 dynamic {"c": id}
 ├── core/render_reads.py   초기화된 temporary assign만 읽은 동적 부분을 렌더 중에 찾는다. 그 부분은 이전 값 그대로(#111)
@@ -186,7 +187,7 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 - **`wireview.min.js`가 없으면 페이지에서 JS가 로드되지 않는다.** clone 직후와 `wireview/static/wireview/wireview.js` 수정 후 `make build-js`.
 - **testproj의 채널 레이어는 `WIREVIEW_TEST_LAYER`가 고른다.** 기본은 `memory`(브로커 불요), `make test-e2e`와 CI는 `nats`다. E2E는 `tests/e2e.sh`가 nats-server를 직접 띄우고 끝나면 정리하므로 미리 켜 둘 필요가 없다(이미 떠 있으면 그것을 쓴다). 바꾸려면 `make test-e2e LAYER=redis` 또는 `LAYER=memory`. channels-nats는 dev extras에 있으므로 `make install`이면 들어온다.
 - **단위·통합 테스트도 일부는 채널 레이어를 쓴다.** `tests/test_uploads.py`의 `UploadView` 테스트가 세션 채널로 보낸다. 그래서 기본값이 `memory`다. 브로커가 없는 레이어를 기본으로 두면 그 두 테스트가 연결 타임아웃으로 2분씩 걸린다.
-- **클라이언트가 호출할 수 있는 메서드.** `_`로 시작하지 않고 **사용자 코드에서 정의한** 메서드만 이벤트 핸들러로 노출되고 `validate_call`로 감싸진다. 프레임워크(`wireview.*`)와 Pydantic이 소유한 이름은 서브클래스에서 오버라이드해도 노출되지 않는다 — `mount`·`joined`·`update`·`send_to_parent`·`model_post_init`은 클라이언트가 부를 수 없다. 판정은 `ComponentRepository._is_user_defined_method`, 회귀 테스트는 tests/test_security.py. 내부 헬퍼는 반드시 `_` 접두사. 클래스 본문에 정의된 **클래스**(`class Meta:` 포함)는 호출 가능해도 노출되지 않는다(#99). 핸들러와 라이프사이클 메서드는 async.
+- **클라이언트가 호출할 수 있는 메서드.** `_`로 시작하지 않고 **사용자 코드에서 정의한** 메서드만 이벤트 핸들러로 노출되고 `validate_call`로 감싸진다. 프레임워크(`wireview.*`)와 Pydantic이 소유한 이름은 서브클래스에서 오버라이드해도 노출되지 않는다 — `joined`·`handle_async`·`update`·`update_many`·`send_to_parent`·`model_post_init`은 클라이언트가 부를 수 없고 `validate_call`로 감싸지지도 않는다. 판정은 `wireview/core/handlers.py`의 `is_client_callable` 하나이고 디스패처·check·`_validate_handlers`가 함께 쓴다 — 감쌀 대상을 따로 고르던 시절 프레임워크 메서드의 `t.Self` 주석이 pydantic 2.13에서 import를 죽였다(#127). 회귀 테스트는 tests/test_security.py, tests/test_handler_validation.py. 내부 헬퍼는 반드시 `_` 접두사. 클래스 본문에 정의된 **클래스**(`class Meta:` 포함)는 호출 가능해도 노출되지 않는다(#99). 핸들러와 라이프사이클 메서드는 async.
 - **컴포넌트 이름은 클래스명으로 전역 등록.** 다른 모듈에서 같은 클래스명을 쓰면 경고가 난다. 템플릿에서 `app:Name` 또는 FQN으로 구분한다.
 - **상태 필드.** JSON 직렬화 가능해야 한다. 모델 인스턴스는 예외다: 단일 필드·목록·dict 값·`AsyncResult`의 결과 어디에 있든 pk로 서명되고, join 때 필드의 타입 표기를 따라 다시 읽힌다(`wireview/core/model_state.py`). 그래서 타입 표기가 곧 복원 규칙이다 — `list` 같은 맨 타입으로 적으면 pk 목록으로 돌아온다. `Meta.temporary_assigns`는 기본값이 있는 필드만 초기화되고, 서명 상태에 실리지 않으며, 초기화는 변경으로 치지 않는다(`wireview/core/render_reads.py`, #111). `Meta.exclude_fields`는 `user`·`wire`·`session`에 **더해진다**(뺄 수 없다).
 - **pyright는 `tests/`를 검사하지 않고, `tsc`는 checkJs=false라 JS 본문을 검사하지 않는다.** 둘 다 통과해도 해당 영역은 검증된 것이 아니다.

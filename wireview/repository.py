@@ -11,6 +11,7 @@ from channels.layers import BaseChannelLayer
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 
 from . import telemetry
+from .core import handlers
 from .core.component import Component, MessagePayload
 from .core.session import SessionView
 from .core.state import StateMismatch
@@ -32,19 +33,6 @@ class InvalidEvent(ValueError):
     No handler ran, so the component is as it was: the connection answers with
     a log line, not the crash recovery a raising handler gets (#94).
     """
-
-
-# Packages whose classes are framework surface, never client-callable handlers.
-_FRAMEWORK_ROOTS = ("wireview", "pydantic")
-
-
-def _is_framework_class(cls: type) -> bool:
-    """Whether a class comes from the framework rather than from user code."""
-    if cls is object:
-        return True
-    module = getattr(cls, "__module__", "") or ""
-    root = module.partition(".")[0]
-    return root in _FRAMEWORK_ROOTS
 
 
 @dataclass
@@ -489,56 +477,17 @@ class ComponentRepository:
 
     @staticmethod
     def _is_valid_event_handler(command: str) -> bool:
-        """Check if command name is valid for an event handler.
-
-        Security checks:
-        - Must not start with underscore (private/protected methods)
-        - Must not be empty
-        - Must be a valid Python identifier
-        """
-        if not command:
-            return False
-        if command.startswith("_"):
-            return False
-        if not command.isidentifier():
-            return False
-        return True
+        """Whether ``command`` can name an event handler (``wireview.core.handlers``)."""
+        return handlers.is_valid_event_handler(command)
 
     @staticmethod
     def _is_user_defined_method(component: Component | type[Component], command: str) -> bool:
-        """Check if a method name belongs to the user's own component code.
+        """Whether ``command`` belongs to the user's own component code (``wireview.core.handlers``).
 
         Accepts an instance or a class, so tooling (``wireview.checks``) can ask
         the same question without building a component.
-
-        A name is exposed only when every class in the MRO that defines it is a
-        user class. Any name owned by a framework class blocks the call, even if
-        a subclass overrides it, because framework names are API and lifecycle
-        surface rather than client events:
-
-        - Pydantic BaseModel methods (model_validate, model_dump, model_post_init)
-        - Component internals and lifecycle (dom, destroy, mount, joined)
-        - LiveComponent API and lifecycle (send_to_parent, update)
         """
-        found_on_user_class = False
-        component_class = component if isinstance(component, type) else type(component)
-
-        for cls in component_class.__mro__:
-            if command not in cls.__dict__:
-                continue
-            if isinstance(cls.__dict__[command], type):
-                # A nested class -- ``class Meta:`` above all -- is callable and
-                # not a handler: a client naming it would instantiate it (#99).
-                return False
-            if _is_framework_class(cls):
-                # The name is framework surface, wherever it is also overridden.
-                # Pydantic-generated methods (model_post_init) land here too:
-                # the metaclass injects them into the user class, but BaseModel
-                # owns the name.
-                return False
-            found_on_user_class = True
-
-        return found_on_user_class
+        return handlers.is_user_defined_method(component, command)
 
     def components_subscribed_to(self, channel):
         # XXX: There is a list() here because the dict can change size during

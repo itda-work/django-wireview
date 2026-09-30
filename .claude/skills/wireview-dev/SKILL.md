@@ -142,8 +142,9 @@ PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflow
 
 금지선의 정본은 `CLAUDE.md`의 「함정」이다. 여기서는 착수 전에 자주 놓치는 것만 짚는다.
 
-- **클라이언트가 호출할 수 있는 메서드.** `_`로 시작하지 않는 소문자 이름의 메서드는 이벤트
-  핸들러로 노출되고 `validate_call`로 감싸진다. 내부 헬퍼는 반드시 `_` 접두사.
+- **클라이언트가 호출할 수 있는 메서드.** `_`로 시작하지 않고 사용자 코드가 정의한 메서드는 이벤트
+  핸들러로 노출되고 `validate_call`로 감싸진다. 둘 다 `wireview/core/handlers.py`의 한 규칙이다 — 감쌀
+  대상을 따로 정하지 않는다(#127). 내부 헬퍼는 반드시 `_` 접두사.
   핸들러와 라이프사이클 메서드는 async.
 - **채널 레이어는 `wireview/core/transport.py`에서만 만진다.** `get_channel_layer`, `group_add`,
   `group_send`를 다른 모듈에 쓰면 `tests/test_transport.py`의 가드가 실패한다.

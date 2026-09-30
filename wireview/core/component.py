@@ -14,12 +14,13 @@ from django.http import HttpRequest
 from django.template import loader
 from django.utils.safestring import SafeString
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator, validate_call
+from pydantic.errors import PydanticUserError
 
 from .. import utils
 from ..async_result import AsyncResult
 from ..schemas import ModelAction
 from ..utils import db
-from . import model_state, render_reads
+from . import handlers, model_state, render_reads
 from .meta import Repo, WireviewMeta
 from .session import SessionView
 
@@ -196,13 +197,16 @@ class ComponentOptions:
 
 
 def _validate_handlers(cls: type) -> None:
-    """Wrap the methods a class defines, the ones a client may call, in ``validate_call``.
+    """Wrap the methods this class defines that a client may call in ``validate_call``.
 
     Shared by Component and LiveComponent, which register differently but must
-    expose and validate their handlers the same way.
+    expose and validate their handlers the same way. What counts as a handler
+    is ``handlers.is_client_callable``, the dispatcher's own rule: framework
+    and pydantic methods are never called by a client, so they are not
+    wrapped either, overridden or not (#127).
     """
     for attr_name, raw in list(vars(cls).items()):
-        if attr_name.startswith("_") or not attr_name.islower():
+        if not handlers.is_client_callable(cls, attr_name):
             continue
         validate = validate_call(config={"arbitrary_types_allowed": True})
         try:
@@ -212,11 +216,20 @@ def _validate_handlers(cls: type) -> None:
                 # classmethod stayed bound to this class in every subclass,
                 # and a staticmethod got the instance as its first argument.
                 setattr(cls, attr_name, type(raw)(validate(raw.__func__)))
-            elif callable(raw):
+            else:
                 setattr(cls, attr_name, validate(raw))
-        except (NameError, TypeError):
-            # Skip validation for methods with unresolvable type hints
-            pass
+        except (NameError, TypeError, PydanticUserError) as exc:
+            # An annotation pydantic cannot build a validator for: an
+            # unresolvable forward reference (NameError), or one it rejects
+            # (PydanticUserError, a TypeError only until pydantic 2.13). The
+            # handler still works, but its arguments arrive unconverted.
+            log.warning(
+                "Handler %s.%s is not validated: pydantic cannot validate its signature (%s: %s)",
+                cls.__qualname__,
+                attr_name,
+                type(exc).__name__,
+                exc,
+            )
 
 
 def _resolve_options(cls: type) -> "ComponentOptions":

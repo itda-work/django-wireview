@@ -59,19 +59,13 @@ def iter_exposed_handlers(cls: type["Component"]) -> t.Iterator[tuple[str, t.Cal
     """Yield the methods a client can call on ``cls``, newest rule first.
 
     This is the dispatcher's rule, not a copy of it: ``dispatch_event`` accepts
-    exactly the names that pass both predicates.
+    exactly these names (``wireview.core.handlers.is_client_callable``).
     """
-    from .repository import ComponentRepository
+    from .core.handlers import is_client_callable
 
     for name in sorted(dir(cls)):
-        if not ComponentRepository._is_valid_event_handler(name):
-            continue
-        attr = getattr(cls, name, None)
-        if not callable(attr):
-            continue
-        if not ComponentRepository._is_user_defined_method(cls, name):
-            continue
-        yield name, attr
+        if is_client_callable(cls, name):
+            yield name, getattr(cls, name)
 
 
 def _unwrap(func: t.Callable[..., t.Any]) -> t.Callable[..., t.Any]:

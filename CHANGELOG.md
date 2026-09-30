@@ -10,6 +10,18 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Fixed
+
+- `import wireview` failed on pydantic 2.13 and later (1.0.0rc3, which is yanked):
+  `LiveComponent.update_many` is annotated with `t.Self`, handler validation wrapped it in
+  `validate_call`, and pydantic's refusal stopped being a `TypeError` in 2.13. Handler validation
+  now wraps exactly what a client may call -- the dispatcher's rule, in one place
+  (`wireview.core.handlers`) -- so framework and pydantic methods are never wrapped, overridden or
+  not. A user handler whose signature pydantic cannot validate loses its validation with a warning
+  in the `wireview` log instead of breaking the class. The test suite now runs on pydantic 2.13
+  (`uv.lock`), and `make test-latest` and a CI job run it on the newest dependencies a fresh
+  install gets (#127).
+
 ## [1.0.0rc3] - 2026-09-30
 
 ### Changed
