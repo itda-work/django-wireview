@@ -48,7 +48,9 @@ The django-reactor era changelog (2.x) is preserved in
   that sets Django up before importing `wireview.urls`, `include("wireview.urls")`, and tutorial
   01's `XHello` in a `hello` app. The project it makes passes `manage.py check` with nothing to
   report; a test makes one in a scratch directory and types into its first page over the
-  WebSocket (#131).
+  WebSocket (#131). An E2E test serves that project with its own `runserver` and types into the
+  page in a browser, so a starter whose runserver is not daphne's, or that has no channel layer,
+  fails instead of drawing a page that never answers (#151).
 
 - `docs/DEPLOYMENT.md`: wiring the signals to Prometheus and OpenTelemetry, a readiness check that
   round-trips the channel layer, draining on SIGTERM in a rolling deploy, and sizing capacity by
