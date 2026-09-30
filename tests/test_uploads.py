@@ -762,13 +762,38 @@ class TestComponentUploadMethods:
         """allow_upload should send config to client."""
         view = await mount(UploadComponent)
 
-        # The config goes out from a task: wait for it
-        upload_messages = await eventually(lambda: [m for m in view.sent_messages if m.get("type") == "upload_op"])
+        # The config goes out from a task: wait for it, and for its failure if it fails
+        upload_messages = await eventually(
+            lambda: [m for m in view.sent_messages if m.get("type") == "upload_op"],
+            task=view.component._upload_config_sends["images"],
+        )
 
         config_msg = upload_messages[0]
         assert config_msg["op"] == "config"
         assert config_msg["upload"] == "images"
         assert ".jpg" in config_msg["accept"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_config_send_that_fails_says_why(self, monkeypatch):
+        """The config task is held past its end, so a test waiting on it sees its error (#151).
+
+        Held only while running, it was gone by the time it failed, and the wait
+        reported nothing but its own timeout.
+        """
+
+        async def broken(self, op, owner):
+            raise RuntimeError("the config could not be sent")
+
+        monkeypatch.setattr(WireviewMeta, "send_upload_op", broken)
+        view = await mount(UploadComponent)
+
+        with pytest.raises(RuntimeError, match="could not be sent"):
+            await eventually(
+                lambda: [m for m in view.sent_messages if m.get("type") == "upload_op"],
+                task=view.component._upload_config_sends["images"],
+                timeout=30,
+            )
 
     @pytest.mark.asyncio
     @pytest.mark.unit

@@ -273,7 +273,8 @@ The django-reactor era changelog (2.x) is preserved in
   `breakpoint()`) stops the timer, and a test started under another debugger (in `sys.monitoring`'s debugger slot or as a trace function) has none; a stop
   terminates the child processes handed to `own()` (the two workers of the multi-worker upload
   test) and says how to turn it off, `-o test_time_limit=0`. `eventually(..., task=)`
-  raises the watched task's exception at once instead of reporting only that the wait ran out.
+  raises the watched task's exception at once instead of reporting only that the wait ran out;
+  `allow_upload()` keeps each upload's config send past its end so a test can hand it over (#151).
   The documented rate limit's test now checks the bucket stops at `BURST` after a long idle;
   removing the cap passed all its tests before (#148).
 
