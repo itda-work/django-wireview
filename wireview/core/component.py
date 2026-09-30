@@ -1201,7 +1201,6 @@ class Component(BaseModel):
                 task.cancel()
         self._async_tasks.clear()
         self._assign_tasks.clear()
-        self._upload_config_sends.clear()
 
     def freeze(self) -> None:
         """Freeze the component to prevent further rendering."""
@@ -1343,9 +1342,6 @@ class Component(BaseModel):
     # Upload operations
 
     _upload_registry: "UploadRegistry | None" = None
-    # Each upload's last config send, kept past its end: _assign_tasks lets it go
-    # when it finishes, so a test waiting for the config could not see it fail (#151)
-    _upload_config_sends: dict[str, "asyncio.Task[None]"] = {}
 
     def allow_upload(
         self,
@@ -1452,7 +1448,6 @@ class Component(BaseModel):
         task = asyncio.create_task(send_config())
         self._assign_tasks.add(task)
         task.add_done_callback(self._assign_tasks.discard)
-        self._upload_config_sends[name] = task
 
     @property
     def uploads(self) -> dict[str, list["UploadEntry"]]:

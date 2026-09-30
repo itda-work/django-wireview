@@ -54,6 +54,27 @@ def config_pace(request, monkeypatch):
     return request.param
 
 
+@pytest.fixture
+def config_sends(monkeypatch):
+    """Each upload's config send, caught as ``allow_upload`` makes it (#151).
+
+    The component holds the task only while it runs, so a test that looked for it
+    later might find it gone. ``allow_upload`` is synchronous: when it returns, the
+    task exists and has not taken a step. If it ever adds more or less than one
+    task, the unpacking fails loudly.
+    """
+    held: dict[str, asyncio.Task] = {}
+    original = Component.allow_upload
+
+    def spy(self, name, **kwargs):
+        before = set(self._assign_tasks)
+        original(self, name, **kwargs)
+        (held[name],) = self._assign_tasks - before
+
+    monkeypatch.setattr(Component, "allow_upload", spy)
+    return held
+
+
 class TestUploadConfig:
     """Test the UploadConfig dataclass."""
 
@@ -758,14 +779,14 @@ class TestComponentUploadMethods:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_allow_upload_sends_config_message(self, config_pace):
+    async def test_allow_upload_sends_config_message(self, config_pace, config_sends):
         """allow_upload should send config to client."""
         view = await mount(UploadComponent)
 
         # The config goes out from a task: wait for it, and for its failure if it fails
         upload_messages = await eventually(
             lambda: [m for m in view.sent_messages if m.get("type") == "upload_op"],
-            task=view.component._upload_config_sends["images"],
+            task=config_sends["images"],
         )
 
         config_msg = upload_messages[0]
@@ -775,12 +796,8 @@ class TestComponentUploadMethods:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_a_config_send_that_fails_says_why(self, monkeypatch):
-        """The config task is held past its end, so a test waiting on it sees its error (#151).
-
-        Held only while running, it was gone by the time it failed, and the wait
-        reported nothing but its own timeout.
-        """
+    async def test_a_config_send_that_fails_says_why(self, monkeypatch, config_sends):
+        """A test waiting on the config send sees its error, not only its own timeout (#151)."""
 
         async def broken(self, op, owner):
             raise RuntimeError("the config could not be sent")
@@ -791,7 +808,7 @@ class TestComponentUploadMethods:
         with pytest.raises(RuntimeError, match="could not be sent"):
             await eventually(
                 lambda: [m for m in view.sent_messages if m.get("type") == "upload_op"],
-                task=view.component._upload_config_sends["images"],
+                task=config_sends["images"],
                 timeout=30,
             )
 
