@@ -46,7 +46,7 @@ def is_user_defined_method(component: t.Any, command: str) -> bool:
     surface rather than client events:
 
     - Pydantic BaseModel methods (model_validate, model_dump, model_post_init)
-    - Component internals and lifecycle (dom, destroy, mount, joined)
+    - Component internals and lifecycle (new, joined, handle_async, destroy)
     - LiveComponent API and lifecycle (send_to_parent, update, update_many)
     """
     found_on_user_class = False
