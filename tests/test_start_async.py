@@ -8,15 +8,20 @@ again from its last rendered state.
 """
 
 import asyncio
+import re
+import threading
+import time
 import typing as t
 
 import pytest
 from django.contrib.auth.models import AnonymousUser
+from django.template.base import Variable
 from django.test import override_settings
 
 from wireview import AsyncResult, Component
 from wireview.consumer import WireviewConsumer
 from wireview.core.rendered import PROTOCOL_VERSION
+from wireview.core.state import unsign_state
 from wireview.repository import ComponentRepository
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio, pytest.mark.django_db]
@@ -98,8 +103,25 @@ class FakeOutbound:
     async def unsubscribe(self, topic: str) -> None:
         pass
 
-    def last_render(self) -> str:
-        return str([payload for command, payload in self.commands if command == "render"][-1])
+    def mark(self) -> int:
+        return len(self.commands)
+
+    def rendered_since(self, mark: int) -> str:
+        """Every render sent after ``mark``, as one string.
+
+        Not the last one: a background task's render can go out before the
+        event's (#135). The live render signs data-state and reads the body on
+        a worker thread, and a slow runner lets the loop finish the task between
+        the two -- that frame shows the result, and the event's own render,
+        second, carries only the new data-state.
+        """
+        return str([payload for command, payload in self.commands[mark:] if command == "render"])
+
+
+def shown(component: Component) -> str:
+    """The page once the browser has applied every render: the tree the last diff was taken from."""
+    assert component.wire._last_rendered is not None
+    return component.wire._last_rendered.to_html()
 
 
 class LoopbackBroker:
@@ -126,6 +148,27 @@ def _templates():
         yield
 
 
+@pytest.fixture(params=["prompt", "late"])
+def render_thread(request, monkeypatch):
+    """A render thread that keeps up with the loop, and one that does not (#135).
+
+    "late" pauses the worker thread at every ``this.`` lookup in a template, after
+    the root tag has signed data-state: the loop runs the background task in the
+    gap, as a slow CI runner let it. The tests below failed that way on half the
+    grid while passing on every laptop.
+    """
+    if request.param == "late":
+        resolve = Variable._resolve_lookup
+
+        def late(self, context):
+            if threading.current_thread() is not threading.main_thread() and self.var.startswith("this."):
+                time.sleep(0.02)
+            return resolve(self, context)
+
+        monkeypatch.setattr(Variable, "_resolve_lookup", late)
+    return request.param
+
+
 async def joined_page() -> tuple[WireviewConsumer, FakeOutbound, Component]:
     consumer = WireviewConsumer()
     consumer.repo = ComponentRepository(is_live=True, user=AnonymousUser(), channel_name="c", vsn=PROTOCOL_VERSION)
@@ -147,24 +190,28 @@ async def settle(component: Component, name: str) -> None:
         await asyncio.wait_for(asyncio.shield(task), 2)
 
 
-async def test_the_result_reaches_handle_async_and_renders():
+async def test_the_result_reaches_handle_async_and_renders(render_thread):
     consumer, outbound, component = await joined_page()
+    mark = outbound.mark()
 
     await consumer.command_user_event("p", "search", {}, {"q": "tea"})
     await settle(component, "search")
 
     assert HANDLED == [("search", "ok")]
-    assert "found tea" in outbound.last_render()
+    assert "found tea" in outbound.rendered_since(mark)
+    assert "found tea" in shown(component)
 
 
-async def test_a_failed_operation_reaches_handle_async_as_failed():
+async def test_a_failed_operation_reaches_handle_async_as_failed(render_thread):
     consumer, outbound, component = await joined_page()
+    mark = outbound.mark()
 
     await consumer.command_user_event("p", "fail", {}, {})
     await settle(component, "search")
 
     assert HANDLED == [("search", "failed")]
-    assert "failed: index offline" in outbound.last_render()
+    assert "failed: index offline" in outbound.rendered_since(mark)
+    assert "failed: index offline" in shown(component)
 
 
 async def test_cancel_async_stops_the_operation_before_handle_async():
@@ -191,7 +238,7 @@ async def test_a_handle_async_that_raises_joins_the_component_again(caplog):
     assert "handle_async broke" in caplog.text
 
 
-async def test_a_failed_assign_async_renders_its_message_and_survives_a_rejoin():
+async def test_a_failed_assign_async_renders_its_message_and_survives_a_rejoin(render_thread):
     # #113: the exception in AsyncResult.error made the state unsignable, so a
     # component whose load failed could not be rendered at all
     consumer, outbound, _ = await joined_page()
@@ -199,23 +246,32 @@ async def test_a_failed_assign_async_renders_its_message_and_survives_a_rejoin()
     stats.wire.broker = LoopbackBroker(consumer)  # type: ignore[assignment]
     await consumer.send_render(stats)
     await stats.wire.flush_pending()
+    mark = outbound.mark()
 
     await consumer.command_user_event("s", "load", {}, {"fail": True})
     await asyncio.wait_for(asyncio.gather(*list(stats._assign_tasks), return_exceptions=True), 2)
 
-    assert "stats offline" in outbound.last_render()
-    again = await consumer.repo.join("SaStats", {"id": "s2", **stats.model_dump(include={"stats"}, mode="json")})
+    assert "stats offline" in outbound.rendered_since(mark)
+    assert "error: stats offline" in shown(stats)
+    # From the page's data-state, not the instance: a frame signed before the
+    # task finished and showing its result is not what the page may end on
+    signed = re.search(r'data-state="([^"]+)"', shown(stats))
+    assert signed is not None
+    state = unsign_state(signed[1], "SaStats")
+    again = await consumer.repo.join("SaStats", {**state, "id": "s2"})
     assert again.stats.failed and again.stats.error_message == "stats offline"
 
 
-async def test_a_loaded_assign_async_renders_its_result():
+async def test_a_loaded_assign_async_renders_its_result(render_thread):
     consumer, outbound, _ = await joined_page()
     stats = await consumer.repo.join("SaStats", {"id": "s"})
     stats.wire.broker = LoopbackBroker(consumer)  # type: ignore[assignment]
     await consumer.send_render(stats)
     await stats.wire.flush_pending()
+    mark = outbound.mark()
 
     await consumer.command_user_event("s", "load", {}, {})
     await asyncio.wait_for(asyncio.gather(*list(stats._assign_tasks), return_exceptions=True), 2)
 
-    assert "7" in outbound.last_render()
+    assert "7" in outbound.rendered_since(mark)
+    assert ">7</div>" in shown(stats)

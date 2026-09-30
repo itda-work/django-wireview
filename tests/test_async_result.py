@@ -142,6 +142,14 @@ class AsyncComponent(Component):
         self.data = await self.assign_async(self.load_with_error())
 
 
+async def settle(view) -> None:
+    """Wait for what assign_async started, render request included (it is sent inside the task).
+
+    A fixed sleep raced the task's own delay: on a slow runner the assertion came first (#135).
+    """
+    await asyncio.wait_for(asyncio.gather(*list(view.component._assign_tasks)), 2)
+
+
 class TestAssignAsync:
     """Test the assign_async method."""
 
@@ -163,8 +171,7 @@ class TestAssignAsync:
         view = await mount(AsyncComponent, load_delay=0.01)
         await view.call("start_loading")
 
-        # Wait for the async operation to complete
-        await asyncio.sleep(0.05)
+        await settle(view)
 
         assert view.component.data is not None
         assert view.component.data.ok
@@ -177,8 +184,7 @@ class TestAssignAsync:
         view = await mount(AsyncComponent, load_delay=0.01)
         await view.call("start_loading_with_error")
 
-        # Wait for the async operation to complete
-        await asyncio.sleep(0.05)
+        await settle(view)
 
         assert view.component.data is not None
         assert view.component.data.failed
@@ -193,8 +199,7 @@ class TestAssignAsync:
 
         await view.call("start_loading")
 
-        # Wait for the async operation to complete
-        await asyncio.sleep(0.05)
+        await settle(view)
 
         # Should have sent a send_render message
         render_messages = [m for m in view.sent_messages if m.get("type") == "send_render"]
