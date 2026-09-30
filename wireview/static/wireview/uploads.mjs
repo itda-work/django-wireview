@@ -94,6 +94,42 @@ export class UploadManagers {
   }
 
   /**
+   * A render the page applied named these instances, each the first render of
+   * its instance: the join's answer, and the LiveComponents joined in it. Which
+   * renders the page applies -- not one for a component it let go, not one of
+   * an instance a join it sent replaces -- is joins.mjs's to say.
+   * @param {Object<string, number>} instances
+   */
+  named(instances) {
+    for (const [id, instance] of Object.entries(instances)) this.started(id, instance);
+  }
+
+  /**
+   * The page is sending a join for `id`. One that replaces an instance -- an
+   * earlier join on this connection made it, or was making it -- ends that
+   * instance's uploads and its LiveComponents': a file chosen for the old DOM
+   * is not the new instance's. The first join replaces nothing, and the files
+   * chosen before it wait for its config.
+   * @param {string} id
+   * @param {string[]} liveIds - the LiveComponents inside the element
+   * @param {boolean} replacing - from Joins.sent
+   */
+  joining(id, liveIds, replacing) {
+    if (!replacing) return;
+    for (const each of [id, ...liveIds]) this.dispose(each);
+  }
+
+  /**
+   * The join for `id` failed: there is no instance, so no uploads -- its own
+   * nor its LiveComponents', whose configs may already be on their way.
+   * @param {string} id
+   * @param {string[]} liveIds - the LiveComponents inside the element
+   */
+  joinFailed(id, liveIds) {
+    for (const each of [id, ...liveIds]) this.dispose(each);
+  }
+
+  /**
    * The manager a config for `id` goes to, or null when the config comes from
    * an instance other than the one the page holds under the id.
    * @param {string} id

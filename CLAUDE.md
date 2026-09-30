@@ -89,7 +89,8 @@ wireview/
                            navigation.mjs (boost 이동이 끝났음을 누구에게 알리는가: 훅의 navigated()와 wireview:navigated),
                            reconnect.mjs (재연결 백오프를 헤더 메타에서 읽는다. WIREVIEW RECONNECT_*),
                            uploads.mjs (업로드 manager의 수명. 인스턴스가 끝나면 폐기하고, 렌더의 instances가 알린 인스턴스 번호와
-                           같은 config만 받는다. 끝난 인스턴스의 upload_op는 세션이 먼저 버린다),
+                           같은 config만 받는다. 끝난 인스턴스의 upload_op는 세션이 먼저 버린다.
+                           join·join 실패·렌더가 알린 인스턴스에서 페이지가 할 일도 여기 있다: joining·joinFailed·named, #142),
                            joins.mjs (같은 id로 다시 보낸 join의 응답을 기다리는 동안 어느 render·error가 지금 join의 것인가.
                            join의 ref로 짝짓는다. vsn 6 이상의 서버에만 싣는다),
                            wireview-boost.js, types.d.ts

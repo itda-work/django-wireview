@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { Joins } from "../../wireview/static/wireview/joins.mjs";
 import { UploadManagers } from "../../wireview/static/wireview/uploads.mjs";
 
 /** A manager that remembers whether it was disposed and what it holds. */
@@ -165,4 +166,93 @@ test("a closed connection forgets the instances it held", () => {
   managers.connectionClosed();
 
   assert.equal(managers.forConfig("gone", 1), null);
+});
+
+// The page's guards (#142). wireview.js calls these in the order below; each
+// test states what the page used to lose when the guard was not there.
+
+test("the first join replaces nothing: files chosen before it wait for its config", () => {
+  const managers = new UploadManagers(fake);
+  const joins = new Joins();
+  const early = managers.get("probe");
+  early.files.push("chosen before the join");
+
+  managers.joining("probe", ["child"], joins.sent("probe", undefined));
+
+  assert.equal(early.disposed, 0);
+  managers.named({ probe: 1 });
+  assert.equal(managers.forConfig("probe", 1), early);
+});
+
+test("a join that replaces an instance ends its uploads and its LiveComponents'", () => {
+  // Kept, a file chosen on the new DOM before the new answer was registered
+  // with the old config, and dropped when the answer arrived: the user's file
+  // silently gone
+  const managers = new UploadManagers(fake);
+  const joins = new Joins();
+  managers.joining("probe", ["child"], joins.sent("probe", 1));
+  joins.render("probe", 1, true);
+  managers.named({ probe: 1, child: 2 });
+  const old = managers.forConfig("probe", 1);
+  const oldChild = managers.forConfig("child", 2);
+
+  managers.joining("probe", ["child"], joins.sent("probe", 3));
+
+  assert.deepEqual([old.disposed, oldChild.disposed], [1, 1]);
+  const fresh = managers.get("probe");
+  fresh.files.push("chosen on the new DOM");
+  assert.equal(managers.forConfig("probe", 1), null, "the old config, on its way");
+  assert.equal(managers.forConfig("child", 2), null);
+  assert.equal(joins.render("probe", 3, true), true);
+  managers.named({ probe: 4 });
+  assert.equal(managers.forConfig("probe", 4), fresh);
+  assert.deepEqual(fresh.files, ["chosen on the new DOM"]);
+});
+
+test("a failed join ends the uploads of its LiveComponents too", () => {
+  // Their configs may already be on their way: kept, one made a manager for
+  // an id with no instance, a zombie nothing would end
+  const managers = new UploadManagers(fake);
+  managers.named({ probe: 1, child: 2 });
+  const own = managers.forConfig("probe", 1);
+  const child = managers.forConfig("child", 2);
+
+  managers.joinFailed("probe", ["child"]);
+
+  assert.deepEqual([own.disposed, child.disposed], [1, 1]);
+  assert.equal(managers.forConfig("child", 2), null);
+  assert.equal(managers.find("child"), undefined);
+});
+
+test("a late answer for a component the page let go does not name its instance", () => {
+  // Answered after the element left: the answer used to bring the instance
+  // back, and its config after it
+  const managers = new UploadManagers(fake);
+  const joins = new Joins();
+  managers.joining("probe", [], joins.sent("probe", 1));
+  joins.forget("probe");
+  managers.dispose("probe");
+
+  if (joins.render("probe", 1, false)) managers.named({ probe: 5 });
+
+  assert.equal(managers.forConfig("probe", 5), null);
+  assert.equal(managers.find("probe"), undefined);
+});
+
+test("the answer to a join the page replaced does not name its instance", () => {
+  // #139: a file chosen then went to that instance's config, and the answer
+  // that followed ended it with the file
+  const managers = new UploadManagers(fake);
+  const joins = new Joins();
+  managers.joining("probe", [], joins.sent("probe", 1));
+  managers.joining("probe", [], joins.sent("probe", 2));
+
+  if (joins.render("probe", 1, true)) managers.named({ probe: 5 });
+  assert.equal(managers.forConfig("probe", 5), null);
+  const waiting = managers.get("probe");
+  waiting.files.push("chosen in between");
+
+  if (joins.render("probe", 2, true)) managers.named({ probe: 6 });
+  assert.equal(managers.forConfig("probe", 6), waiting);
+  assert.equal(waiting.disposed, 0);
 });

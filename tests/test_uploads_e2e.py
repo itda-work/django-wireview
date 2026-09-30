@@ -317,6 +317,15 @@ def test_a_preview_url_the_page_asked_for_ends_with_the_component(probe):
     assert not probe.evaluate(loads, url)
 
 
+def test_a_live_component_on_the_first_page_uploads_with_its_config(page, server):
+    # #142: its instance is named in the parent's join answer, not in a render
+    # of its own. Without this one, the test below was the only one to see a
+    # LiveComponent upload, and it could not tell the two paths apart.
+    open_live(page, f"{server}/fileprobe/nested/")
+    by(page, "child-files").set_input_files(text_file("first.txt", "first"))
+    expect_text(by(page, "child-received").locator("li"), "first.txt:5")
+
+
 def test_a_live_component_shown_again_under_its_id_uploads_with_its_new_config(page, server):
     # Hidden, the child left: the page ended its uploads and closed the id to
     # configs. A LiveComponent never sends a join -- its parent's render makes

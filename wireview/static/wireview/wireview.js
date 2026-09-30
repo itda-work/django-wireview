@@ -315,9 +315,7 @@ class ServerConnection {
         if (!this.joins.render(id, ref, Boolean(target))) break;
         // The instances this render is the first of: whose upload configs to
         // take (#137)
-        if (instances) {
-          for (const [each, instance] of Object.entries(instances)) uploadManagers.started(each, instance);
-        }
+        if (instances) uploadManagers.named(instances);
         // Register the children first, before any frame is scheduled: the
         // parent's HTML is built from their renders, and a later diff for a
         // child must find its component whether or not the parent has patched
@@ -385,7 +383,7 @@ class ServerConnection {
           delete this.components[id];
           this.joins.forget(id);
           // No instance, so no uploads: its own nor its LiveComponents'
-          for (const each of [id, ...liveIdsIn(element)]) uploadManagers.dispose(each);
+          uploadManagers.joinFailed(id, liveIdsIn(element));
           element.classList.add("wireview-error");
         }
         element?.dispatchEvent(
@@ -1132,9 +1130,7 @@ class WireviewComponent {
     // its way, matches none of them. Named, the join is told from the one it
     // replaces by its answer, which carries the ref (#139).
     const ref = connection.serverVsn >= JOIN_REFS_SINCE ? ++connection.lastRef : undefined;
-    if (connection.joins.sent(this.id, ref)) {
-      for (const each of [this.id, ...liveIdsIn(element)]) uploadManagers.dispose(each);
-    }
+    uploadManagers.joining(this.id, liveIdsIn(element), connection.joins.sent(this.id, ref));
     // A join that failed before is tried again on a new connection
     element.classList.remove("wireview-error");
     /** @type {Object<string, [string, string]>} */
