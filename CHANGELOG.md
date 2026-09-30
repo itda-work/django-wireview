@@ -17,6 +17,24 @@ The django-reactor era changelog (2.x) is preserved in
   gets a `wireview:navigated` event with `detail: { url, previousUrl }`. A sticky component's
   hook had no way to know the page around it changed -- an effect it put on `<body>` was gone
   after the move. A Back that paints the cached page first still announces once (#128).
+- Operational telemetry (#124): four event signals in `wireview.telemetry` --
+  `connection_opened`, `connection_closed` (close code, lifetime, live components),
+  `join_rejected` (a `reason` from the closed set `JOIN_REJECTED_REASONS`: `origin`, `expired`,
+  `invalid`, `live_session`, `halted`, `error`, safe as a metric label) and `publish_failed`.
+  Like the existing signals they cost one flag check while `WIREVIEW["TELEMETRY"]` is off.
+- The client's reconnect backoff is a setting: `RECONNECT_MIN_DELAY_MS`, `RECONNECT_JITTER_MS`,
+  `RECONNECT_MAX_DELAY_MS` and `RECONNECT_GROW_FACTOR`, published by `{% wireview_header %}`. The
+  defaults are the values every page used before, so nothing changes unless you set them (#124).
+- `docs/DEPLOYMENT.md`: wiring the signals to Prometheus and OpenTelemetry, a readiness check that
+  round-trips the channel layer, draining on SIGTERM in a rolling deploy, and sizing capacity by
+  joins per second. The code examples there run in the test suite (#124).
+
+### Changed
+
+- A channel layer that reports a channel full (`ChannelFull`) no longer fails the handler that
+  published: that one message is dropped, logged at WARNING on the `wireview` logger and reported
+  as `telemetry.publish_failed`. Any other layer error is reported the same way and still raised,
+  as before (#124).
 
 ### Fixed
 

@@ -326,28 +326,133 @@ Caddy는 WebSocket 업그레이드를 알아서 처리한다.
 
 ### 볼 지표
 
-1. **WebSocket 연결** — 활성 연결 수, 연결 지속 시간, 재연결률
-2. **렌더 성능** — `render_diff()` 지연(P50, P95, P99), HTML diff 크기 분포
-3. **채널 레이어** — Redis 메모리, 큐 깊이, pub/sub 지연
+1. **연결** — 열린 소켓 수, 연결 수명, 닫힘 코드 분포. 롤링 배포 중에는 재연결 속도
+2. **join 거절** — 사유별 비율. `invalid`가 오르면 서명 키가 인스턴스마다 다르다
+3. **렌더 성능** — 렌더·이벤트 지연(P50, P95, P99), diff 크기 분포
+4. **채널 레이어** — 거부된 메시지(`publish_failed`), 레이어 자신의 유실 로그, 브로커 메모리·지연
 
-### Prometheus
+1~3과 4의 앞부분은 [telemetry 시그널](./features/telemetry.md)로 나온다. wireview는 지표를 쌓지 않고 시그널만
+보낸다. 켜려면 `WIREVIEW = {"TELEMETRY": True}`.
 
-`django-prometheus`로 직접 지표를 추가한다.
+### telemetry 시그널을 지표로
+
+수신자를 모듈 하나에 모으고 `AppConfig.ready()`에서 import한다. 수신자는 렌더·이벤트 경로 안에서 동기로 돌므로
+카운터를 올리는 것 이상은 하지 않는다.
+
+**Prometheus** (`prometheus_client`):
 
 ```python
-from prometheus_client import Counter, Histogram
+# myapp/metrics.py -- import it from MyAppConfig.ready()
+from django.dispatch import receiver
+from prometheus_client import Counter, Gauge, Histogram
 
-ws_connections = Counter(
-    'wireview_websocket_connections_total',
-    'Total WebSocket connections'
-)
+from wireview import telemetry
 
-render_duration = Histogram(
-    'wireview_render_duration_seconds',
-    'Time spent rendering components',
-    buckets=[.005, .01, .025, .05, .1, .25, .5, 1]
+CONNECTIONS = Gauge("wireview_connections", "Open wireview sockets", multiprocess_mode="livesum")
+CONNECTION_SECONDS = Histogram(
+    "wireview_connection_seconds", "How long a socket stayed open", buckets=[1, 10, 60, 300, 1800, 3600, 14400]
 )
+CLOSES = Counter("wireview_connection_closes_total", "Closed sockets by close code", ["code"])
+REJECTED = Counter("wireview_join_rejected_total", "Refused sockets and joins", ["reason"])
+PUBLISH_FAILED = Counter("wireview_publish_failed_total", "Messages the channel layer refused", ["kind", "dropped"])
+EVENT_SECONDS = Histogram("wireview_event_seconds", "Event handler time", ["component"])
+RENDER_SECONDS = Histogram("wireview_render_seconds", "Template render time", ["component"])
+EVENT_ERRORS = Counter("wireview_event_errors_total", "Handlers that raised", ["component"])
+
+
+@receiver(telemetry.connection_opened)
+def connection_opened(sender, **kwargs):
+    CONNECTIONS.inc()
+
+
+@receiver(telemetry.connection_closed)
+def connection_closed(sender, code, duration_ms, **kwargs):
+    CLOSES.labels(code=str(code)).inc()
+    # None: telemetry came on after this socket opened, so it was never counted in
+    if duration_ms is not None:
+        CONNECTIONS.dec()
+        CONNECTION_SECONDS.observe(duration_ms / 1000)
+
+
+@receiver(telemetry.join_rejected)
+def join_rejected(sender, reason, **kwargs):
+    # A closed set (telemetry.JOIN_REJECTED_REASONS): safe as a label
+    REJECTED.labels(reason=reason).inc()
+
+
+@receiver(telemetry.publish_failed)
+def publish_failed(sender, kind, dropped, **kwargs):
+    PUBLISH_FAILED.labels(kind=kind, dropped=str(dropped).lower()).inc()
+
+
+@receiver(telemetry.event_handled)
+def event_handled(sender, component_name, duration_ms, error, **kwargs):
+    EVENT_SECONDS.labels(component=component_name).observe(duration_ms / 1000)
+    if error is not None:
+        EVENT_ERRORS.labels(component=component_name).inc()
+
+
+@receiver(telemetry.component_rendered)
+def component_rendered(sender, component_name, duration_ms, **kwargs):
+    RENDER_SECONDS.labels(component=component_name).observe(duration_ms / 1000)
 ```
+
+`uvicorn --workers N`처럼 프로세스가 여럿이면 `prometheus_client`의 multiprocess 모드(`PROMETHEUS_MULTIPROC_DIR`)로
+돌린다. `multiprocess_mode="livesum"`이 살아 있는 프로세스들의 연결 수를 더한다. `/metrics` 노출은
+`django-prometheus`나 `prometheus_client.make_asgi_app()`으로 한다.
+
+컴포넌트 이름 라벨은 컴포넌트 클래스 수만큼만 는다. `component_id`는 라벨로 쓰지 않는다 — 연결마다 새로 생긴다.
+
+**OpenTelemetry** (`opentelemetry-api`, 내보내기는 SDK와 익스포터 설정의 몫):
+
+```python
+# myapp/otel_metrics.py -- import it from MyAppConfig.ready()
+from django.dispatch import receiver
+from opentelemetry import metrics
+
+from wireview import telemetry
+
+meter = metrics.get_meter("wireview")
+connections = meter.create_up_down_counter("wireview.connections", description="Open wireview sockets")
+rejected = meter.create_counter("wireview.join.rejected", description="Refused sockets and joins")
+publish_failed = meter.create_counter("wireview.publish.failed", description="Messages the channel layer refused")
+render = meter.create_histogram("wireview.render.duration", unit="ms", description="Template render time")
+
+
+@receiver(telemetry.connection_opened)
+def opened(sender, **kwargs):
+    connections.add(1)
+
+
+@receiver(telemetry.connection_closed)
+def closed(sender, duration_ms, **kwargs):
+    if duration_ms is not None:
+        connections.add(-1)
+
+
+@receiver(telemetry.join_rejected)
+def refused(sender, reason, **kwargs):
+    rejected.add(1, {"reason": reason})
+
+
+@receiver(telemetry.publish_failed)
+def refused_by_layer(sender, kind, dropped, **kwargs):
+    publish_failed.add(1, {"kind": kind, "dropped": dropped})
+
+
+@receiver(telemetry.component_rendered)
+def rendered(sender, component_name, duration_ms, **kwargs):
+    render.record(duration_ms, {"component": component_name})
+```
+
+두 예시는 `tests/test_deployment_examples.py`가 가짜 `prometheus_client`·`opentelemetry`를 끼워 실제로 돌린다.
+수신자의 인자 이름이 시그널과 어긋나면 그 테스트가 실패한다.
+
+**브로드캐스트 유실은 레이어의 로그에서 센다.** 레이어의 `group_send`는 가득 찬 멤버를 예외 없이 버린다 —
+channels_redis는 `channels_redis.core` 로거에 INFO(`... channels over capacity in group ...`)로, channels-nats는
+받는 쪽 프로세스의 `channels_nats` 로거에 WARNING(`mailbox for ... is full`)으로 남긴다. `publish_failed`가 잡는
+것은 채널 하나로 보내다 거부된 것(`ChannelFull`)과 브로커 오류뿐이다. 로그 수집기에서 이 두 문장을 세면
+브로드캐스트 유실률이 된다.
 
 ### 로깅
 
@@ -387,11 +492,70 @@ urlpatterns = [
 ]
 ```
 
-### WebSocket
+### Readiness: 채널 레이어 왕복
 
-핸드셰이크만 해 보고 닫는다. 핸드셰이크가 끝났다면 ASGI 서버, 라우팅, 채널 레이어가 다 갖춰진
-것이다 — 채널 레이어가 없으면 컨슈머가 accept 전에 거절한다. 메시지를 보낼 필요는 없고, wireview
-프로토콜에는 `ping` 같은 명령도 없다.
+HTTP 헬스체크는 프로세스가 살아 있다는 것만 말한다. wireview의 브로드캐스트·세션 메일·로그아웃 무효화는 모두
+채널 레이어를 지나므로, 브로커가 죽은 인스턴스는 페이지를 그리고 소켓도 받지만 서로의 소식을 전하지 못한다.
+readiness는 레이어에 메시지를 한 번 돌려 본다. 그룹으로 보내 자기 채널에서 받으므로 wireview의 팬아웃과
+같은 길(`group_add` → `group_send` → `receive`)이다.
+
+```python
+# myapp/health.py
+import asyncio
+import uuid
+
+from channels.layers import get_channel_layer
+from django.http import JsonResponse
+
+ROUND_TRIP_TIMEOUT = 2  # seconds
+
+
+async def channel_layer_ready(request):
+    layer = get_channel_layer()
+    if layer is None:
+        return JsonResponse({"status": "unready", "reason": "no channel layer"}, status=503)
+    group = f"readiness.{uuid.uuid4().hex}"
+    try:
+        async with asyncio.timeout(ROUND_TRIP_TIMEOUT):
+            channel = await layer.new_channel()
+            await layer.group_add(group, channel)
+            try:
+                await layer.group_send(group, {"type": "readiness.ping"})
+                await layer.receive(channel)
+            finally:
+                await layer.group_discard(group, channel)
+    except Exception as error:
+        return JsonResponse({"status": "unready", "reason": repr(error)}, status=503)
+    return JsonResponse({"status": "ready"})
+```
+
+```python
+# urls.py
+from django.urls import path
+
+from myapp.health import channel_layer_ready
+
+urlpatterns = [
+    path("health/", health_check),  # liveness: the process answers
+    path("ready/", channel_layer_ready),  # readiness: the broker answers too
+]
+```
+
+- **async 뷰다.** `ATOMIC_REQUESTS`를 켠 프로젝트는 `django.db.transaction.non_atomic_requests`로 감싼다 —
+  Django가 async 뷰를 트랜잭션으로 감쌀 수 없어 뷰를 부르기 전에 500을 낸다.
+- **in-memory 레이어는 늘 통과한다.** 같은 프로세스 안의 큐라 확인할 브로커가 없다. 운영 레이어에서만 뜻이 있다.
+- **liveness에 걸지 않는다.** 브로커 장애는 인스턴스를 재시작해도 낫지 않는다. liveness가 이것을 보면 브로커가
+  잠깐 흔들릴 때 모든 인스턴스가 함께 재시작되고, 재시작마다 모든 페이지가 다시 join한다(아래 롤링 배포 절).
+- 요청마다 그룹 하나를 만들고 지운다. 주기는 5~10초면 충분하다.
+
+이 예시는 `tests/test_deployment_examples.py`가 in-memory 레이어와 실패하는 레이어로 돌린다.
+
+### WebSocket 핸드셰이크
+
+핸드셰이크만 해 보고 닫는다. ASGI 서버, 라우팅, `CHANNEL_LAYERS` 설정이 갖춰졌는지 본다 — 레이어 설정이
+없으면 컨슈머가 accept 전에 거절한다. **브로커가 응답하는지는 보지 못한다.** 레이어는 소켓을 받을 때 브로커에
+묻지 않으므로(channels_redis의 `new_channel`은 이름만 만든다) 그것은 위의 readiness가 본다. 메시지를 보낼
+필요는 없고, wireview 프로토콜에는 `ping` 같은 명령도 없다.
 
 ```python
 # management/commands/check_websocket.py
@@ -427,6 +591,88 @@ websocket-client는 접속 주소로 `Origin`을 채운다.
 
 인스턴스 사이에서 같아야 하는 것은 위의 세 가지와 업로드 디렉터리뿐이다. sticky를 켜도 동작은 하지만
 롤링 배포 뒤 새 인스턴스로 부하가 고르게 퍼지지 않고, 켜야만 동작하는 것처럼 읽힌다.
+
+### 롤링 배포와 재연결
+
+인스턴스 하나를 내리면 그 인스턴스가 들고 있던 소켓이 **한꺼번에** 닫힌다. 페이지는 다른 인스턴스로 다시
+연결하고, 연결마다 페이지의 모든 컴포넌트가 서명된 상태로 다시 join한다(상태는 페이지에 있으므로 어느
+인스턴스든 받는다). 그래서 롤링 배포의 부하는 요청 수가 아니라 **join 수**다.
+
+#### 용량은 join/s로 잰다
+
+평상시 처리량(이벤트/s)이 넉넉해도 배포 순간에는 join이 몰린다. 필요한 join 속도는 대략
+
+```
+내리는 인스턴스의 연결 수 × 페이지당 루트 컴포넌트 수 ÷ 재연결이 퍼지는 시간(초)
+```
+
+이고, 이것을 **남은 인스턴스들의 join/s 합**이 받아야 한다. 재연결이 퍼지는 시간은 클라이언트 백오프의
+첫 대기 구간, 곧 `RECONNECT_MIN_DELAY_MS`부터 `RECONNECT_MIN_DELAY_MS + RECONNECT_JITTER_MS`까지다(기본 1~5초,
+폭 4초).
+
+프로세스 하나의 join/s 실측(`make bench`, 연결 2,000개, 항목 5개 컴포넌트,
+[transport-abstraction.md](./design/transport-abstraction.md) §5-1~5-3):
+
+| 구성 | join/s |
+|------|-------:|
+| daphne 1개, InMemory, macOS | 1,086~1,123 |
+| daphne 4개, channels-nats, macOS | 1,979~2,245 (프로세스 합) |
+| uvicorn 1개, InMemory, Windows ARM64 | 677 |
+| daphne 1개, InMemory, Windows x64 에뮬 | 341 |
+
+컴포넌트가 무거우면 더 낮다(항목 50개에서 daphne 1개 691). 이슈 #124의 외부 실측은 daphne 437~613 joins/s였다.
+**자기 컴포넌트로 `make bench`를 돌려 잰 값을 쓴다.**
+
+예: 인스턴스 넷, 각 5,000연결, 페이지당 루트 컴포넌트 둘, 프로세스당 600 join/s. 하나를 내리면 10,000 join이
+생긴다. 기본 폭 4초면 초당 2,500이 남은 셋(합 1,800/s)에 떨어져 넘친다. 넘치면 join이 밀리고 사용자는
+끊김 표시(`.wireview-disconnected`)를 그만큼 오래 본다 — 오류는 아니지만, 밀린 사이 다음 배포 단계가 오면
+쌓인다. `RECONNECT_JITTER_MS`를 10,000으로 늘리면 초당 1,000으로 떨어져 들어간다.
+
+```python
+WIREVIEW = {
+    # 첫 재시도: 1~11초 사이에서 페이지마다 한 번 뽑는다
+    "RECONNECT_MIN_DELAY_MS": 1000,
+    "RECONNECT_JITTER_MS": 10000,
+    # 이후 재시도는 1.5배씩, 30초까지
+    "RECONNECT_GROW_FACTOR": 1.5,
+    "RECONNECT_MAX_DELAY_MS": 30000,
+}
+```
+
+키의 뜻은 [설정](./features/settings.md#페이지와-연결)에 있다. 폭을 늘리면 **평소의** 끊김(네트워크가 잠깐 끊긴
+노트북)도 그만큼 늦게 복구된다는 것이 대가다. 새 값은 새로 그려진 페이지부터 적용된다 — 이미 열린 페이지는
+자기가 로드될 때의 값으로 재연결한다.
+
+#### SIGTERM 드레인 절차
+
+wireview가 소켓을 조금씩 닫아 주지는 않는다. ASGI 서버가 종료 신호에 소켓을 한꺼번에 닫고, 흩는 것은 위의
+클라이언트 백오프다. 한 인스턴스를 내리는 순서:
+
+1. **새 연결을 먼저 끊는다.** 로드밸런서에서 인스턴스를 빼고(ALB 대상 등록 해제, Kubernetes는 파드가 종료 중이
+   되면 엔드포인트에서 빠진다) 그것이 퍼질 시간을 준다 — Kubernetes면 `preStop`에 `sleep 10`. 이미 열린
+   WebSocket은 이 단계에서 끊기지 않는다.
+2. **SIGTERM.** uvicorn은 새 연결을 받지 않고, 열린 모든 WebSocket을 닫힘 코드 **1012**(service restart)로
+   닫은 뒤, 앱 태스크가 끝나기를 `--timeout-graceful-shutdown`초까지 기다리고 남은 것을 취소한다. 소켓이 닫히면
+   wireview가 연결마다 컴포넌트의 `leaving()`을 부르고 구독을 정리한다(`connection_closed`의 `code`가 1012).
+   `leaving()`에서 presence를 지우거나 DB에 쓰는 앱이면 이 시간이 그만큼 필요하다.
+
+   ```bash
+   uvicorn myproject.asgi:application --workers 4 --timeout-graceful-shutdown 20 ...
+   ```
+
+   Kubernetes의 `terminationGracePeriodSeconds`는 `preStop` 대기와 이 값의 합보다 길게 둔다.
+3. **다음 인스턴스로 넘어가기 전에 가라앉는 것을 본다.** 남은 인스턴스의 `connection_opened` 속도가 평소로
+   돌아오고 `wireview_connections` 합이 배포 전 수준이 될 때까지 기다린다. 쿨다운 없이 연달아 내리면 방금
+   재연결한 페이지들이 또 끊긴다. `maxSurge`로 새 인스턴스를 먼저 띄우면 남은 용량이 줄지 않는다.
+
+**daphne는 이 절차에서 `leaving()`을 부르지 않는다.** daphne는 종료할 때 앱 코루틴을 취소할 뿐 WebSocket에
+`disconnect`를 보내지 않으므로(`daphne/server.py`의 `kill_all_applications`), 컴포넌트의 `leaving()`과
+`connection_closed`가 돌지 않는다. 그 정리에 기대는 앱은 uvicorn을 쓴다.
+
+**배포가 서명 키를 바꾸면** 재연결한 모든 페이지가 `invalid`로 거절돼 전체 새로고침을 한다 — join이 아니라
+HTTP 페이지 렌더가 몰린다. 키를 바꿀 때는 옛 키를 `SIGNING_KEY_FALLBACKS`(또는 `SECRET_KEY_FALLBACKS`)에 두고
+배포한다([업그레이드](#업그레이드-서명된-컴포넌트-상태)). 배포 중 `wireview_join_rejected_total{reason="invalid"}`가
+오르면 이것이다.
 
 ### 청크 업로드와 다중 프로세스
 

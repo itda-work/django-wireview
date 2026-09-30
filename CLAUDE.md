@@ -63,7 +63,8 @@ wireview/
 ├── schemas.py, serializer.py  Pydantic 스키마, 모델 직렬화
 ├── settings.py            WIREVIEW 설정 기본값
 ├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W014)
-├── telemetry.py           옵트인 계측 시그널 (event_handled, component_rendered, diff_computed, broadcast_published)
+├── telemetry.py           옵트인 계측 시그널 (event_handled, component_rendered, diff_computed, broadcast_published 구간과
+│                          connection_opened·connection_closed·join_rejected(닫힌 사유 집합)·publish_failed 이벤트, #124)
 ├── testing.py             mount(), MountedComponent, ComponentTestCase.
 │                          render()는 실제 저장소의 HTTP 렌더 모드로 자식까지 그린다(자식 수명주기는 컨슈머 몫, #115).
 │                          내비게이션 단언·follow_redirect·follow_push·스트림 검사
@@ -84,6 +85,7 @@ wireview/
                            values.mjs (morph가 사용자가 고친 입력값을 덮어써도 되는가),
                            loading.mjs (로딩 표시를 어느 응답이 끝내는가. ref로 짝짓는다),
                            navigation.mjs (boost 이동이 끝났음을 누구에게 알리는가: 훅의 navigated()와 wireview:navigated),
+                           reconnect.mjs (재연결 백오프를 헤더 메타에서 읽는다. WIREVIEW RECONNECT_*),
                            wireview-boost.js, types.d.ts
                            wireview.min.js는 빌드 산출물이며 gitignore
 
@@ -97,6 +99,8 @@ tests/
 │                          경로를 새로 만들면 행을 추가한다
 │                          test_feature_gap.py 는 docs/FEATURE-GAP.md 의 ✅ 행마다 근거 칸의 테스트가
 │                          실제로 있는지, 개요의 숫자가 표를 센 값인지 본다(#110)
+│                          test_deployment_examples.py 는 docs/DEPLOYMENT.md 의 수신자·readiness 코드 블록을
+│                          꺼내 실제로 돌린다. 문서의 예시를 고치면 이 테스트가 본다
 ├── js/*.test.mjs          클라이언트 순수 모듈 테스트 (node --test)
 │                          js/roundtrip.mjs 는 테스트가 아니라 test_diff_roundtrip.py 의 드라이버다 —
 │                          서버 diff 를 실제 rendered.mjs 로 적용해 매 단계 HTML 이 렌더와 같은지 본다
