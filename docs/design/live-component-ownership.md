@@ -84,6 +84,10 @@
 
 - `command_leave`: `leaving()` await → `_parent_id`가 그 id인 자식에 cascade → 제거 → 구독 재계산.
   예외는 disconnect 경로처럼 로깅하고 삼킨다.
+- 클라이언트는 `wireview-live` 요소가 사라져도 `leave`를 보내지 않고 로컬 정리(훅·업로드)만 한다.
+  부모 렌더가 이미 그 자식을 떠나보냈다. 보내면 빠른 토글에서 늦게 도착한 `leave`가 다시 보인 **새**
+  인스턴스를 지운다. 서버도 LiveComponent id의 `leave`를 무시한다(join과 같은 옛 번들 방어, #140).
+  떠난 루트에 늦게 도착한 render는 자식을 등록하지 않고 버린다.
 - 같은 id로 다른 클래스가 오면 이전 인스턴스를 `leaving()` 대기 큐에 넣고 새로 만든다. 다른 부모 아래
   나타나면 `_parent_id`를 바꾸고 debug 로그를 남긴다.
 

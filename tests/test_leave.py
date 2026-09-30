@@ -4,6 +4,7 @@ import typing as t
 
 import pytest
 from django.contrib.auth.models import AnonymousUser
+from django.template import Template
 
 from wireview import Component, LiveComponent
 from wireview.consumer import WireviewConsumer
@@ -40,6 +41,28 @@ class LeaveProbeFailing(Component):
     async def leaving(self):
         CALLS.append(("leaving", self.id))
         raise RuntimeError("cleanup went wrong")
+
+
+class LeaveProbeShown(LiveComponent):
+    async def leaving(self):
+        CALLS.append(("leaving", self.id))
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<span {% live_tag_header %}>shown</span>")
+
+
+class LeaveProbeToggle(Component):
+    """Shows its LiveComponent while ``shown``: hiding and showing it again makes a new instance."""
+
+    shown: bool = True
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<div {% tag_header %}>"
+            "{% if this.shown %}{% live_component 'LeaveProbeShown' id='t-child' %}{% endif %}</div>"
+        )
 
 
 class FakeOutbound:
@@ -140,3 +163,32 @@ async def test_disconnect_still_reaches_every_registered_component():
     await consumer._call_leaving(list(consumer.repo.components.values()))
 
     assert sorted(CALLS) == [("leaving", "c1"), ("leaving", "p1")]
+
+
+@pytest.mark.django_db
+async def test_a_late_leave_for_a_live_component_id_spares_the_instance_shown_again():
+    """#140: the page used to send ``leave`` for a LiveComponent's id when its element went.
+
+    The server had already retired that child in the parent's render. Hidden and
+    shown again before the leave arrived -- two renders a frame apart, the first
+    morph's leave sent after the second render was handled -- the leave removed
+    the new instance: its events went nowhere until the page joined again. A
+    LiveComponent belongs to its parent, so a leave naming one is not the page's
+    to send and is ignored (an older bundle still sends it).
+    """
+    consumer, _ = make_consumer()
+    board = await consumer.repo.join("LeaveProbeToggle", {"id": "toggle"})
+    await consumer.send_render(board, announce=True)
+    first = consumer.repo.get("t-child")
+    board.shown = False
+    await consumer.send_render(board)
+    board.shown = True
+    await consumer.send_render(board)
+    again = consumer.repo.get("t-child")
+    assert again is not None and again is not first
+    CALLS.clear()
+
+    await consumer.handle_message({"command": "leave", "payload": {"id": "t-child"}})
+
+    assert consumer.repo.get("t-child") is again
+    assert CALLS == []

@@ -92,6 +92,13 @@ The django-reactor era changelog (2.x) is preserved in
   (`run_in_executor`, `sync_to_async(thread_sensitive=False)`), and other code attached to the
   loop are not held (#138).
 
+- A LiveComponent hidden and shown again in quick succession could lose its new instance: when its
+  element left, the page sent `leave` for its id, and a leave that reached the server after the
+  parent's next render removed the instance that render had just made -- its events went nowhere.
+  A LiveComponent belongs to its parent, whose render already retired it, so the page no longer
+  sends `leave` for one and the server ignores it from an older bundle. A render that arrives for a
+  component whose element already left is dropped without registering its children (#140).
+
 - A sticky component rendered without an `id` was silently not sticky: `{% component %}` gave it
   a fresh `rx-<uuid>` on every page, which never paired with the next page's. It now gets an id
   derived from its class (`sticky-<module path>-<Class>`), the same on every page. A second

@@ -29,7 +29,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | command | payload | 처리 |
 |---------|---------|------|
 | `join` | `name`, `state` (서명 상태, `wireview.core.state`), `children: {id: [name, state]}` | 컴포넌트 복원, `joined()`, 첫 render, `params_changed`. `state`는 v2 봉투 `{"v":2,"n":<클래스 FQN>,"s":<live_session>,"a":<인증 세대>,"d":<상태>}`를 `TimestampSigner`로 서명한 값이다(`s`와 `a`는 경계 안의 페이지에만 실린다). 서버는 `STATE_MAX_AGE`(기본 14일)로 만료를 검사하고, `name`이 가리키는 클래스와 봉투 안의 클래스가 같은지, 봉투의 `live_session`이 이 연결의 것과 같은지, `a`가 이 연결의 인증 세대와 같은지 확인한다. 루트 상태가 거절되면 아무것도 마운트하지 않고 `reload`를 보낸다. `children`의 항목 하나가 거절되면(서명 실패, 또는 다른 경계·다른 인증 세대의 봉투) 그 항목만 복원 맵에서 빠지고 join은 계속된다(#76, #58). `children`에는 중첩된 일반 Component와 LiveComponent의 상태가 함께 실린다. **LiveComponent는 자기 join을 보내지 않는다** — 부모가 소유하며, 이미 등록된 LiveComponent id로 join이 오면 서버는 무시한다 |
-| `leave` | `id` | `leaving()`, 그 아래 LiveComponent에 cascade, 업로드 레지스트리 해제, 구독 재계산, 컴포넌트 제거 |
+| `leave` | `id` | `leaving()`, 그 아래 LiveComponent에 cascade, 업로드 레지스트리 해제, 구독 재계산, 컴포넌트 제거. **LiveComponent id로는 보내지 않는다** — 부모 렌더가 이미 그 자식을 떠나보냈고, 늦게 온 `leave`는 그 사이 다시 보인 새 인스턴스를 지웠다. 서버는 LiveComponent id의 `leave`를 무시한다(옛 번들 방어, #140) |
 | `user_event` | `id`, `command`, `implicit_args` (폼 직렬화), `explicit_args`, `ref?` | 핸들러 호출 후 render. `ref`(정수)는 확정 액션(#92)과 로딩 표시를 거는 이벤트(#118)에 실리고, 서버는 그 이벤트의 render(또는 `error`)에 그대로 돌려준다. 클라이언트는 그 답으로 입력값 보존과 로딩 표시를 정리한다. 클라이언트는 서버가 join 응답에서 `vsn` 3 이상을 알렸을 때만 싣는다 |
 | `hook_event` | `component_id`, `hook_id`, `event`, `payload`, `ref?` | `handle_hook_event()`, `ref`가 있으면 `hook_reply` |
 | `params_changed` | `params`, `uri` | 모든 컴포넌트에 `params_changed()` |
@@ -127,6 +127,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 
 구버전이 섞이면: 옛 클라이언트와 새 서버는 옛 클라이언트가 `vsn`을 보내지 않으므로 지금까지와 바이트까지 같은 메시지를 받는다. 새 클라이언트와 옛 서버는 옛 서버가 `vsn`을 읽지 않고 옛 형태만 보내며, 새 클라이언트는 그것을 그대로 읽는다. 버전 신호가 없었다면 옛 클라이언트는 `{"k"}`를 모르는 값으로 슬롯에 넣고 `[object Object]`를 그렸을 것이다 — 롤링 배포 중 옛 JS로 열린 페이지가 새 서버에 재연결하는 흔한 경우다.
 
+- 2026-09-30: 클라이언트가 LiveComponent id로 `leave`를 보내지 않고, 서버는 그런 `leave`를 무시한다. 보내던 옛 번들은 무시될 뿐이라 `vsn`을 올리지 않는다 (#140).
 - 2026-09-30: 인스턴스 번호가 프로세스 카운터에서 53비트 무작위 정수로 바뀌었다. 형태는 그대로 JSON 정수라 `vsn`을 올리지 않는다 (#141).
 - 2026-09-30: `render`의 `instances`와 `upload_op config`의 `instance`. 세션은 떠났거나 대체된 인스턴스의 `upload_op`를 버린다. 둘 다 새 필드일 뿐 diff 형태가 아니고, 옛 클라이언트는 render의 모르는 필드를 무시하며 `config`의 남는 필드는 설정에 섞여도 읽지 않으므로 `vsn`을 올리지 않는다. 새 클라이언트는 `instance`가 없는 `config`를 옛 서버의 것으로 보고 그대로 받는다 (#137).
 - 2026-09-29: `vsn` 5. outbound `joined` (#112).

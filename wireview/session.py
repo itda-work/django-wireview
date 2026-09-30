@@ -584,6 +584,13 @@ class WireviewSession:
         connection no longer needs are dropped.
         """
         log.debug(f"<<< LEAVE {id}")
+        if isinstance(self.repo.get(id), LiveComponent):
+            # A LiveComponent is its parent's: the parent's render retired the one
+            # the page saw leave. The id may already name a new instance, shown
+            # again since (#140). Current clients do not send this; an older
+            # bundle still might.
+            log.debug("Ignoring leave for LiveComponent %s", id)
+            return
         removed = self.repo.remove(id)
         await self._call_leaving(removed)
         self._release_uploads(removed)

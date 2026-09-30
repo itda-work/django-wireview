@@ -241,20 +241,25 @@ class ServerConnection {
       if (registeredIds.delete(element.id)) {
         this.components[element.id].join();
       } else {
-        let component = new WireviewComponent(element.id);
+        let component = new WireviewComponent(element.id, element.hasAttribute("wireview-live"));
         this.components[element.id] = component;
         component.join();
       }
     }
     for (let id of registeredIds.keys()) {
+      const component = this.components[id];
       // Its root left the page, which the hook manager's MutationObserver --
       // watching inside the root -- never sees (#107)
-      this.components[id].hookManager.destroy();
+      component.hookManager.destroy();
       delete this.components[id];
       // Its files, requests and previews too: a config it was still owed must
       // not register them later (#137)
       uploadManagers.dispose(id);
-      this.sendLeave(id);
+      // A LiveComponent is its parent's: the parent's render already retired
+      // it, and by the time a leave arrived the id might name the instance
+      // shown again since (#140). Its root's leave, if the root went too,
+      // takes it along.
+      if (!component.owned) this.sendLeave(id);
     }
   }
 
@@ -273,28 +278,6 @@ class ServerConnection {
 
         const { id, diff, children, ref, vsn, instances } = payload;
         if (typeof vsn === "number") this.serverVsn = vsn;
-        // The instances this render is the first of: whose upload configs to
-        // take (#137). Not for a component whose element already left the page
-        // -- an answer to its join still on the way would bring it back.
-        if (instances && document.getElementById(id)) {
-          for (const [each, instance] of Object.entries(instances)) uploadManagers.started(each, instance);
-        }
-        // Register the children first, before any frame is scheduled: the
-        // parent's HTML is built from their renders, and a later diff for a
-        // child must find its component whether or not the parent has patched
-        // the DOM yet.
-        const changedChildren = [];
-        for (const [childId, childDiff] of Object.entries(children || {})) {
-          let child = this.components[childId];
-          if (!child) {
-            child = new WireviewComponent(childId);
-            this.components[childId] = child;
-          }
-          if (childDiff) {
-            child.applyDiffData(childDiff);
-            changedChildren.push(child);
-          }
-        }
         const target = this.components[id];
         // The answer to a committing event may reset the fields it came from,
         // in the morph this render causes and no other (#92). That morph runs
@@ -314,10 +297,36 @@ class ServerConnection {
               ? []
               : this.loading.answerUnpaired(id);
         released.forEach(unmarkLoading);
+        // A component whose element left the page: the render was on its way
+        // when the page let it go. Its LiveComponents went with it, so nothing
+        // here is registered -- they would only be let go again (#140).
+        if (!target) break;
+        // The instances this render is the first of: whose upload configs to
+        // take (#137). Not for a component whose element already left the page
+        // -- an answer to its join still on the way would bring it back.
+        if (instances && document.getElementById(id)) {
+          for (const [each, instance] of Object.entries(instances)) uploadManagers.started(each, instance);
+        }
+        // Register the children first, before any frame is scheduled: the
+        // parent's HTML is built from their renders, and a later diff for a
+        // child must find its component whether or not the parent has patched
+        // the DOM yet.
+        const changedChildren = [];
+        for (const [childId, childDiff] of Object.entries(children || {})) {
+          let child = this.components[childId];
+          if (!child) {
+            child = new WireviewComponent(childId, true);
+            this.components[childId] = child;
+          }
+          if (childDiff) {
+            child.applyDiffData(childDiff);
+            changedChildren.push(child);
+          }
+        }
         // A server that does not say `joined`: the first render is the best sign
         // the join has landed
         if (this.serverVsn < JOINED_SINCE) this.startViewports(id);
-        if (diff && target) {
+        if (diff) {
           // One patch: the parent's HTML embeds the children's current renders
           target.applyDiffData(diff);
           if (permission && permission.size) {
@@ -882,10 +891,17 @@ class WireviewComponent {
   /**
    * Creates a new WireviewComponent instance.
    * @param {string} id - The DOM element ID for this component
+   * @param {boolean} [owned=false] - a LiveComponent, which its parent owns
    */
-  constructor(id) {
+  constructor(id, owned = false) {
     /** @type {string} */
     this.id = id;
+    /**
+     * A LiveComponent: it never joins or leaves on its own; its parent's join
+     * and renders carry its lifecycle (docs/design/live-component-ownership.md).
+     * @type {boolean}
+     */
+    this.owned = owned;
 
     // Phoenix-style state (static/dynamic separation)
     /** @type {string[]|null} */
