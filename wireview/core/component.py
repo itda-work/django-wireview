@@ -45,6 +45,21 @@ MessagePayload = dict[str, t.Any]
 P = t.ParamSpec("P")
 
 
+def _log_failure(message: str, *args: object) -> t.Callable[["asyncio.Task[t.Any]"], None]:
+    """A done callback that logs the task's error as it ends; a cancel is not an error.
+
+    Nobody awaits these tasks. Left alone, an error reached only asyncio's "Task
+    exception was never retrieved", on its own logger and only once the task was
+    collected -- after the component, if something still held it (#151).
+    """
+
+    def done(task: "asyncio.Task[t.Any]") -> None:
+        if not task.cancelled() and (error := task.exception()) is not None:
+            log.error(message, *args, exc_info=error)
+
+    return done
+
+
 class Template(t.Protocol):
     """Protocol for Django template (both raw and backend-wrapped)."""
 
@@ -1063,6 +1078,7 @@ class Component(BaseModel):
         task = asyncio.create_task(self.wire._render_gate.run(handled))
         # A task cancelled before its first step never awaits coro
         task.add_done_callback(lambda _: (coro.close(), handled.close()))
+        task.add_done_callback(_log_failure("%s (%s) start_async(%r) raised", self._name, self.id, name))
         self._async_tasks[name] = task
 
     async def cancel_async(self, name: str) -> bool:
@@ -1182,6 +1198,7 @@ class Component(BaseModel):
         updated = run_and_update()
         task = asyncio.create_task(self.wire._render_gate.run(updated))
         task.add_done_callback(lambda _: (coro.close(), updated.close()))
+        task.add_done_callback(_log_failure("%s (%s) assign_async raised", self._name, self.id))
         self._assign_tasks.add(task)
         task.add_done_callback(self._assign_tasks.discard)
 
@@ -1448,6 +1465,10 @@ class Component(BaseModel):
         task = asyncio.create_task(send_config())
         self._assign_tasks.add(task)
         task.add_done_callback(self._assign_tasks.discard)
+        # The input is drawn either way: without the config it does nothing
+        task.add_done_callback(
+            _log_failure("%s (%s) could not send the config of upload %r", self._name, self.id, name)
+        )
 
     @property
     def uploads(self) -> dict[str, list["UploadEntry"]]:

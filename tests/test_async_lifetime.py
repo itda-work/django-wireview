@@ -16,6 +16,7 @@ Two more defects in the same place:
 """
 
 import asyncio
+import logging
 import typing as t
 
 import pytest
@@ -193,3 +194,65 @@ async def test_a_task_cancelled_before_it_ran_leaves_no_unawaited_coroutine(recw
     await asyncio.sleep(0)
 
     assert not [w for w in recwarn if "never awaited" in str(w.message)]
+
+
+class RenderFails(Component):
+    """Its operations end at once, and the render they ask for cannot be sent."""
+
+    class Meta:
+        template_name = "todo/counter.html"
+
+    async def quick(self) -> int:
+        return 1
+
+    async def begin(self, **_rest):
+        await self.start_async("work", self.quick())
+
+    async def begin_assign(self, **_rest):
+        await self.assign_async(self.quick())
+
+    async def send_render(self) -> None:
+        raise RuntimeError("the render could not be sent")
+
+
+def _wireview_errors(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if r.name == "wireview" and r.exc_info]
+
+
+@pytest.mark.parametrize("handler", ["begin", "begin_assign"])
+async def test_a_task_that_raises_is_logged_at_once(handler, caplog):
+    """Its error goes to the wireview logger as it ends (#151).
+
+    Nobody awaits the task, so the error was left to asyncio's "Task exception was
+    never retrieved", on its own logger and only once the task was collected.
+    """
+    view = await mount(RenderFails)
+    with caplog.at_level(logging.ERROR, logger="wireview"):
+        await view.call(handler)
+        (record,) = await eventually(lambda: _wireview_errors(caplog))
+
+    assert "RenderFails" in record.getMessage()
+    assert "could not be sent" in str(record.exc_info[1])
+
+
+@pytest.mark.parametrize("started", [False, True], ids=["before-its-first-step", "running"])
+@pytest.mark.parametrize("handler", ["begin", "begin_assign"])
+async def test_a_cancelled_task_is_not_logged(handler, started, caplog):
+    """A task cancelled before its first step ends cancelled; a running one swallows the cancel."""
+    view = await mount(Slow)
+    with caplog.at_level(logging.ERROR, logger="wireview"):
+        await view.call(handler)
+        tasks = (
+            await _tasks_of(view.component)
+            if started
+            else [*view.component._async_tasks.values(), *view.component._assign_tasks]
+        )
+        (task,) = tasks
+        view.component._cancel_async_tasks()
+        await eventually(task.done)
+        await asyncio.sleep(0)  # done callbacks run a step later
+
+    assert task.cancelled() is not started
+    # Nothing at all: asking a cancelled task for its exception raises, and that
+    # goes to asyncio's logger as an error in a callback
+    assert [r for r in caplog.records if r.levelno >= logging.ERROR] == []

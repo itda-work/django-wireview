@@ -12,6 +12,7 @@
 |---|---|---|
 | 이벤트 핸들러, 브로드캐스트 수신(`notification`·`mutation`), `params_changed`, 훅 이벤트, 업로드 콜백, `start_async`의 `handle_async`, LiveComponent `update()`, 렌더 | 로그(`log.exception`)를 남기고 인스턴스를 버린다. `leaving()`을 부른다 | 그 컴포넌트를 요소의 `data-state`로 **다시 join**한다 |
 | `mount`, `on_mount` 훅, `joined()`, join의 첫 렌더 | 로그를 남기고 저장소에서 지운다. `leaving()`을 부른다 | 요소를 그대로 두고 `wireview-error` 클래스를 붙인다. 다시 시도하지 않는다 |
+| 아무도 기다리지 않는 태스크의 나머지: `start_async`·`assign_async`가 결과를 받은 뒤의 렌더 요청, `assign_async`의 `on_error`, `allow_upload()`의 config 전송 | 끝나는 즉시 `wireview` 로거에 ERROR와 트레이스백을 남긴다. 취소는 남기지 않는다. 컴포넌트는 그대로다(#151) | 없음. config가 가지 않으면 업로드 입력은 그려지지만 아무 동작도 하지 않는다 |
 | 클라이언트가 보내지 않는 메시지(모르는 command, 인자가 맞지 않는 payload) | WARNING 로그를 남기고 버린다 | 없음 |
 | 핸들러가 아닌 이름으로 온 이벤트(`_private`, 없는 이름, `joined` 같은 프레임워크 메서드) | WARNING 로그를 남긴다. 아무것도 호출하지 않는다 | 이벤트가 끝났다는 빈 응답을 받아 로딩 상태가 풀린다 |
 

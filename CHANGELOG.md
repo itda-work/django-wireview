@@ -124,6 +124,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A task nobody awaits -- `allow_upload()`'s config send, and what `start_async` and
+  `assign_async` do after the operation (the render request, `on_error`) -- no longer fails
+  unheard. Its error went only to asyncio's "Task exception was never retrieved" on its own logger,
+  once the task was collected; a failed config send leaves an upload input that does nothing.
+  It is now logged on the `wireview` logger with its traceback as the task ends. A cancel is not
+  logged (#151).
+
 - `import wireview` warned on pydantic 2.7 to 2.9, which reserve every `model_` field name:
   `Field "model_pk" has conflict with protected namespace "model_"`. `AutoBroadcast` opts out of
   the namespace, and a test imports every module with warnings as errors (#132).

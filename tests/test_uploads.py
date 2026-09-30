@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import tempfile
 from pathlib import Path
 
@@ -811,6 +812,24 @@ class TestComponentUploadMethods:
                 task=config_sends["images"],
                 timeout=30,
             )
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_config_send_that_fails_is_logged_at_once(self, monkeypatch, caplog):
+        """The upload input is drawn and does nothing; the log says why as it happens (#151)."""
+
+        async def broken(self, op, owner):
+            raise RuntimeError("the config could not be sent")
+
+        monkeypatch.setattr(WireviewMeta, "send_upload_op", broken)
+        with caplog.at_level(logging.ERROR, logger="wireview"):
+            view = await mount(UploadComponent)
+            (record,) = await eventually(lambda: [r for r in caplog.records if r.name == "wireview" and r.exc_info])
+
+        assert "'images'" in record.getMessage()
+        assert "could not be sent" in str(record.exc_info[1])
+        # Logged while the component is still there, not when it is collected
+        assert view.component._upload_registry is not None
 
     @pytest.mark.asyncio
     @pytest.mark.unit
