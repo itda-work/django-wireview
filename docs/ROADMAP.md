@@ -20,7 +20,8 @@ Phase 5: Polish         ████████████████░░�
 Phoenix LiveView 대비 남은 P1 기능 갭은 없다. GAP-009 live_session 과 GAP-022 Telemetry 는
 `v0.3.0` 에서 끝났고, **GAP-012 LongPolling 폴백은 만들지 않기로 했다** —
 WebSocket 을 필수 전제로 둔다(`docs/design/longpolling-fallback.md` §5).
-GAP-027 세션 분리는 `docs/design/transport-abstraction.md` 6절의 착수 기준을 만족할 때 시작한다.
+GAP-027 세션 분리는 1단계(컨슈머에서 `WireviewSession` 분리)가 `v1.0.0rc3` 에서 끝났고, 나머지(세션 상태
+export/import, 프런트 어댑터)는 `docs/design/transport-abstraction.md` 6절의 착수 기준을 만족할 때 시작한다.
 남은 것은 P2·P3 이고 `docs/FEATURE-GAP.md` 3절이 정본이다.
 
 ---
@@ -336,6 +337,7 @@ def button(text: str, variant: str = "primary"):
 | v0.7.0 | ✅ | 실사용 앱에서 나온 버그와 작은 추가. 로딩 표시와 응답 짝짓기(#118), 리다이렉트 뒤 주소(#104), join 뒤 무한 스크롤 판단(#112, 프로토콜 5), 스텁 결정성(#109), `wire-update="ignore"`(#102), `wire-boost` 폼과 `wireview.visit()`(#103), 테스트의 `render_diff()`(#117). 호환 변경 없음 |
 | v1.0.0rc1 | ✅ | 0.7.0의 코드 그대로, 호환 변경 없음. RC 동안 새 `bug` 이슈가 잦아드는지와 실사용 앱 도그푸딩을 본다(#93) |
 | v1.0.0rc2 | ✅ | 1.0 동결 전 공개 API 정리(#119): 공개 범위 선언, `Component` 멤버·설정 레퍼런스, `handle_async`의 `AsyncResult`, `mount()` 키워드 전용, m2m 채널, `dom()` 제거 등. rc1에서 올리는 절차는 [업그레이드 가이드](./UPGRADING.md) |
+| v1.0.0rc3 | ✅ | rc2 뒤의 호환 추가만: `LiveComponent.update_many()`(GAP-035), `toast()`·`atoast()`·`{% wireview_toasts %}`(#116), sticky 컴포넌트(GAP-033), JavaScript 없는 페이지의 약속 문서화(GAP-034), 세션 로직의 `WireviewSession` 분리(GAP-027 1단계). 호환 변경 없음 |
 | v1.0.0 | ⬜ | API 안정화 선언. 이후 규칙은 [호환성 정책](./COMPATIBILITY.md) |
 
 ### 릴리스 절차
@@ -350,4 +352,4 @@ def button(text: str, variant: str = "primary"):
 
 ---
 
-*마지막 업데이트: 2026-09-29*
+*마지막 업데이트: 2026-09-30*

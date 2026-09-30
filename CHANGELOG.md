@@ -10,6 +10,8 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+## [1.0.0rc3] - 2026-09-30
+
 ### Changed
 
 - The session logic is `wireview.session.WireviewSession`, answering only through an `Outbound`;
@@ -1238,7 +1240,8 @@ auto-recovery, viewport bindings, optimistic UI attributes, type stub
 generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
-[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc2...HEAD
+[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc3...HEAD
+[1.0.0rc3]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc2...v1.0.0rc3
 [1.0.0rc2]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc1...v1.0.0rc2
 [1.0.0rc1]: https://github.com/itda-work/django-wireview/compare/v0.7.0...v1.0.0rc1
 [0.7.0]: https://github.com/itda-work/django-wireview/compare/v0.6.0...v0.7.0
