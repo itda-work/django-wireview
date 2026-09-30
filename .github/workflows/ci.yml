@@ -49,7 +49,7 @@ jobs:
           npm run build
 
       - name: Run tests
-        run: make ci-test
+        run: make ci-test DJANGO=${{ matrix.django-version }}
 
   # The lock pins what the job above installs; a fresh install resolves anew and gets
   # the newest releases. This job runs what a new user gets (#127).

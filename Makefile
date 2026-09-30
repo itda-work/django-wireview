@@ -189,14 +189,23 @@ test-matrix: collectstatic
 # The dependencies a fresh `pip install django-wireview` gets today, not uv.lock's:
 # the newest release of each within pyproject.toml's bounds. uv.lock held pydantic
 # at 2.12 while new installs got 2.13, which broke the import (#127).
-test-latest: collectstatic
-	uv run --no-project --isolated --python $(or $(PYTHON),3.12) --with-editable ".[dev]" \
-		pytest tests examples -m "not e2e and not slow" -q --no-header -p no:warnings $(ARGS)
+# collectstatic runs in that environment too, not through the `collectstatic` target:
+# that one uses the project venv, and CI's job never installs the dev extras into it,
+# so testproj's INSTALLED_APPS (daphne) did not import there (#136).
+LATEST_RUN = uv run --no-project --isolated --python $(or $(PYTHON),3.12) --with-editable ".[dev]"
+test-latest:
+	$(LATEST_RUN) python tests/manage.py collectstatic --noinput
+	$(LATEST_RUN) pytest tests examples -m "not e2e and not slow" -q --no-header -p no:warnings $(ARGS)
 
-# CI: Run tests (non-E2E)
+# CI: Run tests (non-E2E). --no-sync: ci.yml installs one Django over the lock's, and a
+# syncing `uv run` put the lock's back before the first test -- every lane of the grid ran
+# Django 6.0 whatever its name said. DJANGO=<x.y> fails the run unless that is what imports.
 ci-test:
-	cd tests && uv run python manage.py collectstatic --noinput
-	uv run pytest tests examples -m "not e2e and not slow" -q
+	@if [ -n "$(DJANGO)" ]; then uv run --no-sync python -c "import sys, django; \
+	v = '.'.join(map(str, django.VERSION[:2])); print('ci-test: Django', django.get_version()); \
+	sys.exit(0) if v == '$(DJANGO)' else sys.exit(f'ci-test: expected Django $(DJANGO), got {v}')"; fi
+	cd tests && uv run --no-sync python manage.py collectstatic --noinput
+	uv run --no-sync pytest tests examples -m "not e2e and not slow" -q
 
 # CI: Run E2E tests
 # CI runs E2E on NATS, the layer this project targets. ci.yml provides the server as a

@@ -80,6 +80,14 @@ The django-reactor era changelog (2.x) is preserved in
   (`uv.lock`), and `make test-latest` and a CI job run it on the newest dependencies a fresh
   install gets (#127).
 
+- CI: the Python x Django grid tested Django 6.0 in every lane. Each job installed its Django
+  over the lock's and then ran the tests through a syncing `uv run`, which put 6.0 back before
+  the first test; the lanes named 5.2 and 6.1 never ran on them. `make ci-test` no longer syncs,
+  and with `DJANGO=<x.y>` (as `ci.yml` passes it) fails unless that Django is what imports. The
+  newest-dependencies job failed before its first test for a related reason -- its
+  `collectstatic` ran in the project venv, which that job never gives the dev extras -- and now
+  runs in the same isolated environment as its tests (#136).
+
 - Test harness: two test runs in one checkout no longer break each other. The test database was
   one fixed file, so concurrent runs created, flushed and dropped it under each other and failed
   with "readonly database" and "no such table", differently each time; each test process now has
