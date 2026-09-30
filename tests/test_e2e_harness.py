@@ -13,10 +13,14 @@ why nobody caught it by running the suite.
 """
 
 import logging
+import os
 import pathlib
 import re
 import socket
+import subprocess
+import sys
 import threading
+import warnings
 from urllib.parse import urlsplit
 
 import pytest
@@ -370,3 +374,49 @@ def test_an_exception_in_the_application_reaches_server_errors(started_threads):
         errors = e2e_server.server_errors()
 
     assert any("the application blew up" in line for line in errors), errors
+
+
+def test_a_static_file_is_served_without_a_sync_iterator_warning(started_threads):
+    """Static files go out as an async stream, not a sync one Django has to drain.
+
+    WhiteNoise's middleware is sync-only: under Django's ASGI handler every file it
+    served came back as a sync iterator, and each one warned "StreamingHttpResponse
+    must consume synchronous iterators" -- 126 more warnings per E2E run once the
+    test project stopped going through WsgiToAsgi (#129). The suite turns that
+    warning into a failed run (testproj/warning_guard.py); this checks the serving
+    path directly.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with serve() as base_url:
+            statuses = _pipelined(base_url, "/static/wireview/wireview.min.js", 1)
+
+    assert statuses == [b"200 OK"]
+    assert [str(w.message) for w in caught if "synchronous iterators" in str(w.message)] == []
+
+
+GUARDED_TEST = """
+import warnings
+
+def test_serves_a_sync_iterator():
+    warnings.warn("StreamingHttpResponse must consume synchronous iterators in order to serve them asynchronously.")
+"""
+
+
+@pytest.mark.parametrize("body, code", [(GUARDED_TEST, 1), ("def test_nothing():\n    pass\n", 0)])
+def test_a_sync_iterator_warning_fails_the_run(tmp_path, body, code):
+    """The warning alone turns a green run red, and nothing else does."""
+    tests = pathlib.Path(__file__).resolve().parent
+    (tmp_path / "pytest.ini").write_text("[pytest]\n")
+    (tmp_path / "test_guarded.py").write_text(body)
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-p", "testproj.warning_guard", "-q", str(tmp_path)],
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": str(tests)},
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    assert result.returncode == code, result.stdout + result.stderr
+    assert ("sync iterators served under the ASGI handler" in result.stdout) is bool(code)

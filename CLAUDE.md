@@ -106,6 +106,7 @@ tests/
                            server_errors() 가 블록 동안 서버가 남긴 ERROR 를 돌려준다: 핸들러가 터지면
                            소켓이 죽고 페이지가 멈출 뿐이라 브라우저 쪽에서는 느린 것과 구별되지 않는다.
                            e2e_browser.py 가 브라우저 대기의 정본이다 (open_live·expect_text·expect_count).
+                           warning_guard.py 는 ASGI 핸들러가 동기 이터레이터를 서빙했다는 경고가 기록되면 실행을 실패시키는 플러그인이다.
                            page.wait_for_selector 를 다른 곳에 쓰면 test_e2e_harness.py 의 가드가 실패한다
                            bookmarks/ 는 예제가 아니라 wireview 스킬 검증의 기준선이고,
                            uploadprobe/ 는 워커 둘짜리 업로드 E2E(test_multiworker_uploads.py)의 픽스처,
@@ -193,6 +194,8 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
   `async_to_sync`로 보내고, uvicorn은 keep-alive 연결의 다음 요청을 그 호출 안에서 시작한다 — 다음 요청이 이미 끝난
   executor를 물려받아 `CurrentThreadExecutor already quit`로 죽는다. 전체 E2E에서만 가끔 보였다(#129). tests/test_e2e_harness.py가
   파이프라이닝으로 결정론적으로 지킨다. 테스트 DB는 프로세스마다 다른 파일이다(#125, `make test-concurrent`).
+  정적 파일은 `ASGIStaticFilesHandler`가 서빙한다 — WhiteNoise 미들웨어는 동기 전용이라 ASGI 핸들러 아래에서 파일마다
+  동기 이터레이터 경고를 냈다. 그 경고가 하나라도 기록되면 실행이 실패한다(`tests/testproj/warning_guard.py`).
 - **단위·통합 테스트도 일부는 채널 레이어를 쓴다.** `tests/test_uploads.py`의 `UploadView` 테스트가 세션 채널로 보낸다. 그래서 기본값이 `memory`다. 브로커가 없는 레이어를 기본으로 두면 그 두 테스트가 연결 타임아웃으로 2분씩 걸린다.
 - **클라이언트가 호출할 수 있는 메서드.** `_`로 시작하지 않고 **사용자 코드에서 정의한** 메서드만 이벤트 핸들러로 노출되고 `validate_call`로 감싸진다. 프레임워크(`wireview.*`)와 Pydantic이 소유한 이름은 서브클래스에서 오버라이드해도 노출되지 않는다 — `joined`·`handle_async`·`update`·`update_many`·`send_to_parent`·`model_post_init`은 클라이언트가 부를 수 없고 `validate_call`로 감싸지지도 않는다. 판정은 `wireview/core/handlers.py`의 `is_client_callable` 하나이고 디스패처·check·`_validate_handlers`가 함께 쓴다 — 감쌀 대상을 따로 고르던 시절 프레임워크 메서드의 `t.Self` 주석이 pydantic 2.13에서 import를 죽였다(#127). 회귀 테스트는 tests/test_security.py, tests/test_handler_validation.py. 내부 헬퍼는 반드시 `_` 접두사. 클래스 본문에 정의된 **클래스**(`class Meta:` 포함)는 호출 가능해도 노출되지 않는다(#99). 핸들러와 라이프사이클 메서드는 async.
 - **컴포넌트 이름은 클래스명으로 전역 등록.** 다른 모듈에서 같은 클래스명을 쓰면 경고가 난다. 템플릿에서 `app:Name` 또는 FQN으로 구분한다.

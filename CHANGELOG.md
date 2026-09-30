@@ -33,6 +33,11 @@ The django-reactor era changelog (2.x) is preserved in
   ordinary form POST failing once in a full E2E run. It uses Django's ASGI handler now, as
   projects are told to, and `server_errors()` sees what Uvicorn logs, which it silently did not
   (#129).
+- Test harness: with Django's ASGI handler, WhiteNoise's sync-only middleware served every static
+  file as a sync iterator, and each one warned "StreamingHttpResponse must consume synchronous
+  iterators" (126 more warnings per E2E run). The test project serves static files through
+  Django's `ASGIStaticFilesHandler`, as daphne's and Channels' runserver do, and a run that records
+  that warning now fails (`tests/testproj/warning_guard.py`).
 - A live render read the component's properties on the event loop, so a plain property that used
   the ORM raised `SynchronousOnlyOperation` on a real server and the component could not join (the
   notifications example's recipient list). Properties are now read in the same worker thread as the

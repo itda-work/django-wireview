@@ -22,6 +22,9 @@ import typing as t
 
 import pytest
 
+# Fails the run on a sync iterator served under the ASGI handler (#129 follow-up).
+pytest_plugins = ["testproj.warning_guard"]
+
 FLAG = "DJANGO_ALLOW_ASYNC_UNSAFE"
 
 _real_get_running_loop = asyncio.get_running_loop
