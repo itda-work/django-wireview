@@ -134,8 +134,23 @@ pip install django-wireview daphne
 프로젝트와 [튜토리얼 01](./docs/tutorials/01-getting-started.md)의 첫 컴포넌트가 생기고, `manage.py check`는
 아무것도 보고하지 않습니다.
 
+macOS·Linux(bash, zsh):
+
 ```bash
-django-admin startproject mysite --template "$(python -c 'import wireview, pathlib; print(pathlib.Path(wireview.__file__).parent / "project_template")')"
+django-admin startproject mysite --template "$(python -c "import wireview, os; print(os.path.join(os.path.dirname(wireview.__file__), 'project_template'))")"
+```
+
+Windows PowerShell:
+
+```powershell
+django-admin startproject mysite --template (python -c "import wireview, os; print(os.path.join(os.path.dirname(wireview.__file__), 'project_template'))")
+```
+
+Windows 명령 프롬프트(cmd.exe)에는 명령 치환이 없으므로 두 단계로 합니다. 첫 줄이 출력한 경로를 `--template` 뒤에 붙여 넣습니다.
+
+```bat
+python -c "import wireview, os; print(os.path.join(os.path.dirname(wireview.__file__), 'project_template'))"
+django-admin startproject mysite --template C:\...\wireview\project_template
 ```
 
 `daphne`는 개발 서버용입니다. Django의 `runserver`는 WSGI 서버라 WebSocket을 받지 못하고, `daphne` 앱이 `INSTALLED_APPS` 맨 위에 있을 때에만 ASGI로 바뀝니다. 빠뜨려도 오류는 나지 않고 페이지가 반응 없이 남습니다(`runserver` 기동 로그의 `wireview.W013` 경고가 유일한 신호입니다). daphne 대신 `uvicorn project_name.asgi:application --reload`로 띄워도 됩니다(Windows에서는 이쪽입니다 — [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)).

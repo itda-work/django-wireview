@@ -70,6 +70,27 @@ def test_runserver_serves_asgi(project):
     assert result.stdout.strip() == "[]"
 
 
+def test_uploads_have_their_endpoint(project):
+    """The starter page uploads nothing, so only this sees ``wireview.urls`` left out: uploads would 404.
+
+    The path is the one ``Component`` hands the client, at the root.
+    """
+    probe = textwrap.dedent(
+        """
+        import os
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "mysite.settings")
+        import django
+        django.setup()
+        from django.urls import resolve
+        print(resolve("/__wireview_upload__/conn/c1/avatar/").url_name)
+        """
+    )
+    result = run(project, "-c", probe)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "wireview_upload"
+
+
 def test_the_first_page_answers_like_tutorial_01(project):
     """The page through the project's ``asgi.py``, then an input typed into it over the WebSocket."""
     probe = textwrap.dedent(

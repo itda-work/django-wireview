@@ -21,13 +21,38 @@
 
 ```bash
 pip install django-wireview daphne
-django-admin startproject mysite --template "$(python -c 'import wireview, pathlib; print(pathlib.Path(wireview.__file__).parent / "project_template")')"
+```
+
+`--template`에는 설치된 패키지 안의 `project_template` 디렉터리 경로를 줍니다. 그 경로는 `python -c ...`가 출력하고,
+셸마다 받아 넘기는 문법이 다릅니다.
+
+macOS·Linux(bash, zsh):
+
+```bash
+django-admin startproject mysite --template "$(python -c "import wireview, os; print(os.path.join(os.path.dirname(wireview.__file__), 'project_template'))")"
+```
+
+Windows PowerShell:
+
+```powershell
+django-admin startproject mysite --template (python -c "import wireview, os; print(os.path.join(os.path.dirname(wireview.__file__), 'project_template'))")
+```
+
+Windows 명령 프롬프트(cmd.exe)에는 명령 치환이 없으므로 두 단계로 합니다. 첫 줄이 출력한 경로를 `--template` 뒤에 붙여 넣습니다.
+
+```bat
+python -c "import wireview, os; print(os.path.join(os.path.dirname(wireview.__file__), 'project_template'))"
+django-admin startproject mysite --template C:\...\wireview\project_template
+```
+
+그다음은 셸과 상관없이 같습니다.
+
+```bash
 cd mysite
 python manage.py migrate
 python manage.py runserver
 ```
 
-`--template` 뒤의 `python -c ...`는 설치된 패키지 안의 `project_template` 디렉터리 경로를 출력합니다.
 `http://localhost:8000`에 4절과 같은 화면이 뜹니다. 생기는 것은 1~3절이 설명하는 그대로입니다 —
 `INSTALLED_APPS` 맨 위의 `daphne`, InMemory `CHANNEL_LAYERS`, `django.setup()`이 먼저 오는 `asgi.py`,
 `include('wireview.urls')`, 그리고 `XHello` 컴포넌트가 든 `hello` 앱(튜토리얼의 `myapp`)입니다. 첫 페이지는
