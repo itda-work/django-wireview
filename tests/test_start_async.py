@@ -35,6 +35,12 @@ TEMPLATES = {
         "{{ this.stats.result.n }}{% endif %}</div>"
     ),
     "sa/progress.html": "{% load wireview %}<div {% tag_header %}>{{ this.progress }} {{ this.note }}</div>",
+    "sa/feed.html": (
+        "{% load wireview %}<div {% tag_header %}>"
+        "{% if this.stats.ok %}{{ this.stats.result }}{% elif this.stats.loading %}loading{% endif %}"
+        '<ul id="items" wire-stream="items"></ul></div>'
+    ),
+    "sa/feed_item.html": "<li>{{ item.label }}</li>",
 }
 
 HANDLED: list[tuple[str, str]] = []
@@ -112,6 +118,45 @@ class SaProgress(Component):
 
     async def handle_async(self, name, result):
         self.note = result.result
+
+
+class SlowItem:
+    """A stream item whose template read holds the worker thread until the test lets it go."""
+
+    def __init__(self) -> None:
+        self.loop = asyncio.get_running_loop()
+        self.reading = asyncio.Event()
+        self.release = threading.Event()
+
+    @property
+    def label(self) -> str:
+        self.loop.call_soon_threadsafe(self.reading.set)
+        assert self.release.wait(2)
+        return "a"
+
+
+class SaFeed(Component):
+    class Meta:
+        template_name = "sa/feed.html"
+
+    stats: AsyncResult | None = None
+    _item: t.Any = None
+    _fetched: bool = False
+
+    async def feed(self):
+        await self.start_async("feed", self._feed())
+
+    async def _feed(self) -> str:
+        await self.stream_insert("items", self._item, dom_id=lambda item: "items-a")
+        return "fed"
+
+    async def load(self):
+        self.stats = await self.assign_async(self._fetch())
+
+    async def _fetch(self) -> str:
+        self._fetched = True
+        await asyncio.sleep(0)
+        return "loaded"
 
 
 class FakeOutbound:
@@ -368,3 +413,35 @@ async def test_every_frame_of_a_start_async_shows_the_state_it_signs(render_thre
     for frame in shown_frames:
         state = signed_in(frame, "SaProgress")
         assert body_of(frame).strip() == f"{state['progress']} {state['note']}".strip(), frame
+
+
+async def test_a_stream_item_rendered_by_the_work_overlapping_an_event_render_leaves_later_work_running():
+    # The operation's stream_insert renders its item on the worker thread and a
+    # click's render queues behind it. Neither may let other work of the
+    # component run while it is in flight, and once both are done, the operation
+    # and the assign_async after it finish (#138)
+    consumer, outbound, _ = await joined_page()
+    feed = await consumer.repo.join("SaFeed", {"id": "f"})
+    feed.wire.broker = LoopbackBroker(consumer)  # type: ignore[assignment]
+    await consumer.send_render(feed)
+    await feed.wire.flush_pending()
+    item = feed._item = SlowItem()
+
+    await consumer.command_user_event("f", "feed", {}, {})
+    op = feed._async_tasks["feed"]
+    await asyncio.wait_for(item.reading.wait(), 2)
+    # A click while the item renders: its handler starts an assign_async, and
+    # its render waits for the worker thread
+    click = asyncio.create_task(consumer.command_user_event("f", "load", {}, {}))
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert feed._assign_tasks, "the handler ran"
+    assert not feed._fetched, "the assign_async ran while the stream item rendered"
+
+    item.release.set()
+    await asyncio.wait_for(click, 2)
+    done, _ = await asyncio.wait([op, *feed._assign_tasks], timeout=2)
+    assert op in done, "the operation never got past its stream render"
+    assert len(done) == 2, "the assign_async never ran"
+    assert any("items-a" in str(payload) for command, payload in outbound.commands if command == "stream_op")
+    assert "loaded" in shown(feed)

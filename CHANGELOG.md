@@ -85,8 +85,12 @@ The django-reactor era changelog (2.x) is preserved in
   `assign_async` or ran `handle_async`, so a frame signed "loading" showed the failure. The work
   `start_async` and `assign_async` start now runs between the component's renders -- each step
   waits while a render of that component is in flight; the loop, other components and other
-  connections do not wait. A task the application creates with `asyncio.create_task()` is not
-  covered (#138).
+  connections do not wait. Renders by different tasks (the consumer's, and a stream item the work
+  renders) are counted per task, so they may overlap and end in any order. This covers the work of
+  `start_async` and `assign_async` only: a task the application creates with
+  `asyncio.create_task()`, a change to the component made on an executor thread
+  (`run_in_executor`, `sync_to_async(thread_sensitive=False)`), and other code attached to the
+  loop are not held (#138).
 
 - A sticky component rendered without an `id` was silently not sticky: `{% component %}` gave it
   a fresh `rx-<uuid>` on every page, which never paired with the next page's. It now gets an id
