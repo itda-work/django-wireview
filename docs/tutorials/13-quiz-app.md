@@ -96,7 +96,7 @@ from enum import StrEnum
 
 from wireview import Component, ModelAction
 
-from .models import Choice, Quiz, Submission
+from .models import Choice, Question, Quiz, Submission
 
 
 class QuizState(StrEnum):
@@ -122,7 +122,16 @@ class XQuiz(Component):
 
     @property
     def questions(self):
+        """템플릿이 읽는다. 핸들러는 아래 async 헬퍼를 쓴다"""
         return list(self.quiz.questions.all())
+
+    async def _acurrent_question(self) -> Question | None:
+        if self.current_question_index < 0:
+            return None
+        return await self.quiz.questions.all()[self.current_question_index : self.current_question_index + 1].afirst()
+
+    async def _aquestion_count(self) -> int:
+        return await self.quiz.questions.acount()
 
     @property
     def current_question(self):
@@ -157,14 +166,14 @@ class XQuiz(Component):
 
     async def answer(self, choice_id: int):
         """답변 제출"""
-        question = self.current_question
+        question = await self._acurrent_question()
         if not question or question.id in self.answers:
             # 질문이 없거나 이미 답했다. 같은 정답을 다시 눌러 점수를 올릴 수 없다
             self.skip_render()
             return
 
         # choice_id는 클라이언트가 보낸 값이다. 이 질문의 선택지인지 확인한다
-        choice = await Choice.objects.filter(id=choice_id, question=question).afirst()
+        choice = await Choice.objects.filter(id=choice_id, question_id=question.id).afirst()
         if choice is None:
             self.skip_render()
             return
@@ -177,7 +186,7 @@ class XQuiz(Component):
         """다음 질문 또는 결과"""
         self.current_question_index += 1
 
-        if self.current_question_index >= len(self.questions):
+        if self.current_question_index >= await self._aquestion_count():
             await self._save_submission()
             self.state = QuizState.RESULTS  # PLAYING → RESULTS
 
@@ -187,7 +196,7 @@ class XQuiz(Component):
             quiz=self.quiz,
             session_key=self.session.session_key or "anonymous",
             score=self.score,
-            total_questions=len(self.questions),
+            total_questions=await self._aquestion_count(),
             username=self.username or "Anonymous",
         )
 
@@ -195,6 +204,11 @@ class XQuiz(Component):
         """재시작 - RESULTS → INTRO"""
         self.state = QuizState.INTRO
 ```
+
+> **핸들러는 property 대신 async 헬퍼를 쓴다.** `questions`·`current_question`은 동기 ORM이다. 템플릿이
+> 읽을 때는 렌더가 워커 스레드에서 돌아 괜찮지만, `answer()` 같은 핸들러는 이벤트 루프 위에서 돌므로
+> 같은 property를 읽으면 프로덕션에서 `SynchronousOnlyOperation`이 난다. 그래서 핸들러는
+> `afirst()`·`acount()`로 묻는 `_acurrent_question()`·`_aquestion_count()`를 쓴다.
 
 > **세션 키는 뷰에서 만든다.** 컴포넌트의 `self.session`은 Django 세션의 읽기 전용 뷰다.
 > WebSocket에는 `Set-Cookie`를 실을 응답이 없어 세션을 만들거나 쓰는 것은 뷰의 몫이다.
@@ -343,7 +357,7 @@ async def mutation(self, channel, action, instance):
     self.force_render()
 
 async def answer(self, choice_id):
-    question = self.current_question
+    question = await self._acurrent_question()
     if not question or question.id in self.answers:
         # 불필요한 렌더링 방지
         self.skip_render()

@@ -70,6 +70,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- Tutorial 13 (quiz) taught handlers that read a synchronous ORM property: `answer()` read
+  `self.current_question` and `next_question()` read `len(self.questions)`, so a quiz built from
+  it raised `SynchronousOnlyOperation` at the first answer in production. The tutorial now uses
+  the async helpers `examples/quiz` has had since #120, and says why the template may read the
+  property while a handler may not (#145).
+
 - A sticky component rendered without an `id` was silently not sticky: `{% component %}` gave it
   a fresh `rx-<uuid>` on every page, which never paired with the next page's. It now gets an id
   derived from its class (`sticky-<module path>-<Class>`), the same on every page. A second
