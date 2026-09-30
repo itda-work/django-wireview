@@ -294,6 +294,11 @@ The django-reactor era changelog (2.x) is preserved in
   `pytest -p no:cacheprovider` starts again, and `make test-concurrent` runs the suite twice at
   once (#125).
 
+- Test harness: a browser wait that timed out on `page.wait_for_selector` -- `open_live` and
+  `wait_live`, the wait every suite starts with -- never said what the server logged meanwhile.
+  Playwright times out with its own error, not an AssertionError, and only AssertionError was
+  caught, so a join that raised read like a slow machine (#151).
+
 - Test harness: the test project served HTTP through asgiref's `WsgiToAsgi`, which sends each
   response through `async_to_sync`; Uvicorn started the next request on a kept-alive connection
   inside that call, and it died with "CurrentThreadExecutor already quit or is broken" -- an

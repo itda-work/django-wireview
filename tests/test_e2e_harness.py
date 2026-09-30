@@ -420,3 +420,29 @@ def test_a_sync_iterator_warning_fails_the_run(tmp_path, body, code):
 
     assert result.returncode == code, result.stdout + result.stderr
     assert ("sync iterators served under the ASGI handler" in result.stdout) is bool(code)
+
+
+@pytest.mark.e2e
+def test_a_wait_that_times_out_says_what_the_server_logged(page, transactional_db, monkeypatch):
+    """``wait_live`` times out with Playwright's own error, which is not an AssertionError.
+
+    Catching only AssertionError left the one wait every suite starts with -- the
+    page going live -- as the one that never said what the server logged, so a
+    join that raised read exactly like a slow machine.
+
+    ErrorJoin's ``joined()`` raises. The server logs that before it answers the
+    join, so once the page marks ``#broken`` with ``wireview-error`` the log is
+    there, and ``#broken`` never loses the class: the wait can only time out.
+    """
+    from playwright.sync_api import expect
+    from testproj import e2e_browser
+
+    monkeypatch.setattr(e2e_browser, "WAIT_TIMEOUT", 2.0)
+    with serve() as base_url:
+        page.goto(f"{base_url}/errorprobe/")
+        expect(page.locator("#broken")).to_have_class("wireview-error")
+        with pytest.raises(AssertionError) as failure:
+            e2e_browser.wait_live(page, "#broken:not(.wireview-error)")
+
+    assert "The server logged, while this was waiting:" in str(failure.value)
+    assert "joined() raised on purpose" in str(failure.value)

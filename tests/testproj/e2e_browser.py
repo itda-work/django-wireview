@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import typing as t
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import expect
 
 from .e2e_server import server_errors
@@ -44,7 +45,8 @@ __all__ = [
 #: ``e2e_server.STARTUP_TIMEOUT`` gives the server, and for the same reason.
 WAIT_TIMEOUT = 15.0
 
-#: What a component sets once it has joined.
+#: What a component sets when it sends its join -- not when the join succeeds: a
+#: component whose ``joined()`` raises matches too, and is marked ``wireview-error``.
 LIVE_SELECTOR = '[data-is-live="true"]'
 
 #: An init script that wraps the page's WebSocket so a test can drop the connection
@@ -111,10 +113,15 @@ expect.set_options(timeout=WAIT_TIMEOUT * 1000)
 
 
 def _with_server_errors(check: t.Callable[[], None]) -> None:
-    """Run an assertion, and if it fails say what the server said meanwhile."""
+    """Run an assertion, and if it fails say what the server said meanwhile.
+
+    Both kinds of failure: ``expect`` raises AssertionError, but
+    ``page.wait_for_selector`` times out with Playwright's own error, and that is
+    the wait every suite starts with.
+    """
     try:
         check()
-    except AssertionError as failure:
+    except (AssertionError, PlaywrightError) as failure:
         errors = server_errors()
         if not errors:
             raise
