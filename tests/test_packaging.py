@@ -33,3 +33,37 @@ def test_the_classifiers_name_the_supported_range():
 
     assert all(f'"{v}"' in ci for v in djangos | pythons), "the CI matrix and the classifiers disagree"
     assert f"django>={min(djangos, key=lambda v: tuple(map(int, v.split('.'))))}" in project["dependencies"]
+
+
+WORKFLOWS = ROOT / ".github" / "workflows"
+
+
+def _workflow(name: str) -> dict:
+    import yaml  # djlint and pre-commit bring it with the dev extras
+
+    # YAML 1.1 reads the bare key `on` as True.
+    return {("on" if k is True else k): v for k, v in yaml.safe_load((WORKFLOWS / name).read_text()).items()}
+
+
+#: What must pass before a tag reaches PyPI (#122): the tests, the tests on the
+#: dependencies a fresh install resolves (#127), quality, and the package build.
+GATE_JOBS = {"test", "test-latest", "test-e2e", "lint", "typecheck", "build"}
+
+
+def test_publishing_waits_for_the_whole_ci_workflow():
+    """Before #122 a tag went from build straight to PyPI, with no test run at all."""
+    release = _workflow("release.yml")
+    ci = _workflow("ci.yml")
+    jobs = release["jobs"]
+    gates = {name for name, job in jobs.items() if job.get("uses") == "./.github/workflows/ci.yml"}
+
+    assert "workflow_call" in ci["on"], "release.yml cannot call ci.yml"
+    assert GATE_JOBS <= set(ci["jobs"]), f"ci.yml lost {GATE_JOBS - set(ci['jobs'])}"
+    assert gates, "release.yml does not run ci.yml"
+    assert all("if" not in jobs[g] for g in gates), "the gate is skipped on some runs"
+    needs = jobs["publish"]["needs"]
+    needs = {needs} if isinstance(needs, str) else set(needs)
+    assert gates <= needs, "publish does not wait for the tests"
+    assert "smoke" in needs, "publish does not wait for the wheel smoke test"
+    assert "make ci-smoke" in [step.get("run") for step in jobs["smoke"]["steps"]]
+    assert "if" not in jobs["smoke"], "the smoke test is skipped on some runs"

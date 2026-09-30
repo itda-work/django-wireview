@@ -107,6 +107,8 @@ CI나 빌드 작업을 `bug`/`enhancement`에 억지로 넣지 않는다.
 
 PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflows/ci.yml`)는 Python×Django 매트릭스
 테스트, 의존성 최신 해 테스트(`make test-latest`), NATS를 띄운 E2E, lint, typecheck, build 여섯 잡이다.
+평소에는 수동 실행 전용이고, 태그 push 때 `.github/workflows/release.yml`이 이 전체를 불러 통과해야만 PyPI에 올린다(#122).
+릴리스 절차는 `docs/ROADMAP.md`의 "릴리스 절차".
 
 | 할 일 | 명령 | 선행 조건 |
 |------|------|-----------|
@@ -116,6 +118,7 @@ PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflow
 | 동시 실행 확인 | `make test-concurrent` | 같은 사본에서 테스트 스위트 둘을 동시에 돌린다. 테스트 DB는 프로세스마다 따로라 둘 다 통과해야 한다(#125). `--ff`는 `addopts`가 아니라 Makefile 타깃에 있다 |
 | 최신 의존성 테스트 | `make test-latest` | `uv.lock`을 무시하고 새로 설치하는 사람이 받는 최신 해로 돈다. lock이 옛 버전에 묶여 있으면 기본 레인은 새 설치의 결함을 못 본다(#127) |
 | E2E | `make test-e2e` (NATS), `LAYER=redis`·`LAYER=memory`로 변경 | nats-server 바이너리와 JS 빌드. 서버 기동·정리는 `tests/e2e.sh`가 한다 |
+| 빌드한 wheel 스모크 | `make ci-build` 뒤 `make ci-smoke` | wheel을 lock 없이 새 의존성에 설치해 import·`check`. 릴리스 게이트의 마지막 단계 |
 | 린트 | `make lint` (ruff + djlint) | |
 | 타입 검사 | `make check` (pyright, `tests/` 제외) | |
 | 클라이언트 테스트 | `make test-js` (`npm test`, node --test) | |

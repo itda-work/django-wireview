@@ -1,8 +1,11 @@
 name: CI
 
 # GitHub Actions 사용을 최소화한다 — 평소 검증은 로컬 `make ci-test` 로 하고, 이 워크플로는 필요할 때만 수동 실행한다.
+# release.yml 이 태그 커밋에 대해 이 워크플로 전체를 부르고(workflow_call), 모든 job이 통과해야 배포한다(#122).
+# 그래서 여기 job을 더하면 릴리스 게이트도 함께 넓어진다.
 on:
   workflow_dispatch:
+  workflow_call:
 
 # Runners are pinned (not ubuntu-latest) for the reason release.yml gives.
 jobs:

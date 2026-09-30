@@ -59,6 +59,11 @@ The django-reactor era changelog (2.x) is preserved in
   fails on async code that evaluates a QuerySet synchronously (`list(qs)`, `reversed(qs)`,
   `[x for x in qs]`, `for x in qs:`) or passes one to `stream_insert()`. Handing a QuerySet to
   `stream()` as is stays the documented pattern (#121).
+- A release tag no longer goes to PyPI untested. `release.yml` calls the whole `ci.yml` on the
+  tagged commit -- the Python x Django matrix, the newest-dependencies run, E2E on NATS, lint,
+  typecheck and the package build -- and a `smoke` job installs the built wheel on freshly
+  resolved dependencies and imports it (`make ci-smoke`); `publish` waits for both. The yanked
+  1.0.0rc3 wheel fails the smoke job (#122).
 
 ## [1.0.0rc3] - 2026-09-30
 

@@ -1,4 +1,4 @@
-.PHONY: all install test test-unit test-e2e test-concurrent test-matrix test-latest test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js
+.PHONY: all install test test-unit test-e2e test-concurrent test-matrix test-latest test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js ci-smoke
 
 # Default target
 all: install build
@@ -235,6 +235,15 @@ ci-build:
 	else sys.exit(f'{w} has no agent_skills/wireview/SKILL.md - check the sdist include patterns')"
 	@echo "ci-build: wheel contains the agent skill"
 
+# The built wheel in a fresh environment that resolves its dependencies anew, as a
+# user's install does -- not uv.lock's versions. rc3 passed every test on the lock
+# and did not import on the newest pydantic (#127). release.yml runs this on the
+# artifact it is about to publish (#122). Run ci-build first.
+ci-smoke:
+	@set -e; for w in dist/*.whl; do \
+		uv run --no-project --isolated --python $(or $(PYTHON),3.12) --with "$$w" python tests/wheel_smoke.py; \
+	done
+
 # =============================================================================
 # Help
 # =============================================================================
@@ -285,3 +294,4 @@ help:
 	@echo "  make ci-test          - CI: Run tests (non-E2E)"
 	@echo "  make ci-test-e2e      - CI: Run E2E tests"
 	@echo "  make ci-build         - CI: Build package"
+	@echo "  make ci-smoke         - CI: Import the built wheel on fresh dependencies"

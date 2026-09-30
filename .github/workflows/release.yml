@@ -1,13 +1,21 @@
 name: Release
 
 # Tag push (v*) -> build -> publish to PyPI via trusted publishing -> GitHub release.
+#
+# Nothing is published unless the tagged commit passes the whole CI workflow
+# (ci.yml, called here: the Python x Django matrix, the newest-dependencies run,
+# E2E on NATS, lint, typecheck, the package build) and the built wheel imports in
+# a fresh environment on the newest dependencies (smoke). Before this gate a tag
+# went to PyPI with no test run at all; 1.0.0rc3 went out importable only on the
+# pydantic uv.lock pinned (#122, #127).
+#
 # PyPI side: pypi.org > Account settings > Publishing > pending publisher with
 # owner itda-work, repository django-wireview, workflow release.yml, environment pypi.
 # No API token is stored anywhere.
 #
-# A manual run (workflow_dispatch) is a dry run: it builds and round-trips the
-# artifact, and publishes nothing. It is how a change to this file, or an action
-# bump, gets checked before the next tag depends on it (#105).
+# A manual run (workflow_dispatch) is a dry run: it runs the same gate, builds and
+# round-trips the artifact, and publishes nothing. It is how a change to this
+# file, or an action bump, gets checked before the next tag depends on it (#105).
 #
 # Runners are pinned rather than ubuntu-latest, so a GitHub image migration does
 # not land inside a release unannounced. Move the pin on purpose, with a dry run.
@@ -19,6 +27,12 @@ on:
   workflow_dispatch:
 
 jobs:
+  # The tests, on exactly the commit being released: the caller's ref is the tag.
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   build:
     runs-on: ubuntu-24.04
     steps:
@@ -57,12 +71,22 @@ jobs:
           name: dist
           path: dist/
 
-  # Dry run only: the artifact the publish job would download comes back intact.
-  verify:
-    if: github.event_name == 'workflow_dispatch'
+  # The artifact the publish job would download comes back intact, and the wheel in
+  # it imports and passes `check` in a fresh environment that resolves the
+  # dependencies anew -- what `pip install django-wireview` gets today.
+  smoke:
     needs: build
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v7 # for the Makefile and tests/wheel_smoke.py
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0 # publishes no floating major tag since v8
+        with:
+          version: "latest"
+
       - uses: actions/download-artifact@v8
         with:
           name: dist
@@ -71,9 +95,12 @@ jobs:
       - name: List what would be published
         run: ls -l dist/ && test -n "$(ls dist/*.whl)" && test -n "$(ls dist/*.tar.gz)"
 
+      - name: Import the wheel on the newest dependencies
+        run: make ci-smoke
+
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [ci, build, smoke]
     runs-on: ubuntu-24.04
     environment: pypi
     permissions:
