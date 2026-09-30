@@ -61,7 +61,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | `clear_flash` | `flash_id` |
 | `scroll_into_view` | `id`, `behavior`, `block`, `inline` |
 | `focus_on` | `selector` |
-| `upload_op` | `op` (`config`, `registered`, `progress`, `error`, `complete` 등), `upload`, `ref?`, 그 외 op별 필드. `config`는 업로드를 클라이언트에 만드는 op라 소유 컴포넌트의 `id`를 싣는다 |
+| `upload_op` | `op` (`config`, `registered`, `progress`, `error`, `complete` 등), `upload`, `ref?`, 그 외 op별 필드. `config`는 업로드를 클라이언트에 만드는 op라 소유 컴포넌트의 `id`를 싣는다. `config`는 페이지를 live로 만드는 `render`보다 채널 레이어 한 번 왕복만큼 늦게 온다 — 그 사이에 고른 파일은 클라이언트가 들고 있다가 `config`가 오면 등록한다(#137) |
 | `dispatch_event` | `command`, `id`, `args`, `kwargs` — 지연 호출 |
 
 ## 4. Session mail (컴포넌트 → 세션)

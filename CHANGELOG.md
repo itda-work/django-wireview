@@ -80,6 +80,14 @@ The django-reactor era changelog (2.x) is preserved in
   (`uv.lock`), and `make test-latest` and a CI job run it on the newest dependencies a fresh
   install gets (#127).
 
+- A file chosen or dropped right after the page went live could be dropped without a trace.
+  An upload's config reaches the browser one channel-layer trip after the render that makes the
+  page live, and a file picked in between was refused as an unknown upload (a console error, no
+  upload, nothing on the page). The client now holds it and registers it when the config
+  arrives. On a broker with a few milliseconds of latency -- CI's NATS -- that was enough to fail
+  every browser upload test. `allow_upload` also keeps a reference to the task that sends the
+  config, which the event loop alone does not (#137).
+
 - CI: the Python x Django grid tested Django 6.0 in every lane. Each job installed its Django
   over the lock's and then ran the tests through a syncing `uv run`, which put 6.0 back before
   the first test; the lanes named 5.2 and 6.1 never ran on them. `make ci-test` no longer syncs,

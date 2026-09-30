@@ -1819,6 +1819,11 @@ class UploadManager {
     this.configs = {};
     /** @type {Object<string, Object<string, UploadEntry>>} */
     this.entries = {};
+    /**
+     * Files chosen before their upload's config arrived, by upload name.
+     * @type {Object<string, File[]>}
+     */
+    this.waiting = {};
   }
 
   /**
@@ -1830,6 +1835,11 @@ class UploadManager {
     this.configs[name] = config;
     this.entries[name] = this.entries[name] || {};
     debugLog("upload", `Configured upload: ${name}`, config);
+    const waiting = this.waiting[name];
+    if (waiting) {
+      delete this.waiting[name];
+      this.addFiles(name, waiting);
+    }
   }
 
   /**
@@ -1840,7 +1850,11 @@ class UploadManager {
   addFiles(name, files) {
     const config = this.configs[name];
     if (!config) {
-      console.error(`[wireview] Unknown upload: ${name}`);
+      // The config follows the render that makes the page live, one channel-layer
+      // trip behind it. A file chosen in between was dropped with only a console
+      // error, and the upload never started (#137). It waits for the config now.
+      this.waiting[name] = [...(this.waiting[name] || []), ...Array.from(files)];
+      debugLog("upload", `No config yet for upload ${name}; holding ${files.length} file(s)`);
       return;
     }
 

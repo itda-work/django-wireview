@@ -971,8 +971,9 @@ class Component(BaseModel):
 
     # Track active async tasks by name
     _async_tasks: dict[str, "asyncio.Task[t.Any]"] = {}
-    # assign_async tasks: held so a running one is not garbage collected, and
-    # cancelled with the named ones when the component leaves (#95)
+    # assign_async tasks (and allow_upload's config send): held so a running one
+    # is not garbage collected, and cancelled with the named ones when the
+    # component leaves (#95)
     _assign_tasks: set["asyncio.Task[t.Any]"] = set()
 
     async def start_async(
@@ -1409,7 +1410,11 @@ class Component(BaseModel):
             )
             await self.wire.send_upload_op(op)
 
-        asyncio.create_task(send_config())
+        # Held like assign_async's tasks: the loop keeps only a weak reference to a
+        # task, and one nobody holds may be collected before the config goes out
+        task = asyncio.create_task(send_config())
+        self._assign_tasks.add(task)
+        task.add_done_callback(self._assign_tasks.discard)
 
     @property
     def uploads(self) -> dict[str, list["UploadEntry"]]:

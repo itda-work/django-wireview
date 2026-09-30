@@ -4,11 +4,13 @@ The drop zone, the preview and external uploads had no test; the file input was
 only ever used for one file. Fixture: tests/testproj/fileprobe/.
 """
 
+import asyncio
 import re
+import threading
 
 import pytest
 from playwright.sync_api import expect
-from testproj.e2e_browser import expect_count, expect_text, open_live
+from testproj.e2e_browser import WAIT_TIMEOUT, expect_count, expect_text, open_live
 from testproj.e2e_server import serve
 
 pytestmark = pytest.mark.e2e
@@ -53,6 +55,43 @@ def test_one_upload_after_another_past_max_entries(probe):
         by(probe, "files").set_input_files(text_file(name, "x" * n))
         expect_count(by(probe, "received").locator("li"), n)
     expect(by(probe, "received")).to_have_text("a.txt:1b.txt:2c.txt:3")
+
+
+@pytest.fixture
+def held_config(monkeypatch):
+    """Hold every upload config back until the test sets the returned event (#137).
+
+    The config reaches the browser one channel-layer trip after the render that
+    makes the page live. On CI's NATS that trip outlasted the test's first move,
+    and the file chosen in between was dropped: the five tests above failed there
+    and passed on every laptop.
+    """
+    from wireview.core.meta import WireviewMeta
+
+    release = threading.Event()
+    send = WireviewMeta.send_upload_op
+
+    async def held(self, op):
+        if op.op == "config":
+            await asyncio.to_thread(release.wait, WAIT_TIMEOUT)
+        await send(self, op)
+
+    monkeypatch.setattr(WireviewMeta, "send_upload_op", held)
+    return release
+
+
+def test_a_file_chosen_before_the_upload_config_arrives_is_uploaded_when_it_does(held_config, page, server):
+    from testproj.fileprobe.views import RECEIVED
+
+    RECEIVED.clear()
+    open_live(page, f"{server}/fileprobe/")
+    by(page, "files").set_input_files(text_file("early.txt", "early"))
+    by(page, "outside").set_input_files(text_file("e.txt", "external"))
+
+    held_config.set()
+
+    expect_text(by(page, "received").locator("li"), "early.txt:5")
+    expect_text(by(page, "external-done"), "e.txt")
 
 
 def test_the_drop_zone_uploads_what_is_dropped(probe):

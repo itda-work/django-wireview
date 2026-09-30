@@ -201,7 +201,7 @@ async def test_allow_upload_sends_an_endpoint_that_carries_the_owner(monkeypatch
 
     component = Component._build("OwnUploader", {"id": "comp-1"}, params={}, connection_id="conn-a")
     await component.joined()
-    await asyncio.sleep(0.05)  # allow_upload sends its config from a task
+    await asyncio.gather(*list(component._assign_tasks))  # allow_upload sends its config from a task
 
     configs = [payload for command, payload in sent if command == "upload_op" and payload["op"] == "config"]
     assert len(configs) == 1
@@ -219,7 +219,7 @@ async def test_an_unowned_component_falls_back_to_a_dash(monkeypatch):
 
     component = Component._build("OwnUploader", {"id": "comp-1"}, params={})
     await component.joined()
-    await asyncio.sleep(0.05)
+    await asyncio.gather(*list(component._assign_tasks))
 
     configs = [payload for command, payload in sent if command == "upload_op" and payload["op"] == "config"]
     assert configs[0]["endpoint"] == "/__wireview_upload__/-/comp-1/images/"
