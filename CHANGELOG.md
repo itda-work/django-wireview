@@ -12,6 +12,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- `docs/features/dead-view.md` says what a browser without JavaScript gets: the complete first
+  render, links, and forms with an `action` posting to their view -- the same form a
+  `{% on "submit.prevent" %}` handler takes when JavaScript is there. A JavaScript-disabled
+  browser test holds it (GAP-034, #73).
 - Sticky components: `class Meta: sticky = True` keeps a component's instance, state, element and
   hooks across a boosted navigation to a page that has it under the same id, as Phoenix's sticky
   LiveView. A move across a `live_session` boundary is a full load and ends it (GAP-033, #72).

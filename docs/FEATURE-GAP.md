@@ -13,9 +13,9 @@
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 112 |
+| ✅ 지원 | 113 |
 | 🟡 부분 지원 | 0 |
-| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 1 |
+| 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 0 |
 | ⚪ 설계상 제외 | 2 |
 
 ✅ 중 6행은 Phoenix에 없는 wireview 고유 기능이다(상태 칸이 `✅ 추가 기능`인 행). 🟠 행은 3절 표에서
@@ -251,7 +251,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 |------|:----------------:|:---------------:|:----:|------|
 | Page title | ✅ `assign(:page_title)` | `push_title()` | ✅ | `tests/test_js_commands_e2e.py::test_push_title_sets_the_documents_title`<br>`tests/test_session_commands.py::test_title_and_flash_reach_the_client` |
 | Flash messages | ✅ `put_flash` | `put_flash()` | ✅ | `tests/test_js_commands_e2e.py::test_put_flash_shows_a_dismissible_message`<br>`tests/test_session_commands.py::test_title_and_flash_reach_the_client` |
-| Dead views | ✅ JS 비활성화 폴백 | ❌ | 🟠 GAP-034 ([#73](https://github.com/itda-work/django-wireview/issues/73)) |  |
+| Dead views | ✅ JS 비활성화 폴백 | 첫 렌더·링크·`action` 폼 ([약속 범위](./features/dead-view.md)) | ✅ | `tests/test_dead_view_e2e.py::test_without_javascript_the_first_render_is_readable`<br>`tests/test_dead_view_e2e.py::test_without_javascript_the_form_posts_to_its_view` |
 | LongPolling fallback | ✅ | ❌ | ⚪ 설계상 제외 (GAP-012, [설계 메모](./design/longpolling-fallback.md)) |  |
 | on_mount hooks | ✅ | `Meta.on_mount` | ✅ (GAP-021. 호출부가 없어 훅이 실행되지 않던 것을 [#75](https://github.com/itda-work/django-wireview/issues/75)에서 붙였다) | `tests/test_lifecycle_hooks.py::TestWebSocketJoin::test_a_redirecting_hook_sends_url_change_and_no_render`<br>`tests/test_lifecycle_hooks.py::TestHttpRender::test_the_page_component_runs_its_hooks` |
 | attach_hook | ✅ | `attach_hook()` | ✅ | `tests/test_attach_hook.py::test_a_halting_handle_event_hook_stops_the_handler`<br>`tests/test_attach_hook.py::test_a_handle_params_hook_runs_before_params_changed`<br>`tests/test_attach_hook.py::test_an_after_render_hook_runs_after_each_render` |
@@ -306,7 +306,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | ~~GAP-031~~ | ~~내비게이션 테스트 헬퍼~~ | ~~`assert_patch`·`follow_redirect` 상당물~~ | ~~하~~ | ✅ 완료 |
 | ~~GAP-032~~ | ~~Colocated hooks~~ | ~~컴포넌트 옆의 JS 훅을 자동 등록~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-033~~ | ~~Sticky 컴포넌트~~ | ~~boost 내비게이션을 건너 살아남는 컴포넌트~~ | ~~중~~ | ✅ 완료 (경계 안에서만) |
-| GAP-034 | Dead view | JS 없이도 읽히는 첫 렌더. 무엇을 약속할지부터 | 중 | [#73](https://github.com/itda-work/django-wireview/issues/73) |
+| ~~GAP-034~~ | ~~Dead view~~ | ~~JS 없이도 읽히는 첫 렌더. 무엇을 약속할지부터~~ | ~~중~~ | ✅ 완료 (첫 렌더·링크·폼. `docs/features/dead-view.md`) |
 | ~~GAP-035~~ | ~~LiveComponent 배치 업데이트~~ | ~~같은 컴포넌트 N개 갱신의 N+1 제거~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-036~~ | ~~LiveComponent 슬롯~~ | ~~`{% live_component_block %}`으로 fill·기본 슬롯·let 전달~~ | ~~중~~ | ✅ 완료 |
 | GAP-027 | Session extraction | 컨슈머 핸들러를 `WireviewSession`으로 분리, 세션 상태 export/import (docs/design/transport-abstraction.md) | 상 | [#60](https://github.com/itda-work/django-wireview/issues/60) 착수 기준 대기 |

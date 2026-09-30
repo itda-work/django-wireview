@@ -1,0 +1,15 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <ul data-testid="notes">
+    {% for note in this.notes %}<li>{{ note }}</li>{% endfor %}
+  </ul>
+  <form method="post"
+        action="{% url 'deadprobe:add' %}"
+        {% on "submit.prevent" "add" %}>
+    <input name="text" data-testid="text">
+    <button type="submit" data-testid="add">add</button>
+  </form>
+  <button type="button" {% on "click" "shout" %} data-testid="shout">shout</button>
+  <span data-testid="shouted">{{ this.shouted }}</span>
+</div>
