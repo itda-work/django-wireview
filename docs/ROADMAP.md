@@ -43,8 +43,8 @@ export/import, 프런트 어댑터)는 `docs/design/transport-abstraction.md` 6�
 requires-python = ">=3.12"
 dependencies = [
     "django>=5.2",
-    "channels>=4,<5",
-    "pydantic>=2.0,<3",
+    "channels>=4.2.1,<5",
+    "pydantic>=2.7,!=2.9.0,<3",
 ]
 ```
 
@@ -345,13 +345,13 @@ def button(text: str, variant: str = "primary"):
 1. `CHANGELOG.md`의 Unreleased를 버전 절로 옮긴다.
 2. `pyproject.toml`과 `package.json`의 `version`을 함께 올린다(`tests/test_packaging.py`가 둘을 비교한다).
    1.0.0에서는 classifier를 `Development Status :: 5 - Production/Stable`로 바꾼다.
-3. `make quality`, `make test`, `make test-latest`, `make test-e2e`, `make test-e2e LAYER=redis`, `make test-matrix`, `make ci-build`, `make ci-smoke`.
+3. `make quality`, `make test`, `make test-latest`, `make test-lowest`, `make test-e2e`, `make test-e2e LAYER=redis`, `make test-matrix`, `make ci-build`, `make ci-smoke`.
    태그 뒤의 게이트와 같은 것을 먼저 로컬에서 본다 — 게이트에서 떨어지면 태그를 지우고 다시 찍어야 한다.
 4. 워크플로나 액션 버전을 바꿨다면 태그 전에 `gh workflow run release.yml`로 dry run을 돌린다. 게이트까지 똑같이 돌고
    배포만 하지 않는다.
 5. 태그 `v<버전>`을 push한다. `.github/workflows/release.yml`이 다음을 모두 통과해야 PyPI에 올린다(#122).
    - **ci**: `ci.yml` 전체를 태그 커밋에 대해 부른다(`workflow_call`). Python × Django 매트릭스, 새 설치가 받는
-     최신 의존성(`test-latest`, #127), NATS·Redis 레이어의 E2E(#130), lint, typecheck, 패키지 빌드. `ci.yml`에 job을 더하면 게이트도 넓어진다.
+     최신 의존성(`test-latest`, #127), 하한 의존성(`test-lowest`, #132), NATS·Redis 레이어의 E2E(#130), lint, typecheck, 패키지 빌드. `ci.yml`에 job을 더하면 게이트도 넓어진다.
    - **build**: 태그와 `pyproject.toml`의 버전이 같은지 보고 `make ci-build`.
    - **smoke**: 빌드한 wheel을 lock 없이 새로 해석한 의존성에 설치해 import와 `check`를 돈다(`make ci-smoke`).
      rc3처럼 lock의 버전에서만 import되는 산출물은 여기서 멈춘다.

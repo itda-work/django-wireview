@@ -49,6 +49,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- The dependency floors are raised to what the suite passes on: `channels>=4.2.1` (channels-nats calls
+  `require_valid_channel_name`, new in channels 4.2.1, while declaring `channels>=4`) and
+  `pydantic>=2.7,!=2.9.0` (pydantic 2.0 and 2.0.1 have no wheel for Python 3.12, before 2.7
+  `import wireview` fails on `Component`'s field serializer, and 2.9.0 cannot evaluate its `ClassVar`
+  annotations). `make test-lowest` and a CI job run the suite on the floors, so the release gate
+  checks them (#132).
+
 - `docs/COMPATIBILITY.md` lists the supported channel layers with the versions tested, what each does
   when full, and that InMemory is single-process only. CI's E2E job now runs once per layer, on NATS and
   on Redis (a Redis service container next to NATS), so the release gate covers both (#130).

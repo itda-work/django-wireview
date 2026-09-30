@@ -13,6 +13,7 @@ import logging
 import typing as t
 
 import pytest
+from pydantic import validate_call
 
 from wireview import Component, LiveComponent
 from wireview.checks import iter_exposed_handlers
@@ -27,6 +28,19 @@ def _is_wrapped(cls: type, name: str) -> bool:
     func = raw.__func__ if isinstance(raw, (classmethod, staticmethod)) else raw
     # validate_call's wrapper keeps the function it wraps as raw_function.
     return hasattr(func, "raw_function")
+
+
+def _pydantic_validates_self() -> bool:
+    """pydantic before 2.10 builds a validator for ``t.Self``; from 2.10 it refuses (#132)."""
+
+    def pick(self, other: "t.Self") -> None:
+        pass
+
+    try:
+        validate_call(config={"arbitrary_types_allowed": True})(pick)
+    except Exception:
+        return False
+    return True
 
 
 class Picker(Component, public=False):
@@ -62,13 +76,25 @@ class Row(LiveComponent, public=False):
 
 def test_a_handler_annotated_with_self_does_not_break_the_class():
     # Defining Picker above is the test; it failed at import on pydantic 2.13.
-    assert not _is_wrapped(Picker, "pick")
+    # Whether it is wrapped is pydantic's call, and the answer changed in 2.10.
+    assert _is_wrapped(Picker, "pick") == _pydantic_validates_self()
     assert is_client_callable(Picker, "pick")
 
 
-def test_a_handler_pydantic_cannot_validate_is_logged(caplog):
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        # An unresolvable forward reference: refused by every pydantic in range.
+        "NoSuchType",
+        pytest.param(
+            "t.Self",
+            marks=pytest.mark.skipif(_pydantic_validates_self(), reason="pydantic before 2.10 validates t.Self"),
+        ),
+    ],
+)
+def test_a_handler_pydantic_cannot_validate_is_logged(caplog, annotation):
     class Doubtful(Component, public=False):
-        async def pick(self, other: "t.Self") -> None:
+        async def pick(self, other: annotation) -> None:  # the string, as if written in quotes
             pass
 
     with caplog.at_level(logging.WARNING, logger="wireview"):

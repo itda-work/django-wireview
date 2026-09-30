@@ -31,8 +31,12 @@ classifiers = [
 ]
 dependencies = [
     "django>=5.2",
-    "channels>=4,<5",
-    "pydantic>=2.0,<3",
+    # The floors are what `make test-lowest` installs and passes on (#132). channels-nats
+    # declares channels>=4 but calls require_valid_channel_name, new in channels 4.2.1.
+    # pydantic before 2.7 rejects Component's field serializer at import; 2.9.0 cannot
+    # evaluate its ClassVar annotations, which 2.9.1 fixed.
+    "channels>=4.2.1,<5",
+    "pydantic>=2.7,!=2.9.0,<3",
 ]
 
 [project.optional-dependencies]

@@ -2,7 +2,7 @@
 
 > django-wireview를 Pydantic v2로 업그레이드하기 위한 상세 가이드
 
-> **상태: 끝난 작업의 기록.** 마이그레이션은 끝났고 `pyproject.toml`은 `pydantic>=2.0,<3`이다. 지금 구현은
+> **상태: 끝난 작업의 기록.** 마이그레이션은 끝났고 `pyproject.toml`의 하한은 그 뒤 `pydantic>=2.7,!=2.9.0,<3`으로 올랐다(#132). 지금 구현은
 > `wireview/core/component.py`가 정본이다. 아래 "After (v2)" 코드는 v2 관용구를 보이기 위한 스케치이고, 컴포넌트
 > 설정은 그 뒤 `class Meta:`로 옮겨졌다(#99). 스케치의 설정 참조는 지금 형태(`_meta.exclude_fields`)로 맞춰 두었다.
 

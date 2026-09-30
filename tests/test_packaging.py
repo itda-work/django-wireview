@@ -46,8 +46,9 @@ def _workflow(name: str) -> dict:
 
 
 #: What must pass before a tag reaches PyPI (#122): the tests, the tests on the
-#: dependencies a fresh install resolves (#127), quality, and the package build.
-GATE_JOBS = {"test", "test-latest", "test-e2e", "lint", "typecheck", "build"}
+#: dependencies a fresh install resolves (#127) and on the lowest ones pyproject.toml
+#: allows (#132), quality, and the package build.
+GATE_JOBS = {"test", "test-latest", "test-lowest", "test-e2e", "lint", "typecheck", "build"}
 
 
 def test_publishing_waits_for_the_whole_ci_workflow():

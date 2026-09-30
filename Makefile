@@ -1,4 +1,4 @@
-.PHONY: all install test test-unit test-e2e test-concurrent test-matrix test-latest test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js ci-smoke
+.PHONY: all install test test-unit test-e2e test-concurrent test-matrix test-latest test-lowest test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js ci-smoke
 
 # Default target
 all: install build
@@ -197,6 +197,23 @@ test-latest:
 	$(LATEST_RUN) python tests/manage.py collectstatic --noinput
 	$(LATEST_RUN) pytest tests examples -m "not e2e and not slow" -q --no-header -p no:warnings $(ARGS)
 
+# The other end of pyproject.toml's bounds: the oldest release of each runtime dependency
+# it allows, which nothing else installs (#132). `uv pip compile --resolution lowest-direct
+# --no-deps` reads the floors from pyproject.toml, so raising one moves this run with it.
+# Only the runtime dependencies go to their floors -- the promise is to users. The dev
+# extras have no lower bounds (lowest-direct on them picked ipython 0.10), so they resolve
+# to the newest release that fits the pinned floors. On Python 3.12, the oldest supported:
+# a floor with no wheel there is a floor nobody can install.
+LOWEST_PYTHON = 3.12
+test-lowest:
+	@set -ef; \
+	floors=$$(uv pip compile pyproject.toml --resolution lowest-direct --no-deps --python-version $(LOWEST_PYTHON) \
+		--quiet --no-header --no-annotate); \
+	echo "test-lowest:" $$floors; \
+	run="uv run --no-project --isolated --python $(LOWEST_PYTHON) --with-editable .[dev] $$(printf -- '--with %s ' $$floors)"; \
+	$$run python tests/manage.py collectstatic --noinput; \
+	$$run pytest tests examples -m "not e2e and not slow" -q --no-header -p no:warnings $(ARGS)
+
 # CI: Run tests (non-E2E). --no-sync: ci.yml installs one Django over the lock's, and a
 # syncing `uv run` put the lock's back before the first test -- every lane of the grid ran
 # Django 6.0 whatever its name said. DJANGO=<x.y> fails the run unless that is what imports.
@@ -281,6 +298,7 @@ help:
 	@echo "  make test-concurrent  - Run the test suite twice at once, as agents sharing a checkout do"
 	@echo "  make test-matrix      - Run tests on every supported Python x Django pair"
 	@echo "  make test-latest      - Run tests on the newest dependencies, ignoring uv.lock"
+	@echo "  make test-lowest      - Run tests on the oldest dependencies pyproject.toml allows"
 	@echo "  make test-all         - Run all tests including E2E"
 	@echo "  make test-cov         - Run tests with coverage report"
 	@echo ""

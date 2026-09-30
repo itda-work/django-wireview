@@ -104,6 +104,9 @@ Django 5.2 LTS·6.0·6.1, Python 3.12·3.13·3.14다.
 - 새 Django·Python 버전은 매트릭스를 통과하면 패치 릴리스로 더한다.
 - 정본은 `pyproject.toml`(의존성·classifier)과 `.github/workflows/ci.yml`의 매트릭스다. 같은 격자를 로컬에서
   `make test-matrix`로 돈다(CI는 수동으로만 돈다).
+- **의존성의 하한도 약속이다.** `pyproject.toml`이 허용하는 가장 오래된 조합(지금은 Django 5.2, channels 4.2.1,
+  pydantic 2.7.0)을 `make test-lowest`가 Python 3.12에서 설치해 스위트를 돈다. CI의 `test-lowest` 잡이 같은 것이다.
+  하한 조합이 깨지면 하한을 올리고 `CHANGELOG.md`에 적는다(#132). 반대쪽 끝, 새 설치가 받는 최신 해는 `make test-latest`다.
 
 ### 채널 레이어
 
@@ -120,6 +123,8 @@ Django 5.2 LTS·6.0·6.1, Python 3.12·3.13·3.14다.
 - **검증한 버전**은 `uv.lock`이 고정한 버전이다. CI의 E2E 잡이 레이어마다 한 번씩 그 버전으로 돈다
   (`make ci-test-e2e LAYER=nats|redis`, 브로커는 표의 버전을 서비스 컨테이너로 띄운다). 로컬에서는
   `make test-e2e`(NATS)와 `make test-e2e LAYER=redis`(`REDIS_URL`의 redis-server)다.
+- **channels-nats는 channels 4.2.1 이상에서만 동작한다.** 자신은 `channels>=4`라고 선언하지만 4.2.1에서 생긴
+  `require_valid_channel_name`을 부른다. django-wireview의 하한이 `channels>=4.2.1`인 이유다(#132).
 - 유실을 세는 방법은 [배포 가이드](./DEPLOYMENT.md)의 관측 절이다.
 - `uv.lock`에서 레이어 패키지를 올리면 두 E2E 레인을 돌리고 이 표의 버전을 같이 고친다.
   `tests/test_supported_versions.py`가 표와 `uv.lock`, 그리고 CI의 E2E 매트릭스가 같은 레이어를 말하는지 본다.
