@@ -187,6 +187,10 @@ AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등
 
 - **`wireview.min.js`가 없으면 페이지에서 JS가 로드되지 않는다.** clone 직후와 `wireview/static/wireview/wireview.js` 수정 후 `make build-js`.
 - **testproj의 채널 레이어는 `WIREVIEW_TEST_LAYER`가 고른다.** 기본은 `memory`(브로커 불요), `make test-e2e`와 CI는 `nats`다. E2E는 `tests/e2e.sh`가 nats-server를 직접 띄우고 끝나면 정리하므로 미리 켜 둘 필요가 없다(이미 떠 있으면 그것을 쓴다). 바꾸려면 `make test-e2e LAYER=redis` 또는 `LAYER=memory`. channels-nats는 dev extras에 있으므로 `make install`이면 들어온다.
+- **testproj의 HTTP는 Django ASGI 핸들러(`get_asgi_application()`)다. `WsgiToAsgi`로 되돌리지 않는다.** 그 래퍼는 응답을
+  `async_to_sync`로 보내고, uvicorn은 keep-alive 연결의 다음 요청을 그 호출 안에서 시작한다 — 다음 요청이 이미 끝난
+  executor를 물려받아 `CurrentThreadExecutor already quit`로 죽는다. 전체 E2E에서만 가끔 보였다(#129). tests/test_e2e_harness.py가
+  파이프라이닝으로 결정론적으로 지킨다. 테스트 DB는 프로세스마다 다른 파일이다(#125, `make test-concurrent`).
 - **단위·통합 테스트도 일부는 채널 레이어를 쓴다.** `tests/test_uploads.py`의 `UploadView` 테스트가 세션 채널로 보낸다. 그래서 기본값이 `memory`다. 브로커가 없는 레이어를 기본으로 두면 그 두 테스트가 연결 타임아웃으로 2분씩 걸린다.
 - **클라이언트가 호출할 수 있는 메서드.** `_`로 시작하지 않고 **사용자 코드에서 정의한** 메서드만 이벤트 핸들러로 노출되고 `validate_call`로 감싸진다. 프레임워크(`wireview.*`)와 Pydantic이 소유한 이름은 서브클래스에서 오버라이드해도 노출되지 않는다 — `joined`·`handle_async`·`update`·`update_many`·`send_to_parent`·`model_post_init`은 클라이언트가 부를 수 없고 `validate_call`로 감싸지지도 않는다. 판정은 `wireview/core/handlers.py`의 `is_client_callable` 하나이고 디스패처·check·`_validate_handlers`가 함께 쓴다 — 감쌀 대상을 따로 고르던 시절 프레임워크 메서드의 `t.Self` 주석이 pydantic 2.13에서 import를 죽였다(#127). 회귀 테스트는 tests/test_security.py, tests/test_handler_validation.py. 내부 헬퍼는 반드시 `_` 접두사. 클래스 본문에 정의된 **클래스**(`class Meta:` 포함)는 호출 가능해도 노출되지 않는다(#99). 핸들러와 라이프사이클 메서드는 async.
 - **컴포넌트 이름은 클래스명으로 전역 등록.** 다른 모듈에서 같은 클래스명을 쓰면 경고가 난다. 템플릿에서 `app:Name` 또는 FQN으로 구분한다.

@@ -27,6 +27,12 @@ The django-reactor era changelog (2.x) is preserved in
   its own. `--ff` moved from pytest's `addopts` to the Makefile targets, so
   `pytest -p no:cacheprovider` starts again, and `make test-concurrent` runs the suite twice at
   once (#125).
+- Test harness: the test project served HTTP through asgiref's `WsgiToAsgi`, which sends each
+  response through `async_to_sync`; Uvicorn started the next request on a kept-alive connection
+  inside that call, and it died with "CurrentThreadExecutor already quit or is broken" -- an
+  ordinary form POST failing once in a full E2E run. It uses Django's ASGI handler now, as
+  projects are told to, and `server_errors()` sees what Uvicorn logs, which it silently did not
+  (#129).
 
 ## [1.0.0rc3] - 2026-09-30
 

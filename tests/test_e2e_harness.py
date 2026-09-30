@@ -15,7 +15,9 @@ why nobody caught it by running the suite.
 import logging
 import pathlib
 import re
+import socket
 import threading
+from urllib.parse import urlsplit
 
 import pytest
 from django.conf import settings
@@ -313,3 +315,58 @@ def test_only_errors_are_collected(started_threads):
     with serve():
         logging.getLogger("wireview").warning("a rejoin was refused")
         assert e2e_server.server_errors() == []
+
+
+def _pipelined(base_url: str, path: str, count: int) -> list[bytes]:
+    """Send ``count`` GETs down one connection before reading anything back.
+
+    Pipelining makes deterministic what a browser reusing a kept-alive connection
+    does by chance: Uvicorn starts the next request from inside the previous
+    response's ``send``.
+    """
+    url = urlsplit(base_url)
+    request = f"GET {path} HTTP/1.1\r\nHost: {url.hostname}\r\n\r\n".encode()
+    with socket.create_connection((url.hostname, url.port), timeout=10) as sock:
+        sock.sendall(request * count)
+        received = b""
+        while received.count(b"HTTP/1.1 ") < count:
+            try:
+                chunk = sock.recv(65536)
+            except TimeoutError:
+                break
+            if not chunk:
+                break
+            received += chunk
+    return [line.split(b"\r\n", 1)[0] for line in received.split(b"HTTP/1.1 ")[1:]]
+
+
+def test_every_request_on_a_kept_alive_connection_is_answered(started_threads, transactional_db):
+    """The test project's HTTP side answers the second request on a connection, too.
+
+    It used to be asgiref's WsgiToAsgi, which sends each response through
+    async_to_sync. The next request on the connection started inside that call,
+    inherited its executor after the executor had quit, and died with
+    "CurrentThreadExecutor already quit or is broken" -- a plain form POST failing
+    once in a full E2E run, never alone (#129).
+    """
+    with serve() as base_url:
+        statuses = _pipelined(base_url, "/jsprobe/said/?word=x", 3)
+        errors = e2e_server.server_errors()
+
+    assert statuses == [b"200 OK"] * 3, errors
+    assert errors == []
+
+
+def test_an_exception_in_the_application_reaches_server_errors(started_threads):
+    """Uvicorn logs it on its own logger, which does not propagate to the root."""
+
+    async def broken(scope, receive, send):
+        if scope["type"] == "lifespan":
+            return
+        raise RuntimeError("the application blew up")
+
+    with serve(broken) as base_url:
+        _pipelined(base_url, "/", 1)
+        errors = e2e_server.server_errors()
+
+    assert any("the application blew up" in line for line in errors), errors

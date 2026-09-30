@@ -109,7 +109,12 @@ class UvicornThread(threading.Thread):
         try:
             loop = asyncio.new_event_loop()
             self.loop = loop
-            config = UvicornConfig(self.application, host=self.host, port=self.port, log_level="warning")
+            # log_config=None: Uvicorn's own dictConfig sets its loggers not to
+            # propagate, and an exception in the application is logged there -- so
+            # server_errors() read empty while every request was failing (#129).
+            config = UvicornConfig(
+                self.application, host=self.host, port=self.port, log_level="warning", log_config=None
+            )
             self.server = Uvicorn(config)
             self.server.install_signal_handlers = lambda *args, **kwargs: None
             loop.run_until_complete(self.server.serve(sockets=[self.sock] if self.sock else None))
@@ -193,14 +198,20 @@ def _collecting_errors() -> t.Iterator[None]:
     global _collector
     handler = _ErrorCollector()
     handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
-    root = logging.getLogger()
-    root.addHandler(handler)
+    # Uvicorn's loggers stop propagating once anything in the process has run its
+    # default logging config, and they are where an exception in the application
+    # goes. Listen there too unless their records already reach the root.
+    loggers = [logging.getLogger()]
+    loggers += [logger for logger in (logging.getLogger("uvicorn"),) if not logger.propagate]
+    for logger in loggers:
+        logger.addHandler(handler)
     previous, _collector = _collector, handler
     try:
         yield
     finally:
         _collector = previous
-        root.removeHandler(handler)
+        for logger in loggers:
+            logger.removeHandler(handler)
 
 
 def _stop(thread: UvicornThread) -> None:
