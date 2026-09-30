@@ -135,6 +135,14 @@ class SlowItem:
         return "a"
 
 
+class BrokenItem:
+    """A stream item whose template read raises."""
+
+    @property
+    def label(self) -> str:
+        raise RuntimeError("item template broke")
+
+
 class SaFeed(Component):
     class Meta:
         template_name = "sa/feed.html"
@@ -437,24 +445,27 @@ async def test_a_stream_item_rendered_by_the_work_overlapping_an_event_render_le
     item = feed._item = SlowItem()
     feed._go = asyncio.Event()
 
-    await consumer.command_user_event("f", "tick", {}, {})
-    await consumer.command_user_event("f", "feed", {}, {})
-    op = feed._async_tasks["feed"]
-    await asyncio.wait_for(item.reading.wait(), 2)
-    # Other work wakes up while the item renders: the stream item's render holds it
-    feed._go.set()
-    for _ in range(20):
-        await asyncio.sleep(0)
-    assert not feed._ticked, "other work ran while the stream item rendered"
-    # A click while the item renders: its handler starts an assign_async, and
-    # its render waits for the worker thread
-    click = asyncio.create_task(consumer.command_user_event("f", "load", {}, {}))
-    for _ in range(20):
-        await asyncio.sleep(0)
-    assert feed._assign_tasks, "the handler ran"
-    assert not feed._fetched, "the assign_async ran while the stream item rendered"
-
-    item.release.set()
+    try:
+        await consumer.command_user_event("f", "tick", {}, {})
+        await consumer.command_user_event("f", "feed", {}, {})
+        op = feed._async_tasks["feed"]
+        await asyncio.wait_for(item.reading.wait(), 2)
+        # Other work wakes up while the item renders: the stream item's render holds it
+        feed._go.set()
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert not feed._ticked, "other work ran while the stream item rendered"
+        # A click while the item renders: its handler starts an assign_async, and
+        # its render waits for the worker thread
+        click = asyncio.create_task(consumer.command_user_event("f", "load", {}, {}))
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert feed._assign_tasks, "the handler ran"
+        assert not feed._fetched, "the assign_async ran while the stream item rendered"
+    finally:
+        # A failed assertion must not leave the shared worker thread held for
+        # the next test: database_sync_to_async runs every test on one thread
+        item.release.set()
     await asyncio.wait_for(click, 2)
     tick = feed._async_tasks["tick"]
     done, _ = await asyncio.wait([op, tick, *feed._assign_tasks], timeout=2)
@@ -462,4 +473,32 @@ async def test_a_stream_item_rendered_by_the_work_overlapping_an_event_render_le
     assert tick in done and feed._ticked
     assert len(done) == 3, "the assign_async never ran"
     assert any("items-a" in str(payload) for command, payload in outbound.commands if command == "stream_op")
+    assert "loaded" in shown(feed)
+
+
+async def test_work_after_a_stream_item_render_that_raised_runs():
+    # The item's template raises inside the operation's stream_insert: the
+    # operation fails, and the render it marked is over. Work the component
+    # starts afterwards must not wait for that render for good (#138)
+    consumer, outbound, _ = await joined_page()
+    feed = await consumer.repo.join("SaFeed", {"id": "f"})
+    feed.wire.broker = LoopbackBroker(consumer)  # type: ignore[assignment]
+    await consumer.send_render(feed)
+    await feed.wire.flush_pending()
+    feed._item = BrokenItem()
+
+    await consumer.command_user_event("f", "feed", {}, {})
+    await settle(feed, "feed")
+    assert not any(command == "stream_op" for command, _ in outbound.commands), "the item rendered"
+    await consumer.command_user_event("f", "load", {}, {})
+    gate = feed.wire._render_gate
+    done, _ = await asyncio.wait(list(feed._assign_tasks), timeout=2)
+    if not done:
+        # Free it by hand: cancelling a held task waits for a render that is gone
+        gate._renders.clear()
+        if gate._idle is not None:
+            gate._idle.set()
+        await asyncio.gather(*feed._assign_tasks, return_exceptions=True)
+    assert done, "the assign_async waited for a stream item render that had raised"
+    assert gate._renders == {}
     assert "loaded" in shown(feed)

@@ -144,6 +144,34 @@ async def test_an_exception_from_the_work_reaches_the_awaiter():
         await gate.run(work())
 
 
+async def test_a_render_that_raises_leaves_the_gate_open():
+    # A stream item whose template raises ends the render with an exception: the
+    # render is over all the same, and the work after it must not wait for good
+    gate = RenderGate()
+
+    async def broken():
+        with gate.rendering():
+            await asyncio.sleep(0)
+            raise LookupError("template broke")
+
+    with pytest.raises(LookupError):
+        await asyncio.create_task(broken())
+
+    async def work():
+        return "done"
+
+    task = asyncio.create_task(gate.run(work()))
+    done, _ = await asyncio.wait([task], timeout=1)
+    if not done:
+        # Free it by hand: cancelling a held task waits for a render that is gone
+        gate._renders.clear()
+        if gate._idle is not None:
+            gate._idle.set()
+        await task
+    assert done, "the work waited for a render that had raised"
+    assert gate._renders == {}
+
+
 async def test_renders_by_two_tasks_that_end_out_of_order_hold_the_work_until_both_end():
     # Renders by different tasks need not end last-in, first-out: the gate opens
     # only once none is left, and not for good once the first one ends
