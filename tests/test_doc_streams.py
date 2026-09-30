@@ -20,7 +20,9 @@ reads it runs the query on the loop. Tutorial 13 taught that after the example w
 fixed (#145), so properties that evaluate the ORM, directly or through another
 property, are collected and every async function that reads one fails. A property
 that returns a QuerySet as is stays lazy and passes. A plain helper method the
-handler calls is read the same way, and so is the truth of a QuerySet (#149).
+handler calls is read the same way, and so is the truth of a QuerySet (#149): in
+``if``, and in a comprehension's condition. Any builtin that iterates its argument
+consumes it, ``any()`` and ``max()`` as much as ``list()`` (#151).
 
 Not caught: a foreign key followed by attribute, ``self.post.author.name``. Whether
 ``author`` is a relation or a column is the model's to say, not the syntax's.
@@ -53,8 +55,30 @@ SOURCES = [
 
 _FENCE = re.compile(r"```(?:python|py)\n(.*?)```", re.S)
 
-#: Calls that iterate their argument synchronously.
-SYNC_CONSUMERS = {"list", "tuple", "reversed", "sorted", "set", "len", "bool"}
+#: Calls that iterate their argument synchronously. ``enumerate()``, ``zip()``, ``map()``,
+#: ``filter()`` and ``iter()`` are lazy, but each asks its argument for an iterator at once,
+#: and that is where a QuerySet runs its query.
+SYNC_CONSUMERS = {
+    "list",
+    "tuple",
+    "reversed",
+    "sorted",
+    "set",
+    "frozenset",
+    "dict",
+    "len",
+    "bool",
+    "any",
+    "all",
+    "sum",
+    "max",
+    "min",
+    "enumerate",
+    "zip",
+    "map",
+    "filter",
+    "iter",
+}
 
 
 def _blocks(path: Path) -> list[str]:
@@ -258,6 +282,8 @@ def _evaluations(func: ast.FunctionDef | ast.AsyncFunctionDef, lazy: set[str], e
             found.append(f"for {ast.unparse(node.target)} in {ast.unparse(node.iter)}")
         elif isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
             found += [ast.unparse(g.iter) for g in node.generators if not g.is_async and _is_orm(g.iter, lazy)]
+            # ``[r for r in rows if self.items]``: each condition is a test, async for or not.
+            found += [e for g in node.generators for test in g.ifs for e in _truth_tested(test, lazy)]
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in SYNC_CONSUMERS:
             found += [ast.unparse(node) for arg in node.args if _is_orm(arg, lazy)]
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
@@ -366,6 +392,19 @@ def _property_offenders(blocks: list[str]) -> list[str]:
     ]
 
 
+def _fragment_offenders(block: str) -> list[str]:
+    """A fragment that is not Python on its own: the plain form still shows, a manager
+    chain handed to a synchronous consumer. Not after a dot -- ``.filter(`` and ``.all(``
+    are the manager's own."""
+    return re.findall(rf"(?<![.\w])(?:{'|'.join(SYNC_CONSUMERS)})\(\s*[\w.]*\.objects\.[^\n]*", block)
+
+
+def test_a_fragment_is_scanned_for_the_plain_form():
+    block = "x = {\nlist(Item.objects.all())\nqs = Item.objects.filter(pk__in=Other.objects.all())\n"
+    block += "rows = Item.objects.filter(Other.objects.all())"
+    assert _fragment_offenders(block) == ["list(Item.objects.all())"]
+
+
 @pytest.mark.parametrize("path", SOURCES, ids=lambda p: str(p.relative_to(ROOT)))
 def test_no_handler_runs_a_query_through_a_property(path):
     offenders = _property_offenders(_blocks(path))
@@ -383,9 +422,7 @@ def test_no_example_evaluates_a_queryset_on_the_event_loop(path):
         try:
             offenders += _offenders(block)
         except SyntaxError:
-            # A fragment that is not Python on its own. The regex still catches the
-            # plain form, a manager chain handed to a synchronous consumer.
-            offenders += re.findall(rf"\b(?:{'|'.join(SYNC_CONSUMERS)})\(\s*[\w.]*\.objects\.[^\n]*", block)
+            offenders += _fragment_offenders(block)
     assert not offenders, (
         f"{path.relative_to(ROOT)} evaluates a QuerySet synchronously in async code: {offenders}. "
         "Pass it to stream() as is, or collect it with [x async for x in qs]"
@@ -404,6 +441,8 @@ def test_no_example_evaluates_a_queryset_on_the_event_loop(path):
         'await self.stream_insert("i", Item.objects.filter(pk=1))',
         'await self.stream_insert(name="i", item=self.queryset)',
         "async def joined(self):\n    self.any = bool(Item.objects.filter(done=False))",
+        "async def joined(self):\n    self.names = dict(Item.objects.values_list('id', 'name'))",
+        "async def joined(self):\n    self.top = max(Item.objects.filter(done=False))",
     ],
 )
 def test_the_scan_catches_a_synchronous_evaluation(source):
@@ -504,6 +543,30 @@ _QUESTIONS = (
         "class A(Component):\n    @property\n    def items(self):\n        return list(Item.objects.all())\n"
         "    async def joined(self):\n        self.n = len(self.items)\n"
         "class B(Component):\n    @property\n    def items(self):\n        return self.cached\n",
+        # A comprehension's condition is a truth test like ``if`` (#151).
+        "class A(Component):\n    @property\n    def items(self):\n        return self.list.items.all()\n"
+        "    async def joined(self):\n        self.rows = [r async for r in Row.objects.all() if self.items]",
+        "class A(Component):\n    async def joined(self):\n"
+        "        self.rows = [r for r in self.cached if r.ok and Item.objects.filter(done=False)]",
+        # Builtins that iterate their argument as list() does (#151).
+        *(
+            "class A(Component):\n    @property\n    def items(self):\n        return self.list.items.all()\n"
+            f"    async def joined(self):\n        self.x = {call}"
+            for call in [
+                "any(self.items)",
+                "all(self.items)",
+                "sum(self.items)",
+                "max(self.items)",
+                "min(self.items)",
+                "frozenset(self.items)",
+                "dict(self.items.values_list('id', 'name'))",
+                "next(iter(self.items))",
+                "list(enumerate(self.items))",
+                "zip(self.names, self.items)",
+                "map(str, self.items)",
+                "filter(None, self.items)",
+            ]
+        ),
     ],
 )
 def test_the_property_scan_catches_a_query_on_the_event_loop(source):
@@ -561,6 +624,11 @@ def test_the_property_scan_catches_a_query_on_the_event_loop(source):
         "class A(Component):\n    @property\n    def items(self):\n        return list(Item.objects.all())\n"
         "class B(Component):\n    @property\n    def items(self):\n        return self.cached\n"
         "    async def joined(self):\n        self.n = len(self.items)",
+        # A comprehension's condition that queries nothing, and builtins over what is not a QuerySet (#151).
+        "class A(Component):\n    @property\n    def items(self):\n        return self.list.items.all()\n"
+        "    async def joined(self):\n        self.rows = [r async for r in self.items if r.done and self.ready]\n"
+        "        self.top = max(self.scores)\n        self.ok = any(r.done for r in self.rows)\n"
+        "        self.pairs = dict(zip(self.keys, self.values))",
     ],
 )
 def test_the_property_scan_passes_what_does_not_block(source):

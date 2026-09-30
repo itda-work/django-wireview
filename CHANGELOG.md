@@ -111,6 +111,9 @@ The django-reactor era changelog (2.x) is preserved in
   its value, not tested (`self.cached or qs` passes). `first()` or `get(k=...)` on a
   component's own attribute (`self.history.first()`) is no longer taken for a query, and two
   classes in one document that give a property name different answers are judged each by its own.
+  A comprehension's condition (`[r for r in rows if qs]`) is a truth test too, and `any()`,
+  `all()`, `sum()`, `max()`, `min()`, `dict()`, `frozenset()`, `enumerate()`, `zip()`, `map()`,
+  `filter()` and `iter()` consume a QuerySet as `list()` does (#151).
   A foreign key followed by attribute (`self.post.author.name`) is still not caught (#149).
 
 - A release tag no longer goes to PyPI untested. `release.yml` calls the whole `ci.yml` on the
