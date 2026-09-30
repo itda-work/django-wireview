@@ -7,5 +7,12 @@
     {% wireview_header %}
     <style>li.row { height: 80px; }</style>
   </head>
-  <body>{% component 'StreamProbe' id="probe" size=size delay=delay %}</body>
+  <body>
+    {% if away %}
+      <a href="?size={{ size }}" data-testid="back">back</a>
+    {% else %}
+      <a href="?size={{ size }}&away=1" data-testid="away">away</a>
+      {% component 'StreamProbe' id="probe" size=size delay=delay %}
+    {% endif %}
+  </body>
 </html>

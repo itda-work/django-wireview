@@ -5,6 +5,8 @@ hop to the client, and ``wire-viewport-top``/``wire-viewport-bottom`` had neithe
 test nor a page of documentation. Fixture: tests/testproj/streamprobe/.
 """
 
+import json
+
 import pytest
 from playwright.sync_api import expect
 from testproj.e2e_browser import expect_count, expect_text, open_live
@@ -96,6 +98,29 @@ def test_a_short_list_loads_one_more_page(page, server):
     expect_count(by(page, "rows").locator("li"), 2)
     _settled(page)
     expect_text(by(page, "pages"), "2")
+
+
+def test_a_list_the_page_left_and_came_back_to_loads_one_more_page(page, server):
+    """Back on the page, the element and its component are new, and their join is
+    one the page names with a ref: infinite scroll starts on that join's
+    ``joined``, as it did on the first (#146)."""
+    sockets, sent = [], []
+
+    def opened(ws):
+        sockets.append(ws)
+        ws.on("framesent", lambda frame: sent.append(json.loads(frame)))
+
+    page.on("websocket", opened)
+    page.set_viewport_size({"width": 800, "height": 600})
+    open_live(page, f"{server}/streamprobe/?size=1")
+    expect_text(by(page, "pages"), "2")
+    by(page, "away").click()
+    expect(by(page, "rows")).to_have_count(0)
+    by(page, "back").click()
+    expect_text(by(page, "pages"), "2")
+    expect_count(by(page, "rows").locator("li"), 2)
+    assert len(sockets) == 1, "boosted, on the socket the page opened"
+    assert "ref" in [m for m in sent if m["command"] == "join"][-1]["payload"], "the join back is named"
 
 
 def test_scrolling_back_to_the_top_calls_the_top_binding(probe):

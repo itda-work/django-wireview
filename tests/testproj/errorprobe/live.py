@@ -5,9 +5,9 @@ then raises, so the page shows whether that change was rolled back;
 ``ErrorJoin`` cannot join at all. The ``late/`` page holds one ``ErrorBox``
 and links back to itself, so a test can join it again under its id while an
 answer to the join before is still on its way (#139). Its ``ErrorNest`` holds
-a LiveComponent, ``nest-child``, whose own render can be on its way when the
-parent joins again; ``?visit=swap`` puts a root ``ErrorBox`` under that id
-instead (#146).
+a LiveComponent, ``nest-child``, whose own render -- or the ``remove`` its
+``vanish`` asks for -- can be on its way when the parent joins again;
+``?visit=swap`` puts a root ``ErrorBox`` under that id instead (#146).
 """
 
 from wireview import Component, LiveComponent
@@ -51,3 +51,6 @@ class ErrorNestChild(LiveComponent):
 
     async def bump(self, **_rest):
         self.count += 1
+
+    async def vanish(self, **_rest):
+        await self.destroy()

@@ -144,7 +144,7 @@ tests/
                            jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,
                            formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처,
                            fileprobe/ 는 업로드의 모든 입구(입력·드롭 존·미리보기·external)와 숨겼다 다시 보인 LiveComponent의 업로드를 보는 E2E(test_uploads_e2e.py)의 픽스처,
-                           streamprobe/ 는 스트림의 dom_id·limit·wire-viewport-*를 보는 E2E(test_streams_e2e.py)의 픽스처다
+                           streamprobe/ 는 스트림의 dom_id·limit·wire-viewport-*를 보는 E2E(test_streams_e2e.py)의 픽스처다(?away=1 은 떠났다 돌아오는 컴포넌트 없는 페이지)
 
 examples/                  예제 앱 11개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.
                            testproj 위에서 돌고 make test가 함께 실행한다(pytest tests examples).

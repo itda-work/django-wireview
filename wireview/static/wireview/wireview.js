@@ -361,8 +361,10 @@ class ServerConnection {
         break;
       }
       case "remove": {
-        // A halted join's, or its instance's own; not the replaced one's (#146)
-        if (!this.joins.about(payload.id, payload.ref)) break;
+        // A halted join's, or its instance's own; not the replaced one's (#146).
+        // A LiveComponent's is its root's instance's, as its render is.
+        const owned = this.components[payload.id]?.owned;
+        if (!this.joins.about(owned ? rootIdOf(payload.id) : payload.id, payload.ref)) break;
         document.getElementById(payload.id)?.remove();
         boost.navEvent.sendNewContent();
         break;

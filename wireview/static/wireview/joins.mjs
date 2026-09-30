@@ -17,7 +17,8 @@
  * `reload` of a state refused, the `joined` of one that landed (#146). Until
  * the answer comes, whatever else arrives for the id is the replaced
  * instance's -- a render of an event, a `remove` its handler asked for -- and
- * a render of one of its LiveComponents is held back by the root's join. After
+ * a render or a `remove` of one of its LiveComponents is held back by the
+ * root's join. After
  * it, the id is the new instance's: the server retired the old one when it
  * read the join, so nothing of it follows.
  *

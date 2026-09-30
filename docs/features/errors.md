@@ -66,10 +66,12 @@ join에 실패한 요소에는 `wireview-error` 클래스가 붙는다. 다음 j
 `error`는 새 요소에 붙지 않는다. 페이지는 join마다 번호(`ref`)를 싣고, 그 번호가 돌아온 응답만 지금 join의
 것으로 받는다(#139). 그 전에는 이전 join의 `error`가 새 요소에 `wireview-error`를 붙이고 컴포넌트를 등록에서
 빼, 새 join의 render가 적용될 곳이 없었다 — 다음 연결까지 죽은 채였다. join의 다른 응답도 같다(#146).
-`on_mount`가 halt한 이전 join의 `remove`는 새 요소를 지우지 않고, 이전 join의 `reload`는 페이지를 다시
-불러오지 않으며, 이전 join의 `joined`는 새 요소의 무한 스크롤을 시작하지 않는다. 이전 부모 인스턴스의
-LiveComponent가 보낸 자기 render도 부모의 join으로 가려 새 요소에 그리지 않는다. 연결의 첫 join은 서버가 버전을
-알리기 전이라 번호가 없고, 번호 없는 join의 응답은 예전처럼 오는 대로 받는다.
+`on_mount`가 halt한 이전 join의 `remove`는 새 요소를 지우지 않고, id를 알 수 있는 이전 join의 `reload`(상태가
+다른 클래스의 것, live_session 거절)는 페이지를 다시 불러오지 않으며, 이전 join의 `joined`는 새 요소의 무한
+스크롤을 시작하지 않는다. 만료·서명 실패의 `reload`는 id가 없어 짝지을 수 없으므로 어느 join의 것이든 받는다 —
+페이지를 다시 불러올 뿐이다. 이전 부모 인스턴스의 LiveComponent가 보낸 자기 render와 `remove`도 부모의 join으로
+가려, 새 요소에 그리거나 새 요소에서 지우지 않는다. 연결의 첫 join은 서버가 버전을 알리기 전이라 번호가 없고,
+번호 없는 join의 응답은 예전처럼 오는 대로 받는다.
 
 ```css
 .wireview-error { opacity: 0.6; pointer-events: none; }

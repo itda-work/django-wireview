@@ -161,11 +161,11 @@ The django-reactor era changelog (2.x) is preserved in
   element away -- and the page's `leave` for it then retired the instance the next join had made.
   The `remove` of a halted join, the `reload` of a refused state and the `joined` of a landed join
   now carry the join's `ref`, and while the page waits for its join's answer it drops any of them
-  that do not; a LiveComponent's own render waits with its root's join. The page also sends the
-  `leave` for components that left before the joins for the new page, and decides again at each
-  join whether an element is a LiveComponent: an id that was a LiveComponent on the page before and
-  is a root component now used to be ignored by the server, which still held the LiveComponent
-  under it (#146).
+  that do not; a LiveComponent's own render or `remove` waits with its root's join. The page also
+  sends the `leave` for components that left before the joins for the new page, and decides again
+  at each join whether an element is a LiveComponent: an id that was a LiveComponent on the page
+  before and is a root component now used to be ignored by the server, which still held the
+  LiveComponent under it (#146).
 
 - A LiveComponent hidden and shown again in quick succession could lose its new instance: when its
   element left, the page sent `leave` for its id, and a leave that reached the server after the

@@ -178,6 +178,18 @@ def test_a_remove_for_a_join_the_page_replaced_leaves_the_new_element(next_late_
     expect_text(by(page, "late-count"), "1")
 
 
+def test_a_join_the_page_waits_for_that_halts_takes_its_element_away(next_late_join_halts, page, server):
+    # #146: while the page waits for a join it drops a remove without that
+    # join's ref, so the waiting join's own remove must carry the ref, and the
+    # page must read it. Else the element stays, live to the page and to no
+    # instance on the server.
+    open_live(page, f"{server}/errorprobe/late/", selector="#late[data-is-live='true']")
+    next_late_join_halts.set()
+    by(page, "second").click()
+    expect_text(by(page, "visit"), "second")
+    expect(page.locator("#late")).to_have_count(0)
+
+
 def test_a_live_components_render_for_a_parent_the_page_replaced_is_not_painted(page, server):
     # #146: a LiveComponent's own render, from the instance its parent's next
     # join replaced, painted the old instance's state over the new element: the
@@ -199,6 +211,33 @@ def test_a_live_components_render_for_a_parent_the_page_replaced_is_not_painted(
         })"""
     )
     expect_text(by(page, "nest-child-count"), "0")
+    page.evaluate("window.__inbox.release()")
+
+    by(page, "nest-child-bump").click()
+    expect_text(by(page, "nest-child-count"), "1")
+
+
+def test_a_live_components_remove_for_a_parent_the_page_replaced_leaves_the_new_element(page, server):
+    # #146: a LiveComponent's remove, asked for by the instance its parent's
+    # next join replaced, took the new element's child away: like its render,
+    # it is named by the child's id, which no join is.
+    page.add_init_script(INBOX_SHIM)
+    open_live(page, f"{server}/errorprobe/late/", selector="#nest[data-is-live='true']")
+    page.wait_for_function("window.__inbox.seen.some((m) => m.command === 'render' && 'vsn' in m.payload)")
+
+    page.evaluate("window.__inbox.holding = true")
+    by(page, "nest-child-vanish").click()
+    _held(page, "m.command === 'remove' && m.payload.id === 'nest-child'")
+    by(page, "second").click()
+    expect_text(by(page, "visit"), "second")
+    _held(page, "m.command === 'render' && m.payload.id === 'nest'")
+    page.evaluate(
+        """() => new Promise((done) => {
+          window.__inbox.release(window.__inbox.held.findIndex((m) => m.command === 'remove') + 1);
+          requestAnimationFrame(() => requestAnimationFrame(done));
+        })"""
+    )
+    expect(page.locator("#nest-child")).to_have_count(1)
     page.evaluate("window.__inbox.release()")
 
     by(page, "nest-child-bump").click()
