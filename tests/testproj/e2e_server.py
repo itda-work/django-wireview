@@ -123,9 +123,15 @@ class UvicornThread(threading.Thread):
         finally:
             self.server = None
             if loop is not None:
-                # A joined thread is not a closed loop, and an unclosed loop keeps
-                # its selector and its descriptors. One per test adds up.
-                loop.close()
+                try:
+                    # The layer keeps this loop's connection (channels-nats does),
+                    # and its tasks would be collected after the loop closed, each
+                    # one a "Event loop is closed" warning in a later test (#150).
+                    loop.run_until_complete(_close_the_layer())
+                finally:
+                    # A joined thread is not a closed loop, and an unclosed loop keeps
+                    # its selector and its descriptors. One per test adds up.
+                    loop.close()
 
     @property
     def started(self) -> bool:
@@ -212,6 +218,20 @@ def _collecting_errors() -> t.Iterator[None]:
         _collector = previous
         for logger in loggers:
             logger.removeHandler(handler)
+
+
+async def _close_the_layer() -> None:
+    """Close what the channel layer holds for the running loop, where it can.
+
+    channels-nats closes the current loop's connection; the in-memory layer's
+    ``close`` does nothing, and channels_redis has none (its ``close_pools`` is not
+    scoped to one loop), so both are left alone.
+    """
+    from channels.layers import get_channel_layer
+
+    close = getattr(get_channel_layer(), "close", None)
+    if close is not None:
+        await close()
 
 
 def _stop(thread: UvicornThread) -> None:
