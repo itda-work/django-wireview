@@ -130,7 +130,7 @@ python manage.py wireview_upload_gc --max-age 600  # 기준 나이(초). 기본�
 되므로, 자체 키만 만들고 fallback을 빠뜨리면 오히려 나빠진다. `SIGNING_KEY`가 빈 문자열이면
 `key or SECRET_KEY` 때문에 조용히 되돌아가므로 `manage.py check`의 `wireview.W009`가 잡는다.
 
-salt(`wireview.upload` / `wireview.state.v1`)는 이미 분리되어 있어 토큰 교차 사용은 전부터 막혀
+salt(`wireview.upload` / `wireview.state.v2`)는 이미 분리되어 있어 토큰 교차 사용은 전부터 막혀
 있었다. 그러므로 이것은 취약점 수정이 아니라 **키 수명 관리**다.
 
 ## 함정

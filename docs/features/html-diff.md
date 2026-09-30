@@ -27,7 +27,7 @@ wireview는 Phoenix LiveView의 렌더 엔진을 본떠 템플릿 출력을 두 
 
 클라이언트는 `wireview/static/wireview/rendered.mjs`의 순수 함수로 diff를 적용하고 HTML을 복원합니다. `node --test tests/js/`로 검증합니다.
 
-서명 상태는 `wireview.core.state`가 만듭니다. 서명 대상은 상태만이 아니라 v1 봉투 `{"v": 1, "n": <클래스 FQN>, "d": <상태>}`이고, 서명자는 `TimestampSigner(salt="wireview.state.v1")`입니다. zlib 압축을 더한 base64라 속성값으로 들어가도 `&quot;`로 부풀지 않습니다. 봉투가 클래스를 담는 이유는 join 프레임에서 클래스 이름이 토큰 옆에 따로 실려 오기 때문입니다 — 묶여 있지 않으면 A용 서명을 필드가 맞는 B로 제출할 수 있습니다(#76). join은 `max_age=STATE_MAX_AGE`(기본 14일)로 만료를 검사하고, 클라이언트가 보낸 이름과 봉투 안의 클래스를 둘 다 resolve해 다르면 거절합니다.
+서명 상태는 `wireview.core.state`가 만듭니다. 서명 대상은 상태만이 아니라 v2 봉투 `{"v": 2, "n": <클래스 FQN>, "s": <live_session>, "a": <인증 세대>, "d": <상태>}`이고(`s`·`a`는 [live_session](./live-session.md)을 선언한 페이지에만 있습니다), 서명자는 `get_signer("wireview.state.v2")`가 만드는 `TimestampSigner`입니다(`wireview/core/signing.py`, 키는 `SIGNING_KEY` 또는 `SECRET_KEY`). zlib 압축을 더한 base64라 속성값으로 들어가도 `&quot;`로 부풀지 않습니다. **서명일 뿐 암호화가 아니므로** 브라우저에서 base64만 풀면 상태 JSON이 그대로 보입니다. 사용자가 읽으면 안 되는 값은 상태 필드에 두지 않습니다([session](./session.md#클라이언트로-가지-않는다)). 봉투가 클래스를 담는 이유는 join 프레임에서 클래스 이름이 토큰 옆에 따로 실려 오기 때문입니다 — 묶여 있지 않으면 A용 서명을 필드가 맞는 B로 제출할 수 있습니다(#76). 경계와 인증 세대를 담는 이유는 공개 페이지에서 정당하게 서명된 상태를 보호된 페이지에 들고 가거나, 로그아웃 전에 발급된 상태를 계속 쓰지 못하게 하기 위해서입니다(#58). join은 `max_age=STATE_MAX_AGE`(기본 14일)로 만료를 검사하고, 클라이언트가 보낸 이름과 봉투 안의 클래스를 둘 다 resolve해 다르면 거절합니다.
 
 **토큰 재사용이 diff 안정성을 지킵니다.** 타임스탬프가 매 렌더마다 갱신되면 상태가 같아도 `data-state`가 달라지고, 이 값은 dynamic 파트이므로 무변경 렌더가 매번 diff를 만듭니다. 그래서 `sign_state()`는 상태 JSON이 같고 토큰이 `STATE_REFRESH_AFTER`(기본 `STATE_MAX_AGE // 2`)보다 젊으면 같은 토큰을 그대로 돌려줍니다. `STATE_MAX_AGE - STATE_REFRESH_AFTER`마다 한 번이라도 렌더되는 컴포넌트는 페이지가 열려 있는 동안 만료되지 않습니다. 회귀 테스트는 `tests/test_diff_stability.py`와 `tests/test_signed_state.py`입니다.
 

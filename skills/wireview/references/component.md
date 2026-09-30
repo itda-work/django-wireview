@@ -31,7 +31,7 @@ class XTodoList(Component):
 | `template_name` | 템플릿 경로. **필수** — 없으면 렌더할 때 `ImproperlyConfigured` |
 | `subscriptions` | 구독 채널 집합. `{"todo.item"}`은 Item 모델 전체 변경. 상태에 따라 달라지면 `def get_subscriptions(self) -> set[str]`를 오버라이드한다 |
 | `temporary_assigns` | 렌더 후 기본값으로 되돌릴 필드 이름들. **기본값이 있는 필드만** 대상. 되돌림은 변경이 아니라 다음 렌더가 화면에서 지우지 않는다. 서명 상태에 실리지 않으므로 **`joined()`에서 불러온다** |
-| `exclude_fields` | 상태 직렬화에서 **더** 뺄 필드. `user`·`wire`·`session`은 항상 빠진다 |
+| `exclude_fields` | 상태 직렬화에서 **더** 뺄 필드. `user`·`wire`·`session`은 항상 빠진다. `data-state`는 서명만 되고 암호화되지 않아 브라우저에서 읽히므로 비밀은 여기로 뺀다 |
 | `slots` | 슬롯 정의 (`references/templates.md`) |
 | `on_mount` | 마운트 시 실행할 훅 클래스 목록 |
 | `live_sessions` | 마운트될 수 있는 `live_session` 이름들 |

@@ -44,7 +44,7 @@ Wireview는 [django-reactor](https://github.com/edelvalle/reactor)의 현대적�
 | **Pydantic** | v1 (레거시) | v2 (최신) |
 | **DOM Morphing** | morphdom | idiomorph (더 나은 속성 보존) |
 | **Python** | ≥3.9 | ≥3.12 |
-| **Django** | 3.2+ | 5.0, 5.1, 5.2, 6.0, 6.1 |
+| **Django** | 3.2+ | 5.2, 6.0, 6.1 |
 | **모듈 구조** | 플랫 | 체계적 (`core/`, `features/`) |
 
 ### 새로운 컴포넌트 메서드
@@ -1000,7 +1000,7 @@ class Dashboard(Component):
 | `template_name` | 필수 | 템플릿 경로 |
 | `subscriptions` | `set()` | 구독할 채널. 상태에 따라 달라지면 `get_subscriptions()`를 오버라이드한다 |
 | `temporary_assigns` | `set()` | 렌더 뒤 기본값으로 되돌릴 필드 |
-| `exclude_fields` | `user`·`wire`·`session` | 서명 상태에서 뺄 필드. `user`·`wire`·`session`은 항상 빠진다 |
+| `exclude_fields` | `user`·`wire`·`session` | 서명 상태에서 뺄 필드. `user`·`wire`·`session`은 항상 빠진다. 서명 상태는 암호화되지 않아 브라우저에서 읽힌다 — 비밀은 여기로 뺀다 |
 | `slots` | `{}` | 슬롯 정의 |
 | `on_mount` | `[]` | `joined()` 전에 도는 훅 |
 | `live_sessions` | `set()` | 마운트될 수 있는 `live_session` 이름 |

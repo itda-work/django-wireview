@@ -60,6 +60,14 @@ The django-reactor era changelog (2.x) is preserved in
   iterable is now consumed with `async for` (#120).
 - The quiz example's handlers read a property that queried the database on the event loop; they use
   async queries now (#120).
+- Documentation: the README comparison table and the tutorials no longer name Django 5.0 and 5.1,
+  which pip refuses; `tests/test_supported_versions.py` checks every stated range against
+  `pyproject.toml` and the CI matrix. `docs/features/html-diff.md` describes the v2 state envelope
+  and its salt instead of v1, and it and `session.md` now say that `data-state` is signed, not
+  encrypted: anyone holding the page can read every state field. The server-side rate limit example
+  is a token bucket that the tests run as written, and the deployment guide says `.throttle` and
+  `.debounce` stop at the browser, drops the WSGI `cores × 2 + 1` worker formula, and separates the
+  broadcast target from the benchmark's fan-out `broadcast_ms` (#123).
 
 ### Changed
 

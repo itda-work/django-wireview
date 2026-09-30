@@ -1,17 +1,20 @@
 """The signed ``data-state`` envelope (#76).
 
-``sign_state`` signs ``{"v": 1, "n": <class FQN>, "d": <state>}`` with a
+``sign_state`` signs ``{"v": 2, "n": <class FQN>, "d": <state>}`` (plus the
+page's ``live_session`` and auth generation inside one, #58) with a
 ``TimestampSigner``, so a token is bound to the class it was issued for and
 stops being usable after ``STATE_MAX_AGE``. These tests cover the decode rules
 and what the consumer does with a state it cannot use.
 """
 
+import json
 import time
 import typing as t
+import zlib
 
 import pytest
 from django.contrib.auth.models import AnonymousUser
-from django.core.signing import BadSignature, SignatureExpired, Signer, TimestampSigner
+from django.core.signing import BadSignature, SignatureExpired, Signer, TimestampSigner, b64_decode
 from django.test import override_settings
 
 from wireview import Component
@@ -145,6 +148,21 @@ async def test_round_trip_accepts_every_name_that_resolves_to_the_class():
     for name in ("SsPublic", app_alias, SsPublic._fqn):
         state = unsign_state(token, name)
         assert state == {"id": "p1", "note": "hello"}
+
+
+async def test_the_state_is_readable_without_the_key():
+    """Signing is not encryption: the documents tell users not to put secrets in fields (#123).
+
+    Anyone holding the page can base64-decode (and inflate) ``data-state``. If this
+    ever stops being true, docs/features/session.md and html-diff.md say otherwise.
+    """
+    token = signed(SsPublic, id="p1", note="the field a user can read")
+
+    payload = token.split(":", 1)[0]
+    raw = b64_decode(payload.removeprefix(".").encode())
+    if payload.startswith("."):
+        raw = zlib.decompress(raw)
+    assert json.loads(raw)["d"] == {"id": "p1", "note": "the field a user can read"}
 
 
 # --- class binding ----------------------------------------------------------

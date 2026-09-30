@@ -68,6 +68,12 @@ class Meta:
     exclude_fields = {"secret_field"}  # user, wire, session에 더해진다
 ```
 
+**서명은 암호화가 아니다.** `data-state`는 위조를 막을 뿐 내용을 숨기지 않는다 — zlib으로 압축한 JSON의
+base64라서 페이지를 가진 사람은 누구나 디코드해 모든 상태 필드를 읽는다. 사용자가 보면 안 되는 값(토큰,
+다른 사용자의 데이터, 내부 식별자, 권한 판정 결과)은 상태 필드에 두지 말고 `exclude_fields`로 빼거나,
+필요할 때 서버에서 다시 조회한다. 모델 인스턴스 필드는 pk만 실리지만 pk도 읽힌다
+(`tests/test_signed_state.py`의 `test_the_state_is_readable_without_the_key`).
+
 ## 스냅샷 시점
 
 | 경로 | 언제 읽나 |

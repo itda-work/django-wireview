@@ -292,27 +292,53 @@ class GoogleAnalytics:
 
 ### 속도 제한
 
+`{% on "input.debounce.300" %}`·`.throttle`은 **브라우저에서만** 돈다. 서버는 이벤트 빈도에도 메시지
+크기에도 상한을 두지 않으므로, 소켓에 직접 프레임을 보내는 클라이언트는 그 수정자를 거치지 않는다.
+서버에서 막아야 하는 핸들러(쓰기, 외부 API 호출, 비싼 질의)가 있으면 `handle_event` 훅으로 건다.
+아래는 컴포넌트마다 초당 `RATE`개, 몰아서 `BURST`개까지 받는 토큰 버킷이다.
+
 ```python
+import time
+
+
 class RateLimitHook:
-    """Limit how often events may fire."""
+    """Accept RATE events a second per component, with bursts of up to BURST."""
+
+    RATE = 10
+    BURST = 20
 
     @staticmethod
     async def on_mount(component, params, session):
-        last_event_time = {}
+        tokens = float(RateLimitHook.BURST)
+        last = time.monotonic()
 
         async def check_rate_limit(event: str, params: dict):
-            now = time.time()
-            last = last_event_time.get(event, 0)
-
-            if now - last < 0.1:  # 이벤트 간 최소 100ms
-                return {"halt": True}
-
-            last_event_time[event] = now
+            nonlocal tokens, last
+            now = time.monotonic()
+            tokens = min(RateLimitHook.BURST, tokens + (now - last) * RateLimitHook.RATE)
+            last = now
+            if tokens < 1:
+                return {"halt": True}  # 핸들러를 부르지 않는다. 상태는 그대로다
+            tokens -= 1
             return {"cont": True}
 
         component.attach_hook("rate_limit", "handle_event", check_rate_limit)
         return {"cont": True}
 ```
+
+- **어디에 붙이나.** 컴포넌트 하나면 `Meta.on_mount`, 페이지 전체면 `live_session(..., on_mount=[RateLimitHook])`
+  ([live_session](./live-session.md)). 세션 훅은 그 페이지의 모든 컴포넌트에 붙는다.
+- **무엇을 세나.** 카운터가 훅의 클로저에 있으므로 컴포넌트 인스턴스 하나의 빈도다. 연결을 여러 개 열면
+  한도도 여러 벌이 된다. 사용자 단위로 세려면 `cache.aadd`·`cache.aincr`로 `user.pk`를 키로 센다(원자적인
+  캐시가 필요하다. 예시는 [배포 가이드](../DEPLOYMENT.md#속도-제한)의 연결 제한). 연결 수 자체는 배포 가이드의
+  미들웨어가 막는다.
+- **halt는 조용하다.** 거절된 이벤트는 핸들러를 부르지 않을 뿐 오류를 보내지 않는다. 알려야 하면 halt 전에
+  `await component.wire.put_flash(...)` 같은 명령을 보낸다.
+- **메시지 크기.** 프레임 하나의 상한은 ASGI 서버가 정한다. uvicorn은 `--ws-max-size`(기본 16MB)다. 이벤트
+  인자로 큰 값을 받을 일이 없으면 줄여 둔다. 파일은 WebSocket이 아니라 [청크 업로드](./chunked-uploads.md)
+  엔드포인트로 오고 `UPLOAD_MAX_FILE_SIZE`가 따로 막는다.
+
+이 패턴의 동작은 `tests/test_lifecycle_hooks.py`의 `TestRateLimitExample`이 위 코드 블록을 그대로 실행해 확인한다.
 
 ### 감사 로그
 

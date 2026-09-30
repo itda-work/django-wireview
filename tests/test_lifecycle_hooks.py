@@ -7,7 +7,9 @@ render too, and they have to run exactly once per instance.
 """
 
 import asyncio
+import re
 import typing as t
+from pathlib import Path
 
 import pytest
 from django.contrib.auth.models import AnonymousUser
@@ -85,7 +87,35 @@ class SeenHook:
         return {"cont": True}
 
 
+#: The server-side rate limit docs/features/lifecycle-hooks.md recommends, run as written (#123).
+#: ``.throttle`` and ``.debounce`` stop at the browser; this is the pattern the docs give for the server.
+LIFECYCLE_DOC = Path(__file__).resolve().parent.parent / "docs" / "features" / "lifecycle-hooks.md"
+
+
+def _doc_block(heading: str) -> str:
+    section = LIFECYCLE_DOC.read_text(encoding="utf-8").split(f"\n{heading}\n", 1)[1]
+    match = re.search(r"```python\n(.*?)```", section, re.DOTALL)
+    assert match, f"no python block under {heading!r}"
+    return match.group(1)
+
+
+DOC_RATE_LIMIT: dict[str, t.Any] = {}
+exec(compile(_doc_block("### 속도 제한"), str(LIFECYCLE_DOC), "exec"), DOC_RATE_LIMIT)
+
+
 # --- components ---------------------------------------------------------------------------
+
+
+class LhRateLimited(Component):
+    class Meta:
+        template_name = "lh/plain.html"
+        on_mount = [DOC_RATE_LIMIT["RateLimitHook"]]
+
+    label: str = "rate"
+    hits: int = 0
+
+    async def hit(self):
+        self.hits += 1
 
 
 class LhOrdered(Component):
@@ -607,3 +637,44 @@ class TestOnMountCheck:
         from django.core.checks import registry
 
         assert check_on_mount_hooks in registry.registry.get_checks()
+
+
+# --- the documented server-side rate limit -------------------------------------------------
+
+
+class TestRateLimitExample:
+    """The ``RateLimitHook`` block in docs/features/lifecycle-hooks.md does what the text says."""
+
+    pytestmark = pytest.mark.asyncio
+
+    async def test_a_burst_past_the_limit_never_reaches_the_handler(self):
+        view = await mount(LhRateLimited, id="rl1")
+        burst = DOC_RATE_LIMIT["RateLimitHook"].BURST
+
+        for _ in range(burst + 5):
+            await view.call("hit")
+
+        assert view.component.hits == burst
+
+    async def test_the_bucket_refills_with_time(self):
+        view = await mount(LhRateLimited, id="rl2")
+        burst = DOC_RATE_LIMIT["RateLimitHook"].BURST
+        for _ in range(burst + 5):
+            await view.call("hit")
+
+        await asyncio.sleep(0.2)  # RATE=10: about two events' worth
+        for _ in range(5):
+            await view.call("hit")
+
+        assert burst < view.component.hits < burst + 5
+
+    async def test_each_component_has_its_own_bucket(self):
+        first = await mount(LhRateLimited, id="rl3")
+        second = await mount(LhRateLimited, id="rl4")
+        burst = DOC_RATE_LIMIT["RateLimitHook"].BURST
+        for _ in range(burst + 5):
+            await first.call("hit")
+
+        await second.call("hit")
+
+        assert second.component.hits == 1

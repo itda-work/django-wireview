@@ -157,8 +157,7 @@ Windows에서는 `INSTALLED_APPS`에서 `"daphne"`도 뺀다. `runserver`를 받
 
 Caddy는 바이너리 하나이고 WebSocket 업그레이드를 알아서 처리하며 TLS 종단도 맡을 수 있다. 채널
 레이어는 channels-nats이고 `nats-server.exe`를 Windows 서비스로 띄운다(channels-nats README).
-SQLite는 모든 프로세스가 공유하므로 WAL과 busy timeout을 켠다. Django 5.1+는 pragma를 직접 실행할 수
-있다.
+SQLite는 모든 프로세스가 공유하므로 WAL과 busy timeout을 켠다. pragma는 `init_command`로 직접 실행한다.
 
 ```python
 DATABASES = {
@@ -173,8 +172,6 @@ DATABASES = {
     }
 }
 ```
-
-Django 5.0에서는 같은 pragma를 `connection_created` 시그널 핸들러에서 실행한다.
 
 용량 산정: Windows에서 uvicorn은 연결당 약 160KB의 RSS를 쓰는데 거의 전부가 permessage-deflate다.
 `--ws-per-message-deflate false`를 주면 daphne 수준으로 떨어진다([ASGI 서버](#권장-uvicorn--uvloop)).
@@ -462,7 +459,8 @@ python manage.py wireview_upload_gc
 
 ### 수직 확장
 
-1. 워커 수를 늘린다: `--workers N` (N = CPU 코어 × 2 + 1)
+1. 워커 수를 늘린다: `--workers N` (N = CPU 코어 수). 비동기 워커 하나가 연결 수천 개를 들고 있으므로 WSGI의
+   `코어 × 2 + 1` 공식은 맞지 않는다. 1개에서 4개로 늘렸을 때의 실측은 [Windows 단일 서버](#windows-단일-서버-uvicorn--n--caddy-nats-sqlite)에 있다
 2. uvloop을 쓴다
 3. 데이터베이스 커넥션을 재사용한다
 
@@ -495,6 +493,10 @@ class WebSocketRateLimitMiddleware:
 
 `incr`이 원자적인 캐시(Redis, Memcached)여야 동시 연결이 같은 값을 읽고 한도를 넘기지 않는다. 프로세스가 여럿이면
 `LocMemCache`는 프로세스마다 따로 센다.
+
+이것은 **연결** 수만 센다. 열린 연결 안에서 오는 이벤트에는 wireview가 빈도·크기 상한을 두지 않는다 —
+`.throttle`·`.debounce`는 브라우저에서만 돈다. 이벤트 속도 제한은 `handle_event` 훅으로 건다
+([라이프사이클 훅](features/lifecycle-hooks.md#속도-제한)). 프레임 크기 상한은 uvicorn의 `--ws-max-size`(기본 16MB)다.
 
 ## 문제 해결
 

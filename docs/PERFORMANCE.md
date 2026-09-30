@@ -249,7 +249,12 @@ py-spy record -o profile.svg --pid <PID>
 | 컴포넌트 join | < 100ms | `joined()` 포함 |
 | 이벤트 핸들러 | < 50ms | 사용자 조작 |
 | 렌더 diff | < 20ms | HTML 생성 |
-| 채널 브로드캐스트 | < 10ms | Redis pub/sub |
+| 브로드캐스트 발행 | < 10ms | `abroadcast` 한 번이 브로커에 메시지를 넘기기까지. 받는 쪽 렌더는 들어 있지 않다 |
+
+이 표는 동작 하나의 **목표**이고 벤치가 재는 값이 아니다. 특히 벤치의 `ws.broadcast_ms`는 다른 지표다 —
+브로드캐스트 하나가 구독한 **모든 연결**의 재렌더까지 끝나는 벽시계 시간이라 연결 수와 항목 수에 비례한다.
+macOS에서 연결 2,000개일 때 프로세스 4개(NATS·Redis)는 141~416ms, 단일 프로세스(InMemory)는 635~1,763ms였다
+(`bench/results/a993181-*.json`, `663b3f7-*.json`). 정의는 [bench/README.md](../bench/README.md).
 
 ### 부하 테스트
 
