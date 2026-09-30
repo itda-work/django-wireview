@@ -1,9 +1,24 @@
 """Tests for async-native render optimization."""
 
+import typing as t
+
 import pytest
+from django.template import Template
 
 from wireview import Component
-from wireview.testing import MockRepository, MockWireviewMeta
+from wireview.testing import MockRepository, MockWireviewMeta, mount
+
+
+class InlineTemplate:
+    source: t.ClassVar[str]
+    _compiled: t.ClassVar[Template | None] = None
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        if cls.__dict__.get("_compiled") is None:
+            cls._compiled = Template("{% load wireview %}" + cls.source)
+        return cls._compiled
+
 
 # The render path crosses channels' ``database_sync_to_async``: see the note in
 # tests/test_diff_stability.py for why that needs the database marker here.
@@ -30,6 +45,24 @@ class ComponentWithAsyncProperty(Component):
     @property
     async def computed_value(self) -> int:
         """Async property that computes a value."""
+        return self.base_value * 2
+
+
+class ComponentWithQueryingProperty(InlineTemplate, Component):
+    """A plain property that uses the ORM, next to an async one."""
+
+    source: t.ClassVar[str] = "<div {% tag_header %}>{{ usernames|join:',' }} <b>{{ computed_value }}</b></div>"
+
+    base_value: int = 0
+
+    @property
+    def usernames(self) -> list[str]:
+        from django.contrib.auth.models import User
+
+        return list(User.objects.values_list("username", flat=True))
+
+    @property
+    async def computed_value(self) -> int:
         return self.base_value * 2
 
 
@@ -164,25 +197,23 @@ class TestRenderDiffOptimization:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_render_diff_uses_async_context(self):
-        """Test that render_diff calls _get_context_async."""
-        from unittest.mock import AsyncMock, patch
+    @pytest.mark.django_db(transaction=True)  # the async ORM writes on another thread's connection
+    async def test_a_property_that_queries_renders_live(self):
+        """Properties are read off the event loop, where the ORM may run (#120).
 
-        from django.contrib.auth.models import AnonymousUser
+        Read on the loop, the first live render of a component with such a
+        property raised SynchronousOnlyOperation on a real server.
+        """
+        from django.contrib.auth.models import User
 
-        wire = MockWireviewMeta()
-        repo = MockRepository()
-        component = SimpleComponent(user=AnonymousUser(), wire=wire, value=42)
+        await User.objects.acreate(username="alice")
+        view = await mount(ComponentWithQueryingProperty, base_value=21)
 
-        # Mock _get_context_async to verify it's called
-        wire._get_context_async = AsyncMock(return_value={"value": 42})
+        diff = await view.render_diff()
 
-        # Mock _render_with_context to avoid template issues
-        with patch.object(wire, "_render_with_context", return_value=None):
-            await wire.render_diff(component, repo)
-
-        # Verify _get_context_async was called
-        wire._get_context_async.assert_called_once_with(component, repo, None)
+        assert diff is not None
+        assert "alice" in str(diff)
+        assert "42" in str(diff)
 
     @pytest.mark.asyncio
     @pytest.mark.integration

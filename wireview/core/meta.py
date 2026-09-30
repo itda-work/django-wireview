@@ -314,12 +314,14 @@ class WireviewMeta:
             stale = component._stale_temporaries()
             reads = RenderReads(id(component), stale, type(component).model_fields) if stale else None
 
-            # Resolve async properties in async context first to avoid
-            # nested async_to_sync calls inside sync template rendering
-            context = await self._get_context_async(component, repo, reads)
-
-            # Template rendering is sync (Django templates are synchronous)
-            html = await db(self._render_with_context)(component, context, reads)
+            # Properties are read and the template rendered off the event loop,
+            # where a property may query the database (#120). An async property
+            # is awaited back on the loop between the two, and only then does
+            # the render take a second trip.
+            context, html, pending = await db(self._collect_and_render)(component, repo, reads)
+            if pending:
+                await self._await_properties(context)
+                html = await db(self._render_with_context)(component, context, reads)
             if not html:
                 return None
 
@@ -526,18 +528,40 @@ class WireviewMeta:
     )
 
     async def _get_context_async(self, component: "Component", repo: Repo, reads: RenderReads | None = None) -> Context:
-        """Build the template context asynchronously.
+        """Build the template context from an async context.
 
-        This method resolves async properties (coroutines) directly using await,
-        avoiding the need for async_to_sync which would create nested transitions.
-        This is the preferred method for building context in async contexts.
+        Properties are read in a worker thread, since a plain property may use
+        the ORM and Django refuses that on the event loop (#120). Async
+        properties come back as coroutines and are awaited here, on the loop.
+        """
+        context = await db(self._collect_context)(component, repo, reads)
+        await self._await_properties(context)
+        return context
 
-        Args:
-            component: The component to build context for.
-            repo: The component repository.
+    def _collect_and_render(
+        self, component: "Component", repo: Repo, reads: RenderReads | None = None
+    ) -> tuple[Context, SafeText | None, bool]:
+        """Read the context and render it in one trip off the event loop.
 
-        Returns:
-            A dictionary containing the template context.
+        Returns ``(context, html, pending)``. When an async property left a
+        coroutine in the context, ``pending`` is true and nothing is rendered:
+        the caller awaits it on the loop and renders then.
+        """
+        context = self._collect_context(component, repo, reads)
+        if any(iscoroutine(value) for value in context.values()):
+            return context, None, True
+        return context, self._render_with_context(component, context, reads), False
+
+    @staticmethod
+    async def _await_properties(context: Context) -> None:
+        for name, value in context.items():
+            if iscoroutine(value):
+                context[name] = await value
+
+    def _collect_context(self, component: "Component", repo: Repo, reads: RenderReads | None = None) -> Context:
+        """Read every public attribute of the component into a context (sync).
+
+        Async properties are left as coroutines for the caller to await.
         """
         context: Context = {}
 
@@ -554,9 +578,6 @@ class WireviewMeta:
                     if attr_name not in reads.stale and attr_name not in reads.other:
                         (reads.stale if slot.stale and not slot.other else reads.other).add(attr_name)
                 if not callable(attr):
-                    # Await coroutines directly - no async_to_sync needed
-                    if iscoroutine(attr):
-                        attr = await attr
                     context[attr_name] = attr
 
         from ..slots import SlotContainer
