@@ -54,6 +54,13 @@ DEFAULT: dict[str, t.Any] = {
     "TELEMETRY": False,
     # Load each app's static/<app_label>/hooks/*.js from {% wireview_header %}
     "COLLECT_HOOKS": True,
+    # Client reconnect backoff, in milliseconds (static/wireview/reconnect.mjs, #124).
+    # The first retry waits MIN_DELAY plus up to JITTER (drawn once per page), each
+    # later one GROW_FACTOR times longer, never more than MAX_DELAY.
+    "RECONNECT_MIN_DELAY_MS": 1000,
+    "RECONNECT_JITTER_MS": 4000,
+    "RECONNECT_MAX_DELAY_MS": 10000,
+    "RECONNECT_GROW_FACTOR": 1.3,
 }
 
 #: Keys that existed and are gone, and what to do instead. ``wireview.W014``
@@ -142,3 +149,7 @@ if t.TYPE_CHECKING:
     AUTO_GENERATE_STUBS: bool
     TELEMETRY: bool
     COLLECT_HOOKS: bool
+    RECONNECT_MIN_DELAY_MS: int
+    RECONNECT_JITTER_MS: int
+    RECONNECT_MAX_DELAY_MS: int
+    RECONNECT_GROW_FACTOR: float

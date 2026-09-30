@@ -6,6 +6,7 @@ import { BINDING_PREFIX, bindingsFor, parseBinding, runSteps } from "./events.mj
 import { planInsert, planTrim } from "./streams.mjs";
 import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
+import { readReconnectSettings, reconnectOptions } from "./reconnect.mjs";
 import { NAVIGATED_EVENT, NavigationLog, carriedAcross } from "./navigation.mjs";
 import boost from "./wireview-boost";
 
@@ -118,6 +119,9 @@ class ServerConnection {
       [],
       {
         maxEnqueuedMessages: 0,
+        // The backoff WIREVIEW["RECONNECT_*"] sets (#124): what a rolling
+        // deploy's crowd of reconnecting pages does to the servers left
+        ...reconnectOptions(readReconnectSettings(document)),
       }
     );
 

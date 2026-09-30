@@ -179,3 +179,29 @@ def test_auto_recover_without_a_handler_replays_the_forms_change_binding(link):
     link.restore()
 
     expect_text(by(page, "city-value"), "Seoul")
+
+
+# --- the reconnect backoff is the operator's (#124) ------------------------------------
+
+
+@pytest.fixture
+def quick_reconnect(settings):
+    """Every 100 ms, no jitter. Listed before ``link`` so the page is served with it."""
+    settings.WIREVIEW = {
+        **getattr(settings, "WIREVIEW", {}),
+        "RECONNECT_MIN_DELAY_MS": 100,
+        "RECONNECT_JITTER_MS": 0,
+        "RECONNECT_MAX_DELAY_MS": 100,
+        "RECONNECT_GROW_FACTOR": 1,
+    }
+
+
+def test_the_page_retries_at_the_pace_the_settings_give(quick_reconnect, link):
+    page = link.page
+    before = page.evaluate("window.__link.sockets.length")
+    link.cut()
+
+    # The library's default waits 1 to 5 seconds before the first retry, so
+    # five attempts inside two seconds can only come from the settings.
+    page.wait_for_function(f"window.__link.sockets.length >= {before + 5}", timeout=2000)
+    link.restore()

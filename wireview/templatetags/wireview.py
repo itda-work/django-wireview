@@ -66,6 +66,13 @@ def wireview_header(context):
         # it makes the middleware include it in the header. Absent on older
         # Django or without the middleware, and then nothing is added.
         "CSP_NONCE": getattr(request, "_csp_nonce", None) if request is not None else None,
+        # How long the client waits before opening the socket again (#124)
+        "RECONNECT": {
+            "min_delay": settings.RECONNECT_MIN_DELAY_MS,
+            "jitter": settings.RECONNECT_JITTER_MS,
+            "max_delay": settings.RECONNECT_MAX_DELAY_MS,
+            "grow_factor": settings.RECONNECT_GROW_FACTOR,
+        },
     }
 
 

@@ -2,6 +2,11 @@
 
 <meta name="wireview-boost" data-enabled="{{ BOOST_PAGES|lower }}" />
 <meta name="wireview-live-session" content="{{ LIVE_SESSION }}" />
+<meta name="wireview-reconnect"
+      data-min-delay="{{ RECONNECT.min_delay|stringformat:"s" }}"
+      data-jitter="{{ RECONNECT.jitter|stringformat:"s" }}"
+      data-max-delay="{{ RECONNECT.max_delay|stringformat:"s" }}"
+      data-grow-factor="{{ RECONNECT.grow_factor|stringformat:"s" }}" />
 {# The nonce goes inside each tag; reformatting would spread the rendered tags over lines. #}
 {# djlint:off #}
 <style{% if CSP_NONCE %} nonce="{{ CSP_NONCE }}"{% endif %}>
