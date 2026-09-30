@@ -42,3 +42,17 @@ async def test_the_bench_joins_with_a_state_a_project_with_boundaries_accepts():
             await communicator.disconnect()
 
     assert first["command"] == "render", first
+
+
+async def test_the_in_process_bench_runs_every_scenario():
+    # The bench reaches into internals (WireviewMeta._collect_context, the consumer's
+    # render path) and neither pyright nor the rest of the suite reads bench/. #145
+    # removed _get_context_async after looking for callers everywhere but here, and
+    # `make bench` died on it. Small sizes: this asserts that it runs, not what it measures.
+    from bench import payload
+
+    with override_settings(INSTALLED_APPS=[*settings.INSTALLED_APPS, "bench.benchapp"]):
+        results = await payload.run(items=3, iterations=1, long_items=4, long_iterations=1, copies=1)
+
+    assert results["timing"]["list.template_render_ms"] >= 0
+    assert results["payload_bytes"]["list.first_render"] > 0

@@ -30,6 +30,20 @@ async def _diff(view):
     return await view.wire.render_diff(view.component, view._repo)
 
 
+async def _context(wire, component, repo):
+    """The template context the live render builds, read the way render_diff() reads it.
+
+    Off the loop with ``_collect_context``, then async properties awaited on it. Trees
+    before d369b01 have neither and did both in ``_get_context_async``, which later
+    trees removed; falling back to it keeps ``bench-compare`` working against them.
+    """
+    if not hasattr(wire, "_collect_context"):
+        return await wire._get_context_async(component, repo)
+    context = await db(wire._collect_context)(component, repo)
+    await wire._await_properties(context)
+    return context
+
+
 class _Outbound:
     """Collects what the consumer would send to the browser."""
 
@@ -164,7 +178,10 @@ async def _list_edit_timing(component_class, count: int, iterations: int) -> dic
     return result
 
 
-async def run(items: int = 50, iterations: int = 300) -> dict[str, t.Any]:
+async def run(
+    items: int = 50, iterations: int = 300, long_items: int = 500, long_iterations: int = 100, copies: int = 50
+) -> dict[str, t.Any]:
+    """Every scenario once. The defaults are the benchmark; tests pass small sizes to see that it still runs."""
     from bench.benchapp.live import BenchFlat, BenchList
 
     payload: dict[str, int] = {}
@@ -196,8 +213,8 @@ async def run(items: int = 50, iterations: int = 300) -> dict[str, t.Any]:
 
     # --- list edits that shift item positions (GAP-030) ---
     payload.update(await _list_edit_scenarios(BenchList, items))
-    payload.update(await _list_edit_scenarios(BenchList, 500, prefix="list500"))
-    timing.update(await _list_edit_timing(BenchList, 500, iterations=100))
+    payload.update(await _list_edit_scenarios(BenchList, long_items, prefix=f"list{long_items}"))
+    timing.update(await _list_edit_timing(BenchList, long_items, iterations=long_iterations))
 
     # --- a parent with nested LiveComponents, through the consumer's render path ---
     payload.update(await _live_component_scenarios())
@@ -212,7 +229,7 @@ async def run(items: int = 50, iterations: int = 300) -> dict[str, t.Any]:
     timing["list.event_ms"] = (time.perf_counter() - t0) * 1000 / iterations
 
     wire, comp, repo = view.wire, view.component, view._repo
-    context = await wire._get_context_async(comp, repo)
+    context = await _context(wire, comp, repo)
     t0 = time.perf_counter()
     for _ in range(iterations):
         await db(wire._render_with_context)(comp, context)
@@ -230,13 +247,13 @@ async def run(items: int = 50, iterations: int = 300) -> dict[str, t.Any]:
     tracemalloc.start()
     before = tracemalloc.take_snapshot()
     views = []
-    for _ in range(50):
+    for _ in range(copies):
         v = await _live(BenchList, items=make_items())
         await _diff(v)
         views.append(v)
     after = tracemalloc.take_snapshot()
     tracemalloc.stop()
     delta = sum(s.size_diff for s in after.compare_to(before, "filename"))
-    memory = {"list.component_kb": delta / 50 / 1024}
+    memory = {"list.component_kb": delta / copies / 1024}
 
     return {"payload_bytes": payload, "timing": timing, "memory": memory}
