@@ -51,7 +51,7 @@ async def test_increment():
 
 ```python
 @pytest.mark.asyncio
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)   # acreate가 커밋한다. 아래 "DB를 건드리는 테스트"
 async def test_filter_hides_read_items():
     await Bookmark.objects.acreate(title="새 글", url="https://example.com/new")
     await Bookmark.objects.acreate(title="지난 글", url="https://example.com/old", is_read=True)
@@ -96,20 +96,28 @@ async def test_paging():
 
 ## DB를 건드리는 테스트
 
-**`@pytest.mark.django_db`는 async ORM 호출을 롤백하지 못한다.** 동기 ORM은 정상적으로
-롤백되지만, `acreate`·`asave`·`adelete`로 쓴 레코드는 테스트가 끝나도 남아 다음 테스트에
-보인다. wireview 핸들러는 async라 사실상 모든 컴포넌트 테스트가 여기에 걸린다.
+**async ORM으로 쓰는 테스트는 `@pytest.mark.django_db(transaction=True)`.** 그냥 `django_db`의
+롤백은 테스트 스레드의 연결에만 걸린다. `acreate`·`asave`·`adelete`와 async 핸들러 안의 ORM 호출은
+워커 스레드의 연결에서 곧바로 커밋되어, 테스트가 끝나도 남아 다음 테스트에 보인다. 실행 순서에 따라
+UNIQUE 충돌이나 개수 단언 실패로 드러난다. wireview 핸들러는 async라 DB에 쓰는 컴포넌트 테스트는
+대부분 여기에 걸린다.
 
 ```python
-    # 이렇게 쓰지 않는다 — 앞선 테스트가 남긴 레코드까지 센다
-    assert await Bookmark.objects.acount() == 0
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_delete_removes_the_bookmark():
+    bookmark = await Bookmark.objects.acreate(title="t", url="https://example.com")
+    view = await mount(XBookmarkList)
 
-    # 이렇게 쓴다 — 이 테스트가 만든 레코드만 본다
-    assert not await Bookmark.objects.filter(pk=bookmark.pk).aexists()
+    await view.call("delete", bookmark_id=bookmark.pk)
+
+    assert await Bookmark.objects.acount() == 0
 ```
 
-전역 개수·목록 비교를 피하고 pk로 범위를 좁힌다. 격리가 꼭 필요하면
-`@pytest.mark.django_db(transaction=True)`를 쓰되 느려진다.
+`transaction=True`는 테스트가 끝날 때 테이블을 비운다. wireview 저장소(SQLite, 모델 22개)에서 잰
+비용은 테스트 하나에 약 15ms다. 읽기만 하는 테스트는 그냥 `django_db`로 충분하다. 픽스처라면
+`db` 대신 `transactional_db`를 받는다. pk로 범위를 좁힌 단언은 그 테스트만 지킬 뿐, 남긴 행이
+다른 테스트를 깨뜨린다.
 배경: https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/09-testing-components.md
 
 ## wireview 설정을 바꿔야 할 때

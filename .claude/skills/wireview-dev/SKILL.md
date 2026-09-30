@@ -143,14 +143,15 @@ PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflow
 - async 테스트가 태스크·채널 레이어가 나중에 할 일을 기다릴 때는 고정 `asyncio.sleep` 대신
   `testproj.waiting.eventually(조건)`을 쓴다. 느린 러너에서만 실패하는 테스트가 여기서 나왔다(#143).
   그 일을 하는 태스크를 쥘 수 있으면 `task=`로 넘긴다 — 태스크가 던진 예외가 "시간 안에 참이 아니다" 대신 바로 올라온다(#148).
-- **async 테스트가 ORM에 쓰면 `@pytest.mark.django_db(transaction=True)`.** 그냥 `django_db`의 롤백은 테스트 스레드의
-  연결에만 걸리고, async ORM 호출은 워커 스레드의 연결에서 곧바로 커밋된다. 남은 행은 다음 테스트의 UNIQUE 충돌이나
-  개수 단언으로 순서에 따라 드러난다. `tests/testproj/row_guard.py`가 그런 테스트를 teardown 오류로 실패시킨다(#133).
   고친 테스트는 그 경로에 지연을 넣은 파라미터로도 돌린다(`tests/test_presence.py`의 `broadcast_pace`).
   메시지를 "조용해질 때까지" 모으는 루프(`receive_nothing`, `wait_for(..., 0.2)`)도 같은 문제다 — 기대하는
   메시지는 끝까지 기다리고, 조용한 창은 "그 뒤에 더 없음"을 확인하는 데만 쓴다(`tests/test_joined.py`).
   타이머 자체(만료·리셋·충전)는 벽시계 대신 테스트가 움직이는 시계로 잰다(`tests/test_presence.py`의
   `presence_clock`, `tests/test_lifecycle_hooks.py`의 `TestRateLimitExample.clock`). 브라우저의 debounce·throttle만 sleep을 둔다.
+- **async 테스트가 ORM에 쓰면 `@pytest.mark.django_db(transaction=True)`.** 그냥 `django_db`의 롤백은 테스트 스레드의
+  연결에만 걸리고, async ORM 호출은 워커 스레드의 연결에서 곧바로 커밋된다. 남은 행은 다음 테스트의 UNIQUE 충돌이나
+  개수 단언으로 순서에 따라 드러난다. `tests/testproj/row_guard.py`가 그런 테스트를 teardown 오류로 실패시킨다 — 실행의
+  마지막 테스트와 테스트 하나만 돌린 실행도 본다(#133).
 
 ### 벤치마크를 잴 때 주의
 

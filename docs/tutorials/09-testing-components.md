@@ -63,6 +63,8 @@ async def test_counter_with_initial_value():
 각자의 앱에서 import한다. `XForm`·`XLogin`·`XDashboard`·`XProductList`는 설명을 위한 가상의 컴포넌트다.
 
 DB를 읽거나 쓰는 컴포넌트는 `joined()`에서 이미 DB에 닿으므로, 그 테스트에는 `@pytest.mark.django_db`가 필요하다.
+테스트나 핸들러가 async ORM으로 **쓰면** `@pytest.mark.django_db(transaction=True)`다 — 이유는
+[모델과 함께 테스트](#모델과-함께-테스트)의 끝에 있다.
 
 ### MountedComponent API
 
@@ -127,7 +129,7 @@ async def test_multiple_increments():
 ### 비동기 핸들러
 
 ```python
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_joined_loads_items():
     """비동기 데이터 로딩"""
@@ -144,7 +146,7 @@ async def test_joined_loads_items():
 ### 단순 상태
 
 ```python
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_state_changes():
     item = await Item.objects.acreate(text="Buy milk")
@@ -167,7 +169,7 @@ async def test_state_changes():
 from wireview import ModelAction
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_list_state():
     view = await mount(XTodoList)
@@ -206,7 +208,7 @@ async def test_computed_property():
 ### 전송된 메시지 확인
 
 ```python
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_send_message():
     room = await Room.objects.acreate(name="general")
@@ -221,7 +223,7 @@ async def test_send_message():
 ### 메시지 초기화
 
 ```python
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_multiple_messages():
     room = await Room.objects.acreate(name="general")
@@ -330,7 +332,7 @@ async def test_paging_reloads_the_page_of_products():
 렌더하고 아이템 HTML은 별도 메시지로 간다.
 
 ```python
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_stream_insert():
     room = await Room.objects.acreate(name="general")
@@ -352,7 +354,7 @@ async def test_stream_insert():
 ### Stream 상태
 
 ```python
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_stream_state():
     for i in range(25):            # 한 번에 20개씩 읽으므로 그보다 많이
@@ -381,7 +383,7 @@ Presence 알림은 클라이언트가 아니라 채널로 가는 브로드캐스
 ### Presence 메시지
 
 ```python
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_presence_join():
     room = await Room.objects.acreate(name="general")
@@ -398,7 +400,7 @@ async def test_presence_join():
 ### 타이핑 표시
 
 ```python
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_typing_indicator():
     room = await Room.objects.acreate(name="general")
@@ -429,8 +431,8 @@ async def counter():
 
 
 @pytest.fixture
-async def todo_list(db):
-    """데이터베이스와 함께 사용"""
+async def todo_list(transactional_db):
+    """데이터베이스와 함께 사용. async ORM으로 쓰므로 transactional_db"""
     # 테스트 데이터 생성
     await Item.objects.acreate(text="Test item")
     return await mount(XTodoList)
@@ -459,7 +461,7 @@ import pytest
 from myapp.models import Item
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_create_item():
     view = await mount(XTodoList)
@@ -470,7 +472,7 @@ async def test_create_item():
     assert await Item.objects.filter(text="New item").aexists()
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_delete_item():
     # 테스트 아이템 생성
@@ -484,16 +486,22 @@ async def test_delete_item():
     assert not await Item.objects.filter(id=item.id).aexists()
 ```
 
-> **`django_db`는 async ORM 호출을 롤백하지 못한다.**
-> `@pytest.mark.django_db`는 각 테스트를 트랜잭션으로 감싸고 끝에 롤백한다. 동기 ORM은
-> 그대로 동작하지만, `acreate`·`asave`·`adelete`로 쓴 레코드는 그 트랜잭션 밖에서 커밋되어
-> 다음 테스트에 그대로 보인다. 컴포넌트 핸들러는 async이므로 대부분의 컴포넌트 테스트가
-> 여기에 해당한다.
+> **async ORM으로 쓰는 테스트는 `django_db(transaction=True)`.**
+> `@pytest.mark.django_db`는 각 테스트를 트랜잭션으로 감싸고 끝에 롤백한다. 그 트랜잭션은
+> 테스트 스레드의 연결에만 걸린다. `acreate`·`asave`·`adelete`와 async 핸들러 안의 ORM 호출은
+> 워커 스레드의 다른 연결에서 곧바로 커밋되므로, 쓴 레코드가 롤백되지 않고 다음 테스트에 남는다.
+> 남은 레코드는 실행 순서에 따라 다음 테스트의 UNIQUE 충돌이나 개수 단언 실패로 드러난다.
+> 컴포넌트 핸들러는 async이므로 DB에 쓰는 컴포넌트 테스트는 대부분 여기에 해당한다.
 >
-> 그래서 위 예제들은 전역 개수가 아니라 **pk로 범위를 좁혀** 검사한다.
-> `await Item.objects.acount() == 0` 같은 단언은 앞선 테스트가 남긴 레코드 때문에 깨진다.
-> 격리가 꼭 필요하면 `@pytest.mark.django_db(transaction=True)`를 쓰되, 매 테스트마다
-> 테이블을 비우므로 느려진다.
+> `transaction=True`는 트랜잭션 대신 테스트가 끝날 때 테이블을 비운다. 그래서 async 쓰기도
+> 남지 않는다. 비용은 크지 않다. 이 저장소(SQLite, 모델 22개)에서 잰 값은 테스트 하나에
+> 약 15ms였다. 테스트 23개를 이 표시로 바꾸자 그 파일들(테스트 35개)의 실행 시간이 5회 중앙값으로
+> 0.59초에서 0.93초가 됐다.
+> 읽기만 하는 테스트(`test_computed_property`)는 그냥 `django_db`로 충분하다. 픽스처로 쓸 때는
+> `db` 대신 `transactional_db`를 받는다.
+>
+> 그냥 `django_db`로 두고 pk로 범위를 좁혀 단언하는 방법도 있다. 그러나 그 테스트는 통과해도
+> 남긴 행이 다른 테스트를 깨뜨린다.
 
 ## 에러 테스트
 
@@ -562,7 +570,7 @@ async def test_simple_logic():
 
 
 @pytest.mark.integration
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_with_database():
     """통합 테스트"""

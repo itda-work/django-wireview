@@ -34,6 +34,7 @@ import urllib.request
 from pathlib import Path
 
 import pytest
+from testproj.time_limit import disown, own
 
 pytestmark = pytest.mark.e2e
 
@@ -51,7 +52,9 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def _wait_for_port(port: int, proc: subprocess.Popen, timeout: float = 60.0) -> None:
+# Well inside the per-test limit (testproj/time_limit.py), so a worker that is slow
+# to start is reported here, with its log, rather than as a stopped run.
+def _wait_for_port(port: int, proc: subprocess.Popen, timeout: float = 30.0) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         if proc.poll() is not None:
@@ -100,7 +103,8 @@ def workers(tmp_path_factory):
 
     log_dir = tmp_path_factory.mktemp("workers")
     ports = [_free_port(), _free_port()]
-    procs = [_start_worker(port, log_dir) for port in ports]
+    # A stopped run skips this fixture's teardown; the stop terminates what it owns.
+    procs = [own(_start_worker(port, log_dir)) for port in ports]
     try:
         for port, proc in zip(ports, procs):
             _wait_for_port(port, proc)
@@ -121,6 +125,7 @@ def workers(tmp_path_factory):
                 proc.wait(timeout=10)
             except subprocess.TimeoutExpired:  # pragma: no cover - a wedged worker
                 proc.kill()
+            disown(proc)
 
 
 def _get(url: str) -> str:

@@ -198,6 +198,13 @@ def _self_attr(node: ast.AST) -> str | None:
     return None
 
 
+def _self_call(node: ast.AST) -> str | None:
+    """``name()`` for ``self.name()``, the key of a helper method."""
+    if isinstance(node, ast.Call) and (name := _self_attr(node.func)):
+        return f"{name}()"
+    return None
+
+
 def _own_nodes(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.AST]:
     """The nodes of a function's body, without those of the functions and lambdas it defines:
     a nested synchronous function is what gets handed to ``sync_to_async``."""
@@ -217,7 +224,7 @@ def _is_orm(node: ast.expr, lazy: set[str]) -> bool:
         node = node.value
     if _self_attr(node) in lazy:
         return True
-    if isinstance(node, ast.Call) and f"{_self_attr(node.func)}()" in lazy:
+    if _self_call(node) in lazy:
         return True
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in QUERYSET_METHODS:
         return True
@@ -254,17 +261,19 @@ def _evaluations(func: ast.FunctionDef | ast.AsyncFunctionDef, lazy: set[str], e
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in SYNC_CONSUMERS:
             found += [ast.unparse(node) for arg in node.args if _is_orm(arg, lazy)]
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            if f"{_self_attr(node.func)}()" in evaluating or (
+            if _self_call(node) in evaluating or (
                 node.func.attr in EVALUATING_METHODS and (_is_orm(node.func.value, lazy) or _looks_like_a_query(node))
             ):
                 found.append(ast.unparse(node))
         # Truth and membership run the query too: ``if qs:``, ``not qs``, ``qs or []``, ``x in qs``.
-        elif isinstance(node, (ast.If, ast.While, ast.IfExp, ast.Assert)) and _is_orm(node.test, lazy):
-            found.append(f"bool({ast.unparse(node.test)})")
-        elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not) and _is_orm(node.operand, lazy):
-            found.append(ast.unparse(node))
+        elif isinstance(node, (ast.If, ast.While, ast.IfExp, ast.Assert)):
+            found += _truth_tested(node.test, lazy)
+        elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            found += _truth_tested(node.operand, lazy)
         elif isinstance(node, ast.BoolOp):
-            found += [f"bool({ast.unparse(v)})" for v in node.values if _is_orm(v, lazy)]
+            # The last operand is the value, not a test: ``self.cached or Item.objects.all()``
+            # hands the QuerySet on unevaluated.
+            found += [e for v in node.values[:-1] for e in _truth_tested(v, lazy)]
         elif isinstance(node, ast.Compare):
             found += [
                 ast.unparse(node)
@@ -276,7 +285,16 @@ def _evaluations(func: ast.FunctionDef | ast.AsyncFunctionDef, lazy: set[str], e
                 found.append(ast.unparse(node))
         elif _self_attr(node) in evaluating:
             found.append(ast.unparse(node))
-    return found
+    # A BoolOp under ``if`` is met twice, as the test and as itself.
+    return list(dict.fromkeys(found))
+
+
+def _truth_tested(node: ast.expr, lazy: set[str]) -> list[str]:
+    """The QuerySets asked for their truth where ``node`` is: every operand of an
+    ``and``/``or`` that is itself a test, the last one included."""
+    if isinstance(node, ast.BoolOp):
+        return [e for v in node.values for e in _truth_tested(v, lazy)]
+    return [f"bool({ast.unparse(node)})"] if _is_orm(node, lazy) else []
 
 
 def _classify(funcs: list[ast.FunctionDef], lazy: set[str], evaluating: set[str]) -> None:
@@ -476,8 +494,12 @@ _QUESTIONS = (
         "    async def pick(self, item):\n        self.ok = item in self.items",
         "class A(Component):\n    @property\n    def items(self):\n        return self.list.items.all()\n"
         "    async def joined(self):\n        self.empty = not self.items",
+        "class A(Component):\n    async def joined(self):\n        self.any = Item.objects.filter(done=False) or []",
+        # The last operand is tested too when the whole and/or is the test.
         "class A(Component):\n    async def joined(self):\n"
-        "        self.any = self.ready and Item.objects.filter(done=False)",
+        "        if self.ready and Item.objects.filter(done=False):\n            pass",
+        "class A(Component):\n    async def joined(self):\n"
+        "        self.none = not (self.ready and Item.objects.filter(done=False))",
         # One document, two classes, one name: each handler is judged by its own class (#149).
         "class A(Component):\n    @property\n    def items(self):\n        return list(Item.objects.all())\n"
         "    async def joined(self):\n        self.n = len(self.items)\n"
@@ -529,6 +551,12 @@ def test_the_property_scan_catches_a_query_on_the_event_loop(source):
         "class A(Component):\n    @property\n    def picked(self):\n        return list(self.answers.values())\n"
         "    async def joined(self):\n        rows = [r async for r in Item.objects.all()]\n"
         "        if rows and not self.picked:\n            pass",
+        # The last operand of and/or is the value, handed on unevaluated.
+        "class A(Component):\n    async def joined(self):\n        rows = self.cached or Item.objects.all()\n"
+        "        self.n = await rows.acount()",
+        "class A(Component):\n    async def joined(self):\n"
+        "        rows = self.show and Item.objects.filter(done=False)\n"
+        "        self.names = [r.name async for r in rows]",
         # One document, two classes, one name: B's handler reads B's property, which queries nothing (#149).
         "class A(Component):\n    @property\n    def items(self):\n        return list(Item.objects.all())\n"
         "class B(Component):\n    @property\n    def items(self):\n        return self.cached\n"

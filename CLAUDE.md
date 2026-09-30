@@ -130,6 +130,7 @@ tests/
                            기다리는 일을 하는 태스크가 있으면 task= 로 넘긴다 — 그 태스크가 던지면 그 예외가 바로 올라온다(#148).
                            time_limit.py 는 테스트 하나(setup·teardown 포함)가 test_time_limit 초를 넘기면 모든 스레드의
                            스택을 찍고 실행을 끝내는 플러그인이다. 실패한 테스트의 teardown 멈춤까지 잡는다(#148).
+                           pdb에 들어가면 멈춘다. 끝낸 뒤의 teardown은 돌지 않으므로 자식 프로세스를 띄우는 픽스처는 own()에 넘긴다.
                            row_guard.py 는 테스트가 끝난 뒤(롤백·flush 후) 커밋된 행이 늘어 있으면 그 테스트를 teardown 오류로
                            실패시키는 플러그인이다. async 테스트의 ORM 쓰기는 워커 스레드 연결에서 커밋되어 롤백되지 않는다 —
                            그런 테스트는 django_db(transaction=True)로 표시한다(#133).

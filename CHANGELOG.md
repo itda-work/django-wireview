@@ -100,7 +100,8 @@ The django-reactor era changelog (2.x) is preserved in
   another such property -- or that evaluates a property returning a QuerySet synchronously. A
   property that returns a QuerySet as is passes (#145). The same holds for a plain helper method
   the handler calls, `values_list()` and `values()` with fields, and the truth of a QuerySet
-  (`if qs:`, `not qs`, `qs or []`, `x in qs`, `bool(qs)`). `first()` or `get(k=...)` on a
+  (`if qs:`, `not qs`, `qs or []`, `x in qs`, `bool(qs)`); the last operand of `and`/`or` outside a test is
+  its value, not tested (`self.cached or qs` passes). `first()` or `get(k=...)` on a
   component's own attribute (`self.history.first()`) is no longer taken for a query, and two
   classes in one document that give a property name different answers are judged each by its own.
   A foreign key followed by attribute (`self.post.author.name`) is still not caught (#149).
@@ -248,13 +249,20 @@ The django-reactor era changelog (2.x) is preserved in
   (`tests/testproj/row_guard.py`). Under a plain `django_db` mark, an async test's ORM writes
   commit on a worker thread's connection, outside the transaction that is rolled back, and stay
   for the tests after it. 23 tests did -- the poll, quiz, rating, search and dashboard examples,
-  the bookmarks baseline and one model-state test; they are now `transaction=True` (#133).
+  the bookmarks baseline and one model-state test; they are now `transaction=True`. The last test of a
+  run, and a test run alone, are counted as the test database is taken down. Tutorial 09, the
+  testing reference and the `wireview` skill now tell to mark a test that writes through the async
+  ORM `django_db(transaction=True)` rather than to narrow its assertions by pk, which kept that test
+  green and left its rows to break others; it cost about 15 ms a test here (#133).
 
 - Test harness: a test that hangs stops the run after 60 seconds (`test_time_limit` in
   `pyproject.toml`) and prints every thread's stack, instead of holding it until the CI job's
   limit. pytest-timeout and pytest's `faulthandler_timeout` were not enough: both stop their
   timer when a test fails, and the render gate's always-blocked mutation hung in the teardown of
-  a test that had already failed (`tests/testproj/time_limit.py`). `eventually(..., task=)`
+  a test that had already failed (`tests/testproj/time_limit.py`). Entering pdb (`--pdb`,
+  `breakpoint()`) stops the timer, and a test started under another debugger has none; a stop
+  terminates the child processes handed to `own()` (the two workers of the multi-worker upload
+  test) and says how to turn it off, `-o test_time_limit=0`. `eventually(..., task=)`
   raises the watched task's exception at once instead of reporting only that the wait ran out.
   The documented rate limit's test now checks the bucket stops at `BURST` after a long idle;
   removing the cap passed all its tests before (#148).
