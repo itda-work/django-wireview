@@ -10,6 +10,7 @@ Tests cover:
 import asyncio
 
 import pytest
+from testproj.waiting import eventually
 
 from wireview import Component
 from wireview.features.presence import (
@@ -19,7 +20,25 @@ from wireview.features.presence import (
     PresenceTrackerMixin,
     PresenceUser,
 )
-from wireview.testing import mount
+from wireview.testing import MockChannelLayer, mount
+
+
+@pytest.fixture(params=["prompt", "slow"])
+def broadcast_pace(request, monkeypatch):
+    """A channel layer that answers at once, and one that takes its time (#143).
+
+    "slow" holds every group_send for longer than the typing timeout, as a busy
+    runner may: the clear the timeout broadcasts lands well after the timeout.
+    """
+    if request.param == "slow":
+        send = MockChannelLayer.group_send
+
+        async def slow(self, group, message):
+            await asyncio.sleep(0.2)
+            await send(self, group, message)
+
+        monkeypatch.setattr(MockChannelLayer, "group_send", slow)
+    return request.param
 
 
 # Test Components (prefixed with X to avoid pytest collection)
@@ -163,7 +182,7 @@ class TestPresenceMixin:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_typing_auto_timeout(self):
+    async def test_typing_auto_timeout(self, broadcast_pace):
         """Typing should auto-clear after timeout."""
         view = await mount(XProducerComponent, room_id=1, username="dave")
         view.wire._mock_channel_layer.clear()
@@ -172,19 +191,19 @@ class TestPresenceMixin:
         await view.component.presence_set_typing(typing=True)
         assert view.component._presence_is_typing is True
 
-        # Wait for timeout (0.1s + small buffer)
-        await asyncio.sleep(0.15)
+        def clear_broadcasts():
+            return [
+                b
+                for b in view.presence_broadcasts
+                if b.get("kwargs", {}).get("action") == "presence_typing"
+                and b.get("kwargs", {}).get("state") == "online"
+            ]
+
+        # The timeout broadcasts the clear, whenever the runner gets to it
+        await eventually(clear_broadcasts)
 
         # Should have auto-cleared
         assert view.component._presence_is_typing is False
-
-        # Should have broadcast the clear
-        clear_broadcasts = [
-            b
-            for b in view.presence_broadcasts
-            if b.get("kwargs", {}).get("action") == "presence_typing" and b.get("kwargs", {}).get("state") == "online"
-        ]
-        assert len(clear_broadcasts) >= 1
 
     @pytest.mark.asyncio
     @pytest.mark.unit
@@ -431,7 +450,7 @@ class TestPresenceIntegration:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_typing_timeout_clears_on_tracker(self):
+    async def test_typing_timeout_clears_on_tracker(self, broadcast_pace):
         """Test that typing auto-timeout is reflected on tracker."""
         # Create producer with very short timeout
         producer = await mount(XProducerComponent, room_id=1, username="alice")
@@ -449,12 +468,10 @@ class TestPresenceIntegration:
 
         assert tracker.component._presence_registry["alice"].is_typing()
 
-        # Wait for timeout
-        await asyncio.sleep(0.15)
-
-        # Get the clear broadcast
-        clear_broadcasts = [b for b in producer.presence_broadcasts if b.get("kwargs", {}).get("state") == "online"]
-        assert len(clear_broadcasts) >= 1
+        # Wait for the timeout's clear broadcast
+        clear_broadcasts = await eventually(
+            lambda: [b for b in producer.presence_broadcasts if b.get("kwargs", {}).get("state") == "online"]
+        )
 
         # Tracker receives clear notification
         await tracker.component.notification(

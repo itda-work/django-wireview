@@ -116,6 +116,8 @@ tests/
                            e2e_browser.py 가 브라우저 대기의 정본이다 (open_live·expect_text·expect_count).
                            warning_guard.py 는 ASGI 핸들러가 동기 이터레이터를 서빙했다는 경고가 기록되면 실행을 실패시키는 플러그인이다.
                            page.wait_for_selector 를 다른 곳에 쓰면 test_e2e_harness.py 의 가드가 실패한다
+                           waiting.py 의 eventually() 가 async 테스트에서 백그라운드 작업의 결과를 기다리는 정본이다 —
+                           고정 sleep 으로 기다리지 않는다. 타이머(debounce·throttle·만료)를 재는 테스트만 sleep 을 둔다(#143).
                            bookmarks/ 는 예제가 아니라 wireview 스킬 검증의 기준선이고,
                            uploadprobe/ 는 워커 둘짜리 업로드 E2E(test_multiworker_uploads.py)의 픽스처,
                            livesession/ 은 경계 넘는 이동 E2E(test_live_session_e2e.py)의 픽스처다,

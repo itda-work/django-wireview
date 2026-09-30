@@ -1,5 +1,6 @@
 """Tests for Upload functionality."""
 
+import asyncio
 import json
 import tempfile
 from pathlib import Path
@@ -7,9 +8,11 @@ from pathlib import Path
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 from django.test import AsyncRequestFactory
+from testproj.waiting import eventually
 from testproj.wireview_setting import set_wireview
 
 from wireview import Component
+from wireview.core.meta import WireviewMeta
 from wireview.features import upload_store
 from wireview.features.uploads import (
     ConsumedUpload,
@@ -31,6 +34,24 @@ def store(monkeypatch, tmp_path):
     set_wireview(monkeypatch, UPLOAD_TEMP_DIR=str(tmp_path))
     upload_store.reset_sweep_clock()
     return tmp_path / upload_store.STORE_DIR_NAME
+
+
+@pytest.fixture(params=["prompt", "slow"])
+def config_pace(request, monkeypatch):
+    """A config that goes out at once, and one sent late (#143).
+
+    ``allow_upload`` sends its config from a task. "slow" holds the send as a
+    busy runner may, so a test that guesses how long the task takes sees nothing.
+    """
+    if request.param == "slow":
+        send = WireviewMeta.send_upload_op
+
+        async def slow(self, op, owner):
+            await asyncio.sleep(0.1)
+            await send(self, op, owner)
+
+        monkeypatch.setattr(WireviewMeta, "send_upload_op", slow)
+    return request.param
 
 
 class TestUploadConfig:
@@ -737,18 +758,12 @@ class TestComponentUploadMethods:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_allow_upload_sends_config_message(self):
+    async def test_allow_upload_sends_config_message(self, config_pace):
         """allow_upload should send config to client."""
         view = await mount(UploadComponent)
 
-        # Wait a bit for async task to complete
-        import asyncio
-
-        await asyncio.sleep(0.01)
-
-        # Check that upload_op config message was sent
-        upload_messages = [m for m in view.sent_messages if m.get("type") == "upload_op"]
-        assert len(upload_messages) >= 1
+        # The config goes out from a task: wait for it
+        upload_messages = await eventually(lambda: [m for m in view.sent_messages if m.get("type") == "upload_op"])
 
         config_msg = upload_messages[0]
         assert config_msg["op"] == "config"

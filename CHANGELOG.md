@@ -125,6 +125,12 @@ The django-reactor era changelog (2.x) is preserved in
   `collectstatic` ran in the project venv, which that job never gives the dev extras -- and now
   runs in the same isolated environment as its tests (#136).
 
+- Tests: no test waits for background work with a fixed sleep any more. Presence typing
+  timeouts, `allow_upload`'s config and the NATS layer tests guessed how long the work took and
+  would fail on a slow runner; they now wait for the result (`testproj.waiting.eventually`) or
+  for `joined`, and each runs again with the work held back. Tests of timers -- debounce,
+  throttle, rate limits, the typing timer's reset -- keep theirs (#143).
+
 - Test harness: two test runs in one checkout no longer break each other. The test database was
   one fixed file, so concurrent runs created, flushed and dropped it under each other and failed
   with "readonly database" and "no such table", differently each time; each test process now has

@@ -136,6 +136,10 @@ PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflow
   얹혀 돌아가고 `make test`가 함께 실행한다. E2E는 `examples/todo/tests.py`, `examples/livecomp/tests.py`.
 - 하네스 픽스처(예제가 아닌 것)는 `tests/testproj/`에 남는다: 설정·URLconf와 `tests/testproj/bookmarks/`.
 - 클라이언트 순수 모듈: `tests/js/*.test.mjs` (node --test).
+- async 테스트가 태스크·채널 레이어가 나중에 할 일을 기다릴 때는 고정 `asyncio.sleep` 대신
+  `testproj.waiting.eventually(조건)`을 쓴다. 느린 러너에서만 실패하는 테스트가 여기서 나왔다(#143).
+  고친 테스트는 그 경로에 지연을 넣은 파라미터로도 돌린다(`tests/test_presence.py`의 `broadcast_pace`).
+  타이머 자체(debounce·throttle·만료)를 재는 테스트만 sleep을 둔다.
 
 ### 벤치마크를 잴 때 주의
 

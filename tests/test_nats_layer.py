@@ -25,6 +25,7 @@ channels_nats = pytest.importorskip("channels_nats")
 from wireview import Component, abroadcast  # noqa: E402
 from wireview.consumer import WireviewConsumer  # noqa: E402
 from wireview.core.meta import WireviewMeta  # noqa: E402
+from wireview.core.rendered import PROTOCOL_VERSION  # noqa: E402
 from wireview.core.state import sign_state  # noqa: E402
 
 # The render path crosses channels' ``database_sync_to_async``: see the note in
@@ -90,7 +91,7 @@ class NatsProbe(Component):
 
 
 async def _join(nats_url: str) -> WebsocketCommunicator:
-    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), "/__wireview__")
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={PROTOCOL_VERSION}")
     communicator.scope["user"] = AnonymousUser()
     connected, _ = await communicator.connect()
     assert connected
@@ -100,7 +101,12 @@ async def _join(nats_url: str) -> WebsocketCommunicator:
     )
     first = await communicator.receive_json_from(timeout=5)
     assert first["command"] == "render"
-    return communicator
+    # The join is over once ``joined`` arrives, and the subscriptions come before
+    # it: what is published from here on reaches the component (#143).
+    for _ in range(5):
+        if (await communicator.receive_json_from(timeout=5))["command"] == "joined":
+            return communicator
+    raise AssertionError("the join did not end")
 
 
 async def _next_render(communicator: WebsocketCommunicator) -> dict:
@@ -111,17 +117,34 @@ async def _next_render(communicator: WebsocketCommunicator) -> dict:
     raise AssertionError("no render received")
 
 
+@pytest.fixture(params=["prompt", "slow"])
+def subscribe_pace(request, monkeypatch):
+    """A broker that registers a subscription at once, and one that takes its time (#143).
+
+    "slow" holds group_add past the render that answers the join, as a busy
+    broker or runner may: a message published then reaches no subscriber.
+    """
+    if request.param == "slow":
+        add = channels_nats.NatsChannelLayer.group_add
+
+        async def slow(self, group, channel):
+            await asyncio.sleep(0.5)
+            await add(self, group, channel)
+
+        monkeypatch.setattr(channels_nats.NatsChannelLayer, "group_add", slow)
+    return request.param
+
+
 def _layer_settings(url: str) -> dict:
     return {"default": {"BACKEND": "channels_nats.NatsChannelLayer", "CONFIG": {"servers": [url]}}}
 
 
 @pytest.mark.asyncio
-async def test_group_send_from_another_process_rerenders_the_component(nats_url):
+async def test_group_send_from_another_process_rerenders_the_component(nats_url, subscribe_pace):
     with override_settings(CHANNEL_LAYERS=_layer_settings(nats_url)):
         communicator = await _join(nats_url)
         other_process = channels_nats.NatsChannelLayer(servers=nats_url)
         try:
-            await asyncio.sleep(0.2)  # the consumer's group subscription must be registered with the server
             await other_process.group_send(
                 "nats-probe", {"type": "notification", "channel": "nats-probe", "kwargs": {"count": 7}}
             )
@@ -133,11 +156,10 @@ async def test_group_send_from_another_process_rerenders_the_component(nats_url)
 
 
 @pytest.mark.asyncio
-async def test_abroadcast_goes_through_the_nats_layer(nats_url):
+async def test_abroadcast_goes_through_the_nats_layer(nats_url, subscribe_pace):
     with override_settings(CHANNEL_LAYERS=_layer_settings(nats_url)):
         communicator = await _join(nats_url)
         try:
-            await asyncio.sleep(0.2)
             await abroadcast("nats-probe", count=9)
             diff = await _next_render(communicator)
             assert "9" in json.dumps(diff)
