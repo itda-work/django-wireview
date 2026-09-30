@@ -57,11 +57,11 @@ The django-reactor era changelog (2.x) is preserved in
   (`conftest.py`, #120).
 
 - `tests/test_doc_streams.py` reads every example a reader or an agent copies from -- the
-  documentation's Python blocks, the `wireview` skill, the examples and the test project -- and
-  fails on async code that evaluates a QuerySet synchronously (`list(qs)`, `reversed(qs)`,
-  `[x for x in qs]`, `for x in qs:`) or passes one to `stream_insert()`. Handing a QuerySet to
-  `stream()` as is stays the documented pattern (#121).
-  It also fails on async code that reads a synchronous property that runs a query -- through
+  documentation's Python blocks (all of `docs/` but the design notes and `docs/legacy/`), the
+  `wireview` skill, the examples and the test project -- and fails on async code that evaluates a
+  QuerySet synchronously (`list(qs)`, `reversed(qs)`, `[x for x in qs]`, `for x in qs:`) or passes
+  one to `stream_insert()`. Handing a QuerySet to `stream()` as is stays the documented pattern
+  (#121). It also fails on async code that reads a synchronous property that runs a query -- through
   `list()`, `len()`, a loop, an index, `.get()`, `.count()` and the like, directly or through
   another such property -- or that evaluates a property returning a QuerySet synchronously. A
   property that returns a QuerySet as is passes (#145).

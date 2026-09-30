@@ -33,12 +33,14 @@ pytestmark = pytest.mark.unit
 
 ROOT = Path(__file__).resolve().parent.parent
 
+#: Records of the past, not examples: design notes quote code as it was, legacy is 0.x.
+NOT_EXAMPLES = {"legacy", "design"}
+
 #: What a reader copies from, as in test_public_api.py, plus the test project
 #: whose fixtures the skill is verified against.
 SOURCES = [
     ROOT / "README.md",
-    *sorted((ROOT / "docs" / "features").glob("*.md")),
-    *sorted((ROOT / "docs" / "tutorials").glob("*.md")),
+    *sorted(p for p in (ROOT / "docs").rglob("*.md") if not NOT_EXAMPLES & set(p.relative_to(ROOT / "docs").parts)),
     *sorted((ROOT / "skills").rglob("*.md")),
     *sorted((ROOT / "examples").rglob("*.py")),
     *sorted((ROOT / "examples").rglob("*.md")),
