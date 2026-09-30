@@ -26,7 +26,7 @@ WIREVIEW = {
 | `RECONNECT_MIN_DELAY_MS` | `1000` | 연결이 끊긴 뒤 첫 재시도까지의 최소 대기(밀리초) ([배포](../DEPLOYMENT.md#롤링-배포와-재연결)) |
 | `RECONNECT_JITTER_MS` | `4000` | 첫 대기에 더하는 무작위 폭(밀리초). 페이지마다 한 번 뽑아 같은 순간 끊긴 페이지들을 흩는다 |
 | `RECONNECT_MAX_DELAY_MS` | `10000` | 재시도 대기의 상한(밀리초) |
-| `RECONNECT_GROW_FACTOR` | `1.3` | 재시도마다 대기에 곱하는 수. 1보다 작으면 클라이언트가 기본값을 쓴다. 쓸 수 없는 값과, 첫 대기(`MIN_DELAY` + `JITTER`)가 `MAX_DELAY`를 넘는 조합은 `wireview.W016`이 알린다 |
+| `RECONNECT_GROW_FACTOR` | `1.3` | 재시도마다 대기에 곱하는 수. 1보다 작으면 클라이언트가 기본값을 쓴다. 쓸 수 없는 값과, 대기가 0이거나 첫 대기(`MIN_DELAY` + `JITTER`)가 `MAX_DELAY`를 넘는 조합은 `wireview.W016`이 알린다 |
 
 ## 서명
 

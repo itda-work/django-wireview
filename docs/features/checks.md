@@ -37,7 +37,7 @@ WARNINGS:
 | `wireview.W013` | `runserver`로 기동하는데 그 명령이 Django의 WSGI 서버 그대로임 (`daphne`가 없거나 `INSTALLED_APPS`에서 너무 아래에 있음) | 페이지는 그려지고 오류도 없다. WebSocket 업그레이드가 거절되어 버튼이 아무 반응도 하지 않고, 흔적은 브라우저 콘솔 한 줄뿐이다 |
 | `wireview.W014` | `settings.WIREVIEW`에 wireview가 읽지 않는 키가 있음 | 오타나 업그레이드로 없어진 키는 조용히 무시된다. 비슷한 키 이름이나 없어진 키의 대안을 알려 준다(#100) |
 | `wireview.W015` | `AUTO_BROADCAST`의 `model`·`model_pk`·`related`·`m2m` 중 하나를 켰는데 `senders`가 비어 있음 | 비어 있는 `senders`는 아무 모델도 알리지 않는다. 구독한 컴포넌트의 `mutation()`이 한 번도 불리지 않고 오류도 없다. 알릴 모델을 적으라고 알려 준다([설정](./settings.md#모델-알림)) |
-| `wireview.W016` | `RECONNECT_*` 값을 클라이언트가 쓸 수 없음(음수, 숫자가 아닌 값, 1보다 작은 `RECONNECT_GROW_FACTOR`), 또는 첫 재연결 대기(`RECONNECT_MIN_DELAY_MS` + `RECONNECT_JITTER_MS`)가 `RECONNECT_MAX_DELAY_MS`를 넘음 | 클라이언트는 읽을 수 없는 값을 기본값으로 바꿔 쓰므로 설정이 아무 일도 하지 않는다. 상한을 넘는 대기는 상한으로 잘려, 흩으려던 페이지들이 상한에서 다시 한꺼번에 붙는다([배포](../DEPLOYMENT.md#롤링-배포와-재연결)) |
+| `wireview.W016` | `RECONNECT_*` 값을 클라이언트가 쓸 수 없음(음수, `None`, 1보다 작은 `RECONNECT_GROW_FACTOR`), int·float가 아닌 값(문자열 등), 또는 대기가 설정대로 되지 않음: 대기가 0이거나, 첫 재연결 대기(`RECONNECT_MIN_DELAY_MS` + `RECONNECT_JITTER_MS`)가 `RECONNECT_MAX_DELAY_MS`를 넘거나, 대기가 브라우저 타이머 상한(2³¹−1ms)을 넘음 | 클라이언트는 읽을 수 없는 값을 기본값으로 바꿔 쓰므로 설정이 아무 일도 하지 않는다. 대기 0은 서버가 죽은 동안 쉬지 않는 재연결이다. 상한을 넘는 대기는 상한으로 잘려, 흩으려던 페이지들이 상한에서 다시 한꺼번에 붙는다([배포](../DEPLOYMENT.md#롤링-배포와-재연결)) |
 
 전부 `Warning`이다. `manage.py check`의 기본 `--fail-level`은 `ERROR`이므로 이 검사들이
 빌드를 깨지 않는다. **오탐 하나면 팀 전체가 검사를 무시하기 시작하므로** 확신이 설 때까지
@@ -102,15 +102,24 @@ staticfiles와 whitenoise는 stock 명령을 감싸기만 하므로 잡히고, A
 기본값으로 바꾼다 — 잘못된 설정이 촘촘한 재연결 루프가 되는 것보다 낫지만, 그래서 설정이 먹지 않았다는
 신호가 아무 데도 없다([#134](https://github.com/itda-work/django-wireview/issues/134)).
 
-검사는 int와 float만 숫자로 친다. 클라이언트가 우연히 읽어 내는 문자열(`"30000"`)도 경고한다 — `"1,000"`도
-똑같이 맞아 보이지만 읽히지 않는다. 그 밖의 값에서는 두 판정이 같다: 검사가 통과시킨 값은 클라이언트가
-같은 숫자로 쓰고, 숫자에 대해서는 검사가 경고하는 값만 클라이언트가 버린다. `tests/test_checks.py`가 실제 헤더를
-렌더해 `reconnect.mjs`에 넣고 이것을 확인한다.
+int·float, `None`, bool에 대해서는 두 판정이 같다: 검사가 통과시킨 값은 클라이언트가 같은 숫자로 쓰고,
+검사가 경고하는 값만 클라이언트가 버린다. `tests/test_checks.py`가 실제 헤더를 렌더해 `reconnect.mjs`에 넣고
+이것을 확인한다.
 
-두 번째 경고는 값끼리의 관계다. 첫 대기는 `RECONNECT_MIN_DELAY_MS`부터 그 값에 `RECONNECT_JITTER_MS`를 더한 값까지인데
-어떤 대기도 `RECONNECT_MAX_DELAY_MS`를 넘지 못한다. 넘는 쪽을 뽑은 페이지는 모두 상한에서 함께 다시 붙어, 지터가 흩으려던
-무리가 그대로 돌아온다. 최소 대기부터 상한을 넘으면 모든 대기가 상한이고 앞의 두 설정은 아무 효과가 없다.
-관계는 클라이언트가 실제로 쓰는 값(버린 값 대신 기본값)으로 따진다.
+그 밖의 값, 특히 환경 변수에서 `int()` 없이 읽은 문자열도 경고하지만 클라이언트가 무엇을 하는지는 말하지 않는다.
+클라이언트는 JavaScript의 `Number()`로 읽어 `"30000"`은 30000으로 쓰고 `"1,000"`·`"30s"`는 버린다. 검사가 그 문법을
+흉내 내지 않으므로 "기본값을 쓴다"고 단정하지 않고, 아래의 관계 판정도 하지 않는다 — 클라이언트가 쓰는 값을 모르기 때문이다.
+
+나머지 경고는 클라이언트가 실제로 쓰는 값(버린 값 대신 기본값)으로 대기를 따진다.
+
+- **대기 0.** 첫 대기의 끝(`RECONNECT_MIN_DELAY_MS + RECONNECT_JITTER_MS`)이나 `RECONNECT_MAX_DELAY_MS`가 0이면
+  모든 재시도가 곧바로 나간다. 서버가 죽어 있는 동안 페이지마다 쉬지 않고 연결을 시도한다.
+- **상한에 잘리는 첫 대기.** 첫 대기는 `RECONNECT_MIN_DELAY_MS`부터 그 값에 `RECONNECT_JITTER_MS`를 더한 값까지인데
+  어떤 대기도 `RECONNECT_MAX_DELAY_MS`를 넘지 못한다. 넘는 쪽을 뽑은 페이지는 모두 상한에서 함께 다시 붙어, 지터가
+  흩으려던 무리가 그대로 돌아온다. 최소 대기부터 상한을 넘으면 모든 대기가 상한이고 앞의 두 설정은 아무 효과가 없다.
+- **브라우저 타이머 상한.** 브라우저는 `setTimeout`의 대기를 32비트 정수로 받는다(WebIDL `long`). 2³¹−1ms(약 24.8일)를
+  넘는 대기는 2³²로 나눈 나머지가 되어, 2³¹부터 2³²ms까지는 곧바로 나가고 그 위는 엉뚱하게 짧아진다(Chromium 실측).
+  `RECONNECT_GROW_FACTOR`가 1보다 크면 대기가 결국 상한까지 자라므로 상한을, 1이면 첫 대기의 끝을 본다.
 
 ```console
 $ python manage.py check

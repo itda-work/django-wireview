@@ -645,7 +645,8 @@ WIREVIEW = {
 
 첫 대기의 끝(`RECONNECT_MIN_DELAY_MS + RECONNECT_JITTER_MS`)은 `RECONNECT_MAX_DELAY_MS` 이하로 둔다. 어떤 대기도
 상한을 넘지 못하므로, 넘는 쪽을 뽑은 페이지는 상한에서 다시 한꺼번에 붙는다. 지터만 늘리고 상한을 그대로 두면
-그렇게 된다. 이 조합과 클라이언트가 쓸 수 없는 값(음수, 숫자가 아닌 값)은 `manage.py check`가 `wireview.W016`으로 알린다.
+그렇게 된다. 이 조합과 클라이언트가 쓸 수 없는 값(음수, 숫자가 아닌 값), 0으로 도는 대기는 `manage.py check`가
+`wireview.W016`으로 알린다. 환경 변수에서 읽는다면 `int()`로 바꿔 넣는다 — 문자열도 경고 대상이다.
 
 #### SIGTERM 드레인 절차
 

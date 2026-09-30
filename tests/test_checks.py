@@ -388,37 +388,103 @@ class TestReconnectSettingsCheck:
         assert "every reconnect waits 10000 ms" in message.msg
 
     def test_a_first_wait_that_reaches_the_cap_exactly_is_silent(self, monkeypatch):
-        set_wireview(monkeypatch, RECONNECT_MIN_DELAY_MS=0, RECONNECT_JITTER_MS=0, RECONNECT_MAX_DELAY_MS=0)
+        set_wireview(monkeypatch, RECONNECT_MIN_DELAY_MS=1000, RECONNECT_JITTER_MS=0, RECONNECT_MAX_DELAY_MS=1000)
         assert check_reconnect_settings(None) == []
-        set_wireview(monkeypatch, RECONNECT_MAX_DELAY_MS=5000)
+        set_wireview(monkeypatch, RECONNECT_MIN_DELAY_MS=0, RECONNECT_JITTER_MS=5000, RECONNECT_MAX_DELAY_MS=5000)
         assert check_reconnect_settings(None) == []
+
+    @pytest.mark.parametrize(
+        ("least", "jitter", "cap"),
+        [(0, 0, 0), (0, 0, 5000), (1000, 4000, 0)],
+    )
+    def test_a_wait_of_nothing_is_flagged(self, monkeypatch, least, jitter, cap):
+        """No first wait, or no cap: every retry is at once, a tight loop while the server is down."""
+        set_wireview(monkeypatch, RECONNECT_MIN_DELAY_MS=least, RECONNECT_JITTER_MS=jitter, RECONNECT_MAX_DELAY_MS=cap)
+        (message,) = check_reconnect_settings(None)
+
+        assert message.id == "wireview.W016"
+        assert "tight loop" in message.msg
+
+    @pytest.mark.parametrize(
+        ("settings", "flagged"),
+        [
+            ({"RECONNECT_MAX_DELAY_MS": 2**31 - 1}, False),
+            ({"RECONNECT_MAX_DELAY_MS": 2**31}, True),
+            # With a factor of 1 the wait never grows toward the cap.
+            ({"RECONNECT_MAX_DELAY_MS": 2**40, "RECONNECT_GROW_FACTOR": 1}, False),
+            (
+                {
+                    "RECONNECT_MIN_DELAY_MS": 2**31 - 1,
+                    "RECONNECT_JITTER_MS": 1,
+                    "RECONNECT_MAX_DELAY_MS": 2**40,
+                    "RECONNECT_GROW_FACTOR": 1,
+                },
+                True,
+            ),
+        ],
+    )
+    def test_a_wait_past_the_browser_timer_is_flagged(self, monkeypatch, settings, flagged):
+        """A browser holds a timer's delay in 32 bits: 2**31 ms fires at once."""
+        set_wireview(monkeypatch, **settings)
+        messages = check_reconnect_settings(None)
+
+        assert [m.id for m in messages] == (["wireview.W016"] if flagged else [])
+        if flagged:
+            assert "2147483647 ms" in messages[0].msg
+
+    def test_a_huge_value_is_not_printed_whole(self, monkeypatch):
+        set_wireview(monkeypatch, RECONNECT_MIN_DELAY_MS=10**400)
+        (message,) = check_reconnect_settings(None)
+
+        assert len(message.msg) < 300, message.msg
 
     def test_the_cap_is_judged_with_what_the_client_uses(self, monkeypatch):
         """A max the client falls back from is compared as the default it uses instead."""
-        set_wireview(monkeypatch, RECONNECT_MIN_DELAY_MS=20000, RECONNECT_MAX_DELAY_MS="30000")
+        set_wireview(monkeypatch, RECONNECT_MIN_DELAY_MS=20000, RECONNECT_MAX_DELAY_MS=-1)
         messages = check_reconnect_settings(None)
 
         assert [m.id for m in messages] == ["wireview.W016", "wireview.W016"]
         assert "RECONNECT_MAX_DELAY_MS" in messages[0].msg and "(10000 ms)" in messages[1].msg
 
-    def test_the_check_and_the_client_agree(self):
-        """Every value the check passes, the client uses as the same number; for numbers they agree both ways.
+    def test_a_string_is_named_without_a_claim_about_the_client(self, monkeypatch):
+        """``"30000"`` is read by the client as 30000, so nothing falls back and no wait is cut.
 
-        A string the client can parse (``"30000"``) is the one place they differ:
-        the check refuses it, because ``"1,000"`` looks as right and is not.
+        The check still names it -- ``"1,000"`` looks as right and is dropped --
+        but it cannot say what the client makes of a string, so it neither claims
+        a default nor judges the waits with one.
+        """
+        set_wireview(monkeypatch, RECONNECT_MIN_DELAY_MS=20000, RECONNECT_MAX_DELAY_MS="30000")
+        (message,) = check_reconnect_settings(None)
+
+        assert message.id == "wireview.W016"
+        assert "RECONNECT_MAX_DELAY_MS" in message.msg and "not a number" in message.msg
+        assert "default" not in message.msg
+
+    def test_the_check_and_the_client_agree(self):
+        """For numbers, None and bools the check and the client agree both ways.
+
+        The check passes a value exactly when the client uses it, as the same
+        number. Anything else (a string, a list) the check names without
+        judging it like the client: a string the client parses (``"30000"``)
+        is still named, because ``"1,000"`` looks as right and is not, but the
+        warning must not say the client falls back from it.
         """
         cases = [(key, value) for key in RECONNECT_CLIENT_NAMES for value in RECONNECT_PROBES]
         reads = client_reads(cases)
 
         for (key, value), read in zip(cases, reads, strict=True):
-            number = reconnect_value(value, wireview_checks.RECONNECT_FLOORS[key])
             client_fell_back = read == wireview_settings.DEFAULT[key]
-            if number is not None:
-                assert read == number, (key, value, read)
-            if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if value is None or isinstance(value, (int, float)):
+                number = reconnect_value(value, wireview_checks.RECONNECT_FLOORS[key])
+                if number is not None:
+                    assert read == number, (key, value, read)
                 assert (number is None) == client_fell_back, (key, value, read)
-            elif client_fell_back:
-                assert number is None, (key, value)
+                continue
+            with override_settings(WIREVIEW={key: value}):
+                messages = check_reconnect_settings(None)
+            assert [m.id for m in messages] == ["wireview.W016"], (key, value, messages)
+            if not client_fell_back:
+                assert "default" not in messages[0].msg, (key, value, read)
 
 
 class TestChannelLayerCheck:
@@ -751,3 +817,9 @@ class TestTestprojIsClean:
         assert check_upload_temp_dir(None) == []
         assert check_signing_key(None) == []
         assert check_live_sessions(None) == []
+
+    def test_the_settings_checks_run_with_plain_check(self):
+        """A check nobody registers is silent too: the calls above cannot tell."""
+        from django.core.checks.registry import registry
+
+        assert check_reconnect_settings in registry.get_checks(include_deployment_checks=False)

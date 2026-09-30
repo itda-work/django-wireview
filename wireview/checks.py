@@ -239,17 +239,21 @@ RECONNECT_FLOORS = {
     "RECONNECT_GROW_FACTOR": 1,
 }
 
+#: The longest delay a browser timer holds. WebIDL takes ``setTimeout``'s
+#: delay as a 32-bit ``long``, so a longer one wraps: 2**31 up to 2**32 ms
+#: fires at once, and past that after the remainder.
+BROWSER_TIMER_LIMIT_MS = 2**31 - 1
 
-def reconnect_value(value: object, floor: float) -> float | None:
+
+def reconnect_value(value: None | float, floor: float) -> float | None:
     """The number the client reads from a reconnect setting, or None if it falls back.
 
-    The header renders the value with ``str()`` and the client takes it only if
-    it is a finite number at or above ``floor``. Anything that is not an int or
-    a float is refused here, even a string the client happens to parse: the
-    setting is a number, and ``"1,000"`` looks as right as ``"1000"``.
-    ``tests/test_checks.py`` runs both sides on the same values.
+    Only for the values whose reading is known: an int or a float, which the
+    client takes if it is finite and at or above ``floor``, and None or a bool,
+    which the header renders as ``None``, ``True`` or ``False`` and the client
+    never reads. ``tests/test_checks.py`` runs both sides on the same values.
     """
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if value is None or isinstance(value, bool):
         return None
     try:
         number = float(value)
@@ -260,14 +264,26 @@ def reconnect_value(value: object, floor: float) -> float | None:
     return number
 
 
+def _shown(value: object) -> str:
+    """``repr(value)``, cut short: a 400-digit int says nothing more than its start."""
+    text = repr(value)
+    return text if len(text) <= 40 else f"{text[:37]}..."
+
+
 def check_reconnect_settings(app_configs, **kwargs) -> list[CheckMessage]:
     """W016: a ``RECONNECT_*`` setting the client cannot use as written.
 
     The client falls back to the default for a value it cannot read rather than
     reconnect in a tight loop (#124), so a bad value changes nothing and says
-    nothing. And a first wait that can exceed the cap is cut to the cap: the
-    jitter that was to spread the pages a deploy disconnects puts them back
-    together at ``RECONNECT_MAX_DELAY_MS``.
+    nothing. A string is named too, without saying what the client does with it:
+    it parses ``"1000"`` but not ``"1,000"``, and the check does not reimplement
+    JavaScript's ``Number()`` to tell which.
+
+    Then the waits the client will use. None at all is the tight loop the
+    fallback was to prevent; a first wait that can exceed the cap is cut to the
+    cap, so the jitter that was to spread the pages a deploy disconnects puts
+    them back together at ``RECONNECT_MAX_DELAY_MS``; and a wait past what a
+    browser timer holds does not wait at all.
     """
     from . import settings as wireview_settings
 
@@ -275,23 +291,50 @@ def check_reconnect_settings(app_configs, **kwargs) -> list[CheckMessage]:
     used: dict[str, float] = {}
     for key, floor in RECONNECT_FLOORS.items():
         value = getattr(wireview_settings, key)
+        if value is not None and not isinstance(value, (int, float)):
+            messages.append(
+                Warning(
+                    f"WIREVIEW[{key!r}] = {_shown(value)} is a {type(value).__name__}, not a number.",
+                    hint=(
+                        f"Set it to an int or a float of at least {floor}. The client reads the value "
+                        'with JavaScript\'s Number(), which takes "1000" but not "1,000" or "30s".'
+                    ),
+                    id="wireview.W016",
+                )
+            )
+            continue
         number = reconnect_value(value, floor)
         if number is None:
             default = wireview_settings.DEFAULT[key]
             number = float(default)
             messages.append(
                 Warning(
-                    f"WIREVIEW[{key!r}] = {value!r} is not a number the client can use, "
+                    f"WIREVIEW[{key!r}] = {_shown(value)} is not a number the client can use, "
                     f"so the client uses the default {default!r}.",
                     hint=f"Set it to an int or a float of at least {floor}.",
                     id="wireview.W016",
                 )
             )
         used[key] = number
+    if len(used) < len(RECONNECT_FLOORS):
+        # What the client makes of a string is not known here, so neither are its waits.
+        return messages
 
     least = used["RECONNECT_MIN_DELAY_MS"]
     most = least + used["RECONNECT_JITTER_MS"]
     cap = used["RECONNECT_MAX_DELAY_MS"]
+    grows = used["RECONNECT_GROW_FACTOR"] > 1
+    if most == 0 or cap == 0:
+        messages.append(
+            Warning(
+                f"Every reconnect waits 0 ms (RECONNECT_MIN_DELAY_MS + RECONNECT_JITTER_MS = {most:g}, "
+                f"RECONNECT_MAX_DELAY_MS = {cap:g}), so while the server is down each page retries "
+                "in a tight loop.",
+                hint="Give RECONNECT_MAX_DELAY_MS and RECONNECT_MIN_DELAY_MS + RECONNECT_JITTER_MS a value above 0.",
+                id="wireview.W016",
+            )
+        )
+        return messages
     if most > cap:
         if least > cap:
             effect = (
@@ -310,6 +353,18 @@ def check_reconnect_settings(app_configs, **kwargs) -> list[CheckMessage]:
                     "Keep RECONNECT_MIN_DELAY_MS + RECONNECT_JITTER_MS at or below RECONNECT_MAX_DELAY_MS: "
                     "raise the cap or lower the first wait."
                 ),
+                id="wireview.W016",
+            )
+        )
+    # A factor above 1 grows every wait toward the cap; at 1 the first wait is the longest.
+    longest = cap if grows else min(cap, most)
+    if longest > BROWSER_TIMER_LIMIT_MS:
+        messages.append(
+            Warning(
+                f"A reconnect can wait up to {longest:g} ms, past the {BROWSER_TIMER_LIMIT_MS} ms a browser "
+                "timer holds: the browser wraps the delay to 32 bits, so the wait fires at once or after "
+                "an unrelated shorter time.",
+                hint=f"Keep RECONNECT_MAX_DELAY_MS at or below {BROWSER_TIMER_LIMIT_MS} (about 24.8 days).",
                 id="wireview.W016",
             )
         )
