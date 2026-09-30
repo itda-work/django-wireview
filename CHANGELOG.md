@@ -54,6 +54,11 @@ The django-reactor era changelog (2.x) is preserved in
   failure above while the suite was green. The suite refuses to start with it set; E2E tests exempt
   only Playwright's own thread, so the live server keeps Django's check as production has it
   (`conftest.py`, #120).
+- `tests/test_doc_streams.py` reads every example a reader or an agent copies from -- the
+  documentation's Python blocks, the `wireview` skill, the examples and the test project -- and
+  fails on async code that evaluates a QuerySet synchronously (`list(qs)`, `reversed(qs)`,
+  `[x for x in qs]`, `for x in qs:`) or passes one to `stream_insert()`. Handing a QuerySet to
+  `stream()` as is stays the documented pattern (#121).
 
 ## [1.0.0rc3] - 2026-09-30
 

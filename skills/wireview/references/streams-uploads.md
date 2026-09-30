@@ -21,6 +21,9 @@ class XChatRoom(Component):
         await self.stream_delete("messages", f"messages-{message_id}")
 ```
 
+- **QuerySet은 그대로 넘긴다**(슬라이스 포함). `stream()`이 `async for`로 읽는다. `list(qs)`·`reversed(qs)`·
+  `[m for m in qs]`로 감싸면 그 자리에서 이벤트 루프 위의 동기 평가라 `SynchronousOnlyOperation`으로
+  join이 실패한다. 순서는 `order_by`로 정한다. `stream_insert`에는 인스턴스 하나를 넘긴다.
 - 컨테이너에 `wire-stream="messages"`를 단다.
 - 아이템 템플릿 기본값은 `<컴포넌트 템플릿>_item.html`이고 `template=`으로 바꾼다.
 - **아이템 템플릿 안에서 아이템은 `item`이다** (컴포넌트 자신은 `this`). 이름을 잘못 쓰면
