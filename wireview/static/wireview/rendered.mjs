@@ -34,7 +34,7 @@
  * opens. The server never sends a newer form. Keep in step with
  * `PROTOCOL_VERSION` in wireview/core/rendered.py.
  */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 /**
  * First server version that echoes a user event's `ref` on its render (#92).
@@ -47,6 +47,13 @@ export const REFS_SINCE = 3;
  * joined() queued have gone out (#112).
  */
 export const JOINED_SINCE = 5;
+
+/**
+ * First server version that takes a `ref` on `join` and returns it on the
+ * render and the error that answer it (#139). A join sent with a ref to an
+ * older server would be dropped as a payload that does not fit.
+ */
+export const JOIN_REFS_SINCE = 6;
 
 /**
  * @param {*} value

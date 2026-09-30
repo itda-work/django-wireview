@@ -29,7 +29,16 @@ from playwright.sync_api import expect
 
 from .e2e_server import server_errors
 
-__all__ = ["WAIT_TIMEOUT", "LIVE_SELECTOR", "OFFLINE_SHIM", "open_live", "wait_live", "expect_text", "expect_count"]
+__all__ = [
+    "WAIT_TIMEOUT",
+    "LIVE_SELECTOR",
+    "OFFLINE_SHIM",
+    "INBOX_SHIM",
+    "open_live",
+    "wait_live",
+    "expect_text",
+    "expect_count",
+]
 
 #: The budget for anything the browser has to wait for, in seconds. The same one
 #: ``e2e_server.STARTUP_TIMEOUT`` gives the server, and for the same reason.
@@ -50,6 +59,45 @@ OFFLINE_SHIM = """
     constructor(url, protocols) {
       super(window.__link.offline ? "ws://127.0.0.1:9/" : url, protocols);
       window.__link.sockets.push(this);
+    }
+  };
+})();
+"""
+
+#: An init script that lets a test hold what the server sends until it says so, to
+#: put the page's answers in an order the network could: ``window.__inbox.holding
+#: = true`` keeps every message from the page's socket, ``window.__inbox.release(n)``
+#: hands it the first ``n`` of them, and ``release()`` all of them and stops
+#: holding. ``window.__inbox.seen`` and ``held`` are the messages (parsed) the page
+#: has been handed and the ones it is still waiting for, in order.
+INBOX_SHIM = """
+(() => {
+  const Native = window.WebSocket;
+  const inbox = { holding: false, seen: [], held: [] };
+  const hands = [];
+  const deliver = (message, hand) => {
+    inbox.seen.push(message);
+    hand();
+  };
+  inbox.release = (count = Infinity) => {
+    if (count === Infinity) inbox.holding = false;
+    const messages = inbox.held.splice(0, count);
+    hands.splice(0, messages.length).forEach((hand, i) => deliver(messages[i], hand));
+  };
+  window.__inbox = inbox;
+  window.WebSocket = class extends Native {
+    addEventListener(type, listener, options) {
+      if (type !== "message") return super.addEventListener(type, listener, options);
+      return super.addEventListener(type, (event) => {
+        const message = JSON.parse(event.data);
+        const hand = () => listener.call(this, event);
+        if (inbox.holding || inbox.held.length) {
+          inbox.held.push(message);
+          hands.push(hand);
+        } else {
+          deliver(message, hand);
+        }
+      }, options);
     }
   };
 })();

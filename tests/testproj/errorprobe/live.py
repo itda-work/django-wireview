@@ -2,7 +2,9 @@
 
 tests/test_errors_e2e.py drives it. ``bump_then_raise`` changes the state and
 then raises, so the page shows whether that change was rolled back;
-``ErrorJoin`` cannot join at all.
+``ErrorJoin`` cannot join at all. The ``late/`` page holds one ``ErrorBox``
+and links back to itself, so a test can join it again under its id while an
+answer to the join before is still on its way (#139).
 """
 
 from wireview import Component

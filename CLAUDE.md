@@ -90,6 +90,8 @@ wireview/
                            reconnect.mjs (재연결 백오프를 헤더 메타에서 읽는다. WIREVIEW RECONNECT_*),
                            uploads.mjs (업로드 manager의 수명. 인스턴스가 끝나면 폐기하고, 렌더의 instances가 알린 인스턴스 번호와
                            같은 config만 받는다. 끝난 인스턴스의 upload_op는 세션이 먼저 버린다),
+                           joins.mjs (같은 id로 다시 보낸 join의 응답을 기다리는 동안 어느 render·error가 지금 join의 것인가.
+                           join의 ref로 짝짓는다. vsn 6 이상의 서버에만 싣는다),
                            wireview-boost.js, types.d.ts
                            wireview.min.js는 빌드 산출물이며 gitignore
 
@@ -115,6 +117,7 @@ tests/
                            server_errors() 가 블록 동안 서버가 남긴 ERROR 를 돌려준다: 핸들러가 터지면
                            소켓이 죽고 페이지가 멈출 뿐이라 브라우저 쪽에서는 느린 것과 구별되지 않는다.
                            e2e_browser.py 가 브라우저 대기의 정본이다 (open_live·expect_text·expect_count).
+                           INBOX_SHIM 은 서버가 보낸 메시지를 페이지에 넘기는 순서를 테스트가 정하게 한다.
                            warning_guard.py 는 ASGI 핸들러가 동기 이터레이터를 서빙했다는 경고가 기록되면 실행을 실패시키는 플러그인이다.
                            page.wait_for_selector 를 다른 곳에 쓰면 test_e2e_harness.py 의 가드가 실패한다
                            waiting.py 의 eventually() 가 async 테스트에서 백그라운드 작업의 결과를 기다리는 정본이다 —
@@ -125,7 +128,7 @@ tests/
                            listprobe/ 는 항목 재배열 diff 를 옛 형태와 비교하는 E2E(test_comprehension_moves_e2e.py)의 픽스처,
                            cspprobe/ 는 인라인 허용 없는 CSP 아래 모든 바인딩 모양과 브라우저 업로드를 도는 E2E(test_csp_e2e.py)의 픽스처,
                            valueprobe/ 는 렌더가 입력 중인 값을 지우지 않는지 보는 E2E(test_input_values_e2e.py)의 픽스처,
-                           errorprobe/ 는 예외를 던지는 핸들러와 join을 보는 E2E(test_errors_e2e.py)의 픽스처,
+                           errorprobe/ 는 예외를 던지는 핸들러와 join을 보는 E2E(test_errors_e2e.py)의 픽스처(late/ 는 같은 id로 다시 join되는 페이지),
                            offlineprobe/ 는 연결이 끊긴 페이지의 바인딩·큐와 재연결 뒤의 훅·폼 복구를 보는 E2E(test_offline_e2e.py)의 픽스처,
                            hookprobe/ 는 훅의 소유(중첩 컴포넌트)·이동·떠날 때의 destroyed·pushEvent 응답 짝을 보는 E2E(test_hooks_e2e.py)의 픽스처,
                            tempprobe/ 는 초기화된 temporary assign이 다음 렌더에 화면에 남는지 보는 E2E(test_temporary_assigns_e2e.py)의 픽스처,

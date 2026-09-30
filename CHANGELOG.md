@@ -92,6 +92,18 @@ The django-reactor era changelog (2.x) is preserved in
   (`run_in_executor`, `sync_to_async(thread_sensitive=False)`), and other code attached to the
   loop are not held (#138).
 
+- A join's late answers no longer land on the join that replaced it. A page that joined a
+  component again under the same id (a boosted navigation to new DOM with that id, or the rejoin
+  after a crash) before the first join was answered took the first join's answers as the new
+  one's: an `error` the first join raised marked the new element `wireview-error` and dropped its
+  component, so the new join's render found nothing to patch and the component stayed dead until
+  the next connection; and a render of the replaced instance named it current, so a file chosen
+  then went to its config and was discarded when the new answer arrived. The page now names each
+  join with a `ref`, the server returns it on the render and the `error` that answer the join,
+  and the page applies nothing else for that id until its answer comes. Protocol version 6; a
+  page sends the ref only to a server that announced it, and an older bundle is answered as
+  before (#139).
+
 - A LiveComponent hidden and shown again in quick succession could lose its new instance: when its
   element left, the page sent `leave` for its id, and a leave that reached the server after the
   parent's next render removed the instance that render had just made -- its events went nowhere.

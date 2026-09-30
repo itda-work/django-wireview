@@ -1,0 +1,17 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>error probe: joined again</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    <h1 data-testid="visit">{{ request.GET.visit|default:"first" }}</h1>
+    <nav>
+      <a href="{% url 'errorprobe:late' %}?visit=second" data-testid="second">second</a>
+      <a href="{% url 'errorprobe:late' %}?visit=third" data-testid="third">third</a>
+    </nav>
+    {% component 'ErrorBox' id="late" %}
+  </body>
+</html>

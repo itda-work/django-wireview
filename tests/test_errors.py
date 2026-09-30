@@ -113,8 +113,9 @@ async def _send(communicator: WebsocketCommunicator, _command: str, **payload: t
     await communicator.send_json_to({"command": _command, "payload": payload})
 
 
-async def _join(communicator: WebsocketCommunicator, id: str, **fields: t.Any) -> None:
-    await _send(communicator, "join", name="ErrorProbe", state=_state(id, **fields), children={})
+async def _join(communicator: WebsocketCommunicator, id: str, ref: int | None = None, **fields: t.Any) -> None:
+    extra = {} if ref is None else {"ref": ref}
+    await _send(communicator, "join", name="ErrorProbe", state=_state(id, **fields), children={}, **extra)
 
 
 async def _event(communicator: WebsocketCommunicator, id: str, command: str, **extra: t.Any) -> None:
@@ -227,6 +228,51 @@ async def test_a_join_that_raises_after_its_first_render_is_answered_twice():
     assert "vsn" in first["payload"]
     assert second == {"command": "error", "payload": {"id": "e-1", "during": "join"}}
     assert after["payload"]["id"] == "e-2"
+
+
+async def test_both_answers_to_a_join_carry_its_ref():
+    """#139: a page that sent a second join under the id tells the first one's answers by their ref.
+
+    Without it the first join's ``error`` marked the element the second join was
+    for, and dropped the component the second join's render was for.
+    """
+    communicator = await _connect()
+    try:
+        await _send(communicator, "params_changed", params={"q": "x"}, uri="?q=x")
+        await _join(communicator, "e-1", ref=7, fail_on_params=True)
+        first = await _next(communicator, "render", "error", "remove")
+        second = await _next(communicator, "render", "error", "remove")
+        await _join(communicator, "e-1", ref=8)
+        again = await _next(communicator, "render", "error")
+    finally:
+        await communicator.disconnect()
+
+    assert (first["command"], first["payload"]["ref"]) == ("render", 7)
+    assert second == {"command": "error", "payload": {"id": "e-1", "during": "join", "ref": 7}}
+    assert (again["command"], again["payload"]["ref"]) == ("render", 8)
+
+
+async def test_a_join_that_cannot_mount_answers_with_its_ref():
+    communicator = await _connect()
+    try:
+        await _join(communicator, "e-1", ref=3, fail_to_join=True)
+        message = await _next(communicator, "error", "remove", "render")
+    finally:
+        await communicator.disconnect()
+
+    assert message == {"command": "error", "payload": {"id": "e-1", "during": "join", "ref": 3}}
+
+
+async def test_a_join_without_a_ref_is_answered_without_one():
+    # What an older client sends, and a new one before the server announced itself
+    communicator = await _connect()
+    try:
+        await _join(communicator, "e-1")
+        message = await _next(communicator, "render")
+    finally:
+        await communicator.disconnect()
+
+    assert "ref" not in message["payload"]
 
 
 async def test_a_join_that_raises_removes_the_element_for_an_older_client():

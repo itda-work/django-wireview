@@ -10,9 +10,11 @@ page rendered and is marked ``wireview-error``.
 Fixture: tests/testproj/errorprobe/.
 """
 
+import threading
+
 import pytest
 from playwright.sync_api import expect
-from testproj.e2e_browser import expect_text, open_live
+from testproj.e2e_browser import INBOX_SHIM, expect_text, open_live
 from testproj.e2e_server import serve
 
 pytestmark = pytest.mark.e2e
@@ -83,3 +85,50 @@ def test_a_component_that_cannot_join_keeps_its_markup_and_is_marked(probe):
     failures = probe.evaluate("window.__wireviewErrors.filter((e) => e.id === 'broken' && e.during === 'join').length")
     assert failures == 1
     assert len(probe.sockets) == 1
+
+
+@pytest.fixture
+def next_late_join_fails(monkeypatch):
+    """Once set, the next join of ``#late`` raises in ``joined()``, which answers it with an ``error``."""
+    from testproj.errorprobe.live import ErrorBox
+
+    armed = threading.Event()
+    joined = ErrorBox.joined
+
+    async def once(self):
+        if self.id == "late" and armed.is_set():
+            armed.clear()
+            raise RuntimeError("errorprobe: this join fails on purpose")
+        await joined(self)
+
+    monkeypatch.setattr(ErrorBox, "joined", once)
+    return armed
+
+
+def _held(page, script: str) -> None:
+    page.wait_for_function(f"window.__inbox.held.some((m) => {script})")
+
+
+def test_an_error_for_a_join_the_page_replaced_leaves_the_new_element_alive(next_late_join_fails, page, server):
+    # #139: the first join's error reached the page after it had sent the next
+    # join under the id. It marked the new element and dropped its component,
+    # and the second join's render found nothing to patch: dead until the page
+    # connected again.
+    page.add_init_script(INBOX_SHIM)
+    open_live(page, f"{server}/errorprobe/late/", selector="#late[data-is-live='true']")
+    # The page learns from this answer that the server takes a join's ref
+    page.wait_for_function("window.__inbox.seen.some((m) => m.command === 'render' && 'vsn' in m.payload)")
+
+    next_late_join_fails.set()
+    page.evaluate("window.__inbox.holding = true")
+    by(page, "second").click()
+    expect_text(by(page, "visit"), "second")
+    _held(page, "m.command === 'error' && m.payload.id === 'late'")
+    by(page, "third").click()
+    expect_text(by(page, "visit"), "third")
+    _held(page, "m.command === 'render' && m.payload.id === 'late'")
+    page.evaluate("window.__inbox.release()")
+
+    by(page, "late-bump").click()
+    expect_text(by(page, "late-count"), "1")
+    expect(page.locator("#late")).not_to_have_class("wireview-error")

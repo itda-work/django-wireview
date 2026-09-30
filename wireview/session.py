@@ -59,7 +59,7 @@ def _reload_payload(name: str, error: BadSignature) -> dict[str, t.Any]:
 
 
 def _event_ref(ref: t.Any) -> int | None:
-    """The ``ref`` of a user event if it is one the client can pair, else ``None``."""
+    """The ``ref`` of a user event or a join if it is one the client can pair, else ``None``."""
     return ref if isinstance(ref, int) and not isinstance(ref, bool) else None
 
 
@@ -258,12 +258,14 @@ class WireviewSession:
         """Report a refused socket or join to telemetry (#124). Logging it stays with the caller."""
         telemetry.emit(telemetry.join_rejected, type(self), reason=reason, component_name=name, detail=detail)
 
-    async def _join_failed(self, id: str, name: str | None = None) -> None:
+    async def _join_failed(self, id: str, name: str | None = None, ref: int | None = None) -> None:
         """Tell the client a component could not join. Call from an ``except`` block.
 
         It is not retried: a mount that raises raises again, and joining again
         on every render of the page would be a loop. The element stays as the
         page rendered it, marked, and joins again on the next connection.
+        ``ref`` is the join's: a page that has since sent another join under the
+        id tells this answer is not for it (#139).
         """
         log.exception("Could not join %s", id or "<no id>")
         self._join_rejected("error", name, "mounting raised")
@@ -276,14 +278,23 @@ class WireviewSession:
         if self.repo.vsn < ERRORS_SINCE:
             await self.component_remove(id)
             return
-        await self.send_command("error", {"id": id, "during": "join"})
+        payload: dict[str, t.Any] = {"id": id, "during": "join"}
+        if ref is not None:
+            payload["ref"] = ref
+        await self.send_command("error", payload)
 
     async def command_join(
         self,
         name: str,
         state: str,
         children: dict[str, ChildComponent] | None = None,
+        ref: int | None = None,
     ):
+        # The page names its join when this server announced a version that
+        # takes it (JOIN_REFS_SINCE), and hears it back on the render and the
+        # error that answer the join: a second join under the same id may be on
+        # its way, and an answer to this one must not be taken for its (#139).
+        answer = _event_ref(ref)
         try:
             payload: StatePayload = unsign_envelope(state, name)
         except BadSignature as e:
@@ -359,7 +370,7 @@ class WireviewSession:
             await self._subscribe_upload_group(component)
             # The render that answers a join says which protocol this server
             # speaks, so the client knows what it may send (user_event refs).
-            await self.send_render(component, announce=True)
+            await self.send_render(component, announce=True, ref=answer)
 
             # Call params_changed if URL has params (initial load)
             if self.repo.params:
@@ -380,7 +391,7 @@ class WireviewSession:
         except Exception:
             # Everything up to the first render counts as the join: a failure
             # here is not retried, where a handler's is (#94).
-            await self._join_failed(component_id or "", name)
+            await self._join_failed(component_id or "", name, answer)
 
     async def _enter_live_session(self, payload: StatePayload) -> str:
         """Settle which ``live_session`` this connection is in, for one join.
@@ -1305,8 +1316,9 @@ class WireviewSession:
         ``null`` diff: the client clears the loading state an event started
         (loading classes, ``wire-disabled-with``) when a render arrives, so a
         handler that changed nothing used to leave its button disabled.
-        ``ref`` names the user event this render answers; ``announce`` adds this
-        server's protocol version (the render that answers a join).
+        ``ref`` names the user event this render answers, or the join when
+        ``announce`` is set; ``announce`` adds this server's protocol version
+        (the render that answers a join).
 
         ``instances`` names the instance of each component whose first render
         this is -- the join's answer, a LiveComponent that just joined -- so the

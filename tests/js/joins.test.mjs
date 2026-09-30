@@ -1,0 +1,97 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import { Joins } from "../../wireview/static/wireview/joins.mjs";
+
+test("the first join under an id replaces nothing; the next one does", () => {
+  const joins = new Joins();
+  assert.equal(joins.sent("box", 1), false);
+  assert.equal(joins.sent("box", 2), true);
+});
+
+test("a join after the id left or failed replaces nothing", () => {
+  const joins = new Joins();
+  joins.sent("box", 1);
+  joins.forget("box");
+  assert.equal(joins.sent("box", 2), false);
+});
+
+test("a connection that closed held no joins for the next one", () => {
+  const joins = new Joins();
+  joins.sent("box", 1);
+  joins.clear();
+  assert.equal(joins.sent("box", undefined), false);
+});
+
+test("while a named join waits, only its answer is applied", () => {
+  // #139, second symptom: the replaced instance's answer named it as current,
+  // and a file chosen then went to its config
+  const joins = new Joins();
+  joins.sent("box", 1);
+  joins.sent("box", 2);
+
+  assert.equal(joins.render("box", 1, true), false, "the answer to the join it replaced");
+  assert.equal(joins.render("box", undefined, true), false, "a render of the replaced instance");
+  assert.equal(joins.render("box", 5, true), false, "the replaced instance answering an event");
+  assert.equal(joins.render("box", 2, true), true);
+  assert.equal(joins.render("box", undefined, true), true, "after the answer, the id is the new instance's");
+  assert.equal(joins.render("box", 9, true), true);
+});
+
+test("a render for a component the page let go is not applied", () => {
+  // #140: a render on its way when the element left registered its children
+  // again. #137: an answer to its join brought its instance back.
+  const joins = new Joins();
+  joins.sent("box", 1);
+  joins.forget("box");
+  assert.equal(joins.render("box", 1, false), false);
+  assert.equal(joins.render("child", undefined, false), false);
+});
+
+test("a component that never joined -- a LiveComponent -- takes its renders", () => {
+  const joins = new Joins();
+  assert.equal(joins.render("child", undefined, true), true);
+  assert.equal(joins.render("child", 4, true), true);
+});
+
+test("a join sent without a ref pairs nothing", () => {
+  // The first join of a connection, or one to a server older than the ref
+  const joins = new Joins();
+  joins.sent("box", undefined);
+  assert.equal(joins.render("box", undefined, true), true);
+  assert.equal(joins.error("box", undefined, "join"), true);
+  joins.sent("box", undefined);
+  assert.equal(joins.render("box", undefined, true), true);
+  assert.equal(joins.error("box", undefined, "event"), true);
+});
+
+test("an error for the join the page replaced leaves the new one alone", () => {
+  // #139, first symptom: it marked the new element and dropped its component
+  const joins = new Joins();
+  joins.sent("box", undefined);
+  joins.sent("box", 2);
+  assert.equal(joins.error("box", undefined, "join"), false);
+
+  joins.sent("box", 3);
+  assert.equal(joins.error("box", 2, "join"), false);
+  assert.equal(joins.error("box", 3, "join"), true);
+});
+
+test("a join that failed after its render is still answered by its error", () => {
+  // The render answers first; the error params_changed raised follows it
+  const joins = new Joins();
+  joins.sent("box", 1);
+  assert.equal(joins.render("box", 1, true), true);
+  assert.equal(joins.error("box", 1, "join"), true);
+});
+
+test("an event's error is the new instance's only once its join is answered", () => {
+  const joins = new Joins();
+  joins.sent("box", 1);
+  joins.render("box", 1, true);
+  joins.sent("box", 2);
+  assert.equal(joins.error("box", 6, "event"), false, "the replaced instance raised");
+  joins.render("box", 2, true);
+  assert.equal(joins.error("box", 7, "event"), true);
+  assert.equal(joins.error("box", undefined, "event"), true);
+});

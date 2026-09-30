@@ -62,6 +62,12 @@ document.addEventListener("wireview:error", (e) => {
 
 join에 실패한 요소에는 `wireview-error` 클래스가 붙는다. 다음 join을 보낼 때 떨어진다.
 
+같은 id로 join을 다시 보낸 뒤(boost 이동으로 같은 id의 새 DOM, 예외 뒤 재join) 도착한 **이전 join의**
+`error`는 새 요소에 붙지 않는다. 페이지는 join마다 번호(`ref`)를 싣고, 그 번호가 돌아온 응답만 지금 join의
+것으로 받는다(#139). 그 전에는 이전 join의 `error`가 새 요소에 `wireview-error`를 붙이고 컴포넌트를 등록에서
+빼, 새 join의 render가 적용될 곳이 없었다 — 다음 연결까지 죽은 채였다. 연결의 첫 join은 서버가 버전을
+알리기 전이라 번호가 없고, 번호 없는 join의 응답은 예전처럼 오는 대로 받는다.
+
 ```css
 .wireview-error { opacity: 0.6; pointer-events: none; }
 ```

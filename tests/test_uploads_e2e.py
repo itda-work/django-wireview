@@ -11,7 +11,7 @@ import threading
 
 import pytest
 from playwright.sync_api import expect
-from testproj.e2e_browser import OFFLINE_SHIM, WAIT_TIMEOUT, expect_count, expect_text, open_live, wait_live
+from testproj.e2e_browser import INBOX_SHIM, OFFLINE_SHIM, WAIT_TIMEOUT, expect_count, expect_text, open_live, wait_live
 from testproj.e2e_server import serve
 
 pytestmark = pytest.mark.e2e
@@ -250,6 +250,50 @@ def test_a_late_config_from_the_replaced_instance_does_not_decide_the_new_ones_u
     expect_text(by(page, "entry"), "new.txt")
     assert page.evaluate("window.__chunks") == 0
     assert registered == ["new.txt"]
+
+
+#: How many upload configs for ``#probe`` the page holds, not yet handed to it
+HELD_CONFIGS = (
+    "window.__inbox.held.filter((m) => m.command === 'upload_op' && m.payload.op === 'config'"
+    " && m.payload.id === 'probe' && m.payload.upload === 'files').length"
+)
+
+
+def test_a_file_chosen_as_a_replaced_joins_answer_arrives_goes_to_the_join_that_replaced_it(registered, page, server):
+    # #139: the page sent a join, and another under the same id before the
+    # first was answered. The first answer named its instance as current, and
+    # a file chosen then went to that instance's config -- which the second
+    # answer ended, with the file.
+    page.add_init_script(INBOX_SHIM)
+    open_live(page, f"{server}/fileprobe/")
+    # Answered: the page knows the server takes a join's ref
+    page.wait_for_function("window.__inbox.seen.some((m) => m.command === 'upload_op' && m.payload.op === 'config')")
+
+    page.evaluate("window.__inbox.holding = true")
+    by(page, "again").click()
+    expect_text(by(page, "page"), "again")
+    page.wait_for_function(f"{HELD_CONFIGS} >= 1")
+    by(page, "twice").click()
+    expect_text(by(page, "page"), "twice")
+    page.wait_for_function(f"{HELD_CONFIGS} >= 2")
+
+    # The first join's answer and its instance's config reach the page; then the user chooses
+    page.evaluate(
+        """() => {
+          const first = window.__inbox.held.findIndex((m) => m.command === 'upload_op'
+            && m.payload.op === 'config' && m.payload.id === 'probe' && m.payload.upload === 'files');
+          window.__inbox.release(first + 1);
+        }"""
+    )
+    # The page this far has no live render of the new DOM, so no file input:
+    # the button opens the picker without a config (#137)
+    with page.expect_file_chooser(timeout=WAIT_TIMEOUT * 1000) as chooser:
+        by(page, "pick").click()
+    chooser.value.set_files(text_file("window.txt", "window"))
+    page.evaluate("window.__inbox.release()")
+
+    expect_text(by(page, "received").locator("li"), "window.txt:6")
+    assert registered == ["window.txt"]
 
 
 def test_a_preview_url_the_page_asked_for_ends_with_the_component(probe):

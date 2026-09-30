@@ -1,5 +1,6 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
-import { JOINED_SINCE, PROTOCOL_VERSION, REFS_SINCE, applyPartial, buildHtml } from "./rendered.mjs";
+import { JOINED_SINCE, JOIN_REFS_SINCE, PROTOCOL_VERSION, REFS_SINCE, applyPartial, buildHtml } from "./rendered.mjs";
+import { Joins } from "./joins.mjs";
 import { commitScope, isCommitAction } from "./values.mjs";
 import { LoadingLedger } from "./loading.mjs";
 import { BINDING_PREFIX, bindingsFor, parseBinding, runSteps } from "./events.mjs";
@@ -88,8 +89,13 @@ class ServerConnection {
     this.wasConnected = false;
     /** @type {number} The protocol version this socket's server announced (0 until a join is answered) */
     this.serverVsn = 0;
-    /** @type {number} The last ref given to a user event on this connection */
+    /**
+     * @type {number} The last ref given to a user event or a join on this
+     * connection. One counter, so a render's ref names one of them only.
+     */
     this.lastRef = 0;
+    /** @type {Joins} which answers are for the join the page holds under an id (#139) */
+    this.joins = new Joins();
     /**
      * @type {number} The last ref given to a hook's pushEvent. One counter for
      * the page, not one per component: a reply finds its callback by the ref
@@ -174,6 +180,7 @@ class ServerConnection {
       // runs again for each reconnect that fails; a file chosen since, or before
       // the first connection, belongs to no instance yet and waits for the next.
       uploadManagers.connectionClosed();
+      this.joins.clear();
       document.querySelectorAll("[wireview-component]").forEach((el) => {
         const element = /** @type {HTMLElement} */ (el);
         element.classList.add("wireview-disconnected");
@@ -252,6 +259,7 @@ class ServerConnection {
       // watching inside the root -- never sees (#107)
       component.hookManager.destroy();
       delete this.components[id];
+      this.joins.forget(id);
       // Its files, requests and previews too: a config it was still owed must
       // not register them later (#137)
       uploadManagers.dispose(id);
@@ -279,10 +287,12 @@ class ServerConnection {
         const { id, diff, children, ref, vsn, instances } = payload;
         if (typeof vsn === "number") this.serverVsn = vsn;
         const target = this.components[id];
+        // The render answering a join carries vsn, and its ref is the join's
+        const eventRef = typeof vsn === "number" ? undefined : ref;
         // The answer to a committing event may reset the fields it came from,
         // in the morph this render causes and no other (#92). That morph runs
         // now, not on the next frame, so no later render folds into it.
-        const permission = typeof ref === "number" ? boost.valueGuard.answer(ref) : undefined;
+        const permission = typeof eventRef === "number" ? boost.valueGuard.answer(eventRef) : undefined;
         // The loading state an event started ends with its own answer (#118),
         // released before the morph so the server's HTML has the last word on
         // the element's text. A render that answers something else leaves it.
@@ -291,20 +301,21 @@ class ServerConnection {
         // next render of its component, except the join's own (it carries
         // vsn), which the server sent before it read the event.
         const released =
-          typeof ref === "number"
-            ? this.loading.answer(ref)
+          typeof eventRef === "number"
+            ? this.loading.answer(eventRef)
             : typeof vsn === "number"
               ? []
               : this.loading.answerUnpaired(id);
         released.forEach(unmarkLoading);
-        // A component whose element left the page: the render was on its way
-        // when the page let it go. Its LiveComponents went with it, so nothing
-        // here is registered -- they would only be let go again (#140).
-        if (!target) break;
+        // Not for a component whose element left the page: the render was on
+        // its way when the page let it go, and its LiveComponents went with it
+        // (#140). Nor, while the page waits for the answer to a join it sent,
+        // for the instance that join replaces (#139): its render would name
+        // that instance as current, and paint it over the new one.
+        if (!this.joins.render(id, ref, Boolean(target))) break;
         // The instances this render is the first of: whose upload configs to
-        // take (#137). Not for a component whose element already left the page
-        // -- an answer to its join still on the way would bring it back.
-        if (instances && document.getElementById(id)) {
+        // take (#137)
+        if (instances) {
           for (const [each, instance] of Object.entries(instances)) uploadManagers.started(each, instance);
         }
         // Register the children first, before any frame is scheduled: the
@@ -353,10 +364,13 @@ class ServerConnection {
         const { id, during, ref } = payload;
         // The event is over: its answer will not come as a render, and the
         // fields it came from keep what the user typed.
-        if (typeof ref === "number") {
+        if (during === "event" && typeof ref === "number") {
           boost.valueGuard.answer(ref);
           this.loading.answer(ref).forEach(unmarkLoading);
         }
+        // About the instance a join the page has since sent replaces: the new
+        // one, and the element it is for, are not hurt (#139)
+        if (!this.joins.error(id, ref, during)) break;
         const target = this.components[id];
         const element = document.getElementById(id);
         // The instance is gone; nothing it was waiting for will be answered
@@ -369,6 +383,7 @@ class ServerConnection {
           // A join that failed is not retried: it would fail again. The page
           // keeps what the server rendered, and the next connection tries.
           delete this.components[id];
+          this.joins.forget(id);
           // No instance, so no uploads: its own nor its LiveComponents'
           for (const each of [id, ...liveIdsIn(element)]) uploadManagers.dispose(each);
           element.classList.add("wireview-error");
@@ -806,10 +821,14 @@ class ServerConnection {
    * @param {string} component_id - Component element ID
    * @param {string} state - Serialized component state
    * @param {Object<string, [string, string]>} children - Child component info
+   * @param {number} [ref] - names the join to a server that returns it (#139)
    */
-  sendJoin(name, component_id, state, children) {
-    debugLog("send", `join ${name}`, { component_id });
-    this._send("join", { name, state, children });
+  sendJoin(name, component_id, state, children, ref) {
+    debugLog("send", `join ${name}`, { component_id, ref });
+    /** @type {{name: string, state: string, children: Object<string, [string, string]>, ref?: number}} */
+    const payload = { name, state, children };
+    if (ref !== undefined) payload.ref = ref;
+    this._send("join", payload);
   }
 
   /**
@@ -927,12 +946,6 @@ class WireviewComponent {
     /** @type {ViewportObserver} */
     this.viewportObserver = new ViewportObserver(this);
 
-    /**
-     * Whether this component has sent a join on this connection. A reconnect
-     * makes new components, so it is per connection.
-     * @type {boolean}
-     */
-    this.hasJoined = false;
   }
 
   /**
@@ -1116,11 +1129,12 @@ class WireviewComponent {
     // old one with its LiveComponents and their uploads, and so does the page:
     // a file chosen for the old instance is not the new one's (#137).
     // The answer names the new instances; a config from the old ones, still on
-    // its way, matches none of them.
-    if (this.hasJoined) {
+    // its way, matches none of them. Named, the join is told from the one it
+    // replaces by its answer, which carries the ref (#139).
+    const ref = connection.serverVsn >= JOIN_REFS_SINCE ? ++connection.lastRef : undefined;
+    if (connection.joins.sent(this.id, ref)) {
       for (const each of [this.id, ...liveIdsIn(element)]) uploadManagers.dispose(each);
     }
-    this.hasJoined = true;
     // A join that failed before is tried again on a new connection
     element.classList.remove("wireview-error");
     /** @type {Object<string, [string, string]>} */
@@ -1136,7 +1150,8 @@ class WireviewComponent {
       element.dataset.name || "",
       element.id,
       element.dataset.state || "",
-      children
+      children,
+      ref
     );
   }
 
