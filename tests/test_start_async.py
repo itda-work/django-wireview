@@ -43,6 +43,7 @@ TEMPLATES = {
         '<ul id="items" wire-stream="items"></ul></div>'
     ),
     "sa/feed_item.html": "<li>{{ item.label }}</li>",
+    "sa/n.html": "{% load wireview %}<div {% tag_header %}>n={{ n }}</div>",
     "sa/stuck.html": "{% load wireview %}<div {% tag_header %}>{{ total }} {{ count }}</div>",
 }
 
@@ -215,6 +216,59 @@ class SaStuck(Component):
         return 1
 
 
+class SaLeaver(Component):
+    """An operation that makes its own component leave halfway, and would go on if it were let."""
+
+    class Meta:
+        template_name = "sa/n.html"
+
+    n: int = 0
+    _log: list[str] = []
+
+    async def go(self):
+        self._log = []
+        await self.start_async("op", self._op())
+
+    async def _op(self) -> int:
+        await asyncio.sleep(0)
+        # Delivered at once by LoopbackBroker: the component leaves inside this task
+        await self.wire.send("crashed", id=self.id)
+        self._log.append("went on after leaving")
+        await asyncio.sleep(0)
+        self._log.append("past an await after leaving")
+        return 1
+
+    async def handle_async(self, name, result):
+        self._log.append("handle_async after leaving")
+
+
+class SaPoll(Component):
+    """The documented retry: handle_async starts the operation again under its own name, then goes on."""
+
+    class Meta:
+        template_name = "sa/n.html"
+
+    n: int = 0
+    retries: int = 0
+    _handling: list[asyncio.Task[t.Any]] = []
+
+    async def go(self):
+        self._handling = []
+        await self.start_async("poll", self._once())
+
+    async def _once(self) -> int:
+        await asyncio.sleep(0)
+        return 1
+
+    async def handle_async(self, name, result):
+        self._handling.append(t.cast("asyncio.Task[t.Any]", asyncio.current_task()))
+        self.n += 1
+        if self.n < 3:
+            await self.start_async("poll", self._once())
+            await asyncio.sleep(0)  # anything after the retry that awaits: a save, a notice
+            self.retries += 1
+
+
 class FakeOutbound:
     def __init__(self) -> None:
         self.commands: list[tuple[str, dict[str, t.Any]]] = []
@@ -337,12 +391,13 @@ async def settle(component: Component, name: str) -> None:
     """Wait for the task under ``name`` to end, however it ends.
 
     The task may still be running when the event returns -- it waits out the
-    event's render (#138).
+    event's render (#138). In its handle_async it no longer holds the name, and
+    is among the unnamed tasks (#147).
     """
-    task = component._async_tasks.get(name)
-    if task is not None:
-        done, _ = await asyncio.wait([task], timeout=2)
-        assert done, f"{name} did not finish"
+    tasks = [*filter(None, [component._async_tasks.get(name)]), *component._assign_tasks]
+    if tasks:
+        _, pending = await asyncio.wait(tasks, timeout=2)
+        assert not pending, f"{name} did not finish"
 
 
 async def test_the_result_reaches_handle_async_and_renders(render_thread):
@@ -405,6 +460,43 @@ async def test_a_handle_async_that_raises_ends_its_task_without_cancelling_it(ca
 
     assert not task.cancelled()
     assert ("error", {"id": "p", "during": "event"}) in outbound.commands
+
+
+async def test_an_operation_that_makes_its_component_leave_is_cancelled_at_its_next_await():
+    # Sparing the task that runs the recovery must not spare an operation still
+    # under way: that one would outlive its component (#95, #147)
+    consumer, outbound, _ = await joined_page()
+    leaver = await consumer.repo.join("SaLeaver", {"id": "l"})
+    leaver.wire.broker = LoopbackBroker(consumer)  # type: ignore[assignment]
+    await consumer.send_render(leaver)
+    await leaver.wire.flush_pending()
+
+    await consumer.command_user_event("l", "go", {}, {})
+    task = leaver._async_tasks["op"]
+    done, _ = await asyncio.wait([task], timeout=2)
+
+    assert done
+    assert leaver._log == ["went on after leaving"]
+    assert consumer.repo.get("l") is not leaver
+
+
+async def test_a_handle_async_that_starts_its_operation_again_goes_on_and_renders():
+    # The documented retry and poll: handle_async starts the same name again.
+    # Replacing the name cancelled the task running that handle_async, so its
+    # next await raised CancelledError: the rest of it and the render it would
+    # have asked for were lost (#147)
+    consumer, _, _ = await joined_page()
+    poll = await consumer.repo.join("SaPoll", {"id": "q"})
+    poll.wire.broker = LoopbackBroker(consumer)  # type: ignore[assignment]
+    await consumer.send_render(poll)
+    await poll.wire.flush_pending()
+
+    await consumer.command_user_event("q", "go", {}, {})
+    await eventually(lambda: poll.n == 3 and not poll._async_tasks and not poll._assign_tasks)
+
+    assert poll.retries == 2
+    assert [task.cancelled() for task in poll._handling] == [False, False, False]
+    assert "n=3" in shown(poll)
 
 
 async def test_a_failed_assign_async_renders_its_message_and_survives_a_rejoin(render_thread):

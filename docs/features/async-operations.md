@@ -174,6 +174,10 @@ async def search(self, query: str):
     await self.start_async("search", self._do_search(query))
 ```
 
+작업이 끝나 `handle_async`가 불릴 때는 이름이 이미 비어 있다. 그래서 `handle_async` 안에서 같은
+이름으로 다시 시작해도(재시도, 폴링) 지금 돌고 있는 `handle_async`는 취소되지 않고 끝까지 돌며 렌더도
+나간다(#147). 같은 까닭에 `handle_async` 안에서 제 이름으로 `cancel_async`를 부르면 `False`다.
+
 ## 사용 예
 
 ### 타입어헤드 검색
@@ -287,8 +291,7 @@ class FileProcessor(Component):
 - 내비게이션으로 같은 id의 새 인스턴스가 join한다
 - 핸들러가 예외를 던져 인스턴스가 버려진다([errors](./errors.md))
 
-`handle_async`가 예외를 던져 인스턴스가 버려질 때, 그 `handle_async`를 돌던 작업은 취소하지 않는다.
-작업은 이미 끝나는 중이고, 그 작업을 기다리던 쪽은 `CancelledError` 없이 끝을 본다(#147).
+`handle_async`를 돌고 있는 작업도 취소된다. 작업이 아직 결과를 내는 중이면 다음 `await`에서 취소된다.
 
 취소된 작업에는 `handle_async`가 불리지 않고 렌더도 요청되지 않는다. `cancel_async()`로 직접
 취소할 때도 같다. 작업 안에서 정리가 필요하면 `asyncio.CancelledError`를 받아 처리하고 다시 던진다.

@@ -20,6 +20,7 @@ import typing as t
 
 import pytest
 from django.contrib.auth.models import AnonymousUser
+from testproj.waiting import eventually
 
 from wireview import Component
 from wireview.consumer import WireviewConsumer
@@ -46,6 +47,24 @@ class Slow(Component):
 
     async def handle_async(self, name, result):
         HANDLED.append((name, result.state))
+
+
+class SlowToHandle(Component):
+    """An operation that ends at once and a handle_async that does not."""
+
+    class Meta:
+        template_name = "todo/counter.html"
+
+    async def quick(self) -> int:
+        return 1
+
+    async def begin(self, **_rest):
+        await self.start_async("work", self.quick())
+
+    async def handle_async(self, name, result):
+        HANDLED.append((name, "handling"))
+        await asyncio.Event().wait()
+        HANDLED.append((name, "handled"))
 
 
 class FakeOutbound:
@@ -96,6 +115,24 @@ async def test_leaving_cancels_the_tasks_a_component_started(handler):
     assert component._async_tasks == {} and component._assign_tasks == set()
     # Cancelled is not finished: handle_async hears nothing
     assert HANDLED == []
+
+
+async def test_leaving_cancels_a_task_still_in_its_handle_async():
+    # Past its operation the task no longer holds the name, so handle_async can
+    # start it again (#147). It must still end with the component (#95)
+    consumer = _consumer()
+    component = consumer.repo.build("SlowToHandle", {"id": "s-1"})
+    await component.begin()
+    task = component._async_tasks["work"]
+    await eventually(lambda: HANDLED)
+    assert HANDLED == [("work", "handling")] and not task.done()
+
+    await consumer.command_leave("s-1")
+    await asyncio.sleep(0)
+
+    assert task.done()
+    assert component._async_tasks == {} and component._assign_tasks == set()
+    assert HANDLED == [("work", "handling")]
 
 
 async def test_a_disconnect_cancels_every_components_tasks():

@@ -971,9 +971,9 @@ class Component(BaseModel):
 
     # Track active async tasks by name
     _async_tasks: dict[str, "asyncio.Task[t.Any]"] = {}
-    # assign_async tasks (and allow_upload's config send): held so a running one
-    # is not garbage collected, and cancelled with the named ones when the
-    # component leaves (#95)
+    # Tasks no name holds -- assign_async's, allow_upload's config send, and a
+    # start_async task past its operation: held so a running one is not garbage
+    # collected, and cancelled with the named ones when the component leaves (#95)
     _assign_tasks: set["asyncio.Task[t.Any]"] = set()
 
     async def start_async(
@@ -986,7 +986,8 @@ class Component(BaseModel):
 
         When the operation completes, `handle_async` will be called with the
         result or error. If an operation with the same name is already running,
-        it will be cancelled and replaced.
+        it will be cancelled and replaced. An operation that has completed no
+        longer holds its name, so `handle_async` may start it again.
 
         Args:
             name: Unique name for this async operation
@@ -1025,12 +1026,24 @@ class Component(BaseModel):
                     return
                 except Exception as e:
                     result = AsyncResult.failure(e)
+                # The operation is over, and its name with it: handle_async may
+                # start it again (a retry, a poll) without cancelling the task it
+                # runs in, which lost the rest of it and its render (#147). The
+                # task is still cancelled if the component leaves (#95).
+                if self._async_tasks.get(name) is task:
+                    del self._async_tasks[name]
+                    self._assign_tasks.add(task)
+                    task.add_done_callback(self._assign_tasks.discard)
                 try:
                     await self.handle_async(name, result)
                 except Exception:
                     # Raised inside a task nobody awaits, it was never even logged,
                     # and the render was skipped. Recover as for a raising handler (#94).
                     log.exception("%s (%s) raised in handle_async(%r)", self._name, self.id, name)
+                    # The recovery discards the component and cancels its tasks.
+                    # A broker that delivers at once runs it in this task, which
+                    # has nothing left to do but would end cancelled (#147).
+                    self._assign_tasks.discard(task)
                     await self.wire.send("crashed", id=self.id)
                     return
                 await self.send_render()
@@ -1169,17 +1182,9 @@ class Component(BaseModel):
         (#95). A task that outlived its component kept doing its work, held the
         instance in memory, and at the end asked a session that no longer had
         the component (or no longer existed) for a render.
-
-        The task running this is spared: a ``handle_async`` that raised reaches
-        here through its own recovery when the broker delivers at once, and the
-        task cancelled itself, so whoever awaited it got ``CancelledError``
-        (#147). It is past its operation, and ends on its own.
         """
-        import asyncio
-
-        current = asyncio.current_task()
         for task in [*self._async_tasks.values(), *self._assign_tasks]:
-            if task is not current and not task.done():
+            if not task.done():
                 task.cancel()
         self._async_tasks.clear()
         self._assign_tasks.clear()

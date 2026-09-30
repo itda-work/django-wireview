@@ -117,6 +117,14 @@ The django-reactor era changelog (2.x) is preserved in
   raising task, so awaiting it raised `CancelledError`. The task that is running the recovery is
   no longer cancelled; it is past its operation and ends by itself (#147).
 
+- A `handle_async` that started its operation again under the same name -- the documented retry,
+  or a poll -- cancelled the task it was running in: the name still held that task. Its next
+  `await` raised `CancelledError`, so the rest of it and the render it would have asked for were
+  lost. An operation now gives up its name when it ends, before `handle_async`; the task is still
+  cancelled if the component leaves. The same fix keeps a `handle_async` that raised from
+  cancelling its own task through the recovery when the broker delivers at once, as in tests
+  (#147).
+
 - Tutorial 13 (quiz) taught handlers that read a synchronous ORM property: `answer()` read
   `self.current_question` and `next_question()` read `len(self.questions)`, so a quiz built from
   it raised `SynchronousOnlyOperation` at the first answer in production. The tutorial now uses
