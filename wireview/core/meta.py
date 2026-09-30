@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import logging
 import typing as t
 from asyncio import iscoroutine
@@ -36,6 +37,9 @@ RedirectDestination = t.Union[t.Callable[..., t.Any], "models.Model", str]
 DiffPayload = dict[str, t.Any]
 Context = dict[str, t.Any]
 P = t.ParamSpec("P")
+
+# One number per WireviewMeta, so per component instance, for this process's life
+_instance_numbers = itertools.count(1)
 
 ScrollPosition = t.Literal["start"] | t.Literal["end"] | t.Literal["center"] | t.Literal["nearest"]
 
@@ -105,6 +109,11 @@ class WireviewMeta:
         # envelope and which hooks ``Component._mount`` runs before the component's
         # own, so every path that builds a component has to carry it.
         self.live_session = live_session
+        # Tells this instance's mail from another's under the same component id:
+        # the session drops an upload op sent by an instance that has since left
+        # or been replaced by a new join (#137). A component lives in the process
+        # its session runs in, so a counter is unique enough.
+        self.instance: int = next(_instance_numbers)
         if broker is None:
             broker = ChannelsBroker(channel_layer) if channel_layer is not None else NullBroker()
         self.broker: Broker = broker
@@ -410,9 +419,15 @@ class WireviewMeta:
         """Send a stream operation to the client."""
         await self.send("stream_op", **op.to_payload())
 
-    async def send_upload_op(self, op: "UploadOp") -> None:
-        """Send an upload operation to the client."""
-        await self.send("upload_op", **op.to_payload())
+    async def send_upload_op(self, op: "UploadOp", owner: str) -> None:
+        """Send an upload operation to the client, on behalf of component ``owner``.
+
+        The mail names the instance that sent it. It may reach the session after
+        that instance left or a new join replaced it under the same id -- a
+        config goes out from a task, through the channel layer -- and the session
+        drops it then, before anything reaches the page (#137).
+        """
+        await self.send("upload_op", **op.to_payload(), owner=owner, instance=self.instance)
 
     async def push_js(self, component_id: str, js: "JS") -> None:
         """

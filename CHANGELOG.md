@@ -91,11 +91,20 @@ The django-reactor era changelog (2.x) is preserved in
   the task that sends the config, which the event loop alone does not (#137).
 
 - What the browser keeps for a component's uploads -- held files, entries and their requests,
-  preview blob URLs -- now ends with the component's server instance: when it leaves the page,
-  its join fails, the connection drops, or a new join replaces it under the same id. A config
-  sent before the instance ended is ignored when it arrives after. Before, the upload state
-  outlived the component, and a file held for one instance could be registered by a late config
-  or with the next instance under the same id (#137).
+  preview blob URLs, including the ones `wireview.getPreviewUrl()` returned -- now ends with the
+  component's server instance: when it leaves the page, its join fails, a new join replaces it
+  under the same id, or the connection it was joined on drops. A dropped connection stops its
+  uploads, which have to be chosen again; a file chosen before the first connection or while
+  offline is kept, however many reconnects fail, for the next instance's config. Before, the
+  upload state outlived the component, and a file held for one instance could be registered by
+  a late config or with the next instance under the same id (#137).
+
+- An upload config late from an instance that has ended no longer reaches the page. The session
+  drops an upload op whose instance is not the one under its id any more; the page drops a
+  config for an id it left, or whose join it has not had the answer to (the render with `vsn`).
+  Before, a config the old instance sent was taken for the new one's after any render of the id,
+  and its settings -- `auto_upload=True` -- started an upload the new instance had not asked
+  for (#137).
 
 - CI: the Python x Django grid tested Django 6.0 in every lane. Each job installed its Django
   over the lock's and then ran the tests through a syncing `uv run`, which put 6.0 back before

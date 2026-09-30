@@ -22,7 +22,7 @@ import re
 
 import pytest
 from playwright.sync_api import expect
-from testproj.e2e_browser import expect_text, open_live, wait_live
+from testproj.e2e_browser import OFFLINE_SHIM, expect_text, open_live, wait_live
 from testproj.e2e_server import serve
 
 pytestmark = pytest.mark.e2e
@@ -39,23 +39,6 @@ def server():
 @pytest.fixture(autouse=True)
 def _db(transactional_db):
     pass
-
-
-#: Wraps the page's WebSocket so a test can drop the connection and refuse
-#: reconnects: while offline, a new socket goes to a port nothing listens on,
-#: which fails the way a lost network does.
-OFFLINE_SHIM = """
-(() => {
-  const Native = window.WebSocket;
-  window.__link = { offline: false, sockets: [] };
-  window.WebSocket = class extends Native {
-    constructor(url, protocols) {
-      super(window.__link.offline ? "ws://127.0.0.1:9/" : url, protocols);
-      window.__link.sockets.push(this);
-    }
-  };
-})();
-"""
 
 
 class Link:

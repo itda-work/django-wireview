@@ -18,9 +18,12 @@ class FileProbe(Component):
 
     received: list[str] = []
     external_done: str = ""
+    # Set by the page's ?manual=1: the same component with "files" not uploaded
+    # until asked, so a test can tell which instance's config the page acted on
+    manual: str = ""
 
     async def joined(self):
-        self.allow_upload("files", accept=[".txt"], max_entries=1)
+        self.allow_upload("files", accept=[".txt"], max_entries=1, auto_upload=not self.manual)
         self.allow_upload("images", accept=[".png"], max_entries=1, auto_upload=False)
         self.allow_upload("outside", accept=[".txt"], external=self._presign)
 

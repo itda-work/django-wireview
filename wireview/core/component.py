@@ -1408,7 +1408,7 @@ class Component(BaseModel):
                 data=config.to_client_dict(endpoint),
                 component_id=self.id,
             )
-            await self.wire.send_upload_op(op)
+            await self.wire.send_upload_op(op, self.id)
 
         # Held like assign_async's tasks: the loop keeps only a weak reference to a
         # task, and one nobody holds may be collected before the config goes out
@@ -1454,7 +1454,7 @@ class Component(BaseModel):
             entry = self._upload_registry.cancel_entry(name, ref)
             if entry:
                 op = UploadOp(op="cancel", upload=name, ref=ref)
-                await self.wire.send_upload_op(op)
+                await self.wire.send_upload_op(op, self.id)
 
     async def consume_uploads(
         self,

@@ -87,7 +87,8 @@ wireview/
                            loading.mjs (로딩 표시를 어느 응답이 끝내는가. ref로 짝짓는다),
                            navigation.mjs (boost 이동이 끝났음을 누구에게 알리는가: 훅의 navigated()와 wireview:navigated),
                            reconnect.mjs (재연결 백오프를 헤더 메타에서 읽는다. WIREVIEW RECONNECT_*),
-                           uploads.mjs (업로드 manager의 수명. 인스턴스가 끝나면 폐기하고 늦은 config는 버린다),
+                           uploads.mjs (업로드 manager의 수명. 인스턴스가 끝나면 폐기하고, leave한 id·응답 없는 join의 config는 버린다.
+                           끝난 인스턴스의 upload_op는 세션이 먼저 버린다),
                            wireview-boost.js, types.d.ts
                            wireview.min.js는 빌드 산출물이며 gitignore
 

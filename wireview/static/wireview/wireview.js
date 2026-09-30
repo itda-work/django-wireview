@@ -8,7 +8,7 @@ import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
 import { readReconnectSettings, reconnectOptions } from "./reconnect.mjs";
 import { NAVIGATED_EVENT, NavigationLog, carriedAcross } from "./navigation.mjs";
-import { UploadManagers } from "./uploads.mjs";
+import { UploadManagers, answersJoin } from "./uploads.mjs";
 import boost from "./wireview-boost";
 
 /**
@@ -169,9 +169,11 @@ class ServerConnection {
       }
 
       this.components = {};
-      // The instances the uploads belonged to ended with the connection (#137).
-      // A file chosen while offline waits for the next instance's config.
-      uploadManagers.disposeAll();
+      // The instances the uploads belonged to ended with the connection (#137),
+      // and their requests stop: the server drops the connection's chunks. This
+      // runs again for each reconnect that fails; a file chosen since, or before
+      // the first connection, belongs to no instance yet and waits for the next.
+      uploadManagers.connectionClosed();
       document.querySelectorAll("[wireview-component]").forEach((el) => {
         const element = /** @type {HTMLElement} */ (el);
         element.classList.add("wireview-disconnected");
@@ -270,15 +272,15 @@ class ServerConnection {
         endEventTiming();
 
         const { id, diff, children, ref, vsn } = payload;
+        // Before serverVsn takes this render's vsn: an old server never sends one
+        if (answersJoin(vsn, this.serverVsn)) uploadManagers.answered(id);
         if (typeof vsn === "number") this.serverVsn = vsn;
         // Register the children first, before any frame is scheduled: the
         // parent's HTML is built from their renders, and a later diff for a
         // child must find its component whether or not the parent has patched
         // the DOM yet.
         const changedChildren = [];
-        uploadManagers.rendered(id);
         for (const [childId, childDiff] of Object.entries(children || {})) {
-          uploadManagers.rendered(childId);
           let child = this.components[childId];
           if (!child) {
             child = new WireviewComponent(childId);
@@ -329,6 +331,8 @@ class ServerConnection {
       }
       case "remove":
         var { id } = payload;
+        // A join refused (an on_mount hook halted it) is answered this way
+        uploadManagers.answered(id);
         document.getElementById(id)?.remove();
         boost.navEvent.sendNewContent();
         break;
@@ -336,6 +340,11 @@ class ServerConnection {
       case "error": {
         // Server code raised for this component (#94). The connection lives on.
         const { id, during, ref } = payload;
+        if (during !== "event") {
+          // The answer to its join: no instance, so no uploads
+          uploadManagers.answered(id);
+          uploadManagers.dispose(id);
+        }
         // The event is over: its answer will not come as a render, and the
         // fields it came from keep what the user typed.
         if (typeof ref === "number") {
@@ -525,9 +534,10 @@ class ServerConnection {
     // "config" creates the upload on this side, so it names its component:
     // searching for a component that already has the upload finds none.
     if (op === "config" && id) {
-      // Sent by an instance that has since ended -- it left, or a new join
-      // replaced it -- and dropped: it would bring the manager back, or hand
-      // the old instance's files to the new one (#137)
+      // Dropped when it may come from an instance the page gave up on -- the
+      // id left, or its join is not answered yet: it would bring the manager
+      // back, or give the old instance's files and settings to the new one.
+      // The server drops what such an instance sends after it ended (#137).
       uploadManagers.forConfig(id)?.configure(upload, data);
       return;
     }
@@ -1092,10 +1102,10 @@ class WireviewComponent {
     // boosted navigation, or the rollback after a crash. The server retires the
     // old one with its LiveComponents and their uploads, and so does the page:
     // a file chosen for the old instance is not the new one's (#137).
-    if (this.hasJoined) {
-      uploadManagers.dispose(this.id);
-      element.querySelectorAll("[wireview-live]").forEach((live) => uploadManagers.dispose(live.id));
-    }
+    // Until this join is answered, a config for these ids comes from the old
+    // instances.
+    const nested = Array.from(element.querySelectorAll("[wireview-live]"), (live) => live.id);
+    uploadManagers.joining(this.id, nested, this.hasJoined);
     this.hasJoined = true;
     // A join that failed before is tried again on a new connection
     element.classList.remove("wireview-error");
@@ -2296,7 +2306,10 @@ class UploadManager {
   getPreviewUrl(name, ref) {
     const entry = this.entries[name]?.[ref];
     if (entry && entry.file.type.startsWith("image/")) {
-      return URL.createObjectURL(entry.file);
+      // Revoked with the manager, like the preview tags' own
+      const url = URL.createObjectURL(entry.file);
+      this.previewUrls.add(url);
+      return url;
     }
     return null;
   }

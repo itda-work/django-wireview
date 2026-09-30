@@ -61,7 +61,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | `clear_flash` | `flash_id` |
 | `scroll_into_view` | `id`, `behavior`, `block`, `inline` |
 | `focus_on` | `selector` |
-| `upload_op` | `op` (`config`, `registered`, `progress`, `error`, `complete` 등), `upload`, `ref?`, 그 외 op별 필드. `config`는 업로드를 클라이언트에 만드는 op라 소유 컴포넌트의 `id`를 싣는다. `config`는 페이지를 live로 만드는 `render`보다 채널 레이어 한 번 왕복만큼 늦게 온다 — 그 사이에 고른 파일은 클라이언트가 들고 있다가 `config`가 오면 등록한다. 클라이언트는 그 id의 인스턴스가 끝난 뒤(leave, 같은 id의 새 join) 다음 렌더 전에 온 `config`를 버린다(#137) |
+| `upload_op` | `op` (`config`, `registered`, `progress`, `error`, `complete` 등), `upload`, `ref?`, 그 외 op별 필드. `config`는 업로드를 클라이언트에 만드는 op라 소유 컴포넌트의 `id`를 싣는다. `config`는 페이지를 live로 만드는 `render`보다 채널 레이어 한 번 왕복만큼 늦게 온다 — 그 사이에 고른 파일은 클라이언트가 들고 있다가 `config`가 오면 등록한다. 세션은 떠났거나 같은 id의 새 join이 대신한 인스턴스가 보낸 op를 넘기지 않고, 클라이언트는 leave한 id와 응답(`vsn`을 실은 `render`)을 받지 못한 join의 id에 온 `config`를 버린다(#137) |
 | `dispatch_event` | `command`, `id`, `args`, `kwargs` — 지연 호출 |
 
 ## 4. Session mail (컴포넌트 → 세션)
@@ -127,6 +127,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 구버전이 섞이면: 옛 클라이언트와 새 서버는 옛 클라이언트가 `vsn`을 보내지 않으므로 지금까지와 바이트까지 같은 메시지를 받는다. 새 클라이언트와 옛 서버는 옛 서버가 `vsn`을 읽지 않고 옛 형태만 보내며, 새 클라이언트는 그것을 그대로 읽는다. 버전 신호가 없었다면 옛 클라이언트는 `{"k"}`를 모르는 값으로 슬롯에 넣고 `[object Object]`를 그렸을 것이다 — 롤링 배포 중 옛 JS로 열린 페이지가 새 서버에 재연결하는 흔한 경우다.
 
 - 2026-09-26: inbound `query_string`(클라이언트가 보내지 않은 지 오래된 명령)과 `reload`의 `legacy` 사유를 없앴다. v2 이전 서명 상태는 `invalid`다 (#99).
+- 2026-09-30: 세션이 떠났거나 대체된 인스턴스의 `upload_op`를 버린다. 인스턴스 표지는 컴포넌트가 세션에 보내는 메일에만 있고 클라이언트 메시지는 그대로라 `vsn`을 올리지 않는다. 클라이언트는 이미 있던 join 응답의 `vsn`을 join 응답의 표지로 읽는다 (#137).
 - 2026-09-29: `vsn` 5. outbound `joined` (#112).
 - 2026-09-29: `user_event`의 `ref`가 로딩 표시를 거는 이벤트에도 실린다. `vsn` 3 이상의 서버가 이미 받던 필드라 `vsn`을 올리지 않는다 (#118).
 - 2026-09-26: `vsn` 4. outbound `error`. 표에 없는 inbound 메시지와 핸들러가 아닌 `user_event`는 연결을 닫지 않는다 (#94).

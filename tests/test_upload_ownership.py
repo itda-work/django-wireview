@@ -320,6 +320,91 @@ async def test_disconnect_releases_only_that_connections_files():
     await consumer_b.disconnect(1000)
 
 
+# --- mail from an instance that ended ------------------------------------------------------
+
+
+async def mail_of(monkeypatch, consumer: WireviewConsumer, component_id: str):
+    """Join an uploader and return the upload mail its instance sent, as the session gets it."""
+    mail: list[dict[str, t.Any]] = []
+
+    async def record(self, _command: str, **kwargs: t.Any) -> None:
+        mail.append({"command": _command, "kwargs": kwargs})
+
+    with monkeypatch.context() as patch:
+        patch.setattr(WireviewMeta, "send", record)
+        component = await join_uploader(consumer, component_id)
+        await asyncio.gather(*list(component._assign_tasks))  # the config goes out from a task
+    return [m for m in mail if m["command"] == "upload_op"]
+
+
+def configs_sent(outbound: FakeOutbound) -> list[dict[str, t.Any]]:
+    return [payload for command, payload in outbound.commands if command == "upload_op" and payload["op"] == "config"]
+
+
+async def test_a_config_from_an_instance_a_new_join_replaced_is_dropped(monkeypatch):
+    """#137: the old instance's config reaching the session after the new join.
+
+    Forwarded, the page took it for the new instance's: the same id, and a render
+    of that id had just arrived. Its settings -- ``auto_upload`` -- decided what
+    the page did with the next file.
+    """
+    consumer, outbound = await connect_consumer()
+    old_mail = await mail_of(monkeypatch, consumer, "probe")
+    # The same id joins again: the old instance is retired and a new one mounted
+    await consumer.command_leave("probe")
+    new_mail = await mail_of(monkeypatch, consumer, "probe")
+    assert [m["kwargs"]["op"] for m in old_mail] == [m["kwargs"]["op"] for m in new_mail] == ["config"]
+
+    for mail in old_mail:
+        await consumer.message_from_component(mail)
+    assert configs_sent(outbound) == []
+
+    for mail in new_mail:
+        await consumer.message_from_component(mail)
+    [config] = configs_sent(outbound)
+    assert config["id"] == "probe"
+    # Which instance sent it is the session's business; the page's message is unchanged
+    assert "owner" not in config and "instance" not in config
+
+    await consumer.disconnect(1000)
+
+
+async def test_a_config_from_an_instance_that_left_is_dropped(monkeypatch):
+    consumer, outbound = await connect_consumer()
+    mail = await mail_of(monkeypatch, consumer, "probe")
+    await consumer.command_leave("probe")
+
+    for message in mail:
+        await consumer.message_from_component(message)
+
+    assert configs_sent(outbound) == []
+    await consumer.disconnect(1000)
+
+
+async def test_a_cancel_from_an_ended_instance_is_dropped_too(monkeypatch):
+    consumer, outbound = await connect_consumer()
+    component = await join_uploader(consumer, "probe")
+    registry = registry_of(consumer, "probe")
+    assert registry is not None
+    add_entry(registry)
+    mail: list[dict[str, t.Any]] = []
+
+    async def record(self, _command: str, **kwargs: t.Any) -> None:
+        mail.append({"command": _command, "kwargs": kwargs})
+
+    with monkeypatch.context() as patch:
+        patch.setattr(WireviewMeta, "send", record)
+        await component.cancel_upload("images", "upload-1")
+    assert [m["kwargs"]["op"] for m in mail] == ["cancel"]
+    await consumer.command_leave("probe")
+
+    for message in mail:
+        await consumer.message_from_component(message)
+
+    assert [p for c, p in outbound.commands if c == "upload_op" and p["op"] == "cancel"] == []
+    await consumer.disconnect(1000)
+
+
 # --- tokens are bound to their owner ------------------------------------------------------
 
 

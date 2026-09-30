@@ -940,8 +940,29 @@ class WireviewSession:
         log.debug(f'>>> URL {command.upper()} "{url}"')
         await self.send_command("url_change", {"url": url, "command": command})
 
-    async def component_upload_op(self, op: str, upload: str, ref: str | None = None, **data):
-        """Handle upload operation from component."""
+    async def component_upload_op(
+        self,
+        op: str,
+        upload: str,
+        ref: str | None = None,
+        owner: str | None = None,
+        instance: int | None = None,
+        **data,
+    ):
+        """Forward an upload operation a component sent, if its instance is still the one here.
+
+        A config is sent from a task, through the channel layer, so it can arrive
+        after the component left or a new join replaced it under the same id. The
+        page would take it for the current instance's: it could bring back an
+        upload that ended, or hand the next instance the old one's settings --
+        ``auto_upload`` among them, which the page acts on alone (#137). The
+        owner and instance travel in the mail only; the page never sees them.
+        """
+        if owner is not None:
+            current = self.repo.get(owner)
+            if current is None or current.wire.instance != instance:
+                log.debug("Dropping upload %s %s from an ended instance of %s", op, upload, owner)
+                return
         log.debug(f">>> UPLOAD-OP {op.upper()} {upload}")
         payload = {"op": op, "upload": upload}
         if ref:

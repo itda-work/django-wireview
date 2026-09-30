@@ -4,6 +4,7 @@
   {% upload_input "files" data_testid="files" %}
   <div data-testid="drop" {% upload_drop_zone "files" %}>drop here</div>
   <button type="button" data-testid="pick" {% upload_button "files" %}>pick</button>
+  {% for entry in this.uploads.files %}<span data-testid="entry">{{ entry.client_name }}</span>{% endfor %}
   <ul data-testid="received">
     {% for item in this.received %}<li>{{ item }}</li>{% endfor %}
   </ul>

@@ -29,7 +29,7 @@ from playwright.sync_api import expect
 
 from .e2e_server import server_errors
 
-__all__ = ["WAIT_TIMEOUT", "LIVE_SELECTOR", "open_live", "wait_live", "expect_text", "expect_count"]
+__all__ = ["WAIT_TIMEOUT", "LIVE_SELECTOR", "OFFLINE_SHIM", "open_live", "wait_live", "expect_text", "expect_count"]
 
 #: The budget for anything the browser has to wait for, in seconds. The same one
 #: ``e2e_server.STARTUP_TIMEOUT`` gives the server, and for the same reason.
@@ -37,6 +37,23 @@ WAIT_TIMEOUT = 15.0
 
 #: What a component sets once it has joined.
 LIVE_SELECTOR = '[data-is-live="true"]'
+
+#: An init script that wraps the page's WebSocket so a test can drop the connection
+#: and refuse reconnects: ``window.__link.offline = true`` sends every new socket to
+#: a port nothing listens on, which fails the way a lost network does, and
+#: ``window.__link.sockets`` lists every socket the page opened.
+OFFLINE_SHIM = """
+(() => {
+  const Native = window.WebSocket;
+  window.__link = { offline: false, sockets: [] };
+  window.WebSocket = class extends Native {
+    constructor(url, protocols) {
+      super(window.__link.offline ? "ws://127.0.0.1:9/" : url, protocols);
+      window.__link.sockets.push(this);
+    }
+  };
+})();
+"""
 
 # Every Playwright assertion gets the same budget, including the ones a suite
 # writes directly (`to_be_visible`, `to_contain_text`). Otherwise the budget is

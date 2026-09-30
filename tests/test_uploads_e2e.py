@@ -10,7 +10,7 @@ import threading
 
 import pytest
 from playwright.sync_api import expect
-from testproj.e2e_browser import WAIT_TIMEOUT, expect_count, expect_text, open_live, wait_live
+from testproj.e2e_browser import OFFLINE_SHIM, WAIT_TIMEOUT, expect_count, expect_text, open_live, wait_live
 from testproj.e2e_server import serve
 
 pytestmark = pytest.mark.e2e
@@ -166,16 +166,185 @@ def test_a_file_held_for_an_instance_a_new_join_replaced_does_not_pass_to_the_ne
     assert registered == ["new.txt"]
 
 
-def test_the_drop_zone_uploads_what_is_dropped(probe):
-    probe.evaluate(
+@pytest.fixture
+def late_old_config(monkeypatch):
+    """Hold the first instance's upload configs in the task that sends them (#137).
+
+    Unlike ``held_config`` this holds nothing at the session, which goes on
+    reading the socket: the page's next join is handled, the new instance answers
+    it and sends its own config, and only then does the old instance's mail reach
+    the session -- the order a slow broker can produce. Returns ``(release,
+    handled)``: set the first to let the mail go; the second is set once the
+    session has dealt with every piece of it.
+    """
+    from wireview.core.meta import WireviewMeta
+    from wireview.session import WireviewSession
+
+    release = threading.Event()
+    handled = threading.Event()
+    first: list[int] = []
+    pending = [0]
+    in_flight: set[asyncio.Task] = set()
+    send = WireviewMeta.send_upload_op
+    forward = WireviewSession.component_upload_op
+
+    async def deliver_later(wire, op, owner):
+        await asyncio.to_thread(release.wait, WAIT_TIMEOUT)
+        await send(wire, op, owner)
+
+    async def holding(self, op, owner):
+        if op.op == "config" and (not first or first[0] == self.instance):
+            first[:1] = [self.instance]
+            pending[0] += 1
+            # Handed off, as a broker holds a message it accepted: retiring the
+            # instance cancels its tasks, not what they already sent
+            task = asyncio.create_task(deliver_later(self, op, owner))
+            in_flight.add(task)
+            task.add_done_callback(in_flight.discard)
+            return
+        await send(self, op, owner)
+
+    async def counting(self, op, upload, ref=None, **data):
+        await forward(self, op, upload, ref, **data)
+        if first and data.get("instance") == first[0]:
+            pending[0] -= 1
+            if pending[0] == 0:
+                handled.set()
+
+    monkeypatch.setattr(WireviewMeta, "send_upload_op", holding)
+    monkeypatch.setattr(WireviewSession, "component_upload_op", counting)
+    return release, handled
+
+
+#: Counts the chunk requests the page makes from here on. ``startUpload`` calls
+#: fetch in the same turn as the ``registered`` op that starts it.
+COUNT_CHUNKS = """() => {
+  window.__chunks = 0;
+  const send = window.fetch;
+  window.fetch = (url, init) => {
+    if (String(url).includes("__wireview_upload__")) window.__chunks += 1;
+    return send(url, init);
+  };
+}"""
+
+
+def test_a_late_config_from_the_replaced_instance_does_not_decide_the_new_ones_upload(
+    late_old_config, registered, page, server
+):
+    # The old instance uploads "files" at once, the new one only when asked. The
+    # old config, forwarded after the new join's answer, was taken for the new
+    # instance's and started the upload the new instance did not want.
+    release, handled = late_old_config
+    open_live(page, f"{server}/fileprobe/")
+    by(page, "manual").click()
+    expect_text(by(page, "page"), "manual")
+    wait_live(page)
+
+    release.set()
+    assert handled.wait(WAIT_TIMEOUT)
+
+    page.evaluate(COUNT_CHUNKS)
+    by(page, "files").set_input_files(text_file("new.txt", "new"))
+    # Rendered after the registered op, which is where an upload would start
+    expect_text(by(page, "entry"), "new.txt")
+    assert page.evaluate("window.__chunks") == 0
+    assert registered == ["new.txt"]
+
+
+def test_a_preview_url_the_page_asked_for_ends_with_the_component(probe):
+    by(probe, "images").set_input_files({"name": "p.png", "mimeType": "image/png", "buffer": PNG})
+    expect(by(probe, "preview")).to_have_attribute("src", re.compile(r"^blob:"))
+    url = probe.evaluate(
         """() => {
+          const img = document.querySelector('[data-testid="preview"]');
+          const [name, ref] = img.getAttribute("wire-preview").split(":");
+          return window.wireview.getPreviewUrl(img, name, ref);
+        }"""
+    )
+    loads = "(url) => fetch(url).then(() => true, () => false)"
+    assert probe.evaluate(loads, url)
+
+    by(probe, "to-other").click()
+    # The component left in the same frame that swapped the page in
+    expect_text(by(probe, "page"), "other")
+
+    # And the File the URL points at was released with its uploads
+    assert not probe.evaluate(loads, url)
+
+
+@pytest.fixture
+def quick_reconnect(settings):
+    """Every 100 ms, no jitter. Listed before ``page`` so the page is served with it."""
+    settings.WIREVIEW = {
+        **getattr(settings, "WIREVIEW", {}),
+        "RECONNECT_MIN_DELAY_MS": 100,
+        "RECONNECT_JITTER_MS": 0,
+        "RECONNECT_MAX_DELAY_MS": 100,
+        "RECONNECT_GROW_FACTOR": 1,
+    }
+
+
+PROBE_LIVE = "#probe[data-is-live='true']:not(.wireview-disconnected)"
+
+
+def another_attempt_fails(page) -> None:
+    """Wait until a reconnect started after this call has failed: the socket after it exists."""
+    opened = page.evaluate("window.__link.sockets.length")
+    page.wait_for_function(f"window.__link.sockets.length >= {opened + 2}", timeout=WAIT_TIMEOUT * 1000)
+
+
+def test_a_file_chosen_while_offline_outlives_the_reconnects_that_fail(quick_reconnect, registered, page, server):
+    # Every failed attempt closes the socket again. Each close used to end every
+    # upload manager, the one holding the file chosen after the first among them.
+    page.add_init_script(OFFLINE_SHIM)
+    open_live(page, f"{server}/fileprobe/", selector=PROBE_LIVE)
+    page.evaluate("() => { window.__link.offline = true; window.__link.sockets.forEach((s) => s.close()); }")
+    expect(page.locator("#probe")).to_have_class(re.compile("wireview-disconnected"))
+
+    by(page, "files").set_input_files(text_file("offline.txt", "offline"))
+    another_attempt_fails(page)
+    page.evaluate("() => { window.__link.offline = false; }")
+
+    wait_live(page, PROBE_LIVE)
+    expect_text(by(page, "received").locator("li"), "offline.txt:7")
+    assert registered == ["offline.txt"]
+
+
+def test_a_file_chosen_before_the_first_connection_outlives_an_attempt_that_fails(
+    quick_reconnect, registered, page, server
+):
+    # One script: two init scripts run in no promised order
+    page.add_init_script(OFFLINE_SHIM + "window.__link.offline = true;")
+    page.goto(f"{server}/fileprobe/")
+    page.wait_for_function("window.__link.sockets.length >= 1", timeout=WAIT_TIMEOUT * 1000)
+
+    # The server's first render has no file input yet -- the upload is allowed
+    # in joined() -- but the drop zone is there
+    drop(page, "early.txt", "early")
+    another_attempt_fails(page)
+    page.evaluate("() => { window.__link.offline = false; }")
+
+    wait_live(page, PROBE_LIVE)
+    expect_text(by(page, "received").locator("li"), "early.txt:5")
+    assert registered == ["early.txt"]
+
+
+def drop(page, name: str, body: str) -> None:
+    """Drop one text file on the probe's drop zone."""
+    page.evaluate(
+        """([name, body]) => {
           const data = new DataTransfer();
-          data.items.add(new File(["dropped!"], "d.txt", { type: "text/plain" }));
+          data.items.add(new File([body], name, { type: "text/plain" }));
           const zone = document.querySelector('[data-testid="drop"]');
           zone.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: data }));
           zone.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
-        }"""
+        }""",
+        [name, body],
     )
+
+
+def test_the_drop_zone_uploads_what_is_dropped(probe):
+    drop(probe, "d.txt", "dropped!")
     expect_text(by(probe, "received").locator("li"), "d.txt:8")
 
 
