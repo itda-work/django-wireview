@@ -1,16 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { UploadManagers, answersJoin } from "../../wireview/static/wireview/uploads.mjs";
+import { UploadManagers } from "../../wireview/static/wireview/uploads.mjs";
 
 /** A manager that remembers whether it was disposed and what it holds. */
 function fake(id) {
   return { id, files: [], disposed: 0, dispose() { this.disposed += 1; } };
-}
-
-/** What wireview.js does with a render: it answers a join only when it says so. */
-function render(managers, id, { vsn, serverVsn = 5 } = {}) {
-  if (answersJoin(vsn, serverVsn)) managers.answered(id);
 }
 
 test("a component's manager is made once and kept", () => {
@@ -21,115 +16,117 @@ test("a component's manager is made once and kept", () => {
   assert.equal(managers.find("other"), undefined);
 });
 
-test("a config after the join's answer goes to the manager", () => {
+test("a config from the instance a render named goes to the manager", () => {
   const managers = new UploadManagers(fake);
   const early = managers.get("probe");
   early.files.push("chosen before the first join was answered");
-  managers.joining("probe");
 
-  assert.equal(managers.forConfig("probe"), null, "nothing answered yet");
-  render(managers, "probe", { vsn: 5 });
-  assert.equal(managers.forConfig("probe"), early);
+  assert.equal(managers.forConfig("probe", 1), null, "no render named an instance yet");
+  managers.started("probe", 1);
+  assert.equal(managers.forConfig("probe", 1), early);
 });
 
-test("a component that left takes no config, whatever renders arrive after", () => {
+test("a component that left takes no config, whatever arrives after", () => {
   // #137: a render the old instance sent before the server handled the leave
   // used to open the gate again, and the config behind it brought the manager back
   const managers = new UploadManagers(fake);
-  managers.joining("left");
-  render(managers, "left", { vsn: 5 });
-  const old = managers.forConfig("left");
+  managers.started("left", 1);
+  const old = managers.forConfig("left", 1);
   old.files.push("gone");
 
   managers.dispose("left");
-  render(managers, "left");
 
   assert.equal(old.disposed, 1);
-  assert.equal(managers.forConfig("left"), null);
+  assert.equal(managers.forConfig("left", 1), null);
   assert.equal(managers.find("left"), undefined);
 });
 
-test("a join that replaces an instance takes no config until it is answered", () => {
+test("a join that replaces an instance takes only the new instance's configs", () => {
   const managers = new UploadManagers(fake);
-  managers.joining("probe", ["child"]);
-  render(managers, "probe", { vsn: 5 });
-  const old = managers.forConfig("probe");
-  const oldChild = managers.forConfig("child");
+  managers.started("probe", 1);
+  managers.started("child", 2);
+  const old = managers.forConfig("probe", 1);
+  const oldChild = managers.forConfig("child", 2);
 
-  managers.joining("probe", ["child"], true);
-
+  // The page sends the join: the instance and its LiveComponent's are over
+  managers.dispose("probe");
+  managers.dispose("child");
   assert.deepEqual([old.disposed, oldChild.disposed], [1, 1]);
   // A file chosen on the new DOM before the answer
   const fresh = managers.get("probe");
   fresh.files.push("new");
-  // The old instance still renders, and its configs follow
-  render(managers, "probe");
-  assert.equal(managers.forConfig("probe"), null, "the old instance's config");
-  assert.equal(managers.forConfig("child"), null, "its LiveComponent's");
+  assert.equal(managers.forConfig("probe", 1), null, "the old instance's config, before the answer");
 
-  render(managers, "probe", { vsn: 5 });
-  assert.equal(managers.forConfig("probe"), fresh, "the new instance's config");
-  assert.notEqual(managers.forConfig("child"), null);
+  managers.started("probe", 3);
+  managers.started("child", 4);
+  assert.equal(managers.forConfig("probe", 1), null, "the old instance's config, after it");
+  assert.equal(managers.forConfig("child", 2), null, "its LiveComponent's");
+  assert.equal(managers.forConfig("probe", 3), fresh, "the new instance's config");
+  assert.notEqual(managers.forConfig("child", 4), null);
 });
 
-test("two joins in a row open the gate only at the second answer", () => {
-  // The first join's answer arrives after the page already sent the second;
-  // what follows it is the instance the second join retires.
+test("a LiveComponent shown again under its id takes its new instance's config", () => {
+  // It never sends a join: the parent's render names the new instance. Closing
+  // the id until a join came kept it closed for good.
   const managers = new UploadManagers(fake);
-  managers.joining("probe");
-  managers.joining("probe", [], true);
+  managers.started("child", 2);
+  managers.forConfig("child", 2);
+  managers.dispose("child");
 
-  render(managers, "probe", { vsn: 5 });
-  assert.equal(managers.forConfig("probe"), null);
-  render(managers, "probe", { vsn: 5 });
-  assert.notEqual(managers.forConfig("probe"), null);
+  managers.started("child", 5);
+  const again = managers.forConfig("child", 5);
+  assert.notEqual(again, null);
+  assert.equal(again.disposed, 0);
 });
 
-test("a component that leaves while its join is unanswered stays closed after the answer", () => {
+test("a join answered twice does not shift what the next join takes", () => {
+  // A render, then an error: the params handler raised after the first render.
+  // Counting answers, the error took the answer the next join was owed.
   const managers = new UploadManagers(fake);
-  managers.joining("probe");
-  managers.dispose("probe");
-  render(managers, "probe", { vsn: 5 });
-  assert.equal(managers.forConfig("probe"), null);
-
-  // Until the page joins it again
-  managers.joining("probe");
-  render(managers, "probe", { vsn: 5 });
-  assert.notEqual(managers.forConfig("probe"), null);
-});
-
-test("a failed join is its own answer and ends the id", () => {
-  const managers = new UploadManagers(fake);
-  managers.get("probe").files.push("chosen");
-  managers.joining("probe");
-
-  managers.answered("probe");
+  managers.started("probe", 5);
   managers.dispose("probe");
 
-  assert.equal(managers.forConfig("probe"), null);
-  assert.equal(managers.unanswered.size, 0);
+  managers.started("probe", 6);
+  assert.equal(managers.forConfig("probe", 5), null);
+  assert.notEqual(managers.forConfig("probe", 6), null);
 });
 
-test("an answer to no join is ignored", () => {
+test("an instance a later render replaces loses the manager it configured", () => {
+  // The first join's answer arrived after the page sent the second: for a while
+  // the old instance looked current, and its config was taken
   const managers = new UploadManagers(fake);
-  managers.answered("probe");
-  managers.joining("probe");
-  managers.answered("other");
-  assert.equal(managers.forConfig("probe"), null);
+  managers.started("probe", 1);
+  const old = managers.forConfig("probe", 1);
+
+  managers.started("probe", 2);
+  assert.equal(old.disposed, 1);
+  const fresh = managers.forConfig("probe", 2);
+  assert.notEqual(fresh, old);
+  assert.equal(managers.forConfig("probe", 1), null);
 });
 
-test("a server that never sends vsn answers a join with any render", () => {
-  assert.equal(answersJoin(undefined, 0), true);
-  assert.equal(answersJoin(undefined, 5), false);
-  assert.equal(answersJoin(5, 0), true);
-  assert.equal(answersJoin(5, 5), true);
+test("a manager nobody configured stays when a render names the instance", () => {
+  const managers = new UploadManagers(fake);
+  managers.started("probe", 1);
+  const waiting = managers.get("probe");
+  managers.started("probe", 2);
+  assert.equal(waiting.disposed, 0);
+  assert.equal(managers.forConfig("probe", 2), waiting);
+});
+
+test("a config from a server that does not number instances is taken", () => {
+  const managers = new UploadManagers(fake);
+  const manager = managers.forConfig("probe", undefined);
+  assert.notEqual(manager, null);
+
+  managers.connectionClosed();
+  assert.equal(manager.disposed, 1);
 });
 
 test("a closed connection ends the managers of its instances, once", () => {
   const managers = new UploadManagers(fake);
-  managers.joining("a");
-  render(managers, "a", { vsn: 5 });
-  const a = managers.forConfig("a");
+  managers.started("a", 1);
+  const a = managers.forConfig("a", 1);
 
   managers.connectionClosed();
   assert.equal(a.disposed, 1);
@@ -144,9 +141,8 @@ test("a closed connection ends the managers of its instances, once", () => {
   assert.equal(managers.find("a"), offline);
 
   // Connected at last: the new instance's config takes the file
-  managers.joining("a");
-  render(managers, "a", { vsn: 5 });
-  assert.equal(managers.forConfig("a"), offline);
+  managers.started("a", 7);
+  assert.equal(managers.forConfig("a", 7), offline);
   assert.deepEqual(offline.files, ["offline"]);
 });
 
@@ -157,19 +153,16 @@ test("a file chosen before the first connection survives a failed attempt", () =
 
   managers.connectionClosed();
 
-  managers.joining("probe");
-  render(managers, "probe", { vsn: 5 });
-  assert.equal(managers.forConfig("probe"), early);
+  managers.started("probe", 1);
+  assert.equal(managers.forConfig("probe", 1), early);
   assert.equal(early.disposed, 0);
 });
 
-test("a closed connection forgets what the old socket owed", () => {
+test("a closed connection forgets the instances it held", () => {
   const managers = new UploadManagers(fake);
-  managers.joining("gone");
-  managers.dispose("left");
+  managers.started("gone", 1);
 
   managers.connectionClosed();
 
-  assert.notEqual(managers.forConfig("gone"), null);
-  assert.notEqual(managers.forConfig("left"), null);
+  assert.equal(managers.forConfig("gone", 1), null);
 });

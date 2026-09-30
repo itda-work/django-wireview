@@ -5,11 +5,13 @@ tests/test_uploads_e2e.py drives it: the file input one file after another past
 external upload whose "presigned URL" is a view of this fixture
 (``views.put_target``). The page links to itself and to a page without the
 component, so a test can end the instance while its uploads are in the air.
+``FileParent`` hides and shows a LiveComponent that uploads, under the same id:
+each showing is a new instance with its own config.
 """
 
 from django.urls import reverse
 
-from wireview import Component, ExternalUploadMeta
+from wireview import Component, ExternalUploadMeta, LiveComponent
 
 
 class FileProbe(Component):
@@ -36,3 +38,27 @@ class FileProbe(Component):
             return
         async for upload in self.consume_uploads(name):
             self.received = [*self.received, f"{upload.name}:{len(upload.read())}"]
+
+
+class FileChild(LiveComponent):
+    class Meta:
+        template_name = "fileprobe/child.html"
+
+    received: list[str] = []
+
+    async def joined(self):
+        self.allow_upload("files", accept=[".txt"], max_entries=1)
+
+    async def on_upload_complete(self, name: str, entry) -> None:
+        async for upload in self.consume_uploads(name):
+            self.received = [*self.received, f"{upload.name}:{len(upload.read())}"]
+
+
+class FileParent(Component):
+    class Meta:
+        template_name = "fileprobe/parent.html"
+
+    shown: bool = True
+
+    async def toggle(self):
+        self.shown = not self.shown

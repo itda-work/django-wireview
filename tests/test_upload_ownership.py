@@ -34,6 +34,10 @@ TEMPLATES = {
     "own/board.html": (
         "{% load wireview %}<div {% tag_header %}>{% live_component 'OwnChildUploader' id='child-1' %}</div>"
     ),
+    "own/toggle.html": (
+        "{% load wireview %}<div {% tag_header %}>"
+        "{% if this.shown %}{% live_component 'OwnChildUploader' id='child-1' %}{% endif %}</div>"
+    ),
     "own/child.html": "{% load wireview %}<span {% live_tag_header %}>{{ this.label }}</span>",
 }
 
@@ -61,6 +65,13 @@ class OwnChildUploader(LiveComponent):
 class OwnBoard(Component):
     class Meta:
         template_name = "own/board.html"
+
+
+class OwnToggleBoard(Component):
+    class Meta:
+        template_name = "own/toggle.html"
+
+    shown: bool = True
 
 
 class OwnPlain(Component):
@@ -341,6 +352,11 @@ def configs_sent(outbound: FakeOutbound) -> list[dict[str, t.Any]]:
     return [payload for command, payload in outbound.commands if command == "upload_op" and payload["op"] == "config"]
 
 
+def instances_named(outbound: FakeOutbound) -> list[dict[str, int]]:
+    """What each render sent so far told the page about instances (``{}`` for nothing)."""
+    return [payload.get("instances", {}) for command, payload in outbound.commands if command == "render"]
+
+
 async def test_a_config_from_an_instance_a_new_join_replaced_is_dropped(monkeypatch):
     """#137: the old instance's config reaching the session after the new join.
 
@@ -363,8 +379,13 @@ async def test_a_config_from_an_instance_a_new_join_replaced_is_dropped(monkeypa
         await consumer.message_from_component(mail)
     [config] = configs_sent(outbound)
     assert config["id"] == "probe"
-    # Which instance sent it is the session's business; the page's message is unchanged
-    assert "owner" not in config and "instance" not in config
+    # The page is told the instance, as the join's answer named it; the owner
+    # is the session's business
+    new = consumer.repo.get("probe")
+    assert new is not None
+    assert config["instance"] == new.wire.instance == new_mail[0]["kwargs"]["instance"]
+    assert instances_named(outbound)[-1] == {"probe": new.wire.instance}
+    assert "owner" not in config
 
     await consumer.disconnect(1000)
 
@@ -519,3 +540,43 @@ async def test_a_connection_without_uploads_never_joins_a_progress_group():
 
     await consumer.disconnect(1000)
     assert not any(topic.startswith("wireview_upload_") for topic in outbound.unsubscribed)
+
+
+async def test_an_instance_is_named_in_its_first_render_only():
+    consumer, outbound = await connect_consumer()
+    component = await join_uploader(consumer, "probe")
+    component.title = "changed"
+    await consumer.send_render(component)
+
+    assert instances_named(outbound) == [{"probe": component.wire.instance}, {}]
+    await consumer.disconnect(1000)
+
+
+async def test_a_live_component_shown_again_is_named_as_a_new_instance():
+    """#137: a LiveComponent sends no join, so the page learns its instance from the parent's render.
+
+    Hidden and shown again under the same id, it is a new instance with a new
+    config. The page, which ended the old one's uploads when it left the DOM,
+    takes that config only because this render named the new instance.
+    """
+    consumer, outbound = await connect_consumer()
+    board = await consumer.repo.join("OwnToggleBoard", {"id": "board"})
+    await consumer.send_render(board, announce=True)
+    first = consumer.repo.get("child-1")
+    assert first is not None
+
+    board.shown = False
+    await consumer.send_render(board)
+    assert consumer.repo.get("child-1") is None
+    board.shown = True
+    await consumer.send_render(board)
+    again = consumer.repo.get("child-1")
+    assert again is not None
+
+    assert instances_named(outbound) == [
+        {"board": board.wire.instance, "child-1": first.wire.instance},
+        {},
+        {"child-1": again.wire.instance},
+    ]
+    assert again.wire.instance != first.wire.instance
+    await consumer.disconnect(1000)

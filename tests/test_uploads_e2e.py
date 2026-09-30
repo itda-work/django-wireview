@@ -272,6 +272,22 @@ def test_a_preview_url_the_page_asked_for_ends_with_the_component(probe):
     assert not probe.evaluate(loads, url)
 
 
+def test_a_live_component_shown_again_under_its_id_uploads_with_its_new_config(page, server):
+    # Hidden, the child left: the page ended its uploads and closed the id to
+    # configs. A LiveComponent never sends a join -- its parent's render makes
+    # the new instance -- so nothing opened the id again, and the new
+    # instance's config was dropped: the file waited for ever.
+    open_live(page, f"{server}/fileprobe/nested/")
+    by(page, "toggle").click()
+    expect_text(by(page, "shown"), "False")
+    expect_count(by(page, "child-files"), 0)
+    by(page, "toggle").click()
+    expect_text(by(page, "shown"), "True")
+
+    by(page, "child-files").set_input_files(text_file("again.txt", "again"))
+    expect_text(by(page, "child-received").locator("li"), "again.txt:5")
+
+
 @pytest.fixture
 def quick_reconnect(settings):
     """Every 100 ms, no jitter. Listed before ``page`` so the page is served with it."""

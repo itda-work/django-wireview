@@ -87,8 +87,8 @@ wireview/
                            loading.mjs (로딩 표시를 어느 응답이 끝내는가. ref로 짝짓는다),
                            navigation.mjs (boost 이동이 끝났음을 누구에게 알리는가: 훅의 navigated()와 wireview:navigated),
                            reconnect.mjs (재연결 백오프를 헤더 메타에서 읽는다. WIREVIEW RECONNECT_*),
-                           uploads.mjs (업로드 manager의 수명. 인스턴스가 끝나면 폐기하고, leave한 id·응답 없는 join의 config는 버린다.
-                           끝난 인스턴스의 upload_op는 세션이 먼저 버린다),
+                           uploads.mjs (업로드 manager의 수명. 인스턴스가 끝나면 폐기하고, 렌더의 instances가 알린 인스턴스 번호와
+                           같은 config만 받는다. 끝난 인스턴스의 upload_op는 세션이 먼저 버린다),
                            wireview-boost.js, types.d.ts
                            wireview.min.js는 빌드 산출물이며 gitignore
 
@@ -131,7 +131,7 @@ tests/
                            deadprobe/ 는 JavaScript를 끈 브라우저가 첫 렌더를 읽고 폼으로 뷰에 가는지 보는 E2E(test_dead_view_e2e.py)의 픽스처,
                            jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,
                            formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처,
-                           fileprobe/ 는 업로드의 모든 입구(입력·드롭 존·미리보기·external)를 보는 E2E(test_uploads_e2e.py)의 픽스처,
+                           fileprobe/ 는 업로드의 모든 입구(입력·드롭 존·미리보기·external)와 숨겼다 다시 보인 LiveComponent의 업로드를 보는 E2E(test_uploads_e2e.py)의 픽스처,
                            streamprobe/ 는 스트림의 dom_id·limit·wire-viewport-*를 보는 E2E(test_streams_e2e.py)의 픽스처다
 
 examples/                  예제 앱 11개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.

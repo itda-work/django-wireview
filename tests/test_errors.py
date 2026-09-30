@@ -34,10 +34,15 @@ _TEMPLATE = "{% load wireview %}<p {% tag_header %}>{{ count }}</p>"
 class ErrorProbe(Component):
     count: int = 0
     fail_to_join: bool = False
+    fail_on_params: bool = False
 
     async def joined(self):
         if self.fail_to_join:
             raise RuntimeError("joined went wrong")
+
+    async def params_changed(self, params, uri):
+        if self.fail_on_params:
+            raise RuntimeError("params went wrong")
 
     async def bump(self, **_rest):
         self.count += 1
@@ -199,6 +204,28 @@ async def test_a_join_that_raises_is_marked_not_retried():
 
     assert error == {"command": "error", "payload": {"id": "e-1", "during": "join"}}
     assert calls == [("leaving", "e-1")]
+    assert after["payload"]["id"] == "e-2"
+
+
+async def test_a_join_that_raises_after_its_first_render_is_answered_twice():
+    # The URL's params reach a joining component after the render that answers
+    # the join; if that raises, the join has failed too, and says so. The page
+    # hears two things for one join, so nothing on it may count answers (#137).
+    communicator = await _connect()
+    try:
+        await _send(communicator, "params_changed", params={"q": "x"}, uri="?q=x")
+        await _join(communicator, "e-1", fail_on_params=True)
+        first = await _next(communicator, "render", "error", "remove")
+        second = await _next(communicator, "render", "error", "remove")
+        await _join(communicator, "e-2")
+        after = await _next(communicator, "render", "error")
+    finally:
+        await communicator.disconnect()
+
+    assert first["command"] == "render"
+    assert first["payload"]["id"] == "e-1"
+    assert "vsn" in first["payload"]
+    assert second == {"command": "error", "payload": {"id": "e-1", "during": "join"}}
     assert after["payload"]["id"] == "e-2"
 
 

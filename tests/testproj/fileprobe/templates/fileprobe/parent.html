@@ -1,0 +1,9 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <button type="button" data-testid="toggle" {% on "click" "toggle" %}>toggle</button>
+  <span data-testid="shown">{{ this.shown }}</span>
+  {% if this.shown %}
+    {% live_component "FileChild" id="child" %}
+  {% endif %}
+</div>

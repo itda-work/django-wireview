@@ -109,11 +109,15 @@ class WireviewMeta:
         # envelope and which hooks ``Component._mount`` runs before the component's
         # own, so every path that builds a component has to carry it.
         self.live_session = live_session
-        # Tells this instance's mail from another's under the same component id:
-        # the session drops an upload op sent by an instance that has since left
-        # or been replaced by a new join (#137). A component lives in the process
-        # its session runs in, so a counter is unique enough.
+        # Tells this instance from another under the same component id (#137).
+        # The session drops an upload op sent by an instance that has since left
+        # or been replaced by a new join, and the page takes an upload config only
+        # from the instance it holds under the id: the first render of each
+        # instance names it (``instance_announced``), and the config carries it.
+        # A component lives in the process its session runs in, so a counter is
+        # unique enough.
         self.instance: int = next(_instance_numbers)
+        self.instance_announced: bool = False
         if broker is None:
             broker = ChannelsBroker(channel_layer) if channel_layer is not None else NullBroker()
         self.broker: Broker = broker
@@ -425,7 +429,8 @@ class WireviewMeta:
         The mail names the instance that sent it. It may reach the session after
         that instance left or a new join replaced it under the same id -- a
         config goes out from a task, through the channel layer -- and the session
-        drops it then, before anything reaches the page (#137).
+        drops it then, before anything reaches the page. A config the session
+        forwards names the instance to the page too (#137).
         """
         await self.send("upload_op", **op.to_payload(), owner=owner, instance=self.instance)
 

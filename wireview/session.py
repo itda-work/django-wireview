@@ -955,8 +955,12 @@ class WireviewSession:
         after the component left or a new join replaced it under the same id. The
         page would take it for the current instance's: it could bring back an
         upload that ended, or hand the next instance the old one's settings --
-        ``auto_upload`` among them, which the page acts on alone (#137). The
-        owner and instance travel in the mail only; the page never sees them.
+        ``auto_upload`` among them, which the page acts on alone (#137).
+
+        What the old instance sent before the leave or the join was handled can
+        still reach the page after it sent them, so a config names its instance
+        and the page takes it only from the one it holds under the id -- the one
+        a render named (``send_render``).
         """
         if owner is not None:
             current = self.repo.get(owner)
@@ -964,9 +968,11 @@ class WireviewSession:
                 log.debug("Dropping upload %s %s from an ended instance of %s", op, upload, owner)
                 return
         log.debug(f">>> UPLOAD-OP {op.upper()} {upload}")
-        payload = {"op": op, "upload": upload}
+        payload: dict[str, t.Any] = {"op": op, "upload": upload}
         if ref:
             payload["ref"] = ref
+        if op == "config" and instance is not None:
+            payload["instance"] = instance
         payload.update(data)
         await self.send_command("upload_op", payload)
 
@@ -1294,6 +1300,10 @@ class WireviewSession:
         handler that changed nothing used to leave its button disabled.
         ``ref`` names the user event this render answers; ``announce`` adds this
         server's protocol version (the render that answers a join).
+
+        ``instances`` names the instance of each component whose first render
+        this is -- the join's answer, a LiveComponent that just joined -- so the
+        page knows whose upload configs to take from then on (#137).
         """
         diff, children, settled = await self._render_tree(component)
         if diff is not None or children or acknowledge or announce:
@@ -1305,6 +1315,8 @@ class WireviewSession:
                 payload["ref"] = ref
             if announce:
                 payload["vsn"] = PROTOCOL_VERSION
+            if instances := self._first_renders([component, *(c for c in settled if c.id in children)]):
+                payload["instances"] = instances
             await self.send_command("render", payload)
         if settled:
             # Subscriptions before the children's queued operations, for the same
@@ -1312,6 +1324,16 @@ class WireviewSession:
             await self.update_to_which_channels_im_subscribed_to()
             for child in settled:
                 await child.wire.flush_pending()
+
+    @staticmethod
+    def _first_renders(components: list[Component]) -> dict[str, int]:
+        """The instances among ``components`` whose render goes out for the first time, marked as told."""
+        instances = {}
+        for component in components:
+            if not component.wire.instance_announced:
+                component.wire.instance_announced = True
+                instances[component.id] = component.wire.instance
+        return instances
 
     async def _render_tree(
         self, component: Component, depth: int = 0

@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<div {% live_tag_header %}>
+  {% upload_input "files" data_testid="child-files" %}
+  <ul data-testid="child-received">
+    {% for item in this.received %}<li>{{ item }}</li>{% endfor %}
+  </ul>
+</div>
