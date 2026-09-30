@@ -46,6 +46,19 @@ class GoodExample(Component):
 - 메모리 효율적
 - 빠른 응답
 
+### QuerySet은 그대로 넘긴다
+
+`stream()`은 QuerySet이나 async iterable을 `async for`로 읽는다. 핸들러는 이벤트 루프 위에서 돌고,
+거기서 QuerySet을 동기로 반복하면 Django가 `SynchronousOnlyOperation`으로 막는다. 그래서 목록으로
+미리 바꿀 필요가 없다.
+
+```python
+async def joined(self):
+    await self.stream("items", Item.objects.order_by("-created_at")[:100])
+```
+
+직접 만든 동기 제너레이터는 그대로 반복된다. 그 안에서 ORM을 부르면 막힌다.
+
 ## DOM ID 전략
 
 ### 기본 규칙

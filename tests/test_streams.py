@@ -131,6 +131,38 @@ class TestComponentStreamMethods:
         assert template_name == "streams/stream_list_item.html"
 
 
+class QuerySetStream(Component):
+    class Meta:
+        template_name = "streams/stream_list.html"
+
+    async def joined(self):
+        from django.contrib.auth.models import User
+
+        await self.stream("items", User.objects.order_by("username"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+@pytest.mark.django_db(transaction=True)  # the async ORM writes on another thread's connection
+async def test_a_queryset_streams_without_running_the_orm_on_the_event_loop():
+    """A QuerySet is consumed with ``async for`` (#120).
+
+    Iterated synchronously it queries on the event loop, and every join of a
+    page that streamed one failed on a real server while the suite, run with
+    DJANGO_ALLOW_ASYNC_UNSAFE, stayed green.
+    """
+    from django.contrib.auth.models import User
+
+    await User.objects.acreate(username="b")
+    await User.objects.acreate(username="a")
+
+    view = await mount(QuerySetStream)
+
+    [op] = [m for m in view.sent_messages if m.get("type") == "stream_op"]
+    users = [u async for u in User.objects.order_by("username")]
+    assert [item["id"] for item in op["items"]] == [f"items-{u.pk}" for u in users]
+
+
 class TestConsumerAcceptsEveryStreamPayload:
     """The consumer is a hop the component tests never cross.
 

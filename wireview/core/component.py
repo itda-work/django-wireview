@@ -1178,7 +1178,7 @@ class Component(BaseModel):
     async def stream(
         self,
         name: str,
-        items: t.Iterable[t.Any],
+        items: t.Iterable[t.Any] | t.AsyncIterable[t.Any],
         *,
         template: str | None = None,
         dom_id: t.Callable[[t.Any], str] | None = None,
@@ -1192,7 +1192,9 @@ class Component(BaseModel):
 
         Args:
             name: Stream name (matches wire-stream attribute in template)
-            items: Iterable of items to render
+            items: Items to render. A QuerySet or any other async iterable is
+                   consumed with ``async for``, so passing a QuerySet as is
+                   does not run the ORM on the event loop.
             template: Template name for rendering items
                      (default: {component_template}_item.html)
             dom_id: Function to generate DOM ID for each item
@@ -1202,7 +1204,7 @@ class Component(BaseModel):
 
         Example:
             async def joined(self):
-                await self.stream("items", [item async for item in Item.objects.all()[:100]])
+                await self.stream("items", Item.objects.all()[:100])
 
             # With limit - keeps only 50 most recent items in DOM
             async def joined(self):
@@ -1212,6 +1214,12 @@ class Component(BaseModel):
 
         template_name = template or self._get_stream_item_template()
         dom_id_fn = dom_id or (lambda item: f"{name}-{item.pk}")
+
+        # A QuerySet is both iterable and async iterable; iterating it
+        # synchronously here would query the database on the event loop,
+        # which Django refuses outside DJANGO_ALLOW_ASYNC_UNSAFE (#120).
+        if isinstance(items, t.AsyncIterable):
+            items = [item async for item in items]
 
         stream_items = []
         for item in items:
