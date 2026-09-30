@@ -10,6 +10,8 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+## [1.0.0rc4] - 2026-10-01
+
 ### Added
 
 - A render that has awaited its async properties for 10 seconds while work the component started
@@ -1581,6 +1583,7 @@ generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
 [Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc3...HEAD
+[1.0.0rc4]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc3...v1.0.0rc4
 [1.0.0rc3]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc2...v1.0.0rc3
 [1.0.0rc2]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc1...v1.0.0rc2
 [1.0.0rc1]: https://github.com/itda-work/django-wireview/compare/v0.7.0...v1.0.0rc1
