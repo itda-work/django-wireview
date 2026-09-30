@@ -633,4 +633,4 @@ Chat 앱을 통해 Streams API와 Presence API의 핵심 개념을 학습했습�
 
 다음 튜토리얼에서는 AsyncResult를 사용한 비동기 데이터 로딩과 복합 컴포지션을 배워봅니다.
 
-[← 이전: 03. Todo 앱](03-todo-app.md) | [다음: 05. Dashboard →](05-dashboard.md)
+[← 이전: 13. Quiz 앱](13-quiz-app.md) | [목차](README.md) | [다음: 05. Dashboard →](05-dashboard.md)

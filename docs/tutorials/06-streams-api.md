@@ -357,4 +357,4 @@ async def reorder(self, item_id: int, new_index: int):
 
 ## 다음 단계
 
-[← 이전: 05. Dashboard](05-dashboard.md) | [다음: 07. Presence API 심화 →](07-presence-api.md)
+[← 이전: 15. LiveComponent](15-live-components.md) | [목차](README.md) | [다음: 07. Presence API 심화 →](07-presence-api.md)

@@ -650,4 +650,4 @@ async def test_toggle():
 
 더 많은 정보는 [README](../../README.md)와 [Architecture](../ARCHITECTURE.md) 문서를 참조하세요.
 
-[← 이전: 08. File Uploads 심화](08-file-uploads.md) | [처음으로 →](README.md)
+[← 이전: 08. File Uploads 심화](08-file-uploads.md) | [목차](README.md)

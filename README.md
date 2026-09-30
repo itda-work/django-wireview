@@ -31,7 +31,7 @@ Wireview는 [django-reactor](https://github.com/edelvalle/reactor)의 현대적�
 | **Presence API** | - | ✅ | `PresenceMixin`, `PresenceTrackerMixin`으로 실시간 사용자 추적 및 타이핑 표시 |
 | **파일 업로드** | - | ✅ | 진행률 추적, 매직 바이트 검증이 포함된 청크 업로드 |
 | **AsyncResult** | - | ✅ | 비동기 작업을 위한 로딩/성공/에러 상태 관리 |
-| **JS 명령어** | - | ✅ | `JS()` 빌더로 Phoenix LiveView.JS 스타일의 클라이언트 사이드 명령어 |
+| **JS 명령** | - | ✅ | `JS()` 빌더로 Phoenix LiveView.JS 스타일의 클라이언트 사이드 명령 |
 | **테스트 유틸리티** | - | ✅ | WebSocket 없이 쉽게 컴포넌트 테스트를 위한 `mount()` 유틸리티 |
 | **디버그 도구** | - | ✅ | `wireview.debug`로 브라우저 콘솔 디버깅 |
 | **JavaScript Hooks** | - | ✅ | Chart.js, Mapbox 등 서드파티 JavaScript 라이브러리 통합 |
@@ -113,7 +113,7 @@ class XCounter(Component):
 - [Presence API](#presence-api)
 - [파일 업로드](#파일-업로드)
 - [AsyncResult](#asyncresult와-비동기-작업)
-- [JS 명령어 빌더](#js-명령어-빌더)
+- [JS 명령 빌더](#js-명령-빌더)
 - [JavaScript Hooks](#javascript-hooks)
 - [컴포넌트 API 레퍼런스](#컴포넌트-api-레퍼런스)
 - [템플릿 태그 레퍼런스](#템플릿-태그-레퍼런스)
@@ -767,9 +767,9 @@ class Dashboard(Component):
 | `get_or(default)` | 결과 또는 기본값 가져오기 |
 | `get_or_raise()` | 결과 가져오기 또는 에러 발생 |
 
-## JS 명령어 빌더
+## JS 명령 빌더
 
-서버 왕복 없이 실행되는 클라이언트 사이드 명령어를 빌드합니다:
+서버 왕복 없이 실행되는 클라이언트 사이드 명령를 빌드합니다:
 
 템플릿은 인자를 받는 호출을 쓸 수 없으므로, 체인은 컴포넌트의 속성이 만들고 템플릿은 그 이름을 쓴다:
 
@@ -784,7 +784,7 @@ class Toolbar(Component):
 
     @property
     def save_with_feedback(self) -> JS:
-        # 명령어 체이닝: 클래스를 바로 붙이고, 이어서 서버 핸들러를 부른다
+        # 명령 체이닝: 클래스를 바로 붙이고, 이어서 서버 핸들러를 부른다
         return JS().add_class("#btn", "loading").push("save")
 
     @property
@@ -804,14 +804,14 @@ class Toolbar(Component):
 
 ### 서버에서 JS 푸시
 
-이벤트 핸들러에서 JS 명령어 전송:
+이벤트 핸들러에서 JS 명령 전송:
 
 ```python
 async def clear_input(self):
     await self.push_js(JS().set_value("input[name=search]", ""))
 ```
 
-### 사용 가능한 명령어
+### 사용 가능한 명령
 
 **표시:**
 - `show(selector, transition=None, display=None)`

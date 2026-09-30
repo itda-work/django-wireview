@@ -220,6 +220,10 @@ class XCounter(Component):
         self.wire.params["count"] = self.count
 ```
 
+이름이 비슷한 둘을 구분해 둡니다. `class Meta:`는 컴포넌트 **클래스의 설정**(템플릿, 구독할 채널 등)이고,
+`WireviewMeta`는 컴포넌트 **인스턴스가 연결과 주고받는 창구**인 `self.wire`의 타입입니다(URL 파라미터,
+`push_js()`, `put_flash()` 같은 클라이언트 명령). 위 `new()`의 `wire` 인자가 그것입니다.
+
 ### 동작
 
 1. 초기 로드: URL의 `?count=X` 파라미터로 초기화
@@ -446,6 +450,6 @@ class XCounter(Component):
 
 카운터를 통해 기본적인 상태 관리와 이벤트 핸들링을 배웠습니다.
 
-다음 튜토리얼에서는 실제 데이터베이스와 연동하는 Todo 앱을 만들어봅니다.
+다음 튜토리얼에서는 모델을 구독해 다른 사용자의 투표까지 실시간으로 보여 주는 Poll 앱을 만들며 렌더링 최적화를 배웁니다.
 
-[← 이전: 01. 시작하기](01-getting-started.md) | [다음: 03. Todo 앱 →](03-todo-app.md)
+[← 이전: 01. 시작하기](01-getting-started.md) | [목차](README.md) | [다음: 10. Poll 앱 →](10-poll-app.md)

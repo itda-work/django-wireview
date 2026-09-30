@@ -357,8 +357,8 @@ async def answer(self, choice_id):
 
 ## 다음 단계
 
-- [14. Notifications](./14-notifications.md) - 알림과 JS 명령어
+- [04. Chat 앱](./04-chat-app.md) - Streams API, Presence API
 
 ---
 
-[← 12. Live Search](./12-live-search.md) | [목차](./README.md) | [14. Notifications →](./14-notifications.md)
+[← 이전: 12. Live Search](12-live-search.md) | [목차](README.md) | [다음: 04. Chat 앱 →](04-chat-app.md)

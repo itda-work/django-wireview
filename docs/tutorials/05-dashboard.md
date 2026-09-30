@@ -645,6 +645,6 @@ class XActivityFeed(Component):
 
 Dashboard를 통해 AsyncResult, 복합 컴포넌트, Streams + 페이지네이션을 학습했습니다.
 
-다음은 심화 튜토리얼에서 각 API를 더 깊이 다룹니다.
+다음 튜토리얼에서는 사용자마다 따로 받는 알림 센터를 만들며 사용자별 채널과 broadcast를 배웁니다.
 
-[← 이전: 04. Chat 앱](04-chat-app.md) | [다음: 06. Streams API 심화 →](06-streams-api.md)
+[← 이전: 04. Chat 앱](04-chat-app.md) | [목차](README.md) | [다음: 14. Notifications →](14-notifications.md)

@@ -266,8 +266,8 @@ class XRatingStats(Component):
 
 ## 다음 단계
 
-- [12. Live Search](./12-live-search.md) - 실시간 검색과 디바운스
+- [03. Todo 앱](./03-todo-app.md) - CRUD, 모델 구독, 중첩 컴포넌트
 
 ---
 
-[← 10. Poll 앱](./10-poll-app.md) | [목차](./README.md) | [12. Live Search →](./12-live-search.md)
+[← 이전: 10. Poll 앱](10-poll-app.md) | [목차](README.md) | [다음: 03. Todo 앱 →](03-todo-app.md)

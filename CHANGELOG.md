@@ -68,6 +68,15 @@ The django-reactor era changelog (2.x) is preserved in
   is a token bucket that the tests run as written, and the deployment guide says `.throttle` and
   `.debounce` stop at the browser, drops the WSGI `cores × 2 + 1` worker formula, and separates the
   broadcast target from the benchmark's fan-out `broadcast_ms` (#123).
+- Documentation: the tutorials had two reading orders -- the index recommended 01→02→10→11→03…,
+  while each page's "next" link ran 01→02→…→09 and stopped there, so 10–15 could not be reached by
+  following it. Every tutorial now ends with the same previous/contents/next line, derived from the
+  index's learning path, and `tests/test_tutorials.py` checks it, the index, and every relative link.
+  Tutorial 01 says why `django.setup()` comes first in `asgi.py` and why only `daphne`'s position in
+  `INSTALLED_APPS` matters, adds a checklist for a page that renders but does not react (startup
+  banner, `manage.py check` W012/W013, the browser's WS tab, `wireview.debug`), and names idiomorph
+  instead of morphdom. `examples/README.md` says to pass `-m "not e2e"` when running pytest by hand
+  (#126).
 
 ### Changed
 

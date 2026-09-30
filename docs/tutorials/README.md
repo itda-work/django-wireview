@@ -14,13 +14,13 @@ django-wireview 단계별 학습 가이드입니다.
 
 ### 중급 (Intermediate)
 - [03. Todo 앱](03-todo-app.md) - CRUD, 모델 구독, 중첩 컴포넌트
-- [12. Live Search](12-live-search.md) - 디바운스, JS 명령어, 검색 자동완성
+- [12. Live Search](12-live-search.md) - 디바운스, JS 명령, 검색 자동완성
 - [13. Quiz 앱](13-quiz-app.md) - 상태 머신, mutation, 리더보드
 
 ### 고급 (Advanced)
 - [04. Chat 앱](04-chat-app.md) - Streams API, Presence API, 라이프사이클 훅
 - [05. Dashboard](05-dashboard.md) - AsyncResult, 복합 컴포지션
-- [14. Notifications](14-notifications.md) - 사용자별 채널, 알림과 토스트, broadcast, JS 명령어 체이닝
+- [14. Notifications](14-notifications.md) - 사용자별 채널, 알림과 토스트, broadcast, JS 명령 체이닝
 - [15. LiveComponent](15-live-components.md) - 중첩 컴포넌트, 부모-자식 통신
 
 ### 심화 (Deep Dive)
@@ -83,7 +83,7 @@ CI가 매번 돌리므로 문서와 달리 조용히 낡지 않습니다. 각 �
 | 모델 구독 | 03, 10, 13 |
 | Streams API | 04, 14 |
 | Presence API | 04, 07 |
-| JS 명령어 | 12, 14 |
+| JS 명령 | 12, 14 |
 | URL 상태 | 10, 11 |
 | 키보드 이벤트 | 11, 12 |
 | AsyncResult | 05 |

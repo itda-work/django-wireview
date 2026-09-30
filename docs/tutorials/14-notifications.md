@@ -2,7 +2,7 @@
 
 > 동작하는 전체 코드: [examples/notifications/](../../examples/notifications/) — CI가 매번 돌리는 예제다.
 
-이 튜토리얼에서는 사용자마다 따로 받는 알림 센터를 만들며 채널과 broadcast, JS 명령어를 학습합니다.
+이 튜토리얼에서는 사용자마다 따로 받는 알림 센터를 만들며 채널과 broadcast, JS 명령를 학습합니다.
 
 ## 학습 목표
 
@@ -11,7 +11,7 @@
 - 두 가지 알림: 저장하는 **알림**(`mutation()`)과 저장하지 않는 **토스트**(`notification()` + `put_flash()`)
 - `self.broadcast()`, 모듈 수준 `broadcast()` / `abroadcast()`
 - 브라우저가 보낸 id를 믿지 않는 핸들러
-- Streams API와 `JS()` 명령어 체이닝
+- Streams API와 `JS()` 명령 체이닝
 
 ## 완성 미리보기
 
@@ -333,7 +333,7 @@ async def notification(self, channel: str, **kwargs):
 모양은 `.wireview-flash`, `.wireview-flash-<종류>` 같은 클래스에 CSS로 준다. 클래스 목록은
 [플래시와 토스트](../features/flash.md#작동-방식)에 있다.
 
-## 7. JS() 명령어 체이닝
+## 7. JS() 명령 체이닝
 
 ```python
 await self.push_js(
@@ -345,9 +345,9 @@ await self.push_js(
 )
 ```
 
-### 주요 JS 명령어
+### 주요 JS 명령
 
-| 명령어 | 설명 |
+| 명령 | 설명 |
 |--------|------|
 | `show(sel, transition=)` | 요소 표시 |
 | `hide(sel, transition=)` | 요소 숨김 |
@@ -560,17 +560,16 @@ async def test_dismissing_deletes_only_the_users_own(alice, bob):
    (힌트: 그 순간 열린 페이지가 있는가)
 3. **알림 필터**: 유형별 필터링
 
-## 마무리
+## 다음 단계
 
-이것으로 wireview 튜토리얼 시리즈가 완료되었습니다!
-
-학습한 내용:
+지금까지 배운 내용:
 - **초급**: 상태 관리, 이벤트, 렌더링 최적화
 - **중급**: 모델 구독, 디바운스, 상태 머신
-- **고급**: Streams, Presence, 사용자별 채널, broadcast, JS 명령어
+- **고급**: Streams, Presence, 사용자별 채널, broadcast, JS 명령
 
-더 자세한 내용은 [심화 가이드](./06-streams-api.md)를 참고하세요.
+다음 튜토리얼에서는 부모 연결을 공유하면서 자기 상태를 따로 갖는 LiveComponent를 만듭니다. 그 뒤의 심화
+튜토리얼(06~09)은 각 API를 하나씩 깊이 다룹니다.
 
 ---
 
-[← 13. Quiz 앱](./13-quiz-app.md) | [목차](./README.md)
+[← 이전: 05. Dashboard](05-dashboard.md) | [목차](README.md) | [다음: 15. LiveComponent →](15-live-components.md)

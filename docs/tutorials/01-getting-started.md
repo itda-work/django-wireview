@@ -45,12 +45,12 @@ daphne를 쓰지 않으려면(Windows에서는 쓰지 않습니다 — [배포 �
 
 ```python
 INSTALLED_APPS = [
-    'daphne',        # 맨 위. runserver가 WebSocket을 받게 한다
-    'wireview',      # wireview를 먼저 추가
-    'channels',      # channels도 추가
+    'daphne',        # 맨 위. 적어도 django.contrib.staticfiles보다 위여야 한다
+    'wireview',
+    'channels',
     'django.contrib.admin',
     'django.contrib.auth',
-    # ... 나머지 앱들
+    # ... 나머지 앱들 (django.contrib.staticfiles 포함)
     'myapp',
 ]
 
@@ -75,6 +75,13 @@ CHANNEL_LAYERS = {
 # }
 ```
 
+순서가 의미 있는 것은 `daphne` 하나입니다. `runserver` 명령은 `INSTALLED_APPS`에서 먼저 나오는 앱의 것이
+쓰이므로, `daphne`가 `django.contrib.staticfiles` 아래에 있으면 staticfiles의 WSGI `runserver`가 이깁니다.
+`wireview`와 `channels`는 어디에 두어도 됩니다.
+
+`CHANNEL_LAYERS`를 빠뜨리면 페이지는 그려지지만 모든 WebSocket 연결이 거절됩니다. Channels에는 기본 레이어가
+없기 때문입니다. `python manage.py check`가 `wireview.W012`로 알려 줍니다.
+
 ### asgi.py 수정
 
 `myproject/asgi.py` 파일을 다음과 같이 수정합니다:
@@ -97,7 +104,9 @@ application = ProtocolTypeRouter({
 })
 ```
 
-**중요**: `django.setup()`이 import 전에 호출되어야 합니다.
+**중요**: `django.setup()`이 `wireview.urls` import보다 먼저 호출되어야 합니다. `wireview.urls`는 컨슈머를 거쳐
+Django 모델을 import하므로, 앱 레지스트리가 준비되기 전에 import하면 `AppRegistryNotReady`로 기동이 실패합니다.
+`get_asgi_application()`을 먼저 불러 변수에 담아 두어도 같은 효과입니다(그 함수가 `django.setup()`을 부릅니다).
 
 ## 3. 첫 번째 컴포넌트 만들기
 
@@ -249,6 +258,20 @@ server`만 보인다면 `daphne`가 `INSTALLED_APPS` 맨 위에 없는 것이고
 2. 입력 필드에 이름을 입력하면 실시간으로 인사말이 바뀝니다
 3. 페이지 새로고침 없이 UI가 업데이트됩니다
 
+### 입력해도 아무 일이 없을 때
+
+페이지는 그려지는데 반응이 없다면 대개 WebSocket이 연결되지 않은 것입니다. 오류 화면은 나오지 않으니 아래를
+차례로 봅니다.
+
+1. **기동 로그**: `Starting ASGI/Daphne ... development server`인가? 아니면 `daphne`의 위치를 확인합니다(2절).
+2. **`python manage.py check`**: `wireview.W012`(채널 레이어 없음)나 `wireview.W013`(`runserver`가 WSGI)이
+   나오면 그 힌트대로 고칩니다. `W013`은 `runserver`를 띄울 때의 로그에만 나옵니다.
+3. **브라우저 개발자 도구 → Network → WS**: `/__wireview__` 연결이 `101 Switching Protocols`로 열려 있는가?
+   연결 자체가 실패하면 `asgi.py`의 `websocket` 라우팅을, 403으로 거절되면 페이지의 호스트가
+   `ALLOWED_HOSTS`에 있는지 확인합니다(다른 출처의 소켓을 막는 Origin 검사입니다).
+4. **브라우저 콘솔**: `wireview.debug.enable()`로 메시지 로그를 켜고 `wireview.debug.status()`로 연결 상태를
+   봅니다(6절).
+
 ## 5. 동작 원리
 
 ### 초기 렌더링
@@ -267,7 +290,7 @@ server`만 보인다면 `daphne`가 `INSTALLED_APPS` 맨 위에 없는 것이고
 3. `change_name` 핸들러가 WebSocket으로 호출
 4. 서버에서 상태 업데이트 및 새 HTML 렌더링
 5. 변경된 부분만 클라이언트로 전송 (HTML diff)
-6. DOM이 효율적으로 업데이트됨 (morphdom)
+6. DOM이 효율적으로 업데이트됨 (idiomorph)
 
 ## 6. 디버깅
 
@@ -290,4 +313,4 @@ wireview.debug.components()
 
 다음 튜토리얼에서는 Counter 컴포넌트를 만들며 이벤트 핸들링과 상태 관리를 더 자세히 배워봅니다.
 
-[다음: 02. Counter 컴포넌트 →](02-counter-component.md)
+[목차](README.md) | [다음: 02. Counter 컴포넌트 →](02-counter-component.md)

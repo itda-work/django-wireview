@@ -737,6 +737,6 @@ class XTodoItem(Component):
 
 Todo 앱을 통해 실제 애플리케이션의 CRUD, 모델 구독, 중첩 컴포넌트를 학습했습니다.
 
-다음 튜토리얼에서는 Streams API와 Presence API를 사용하는 실시간 채팅 앱을 만들어봅니다.
+다음 튜토리얼에서는 디바운스와 JS 명령으로 입력하는 대로 결과가 바뀌는 검색을 만듭니다.
 
-[← 이전: 02. Counter 컴포넌트](02-counter-component.md) | [다음: 04. Chat 앱 →](04-chat-app.md)
+[← 이전: 11. Rating 앱](11-rating-app.md) | [목차](README.md) | [다음: 12. Live Search →](12-live-search.md)

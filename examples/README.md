@@ -40,3 +40,9 @@ make test                        # 예제 테스트까지 전부
 make test ARGS="-k quiz"         # 예제 하나
 make test-e2e LAYER=memory       # 브라우저 (todo, livecomp, hooks, bookmarks)
 ```
+
+pytest를 직접 부를 때는 `-m "not e2e"`를 붙인다: `uv run pytest examples -m "not e2e"`.
+빼면 브라우저 테스트(`e2e` 마커)가 섞여 들어오고, 그것들은 라이브 서버·Playwright 브라우저·
+`collectstatic`을 미리 갖춰야 해서 그냥 실패한다. `make test`는 이 마커를 이미 뺀다.
+기본값(`addopts`)에 넣지 않은 것은 `pytest tests/test_csp_e2e.py`처럼 파일을 짚어 돌릴 때
+전부 조용히 빠지기 때문이다.

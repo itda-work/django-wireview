@@ -485,11 +485,14 @@ class Counter(LiveComponent):
 ## 다음 단계
 
 - [docs/features/live-component.md](../features/live-component.md) - 상세 레퍼런스
-- [05. Dashboard](05-dashboard.md) - AsyncResult 활용
-- [04. Chat 앱](04-chat-app.md) - Streams와 Presence
+- [06. Streams API 심화](06-streams-api.md) - 여기서부터는 앞에서 쓴 API를 하나씩 깊이 다룹니다
 
 ---
 
 ## 완성 코드
 
 전체 예제는 [examples/livecomp/](../../examples/livecomp/)에 있습니다.
+
+---
+
+[← 이전: 14. Notifications](14-notifications.md) | [목차](README.md) | [다음: 06. Streams API 심화 →](06-streams-api.md)

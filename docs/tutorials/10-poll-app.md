@@ -215,4 +215,4 @@ wireview는 서버 요청 중 자동으로 `.wireview-loading` 클래스를 추�
 
 ---
 
-[← 09. 테스트 가이드](./09-testing-components.md) | [목차](./README.md) | [11. Rating 앱 →](./11-rating-app.md)
+[← 이전: 02. Counter 컴포넌트](02-counter-component.md) | [목차](README.md) | [다음: 11. Rating 앱 →](11-rating-app.md)

@@ -217,7 +217,7 @@ class XLiveSearch(Component):
 {% on 'scroll.throttle.100' 'on_scroll' %} <!-- 100ms마다 최대 1회 -->
 ```
 
-## 5. JS() 명령어
+## 5. JS() 명령
 
 `push_js()`로 클라이언트에 JavaScript 명령을 보냅니다:
 
@@ -231,7 +231,7 @@ await self.push_js(
 )
 ```
 
-### 주요 JS 명령어
+### 주요 JS 명령
 
 ```python
 JS().set_value(selector, value)    # input 값 설정
@@ -264,4 +264,4 @@ JS().remove_class(selector, "cls") # 클래스 제거
 
 ---
 
-[← 11. Rating 앱](./11-rating-app.md) | [목차](./README.md) | [13. Quiz 앱 →](./13-quiz-app.md)
+[← 이전: 03. Todo 앱](03-todo-app.md) | [목차](README.md) | [다음: 13. Quiz 앱 →](13-quiz-app.md)
