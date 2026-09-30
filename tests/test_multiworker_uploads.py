@@ -85,7 +85,7 @@ def _start_worker(port: int, log_dir: Path) -> subprocess.Popen:
             "warning",
         ],
         cwd=TESTS,
-        env={**os.environ, "DJANGO_ALLOW_ASYNC_UNSAFE": "1", "PYTHONPATH": os.pathsep.join([str(ROOT), str(TESTS)])},
+        env={**os.environ, "PYTHONPATH": os.pathsep.join([str(ROOT), str(TESTS)])},
         stdout=log,
         stderr=subprocess.STDOUT,
     )

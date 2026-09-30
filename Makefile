@@ -26,7 +26,7 @@ collectstatic:
 # Run all tests (excluding E2E and slow). --ff lives on the targets, not in addopts:
 # there it made `pytest -p no:cacheprovider` refuse to start (#125).
 test: collectstatic
-	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests examples -m "not e2e and not slow" --ff -v $(ARGS)
+	uv run pytest tests examples -m "not e2e and not slow" --ff -v $(ARGS)
 
 # Run unit tests only
 test-unit: collectstatic
@@ -37,7 +37,7 @@ test-unit: collectstatic
 # shared one they failed each other with "readonly database" and "no such table" (#125).
 # No cache provider: two runs writing .pytest_cache at once is its own race.
 test-concurrent: collectstatic
-	@set -e; export DJANGO_ALLOW_ASYNC_UNSAFE=1; \
+	@set -e; \
 	uv run pytest tests examples -m "not e2e and not slow" -q --no-header -p no:cacheprovider $(ARGS) > .test-concurrent-1.log 2>&1 & first=$$!; \
 	uv run pytest tests examples -m "not e2e and not slow" -q --no-header -p no:cacheprovider $(ARGS) > .test-concurrent-2.log 2>&1 & second=$$!; \
 	status=0; wait $$first || status=1; wait $$second || status=1; \
@@ -59,7 +59,7 @@ test-all: test test-e2e
 
 # Run tests with coverage
 test-cov: collectstatic
-	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests examples -m "not e2e" --ff --cov=wireview --cov-report=term-missing --cov-report=html $(ARGS)
+	uv run pytest tests examples -m "not e2e" --ff --cov=wireview --cov-report=term-missing --cov-report=html $(ARGS)
 
 # =============================================================================
 # Code Quality
@@ -182,7 +182,7 @@ MATRIX_DJANGO ?= 5.2 6.0 6.1
 test-matrix: collectstatic
 	@set -e; for py in $(MATRIX_PYTHON); do for dj in $(MATRIX_DJANGO); do \
 		echo "== Python $$py, Django $$dj"; \
-		DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run --isolated --python $$py --extra dev --with "django~=$$dj.0" \
+		uv run --isolated --python $$py --extra dev --with "django~=$$dj.0" \
 			pytest tests examples -m "not e2e and not slow" -q --no-header -p no:warnings $(ARGS); \
 	done; done
 
@@ -190,13 +190,13 @@ test-matrix: collectstatic
 # the newest release of each within pyproject.toml's bounds. uv.lock held pydantic
 # at 2.12 while new installs got 2.13, which broke the import (#127).
 test-latest: collectstatic
-	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run --no-project --isolated --python $(or $(PYTHON),3.12) --with-editable ".[dev]" \
+	uv run --no-project --isolated --python $(or $(PYTHON),3.12) --with-editable ".[dev]" \
 		pytest tests examples -m "not e2e and not slow" -q --no-header -p no:warnings $(ARGS)
 
 # CI: Run tests (non-E2E)
 ci-test:
 	cd tests && uv run python manage.py collectstatic --noinput
-	DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests examples -m "not e2e and not slow" -q
+	uv run pytest tests examples -m "not e2e and not slow" -q
 
 # CI: Run E2E tests
 # CI runs E2E on NATS, the layer this project targets. ci.yml provides the server as a
@@ -204,7 +204,7 @@ ci-test:
 ci-test-e2e:
 	cd tests && uv run python manage.py collectstatic --noinput
 	uv run playwright install --with-deps chromium
-	WIREVIEW_TEST_LAYER=nats DJANGO_ALLOW_ASYNC_UNSAFE=1 uv run pytest tests examples -m "e2e" -v
+	WIREVIEW_TEST_LAYER=nats uv run pytest tests examples -m "e2e" -v
 
 # CI: Build and check package
 ci-build:

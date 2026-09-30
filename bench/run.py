@@ -33,7 +33,6 @@ def _git(*args: str) -> str:
 def _setup_django() -> None:
     sys.path[:0] = [str(ROOT), str(ROOT / "tests")]
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "bench.settings")
-    os.environ.setdefault("DJANGO_ALLOW_ASYNC_UNSAFE", "1")
     import django
 
     django.setup()

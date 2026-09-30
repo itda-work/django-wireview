@@ -68,7 +68,7 @@ class XCounter(Component):
 - **`runserver`는 `daphne` 앱이 `INSTALLED_APPS` 맨 위에 있을 때에만 WebSocket을 받는다.** 없으면 WSGI 서버가 뜨고, 페이지는 그려지는데 아무것도 반응하지 않는다. 오류도 없다. 기동 로그의 `Starting ASGI/Daphne`로 확인하고, WSGI로 뜨면 `wireview.W013`이 기동 로그에 경고한다. daphne를 안 쓰면 `uvicorn <project>.asgi:application --reload`.
 - **`CHANNEL_LAYERS`가 없으면 아무것도 살아나지 않는다.** Channels에는 기본 레이어가 없어서, 비워 두면 WebSocket 연결이 전부 `ImproperlyConfigured`로 거절된다(`wireview.W012`). 개발과 단일 프로세스에는 `{'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}`면 된다.
 - **프로덕션에서 InMemory 채널 레이어는 조용히 깨진다.** 프로세스를 둘 이상 띄우면 브로드캐스트가 같은 프로세스의 연결에만 닿고 오류는 나지 않는다. `channels-nats`나 `channels_redis`를 쓴다(`manage.py check --deploy`의 `wireview.W006`).
-- **블로킹 ORM 호출을 핸들러에서 그냥 하지 않는다.** 핸들러는 async 컨텍스트다. `await Model.objects.aget(...)` 같은 async ORM API를 쓰거나 `sync_to_async`로 감싼다. 템플릿 안에서 지연 평가되는 QuerySet도 같은 문제를 만든다.
+- **블로킹 ORM 호출을 핸들러에서 그냥 하지 않는다.** 핸들러와 라이프사이클 메서드는 이벤트 루프 위에서 돈다. `await Model.objects.aget(...)` 같은 async ORM API를 쓰거나 `sync_to_async`로 감싼다. 템플릿과 `@property`는 렌더 때 워커 스레드에서 읽히므로 동기 ORM을 써도 되지만, **핸들러가 그 property를 읽으면 루프 위에서 돈다** — 핸들러용으로는 async 헬퍼를 따로 둔다. `stream()`에는 QuerySet을 그대로 넘겨도 된다. 테스트를 `DJANGO_ALLOW_ASYNC_UNSAFE=1`로 돌리면 이 실패가 전부 가려진다.
 
 ## 정본 문서
 

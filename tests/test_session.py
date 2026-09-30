@@ -16,7 +16,7 @@ import pytest
 from django.contrib.auth.models import AnonymousUser
 from django.template import Context, Template
 from django.test import override_settings
-from django.test.utils import CaptureQueriesContext
+from testproj.queries import capture_queries
 
 from wireview import Component, LiveComponent
 from wireview.consumer import WireviewConsumer
@@ -246,7 +246,6 @@ async def test_connect_snapshots_the_session_so_reads_cost_nothing():
     query on the event loop and raise ``SynchronousOnlyOperation``.
     """
     from asgiref.sync import sync_to_async
-    from django.db import connection
 
     store = await sync_to_async(store_with)(cart="abc")
 
@@ -262,7 +261,7 @@ async def test_connect_snapshots_the_session_so_reads_cost_nothing():
     assert consumer.repo.session.loaded
 
     component = consumer.repo.build("SessProbe", {"id": "probe"})
-    with CaptureQueriesContext(connection) as queries:
+    async with capture_queries() as queries:
         await component.read()
     assert component.seen == f"{store.session_key}:abc"
     assert len(queries) == 0

@@ -8,9 +8,8 @@ import typing as t
 
 import pytest
 from django.contrib.auth.models import AnonymousUser, User
-from django.db import connection
 from django.test import override_settings
-from django.test.utils import CaptureQueriesContext
+from testproj.queries import capture_queries
 
 from wireview import Component, LiveComponent
 from wireview.consumer import WireviewConsumer
@@ -44,9 +43,12 @@ class UmBatchedRow(LiveComponent):
     async def update_many(cls, updates):
         CALLS.append(("update_many", [c.id for c, _ in updates]))
         await super().update_many(updates)
-        # Sync ORM on purpose: the async one runs on another thread's connection,
-        # where the test's CaptureQueriesContext cannot count it.
-        names = dict(User.objects.filter(pk__in=[c.user_id for c, _ in updates]).values_list("pk", "username"))
+        names = {
+            pk: username
+            async for pk, username in User.objects.filter(pk__in=[c.user_id for c, _ in updates]).values_list(
+                "pk", "username"
+            )
+        }
         for component, _ in updates:
             component.username = names.get(component.user_id, "")
 
@@ -118,7 +120,7 @@ async def test_every_changed_row_of_a_class_arrives_in_one_call_and_loads_in_one
 
     # Rows are keyed by position, so a new list is a user_id change for every row.
     component.user_ids = [u.pk for u in second]
-    with CaptureQueriesContext(connection) as queries:
+    async with capture_queries() as queries:
         await consumer.send_render(component)
 
     assert CALLS == [("update_many", [f"{n}-row" for n in range(1, 6)])]

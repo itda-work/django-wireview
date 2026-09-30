@@ -13,7 +13,6 @@ cd "$(dirname "$0")/.."
 
 LAYER="${WIREVIEW_TEST_LAYER:-nats}"
 export WIREVIEW_TEST_LAYER="$LAYER"
-export DJANGO_ALLOW_ASYNC_UNSAFE=1
 
 listening() { nc -z 127.0.0.1 "$1" >/dev/null 2>&1; }
 

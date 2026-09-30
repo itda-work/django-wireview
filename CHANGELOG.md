@@ -33,6 +33,22 @@ The django-reactor era changelog (2.x) is preserved in
   ordinary form POST failing once in a full E2E run. It uses Django's ASGI handler now, as
   projects are told to, and `server_errors()` sees what Uvicorn logs, which it silently did not
   (#129).
+- A live render read the component's properties on the event loop, so a plain property that used
+  the ORM raised `SynchronousOnlyOperation` on a real server and the component could not join (the
+  notifications example's recipient list). Properties are now read in the same worker thread as the
+  template; async properties are still awaited on the loop (#120).
+- `Component.stream()` iterated a QuerySet synchronously on the event loop, so every join of a page
+  that streamed one failed on a real server (the bookmarks page). A QuerySet or any other async
+  iterable is now consumed with `async for` (#120).
+- The quiz example's handlers read a property that queried the database on the event loop; they use
+  async queries now (#120).
+
+### Changed
+
+- The test suite, E2E and benchmarks no longer set `DJANGO_ALLOW_ASYNC_UNSAFE`, which hid every
+  failure above while the suite was green. The suite refuses to start with it set; E2E tests exempt
+  only Playwright's own thread, so the live server keeps Django's check as production has it
+  (`conftest.py`, #120).
 
 ## [1.0.0rc3] - 2026-09-30
 

@@ -79,7 +79,6 @@ import asyncio, json, os, sys
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "testproj.settings")
 os.environ.setdefault("WIREVIEW_TEST_LAYER", "memory")
-os.environ.setdefault("DJANGO_ALLOW_ASYNC_UNSAFE", "1")
 
 import django
 
