@@ -333,7 +333,7 @@ class RateLimitHook:
   캐시가 필요하다. 예시는 [배포 가이드](../DEPLOYMENT.md#속도-제한)의 연결 제한). 연결 수 자체는 배포 가이드의
   미들웨어가 막는다.
 - **halt는 조용하다.** 거절된 이벤트는 핸들러를 부르지 않을 뿐 오류를 보내지 않는다. 알려야 하면 halt 전에
-  `await component.wire.put_flash(...)` 같은 명령을 보낸다.
+  `await component.put_flash(...)` 같은 명령을 보낸다.
 - **메시지 크기.** 프레임 하나의 상한은 ASGI 서버가 정한다. uvicorn은 `--ws-max-size`(기본 16MB)다. 이벤트
   인자로 큰 값을 받을 일이 없으면 줄여 둔다. 파일은 WebSocket이 아니라 [청크 업로드](./chunked-uploads.md)
   엔드포인트로 오고 `UPLOAD_MAX_FILE_SIZE`가 따로 막는다.

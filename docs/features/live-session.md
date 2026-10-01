@@ -314,7 +314,7 @@ reload한다 — 새 페이지는 현재 인증 문맥으로 다시 렌더되고
 3. 즉시 끊어야 한다면 **`WIREVIEW["SIGNING_KEY"]`를 교체하되 `SIGNING_KEY_FALLBACKS = []`를 명시한다.**
    `None`은 "fallback 없음"이 아니라 **Django의 `SECRET_KEY_FALLBACKS`를 상속**한다는 뜻이라, 옛 키가
    거기 있으면 옛 토큰이 계속 통과한다. 그리고 키 교체는 **이미 join한 연결을 닫지 않는다** — 이벤트
-   경로는 서명을 다시 보지 않는다. 3번이 함께 필요하다.
+   경로는 서명을 다시 보지 않는다. 2번이 함께 필요하다.
 
 ## Phoenix LiveView 대응
 

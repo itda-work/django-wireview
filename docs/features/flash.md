@@ -61,7 +61,8 @@ class ProductForm(Component):
 | `timeout` | `5000` | 자동으로 닫히는 시간(ms). `0`이면 닫지 않는다 |
 | `dismissible` | `True` | 닫기 버튼을 붙인다 |
 
-`await self.clear_flash()`는 떠 있는 것을 모두 닫고, `clear_flash(flash_id)`는 그 id 하나만 닫는다.
+`await self.clear_flash()`는 떠 있는 것을 모두 닫는다. 플래시 하나하나의 id는 브라우저가 띄울 때 만들므로 서버는
+그 id를 알지 못한다 — `clear_flash(flash_id)`는 브라우저 쪽에서 얻은 id를 받았을 때만 쓸 수 있다.
 
 ### 컨테이너
 
