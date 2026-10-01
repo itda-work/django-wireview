@@ -119,7 +119,7 @@ tests/
 │                          꺼내 실제로 돌린다. 문서의 예시를 고치면 이 테스트가 본다
 │                          test_doc_examples.py 는 사용자 문서(README·features·tutorials·skills·examples)의 코드가
 │                          되풀이된 실수를 하지 않는지 본다: 블록은 파싱되고, JS() 체인은 실제 시그니처에 묶이고,
-│                          함수 컴포넌트는 f-string으로 마크업을 만들지 않고, mount() 시그니처는 실제와 같다
+│                          함수 컴포넌트는 f-string·`+`·`.format()`·`%`로 마크업을 만들지 않고, mount() 시그니처는 실제와 같다
 ├── js/*.test.mjs          클라이언트 순수 모듈 테스트 (node --test)
 │                          js/roundtrip.mjs 는 테스트가 아니라 test_diff_roundtrip.py 의 드라이버다 —
 │                          서버 diff 를 실제 rendered.mjs 로 적용해 매 단계 HTML 이 렌더와 같은지 본다

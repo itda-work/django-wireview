@@ -114,10 +114,33 @@ def _chain(node: ast.AST) -> list[str]:
             return names[::-1]
 
 
-def _builds_markup(node: ast.JoinedStr) -> bool:
-    """An f-string with a tag in its text and a value formatted into it."""
-    text = "".join(part.value for part in node.values if isinstance(part, ast.Constant) and isinstance(part.value, str))
-    return "<" in text and any(isinstance(part, ast.FormattedValue) for part in node.values)
+def _markup_text(node: ast.AST) -> bool:
+    return isinstance(node, ast.Constant) and isinstance(node.value, str) and "<" in node.value
+
+
+def _builds_markup(node: ast.AST) -> bool:
+    """A tag in a string's text with a value put into it by Python's own string building.
+
+    An f-string, ``"<b>" + text``, ``"<b>{}</b>".format(text)`` or ``"<b>%s</b>" % text``.
+    ``format_html()`` is the way that escapes, and none of these is it.
+    """
+    if isinstance(node, ast.JoinedStr):
+        text = "".join(p.value for p in node.values if isinstance(p, ast.Constant) and isinstance(p.value, str))
+        return "<" in text and any(isinstance(p, ast.FormattedValue) for p in node.values)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod):
+        return _markup_text(node.left)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        operands, stack = [], [node]
+        while stack:
+            part = stack.pop()
+            if isinstance(part, ast.BinOp) and isinstance(part.op, ast.Add):
+                stack += [part.left, part.right]
+            else:
+                operands.append(part)
+        return any(map(_markup_text, operands)) and not all(isinstance(p, ast.Constant) for p in operands)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "format":
+        return _markup_text(node.func.value)
+    return False
 
 
 def _mistakes(tree: ast.Module) -> list[str]:
@@ -138,10 +161,10 @@ def _mistakes(tree: ast.Module) -> list[str]:
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and any(
             _chain(d)[-1:] == ["function_component"] for d in node.decorator_list
         ):
-            # The returned string is output as it is (mark_safe), so an f-string puts the caller's value in raw
+            # The returned string is output as it is (mark_safe), so string building puts the caller's value in raw
             for inner in ast.walk(node):
-                if isinstance(inner, ast.JoinedStr) and _builds_markup(inner):
-                    found.append(f"{node.name}() formats markup with an f-string, unescaped: format_html(...)")
+                if _builds_markup(inner):
+                    found.append(f"{node.name}() builds markup from its values unescaped: format_html(...)")
                     break
         if isinstance(node, ast.Call) and _chain(node.func)[-1:] == ["allow_upload"]:
             if node.args and isinstance(node.args[0], ast.Call) and _chain(node.args[0].func)[-1:] == ["UploadConfig"]:
@@ -312,6 +335,9 @@ def test_the_docs_are_read():
         "async def f(self):\n    self.allow_upload(UploadConfig(name='a'))",
         "@function_component\ndef b(text):\n    return f'<b>{text}</b>'",
         "@function_component(name='x')\ndef b(text):\n    inner = f'<i>{text}</i>'\n    return inner",
+        "@function_component\ndef b(text):\n    return '<b>' + text + '</b>'",
+        "@function_component\ndef b(text):\n    return '<b>{}</b>'.format(text)",
+        "@function_component\ndef b(text):\n    return '<b>%s</b>' % text",
     ],
 )
 def test_each_rule_catches_its_mistake(code):
@@ -329,6 +355,8 @@ def test_each_rule_catches_its_mistake(code):
         "async def f(self):\n    self.allow_upload('a', accept=['.png'])",
         "@function_component\ndef b(text):\n    return format_html('<b>{}</b>', text)",
         "@function_component\ndef b(size):\n    return format_html('<i>{}</i>', f'{size}px')",
+        "@function_component\ndef b(items):\n    return format_html_join('', '<li>{}</li>', ((i,) for i in items))",
+        "@function_component\ndef b(text):\n    return format_html('<b>{}</b>', text) + format_html('<i>{}</i>', '!')",
     ],
 )
 def test_no_rule_refuses_the_right_way(code):

@@ -161,7 +161,8 @@ The django-reactor era changelog (2.x) is preserved in
   docstring formatted its arguments into markup with an f-string. A function component's returned
   string is output unescaped, so a copied example put any value it was given into the page as HTML
   (XSS). The examples use `format_html` now, the reference says escaping is the function's job, and
-  `tests/test_doc_examples.py` refuses a function component that builds markup with an f-string.
+  `tests/test_doc_examples.py` refuses a function component that builds markup with an f-string,
+  `+`, `.format()` or `%`.
 - The Python API example in `docs/features/function-components.md` called `get_function_component`
   without importing it (`NameError`).
 - `mount()` records broadcasts and presence messages in a stand-in channel layer, and it recorded

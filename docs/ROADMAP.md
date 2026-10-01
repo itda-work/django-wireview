@@ -273,12 +273,14 @@ window.wireview.hooks.Chart = {
 상세는 [features/function-components.md](./features/function-components.md)
 
 ```python
+from django.utils.html import format_html
+
 from wireview import function_component
 
 
 @function_component
 def button(text: str, variant: str = "primary"):
-    return f'<button class="btn btn-{variant}">{text}</button>'
+    return format_html('<button class="btn btn-{}">{}</button>', variant, text)
 ```
 
 ```html
