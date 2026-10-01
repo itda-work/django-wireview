@@ -17,8 +17,9 @@
 
 > **보안.** 0.7.0 이하와 1.0.0rc1~1.0.0rc3는 보안 권고
 > [GHSA-q2rr-5q2g-6xqp](https://github.com/itda-work/django-wireview/security/advisories/GHSA-q2rr-5q2g-6xqp)의
-> 영향을 받는다. `AUTO_BROADCAST`의 모델 플래그를 켜고 `senders`를 비워 두면 모든 모델이 모든 필드와 함께
-> 채널 레이어로 방송됐다(`User`의 비밀번호 해시 포함). 모델 알림을 쓰고 있었다면 [§9](#9-auto_broadcast는-senders에-적은-모델만-알린다-보안)를
+> 영향을 받는다. `AUTO_BROADCAST`의 플래그(`model`, `model_pk`, `related`, `m2m`) 중 하나라도 켜고 `senders`를
+> 비워 두면 모든 모델의 저장·삭제와 모든 m2m 변경이 모든 필드와 함께 채널 레이어로 방송됐다(`User`의 비밀번호
+> 해시 포함). `m2m`만 켰어도 해당한다 — `user.groups.add(g)` 한 번에 그 사용자가 양쪽 채널로 나갔다. 모델 알림을 쓰고 있었다면 [§9](#9-auto_broadcast는-senders에-적은-모델만-알린다-보안)를
 > 읽는다.
 
 ## 버전 범위
@@ -143,7 +144,7 @@ async def handle_async(self, name, result):
 m2m 변경은 바꾼 쪽의 모델이 `senders`에 있을 때 알린다(**조용함**). `user.groups.add(g)`와 `group.user_set.add(u)`를
 모두 알리려면 두 모델을 다 적는다. 상세는 [설정](./features/settings.md#모델-알림).
 
-영향받는 버전에서 모델 플래그를 켜고 돌렸다면, 브로커(Redis·NATS)의 로그·모니터링·덤프에 남았을 수 있는
+영향받는 버전에서 `model`, `model_pk`, `related`, `m2m` 중 하나라도 켜고 돌렸다면, 브로커(Redis·NATS)의 로그·모니터링·덤프에 남았을 수 있는
 데이터를 점검하고 필요하면 비밀번호 변경을 검토한다. 보낼 필드를 모델마다 고르는 선택지는 1.1에서 더한다(#144).
 
 ### 10. 의존성 하한

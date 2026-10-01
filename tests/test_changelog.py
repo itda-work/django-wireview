@@ -74,3 +74,39 @@ def test_the_newest_release_is_the_package_version():
     project = tomllib.loads((CHANGELOG.parent / "pyproject.toml").read_text())["project"]
 
     assert _headings()[1] == project["version"]
+
+
+ADVISORY = "GHSA-q2rr-5q2g-6xqp"
+
+
+def _broadcast_flags() -> list[str]:
+    from wireview.schemas import AutoBroadcast
+
+    return [name for name, field in AutoBroadcast.model_fields.items() if field.annotation is bool]
+
+
+def _advisory_entry() -> str:
+    """The ``### Security`` entry of the release that fixed the advisory."""
+    section = CHANGELOG.read_text().split("## [1.0.0rc4]", 1)[1].split("\n## [", 1)[0]
+    security = section.split("### Security", 1)[1]
+    return next(entry for entry in security.split("\n- ") if ADVISORY in entry)
+
+
+def test_the_advisory_names_every_flag_that_broadcast():
+    """An empty ``senders`` connected every flag's receiver to every model, ``m2m`` too: one
+    ``user.groups.add(g)`` sent the user's password hash on two channels. The entry named three
+    flags, so a project running ``m2m=True`` alone read itself out of the advisory."""
+    entry = _advisory_entry()
+
+    assert [flag for flag in _broadcast_flags() if f"`{flag}`" not in entry] == []
+    assert "many-to-many change" in entry.split("Fixed here:", 1)[0]
+
+
+def test_upgrading_names_every_flag_that_broadcast():
+    upgrading = (CHANGELOG.parent / "docs" / "UPGRADING.md").read_text()
+    box = next(p for p in upgrading.split("\n\n") if p.startswith("> **보안.**"))
+    section = upgrading.split("### 9. `AUTO_BROADCAST`", 1)[1].split("\n### ", 1)[0]
+    closing = section.rstrip().rsplit("\n\n", 1)[1]
+
+    assert [flag for flag in _broadcast_flags() if f"`{flag}`" not in box] == []
+    assert [flag for flag in _broadcast_flags() if f"`{flag}`" not in closing] == []

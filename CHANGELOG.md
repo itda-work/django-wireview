@@ -112,6 +112,12 @@ The django-reactor era changelog (2.x) is preserved in
   records now: `docs/design/vision.md`, `security-audit-plan.md` and `migration-pydantic.md`, each
   with a note naming what is current, listed in `docs/design/README.md`.
 
+- The GHSA-q2rr-5q2g-6xqp entry under 1.0.0rc4 and `docs/UPGRADING.md` name all four flags that
+  broadcast every model while `senders` was empty -- `model`, `model_pk`, `related` and `m2m`.
+  `m2m` was missing, so a project running `m2m=True` alone read itself out of the advisory; one
+  `user.groups.add(group)` had sent the user's password hash on two channels.
+  `tests/test_changelog.py` checks both name every boolean flag of `AutoBroadcast`.
+
 ### Fixed
 
 - `{% wireview_toasts %}` works on a site with the `signed_cookies` session backend. Its key is the
@@ -708,11 +714,12 @@ The django-reactor era changelog (2.x) is preserved in
 ### Security
 
 - [GHSA-q2rr-5q2g-6xqp](https://github.com/itda-work/django-wireview/security/advisories/GHSA-q2rr-5q2g-6xqp)
-  (medium): with a model flag of `AUTO_BROADCAST` on (`model`, `model_pk` or `related`) and
-  `senders` left empty, its default, every save and delete of every model in the project was
-  broadcast over the channel layer with all its fields -- `auth.User`'s password hash and
-  `Session`'s data among them -- to the broker (Redis, NATS), its logs and monitoring, and to any
-  component subscribed to that model's channel. Affected: 0.7.0 and earlier, and 1.0.0rc1 to
+  (medium): with a model flag of `AUTO_BROADCAST` on (`model`, `model_pk`, `related` or `m2m`)
+  and `senders` left empty, its default, every save and delete of every model in the project, and
+  every many-to-many change, was broadcast over the channel layer with all its fields -- `auth.User`'s
+  password hash and `Session`'s data among them -- to the broker (Redis, NATS), its logs and
+  monitoring, and to any component subscribed to that model's channel. `m2m` alone was enough: one
+  `user.groups.add(group)` sent the whole user, password hash included, on both sides' channels. Affected: 0.7.0 and earlier, and 1.0.0rc1 to
   1.0.0rc3. Fixed here: `AUTO_BROADCAST` broadcasts only the models `senders` names. An empty
   `senders` no longer connects any receiver, whatever flags are on. A many-to-many change is
   broadcast when the model whose manager made it is named. A `senders` entry that is not an
