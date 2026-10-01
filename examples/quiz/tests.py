@@ -1,11 +1,14 @@
 """What this example is for: a state machine held in component state, scored
 server-side, ending in a row other components subscribe to."""
 
+import re
+
 import pytest
+from asgiref.sync import sync_to_async
 
 from wireview import mount
 
-from .live import QuizState, XQuiz
+from .live import QuizState, XQuestion, XQuiz
 from .models import Choice, Question, Quiz, Submission
 
 
@@ -100,3 +103,41 @@ async def test_an_answer_scores_once_and_only_with_this_questions_choices():
     await view.call("answer", choice_id=right.pk)
     await view.call("answer", choice_id=right.pk)
     assert view.component.score == 1
+
+
+def _choice_classes(html: str) -> dict[str, str]:
+    """{choice text: class attribute} of the rendered choice buttons."""
+    buttons = re.findall(r"<button\b([^>]*)>\s*([^<]+?)\s*</button>", html)
+    return {text: (re.search(r'class="([^"]*)"', attrs) or [None, ""])[1] for attrs, text in buttons}
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_the_answered_choices_carry_their_classes():
+    # A {% class %} broken across lines is printed as text and no class reaches the button
+    quiz, right, wrong = await _quiz_with_one_question()
+    view = await mount(XQuiz, quiz=quiz)
+    await view.call("start_quiz")
+    await view.call("answer", choice_id=wrong.pk)
+
+    html = await sync_to_async(view.render)() or ""
+
+    assert "{% class" not in html
+    classes = _choice_classes(html)
+    assert (classes["맞음"], classes["틀림"]) == ("choice-btn correct", "choice-btn selected incorrect")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_the_question_component_marks_the_selected_choice():
+    _, right, wrong = await _quiz_with_one_question()
+    question = await Question.objects.aget(pk=right.question_id)
+    view = await mount(XQuestion, question=question)
+    await view.call("select", choice_id=right.pk)
+
+    html = await sync_to_async(view.render)() or ""
+
+    assert "{% class" not in html
+    assert _choice_classes(html) == {"맞음": "choice-btn selected correct", "틀림": "choice-btn"}

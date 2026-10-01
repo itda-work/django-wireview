@@ -257,12 +257,7 @@ class XQuiz(Component):
       <div class="choices">
         {% for choice in question.choices.all %}
           <button
-            {% class {
-              'choice-btn': True,
-              'selected': answer_id == choice.id,
-              'correct': answer_id and choice.is_correct,
-              'incorrect': answer_id == choice.id and not choice.is_correct
-            } %}
+            {% class {'choice-btn': True, 'selected': answer_id == choice.id, 'correct': answer_id and choice.is_correct, 'incorrect': answer_id == choice.id and not choice.is_correct} %}
             {% cond {'disabled': answer_id} %}
             {% on 'click' 'answer' choice_id=choice.id %}
           >

@@ -902,21 +902,11 @@ class WireviewComponent {
 
 ```html
 <div class="tabs">
-  <button {% on "click" JS()
-    .remove_class(".tab-btn", "active")
-    .add_class("#tab1-btn", "active")
-    .hide(".tab-content")
-    .show("#tab1")
-  %} id="tab1-btn" class="tab-btn active">
+  <button {% on "click" JS().remove_class(".tab-btn", "active").add_class("#tab1-btn", "active").hide(".tab-content").show("#tab1") %} id="tab1-btn" class="tab-btn active">
     탭 1
   </button>
 
-  <button {% on "click" JS()
-    .remove_class(".tab-btn", "active")
-    .add_class("#tab2-btn", "active")
-    .hide(".tab-content")
-    .show("#tab2")
-  %} id="tab2-btn" class="tab-btn">
+  <button {% on "click" JS().remove_class(".tab-btn", "active").add_class("#tab2-btn", "active").hide(".tab-content").show("#tab2") %} id="tab2-btn" class="tab-btn">
     탭 2
   </button>
 </div>

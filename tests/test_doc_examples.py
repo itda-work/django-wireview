@@ -331,6 +331,70 @@ def test_the_docs_are_read():
     assert len(PYTHON) > 200 and len(HTML) > 50 and len(JS_CHAINS) > 20
 
 
+#: Django's lexer (``django.template.base.tag_re``) without DOTALL: a tag, a variable or a
+#: comment ends on the line it starts. One broken across lines is not an error -- it is
+#: copied into the page as text, and ``check`` and the render both stay quiet.
+TEMPLATE_TOKEN = re.compile(r"\{%.*?%\}|\{\{.*?\}\}|\{#.*?#\}")
+UNCLOSED = re.compile(r"\{%|\{\{|\{#")
+
+#: Where templates live, and every Markdown file a reader or an agent copies a template from.
+#: ``tests/static`` is collectstatic's output.
+TEMPLATE_ROOTS = ["wireview", "examples", "tests", "docs", "skills", "bench"]
+
+
+def _template_sources() -> list[Path]:
+    found = sorted(ROOT.glob("*.md"))
+    for top in TEMPLATE_ROOTS:
+        for path in sorted((ROOT / top).rglob("*")):
+            if path.suffix in (".html", ".md") and "static" not in path.relative_to(ROOT).parts[:2]:
+                found.append(path)
+    return found
+
+
+def _template_lines(path: Path) -> list[tuple[int, str]]:
+    """(line number, text) of a template file, or of every fenced block of a Markdown file."""
+    lines = path.read_text(encoding="utf-8").split("\n")
+    if path.suffix != ".md":
+        return list(enumerate(lines, 1))
+    found, inside = [], False
+    for number, line in enumerate(lines, 1):
+        if line.strip().startswith("```"):
+            inside = not inside
+        elif inside:
+            found.append((number, line))
+    return found
+
+
+def _unclosed(line: str) -> bool:
+    return bool(UNCLOSED.search(TEMPLATE_TOKEN.sub("", line)))
+
+
+def test_every_template_tag_closes_on_its_line():
+    sources = _template_sources()
+    assert any(path.name == "question.html" for path in sources), "the example templates are read"
+    broken = [
+        f"{path.relative_to(ROOT)}:{number}: {line.strip()}"
+        for path in sources
+        for number, line in _template_lines(path)
+        if _unclosed(line)
+    ]
+    assert not broken, "Django renders a tag split across lines as text; keep it on one line:\n" + "\n".join(broken)
+
+
+@pytest.mark.parametrize(
+    ("line", "unclosed"),
+    [
+        ("<b {% class {", True),
+        ("{{ item.name", True),
+        ("{# note", True),
+        ("<b {% class {'a': True} %}>{{ x }}{# c #}</b>", False),
+        ("const o = {a: {b: 1}};", False),
+    ],
+)
+def test_the_line_rule_reads_like_the_lexer(line, unclosed):
+    assert _unclosed(line) is unclosed
+
+
 @pytest.mark.parametrize(
     "code",
     [

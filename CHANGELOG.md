@@ -244,6 +244,13 @@ The django-reactor era changelog (2.x) is preserved in
   `view.call("on_upload_complete", ...)` now gets `AssertionError` and calls the method directly
   (`docs/UPGRADING.md`).
 
+- The quiz example and tutorial 13 wrote a `{% class {...} %}` across several lines. Django's
+  lexer reads a tag only when it closes on the line it opens, so the tag was printed into the
+  button as text and no choice ever got `choice-btn`, `selected`, `correct` or `incorrect` --
+  with `check` and the render both quiet. The dict is on one line now, and
+  `tests/test_doc_examples.py` refuses a `{%`, `{{` or `{#` left open at the end of a line in
+  any template or Markdown code block of the repository.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
