@@ -20,7 +20,7 @@ The django-reactor era changelog (2.x) is preserved in
   at startup with `ImproperlyConfigured`, as does one model named by two keys that differ only in
   case and give it different fields; a bare string is refused. An m2m field left out also skips its query
   when encoding. The receiving side defers the fields left out, as it does any field a payload
-  does not carry (below): reading one queries the row -- on the event loop it raises
+  does not carry (#153): reading one queries the row -- on the event loop it raises
   `SynchronousOnlyOperation`, so load it with `arefresh_from_db(fields=[...])` -- and `save()`
   writes only the fields that came. Turn a mapping on only after no process runs 1.0.0rc4 or
   earlier: those fill the fields a partial payload leaves out with their defaults (#144).
