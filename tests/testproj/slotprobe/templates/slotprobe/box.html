@@ -1,0 +1,9 @@
+{% load wireview %}
+
+<aside {% live_tag_header %}>
+  <b data-testid="box-clicks">{{ this.clicks }}</b>
+  <button type="button"
+          data-testid="box-click"
+          {% on "click" "click" myself=True %}>click</button>
+  {% render_slot "body" %}
+</aside>

@@ -196,6 +196,7 @@ NO_UPGRADE_NOTE = {
     "Infinite scroll asks for one page at a time after a reconnect": FIXED_ONLY,
     "A LiveComponent shown again after a reconnect starts from its defaults": FIXED_ONLY,
     "Nothing reaches a component whose join failed": FIXED_ONLY,
+    "A LiveComponent placed in a slot stays on the page": "화면에서 사라지던 결함이고, 기댈 동작이 아니었다",
 }
 
 

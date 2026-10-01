@@ -386,6 +386,14 @@ The django-reactor era changelog (2.x) is preserved in
   and points multi-process deployments at a layer that joins processes instead of Redis alone.
   The tutorial index lists the `hooks` example and tutorial 06 under Streams; a test keeps the
   index in step with `examples/`.
+- A LiveComponent placed in a slot stays on the page when the component that renders the slot
+  renders on its own: a `{% component_block %}` on its join and its events, a
+  `{% live_component_block %}` on its events and on every render after the parent's pass. The
+  slot's text kept the reference as a bare comment, so that render drew nothing where the
+  LiveComponent was and the page dropped it. The remembered slot now numbers the reference in the
+  rendering component's own pass, so it reaches the page as the `{"c": id}` reference it was. The
+  LiveComponent stays the child of the component that filled the slot: the slot's owner runs none
+  of its hooks. No new diff form, so `PROTOCOL_VERSION` stays.
 
 - What a new component sends from `joined()` reaches it: its streams, its `push_js` and its
   `push_event`. A LiveComponent a parent's render brings in sends them right behind that render,

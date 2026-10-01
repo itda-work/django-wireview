@@ -149,7 +149,7 @@ from __future__ import annotations
 import typing as t
 from dataclasses import dataclass, field
 
-from django.template.base import NodeList, TextNode
+from django.template.base import Node, NodeList, TextNode
 from django.template.context import Context
 from django.utils.safestring import SafeString, mark_safe
 
@@ -196,6 +196,32 @@ class Slot:
         # Push a new context layer with bound variables
         with context.push(**bound_vars):
             return self.nodelist.render(context)
+
+
+class _ComponentRefNode(Node):
+    """Where a pre-rendered fill named a LiveComponent, kept for a later render.
+
+    The parent's live pass leaves only a reference to the LiveComponent in the
+    fill's text, numbered in the parent's index space. A component that renders
+    the fill on its own numbers it again in its own pass, so the reference
+    stays a reference and the page keeps the LiveComponent there. The
+    LiveComponent stays the parent's: nothing here builds it or runs its hooks.
+    """
+
+    def __init__(self, component_id: str):
+        self.component_id = component_id
+
+    def render(self, context: Context) -> str:
+        from .core.rendered import component_ref_marker
+        from .template_engine import get_template_marker
+
+        repo = context.get("wireview_repository")
+        if repo is not None and not repo.is_live:
+            # A dead render of remembered slots (a test's render()): the child inline
+            child = repo.components.get(self.component_id)
+            return (child._render(repo) or "") if child is not None else ""
+        index = get_template_marker().marker_context.next_index()
+        return component_ref_marker(self.component_id, index)
 
 
 class _SlotAccessor:
@@ -311,13 +337,26 @@ class SlotContainer:
         its own event) parses that text in its own index space, where those
         markers would collide with its own. The copy keeps ``let:`` slots as they
         are: their nodelists render inside the component's own pass.
+
+        A LiveComponent the parent's pass named in a fill stays a reference: a
+        node that numbers it in the component's own pass. Stripped to a
+        bare comment, it reached the page as static text and the LiveComponent
+        left the page on the component's first render of its own.
         """
-        from .core.rendered import strip_markers
+        from .core.rendered import split_component_refs, strip_markers
 
         def stripped(nodelist: NodeList) -> NodeList:
-            return NodeList(
-                [TextNode(strip_markers(node.s)) if isinstance(node, TextNode) else node for node in nodelist]
-            )
+            nodes: list[Node] = []
+            for node in nodelist:
+                if not isinstance(node, TextNode):
+                    nodes.append(node)
+                    continue
+                for text, component_id in split_component_refs(strip_markers(node.s)):
+                    if text:
+                        nodes.append(TextNode(text))
+                    if component_id is not None:
+                        nodes.append(_ComponentRefNode(component_id))
+            return NodeList(nodes)
 
         copy = SlotContainer()
         for name, slots in self._slots.items():

@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<section {% tag_header %}>
+  <b data-testid="frame-clicks">{{ this.clicks }}</b>
+  <button type="button" data-testid="frame-click" {% on "click" "click" %}>click</button>
+  {% render_slot "body" %}
+</section>

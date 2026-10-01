@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<p {% live_tag_header %}>
+  <b data-testid="{{ this.id }}-pokes">{{ this.pokes }}</b>
+  <button type="button"
+          data-testid="{{ this.id }}-poke"
+          {% on "click" "poke" myself=True %}>poke</button>
+</p>

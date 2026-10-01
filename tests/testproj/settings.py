@@ -91,6 +91,7 @@ INSTALLED_APPS = [
     "testproj.offlineprobe",
     "testproj.hookprobe",
     "testproj.tempprobe",
+    "testproj.slotprobe",
     "testproj.stickyprobe",
     "testproj.deadprobe",
     "testproj.inheritprobe",

@@ -70,6 +70,11 @@
 - live 렌더에서 `{% live_component %}`는 자식을 등록하고 이번에 넘긴 props를 기록한 뒤 **참조 dynamic**
   하나만 출력한다. HTML 상으로는 `<!--$n--><!--@wv:c1--><!--/$n-->`, 파싱 결과는 `ComponentRef("c1")`,
   페이로드는 `{"c": "c1"}`이다. 값이 id뿐이라 부모가 몇 번 재렌더돼도 이 슬롯은 바뀌지 않는다.
+- `let:` 없는 fill 안의 `{% live_component %}`도 fill을 쓴 컴포넌트(`this`)의 패스에서 위와 같이
+  발견되고, 그 컴포넌트가 부모다. 슬롯을 그리는 컴포넌트(`{% component_block %}`나
+  `{% live_component_block %}`)가 기억한 슬롯으로 스스로 렌더할 때는 그 자리에 참조만 다시 번호를 매겨
+  내보낸다(`wireview/slots.py`의 `_ComponentRefNode`). 자식을 등록하지 않으므로 소유도, 수명주기도
+  바뀌지 않는다.
 - HTTP 최초 렌더(`is_live=False`)는 지금처럼 인라인으로 그린다. dead render이고 `joined()`는 없다.
   Component도 HTTP에서 `joined()`를 받지 않으므로 계약이 같다.
 - 대조: 일반 `{% component %}`는 live 렌더에서도 부모의 패스 안에서 build·mount되어 인라인으로 그려지고,

@@ -407,6 +407,12 @@ class Accordion(Component):
 이전 버전의 한계였습니다. 중첩 컴포넌트가 자기 이벤트로 다시 렌더될 때 부모가 넘긴 슬롯을 잃었습니다.
 지금은 부모가 넘긴 슬롯 내용을 컴포넌트가 기억하므로(`wire.slots`) 자기 렌더에서도 유지됩니다.
 
+슬롯 안의 `{% live_component %}`도 유지됩니다. 1.0 전에는 컴포넌트가 자기 join이나 이벤트로 다시
+렌더하면 슬롯의 텍스트만 남고 그 LiveComponent는 화면에서 사라졌습니다. 그 LiveComponent의 부모는
+슬롯을 채운 컴포넌트(`data-parent`)이고, 슬롯을 그리는 컴포넌트의 렌더는 그 자리를 가리킬 뿐
+`joined()`·`update()`·`leaving()`을 부르지 않습니다. 슬롯을 채운 쪽이 그 태그를 그리지 않게 되면
+LiveComponent는 떠납니다.
+
 ### 슬롯이 렌더링되지 않음
 
 1. 컴포넌트 템플릿에 `{% render_slot "slotname" %}`이 있는지 확인

@@ -44,6 +44,7 @@ urlpatterns = [
     path("offlineprobe/", include("testproj.offlineprobe.urls")),
     path("hookprobe/", include("testproj.hookprobe.urls")),
     path("tempprobe/", include("testproj.tempprobe.urls")),
+    path("slotprobe/", include("testproj.slotprobe.urls")),
     path("stickyprobe/", include("testproj.stickyprobe.urls")),
     path("deadprobe/", include("testproj.deadprobe.urls")),
     # The chunk endpoint. A project that leaves this out has no uploads at all,

@@ -304,7 +304,9 @@ LiveComponent를 렌더링합니다.
   건드리지 않습니다. props와 같은 규칙입니다.
 - `let:` fill은 자식이 렌더될 때 `{% render_slot %}`이 넘긴 값으로 렌더됩니다. 자식의 컨텍스트에서
   렌더되므로 부모 변수는 보이지 않습니다.
-- 자식이 자기 이벤트로 재렌더돼도 슬롯 내용은 유지됩니다.
+- 자식이 자기 이벤트로 재렌더돼도 슬롯 내용은 유지됩니다. 슬롯 안에 둔 `{% live_component %}`도
+  유지됩니다. 그 LiveComponent의 부모는 슬롯을 채운 컴포넌트이고, 자식의 렌더는 그 자리를 가리킬 뿐
+  수명주기 메서드를 부르지 않습니다. `{% component_block %}`의 슬롯도 같습니다.
 - `Meta.slots`에 `required: True`로 선언한 슬롯이 빠지면 `TemplateSyntaxError`입니다.
 
 ### {% live_tag_header %}

@@ -16,6 +16,7 @@ from django.test import override_settings
 
 from wireview import Component, LiveComponent
 from wireview.consumer import WireviewConsumer
+from wireview.core.rendered import component_refs
 from wireview.repository import ComponentRepository
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio, pytest.mark.django_db]
@@ -57,6 +58,23 @@ TEMPLATES = {
         "{% load wireview %}<section {% tag_header %}><header>{% render_slot 'header' %}</header>"
         "<div>{% render_slot %}</div><span>{{ this.clicks }}</span></section>"
     ),
+    "sl/hostpage.html": (
+        "{% load wireview %}<main {% tag_header %}><i>{{ this.n }}</i>"
+        "{% component_block 'SlFrame' id='frame' %}"
+        "{% fill body %}SLOT-TEXT {{ this.n }}{% live_component 'SlLeaf' id='leaf' %}{% endfill %}"
+        "{% endcomponent %}"
+        "{% live_component_block 'SlBox' id='box' %}"
+        "{% fill body %}BOX-TEXT{% for k in this.keys %}{% live_component 'SlLeaf' id=k %}{% endfor %}{% endfill %}"
+        "{% endlive_component %}"
+        "</main>"
+    ),
+    "sl/frame.html": (
+        "{% load wireview %}<section {% tag_header %}><span>{{ this.clicks }}</span>{% render_slot 'body' %}</section>"
+    ),
+    "sl/box.html": (
+        "{% load wireview %}<aside {% live_tag_header %}><span>{{ this.clicks }}</span>{% render_slot 'body' %}</aside>"
+    ),
+    "sl/leaf.html": "{% load wireview %}<b {% live_tag_header %}>{{ this.pokes }}</b>",
     "sl/strictpage.html": (
         "{% load wireview %}<main {% tag_header %}>"
         "{% live_component_block 'SlStrict' id='s' %}x{% endlive_component %}"
@@ -126,6 +144,51 @@ class SlCard(Component):
 
     async def click(self):
         self.clicks += 1
+
+
+class SlHostPage(Component):
+    class Meta:
+        template_name = "sl/hostpage.html"
+
+    n: int = 0
+    keys: list[str] = ["bl1", "bl2"]
+
+    async def bump(self):
+        self.n += 1
+
+
+class SlFrame(Component):
+    class Meta:
+        template_name = "sl/frame.html"
+
+    clicks: int = 0
+
+    async def click(self):
+        self.clicks += 1
+
+
+class SlBox(LiveComponent):
+    class Meta:
+        template_name = "sl/box.html"
+
+    clicks: int = 0
+
+    async def click(self):
+        self.clicks += 1
+
+
+class SlLeaf(LiveComponent):
+    class Meta:
+        template_name = "sl/leaf.html"
+
+    pokes: int = 0
+    joins: t.ClassVar[list[str]] = []
+
+    async def joined(self):
+        SlLeaf.joins.append(self.id)
+
+    async def poke(self):
+        self.pokes += 1
 
 
 class SlStrictPage(Component):
@@ -295,6 +358,107 @@ async def test_a_changed_prop_and_changed_slots_render_the_child_once():
     assert list(frame["children"]) == ["m"]
     html = child_html(consumer, "m")
     assert "<b>Both</b>" in html and "<i>True</i>" in html
+
+
+# --- a LiveComponent inside a slot ---------------------------------------------------------
+
+
+def refs(diff: t.Any) -> list[str]:
+    """Ids of the component references anywhere in a diff payload."""
+    found: list[str] = []
+
+    def walk(value: t.Any) -> None:
+        if isinstance(value, dict):
+            if isinstance(value.get("c"), str):
+                found.append(value["c"])
+            for v in value.values():
+                walk(v)
+        elif isinstance(value, list):
+            for v in value:
+                walk(v)
+
+    walk(diff)
+    return found
+
+
+async def join_host() -> tuple[WireviewConsumer, FakeOutbound]:
+    from wireview.core.state import sign_state
+
+    SlLeaf.joins = []
+    consumer, outbound = make_consumer()
+    await join(consumer, "SlHostPage", id="host")
+    await consumer.command_join("SlFrame", sign_state(consumer.repo.get("frame")))
+    return consumer, outbound
+
+
+async def test_a_component_block_keeps_a_live_component_of_its_slot_on_its_own_join():
+    """The nested component's own render names the LiveComponent its slot holds."""
+    consumer, outbound = await join_host()
+
+    frame = outbound.renders()[-1]
+    assert frame["id"] == "frame"
+    assert refs(frame["diff"]) == ["leaf"]
+    rendered = consumer.repo.get("frame").wire._last_rendered
+    assert component_refs(rendered) == ["leaf"]
+    assert "SLOT-TEXT 0<!--@wv:leaf-->" in rendered.to_html()
+
+
+async def test_a_component_block_keeps_a_live_component_of_its_slot_on_its_own_event():
+    consumer, outbound = await join_host()
+    outbound.commands.clear()
+
+    await consumer.command_user_event("frame", "click", {}, {})
+
+    [frame] = outbound.renders()
+    rendered = consumer.repo.get("frame").wire._last_rendered
+    assert component_refs(rendered) == ["leaf"]
+    assert "<span>1</span>" in rendered.to_html() and "SLOT-TEXT 0<!--@wv:leaf-->" in rendered.to_html()
+    assert "children" not in frame, "the leaf is the host's: the frame's render does not settle it"
+
+
+async def test_the_live_component_of_a_slot_stays_the_fillers():
+    """Its parent is the component that filled the slot, and the slot's owner's renders run no hook on it."""
+    consumer, outbound = await join_host()
+    await consumer.command_user_event("frame", "click", {}, {})
+
+    leaf = consumer.repo.get("leaf")
+    assert leaf._parent_id == "host"
+    assert SlLeaf.joins.count("leaf") == 1
+    outbound.commands.clear()
+
+    await consumer.command_user_event("host", "bump", {}, {})
+
+    assert consumer.repo.get("leaf") is leaf, "the host still names it: no leaving(), no new instance"
+    assert "SLOT-TEXT 1<!--@wv:leaf-->" in consumer.repo.get("host").wire._last_rendered.to_html()
+
+
+async def test_a_live_component_block_keeps_the_live_components_of_its_slot():
+    consumer, outbound = await join_host()
+
+    first = outbound.renders()[0]
+    assert refs(first["children"]["box"]) == ["bl1", "bl2"]
+    assert {"bl1", "bl2"} <= set(first["children"])
+    outbound.commands.clear()
+
+    await consumer.command_user_event("box", "click", {}, {})
+
+    outbound.renders()
+    rendered = consumer.repo.get("box").wire._last_rendered
+    assert component_refs(rendered) == ["bl1", "bl2"]
+    html = rendered.to_html()
+    assert "BOX-TEXT<!--@wv:bl1--><!--@wv:bl2-->" in html and "<span>1</span>" in html
+    assert consumer.repo.get("bl1")._parent_id == "host"
+
+
+async def test_a_dead_render_of_remembered_slots_inlines_their_live_component():
+    consumer, _ = await join_host()
+    frame = consumer.repo.get("frame")
+    dead = ComponentRepository(is_live=False, user=AnonymousUser())
+    dead.components["leaf"] = consumer.repo.get("leaf")
+
+    html = str(frame.wire.render(frame, dead))
+
+    assert 'SLOT-TEXT 0<b id="leaf"' in html and "<!--" not in html
 
 
 # --- HTTP render and validation ------------------------------------------------------------

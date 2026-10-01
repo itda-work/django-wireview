@@ -614,6 +614,17 @@ def strip_markers(html: str) -> str:
     return _TOKEN.sub("", html)
 
 
+def split_component_refs(html: str) -> list[tuple[str, str | None]]:
+    """``html`` cut at each component reference: (text before it, its id), then (the rest, None)."""
+    parts: list[tuple[str, str | None]] = []
+    start = 0
+    for match in _REF.finditer(html):
+        parts.append((html[start : match.start()], match.group(1)))
+        start = match.end()
+    parts.append((html[start:], None))
+    return parts
+
+
 def component_refs(rendered: Rendered) -> list[str]:
     """Ids of every LiveComponent referenced anywhere in a render, in document order."""
     found: list[str] = []
