@@ -1253,6 +1253,17 @@ class TestUploadView:
 
         assert response.status_code == 403
 
+    async def test_a_pre_83_token_is_refused(self, store):
+        """The ``conn:comp:config:ref`` string token is not read since #99; docs/features/chunked-uploads.md says so."""
+        from wireview.core.signing import get_signer
+        from wireview.features.uploads import UPLOAD_SALT
+
+        old = get_signer(UPLOAD_SALT).sign("conn-1:comp-1:images:upload-1")
+
+        response = await post_chunk(UploadView(), "conn-1", "comp-1", "images", old, b"chunk data")
+
+        assert response.status_code == 403
+
     async def test_a_token_for_another_url_is_refused(self, store):
         """The signature verifies, but what it says must match the URL."""
         _, _, token = registered_entry(component_id="comp-1")

@@ -103,15 +103,16 @@ The django-reactor era changelog (2.x) is preserved in
   release's bundle. A test checks that every proxy block serves `/static/` from a directory, that
   the app image runs `collectstatic`, and that an image takes its output to the Nginx `alias`.
 
+- `docs/features/chunked-uploads.md` said the pre-#83 `conn:comp:config:ref` upload token is still
+  accepted during a rolling deploy. It has been refused since #99: an upload in flight on a page an
+  old (0.2 or earlier) worker drew fails with 403. The reference says so now, and a test pins the 403.
 - Every inline example in `docs/features/function-components.md` and the `wireview.function_components`
   docstring formatted its arguments into markup with an f-string. A function component's returned
   string is output unescaped, so a copied example put any value it was given into the page as HTML
   (XSS). The examples use `format_html` now, the reference says escaping is the function's job, and
   `tests/test_doc_examples.py` refuses a function component that builds markup with an f-string.
-
 - The Python API example in `docs/features/function-components.md` called `get_function_component`
   without importing it (`NameError`).
-
 - `mount()` records broadcasts and presence messages in a stand-in channel layer, and it recorded
   any group name. Every real layer refuses a name with anything but letters, digits, `-`, `_` and
   `.` (`TypeError`), so a component broadcasting to `room:42` passed its unit tests and failed on

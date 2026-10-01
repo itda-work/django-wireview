@@ -34,9 +34,10 @@ WebSocket은 워커 하나에 고정되지만 HTTP 요청은 로드밸런서가 
 문자열을 구분자로 잇지 않고 객체로 서명한다. 컴포넌트 id와 업로드 이름은 앱 템플릿에서 오므로
 콜론이 들어갈 수 있고, 그러면 **누가 무엇을 쓸 수 있는지 정하는 자리**에서 파싱이 어긋난다.
 
-#83 이전의 4토막 문자열 토큰(`conn:comp:config:ref`)도 아직 받는다. 롤링 배포 중 옛 워커가 그린
-페이지의 업로드가 끝나게 하기 위해서다. 크기가 없으므로 전역 `UPLOAD_MAX_FILE_SIZE`가 한도가 되고
-확장자가 없으므로 magic bytes 검사가 헐거워진다 — 지원 형식이 아니라 전환 장치다.
+#83 이전의 4토막 문자열 토큰(`conn:comp:config:ref`)은 받지 않는다(#99부터). 크기도 확장자도 없어
+한도와 magic bytes 검사를 할 수 없기 때문이다. 그 토큰을 발급하던 0.2 이하에서 롤링 배포로 바로 올라오면(0.3·0.4는 둘 다 받았다, 0.5에서 끊었다),
+옛 워커가 그린 페이지에서 **진행 중이던 업로드는 403으로 실패한다.** 새 워커가 그린 페이지에서 다시 올리면
+된다. 배포 중에 업로드가 끊기면 안 되는 서비스라면 한 번에 바꾼다.
 
 ### 2. 경로는 계산한다
 
@@ -114,7 +115,7 @@ python manage.py wireview_upload_gc --max-age 600  # 기준 나이(초). 기본�
 | 키 | 기본값 | 뜻 |
 |----|--------|-----|
 | `UPLOAD_TEMP_DIR` | `None` | 청크 저장소의 부모 디렉터리. `None`이면 시스템 temp. 빈 문자열은 미설정으로 취급한다(`Path("")`가 cwd이므로). 없으면 만들고, 쓸 수 없으면 `ImproperlyConfigured` |
-| `UPLOAD_MAX_FILE_SIZE` | 10MB | 구형 토큰의 한도이자 `allow_upload`의 기본 한도 |
+| `UPLOAD_MAX_FILE_SIZE` | 10MB | `allow_upload`에 `max_file_size`가 없을 때의 한도 |
 | `UPLOAD_CHUNK_SIZE` | 64KB | 클라이언트가 자르는 크기 |
 | `UPLOAD_TOKEN_MAX_AGE` | 1시간 | 토큰 유효 기간이자 sweep 기준 나이 |
 | `SIGNING_KEY` | `None` | `None`이면 Django의 `SECRET_KEY`. 아래 참고 |
