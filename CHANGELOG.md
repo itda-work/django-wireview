@@ -202,7 +202,8 @@ The django-reactor era changelog (2.x) is preserved in
 - The LiveComponent and hooks guides named their server-side helpers without a leading `_`
   (`calculate_total`, `on_count_changed`, `fetch_items`, `notify_user`, `highlight_item`), so
   copying them exposed each as an event handler -- `notify_user` would push any toast a client
-  asked for. They are `_` helpers now.
+  asked for. They are `_` helpers now, and so are the README's (`load_items`, `do_search`,
+  `load_stats`, `fetch_items`, `update_chart`) and tutorial 08's `is_safe_filename`.
 
 ## [1.0.0rc4] - 2026-10-01
 

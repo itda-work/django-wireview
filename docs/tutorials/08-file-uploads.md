@@ -273,13 +273,13 @@ async def save_files(self):
             self.errors = [*self.errors, f"{upload.name}: too large"]
             continue
 
-        if not self.is_safe_filename(upload.name):
+        if not self._is_safe_filename(upload.name):
             self.errors = [*self.errors, f"{upload.name}: invalid filename"]
             continue
 
         await upload.save_to("uploads/")
 
-def is_safe_filename(self, name: str) -> bool:
+def _is_safe_filename(self, name: str) -> bool:
     import re
     # 안전한 문자만 허용
     return bool(re.match(r'^[\w\-. ]+$', name))

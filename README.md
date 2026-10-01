@@ -366,7 +366,7 @@ class TodoList(Component):
 
     async def mutation(self, channel: str, action: ModelAction, instance):
         # 구독한 모델이 변경될 때 호출됨
-        self.items = await self.load_items()
+        self.items = await self._load_items()
 ```
 
 ### 알림
@@ -437,7 +437,7 @@ async def notification(self, channel: str, **kwargs):
 
 ```python
 async def search(self, query: str):
-    self.results = await self.do_search(query)
+    self.results = await self._do_search(query)
 ```
 
 ## URL 상태 관리
@@ -772,9 +772,9 @@ class Dashboard(Component):
     stats: AsyncResult = None
 
     async def joined(self):
-        self.stats = await self.assign_async(self.load_stats())
+        self.stats = await self.assign_async(self._load_stats())
 
-    async def load_stats(self):
+    async def _load_stats(self):
         return await Stats.objects.aget()
 ```
 
@@ -1012,12 +1012,12 @@ class Dashboard(Component):
     async def handle_hook_event(self, hook_id: str, event: str, payload: dict):
         """JavaScript Hook에서 보낸 이벤트 처리"""
         if event == "load_more":
-            items = await self.fetch_items(payload.get("page", 1))
+            items = await self._fetch_items(payload.get("page", 1))
             return {"hasMore": len(items) == 20}
         return None
 
-    async def update_chart(self, data: list):
-        """모든 Hook에 이벤트 전송"""
+    async def _update_chart(self, data: list):
+        """모든 Hook에 이벤트 전송. 서버 코드가 부르는 헬퍼라 `_`로 시작한다"""
         await self.push_event("update_data", {"values": data})
 ```
 
