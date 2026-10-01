@@ -179,6 +179,43 @@ def test_a_field_the_payload_cannot_carry_fails_at_startup(broadcasting, sender,
         broadcasting(AutoBroadcast(model=True, senders={sender: fields}))
 
 
+def test_a_field_the_serializer_skips_is_named_as_such():
+    from django.db import models
+    from django.test.utils import isolate_apps
+
+    with isolate_apps("testproj.bookmarks"):
+
+        class Secretive(models.Model):
+            hidden = models.CharField(max_length=10, serialize=False)
+
+            class Meta:
+                app_label = "bookmarks"
+
+        with pytest.raises(ImproperlyConfigured, match="serialize=False"):
+            auto_broadcast._sent_field_name(Secretive, "hidden")
+
+
+@pytest.mark.parametrize(
+    "senders",
+    [
+        {("auth", "User"): ("username",), ("auth", "user"): "__all__"},
+        {("auth", "User"): ("username",), ("auth", "USER"): ()},
+    ],
+    ids=["fields-and-all", "two-lists"],
+)
+def test_one_model_named_twice_with_different_fields_fails_at_startup(broadcasting, senders):
+    """``apps.get_model`` ignores case, so both keys are one model; one list would silently win."""
+    with pytest.raises(ImproperlyConfigured, match="auth.user") as e:
+        broadcasting(AutoBroadcast(model=True, senders=senders))
+    for key in senders:
+        assert repr(key) in str(e.value)
+
+
+def test_one_model_named_twice_alike_is_one_sender():
+    resolved = auto_broadcast.resolve_senders(AutoBroadcast(model=True, senders={("auth", "User"), ("auth", "user")}))
+    assert resolved == {User: None}
+
+
 def test_a_bare_string_is_refused_not_read_as_its_letters():
     """``("username")`` is a string, not a one-element tuple."""
     with pytest.raises(ValidationError):

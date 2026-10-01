@@ -47,6 +47,7 @@ def resolve_senders(config: AutoBroadcast) -> dict[type[models.Model], tuple[str
     name, whether it was written as ``product`` or ``product_id``.
     """
     resolved: dict[type[models.Model], tuple[str, ...] | None] = {}
+    keys: dict[type[models.Model], tuple[str, str]] = {}
     for app_label, model_name in sorted(config.senders):
         try:
             model = apps.get_model(app_label, model_name)
@@ -56,27 +57,46 @@ def resolve_senders(config: AutoBroadcast) -> dict[type[models.Model], tuple[str
                 f"which is not an installed model: {e}"
             ) from e
         fields = config._fields_for((app_label, model_name))
-        resolved[model] = None if fields is None else tuple(_sent_field_name(model, name) for name in fields)
+        sent = None if fields is None else tuple(_sent_field_name(model, name) for name in fields)
+        if model in resolved and _field_set(resolved[model]) != _field_set(sent):
+            # get_model ignores the case of a model name, so two keys can be one model. Letting either list win
+            # could send every field where the other asked for a few.
+            raise ImproperlyConfigured(
+                f"WIREVIEW['AUTO_BROADCAST'].senders names {model._meta.label_lower} twice, as {keys[model]!r} "
+                f"and {(app_label, model_name)!r}, with different fields. Name it once."
+            )
+        resolved[model], keys[model] = sent, (app_label, model_name)
     return resolved
 
 
-def _sent_field_name(model: type[models.Model], name: str) -> str:
-    """The serializer's name for the field ``name`` of ``model``; refuses one the payload cannot carry.
+def _field_set(fields: tuple[str, ...] | None) -> frozenset[str] | None:
+    return None if fields is None else frozenset(fields)
 
-    Django's serializer sends the model's own concrete fields and forward
-    many-to-many fields, but not the pk (it is always sent beside them), reverse
-    relations or the fields of a multi-table parent.
+
+def sendable_fields(model: type[models.Model]) -> list[models.Field]:
+    """The fields Django's serializer puts in ``model``'s payload besides the pk.
+
+    The model's own concrete fields and forward many-to-many fields, not the pk
+    (it is always sent beside them), reverse relations, the fields of a
+    multi-table parent or a field with ``serialize=False``.
     """
     opts = (model._meta.concrete_model or model)._meta
-    sendable = [f for f in (*opts.local_fields, *opts.local_many_to_many) if getattr(f, "serialize", False)]
-    for field in sendable:
+    return [f for f in (*opts.local_fields, *opts.local_many_to_many) if getattr(f, "serialize", False)]
+
+
+def _sent_field_name(model: type[models.Model], name: str) -> str:
+    """The serializer's name for the field ``name`` of ``model``; refuses one the payload cannot carry."""
+    for field in sendable_fields(model):
         if name in (field.name, field.attname):
             return field.name
     label = model._meta.label_lower
     if name in (model._meta.pk.name, model._meta.pk.attname):
         reason = "the primary key, which every payload carries; leave it out"
     else:
-        reason = "not a field the payload can carry (a reverse relation, an inherited field or no field at all)"
+        reason = (
+            "not a field the payload can carry (a reverse relation, an inherited field, "
+            "a field with serialize=False or no field at all)"
+        )
     raise ImproperlyConfigured(f"WIREVIEW['AUTO_BROADCAST'].senders lists {name!r} for {label}, which is {reason}.")
 
 

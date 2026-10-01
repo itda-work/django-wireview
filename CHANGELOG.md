@@ -16,8 +16,9 @@ The django-reactor era changelog (2.x) is preserved in
   `model_mutation` carries onto the channel layer: `"__all__"`, a tuple of field names (a foreign
   key by `"product"` or `"product_id"`), or `()` for the pk alone. A set still sends every field,
   so nothing changes until a mapping is written. A field the payload cannot carry (no such field,
-  a reverse relation, the pk, a multi-table parent's field) fails at startup with
-  `ImproperlyConfigured`; a bare string is refused. An m2m field left out also skips its query
+  a reverse relation, the pk, a multi-table parent's field, a field with `serialize=False`) fails
+  at startup with `ImproperlyConfigured`, as does one model named by two keys that differ only in
+  case and give it different fields; a bare string is refused. An m2m field left out also skips its query
   when encoding. The receiving side defers the fields left out, as it does any field a payload
   does not carry (below): reading one queries the row -- on the event loop it raises
   `SynchronousOnlyOperation`, so load it with `arefresh_from_db(fields=[...])` -- and `save()`
