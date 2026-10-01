@@ -49,7 +49,9 @@ The django-reactor era changelog (2.x) is preserved in
 
 - The README's list of `JS()` commands gives their real signatures. It showed `toggle(selector,
   show=None, hide=None)` and `push(event, value=None, ...)` with `value` positional; copied, both
-  raised `TypeError`. A test compares every listed signature with the code.
+  raised `TypeError`. A test compares every listed signature with the code. It also gives every
+  form `transition` takes -- a class name string, a `(class, ms)` tuple or a dict -- where it
+  named only the tuple, and says a duration in the string is a `ValueError`.
 
 - The README's performance section recommended `asend_to()`/`send_to()` from `wireview.utils`,
   which is not public API. It now names `self.broadcast()`, `abroadcast()` and `broadcast()`.

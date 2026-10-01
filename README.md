@@ -852,7 +852,9 @@ async def clear_input(self):
 ### 사용 가능한 명령
 
 `selector`를 비우면 명령이 붙은 엘리먼트 자신이 대상이다. `*` 뒤의 인자는 키워드로만 넘긴다.
-`transition`은 `("클래스", 밀리초)` 튜플이다.
+`transition`은 클래스 이름 문자열 `"fade-out"`, 시간을 함께 주는 튜플 `("fade-out", 300)`, 또는 dict
+`{"transition": "fade-out", "time": 300}`이다. 문자열은 클래스 이름뿐이라 `"fade-out 300ms"`처럼
+시간을 섞으면 `ValueError`다 — 시간은 튜플이나 dict로 준다.
 
 **표시:**
 - `show(selector=None, *, transition=None, display=None)`

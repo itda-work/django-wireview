@@ -10,6 +10,7 @@ Each example here is taken out of the README by its heading, not retyped, so the
 test reads what the reader reads.
 """
 
+import itertools
 import re
 import types
 from pathlib import Path
@@ -132,6 +133,28 @@ def test_the_js_commands_are_listed_with_their_signatures():
     listed = re.findall(r"^- `(\w+)\((.*?)\)`", "\n".join(_section("JS 명령 빌더", "사용 가능한 명령")), re.M)
     assert len(listed) >= 15
     assert [f"{name}({args})" for name, args in listed] == [_signature(name) for name, _ in listed]
+
+
+def test_the_transition_forms_listed_are_the_ones_js_takes():
+    """It said only a ``("class", ms)`` tuple, so a reader never learned that a string is class names alone."""
+    import ast
+    import typing as t
+
+    from wireview.js import JS, Transition
+
+    lines = _section("JS 명령 빌더", "사용 가능한 명령")
+    start = next(i for i, x in enumerate(lines) if x.startswith("`transition`"))
+    line = " ".join(itertools.takewhile(str.strip, lines[start:]))
+    accepted_part, rest = line.split("이다.", 1)
+    forms = [ast.literal_eval(code) for code in re.findall(r"`([(\"{][^`]*)`", accepted_part)]
+    accepted = [arg for arg in t.get_args(Transition) if arg is not type(None)]
+    assert [type(form) for form in forms] == [str, tuple, dict] and len(accepted) == 3, line
+    for form in forms:
+        JS().hide(transition=form)
+    # And what it says about a duration in the string
+    assert "ValueError" in rest
+    with pytest.raises(ValueError):
+        JS().hide(transition="fade-out 200ms")
 
 
 def _slug(heading: str) -> str:
