@@ -11,11 +11,15 @@ Quick Start
 
 1. Define a function component:
 
+    from django.utils.html import format_html
     from wireview import function_component
 
     @function_component
     def button(text: str, variant: str = "primary"):
-        return f'<button class="btn btn-{variant}">{text}</button>'
+        return format_html('<button class="btn btn-{}">{}</button>', variant, text)
+
+The returned string is output as it is, unescaped: escaping is the function's
+job. Put values in with format_html, never with an f-string.
 
 2. Use in template:
 
@@ -68,7 +72,7 @@ You can also use qualified names with the `name` parameter:
 
     @function_component(name="myapp.button")
     def my_button(text: str):
-        return f'<button>{text}</button>'
+        return format_html("<button>{}</button>", text)
 
     # In template:
     {% func "myapp.button" text="Click" %}
@@ -85,7 +89,7 @@ Function parameters are validated using pydantic when available:
             size = 16
         elif size > 256:
             size = 256
-        return f'<img src="{src}" width="{size}" height="{size}" alt="{alt}">'
+        return format_html('<img src="{0}" width="{1}" height="{1}" alt="{2}">', src, size, alt)
 
 Invalid types will raise clear error messages.
 """
@@ -270,7 +274,7 @@ def function_component(
 
         @function_component
         def button(text: str):
-            return f'<button>{text}</button>'
+            return format_html("<button>{}</button>", text)
 
         @function_component(template="components/card.html")
         def card(title: str = ""):

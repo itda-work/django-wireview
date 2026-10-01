@@ -15,11 +15,12 @@ Function Components는 상태 관리가 필요 없는 간단한 UI 요소를 위
 - 상태가 필요 없는 재사용 요소
 
 ```python
+from django.utils.html import format_html
 from wireview import function_component
 
 @function_component
 def button(text: str, variant: str = "primary"):
-    return f'<button class="btn btn-{variant}">{text}</button>'
+    return format_html('<button class="btn btn-{}">{}</button>', variant, text)
 ```
 
 ```html
@@ -35,23 +36,30 @@ def button(text: str, variant: str = "primary"):
 
 가장 간단한 형태로, 함수가 직접 HTML 문자열을 반환합니다.
 
+**반환한 문자열은 이스케이프 없이 그대로 출력됩니다.** 이스케이프는 함수의 책임입니다.
+인자를 f-string으로 끼워 넣으면 `text="<script>…</script>"`가 그대로 페이지에 들어갑니다(XSS).
+값은 `django.utils.html.format_html`로 넣습니다 — 자리표시자 `{}`에 들어가는 값만 이스케이프하고,
+이미 안전한 값(`format_html`의 결과, `mark_safe`)은 그대로 둡니다. 마크업이 길어지면 템플릿 기반 컴포넌트를
+씁니다. 템플릿의 `{{ }}`는 자동으로 이스케이프됩니다.
+
 ```python
 # myapp/components.py
+from django.utils.html import format_html
 from wireview import function_component
 
 @function_component
 def icon(name: str, size: int = 24):
     """SVG 아이콘 컴포넌트."""
-    return f'''
-        <svg class="icon icon-{name}" width="{size}" height="{size}">
-            <use href="#icon-{name}"></use>
-        </svg>
-    '''
+    return format_html(
+        '<svg class="icon icon-{0}" width="{1}" height="{1}"><use href="#icon-{0}"></use></svg>',
+        name,
+        size,
+    )
 
 @function_component
 def badge(text: str, color: str = "gray"):
     """상태 배지 컴포넌트."""
-    return f'<span class="badge bg-{color}">{text}</span>'
+    return format_html('<span class="badge bg-{}">{}</span>', color, text)
 ```
 
 템플릿에서 사용:
@@ -187,7 +195,7 @@ Add: {% fill title %}...{% endfill %}
 @function_component
 def avatar(src: str, size: int = 40, rounded: bool = True):
     shape = "rounded-circle" if rounded else ""
-    return f'<img src="{src}" width="{size}" class="avatar {shape}">'
+    return format_html('<img src="{}" width="{}" class="avatar {}">', src, size, shape)
 ```
 
 ```html
@@ -213,7 +221,7 @@ def avatar(src: str, size: int = 40, rounded: bool = True):
 ```python
 @function_component
 def my_button(text: str):
-    return f'<button>{text}</button>'
+    return format_html("<button>{}</button>", text)
 
 # 템플릿에서: {% func "my_button" text="Click" %}
 ```
@@ -225,7 +233,7 @@ def my_button(text: str):
 ```python
 @function_component(name="btn")
 def create_button(text: str):
-    return f'<button>{text}</button>'
+    return format_html("<button>{}</button>", text)
 
 # 템플릿에서: {% func "btn" text="Click" %}
 ```
@@ -238,7 +246,7 @@ def create_button(text: str):
 # myapp/components.py
 @function_component(name="myapp.button")
 def button(text: str):
-    return f'<button>{text}</button>'
+    return format_html("<button>{}</button>", text)
 
 # 템플릿에서: {% func "myapp.button" text="Click" %}
 ```
@@ -278,8 +286,8 @@ def button(
     type: str = "button",
 ):
     classes = f"btn btn-{variant} btn-{size}"
-    disabled_attr = "disabled" if disabled else ""
-    return f'<button type="{type}" class="{classes}" {disabled_attr}>{text}</button>'
+    disabled_attr = " disabled" if disabled else ""
+    return format_html('<button type="{}" class="{}"{}>{}</button>', type, classes, disabled_attr, text)
 ```
 
 ```html
@@ -293,9 +301,10 @@ def button(
 ```python
 @function_component
 def icon_button(icon: str, text: str = "", variant: str = "secondary"):
-    icon_html = f'<i class="bi bi-{icon}"></i>'
-    text_html = f' <span>{text}</span>' if text else ""
-    return f'<button class="btn btn-{variant}">{icon_html}{text_html}</button>'
+    icon_html = format_html('<i class="bi bi-{}"></i>', icon)
+    text_html = format_html(" <span>{}</span>", text) if text else ""
+    # format_html의 결과는 안전한 문자열이라 바깥 format_html이 다시 이스케이프하지 않는다
+    return format_html('<button class="btn btn-{}">{}{}</button>', variant, icon_html, text_html)
 ```
 
 ```html
@@ -394,4 +403,4 @@ validated = fc.validate_args({"text": "Click"})
 
 ---
 
-*마지막 업데이트: 2025-12-09*
+*마지막 업데이트: 2026-10-01*

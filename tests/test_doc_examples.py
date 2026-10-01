@@ -112,6 +112,12 @@ def _chain(node: ast.AST) -> list[str]:
             return names[::-1]
 
 
+def _builds_markup(node: ast.JoinedStr) -> bool:
+    """An f-string with a tag in its text and a value formatted into it."""
+    text = "".join(part.value for part in node.values if isinstance(part, ast.Constant) and isinstance(part.value, str))
+    return "<" in text and any(isinstance(part, ast.FormattedValue) for part in node.values)
+
+
 def _mistakes(tree: ast.Module) -> list[str]:
     found = []
     for node in ast.walk(tree):
@@ -127,6 +133,14 @@ def _mistakes(tree: ast.Module) -> list[str]:
             found.append("self.abroadcast does not exist: await self.broadcast(...)")
         if isinstance(node, ast.For) and _chain(node.iter)[-1:] == ["consume_uploads"]:
             found.append("consume_uploads() is an async generator: async for")
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and any(
+            _chain(d)[-1:] == ["function_component"] for d in node.decorator_list
+        ):
+            # The returned string is output as it is (mark_safe), so an f-string puts the caller's value in raw
+            for inner in ast.walk(node):
+                if isinstance(inner, ast.JoinedStr) and _builds_markup(inner):
+                    found.append(f"{node.name}() formats markup with an f-string, unescaped: format_html(...)")
+                    break
         if isinstance(node, ast.Call) and _chain(node.func)[-1:] == ["allow_upload"]:
             if node.args and isinstance(node.args[0], ast.Call) and _chain(node.args[0].func)[-1:] == ["UploadConfig"]:
                 found.append("allow_upload takes the name and keywords, not an UploadConfig")
@@ -169,6 +183,8 @@ def test_the_docs_are_read():
         "async def f(self):\n    await self.abroadcast('x')",
         "async def f(self):\n    for u in self.consume_uploads('a'):\n        pass",
         "async def f(self):\n    self.allow_upload(UploadConfig(name='a'))",
+        "@function_component\ndef b(text):\n    return f'<b>{text}</b>'",
+        "@function_component(name='x')\ndef b(text):\n    inner = f'<i>{text}</i>'\n    return inner",
     ],
 )
 def test_each_rule_catches_its_mistake(code):
@@ -184,6 +200,8 @@ def test_each_rule_catches_its_mistake(code):
         "async def f(self):\n    self.skip_render()\n    await self.broadcast('x')",
         "async def f(self):\n    async for u in self.consume_uploads('a'):\n        pass",
         "async def f(self):\n    self.allow_upload('a', accept=['.png'])",
+        "@function_component\ndef b(text):\n    return format_html('<b>{}</b>', text)",
+        "@function_component\ndef b(size):\n    return format_html('<i>{}</i>', f'{size}px')",
     ],
 )
 def test_no_rule_refuses_the_right_way(code):
