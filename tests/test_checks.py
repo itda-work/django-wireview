@@ -250,7 +250,7 @@ class TestShadowedFrameworkNameCheck:
 
     @pytest.mark.parametrize("name", ["model_post_init", "model_dump", "model_json_schema"])
     def test_a_pydantic_model_method_override_is_silent(self, only, name):
-        """Pydantic reserves ``model_``: such a method customizes the model, and "rename the handler" was wrong advice."""
+        """Pydantic reserves ``model_``: such a method customizes the model; "rename the handler" was wrong."""
 
         def method(self, *args, **kwargs):
             pass
