@@ -86,3 +86,19 @@ test("only the first container of a name in a component pairs", () => {
   assert.deepEqual([...pins.next], [[0, "wire-stream-p-rows"]]);
   assert.deepEqual([...pins.live], [[0, "wire-stream-p-rows"]]);
 });
+
+test("a render's first container of a name keeps its id and the name: a second one is not pinned", () => {
+  // The template's id is on the first only: the second must not take the live one's place
+  const pins = pinContainerIds(
+    [spot("p", "rows", "my-rows"), spot("p", "rows")],
+    [spot("p", "rows", "my-rows"), spot("p", "rows")]
+  );
+  assert.deepEqual([...pins.live], []);
+  assert.deepEqual([...pins.next], []);
+});
+
+test("a live container whose id the render does not give it takes the made one on both sides", () => {
+  const pins = pinContainerIds([spot("p", "rows", "my-rows")], [spot("p", "rows")]);
+  assert.deepEqual([...pins.live], [[0, "wire-stream-p-rows"]]);
+  assert.deepEqual([...pins.next], [[0, "wire-stream-p-rows"]]);
+});

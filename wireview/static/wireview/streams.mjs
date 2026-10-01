@@ -73,10 +73,12 @@ export function planTrim({ childCount, limit, at }) {
  * the container -- every streamed item with it -- was removed. A container
  * whose id is in both the page and the render is one idiomorph keeps and moves
  * instead. So each live container and its counterpart in the render, the first
- * of its name in the same component, get the same id: the one the page's has,
- * or one made from the component and the name. A container that has an id in
- * the render already keeps it; one the page does not have yet is new and gets
- * none.
+ * of its name in the same component, get the same id, made from the component
+ * and the name. A container that has an id in the render already keeps it (the
+ * template's, which the page's has too) and still counts as the first of its
+ * name; one the page does not have yet is new and gets none. A live container
+ * whose id the render does not give it (an id behind an `{% if %}`) takes the
+ * made one: the render's attributes are what the morph leaves on it anyway.
  *
  * @param {ContainerSpot[]} live - the containers on the page, in document order
  * @param {ContainerSpot[]} next - the containers in the render, in document order
@@ -95,10 +97,13 @@ export function pinContainerIds(live, next) {
   next.forEach(({ owner, name, id }, index) => {
     const key = JSON.stringify([owner, name]);
     const match = onPage.get(key);
-    if (id || !match || taken.has(key)) return;
+    if (!match || taken.has(key)) return;
+    // The first of its name is the one, whether or not it has an id: a second
+    // container of the name must not take the live one's place
     taken.add(key);
-    const pinned = match.id || `wire-stream-${owner}-${name}`;
-    if (!match.id) pins.live.set(match.index, pinned);
+    if (id) return;
+    const pinned = `wire-stream-${owner}-${name}`;
+    if (match.id !== pinned) pins.live.set(match.index, pinned);
     pins.next.set(index, pinned);
   });
   return pins;
