@@ -117,6 +117,8 @@ CHANNEL_LAYERS = {
 
 # 서버 프로세스를 여러 개 띄우면 프로세스를 잇는 레이어를 쓴다(channels-nats 또는 channels_redis).
 # 설정은 docs/DEPLOYMENT.md의 "채널 레이어"에 있다:
+# import os
+#
 # CHANNEL_LAYERS = {
 #     "default": {
 #         "BACKEND": "channels_nats.NatsChannelLayer",

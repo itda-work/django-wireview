@@ -332,6 +332,16 @@ class XOnlineUsers(PresenceTrackerMixin, Component):
         return timesince(datetime.fromtimestamp(user.last_active, tz=UTC))
 ```
 
+템플릿은 property를 그대로 돈다:
+
+```html
+<ul>
+  {% for user, ago in this.last_seen %}
+    <li>{{ user.username }} · {{ ago }} 전</li>
+  {% endfor %}
+</ul>
+```
+
 ## 다음 단계
 
 [← 이전: 06. Streams API 심화](06-streams-api.md) | [목차](README.md) | [다음: 08. File Uploads 심화 →](08-file-uploads.md)
