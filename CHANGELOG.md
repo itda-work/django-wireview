@@ -65,6 +65,9 @@ The django-reactor era changelog (2.x) is preserved in
   not inline: an inline `<script>` runs before `window.wireview` exists, and not at all on a page
   reached by a boosted navigation.
 
+- The README's steps for running the examples left out `npm ci` and `make migrate`, so the bundle
+  could not be built and the chat, poll, rating and quiz pages were a 500.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

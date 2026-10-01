@@ -306,8 +306,14 @@ class XCounter(Component):
 | [slots](./examples/slots/) | 내용을 호출자가 채우는 레이아웃 컴포넌트 |
 | [hooks](./examples/hooks/) | 브라우저만 할 수 있는 일을 컴포넌트에 붙인다 |
 
+저장소를 받은 뒤 처음이면 아래 순서대로 실행합니다. `wireview.min.js`는 빌드 산출물이라 저장소에 없고,
+예제의 모델 테이블은 `make migrate`가 만듭니다 — 빠뜨리면 chat·poll·rating·quiz 페이지가 500입니다.
+
 ```bash
-make build-js && make run-daphne     # http://localhost:8000
+make install && npm ci   # Python·JS 의존성 (처음 한 번)
+make build-js            # wireview.min.js
+make migrate             # 예제 모델의 테이블
+make run-daphne          # http://localhost:8000
 ```
 
 ## 컴포넌트 라이프사이클
@@ -1199,15 +1205,16 @@ WIREVIEW = {
 ```bash
 git clone git@github.com:itda-work/django-wireview.git
 cd django-wireview
-make install
+make install && npm ci
+make build-js     # wireview.min.js. clone 직후와 wireview.js를 고친 뒤
 make test
 ```
 
-테스트 서버 실행:
+테스트 서버 실행([예제](#예제)와 같은 서버입니다):
 
 ```bash
-cd tests
-python manage.py runserver
+make migrate
+make run-daphne   # http://localhost:8000
 ```
 
 ## 라이선스
