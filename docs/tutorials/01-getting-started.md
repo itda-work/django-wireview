@@ -257,7 +257,7 @@ class XHello(Component):
 ```
 
 **핵심 포인트:**
-- `{% wireview_header %}` - 필요한 JavaScript 로드 (~10KB)
+- `{% wireview_header %}` - 필요한 JavaScript 로드 (약 70KB, gzip 약 22KB)
 - `{% component 'ComponentName' %}` - 컴포넌트 렌더링
 - kwargs로 초기 상태 전달 가능
 

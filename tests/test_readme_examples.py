@@ -163,3 +163,23 @@ def test_the_contents_link_to_headings():
     targets = set(re.findall(r"\]\(#([^)]+)\)", README.read_text(encoding="utf-8")))
     assert targets
     assert sorted(targets - {_slug(h) for h in _headings()}) == []
+
+
+BUNDLE = README.parent / "wireview" / "static" / "wireview" / "wireview.min.js"
+TUTORIAL_01 = README.parent / "docs" / "tutorials" / "01-getting-started.md"
+
+
+@pytest.mark.skipif(not BUNDLE.exists(), reason="wireview.min.js is built by make build-js")
+@pytest.mark.parametrize("doc", [README, TUTORIAL_01], ids=lambda p: p.name)
+def test_the_bundle_size_is_the_built_one(doc):
+    """The README said "~10KB compressed" of a bundle that was 71 KB, 22 KB gzipped.
+
+    Within a quarter either way: the number is a reader's estimate, not a budget.
+    """
+    import gzip
+
+    stated = re.search(r"약 (\d+)KB, gzip 약 (\d+)KB", doc.read_text(encoding="utf-8"))
+    assert stated, f"{doc.name} states the bundle's size"
+    data = BUNDLE.read_bytes()
+    for kb, actual in zip(map(int, stated.groups()), (len(data), len(gzip.compress(data))), strict=True):
+        assert 0.75 * actual <= kb * 1000 <= 1.25 * actual, (kb, actual)

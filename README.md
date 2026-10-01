@@ -1055,7 +1055,7 @@ class Dashboard(Component):
 
 | 태그 | 설명 |
 |------|------|
-| `{% wireview_header %}` | 필요한 JavaScript 포함 (~10KB 압축) |
+| `{% wireview_header %}` | 필요한 JavaScript 포함 (약 70KB, gzip 약 22KB) |
 | `{% wireview_toasts %}` | `toast(user, ...)`로 보낸 토스트를 받아 띄운다. 레이아웃에 한 번 ([플래시와 토스트](docs/features/flash.md)) |
 | `{% component 'Name' kwarg=value %}` | 컴포넌트 렌더링 |
 | `{% on 'event.modifiers' 'handler' kwargs %}` | 이벤트 핸들러 바인딩. `myself`와 `_target`은 예약 인자라 핸들러 인자 이름으로 쓸 수 없다 |

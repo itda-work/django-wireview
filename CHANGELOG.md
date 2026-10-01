@@ -58,6 +58,9 @@ The django-reactor era changelog (2.x) is preserved in
   the same name came first. The subsections are renamed, and a test keeps every heading's anchor
   unique and every contents link pointing at a heading.
 
+- The README and tutorial 01 put the bundle at "~10KB". It is about 70 KB, 22 KB gzipped; a
+  test compares the stated size with the built bundle.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
