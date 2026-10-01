@@ -33,16 +33,21 @@
 │                              ↕ WebSocket (JSON 프레임)                       │
 │  Django Server                                                               │
 │  ┌────────────────────────────────────────────────────────────────────┐     │
-│  │  WireviewConsumer (consumer.py)                                    │     │
+│  │  WireviewConsumer (consumer.py)   # Channels 어댑터일 뿐            │     │
 │  │  ├─ websocket_connect()   # Origin·채널 레이어 검사 후 accept      │     │
+│  │  ├─ connect()/disconnect()  # 세션 start()/stop()                  │     │
+│  │  └─ receive_json()        # → WireviewSession.handle_message()     │     │
+│  │                                                                    │     │
+│  │  WireviewSession (session.py)     # 세션 로직 전부. channels 없음   │     │
 │  │  ├─ command_join()        # 서명 상태 검증, 경계 검사, 마운트      │     │
 │  │  ├─ command_user_event()  # 사용자 이벤트 처리                     │     │
-│  │  ├─ model_mutation(), notification()  # 브로드캐스트 수신          │     │
+│  │  ├─ component_*()         # 컴포넌트가 보낸 세션 메일              │     │
+│  │  ├─ model_mutation(), notification(), upload_*()  # fan-out 수신   │     │
 │  │  └─ send_render()         # 부모 렌더 + 자식 LiveComponent 수명주기 │     │
 │  │                                                                    │     │
 │  │  ComponentRepository (repository.py)                               │     │
 │  │  ├─ join()                # 컴포넌트 인스턴스 생성·등록            │     │
-│  │  ├─ dispatch_event()      # 클라이언트가 부를 수 있는 핸들러만 호출 │     │
+│  │  ├─ dispatch_event()      # 핸들러 호출 (판정: core/handlers.py)   │     │
 │  │  ├─ take_lifecycle()      # LiveComponent joined/update/leaving 배치 │    │
 │  │  └─ components_subscribed_to()  # 구독 관리                        │     │
 │  │                                                                    │     │
@@ -63,18 +68,23 @@
 |------|------|
 | `__init__.py` | 공개 API의 전부. 하위 모듈은 모두 내부다([COMPATIBILITY.md](./COMPATIBILITY.md)) |
 | `core/component.py` | `Component` 베이스: 라이프사이클, 이벤트, streams·uploads·async·flash·hooks 메서드, `class Meta:` 해석(`ComponentOptions`) |
+| `core/handlers.py` | 클라이언트가 부를 수 있는 메서드의 판정 정본 `is_client_callable`. 디스패처·시스템 체크·`validate_call` 감싸기가 함께 쓴다 (#127) |
 | `core/meta.py` | `WireviewMeta` (`self.wire`): 렌더 diff 계산, 내비게이션·flash·JS 등 클라이언트 명령 |
 | `core/rendered.py` | 동적 마커로 나눈 static/dynamic 구조와 diff |
 | `core/state.py`, `core/signing.py` | `data-state` 서명·복원, 서명 키 |
+| `core/model_state.py` | 상태 안의 모델 인스턴스를 pk로 서명하고 필드 타입 표기를 따라 다시 읽는다 (#113) |
+| `core/render_reads.py`, `core/render_gate.py` | 초기화된 temporary assign을 읽은 동적 부분 찾기(#111), 워커 스레드 렌더 중 백그라운드 작업 미루기(#138) |
+| `core/session.py` | `SessionView`: Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다 |
 | `core/live_session.py` | 페이지 경계(`live_session`)와 인증 세대 |
+| `core/origin.py` | WebSocket Origin 검사 (#96) |
 | `core/transport.py` | `Outbound`·`Broker` 인터페이스와 Channels 구현 |
 | `template_engine.py` | 템플릿 변수 출력에 diff 마커 주입 |
 | `consumer.py` | `WireviewConsumer`: Channels WebSocket 어댑터. 소켓을 받고 세션을 시작·종료한다 |
 | `session.py` | `WireviewSession`: 메시지 라우팅, 렌더 전송, 업로드·브로드캐스트 수신. `Outbound`로만 내보낸다 (#60) |
-| `repository.py` | `ComponentRepository`: 연결당 컴포넌트 인스턴스, 핸들러 판정, LiveComponent 수명주기 배치 |
+| `repository.py` | `ComponentRepository`: 연결당 컴포넌트 인스턴스, 핸들러 호출, LiveComponent 수명주기 배치 |
 | `live_component.py` | `LiveComponent`: 부모 연결을 공유하는 중첩 상태 컴포넌트 |
 | `js.py` | `JS()` 클라이언트 명령 빌더 |
-| `features/` | streams, presence, uploads(레지스트리·토큰·청크 저장소), hooks |
+| `features/` | streams, presence, uploads(레지스트리·토큰·청크 저장소), hooks, toasts(`{% wireview_toasts %}`) |
 | `auto_broadcast.py` | Django 시그널 → 컴포넌트 `mutation()` |
 | `templatetags/wireview.py` | 템플릿 태그 전체 |
 | `static/wireview/wireview.js` | 클라이언트 연결, 컴포넌트, 이벤트 위임, 훅, 업로드 |
@@ -106,7 +116,8 @@
          │
          ▼ WebSocket
 ┌──────────────────┐
-│ WireviewConsumer │  receive_json → command_user_event(id, command, ...)
+│ WireviewConsumer │  receive_json → WireviewSession.handle_message
+│ → WireviewSession│  → command_user_event(id, command, ...)
 └────────┬─────────┘
          │
          ▼
@@ -123,7 +134,7 @@
          │
          ▼
 ┌─────────────────┐
-│ WireviewConsumer│  send_render(component, ref=...)
+│ WireviewSession │  send_render(component, ref=...)
 │ .send_render()  │  → WireviewMeta.render_diff()
 │                 │    템플릿 렌더(마커 포함) → Rendered.from_marked_html
 │                 │    → get_diff(이전 Rendered, vsn) → 바뀐 dynamic만
@@ -178,8 +189,10 @@ class Component(BaseModel):
 
 - `__init_subclass__`가 클래스명으로 전역 등록하고(`Component._all`), `class Meta:`를 `ComponentOptions`로 해석해
   `cls._meta`에 둔다.
-- 클라이언트가 부를 수 있는 것은 `_`로 시작하지 않고 사용자 코드에서 정의한 메서드뿐이다. 판정은
-  `ComponentRepository._is_user_defined_method`이고, 호출은 `validate_call`로 감싼다.
+- 클라이언트가 부를 수 있는 것은 `_`로 시작하지 않고 사용자 코드에서 정의한 메서드뿐이다. 프레임워크와 Pydantic이
+  소유한 이름(`joined`, `update`, `model_post_init` 등)은 오버라이드해도 빠진다. 판정의 정본은
+  `wireview/core/handlers.py`의 `is_client_callable` 하나이고, 디스패처(`ComponentRepository.dispatch_event`)·
+  시스템 체크·`validate_call` 감싸기가 모두 이 모듈의 같은 판정을 쓴다(#127).
 - 상태 필드는 렌더마다 `{% tag_header %}`의 `data-state`에 서명되어 실리고, join 때 그것으로 복원된다
   (`core/state.py`, v2 봉투).
 
@@ -214,29 +227,37 @@ payload를 돌려준다. 바뀐 것이 없으면 `None`이다. 첫 렌더와 sta
 
 `joined()` 동안의 명령은 대기열(`enter_pending_mode`/`flush_pending`)에 쌓였다가 첫 렌더 뒤에 나간다.
 
-### 2.3 WireviewConsumer (consumer.py)
+### 2.3 WireviewSession (session.py)과 WireviewConsumer (consumer.py)
+
+세션 로직은 전부 `WireviewSession`에 있고, 내보내는 것은 `Outbound`로만 한다. 이 모듈은 channels를 import하지
+않는다(`tests/test_session_extraction.py`). `WireviewConsumer`는 그것을 상속한 Channels 어댑터로, 소켓을 받거나
+거절하고(`websocket_connect`), 세션을 시작·종료하고(`connect`·`disconnect` → `start`·`stop`), JSON 프레임을
+`handle_message`에 넘길 뿐이다(#60). 채널 레이어 메일은 Channels가 `type`의 이름으로 세션의 메서드에 보낸다.
 
 ```python
-class WireviewConsumer(AsyncJsonWebsocketConsumer):
-    """WebSocket Consumer (/__wireview__)"""
-
-    # 프론트엔드 명령: receive_json이 command_<name>(**payload)로 보낸다
-    async def command_join(self, name, state, children=None): ...
+class WireviewSession:
+    # 프론트엔드 명령: handle_message가 command_<name>(**payload)로 보낸다
+    async def command_join(self, name, state, children=None, ref=None): ...
     async def command_leave(self, id): ...
     async def command_user_event(self, id, command, implicit_args, explicit_args, ref=None): ...
     async def command_hook_event(self, component_id, hook_id, event, payload, ref=None): ...
     async def command_params_changed(self, params, uri): ...
-    async def command_upload_register(self, id, name, entries): ...
+    async def command_upload_register(self, id, name, entries): ...   # upload_cancel, upload_complete
 
     # 컴포넌트 → 자기 세션 (message_from_component가 component_<command>로 보낸다)
-    async def component_remove(self, id): ...
+    async def component_remove(self, id, ref=None): ...
     async def component_stream_op(self, op, stream, items, at, limit=0): ...
     async def component_exec_js(self, id, commands): ...
-    async def component_url_change(self, command, url): ...
+    async def component_crashed(self, id): ...                       # 백그라운드 작업이 던졌다
+    # ... url_change, title, flash, upload_op, dispatch_event, send_render 등
 
-    # 브로드캐스트 수신 (Broker.publish의 type)
+    # fan-out 수신 (Broker.publish의 type)
     async def model_mutation(self, data): ...
     async def notification(self, data): ...
+    async def upload_progress(self, event): ...                      # upload_completed, upload_error
+    async def session_invalidated(self, event): ...                  # 로그아웃: 소켓을 4001로 닫는다
+
+class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession): ...
 ```
 
 - 컴포넌트 코드에서 난 예외는 `_crashed()`(이벤트)와 `_join_failed()`(join)가 받는다. 소켓을 닫지 않고 그 컴포넌트만
@@ -306,19 +327,24 @@ class StreamOp:
 ```
 wireview/
 ├── __init__.py            # 공개 API (_EXPORTS 표로 지연 로딩)
-├── core/                  # component, meta, rendered, state, signing, session,
-│                          # live_session, origin, transport
-├── features/              # streams, presence, uploads, upload_store, hooks
-├── consumer.py  repository.py  live_component.py  function_components.py  slots.py
+├── core/                  # component, handlers, meta, rendered, render_reads, render_gate, state, signing,
+│                          # model_state, session(SessionView), live_session, origin, transport
+├── features/              # streams, presence, uploads, upload_store, hooks, toasts
+├── consumer.py  session.py  repository.py  live_component.py  function_components.py  slots.py
 ├── template_engine.py  event_transpiler.py  js.py  async_result.py  auto_broadcast.py
-├── views.py  urls.py  settings.py  checks.py  telemetry.py  testing.py
+├── views.py  urls.py  apps.py  settings.py  checks.py  telemetry.py  testing.py  deprecation.py
+├── schemas.py  serializer.py  utils.py  log.py
+├── component.py           # 폐기 예정 re-export (2.0에서 제거)
+├── debug/                 # sync_detector (DEBUG_SYNC_TRANSITIONS)
 ├── templatetags/wireview.py
 ├── management/commands/   # wireview_stubs, wireview_lsp, wireview_agent_setup, wireview_upload_gc
-├── templates/wireview_header.html
+├── project_template/      # startproject --template 스타터
+├── templates/wireview_header.html  templates/wireview/toasts.html
 └── static/wireview/
     ├── wireview.js        # 소스 (wireview.min.js는 make build-js의 산출물)
     ├── wireview-boost.js
     ├── rendered.mjs  streams.mjs  events.mjs  values.mjs  live-session.mjs  ready.mjs  reload.mjs
+    ├── loading.mjs  navigation.mjs  reconnect.mjs  uploads.mjs  joins.mjs
     └── types.d.ts
 ```
 
@@ -334,7 +360,7 @@ wireview/
 { command: "join", payload: { name, state, children, ref? } }
 { command: "leave", payload: { id } }
 { command: "user_event", payload: { id, command, implicit_args, explicit_args, ref? } }
-{ command: "hook_event", payload: { component_id, hook_id, event, payload, ref? } }
+{ command: "hook_event", payload: { component_id, hook_id, event, payload, ref } }  // ref: "hook-<n>" | null
 { command: "params_changed", payload: { params, uri } }
 // upload_register, upload_cancel, upload_complete
 

@@ -183,3 +183,22 @@ def test_the_documentation_is_written_in_korean():
             english.append(f"{path} ({ratio:.0%} Korean)")
 
     assert english == [], "documents whose prose is not Korean: " + ", ".join(english)
+
+
+def _package_modules() -> set[str]:
+    """Every module and client file of the package, by the name a map writes for it."""
+    package = ROOT / "wireview"
+    names = {p.stem for p in package.glob("*.py") if p.stem != "__init__"}
+    for sub in ("core", "features"):
+        names |= {p.stem for p in (package / sub).glob("*.py") if p.stem != "__init__"}
+    names |= {p.name for p in (package / "static" / "wireview").glob("*.mjs")}
+    return names
+
+
+@pytest.mark.unit
+def test_the_architecture_tree_names_every_module():
+    """docs/ARCHITECTURE.md drew the session inside the consumer long after #60 moved it out."""
+    text = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    tree = text[text.index("## 4.") : text.index("## 5.")]
+    missing = {name for name in _package_modules() if not re.search(rf"\b{re.escape(name)}\b", tree)}
+    assert not missing, f"docs/ARCHITECTURE.md section 4 does not name: {sorted(missing)}"
