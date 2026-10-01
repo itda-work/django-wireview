@@ -283,6 +283,9 @@ The django-reactor era changelog (2.x) is preserved in
   browser too, with any arguments, and its `reset_all` zeroes the totals the parent holds: the
   children's `update()` does not report back, so the parent's sum stayed at the old value.
 
+- Tutorial 14's `live.py` used `NotificationType` without importing it, so the app failed to load
+  with a `NameError` and no command, `check` included, could start. It imports it now.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

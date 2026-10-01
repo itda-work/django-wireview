@@ -145,7 +145,7 @@ def approve_order(request, order_id):
 ```python
 from wireview import Component, JS, ModelAction
 
-from .models import Notification
+from .models import Notification, NotificationType
 from .services import notifications_channel, refresh_channel
 
 
