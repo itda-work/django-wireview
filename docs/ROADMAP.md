@@ -353,7 +353,8 @@ def button(text: str, variant: str = "primary"):
 5. 태그 `v<버전>`을 push한다. `.github/workflows/release.yml`이 다음을 모두 통과해야 PyPI에 올린다(#122).
    - **ci**: `ci.yml` 전체를 태그 커밋에 대해 부른다(`workflow_call`). Python × Django 매트릭스, 새 설치가 받는
      최신 의존성(`test-latest`, #127), 하한 의존성(`test-lowest`, #132), NATS·Redis 레이어의 E2E(#130), lint, typecheck, 패키지 빌드. `ci.yml`에 job을 더하면 게이트도 넓어진다.
-   - **build**: 태그와 `pyproject.toml`의 버전이 같은지 보고 `make ci-build`.
+   - **build**: 태그와 `pyproject.toml`의 버전이 같은지 보고 `make ci-build`. PyPI 페이지가 되는 README와 프로젝트 URL의
+     `main` 링크는 빌드가 그 태그로 바꾼다(`hatch_build.py`). 그래서 태그 이름은 반드시 `v<버전>`이다.
    - **smoke**: 빌드한 wheel을 lock 없이 새로 해석한 의존성에 설치해 import와 `check`를 돈다(`make ci-smoke`).
      rc3처럼 lock의 버전에서만 import되는 산출물은 여기서 멈춘다.
 

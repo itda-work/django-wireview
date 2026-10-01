@@ -219,3 +219,26 @@ def test_the_repository_links_name_files_that_exist():
                 if not (README.parent / path).exists():
                     missing.append(target)
     assert missing == []
+
+
+def test_the_package_page_links_to_its_own_release():
+    """PyPI keeps every release's page. Pinned to main, 1.0.0's page would show the docs of whatever came later,
+    and a moved file would break the links of every older page. The build points them at the release's tag."""
+    import tomllib
+
+    import hatch_build
+
+    config = tomllib.loads((README.parent / "pyproject.toml").read_text())["tool"]["hatch"]["metadata"]["hooks"]["custom"]
+    metadata = {"version": "1.2.3"}
+    hatch_build.CustomMetadataHook(str(README.parent), config).update(metadata)
+
+    urls = metadata["urls"]
+    assert urls["Documentation"] == "https://github.com/itda-work/django-wireview/tree/v1.2.3/docs"
+    assert urls["Changelog"] == "https://github.com/itda-work/django-wireview/blob/v1.2.3/CHANGELOG.md"
+    assert urls["Issues"] == "https://github.com/itda-work/django-wireview/issues"
+
+    assert metadata["readme"]["content-type"] == "text/markdown"
+    text = metadata["readme"]["text"]
+    assert "/main/" not in text
+    assert text.count("/v1.2.3/") == README.read_text(encoding="utf-8").count("/main/") > 0
+    assert text.replace("/v1.2.3/", "/main/") == README.read_text(encoding="utf-8")

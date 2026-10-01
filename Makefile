@@ -272,6 +272,15 @@ ci-build:
 	'project_name/asgi.py-tpl', 'project_name/urls.py-tpl', 'hello/live.py-tpl', 'hello/templates/hello/index.html', '.gitignore')}; \
 	sys.exit(0) if want <= names else sys.exit(f'{w} lacks {sorted(want - names)}')"
 	@echo "ci-build: wheel contains the starter template"
+	@# The PyPI page is this metadata. hatch_build.py pins the README's links to the
+	@# release tag; the wheel is built from the sdist, which has to carry the hook.
+	@python3 -c "import glob, sys, zipfile; \
+	w = sorted(glob.glob('dist/*.whl'))[-1]; z = zipfile.ZipFile(w); \
+	meta = z.read(next(n for n in z.namelist() if n.endswith('.dist-info/METADATA'))).decode(); \
+	version = next(l.split(': ', 1)[1] for l in meta.splitlines() if l.startswith('Version: ')); \
+	bad = '/main/' in meta or meta.count(f'/v{version}/') < 30; \
+	sys.exit(f'{w}: the description does not link to v{version}') if bad else None"
+	@echo "ci-build: the description links to the release tag"
 
 # The built wheel in a fresh environment that resolves its dependencies anew, as a
 # user's install does -- not uv.lock's versions. rc3 passed every test on the lock

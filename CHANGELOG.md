@@ -71,7 +71,10 @@ The django-reactor era changelog (2.x) is preserved in
 - The README's links into the repository and its overview picture are absolute GitHub URLs, so
   they work on the PyPI project page, where the 36 relative ones resolved against pypi.org. The
   package metadata gains `Documentation`, `Changelog` and `Issues` URLs. A test refuses a
-  relative link and checks that each absolute one names a file that exists.
+  relative link and checks that each absolute one names a file that exists. The build pins
+  those links, and the `Documentation` and `Changelog` URLs, to the release's tag `v<version>`
+  (`hatch_build.py`), so an older release's page keeps showing its own documents; `make ci-build`
+  checks the wheel's metadata for it.
 
 - The starter template ships a `.gitignore`. In DEBUG wireview writes `hello/live.pyi` whenever
   Django starts, `check` and `migrate` included, and `migrate` makes `db.sqlite3`; a new project's
