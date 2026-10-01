@@ -55,7 +55,7 @@ needs_permissions = pytest.mark.skipif(
 
 
 def make_component(
-    class_name: str, module: str = "probeapp.live", meta: dict | None = None, **namespace
+    class_name: str, module: str = "probeapp.live", meta: dict | None = None, base: type = Component, **namespace
 ) -> type[Component]:
     """Build a component class off the registry's beaten path.
 
@@ -67,7 +67,7 @@ def make_component(
         warnings.simplefilter("ignore")
         return type(
             class_name,
-            (Component,),
+            (base,),
             {"__module__": module, "Meta": type("Meta", (), {"template_name": "test.html", **meta}), **namespace},
         )
 
@@ -217,8 +217,46 @@ class TestShadowedFrameworkNameCheck:
         async def callback(self, *args, **kwargs):
             pass
 
+        from wireview import LiveComponent
+
         value = classmethod(callback) if name in {"new", "update_many"} else callback
-        only(make_component(f"ProbeShadowOk_{name}", **{name: value}))
+        # LiveComponent's names are a superset of Component's: update and update_many are only its
+        only(make_component(f"ProbeShadowOk_{name}", base=LiveComponent, **{name: value}))
+        assert check_shadowed_framework_names(None) == []
+
+    @staticmethod
+    def _taught_overrides() -> list[str]:
+        """The methods the API reference tells a component to override, from its table."""
+        text = (Path(__file__).resolve().parent.parent / "docs" / "features" / "component-api.md").read_text()
+        section = text.split("## 오버라이드하는 것", 1)[1].split("\n## ", 1)[0]
+        return re.findall(r"^\| `(?:LiveComponent\.)?(\w+)\(", section, re.MULTILINE)
+
+    def test_the_api_reference_teaches_overrides(self):
+        """The table the next test reads is still there, and still has its rows."""
+        assert {"joined", "get_subscriptions", "new", "update", "update_many"} <= set(self._taught_overrides())
+
+    def test_every_override_the_api_reference_teaches_is_silent(self, only):
+        """The intended list is held to the documents, not to itself: dropping a name from it fails here."""
+        names = self._taught_overrides()
+
+        async def callback(self, *args, **kwargs):
+            pass
+
+        from wireview import LiveComponent
+
+        attrs = {name: classmethod(callback) if name in {"new", "update_many"} else callback for name in names}
+        only(make_component("ProbeShadowTaught", base=LiveComponent, **attrs))
+        assert check_shadowed_framework_names(None) == []
+
+    @pytest.mark.parametrize("name", ["model_post_init", "model_dump", "model_json_schema"])
+    def test_a_pydantic_model_method_override_is_silent(self, only, name):
+        """Pydantic reserves ``model_``: such a method customizes the model, and "rename the handler" was wrong advice."""
+
+        def method(self, *args, **kwargs):
+            pass
+
+        value = classmethod(method) if name == "model_json_schema" else method
+        only(make_component(f"ProbeShadowModel_{name}", **{name: value}))
         assert check_shadowed_framework_names(None) == []
 
     @pytest.mark.parametrize("name", wireview_checks.OVERRIDABLE_METHODS)

@@ -46,7 +46,6 @@ OVERRIDABLE_METHODS = (
     "get_subscriptions",
     "new",
     "update_many",
-    "model_post_init",
 )
 
 #: The client bundle referenced by ``{% wireview_header %}``.
@@ -135,7 +134,10 @@ def check_shadowed_framework_names(app_configs, **kwargs) -> list[CheckMessage]:
     ``BaseModel`` -- is no handler: ``{% on %}`` refuses it when the page renders,
     while ``defer()`` and a hook's direct push drop it with a log line. The same
     happens to a handler when a minor release adds a member of its name
-    (docs/COMPATIBILITY.md). The callbacks meant to be overridden are left out.
+    (docs/COMPATIBILITY.md). The callbacks meant to be overridden are left out,
+    and so is Pydantic's reserved ``model_`` namespace: a method there
+    customizes the model (``model_post_init``, ``model_dump``) and is no
+    handler anyone meant to write.
     """
     from .core.handlers import is_framework_class
 
@@ -148,7 +150,7 @@ def check_shadowed_framework_names(app_configs, **kwargs) -> list[CheckMessage]:
             if is_framework_class(user_class):
                 continue
             for name, value in user_class.__dict__.items():
-                if name.startswith("_") or name in intended or (user_class, name) in reported:
+                if name.startswith(("_", "model_")) or name in intended or (user_class, name) in reported:
                     continue
                 if isinstance(value, type) or not callable(getattr(cls, name, None)):
                     continue

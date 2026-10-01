@@ -21,7 +21,8 @@ The django-reactor era changelog (2.x) is preserved in
   all. The dispatcher refuses such a name wherever user code defines it, so the method was no
   handler and nothing said so: a `{% on %}` binding stops the render, but `defer()` and a hook's
   push were dropped with a log line. It is also how a project hears that a minor release added a
-  member under the name of one of its handlers. The callbacks meant to be overridden are left out.
+  member under the name of one of its handlers. The callbacks meant to be overridden are left out,
+  and so are Pydantic's reserved `model_` names (`model_post_init`, `model_dump` ...).
 
 ### Changed
 
