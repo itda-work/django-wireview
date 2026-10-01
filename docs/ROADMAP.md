@@ -14,7 +14,7 @@ Phase 1: Foundation     ██████████████████�
 Phase 2: Core Features  ████████████████████ 완료
 Phase 3: Advanced       ████████████████████ 완료
 Phase 4: Component      ████████████████████ 완료
-Phase 5: Polish         ████████████████░░░░ 진행 중 (프로파일링·타입 스텁·LSP·Telemetry 완료)
+Phase 5: Polish         ████████████████░░░░ 진행 중 (남은 둘은 1.0 범위 밖)
 ```
 
 Phoenix LiveView 대비 남은 P1 기능 갭은 없다. GAP-009 live_session 과 GAP-022 Telemetry 는
@@ -115,11 +115,13 @@ class Editor(Component):
 {% on "input.throttle.500" "filter" %}
 ```
 
-**지원 수정자**:
+**지원 수정자** (정본은 `wireview/event_transpiler.py`의 `MODIFIERS`, 적용 순서는 [csp](./features/csp.md#수정자)):
 - `.prevent`, `.stop` - 기본 동작/전파 방지
 - `.debounce.N`, `.throttle.N` - 디바운스/스로틀
-- `.capture`, `.once`, `.passive` - 이벤트 옵션
-- `.self`, `.away` - 타겟 필터링
+- `.ctrl`, `.alt`, `.shift`, `.meta` - 보조 키가 눌렸을 때만
+- `.key.<이름>`, `.key_code.N`, `.enter`, `.tab`, `.delete`, `.backspace`, `.esc`, `.space`, `.up`, `.down`, `.left`, `.right` - 그 키일 때만
+
+Phoenix·Alpine의 `.capture`, `.once`, `.passive`, `.self`, `.away`는 없다.
 
 ---
 
@@ -284,6 +286,8 @@ def button(text: str, variant: str = "primary"):
     return format_html('<button class="btn btn-{}">{}</button>', variant, text)
 ```
 
+반환한 문자열은 이스케이프 없이 그대로 출력된다. 인자를 f-string으로 끼우면 XSS가 되므로 `format_html`로 만든다.
+
 ```html
 {% func "button" text="Click me" variant="danger" %}
 ```
@@ -291,6 +295,9 @@ def button(text: str, variant: str = "primary"):
 ---
 
 ## Phase 5: Polish (완성도) - 🔄 진행 중
+
+1.0은 Phase 1~4와 아래의 ✅ 항목으로 낸다. 남은 둘(⬜ 브라우저 확장, 🔄 TypeScript 재작성)은 **1.0 범위 밖이고**
+날짜를 약속하지 않는다. 둘 다 공개 API를 바꾸지 않는 작업이라 1.x의 마이너 릴리스에서 할 수 있다.
 
 ### 5.1 개발자 도구
 
@@ -346,14 +353,20 @@ def button(text: str, variant: str = "primary"):
 
 ### 릴리스 절차
 
-1. `CHANGELOG.md`의 Unreleased를 버전 절로 옮긴다.
-2. `pyproject.toml`과 `package.json`의 `version`을 함께 올린다(`tests/test_packaging.py`가 둘을 비교한다).
-   1.0.0에서는 classifier를 `Development Status :: 5 - Production/Stable`로 바꾼다.
-3. `make quality`, `make test`, `make test-latest`, `make test-lowest`, `make test-e2e`, `make test-e2e LAYER=redis`, `make test-matrix`, `make ci-build`, `make ci-smoke`.
+1. `CHANGELOG.md`의 Unreleased를 버전 절로 옮긴다. 아래 비교 링크도 고친다: `[Unreleased]`는 새 태그부터
+   `HEAD`까지, 새 절은 앞 태그부터 새 태그까지(`tests/test_changelog.py`가 본다). 그 사이 공개된 보안 권고는
+   `### Security`에 GHSA 링크·영향 버전·조치와 함께 적고 `SECURITY.md`의 권고 표에도 더한다. yank한 릴리스는
+   제목에 `[YANKED]`를 붙인다.
+2. `pyproject.toml`과 `package.json`의 `version`을 함께 올리고, `uv lock`과 `npm install --package-lock-only`로
+   두 lock의 버전도 맞춘다(`tests/test_packaging.py`가 넷을 비교한다). 사전 릴리스가 아니면 classifier가
+   `Development Status :: 5 - Production/Stable`이어야 한다(같은 파일이 본다).
+3. 이 문서의 릴리스 이력 표에 행을 ✅로 두고 맨 아래 "마지막 업데이트" 날짜를 바꾼다. 마이너·메이저 릴리스면
+   `SECURITY.md`의 지원 버전 표("지금은 1.0.x")와 `docs/UPGRADING.md`의 "어디서 오나" 표·버전 범위를 새 버전에 맞춘다.
+4. `make quality`, `make test`, `make test-latest`, `make test-lowest`, `make test-e2e`, `make test-e2e LAYER=redis`, `make test-matrix`, `make ci-build`, `make ci-smoke`.
    태그 뒤의 게이트와 같은 것을 먼저 로컬에서 본다 — 게이트에서 떨어지면 태그를 지우고 다시 찍어야 한다.
-4. 워크플로나 액션 버전을 바꿨다면 태그 전에 `gh workflow run release.yml`로 dry run을 돌린다. 게이트까지 똑같이 돌고
+5. 워크플로나 액션 버전을 바꿨다면 태그 전에 `gh workflow run release.yml`로 dry run을 돌린다. 게이트까지 똑같이 돌고
    배포만 하지 않는다.
-5. 태그 `v<버전>`을 push한다. `.github/workflows/release.yml`이 다음을 모두 통과해야 PyPI에 올린다(#122).
+6. 태그 `v<버전>`을 push한다. `.github/workflows/release.yml`이 다음을 모두 통과해야 PyPI에 올린다(#122).
    - **ci**: `ci.yml` 전체를 태그 커밋에 대해 부른다(`workflow_call`). Python × Django 매트릭스, 새 설치가 받는
      최신 의존성(`test-latest`, #127), 하한 의존성(`test-lowest`, #132), NATS·Redis 레이어의 E2E(#130), lint, typecheck, 패키지 빌드. `ci.yml`에 job을 더하면 게이트도 넓어진다.
    - **build**: 태그와 `pyproject.toml`의 버전이 같은지 보고 `make ci-build`. PyPI 페이지가 되는 README, 프로젝트 URL, wheel에 싣는
@@ -366,4 +379,4 @@ def button(text: str, variant: str = "primary"):
 
 ---
 
-*마지막 업데이트: 2026-09-30*
+*마지막 업데이트: 2026-10-01*

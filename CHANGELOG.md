@@ -93,6 +93,13 @@ The django-reactor era changelog (2.x) is preserved in
   criterion (`docs/design/session-extraction.md` §5) read the same in the roadmap, the gap list and
   the design index.
 
+- `docs/ROADMAP.md`: the modifier list is the one the client runs -- `.capture`, `.once`, `.passive`,
+  `.self` and `.away` were listed and never existed -- the function component example builds its
+  HTML with `format_html` instead of an f-string that let its arguments inject markup, Phase 5
+  says its two open items are outside 1.0, and the release steps add the changelog links, the
+  lock files, the roadmap row and date, `SECURITY.md` and `docs/UPGRADING.md`.
+  `tests/test_packaging.py` checks that `uv.lock` and `package-lock.json` carry the package version.
+
 ### Fixed
 
 - `{% wireview_toasts %}` works on a site with the `signed_cookies` session backend. Its key is the

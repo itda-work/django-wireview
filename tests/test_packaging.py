@@ -92,3 +92,15 @@ def test_the_development_status_says_whether_the_version_is_a_prerelease():
 
     assert len(statuses) == 1, statuses
     assert (statuses[0] == "Development Status :: 5 - Production/Stable") == stable, (project["version"], statuses)
+
+
+def test_the_lock_files_say_the_same_version():
+    """The release commit bumps the manifests; ``uv lock`` and ``npm install --package-lock-only``
+    carry the version into the locks, and the release steps did not say so."""
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    lock = tomllib.loads((ROOT / "uv.lock").read_text())
+    locked = [p["version"] for p in lock["package"] if p["name"] == project["name"]]
+    npm_lock = json.loads((ROOT / "package-lock.json").read_text())
+
+    assert locked == [project["version"]]
+    assert npm_lock["version"] == npm_lock["packages"][""]["version"] == project["version"]
