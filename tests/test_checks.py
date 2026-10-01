@@ -373,6 +373,18 @@ class TestAutoBroadcastSendersCheck:
     def test_the_test_project_is_silent(self):
         assert check_auto_broadcast_senders(None) == []
 
+    def test_the_hints_mapping_starts(self, monkeypatch):
+        """Copying the example out of the hint must not fail at startup."""
+        import ast
+
+        from wireview import auto_broadcast
+
+        set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast(model=True))
+        (message,) = check_auto_broadcast_senders(None)
+        (example,) = re.findall(r"senders=(\{[^{}]*: [^{}]*\})", message.hint)
+
+        assert auto_broadcast.resolve_senders(AutoBroadcast(model=True, senders=ast.literal_eval(example)))
+
 
 class TestAutoBroadcastCredentialsCheck:
     """W017: a password hash or session key goes onto the channel layer (#144)."""
@@ -472,6 +484,68 @@ class TestAutoBroadcastCredentialsCheck:
             assert check_auto_broadcast_credentials(None) == []
             # The fields a hint may name are the ones the payload carries.
             assert auto_broadcast.resolve_senders(AutoBroadcast(senders={("bookmarks", "Customer"): ("tier",)}))
+
+    def test_a_proxy_of_the_user_model_is_flagged_and_its_hint_starts(self, monkeypatch):
+        """A proxy has no local fields of its own; the payload carries its concrete model's."""
+        from django.contrib.auth.models import User
+        from django.test.utils import isolate_apps
+
+        from wireview import auto_broadcast
+
+        with isolate_apps("testproj.bookmarks") as isolated:
+
+            class Staff(User):
+                class Meta:
+                    app_label = "bookmarks"
+                    proxy = True
+
+            monkeypatch.setattr("wireview.auto_broadcast.apps", isolated)
+            set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast(model=True, senders={("bookmarks", "Staff")}))
+            (message,) = check_auto_broadcast_credentials(None)
+            assert "password hash of bookmarks.staff" in message.msg
+            assert "{('bookmarks', 'Staff'): ('username',)}" in message.hint
+
+            fixed = AutoBroadcast(model=True, senders={("bookmarks", "Staff"): ("username",)})
+            assert auto_broadcast.resolve_senders(fixed) == {Staff: ("username",)}
+            set_wireview(monkeypatch, AUTO_BROADCAST=fixed)
+            assert check_auto_broadcast_credentials(None) == []
+
+    def test_a_username_field_the_payload_cannot_carry_is_not_offered(self, monkeypatch):
+        """Here USERNAME_FIELD lives in a multi-table parent; naming it would fail at startup."""
+        from django.contrib.auth.base_user import AbstractBaseUser
+        from django.db import models
+        from django.test.utils import isolate_apps
+
+        with isolate_apps("testproj.bookmarks") as isolated:
+
+            class Person(models.Model):
+                email = models.EmailField(unique=True)
+
+                class Meta:
+                    app_label = "bookmarks"
+
+            class Login(Person, AbstractBaseUser):
+                USERNAME_FIELD = "email"
+
+                class Meta:
+                    app_label = "bookmarks"
+
+            monkeypatch.setattr("wireview.auto_broadcast.apps", isolated)
+            set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast(model=True, senders={("bookmarks", "Login")}))
+            (message,) = check_auto_broadcast_credentials(None)
+
+        assert "{('bookmarks', 'Login'): ()}" in message.hint
+
+    def test_nothing_is_flagged_while_every_flag_is_off(self, monkeypatch):
+        """connect() attaches no receiver then, so no payload goes anywhere."""
+        senders = {("auth", "User"), ("sessions", "Session")}
+        set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast(senders=senders))
+        assert check_auto_broadcast_credentials(None) == []
+
+    def test_senders_startup_refuses_are_left_to_startup(self, monkeypatch):
+        """connect() raises for them in ready(); the check must not raise a second time."""
+        set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast(model=True, senders={("auth", "User"): ("colour",)}))
+        assert check_auto_broadcast_credentials(None) == []
 
     def test_listed_fields_are_silent(self, monkeypatch):
         set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast(model=True, senders={("auth", "User"): ("username",)}))

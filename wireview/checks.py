@@ -281,7 +281,7 @@ def check_auto_broadcast_senders(app_configs, **kwargs) -> list[CheckMessage]:
                 "List the models to broadcast in senders as (app_label, ModelName) pairs, "
                 "for example senders={('todo', 'Item')}. Every field of a model in a set is "
                 "serialized onto the channel layer; to send fewer, make senders a mapping of "
-                "each model to the fields to send, for example senders={('todo', 'Item'): ('done',)}, "
+                "each model to the fields to send, for example senders={('todo', 'Item'): ('completed',)}, "
                 "or leave the model out."
             ),
             id="wireview.W015",
@@ -298,7 +298,8 @@ def check_auto_broadcast_credentials(app_configs, **kwargs) -> list[CheckMessage
     names, which would warn about models that are fine and teach the team to
     ignore the check. The fields judged are the ones the payload carries: a
     multi-table child of the user model sends its own columns, not the parent's
-    password.
+    password. With every flag off ``connect()`` attaches no receiver, so nothing
+    is sent and nothing is reported.
     """
     from django.contrib.auth.base_user import AbstractBaseUser
     from django.contrib.sessions.base_session import AbstractBaseSession
@@ -306,8 +307,11 @@ def check_auto_broadcast_credentials(app_configs, **kwargs) -> list[CheckMessage
     from . import auto_broadcast
     from . import settings as wireview_settings
 
+    config = wireview_settings.AUTO_BROADCAST
+    if not (config.model or config.model_pk or config.related or config.m2m):
+        return []
     try:
-        senders = auto_broadcast.resolve_senders(wireview_settings.AUTO_BROADCAST)
+        senders = auto_broadcast.resolve_senders(config)
     except ImproperlyConfigured:
         return []  # connect() already refused this configuration at startup
 
