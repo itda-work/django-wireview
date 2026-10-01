@@ -275,7 +275,6 @@ class XActivityFeed(Component):
     # 스트림 항목은 상태에 두지 않는다. 다음 페이지의 기준점만 기억한다
     oldest_id: int | None = None
     has_more: bool = True
-    loading_more: bool = False
 
     async def joined(self):
         activities = await self._load_activities()
@@ -297,17 +296,13 @@ class XActivityFeed(Component):
 
     async def load_more(self):
         """더 불러오기"""
-        if self.loading_more or not self.has_more:
+        if not self.has_more:
             return
-
-        self.loading_more = True
 
         new_activities = await self._load_activities(before_id=self.oldest_id)
         for activity in new_activities:
             await self.stream_insert("activities", activity, at=-1)
         self._advance(new_activities)
-
-        self.loading_more = False
 
     async def mutation(self, channel: str, action: ModelAction, instance):
         """새 활동 실시간 수신"""
@@ -331,21 +326,18 @@ class XActivityFeed(Component):
 
   {% if has_more %}
     <div class="load-more">
-      <button
-        {% on "click" "load_more" %}
-        {% class {'loading': loading_more} %}
-        {% cond {'disabled': loading_more} %}
-      >
-        {% if loading_more %}
-          Loading...
-        {% else %}
-          Load More
-        {% endif %}
+      <button {% on "click" "load_more" %} wire-disabled-with="Loading...">
+        Load More
       </button>
     </div>
   {% endif %}
 </div>
 ```
+
+로딩 표시는 서버 필드가 아니라 클라이언트가 한다. 핸들러 안에서 `loading_more = True`로 바꿨다가 끝나기 전에
+되돌리면 화면에는 한 번도 그려지지 않는다. 렌더는 핸들러가 끝난 뒤 한 번 나가기 때문이다. `wire-disabled-with`는
+클릭하는 즉시 버튼을 비활성화하고 문구를 바꾸며, 응답이 오면 되돌린다. 그동안 버튼에는 `wireview-click-loading`
+클래스도 붙는다([Optimistic UI](../features/optimistic-ui.md)).
 
 `dashboard/templates/dashboard/activity_feed_item.html`:
 
@@ -500,7 +492,6 @@ class XActivityFeed(Component):
 
     oldest_id: int | None = None
     has_more: bool = True
-    loading_more: bool = False
 
     async def joined(self):
         activities = await self._load_activities()
@@ -519,17 +510,13 @@ class XActivityFeed(Component):
         self.has_more = len(activities) >= limit
 
     async def load_more(self):
-        if self.loading_more or not self.has_more:
+        if not self.has_more:
             return
-
-        self.loading_more = True
 
         new_activities = await self._load_activities(before_id=self.oldest_id)
         for activity in new_activities:
             await self.stream_insert("activities", activity, at=-1)
         self._advance(new_activities)
-
-        self.loading_more = False
 
     async def mutation(self, channel: str, action: ModelAction, instance):
         if action == ModelAction.CREATED:
@@ -648,7 +635,7 @@ class XActivityFeed(Component):
   padding: 1rem;
 }
 
-.load-more button.loading {
+.load-more button.wireview-click-loading {
   opacity: 0.7;
 }
 ```

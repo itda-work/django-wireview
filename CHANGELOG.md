@@ -271,6 +271,10 @@ The django-reactor era changelog (2.x) is preserved in
   show the settings block now. Tutorial 15's `reset_all` also zeroed the stats with
   `QuerySet.aupdate()`, which no other tab hears; it saves each instance.
 
+- Tutorial 05's feed set `loading_more` and reset it inside one handler. The render goes out
+  once, after the handler, so "Loading..." and the disabled button were never drawn. The button
+  uses `wire-disabled-with` and the click loading class now.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
