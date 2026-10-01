@@ -195,6 +195,10 @@ The django-reactor era changelog (2.x) is preserved in
   wireview and is an event handler any client can call. Both now list the real framework names
   and say initialisation belongs in `joined()`; a test holds every listed name to the rule.
 
+- The Component API reference now says `defer(f)` needs `f` to be a handler a client could call.
+  The call goes back through the connection as an event, so a `_` helper or a framework method
+  passed to it is dropped with a log warning and nothing else.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
