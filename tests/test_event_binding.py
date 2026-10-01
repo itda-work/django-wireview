@@ -102,6 +102,21 @@ class TestTheOnTag:
         with pytest.raises(ValueError):
             binding(event, "save", {})
 
+    @pytest.mark.parametrize(
+        "event", ["click.away", "click.once", "click.capture", "keydown.escape", "click.prevent.self"]
+    )
+    def test_a_modifier_the_client_does_not_run_is_refused(self, event):
+        # The client skips a modifier it does not know: click.away was a plain click, keydown.escape every key
+        with pytest.raises(ValueError, match="not a modifier"):
+            binding(event, "save", {})
+
+    @pytest.mark.parametrize(
+        "event",
+        ["keyup.enter.prevent", "input.debounce.300", "keydown.key.Escape", "keydown.ctrl.key_code.13", "submit"],
+    )
+    def test_the_modifiers_the_client_runs_are_taken(self, event):
+        assert binding(event, "save", {})[0] == "wire-on-" + event
+
     def test_inlinejs_is_refused_with_a_pointer_to_js(self):
         with pytest.raises(ValueError, match="JS\\(\\)"):
             binding("click.inlinejs", "save", {})

@@ -33,6 +33,12 @@ The django-reactor era changelog (2.x) is preserved in
 - The dict form of a `JS()` transition no longer declares a `to` key. The client never read it, so
   a type checker accepted a key that did nothing (found with the README's `transition` forms).
 
+- `{% on %}` refuses a modifier the client does not run, with a `ValueError` at render that lists
+  the ones it does. The client skips an unknown modifier, so `click.away`, `click.once` or
+  `click.self` bound a plain click and `keydown.escape` fired on every key -- and the roadmap
+  listed `.capture .once .passive .self .away` as supported. A template that used one rendered
+  and misbehaved silently; it now fails where it is written.
+
 ### Fixed
 
 - `AUTO_BROADCAST` no longer announces a fixture load. `loaddata` saves with `raw=True`, and the

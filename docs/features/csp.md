@@ -58,6 +58,12 @@ SECURE_CSP = {
 - `keyup.prevent.enter`: 모든 keyup에 `preventDefault()` 하고, Enter일 때만 보낸다.
 - `debounce`는 나머지를 타이머로 넘긴다. 그래서 `debounce` 뒤의 `prevent`는 너무 늦게 실행된다. `prevent`는 앞에 둔다.
 
+수정자는 `prevent`, `stop`, `ctrl`, `alt`, `shift`, `meta`, `debounce.<ms>`, `throttle.<ms>`, `key.<이름>`, `key_code.<n>`과
+단축키 `enter`, `tab`, `delete`, `backspace`, `esc`, `space`, `up`, `down`, `left`, `right`다(`wireview/event_transpiler.py`의
+`MODIFIERS`, 클라이언트는 `events.mjs`). **그 밖의 이름은 `{% on %}`이 렌더 때 `ValueError`로 거절한다.** 클라이언트는 모르는
+수정자를 건너뛰므로, 거절하지 않으면 `click.away`·`click.once`·`click.self`는 조건 없는 click이 되고 `keydown.escape`는
+모든 키에 반응한다. Phoenix의 `phx-click-away`·`.once`·`.capture`·`.passive`·`.self`에 해당하는 것은 없다.
+
 ### 같은 이벤트를 여러 번
 
 `keyup.enter`와 `keyup.esc`는 속성 이름이 달라서 한 요소에 함께 걸린다. 예전에는 둘 다 `onkeyup`이 되어 브라우저가

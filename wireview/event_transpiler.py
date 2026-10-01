@@ -69,11 +69,23 @@ def binding(event_and_modifiers: str, command: str | JS, kwargs: dict[str, t.Any
             f"{event_and_modifiers!r} is not an event binding: use letters, digits, '_', ':' and '-', "
             "with modifiers after dots, like 'keyup.enter' or 'input.debounce.300'"
         )
-    if "inlinejs" in event_and_modifiers.split(".")[1:]:
+    tokens = event_and_modifiers.split(".")[1:]
+    if "inlinejs" in tokens:
         raise ValueError(
             "the inlinejs modifier is not supported: inline JavaScript cannot run under a Content Security "
             "Policy. Use a JS() command chain, or a hook for anything JS() cannot express"
         )
+    # The client skips a modifier it does not know, so click.away would bind a plain click
+    tokens.reverse()
+    while tokens:
+        token = tokens.pop()
+        if token not in MODIFIERS:
+            raise ValueError(
+                f"{token!r} in {event_and_modifiers!r} is not a modifier. The modifiers are: "
+                f"{', '.join(MODIFIERS)}. A key by its name is key.<name>, like keydown.key.Escape"
+            )
+        if token in MODIFIER_ARGUMENTS and tokens:
+            tokens.pop()
 
     if isinstance(command, JS):
         value: dict[str, t.Any] = {"js": command._commands}
