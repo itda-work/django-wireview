@@ -6,7 +6,9 @@ external upload whose "presigned URL" is a view of this fixture
 (``views.put_target``). The page links to itself and to a page without the
 component, so a test can end the instance while its uploads are in the air.
 ``FileParent`` hides and shows a LiveComponent that uploads, under the same id:
-each showing is a new instance with its own config.
+each showing is a new instance with its own config. ``FileShelf`` draws an
+ordinary component that uploads, holding a LiveComponent that uploads, only
+from an event: a live render brings both in.
 """
 
 from django.urls import reverse
@@ -62,3 +64,50 @@ class FileParent(Component):
 
     async def toggle(self):
         self.shown = not self.shown
+
+
+class FileShelf(Component):
+    """Draws a FileBox only once an event says so: a live render brings it in.
+
+    The box is an ordinary ``{% component %}``, so the page joins it when it sees
+    it; its ``joined()`` sets up its uploads, and the LiveComponent inside it is
+    settled by the box's own render then.
+    """
+
+    class Meta:
+        template_name = "fileprobe/shelf.html"
+
+    shown: bool = False
+
+    async def show(self):
+        self.shown = True
+
+
+class FileBox(Component):
+    class Meta:
+        template_name = "fileprobe/box.html"
+
+    received: list[str] = []
+
+    async def joined(self):
+        self.allow_upload("files", accept=[".txt"], max_entries=1)
+
+    async def on_upload_complete(self, name: str, entry) -> None:
+        async for upload in self.consume_uploads(name):
+            self.received = [*self.received, f"{upload.name}:{len(upload.read())}"]
+
+
+class FileSprig(LiveComponent):
+    class Meta:
+        template_name = "fileprobe/sprig.html"
+
+    joins: int = 0
+    received: list[str] = []
+
+    async def joined(self):
+        self.joins += 1
+        self.allow_upload("files", accept=[".txt"], max_entries=1)
+
+    async def on_upload_complete(self, name: str, entry) -> None:
+        async for upload in self.consume_uploads(name):
+            self.received = [*self.received, f"{upload.name}:{len(upload.read())}"]

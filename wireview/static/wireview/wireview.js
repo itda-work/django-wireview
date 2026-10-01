@@ -622,10 +622,15 @@ class ServerConnection {
       return;
     }
 
-    // Find the component that owns this upload
+    // Find the component that owns this upload: the one holding the entry the
+    // op names. Two components on the page can name an upload alike ("files"),
+    // and taking the first with an upload of that name sent one's registration,
+    // progress and completion to the other -- the file never went up.
+    const owns = (/** @type {UploadManager | undefined} */ manager) =>
+      Boolean(manager && manager.configs[upload] && (!ref || manager.entries[upload]?.[ref]));
     for (const componentId of Object.keys(this.components)) {
       const manager = uploadManagers.find(componentId);
-      if (manager && manager.configs[upload]) {
+      if (owns(manager)) {
         switch (op) {
           case "config":
             manager.configure(upload, data);

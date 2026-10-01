@@ -468,3 +468,18 @@ def test_upload_events_carry_the_wireview_prefix_and_the_old_name_until_2_0(prob
 
     seen = probe.evaluate("() => window.__seen")
     assert {"wireview:upload-added:files", "wireview:upload-complete:files", "upload:complete:files"} <= set(seen)
+
+
+def test_a_component_a_live_render_draws_and_the_live_component_in_it_join_and_upload(page, server):
+    # The box is an ordinary component a render brings in. Until the page joined
+    # it, nothing ran its joined() -- where its uploads are set up -- nor settled
+    # the LiveComponent inside it, whose joined() sets up its own; and no render
+    # named either instance, which is what lets the page take their configs (#137).
+    open_live(page, f"{server}/fileprobe/shelf/")
+    by(page, "show").click()
+
+    expect_text(by(page, "sprig-joins"), "1")
+    by(page, "box-files").set_input_files(text_file("box.txt", "box"))
+    expect_text(by(page, "box-received").locator("li"), "box.txt:3")
+    by(page, "sprig-files").set_input_files(text_file("sprig.txt", "sprig"))
+    expect_text(by(page, "sprig-received").locator("li"), "sprig.txt:5")

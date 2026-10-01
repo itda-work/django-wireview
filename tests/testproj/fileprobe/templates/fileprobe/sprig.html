@@ -1,0 +1,9 @@
+{% load wireview %}
+
+<div {% live_tag_header %}>
+  <span data-testid="sprig-joins">{{ this.joins }}</span>
+  {% upload_input "files" data_testid="sprig-files" %}
+  <ul data-testid="sprig-received">
+    {% for item in this.received %}<li>{{ item }}</li>{% endfor %}
+  </ul>
+</div>

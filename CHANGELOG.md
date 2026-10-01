@@ -352,6 +352,12 @@ The django-reactor era changelog (2.x) is preserved in
   components a patch redraws hear `beforeUpdate()` and `updated()`. The patch rescanned only the
   hooks of the component it was for, which leaves a nested component's hooks to their own
   manager, so that one never heard of it.
+- Two components on a page whose uploads share a name (`allow_upload("files")` in each) both
+  upload. The `registered`, `progress`, `complete`, `error` and `cancel` ops carry no component
+  id, and the page gave each to the first component with an upload of that name: the other's
+  file was registered with the server and never sent. The page now gives each op to the
+  component that holds the entry its `ref` names. The form is unchanged, so `PROTOCOL_VERSION`
+  stays.
 - A `{% component %}` a live render draws -- one an `{% if %}` shows again -- is joined: its
   `joined()` runs and its own `wire-viewport-*` bindings are watched. The server built and mounted
   it in the parent's template pass and drew it marked live, so the page never sent its join and

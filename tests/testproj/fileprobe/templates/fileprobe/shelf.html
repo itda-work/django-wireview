@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <button type="button" data-testid="show" {% on "click" "show" %}>show</button>
+  {% if this.shown %}
+    {% component "FileBox" id="box" %}
+  {% endif %}
+</div>

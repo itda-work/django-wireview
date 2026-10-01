@@ -61,7 +61,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | `clear_flash` | `flash_id` — `null`이면 전부. 플래시 id는 클라이언트가 만들어 서버는 알지 못하므로, 서버 코드가 보내는 것은 사실상 `null`뿐이다 |
 | `scroll_into_view` | `id`, `behavior`, `block`, `inline` |
 | `focus_on` | `selector` |
-| `upload_op` | `op` (`config`, `registered`, `progress`, `error`, `complete` 등), `upload`, `ref?`, 그 외 op별 필드. `config`는 업로드를 클라이언트에 만드는 op라 소유 컴포넌트의 `id`를 싣는다. `config`는 페이지를 live로 만드는 `render`보다 채널 레이어 한 번 왕복만큼 늦게 온다 — 그 사이에 고른 파일은 클라이언트가 들고 있다가 `config`가 오면 등록한다. `config`는 보낸 인스턴스의 번호 `instance`를 싣는다. 세션은 떠났거나 같은 id의 새 join이 대신한 인스턴스가 보낸 op를 넘기지 않고, 클라이언트는 그 id에 대해 `render`의 `instances`로 마지막에 알림받은 번호와 다른 `config`를 버린다. 같은 id로 보낸 새 join의 응답을 기다리는 동안에는 이전 join의 render를 적용하지 않으므로 그 `instances`도 받지 않는다(#139). `instance`가 없는 `config`(#137 이전 서버)는 그대로 받는다(#137) |
+| `upload_op` | `op` (`config`, `registered`, `progress`, `error`, `complete` 등), `upload`, `ref?`, 그 외 op별 필드. `config`는 업로드를 클라이언트에 만드는 op라 소유 컴포넌트의 `id`를 싣는다. 나머지 op는 `id`가 없고, 클라이언트는 `ref`의 엔트리를 가진 컴포넌트에 보낸다(`ref`는 클라이언트가 만든 값이라 페이지 안에서 하나다). 업로드 이름만으로 찾으면 같은 이름(`files`)의 업로드를 가진 두 컴포넌트 중 앞의 것으로 갔다. `config`는 페이지를 live로 만드는 `render`보다 채널 레이어 한 번 왕복만큼 늦게 온다 — 그 사이에 고른 파일은 클라이언트가 들고 있다가 `config`가 오면 등록한다. `config`는 보낸 인스턴스의 번호 `instance`를 싣는다. 세션은 떠났거나 같은 id의 새 join이 대신한 인스턴스가 보낸 op를 넘기지 않고, 클라이언트는 그 id에 대해 `render`의 `instances`로 마지막에 알림받은 번호와 다른 `config`를 버린다. 같은 id로 보낸 새 join의 응답을 기다리는 동안에는 이전 join의 render를 적용하지 않으므로 그 `instances`도 받지 않는다(#139). `instance`가 없는 `config`(#137 이전 서버)는 그대로 받는다(#137) |
 
 ## 4. Session mail (컴포넌트 → 세션)
 
@@ -130,6 +130,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 
 구버전이 섞이면: 옛 클라이언트와 새 서버는 옛 클라이언트가 `vsn`을 보내지 않으므로 지금까지와 바이트까지 같은 메시지를 받는다. 새 클라이언트와 옛 서버는 옛 서버가 `vsn`을 읽지 않고 옛 형태만 보내며, 새 클라이언트는 그것을 그대로 읽는다. 버전 신호가 없었다면 옛 클라이언트는 `{"k"}`를 모르는 값으로 슬롯에 넣고 `[object Object]`를 그렸을 것이다 — 롤링 배포 중 옛 JS로 열린 페이지가 새 서버에 재연결하는 흔한 경우다.
 
+- 2026-10-01: `id` 없는 `upload_op`를 클라이언트가 `ref`로 소유 컴포넌트에 보낸다. 형태는 그대로라 `vsn`을 올리지 않는다. 옛 번들에서는 같은 이름의 업로드를 가진 두 컴포넌트 중 뒤의 것의 업로드가 이전처럼 올라가지 않는다.
 - 2026-10-01: 연결된 페이지에서 render가 새로 그린 일반 Component(`data-is-live="true"`, `wireview-live` 아님)를 클라이언트가 join한다. 이미 있는 `join` 형태를 쓰고, 서버는 템플릿 패스가 만든 인스턴스를 받아 주던 그대로라 `vsn`을 올리지 않는다. 혼합: 옛 번들은 그 join을 보내지 않으므로 이전처럼 그 컴포넌트의 `joined()`가 돌지 않는다. 새 클라이언트와 옛 서버에서는 옛 서버도 아직 join되지 않은 인스턴스를 join으로 완성하므로 고쳐진 대로 돈다.
 - 2026-10-01: 클라이언트는 render를 패치하기 전에 렌더 HTML의 `wire-stream` 컨테이너에 화면의 같은 컨테이너의 id를 붙인다(템플릿이 단 id가 있으면 그것, 없으면 `wire-stream-{컴포넌트 id}-{이름}`). 서버가 보내는 HTML은 바뀌지 않으므로 `vsn`을 올리지 않고, 옛 번들은 이전처럼 돈다 — 그 번들에서는 컨테이너 앞에 새 요소가 생기면 목록이 지워지는 결함도 그대로다.
 - 2026-10-01: render가 처음 그린 LiveComponent에도 `joined`를 보낸다. 형태는 그대로이고 `id`가 LiveComponent일 뿐이라 `vsn`을 올리지 않는다. 혼합: `joined`를 아는 옛 클라이언트(`vsn` 5)는 그 id로 무한 스크롤을 시작할 뿐이다 — 그 LiveComponent가 이전에는 시작되지 않던 것이 시작된다. `vsn` 5 미만은 받지 않는다. 새 클라이언트와 옛 서버에서는 신호가 없어 그 LiveComponent의 무한 스크롤이 이전처럼 시작되지 않는다.

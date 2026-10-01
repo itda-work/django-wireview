@@ -1,0 +1,9 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  {% upload_input "files" data_testid="box-files" %}
+  <ul data-testid="box-received">
+    {% for item in this.received %}<li>{{ item }}</li>{% endfor %}
+  </ul>
+  {% live_component "FileSprig" id="sprig" %}
+</div>
