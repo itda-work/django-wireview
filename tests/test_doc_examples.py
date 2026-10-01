@@ -15,8 +15,10 @@ another run like #113's.
 """
 
 import ast
+import io
 import re
 import textwrap
+import tokenize
 from pathlib import Path
 
 import pytest
@@ -170,39 +172,71 @@ def test_no_template_calls_js_with_arguments(where, code):
     assert not re.search(r"\{%[^%]*\bJS\(", code), f"{where}: build the JS() chain in a @property"
 
 
-def _js_chains() -> list[tuple[str, str]]:
-    """(``file:line``, source) for every ``JS().name(...)...`` chain the docs show, in a block or inline."""
+def _chains_in(text: str) -> list[tuple[int, str]]:
+    """(line, source) for every ``JS().name(...)...`` chain in ``text``, the links on one line or many.
+
+    A ``# comment`` between links is part of the chain, as it is in a Python block.
+    """
     found = []
-    for path in DOCS:
-        text = path.read_text(encoding="utf-8")
-        for start in (m.start() for m in re.finditer(r"\bJS\(\)\.", text)):
-            end = start + len("JS()")
-            while (link := re.match(r"\s*\.\s*\w+\(", text[end:])) is not None:
-                depth, i = 0, end + link.end() - 1
-                while i < len(text):
-                    depth += {"(": 1, ")": -1}.get(text[i], 0)
-                    i += 1
-                    if depth == 0:
-                        break
-                end = i
-            line = text.count("\n", 0, start) + 1
-            found.append((f"{path.relative_to(ROOT)}:{line}", text[start:end]))
+    for start in (m.start() for m in re.finditer(r"\bJS\(\)(?=\s*\.\s*\w+\()", text)):
+        end = start + len("JS()")
+        while (link := re.match(r"(?:\s*#[^\n]*)*\s*\.\s*\w+\(", text[end:])) is not None:
+            depth, i = 0, end + link.end() - 1
+            while i < len(text):
+                depth += {"(": 1, ")": -1}.get(text[i], 0)
+                i += 1
+                if depth == 0:
+                    break
+            end = i
+        found.append((text.count("\n", 0, start) + 1, text[start:end]))
     return found
+
+
+def _js_chains() -> list[tuple[str, str]]:
+    """(``file:line``, source) for every ``JS()`` chain the docs show, in a block or inline."""
+    return [
+        (f"{path.relative_to(ROOT)}:{line}", source)
+        for path in DOCS
+        for line, source in _chains_in(path.read_text(encoding="utf-8"))
+    ]
 
 
 JS_CHAINS = _js_chains()
 
 
-def _js_mistakes(source: str) -> list[str]:
-    """Each link of a JS() chain must be a JS method its arguments bind to."""
+#: Chains the docs show that do not parse, so ``_js_mistakes`` cannot read them.
+#: A new entry is a chain the guard no longer sees: make it parse instead.
+UNREADABLE_JS_CHAINS = sorted(
+    {
+        "JS().navigate(url, replace=)",  # docs/features/navigation.md: a signature, read as prose
+    }
+)
+
+
+def _without_comments(source: str) -> str:
+    """``source`` with its ``# comments`` blanked, so the links can be joined on one line."""
+    lines = source.splitlines(keepends=True)
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type == tokenize.COMMENT:
+                (row, col), (_, end) = token.start, token.end
+                line = lines[row - 1]
+                lines[row - 1] = line[:col] + " " * (end - col) + line[end:]
+    except (tokenize.TokenError, IndentationError):
+        pass  # what was blanked so far; the parse below decides
+    return "".join(lines)
+
+
+def _js_mistakes(source: str) -> list[str] | None:
+    """Each link of a JS() chain must be a JS method its arguments bind to. None: the chain does not parse."""
     import inspect
 
     from wireview import JS
 
     try:
-        node = ast.parse(textwrap.dedent(source).replace("\n", " "), mode="eval").body
+        node = ast.parse(textwrap.dedent(_without_comments(source)).replace("\n", " "), mode="eval").body
     except SyntaxError:
-        return []  # an elided signature (``set_value(...)``) or a fragment of prose
+        return None  # an elided signature (``set_value(...)``) or a fragment of prose; pinned below
     links = []
     while isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
         links.append(node)
@@ -231,10 +265,28 @@ def test_every_js_chain_binds_to_the_builder(where, source):
 
 @pytest.mark.parametrize(
     "source",
-    ['JS().add_class("shake", to="#row")', 'JS().show("#a").toggle(show="x", hide="y")', "JS().explode()"],
+    [
+        'JS().add_class("shake", to="#row")',
+        'JS().show("#a").toggle(show="x", hide="y")',
+        "JS().explode()",
+        'JS()\n    .hide("#modal")  # 숨김\n    .add_class("shake", to="#row")',
+    ],
 )
 def test_the_js_rule_catches_its_mistake(source):
     assert _js_mistakes(source)
+
+
+def test_a_chain_on_its_own_lines_with_comments_is_read_whole():
+    # Tutorials 12 and 14 start the chain on the line after JS() and comment each link
+    text = 'await self.push_js(\n    JS()\n    .hide("#modal")  # 숨김\n\n    .focus("#next")  # 포커스\n)\n'
+    [(_, source)] = _chains_in(text)
+    assert source.startswith("JS()") and source.rstrip().endswith('.focus("#next")')
+
+
+def test_the_chains_the_rule_cannot_read_are_the_known_ones():
+    # A chain that does not parse is skipped; a new one would hide a mistake, so the list is pinned
+    unread = sorted({source for _, source in JS_CHAINS if _js_mistakes(source) is None})
+    assert unread == UNREADABLE_JS_CHAINS
 
 
 @pytest.mark.parametrize(

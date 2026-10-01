@@ -164,7 +164,9 @@ The django-reactor era changelog (2.x) is preserved in
   the first real broadcast. The stand-in now refuses what the layers refuse. The shipped skill's
   presence example used that very topic, and its `JS().add_class("shake", to="#row")` was a
   `TypeError` too; both are fixed, and `tests/test_doc_examples.py` binds every `JS()` chain the
-  docs show -- in a block, a table or prose -- to the builder's real signatures.
+  docs show -- in a block, a table or prose, on one line or with a link and a comment per line --
+  to the builder's real signatures. The one documented chain that does not parse (a signature in
+  prose) is listed, so a chain the guard cannot read does not pass unseen.
 
 ## [1.0.0rc4] - 2026-10-01
 
