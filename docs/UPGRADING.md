@@ -16,13 +16,21 @@
 0.3 이하는 [CHANGELOG](../CHANGELOG.md)의 해당 절을 먼저 읽고 0.4 행을 따른다. 어느 행이든 마지막에
 [버전 범위](#버전-범위)를 고친다.
 
-> **보안.** 0.7.0 이하와 1.0.0rc1~1.0.0rc3는 보안 권고
-> [GHSA-q2rr-5q2g-6xqp](https://github.com/itda-work/django-wireview/security/advisories/GHSA-q2rr-5q2g-6xqp)의
-> 영향을 받는다. `AUTO_BROADCAST`의 플래그(`model`, `model_pk`, `related`, `m2m`) 중 하나라도 켜고 `senders`를
-> 비워 두면, 켠 플래그에 따라 모든 모델의 저장·삭제(`model`·`model_pk`·`related`)나 모든 m2m 변경(`m2m`)이 모든
-> 필드와 함께 채널 레이어로 방송됐다(`User`의 비밀번호 해시 포함). `m2m`만 켰어도 해당한다 —
-> `user.groups.add(g)` 한 번에 그 사용자가 양쪽 채널로 나갔다. 모델 알림을 쓰고 있었다면
-> [§9](#9-auto_broadcast는-senders에-적은-모델만-알린다-보안)를 읽는다.
+> **보안.** 1.0 전 버전은 아래 보안 권고 중 하나 이상의 영향을 받는다. 해당하면 링크한 절의 할 일을 한다.
+>
+> - [GHSA-q2rr-5q2g-6xqp](https://github.com/itda-work/django-wireview/security/advisories/GHSA-q2rr-5q2g-6xqp)
+>   (0.7.0 이하, 1.0.0rc1~1.0.0rc3): `AUTO_BROADCAST`의 플래그(`model`, `model_pk`, `related`, `m2m`) 중 하나라도
+>   켜고 `senders`를 비워 두면, 켠 플래그에 따라 모든 모델의 저장·삭제(`model`·`model_pk`·`related`)나 모든 m2m
+>   변경(`m2m`)이 모든 필드와 함께 채널 레이어로 방송됐다(`User`의 비밀번호 해시 포함). `m2m`만 켰어도 해당한다 —
+>   `user.groups.add(g)` 한 번에 그 사용자가 양쪽 채널로 나갔다. 모델 알림을 쓰고 있었다면
+>   [§9](#9-auto_broadcast는-senders에-적은-모델만-알린다-보안)를 읽는다.
+> - [GHSA-8q8p-x4w4-p745](https://github.com/itda-work/django-wireview/security/advisories/GHSA-8q8p-x4w4-p745)
+>   (1.0.0rc4 이하, 0.x 포함): `on_upload_complete`를 정의한 컴포넌트는 브라우저가 그 콜백을 이벤트로, 원하는
+>   인자로 부를 수 있었다. [rc4→1.0 절](#100rc4에서-10으로)의 `on_upload_complete` 항목을 읽는다.
+> - [GHSA-4v8p-p6p8-78pj](https://github.com/itda-work/django-wireview/security/advisories/GHSA-4v8p-p6p8-78pj)
+>   (1.0.0rc3~1.0.0rc4): `{% wireview_toasts %}`가 있는 페이지는 방문자의 세션 키 원문을 그룹 이름으로 브로커에
+>   보냈다. 서버 저장형 세션 백엔드와 Redis·NATS 레이어를 썼다면 업그레이드 뒤 그 기간의 세션을 무효화한다.
+>   [rc4→1.0 절](#100rc4에서-10으로)의 토스트 항목을 읽는다.
 
 ## 버전 범위
 
@@ -45,9 +53,15 @@ dependencies = ["django-wireview>=1.0,<2"]
   읽을 필드를 적어 먼저 읽는다. 필드를 적지 않은 `arefresh_from_db()`는 deferred 필드를 건너뛴다.
 - **픽스처 로드(`loaddata`)는 더 이상 모델 알림을 내지 않는다**(**조용함**). `raw=True` 저장과, `loaddata`가 그 객체에 이어서
   채우는 m2m을 거른다. 픽스처를 넣어 화면이 갱신되기를 기대하던 코드나 테스트는 행을 보통으로 저장하거나 알림을 직접 보낸다.
-- **`on_upload_complete`는 이벤트 핸들러가 아니다.** `on_upload_complete(name, entry)`는 이제 `Component`가 가진 콜백이다.
-  전에는 프레임워크가 이름으로 찾기만 해서, 이 메서드를 쓴 컴포넌트는 브라우저가 이벤트로 보낸 가짜 완료에도 콜백을
-  실행했다(보안 수정). 오버라이드는 고칠 것이 없다 — 시그니처도 그대로고 업로드가 끝나면 전처럼 불린다. 테스트의
+- **`on_upload_complete`는 이벤트 핸들러가 아니다**(**보안**,
+  [GHSA-8q8p-x4w4-p745](https://github.com/itda-work/django-wireview/security/advisories/GHSA-8q8p-x4w4-p745)).
+  `on_upload_complete(name, entry)`는 이제 `Component`가 가진 콜백이다. 전에는 프레임워크가 이름으로 찾기만 해서,
+  이 메서드를 쓴 컴포넌트는 브라우저가 이벤트로 보낸 가짜 완료에도 콜백을 실행했다. 인자도 브라우저가 정했다 — 타입
+  주석이 있으면 위조한 dict가 검증을 통과한 `UploadEntry`가 되어, `temp_path`는 서버가 읽을 수 있는 아무 파일을,
+  `ref`·`client_name`은 아무 저장소 키를 가리킬 수 있었다. 1.0에서는 디스패처가 이 이름을 거절하고 `{% on %}`도
+  바인딩하지 않으며, 세션만 이 콜백을 부른다. 올리기 전까지는 콜백의 `entry` 인자를 믿지 않는다 —
+  `async for upload in self.consume_uploads(name)`으로 레지스트리의 완료된 항목만 쓰고 `entry.temp_path`를 직접
+  열지 않는다. 오버라이드는 고칠 것이 없다 — 시그니처도 그대로고 업로드가 끝나면 전처럼 불린다. 테스트의
   `view.call("on_upload_complete", ...)`는 `AssertionError`를 내므로 `await view.component.on_upload_complete(name, entry)`로
   직접 부른다. sync로 쓴 오버라이드는 `wireview.W001` 대신 `wireview.W002`로 알린다(원래도 실행되지 않았다).
 - **`{% on %}`은 클라이언트가 부를 수 없는 이름에 바인딩하지 않는다.** `{% on "click" "joined" %}`처럼 프레임워크 메서드나
@@ -57,9 +71,20 @@ dependencies = ["django-wireview>=1.0,<2"]
   `click.self`·`keydown.escape`처럼 클라이언트가 건너뛰던 이름, 인자가 없는 `keydown.key`·`input.debounce`·`click.throttle`,
   정수가 아닌 인자(`input.debounce.abc`)가 그렇다. 전에는 렌더되고 조용히 다른 이벤트에 반응했다(`keydown.escape`는 모든 키,
   `input.debounce`는 디바운스 없음). 템플릿을 렌더해 보면 바로 드러난다. Escape는 `esc` 또는 `key.escape`.
-- **세션 키로 보낸 토스트의 채널 이름이 바뀌었다.** 이제 세션 키를 다이제스트로 넣는다(`signed_cookies` 백엔드의 키를 레이어가
-  거절했다). 1.0.0rc4 워커와 1.0 워커가 섞여 도는 롤링 배포 동안에는 서로 다른 버전의 워커 사이에서 세션 키 토스트가
-  닿지 않는다. 토스트는 다시 오지 않는 일회성 메시지라 그동안의 것은 빠진다. 사용자로 보낸 토스트는 이름이 같아 영향이 없다.
+- **토스트 채널이 세션 키 원문을 브로커로 보내지 않는다**(**보안**,
+  [GHSA-4v8p-p6p8-78pj](https://github.com/itda-work/django-wireview/security/advisories/GHSA-4v8p-p6p8-78pj)).
+  1.0.0rc3·rc4의 `{% wireview_toasts %}`는 세션이 있는 모든 방문자를 `wireview.toast.session.<세션 키>` 그룹에
+  구독시켰다 — 토스트를 보냈는지와 상관없이. 그룹 이름은 브로커로 간다(channels_redis는 Redis 키와 RDB/AOF 스냅샷,
+  channels-nats는 구독 subject와 `/subsz`·`/connz?subs=1` 모니터링). db·cache·cached_db·file 세션 백엔드에서
+  세션 키는 곧 세션 쿠키라, 브로커와 그 로그·모니터링을 읽을 수 있는 쪽이 세션이 끝날 때까지 그 사용자로 행세할 수
+  있었다. 1.0은 세션 키를 다이제스트로만 넣는다(`signed_cookies` 백엔드에서 join이 실패하던 결함도 함께 고쳐졌다).
+  - 해당하면(위 버전, 그 태그가 있는 페이지, 서버 저장형 세션 백엔드, Redis·NATS 레이어) 올린 뒤 그 기간에 활성이던
+    세션을 무효화한다. `clearsessions`는 만료된 세션만 지우고, `SECRET_KEY` 회전은 db·cache 백엔드의 세션 키를
+    무효화하지 않는다. 세션 테이블(`django_session`)이나 세션 캐시를 비운다(모든 사용자가 다시 로그인한다).
+  - 브로커의 덤프·로그·모니터링 기록에서 `wireview.toast.session.` 그룹 이름을 찾아 지운다.
+  - 올릴 수 없으면 레이아웃에서 `{% wireview_toasts %}`를 뺀다. `InMemoryChannelLayer`는 프로세스 밖으로 보내지 않는다.
+  - 1.0.0rc4 워커와 1.0 워커가 섞여 도는 롤링 배포 동안에는 서로 다른 버전의 워커 사이에서 세션 키 토스트가 닿지 않는다.
+    토스트는 다시 오지 않는 일회성 메시지라 그동안의 것은 빠진다. 사용자로 보낸 토스트는 이름이 같아 영향이 없다.
 - **`UploadStatus`·`AsyncState`·`PresenceState`는 `StrEnum`이다**(**조용함**). 템플릿의 `{{ entry.status }}`, `str()`,
   f-string이 `UploadStatus.UPLOADING` 대신 값(`uploading`)을 낸다. `==` 비교와 JSON은 그대로다. 옛 출력에 맞춘 CSS 클래스,
   로그 파싱, `"AsyncState.LOADING"` 같은 문자열 비교를 값으로 고친다.

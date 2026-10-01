@@ -72,13 +72,15 @@ The django-reactor era changelog (2.x) is preserved in
   `5 - Production/Stable` exactly when the version is not a pre-release.
 
 - `docs/UPGRADING.md` opens with a table from the version you run to the sections to read, and a
-  security note for GHSA-q2rr-5q2g-6xqp. The version range it gives is `django-wireview>=1.0,<2`,
+  security note for GHSA-q2rr-5q2g-6xqp and the two advisories this release fixes. The version range it gives is `django-wireview>=1.0,<2`,
   replacing the release-candidate floor and `pip install --pre`. The raised dependency floors
   (`channels>=4.2.1`, `pydantic>=2.7,!=2.9.0`) are in the rc1-to-1.0 section too, where a 1.0.0rc2
   or rc3 user reads.
 
 - `SECURITY.md` supports the newest 1.x minor and lists release candidates and 0.x as unsupported,
-  lists the published advisories, adds `AUTO_BROADCAST`'s `senders` to the boundaries wireview
+  lists the published advisories (`tests/test_changelog.py` checks the list against each
+  release's `### Security` entries, and that every such entry of this release opens with its
+  advisory), adds `AUTO_BROADCAST`'s `senders` to the boundaries wireview
   keeps, and points the event exposure rule at the user documentation instead of `CLAUDE.md`.
 
 - `docs/COMPATIBILITY.md` says `django` has no upper bound, so a Django the matrix has not passed
@@ -143,8 +145,8 @@ The django-reactor era changelog (2.x) is preserved in
 - `{% wireview_toasts %}` works on a site with the `signed_cookies` session backend. Its key is the
   signed cookie -- `:` in it, over 60 characters -- and `toast_channel()` wrote it into the group
   name, which every channel layer refuses with `TypeError`: the receiver's join failed on its
-  subscription and toasts silently never showed. A session key is now digested into the name (it is
-  the session's credential, and the name reaches the broker), and so is a user pk with characters a
+  subscription and toasts silently never showed. A session key is now digested into the name
+  (GHSA-4v8p-p6p8-78pj under `### Security` is why), and so is a user pk with characters a
   layer refuses. The name's shape is not public; `toast_channel()` gives it. A session-key toast
   still reaches only pages connected under the current key, and that backend changes the key on
   every session write -- a site that toasts by session key wants a server-side session backend.
@@ -387,13 +389,39 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Security
 
-- `on_upload_complete(name, entry)` is now a method of `Component`, and so framework surface a
-  client cannot call. The session only looked the name up, so a component that defined it had
-  also defined an event handler: a browser could send `on_upload_complete` as an event and run
-  the callback for an upload that never finished. Overrides keep working unchanged; a sync one
-  is now reported by `wireview.W002` instead of `W001`. A test that ran the callback with
-  `view.call("on_upload_complete", ...)` now gets `AssertionError` and calls the method directly
-  (`docs/UPGRADING.md`).
+- [GHSA-8q8p-x4w4-p745](https://github.com/itda-work/django-wireview/security/advisories/GHSA-8q8p-x4w4-p745)
+  (medium): `on_upload_complete(name, entry)` is now a method of `Component`, and so framework
+  surface a client cannot call. The session only looked the name up, so a component that defined
+  it had also defined an event handler: a browser could send `on_upload_complete` as an event with
+  arguments of its choosing and run the callback for an upload that never finished -- with a type
+  annotation, a forged dict became a validated `UploadEntry` whose `temp_path` named any file the
+  server can read, and whose `ref` and `client_name` named any storage key.
+  Affected: 1.0.0rc4 and earlier, 0.x included, in a component that defines `on_upload_complete`.
+  Fixed here: the dispatcher refuses the name, `{% on %}` refuses to bind it, and the session is
+  the only caller. Overrides keep working unchanged; a sync one is now reported by
+  `wireview.W002` instead of `W001`. A test that ran the callback with
+  `view.call("on_upload_complete", ...)` now gets `AssertionError` and calls the method directly.
+  **What to do:** upgrade. Until you can, do not trust the callback's `entry` argument: take the
+  finished uploads from the registry with `async for upload in self.consume_uploads(name)` and do
+  not open `entry.temp_path` (`docs/UPGRADING.md`).
+- [GHSA-4v8p-p6p8-78pj](https://github.com/itda-work/django-wireview/security/advisories/GHSA-4v8p-p6p8-78pj)
+  (medium): `{% wireview_toasts %}` subscribed every visitor with a session to a group named
+  after the raw session key, `wireview.toast.session.<session_key>`, whether or not anything was
+  ever toasted to it. The group name goes to the channel layer's broker: channels_redis keeps it
+  as a Redis key (`asgi:group:...`, in RDB/AOF snapshots too), channels-nats as a subscription
+  subject its monitoring endpoints (`/subsz`, `/connz?subs=1`) show, and both may log it. With a
+  server-side session backend (db, cache, cached_db, file) the session key is the session cookie,
+  so whoever could read the broker, its logs or its monitoring could act as that user until the
+  session expired. Affected: 1.0.0rc3 and 1.0.0rc4, on a page with `{% wireview_toasts %}`, with
+  a server-side session backend and a layer with an out-of-process broker; `InMemoryChannelLayer`
+  keeps it in the process, and with `signed_cookies` the join failed before subscribing (see the
+  fix under `### Fixed`). Fixed here: a session key enters the group name only as a digest.
+  **What to do:** upgrade, then invalidate the sessions that were active while you ran an
+  affected version. `clearsessions` removes only expired sessions, and rotating `SECRET_KEY` does
+  not invalidate a db or cache backend's session keys: empty the session table (`django_session`)
+  or the session cache, which logs every user out. Find the `wireview.toast.session.` group names
+  in the broker's dumps, logs and monitoring records and remove them. If you cannot upgrade yet,
+  take `{% wireview_toasts %}` out of the layout (`docs/UPGRADING.md`).
 
 ## [1.0.0rc4] - 2026-10-01
 

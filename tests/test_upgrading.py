@@ -106,7 +106,8 @@ UPGRADE_NOTE = {
     "refuses a modifier the client does not run": "수정자를",
     "a binding to a method the dispatcher would": "부를 수 없는 이름에",
     "are `StrEnum`s": "`StrEnum`",
-    "`signed_cookies` session backend": "토스트의 채널",
+    "`signed_cookies` session backend": "토스트 채널이",
+    "[GHSA-4v8p-p6p8-78pj]": "토스트 채널이",
     "no longer announces a fixture load": "픽스처 로드",
     "`uvicorn <project>.asgi:application`": "`asgi.py`",
     "shipped skill now introduces toasts": "에이전트 스킬",
@@ -126,7 +127,7 @@ UPGRADE_NOTE = {
     "the parent handler `send_to_parent` calls": "문서 예시",
     "last-seen helper starts with": "문서 예시",
     "stream of the same name share no list": "스트림 연산",
-    "`on_upload_complete(name, entry)` is now": "`on_upload_complete`는",
+    "[GHSA-8q8p-x4w4-p745]": "`on_upload_complete`는",
 }
 
 DOCS_ONLY = "문서·저장소만 바뀌었고 라이브러리 동작은 같다"

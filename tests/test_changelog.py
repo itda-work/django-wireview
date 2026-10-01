@@ -110,3 +110,61 @@ def test_upgrading_names_every_flag_that_broadcast():
 
     assert [flag for flag in _broadcast_flags() if f"`{flag}`" not in box] == []
     assert [flag for flag in _broadcast_flags() if f"`{flag}`" not in closing] == []
+
+
+SECURITY_MD = CHANGELOG.parent / "SECURITY.md"
+ADVISORY_ID = re.compile(r"GHSA(?:-[23456789cfghjmpqrvwx]{4}){3}")
+
+
+def _security_entries(release: str) -> list[str]:
+    """The entries of a release's ``### Security`` section, whitespace folded."""
+    section = CHANGELOG.read_text().split(f"## [{release}]", 1)[1].split("\n## [", 1)[0]
+    if "\n### Security\n" not in section:
+        return []
+    security = section.split("\n### Security\n", 1)[1].split("\n### ", 1)[0]
+    return [" ".join(entry.split()) for entry in re.split(r"^- ", security, flags=re.MULTILINE)[1:]]
+
+
+def _published_advisories() -> dict[str, str]:
+    """``SECURITY.md``'s advisory table: id to the version that fixed it."""
+    table = SECURITY_MD.read_text().split("## 공개된 보안 권고", 1)[1].split("\n## ", 1)[0]
+    return {
+        ids[0]: cells[-1]
+        for line in table.splitlines()
+        if line.startswith("| ")
+        for cells in [[c.strip() for c in line.strip("|").split("|")]]
+        if (ids := ADVISORY_ID.findall(cells[0]))
+    }
+
+
+def test_every_security_entry_since_the_last_release_is_an_advisory():
+    """1.0.0rc3 and rc4 sent every visitor's session key to the broker as a group name; the
+    fix was filed under ``### Fixed`` as a ``signed_cookies`` join failure, and the release's
+    security section did not mention it. Each entry here opens with its advisory's link."""
+    entries = _security_entries("Unreleased")
+
+    assert entries
+    assert [
+        entry[:80]
+        for entry in entries
+        if not re.match(rf"\[({ADVISORY_ID.pattern})\]\({REPO}/security/advisories/\1\) \(", entry)
+    ] == []
+    assert any("session key" in entry and "digest" in entry for entry in entries)
+
+
+def test_security_md_lists_every_advisory_the_changelog_names():
+    releases = _headings()
+    fixed_in = {
+        advisory: release
+        for release in releases
+        for entry in _security_entries(release)
+        for advisory in ADVISORY_ID.findall(entry.split(" ", 1)[0])
+    }
+    published = _published_advisories()
+
+    assert set(published) == set(fixed_in)
+    assert {a: v for a, v in published.items() if fixed_in[a] != "Unreleased"} == {
+        a: r for a, r in fixed_in.items() if r != "Unreleased"
+    }
+    # Not yet released: the version the table names is one no release heading has yet.
+    assert [a for a, r in fixed_in.items() if r == "Unreleased" and published[a] in releases] == []
