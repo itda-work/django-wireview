@@ -891,10 +891,7 @@ class WireviewSession:
         )
 
         try:
-            # Call optional callback on component
-            if hasattr(component, "on_upload_complete"):
-                callback = getattr(component, "on_upload_complete")
-                await callback(name, entry)
+            await component.on_upload_complete(name, entry)
 
             # Re-render
             await self.send_render(component)

@@ -180,6 +180,14 @@ The django-reactor era changelog (2.x) is preserved in
   to the builder's real signatures. The one documented chain that does not parse (a signature in
   prose) is listed, so a chain the guard cannot read does not pass unseen.
 
+### Security
+
+- `on_upload_complete(name, entry)` is now a method of `Component`, and so framework surface a
+  client cannot call. The session only looked the name up, so a component that defined it had
+  also defined an event handler: a browser could send `on_upload_complete` as an event and run
+  the callback for an upload that never finished. Overrides keep working unchanged; a sync one
+  is now reported by `wireview.W002` instead of `W001`.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

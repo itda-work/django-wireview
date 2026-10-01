@@ -537,3 +537,85 @@ class TestMethodExposureRule:
         repo, comp_id = await self._repo_for(ExposureLiveProbe)
         component = await repo.dispatch_event(comp_id, "increment", [], {})
         assert component.counter == 1
+
+
+# =============================================================================
+# Upload Completion Callback
+# =============================================================================
+
+
+class UploadCallbackProbe(Component):
+    """A component that takes the documented upload completion callback."""
+
+    class Meta:
+        template_name = "uploads/uploader.html"
+
+    completed: list[str] = []
+
+    async def joined(self):
+        self.allow_upload("images", accept=[".jpg"], max_entries=1)
+
+    async def on_upload_complete(self, name, entry):
+        self.completed = [*self.completed, name]
+
+
+class TestUploadCompletionCallback:
+    """on_upload_complete is the server's callback, never a browser event.
+
+    The session calls it once the bytes of an upload are on disk. When no
+    framework class owned the name, a component that defined it had defined a
+    handler too: a client could send ``on_upload_complete`` as an event and
+    run the callback for an upload that never happened.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_client_cannot_call_the_upload_callback(self):
+        view = await mount(UploadCallbackProbe)
+        repo = ComponentRepository(is_live=True)
+        repo.register_component(view.component)
+        with pytest.raises(ValueError, match="Cannot call base class method"):
+            await repo.dispatch_event(view.component.id, "on_upload_complete", ["forged", None], {})
+        assert view.component.completed == []
+
+    @pytest.mark.unit
+    def test_the_callback_is_not_listed_as_a_handler(self):
+        from wireview.core.handlers import is_client_callable
+
+        assert not is_client_callable(UploadCallbackProbe, "on_upload_complete")
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_a_finished_upload_still_runs_the_callback(self, monkeypatch, tmp_path):
+        """Owning the name does not stop the session calling the user's override."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from wireview.consumer import WireviewConsumer
+        from wireview.features import upload_store
+        from wireview.features.uploads import UploadEntry, UploadStatus
+
+        set_wireview(monkeypatch, UPLOAD_TEMP_DIR=str(tmp_path))
+        view = await mount(UploadCallbackProbe)
+        consumer = WireviewConsumer()
+        consumer.channel_name = "test-channel"
+        consumer.channel_layer = MagicMock()
+        consumer.repo = MagicMock()
+        consumer.repo.get = MagicMock(return_value=view.component)
+        consumer.send_command = AsyncMock()
+        consumer.send_render = AsyncMock()
+
+        entry = UploadEntry(
+            ref="upload-1",
+            upload_name="images",
+            client_name="photo.jpg",
+            client_size=4,
+            client_type="image/jpeg",
+        )
+        view.component._upload_registry.add_entry("images", entry)
+        entry.status = UploadStatus.UPLOADING
+        assert entry.temp_path is not None
+        upload_store.append_chunk(entry.temp_path, b"\xff\xd8\xff\x00")
+
+        await consumer.command_upload_complete(id=view.component.id, name="images", ref="upload-1")
+
+        assert view.component.completed == ["images"]

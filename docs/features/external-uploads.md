@@ -79,6 +79,9 @@ class FileUploader(Component):
 `on_upload_complete(name, entry)`가 완료 훅이다. **external 업로드에는 서버에 파일이 없으므로**
 `consume_uploads()`로 바이트를 읽을 수 없다. 스토리지의 키를 기억해 두는 것이 이 훅의 일이다.
 
+이 이름은 `Component`가 가진 콜백이다. `joined`처럼 오버라이드해도 클라이언트가 이벤트로 부를 수 없다
+([노출 규칙](./component-api.md#오버라이드하는-것)).
+
 ### Google Cloud Storage
 
 ```python

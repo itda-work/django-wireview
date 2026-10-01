@@ -139,6 +139,7 @@ AWAITED_CALLBACKS = (
     "params_changed",
     "handle_async",
     "handle_hook_event",
+    "on_upload_complete",
 )
 
 

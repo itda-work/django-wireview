@@ -1497,6 +1497,20 @@ class Component(BaseModel):
 
         return {name: self._upload_registry.get_entries(name) for name in self._upload_registry.configs}
 
+    async def on_upload_complete(self, name: str, entry: "UploadEntry") -> None:
+        """Called when an upload entry has finished, before the re-render.
+
+        Override it to react to a finished upload. The framework owns the name,
+        so a client cannot send it as an event: when the name was only looked
+        up, a component that defined it had exposed a handler a client could
+        call to claim an upload that never happened.
+
+        Example:
+            async def on_upload_complete(self, name, entry):
+                self.uploaded.append(entry.client_name)
+        """
+        ...
+
     async def cancel_upload(self, name: str, ref: str) -> None:
         """
         Cancel an upload entry.
