@@ -58,6 +58,9 @@ python manage.py runserver
 `include('wireview.urls')`, 그리고 `XHello` 컴포넌트가 든 `hello` 앱(튜토리얼의 `myapp`)입니다. 첫 페이지는
 `views.py` 대신 `TemplateView`로 그립니다. 만든 직후의 `python manage.py check`는 아무것도 보고하지 않습니다.
 
+`.gitignore`도 함께 생깁니다. 프로젝트가 스스로 만드는 파일 — 개발 DB `db.sqlite3`와 아래의 타입 스텁 —
+을 커밋에서 뺍니다.
+
 이미 있는 프로젝트에 붙이거나 각 줄이 왜 필요한지 보려면 1절부터 읽습니다.
 
 ## 1. 설치
@@ -181,6 +184,11 @@ myapp/
 ├── views.py
 └── urls.py
 ```
+
+`DEBUG = True`이면 Django가 뜰 때마다(`runserver`뿐 아니라 `check`·`migrate` 같은 `manage.py` 명령 전부)
+wireview가 컴포넌트 모듈 옆에 타입 스텁 `live.pyi`를 만듭니다. 에디터의 자동완성과 타입 검사가 읽는 파일이고,
+직접 고치지 않습니다. 커밋하지 않으려면 `.gitignore`에 `*.pyi`를 두고, 만들지 않으려면
+`WIREVIEW = {"AUTO_GENERATE_STUBS": False}`로 끕니다([타입 스텁](../features/type-stubs.md)).
 
 ### 컴포넌트 정의 (live.py)
 

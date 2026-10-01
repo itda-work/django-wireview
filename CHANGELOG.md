@@ -73,6 +73,15 @@ The django-reactor era changelog (2.x) is preserved in
   package metadata gains `Documentation`, `Changelog` and `Issues` URLs. A test refuses a
   relative link and checks that each absolute one names a file that exists.
 
+- The starter template ships a `.gitignore`. In DEBUG wireview writes `hello/live.pyi` whenever
+  Django starts, `check` and `migrate` included, and `migrate` makes `db.sqlite3`; a new project's
+  first commit took both. The wheel check and the wheel smoke test look for the file.
+
+- The generated type stubs are explained where a new project first meets them: the README's
+  starter paragraph and tutorial 01 say that a `live.pyi` appears beside the components in DEBUG,
+  what it is for and how to turn it off, and the type stubs page says it is every `manage.py`
+  command that writes them, not only the server.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

@@ -41,7 +41,10 @@ python manage.py wireview_stubs -v 2
 
 ## 자동 생성
 
-`DEBUG=True`이면 서버가 뜰 때 스텁이 다시 생성된다.
+`DEBUG=True`이면 Django가 뜰 때마다 스텁이 다시 생성된다 — `runserver`뿐 아니라 `check`·`migrate`·`test`
+같은 `manage.py` 명령 전부다. 컴포넌트를 정의한 모듈 옆에 생기므로(`myapp/live.py` → `myapp/live.pyi`)
+처음 보는 사람에게는 영문 모를 파일이 늘어난 것처럼 보인다. 생성물이라 커밋하지 않는다 — 스타터 템플릿의
+`.gitignore`는 `*.pyi`를 뺀다. 손으로 쓴 스텁도 있는 프로젝트라면 생성되는 파일만 적는다.
 
 ```python
 # settings.py
