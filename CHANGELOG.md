@@ -260,6 +260,11 @@ The django-reactor era changelog (2.x) is preserved in
   so the other tabs the tutorial promised to keep in sync never heard of them. It reads the item
   and calls `asave()` now, as the todo example does, and says which ORM calls send the signal.
 
+- Tutorials 03, 04 and 05 nested components without an `id`. Such a child is a new instance on
+  every render of its parent, so an open editor closed and the online-users list joined again
+  with each message. They pass an id now, and `tests/test_doc_examples.py` refuses an id-less
+  nested component in a tutorial block or an example template.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

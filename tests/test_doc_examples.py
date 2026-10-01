@@ -434,6 +434,41 @@ def test_the_keypress_rule_knows_which_keys_send_none(line, never):
     assert _keypress_never_fires(line) is never
 
 
+#: A component nested in another's template without an id is built anew on every render of
+#: the parent (``rx-<uuid>``): its state -- an open editor, a joined presence -- is dropped.
+NESTED = re.compile(r"\{%\s*(?:live_)?component(?:_block)?\s[^%]*%\}")
+GIVES_ID = re.compile(r"\sid=")
+
+
+def _component_templates() -> list[tuple[str, str]]:
+    """(where, template) for each tutorial block and example template that is a component's own."""
+    found = [(where, code) for where, code in HTML if where.startswith("docs/tutorials/")]
+    found += [
+        (str(path.relative_to(ROOT)), path.read_text(encoding="utf-8")) for path in (ROOT / "examples").rglob("*.html")
+    ]
+    return [(where, code) for where, code in found if "tag_header" in code]
+
+
+def _nested_without_id(template: str) -> list[str]:
+    return [tag for tag in NESTED.findall(template) if not GIVES_ID.search(tag)]
+
+
+def test_every_nested_component_in_the_tutorials_and_examples_has_an_id():
+    broken = [f"{where}: {tag}" for where, code in _component_templates() for tag in _nested_without_id(code)]
+    assert not broken, "give the child an id, or the parent's render replaces it:\n" + "\n".join(broken)
+
+
+@pytest.mark.parametrize(
+    ("template", "missing"),
+    [
+        ("<li {% tag_header %}>{% component 'XItem' item_id=item.id %}</li>", True),
+        ("<li {% tag_header %}>{% component 'XItem' id=\"item-\"|concat:item.id item_id=item.id %}</li>", False),
+    ],
+)
+def test_the_nested_rule_does_not_take_item_id_for_an_id(template, missing):
+    assert bool(_nested_without_id(template)) is missing
+
+
 @pytest.mark.parametrize(
     "code",
     [

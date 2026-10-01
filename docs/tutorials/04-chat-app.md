@@ -408,7 +408,7 @@ class XOnlineUsers(PresenceTrackerMixin, Component):
     </div>
 
     <aside class="sidebar">
-      {% component 'XOnlineUsers' room_id=room_id username=username %}
+      {% component 'XOnlineUsers' id="online-"|concat:room_id room_id=room_id username=username %}
     </aside>
   </div>
 

@@ -505,7 +505,7 @@ class XTodoList(Component):
 
   <ul class="todo-items">
     {% for item in items %}
-      {% component 'XTodoItem' item_id=item.id text=item.text completed=item.completed %}
+      {% component 'XTodoItem' id="item-"|concat:item.id item_id=item.id text=item.text completed=item.completed %}
     {% empty %}
       <li class="empty">No items</li>
     {% endfor %}
@@ -517,6 +517,8 @@ class XTodoList(Component):
   </footer>
 </div>
 ```
+
+중첩 컴포넌트에는 `id`를 준다. id가 없으면 부모가 다시 그릴 때마다 자식이 새 인스턴스(`rx-<uuid>`)로 만들어져 편집 중이던 `editing` 같은 자식의 상태가 사라진다. 같은 id면 부모가 다시 그려도 같은 자식이 이어지고, 넘긴 값(`text`·`completed`)만 새로 들어간다.
 
 ## Part 6: 완성된 코드
 
@@ -665,7 +667,7 @@ class XTodoItem(Component):
   <section class="main">
     <ul class="todo-list">
       {% for item in items %}
-        {% component 'XTodoItem' item_id=item.id text=item.text completed=item.completed %}
+        {% component 'XTodoItem' id="item-"|concat:item.id item_id=item.id text=item.text completed=item.completed %}
       {% endfor %}
     </ul>
   </section>

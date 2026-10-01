@@ -237,12 +237,12 @@ class XDashboard(Component):
     {% if active_tab == 'overview' %}
       <section class="stats-grid">
         {% for stat in stats %}
-          {% component 'XStatCard' stat_name=stat.name %}
+          {% component 'XStatCard' id="stat-"|concat:stat.name stat_name=stat.name %}
         {% endfor %}
       </section>
 
     {% elif active_tab == 'activity' %}
-      {% component 'XActivityFeed' %}
+      {% component 'XActivityFeed' id="activity-feed" %}
 
     {% elif active_tab == 'settings' %}
       <section class="settings">
@@ -252,6 +252,8 @@ class XDashboard(Component):
   </main>
 </div>
 ```
+
+중첩 컴포넌트마다 `id`를 준다. 그래야 부모가 다시 그려도 같은 카드가 이어진다([03. Todo 앱 Part 5](03-todo-app.md#part-5-중첩-컴포넌트)).
 
 ## Part 4: Activity Feed - Streams + 페이지네이션
 
