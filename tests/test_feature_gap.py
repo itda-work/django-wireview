@@ -175,6 +175,12 @@ def test_the_coverage_table_counts_each_category():
     assert stated == counted
 
 
+def test_every_row_is_supported_or_not_planned():
+    """Section 1 says no row is 🟡 or 🟠 and counts only ✅ and ⚪. A 🟡 row would leave both
+    counts as they were, so the table would still match while the sentence was false."""
+    assert [(row[0], row[1], row[2]) for row in ROWS if not row[2].startswith(("✅", "⚪"))] == []
+
+
 def test_the_document_has_one_update_date():
     """The header said 2026-09-30 while the footer still said 2025-06."""
     assert len(re.findall(r"최종 업데이트", DOC.read_text(encoding="utf-8"))) == 1

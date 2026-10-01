@@ -88,10 +88,10 @@ The django-reactor era changelog (2.x) is preserved in
   by each category's row counts, the 2.12 and 2.15 headings lose a ⚠️ none of their rows had,
   Phase 4 is done instead of "in progress, 4-6 weeks", GAP-025 points to GAP-030 instead of
   "keyed: unsupported", the 2025-06 footer date is gone, and the v6.0.0 milestones and label scheme
-  give way to the issue tracker. `tests/test_feature_gap.py` checks the counts, the headings and
-  that there is one date. GAP-027's remaining steps (2 and 4; 3 is done by #83) and their start
-  criterion (`docs/design/session-extraction.md` §5) read the same in the roadmap, the gap list and
-  the design index.
+  give way to the issue tracker. `tests/test_feature_gap.py` checks the counts, the headings, that
+  every row is ✅ or ⚪, and that there is one date. GAP-027's remaining steps (2 and 4; 3 is done by #83) and their start
+  criterion (`docs/design/session-extraction.md` §5) read the same in the roadmap, the gap list,
+  the design index and the design's own header and step table.
 
 - `docs/ROADMAP.md`: the modifier list is the one the client runs -- `.capture`, `.once`, `.passive`,
   `.self` and `.away` were listed and never existed -- the function component example builds its
