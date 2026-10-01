@@ -39,10 +39,10 @@ make bench ARGS="--server uvicorn-nodeflate"  # permessage-deflate를 끈 uvicor
 
 ## Windows (Parallels 게스트)
 
-Windows 수치는 macOS 호스트의 Parallels 랩 클론(`win11-parlab`, ARM Windows 11)에서 같은 벤치를 돌려 얻는다. 게스트 제어는 `windows-parallels-lab` 스킬(`~/.claude/skills/`)의 `pmlab.sh`이고, 저장소 쪽 드라이버는 `bench/windows/run.sh`다.
+Windows 수치는 macOS 호스트의 Parallels 랩 클론(`win11-parlab`, ARM Windows 11)에서 같은 벤치를 돌려 얻는다. 저장소 쪽 드라이버는 `bench/windows/run.sh`다. 게스트 제어(`pmlab_start`·`pmlab_push`·`pmlab_runps` 등)는 **저장소 밖에 있다** — 유지보수자 머신의 `windows-parallels-lab` 에이전트 스킬이 주는 `pmlab.sh`이고, 이 저장소에도 휠에도 들어 있지 않다. `run.sh`는 그 파일을 `PMLAB_SH` 환경 변수(기본값은 유지보수자의 설치 경로 `~/.claude/skills/windows-parallels-lab/scripts/pmlab.sh`)에서 읽는다. 그 스킬이 없으면 같은 함수들(VM 기동·정지, 공유 폴더로 파일 넣기, 게스트에서 PowerShell 실행)을 `prlctl`로 직접 만들어 `PMLAB_SH`로 가리킨다. 아래 순서는 그 스킬이 있는 머신의 것이다.
 
 ```bash
-source ~/.claude/skills/windows-parallels-lab/scripts/pmlab.sh
+source "${PMLAB_SH:-$HOME/.claude/skills/windows-parallels-lab/scripts/pmlab.sh}"   # 저장소 밖
 pmlab_start && pmlab_wait_ready          # 랩 클론 기동 (마스터 VM은 건드리지 않는다)
 bench/windows/run.sh stage               # HEAD 아카이브, channels-nats wheel, nats-server arm64, 게스트 스크립트를 공유 폴더로
 bench/windows/run.sh provision           # C:\bench 에 uv, Python 3.12 (arm64 + x64), venv 둘, nats-server
