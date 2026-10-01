@@ -89,7 +89,7 @@ warnings.simplefilter("error", WireviewDeprecationWarning)
 
 | 옛 것 | 새 것 | 제거 |
 |-------|-------|------|
-| `wireview.component` 모듈 | `from wireview import Component` | 2.0 |
+| `wireview.component` 모듈 | `from wireview import ...`로 `Component`·`WireviewMeta`·`broadcast`. 이 모듈이 함께 내보내던 `ComponentNotFound`·`MessagePayload`는 공개였던 적이 없어 **대체 없이** 같이 없어진다 | 2.0 |
 | 테스트의 `view.wire.broadcasts` | `view.broadcasts` | 2.0 |
 | 테스트의 `view.wire.presence_broadcasts` | `view.presence_broadcasts` | 2.0 |
 | DOM 이벤트 `upload:added`·`progress`·`complete`·`error`·`cancel` | `wireview:upload-added` 등 (둘 다 나간다) | 2.0 |

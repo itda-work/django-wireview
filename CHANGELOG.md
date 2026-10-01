@@ -205,6 +205,11 @@ The django-reactor era changelog (2.x) is preserved in
   asked for. They are `_` helpers now, and so are the README's (`load_items`, `do_search`,
   `load_stats`, `fetch_items`, `update_chart`) and tutorial 08's `is_safe_filename`.
 
+- The deprecation warning of the `wireview.component` module named only `Component` as the
+  replacement. The module also re-exports `ComponentNotFound` and `MessagePayload`, which were
+  never public and have none. The warning and `docs/COMPATIBILITY.md` now name every re-exported
+  name and say those two go in 2.0 with no replacement.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

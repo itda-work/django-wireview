@@ -243,3 +243,37 @@ def test_importing_the_library_warns_nothing():
 
 def test_the_warning_class_is_a_deprecation_warning():
     assert issubclass(WireviewDeprecationWarning, DeprecationWarning)
+
+
+def test_the_old_module_says_what_has_no_replacement(tmp_path):
+    """It re-exports two names with no public replacement; its warning named only Component."""
+    script = tmp_path / "old_import_names.py"
+    script.write_text(
+        "import warnings\n"
+        "import django\n"
+        "django.setup()\n"
+        "with warnings.catch_warnings(record=True) as caught:\n"
+        "    warnings.simplefilter('always')\n"
+        "    import wireview.component as old\n"
+        "w = [c for c in caught if c.category.__name__ == 'WireviewDeprecationWarning']\n"
+        "print(' '.join(old.__all__))\n"
+        "print(str(w[0].message))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"DJANGO_SETTINGS_MODULE": "testproj.settings", "PYTHONPATH": str(ROOT / "tests")},
+    )
+    exported, message = result.stdout.splitlines()
+    for name in exported.split():
+        assert f"`{name}`" in message, name
+    public = [name for name in exported.split() if name in wireview.__all__]
+    internal = [name for name in exported.split() if name not in wireview.__all__]
+    assert internal == ["ComponentNotFound", "MessagePayload"]
+    assert "no replacement" in message
+    compatibility = (ROOT / "docs" / "COMPATIBILITY.md").read_text()
+    row = next(line for line in compatibility.splitlines() if line.startswith("| `wireview.component` 모듈"))
+    for name in public + internal:
+        assert f"`{name}`" in row, name
