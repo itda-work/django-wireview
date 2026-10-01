@@ -15,7 +15,10 @@ UploadEntry's ref.
 """
 
 import json
+import os
 import re
+import subprocess
+import sys
 from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
@@ -167,6 +170,31 @@ class TestTheOnTag:
     def test_a_private_method_cannot_be_bound(self):
         with pytest.raises(AssertionError, match="not an event handler"):
             _on('"click" "_secret"')
+
+    def test_the_refusal_holds_under_python_optimize(self):
+        """``python -O`` strips ``assert``; the refusal was one, so it went back to dropping clicks."""
+        script = (
+            "import django; django.setup()\n"
+            "from django.template import Context, Template\n"
+            "from test_event_binding import BindingProbe\n"
+            "template = Template('{% load wireview %}<b {% on \"click\" \"joined\" %}>')\n"
+            "try:\n"
+            "    template.render(Context({'this': BindingProbe.model_construct(id='c')}))\n"
+            "except AssertionError as error:\n"
+            "    print('refused', error)\n"
+            "else:\n"
+            "    print('rendered')\n"
+        )
+        tests = Path(__file__).resolve().parent
+        env = {
+            **os.environ,
+            "DJANGO_SETTINGS_MODULE": "testproj.settings",
+            "PYTHONPATH": os.pathsep.join([str(tests), str(tests.parent)]),
+        }
+        result = subprocess.run(
+            [sys.executable, "-O", "-c", script], capture_output=True, text=True, env=env, cwd=tests.parent
+        )
+        assert result.stdout.startswith("refused"), result.stdout + result.stderr
 
 
 def _upload_component() -> MagicMock:

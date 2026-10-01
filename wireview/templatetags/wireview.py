@@ -587,14 +587,19 @@ def _check_handler(component: "Component", name: str) -> None:
     """
     from ..core.handlers import is_client_callable
 
+    # Raised rather than asserted: ``python -O`` strips an assert, and the
+    # binding went back to rendering and dropping every click.
     label = f"{type(component).__name__}.{name}"
     handler = getattr(component, name, None)
-    assert handler, f"Missing handler: {label}"
-    assert callable(handler), f"Not callable: {label}"
-    assert is_client_callable(component, name), (
-        f"{label} is not an event handler: the framework owns the name, or it starts with '_'. "
-        "Bind a method of your own with another name."
-    )
+    if not handler:
+        raise AssertionError(f"Missing handler: {label}")
+    if not callable(handler):
+        raise AssertionError(f"Not callable: {label}")
+    if not is_client_callable(component, name):
+        raise AssertionError(
+            f"{label} is not an event handler: the framework owns the name, or it starts with '_'. "
+            "Bind a method of your own with another name."
+        )
 
 
 @register.filter(name="str")

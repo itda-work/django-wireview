@@ -51,7 +51,7 @@ The django-reactor era changelog (2.x) is preserved in
 
 - `{% on %}` now refuses, when the page renders, a binding to a method the dispatcher would refuse:
   a framework method (`joined`, `skip_render`, `model_dump` ...) or a `_` one, by name or in a
-  `JS().push(...)`. Such a binding used to render and drop every click with a log line. It is
+  `JS().push(...)`, under `python -O` too. Such a binding used to render and drop every click with a log line. It is
   what a project sees when a minor release adds a `Component` member under the name of one of
   its handlers -- `docs/COMPATIBILITY.md` now says minor releases may add members and that
   `CHANGELOG.md` names each one (`docs/UPGRADING.md`).
