@@ -482,8 +482,8 @@ class ServerConnection {
         break;
 
       case "stream_op":
-        var { op, stream, items, at, limit } = payload;
-        this._handleStreamOp(op, stream, items, at, limit);
+        var { op, stream, items, at, limit, id } = payload;
+        this._handleStreamOp(op, stream, items, at, limit, id);
         break;
 
       case "upload_op":
@@ -619,14 +619,51 @@ class ServerConnection {
    * @param {Array<{id: string, html: string}>} items - Stream items
    * @param {number} at - Insert position (-1 = append, 0 = prepend)
    * @param {number} limit - Maximum items to keep (0 = no limit)
+   * @param {string} [owner] - The component that sent it; a server before it said so leaves it out
    * @private
    */
-  _handleStreamOp(op, stream, items, at, limit = 0) {
-    const container = document.querySelector(`[wire-stream="${stream}"]`);
+  _handleStreamOp(op, stream, items, at, limit = 0, owner) {
+    const container = this._streamContainer(stream, owner);
     if (!container) {
       console.warn(`[wireview] Stream container not found: ${stream}`);
       return;
     }
+    boost.applying(() => this._applyStreamOp(container, op, items, at, limit));
+    boost.navEvent.sendNewContent();
+  }
+
+  /**
+   * The `wire-stream` container a stream op is for, inside the owner's element,
+   * so two components can name their streams alike. A search of the whole page
+   * wrote one component's items into the first list of that name, and its reset
+   * emptied it. The owner's own container comes before one of a component nested
+   * in it; a container the owner passed into a nested component's slot is found
+   * when the owner has none of its own.
+   * @param {string} stream
+   * @param {string} [owner]
+   * @returns {Element|null}
+   * @private
+   */
+  _streamContainer(stream, owner) {
+    const selector = `[wire-stream="${CSS.escape(stream)}"]`;
+    if (owner === undefined) return document.querySelector(selector);
+    const root = document.getElementById(owner);
+    if (!root) return null;
+    if (root.matches(selector)) return root;
+    const inside = [...root.querySelectorAll(selector)];
+    return inside.find((container) => container.closest("[wireview-component]") === root) ?? inside[0] ?? null;
+  }
+
+  /**
+   * The DOM half of `_handleStreamOp`, run inside `boost.applying`.
+   * @param {Element} container
+   * @param {string} op
+   * @param {Array<{id: string, html: string}>} items
+   * @param {number} at
+   * @param {number} limit
+   * @private
+   */
+  _applyStreamOp(container, op, items, at, limit) {
 
     switch (op) {
       case "reset":
@@ -672,11 +709,9 @@ class ServerConnection {
         break;
 
       case "delete":
+        // In this container: another component's list may hold an item of the same id
         for (const item of items) {
-          const el = document.getElementById(item.id);
-          if (el) {
-            el.remove();
-          }
+          container.querySelector(`#${CSS.escape(item.id)}`)?.remove();
         }
         break;
     }
@@ -690,8 +725,6 @@ class ServerConnection {
         container.firstElementChild?.remove();
       }
     }
-
-    boost.navEvent.sendNewContent();
   }
 
   /**

@@ -101,25 +101,21 @@ async def _insert(self, name, item, **kwargs):
 
 ### 같은 페이지의 여러 스트림
 
-스트림 이름은 페이지 안에서 고유해야 한다. 클라이언트는 `wire-stream` 컨테이너를 컴포넌트 안이 아니라 페이지
-전체에서 이름으로 찾는다. 같은 컴포넌트를 두 번 놓아 둘 다 `"items"`를 쓰면, 둘째의 `stream()`·`stream_insert()`가
-첫째의 컨테이너로 들어간다(`reset`이면 첫째의 목록을 지운다). `dom_id`에 접두사를 붙여도 이것은 막지 못한다.
+스트림 이름은 컴포넌트 안에서만 고유하면 된다. 클라이언트는 `wire-stream` 컨테이너를 스트림을 보낸 컴포넌트의
+요소 안에서 찾고, 그 안에 중첩된 컴포넌트의 같은 이름 컨테이너보다 자기 것을 먼저 고른다. 그래서 같은 컴포넌트를
+두 번 놓아 둘 다 `"items"`를 써도 각자의 목록에 들어간다.
 
-한 컴포넌트를 여러 번 놓는다면 이름에 컴포넌트 id를 넣고, 템플릿의 `wire-stream`도 같은 이름을 쓴다.
-항목 id의 기본값이 `{스트림 이름}-{pk}`이므로 항목 id도 함께 갈린다.
+항목의 id는 HTML `id`라 페이지에서 고유해야 하는 것은 그대로다. 기본값이 `{스트림 이름}-{pk}`이므로 같은 항목이
+두 목록에 함께 나올 수 있으면 `dom_id`에 컴포넌트 id를 넣는다.
 
 ```python
 class XList(Component):
-    @property
-    def stream_name(self) -> str:
-        return f"items-{self.id}"
-
     async def joined(self):
-        await self.stream(self.stream_name, [item async for item in Item.objects.all()])
-```
-
-```html
-<ul wire-stream="{{ this.stream_name }}"></ul>
+        await self.stream(
+            "items",
+            [item async for item in Item.objects.all()],
+            dom_id=lambda item: f"{self.id}-item-{item.pk}",
+        )
 ```
 
 ## 커스텀 템플릿

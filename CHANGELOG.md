@@ -300,9 +300,15 @@ The django-reactor era changelog (2.x) is preserved in
   the value (`uploading`); equality and JSON are unchanged.
 - Tutorial 08 said the connection id is issued by the consumer's `connect()`; the session issues
   it when it starts, since the session logic moved out of the consumer (#60).
-- Tutorial 06 offered a `dom_id` prefix against clashes between streams on one page. The client
-  finds a `wire-stream` container by name across the whole page, so two components using the same
-  name still write into the first one's list. The section now names the stream per component.
+- Two components with a stream of the same name share no list any more. The page looked for the
+  `wire-stream` container by name across the whole page, so the second component's items went
+  into the first one's list and its `reset` emptied it; a component nested ahead of its parent's
+  list took the parent's items too. A stream op now carries the id of the component that sent it,
+  and the page looks inside that element, the component's own container before a nested one's,
+  and deletes items from that container only. An op without the id (an older server) goes to the
+  first container of its name as before; an older bundle ignores the id, so `PROTOCOL_VERSION`
+  stays. Tutorial 06, which offered a `dom_id` prefix against the clash, says names need to be
+  unique only within a component now.
 - The README, the tutorials and the examples said CI runs the examples on every push. `ci.yml`
   runs only by hand and when the release workflow calls it; `make test` is what runs them. The
   text says so, and `tests/test_doc_examples.py` refuses the old claim while `ci.yml` has no push

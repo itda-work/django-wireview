@@ -124,6 +124,20 @@ class TestComponentStreamMethods:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
+    async def test_every_stream_op_names_the_component_that_sent_it(self):
+        """The page looks for the container inside this element, not the first of its name.
+
+        Two components with a stream named alike wrote into one list: the page
+        searched the whole document for ``wire-stream="items"``.
+        """
+        view = await mount(StreamComponent, id="feed-a")
+        await view.call("remove_item", item_id=1)
+
+        [op] = view.stream_ops("items")
+        assert op["id"] == "feed-a"
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
     async def test_get_stream_item_template(self):
         """_get_stream_item_template should derive template name correctly."""
         view = await mount(StreamComponent)
@@ -187,7 +201,8 @@ class TestConsumerAcceptsEveryStreamPayload:
     )
     def test_the_consumer_signature_accepts_what_the_component_sends(self, op: StreamOp):
         signature = inspect.signature(WireviewConsumer.component_stream_op)
-        unexpected = set(op.to_payload()) - set(signature.parameters)
+        # WireviewMeta.send_stream_op adds the owner's id
+        unexpected = {*op.to_payload(), "id"} - set(signature.parameters)
         assert unexpected == set(), f"component_stream_op() would raise TypeError for {sorted(unexpected)}"
 
     @pytest.mark.unit
@@ -203,3 +218,17 @@ class TestConsumerAcceptsEveryStreamPayload:
         await consumer.component_stream_op(**StreamOp(op="reset", stream="items", items=[], limit=50).to_payload())
 
         assert sent == [("stream_op", {"op": "reset", "stream": "items", "items": [], "at": -1, "limit": 50})]
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_the_owner_survives_the_consumer_hop(self):
+        consumer = WireviewConsumer()
+        sent: list[tuple[str, dict]] = []
+
+        async def fake_send_command(command, payload):
+            sent.append((command, payload))
+
+        consumer.send_command = fake_send_command  # type: ignore[method-assign]
+        await consumer.component_stream_op(**StreamOp(op="reset", stream="items", items=[]).to_payload(), id="feed-a")
+
+        assert sent == [("stream_op", {"op": "reset", "stream": "items", "items": [], "at": -1, "id": "feed-a"})]

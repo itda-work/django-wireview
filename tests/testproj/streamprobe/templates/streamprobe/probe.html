@@ -2,6 +2,9 @@
 
 <div {% tag_header %}>
   <button data-testid="tick" {% on "click" "tick" %}>tick</button>
+  {% if this.nest %}
+    {% live_component "TickChild" id="tick-child" %}
+  {% endif %}
   <ul data-testid="ticks" wire-stream="ticks">
   </ul>
   <div data-testid="top-sentinel" wire-viewport-top="load_newer">newer</div>

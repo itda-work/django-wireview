@@ -12,7 +12,12 @@
       <a href="?size={{ size }}" data-testid="back">back</a>
     {% else %}
       <a href="?size={{ size }}&away=1" data-testid="away">away</a>
-      {% component 'StreamProbe' id="probe" size=size delay=delay %}
+      {% component 'StreamProbe' id="probe" size=size delay=delay nest=nest %}
+      {% if pair %}
+        <section data-testid="second">
+          {% component 'StreamProbe' id="probe-2" size=1 %}
+        </section>
+      {% endif %}
     {% endif %}
   </body>
 </html>

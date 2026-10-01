@@ -426,9 +426,18 @@ class WireviewMeta:
             return mark_safe(html)
         return None
 
-    async def send_stream_op(self, op: "StreamOp") -> None:
-        """Send a stream operation to the client."""
-        await self.send("stream_op", **op.to_payload())
+    async def send_stream_op(self, op: "StreamOp", owner: str | None = None) -> None:
+        """Send a stream operation to the client, on behalf of component ``owner``.
+
+        The page looks for the ``wire-stream`` container inside the owner's element
+        and not inside a component nested in it, so two components can name their
+        streams alike. Without an owner it takes the first container of that name
+        on the page.
+        """
+        if owner is None:
+            await self.send("stream_op", **op.to_payload())
+        else:
+            await self.send("stream_op", **op.to_payload(), id=owner)
 
     async def send_upload_op(self, op: "UploadOp", owner: str) -> None:
         """Send an upload operation to the client, on behalf of component ``owner``.

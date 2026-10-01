@@ -130,3 +130,32 @@ def test_scrolling_back_to_the_top_calls_the_top_binding(probe):
     expect_text(by(probe, "pages"), "2")
     probe.mouse.wheel(0, -100000)
     expect_text(by(probe, "newer"), "1")
+
+
+def test_two_components_with_a_stream_of_one_name_keep_their_own_lists(page, server):
+    # The page looked for the first `wire-stream="ticks"` anywhere: the second
+    # probe's ticks went into the first probe's list.
+    page.set_viewport_size({"width": 800, "height": 600})
+    open_live(page, f"{server}/streamprobe/?pair=1")
+    second = by(page, "second")
+    second.get_by_test_id("tick").click()
+    second.get_by_test_id("tick").click()
+
+    expect(second.get_by_test_id("ticks").locator("li")).to_have_text(["tick 2", "tick 1"])
+    expect_count(page.locator("#probe [data-testid=ticks] li"), 0)
+
+    page.locator("#probe [data-testid=tick]").click()
+    expect(page.locator("#probe [data-testid=ticks] li")).to_have_text(["tick 1"])
+    expect(second.get_by_test_id("ticks").locator("li")).to_have_text(["tick 2", "tick 1"])
+
+
+def test_a_nested_component_with_a_stream_of_one_name_keeps_its_own_list(page, server):
+    # The LiveComponent's `ticks` list comes first in the page, ahead of the probe's.
+    page.set_viewport_size({"width": 800, "height": 600})
+    open_live(page, f"{server}/streamprobe/?nest=1")
+    by(page, "tick").click()
+    by(page, "child-tick").click()
+    by(page, "child-tick").click()
+
+    expect(by(page, "ticks").locator("li")).to_have_text(["tick 1"])
+    expect(by(page, "child-ticks").locator("li")).to_have_text(["tick 2", "tick 1"])

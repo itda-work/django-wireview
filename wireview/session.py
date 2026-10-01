@@ -942,11 +942,14 @@ class WireviewSession:
             except Exception:
                 await self._crashed(component)
 
-    async def component_stream_op(self, op, stream, items, at, limit=0):
+    async def component_stream_op(self, op, stream, items, at, limit=0, id=None):
         log.debug(f">>> STREAM {op.upper()} {stream}")
         payload = {"op": op, "stream": stream, "items": items, "at": at}
         if limit:
             payload["limit"] = limit
+        if id is not None:
+            # The component whose element holds the container
+            payload["id"] = id
         await self.send_command("stream_op", payload)
 
     async def component_scroll_into_view(self, id, behavior, block, inline):

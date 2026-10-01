@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<div {% live_tag_header %}>
+  <button data-testid="child-tick" {% on "click" "tick" myself=True %}>child tick</button>
+  <ul data-testid="child-ticks" wire-stream="ticks">
+  </ul>
+</div>

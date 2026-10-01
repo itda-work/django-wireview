@@ -1299,7 +1299,7 @@ class Component(BaseModel):
             stream_items.append(StreamItem(dom_id=dom_id_fn(item), html=html))
 
         op = StreamOp(op="reset", stream=name, items=stream_items, limit=limit)
-        await self.wire.send_stream_op(op)
+        await self.wire.send_stream_op(op, self.id)
 
     async def stream_insert(
         self,
@@ -1342,7 +1342,7 @@ class Component(BaseModel):
         stream_item = StreamItem(dom_id=dom_id_fn(item), html=html)
 
         op = StreamOp(op="insert", stream=name, items=[stream_item], at=at, limit=limit)
-        await self.wire.send_stream_op(op)
+        await self.wire.send_stream_op(op, self.id)
 
     async def stream_delete(self, name: str, dom_id: str | int) -> None:
         """
@@ -1363,7 +1363,7 @@ class Component(BaseModel):
             dom_id = f"{name}-{dom_id}"
 
         op = StreamOp(op="delete", stream=name, items=[StreamItem(dom_id=dom_id, html="")])
-        await self.wire.send_stream_op(op)
+        await self.wire.send_stream_op(op, self.id)
 
     def _get_stream_item_template(self) -> str:
         """Get the default stream item template name."""
