@@ -71,6 +71,8 @@ class Notification(models.Model):
 가리키는 쪽의 채널 `auth.user.{user_pk}.notifications`(`{관계 모델}.{pk}.{related_name}`)에도 알린다:
 
 ```python
+from wireview import AutoBroadcast
+
 WIREVIEW = {
     "AUTO_BROADCAST": AutoBroadcast(
         model=True,
@@ -198,7 +200,8 @@ class XNotificationBell(Component):
 ```
 
 구독은 곧 접근 제어다. 벨은 `self.user`의 채널만 이름으로 부르므로 다른 사람에게 보낸 것은 이
-연결에 오지 않는다. 벨이 모든 페이지의 헤더에 있으니 토스트를 받는 자리로도 알맞다.
+연결에 오지 않는다. 벨은 알림 채널만 듣는다. 토스트는 벨이 아니라 레이아웃의 `{% wireview_toasts %}`가
+받는다([6. 토스트를 띄울 자리](#6-토스트를-띄울-자리)).
 
 ## 4. 알림 목록 컴포넌트
 
@@ -532,6 +535,8 @@ class XNotificationCreator(Component):
 import pytest
 from django.contrib.auth import get_user_model
 
+from notifications.live import XNotificationList
+from notifications.models import Notification
 from wireview import mount
 
 pytestmark = pytest.mark.django_db(transaction=True)

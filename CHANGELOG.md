@@ -286,6 +286,10 @@ The django-reactor era changelog (2.x) is preserved in
 - Tutorial 14's `live.py` used `NotificationType` without importing it, so the app failed to load
   with a `NameError` and no command, `check` included, could start. It imports it now.
 
+- Tutorial 14's settings and test blocks import what they use (`AutoBroadcast`, `Notification`,
+  `XNotificationList`), and it no longer calls the bell a place to receive toasts: the bell hears
+  only the notification channels, and `{% wireview_toasts %}` receives toasts.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
