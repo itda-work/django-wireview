@@ -1166,7 +1166,9 @@ WIREVIEW = {
 
 - **uvloop 사용**: Uvicorn에서 `--loop uvloop` 옵션으로 더 나은 비동기 성능 달성
 - **개발 중 전환 추적**: `DEBUG_SYNC_TRANSITIONS=True`로 중첩 async/sync 전환 감지
-- **컴포넌트에서 `asend_to()` 선호**: async 컨텍스트에서는 `send_to()` 대신 `asend_to()` 사용
+- **알림은 공개 API로 보낸다**: 컴포넌트 안에서는 `await self.broadcast(...)`, 컴포넌트 밖의 async 코드에서는
+  `await abroadcast(...)`, 동기 코드(시그널 수신자, 뷰)에서는 `broadcast(...)`(`from wireview import abroadcast, broadcast`).
+  동기 `broadcast()`는 트랜잭션이 커밋된 뒤에 보낸다
 
 ```python
 WIREVIEW = {

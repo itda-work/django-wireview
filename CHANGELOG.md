@@ -51,6 +51,9 @@ The django-reactor era changelog (2.x) is preserved in
   show=None, hide=None)` and `push(event, value=None, ...)` with `value` positional; copied, both
   raised `TypeError`. A test compares every listed signature with the code.
 
+- The README's performance section recommended `asend_to()`/`send_to()` from `wireview.utils`,
+  which is not public API. It now names `self.broadcast()`, `abroadcast()` and `broadcast()`.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
