@@ -36,6 +36,7 @@ from wireview.checks import (
     check_reconnect_settings,
     check_runserver_is_asgi,
     check_settings_keys,
+    check_shadowed_framework_names,
     check_signing_key,
     check_upload_temp_dir,
     iter_component_classes,
@@ -185,6 +186,72 @@ class TestAsyncLifecycleCheck:
         """Not overriding it must not report the framework's own definition."""
         only(make_component("ProbeLifecycleInherited"))
         assert check_async_lifecycle(None) == []
+
+
+class TestShadowedFrameworkNameCheck:
+    """W018: a user method under a framework name is no handler, and nothing said so."""
+
+    @pytest.mark.parametrize("name", ["validate", "copy", "json", "dict", "schema", "skip_render", "send_render"])
+    def test_a_handler_under_a_framework_name_is_flagged(self, only, name):
+        async def handler(self, **form):
+            pass
+
+        only(make_component(f"ProbeShadow_{name}", **{name: handler}))
+        messages = check_shadowed_framework_names(None)
+
+        assert [m.id for m in messages] == ["wireview.W018"]
+        assert f".{name}' is not an event handler" in messages[0].msg
+
+    def test_the_named_case_is_the_one_the_dispatcher_refuses(self, only):
+        """The check states the dispatcher's rule; it is not a guess about it."""
+        from wireview.core.handlers import is_client_callable
+
+        async def validate(self, **form):
+            pass
+
+        cls = make_component("ProbeShadowRule", validate=validate)
+        assert not is_client_callable(cls, "validate")
+
+    @pytest.mark.parametrize(
+        "name", sorted({*wireview_checks.LIFECYCLE_METHODS, *wireview_checks.OVERRIDABLE_METHODS})
+    )
+    def test_an_intended_override_is_silent(self, only, name):
+        async def callback(self, *args, **kwargs):
+            pass
+
+        value = classmethod(callback) if name in {"new", "update_many"} else callback
+        only(make_component(f"ProbeShadowOk_{name}", **{name: value}))
+        assert check_shadowed_framework_names(None) == []
+
+    @pytest.mark.parametrize("name", wireview_checks.OVERRIDABLE_METHODS)
+    def test_every_intended_override_is_a_framework_name(self, name):
+        from wireview import LiveComponent
+
+        assert hasattr(LiveComponent, name)
+
+    def test_handlers_helpers_and_fields_are_silent(self, only):
+        async def save(self):
+            pass
+
+        def _validate(self):
+            pass
+
+        only(make_component("ProbeShadowQuiet", save=save, _validate=_validate, __annotations__={"title": str}))
+        assert check_shadowed_framework_names(None) == []
+
+    def test_a_shared_user_base_is_reported_once(self, only):
+        async def validate(self, **form):
+            pass
+
+        base = make_component("ProbeShadowBase", validate=validate)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            first = type("ProbeShadowA", (base,), {"__module__": "probeapp.live"})
+            second = type("ProbeShadowB", (base,), {"__module__": "probeapp.live"})
+        only(first, second)
+
+        messages = check_shadowed_framework_names(None)
+        assert [m.obj for m in messages] == [base]
 
 
 class TestNameCollisionCheck:

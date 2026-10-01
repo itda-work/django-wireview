@@ -406,7 +406,7 @@ async def check_email(self, email: str = ""):
 
 값 없이 다는 형태는 Phoenix의 `phx-auto-recover` 기본 동작과 같다. 그 폼에 `{% on "change" %}` 바인딩이
 있어야 한다. 핸들러 이름을 Phoenix처럼 `validate`로 짓지 않는다 — Pydantic `BaseModel`이 가진 이름이라
-클라이언트가 부를 수 없고, `{% on %}`이 렌더 때 거절한다. 이름이 여러 값을 가지면(체크박스) `form_data`에서 리스트다.
+클라이언트가 부를 수 없고, `{% on %}`이 렌더 때 거절한다(`manage.py check`의 `wireview.W018`이 미리 알린다). 이름이 여러 값을 가지면(체크박스) `form_data`에서 리스트다.
 
 ## Phoenix LiveView 대응
 

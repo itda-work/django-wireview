@@ -16,6 +16,13 @@ The django-reactor era changelog (2.x) is preserved in
   Django starts, `check` and `migrate` included, and `migrate` makes `db.sqlite3`; a new project's
   first commit took both. The wheel check and the wheel smoke test look for the file.
 
+- `wireview.W018`: `manage.py check` names a public method of a component that shares its name
+  with a framework member -- `async def validate(...)`, a method of Pydantic's `BaseModel`, above
+  all. The dispatcher refuses such a name wherever user code defines it, so the method was no
+  handler and nothing said so: a `{% on %}` binding stops the render, but `defer()` and a hook's
+  push were dropped with a log line. It is also how a project hears that a minor release added a
+  member under the name of one of its handlers. The callbacks meant to be overridden are left out.
+
 ### Changed
 
 - The `instance` a component's `mutation()` receives saves like any model instance. It was the

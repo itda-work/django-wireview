@@ -25,9 +25,10 @@ from wireview import Component, LiveComponent, JS, mount
 
 **마이너 릴리스는 `Component`와 `LiveComponent`에 멤버를 더할 수 있다.** 더한 이름은 프레임워크의 것이 되므로,
 사용자 컴포넌트에 같은 이름의 메서드가 있으면 그 메서드는 그날부터 이벤트 핸들러가 아니다(노출 규칙,
-[Component API](./features/component-api.md)). 그 이름에 바인딩한 `{% on %}`은 렌더할 때 오류로 알려 주고, 같은
+[Component API](./features/component-api.md)). 그 이름에 바인딩한 `{% on %}`은 렌더할 때 오류로 알려 주고, `manage.py check`는 그런 메서드를
+`wireview.W018`로 미리 알린다. 같은
 이름의 필드는 멤버를 가리며 Pydantic이 클래스를 정의할 때 `UserWarning`("shadows an attribute in parent")을 낸다. 그래서 새 멤버는 항상 `CHANGELOG.md`에 이름과 함께 적고, 흔히 쓰일 만한 이름이면 그
-사실을 따로 적는다. 1.0에서 `on_upload_complete`가 이 규칙으로 프레임워크의 것이 되었다 — 문서가 가르친 그 이름의
+사실을 따로 적는다. 1.0 직전(rc4 뒤)에 `on_upload_complete`가 같은 방식으로 프레임워크의 것이 되었다 — 문서가 가르친 그 이름의
 콜백이 클라이언트 이벤트로도 열려 있었기 때문이다.
 
 `WireviewMeta`는 **타입 주석용 이름으로만** 공개다(`wire: WireviewMeta`). 생성자와 멤버는 아래 `self.wire`

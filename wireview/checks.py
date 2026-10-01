@@ -41,6 +41,14 @@ LIFECYCLE_METHODS = (
     "on_upload_complete",
 )
 
+#: Framework methods a component is meant to override that wireview does not await.
+OVERRIDABLE_METHODS = (
+    "get_subscriptions",
+    "new",
+    "update_many",
+    "model_post_init",
+)
+
 #: The client bundle referenced by ``{% wireview_header %}``.
 BUNDLE_STATIC_PATH = "wireview/wireview.min.js"
 
@@ -115,6 +123,53 @@ def check_async_lifecycle(app_configs, **kwargs) -> list[CheckMessage]:
                     id="wireview.W002",
                 )
             )
+    return messages
+
+
+def check_shadowed_framework_names(app_configs, **kwargs) -> list[CheckMessage]:
+    """W018: a public method of user code that shares its name with a framework member.
+
+    The dispatcher refuses a name any framework class defines, wherever user
+    code also defines it (``is_client_callable``). So ``async def validate`` --
+    Phoenix's ``phx-change="validate"``, and a classmethod of Pydantic's
+    ``BaseModel`` -- is no handler: ``{% on %}`` refuses it when the page renders,
+    while ``defer()`` and a hook's direct push drop it with a log line. The same
+    happens to a handler when a minor release adds a member of its name
+    (docs/COMPATIBILITY.md). The callbacks meant to be overridden are left out.
+    """
+    from .core.handlers import is_framework_class
+
+    intended = set(LIFECYCLE_METHODS) | set(OVERRIDABLE_METHODS)
+    messages = []
+    reported: set[tuple[type, str]] = set()
+    for cls in iter_component_classes():
+        framework = [base for base in cls.__mro__ if is_framework_class(base)]
+        for user_class in cls.__mro__:
+            if is_framework_class(user_class):
+                continue
+            for name, value in user_class.__dict__.items():
+                if name.startswith("_") or name in intended or (user_class, name) in reported:
+                    continue
+                if isinstance(value, type) or not callable(getattr(cls, name, None)):
+                    continue
+                owners = [base for base in framework if name in base.__dict__]
+                if not owners:
+                    continue
+                reported.add((user_class, name))
+                owner = owners[0]
+                messages.append(
+                    Warning(
+                        f"'{user_class.__module__}.{user_class.__qualname__}.{name}' is not an event handler: "
+                        f"'{owner.__module__}.{owner.__qualname__}' defines '{name}'.",
+                        hint=(
+                            f"A client cannot call a name the framework owns, so a binding to '{name}' stops "
+                            f"the render and a push of it is dropped. Rename the handler, or to '_{name}' "
+                            f"if it is a helper."
+                        ),
+                        obj=user_class,
+                        id="wireview.W018",
+                    )
+                )
     return messages
 
 
@@ -792,6 +847,7 @@ def register_checks() -> None:
     """Register every check. Called from ``WireviewConfig.ready()``."""
     register(check_async_handlers, WIREVIEW_TAG)
     register(check_async_lifecycle, WIREVIEW_TAG)
+    register(check_shadowed_framework_names, WIREVIEW_TAG)
     register(check_component_name_collisions, WIREVIEW_TAG)
     register(check_client_bundle, WIREVIEW_TAG)
     register(check_settings_keys, WIREVIEW_TAG)
