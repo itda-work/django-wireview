@@ -396,3 +396,78 @@ def test_the_documented_mount_signature_is_mounts():
     }
     assert len(listed) >= 2
     assert all(line.endswith(expected) for line in listed), (expected, listed)
+
+
+# -- Bindings to a name no client can call ---------------------------------------------------------
+#
+# ``{% on %}`` refuses, when the page renders, a binding the dispatcher would refuse: a ``_`` name or
+# a name a framework class owns (wireview, pydantic). ``validate`` is BaseModel's, and the reconnect
+# recovery example bound it -- Phoenix's ``phx-change="validate"`` -- so the page that copied it was
+# a 500. These are the shipped files a reader copies bindings from; docs/design is a record.
+
+BINDING_FILES = [
+    *DOCS,
+    *sorted(path for path in (ROOT / "examples").rglob("*") if path.suffix in {".html", ".py"}),
+    *sorted(path for path in (ROOT / "wireview" / "project_template").rglob("*") if path.is_file()),
+]
+
+BINDING = re.compile(
+    r"""\{%\s*on\s+["'][^"']+["']\s+["'](?P<on>\w+)["']"""  # {% on "click" "name" %}
+    r"""|\bpush\(\s*["'](?P<push>\w+)["']"""  # JS().push("name"); a hook's pushEvent() is not read
+)
+
+#: Bindings shown to say they are refused, by file and name.
+REFUSED_ON_PURPOSE = {
+    ("docs/features/component-api.md", "joined"),  # "{% on "click" "joined" %}처럼 그 밖의 이름에 ..."
+}
+
+
+def _framework_names() -> set[str]:
+    from wireview import LiveComponent
+    from wireview.core.handlers import is_framework_class
+    from wireview.features.presence import PresenceMixin
+
+    return {
+        name
+        for base in (LiveComponent, PresenceMixin)
+        for cls in base.__mro__
+        if is_framework_class(cls)
+        for name in cls.__dict__
+    }
+
+
+def _refused_bindings() -> tuple[list[str], set[tuple[str, str]]]:
+    """The refused bindings, and the REFUSED_ON_PURPOSE entries that were seen."""
+    owned = _framework_names()
+    found, seen = [], set()
+    for path in BINDING_FILES:
+        where = str(path.relative_to(ROOT))
+        for number, line in enumerate(path.read_text(encoding="utf-8").split("\n"), 1):
+            for match in BINDING.finditer(line):
+                name = match.group("on") or match.group("push")
+                if (where, name) in REFUSED_ON_PURPOSE:
+                    seen.add((where, name))
+                    continue
+                if name.startswith("_") or name in owned:
+                    found.append(f"{where}:{number}: {name}")
+    return found, seen
+
+
+def test_no_shipped_binding_names_a_method_no_client_can_call():
+    found, seen = _refused_bindings()
+    assert not found, "rename the handler; a framework or _ name stops the render"
+    assert seen == REFUSED_ON_PURPOSE, "a REFUSED_ON_PURPOSE entry no longer occurs; drop it"
+
+
+def test_the_binding_guard_reads_the_files():
+    assert any(path.suffix == ".html" for path in BINDING_FILES)
+    assert any("project_template" in str(path) for path in BINDING_FILES)
+    assert {"validate", "joined", "model_dump", "presence_set_typing"} <= _framework_names()
+
+
+@pytest.mark.parametrize(
+    "line",
+    ['<form {% on "change" "validate" %}>', "{% on 'click' '_helper' %}", 'JS().push("joined")'],
+)
+def test_the_binding_pattern_reads_each_shape(line):
+    assert BINDING.search(line)

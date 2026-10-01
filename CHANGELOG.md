@@ -211,6 +211,12 @@ The django-reactor era changelog (2.x) is preserved in
   log under Python's default filters, and where it does show (pytest, `-W default::DeprecationWarning`,
   `-X dev`).
 
+- The reconnect recovery example of `docs/features/form-feedback.md` bound `{% on "change" "validate" %}`,
+  Phoenix's `phx-change="validate"`. `validate` is a method of Pydantic's `BaseModel`, so no client
+  can call it: the binding dropped every change before, and stopped the render once `{% on %}`
+  refused such names. The example binds `check_email` and says why, and a test now refuses a
+  binding to a `_` or framework name in every shipped document, example and the starter template.
+
 ### Security
 
 - `on_upload_complete(name, entry)` is now a method of `Component`, and so framework surface a

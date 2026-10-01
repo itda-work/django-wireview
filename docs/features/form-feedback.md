@@ -391,7 +391,7 @@ input.is-invalid {
 </form>
 
 <!-- 값 없이 달면 폼의 change 이벤트를 다시 일으켜 폼 자신의 바인딩이 돈다 -->
-<form wire-auto-recover {% on "change" "validate" %}>
+<form wire-auto-recover {% on "change" "check_email" %}>
   <input name="email">
 </form>
 ```
@@ -399,10 +399,14 @@ input.is-invalid {
 ```python
 async def recover_draft(self, form_data: dict):
     self.body = form_data.get("body", "")
+
+async def check_email(self, email: str = ""):
+    self.email = email
 ```
 
 값 없이 다는 형태는 Phoenix의 `phx-auto-recover` 기본 동작과 같다. 그 폼에 `{% on "change" %}` 바인딩이
-있어야 한다. 이름이 여러 값을 가지면(체크박스) `form_data`에서 리스트다.
+있어야 한다. 핸들러 이름을 Phoenix처럼 `validate`로 짓지 않는다 — Pydantic `BaseModel`이 가진 이름이라
+클라이언트가 부를 수 없고, `{% on %}`이 렌더 때 거절한다. 이름이 여러 값을 가지면(체크박스) `form_data`에서 리스트다.
 
 ## Phoenix LiveView 대응
 
