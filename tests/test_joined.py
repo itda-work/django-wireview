@@ -329,6 +329,9 @@ class JoinedLateShelf(Component):
         await JoinedLateShelf.landed.wait()
         return "ok"
 
+    async def boom(self):
+        raise RuntimeError("the shelf's handler raised on purpose")
+
     @classmethod
     def _get_template(cls, template_name=None):
         return Template(
@@ -462,4 +465,129 @@ async def test_a_nested_join_does_not_carry_what_the_outer_pass_built():
         assert "fresh-note" in shown_again, shown_again
         assert "stale-note" not in shown_again
     finally:
+        await communicator.disconnect()
+
+
+async def test_a_crash_keeps_what_the_join_carried_for_the_rollback():
+    # A handler of the shelf raises before its work lands. The rollback joins
+    # it again from the element, which the join's render left without the
+    # sprig, so the second join carries nothing for it. The crash had dropped
+    # what the first join carried as if the shelf had left, and the sprig the
+    # landed work draws started anew.
+    JoinedLateShelf.landed = asyncio.Event()
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
+    communicator.scope["user"] = AnonymousUser()
+    connected, _ = await communicator.connect()
+    assert connected
+    try:
+        await communicator.send_json_to(_late_shelf_join(1))
+        await _until(communicator, "joined")
+        boom = {"id": "j-late-shelf", "command": "boom", "implicit_args": {}, "explicit_args": {}, "ref": 2}
+        await communicator.send_json_to({"command": "user_event", "payload": boom})
+        await _until(communicator, "error")
+
+        meta = {"user": AnonymousUser(), "wire": WireviewMeta(params={})}
+        loading = sign_state(JoinedLateShelf(**meta, id="j-late-shelf", data=AsyncResult.loading_state()))
+        await communicator.send_json_to(
+            {"command": "join", "payload": {"name": "JoinedLateShelf", "state": loading, "children": {}, "ref": 3}}
+        )
+        await _until(communicator, "joined")
+        JoinedLateShelf.landed.set()
+        drawn = str(await _until(communicator, "render"))
+
+        assert "kept-note" in drawn, drawn
+        assert "fresh-note" not in drawn
+    finally:
+        JoinedLateShelf.landed.set()
+        await communicator.disconnect()
+
+
+class JoinedLateNest(Component):
+    """A plain component holding the sprig."""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<b {% tag_header %}>{% live_component 'JoinedLateSprig' id='j-late-sprig' %}</b>"
+        )
+
+
+class JoinedLateNestShelf(Component):
+    """Like ``JoinedLateShelf``, with the sprig in a plain component inside what the work draws."""
+
+    data: AsyncResult[str] | None = None
+
+    async def joined(self):
+        self.data = await self.assign_async(self._load())
+
+    async def _load(self) -> str:
+        await JoinedLateShelf.landed.wait()
+        return "ok"
+
+    async def poke(self):
+        pass
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% if this.data.ok %}{% component 'JoinedLateNest' id='j-late-nest' %}{% endif %}</p>"
+        )
+
+
+async def test_a_component_the_root_has_yet_to_draw_does_not_join_with_its_entries():
+    # What a reconnect sends: the shelf's join, carrying the nest and the
+    # sprig, and the nest's own join right behind it -- the page sends it once
+    # the shelf is marked live, before the shelf's render, which does not draw
+    # the nest, is patched in. That join built the nest from the shelf's entry
+    # and the sprig from its own, and the page let the nest go a moment later:
+    # once the work landed, both were drawn from their defaults.
+    JoinedLateShelf.landed = asyncio.Event()
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
+    communicator.scope["user"] = AnonymousUser()
+    connected, _ = await communicator.connect()
+    assert connected
+    try:
+        meta = {"user": AnonymousUser(), "wire": WireviewMeta(params={})}
+        shelf = sign_state(JoinedLateNestShelf(**meta, id="j-late-nshelf", data=AsyncResult.success("ok")))
+        nest = sign_state(JoinedLateNest(**meta, id="j-late-nest"))
+        sprig = ["JoinedLateSprig", sign_state(JoinedLateSprig(**meta, id="j-late-sprig", note="kept-note"))]
+        children = {"j-late-nest": ["JoinedLateNest", nest], "j-late-sprig": sprig}
+        await communicator.send_json_to(
+            {
+                "command": "join",
+                "payload": {"name": "JoinedLateNestShelf", "state": shelf, "children": children, "ref": 1},
+            }
+        )
+        joined = str(await _until(communicator, "joined"))
+        assert "-note" not in joined, "the join's render does not draw the nest"
+        await communicator.send_json_to(
+            {
+                "command": "join",
+                "payload": {"name": "JoinedLateNest", "state": nest, "children": {"j-late-sprig": sprig}, "ref": 2},
+            }
+        )
+        await communicator.send_json_to({"command": "leave", "payload": {"id": "j-late-nest"}})
+        # Answered once the server has handled what came before it
+        poke = {"id": "j-late-nshelf", "command": "poke", "implicit_args": {}, "explicit_args": {}, "ref": 3}
+        await communicator.send_json_to({"command": "user_event", "payload": poke})
+        heard = await _until(communicator, "render")
+        assert [m["payload"]["id"] for m in heard] == ["j-late-nshelf"], "nothing answers the nest's join"
+
+        JoinedLateShelf.landed.set()
+        heard = await _until(communicator, "render")
+        while heard[-1]["payload"]["id"] != "j-late-nshelf":
+            heard += await _until(communicator, "render")
+
+        # The page joins the nest the landed render drew, and the nest's join
+        # settles the sprig the render's pass built for it
+        fresh = sign_state(JoinedLateNest(**meta, id="j-late-nest"))
+        await communicator.send_json_to(
+            {"command": "join", "payload": {"name": "JoinedLateNest", "state": fresh, "children": {}, "ref": 4}}
+        )
+        adopted = str(await _until(communicator, "joined"))
+        assert "kept-note" in adopted, adopted
+        assert "fresh-note" not in adopted
+    finally:
+        JoinedLateShelf.landed.set()
         await communicator.disconnect()

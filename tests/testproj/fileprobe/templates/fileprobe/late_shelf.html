@@ -1,0 +1,14 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <span data-testid="late-state">
+    {% if this.data.ok %}
+      ok
+    {% elif this.data.loading %}
+      loading
+    {% endif %}
+  </span>
+  {% if this.data.ok %}
+    {% component "FileBox" id="box" %}
+  {% endif %}
+</div>

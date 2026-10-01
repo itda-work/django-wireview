@@ -408,9 +408,15 @@ The django-reactor era changelog (2.x) is preserved in
   of the components inside it, which the outer join's pass had already built, so nothing took those
   entries from the restore map and they stayed for the life of the connection: the next instance
   built under the id, once an `{% if %}` showed it again, took the old state up. A join now keeps
-  no entry for a component already built, and the entries it keeps go when its component leaves. A
-  LiveComponent that only a later render draws -- inside the result of work `joined()` starts again
-  after the reconnect -- still comes back with the state it had.
+  no entry for a component already built, and the entries it keeps go when its component leaves --
+  not when a handler of it raises, since the rollback joins it again under the id with the element
+  as the page has it. A LiveComponent that only a later render draws -- inside the result of work
+  `joined()` starts again after the reconnect, directly or inside a `{% component %}` there -- still
+  comes back with the state it had. The page joins such a `{% component %}` right behind its root,
+  before it patches in the root's render that leaves it out, and that join took the entries for it
+  and the LiveComponent in it and lost them when the page let it go; the server now ignores a join
+  for an id its root carried an entry for and has yet to draw. The form is unchanged, so
+  `PROTOCOL_VERSION` stays.
 
 - A component whose join failed stays out of the page until the next connection, even when its
   parent's render draws it again. The parent's template pass built a new instance under the id

@@ -253,7 +253,9 @@ class WireviewSession:
         root = component
         while isinstance(root, LiveComponent) and (parent := self.repo.get(root._parent_id or "")) is not None:
             root = parent
-        removed = self.repo.remove(root.id)
+        # The page joins it again under the id, and what its join carried is
+        # still for that one: a component only a later render draws comes back
+        removed = self.repo.remove(root.id, keep_carried=True)
         await self._call_leaving(removed)
         self._release_uploads(removed)
         if self.repo.vsn < ERRORS_SINCE:
@@ -352,6 +354,12 @@ class WireviewSession:
             # state and its lifecycle runs with the parent's render. Current clients
             # do not send this; a cached older script still might.
             log.debug("Ignoring direct join for LiveComponent %s", component_id)
+            return
+        if existing is None and self.repo.undrawn(component_id):
+            # A nested component the page joined before the root's render that
+            # leaves it out was patched in; the page lets it go. Joined, it took
+            # the entries its root's later render restores it and its own from.
+            log.debug("Ignoring join for %s, which its root has yet to draw", component_id)
             return
         if existing is not None and existing.wire.has_joined:
             # The client only joins an element whose data-is-live is false, so a

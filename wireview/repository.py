@@ -436,6 +436,19 @@ class ComponentRepository:
         self._carried_by.pop(component_id, None)
         return self.children.pop(component_id, None)
 
+    def undrawn(self, component_id: str) -> bool:
+        """Whether ``component_id`` is under a root that joined but has yet to draw it.
+
+        The root's join carried its entry, and the root's pass would have built
+        it had the root drawn it: the root's render leaves it out -- the work
+        joined() starts again has not landed -- and the page lets its element go
+        once that render is patched in. A join the page sends for it meanwhile is
+        not a root's: it would take the entries the root's later render needs.
+        """
+        root_id = self._carried_by.get(component_id)
+        root = self.components.get(root_id) if root_id is not None else None
+        return component_id not in self.components and root is not None and root.wire.has_joined
+
     def abandon(self, component: Component) -> None:
         """Give up on a component the boundary refused: no render, no event target."""
         component.wire.freeze()
@@ -445,7 +458,7 @@ class ComponentRepository:
         self.components[component.id] = component
         return component
 
-    def remove(self, id: str) -> list[Component]:
+    def remove(self, id: str, *, keep_carried: bool = False) -> list[Component]:
         """Remove a component and every LiveComponent nested under it.
 
         Returns the removed instances, parent first, so the caller can run
@@ -453,10 +466,15 @@ class ComponentRepository:
 
         The restore map entries the component's join carried go with it: what
         it did not draw, no later instance under those ids should take up.
+        ``keep_carried`` keeps them for the join that comes under the id next --
+        the rollback after a crash, which joins with the element as the page
+        has it, without what only a later render was to draw. Its leave, or
+        its next removal, takes them.
         """
-        for child_id, root_id in list(self._carried_by.items()):
-            if root_id == id:
-                self._take_restored(child_id)
+        if not keep_carried:
+            for child_id, root_id in list(self._carried_by.items()):
+                if root_id == id:
+                    self._take_restored(child_id)
         component = self.components.pop(id, None)
         if component is None:
             return []

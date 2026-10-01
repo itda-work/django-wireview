@@ -8,12 +8,18 @@ component, so a test can end the instance while its uploads are in the air.
 ``FileParent`` hides and shows a LiveComponent that uploads, under the same id:
 each showing is a new instance with its own config. ``FileShelf`` draws an
 ordinary component that uploads, holding a LiveComponent that uploads, only
-from an event: a live render brings both in.
+from an event: a live render brings both in. ``FileLateShelf`` draws the same
+box only once the work its ``joined()`` starts has landed, which waits for
+``FileLateShelf.gate``: a test holds it closed across a reconnect.
 """
+
+import asyncio
+import threading
+import typing as t
 
 from django.urls import reverse
 
-from wireview import Component, ExternalUploadMeta, LiveComponent
+from wireview import AsyncResult, Component, ExternalUploadMeta, LiveComponent
 
 
 class FileProbe(Component):
@@ -115,3 +121,26 @@ class FileSprig(LiveComponent):
     async def on_upload_complete(self, name: str, entry) -> None:
         async for upload in self.consume_uploads(name):
             self.received = [*self.received, f"{upload.name}:{len(upload.read())}"]
+
+
+class FileLateShelf(Component):
+    """Draws a FileBox inside what the work its ``joined()`` starts brings.
+
+    The page's HTML has the box; the join's render, the work loading again, has
+    not. On a reconnect the page joins the shelf and then the box, whose element
+    it still has, before it patches that render in and lets the box go.
+    """
+
+    class Meta:
+        template_name = "fileprobe/late_shelf.html"
+
+    data: AsyncResult[str] = AsyncResult.success("ok")
+    gate: t.ClassVar[threading.Event] = threading.Event()
+
+    async def joined(self):
+        self.data = await self.assign_async(self._load())
+
+    async def _load(self) -> str:
+        while not FileLateShelf.gate.is_set():
+            await asyncio.sleep(0.01)
+        return "ok"

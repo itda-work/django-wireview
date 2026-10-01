@@ -485,6 +485,42 @@ def test_a_component_a_live_render_draws_and_the_live_component_in_it_join_and_u
     expect_text(by(page, "sprig-received").locator("li"), "sprig.txt:5")
 
 
+@pytest.fixture
+def late_gate():
+    """Holds the work ``FileLateShelf.joined()`` starts until the test opens it."""
+    from testproj.fileprobe.live import FileLateShelf
+
+    FileLateShelf.gate.clear()
+    try:
+        yield FileLateShelf.gate
+    finally:
+        FileLateShelf.gate.set()
+
+
+def test_a_live_component_in_a_component_the_work_draws_comes_back_after_a_reconnect(page, server, late_gate):
+    # The reconnect joins the shelf, whose render -- the work loading again --
+    # has no box, and the box right behind it, as the page still has it. The
+    # box's join took the entries the shelf's join carried for the box and the
+    # sprig, and went when the page let the box go: once the work landed, the
+    # sprig came back from its defaults.
+    page.add_init_script(OFFLINE_SHIM)
+    open_live(page, f"{server}/fileprobe/late/")
+    expect(page.locator("#box")).to_have_count(0)
+    late_gate.set()
+    expect_text(by(page, "sprig-joins"), "1")
+
+    late_gate.clear()
+    page.evaluate("() => { window.__link.offline = true; window.__link.sockets.forEach((s) => s.close()); }")
+    expect(page.locator("#late-shelf")).to_have_class(re.compile("wireview-disconnected"))
+    page.evaluate("() => { window.__link.offline = false; }")
+    expect_text(by(page, "late-state"), "loading")
+    expect(page.locator("#box")).to_have_count(0)
+    late_gate.set()
+
+    # Its own state comes back, and its joined() runs on the new connection
+    expect_text(by(page, "sprig-joins"), "2")
+
+
 def test_a_live_component_shown_again_after_a_reconnect_starts_anew(page, server):
     # The reconnect joins the shelf with every state under it, and then the box
     # with the sprig's: the shelf's pass had built the sprig already, so the box's
