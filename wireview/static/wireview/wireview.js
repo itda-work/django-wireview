@@ -293,6 +293,13 @@ class ServerConnection {
     // parent's leave has taken the LiveComponent along (#146)
     for (const [id, component] of Object.entries(this.components)) {
       if (onPage.has(id)) continue;
+      // A LiveComponent a render registered, whose element the patch of that
+      // render's component puts in on a frame still to come. Another
+      // component's patch running first must not let it go: the parent's HTML
+      // would find nothing to draw for it, and the server, having sent its
+      // render, would not send it again. Once that patch has run, absent means
+      // gone.
+      if (component.drawnBy !== undefined && this.patchPending(component.drawnBy)) continue;
       // Its root left the page, which the hook manager's MutationObserver --
       // watching inside the root -- never sees (#107)
       component.hookManager.destroy();
@@ -318,6 +325,7 @@ class ServerConnection {
       // What the element is now: new DOM under the id can make a LiveComponent
       // a root, or a root a LiveComponent (#146)
       component.owned = element.hasAttribute("wireview-live");
+      component.drawnBy = undefined;
       component.join();
     }
   }
@@ -383,6 +391,8 @@ class ServerConnection {
           // Whose join this render's instances are, for what arrives about the
           // child before the patch puts its element in
           child.rootId = root;
+          // Until a patch puts its element in, the patch to wait for
+          if (!document.getElementById(childId)) child.drawnBy = id;
           if (childDiff) {
             child.applyDiffData(childDiff);
             changedChildren.push(child);
@@ -1043,6 +1053,14 @@ class WireviewComponent {
      * @type {string|undefined}
      */
     this.rootId = undefined;
+    /**
+     * For a LiveComponent a render registered before its element is on the
+     * page: the component that render was for, whose patch puts the element
+     * in. Until that patch runs, the page does not take the missing element
+     * for one that left.
+     * @type {string|undefined}
+     */
+    this.drawnBy = undefined;
 
     // Phoenix-style state (static/dynamic separation)
     /** @type {string[]|null} */

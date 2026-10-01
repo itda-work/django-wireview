@@ -22,7 +22,7 @@ Fixture: tests/testproj/hookprobe/.
 
 import pytest
 from playwright.sync_api import expect
-from testproj.e2e_browser import expect_text, open_live, wait_live
+from testproj.e2e_browser import INBOX_SHIM, expect_text, open_live, wait_live
 from testproj.e2e_server import serve
 
 pytestmark = pytest.mark.e2e
@@ -180,6 +180,40 @@ def test_a_new_live_component_reaches_its_hooks_from_joined(page_live):
 
     expect_counted(page, "mounted", "sprout")
     expect_counted(page, "pinged", "sprout")
+
+
+@pytest.mark.parametrize("first", ["rooted", "shelf"])
+def test_a_new_live_component_survives_another_components_patch_running_first(page, server, first):
+    """The shelf's render registers the sprout, and the shelf's patch puts its element
+    in on the next frame. The rooted component -- another join -- has a render in the
+    same frame. When its patch ran first, the page saw a registered component with no
+    element and let it go as one that had left: the shelf's patch then found nothing
+    to draw for the sprout, and the server, which had sent its render, never sent it
+    again. Held and released at once, the server's order decides whose frame is first.
+    """
+    page.add_init_script(INBOX_SHIM)
+    open_live(page, f"{server}/hookprobe/", selector=ROOTED)
+    wait_live(page, "#ask-second[data-is-live='true']")
+    expect_text(page.locator("#rooted [data-testid=mores]"), "101")
+
+    page.evaluate("window.__inbox.holding = true")
+    more = "window.wireview.send(document.querySelector('#rooted [data-testid=ping]'), 'more', {}, {})"
+    if first == "rooted":
+        page.evaluate(more)
+        page.get_by_test_id("sprout").click()
+    else:
+        page.get_by_test_id("sprout").click()
+        page.evaluate(more)
+    page.wait_for_function("window.__inbox.held.some((m) => m.command === 'joined' && m.payload.id === 'sprout')")
+    page.wait_for_function("window.__inbox.held.some((m) => m.command === 'render' && m.payload.id === 'rooted')")
+    renders = page.evaluate("window.__inbox.held.filter((m) => m.command === 'render').map((m) => m.payload.id)")
+    assert renders == (["rooted", "shelf"] if first == "rooted" else ["shelf", "rooted"])
+    page.evaluate("window.__inbox.release()")
+
+    expect(page.locator("#sprout")).to_have_count(1)
+    expect_counted(page, "mounted", "sprout")
+    expect_counted(page, "pinged", "sprout")
+    expect_text(page.locator("#rooted [data-testid=mores]"), "102")
 
 
 def test_leaving_the_page_destroys_every_hook_on_it(page_live):
