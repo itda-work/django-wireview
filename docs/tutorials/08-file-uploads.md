@@ -296,7 +296,7 @@ def _is_safe_filename(self, name: str) -> bool:
 연결이 같은 id를 쓴다. 그래서 서버가 업로드에 쓰는 모든 것에 연결 id가 붙는다
 ([#77](https://github.com/itda-work/django-wireview/issues/77)).
 
-연결 id는 `WireviewConsumer.connect()`가 `secrets.token_urlsafe(16)`으로 발급한다. 채널 레이어
+연결 id는 WebSocket 연결이 열려 세션이 시작될 때 `secrets.token_urlsafe(16)`으로 발급된다. 채널 레이어
 주소인 `channel_name`과 달리 URL에 넣어도 되는 값이다.
 
 | 무엇 | 모양 |

@@ -303,6 +303,9 @@ The django-reactor era changelog (2.x) is preserved in
 - Tutorial 08 put `{{ entry.status }}` in a CSS class. `UploadStatus` is a `str, Enum`, which
   prints as `UploadStatus.UPLOADING`; the template uses `.value`, and the table says why.
 
+- Tutorial 08 said the connection id is issued by the consumer's `connect()`; the session issues
+  it when it starts, since the session logic moved out of the consumer (#60).
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
