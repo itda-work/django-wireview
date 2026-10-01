@@ -56,7 +56,7 @@ post_save / pre_delete / m2m_changed  (senders의 모델만 연결된다. m2m은
 |---|---|---|
 | 1 | `senders={("auth","User")}`일 때 `encode(user)` | 페이로드 383바이트에 `password` 해시, `email`, `is_superuser`, `groups`·`user_permissions`의 pk 목록이 실린다. encode 한 번에 쿼리 2개(m2m 필드마다 1개)가 나간다 |
 | 2 | 페이로드에서 `fields`를 `{"title"}`로 줄인 뒤 `serializer.decode` | `is_read=False`, `url=''`가 나온다. 기본값이다. `get_deferred_fields()`는 빈 집합이다. **오류 없이 틀린 값이 나온다** |
-| 3 | 2의 인스턴스를 `.save()` | `decode`가 `save`를 `DeserializedObject.save`(= `save_base(raw=True)`)로 바꿔 두었다. 그래서 모든 컬럼을 쓴다. `created_at`이 없으면 `IntegrityError`가 나고, 있으면 DB의 `url`·`is_read`를 기본값으로 **덮어쓴다**. (#153 뒤로는 모델의 `save()`를 거치지만, 모든 컬럼을 쓰는 것은 같다) |
+| 3 | 2의 인스턴스를 `.save()` | `decode`가 `save`를 `DeserializedObject.save`(= `save_base(raw=True)`)로 바꿔 두었다. 그래서 모든 컬럼을 쓴다. `created_at`이 없으면 `IntegrityError`가 나고, 있으면 DB의 `url`·`is_read`를 기본값으로 **덮어쓴다**. (당시 결과다. #153 뒤로는 `decode`가 페이로드에 없는 필드를 deferred로 남겨 4와 같아진다: 기본값이 나오지 않고, `.save()`는 모델의 `save()`를 거쳐 실린 컬럼만 쓴다) |
 | 4 | `Bookmark.from_db("default", ["id","title"], …)` | 나머지 필드가 deferred로 남는다. async 문맥에서 읽으면 `SynchronousOnlyOperation`이 **크게** 난다. `.save()`는 `UPDATE … SET title` 하나만 쓴다 |
 | 5 | deferred 필드가 있는 인스턴스(`only()` 등)를 저장 | post_save 수신자의 `encode`가 deferred 필드마다 `SELECT`를 한 번씩 부른다(4에서 필드 3개에 쿼리 3개). 지금도 있는 비용이다 |
 | 6 | pydantic 2.13 `set[tuple[str,str]] \| dict[tuple[str,str], Literal["__all__"] \| tuple[str, ...]]` | 집합과 매핑을 둘 다 받는다. 값에 맨 문자열 `"username"`을 적으면 거절된다. 흔한 `("username")` 실수가 여기서 잡힌다. **하한 pydantic 2.7에서는 확인하지 못했다**(`make test-lowest` 몫) |

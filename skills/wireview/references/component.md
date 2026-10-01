@@ -50,7 +50,7 @@ class XTodoList(Component):
 |---|---|
 | `joined()` | WebSocket 연결 후 첫 진입. 구독 설정, Streams 초기화, `allow_upload()` 자리 |
 | `leaving()` | 연결 해제. 정리 훅 |
-| `mutation(channel, action, instance)` | `Meta.subscriptions`의 모델이 변경됨. `action`은 `ModelAction.CREATED/UPDATED/DELETED` |
+| `mutation(channel, action, instance)` | `Meta.subscriptions`의 모델이 변경됨. `action`은 `ModelAction.CREATED/UPDATED/DELETED`, m2m 변경이면 `ADDED/REMOVED/CLEARED` |
 | `notification(channel, **kwargs)` | `broadcast(channel, ...)`로 보낸 사용자 정의 알림 |
 | `params_changed(params, uri)` | 브라우저 URL이 바뀜 (뒤로가기, `push_to`) |
 
@@ -68,8 +68,10 @@ class XTodoList(Component):
 
 `instance`는 알림에 실린 값에서 복원한 보통의 모델 인스턴스다. 저장하면 보통의 저장(모델의 `save()`, 시그널)이라
 **그 저장이 다시 알림이 되어 `mutation()`이 또 불린다** — 받을 때마다 무조건 `asave()`하면 끝없이 돈다. 값이 다를 때만
-저장하거나, `asave(update_fields=[...])`로 바꾼 필드만 쓰거나, 시그널을 내지 않는 `QuerySet.update()`를 쓴다. 페이로드에
-없는 필드(다중 테이블 상속의 부모 필드 등)는 deferred라 먼저 `arefresh_from_db()`로 읽는다.
+저장하거나, 시그널을 내지 않는 `QuerySet.update()`를 쓴다. `asave(update_fields=[...])`는 루프를 막지 않는다(그것도 알림이다).
+그것은 다른 컬럼을 페이로드의 옛 값으로 덮지 않으려 할 때 쓴다 — 저장은 페이로드에 실린 필드를 모두 쓰기 때문이다.
+페이로드에 없는 필드(다중 테이블 상속의 부모 필드 등)는 deferred라 `await instance.arefresh_from_db(fields=["name"])`처럼
+필드를 적어 먼저 읽는다(필드를 적지 않으면 deferred 필드는 건너뛴다).
 상세: https://github.com/itda-work/django-wireview/blob/main/docs/features/settings.md#모델-알림
 
 ## 이벤트 핸들러
