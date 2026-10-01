@@ -213,3 +213,16 @@ def test_a_new_live_component_shows_what_its_joined_streams(probe):
     by(probe, "seed").click()
     expect(by(probe, "seeds").locator("li")).to_have_text(["tick 1", "tick 2"])
     expect(by(probe, "seed-ticks").locator("li")).to_have_text(["tick 3"])
+
+
+def test_a_new_live_component_runs_the_js_its_joined_pushes(probe):
+    # Like its streams, the command arrives before the element it runs on
+    probe.evaluate(
+        """() => window.addEventListener("seed-joined", () => {
+          const html = document.documentElement;
+          html.dataset.seeded = String(Number(html.dataset.seeded || "0") + 1);
+        })"""
+    )
+    by(probe, "seed").click()
+    expect(by(probe, "seeds").locator("li")).to_have_text(["tick 1", "tick 2"])
+    expect(probe.locator("html")).to_have_attribute("data-seeded", "1")

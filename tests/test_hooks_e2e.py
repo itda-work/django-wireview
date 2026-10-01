@@ -11,6 +11,8 @@
   sees the root itself go: a hook on the root, and every hook under a root
   removed whole, missed ``destroyed()`` -- a timer or a microphone kept running
   after the page moved on.
+- An event a new LiveComponent pushes from ``joined()`` reaches its hook,
+  though it arrives before the element the hook sits on.
 - A ``pushEvent`` reply reaches the callback that asked. Refs were counted per
   component from ``hook-1``, and a reply went to the first component holding
   that ref, so two components waiting at once could swap answers.
@@ -95,6 +97,17 @@ def test_a_component_its_parent_stops_rendering_destroys_its_hooks(page_live):
     # The components that stay keep their hooks
     for who in ("first", "second"):
         assert page.locator("html").get_attribute(f"data-destroyed-{who}") is None
+
+
+def test_a_new_live_component_reaches_its_hooks_from_joined(page_live):
+    """The event its joined() pushes arrives before the render that brings the
+    element is patched in, so before the hook exists: it reached nothing."""
+    page = page_live
+
+    page.get_by_test_id("sprout").click()
+
+    expect_counted(page, "mounted", "sprout")
+    expect_counted(page, "pinged", "sprout")
 
 
 def test_leaving_the_page_destroys_every_hook_on_it(page_live):

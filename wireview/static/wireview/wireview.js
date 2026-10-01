@@ -4,7 +4,8 @@ import { Joins, settledEvent } from "./joins.mjs";
 import { commitScope, isCommitAction } from "./values.mjs";
 import { LoadingLedger } from "./loading.mjs";
 import { BINDING_PREFIX, bindingsFor, isRenderEcho, parseBinding, runSteps } from "./events.mjs";
-import { StreamOpQueue, planInsert, planTrim } from "./streams.mjs";
+import { planInsert, planTrim } from "./streams.mjs";
+import { TargetQueue } from "./targets.mjs";
 import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
 import { readReconnectSettings, reconnectOptions } from "./reconnect.mjs";
@@ -112,17 +113,13 @@ class ServerConnection {
     /** @type {NavigationLog} where the last boosted navigation landed, for `wireview:navigated` */
     this.navigations = new NavigationLog(document.location.href);
     /**
-     * @type {StreamOpQueue} stream ops in arrival order; one whose container a
-     * render has yet to patch in waits for the next frame, and the ops behind it
+     * @type {TargetQueue} stream ops, JS commands and hook events, each in its
+     * component's arrival order; one whose element a render has yet to patch in
+     * waits for the next frame, with its component's commands behind it
      */
-    this.streamOps = new StreamOpQueue({
-      find: ({ stream, owner }) => this._streamContainer(stream, owner),
-      apply: (container, { op, items, at, limit }) => {
-        boost.applying(() => this._applyStreamOp(container, op, items, at, limit));
-        boost.navEvent.sendNewContent();
-      },
+    this.targeted = new TargetQueue({
       schedule: (callback) => window.requestAnimationFrame(callback),
-      drop: ({ stream }) => console.warn(`[wireview] Stream container not found: ${stream}`),
+      report: (error) => console.error("[wireview] Error applying a held command:", error),
     });
   }
 
@@ -503,13 +500,17 @@ class ServerConnection {
         this._handleUploadOp(payload);
         break;
 
-      case "exec_js":
-        var { id, commands } = payload;
-        var componentEl = document.getElementById(id);
-        if (componentEl && commands) {
-          wireview.exec(componentEl, commands);
-        }
+      case "exec_js": {
+        const { id, commands } = payload;
+        if (!commands) break;
+        // Like a stream op, a new component's joined() sends it before the
+        // frame that patches its element in
+        this.targeted.push(id, {
+          find: () => document.getElementById(id),
+          apply: (element) => wireview.exec(element, commands),
+        });
         break;
+      }
 
       case "joined":
         // The join and everything its joined() queued -- a stream's first
@@ -531,14 +532,16 @@ class ServerConnection {
         }
         break;
 
-      case "push_event":
-        // Server pushing event to hooks
-        var { component_id, hook_id, event, payload: eventPayload } = payload;
-        var targetComponent = this.components[component_id];
-        if (targetComponent) {
-          targetComponent.hookManager.handlePushEvent(hook_id, event, eventPayload);
-        }
+      case "push_event": {
+        // Server pushing event to hooks. A new component's joined() pushes
+        // before the frame that patches its element in, and its hooks with it.
+        const { component_id, hook_id, event, payload: eventPayload } = payload;
+        this.targeted.push(component_id, {
+          find: () => (document.getElementById(component_id) ? this.components[component_id] : null),
+          apply: (component) => component.hookManager.handlePushEvent(hook_id, event, eventPayload),
+        });
         break;
+      }
 
       default:
         console.warn(`[wireview] Unknown command "${command}"`, payload);
@@ -639,7 +642,14 @@ class ServerConnection {
     // A new component's joined() streams arrive right behind the render that
     // brings its element, before the frame that patches it in: the queue holds
     // them for that frame rather than drop them
-    this.streamOps.push({ op, stream, items, at, limit, owner });
+    this.targeted.push(owner, {
+      find: () => this._streamContainer(stream, owner),
+      apply: (container) => {
+        boost.applying(() => this._applyStreamOp(container, op, items, at, limit));
+        boost.navEvent.sendNewContent();
+      },
+      drop: () => console.warn(`[wireview] Stream container not found: ${stream}`),
+    });
   }
 
   /**
@@ -1141,7 +1151,17 @@ class WireviewComponent {
     // already live -- no join, events dropped, hooks never told (#110). The open
     // handler joins everything once the socket is back.
     if (!connection.isOpen) return;
-    const element = /** @type {HTMLElement|null} */ (this.getElemenet());
+    const element = /** @type {(HTMLElement & {__wireviewHookManager?: HookManager}) | null} */ (
+      this.getElemenet()
+    );
+    // A LiveComponent a render brought in: the server drew it on a joined
+    // connection and marked it live, so there is nothing to join, but nothing
+    // looked for its hooks either -- they never mounted, and what its joined()
+    // pushed to them reached nothing.
+    if (element?.dataset.isLive === "true" && element.hasAttribute("wireview-live") && !element.__wireviewHookManager) {
+      this.hookManager.init();
+      return;
+    }
     if (element && element.dataset.isLive === "false") {
       const parentEl = element?.parentElement?.closest("[wireview-component]");
       const parent = /** @type {HTMLElement|null} */ (parentEl);

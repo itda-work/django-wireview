@@ -89,7 +89,8 @@ wireview/
 ├── templates/wireview_header.html  {% wireview_header %}가 렌더. wireview.min.js를 로드
 ├── templates/wireview/toasts.html  {% wireview_toasts %}가 심는 토스트 수신 컴포넌트의 템플릿
 └── static/wireview/       wireview.js (소스), rendered.mjs (diff 적용·HTML 복원 순수 함수),
-                           streams.mjs (스트림 DOM 판단 순수 함수. StreamOpQueue: 컨테이너가 아직 없는 연산은 다음 프레임까지, 뒤의 연산과 함께 기다린다), reload.mjs (reload 쿨다운 판단),
+                           streams.mjs (스트림 DOM 판단 순수 함수),
+                           targets.mjs (TargetQueue: 요소가 아직 없는 stream_op·exec_js·push_event는 다음 프레임까지 기다린다. 순서는 컴포넌트별), reload.mjs (reload 쿨다운 판단),
                            live-session.mjs (경계 넘음 판단 순수 함수), ready.mjs (defer 스크립트가 다 돌았는가),
                            events.mjs (wire-on-* 바인딩의 수정자 해석 순수 함수. 렌더 적용 중의 포커스·change 이벤트는 사용자 것이 아니다: isRenderEcho),
                            values.mjs (morph가 사용자가 고친 입력값을 덮어써도 되는가),
@@ -156,7 +157,7 @@ tests/
                            errorprobe/ 는 예외를 던지는 핸들러와 join을 보는 E2E(test_errors_e2e.py)의 픽스처(late/ 는 같은 id로 다시 join되는 페이지,
                            그 안의 ErrorNest 는 LiveComponent 하나를 들고 ?visit=swap 은 그 id를 루트로 바꾼다. remove가 지운 포커스 칸의 blur도 여기서 본다),
                            offlineprobe/ 는 연결이 끊긴 페이지의 바인딩·큐와 재연결 뒤의 훅·폼 복구를 보는 E2E(test_offline_e2e.py)의 픽스처,
-                           hookprobe/ 는 훅의 소유(중첩 컴포넌트)·이동·떠날 때의 destroyed·pushEvent 응답 짝을 보는 E2E(test_hooks_e2e.py)의 픽스처,
+                           hookprobe/ 는 훅의 소유(중첩 컴포넌트)·이동·떠날 때의 destroyed·pushEvent 응답 짝, 렌더가 새로 그린 LiveComponent의 훅과 그 joined()의 push_event를 보는 E2E(test_hooks_e2e.py)의 픽스처,
                            tempprobe/ 는 초기화된 temporary assign이 다음 렌더에 화면에 남는지 보는 E2E(test_temporary_assigns_e2e.py)의 픽스처,
                            stickyprobe/ 는 sticky 컴포넌트가 boost 이동을 건너 이어지는지(id 없는 것 포함), 그 훅과 페이지가
                            이동마다 한 번 navigated 알림을 받는지 보는 E2E(test_sticky_e2e.py)의 픽스처,
@@ -165,7 +166,7 @@ tests/
                            formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처,
                            fileprobe/ 는 업로드의 모든 입구(입력·드롭 존·미리보기·external)와 숨겼다 다시 보인 LiveComponent의 업로드를 보는 E2E(test_uploads_e2e.py)의 픽스처,
                            inheritprobe/ 는 다중 테이블 상속 모델들이다(3단, pk를 따로 둔 자식, 키 타입이 다른 부모). mutation()이 받은 자식 인스턴스가 부모 컬럼을 덮지 않고 제 부모 행에 붙어 있는지 본다(test_mutation_instance.py, 마이그레이션 없음),
-                           streamprobe/ 는 스트림의 dom_id·limit·wire-viewport-*와 같은 이름의 스트림을 쓰는 두 컴포넌트(delete 포함), 스트림 연산이 지운 포커스 항목의 blur를 보는 E2E(test_streams_e2e.py)의 픽스처다(?away=1 은 떠났다 돌아오는 컴포넌트 없는 페이지, ?pair=1 은 둘째 probe, ?nest=1 은 probe 목록 앞의 LiveComponent. seed 버튼은 joined()에서 스트림을 보내는 LiveComponent를 새로 그린다)
+                           streamprobe/ 는 스트림의 dom_id·limit·wire-viewport-*와 같은 이름의 스트림을 쓰는 두 컴포넌트(delete 포함), 스트림 연산이 지운 포커스 항목의 blur를 보는 E2E(test_streams_e2e.py)의 픽스처다(?away=1 은 떠났다 돌아오는 컴포넌트 없는 페이지, ?pair=1 은 둘째 probe, ?nest=1 은 probe 목록 앞의 LiveComponent. seed 버튼은 joined()에서 push_js와 스트림을 보내는 LiveComponent를 새로 그린다)
 
 examples/                  예제 앱 11개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.
                            testproj 위에서 돌고 make test가 함께 실행한다(pytest tests examples).

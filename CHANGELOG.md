@@ -316,12 +316,19 @@ The django-reactor era changelog (2.x) is preserved in
   that class's. A `name=` given with `public=False` is now the name: under a listed class it was
   dropped, and the class logged and signed its state as its parent
   (`docs/features/component-api.md`).
-- The stream a new component sends from `joined()` shows up. A LiveComponent a parent's render
-  brings in streams right behind that render, and the page patches the render in on the next
-  animation frame, so the op found no element and was dropped with a "container not found"
-  warning. An op whose container is not there yet now waits for the next frame, after the patches
-  already scheduled, and the ops behind it wait with it, so they apply in the order they came; one
-  that still finds nothing then is dropped. The client alone changed, so `PROTOCOL_VERSION` stays.
+- What a new component sends from `joined()` reaches it: its streams, its `push_js` and its
+  `push_event`. A LiveComponent a parent's render brings in sends them right behind that render,
+  and the page patches the render in on the next animation frame, so they found no element and
+  were dropped -- a stream with a "container not found" warning, the rest silently. One whose
+  element is not there yet now waits for the next frame, after the patches already scheduled, and
+  the same component's commands behind it wait with it, so they apply in the order they came; one
+  that still finds nothing then is dropped. Another component's commands do not wait, so a
+  background tab, which runs no frames, holds only what the waiting component sent. A held command
+  that throws is logged and the rest still apply. The client alone changed, so `PROTOCOL_VERSION`
+  stays.
+- The hooks of a LiveComponent a render brings in mount. The server draws it already marked live,
+  so the page never joined it, and that was the only place its hooks were looked for: they never
+  mounted, and nothing pushed to them arrived.
 - Test harness: `./tests/e2e.sh tests/test_streams_e2e.py` runs that file only. The script always
   passed pytest `tests examples` ahead of its arguments, so a path given to it was collected next to
   every E2E suite and the whole suite ran. The defaults now go only when no argument is a path (one

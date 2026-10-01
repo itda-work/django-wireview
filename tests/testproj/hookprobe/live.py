@@ -12,9 +12,12 @@ tests/test_hooks_e2e.py drives it.
 - Two components whose hooks wait on ``pushEvent`` replies at the same time.
   Each reply has to reach the callback that asked, whatever order the
   components sit in on the page.
+- A LiveComponent the shelf brings in pushes an event from ``joined()``. It
+  arrives before the render that brings the element is patched in, so before
+  the hook it is for exists.
 """
 
-from wireview import Component
+from wireview import Component, LiveComponent
 
 
 class HookProbeShelf(Component):
@@ -22,9 +25,21 @@ class HookProbeShelf(Component):
         template_name = "hookprobe/shelf.html"
 
     show: bool = True
+    sprouted: bool = False
 
     async def take_away(self):
         self.show = False
+
+    async def sprout(self):
+        self.sprouted = True
+
+
+class HookProbeSprout(LiveComponent):
+    class Meta:
+        template_name = "hookprobe/sprout.html"
+
+    async def joined(self):
+        await self.push_event("pinged", {})
 
 
 class HookProbeRooted(Component):

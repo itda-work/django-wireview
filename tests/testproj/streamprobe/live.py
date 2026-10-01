@@ -9,7 +9,7 @@ so a test can see a stream op's removal send none.
 
 import asyncio
 
-from wireview import Component, LiveComponent
+from wireview import JS, Component, LiveComponent
 
 PAGE = 15
 
@@ -44,12 +44,17 @@ class TickChild(LiveComponent):
 
 
 class SeedChild(LiveComponent):
-    """A LiveComponent that streams from joined(), so its ops can arrive before its element does."""
+    """A LiveComponent that streams from joined(), so its ops can arrive before its element does.
+
+    Its joined() also pushes a JS command, which has the same element to wait for.
+    """
 
     class Meta:
         template_name = "streamprobe/seed.html"
 
     async def joined(self):
+        # First, so it is the first of this component's commands to find no element
+        await self.push_js(JS().dispatch("seed-joined"))
         await self.stream(
             "seeds", [{"n": 1}, {"n": 2}], template="streamprobe/tick.html", dom_id=lambda i: f"seed-{i['n']}"
         )
