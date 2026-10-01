@@ -154,7 +154,7 @@ tests/
                            listprobe/ 는 항목 재배열 diff 를 옛 형태와 비교하는 E2E(test_comprehension_moves_e2e.py)의 픽스처,
                            cspprobe/ 는 인라인 허용 없는 CSP 아래 모든 바인딩 모양과 브라우저 업로드를 도는 E2E(test_csp_e2e.py)의 픽스처,
                            valueprobe/ 는 렌더가 입력 중인 값을 지우지 않는지, 렌더가 지운 포커스 칸의 blur·change가 나가지 않고 폼 피드백도 건드림으로 치지 않는지 보는 E2E(test_input_values_e2e.py)의 픽스처,
-                           errorprobe/ 는 예외를 던지는 핸들러와 join을 보는 E2E(test_errors_e2e.py)의 픽스처(holder 는 join이 실패한 컴포넌트를 렌더마다 다시 그린다, late/ 는 같은 id로 다시 join되는 페이지,
+                           errorprobe/ 는 예외를 던지는 핸들러와 join을 보는 E2E(test_errors_e2e.py)의 픽스처(holder 는 join이 실패한 컴포넌트와, 역시 join이 실패하는 held-nest 안의 LiveComponent held-child 를 렌더마다 다시 그린다, late/ 는 같은 id로 다시 join되는 페이지,
                            그 안의 ErrorNest 는 LiveComponent 하나를 들고 ?visit=swap 은 그 id를 루트로 바꾼다. remove가 지운 포커스 칸의 blur도 여기서 본다),
                            offlineprobe/ 는 연결이 끊긴 페이지의 바인딩·큐와 재연결 뒤의 훅·폼 복구를 보는 E2E(test_offline_e2e.py)의 픽스처,
                            hookprobe/ 는 훅의 소유(중첩 컴포넌트)·이동·떠날 때의 destroyed·pushEvent 응답 짝, 렌더가 새로 그린 LiveComponent·다시 그린 컴포넌트의 훅과 그 joined()의 push_event, 다시 그린 컴포넌트의 join과 viewport, 부모의 패치가 중첩 컴포넌트 안에 그린 훅·바인딩, 같은 렌더가 그린 훅에 가는 push_event, 다른 컴포넌트의 패치가 먼저 돌아도 새 LiveComponent가 그려지는지를 보는 E2E(test_hooks_e2e.py)의 픽스처,

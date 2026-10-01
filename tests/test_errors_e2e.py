@@ -129,6 +129,95 @@ def test_a_component_whose_join_failed_joins_again_on_the_next_connection(page, 
     expect(page.locator("#held")).to_have_class("wireview-error")
 
 
+def _failures(page, id: str) -> int:
+    return page.evaluate(f"window.__wireviewErrors.filter((e) => e.id === '{id}' && e.during === 'join').length")
+
+
+def _sent_to(sent: list, *ids: str) -> list:
+    return [m for m in sent if {m["payload"].get("id"), m["payload"].get("component_id")} & set(ids)]
+
+
+def test_the_live_components_in_a_component_whose_join_failed_stay_out_too(probe):
+    # The nest's join failed, and the instance it made of ``held-child`` went
+    # with it. The page kept the child registered: a click went to an id the
+    # server no longer held, and once the holder's pass built new instances
+    # of both, the child's render and joined() made it a live component in a
+    # dead one, reached by its button and its hook.
+    sent = []
+    probe.sockets[0].on("framesent", lambda frame: sent.append(json.loads(frame)))
+    probe.wait_for_function("window.__wireviewErrors.some((e) => e.id === 'held-nest')")
+    expect(probe.locator("#held-nest")).to_have_class("wireview-error")
+
+    for count in ("1", "2"):
+        by(probe, "held-child-poke").click()
+        probe.evaluate("window.__askers['held-child'].pushEvent('poke', {})")
+        # Answered after anything the poke or the push sent; the second time,
+        # the holder's pass has built instances of both
+        by(probe, "holder-bump").click()
+        expect_text(by(probe, "holder-count"), count)
+
+    expect(probe.locator("#held-nest")).to_have_class("wireview-error")
+    # What the page had for it stays
+    expect(by(probe, "held-child-poke")).to_have_count(1)
+    assert _sent_to(sent, "held-nest", "held-child") == []
+    assert _failures(probe, "held-nest") == 1, "not joined again"
+
+
+def test_the_live_components_in_a_failed_join_stay_out_before_the_next_patch(page, server):
+    # Any patch lets go of what a failed join keeps out, but the click can come
+    # first: right after the error, and right after the holder's render that
+    # brings the child's new instance, before that render's patch.
+    sent = []
+    page.on("websocket", lambda ws: ws.on("framesent", lambda frame: sent.append(json.loads(frame))))
+    page.add_init_script(INBOX_SHIM + "window.__inbox.holding = true;")
+    click = "document.querySelector('[data-testid=held-child-poke]').click()"
+    open_live(page, f"{server}/errorprobe/", selector="#box[data-is-live='true']")
+    page.wait_for_function("window.__inbox.held.some((m) => m.command === 'error' && m.payload.id === 'held-nest')")
+    page.evaluate(f"window.__inbox.release(); {click}")
+    expect(page.locator("#held-nest")).to_have_class("wireview-error")
+
+    page.evaluate("window.__inbox.holding = true")
+    by(page, "holder-bump").click()
+    page.wait_for_function("window.__inbox.held.some((m) => m.command === 'render' && m.payload.id === 'holder')")
+    page.evaluate(f"window.__inbox.release(); {click}")
+    expect_text(by(page, "holder-count"), "1")
+    # Answered after anything the clicks sent
+    by(page, "holder-bump").click()
+    expect_text(by(page, "holder-count"), "2")
+
+    assert _sent_to(sent, "held-nest", "held-child") == []
+
+
+def test_a_boosted_navigation_tries_a_failed_join_again(probe):
+    # The new page's HTML morphs into the same nodes, so the page took the
+    # element for the one whose join had failed and never joined it: the
+    # component stayed dead on a page where it may well join.
+    probe.wait_for_function("window.__wireviewErrors.filter((e) => e.id === 'held-nest').length === 1")
+    assert _failures(probe, "held") == 1
+
+    probe.evaluate("window.wireview.visit('/errorprobe/')")
+    probe.wait_for_function(
+        "['held', 'held-nest'].every((id) => window.__wireviewErrors.filter((e) => e.id === id).length === 2)"
+    )
+
+    # And on the new page, what the failure keeps out stays out
+    sent = []
+    probe.sockets[0].on("framesent", lambda frame: sent.append(json.loads(frame)))
+    by(probe, "holder-bump").click()
+    expect_text(by(probe, "holder-count"), "1")
+    by(probe, "held-poke").click()
+    by(probe, "held-child-poke").click()
+    probe.evaluate("window.__askers.held.pushEvent('poke', {})")
+    probe.evaluate("window.__askers['held-child'].pushEvent('poke', {})")
+    by(probe, "holder-bump").click()
+    expect_text(by(probe, "holder-count"), "2")
+
+    expect(probe.locator("#held")).to_have_class("wireview-error")
+    expect(probe.locator("#held-nest")).to_have_class("wireview-error")
+    assert _sent_to(sent, "held", "held-nest", "held-child") == []
+    assert len(probe.sockets) == 1
+
+
 @pytest.fixture
 def next_late_join_fails(monkeypatch):
     """Once set, the next join of ``#late`` raises in ``joined()``, which answers it with an ``error``."""

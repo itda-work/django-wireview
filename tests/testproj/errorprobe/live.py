@@ -3,7 +3,9 @@
 tests/test_errors_e2e.py drives it. ``bump_then_raise`` changes the state and
 then raises, so the page shows whether that change was rolled back;
 ``ErrorJoin`` cannot join at all, and ``ErrorHolder`` draws one again on
-every render. The ``late/`` page holds one ``ErrorBox``
+every render, with an ``ErrorJoinNest`` -- which cannot join either -- holding
+a LiveComponent, ``held-child``, whose hook and button would reach the
+instance the holder's pass builds for it. The ``late/`` page holds one ``ErrorBox``
 and links back to itself, so a test can join it again under its id while an
 answer to the join before is still on its way (#139). Its ``ErrorNest`` holds
 a LiveComponent, ``nest-child``, whose own render -- or the ``remove`` its
@@ -57,6 +59,27 @@ class ErrorHolder(Component):
 
     async def bump(self, **_rest):
         self.count += 1
+
+
+class ErrorJoinNest(Component):
+    class Meta:
+        template_name = "errorprobe/join_nest.html"
+
+    async def joined(self):
+        raise RuntimeError("errorprobe: the nest's joined() raised on purpose")
+
+
+class ErrorHeldChild(LiveComponent):
+    class Meta:
+        template_name = "errorprobe/held_child.html"
+
+    pokes: int = 0
+
+    async def poke(self, **_rest):
+        self.pokes += 1
+
+    async def handle_hook_event(self, hook_id, event, payload):
+        self.pokes += 1
 
 
 class ErrorNest(Component):

@@ -415,8 +415,9 @@ The django-reactor era changelog (2.x) is preserved in
   parent's render draws it again. The parent's template pass built a new instance under the id
   that nothing joined, and the server's HTML took the `wireview-error` class away: the page took
   the element up again, and a click or a hook's `pushEvent` reached an instance whose `joined()`
-  never ran. The page now keeps such an element marked and sends nothing for it until it
-  reconnects. The server is unchanged: it does not retry the join, as before.
+  never ran. The page now keeps such an element marked and sends nothing for it, nor for the
+  LiveComponents in it, until it reconnects or a boosted navigation brings the server's HTML for
+  the page again. The server is unchanged: it does not retry the join, as before.
 
 ### Security
 
