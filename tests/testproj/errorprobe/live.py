@@ -8,6 +8,8 @@ answer to the join before is still on its way (#139). Its ``ErrorNest`` holds
 a LiveComponent, ``nest-child``, whose own render -- or the ``remove`` its
 ``vanish`` asks for -- can be on its way when the parent joins again;
 ``?visit=swap`` puts a root ``ErrorBox`` under that id instead (#146).
+Enter in the child's field asks for ``vanish`` too, and the field's blur is
+bound, so a test can see whether the page sends it while the ``remove`` applies.
 """
 
 from wireview import Component, LiveComponent
@@ -54,3 +56,6 @@ class ErrorNestChild(LiveComponent):
 
     async def vanish(self, **_rest):
         await self.destroy()
+
+    async def blurred(self, **_rest):
+        pass

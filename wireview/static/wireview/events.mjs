@@ -16,22 +16,27 @@
 
 export const BINDING_PREFIX = "wire-on-";
 
-/** The focus events a browser fires on its own when the element with focus is removed or moved. */
-const FOCUS_EVENTS = new Set(["blur", "focusout", "focus", "focusin"]);
+/**
+ * The events a browser fires on its own when the element with focus is removed
+ * or moved: the focus events, and `change` first when the field's value changed
+ * since it was focused (Chromium does, as it does when the user leaves).
+ */
+const REMOVAL_EVENTS = new Set(["blur", "focusout", "focus", "focusin", "change"]);
 
 /**
  * Whether an event is the render's doing rather than the user's. A browser
  * blurs the focused element it removes -- while it is still in the document --
  * so a render that hid a field with `{% on "blur" %}` sent that field's handler
- * with what was typed: Escape that cancelled an edit saved it. A server change
- * is applied synchronously, so no input of the user's can land inside one, and
- * a focus event dispatched during it never is.
+ * with what was typed: Escape that cancelled an edit saved it. A field typed in
+ * is sent `change` before the blur, so `{% on "change" %}` did the same. A server
+ * change is applied synchronously, so no input of the user's can land inside one,
+ * and none of these dispatched during it is.
  * @param {string} type - the event's type
  * @param {boolean} applying - whether a server change is being applied to the DOM right now
  * @returns {boolean}
  */
 export function isRenderEcho(type, applying) {
-  return applying && FOCUS_EVENTS.has(type);
+  return applying && REMOVAL_EVENTS.has(type);
 }
 
 /** Modifiers that take the next token as their argument. */

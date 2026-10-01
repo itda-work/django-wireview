@@ -2577,6 +2577,8 @@ const FeedbackManager = {
 
     // Track change events (for select, checkbox, radio)
     document.addEventListener("change", (e) => {
+      // A typed-in field the render removes is sent change first: nobody's either
+      if (isRenderEcho(e.type, boost.inServerChange())) return;
       const target = /** @type {HTMLElement} */ (e.target);
       if (this.isFormInput(target)) {
         const name = this.getFieldName(target);
@@ -2849,8 +2851,8 @@ const EventBindings = {
     // A bubbling event is handled on its way up, target first, like the inline
     // handlers were. One that does not bubble (focus, mouseenter) still passes
     // through the root while capturing; only its target's bindings apply.
-    // A focus event while a render is applied is the browser's answer to it,
-    // not the user's: it sends nothing (events.mjs isRenderEcho).
+    // A focus event (or the change before a blur) while a render is applied is
+    // the browser's answer to it, not the user's: it sends nothing (events.mjs isRenderEcho).
     root.addEventListener(type, (event) => {
       if (event.bubbles && !isRenderEcho(event.type, boost.inServerChange())) this.bubble(event);
     });

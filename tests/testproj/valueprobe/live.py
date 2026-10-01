@@ -43,6 +43,7 @@ class ValueProbe(Component):
     label: str = "original"
     saves: int = 0
     cancels: int = 0
+    changes: int = 0
 
     @property
     def child_label(self) -> str:
@@ -115,3 +116,8 @@ class ValueProbe(Component):
     async def cancel_edit(self, **_rest):
         self.cancels += 1
         self.editing = False
+
+    # A field typed in is sent change before its blur, by the user's leaving and
+    # by the cancel's render alike; only the first is the user's.
+    async def edit_changed(self, **_rest):
+        self.changes += 1

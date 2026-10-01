@@ -5,4 +5,8 @@
   <button data-testid="{{ this.id }}-bump" {% on "click" "bump" myself=True %}>bump</button>
   <button data-testid="{{ this.id }}-vanish"
           {% on "click" "vanish" myself=True %}>vanish</button>
+  <input data-testid="{{ this.id }}-field"
+         name="field"
+         {% on "keypress.enter" "vanish" myself=True %}
+         {% on "blur" "blurred" myself=True %}>
 </div>

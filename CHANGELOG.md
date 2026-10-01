@@ -255,10 +255,10 @@ The django-reactor era changelog (2.x) is preserved in
   and Ctrl+Enter never sent. They bind `keydown` now, and `tests/test_doc_examples.py` refuses a
   `keypress` binding on such a key. Tutorial 03's `save_edit` returns when the edit is already
   over, so a blur that lands after Escape's cancel does not save.
-- A render that removes or moves the focused element no longer sends that element's `blur` or
-  `focusout` binding. The browser blurs a focused element it removes, while it is still in the
-  document, and the delegated listener sent it as the user's: Escape whose `cancel_edit` hid an
-  edit field with `{% on "blur" "save_edit" %}` saved what was typed instead. Focus events
+- A render that removes or moves the focused element no longer sends that element's `blur`,
+  `focusout` or `change` binding. The browser blurs a focused element it removes, while it is still in the
+  document, and sends `change` first if it was typed in; the delegated listener sent them as the user's: Escape whose `cancel_edit` hid an
+  edit field with `{% on "blur" "save_edit" %}` saved what was typed instead. Focus and change events
   dispatched while a morph, a stream operation or a removal is applied are dropped, and
   form feedback does not count them as a touch either.
 - Tutorial 03 saved a toggle and an edit with `QuerySet.aupdate()`, which sends no `post_save`,

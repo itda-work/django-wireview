@@ -52,11 +52,16 @@
            name="edit"
            value="{{ this.label }}"
            {% on "keydown.key.escape" "cancel_edit" %}
-           {% on "blur" "save_edit" %}>
+           {% on "blur" "save_edit" %}
+           {% on "change" "edit_changed" %}>
   {% else %}
     <button data-testid="start-edit" {% on "click" "start_edit" %}>edit</button>
   {% endif %}
+  <span data-testid="edit-feedback"
+        wire-feedback-for="edit"
+        class="wire-no-feedback">edit feedback</span>
   <span data-testid="label">{{ this.label }}</span>
   <span data-testid="saves">{{ this.saves }}</span>
   <span data-testid="cancels">{{ this.cancels }}</span>
+  <span data-testid="changes">{{ this.changes }}</span>
 </div>

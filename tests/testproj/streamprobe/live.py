@@ -3,6 +3,8 @@
 tests/test_streams_e2e.py drives it. The items are plain dicts, so the default
 ``{name}-{item.pk}`` id cannot apply and ``dom_id`` has to. ``load_more`` is what
 ``wire-viewport-bottom`` calls as the sentinel under the list comes into view.
+The probe's ticks are buttons: a click deletes that tick, and a blur is counted,
+so a test can see a stream op's removal send none.
 """
 
 import asyncio
@@ -16,14 +18,14 @@ def row_id(item: dict) -> str:
     return f"row-{item['n']}"
 
 
-async def insert_tick(component, n: int) -> None:
+async def insert_tick(component, n: int, template: str = "streamprobe/tick.html") -> None:
     # Newest first, at most three on the page
     await component.stream_insert(
         "ticks",
         {"n": n},
         at=0,
         limit=3,
-        template="streamprobe/tick.html",
+        template=template,
         dom_id=lambda i: f"tick-{i['n']}",
     )
 
@@ -53,6 +55,8 @@ class StreamProbe(Component):
     pages: int = 1
     ticks: int = 0
     newer: int = 0
+    #: Blurs of the probe's tick items: the user's leave one, a stream op's removal must not
+    blurs: int = 0
     #: Render a TickChild ahead of the ticks list (``?nest=1``)
     nest: bool = False
 
@@ -72,4 +76,11 @@ class StreamProbe(Component):
 
     async def tick(self, **_rest):
         self.ticks += 1
-        await insert_tick(self, self.ticks)
+        await insert_tick(self, self.ticks, "streamprobe/tick_button.html")
+
+    async def untick(self, n: int, **_rest):
+        # A delete only, no render: the item leaves through the stream op alone
+        await self.stream_delete("ticks", f"tick-{n}")
+
+    async def blurred(self, **_rest):
+        self.blurs += 1

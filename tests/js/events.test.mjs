@@ -139,13 +139,14 @@ test("a key filter does not match while an IME is composing (Enter that picks a 
 
 test("a focus event while a server change is applied is the render's, not the user's", () => {
   // The browser blurs the focused field a render removes; that blur saved an
-  // edit Escape had cancelled (tutorial 03).
-  for (const type of ["blur", "focusout", "focus", "focusin"]) {
+  // edit Escape had cancelled (tutorial 03). A field typed in is sent change
+  // first, which did the same to a change binding.
+  for (const type of ["blur", "focusout", "focus", "focusin", "change"]) {
     assert.equal(isRenderEcho(type, true), true, type);
     assert.equal(isRenderEcho(type, false), false, type);
   }
   // Nothing else is: no other event is dispatched by removing an element.
-  for (const type of ["click", "change", "input", "keydown", "submit"]) {
+  for (const type of ["click", "input", "keydown", "submit"]) {
     assert.equal(isRenderEcho(type, true), false, type);
   }
 });

@@ -159,3 +159,40 @@ def test_a_nested_component_with_a_stream_of_one_name_keeps_its_own_list(page, s
 
     expect(by(page, "ticks").locator("li")).to_have_text(["tick 1"])
     expect(by(page, "child-ticks").locator("li")).to_have_text(["tick 2", "tick 1"])
+
+
+def test_a_delete_leaves_another_components_item_of_the_same_id(page, server):
+    # Both probes hold a `tick-1`. The delete looked the id up in the whole page,
+    # so the second probe's delete took the first probe's item.
+    page.set_viewport_size({"width": 800, "height": 600})
+    open_live(page, f"{server}/streamprobe/?pair=1")
+    second = by(page, "second")
+    page.locator("#probe [data-testid=tick]").click()
+    second.get_by_test_id("tick").click()
+    expect(page.locator("#probe [data-testid=ticks] li")).to_have_text(["tick 1"])
+    expect(second.get_by_test_id("ticks").locator("li")).to_have_text(["tick 1"])
+
+    second.get_by_test_id("tick-item").click()
+
+    expect_count(second.get_by_test_id("ticks").locator("li"), 0)
+    expect(page.locator("#probe [data-testid=ticks] li")).to_have_text(["tick 1"])
+
+
+def test_an_item_a_stream_op_removes_does_not_send_its_blur(probe):
+    # A focused element the page removes is blurred while it is still in the
+    # document. The stream op is the server's, so that blur is nobody's.
+    by(probe, "tick").click()
+    item = by(probe, "tick-item")
+    item.focus()
+    by(probe, "tick").click()  # the user leaves the item: that blur is theirs
+    expect_text(by(probe, "blurs"), "1")
+    expect(by(probe, "tick-item")).to_have_text(["tick 2", "tick 1"])
+
+    by(probe, "tick-item").first.click()  # focused, then deleted by the answer
+    expect(by(probe, "tick-item")).to_have_text(["tick 1"])
+    # Events are handled in order, so once this answer is in, a blur sent
+    # during the delete would have been handled too.
+    by(probe, "tick").click()
+    expect(by(probe, "tick-item")).to_have_text(["tick 3", "tick 1"])
+
+    expect_text(by(probe, "blurs"), "1")

@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<li>
+  <button data-testid="tick-item"
+          {% on "click" "untick" n=item.n %}
+          {% on "blur" "blurred" %}>tick {{ item.n }}</button>
+</li>

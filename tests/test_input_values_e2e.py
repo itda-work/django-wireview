@@ -237,7 +237,8 @@ def test_a_field_a_render_removes_does_not_send_its_blur(probe):
     # Tutorial 03's editor: Escape cancels, and the cancel's render removes the
     # focused field. The browser blurs a focused element it removes, while it is
     # still in the document, so the delegated listener sent `blur` -> save_edit
-    # with the typed text: Escape saved the edit instead of cancelling it.
+    # with the typed text: Escape saved the edit instead of cancelling it. The
+    # `change` a typed-in field is sent before that blur went out the same way.
     page = probe
     field = _start_editing(page)
     field.press("Escape")
@@ -250,6 +251,9 @@ def test_a_field_a_render_removes_does_not_send_its_blur(probe):
 
     expect_text(by(page, "saves"), "0")
     expect_text(by(page, "label"), "original")
+    expect_text(by(page, "changes"), "0")
+    # Nor did the user touch the field: its feedback stays hidden
+    expect(by(page, "edit-feedback")).to_have_class("wire-no-feedback")
 
 
 def test_leaving_the_field_still_sends_its_blur(probe):
@@ -259,3 +263,5 @@ def test_leaving_the_field_still_sends_its_blur(probe):
 
     expect_text(by(page, "saves"), "1")
     expect_text(by(page, "label"), "typed then escaped")
+    expect_text(by(page, "changes"), "1")
+    expect(by(page, "edit-feedback")).not_to_have_class("wire-no-feedback")

@@ -254,6 +254,36 @@ def test_a_live_component_that_destroys_itself_leaves_the_page(page, server):
     expect(page.locator("#nest-child")).to_have_count(0)
 
 
+def test_a_field_a_remove_takes_away_does_not_send_its_blur(page, server):
+    # A focused element the page removes is blurred while it is still in the
+    # document. The remove is the server's, so that blur is nobody's: sent, it
+    # named a component the server had just let go.
+    sent = []
+    page.on("websocket", lambda ws: ws.on("framesent", lambda frame: sent.append(json.loads(frame))))
+    open_live(page, f"{server}/errorprobe/late/", selector="#nest[data-is-live='true']")
+
+    bumps = iter(range(1, 10))
+
+    def blurs():
+        # A round trip first, so the frames the page sent before it are all seen
+        by(page, "late-bump").click()
+        expect_text(by(page, "late-count"), str(next(bumps)))
+        return [m for m in sent if m["command"] == "user_event" and m["payload"]["command"] == "blurred"]
+
+    by(page, "nest-child-bump").click()  # the child is live: its bindings are sent
+    expect_text(by(page, "nest-child-count"), "1")
+    field = by(page, "nest-child-field")
+    field.focus()
+    by(page, "late-draft").focus()  # the user leaves the field: that blur is theirs
+    assert len(blurs()) == 1
+
+    field.focus()
+    field.press("Enter")
+    expect(page.locator("#nest-child")).to_have_count(0)
+
+    assert len(blurs()) == 1
+
+
 @pytest.fixture
 def next_nest_child_destroys_in_joined(monkeypatch):
     """Arms the child's next ``joined()`` to destroy it; ``.joined`` is set by each one.
