@@ -16,7 +16,7 @@
 make test ARGS="-k slots"
 ```
 
-테스트는 `examples/slots/tests.py`. CI가 `make test`로 매번 돌리므로 이 예제는 조용히 낡지 않는다.
+테스트는 `examples/slots/tests.py`. `make test`가 함께 돌리고 릴리스 게이트(CI)가 태그마다 다시 돌리므로 이 예제는 조용히 낡지 않는다.
 
 ## 더 읽기
 

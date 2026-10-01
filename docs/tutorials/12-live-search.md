@@ -1,6 +1,6 @@
 # 12. Live Search - 실시간 검색
 
-> 동작하는 전체 코드: [examples/search/](../../examples/search/) — CI가 매번 돌리는 예제다.
+> 동작하는 전체 코드: [examples/search/](../../examples/search/) — `make test`가 함께 돌리고, 릴리스 게이트(CI)가 태그마다 다시 돌리는 예제다.
 
 이 튜토리얼에서는 실시간 검색 기능을 만들며 디바운스와 키보드 내비게이션을 학습합니다.
 

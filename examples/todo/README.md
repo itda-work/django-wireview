@@ -22,7 +22,7 @@ make run-daphne        # WebSocket이 필요하므로 runserver가 아니다
 make test ARGS="-k todo"
 ```
 
-테스트는 `examples/todo/tests.py`이고 브라우저 테스트가 함께 들어 있다 (`make test-e2e LAYER=memory ARGS="-k todo"`). CI가 `make test`로 매번 돌리므로 이 예제는 조용히 낡지 않는다.
+테스트는 `examples/todo/tests.py`이고 브라우저 테스트가 함께 들어 있다 (`make test-e2e LAYER=memory ARGS="-k todo"`). `make test`가 함께 돌리고 릴리스 게이트(CI)가 태그마다 다시 돌리므로 이 예제는 조용히 낡지 않는다.
 
 ## 더 읽기
 

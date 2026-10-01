@@ -1,6 +1,6 @@
 # 14. Notifications - 알림 센터
 
-> 동작하는 전체 코드: [examples/notifications/](../../examples/notifications/) — CI가 매번 돌리는 예제다.
+> 동작하는 전체 코드: [examples/notifications/](../../examples/notifications/) — `make test`가 함께 돌리고, 릴리스 게이트(CI)가 태그마다 다시 돌리는 예제다.
 
 이 튜토리얼에서는 사용자마다 따로 받는 알림 센터를 만들며 채널과 broadcast, JS 명령를 학습합니다.
 

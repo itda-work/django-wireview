@@ -1,6 +1,6 @@
 # 10. Poll 앱 - 실시간 투표
 
-> 동작하는 전체 코드: [examples/poll/](../../examples/poll/) — CI가 매번 돌리는 예제다.
+> 동작하는 전체 코드: [examples/poll/](../../examples/poll/) — `make test`가 함께 돌리고, 릴리스 게이트(CI)가 태그마다 다시 돌리는 예제다.
 
 이 튜토리얼에서는 실시간 투표 앱을 만들며 wireview의 렌더링 최적화를 학습합니다.
 

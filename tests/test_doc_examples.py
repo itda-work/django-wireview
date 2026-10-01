@@ -609,3 +609,42 @@ def test_the_binding_guard_reads_the_files():
 )
 def test_the_binding_pattern_reads_each_shape(line):
     assert BINDING.search(line)
+
+
+#: "CI runs on every push" read true once; ci.yml now runs only when asked and when release.yml calls it.
+EVERY_RUN = re.compile(r"CI[가는이]?[^.\n]{0,30}(매번|매 푸시|푸시마다|커밋마다)")
+
+
+def _ci_triggers() -> set[str]:
+    text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    block = re.search(r"^on:\n((?:[ \t]+.*\n)+)", text, re.M)
+    assert block, "ci.yml has an on: block"
+    return set(re.findall(r"^  (\w+):", block.group(1), re.M))
+
+
+def test_no_doc_says_ci_runs_on_every_push_while_it_does_not():
+    if _ci_triggers() & {"push", "pull_request"}:
+        pytest.skip("CI runs on push now")
+    claims = [
+        f"{path.relative_to(ROOT)}:{number}: {line.strip()}"
+        for path in _template_sources()
+        if path.suffix == ".md" and "legacy" not in path.parts and path.name != "CHANGELOG.md"
+        for number, line in enumerate(path.read_text(encoding="utf-8").split("\n"), 1)
+        if EVERY_RUN.search(line)
+    ]
+    assert not claims, (
+        "ci.yml runs on workflow_dispatch and workflow_call only; `make test` is what runs:\n" + "\n".join(claims)
+    )
+
+
+@pytest.mark.parametrize(
+    ("line", "claims"),
+    [
+        ("CI가 매번 돌리는 예제다.", True),
+        ("CI가 `make test`로 매번 돌리므로", True),
+        ("CI가 매 푸시마다 실행하므로", True),
+        ("`make test`가 함께 돌리고 릴리스 게이트(CI)가 태그마다 다시 돌린다.", False),
+    ],
+)
+def test_the_ci_rule_reads_the_claim(line, claims):
+    assert bool(EVERY_RUN.search(line)) is claims

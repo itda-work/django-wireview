@@ -310,6 +310,11 @@ The django-reactor era changelog (2.x) is preserved in
   finds a `wire-stream` container by name across the whole page, so two components using the same
   name still write into the first one's list. The section now names the stream per component.
 
+- The README, the tutorials and the examples said CI runs the examples on every push. `ci.yml`
+  runs only by hand and when the release workflow calls it; `make test` is what runs them. The
+  text says so, and `tests/test_doc_examples.py` refuses the old claim while `ci.yml` has no push
+  trigger.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

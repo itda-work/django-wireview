@@ -1,6 +1,6 @@
 # 11. Rating 앱 - 별점 평가
 
-> 동작하는 전체 코드: [examples/rating/](../../examples/rating/) — CI가 매번 돌리는 예제다.
+> 동작하는 전체 코드: [examples/rating/](../../examples/rating/) — `make test`가 함께 돌리고, 릴리스 게이트(CI)가 태그마다 다시 돌리는 예제다.
 
 이 튜토리얼에서는 별점 평가 시스템을 만들며 키보드 접근성과 URL 상태 관리를 학습합니다.
 

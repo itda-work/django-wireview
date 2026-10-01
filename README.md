@@ -291,7 +291,7 @@ class XCounter(Component):
 ## 예제
 
 동작하는 예제 앱 11개가 [examples/](https://github.com/itda-work/django-wireview/tree/main/examples)에 있습니다. 각 디렉터리가 개념 하나이고,
-테스트와 README를 함께 가지고 있으며, CI가 매번 실행합니다.
+테스트와 README를 함께 가지고 있으며, `make test`가 함께 실행하고 릴리스 게이트(CI)가 태그마다 다시 실행합니다.
 
 | 예제 | 개념 |
 |------|------|

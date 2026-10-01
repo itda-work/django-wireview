@@ -1,6 +1,6 @@
 # 15. LiveComponent - 중첩 컴포넌트
 
-> 동작하는 전체 코드: [examples/livecomp/](../../examples/livecomp/) — CI가 매번 돌리는 예제다.
+> 동작하는 전체 코드: [examples/livecomp/](../../examples/livecomp/) — `make test`가 함께 돌리고, 릴리스 게이트(CI)가 태그마다 다시 돌리는 예제다.
 
 이 튜토리얼에서는 LiveComponent를 사용하여 독립적인 상태를 가진 중첩 컴포넌트를 만드는 방법을 학습합니다.
 
