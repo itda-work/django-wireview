@@ -214,12 +214,13 @@ class ComponentOptions:
 def _name_unlisted(cls: t.Type["Component"], name: str | None) -> None:
     """Name a ``public=False`` class for logs, telemetry and the signed state.
 
-    One under a listed class keeps the listed names it inherits. Any other
-    takes its own: with nothing to inherit the first log line crashed, and an
+    A ``name=`` given in the class statement is the name. Without one, a class
+    under a listed class keeps the listed names it inherits. Any other takes
+    its own: with nothing to inherit the first log line crashed, and an
     unlisted base's names -- ``LiveComponent``'s among them -- are another class's.
     """
     listed = cls._by_fqn.get(getattr(cls, "_fqn", ""))
-    if listed is not None and issubclass(cls, listed):
+    if name is None and listed is not None and issubclass(cls, listed):
         return
     cls._name = name or cls.__name__
     cls._fqn = f"{cls.__module__}.{cls._name}"

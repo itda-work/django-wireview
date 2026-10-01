@@ -799,6 +799,23 @@ class TestComponentUploadMethods:
         assert (UnlistedMid._name, UnlistedMid._fqn) == ("UnlistedMid", f"{__name__}.UnlistedMid")
         assert (UnderListed._name, UnderListed._fqn) == (UploadComponent._name, UploadComponent._fqn)
 
+    @pytest.mark.unit
+    def test_a_name_given_to_an_unlisted_component_wins_over_the_inherited_one(self):
+        """``name=`` was dropped under a listed base: the class logged and signed as its parent."""
+        from wireview import LiveComponent
+
+        class NamedUnder(UploadComponent, public=False, name="UnlistedUploadAlias"):
+            pass
+
+        class NamedRow(LiveComponent, public=False, name="UnlistedRowAlias"):
+            pass
+
+        assert (NamedUnder._name, NamedUnder._fqn) == ("UnlistedUploadAlias", f"{__name__}.UnlistedUploadAlias")
+        assert (NamedRow._name, NamedRow._fqn) == ("UnlistedRowAlias", f"{__name__}.UnlistedRowAlias")
+        assert (
+            "UnlistedUploadAlias" not in Component._all and f"{__name__}.UnlistedUploadAlias" not in Component._by_fqn
+        )
+
     @pytest.mark.asyncio
     @pytest.mark.unit
     async def test_allow_upload_creates_registry(self):

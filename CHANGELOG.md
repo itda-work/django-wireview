@@ -230,7 +230,9 @@ The django-reactor era changelog (2.x) is preserved in
   `AttributeError: ... '_name'` as soon as wireview named it -- `allow_upload()` in `joined()`
   did, for the log line of a failed config send. Such a class, a `LiveComponent` one included,
   now has a name and a fully qualified name of its own; one under a listed class still inherits
-  that class's.
+  that class's. A `name=` given with `public=False` is now the name: under a listed class it was
+  dropped, and the class logged and signed its state as its parent
+  (`docs/features/component-api.md`).
 
 ### Security
 
