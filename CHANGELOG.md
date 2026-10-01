@@ -30,6 +30,9 @@ The django-reactor era changelog (2.x) is preserved in
   database may not be consistent yet -- a seed or restore on a running deployment sent rows times
   channels messages at once. A raw `post_save` is skipped, and so is the m2m that `loaddata` then
   sets on the same object (found with #153).
+- The components of one connection that hear the same model change each get an `instance` of
+  their own. They shared one object, so a component that edited (or refreshed) what it heard
+  changed what the next one heard (found with #153).
 
 ## [1.0.0rc4] - 2026-10-01
 

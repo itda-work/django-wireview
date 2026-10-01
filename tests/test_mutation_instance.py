@@ -262,3 +262,55 @@ async def test_a_published_mutation_reaches_mutation_and_its_instance_saves_like
         assert saves == [product.pk], "the echo did not save again"
         assert published == []
         await session.stop()
+
+
+class ProductRenamer(Component):
+    """Renames the instance it hears about, without saving: what it holds is its own."""
+
+    class Meta:
+        template_name = "mutsave/product.html"
+
+    product_id: int = 0
+    name: str = ""
+
+    def get_subscriptions(self) -> set[str]:
+        return {f"rating.product.{self.product_id}"}
+
+    async def mutation(self, channel: str, action: ModelAction, instance: t.Any) -> None:
+        RENAMED.append((self.id, instance, instance.name))
+        instance.name = f"renamed by {self.id}"
+
+
+RENAMED: list[tuple[str, t.Any, str]] = []
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_each_component_that_hears_a_mutation_gets_an_instance_of_its_own(published):
+    templates = [
+        {
+            "BACKEND": "django.template.backends.django.DjangoTemplates",
+            "OPTIONS": {"loaders": [("django.template.loaders.locmem.Loader", TEMPLATES)]},
+        }
+    ]
+    with override_settings(TEMPLATES=templates):
+        product = await Product.objects.acreate(name="lamp")
+        message = payload_of(published, f"rating.product.{product.pk}")
+        RENAMED.clear()
+
+        session = WireviewSession(RecordingOutbound(), user=AnonymousUser(), channel_name="mutsave-2")
+        await session.start(session=SessionView(), vsn=PROTOCOL_VERSION)
+        for id in ("a", "b"):
+            renamer = ProductRenamer(id=id, product_id=product.pk, user=AnonymousUser(), wire=WireviewMeta(params={}))
+            await session.handle_message(
+                {"command": "join", "payload": {"name": "ProductRenamer", "state": sign_state(renamer)}}
+            )
+
+        await session.model_mutation(message)
+
+        assert sorted(id for id, _, _ in RENAMED) == ["a", "b"]
+        assert [name for _, _, name in RENAMED] == ["lamp", "lamp"], "each heard the payload, not the other's edit"
+        (_, first, _), (_, second, _) = RENAMED
+        assert first is not second
+        await session.stop()

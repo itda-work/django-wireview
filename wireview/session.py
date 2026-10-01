@@ -1276,10 +1276,12 @@ class WireviewSession:
     async def model_mutation(self, data):
         # The signature here is coupled to:
         #   `wireview.auto_broadcast.notify_mutation`
+        # Each component gets an instance of its own: one that edits what it heard
+        # must not change what the next one hears.
         await self._dispatch_notifications(
             "mutation",
             data["channel"],
-            {
+            lambda: {
                 "instance": serializer.decode(data["instance"]),
                 "action": data["action"],
             },
@@ -1288,13 +1290,14 @@ class WireviewSession:
     async def notification(self, data):
         # The signature here is coupled to:
         #   `wireview.utils.send_notification`
-        await self._dispatch_notifications("notification", data["channel"], data["kwargs"])
+        await self._dispatch_notifications("notification", data["channel"], lambda: data["kwargs"])
 
-    async def _dispatch_notifications(self, receiver: str, channel: str, kwargs: dict[str, t.Any]):
+    async def _dispatch_notifications(self, receiver: str, channel: str, arguments: t.Callable[[], dict[str, t.Any]]):
         for component in self.repo.components_subscribed_to(channel):
             if self.repo.get(component.id) is not component:
                 # Went with an ancestor that raised earlier in this loop
                 continue
+            kwargs = arguments()
             try:
                 await getattr(component, receiver)(channel, **kwargs)
                 await self.send_render(component)
