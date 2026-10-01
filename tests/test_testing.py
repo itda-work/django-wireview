@@ -360,6 +360,36 @@ class TestTheRecordedLayerRefusesWhatARealLayerRefuses:
         groups = view.wire._mock_channel_layer.groups
         assert groups["room.2"] and not groups["room.1"]
 
+    class Tuner(Component):
+        room: str = "room.1"
+
+        def get_subscriptions(self) -> set[str]:
+            return {self.room}
+
+        async def go(self, room: str):
+            await self.wire.replace_to(f"?room={room}")
+
+        async def params_changed(self, params, uri):
+            self.room = params.get("room", self.room)
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_a_subscription_params_change_to_it_fails_follow_push(self):
+        # A real session subscribes after params_changed too, and fails there
+        view = await mount(self.Tuner)
+        await view.call("go", room="room:2")
+        with pytest.raises(TypeError, match="Group name"):
+            await view.follow_push()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_the_subscriptions_follow_the_params(self):
+        view = await mount(self.Tuner)
+        await view.call("go", room="room.2")
+        await view.follow_push()
+        groups = view.wire._mock_channel_layer.groups
+        assert groups["room.2"] and not groups["room.1"]
+
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_a_valid_name_is_recorded(self):

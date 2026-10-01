@@ -47,7 +47,7 @@ async def test_increment():
 | `view.is_frozen` | `freeze()` 여부 |
 | `view.redirected_to` | `wire.redirect_to()`로 간 URL. 없으면 `None`. 단언은 `assert_redirected_to()`가 낫다 — 실패하면 일어난 이동을 나열한다 |
 | `view.sent_messages` | 클라이언트로 나간 메시지 목록 (원본. 항목의 모양은 공개가 아니다) |
-| `view.broadcasts` | 이 컴포넌트가 낸 브로드캐스트. 채널 레이어가 거절하는 이름(`room:42`)은 기록하지 않고 레이어와 같은 `TypeError`를 던진다. 구독(`Meta.subscriptions`·`get_subscriptions()`)도 세션처럼 `mount()` 끝과 `call()`마다 맞추므로, 그런 이름의 구독은 `mount()`나 그 `call()`이 같은 `TypeError`로 실패한다 |
+| `view.broadcasts` | 이 컴포넌트가 낸 브로드캐스트. 채널 레이어가 거절하는 이름(`room:42`)은 기록하지 않고 레이어와 같은 `TypeError`를 던진다. 구독(`Meta.subscriptions`·`get_subscriptions()`)도 세션처럼 `mount()` 끝과 `call()`·`follow_push()`마다 맞추므로, 그런 이름의 구독은 `mount()`나 그 `call()`·`follow_push()`가 같은 `TypeError`로 실패한다 |
 | `view.presence_broadcasts` | 그중 `PresenceMixin`이 낸 것(입장·퇴장·타이핑). 항목마다 `kwargs`에 `action` |
 | `view.clear_messages()` | 다음 단계 전에 비운다 |
 

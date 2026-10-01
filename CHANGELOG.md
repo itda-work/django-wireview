@@ -168,9 +168,9 @@ The django-reactor era changelog (2.x) is preserved in
 - `mount()` records broadcasts and presence messages in a stand-in channel layer, and it recorded
   any group name. Every real layer refuses a name with anything but letters, digits, `-`, `_` and
   `.` (`TypeError`), so a component broadcasting to `room:42` passed its unit tests and failed on
-  the first real broadcast. The stand-in now refuses what the layers refuse, and `mount()` and
-  `call()` subscribe to the component's `get_subscriptions()` through it as a session does after a
-  join and after each event, so `Meta.subscriptions = {"room:42"}` -- a join that fails on a real
+  the first real broadcast. The stand-in now refuses what the layers refuse, and `mount()`,
+  `call()` and `follow_push()` subscribe to the component's `get_subscriptions()` through it as a
+  session does after a join, after each event and after `params_changed`, so `Meta.subscriptions = {"room:42"}` -- a join that fails on a real
   server -- fails `mount()` too. The shipped skill's
   presence example used that very topic, and its `JS().add_class("shake", to="#row")` was a
   `TypeError` too; both are fixed, and `tests/test_doc_examples.py` binds every `JS()` chain the

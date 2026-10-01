@@ -530,6 +530,8 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         self._repo.params.clear()
         self._repo.params.update(params)
         await self._component._handle_params(params, nav.url)
+        # The session subscribes after params_changed as after any event
+        await self._update_subscriptions()
         return nav
 
     # Streams
