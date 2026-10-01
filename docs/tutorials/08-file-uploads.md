@@ -106,7 +106,7 @@ class XFileUploader(Component):
   <!-- 업로드 목록 -->
   <ul class="upload-list">
     {% for entry in this.uploads.files %}
-      <li class="upload-entry {{ entry.status }}">
+      <li class="upload-entry {{ entry.status.value }}">
         <span class="name">{{ entry.client_name }}</span>
         <span class="size">{{ entry.client_size|filesizeformat }}</span>
 
@@ -139,7 +139,7 @@ class XFileUploader(Component):
 | `client_name` | str | 원본 파일명 |
 | `client_size` | int | 파일 크기 (bytes) |
 | `client_type` | str | MIME 타입 |
-| `status` | str | pending/uploading/completed/error/cancelled/consumed |
+| `status` | `UploadStatus` | pending/uploading/completed/error/cancelled/consumed. `==`로 문자열과 비교되지만, 그대로 출력하면 `UploadStatus.UPLOADING`이 찍히므로 CSS 클래스에는 `{{ entry.status.value }}`를 쓴다 |
 | `progress` | int | 0-100 |
 | `errors` | list | 에러 메시지 목록 |
 

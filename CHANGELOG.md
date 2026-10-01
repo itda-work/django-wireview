@@ -300,6 +300,9 @@ The django-reactor era changelog (2.x) is preserved in
   a later section, so the render failed with `Missing handler` as soon as a file was chosen. The
   class defines it now.
 
+- Tutorial 08 put `{{ entry.status }}` in a CSS class. `UploadStatus` is a `str, Enum`, which
+  prints as `UploadStatus.UPLOADING`; the template uses `.value`, and the table says why.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
