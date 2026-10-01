@@ -156,7 +156,8 @@ tests/
                            valueprobe/ 는 렌더가 입력 중인 값을 지우지 않는지, 렌더가 지운 포커스 칸의 blur·change가 나가지 않고 폼 피드백도 건드림으로 치지 않는지 보는 E2E(test_input_values_e2e.py)의 픽스처,
                            errorprobe/ 는 예외를 던지는 핸들러와 join을 보는 E2E(test_errors_e2e.py)의 픽스처(holder 는 join이 실패한 컴포넌트와, 역시 join이 실패하는 held-nest 안의 LiveComponent held-child 를 렌더마다 다시 그린다, late/ 는 같은 id로 다시 join되는 페이지,
                            그 안의 ErrorNest 는 LiveComponent 하나를 들고 ?visit=swap 은 그 id를 루트로 바꾼다. remove가 지운 포커스 칸의 blur도 여기서 본다.
-                           slot/ 은 join이 실패하는 컴포넌트 둘 — 슬롯에 호스트의 LiveComponent를 받은 것과 자기 LiveComponent를 든 것 — 과 그 훅들이 떠나는 페이지),
+                           slot/ 은 join이 실패하는 컴포넌트 둘 — 슬롯에 호스트의 LiveComponent를 받은 것과 자기 LiveComponent를 든 것 — 과 그 훅들이 떠나는 페이지.
+                           핸들러가 들은 것은 HEARD 에 남아, 서버가 거절했는지를 테스트가 본다),
                            offlineprobe/ 는 연결이 끊긴 페이지의 바인딩·큐와 재연결 뒤의 훅·폼 복구를 보는 E2E(test_offline_e2e.py)의 픽스처,
                            hookprobe/ 는 훅의 소유(중첩 컴포넌트)·이동·떠날 때의 destroyed·pushEvent 응답 짝, 렌더가 새로 그린 LiveComponent·다시 그린 컴포넌트의 훅과 그 joined()의 push_event, 다시 그린 컴포넌트의 join과 viewport, 부모의 패치가 중첩 컴포넌트 안에 그린 훅·바인딩, 같은 렌더가 그린 훅에 가는 push_event, 다른 컴포넌트의 패치가 먼저 돌아도 새 LiveComponent(와 그것의 첫 작업이 그리는 bud)가 그려지는지를 보는 E2E(test_hooks_e2e.py)의 픽스처,
                            tempprobe/ 는 초기화된 temporary assign이 다음 렌더에 화면에 남는지 보는 E2E(test_temporary_assigns_e2e.py)의 픽스처,
@@ -203,7 +204,7 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 
 ### 클라이언트 DOM 속성
 
-`wire-on-<이벤트>[.<수정자>…]`(`{% on %}`의 출력, 값은 JSON), `wire-hook`, `wire-update="ignore"`, `wire-boost`(폼), `wire-stream`, `wire-viewport-top/bottom`, `wire-disabled-with`, `wire-feedback-for`, `wire-no-feedback`, `wire-auto-recover`, `wire-flash`, `wire-upload`, `wire-upload-select`, `wire-upload-drop`, `wire-preview`. 로딩 클래스는 `wireview-click-loading` 계열. 상세는 `docs/features/`.
+`wire-on-<이벤트>[.<수정자>…]`(`{% on %}`의 출력, 값은 JSON), `wire-hook`, `wire-update="ignore"`, `wire-boost`(폼), `wire-stream`, `wire-viewport-top/bottom`, `wire-disabled-with`, `wire-join-failed`(서버가 그린다, join이 실패한 컴포넌트), `wire-feedback-for`, `wire-no-feedback`, `wire-auto-recover`, `wire-flash`, `wire-upload`, `wire-upload-select`, `wire-upload-drop`, `wire-preview`. 로딩 클래스는 `wireview-click-loading` 계열. 상세는 `docs/features/`.
 
 ## 명령
 
@@ -273,6 +274,10 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
   소켓이 닫히고 페이지 전체가 다시 join한다. 세션의 `_crashed(component, ref)`가 그 컴포넌트만 버리고 클라이언트에
   `error`를 보내 이벤트 전 상태로 다시 join하게 한다. join 단계의 예외는 `_join_failed`(재시도 없음 — 재시도하면 루프다).
   클라이언트가 보내지 않는 메시지는 `receive_json`이 로그 후 버린다. 계약은 `docs/features/errors.md`, 테스트는 tests/test_errors.py(#94).
+- **join이 실패한 컴포넌트는 서버가 막는다.** 연결이 그 id를 기억하고(`repo.join_failed`), 부모의 패스가 그 id로
+  다시 만든 인스턴스와 그것이 소유한 LiveComponent는 `repo.refused`가 참이다 — 이벤트는 빈 render로 답하고, 훅·업로드는
+  버린다. 그 id로 join이 오면 다시 시도한다(`retry_join`). 클라이언트가 이벤트를 받는 새 경로를 만들면 `refused`를
+  확인한다. 페이지가 소유를 추정해 막던 때는 슬롯의 LiveComponent까지 막고 boost 뒤 다시 join하지 않았다.
 - **mount가 halt하거나 예외를 던지면 아무것도 렌더되지 않는다** (#58부터). 컴포넌트는 저장소에서도
   지워지므로 그 id로 오는 이벤트도 처리되지 않는다. 렌더를 보내는 새 경로를 만들 때
   `wire.mount_halted`를 건너뛰면 가드가 막으려던 HTML과 `data-state`가 그대로 나간다. 예외를

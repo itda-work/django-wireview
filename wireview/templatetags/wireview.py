@@ -105,13 +105,28 @@ def tag_header(context):
     # (wireview-boost.js), so the instance, its DOM and its hooks carry over (#72).
     sticky = " wire-sticky" if component._meta.sticky else ""
     return format_html(
-        ('id="{id}" data-name="{name}" data-state="{state}" data-is-live="{is_live}" wireview-component{sticky}'),
+        (
+            'id="{id}" data-name="{name}" data-state="{state}" data-is-live="{is_live}" '
+            "wireview-component{sticky}{failed}"
+        ),
         id=component.id,
         name=component._name,
         is_live=str(repo.is_live).lower(),
         state=_signed_state(component, repo),
         sticky=sticky,
+        failed=_join_failed_mark(component, repo),
     )
+
+
+def _join_failed_mark(component: Component, repo: ComponentRepository) -> str:
+    """`` wire-join-failed`` on an instance a parent's pass built under the id of one whose join failed.
+
+    The page shows it as ``wireview-error``, which the parent's patch would
+    otherwise take away. An attribute and not ``class``: a template that writes
+    its own ``class`` after the tag keeps it. Only such an instance changes its
+    parent's static parts; every other render stays as it was.
+    """
+    return " wire-join-failed" if repo.is_live and repo.refused(component.id) else ""
 
 
 def _mount_in_template(component: Component, repo: ComponentRepository) -> bool:
@@ -1133,11 +1148,12 @@ def live_tag_header(context):
         (
             'id="{id}" data-name="{name}" data-state="{state}" '
             'data-is-live="{is_live}" data-parent="{parent_id}" '
-            "wireview-component wireview-live"
+            "wireview-component wireview-live{failed}"
         ),
         id=component.id,
         name=component._name,
         is_live=str(repo.is_live).lower(),
         state=_signed_state(component, repo),
         parent_id=parent_id,
+        failed=_join_failed_mark(component, repo),
     )

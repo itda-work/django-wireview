@@ -99,6 +99,10 @@ class ComponentRepository:
         # drawn only by a later render (an async result, an {% if %}).
         self.children: ChildrenRepo = {}
         self._carried_by: dict[str, str] = {}
+        # The components whose join failed on this connection, each with the ids
+        # its failure removed: itself and the LiveComponents it owned. A parent's
+        # later pass builds new instances under those ids that nothing joins.
+        self._join_failures: dict[str, set[str]] = {}
         self.is_live = is_live
         # Track LiveComponents that need joined() called after parent renders
         self._pending_live_components: list[LiveComponent] = []
@@ -448,6 +452,35 @@ class ComponentRepository:
         root_id = self._carried_by.get(component_id)
         root = self.components.get(root_id) if root_id is not None else None
         return component_id not in self.components and root is not None and root.wire.has_joined
+
+    def join_failed(self, id: str, removed: list[Component]) -> None:
+        """Remember that the join of ``id`` failed, until a join under the id tries again."""
+        self._join_failures[id] = {id, *(component.id for component in removed)}
+
+    def retry_join(self, id: str) -> None:
+        """A join under ``id`` came: the page tries the component again."""
+        self._join_failures.pop(id, None)
+
+    def refused(self, id: str) -> bool:
+        """Whether ``id`` names what a failed join left: nothing reaches it.
+
+        A component its parent's pass built again under the id of one whose join
+        failed never ran ``joined()``, nor did the LiveComponents it owns -- the
+        ones whose parent chain leads to it, not one in its slot, which the
+        component filling the slot owns. Before the pass builds them again, the
+        ids the failure removed name nothing, and are refused too.
+        """
+        component = self.components.get(id)
+        if component is None:
+            return any(id in removed for removed in self._join_failures.values())
+        return self.root_of(component).id in self._join_failures
+
+    def root_of(self, component: Component) -> Component:
+        """The component whose join made ``component``'s instance: itself, or a LiveComponent's owner."""
+        root = component
+        while isinstance(root, LiveComponent) and (parent := self.components.get(root._parent_id or "")) is not None:
+            root = parent
+        return root
 
     def abandon(self, component: Component) -> None:
         """Give up on a component the boundary refused: no render, no event target."""

@@ -160,3 +160,20 @@ test("a LiveComponent's own render waits with its root's join", () => {
   assert.equal(joins.render("root", 2, true), true);
   assert.equal(joins.render("root", 8, true), true, "the new child's");
 });
+
+test("a join the page sent stands over a failure an older render reports", () => {
+  // A render made before the page joined the id again (a boosted page's
+  // components join behind their root) still marks it wire-join-failed
+  const joins = new Joins();
+  assert.equal(joins.holds("held"), false);
+  joins.sent("held", 4);
+  assert.equal(joins.holds("held"), true, "pending");
+  joins.render("held", 4, true);
+  assert.equal(joins.holds("held"), true, "answered");
+  // It failed: the mark is about the page's last join
+  joins.forget("held");
+  assert.equal(joins.holds("held"), false);
+  joins.sent("held");
+  joins.clear();
+  assert.equal(joins.holds("held"), false);
+});

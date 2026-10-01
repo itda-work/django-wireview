@@ -11,6 +11,7 @@ element. A message no client of ours sends is logged and dropped. A client too
 old to know ``error`` gets what every client used to get.
 """
 
+import json
 import typing as t
 
 import pytest
@@ -204,9 +205,10 @@ async def test_a_join_that_raises_is_marked_not_retried():
     try:
         await _join(communicator, "e-1", fail_to_join=True)
         error = await _next(communicator, "error", "remove", "render")
-        # Nothing was left behind for an event to reach: it is not answered,
-        # and the next thing on the socket is another component's join.
+        # Nothing was left behind for an event to reach: no handler runs, and
+        # the answer is an empty render, so the page's loading state ends.
         await _event(communicator, "e-1", "bump", ref=2)
+        answer = await _next(communicator, "render", "error")
         await _join(communicator, "e-2")
         after = await _next(communicator, "render", "error")
         calls = list(CALLS)
@@ -214,6 +216,7 @@ async def test_a_join_that_raises_is_marked_not_retried():
         await communicator.disconnect()
 
     assert error == {"command": "error", "payload": {"id": "e-1", "during": "join"}}
+    assert answer == {"command": "render", "payload": {"id": "e-1", "diff": None, "ref": 2}}
     assert calls == [("leaving", "e-1")]
     assert after["payload"]["id"] == "e-2"
 
@@ -238,9 +241,8 @@ async def test_a_parents_render_draws_a_component_whose_join_failed_and_leaves_i
     # The ``_join_failed`` contract on the server: one ``error`` for the join, the
     # instance gone, and no retry. The parent's next render draws the element
     # again, over an instance its template pass builds and nothing joins: no
-    # joined(), no ``error`` again, nothing that would loop. That instance is
-    # not for the page to take up -- wireview.js keeps an element whose join
-    # failed out until the next connection (tests/test_errors_e2e.py).
+    # joined(), no ``error`` again, nothing that would loop. Nothing reaches
+    # that instance either (test_what_a_failed_join_left_gets_no_event_hook_or_upload).
     communicator = await _connect()
     try:
         holder = sign_state(ErrorProbeHolder(user=AnonymousUser(), wire=WireviewMeta(params={}), id="h-1"))
@@ -258,6 +260,154 @@ async def test_a_parents_render_draws_a_component_whose_join_failed_and_leaves_i
 
     assert error == {"command": "error", "payload": {"id": "e-held", "during": "join", "ref": 2}}
     assert [(m["command"], m["payload"]["id"]) for m in heard] == [("render", "h-1")]
+
+
+class ErrorProbeNest(Component):
+    """Fails to join while ``failing`` is set; holds ``e-own-leaf`` unless a slot fills it."""
+
+    failing: t.ClassVar[bool] = True
+
+    async def joined(self):
+        if ErrorProbeNest.failing:
+            raise RuntimeError("the nest's joined went wrong")
+
+    async def poke(self, **_rest):
+        CALLS.append(("poke", self.id))
+
+    async def handle_hook_event(self, hook_id, event, payload):
+        CALLS.append(("hook", self.id))
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<div {% tag_header %} class='nest'>"
+            "{% if slots.body %}{% render_slot 'body' %}"
+            "{% else %}{% live_component 'ErrorProbeLeaf' id='e-own-leaf' %}{% endif %}</div>"
+        )
+
+
+class ErrorProbeLeaf(LiveComponent):
+    async def poke(self, **_rest):
+        CALLS.append(("poke", self.id))
+
+    async def handle_hook_event(self, hook_id, event, payload):
+        CALLS.append(("hook", self.id))
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<i {% live_tag_header %}></i>")
+
+
+class ErrorProbeHost(Component):
+    """Two nests: one holding its own LiveComponent, one with the host's in its slot."""
+
+    count: int = 0
+
+    async def bump(self, **_rest):
+        self.count += 1
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<div {% tag_header %}>{{ this.count }}"
+            "{% component 'ErrorProbeNest' id='e-own-nest' %}"
+            "{% component_block 'ErrorProbeNest' id='e-slot-nest' %}"
+            "{% fill body %}{% live_component 'ErrorProbeLeaf' id='e-slot-leaf' %}{% endfill %}"
+            "{% endcomponent %}</div>"
+        )
+
+
+@pytest.fixture
+def failing_nests():
+    ErrorProbeNest.failing = True
+    yield
+    ErrorProbeNest.failing = True
+
+
+async def _host_with_failed_nests(communicator: WebsocketCommunicator) -> None:
+    host = sign_state(ErrorProbeHost(user=AnonymousUser(), wire=WireviewMeta(params={}), id="e-host"))
+    await _send(communicator, "join", name="ErrorProbeHost", state=host, children={}, ref=1)
+    await _next(communicator, "joined")
+    for ref, id in ((2, "e-own-nest"), (3, "e-slot-nest")):
+        nest = sign_state(ErrorProbeNest(user=AnonymousUser(), wire=WireviewMeta(params={}), id=id))
+        await _send(communicator, "join", name="ErrorProbeNest", state=nest, children={}, ref=ref)
+        assert (await _next(communicator, "error", "render"))["command"] == "error"
+
+
+async def _heard_until_host_answers(communicator: WebsocketCommunicator, ref: int) -> list[dict[str, t.Any]]:
+    """What the server sent up to the host's answer to a ``bump`` sent last, which it handles after the rest."""
+    await _event(communicator, "e-host", "bump", ref=ref)
+    heard = [await communicator.receive_json_from(timeout=5)]
+    while (heard[-1]["command"], heard[-1]["payload"].get("ref")) != ("render", ref):
+        heard.append(await communicator.receive_json_from(timeout=5))
+    return heard
+
+
+async def test_what_a_failed_join_left_gets_no_event_hook_or_upload(failing_nests):
+    # The parent's next render builds the nest again under the id, and its own
+    # LiveComponent under it: instances whose joined() never ran. The page took
+    # the element up again -- the server's HTML had taken its mark away -- and
+    # a click or a hook reached them. Now the server refuses them, and answers
+    # an event with an empty render so the page's loading state ends. The
+    # LiveComponent in the other nest's slot is the host's, and is not refused.
+    communicator = await _connect()
+    try:
+        await _host_with_failed_nests(communicator)
+        # Before the host renders again: the ids the failure removed, the nest's
+        # and its LiveComponent's
+        await _event(communicator, "e-own-nest", "poke", ref=4)
+        await _event(communicator, "e-own-leaf", "poke", ref=40)
+        before = [await communicator.receive_json_from(timeout=5) for _ in range(2)]
+        drawn = await _heard_until_host_answers(communicator, 5)
+        for ref, id in ((6, "e-own-nest"), (7, "e-own-leaf"), (8, "e-slot-leaf")):
+            await _event(communicator, id, "poke", ref=ref)
+        await _send(communicator, "hook_event", component_id="e-own-nest", hook_id="h", event="e", payload={}, ref="r1")
+        await _send(communicator, "hook_event", component_id="e-own-leaf", hook_id="h", event="e", payload={}, ref="r2")
+        entry = {"ref": "u1", "name": "a.txt", "size": 1, "type": "text/plain"}
+        await _send(communicator, "upload_register", id="e-own-nest", name="files", entries=[entry])
+        after = await _heard_until_host_answers(communicator, 9)
+    finally:
+        await communicator.disconnect()
+
+    assert before == [
+        {"command": "render", "payload": {"id": "e-own-nest", "diff": None, "ref": 4}},
+        {"command": "render", "payload": {"id": "e-own-leaf", "diff": None, "ref": 40}},
+    ]
+    # The host's HTML marks both nests, on top of their own class
+    host = json.dumps(drawn[-1]["payload"]["diff"])
+    assert host.count("wire-join-failed") == 2, host
+    assert host.count("class='nest'") == 2, "the template's own class stays"
+    answers = [(m["command"], m["payload"].get("id"), m["payload"].get("diff")) for m in after[:3]]
+    assert answers[:2] == [("render", "e-own-nest", None), ("render", "e-own-leaf", None)]
+    assert answers[2][:2] == ("render", "e-slot-leaf")
+    assert [m["command"] for m in after[3:]] == ["render"], "nothing for the hooks or the upload"
+    assert CALLS == [("poke", "e-slot-leaf")]
+
+
+async def test_a_join_under_the_id_of_a_failed_one_tries_it_again(failing_nests):
+    # New DOM under the id -- a boosted navigation's page -- joins again, and
+    # the server takes it: what the failure kept out is the page's again.
+    communicator = await _connect()
+    try:
+        await _host_with_failed_nests(communicator)
+        drawn = await _heard_until_host_answers(communicator, 4)
+        assert "wire-join-failed" in str(drawn[-1]["payload"]["diff"])
+
+        ErrorProbeNest.failing = False
+        nest = sign_state(ErrorProbeNest(user=AnonymousUser(), wire=WireviewMeta(params={}), id="e-own-nest"))
+        await _send(communicator, "join", name="ErrorProbeNest", state=nest, children={}, ref=5)
+        joined = await _next(communicator, "render", "error")
+        await _event(communicator, "e-own-nest", "poke", ref=6)
+        await _event(communicator, "e-own-leaf", "poke", ref=7)
+        redrawn = await _heard_until_host_answers(communicator, 8)
+    finally:
+        await communicator.disconnect()
+
+    assert (joined["command"], joined["payload"]["id"]) == ("render", "e-own-nest")
+    assert "wire-join-failed" not in str(joined)
+    assert CALLS == [("poke", "e-own-nest"), ("poke", "e-own-leaf")]
+    # One failure left: the slot's nest
+    assert str(redrawn[-1]["payload"]["diff"]).count("wire-join-failed") == 1
 
 
 async def test_a_join_that_raises_after_its_first_render_is_answered_twice():

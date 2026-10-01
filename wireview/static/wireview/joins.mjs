@@ -129,6 +129,17 @@ export class Joins {
   }
 
   /**
+   * Whether the page holds a join it sent for `id` on this connection, answered
+   * or not. A render made before it came may still say the id's last join
+   * failed (`wire-join-failed`): that is not about this one.
+   * @param {string} id
+   * @returns {boolean}
+   */
+  holds(id) {
+    return this.byId.has(id);
+  }
+
+  /**
    * The component left the page, or its join failed: no answer for it is
    * expected, and the next join under the id replaces nothing.
    * @param {string} id

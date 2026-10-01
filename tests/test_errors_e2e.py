@@ -11,6 +11,7 @@ Fixture: tests/testproj/errorprobe/.
 """
 
 import json
+import re
 import threading
 
 import pytest
@@ -88,11 +89,25 @@ def test_a_component_that_cannot_join_keeps_its_markup_and_is_marked(probe):
     assert len(probe.sockets) == 1
 
 
-def test_a_component_whose_join_failed_stays_out_when_its_parent_draws_it_again(probe):
+@pytest.fixture
+def heard():
+    """What the errorprobe handlers heard on the server, from this test on."""
+    from testproj.errorprobe.live import HEARD
+
+    HEARD.clear()
+    yield HEARD
+    HEARD.clear()
+
+
+LOADING = re.compile("wireview-click-loading")
+
+
+def test_a_component_whose_join_failed_gets_nothing_when_its_parent_draws_it_again(probe, heard):
     # The holder's render draws ``held`` again, marked live and without the error
     # class, over a new instance its template pass built and nothing joined. The
-    # page took that one up: the mark was gone, and a click or a hook's push
-    # reached an instance whose joined() never ran.
+    # page took that one up, and a click or a hook's push reached an instance
+    # whose joined() never ran. The server now refuses them, answering the click
+    # so its loading state ends; its HTML marks the element, which stays marked.
     sent = []
     probe.sockets[0].on("framesent", lambda frame: sent.append(json.loads(frame)))
     held = probe.locator("#held")
@@ -100,17 +115,21 @@ def test_a_component_whose_join_failed_stays_out_when_its_parent_draws_it_again(
 
     by(probe, "holder-bump").click()
     expect_text(by(probe, "holder-count"), "1")
+    expect(held).to_have_attribute("wire-join-failed", "")
     by(probe, "held-poke").click()
     probe.evaluate("window.__askers.held.pushEvent('poke', {})")
     # Answered after anything the poke or the push sent
     by(probe, "holder-bump").click()
     expect_text(by(probe, "holder-count"), "2")
 
-    expect(held).to_have_class("wireview-error")
+    expect(held).to_have_class(re.compile("wireview-error"))
+    expect(by(probe, "held-poke")).not_to_have_class(LOADING)
     expect_text(by(probe, "held-pokes"), "0")
-    assert [m for m in sent if "held" in (m["payload"].get("id"), m["payload"].get("component_id"))] == []
-    failures = probe.evaluate("window.__wireviewErrors.filter((e) => e.id === 'held').length")
-    assert failures == 1, "not joined again"
+    assert heard == []
+    # The parent's patches draw it over the element the page already took up,
+    # which it does not join again: no loop
+    assert [m for m in sent if m["command"] == "join"] == []
+    assert _failures(probe, "held") == 1, "not joined again"
 
 
 def test_a_component_whose_join_failed_joins_again_on_the_next_connection(page, server):
@@ -133,18 +152,12 @@ def _failures(page, id: str) -> int:
     return page.evaluate(f"window.__wireviewErrors.filter((e) => e.id === '{id}' && e.during === 'join').length")
 
 
-def _sent_to(sent: list, *ids: str) -> list:
-    return [m for m in sent if {m["payload"].get("id"), m["payload"].get("component_id")} & set(ids)]
-
-
-def test_the_live_components_in_a_component_whose_join_failed_stay_out_too(probe):
+def test_the_live_components_a_failed_component_owns_get_nothing_either(probe, heard):
     # The nest's join failed, and the instance it made of ``held-child`` went
-    # with it. The page kept the child registered: a click went to an id the
-    # server no longer held, and once the holder's pass built new instances
-    # of both, the child's render and joined() made it a live component in a
-    # dead one, reached by its button and its hook.
-    sent = []
-    probe.sockets[0].on("framesent", lambda frame: sent.append(json.loads(frame)))
+    # with it: a click went to an id the server no longer held, and once the
+    # holder's pass built new instances of both, the child's button and hook
+    # reached a LiveComponent of an instance whose joined() never ran. The
+    # server refuses both, before the holder's pass and after it.
     probe.wait_for_function("window.__wireviewErrors.some((e) => e.id === 'held-nest')")
     expect(probe.locator("#held-nest")).to_have_class("wireview-error")
 
@@ -156,19 +169,18 @@ def test_the_live_components_in_a_component_whose_join_failed_stay_out_too(probe
         by(probe, "holder-bump").click()
         expect_text(by(probe, "holder-count"), count)
 
-    expect(probe.locator("#held-nest")).to_have_class("wireview-error")
-    # What the page had for it stays
+    expect(probe.locator("#held-nest")).to_have_class(re.compile("wireview-error"))
+    # What the page had for it stays, and its click was answered
     expect(by(probe, "held-child-poke")).to_have_count(1)
-    assert _sent_to(sent, "held-nest", "held-child") == []
+    expect(by(probe, "held-child-poke")).not_to_have_class(LOADING)
+    assert heard == []
     assert _failures(probe, "held-nest") == 1, "not joined again"
 
 
-def test_the_live_components_in_a_failed_join_stay_out_before_the_next_patch(page, server):
-    # Any patch lets go of what a failed join keeps out, but the click can come
-    # first: right after the error, and right after the holder's render that
-    # brings the child's new instance, before that render's patch.
-    sent = []
-    page.on("websocket", lambda ws: ws.on("framesent", lambda frame: sent.append(json.loads(frame))))
+def test_what_a_failed_join_owns_gets_nothing_before_the_next_patch_either(page, server, heard):
+    # The click can come right after the error, and right after the holder's
+    # render that brings the child's new instance, before that render's patch:
+    # the server refuses it whichever instance the id names then.
     page.add_init_script(INBOX_SHIM + "window.__inbox.holding = true;")
     click = "document.querySelector('[data-testid=held-child-poke]').click()"
     open_live(page, f"{server}/errorprobe/", selector="#box[data-is-live='true']")
@@ -185,12 +197,15 @@ def test_the_live_components_in_a_failed_join_stay_out_before_the_next_patch(pag
     by(page, "holder-bump").click()
     expect_text(by(page, "holder-count"), "2")
 
-    assert _sent_to(sent, "held-nest", "held-child") == []
+    assert heard == []
+    # Both clicks were answered, the first for an id that named nothing yet
+    expect(by(page, "held-child-poke")).not_to_have_class(LOADING)
 
 
-def test_a_boosted_navigation_tries_a_failed_join_again(probe):
-    # The new page's HTML morphs into the same nodes, so the page took the
-    # element for the one whose join had failed and never joined it: the
+def test_a_boosted_navigation_tries_a_failed_join_again(probe, heard):
+    # The new page's HTML is the server's over HTTP: the page joins its
+    # components again, and the server takes such a join as a new try. When
+    # the page remembered the failure itself, it never joined them: the
     # component stayed dead on a page where it may well join.
     probe.wait_for_function("window.__wireviewErrors.filter((e) => e.id === 'held-nest').length === 1")
     assert _failures(probe, "held") == 1
@@ -200,9 +215,7 @@ def test_a_boosted_navigation_tries_a_failed_join_again(probe):
         "['held', 'held-nest'].every((id) => window.__wireviewErrors.filter((e) => e.id === id).length === 2)"
     )
 
-    # And on the new page, what the failure keeps out stays out
-    sent = []
-    probe.sockets[0].on("framesent", lambda frame: sent.append(json.loads(frame)))
+    # And on the new page, what the failure keeps out gets nothing
     by(probe, "holder-bump").click()
     expect_text(by(probe, "holder-count"), "1")
     by(probe, "held-poke").click()
@@ -212,9 +225,33 @@ def test_a_boosted_navigation_tries_a_failed_join_again(probe):
     by(probe, "holder-bump").click()
     expect_text(by(probe, "holder-count"), "2")
 
-    expect(probe.locator("#held")).to_have_class("wireview-error")
-    expect(probe.locator("#held-nest")).to_have_class("wireview-error")
-    assert _sent_to(sent, "held", "held-nest", "held-child") == []
+    expect(probe.locator("#held")).to_have_class(re.compile("wireview-error"))
+    expect(probe.locator("#held-nest")).to_have_class(re.compile("wireview-error"))
+    assert heard == []
+    assert len(probe.sockets) == 1
+
+
+def test_a_boosted_navigation_joins_what_failed_once_it_can(probe, monkeypatch):
+    # The cause is gone by the time the page moves: the new page's components
+    # join and work, LiveComponents and all.
+    from testproj.errorprobe.live import ErrorJoin, ErrorJoinNest
+
+    probe.wait_for_function("window.__wireviewErrors.filter((e) => e.id === 'held-nest').length === 1")
+
+    async def joined(self):
+        pass
+
+    monkeypatch.setattr(ErrorJoin, "joined", joined)
+    monkeypatch.setattr(ErrorJoinNest, "joined", joined)
+    probe.evaluate("window.wireview.visit('/errorprobe/')")
+    expect(probe.locator("#held")).not_to_have_class(re.compile("wireview-error"))
+    expect(probe.locator("#held-nest")).not_to_have_class(re.compile("wireview-error"))
+
+    by(probe, "held-poke").click()
+    expect_text(by(probe, "held-pokes"), "1")
+    by(probe, "held-child-poke").click()
+    expect_text(by(probe, "held-child-pokes"), "1")
+    assert _failures(probe, "held") == 1
     assert len(probe.sockets) == 1
 
 
@@ -233,15 +270,13 @@ def slot_page(page, server):
     return page
 
 
-def test_a_live_component_in_the_slot_of_a_failed_join_is_its_callers(slot_page):
+def test_a_live_component_in_the_slot_of_a_failed_join_is_its_callers(slot_page, heard):
     # A slot renders in its caller's template pass: ``slot-leaf`` is the
     # host's, which is alive, and the nest's failed join took nothing of it.
-    # The page took the nest around it for its owner and kept it out -- its
+    # The page, guessing the owner from the nest around it, kept it out -- its
     # clicks went nowhere -- until a render of the host took it up again. The
-    # nest's own LiveComponent did go with the nest.
+    # nest's own LiveComponent did go with the nest, and the server refuses it.
     page = slot_page
-    sent = []
-    page.sockets[0].on("framesent", lambda frame: sent.append(json.loads(frame)))
     expect(page.locator("#slot-leaf")).to_have_attribute("data-parent", "host")
 
     for count in ("1", "2"):
@@ -254,7 +289,7 @@ def test_a_live_component_in_the_slot_of_a_failed_join_is_its_callers(slot_page)
         expect_text(by(page, "slot-leaf-pokes"), count)
 
     expect_text(by(page, "own-leaf-pokes"), "0")
-    assert _sent_to(sent, "own-nest", "own-leaf") == []
+    assert heard == [("slot-leaf", "poke"), ("slot-leaf", "poke")]
     expect(page.locator("#slot-nest")).to_have_class("wireview-error")
     expect(page.locator("#own-nest")).to_have_class("wireview-error")
 
@@ -262,7 +297,8 @@ def test_a_live_component_in_the_slot_of_a_failed_join_is_its_callers(slot_page)
 def test_the_hooks_of_a_failed_join_are_destroyed_when_it_leaves(slot_page):
     # The page let go of a component whose join failed, and of its
     # LiveComponents, and so never told their hooks the elements had left:
-    # a listener or a timer a hook set up outlived its element.
+    # a listener or a timer a hook set up outlived its element. It keeps them
+    # registered now; the server is the one that refuses them.
     page = slot_page
     html = page.locator("html")
     hooked = ["slot-nest", "own-nest", "slot-leaf", "own-leaf"]
@@ -538,3 +574,22 @@ def test_an_id_that_was_a_live_component_joins_as_the_root_it_now_is(page, serve
     expect_text(by(page, "nest-child-count"), "0")
     by(page, "nest-child-bump").click()
     expect_text(by(page, "nest-child-count"), "1")
+
+
+def test_the_hooks_of_a_failed_join_hear_destroyed_with_no_patch_in_between(page, server):
+    # The page used to let go of a component whose join failed, and only the
+    # next patch's pass over the page took it up again: one that left with the
+    # very next patch was never told. Here the host's toggle comes right after
+    # the errors, before anything else is patched.
+    page.add_init_script(INBOX_SHIM + "window.__inbox.holding = true;")
+    open_live(page, f"{server}/errorprobe/slot/", selector="#host[data-is-live='true']")
+    page.wait_for_function("window.__inbox.held.filter((m) => m.command === 'error').length === 2")
+    # The host's answer, patched, and then the errors and the toggle at once
+    page.evaluate("window.__inbox.release(window.__inbox.held.findIndex((m) => m.command === 'error'))")
+    page.evaluate("new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))")
+    page.evaluate("window.__inbox.release(); document.querySelector('[data-testid=host-toggle]').click()")
+
+    expect(page.locator("#own-nest")).to_have_count(0)
+    html = page.locator("html")
+    for who in ["slot-nest", "own-nest", "slot-leaf", "own-leaf"]:
+        expect(html).to_have_attribute(f"data-destroyed-{who}", "1")

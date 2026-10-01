@@ -19,6 +19,11 @@ of a component whose join fails, next to one that holds its own.
 
 from wireview import Component, LiveComponent
 
+# What the handlers below heard, as (component id, what): the server runs in the
+# test's process, so a test reads it to tell an event the server refused from
+# one that never left the page.
+HEARD: list[tuple[str, str]] = []
+
 
 class ErrorBox(Component):
     class Meta:
@@ -44,9 +49,11 @@ class ErrorJoin(Component):
         raise RuntimeError("errorprobe: joined() raised on purpose")
 
     async def poke(self, **_rest):
+        HEARD.append((self.id, "poke"))
         self.pokes += 1
 
     async def handle_hook_event(self, hook_id, event, payload):
+        HEARD.append((self.id, "hook"))
         self.pokes += 1
 
 
@@ -78,9 +85,11 @@ class ErrorHeldChild(LiveComponent):
     pokes: int = 0
 
     async def poke(self, **_rest):
+        HEARD.append((self.id, "poke"))
         self.pokes += 1
 
     async def handle_hook_event(self, hook_id, event, payload):
+        HEARD.append((self.id, "hook"))
         self.pokes += 1
 
 
@@ -139,4 +148,8 @@ class ErrorSlotLeaf(LiveComponent):
     pokes: int = 0
 
     async def poke(self, **_rest):
+        HEARD.append((self.id, "poke"))
         self.pokes += 1
+
+    async def handle_hook_event(self, hook_id, event, payload):
+        HEARD.append((self.id, "hook"))

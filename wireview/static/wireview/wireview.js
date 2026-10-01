@@ -98,21 +98,6 @@ class ServerConnection {
     /** @type {Joins} which answers are for the join the page holds under an id (#139) */
     this.joins = new Joins();
     /**
-     * @type {WeakSet<Element>} the elements whose join failed on this
-     * connection: not taken up again until the next one, nor the
-     * LiveComponents in them (keptOut). A parent's render redraws one marked
-     * live and unmarked, over an instance its template pass built and nothing
-     * joined. New DOM the server renders over HTTP -- a boosted navigation's
-     * page, which idiomorph morphs into the same node -- is tried again.
-     */
-    this.joinFailures = new WeakSet();
-    /**
-     * @type {Object<string, WireviewComponent>} the components a failed join
-     * keeps out (keepOut), by id: their hooks stay mounted for the next
-     * connection, and are destroyed if the element leaves before it
-     */
-    this.keptOutComponents = {};
-    /**
      * @type {number} The last ref given to a hook's pushEvent. One counter for
      * the page, not one per component: a reply finds its callback by the ref
      * alone, and two components counting from 1 swapped answers (#108).
@@ -212,9 +197,6 @@ class ServerConnection {
       // the first connection, belongs to no instance yet and waits for the next.
       uploadManagers.connectionClosed();
       this.joins.clear();
-      // The next connection tries them again, and takes up their hooks
-      this.joinFailures = new WeakSet();
-      this.keptOutComponents = {};
       document.querySelectorAll("[wireview-component]").forEach((el) => {
         const element = /** @type {HTMLElement} */ (el);
         element.classList.add("wireview-disconnected");
@@ -302,37 +284,6 @@ class ServerConnection {
   }
 
   /**
-   * Whether a component's element stays out of the page's components: its
-   * join failed on this connection, or it is a LiveComponent whose root's join
-   * did -- the instance that join made of it went with the root's. One in the
-   * slot of a failed component is not that one's but its caller's (rootIdOf).
-   * @param {Element} element
-   * @returns {boolean}
-   */
-  keptOut(element) {
-    const root = rootElementOf(element);
-    return Boolean(root && this.joinFailures.has(root));
-  }
-
-  /**
-   * Lets go of a component a failed join keeps out of the page: no events,
-   * renders or uploads reach its id. Its element and hooks stay as they are,
-   * for the next connection to take up; if the element leaves first, its
-   * hooks are told then (joinAllComponents).
-   * @param {string} id
-   */
-  keepOut(id) {
-    const component = this.components[id];
-    if (!component) return;
-    component.viewportObserver.destroy();
-    delete this.components[id];
-    this.keptOutComponents[id] = component;
-    this.joins.forget(id);
-    this.loading.abandon(id).forEach(unmarkLoading);
-    uploadManagers.dispose(id);
-  }
-
-  /**
    * Whether the WebSocket connection is open.
    * @returns {boolean}
    */
@@ -376,34 +327,12 @@ class ServerConnection {
       // takes it along.
       if (!component.owned) this.sendLeave(id);
     }
-    // One a failed join kept out has no instance to leave, but its hooks are
-    // still mounted, and nothing else tells them the element is gone
-    for (const [id, component] of Object.entries(this.keptOutComponents)) {
-      if (onPage.has(id)) continue;
-      component.hookManager.destroy();
-      delete this.keptOutComponents[id];
-    }
     for (const element of elements) {
-      // The server rendered it over HTTP: not the DOM whose join failed
-      if (/** @type {HTMLElement} */ (element).dataset.isLive === "false") this.joinFailures.delete(element);
-      // Its join failed on this connection, or its root's did. A render of the
-      // parent drew it again, over new instances the template pass built:
-      // taken up, it would send events to an instance whose joined() never
-      // ran, or to a LiveComponent of one. It stays out of the page's
-      // components -- no events, no hook pushes -- and the failed one marked.
-      if (this.keptOut(element)) {
-        if (this.joinFailures.has(element)) element.classList.add("wireview-error");
-        continue;
-      }
-      // Taken up again (a boosted navigation's HTML): the new component takes
-      // over the hooks the element carries, and ones another element under
-      // the id had are told it is gone
-      const kept = this.keptOutComponents[element.id];
-      if (kept) {
-        delete this.keptOutComponents[element.id];
-        const carried = /** @type {HTMLElement & {__wireviewHookManager?: HookManager}} */ (element)
-          .__wireviewHookManager;
-        if (kept.hookManager !== carried) kept.hookManager.destroy();
+      // The server drew it over an instance a parent's pass built under the id
+      // of one whose join failed, which nothing reaches -- unless the page has
+      // joined the id since, and the render was made before that join came
+      if (element.hasAttribute("wire-join-failed") && !this.joins.holds(element.id)) {
+        element.classList.add("wireview-error");
       }
       let component = this.components[element.id];
       if (!component) {
@@ -538,14 +467,14 @@ class ServerConnection {
           target.rejoin();
         } else if (element) {
           // A join that failed is not retried: it would fail again. The page
-          // keeps what the server rendered, and the next connection tries.
-          // The instances of the LiveComponents it owns went with it; one in
-          // its slot is its caller's, alive
-          const owned = ownedLiveIds(element);
-          this.joinFailures.add(element);
-          for (const each of [id, ...owned]) this.keepOut(each);
-          // No instance, so no uploads: its own nor its LiveComponents'
-          uploadManagers.joinFailed(id, owned);
+          // keeps what the server rendered, and the next connection tries --
+          // or a join the page sends for new DOM under the id. The component
+          // stays registered, so its hooks hear destroyed() if it leaves: the
+          // server answers its events without running them (#94).
+          this.joins.forget(id);
+          // No instance, so no uploads: its own nor its LiveComponents' -- the
+          // ones it owns; one in its slot is its caller's, alive
+          uploadManagers.joinFailed(id, ownedLiveIds(element));
           element.classList.add("wireview-error");
         }
         element?.dispatchEvent(
@@ -1114,10 +1043,7 @@ let connection = new ServerConnection();
  */
 function resolveComponentHtml(id) {
   const component = connection.components[id];
-  if (component) return component.currentHtml();
-  // One kept out of the page (a join failed) stays as the page has it
-  const element = document.getElementById(id);
-  return element && connection.keptOut(element) ? element.outerHTML : "";
+  return component ? component.currentHtml() : "";
 }
 
 /**
@@ -1263,9 +1189,20 @@ class WireviewComponent {
         }
         for (const component of redrawn) component.hookManager.beforeUpdate();
 
+        // A failed join's mark is the page's, put on when the error came and
+        // taken off when the page joins again. A render made before the error
+        // came has no word of it, and the server marks only the instance its
+        // pass builds after (wire-join-failed).
+        const failed = [el, ...el.querySelectorAll(".wireview-error")].filter((each) =>
+          each.classList.contains("wireview-error")
+        );
+
         // Profile patch time
         const patchStart = profilingEnabled ? performance.now() : 0;
         boost.morph(el, html, { permission });
+        for (const each of failed) {
+          if (each.isConnected) each.classList.add("wireview-error");
+        }
         // The server's HTML has no loading classes: put back the marks of the
         // events still waiting for their answer (#118)
         for (const mark of connection.loading.pending()) {
@@ -1861,10 +1798,6 @@ class HookManager {
    * @param {Function|null} callback
    */
   pushEvent(hookId, event, payload, callback) {
-    // A component whose join failed has no instance to hear it, nor do the
-    // LiveComponents in it
-    const element = this.component.getElemenet();
-    if (element && connection.keptOut(element)) return;
     const ref = callback ? `hook-${++connection.lastHookRef}` : null;
 
     if (ref && callback) {

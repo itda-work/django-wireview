@@ -63,7 +63,7 @@ from wireview import Component, LiveComponent, JS, mount
 
 | 무엇 | 왜 |
 |------|----|
-| 템플릿 태그가 출력하는 마크업 | 계약은 태그다. `{% on %}`이 내는 `wire-on-*` 속성과 그 JSON 값, 업로드 태그가 내는 `wire-upload`·`wire-upload-select`·`wire-upload-drop`·`wire-preview`(값 `name:ref`), `{% tag_header %}`가 내는 `wireview-component`·`wireview-live` 표식과 `data-name`·`data-state`·`data-is-live`·`data-parent`, `{% wireview_header %}`의 `<meta>` |
+| 템플릿 태그가 출력하는 마크업 | 계약은 태그다. `{% on %}`이 내는 `wire-on-*` 속성과 그 JSON 값, 업로드 태그가 내는 `wire-upload`·`wire-upload-select`·`wire-upload-drop`·`wire-preview`(값 `name:ref`), `{% tag_header %}`가 내는 `wireview-component`·`wireview-live` 표식과 `data-name`·`data-state`·`data-is-live`·`data-parent`, join이 실패한 컴포넌트에 붙는 `wire-join-failed`, `{% wireview_header %}`의 `<meta>` |
 | 훅 객체의 `__` 멤버 | `__hookId`, `__manager` 등 |
 | `window.wireview.debug`의 반환값 | 개발 도구다. 함수 이름은 남기지만 돌려주는 객체의 모양은 약속하지 않는다 |
 | static의 번들 밖 파일 | `wireview.min.js`만 페이지가 싣는다. `wireview.js`, `*.mjs`, `types.d.ts`, `.map`은 빌드 재료다 |

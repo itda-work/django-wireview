@@ -250,9 +250,7 @@ class WireviewSession:
 
     async def _join_again(self, component: Component, ref: t.Any = None) -> None:
         """What ``_crashed`` does once the exception is logged."""
-        root = component
-        while isinstance(root, LiveComponent) and (parent := self.repo.get(root._parent_id or "")) is not None:
-            root = parent
+        root = self.repo.root_of(component)
         # The page joins it again under the id, and what its join carried is
         # still for that one: a component only a later render draws comes back
         removed = self.repo.remove(root.id, keep_carried=True)
@@ -276,10 +274,17 @@ class WireviewSession:
 
         It is not retried: a mount that raises raises again, and joining again
         on every render of the page would be a loop. The element stays as the
-        page rendered it, marked, and joins again on the next connection. A
-        parent's later render draws it again over a new instance its template
-        pass builds, which nothing joins: the page keeps that element out of
-        its components until the next connection, so no event reaches it.
+        page rendered it, marked, and joins again on the next connection, or
+        when the page sends a join under the id -- new DOM a boosted navigation
+        brought, an element a render draws anew.
+
+        The connection remembers the failure until then. A parent's later
+        render draws the component again over a new instance its template pass
+        builds, which nothing joins: that instance and the LiveComponents it
+        owns get no events, hook pushes or upload ops (``repo.refused``), an
+        event is answered with an empty render so the page's loading state
+        ends, and the instance's element carries ``wire-join-failed``, which the
+        page shows as ``wireview-error`` after the parent's patch.
         ``ref`` is the join's: a page that has since sent another join under the
         id tells this answer is not for it (#139).
         """
@@ -289,6 +294,7 @@ class WireviewSession:
             return
         # Whatever got as far as the repository goes, so no event reaches it.
         removed = self.repo.remove(id)
+        self.repo.join_failed(id, removed)
         await self._call_leaving(removed)
         self._release_uploads(removed)
         if self.repo.vsn < ERRORS_SINCE:
@@ -361,6 +367,8 @@ class WireviewSession:
             # the entries its root's later render restores it and its own from.
             log.debug("Ignoring join for %s, which its root has yet to draw", component_id)
             return
+        # The page tries a component whose join failed again: new DOM came for it
+        self.repo.retry_join(component_id)
         if existing is not None and existing.wire.has_joined:
             # The client only joins an element whose data-is-live is false, so a
             # second join for an id that already joined means new DOM arrived for
@@ -681,6 +689,13 @@ class WireviewSession:
         # reads it to know which of its fields the answer may reset (#92). Only
         # an integer; anything else is dropped rather than echoed.
         answer = _event_ref(ref)
+        if self.repo.refused(id):
+            # What a failed join left (repo.refused): no handler runs, but the
+            # answer goes out, as for an event with no handler, so the page
+            # ends the loading state the event started and settles its ref.
+            log.debug("Refusing user_event for %s: its join failed on this connection", id)
+            await self.send_command("render", _with_ref({"id": id, "diff": None}, answer))
+            return
         component = self.repo.get(id)
         if component is None:
             # Unknown, refused or already gone: nothing is sent, not even an
@@ -718,7 +733,8 @@ class WireviewSession:
         """
         log.debug(f"<<< HOOK-EVENT {component_id} {event} {payload}")
         component = self.repo.get(component_id)
-        if not component:
+        # A component whose join failed hears no hook, as an unknown one does not
+        if not component or self.repo.refused(component_id):
             return
 
         try:
@@ -750,7 +766,7 @@ class WireviewSession:
         log.debug(f"<<< UPLOAD-REGISTER {id} {name} ({len(entries)} entries)")
 
         component = self.repo.get(id)
-        if not component:
+        if not component or self.repo.refused(id):
             return
 
         registry = getattr(component, "_upload_registry", None)
@@ -845,7 +861,7 @@ class WireviewSession:
         log.debug(f"<<< UPLOAD-CANCEL {id} {name} {ref}")
 
         component = self.repo.get(id)
-        if component:
+        if component and not self.repo.refused(id):
             try:
                 await component.cancel_upload(name, ref)
                 await self.send_render(component)
@@ -866,7 +882,7 @@ class WireviewSession:
         log.debug(f"<<< UPLOAD-COMPLETE {id} {name} {ref}")
 
         component = self.repo.get(id)
-        if not component:
+        if not component or self.repo.refused(id):
             return
 
         registry = getattr(component, "_upload_registry", None)

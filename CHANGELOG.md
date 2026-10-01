@@ -418,17 +418,20 @@ The django-reactor era changelog (2.x) is preserved in
   for an id its root carried an entry for and has yet to draw. The form is unchanged, so
   `PROTOCOL_VERSION` stays.
 
-- A component whose join failed stays out of the page until the next connection, even when its
+- Nothing reaches a component whose join failed until the page joins it again, even when its
   parent's render draws it again. The parent's template pass built a new instance under the id
-  that nothing joined, and the server's HTML took the `wireview-error` class away: the page took
-  the element up again, and a click or a hook's `pushEvent` reached an instance whose `joined()`
-  never ran. The page now keeps such an element marked and sends nothing for it, nor for the
-  LiveComponents it owns, until it reconnects or a boosted navigation brings the server's HTML for
-  the page again. Which component owns a LiveComponent is the one whose template pass built it, as
-  its `data-parent` says, not the component around its element: one in the failed component's slot
-  is the caller's, alive, and works. The hooks of what the page keeps out stay mounted for the next
-  connection, and hear `destroyed()` if the element leaves before then. The server is unchanged: it
-  does not retry the join, as before.
+  that nothing joined, and the server's HTML took the `wireview-error` class away: a click or a
+  hook's `pushEvent` reached an instance whose `joined()` never ran, or a LiveComponent of one. The
+  server now remembers, for the connection, the joins that failed on it. It runs no handler for
+  such a component nor for the LiveComponents it owns -- as the server counts ownership, so one in
+  its slot is the caller's and works -- and answers their events with an empty render, so the
+  page's loading state ends; it takes no hook push or upload for them. It draws the instance its
+  pass builds with a `wire-join-failed` attribute, which the page shows as `wireview-error` after
+  the patch; the page also keeps the class it put on when the error came across a patch of the
+  same element. A join the page sends under the id -- the next connection, a boosted navigation's
+  HTML, an element a render draws anew -- tries the component again. The page keeps the failed
+  component registered, so its hooks hear `destroyed()` when it leaves. The `render` that answers
+  a refused event is the one an event with no handler already gets, so `PROTOCOL_VERSION` stays.
 
 ### Security
 
