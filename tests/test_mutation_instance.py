@@ -15,7 +15,7 @@ before.
 import typing as t
 
 import pytest
-from django.contrib.auth.models import AnonymousUser
+from django.contrib.auth.models import AnonymousUser, Group, User
 from django.core.exceptions import SynchronousOnlyOperation
 from django.db import connection
 from django.db.models.signals import post_save
@@ -118,6 +118,18 @@ class TestDecodedInstance:
         instance.save()
 
         assert Product.objects.values_list("name", "description").get(pk=product.pk) == ("desk lamp", "old")
+
+    def test_save_leaves_the_m2m_as_it_is_now(self):
+        # The payload lists the m2m pks. Saving does not set them back, as no save() does.
+        user = User.objects.create(username="alice")
+        staff, admins = Group.objects.create(name="staff"), Group.objects.create(name="admins")
+        user.groups.set([staff])
+        payload = serializer.encode(user)
+        user.groups.add(admins)
+
+        serializer.decode(payload).save()
+
+        assert set(user.groups.all()) == {staff, admins}
 
     def test_update_fields_writes_only_those_columns(self, published):
         product = Product.objects.create(name="lamp", description="old")
