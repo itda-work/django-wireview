@@ -39,6 +39,10 @@ class ValueProbe(Component):
     query: str = ""
     normalized: str = ""
     selected: int = 0
+    editing: bool = False
+    label: str = "original"
+    saves: int = 0
+    cancels: int = 0
 
     @property
     def child_label(self) -> str:
@@ -96,3 +100,18 @@ class ValueProbe(Component):
         # The server's answer is a different value than was sent (upper case).
         await asyncio.sleep(0.8)
         self.normalized = normalizing.upper()
+
+    # Tutorial 03's inline editor: Escape cancels and leaving the field saves.
+    # The cancel's render removes the focused field, which blurs it; that blur
+    # is the morph's, not the user's, and must not save (found with tutorial 03).
+    async def start_edit(self, **_rest):
+        self.editing = True
+
+    async def save_edit(self, edit: str = "", **_rest):
+        self.saves += 1
+        self.label = edit
+        self.editing = False
+
+    async def cancel_edit(self, **_rest):
+        self.cancels += 1
+        self.editing = False

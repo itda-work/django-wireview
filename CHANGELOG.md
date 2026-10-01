@@ -253,7 +253,14 @@ The django-reactor era changelog (2.x) is preserved in
 - Tutorials 02 and 03 bound Ctrl+Enter and Escape to `keypress`. Browsers send no `keypress` for
   a key that types no character, or under Ctrl, Alt or Meta, so Escape never cancelled an edit
   and Ctrl+Enter never sent. They bind `keydown` now, and `tests/test_doc_examples.py` refuses a
-  `keypress` binding on such a key.
+  `keypress` binding on such a key. Tutorial 03's `save_edit` returns when the edit is already
+  over, so a blur that lands after Escape's cancel does not save.
+- A render that removes or moves the focused element no longer sends that element's `blur` or
+  `focusout` binding. The browser blurs a focused element it removes, while it is still in the
+  document, and the delegated listener sent it as the user's: Escape whose `cancel_edit` hid an
+  edit field with `{% on "blur" "save_edit" %}` saved what was typed instead. Focus events
+  dispatched while a morph, a stream operation or a removal is applied are dropped, and
+  form feedback does not count them as a touch either.
 - Tutorial 03 saved a toggle and an edit with `QuerySet.aupdate()`, which sends no `post_save`,
   so the other tabs the tutorial promised to keep in sync never heard of them. It reads the item
   and calls `asave()` now, as the todo example does, and says which ORM calls send the signal.

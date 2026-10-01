@@ -107,6 +107,17 @@ SECURE_CSP = {
 `.stop`은 그 위(`document`, `window`)로의 전파와 더 바깥 요소의 wireview 바인딩을 막는다. boost의 링크 가로채기는
 `document`에 있으므로 `.prevent`가 먼저 적용된다.
 
+### 렌더가 일으킨 포커스 이벤트
+
+렌더(morph, 스트림 연산, 컴포넌트 제거)가 포커스된 요소를 지우거나 옮기면 브라우저가 그 요소에 `blur`·`focusout`을
+보낸다. 그 이벤트는 사용자가 한 일이 아니므로 바인딩을 실행하지 않고 [폼 피드백](./form-feedback.md)의 "건드림"으로도
+치지 않는다. 렌더를 적용하는 동안 생긴 `blur`·`focusout`·`focus`·`focusin`이 모두 그렇다 — 적용은 동기라 그 사이에
+사용자 입력이 끼어들 수 없다. 전에는 Escape의 `cancel_edit`이 편집 칸을 지우면 그 칸의 `{% on "blur" "save_edit" %}`가
+입력한 값으로 나가, 취소가 저장이 됐다.
+
+사용자가 렌더가 오기 전에 직접 다른 곳을 클릭한 blur는 그대로 간다. 그래서 "이미 끝난 편집"에 온 저장은 핸들러가
+상태로 거른다(튜토리얼 03의 `if not self.editing: return`).
+
 ## 주의사항
 
 - **속성 이름은 소문자가 된다.** HTML 파서가 속성 이름을 소문자로 바꾸므로 `{% on "myEvent" … %}`는 `myevent`에만

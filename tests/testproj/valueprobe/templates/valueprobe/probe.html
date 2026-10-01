@@ -47,4 +47,16 @@
          value="{{ this.normalized }}"
          {% on "keypress.enter" "normalize" %}>
   <span data-testid="normalized">{{ this.normalized }}</span>
+  {% if this.editing %}
+    <input data-testid="edit"
+           name="edit"
+           value="{{ this.label }}"
+           {% on "keydown.key.escape" "cancel_edit" %}
+           {% on "blur" "save_edit" %}>
+  {% else %}
+    <button data-testid="start-edit" {% on "click" "start_edit" %}>edit</button>
+  {% endif %}
+  <span data-testid="label">{{ this.label }}</span>
+  <span data-testid="saves">{{ this.saves }}</span>
+  <span data-testid="cancels">{{ this.cancels }}</span>
 </div>

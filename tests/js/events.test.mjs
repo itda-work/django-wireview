@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { bindingsFor, parseBinding, runSteps } from "../../wireview/static/wireview/events.mjs";
+import { bindingsFor, isRenderEcho, parseBinding, runSteps } from "../../wireview/static/wireview/events.mjs";
 
 /** Ops that record what a run did; debounce keeps its continuation to call later. */
 function recorder({ throttleAllows = true } = {}) {
@@ -135,4 +135,17 @@ test("a key filter does not match while an IME is composing (Enter that picks a 
   const done = recorder();
   runSteps(steps, { key: "Enter", isComposing: false }, done.ops);
   assert.deepEqual(done.log, ["fire"]);
+});
+
+test("a focus event while a server change is applied is the render's, not the user's", () => {
+  // The browser blurs the focused field a render removes; that blur saved an
+  // edit Escape had cancelled (tutorial 03).
+  for (const type of ["blur", "focusout", "focus", "focusin"]) {
+    assert.equal(isRenderEcho(type, true), true, type);
+    assert.equal(isRenderEcho(type, false), false, type);
+  }
+  // Nothing else is: no other event is dispatched by removing an element.
+  for (const type of ["click", "change", "input", "keydown", "submit"]) {
+    assert.equal(isRenderEcho(type, true), false, type);
+  }
 });

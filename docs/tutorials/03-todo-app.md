@@ -420,6 +420,9 @@ class XTodoItem(Component):
 
     async def save_edit(self, text: str):
         """편집 저장"""
+        # 이미 편집이 끝났으면(Enter로 저장했거나 Escape로 취소했으면) 뒤따른 blur는 무시한다
+        if not self.editing:
+            return
         text = text.strip()
         if text:
             self.text = text
@@ -474,6 +477,8 @@ class XTodoItem(Component):
   {% endif %}
 </li>
 ```
+
+입력 칸 하나에 끝내는 길이 셋이다. Enter와 blur는 저장하고 Escape는 취소한다. 렌더가 입력 칸을 지울 때 브라우저가 보내는 blur는 wireview가 보내지 않는다. 그래도 Escape를 누르고 렌더가 오기 전에 다른 곳을 클릭하면 사용자의 blur가 `cancel_edit` 뒤에 `save_edit`으로 간다. `save_edit` 첫머리의 `if not self.editing` 가드가 이미 끝난 편집에 온 저장을 버린다.
 
 ### XTodoList에서 사용
 
@@ -622,6 +627,8 @@ class XTodoItem(Component):
         await self.focus_on(f"#edit-{self.item_id}")
 
     async def save_edit(self, text: str):
+        if not self.editing:  # Enter나 Escape로 이미 끝난 편집이다
+            return
         text = text.strip()
         if text and text != self.text:
             self.text = text

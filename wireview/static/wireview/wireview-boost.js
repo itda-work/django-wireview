@@ -31,6 +31,34 @@ const beforeElUpdated = new Set();
  */
 const valueGuard = new ValueGuard();
 
+/** How many server changes are being applied now (a morph may run inside another). */
+let applyingDepth = 0;
+
+/**
+ * Apply a change the server sent to the DOM -- a morph, a stream operation, a
+ * removal. Events the browser dispatches meanwhile, like the blur of a focused
+ * field it removes, are the change's and not the user's (events.mjs isRenderEcho).
+ * @template T
+ * @param {() => T} change
+ * @returns {T}
+ */
+function applying(change) {
+  applyingDepth += 1;
+  try {
+    return change();
+  } finally {
+    applyingDepth -= 1;
+  }
+}
+
+/**
+ * Whether a change from the server is being applied right now (see `applying`).
+ * @returns {boolean}
+ */
+function inServerChange() {
+  return applyingDepth > 0;
+}
+
 /**
  * Morphs an old DOM node into a new one using Idiomorph.
  * @param {Element} oldNode - The existing DOM element
@@ -81,7 +109,7 @@ function morph(oldNode, newNode, { permission, navigation = false } = {}) {
     },
   };
 
-  Idiomorph.morph(oldNode, newNode, options);
+  applying(() => Idiomorph.morph(oldNode, newNode, options));
 }
 
 /**
@@ -430,6 +458,8 @@ window.addEventListener("popstate", (event) => {
  * @typedef {Object} BoostExports
  * @property {typeof HistoryCache} HistoryCache - History management class
  * @property {typeof morph} morph - DOM morphing function
+ * @property {typeof applying} applying - Apply a server change to the DOM
+ * @property {typeof inServerChange} inServerChange - Whether a server change is being applied now
  * @property {NavEvents} navEvent - Navigation event emitter
  * @property {typeof addBeforeElUpdated} addBeforeElUpdated - Add a morph callback
  * @property {typeof navigationToken} navigationToken - The navigation in flight
@@ -439,6 +469,8 @@ window.addEventListener("popstate", (event) => {
 export default {
   HistoryCache: HistoryCache,
   morph: morph,
+  applying: applying,
+  inServerChange: inServerChange,
   valueGuard: valueGuard,
   navEvent: navEvent,
   addBeforeElUpdated: addBeforeElUpdated,

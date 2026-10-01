@@ -16,6 +16,24 @@
 
 export const BINDING_PREFIX = "wire-on-";
 
+/** The focus events a browser fires on its own when the element with focus is removed or moved. */
+const FOCUS_EVENTS = new Set(["blur", "focusout", "focus", "focusin"]);
+
+/**
+ * Whether an event is the render's doing rather than the user's. A browser
+ * blurs the focused element it removes -- while it is still in the document --
+ * so a render that hid a field with `{% on "blur" %}` sent that field's handler
+ * with what was typed: Escape that cancelled an edit saved it. A server change
+ * is applied synchronously, so no input of the user's can land inside one, and
+ * a focus event dispatched during it never is.
+ * @param {string} type - the event's type
+ * @param {boolean} applying - whether a server change is being applied to the DOM right now
+ * @returns {boolean}
+ */
+export function isRenderEcho(type, applying) {
+  return applying && FOCUS_EVENTS.has(type);
+}
+
 /** Modifiers that take the next token as their argument. */
 const ARITY = { debounce: 1, throttle: 1, key: 1, key_code: 1 };
 

@@ -223,3 +223,39 @@ def test_what_was_typed_before_the_first_render_survives_it(page, server):
     by(page, "item").press("Enter")
 
     expect_text(by(page, "added"), "typed before the answer")
+
+
+def _start_editing(page):
+    by(page, "start-edit").click()
+    field = by(page, "edit")
+    field.fill("typed then escaped")
+    field.focus()
+    return field
+
+
+def test_a_field_a_render_removes_does_not_send_its_blur(probe):
+    # Tutorial 03's editor: Escape cancels, and the cancel's render removes the
+    # focused field. The browser blurs a focused element it removes, while it is
+    # still in the document, so the delegated listener sent `blur` -> save_edit
+    # with the typed text: Escape saved the edit instead of cancelling it.
+    page = probe
+    field = _start_editing(page)
+    field.press("Escape")
+    expect_text(by(page, "cancels"), "1")
+    expect(by(page, "edit")).to_have_count(0)
+    # Events are handled in order, so once this answer is in, a blur sent
+    # during the cancel's morph would have been handled too.
+    by(page, "ping").click()
+    expect_text(by(page, "pings"), "1")
+
+    expect_text(by(page, "saves"), "0")
+    expect_text(by(page, "label"), "original")
+
+
+def test_leaving_the_field_still_sends_its_blur(probe):
+    page = probe
+    _start_editing(page)
+    by(page, "ping").click()  # the user leaves the field
+
+    expect_text(by(page, "saves"), "1")
+    expect_text(by(page, "label"), "typed then escaped")

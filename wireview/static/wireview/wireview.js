@@ -3,7 +3,7 @@ import { JOINED_SINCE, JOIN_REFS_SINCE, PROTOCOL_VERSION, REFS_SINCE, applyParti
 import { Joins, settledEvent } from "./joins.mjs";
 import { commitScope, isCommitAction } from "./values.mjs";
 import { LoadingLedger } from "./loading.mjs";
-import { BINDING_PREFIX, bindingsFor, parseBinding, runSteps } from "./events.mjs";
+import { BINDING_PREFIX, bindingsFor, isRenderEcho, parseBinding, runSteps } from "./events.mjs";
 import { planInsert, planTrim } from "./streams.mjs";
 import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
@@ -365,7 +365,7 @@ class ServerConnection {
         // A LiveComponent's is its root's instance's, as its render is.
         const owned = this.components[payload.id]?.owned;
         if (!this.joins.about(owned ? rootIdOf(payload.id) : payload.id, payload.ref)) break;
-        document.getElementById(payload.id)?.remove();
+        boost.applying(() => document.getElementById(payload.id)?.remove());
         boost.navEvent.sendNewContent();
         break;
       }
@@ -2531,6 +2531,8 @@ const FeedbackManager = {
   init() {
     // Track blur events on form inputs (field was touched)
     document.addEventListener("blur", (e) => {
+      // A field the render removes is blurred, but nobody touched it
+      if (isRenderEcho(e.type, boost.inServerChange())) return;
       const target = /** @type {HTMLElement} */ (e.target);
       if (this.isFormInput(target)) {
         const name = this.getFieldName(target);
@@ -2814,12 +2816,15 @@ const EventBindings = {
     // A bubbling event is handled on its way up, target first, like the inline
     // handlers were. One that does not bubble (focus, mouseenter) still passes
     // through the root while capturing; only its target's bindings apply.
+    // A focus event while a render is applied is the browser's answer to it,
+    // not the user's: it sends nothing (events.mjs isRenderEcho).
     root.addEventListener(type, (event) => {
-      if (event.bubbles) this.bubble(event);
+      if (event.bubbles && !isRenderEcho(event.type, boost.inServerChange())) this.bubble(event);
     });
     root.addEventListener(
       type,
       (event) => {
+        if (isRenderEcho(event.type, boost.inServerChange())) return;
         if (!event.bubbles && event.target instanceof Element) this.run(event.target, event);
       },
       true
