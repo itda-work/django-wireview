@@ -341,6 +341,14 @@ The django-reactor era changelog (2.x) is preserved in
   turns an element without an id into a new one of the same tag, so the bottom binding under a
   list could become the top one above it and, still watched as the bottom one, ask for more pages
   as soon as it was in view.
+- A `{% component %}` a live render draws -- one an `{% if %}` shows again -- is joined: its
+  `joined()` runs and its own `wire-viewport-*` bindings are watched. The server built and mounted
+  it in the parent's template pass and drew it marked live, so the page never sent its join and
+  nothing else completed it; its bindings went nowhere, or, before they were sorted by owner, to
+  the parent. The page now joins such an element when it first sees it, and the server takes up
+  the instance the pass built, as it does on the page's first join. A binding the parent's patch
+  draws inside a nested component already joined is watched by that component too. The `join`
+  form is unchanged, so `PROTOCOL_VERSION` stays; an older bundle sends no such join.
 - A `wire-viewport-*` binding inside a LiveComponent calls that LiveComponent's handler. The
   parent watched the bindings of the components nested in it too and sent them to itself, where
   the handler was missing or, under the same name, the wrong one. A LiveComponent a render brings

@@ -342,8 +342,9 @@ async def load_more(self):
 목록이 비어 바닥 요소가 늘 화면 위쪽에 있으므로, 목록이 길어도 한 페이지를 더 부르곤 했다(#112).
 
 바인딩은 그것을 감싼 가장 가까운 컴포넌트의 것이다. LiveComponent 안의 `wire-viewport-bottom`은 그
-LiveComponent의 핸들러를 부르고, 부모의 같은 이름 핸들러는 부르지 않는다. 부모의 렌더가 새로 그린
-LiveComponent도 자기 `joined()`가 보낸 첫 페이지가 들어온 뒤에 판단을 시작한다.
+LiveComponent의 핸들러를 부르고, 부모의 같은 이름 핸들러는 부르지 않는다. 중첩된 `{% component %}`
+안의 것도 그 컴포넌트의 것이다. 부모의 렌더가 새로 그린 LiveComponent나 `{% component %}`도 자기
+`joined()`가 보낸 첫 페이지가 들어온 뒤에 판단을 시작한다.
 
 ## 고급 패턴
 

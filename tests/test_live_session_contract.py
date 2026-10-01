@@ -10,7 +10,7 @@ component is a test about the boundary rather than a test about a bug.
 Two ideas carry it.
 
 **A boundary is only as good as its narrowest path.** A component can come into
-existence seven ways, and an authorization that covers six of them is not an
+existence nine ways, and an authorization that covers eight of them is not an
 authorization. So the paths are a parametrized list, every one of them is run
 against every kind of refusal, and the same five assertions are made each time.
 Adding a path means adding a row; forgetting to gate it means the row fails.
@@ -520,6 +520,28 @@ async def path_nested_plain(cls: type, boundary: LiveSession) -> Outcome:
     return Outcome(str(outbound.commands), consumer.repo, "target", cls, raised, calls_for("target"))
 
 
+async def path_nested_plain_join(cls: type, boundary: LiveSession) -> Outcome:
+    """The page's join of an ordinary ``{% component %}`` a live render drew.
+
+    The template pass built and mounted it, inline, and nothing ran its joined():
+    the page joins the element when it sees it, and the server takes up the
+    instance the pass left. A refused one left no element, so nothing joins.
+    """
+    consumer, outbound = make_consumer(boundary=boundary)
+    parent_class = _parent(f"CxNestOf{cls.__name__}", "cx/nest.html")
+    with _template_naming("cx/nest.html", cls):
+        raised = None
+        try:
+            parent = await consumer.repo.join(parent_class.__name__, {"id": "parent"})
+            await consumer.send_render(parent)
+            if (drawn := consumer.repo.get("target")) is not None:
+                # What its element carries: the state the pass signed
+                await consumer.command_join(cls.__name__, sign_state(drawn))
+        except Exception as e:
+            raised = e
+    return Outcome(str(outbound.commands), consumer.repo, "target", cls, raised, calls_for("target"))
+
+
 async def path_live_child(cls: type, boundary: LiveSession) -> Outcome:
     """A LiveComponent the parent's render named. Settled after the pass, shipped in the same frame."""
     consumer, outbound = make_consumer(boundary=boundary)
@@ -581,7 +603,7 @@ async def path_dead_live_child(cls: type, boundary: LiveSession) -> Outcome:
 #: consumer absorbs an exception from a child so one bad component cannot take the
 #: page down; a template render has nobody to absorb it and the request fails,
 #: which is the louder and safer answer for a page that has not been sent yet.
-PATHS_THAT_PROPAGATE = {"dead_render", "dead_live_child", "testing_mount", "nested_plain"}
+PATHS_THAT_PROPAGATE = {"dead_render", "dead_live_child", "testing_mount", "nested_plain", "nested_plain_join"}
 
 #: ``(name, adapter, index into Refusal.classes)``. The index picks the Component
 #: or the LiveComponent form, because some of the paths only exist for the latter.
@@ -592,6 +614,7 @@ PATHS = [
     ("root_join", path_root_join, 0),
     ("rejoin", path_rejoin, 0),
     ("nested_plain", path_nested_plain, 0),
+    ("nested_plain_join", path_nested_plain_join, 0),
     ("live_child", path_live_child, 1),
     ("child_restore", path_child_restore, 1),
 ]

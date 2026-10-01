@@ -114,6 +114,37 @@ def test_a_component_a_render_brings_back_mounts_its_hooks_and_hears_its_pushes(
     expect_counted(page, "pinged", "rooted-inner")
 
 
+def test_a_component_a_render_draws_again_is_joined_and_watches_its_own_viewport(page_live):
+    """A component a live render draws with ``{% component %}`` is a new instance the
+    server built and never joined. Nothing joined it: its joined() never ran and its
+    viewport binding was never watched -- and before the bindings were sorted by
+    owner, the shelf watched it and ran its own ``more``."""
+    page = page_live
+    # joined() and one call of its own viewport handler
+    expect_text(page.locator("#rooted [data-testid=mores]"), "101")
+
+    page.get_by_test_id("take-away").click()
+    expect_counted(page, "destroyed", "rooted-root")
+    page.get_by_test_id("bring-back").click()
+
+    expect_text(page.locator("#rooted [data-testid=mores]"), "101")
+    expect_text(page.get_by_test_id("stolen"), "0")
+    expect_counted(page, "mounted", "rooted-root", 2)
+
+
+def test_a_binding_the_parents_patch_draws_in_a_nested_component_is_the_nested_ones(page_live):
+    """The shelf's render draws the rooted component inline, so a binding new in it
+    arrives in the shelf's patch. The shelf leaves it to the rooted component's
+    observer, which only hears of it if the shelf's patch tells it."""
+    page = page_live
+    expect_text(page.locator("#rooted [data-testid=mores]"), "101")
+
+    page.get_by_test_id("reach-out").click()
+
+    expect_text(page.locator("#rooted [data-testid=furthers]"), "1")
+    expect_text(page.get_by_test_id("stolen"), "0")
+
+
 def test_a_new_live_component_reaches_its_hooks_from_joined(page_live):
     """The event its joined() pushes arrives before the render that brings the
     element is patched in, so before the hook exists: it reached nothing."""

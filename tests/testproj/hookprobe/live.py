@@ -12,6 +12,10 @@ tests/test_hooks_e2e.py drives it.
 - Two components whose hooks wait on ``pushEvent`` replies at the same time.
   Each reply has to reach the callback that asked, whatever order the
   components sit in on the page.
+- The shelf draws the rooted component again with ``{% component %}``. That
+  instance has to be joined like the first one: its ``joined()`` runs and its
+  own viewport binding is watched, and sent to it, not to the shelf. So is
+  one the shelf's patch draws inside it (``reach``).
 - A LiveComponent the shelf brings in pushes an event from ``joined()``. It
   arrives before the render that brings the element is patched in, so before
   the hook it is for exists.
@@ -26,6 +30,12 @@ class HookProbeShelf(Component):
 
     show: bool = True
     sprouted: bool = False
+    # Calls of a handler named like the rooted component's viewport handler: a
+    # binding inside that component is not this one's to send
+    stolen: int = 0
+    # Handed to the rooted component, whose template draws a second viewport
+    # binding for it: this one's patch draws a binding that is the rooted one's
+    reach: bool = False
 
     async def take_away(self):
         self.show = False
@@ -35,6 +45,15 @@ class HookProbeShelf(Component):
 
     async def sprout(self):
         self.sprouted = True
+
+    async def reach_out(self):
+        self.reach = True
+
+    async def more(self):
+        self.stolen += 1
+
+    async def further(self):
+        self.stolen += 1
 
 
 class HookProbeSprout(LiveComponent):
@@ -48,6 +67,20 @@ class HookProbeSprout(LiveComponent):
 class HookProbeRooted(Component):
     class Meta:
         template_name = "hookprobe/rooted.html"
+
+    # joined() adds 100 and its own viewport binding 1, so 101 says both ran
+    mores: int = 0
+    reach: bool = False
+    furthers: int = 0
+
+    async def joined(self):
+        self.mores += 100
+
+    async def more(self):
+        self.mores += 1
+
+    async def further(self):
+        self.furthers += 1
 
     async def ping(self):
         await self.push_event("pinged", {})

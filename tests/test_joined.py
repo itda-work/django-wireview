@@ -151,3 +151,74 @@ async def test_a_client_that_does_not_know_it_does_not_get_a_live_components_eit
         "render",
         "title",
     ]
+
+
+class JoinedNested(Component):
+    """An ordinary component a parent's render draws with ``{% component %}``."""
+
+    left: t.ClassVar[list[str]] = []
+
+    async def joined(self):
+        await self.push_title("queued in the nested component's joined()")
+
+    async def leaving(self):
+        JoinedNested.left.append(self.id)
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<b {% tag_header %}></b>")
+
+
+class JoinedHost(Component):
+    shown: bool = False
+
+    async def show(self):
+        self.shown = True
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% if this.shown %}{% component 'JoinedNested' id='j-nested' %}{% endif %}</p>"
+        )
+
+
+async def test_a_component_an_event_draws_is_joined_by_the_page_and_hears_its_own_joined():
+    # The parent's template pass builds and mounts the nested component inline; its
+    # joined() is not the pass's to run. The page joins the element it was drawn
+    # into, and the server takes up the instance the pass left: one joined(), no
+    # leaving(), and ``joined`` behind what joined() queued, as on any join.
+    JoinedNested.left.clear()
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
+    communicator.scope["user"] = AnonymousUser()
+    connected, _ = await communicator.connect()
+    assert connected
+    try:
+        state = sign_state(JoinedHost(user=AnonymousUser(), wire=WireviewMeta(params={}), id="j-1"))
+        await communicator.send_json_to(
+            {"command": "join", "payload": {"name": "JoinedHost", "state": state, "children": {}, "ref": 1}}
+        )
+        while (await communicator.receive_json_from(timeout=5))["command"] != "joined":
+            pass
+        payload = {"id": "j-1", "command": "show", "implicit_args": {}, "explicit_args": {}, "ref": 2}
+        await communicator.send_json_to({"command": "user_event", "payload": payload})
+        heard = [await communicator.receive_json_from(timeout=5)]
+        while not await communicator.receive_nothing(timeout=0.3):
+            heard.append(await communicator.receive_json_from())
+        # The render that draws it, and nothing that says it joined: it has not
+        assert _named(heard) == ["render"]
+        assert "j-nested" in str(heard[0]["payload"]["diff"])
+
+        nested = sign_state(JoinedNested(user=AnonymousUser(), wire=WireviewMeta(params={}), id="j-nested"))
+        await communicator.send_json_to(
+            {"command": "join", "payload": {"name": "JoinedNested", "state": nested, "children": {}, "ref": 3}}
+        )
+        heard = []
+        while not heard or heard[-1]["command"] != "joined":
+            heard.append(await communicator.receive_json_from(timeout=5))
+        assert _named(heard) == ["render", "title", "joined:j-nested"]
+        assert heard[-1]["payload"]["ref"] == 3
+        # The instance the event's render built, taken up rather than replaced
+        assert JoinedNested.left == []
+    finally:
+        await communicator.disconnect()

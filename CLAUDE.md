@@ -112,7 +112,7 @@ tests/
 │                          허용·거절은 저장소 루트의 conftest.py 가 한다(#120)
 │                          test_e2e_harness.py 는 E2E 하네스 자체의 계약을 지킨다. test_e2e_script.py 는 tests/e2e.sh 가 넘긴 경로만 돌리는지 본다
 │                          test_live_session_contract.py 는 회귀가 아니라 계약을 진술한다 —
-│                          컴포넌트가 생기는 경로 8개 × 거절 사유 5종을 parametrize로 돌린다.
+│                          컴포넌트가 생기는 경로 9개 × 거절 사유 5종을 parametrize로 돌린다.
 │                          경로를 새로 만들면 행을 추가한다
 │                          test_feature_gap.py 는 docs/FEATURE-GAP.md 의 ✅ 행마다 근거 칸의 테스트가
 │                          실제로 있는지, 개요의 숫자가 표를 센 값인지 본다(#110)

@@ -1112,10 +1112,11 @@ class WireviewComponent {
         this.hookManager.updated();
 
         // Update the viewport observers (scan for new viewport elements): this
-        // component's, and those of the LiveComponents its HTML embeds, which
-        // this patch drew and whose bindings are theirs, not this one's
-        for (const live of [el, ...el.querySelectorAll("[wireview-live]")]) {
-          connection.components[live.id]?.viewportObserver.updated();
+        // component's, and those of the components its HTML embeds -- a
+        // LiveComponent, or a nested component already joined -- which this
+        // patch drew and whose bindings are theirs, not this one's
+        for (const nested of [el, ...el.querySelectorAll("[wireview-component]")]) {
+          connection.components[nested.id]?.viewportObserver.updated();
         }
 
         // Update upload previews (populate src for new preview elements)
@@ -1162,11 +1163,17 @@ class WireviewComponent {
     const element = /** @type {(HTMLElement & {__wireviewHookManager?: HookManager}) | null} */ (
       this.getElemenet()
     );
-    // A component a render brought in -- a LiveComponent, or a component the
-    // render drew again: the server drew it on a joined connection and marked
-    // it live, so there is nothing to join, but nothing looked for its hooks
-    // either -- they never mounted, and what it pushed to them reached nothing.
+    // A component a render brought in: the server drew it on a joined
+    // connection and marked it live, but nothing on the page has taken it up
+    // yet -- its hooks never mounted. A LiveComponent's parent runs its
+    // lifecycle, so its hooks are all it needs. A component the render drew
+    // with `{% component %}` is an instance the server built and mounted in
+    // the parent's template pass and never joined: its joined() had not run,
+    // no `joined` started its infinite scroll, and no render named its
+    // instance for its uploads. Its join is what completes it (the server
+    // adopts an instance that never joined), as it does on the page's own join.
     if (element?.dataset.isLive === "true" && !element.__wireviewHookManager) {
+      if (!element.hasAttribute("wireview-live")) this.sendJoin(element);
       this.hookManager.init();
       return;
     }
