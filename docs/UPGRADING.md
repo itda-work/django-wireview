@@ -108,6 +108,22 @@ async def handle_async(self, name, result):
 m2m 변경은 바꾼 쪽의 모델이 `senders`에 있을 때 알린다(**조용함**). `user.groups.add(g)`와 `group.user_set.add(u)`를
 모두 알리려면 두 모델을 다 적는다. 상세는 [설정](./features/settings.md#모델-알림).
 
+### 10. `on_upload_complete`는 이벤트 핸들러가 아니다
+
+`on_upload_complete(name, entry)`는 이제 `Component`가 가진 콜백이다. 전에는 프레임워크가 이름으로 찾기만 해서,
+이 메서드를 쓴 컴포넌트는 브라우저가 이벤트로 보낸 가짜 완료에도 콜백을 실행했다(보안 수정).
+
+- **오버라이드는 고칠 것이 없다.** 시그니처도 그대로고 업로드가 끝나면 전처럼 불린다.
+- 테스트의 `view.call("on_upload_complete", ...)`는 `AssertionError`를 낸다. 메서드를 시험하려면
+  `await view.component.on_upload_complete(name, entry)`로 직접 부른다.
+- sync로 쓴 오버라이드는 `wireview.W001` 대신 `wireview.W002`로 알린다. 원래도 실행되지 않았다.
+
+### 11. `{% on %}`은 클라이언트가 부를 수 없는 이름에 바인딩하지 않는다
+
+`{% on "click" "joined" %}`처럼 프레임워크 메서드나 `_` 메서드에 바인딩하면(`JS().push("...")` 안도 같다) 렌더가
+`AssertionError`로 멈춘다. 전에는 렌더는 되고 클릭이 서버 로그 한 줄만 남긴 채 버려졌다. 그러니 원래 동작하던
+바인딩은 없다. 사용자 메서드로 감싸 다른 이름으로 바인딩한다.
+
 ## 0.6에서 0.7, 1.0 릴리스 후보로
 
 고칠 것이 없다. 0.7.0과 1.0.0rc1은 호환을 깨는 변경이 없다([CHANGELOG](../CHANGELOG.md)).

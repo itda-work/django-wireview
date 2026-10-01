@@ -186,7 +186,9 @@ The django-reactor era changelog (2.x) is preserved in
   client cannot call. The session only looked the name up, so a component that defined it had
   also defined an event handler: a browser could send `on_upload_complete` as an event and run
   the callback for an upload that never finished. Overrides keep working unchanged; a sync one
-  is now reported by `wireview.W002` instead of `W001`.
+  is now reported by `wireview.W002` instead of `W001`. A test that ran the callback with
+  `view.call("on_upload_complete", ...)` now gets `AssertionError` and calls the method directly
+  (`docs/UPGRADING.md` §10).
 
 ### Changed
 
@@ -195,7 +197,7 @@ The django-reactor era changelog (2.x) is preserved in
   `JS().push(...)`. Such a binding used to render and drop every click with a log line. It is
   what a project sees when a minor release adds a `Component` member under the name of one of
   its handlers -- `docs/COMPATIBILITY.md` now says minor releases may add members and that
-  `CHANGELOG.md` names each one.
+  `CHANGELOG.md` names each one (`docs/UPGRADING.md` §11).
 
 ### Fixed
 
