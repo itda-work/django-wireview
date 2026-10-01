@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<div {% live_tag_header %} wire-hook="ProbeLog" data-who="{{ this.id }}">
+  <span data-testid="{{ this.id }}-pokes">{{ this.pokes }}</span>
+  <button type="button"
+          data-testid="{{ this.id }}-poke"
+          {% on "click" "poke" myself=True %}>poke</button>
+</div>

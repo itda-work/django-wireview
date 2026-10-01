@@ -219,6 +219,64 @@ def test_a_boosted_navigation_tries_a_failed_join_again(probe):
 
 
 @pytest.fixture
+def slot_page(page, server):
+    """The ``slot/`` page, once the joins of both its nests have failed."""
+    sockets = []
+    page.on("websocket", lambda ws: sockets.append(ws))
+    page.add_init_script(
+        "window.__wireviewErrors = [];"
+        "document.addEventListener('wireview:error', (e) => window.__wireviewErrors.push(e.detail));"
+    )
+    open_live(page, f"{server}/errorprobe/slot/", selector="#host[data-is-live='true']")
+    page.wait_for_function("['slot-nest', 'own-nest'].every((id) => window.__wireviewErrors.some((e) => e.id === id))")
+    page.sockets = sockets
+    return page
+
+
+def test_a_live_component_in_the_slot_of_a_failed_join_is_its_callers(slot_page):
+    # A slot renders in its caller's template pass: ``slot-leaf`` is the
+    # host's, which is alive, and the nest's failed join took nothing of it.
+    # The page took the nest around it for its owner and kept it out -- its
+    # clicks went nowhere -- until a render of the host took it up again. The
+    # nest's own LiveComponent did go with the nest.
+    page = slot_page
+    sent = []
+    page.sockets[0].on("framesent", lambda frame: sent.append(json.loads(frame)))
+    expect(page.locator("#slot-leaf")).to_have_attribute("data-parent", "host")
+
+    for count in ("1", "2"):
+        by(page, "slot-leaf-poke").click()
+        by(page, "own-leaf-poke").click()
+        # Answered after anything the pokes sent; the second time, after the
+        # host's render carried the leaf's
+        by(page, "host-bump").click()
+        expect_text(by(page, "host-count"), count)
+        expect_text(by(page, "slot-leaf-pokes"), count)
+
+    expect_text(by(page, "own-leaf-pokes"), "0")
+    assert _sent_to(sent, "own-nest", "own-leaf") == []
+    expect(page.locator("#slot-nest")).to_have_class("wireview-error")
+    expect(page.locator("#own-nest")).to_have_class("wireview-error")
+
+
+def test_the_hooks_of_a_failed_join_are_destroyed_when_it_leaves(slot_page):
+    # The page let go of a component whose join failed, and of its
+    # LiveComponents, and so never told their hooks the elements had left:
+    # a listener or a timer a hook set up outlived its element.
+    page = slot_page
+    html = page.locator("html")
+    hooked = ["slot-nest", "own-nest", "slot-leaf", "own-leaf"]
+    for who in hooked:
+        expect(html).to_have_attribute(f"data-mounted-{who}", "1")
+
+    by(page, "host-toggle").click()
+    expect(page.locator("#slot-nest")).to_have_count(0)
+    expect(page.locator("#own-nest")).to_have_count(0)
+    for who in hooked:
+        expect(html).to_have_attribute(f"data-destroyed-{who}", "1")
+
+
+@pytest.fixture
 def next_late_join_fails(monkeypatch):
     """Once set, the next join of ``#late`` raises in ``joined()``, which answers it with an ``error``."""
     from testproj.errorprobe.live import ErrorBox

@@ -1,0 +1,13 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <button type="button" data-testid="host-toggle" {% on "click" "toggle" %}>toggle</button>
+  <button type="button" data-testid="host-bump" {% on "click" "bump" %}>bump</button>
+  <span data-testid="host-count">{{ this.count }}</span>
+  {% if this.shown %}
+    {% component_block 'ErrorSlotNest' id="slot-nest" %}
+    {% fill body %}{% live_component 'ErrorSlotLeaf' id="slot-leaf" %}{% endfill %}
+  {% endcomponent %}
+  {% component 'ErrorSlotNest' id="own-nest" %}
+{% endif %}
+</div>

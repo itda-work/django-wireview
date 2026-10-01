@@ -1,0 +1,9 @@
+{% load wireview %}
+
+<div {% tag_header %} wire-hook="ProbeLog" data-who="{{ this.id }}">
+  {% if slots.body %}
+    {% render_slot "body" %}
+  {% else %}
+    {% live_component 'ErrorSlotLeaf' id="own-leaf" %}
+  {% endif %}
+</div>

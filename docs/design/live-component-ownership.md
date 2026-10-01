@@ -108,6 +108,10 @@
   부모 렌더가 이미 그 자식을 떠나보냈다. 보내면 빠른 토글에서 늦게 도착한 `leave`가 다시 보인 **새**
   인스턴스를 지운다. 서버도 LiveComponent id의 `leave`를 무시한다(join과 같은 옛 번들 방어, #140).
   떠난 루트에 늦게 도착한 render는 자식을 등록하지 않고 버린다.
+- 클라이언트가 LiveComponent의 루트(그것을 만든 join)를 정할 때는 요소를 감싼 컴포넌트가 아니라
+  `data-parent` 사슬을 따라 처음 만나는 일반 Component를 본다. 슬롯은 부르는 쪽의 패스에서 렌더되므로, 다른
+  컴포넌트의 슬롯에 놓인 LiveComponent의 부모는 슬롯을 채운 쪽이다. 요소의 조상으로 정하던 때는 그 컴포넌트의
+  join이 실패하면 살아 있는 LiveComponent까지 페이지가 받아들이지 않았다.
 - 이동 뒤 같은 id가 LiveComponent에서 루트로(또는 반대로) 바뀔 수 있다. 클라이언트는 join할 때마다 요소의
   `wireview-live`로 소유를 다시 정하고, 떠난 것의 `leave`를 새 것의 join보다 **먼저** 보낸다. join을 먼저
   보내면 서버에는 아직 옛 부모의 LiveComponent가 그 id로 남아 있어 루트의 join을 무시했다(#146).

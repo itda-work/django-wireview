@@ -107,6 +107,12 @@ class ServerConnection {
      */
     this.joinFailures = new WeakSet();
     /**
+     * @type {Object<string, WireviewComponent>} the components a failed join
+     * keeps out (keepOut), by id: their hooks stay mounted for the next
+     * connection, and are destroyed if the element leaves before it
+     */
+    this.keptOutComponents = {};
+    /**
      * @type {number} The last ref given to a hook's pushEvent. One counter for
      * the page, not one per component: a reply finds its callback by the ref
      * alone, and two components counting from 1 swapped answers (#108).
@@ -206,8 +212,9 @@ class ServerConnection {
       // the first connection, belongs to no instance yet and waits for the next.
       uploadManagers.connectionClosed();
       this.joins.clear();
-      // The next connection tries them again
+      // The next connection tries them again, and takes up their hooks
       this.joinFailures = new WeakSet();
+      this.keptOutComponents = {};
       document.querySelectorAll("[wireview-component]").forEach((el) => {
         const element = /** @type {HTMLElement} */ (el);
         element.classList.add("wireview-disconnected");
@@ -296,20 +303,22 @@ class ServerConnection {
 
   /**
    * Whether a component's element stays out of the page's components: its
-   * join failed on this connection, or it is a LiveComponent in one whose join
-   * did -- the instance its root's join made it went with the root's.
+   * join failed on this connection, or it is a LiveComponent whose root's join
+   * did -- the instance that join made of it went with the root's. One in the
+   * slot of a failed component is not that one's but its caller's (rootIdOf).
    * @param {Element} element
    * @returns {boolean}
    */
   keptOut(element) {
-    const root = element.closest("[wireview-component]:not([wireview-live])");
+    const root = rootElementOf(element);
     return Boolean(root && this.joinFailures.has(root));
   }
 
   /**
    * Lets go of a component a failed join keeps out of the page: no events,
    * renders or uploads reach its id. Its element and hooks stay as they are,
-   * for the next connection to take up.
+   * for the next connection to take up; if the element leaves first, its
+   * hooks are told then (joinAllComponents).
    * @param {string} id
    */
   keepOut(id) {
@@ -317,6 +326,7 @@ class ServerConnection {
     if (!component) return;
     component.viewportObserver.destroy();
     delete this.components[id];
+    this.keptOutComponents[id] = component;
     this.joins.forget(id);
     this.loading.abandon(id).forEach(unmarkLoading);
     uploadManagers.dispose(id);
@@ -366,6 +376,13 @@ class ServerConnection {
       // takes it along.
       if (!component.owned) this.sendLeave(id);
     }
+    // One a failed join kept out has no instance to leave, but its hooks are
+    // still mounted, and nothing else tells them the element is gone
+    for (const [id, component] of Object.entries(this.keptOutComponents)) {
+      if (onPage.has(id)) continue;
+      component.hookManager.destroy();
+      delete this.keptOutComponents[id];
+    }
     for (const element of elements) {
       // The server rendered it over HTTP: not the DOM whose join failed
       if (/** @type {HTMLElement} */ (element).dataset.isLive === "false") this.joinFailures.delete(element);
@@ -377,6 +394,16 @@ class ServerConnection {
       if (this.keptOut(element)) {
         if (this.joinFailures.has(element)) element.classList.add("wireview-error");
         continue;
+      }
+      // Taken up again (a boosted navigation's HTML): the new component takes
+      // over the hooks the element carries, and ones another element under
+      // the id had are told it is gone
+      const kept = this.keptOutComponents[element.id];
+      if (kept) {
+        delete this.keptOutComponents[element.id];
+        const carried = /** @type {HTMLElement & {__wireviewHookManager?: HookManager}} */ (element)
+          .__wireviewHookManager;
+        if (kept.hookManager !== carried) kept.hookManager.destroy();
       }
       let component = this.components[element.id];
       if (!component) {
@@ -512,8 +539,9 @@ class ServerConnection {
         } else if (element) {
           // A join that failed is not retried: it would fail again. The page
           // keeps what the server rendered, and the next connection tries.
-          // Its LiveComponents' instances went with it
-          const owned = liveIdsIn(element).filter((each) => rootIdOf(each) === id);
+          // The instances of the LiveComponents it owns went with it; one in
+          // its slot is its caller's, alive
+          const owned = ownedLiveIds(element);
           this.joinFailures.add(element);
           for (const each of [id, ...owned]) this.keepOut(each);
           // No instance, so no uploads: its own nor its LiveComponents'
@@ -1373,12 +1401,13 @@ class WireviewComponent {
     // its way, matches none of them. Named, the join is told from the one it
     // replaces by its answer, which carries the ref (#139).
     const ref = connection.serverVsn >= JOIN_REFS_SINCE ? ++connection.lastRef : undefined;
-    uploadManagers.joining(this.id, liveIdsIn(element), connection.joins.sent(this.id, ref));
+    uploadManagers.joining(this.id, ownedLiveIds(element), connection.joins.sent(this.id, ref));
     // Infinite scroll judges the new instance's list once this join lands
     // (`joined`), as it did the first's (#112). Left running, the old
     // instance's observer saw the new DOM's binding over a list not there
     // yet and asked the new instance for a second page.
-    for (const id of [this.id, ...liveIdsIn(element)]) connection.components[id]?.viewportObserver.stop();
+    // A LiveComponent in its slot is its caller's, which this join leaves be.
+    for (const id of [this.id, ...ownedLiveIds(element)]) connection.components[id]?.viewportObserver.stop();
     // A join that failed before is tried again on a new connection
     element.classList.remove("wireview-error");
     /** @type {Object<string, [string, string]>} */
@@ -2154,13 +2183,43 @@ function liveIdsIn(element) {
 }
 
 /**
- * The root component a LiveComponent's element sits in: the one whose join
- * made its instance (#146).
+ * The LiveComponents inside a root's element that the root owns: the ones its
+ * join made. One in the slot of a component inside it is that slot's caller's.
+ * @param {Element} element
+ * @returns {string[]}
+ */
+function ownedLiveIds(element) {
+  return liveIdsIn(element).filter((each) => rootIdOf(each) === element.id);
+}
+
+/**
+ * The root component whose join made the instance of the component an element
+ * is part of (#146). A LiveComponent's is its parent's, the one whose template
+ * pass built it, as `data-parent` names it -- not the component around its
+ * element: a slot renders in its caller's pass, so a LiveComponent in another
+ * component's slot is the caller's.
+ * @param {Element} element
+ * @returns {Element | null} null when no root of it is on the page
+ */
+function rootElementOf(element) {
+  const seen = new Set();
+  let at = element.closest("[wireview-component]");
+  while (at?.hasAttribute("wireview-live") && !seen.has(at)) {
+    seen.add(at);
+    const parent = /** @type {HTMLElement} */ (at).dataset.parent;
+    at = (parent && document.getElementById(parent)) || at.parentElement?.closest("[wireview-component]") || null;
+  }
+  return at && !at.hasAttribute("wireview-live") ? at : null;
+}
+
+/**
+ * The id of the root whose join made a LiveComponent's instance (rootElementOf).
  * @param {string} id
  * @returns {string} the root's id, or `id` when its element is not on the page
  */
 function rootIdOf(id) {
-  return document.getElementById(id)?.closest("[wireview-component]:not([wireview-live])")?.id ?? id;
+  const element = document.getElementById(id);
+  return (element && rootElementOf(element)?.id) || id;
 }
 
 /**

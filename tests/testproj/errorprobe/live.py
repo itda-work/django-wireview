@@ -13,6 +13,8 @@ a LiveComponent, ``nest-child``, whose own render -- or the ``remove`` its
 ``?visit=swap`` puts a root ``ErrorBox`` under that id instead (#146).
 Enter in the child's field asks for ``vanish`` too, and the field's blur is
 bound, so a test can see whether the page sends it while the ``remove`` applies.
+The ``slot/`` page's ``ErrorSlotHost`` puts its own LiveComponent in the slot
+of a component whose join fails, next to one that holds its own.
 """
 
 from wireview import Component, LiveComponent
@@ -101,3 +103,40 @@ class ErrorNestChild(LiveComponent):
 
     async def blurred(self, **_rest):
         pass
+
+
+class ErrorSlotHost(Component):
+    """The ``slot/`` page's root: two ``ErrorSlotNest`` whose joins fail, one
+    with ``slot-leaf`` in its slot -- the host's own LiveComponent, drawn in the
+    host's template pass -- and one holding ``own-leaf`` in its own template.
+    ``toggle`` takes both nests off the page."""
+
+    class Meta:
+        template_name = "errorprobe/slot_host.html"
+
+    shown: bool = True
+    count: int = 0
+
+    async def toggle(self, **_rest):
+        self.shown = not self.shown
+
+    async def bump(self, **_rest):
+        self.count += 1
+
+
+class ErrorSlotNest(Component):
+    class Meta:
+        template_name = "errorprobe/slot_nest.html"
+
+    async def joined(self):
+        raise RuntimeError("errorprobe: the slot nest's joined() raised on purpose")
+
+
+class ErrorSlotLeaf(LiveComponent):
+    class Meta:
+        template_name = "errorprobe/slot_leaf.html"
+
+    pokes: int = 0
+
+    async def poke(self, **_rest):
+        self.pokes += 1

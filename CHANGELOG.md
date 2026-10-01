@@ -417,8 +417,12 @@ The django-reactor era changelog (2.x) is preserved in
   that nothing joined, and the server's HTML took the `wireview-error` class away: the page took
   the element up again, and a click or a hook's `pushEvent` reached an instance whose `joined()`
   never ran. The page now keeps such an element marked and sends nothing for it, nor for the
-  LiveComponents in it, until it reconnects or a boosted navigation brings the server's HTML for
-  the page again. The server is unchanged: it does not retry the join, as before.
+  LiveComponents it owns, until it reconnects or a boosted navigation brings the server's HTML for
+  the page again. Which component owns a LiveComponent is the one whose template pass built it, as
+  its `data-parent` says, not the component around its element: one in the failed component's slot
+  is the caller's, alive, and works. The hooks of what the page keeps out stay mounted for the next
+  connection, and hear `destroyed()` if the element leaves before then. The server is unchanged: it
+  does not retry the join, as before.
 
 ### Security
 
