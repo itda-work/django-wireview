@@ -250,71 +250,56 @@ The django-reactor era changelog (2.x) is preserved in
   with `check` and the render both quiet. The dict is on one line now, and
   `tests/test_doc_examples.py` refuses a `{%`, `{{` or `{#` left open at the end of a line in
   any template or Markdown code block of the repository.
-
 - Tutorials 02 and 03 bound Ctrl+Enter and Escape to `keypress`. Browsers send no `keypress` for
   a key that types no character, or under Ctrl, Alt or Meta, so Escape never cancelled an edit
   and Ctrl+Enter never sent. They bind `keydown` now, and `tests/test_doc_examples.py` refuses a
   `keypress` binding on such a key.
-
 - Tutorial 03 saved a toggle and an edit with `QuerySet.aupdate()`, which sends no `post_save`,
   so the other tabs the tutorial promised to keep in sync never heard of them. It reads the item
   and calls `asave()` now, as the todo example does, and says which ORM calls send the signal.
-
 - Tutorials 03, 04 and 05 nested components without an `id`. Such a child is a new instance on
   every render of its parent, so an open editor closed and the online-users list joined again
   with each message. They pass an id now, and `tests/test_doc_examples.py` refuses an id-less
   nested component in a tutorial block or an example template.
-
 - Tutorials 05 and 15 subscribe components to model channels but never set
   `AUTO_BROADCAST.senders`. Since rc4 a model left out of `senders` is not announced, and with no
   `AUTO_BROADCAST` at all `wireview.W015` stays quiet too, so the cards never heard a save. Both
   show the settings block now. Tutorial 15's `reset_all` also zeroed the stats with
   `QuerySet.aupdate()`, which no other tab hears; it saves each instance.
-
 - Tutorial 05's feed set `loading_more` and reset it inside one handler. The render goes out
   once, after the handler, so "Loading..." and the disabled button were never drawn. The button
   uses `wire-disabled-with` and the click loading class now.
-
 - Tutorial 15 said an event without `myself=True` goes to the parent. The client sends it to the
   closest `wireview-component` element, which inside a LiveComponent is the LiveComponent itself;
   the tutorial now says so, as `docs/features/live-component.md` does.
-
 - Tutorial 15 now warns that the parent handler `send_to_parent` calls can be called by the
   browser too, with any arguments, and its `reset_all` zeroes the totals the parent holds: the
   children's `update()` does not report back, so the parent's sum stayed at the old value.
-
 - Tutorial 14's `live.py` used `NotificationType` without importing it, so the app failed to load
   with a `NameError` and no command, `check` included, could start. It imports it now.
-
 - Tutorial 14's settings and test blocks import what they use (`AutoBroadcast`, `Notification`,
   `XNotificationList`), and it no longer calls the bell a place to receive toasts: the bell hears
   only the notification channels, and `{% wireview_toasts %}` receives toasts.
-
 - Tutorial 07 said production must use Redis. Any layer that joins the processes works, and the
   project aims at channels-nats; the section says so and links the deployment guide.
-
 - Tutorial 07's blocks import `timezone` and `datetime` where they use them, and its last-seen
   helper starts with `_`: as `format_last_seen` it was a handler any browser could call.
-
 - Tutorial 08's basic uploader template binds `cancel_file`, which its class did not define until
   a later section, so the render failed with `Missing handler` as soon as a file was chosen. The
   class defines it now.
-
-- Tutorial 08 put `{{ entry.status }}` in a CSS class. `UploadStatus` is a `str, Enum`, which
-  prints as `UploadStatus.UPLOADING`; the template uses `.value`, and the table says why.
-
+- `UploadStatus`, `AsyncState` and `PresenceState` are `StrEnum`s. As `str, Enum` they compared
+  equal to their value but printed as `UploadStatus.UPLOADING`, so tutorial 08's
+  `class="{{ entry.status }}"` never matched its CSS. A template, `str()` and an f-string now give
+  the value (`uploading`); equality and JSON are unchanged.
 - Tutorial 08 said the connection id is issued by the consumer's `connect()`; the session issues
   it when it starts, since the session logic moved out of the consumer (#60).
-
 - Tutorial 06 offered a `dom_id` prefix against clashes between streams on one page. The client
   finds a `wire-stream` container by name across the whole page, so two components using the same
   name still write into the first one's list. The section now names the stream per component.
-
 - The README, the tutorials and the examples said CI runs the examples on every push. `ci.yml`
   runs only by hand and when the release workflow calls it; `make test` is what runs them. The
   text says so, and `tests/test_doc_examples.py` refuses the old claim while `ci.yml` has no push
   trigger.
-
 - Tutorial 01 says `live.pyi` appears next to `live.py` in `DEBUG` and belongs in `.gitignore`,
   and points multi-process deployments at a layer that joins processes instead of Redis alone.
   The tutorial index lists the `hooks` example and tutorial 06 under Streams; a test keeps the

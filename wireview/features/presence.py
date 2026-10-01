@@ -55,7 +55,7 @@ import asyncio
 import time
 import typing as t
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 if t.TYPE_CHECKING:
     from wireview.core.component import Component
@@ -70,7 +70,7 @@ __all__ = (
 )
 
 
-class PresenceState(str, Enum):
+class PresenceState(StrEnum):
     """Possible states for a user's presence."""
 
     ONLINE = "online"

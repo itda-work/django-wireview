@@ -11,7 +11,7 @@ import secrets
 import typing as t
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from ..core.signing import get_signer
@@ -184,7 +184,7 @@ def validate_upload_token(token: str, max_age: int | None = None) -> UploadToken
         return None
 
 
-class UploadStatus(str, Enum):
+class UploadStatus(StrEnum):
     """Status of an upload entry."""
 
     PENDING = "pending"  # Registered, not yet started

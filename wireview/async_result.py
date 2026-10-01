@@ -21,14 +21,14 @@ from __future__ import annotations
 
 import typing as t
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 T = t.TypeVar("T")
 
 __all__ = ("AsyncResult", "AsyncState")
 
 
-class AsyncState(str, Enum):
+class AsyncState(StrEnum):
     """State of an async operation."""
 
     PENDING = "pending"
