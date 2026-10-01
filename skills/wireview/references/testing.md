@@ -16,11 +16,11 @@ async def test_increment():
     assert view.component.amount == 1
 ```
 
-`mount(component_class, user=None, params=None, session=None, session_key=None, live_session=None, **initial_state)`.
-`user`를 주면 인증된 사용자로, `params`를 주면 URL 쿼리 파라미터가 있는 상태로,
+`mount(component_class, /, *, user=None, params=None, session=None, session_key=None, live_session=None, state=None, **initial_state)`.
+옵션은 모두 키워드로 준다. `user`를 주면 인증된 사용자로, `params`를 주면 URL 쿼리 파라미터가 있는 상태로,
 `session={"k": v}`·`session_key="s1"`을 주면 세션이 있는 상태로, `live_session="admin"`을 주면
-그 경계 안의 페이지에 뜬다. 이 여섯 이름은 `mount()`가 쓰므로 같은 이름의 컴포넌트 필드에는
-전달되지 않는다.
+그 경계 안의 페이지에 뜬다. 필드 초깃값은 키워드(`amount=0`)나 `state={"amount": 0}`으로 준다.
+옵션과 이름이 같은 필드(`params` 같은)는 `state=`로만 줄 수 있다 — 이후 릴리스가 옵션을 더해도 `state=`는 그대로 통한다.
 
 ## MountedComponent가 주는 것
 

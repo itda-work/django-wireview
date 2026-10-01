@@ -109,6 +109,9 @@ The django-reactor era changelog (2.x) is preserved in
   release's bundle. A test checks that every proxy block serves `/static/` from a directory, that
   the app image runs `collectstatic`, and that an image takes its output to the Nginx `alias`.
 
+- The shipped skill still described the 1.0.0rc1 contract: `handle_async(name, result)` with no word
+  of the `AsyncResult` it receives, and `mount()` without its keyword-only options or `state=`.
+  A test now holds every documented `mount()` signature to the real one.
 - `docs/implementation/wire-protocol.md`, the canon of the message shapes, had drifted from the
   code: an outbound `dispatch_event` that never reaches the browser, a `flash_id` that `flash`
   does not carry, `stream_op` without its `limit`, no `crashed` session mail, and no

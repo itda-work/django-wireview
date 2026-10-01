@@ -136,6 +136,7 @@ from wireview import AsyncResult
 
 class Dashboard(Component):
     stats: AsyncResult | None = None
+    results: list[str] = []
 
     async def joined(self):
         # 즉시 로딩 상태로 렌더하고, 끝나면 다시 렌더한다
@@ -144,8 +145,9 @@ class Dashboard(Component):
     async def search(self, query: str):
         await self.start_async("search", self._do_search(query))   # 이름 붙은 태스크
                                                                    # 같은 이름이면 앞의 것을 취소하고 교체
-    async def handle_async(self, name, result):                    # start_async 완료 콜백
-        ...
+    async def handle_async(self, name: str, result: AsyncResult):  # start_async 완료 콜백
+        if name == "search":                                       # 끝난 상태(ok 또는 failed)로만 온다.
+            self.results = result.result if result.ok else []      # 취소된 작업은 부르지 않는다
 
     async def cancel_search(self):
         await self.cancel_async("search")

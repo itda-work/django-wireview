@@ -281,3 +281,31 @@ def test_each_rule_catches_its_mistake(code):
 )
 def test_no_rule_refuses_the_right_way(code):
     assert not _mistakes(_parse(code))
+
+
+def test_the_documented_mount_signature_is_mounts():
+    """The skill still listed mount() before rc2 made its options keyword-only and added state= (#119)."""
+    import inspect
+
+    from wireview import mount
+
+    parts = []
+    for parameter in inspect.signature(mount).parameters.values():
+        if parameter.kind is parameter.KEYWORD_ONLY and "*" not in parts:
+            parts.append("*")
+        if parameter.kind is parameter.VAR_KEYWORD:
+            parts.append(f"**{parameter.name}")
+        elif parameter.default is parameter.empty:
+            parts.append(parameter.name)
+        else:
+            parts.append(f"{parameter.name}={parameter.default!r}")
+        if parameter.kind is parameter.POSITIONAL_ONLY:
+            parts.append("/")
+    expected = f"mount({', '.join(parts)})"
+    listed = {
+        f"{path.relative_to(ROOT)}: {found}"
+        for path in DOCS
+        for found in re.findall(r"`(mount\(component_class[^`]*\))`", path.read_text(encoding="utf-8"))
+    }
+    assert len(listed) >= 2
+    assert all(line.endswith(expected) for line in listed), (expected, listed)
