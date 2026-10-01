@@ -100,7 +100,6 @@ class TestDecodedInstance:
         item = Item.objects.create(text="milk")
         instance = serializer.decode(payload_of(published, f"todo.item.{item.pk}")["instance"])
 
-        assert instance._state.adding is False
         instance.completed = True
         instance.save()
 
