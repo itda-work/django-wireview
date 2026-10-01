@@ -485,6 +485,37 @@ class TestGenerateStubContent:
         assert "value: int" in content
 
 
+@pytest.mark.unit
+def test_a_generated_stub_imports_only_the_public_package():
+    """A committed .pyi imported LiveComponent from wireview.live_component, an internal module (#98)."""
+    import re
+
+    module_stubs = ModuleStubs(
+        module_path="myapp.live",
+        file_path="/tmp/live.py",
+        components=[
+            ComponentStubInfo(
+                name=name,
+                fqn=f"myapp.live.{name}",
+                module="myapp.live",
+                file_path="/tmp/live.py",
+                component_type=kind,
+                docstring="",
+                fields=[],
+                methods=[],
+                class_vars={},
+                handlers=[],
+            )
+            for name, kind in (("Page", "Component"), ("Row", "LiveComponent"))
+        ],
+    )
+
+    content = generate_stub_content(module_stubs)
+
+    assert "from wireview import LiveComponent" in content
+    assert not re.findall(r"^from wireview\.\S+ import .*$", content, re.M)
+
+
 # =============================================================================
 # Integration Tests
 # =============================================================================

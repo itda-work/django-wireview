@@ -143,21 +143,55 @@ __wireview_handlers__ = ['increment', 'decrement', 'reset']
 | `LiveComponent` | 독립 상태를 가진 중첩 컴포넌트 |
 | `FunctionComponent` | 상태 없는 템플릿 함수 |
 
-### LiveComponent
+### LiveComponent과 FunctionComponent
+
+같은 모듈에 이런 둘이 있으면
 
 ```python
+# myapp/live.py
+from django.utils.html import format_html
+from wireview import LiveComponent, function_component
+
 class Counter(LiveComponent):
-    """LiveComponent stub with proper inheritance."""
+    """A nested counter."""
+    class Meta:
+        template_name = "counter.html"
+
+    count: int = 0
+
+    async def increment(self) -> None:
+        self.count += 1
+
+    async def update(self, **assigns) -> None:
+        await super().update(**assigns)
+
+@function_component
+def button(text: str, variant: str = "primary"):
+    """Simple button component."""
+    return format_html('<button class="btn btn-{}">{}</button>', variant, text)
+```
+
+스텁은 이렇다. 모든 import는 공개 패키지 `wireview`에서 온다. 오버라이드한 프레임워크 메서드(`update`)는 스텁에
+남지만 `__wireview_handlers__`에는 들어가지 않는다 — 클라이언트가 부를 수 없기 때문이다. 함수 컴포넌트는 이름과
+docstring만 남는다.
+
+```python
+from typing import Any, ClassVar
+from wireview import FunctionComponent
+from wireview import LiveComponent
+
+class Counter(LiveComponent):
+    """A nested counter."""
 
     count: int
 
     async def increment(self) -> None: ...
     async def update(self, **assigns: Any) -> None: ...
-```
 
-### FunctionComponent
+    # Wireview metadata for IDE support
+    __wireview_attrs__: ClassVar[dict[str, dict[str, Any]]] = {'count': {'type': 'int', 'required': False, 'default': 0}}
+    __wireview_handlers__: ClassVar[list[str]] = ['increment']
 
-```python
 button: FunctionComponent
 """Simple button component."""
 ```

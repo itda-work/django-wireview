@@ -109,6 +109,10 @@ The django-reactor era changelog (2.x) is preserved in
   release's bundle. A test checks that every proxy block serves `/static/` from a directory, that
   the app image runs `collectstatic`, and that an image takes its output to the Nginx `alias`.
 
+- A generated `.pyi` imported `LiveComponent` from `wireview.live_component`, an internal module;
+  it imports from `wireview` now, as it already did for `Component`. A committed stub of a
+  LiveComponent reads as outdated to `wireview_stubs --check` until it is generated again.
+  `docs/features/type-stubs.md` shows the real output for a LiveComponent and a function component.
 - Smaller reference errors: `docs/features/README.md` and `temporary-assigns.md` still said
   `skip_render` and Auto Broadcast were "coming soon"; `csp.md` gave the bundle's cache key as
   `?v=2` (it is the package version); `lifecycle-hooks.md` called the internal `wire.put_flash`;

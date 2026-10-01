@@ -753,7 +753,7 @@ def _generate_class_stub(comp: ComponentStubInfo, types_: _StubTypes | None = No
     # Class definition
     if comp.component_type == "LiveComponent":
         base_class = "LiveComponent"
-        types_.bases.add("from wireview.live_component import LiveComponent")
+        types_.bases.add("from wireview import LiveComponent")
     else:
         base_class = "Component"
         types_.bases.add("from wireview import Component")
