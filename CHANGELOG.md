@@ -118,6 +118,12 @@ The django-reactor era changelog (2.x) is preserved in
   `user.groups.add(group)` had sent the user's password hash on two channels.
   `tests/test_changelog.py` checks both name every boolean flag of `AutoBroadcast`.
 
+- `docs/UPGRADING.md`'s table ends every row at "1.0.0rc4 to 1.0" (#153's silent changes, and the
+  `on_upload_complete` and `{% on %}` changes of 1.0); rows ended at the section before it and the
+  rc4 row said there was nothing to change. The table is read along its arrows, oldest change
+  first, which is bottom to top in the document. `tests/test_upgrading.py` checks that every row
+  ends at the newest section and lists its sections oldest first.
+
 ### Fixed
 
 - `{% wireview_toasts %}` works on a site with the `signed_cookies` session backend. Its key is the
