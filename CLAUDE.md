@@ -115,6 +115,8 @@ tests/
 │                          경로를 새로 만들면 행을 추가한다
 │                          test_feature_gap.py 는 docs/FEATURE-GAP.md 의 ✅ 행마다 근거 칸의 테스트가
 │                          실제로 있는지, 개요의 숫자가 표를 센 값인지 본다(#110)
+│                          test_doc_links.py 는 추적되는 모든 .md 의 상대 링크가 파일에, 앵커가 그 파일의 제목에 닿는지 본다.
+│                          제목을 고치면 그 제목을 가리키던 링크가 이 테스트에서 실패한다
 │                          test_deployment_examples.py 는 docs/DEPLOYMENT.md 의 수신자·readiness 코드 블록을
 │                          꺼내 실제로 돌린다. 문서의 예시를 고치면 이 테스트가 본다
 │                          test_doc_examples.py 는 사용자 문서(README·features·tutorials·skills·examples)의 코드가

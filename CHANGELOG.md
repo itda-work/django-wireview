@@ -125,6 +125,10 @@ The django-reactor era changelog (2.x) is preserved in
   first, which is bottom to top in the document. `tests/test_upgrading.py` checks that every row
   ends at the newest section and lists its sections oldest first.
 
+- `tests/test_doc_links.py` checks that every relative link in the repository's tracked Markdown
+  reaches a file and that its anchor names a heading there, as GitHub writes heading anchors. A
+  reworded heading left the links to it opening the top of the page, and nothing failed.
+
 ### Fixed
 
 - `{% wireview_toasts %}` works on a site with the `signed_cookies` session backend. Its key is the

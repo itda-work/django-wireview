@@ -9,20 +9,16 @@ import re
 from pathlib import Path
 
 import pytest
+from test_doc_links import slug
 
 pytestmark = pytest.mark.unit
 
 UPGRADING = Path(__file__).resolve().parent.parent / "docs" / "UPGRADING.md"
 
 
-def _slug(heading: str) -> str:
-    """GitHub's heading anchor: lower case, punctuation dropped, spaces to hyphens."""
-    return re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
-
-
 def _migration_sections() -> list[str]:
     """The ``## <from>에서 <to>`` sections, newest first as the document orders them."""
-    return [_slug(h) for h in re.findall(r"^## (.+에서 .+)$", UPGRADING.read_text(), re.MULTILINE)]
+    return [slug(h) for h in re.findall(r"^## (.+에서 .+)$", UPGRADING.read_text(), re.MULTILINE)]
 
 
 def _rows() -> dict[str, str]:
