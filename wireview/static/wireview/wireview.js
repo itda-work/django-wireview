@@ -243,6 +243,18 @@ class ServerConnection {
   }
 
   /**
+   * The root whose join made a LiveComponent's instance (#146): the one its
+   * element sits in, or, before a patch puts the element in, the one the render
+   * that registered it was for.
+   * @param {string} id
+   * @returns {string}
+   */
+  rootOf(id) {
+    if (document.getElementById(id)) return rootIdOf(id);
+    return this.components[id]?.rootId ?? id;
+  }
+
+  /**
    * Whether a patch waits for the next frame that redraws a component's
    * element: its own render's, or that of a component around it, whose HTML
    * embeds it.
@@ -352,7 +364,8 @@ class ServerConnection {
         // for the instance that join replaces (#139): its render would name
         // that instance as current, and paint it over the new one. A
         // LiveComponent's own render is its root's instance's (#146).
-        if (!this.joins.render(target?.owned ? rootIdOf(id) : id, ref, Boolean(target))) break;
+        const root = target?.owned ? this.rootOf(id) : id;
+        if (!this.joins.render(root, ref, Boolean(target))) break;
         // The instances this render is the first of: whose upload configs to
         // take (#137)
         if (instances) uploadManagers.named(instances);
@@ -367,6 +380,9 @@ class ServerConnection {
             child = new WireviewComponent(childId, true);
             this.components[childId] = child;
           }
+          // Whose join this render's instances are, for what arrives about the
+          // child before the patch puts its element in
+          child.rootId = root;
           if (childDiff) {
             child.applyDiffData(childDiff);
             changedChildren.push(child);
@@ -395,7 +411,7 @@ class ServerConnection {
         // A halted join's, or its instance's own; not the replaced one's (#146).
         // A LiveComponent's is its root's instance's, as its render is.
         const owned = this.components[payload.id]?.owned;
-        if (!this.joins.about(owned ? rootIdOf(payload.id) : payload.id, payload.ref)) break;
+        if (!this.joins.about(owned ? this.rootOf(payload.id) : payload.id, payload.ref)) break;
         boost.applying(() => document.getElementById(payload.id)?.remove());
         boost.navEvent.sendNewContent();
         break;
@@ -538,11 +554,10 @@ class ServerConnection {
         // page -- have arrived: infinite scroll may judge the list now (#112).
         // Not the replaced join's: its list is not the one on the page (#146).
         // A LiveComponent a render brought in hears its own, after its ops:
-        // like its render, it is about its root's join -- once its element is
-        // on the page. One an event drew arrives ahead of the patch that draws
-        // it, finds no root, and goes by its own id (wire-protocol.md, joined).
+        // like its render, it is about its root's join, the one the render
+        // that brought it was for -- its element may not be in yet.
         const { id, ref } = payload;
-        if (!this.joins.about(this.components[id]?.owned ? rootIdOf(id) : id, ref)) break;
+        if (!this.joins.about(this.components[id]?.owned ? this.rootOf(id) : id, ref)) break;
         this.startViewports(id);
         break;
       }
@@ -1022,6 +1037,12 @@ class WireviewComponent {
      * @type {boolean}
      */
     this.owned = owned;
+    /**
+     * For a LiveComponent: the root the render that registered it was for, so
+     * what arrives about it before its element does is sorted by that join.
+     * @type {string|undefined}
+     */
+    this.rootId = undefined;
 
     // Phoenix-style state (static/dynamic separation)
     /** @type {string[]|null} */
