@@ -50,12 +50,12 @@ The django-reactor era changelog (2.x) is preserved in
   number: `keydown.key` never fired, and the client read the delay of `input.debounce` or
   `input.debounce.abc` as `NaN`, which debounced and throttled nothing.
 
-- `{% on %}` now refuses, when the page renders, a binding to a method the dispatcher would refuse:
-  a framework method (`joined`, `skip_render`, `model_dump` ...) or a `_` one, by name or in a
-  `JS().push(...)`, under `python -O` too. Such a binding used to render and drop every click with a log line. It is
-  what a project sees when a minor release adds a `Component` member under the name of one of
-  its handlers -- `docs/COMPATIBILITY.md` now says minor releases may add members and that
-  `CHANGELOG.md` names each one (`docs/UPGRADING.md`).
+- `{% on %}` now refuses, when the page renders, a binding to a method the dispatcher would
+  refuse: a framework method (`joined`, `skip_render`, `model_dump` ...) or a `_` one, by name or
+  in a `JS().push(...)`, under `python -O` too. Such a binding used to render and drop every click
+  with a log line. It is what a project sees when a minor release adds a `Component` member under
+  the name of one of its handlers -- `docs/COMPATIBILITY.md` now says minor releases may add
+  members and that `CHANGELOG.md` names each one (`docs/UPGRADING.md`).
 
 ### Fixed
 
@@ -216,14 +216,15 @@ The django-reactor era changelog (2.x) is preserved in
   name and say those two go in 2.0 with no replacement.
 
 - `docs/COMPATIBILITY.md` now says a `WireviewDeprecationWarning` does not show in a production
-  log under Python's default filters, and where it does show (pytest, `-W default::DeprecationWarning`,
-  `-X dev`).
+  log under Python's default filters, and where it does show (pytest,
+  `-W default::DeprecationWarning`, `-X dev`).
 
-- The reconnect recovery example of `docs/features/form-feedback.md` bound `{% on "change" "validate" %}`,
-  Phoenix's `phx-change="validate"`. `validate` is a method of Pydantic's `BaseModel`, so no client
-  can call it: the binding dropped every change before, and stopped the render once `{% on %}`
-  refused such names. The example binds `check_email` and says why, and a test now refuses a
-  binding to a `_` or framework name in every shipped document, example and the starter template.
+- The reconnect recovery example of `docs/features/form-feedback.md` bound
+  `{% on "change" "validate" %}`, Phoenix's `phx-change="validate"`. `validate` is a method of
+  Pydantic's `BaseModel`, so no client can call it: the binding dropped every change before, and
+  stopped the render once `{% on %}` refused such names. The example binds `check_email` and says
+  why, and a test now refuses a binding to a `_` or framework name in every shipped document,
+  example and the starter template.
 
 - A component declared with `public=False` and no listed base crashed with
   `AttributeError: ... '_name'` as soon as wireview named it -- `allow_upload()` in `joined()`
