@@ -71,6 +71,12 @@ The django-reactor era changelog (2.x) is preserved in
   package version, and `tests/test_packaging.py` that the `Development Status` classifier is
   `5 - Production/Stable` exactly when the version is not a pre-release.
 
+- `docs/UPGRADING.md` opens with a table from the version you run to the sections to read, and a
+  security note for GHSA-q2rr-5q2g-6xqp. The version range it gives is `django-wireview>=1.0,<2`,
+  replacing the release-candidate floor and `pip install --pre`. The raised dependency floors
+  (`channels>=4.2.1`, `pydantic>=2.7,!=2.9.0`) are in the rc1-to-1.0 section too, where a 1.0.0rc2
+  or rc3 user reads.
+
 ### Fixed
 
 - `{% wireview_toasts %}` works on a site with the `signed_cookies` session backend. Its key is the

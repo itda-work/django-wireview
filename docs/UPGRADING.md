@@ -1,5 +1,37 @@
 # 업그레이드 가이드
 
+## 어디서 오나
+
+쓰던 버전에 맞는 절을 위에서부터 차례로 읽는다. 절마다 그 버전 사이에서 고칠 것만 적었다.
+
+| 쓰던 버전 | 읽을 절 |
+|-----------|---------|
+| 0.4.x | [0.4에서 1.0으로](#04에서-10으로) → [0.5에서 0.6으로](#05에서-06으로) → [1.0.0rc1에서 1.0으로](#100rc1에서-10으로) |
+| 0.5.x | [0.5에서 0.6으로](#05에서-06으로) → [1.0.0rc1에서 1.0으로](#100rc1에서-10으로) |
+| 0.6.x, 0.7.x, 1.0.0rc1 | [1.0.0rc1에서 1.0으로](#100rc1에서-10으로) |
+| 1.0.0rc2, 1.0.0rc3 | [1.0.0rc1에서 1.0으로](#100rc1에서-10으로)의 [§9](#9-auto_broadcast는-senders에-적은-모델만-알린다-보안)와 [§10](#10-의존성-하한) |
+| 1.0.0rc4 | 고칠 것이 없다. [버전 범위](#버전-범위)만 바꾼다 |
+
+0.3 이하는 [CHANGELOG](../CHANGELOG.md)의 해당 절을 먼저 읽고 0.4 행을 따른다. 어느 행이든 마지막에
+[버전 범위](#버전-범위)를 고친다.
+
+> **보안.** 0.7.0 이하와 1.0.0rc1~1.0.0rc3는 보안 권고
+> [GHSA-q2rr-5q2g-6xqp](https://github.com/itda-work/django-wireview/security/advisories/GHSA-q2rr-5q2g-6xqp)의
+> 영향을 받는다. `AUTO_BROADCAST`의 모델 플래그를 켜고 `senders`를 비워 두면 모든 모델이 모든 필드와 함께
+> 채널 레이어로 방송됐다(`User`의 비밀번호 해시 포함). 모델 알림을 쓰고 있었다면 [§9](#9-auto_broadcast는-senders에-적은-모델만-알린다-보안)를
+> 읽는다.
+
+## 버전 범위
+
+1.x는 [공개 API](./COMPATIBILITY.md)를 깨지 않으므로 상한은 다음 메이저다.
+
+```toml
+dependencies = ["django-wireview>=1.0,<2"]
+```
+
+릴리스 후보를 쓰던 프로젝트는 rc 하한(`>=1.0.0rc4,<1.1`)과 `pip install --pre`를 지운다. 1.0.0은 사전
+릴리스가 아니므로 평소처럼 설치된다.
+
 ## 1.0.0rc4에서 1.0으로
 
 - **`mutation()`이 받은 `instance`의 `save()`가 보통의 저장이 됐다**(**조용함**, #153). 전에는 Django 역직렬화기의 저장
@@ -88,7 +120,10 @@ async def handle_async(self, name, result):
 `DEBUG_SYNC_TRANSITIONS_WARNING_THRESHOLD`·`DEBUG_SYNC_TRANSITIONS_ERROR_THRESHOLD`로 바뀌었고
 `TRANSPILER_CACHE_SIZE`는 없어졌다. 남아 있으면 `manage.py check`가 `wireview.W014`로 알린다.
 
-### 9. `AUTO_BROADCAST`는 `senders`에 적은 모델만 알린다
+### 9. `AUTO_BROADCAST`는 `senders`에 적은 모델만 알린다 (보안)
+
+1.0.0rc4가 보안 권고 [GHSA-q2rr-5q2g-6xqp](https://github.com/itda-work/django-wireview/security/advisories/GHSA-q2rr-5q2g-6xqp)를
+고친 변경이다.
 
 `senders`를 비워 두면 전에는 모든 모델을 알렸고, 이제는 **아무것도 알리지 않는다.** 구독한 컴포넌트의
 `mutation()`이 더는 불리지 않으므로, 알릴 모델을 적는다.
@@ -108,20 +143,21 @@ async def handle_async(self, name, result):
 m2m 변경은 바꾼 쪽의 모델이 `senders`에 있을 때 알린다(**조용함**). `user.groups.add(g)`와 `group.user_set.add(u)`를
 모두 알리려면 두 모델을 다 적는다. 상세는 [설정](./features/settings.md#모델-알림).
 
+영향받는 버전에서 모델 플래그를 켜고 돌렸다면, 브로커(Redis·NATS)의 로그·모니터링·덤프에 남았을 수 있는
+데이터를 점검하고 필요하면 비밀번호 변경을 검토한다. 보낼 필드를 모델마다 고르는 선택지는 1.1에서 더한다(#144).
+
+### 10. 의존성 하한
+
+1.0.0rc4부터 `channels>=4.2.1`, `pydantic>=2.7,!=2.9.0`이 필요하다. pydantic의 옛 버전은 Python 3.12에 설치되지
+않거나 `import wireview`에서 실패했고, channels 4.2.1 미만은 channels-nats 레이어에서 실패했다(#132). 둘 중
+하나를 옛 버전에 고정했다면 풀어 준다.
+
 ## 0.6에서 0.7, 1.0 릴리스 후보로
 
 고칠 것이 없다. 0.7.0과 1.0.0rc1은 호환을 깨는 변경이 없다([CHANGELOG](../CHANGELOG.md)).
 
-릴리스 후보는 사전 릴리스라 버전 범위를 평소처럼 적으면 설치되지 않는다. 하한에 rc를 적는다. **하한은 쓰는 기능이
-들어간 rc 중 가장 이른 것, 단 철회(yank)된 rc는 건너뛴다.** rc2는 rc1과 호환되지 않고(위 절), rc3는 pydantic 2.13
-이상에서 import가 실패해 철회됐다(#127). 그래서 지금은 rc4가 하한이다.
-
-```toml
-dependencies = ["django-wireview>=1.0.0rc4,<1.1"]
-```
-
-`>=1.0,<1.1`로 적으면 uv는 해를 찾지 못한다. pip는 `pip install --pre django-wireview` 또는
-`pip install django-wireview==1.0.0rc4`로 설치한다. 1.0.0이 나온 뒤에는 하한을 `1.0`으로 바꿔도 된다.
+1.0.0rc1을 거쳐 1.0으로 올 때는 [1.0.0rc1에서 1.0으로](#100rc1에서-10으로)를 읽는다. rc2는 rc1과 호환되지
+않는다. rc3는 pydantic 2.13 이상에서 import가 실패해 철회(yank)됐다(#127). 버전 범위는 [위](#버전-범위)처럼 적는다.
 
 ## 0.5에서 0.6으로
 
