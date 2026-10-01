@@ -75,7 +75,7 @@ dependencies = ["django-wireview>=1.0,<2"]
   [GHSA-4v8p-p6p8-78pj](https://github.com/itda-work/django-wireview/security/advisories/GHSA-4v8p-p6p8-78pj)).
   1.0.0rc3·rc4의 `{% wireview_toasts %}`는 세션이 있는 모든 방문자를 `wireview.toast.session.<세션 키>` 그룹에
   구독시켰다 — 토스트를 보냈는지와 상관없이. 그룹 이름은 브로커로 간다(channels_redis는 Redis 키와 RDB/AOF 스냅샷,
-  channels-nats는 구독 subject와 `/subsz`·`/connz?subs=1` 모니터링). db·cache·cached_db·file 세션 백엔드에서
+  channels-nats는 구독 subject와 `/subsz?subs=1`·`/connz?subs=1` 모니터링). db·cache·cached_db·file 세션 백엔드에서
   세션 키는 곧 세션 쿠키라, 브로커와 그 로그·모니터링을 읽을 수 있는 쪽이 세션이 끝날 때까지 그 사용자로 행세할 수
   있었다. 1.0은 세션 키를 다이제스트로만 넣는다(`signed_cookies` 백엔드에서 join이 실패하던 결함도 함께 고쳐졌다).
   - 해당하면(위 버전, 그 태그가 있는 페이지, 서버 저장형 세션 백엔드, Redis·NATS 레이어) 1.0으로 올리고, **마지막
@@ -89,7 +89,10 @@ dependencies = ["django-wireview>=1.0,<2"]
   - `clearsessions`는 만료된 세션만 지우므로 소용없다. `SECRET_KEY`를 바꾸면서 옛 키를 `SECRET_KEY_FALLBACKS`에
     남기면 아무것도 무효화되지 않는다. 남기지 않고 바꾸면 모든 백엔드에서 로그인이 풀리지만, 비밀번호 재설정 링크·서명
     쿠키 같은 다른 서명도 함께 무효가 된다.
-  - 브로커의 덤프·로그·모니터링 기록에서 `wireview.toast.session.` 그룹 이름을 찾아 지운다.
+  - `wireview.toast.session.` 그룹 이름이 남았을 수 있는 기록을 점검해 지운다. 브로커의 덤프(Redis RDB/AOF)·로그·
+    모니터링(NATS `/subsz?subs=1`·`/connz?subs=1`), 앱의 `wireview` 로거 DEBUG 출력(rc3·rc4는 구독마다 그룹 이름을
+    남겼다), 텔레메트리 수신자(`broadcast_published`의 `topic`, `publish_failed`의 `target`)다. 세션을 무효화했다면
+    남은 기록은 무해하다.
   - 올릴 수 없으면 레이아웃에서 `{% wireview_toasts %}`를 뺀다. `InMemoryChannelLayer`는 프로세스 밖으로 보내지 않는다.
   - 1.0.0rc4 워커와 1.0 워커가 섞여 도는 롤링 배포 동안에는 서로 다른 버전의 워커 사이에서 세션 키 토스트가 닿지 않는다.
     토스트는 다시 오지 않는 일회성 메시지라 그동안의 것은 빠진다. 사용자로 보낸 토스트는 이름이 같아 영향이 없다.
