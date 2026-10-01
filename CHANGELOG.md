@@ -21,9 +21,8 @@ The django-reactor era changelog (2.x) is preserved in
   when encoding. The receiving side defers the fields left out, as it does any field a payload
   does not carry (below): reading one queries the row -- on the event loop it raises
   `SynchronousOnlyOperation`, so load it with `arefresh_from_db(fields=[...])` -- and `save()`
-  writes only the fields that came. Turn a mapping on only after every process runs a version
-  that knows it: an older process fills the fields a partial payload leaves out with their
-  defaults (#144).
+  writes only the fields that came. Turn a mapping on only after no process runs 1.0.0rc4 or
+  earlier: those fill the fields a partial payload leaves out with their defaults (#144).
 - `wireview.W017` warns when `AUTO_BROADCAST` sends every field of a user model
   (`AbstractBaseUser`, its password hash) or a session model (`AbstractBaseSession`) (#144).
 

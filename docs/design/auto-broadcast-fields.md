@@ -1,17 +1,22 @@
 # AUTO_BROADCAST가 채널 레이어로 보내는 필드 줄이기 ([#144](https://github.com/itda-work/django-wireview/issues/144))
 
-> **상태: 구현됨(1.1) — 안 A2.** (2026-10-01) 구현하며 이 문서와 달라진 것 둘:
+> **상태: 구현됨(1.1) — 안 A2.** (2026-10-01) 구현하며 이 문서와 달라진 것 셋:
 > 1. `arefresh_from_db()`를 필드 없이 부르면 **불러온 필드만 다시 읽고 deferred 필드는 deferred로 남긴다**(Django의 동작).
 >    빠진 필드를 채우려면 이름을 적는다: `await instance.arefresh_from_db(fields=["title"])`. 아래 §2·§3의 예는 그렇게 읽는다.
 > 2. §4-3의 10에서 bookmarks에 적자고 한 `("title","url","is_read","created_at")`는 pk 말고 모든 필드라 **전체 경로**를 탄다.
 >    testproj는 `created_at`을 빼 bookmarks E2E가 부분 경로를 브라우저까지 지나게 했다(rating에는 E2E가 없다).
+> 3. **수신 쪽에 따로 고친 것이 없다.** 이 설계 뒤 1.0 전에 #153이 `decode`를 바꿔, 페이로드에 없는 concrete 필드를
+>    모두 deferred로 두고(`serializer._restore`, 부모 링크는 `_link_parents`) `save` 교체를 없앴다. 다중 테이블 상속 자식의
+>    전체 페이로드가 이미 부분 페이로드였기 때문이다. 그래서 #144는 `encode(instance, fields=...)`만 더하고, 부분 페이로드는
+>    #153의 경로를 그대로 지난다. 아래에서 "`from_db`로 복원"이라 적은 곳은 이 경로로 읽는다. 배포 주의(§2 끝)도
+>    "옛 버전"은 1.0.0rc4 이전을 뜻하게 됐다 — 1.0(#153 포함) 프로세스는 부분 페이로드를 바르게 받는다.
 
 기준 커밋 `bf2faea`(1.0.0rc3 이후, 1.0.0rc4에 들어간 커밋). 이 문서를 쓰며 코드는 바꾸지 않았다. 실험은 저장소 사본에서 돌렸다.
 
 ## 요약
 
 - **권고: 안 A2.** `senders`가 지금의 집합과 함께 **매핑도 받게** 한다. 모델마다 `"__all__"`, 필드 이름 튜플, `()`(pk만) 가운데 하나를 적는다. 집합으로 적으면 지금처럼 모든 필드를 보낸다. 기본 동작이 그대로이므로 폐기 경고는 필요 없다.
-- **함께 고칠 것.** 필드 일부만 담긴 페이로드를 지금의 `serializer.decode`로 풀면 **빠진 필드가 기본값으로 조용히 채워진다.** 그 인스턴스를 저장하면 DB의 값을 덮어쓴다(실험 2). 그래서 필드를 줄이는 안은 모두 `Model.from_db`로 복원해서 보내지 않은 필드를 deferred로 남겨야 한다.
+- **함께 고칠 것.** 필드 일부만 담긴 페이로드를 지금의 `serializer.decode`로 풀면 **빠진 필드가 기본값으로 조용히 채워진다.** 그 인스턴스를 저장하면 DB의 값을 덮어쓴다(실험 2). 그래서 필드를 줄이는 안은 모두 보내지 않은 필드를 deferred로 남겨 복원해야 한다(1.0 전에 #153이 `decode`를 그렇게 바꿨다).
 - **시점: 1.x(1.1)로 미룬다.** 추가만 하고 기본 동작은 바꾸지 않는다. 그래서 `COMPATIBILITY.md` 기준으로 마이너 릴리스에 넣을 수 있다. 1.0 전에 정해야 하는 것은 "기본값을 pk 전용으로 뒤집을지"(안 D) 하나뿐이다. 이것은 **하지 않기를 권한다**(§3).
 
 ---
@@ -214,7 +219,7 @@ senders={("todo", "Item"): "__all__"}             # 지금 동작을 원하면 �
 | m2m | 목록에 적으면 pk 목록이 간다(적을 때만 encode 쿼리). 복원 인스턴스에는 지금처럼 싣지 않는다 |
 | 검증 | `connect()`가 `resolve_senders`와 함께 확인한다. 없는 필드나 역관계 이름은 기동 때 `ImproperlyConfigured`다. `senders`의 설치되지 않은 모델과 같은 처리다 |
 | 인코딩 | `serialize("json", [instance], fields=<목록>)`. Django가 `fields=`를 그대로 지원한다(실험 확인). 세 발신 지점(post_save·pre_delete·m2m)이 한 헬퍼를 쓴다 |
-| 복원 | 페이로드에 온 필드만으로 `from_db`. 나머지는 deferred다. 전체 필드 페이로드는 지금 방식 그대로 복원한다. **`save` 교체는 1.0 전에 없앴다(#153)**. 페이로드에 없는 필드를 deferred로 두는 처리는 #153이 `wireview/serializer.py`의 `_restore(instance, sent)`로 이미 넣었다 — 다중 테이블 상속 자식의 전체 페이로드가 사실상 부분 페이로드이기 때문이다. 부분 페이로드는 그 헬퍼에 보낸 필드 이름만 넘기면 된다 — 전체·부분 모두 모델의 `save`를 쓴다. 부분 페이로드는 그래서 불러온 필드만 쓴다(실험 4) |
+| 복원 | #153의 `decode` 그대로다. `_restore(instance, sent)`가 페이로드에 없는 concrete 필드(pk 제외)를 deferred로 두고, 부모 링크를 `_link_parents`로 잇고, 이미 있는 행(`_state.adding = False`, `_state.db`는 라우터의 쓰기 alias)으로 만든다. 전체와 부분을 가르는 분기는 없다 — 다중 테이블 상속 자식의 전체 페이로드가 이미 부분 페이로드였다. 저장은 모델의 `save`이고 불러온 필드만 쓴다(실험 4). `save` 교체는 1.0 전에 없앴다(#153) |
 | DELETED | 페이로드가 pre_delete 때 만들어지므로 적은 필드가 그대로 온다. `()`면 pk만 온다. 행이 이미 없으니 `arefresh_from_db`는 `DoesNotExist`다. 문서에 "DELETED에서 걸러야 하는 필드(FK 등)는 목록에 적는다"고 쓴다 |
 
 ### 새 체크 W017 (권고: 추가)
@@ -236,7 +241,7 @@ senders={("todo", "Item"): "__all__"}             # 지금 동작을 원하면 �
 |---|---|
 | `wireview/schemas.py` | `senders: set[tuple[str,str]] \| dict[tuple[str,str], Literal["__all__"] \| tuple[str, ...]]`. 정책을 꺼내는 메서드 하나(`fields_for(label)` 정도, 내부) |
 | `wireview/auto_broadcast.py` | `connect()`에서 모델마다 정책을 풀고 필드 이름을 검증해 `_fields: dict[type[Model], tuple[str,...] \| None]`에 둔다. `serializer.encode(instance)` 세 곳을 `_encode(sender, instance)`로 바꾼다. m2m 수신자는 `type(instance)`의 정책을 쓴다. 모듈 docstring 갱신 |
-| `wireview/serializer.py` | `encode(instance, fields=None)`. `decode`는 페이로드의 `fields` 키를 보고 전체면 지금 경로, 부분이면 `from_db` 경로. 모두 내부 모듈이다(`__all__` 공개 아님) |
+| `wireview/serializer.py` | `encode(instance, fields=None)`만 더한다. `decode`는 #153의 것(`_restore`)을 그대로 쓴다 — 부분 페이로드를 위한 경로를 따로 두지 않는다. 모두 내부 모듈이다(`__all__` 공개 아님) |
 | `wireview/checks.py` | `check_auto_broadcast_credentials` (W017) 등록. W015 hint 문구를 "leave out … or list the fields"로 바꾼다 |
 | `wireview/session.py` | 바꿀 것 없음(`model_mutation`은 `decode`만 부른다). 주석의 결합 지점은 그대로다 |
 
@@ -245,7 +250,7 @@ senders={("todo", "Item"): "__all__"}             # 지금 동작을 원하면 �
 | 파일 | 할 일 |
 |---|---|
 | `docs/features/settings.md` §모델 알림 | 매핑 형태, 값 세 종류, FK 표기, DELETED 주의, `arefresh_from_db` 패턴, 롤링 배포 주의. "민감한 모델은 넣지 않는다"를 "넣으려면 필드를 적는다"로 |
-| `docs/features/component-api.md` | `mutation` 행: `instance`는 페이로드 복원본이고, 적지 않은 필드는 deferred다(async에서 읽으면 `SynchronousOnlyOperation` → `await instance.arefresh_from_db()`) |
+| `docs/features/component-api.md` | `mutation` 행: `instance`는 페이로드 복원본이고, 적지 않은 필드는 deferred다(async에서 읽으면 `SynchronousOnlyOperation` → `await instance.arefresh_from_db(fields=[...])`) |
 | `docs/features/checks.md` | W017 행 추가, W015 설명 갱신 |
 | `docs/COMPATIBILITY.md` | "모델 채널 이름" 행에 "`senders`는 집합 또는 모델→필드 매핑. 집합은 모든 필드". 채널 레이어 절에 "필드를 줄이는 설정은 모든 프로세스를 올린 뒤에 켠다" |
 | `docs/DEPLOYMENT.md` | 롤링 배포 절에 위 순서 한 줄 |
@@ -254,7 +259,7 @@ senders={("todo", "Item"): "__all__"}             # 지금 동작을 원하면 �
 | `docs/UPGRADING.md` | 1.1 절(새로): 필요 없음. 추가 기능이고 기본이 같다. 롤링 배포 주의만 DEPLOYMENT에 둔다. **UPGRADING §9의 문장은 1.0 기준이라 두고**, settings 링크만 유효한지 확인한다 |
 | `skills/wireview/` (SKILL.md, references/component.md) | 설정 예와 "민감한 모델은 필드를 적는다" 한 줄. `wireview_agent_setup`로 배포되므로 휠 내용이 바뀐다 |
 | `docs/FEATURE-GAP.md` | 해당 GAP이 없으면 두지 않는다(#144로 추적) |
-| `CHANGELOG.md` `[Unreleased]` | `### Added`: senders 매핑과 필드 목록, W017. `### Changed`: 없음. 부분 페이로드의 deferred 복원은 새 형태에만 적용된다고 적는다. |
+| `CHANGELOG.md` `[Unreleased]` | `### Added`: senders 매핑과 필드 목록(받는 쪽에서 적지 않은 필드가 deferred라는 것은 #153의 항목을 가리킨다), W017. `### Changed`: W015 hint |
 
 ### 4-3. 테스트 (`tests/test_auto_broadcast.py`에 더한다. 새 파일이 필요하면 `test_auto_broadcast_fields.py`)
 
@@ -263,7 +268,7 @@ senders={("todo", "Item"): "__all__"}             # 지금 동작을 원하면 �
 3. **`()`**: 페이로드 `fields`가 비고 pk만 있다. DELETED도 pk가 온다.
 4. **FK 표기**: `("product",)`와 `("product_id",)` 모두 `product_id`를 싣는다.
 5. **검증**: 없는 필드, 역관계 이름, 맨 문자열 값 → 기동(`connect`) 때 `ImproperlyConfigured` 또는 `ValidationError`.
-6. **복원(실험 2·3·4의 회귀)**: 부분 페이로드를 `decode` → 적지 않은 필드는 `get_deferred_fields()`에 있다. async에서 읽으면 `SynchronousOnlyOperation`이다. `await arefresh_from_db()` 뒤에는 DB 값이다. **`save()`가 적지 않은 컬럼을 덮어쓰지 않는다.**
+6. **복원(실험 2·3·4의 회귀)**: 부분 페이로드를 `decode` → 적지 않은 필드는 `get_deferred_fields()`에 있다. async에서 읽으면 `SynchronousOnlyOperation`이다. `await arefresh_from_db(fields=[...])` 뒤에는 DB 값이다(필드 없이 부르면 deferred가 그대로다). **`save()`가 적지 않은 컬럼을 덮어쓰지 않는다.**
 7. **끝까지 잇는 단위 테스트(지금 없음)**: `WireviewSession.model_mutation`에 실제 페이로드를 넣고 `mount()`한 컴포넌트의 `mutation()`이 받은 인스턴스를 확인한다.
 8. **encode 쿼리 수**: m2m 필드를 목록에서 빼면 encode가 m2m 쿼리를 내지 않는다(`capture_queries`).
 9. **W017**: `auth.User`를 집합으로 → 경고, 매핑으로 필드를 적음 → 없음, `AbstractBaseUser` 하위 커스텀 모델 → 경고, 일반 모델 → 없음.

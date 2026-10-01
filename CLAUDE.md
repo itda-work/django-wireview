@@ -67,8 +67,8 @@ wireview/
 ├── slots.py               슬롯 시스템 ({% fill %}, {% render_slot %})
 ├── async_result.py        AsyncResult / AsyncState
 ├── auto_broadcast.py      Django signals → 컴포넌트 mutation() 알림. senders에 적은 모델만, 비우면 아무것도 연결하지 않는다.
-│                          senders가 매핑이면 모델마다 적은 필드만 보낸다(#144). 받는 쪽 serializer.decode가 온 필드만
-│                          from_db로 불러오고 나머지는 deferred로 둔다 — 기본값으로 채우면 save가 행을 덮어쓴다.
+│                          senders가 매핑이면 모델마다 적은 필드만 보낸다(#144). 받는 쪽 serializer.decode는 페이로드에 없는
+│                          필드를 deferred로 둔다(#153) — 기본값으로 채우면 save가 행을 덮어쓴다.
 │                          connect()가 ready()에서 한 번 연결한다(테스트는 다른 AutoBroadcast로 다시 부른다)
 ├── event_transpiler.py    {% on %} 수정자 파싱 (.prevent, .debounce.300 ...)
 ├── js.py                  JS() 명령 빌더

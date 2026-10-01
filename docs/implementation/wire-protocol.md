@@ -86,10 +86,9 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | `session_invalidated` | `reason` | `invalidate_authentication()` (로그아웃, 재로그인) | 소켓을 코드 4001로 닫는다 |
 
 `instance`는 Django JSON 직렬화기의 출력(`[{"model", "pk", "fields"}]`)이다. `AUTO_BROADCAST.senders`가 매핑이면
-`fields`는 그 모델에 적은 필드뿐일 수 있다(`()`이면 비어 있다). 받는 쪽 `serializer.decode`는 직렬화기가 보내는
-필드가 모두 왔으면 지금처럼 복원하고, 빠진 것이 있으면 온 필드와 pk만 `Model.from_db`로 불러온다(나머지는 deferred,
-#144). 메시지 `type`은 같으므로 옛 프로세스도 받는다 — 다만 빠진 필드를 기본값으로 채운다. 그래서 매핑 설정은 모든
-프로세스를 올린 뒤에 켠다(DEPLOYMENT). 이 메시지는 서버 프로세스 사이의 것이라 `PROTOCOL_VERSION`과는 관계없다.
+`fields`는 그 모델에 적은 필드뿐일 수 있다(`()`이면 비어 있다). 받는 쪽 `serializer.decode`는 온 필드와 pk만
+불러오고 나머지는 deferred로 둔다(`_restore`, #153 — 다중 테이블 상속의 부모 필드도 같은 길이다). 메시지 `type`은 같으므로 옛 프로세스도 받는다 — 1.0.0rc4 이전 프로세스는 빠진 필드를 기본값으로
+채운다(#153 이전). 그런 프로세스가 섞여 있으면 매핑 설정은 모두 올린 뒤에 켠다(DEPLOYMENT). 이 메시지는 서버 프로세스 사이의 것이라 `PROTOCOL_VERSION`과는 관계없다.
 
 토픽 이름은 `Meta.subscriptions`의 값(모델 라벨 `app.model` 또는 임의 채널 이름), `wireview_upload_<connection_id>`, `wireview.auth.<인증 세대 지문>`(경계 안의 연결만)이다. 채널 레이어 그룹 이름이므로 영숫자·`-`·`_`·`.`만, 100자 미만이어야 한다. 컨슈머는 render 뒤마다 저장소의 구독 집합과 자기 구독을 맞춘다(`update_to_which_channels_im_subscribed_to`).
 

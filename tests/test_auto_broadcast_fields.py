@@ -3,8 +3,9 @@
 A set sends every field, as before. A mapping gives each model ``"__all__"``, a
 tuple of field names, or ``()`` for the pk alone. The receiving side must then
 load only what came: the deserializer fills a missing field with its default, and
-saving that instance wrote the default over the row. ``serializer.decode`` loads a
-partial payload with ``from_db`` instead, so the fields not sent are deferred.
+saving that instance wrote the default over the row. ``serializer.decode`` (since
+#153) defers every field a payload does not carry, so a partial one needs no path
+of its own; these tests pin that for the payloads a mapping makes.
 """
 
 import json
