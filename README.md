@@ -410,9 +410,14 @@ async def notification(self, channel: str, **kwargs):
 | `ctrl`, `alt`, `shift`, `meta` | 수정 키 필요 |
 | `debounce.<ms>` | 이벤트 디바운스 (예: `debounce.300`) |
 | `throttle.<ms>` | 이벤트 쓰로틀 (예: `throttle.100`) |
-| `enter`, `tab`, `delete`, `backspace`, `space` | 키 별칭 |
+| `enter`, `tab`, `delete`, `backspace`, `esc`, `space` | 키 별칭 |
 | `up`, `down`, `left`, `right` | 화살표 키 별칭 |
-| `key.<keycode>` | 특정 키 (예: `key.escape`) |
+| `key.<이름>` | 특정 키, `event.key`의 이름 (예: `key.escape`) |
+| `key_code.<n>` | 특정 `keyCode` (예: `key_code.27`) |
+
+이 밖의 이름(`away`, `once`, `self`, `escape` 등)과, 인자가 없거나 정수가 아닌 `debounce`·`throttle`·`key_code`는
+`{% on %}`이 렌더 때 `ValueError`로 거절합니다. 클라이언트는 모르는 수정자를 건너뛰므로 조용히 다른 이벤트에
+반응하던 것을 쓴 자리에서 실패로 바꿉니다.
 
 `{% on %}`은 인라인 JavaScript가 아니라 `wire-on-<이벤트>[.<수정자>…]` 데이터 속성을 렌더하고, 번들이 문서 루트에서
 이벤트를 위임받아 처리합니다. 그래서 `'unsafe-inline'` 없는 Content Security Policy와 함께 돕니다. 수정자는 왼쪽부터

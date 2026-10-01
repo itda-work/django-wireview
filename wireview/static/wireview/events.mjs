@@ -126,7 +126,8 @@ export function runSteps(steps, event, ops, from = 0) {
         if (!ops.throttle(Number(arg))) return;
         break;
       default:
-        // Unknown modifiers were ignored by the old transpiler too.
+        // The server refuses an unknown modifier since 1.0; a page an older
+        // server drew may still carry one, and the old transpiler ignored it too.
         break;
     }
   }

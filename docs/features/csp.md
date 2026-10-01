@@ -62,7 +62,9 @@ SECURE_CSP = {
 단축키 `enter`, `tab`, `delete`, `backspace`, `esc`, `space`, `up`, `down`, `left`, `right`다(`wireview/event_transpiler.py`의
 `MODIFIERS`, 클라이언트는 `events.mjs`). **그 밖의 이름은 `{% on %}`이 렌더 때 `ValueError`로 거절한다.** 클라이언트는 모르는
 수정자를 건너뛰므로, 거절하지 않으면 `click.away`·`click.once`·`click.self`는 조건 없는 click이 되고 `keydown.escape`는
-모든 키에 반응한다. Phoenix의 `phx-click-away`·`.once`·`.capture`·`.passive`·`.self`에 해당하는 것은 없다.
+모든 키에 반응한다. 인자가 필요한 수정자에 인자가 없거나(`keydown.key`, `input.debounce`), `debounce`·`throttle`·`key_code`의
+인자가 정수가 아니어도(`input.debounce.abc`, 순서를 틀린 `keydown.debounce.enter`) 같은 `ValueError`다. 클라이언트에서는
+`keydown.key`가 어떤 키에도 반응하지 않고, 지연이 `NaN`인 `debounce`·`throttle`은 아무것도 늦추지 않는다. Phoenix의 `phx-click-away`·`.once`·`.capture`·`.passive`·`.self`에 해당하는 것은 없다.
 
 ### 같은 이벤트를 여러 번
 

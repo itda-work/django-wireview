@@ -40,6 +40,8 @@
   `key_code.<n>`, 단축키 `enter`, `tab`, `delete`, `backspace`, `esc`, `space`, `up`, `down`, `left`, `right`.
   이 밖의 이름(`away`, `once`, `capture`, `self`, `escape` 등)은 렌더 때 `ValueError`다 — 클라이언트는 모르는 수정자를
   건너뛰므로 `click.away`가 평범한 click이 되던 것을 막는다. Escape는 `esc` 또는 `key.escape`.
+  인자가 필요한 수정자에 인자가 없거나(`input.debounce`), `debounce`·`throttle`·`key_code`의 인자가 정수가 아니어도
+  (`input.debounce.abc`) `ValueError`다.
 - 수정자는 왼쪽부터 적용된다. `prevent`는 `debounce`보다 앞에 둔다.
 - 같은 요소에 `keyup.enter`와 `keyup.esc`처럼 같은 이벤트를 수정자만 달리해 여러 번 걸 수 있다. 이름까지 같은 두
   바인딩은 하나만 남으므로, 클라이언트 동작과 서버 호출은 `JS().….push("handler")` 한 체인으로 묶는다.

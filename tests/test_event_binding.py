@@ -110,9 +110,30 @@ class TestTheOnTag:
         with pytest.raises(ValueError, match="not a modifier"):
             binding(event, "save", {})
 
+    @pytest.mark.parametrize("event", ["keydown.key", "input.debounce", "click.throttle", "keydown.ctrl.key_code"])
+    def test_a_modifier_without_its_argument_is_refused(self, event):
+        # keydown.key never fired; a debounce or throttle without a delay ran on every event
+        with pytest.raises(ValueError, match="needs an argument"):
+            binding(event, "save", {})
+
+    @pytest.mark.parametrize(
+        "event", ["input.debounce.abc", "click.throttle.1s", "keydown.key_code.x", "keydown.debounce.enter.300"]
+    )
+    def test_a_number_modifier_with_an_argument_that_is_not_one_is_refused(self, event):
+        # Number("abc") is NaN: setTimeout(f, NaN) waits 0 ms and a NaN throttle lets every event through
+        with pytest.raises(ValueError, match="not a whole number"):
+            binding(event, "save", {})
+
     @pytest.mark.parametrize(
         "event",
-        ["keyup.enter.prevent", "input.debounce.300", "keydown.key.Escape", "keydown.ctrl.key_code.13", "submit"],
+        [
+            "keyup.enter.prevent",
+            "input.debounce.300",
+            "click.throttle.0",
+            "keydown.key.Escape",
+            "keydown.ctrl.key_code.13",
+            "submit",
+        ],
     )
     def test_the_modifiers_the_client_runs_are_taken(self, event):
         assert binding(event, "save", {})[0] == "wire-on-" + event

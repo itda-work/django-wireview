@@ -37,7 +37,10 @@ The django-reactor era changelog (2.x) is preserved in
   the ones it does. The client skips an unknown modifier, so `click.away`, `click.once` or
   `click.self` bound a plain click and `keydown.escape` fired on every key -- and the roadmap
   listed `.capture .once .passive .self .away` as supported. A template that used one rendered
-  and misbehaved silently; it now fails where it is written.
+  and misbehaved silently; it now fails where it is written. So does a modifier that takes an
+  argument without one, or `debounce`, `throttle` and `key_code` with one that is not a whole
+  number: `keydown.key` never fired, and the client read the delay of `input.debounce` or
+  `input.debounce.abc` as `NaN`, which debounced and throttled nothing.
 
 ### Fixed
 

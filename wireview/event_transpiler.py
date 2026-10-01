@@ -51,6 +51,8 @@ MODIFIERS: dict[str, str] = {
     "right": "Only trigger on Arrow Right key",
 }
 MODIFIER_ARGUMENTS = frozenset({"debounce", "throttle", "key", "key_code"})
+# The client reads these arguments as numbers; anything else is NaN there.
+_NUMBER_ARGUMENTS = frozenset({"debounce", "throttle", "key_code"})
 
 
 def binding(event_and_modifiers: str, command: str | JS, kwargs: dict[str, t.Any]) -> tuple[str, str]:
@@ -84,8 +86,18 @@ def binding(event_and_modifiers: str, command: str | JS, kwargs: dict[str, t.Any
                 f"{token!r} in {event_and_modifiers!r} is not a modifier. The modifiers are: "
                 f"{', '.join(MODIFIERS)}. A key by its name is key.<name>, like keydown.key.Escape"
             )
-        if token in MODIFIER_ARGUMENTS and tokens:
-            tokens.pop()
+        if token not in MODIFIER_ARGUMENTS:
+            continue
+        # Without its argument keydown.key never fires and a debounce or throttle waits for nothing
+        example = {"key": "keydown.key.Escape", "key_code": "keydown.key_code.27"}.get(token, f"input.{token}.300")
+        if not tokens:
+            raise ValueError(f"{token!r} in {event_and_modifiers!r} needs an argument, like {example}")
+        argument = tokens.pop()
+        if token in _NUMBER_ARGUMENTS and not (argument.isascii() and argument.isdigit()):
+            raise ValueError(
+                f"{token!r} in {event_and_modifiers!r} takes a whole number, and {argument!r} is not a whole number. "
+                f"The argument comes right after it, like {example}"
+            )
 
     if isinstance(command, JS):
         value: dict[str, t.Any] = {"js": command._commands}

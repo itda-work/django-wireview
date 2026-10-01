@@ -10,6 +10,10 @@
   읽을 필드를 적어 먼저 읽는다. 필드를 적지 않은 `arefresh_from_db()`는 deferred 필드를 건너뛴다.
 - **픽스처 로드(`loaddata`)는 더 이상 모델 알림을 내지 않는다**(**조용함**). `raw=True` 저장과, `loaddata`가 그 객체에 이어서
   채우는 m2m을 거른다. 픽스처를 넣어 화면이 갱신되기를 기대하던 코드나 테스트는 행을 보통으로 저장하거나 알림을 직접 보낸다.
+- **`{% on %}`이 클라이언트가 실행하지 않는 수정자를 렌더 때 `ValueError`로 거절한다.** `click.away`·`click.once`·
+  `click.self`·`keydown.escape`처럼 클라이언트가 건너뛰던 이름, 인자가 없는 `keydown.key`·`input.debounce`·`click.throttle`,
+  정수가 아닌 인자(`input.debounce.abc`)가 그렇다. 전에는 렌더되고 조용히 다른 이벤트에 반응했다(`keydown.escape`는 모든 키,
+  `input.debounce`는 디바운스 없음). 템플릿을 렌더해 보면 바로 드러난다. Escape는 `esc` 또는 `key.escape`.
 
 ## 1.0.0rc1에서 1.0으로
 
@@ -147,6 +151,10 @@ dependencies = ["django-wireview>=1.0.0rc4,<1.1"]
 
 1.0 전에 API를 굳히면서 호환을 깨는 변경을 한 번에 모았다(#93). 아래 순서대로 하면 된다. 대부분은 틀리면
 `TypeError`나 `manage.py check`의 경고로 드러나고, 조용히 달라지는 것은 따로 표시했다(**조용함**).
+
+0.2 이하에서 바로 올린다면 하나 더: 그 버전의 `conn:comp:config:ref` 업로드 토큰은 0.5(#99)부터 받지 않는다. 롤링 배포
+도중 옛 워커가 그린 페이지에서 진행 중이던 업로드는 403으로 실패하고, 페이지를 다시 열면 새 토큰으로 올라간다
+([청크 업로드](./features/chunked-uploads.md)).
 
 ### 1. Django 5.2 이상
 
