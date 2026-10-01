@@ -78,3 +78,17 @@ def test_the_build_starts_from_an_empty_dist():
     recipe = makefile.split("\nci-build:", 1)[1].split("\n\n", 1)[0]
 
     assert "uv build --clear" in recipe
+
+
+def test_the_development_status_says_whether_the_version_is_a_prerelease():
+    """A final release says ``5 - Production/Stable`` and a pre-release does not. The
+    classifier is bumped by hand in the release commit, and nothing read it: a 1.0.0 wheel
+    would have gone to PyPI as ``4 - Beta``."""
+    from packaging.version import Version
+
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    statuses = [c for c in project["classifiers"] if c.startswith("Development Status :: ")]
+    stable = not Version(project["version"]).is_prerelease
+
+    assert len(statuses) == 1, statuses
+    assert (statuses[0] == "Development Status :: 5 - Production/Stable") == stable, (project["version"], statuses)

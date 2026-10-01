@@ -63,6 +63,14 @@ The django-reactor era changelog (2.x) is preserved in
   the value (`uploading`); equality and JSON are unchanged. Code that read the old `str()` output,
   such as a log line matched on `AsyncState.LOADING`, now sees `loading`.
 
+- The changelog names the advisory 1.0.0rc4 fixed, GHSA-q2rr-5q2g-6xqp, under `### Security`
+  with the affected versions and what to do; it was a plain `### Changed` entry. 1.0.0rc3 is
+  marked `[YANKED]`, rc2's `upload:*` events are listed under `### Deprecated`, and
+  `[Unreleased]` compares from v1.0.0rc4 instead of rc3. `tests/test_changelog.py` checks that
+  every release's link compares from the one before it and that the newest release is the
+  package version, and `tests/test_packaging.py` that the `Development Status` classifier is
+  `5 - Production/Stable` exactly when the version is not a pre-release.
+
 ### Fixed
 
 - `{% wireview_toasts %}` works on a site with the `signed_cookies` session backend. Its key is the
@@ -395,12 +403,6 @@ The django-reactor era changelog (2.x) is preserved in
   get the number the old one had, and the page would take the old instance's late config. It is
   still a JSON number that pages compare with `===`, so older pages are unaffected (#141).
 
-- `AUTO_BROADCAST` broadcasts only the models `senders` names. An empty `senders` no longer
-  connects any receiver, whatever flags are on; name the models to broadcast. A many-to-many
-  change is broadcast when the model whose manager made it is named. A `senders` entry that is
-  not an installed model raises `ImproperlyConfigured` at startup. New check `wireview.W015`
-  reports flags turned on with no senders. The documentation's examples name their senders.
-
 - A channel layer that reports a channel full (`ChannelFull`) no longer fails the handler that
   published: that one message is dropped, logged at WARNING on the `wireview` logger and reported
   as `telemetry.publish_failed`. Any other layer error is reported the same way and still raised,
@@ -662,7 +664,28 @@ The django-reactor era changelog (2.x) is preserved in
   instead of morphdom. `examples/README.md` says to pass `-m "not e2e"` when running pytest by hand
   (#126).
 
-## [1.0.0rc3] - 2026-09-30
+### Security
+
+- [GHSA-q2rr-5q2g-6xqp](https://github.com/itda-work/django-wireview/security/advisories/GHSA-q2rr-5q2g-6xqp)
+  (medium): with a model flag of `AUTO_BROADCAST` on (`model`, `model_pk` or `related`) and
+  `senders` left empty, its default, every save and delete of every model in the project was
+  broadcast over the channel layer with all its fields -- `auth.User`'s password hash and
+  `Session`'s data among them -- to the broker (Redis, NATS), its logs and monitoring, and to any
+  component subscribed to that model's channel. Affected: 0.7.0 and earlier, and 1.0.0rc1 to
+  1.0.0rc3. Fixed here: `AUTO_BROADCAST` broadcasts only the models `senders` names. An empty
+  `senders` no longer connects any receiver, whatever flags are on. A many-to-many change is
+  broadcast when the model whose manager made it is named. A `senders` entry that is not an
+  installed model raises `ImproperlyConfigured` at startup. New check `wireview.W015` reports
+  flags turned on with no senders. The documentation's examples name their senders.
+  **What to do:** upgrade, and name the models whose changes components should hear in
+  `WIREVIEW["AUTO_BROADCAST"]`'s `senders` -- without it they hear nothing. Leave out models with
+  sensitive fields: a named model's every field goes to the channel layer (choosing the fields
+  is #144, for 1.1). If you ran an affected version with a model flag on, check what the broker's
+  logs, monitoring and dumps kept, and consider resetting passwords.
+
+## [1.0.0rc3] - 2026-09-30 [YANKED]
+
+Yanked from PyPI: `import wireview` fails on pydantic 2.13 and later (#127), fixed in 1.0.0rc4.
 
 ### Changed
 
@@ -728,8 +751,8 @@ What 1.0 promises, settled before it is frozen (#119). A 1.0.0rc1 project has ch
   it. It replaced the one callback there was, so a second library's registration silently evicted
   the first's (Alpine's, say). Passing `null` no longer clears anything; call the returned function.
 - Upload DOM events are `wireview:upload-added`, `-progress`, `-complete`, `-error` and `-cancel`,
-  inside the `wireview:` namespace the public events use. The 0.x `upload:*` names are sent too
-  until 2.0. All five are documented in `docs/features/external-uploads.md`.
+  inside the `wireview:` namespace the public events use. All five are documented in
+  `docs/features/external-uploads.md`.
 - `window.wireview.send(element, name, args, options)` takes `eventType`, `commit` and `target` in
   one options object. It took `eventType` as a fourth argument, an options object fifth, and the
   LiveComponent target hidden in `args._target`.
@@ -762,6 +785,12 @@ What 1.0 promises, settled before it is frozen (#119). A 1.0.0rc1 project has ch
   a subscriber of `auth.user.1.groups` saw `group.user_set.add(user)` but not
   `user.groups.add(group)`, and a `clear()` reached no channel. A subscription to the old
   `<model>.<pk>.<field>.<pk>` form hears nothing now.
+
+### Deprecated
+
+- The 0.x upload DOM events `upload:added`, `upload:progress`, `upload:complete`, `upload:error`
+  and `upload:cancel`. They are still dispatched next to their `wireview:upload-*` names and are
+  removed in 2.0. A DOM event cannot warn, so listen for the new names now.
 
 ### Fixed
 
@@ -1892,7 +1921,7 @@ auto-recovery, viewport bindings, optimistic UI attributes, type stub
 generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
-[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc3...HEAD
+[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc4...HEAD
 [1.0.0rc4]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc3...v1.0.0rc4
 [1.0.0rc3]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc2...v1.0.0rc3
 [1.0.0rc2]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc1...v1.0.0rc2
