@@ -1910,11 +1910,18 @@ class ViewportObserver {
    */
   updated() {
     if (!this.started) return;
-    // Clean up removed elements, and elements a morph moved into a nested
-    // component (its observer watches them)
+    // Clean up removed elements, elements a morph moved into a nested component
+    // (its observer watches them), and elements the morph made into something
+    // else: idiomorph reuses an element without an id for a new one of the same
+    // tag, so the bottom binding under a list can become the top one above it,
+    // and stay watched as the bottom one -- in view now, and far "overran"
     const root = this.component.getElemenet();
     for (const [el, info] of this.observed) {
-      if (!document.contains(el) || el.closest("[wireview-component]") !== root) {
+      if (
+        !document.contains(el) ||
+        el.getAttribute(`wire-viewport-${info.type}`) !== info.handler ||
+        el.closest("[wireview-component]") !== root
+      ) {
         this.observer?.unobserve(el);
         this.observed.delete(el);
         debugLog("viewport", `Unobserved: ${info.handler}`, { el });

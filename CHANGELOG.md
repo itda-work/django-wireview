@@ -329,6 +329,17 @@ The django-reactor era changelog (2.x) is preserved in
 - The hooks of a LiveComponent a render brings in mount. The server draws it already marked live,
   so the page never joined it, and that was the only place its hooks were looked for: they never
   mounted, and nothing pushed to them arrived.
+- A stream list survives a render that adds an element ahead of it -- a new LiveComponent, another
+  list behind an `{% if %}`. The morph pairs elements without an id by position, so the new one
+  took the container's place and the container was removed with its items; a newly shown empty
+  list took the place of a live one, which then showed twice. Before it patches a render, the page
+  now gives each stream container in it the id of the live one it stands for -- the template's
+  id, or `wire-stream-<component id>-<name>` -- so the morph keeps and moves the container. The
+  HTML the server sends is unchanged, so `PROTOCOL_VERSION` stays.
+- An element the morph reuses for another no longer keeps its old viewport binding. idiomorph
+  turns an element without an id into a new one of the same tag, so the bottom binding under a
+  list could become the top one above it and, still watched as the bottom one, ask for more pages
+  as soon as it was in view.
 - A `wire-viewport-*` binding inside a LiveComponent calls that LiveComponent's handler. The
   parent watched the bindings of the components nested in it too and sent them to itself, where
   the handler was missing or, under the same name, the wrong one. A LiveComponent a render brings

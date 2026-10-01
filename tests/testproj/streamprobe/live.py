@@ -87,6 +87,8 @@ class StreamProbe(Component):
     nest: bool = False
     #: Render a SeedChild, which streams in its joined() (``?seeded=1`` from the start)
     seeded: bool = False
+    #: Show a stream container ahead of the ticks list, which nothing streams into yet
+    late: bool = False
     #: Calls of ``more``, which only the SeedChild's binding names
     stolen: int = 0
     #: Passed to the SeedChild, and shown here too: one patch, the probe's, draws both
@@ -119,6 +121,9 @@ class StreamProbe(Component):
 
     async def strip(self, **_rest):
         self.bare = not self.bare
+
+    async def reveal(self, **_rest):
+        self.late = True
 
     async def more(self, **_rest):
         # Same name as the SeedChild's handler: its binding is not the probe's

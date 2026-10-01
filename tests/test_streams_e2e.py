@@ -202,10 +202,18 @@ def test_a_new_live_component_shows_what_its_joined_streams(probe):
     # The child's joined() streams go out right after the render that brings its
     # element, and the page patches that render in on the next frame: the ops
     # looked for an element that was not there yet and were dropped.
+    expect_count(by(probe, "rows").locator("li"), 15)
     by(probe, "seed").click()
     expect(by(probe, "seeds").locator("li")).to_have_text(["tick 1", "tick 2"])
     expect(by(probe, "seed-ticks").locator("li")).to_have_text(["tick 3"])
     expect_count(by(probe, "ticks").locator("li"), 0)
+    # The morph that brought the child in, ahead of the probe's lists, paired
+    # them by position and removed the `rows` list it passed over: its 15 rows
+    # went, the bottom binding rose into view and two more pages were asked for.
+    _settled(probe)
+    expect(by(probe, "rows").locator("li").first).to_have_id("row-0")
+    expect_count(by(probe, "rows").locator("li"), 15)
+    expect_text(by(probe, "pages"), "1")
 
     # Gone and back: a new instance, whose joined() streams into the new element
     by(probe, "seed").click()
@@ -213,6 +221,25 @@ def test_a_new_live_component_shows_what_its_joined_streams(probe):
     by(probe, "seed").click()
     expect(by(probe, "seeds").locator("li")).to_have_text(["tick 1", "tick 2"])
     expect(by(probe, "seed-ticks").locator("li")).to_have_text(["tick 3"])
+
+
+def test_a_stream_container_a_render_reveals_ahead_of_others_leaves_them_alone(probe):
+    # The new, empty `late` list took the place of the live `ticks` list, which
+    # a render does not morph: `late` never appeared, `ticks` showed twice and
+    # the `rows` list further down was removed with its items.
+    expect_count(by(probe, "rows").locator("li"), 15)
+    by(probe, "tick").click()
+    expect(by(probe, "ticks").locator("li")).to_have_text(["tick 1"])
+
+    by(probe, "reveal").click()
+
+    expect_count(by(probe, "late"), 1)
+    expect_count(by(probe, "ticks"), 1)
+    expect(by(probe, "ticks").locator("li")).to_have_text(["tick 1"])
+    _settled(probe)
+    expect_count(by(probe, "rows").locator("li"), 15)
+    expect_text(by(probe, "pages"), "1")
+    expect(by(probe, "ticks").locator("li")).to_have_text(["tick 2", "tick 1"])
 
 
 def test_a_new_live_component_runs_the_js_its_joined_pushes(probe):

@@ -5,7 +5,7 @@
 
 import { Idiomorph } from "idiomorph";
 import { NavigationGate, crossesBoundary, readSessionName } from "./live-session.mjs";
-import { isStreamContainer } from "./streams.mjs";
+import { STREAM_ATTRIBUTE, isStreamContainer, pinContainerIds } from "./streams.mjs";
 import { ValueGuard } from "./values.mjs";
 
 /**
@@ -60,6 +60,45 @@ function inServerChange() {
 }
 
 /**
+ * The stream containers in `root` (itself included), in document order, with
+ * the component each sits in.
+ * @param {Element|DocumentFragment} root
+ * @returns {{elements: Element[], spots: import("./streams.mjs").ContainerSpot[]}}
+ */
+function streamContainersIn(root) {
+  const selector = `[${STREAM_ATTRIBUTE}]`;
+  const elements = [...(root instanceof Element && root.matches(selector) ? [root] : []), ...root.querySelectorAll(selector)];
+  const spots = elements.map((element) => ({
+    owner: element.closest("[wireview-component]")?.id ?? "",
+    name: element.getAttribute(STREAM_ATTRIBUTE) ?? "",
+    id: element.getAttribute("id") ?? "",
+  }));
+  return { elements, spots };
+}
+
+/**
+ * The render to morph `oldNode` into, its stream containers carrying the ids
+ * of the live ones they stand for, so the morph keeps those and moves them
+ * rather than pairing them by position and removing them (streams.mjs
+ * pinContainerIds). The HTML as it came when `oldNode` holds no stream.
+ * @param {Element} oldNode
+ * @param {Element|string} newNode
+ * @returns {Element|DocumentFragment|string}
+ */
+function pinStreamContainers(oldNode, newNode) {
+  if (typeof newNode !== "string") return newNode;
+  const live = streamContainersIn(oldNode);
+  if (!live.elements.length) return newNode;
+  const template = document.createElement("template");
+  template.innerHTML = newNode;
+  const next = streamContainersIn(template.content);
+  const pins = pinContainerIds(live.spots, next.spots);
+  for (const [index, id] of pins.live) live.elements[index].setAttribute("id", id);
+  for (const [index, id] of pins.next) next.elements[index].setAttribute("id", id);
+  return template.content;
+}
+
+/**
  * Morphs an old DOM node into a new one using Idiomorph.
  * @param {Element} oldNode - The existing DOM element
  * @param {Element|string} newNode - The new content to morph into
@@ -109,7 +148,9 @@ function morph(oldNode, newNode, { permission, navigation = false } = {}) {
     },
   };
 
-  applying(() => Idiomorph.morph(oldNode, newNode, options));
+  // A component's render; a navigation's new page has new lists anyway
+  const content = navigation ? newNode : pinStreamContainers(oldNode, newNode);
+  applying(() => Idiomorph.morph(oldNode, content, options));
 }
 
 /**

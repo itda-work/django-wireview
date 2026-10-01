@@ -55,3 +55,51 @@ export function planTrim({ childCount, limit, at }) {
   if (!limit || limit <= 0 || childCount <= limit) return { count: 0, fromEnd: false };
   return { count: childCount - limit, fromEnd: at === 0 };
 }
+
+/**
+ * @typedef {object} ContainerSpot
+ * @property {string} owner - id of the component the container sits in
+ * @property {string} name - its `wire-stream` name
+ * @property {string} id - its id attribute, "" when it has none
+ */
+
+/**
+ * The ids that pair each live stream container with its place in a render.
+ *
+ * A render's HTML carries the template's containers, empty and usually without
+ * an id. idiomorph pairs nodes without ids by position, looking ahead past
+ * siblings: an element the render adds in front of a container (a new
+ * component, another list behind an `{% if %}`) took the container's place, and
+ * the container -- every streamed item with it -- was removed. A container
+ * whose id is in both the page and the render is one idiomorph keeps and moves
+ * instead. So each live container and its counterpart in the render, the first
+ * of its name in the same component, get the same id: the one the page's has,
+ * or one made from the component and the name. A container that has an id in
+ * the render already keeps it; one the page does not have yet is new and gets
+ * none.
+ *
+ * @param {ContainerSpot[]} live - the containers on the page, in document order
+ * @param {ContainerSpot[]} next - the containers in the render, in document order
+ * @returns {{live: Map<number, string>, next: Map<number, string>}} the id to
+ *   set, by index, on each side
+ */
+export function pinContainerIds(live, next) {
+  const pins = { live: new Map(), next: new Map() };
+  /** @type {Map<string, {index: number, id: string}>} */
+  const onPage = new Map();
+  live.forEach(({ owner, name, id }, index) => {
+    const key = JSON.stringify([owner, name]);
+    if (!onPage.has(key)) onPage.set(key, { index, id });
+  });
+  const taken = new Set();
+  next.forEach(({ owner, name, id }, index) => {
+    const key = JSON.stringify([owner, name]);
+    const match = onPage.get(key);
+    if (id || !match || taken.has(key)) return;
+    taken.add(key);
+    const pinned = match.id || `wire-stream-${owner}-${name}`;
+    if (!match.id) pins.live.set(match.index, pinned);
+    pins.next.set(index, pinned);
+  });
+  return pins;
+}
