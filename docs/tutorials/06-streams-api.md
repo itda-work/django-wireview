@@ -99,19 +99,27 @@ async def _insert(self, name, item, **kwargs):
     )
 ```
 
-### DOM ID 충돌 방지
+### 같은 페이지의 여러 스트림
 
-같은 페이지에 여러 스트림이 있을 때:
+스트림 이름은 페이지 안에서 고유해야 한다. 클라이언트는 `wire-stream` 컨테이너를 컴포넌트 안이 아니라 페이지
+전체에서 이름으로 찾는다. 같은 컴포넌트를 두 번 놓아 둘 다 `"items"`를 쓰면, 둘째의 `stream()`·`stream_insert()`가
+첫째의 컨테이너로 들어간다(`reset`이면 첫째의 목록을 지운다). `dom_id`에 접두사를 붙여도 이것은 막지 못한다.
+
+한 컴포넌트를 여러 번 놓는다면 이름에 컴포넌트 id를 넣고, 템플릿의 `wire-stream`도 같은 이름을 쓴다.
+항목 id의 기본값이 `{스트림 이름}-{pk}`이므로 항목 id도 함께 갈린다.
 
 ```python
-class XList1(Component):
+class XList(Component):
+    @property
+    def stream_name(self) -> str:
+        return f"items-{self.id}"
+
     async def joined(self):
-        # 컴포넌트 ID 포함
-        await self.stream(
-            "items",
-            items,
-            dom_id=lambda i: f"{self.id}-items-{i.pk}"
-        )
+        await self.stream(self.stream_name, [item async for item in Item.objects.all()])
+```
+
+```html
+<ul wire-stream="{{ this.stream_name }}"></ul>
 ```
 
 ## 커스텀 템플릿

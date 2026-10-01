@@ -306,6 +306,10 @@ The django-reactor era changelog (2.x) is preserved in
 - Tutorial 08 said the connection id is issued by the consumer's `connect()`; the session issues
   it when it starts, since the session logic moved out of the consumer (#60).
 
+- Tutorial 06 offered a `dom_id` prefix against clashes between streams on one page. The client
+  finds a `wire-stream` container by name across the whole page, so two components using the same
+  name still write into the first one's list. The section now names the stream per component.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
