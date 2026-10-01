@@ -77,6 +77,11 @@ WIREVIEW = {
   `mutation()`이 또 불린다. 받을 때마다 무조건 저장하면 끝없이 돈다. 값이 다를 때만 저장하거나, 시그널을 내지 않는
   `QuerySet.update()`를 쓴다. 1.0.0rc4까지의 raw 저장도 시그널을 냈으므로 이 위험은 새것이 아니다.
 
+**픽스처 로드는 알리지 않는다.** `loaddata`는 `raw=True`로 저장하고, 그 순간의 DB는 아직 일관되지 않을 수 있다.
+`post_save`의 `raw=True`는 거르고, `loaddata`가 방금 raw로 저장한 객체에 이어서 채우는 m2m도 거른다(`m2m_changed`에는
+`raw`가 없어서 그 객체에 표시를 남긴다). 같은 객체를 직접 `save_base(raw=True)`한 뒤 고친 m2m도 그 객체를 보통으로 다시
+저장하기 전까지는 알리지 않는다.
+
 m2m 변경(`m2m`)은 **바꾼 쪽의 모델**이 `senders`에 있을 때 알린다. 알림에 실리는 인스턴스가 그쪽이기 때문이다.
 `user.groups.add(g)`는 `User`를, `group.user_set.add(u)`는 `Group`을 적어야 알린다. 어느 쪽에서 바꿔도 알리려면
 두 모델을 모두 적는다.

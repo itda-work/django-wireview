@@ -9,10 +9,13 @@ broadcasts nothing. The receivers are connected when the app starts, so a test
 that needs another configuration reconnects with ``auto_broadcast.connect()``.
 """
 
+import json
+
 import pytest
 from django.contrib.auth.models import Group, Permission, User
 from django.contrib.sessions.models import Session
 from django.core.exceptions import ImproperlyConfigured
+from django.core.management import call_command
 from django.utils import timezone
 
 from examples.rating.models import Product, Rating
@@ -174,3 +177,56 @@ def test_reconnecting_replaces_what_was_connected(published, broadcasting):
 def test_a_sender_that_is_not_a_model_fails_at_startup(broadcasting):
     with pytest.raises(ImproperlyConfigured, match=r"\('rating', 'Nope'\)"):
         broadcasting(AutoBroadcast(model=True, senders={("rating", "Nope")}))
+
+
+def fixture_file(tmp_path, rows: list[dict]) -> str:
+    path = tmp_path / "rows.json"
+    path.write_text(json.dumps(rows))
+    return str(path)
+
+
+def test_loading_a_fixture_announces_nothing(published, tmp_path):
+    """``loaddata`` saves with ``raw=True``: the database may not be consistent yet, and no reader changed it."""
+    at = "2026-10-01T00:00:00Z"
+    rows = [
+        {"model": "rating.product", "pk": 901, "fields": {"name": "lamp", "created_at": at}},
+        {
+            "model": "rating.rating",
+            "pk": 902,
+            "fields": {"product": 901, "score": 5, "session_key": "s", "created_at": at, "updated_at": at},
+        },
+    ]
+
+    call_command("loaddata", fixture_file(tmp_path, rows), verbosity=0)
+
+    assert Rating.objects.filter(product_id=901).exists()
+    assert published == []
+
+
+@pytest.mark.parametrize("flags", [EVERY_FLAG, dict(m2m=True)], ids=["every flag", "m2m only"])
+def test_the_m2m_a_fixture_sets_is_not_announced_either(published, broadcasting, tmp_path, flags):
+    # loaddata sets a row's m2m on the object it has just saved raw; m2m_changed has no raw flag.
+    broadcasting(AutoBroadcast(**flags, senders={("auth", "User"), ("auth", "Group")}))
+    rows = [
+        {"model": "auth.group", "pk": 901, "fields": {"name": "staff", "permissions": []}},
+        {"model": "auth.user", "pk": 902, "fields": {"username": "alice", "password": "!", "groups": [901]}},
+    ]
+
+    call_command("loaddata", fixture_file(tmp_path, rows), verbosity=0)
+
+    assert list(User.objects.get(pk=902).groups.values_list("pk", flat=True)) == [901]
+    assert published == []
+
+
+def test_an_object_saved_raw_and_then_saved_is_announced_again(published, broadcasting):
+    broadcasting(AutoBroadcast(**EVERY_FLAG, senders={("auth", "User")}))
+    user = User(username="alice")
+    user.save_base(raw=True)
+    group = Group.objects.create(name="staff")
+    assert published == []
+
+    user.save()
+    user.groups.add(group)
+
+    assert ("auth.user", ModelAction.UPDATED) in published
+    assert (f"auth.user.{user.pk}.groups", ModelAction.ADDED) in published

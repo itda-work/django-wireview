@@ -29,6 +29,9 @@ _config: AutoBroadcast = AutoBroadcast()
 _senders: frozenset[type[models.Model]] = frozenset()
 #: ``(signal, sender, dispatch_uid)`` for every receiver ``connect()`` attached.
 _connections: list[tuple[Signal, type[models.Model], str]] = []
+#: Set on an object while its last save was raw. ``loaddata`` sets a row's m2m on the
+#: object it has just saved raw, and ``m2m_changed`` carries no ``raw`` of its own.
+_SAVED_RAW = "_wireview_saved_raw"
 
 
 def resolve_senders(config: AutoBroadcast) -> list[type[models.Model]]:
@@ -74,8 +77,10 @@ def connect(config: AutoBroadcast | None = None) -> None:
     MODEL_RELATED_FIELDS.clear()
 
     receivers: list[tuple[Signal, t.Callable[..., t.Any], list[type[models.Model]]]] = []
-    if config.model or config.model_pk or config.related:
+    if config.model or config.model_pk or config.related or config.m2m:
+        # With m2m alone it announces nothing, but marks a raw save for broadcast_m2m_changed.
         receivers.append((post_save, broadcast_post_save, senders))
+    if config.model or config.model_pk or config.related:
         receivers.append((pre_delete, broadcast_pre_delete, senders))
     if config.m2m:
         receivers.append((m2m_changed, broadcast_m2m_changed, _m2m_throughs(senders)))
@@ -97,7 +102,17 @@ def disconnect() -> None:
     _senders = frozenset()
 
 
-def broadcast_post_save(sender, instance, created=False, **kwargs):
+def broadcast_post_save(sender, instance, created=False, raw=False, **kwargs):
+    # A raw save is a fixture load (``loaddata``): the row is stored as given, the
+    # database may not be consistent yet, and Django tells receivers not to query
+    # other rows. Nothing a reader did changed it either. The object remembers it, so
+    # the m2m loaddata sets on it next is not announced.
+    if raw:
+        instance.__dict__[_SAVED_RAW] = True
+        return
+    instance.__dict__.pop(_SAVED_RAW, None)
+    if not (_config.model or _config.model_pk or _config.related):
+        return
     name = sender._meta.label_lower
     encoded_instance = serializer.encode(instance)
     action: ModelAction = ModelAction.CREATED if created else ModelAction.UPDATED
@@ -186,7 +201,7 @@ def get_related_fields(model):
 def broadcast_m2m_changed(sender, instance, action, model, pk_set, **kwargs):
     # The message carries ``instance``, so the side whose manager made the change
     # has to be a sender too. Name both models to hear a change from either side.
-    if type(instance) not in _senders:
+    if type(instance) not in _senders or instance.__dict__.get(_SAVED_RAW):
         return
     if action.startswith("post_") and instance.pk:
         encoded_instance = serializer.encode(instance)

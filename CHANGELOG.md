@@ -23,6 +23,14 @@ The django-reactor era changelog (2.x) is preserved in
   writes every field it carries as it was when the change was announced; `docs/features/settings.md` says
   what that overwrites and how a receiver that saves avoids hearing its own write forever (#153).
 
+### Fixed
+
+- `AUTO_BROADCAST` no longer announces a fixture load. `loaddata` saves with `raw=True`, and the
+  receiver announced every row it loaded, querying m2m and related rows while Django says the
+  database may not be consistent yet -- a seed or restore on a running deployment sent rows times
+  channels messages at once. A raw `post_save` is skipped, and so is the m2m that `loaddata` then
+  sets on the same object (found with #153).
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
