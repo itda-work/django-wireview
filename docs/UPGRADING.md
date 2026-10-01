@@ -19,9 +19,10 @@
 > **보안.** 0.7.0 이하와 1.0.0rc1~1.0.0rc3는 보안 권고
 > [GHSA-q2rr-5q2g-6xqp](https://github.com/itda-work/django-wireview/security/advisories/GHSA-q2rr-5q2g-6xqp)의
 > 영향을 받는다. `AUTO_BROADCAST`의 플래그(`model`, `model_pk`, `related`, `m2m`) 중 하나라도 켜고 `senders`를
-> 비워 두면 모든 모델의 저장·삭제와 모든 m2m 변경이 모든 필드와 함께 채널 레이어로 방송됐다(`User`의 비밀번호
-> 해시 포함). `m2m`만 켰어도 해당한다 — `user.groups.add(g)` 한 번에 그 사용자가 양쪽 채널로 나갔다. 모델 알림을 쓰고 있었다면 [§9](#9-auto_broadcast는-senders에-적은-모델만-알린다-보안)를
-> 읽는다.
+> 비워 두면, 켠 플래그에 따라 모든 모델의 저장·삭제(`model`·`model_pk`·`related`)나 모든 m2m 변경(`m2m`)이 모든
+> 필드와 함께 채널 레이어로 방송됐다(`User`의 비밀번호 해시 포함). `m2m`만 켰어도 해당한다 —
+> `user.groups.add(g)` 한 번에 그 사용자가 양쪽 채널로 나갔다. 모델 알림을 쓰고 있었다면
+> [§9](#9-auto_broadcast는-senders에-적은-모델만-알린다-보안)를 읽는다.
 
 ## 버전 범위
 
@@ -82,8 +83,8 @@ dependencies = ["django-wireview>=1.0,<2"]
   대표다. `manage.py check --fail-level WARNING`을 쓰는 CI는 첫 실행에서 멈출 수 있다. 메서드 이름을 바꾸고 바인딩도
   고친다([검사 목록](./features/checks.md#검사-목록)).
 - **스타터로 만든 프로젝트의 `asgi.py`에 정적 파일 줄을 더한다.** 1.0 전 스타터의 `asgi.py`를 uvicorn으로 띄우면
-  `wireview.min.js`가 404라 페이지는 그려지고 어떤 컴포넌트도 살아나지 않는다. [튜토리얼 01의 `asgi.py`](./tutorials/01-getting-started.md#asgipy-수정)처럼
-  `DEBUG`일 때 `ASGIStaticFilesHandler`로 감싼다. `runserver`(daphne)만 쓰면 고칠 것이 없다.
+  `wireview.min.js`가 404라 페이지는 그려지고 어떤 컴포넌트도 살아나지 않는다.
+  [튜토리얼 01의 `asgi.py`](./tutorials/01-getting-started.md#asgipy-수정)처럼 `DEBUG`일 때 `ASGIStaticFilesHandler`로 감싼다. `runserver`(daphne)만 쓰면 고칠 것이 없다.
 - **`public=False`와 함께 준 `name=`이 그 컴포넌트의 이름이 된다**(**조용함**). 등록된 클래스를 상속하면 `name=`이
   버려지고 로그·계측·서명 상태에 부모의 이름이 쓰였다. 계측이나 로그를 컴포넌트 이름으로 거르던 곳은 새 이름을 본다.
   `name=`이 없으면 그대로다.
@@ -195,8 +196,8 @@ async def handle_async(self, name, result):
 m2m 변경은 바꾼 쪽의 모델이 `senders`에 있을 때 알린다(**조용함**). `user.groups.add(g)`와 `group.user_set.add(u)`를
 모두 알리려면 두 모델을 다 적는다. 상세는 [설정](./features/settings.md#모델-알림).
 
-영향받는 버전에서 `model`, `model_pk`, `related`, `m2m` 중 하나라도 켜고 돌렸다면, 브로커(Redis·NATS)의 로그·모니터링·덤프에 남았을 수 있는
-데이터를 점검하고 필요하면 비밀번호 변경을 검토한다. 보낼 필드를 모델마다 고르는 선택지는 1.1에서 더한다(#144).
+영향받는 버전에서 `model`, `model_pk`, `related`, `m2m` 중 하나라도 켜고 돌렸다면, 브로커(Redis·NATS)의
+로그·모니터링·덤프에 남았을 수 있는 데이터를 점검하고 필요하면 비밀번호 변경을 검토한다. 보낼 필드를 모델마다 고르는 선택지는 1.1에서 더한다(#144).
 
 ### 10. 의존성 하한
 

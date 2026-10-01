@@ -735,16 +735,17 @@ The django-reactor era changelog (2.x) is preserved in
 
 - [GHSA-q2rr-5q2g-6xqp](https://github.com/itda-work/django-wireview/security/advisories/GHSA-q2rr-5q2g-6xqp)
   (medium): with a model flag of `AUTO_BROADCAST` on (`model`, `model_pk`, `related` or `m2m`)
-  and `senders` left empty, its default, every save and delete of every model in the project, and
-  every many-to-many change, was broadcast over the channel layer with all its fields -- `auth.User`'s
-  password hash and `Session`'s data among them -- to the broker (Redis, NATS), its logs and
-  monitoring, and to any component subscribed to that model's channel. `m2m` alone was enough: one
-  `user.groups.add(group)` sent the whole user, password hash included, on both sides' channels. Affected: 0.7.0 and earlier, and 1.0.0rc1 to
-  1.0.0rc3. Fixed here: `AUTO_BROADCAST` broadcasts only the models `senders` names. An empty
-  `senders` no longer connects any receiver, whatever flags are on. A many-to-many change is
-  broadcast when the model whose manager made it is named. A `senders` entry that is not an
-  installed model raises `ImproperlyConfigured` at startup. New check `wireview.W015` reports
-  flags turned on with no senders. The documentation's examples name their senders.
+  and `senders` left empty, its default, every model in the project was broadcast over the
+  channel layer with all its fields -- every save and delete with `model`, `model_pk` or
+  `related` on, every many-to-many change with `m2m` on, `auth.User`'s password hash and
+  `Session`'s data among them -- to the broker (Redis, NATS), its logs and monitoring, and to any
+  component subscribed to that model's channel. `m2m` alone was enough: one
+  `user.groups.add(group)` sent the whole user, password hash included, on both sides' channels.
+  Affected: 0.7.0 and earlier, and 1.0.0rc1 to 1.0.0rc3. Fixed here: `AUTO_BROADCAST` broadcasts
+  only the models `senders` names. An empty `senders` no longer connects any receiver, whatever
+  flags are on. A many-to-many change is broadcast when the model whose manager made it is named.
+  A `senders` entry that is not an installed model raises `ImproperlyConfigured` at startup. New
+  check `wireview.W015` reports flags turned on with no senders. The documentation's examples name their senders.
   **What to do:** upgrade, and name the models whose changes components should hear in
   `WIREVIEW["AUTO_BROADCAST"]`'s `senders` -- without it they hear nothing. Leave out models with
   sensitive fields: a named model's every field goes to the channel layer (choosing the fields
