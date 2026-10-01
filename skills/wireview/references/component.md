@@ -36,6 +36,7 @@ class XTodoList(Component):
 | `on_mount` | 마운트 시 실행할 훅 클래스 목록 |
 | `live_sessions` | 마운트될 수 있는 `live_session` 이름들 |
 | `presence` | `PresenceMixin`의 `PresenceConfig` |
+| `sticky` | `True`면 boost 이동으로 같은 컴포넌트가 있는 페이지에 가도 인스턴스·DOM·훅이 이어진다 |
 
 `self.user`(요청 사용자), `self.wire`(클라이언트 명령 채널), `self.session`(Django 세션,
 **읽기 전용**)은 항상 있다. `self.wire.params`는 URL 쿼리 파라미터다.

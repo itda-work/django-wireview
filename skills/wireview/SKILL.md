@@ -31,7 +31,7 @@ myapp/
 1. **템플릿**을 만든다. 루트 엘리먼트에 `{% tag_header %}`가 반드시 있어야 한다.
 2. **컴포넌트 클래스**를 만든다: `from wireview import Component`, `Meta.template_name`, Pydantic 필드, `async def` 핸들러.
 3. **페이지 템플릿**에서 `{% component 'XCounter' id="counter" %}`로 심는다. 베이스 템플릿 `<head>`에 `{% wireview_header %}`.
-4. **`manage.py check`를 돌린다.** 아래 함정 중 여섯 개를 여기서 잡는다.
+4. **`manage.py check`를 돌린다.** 아래 함정 중 넷(`W001`·`W003`·`W004`·`W012`)을 여기서 잡는다. `W013`은 `runserver`가 뜰 때, `W006`은 `check --deploy`에서 나온다.
 
 ```python
 from wireview import Component
@@ -59,7 +59,7 @@ class XCounter(Component):
 - **핸들러는 반드시 `async def`.** 동기 메서드는 클라이언트가 부르는 순간 터지고, 그전까지는 아무 신호가 없다. `wireview.W001`이 잡는다.
 - **`_`로 시작하지 않고 사용자 코드가 정의한 메서드만** 이벤트 핸들러로 노출된다. 내부 헬퍼에는 반드시 `_` 접두사를 붙인다. 프레임워크·Pydantic 소유 이름(`mount`, `update`, `joined`, `model_post_init` 등)은 오버라이드해도 클라이언트가 부를 수 없다.
 - **핸들러 인자는 `validate_call`로 검증된다.** 타입 힌트를 정확히 쓴다. 클라이언트가 보내는 값은 신뢰하지 않는다 — 권한 검사는 핸들러 안에서 직접 한다.
-- **핸들러가 예외를 던지면 그 컴포넌트는 이벤트 전 상태로 돌아간다.** 던지기 전에 바꾼 필드는 남지 않지만, 이미 DB에 쓴 것은 남는다. 함께 성공해야 하는 쓰기는 `transaction.atomic`으로 묶는다. 브라우저에서는 `wireview:error` 이벤트로 알릴 수 있다(`docs/features/errors.md`).
+- **핸들러가 예외를 던지면 그 컴포넌트는 이벤트 전 상태로 돌아간다.** 던지기 전에 바꾼 필드는 남지 않지만, 이미 DB에 쓴 것은 남는다. 함께 성공해야 하는 쓰기는 `transaction.atomic`으로 묶는다. 브라우저에서는 `wireview:error` 이벤트로 알릴 수 있다(https://github.com/itda-work/django-wireview/blob/main/docs/features/errors.md).
 - **상태 필드는 JSON 직렬화 가능해야 한다.** 매 이벤트마다 서명된 `data-state`로 왕복한다. 모델 인스턴스는 예외다 — 어디에 있든(`Item`, `list[Item]`, `dict[str, Item]`, `AsyncResult[Item]`) pk로 서명되고 재join 때 타입 표기를 따라 다시 읽힌다(삭제된 행은 목록에서 빠지고 단일 필드는 `None`). 그래서 타입을 `list`가 아니라 `list[Item]`으로 적는다. 큰 QuerySet을 필드에 담지 말고 `@property`로 매번 조회하거나 Streams를 쓴다.
 - **컴포넌트 ID는 페이지 안에서 고유해야 한다.** 반복 렌더에서는 `id="item-"|concat:item.id`처럼 만든다.
 - **컴포넌트 이름은 클래스명으로 전역 등록된다.** 다른 앱에 같은 클래스명이 있으면 경고가 나고 템플릿은 둘 중 하나로만 해석된다(`wireview.W003`). 그럴 때는 `{% component 'myapp:XCounter' %}`처럼 앱 이름을 붙인다.
@@ -83,4 +83,4 @@ class XCounter(Component):
 | 시스템 체크 W001~W016 | https://github.com/itda-work/django-wireview/blob/main/docs/features/checks.md |
 | 설치·설정·API 전체 | https://github.com/itda-work/django-wireview/blob/main/README.md |
 | 배포 (채널 레이어, Windows) | https://github.com/itda-work/django-wireview/blob/main/docs/DEPLOYMENT.md |
-| 동작하는 예제 앱 | https://github.com/itda-work/django-wireview/tree/main/tests/testproj |
+| 동작하는 예제 앱 (개념 하나에 앱 하나) | https://github.com/itda-work/django-wireview/blob/main/examples/README.md |

@@ -17,7 +17,8 @@
 | `{% on 'click' 'handler' arg=1 %}` | 이벤트 바인딩 |
 | `{% cond {"checked": is_done} %}` | 조건부 불리언 속성 |
 | `{% class {"selected": showing == 'all'} %}` | 조건부 클래스 |
-| `{% upload_input "images" %}`, `{% upload_drop_zone %}`, `{% upload_button %}`, `{% upload_preview entry %}` | 파일 업로드 |
+| `{% upload_input "images" %}`, `{% upload_preview entry %}` | 파일 업로드. 요소(`<input type="file">`, `<img>`)를 렌더한다 |
+| `<div {% upload_drop_zone "images" %}>`, `<button type="button" {% upload_button "images" %}>` | 파일 업로드. **속성 태그** — 직접 쓴 요소 안에 넣는다 |
 
 필터: `|str`, `|concat:item.id`.
 
@@ -48,7 +49,7 @@
   `{% on 'keypress.enter' 'add' %}`나 `submit` 뒤에는 값을 렌더하지 않는 입력칸이 비고, 다른 버튼을 누르거나
   브로드캐스트가 와도 치던 글자는 남는다. 어디서든 확실히 비우려면 `await self.push_js(JS().set_value(selector, ""))`.
 - 출력은 인라인 JS가 아니라 `wire-on-…` 데이터 속성이라 `'unsafe-inline'` 없는 CSP에서도 돈다. 템플릿에 `onclick="…"`을
-  직접 쓰면 그것은 CSP에 막히므로 `JS()`나 훅으로 쓴다(`docs/features/csp.md`).
+  직접 쓰면 그것은 CSP에 막히므로 `JS()`나 훅으로 쓴다(https://github.com/itda-work/django-wireview/blob/main/docs/features/csp.md).
 
 ## 슬롯
 
@@ -78,7 +79,9 @@
 | `wire-feedback-for` / `wire-no-feedback` | 폼 검증 오류 표시 시점 제어 |
 | `wire-auto-recover` | 재연결 뒤 폼의 값을 서버에 돌려줌 (핸들러 또는 폼의 change 바인딩) |
 | `wire-flash` | 플래시 메시지 표시 자리 |
-| `wire-upload-drop` / `wire-preview` | 업로드 드롭존·미리보기 |
+
+업로드의 `wire-upload`·`wire-upload-drop`·`wire-upload-select`·`wire-preview`는 업로드 태그가 만드는 속성이다. 직접 쓰지 않고
+태그를 쓴다.
 
 로딩 중에는 `wireview-click-loading` 계열 클래스가 붙는다. CSS로 스피너를 붙이면 된다.
 
