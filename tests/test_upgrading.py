@@ -50,6 +50,49 @@ def test_every_row_reads_its_sections_oldest_first():
         assert sections == sorted(sections, key=order.index, reverse=True), version
 
 
+# The section a reader of each row starts from. Every section above it is theirs to read too,
+# except one that says there is nothing to change.
+FIRST_SECTION = {
+    "0.4.x": "04에서-10으로",
+    "0.5.x": "05에서-06으로",
+    "0.6.x, 0.7.x, 1.0.0rc1": "100rc1에서-10으로",
+    "1.0.0rc2, 1.0.0rc3": "100rc1에서-10으로",
+    "1.0.0rc4": "100rc4에서-10으로",
+}
+# A row that reads only some subsections of a section names them: rc2 and rc3 already had the
+# rest of rc1-to-1.0.
+SUBSECTIONS = {
+    "1.0.0rc2, 1.0.0rc3": ["9-auto_broadcast는-senders에-적은-모델만-알린다-보안", "10-의존성-하한"],
+}
+
+
+def _sections_with_nothing_to_change() -> set[str]:
+    text = UPGRADING.read_text()
+    return {
+        slug(heading)
+        for heading, body in re.findall(r"^## (.+에서 .+)\n\n(.*)$", text, re.MULTILINE)
+        if body.startswith("고칠 것이 없다")
+    }
+
+
+def test_every_row_reads_every_section_from_its_own_up():
+    """Checking only a row's last section let one drop a section in between: without
+    1.0.0rc1-to-1.0 the 0.5 row skipped rc2's breaking changes, and without §9 and §10 the
+    rc2/rc3 row skipped the security fix and the raised dependency floors."""
+    order = _migration_sections()
+    skip = _sections_with_nothing_to_change()
+    rows = _rows()
+
+    assert set(rows) == set(FIRST_SECTION)
+    for version, links in rows.items():
+        anchors = re.findall(r"\(#([^)]+)\)", links)
+        newer = order[: order.index(FIRST_SECTION[version]) + 1]
+        expected = [section for section in reversed(newer) if section not in skip]
+
+        assert [a for a in anchors if a in order] == expected, version
+        assert [a for a in anchors if a not in order] == SUBSECTIONS.get(version, []), version
+
+
 # What changed since 1.0.0rc4, entry by entry. A key is a phrase of one CHANGELOG entry of the
 # release after 1.0.0rc4 ([Unreleased] until 1.0 is cut); its value is a phrase of the bullet of
 # "1.0.0rc4에서 1.0으로" that tells an upgrading project what to do, or, under NO_UPGRADE_NOTE, why

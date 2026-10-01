@@ -123,7 +123,8 @@ The django-reactor era changelog (2.x) is preserved in
   modifier the client does not run); rows ended at the section before it and the
   rc4 row said there was nothing to change. The table is read along its arrows, oldest change
   first, which is bottom to top in the document. `tests/test_upgrading.py` checks that every row
-  ends at the newest section and lists its sections oldest first.
+  reads every section from the one its version starts at up to the newest, oldest first, and the
+  subsections a partial row names.
   The 1.0.0rc4-to-1.0 section now covers every change since rc4 an upgrading project has to act
   on, not only those of the tracks that wrote to it: the `StrEnum`s and the stream container
   looked up inside its component (both silent), the focused field a render removes sending no
