@@ -201,20 +201,25 @@ user.is_online()  # 온라인인지 (OFFLINE 제외 모든 상태)
 
 ## 스케일링 고려사항
 
-### Redis Channel Layer 필수
+### 프로세스를 잇는 채널 레이어
 
-프로덕션에서는 반드시 Redis 사용:
+Presence는 채널 레이어로 퍼진다. InMemory 레이어는 프로세스 하나 안에서만 통하므로, 서버 프로세스를 여러 개
+띄우면 다른 프로세스에 붙은 사용자는 오류 없이 목록에서 빠진다. 여러 프로세스로 운영할 때는 프로세스를 잇는
+레이어를 쓴다. 이 프로젝트가 겨냥하는 것은 [channels-nats](https://github.com/itda-work/channels-nats)이고,
+Redis가 이미 있다면 channels_redis도 된다. 둘의 성능은 대등하다.
 
 ```python
+import os
+
 CHANNEL_LAYERS = {
     "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
-        },
-    },
+        "BACKEND": "channels_nats.NatsChannelLayer",
+        "CONFIG": {"servers": [os.environ["NATS_URL"]]},
+    }
 }
 ```
+
+설정과 선택 기준은 [배포 가이드의 채널 레이어](../DEPLOYMENT.md#채널-레이어)에 있다.
 
 ### 대규모 방 처리
 

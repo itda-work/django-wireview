@@ -290,6 +290,9 @@ The django-reactor era changelog (2.x) is preserved in
   `XNotificationList`), and it no longer calls the bell a place to receive toasts: the bell hears
   only the notification channels, and `{% wireview_toasts %}` receives toasts.
 
+- Tutorial 07 said production must use Redis. Any layer that joins the processes works, and the
+  project aims at channels-nats; the section says so and links the deployment guide.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
