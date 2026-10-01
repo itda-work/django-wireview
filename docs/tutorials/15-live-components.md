@@ -183,6 +183,12 @@ class Dashboard(Component):
 부모는 자식 인스턴스를 직접 읽지 않는다. 자식이 `send_to_parent`로 알려 준 값을 자기 상태로 들고 있는다.
 자식의 상태는 자식 것이고, 둘 사이의 약속은 메시지뿐이다(`examples/livecomp`가 같은 방식이다).
 
+`send_to_parent`는 부모의 같은 이름 핸들러를 브라우저 이벤트와 같은 검사를 거쳐 부른다. 그래서 받는 쪽
+`counter_changed`는 `_` 없는 핸들러여야 하고, 같은 이유로 브라우저도 이 핸들러를 임의의 인자로 부를 수 있다.
+자식 쪽 `_notify_parent`는 `_`로 시작해 클라이언트가 부를 수 없지만, 부모의 `counter_changed`는 그렇지 않다.
+여기서는 화면에 보일 합계만 바뀌므로 괜찮다. 권한이나 저장이 걸린 일이면 받은 인자를 믿지 말고 서버에서
+다시 확인한다([14. Notifications의 "브라우저가 보낸 id를 믿지 않는다"](14-notifications.md#브라우저가-보낸-id를-믿지-않는다)와 같은 원칙이다).
+
 ### 3.2 부모 → 자식 (send_update)
 
 부모가 자식의 상태를 업데이트하는 패턴입니다.
@@ -196,6 +202,9 @@ class Dashboard(Component):
         """모든 카운터를 0으로 리셋."""
         for counter_id in self.counts:
             await self.send_update(counter_id, count=0)
+        # send_update는 자식의 update()만 부른다. 자식은 부모에게 다시 알리지 않으므로 합계는 부모가 맞춘다
+        self.counts = dict.fromkeys(self.counts, 0)
+        self.total = 0
 
     async def set_counter(self, counter_id: str, value: int):
         """특정 카운터 값 설정."""

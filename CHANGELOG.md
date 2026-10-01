@@ -279,6 +279,10 @@ The django-reactor era changelog (2.x) is preserved in
   closest `wireview-component` element, which inside a LiveComponent is the LiveComponent itself;
   the tutorial now says so, as `docs/features/live-component.md` does.
 
+- Tutorial 15 now warns that the parent handler `send_to_parent` calls can be called by the
+  browser too, with any arguments, and its `reset_all` zeroes the totals the parent holds: the
+  children's `update()` does not report back, so the parent's sum stayed at the old value.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
