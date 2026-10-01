@@ -325,6 +325,41 @@ class TestTheRecordedLayerRefusesWhatARealLayerRefuses:
         with pytest.raises(TypeError, match="Group name"):
             await view.call("arrive")
 
+    class Listener(Component):
+        class Meta:
+            subscriptions = {"room:42"}
+
+    class Mover(Component):
+        room: str = "room.1"
+
+        def get_subscriptions(self) -> set[str]:
+            return {self.room}
+
+        async def move(self, room: str):
+            self.room = room
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_a_subscription_to_it_fails_at_mount(self):
+        # A real session subscribes after join, and the join fails there
+        with pytest.raises(TypeError, match="Group name"):
+            await mount(self.Listener)
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_a_subscription_a_handler_changes_to_it_fails_the_call(self):
+        view = await mount(self.Mover)
+        with pytest.raises(TypeError, match="Group name"):
+            await view.call("move", room="room:2")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_the_subscriptions_follow_the_state(self):
+        view = await mount(self.Mover)
+        await view.call("move", room="room.2")
+        groups = view.wire._mock_channel_layer.groups
+        assert groups["room.2"] and not groups["room.1"]
+
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_a_valid_name_is_recorded(self):

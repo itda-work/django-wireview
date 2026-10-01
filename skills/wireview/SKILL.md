@@ -69,7 +69,7 @@ class XCounter(Component):
 - **`CHANNEL_LAYERS`가 없으면 아무것도 살아나지 않는다.** Channels에는 기본 레이어가 없어서, 비워 두면 WebSocket 연결이 전부 `ImproperlyConfigured`로 거절된다(`wireview.W012`). 개발과 단일 프로세스에는 `{'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}`면 된다.
 - **새 프로젝트는 스타터 템플릿으로 시작하면 위 두 배선이 이미 들어 있다.** `django-admin startproject mysite --template <wireview 패키지>/project_template` — 경로와 만든 뒤 할 일은 튜토리얼 01의 첫 절.
 - **프로덕션에서 InMemory 채널 레이어는 조용히 깨진다.** 프로세스를 둘 이상 띄우면 브로드캐스트가 같은 프로세스의 연결에만 닿고 오류는 나지 않는다. `channels-nats`나 `channels_redis`를 쓴다(`manage.py check --deploy`의 `wireview.W006`).
-- **브로드캐스트 채널·Presence 토픽 이름은 영숫자·`-`·`_`·`.`만, 100자 미만.** 채널 그룹 이름 규칙이다. `room:42`처럼 `:`가 들어가면 모든 채널 레이어가 `TypeError`를 던진다. `mount()`의 테스트도 같은 이름을 거절하므로 단위 테스트에서 드러난다. `room.42`로 쓴다.
+- **브로드캐스트 채널·구독(`Meta.subscriptions`·`get_subscriptions()`)·Presence 토픽 이름은 영숫자·`-`·`_`·`.`만, 100자 미만.** 채널 그룹 이름 규칙이다. `room:42`처럼 `:`가 들어가면 모든 채널 레이어가 `TypeError`를 던진다 — 구독이면 join이 실패한다. `mount()`의 테스트도 셋 모두 같은 이름을 거절하므로 단위 테스트에서 드러난다. `room.42`로 쓴다.
 - **블로킹 ORM 호출을 핸들러에서 그냥 하지 않는다.** 핸들러와 라이프사이클 메서드는 이벤트 루프 위에서 돈다. `await Model.objects.aget(...)` 같은 async ORM API를 쓰거나 `sync_to_async`로 감싼다. 템플릿과 `@property`는 렌더 때 워커 스레드에서 읽히므로 동기 ORM을 써도 되지만, **핸들러가 그 property를 읽으면 루프 위에서 돈다** — 핸들러용으로는 async 헬퍼를 따로 둔다. `stream()`에는 QuerySet을 그대로 넘겨도 된다. 테스트를 `DJANGO_ALLOW_ASYNC_UNSAFE=1`로 돌리면 이 실패가 전부 가려진다.
 
 ## 정본 문서

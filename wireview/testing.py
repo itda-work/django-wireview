@@ -273,6 +273,19 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         self._component = component
         self._wire = wire
         self._repo = repo
+        self._subscriptions: set[str] = set()
+
+    async def _update_subscriptions(self) -> None:
+        """Subscribe to what the component listens on now, as a session does after join
+        and after each event: through the recorded layer, which refuses the names a
+        real one refuses (``Meta.subscriptions = {"room:42"}`` fails the join)."""
+        layer = self.wire._mock_channel_layer
+        subscriptions = self._component.get_subscriptions()
+        for group in subscriptions - self._subscriptions:
+            await layer.group_add(group, "mounted")
+        for group in self._subscriptions - subscriptions:
+            await layer.group_discard(group, "mounted")
+        self._subscriptions = subscriptions
 
     @property
     def component(self) -> "Component":
@@ -596,6 +609,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
 
         if inspect.iscoroutine(result):
             result = await result
+        await self._update_subscriptions()
         return result
 
     def render(self) -> str | None:
@@ -727,6 +741,7 @@ async def mount(
             result = component.joined()
             if hasattr(result, "__await__"):
                 await result
+        await mounted._update_subscriptions()
     else:
         wire.freeze()
 
