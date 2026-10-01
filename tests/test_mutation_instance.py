@@ -22,6 +22,7 @@ from django.db.models.signals import post_save
 from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from testproj.inheritprobe.models import Branch, CustomRestaurant, Pizzeria, Place, Restaurant, Theatre
+from testproj.outbound import RecordingOutbound
 
 from examples.rating.models import Product
 from examples.todo.models import Item
@@ -270,20 +271,6 @@ class ProductSaver(Component):
 
 
 HEARD: list[tuple[str, ModelAction, t.Any]] = []
-
-
-class RecordingOutbound:
-    def __init__(self) -> None:
-        self.commands: list[tuple[str, dict[str, t.Any]]] = []
-
-    async def send_command(self, command: str, payload: dict[str, t.Any]) -> None:
-        self.commands.append((command, payload))
-
-    async def subscribe(self, topic: str) -> None: ...
-
-    async def unsubscribe(self, topic: str) -> None: ...
-
-    async def close(self, code: int | None = None) -> None: ...
 
 
 @pytest.mark.integration

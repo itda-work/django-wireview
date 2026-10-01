@@ -20,9 +20,9 @@ from django.db import connection
 from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from pydantic import ValidationError
+from testproj.outbound import RecordingOutbound
 
 from examples.rating.models import Product, Rating
-from tests.test_session_extraction import RecordingOutbound
 from wireview import AutoBroadcast, Component, ModelAction, auto_broadcast
 from wireview.core.meta import WireviewMeta
 from wireview.core.rendered import PROTOCOL_VERSION

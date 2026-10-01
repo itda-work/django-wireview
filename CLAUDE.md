@@ -121,6 +121,8 @@ tests/
 │                          test_async_safety.py 는 DJANGO_ALLOW_ASYNC_UNSAFE 가 진입점에 돌아오지 않는지 본다.
 │                          허용·거절은 저장소 루트의 conftest.py 가 한다(#120)
 │                          test_e2e_harness.py 는 E2E 하네스 자체의 계약을 지킨다. test_e2e_script.py 는 tests/e2e.sh 가 넘긴 경로만 돌리는지 본다
+│                          테스트 모듈을 tests.test_x 로 import하지 않는다 — pytest가 이미 test_x 로 읽어 두 번 실행되고
+│                          컴포넌트가 두 번 등록된다. 공용 헬퍼는 testproj/ 에(outbound.py 의 RecordingOutbound). test_suite_imports.py 가 본다
 │                          test_live_session_contract.py 는 회귀가 아니라 계약을 진술한다 —
 │                          컴포넌트가 생기는 경로 11개 × 거절 사유 5종을 parametrize로 돌린다.
 │                          경로를 새로 만들면 행을 추가한다

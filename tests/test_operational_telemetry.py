@@ -15,6 +15,7 @@ from channels.layers import InMemoryChannelLayer
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth.models import AnonymousUser
 from django.test import override_settings
+from testproj.outbound import RecordingOutbound
 
 from wireview import Component, telemetry
 from wireview.consumer import WireviewConsumer
@@ -64,23 +65,6 @@ class TelBroken(Component):
         on_mount = [BrokenHook]
 
     note: str = "broken"
-
-
-class RecordingOutbound:
-    def __init__(self) -> None:
-        self.commands: list[tuple[str, dict[str, t.Any]]] = []
-
-    async def send_command(self, command: str, payload: dict[str, t.Any]) -> None:
-        self.commands.append((command, payload))
-
-    async def subscribe(self, topic: str) -> None:
-        return None
-
-    async def unsubscribe(self, topic: str) -> None:
-        return None
-
-    async def close(self, code: int | None = None) -> None:
-        return None
 
 
 class Recorder:

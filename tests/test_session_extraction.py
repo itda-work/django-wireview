@@ -7,12 +7,12 @@ layer: join, an event, a render, and the way out.
 """
 
 import ast
-import typing as t
 from pathlib import Path
 
 import pytest
 from django.contrib.auth.models import AnonymousUser
 from django.test import override_settings
+from testproj.outbound import RecordingOutbound
 
 from wireview import Component
 from wireview.consumer import WireviewConsumer
@@ -41,28 +41,6 @@ class SessCounter(Component):
 
 
 LEFT: list[str] = []
-
-
-class RecordingOutbound:
-    def __init__(self) -> None:
-        self.commands: list[tuple[str, dict[str, t.Any]]] = []
-        self.topics: set[str] = set()
-        self.closed: list[int | None] = []
-
-    async def send_command(self, command: str, payload: dict[str, t.Any]) -> None:
-        self.commands.append((command, payload))
-
-    async def subscribe(self, topic: str) -> None:
-        self.topics.add(topic)
-
-    async def unsubscribe(self, topic: str) -> None:
-        self.topics.discard(topic)
-
-    async def close(self, code: int | None = None) -> None:
-        self.closed.append(code)
-
-    def renders(self) -> list[dict[str, t.Any]]:
-        return [payload for command, payload in self.commands if command == "render"]
 
 
 @pytest.fixture(autouse=True)
