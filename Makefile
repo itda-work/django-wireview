@@ -254,7 +254,7 @@ ci-build:
 	else sys.exit(f'{w} has no wireview/py.typed')"
 	@echo "ci-build: wheel contains wireview.min.js"
 	@# And the agent skill, which `manage.py wireview_agent_setup` installs from the
-	@# package. It is force-included from a directory the sdist has to carry, and the
+	@# package. hatch_build.py copies it from a directory the sdist has to carry, and the
 	@# wheel is built from the sdist -- a mismatch there fails the build rather than
 	@# shipping quietly, but only if something looks.
 	@python3 -c "import glob, sys, zipfile; \
@@ -281,6 +281,14 @@ ci-build:
 	bad = '/main/' in meta or meta.count(f'/v{version}/') < 30; \
 	sys.exit(f'{w}: the description does not link to v{version}') if bad else None"
 	@echo "ci-build: the description links to the release tag"
+	@# So does the skill wireview_agent_setup installs: it describes this release's API.
+	@python3 -c "import glob, sys, zipfile; \
+	w = sorted(glob.glob('dist/*.whl'))[-1]; z = zipfile.ZipFile(w); \
+	skill = {n: z.read(n).decode() for n in z.namelist() if '/agent_skills/' in n and n.endswith('.md')}; \
+	version = w.split('-')[1]; \
+	bad = [n for n, text in skill.items() if '/main/' in text]; \
+	sys.exit(f'{w}: {bad} link to main') if bad or f'/v{version}/' not in skill['wireview/agent_skills/wireview/SKILL.md'] else None"
+	@echo "ci-build: the agent skill links to the release tag"
 
 # The built wheel in a fresh environment that resolves its dependencies anew, as a
 # user's install does -- not uv.lock's versions. rc3 passed every test on the lock

@@ -81,8 +81,10 @@ The django-reactor era changelog (2.x) is preserved in
   package metadata gains `Documentation`, `Changelog` and `Issues` URLs. A test refuses a
   relative link and checks that each absolute one names a file that exists. The build pins
   those links, and the `Documentation` and `Changelog` URLs, to the release's tag `v<version>`
-  (`hatch_build.py`), so an older release's page keeps showing its own documents; `make ci-build`
-  checks the wheel's metadata for it.
+  (`hatch_build.py`), so an older release's page keeps showing its own documents. The agent skill
+  the wheel ships for `wireview_agent_setup` is pinned the same way: it describes the release it
+  came with, and linked to `main` it sent an agent to documents of APIs that release may not
+  have. `make ci-build` checks the wheel's metadata and skill for it.
 
 - The dict form of a `JS()` transition no longer declares a `to` key. The client never read it, so
   a type checker accepted a key that did nothing (found with the README's `transition` forms).
