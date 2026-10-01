@@ -54,7 +54,7 @@ from wireview import Component, LiveComponent, JS, mount
 | 컴포넌트 클래스 설정 | `class Meta:`의 키(`ComponentOptions`의 필드)와 `get_subscriptions()` |
 | 템플릿 컨텍스트 | 컴포넌트 템플릿의 `this`, 슬롯의 `let` 이름 |
 | 훅 파일 위치 | 앱의 `static/<app_label>/hooks/*.js` ([hooks](./features/hooks.md)) |
-| 모델 채널 이름 | `AUTO_BROADCAST`가 알리는 채널: `<app_label>.<model>`, `<app_label>.<model>.<pk>`, 가리키는 행의 `<app_label>.<model>.<pk>.<related_name>`, m2m은 양쪽 행의 `<app_label>.<model>.<pk>.<field>`(어느 쪽에서 바꿨든 같다). 밑줄은 하이픈이 된다. 알리는 모델은 `senders`에 적은 것뿐이고(비우면 없다), m2m은 바꾼 쪽의 모델이 `senders`에 있을 때 알린다 |
+| 모델 채널 이름 | `AUTO_BROADCAST`가 알리는 채널: `<app_label>.<model>`, `<app_label>.<model>.<pk>`, 가리키는 행의 `<app_label>.<model>.<pk>.<related_name>`, m2m은 양쪽 행의 `<app_label>.<model>.<pk>.<field>`(어느 쪽에서 바꿨든 같다). 밑줄은 하이픈이 된다. 알리는 모델은 `senders`에 적은 것뿐이고(비우면 없다), m2m은 바꾼 쪽의 모델이 `senders`에 있을 때 알린다. `senders`는 집합 또는 모델→필드 매핑이고, 집합은 모든 필드를 보낸다 |
 | `self.wire` | `params`, `redirect_to`, `replace_to`, `push_to`만([navigation](./features/navigation.md)). 나머지는 프레임워크 내부이고, 같은 일은 `Component`의 메서드(`put_flash`, `push_js`, `push_title`, `defer` 등)로 한다 |
 | 클라이언트 | `window.wireview`의 문서화된 멤버, `docs/features/`에 문서화된 `wire-*` DOM 속성·`wireview-*` CSS 클래스·`wireview:*` DOM 이벤트, 훅 객체의 문서화된 멤버([hooks](./features/hooks.md)). 접두사가 맞는다고 공개가 아니다 — 아래 "내부" 참고 |
 | 테스트 도구 | `mount()`가 돌려주는 `MountedComponent`의 문서화된 멤버([testing](./features/testing.md)). 그 `view.wire`는 컴포넌트의 `self.wire`와 같은 범위만 공개다. `sent_messages`·`stream_ops`의 항목과 `render_diff()`의 diff는 와이어 메시지라 **모양은 공개가 아니다** — `render_diff()`는 `None`인지만 약속한다 |
@@ -151,6 +151,8 @@ Django 5.2 LTS·6.0·6.1, Python 3.12·3.13·3.14다.
 - **channels-nats 0.3.0에서 와이어 형식이 바뀌었다**(본문 msgpack 고정, 일반 채널의 그룹 구독을 큐 그룹으로).
   0.2.x와 0.3.0 이상의 프로세스를 한 NATS에 섞으면 서로의 메시지를 읽지 못하므로 모든 프로세스를 함께 올린다.
   같은 릴리스에서 `CONFIG`의 `serializer` 키가 없어졌다. 적어 두었다면 지운다(남아 있으면 레이어 생성이 `TypeError`로 실패한다).
+- **`AUTO_BROADCAST`의 필드를 줄이는 설정(`senders` 매핑)은 모든 프로세스를 그 설정을 아는 버전으로 올린 뒤에 켠다.**
+  옛 버전 프로세스는 필드 일부만 담긴 알림을 받으면 빠진 필드를 기본값으로 채운다([배포](./DEPLOYMENT.md#업그레이드-auto_broadcast의-필드-목록)).
 - 유실을 세는 방법은 [배포 가이드](./DEPLOYMENT.md)의 관측 절이다.
 - `uv.lock`에서 레이어 패키지를 올리면 두 E2E 레인을 돌리고 이 표의 버전을 같이 고친다.
   `tests/test_supported_versions.py`가 표와 `uv.lock`, CI의 E2E 매트릭스가 같은 레이어를 말하는지, `ci.yml`이 쓰는

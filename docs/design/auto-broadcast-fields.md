@@ -1,6 +1,10 @@
 # AUTO_BROADCAST가 채널 레이어로 보내는 필드 줄이기 ([#144](https://github.com/itda-work/django-wireview/issues/144))
 
-> **상태: 결정됨 — 안 A2를 1.1에서 구현한다. 1.0에서는 바꾸지 않는다.** (2026-10-01)
+> **상태: 구현됨(1.1) — 안 A2.** (2026-10-01) 구현하며 이 문서와 달라진 것 둘:
+> 1. `arefresh_from_db()`를 필드 없이 부르면 **불러온 필드만 다시 읽고 deferred 필드는 deferred로 남긴다**(Django의 동작).
+>    빠진 필드를 채우려면 이름을 적는다: `await instance.arefresh_from_db(fields=["title"])`. 아래 §2·§3의 예는 그렇게 읽는다.
+> 2. §4-3의 10에서 bookmarks에 적자고 한 `("title","url","is_read","created_at")`는 pk 말고 모든 필드라 **전체 경로**를 탄다.
+>    testproj는 `created_at`을 빼 bookmarks E2E가 부분 경로를 브라우저까지 지나게 했다(rating에는 E2E가 없다).
 
 기준 커밋 `bf2faea`(1.0.0rc3 이후, 1.0.0rc4에 들어간 커밋). 이 문서를 쓰며 코드는 바꾸지 않았다. 실험은 저장소 사본에서 돌렸다.
 

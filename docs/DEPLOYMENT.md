@@ -306,6 +306,13 @@ Django가 `Host` 헤더에 쓰는 규칙과 같고, `DEBUG`이면서 `ALLOWED_HO
   호스트도 `ALLOWED_HOSTS`에 있어야 한다.
 - 끄려면 `WIREVIEW["CHECK_ORIGIN"] = False`. 앞단 프록시가 같은 검사를 확실히 할 때만 끈다.
 
+## 업그레이드: AUTO_BROADCAST의 필드 목록
+
+`AUTO_BROADCAST.senders`를 매핑으로 적어 보낼 필드를 줄이면([설정](./features/settings.md#모델-알림)), 받는 쪽은
+온 필드만 불러오고 나머지를 deferred로 둔다. 그 처리는 필드 목록을 아는 버전에만 있다. 옛 버전 프로세스가 같은
+브로커에서 그 알림을 받으면 빠진 필드를 **기본값으로 채운** 인스턴스를 `mutation()`에 넘기고, 오류는 나지 않는다.
+롤링 배포라면 모든 프로세스를 새 버전으로 올린 뒤에, 다음 배포에서 매핑 설정을 켠다.
+
 ## 업그레이드: 서명된 컴포넌트 상태
 
 v2 상태 봉투(`#58`) 이후 `data-state` 값은 **발급된 컴포넌트 클래스, 페이지의 `live_session`, 발급

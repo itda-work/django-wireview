@@ -125,8 +125,10 @@ await self.broadcast("room.42", event="new_message")
 
 받는 쪽은 `Meta.subscriptions = {"room.42"}` + `async def notification(self, channel, **kwargs)`.
 모델 변경 자동 브로드캐스트는 `WIREVIEW["AUTO_BROADCAST"]`가 켜고 끈다. 알릴 모델은
-`senders={("todo", "Item")}`처럼 반드시 적는다 — 비우면 아무것도 알리지 않는다(`wireview.W015`). 적은 모델은
-모든 필드가 채널 레이어로 직렬화되므로 `User`처럼 민감한 필드가 있는 모델은 넣지 않는다.
+`senders={("todo", "Item")}`처럼 반드시 적는다 — 비우면 아무것도 알리지 않는다(`wireview.W015`). 집합으로 적은
+모델은 모든 필드가 채널 레이어로 직렬화된다. `User`처럼 민감한 필드가 있는 모델은 매핑으로 보낼 필드를 적는다:
+`senders={("todo", "Item"): "__all__", ("auth", "User"): ("username",)}`(`()`는 pk만, 모든 필드면 `wireview.W017`).
+그때 `mutation()`의 `instance`에서 적지 않은 필드는 deferred라, 읽으려면 `await instance.arefresh_from_db(fields=[...])`.
 
 ## 토스트 — 다른 사람·다른 탭에 띄우는 플래시
 

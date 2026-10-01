@@ -31,17 +31,20 @@ WIREVIEW = {
         related=True,
         m2m=True,
         # The models the examples and fixtures subscribe to. Nothing else is broadcast.
+        # A mapping names the fields each one sends (#144). bookmarks sends what its
+        # stream item renders, so created_at arrives deferred and its E2E carries a
+        # partial payload to the browser; rating's receivers read only product_id.
         senders={
-            ("bookmarks", "Bookmark"),
-            ("chat", "Message"),
-            ("dashboard", "Activity"),
-            ("dashboard", "Stat"),
-            ("notifications", "Notification"),
-            ("poll", "Option"),
-            ("quiz", "Submission"),
-            ("rating", "Product"),
-            ("rating", "Rating"),
-            ("todo", "Item"),
+            ("bookmarks", "Bookmark"): ("title", "url", "is_read"),
+            ("chat", "Message"): "__all__",
+            ("dashboard", "Activity"): "__all__",
+            ("dashboard", "Stat"): "__all__",
+            ("notifications", "Notification"): "__all__",
+            ("poll", "Option"): "__all__",
+            ("quiz", "Submission"): "__all__",
+            ("rating", "Product"): "__all__",
+            ("rating", "Rating"): ("product",),
+            ("todo", "Item"): "__all__",
         },
     ),
     # Enable sync/async transition detection in development

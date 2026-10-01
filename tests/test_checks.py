@@ -27,6 +27,7 @@ from wireview import settings as wireview_settings
 from wireview.checks import (
     check_async_handlers,
     check_async_lifecycle,
+    check_auto_broadcast_credentials,
     check_auto_broadcast_senders,
     check_channel_layer,
     check_channel_layer_configured,
@@ -371,6 +372,69 @@ class TestAutoBroadcastSendersCheck:
 
     def test_the_test_project_is_silent(self):
         assert check_auto_broadcast_senders(None) == []
+
+
+class TestAutoBroadcastCredentialsCheck:
+    """W017: every field of a user or session model goes onto the channel layer (#144)."""
+
+    @pytest.mark.parametrize(
+        ("senders", "what"),
+        [
+            ({("auth", "User")}, "password hash"),
+            ({("auth", "User"): "__all__"}, "password hash"),
+            ({("sessions", "Session")}, "session key"),
+        ],
+        ids=["user-set", "user-all", "session"],
+    )
+    def test_every_field_of_a_credential_model_is_flagged(self, monkeypatch, senders, what):
+        set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast(model=True, senders=senders))
+        (message,) = check_auto_broadcast_credentials(None)
+
+        assert message.id == "wireview.W017"
+        assert what in message.msg and "mapping" in message.hint
+
+    def test_the_hint_names_the_user_models_username_field(self, monkeypatch):
+        set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast(model=True, senders={("auth", "User")}))
+        (message,) = check_auto_broadcast_credentials(None)
+
+        assert "{('auth', 'User'): ('username',)}" in message.hint
+
+    def test_a_custom_user_model_is_flagged(self, monkeypatch):
+        from django.contrib.auth.base_user import AbstractBaseUser
+        from django.db import models
+        from django.test.utils import isolate_apps
+
+        with isolate_apps("testproj.bookmarks") as isolated:
+
+            class Account(AbstractBaseUser):
+                email = models.EmailField(unique=True)
+                USERNAME_FIELD = "email"
+
+                class Meta:
+                    app_label = "bookmarks"
+
+            monkeypatch.setattr("wireview.auto_broadcast.apps", isolated)
+            set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast(model=True, senders={("bookmarks", "Account")}))
+            (message,) = check_auto_broadcast_credentials(None)
+
+        assert "bookmarks.account" in message.msg
+        assert "{('bookmarks', 'Account'): ('email',)}" in message.hint
+
+    def test_listed_fields_are_silent(self, monkeypatch):
+        set_wireview(
+            monkeypatch,
+            AUTO_BROADCAST=AutoBroadcast(
+                model=True, senders={("auth", "User"): ("username",), ("sessions", "Session"): ()}
+            ),
+        )
+        assert check_auto_broadcast_credentials(None) == []
+
+    def test_an_ordinary_model_is_silent(self, monkeypatch):
+        set_wireview(monkeypatch, AUTO_BROADCAST=AutoBroadcast(model=True, senders={("rating", "Product")}))
+        assert check_auto_broadcast_credentials(None) == []
+
+    def test_the_test_project_is_silent(self):
+        assert check_auto_broadcast_credentials(None) == []
 
 
 #: The client module W016 must agree with.

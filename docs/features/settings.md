@@ -52,11 +52,39 @@ WIREVIEW = {
 
 | 키 | 기본값 | 뜻 |
 |----|--------|----|
-| `AUTO_BROADCAST` | `AutoBroadcast()` (모두 꺼짐) | 모델 저장·삭제를 채널로 알린다. `model`, `model_pk`, `related`, `m2m`, `senders`(알릴 모델의 `(app_label, ModelName)` 집합). **`senders`를 비우면 아무것도 알리지 않는다** — 플래그를 켰는데 비어 있으면 `wireview.W015`가 알린다. 설치되지 않은 모델을 적으면 기동 때 `ImproperlyConfigured`다. 채널 이름은 [호환성 정책](../COMPATIBILITY.md)의 "모델 채널 이름". **기동 시** |
+| `AUTO_BROADCAST` | `AutoBroadcast()` (모두 꺼짐) | 모델 저장·삭제를 채널로 알린다. `model`, `model_pk`, `related`, `m2m`, `senders`(알릴 모델의 `(app_label, ModelName)` 집합, 또는 모델마다 보낼 필드를 적은 매핑). **`senders`를 비우면 아무것도 알리지 않는다** — 플래그를 켰는데 비어 있으면 `wireview.W015`가 알린다. 설치되지 않은 모델이나 보낼 수 없는 필드를 적으면 기동 때 `ImproperlyConfigured`다. 채널 이름은 [호환성 정책](../COMPATIBILITY.md)의 "모델 채널 이름". **기동 시** |
 
-`senders`에 적은 모델은 저장·삭제될 때마다 **그 모델 테이블의 모든 필드가** 직렬화되어 채널 레이어로 가고, 구독한
-컴포넌트의 `mutation()`이 그것을 받는다. 민감한 필드가 있는 모델(`User`, `Session` 등)은 넣지 않는다. 그런 모델의
-변경을 알려야 하면 필요한 필드만 담은 별도 모델을 만들어 그것을 적는다.
+`senders`에 적은 모델은 저장·삭제될 때마다 인스턴스가 직렬화되어 채널 레이어로 가고, 구독한 컴포넌트의
+`mutation()`이 그것을 받는다. **집합으로 적으면 그 모델 테이블의 모든 필드가 간다.** 보낼 필드를 줄이려면 `senders`를 매핑으로 적는다.
+
+```python
+WIREVIEW = {
+    "AUTO_BROADCAST": AutoBroadcast(
+        model=True,
+        model_pk=True,
+        senders={
+            ("todo", "Item"): "__all__",              # 모든 필드. 집합으로 적은 것과 같다
+            ("accounts", "User"): ("username", "is_active"),
+            ("rating", "Rating"): ("product",),       # FK는 필드 이름으로. product의 id가 간다
+            ("audit", "Event"): (),                   # pk만
+        },
+    ),
+}
+```
+
+- 값은 `"__all__"`, 필드 이름의 튜플, `()`(pk만) 셋 중 하나다. 맨 문자열(`("username")`은 튜플이 아니다)은 거절된다.
+- pk는 늘 간다. 목록에 적지 않는다(적으면 기동 때 오류다).
+- FK는 `"product"`나 `"product_id"`로 적고 id가 간다. m2m 필드는 적을 때만 pk 목록이 간다(적지 않으면 그 조회도 없다).
+  역관계 이름과 다중 테이블 상속의 부모 필드는 보낼 수 없다.
+- **받는 쪽 인스턴스에는 보낸 필드와 pk만 들어 있다.** 적지 않은 필드는 아래의 "실리지 않은 필드"처럼 deferred다.
+  필요하면 이름을 적어 불러온다: `await instance.arefresh_from_db(fields=["title"])`. 필드를 적지 않은
+  `arefresh_from_db()`는 불러온 필드만 다시 읽고 deferred 필드는 그대로 둔다. 저장은 보낸 필드만 쓴다.
+- **DELETED 알림도 적은 필드만 싣는다.** 행이 이미 없어 다시 읽을 수 없으므로, 삭제를 거를 때 쓰는 필드(FK 등)는
+  목록에 적는다.
+- 사용자·세션 모델(`AbstractBaseUser`, `AbstractBaseSession`의 하위 클래스)을 모든 필드로 알리면 `wireview.W017`이
+  알린다. 비밀번호 해시와 세션 데이터가 채널 레이어로 가기 때문이다. 필드를 적어 줄인다.
+- **롤링 배포에서는 모든 프로세스를 새 버전으로 올린 뒤에 필드를 줄인다.** 옛 버전(1.0.x)은 빠진 필드를 기본값으로 채운
+  인스턴스를 `mutation()`에 넘긴다([배포](../DEPLOYMENT.md#업그레이드-auto_broadcast의-필드-목록)).
 
 `mutation()`이 받은 `instance`는 **보통의 모델 인스턴스처럼 저장된다**(#153). `save()`·`asave()`는 모델의 `save()`
 오버라이드를 거치고, `pre_save`·`post_save`는 `raw=False`로 나간다. 이미 있는 행으로 복원되므로 UPDATE를 먼저 한다.

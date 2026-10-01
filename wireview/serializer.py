@@ -11,8 +11,13 @@ from pydantic import BaseModel
 __all__ = ("encode", "decode")
 
 
-def encode(instance: Model) -> str:
-    return serialize("json", [instance], cls=WireviewJSONEncoder)
+def encode(instance: Model, fields: t.Sequence[str] | None = None) -> str:
+    """``instance`` in Django's JSON format: every field, or the pk and the ``fields`` named (#144).
+
+    ``decode`` defers whatever a payload leaves out, so a partial one needs no
+    other handling on the receiving side.
+    """
+    return serialize("json", [instance], cls=WireviewJSONEncoder, fields=fields)
 
 
 def decode(instance: str) -> Model:

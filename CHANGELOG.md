@@ -10,6 +10,23 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- `AUTO_BROADCAST.senders` also takes a mapping that names, per model, the fields a
+  `model_mutation` carries onto the channel layer: `"__all__"`, a tuple of field names (a foreign
+  key by `"product"` or `"product_id"`), or `()` for the pk alone. A set still sends every field,
+  so nothing changes until a mapping is written. A field the payload cannot carry (no such field,
+  a reverse relation, the pk, a multi-table parent's field) fails at startup with
+  `ImproperlyConfigured`; a bare string is refused. An m2m field left out also skips its query
+  when encoding. The receiving side defers the fields left out, as it does any field a payload
+  does not carry (below): reading one queries the row -- on the event loop it raises
+  `SynchronousOnlyOperation`, so load it with `arefresh_from_db(fields=[...])` -- and `save()`
+  writes only the fields that came. Turn a mapping on only after every process runs a version
+  that knows it: an older process fills the fields a partial payload leaves out with their
+  defaults (#144).
+- `wireview.W017` warns when `AUTO_BROADCAST` sends every field of a user model
+  (`AbstractBaseUser`, its password hash) or a session model (`AbstractBaseSession`) (#144).
+
 ## [1.0.0] - 2026-10-02
 
 ### Added
@@ -58,6 +75,7 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- `wireview.W015`'s hint points to a `senders` mapping to send fewer fields (#144).
 - The `instance` a component's `mutation()` receives saves like any model instance. It was the
   deserializer's fixture load (`save_base(raw=True)`): `save()`/`asave()` skipped the model's own
   `save()`, sent `pre_save`/`post_save` with `raw=True` and set the m2m fields from the payload.

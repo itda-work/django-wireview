@@ -21,6 +21,7 @@ import typing as t
 from pathlib import Path
 
 from django.core.checks import CheckMessage, Warning, register
+from django.core.exceptions import ImproperlyConfigured
 
 if t.TYPE_CHECKING:
     from .core.component import Component
@@ -278,13 +279,57 @@ def check_auto_broadcast_senders(app_configs, **kwargs) -> list[CheckMessage]:
             "so no model change is broadcast.",
             hint=(
                 "List the models to broadcast in senders as (app_label, ModelName) pairs, "
-                "for example senders={('todo', 'Item')}. Every field of a listed model is "
-                "serialized onto the channel layer, so leave out models whose fields should "
-                "not travel there."
+                "for example senders={('todo', 'Item')}. Every field of a model in a set is "
+                "serialized onto the channel layer; to send fewer, make senders a mapping of "
+                "each model to the fields to send, for example senders={('todo', 'Item'): ('done',)}, "
+                "or leave the model out."
             ),
             id="wireview.W015",
         )
     ]
+
+
+def check_auto_broadcast_credentials(app_configs, **kwargs) -> list[CheckMessage]:
+    """W017: ``AUTO_BROADCAST`` sends every field of a model that holds a credential.
+
+    Only models certain to hold one: a user model (``AbstractBaseUser``, the
+    password hash) and a session model (``AbstractBaseSession``, the session key
+    and data). No guess from field names, which would warn about models that are
+    fine and teach the team to ignore the check.
+    """
+    from django.contrib.auth.base_user import AbstractBaseUser
+    from django.contrib.sessions.base_session import AbstractBaseSession
+
+    from . import auto_broadcast
+    from . import settings as wireview_settings
+
+    try:
+        senders = auto_broadcast.resolve_senders(wireview_settings.AUTO_BROADCAST)
+    except ImproperlyConfigured:
+        return []  # connect() already refused this configuration at startup
+
+    messages: list[CheckMessage] = []
+    for model, fields in senders.items():
+        if fields is not None:
+            continue
+        if issubclass(model, AbstractBaseUser):
+            what, example = "its password hash", (getattr(model, "USERNAME_FIELD"),)
+        elif issubclass(model, AbstractBaseSession):
+            what, example = "its session key and data", ()
+        else:
+            continue
+        sender = (model._meta.app_label, model._meta.object_name)
+        messages.append(
+            Warning(
+                f"WIREVIEW['AUTO_BROADCAST'] broadcasts every field of {model._meta.label_lower}, including {what}.",
+                hint=(
+                    "Make senders a mapping and list the fields to send for this model, for example "
+                    f"senders={{{sender!r}: {example!r}}}. () sends the pk alone."
+                ),
+                id="wireview.W017",
+            )
+        )
+    return messages
 
 
 #: The reconnect settings and the least value the client takes for each
@@ -854,6 +899,7 @@ def register_checks() -> None:
     register(check_client_bundle, WIREVIEW_TAG)
     register(check_settings_keys, WIREVIEW_TAG)
     register(check_auto_broadcast_senders, WIREVIEW_TAG)
+    register(check_auto_broadcast_credentials, WIREVIEW_TAG)
     register(check_reconnect_settings, WIREVIEW_TAG)
     register(check_on_mount_hooks, WIREVIEW_TAG)
     register(check_live_sessions, WIREVIEW_TAG)

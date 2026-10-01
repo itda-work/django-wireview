@@ -4,6 +4,10 @@ Only the models named in ``AUTO_BROADCAST.senders`` are broadcast. An empty
 ``senders`` connects nothing, whatever flags are on (``wireview.W015`` reports
 it). ``connect()`` runs once from ``WireviewConfig.ready()``; tests call it again
 with another ``AutoBroadcast`` to change what is connected.
+
+A set of senders sends every field of the instance. A mapping names, per model,
+the fields that go (#144): the three signals encode through ``_encode``, and the
+receiving side loads only those, leaving the rest deferred (``serializer.decode``).
 """
 
 import logging
@@ -27,6 +31,8 @@ log = logging.getLogger("wireview")
 _config: AutoBroadcast = AutoBroadcast()
 #: The models named in ``_config.senders``.
 _senders: frozenset[type[models.Model]] = frozenset()
+#: The field names each sender's payload carries, or None for every field.
+_fields: dict[type[models.Model], tuple[str, ...] | None] = {}
 #: ``(signal, sender, dispatch_uid)`` for every receiver ``connect()`` attached.
 _connections: list[tuple[Signal, type[models.Model], str]] = []
 #: Set on an object while its last save was raw. ``loaddata`` sets a row's m2m on the
@@ -34,18 +40,49 @@ _connections: list[tuple[Signal, type[models.Model], str]] = []
 _SAVED_RAW = "_wireview_saved_raw"
 
 
-def resolve_senders(config: AutoBroadcast) -> list[type[models.Model]]:
-    """The model classes ``config.senders`` names, in a stable order."""
-    resolved = []
+def resolve_senders(config: AutoBroadcast) -> dict[type[models.Model], tuple[str, ...] | None]:
+    """Each model ``config.senders`` names, in a stable order, and the fields its payload carries.
+
+    None stands for every field. The names come back as the serializer selects them: a foreign key by its field
+    name, whether it was written as ``product`` or ``product_id``.
+    """
+    resolved: dict[type[models.Model], tuple[str, ...] | None] = {}
     for app_label, model_name in sorted(config.senders):
         try:
-            resolved.append(apps.get_model(app_label, model_name))
+            model = apps.get_model(app_label, model_name)
         except LookupError as e:
             raise ImproperlyConfigured(
                 f"WIREVIEW['AUTO_BROADCAST'].senders names ({app_label!r}, {model_name!r}), "
                 f"which is not an installed model: {e}"
             ) from e
+        fields = config._fields_for((app_label, model_name))
+        resolved[model] = None if fields is None else tuple(_sent_field_name(model, name) for name in fields)
     return resolved
+
+
+def _sent_field_name(model: type[models.Model], name: str) -> str:
+    """The serializer's name for the field ``name`` of ``model``; refuses one the payload cannot carry.
+
+    Django's serializer sends the model's own concrete fields and forward
+    many-to-many fields, but not the pk (it is always sent beside them), reverse
+    relations or the fields of a multi-table parent.
+    """
+    opts = (model._meta.concrete_model or model)._meta
+    sendable = [f for f in (*opts.local_fields, *opts.local_many_to_many) if getattr(f, "serialize", False)]
+    for field in sendable:
+        if name in (field.name, field.attname):
+            return field.name
+    label = model._meta.label_lower
+    if name in (model._meta.pk.name, model._meta.pk.attname):
+        reason = "the primary key, which every payload carries; leave it out"
+    else:
+        reason = "not a field the payload can carry (a reverse relation, an inherited field or no field at all)"
+    raise ImproperlyConfigured(f"WIREVIEW['AUTO_BROADCAST'].senders lists {name!r} for {label}, which is {reason}.")
+
+
+def _encode(sender: type[models.Model], instance: models.Model) -> str:
+    """``instance`` as the payload of a ``model_mutation``, with the fields ``senders`` gives ``sender``."""
+    return serializer.encode(instance, fields=_fields.get(sender))
 
 
 def _m2m_throughs(senders: t.Iterable[type[models.Model]]) -> list[type[models.Model]]:
@@ -66,14 +103,16 @@ def connect(config: AutoBroadcast | None = None) -> None:
 
     ``config`` defaults to ``WIREVIEW['AUTO_BROADCAST']``, read now.
     """
-    global _config, _senders
+    global _config, _senders, _fields
     from . import settings
 
     disconnect()
     config = settings.AUTO_BROADCAST if config is None else config
-    senders = resolve_senders(config)
+    fields = resolve_senders(config)
+    senders = list(fields)
     _config = config
     _senders = frozenset(senders)
+    _fields = fields
     MODEL_RELATED_FIELDS.clear()
 
     receivers: list[tuple[Signal, t.Callable[..., t.Any], list[type[models.Model]]]] = []
@@ -94,12 +133,13 @@ def connect(config: AutoBroadcast | None = None) -> None:
 
 def disconnect() -> None:
     """Disconnect every receiver ``connect()`` attached."""
-    global _config, _senders
+    global _config, _senders, _fields
     while _connections:
         signal, sender, uid = _connections.pop()
         signal.disconnect(sender=sender, dispatch_uid=uid)
     _config = AutoBroadcast()
     _senders = frozenset()
+    _fields = {}
 
 
 def broadcast_post_save(sender, instance, created=False, raw=False, **kwargs):
@@ -114,7 +154,7 @@ def broadcast_post_save(sender, instance, created=False, raw=False, **kwargs):
     if not (_config.model or _config.model_pk or _config.related):
         return
     name = sender._meta.label_lower
-    encoded_instance = serializer.encode(instance)
+    encoded_instance = _encode(sender, instance)
     action: ModelAction = ModelAction.CREATED if created else ModelAction.UPDATED
     if _config.model:
         notify_mutation([name], action, encoded_instance)
@@ -137,7 +177,7 @@ def broadcast_post_save(sender, instance, created=False, raw=False, **kwargs):
 
 def broadcast_pre_delete(sender, instance, **kwargs):
     name = sender._meta.label_lower
-    encoded_instance = serializer.encode(instance)
+    encoded_instance = _encode(sender, instance)
     if _config.model:
         notify_mutation([name], ModelAction.DELETED, encoded_instance)
 
@@ -204,7 +244,7 @@ def broadcast_m2m_changed(sender, instance, action, model, pk_set, **kwargs):
     if type(instance) not in _senders or instance.__dict__.get(_SAVED_RAW):
         return
     if action.startswith("post_") and instance.pk:
-        encoded_instance = serializer.encode(instance)
+        encoded_instance = _encode(type(instance), instance)
         m2m_action: ModelAction
         if action.endswith("_add"):
             m2m_action = ModelAction.ADDED
