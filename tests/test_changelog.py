@@ -137,19 +137,32 @@ def _published_advisories() -> dict[str, str]:
     }
 
 
-def test_every_security_entry_since_the_last_release_is_an_advisory():
+# The first release whose ``### Security`` entries are all advisories. 0.3.0's are not, and
+# the rule holds from here on.
+FIRST_ADVISORY_RELEASE = "1.0.0rc4"
+
+
+def test_every_security_entry_since_the_advisories_began_is_one():
     """1.0.0rc3 and rc4 sent every visitor's session key to the broker as a group name; the
     fix was filed under ``### Fixed`` as a ``signed_cookies`` join failure, and the release's
-    security section did not mention it. Each entry here opens with its advisory's link."""
-    entries = _security_entries("Unreleased")
+    security section did not mention it. Each entry here opens with its advisory's link.
+    Every release from the first advisory up is read, so cutting ``[Unreleased]`` into a
+    numbered release keeps the check."""
+    releases = _headings()
+    entries = [
+        entry
+        for release in releases[: releases.index(FIRST_ADVISORY_RELEASE) + 1]
+        for entry in _security_entries(release)
+    ]
 
-    assert entries
     assert [
         entry[:80]
         for entry in entries
         if not re.match(rf"\[({ADVISORY_ID.pattern})\]\({REPO}/security/advisories/\1\) \(", entry)
     ] == []
-    assert any("session key" in entry and "digest" in entry for entry in entries)
+    assert [ADVISORY_ID.findall(entry)[0] for entry in entries if "session key" in entry and "digest" in entry] == [
+        "GHSA-4v8p-p6p8-78pj"
+    ]
 
 
 def test_security_md_lists_every_advisory_the_changelog_names():
