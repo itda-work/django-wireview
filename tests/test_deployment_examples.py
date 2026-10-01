@@ -196,3 +196,26 @@ async def test_readiness_fails_when_the_layer_does_not(monkeypatch, layer):
 
     assert status == 503
     assert body["status"] == "unready"
+
+
+def blocks(language: str) -> list[str]:
+    """Every ```<language> block of DEPLOYMENT.md."""
+    return re.findall(rf"```{language}\n(.*?)```", DEPLOYMENT.read_text(), re.S)
+
+
+@pytest.mark.parametrize("language", ["nginx", "caddyfile"])
+def test_every_proxy_that_sends_the_app_requests_serves_static_files(language):
+    # In production the starter's ASGIStaticFilesHandler is off. A proxy that sends /static/ on to
+    # the app gets a 404 for wireview.min.js: the page draws and no component ever joins.
+    proxies = [code for code in blocks(language) if "proxy_pass" in code or "reverse_proxy" in code]
+    assert proxies
+    for code in proxies:
+        assert "/static/" in code, f"this {language} block sends /static/ to the app:\n{code}"
+
+
+def test_the_docker_image_collects_static_files():
+    # Without collectstatic the image has nothing for the front server to serve at /static/.
+    images = blocks("dockerfile")
+    assert images
+    for code in images:
+        assert "collectstatic" in code, code

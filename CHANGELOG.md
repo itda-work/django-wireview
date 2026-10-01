@@ -82,6 +82,12 @@ The django-reactor era changelog (2.x) is preserved in
   what it is for and how to turn it off, and the type stubs page says it is every `manage.py`
   command that writes them, not only the server.
 
+- The proxy configurations in `docs/DEPLOYMENT.md` -- the Windows Caddyfile and the Nginx and Caddy
+  examples it calls the minimum -- now serve `/static/` themselves, and the Docker example runs
+  `collectstatic`. Copied as they were, they sent `/static/` to the app, which in production
+  (`DEBUG = False`) answers `wireview.min.js` with a 404: the page drew and no component joined.
+  A test checks every proxy block in the guide for `/static/` and the image for `collectstatic`.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

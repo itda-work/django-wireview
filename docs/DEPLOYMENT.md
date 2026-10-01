@@ -34,6 +34,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+# 앞단 웹 서버가 서빙할 /static/을 STATIC_ROOT에 모은다(아래 「정적 파일」). collectstatic도 설정을 import하므로,
+# 설정이 빌드 때 없는 환경 변수(비밀 키 등)를 요구하면 이 줄에만 임시 값을 준다.
+RUN python manage.py collectstatic --noinput
 
 CMD ["uvicorn", "myproject.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--loop", "uvloop", "--ws-per-message-deflate", "false"]
 ```
@@ -151,11 +154,17 @@ Windows에서는 `INSTALLED_APPS`에서 `"daphne"`도 뺀다. `runserver`를 받
 
 ```caddyfile
 :80 {
+    handle_path /static/* {
+        root * C:/srv/myproject/staticfiles  # STATIC_ROOT. 배포마다 collectstatic
+        file_server
+    }
     reverse_proxy 127.0.0.1:8001 127.0.0.1:8002 127.0.0.1:8003 127.0.0.1:8004
 }
 ```
 
-Caddy는 바이너리 하나이고 WebSocket 업그레이드를 알아서 처리하며 TLS 종단도 맡을 수 있다. 채널
+Caddy는 바이너리 하나이고 WebSocket 업그레이드를 알아서 처리하며 TLS 종단도 맡을 수 있다. `/static/`도 Caddy가
+서빙한다 — 운영(`DEBUG = False`)의 uvicorn은 정적 파일을 서빙하지 않으므로, 그 블록을 빼면 `wireview.min.js`가 404가
+되고 어떤 컴포넌트도 살아나지 않는다([정적 파일](#정적-파일)). 채널
 레이어는 channels-nats이고 `nats-server.exe`를 Windows 서비스로 띄운다(channels-nats README).
 SQLite는 모든 프로세스가 공유하므로 WAL과 busy timeout을 켠다. pragma는 `init_command`로 직접 실행한다.
 
@@ -304,7 +313,8 @@ v1 봉투(`#76`)와 그 이전의 두 형식은 경계를 담고 있지 않으�
 프록시가 업그레이드를 통과시키지 못하면 페이지는 첫 HTML 만 그려지고 그 뒤로 아무것도 하지 않는다.
 폴백을 만들지 않기로 한 근거는 `docs/design/longpolling-fallback.md` §5 에 있다.
 
-아래 설정은 "권장"이 아니라 **최소 조건**이다.
+아래 설정은 "권장"이 아니라 **최소 조건**이다. WebSocket 업그레이드와 함께 `/static/`도 앞단이 서빙한다.
+앱으로 넘기면 운영에서는 `wireview.min.js`가 404이고, 페이지는 그려지지만 어떤 컴포넌트도 살아나지 않는다([정적 파일](#정적-파일)).
 
 ### Nginx
 
@@ -316,6 +326,10 @@ upstream django {
 server {
     listen 80;
     server_name yourdomain.com;
+
+    location /static/ {
+        alias /srv/myproject/staticfiles/;  # STATIC_ROOT. 배포마다 collectstatic
+    }
 
     location / {
         proxy_pass http://django;
@@ -339,6 +353,10 @@ server {
 
 ```caddyfile
 yourdomain.com {
+    handle_path /static/* {
+        root * /srv/myproject/staticfiles  # STATIC_ROOT
+        file_server
+    }
     reverse_proxy localhost:8000
 }
 ```
