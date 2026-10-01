@@ -560,18 +560,14 @@ def on(context, _event_and_modifiers, _command, myself: bool = False, **kwargs: 
 
     # Validate handler for string commands (not JS objects)
     if isinstance(_command, str):
-        handler = getattr(component, _command, None)
-        assert handler, f"Missing handler: {component._name}.{_command}"
-        assert callable(handler), f"Not callable: {component._name}.{_command}"
+        _check_handler(component, _command)
     elif isinstance(_command, JS):
         # Validate push events in JS commands reference valid handlers
         for cmd in _command._commands:
             if cmd.get("cmd") == "push":
                 event_name = cmd.get("event")
                 if event_name:
-                    handler = getattr(component, event_name, None)
-                    assert handler, f"Missing handler: {component._name}.{event_name}"
-                    assert callable(handler), f"Not callable: {component._name}.{event_name}"
+                    _check_handler(component, event_name)
 
     # Add target ID for LiveComponent @myself targeting
     if myself:
@@ -579,6 +575,26 @@ def on(context, _event_and_modifiers, _command, myself: bool = False, **kwargs: 
 
     name, value = binding(_event_and_modifiers, _command, kwargs)
     return format_html('{name}="{value}"', name=name, value=value)
+
+
+def _check_handler(component: "Component", name: str) -> None:
+    """Refuse a binding the dispatcher would refuse, while the page renders.
+
+    The dispatcher takes only names ``is_client_callable`` allows. A binding to
+    any other callable -- a framework method, one a minor release added under a
+    handler's name, a ``_`` helper -- rendered fine and dropped every click
+    with a log line.
+    """
+    from ..core.handlers import is_client_callable
+
+    label = f"{type(component).__name__}.{name}"
+    handler = getattr(component, name, None)
+    assert handler, f"Missing handler: {label}"
+    assert callable(handler), f"Not callable: {label}"
+    assert is_client_callable(component, name), (
+        f"{label} is not an event handler: the framework owns the name, or it starts with '_'. "
+        "Bind a method of your own with another name."
+    )
 
 
 @register.filter(name="str")

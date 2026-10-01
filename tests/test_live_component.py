@@ -388,36 +388,25 @@ class TestMyselfTargeting:
 
     def test_on_tag_myself_parameter(self):
         """Test that {% on %} tag accepts myself parameter."""
-        from unittest.mock import MagicMock
-
         from django.template import Context, Template
 
-        # Create a mock component in context
-        mock_component = MagicMock()
-        mock_component.id = "test-live-1"
-        mock_component._name = "TestLive"
-        mock_component.increment = MagicMock()  # Method exists
+        component = MockCounter.model_construct(id="test-live-1")
 
         # Render template with on tag using myself
         template = Template('{% load wireview %}{% on "click" "increment" myself=True %}')
-        result = template.render(Context({"this": mock_component}))
+        result = template.render(Context({"this": component}))
 
         # The binding names the LiveComponent it targets
         assert "&quot;t&quot;:&quot;test-live-1&quot;" in result
 
     def test_on_tag_without_myself(self):
         """Test that {% on %} without myself doesn't add _target."""
-        from unittest.mock import MagicMock
-
         from django.template import Context, Template
 
-        mock_component = MagicMock()
-        mock_component.id = "test-comp-1"
-        mock_component._name = "TestComp"
-        mock_component.increment = MagicMock()
+        component = MockCounter.model_construct(id="test-comp-1")
 
         template = Template('{% load wireview %}{% on "click" "increment" %}')
-        result = template.render(Context({"this": mock_component}))
+        result = template.render(Context({"this": component}))
 
         # Should NOT name a target
         assert "&quot;t&quot;" not in result and "_target" not in result

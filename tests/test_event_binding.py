@@ -25,6 +25,7 @@ import pytest
 from django.template import Context, Template
 from django.test import RequestFactory
 
+from wireview import Component
 from wireview.event_transpiler import MODIFIER_ARGUMENTS, MODIFIERS, binding
 from wireview.features.uploads import UploadEntry
 from wireview.js import JS
@@ -45,18 +46,29 @@ def inline_handlers(html: str) -> list[str]:
     return found
 
 
-def _component(**handlers) -> MagicMock:
-    component = MagicMock()
-    component.id = "comp-1"
-    component._name = "Probe"
-    for name in handlers or {"save": None}:
-        setattr(component, name, MagicMock())
-    return component
+class BindingProbe(Component, public=False):
+    """A component with two handlers, overriding a framework callback as well."""
+
+    async def save(self, **_):
+        pass
+
+    async def search(self, **_):
+        pass
+
+    async def joined(self):
+        pass
+
+    async def _secret(self):
+        pass
+
+
+def _component() -> BindingProbe:
+    return BindingProbe.model_construct(id="comp-1")
 
 
 def _on(tag_args: str, **context) -> str:
     return Template("{% load wireview %}<b {% on " + tag_args + " %}>").render(
-        Context({"this": _component(save=None, search=None), **context})
+        Context({"this": _component(), **context})
     )
 
 
@@ -81,7 +93,7 @@ class TestTheOnTag:
     def test_the_same_event_can_be_bound_twice_on_one_element(self):
         html = Template(
             '{% load wireview %}<input {% on "keyup.enter" "save" %} {% on "keyup.esc" "search" %}>'
-        ).render(Context({"this": _component(save=None, search=None)}))
+        ).render(Context({"this": _component()}))
 
         assert "wire-on-keyup.enter=" in html and "wire-on-keyup.esc=" in html
 
@@ -141,6 +153,20 @@ class TestTheOnTag:
     def test_inlinejs_is_refused_with_a_pointer_to_js(self):
         with pytest.raises(ValueError, match="JS\\(\\)"):
             binding("click.inlinejs", "save", {})
+
+    @pytest.mark.parametrize("command", ['"joined"', '"skip_render"', '"model_dump"', "chain"])
+    def test_a_framework_method_cannot_be_bound(self, command):
+        """The dispatcher refuses these names, so the binding rendered and every click was dropped.
+
+        A framework member a minor release adds can take a handler's name the
+        same way (docs/COMPATIBILITY.md); the page then says so when it renders.
+        """
+        with pytest.raises(AssertionError, match="not an event handler"):
+            _on(f'"click" {command}', chain=JS().push("joined"))
+
+    def test_a_private_method_cannot_be_bound(self):
+        with pytest.raises(AssertionError, match="not an event handler"):
+            _on('"click" "_secret"')
 
 
 def _upload_component() -> MagicMock:
