@@ -54,8 +54,36 @@ def test_the_wheel_carries_the_skill():
     """
     build = tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"]["hatch"]["build"]
 
-    assert build["targets"]["wheel"]["force-include"]["skills/wireview"] == "wireview/agent_skills/wireview"
+    # The wheel's copy is hatch_build.py's, which pins the skill's links to the release tag
+    assert "custom" in build["targets"]["wheel"]["hooks"]
     assert build["targets"]["sdist"]["force-include"]["skills/wireview"] == "skills/wireview"
+
+
+@pytest.mark.unit
+def test_the_wheel_hook_ships_every_file_of_the_skill_pinned(tmp_path: Path):
+    """The skill describes the release it is installed with; linked to main it describes a later one."""
+    pytest.importorskip("hatchling")
+    import types
+
+    import hatch_build
+
+    hook = hatch_build.CustomBuildHook(
+        str(ROOT), {}, None, types.SimpleNamespace(version="1.2.3"), str(tmp_path), "wheel"
+    )
+    build_data: dict = {"force_include": {}}
+    hook.initialize("standard", build_data)
+    try:
+        ((source, target),) = build_data["force_include"].items()
+        assert target == "wireview/agent_skills/wireview"
+        shipped = sorted(p.relative_to(source).as_posix() for p in Path(source).rglob("*") if p.is_file())
+        assert shipped == sorted(p.relative_to(SKILL).as_posix() for p in SKILL.rglob("*") if p.is_file())
+        for name in shipped:
+            text = (Path(source) / name).read_text()
+            assert "/main/" not in text
+            assert text.replace("/v1.2.3/", "/main/") == (SKILL / name).read_text()
+        assert "/v1.2.3/" in (Path(source) / "SKILL.md").read_text()
+    finally:
+        hook.finalize("standard", build_data, "")
 
 
 @pytest.mark.unit
@@ -71,6 +99,8 @@ def test_the_sdist_actually_selects_the_skill():
     selected = {f.relative_path for f in hatchling_sdist.SdistBuilder(str(ROOT)).recurse_included_files()}
 
     assert "skills/wireview/SKILL.md" in selected
+    # The wheel is built from the sdist, and the hook that ships the skill into it is this file
+    assert "hatch_build.py" in selected
     assert any(p.startswith("skills/wireview/references/") for p in selected)
 
 
