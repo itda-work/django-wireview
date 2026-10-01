@@ -31,7 +31,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | `join` | `name`, `state` (서명 상태, `wireview.core.state`), `children: {id: [name, state]}`, `ref?` | 컴포넌트 복원, `joined()`, 첫 render, `params_changed`. `state`는 v2 봉투 `{"v":2,"n":<클래스 FQN>,"s":<live_session>,"a":<인증 세대>,"d":<상태>}`를 `TimestampSigner`로 서명한 값이다(`s`와 `a`는 경계 안의 페이지에만 실린다). 서버는 `STATE_MAX_AGE`(기본 14일)로 만료를 검사하고, `name`이 가리키는 클래스와 봉투 안의 클래스가 같은지, 봉투의 `live_session`이 이 연결의 것과 같은지, `a`가 이 연결의 인증 세대와 같은지 확인한다. 루트 상태가 거절되면 아무것도 마운트하지 않고 `reload`를 보낸다. `children`의 항목 하나가 거절되면(서명 실패, 또는 다른 경계·다른 인증 세대의 봉투) 그 항목만 복원 맵에서 빠지고 join은 계속된다(#76, #58). `children`에는 중첩된 일반 Component와 LiveComponent의 상태가 함께 실린다. **LiveComponent는 자기 join을 보내지 않는다** — 부모가 소유하며, 이미 등록된 LiveComponent id로 join이 오면 서버는 무시한다. `ref`(정수)는 그 join에 답하는 render와 `error`, 그리고 `remove`(마운트가 halt됨)·`reload`(상태 거절)·`joined`에 그대로 돌아온다. 같은 id로 join을 다시 보낸 페이지는 그것으로 이전 join의 늦은 응답을 가려 버린다(#139, #146). `user_event`의 `ref`와 한 카운터를 쓰므로 번호가 겹치지 않는다. 클라이언트는 서버가 join 응답에서 `vsn` 6 이상을 알렸을 때만 싣는다 — 연결의 첫 join들에는 실리지 않는다 |
 | `leave` | `id` | `leaving()`, 그 아래 LiveComponent에 cascade, 업로드 레지스트리 해제, 구독 재계산, 컴포넌트 제거. **LiveComponent id로는 보내지 않는다** — 부모 렌더가 이미 그 자식을 떠나보냈고, 늦게 온 `leave`는 그 사이 다시 보인 새 인스턴스를 지웠다. 서버는 LiveComponent id의 `leave`를 무시한다(옛 번들 방어, #140) |
 | `user_event` | `id`, `command`, `implicit_args` (폼 직렬화), `explicit_args`, `ref?` | 핸들러 호출 후 render. `ref`(정수)는 확정 액션(#92)과 로딩 표시를 거는 이벤트(#118)에 실리고, 서버는 그 이벤트의 render(또는 `error`)에 그대로 돌려준다. 클라이언트는 그 답으로 입력값 보존과 로딩 표시를 정리한다. 클라이언트는 서버가 join 응답에서 `vsn` 3 이상을 알렸을 때만 싣는다 |
-| `hook_event` | `component_id`, `hook_id`, `event`, `payload`, `ref?` | `handle_hook_event()`, `ref`가 있으면 `hook_reply` |
+| `hook_event` | `component_id`, `hook_id`, `event`, `payload`, `ref` | `handle_hook_event()`, `ref`가 `null`이 아니면 `hook_reply`. `ref`는 문자열 `hook-<n>`(훅이 콜백을 넘겼을 때) 또는 `null`이다. join·`user_event`의 정수 `ref`와 다른 카운터다 |
 | `params_changed` | `params`, `uri` | 모든 컴포넌트에 `params_changed()` |
 | `upload_register` | `id`, `name`, `entries: [{ref, name, size, type}]` | 검증 후 `upload_op` 응답 |
 | `upload_cancel` | `id`, `name`, `ref` | 항목 취소 |
@@ -50,19 +50,18 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | `joined` | `id`, `ref?` — `ref`는 그 join의 것이다(#146). 그 join과 `joined()`가 쌓아 둔 작업(스트림의 첫 페이지, 제목 등)이 모두 나갔다. 그 작업들과 같은 세션 큐로 보내 맨 뒤에 도착한다. 클라이언트는 이때부터 `wire-viewport-*`를 판단한다(#112). `vsn` 5 이상의 클라이언트에만 보낸다. 옛 서버에서는 클라이언트가 그 컴포넌트의 첫 render를 신호로 쓴다 |
 | `error` | `id`, `during` (`event` 또는 `join`), `ref?` — `ref`는 `event`면 그 이벤트의 것, `join`이면 그 join의 것이다. 서버 코드가 이 컴포넌트를 처리하다 예외를 던졌다(#94). `vsn` 4 이상의 클라이언트에만 보낸다. `event`: 핸들러, 브로드캐스트 수신, `params_changed`, 훅 이벤트, 업로드 콜백, LiveComponent `update()`, 렌더 중 하나가 던졌다. 서버는 인스턴스를 버렸고(`leaving()`을 부른다), `id`는 루트 컴포넌트다(LiveComponent가 던졌으면 그 루트). 클라이언트는 렌더 상태를 비우고 요소의 `data-state`로 다시 join한다. 그 상태는 이벤트 전의 것이라 핸들러가 던지기 전에 바꾼 값은 남지 않는다. `ref`는 그 이벤트의 것이고, 답이 render로 오지 않으므로 클라이언트는 여기서 정리한다. `join`: join이 첫 렌더까지 가지 못했거나 첫 렌더 뒤의 `params_changed`가 던졌다(이때 join 하나가 render와 `error` 두 응답을 받는다). 다시 시도하지 않고, 클라이언트는 요소를 그대로 둔 채 `wireview-error` 클래스를 붙이고 컴포넌트 등록에서 뺀다. 두 경우 모두 요소에서 버블링되는 `wireview:error` 이벤트(`detail: {id, during}`)를 보낸다. `vsn` 3 이하 클라이언트에는 `event`면 소켓을 코드 1011로 닫고(전부 다시 join), `join`이면 `remove`를 보낸다 — 둘 다 이전의 동작이다 |
 | `reload` | `id` (알 수 없으면 `null`), `reason` (`expired`, `invalid`, `live_session`), `ref?` — join의 루트 서명 상태를 쓸 수 없어 아무것도 마운트하지 않았다. `ref`는 그 join의 것이고, 같은 id의 다른 join을 기다리는 페이지는 이것을 버린다(#146). 클라이언트는 전체 페이지 로드로 복구하며, 30초 안에 두 번 반복되면 `sessionStorage["wireview:last-reload"]` 가드가 막고 경고만 남긴다 |
-| `stream_op` | `op`, `stream`, `items`, `at` |
+| `stream_op` | `op` (`reset`, `insert`, `delete`), `stream`, `items: [{id, html}]`, `at`, `limit?` — `limit`은 0이 아닐 때만 실린다 |
 | `exec_js` | `id`, `commands` |
 | `push_event` | `component_id`, `hook_id`, `event`, `payload` |
 | `hook_reply` | `ref`, `response` |
 | `url_change` | `command` (`redirect`, `replace`, `push`), `url` |
 | `set_query_string` | `qs` |
 | `title` | `title` |
-| `flash` | `flash_id`, `flash_type`, `message`, `timeout`, `dismissible` |
-| `clear_flash` | `flash_id` |
+| `flash` | `flash_type`, `message`, `timeout`, `dismissible` — id는 없다. 클라이언트가 만든다 |
+| `clear_flash` | `flash_id` — `null`이면 전부. 플래시 id는 클라이언트가 만들어 서버는 알지 못하므로, 서버 코드가 보내는 것은 사실상 `null`뿐이다 |
 | `scroll_into_view` | `id`, `behavior`, `block`, `inline` |
 | `focus_on` | `selector` |
 | `upload_op` | `op` (`config`, `registered`, `progress`, `error`, `complete` 등), `upload`, `ref?`, 그 외 op별 필드. `config`는 업로드를 클라이언트에 만드는 op라 소유 컴포넌트의 `id`를 싣는다. `config`는 페이지를 live로 만드는 `render`보다 채널 레이어 한 번 왕복만큼 늦게 온다 — 그 사이에 고른 파일은 클라이언트가 들고 있다가 `config`가 오면 등록한다. `config`는 보낸 인스턴스의 번호 `instance`를 싣는다. 세션은 떠났거나 같은 id의 새 join이 대신한 인스턴스가 보낸 op를 넘기지 않고, 클라이언트는 그 id에 대해 `render`의 `instances`로 마지막에 알림받은 번호와 다른 `config`를 버린다. 같은 id로 보낸 새 join의 응답을 기다리는 동안에는 이전 join의 render를 적용하지 않으므로 그 `instances`도 받지 않는다(#139). `instance`가 없는 `config`(#137 이전 서버)는 그대로 받는다(#137) |
-| `dispatch_event` | `command`, `id`, `args`, `kwargs` — 지연 호출 |
 
 ## 4. Session mail (컴포넌트 → 세션)
 
@@ -72,6 +71,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 |---------|--------|------|
 | `dispatch_event` | `id`, `command`, `args`, `kwargs` | 세션 안에서 핸들러를 다시 호출하고 render |
 | `send_render` | `id` | 강제 render |
+| `crashed` | `id` | 컴포넌트의 백그라운드 작업(`start_async`의 `handle_async`)이 던졌다. 핸들러가 던진 것과 같이 복구한다(outbound `error`, #94) |
 | `update_live_component` | `parent_id`, `live_component_id`, `assigns` | LiveComponent `update()` 후 render |
 
 ## 5. Fan-out (세션들 사이)
@@ -80,10 +80,12 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 |------|------|-----------|-----------|
 | `notification` | `channel`, `kwargs` | `broadcast()`, `abroadcast()`, `send_notification()`, `WireviewMeta.queue_broadcast()`, Presence | 구독 컴포넌트의 `notification()` 후 render |
 | `model_mutation` | `channel`, `action`, `instance` (직렬화된 모델) | `auto_broadcast.notify_mutation` (Django signals) | 구독 컴포넌트의 `mutation()` 후 render |
-| `upload.progress` | `upload`, `ref`, `progress`, `bytes_received` | `UploadView` | `upload_op progress` 전송 |
-| `upload.error` | `upload`, `ref`, `errors` | `UploadView` | `upload_op error` 전송 |
+| `upload.progress` | `component`, `upload`, `ref`, `progress`, `bytes_received` | `UploadView` | 엔트리 갱신, 소유 컴포넌트 render, `upload_op progress` 전송 |
+| `upload.completed` | `component`, `upload`, `ref`, `bytes_received`, `path` | `UploadView` (마지막 청크) | 엔트리를 완료로 올린다. 브라우저에는 보내지 않는다 — 브라우저는 자기 `upload_complete`로 알고, `on_upload_complete`도 거기서 한 번만 돈다 |
+| `upload.error` | `component`, `upload`, `ref`, `errors` | `UploadView` | 엔트리를 오류로, 소유 컴포넌트 render, `upload_op error` 전송 |
+| `session_invalidated` | `reason` | `invalidate_authentication()` (로그아웃, 재로그인) | 소켓을 코드 4001로 닫는다 |
 
-토픽 이름은 `Meta.subscriptions`의 값(모델 라벨 `app.model` 또는 임의 채널 이름)과 `wireview_upload_<connection_id>`다. 컨슈머는 render 뒤마다 저장소의 구독 집합과 자기 구독을 맞춘다(`update_to_which_channels_im_subscribed_to`).
+토픽 이름은 `Meta.subscriptions`의 값(모델 라벨 `app.model` 또는 임의 채널 이름), `wireview_upload_<connection_id>`, `wireview.auth.<인증 세대 지문>`(경계 안의 연결만)이다. 채널 레이어 그룹 이름이므로 영숫자·`-`·`_`·`.`만, 100자 미만이어야 한다. 컨슈머는 render 뒤마다 저장소의 구독 집합과 자기 구독을 맞춘다(`update_to_which_channels_im_subscribed_to`).
 
 업로드 진행 통지 그룹은 **연결마다 하나**이며 컴포넌트 구독과 수명이 다르다. 첫 레지스트리가 등록될 때 한 번 가입하고 `disconnect()`에서 탈퇴하므로 `self.subscriptions` 집합에는 들어가지 않는다. 업로드가 없는 페이지는 `group_add`를 한 번도 하지 않는다. 클라이언트는 payload의 `upload`와 `ref`로 대상을 가른다. 업로드 HTTP 엔드포인트도 같은 연결 id를 첫 세그먼트로 받는다: `/__wireview_upload__/<connection_id>/<component_id>/<upload_name>/`.
 

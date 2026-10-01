@@ -109,6 +109,12 @@ The django-reactor era changelog (2.x) is preserved in
   release's bundle. A test checks that every proxy block serves `/static/` from a directory, that
   the app image runs `collectstatic`, and that an image takes its output to the Nginx `alias`.
 
+- `docs/implementation/wire-protocol.md`, the canon of the message shapes, had drifted from the
+  code: an outbound `dispatch_event` that never reaches the browser, a `flash_id` that `flash`
+  does not carry, `stream_op` without its `limit`, no `crashed` session mail, and no
+  `upload.completed` or `session_invalidated` fan-out. `hook_event`'s `ref` is a `hook-<n>` string,
+  not the integer of `join` and `user_event`. The tables are fixed, and
+  `tests/test_wire_protocol_doc.py` compares each table's names with the ones read from the source.
 - `docs/features/chunked-uploads.md` said the pre-#83 `conn:comp:config:ref` upload token is still
   accepted during a rolling deploy. It has been refused since #99: an upload in flight on a page an
   old (0.2 or earlier) worker drew fails with 403. The reference says so now, and a test pins the 403.
