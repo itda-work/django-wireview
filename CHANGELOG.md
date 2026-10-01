@@ -265,6 +265,12 @@ The django-reactor era changelog (2.x) is preserved in
   with each message. They pass an id now, and `tests/test_doc_examples.py` refuses an id-less
   nested component in a tutorial block or an example template.
 
+- Tutorials 05 and 15 subscribe components to model channels but never set
+  `AUTO_BROADCAST.senders`. Since rc4 a model left out of `senders` is not announced, and with no
+  `AUTO_BROADCAST` at all `wireview.W015` stays quiet too, so the cards never heard a save. Both
+  show the settings block now. Tutorial 15's `reset_all` also zeroed the stats with
+  `QuerySet.aupdate()`, which no other tab hears; it saves each instance.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

@@ -371,8 +371,25 @@ class XActivityFeed(Component):
 
 ### 통계 자동 갱신
 
-`Stat`이 저장되면 자동 브로드캐스트가 `dashboard.stat` 채널에 알린다(설정은 [03. Todo 앱](03-todo-app.md)의
-Auto Broadcast). 카드는 이름으로 구분되므로 모델 채널을 구독하고 `mutation()`에서 자기 통계만 고른다.
+`Stat`이 저장되면 자동 브로드캐스트가 `dashboard.stat` 채널에, `Activity`가 저장되면 `dashboard.activity`
+채널에 알린다. 알릴 모델은 `senders`에 적는다. 적지 않은 모델은 저장돼도 아무에게도 알리지 않고,
+`mutation()`도 불리지 않는다. 오류도 경고도 없다.
+
+`settings.py`:
+
+```python
+from wireview import AutoBroadcast
+
+WIREVIEW = {
+    "AUTO_BROADCAST": AutoBroadcast(
+        model=True,
+        senders={("dashboard", "Stat"), ("dashboard", "Activity")},
+    ),
+}
+```
+
+[03. Todo 앱](03-todo-app.md)을 같은 프로젝트에서 따라 했다면 `AUTO_BROADCAST`는 하나만 두고 `senders`를 합친다.
+카드는 이름으로 구분되므로 모델 채널을 구독하고 `mutation()`에서 자기 통계만 고른다.
 
 ```python
 class XStatCard(Component):

@@ -237,6 +237,21 @@ class Stat(models.Model):
 
 ### 4.3 LiveComponent 구현
 
+`StatCounter`는 `myapp.stat` 채널을 구독해 다른 곳에서 바뀐 값을 받는다. 그 채널에는 자동 브로드캐스트가
+`senders`에 적힌 모델만 알린다. 적지 않으면 `mutation()`은 오류도 경고도 없이 불리지 않는다.
+
+`settings.py`:
+
+```python
+from wireview import AutoBroadcast
+
+WIREVIEW = {
+    "AUTO_BROADCAST": AutoBroadcast(model=True, senders={("myapp", "Stat")}),
+}
+```
+
+다른 튜토리얼을 같은 프로젝트에서 따라 했다면 `AUTO_BROADCAST`는 하나만 두고 `senders`를 합친다.
+
 `myapp/live.py`:
 
 ```python
@@ -306,8 +321,10 @@ class StatsDashboard(Component):
             counter_id = f"stat-{stat_name}"
             await self.send_update(counter_id, value=0)
 
-        # DB도 리셋
-        await Stat.objects.filter(name__in=self.stats).aupdate(value=0)
+        # DB도 리셋. 인스턴스마다 asave()해야 post_save가 나가 다른 탭에도 알린다(QuerySet의 aupdate()는 보내지 않는다)
+        async for stat in Stat.objects.filter(name__in=self.stats):
+            stat.value = 0
+            await stat.asave()
 ```
 
 핸들러가 도는 동안 렌더는 한 번도 나가지 않는다 — 렌더는 핸들러가 끝난 뒤 한 번이다. 그래서 핸들러 앞머리에서
