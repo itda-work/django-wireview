@@ -77,6 +77,10 @@ The django-reactor era changelog (2.x) is preserved in
   (`channels>=4.2.1`, `pydantic>=2.7,!=2.9.0`) are in the rc1-to-1.0 section too, where a 1.0.0rc2
   or rc3 user reads.
 
+- `SECURITY.md` supports the newest 1.x minor and lists release candidates and 0.x as unsupported,
+  lists the published advisories, adds `AUTO_BROADCAST`'s `senders` to the boundaries wireview
+  keeps, and points the event exposure rule at the user documentation instead of `CLAUDE.md`.
+
 ### Fixed
 
 - `{% wireview_toasts %}` works on a site with the `signed_cookies` session backend. Its key is the
