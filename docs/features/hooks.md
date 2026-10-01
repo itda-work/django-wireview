@@ -205,7 +205,7 @@ class Dashboard(Component):
         """
         if event == "load_more":
             page = payload.get("page", 1)
-            new_items = await self.fetch_items(page)
+            new_items = await self._fetch_items(page)
             self.items.extend(new_items)
 
             return {
@@ -215,14 +215,14 @@ class Dashboard(Component):
 
         return None
 
-    async def notify_user(self, message: str):
-        """Push an event to every hook in this component."""
+    async def _notify_user(self, message: str):
+        """Push an event to every hook in this component (a helper, so ``_``)."""
         await self.push_event("show_toast", {
             "message": message,
             "type": "success"
         })
 
-    async def highlight_item(self, hook_id: str):
+    async def _highlight_item(self, hook_id: str):
         """Push an event to one specific hook."""
         await self.push_event(
             "highlight",

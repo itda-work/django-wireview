@@ -199,6 +199,11 @@ The django-reactor era changelog (2.x) is preserved in
   The call goes back through the connection as an event, so a `_` helper or a framework method
   passed to it is dropped with a log warning and nothing else.
 
+- The LiveComponent and hooks guides named their server-side helpers without a leading `_`
+  (`calculate_total`, `on_count_changed`, `fetch_items`, `notify_user`, `highlight_item`), so
+  copying them exposed each as an event handler -- `notify_user` would push any toast a client
+  asked for. They are `_` helpers now.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

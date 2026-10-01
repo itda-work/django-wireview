@@ -184,7 +184,7 @@ class Dashboard(Component):
     async def counter_changed(self, counter_id: str, count: int):
         """자식 카운터 변경 시 호출됨."""
         # 총합 재계산 등의 로직
-        self.total = await self.calculate_total()
+        self.total = await self._calculate_total()
 ```
 
 ---
@@ -209,10 +209,10 @@ class Counter(LiveComponent):
 
         # 커스텀 로직
         if self.count != old_count:
-            await self.on_count_changed()
+            await self._on_count_changed()
 
-    async def on_count_changed(self):
-        """count 변경 시 추가 로직."""
+    async def _on_count_changed(self):
+        """count 변경 시 추가 로직. `_`로 시작하므로 클라이언트가 부를 수 없다."""
         pass
 ```
 
