@@ -203,6 +203,14 @@ def blocks(language: str) -> list[str]:
     return re.findall(rf"```{language}\n(.*?)```", DEPLOYMENT.read_text(), re.S)
 
 
+# A proxy block that serves /static/ from disk: nginx's location with an alias or root,
+# Caddy's handle_path with a root and a file_server. Mentioning /static/ is not enough.
+STATIC_SERVERS = {
+    "nginx": r"location /static/ \{[^}]*\b(?:alias|root) [^;}]+;[^}]*\}",
+    "caddyfile": r"handle_path /static/\* \{[^}]*\broot \* \S+[^}]*\bfile_server\b[^}]*\}",
+}
+
+
 @pytest.mark.parametrize("language", ["nginx", "caddyfile"])
 def test_every_proxy_that_sends_the_app_requests_serves_static_files(language):
     # In production the starter's ASGIStaticFilesHandler is off. A proxy that sends /static/ on to
@@ -210,12 +218,25 @@ def test_every_proxy_that_sends_the_app_requests_serves_static_files(language):
     proxies = [code for code in blocks(language) if "proxy_pass" in code or "reverse_proxy" in code]
     assert proxies
     for code in proxies:
-        assert "/static/" in code, f"this {language} block sends /static/ to the app:\n{code}"
+        assert re.search(STATIC_SERVERS[language], code), f"this {language} block sends /static/ to the app:\n{code}"
 
 
-def test_the_docker_image_collects_static_files():
+def test_the_app_image_collects_static_files():
     # Without collectstatic the image has nothing for the front server to serve at /static/.
-    images = blocks("dockerfile")
-    assert images
-    for code in images:
+    apps = [code for code in blocks("dockerfile") if "uvicorn" in code]
+    assert apps
+    for code in apps:
         assert "collectstatic" in code, code
+
+
+def test_the_front_server_gets_the_files_out_of_the_app_image():
+    # collectstatic writes into the app image. A front server in another container or on the host
+    # finds the directory its alias names empty unless something takes the files out of the image.
+    (app,) = [code for code in blocks("dockerfile") if "uvicorn" in code]
+    workdir = re.search(r"^WORKDIR (\S+)$", app, re.M)[1]
+    aliases = re.findall(r"location /static/ \{\s*alias (\S+?);", DEPLOYMENT.read_text())
+    (alias,) = {path.rstrip("/") for path in aliases}
+    copies = [
+        pair for code in blocks("dockerfile") for pair in re.findall(r"^COPY --from=\S+ (\S+) (\S+)$", code, re.M)
+    ]
+    assert (f"{workdir}/staticfiles", alias) in copies, "no image takes the app image's STATIC_ROOT to the nginx alias"

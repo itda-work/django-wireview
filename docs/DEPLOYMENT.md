@@ -34,8 +34,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-# 앞단 웹 서버가 서빙할 /static/을 STATIC_ROOT에 모은다(아래 「정적 파일」). collectstatic도 설정을 import하므로,
-# 설정이 빌드 때 없는 환경 변수(비밀 키 등)를 요구하면 이 줄에만 임시 값을 준다.
+# 앞단 웹 서버가 서빙할 /static/을 STATIC_ROOT에 모은다(아래 「정적 파일」). STATIC_ROOT = BASE_DIR / "staticfiles"이면
+# /app/staticfiles다. 이 파일은 이 이미지 안에 있다 — 앞단이 거기에 닿는 길은 「정적 파일」의 컨테이너 배포를 본다.
+# collectstatic도 설정을 import하므로, 설정이 빌드 때 없는 환경 변수(비밀 키 등)를 요구하면 이 줄에만 임시 값을 준다.
 RUN python manage.py collectstatic --noinput
 
 CMD ["uvicorn", "myproject.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--loop", "uvloop", "--ws-per-message-deflate", "false"]
@@ -248,6 +249,23 @@ yourdomain.com {
     reverse_proxy localhost:8000
 }
 ```
+
+**컨테이너 배포.** [Docker 예](#권장-uvicorn--uvloop)의 `collectstatic`은 파일을 **앱 이미지 안**에 모은다. 앞단이
+호스트나 다른 컨테이너에 있으면 위의 `alias`가 가리키는 디렉터리는 비어 있고, 운영의 uvicorn은 정적 파일을 서빙하지
+않으므로 `wireview.min.js`가 404다. 앞단 이미지를 앱 이미지에서 복사해 만든다.
+
+```dockerfile
+# 위 Docker 예로 빌드한 앱 이미지. 릴리스마다 둘을 같은 태그로 함께 빌드한다
+FROM myproject:1.0 AS app
+FROM nginx:1.27
+COPY --from=app /app/staticfiles /srv/myproject/staticfiles
+# 위의 location /static/ 과 앱으로 가는 proxy_pass
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+```
+
+명명 볼륨으로 앱 컨테이너의 `/app/staticfiles`를 앞단과 공유하는 방법은 피한다. Docker는 비어 있는 명명 볼륨만
+이미지의 내용으로 채우므로, 다음 릴리스의 이미지로 바꿔도 볼륨에는 첫 배포의 번들이 남는다(아래의 `?v=`가 그것을
+가리지 못한다). 볼륨을 쓴다면 컨테이너가 시작할 때마다 `collectstatic`을 그 볼륨에 다시 돌린다.
 
 `{% wireview_header %}`는 번들 주소에 패키지 버전을 `?v=`로 붙인다. 업그레이드 뒤 `collectstatic`을 빠뜨리면
 새 버전 번호로 옛 번들을 받게 되므로, 릴리스마다 `collectstatic`을 배포 절차에 둔다.
