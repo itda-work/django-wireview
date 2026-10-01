@@ -1269,6 +1269,11 @@ class WireviewComponent {
     // replaces by its answer, which carries the ref (#139).
     const ref = connection.serverVsn >= JOIN_REFS_SINCE ? ++connection.lastRef : undefined;
     uploadManagers.joining(this.id, liveIdsIn(element), connection.joins.sent(this.id, ref));
+    // Infinite scroll judges the new instance's list once this join lands
+    // (`joined`), as it did the first's (#112). Left running, the old
+    // instance's observer saw the new DOM's binding over a list not there
+    // yet and asked the new instance for a second page.
+    for (const id of [this.id, ...liveIdsIn(element)]) connection.components[id]?.viewportObserver.stop();
     // A join that failed before is tried again on a new connection
     element.classList.remove("wireview-error");
     /** @type {Object<string, [string, string]>} */
@@ -1979,6 +1984,15 @@ class ViewportObserver {
 
     // Scan for new elements
     this.scanAndObserve();
+  }
+
+  /**
+   * Stops watching until `start()` again: a join that replaces the instance
+   * is under way, and its `joined` starts the new one's.
+   */
+  stop() {
+    this.destroy();
+    this.started = false;
   }
 
   /**

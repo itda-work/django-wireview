@@ -11,7 +11,8 @@ def index(request):
     the probe's ticks list: both name a stream ``ticks`` too. ``?seeded=1`` renders
     the SeedChild from the start, so it is on the page when the probe joins.
     ``?fill=1`` has the SeedChild's joined() stream a list taller than the window
-    ahead of its bottom binding."""
+    ahead of its bottom binding. The page's ``reseed`` link is a boosted move to
+    ``?fill=1&seeded=1``, which joins the probe again under its id."""
     context = {
         "size": int(request.GET.get("size", 15)),
         "delay": float(request.GET.get("delay", 0)),

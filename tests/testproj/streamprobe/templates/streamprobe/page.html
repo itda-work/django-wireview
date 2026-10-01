@@ -12,6 +12,7 @@
       <a href="?size={{ size }}" data-testid="back">back</a>
     {% else %}
       <a href="?size={{ size }}&away=1" data-testid="away">away</a>
+      <a href="?fill=1&seeded=1" data-testid="reseed">reseed</a>
       {% component 'StreamProbe' id="probe" size=size delay=delay nest=nest seeded=seeded fill=fill %}
       {% if pair %}
         <section data-testid="second">

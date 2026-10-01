@@ -292,6 +292,50 @@ def test_a_new_live_component_judges_its_list_once_its_joined_page_is_in(page, s
     expect_text(by(page, "mores"), "0")
 
 
+def test_a_join_that_replaces_the_instance_judges_the_new_list_once_it_is_in(page, server):
+    # A boosted move to the probe's page joins `probe` again under its id. The
+    # observer the first join started kept running: its scan of the new DOM saw
+    # the bottom binding over a list not there yet and asked the new instance
+    # for a second page before that instance's own first page came (#112).
+    page.set_viewport_size({"width": 800, "height": 600})
+    open_live(page, f"{server}/streamprobe/?fill=1")
+    expect_count(by(page, "rows").locator("li"), 15)
+    _settled(page)
+
+    by(page, "reseed").click()
+
+    expect_count(by(page, "seeds").locator("li"), 15)
+    expect_count(by(page, "rows").locator("li"), 15)
+    _settled(page)
+    expect_text(by(page, "pages"), "1")
+    expect_count(by(page, "rows").locator("li"), 15)
+
+
+def test_a_live_components_joined_from_an_instance_a_join_replaced_starts_nothing_early(page, server):
+    # The joined for a LiveComponent an event drew, from the instance a boosted
+    # move's join replaces, arrives held behind that move: the child's element
+    # is the new page's, whose own first page has not come. It is the replaced
+    # join's and starts nothing; the new join's joined starts the child.
+    page.add_init_script(INBOX_SHIM)
+    page.set_viewport_size({"width": 800, "height": 600})
+    open_live(page, f"{server}/streamprobe/?fill=1")
+    expect_count(by(page, "rows").locator("li"), 15)
+    _settled(page)
+
+    page.evaluate("window.__inbox.holding = true")
+    by(page, "seed").click()
+    page.wait_for_function("window.__inbox.held.some((m) => m.command === 'joined' && m.payload.id === 'seed-child')")
+    by(page, "reseed").click()
+    page.wait_for_function("document.location.search.includes('seeded')")
+    page.wait_for_function("window.__inbox.held.some((m) => m.command === 'joined' && m.payload.id === 'probe')")
+    page.evaluate("window.__inbox.release()")
+
+    expect_count(by(page, "seeds").locator("li"), 15)
+    _settled(page)
+    expect_text(by(page, "mores"), "0")
+    expect_text(by(page, "pages"), "1")
+
+
 def test_a_new_live_component_watches_its_own_viewport_bindings(probe):
     # A LiveComponent the probe brings in after its join: nothing started its
     # observer, and the probe's own scan sent its `more` to the probe.

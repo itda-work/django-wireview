@@ -352,6 +352,12 @@ The django-reactor era changelog (2.x) is preserved in
   components a patch redraws hear `beforeUpdate()` and `updated()`. The patch rescanned only the
   hooks of the component it was for, which leaves a nested component's hooks to their own
   manager, so that one never heard of it.
+- A join that replaces a component's instance -- a boosted move back to its page, the rollback
+  after a crash -- starts infinite scroll once its own first page is in, as the first join does
+  (#112). The observer the old instance's join started kept watching, and its scan of the new
+  DOM saw the bottom binding over a list not there yet: the new instance was asked for a second
+  page before its first came. The page now stops a component's observers, and its
+  LiveComponents', when it sends a join that replaces it; that join's `joined` starts them.
 - Two components on a page whose uploads share a name (`allow_upload("files")` in each) both
   upload. The `registered`, `progress`, `complete`, `error` and `cancel` ops carry no component
   id, and the page gave each to the first component with an upload of that name: the other's
