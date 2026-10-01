@@ -315,6 +315,11 @@ The django-reactor era changelog (2.x) is preserved in
   text says so, and `tests/test_doc_examples.py` refuses the old claim while `ci.yml` has no push
   trigger.
 
+- Tutorial 01 says `live.pyi` appears next to `live.py` in `DEBUG` and belongs in `.gitignore`,
+  and points multi-process deployments at a layer that joins processes instead of Redis alone.
+  The tutorial index lists the `hooks` example and tutorial 06 under Streams; a test keeps the
+  index in step with `examples/`.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

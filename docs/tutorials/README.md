@@ -58,8 +58,8 @@ django-wireview 단계별 학습 가이드입니다.
 ## 예제 코드
 
 튜토리얼이 설명하는 앱의 **동작하는 전체 코드**는 [examples/](../../examples/README.md)에 있습니다.
-`make test`가 함께 돌리고 릴리스 게이트(CI)가 태그마다 다시 돌리므로 문서와 달리 조용히 낡지 않습니다. 각 예제 디렉터리의 README가 그 예제가
-가르치는 개념 하나와 대응 튜토리얼을 가리킵니다.
+`make test`가 함께 돌리고 릴리스 게이트(CI)가 태그마다 다시 돌리므로 문서와 달리 조용히 낡지 않습니다.
+각 예제 디렉터리의 README가 그 예제가 가르치는 개념 하나와 대응 튜토리얼을 가리킵니다.
 
 | 예제 | 개념 | 튜토리얼 |
 |------|------|----------|
@@ -73,6 +73,7 @@ django-wireview 단계별 학습 가이드입니다.
 | [notifications](../../examples/notifications/) | 사용자별 알림과 토스트, 브로드캐스트 | [14](14-notifications.md) |
 | [livecomp](../../examples/livecomp/) | LiveComponent, 부모-자식 | [15](15-live-components.md) |
 | [slots](../../examples/slots/) | 슬롯 합성 | [기능 문서](../features/slots.md) |
+| [hooks](../../examples/hooks/) | 브라우저만 할 수 있는 일을 컴포넌트에 붙인다 | [기능 문서](../features/hooks.md) |
 
 ## 기능별 학습 가이드
 
@@ -81,7 +82,7 @@ django-wireview 단계별 학습 가이드입니다.
 | 기본 상태 관리 | 02, 10 |
 | 이벤트 핸들링 | 02, 11, 12 |
 | 모델 구독 | 03, 10, 13 |
-| Streams API | 04, 14 |
+| Streams API | 04, 06, 14 |
 | Presence API | 04, 07 |
 | JS 명령 | 12, 14 |
 | URL 상태 | 10, 11 |

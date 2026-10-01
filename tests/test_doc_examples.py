@@ -648,3 +648,10 @@ def test_no_doc_says_ci_runs_on_every_push_while_it_does_not():
 )
 def test_the_ci_rule_reads_the_claim(line, claims):
     assert bool(EVERY_RUN.search(line)) is claims
+
+
+def test_the_tutorial_index_lists_every_example():
+    examples = {path.parent.name for path in (ROOT / "examples").glob("*/tests.py")}
+    index = (ROOT / "docs" / "tutorials" / "README.md").read_text(encoding="utf-8")
+    listed = set(re.findall(r"\]\(\.\./\.\./examples/(\w+)/\)", index))
+    assert examples and listed == examples, f"missing {examples - listed}, stale {listed - examples}"
