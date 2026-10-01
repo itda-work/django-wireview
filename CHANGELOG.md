@@ -378,6 +378,12 @@ The django-reactor era changelog (2.x) is preserved in
   first container of its name as before; an older bundle ignores the id, so `PROTOCOL_VERSION`
   stays. Tutorial 06, which offered a `dom_id` prefix against the clash, says names need to be
   unique only within a component now.
+- The stream a new component sends from `joined()` shows up. A LiveComponent a parent's render
+  brings in streams right behind that render, and the page patches the render in on the next
+  animation frame, so the op found no element and was dropped with a "container not found"
+  warning. An op whose container is not there yet now waits for the next frame, after the patches
+  already scheduled, and the ops behind it wait with it, so they apply in the order they came; one
+  that still finds nothing then is dropped. The client alone changed, so `PROTOCOL_VERSION` stays.
 - The README, the tutorials and the examples said CI runs the examples on every push. `ci.yml`
   runs only by hand and when the release workflow calls it; `make test` is what runs them. The
   text says so, and `tests/test_doc_examples.py` refuses the old claim while `ci.yml` has no push

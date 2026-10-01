@@ -4,7 +4,7 @@ import { Joins, settledEvent } from "./joins.mjs";
 import { commitScope, isCommitAction } from "./values.mjs";
 import { LoadingLedger } from "./loading.mjs";
 import { BINDING_PREFIX, bindingsFor, isRenderEcho, parseBinding, runSteps } from "./events.mjs";
-import { planInsert, planTrim } from "./streams.mjs";
+import { StreamOpQueue, planInsert, planTrim } from "./streams.mjs";
 import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
 import { readReconnectSettings, reconnectOptions } from "./reconnect.mjs";
@@ -111,6 +111,19 @@ class ServerConnection {
     this.epoch = 0;
     /** @type {NavigationLog} where the last boosted navigation landed, for `wireview:navigated` */
     this.navigations = new NavigationLog(document.location.href);
+    /**
+     * @type {StreamOpQueue} stream ops in arrival order; one whose container a
+     * render has yet to patch in waits for the next frame, and the ops behind it
+     */
+    this.streamOps = new StreamOpQueue({
+      find: ({ stream, owner }) => this._streamContainer(stream, owner),
+      apply: (container, { op, items, at, limit }) => {
+        boost.applying(() => this._applyStreamOp(container, op, items, at, limit));
+        boost.navEvent.sendNewContent();
+      },
+      schedule: (callback) => window.requestAnimationFrame(callback),
+      drop: ({ stream }) => console.warn(`[wireview] Stream container not found: ${stream}`),
+    });
   }
 
   /**
@@ -623,13 +636,10 @@ class ServerConnection {
    * @private
    */
   _handleStreamOp(op, stream, items, at, limit = 0, owner) {
-    const container = this._streamContainer(stream, owner);
-    if (!container) {
-      console.warn(`[wireview] Stream container not found: ${stream}`);
-      return;
-    }
-    boost.applying(() => this._applyStreamOp(container, op, items, at, limit));
-    boost.navEvent.sendNewContent();
+    // A new component's joined() streams arrive right behind the render that
+    // brings its element, before the frame that patches it in: the queue holds
+    // them for that frame rather than drop them
+    this.streamOps.push({ op, stream, items, at, limit, owner });
   }
 
   /**

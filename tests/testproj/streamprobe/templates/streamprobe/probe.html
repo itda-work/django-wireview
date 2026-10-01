@@ -2,6 +2,10 @@
 
 <div {% tag_header %}>
   <button data-testid="tick" {% on "click" "tick" %}>tick</button>
+  <button data-testid="seed" {% on "click" "seed" %}>seed</button>
+  {% if this.seeded %}
+    {% live_component "SeedChild" id="seed-child" %}
+  {% endif %}
   {% if this.nest %}
     {% live_component "TickChild" id="tick-child" %}
   {% endif %}

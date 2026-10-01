@@ -55,3 +55,60 @@ export function planTrim({ childCount, limit, at }) {
   if (!limit || limit <= 0 || childCount <= limit) return { count: 0, fromEnd: false };
   return { count: childCount - limit, fromEnd: at === 0 };
 }
+
+/**
+ * Applies stream operations in the order they arrived, holding back the ones
+ * whose container is not on the page yet until the next frame.
+ *
+ * A render patches the DOM on the next animation frame, but the stream ops a
+ * new component sends from `joined()` arrive right behind that render, before
+ * the frame: its element, and the container inside it, are not there yet. So
+ * an op that finds no container waits for the next frame, which runs after the
+ * morphs already scheduled (frame callbacks run in the order they were asked
+ * for). Every op behind a held one waits too, so the ops keep the server's
+ * order. One frame and no more: an op that still finds nothing then is for a
+ * component that left, or never came, and is dropped -- nothing piles up.
+ */
+export class StreamOpQueue {
+  /**
+   * @param {{
+   *   find: (op: any) => any,
+   *   apply: (container: any, op: any) => void,
+   *   schedule: (callback: () => void) => void,
+   *   drop?: (op: any) => void,
+   * }} hooks - `find` returns the op's container or null; `schedule` runs a
+   *   callback on the next frame; `drop` hears of an op that found nothing
+   */
+  constructor({ find, apply, schedule, drop = () => {} }) {
+    this.find = find;
+    this.apply = apply;
+    this.schedule = schedule;
+    this.drop = drop;
+    /** @type {any[]} */
+    this.held = [];
+  }
+
+  /** @param {any} op */
+  push(op) {
+    if (!this.held.length) {
+      const container = this.find(op);
+      if (container) {
+        this.apply(container, op);
+        return;
+      }
+      this.schedule(() => this.flush());
+    }
+    this.held.push(op);
+  }
+
+  /** Applies the held ops, now that the frame's morphs have run. */
+  flush() {
+    const held = this.held;
+    this.held = [];
+    for (const op of held) {
+      const container = this.find(op);
+      if (container) this.apply(container, op);
+      else this.drop(op);
+    }
+  }
+}

@@ -43,6 +43,19 @@ class TickChild(LiveComponent):
         await insert_tick(self, self.ticks)
 
 
+class SeedChild(LiveComponent):
+    """A LiveComponent that streams from joined(), so its ops can arrive before its element does."""
+
+    class Meta:
+        template_name = "streamprobe/seed.html"
+
+    async def joined(self):
+        await self.stream(
+            "seeds", [{"n": 1}, {"n": 2}], template="streamprobe/tick.html", dom_id=lambda i: f"seed-{i['n']}"
+        )
+        await insert_tick(self, 3)
+
+
 class StreamProbe(Component):
     class Meta:
         template_name = "streamprobe/probe.html"
@@ -59,6 +72,8 @@ class StreamProbe(Component):
     blurs: int = 0
     #: Render a TickChild ahead of the ticks list (``?nest=1``)
     nest: bool = False
+    #: Render a SeedChild, which streams in its joined()
+    seeded: bool = False
 
     async def joined(self):
         if self.delay:
@@ -81,6 +96,9 @@ class StreamProbe(Component):
     async def untick(self, n: int, **_rest):
         # A delete only, no render: the item leaves through the stream op alone
         await self.stream_delete("ticks", f"tick-{n}")
+
+    async def seed(self, **_rest):
+        self.seeded = not self.seeded
 
     async def blurred(self, **_rest):
         self.blurs += 1

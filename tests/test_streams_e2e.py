@@ -196,3 +196,20 @@ def test_an_item_a_stream_op_removes_does_not_send_its_blur(probe):
     expect(by(probe, "tick-item")).to_have_text(["tick 3", "tick 1"])
 
     expect_text(by(probe, "blurs"), "1")
+
+
+def test_a_new_live_component_shows_what_its_joined_streams(probe):
+    # The child's joined() streams go out right after the render that brings its
+    # element, and the page patches that render in on the next frame: the ops
+    # looked for an element that was not there yet and were dropped.
+    by(probe, "seed").click()
+    expect(by(probe, "seeds").locator("li")).to_have_text(["tick 1", "tick 2"])
+    expect(by(probe, "seed-ticks").locator("li")).to_have_text(["tick 3"])
+    expect_count(by(probe, "ticks").locator("li"), 0)
+
+    # Gone and back: a new instance, whose joined() streams into the new element
+    by(probe, "seed").click()
+    expect_count(by(probe, "seeds"), 0)
+    by(probe, "seed").click()
+    expect(by(probe, "seeds").locator("li")).to_have_text(["tick 1", "tick 2"])
+    expect(by(probe, "seed-ticks").locator("li")).to_have_text(["tick 3"])
