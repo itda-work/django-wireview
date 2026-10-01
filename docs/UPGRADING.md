@@ -275,7 +275,7 @@ def get_subscriptions(self) -> set[str]:
 |------|------|
 | `STATE_ACCEPT_LEGACY` | 없음. v2 봉투 이전 상태를 가진 페이지는 한 번 새로 읽힌다 |
 | `USE_HTML_DIFF` | 없음. diff는 항상 켜져 있다 |
-| `USE_HMIN` | WebSocket 압축(permessage-deflate). hmin은 diff 마커를 지워 매번 HTML 전체를 보내게 했다 |
+| `USE_HMIN` | 없음. hmin은 diff 마커를 지워 매번 HTML 전체를 보내게 했다. 전송량이 문제면 WebSocket 압축을 재 보고 켠다 — 연결당 메모리 비용은 [배포 가이드](./DEPLOYMENT.md#권장-uvicorn--uvloop) |
 
 ### 6. Origin 검사 (**조용함**)
 

@@ -100,6 +100,13 @@ The django-reactor era changelog (2.x) is preserved in
   lock files, the roadmap row and date, `SECURITY.md` and `docs/UPGRADING.md`.
   `tests/test_packaging.py` checks that `uv.lock` and `package-lock.json` carry the package version.
 
+- `docs/DEPLOYMENT.md`'s "Redis cluster" example was channels_redis sharding over independent
+  servers; it says so, that every process needs the same host list in the same order, that a lost
+  shard loses its groups' broadcasts, and shows Sentinel for failover. `docs/PERFORMANCE.md`,
+  `docs/features/html-diff.md` and `docs/UPGRADING.md` told readers to turn on permessage-deflate
+  to save bandwidth while the deployment guide turns it off for its memory; all now say off by
+  default, measured before turning it on.
+
 ### Fixed
 
 - `{% wireview_toasts %}` works on a site with the `signed_cookies` session backend. Its key is the

@@ -158,8 +158,12 @@ class Counter(Component):
 ### HTML diff 설정
 
 > 부분 diff는 `render_with_markers()`가 남기는 주석 마커에 의존한다. HTML 압축기로 주석을 지우면 부분 diff가
-> 꺼져 바뀔 때마다 HTML 전체가 나간다. 그래서 django-hmin 연동(`USE_HMIN`)은 #100에서 없앴다. 전송량을 줄이려면
-> WebSocket 압축(permessage-deflate)을 켠다. diff 형식과 실측 페이로드는 [features/html-diff.md](./features/html-diff.md)에 있다.
+> 꺼져 바뀔 때마다 HTML 전체가 나간다. 그래서 django-hmin 연동(`USE_HMIN`)은 #100에서 없앴다. diff 형식과 실측
+> 페이로드는 [features/html-diff.md](./features/html-diff.md)에 있다.
+>
+> WebSocket 압축(permessage-deflate)은 **기본으로 끄기를 권한다**([배포 가이드](./DEPLOYMENT.md#권장-uvicorn--uvloop)).
+> 연결마다 zlib 컨텍스트로 약 159KB를 들고, 작은 diff는 16% 남짓밖에 줄지 않는다. 첫 렌더나 스트림이 큰 HTML을
+> 자주 보내는 앱만 켜고, 켜기 전에 메모리와 전송량을 둘 다 잰다.
 
 ### 템플릿
 

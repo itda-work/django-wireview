@@ -100,7 +100,12 @@ CHANNEL_LAYERS = {
 }
 ```
 
-**Redis 클러스터:**
+**Redis 여러 대(샤딩):**
+
+`hosts`에 여럿을 적으면 channels_redis가 채널·그룹 이름의 해시로 **서로 독립된 Redis 서버들**에 나눠 싣는다.
+Redis Cluster 모드가 아니다 — Cluster의 노드 목록을 적으면 안 된다. 모든 프로세스가 같은 목록을 **같은 순서로**
+가져야 같은 그룹이 같은 서버로 간다. 한 서버가 죽으면 그 서버에 해시된 그룹의 브로드캐스트가 사라지므로,
+샤딩은 처리량을 늘릴 뿐 가용성을 높이지 않는다.
 
 ```python
 CHANNEL_LAYERS = {
@@ -108,9 +113,24 @@ CHANNEL_LAYERS = {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
             "hosts": [
-                ("redis-node-1", 6379),
-                ("redis-node-2", 6379),
-                ("redis-node-3", 6379),
+                ("redis-shard-1", 6379),
+                ("redis-shard-2", 6379),
+                ("redis-shard-3", 6379),
+            ],
+        },
+    },
+}
+```
+
+장애 조치가 필요하면 각 항목을 Sentinel이 지키는 마스터로 적는다.
+
+```python
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [
+                {"sentinels": [("sentinel-1", 26379), ("sentinel-2", 26379)], "master_name": "wireview"},
             ],
         },
     },
