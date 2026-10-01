@@ -754,8 +754,27 @@ class UploadComponentNoJoined(Component):
         template_name = "uploads/uploader.html"
 
 
+class UnlistedUploadComponent(Component, public=False):
+    """Not registered by name, as a test's or a base's component often is."""
+
+    class Meta:
+        template_name = "uploads/uploader.html"
+
+    async def joined(self):
+        self.allow_upload("images", accept=[".png"])
+
+
 class TestComponentUploadMethods:
     """Test Component upload methods."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_an_unlisted_component_can_allow_uploads(self, config_sends):
+        """allow_upload named the component for its failure log with ``_name``, which only a public class had."""
+        view = await mount(UnlistedUploadComponent)
+
+        await config_sends["images"]
+        assert "images" in view.component._upload_registry.configs
 
     @pytest.mark.asyncio
     @pytest.mark.unit

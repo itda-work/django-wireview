@@ -374,6 +374,12 @@ class Component(BaseModel):
             # Component name and fully qualified name
             cls._name = name
             cls._fqn = fqn
+        elif not hasattr(cls, "_fqn"):
+            # Logs, telemetry and the signed state name every component by these.
+            # An unlisted class under a listed one keeps the listed names it
+            # inherits; one with none to inherit crashed the first log line.
+            cls._name = name or cls.__name__
+            cls._fqn = f"{cls.__module__}.{cls._name}"
 
         _validate_handlers(cls)
 
