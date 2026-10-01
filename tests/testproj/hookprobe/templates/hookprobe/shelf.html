@@ -5,6 +5,7 @@
     {% component 'HookProbeRooted' id="rooted" %}
   {% endif %}
   <button data-testid="take-away" {% on "click" "take_away" %}>take away</button>
+  <button data-testid="bring-back" {% on "click" "bring_back" %}>bring back</button>
   {% if sprouted %}
     {% live_component 'HookProbeSprout' id="sprout" %}
   {% endif %}

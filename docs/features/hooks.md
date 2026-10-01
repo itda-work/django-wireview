@@ -104,7 +104,8 @@ WIREVIEW = {"COLLECT_HOOKS": False}
 컴포넌트의 `push_event`를 받는다. 렌더가 엘리먼트를 옮기기만 하면(id가 같은 목록 항목의 순서가 바뀜)
 훅은 그대로 살아 있고 `destroyed()`도 `mounted()`도 다시 불리지 않는다.
 
-부모의 렌더가 새로 그린 LiveComponent의 훅도 그 렌더가 패치될 때 마운트된다. 그 LiveComponent가 `joined()`에서
+부모의 렌더가 새로 그린 컴포넌트(LiveComponent, 또는 `{% if %}`가 다시 그린 `{% component %}`)의 훅도 그 렌더가 패치될 때
+마운트된다. 그 LiveComponent가 `joined()`에서
 보낸 `push_event`는 렌더보다 먼저 패치를 기다리지 않고 도착하지만, 페이지는 그 요소가 들어올 다음 프레임까지
 붙들었다가 마운트된 훅에 전한다(전에는 훅이 아예 마운트되지 않았고 이벤트는 아무 데도 닿지 않았다).
 

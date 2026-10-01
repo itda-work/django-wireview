@@ -1162,11 +1162,11 @@ class WireviewComponent {
     const element = /** @type {(HTMLElement & {__wireviewHookManager?: HookManager}) | null} */ (
       this.getElemenet()
     );
-    // A LiveComponent a render brought in: the server drew it on a joined
-    // connection and marked it live, so there is nothing to join, but nothing
-    // looked for its hooks either -- they never mounted, and what its joined()
-    // pushed to them reached nothing.
-    if (element?.dataset.isLive === "true" && element.hasAttribute("wireview-live") && !element.__wireviewHookManager) {
+    // A component a render brought in -- a LiveComponent, or a component the
+    // render drew again: the server drew it on a joined connection and marked
+    // it live, so there is nothing to join, but nothing looked for its hooks
+    // either -- they never mounted, and what it pushed to them reached nothing.
+    if (element?.dataset.isLive === "true" && !element.__wireviewHookManager) {
       this.hookManager.init();
       return;
     }

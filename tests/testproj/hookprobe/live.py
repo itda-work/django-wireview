@@ -30,6 +30,9 @@ class HookProbeShelf(Component):
     async def take_away(self):
         self.show = False
 
+    async def bring_back(self):
+        self.show = True
+
     async def sprout(self):
         self.sprouted = True
 

@@ -99,6 +99,21 @@ def test_a_component_its_parent_stops_rendering_destroys_its_hooks(page_live):
         assert page.locator("html").get_attribute(f"data-destroyed-{who}") is None
 
 
+def test_a_component_a_render_brings_back_mounts_its_hooks_and_hears_its_pushes(page_live):
+    """A component a live render draws comes marked live: the page has nothing
+    to join, and joining was where its hooks were looked for."""
+    page = page_live
+
+    page.get_by_test_id("take-away").click()
+    expect_counted(page, "destroyed", "rooted-root")
+    page.get_by_test_id("bring-back").click()
+
+    expect_counted(page, "mounted", "rooted-root", 2)
+    expect_counted(page, "mounted", "rooted-inner", 2)
+    page.get_by_test_id("ping").click()
+    expect_counted(page, "pinged", "rooted-inner")
+
+
 def test_a_new_live_component_reaches_its_hooks_from_joined(page_live):
     """The event its joined() pushes arrives before the render that brings the
     element is patched in, so before the hook exists: it reached nothing."""

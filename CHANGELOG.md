@@ -326,9 +326,10 @@ The django-reactor era changelog (2.x) is preserved in
   background tab, which runs no frames, holds only what the waiting component sent. A held command
   that throws is logged and the rest still apply. The client alone changed, so `PROTOCOL_VERSION`
   stays.
-- The hooks of a LiveComponent a render brings in mount. The server draws it already marked live,
-  so the page never joined it, and that was the only place its hooks were looked for: they never
-  mounted, and nothing pushed to them arrived.
+- The hooks of a component a render brings in mount -- a LiveComponent, or a `{% component %}`
+  an `{% if %}` draws again. The server draws it already marked live, so the page never joined it,
+  and that was the only place its hooks were looked for: they never mounted, and nothing pushed to
+  them arrived.
 - A stream list survives a render that adds an element ahead of it -- a new LiveComponent, another
   list behind an `{% if %}`. The morph pairs elements without an id by position, so the new one
   took the container's place and the container was removed with its items; a newly shown empty
