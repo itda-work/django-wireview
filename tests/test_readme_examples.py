@@ -132,3 +132,34 @@ def test_the_js_commands_are_listed_with_their_signatures():
     listed = re.findall(r"^- `(\w+)\((.*?)\)`", "\n".join(_section("JS 명령 빌더", "사용 가능한 명령")), re.M)
     assert len(listed) >= 15
     assert [f"{name}({args})" for name, args in listed] == [_signature(name) for name, _ in listed]
+
+
+def _slug(heading: str) -> str:
+    """GitHub's anchor for a heading: lower case, punctuation dropped, spaces to hyphens."""
+    return re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
+
+
+def _headings() -> list[str]:
+    found, fenced = [], False
+    for line in README.read_text(encoding="utf-8").split("\n"):
+        if line.startswith("```"):
+            fenced = not fenced
+        elif not fenced and (match := re.match(r"^#{1,6} (.+)$", line)):
+            found.append(match.group(1))
+    return found
+
+
+def test_each_heading_has_its_own_anchor():
+    """Two headings with one slug: GitHub gives the second ``-1``, and the table of contents opens the first.
+
+    "모델 구독" and "설정" each had a subsection of that name above the section
+    the contents linked to.
+    """
+    slugs = [_slug(h) for h in _headings()]
+    assert sorted({s for s in slugs if slugs.count(s) > 1}) == []
+
+
+def test_the_contents_link_to_headings():
+    targets = set(re.findall(r"\]\(#([^)]+)\)", README.read_text(encoding="utf-8")))
+    assert targets
+    assert sorted(targets - {_slug(h) for h in _headings()}) == []

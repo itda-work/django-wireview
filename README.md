@@ -348,7 +348,7 @@ class ChatRoom(Component):
 
 조인 후 컴포넌트는 `{% on %}` 템플릿 태그를 통해 사용자 이벤트를 받을 수 있습니다. 이벤트는 백엔드로 전송되고, 핸들러가 실행되며, 컴포넌트가 다시 렌더링됩니다.
 
-### 모델 구독
+### 모델 변경 알림
 
 컴포넌트는 모델 변경을 구독할 수 있습니다. 변경이 발생하면 `Component.mutation()`이 호출됩니다:
 
@@ -656,7 +656,7 @@ class OnlineUsers(PresenceTrackerMixin, Component):
 | `presence_online_count` | 온라인 사용자 수 |
 | `presence_typing_users` | 현재 타이핑 중인 사용자 목록 |
 
-### 설정
+### Presence 설정
 
 ```python
 from wireview import PresenceConfig

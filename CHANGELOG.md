@@ -54,6 +54,10 @@ The django-reactor era changelog (2.x) is preserved in
 - The README's performance section recommended `asend_to()`/`send_to()` from `wireview.utils`,
   which is not public API. It now names `self.broadcast()`, `abroadcast()` and `broadcast()`.
 
+- The README's table of contents opened the wrong section for "모델 구독" and "설정": a subsection of
+  the same name came first. The subsections are renamed, and a test keeps every heading's anchor
+  unique and every contents link pointing at a heading.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
