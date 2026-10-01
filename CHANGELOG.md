@@ -293,6 +293,9 @@ The django-reactor era changelog (2.x) is preserved in
 - Tutorial 07 said production must use Redis. Any layer that joins the processes works, and the
   project aims at channels-nats; the section says so and links the deployment guide.
 
+- Tutorial 07's blocks import `timezone` and `datetime` where they use them, and its last-seen
+  helper starts with `_`: as `format_last_seen` it was a handler any browser could call.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

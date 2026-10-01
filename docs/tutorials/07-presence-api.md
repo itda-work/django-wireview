@@ -44,6 +44,9 @@ PresenceMixin (User A)
 ### 기본 정보 외 추가 데이터
 
 ```python
+from django.utils import timezone
+
+
 class XChatInput(PresenceMixin, Component):
     username: str
     avatar_url: str
@@ -313,13 +316,20 @@ class XStatusIndicator(PresenceMixin, Component):
 ### 마지막 활동 시간
 
 ```python
-class XOnlineUsers(PresenceTrackerMixin, Component):
-    def format_last_seen(self, user) -> str:
-        from django.utils import timezone
-        from django.utils.timesince import timesince
+from datetime import UTC, datetime
 
-        last = datetime.fromtimestamp(user.last_active)
-        return timesince(last)
+from django.utils.timesince import timesince
+
+
+class XOnlineUsers(PresenceTrackerMixin, Component):
+    @property
+    def last_seen(self) -> list[tuple]:
+        """(사용자, "3 minutes") 목록. 템플릿은 인자를 받는 메서드를 부를 수 없으므로 property로 만든다"""
+        return [(user, self._format_last_seen(user)) for user in self.presence_users]
+
+    def _format_last_seen(self, user) -> str:
+        # `_`가 없으면 클라이언트가 부를 수 있는 핸들러로 노출된다
+        return timesince(datetime.fromtimestamp(user.last_active, tz=UTC))
 ```
 
 ## 다음 단계
