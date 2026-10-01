@@ -16,8 +16,12 @@ import typing as t
 
 import pytest
 from django.contrib.auth.models import AnonymousUser
+from django.core.exceptions import SynchronousOnlyOperation
+from django.db import connection
 from django.db.models.signals import post_save
 from django.test import override_settings
+from django.test.utils import CaptureQueriesContext
+from testproj.inheritprobe.models import Restaurant
 
 from examples.rating.models import Product
 from examples.todo.models import Item
@@ -124,6 +128,50 @@ class TestDecodedInstance:
         instance.save(update_fields=["name"])
 
         assert Product.objects.values_list("name", "description").get(pk=product.pk) == ("desk lamp", "changed since")
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestInheritedModel:
+    """A child of multi-table inheritance: the payload carries its own table, not its parents'."""
+
+    def test_saving_it_writes_its_own_columns_and_keeps_the_parents(self):
+        restaurant = Restaurant.objects.create(name="Pizzeria", city="Seoul")
+        instance = serializer.decode(serializer.encode(restaurant))
+
+        instance.serves_pizza = True
+        with CaptureQueriesContext(connection) as queries:
+            instance.save()
+
+        assert [query["sql"].split(" SET ")[0] for query in queries] == ['UPDATE "inheritprobe_restaurant"']
+        assert Restaurant.objects.values_list("name", "city", "serves_pizza").get(pk=restaurant.pk) == (
+            "Pizzeria",
+            "Seoul",
+            True,
+        )
+
+    def test_a_parent_field_is_deferred_and_reads_the_row(self):
+        restaurant = Restaurant.objects.create(name="Pizzeria", city="Seoul")
+        instance = serializer.decode(serializer.encode(restaurant))
+
+        assert instance.get_deferred_fields() == {"name", "city"}
+        assert instance.name == "Pizzeria"
+
+
+@pytest.mark.unit
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_reading_a_parent_field_of_an_inherited_model_on_the_event_loop_fails_loudly():
+    # It is not in the payload. Read without a query it would be the field's default,
+    # a wrong value that raises nothing.
+    restaurant = await Restaurant.objects.acreate(name="Pizzeria", city="Seoul")
+    instance = serializer.decode(serializer.encode(restaurant))
+
+    with pytest.raises(SynchronousOnlyOperation):
+        instance.name
+
+    await instance.arefresh_from_db(fields=["name"])
+    assert instance.name == "Pizzeria"
 
 
 class ProductSaver(Component):

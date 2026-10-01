@@ -210,7 +210,7 @@ senders={("todo", "Item"): "__all__"}             # 지금 동작을 원하면 �
 | m2m | 목록에 적으면 pk 목록이 간다(적을 때만 encode 쿼리). 복원 인스턴스에는 지금처럼 싣지 않는다 |
 | 검증 | `connect()`가 `resolve_senders`와 함께 확인한다. 없는 필드나 역관계 이름은 기동 때 `ImproperlyConfigured`다. `senders`의 설치되지 않은 모델과 같은 처리다 |
 | 인코딩 | `serialize("json", [instance], fields=<목록>)`. Django가 `fields=`를 그대로 지원한다(실험 확인). 세 발신 지점(post_save·pre_delete·m2m)이 한 헬퍼를 쓴다 |
-| 복원 | 페이로드에 온 필드만으로 `from_db`. 나머지는 deferred다. 전체 필드 페이로드는 지금 방식 그대로 복원한다. **`save` 교체는 1.0 전에 없앴다(#153)** — 전체·부분 모두 모델의 `save`를 쓴다. 부분 페이로드는 그래서 불러온 필드만 쓴다(실험 4) |
+| 복원 | 페이로드에 온 필드만으로 `from_db`. 나머지는 deferred다. 전체 필드 페이로드는 지금 방식 그대로 복원한다. **`save` 교체는 1.0 전에 없앴다(#153)**. 페이로드에 없는 필드를 deferred로 두는 처리는 #153이 `wireview/serializer.py`의 `_restore(instance, sent)`로 이미 넣었다 — 다중 테이블 상속 자식의 전체 페이로드가 사실상 부분 페이로드이기 때문이다. 부분 페이로드는 그 헬퍼에 보낸 필드 이름만 넘기면 된다 — 전체·부분 모두 모델의 `save`를 쓴다. 부분 페이로드는 그래서 불러온 필드만 쓴다(실험 4) |
 | DELETED | 페이로드가 pre_delete 때 만들어지므로 적은 필드가 그대로 온다. `()`면 pk만 온다. 행이 이미 없으니 `arefresh_from_db`는 `DoesNotExist`다. 문서에 "DELETED에서 걸러야 하는 필드(FK 등)는 목록에 적는다"고 쓴다 |
 
 ### 새 체크 W017 (권고: 추가)

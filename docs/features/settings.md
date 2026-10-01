@@ -54,7 +54,7 @@ WIREVIEW = {
 |----|--------|----|
 | `AUTO_BROADCAST` | `AutoBroadcast()` (모두 꺼짐) | 모델 저장·삭제를 채널로 알린다. `model`, `model_pk`, `related`, `m2m`, `senders`(알릴 모델의 `(app_label, ModelName)` 집합). **`senders`를 비우면 아무것도 알리지 않는다** — 플래그를 켰는데 비어 있으면 `wireview.W015`가 알린다. 설치되지 않은 모델을 적으면 기동 때 `ImproperlyConfigured`다. 채널 이름은 [호환성 정책](../COMPATIBILITY.md)의 "모델 채널 이름". **기동 시** |
 
-`senders`에 적은 모델은 저장·삭제될 때마다 **인스턴스의 모든 필드가** 직렬화되어 채널 레이어로 가고, 구독한
+`senders`에 적은 모델은 저장·삭제될 때마다 **그 모델 테이블의 모든 필드가** 직렬화되어 채널 레이어로 가고, 구독한
 컴포넌트의 `mutation()`이 그것을 받는다. 민감한 필드가 있는 모델(`User`, `Session` 등)은 넣지 않는다. 그런 모델의
 변경을 알려야 하면 필요한 필드만 담은 별도 모델을 만들어 그것을 적는다.
 
@@ -62,11 +62,17 @@ WIREVIEW = {
 오버라이드를 거치고, `pre_save`·`post_save`는 `raw=False`로 나간다. 이미 있는 행으로 복원되므로 UPDATE를 먼저 한다.
 알아 둘 것:
 
-- **알림 때의 모든 필드를 쓴다.** 페이로드는 시그널이 났을 때의 행이다. 그 뒤에 다른 곳에서 바뀐 컬럼도 페이로드의
+- **페이로드에 실린 필드를 모두 쓴다.** 페이로드는 시그널이 났을 때의 행이다. 그 뒤에 다른 곳에서 바뀐 컬럼도 페이로드의
   옛 값으로 덮인다. 바꾼 필드만 쓰려면 `await instance.asave(update_fields=["name"])`, 지금 값이 필요하면
   `await instance.arefresh_from_db()` 뒤에 고친다.
+- **실리지 않은 필드는 deferred다.** Django 직렬화기는 그 모델 자신의 테이블만 쓴다 — 다중 테이블 상속에서 **부모 모델의
+  필드**와 `serialize=False` 필드는 실리지 않는다. 그런 필드는 `QuerySet.only()`로 읽은 인스턴스처럼 남는다. 읽으면 DB를
+  조회하므로 `mutation()`(이벤트 루프)에서 그냥 읽으면 `SynchronousOnlyOperation`이다 —
+  `await instance.arefresh_from_db(fields=["name"])`로 먼저 읽는다. 저장은 실린 필드만 쓰고 부모 테이블은 건드리지 않는다.
+  인스턴스의 db alias(`_state.db`)는 라우터의 `db_for_write`가 고른 곳이다.
 - **m2m은 쓰지 않는다.** 페이로드의 m2m pk 목록은 인스턴스에 실리지 않는다. 보통의 `save()`처럼 m2m은 그대로다.
-- `DELETED`로 받은 인스턴스를 저장하면 행이 없으므로 다시 INSERT된다.
+- `DELETED`로 받은 인스턴스를 저장하면 행이 없으므로 다시 INSERT된다. deferred 필드가 있는 인스턴스(상속한 자식)는
+  쓸 행이 없어 `DatabaseError`다.
 - **저장도 알림을 낸다.** 그 모델이 `senders`에 있으면 수신자의 저장이 같은 채널로 다시 알려지고, 그 컴포넌트의
   `mutation()`이 또 불린다. 받을 때마다 무조건 저장하면 끝없이 돈다. 값이 다를 때만 저장하거나, 시그널을 내지 않는
   `QuerySet.update()`를 쓴다. 1.0.0rc4까지의 raw 저장도 시그널을 냈으므로 이 위험은 새것이 아니다.
