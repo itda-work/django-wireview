@@ -68,6 +68,11 @@ The django-reactor era changelog (2.x) is preserved in
 - The README's steps for running the examples left out `npm ci` and `make migrate`, so the bundle
   could not be built and the chat, poll, rating and quiz pages were a 500.
 
+- The README's links into the repository and its overview picture are absolute GitHub URLs, so
+  they work on the PyPI project page, where the 36 relative ones resolved against pypi.org. The
+  package metadata gains `Documentation`, `Changelog` and `Issues` URLs. A test refuses a
+  relative link and checks that each absolute one names a file that exists.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

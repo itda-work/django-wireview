@@ -2,7 +2,7 @@
 
 Wireview는 Django Channels를 사용하여 실시간 서버 렌더링 인터랙티브 UI를 구축할 수 있게 해주는 라이브러리입니다. Phoenix Framework의 LiveView와 유사합니다.
 
-![Wireview 아키텍처 개요](overview.jpg)
+![Wireview 아키텍처 개요](https://raw.githubusercontent.com/itda-work/django-wireview/main/overview.jpg)
 
 ## 무엇이 포함되어 있나요?
 
@@ -35,7 +35,7 @@ Wireview는 [django-reactor](https://github.com/edelvalle/reactor)의 현대적�
 | **테스트 유틸리티** | - | ✅ | WebSocket 없이 쉽게 컴포넌트 테스트를 위한 `mount()` 유틸리티 |
 | **디버그 도구** | - | ✅ | `wireview.debug`로 브라우저 콘솔 디버깅 |
 | **JavaScript Hooks** | - | ✅ | Chart.js, Mapbox 등 서드파티 JavaScript 라이브러리 통합 |
-| **live_session** | - | ✅ | 페이지 단위 인증 경계. 같은 술어가 뷰와 join 양쪽에서 돌고, 경계를 넘는 이동은 전체 페이지 로드가 된다 ([문서](./docs/features/live-session.md)) |
+| **live_session** | - | ✅ | 페이지 단위 인증 경계. 같은 술어가 뷰와 join 양쪽에서 돌고, 경계를 넘는 이동은 전체 페이지 로드가 된다 ([문서](https://github.com/itda-work/django-wireview/blob/main/docs/features/live-session.md)) |
 
 ### 아키텍처 개선
 
@@ -124,14 +124,14 @@ class XCounter(Component):
 
 ## 설치 및 설정
 
-Wireview는 Python ≥3.12과 Django ≥5.2가 필요합니다 (Django 5.2 LTS, 6.0, 6.1 지원. 범위는 [호환성 정책](./docs/COMPATIBILITY.md#지원-범위)).
+Wireview는 Python ≥3.12과 Django ≥5.2가 필요합니다 (Django 5.2 LTS, 6.0, 6.1 지원. 범위는 [호환성 정책](https://github.com/itda-work/django-wireview/blob/main/docs/COMPATIBILITY.md#지원-범위)).
 
 ```bash
 pip install django-wireview daphne
 ```
 
 새 프로젝트라면 아래 설정을 옮겨 적는 대신 스타터 템플릿으로 시작할 수 있습니다. 이 절의 배선이 모두 들어간
-프로젝트와 [튜토리얼 01](./docs/tutorials/01-getting-started.md)의 첫 컴포넌트가 생기고, `manage.py check`는
+프로젝트와 [튜토리얼 01](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/01-getting-started.md)의 첫 컴포넌트가 생기고, `manage.py check`는
 아무것도 보고하지 않습니다.
 
 macOS·Linux(bash, zsh):
@@ -153,14 +153,14 @@ python -c "import wireview, os; print(os.path.join(os.path.dirname(wireview.__fi
 django-admin startproject mysite --template C:\...\wireview\project_template
 ```
 
-`daphne`는 개발 서버용입니다. Django의 `runserver`는 WSGI 서버라 WebSocket을 받지 못하고, `daphne` 앱이 `INSTALLED_APPS` 맨 위에 있을 때에만 ASGI로 바뀝니다. 빠뜨려도 오류는 나지 않고 페이지가 반응 없이 남습니다(`runserver` 기동 로그의 `wireview.W013` 경고가 유일한 신호입니다). daphne 대신 `uvicorn project_name.asgi:application --reload`로 띄워도 됩니다(Windows에서는 이쪽입니다 — [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)). 그때는 아래 `asgi.py`의 `ASGIStaticFilesHandler` 줄이 필요합니다. uvicorn은 정적 파일을 서빙하지 않아서, 빠뜨리면 `wireview.min.js`가 404이고 페이지는 그려지지만 어떤 컴포넌트도 살아나지 않습니다.
+`daphne`는 개발 서버용입니다. Django의 `runserver`는 WSGI 서버라 WebSocket을 받지 못하고, `daphne` 앱이 `INSTALLED_APPS` 맨 위에 있을 때에만 ASGI로 바뀝니다. 빠뜨려도 오류는 나지 않고 페이지가 반응 없이 남습니다(`runserver` 기동 로그의 `wireview.W013` 경고가 유일한 신호입니다). daphne 대신 `uvicorn project_name.asgi:application --reload`로 띄워도 됩니다(Windows에서는 이쪽입니다 — [docs/DEPLOYMENT.md](https://github.com/itda-work/django-wireview/blob/main/docs/DEPLOYMENT.md)). 그때는 아래 `asgi.py`의 `ASGIStaticFilesHandler` 줄이 필요합니다. uvicorn은 정적 파일을 서빙하지 않아서, 빠뜨리면 `wireview.min.js`가 404이고 페이지는 그려지지만 어떤 컴포넌트도 살아나지 않습니다.
 
 Wireview는 `django-channels`를 사용하고, **채널 레이어가 반드시 있어야 합니다.** Channels에는 기본 레이어가 없어서 `CHANNEL_LAYERS`를 비워 두면 WebSocket 연결이 전부 거절됩니다(`manage.py check`의 `wireview.W012`). 개발과 단일 프로세스에는 아래 설정의 InMemory 레이어면 충분합니다. 다만 InMemory는 프로세스 하나 안에서만 통하므로, 프로세스를 여러 개 띄우면 브로드캐스트가 **오류 없이** 같은 프로세스의 연결에만 닿습니다. 프로덕션에서는 프로세스를 잇는 레이어를 씁니다.
 
 - [channels-nats](https://github.com/itda-work/channels-nats) — 이 프로젝트가 목표로 하는 레이어입니다. NATS 서버는 Go 바이너리 하나이고 Linux·macOS·Windows 네이티브 빌드가 있어, Redis 없이 SQLite 단일 서버와 Windows까지 같은 구성으로 갑니다.
 - [channels_redis](https://channels.readthedocs.io/en/latest/topics/channel_layers.html) — Redis가 이미 있다면 이쪽입니다. 실측상 성능은 대등합니다.
 
-배포 구성은 [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md), 두 레이어의 실측 비교는 [docs/design/transport-abstraction.md](./docs/design/transport-abstraction.md) §5-3에 있습니다.
+배포 구성은 [docs/DEPLOYMENT.md](https://github.com/itda-work/django-wireview/blob/main/docs/DEPLOYMENT.md), 두 레이어의 실측 비교는 [docs/design/transport-abstraction.md](https://github.com/itda-work/django-wireview/blob/main/docs/design/transport-abstraction.md) §5-3에 있습니다.
 
 Django 애플리케이션보다 먼저 `wireview`와 `channels`를 `INSTALLED_APPS`에 추가하세요:
 
@@ -207,7 +207,7 @@ application = ProtocolTypeRouter({
 })
 ```
 
-wireview의 컨슈머는 소켓을 받기 전에 `Origin` 헤더를 `ALLOWED_HOSTS`와 대조한다. 다른 사이트의 페이지가 사용자의 쿠키로 소켓을 여는 것을 막기 위해서다([배포 가이드](docs/DEPLOYMENT.md#websocket의-origin)). 그래서 `AllowedHostsOriginValidator`로 따로 감쌀 필요는 없다.
+wireview의 컨슈머는 소켓을 받기 전에 `Origin` 헤더를 `ALLOWED_HOSTS`와 대조한다. 다른 사이트의 페이지가 사용자의 쿠키로 소켓을 여는 것을 막기 위해서다([배포 가이드](https://github.com/itda-work/django-wireview/blob/main/docs/DEPLOYMENT.md#websocket의-origin)). 그래서 `AllowedHostsOriginValidator`로 따로 감쌀 필요는 없다.
 
 프로젝트의 `urls.py`에 wireview의 HTTP 경로를 **루트에** 넣으세요. 파일 업로드가 이 경로로 청크를 보냅니다.
 빠뜨려도 다른 기능은 모두 동작하고 업로드만 조용히 404가 납니다. 경로가 `/__wireview_upload__/`로 고정되어
@@ -289,22 +289,22 @@ class XCounter(Component):
 
 ## 예제
 
-동작하는 예제 앱 11개가 [examples/](./examples/)에 있습니다. 각 디렉터리가 개념 하나이고,
+동작하는 예제 앱 11개가 [examples/](https://github.com/itda-work/django-wireview/tree/main/examples)에 있습니다. 각 디렉터리가 개념 하나이고,
 테스트와 README를 함께 가지고 있으며, CI가 매번 실행합니다.
 
 | 예제 | 개념 |
 |------|------|
-| [todo](./examples/todo/) | 모델 구독으로 여러 탭이 같은 목록을 함께 본다 |
-| [poll](./examples/poll/) | 쓰기는 핸들러가, 다시 그리기는 브로드캐스트가 |
-| [rating](./examples/rating/) | 잠깐 쓰는 상태와 남는 상태를 갈라 둔다 |
-| [search](./examples/search/) | 디바운스한 입력과 키보드로 고르는 결과 |
-| [quiz](./examples/quiz/) | 컴포넌트 상태로 굴리는 상태 머신 |
-| [chat](./examples/chat/) | Streams와 Presence |
-| [dashboard](./examples/dashboard/) | AsyncResult로 느린 조회를 미룬다 |
-| [notifications](./examples/notifications/) | 이름 붙인 채널로 컴포넌트끼리 알린다 |
-| [livecomp](./examples/livecomp/) | 연결을 공유하는 중첩 컴포넌트 |
-| [slots](./examples/slots/) | 내용을 호출자가 채우는 레이아웃 컴포넌트 |
-| [hooks](./examples/hooks/) | 브라우저만 할 수 있는 일을 컴포넌트에 붙인다 |
+| [todo](https://github.com/itda-work/django-wireview/tree/main/examples/todo) | 모델 구독으로 여러 탭이 같은 목록을 함께 본다 |
+| [poll](https://github.com/itda-work/django-wireview/tree/main/examples/poll) | 쓰기는 핸들러가, 다시 그리기는 브로드캐스트가 |
+| [rating](https://github.com/itda-work/django-wireview/tree/main/examples/rating) | 잠깐 쓰는 상태와 남는 상태를 갈라 둔다 |
+| [search](https://github.com/itda-work/django-wireview/tree/main/examples/search) | 디바운스한 입력과 키보드로 고르는 결과 |
+| [quiz](https://github.com/itda-work/django-wireview/tree/main/examples/quiz) | 컴포넌트 상태로 굴리는 상태 머신 |
+| [chat](https://github.com/itda-work/django-wireview/tree/main/examples/chat) | Streams와 Presence |
+| [dashboard](https://github.com/itda-work/django-wireview/tree/main/examples/dashboard) | AsyncResult로 느린 조회를 미룬다 |
+| [notifications](https://github.com/itda-work/django-wireview/tree/main/examples/notifications) | 이름 붙인 채널로 컴포넌트끼리 알린다 |
+| [livecomp](https://github.com/itda-work/django-wireview/tree/main/examples/livecomp) | 연결을 공유하는 중첩 컴포넌트 |
+| [slots](https://github.com/itda-work/django-wireview/tree/main/examples/slots) | 내용을 호출자가 채우는 레이아웃 컴포넌트 |
+| [hooks](https://github.com/itda-work/django-wireview/tree/main/examples/hooks) | 브라우저만 할 수 있는 일을 컴포넌트에 붙인다 |
 
 저장소를 받은 뒤 처음이면 아래 순서대로 실행합니다. `wireview.min.js`는 빌드 산출물이라 저장소에 없고,
 예제의 모델 테이블은 `make migrate`가 만듭니다 — 빠뜨리면 chat·poll·rating·quiz 페이지가 500입니다.
@@ -416,7 +416,7 @@ async def notification(self, channel: str, **kwargs):
 `{% on %}`은 인라인 JavaScript가 아니라 `wire-on-<이벤트>[.<수정자>…]` 데이터 속성을 렌더하고, 번들이 문서 루트에서
 이벤트를 위임받아 처리합니다. 그래서 `'unsafe-inline'` 없는 Content Security Policy와 함께 돕니다. 수정자는 왼쪽부터
 적용되므로 `prevent`는 `debounce`보다 앞에 둡니다. 한 요소에 `keyup.enter`와 `keyup.esc`처럼 같은 이벤트를 여러 번
-걸 수 있습니다. 자세한 것은 [CSP](docs/features/csp.md)를 보세요.
+걸 수 있습니다. 자세한 것은 [CSP](https://github.com/itda-work/django-wireview/blob/main/docs/features/csp.md)를 보세요.
 
 ### 암시적 인자
 
@@ -908,7 +908,7 @@ JavaScript Hooks를 사용하면 Chart.js, Mapbox, CodeMirror 등 서드파티 J
 훅 파일은 앱의 `static/<앱 라벨>/hooks/` 아래에 둔다. `{% wireview_header %}`가 설치된 앱 전부에서 이 디렉터리를
 찾아 `defer`로 싣고, wireview는 그 파일들이 다 돈 뒤에 컴포넌트를 join한다. 템플릿에 인라인 `<script>`로
 두지 않는다 — wireview보다 먼저 실행되어 `window.wireview`가 아직 없고, boost 이동으로 들어간 페이지에서는
-아예 실행되지 않는다. 상세는 [JavaScript Hooks](./docs/features/hooks.md#훅-파일을-어디에-두나).
+아예 실행되지 않는다. 상세는 [JavaScript Hooks](https://github.com/itda-work/django-wireview/blob/main/docs/features/hooks.md#훅-파일을-어디에-두나).
 
 ```javascript
 // myapp/static/myapp/hooks/chart.js
@@ -1032,7 +1032,7 @@ class Dashboard(Component):
 | `this.pushEvent(event, payload, callback)` | 서버로 이벤트 전송 |
 | `this.handleEvent(event, callback)` | 서버 이벤트 핸들러 등록 |
 
-자세한 내용은 [JavaScript Hooks 문서](docs/features/hooks.md)를 참조하세요.
+자세한 내용은 [JavaScript Hooks 문서](https://github.com/itda-work/django-wireview/blob/main/docs/features/hooks.md)를 참조하세요.
 
 ## 컴포넌트 API 레퍼런스
 
@@ -1051,11 +1051,11 @@ class Dashboard(Component):
 | `on_mount` | `[]` | `joined()` 전에 도는 훅 |
 | `live_sessions` | `set()` | 마운트될 수 있는 `live_session` 이름 |
 | `presence` | `None` | `PresenceMixin` 설정(`PresenceConfig`) |
-| `sticky` | `False` | boost 이동으로 같은 id가 있는 페이지에 가면 인스턴스·DOM·훅이 이어진다 ([boost](docs/features/boost.md)) |
+| `sticky` | `False` | boost 이동으로 같은 id가 있는 페이지에 가면 인스턴스·DOM·훅이 이어진다 ([boost](https://github.com/itda-work/django-wireview/blob/main/docs/features/boost.md)) |
 
 ### 메서드와 필드
 
-오버라이드하는 콜백, 부르는 메서드, 필드의 전체 목록과 시그니처는 [Component API](docs/features/component-api.md)에
+오버라이드하는 콜백, 부르는 메서드, 필드의 전체 목록과 시그니처는 [Component API](https://github.com/itda-work/django-wireview/blob/main/docs/features/component-api.md)에
 있다. 거기 없는 멤버는 밑줄이 없어도 내부다. 내비게이션은 `self.wire`의 `redirect_to`·`replace_to`·`push_to`,
 모듈 수준 브로드캐스트는 `broadcast(channel, **kwargs)`(sync)·`abroadcast(channel, **kwargs)`(async)다.
 
@@ -1068,7 +1068,7 @@ class Dashboard(Component):
 | 태그 | 설명 |
 |------|------|
 | `{% wireview_header %}` | 필요한 JavaScript 포함 (약 70KB, gzip 약 22KB) |
-| `{% wireview_toasts %}` | `toast(user, ...)`로 보낸 토스트를 받아 띄운다. 레이아웃에 한 번 ([플래시와 토스트](docs/features/flash.md)) |
+| `{% wireview_toasts %}` | `toast(user, ...)`로 보낸 토스트를 받아 띄운다. 레이아웃에 한 번 ([플래시와 토스트](https://github.com/itda-work/django-wireview/blob/main/docs/features/flash.md)) |
 | `{% component 'Name' kwarg=value %}` | 컴포넌트 렌더링 |
 | `{% on 'event.modifiers' 'handler' kwargs %}` | 이벤트 핸들러 바인딩. `myself`와 `_target`은 예약 인자라 핸들러 인자 이름으로 쓸 수 없다 |
 | `{% tag_header %}` | 루트 요소에 컴포넌트 속성 추가 |
@@ -1159,7 +1159,7 @@ wireview.debug.component("rx-123")
 
 ## 설정
 
-`settings.WIREVIEW`의 키 전부와 기본값은 [설정 레퍼런스](docs/features/settings.md)에 있다. 설정은 쓰는 시점에
+`settings.WIREVIEW`의 키 전부와 기본값은 [설정 레퍼런스](https://github.com/itda-work/django-wireview/blob/main/docs/features/settings.md)에 있다. 설정은 쓰는 시점에
 읽으므로 테스트에서는 `override_settings(WIREVIEW={...})`로 바꾸고, 모르는 키는 `manage.py check`가
 `wireview.W014`로 알려 준다.
 
@@ -1188,17 +1188,17 @@ WIREVIEW = {
 }
 ```
 
-자세한 내용은 [성능 가이드](docs/PERFORMANCE.md)를 참조하세요.
+자세한 내용은 [성능 가이드](https://github.com/itda-work/django-wireview/blob/main/docs/PERFORMANCE.md)를 참조하세요.
 
 ## 문서
 
-- [아키텍처](docs/ARCHITECTURE.md) - 내부 설계 및 패턴
-- [배포 가이드](docs/DEPLOYMENT.md) - 프로덕션 배포 설정
-- [성능 가이드](docs/PERFORMANCE.md) - 성능 최적화 팁
-- [튜토리얼](docs/tutorials/) - 단계별 가이드
-- [로드맵](docs/ROADMAP.md) - 향후 개발 계획
-- [업그레이드 가이드](docs/UPGRADING.md) - 0.4에서 1.0으로
-- [호환성 정책](docs/COMPATIBILITY.md) - 공개 API, 폐기 절차, 지원 범위
+- [아키텍처](https://github.com/itda-work/django-wireview/blob/main/docs/ARCHITECTURE.md) - 내부 설계 및 패턴
+- [배포 가이드](https://github.com/itda-work/django-wireview/blob/main/docs/DEPLOYMENT.md) - 프로덕션 배포 설정
+- [성능 가이드](https://github.com/itda-work/django-wireview/blob/main/docs/PERFORMANCE.md) - 성능 최적화 팁
+- [튜토리얼](https://github.com/itda-work/django-wireview/tree/main/docs/tutorials) - 단계별 가이드
+- [로드맵](https://github.com/itda-work/django-wireview/blob/main/docs/ROADMAP.md) - 향후 개발 계획
+- [업그레이드 가이드](https://github.com/itda-work/django-wireview/blob/main/docs/UPGRADING.md) - 0.4에서 1.0으로
+- [호환성 정책](https://github.com/itda-work/django-wireview/blob/main/docs/COMPATIBILITY.md) - 공개 API, 폐기 절차, 지원 범위
 
 ## 개발 및 기여
 
@@ -1219,4 +1219,4 @@ make run-daphne   # http://localhost:8000
 
 ## 라이선스
 
-MIT 라이선스 - 자세한 내용은 [LICENSE](LICENSE)를 참조하세요.
+MIT 라이선스 - 자세한 내용은 [LICENSE](https://github.com/itda-work/django-wireview/blob/main/LICENSE)를 참조하세요.

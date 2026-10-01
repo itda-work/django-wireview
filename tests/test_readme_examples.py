@@ -189,3 +189,33 @@ def test_the_hook_example_says_where_its_file_goes():
     """An inline ``<script>`` runs before the bundle, and not at all after a boosted navigation."""
     (_, code, _), *_ = (b for b in _blocks(_section("JavaScript Hooks", "Hook 정의")) if b[0] == "javascript")
     assert re.match(r"// (\w+)/static/\1/hooks/\w+\.js\n", code), code.split("\n")[0]
+
+
+#: Where the README's links to the rest of the repository point. PyPI shows the
+#: README as the project page, with no repository to resolve a relative link in.
+REPOSITORY = "https://github.com/itda-work/django-wireview/blob/main/"
+DIRECTORY = "https://github.com/itda-work/django-wireview/tree/main/"
+RAW = "https://raw.githubusercontent.com/itda-work/django-wireview/main/"
+
+
+def _targets() -> list[str]:
+    text = README.read_text(encoding="utf-8")
+    return re.findall(r"\]\(([^)\s]+)\)", text) + re.findall(r'src="([^"]+)"', text)
+
+
+def test_no_link_is_relative():
+    """On PyPI ``./docs/...`` and ``overview.jpg`` resolved against pypi.org: 33 broken links and no picture."""
+    relative = [t for t in _targets() if not t.startswith(("#", "http://", "https://", "mailto:"))]
+    assert relative == []
+
+
+def test_the_repository_links_name_files_that_exist():
+    """Absolute links are no longer checked by GitHub's renderer: a moved document would 404 quietly."""
+    missing = []
+    for target in _targets():
+        for base in (REPOSITORY, DIRECTORY, RAW):
+            if target.startswith(base):
+                path = target.removeprefix(base).split("#")[0]
+                if not (README.parent / path).exists():
+                    missing.append(target)
+    assert missing == []
