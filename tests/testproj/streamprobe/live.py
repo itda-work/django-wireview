@@ -56,13 +56,19 @@ class SeedChild(LiveComponent):
     mores: int = 0
     #: Without its bottom binding: the probe's prop, so both re-render in one patch
     bare: bool = False
+    #: A first page that fills the window, so its bottom binding is out of view
+    #: once the page is in -- and in view only while the list is still empty (#112)
+    fill: bool = False
 
     async def joined(self):
         # First, so it is the first of this component's commands to find no element
         await self.push_js(JS().dispatch("seed-joined"))
-        await self.stream(
-            "seeds", [{"n": 1}, {"n": 2}], template="streamprobe/tick.html", dom_id=lambda i: f"seed-{i['n']}"
-        )
+        if self.fill:
+            await self.stream("seeds", [{"n": n} for n in range(PAGE)], template="streamprobe/row.html", dom_id=row_id)
+        else:
+            await self.stream(
+                "seeds", [{"n": 1}, {"n": 2}], template="streamprobe/tick.html", dom_id=lambda i: f"seed-{i['n']}"
+            )
         await insert_tick(self, 3)
 
     async def more(self, **_rest):
@@ -93,6 +99,8 @@ class StreamProbe(Component):
     stolen: int = 0
     #: Passed to the SeedChild, and shown here too: one patch, the probe's, draws both
     bare: bool = False
+    #: Passed to the SeedChild: its joined() streams a list taller than the window
+    fill: bool = False
 
     async def joined(self):
         if self.delay:

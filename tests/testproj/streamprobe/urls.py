@@ -9,7 +9,9 @@ def index(request):
     ``?away=1`` is the page without the probe, to leave it and come back (#146).
     ``?pair=1`` adds a second probe below, and ``?nest=1`` a LiveComponent ahead of
     the probe's ticks list: both name a stream ``ticks`` too. ``?seeded=1`` renders
-    the SeedChild from the start, so it is on the page when the probe joins."""
+    the SeedChild from the start, so it is on the page when the probe joins.
+    ``?fill=1`` has the SeedChild's joined() stream a list taller than the window
+    ahead of its bottom binding."""
     context = {
         "size": int(request.GET.get("size", 15)),
         "delay": float(request.GET.get("delay", 0)),
@@ -17,6 +19,7 @@ def index(request):
         "pair": bool(request.GET.get("pair")),
         "nest": bool(request.GET.get("nest")),
         "seeded": bool(request.GET.get("seeded")),
+        "fill": bool(request.GET.get("fill")),
     }
     return render(request, "streamprobe/page.html", context)
 

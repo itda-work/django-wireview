@@ -7,7 +7,7 @@
   <button data-testid="strip" {% on "click" "strip" %}>strip</button>
   <span data-testid="bare">{{ this.bare }}</span>
   {% if this.seeded %}
-    {% live_component "SeedChild" id="seed-child" bare=this.bare %}
+    {% live_component "SeedChild" id="seed-child" bare=this.bare fill=this.fill %}
   {% endif %}
   {% if this.nest %}
     {% live_component "TickChild" id="tick-child" %}

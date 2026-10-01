@@ -9,7 +9,7 @@ import json
 
 import pytest
 from playwright.sync_api import expect
-from testproj.e2e_browser import expect_count, expect_text, open_live
+from testproj.e2e_browser import INBOX_SHIM, expect_count, expect_text, open_live
 from testproj.e2e_server import serve
 
 pytestmark = pytest.mark.e2e
@@ -263,6 +263,33 @@ def test_a_new_live_component_runs_the_js_its_joined_pushes(probe):
     by(probe, "seed").click()
     expect(by(probe, "seeds").locator("li")).to_have_text(["tick 1", "tick 2"])
     expect(probe.locator("html")).to_have_attribute("data-seeded", "1")
+
+
+def test_a_new_live_component_judges_its_list_once_its_joined_page_is_in(page, server):
+    # Its first page fills the window and pushes its bottom binding out of view.
+    # The render that draws it lands a frame before that page does, as the network
+    # can deliver it: an observer started with the render saw the binding in view
+    # under an empty list and asked for more (#112).
+    page.add_init_script(INBOX_SHIM)
+    page.set_viewport_size({"width": 800, "height": 600})
+    open_live(page, f"{server}/streamprobe/?fill=1")
+    expect_count(by(page, "rows").locator("li"), 15)
+    _settled(page)
+
+    page.evaluate("window.__inbox.holding = true")
+    by(page, "seed").click()
+    page.wait_for_function("window.__inbox.held.some((m) => m.command === 'joined' && m.payload.id === 'seed-child')")
+    page.evaluate(
+        """() => new Promise((done) => {
+          window.__inbox.release(1);
+          requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 100)));
+        })"""
+    )
+    page.evaluate("window.__inbox.release()")
+
+    expect_count(by(page, "seeds").locator("li"), 15)
+    _settled(page)
+    expect_text(by(page, "mores"), "0")
 
 
 def test_a_new_live_component_watches_its_own_viewport_bindings(probe):
