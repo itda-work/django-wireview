@@ -211,6 +211,20 @@ class ComponentOptions:
         return dataclasses.replace(self, **given)
 
 
+def _name_unlisted(cls: t.Type["Component"], name: str | None) -> None:
+    """Name a ``public=False`` class for logs, telemetry and the signed state.
+
+    One under a listed class keeps the listed names it inherits. Any other
+    takes its own: with nothing to inherit the first log line crashed, and an
+    unlisted base's names -- ``LiveComponent``'s among them -- are another class's.
+    """
+    listed = cls._by_fqn.get(getattr(cls, "_fqn", ""))
+    if listed is not None and issubclass(cls, listed):
+        return
+    cls._name = name or cls.__name__
+    cls._fqn = f"{cls.__module__}.{cls._name}"
+
+
 def _validate_handlers(cls: type) -> None:
     """Wrap the methods this class defines that a client may call in ``validate_call``.
 
@@ -374,12 +388,8 @@ class Component(BaseModel):
             # Component name and fully qualified name
             cls._name = name
             cls._fqn = fqn
-        elif not hasattr(cls, "_fqn"):
-            # Logs, telemetry and the signed state name every component by these.
-            # An unlisted class under a listed one keeps the listed names it
-            # inherits; one with none to inherit crashed the first log line.
-            cls._name = name or cls.__name__
-            cls._fqn = f"{cls.__module__}.{cls._name}"
+        else:
+            _name_unlisted(cls, name)
 
         _validate_handlers(cls)
 

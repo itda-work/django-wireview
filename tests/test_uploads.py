@@ -776,6 +776,29 @@ class TestComponentUploadMethods:
         await config_sends["images"]
         assert "images" in view.component._upload_registry.configs
 
+    @pytest.mark.unit
+    def test_an_unlisted_live_component_is_named_after_itself(self):
+        """LiveComponent is unlisted too: a subclass inherited its name and logged as ``LiveComponent``."""
+        from wireview import LiveComponent
+
+        class UnlistedRow(LiveComponent, public=False):
+            pass
+
+        assert (UnlistedRow._name, UnlistedRow._fqn) == ("UnlistedRow", f"{__name__}.UnlistedRow")
+
+    @pytest.mark.unit
+    def test_only_a_listed_base_names_an_unlisted_component(self):
+        """An unlisted base's names are another class's; a listed base's are inherited as before."""
+
+        class UnlistedMid(UnlistedUploadComponent, public=False):
+            pass
+
+        class UnderListed(UploadComponent, public=False):
+            pass
+
+        assert (UnlistedMid._name, UnlistedMid._fqn) == ("UnlistedMid", f"{__name__}.UnlistedMid")
+        assert (UnderListed._name, UnderListed._fqn) == (UploadComponent._name, UploadComponent._fqn)
+
     @pytest.mark.asyncio
     @pytest.mark.unit
     async def test_allow_upload_creates_registry(self):

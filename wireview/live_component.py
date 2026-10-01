@@ -137,7 +137,7 @@ class LiveComponent(Component, public=False):
     ) -> None:
         """Register LiveComponent in separate registries."""
         from .core import render_reads
-        from .core.component import _resolve_options, _validate_handlers
+        from .core.component import _name_unlisted, _resolve_options, _validate_handlers
 
         cls._meta = _resolve_options(cls)
         render_reads.install(cls)
@@ -156,6 +156,8 @@ class LiveComponent(Component, public=False):
 
             cls._name = name
             cls._fqn = fqn
+        else:
+            _name_unlisted(cls, name)
 
         # Component's registration is skipped, its handler validation is not
         _validate_handlers(cls)

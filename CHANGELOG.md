@@ -224,10 +224,11 @@ The django-reactor era changelog (2.x) is preserved in
   refused such names. The example binds `check_email` and says why, and a test now refuses a
   binding to a `_` or framework name in every shipped document, example and the starter template.
 
-- A component declared with `public=False` and no listed base crashed with `AttributeError: ... '_name'`
-  as soon as wireview named it -- `allow_upload()` in `joined()` did, for the log line of a
-  failed config send. Such a class now has a name and a fully qualified name of its own; one under
-  a listed class still inherits that class's.
+- A component declared with `public=False` and no listed base crashed with
+  `AttributeError: ... '_name'` as soon as wireview named it -- `allow_upload()` in `joined()`
+  did, for the log line of a failed config send. Such a class, a `LiveComponent` one included,
+  now has a name and a fully qualified name of its own; one under a listed class still inherits
+  that class's.
 
 ### Security
 
