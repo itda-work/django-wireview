@@ -181,3 +181,21 @@ def test_security_md_lists_every_advisory_the_changelog_names():
     }
     # Not yet released: the version the table names is one no release heading has yet.
     assert [a for a, r in fixed_in.items() if r == "Unreleased" and published[a] in releases] == []
+
+
+def test_upgrading_tells_every_reader_of_every_advisory():
+    """The security box is what every row of UPGRADING's table reads first, and each advisory
+    1.0 fixed has a **보안** bullet in the rc4 section. Dropping either for one advisory passed
+    every other check: the reader went through the long rc4 bullets without knowing to act."""
+    upgrading = (CHANGELOG.parent / "docs" / "UPGRADING.md").read_text()
+    box = next(p for p in upgrading.split("\n\n") if p.startswith("> **보안.**"))
+    rc4 = upgrading.split("\n## 1.0.0rc4에서 1.0으로\n", 1)[1].split("\n## ", 1)[0]
+    flagged = [b for b in re.split(r"^- ", rc4, flags=re.MULTILINE)[1:] if "(**보안**" in b.split("\n  -", 1)[0]]
+    releases = _headings()
+    after_rc4 = releases[releases.index("1.0.0rc4") - 1]
+
+    assert set(ADVISORY_ID.findall(box)) == set(_published_advisories())
+    assert {a for bullet in flagged for a in ADVISORY_ID.findall(bullet)} == {
+        a for entry in _security_entries(after_rc4) for a in ADVISORY_ID.findall(entry.split(" ", 1)[0])
+    }
+    assert [b[:60] for b in flagged if len(set(ADVISORY_ID.findall(b))) != 1] == []
