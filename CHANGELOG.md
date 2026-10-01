@@ -44,6 +44,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- `{% wireview_toasts %}` works on a site with the `signed_cookies` session backend. Its key is the
+  signed cookie -- `:` in it, over 60 characters -- and `toast_channel()` wrote it into the group
+  name, which every channel layer refuses with `TypeError`: the receiver's join failed on its
+  subscription and toasts silently never showed. A session key is now digested into the name (it is
+  the session's credential, and the name reaches the broker), and so is a user pk with characters a
+  layer refuses. The name's shape is not public; `toast_channel()` gives it.
 - `AUTO_BROADCAST` no longer announces a fixture load. `loaddata` saves with `raw=True`, and the
   receiver announced every row it loaded, querying m2m and related rows while Django says the
   database may not be consistent yet -- a seed or restore on a running deployment sent rows times

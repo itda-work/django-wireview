@@ -15,6 +15,8 @@ one user cannot reach another's pages.
 
 from __future__ import annotations
 
+import hashlib
+import re
 import typing as t
 
 from ..core.component import Component, abroadcast, broadcast
@@ -25,16 +27,36 @@ __all__ = ["WireviewToasts", "atoast", "toast", "toast_channel"]
 _FIELDS = ("flash_type", "message", "timeout", "dismissible")
 
 
+#: A primary key that can stand in a channel group name as it is.
+_PLAIN_PK = re.compile(r"[A-Za-z0-9_.-]{1,64}")
+
+
+def _digest(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
 def toast_channel(to: t.Any) -> str:
-    """The channel a toast for ``to`` travels on: a saved user, or a session key."""
+    """The channel a toast for ``to`` travels on: a saved user, or a session key.
+
+    A channel layer takes only letters, digits, ``-``, ``_`` and ``.`` in a group
+    name, under 100 characters. A session key is digested: the signed_cookies
+    backend's key is the signed cookie itself, ``:`` and all, and any key is the
+    session's credential, which the name would carry to the broker. A user's pk
+    is written as it is when a layer takes it, and digested under a prefix of
+    its own when it does not.
+    """
     if isinstance(to, str):
         if not to:
             raise ValueError("a toast needs a session key; this visitor has no session yet")
-        return f"wireview.toast.session.{to}"
+        return f"wireview.toast.session.{_digest(to)}"
     pk = getattr(to, "pk", None)
     if pk is None:
         raise ValueError(f"a toast goes to a saved user or a session key, not {to!r}")
-    return f"wireview.toast.user.{pk}"
+    pk = str(pk)
+    if _PLAIN_PK.fullmatch(pk):
+        return f"wireview.toast.user.{pk}"
+    # Its own prefix: a plain pk spelled like a digest must not land on the same channel
+    return f"wireview.toast.user-digest.{_digest(pk)}"
 
 
 def _payload(message: str, flash_type: str, timeout: int, dismissible: bool) -> dict[str, t.Any]:
