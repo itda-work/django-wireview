@@ -94,40 +94,43 @@ def test_every_row_reads_every_section_from_its_own_up():
 
 
 # What changed since 1.0.0rc4, entry by entry. A key is a phrase of one CHANGELOG entry of the
-# release after 1.0.0rc4 ([Unreleased] until 1.0 is cut); its value is a phrase of the bullet of
-# "1.0.0rc4에서 1.0으로" that tells an upgrading project what to do, or, under NO_UPGRADE_NOTE, why
-# nothing needs telling. The UPGRADING section was written from the entries one track at a time
-# and missed the StrEnum and stream container changes -- both silent. An entry with neither
-# fails here, so each new one is a decision.
+# release after 1.0.0rc4 ([Unreleased] until 1.0 is cut); its value names the bullet of
+# "1.0.0rc4에서 1.0으로" that tells an upgrading project what to do -- a phrase of its bold lead --
+# and a phrase its text, sub-bullets included, says about this entry. Under NO_UPGRADE_NOTE the
+# value says why nothing needs telling. The UPGRADING section was written from the entries one
+# track at a time and missed the StrEnum and stream container changes -- both silent. An entry
+# with neither fails here, so each new one is a decision. Nine entries share the "문서 예시"
+# bullet; matching its lead alone let every sub-bullet go and still pass.
 UPGRADE_NOTE = {
-    "`wireview.W018`: `manage.py check`": "`wireview.W018`",
-    "a component's `mutation()` receives saves": "`mutation()`이 받은 `instance`",
-    "transition no longer declares a `to` key": "`to` 키",
-    "refuses a modifier the client does not run": "수정자를",
-    "a binding to a method the dispatcher would": "부를 수 없는 이름에",
-    "are `StrEnum`s": "`StrEnum`",
-    "`signed_cookies` session backend": "토스트 채널이",
-    "[GHSA-4v8p-p6p8-78pj]": "토스트 채널이",
-    "no longer announces a fixture load": "픽스처 로드",
-    "`uvicorn <project>.asgi:application`": "`asgi.py`",
-    "shipped skill now introduces toasts": "에이전트 스킬",
-    "A generated `.pyi` imported": "`.pyi`",
-    "still described the 1.0.0rc1 contract": "에이전트 스킬",
-    "formatted its arguments into markup with an f-string": "문서 예시",
-    "stand-in channel layer": "구독 이름",
-    "`mount` is a framework name": "문서 예시",
-    "server-side helpers without a leading `_`": "문서 예시",
-    "reconnect recovery example": "`wireview.W018`",
-    "declared with `public=False`": "`public=False`",
-    "quiz example and tutorial 13": "문서 예시",
-    "bound Ctrl+Enter and Escape to `keypress`": "문서 예시",
-    "removes or moves the focused element": "포커스 칸",
-    "toggle and an edit with `QuerySet.aupdate()`": "문서 예시",
-    "nested components without an `id`": "문서 예시",
-    "the parent handler `send_to_parent` calls": "문서 예시",
-    "last-seen helper starts with": "문서 예시",
-    "stream of the same name share no list": "스트림 연산",
-    "[GHSA-8q8p-x4w4-p745]": "`on_upload_complete`는",
+    "`wireview.W018`: `manage.py check`": ("`wireview.W018`", "`wireview.W018`"),
+    "a component's `mutation()` receives saves": ("`mutation()`이 받은 `instance`", "`save()`"),
+    "transition no longer declares a `to` key": ("`to` 키", "`to` 키"),
+    "refuses a modifier the client does not run": ("수정자를", "`ValueError`"),
+    "a binding to a method the dispatcher would": ("부를 수 없는 이름에", "`AssertionError`"),
+    "are `StrEnum`s": ("`StrEnum`", "`StrEnum`"),
+    "`signed_cookies` session backend": ("토스트 채널이", "`signed_cookies`"),
+    "[GHSA-4v8p-p6p8-78pj]": ("토스트 채널이", "`clearsessions`"),
+    "no longer announces a fixture load": ("픽스처 로드", "픽스처 로드"),
+    "`uvicorn <project>.asgi:application`": ("`asgi.py`", "`ASGIStaticFilesHandler`"),
+    "shipped skill now introduces toasts": ("에이전트 스킬", "토스트"),
+    "A generated `.pyi` imported": ("`.pyi`", "wireview_stubs"),
+    "still described the 1.0.0rc1 contract": ("에이전트 스킬", "`handle_async`"),
+    "formatted its arguments into markup with an f-string": ("문서 예시", "`format_html`"),
+    "stand-in channel layer": ("구독 이름", "`TypeError`"),
+    "`mount` is a framework name": ("문서 예시", "`async def mount(self)`"),
+    "server-side helpers without a leading `_`": ("문서 예시", "`notify_user`"),
+    "reconnect recovery example": ("`wireview.W018`", "async def validate"),
+    "declared with `public=False`": ("`public=False`", "`name=`"),
+    "quiz example and tutorial 13": ("문서 예시", "`{% class {...} %}`"),
+    "bound Ctrl+Enter and Escape to `keypress`": ("문서 예시", "`keypress`"),
+    "removes or moves the focused element": ("포커스 칸", "`blur`"),
+    "toggle and an edit with `QuerySet.aupdate()`": ("문서 예시", "`QuerySet.aupdate()`"),
+    "nested components without an `id`": ("문서 예시", "`id`를 준다"),
+    "never set `AUTO_BROADCAST.senders`": ("문서 예시", "`AUTO_BROADCAST.senders`"),
+    "the parent handler `send_to_parent` calls": ("문서 예시", "`send_to_parent`"),
+    "last-seen helper starts with": ("문서 예시", "튜토리얼 07"),
+    "stream of the same name share no list": ("스트림 연산", "`dom_id`"),
+    "[GHSA-8q8p-x4w4-p745]": ("`on_upload_complete`는", "consume_uploads"),
 }
 
 DOCS_ONLY = "문서·저장소만 바뀌었고 라이브러리 동작은 같다"
@@ -165,7 +168,6 @@ NO_UPGRADE_NOTE = {
     "needs `f` to be a handler": DOCS_ONLY,
     "deprecation warning of the `wireview.component`": "경고 문장만 바뀌었다",
     "does not show in a production log": DOCS_ONLY,
-    "never set `AUTO_BROADCAST.senders`": "`senders` 자체는 1.0.0rc1에서 1.0으로 §9가 다룬다",
     "set `loading_more` and reset": DOCS_ONLY,
     "without `myself=True` goes to the parent": DOCS_ONLY,
     "used `NotificationType` without importing": LOUD_COPY,
@@ -203,10 +205,17 @@ def test_every_change_since_rc4_is_accounted_for():
 
 def test_every_rc4_note_names_a_change_and_every_named_note_exists():
     bullets = _rc4_bullets()
-    notes = set(UPGRADE_NOTE.values())
     leads = [bullet.split("**")[1] if bullet.startswith("**") else bullet for bullet in bullets]
+    named = {lead for lead, _ in UPGRADE_NOTE.values()}
 
-    missing = {note: n for note in notes if (n := sum(note in lead for lead in leads)) != 1}
-    orphans = [lead for lead in leads if not any(note in lead for note in notes)]
-
+    missing = {lead: n for lead in named if (n := sum(lead in each for each in leads)) != 1}
+    orphans = [each for each in leads if not any(lead in each for lead in named)]
     assert (missing, orphans) == ({}, [])
+
+    unsaid = {
+        entry: phrase
+        for entry, (lead, phrase) in UPGRADE_NOTE.items()
+        for bullet, each in zip(bullets, leads)
+        if lead in each and phrase not in bullet
+    }
+    assert unsaid == {}

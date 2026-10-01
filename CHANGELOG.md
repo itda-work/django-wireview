@@ -133,8 +133,8 @@ The django-reactor era changelog (2.x) is preserved in
   `blur` or `change`, the subscription names `mount()` checks, the regenerated `.pyi`, W018, the
   starter's `asgi.py`, `public=False`'s `name=`, the transition's `to` key, the agent skill to
   reinstall and the documentation examples that were defects when copied. A test maps every
-  entry of the release to a note there or to the reason it needs none, so a new entry is a
-  decision, and the release steps in `docs/ROADMAP.md` say so.
+  entry of the release to a note there -- and to what that note, sub-bullets included, says
+  about it -- or to the reason it needs none, so a new entry is a decision, and the release steps in `docs/ROADMAP.md` say so.
 
 - `tests/test_doc_links.py` checks that every relative link in the repository's tracked Markdown
   reaches a file and that its anchor names a heading there, as GitHub writes heading anchors. A
