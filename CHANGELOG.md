@@ -57,6 +57,12 @@ The django-reactor era changelog (2.x) is preserved in
   the name of one of its handlers -- `docs/COMPATIBILITY.md` now says minor releases may add
   members and that `CHANGELOG.md` names each one (`docs/UPGRADING.md`).
 
+- `UploadStatus`, `AsyncState` and `PresenceState` are `StrEnum`s. As `str, Enum` they compared
+  equal to their value but printed as `UploadStatus.UPLOADING`, so tutorial 08's
+  `class="{{ entry.status }}"` never matched its CSS. A template, `str()` and an f-string now give
+  the value (`uploading`); equality and JSON are unchanged. Code that read the old `str()` output,
+  such as a log line matched on `AsyncState.LOADING`, now sees `loading`.
+
 ### Fixed
 
 - `{% wireview_toasts %}` works on a site with the `signed_cookies` session backend. Its key is the
@@ -294,10 +300,6 @@ The django-reactor era changelog (2.x) is preserved in
 - Tutorial 08's basic uploader template binds `cancel_file`, which its class did not define until
   a later section, so the render failed with `Missing handler` as soon as a file was chosen. The
   class defines it now.
-- `UploadStatus`, `AsyncState` and `PresenceState` are `StrEnum`s. As `str, Enum` they compared
-  equal to their value but printed as `UploadStatus.UPLOADING`, so tutorial 08's
-  `class="{{ entry.status }}"` never matched its CSS. A template, `str()` and an f-string now give
-  the value (`uploading`); equality and JSON are unchanged.
 - Tutorial 08 said the connection id is issued by the consumer's `connect()`; the session issues
   it when it starts, since the session logic moved out of the consumer (#60).
 - Two components with a stream of the same name share no list any more. The page looked for the

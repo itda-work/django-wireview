@@ -294,9 +294,9 @@ async def leaving(self):
 ### 상태 표시 (자리비움 등)
 
 ```python
-from enum import Enum
+from enum import StrEnum
 
-class UserStatus(str, Enum):
+class UserStatus(StrEnum):
     ONLINE = "online"
     AWAY = "away"
     DND = "dnd"  # Do Not Disturb
