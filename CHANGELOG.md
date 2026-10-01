@@ -109,6 +109,10 @@ The django-reactor era changelog (2.x) is preserved in
   release's bundle. A test checks that every proxy block serves `/static/` from a directory, that
   the app image runs `collectstatic`, and that an image takes its output to the Nginx `alias`.
 
+- The shipped skill now introduces toasts (`toast()`, `atoast()`, `{% wireview_toasts %}`) and
+  `LiveComponent.update_many()`, both public since 1.0.0rc3 and absent from it. The
+  `update_many()` docstring example iterated a QuerySet synchronously inside the coroutine
+  (`SynchronousOnlyOperation`); it uses an async comprehension.
 - `docs/features/checks.md` named two private repository methods as the rule W001 shares with
   the dispatcher; it is `core/handlers.py`'s `is_client_callable`. `settings.md` marked
   `COLLECT_HOOKS` as read at startup; the switch is read at render, the file list once, and turning

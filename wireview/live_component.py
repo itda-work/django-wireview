@@ -226,7 +226,7 @@ class LiveComponent(Component, public=False):
                 @classmethod
                 async def update_many(cls, updates):
                     ids = [assigns.get("item_id", c.item_id) for c, assigns in updates]
-                    rows = {r.pk: r for r in Item.objects.filter(pk__in=ids)}
+                    rows = {r.pk: r async for r in Item.objects.filter(pk__in=ids)}
                     await super().update_many(updates)
                     for component, _ in updates:
                         component.item = model_to_dict(rows[component.item_id])

@@ -128,6 +128,23 @@ await self.broadcast("room.42", event="new_message")
 `senders={("todo", "Item")}`처럼 반드시 적는다 — 비우면 아무것도 알리지 않는다(`wireview.W015`). 적은 모델은
 모든 필드가 채널 레이어로 직렬화되므로 `User`처럼 민감한 필드가 있는 모델은 넣지 않는다.
 
+## 토스트 — 다른 사람·다른 탭에 띄우는 플래시
+
+`put_flash()`는 이벤트를 처리한 그 연결에만 뜬다. 뷰·시그널·백그라운드 작업이나 다른 사용자의 행동에서
+**받는 사람의 열린 페이지 전부**에 띄우려면 토스트를 쓴다. 받는 쪽은 레이아웃에 `{% wireview_toasts %}`
+한 줄(그리고 `[wire-flash]` 컨테이너)이면 된다.
+
+```python
+from wireview import atoast, toast
+
+toast(user, "다시 오신 것을 환영합니다")                      # 동기 코드. 커밋 뒤에 나간다
+await atoast(user, "지금 회의 들어와요", flash_type="warning")  # 비동기 코드. 바로 나간다
+toast(request.session.session_key, "장바구니에 담았습니다")      # 로그인 전 방문자
+```
+
+그 태그가 없는 페이지와 닫힌 탭에는 가지 않고 나중에 다시 오지도 않는다. 상세:
+https://github.com/itda-work/django-wireview/blob/main/docs/features/flash.md
+
 ## 비동기 작업
 
 느린 조회로 첫 렌더를 막지 않는다.
@@ -161,7 +178,29 @@ class Dashboard(Component):
 ## LiveComponent
 
 부모의 연결을 공유하면서 자기 상태를 가지는 중첩 컴포넌트. 부모와의 통신은
-`send_to_parent`로 한다. 상세:
+`send_to_parent`로 한다. 부모가 넘긴 값이 바뀌면 자식의 `update(**assigns)`가 불린다.
+
+목록의 행마다 LiveComponent가 있고 각자 `update()`에서 조회하면 부모 렌더 한 번에 조회가 행 수만큼 돈다(N+1).
+그럴 때는 클래스 메서드 `update_many()`를 오버라이드해 **값이 바뀐 같은 클래스 자식 전부**를 한 번에 받는다.
+
+```python
+class Row(LiveComponent):
+    class Meta:
+        template_name = "rows/row.html"
+
+    item_id: int
+    title: str = ""
+
+    @classmethod
+    async def update_many(cls, updates):              # [(component, 바뀐 assigns), ...]
+        await super().update_many(updates)            # 각자의 update()로 새 값을 반영한다
+        ids = [component.item_id for component, _ in updates]
+        titles = {pk: t async for pk, t in Item.objects.filter(pk__in=ids).values_list("pk", "title")}
+        for component, _ in updates:
+            component.title = titles.get(component.item_id, "")
+```
+
+새로 생긴 자식은 `update_many()`가 아니라 `joined()`를 받는다. 상세:
 https://github.com/itda-work/django-wireview/blob/main/docs/features/live-component.md
 
 ## 라이프사이클 훅 (`Meta.on_mount`, `attach_hook`)
