@@ -199,3 +199,20 @@ def test_upgrading_tells_every_reader_of_every_advisory():
         a for entry in _security_entries(after_rc4) for a in ADVISORY_ID.findall(entry.split(" ", 1)[0])
     }
     assert [b[:60] for b in flagged if len(set(ADVISORY_ID.findall(b))) != 1] == []
+
+
+def test_the_toast_advisory_says_what_to_empty_on_each_backend():
+    """Emptying ``django_session`` or the session cache, as the entry said, left a ``cached_db``
+    session alive -- its cache entry outlived the row, and a row refilled the cache -- and named
+    nothing a ``file`` backend could empty. It also said rotating ``SECRET_KEY`` does not help,
+    when only a rotation that keeps the old key in the fallbacks invalidates nothing."""
+    entry = next(
+        e for release in _headings() for e in _security_entries(release) if "GHSA-4v8p-p6p8-78pj" in e.split(" ", 1)[0]
+    )
+    todo = entry.split("**What to do:**", 1)[1]
+
+    assert [
+        p
+        for p in ("`django_session`", "`cached_db` both", "`SESSION_FILE_PATH`", "`SECRET_KEY_FALLBACKS`")
+        if p not in todo
+    ] == []

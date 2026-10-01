@@ -416,10 +416,15 @@ The django-reactor era changelog (2.x) is preserved in
   a server-side session backend and a layer with an out-of-process broker; `InMemoryChannelLayer`
   keeps it in the process, and with `signed_cookies` the join failed before subscribing (see the
   fix under `### Fixed`). Fixed here: a session key enters the group name only as a digest.
-  **What to do:** upgrade, then invalidate the sessions that were active while you ran an
-  affected version. `clearsessions` removes only expired sessions, and rotating `SECRET_KEY` does
-  not invalidate a db or cache backend's session keys: empty the session table (`django_session`)
-  or the session cache, which logs every user out. Find the `wireview.toast.session.` group names
+  **What to do:** upgrade, then, once the last 1.0.0rc3 or rc4 worker is down (one still running
+  keeps subscribing with raw keys), invalidate the sessions that were active while you ran an
+  affected version, which logs every user out. Empty what holds them: db the session table
+  (`django_session`), cache the session cache, `cached_db` both (whichever is left keeps the
+  session), file the session files in `SESSION_FILE_PATH`. `clearsessions` removes only expired
+  sessions.
+  Rotating `SECRET_KEY` with the old key kept in `SECRET_KEY_FALLBACKS` invalidates nothing;
+  changing it without the fallback logs everyone out on every backend but also voids every other
+  signature, such as password reset links. Find the `wireview.toast.session.` group names
   in the broker's dumps, logs and monitoring records and remove them. If you cannot upgrade yet,
   take `{% wireview_toasts %}` out of the layout (`docs/UPGRADING.md`).
 

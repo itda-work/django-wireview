@@ -109,7 +109,7 @@ UPGRADE_NOTE = {
     "a binding to a method the dispatcher would": ("부를 수 없는 이름에", "`AssertionError`"),
     "are `StrEnum`s": ("`StrEnum`", "`StrEnum`"),
     "`signed_cookies` session backend": ("토스트 채널이", "`signed_cookies`"),
-    "[GHSA-4v8p-p6p8-78pj]": ("토스트 채널이", "`clearsessions`"),
+    "[GHSA-4v8p-p6p8-78pj]": ("토스트 채널이", "`cached_db`: 테이블과 캐시 둘 다"),
     "no longer announces a fixture load": ("픽스처 로드", "픽스처 로드"),
     "`uvicorn <project>.asgi:application`": ("`asgi.py`", "`ASGIStaticFilesHandler`"),
     "shipped skill now introduces toasts": ("에이전트 스킬", "토스트"),
