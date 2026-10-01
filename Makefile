@@ -269,7 +269,7 @@ ci-build:
 	w = sorted(glob.glob('dist/*.whl'))[-1]; \
 	names = set(zipfile.ZipFile(w).namelist()); \
 	want = {'wireview/project_template/' + n for n in ('manage.py-tpl', 'project_name/settings.py-tpl', \
-	'project_name/asgi.py-tpl', 'project_name/urls.py-tpl', 'hello/live.py-tpl', 'hello/templates/hello/index.html')}; \
+	'project_name/asgi.py-tpl', 'project_name/urls.py-tpl', 'hello/live.py-tpl', 'hello/templates/hello/index.html', '.gitignore')}; \
 	sys.exit(0) if want <= names else sys.exit(f'{w} lacks {sorted(want - names)}')"
 	@echo "ci-build: wheel contains the starter template"
 

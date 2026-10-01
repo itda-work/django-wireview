@@ -202,3 +202,19 @@ def test_asgi_serves_the_bundle_in_debug(project, debug, status):
     assert int(got) == status, result.stdout + result.stderr
     if status == 200:
         assert int(size) > 1000
+
+
+def test_what_the_project_makes_for_itself_is_ignored(project):
+    """In DEBUG every ``manage.py`` command writes ``hello/live.pyi`` (AUTO_GENERATE_STUBS), and
+    ``migrate`` the database: neither belongs in the reader's first commit.
+    """
+    assert run(project, "manage.py", "check").returncode == 0
+    assert (project / "hello" / "live.pyi").is_file(), "the stub this ignore rule is for"
+    subprocess.run(["git", "init", "-q"], cwd=project, check=True)
+
+    made = ["hello/live.pyi", "db.sqlite3", "hello/__pycache__/live.cpython-312.pyc", ".wireview/metadata.json"]
+    ignored = subprocess.run(["git", "check-ignore", *made], cwd=project, capture_output=True, text=True)
+
+    assert ignored.stdout.split() == made, ignored.stdout + ignored.stderr
+    kept = subprocess.run(["git", "check-ignore", "hello/live.py", "manage.py"], cwd=project, capture_output=True)
+    assert kept.returncode == 1, kept.stdout

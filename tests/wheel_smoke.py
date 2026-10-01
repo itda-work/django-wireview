@@ -82,7 +82,11 @@ with tempfile.TemporaryDirectory() as target:
     made = Path(target)
     if "smokesite.settings" not in (made / "manage.py").read_text():
         sys.exit("the starter template did not render manage.py")
-    expected = [made / "smokesite" / "asgi.py", made / "hello" / "templates" / "hello" / "index.html"]
+    expected = [
+        made / "smokesite" / "asgi.py",
+        made / "hello" / "templates" / "hello" / "index.html",
+        made / ".gitignore",
+    ]
     if not all(path.is_file() for path in expected):
         sys.exit(f"the starter template made {sorted(str(p.relative_to(made)) for p in made.rglob('*'))}")
 

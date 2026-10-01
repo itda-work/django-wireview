@@ -1,0 +1,21 @@
+# What the project writes for itself, not what you write.
+
+# Type stubs of your components. With DEBUG on, wireview writes one beside each
+# module that defines components (hello/live.pyi) whenever Django starts --
+# runserver, check, migrate -- so they would show as changed in every commit.
+# Turn it off with WIREVIEW = {"AUTO_GENERATE_STUBS": False}. If you also keep
+# stubs of your own, list the generated ones here instead of *.pyi.
+*.pyi
+
+# IDE metadata from `manage.py wireview_lsp`.
+.wireview/
+
+# The development database `migrate` makes.
+db.sqlite3
+
+# Python's bytecode cache.
+__pycache__/
+*.py[cod]
+
+# collectstatic's output, when STATIC_ROOT points here.
+staticfiles/
