@@ -39,7 +39,7 @@ make bench ARGS="--server uvicorn-nodeflate"  # permessage-deflate를 끈 uvicor
 
 ## Windows (Parallels 게스트)
 
-Windows 수치는 macOS 호스트의 Parallels 랩 클론(`win11-parlab`, ARM Windows 11)에서 같은 벤치를 돌려 얻는다. 저장소 쪽 드라이버는 `bench/windows/run.sh`다. 게스트 제어(`pmlab_start`·`pmlab_push`·`pmlab_runps` 등)는 **저장소 밖에 있다** — 유지보수자 머신의 `windows-parallels-lab` 에이전트 스킬이 주는 `pmlab.sh`이고, 이 저장소에도 휠에도 들어 있지 않다. `run.sh`는 그 파일을 `PMLAB_SH` 환경 변수(기본값은 유지보수자의 설치 경로 `~/.claude/skills/windows-parallels-lab/scripts/pmlab.sh`)에서 읽는다. 그 스킬이 없으면 같은 함수들(VM 기동·정지, 공유 폴더로 파일 넣기, 게스트에서 PowerShell 실행)을 `prlctl`로 직접 만들어 `PMLAB_SH`로 가리킨다. 아래 순서는 그 스킬이 있는 머신의 것이다.
+Windows 수치는 macOS 호스트의 Parallels 랩 클론(`win11-parlab`, ARM Windows 11)에서 같은 벤치를 돌려 얻는다. 저장소 쪽 드라이버는 `bench/windows/run.sh`다. 게스트 제어(`pmlab_start`·`pmlab_push`·`pmlab_runps` 등)는 **저장소 밖에 있다** — 유지보수자 머신의 `windows-parallels-lab` 에이전트 스킬이 주는 `pmlab.sh`이고, 이 저장소에도 휠에도 들어 있지 않다. `run.sh`는 그 파일을 `PMLAB_SH` 환경 변수(기본값은 유지보수자의 설치 경로 `~/.claude/skills/windows-parallels-lab/scripts/pmlab.sh`)에서 읽는다. 그 스킬이 없으면 `run.sh`가 쓰는 것을 `prlctl`로 직접 만들어 `PMLAB_SH`로 가리킨다: 함수 `pmlab_state`(VM이 떠 있으면 `running`을 출력), `pmlab_push <로컬 파일> <게스트 쪽 이름>`(공유 폴더에 넣기), `pmlab_runps <스크립트>`(게스트에서 PowerShell 실행, `PMLAB_EXEC_TIMEOUT` 초까지 기다림), 그리고 변수 `PMLAB_SHARE_DIR`(호스트 쪽 공유 폴더 경로). `run.sh`의 주석이 말하는 `pmlab_start`·`pmlab_stop`·`pmlab_snapshot`과 아래의 `pmlab_wait_ready`는 손으로 하는 VM 기동·정지·스냅샷이라 `prlctl start`·`stop`·`snapshot`으로 대신해도 된다. 아래 순서는 그 스킬이 있는 머신의 것이다.
 
 ```bash
 source "${PMLAB_SH:-$HOME/.claude/skills/windows-parallels-lab/scripts/pmlab.sh}"   # 저장소 밖
