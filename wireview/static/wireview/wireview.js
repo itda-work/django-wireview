@@ -184,6 +184,10 @@ class ServerConnection {
       // Notify hooks of disconnection before clearing components
       for (const component of Object.values(this.components)) {
         component.hookManager.disconnected();
+        // The reconnect's join makes a new component, whose `joined` starts
+        // its own observer. Left watching, this one kept sending the bindings
+        // it saw to whichever instance holds the id: two pages at a time.
+        component.viewportObserver.destroy();
       }
 
       this.components = {};
@@ -303,6 +307,7 @@ class ServerConnection {
       // Its root left the page, which the hook manager's MutationObserver --
       // watching inside the root -- never sees (#107)
       component.hookManager.destroy();
+      component.viewportObserver.destroy();
       delete this.components[id];
       this.joins.forget(id);
       // Nothing it was waiting for is for the page any more (#146)

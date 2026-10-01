@@ -166,7 +166,7 @@ tests/
                            formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처,
                            fileprobe/ 는 업로드의 모든 입구(입력·드롭 존·미리보기·external)와 숨겼다 다시 보인 LiveComponent의 업로드, 렌더가 새로 그린 일반 컴포넌트와 그 안의 LiveComponent(같은 업로드 이름)의 join·업로드를 보는 E2E(test_uploads_e2e.py)의 픽스처,
                            inheritprobe/ 는 다중 테이블 상속 모델들이다(3단, pk를 따로 둔 자식, 키 타입이 다른 부모). mutation()이 받은 자식 인스턴스가 부모 컬럼을 덮지 않고 제 부모 행에 붙어 있는지 본다(test_mutation_instance.py, 마이그레이션 없음),
-                           streamprobe/ 는 스트림의 dom_id·limit·wire-viewport-*와 같은 이름의 스트림을 쓰는 두 컴포넌트(delete 포함), 스트림 연산이 지운 포커스 항목의 blur를 보는 E2E(test_streams_e2e.py)의 픽스처다(?away=1 은 떠났다 돌아오는 컴포넌트 없는 페이지, ?pair=1 은 둘째 probe, ?nest=1 은 probe 목록 앞의 LiveComponent. seed 버튼은 joined()에서 push_js와 스트림을 보내고 자기 wire-viewport-bottom을 가진 LiveComponent를 새로 그린다(?seeded=1 은 처음부터, ?fill=1 은 그 첫 페이지가 창을 채운다, reseed 링크는 boost 이동으로 probe를 같은 id로 다시 join한다, strip 은 부모와 그것을 한 패치로 바꾼다), reveal 은 목록들 앞에 빈 스트림 컨테이너를 드러낸다)
+                           streamprobe/ 는 스트림의 dom_id·limit·wire-viewport-*(재연결 뒤 포함)와 같은 이름의 스트림을 쓰는 두 컴포넌트(delete 포함), 스트림 연산이 지운 포커스 항목의 blur를 보는 E2E(test_streams_e2e.py)의 픽스처다(?away=1 은 떠났다 돌아오는 컴포넌트 없는 페이지, ?pair=1 은 둘째 probe, ?nest=1 은 probe 목록 앞의 LiveComponent. seed 버튼은 joined()에서 push_js와 스트림을 보내고 자기 wire-viewport-bottom을 가진 LiveComponent를 새로 그린다(?seeded=1 은 처음부터, ?fill=1 은 그 첫 페이지가 창을 채운다, reseed 링크는 boost 이동으로 probe를 같은 id로 다시 join한다, strip 은 부모와 그것을 한 패치로 바꾼다), reveal 은 목록들 앞에 빈 스트림 컨테이너를 드러낸다)
 
 examples/                  예제 앱 11개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.
                            testproj 위에서 돌고 make test가 함께 실행한다(pytest tests examples).

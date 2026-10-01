@@ -9,7 +9,7 @@ import json
 
 import pytest
 from playwright.sync_api import expect
-from testproj.e2e_browser import INBOX_SHIM, expect_count, expect_text, open_live
+from testproj.e2e_browser import INBOX_SHIM, OFFLINE_SHIM, expect_count, expect_text, open_live, wait_live
 from testproj.e2e_server import serve
 
 pytestmark = pytest.mark.e2e
@@ -121,6 +121,40 @@ def test_a_list_the_page_left_and_came_back_to_loads_one_more_page(page, server)
     expect_count(by(page, "rows").locator("li"), 2)
     assert len(sockets) == 1, "boosted, on the socket the page opened"
     assert "ref" in [m for m in sent if m["command"] == "join"][-1]["payload"], "the join back is named"
+
+
+def test_scrolling_to_the_bottom_after_a_reconnect_loads_one_page(page, server):
+    """The reconnect's join makes a new component with an observer of its own, which
+    its ``joined`` starts. The old component's observer was never disconnected: it
+    kept watching the same sentinel and sent ``load_more`` to whatever instance held
+    the id -- the new one, which was asked for two pages at once."""
+    page.add_init_script(OFFLINE_SHIM)
+    page.set_viewport_size({"width": 800, "height": 600})
+    open_live(page, f"{server}/streamprobe/")
+    expect_count(by(page, "rows").locator("li"), 15)
+    _settled(page)
+
+    page.evaluate("window.__link.offline = true; window.__link.sockets.forEach((s) => s.close())")
+    expect(page.locator("#probe.wireview-disconnected")).to_have_count(1)
+    page.evaluate("window.__link.offline = false")
+    wait_live(page, "#probe[data-is-live='true']:not(.wireview-disconnected)")
+    page.evaluate(
+        """() => new Promise((done) => {
+          let n = 0;
+          const frame = () => (++n < 5 ? requestAnimationFrame(frame) : done());
+          requestAnimationFrame(frame);
+        })"""
+    )
+    by(page, "tick").click()
+    expect_count(by(page, "ticks").locator("li"), 2)
+
+    by(page, "sentinel").scroll_into_view_if_needed()
+    expect_text(by(page, "pages"), "2")
+    # Answered after any load_more the scroll sent
+    by(page, "tick").click()
+    expect_count(by(page, "ticks").locator("li"), 3)
+    expect_text(by(page, "pages"), "2")
+    expect_count(by(page, "rows").locator("li"), 30)
 
 
 def test_scrolling_back_to_the_top_calls_the_top_binding(probe):

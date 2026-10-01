@@ -395,6 +395,13 @@ The django-reactor era changelog (2.x) is preserved in
   The page now waits for the patch of the render's component before it takes the missing element
   for one that left.
 
+- Infinite scroll asks for one page at a time after a reconnect. The page dropped its components
+  when the socket closed but left their viewport observers watching: the reconnect's join made a
+  new component whose `joined` started an observer of its own, and the old one, still watching
+  the same binding, sent the same `load_more` to the new instance -- one more page for each
+  reconnect. The page now disconnects the observers of the components it drops, on a close and
+  when a component leaves the page.
+
 ### Security
 
 - `on_upload_complete(name, entry)` is now a method of `Component`, and so framework surface a
