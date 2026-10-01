@@ -327,6 +327,8 @@ WIREVIEW = {
 }
 ```
 
+알림은 Django의 `post_save`·`pre_delete` 신호에서 나간다. 인스턴스의 `asave()`·`adelete()`와 QuerySet의 `adelete()`는 신호를 보내지만, QuerySet의 `aupdate()`·`abulk_create()`·`abulk_update()`는 보내지 않는다. 그래서 다른 탭에 알려야 하는 변경은 인스턴스를 읽어 `asave()`로 저장한다.
+
 ### 구독 설정
 
 ```python
@@ -404,7 +406,10 @@ class XTodoItem(Component):
     async def toggle(self):
         """완료 상태 토글"""
         self.completed = not self.completed
-        await Item.objects.filter(id=self.item_id).aupdate(completed=self.completed)
+        # 인스턴스의 asave()가 post_save를 보내고, 그 신호가 다른 탭에 알린다
+        item = await Item.objects.aget(id=self.item_id)
+        item.completed = self.completed
+        await item.asave()
 
     async def start_edit(self):
         """편집 모드 시작"""
@@ -418,7 +423,9 @@ class XTodoItem(Component):
         text = text.strip()
         if text:
             self.text = text
-            await Item.objects.filter(id=self.item_id).aupdate(text=text)
+            item = await Item.objects.aget(id=self.item_id)
+            item.text = text
+            await item.asave()
         self.editing = False
 
     async def cancel_edit(self):
@@ -604,7 +611,9 @@ class XTodoItem(Component):
 
     async def toggle(self):
         self.completed = not self.completed
-        await Item.objects.filter(id=self.item_id).aupdate(completed=self.completed)
+        item = await Item.objects.aget(id=self.item_id)
+        item.completed = self.completed
+        await item.asave()
 
     async def start_edit(self):
         self.editing = True
@@ -614,7 +623,9 @@ class XTodoItem(Component):
         text = text.strip()
         if text and text != self.text:
             self.text = text
-            await Item.objects.filter(id=self.item_id).aupdate(text=text)
+            item = await Item.objects.aget(id=self.item_id)
+            item.text = text
+            await item.asave()
         self.editing = False
 
     async def cancel_edit(self):

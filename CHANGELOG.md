@@ -256,6 +256,10 @@ The django-reactor era changelog (2.x) is preserved in
   and Ctrl+Enter never sent. They bind `keydown` now, and `tests/test_doc_examples.py` refuses a
   `keypress` binding on such a key.
 
+- Tutorial 03 saved a toggle and an edit with `QuerySet.aupdate()`, which sends no `post_save`,
+  so the other tabs the tutorial promised to keep in sync never heard of them. It reads the item
+  and calls `asave()` now, as the todo example does, and says which ORM calls send the signal.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
