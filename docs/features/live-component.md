@@ -222,10 +222,15 @@ class Counter(LiveComponent):
 이벤트를 만들 수 있기 때문입니다.
 
 이벤트 핸들러로 노출되는 것은 `_`로 시작하지 않으면서 **사용자 코드에서 정의한 이름**
-뿐입니다. `wireview` 패키지와 Pydantic이 소유한 이름(`mount`, `joined`, `update`,
-`send_to_parent`, `model_post_init`, `model_dump` ...)은 서브클래스에서 오버라이드해도
+뿐입니다. `wireview` 패키지와 Pydantic이 소유한 이름(`joined`, `leaving`, `update`,
+`update_many`, `send_to_parent`, `handle_async`, `mutation`, `notification`, `params_changed`,
+`on_upload_complete`, `model_post_init`, `model_dump` ...)은 서브클래스에서 오버라이드해도
 노출되지 않습니다. 부모에 알릴 일이 있으면 사용자 핸들러 안에서 `send_to_parent()`를
 호출하세요.
+
+**`mount`는 프레임워크 이름이 아닙니다.** wireview에는 `mount` 라이프사이클이 없어서
+`async def mount(self)`를 쓰면 프레임워크는 부르지 않고, 클라이언트가 부를 수 있는 이벤트
+핸들러가 하나 생깁니다. 초기화는 필드 기본값, `new()`, `joined()`에서 합니다.
 
 ---
 

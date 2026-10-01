@@ -188,6 +188,13 @@ The django-reactor era changelog (2.x) is preserved in
   the callback for an upload that never finished. Overrides keep working unchanged; a sync one
   is now reported by `wireview.W002` instead of `W001`.
 
+### Fixed
+
+- The LiveComponent guide and the bundled agent skill said `mount` is a framework name a client
+  cannot call. No framework class defines it: an `async def mount(self)` is never called by
+  wireview and is an event handler any client can call. Both now list the real framework names
+  and say initialisation belongs in `joined()`; a test holds every listed name to the rule.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

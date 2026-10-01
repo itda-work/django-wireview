@@ -619,3 +619,66 @@ class TestUploadCompletionCallback:
         await consumer.command_upload_complete(id=view.component.id, name="images", ref="upload-1")
 
         assert view.component.completed == ["images"]
+
+
+# =============================================================================
+# The documented exposure rule
+# =============================================================================
+
+
+#: Where the guides list framework-owned names, and the words that open each list.
+_NAME_LISTS = (
+    ("docs/features/live-component.md", "Pydantic이 소유한 이름("),
+    ("skills/wireview/SKILL.md", "Pydantic 소유 이름("),
+)
+
+
+def _documented_framework_names() -> list[str]:
+    """Every name the guides list as framework-owned, in their own words."""
+    import re
+    from pathlib import Path
+
+    names = []
+    for path, opening in _NAME_LISTS:
+        text = (Path(__file__).parents[1] / path).read_text()
+        owned = text.split(opening, 1)[1].split(")은", 1)[0]
+        names += [name for name in re.findall(r"`(\w+)`", owned) if name not in names]
+    return names
+
+
+class TestDocumentedFrameworkNames:
+    """The guides once promised ``mount`` was framework-owned. It is not.
+
+    Every name the guides list must be one a user can override without
+    exposing it, and ``mount`` -- which no framework class defines -- must
+    not be in the list.
+    """
+
+    @pytest.mark.unit
+    def test_the_guide_lists_names(self):
+        names = _documented_framework_names()
+        assert "joined" in names and "on_upload_complete" in names
+        assert "mount" not in names
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("name", _documented_framework_names())
+    def test_an_override_of_a_listed_name_is_not_a_handler(self, name):
+        from wireview.core.handlers import is_client_callable
+
+        async def override(self, *args, **kwargs):
+            pass
+
+        owner = LiveComponent if name in {"update", "update_many", "send_to_parent"} else Component
+        probe = type(f"ListedNameProbe_{name}", (owner,), {"__module__": __name__, name: override})
+        assert not is_client_callable(probe, name)
+
+    @pytest.mark.unit
+    def test_mount_is_a_user_handler(self):
+        """No framework class owns ``mount``: writing one exposes it."""
+        from wireview.core.handlers import is_client_callable
+
+        async def mount(self):
+            pass
+
+        probe = type("MountProbe", (Component,), {"__module__": __name__, "mount": mount})
+        assert is_client_callable(probe, "mount")
