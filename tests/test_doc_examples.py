@@ -201,7 +201,7 @@ def _chains_in(text: str) -> list[tuple[int, str]]:
     A ``# comment`` between links is part of the chain, as it is in a Python block.
     """
     found = []
-    for start in (m.start() for m in re.finditer(r"\bJS\(\)(?=\s*\.\s*\w+\()", text)):
+    for start in (m.start() for m in re.finditer(r"\bJS\(\)(?=(?:\s*#[^\n]*)*\s*\.\s*\w+\()", text)):
         end = start + len("JS()")
         while (link := re.match(r"(?:\s*#[^\n]*)*\s*\.\s*\w+\(", text[end:])) is not None:
             depth, i = 0, end + link.end() - 1
@@ -304,6 +304,13 @@ def test_a_chain_on_its_own_lines_with_comments_is_read_whole():
     text = 'await self.push_js(\n    JS()\n    .hide("#modal")  # 숨김\n\n    .focus("#next")  # 포커스\n)\n'
     [(_, source)] = _chains_in(text)
     assert source.startswith("JS()") and source.rstrip().endswith('.focus("#next")')
+
+
+def test_a_comment_right_after_js_does_not_hide_the_chain():
+    # The lookahead for the first link skipped no comment, so this chain was never collected
+    text = 'JS()  # 시작\n    .add_class("shake", to="#row")\n'
+    [(_, source)] = _chains_in(text)
+    assert _js_mistakes(source)
 
 
 def test_the_chains_the_rule_cannot_read_are_the_known_ones():
