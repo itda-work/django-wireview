@@ -24,8 +24,10 @@ The django-reactor era changelog (2.x) is preserved in
   `SynchronousOnlyOperation`, so load it with `arefresh_from_db(fields=[...])` -- and `save()`
   writes only the fields that came. Turn a mapping on only after no process runs 1.0.0rc4 or
   earlier: those fill the fields a partial payload leaves out with their defaults (#144).
-- `wireview.W017` warns when `AUTO_BROADCAST` sends every field of a user model
-  (`AbstractBaseUser`, its password hash) or a session model (`AbstractBaseSession`) (#144).
+- `wireview.W017` warns when `AUTO_BROADCAST` sends a credential: a user model's password hash
+  (`AbstractBaseUser`, whenever its payload carries `password`), or any session model
+  (`AbstractBaseSession`), whose pk is the session key and goes with every payload whatever
+  fields are listed (#144).
 
 ## [1.0.0] - 2026-10-02
 

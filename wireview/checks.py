@@ -290,12 +290,15 @@ def check_auto_broadcast_senders(app_configs, **kwargs) -> list[CheckMessage]:
 
 
 def check_auto_broadcast_credentials(app_configs, **kwargs) -> list[CheckMessage]:
-    """W017: ``AUTO_BROADCAST`` sends every field of a model that holds a credential.
+    """W017: ``AUTO_BROADCAST`` sends a credential onto the channel layer.
 
-    Only models certain to hold one: a user model (``AbstractBaseUser``, the
-    password hash) and a session model (``AbstractBaseSession``, the session key
-    and data). No guess from field names, which would warn about models that are
-    fine and teach the team to ignore the check.
+    Only models certain to hold one: a user model (``AbstractBaseUser``) whose
+    payload carries the password hash, and a session model
+    (``AbstractBaseSession``), whose pk is the session key. No guess from field
+    names, which would warn about models that are fine and teach the team to
+    ignore the check. The fields judged are the ones the payload carries: a
+    multi-table child of the user model sends its own columns, not the parent's
+    password.
     """
     from django.contrib.auth.base_user import AbstractBaseUser
     from django.contrib.sessions.base_session import AbstractBaseSession
@@ -310,21 +313,31 @@ def check_auto_broadcast_credentials(app_configs, **kwargs) -> list[CheckMessage
 
     messages: list[CheckMessage] = []
     for model, fields in senders.items():
-        if fields is not None:
-            continue
-        if issubclass(model, AbstractBaseUser):
-            what, example = "its password hash", (getattr(model, "USERNAME_FIELD"),)
-        elif issubclass(model, AbstractBaseSession):
-            what, example = "its session key and data", ()
-        else:
-            continue
+        label = model._meta.label_lower
         sender = (model._meta.app_label, model._meta.object_name)
+        if issubclass(model, AbstractBaseSession):
+            # Listing fields does not help: the pk goes with every payload, and into the channel name with model_pk.
+            messages.append(
+                Warning(
+                    f"WIREVIEW['AUTO_BROADCAST'] broadcasts {label}, whose primary key is the session key. "
+                    "Every payload carries the pk, whatever fields senders lists, and model_pk puts it "
+                    "in the channel name.",
+                    hint=f"Remove {sender!r} from senders and broadcast a model that holds only what components need.",
+                    id="wireview.W017",
+                )
+            )
+            continue
+        sendable = [field.name for field in auto_broadcast.sendable_fields(model)]
+        if not issubclass(model, AbstractBaseUser) or "password" not in (sendable if fields is None else fields):
+            continue
+        username = getattr(model, "USERNAME_FIELD", None)
+        example = (username,) if username in sendable and username != "password" else ()
         messages.append(
             Warning(
-                f"WIREVIEW['AUTO_BROADCAST'] broadcasts every field of {model._meta.label_lower}, including {what}.",
+                f"WIREVIEW['AUTO_BROADCAST'] sends the password hash of {label} in every payload.",
                 hint=(
-                    "Make senders a mapping and list the fields to send for this model, for example "
-                    f"senders={{{sender!r}: {example!r}}}. () sends the pk alone."
+                    "Make senders a mapping and list the fields to send for this model, without password, "
+                    f"for example senders={{{sender!r}: {example!r}}}. () sends the pk alone."
                 ),
                 id="wireview.W017",
             )
