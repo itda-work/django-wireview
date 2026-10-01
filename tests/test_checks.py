@@ -212,9 +212,7 @@ class TestShadowedFrameworkNameCheck:
         cls = make_component("ProbeShadowRule", validate=validate)
         assert not is_client_callable(cls, "validate")
 
-    @pytest.mark.parametrize(
-        "name", sorted({*wireview_checks.LIFECYCLE_METHODS, *wireview_checks.OVERRIDABLE_METHODS})
-    )
+    @pytest.mark.parametrize("name", sorted({*wireview_checks.LIFECYCLE_METHODS, *wireview_checks.OVERRIDABLE_METHODS}))
     def test_an_intended_override_is_silent(self, only, name):
         async def callback(self, *args, **kwargs):
             pass

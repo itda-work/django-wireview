@@ -177,7 +177,7 @@ class TestTheOnTag:
             "import django; django.setup()\n"
             "from django.template import Context, Template\n"
             "from test_event_binding import BindingProbe\n"
-            "template = Template('{% load wireview %}<b {% on \"click\" \"joined\" %}>')\n"
+            'template = Template(\'{% load wireview %}<b {% on "click" "joined" %}>\')\n'
             "try:\n"
             "    template.render(Context({'this': BindingProbe.model_construct(id='c')}))\n"
             "except AssertionError as error:\n"
