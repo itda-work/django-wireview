@@ -59,6 +59,48 @@ dependencies = ["django-wireview>=1.0,<2"]
 - **세션 키로 보낸 토스트의 채널 이름이 바뀌었다.** 이제 세션 키를 다이제스트로 넣는다(`signed_cookies` 백엔드의 키를 레이어가
   거절했다). 1.0.0rc4 워커와 1.0 워커가 섞여 도는 롤링 배포 동안에는 서로 다른 버전의 워커 사이에서 세션 키 토스트가
   닿지 않는다. 토스트는 다시 오지 않는 일회성 메시지라 그동안의 것은 빠진다. 사용자로 보낸 토스트는 이름이 같아 영향이 없다.
+- **`UploadStatus`·`AsyncState`·`PresenceState`는 `StrEnum`이다**(**조용함**). 템플릿의 `{{ entry.status }}`, `str()`,
+  f-string이 `UploadStatus.UPLOADING` 대신 값(`uploading`)을 낸다. `==` 비교와 JSON은 그대로다. 옛 출력에 맞춘 CSS 클래스,
+  로그 파싱, `"AsyncState.LOADING"` 같은 문자열 비교를 값으로 고친다.
+- **스트림 연산은 그것을 보낸 컴포넌트 요소 안에서 `wire-stream` 컨테이너를 찾는다**(**조용함**). 전에는 페이지 전체에서
+  이름으로 찾았다. 컨테이너를 그 컴포넌트의 루트 밖(레이아웃, 다른 컴포넌트)에 둔 페이지는 콘솔에
+  `Stream container not found` 경고 하나만 남기고 항목이 붙지 않는다. 컨테이너를 스트림을 가진 컴포넌트의 템플릿 안으로
+  옮긴다. 같은 이름의 스트림을 가진 두 컴포넌트가 이제 서로의 목록을 건드리지 않으므로, 그것을 피하려고 붙인 `dom_id`
+  접두사는 없어도 된다.
+- **렌더가 지우거나 옮긴 포커스 칸은 `blur`·`focusout`·`change`를 보내지 않는다**(**조용함**). 브라우저는 포커스된 요소를
+  지울 때 `blur`를(입력했으면 `change`를 먼저) 내고, 전에는 그것이 사용자의 이벤트로 서버에 갔다. 그래서 편집 칸을 숨기는
+  핸들러 뒤에 `{% on "blur" "save_edit" %}`가 돌아 Escape가 저장이 되곤 했다. 칸을 지우는 렌더에 저장이 따라오기를
+  기대했다면 칸을 지우는 핸들러에서 저장한다. 폼 피드백도 이 이벤트를 건드림으로 세지 않는다.
+- **`mount()`·`call()`·`follow_push()`가 구독 이름과 브로드캐스트 이름을 채널 레이어처럼 검사한다.**
+  `Meta.subscriptions`, `get_subscriptions()`, `broadcast()`에 `room:42`처럼 레이어가 거절하는 이름(영숫자·`-`·`_`·`.` 밖의
+  문자)이 있으면 테스트가 `TypeError`로 실패한다. 실서버에서는 원래 join이나 브로드캐스트가 실패하던 이름이다.
+  `room-42`처럼 바꾼다([테스트 헬퍼](./features/testing.md#mountedcomponent)).
+- **생성된 `.pyi`가 `LiveComponent`를 `wireview`에서 import한다.** 커밋해 둔 LiveComponent 스텁은 다시 만들 때까지
+  `wireview_stubs --check`에서 오래됐다고 실패한다. `python manage.py wireview_stubs`로 다시 만든다.
+- **새 경고 `wireview.W018`.** 컴포넌트의 공개 메서드가 프레임워크(wireview·Pydantic)의 멤버와 이름이 같으면 알린다.
+  그런 메서드는 원래 클라이언트가 부를 수 없었다 — Phoenix의 `phx-change="validate"`를 옮긴 `async def validate`가
+  대표다. `manage.py check --fail-level WARNING`을 쓰는 CI는 첫 실행에서 멈출 수 있다. 메서드 이름을 바꾸고 바인딩도
+  고친다([검사 목록](./features/checks.md#검사-목록)).
+- **스타터로 만든 프로젝트의 `asgi.py`에 정적 파일 줄을 더한다.** 1.0 전 스타터의 `asgi.py`를 uvicorn으로 띄우면
+  `wireview.min.js`가 404라 페이지는 그려지고 어떤 컴포넌트도 살아나지 않는다. [튜토리얼 01의 `asgi.py`](./tutorials/01-getting-started.md#asgipy-수정)처럼
+  `DEBUG`일 때 `ASGIStaticFilesHandler`로 감싼다. `runserver`(daphne)만 쓰면 고칠 것이 없다.
+- **`public=False`와 함께 준 `name=`이 그 컴포넌트의 이름이 된다**(**조용함**). 등록된 클래스를 상속하면 `name=`이
+  버려지고 로그·계측·서명 상태에 부모의 이름이 쓰였다. 계측이나 로그를 컴포넌트 이름으로 거르던 곳은 새 이름을 본다.
+  `name=`이 없으면 그대로다.
+- **`JS()` transition의 dict 형식에서 `to` 키가 빠졌다.** 클라이언트는 이 키를 읽은 적이 없다. 타입 검사기가 이제
+  `{"to": ...}`를 거절하므로 키를 지운다. 실행 동작은 같다.
+- **설치한 에이전트 스킬을 다시 설치한다.** `wireview_agent_setup`이 복사한 `.claude/skills/wireview`는 rc1의
+  `handle_async`·`mount()` 계약을 말하고 `TypeError`를 내는 예시를 담고 있었다. `python manage.py wireview_agent_setup --force`로
+  덮어쓴다.
+- **문서 예시를 베껴 쓴 코드를 확인한다.** 1.0 전 문서의 예시 몇 개는 그대로 쓰면 결함이었고, 오류 없이 지나간다.
+  - 함수 컴포넌트가 f-string으로 마크업을 만들어 인자를 이스케이프하지 않았다(XSS). `format_html`로 만든다.
+  - LiveComponent·훅 가이드, README, 튜토리얼 07·08의 서버 헬퍼가 `_` 없이 이름 붙어 브라우저가 부를 수 있는 핸들러였다
+    (`notify_user`는 아무 토스트나 띄웠다). `_`를 붙인다. `async def mount(self)`도 프레임워크가 부르지 않는 핸들러다 —
+    초기화는 `joined()`에 둔다. `send_to_parent`가 부르는 부모 핸들러는 브라우저도 아무 인자로 부를 수 있다.
+  - 튜토리얼 02·03은 Escape와 Ctrl+Enter를 `keypress`에 묶어 한 번도 발화하지 않았다. `keydown`에 묶는다.
+  - 튜토리얼 03은 `QuerySet.aupdate()`로 저장해 `post_save`가 없었고 다른 탭이 듣지 못했다. 인스턴스를 `asave()`한다.
+  - 튜토리얼 03~05는 중첩 컴포넌트에 `id`를 주지 않아 부모가 렌더할 때마다 자식이 새로 만들어졌다. `id`를 준다.
+  - 퀴즈 예제와 튜토리얼 13은 `{% class {...} %}`를 여러 줄에 걸쳐 써서 태그가 글자로 찍혔다. 한 줄에 쓴다.
 
 ## 1.0.0rc1에서 1.0으로
 

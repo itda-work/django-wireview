@@ -356,7 +356,10 @@ def button(text: str, variant: str = "primary"):
 1. `CHANGELOG.md`의 Unreleased를 버전 절로 옮긴다. 아래 비교 링크도 고친다: `[Unreleased]`는 새 태그부터
    `HEAD`까지, 새 절은 앞 태그부터 새 태그까지(`tests/test_changelog.py`가 본다). 그 사이 공개된 보안 권고는
    `### Security`에 GHSA 링크·영향 버전·조치와 함께 적고 `SECURITY.md`의 권고 표에도 더한다. yank한 릴리스는
-   제목에 `[YANKED]`를 붙인다.
+   제목에 `[YANKED]`를 붙인다. 옮기기 전에 그 절의 항목을 하나씩 `docs/UPGRADING.md`의 그 버전 절과 대조한다 —
+   업그레이드하는 프로젝트가 할 일이 있으면 그 절에 적고(조용히 달라지면 **조용함**), 없으면 그 이유를
+   `tests/test_upgrading.py`의 표에 적는다. 여러 브랜치가 각자 CHANGELOG에만 적은 변경이 이렇게 빠졌다. 그 표는
+   1.0.0rc4에서 1.0으로 가는 절을 본다. 다음 릴리스는 표와 절을 그 버전으로 옮긴다.
 2. `pyproject.toml`과 `package.json`의 `version`을 함께 올리고, `uv lock`과 `npm install --package-lock-only`로
    두 lock의 버전도 맞춘다(`tests/test_packaging.py`가 넷을 비교한다). 사전 릴리스가 아니면 classifier가
    `Development Status :: 5 - Production/Stable`이어야 한다(같은 파일이 본다).
