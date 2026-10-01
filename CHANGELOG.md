@@ -81,6 +81,9 @@ The django-reactor era changelog (2.x) is preserved in
   lists the published advisories, adds `AUTO_BROADCAST`'s `senders` to the boundaries wireview
   keeps, and points the event exposure rule at the user documentation instead of `CLAUDE.md`.
 
+- `docs/COMPATIBILITY.md` says `django` has no upper bound, so a Django the matrix has not passed
+  installs and is unsupported until a patch release adds it.
+
 ### Fixed
 
 - `{% wireview_toasts %}` works on a site with the `signed_cookies` session backend. Its key is the
