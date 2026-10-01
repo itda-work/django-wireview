@@ -44,7 +44,7 @@ def resolve_senders(config: AutoBroadcast) -> dict[type[models.Model], tuple[str
     """Each model ``config.senders`` names, in a stable order, and the fields its payload carries.
 
     None stands for every field. The names come back as the serializer selects them: a foreign key by its field
-    name, whether it was written as ``product`` or ``product_id``.
+    name, whether it was written as ``product`` or ``product_id``, and once if it was written both ways.
     """
     resolved: dict[type[models.Model], tuple[str, ...] | None] = {}
     keys: dict[type[models.Model], tuple[str, str]] = {}
@@ -57,7 +57,7 @@ def resolve_senders(config: AutoBroadcast) -> dict[type[models.Model], tuple[str
                 f"which is not an installed model: {e}"
             ) from e
         fields = config._fields_for((app_label, model_name))
-        sent = None if fields is None else tuple(_sent_field_name(model, name) for name in fields)
+        sent = None if fields is None else tuple(dict.fromkeys(_sent_field_name(model, name) for name in fields))
         if model in resolved and _field_set(resolved[model]) != _field_set(sent):
             # get_model ignores the case of a model name, so two keys can be one model. Letting either list win
             # could send every field where the other asked for a few.

@@ -216,6 +216,11 @@ def test_one_model_named_twice_alike_is_one_sender():
     assert resolved == {User: None}
 
 
+def test_one_field_named_by_name_and_attname_is_one_field():
+    resolved = auto_broadcast.resolve_senders(AutoBroadcast(senders={("rating", "Rating"): ("product", "product_id")}))
+    assert resolved == {Rating: ("product",)}
+
+
 def test_a_bare_string_is_refused_not_read_as_its_letters():
     """``("username")`` is a string, not a one-element tuple."""
     with pytest.raises(ValidationError):
