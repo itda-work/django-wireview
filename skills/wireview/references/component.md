@@ -102,13 +102,13 @@ class XTodoList(Component):
 | `await self.scroll_into_view(element_id, behavior="smooth")` | 스크롤 |
 | `await self.push_title(title)` | 문서 제목 |
 | `await self.put_flash(...)` / `await self.clear_flash()` | 플래시 메시지 |
-| `await self.push_js(JS().add_class("shake", to="#row"))` | 클라이언트 DOM 명령 |
+| `await self.push_js(JS().add_class("#row", "shake"))` | 클라이언트 DOM 명령 |
 | `await self.push_event(name, payload)` | JavaScript Hook으로 이벤트 전달 |
 | `await self.wire.push_to(url)` / `replace_to` / `redirect_to` | 내비게이션 (앞의 둘은 연결 유지) |
 
 `JS()` 빌더: `show`, `hide`, `toggle`, `add_class`, `remove_class`, `toggle_class`,
 `transition`, `set_attr`, `remove_attr`, `set_value`, `focus`, `focus_first`, `push`,
-`navigate`, `dispatch`. 체이닝된다.
+`navigate`, `dispatch`. 체이닝된다. 첫 인자는 대상 선택자다(`add_class("#row", "shake")`).
 
 ## 브로드캐스트
 

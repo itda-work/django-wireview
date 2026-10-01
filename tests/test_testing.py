@@ -273,6 +273,69 @@ class TestBroadcastsAreOnTheMountedComponent:
             assert view.wire.presence_broadcasts == []
 
 
+class TestTheRecordedLayerRefusesWhatARealLayerRefuses:
+    """A group name a channel layer refuses fails under mount() too.
+
+    The skill's presence example used ``room:42``: every layer raises TypeError for
+    the ``:``, but mount() recorded the broadcast and the unit test was green.
+    """
+
+    class Speaker(Component):
+        room: str = "room:42"
+
+        async def shout(self):
+            await self.broadcast(self.room, text="hi")
+
+    from wireview import PresenceMixin
+
+    class Typist(PresenceMixin, Component):
+        room: str = "room:42"
+
+        def _presence_topic(self) -> str:
+            return self.room
+
+        def _presence_user_id(self) -> str:
+            return "1"
+
+        def _presence_username(self) -> str:
+            return "ann"
+
+        async def arrive(self):
+            await self.presence_join()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_a_real_layer_refuses_the_name(self):
+        from channels.layers import InMemoryChannelLayer
+
+        with pytest.raises(TypeError, match="Group name"):
+            await InMemoryChannelLayer().group_send("room:42", {"type": "x"})
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_a_broadcast_to_it_fails(self):
+        view = await mount(self.Speaker)
+        with pytest.raises(TypeError, match="Group name"):
+            await view.call("shout")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_a_presence_topic_with_it_fails(self):
+        view = await mount(self.Typist)
+        with pytest.raises(TypeError, match="Group name"):
+            await view.call("arrive")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_a_valid_name_is_recorded(self):
+        view = await mount(self.Speaker, room="room.42")
+        await view.call("shout")
+        assert [b["channel"] for b in view.broadcasts] == ["room.42"]
+        view = await mount(self.Typist, room="room.42")
+        await view.call("arrive")
+        assert [b["group"] for b in view.presence_broadcasts] == ["presence.room.42"]
+
+
 class QuietCounter(SimpleCounter):
     async def quietly(self):
         self.count += 1

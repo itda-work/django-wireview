@@ -37,7 +37,7 @@ async def test_increment():
 | `await view.follow_push()` | push·replace 뒤에 클라이언트가 하는 `params_changed`를 돌린다 |
 | `view.stream_html(name)` | 스트림으로 나간 아이템 HTML (`stream_items`·`stream_ops`도 있다) |
 | `view.is_frozen` | `freeze()` 여부 |
-| `view.broadcasts` | 이 컴포넌트가 낸 브로드캐스트 |
+| `view.broadcasts` | 이 컴포넌트가 낸 브로드캐스트. 채널 레이어가 거절하는 이름(`room:42`)은 기록하지 않고 레이어와 같은 `TypeError`를 던진다 |
 | `view.presence_broadcasts` | 그중 `PresenceMixin`이 낸 것(입장·퇴장·타이핑). 항목마다 `kwargs`에 `action` |
 | `view.clear_messages()` | 다음 단계 전에 비운다. 필터 전환처럼 `stream()`을 다시 부르는 핸들러를 검사하기 전에 필수 |
 

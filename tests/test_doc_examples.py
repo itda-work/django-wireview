@@ -170,8 +170,83 @@ def test_no_template_calls_js_with_arguments(where, code):
     assert not re.search(r"\{%[^%]*\bJS\(", code), f"{where}: build the JS() chain in a @property"
 
 
+def _js_chains() -> list[tuple[str, str]]:
+    """(``file:line``, source) for every ``JS().name(...)...`` chain the docs show, in a block or inline."""
+    found = []
+    for path in DOCS:
+        text = path.read_text(encoding="utf-8")
+        for start in (m.start() for m in re.finditer(r"\bJS\(\)\.", text)):
+            end = start + len("JS()")
+            while (link := re.match(r"\s*\.\s*\w+\(", text[end:])) is not None:
+                depth, i = 0, end + link.end() - 1
+                while i < len(text):
+                    depth += {"(": 1, ")": -1}.get(text[i], 0)
+                    i += 1
+                    if depth == 0:
+                        break
+                end = i
+            line = text.count("\n", 0, start) + 1
+            found.append((f"{path.relative_to(ROOT)}:{line}", text[start:end]))
+    return found
+
+
+JS_CHAINS = _js_chains()
+
+
+def _js_mistakes(source: str) -> list[str]:
+    """Each link of a JS() chain must be a JS method its arguments bind to."""
+    import inspect
+
+    from wireview import JS
+
+    try:
+        node = ast.parse(textwrap.dedent(source).replace("\n", " "), mode="eval").body
+    except SyntaxError:
+        return []  # an elided signature (``set_value(...)``) or a fragment of prose
+    links = []
+    while isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        links.append(node)
+        node = node.func.value
+    found = []
+    for call in links:
+        name = call.func.attr  # type: ignore[union-attr]
+        method = getattr(JS, name, None)
+        if method is None or name.startswith("_"):
+            found.append(f"JS has no method {name}()")
+            continue
+        args = [None] * sum(not isinstance(a, ast.Starred) for a in call.args)
+        kwargs = {k.arg: None for k in call.keywords if k.arg is not None}
+        try:
+            inspect.signature(method).bind(None, *args, **kwargs)
+        except TypeError as error:
+            found.append(f"JS.{name}{inspect.signature(method)}: {error}")
+    return found
+
+
+@pytest.mark.parametrize(("where", "source"), JS_CHAINS, ids=[where for where, _ in JS_CHAINS])
+def test_every_js_chain_binds_to_the_builder(where, source):
+    # The skill's JS().add_class("shake", to="#row") was a TypeError; prose and tables are read too
+    assert not _js_mistakes(source), f"{where}: {source} -> {_js_mistakes(source)}"
+
+
+@pytest.mark.parametrize(
+    "source",
+    ['JS().add_class("shake", to="#row")', 'JS().show("#a").toggle(show="x", hide="y")', "JS().explode()"],
+)
+def test_the_js_rule_catches_its_mistake(source):
+    assert _js_mistakes(source)
+
+
+@pytest.mark.parametrize(
+    "source",
+    ['JS().add_class("#row", "shake")', 'JS().hide("#a", transition=("fade", 300)).push("saved", value={"id": 1})'],
+)
+def test_the_js_rule_refuses_nothing_right(source):
+    assert not _js_mistakes(source)
+
+
 def test_the_docs_are_read():
-    assert len(PYTHON) > 200 and len(HTML) > 50
+    assert len(PYTHON) > 200 and len(HTML) > 50 and len(JS_CHAINS) > 20
 
 
 @pytest.mark.parametrize(

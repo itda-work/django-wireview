@@ -98,7 +98,10 @@ class Navigation:
 class MockChannelLayer(BaseChannelLayer):
     """Mock channel layer for testing broadcasts.
 
-    Tracks all group messages and subscriptions for test assertions.
+    Tracks all group messages and subscriptions for test assertions. A group name
+    every channel layer refuses (``room:42``: only letters, digits, ``-``, ``_`` and
+    ``.``, under 100 characters) raises the layer's ``TypeError`` here too -- recording
+    it instead let a unit test pass for code that fails on the first real broadcast.
 
     Example:
         channel_layer = MockChannelLayer()
@@ -113,14 +116,17 @@ class MockChannelLayer(BaseChannelLayer):
 
     async def group_send(self, group: str, message: dict[str, t.Any]) -> None:
         """Record a group message."""
+        self.require_valid_group_name(group)
         self.sent_messages.append({"group": group, **message})
 
     async def group_add(self, group: str, channel: str) -> None:
         """Add a channel to a group."""
+        self.require_valid_group_name(group)
         self.groups.setdefault(group, []).append(channel)
 
     async def group_discard(self, group: str, channel: str) -> None:
         """Remove a channel from a group."""
+        self.require_valid_group_name(group)
         if group in self.groups:
             self.groups[group] = [c for c in self.groups[group] if c != channel]
 

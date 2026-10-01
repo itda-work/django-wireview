@@ -112,6 +112,14 @@ The django-reactor era changelog (2.x) is preserved in
 - The Python API example in `docs/features/function-components.md` called `get_function_component`
   without importing it (`NameError`).
 
+- `mount()` records broadcasts and presence messages in a stand-in channel layer, and it recorded
+  any group name. Every real layer refuses a name with anything but letters, digits, `-`, `_` and
+  `.` (`TypeError`), so a component broadcasting to `room:42` passed its unit tests and failed on
+  the first real broadcast. The stand-in now refuses what the layers refuse. The shipped skill's
+  presence example used that very topic, and its `JS().add_class("shake", to="#row")` was a
+  `TypeError` too; both are fixed, and `tests/test_doc_examples.py` binds every `JS()` chain the
+  docs show -- in a block, a table or prose -- to the builder's real signatures.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

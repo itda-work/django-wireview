@@ -52,7 +52,7 @@ class XChatRoom(Component):
 from wireview import PresenceMixin
 
 class ChatInput(PresenceMixin, Component):
-    def _presence_topic(self) -> str: return f"room:{self.room_id}"
+    def _presence_topic(self) -> str: return f"room.{self.room_id}"   # 채널 그룹 이름: 영숫자·-·_·. 만
     def _presence_user_id(self) -> str: return str(self.user.pk)
     def _presence_username(self) -> str: return self.user.username
 
