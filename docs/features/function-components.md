@@ -385,7 +385,8 @@ def function_component(
 ### Python API
 
 ```python
-from wireview import function_component
+from wireview import get_function_component
+
 fc = get_function_component("button")
 html = fc.render({"text": "Click", "variant": "primary"})
 

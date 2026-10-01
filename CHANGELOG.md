@@ -109,6 +109,9 @@ The django-reactor era changelog (2.x) is preserved in
   (XSS). The examples use `format_html` now, the reference says escaping is the function's job, and
   `tests/test_doc_examples.py` refuses a function component that builds markup with an f-string.
 
+- The Python API example in `docs/features/function-components.md` called `get_function_component`
+  without importing it (`NameError`).
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
