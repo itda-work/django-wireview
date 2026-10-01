@@ -45,16 +45,28 @@ def _restore(instance: Model, sent: t.Iterable[str]) -> Model:
     """
     sent = set(sent)
     meta = instance._meta
-    # Every table of an inheritance chain shares the row's pk.
-    inherited_pks = {parent._meta.pk.attname for parent in meta.get_parent_list()}
     for field in meta.concrete_fields:
-        if field.attname in inherited_pks:
-            instance.__dict__[field.attname] = instance.pk
-        elif not field.primary_key and field.name not in sent:
+        if field.attname != meta.pk.attname and field.name not in sent:
             instance.__dict__.pop(field.attname, None)
+    _link_parents(instance, meta)
     instance._state.adding = False
     instance._state.db = router.db_for_write(type(instance), instance=instance)
     return instance
+
+
+def _link_parents(instance: Model, meta: t.Any) -> None:
+    """Give each parent table of ``meta`` the key its parent link holds, as far as the payload tells.
+
+    A child's pk is not its parents' pk: a child may declare a pk of its own, and the
+    link to its parent is then another column with another value, of another type
+    if the parent's key is. The link is all that names the parent row. A link the
+    payload did not carry (a grandparent's, past a parent with a pk of its own) stays
+    deferred, so ``save()`` reads it from the row instead of guessing it.
+    """
+    for parent, link in meta.parents.items():
+        if link is not None and link.attname in instance.__dict__:
+            instance.__dict__[parent._meta.pk.attname] = instance.__dict__[link.attname]
+            _link_parents(instance, parent._meta)
 
 
 class WireviewJSONEncoder(DjangoJSONEncoder):

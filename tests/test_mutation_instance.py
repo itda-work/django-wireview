@@ -21,7 +21,7 @@ from django.db import connection
 from django.db.models.signals import post_save
 from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
-from testproj.inheritprobe.models import Restaurant
+from testproj.inheritprobe.models import Branch, CustomRestaurant, Pizzeria, Place, Restaurant, Theatre
 
 from examples.rating.models import Product
 from examples.todo.models import Item
@@ -167,6 +167,70 @@ class TestInheritedModel:
 
         assert instance.get_deferred_fields() == {"name", "city"}
         assert instance.name == "Pizzeria"
+
+    def test_three_tables_linked_by_their_pks_keep_every_parent(self):
+        pizzeria = Pizzeria.objects.create(name="Napoli", city="Busan", serves_pizza=True)
+        instance = serializer.decode(serializer.encode(pizzeria))
+
+        instance.oven = "wood"
+        with CaptureQueriesContext(connection) as queries:
+            instance.save()
+
+        assert [query["sql"].split(" SET ")[0] for query in queries] == ['UPDATE "inheritprobe_pizzeria"']
+        assert Pizzeria.objects.values_list("name", "city", "serves_pizza", "oven").get(pk=pizzeria.pk) == (
+            "Napoli",
+            "Busan",
+            True,
+            "wood",
+        )
+
+    def test_a_child_with_a_pk_of_its_own_stays_linked_to_its_parent(self):
+        # The child's pk is 1 of its own table; its parent is another Place. Copying the
+        # pk up would link it to the unrelated Place whose pk happens to be the same.
+        unrelated = Place.objects.create(name="Unrelated", city="Busan")
+        restaurant = CustomRestaurant.objects.create(restaurant_key=unrelated.pk, name="Original", city="Seoul")
+        assert restaurant.place_ptr_id != unrelated.pk
+        instance = serializer.decode(serializer.encode(restaurant))
+
+        assert instance.id == restaurant.place_ptr_id
+        instance.serves_pizza = True
+        instance.save()
+
+        saved = CustomRestaurant.objects.get(pk=restaurant.pk)
+        assert (saved.place_ptr_id, saved.name, saved.city, saved.serves_pizza) == (
+            restaurant.place_ptr_id,
+            "Original",
+            "Seoul",
+            True,
+        )
+        assert Place.objects.values_list("name", "city").get(pk=unrelated.pk) == ("Unrelated", "Busan")
+
+    def test_a_parent_key_of_another_type_is_the_links_value(self):
+        theatre = Theatre.objects.create(number=7, code="A1", name="Main hall")
+        instance = serializer.decode(serializer.encode(theatre))
+
+        assert instance.code == "A1"
+        instance.seats = 300
+        instance.save()
+
+        assert Theatre.objects.values_list("venue_ptr_id", "name", "seats").get(pk=7) == ("A1", "Main hall", 300)
+
+    def test_an_ancestor_key_the_payload_does_not_link_is_deferred_not_made_up(self):
+        # Branch's pk links to CustomRestaurant; CustomRestaurant's link to Place is a
+        # column of its own table, not in the payload. The pk is not that link.
+        unrelated = Place.objects.create(name="Unrelated", city="Busan")
+        branch = Branch.objects.create(restaurant_key=unrelated.pk, name="Original", city="Seoul")
+        assert branch.place_ptr_id != unrelated.pk
+        instance = serializer.decode(serializer.encode(branch))
+
+        assert {"id", "place_ptr_id"} <= instance.get_deferred_fields()
+        assert instance.restaurant_key == branch.restaurant_key
+        instance.open_late = True
+        instance.save()
+
+        saved = Branch.objects.get(pk=branch.pk)
+        assert (saved.place_ptr_id, saved.name, saved.open_late) == (branch.place_ptr_id, "Original", True)
+        assert Place.objects.values_list("name", "city").get(pk=unrelated.pk) == ("Unrelated", "Busan")
 
 
 @pytest.mark.unit

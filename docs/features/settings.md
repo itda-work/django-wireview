@@ -69,6 +69,8 @@ WIREVIEW = {
   필드**와 `serialize=False` 필드는 실리지 않는다. 그런 필드는 `QuerySet.only()`로 읽은 인스턴스처럼 남는다. 읽으면 DB를
   조회하므로 `mutation()`(이벤트 루프)에서 그냥 읽으면 `SynchronousOnlyOperation`이다 —
   `await instance.arefresh_from_db(fields=["name"])`로 먼저 읽는다. 저장은 실린 필드만 쓰고 부모 테이블은 건드리지 않는다.
+  부모 행은 자식의 pk가 아니라 페이로드에 실린 부모 링크로 찾는다(자식이 pk를 따로 선언하면 둘은 다른 값이다). 링크가
+  실리지 않은 조상(pk를 따로 둔 부모의 부모)의 키도 deferred로 남아 저장할 때 행에서 읽는다.
   인스턴스의 db alias(`_state.db`)는 라우터의 `db_for_write`가 고른 곳이다.
 - **m2m은 쓰지 않는다.** 페이로드의 m2m pk 목록은 인스턴스에 실리지 않는다. 보통의 `save()`처럼 m2m은 그대로다.
 - `DELETED`로 받은 인스턴스를 저장하면 행이 없으므로 다시 INSERT된다. deferred 필드가 있는 인스턴스(상속한 자식)는

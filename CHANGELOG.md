@@ -19,7 +19,9 @@ The django-reactor era changelog (2.x) is preserved in
   an existing row, so a pk with a default updates instead of failing to insert. A field the
   payload does not carry -- the parents' fields of multi-table inheritance, `serialize=False`
   fields -- is deferred rather than its default: reading it queries the row, and a save writes
-  only the fields that came, so saving a child no longer blanks its parents' columns. A save still
+  only the fields that came, so saving a child no longer blanks its parents' columns. A parent row is the one the
+  payload's parent link names, not the row with the child's pk: a child that declares a pk of its own
+  stays linked to its parent. A save still
   writes every field it carries as it was when the change was announced; `docs/features/settings.md` says
   what that overwrites and how a receiver that saves avoids hearing its own write forever (#153).
 
