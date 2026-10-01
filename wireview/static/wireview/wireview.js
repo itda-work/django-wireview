@@ -538,7 +538,9 @@ class ServerConnection {
         // page -- have arrived: infinite scroll may judge the list now (#112).
         // Not the replaced join's: its list is not the one on the page (#146).
         // A LiveComponent a render brought in hears its own, after its ops:
-        // like its render, it is about its root's join.
+        // like its render, it is about its root's join -- once its element is
+        // on the page. One an event drew arrives ahead of the patch that draws
+        // it, finds no root, and goes by its own id (wire-protocol.md, joined).
         const { id, ref } = payload;
         if (!this.joins.about(this.components[id]?.owned ? rootIdOf(id) : id, ref)) break;
         this.startViewports(id);
