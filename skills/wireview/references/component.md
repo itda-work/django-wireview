@@ -66,6 +66,12 @@ class XTodoList(Component):
             self.skip_render()
 ```
 
+`instance`는 알림에 실린 값에서 복원한 보통의 모델 인스턴스다. 저장하면 보통의 저장(모델의 `save()`, 시그널)이라
+**그 저장이 다시 알림이 되어 `mutation()`이 또 불린다** — 받을 때마다 무조건 `asave()`하면 끝없이 돈다. 값이 다를 때만
+저장하거나, `asave(update_fields=[...])`로 바꾼 필드만 쓰거나, 시그널을 내지 않는 `QuerySet.update()`를 쓴다. 페이로드에
+없는 필드(다중 테이블 상속의 부모 필드 등)는 deferred라 먼저 `arefresh_from_db()`로 읽는다.
+상세: https://github.com/itda-work/django-wireview/blob/main/docs/features/settings.md#모델-알림
+
 ## 이벤트 핸들러
 
 `_`로 시작하지 않고 **직접 정의한** async 메서드가 핸들러로 노출된다. 인자는 템플릿의
