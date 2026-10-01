@@ -27,7 +27,7 @@
 | 상태 | 독립적 | 독립적 |
 | WebSocket | 페이지 연결에 직접 join | join 없이 부모를 통해 |
 | 렌더링 | 페이지 레벨 | 부모 내부 |
-| 이벤트 타겟 | 자동 | `myself=True` 필요 |
+| 이벤트 타겟 | 가장 가까운 컴포넌트 | 가장 가까운 컴포넌트(자신). `myself=True`로 고정 |
 | 용도 | 페이지 컴포넌트 | 재사용 가능 위젯 |
 
 ### 언제 사용하나요?
@@ -475,7 +475,7 @@ class Counter(LiveComponent):
 
 1. **LiveComponent 정의**: `LiveComponent` 상속
 2. **템플릿 헤더**: `{% live_tag_header %}` 사용
-3. **이벤트 타겟팅**: `myself=True` 필수
+3. **이벤트 타겟팅**: 생략해도 가장 가까운 컴포넌트, 곧 이 LiveComponent가 대상이다. `myself=True`는 슬롯 등 어디에 놓이든 대상을 고정한다
 4. **부모에서 사용**: `{% live_component "Name" id="unique-id" %}`
 5. **자식→부모 통신**: `await self.send_to_parent("event", **kwargs)`
 6. **부모→자식 통신**: `await self.send_update("child-id", **kwargs)`
@@ -494,8 +494,8 @@ class Counter(LiveComponent):
 ### 주의사항
 
 - 각 LiveComponent에는 고유한 `id` 필요
-- 이벤트에 `myself=True` 빠뜨리면 부모로 전달됨
-- `send_to_parent`는 부모의 메서드를 직접 호출
+- `myself`를 생략해도 이벤트는 부모가 아니라 이 LiveComponent로 간다. 부모에게 알리려면 `send_to_parent`를 쓴다
+- `send_to_parent`가 부르는 부모 핸들러는 브라우저도 부를 수 있다. 인자를 믿지 않는다
 
 ---
 

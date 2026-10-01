@@ -275,6 +275,10 @@ The django-reactor era changelog (2.x) is preserved in
   once, after the handler, so "Loading..." and the disabled button were never drawn. The button
   uses `wire-disabled-with` and the click loading class now.
 
+- Tutorial 15 said an event without `myself=True` goes to the parent. The client sends it to the
+  closest `wireview-component` element, which inside a LiveComponent is the LiveComponent itself;
+  the tutorial now says so, as `docs/features/live-component.md` does.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
