@@ -87,6 +87,10 @@ class XFileUploader(Component):
             # upload는 ConsumedUpload 인스턴스
             path = await upload.save_to("uploads/")
             print(f"Saved: {path}")
+
+    async def cancel_file(self, ref: str):
+        """목록의 × 버튼. 자세한 것은 아래 "업로드 취소"에서 다룬다"""
+        await self.cancel_upload("files", ref)
 ```
 
 ### 템플릿

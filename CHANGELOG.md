@@ -296,6 +296,10 @@ The django-reactor era changelog (2.x) is preserved in
 - Tutorial 07's blocks import `timezone` and `datetime` where they use them, and its last-seen
   helper starts with `_`: as `format_last_seen` it was a handler any browser could call.
 
+- Tutorial 08's basic uploader template binds `cancel_file`, which its class did not define until
+  a later section, so the render failed with `Missing handler` as soon as a file was chosen. The
+  class defines it now.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
