@@ -306,16 +306,6 @@ The django-reactor era changelog (2.x) is preserved in
   dropped, and the class logged and signed its state as its parent
   (`docs/features/component-api.md`).
 
-### Security
-
-- `on_upload_complete(name, entry)` is now a method of `Component`, and so framework surface a
-  client cannot call. The session only looked the name up, so a component that defined it had
-  also defined an event handler: a browser could send `on_upload_complete` as an event and run
-  the callback for an upload that never finished. Overrides keep working unchanged; a sync one
-  is now reported by `wireview.W002` instead of `W001`. A test that ran the callback with
-  `view.call("on_upload_complete", ...)` now gets `AssertionError` and calls the method directly
-  (`docs/UPGRADING.md`).
-
 - The quiz example and tutorial 13 wrote a `{% class {...} %}` across several lines. Django's
   lexer reads a tag only when it closes on the line it opens, so the tag was printed into the
   button as text and no choice ever got `choice-btn`, `selected`, `correct` or `incorrect` --
@@ -385,6 +375,16 @@ The django-reactor era changelog (2.x) is preserved in
   and points multi-process deployments at a layer that joins processes instead of Redis alone.
   The tutorial index lists the `hooks` example and tutorial 06 under Streams; a test keeps the
   index in step with `examples/`.
+
+### Security
+
+- `on_upload_complete(name, entry)` is now a method of `Component`, and so framework surface a
+  client cannot call. The session only looked the name up, so a component that defined it had
+  also defined an event handler: a browser could send `on_upload_complete` as an event and run
+  the callback for an upload that never finished. Overrides keep working unchanged; a sync one
+  is now reported by `wireview.W002` instead of `W001`. A test that ran the callback with
+  `view.call("on_upload_complete", ...)` now gets `AssertionError` and calls the method directly
+  (`docs/UPGRADING.md`).
 
 ## [1.0.0rc4] - 2026-10-01
 
