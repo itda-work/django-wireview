@@ -351,18 +351,34 @@ def _template_sources() -> list[Path]:
     return found
 
 
-def _template_lines(path: Path) -> list[tuple[int, str]]:
-    """(line number, text) of a template file, or of every fenced block of a Markdown file."""
-    lines = path.read_text(encoding="utf-8").split("\n")
-    if path.suffix != ".md":
-        return list(enumerate(lines, 1))
-    found, inside = [], False
-    for number, line in enumerate(lines, 1):
-        if line.strip().startswith("```"):
-            inside = not inside
-        elif inside:
+#: Fenced blocks in languages that are never a Django template. ``${#ARR[@]}`` in a shell
+#: block and a JSDoc ``/** @type {{`` are fine there; reading them as templates failed the
+#: guard. Python blocks stay in: the docs quote template lines in Python comments and strings.
+NOT_TEMPLATE = {
+    "bash", "sh", "shell", "zsh", "console",
+    "js", "javascript", "mjs", "ts", "typescript",
+    "json", "yaml", "yml", "toml", "ini", "css",
+}  # fmt: skip
+
+
+def _markdown_template_lines(text: str) -> list[tuple[int, str]]:
+    """(line number, text) of every fenced block of a Markdown text that may be a template."""
+    found, info = [], None
+    for number, line in enumerate(text.split("\n"), 1):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            info = stripped[3:].strip().split(" ")[0].lower() if info is None else None
+        elif info is not None and info not in NOT_TEMPLATE:
             found.append((number, line))
     return found
+
+
+def _template_lines(path: Path) -> list[tuple[int, str]]:
+    """(line number, text) of a template file, or of the template blocks of a Markdown file."""
+    text = path.read_text(encoding="utf-8")
+    if path.suffix != ".md":
+        return list(enumerate(text.split("\n"), 1))
+    return _markdown_template_lines(text)
 
 
 def _unclosed(line: str) -> bool:
@@ -393,6 +409,24 @@ def test_every_template_tag_closes_on_its_line():
 )
 def test_the_line_rule_reads_like_the_lexer(line, unclosed):
     assert _unclosed(line) is unclosed
+
+
+@pytest.mark.parametrize(
+    ("block", "read"),
+    [
+        ("```html\n<b {% class {\n```", True),
+        ("```django\n{{ x\n```", True),
+        ("```\n{{ x\n```", True),
+        ("```python\n# {% on 'click' 'go'\n```", True),
+        ("```bash\necho ${#ARR[@]}\n```", False),
+        ("```js\n/** @type {{\n```", False),
+        ("```javascript title=hook.js\n/** @type {{\n```", False),
+        ('```json\n{"a": {{\n```', False),
+    ],
+)
+def test_the_line_rule_reads_only_blocks_that_can_be_templates(block, read):
+    broken = [line for _, line in _markdown_template_lines(block) if _unclosed(line)]
+    assert bool(broken) is read
 
 
 #: ``keypress`` fires only for keys that type a character, and not under Ctrl, Alt or Meta.
