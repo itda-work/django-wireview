@@ -145,6 +145,17 @@ def test_a_binding_the_parents_patch_draws_in_a_nested_component_is_the_nested_o
     expect_text(page.get_by_test_id("stolen"), "0")
 
 
+def test_an_event_reaches_a_hook_the_same_handlers_render_draws(page_live):
+    """The shelf is on the page, so its element is there and the event applied at
+    once -- before the frame that patches the new hook in. It reached nothing."""
+    page = page_live
+
+    page.get_by_test_id("sprout").click()
+
+    expect_counted(page, "mounted", "shelf-new")
+    expect_counted(page, "pinged", "shelf-new")
+
+
 def test_a_new_live_component_reaches_its_hooks_from_joined(page_live):
     """The event its joined() pushes arrives before the render that brings the
     element is patched in, so before the hook exists: it reached nothing."""

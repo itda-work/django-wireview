@@ -124,6 +124,8 @@ class StreamProbe(Component):
 
     async def reveal(self, **_rest):
         self.late = True
+        # Aimed at what this render reveals, which the page has yet to patch in
+        await self.push_js(JS().add_class("[data-testid=late]", "revealed"))
 
     async def more(self, **_rest):
         # Same name as the SeedChild's handler: its binding is not the probe's

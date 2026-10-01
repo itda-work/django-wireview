@@ -341,6 +341,12 @@ The django-reactor era changelog (2.x) is preserved in
   turns an element without an id into a new one of the same tag, so the bottom binding under a
   list could become the top one above it and, still watched as the bottom one, ask for more pages
   as soon as it was in view.
+- A `push_js` or `push_event` a handler aims at what its own render reveals reaches it -- a
+  `JS().focus()` on the modal it opens, an event for the chart hook it draws. The component's
+  element was on the page, so the command applied at once, ahead of the frame that patches the
+  render in, and found no element or hook. A component with a patch of its element on its way
+  (its own render's, or that of a component around it) now holds its commands, stream ops
+  included, for that frame. The client alone changed, so `PROTOCOL_VERSION` stays.
 - A `{% component %}` a live render draws -- one an `{% if %}` shows again -- is joined: its
   `joined()` runs and its own `wire-viewport-*` bindings are watched. The server built and mounted
   it in the parent's template pass and drew it marked live, so the page never sent its join and

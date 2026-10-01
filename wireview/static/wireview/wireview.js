@@ -115,11 +115,13 @@ class ServerConnection {
     /**
      * @type {TargetQueue} stream ops, JS commands and hook events, each in its
      * component's arrival order; one whose element a render has yet to patch in
-     * waits for the next frame, with its component's commands behind it
+     * -- or whose element a render is about to patch -- waits for the next
+     * frame, with its component's commands behind it
      */
     this.targeted = new TargetQueue({
       schedule: (callback) => window.requestAnimationFrame(callback),
       report: (error) => console.error("[wireview] Error applying a held command:", error),
+      patching: (owner) => this.patchPending(owner),
     });
   }
 
@@ -238,6 +240,25 @@ class ServerConnection {
         this.components[el.id]?.viewportObserver.start();
       }
     });
+  }
+
+  /**
+   * Whether a patch waits for the next frame that redraws a component's
+   * element: its own render's, or that of a component around it, whose HTML
+   * embeds it.
+   * @param {string | undefined} id
+   * @returns {boolean}
+   */
+  patchPending(id) {
+    if (id === undefined) return false;
+    for (
+      let el = document.getElementById(id)?.closest("[wireview-component]");
+      el;
+      el = el.parentElement?.closest("[wireview-component]")
+    ) {
+      if (this.components[el.id]?.morphScheduled) return true;
+    }
+    return false;
   }
 
   /**
@@ -1019,6 +1040,9 @@ class WireviewComponent {
     /** @type {ViewportObserver} */
     this.viewportObserver = new ViewportObserver(this);
 
+    /** @type {boolean} whether a patch of this element waits for the next frame */
+    this.morphScheduled = false;
+
   }
 
   /**
@@ -1069,7 +1093,11 @@ class WireviewComponent {
    * that embeds this component will place it.
    */
   scheduleMorph() {
-    window.requestAnimationFrame(() => this.morphNow());
+    this.morphScheduled = true;
+    window.requestAnimationFrame(() => {
+      this.morphScheduled = false;
+      this.morphNow();
+    });
   }
 
   /**

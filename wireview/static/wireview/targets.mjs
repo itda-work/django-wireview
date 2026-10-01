@@ -8,6 +8,12 @@
  * that finds no target waits for the next frame, which runs after the morphs
  * already scheduled (frame callbacks run in the order they were asked for).
  *
+ * The target can also be there and not yet be what the command is for: a
+ * handler whose render reveals an element, and that sends a JS command for it
+ * or an event for a hook on it, sends them right behind that render too. So
+ * an owner with a patch on its way (`patching`) holds its commands for the
+ * frame as well, though its element is on the page.
+ *
  * Order is kept per component, the command's owner: every command of an owner
  * behind a held one waits with it, while another owner's commands apply as they
  * come. Two components' commands touch different elements, so holding them
@@ -32,12 +38,15 @@ export class TargetQueue {
    * @param {{
    *   schedule: (callback: () => void) => void,
    *   report?: (error: unknown) => void,
+   *   patching?: (owner: string | undefined) => boolean,
    * }} hooks - `schedule` runs a callback on the next frame; `report` hears of
-   *   a command that threw while the held ones were applied
+   *   a command that threw while the held ones were applied; `patching` says
+   *   whether a patch of the owner's element waits for the next frame
    */
-  constructor({ schedule, report = () => {} }) {
+  constructor({ schedule, report = () => {}, patching = () => false }) {
     this.schedule = schedule;
     this.report = report;
+    this.patching = patching;
     /** @type {Map<string | undefined, Targeted[]>} the held commands of each owner, in arrival order */
     this.held = new Map();
   }
@@ -52,7 +61,7 @@ export class TargetQueue {
       held.push(command);
       return;
     }
-    const target = command.find();
+    const target = this.patching(owner) ? null : command.find();
     if (target) {
       command.apply(target);
       return;
@@ -63,6 +72,8 @@ export class TargetQueue {
 
   /**
    * Applies an owner's held commands, now that the frame's morphs have run.
+   * Not asked whether the owner is patching again: a patch scheduled since is
+   * a later render's, and the commands were for what the earlier one drew.
    * @param {string | undefined} owner
    */
   flush(owner) {

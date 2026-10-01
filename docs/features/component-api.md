@@ -67,7 +67,7 @@ sync로 쓰면 실행되지 않고 `manage.py check`가 `wireview.W002`로 알�
 | `await destroy()` | 컴포넌트를 페이지에서 뺀다 |
 | `await broadcast(channel, **kwargs)` | 채널로 보낸다. `joined()` 전이면 모았다가 보낸다 |
 | `await push_event(event, payload=None, hook_id=None)` | 클라이언트 훅으로 보낸다 |
-| `await push_js(js)` | `JS()` 명령을 실행한다 |
+| `await push_js(js)` | `JS()` 명령을 실행한다. 같은 핸들러의 렌더가 아직 패치되지 않았으면 그 패치 뒤에 돈다 — 렌더로 드러낸 요소를 `to=`로 겨냥해도 된다 |
 | `await push_title(title)` | 문서 제목을 바꾼다 |
 | `await put_flash(flash_type, message, *, timeout=5000, dismissible=True)` / `await clear_flash(flash_id=None)` | 플래시 ([flash](./flash.md)). `clear_flash()`는 모두 닫는다. id는 브라우저가 만들어 서버는 모른다 |
 | `await focus_on(selector)` | 요소에 포커스 |

@@ -16,6 +16,8 @@ tests/test_hooks_e2e.py drives it.
   instance has to be joined like the first one: its ``joined()`` runs and its
   own viewport binding is watched, and sent to it, not to the shelf. So is
   one the shelf's patch draws inside it (``reach``).
+- The shelf's own ``sprout`` draws a hook and pushes an event to it from the
+  same handler: the event arrives before the frame that patches the hook in.
 - A LiveComponent the shelf brings in pushes an event from ``joined()``. It
   arrives before the render that brings the element is patched in, so before
   the hook it is for exists.
@@ -45,6 +47,8 @@ class HookProbeShelf(Component):
 
     async def sprout(self):
         self.sprouted = True
+        # For the hook the same render draws: it is not on the page yet
+        await self.push_event("pinged", {})
 
     async def reach_out(self):
         self.reach = True

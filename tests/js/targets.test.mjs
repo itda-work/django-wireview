@@ -7,7 +7,7 @@ import { TargetQueue } from "../../wireview/static/wireview/targets.mjs";
  * A queue over a page whose elements a test puts in place, with frames it runs
  * by hand. `send(owner, name)` pushes a command aimed at the owner's element.
  */
-function queueOn(page) {
+function queueOn(page, patching = new Set()) {
   const applied = [];
   const dropped = [];
   const reported = [];
@@ -15,6 +15,7 @@ function queueOn(page) {
   const queue = new TargetQueue({
     schedule: (callback) => frames.push(callback),
     report: (error) => reported.push(error.message),
+    patching: (owner) => patching.has(owner),
   });
   const send = (owner, name, apply = (target) => applied.push(`${target}:${name}`)) =>
     queue.push(owner, {
@@ -122,4 +123,28 @@ test("each owner that waits gets its own frame", () => {
   page.two = "2";
   frame();
   assert.deepEqual(applied, ["1:reset", "2:reset"]);
+});
+
+test("an owner whose element a patch waits to redraw holds its commands for that frame", () => {
+  // A handler's render reveals an element and the handler aims a command at it:
+  // the owner's element is there, what the command is for is not yet
+  const patching = new Set(["a"]);
+  const { send, applied, frames, frame } = queueOn({ a: "A", b: "B" }, patching);
+  send("a", "focus");
+  send("b", "exec");
+  assert.deepEqual(applied, ["B:exec"], "another owner, with no patch on its way, does not wait");
+  assert.equal(frames.length, 1);
+  patching.delete("a"); // the frame runs the morph first
+  frame();
+  assert.deepEqual(applied, ["B:exec", "A:focus"]);
+});
+
+test("a held command applies on its frame though a later render scheduled another patch", () => {
+  // The later patch is a later render's: the command was for what the earlier one drew
+  const patching = new Set(["a"]);
+  const { send, applied, dropped, frame } = queueOn({ a: "A" }, patching);
+  send("a", "focus");
+  frame();
+  assert.deepEqual(applied, ["A:focus"]);
+  assert.deepEqual(dropped, []);
 });

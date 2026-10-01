@@ -242,6 +242,16 @@ def test_a_stream_container_a_render_reveals_ahead_of_others_leaves_them_alone(p
     expect(by(probe, "ticks").locator("li")).to_have_text(["tick 2", "tick 1"])
 
 
+def test_js_a_handler_aims_at_what_its_render_reveals_finds_it(probe):
+    # The probe's element is on the page, so the command ran at once, ahead of the
+    # frame that patches `late` in, and found nothing to add the class to.
+    expect_count(by(probe, "rows").locator("li"), 15)
+
+    by(probe, "reveal").click()
+
+    expect(by(probe, "late")).to_have_class("revealed")
+
+
 def test_a_new_live_component_runs_the_js_its_joined_pushes(probe):
     # Like its streams, the command arrives before the element it runs on
     probe.evaluate(
