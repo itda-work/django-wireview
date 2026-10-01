@@ -61,6 +61,10 @@ The django-reactor era changelog (2.x) is preserved in
 - The README and tutorial 01 put the bundle at "~10KB". It is about 70 KB, 22 KB gzipped; a
   test compares the stated size with the built bundle.
 
+- The README's hook example now says where the file goes, `static/<app_label>/hooks/`, and why
+  not inline: an inline `<script>` runs before `window.wireview` exists, and not at all on a page
+  reached by a boosted navigation.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

@@ -183,3 +183,9 @@ def test_the_bundle_size_is_the_built_one(doc):
     data = BUNDLE.read_bytes()
     for kb, actual in zip(map(int, stated.groups()), (len(data), len(gzip.compress(data))), strict=True):
         assert 0.75 * actual <= kb * 1000 <= 1.25 * actual, (kb, actual)
+
+
+def test_the_hook_example_says_where_its_file_goes():
+    """An inline ``<script>`` runs before the bundle, and not at all after a boosted navigation."""
+    (_, code, _), *_ = (b for b in _blocks(_section("JavaScript Hooks", "Hook 정의")) if b[0] == "javascript")
+    assert re.match(r"// (\w+)/static/\1/hooks/\w+\.js\n", code), code.split("\n")[0]

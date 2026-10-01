@@ -899,7 +899,13 @@ JavaScript Hooks를 사용하면 Chart.js, Mapbox, CodeMirror 등 서드파티 J
 
 ### Hook 정의
 
+훅 파일은 앱의 `static/<앱 라벨>/hooks/` 아래에 둔다. `{% wireview_header %}`가 설치된 앱 전부에서 이 디렉터리를
+찾아 `defer`로 싣고, wireview는 그 파일들이 다 돈 뒤에 컴포넌트를 join한다. 템플릿에 인라인 `<script>`로
+두지 않는다 — wireview보다 먼저 실행되어 `window.wireview`가 아직 없고, boost 이동으로 들어간 페이지에서는
+아예 실행되지 않는다. 상세는 [JavaScript Hooks](./docs/features/hooks.md#훅-파일을-어디에-두나).
+
 ```javascript
+// myapp/static/myapp/hooks/chart.js
 window.wireview.hooks.ChartHook = {
   mounted() {
     // 엘리먼트가 페이지에 추가되면 호출
