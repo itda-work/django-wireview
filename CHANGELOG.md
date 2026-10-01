@@ -35,12 +35,17 @@ The django-reactor era changelog (2.x) is preserved in
 - The components of one connection that hear the same model change each get an `instance` of
   their own. They shared one object, so a component that edited (or refreshed) what it heard
   changed what the next one heard (found with #153).
+- `uvicorn <project>.asgi:application`, which the README, tutorial 01, the skill and the W013 hint
+  offer in place of runserver, served no static files: `wireview.min.js` was a 404 and the page
+  drew with no component alive, and no check said so. The starter template's `asgi.py`, and the
+  one the README and tutorial 01 show, now wrap the HTTP application in `ASGIStaticFilesHandler`
+  while `DEBUG`; W013's hint and the skill say why, and `docs/DEPLOYMENT.md` has a static files
+  section for production. A project made from an earlier starter adds the same lines.
 
 - The README's Streams example now works as copied: the container is empty, the item template is
   the one the component looks for (`chat/message_list_item.html`), and it reads the row as `item`.
   It named `chat/message_item.html` and read `message`, so it failed with `TemplateDoesNotExist`,
   and drew empty items once given the template. `tests/test_readme_examples.py` renders it.
-
 
 ## [1.0.0rc4] - 2026-10-01
 

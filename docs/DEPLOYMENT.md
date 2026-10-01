@@ -213,6 +213,36 @@ DATABASES = {
 }
 ```
 
+## 정적 파일
+
+ASGI 서버는 정적 파일을 서빙하지 않는다. `{% wireview_header %}`가 부르는 `wireview.min.js`도 정적 파일이라,
+빠뜨리면 페이지는 200으로 그려지는데 어떤 컴포넌트도 살아나지 않는다 — 오류도, 검사 경고도 없다.
+
+- **개발.** `runserver`는 스스로 `/static/`을 서빙하지만 uvicorn은 `asgi.py`의 `application`만 서빙한다.
+  스타터 템플릿과 [튜토리얼 01](tutorials/01-getting-started.md#asgipy-수정)의 `asgi.py`는 `DEBUG`일 때 HTTP 앱을
+  `django.contrib.staticfiles.handlers.ASGIStaticFilesHandler`로 감싸 둘 다 된다.
+- **운영(`DEBUG = False`).** 그 래퍼는 꺼진다. `STATIC_ROOT`를 정하고 배포마다 `python manage.py collectstatic`을
+  돌린 뒤, 앞단의 웹 서버가 `/static/`을 서빙한다.
+
+```nginx
+location /static/ {
+    alias /srv/myproject/staticfiles/;  # STATIC_ROOT
+}
+```
+
+```caddyfile
+yourdomain.com {
+    handle_path /static/* {
+        root * /srv/myproject/staticfiles
+        file_server
+    }
+    reverse_proxy localhost:8000
+}
+```
+
+`{% wireview_header %}`는 번들 주소에 패키지 버전을 `?v=`로 붙인다. 업그레이드 뒤 `collectstatic`을 빠뜨리면
+새 버전 번호로 옛 번들을 받게 되므로, 릴리스마다 `collectstatic`을 배포 절차에 둔다.
+
 ## WebSocket의 Origin
 
 WebSocket 핸드셰이크에는 브라우저의 쿠키가 실린다. 막지 않으면 로그인한 사용자가 방문한 **다른 사이트의 페이지**가

@@ -16,13 +16,21 @@ django.setup()
 
 from channels.auth import AuthMiddlewareStack
 from channels.routing import ProtocolTypeRouter, URLRouter
+from django.conf import settings
+from django.contrib.staticfiles.handlers import ASGIStaticFilesHandler
 from django.core.asgi import get_asgi_application
 
 from wireview.urls import websocket_urlpatterns
 
+http = get_asgi_application()
+if settings.DEBUG:
+    # runserver serves static files itself; uvicorn serves only this application,
+    # so without this wireview.min.js is a 404 and no component comes alive.
+    http = ASGIStaticFilesHandler(http)
+
 application = ProtocolTypeRouter(
     {
-        "http": get_asgi_application(),
+        "http": http,
         "websocket": AuthMiddlewareStack(URLRouter(websocket_urlpatterns)),
     }
 )

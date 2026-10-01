@@ -76,6 +76,7 @@ class _Rows:
 MESSAGES = [types.SimpleNamespace(pk=pk, sender=f"user{pk}", text=f"hello {pk}") for pk in (3, 2, 1)]
 
 
+@pytest.mark.django_db
 @pytest.mark.asyncio
 async def test_the_streams_example_renders_its_items():
     blocks = _blocks(_section("Streams API", "기본 사용법"))

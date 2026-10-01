@@ -77,7 +77,9 @@ pip install django-wireview daphne
 페이지는 그려지는데 아무 버튼도 반응하지 않습니다.
 
 daphne를 쓰지 않으려면(Windows에서는 쓰지 않습니다 — [배포 가이드](../DEPLOYMENT.md)) `uvicorn`을
-설치하고 4절의 `runserver` 대신 `uvicorn myproject.asgi:application --reload`로 띄웁니다.
+설치하고 4절의 `runserver` 대신 `uvicorn myproject.asgi:application --reload`로 띄웁니다. uvicorn은 정적 파일을
+서빙하지 않으므로 2절 `asgi.py`의 `ASGIStaticFilesHandler` 줄이 이때 필요합니다 — 빠뜨리면 `wireview.min.js`가
+404이고 페이지는 그려지지만 아무것도 반응하지 않습니다.
 
 ### 채널 레이어
 
@@ -141,11 +143,18 @@ django.setup()
 
 from channels.auth import AuthMiddlewareStack
 from channels.routing import ProtocolTypeRouter, URLRouter
+from django.conf import settings
+from django.contrib.staticfiles.handlers import ASGIStaticFilesHandler
 from django.core.asgi import get_asgi_application
 from wireview.urls import websocket_urlpatterns
 
+http = get_asgi_application()
+if settings.DEBUG:
+    # runserver는 정적 파일을 스스로 서빙하지만 uvicorn은 이 application만 서빙한다
+    http = ASGIStaticFilesHandler(http)
+
 application = ProtocolTypeRouter({
-    'http': get_asgi_application(),
+    'http': http,
     'websocket': AuthMiddlewareStack(URLRouter(websocket_urlpatterns))
 })
 ```
@@ -153,6 +162,10 @@ application = ProtocolTypeRouter({
 **중요**: `django.setup()`이 `wireview.urls` import보다 먼저 호출되어야 합니다. `wireview.urls`는 컨슈머를 거쳐
 Django 모델을 import하므로, 앱 레지스트리가 준비되기 전에 import하면 `AppRegistryNotReady`로 기동이 실패합니다.
 `get_asgi_application()`을 먼저 불러 변수에 담아 두어도 같은 효과입니다(그 함수가 `django.setup()`을 부릅니다).
+
+`ASGIStaticFilesHandler`는 `DEBUG`일 때 `/static/`을 서빙합니다. `runserver`는 스스로 감싸므로 없어도 되지만,
+uvicorn은 이 `application`만 서빙합니다. 운영(`DEBUG = False`)에서는 정적 파일을 웹 서버나 CDN이 맡습니다
+([배포 가이드](../DEPLOYMENT.md#정적-파일)).
 
 ## 3. 첫 번째 컴포넌트 만들기
 

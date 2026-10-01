@@ -477,7 +477,9 @@ def check_runserver_is_asgi(app_configs, **kwargs) -> list[CheckMessage]:
                 "component becomes live. Install daphne and put 'daphne' at the top of "
                 f"INSTALLED_APPS{above} -- the startup line then reads "
                 "'Starting ASGI/Daphne' -- or run 'uvicorn <project>.asgi:application --reload' "
-                "instead of runserver."
+                "instead of runserver. uvicorn serves no static files: while DEBUG, wrap the HTTP "
+                "application in asgi.py in django.contrib.staticfiles.handlers.ASGIStaticFilesHandler, "
+                "or wireview.min.js is a 404."
             ),
             id="wireview.W013",
         )

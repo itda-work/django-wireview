@@ -1,4 +1,4 @@
-"""The starter template's first page in a browser, served the way tutorial 01 serves it (#131, #151).
+"""The starter template's first page in a browser, served the ways tutorial 01 serves it (#131, #151).
 
 ``tests/test_project_template.py`` drives the generated ``asgi.py`` in-process.
 That misses what only a real ``runserver`` shows: whether it is daphne's ASGI
@@ -8,8 +8,10 @@ of that wiring is off the page draws and nothing answers, so only a browser
 sees it.
 
 The project is made in a scratch directory by ``startproject --template``, then
-``migrate`` and ``runserver`` run in a process of their own, as the tutorial
-says. The server is handed to ``testproj.time_limit.own()`` so a stopped run
+``migrate`` and ``runserver`` -- or the uvicorn line the tutorial offers in its
+place -- run in a process of their own, as the tutorial says. uvicorn serves the
+project's ``application`` alone, without runserver's static files handler.
+The server is handed to ``testproj.time_limit.own()`` so a stopped run
 still stops it.
 """
 
@@ -80,19 +82,28 @@ class Starter:
             yield
         # wait_for_selector times out with Playwright's own error, not an AssertionError.
         except (AssertionError, PlaywrightTimeout) as failure:
-            raise AssertionError(f"{failure}\n\nThe starter's runserver printed:\n{self.output()}") from None
+            raise AssertionError(f"{failure}\n\nThe starter's server printed:\n{self.output()}") from None
+
+
+def _runserver(port: int) -> list[str]:
+    # --noreload: the autoreloader serves from a child process, which
+    # terminating this one would leave running.
+    return ["manage.py", "runserver", f"127.0.0.1:{port}", "--noreload"]
+
+
+def _uvicorn(port: int) -> list[str]:
+    """The line tutorial 01 gives in place of runserver, less ``--reload`` for the same reason."""
+    return ["-m", "uvicorn", "mysite.asgi:application", "--host", "127.0.0.1", "--port", str(port)]
 
 
 @contextlib.contextmanager
-def _running(project: Path, port: int) -> t.Iterator[Starter]:
-    """``runserver`` of the project on ``port``, stopped on the way out."""
-    log = project / f"runserver-{port}.log"
+def _running(project: Path, port: int, command: t.Callable[[int], list[str]] = _runserver) -> t.Iterator[Starter]:
+    """The project served on ``port`` by ``command``, stopped on the way out."""
+    log = project / f"{command.__name__.lstrip('_')}-{port}.log"
     with log.open("wb") as out:
-        # --noreload: the autoreloader serves from a child process, which
-        # terminating this one would leave running.
         proc = own(
             subprocess.Popen(
-                [sys.executable, "manage.py", "runserver", f"127.0.0.1:{port}", "--noreload"],
+                [sys.executable, *command(port)],
                 cwd=project,
                 env={**_env(), "PYTHONUNBUFFERED": "1"},
                 stdout=out,
@@ -126,8 +137,14 @@ def starter(project) -> t.Iterator[Starter]:
         yield running
 
 
-def test_the_first_page_is_live_and_answers_typing(page, starter):
-    """Tutorial 01's page from daphne's runserver: both components join, and typing reaches the server and back."""
+@pytest.fixture(scope="module")
+def uvicorn_starter(project) -> t.Iterator[Starter]:
+    with _running(project, free_port(), _uvicorn) as running:
+        yield running
+
+
+def _first_page_answers_typing(page, starter: Starter) -> None:
+    """Both components join, typing reaches the server and back, and the bundle came from the server."""
     # By path: the header asks for the bundle with a ?v= cache buster.
     statics: dict[str, int] = {}
     page.on("response", lambda r: statics.setdefault(urlsplit(r.url).path, r.status))
@@ -150,11 +167,26 @@ def test_the_first_page_is_live_and_answers_typing(page, starter):
     assert statics.get("/static/wireview/wireview.min.js") == 200, statics
     assert crashes == []
     assert starter.trouble() == [], starter.output()
+
+
+def test_the_first_page_is_live_and_answers_typing(page, starter):
+    """Tutorial 01's page from daphne's runserver."""
+    _first_page_answers_typing(page, starter)
     # Not staticfiles' WSGI runserver, where the page draws and no socket connects
     # (W013). The startup line itself: W013's hint quotes the phrase. Asserted
     # here rather than in a test of its own, which pytest-playwright's browser
     # parametrization would reorder into a second instance of the module fixtures.
     assert re.search(r"^Starting ASGI/Daphne version ", starter.output(), re.MULTILINE), starter.output()
+
+
+def test_the_first_page_is_live_under_uvicorn(page, uvicorn_starter):
+    """The same page from the uvicorn line tutorial 01 offers instead of runserver (Windows' way).
+
+    uvicorn serves the project's ``application`` and nothing else: no static
+    files handler of runserver's around it. The bundle was a 404 there and the
+    page drew without a component joining.
+    """
+    _first_page_answers_typing(page, uvicorn_starter)
 
 
 def test_a_port_another_server_holds_is_not_taken_for_the_starter(project, browser_name):

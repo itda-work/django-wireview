@@ -144,3 +144,61 @@ def test_the_first_page_answers_like_tutorial_01(project):
 
     assert result.returncode == 0, result.stderr
     assert "Wireview" in result.stdout, result.stdout
+
+
+#: The bundle every page asks for. Without it the page draws and nothing joins.
+BUNDLE = "/static/wireview/wireview.min.js"
+
+
+@pytest.mark.parametrize(("debug", "status"), [(True, 200), (False, 404)])
+def test_asgi_serves_the_bundle_in_debug(project, debug, status):
+    """``uvicorn mysite.asgi:application`` serves exactly this ``application``.
+
+    runserver wraps the project in a static files handler of its own; uvicorn
+    does not, and Django's ASGI handler serves no static files. The tutorial
+    offers uvicorn as the way on Windows, and there the bundle was a 404 and the
+    page dead with no check to say so. Outside DEBUG the files are the web
+    server's to serve, as with runserver.
+    """
+    probe = textwrap.dedent(
+        f"""
+        import asyncio, os
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "mysite.settings")
+        import django
+        django.setup()
+        from django.conf import settings
+        settings.DEBUG = {debug}
+        settings.ALLOWED_HOSTS = ["localhost"]
+        from mysite.asgi import application
+
+        # As a server calls it: channels' HttpCommunicator wants a "body" in every
+        # message, which ASGI leaves optional and the static files handler omits.
+        async def main():
+            sent, requests = [], [{{"type": "http.request", "body": b"", "more_body": False}}]
+            async def receive():
+                if requests:
+                    return requests.pop()
+                await asyncio.Future()  # no disconnect: the handler cancels this when done
+            async def send(message):
+                sent.append(message)
+            scope = {{
+                "type": "http", "asgi": {{"version": "3.0"}}, "http_version": "1.1", "method": "GET",
+                "scheme": "http", "path": "{BUNDLE}", "raw_path": b"{BUNDLE}", "query_string": b"",
+                "root_path": "", "headers": [(b"host", b"localhost")], "server": ("localhost", 80),
+                "client": ("127.0.0.1", 1),
+            }}
+            await application(scope, receive, send)
+            status = sent[0]["status"]
+            body = b"".join(m.get("body", b"") for m in sent[1:])
+            print(status, len(body))
+
+        asyncio.run(main())
+        """
+    )
+    result = run(project, "-c", probe)
+
+    assert result.returncode == 0, result.stderr
+    got, size = result.stdout.split()
+    assert int(got) == status, result.stdout + result.stderr
+    if status == 200:
+        assert int(size) > 1000
