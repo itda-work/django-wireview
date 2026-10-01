@@ -10,6 +10,16 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Changed
+
+- The `instance` a component's `mutation()` receives saves like any model instance. It was the
+  deserializer's fixture load (`save_base(raw=True)`): `save()`/`asave()` skipped the model's own
+  `save()`, sent `pre_save`/`post_save` with `raw=True` and set the m2m fields from the payload.
+  Now the model's `save()` runs, the signals are not raw, m2m is left alone, and the instance is
+  an existing row, so a pk with a default updates instead of failing to insert. A save still
+  writes every field as it was when the change was announced; `docs/features/settings.md` says
+  what that overwrites and how a receiver that saves avoids hearing its own write forever (#153).
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

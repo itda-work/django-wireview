@@ -56,7 +56,7 @@ post_save / pre_delete / m2m_changed  (senders의 모델만 연결된다. m2m은
 |---|---|---|
 | 1 | `senders={("auth","User")}`일 때 `encode(user)` | 페이로드 383바이트에 `password` 해시, `email`, `is_superuser`, `groups`·`user_permissions`의 pk 목록이 실린다. encode 한 번에 쿼리 2개(m2m 필드마다 1개)가 나간다 |
 | 2 | 페이로드에서 `fields`를 `{"title"}`로 줄인 뒤 `serializer.decode` | `is_read=False`, `url=''`가 나온다. 기본값이다. `get_deferred_fields()`는 빈 집합이다. **오류 없이 틀린 값이 나온다** |
-| 3 | 2의 인스턴스를 `.save()` | `decode`가 `save`를 `DeserializedObject.save`(= `save_base(raw=True)`)로 바꿔 두었다. 그래서 모든 컬럼을 쓴다. `created_at`이 없으면 `IntegrityError`가 나고, 있으면 DB의 `url`·`is_read`를 기본값으로 **덮어쓴다** |
+| 3 | 2의 인스턴스를 `.save()` | `decode`가 `save`를 `DeserializedObject.save`(= `save_base(raw=True)`)로 바꿔 두었다. 그래서 모든 컬럼을 쓴다. `created_at`이 없으면 `IntegrityError`가 나고, 있으면 DB의 `url`·`is_read`를 기본값으로 **덮어쓴다**. (#153 뒤로는 모델의 `save()`를 거치지만, 모든 컬럼을 쓰는 것은 같다) |
 | 4 | `Bookmark.from_db("default", ["id","title"], …)` | 나머지 필드가 deferred로 남는다. async 문맥에서 읽으면 `SynchronousOnlyOperation`이 **크게** 난다. `.save()`는 `UPDATE … SET title` 하나만 쓴다 |
 | 5 | deferred 필드가 있는 인스턴스(`only()` 등)를 저장 | post_save 수신자의 `encode`가 deferred 필드마다 `SELECT`를 한 번씩 부른다(4에서 필드 3개에 쿼리 3개). 지금도 있는 비용이다 |
 | 6 | pydantic 2.13 `set[tuple[str,str]] \| dict[tuple[str,str], Literal["__all__"] \| tuple[str, ...]]` | 집합과 매핑을 둘 다 받는다. 값에 맨 문자열 `"username"`을 적으면 거절된다. 흔한 `("username")` 실수가 여기서 잡힌다. **하한 pydantic 2.7에서는 확인하지 못했다**(`make test-lowest` 몫) |
@@ -210,7 +210,7 @@ senders={("todo", "Item"): "__all__"}             # 지금 동작을 원하면 �
 | m2m | 목록에 적으면 pk 목록이 간다(적을 때만 encode 쿼리). 복원 인스턴스에는 지금처럼 싣지 않는다 |
 | 검증 | `connect()`가 `resolve_senders`와 함께 확인한다. 없는 필드나 역관계 이름은 기동 때 `ImproperlyConfigured`다. `senders`의 설치되지 않은 모델과 같은 처리다 |
 | 인코딩 | `serialize("json", [instance], fields=<목록>)`. Django가 `fields=`를 그대로 지원한다(실험 확인). 세 발신 지점(post_save·pre_delete·m2m)이 한 헬퍼를 쓴다 |
-| 복원 | 페이로드에 온 필드만으로 `from_db`. 나머지는 deferred다. **전체 필드 페이로드는 지금 방식(`save` 교체 포함)을 유지**해 1.x에서 저장 의미가 바뀌지 않게 한다. 부분 페이로드에는 `save`를 교체하지 않는다. 그래야 불러온 필드만 쓴다(실험 4) |
+| 복원 | 페이로드에 온 필드만으로 `from_db`. 나머지는 deferred다. 전체 필드 페이로드는 지금 방식 그대로 복원한다. **`save` 교체는 1.0 전에 없앴다(#153)** — 전체·부분 모두 모델의 `save`를 쓴다. 부분 페이로드는 그래서 불러온 필드만 쓴다(실험 4) |
 | DELETED | 페이로드가 pre_delete 때 만들어지므로 적은 필드가 그대로 온다. `()`면 pk만 온다. 행이 이미 없으니 `arefresh_from_db`는 `DoesNotExist`다. 문서에 "DELETED에서 걸러야 하는 필드(FK 등)는 목록에 적는다"고 쓴다 |
 
 ### 새 체크 W017 (권고: 추가)
@@ -269,5 +269,5 @@ senders={("todo", "Item"): "__all__"}             # 지금 동작을 원하면 �
 ### 4-4. 하지 않는 것
 
 - 메시지 `type`·채널 이름·`mutation()` 시그니처는 바꾸지 않는다.
-- 전체 필드 페이로드의 `save` 교체(`save_base(raw=True)`로 모델의 `save()` 오버라이드를 거치지 않는 현재 동작)는 1.x에서 건드리지 않는다. 따로 이슈로 남길 만하다. 부분 페이로드만 정상 `save`를 쓴다.
+- 전체 필드 페이로드의 `save` 교체(`save_base(raw=True)`)는 이 설계를 쓴 뒤 1.0 전에 없앴다(#153). 복원 인스턴스는 전체·부분 모두 모델의 `save()`를 쓰고 이미 있는 행(`_state.adding = False`)이다. 1.1에서 비대칭은 없다.
 - 실험 5(deferred 인스턴스를 encode하면 필드마다 SELECT)는 이 이슈의 범위 밖이다. 목록에 적은 필드만 읽게 되면 부분적으로 줄어든다.
