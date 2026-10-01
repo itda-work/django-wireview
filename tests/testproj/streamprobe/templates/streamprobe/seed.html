@@ -5,4 +5,6 @@
   </ul>
   <ul data-testid="seed-ticks" wire-stream="ticks">
   </ul>
+  <span data-testid="mores">{{ this.mores }}</span>
+  {% if not this.bare %}<div data-testid="seed-sentinel" wire-viewport-bottom="more">more</div>{% endif %}
 </div>

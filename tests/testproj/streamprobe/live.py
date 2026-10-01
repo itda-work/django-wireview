@@ -46,11 +46,16 @@ class TickChild(LiveComponent):
 class SeedChild(LiveComponent):
     """A LiveComponent that streams from joined(), so its ops can arrive before its element does.
 
-    Its joined() also pushes a JS command, which has the same element to wait for.
+    Its joined() also pushes a JS command, which has the same element to wait for,
+    and its bottom binding (``more``) is its own, not the probe's.
     """
 
     class Meta:
         template_name = "streamprobe/seed.html"
+
+    mores: int = 0
+    #: Without its bottom binding: the probe's prop, so both re-render in one patch
+    bare: bool = False
 
     async def joined(self):
         # First, so it is the first of this component's commands to find no element
@@ -59,6 +64,9 @@ class SeedChild(LiveComponent):
             "seeds", [{"n": 1}, {"n": 2}], template="streamprobe/tick.html", dom_id=lambda i: f"seed-{i['n']}"
         )
         await insert_tick(self, 3)
+
+    async def more(self, **_rest):
+        self.mores += 1
 
 
 class StreamProbe(Component):
@@ -77,8 +85,12 @@ class StreamProbe(Component):
     blurs: int = 0
     #: Render a TickChild ahead of the ticks list (``?nest=1``)
     nest: bool = False
-    #: Render a SeedChild, which streams in its joined()
+    #: Render a SeedChild, which streams in its joined() (``?seeded=1`` from the start)
     seeded: bool = False
+    #: Calls of ``more``, which only the SeedChild's binding names
+    stolen: int = 0
+    #: Passed to the SeedChild, and shown here too: one patch, the probe's, draws both
+    bare: bool = False
 
     async def joined(self):
         if self.delay:
@@ -104,6 +116,13 @@ class StreamProbe(Component):
 
     async def seed(self, **_rest):
         self.seeded = not self.seeded
+
+    async def strip(self, **_rest):
+        self.bare = not self.bare
+
+    async def more(self, **_rest):
+        # Same name as the SeedChild's handler: its binding is not the probe's
+        self.stolen += 1
 
     async def blurred(self, **_rest):
         self.blurs += 1

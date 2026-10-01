@@ -329,6 +329,13 @@ The django-reactor era changelog (2.x) is preserved in
 - The hooks of a LiveComponent a render brings in mount. The server draws it already marked live,
   so the page never joined it, and that was the only place its hooks were looked for: they never
   mounted, and nothing pushed to them arrived.
+- A `wire-viewport-*` binding inside a LiveComponent calls that LiveComponent's handler. The
+  parent watched the bindings of the components nested in it too and sent them to itself, where
+  the handler was missing or, under the same name, the wrong one. A LiveComponent a render brings
+  in starts watching its own once its `joined()`'s first page is on the page: the server now sends
+  `joined` for it too, after what it queued, as it does for a root. The form is unchanged, so
+  `PROTOCOL_VERSION` stays; an older client that knows `joined` starts that component's infinite
+  scroll, which it never did before.
 - Test harness: `./tests/e2e.sh tests/test_streams_e2e.py` runs that file only. The script always
   passed pytest `tests examples` ahead of its arguments, so a path given to it was collected next to
   every E2E suite and the whole suite ran. The defaults now go only when no argument is a path (one

@@ -107,6 +107,12 @@ LiveComponent는 **부모가 소유**합니다. 부모 템플릿이 이름을 �
 자식만 바뀌면 자식 diff만 갑니다 ([html-diff](./html-diff.md), 설계는
 [live-component-ownership](../design/live-component-ownership.md)).
 
+`joined()`가 쌓아 둔 작업(스트림, `push_js`, `push_event`)은 부모의 `render` 메시지 바로 뒤에 나가고, 그 뒤에
+그 자식의 `joined` 메시지가 갑니다. 클라이언트는 렌더를 다음 애니메이션 프레임에 패치하므로, 아직 요소가 없는
+자식의 작업은 그 프레임까지 기다렸다가 자식 순서대로 적용합니다. 자식의 `wire-viewport-*`는 자식의 것이라
+자식의 핸들러를 부르고, 판단은 그 `joined`가 온 뒤, 곧 `joined()`가 보낸 첫 페이지가 화면에 들어온 뒤에
+시작합니다 — 루트 컴포넌트와 같은 규칙입니다(#112).
+
 **HTTP 최초 응답은 dead render**입니다. 자식이 인라인으로 그려지고 `joined()`는 호출되지 않습니다.
 WebSocket이 붙으면 새 인스턴스가 만들어지고 `joined()`가 한 번 돕니다. Component와 같은 계약입니다.
 

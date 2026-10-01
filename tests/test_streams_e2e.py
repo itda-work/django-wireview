@@ -226,3 +226,39 @@ def test_a_new_live_component_runs_the_js_its_joined_pushes(probe):
     by(probe, "seed").click()
     expect(by(probe, "seeds").locator("li")).to_have_text(["tick 1", "tick 2"])
     expect(probe.locator("html")).to_have_attribute("data-seeded", "1")
+
+
+def test_a_new_live_component_watches_its_own_viewport_bindings(probe):
+    # A LiveComponent the probe brings in after its join: nothing started its
+    # observer, and the probe's own scan sent its `more` to the probe.
+    by(probe, "seed").click()
+    expect(by(probe, "seeds").locator("li")).to_have_text(["tick 1", "tick 2"])
+    expect_text(by(probe, "mores"), "1")
+    _settled(probe)
+    expect_text(by(probe, "stolen"), "0")
+    expect_text(by(probe, "mores"), "1")
+
+
+def test_a_binding_the_parents_patch_draws_in_a_live_component_is_watched(page, server):
+    # The probe and the child change in one render, which the probe's patch
+    # draws: the child's new binding is the child's to watch
+    page.set_viewport_size({"width": 800, "height": 600})
+    open_live(page, f"{server}/streamprobe/?seeded=1")
+    expect_text(by(page, "mores"), "1")
+    by(page, "strip").click()
+    expect_count(by(page, "seed-sentinel"), 0)
+    by(page, "strip").click()
+    expect_count(by(page, "seed-sentinel"), 1)
+    expect_text(by(page, "mores"), "2")
+    expect_text(by(page, "stolen"), "0")
+
+
+def test_a_live_component_on_the_page_at_join_watches_its_own_viewport_bindings(page, server):
+    # Both the probe and the child scanned the child's binding: it went to both
+    page.set_viewport_size({"width": 800, "height": 600})
+    open_live(page, f"{server}/streamprobe/?seeded=1")
+    expect(by(page, "seeds").locator("li")).to_have_text(["tick 1", "tick 2"])
+    expect_text(by(page, "mores"), "1")
+    _settled(page)
+    expect_text(by(page, "stolen"), "0")
+    expect_text(by(page, "mores"), "1")

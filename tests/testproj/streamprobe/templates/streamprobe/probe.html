@@ -3,8 +3,10 @@
 <div {% tag_header %}>
   <button data-testid="tick" {% on "click" "tick" %}>tick</button>
   <button data-testid="seed" {% on "click" "seed" %}>seed</button>
+  <button data-testid="strip" {% on "click" "strip" %}>strip</button>
+  <span data-testid="bare">{{ this.bare }}</span>
   {% if this.seeded %}
-    {% live_component "SeedChild" id="seed-child" %}
+    {% live_component "SeedChild" id="seed-child" bare=this.bare %}
   {% endif %}
   {% if this.nest %}
     {% live_component "TickChild" id="tick-child" %}
@@ -15,6 +17,7 @@
   <div data-testid="top-sentinel" wire-viewport-top="load_newer">newer</div>
   <span data-testid="newer">{{ this.newer }}</span>
   <span data-testid="pages">{{ this.pages }}</span>
+  <span data-testid="stolen">{{ this.stolen }}</span>
   <ul data-testid="rows" wire-stream="rows">
   </ul>
   <div data-testid="sentinel" wire-viewport-bottom="load_more">more</div>

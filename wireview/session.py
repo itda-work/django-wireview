@@ -1337,6 +1337,7 @@ class WireviewSession:
         page knows whose upload configs to take from then on (#137).
         """
         diff, children, settled = await self._render_tree(component)
+        instances: dict[str, int] = {}
         if diff is not None or children or acknowledge or announce:
             log.debug(f">>> RENDER {component._name} {component.id} (+{len(children)} children)")
             payload: dict[str, t.Any] = {"id": component.id, "diff": diff}
@@ -1355,6 +1356,11 @@ class WireviewSession:
             await self.update_to_which_channels_im_subscribed_to()
             for child in settled:
                 await child.wire.flush_pending()
+                # A child whose first render this is just ran joined(): like a
+                # root's join, it ends with ``joined`` behind what that queued, so
+                # its infinite scroll judges its list once the list is there.
+                if child.id in instances and self.repo.vsn >= JOINED_SINCE:
+                    await child.wire.send("joined", **_with_ref({"id": child.id}, ref))
 
     @staticmethod
     def _first_renders(components: list[Component]) -> dict[str, int]:

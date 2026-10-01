@@ -512,13 +512,17 @@ class ServerConnection {
         break;
       }
 
-      case "joined":
+      case "joined": {
         // The join and everything its joined() queued -- a stream's first
         // page -- have arrived: infinite scroll may judge the list now (#112).
         // Not the replaced join's: its list is not the one on the page (#146).
-        if (!this.joins.about(payload.id, payload.ref)) break;
-        this.startViewports(payload.id);
+        // A LiveComponent a render brought in hears its own, after its ops:
+        // like its render, it is about its root's join.
+        const { id, ref } = payload;
+        if (!this.joins.about(this.components[id]?.owned ? rootIdOf(id) : id, ref)) break;
+        this.startViewports(id);
         break;
+      }
 
       case "hook_reply":
         // Response to a hook's pushEvent call
@@ -1107,8 +1111,12 @@ class WireviewComponent {
         // Call updated on all hooks (and scan for new ones)
         this.hookManager.updated();
 
-        // Update viewport observer (scan for new viewport elements)
-        this.viewportObserver.updated();
+        // Update the viewport observers (scan for new viewport elements): this
+        // component's, and those of the LiveComponents its HTML embeds, which
+        // this patch drew and whose bindings are theirs, not this one's
+        for (const live of [el, ...el.querySelectorAll("[wireview-live]")]) {
+          connection.components[live.id]?.viewportObserver.updated();
+        }
 
         // Update upload previews (populate src for new preview elements)
         const uploadManager = uploadManagers.find(this.id);
@@ -1807,9 +1815,13 @@ class ViewportObserver {
     const root = this.component.getElemenet();
     if (!root) return;
 
-    // Find all elements with viewport bindings
-    const topElements = root.querySelectorAll("[wire-viewport-top]");
-    const bottomElements = root.querySelectorAll("[wire-viewport-bottom]");
+    // Find all elements with viewport bindings, but not a nested component's:
+    // its own observer watches those and sends them to it. Watched from here
+    // too, they went to this component, which has no such handler -- or runs
+    // its own handler of the same name.
+    const own = (/** @type {Element} */ el) => el.closest("[wireview-component]") === root;
+    const topElements = [...root.querySelectorAll("[wire-viewport-top]")].filter(own);
+    const bottomElements = [...root.querySelectorAll("[wire-viewport-bottom]")].filter(own);
 
     // Observe top viewport elements
     topElements.forEach((el) => {
@@ -1898,9 +1910,11 @@ class ViewportObserver {
    */
   updated() {
     if (!this.started) return;
-    // Clean up removed elements
+    // Clean up removed elements, and elements a morph moved into a nested
+    // component (its observer watches them)
+    const root = this.component.getElemenet();
     for (const [el, info] of this.observed) {
-      if (!document.contains(el)) {
+      if (!document.contains(el) || el.closest("[wireview-component]") !== root) {
         this.observer?.unobserve(el);
         this.observed.delete(el);
         debugLog("viewport", `Unobserved: ${info.handler}`, { el });
