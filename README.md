@@ -496,24 +496,21 @@ Streams는 아이템을 개별적으로 렌더링하고 증분 업데이트를 �
 
 ### 기본 사용법
 
-스트림 컨테이너가 있는 템플릿:
+스트림 컨테이너가 있는 템플릿. 컨테이너는 비워 둔다 — 항목은 컴포넌트 상태가 아니라 스트림으로 들어온다:
 
 ```html
 {% load wireview %}
 <div {% tag_header %}>
-  <ul wire-stream="messages">
-    {% for message in messages %}
-      {% include "chat/message_item.html" %}
-    {% endfor %}
-  </ul>
+  <ul wire-stream="messages"></ul>
 </div>
 ```
 
-아이템 템플릿 (`chat/message_item.html`):
+아이템 템플릿 (`chat/message_list_item.html`). 기본 경로는 컴포넌트의 `template_name`에 `_item`을 붙인 것이고,
+항목은 `item`이라는 이름으로 들어온다:
 
 ```html
-<li id="messages-{{ message.pk }}">
-  <strong>{{ message.sender }}:</strong> {{ message.text }}
+<li id="messages-{{ item.pk }}">
+  <strong>{{ item.sender }}:</strong> {{ item.text }}
 </li>
 ```
 

@@ -36,6 +36,12 @@ The django-reactor era changelog (2.x) is preserved in
   their own. They shared one object, so a component that edited (or refreshed) what it heard
   changed what the next one heard (found with #153).
 
+- The README's Streams example now works as copied: the container is empty, the item template is
+  the one the component looks for (`chat/message_list_item.html`), and it reads the row as `item`.
+  It named `chat/message_item.html` and read `message`, so it failed with `TemplateDoesNotExist`,
+  and drew empty items once given the template. `tests/test_readme_examples.py` renders it.
+
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added
