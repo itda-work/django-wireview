@@ -210,6 +210,10 @@ The django-reactor era changelog (2.x) is preserved in
   never public and have none. The warning and `docs/COMPATIBILITY.md` now name every re-exported
   name and say those two go in 2.0 with no replacement.
 
+- `docs/COMPATIBILITY.md` now says a `WireviewDeprecationWarning` does not show in a production
+  log under Python's default filters, and where it does show (pytest, `-W default::DeprecationWarning`,
+  `-X dev`).
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

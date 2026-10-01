@@ -75,7 +75,10 @@ from wireview import Component, LiveComponent, JS, mount
 2. 다음 메이저 릴리스에서 지운다.
 3. 두 단계 모두 `CHANGELOG.md`에 적는다.
 
-`WireviewDeprecationWarning`은 `DeprecationWarning`의 하위 클래스다. 테스트에서 경고를 오류로 바꾸려면:
+`WireviewDeprecationWarning`은 `DeprecationWarning`의 하위 클래스다. 그래서 파이썬의 기본 필터 아래에서는
+**운영 서버의 로그에 보이지 않는다** — 기본 필터는 `__main__`에서 난 `DeprecationWarning`만 보여 준다. 폐기 예정인
+것을 쓰는지는 테스트(pytest는 보여 준다)나 `python -W default::DeprecationWarning`·`python -X dev`로 띄운 서버에서
+확인한다. 테스트에서 경고를 오류로 바꾸려면:
 
 ```python
 import warnings
