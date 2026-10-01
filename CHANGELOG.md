@@ -409,26 +409,30 @@ The django-reactor era changelog (2.x) is preserved in
   after the raw session key, `wireview.toast.session.<session_key>`, whether or not anything was
   ever toasted to it. The group name goes to the channel layer's broker: channels_redis keeps it
   as a Redis key (`asgi:group:...`, in RDB/AOF snapshots too), channels-nats as a subscription
-  subject its monitoring endpoints (`/subsz?subs=1`, `/connz?subs=1`) show, and both may log it,
-  as may the app: rc3 and rc4 logged each subscription at `wireview` DEBUG, and telemetry carried
-  a toast's group name (`broadcast_published`'s `topic`, `publish_failed`'s `target`). With a
+  subject its monitoring endpoints (`/subsz?subs=1`, `/connz?subs=1`) show, and both may log it.
+  So may the app: rc3 and rc4 logged each subscription at `wireview` DEBUG, and a toast sent to a
+  session key carried the name in telemetry (`broadcast_published`'s `topic` in rc3 and rc4,
+  `publish_failed`'s `target` in rc4). With a
   server-side session backend (db, cache, cached_db, file) the session key is the session cookie,
   so whoever could read the broker, its logs or its monitoring could act as that user until the
   session expired. Affected: 1.0.0rc3 and 1.0.0rc4, on a page with `{% wireview_toasts %}`, with
   a server-side session backend and a layer with an out-of-process broker; `InMemoryChannelLayer`
   keeps it in the process, and with `signed_cookies` the join failed before subscribing (see the
   fix under `### Fixed`). Fixed here: a session key enters the group name only as a digest.
-  **What to do:** upgrade, then, once the last 1.0.0rc3 or rc4 worker is down (one still running
-  keeps subscribing with raw keys), invalidate the sessions that were active while you ran an
-  affected version, which logs every user out. Empty what holds them: db the session table
-  (`django_session`), cache the session cache, `cached_db` both (whichever is left keeps the
-  session), file the session files in `SESSION_FILE_PATH`. `clearsessions` removes only expired
-  sessions. Rotating `SECRET_KEY` with the old key kept in `SECRET_KEY_FALLBACKS` invalidates
-  nothing; changing it without the fallback logs everyone out on every backend but also voids
-  every other signature, such as password reset links. Then find the `wireview.toast.session.`
-  group names wherever they were recorded -- the broker's dumps, logs and monitoring, the app's
-  `wireview` DEBUG log, telemetry receivers -- and remove them. If you cannot upgrade yet, take
-  `{% wireview_toasts %}` out of the layout (`docs/UPGRADING.md`).
+  **What to do:** upgrade, or, if you cannot yet, take `{% wireview_toasts %}` out of the layout.
+  Then, once the last 1.0.0rc3 or rc4 worker serving the tag is down (one still running keeps
+  subscribing with raw keys), invalidate the sessions that were active while you ran an affected
+  version, which logs every user out. Empty what holds them: for `db`, the session table
+  (`django_session`); for `cache`, the session cache; for `cached_db` both the table and the cache
+  (whichever is left keeps the session); for `file`, the session files in `SESSION_FILE_PATH`
+  (unset, the system temp directory's files named after `SESSION_COOKIE_NAME`, `sessionid*`).
+  `clearsessions` removes only expired sessions. Rotating `SECRET_KEY` with the old key kept in
+  `SECRET_KEY_FALLBACKS` invalidates nothing; changing it without the fallback logs everyone out
+  on every backend but also voids every other signature, such as password reset links, and on
+  `cache` and `cached_db` leaves the rest of each session's data readable. Then find the
+  `wireview.toast.session.` group names wherever they were recorded -- the broker's dumps, logs
+  and monitoring, the app's `wireview` DEBUG log, telemetry receivers -- and remove them
+  (`docs/UPGRADING.md`).
 
 ## [1.0.0rc4] - 2026-10-01
 

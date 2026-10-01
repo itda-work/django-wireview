@@ -29,8 +29,8 @@
 >   인자로 부를 수 있었다. [rc4→1.0 절](#100rc4에서-10으로)의 `on_upload_complete` 항목을 읽는다.
 > - [GHSA-4v8p-p6p8-78pj](https://github.com/itda-work/django-wireview/security/advisories/GHSA-4v8p-p6p8-78pj)
 >   (1.0.0rc3~1.0.0rc4): `{% wireview_toasts %}`가 있는 페이지는 방문자의 세션 키 원문을 그룹 이름으로 브로커에
->   보냈다. 서버 저장형 세션 백엔드와 Redis·NATS 같은 프로세스 밖 브로커 레이어를 썼다면 업그레이드하고
->   마지막 rc3·rc4 워커가 내려간 뒤 그 기간의 세션을 무효화한다. 백엔드마다 비울 것이 다르다.
+>   보냈다. 서버 저장형 세션 백엔드와 Redis·NATS 같은 프로세스 밖 브로커 레이어를 썼다면 업그레이드하거나
+>   태그를 빼고, 마지막 rc3·rc4 워커가 내려간 뒤 그 기간의 세션을 무효화한다. 백엔드마다 비울 것이 다르다.
 >   [rc4→1.0 절](#100rc4에서-10으로)의 토스트 항목을 읽는다.
 
 ## 버전 범위
@@ -86,15 +86,19 @@ dependencies = ["django-wireview>=1.0,<2"]
     - `cache`: 세션 캐시(`SESSION_CACHE_ALIAS`)
     - `cached_db`: 테이블과 캐시 둘 다. 테이블만 비우면 캐시 항목이 세션 만료까지(기본 2주) 남고, 캐시만 비우면
       테이블에서 다시 채운다.
-    - `file`: `SESSION_FILE_PATH`의 세션 파일
+    - `file`: `SESSION_FILE_PATH`의 세션 파일. 설정하지 않았다면 시스템 temp 디렉터리(`tempfile.gettempdir()`)에서
+      `SESSION_COOKIE_NAME`(기본 `sessionid`)으로 시작하는 파일
   - `clearsessions`는 만료된 세션만 지우므로 소용없다. `SECRET_KEY`를 바꾸면서 옛 키를 `SECRET_KEY_FALLBACKS`에
     남기면 아무것도 무효화되지 않는다. 남기지 않고 바꾸면 모든 백엔드에서 로그인이 풀리지만, 비밀번호 재설정 링크·서명
-    쿠키 같은 다른 서명도 함께 무효가 된다.
+    쿠키 같은 다른 서명도 함께 무효가 된다. 또 `cache`·`cached_db`에서는 로그인만 풀리고 세션에 든 다른 값은 그대로
+    읽히므로, 세션에 민감한 값을 둔다면 위의 저장소를 비운다.
   - `wireview.toast.session.` 그룹 이름이 남았을 수 있는 기록을 점검해 지운다. 브로커의 덤프(Redis RDB/AOF)·로그·
     모니터링(NATS `/subsz?subs=1`·`/connz?subs=1`), 앱의 `wireview` 로거 DEBUG 출력(rc3·rc4는 구독마다 그룹 이름을
-    남겼다), 텔레메트리 수신자(`broadcast_published`의 `topic`, `publish_failed`의 `target`)다. 세션을 무효화했다면
+    남겼다), 텔레메트리 수신자(세션 키로 토스트를 보냈다면 `broadcast_published`의 `topic`(rc3·rc4)과
+    `publish_failed`의 `target`(rc4))다. 세션을 무효화했다면
     남은 기록은 무해하다.
-  - 올릴 수 없으면 레이아웃에서 `{% wireview_toasts %}`를 뺀다. `InMemoryChannelLayer`는 프로세스 밖으로 보내지 않는다.
+  - 올릴 수 없으면 레이아웃에서 `{% wireview_toasts %}`를 빼고, 그 배포가 모든 워커에 닿은 뒤 위와 같이 세션을
+    무효화하고 기록을 점검한다. 태그를 빼도 이미 브로커·로그에 간 키는 세션이 끝날 때까지 유효하다. `InMemoryChannelLayer`는 프로세스 밖으로 보내지 않는다.
   - 1.0.0rc4 워커와 1.0 워커가 섞여 도는 롤링 배포 동안에는 서로 다른 버전의 워커 사이에서 세션 키 토스트가 닿지 않는다.
     토스트는 다시 오지 않는 일회성 메시지라 그동안의 것은 빠진다. 사용자로 보낸 토스트는 이름이 같아 영향이 없다.
 - **`UploadStatus`·`AsyncState`·`PresenceState`는 `StrEnum`이다**(**조용함**). 템플릿의 `{{ entry.status }}`, `str()`,
