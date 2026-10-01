@@ -16,7 +16,7 @@ from .. import settings
 from ..core.component import Component
 from ..core.live_session import REQUEST_ATTR as LIVE_SESSION_REQUEST_ATTR
 from ..core.live_session import declaration_allows, get_live_session
-from ..core.rendered import inject_marker
+from ..core.rendered import inject_marker, nested_component_html
 from ..core.state import sign_state
 from ..event_transpiler import binding
 from ..features.hooks import hook_files
@@ -269,8 +269,14 @@ def _build_and_render_component(
 
     # Use slot-aware rendering if slots are provided
     if slots is not None:
-        return component_instance._render_with_slots(repo, slots) or ""
-    return component_instance._render(repo) or ""
+        html = component_instance._render_with_slots(repo, slots) or ""
+    else:
+        html = component_instance._render(repo) or ""
+    if repo.is_live and html:
+        # A fill holding this output keeps it as text; the slot's owner finds the
+        # component by these marks and draws it as it is then (parsing drops them)
+        return mark_safe(nested_component_html(component_instance.id, html))
+    return html
 
 
 @register.simple_tag(takes_context=True)

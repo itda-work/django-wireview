@@ -4,7 +4,7 @@
   <b data-testid="host-n">{{ this.n }}</b>
   <button type="button" data-testid="host-bump" {% on "click" "bump" %}>bump</button>
   {% component_block 'SlotProbeFrame' id="frame" %}
-  {% fill body %}<span data-testid="frame-slot">FRAME-SLOT {{ this.n }}</span>{% live_component 'SlotProbeLeaf' id="leaf" %}{% endfill %}
+  {% fill body %}<span data-testid="frame-slot">FRAME-SLOT {{ this.n }}</span>{% live_component 'SlotProbeLeaf' id="leaf" %}<i data-testid="frame-slot-tail">TAIL</i>{% component 'SlotProbePlain' id="plain" %}{% endfill %}
 {% endcomponent %}
 {% live_component_block 'SlotProbeBox' id="box" %}
 {% fill body %}<span data-testid="box-slot">BOX-SLOT {{ this.n }}</span>{% live_component 'SlotProbeLeaf' id="boxleaf" %}{% endfill %}

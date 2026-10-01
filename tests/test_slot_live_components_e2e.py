@@ -1,10 +1,13 @@
-"""LiveComponents in slots stay on the page when the slot's owner renders on its own.
+"""What is in a slot stays on the page when the slot's owner renders on its own.
 
 The server-side contract is in tests/test_live_component_slots.py. Here the page
 applies it: the frame (``{% component_block %}``) renders its slot on its own
 join and on its events, the box (``{% live_component_block %}``) on its events,
 and both slots hold a LiveComponent the host owns. Before 1.0 their own render
-carried the LiveComponent as a bare comment and it left the page.
+carried the LiveComponent as a bare comment and it left the page. The frame's
+slot also holds a plain component, which its render put back as the host's pass
+had drawn it; the frame can hide its slot and show it again, and joins again
+after it raises or the page is visited again, which emptied its slot.
 
 Fixture: tests/testproj/slotprobe/.
 """
@@ -31,10 +34,18 @@ def by(page, testid):
     return page.get_by_test_id(testid)
 
 
-def after_render_of(page, component_id: str) -> None:
-    """Wait until the page was handed a render of ``component_id``, and the frame that patches it."""
+def renders_of(page, component_id: str) -> int:
+    """How many renders of ``component_id`` the page was handed so far."""
+    return page.evaluate(
+        f"window.__inbox.seen.filter((m) => m.command === 'render' && m.payload.id === '{component_id}').length"
+    )
+
+
+def after_render_of(page, component_id: str, more_than: int = 0) -> None:
+    """Wait until the page was handed a render of ``component_id`` past the first ``more_than``, and its patch."""
     page.wait_for_function(
-        f"window.__inbox.seen.some((m) => m.command === 'render' && m.payload.id === '{component_id}')"
+        "window.__inbox.seen.filter((m) => m.command === 'render' && "
+        f"m.payload.id === '{component_id}').length > {more_than}"
     )
     page.evaluate("() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))")
 
@@ -104,3 +115,68 @@ def test_the_host_refills_both_slots_and_the_live_components_keep_their_state(pr
     expect_text(by(probe, "frame-clicks"), "1")
     expect_text(by(probe, "frame-slot"), "FRAME-SLOT 1")
     expect_count(probe.locator("#leaf"), 1)
+
+
+def test_a_plain_component_in_the_frames_slot_keeps_its_state_on_the_frames_render(probe):
+    by(probe, "plain-click").click()
+    expect_text(by(probe, "plain-clicks"), "1")
+    state = probe.locator("#plain").get_attribute("data-state")
+
+    by(probe, "frame-click").click()
+    expect_text(by(probe, "frame-clicks"), "1")
+
+    expect_text(by(probe, "plain-clicks"), "1")
+    assert probe.locator("#plain").get_attribute("data-state") == state
+    by(probe, "plain-click").click()
+    expect_text(by(probe, "plain-clicks"), "2")
+
+
+def test_the_frame_shows_its_slot_again_with_the_live_component_in_it(probe):
+    by(probe, "leaf-poke").click()
+    expect_text(by(probe, "leaf-pokes"), "1")
+
+    by(probe, "frame-toggle").click()
+    expect_count(probe.locator("#leaf"), 0)
+    by(probe, "frame-toggle").click()
+
+    expect_count(probe.locator("#leaf"), 1)
+    expect_text(by(probe, "frame-slot"), "FRAME-SLOT 0")
+    expect_text(by(probe, "frame-slot-tail"), "TAIL")
+    expect_text(by(probe, "leaf-pokes"), "1")
+    # The plain component left with the hidden slot; nothing without a server instance comes back
+    expect_count(probe.locator("#plain"), 0)
+    by(probe, "leaf-poke").click()
+    expect_text(by(probe, "leaf-pokes"), "2")
+
+
+def test_the_frame_joined_again_after_it_raised_keeps_its_slot(probe):
+    by(probe, "leaf-poke").click()
+    expect_text(by(probe, "leaf-pokes"), "1")
+    seen = renders_of(probe, "frame")
+
+    by(probe, "frame-boom").click()
+    after_render_of(probe, "frame", seen)
+
+    expect_text(by(probe, "frame-slot"), "FRAME-SLOT 0")
+    expect_text(by(probe, "frame-slot-tail"), "TAIL")
+    expect_count(probe.locator("#leaf"), 1)
+    expect_count(probe.locator("#plain"), 1)
+    expect_text(by(probe, "leaf-pokes"), "1")
+    by(probe, "leaf-poke").click()
+    expect_text(by(probe, "leaf-pokes"), "2")
+
+
+def test_a_visit_to_the_same_page_keeps_the_frames_slot(probe):
+    seen = renders_of(probe, "frame")
+
+    by(probe, "again").click()
+    probe.wait_for_url("**/slotprobe/?again=1")
+    after_render_of(probe, "frame", seen)
+
+    expect_text(by(probe, "frame-slot"), "FRAME-SLOT 0")
+    expect_text(by(probe, "frame-slot-tail"), "TAIL")
+    expect_count(probe.locator("#leaf"), 1)
+    by(probe, "leaf-poke").click()
+    expect_text(by(probe, "leaf-pokes"), "1")
+    by(probe, "plain-click").click()
+    expect_text(by(probe, "plain-clicks"), "1")

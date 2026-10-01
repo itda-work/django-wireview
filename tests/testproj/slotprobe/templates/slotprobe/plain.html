@@ -1,0 +1,6 @@
+{% load wireview %}
+
+<em {% tag_header %}>
+  <b data-testid="plain-clicks">{{ this.clicks }}</b>
+  <button type="button" data-testid="plain-click" {% on "click" "click" %}>click</button>
+</em>

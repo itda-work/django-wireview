@@ -119,6 +119,8 @@ class ComponentRepository:
         self._rendered_children: dict[str, set[str]] = {}
         # Existing children whose slot content changed on the parent's re-render
         self._pending_rerender: list[LiveComponent] = []
+        # Slots of instances retired so the page can join their id again
+        self._slots_to_rejoin: dict[str, tuple[type[Component], "SlotContainer"]] = {}
 
     @staticmethod
     def decode_params(params: t.Mapping[str, t.Any]) -> dict[str, t.Any]:
@@ -400,6 +402,9 @@ class ComponentRepository:
             state,
         )
         self._carry(component.id, children or {})
+        kept = self._slots_to_rejoin.pop(component.id, None)
+        if kept is not None and component.wire.slots is None and type(component) is kept[0]:
+            component.wire.slots = kept[1]
         # Enter pending mode before joined() to queue stream/push_js operations
         # These will be flushed after send_render() in consumer
         component.wire.enter_pending_mode()
@@ -534,6 +539,19 @@ class ComponentRepository:
     def register_component(self, component: Component):
         self.components[component.id] = component
         return component
+
+    def retire(self, id: str, *, keep_carried: bool = False) -> list[Component]:
+        """Remove ``id`` as :meth:`remove` does, for the page to join it again.
+
+        Slots are not part of the signed state: only the component that filled
+        them knows them, and its pass gave them to this instance. The next
+        instance joined under the id takes them, or it renders its slots empty --
+        text, LiveComponents and nested components gone from the page.
+        """
+        component = self.components.get(id)
+        if component is not None and component.wire.slots is not None:
+            self._slots_to_rejoin[id] = (type(component), component.wire.slots)
+        return self.remove(id, keep_carried=keep_carried)
 
     def remove(self, id: str, *, keep_carried: bool = False) -> list[Component]:
         """Remove a component and every LiveComponent nested under it.

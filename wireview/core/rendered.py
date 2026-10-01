@@ -16,6 +16,9 @@ Markers are HTML comments emitted by ``wireview.template_engine``:
 - ``<!--$n--><!--@wv:id--><!--/$n-->`` a component reference (``{% live_component %}``
   output in a live render): the child renders and ships on its own, and the
   parent's slot only names it, so the parent's diff never carries child markup
+- ``<!--@wv(:id-->…<!--@wv):id-->`` where a nested ``{% component %}`` drew
+  itself in a live render. Parsing drops these: they only tell a slot's owner,
+  which keeps a pre-rendered fill as text, which part of it is that component
 
 A comprehension becomes a single dynamic slot whose value holds the item
 template's statics once and one list of dynamics per item, mirroring
@@ -46,6 +49,10 @@ MARKER_PATTERN = re.compile(r"<!--\$(\d+)-->(.*?)<!--/\$\1-->", re.DOTALL)
 _TOKEN = re.compile(r"<!--(/?)\$([CIB]?)(\d+)-->")
 _REF_PREFIX = "<!--@wv:"
 _REF = re.compile(r"<!--@wv:([^>]+?)-->")
+_NESTED_PREFIX = "<!--@wv("
+_NESTED = re.compile(r"<!--@wv[()]:[^>]+?-->")
+# A reference, or a nested component's whole output (the outermost, by its own id)
+_PLACE = re.compile(r"<!--@wv:([^>]+?)-->|<!--@wv\(:([^>]+?)-->.*?<!--@wv\):\2-->", re.DOTALL)
 
 Dynamic = t.Union[str, "Comprehension", "Rendered", "ComponentRef"]
 Payload = t.Union[str, dict[str, t.Any]]
@@ -431,6 +438,8 @@ class Rendered:
         assign that was reset (wireview/core/render_reads.py); they come out
         as ``Stale`` until ``settle()``.
         """
+        if _NESTED_PREFIX in html:
+            html = _NESTED.sub("", html)
         static, dynamic = _parse(html, set(stale))
         return cls(static=static, dynamic=dynamic)
 
@@ -614,15 +623,44 @@ def strip_markers(html: str) -> str:
     return _TOKEN.sub("", html)
 
 
-def split_component_refs(html: str) -> list[tuple[str, str | None]]:
-    """``html`` cut at each component reference: (text before it, its id), then (the rest, None)."""
-    parts: list[tuple[str, str | None]] = []
+def nested_component_html(component_id: str, html: str) -> str:
+    """``html``, a nested component's live output, marked as that component's (dropped when parsed)."""
+    return f"{_NESTED_PREFIX}:{component_id}-->{html}<!--@wv):{component_id}-->"
+
+
+def split_components(html: str) -> list[tuple[str, str | None, bool]]:
+    """``html`` cut where components go: ``(text before, id, live)`` each, then ``(the rest, None, False)``.
+
+    ``live`` is true for a LiveComponent's reference and false for a nested
+    component's marked output, which is cut out whole.
+    """
+    parts: list[tuple[str, str | None, bool]] = []
     start = 0
-    for match in _REF.finditer(html):
-        parts.append((html[start : match.start()], match.group(1)))
+    for match in _PLACE.finditer(html):
+        live = match.group(1) is not None
+        parts.append((html[start : match.start()], match.group(1) if live else match.group(2), live))
         start = match.end()
-    parts.append((html[start:], None))
+    parts.append((html[start:], None, False))
     return parts
+
+
+def payload_component_refs(payload: t.Any) -> list[str]:
+    """Ids of every LiveComponent referenced in a diff payload, full or partial, in order."""
+    found: list[str] = []
+
+    def walk(value: t.Any) -> None:
+        if isinstance(value, dict):
+            if isinstance(ref := value.get("c"), str):
+                found.append(ref)
+                return
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(payload)
+    return found
 
 
 def component_refs(rendered: Rendered) -> list[str]:

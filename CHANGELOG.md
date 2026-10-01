@@ -393,7 +393,23 @@ The django-reactor era changelog (2.x) is preserved in
   LiveComponent was and the page dropped it. The remembered slot now numbers the reference in the
   rendering component's own pass, so it reaches the page as the `{"c": id}` reference it was. The
   LiveComponent stays the child of the component that filled the slot: the slot's owner runs none
-  of its hooks. No new diff form, so `PROTOCOL_VERSION` stays.
+  of its hooks. No new diff form, so `PROTOCOL_VERSION` stays. The rest of a slot stays too:
+  - A slot's owner that hides the slot and shows it again (`{% if %}` around `{% render_slot %}`)
+    shows its LiveComponents again. The page had dropped them with the hidden DOM while the filler
+    still owned them, and nothing registered them again, so the reference drew nothing. A render
+    now carries in `children` the whole current render of each LiveComponent it names that its
+    previous render did not, and of theirs, whoever owns them; no hook runs.
+  - A slot's owner joined again keeps its slot: after its handler raised, and on a boosted visit to
+    a page with the same ids. Slots are not in the signed state, and the new instance rendered the
+    slot empty -- text, LiveComponents and nested components gone. The repository keeps the slots
+    of an instance it retires for the page to join again, and the next instance of that class
+    joined under the id takes them.
+  - A nested `{% component %}` in a slot is drawn as it is now on its owner's render. The slot's
+    text held it as the filler's pass drew it, so the page went back to its old content and its old
+    `data-state`, which a reconnect then joined. A live pass marks a nested component's output (the
+    marks are dropped before anything is sent), and the slot's owner draws the component in its
+    place from the repository. One that left the page is not drawn: after the owner hides the slot
+    and shows it again, it comes back on the filler's next render.
 
 - What a new component sends from `joined()` reaches it: its streams, its `push_js` and its
   `push_event`. A LiveComponent a parent's render brings in sends them right behind that render,

@@ -17,7 +17,7 @@ from wireview.core.component import Component
 
 from . import serializer, telemetry
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
-from .core.rendered import ERRORS_SINCE, JOINED_SINCE, PROTOCOL_VERSION
+from .core.rendered import ERRORS_SINCE, JOINED_SINCE, PROTOCOL_VERSION, component_refs, payload_component_refs
 from .core.session import SessionView
 from .core.state import StateMismatch, StatePayload, unsign_envelope
 from .core.transport import Outbound
@@ -253,7 +253,7 @@ class WireviewSession:
         root = self.repo.root_of(component)
         # The page joins it again under the id, and what its join carried is
         # still for that one: a component only a later render draws comes back
-        removed = self.repo.remove(root.id, keep_carried=True)
+        removed = self.repo.retire(root.id, keep_carried=True)
         await self._call_leaving(removed)
         self._release_uploads(removed)
         if self.repo.vsn < ERRORS_SINCE:
@@ -373,7 +373,7 @@ class WireviewSession:
             # parent's template pass created but that never joined is adopted by
             # repo.join() instead, as its own join is what completes it.
             log.debug("Re-join of %s: retiring the previous instance", component_id)
-            removed = self.repo.remove(component_id)
+            removed = self.repo.retire(component_id)
             await self._call_leaving(removed)
             self._release_uploads(removed)
         try:
@@ -1420,6 +1420,7 @@ class WireviewSession:
         """
         repo = self.repo
         repo.begin_render(component.id)
+        before = component.wire._last_rendered
         diff = await component._render_diff(repo)
         await component._run_hooks("after_render")
         # Clear temporary assigns after rendering to free memory
@@ -1484,7 +1485,38 @@ class WireviewSession:
             children.update(grandchildren)
             settled.append(child)
             settled.extend(descendants)
+        self._send_shown_again(diff, before, children)
         return diff, children, settled
+
+    def _send_shown_again(self, diff: t.Any, before: t.Any, children: dict[str, t.Any]) -> None:
+        """Put in ``children`` the full render of each LiveComponent ``diff`` names anew, and of theirs.
+
+        A slot's owner can hide a slot and show it again on its own (an
+        ``{% if %}`` around ``{% render_slot %}``). The page drops the
+        LiveComponents in it when they leave the DOM, but the component that
+        filled the slot still names them, so they live on and no lifecycle
+        brings them back. The render that names one again carries what it is
+        now, and the page draws it from that. No hook runs: whoever owns it
+        settles it, as ever. The same goes for whatever else names a
+        LiveComponent its previous render did not.
+        """
+        named = payload_component_refs(diff)
+        if not named:
+            return
+        before_named = set(component_refs(before)) if before is not None else set()
+        pending = [component_id for component_id in named if component_id not in before_named]
+        seen: set[str] = set()
+        while pending:
+            component_id = pending.pop()
+            if component_id in seen:
+                continue
+            seen.add(component_id)
+            component = self.repo.get(component_id)
+            if not isinstance(component, LiveComponent) or (rendered := component.wire._last_rendered) is None:
+                continue
+            # Whole, over whatever partial diff this frame holds: the page may hold nothing of it
+            children[component_id] = rendered.get_diff(None, self.repo.vsn).to_payload()  # type: ignore[union-attr]
+            pending.extend(component_refs(rendered))
 
     async def send_command(self, command, payload):
         await self.outbound.send_command(command, payload)

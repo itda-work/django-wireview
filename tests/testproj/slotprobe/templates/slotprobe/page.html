@@ -6,5 +6,8 @@
     <title>slot probe</title>
     {% wireview_header %}
   </head>
-  <body>{% component 'SlotProbeHost' id="host" %}</body>
+  <body>
+    <a href="/slotprobe/?again=1" data-testid="again">again</a>
+    {% component 'SlotProbeHost' id="host" %}
+  </body>
 </html>

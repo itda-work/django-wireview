@@ -16,7 +16,7 @@ from django.test import override_settings
 
 from wireview import Component, LiveComponent
 from wireview.consumer import WireviewConsumer
-from wireview.core.rendered import component_refs
+from wireview.core.rendered import PROTOCOL_VERSION, component_refs
 from wireview.repository import ComponentRepository
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio, pytest.mark.django_db]
@@ -75,6 +75,19 @@ TEMPLATES = {
         "{% load wireview %}<aside {% live_tag_header %}><span>{{ this.clicks }}</span>{% render_slot 'body' %}</aside>"
     ),
     "sl/leaf.html": "{% load wireview %}<b {% live_tag_header %}>{{ this.pokes }}</b>",
+    "sl/showpage.html": (
+        "{% load wireview %}<main {% tag_header %}><i>{{ this.n }}</i>"
+        "{% component_block 'SlShowFrame' id='sf' %}"
+        "{% fill body %}A{% live_component 'SlLeaf' id='sl1' %}B{% live_component 'SlLeaf' id='sl2' %}"
+        "C{% component 'SlPlain' id='g' %}Z{% endfill %}"
+        "{% endcomponent %}"
+        "</main>"
+    ),
+    "sl/showframe.html": (
+        "{% load wireview %}<section {% tag_header %}><span>{{ this.clicks }}</span>"
+        "{% if this.show %}{% render_slot 'body' %}{% endif %}</section>"
+    ),
+    "sl/plain.html": "{% load wireview %}<em {% tag_header %}>G{{ this.clicks }}</em>",
     "sl/strictpage.html": (
         "{% load wireview %}<main {% tag_header %}>"
         "{% live_component_block 'SlStrict' id='s' %}x{% endlive_component %}"
@@ -189,6 +202,43 @@ class SlLeaf(LiveComponent):
 
     async def poke(self):
         self.pokes += 1
+
+
+class SlShowPage(Component):
+    class Meta:
+        template_name = "sl/showpage.html"
+
+    n: int = 0
+
+    async def bump(self):
+        self.n += 1
+
+
+class SlShowFrame(Component):
+    class Meta:
+        template_name = "sl/showframe.html"
+
+    clicks: int = 0
+    show: bool = True
+
+    async def click(self):
+        self.clicks += 1
+
+    async def toggle(self):
+        self.show = not self.show
+
+    async def boom(self):
+        raise RuntimeError("the frame went wrong")
+
+
+class SlPlain(Component):
+    class Meta:
+        template_name = "sl/plain.html"
+
+    clicks: int = 0
+
+    async def click(self):
+        self.clicks += 1
 
 
 class SlStrictPage(Component):
@@ -459,6 +509,152 @@ async def test_a_dead_render_of_remembered_slots_inlines_their_live_component():
     html = str(frame.wire.render(frame, dead))
 
     assert 'SLOT-TEXT 0<b id="leaf"' in html and "<!--" not in html
+
+
+# --- what is in a slot when its owner renders on its own -----------------------------------
+#
+# sl/showpage.html fills the frame's slot with text around and between two
+# LiveComponents and a plain component. The frame renders that slot on its own
+# join and events, and can hide it and show it again.
+
+
+async def join_show_page() -> tuple[WireviewConsumer, FakeOutbound]:
+    from wireview.core.state import sign_state
+
+    SlLeaf.joins = []
+    consumer, outbound = make_consumer()
+    consumer.repo.vsn = PROTOCOL_VERSION
+    await join(consumer, "SlShowPage", id="host")
+    await consumer.command_join("SlShowFrame", sign_state(consumer.repo.get("sf")))
+    await consumer.command_join("SlPlain", sign_state(consumer.repo.get("g")))
+    return consumer, outbound
+
+
+def state_of(html: str, component_id: str) -> str:
+    import re
+
+    match = re.search(rf'id="{component_id}"[^>]*?data-state="([^"]+)"', html)
+    assert match, f"no data-state for {component_id} in {html}"
+    return match.group(1)
+
+
+async def test_the_text_around_and_between_the_references_of_a_slot_stays():
+    consumer, outbound = await join_show_page()
+    outbound.commands.clear()
+
+    await consumer.command_user_event("sf", "click", {}, {})
+
+    html = child_html(consumer, "sf")
+    assert html.startswith('<section id="sf"') and "<span>1</span>" in html
+    assert 'A<!--@wv:sl1-->B<!--@wv:sl2-->C<em id="g"' in html
+    assert html.endswith(">G0</em>Z</section>")
+
+
+async def test_the_marks_around_a_nested_component_never_reach_the_page():
+    """They are for the slot's owner, which keeps the fill as text; every render drops them when parsed."""
+    consumer, outbound = await join_show_page()
+    await consumer.command_user_event("sf", "click", {}, {})
+
+    sent = json.dumps(outbound.renders())
+    assert "@wv(" not in sent and "@wv)" not in sent
+    for component_id in ("host", "sf", "g"):
+        assert "@wv(" not in child_html(consumer, component_id)
+
+
+async def test_a_plain_component_in_a_slot_shows_its_current_state_on_the_owners_render():
+    """The slot's text holds the plain component as the host's pass drew it; the owner draws it as it is now."""
+    consumer, outbound = await join_show_page()
+    await consumer.command_user_event("g", "click", {}, {})
+    g_html = child_html(consumer, "g")
+    assert "G1" in g_html
+    outbound.commands.clear()
+
+    await consumer.command_user_event("sf", "click", {}, {})
+
+    html = child_html(consumer, "sf")
+    assert ">G1</em>Z" in html and "G0" not in html
+    assert state_of(html, "g") == state_of(g_html, "g"), "the old data-state would join g back to its old state"
+
+
+async def test_a_plain_component_that_left_is_not_drawn_by_the_slots_owner():
+    consumer, outbound = await join_show_page()
+    await consumer.command_leave("g")
+    outbound.commands.clear()
+
+    await consumer.command_user_event("sf", "click", {}, {})
+
+    html = child_html(consumer, "sf")
+    assert 'id="g"' not in html and "<!--@wv:sl2-->CZ</section>" in html
+
+
+async def test_an_owner_that_shows_its_slot_again_sends_the_live_components_in_it():
+    """The page dropped them with the hidden slot; the host still owns them, so nothing else brings them back."""
+    consumer, outbound = await join_show_page()
+    await consumer.command_user_event("sl1", "poke", {}, {})
+    await consumer.command_user_event("sf", "toggle", {}, {})
+    assert component_refs(consumer.repo.get("sf").wire._last_rendered) == []
+    outbound.commands.clear()
+
+    await consumer.command_user_event("sf", "toggle", {}, {})
+
+    [render] = outbound.renders()
+    assert refs(render["diff"]) == ["sl1", "sl2"]
+    assert set(render["children"]) == {"sl1", "sl2"}
+    assert "s" in render["children"]["sl1"], "a full render: the page has nothing to apply a partial one to"
+    assert render["children"]["sl1"]["d"][-1] == "1", "the state it has now"
+    assert "instances" not in render, "the same instances as before"
+    assert SlLeaf.joins == ["sl1", "sl2"], "no lifecycle: the host still owns them"
+    assert consumer.repo.get("sl1")._parent_id == "host"
+    outbound.commands.clear()
+
+    await consumer.command_user_event("sf", "click", {}, {})
+
+    assert "children" not in outbound.renders()[0], "only a render that names them anew sends them"
+
+
+async def test_an_owner_joined_again_after_its_handler_raised_keeps_its_slot():
+    from wireview.core.state import sign_state
+
+    consumer, outbound = await join_show_page()
+    state = sign_state(consumer.repo.get("sf"))
+    await consumer.command_user_event("sf", "boom", {}, {})
+    assert ("error", {"id": "sf", "during": "event"}) in outbound.commands
+    outbound.commands.clear()
+
+    await consumer.command_join("SlShowFrame", state)
+
+    html = child_html(consumer, "sf")
+    assert "A<!--@wv:sl1-->B<!--@wv:sl2-->C<em" in html and ">G0</em>Z" in html
+
+
+async def test_an_owner_joined_again_with_its_page_keeps_its_slot():
+    """A boosted visit to a page with the same ids joins the host and then the frame again."""
+    from wireview.core.state import sign_state
+
+    consumer, outbound = await join_show_page()
+    host_state = sign_state(consumer.repo.get("host"))
+    frame_state = sign_state(consumer.repo.get("sf"))
+    outbound.commands.clear()
+
+    await consumer.command_join("SlShowPage", host_state)
+    await consumer.command_join("SlShowFrame", frame_state)
+
+    assert outbound.renders()[-1]["id"] == "sf"
+    html = child_html(consumer, "sf")
+    assert "A<!--@wv:sl1-->B<!--@wv:sl2-->C<em" in html and ">G0</em>Z" in html
+
+
+async def test_a_new_instance_takes_no_slot_another_class_left_under_its_id():
+    from wireview.core.state import sign_state
+
+    consumer, outbound = await join_show_page()
+    await consumer.command_user_event("sf", "boom", {}, {})
+    stranger = consumer.repo.build("SlFrame", {"id": "sf"})
+    consumer.repo.remove("sf")
+
+    await consumer.command_join("SlFrame", sign_state(stranger))
+
+    assert consumer.repo.get("sf").wire.slots is None
 
 
 # --- HTTP render and validation ------------------------------------------------------------

@@ -3,5 +3,9 @@
 <section {% tag_header %}>
   <b data-testid="frame-clicks">{{ this.clicks }}</b>
   <button type="button" data-testid="frame-click" {% on "click" "click" %}>click</button>
-  {% render_slot "body" %}
+  <button type="button" data-testid="frame-toggle" {% on "click" "toggle" %}>toggle</button>
+  <button type="button" data-testid="frame-boom" {% on "click" "boom" %}>boom</button>
+  {% if this.show %}
+    {% render_slot "body" %}
+  {% endif %}
 </section>

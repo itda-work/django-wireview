@@ -75,6 +75,11 @@
   `{% live_component_block %}`)가 기억한 슬롯으로 스스로 렌더할 때는 그 자리에 참조만 다시 번호를 매겨
   내보낸다(`wireview/slots.py`의 `_ComponentRefNode`). 자식을 등록하지 않으므로 소유도, 수명주기도
   바뀌지 않는다.
+- 그래서 어떤 렌더가 참조하는 LiveComponent가 그 렌더의 소유가 아닐 수 있다. 슬롯을 그리는 컴포넌트가
+  슬롯을 숨겼다 다시 보이면, 페이지는 숨길 때 그 LiveComponent를 버렸는데 부모는 여전히 그것을 그리므로
+  어떤 수명주기도 그것을 다시 등록하지 않는다. 그래서 렌더가 직전 자기 렌더에 없던 참조를 새로 내면
+  `send_render`가 그 LiveComponent(와 그것이 참조하는 것)의 지금 전체 렌더를 같은 `render`의
+  `children`에 싣는다(`WireviewSession._send_shown_again`). 훅은 부르지 않는다 — 소유는 그대로다.
 - HTTP 최초 렌더(`is_live=False`)는 지금처럼 인라인으로 그린다. dead render이고 `joined()`는 없다.
   Component도 HTTP에서 `joined()`를 받지 않으므로 계약이 같다.
 - 대조: 일반 `{% component %}`는 live 렌더에서도 부모의 패스 안에서 build·mount되어 인라인으로 그려지고,

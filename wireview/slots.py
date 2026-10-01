@@ -224,6 +224,29 @@ class _ComponentRefNode(Node):
         return component_ref_marker(self.component_id, index)
 
 
+class _NestedComponentNode(Node):
+    """Where a pre-rendered fill drew a nested ``{% component %}``, kept for a later render.
+
+    The parent's pass drew the component into the fill's text as it was then,
+    data-state included. A component that renders the fill on its own draws it
+    here as it is now, as the parent's pass would: put back as text, the
+    component's own changes since went back on the page, and a reconnect joined
+    it with the state it had before them. One that left the page is not drawn.
+    """
+
+    def __init__(self, component_id: str):
+        self.component_id = component_id
+
+    def render(self, context: Context) -> str:
+        from .core.rendered import nested_component_html
+
+        repo = context.get("wireview_repository")
+        if repo is None or (component := repo.components.get(self.component_id)) is None:
+            return ""
+        html = component._render(repo) or ""
+        return nested_component_html(component.id, html) if repo.is_live else html
+
+
 class _SlotAccessor:
     """
     Helper class to enable {% if slots.header %} truthiness checks.
@@ -341,9 +364,11 @@ class SlotContainer:
         A LiveComponent the parent's pass named in a fill stays a reference: a
         node that numbers it in the component's own pass. Stripped to a
         bare comment, it reached the page as static text and the LiveComponent
-        left the page on the component's first render of its own.
+        left the page on the component's first render of its own. A nested
+        ``{% component %}`` the pass drew there becomes a node that draws it
+        again, as it is then.
         """
-        from .core.rendered import split_component_refs, strip_markers
+        from .core.rendered import split_components, strip_markers
 
         def stripped(nodelist: NodeList) -> NodeList:
             nodes: list[Node] = []
@@ -351,11 +376,11 @@ class SlotContainer:
                 if not isinstance(node, TextNode):
                     nodes.append(node)
                     continue
-                for text, component_id in split_component_refs(strip_markers(node.s)):
+                for text, component_id, live in split_components(strip_markers(node.s)):
                     if text:
                         nodes.append(TextNode(text))
                     if component_id is not None:
-                        nodes.append(_ComponentRefNode(component_id))
+                        nodes.append(_ComponentRefNode(component_id) if live else _NestedComponentNode(component_id))
             return NodeList(nodes)
 
         copy = SlotContainer()
