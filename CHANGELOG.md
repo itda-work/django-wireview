@@ -30,6 +30,8 @@ The django-reactor era changelog (2.x) is preserved in
   stays linked to its parent. A save still
   writes every field it carries as it was when the change was announced; `docs/features/settings.md` says
   what that overwrites and how a receiver that saves avoids hearing its own write forever (#153).
+- The dict form of a `JS()` transition no longer declares a `to` key. The client never read it, so
+  a type checker accepted a key that did nothing (found with the README's `transition` forms).
 
 ### Fixed
 
@@ -86,9 +88,6 @@ The django-reactor era changelog (2.x) is preserved in
   came with, and linked to `main` it sent an agent to documents of APIs that release may not
   have. `make ci-build` checks the wheel's metadata and skill for it.
 
-- The dict form of a `JS()` transition no longer declares a `to` key. The client never read it, so
-  a type checker accepted a key that did nothing (found with the README's `transition` forms).
-
 - The generated type stubs are explained where a new project first meets them: the README's
   starter paragraph and tutorial 01 say that a `live.pyi` appears beside the components in DEBUG,
   what it is for and how to turn it off, and the type stubs page says it is every `manage.py`
@@ -98,7 +97,11 @@ The django-reactor era changelog (2.x) is preserved in
   examples it calls the minimum -- now serve `/static/` themselves, and the Docker example runs
   `collectstatic`. Copied as they were, they sent `/static/` to the app, which in production
   (`DEBUG = False`) answers `wireview.min.js` with a 404: the page drew and no component joined.
-  A test checks every proxy block in the guide for `/static/` and the image for `collectstatic`.
+  The image collects them into itself, so the section on static files says how a front server in
+  another container gets them: a front image built by copying them out of the app image, not a
+  named volume, which Docker fills from the image only while it is empty and so keeps the first
+  release's bundle. A test checks that every proxy block serves `/static/` from a directory, that
+  the app image runs `collectstatic`, and that an image takes its output to the Nginx `alias`.
 
 ## [1.0.0rc4] - 2026-10-01
 
