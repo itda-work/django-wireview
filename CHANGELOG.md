@@ -47,6 +47,10 @@ The django-reactor era changelog (2.x) is preserved in
   It named `chat/message_item.html` and read `message`, so it failed with `TemplateDoesNotExist`,
   and drew empty items once given the template. `tests/test_readme_examples.py` renders it.
 
+- The README's list of `JS()` commands gives their real signatures. It showed `toggle(selector,
+  show=None, hide=None)` and `push(event, value=None, ...)` with `value` positional; copied, both
+  raised `TypeError`. A test compares every listed signature with the code.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

@@ -110,3 +110,25 @@ async def test_the_streams_example_renders_its_items():
         assert f'id="messages-{row.pk}"' in entry["html"]
         assert row.sender in entry["html"]
         assert row.text in entry["html"]
+
+
+def _signature(name: str) -> str:
+    """``JS.<name>``'s signature as the README writes it: defaults shown, ``*`` before keyword-only."""
+    import inspect
+
+    from wireview import JS
+
+    parts, star = [], False
+    for param in list(inspect.signature(getattr(JS, name)).parameters.values())[1:]:
+        if param.kind is param.KEYWORD_ONLY and not star:
+            parts.append("*")
+            star = True
+        parts.append(param.name if param.default is param.empty else f"{param.name}={param.default!r}")
+    return f"{name}({', '.join(parts)})"
+
+
+def test_the_js_commands_are_listed_with_their_signatures():
+    """Copied as listed, ``toggle(show=...)`` and ``push(event, value)`` raised TypeError."""
+    listed = re.findall(r"^- `(\w+)\((.*?)\)`", "\n".join(_section("JS 명령 빌더", "사용 가능한 명령")), re.M)
+    assert len(listed) >= 15
+    assert [f"{name}({args})" for name, args in listed] == [_signature(name) for name, _ in listed]

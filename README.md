@@ -844,34 +844,37 @@ async def clear_input(self):
 
 ### 사용 가능한 명령
 
+`selector`를 비우면 명령이 붙은 엘리먼트 자신이 대상이다. `*` 뒤의 인자는 키워드로만 넘긴다.
+`transition`은 `("클래스", 밀리초)` 튜플이다.
+
 **표시:**
-- `show(selector, transition=None, display=None)`
-- `hide(selector, transition=None)`
-- `toggle(selector, show=None, hide=None)`
+- `show(selector=None, *, transition=None, display=None)`
+- `hide(selector=None, *, transition=None)`
+- `toggle(selector=None, *, show_transition=None, hide_transition=None, display=None)`
 
 **CSS 클래스:**
-- `add_class(selector, classes, transition=None)`
-- `remove_class(selector, classes, transition=None)`
-- `toggle_class(selector, classes, transition=None)`
+- `add_class(selector=None, classes=None, *, transition=None)`
+- `remove_class(selector=None, classes=None, *, transition=None)`
+- `toggle_class(selector=None, classes=None, *, transition=None)`
 
 **속성:**
-- `set_attr(selector, attr, value)`
-- `remove_attr(selector, attr)`
-- `set_value(selector, value)` - 입력 값 설정
+- `set_attr(selector=None, attr=None, value=None)`
+- `remove_attr(selector=None, attr=None)`
+- `set_value(selector=None, value='')` - 입력 값 설정
 
 **포커스:**
-- `focus(selector)`
-- `focus_first(selector, input_only=False)`
+- `focus(selector=None)`
+- `focus_first(selector=None, *, input_only=False)`
 
 **트랜지션:**
-- `transition(selector, classes, time=None)`
+- `transition(selector=None, transition=None, *, time=None)`
 
 **서버 통신:**
-- `push(event, value=None, target=None)` - 서버로 이벤트 전송
+- `push(event, *, value=None, target=None)` - 서버로 이벤트 전송. `value`는 dict다
 
 **네비게이션:**
-- `navigate(url, replace=False)`
-- `dispatch(event, to=None, detail=None, bubbles=True)`
+- `navigate(url, *, replace=False)`
+- `dispatch(event, *, to=None, detail=None, bubbles=True)`
 
 ### 로딩 클래스
 
