@@ -18,6 +18,9 @@
 | [live-session-rejudge2-2026-09-10.md](./live-session-rejudge2-2026-09-10.md) | 6라운드. **릴리스 가능** | 남은 것은 세션 저장소·브로커·연결 수명의 일반적 한계이고 문서에 범위가 적혀 있다 |
 | [longpolling-fallback.md](./longpolling-fallback.md) | WebSocket 폴백 (GAP-012, [#59](https://github.com/itda-work/django-wireview/issues/59)) | **결정됨: 만들지 않는다.** WebSocket 이 필수 전제다. 버린 길 셋(스티키 라우팅·무상태 세션·SSE)과 그 이유가 여기 있다 |
 | [colocated-hooks.md](./colocated-hooks.md) | 컴포넌트 옆의 JS 훅 (GAP-032, [#71](https://github.com/itda-work/django-wireview/issues/71)) | 결정됨, 구현 완료. §7이 먼저 하라고 한 예제·E2E가 훅의 첫 사용자다. §2-(가)의 순서 경합은 재현해서 고쳤다 |
+| [vision.md](./vision.md) | 시작할 때의 프로젝트 비전과 계획 | **기록.** 보존만 한다. 지금의 정본은 [ROADMAP](../ROADMAP.md)·[FEATURE-GAP](../FEATURE-GAP.md) |
+| [security-audit-plan.md](./security-audit-plan.md) | 2025년의 보안 감사 계획(공격 표면과 체크리스트) | **기록.** 보존만 한다. 수정은 #28, 지금의 경계는 [SECURITY.md](../../SECURITY.md) |
+| [migration-pydantic.md](./migration-pydantic.md) | Pydantic v1 → v2 마이그레이션 가이드 | **끝난 작업의 기록.** 지금 구현은 `wireview/core/component.py` |
 | [backlog-review-2026-09-10.md](./backlog-review-2026-09-10.md) | `v0.3.0` 이후 잔여 이슈에 무엇을 다시 물어야 하는지 | 이슈가 정본이고 이 문서는 빠져 있는 사실만 적는다 |
 | [rails-benchmark-2026-09-18.md](./rails-benchmark-2026-09-18.md) | Rails 7.1~8.1이 기본 경로에서 걷어낸 것, 같은 축에서 본 Django 6.1, 그리고 wireview가 배울 것. Solid Cable식 DB 폴링 레이어 시제품의 실측(NATS와 대등)과 저장 버스트의 렌더 횟수 실측이 여기 있다 | **조사 메모 — 결정 아님.** 제안은 이슈가 되기 전까지 구속력이 없다. 조사 중에 나온 결함 둘은 고쳤다([#87](https://github.com/itda-work/django-wireview/issues/87), [#88](https://github.com/itda-work/django-wireview/issues/88)) |
 | [djust-vdom-review-2026-09-18.md](./djust-vdom-review-2026-09-18.md) | djust의 Rust VDOM(html5ever 파싱 → 트리 diff → opcode)을 읽고 wireview에 차용할 것을 가렸다. 목록 편집 유형별 페이로드 실측이 여기 있다 | **조사 메모 — 결정 아님.** 판정은 "Rust·VDOM·opcode는 두고, 키 기반 comprehension·위젯 보존 계약·sticky 수명 분리·delta round-trip 테스트를 가져온다" |

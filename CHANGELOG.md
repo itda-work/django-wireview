@@ -107,6 +107,11 @@ The django-reactor era changelog (2.x) is preserved in
   to save bandwidth while the deployment guide turns it off for its memory; all now say off by
   default, measured before turning it on.
 
+- `docs/VISION.md`, `docs/SECURITY_AUDIT_PLAN.md` and `docs/MIGRATION-PYDANTIC.md`, which nothing
+  linked and which described Python 3.11, module paths and commands that no longer exist, are
+  records now: `docs/design/vision.md`, `security-audit-plan.md` and `migration-pydantic.md`, each
+  with a note naming what is current, listed in `docs/design/README.md`.
+
 ### Fixed
 
 - `{% wireview_toasts %}` works on a site with the `signed_cookies` session backend. Its key is the

@@ -21,11 +21,11 @@ ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 CI_JOBS = _workflow("ci.yml")["jobs"]
 
-#: What a reader acts on. docs/design, docs/implementation and docs/legacy are records
-#: of how the library was built, and VISION.md is the plan it started from.
+#: What a reader acts on. docs/design (the starting vision among them), docs/implementation
+#: and docs/legacy are records of how the library was built.
 DOCS = [
     ROOT / "README.md",
-    *(path for path in sorted((ROOT / "docs").glob("*.md")) if path.name != "VISION.md"),
+    *sorted((ROOT / "docs").glob("*.md")),
     *sorted((ROOT / "docs" / "features").glob("*.md")),
     *sorted((ROOT / "docs" / "tutorials").glob("*.md")),
     *sorted((ROOT / "skills").rglob("*.md")),

@@ -1,5 +1,8 @@
 # django-wireview 프로젝트 비전
 
+> **상태: 시작할 때의 계획(2025).** 고치지 않고 보존한다. 지원 범위·로드맵·기능 상태는 지금 이 문서가 아니라
+> `pyproject.toml`, [ROADMAP](../ROADMAP.md), [FEATURE-GAP](../FEATURE-GAP.md)이 정본이다.
+
 > **Phoenix LiveView의 개발 경험을 Django 생태계에 제공**
 
 ---
@@ -118,7 +121,7 @@ class Counter(Component):
 ```
 
 **지금**: 로딩 상태는 태그가 아니라 클래스와 속성이다. 이벤트를 보낸 요소에 `wireview-click-loading`
-(제출이면 `wireview-submit-loading`)이 붙고 답이 오면 빠진다([features/optimistic-ui.md](./features/optimistic-ui.md)).
+(제출이면 `wireview-submit-loading`)이 붙고 답이 오면 빠진다([features/optimistic-ui.md](../features/optimistic-ui.md)).
 ```html
 <!-- 로딩 중 스타일은 CSS에서: .wireview-click-loading { opacity: .5; cursor: wait } -->
 <button {% on "click" "increment" %}>+</button>

@@ -1,5 +1,9 @@
 # django-wireview 보안 감사 계획
 
+> **상태: 2025년의 감사 계획. 고치지 않고 보존한다.** 체크박스는 갱신하지 않았고 모듈 경로는 그 뒤 바뀌었다
+> (`consumer.py`의 명령 처리는 `wireview/session.py`로, 노출 판정은 `wireview/core/handlers.py`로). 지금 지키는 경계와
+> 제보 절차는 [SECURITY.md](../../SECURITY.md), 이 계획에서 나온 수정은 #28이다.
+
 ## 배경: React Server Components CVE-2025-55182
 
 **핵심 취약점**: 클라이언트 → 서버 통신에서 **역직렬화(Deserialization) 검증 부족**으로 인한 원격 코드 실행(RCE)
