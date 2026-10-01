@@ -277,13 +277,19 @@ class ServerConnection {
    * @returns {boolean}
    */
   patchPending(id) {
-    if (id === undefined) return false;
-    for (
-      let el = document.getElementById(id)?.closest("[wireview-component]");
-      el;
-      el = el.parentElement?.closest("[wireview-component]")
-    ) {
-      if (this.components[el.id]?.morphScheduled) return true;
+    // A component a render registered before its element is on the page waits
+    // for its own drawer's patch: a grandchild a LiveComponent's render
+    // brought in, while that LiveComponent waits for its parent's
+    const seen = new Set();
+    for (let at = id; at !== undefined && !seen.has(at); at = this.components[at]?.drawnBy) {
+      seen.add(at);
+      for (
+        let el = document.getElementById(at)?.closest("[wireview-component]");
+        el;
+        el = el.parentElement?.closest("[wireview-component]")
+      ) {
+        if (this.components[el.id]?.morphScheduled) return true;
+      }
     }
     return false;
   }

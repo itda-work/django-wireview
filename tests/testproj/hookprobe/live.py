@@ -24,6 +24,9 @@ tests/test_hooks_e2e.py drives it.
 - A LiveComponent the shelf brings in pushes an event from ``joined()``. It
   arrives before the render that brings the element is patched in, so before
   the hook it is for exists.
+- The shelf's ``graft`` brings in a LiveComponent whose ``joined()`` starts
+  work that draws one of its own, ``bud``: the graft's render registers the bud
+  before the shelf's patch has put the graft's element in.
 """
 
 from wireview import Component, LiveComponent
@@ -43,6 +46,7 @@ class HookProbeShelf(Component):
     reach: bool = False
     # Handed to the sprout, whose update() pushes to the hook it draws for it
     lit: bool = False
+    grafted: bool = False
 
     async def take_away(self):
         self.show = False
@@ -57,6 +61,9 @@ class HookProbeShelf(Component):
 
     async def light(self):
         self.lit = True
+
+    async def graft(self):
+        self.grafted = True
 
     async def reach_out(self):
         self.reach = True
@@ -83,6 +90,27 @@ class HookProbeSprout(LiveComponent):
             # For the hook the shelf's patch draws in this element: the patch is
             # the shelf's, so this element is there and its own patch is not due
             await self.push_event("lit", {})
+
+
+class HookProbeGraft(LiveComponent):
+    class Meta:
+        template_name = "hookprobe/graft.html"
+
+    budded: bool = False
+
+    async def joined(self):
+        await self.start_async("bud", self._bud())
+
+    async def _bud(self) -> bool:
+        return True
+
+    async def handle_async(self, name, result):
+        self.budded = result.ok
+
+
+class HookProbeBud(LiveComponent):
+    class Meta:
+        template_name = "hookprobe/bud.html"
 
 
 class HookProbeRooted(Component):

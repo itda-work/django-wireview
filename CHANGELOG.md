@@ -393,7 +393,8 @@ The django-reactor era changelog (2.x) is preserved in
   let it go as one that had left. The parent's patch then found nothing to draw for it, and the
   server, having sent its render, never sent it again: no element, no hooks, no `joined()` push.
   The page now waits for the patch of the render's component before it takes the missing element
-  for one that left.
+  for one that left -- and, when that component is a LiveComponent whose own element is still to
+  come, for the patch that draws it.
 
 - Infinite scroll asks for one page at a time after a reconnect. The page dropped its components
   when the socket closed but left their viewport observers watching: the reconnect's join made a

@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<div {% live_tag_header %}>
+  {% if this.budded %}
+    {% live_component 'HookProbeBud' id="bud" %}
+  {% endif %}
+</div>

@@ -216,6 +216,32 @@ def test_a_new_live_component_survives_another_components_patch_running_first(pa
     expect_text(page.locator("#rooted [data-testid=mores]"), "102")
 
 
+def test_a_live_component_a_new_one_brings_in_survives_another_components_patch(page, server):
+    """The shelf's render registers the graft, and the graft's own render -- the work
+    its joined() started -- registers the bud, all before the shelf's patch puts the
+    graft's element in. The rooted component's patch ran first and saw the bud
+    registered with no element: the patch to wait for was the graft's, which has
+    no element to patch, so the page let the bud go. The shelf's patch then drew
+    the graft with nothing for the bud. It waits on the shelf's patch now.
+    """
+    page.add_init_script(INBOX_SHIM)
+    open_live(page, f"{server}/hookprobe/", selector=ROOTED)
+    wait_live(page, "#ask-second[data-is-live='true']")
+    expect_text(page.locator("#rooted [data-testid=mores]"), "101")
+
+    page.evaluate("window.__inbox.holding = true")
+    page.evaluate("window.wireview.send(document.querySelector('#rooted [data-testid=ping]'), 'more', {}, {})")
+    page.get_by_test_id("graft").click()
+    page.wait_for_function("window.__inbox.held.some((m) => m.command === 'render' && m.payload.id === 'graft')")
+    renders = page.evaluate("window.__inbox.held.filter((m) => m.command === 'render').map((m) => m.payload.id)")
+    assert renders == ["rooted", "shelf", "graft"]
+    page.evaluate("window.__inbox.release()")
+
+    expect(page.locator("#graft #bud")).to_have_count(1)
+    expect_counted(page, "mounted", "bud")
+    expect_text(page.locator("#rooted [data-testid=mores]"), "102")
+
+
 def test_leaving_the_page_destroys_every_hook_on_it(page_live):
     page = page_live
 
