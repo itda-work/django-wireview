@@ -78,6 +78,9 @@ The django-reactor era changelog (2.x) is preserved in
   (`hatch_build.py`), so an older release's page keeps showing its own documents; `make ci-build`
   checks the wheel's metadata for it.
 
+- The dict form of a `JS()` transition no longer declares a `to` key. The client never read it, so
+  a type checker accepted a key that did nothing (found with the README's `transition` forms).
+
 - The starter template ships a `.gitignore`. In DEBUG wireview writes `hello/live.pyi` whenever
   Django starts, `check` and `migrate` included, and `migrate` makes `db.sqlite3`; a new project's
   first commit took both. The wheel check and the wheel smoke test look for the file.

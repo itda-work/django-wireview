@@ -32,7 +32,6 @@ class TransitionConfig(t.TypedDict, total=False):
 
     transition: str
     time: int
-    to: str
 
 
 Transition = str | tuple[str, int] | TransitionConfig | None

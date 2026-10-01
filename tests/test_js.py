@@ -405,3 +405,18 @@ class TestComplexChaining:
         js = JS().show("#toast", transition=("slide-in", 200)).dispatch("toast:shown", detail={"type": "success"})
         commands = json.loads(js.to_json())
         assert len(commands) == 2
+
+
+@pytest.mark.unit
+def test_a_transition_dict_declares_only_what_the_client_reads():
+    """TransitionConfig declared ``to``, and the client's applyTransition never read it: a key that type-checks
+    and does nothing."""
+    import re
+    from pathlib import Path
+
+    from wireview.js import TransitionConfig
+
+    source = (Path(__file__).resolve().parent.parent / "wireview/static/wireview/wireview.js").read_text()
+    body = re.search(r"async function applyTransition\(element, config\) \{\n(.*?)\n\}", source, re.S)
+    assert body, "applyTransition moved: point this test at what reads a transition"
+    assert set(TransitionConfig.__annotations__) == set(re.findall(r"config\.(\w+)", body.group(1)))
