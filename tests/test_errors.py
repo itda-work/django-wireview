@@ -218,6 +218,48 @@ async def test_a_join_that_raises_is_marked_not_retried():
     assert after["payload"]["id"] == "e-2"
 
 
+class ErrorProbeHolder(Component):
+    """Draws an ErrorProbe that cannot join, and renders again on ``bump``."""
+
+    count: int = 0
+
+    async def bump(self, **_rest):
+        self.count += 1
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<div {% tag_header %}>{{ this.count }}"
+            "{% component 'ErrorProbe' id='e-held' fail_to_join=True %}</div>"
+        )
+
+
+async def test_a_parents_render_draws_a_component_whose_join_failed_and_leaves_it_to_the_page():
+    # The ``_join_failed`` contract on the server: one ``error`` for the join, the
+    # instance gone, and no retry. The parent's next render draws the element
+    # again, over an instance its template pass builds and nothing joins: no
+    # joined(), no ``error`` again, nothing that would loop. That instance is
+    # not for the page to take up -- wireview.js keeps an element whose join
+    # failed out until the next connection (tests/test_errors_e2e.py).
+    communicator = await _connect()
+    try:
+        holder = sign_state(ErrorProbeHolder(user=AnonymousUser(), wire=WireviewMeta(params={}), id="h-1"))
+        await _send(communicator, "join", name="ErrorProbeHolder", state=holder, children={}, ref=1)
+        await _next(communicator, "joined")
+        await _join(communicator, "e-held", ref=2, fail_to_join=True)
+        error = await _next(communicator, "error", "render")
+        await _event(communicator, "h-1", "bump", ref=3)
+        heard = [await communicator.receive_json_from(timeout=5)]
+        # Only a check that nothing else follows the render: no message says so
+        while not await communicator.receive_nothing(timeout=0.3):
+            heard.append(await communicator.receive_json_from())
+    finally:
+        await communicator.disconnect()
+
+    assert error == {"command": "error", "payload": {"id": "e-held", "during": "join", "ref": 2}}
+    assert [(m["command"], m["payload"]["id"]) for m in heard] == [("render", "h-1")]
+
+
 async def test_a_join_that_raises_after_its_first_render_is_answered_twice():
     # The URL's params reach a joining component after the render that answers
     # the join; if that raises, the join has failed too, and says so. The page

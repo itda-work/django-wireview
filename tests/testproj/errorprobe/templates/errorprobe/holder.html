@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <button type="button" data-testid="holder-bump" {% on "click" "bump" %}>bump</button>
+  <span data-testid="holder-count">{{ this.count }}</span>
+  {% component 'ErrorJoin' id="held" %}
+</div>

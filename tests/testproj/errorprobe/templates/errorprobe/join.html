@@ -1,5 +1,9 @@
 {% load wireview %}
 
-<div {% tag_header %}>
-  <span data-testid="broken-text">rendered by the page</span>
+<div {% tag_header %} wire-hook="ProbeAsker" data-who="{{ this.id }}">
+  <span data-testid="{{ this.id }}-text">rendered by the page</span>
+  <span data-testid="{{ this.id }}-pokes">{{ this.pokes }}</span>
+  <button type="button"
+          data-testid="{{ this.id }}-poke"
+          {% on "click" "poke" %}>poke</button>
 </div>

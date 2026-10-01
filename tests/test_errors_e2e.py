@@ -15,7 +15,7 @@ import threading
 
 import pytest
 from playwright.sync_api import expect
-from testproj.e2e_browser import INBOX_SHIM, expect_text, open_live
+from testproj.e2e_browser import INBOX_SHIM, OFFLINE_SHIM, expect_text, open_live
 from testproj.e2e_server import serve
 
 pytestmark = pytest.mark.e2e
@@ -86,6 +86,47 @@ def test_a_component_that_cannot_join_keeps_its_markup_and_is_marked(probe):
     failures = probe.evaluate("window.__wireviewErrors.filter((e) => e.id === 'broken' && e.during === 'join').length")
     assert failures == 1
     assert len(probe.sockets) == 1
+
+
+def test_a_component_whose_join_failed_stays_out_when_its_parent_draws_it_again(probe):
+    # The holder's render draws ``held`` again, marked live and without the error
+    # class, over a new instance its template pass built and nothing joined. The
+    # page took that one up: the mark was gone, and a click or a hook's push
+    # reached an instance whose joined() never ran.
+    sent = []
+    probe.sockets[0].on("framesent", lambda frame: sent.append(json.loads(frame)))
+    held = probe.locator("#held")
+    expect(held).to_have_class("wireview-error")
+
+    by(probe, "holder-bump").click()
+    expect_text(by(probe, "holder-count"), "1")
+    by(probe, "held-poke").click()
+    probe.evaluate("window.__askers.held.pushEvent('poke', {})")
+    # Answered after anything the poke or the push sent
+    by(probe, "holder-bump").click()
+    expect_text(by(probe, "holder-count"), "2")
+
+    expect(held).to_have_class("wireview-error")
+    expect_text(by(probe, "held-pokes"), "0")
+    assert [m for m in sent if "held" in (m["payload"].get("id"), m["payload"].get("component_id"))] == []
+    failures = probe.evaluate("window.__wireviewErrors.filter((e) => e.id === 'held').length")
+    assert failures == 1, "not joined again"
+
+
+def test_a_component_whose_join_failed_joins_again_on_the_next_connection(page, server):
+    page.add_init_script(
+        OFFLINE_SHIM + "window.__wireviewErrors = [];"
+        "document.addEventListener('wireview:error', (e) => window.__wireviewErrors.push(e.detail));"
+    )
+    open_live(page, f"{server}/errorprobe/", selector="#box[data-is-live='true']")
+    page.wait_for_function("window.__wireviewErrors.filter((e) => e.id === 'held').length === 1")
+    by(page, "holder-bump").click()
+    expect_text(by(page, "holder-count"), "1")
+
+    page.evaluate("window.__link.sockets.forEach((s) => s.close())")
+    # It fails again, but it was tried
+    page.wait_for_function("window.__wireviewErrors.filter((e) => e.id === 'held').length === 2")
+    expect(page.locator("#held")).to_have_class("wireview-error")
 
 
 @pytest.fixture

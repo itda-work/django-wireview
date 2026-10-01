@@ -274,7 +274,10 @@ class WireviewSession:
 
         It is not retried: a mount that raises raises again, and joining again
         on every render of the page would be a loop. The element stays as the
-        page rendered it, marked, and joins again on the next connection.
+        page rendered it, marked, and joins again on the next connection. A
+        parent's later render draws it again over a new instance its template
+        pass builds, which nothing joins: the page keeps that element out of
+        its components until the next connection, so no event reaches it.
         ``ref`` is the join's: a page that has since sent another join under the
         id tells this answer is not for it (#139).
         """

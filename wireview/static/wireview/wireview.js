@@ -98,6 +98,13 @@ class ServerConnection {
     /** @type {Joins} which answers are for the join the page holds under an id (#139) */
     this.joins = new Joins();
     /**
+     * @type {WeakSet<Element>} the elements whose join failed on this
+     * connection: not taken up again until the next one. A parent's render
+     * redraws one marked live and unmarked, over an instance its template pass
+     * built and nothing joined.
+     */
+    this.joinFailures = new WeakSet();
+    /**
      * @type {number} The last ref given to a hook's pushEvent. One counter for
      * the page, not one per component: a reply finds its callback by the ref
      * alone, and two components counting from 1 swapped answers (#108).
@@ -197,6 +204,8 @@ class ServerConnection {
       // the first connection, belongs to no instance yet and waits for the next.
       uploadManagers.connectionClosed();
       this.joins.clear();
+      // The next connection tries them again
+      this.joinFailures = new WeakSet();
       document.querySelectorAll("[wireview-component]").forEach((el) => {
         const element = /** @type {HTMLElement} */ (el);
         element.classList.add("wireview-disconnected");
@@ -322,6 +331,14 @@ class ServerConnection {
       if (!component.owned) this.sendLeave(id);
     }
     for (const element of elements) {
+      // Its join failed on this connection. A render of its parent drew it
+      // again, over a new instance the template pass built: taken up, it would
+      // send events to an instance whose joined() never ran. It stays out of
+      // the page's components -- no events, no hook pushes -- and marked.
+      if (this.joinFailures.has(element)) {
+        element.classList.add("wireview-error");
+        continue;
+      }
       let component = this.components[element.id];
       if (!component) {
         component = new WireviewComponent(element.id);
@@ -458,6 +475,7 @@ class ServerConnection {
           // keeps what the server rendered, and the next connection tries.
           delete this.components[id];
           this.joins.forget(id);
+          this.joinFailures.add(element);
           // No instance, so no uploads: its own nor its LiveComponents'
           uploadManagers.joinFailed(id, liveIdsIn(element));
           element.classList.add("wireview-error");
@@ -1771,6 +1789,9 @@ class HookManager {
    * @param {Function|null} callback
    */
   pushEvent(hookId, event, payload, callback) {
+    // A component whose join failed has no instance to hear it
+    const element = this.component.getElemenet();
+    if (element && connection.joinFailures.has(element)) return;
     const ref = callback ? `hook-${++connection.lastHookRef}` : null;
 
     if (ref && callback) {

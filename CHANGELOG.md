@@ -409,6 +409,13 @@ The django-reactor era changelog (2.x) is preserved in
   built under the id, once an `{% if %}` showed it again, took the old state up. The restore map is
   now dropped when its join ends.
 
+- A component whose join failed stays out of the page until the next connection, even when its
+  parent's render draws it again. The parent's template pass built a new instance under the id
+  that nothing joined, and the server's HTML took the `wireview-error` class away: the page took
+  the element up again, and a click or a hook's `pushEvent` reached an instance whose `joined()`
+  never ran. The page now keeps such an element marked and sends nothing for it until it
+  reconnects. The server is unchanged: it does not retry the join, as before.
+
 ### Security
 
 - `on_upload_complete(name, entry)` is now a method of `Component`, and so framework surface a
