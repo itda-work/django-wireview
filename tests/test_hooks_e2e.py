@@ -156,6 +156,21 @@ def test_an_event_reaches_a_hook_the_same_handlers_render_draws(page_live):
     expect_counted(page, "pinged", "shelf-new")
 
 
+def test_an_event_reaches_a_hook_the_parents_patch_draws_in_a_live_component(page_live):
+    """The shelf's patch draws a hook inside the sprout, which the page already took
+    up. The patch rescanned only the shelf's own hooks, so this one never mounted.
+    And the sprout's update() pushes to it: the sprout's element is there and no
+    patch of its own is due -- the one to wait for is the shelf's."""
+    page = page_live
+    page.get_by_test_id("sprout").click()
+    expect_counted(page, "pinged", "sprout")
+
+    page.get_by_test_id("light").click()
+
+    expect_counted(page, "mounted", "sprout-lit")
+    expect_counted(page, "lit", "sprout-lit")
+
+
 def test_a_new_live_component_reaches_its_hooks_from_joined(page_live):
     """The event its joined() pushes arrives before the render that brings the
     element is patched in, so before the hook exists: it reached nothing."""

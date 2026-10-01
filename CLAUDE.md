@@ -157,7 +157,7 @@ tests/
                            errorprobe/ 는 예외를 던지는 핸들러와 join을 보는 E2E(test_errors_e2e.py)의 픽스처(late/ 는 같은 id로 다시 join되는 페이지,
                            그 안의 ErrorNest 는 LiveComponent 하나를 들고 ?visit=swap 은 그 id를 루트로 바꾼다. remove가 지운 포커스 칸의 blur도 여기서 본다),
                            offlineprobe/ 는 연결이 끊긴 페이지의 바인딩·큐와 재연결 뒤의 훅·폼 복구를 보는 E2E(test_offline_e2e.py)의 픽스처,
-                           hookprobe/ 는 훅의 소유(중첩 컴포넌트)·이동·떠날 때의 destroyed·pushEvent 응답 짝, 렌더가 새로 그린 LiveComponent·다시 그린 컴포넌트의 훅과 그 joined()의 push_event를 보는 E2E(test_hooks_e2e.py)의 픽스처,
+                           hookprobe/ 는 훅의 소유(중첩 컴포넌트)·이동·떠날 때의 destroyed·pushEvent 응답 짝, 렌더가 새로 그린 LiveComponent·다시 그린 컴포넌트의 훅과 그 joined()의 push_event, 다시 그린 컴포넌트의 join과 viewport, 부모의 패치가 중첩 컴포넌트 안에 그린 훅·바인딩, 같은 렌더가 그린 훅에 가는 push_event를 보는 E2E(test_hooks_e2e.py)의 픽스처,
                            tempprobe/ 는 초기화된 temporary assign이 다음 렌더에 화면에 남는지 보는 E2E(test_temporary_assigns_e2e.py)의 픽스처,
                            stickyprobe/ 는 sticky 컴포넌트가 boost 이동을 건너 이어지는지(id 없는 것 포함), 그 훅과 페이지가
                            이동마다 한 번 navigated 알림을 받는지 보는 E2E(test_sticky_e2e.py)의 픽스처,

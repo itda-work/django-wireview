@@ -8,9 +8,10 @@
   <button data-testid="bring-back" {% on "click" "bring_back" %}>bring back</button>
   {% if sprouted %}
     <span wire-hook="ProbeLog" data-who="shelf-new">new</span>
-    {% live_component 'HookProbeSprout' id="sprout" %}
+    {% live_component 'HookProbeSprout' id="sprout" lit=lit %}
   {% endif %}
   <button data-testid="sprout" {% on "click" "sprout" %}>sprout</button>
+  <button data-testid="light" {% on "click" "light" %}>light</button>
   <button data-testid="reach-out" {% on "click" "reach_out" %}>reach out</button>
   <span data-testid="stolen">{{ stolen }}</span>
 </div>

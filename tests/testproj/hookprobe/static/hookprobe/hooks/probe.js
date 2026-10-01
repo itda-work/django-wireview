@@ -29,3 +29,11 @@ window.wireview.hooks.ProbeAsker = {
     window.__askers[this.el.dataset.who] = this;
   },
 };
+
+/** Counts the `lit` event the sprout's update() pushes to the hook its parent's patch draws. */
+window.wireview.hooks.ProbeLit = {
+  mounted() {
+    count("mounted", this.el.dataset.who);
+    this.handleEvent("lit", () => count("lit", this.el.dataset.who));
+  },
+};

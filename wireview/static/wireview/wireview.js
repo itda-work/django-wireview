@@ -1111,8 +1111,17 @@ class WireviewComponent {
       const html = this.currentHtml();
 
       if (html) {
-        // Call beforeUpdate on all hooks
-        this.hookManager.beforeUpdate();
+        // The components this patch redraws: this one, and those its HTML
+        // embeds -- a LiveComponent, or a nested component already joined --
+        // whose hooks and bindings are theirs, not this one's. One a patch brings
+        // in is not among them: its join scans its hooks.
+        const redrawn = [this];
+        for (const nested of el.querySelectorAll("[wireview-component]")) {
+          const component = connection.components[nested.id];
+          // Taken up by the page already: its hooks were scanned once
+          if (component && component.hookManager.epoch !== null) redrawn.push(component);
+        }
+        for (const component of redrawn) component.hookManager.beforeUpdate();
 
         // Profile patch time
         const patchStart = profilingEnabled ? performance.now() : 0;
@@ -1136,15 +1145,13 @@ class WireviewComponent {
           el.dataset.isLive = "false";
         }
 
-        // Call updated on all hooks (and scan for new ones)
-        this.hookManager.updated();
-
-        // Update the viewport observers (scan for new viewport elements): this
-        // component's, and those of the components its HTML embeds -- a
-        // LiveComponent, or a nested component already joined -- which this
-        // patch drew and whose bindings are theirs, not this one's
-        for (const nested of [el, ...el.querySelectorAll("[wireview-component]")]) {
-          connection.components[nested.id]?.viewportObserver.updated();
+        // Call updated on all hooks (and scan for new ones), and update the
+        // viewport observers (scan for new viewport elements). A nested
+        // component the patch took away has left with its hooks.
+        for (const component of redrawn) {
+          if (!component.getElemenet()) continue;
+          component.hookManager.updated();
+          component.viewportObserver.updated();
         }
 
         // Update upload previews (populate src for new preview elements)

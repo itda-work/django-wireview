@@ -2,4 +2,5 @@
 
 <div {% live_tag_header %}>
   <span wire-hook="ProbeLog" data-who="sprout">sprout</span>
+  {% if this.lit %}<span wire-hook="ProbeLit" data-who="sprout-lit">lit</span>{% endif %}
 </div>

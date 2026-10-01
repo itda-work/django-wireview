@@ -347,6 +347,11 @@ The django-reactor era changelog (2.x) is preserved in
   render in, and found no element or hook. A component with a patch of its element on its way
   (its own render's, or that of a component around it) now holds its commands, stream ops
   included, for that frame. The client alone changed, so `PROTOCOL_VERSION` stays.
+- A hook a parent's patch draws inside a nested component the page already joined -- a
+  LiveComponent whose props changed, a `{% component %}` -- mounts, and the hooks of the nested
+  components a patch redraws hear `beforeUpdate()` and `updated()`. The patch rescanned only the
+  hooks of the component it was for, which leaves a nested component's hooks to their own
+  manager, so that one never heard of it.
 - A `{% component %}` a live render draws -- one an `{% if %}` shows again -- is joined: its
   `joined()` runs and its own `wire-viewport-*` bindings are watched. The server built and mounted
   it in the parent's template pass and drew it marked live, so the page never sent its join and

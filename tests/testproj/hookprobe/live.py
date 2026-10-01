@@ -18,6 +18,9 @@ tests/test_hooks_e2e.py drives it.
   one the shelf's patch draws inside it (``reach``).
 - The shelf's own ``sprout`` draws a hook and pushes an event to it from the
   same handler: the event arrives before the frame that patches the hook in.
+- The shelf's patch draws a hook inside the sprout (``light``), and the
+  sprout's ``update()`` pushes to it: the sprout's element is there and no
+  patch of its own is due.
 - A LiveComponent the shelf brings in pushes an event from ``joined()``. It
   arrives before the render that brings the element is patched in, so before
   the hook it is for exists.
@@ -38,6 +41,8 @@ class HookProbeShelf(Component):
     # Handed to the rooted component, whose template draws a second viewport
     # binding for it: this one's patch draws a binding that is the rooted one's
     reach: bool = False
+    # Handed to the sprout, whose update() pushes to the hook it draws for it
+    lit: bool = False
 
     async def take_away(self):
         self.show = False
@@ -49,6 +54,9 @@ class HookProbeShelf(Component):
         self.sprouted = True
         # For the hook the same render draws: it is not on the page yet
         await self.push_event("pinged", {})
+
+    async def light(self):
+        self.lit = True
 
     async def reach_out(self):
         self.reach = True
@@ -64,8 +72,17 @@ class HookProbeSprout(LiveComponent):
     class Meta:
         template_name = "hookprobe/sprout.html"
 
+    lit: bool = False
+
     async def joined(self):
         await self.push_event("pinged", {})
+
+    async def update(self, **assigns):
+        await super().update(**assigns)
+        if assigns.get("lit"):
+            # For the hook the shelf's patch draws in this element: the patch is
+            # the shelf's, so this element is there and its own patch is not due
+            await self.push_event("lit", {})
 
 
 class HookProbeRooted(Component):
