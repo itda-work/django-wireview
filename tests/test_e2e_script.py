@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -68,3 +69,11 @@ def test_a_path_replaces_the_defaults(tmp_path, path):
     argv = run_script(tmp_path, "-k", "dom_id", path)
     assert paths_in(argv) == []
     assert argv[-3:] == ["-k", "dom_id", path]
+
+
+def test_an_option_value_taken_for_a_path_still_runs_every_e2e_suite():
+    # `--cov wireview` drops the defaults (the script lists only some options
+    # that take a value). That is safe while pytest collects from the rootdir:
+    # with no `testpaths`, the rootdir holds the same suites as `tests examples`.
+    options = tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"]["pytest"]["ini_options"]
+    assert "testpaths" not in options, "tests/e2e.sh: an option value taken for a path now narrows the run"

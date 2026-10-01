@@ -91,6 +91,12 @@ esac
 # so a file passed next to them ran the whole E2E suite. A path is an argument
 # that exists or names a test (path::name); the value of an option is neither,
 # even when it spells a directory (`-k tests`).
+#
+# Only the options listed take a value here. The value of another one that
+# names an existing path (`--cov wireview`, `--junitxml docs`) drops the
+# defaults, and that is harmless: pyproject.toml sets no `testpaths`, so pytest
+# collects from the rootdir, and `-m e2e` picks the same E2E suites there as
+# under `tests examples`. Listing every pytest and plugin option would not end.
 paths=(tests examples)
 skip_value=""
 for arg in "$@"; do

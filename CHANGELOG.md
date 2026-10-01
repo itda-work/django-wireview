@@ -316,6 +316,18 @@ The django-reactor era changelog (2.x) is preserved in
   that class's. A `name=` given with `public=False` is now the name: under a listed class it was
   dropped, and the class logged and signed its state as its parent
   (`docs/features/component-api.md`).
+- The stream a new component sends from `joined()` shows up. A LiveComponent a parent's render
+  brings in streams right behind that render, and the page patches the render in on the next
+  animation frame, so the op found no element and was dropped with a "container not found"
+  warning. An op whose container is not there yet now waits for the next frame, after the patches
+  already scheduled, and the ops behind it wait with it, so they apply in the order they came; one
+  that still finds nothing then is dropped. The client alone changed, so `PROTOCOL_VERSION` stays.
+- Test harness: `./tests/e2e.sh tests/test_streams_e2e.py` runs that file only. The script always
+  passed pytest `tests examples` ahead of its arguments, so a path given to it was collected next to
+  every E2E suite and the whole suite ran. The defaults now go only when no argument is a path (one
+  that exists, or `path::test`); the value of `-k`, `-m`, `-o` and the like is not taken for one.
+  The value of another option that names a path drops the defaults too, which runs the same suites:
+  pytest then collects from the rootdir, and `tests/test_e2e_script.py` keeps `testpaths` unset.
 
 - The quiz example and tutorial 13 wrote a `{% class {...} %}` across several lines. Django's
   lexer reads a tag only when it closes on the line it opens, so the tag was printed into the
@@ -378,16 +390,6 @@ The django-reactor era changelog (2.x) is preserved in
   first container of its name as before; an older bundle ignores the id, so `PROTOCOL_VERSION`
   stays. Tutorial 06, which offered a `dom_id` prefix against the clash, says names need to be
   unique only within a component now.
-- The stream a new component sends from `joined()` shows up. A LiveComponent a parent's render
-  brings in streams right behind that render, and the page patches the render in on the next
-  animation frame, so the op found no element and was dropped with a "container not found"
-  warning. An op whose container is not there yet now waits for the next frame, after the patches
-  already scheduled, and the ops behind it wait with it, so they apply in the order they came; one
-  that still finds nothing then is dropped. The client alone changed, so `PROTOCOL_VERSION` stays.
-- Test harness: `./tests/e2e.sh tests/test_streams_e2e.py` runs that file only. The script always
-  passed pytest `tests examples` ahead of its arguments, so a path given to it was collected next to
-  every E2E suite and the whole suite ran. The defaults now go only when no argument is a path (one
-  that exists, or `path::test`); the value of `-k`, `-m`, `-o` and the like is not taken for one.
 - The README, the tutorials and the examples said CI runs the examples on every push. `ci.yml`
   runs only by hand and when the release workflow calls it; `make test` is what runs them. The
   text says so, and `tests/test_doc_examples.py` refuses the old claim while `ci.yml` has no push
