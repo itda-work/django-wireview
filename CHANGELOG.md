@@ -384,6 +384,10 @@ The django-reactor era changelog (2.x) is preserved in
   warning. An op whose container is not there yet now waits for the next frame, after the patches
   already scheduled, and the ops behind it wait with it, so they apply in the order they came; one
   that still finds nothing then is dropped. The client alone changed, so `PROTOCOL_VERSION` stays.
+- Test harness: `./tests/e2e.sh tests/test_streams_e2e.py` runs that file only. The script always
+  passed pytest `tests examples` ahead of its arguments, so a path given to it was collected next to
+  every E2E suite and the whole suite ran. The defaults now go only when no argument is a path (one
+  that exists, or `path::test`); the value of `-k`, `-m`, `-o` and the like is not taken for one.
 - The README, the tutorials and the examples said CI runs the examples on every push. `ci.yml`
   runs only by hand and when the release workflow calls it; `make test` is what runs them. The
   text says so, and `tests/test_doc_examples.py` refuses the old claim while `ci.yml` has no push

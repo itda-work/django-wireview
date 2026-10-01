@@ -47,7 +47,8 @@ test-concurrent: collectstatic
 
 # Run E2E tests with Playwright on the NATS channel layer (the layer this project targets).
 # tests/e2e.sh starts a throwaway nats-server unless one is already running, and stops it
-# afterwards. Override the layer with LAYER=redis or LAYER=memory.
+# afterwards. Override the layer with LAYER=redis or LAYER=memory. ARGS may name paths
+# (ARGS=tests/test_streams_e2e.py), which then replace the default tests/ and examples/.
 LAYER ?= nats
 # build-js first: wireview.min.js is gitignored, so after a pull the browser would
 # otherwise run the bundle from before it and fail on whatever the pull added.

@@ -5,7 +5,8 @@
 # and otherwise starts a throwaway server on a free port and stops it afterwards, so
 # `make test-e2e` works without any setup beyond the binary.
 #
-#   tests/e2e.sh [pytest args...]
+#   tests/e2e.sh [pytest args...]                # every E2E suite under tests/ and examples/
+#   tests/e2e.sh tests/test_streams_e2e.py -x   # only the paths given (file, directory or path::test)
 #   WIREVIEW_TEST_LAYER=redis tests/e2e.sh      # channels_redis on REDIS_URL
 #   WIREVIEW_TEST_LAYER=memory tests/e2e.sh     # no broker (single process, which E2E is)
 set -euo pipefail
@@ -86,6 +87,25 @@ print(url.hostname or "127.0.0.1", url.port or 6379)' "$REDIS_URL")
     ;;
 esac
 
+# The default paths only when none is given: pytest collects every path it gets,
+# so a file passed next to them ran the whole E2E suite. A path is an argument
+# that exists or names a test (path::name); the value of an option is neither,
+# even when it spells a directory (`-k tests`).
+paths=(tests examples)
+skip_value=""
+for arg in "$@"; do
+  if [ -n "$skip_value" ]; then
+    skip_value=""
+    continue
+  fi
+  case "$arg" in
+    -k | -m | -o | -p | -c | -W | --deselect | --ignore | --rootdir | --basetemp) skip_value=1 ;;
+    -*) ;;
+    *::*) paths=() ;;
+    *) [ -e "$arg" ] && paths=() ;;
+  esac
+done
+
 # Not exec: that would replace this shell and lose the EXIT trap, leaving the
 # throwaway nats-server running after the suite finishes.
-uv run pytest tests examples -m e2e -v "$@"
+uv run pytest ${paths[@]+"${paths[@]}"} -m e2e -v "$@"
