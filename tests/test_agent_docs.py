@@ -202,3 +202,12 @@ def test_the_architecture_tree_names_every_module():
     tree = text[text.index("## 4.") : text.index("## 5.")]
     missing = {name for name in _package_modules() if not re.search(rf"\b{re.escape(name)}\b", tree)}
     assert not missing, f"docs/ARCHITECTURE.md section 4 does not name: {sorted(missing)}"
+
+
+@pytest.mark.unit
+def test_the_claude_map_names_every_module():
+    """The map in CLAUDE.md missed features/toasts.py and apps.py after #116."""
+    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    tree = text[text.index("## 저장소 지도") : text.index("### 템플릿 태그")]
+    missing = {name for name in _package_modules() if not re.search(rf"\b{re.escape(name)}\b", tree)}
+    assert not missing, f"the CLAUDE.md map does not name: {sorted(missing)}"

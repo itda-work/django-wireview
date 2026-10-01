@@ -109,6 +109,17 @@ The django-reactor era changelog (2.x) is preserved in
   release's bundle. A test checks that every proxy block serves `/static/` from a directory, that
   the app image runs `collectstatic`, and that an image takes its output to the Nginx `alias`.
 
+- Smaller reference errors: `docs/features/README.md` and `temporary-assigns.md` still said
+  `skip_render` and Auto Broadcast were "coming soon"; `csp.md` gave the bundle's cache key as
+  `?v=2` (it is the package version); `lifecycle-hooks.md` called the internal `wire.put_flash`;
+  `flash.md` and `component-api.md` offered `clear_flash(flash_id)` without saying the server never
+  learns a flash's id; `chunked-uploads.md` pointed at a section that does not exist and
+  `live-session.md` at itself. The skill said a plain `check` catches six of its pitfalls (four),
+  linked repository-relative `docs/` paths an installed project does not have, sent readers to
+  `tests/testproj` for examples, left `sticky` out of the `Meta` table, and showed
+  `{% upload_drop_zone %}` without the upload name it requires. The `CLAUDE.md` map missed
+  `features/toasts.py`, `apps.py` and the toasts template; a test now requires it to name every
+  module.
 - `docs/ARCHITECTURE.md` drew the session logic inside `WireviewConsumer` as before #60, named a
   repository method as the judge of what a client may call instead of `core/handlers.py`'s
   `is_client_callable`, and its module tree missed sixteen modules and client files. A test now

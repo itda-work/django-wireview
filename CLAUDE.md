@@ -75,7 +75,9 @@ wireview/
 ├── debug/sync_detector.py sync/async 전환 중첩 감지 (DEBUG_SYNC_TRANSITIONS)
 ├── features/              streams.py, presence.py (PresenceMixin), uploads.py (UploadRegistry·토큰 v2),
 │                          hooks.py (앱의 static/<app_label>/hooks/*.js 수집. 페이지가 아니라 프로젝트 단위),
-│                          upload_store.py (청크 경로 계산·append·취소 마커·sweep. 워커들이 공유하는 유일한 상태)
+│                          upload_store.py (청크 경로 계산·append·취소 마커·sweep. 워커들이 공유하는 유일한 상태),
+│                          toasts.py (toast()·atoast()와 그것을 받는 컴포넌트. {% wireview_toasts %}가 심는다, #116)
+├── apps.py                ready()가 시그널 수신자·체크·toasts 컴포넌트를 연결하고 live·live_sessions 모듈을 autodiscover한다
 ├── templatetags/wireview.py  템플릿 태그 전체 (아래 표)
 ├── management/commands/   wireview_stubs (.pyi 생성), wireview_lsp (IDE 메타데이터 JSON),
 │                          wireview_agent_setup (앱 개발자용 스킬을 프로젝트 .claude/skills/ 에 설치),
@@ -85,6 +87,7 @@ wireview/
 │                          tests/test_starter_e2e.py 는 그 프로젝트를 자기 runserver(daphne)와 uvicorn으로 띄워 브라우저로 입력해 본다(#151).
 │                          uvicorn은 정적 파일을 서빙하지 않으므로 스타터 asgi.py가 DEBUG일 때 ASGIStaticFilesHandler로 감싼다
 ├── templates/wireview_header.html  {% wireview_header %}가 렌더. wireview.min.js를 로드
+├── templates/wireview/toasts.html  {% wireview_toasts %}가 심는 토스트 수신 컴포넌트의 템플릿
 └── static/wireview/       wireview.js (소스), rendered.mjs (diff 적용·HTML 복원 순수 함수),
                            streams.mjs (스트림 DOM 판단 순수 함수), reload.mjs (reload 쿨다운 판단),
                            live-session.mjs (경계 넘음 판단 순수 함수), ready.mjs (defer 스크립트가 다 돌았는가),
@@ -114,6 +117,9 @@ tests/
 │                          실제로 있는지, 개요의 숫자가 표를 센 값인지 본다(#110)
 │                          test_deployment_examples.py 는 docs/DEPLOYMENT.md 의 수신자·readiness 코드 블록을
 │                          꺼내 실제로 돌린다. 문서의 예시를 고치면 이 테스트가 본다
+│                          test_doc_examples.py 는 사용자 문서(README·features·tutorials·skills·examples)의 코드가
+│                          되풀이된 실수를 하지 않는지 본다: 블록은 파싱되고, JS() 체인은 실제 시그니처에 묶이고,
+│                          함수 컴포넌트는 f-string으로 마크업을 만들지 않고, mount() 시그니처는 실제와 같다
 ├── js/*.test.mjs          클라이언트 순수 모듈 테스트 (node --test)
 │                          js/roundtrip.mjs 는 테스트가 아니라 test_diff_roundtrip.py 의 드라이버다 —
 │                          서버 diff 를 실제 rendered.mjs 로 적용해 매 단계 HTML 이 렌더와 같은지 본다
@@ -161,12 +167,13 @@ tests/
 
 examples/                  예제 앱 11개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.
                            testproj 위에서 돌고 make test가 함께 실행한다(pytest tests examples).
-                           E2E는 todo/tests.py, livecomp/tests.py, hooks/tests.py. 인덱스는 examples/README.md
-                           hooks/ 는 wire-hook 의 유일한 사용자이자 클라이언트 훅 경로의 유일한 검증이다
+                           E2E는 todo/tests.py, livecomp/tests.py, hooks/tests.py, notifications/tests.py. 인덱스는 examples/README.md
+                           hooks/ 는 wire-hook 을 쓰는 유일한 예제다. 훅 경로의 E2E 검증은 그것과
+                           testproj의 hookprobe/·stickyprobe/·offlineprobe/ 가 나눠 진다
 
 docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEATURE-GAP.md, ARCHITECTURE.md,
                            ROADMAP.md, DEPLOYMENT.md, PERFORMANCE.md, design/ 설계 메모(README.md 인덱스), implementation/ 구현 노트
-                           (implementation/wire-protocol.md 가 메시지 형태의 정본)
+                           (implementation/wire-protocol.md 가 메시지 형태의 정본. 표의 이름은 tests/test_wire_protocol_doc.py 가 코드와 맞춘다)
 bench/                     성능 벤치마크 (make bench, make bench-compare BASE=<ref>). windows/ 는 Parallels 게스트 실측 레인. 설명은 bench/README.md
 typings/                   channels 타입 스텁 (pyright용)
 skills/wireview/           앱 개발자용 스킬의 정본. 휠에 wireview/agent_skills/ 로 실린다(hatch_build.py가 링크를 태그로 고정).
