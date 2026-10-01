@@ -109,6 +109,10 @@ The django-reactor era changelog (2.x) is preserved in
   release's bundle. A test checks that every proxy block serves `/static/` from a directory, that
   the app image runs `collectstatic`, and that an image takes its output to the Nginx `alias`.
 
+- `docs/features/checks.md` named two private repository methods as the rule W001 shares with
+  the dispatcher; it is `core/handlers.py`'s `is_client_callable`. `settings.md` marked
+  `COLLECT_HOOKS` as read at startup; the switch is read at render, the file list once, and turning
+  it off also turns off W011.
 - A generated `.pyi` imported `LiveComponent` from `wireview.live_component`, an internal module;
   it imports from `wireview` now, as it already did for `Component`. A committed stub of a
   LiveComponent reads as outdated to `wireview_stubs --check` until it is generated again.

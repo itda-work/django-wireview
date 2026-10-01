@@ -206,8 +206,8 @@ SILENCED_SYSTEM_CHECKS = ["wireview.W006"]  # InMemory 레이어를 쓰는 단�
 
 ## 검사는 디스패처와 같은 규칙을 쓴다
 
-W001은 "노출되는 핸들러"를 자체 판정하지 않는다. `ComponentRepository._is_valid_event_handler`와
-`_is_user_defined_method` — **클라이언트 이벤트를 실제로 받는 그 코드** — 를 그대로 호출한다.
+W001은 "노출되는 핸들러"를 자체 판정하지 않는다. `wireview/core/handlers.py`의 `is_client_callable` —
+**클라이언트 이벤트를 받는 디스패처가 쓰는 그 판정** — 을 그대로 호출한다(#127).
 판정 로직을 복사했다면 규칙이 바뀔 때 검사가 조용히 거짓말을 하게 된다.
 
 노출 규칙 자체는 [LiveComponent 문서](./live-component.md#update-콜백)에 있다. 요약하면

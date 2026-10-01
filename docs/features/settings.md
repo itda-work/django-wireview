@@ -22,7 +22,7 @@ WIREVIEW = {
 |----|--------|----|
 | `BOOST_PAGES` | `False` | 링크와 `wire-boost` 폼을 전체 로드 없이 이동한다 ([boost](./boost.md)) |
 | `CHECK_ORIGIN` | `True` | `Origin`이 `ALLOWED_HOSTS`에 없는 소켓을 거절한다 ([배포](../DEPLOYMENT.md#websocket의-origin)) |
-| `COLLECT_HOOKS` | `True` | 각 앱의 `static/<app_label>/hooks/*.js`를 `{% wireview_header %}`가 싣는다 ([hooks](./hooks.md)). **기동 시** |
+| `COLLECT_HOOKS` | `True` | 각 앱의 `static/<app_label>/hooks/*.js`를 `{% wireview_header %}`가 싣는다 ([hooks](./hooks.md)). 페이지가 쓰는 것만이 아니라 **모든 페이지가 모든 앱의 훅을** 싣는다 — boost 이동은 새 페이지의 `<head>` 스크립트를 실행하지 않기 때문이다. 스위치는 렌더 때 읽지만 파일 목록은 처음 쓸 때 한 번 모으므로, 실행 중에 더한 훅 파일은 재시작해야 실린다. 끄면 `wireview.W011`(등록되지 않은 훅)도 꺼진다 |
 | `RECONNECT_MIN_DELAY_MS` | `1000` | 연결이 끊긴 뒤 첫 재시도까지의 최소 대기(밀리초) ([배포](../DEPLOYMENT.md#롤링-배포와-재연결)) |
 | `RECONNECT_JITTER_MS` | `4000` | 첫 대기에 더하는 무작위 폭(밀리초). 페이지마다 한 번 뽑아 같은 순간 끊긴 페이지들을 흩는다 |
 | `RECONNECT_MAX_DELAY_MS` | `10000` | 재시도 대기의 상한(밀리초) |
