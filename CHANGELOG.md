@@ -251,6 +251,11 @@ The django-reactor era changelog (2.x) is preserved in
   `tests/test_doc_examples.py` refuses a `{%`, `{{` or `{#` left open at the end of a line in
   any template or Markdown code block of the repository.
 
+- Tutorials 02 and 03 bound Ctrl+Enter and Escape to `keypress`. Browsers send no `keypress` for
+  a key that types no character, or under Ctrl, Alt or Meta, so Escape never cancelled an edit
+  and Ctrl+Enter never sent. They bind `keydown` now, and `tests/test_doc_examples.py` refuses a
+  `keypress` binding on such a key.
+
 ## [1.0.0rc4] - 2026-10-01
 
 ### Added

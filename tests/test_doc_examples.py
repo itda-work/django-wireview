@@ -395,6 +395,45 @@ def test_the_line_rule_reads_like_the_lexer(line, unclosed):
     assert _unclosed(line) is unclosed
 
 
+#: ``keypress`` fires only for keys that type a character, and not under Ctrl, Alt or Meta.
+#: A binding is a listener for its event type as written, so ``keypress.esc`` never runs:
+#: the tutorials' Escape-to-cancel and Ctrl+Enter-to-send did nothing. ``keydown`` sees them.
+KEYPRESS = re.compile(r"""\{%\s*on\s+["']keypress\.([^"']+)["']""")
+NO_KEYPRESS = {"esc", "escape", "tab", "delete", "backspace", "up", "down", "left", "right", "ctrl", "alt", "meta"}
+
+
+def _keypress_never_fires(line: str) -> bool:
+    for modifiers in KEYPRESS.findall(line):
+        tokens = {token.lower() for token in modifiers.split(".")}
+        if tokens & NO_KEYPRESS or any(token.startswith("arrow") for token in tokens):
+            return True
+    return False
+
+
+def test_no_keypress_binding_waits_for_a_key_that_sends_none():
+    broken = [
+        f"{path.relative_to(ROOT)}:{number}: {line.strip()}"
+        for path in _template_sources()
+        for number, line in _template_lines(path)
+        if _keypress_never_fires(line)
+    ]
+    assert not broken, "the browser sends no keypress for these; bind keydown:\n" + "\n".join(broken)
+
+
+@pytest.mark.parametrize(
+    ("line", "never"),
+    [
+        ('{% on "keypress.key.escape" "cancel" %}', True),
+        ('{% on "keypress.ctrl.enter" "send" %}', True),
+        ("{% on 'keypress.key.ArrowDown' 'next' %}", True),
+        ('{% on "keypress.enter.prevent" "save" %}', False),
+        ('{% on "keydown.key.escape" "cancel" %}', False),
+    ],
+)
+def test_the_keypress_rule_knows_which_keys_send_none(line, never):
+    assert _keypress_never_fires(line) is never
+
+
 @pytest.mark.parametrize(
     "code",
     [

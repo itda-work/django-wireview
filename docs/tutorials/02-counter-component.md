@@ -134,11 +134,13 @@ class XCounter(Component):
 <input {% on "keypress.enter" "search" %}>
 
 <!-- Ctrl+Enter -->
-<textarea {% on "keypress.ctrl.enter" "submit" %}></textarea>
+<textarea {% on "keydown.ctrl.enter" "submit" %}></textarea>
 
 <!-- 특정 키 -->
 <input {% on "keydown.key.escape" "cancel" %}>
 ```
+
+`keypress`는 글자를 입력하는 키에만 나온다. Escape·Tab·화살표 같은 키와 Ctrl·Alt·Meta를 누른 조합에는 브라우저가 `keypress`를 보내지 않으므로, 그런 키는 `keydown`에 건다.
 
 ### 디바운스와 쓰로틀
 

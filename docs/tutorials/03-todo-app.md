@@ -453,7 +453,7 @@ class XTodoItem(Component):
       name="text"
       value="{{ edit_text }}"
       {% on "keypress.enter.prevent" "save_edit" %}
-      {% on "keypress.key.escape" "cancel_edit" %}
+      {% on "keydown.key.escape" "cancel_edit" %}
       {% on "blur" "save_edit" %}
     >
   {% else %}
@@ -721,7 +721,7 @@ class XTodoItem(Component):
     name="text"
     value="{{ text }}"
     {% on "keypress.enter.prevent" "save_edit" %}
-    {% on "keypress.key.escape" "cancel_edit" %}
+    {% on "keydown.key.escape" "cancel_edit" %}
     {% on "blur" "save_edit" %}
   >
   {% endif %}
