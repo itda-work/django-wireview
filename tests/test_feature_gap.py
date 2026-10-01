@@ -135,3 +135,46 @@ def test_the_overview_counts_the_table():
 
     extras = re.search(r"✅ 중 (\d+)행은 Phoenix에 없는", overview)
     assert extras and int(extras.group(1)) == sum(row[2].startswith("✅ 추가 기능") for row in ROWS)
+
+
+def _headings() -> dict[str, tuple[str, str]]:
+    """Section 2's ``### 2.n Name <mark>`` headings: number -> (name, mark)."""
+    found = {}
+    for line in DOC.read_text(encoding="utf-8").split("\n"):
+        if match := re.match(r"^### (2\.\d+) (.+) (\S+)$", line):
+            found[match.group(1)] = (match.group(2), match.group(3))
+    return found
+
+
+def test_each_category_heading_says_what_its_rows_are():
+    """2.12 and 2.15 kept a ⚠️ in their headings after every row under them was ✅."""
+    marks = {
+        section: "✅" if all(row[2][:1] in "✅⚪" for row in ROWS if row[0] == section) else "🟡"
+        for section in _headings()
+    }
+
+    assert {section: mark for section, (_, mark) in _headings().items()} == marks
+
+
+def test_the_coverage_table_counts_each_category():
+    """Section 1 gave each category a percentage nobody computed (Streams 80% with every row ✅)."""
+    text = DOC.read_text(encoding="utf-8")
+    coverage = text[text.index("## 1.") : text.index("## 2.")]
+    stated = {
+        m.group(1): (int(m.group(2)), int(m.group(3)))
+        for m in re.finditer(r"^\| (2\.\d+) [^|]+\| (\d+) \| (\d+) \|$", coverage, re.MULTILINE)
+    }
+    counted = {
+        section: (
+            sum(row[2].startswith("✅") for row in ROWS if row[0] == section),
+            sum(row[2].startswith("⚪") for row in ROWS if row[0] == section),
+        )
+        for section in _headings()
+    }
+
+    assert stated == counted
+
+
+def test_the_document_has_one_update_date():
+    """The header said 2026-09-30 while the footer still said 2025-06."""
+    assert len(re.findall(r"최종 업데이트", DOC.read_text(encoding="utf-8"))) == 1

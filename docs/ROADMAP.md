@@ -20,8 +20,9 @@ Phase 5: Polish         ████████████████░░�
 Phoenix LiveView 대비 남은 P1 기능 갭은 없다. GAP-009 live_session 과 GAP-022 Telemetry 는
 `v0.3.0` 에서 끝났고, **GAP-012 LongPolling 폴백은 만들지 않기로 했다** —
 WebSocket 을 필수 전제로 둔다(`docs/design/longpolling-fallback.md` §5).
-GAP-027 세션 분리는 1단계(컨슈머에서 `WireviewSession` 분리)가 `v1.0.0rc3` 에서 끝났고, 나머지(세션 상태
-export/import, 프런트 어댑터)는 `docs/design/transport-abstraction.md` 6절의 착수 기준을 만족할 때 시작한다.
+GAP-027 세션 분리는 1단계(컨슈머에서 `WireviewSession` 분리)가 `v1.0.0rc3` 에서, 3단계(업로드 분산 접근)가
+#83 에서 끝났다. 2단계(세션 상태 export/import)와 4단계(프런트 어댑터)는 `docs/design/session-extraction.md`
+5절의 착수 기준을 만족할 때 시작한다.
 남은 것은 P2·P3 이고 `docs/FEATURE-GAP.md` 3절이 정본이다.
 
 ---

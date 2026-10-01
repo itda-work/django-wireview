@@ -2,7 +2,7 @@
 
 > django-wireview가 Phoenix LiveView 수준에 도달하기 위해 필요한 기능 목록
 >
-> **최종 업데이트**: 2026-09-30
+> **최종 업데이트**: 2026-10-01
 
 ---
 
@@ -41,20 +41,28 @@ GAP 번호로 추적한다.
 
 ### 카테고리별 상태
 
-| 카테고리 | 커버리지 | 상태 |
-|----------|:--------:|------|
-| Core Lifecycle | 95% | ✅ 대부분 완료 |
-| Real-time (PubSub, Presence) | 95% | ✅ 완료 |
-| JS Commands (LiveView.JS) | 95% | ✅ 완료 |
-| Optimistic UI | 95% | ✅ 완료 |
-| Streams | 80% | ✅ 기본 완료 |
-| File Uploads | 100% | ✅ 완료 |
-| Async Operations | 95% | ✅ 대부분 완료 |
-| Navigation | 85% | ✅ 대부분 완료 |
-| **JavaScript Hooks** | 95% | ✅ 완료 |
-| **Components (Slots, Function, Live)** | 95% | ✅ 완료 |
-| Testing | 80% | ✅ 기본 완료 |
-| Developer Tools | 85% | ✅ 대부분 완료 |
+2절의 카테고리마다 행을 센 값이다. 🟡·🟠 행은 없다. `tests/test_feature_gap.py`가 이 표와 2절의 제목 표시를
+2절의 행과 대조한다.
+
+| 카테고리 | ✅ | ⚪ |
+|----------|---:|---:|
+| 2.1 Core Lifecycle | 7 | 0 |
+| 2.2 Real-time Features | 5 | 0 |
+| 2.3 LiveView.JS (Client Commands) | 11 | 0 |
+| 2.4 Optimistic UI | 5 | 0 |
+| 2.5 Streams | 10 | 0 |
+| 2.6 File Uploads | 9 | 0 |
+| 2.7 Async Operations | 5 | 0 |
+| 2.8 Navigation | 6 | 0 |
+| 2.9 JavaScript Interoperability | 13 | 0 |
+| 2.10 Components | 10 | 1 |
+| 2.11 Form Handling | 8 | 0 |
+| 2.12 Performance Features | 6 | 0 |
+| 2.13 Testing | 7 | 0 |
+| 2.14 Developer Tools | 6 | 0 |
+| 2.15 Miscellaneous | 5 | 1 |
+
+⚪ 두 행은 Nested LiveViews(프로세스 격리)와 LongPolling 폴백(GAP-012)이다.
 
 ---
 
@@ -211,7 +219,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | Form recovery | ✅ 자동 | 재연결 시 폼 상태 복원 | ✅ (GAP-008) | `tests/test_offline_e2e.py::test_auto_recover_sends_the_forms_values_to_its_handler`<br>`tests/test_offline_e2e.py::test_auto_recover_without_a_handler_replays_the_forms_change_binding` |
 | Changeset integration | Ecto | 핸들러에서 Django Form으로 검증 ([문서](./features/form-feedback.md)) | ✅ 다른 접근 | `tests/test_forms_e2e.py::test_a_valid_django_form_saves`<br>`tests/test_forms_e2e.py::test_feedback_waits_for_the_field_to_be_touched` |
 
-### 2.12 Performance Features ⚠️
+### 2.12 Performance Features ✅
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -245,7 +253,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | **Type Stubs** | - | `wireview_stubs` | ✅ 추가 기능 | `tests/test_stubs.py::TestTheCommand::test_it_writes_a_stub_whose_handlers_are_what_a_client_can_call`<br>`tests/test_stubs.py::TestTheCommand::test_check_fails_when_a_stub_is_stale` |
 | **LSP Metadata** | - | `wireview_lsp` | ✅ 추가 기능 | `tests/test_lsp_metadata.py::TestWireviewLspCommand::test_component_metadata`<br>`tests/test_lsp_metadata.py::test_is_handler_says_what_a_client_can_call` |
 
-### 2.15 Miscellaneous ⚠️
+### 2.15 Miscellaneous ✅
 
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
@@ -298,7 +306,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | ~~GAP-021~~ | ~~on_mount hooks~~ | ~~공통 마운트 로직 모듈화~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-022~~ | ~~Telemetry~~ | ~~성능 측정 훅~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-023~~ | ~~onBeforeElUpdated~~ | ~~DOM 패치 전 콜백~~ | ~~하~~ | ✅ 완료 |
-| ~~GAP-025~~ | ~~Comprehensions~~ | ~~`{% for %}`를 항목 단위, `{% if %}`를 블록 단위 static/dynamic으로 분리해 항목·분기 변경 시 부분 diff~~ | ~~중~~ | ✅ 완료 (위치 기반, 키 기반은 미지원) |
+| ~~GAP-025~~ | ~~Comprehensions~~ | ~~`{% for %}`를 항목 단위, `{% if %}`를 블록 단위 static/dynamic으로 분리해 항목·분기 변경 시 부분 diff~~ | ~~중~~ | ✅ 완료 (위치 기반. 앞 삽입·이동의 부분 diff는 GAP-030) |
 | ~~GAP-026~~ | ~~Transport seam~~ | ~~`Outbound`/`Broker` 인터페이스 뒤로 채널 레이어 격리, 렌더 스냅샷 직렬화, wire-protocol 문서~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-028~~ | ~~Stream DOM 수명~~ | ~~재렌더가 `wire-stream` 컨테이너를 비우고, 같은 dom id 재삽입이 갱신이 아니라 중복이 된다~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-029~~ | ~~세션 접근~~ | ~~컴포넌트가 Django 세션을 읽는다. 예제 둘이 없는 API를 상상해 쓰고 있었다~~ | ~~하~~ | ✅ 완료 |
@@ -309,7 +317,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | ~~GAP-034~~ | ~~Dead view~~ | ~~JS 없이도 읽히는 첫 렌더. 무엇을 약속할지부터~~ | ~~중~~ | ✅ 완료 (첫 렌더·링크·폼. `docs/features/dead-view.md`) |
 | ~~GAP-035~~ | ~~LiveComponent 배치 업데이트~~ | ~~같은 컴포넌트 N개 갱신의 N+1 제거~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-036~~ | ~~LiveComponent 슬롯~~ | ~~`{% live_component_block %}`으로 fill·기본 슬롯·let 전달~~ | ~~중~~ | ✅ 완료 |
-| GAP-027 | Session extraction | ~~컨슈머 핸들러를 `WireviewSession`으로 분리~~(1단계 완료, #60). 남은 것: 세션 상태 export/import, 프런트 어댑터 (docs/design/session-extraction.md §4·5) | 상 | 워크로드 기준 대기 |
+| GAP-027 | Session extraction | ~~컨슈머 핸들러를 `WireviewSession`으로 분리~~(1단계, #60, v1.0.0rc3). ~~업로드 분산 접근~~(3단계, #83). 남은 것: 세션 상태 export/import(2단계), 프런트 어댑터(4단계) (docs/design/session-extraction.md §4·5) | 상 | 착수 기준(§5)의 워크로드가 생길 때 |
 
 ---
 
@@ -392,11 +400,11 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Phase 4: Performance & Polish (진행 중)
+### Phase 4: Performance & Polish ✅ 완료
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Phase 4: Performance & Developer Experience                │
+│  Phase 4: Performance & Developer Experience  ✅ 완료       │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  GAP-006: temporary_assigns ✅ 완료                         │
@@ -415,71 +423,19 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 │  ├─ Profiling ✅ 완료                                      │
 │  └─ Telemetry ✅ 완료                                      │
 │                                                             │
-│  예상 기간: 4-6주                                           │
+│  구현 완료: 2026-09                                         │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 5. GitHub Issue 구조
+## 5. 추적
 
-### Label 체계
-
-```yaml
-priority:
-  - "priority: critical"   # P0
-  - "priority: high"       # P1
-  - "priority: medium"     # P2
-
-type:
-  - "type: feature"        # 새 기능
-  - "type: enhancement"    # 기존 기능 개선
-  - "type: dx"             # 개발자 경험
-
-area:
-  - "area: js-interop"     # JavaScript 연동
-  - "area: components"     # 컴포넌트 시스템
-  - "area: navigation"     # 네비게이션
-  - "area: forms"          # 폼 처리
-  - "area: uploads"        # 파일 업로드
-  - "area: performance"    # 성능
-  - "area: devtools"       # 개발자 도구
-
-phase:
-  - "phase: 1"
-  - "phase: 2"
-  - "phase: 3"
-  - "phase: 4"
-```
-
-### Milestone 구조
-
-```
-v6.0.0-alpha.1 (Phase 1)
-├── JavaScript Hooks
-└── pushEvent
-
-v6.0.0-alpha.2 (Phase 2)
-├── Slots
-├── Function Components
-└── LiveComponent (optional)
-
-v6.0.0-beta.1 (Phase 3)
-├── handle_params ✅
-├── Form Auto-Recovery
-├── Page Title
-└── Flash Messages
-
-v6.0.0-rc.1 (Phase 4)
-├── temporary_assigns
-├── External Uploads
-├── Stream Advanced
-└── Developer Tools
-
-v6.0.0 (Release)
-└── Documentation & Polish
-```
+GAP 번호는 기능 단위 id이고 작업은 GitHub Issues(`itda-work/django-wireview`)에서 추적한다. 이슈 제목에 GAP
+번호를 넣는다. 라벨 체계와 착수·종료 절차는 `wireview-dev` 스킬(`.claude/skills/wireview-dev/SKILL.md`)이,
+현재 라벨 목록은 `gh label list --limit 100`이 정본이다. 버전 계획은 [ROADMAP](./ROADMAP.md)의 릴리스 이력이고,
+reactor 시절의 v6.0.0 마일스톤 번호는 쓰지 않는다.
 
 ---
 
@@ -513,4 +469,3 @@ v6.0.0 (Release)
 ---
 
 *이 문서는 Phoenix LiveView와의 기능 갭을 분석하고 구현 우선순위를 정의합니다.*
-*최종 업데이트: 2025-06*
