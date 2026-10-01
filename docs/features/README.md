@@ -12,7 +12,7 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 | 기능 | 설명 | 문서 |
 |------|------|------|
 | **temporary_assigns** | 렌더링 후 필드 자동 초기화로 메모리 절약 | [문서](./temporary-assigns.md) |
-| **skip_render** | 불필요한 렌더링 방지 | 준비 중 |
+| **skip_render** | 불필요한 렌더링 방지. `skip_render()`·`force_render()` | [Component API](./component-api.md#부르는-것) |
 | **HTML Diff** | 변경된 dynamic 파트만 전송, 목록 항목의 이동·삽입·삭제는 그 항목만, 상태 압축 서명 | [문서](./html-diff.md) |
 
 ## 실시간 기능
@@ -21,7 +21,7 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 |------|------|------|
 | **Streams** | 대용량 리스트 실시간 조작 | [튜토리얼](../tutorials/06-streams-api.md) |
 | **Presence** | 사용자 온라인 상태 추적 | [튜토리얼](../tutorials/07-presence-api.md) |
-| **Auto Broadcast** | Django ORM 변경 자동 알림 | 준비 중 |
+| **Auto Broadcast** | Django ORM 변경 자동 알림. `AUTO_BROADCAST`의 `senders`에 적은 모델만 | [설정](./settings.md), [`mutation()`](./component-api.md#오버라이드하는-것) |
 | **플래시** | `put_flash()`, `[wire-flash]` | [문서](./flash.md) |
 | **토스트** | `toast()`·`atoast()`, `{% wireview_toasts %}`: 다른 사용자·세션의 열린 페이지로 보내는 플래시 | [문서](./flash.md#토스트) |
 

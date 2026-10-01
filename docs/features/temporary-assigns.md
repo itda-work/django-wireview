@@ -350,7 +350,7 @@ temporary_assigns 사용:
 ## 관련 기능
 
 - [Streams API](../tutorials/06-streams-api.md) - 실시간 리스트 조작
-- `skip_render()` - 불필요한 렌더링 방지 (전용 문서는 준비 중이다)
+- [`skip_render()`](./component-api.md#부르는-것) - 불필요한 렌더링 방지
 - [Performance Guide](../PERFORMANCE.md) - 성능 최적화 가이드
 
 ---
