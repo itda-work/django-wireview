@@ -402,6 +402,13 @@ The django-reactor era changelog (2.x) is preserved in
   reconnect. The page now disconnects the observers of the components it drops, on a close and
   when a component leaves the page.
 
+- A LiveComponent shown again after a reconnect starts from its defaults, not from the state the
+  reconnect restored to the instance before it. A nested component's join carries the signed states
+  of the components inside it, which the outer join's pass had already built, so nothing took those
+  entries from the restore map and they stayed for the life of the connection: the next instance
+  built under the id, once an `{% if %}` showed it again, took the old state up. The restore map is
+  now dropped when its join ends.
+
 ### Security
 
 - `on_upload_complete(name, entry)` is now a method of `Component`, and so framework surface a

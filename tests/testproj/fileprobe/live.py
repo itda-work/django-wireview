@@ -71,7 +71,8 @@ class FileShelf(Component):
 
     The box is an ordinary ``{% component %}``, so the page joins it when it sees
     it; its ``joined()`` sets up its uploads, and the LiveComponent inside it is
-    settled by the box's own render then.
+    settled by the box's own render then. ``hide`` and ``show`` again build both
+    anew, which start from their defaults whatever a reconnect restored before.
     """
 
     class Meta:
@@ -81,6 +82,9 @@ class FileShelf(Component):
 
     async def show(self):
         self.shown = True
+
+    async def hide(self):
+        self.shown = False
 
 
 class FileBox(Component):

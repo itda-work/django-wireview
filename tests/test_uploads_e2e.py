@@ -483,3 +483,25 @@ def test_a_component_a_live_render_draws_and_the_live_component_in_it_join_and_u
     expect_text(by(page, "box-received").locator("li"), "box.txt:3")
     by(page, "sprig-files").set_input_files(text_file("sprig.txt", "sprig"))
     expect_text(by(page, "sprig-received").locator("li"), "sprig.txt:5")
+
+
+def test_a_live_component_shown_again_after_a_reconnect_starts_anew(page, server):
+    # The reconnect joins the shelf with every state under it, and then the box
+    # with the sprig's: the shelf's pass had built the sprig already, so the box's
+    # entry for it was never taken. It outlived the join, and the sprig the next
+    # show built took it up -- a new instance with the old one's state.
+    page.add_init_script(OFFLINE_SHIM)
+    open_live(page, f"{server}/fileprobe/shelf/")
+    by(page, "show").click()
+    expect_text(by(page, "sprig-joins"), "1")
+
+    page.evaluate("() => { window.__link.offline = true; window.__link.sockets.forEach((s) => s.close()); }")
+    expect(page.locator("#shelf")).to_have_class(re.compile("wireview-disconnected"))
+    page.evaluate("() => { window.__link.offline = false; }")
+    # Its own state comes back, and its joined() runs on the new connection
+    expect_text(by(page, "sprig-joins"), "2")
+
+    by(page, "hide").click()
+    expect(page.locator("#box")).to_have_count(0)
+    by(page, "show").click()
+    expect_text(by(page, "sprig-joins"), "1")

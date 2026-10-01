@@ -222,3 +222,85 @@ async def test_a_component_an_event_draws_is_joined_by_the_page_and_hears_its_ow
         assert JoinedNested.left == []
     finally:
         await communicator.disconnect()
+
+
+class JoinedSprig(LiveComponent):
+    """A LiveComponent inside a nested component, with a field of its own."""
+
+    note: str = "fresh-note"
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<i {% live_tag_header %}>{{ this.note }}</i>")
+
+
+class JoinedBox(Component):
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<b {% tag_header %}>{% live_component 'JoinedSprig' id='j-sprig' %}</b>")
+
+
+class JoinedShelf(Component):
+    shown: bool = True
+
+    async def toggle(self):
+        self.shown = not self.shown
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% if this.shown %}{% component 'JoinedBox' id='j-box' %}{% endif %}</p>"
+        )
+
+
+async def _until(communicator: WebsocketCommunicator, command: str) -> list[dict[str, t.Any]]:
+    heard = [await communicator.receive_json_from(timeout=5)]
+    while heard[-1]["command"] != command:
+        heard.append(await communicator.receive_json_from(timeout=5))
+    return heard
+
+
+async def test_a_joins_restore_map_is_for_that_join_only():
+    # The page joins a nested component with the signed states of the components
+    # inside it -- after a reconnect, their current ones. The root's pass has built
+    # them already, so nothing took those entries, and they stayed for the life of
+    # the connection: the next instance built under the id, once an {% if %} showed
+    # it again, started from the old one's state.
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
+    communicator.scope["user"] = AnonymousUser()
+    connected, _ = await communicator.connect()
+    assert connected
+    try:
+        meta = {"user": AnonymousUser(), "wire": WireviewMeta(params={})}
+        shelf = sign_state(JoinedShelf(**meta, id="j-shelf"))
+        box = sign_state(JoinedBox(**meta, id="j-box"))
+        sprig = ["JoinedSprig", sign_state(JoinedSprig(**meta, id="j-sprig", note="stale-note"))]
+
+        def join_box(ref: int, children: dict[str, t.Any]) -> dict[str, t.Any]:
+            return {"command": "join", "payload": {"name": "JoinedBox", "state": box, "children": children, "ref": ref}}
+
+        # What a reconnect sends: the root's join with every state under it, then
+        # the nested component's with the states under it
+        children = {"j-box": ["JoinedBox", box], "j-sprig": sprig}
+        await communicator.send_json_to(
+            {"command": "join", "payload": {"name": "JoinedShelf", "state": shelf, "children": children, "ref": 1}}
+        )
+        await _until(communicator, "joined")
+        await communicator.send_json_to(join_box(2, {"j-sprig": sprig}))
+        assert "stale-note" in str(await _until(communicator, "joined")), "the root's pass restored it"
+
+        toggle = {"id": "j-shelf", "command": "toggle", "implicit_args": {}, "explicit_args": {}}
+        await communicator.send_json_to({"command": "user_event", "payload": {**toggle, "ref": 3}})
+        await _until(communicator, "render")
+        await communicator.send_json_to({"command": "leave", "payload": {"id": "j-box"}})
+        await communicator.send_json_to({"command": "user_event", "payload": {**toggle, "ref": 4}})
+        await _until(communicator, "render")
+        # The page joins the box the render drew; nothing inside it was on the page
+        await communicator.send_json_to(join_box(5, {}))
+        shown_again = str(await _until(communicator, "joined"))
+
+        assert "fresh-note" in shown_again, shown_again
+        assert "stale-note" not in shown_again
+    finally:
+        await communicator.disconnect()
