@@ -404,12 +404,6 @@ class WireviewSession:
             # Everything up to the first render counts as the join: a failure
             # here is not retried, where a handler's is (#94).
             await self._join_failed(component_id or "", name, answer)
-        finally:
-            # The restore map is this join's: its render built what the map
-            # restores. An entry nothing took -- a component another join's pass
-            # had built already -- would hand its old state to the next
-            # instance built under the id, once an {% if %} shows it again.
-            self.repo.children.clear()
 
     async def _enter_live_session(self, payload: StatePayload) -> str:
         """Settle which ``live_session`` this connection is in, for one join.

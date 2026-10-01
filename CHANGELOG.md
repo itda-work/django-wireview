@@ -406,8 +406,10 @@ The django-reactor era changelog (2.x) is preserved in
   reconnect restored to the instance before it. A nested component's join carries the signed states
   of the components inside it, which the outer join's pass had already built, so nothing took those
   entries from the restore map and they stayed for the life of the connection: the next instance
-  built under the id, once an `{% if %}` showed it again, took the old state up. The restore map is
-  now dropped when its join ends.
+  built under the id, once an `{% if %}` showed it again, took the old state up. A join now keeps
+  no entry for a component already built, and the entries it keeps go when its component leaves. A
+  LiveComponent that only a later render draws -- inside the result of work `joined()` starts again
+  after the reconnect -- still comes back with the state it had.
 
 - A component whose join failed stays out of the page until the next connection, even when its
   parent's render draws it again. The parent's template pass built a new instance under the id

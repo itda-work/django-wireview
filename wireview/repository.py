@@ -93,7 +93,12 @@ class ComponentRepository:
         self.live_session = live_session
         self.user = user or AnonymousUser()
         self.components: dict[str, Component] = {}
+        # The restore map: signed states a join carried for the components under
+        # its root, taken by the instance built under each id. An entry lives as
+        # long as the root whose join carried it, as a component under it may be
+        # drawn only by a later render (an async result, an {% if %}).
         self.children: ChildrenRepo = {}
+        self._carried_by: dict[str, str] = {}
         self.is_live = is_live
         # Track LiveComponents that need joined() called after parent renders
         self._pending_live_components: list[LiveComponent] = []
@@ -171,7 +176,7 @@ class ComponentRepository:
                 child_name, child_state = child
                 if child_name == name:
                     state = child_state | state
-                    self.children.pop(component_id)
+                    self._take_restored(component_id)
 
         component = Component._build(
             name,
@@ -248,7 +253,7 @@ class ComponentRepository:
 
         # A reconnect carries the child's signed state in the parent's join. The
         # parent's props win, everything else is the child's own and comes back.
-        if (restored := self.children.pop(component_id, None)) is not None:
+        if (restored := self._take_restored(component_id)) is not None:
             restored_name, restored_state = restored
             if self._same_live_class(restored_name, component_class):
                 state = restored_state | state
@@ -381,11 +386,11 @@ class ComponentRepository:
         state: MessagePayload,
         children: ChildrenRepo | None = None,
     ) -> Component:
-        self.children.update(children or {})
         component = await db(self.build)(
             name,
             state,
         )
+        self._carry(component.id, children or {})
         # Enter pending mode before joined() to queue stream/push_js operations
         # These will be flushed after send_render() in consumer
         component.wire.enter_pending_mode()
@@ -414,6 +419,23 @@ class ComponentRepository:
             component.wire.has_joined = True
         return component
 
+    def _carry(self, root_id: str, children: ChildrenRepo) -> None:
+        """Keep the states a join carried for the components under ``root_id``.
+
+        An id already held was built by another pass -- the outer join's, when a
+        nested component joins with the states inside it -- and nothing would
+        take its entry but the next instance built under the id, once an
+        ``{% if %}`` shows it again: that one starts anew.
+        """
+        for child_id, entry in children.items():
+            if child_id not in self.components:
+                self.children[child_id] = entry
+                self._carried_by[child_id] = root_id
+
+    def _take_restored(self, component_id: str) -> tuple[str, dict[str, t.Any]] | None:
+        self._carried_by.pop(component_id, None)
+        return self.children.pop(component_id, None)
+
     def abandon(self, component: Component) -> None:
         """Give up on a component the boundary refused: no render, no event target."""
         component.wire.freeze()
@@ -428,7 +450,13 @@ class ComponentRepository:
 
         Returns the removed instances, parent first, so the caller can run
         ``leaving()`` on each. Removing an unknown id returns an empty list.
+
+        The restore map entries the component's join carried go with it: what
+        it did not draw, no later instance under those ids should take up.
         """
+        for child_id, root_id in list(self._carried_by.items()):
+            if root_id == id:
+                self._take_restored(child_id)
         component = self.components.pop(id, None)
         if component is None:
             return []

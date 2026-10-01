@@ -10,6 +10,7 @@ A LiveComponent hears its own: a render that brings one in runs its joined(),
 and the page has to know when that one's list is there too.
 """
 
+import asyncio
 import typing as t
 
 import pytest
@@ -17,7 +18,7 @@ from channels.testing import WebsocketCommunicator
 from django.contrib.auth.models import AnonymousUser
 from django.template import Template
 
-from wireview import Component, LiveComponent
+from wireview import AsyncResult, Component, LiveComponent
 from wireview.consumer import WireviewConsumer
 from wireview.core.meta import WireviewMeta
 from wireview.core.rendered import JOINED_SINCE
@@ -299,6 +300,164 @@ async def test_a_joins_restore_map_is_for_that_join_only():
         # The page joins the box the render drew; nothing inside it was on the page
         await communicator.send_json_to(join_box(5, {}))
         shown_again = str(await _until(communicator, "joined"))
+
+        assert "fresh-note" in shown_again, shown_again
+        assert "stale-note" not in shown_again
+    finally:
+        await communicator.disconnect()
+
+
+class JoinedLateSprig(LiveComponent):
+    note: str = "fresh-note"
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<i {% live_tag_header %}>{{ this.note }}</i>")
+
+
+class JoinedLateShelf(Component):
+    """Draws its LiveComponent only once the work joined() starts has landed."""
+
+    data: AsyncResult[str] | None = None
+    landed: t.ClassVar[asyncio.Event]
+
+    async def joined(self):
+        # What the docs advise after a reconnect: start the work again
+        self.data = await self.assign_async(self._load())
+
+    async def _load(self) -> str:
+        await JoinedLateShelf.landed.wait()
+        return "ok"
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% if this.data.ok %}{% live_component 'JoinedLateSprig' id='j-late-sprig' %}{% endif %}</p>"
+        )
+
+
+class JoinedSprigHost(Component):
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>{% live_component 'JoinedLateSprig' id='j-late-sprig' %}</p>"
+        )
+
+
+def _late_shelf_join(ref: int) -> dict[str, t.Any]:
+    meta = {"user": AnonymousUser(), "wire": WireviewMeta(params={})}
+    # The page as it was before the reconnect: the work had landed and the
+    # sprig was on it with a state of its own
+    shelf = sign_state(JoinedLateShelf(**meta, id="j-late-shelf", data=AsyncResult.success("ok")))
+    sprig = ["JoinedLateSprig", sign_state(JoinedLateSprig(**meta, id="j-late-sprig", note="kept-note"))]
+    payload = {"name": "JoinedLateShelf", "state": shelf, "children": {"j-late-sprig": sprig}, "ref": ref}
+    return {"command": "join", "payload": payload}
+
+
+async def test_a_live_component_a_later_render_draws_takes_up_what_the_join_carried():
+    # joined() puts the result back to loading, so the join's render does not
+    # draw the sprig; the render after the work lands does. The entry the join
+    # carried for it is still there then, and the sprig comes back as it was.
+    JoinedLateShelf.landed = asyncio.Event()
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
+    communicator.scope["user"] = AnonymousUser()
+    connected, _ = await communicator.connect()
+    assert connected
+    try:
+        await communicator.send_json_to(_late_shelf_join(1))
+        joined = str(await _until(communicator, "joined"))
+        assert "-note" not in joined, "the join's render does not draw the sprig"
+
+        JoinedLateShelf.landed.set()
+        drawn = str(await _until(communicator, "render"))
+
+        assert "kept-note" in drawn, drawn
+        assert "fresh-note" not in drawn
+    finally:
+        JoinedLateShelf.landed.set()
+        await communicator.disconnect()
+
+
+async def test_a_join_s_restore_map_goes_with_its_root():
+    # The shelf leaves before its work lands, so it never draws the sprig. The
+    # entry its join carried goes with it: a sprig another component draws
+    # under the id later is a new instance and starts anew.
+    JoinedLateShelf.landed = asyncio.Event()
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
+    communicator.scope["user"] = AnonymousUser()
+    connected, _ = await communicator.connect()
+    assert connected
+    try:
+        await communicator.send_json_to(_late_shelf_join(1))
+        await _until(communicator, "joined")
+        await communicator.send_json_to({"command": "leave", "payload": {"id": "j-late-shelf"}})
+
+        host = sign_state(JoinedSprigHost(user=AnonymousUser(), wire=WireviewMeta(params={}), id="j-host"))
+        await communicator.send_json_to(
+            {"command": "join", "payload": {"name": "JoinedSprigHost", "state": host, "children": {}, "ref": 2}}
+        )
+        drawn = str(await _until(communicator, "joined"))
+
+        assert "fresh-note" in drawn, drawn
+        assert "kept-note" not in drawn
+    finally:
+        JoinedLateShelf.landed.set()
+        await communicator.disconnect()
+
+
+class JoinedFoldBox(Component):
+    open: bool = True
+
+    async def fold(self):
+        self.open = not self.open
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<b {% tag_header %}>"
+            "{% if this.open %}{% live_component 'JoinedSprig' id='j-fold-sprig' %}{% endif %}</b>"
+        )
+
+
+class JoinedFoldShelf(Component):
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<p {% tag_header %}>{% component 'JoinedFoldBox' id='j-fold-box' %}</p>")
+
+
+async def test_a_nested_join_does_not_carry_what_the_outer_pass_built():
+    # The box stays, so its entries would live as long as it does. The sprig
+    # under it was built by the shelf's pass already, and its entry in the box's
+    # join is not kept: the box folding the sprig away and back builds a new one,
+    # which starts anew.
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
+    communicator.scope["user"] = AnonymousUser()
+    connected, _ = await communicator.connect()
+    assert connected
+    try:
+        meta = {"user": AnonymousUser(), "wire": WireviewMeta(params={})}
+        shelf = sign_state(JoinedFoldShelf(**meta, id="j-fold-shelf"))
+        box = sign_state(JoinedFoldBox(**meta, id="j-fold-box"))
+        sprig = ["JoinedSprig", sign_state(JoinedSprig(**meta, id="j-fold-sprig", note="stale-note"))]
+        children = {"j-fold-box": ["JoinedFoldBox", box], "j-fold-sprig": sprig}
+        await communicator.send_json_to(
+            {"command": "join", "payload": {"name": "JoinedFoldShelf", "state": shelf, "children": children, "ref": 1}}
+        )
+        await _until(communicator, "joined")
+        await communicator.send_json_to(
+            {
+                "command": "join",
+                "payload": {"name": "JoinedFoldBox", "state": box, "children": {"j-fold-sprig": sprig}, "ref": 2},
+            }
+        )
+        assert "stale-note" in str(await _until(communicator, "joined")), "the shelf's pass restored it"
+
+        fold = {"id": "j-fold-box", "command": "fold", "implicit_args": {}, "explicit_args": {}}
+        await communicator.send_json_to({"command": "user_event", "payload": {**fold, "ref": 3}})
+        await _until(communicator, "render")
+        await communicator.send_json_to({"command": "user_event", "payload": {**fold, "ref": 4}})
+        shown_again = str(await _until(communicator, "render"))
 
         assert "fresh-note" in shown_again, shown_again
         assert "stale-note" not in shown_again
