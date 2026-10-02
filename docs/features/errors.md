@@ -48,7 +48,8 @@ mount나 `joined()`가 던지면 다시 해도 또 던질 가능성이 높다. �
 답해(버튼의 로딩 표시는 그것으로 끝난다), 훅의 `pushEvent`와 업로드는 받지 않는다. 브로드캐스트
 (`mutation()`·`notification()`)와 `params_changed()`, 다른 컴포넌트의 `wire.defer()`, 부모의
 `update_live_component`도 닿지 않고, 그 컴포넌트를 따로 렌더하지도 않는다. 따로 렌더하면 그 패스가 만든
-LiveComponent의 `joined()`가 돌기 때문이다. 경로는 모두 저장소의 `reachable()` 하나를 거친다.
+LiveComponent의 `joined()`가 돌기 때문이다. 컴포넌트 코드를 부르는 경로는 저장소의 `reachable()`로
+인스턴스를 찾고, 이벤트의 빈 답과 따로 하는 렌더의 거절은 `refused()`를 직접 본다.
 
 다시 시도하는 것은 페이지가 그 id로 join을 다시 보낼 때다. 다음 **연결**(재연결이나 새로고침), boost 이동이
 가져온 서버의 새 HTML, 부모의 렌더가 새로 그린 요소(`{% if %}`로 숨겼다 다시 보인 것)가 그렇다. 서버는 그
