@@ -416,6 +416,7 @@ WHO_TEMPLATES = {
     "fcwho/card.html": "{% load wireview %}<section>{% component 'FcWho' id='who' %}</section>",
     "fcwho/outer.html": "{% load wireview %}{% func 'fc_who_card' %}",
     "fcwho/who.html": "{% load wireview %}<p {% tag_header %}>[{{ this.user.username }}|{{ this.q }}]</p>",
+    "fcwho/plain.html": "<em>{{ text }}</em>",
 }
 
 
@@ -427,6 +428,11 @@ def fc_who_card():
 @function_component(template="fcwho/outer.html")
 def fc_who_outer():
     return {}
+
+
+@function_component(template="fcwho/plain.html")
+def fc_who_plain(text: str):
+    return {"text": text}
 
 
 class _ReadsTheQuery:
@@ -489,8 +495,9 @@ def test_the_page_shares_the_repository_a_function_component_made_and_a_page_wit
     request = rf.get("/")
     context = Context({"request": request, "user": AnonymousUser()})
 
-    Template("{% load wireview %}{% func 'button' text='a' %}").render(context)
+    html = Template("{% load wireview %}{% func 'fc_who_plain' text='a' %}").render(context)
 
+    assert "<em>a</em>" in html, "a function with a template, so the page is handed to it"
     assert context.get("wireview_repository") is None
 
     html = Template("{% load wireview %}{% func 'fc_who_card' %}{% component 'FcWho' id='after' %}").render(context)
