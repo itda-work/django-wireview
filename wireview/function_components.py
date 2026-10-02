@@ -240,8 +240,8 @@ class FunctionComponent:
             elif "default" in info:
                 validated[name] = info["default"]
 
-        # Check for unexpected arguments: ``**kwargs`` takes them as they are
-        unexpected = set(kwargs.keys()) - set(self._param_info.keys())
+        # Check for unexpected arguments: ``**kwargs`` takes them as they are, in the caller's order
+        unexpected = [name for name in kwargs if name not in self._param_info]
         if unexpected and self._takes_any_keyword:
             validated.update((name, kwargs[name]) for name in unexpected)
         elif unexpected:

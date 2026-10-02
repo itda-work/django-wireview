@@ -170,7 +170,8 @@ The django-reactor era changelog (2.x) is preserved in
 
 - A function component that takes `**kwargs` could not render: the parameter was taken for a
   required argument named `kwargs`, so every `{% func %}` failed with "missing required
-  argument". Arguments the signature does not name now go to it as they are.
+  argument". Arguments the signature does not name now go to it as they are, in the order
+  the template passes them.
 
 - The project's template directories were read off `TEMPLATES`: a project that lists its loaders
   in `OPTIONS` -- the cached loader -- has `APP_DIRS` off, and every app's templates were missed.

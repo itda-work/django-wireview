@@ -289,6 +289,13 @@ class TestValidation:
             for key in [key for key, fc in _registry.items() if fc is chip]:
                 del _registry[key]
 
+    def test_keyword_arguments_keep_their_order(self):
+        """``**kwargs`` gets the extra arguments in the order the caller wrote them, as Python passes them."""
+        fc = FunctionComponent(func=lambda **kw: ",".join(kw), name="test_kwargs_order")
+        passed = {f"k{index}": index for index in range(12)}
+        assert fc.validate_args(passed) == passed
+        assert list(fc.validate_args(passed)) == list(passed)
+
 
 @pytest.mark.unit
 class TestFunctionComponentUnit:
