@@ -29,6 +29,10 @@ The django-reactor era changelog (2.x) is preserved in
   (`AbstractBaseSession`), whose pk is the session key and goes with every payload whatever
   fields are listed (#144).
 
+### Changed
+
+- `wireview.W015`'s hint points to a `senders` mapping to send fewer fields (#144).
+
 ## [1.0.0] - 2026-10-02
 
 ### Added
@@ -77,7 +81,6 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
-- `wireview.W015`'s hint points to a `senders` mapping to send fewer fields (#144).
 - The `instance` a component's `mutation()` receives saves like any model instance. It was the
   deserializer's fixture load (`save_base(raw=True)`): `save()`/`asave()` skipped the model's own
   `save()`, sent `pre_save`/`post_save` with `raw=True` and set the m2m fields from the payload.
