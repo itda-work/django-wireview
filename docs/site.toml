@@ -26,7 +26,7 @@
 #   The order of [[sections.pages]] in the tutorial section is the learning order.
 #   level    the slug of one of [[levels]]; the path visits the levels in their order, each once.
 #   minutes  the estimated time, an integer or a [low, high] range. The README writes it as
-#            "30분", "1.5시간", "1-2시간" (human_minutes in tests/testproj/site_nav.py).
+#            "30분", "1.5시간", "1-2시간" (human_minutes in scripts/docs_site/nav.py).
 #   summary  the line after the tutorial's link in the README's learning path.
 
 base = "/wireview/"
