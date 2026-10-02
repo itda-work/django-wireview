@@ -2,6 +2,8 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
 
+import { parseFragment } from "parse5";
+
 import { startTags } from "../src/core/markup.ts";
 
 function attributes(html: string): [string, string | null][] {
@@ -38,5 +40,81 @@ test("a < that opens no tag is text", () => {
 test("text that is never closed ends the scan", () => {
   assert.deepEqual(attributes('<!-- <b a="1">'), []);
   assert.deepEqual(attributes('<script><b a="1">'), []);
-  assert.deepEqual(attributes('<b a="1'), [["a", "1"]]);
+  // A tag the text ends in is no tag
+  assert.deepEqual(attributes('<b a="1'), []);
+  assert.deepEqual(attributes('<b a="1">'), [["a", "1"]]);
+});
+
+// What parse5 (the HTML standard's parser) puts in the DOM. The tokenizer may see less
+// than the DOM where it cannot be sure (it then stops), never more; where it is sure,
+// it sees the same. A value with a character reference is left to symbols.ts.
+const CERTAIN = [
+  '<div title="a>b" wire-hook="X">',
+  "<div wire-hook=X>",
+  '<script>x</ScRiPt><div wire-hook="X">',
+  '<script>a<!--b</script><b wire-hook="X">',
+  '<!--><div wire-hook="X">',
+  '<!---><div wire-hook="X">',
+  '<!----><div wire-hook="X">',
+  '<!-- x --!><div wire-hook="X">',
+  '<!-- x ---><div wire-hook="X">',
+  '<!-- x -- ><div wire-hook="Y"> --><div wire-hook="X">',
+  '<!-- <div wire-hook="Y"> -->',
+  '<textarea><div wire-hook="Y"></textarea><title><div wire-hook="Y"></title>',
+  '<noscript><div wire-hook="Y"></noscript><div wire-hook="X">',
+  '<div wire-hook="X" wire-hook="Y" WIRE-HOOK="Z">',
+  '<div wire-hook="X"',
+  '<!DOCTYPE html "a>b"><b wire-hook="X">',
+  '<?xml version="1.0"?><b wire-hook="X">',
+  '</i a=">" wire-hook="Y"><b wire-hook="X">',
+  '</ x wire-hook="Y"><b wire-hook="X">',
+  '</><b wire-hook="X">',
+  '<![CDATA[ a ]]><b wire-hook="X">',
+  '<svg><path d="1"><circle r="2"/></svg><div wire-hook="X">',
+  '<svg/><div wire-hook="X">',
+  '<svg><style><!--</style><div wire-hook="Y">--></style></svg><div wire-hook="X">',
+  '<svg><script>"</script>"</svg><div wire-hook="X">',
+  '<svg><title>t</title><g wire-hook="X"></g></svg>',
+  '<svg><g><div wire-hook="X"><script><b wire-hook="Y"></script>',
+  '<svg><svg></svg><g wire-hook="X"></g></svg><textarea><b wire-hook="Y"></textarea>',
+  '<math><mi>x</mi></math><b wire-hook="X">',
+];
+const UNSURE = [
+  '<svg><![CDATA[ > <div wire-hook="Y"> ]]></svg><div wire-hook="X">',
+  '<script><!--<script></script><div wire-hook="Y">--></script><div wire-hook="X">',
+  '<svg><foreignObject><div wire-hook="X"></div></foreignObject></svg>',
+  '<math><mi><div wire-hook="X"></mi></math>',
+  '<svg></div><b wire-hook="X">',
+  // HTML again inside an integration point, or after an end tag that closes HTML around the SVG
+  '<svg><foreignObject><textarea><b wire-hook="Y"></textarea></foreignObject></svg>',
+  '<math><mi><script>"<b wire-hook="Y">"</script></mi></math>',
+  '<div><svg></div><textarea><b wire-hook="Y"></textarea>',
+];
+
+function inDom(html: string): string[] {
+  const found: string[] = [];
+  const walk = (node: { attrs?: { name: string; value: string }[]; childNodes?: unknown[]; content?: unknown }) => {
+    for (const attribute of node.attrs ?? []) if (attribute.name.startsWith("wire-")) found.push(`${attribute.name}=${attribute.value}`);
+    for (const child of node.childNodes ?? []) walk(child as never);
+  };
+  walk(parseFragment(html) as never);
+  return found.sort();
+}
+
+function seen(html: string): string[] {
+  return attributes(html)
+    .filter(([name, value]) => name.startsWith("wire-") && value !== null)
+    .map(([name, value]) => `${name}=${value}`)
+    .sort();
+}
+
+test("the same attributes as the HTML parser's DOM, where the tokenizer is sure", () => {
+  for (const html of CERTAIN) assert.deepEqual(seen(html), inDom(html), html);
+});
+
+test("never an attribute the DOM does not have, where the tokenizer is not sure", () => {
+  for (const html of UNSURE) {
+    const dom = inDom(html);
+    for (const attribute of seen(html)) assert.ok(dom.includes(attribute), `${attribute} is not in the DOM of ${html}`);
+  }
 });

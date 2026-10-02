@@ -265,8 +265,9 @@ export function attributeValues(text: string, tokens: Token[]): { name: string; 
 
 function attributeSymbols(text: string, tokens: Token[], found: Sym[]): void {
   for (const { name, value, start } of attributeValues(text, tokens)) {
-    // A value a template computes is not a name to check
-    if (value.includes("{")) continue;
+    // A value a template computes is not a name to check, and nor is one with a
+    // character reference: the DOM holds it decoded, and that is not decoded here
+    if (value.includes("{") || value.includes("&")) continue;
     if (name === "wire-hook") {
       const word = /\S+/g;
       for (let match = word.exec(value); match; match = word.exec(value)) {

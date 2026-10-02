@@ -172,6 +172,20 @@ test("only an attribute of an HTML start tag is an attribute", () => {
   assert.deepEqual(codes('<div {% if a %}wire-hook="Nope"{% endif %}>'), ["unknown-hook"]);
 });
 
+test("an attribute is checked where the browser's DOM has it, and nowhere it may not", () => {
+  // Comments end where HTML ends them, not only at "-->"
+  assert.deepEqual(codes('<!--><div wire-viewport-top="missing">'), ["unknown-handler"]);
+  assert.deepEqual(codes('<!---><div wire-viewport-top="missing">'), ["unknown-handler"]);
+  assert.deepEqual(codes('<!-- x --!><div wire-viewport-top="missing">'), ["unknown-handler"]);
+  // CDATA in SVG, a script that holds "<!--" and "<script": where they end is not certain, so nothing after them is checked
+  assert.deepEqual(codes('<svg><![CDATA[ > <div wire-viewport-top="missing"> ]]></svg>'), []);
+  assert.deepEqual(codes('<script><!--<script></script><div wire-viewport-top="missing">--></script>'), []);
+  // The DOM keeps the first of two attributes with one name, and decodes character references
+  assert.deepEqual(codes('<div wire-viewport-top="add" wire-viewport-top="missing">'), []);
+  assert.deepEqual(codes('<div wire-viewport-top="&#97;dd">'), []);
+  assert.deepEqual(codes('<div wire-viewport-top="missing" wire-viewport-top="add">'), ["unknown-handler"]);
+});
+
 test("the library loaded last decides what a tag is", () => {
   // Django runs thirdparty's component here: wireview's checks do not apply
   assert.deepEqual(codes("{% load component from wireview %}{% load thirdparty %}{% component 'NotRegistered' %}"), []);
