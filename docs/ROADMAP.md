@@ -381,7 +381,7 @@ def button(text: str, variant: str = "primary"):
    - **docs**: `make docs-site-bundle`로 문서 사이트를 `docs-site-v<버전>.tar.gz`로 묶는다. `dist/` 밖(`build/site-dist/`)에
      만들어 별도 artifact로 올리고, 파일 이름과 묶음 안의 `wireview/VERSION`이 태그와 같은지 본다. 같은 커밋은 같은 바이트로 묶인다.
    - **publish**: 위 모두를 기다린다 — 문서 빌드가 실패하면 publish는 돌지 않는다. PyPI에는 `dist/`만 올리고, 문서 묶음에
-     빌드 증명(`actions/attest-build-provenance`)을 붙인 뒤 GitHub Release에 `dist/*`와 묶음을 함께 붙인다. 내려받은 묶음은
+     빌드 증명(`actions/attest`)을 붙인 뒤 GitHub Release에 `dist/*`와 묶음을 함께 붙인다. 내려받은 묶음은
      `gh attestation verify docs-site-v<버전>.tar.gz -R itda-work/django-wireview`로 확인한다.
 
    E2E가 불안정해 게이트가 떨어졌다면 Actions의 "Re-run failed jobs"로 그 job만 다시 돌린다. 통과하면 publish가 이어진다.
