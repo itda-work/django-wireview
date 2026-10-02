@@ -1148,6 +1148,19 @@ async def test_a_kept_part_draws_again_once_a_nested_component_in_it_moved():
     assert ">one</li>" not in html_now(component), "the row went back to before its own change"
 
 
+async def test_a_kept_part_keeps_a_nested_component_the_connection_does_not_hold():
+    """Drawn without the page's repository and not joined yet, it has not rendered on its own: nothing moved."""
+    consumer, outbound, component = await page("TaRowsFunc")
+    await event(consumer, outbound, "load")
+    assert consumer.repo.get("k") is None, "the control: the connection holds no instance under the id"
+
+    await event(consumer, outbound, "bump")
+
+    drawn = html_now(component)
+    assert "<b>1</b>" in drawn, "the control: the other field went out"
+    assert "<li>one</li><li>two</li>" in drawn and "K0" in drawn, drawn
+
+
 async def test_a_component_a_function_component_draws_in_a_kept_part_is_seen():
     """The template of ``{% func %}`` is not the component's, so only what the render drew tells."""
     consumer, outbound, component = await page("TaRowsFunc")
