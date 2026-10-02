@@ -269,6 +269,7 @@ def _build_and_render_component(
 
     # Use slot-aware rendering if slots are provided
     if slots is not None:
+        component_instance.wire.slots_from = context.get("this")
         html = component_instance._render_with_slots(repo, slots) or ""
     else:
         html = component_instance._render(repo) or ""

@@ -400,16 +400,21 @@ The django-reactor era changelog (2.x) is preserved in
     now carries in `children` the whole current render of each LiveComponent it names that its
     previous render did not, and of theirs, whoever owns them; no hook runs.
   - A slot's owner joined again keeps its slot: after its handler raised, and on a boosted visit to
-    a page with the same ids. Slots are not in the signed state, and the new instance rendered the
+    a page that fills it again. Slots are not in the signed state, and the new instance rendered the
     slot empty -- text, LiveComponents and nested components gone. The repository keeps the slots
-    of an instance it retires for the page to join again, and the next instance of that class
-    joined under the id takes them.
+    of an instance it retires for that join alone, and only when it is the same element joining
+    again: the join answering the `error`, or a boosted visit whose component that filled the slot
+    came after the retired instance. Another page with a component of the same class and id and no
+    fill draws its slot empty, and the kept slots go when the page that filled them leaves.
   - A nested `{% component %}` in a slot is drawn as it is now on its owner's render. The slot's
     text held it as the filler's pass drew it, so the page went back to its old content and its old
     `data-state`, which a reconnect then joined. A live pass marks a nested component's output (the
     marks are dropped before anything is sent), and the slot's owner draws the component in its
-    place from the repository. One that left the page is not drawn: after the owner hides the slot
-    and shows it again, it comes back on the filler's next render.
+    place from the repository. It puts back what it drew last, markers renumbered, until the
+    component renders on its own: drawing every one again made each render of the owner cost a
+    template render per component (50 of them: about 3.4 ms to 0.45 ms). One that left the page is
+    not drawn: after the owner hides the slot and shows it again, it comes back on the filler's next
+    render.
 
 - What a new component sends from `joined()` reaches it: its streams, its `push_js` and its
   `push_event`. A LiveComponent a parent's render brings in sends them right behind that render,

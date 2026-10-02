@@ -7,7 +7,8 @@ and both slots hold a LiveComponent the host owns. Before 1.0 their own render
 carried the LiveComponent as a bare comment and it left the page. The frame's
 slot also holds a plain component, which its render put back as the host's pass
 had drawn it; the frame can hide its slot and show it again, and joins again
-after it raises or the page is visited again, which emptied its slot.
+after it raises or the page is visited again, which emptied its slot. Another
+page with a frame of the same id and no fill draws its slot empty.
 
 Fixture: tests/testproj/slotprobe/.
 """
@@ -180,3 +181,21 @@ def test_a_visit_to_the_same_page_keeps_the_frames_slot(probe):
     expect_text(by(probe, "leaf-pokes"), "1")
     by(probe, "plain-click").click()
     expect_text(by(probe, "plain-clicks"), "1")
+
+
+def test_a_visit_to_another_page_with_the_frames_id_draws_no_slot(probe):
+    """The frame there has no fill; the slot the host gave this page's frame stays behind."""
+    seen = renders_of(probe, "frame")
+
+    by(probe, "other").click()
+    probe.wait_for_url("**/slotprobe/?other=1")
+    expect_text(by(probe, "other-page"), "OTHER PAGE")
+    after_render_of(probe, "frame", seen)
+
+    expect_count(by(probe, "frame-slot"), 0)
+    expect_count(by(probe, "frame-slot-tail"), 0)
+    expect_count(probe.locator("#leaf"), 0)
+    expect_count(probe.locator("#plain"), 0)
+    by(probe, "frame-click").click()
+    expect_text(by(probe, "frame-clicks"), "1")
+    expect_count(by(probe, "frame-slot"), 0)

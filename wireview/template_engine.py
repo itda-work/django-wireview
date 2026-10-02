@@ -63,6 +63,12 @@ class MarkerContext:
         self._counter += 1
         return idx
 
+    def skip(self, count: int) -> int:
+        """Take ``count`` indices at once, for output drawn earlier; the first of them."""
+        idx = self._counter
+        self._counter += count
+        return idx
+
     def reset(self) -> None:
         """Reset the counter for a new render."""
         self._counter = 0

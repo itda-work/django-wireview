@@ -623,6 +623,18 @@ def strip_markers(html: str) -> str:
     return _TOKEN.sub("", html)
 
 
+def holds_nested_components(html: str) -> bool:
+    """Whether ``html`` holds a nested component's marked output."""
+    return _NESTED_PREFIX in html
+
+
+def shift_markers(html: str, by: int) -> str:
+    """``html`` with each marker's index moved ``by`` places (``by`` keeps them apart from what is around them)."""
+    if not by:
+        return html
+    return _TOKEN.sub(lambda m: f"<!--{m.group(1)}${m.group(2)}{int(m.group(3)) + by}-->", html)
+
+
 def nested_component_html(component_id: str, html: str) -> str:
     """``html``, a nested component's live output, marked as that component's (dropped when parsed)."""
     return f"{_NESTED_PREFIX}:{component_id}-->{html}<!--@wv):{component_id}-->"

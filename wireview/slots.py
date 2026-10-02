@@ -232,19 +232,40 @@ class _NestedComponentNode(Node):
     here as it is now, as the parent's pass would: put back as text, the
     component's own changes since went back on the page, and a reconnect joined
     it with the state it had before them. One that left the page is not drawn.
+
+    What it drew last is as it is now until the component renders on its own,
+    so it is put back, its markers moved to where this pass is: drawing it again
+    cost a template render on every render of the slot's owner. Not when a
+    component nested in it was drawn there too: that one renders on its own. A
+    LiveComponent in it is only named, and stays named.
     """
 
     def __init__(self, component_id: str):
         self.component_id = component_id
+        # (the component's own_render, first marker index, index count, html)
+        self._drawn: tuple[int, int, int, str] | None = None
 
     def render(self, context: Context) -> str:
-        from .core.rendered import nested_component_html
+        from .core.rendered import holds_nested_components, nested_component_html, shift_markers
+        from .template_engine import get_template_marker
 
         repo = context.get("wireview_repository")
         if repo is None or (component := repo.components.get(self.component_id)) is None:
             return ""
-        html = component._render(repo) or ""
-        return nested_component_html(component.id, html) if repo.is_live else html
+        if not repo.is_live:
+            return component._render(repo) or ""
+        markers = get_template_marker().marker_context
+        drawn = self._drawn
+        if drawn is not None and drawn[0] == component.wire.own_render:
+            _, first, count, html = drawn
+            html = shift_markers(html, markers.skip(count) - first)
+        else:
+            first = markers.count
+            html = component._render(repo) or ""
+            self._drawn = None
+            if not holds_nested_components(html):
+                self._drawn = (component.wire.own_render, first, markers.count - first, html)
+        return nested_component_html(component.id, html)
 
 
 class _SlotAccessor:

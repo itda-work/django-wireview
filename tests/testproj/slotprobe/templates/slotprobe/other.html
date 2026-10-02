@@ -1,0 +1,13 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>slot probe, another page</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    <p data-testid="other-page">OTHER PAGE</p>
+    {% component 'SlotProbeFrame' id="frame" %}
+  </body>
+</html>

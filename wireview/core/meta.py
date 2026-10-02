@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import logging
 import secrets
 import typing as t
@@ -31,6 +32,9 @@ if t.TYPE_CHECKING:
     from ..slots import SlotContainer
     from .component import Component
     from .live_session import LiveSession
+
+# Orders instances' births and their own renders across the process; only compared
+_TICKS = itertools.count()
 
 # Type aliases
 RedirectDestination = t.Union[t.Callable[..., t.Any], "models.Model", str]
@@ -146,6 +150,15 @@ class WireviewMeta:
         # Slot content the enclosing template passed, without markers, so a render
         # the component does on its own (render_diff) still fills its slots.
         self.slots: SlotContainer | None = None
+        # The component whose template pass gave those slots, and when this
+        # instance came to be: a join under the id takes the slots over only from
+        # a page whose filler came after it (ComponentRepository.retire).
+        self.slots_from: Component | None = None
+        self.born: int = next(_TICKS)
+        # When this instance last rendered on its own (render_diff), or ``born``.
+        # A slot's owner puts back what it drew of this instance last while this
+        # has not moved since (slots._NestedComponentNode).
+        self.own_render: int = self.born
         # Pending operations queue for joined() lifecycle
         self._pending_mode: bool = False
         self._pending_operations: list[tuple[str, dict[str, t.Any]]] = []
@@ -313,6 +326,7 @@ class WireviewMeta:
             - None if no changes
         """
         self.template_evaluated = False
+        self.own_render = next(_TICKS)
         if self._skip_render:
             self._skip_render = False
             return None

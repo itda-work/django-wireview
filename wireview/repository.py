@@ -119,8 +119,9 @@ class ComponentRepository:
         self._rendered_children: dict[str, set[str]] = {}
         # Existing children whose slot content changed on the parent's re-render
         self._pending_rerender: list[LiveComponent] = []
-        # Slots of instances retired so the page can join their id again
-        self._slots_to_rejoin: dict[str, tuple[type[Component], "SlotContainer"]] = {}
+        # Slots of instances retired so the page can join their id again, with the
+        # component that filled them: (class, slots, filler) by id (``retire``)
+        self._slots_to_rejoin: dict[str, tuple[type[Component], "SlotContainer", Component]] = {}
 
     @staticmethod
     def decode_params(params: t.Mapping[str, t.Any]) -> dict[str, t.Any]:
@@ -397,14 +398,15 @@ class ComponentRepository:
         state: MessagePayload,
         children: ChildrenRepo | None = None,
     ) -> Component:
+        # Kept for this join alone, whatever it turns out to be
+        kept = self._slots_to_rejoin.pop(state.get("id") or "", None)
         component = await db(self.build)(
             name,
             state,
         )
         self._carry(component.id, children or {})
-        kept = self._slots_to_rejoin.pop(component.id, None)
         if kept is not None and component.wire.slots is None and type(component) is kept[0]:
-            component.wire.slots = kept[1]
+            component.wire.slots, component.wire.slots_from = kept[1], kept[2]
         # Enter pending mode before joined() to queue stream/push_js operations
         # These will be flushed after send_render() in consumer
         component.wire.enter_pending_mode()
@@ -540,18 +542,35 @@ class ComponentRepository:
         self.components[component.id] = component
         return component
 
-    def retire(self, id: str, *, keep_carried: bool = False) -> list[Component]:
+    def retire(self, id: str, *, failed: bool = False, keep_carried: bool = False) -> list[Component]:
         """Remove ``id`` as :meth:`remove` does, for the page to join it again.
 
         Slots are not part of the signed state: only the component that filled
-        them knows them, and its pass gave them to this instance. The next
-        instance joined under the id takes them, or it renders its slots empty --
-        text, LiveComponents and nested components gone from the page.
+        them knows them, and its pass gave them to this instance. Without them
+        the instance joined next renders its slots empty -- text, LiveComponents
+        and nested components gone from the page. So they are kept for that
+        join, when it is the same element joining again:
+
+        - ``failed``: the page joins the element again to recover from an error.
+        - Otherwise new DOM arrived under the id (a boosted visit). It is the
+          same element only if a component that came after this instance -- the
+          new page's -- filled it in its pass. Another page can draw a component
+          of the same class and id with no fill, or a different one, and then
+          the old filler is from before it, or gone.
+
+        Either way the filler has to be on the page still, and they are dropped
+        with it, so nothing kept outlives the page it belongs to.
         """
         component = self.components.get(id)
-        if component is not None and component.wire.slots is not None:
-            self._slots_to_rejoin[id] = (type(component), component.wire.slots)
-        return self.remove(id, keep_carried=keep_carried)
+        removed = self.remove(id, keep_carried=keep_carried)
+        if component is not None and (slots := component.wire.slots) is not None:
+            filler = component.wire.slots_from
+            if filler is not None and self._holds(filler) and (failed or filler.wire.born > component.wire.born):
+                self._slots_to_rejoin[id] = (type(component), slots, filler)
+        return removed
+
+    def _holds(self, component: Component) -> bool:
+        return self.components.get(component.id) is component
 
     def remove(self, id: str, *, keep_carried: bool = False) -> list[Component]:
         """Remove a component and every LiveComponent nested under it.
@@ -570,9 +589,12 @@ class ComponentRepository:
             for child_id, root_id in list(self._carried_by.items()):
                 if root_id == id:
                     self._take_restored(child_id)
+        self._slots_to_rejoin.pop(id, None)
         component = self.components.pop(id, None)
         if component is None:
             return []
+        for kept_id in [kept_id for kept_id, kept in self._slots_to_rejoin.items() if kept[2] is component]:
+            del self._slots_to_rejoin[kept_id]
         removed = [component]
         for child in self.get_live_components(id):
             removed.extend(self.remove(child.id))

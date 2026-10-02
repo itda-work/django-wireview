@@ -253,7 +253,7 @@ class WireviewSession:
         root = self.repo.root_of(component)
         # The page joins it again under the id, and what its join carried is
         # still for that one: a component only a later render draws comes back
-        removed = self.repo.retire(root.id, keep_carried=True)
+        removed = self.repo.retire(root.id, failed=True, keep_carried=True)
         await self._call_leaving(removed)
         self._release_uploads(removed)
         if self.repo.vsn < ERRORS_SINCE:
