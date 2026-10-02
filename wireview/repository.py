@@ -377,7 +377,7 @@ class ComponentRepository:
             self._drew[drawer_id] = drew
         return rendered
 
-    def end_inline_pass(self, component_id: str, drawer_id: str | None) -> None:
+    def end_inline_pass(self, component_id: str, drawer_id: str | None, shown: t.Iterable[str] = ()) -> None:
         """End the pass of ``component_id`` that ran within the pass of ``drawer_id`` (``{% component %}``).
 
         A component the page has joined is drawn again only within its drawer's
@@ -399,8 +399,13 @@ class ComponentRepository:
         component as new elements, and the page joins each. Recorded, the
         drawer's batch would join a LiveComponent that the component's own join,
         right behind, retires and joins anew.
+
+        ``shown`` names the LiveComponents its output shows, as for
+        ``take_lifecycle``: one a part kept for a reset temporary assign names
+        stays (#111). Settled from what the template named alone, the drawer's
+        batch retired it while the page kept it.
         """
-        rendered = self.end_pass(component_id)
+        rendered = self.end_pass(component_id, shown)
         component = self.components.get(component_id)
         drawer = self.components.get(drawer_id) if drawer_id is not None else None
         if (

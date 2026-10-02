@@ -16,7 +16,7 @@ from .. import settings
 from ..core.component import Component
 from ..core.live_session import REQUEST_ATTR as LIVE_SESSION_REQUEST_ATTR
 from ..core.live_session import declaration_allows, get_live_session
-from ..core.rendered import inject_marker, nested_component_html
+from ..core.rendered import inject_marker, marked_component_refs, nested_component_html
 from ..core.state import sign_state
 from ..event_transpiler import binding
 from ..features.hooks import hook_files
@@ -287,7 +287,9 @@ def _build_and_render_component(
     else:
         html = component_instance._render(repo) or ""
     if component_instance.wire.template_evaluated:
-        repo.end_inline_pass(component_instance.id, drawer.id if drawer is not None else None)
+        repo.end_inline_pass(
+            component_instance.id, drawer.id if drawer is not None else None, marked_component_refs(html)
+        )
     # By id, so a render without the page's repository counts too ({% func %}): the
     # page joins what it drew under that id, and that has not moved until it renders
     drew_component(component_instance)

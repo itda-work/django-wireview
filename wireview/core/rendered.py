@@ -789,6 +789,11 @@ def split_components(html: str) -> list[tuple[str, str | None, bool]]:
     return parts
 
 
+def marked_component_refs(html: str) -> list[str]:
+    """Ids of every LiveComponent referenced in a live render's marked output, in order."""
+    return _REF.findall(html)
+
+
 def payload_component_refs(payload: t.Any) -> list[str]:
     """Ids of every LiveComponent referenced in a diff payload, full or partial, in order."""
     found: list[str] = []
