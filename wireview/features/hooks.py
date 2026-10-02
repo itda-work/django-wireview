@@ -108,19 +108,23 @@ def required_hook_names() -> dict[str, list[str]]:
 
 
 def _template_roots() -> t.Iterator[Path]:
-    """Where a project's templates live: the engines' DIRS, and each app's."""
-    from django.conf import settings as django_settings
-    from django.template.utils import get_app_template_dirs
+    """Where a project's templates live, in the order its Django engines' loaders search.
+
+    Asked of the loaders rather than read off ``TEMPLATES``: a project that lists
+    its loaders in ``OPTIONS`` (the cached loader, above all) has ``APP_DIRS``
+    off, and reading the setting missed every app's templates.
+    """
+    from django.template import engines
+    from django.template.backends.django import DjangoTemplates
 
     seen: set[Path] = set()
-    for engine in getattr(django_settings, "TEMPLATES", []):
-        for directory in engine.get("DIRS", []):
-            root = Path(directory)
-            if root.is_dir() and root not in seen:
-                seen.add(root)
-                yield root
-        if engine.get("APP_DIRS"):
-            for directory in get_app_template_dirs("templates"):
+    for backend in engines.all():
+        if not isinstance(backend, DjangoTemplates):
+            continue
+        for loader in backend.engine.template_loaders:
+            # The file system loaders say where they read; the cached loader asks the ones it wraps
+            get_dirs = getattr(loader, "get_dirs", None)
+            for directory in get_dirs() if get_dirs is not None else ():
                 root = Path(directory)
                 if root.is_dir() and root not in seen:
                     seen.add(root)

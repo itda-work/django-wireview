@@ -59,6 +59,18 @@ class TestWhatIsFound:
         assert "Timeago" in wanted
         assert any("x-lifecycle.html" in where for where in wanted["Timeago"])
 
+    def test_the_templates_are_found_through_listed_loaders_too(self, settings):
+        """With the loaders in OPTIONS, APP_DIRS is off: reading it missed every app's templates."""
+        engine = dict(settings.TEMPLATES[0])
+        engine["APP_DIRS"] = False
+        engine["OPTIONS"] = {
+            **engine["OPTIONS"],
+            "loaders": [("django.template.loaders.cached.Loader", ["django.template.loaders.app_directories.Loader"])],
+        }
+        settings.TEMPLATES = [engine]
+
+        assert any("x-lifecycle.html" in where for where in required_hook_names().get("Timeago", []))
+
 
 class TestWhatTheHeaderEmits:
     def render(self) -> str:
