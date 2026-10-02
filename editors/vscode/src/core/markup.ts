@@ -129,6 +129,8 @@ export function startTags(html: string): StartTag[] {
   const length = html.length;
   /** The SVG and MathML elements open around the position: their content is not HTML's. */
   let foreign: string[] = [];
+  /** An end tag left SVG or MathML the browser may still be in: what is read as HTML past it may be its content. */
+  let maybeForeign = false;
   let position = 0;
   while (position < length) {
     const open = html.indexOf("<", position);
@@ -138,7 +140,7 @@ export function startTags(html: string): StartTag[] {
       continue;
     }
     // In SVG or MathML, CDATA is text up to "]]>", and what that text may hold is not followed here
-    if (foreign.length && html.startsWith("<![CDATA[", open)) break;
+    if ((foreign.length || maybeForeign) && html.startsWith("<![CDATA[", open)) break;
     const next = html[open + 1] ?? "";
     if (next === "/") {
       const after = html[open + 2] ?? "";
@@ -150,10 +152,13 @@ export function startTags(html: string): StartTag[] {
         if (tag.end === null) break;
         position = tag.end;
         if (foreign.length) {
-          // It closes the SVG or MathML element of its name; one that is not open may close HTML around them
+          // It closes the SVG or MathML element of its name. Another closes HTML around them
+          // ("</p>", "</div>") or is dropped: either way the DOM keeps the attributes past it, so
+          // they are read as HTML's. Where SVG content and HTML differ, raw text and CDATA, that
+          // reads less or stops
           const at = foreign.lastIndexOf(tag.name);
-          if (at === -1) break;
-          foreign = foreign.slice(0, at);
+          if (at === -1) maybeForeign = true;
+          foreign = at === -1 ? [] : foreign.slice(0, at);
         }
       } else if (after === "") {
         break;

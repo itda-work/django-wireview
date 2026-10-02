@@ -181,6 +181,13 @@ test("an attribute is checked where the browser's DOM has it, and nowhere it may
   // CDATA in SVG, a script that holds "<!--" and "<script": where they end is not certain, so nothing after them is checked
   assert.deepEqual(codes('<svg><![CDATA[ > <div wire-viewport-top="missing"> ]]></svg>'), []);
   assert.deepEqual(codes('<script><!--<script></script><div wire-viewport-top="missing">--></script>'), []);
+  // An end tag no open SVG element has does not stop the reading: past it, HTML goes on as the browser's does
+  assert.deepEqual(codes('<p><svg><circle r="1"></p><div wire-viewport-top="missing">'), ["unknown-handler"]);
+  assert.deepEqual(
+    codes('<div>{% if a %}<svg class="a">{% else %}<svg class="b">{% endif %}<path/></svg></div><div wire-viewport-top="missing">'),
+    ["unknown-handler"],
+  );
+  assert.deepEqual(codes('<svg></div><![CDATA[ > <div wire-viewport-top="missing"> ]]></svg>'), []);
   // The DOM keeps the first of two attributes with one name, and decodes character references
   assert.deepEqual(codes('<div wire-viewport-top="add" wire-viewport-top="missing">'), []);
   assert.deepEqual(codes('<div wire-viewport-top="&#97;dd">'), []);

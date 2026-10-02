@@ -78,17 +78,25 @@ const CERTAIN = [
   '<svg><g><div wire-hook="X"><script><b wire-hook="Y"></script>',
   '<svg><svg></svg><g wire-hook="X"></g></svg><textarea><b wire-hook="Y"></textarea>',
   '<math><mi>x</mi></math><b wire-hook="X">',
+  // An end tag no SVG element of its name is open for: it closes HTML around the SVG, or is dropped
+  '<p><svg><circle r="1"></p><div wire-hook="X">',
+  '<p><svg><circle r="1"></br><div wire-hook="X">',
+  '<div><svg class="a"><svg class="b"><path/></svg></div><div wire-hook="X">',
+  '<svg></div><b wire-hook="X">',
+  '<div><svg></div><textarea><b wire-hook="Y"></textarea>',
 ];
 const UNSURE = [
   '<svg><![CDATA[ > <div wire-hook="Y"> ]]></svg><div wire-hook="X">',
   '<script><!--<script></script><div wire-hook="Y">--></script><div wire-hook="X">',
   '<svg><foreignObject><div wire-hook="X"></div></foreignObject></svg>',
   '<math><mi><div wire-hook="X"></mi></math>',
-  '<svg></div><b wire-hook="X">',
-  // HTML again inside an integration point, or after an end tag that closes HTML around the SVG
+  // HTML again inside an integration point
   '<svg><foreignObject><textarea><b wire-hook="Y"></textarea></foreignObject></svg>',
   '<math><mi><script>"<b wire-hook="Y">"</script></mi></math>',
-  '<div><svg></div><textarea><b wire-hook="Y"></textarea>',
+  // An end tag the DOM drops leaves the SVG open, and the tokenizer reads on as HTML:
+  // it sees less in what HTML takes for raw text, and nothing past CDATA
+  '<svg></div><textarea><b wire-hook="X"></textarea>',
+  '<svg></div><![CDATA[ > <div wire-hook="Y"> ]]><div wire-hook="Z">',
 ];
 
 function inDom(html: string): string[] {

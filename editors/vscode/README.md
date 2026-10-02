@@ -102,6 +102,8 @@ JSON(프로젝트의 컴포넌트, 템플릿 디렉터리, 태그·필터)을 �
 - `wire-*` 속성은 브라우저가 HTML을 읽는 규칙대로 시작 태그에서만 읽는다(주석·`<script>`·끝 태그 안은 속성이 아니고,
   같은 이름이 두 번이면 첫 것만). 어디서 끝나는지 확실하지 않은 곳 — SVG·MathML 안의 `<![CDATA[`, `<!--`와
   `<script`를 품은 `<script>`, SVG의 `<foreignObject>` 안의 HTML — 을 만나면 그 뒤의 속성은 보지 않는다.
+  열린 SVG 요소에 없는 끝 태그(`<svg>` 안의 `</p>`, 갈래마다 다른 `<svg>`를 닫는 `</div>`) 뒤는 HTML로 읽는다.
+  브라우저가 아직 SVG 안이라고 보는 경우가 있어서, 그 뒤의 `<![CDATA[`를 만나면 거기서 멈춘다.
   `&#97;` 같은 문자 참조가 든 값도 보지 않는다.
 - 메타데이터 형식은 [docs/features/editor-support.md](../../docs/features/editor-support.md)에 있다. 다른 편집기도
   같은 JSON을 읽을 수 있다.
