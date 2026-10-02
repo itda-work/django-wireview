@@ -49,6 +49,8 @@ MARKER_PATTERN = re.compile(r"<!--\$(\d+)-->(.*?)<!--/\$\1-->", re.DOTALL)
 _TOKEN = re.compile(r"<!--(/?)\$([CIB]?)(\d+)-->")
 _REF_PREFIX = "<!--@wv:"
 _REF = re.compile(r"<!--@wv:([^>]+?)-->")
+# A reference with its marker whole, or any other marker
+_MARKER_OR_REF = re.compile(r"(<!--\$(\d+)--><!--@wv:[^>]+?--><!--/\$\2-->)|<!--/?\$[CIB]?(\d+)-->")
 _NESTED_PREFIX = "<!--@wv("
 _NESTED = re.compile(r"<!--@wv[()]:[^>]+?-->")
 # A reference, or a nested component's whole output (the outermost, by its own id)
@@ -547,7 +549,7 @@ def _parse(html: str, stale: set[int] | None = None) -> tuple[list[str], list[Dy
     return static, [_flatten_item(v) for v in dynamic]
 
 
-def keep_stale(html: str, stale: t.Collection[int], previous: Rendered | None) -> str:
+def keep_stale(html: str, stale: t.Collection[int], previous: Rendered | None, first: int = 0) -> str:
     """``html`` with the parts in ``stale`` as ``previous`` drew them, their markers kept.
 
     For a component drawn in another component's pass (#111): ``stale`` names
@@ -558,7 +560,13 @@ def keep_stale(html: str, stale: t.Collection[int], previous: Rendered | None) -
     component's diff puts that drawing on the page. A part ``previous`` has
     nothing for, or one in a loop, stays as drawn. The part keeps its marker,
     so the enclosing render keeps its structure; what it holds goes in as
-    text.
+    text, so a value that names a LiveComponent stays as drawn: as text the
+    reference would reach the page as a comment.
+
+    Markers numbered below ``first`` are the enclosing pass's, in a fill it
+    drew before the component. The component's own render has that fill as
+    text, so they are left out when lining the two up -- all but a
+    LiveComponent's reference, which its own render numbers too.
     """
     if not stale or previous is None:
         return html
@@ -578,7 +586,11 @@ def keep_stale(html: str, stale: t.Collection[int], previous: Rendered | None) -
                 spans.append((start, match.start()))
     if stack or not spans:
         return html
-    parsed = Rendered.from_marked_html(html, stale)
+    if first:
+        html_own = _MARKER_OR_REF.sub(lambda m: m.group(0) if m.group(1) or int(m.group(3)) >= first else "", html)
+    else:
+        html_own = html
+    parsed = Rendered.from_marked_html(html_own, stale)
     kept: list[Dynamic | None] = []
 
     def walk(rendered: Rendered, before: Rendered | None) -> None:
@@ -596,12 +608,16 @@ def keep_stale(html: str, stale: t.Collection[int], previous: Rendered | None) -
     parts: list[str] = []
     end = 0
     for (start, stop), value in zip(spans, kept):
-        if value is None:
+        if value is None or (not isinstance(value, str) and _names_components(value)):
             continue
         parts += [html[end:start], value if isinstance(value, str) else value.to_html()]
         end = stop
     parts.append(html[end:])
     return "".join(parts)
+
+
+def _names_components(value: Dynamic) -> bool:
+    return bool(component_refs(Rendered(["", ""], [value])))
 
 
 def _flatten_item(value: Dynamic | _Item) -> Dynamic:

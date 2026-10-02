@@ -2,7 +2,8 @@
 
 tests/test_temporary_assigns_e2e.py drives it: the list is loaded, reset after
 the render, and an event that has nothing to do with it must leave it on the page.
-On ``?nest=1`` the probe is drawn in a host's pass and in a frame's slot, and
+On ``?nest=1`` the probe is drawn in a host's pass, in a frame's slot, and from
+the host's ``{% component_block %}`` with a fill reading the host's ``title``;
 the host's or the frame's render must leave it too.
 """
 
@@ -29,6 +30,7 @@ class TempHost(Component):
         template_name = "tempprobe/host.html"
 
     count: int = 0
+    title: str = "filled"
 
     async def bump(self):
         self.count += 1

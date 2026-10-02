@@ -19,7 +19,7 @@ import pytest
 from django.contrib.auth.models import AnonymousUser
 from django.test import override_settings
 
-from wireview import Component
+from wireview import Component, LiveComponent
 from wireview.consumer import WireviewConsumer
 from wireview.core.state import sign_state, unsign_state
 from wireview.repository import ComponentRepository
@@ -73,6 +73,37 @@ TEMPLATES = {
     "ta/frame.html": (
         "{% load wireview %}<section {% tag_header %}><s>{{ this.clicks }}</s>{% render_slot 'body' %}</section>"
     ),
+    "ta/loops.html": (
+        "{% load wireview %}<div {% tag_header %}><b>{{ count }}</b>"
+        "<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>"
+        "<ol>{% for r in rows %}<li>{{ r }}{% if messages %}:{{ messages|length }}{% endif %}</li>{% endfor %}"
+        "</ol></div>"
+    ),
+    "ta/slotted.html": (
+        "{% load wireview %}<div {% tag_header %}>{% render_slot 'body' %}"
+        "<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul></div>"
+    ),
+    "ta/blockhost.html": (
+        "{% load wireview %}<main {% tag_header %}><i>{{ this.n }}</i>"
+        "{% component_block 'TaSlotted' id='g' %}{% fill body %}<em>{{ this.title }}</em>{% endfill %}"
+        "{% endcomponent %}</main>"
+    ),
+    "ta/changingfill.html": (
+        "{% load wireview %}<main {% tag_header %}><i>{{ this.n }}</i>"
+        "{% component_block 'TaSlotted' id='g' %}{% fill body %}<em>{{ this.n }}</em>{% endfill %}"
+        "{% endcomponent %}</main>"
+    ),
+    "ta/livefill.html": (
+        "{% load wireview %}<main {% tag_header %}><i>{{ this.n }}</i>"
+        "{% component_block 'TaSlotted' id='g' %}{% fill body %}{% live_component 'TaLive' id='lc' %}{% endfill %}"
+        "{% endcomponent %}</main>"
+    ),
+    "ta/withlive.html": (
+        "{% load wireview %}<div {% tag_header %}><b>{{ count }}</b>"
+        "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>"
+        "{% live_component 'TaLive' id='lc' %}{% endif %}</div>"
+    ),
+    "ta/live.html": "{% load wireview %}<span {% live_tag_header %}>live</span>",
 }
 
 
@@ -143,6 +174,26 @@ class TaBranch(TaBase):
         template_name = "ta/branch.html"
 
 
+class TaLoops(TaBase):
+    class Meta:
+        template_name = "ta/loops.html"
+
+
+class TaSlotted(TaBase):
+    class Meta:
+        template_name = "ta/slotted.html"
+
+
+class TaWithLive(TaBase):
+    class Meta:
+        template_name = "ta/withlive.html"
+
+
+class TaLive(LiveComponent):
+    class Meta:
+        template_name = "ta/live.html"
+
+
 class TaHost(Component):
     """Draws a component with temporary assigns in its own pass, passing it ``count``."""
 
@@ -167,6 +218,25 @@ class TaStaleHost(TaHost):
 
     async def note(self):
         self.notes = ["first", "second"]
+
+
+class TaBlockHost(TaHost):
+    """Draws a component with temporary assigns from ``{% component_block %}``, its fill reading a field of its own."""
+
+    class Meta:
+        template_name = "ta/blockhost.html"
+
+    title: str = "T"
+
+
+class TaChangingFillHost(TaHost):
+    class Meta:
+        template_name = "ta/changingfill.html"
+
+
+class TaLiveFillHost(TaHost):
+    class Meta:
+        template_name = "ta/livefill.html"
 
 
 class TaSlotHost(Component):
@@ -368,7 +438,7 @@ async def nested_page(host: str, child: str) -> tuple[WireviewConsumer, FakeOutb
     return consumer, outbound, host_component, consumer.repo.get("g")
 
 
-@pytest.mark.parametrize("child", ["TaThis", "TaName", "TaDerived", "TaBlock"])
+@pytest.mark.parametrize("child", ["TaThis", "TaName", "TaDerived", "TaBlock", "TaLoops"])
 async def test_the_hosts_render_leaves_a_nested_components_list_on_the_page(child):
     consumer, outbound, host, nested = await nested_page("TaHost", child)
     await consumer.command_user_event("g", "load", {}, {})
@@ -451,3 +521,57 @@ async def test_a_slots_owner_leaves_a_nested_components_list_on_the_page():
     drawn = html_now(consumer.repo.get("f"))
     assert "<s>1</s>" in drawn, "the control: the owner's own change went out"
     assert "<li>one</li><li>two</li>" in drawn, drawn
+
+
+async def test_the_hosts_render_leaves_the_list_of_a_component_block_whose_fill_reads_the_host():
+    """The fill holds the host's markers in the host's pass and plain text in the component's own render."""
+    consumer, outbound, host, nested = await nested_page("TaBlockHost", "TaSlotted")
+    await consumer.command_user_event("g", "load", {}, {})
+    assert "<li>one</li><li>two</li>" in html_now(nested)
+
+    await consumer.command_user_event("p", "bump", {}, {})
+
+    drawn = html_now(host)
+    assert "<i>1</i>" in drawn and "<em>T</em>" in drawn, "the control: the host's change went out"
+    assert "<li>one</li><li>two</li>" in drawn, drawn
+
+
+async def test_a_fill_whose_text_changed_draws_the_list_as_the_components_next_render_would():
+    """Its own next render has the new fill as text, so nothing there lines up with its last render either."""
+    consumer, outbound, host, nested = await nested_page("TaChangingFillHost", "TaSlotted")
+    await consumer.command_user_event("g", "load", {}, {})
+
+    await consumer.command_user_event("p", "bump", {}, {})
+
+    assert "<em>1</em><ul></ul>" in html_now(host)
+    await consumer.command_user_event("g", "bump", {}, {})
+    assert "<em>1</em><ul></ul>" in html_now(nested)
+
+
+async def test_a_fill_naming_a_live_component_keeps_the_list_and_the_reference():
+    consumer, outbound, host, nested = await nested_page("TaLiveFillHost", "TaSlotted")
+    await consumer.command_user_event("g", "load", {}, {})
+    outbound.commands.clear()
+
+    await consumer.command_user_event("p", "bump", {}, {})
+
+    drawn = html_now(host)
+    assert "<li>one</li><li>two</li>" in drawn, drawn
+    renders = [payload for command, payload in outbound.commands if command == "render"]
+    assert "<!--@wv:lc-->" not in json.dumps(renders), "the LiveComponent went out as text"
+    assert consumer.repo.get("lc") is not None
+
+
+async def test_a_kept_part_naming_a_live_component_is_drawn_from_what_it_has():
+    """Put back as text, the reference reached the page as a comment and the LiveComponent's element left it."""
+    consumer, outbound, host, nested = await nested_page("TaHost", "TaWithLive")
+    await consumer.command_user_event("g", "load", {}, {})
+    assert "<li>one</li>" in html_now(nested)
+    outbound.commands.clear()
+
+    await consumer.command_user_event("p", "bump", {}, {})
+
+    renders = [payload for command, payload in outbound.commands if command == "render"]
+    assert "<b>1</b>" in html_now(host), "the control: what the host passed went out"
+    assert "<!--@wv:lc-->" not in json.dumps(renders), "the LiveComponent went out as text"
+    assert "<li>" not in html_now(host)

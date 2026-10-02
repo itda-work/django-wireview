@@ -2,6 +2,7 @@
 
 <div {% tag_header %}>
   <b data-testid="count">{{ count }}</b>
+  {% render_slot "body" %}
   <ul data-testid="messages">
     {% for m in messages %}<li>{{ m }}</li>{% endfor %}
   </ul>

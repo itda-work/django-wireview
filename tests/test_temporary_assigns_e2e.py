@@ -4,7 +4,8 @@ The server-side contract is tests/test_temporary_assigns_diff.py. Here the
 client applies what the server sent: before #111 an event that had nothing to
 do with the list sent it emptied, and the list vanished.
 
-Fixture: tests/testproj/tempprobe/ (``?nest=1``: the probe in a host's pass and in a slot).
+Fixture: tests/testproj/tempprobe/ (``?nest=1``: the probe in a host's pass, in a slot, and from a
+``{% component_block %}`` with a fill).
 """
 
 import pytest
@@ -51,10 +52,15 @@ def test_loading_again_replaces_it(page, server):
 
 
 @pytest.mark.parametrize(
-    ("where", "render"), [("nested", "host-bump"), ("slotted", "frame-bump")], ids=["host-pass", "slot-owner"]
+    ("where", "render"),
+    [("nested", "host-bump"), ("slotted", "frame-bump"), ("blocked", "host-bump")],
+    ids=["host-pass", "slot-owner", "block-with-fill"],
 )
 def test_the_list_stays_when_the_component_around_it_renders(page, server, where, render):
-    """The host's pass draws the probe again, and the frame its slot; their diffs morph the probe."""
+    """The host's pass draws the probe again, and the frame its slot; their diffs morph the probe.
+
+    ``block-with-fill``: the host's pass draws the fill with its own markers, the probe's own render as text.
+    """
     open_live(page, f"{server}/tempprobe/?nest=1")
     probe = page.get_by_test_id(where)
     probe.get_by_test_id("load").click()
@@ -65,3 +71,5 @@ def test_the_list_stays_when_the_component_around_it_renders(page, server, where
 
     expect_count(probe.locator("[data-testid=messages] li"), 3)
     expect_text(probe.get_by_test_id("how-many"), "3")
+    if where == "blocked":
+        expect_text(probe.get_by_test_id("fill"), "filled")

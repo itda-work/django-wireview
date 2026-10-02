@@ -464,9 +464,11 @@ class WireviewMeta:
 
         reads = RenderReads(id(component), stale, type(component).model_fields)
         context = self._get_context(component, repo, slots, reads)
+        # A fill the pass drew before this component holds markers numbered below its own
+        first = get_template_marker().next_index()
         with get_template_marker().tracking(reads):
             html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
-        return keep_stale(html, reads.slots, self._last_rendered)
+        return keep_stale(html, reads.slots, self._last_rendered, first)
 
     async def send_stream_op(self, op: "StreamOp", owner: str | None = None) -> None:
         """Send a stream operation to the client, on behalf of component ``owner``.

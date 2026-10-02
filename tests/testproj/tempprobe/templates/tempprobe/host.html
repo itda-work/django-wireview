@@ -13,4 +13,11 @@
   {% endfill %}
 {% endcomponent %}
 </section>
+<section data-testid="blocked">
+  {% component_block 'TempProbe' id="blocked-probe" %}
+  {% fill body %}
+  <em data-testid="fill">{{ title }}</em>
+{% endfill %}
+{% endcomponent %}
+</section>
 </div>

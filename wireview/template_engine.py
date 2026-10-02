@@ -348,6 +348,10 @@ class TemplateMarker:
         """Reset the marker context for a new render."""
         self.marker_context.reset()
 
+    def next_index(self) -> int:
+        """The index the next template rendered takes first: 0 unless a render is under way."""
+        return self.marker_context.count if self._depth else 0
+
     @contextmanager
     def tracking(self, reads: render_reads.RenderReads) -> t.Iterator[None]:
         """Track ``reads`` for the template rendered next, inside the render under way.

@@ -8,6 +8,7 @@ from wireview.core.rendered import (
     RenderedDiff,
     has_markers,
     inject_marker,
+    keep_stale,
 )
 
 
@@ -296,3 +297,34 @@ class TestBandwidthSavings:
         assert diff is not None
         assert diff.is_full is False
         assert diff.changes == {"0": "Inactive"}
+
+
+class TestKeepStale:
+    """Parts a nested component drew in another component's pass, put back as its last render drew them (#111)."""
+
+    previous = "<!--$0-->A<!--/$0--><!--$1-->B<!--/$1-->"
+
+    @pytest.mark.unit
+    def test_it_puts_back_the_parts_it_pairs(self):
+        html = "<!--$4-->a<!--/$4--><!--$6-->b<!--/$6-->"
+
+        kept = keep_stale(html, {4, 6}, Rendered.from_marked_html(self.previous))
+
+        assert kept == "<!--$4-->A<!--/$4--><!--$6-->B<!--/$6-->"
+
+    @pytest.mark.unit
+    def test_markers_it_cannot_pair_are_drawn_as_they_are(self):
+        """A stale part inside a variable's output is text to the parser but a part to the scan: the counts differ."""
+        html = "<!--$4-->x<!--$5-->a<!--/$5-->y<!--/$4--><!--$6-->b<!--/$6-->"
+
+        assert keep_stale(html, {5, 6}, Rendered.from_marked_html(self.previous)) == html
+
+    @pytest.mark.unit
+    def test_markers_numbered_before_the_component_are_not_its_own(self):
+        """A fill the host drew before the component holds the host's markers; its own render has the text."""
+        previous = Rendered.from_marked_html("<div><em>T</em><!--$0-->A<!--/$0--></div>")
+        html = "<div><em><!--$2-->T<!--/$2--></em><!--$5-->a<!--/$5--></div>"
+
+        assert keep_stale(html, {5}, previous) == html
+        kept = keep_stale(html, {5}, previous, first=3)
+        assert kept == "<div><em><!--$2-->T<!--/$2--></em><!--$5-->A<!--/$5--></div>"
