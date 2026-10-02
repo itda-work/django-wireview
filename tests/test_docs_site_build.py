@@ -45,7 +45,7 @@ except ImportError as error:  # pragma: no cover - the docs dependency group is 
 from scripts.docs_site.build import _lead, build  # noqa: E402
 from scripts.docs_site.bundle import DEFAULT_BUNDLE_DIR, PYPI_DIST, bundle  # noqa: E402
 from scripts.docs_site.render import Linker  # noqa: E402
-from scripts.docs_site.serve import INJECT, Handler, State, watched  # noqa: E402
+from scripts.docs_site.serve import INJECT, TEXT_TYPES, Handler, State, watched  # noqa: E402
 
 ROOT = nav.ROOT
 TAG = f"v{nav.version()}"
@@ -921,6 +921,39 @@ def test_the_server_adds_the_reload_script_to_html_only(site):
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+@pytest.mark.parametrize(
+    ("url", "content_type"),
+    [
+        ("/wireview/tutorial/", "text/html; charset=utf-8"),
+        ("/wireview/tutorial/index.html", "text/html; charset=utf-8"),
+        ("/wireview/llms.txt", "text/plain; charset=utf-8"),
+        ("/wireview/tutorial/index.md", "text/markdown; charset=utf-8"),
+        ("/wireview/agent/wireview/SKILL.md", "text/markdown; charset=utf-8"),
+        ("/wireview/sitemap.xml", "application/xml; charset=utf-8"),
+        ("/__docs_dev__/reload.js", "text/javascript; charset=utf-8"),
+    ],
+)
+def test_the_server_says_its_text_files_are_utf_8(site, url, content_type):
+    """Korean in a .txt or .md is mojibake when the browser guesses the encoding (#165)."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), partial(Handler, directory=str(site.out), state=State()))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{server.server_address[1]}{url}") as response:
+            assert response.headers["Content-Type"] == content_type
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_every_text_file_the_build_writes_has_a_charset(site):
+    """Each kind of text file in the output gets a utf-8 type, and each such type is one the build writes."""
+    suffixes = {path.suffix for path in site.out.rglob("*") if path.is_file() and path.suffix not in ("", ".gz")}
+    assert suffixes == set(TEXT_TYPES), suffixes
+    assert all(value.endswith("; charset=utf-8") for value in TEXT_TYPES.values())
 
 
 def test_the_server_watches_what_the_build_reads():

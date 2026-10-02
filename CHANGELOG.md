@@ -40,6 +40,10 @@ The django-reactor era changelog (2.x) is preserved in
 ### Changed
 
 - `wireview.W015`'s hint points to a `senders` mapping to send fewer fields (#144).
+- Documentation: tutorial 01's section 2, "이미 있는 프로젝트에 붙이기", now holds all of a project's wiring
+  (the root URLconf moved there) and llms.txt links it by anchor; a page's first paragraph, its llms.txt and
+  meta description, says what the page is, and the site build fails on one that opens with a label, an issue
+  number or links only; `make docs-serve` sends its text files with `charset=utf-8` (#165).
 
 ## [1.0.0] - 2026-10-02
 

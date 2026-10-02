@@ -63,6 +63,18 @@ RELOAD_JS = """(function () {
 
 INJECT = f'<script src="{DEV_PATH}reload.js"></script>'.encode()
 
+#: The build's text files are UTF-8 and mostly Korean. Without a charset a browser reads a .txt or
+#: .md as its locale's default (often windows-1252) and shows mojibake; the release's server owes
+#: the same header (docs/ROADMAP.md, the release steps) (#165).
+TEXT_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".txt": "text/plain; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8",
+    ".xml": "application/xml; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+}
+
 
 def watched(root: Path) -> list[Path]:
     """The files a rebuild reads: the documents, the navigation, the agent skill, and the layout."""
@@ -122,6 +134,9 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self, format, *args):  # noqa: A002 - the base class's name
         pass
 
+    def guess_type(self, path):
+        return TEXT_TYPES.get(Path(str(path)).suffix.lower()) or super().guess_type(path)
+
     def _send(self, body: bytes, content_type: str) -> None:
         self.send_response(200)
         self.send_header("Content-Type", content_type)
@@ -136,7 +151,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path == f"{DEV_PATH}state":
             return self._send(self.state.as_json(), "application/json")
         if path == f"{DEV_PATH}reload.js":
-            return self._send(RELOAD_JS.encode(), "text/javascript; charset=utf-8")
+            return self._send(RELOAD_JS.encode(), TEXT_TYPES[".js"])
         if path == "/":
             self.send_response(302)
             self.send_header("Location", "/wireview/")
@@ -148,7 +163,7 @@ class Handler(SimpleHTTPRequestHandler):
         if local.suffix == ".html" and local.is_file() and path.endswith(("/", ".html")):
             body = local.read_bytes()
             body = body.replace(b"</body>", INJECT + b"</body>", 1) if b"</body>" in body else body + INJECT
-            return self._send(body, "text/html; charset=utf-8")
+            return self._send(body, TEXT_TYPES[".html"])
         return super().do_GET()
 
 

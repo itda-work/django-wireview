@@ -380,6 +380,7 @@ def button(text: str, variant: str = "primary"):
      있으면 실패한다 — PyPI는 `dist/`를 통째로 받는다. 문서 묶음도 내려받아 풀어 본다.
    - **docs**: `make docs-site-bundle`로 문서 사이트를 `docs-site-v<버전>.tar.gz`로 묶는다. `dist/` 밖(`build/site-dist/`)에
      만들어 별도 artifact로 올리고, 파일 이름과 묶음 안의 `wireview/VERSION`이 태그와 같은지 본다. 같은 커밋은 같은 바이트로 묶인다.
+     묶음을 서빙하는 쪽은 텍스트 파일(`.html`·`.txt`·`.md`·`.xml`·`.css`·`.js`)에 `charset=utf-8`을 붙여야 한다(`.md`는 `text/markdown; charset=utf-8`) — 없으면 llms.txt와 Markdown 원문의 한국어가 깨진다(#165, 서버 설정은 운영 저장소, #157).
    - **publish**: 위 모두를 기다린다 — 문서 빌드가 실패하면 publish는 돌지 않는다. PyPI에는 `dist/`만 올리고, 문서 묶음에
      빌드 증명(`actions/attest`)을 붙인 뒤 GitHub Release에 `dist/*`와 묶음을 함께 붙인다. 내려받은 묶음은
      `gh attestation verify docs-site-v<버전>.tar.gz -R itda-work/django-wireview`로 확인한다.
