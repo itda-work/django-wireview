@@ -65,8 +65,8 @@ INJECT = f'<script src="{DEV_PATH}reload.js"></script>'.encode()
 
 
 def watched(root: Path) -> list[Path]:
-    """The files a rebuild reads: the documents, the navigation, and the layout."""
-    files = [root / "README.md", *(root / "docs").rglob("*")]
+    """The files a rebuild reads: the documents, the navigation, the agent skill, and the layout."""
+    files = [root / "README.md", *(root / "docs").rglob("*"), *(root / "skills").rglob("*")]
     files += [*TEMPLATES.rglob("*"), *ASSETS.rglob("*")]
     return sorted(path for path in files if path.is_file())
 

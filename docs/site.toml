@@ -28,8 +28,18 @@
 #   minutes  the estimated time, an integer or a [low, high] range. The README writes it as
 #            "30분", "1.5시간", "1-2시간" (human_minutes in scripts/docs_site/nav.py).
 #   summary  the line after the tutorial's link in the README's learning path.
+#
+# llms.txt (#164)
+#   <base>llms.txt lists every page below, in this order, under its section's name; a section with
+#   optional = true goes under "## Optional" instead, which an agent may skip. The prose around the
+#   list is scripts/docs_site/templates/llms.txt. [skill] is published beside the pages as raw
+#   Markdown, at <base><url><file>, and llms.txt lists it first.
 
 base = "/wireview/"
+
+[skill]
+source = "skills/wireview"
+url = "agent/wireview/"
 
 [home]
 source = "README.md"
@@ -307,6 +317,7 @@ slug = "testing"
 slug = "deployment"
 name = "배포"
 index = "docs/DEPLOYMENT.md"
+optional = true
 
 # --- 업그레이드: what to change between versions, and what a version promises not to break -------
 
@@ -314,6 +325,7 @@ index = "docs/DEPLOYMENT.md"
 slug = "upgrade"
 name = "업그레이드"
 index = "docs/UPGRADING.md"
+optional = true
 
 [[sections.pages]]
 source = "docs/COMPATIBILITY.md"

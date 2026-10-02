@@ -4,6 +4,8 @@
     <out>/wireview/<section>/<page>/    index.html, and index.md: the document, its links rewritten
     <out>/wireview/assets/              site.<hash>.css and the scripts, named by their content
     <out>/wireview/sitemap.xml          absolute URLs, no lastmod
+    <out>/wireview/llms.txt             the site's map for an agent (llmstxt.org): every page's index.md (#164)
+    <out>/wireview/agent/wireview/      the agent skill (skills/wireview/) as Markdown, its links rewritten
     <out>/wireview/VERSION              the release tag the site was built from
     every text file also as <name>.gz, compressed ahead of time
 
@@ -13,6 +15,7 @@ a time, a path on this machine or the environment, and gzip gets mtime 0 and no 
 After writing, the build checks what it wrote (each a gate: a problem fails the build) --
 
 - every link to a /wireview/ path or a #fragment reaches a file, and an element with that id;
+  so does every link of llms.txt and of the published skill that stays on the site;
 - docs/site-urls.txt, the public URLs, against the pages and the redirects: a URL the list
   has and the site no longer serves is a 404 for every link already out there, so it has to
   move to docs/redirects.toml; a URL the site serves and the list lacks has to be added
@@ -27,6 +30,7 @@ import gzip
 import hashlib
 import html
 import io
+import re
 import shutil
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
@@ -35,7 +39,7 @@ from string import Template
 from urllib.parse import unquote, urljoin
 
 from . import nav
-from .render import Linker, Problem, pygments_css, render, source_url
+from .render import MD_LINK, Linker, Problem, front_matter, pygments_css, render, rewrite_published, source_url
 
 HERE = Path(__file__).resolve().parent
 TEMPLATES = HERE / "templates"
@@ -218,6 +222,69 @@ def _preview(version: str, preview: bool) -> tuple[str, str]:
     return '<meta name="robots" content="noindex">', band
 
 
+# --- llms.txt -------------------------------------------------------------------------------------
+
+#: The agent skill's routing table, "| what to do | [references/x.md](./references/x.md) |".
+ROUTE = re.compile(r"^\|\s*(.+?)\s*\|\s*\[[^\]]*\]\(\./([^)#\s]+)\)\s*\|\s*$", re.MULTILINE)
+
+
+def _lead(text: str, limit: int = 200) -> str:
+    """A page's first paragraph for llms.txt: whole sentences up to ``limit`` characters."""
+    if len(text) <= limit:
+        return text
+    ends = [match.end() for match in re.finditer(r"[.!?)](?=\s)", text[: limit + 1])]
+    return text[: ends[-1]] if ends else text[:limit].rstrip() + "…"
+
+
+def _title(text: str) -> str:
+    return next(line[2:].strip() for line in text.splitlines() if line.startswith("# "))
+
+
+def _skill_entries(site: nav.Site) -> tuple[list[tuple[str, str, str]], list[Problem]]:
+    """(title, url, description) of each skill file: SKILL.md's own description, a reference's row in its routes."""
+    files = site.skill()
+    if not files:
+        return [], []
+    skill_text = files[0].path(site.root).read_text(encoding="utf-8")
+    routes = {target: what for what, target in ROUTE.findall(skill_text)}
+    folder = files[0].source.rsplit("/", 1)[0] + "/"
+    entries, problems = [], []
+    for file in files:
+        text = file.path(site.root).read_text(encoding="utf-8")
+        name = file.source.removeprefix(folder)
+        if name == "SKILL.md":
+            description = front_matter(text).get("description", "")
+        elif name in routes:
+            description = routes[name]
+        else:
+            description = ""
+            problems.append(Problem(files[0].source, f"no route to {name}: llms.txt has nothing to say about it"))
+        entries.append((_title(text), nav.ORIGIN + file.url, description))
+    return entries, problems
+
+
+def _llms(site: nav.Site, described: dict[str, str], tag: str, preview: bool) -> tuple[str, list[Problem]]:
+    """llms.txt: the template's prose, then the skill and every page's Markdown in docs/site.toml's order."""
+
+    def item(title: str, url: str, description: str) -> str:
+        return f"- [{title}]({url})" + (f": {description}" if description else "")
+
+    skill, problems = _skill_entries(site)
+    sections = {section["slug"]: section["name"] for section in site.data["sections"]}
+    groups: dict[str, list[str]] = {}
+    if skill:
+        groups["에이전트 스킬"] = [item(*entry) for entry in skill]
+    for page in site.pages():
+        group = "Optional" if page.optional else sections.get(page.section, "소개")
+        groups.setdefault(group, []).append(item(page.title, f"{nav.ORIGIN}{page.url}index.md", described[page.url]))
+    if "Optional" in groups:
+        groups["Optional"] = groups.pop("Optional")  # the spec's last section
+    listed = "".join(f"\n## {name}\n\n" + "\n".join(items) + "\n" for name, items in groups.items())
+    template = Template((TEMPLATES / "llms.txt").read_text(encoding="utf-8"))
+    note = " 정식 릴리스 전 미리보기다." if preview else ""
+    return template.substitute(tag=tag, preview=note, sections=listed).rstrip("\n") + "\n", problems
+
+
 # --- gates ----------------------------------------------------------------------------------------
 
 
@@ -241,6 +308,19 @@ def _parse(data: bytes) -> _Links:
     return parser
 
 
+def _reach(link: str, page_url: str, files: dict[str, bytes], parsed: dict[str, _Links]) -> str | None:
+    """Why a link of the page at ``page_url`` leads nowhere on the site, or None when it arrives."""
+    target = urljoin(page_url, link)
+    file_part, _, fragment = target.partition("#")
+    file_part = unquote(file_part.partition("?")[0])
+    resolved = file_part.lstrip("/") + ("index.html" if file_part.endswith("/") else "")
+    if resolved not in files:
+        return f"{link} leads nowhere (no {resolved} in the build)"
+    if fragment and resolved.endswith(".html") and unquote(fragment) not in parsed[resolved].ids:
+        return f"{link} has no target (no id {unquote(fragment)!r} on {file_part})"
+    return None
+
+
 def check_links(
     files: dict[str, bytes], base: str, where: dict[str, tuple[str, list[tuple[int, str]]]]
 ) -> list[Problem]:
@@ -254,19 +334,35 @@ def check_links(
             # link left as written is one the render already reported (no such file).
             if not link.startswith((base, "#")):
                 continue
-            target = urljoin(page_url, link)
-            file_part, _, fragment = target.partition("#")
-            file_part = unquote(file_part.partition("?")[0])
-            resolved = file_part.lstrip("/") + ("index.html" if file_part.endswith("/") else "")
-            message = None
-            if resolved not in files:
-                message = f"{link} leads nowhere (no {resolved} in the build)"
-            elif fragment and resolved.endswith(".html") and unquote(fragment) not in parsed[resolved].ids:
-                message = f"{link} has no target (no id {unquote(fragment)!r} on {file_part})"
+            message = _reach(link, page_url, files, parsed)
             if message:
                 source, lines = where.get(path, (path, []))
                 line = next((number for number, href in lines if href == link and number), None)
                 problems.append(Problem(f"{source}:{line}" if line else source, message))
+    return problems
+
+
+def check_markdown(files: dict[str, bytes], base: str, where: dict[str, str]) -> list[Problem]:
+    """Gate 2 for the Markdown the site publishes as it is: llms.txt and the skill.
+
+    Every link that stays on the site -- relative, a /wireview/ path, or an absolute URL under it,
+    a link's target or a URL written as text -- reaches a file, and an id when it names one.
+    ``where`` maps each such file to its source.
+    """
+    parsed = {path: _parse(data) for path, data in files.items() if path.endswith(".html")}
+    site = nav.ORIGIN + base
+    bare = re.compile(rf"{re.escape(site)}[^\s|)>`\"']*")
+    problems = []
+    for path in sorted(where):
+        for number, line in enumerate(files[path].decode("utf-8").split("\n"), 1):
+            links = [match.group(2) for match in MD_LINK.finditer(line)] + bare.findall(line)
+            for link in dict.fromkeys(links):
+                if link.startswith(site):
+                    link = link.removeprefix(nav.ORIGIN)
+                elif re.match(r"^[a-z][a-z0-9+.-]*:|^//", link, re.IGNORECASE):
+                    continue  # another site, or GitHub at the tag
+                if message := _reach(link, "/" + path, files, parsed):
+                    problems.append(Problem(f"{where[path]}:{number}", message))
     return problems
 
 
@@ -336,10 +432,12 @@ def build(
     robots, band = _preview(version, preview)
     where: dict[str, tuple[str, list[tuple[int, str]]]] = {}
     pages = site.pages()
+    described: dict[str, str] = {}
 
     for page in pages:
         rendered = render(page, linker)
         result.problems += rendered.problems
+        described[page.url] = page.summary or _lead(rendered.lead)
         markdown_url = f"{page.url}index.md"
         toc = _toc(rendered.toc)
         title = page.title if page.url == base else f"{page.title} · django-wireview 문서"
@@ -392,8 +490,23 @@ def build(
     )
     writer.write(f"{prefix}VERSION", f"{tag}\n")
 
+    # Published as they are, for an agent: the skill, and llms.txt that leads to it and to every page.
+    markdown_sources: dict[str, str] = {}
+    for file in site.skill():
+        text, problems = rewrite_published(file.path(root).read_text(encoding="utf-8"), file.source, linker)
+        result.problems += problems
+        writer.write(to_file(file.url, ""), text)
+        markdown_sources[to_file(file.url, "")] = file.source
+    llms, problems = _llms(site, described, tag, preview)
+    result.problems += problems
+    writer.write(to_file(site.llms_url, ""), llms)
+    markdown_sources[to_file(site.llms_url, "")] = f"{to_file(site.llms_url, '')} (the build's)"
+
     result.problems += check_links(writer.written, base, where)
-    result.problems += check_urls(root, {page.url for page in pages}, {e["from"] for e in site.redirects}, update_urls)
+    # A relative link to a missing file stays as written, and its rewrite has reported it already.
+    reported = {problem.where for problem in result.problems}
+    result.problems += [p for p in check_markdown(writer.written, base, markdown_sources) if p.where not in reported]
+    result.problems += check_urls(root, site.public_urls(), {e["from"] for e in site.redirects}, update_urls)
 
     # Write beside the old output and swap, so a server reading it never sees half a site.
     staging = out.with_name(f".{out.name}.tmp")

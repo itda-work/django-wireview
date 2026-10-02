@@ -42,7 +42,7 @@ try:
 except ImportError as error:  # pragma: no cover - the docs dependency group is a default group
     _missing(f"the docs dependency group is not installed ({error.name})")
 
-from scripts.docs_site.build import build  # noqa: E402
+from scripts.docs_site.build import _lead, build  # noqa: E402
 from scripts.docs_site.bundle import DEFAULT_BUNDLE_DIR, PYPI_DIST, bundle  # noqa: E402
 from scripts.docs_site.render import Linker  # noqa: E402
 from scripts.docs_site.serve import INJECT, Handler, State, watched  # noqa: E402
@@ -157,6 +157,175 @@ def test_the_markdown_and_the_html_link_to_the_same_places(site):
         assert not [target for target in in_markdown if "/blob/main/" in target or "/tree/main/" in target]
 
 
+# --- llms.txt and the published skill (#164) -------------------------------------------------------
+
+LLMS_LINK = re.compile(r"^- \[([^\]]+)\]\(([^)\s]+)\)(?:: (.+))?$")
+
+
+def _llms(out: Path) -> str:
+    return (out / nav.Site.load().llms_url.lstrip("/")).read_text(encoding="utf-8")
+
+
+def _llms_sections(text: str) -> dict[str, list[tuple[str, str, str | None]]]:
+    sections: dict[str, list[tuple[str, str, str | None]]] = {}
+    current = None
+    for line in text.splitlines():
+        if line.startswith("## "):
+            current = sections.setdefault(line[3:], [])
+        elif current is not None and line:
+            match = LLMS_LINK.match(line)
+            assert match, f"not an llms.txt list item: {line!r}"
+            current.append(match.groups())
+    return sections
+
+
+def _blocks(text: str) -> list[str]:
+    """The lines of every fenced code block, unindented."""
+    lines, fenced = [], False
+    for line in text.splitlines():
+        if line.strip().startswith("```"):
+            fenced = not fenced
+        elif fenced:
+            lines.append(line.strip())
+    return lines
+
+
+def test_llms_txt_has_the_shape_llmstxt_org_gives(site):
+    text = _llms(site.out)
+    lines = text.splitlines()
+    assert lines[0] == "# django-wireview"
+    assert lines[1] == "" and lines[2].startswith("> ")
+    assert [line for line in lines if line.startswith("# ")] == [lines[0]]
+    sections = list(_llms_sections(text))
+    assert sections[0] == "에이전트 스킬" and sections[-1] == "Optional"
+    assert text.endswith("\n") and not text.endswith("\n\n")
+
+
+def test_llms_txt_says_which_release_it_describes(site):
+    assert f"이 목록은 django-wireview {TAG} 문서다." in _llms(site.out)
+    assert "미리보기" not in _llms(site.out)
+
+
+def test_llms_txt_lists_every_page_once_in_the_sites_order(site):
+    """No hand-written index: a page added to docs/site.toml shows up, its Markdown linked absolutely."""
+    sections = _llms_sections(_llms(site.out))
+    listed = [url for name, items in sections.items() if name != "에이전트 스킬" for _, url, _ in items]
+    pages = nav.pages()
+    expected = [page for page in pages if not page.optional] + [page for page in pages if page.optional]
+    assert listed == [f"https://itda.work{page.url}index.md" for page in expected]
+    titles = {url: title for items in sections.values() for title, url, _ in items}
+    for page in pages:
+        assert titles[f"https://itda.work{page.url}index.md"] == page.title
+    assert [url for _, url, _ in sections["Optional"]] == [
+        f"https://itda.work{page.url}index.md" for page in pages if page.optional
+    ]
+
+
+def test_llms_txt_describes_a_tutorial_by_its_summary_and_a_page_by_its_first_paragraph(site):
+    items = {url: description for items in _llms_sections(_llms(site.out)).values() for _, url, description in items}
+    for page in nav.tutorials():
+        assert items[f"https://itda.work{page.url}index.md"] == page.summary
+    assert all(items.values()), [url for url, description in items.items() if not description]
+    assert items["https://itda.work/wireview/reference/agent-skill/index.md"] == (
+        "AI 코딩 에이전트가 wireview 앱을 제대로 짜게 만드는 배포용 스킬"
+    )
+
+
+def test_llms_txt_leads_with_the_skill(site):
+    skill = _llms_sections(_llms(site.out))["에이전트 스킬"]
+    assert [url for _, url, _ in skill] == [f"https://itda.work{file.url}" for file in nav.Site.load().skill()]
+    assert skill[0][1].endswith("/SKILL.md")
+
+
+def test_every_link_of_llms_txt_is_a_file_of_the_build(site):
+    links = [url for items in _llms_sections(_llms(site.out)).values() for _, url, _ in items]
+    assert links and all(url.startswith("https://itda.work/wireview/") for url in links)
+    missing = [url for url in links if not (site.out / url.removeprefix("https://itda.work/")).is_file()]
+    assert missing == []
+
+
+def test_the_commands_in_llms_txt_are_the_readmes_and_the_first_tutorials(site):
+    """What the agent runs is what a person following the README or tutorial 01 runs."""
+    commands = _blocks(_llms(site.out))
+    assert commands == [
+        "pip install django-wireview daphne",
+        next(line for line in _blocks((ROOT / "README.md").read_text(encoding="utf-8")) if "startproject" in line),
+    ]
+    tutorial = nav.tutorials()[0]
+    assert tutorial.source == "docs/tutorials/01-getting-started.md"
+    for source in ("README.md", tutorial.source):
+        assert set(commands) <= set(_blocks((ROOT / source).read_text(encoding="utf-8"))), source
+
+
+def test_the_management_commands_llms_txt_names_exist(site):
+    from django.core.management import get_commands
+
+    named = set(re.findall(r"`python manage\.py (\w+)", _llms(site.out)))
+    assert named == {"wireview_agent_setup", "check"}
+    assert named <= set(get_commands())
+
+
+def test_the_readme_and_the_skill_page_name_where_the_build_writes(site):
+    llms_url = nav.ORIGIN + nav.Site.load().llms_url
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    start = readme.split("## AI 에이전트로 시작하기", 1)[1].split("\n## ", 1)[0]
+    assert f"]({llms_url})" in start
+    assert _blocks(start)[0].startswith(f"{llms_url} ")
+    assert readme.index("## AI 에이전트로 시작하기") < readme.index("## 무엇이 포함되어 있나요?")
+    skill_page = (ROOT / "docs" / "features" / "agent-skill.md").read_text(encoding="utf-8")
+    skill_url = nav.ORIGIN + nav.Site.load().skill()[0].url
+    assert f"`{llms_url}`" in skill_page and f"`{skill_url}`" in skill_page
+    for url in (llms_url, skill_url):
+        assert (site.out / url.removeprefix(f"{nav.ORIGIN}/")).is_file()
+
+
+def _site_page_urls(text: str, tag: str) -> str:
+    """What the build makes of a skill file, done another way: hatch_build's pin, then pages to the site."""
+    pages = {page.source: page.url for page in nav.pages()}
+
+    def to_site(match: re.Match) -> str:
+        path = match.group(1).rstrip("/")
+        url = pages.get(path) or pages.get(f"{path}/README.md")
+        return f"{nav.ORIGIN}{url}{match.group(2) or ''}" if url else match.group(0)
+
+    pinned = nav.pin(text, tag)
+    return re.sub(rf"{re.escape(nav.REPOSITORY)}/(?:blob|tree)/{tag}/([^\s|)>`#]*)(#[^\s|)>`]*)?", to_site, pinned)
+
+
+def test_the_published_skill_is_the_wheels_with_its_pages_on_the_site(site):
+    """Same tag as the wheel's copy (hatch_build.py pins main); a page of the site is linked there."""
+    hatch_build = pytest.importorskip("hatch_build", reason="hatch_build.py needs hatchling (the dev extra)")
+    for file in nav.Site.load().skill():
+        source = file.path().read_text(encoding="utf-8")
+        published = (site.out / file.url.lstrip("/")).read_text(encoding="utf-8")
+        assert published == _site_page_urls(hatch_build.pin(source, TAG), TAG), file.source
+        assert "/main/" not in published, file.source
+    skill = (site.out / "wireview/agent/wireview/SKILL.md").read_text(encoding="utf-8")
+    assert skill.startswith("---\nname: wireview\ndescription: ")
+    assert "](./references/component.md)" in skill
+    assert "https://itda.work/wireview/reference/checks/" in skill
+
+
+def test_the_skills_relative_links_reach_its_files_where_it_is_published(site):
+    for file in nav.Site.load().skill():
+        text = (site.out / file.url.lstrip("/")).read_text(encoding="utf-8")
+        for target in re.findall(r"\]\((\.[^)#\s]+)", text):
+            reached = urllib.request.urljoin(file.url, target)
+            assert (site.out / reached.lstrip("/")).is_file(), (file.source, target)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("짧다.", "짧다."),
+        ("가" * 150 + ". " + "나" * 100 + ".", "가" * 150 + "."),
+        ("가" * 250, "가" * 200 + "…"),
+    ],
+)
+def test_a_long_first_paragraph_is_cut_at_a_sentence(text, expected):
+    assert _lead(text) == expected
+
+
 # --- link rewriting --------------------------------------------------------------------------------
 
 
@@ -194,6 +363,8 @@ def linker():
         ("README.md", "https://docs.djangoproject.com/", "https://docs.djangoproject.com/"),
         ("README.md", f"{nav.REPOSITORY}/issues/87", f"{nav.REPOSITORY}/issues/87"),
         ("README.md", "mailto:dev@itda.work", "mailto:dev@itda.work"),
+        # the agent skill: its copy on the site
+        ("docs/features/agent-skill.md", "../../skills/wireview/SKILL.md", "/wireview/agent/wireview/SKILL.md"),
     ],
 )
 def test_a_link_goes_where_the_site_has_it(linker, source, target, expected):
@@ -349,6 +520,10 @@ def test_a_prerelease_builds_a_preview(tmp_path, version, preview):
 SITE_TOML = """\
 base = "/wireview/"
 
+[skill]
+source = "skills/s"
+url = "agent/s/"
+
 [home]
 source = "README.md"
 
@@ -383,8 +558,36 @@ def tree(tmp_path):
     (root / "docs" / "notes.md").write_text("# 메모\n")
     (root / "docs" / "site.toml").write_text(SITE_TOML)
     (root / "docs" / "redirects.toml").write_text("redirects = []\n")
-    (root / "docs" / "site-urls.txt").write_text("/wireview/\n/wireview/guide/\n/wireview/guide/next/\n")
+    (root / "skills" / "s" / "references").mkdir(parents=True)
+    (root / "skills" / "s" / "SKILL.md").write_text(SKILL_MD)
+    (root / "skills" / "s" / "references" / "a.md").write_text("# 참조\n\n[돌아가기](../SKILL.md)\n")
+    (root / "docs" / "site-urls.txt").write_text("".join(f"{url}\n" for url in TREE_URLS))
     return root
+
+
+SKILL_MD = """\
+---
+name: s
+description: 스킬 설명.
+---
+
+# 스킬
+
+| 할 일 | 읽을 것 |
+|---|---|
+| 참조하기 | [references/a.md](./references/a.md) |
+
+정본: https://github.com/itda-work/django-wireview/blob/main/docs/guide.md#설치
+"""
+
+TREE_URLS = [
+    "/wireview/",
+    "/wireview/agent/s/SKILL.md",
+    "/wireview/agent/s/references/a.md",
+    "/wireview/guide/",
+    "/wireview/guide/next/",
+    "/wireview/llms.txt",
+]
 
 
 def _build(root: Path, **kwargs):
@@ -402,6 +605,46 @@ def test_a_small_tree_builds_clean(tree):
     assert 'href="/wireview/guide/#설치"' in urllib.request.unquote(_html(out, "/wireview/"))
     assert f'href="{nav.REPOSITORY}/blob/v1.0.0/docs/notes.md"' in _html(out, "/wireview/guide/")
     assert '<h2 id="설치-1">' in _html(out, "/wireview/guide/next/")
+    skill = (out / "wireview" / "agent" / "s" / "SKILL.md").read_text(encoding="utf-8")
+    assert "](./references/a.md)" in skill and "정본: https://itda.work/wireview/guide/#설치\n" in skill
+    assert _llms_sections(_llms_of(out)) == {
+        "에이전트 스킬": [
+            ("스킬", "https://itda.work/wireview/agent/s/SKILL.md", "스킬 설명."),
+            ("참조", "https://itda.work/wireview/agent/s/references/a.md", "참조하기"),
+        ],
+        "소개": [("소개", "https://itda.work/wireview/index.md", "가이드를 보세요.")],
+        "가이드": [
+            ("가이드", "https://itda.work/wireview/guide/index.md", "다음 · 메모"),
+            ("다음", "https://itda.work/wireview/guide/next/index.md", "둘째 설치"),
+        ],
+    }
+
+
+def _llms_of(out: Path) -> str:
+    return (out / "wireview" / "llms.txt").read_text(encoding="utf-8")
+
+
+def test_a_skill_link_that_leads_nowhere_fails_the_build_at_its_line(tree):
+    (tree / "skills" / "s" / "references" / "a.md").write_text("# 참조\n\n[없음](./gone.md)\n")
+    assert _problems(_build(tree)) == ["skills/s/references/a.md:3: ./gone.md (no such file)"]
+
+
+def test_a_skill_url_to_a_missing_anchor_fails_the_build_at_its_line(tree):
+    (tree / "skills" / "s" / "SKILL.md").write_text(SKILL_MD.replace("#설치", "#없는-절"))
+    problems = _problems(_build(tree))
+    assert len(problems) == 1 and problems[0].startswith("skills/s/SKILL.md:12: ")
+    assert "no id '없는-절'" in problems[0]
+
+
+def test_a_skill_file_the_skill_does_not_route_to_fails_the_build(tree):
+    (tree / "skills" / "s" / "references" / "b.md").write_text("# 둘째\n")
+    problems = _problems(_build(tree))
+    assert "skills/s/SKILL.md: no route to references/b.md: llms.txt has nothing to say about it" in problems
+    assert any("/wireview/agent/s/references/b.md is new" in problem for problem in problems)
+
+
+def test_a_preview_says_so_in_llms_txt(tree):
+    assert "v1.0.0rc1 문서다. 정식 릴리스 전 미리보기다." in _llms_of(_build(tree, version="1.0.0rc1").out)
 
 
 def test_a_broken_anchor_fails_the_build_at_its_line(tree):
@@ -446,17 +689,20 @@ def test_a_new_url_fails_until_it_is_listed(tree):
     urls.write_text("/wireview/\n/wireview/guide/\n/wireview/gone/\n")
     problems = _problems(_build(tree))
     assert any("/wireview/guide/next/ is new: add it to docs/site-urls.txt" in p for p in problems)
+    assert any("/wireview/llms.txt is new" in p for p in problems)
 
     # --update-urls adds what is new and never drops what vanished: that stays a failure.
     problems = _problems(_build(tree, update_urls=True))
-    assert urls.read_text() == "/wireview/\n/wireview/gone/\n/wireview/guide/\n/wireview/guide/next/\n"
+    assert urls.read_text().splitlines() == sorted([*TREE_URLS, "/wireview/gone/"])
     assert len(problems) == 1 and "/wireview/gone/ is no longer served" in problems[0]
 
 
 def test_the_url_list_is_the_repositorys_pages_sorted():
     listed = (ROOT / "docs" / "site-urls.txt").read_text(encoding="utf-8").splitlines()
     assert listed == sorted(listed)
-    assert set(listed) >= {page.url for page in nav.pages()}
+    public = nav.Site.load().public_urls()
+    assert set(listed) >= public
+    assert {"/wireview/llms.txt", "/wireview/agent/wireview/SKILL.md"} <= public
 
 
 # --- the release asset (#160) ------------------------------------------------------------------------
@@ -565,5 +811,7 @@ def test_the_server_adds_the_reload_script_to_html_only(site):
 def test_the_server_watches_what_the_build_reads():
     files = {path.relative_to(ROOT).as_posix() for path in watched(ROOT)}
     assert {"README.md", "docs/site.toml", "docs/redirects.toml", "docs/site-urls.txt"} <= files
+    assert {"skills/wireview/SKILL.md", "skills/wireview/references/component.md"} <= files
+    assert "scripts/docs_site/templates/llms.txt" in files
     assert "docs/tutorials/03-todo-app.md" in files
     assert {"scripts/docs_site/templates/page.html", "scripts/docs_site/assets/site.css"} <= files

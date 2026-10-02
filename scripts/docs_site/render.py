@@ -9,6 +9,10 @@ repository's ``main``. On the site it becomes one of three things --
 - anything else (another site, ``mailto:``): unchanged.
 
 A relative link to a file that does not exist is a problem the build reports.
+
+The agent skill is published as it is, Markdown beside the pages (``rewrite_published``): a
+relative link between its files stays as written, since they keep their layout on the site,
+and a page of the site is written as an absolute URL, so a bare URL in a table can name it too.
 """
 
 from __future__ import annotations
@@ -36,6 +40,9 @@ MD_LINK = re.compile(r"(\]\()([^()\s]+)((?:\s+\"[^\"]*\")?\))")
 CODE_SPAN = re.compile(r"(`+)(?:(?!\1).)+?\1")
 RAW_ATTR = re.compile(r"""\b(href|src)=(["'])(.*?)\2""")
 MAIN_URL = re.compile(rf"^{re.escape(nav.REPOSITORY)}/(?:blob|tree)/main/([^#?]*)(#.*)?$")
+# A URL into main written as text, not as a link's target: the agent skill's tables name pages so.
+BARE_MAIN_URL = re.compile(rf"{re.escape(nav.REPOSITORY)}/(?:blob|tree)/main/[^\s|)>`\"']*")
+FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 
 _FORMATTER = HtmlFormatter(nowrap=True)
 
@@ -56,7 +63,8 @@ class Rendered:
     body: str
     toc: list[tuple[int, str, str]]  # (level, id, text) of the h2 and h3 headings
     markdown: str  # the source with its links rewritten
-    description: str  # the first paragraph's text
+    description: str  # the first paragraph's text, cut at 200 characters for the meta tag
+    lead: str  # the first paragraph's text, whole
     problems: list[Problem] = field(default_factory=list)
     links: list[tuple[int, str]] = field(default_factory=list)  # (source line, href) of every rewritten link
 
@@ -68,12 +76,15 @@ class Linker:
         self.root = site.root
         self.tag = tag
         self.urls = {page.source: page.url for page in site.pages()}
+        self.published = {file.source: file.url for file in site.skill()}
 
     def _page_url(self, path: str) -> str | None:
         """The site path of a repository path (a file, or a directory whose README.md is a page)."""
         path = path.rstrip("/")
         if path in self.urls:
             return self.urls[path]
+        if path in self.published:
+            return self.published[path]
         return self.urls.get(f"{path}/README.md" if path else "README.md")
 
     def _github(self, path: str, image: bool) -> str:
@@ -105,6 +116,16 @@ class Linker:
         if not image and (url := self._page_url(path)):
             return url + fragment, None
         return self._github(path, image) + fragment, None
+
+    def published_target(self, target: str, source: str, image: bool = False) -> tuple[str, str | None]:
+        """As ``target`` for a file published as it is (the module docstring's last paragraph)."""
+        new, problem = self.target(target, source, image)
+        relative = not SCHEME.match(target) and not target.startswith(("/", "#"))
+        if relative and new.partition("#")[0] in self.published.values():
+            return target, problem
+        if new.startswith("/"):
+            return nav.ORIGIN + new, problem
+        return new, problem
 
 
 def _highlight(code: str, lang: str, _attrs: str) -> str:
@@ -171,8 +192,12 @@ def _without_tutorial_nav(text: str) -> str:
     return "\n".join(out)
 
 
-def rewrite_markdown(text: str, source: str, linker: Linker) -> tuple[str, list[Problem]]:
-    """The document with its link targets rewritten, outside code blocks and code spans."""
+def rewrite_markdown(text: str, source: str, linker: Linker, published: bool = False) -> tuple[str, list[Problem]]:
+    """The document with its link targets rewritten, outside code blocks and code spans.
+
+    ``published``: a file the site publishes as it is (``rewrite_published``), whose bare URLs
+    into main are rewritten as well.
+    """
     out, problems, fenced = [], [], False
     for number, line in enumerate(text.split("\n"), 1):
         if FENCE.match(line):
@@ -182,23 +207,50 @@ def rewrite_markdown(text: str, source: str, linker: Linker) -> tuple[str, list[
             continue
         pieces, last = [], 0
         for code in CODE_SPAN.finditer(line):
-            pieces.append(_rewrite_links(line[last : code.start()], source, linker, number, problems))
+            pieces.append(_rewrite_links(line[last : code.start()], source, linker, number, problems, published))
             pieces.append(code.group(0))
             last = code.end()
-        pieces.append(_rewrite_links(line[last:], source, linker, number, problems))
+        pieces.append(_rewrite_links(line[last:], source, linker, number, problems, published))
         out.append("".join(pieces))
     return "\n".join(out), problems
 
 
-def _rewrite_links(text: str, source: str, linker: Linker, number: int, problems: list[Problem]) -> str:
+def _rewrite_links(
+    text: str, source: str, linker: Linker, number: int, problems: list[Problem], published: bool = False
+) -> str:
+    target = linker.published_target if published else linker.target
+
     def replace(match: re.Match) -> str:
         image = bool(re.search(r"!\[[^\]]*$", text[: match.start()]))
-        new, problem = linker.target(match.group(2), source, image=image)
+        new, problem = target(match.group(2), source, image=image)
         if problem:
             problems.append(Problem(f"{source}:{number}", problem))
         return match.group(1) + new + match.group(3)
 
-    return MD_LINK.sub(replace, text)
+    def replace_bare(match: re.Match) -> str:
+        new, problem = target(match.group(0), source)
+        if problem:
+            problems.append(Problem(f"{source}:{number}", problem))
+        return new
+
+    text = MD_LINK.sub(replace, text)
+    # A link's target rewritten above names a tag or the site, never main: this sees bare URLs only.
+    return BARE_MAIN_URL.sub(replace_bare, text) if published else text
+
+
+def rewrite_published(text: str, source: str, linker: Linker) -> tuple[str, list[Problem]]:
+    """A file the site publishes as it is: links rewritten, any URL into main left (a code block's) pinned."""
+    rewritten, problems = rewrite_markdown(text, source, linker, published=True)
+    return nav.pin(rewritten, linker.tag), problems
+
+
+def front_matter(text: str) -> dict[str, str]:
+    """The ``key: value`` lines of a skill's front matter (one line each, as SKILL.md writes them)."""
+    match = FRONT_MATTER.match(text)
+    if not match:
+        return {}
+    pairs = (line.partition(":") for line in match.group(1).splitlines())
+    return {key.strip(): value.strip() for key, sep, value in pairs if sep}
 
 
 def render(page: nav.Page, linker: Linker) -> Rendered:
@@ -245,9 +297,10 @@ def render(page: nav.Page, linker: Linker) -> Rendered:
     # The Markdown pass sees the same links as the HTML pass, which reports their problems.
     markdown, _ = rewrite_markdown(text, page.source, linker)
     paragraphs = [tokens[i + 1] for i, token in enumerate(tokens) if token.type == "paragraph_open"]
-    description = " ".join(_plain(paragraphs[0]).split()) if paragraphs else ""
+    lead = " ".join(_plain(paragraphs[0]).split()) if paragraphs else ""
     return Rendered(
-        description=description[:200],
+        description=lead[:200],
+        lead=lead,
         title_html=title_html,
         title_id=first.meta["id"],
         body=body,

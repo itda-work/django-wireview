@@ -51,6 +51,19 @@ python manage.py wireview_agent_setup
 이미 있는 디렉터리는 `--force` 없이는 덮어쓰지 않는다. 대상이 **심링크**면 손대지 않는다 —
 이 저장소처럼 정본을 심링크로 dogfood하는 구성을 복사본으로 갈아 끼우면 정본이 조용히 갈라진다.
 
+## 설치 전에 읽기: llms.txt와 게시본
+
+스킬은 패키지를 설치하고 프로젝트를 만든 뒤에야 받을 수 있다. 그 전의 에이전트를 위해 문서 사이트가
+두 가지를 게시한다. 둘 다 릴리스 태그마다 그 태그의 내용이다.
+
+| 주소 | 내용 |
+|------|------|
+| `https://itda.work/wireview/llms.txt` | [llmstxt.org](https://llmstxt.org/) 형식의 지도. 설치 → 스타터 → `wireview_agent_setup` → `manage.py check` 순서의 안내와, 스킬과 모든 페이지의 Markdown 원문 링크 |
+| `https://itda.work/wireview/agent/wireview/SKILL.md` | 이 스킬의 게시본. `references/`도 같은 자리에 있다. 링크는 사이트 페이지와 태그 고정 GitHub로 바뀌어 있다 |
+
+llms.txt는 `docs/site.toml`에서 빌드 때 만든다(안내 산문은 `scripts/docs_site/templates/llms.txt`).
+홈의 "AI 에이전트로 시작하기"가 그 주소를 프롬프트로 건넨다.
+
 ## Codex 등 다른 에이전트
 
 스킬 자동 발동은 Claude Code의 기능이다. `.claude/skills/`를 읽지 않는 에이전트에게는

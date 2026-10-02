@@ -78,6 +78,7 @@ class Page:
     minutes: int | tuple[int, int] | None = None
     summary: str | None = None
     root: Path = field(default=ROOT, compare=False, repr=False)
+    optional: bool = False  # under llms.txt's "## Optional": an agent may skip it
 
     @property
     def path(self) -> Path:
@@ -94,6 +95,17 @@ class Page:
     def short_title(self) -> str:
         """The title up to its subtitle: "Poll 앱 - 실시간 투표" is "Poll 앱"."""
         return self.title.split(" - ", 1)[0]
+
+
+@dataclass(frozen=True)
+class Published:
+    """A file the site publishes as it is, not as a page: the agent skill's Markdown."""
+
+    source: str
+    url: str
+
+    def path(self, root: Path = ROOT) -> Path:
+        return root / self.source
 
 
 @dataclass(frozen=True)
@@ -120,7 +132,10 @@ class Site:
         found = [Page(source=self.data["home"]["source"], section="", slug="", url=base, root=root)]
         for section in self.data["sections"]:
             top = f"{base}{section['slug']}/"
-            found.append(Page(source=section["index"], section=section["slug"], slug="", url=top, root=root))
+            optional = section.get("optional", False)
+            found.append(
+                Page(source=section["index"], section=section["slug"], slug="", url=top, root=root, optional=optional)
+            )
             for page in section.get("pages", []):
                 minutes = page.get("minutes")
                 found.append(
@@ -133,9 +148,29 @@ class Site:
                         minutes=tuple(minutes) if isinstance(minutes, list) else minutes,
                         summary=page.get("summary"),
                         root=root,
+                        optional=optional,
                     )
                 )
         return found
+
+    @property
+    def llms_url(self) -> str:
+        """Where llms.txt is served: the site's map for an agent (#164)."""
+        return f"{self.base}llms.txt"
+
+    def skill(self) -> list[Published]:
+        """The agent skill's Markdown as [skill] places it: SKILL.md first, then the rest by path."""
+        if "skill" not in self.data:
+            return []
+        source, url = self.data["skill"]["source"], f"{self.base}{self.data['skill']['url']}"
+        folder = self.root / source
+        names = sorted(path.relative_to(folder).as_posix() for path in folder.rglob("*.md"))
+        names.sort(key=lambda name: name != "SKILL.md")
+        return [Published(source=f"{source}/{name}", url=f"{url}{name}") for name in names]
+
+    def public_urls(self) -> set[str]:
+        """Every URL a link out there may name: the pages, llms.txt and the skill's files."""
+        return {page.url for page in self.pages()} | {self.llms_url} | {file.url for file in self.skill()}
 
     def tutorials(self) -> list[Page]:
         """The tutorials in learning order (the tutorial section's pages, not its index)."""

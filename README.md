@@ -2,6 +2,14 @@
 
 Wireview는 Django Channels를 사용하여 실시간 서버 렌더링 인터랙티브 UI를 구축할 수 있게 해주는 라이브러리입니다. Phoenix Framework의 LiveView와 유사합니다.
 
+## AI 에이전트로 시작하기
+
+Claude Code 같은 코딩 에이전트에게 아래 프롬프트를 주면, 에이전트가 [llms.txt](https://itda.work/wireview/llms.txt)에서 문서를 찾아 설치하고, 앱 개발자용 스킬을 넘겨받아 작업을 이어 갑니다. 새 프로젝트에서도 이미 있는 Django 프로젝트에서도 같은 프롬프트를 쓰고, 끝부분만 만들고 싶은 것으로 바꿉니다.
+
+```text
+https://itda.work/wireview/llms.txt 를 읽고 그 안내대로 django-wireview를 준비한 다음, 실시간 투표 화면을 만들어줘.
+```
+
 ![Wireview 아키텍처 개요](https://raw.githubusercontent.com/itda-work/django-wireview/main/overview.jpg)
 
 ## 무엇이 포함되어 있나요?

@@ -31,6 +31,10 @@ The django-reactor era changelog (2.x) is preserved in
   user model's password hash (`AbstractBaseUser`, whenever its payload carries `password`), or any session model
   (`AbstractBaseSession`), whose pk is the session key and goes with every payload whatever
   fields are listed (#144).
+- The documentation site serves `/wireview/llms.txt` (llmstxt.org), generated from `docs/site.toml`: what an
+  agent does first (install, the starter, `wireview_agent_setup`, `manage.py check`), then the agent skill and
+  every page's Markdown. The skill is published beside it as Markdown at `/wireview/agent/wireview/`, and the
+  README opens with a one-line prompt that points an agent there (#164).
 
 ### Changed
 

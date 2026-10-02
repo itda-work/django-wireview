@@ -1,7 +1,13 @@
 /wireview/
+/wireview/agent/wireview/SKILL.md
+/wireview/agent/wireview/references/component.md
+/wireview/agent/wireview/references/streams-uploads.md
+/wireview/agent/wireview/references/templates.md
+/wireview/agent/wireview/references/testing.md
 /wireview/deployment/
 /wireview/guide/
 /wireview/guide/performance/
+/wireview/llms.txt
 /wireview/reference/
 /wireview/reference/agent-skill/
 /wireview/reference/async-operations/

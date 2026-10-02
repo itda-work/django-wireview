@@ -203,7 +203,9 @@ docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEAT
 scripts/docs_site/         문서 사이트 빌드(make docs-site·make docs-site-bundle·make docs-serve, #159). nav.py 가 site.toml·redirects.toml 해석과 제목 앵커(slug)의
                            유일한 정본이고 표준 라이브러리만 쓴다 — 문서 가드 테스트도 이것을 import한다. render.py 는 Markdown 렌더와 링크
                            재작성(사이트 페이지는 사이트 경로로, 그 밖의 저장소 파일은 태그 고정 GitHub로), build.py 는 산출물·관문,
-                           serve.py 는 폴링 재빌드 개발 서버, bundle.py 는 릴리스 자산 docs-site-v<버전>.tar.gz(결정론적, dist/ 밖 build/site-dist/, #160). templates/·assets/ 가 itda.work 레이아웃의 재현이다(원본과 커밋은 site.css 머리 주석).
+                           serve.py 는 폴링 재빌드 개발 서버, bundle.py 는 릴리스 자산 docs-site-v<버전>.tar.gz(결정론적, dist/ 밖 build/site-dist/, #160).
+                           llms.txt(안내 산문은 templates/llms.txt)와 스킬(skills/wireview/)의 Markdown 게시본도 build.py 가 만든다(#164).
+                           templates/·assets/ 가 itda.work 레이아웃의 재현이다(원본과 커밋은 site.css 머리 주석).
                            렌더 의존성은 dependency-group docs(기본 그룹)에만 있다. 산출물은 `build/docs-site/`(gitignore)
 editors/vscode/            VS Code 확장(#156). wheel·sdist에 싣지 않고 버전도 따로다. src/core/ 는 vscode를 import하지 않는 순수 모듈
                            (node --test가 .ts를 그대로 돈다 — import는 .ts까지, enum 금지), src/*.ts 는 등록과 위치 변환뿐인 어댑터.
