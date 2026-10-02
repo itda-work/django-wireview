@@ -45,7 +45,7 @@ Django 템플릿을 편집하는 데 필요한 것을 이 확장 하나로 준�
 | `invalid-event`, `unknown-modifier`, `modifier-argument` | `{% on %}`의 이벤트 이름과 수정자 |
 | `missing-slot` | 채우지 않은 필수 슬롯 |
 | `unknown-hook` | 훅 파일이 등록하지 않은 `wire-hook` 이름(정보) |
-| `tag-not-loaded`, `unknown-tag`, `unknown-filter`, `filter-not-loaded`, `filter-argument`, `filter-not-permitted`, `unknown-library` | `{% load %}`하지 않은(또는 그 `{% load %}`보다 앞에 쓴) 태그·필터, 없는 태그·필터·라이브러리, 필터 인자 개수, `{% filter %}`가 거절하는 `escape`·`safe` |
+| `tag-not-loaded`, `unknown-tag`, `unknown-filter`, `filter-not-loaded`, `filter-argument`, `filter-not-permitted`, `unknown-library` | `{% load %}`하지 않은(또는 그 `{% load %}`보다 앞에 쓴) 태그·필터, 없는 태그·필터·라이브러리, 필터 인자 개수, `{% filter %}`가 거절하는 `escape`·`safe`(그 이름으로 마지막에 등록된 함수) |
 | `unclosed-block`, `unmatched-end` | 닫지 않은 블록, 여는 태그 없는 끝 태그 |
 | `template-not-found` | 템플릿 디렉터리에 없는 `{% extends %}`·`{% include %}` 경로(경고) |
 

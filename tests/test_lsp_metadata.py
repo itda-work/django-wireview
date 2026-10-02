@@ -565,6 +565,33 @@ class TestTemplateTagsAndFilters:
         assert filters["linebreaks"]["argument"] == "none"
         assert filters["urlizetrunc"]["argument"] == "required"
 
+    def test_a_filter_says_whether_the_filter_tag_refuses_it(self, metadata):
+        filters = metadata["template_builtins"]["filters"]
+        assert filters["safe"]["forbidden_in_filter_tag"] is True
+        assert filters["escape"]["forbidden_in_filter_tag"] is True
+        assert filters["upper"]["forbidden_in_filter_tag"] is False
+        assert filters["force_escape"]["forbidden_in_filter_tag"] is False
+
+    def test_the_filter_tag_refuses_a_function_by_the_name_it_was_last_registered_under(self):
+        """do_filter reads the function's _filter_name, which the last registration of it set."""
+        from django.template.defaultfilters import safe
+
+        register = template.Library()
+
+        @register.filter(name="safe")
+        def harmless(value):
+            return value
+
+        try:
+            register.filter("okay", safe)
+            filters = extract_library(register)["filters"]
+            assert filters["safe"]["forbidden_in_filter_tag"] is True, "another function, by the name safe"
+            assert filters["okay"]["forbidden_in_filter_tag"] is False, "Django's safe, now named okay"
+            builtins = extract_metadata()["template_builtins"]["filters"]
+            assert builtins["safe"]["forbidden_in_filter_tag"] is False, "the same function: the builtin too"
+        finally:
+            safe._filter_name = "safe"
+
     def test_a_simple_block_tag_ends_where_it_was_told(self):
         register = template.Library()
 

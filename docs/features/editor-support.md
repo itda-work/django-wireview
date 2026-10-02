@@ -98,7 +98,7 @@ Django를 띄워 등록된 컴포넌트, 함수 컴포넌트, 훅 파일, 템플
 | 키 | 뜻 |
 |----|----|
 | `tags` | 태그 → `docstring`, `file_path`, `line_number`(태그를 등록한 함수. `simple_tag`는 감싼 사용자 함수), `end`, `intermediate` |
-| `filters` | 필터 → `docstring`, `file_path`, `line_number`, `argument`(`"none"`, `"optional"`, `"required"`) |
+| `filters` | 필터 → `docstring`, `file_path`, `line_number`, `argument`(`"none"`, `"optional"`, `"required"`), `forbidden_in_filter_tag`(`{% filter %}`가 거절하는가. Django의 `do_filter`처럼 이름이 아니라 함수가 마지막으로 등록된 이름 `_filter_name`이 `escape`·`safe`인지로 정한다. 키가 없으면 편집기는 말하지 않는다) |
 
 ### 휴리스틱의 한계
 

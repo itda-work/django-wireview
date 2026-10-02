@@ -6,7 +6,8 @@ import test from "node:test";
 import { diagnose } from "../src/core/diagnostics.ts";
 import type { Problem } from "../src/core/diagnostics.ts";
 import { parseTemplate } from "../src/core/template.ts";
-import { COUNTER, DIR, env, LIST, parse, PARTIAL, project } from "./fixture.ts";
+import { Project } from "../src/core/project.ts";
+import { COUNTER, DIR, env, LIST, metadata, parse, PARTIAL, project } from "./fixture.ts";
 
 function codes(text: string, path = LIST): string[] {
   return diagnose(parse(text), env(path)).map((problem) => problem.code);
@@ -184,6 +185,27 @@ test("an attribute is checked where the browser's DOM has it, and nowhere it may
   assert.deepEqual(codes('<div wire-viewport-top="add" wire-viewport-top="missing">'), []);
   assert.deepEqual(codes('<div wire-viewport-top="&#97;dd">'), []);
   assert.deepEqual(codes('<div wire-viewport-top="missing" wire-viewport-top="add">'), ["unknown-handler"]);
+});
+
+test("{% filter %} refuses what the metadata says Django refuses, and nothing when it does not say", () => {
+  const source = "{% filter safe %}t{% endfilter %}";
+  const check = (change: (filters: Record<string, Record<string, unknown>>) => void) => {
+    const data = metadata();
+    change(data.template_builtins.filters as never);
+    const other = new Project(data);
+    return diagnose(parse(source, other), env(LIST, other)).map((problem) => problem.code);
+  };
+  assert.deepEqual(check(() => {}), ["filter-not-permitted"]);
+  // Django's safe registered again under another name: do_filter reads that name, and takes it
+  assert.deepEqual(check((filters) => (filters.safe.forbidden_in_filter_tag = false)), []);
+  // Metadata without the key: not known, so not said
+  assert.deepEqual(check((filters) => delete filters.safe.forbidden_in_filter_tag), []);
+  // A function Django refuses by its registered name, whatever the template calls it
+  const upper = "{% filter upper %}t{% endfilter %}";
+  const data = metadata();
+  (data.template_builtins.filters.upper as never as Record<string, unknown>).forbidden_in_filter_tag = true;
+  const other = new Project(data);
+  assert.deepEqual(diagnose(parse(upper, other), env(LIST, other)).map((problem) => problem.code), ["filter-not-permitted"]);
 });
 
 test("the library loaded last decides what a tag is", () => {

@@ -570,6 +570,9 @@ def extract_library(library: t.Any) -> dict[str, t.Any]:
             "file_path": file_path,
             "line_number": line_number,
             "argument": filter_argument(func),
+            # What django.template.defaulttags.do_filter checks: the name the function was
+            # last registered under, not the name the template uses
+            "forbidden_in_filter_tag": getattr(func, "_filter_name", None) in ("escape", "safe"),
         }
     return {"tags": dict(sorted(tags.items())), "filters": dict(sorted(filters.items()))}
 

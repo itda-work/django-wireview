@@ -99,6 +99,8 @@ export interface FilterMeta {
   file_path: string;
   line_number: number;
   argument: "none" | "optional" | "required";
+  /** Whether `{% filter %}` refuses it (Django's escape and safe). Metadata written by another tool may not say. */
+  forbidden_in_filter_tag?: boolean;
 }
 
 export interface LibraryMeta {

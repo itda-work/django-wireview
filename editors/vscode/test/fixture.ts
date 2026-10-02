@@ -16,8 +16,8 @@ function tag(end: string | null = null, intermediate: string[] = [], file = DJAN
   return { docstring: null, file_path: file, line_number: 1, end, intermediate };
 }
 
-function filter(argument: FilterMeta["argument"], file = FILTERS): FilterMeta {
-  return { docstring: null, file_path: file, line_number: 1, argument };
+function filter(argument: FilterMeta["argument"], file = FILTERS, forbidden = false): FilterMeta {
+  return { docstring: null, file_path: file, line_number: 1, argument, forbidden_in_filter_tag: forbidden };
 }
 
 function parameter(type: string | null, fallback?: unknown, kind = "POSITIONAL_OR_KEYWORD"): ParameterMeta {
@@ -152,7 +152,7 @@ export function metadata(): Metadata {
         url: tag(),
         csrf_token: tag(),
       },
-      filters: { upper: filter("none"), length: filter("none"), default: filter("required"), date: filter("optional"), safe: filter("none"), escape: filter("none") },
+      filters: { upper: filter("none"), length: filter("none"), default: filter("required"), date: filter("optional"), safe: filter("none", FILTERS, true), escape: filter("none", FILTERS, true) },
     },
     template_libraries: {
       wireview: wireviewLibrary,

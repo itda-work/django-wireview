@@ -34,8 +34,6 @@ const FRAMEWORK_ARGUMENTS = new Set(["id", "user", "session"]);
 /** Tags whose arguments Django reads with its filter syntax; another library's tag may read `|` its own way. */
 const DJANGO_FILE = /[\\/](?:django|wireview)[\\/]/;
 const NOT_FILTERED = new Set(["cond", "class"]);
-/** What `{% filter %}` refuses: the autoescape tag does their work. */
-const NOT_IN_FILTER_TAG = new Set(["escape", "safe"]);
 
 export function diagnose(doc: TemplateDoc, env: Env): Problem[] {
   const project = env.project;
@@ -145,10 +143,6 @@ function checkFilter(doc: TemplateDoc, project: Project, sym: Extract<Sym, { kin
     const entry = tagEntry(doc, sym.tag);
     if (!entry || NOT_FILTERED.has(sym.tag.name) || !DJANGO_FILE.test(entry.meta.file_path)) return;
   }
-  if (sym.tag?.name === "filter" && NOT_IN_FILTER_TAG.has(sym.name)) {
-    report("filter-not-permitted", "error", sym.span, `{% filter %} does not take '${sym.name}': use {% autoescape %} instead.`);
-    return;
-  }
   const filter = visibleAt(doc, sym.span.start)!.filters.get(sym.name);
   if (!filter) {
     const libraries = project.librariesWithFilter(sym.name);
@@ -157,6 +151,12 @@ function checkFilter(doc: TemplateDoc, project: Project, sym: Extract<Sym, { kin
     } else {
       report("unknown-filter", "error", sym.span, `'${sym.name}' is not a filter Django knows here: no library registers it.`);
     }
+    return;
+  }
+  // Django decides by the name the function was last registered under, which only
+  // the metadata knows: without the key, nothing is said
+  if (sym.tag?.name === "filter" && filter.meta.forbidden_in_filter_tag === true) {
+    report("filter-not-permitted", "error", sym.span, `{% filter %} does not take '${sym.name}': use {% autoescape %} instead.`);
     return;
   }
   if (filter.meta.argument === "required" && !sym.hasArgument) {

@@ -121,6 +121,27 @@ def test_a_linked_template_is_checked_against_its_component(tmp_path):
 
 
 @pytest.mark.integration
+def test_the_filter_tag_is_checked_as_the_engine_has_the_filters(tmp_path):
+    """Django refuses {% filter safe %} by the function's _filter_name: a project that renames it is not refused."""
+    from django.template import Library
+    from django.template.defaultfilters import safe
+
+    page = tmp_path / "page.html"
+    page.write_text("{% filter safe %}x{% endfilter %}", encoding="utf-8")
+    metadata_path = tmp_path / "metadata.json"
+    metadata_path.write_text(json.dumps(extract_metadata()), encoding="utf-8")
+    assert [p["code"] for p in _diagnose(metadata_path, page)[str(page)]] == ["filter-not-permitted"]
+
+    try:
+        Library().filter("okay", safe)
+        assert engines["django"].from_string(page.read_text()).render({}) == "x"
+        metadata_path.write_text(json.dumps(extract_metadata()), encoding="utf-8")
+        assert _diagnose(metadata_path, page)[str(page)] == []
+    finally:
+        safe._filter_name = "safe"
+
+
+@pytest.mark.integration
 def test_the_starter_project_templates_have_nothing_to_report(tmp_path):
     """The starter's components are not the test project's: its own manage.py describes them."""
     env = {key: value for key, value in os.environ.items() if key != "DJANGO_SETTINGS_MODULE"}
