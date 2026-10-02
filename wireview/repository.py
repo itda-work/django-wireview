@@ -105,6 +105,9 @@ class ComponentRepository:
         # whose latest pass drew it -- the way to its root's map. It outlives the
         # instance: the page joins the element that pass drew under the id.
         self._built_by: dict[str, str] = {}
+        # For each component, the ids in ``_built_by`` that name it: what the end
+        # of its next pass looks at (``end_pass``), rather than all of them
+        self._drew: dict[str, set[str]] = {}
         # The components whose join failed on this connection, each with the ids
         # its failure removed: itself and the LiveComponents it owned. A parent's
         # later pass builds new instances under those ids that nothing joins.
@@ -220,6 +223,7 @@ class ComponentRepository:
         -- the page may let the element go before that root's render draws it.
         """
         self._built_by[component_id] = drawer_id
+        self._drew.setdefault(drawer_id, set()).add(component_id)
         self._rendered_children.setdefault(drawer_id, set()).add(component_id)
         self._restore.get(drawer_id, {}).pop(component_id, None)
 
@@ -343,6 +347,24 @@ class ComponentRepository:
         """Forget which children ``parent_id`` named; its template pass records them again."""
         self._rendered_children[parent_id] = set()
 
+    def end_pass(self, drawer_id: str) -> set[str]:
+        """The ids the template pass of ``drawer_id`` that just ran named.
+
+        A component it drew before and not in this pass is the page's to let go:
+        ``_built_by`` forgets that the drawer drew it. Every pass ends here, the
+        one a parent's pass runs within its own (``{% component %}``) too. That
+        one left a nested component's former pass on record, and the leave for
+        a component it no longer drew took it for one drawn again.
+        """
+        rendered = self._rendered_children.pop(drawer_id, set())
+        drew = self._drew.pop(drawer_id, set())
+        for child_id in drew - rendered:
+            if self._built_by.get(child_id) == drawer_id:
+                del self._built_by[child_id]
+        if drew := {child_id for child_id in drew & rendered if self._built_by.get(child_id) == drawer_id}:
+            self._drew[drawer_id] = drew
+        return rendered
+
     def take_lifecycle(self, parent_id: str) -> "LifecycleBatch":
         """What the consumer owes the children of ``parent_id`` after its template ran.
 
@@ -355,7 +377,7 @@ class ComponentRepository:
         Only call this after a render that evaluated the template. A skipped render
         names no children, and treating that as "every child disappeared" would be wrong.
         """
-        rendered = self._rendered_children.pop(parent_id, set())
+        rendered = self.end_pass(parent_id)
 
         new = [c for c in self._pending_live_components if c._parent_id == parent_id]
         self._pending_live_components = [c for c in self._pending_live_components if c._parent_id != parent_id]
@@ -365,11 +387,6 @@ class ComponentRepository:
 
         rerender = [c for c in self._pending_rerender if c._parent_id == parent_id]
         self._pending_rerender = [c for c in self._pending_rerender if c._parent_id != parent_id]
-
-        # A component this pass did not draw is the page's to let go
-        for child_id, drawer_id in list(self._built_by.items()):
-            if drawer_id == parent_id and child_id not in rendered:
-                del self._built_by[child_id]
 
         retired = self._pending_leaving
         self._pending_leaving = []

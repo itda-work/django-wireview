@@ -1161,3 +1161,322 @@ async def test_the_params_render_of_a_join_leaves_another_roots_entries_too():
     finally:
         JoinedLateShelf.landed.set()
         await communicator.disconnect()
+
+
+class JoinedTally(LiveComponent):
+    count: int = 0
+
+    async def bump(self):
+        self.count += 1
+
+    @property
+    def label(self) -> str:
+        # One dynamic part, so a diff carries the whole text
+        return f"tally={self.count}"
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<i {% live_tag_header %}>{{ this.label }}</i>")
+
+
+class JoinedTallyBox(Component):
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<b {% tag_header %}>{% live_component 'JoinedTally' id='j-tally' %}</b>")
+
+
+class JoinedTallyFrame(Component):
+    """Draws the box behind an ``{% if %}`` on the prop its own drawer passes."""
+
+    shown: bool = True
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<s {% tag_header %}>"
+            "{% if this.shown %}{% component 'JoinedTallyBox' id='j-tally-box' %}{% endif %}</s>"
+        )
+
+
+class JoinedTallyPage(Component):
+    shown: bool = True
+
+    async def toggle(self):
+        self.shown = not self.shown
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% component 'JoinedTallyFrame' id='j-tally-frame' shown=this.shown %}</p>"
+        )
+
+
+class JoinedTallyShelf(JoinedTallyPage):
+    """Draws the box behind an ``{% if %}`` of its own: one level."""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% if this.shown %}{% component 'JoinedTallyBox' id='j-tally-box' %}{% endif %}</p>"
+        )
+
+
+def _event(id: str, command: str, ref: int) -> dict[str, t.Any]:
+    payload = {"id": id, "command": command, "implicit_args": {}, "explicit_args": {}, "ref": ref}
+    return {"command": "user_event", "payload": payload}
+
+
+def _tallies(heard: t.Any) -> list[str]:
+    """Every ``tally=`` text the messages draw, in order."""
+    if isinstance(heard, str):
+        return [heard] if heard.startswith("tally=") else []
+    values = heard.values() if isinstance(heard, dict) else heard if isinstance(heard, list) else []
+    return [found for value in values for found in _tallies(value)]
+
+
+async def _tally_page(communicator: WebsocketCommunicator, root: type[Component], root_id: str) -> None:
+    """Join ``root`` and the components the page joins under it, and bump the tally to 3."""
+    meta = {"user": AnonymousUser(), "wire": WireviewMeta(params={})}
+    nested = [(root, root_id)]
+    if root is JoinedTallyPage:
+        nested.append((JoinedTallyFrame, "j-tally-frame"))
+    nested.append((JoinedTallyBox, "j-tally-box"))
+    for ref, (component, id) in enumerate(nested, start=1):
+        state = sign_state(component(**meta, id=id))
+        await communicator.send_json_to(
+            {"command": "join", "payload": {"name": component.__name__, "state": state, "children": {}, "ref": ref}}
+        )
+        heard = await _until(communicator, "joined")
+        while heard[-1]["payload"]["id"] != id:
+            heard += await _until(communicator, "joined")
+    assert _tallies(heard) == ["tally=0"], heard
+    for ref in (11, 12, 13):
+        await communicator.send_json_to(_event("j-tally", "bump", ref))
+        bumped = await _until(communicator, "render")
+    assert _tallies(bumped) == ["tally=3"], bumped
+
+
+async def _join_box_again(communicator: WebsocketCommunicator, ref: int) -> list[dict[str, t.Any]]:
+    """The page joins the box a render drew: the tally inside it went with the old element."""
+    box = sign_state(JoinedTallyBox(user=AnonymousUser(), wire=WireviewMeta(params={}), id="j-tally-box"))
+    await communicator.send_json_to(
+        {"command": "join", "payload": {"name": "JoinedTallyBox", "state": box, "children": {}, "ref": ref}}
+    )
+    heard = await _until(communicator, "joined")
+    while heard[-1]["payload"]["id"] != "j-tally-box":
+        heard += await _until(communicator, "joined")
+    return heard
+
+
+async def test_a_live_component_two_component_levels_down_an_if_shows_again_starts_anew():
+    # The page passes the frame a flag, and the frame draws the box behind it.
+    # The page's render draws the frame within its own pass, which never told
+    # the repository the frame no longer drew the box: the box's leave took it
+    # for one the frame had drawn again, and kept the tally's state for it.
+    # The box the page showed again brought the old tally back.
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
+    communicator.scope["user"] = AnonymousUser()
+    connected, _ = await communicator.connect()
+    assert connected
+    try:
+        await _tally_page(communicator, JoinedTallyPage, "j-tally-page")
+
+        await communicator.send_json_to(_event("j-tally-page", "toggle", 21))
+        await _until(communicator, "render")
+        await communicator.send_json_to({"command": "leave", "payload": {"id": "j-tally-box"}})
+        await communicator.send_json_to(_event("j-tally-page", "toggle", 22))
+        await _until(communicator, "render")
+        shown_again = await _join_box_again(communicator, 23)
+
+        assert _tallies(shown_again) == ["tally=0"], shown_again
+    finally:
+        await communicator.disconnect()
+
+
+@pytest.mark.parametrize(("late", "expected"), [(False, "tally=0"), (True, "tally=3")])
+async def test_a_box_hidden_and_shown_again_before_its_leave_lands_keeps_its_tally(late, expected):
+    # The shelf hides the box and shows it again. When the page's leave for the
+    # hidden element comes between the two renders, the box shown again is a
+    # new instance and starts anew. When it comes after both, the second render
+    # has drawn the instance the page had, tally and all, and the leave cannot
+    # be told from the one a reconnect's root sends late (the tests above): the
+    # page joins the box with the tally the render drew.
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
+    communicator.scope["user"] = AnonymousUser()
+    connected, _ = await communicator.connect()
+    assert connected
+    try:
+        await _tally_page(communicator, JoinedTallyShelf, "j-tally-shelf")
+
+        await communicator.send_json_to(_event("j-tally-shelf", "toggle", 21))
+        await _until(communicator, "render")
+        if not late:
+            await communicator.send_json_to({"command": "leave", "payload": {"id": "j-tally-box"}})
+        await communicator.send_json_to(_event("j-tally-shelf", "toggle", 22))
+        await _until(communicator, "render")
+        if late:
+            await communicator.send_json_to({"command": "leave", "payload": {"id": "j-tally-box"}})
+        shown_again = await _join_box_again(communicator, 23)
+
+        assert _tallies(shown_again) == [expected], shown_again
+    finally:
+        await communicator.disconnect()
+
+
+class JoinedFoldingNest(JoinedAsyncNest):
+    """``JoinedAsyncNest`` that can fold the sprig away and back."""
+
+    shown: bool = True
+
+    async def toggle(self):
+        self.shown = not self.shown
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<b {% tag_header %}>"
+            "{% if this.data.ok and this.shown %}{% live_component 'JoinedLateSprig' id='j-late-sprig' %}{% endif %}"
+            "</b>"
+        )
+
+
+class JoinedFoldingNestShelf(JoinedLateNestShelf):
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% if this.data.ok %}{% component 'JoinedFoldingNest' id='j-folding-nest' %}{% endif %}</p>"
+        )
+
+
+async def test_an_entry_further_out_is_spent_by_the_pass_that_takes_one_nearer():
+    # The nest's join and its shelf's both carry the sprig. The shelf's render
+    # draws the nest the page joined, and the nest's later render draws the
+    # sprig from the nest's own entry. The shelf's entry for it is spent too:
+    # the sprig the nest folds away and back is a new instance and starts anew.
+    JoinedLateShelf.landed = asyncio.Event()
+    JoinedAsyncNest.landed = asyncio.Event()
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
+    communicator.scope["user"] = AnonymousUser()
+    connected, _ = await communicator.connect()
+    assert connected
+    try:
+        meta = {"user": AnonymousUser(), "wire": WireviewMeta(params={})}
+        shelf = sign_state(JoinedFoldingNestShelf(**meta, id="j-folding-shelf", data=AsyncResult.success("ok")))
+        nest = sign_state(JoinedFoldingNest(**meta, id="j-folding-nest", data=AsyncResult.success("ok")))
+        kept = ["JoinedLateSprig", sign_state(JoinedLateSprig(**meta, id="j-late-sprig", note="kept-note"))]
+        children = {"j-folding-nest": ["JoinedFoldingNest", nest], "j-late-sprig": kept}
+        await communicator.send_json_to(
+            {
+                "command": "join",
+                "payload": {"name": "JoinedFoldingNestShelf", "state": shelf, "children": children, "ref": 1},
+            }
+        )
+        await _until(communicator, "joined")
+        page = ["JoinedLateSprig", sign_state(JoinedLateSprig(**meta, id="j-late-sprig", note="page-note"))]
+        await communicator.send_json_to(
+            {
+                "command": "join",
+                "payload": {"name": "JoinedFoldingNest", "state": nest, "children": {"j-late-sprig": page}, "ref": 2},
+            }
+        )
+        answered = await _until(communicator, "joined")
+        while answered[-1]["payload"]["id"] != "j-folding-nest":
+            answered += await _until(communicator, "joined")
+        assert "-note" not in str(answered), "the nest's work has yet to land"
+
+        JoinedLateShelf.landed.set()
+        heard = await _until(communicator, "render")
+        while heard[-1]["payload"]["id"] != "j-folding-shelf":
+            heard += await _until(communicator, "render")
+        JoinedAsyncNest.landed.set()
+        drawn = await _until(communicator, "render")
+        assert "page-note" in str(drawn) and "kept-note" not in str(drawn), drawn
+
+        await communicator.send_json_to(_event("j-folding-nest", "toggle", 3))
+        await _until(communicator, "render")
+        await communicator.send_json_to(_event("j-folding-nest", "toggle", 4))
+        shown_again = str(await _until(communicator, "render"))
+
+        assert "fresh-note" in shown_again, shown_again
+        assert "kept-note" not in shown_again
+    finally:
+        JoinedLateShelf.landed.set()
+        JoinedAsyncNest.landed.set()
+        await communicator.disconnect()
+
+
+class JoinedFoldingShelf(JoinedLateShelf):
+    """``JoinedLateShelf`` that can fold the sprig away and back."""
+
+    shown: bool = True
+
+    async def toggle(self):
+        self.shown = not self.shown
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% if this.data.ok and this.shown %}{% live_component 'JoinedLateSprig' id='j-late-sprig' %}{% endif %}"
+            "</p>"
+        )
+
+
+async def test_a_live_component_a_pass_draws_again_spends_what_its_parent_carried():
+    # A sticky shelf crosses a boosted navigation with the entry its join
+    # carried for the sprig, and the next page draws the sprig first. Once the
+    # shelf's work lands its render draws the sprig the page has: the shelf's
+    # entry is spent, and the sprig it folds away and back starts anew.
+    JoinedLateShelf.landed = asyncio.Event()
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
+    communicator.scope["user"] = AnonymousUser()
+    connected, _ = await communicator.connect()
+    assert connected
+    try:
+        meta = {"user": AnonymousUser(), "wire": WireviewMeta(params={})}
+        shelf = sign_state(JoinedFoldingShelf(**meta, id="j-folding-shelf", data=AsyncResult.success("ok")))
+        kept = ["JoinedLateSprig", sign_state(JoinedLateSprig(**meta, id="j-late-sprig", note="kept-note"))]
+        await communicator.send_json_to(
+            {
+                "command": "join",
+                "payload": {
+                    "name": "JoinedFoldingShelf",
+                    "state": shelf,
+                    "children": {"j-late-sprig": kept},
+                    "ref": 1,
+                },
+            }
+        )
+        assert "-note" not in str(await _until(communicator, "joined"))
+
+        page = sign_state(JoinedSprigPage(**meta, id="j-sprig-page"))
+        sprig = ["JoinedLateSprig", sign_state(JoinedLateSprig(**meta, id="j-late-sprig", note="page-note"))]
+        await communicator.send_json_to(
+            {
+                "command": "join",
+                "payload": {"name": "JoinedSprigPage", "state": page, "children": {"j-late-sprig": sprig}, "ref": 2},
+            }
+        )
+        answered = await _until(communicator, "joined")
+        while answered[-1]["payload"]["id"] != "j-sprig-page":
+            answered += await _until(communicator, "joined")
+        assert "page-note" in str(answered), answered
+
+        JoinedLateShelf.landed.set()
+        heard = await _until(communicator, "render")
+        while heard[-1]["payload"]["id"] != "j-folding-shelf":
+            heard += await _until(communicator, "render")
+
+        await communicator.send_json_to(_event("j-folding-shelf", "toggle", 3))
+        await _until(communicator, "render")
+        await communicator.send_json_to(_event("j-folding-shelf", "toggle", 4))
+        shown_again = str(await _until(communicator, "render"))
+
+        assert "fresh-note" in shown_again, shown_again
+        assert "kept-note" not in shown_again
+    finally:
+        JoinedLateShelf.landed.set()
+        await communicator.disconnect()

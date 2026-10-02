@@ -131,9 +131,10 @@ class WireviewMeta:
         self._skip_render: bool = False
         # Holds the component's background work while a worker thread renders it (#138)
         self._render_gate = RenderGate()
-        # Whether the last render_diff() call evaluated the template. False when
-        # the render was skipped, frozen or redirected; the consumer only settles
-        # nested LiveComponents after a render that actually ran the template.
+        # Whether the last render evaluated the template. False when the render
+        # was skipped, frozen or redirected; the consumer only settles nested
+        # LiveComponents after a render that actually ran the template, and a
+        # pass drawn within another's ends only then (``repo.end_pass``).
         self.template_evaluated: bool = False
         # Set once joined() has run for this instance. A join for an id whose
         # instance already joined means new DOM arrived for it (boost navigation):
@@ -416,6 +417,7 @@ class WireviewMeta:
             live=repo.is_live,
         ) as span:
             html = None
+            self.template_evaluated = False
             if not self.channel_name and self._redirected_to:
                 html = format_html(
                     '<meta http-equiv="refresh" content="0; url={url}">',
@@ -423,6 +425,7 @@ class WireviewMeta:
                 )
             elif not (self._is_frozen or self._redirected_to) and html is None:
                 template = component._get_template()
+                self.template_evaluated = True
                 if slots is not None:
                     self.slots = slots.without_markers()
                 elif self.slots is not None:

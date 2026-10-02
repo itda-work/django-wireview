@@ -272,12 +272,16 @@ def _build_and_render_component(
         # Frozen: whatever comes back is a redirect meta or nothing at all.
         return component_instance._render(repo) or ""
 
+    # This pass is the component's own as much as one of its own render is
+    repo.begin_render(component_instance.id)
     # Use slot-aware rendering if slots are provided
     if slots is not None:
         component_instance.wire.slots_from = context.get("this")
         html = component_instance._render_with_slots(repo, slots) or ""
     else:
         html = component_instance._render(repo) or ""
+    if component_instance.wire.template_evaluated:
+        repo.end_pass(component_instance.id)
     if repo.is_live and html:
         # A fill holding this output keeps it as text; the slot's owner finds the
         # component by these marks and draws it as it is then (parsing drops them)
