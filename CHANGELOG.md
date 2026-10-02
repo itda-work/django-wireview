@@ -316,142 +316,6 @@ The django-reactor era changelog (2.x) is preserved in
   that class's. A `name=` given with `public=False` is now the name: under a listed class it was
   dropped, and the class logged and signed its state as its parent
   (`docs/features/component-api.md`).
-- What a new component sends from `joined()` reaches it: its streams, its `push_js` and its
-  `push_event`. A LiveComponent a parent's render brings in sends them right behind that render,
-  and the page patches the render in on the next animation frame, so they found no element and
-  were dropped -- a stream with a "container not found" warning, the rest silently. One whose
-  element is not there yet now waits for the next frame, after the patches already scheduled, and
-  the same component's commands behind it wait with it, so they apply in the order they came; one
-  that still finds nothing then is dropped. Another component's commands do not wait, so a
-  background tab, which runs no frames, holds only what the waiting component sent. A held command
-  that throws is logged and the rest still apply. The client alone changed, so `PROTOCOL_VERSION`
-  stays.
-- The hooks of a component a render brings in mount -- a LiveComponent, or a `{% component %}`
-  an `{% if %}` draws again. The server draws it already marked live, so the page never joined it,
-  and that was the only place its hooks were looked for: they never mounted, and nothing pushed to
-  them arrived.
-- A stream list survives a render that adds an element ahead of it -- a new LiveComponent, another
-  list behind an `{% if %}`. The morph pairs elements without an id by position, so the new one
-  took the container's place and the container was removed with its items; a newly shown empty
-  list took the place of a live one, which then showed twice. Before it patches a render, the page
-  now gives each stream container in it the id of the live one it stands for -- the template's
-  id, or `wire-stream-<component id>-<name>` -- so the morph keeps and moves the container. The
-  HTML the server sends is unchanged, so `PROTOCOL_VERSION` stays.
-- An element the morph reuses for another no longer keeps its old viewport binding. idiomorph
-  turns an element without an id into a new one of the same tag, so the bottom binding under a
-  list could become the top one above it and, still watched as the bottom one, ask for more pages
-  as soon as it was in view.
-- A `push_js` or `push_event` a handler aims at what its own render reveals reaches it -- a
-  `JS().focus()` on the modal it opens, an event for the chart hook it draws. The component's
-  element was on the page, so the command applied at once, ahead of the frame that patches the
-  render in, and found no element or hook. A component with a patch of its element on its way
-  (its own render's, or that of a component around it) now holds its commands, stream ops
-  included, for that frame. The client alone changed, so `PROTOCOL_VERSION` stays.
-- A hook a parent's patch draws inside a nested component the page already joined -- a
-  LiveComponent whose props changed, a `{% component %}` -- mounts, and the hooks of the nested
-  components a patch redraws hear `beforeUpdate()` and `updated()`. The patch rescanned only the
-  hooks of the component it was for, which leaves a nested component's hooks to their own
-  manager, so that one never heard of it.
-- A join that replaces a component's instance -- a boosted move back to its page, the rollback
-  after a crash -- starts infinite scroll once its own first page is in, as the first join does
-  (#112). The observer the old instance's join started kept watching, and its scan of the new
-  DOM saw the bottom binding over a list not there yet: the new instance was asked for a second
-  page before its first came. The page now stops a component's observers, and its
-  LiveComponents', when it sends a join that replaces it; that join's `joined` starts them.
-- Two components on a page whose uploads share a name (`allow_upload("files")` in each) both
-  upload. The `registered`, `progress`, `complete`, `error` and `cancel` ops carry no component
-  id, and the page gave each to the first component with an upload of that name: the other's
-  file was registered with the server and never sent. The page now gives each op to the
-  component that holds the entry its `ref` names. The form is unchanged, so `PROTOCOL_VERSION`
-  stays.
-- A `{% component %}` a live render draws -- one an `{% if %}` shows again -- is joined: its
-  `joined()` runs and its own `wire-viewport-*` bindings are watched. The server built and mounted
-  it in the parent's template pass and drew it marked live, so the page never sent its join and
-  nothing else completed it; its bindings went nowhere, or, before they were sorted by owner, to
-  the parent. The page now joins such an element when it first sees it, and the server takes up
-  the instance the pass built, as it does on the page's first join. A binding the parent's patch
-  draws inside a nested component already joined is watched by that component too. The `join`
-  form is unchanged, so `PROTOCOL_VERSION` stays; an older bundle sends no such join.
-- A `wire-viewport-*` binding inside a LiveComponent calls that LiveComponent's handler. The
-  parent watched the bindings of the components nested in it too and sent them to itself, where
-  the handler was missing or, under the same name, the wrong one. A LiveComponent a render brings
-  in starts watching its own once its `joined()`'s first page is on the page: the server now sends
-  `joined` for it too, after what it queued, as it does for a root. The form is unchanged, so
-  `PROTOCOL_VERSION` stays; an older client that knows `joined` starts that component's infinite
-  scroll, which it never did before.
-- Test harness: `./tests/e2e.sh tests/test_streams_e2e.py` runs that file only. The script always
-  passed pytest `tests examples` ahead of its arguments, so a path given to it was collected next to
-  every E2E suite and the whole suite ran. The defaults now go only when no argument is a path (one
-  that exists, or `path::test`); the value of `-k`, `-m`, `-o` and the like is not taken for one.
-  The value of another option that names a path drops the defaults too, which runs the same suites:
-  pytest then collects from the rootdir, and `tests/test_e2e_script.py` keeps `testpaths` unset.
-
-- A LiveComponent a render brings in is drawn even when another component's patch runs first in
-  the same frame -- a broadcast, a timer, a viewport event or another root's answer. The page
-  registers the new LiveComponent when the render arrives and its parent's patch puts the element
-  in on the next frame; a patch that ran before it saw a registered component with no element and
-  let it go as one that had left. The parent's patch then found nothing to draw for it, and the
-  server, having sent its render, never sent it again: no element, no hooks, no `joined()` push.
-  The page now waits for the patch of the render's component before it takes the missing element
-  for one that left -- and, when that component is a LiveComponent whose own element is still to
-  come, for the patch that draws it.
-
-- Infinite scroll asks for one page at a time after a reconnect. The page dropped its components
-  when the socket closed but left their viewport observers watching: the reconnect's join made a
-  new component whose `joined` started an observer of its own, and the old one, still watching
-  the same binding, sent the same `load_more` to the new instance -- one more page for each
-  reconnect. The page now disconnects the observers of the components it drops, on a close and
-  when a component leaves the page.
-
-- A LiveComponent shown again after a reconnect starts from its defaults, not from the state the
-  reconnect restored to the instance before it. A nested component's join carries the signed states
-  of the components inside it, which the outer join's pass had already built, so nothing took those
-  entries from the restore map and they stayed for the life of the connection: the next instance
-  built under the id, once an `{% if %}` showed it again, took the old state up. A join now keeps
-  no entry for a component already built, and the entries it keeps go when its component leaves --
-  not when a handler of it raises, since the rollback joins it again under the id with the element
-  as the page has it. A LiveComponent that only a later render draws -- inside the result of work
-  `joined()` starts again after the reconnect, directly or inside a `{% component %}` there -- still
-  comes back with the state it had. The page joins such a `{% component %}` right behind its root,
-  before it patches in the root's render that leaves it out, and that join took the entries for it
-  and the LiveComponent in it and lost them when the page let it go. The server now takes such a
-  join with the state the page sent, but neither it nor the renders that answer it (the
-  `params_changed()` one included) take or overwrite an entry another root still on the connection
-  carried; that root's later render restores from it. Only a join for the carried id itself holds
-  back: another root that draws a LiveComponent under such an id carries the page's state for it,
-  which replaces the other root's entry, as it always did. (Ignoring the join instead also
-  dropped the join of a root of the page's own: after a boosted navigation, the next page could draw as a root an id a sticky component carried
-  and had yet to draw, and that component never joined.) The form is unchanged, so
-  `PROTOCOL_VERSION` stays.
-
-- Nothing reaches a component whose join failed until the page joins it again, even when its
-  parent's render draws it again. The parent's template pass built a new instance under the id
-  that nothing joined, and the server's HTML took the `wireview-error` class away: a click or a
-  hook's `pushEvent` reached an instance whose `joined()` never ran, or a LiveComponent of one. The
-  server now remembers, for the connection, the joins that failed on it. It runs no code of such a
-  component nor of the LiveComponents it owns -- as the server counts ownership, so one in its slot
-  is the caller's and works. It answers their events with an empty render, so the page's loading
-  state ends, and takes no hook push or upload for them; a broadcast (`mutation()`,
-  `notification()`), `params_changed()`, `wire.defer()` and a parent's `update_live_component` do
-  not reach them, and the instance is never rendered on its own, a render that would have run
-  `joined()` for the LiveComponents its pass built. What still runs is its parent's render drawing
-  it inline, the `on_mount` hooks that pass runs, and `leaving()` when it goes. It draws the instance its
-  pass builds with a `wire-join-failed` attribute, which the page shows as `wireview-error` after
-  the patch; the page also keeps the class it put on when the error came across a patch of the
-  same element. A join the page sends under the id -- the next connection, a boosted navigation's
-  HTML, an element a render draws anew -- tries the component again. The page keeps the failed
-  component registered, so its hooks hear `destroyed()` when it leaves. The `render` that answers
-  a refused event is the one an event with no handler already gets, so `PROTOCOL_VERSION` stays.
-
-### Security
-
-- `on_upload_complete(name, entry)` is now a method of `Component`, and so framework surface a
-  client cannot call. The session only looked the name up, so a component that defined it had
-  also defined an event handler: a browser could send `on_upload_complete` as an event and run
-  the callback for an upload that never finished. Overrides keep working unchanged; a sync one
-  is now reported by `wireview.W002` instead of `W001`. A test that ran the callback with
-  `view.call("on_upload_complete", ...)` now gets `AssertionError` and calls the method directly
-  (`docs/UPGRADING.md`).
 
 - The quiz example and tutorial 13 wrote a `{% class {...} %}` across several lines. Django's
   lexer reads a tag only when it closes on the line it opens, so the tag was printed into the
@@ -522,6 +386,143 @@ The django-reactor era changelog (2.x) is preserved in
   and points multi-process deployments at a layer that joins processes instead of Redis alone.
   The tutorial index lists the `hooks` example and tutorial 06 under Streams; a test keeps the
   index in step with `examples/`.
+
+- What a new component sends from `joined()` reaches it: its streams, its `push_js` and its
+  `push_event`. A LiveComponent a parent's render brings in sends them right behind that render,
+  and the page patches the render in on the next animation frame, so they found no element and
+  were dropped -- a stream with a "container not found" warning, the rest silently. One whose
+  element is not there yet now waits for the next frame, after the patches already scheduled, and
+  the same component's commands behind it wait with it, so they apply in the order they came; one
+  that still finds nothing then is dropped. Another component's commands do not wait, so a
+  background tab, which runs no frames, holds only what the waiting component sent. A held command
+  that throws is logged and the rest still apply. The client alone changed, so `PROTOCOL_VERSION`
+  stays.
+
+- The hooks of a component a render brings in mount -- a LiveComponent, or a `{% component %}`
+  an `{% if %}` draws again. The server draws it already marked live, so the page never joined it,
+  and that was the only place its hooks were looked for: they never mounted, and nothing pushed to
+  them arrived.
+
+- A stream list survives a render that adds an element ahead of it -- a new LiveComponent, another
+  list behind an `{% if %}`. The morph pairs elements without an id by position, so the new one
+  took the container's place and the container was removed with its items; a newly shown empty
+  list took the place of a live one, which then showed twice. Before it patches a render, the page
+  now gives each stream container in it the id of the live one it stands for -- the template's
+  id, or `wire-stream-<component id>-<name>` -- so the morph keeps and moves the container. The
+  HTML the server sends is unchanged, so `PROTOCOL_VERSION` stays.
+
+- An element the morph reuses for another no longer keeps its old viewport binding. idiomorph
+  turns an element without an id into a new one of the same tag, so the bottom binding under a
+  list could become the top one above it and, still watched as the bottom one, ask for more pages
+  as soon as it was in view.
+
+- A `push_js` or `push_event` a handler aims at what its own render reveals reaches it -- a
+  `JS().focus()` on the modal it opens, an event for the chart hook it draws. The component's
+  element was on the page, so the command applied at once, ahead of the frame that patches the
+  render in, and found no element or hook. A component with a patch of its element on its way
+  (its own render's, or that of a component around it) now holds its commands, stream ops
+  included, for that frame. The client alone changed, so `PROTOCOL_VERSION` stays.
+
+- A hook a parent's patch draws inside a nested component the page already joined -- a
+  LiveComponent whose props changed, a `{% component %}` -- mounts, and the hooks of the nested
+  components a patch redraws hear `beforeUpdate()` and `updated()`. The patch rescanned only the
+  hooks of the component it was for, which leaves a nested component's hooks to their own
+  manager, so that one never heard of it.
+
+- A join that replaces a component's instance -- a boosted move back to its page, the rollback
+  after a crash -- starts infinite scroll once its own first page is in, as the first join does
+  (#112). The observer the old instance's join started kept watching, and its scan of the new
+  DOM saw the bottom binding over a list not there yet: the new instance was asked for a second
+  page before its first came. The page now stops a component's observers, and its
+  LiveComponents', when it sends a join that replaces it; that join's `joined` starts them.
+
+- Two components on a page whose uploads share a name (`allow_upload("files")` in each) both
+  upload. The `registered`, `progress`, `complete`, `error` and `cancel` ops carry no component
+  id, and the page gave each to the first component with an upload of that name: the other's
+  file was registered with the server and never sent. The page now gives each op to the
+  component that holds the entry its `ref` names. The form is unchanged, so `PROTOCOL_VERSION`
+  stays.
+
+- A `{% component %}` a live render draws -- one an `{% if %}` shows again -- is joined: its
+  `joined()` runs and its own `wire-viewport-*` bindings are watched. The server built and mounted
+  it in the parent's template pass and drew it marked live, so the page never sent its join and
+  nothing else completed it; its bindings went nowhere, or, before they were sorted by owner, to
+  the parent. The page now joins such an element when it first sees it, and the server takes up
+  the instance the pass built, as it does on the page's first join. A binding the parent's patch
+  draws inside a nested component already joined is watched by that component too. The `join`
+  form is unchanged, so `PROTOCOL_VERSION` stays; an older bundle sends no such join.
+
+- A `wire-viewport-*` binding inside a LiveComponent calls that LiveComponent's handler. The
+  parent watched the bindings of the components nested in it too and sent them to itself, where
+  the handler was missing or, under the same name, the wrong one. A LiveComponent a render brings
+  in starts watching its own once its `joined()`'s first page is on the page: the server now sends
+  `joined` for it too, after what it queued, as it does for a root. The form is unchanged, so
+  `PROTOCOL_VERSION` stays; an older client that knows `joined` starts that component's infinite
+  scroll, which it never did before.
+
+- Test harness: `./tests/e2e.sh tests/test_streams_e2e.py` runs that file only. The script always
+  passed pytest `tests examples` ahead of its arguments, so a path given to it was collected next to
+  every E2E suite and the whole suite ran. The defaults now go only when no argument is a path (one
+  that exists, or `path::test`); the value of `-k`, `-m`, `-o` and the like is not taken for one.
+  The value of another option that names a path drops the defaults too, which runs the same suites:
+  pytest then collects from the rootdir, and `tests/test_e2e_script.py` keeps `testpaths` unset.
+
+- A LiveComponent a render brings in is drawn even when another component's patch runs first in
+  the same frame -- a broadcast, a timer, a viewport event or another root's answer. The page
+  registers the new LiveComponent when the render arrives and its parent's patch puts the element
+  in on the next frame; a patch that ran before it saw a registered component with no element and
+  let it go as one that had left. The parent's patch then found nothing to draw for it, and the
+  server, having sent its render, never sent it again: no element, no hooks, no `joined()` push.
+  The page now waits for the patch of the render's component before it takes the missing element
+  for one that left -- and, when that component is a LiveComponent whose own element is still to
+  come, for the patch that draws it.
+
+- Infinite scroll asks for one page at a time after a reconnect. The page dropped its components
+  when the socket closed but left their viewport observers watching: the reconnect's join made a
+  new component whose `joined` started an observer of its own, and the old one, still watching
+  the same binding, sent the same `load_more` to the new instance -- one more page for each
+  reconnect. The page now disconnects the observers of the components it drops, on a close and
+  when a component leaves the page.
+
+- A LiveComponent shown again after a reconnect starts from its defaults, not from the state the
+  reconnect restored to the instance before it. A nested component's join carries the signed states
+  of the components inside it, which the outer join's pass had already built, so nothing took those
+  entries from the restore map and they stayed for the life of the connection: the next instance
+  built under the id, once an `{% if %}` showed it again, took the old state up. A join now keeps
+  no entry for a component already built, and the entries it keeps go when its component leaves --
+  not when a handler of it raises, since the rollback joins it again under the id with the element
+  as the page has it. A LiveComponent that only a later render draws -- inside the result of work
+  `joined()` starts again after the reconnect, directly or inside a `{% component %}` there -- still
+  comes back with the state it had. The page joins such a `{% component %}` right behind its root,
+  before it patches in the root's render that leaves it out, and that join took the entries for it
+  and the LiveComponent in it and lost them when the page let it go. The server now takes such a
+  join with the state the page sent, but neither it nor the renders that answer it (the
+  `params_changed()` one included) take or overwrite an entry another root still on the connection
+  carried; that root's later render restores from it. Only a join for the carried id itself holds
+  back: another root that draws a LiveComponent under such an id carries the page's state for it,
+  which replaces the other root's entry, as it always did. (Ignoring the join instead also
+  dropped the join of a root of the page's own: after a boosted navigation, the next page could draw as a root an id a sticky component carried
+  and had yet to draw, and that component never joined.) The form is unchanged, so
+  `PROTOCOL_VERSION` stays.
+
+- Nothing reaches a component whose join failed until the page joins it again, even when its
+  parent's render draws it again. The parent's template pass built a new instance under the id
+  that nothing joined, and the server's HTML took the `wireview-error` class away: a click or a
+  hook's `pushEvent` reached an instance whose `joined()` never ran, or a LiveComponent of one. The
+  server now remembers, for the connection, the joins that failed on it. It runs no code of such a
+  component nor of the LiveComponents it owns -- as the server counts ownership, so one in its slot
+  is the caller's and works. It answers their events with an empty render, so the page's loading
+  state ends, and takes no hook push or upload for them; a broadcast (`mutation()`,
+  `notification()`), `params_changed()`, `wire.defer()` and a parent's `update_live_component` do
+  not reach them, and the instance is never rendered on its own, a render that would have run
+  `joined()` for the LiveComponents its pass built. What still runs is its parent's render drawing
+  it inline, the `on_mount` hooks that pass runs, and `leaving()` when it goes. It draws the instance its
+  pass builds with a `wire-join-failed` attribute, which the page shows as `wireview-error` after
+  the patch; the page also keeps the class it put on when the error came across a patch of the
+  same element. A join the page sends under the id -- the next connection, a boosted navigation's
+  HTML, an element a render draws anew -- tries the component again. The page keeps the failed
+  component registered, so its hooks hear `destroyed()` when it leaves. The `render` that answers
+  a refused event is the one an event with no handler already gets, so `PROTOCOL_VERSION` stays.
 
 ### Security
 

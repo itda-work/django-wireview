@@ -131,9 +131,15 @@ UPGRADE_NOTE = {
     "last-seen helper starts with": ("문서 예시", "튜토리얼 07"),
     "stream of the same name share no list": ("스트림 연산", "`dom_id`"),
     "[GHSA-8q8p-x4w4-p745]": ("`on_upload_complete`는", "consume_uploads"),
+    "A `{% component %}` a live render draws": ("join되고 `joined()`가 돈다", "`mount()`나 핸들러"),
+    "binding inside a LiveComponent calls that LiveComponent's handler": (
+        "join되고 `joined()`가 돈다",
+        "LiveComponent 안의 `wire-viewport-*`",
+    ),
 }
 
 DOCS_ONLY = "문서·저장소만 바뀌었고 라이브러리 동작은 같다"
+FIXED_ONLY = "결함 수정이고, 기대어 쓸 수 있던 동작이 아니었다"
 LOUD_COPY = "그 예시를 베낀 코드는 이미 오류로 드러났다"
 NO_UPGRADE_NOTE = {
     "ships a `.gitignore`": "새로 만드는 프로젝트만 받는다",
@@ -177,6 +183,19 @@ NO_UPGRADE_NOTE = {
     "connection id is issued": DOCS_ONLY,
     "CI runs the examples on every push": DOCS_ONLY,
     "`live.pyi` appears next to `live.py`": DOCS_ONLY,
+    "What a new component sends from `joined()` reaches it": FIXED_ONLY,
+    "The hooks of a component a render brings in mount": FIXED_ONLY,
+    "A stream list survives a render that adds an element ahead of it": FIXED_ONLY,
+    "An element the morph reuses for another no longer keeps its old viewport binding": FIXED_ONLY,
+    "a handler aims at what its own render reveals": FIXED_ONLY,
+    "A hook a parent's patch draws inside a nested component": FIXED_ONLY,
+    "A join that replaces a component's instance": FIXED_ONLY,
+    "Two components on a page whose uploads share a name": FIXED_ONLY,
+    "Test harness: `./tests/e2e.sh": DOCS_ONLY,
+    "is drawn even when another component's patch runs first": FIXED_ONLY,
+    "Infinite scroll asks for one page at a time after a reconnect": FIXED_ONLY,
+    "A LiveComponent shown again after a reconnect starts from its defaults": FIXED_ONLY,
+    "Nothing reaches a component whose join failed": FIXED_ONLY,
 }
 
 
