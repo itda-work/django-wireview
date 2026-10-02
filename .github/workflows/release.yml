@@ -187,6 +187,7 @@ jobs:
     permissions:
       id-token: write # PyPI trusted publishing (OIDC), and signing the attestation
       attestations: write # the documentation bundle's provenance
+      artifact-metadata: write # actions/attest's artifact storage record
       contents: write # GitHub release
     steps:
       - uses: actions/download-artifact@v8
@@ -209,7 +210,7 @@ jobs:
       # ties the bundle to this workflow run. Check with
       # gh attestation verify docs-site-v<version>.tar.gz -R itda-work/django-wireview
       - name: Attest the documentation bundle
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest@v4 # SLSA build provenance by default; attest-build-provenance only wraps it since v4
         with:
           subject-path: site-dist/docs-site-*.tar.gz
 

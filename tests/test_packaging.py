@@ -133,7 +133,7 @@ def test_publishing_uploads_dist_and_attests_the_bundle():
     publish = _workflow("release.yml")["jobs"]["publish"]
     downloads = {step["with"]["name"]: step["with"]["path"] for step in _step(publish, "actions/download-artifact")}
     (pypi,) = _step(publish, "pypa/gh-action-pypi-publish")
-    (attest,) = _step(publish, "actions/attest-build-provenance")
+    (attest,) = _step(publish, "actions/attest")
     (release,) = _step(publish, "softprops/action-gh-release")
     names = [step.get("uses", "").split("@")[0] for step in publish["steps"]]
     assets = release["with"]["files"].split()
@@ -143,9 +143,14 @@ def test_publishing_uploads_dist_and_attests_the_bundle():
     assert _under_dist(downloads["dist"]) and not _under_dist(downloads["docs-site"])
     assert pypi["with"]["packages-dir"].rstrip("/") == "dist"
     assert "docs-site-" in attest["with"]["subject-path"] and not _under_dist(attest["with"]["subject-path"])
-    assert names.index("actions/attest-build-provenance") < names.index("softprops/action-gh-release")
+    assert names.index("actions/attest") < names.index("softprops/action-gh-release")
     assert "dist/*" in assets and attest["with"]["subject-path"] in assets
-    assert publish["permissions"] == {"id-token": "write", "attestations": "write", "contents": "write"}
+    assert publish["permissions"] == {
+        "id-token": "write",
+        "attestations": "write",
+        "artifact-metadata": "write",
+        "contents": "write",
+    }
 
 
 def test_the_build_starts_from_an_empty_dist():
