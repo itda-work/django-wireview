@@ -158,3 +158,16 @@ test("a linked template is named by where it stands in a template directory", ()
   assert.deepEqual(diagnose(parse('{% include "./card.html" %}'), linked).map((p) => p.code), ["template-not-found"]);
   assert.deepEqual(diagnose(parse('{% include "../card.html" %}'), linked).map((p) => p.code), []);
 });
+
+test("only an attribute of an HTML start tag is an attribute", () => {
+  // The browser makes no attribute of these: a comment, a script's string, an end tag
+  assert.deepEqual(codes('<!-- <div wire-viewport-top="missing"> -->'), []);
+  assert.deepEqual(codes(`<script>const example = 'wire-viewport-top="missing"';</script>`), []);
+  assert.deepEqual(codes('<style>/* wire-hook="Nope" */</style><textarea>wire-hook="Nope"</textarea>'), []);
+  assert.deepEqual(codes('<!-- <canvas wire-hook="Nope"> -->text wire-hook="Nope" </div wire-hook="Nope">'), []);
+  // And these are: after the raw text ends, unquoted, upper case, between Django tags
+  assert.deepEqual(codes('<script>x</script><div wire-viewport-top="missing">'), ["unknown-handler"]);
+  assert.deepEqual(codes("<div wire-viewport-top=missing>"), ["unknown-handler"]);
+  assert.deepEqual(codes('<DIV WIRE-VIEWPORT-TOP="missing">'), ["unknown-handler"]);
+  assert.deepEqual(codes('<div {% if a %}wire-hook="Nope"{% endif %}>'), ["unknown-hook"]);
+});

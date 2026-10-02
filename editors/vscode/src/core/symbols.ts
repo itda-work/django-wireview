@@ -2,6 +2,7 @@
 // paths, components and their arguments, events, handlers, slots, hooks and
 // variables. Hover, go to definition and the diagnostics all read this one list,
 // so they agree on what a piece of text is.
+import { startTags } from "./markup.ts";
 import { maskDjango } from "./mask.ts";
 import { kwargOf, literalOf, withoutStrings } from "./scan.ts";
 import type { Bit, Span, TagToken, Token, VariableToken } from "./scan.ts";
@@ -246,17 +247,18 @@ function variablesIn(text: string, start: number, end: number, found: Sym[]): vo
   }
 }
 
-const ATTRIBUTE = /(?<![\w-])(wire-hook|wire-viewport-top|wire-viewport-bottom|wire-auto-recover)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+const NAMED_ATTRIBUTES = new Set(["wire-hook", ...HANDLER_ATTRIBUTES]);
 
-/** `wire-hook` and the attributes that name a handler, in the HTML around the Django syntax. */
+/** `wire-hook` and the attributes that name a handler: on the start tags of the HTML around the Django syntax. */
 export function attributeValues(text: string, tokens: Token[]): { name: string; value: string; start: number }[] {
-  const masked = maskDjango(text, tokens);
   const values: { name: string; value: string; start: number }[] = [];
-  ATTRIBUTE.lastIndex = 0;
-  for (let match = ATTRIBUTE.exec(masked); match; match = ATTRIBUTE.exec(masked)) {
-    const raw = match[2] ?? match[3] ?? "";
-    const start = match.index + match[0].length - raw.length - 1;
-    values.push({ name: match[1], value: text.slice(start, start + raw.length), start });
+  for (const tag of startTags(maskDjango(text, tokens))) {
+    for (const attribute of tag.attributes) {
+      if (attribute.value === null || !NAMED_ATTRIBUTES.has(attribute.name)) continue;
+      // The value as written: what the mask blanked out is a value the template computes
+      const start = attribute.valueStart;
+      values.push({ name: attribute.name, value: text.slice(start, start + attribute.value.length), start });
+    }
   }
   return values;
 }
