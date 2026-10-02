@@ -295,7 +295,7 @@ def _build_and_render_component(
     drew_component(component_instance)
     if repo.is_live and html and not component_instance.wire._rendered_own:
         # Its join's answer tells by this whether joined() drew something new
-        component_instance.wire.passed = (html, component_instance.wire._state_token)
+        component_instance.wire.passed = html
     if repo.is_live and html:
         # A fill holding this output keeps it as text; the slot's owner finds the
         # component by these marks and draws it as it is then (parsing drops them)

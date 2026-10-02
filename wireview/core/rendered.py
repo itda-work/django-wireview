@@ -748,12 +748,18 @@ def strip_markers(html: str) -> str:
     return _TOKEN.sub("", html)
 
 
-_DATA_STATE = re.compile(r' data-state="[^"]*"')
+_DATA_STATE = re.compile(r'( data-state="[^":]*)[^"]*"')
 
 
 def page_drawing(html: str) -> str:
-    """``html`` as the page shows it: no markers, no nested marks, no ``data-state`` token (signed when, not what)."""
-    return _DATA_STATE.sub("", _NESTED.sub("", strip_markers(html)))
+    """``html`` as the page shows it: no markers, no nested marks.
+
+    Each ``data-state`` keeps the payload in front of its signature: the same
+    for the same state, whenever it was signed. What it signs is what a
+    reconnect joins with, the nested components' own as much as the
+    component's -- a field none of them shows counts.
+    """
+    return _DATA_STATE.sub(r'\1"', _NESTED.sub("", strip_markers(html)))
 
 
 def holds_nested_components(html: str) -> bool:

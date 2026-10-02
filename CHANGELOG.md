@@ -445,14 +445,14 @@ The django-reactor era changelog (2.x) is preserved in
   render now records what a part drew from elsewhere, and a kept part whose nested component's own
   render showed something new since -- its temporary assigns and excluded fields included, which its
   signed state leaves out; the render answering its join counts only when it drew other than the
-  pass before it, as when `joined()` set a field or loaded a temporary assign -- or whose fill is
-  another, renders from what it has -- its list leaves the page. A part that did not run because the
-  part around it was kept keeps what it recorded before. Rows drawn by components that did not
-  change, and a fill that did not, stay as before. A LiveComponent in a kept part left the server
-  on the next render, since the template had not named
-  it, while the page kept it and its events went unanswered; it now stays, and the host's render
-  keeps it named instead of taking the part off the page, where the component's own next render did
-  not bring the LiveComponent back. An `{% include %}` drew static text, so an included template
+  pass before it, as when `joined()` set a field, shown or not and its own or one it passes a
+  nested component, or loaded a temporary assign -- or whose fill is another, renders from what it
+  has -- its list leaves the page. A part that did not run because the part around it was kept
+  keeps what it recorded before. Rows drawn by components that did not change, and a fill that did
+  not, stay as before. A LiveComponent in a kept part left the server on the next render, since the
+  template had not named it, while the page kept it and its events went unanswered; it now stays,
+  and the host's render keeps it named instead of taking the part off the page, where the
+  component's own next render did not bring the LiveComponent back. An `{% include %}` drew static text, so an included template
   that read a reset list made a full render that dropped the list; it is now a part of its own,
   kept like a block, and a block holding one looks into the included template for the names it
   reads. A fill that read the host's temporary assign was kept by the host and drawn with the reset

@@ -170,11 +170,12 @@ class WireviewMeta:
         # then. Another component's kept part that drew it before then is old --
         # whether or not the signed state moved with it. Its first, the join's
         # answer, counts only when it drew other than the last pass did
-        # (``passed``, that pass's output and signed state): joined() may have
-        # changed a field or loaded a temporary assign.
+        # (``passed``, that pass's output, ``data-state`` included): joined() may
+        # have changed a field -- its own or one it passes a nested component,
+        # shown or not -- or loaded a temporary assign.
         self.moved: int = 0
         self._rendered_own: bool = False
-        self.passed: tuple[str, tuple[str, str, float] | None] | None = None
+        self.passed: str | None = None
         # When this instance last rendered on its own (render_diff), or ``born``.
         # A slot's owner puts back what it drew of this instance last while this
         # has not moved since (slots._NestedComponentNode).
@@ -395,16 +396,11 @@ class WireviewMeta:
 
         if first:
             passed, self.passed = self.passed, None
-            if passed is not None and self._drawing(*passed) != self._drawing(html_str, self._state_token):
+            if passed is not None and page_drawing(passed) != page_drawing(html_str):
                 self.moved = next(_TICKS)
         elif diff is not None:
             self.moved = next(_TICKS)
         return diff
-
-    @staticmethod
-    def _drawing(html: str, state_token: tuple[str, str, float] | None) -> tuple[str, str | None]:
-        """What a render put on the page, whenever its ``data-state`` was signed."""
-        return page_drawing(html), state_token[0] if state_token else None
 
     def _compute_rendered_diff(self, html: str, vsn: int = 0, stale: t.Collection[int] = ()) -> dict[str, t.Any] | None:
         """Compute Phoenix-style static/dynamic diff in the forms protocol ``vsn`` allows.

@@ -15,6 +15,7 @@ Through the consumer (``command_user_event``), the way a browser's event renders
 import json
 import re
 import typing as t
+from unittest import mock
 
 import pytest
 from django.contrib.auth.models import AnonymousUser
@@ -22,7 +23,8 @@ from django.test import override_settings
 
 from wireview import Component, LiveComponent, function_component
 from wireview.consumer import WireviewConsumer
-from wireview.core.state import sign_state, unsign_state
+from wireview.core.rendered import page_drawing
+from wireview.core.state import sign_state, state_of, unsign_state
 from wireview.repository import ComponentRepository
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio, pytest.mark.django_db]
@@ -138,6 +140,20 @@ TEMPLATES = {
         "{% component 'TaLoadedK' id='k' %}{% endif %}</div>"
     ),
     "ta/loadedk.html": "{% load wireview %}<p {% tag_header %}>K{{ k }}<s>{{ notes|length }}</s></p>",
+    "ta/withhiddenk.html": (
+        "{% load wireview %}<div {% tag_header %}><b>{{ count }}</b>"
+        "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>"
+        "{% component 'TaHiddenK' id='k' %}{% endif %}</div>"
+    ),
+    "ta/hiddenk.html": "{% load wireview %}<p {% tag_header %}>K</p>",
+    # joined() changes what it passes a grandchild that does not show it
+    "ta/withg.html": (
+        "{% load wireview %}<div {% tag_header %}><b>{{ count }}</b>"
+        "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>"
+        "{% component 'TaG' id='g' %}{% endif %}</div>"
+    ),
+    "ta/g.html": "{% load wireview %}<p {% tag_header %}>G{% component 'TaH' id='h' size=notes|length %}</p>",
+    "ta/h.html": "{% load wireview %}<i {% tag_header %}>H</i>",
     "ta/klist.html": (
         "{% load wireview %}<div {% tag_header %}><b>{{ count }}</b>"
         "{% for m in messages %}{% component 'TaK' id='k' %}{% endfor %}</div>"
@@ -360,6 +376,16 @@ class TaWithLoadedK(TaBase):
         template_name = "ta/withloadedk.html"
 
 
+class TaWithHiddenK(TaBase):
+    class Meta:
+        template_name = "ta/withhiddenk.html"
+
+
+class TaWithG(TaBase):
+    class Meta:
+        template_name = "ta/withg.html"
+
+
 class TaKList(TaBase):
     class Meta:
         template_name = "ta/klist.html"
@@ -562,6 +588,38 @@ class TaLoadedK(Component):
 
     async def joined(self):
         self.notes = ["x", "y"]
+
+
+class TaHiddenK(Component):
+    """joined() changes a signed field its template does not show."""
+
+    class Meta:
+        template_name = "ta/hiddenk.html"
+
+    token: str = ""
+
+    async def joined(self):
+        self.token = "loaded"  # e.g. an id it looked up once connected
+
+
+class TaG(Component):
+    """Loads its temporary assign in joined() and passes its length to a grandchild that does not show it."""
+
+    class Meta:
+        template_name = "ta/g.html"
+        temporary_assigns = {"notes"}
+
+    notes: list[str] = []
+
+    async def joined(self):
+        self.notes = ["x", "y"]
+
+
+class TaH(Component):
+    class Meta:
+        template_name = "ta/h.html"
+
+    size: int = 0
 
 
 class TaSlotBlockHost(TaHost):
@@ -1112,19 +1170,77 @@ async def test_the_join_does_not_move_a_nested_component():
     assert "<li>one</li><li>two</li>" in html_now(component), html_now(component)
 
 
-@pytest.mark.parametrize(("name", "joined"), [("TaWithJoinedK", "K5"), ("TaWithLoadedK", "<s>2</s>")])
+def signed_states(consumer: WireviewConsumer, component: Component) -> dict[str, dict[str, t.Any]]:
+    """The signed state of each component ``component``'s last render draws, by id: what a reconnect joins with."""
+    drawn = component.wire._last_rendered.to_html()  # type: ignore[union-attr]
+    found = re.findall(r'id="([^"]+)" data-name="[^"]+" data-state="([^"]+)"', drawn)
+    return {id_: unsign_state(token, type(consumer.repo.get(id_))._fqn) for id_, token in found}
+
+
+def assert_signed_as_on_the_server(consumer: WireviewConsumer, component: Component) -> None:
+    for id_, state in signed_states(consumer, component).items():
+        assert state == state_of(consumer.repo.get(id_)), f"the host put back {id_}'s signed state: {state}"
+
+
+@pytest.mark.parametrize(
+    ("name", "joined"), [("TaWithJoinedK", "K5"), ("TaWithLoadedK", "<s>2</s>"), ("TaWithHiddenK", None)]
+)
 async def test_a_join_that_drew_something_new_moves_a_nested_component(name, joined):
-    """joined() changed what the pass drew: a kept part holding the pass's drawing is drawn again."""
+    """joined() changed what the pass drew: a kept part holding the pass's drawing is drawn again.
+
+    A signed field the page does not show counts too: a reconnect joins with
+    the ``data-state`` the host drew.
+    """
     consumer, outbound, component = await page(name)
     await event(consumer, outbound, "load")
     k = await join(consumer, "k")
-    assert joined in html_now(k), "the control: the join's answer drew what joined() did"
+    if joined is not None:
+        assert joined in html_now(k), "the control: the join's answer drew what joined() did"
+    else:
+        assert signed_states(consumer, k)["k"]["token"] == "loaded", "the control: the join's answer signed it"
 
     await event(consumer, outbound, "bump")
 
     drawn = html_now(component)
     assert "<b>1</b>" in drawn, "the control: the other field went out"
     assert "K0" not in drawn and "<s>0</s>" not in drawn, "the host put k back as the pass drew it"
+    assert_signed_as_on_the_server(consumer, component)
+
+
+@pytest.mark.parametrize("grandchild_joins", [True, False])
+async def test_a_join_that_changed_a_grandchild_moves_the_nested_component(grandchild_joins):
+    """g's joined() changed only what g passes h, which h does not show: h's ``data-state`` is still new."""
+    consumer, outbound, component = await page("TaWithG")
+    await event(consumer, outbound, "load")
+    await join(consumer, "g")
+    assert consumer.repo.get("h").size == 2, "the control: g's joined() passed h its notes"
+    if grandchild_joins:
+        await join(consumer, "h")
+
+    await event(consumer, outbound, "bump")
+
+    assert "<b>1</b>" in html_now(component), "the control: the other field went out"
+    assert_signed_as_on_the_server(consumer, component)
+
+
+async def test_a_drawing_is_the_same_whenever_its_state_was_signed():
+    """A token signed later for the same state draws the same; another state does not."""
+    _, _, component = await page("TaThis")
+    with mock.patch("django.core.signing.time.time", return_value=1_000_000):
+        component.wire._state_token = None
+        first = sign_state(component)
+    with mock.patch("django.core.signing.time.time", return_value=2_000_000):
+        component.wire._state_token = None
+        later = sign_state(component)
+        component.count = 1
+        other = sign_state(component)
+    assert first != later, "the control: signed at another time"
+
+    def drawing(token: str) -> str:
+        return page_drawing(f'<div data-state="{token}">x</div>')
+
+    assert drawing(first) == drawing(later)
+    assert drawing(first) != drawing(other)
 
 
 @pytest.mark.parametrize("name", ["TaRows", "TaRowsNoId"])
