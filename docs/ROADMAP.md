@@ -350,6 +350,7 @@ def button(text: str, variant: str = "primary"):
 | v1.0.0rc3 | ✅ | rc2 뒤의 호환 추가만: `LiveComponent.update_many()`(GAP-035), `toast()`·`atoast()`·`{% wireview_toasts %}`(#116), sticky 컴포넌트(GAP-033), JavaScript 없는 페이지의 약속 문서화(GAP-034), 세션 로직의 `WireviewSession` 분리(GAP-027 1단계). 호환 변경 없음 |
 | v1.0.0rc4 | ✅ | 리뷰 후속과 CI 게이트. `AUTO_BROADCAST`는 `senders`에 적은 모델만 알린다(빈 `senders`는 아무것도 연결하지 않음, W015). async 안전장치(#120), 렌더 중 작업을 미루는 RenderGate(#138·#147), join ref와 프로토콜 6(#139·#146), 스타터 템플릿(#131), W016(#134). 의존성 하한 상향(`channels>=4.2.1`, `pydantic>=2.7,!=2.9.0`, #132). 릴리스 게이트에 하한·Redis E2E 레인. 동작이 바뀌는 것은 [업그레이드 가이드](./UPGRADING.md) |
 | v1.0.0 | ✅ | API 안정화 선언. 이후 규칙은 [호환성 정책](./COMPATIBILITY.md). rc4 뒤의 결함 수정과 보안 권고 셋(GHSA-8q8p-x4w4-p745, GHSA-4v8p-p6p8-78pj, GHSA-pv9v-gqcj-f42x), `mutation()` 인스턴스의 보통 저장(#153), LiveComponent·중첩 컴포넌트의 수명주기와 슬롯·temporary assign 정합성, 문서 사이트와 릴리스 묶음(#157·#160). 동작이 바뀌는 것은 [업그레이드 가이드](./UPGRADING.md#100rc4에서-10으로) |
+| v1.1.0 | ✅ | 첫 마이너. `AUTO_BROADCAST.senders`가 모델마다 보낼 필드를 적는 매핑도 받는다(집합은 그대로 모든 필드, #144), 비밀번호 해시·세션 키를 보내는 설정을 알리는 `wireview.W017`, 문서 사이트의 llms.txt와 에이전트 스킬 Markdown 게시(#164·#165). 호환 변경 없음. 할 일은 [업그레이드 가이드](./UPGRADING.md#10에서-11로) |
 
 ### 릴리스 절차
 
@@ -359,12 +360,12 @@ def button(text: str, variant: str = "primary"):
    제목에 `[YANKED]`를 붙인다. 옮기기 전에 그 절의 항목을 하나씩 `docs/UPGRADING.md`의 그 버전 절과 대조한다 —
    업그레이드하는 프로젝트가 할 일이 있으면 그 절에 적고(조용히 달라지면 **조용함**), 없으면 그 이유를
    `tests/test_upgrading.py`의 표에 적는다. 여러 브랜치가 각자 CHANGELOG에만 적은 변경이 이렇게 빠졌다. 그 표는
-   1.0.0rc4에서 1.0으로 가는 절을 본다. 다음 릴리스는 표와 절을 그 버전으로 옮긴다.
+   1.0에서 1.1로 가는 절을 본다(`PREVIOUS`·`SECTION`). 다음 릴리스는 표와 절을 그 버전으로 옮긴다.
 2. `pyproject.toml`과 `package.json`의 `version`을 함께 올리고, `uv lock`과 `npm install --package-lock-only`로
    두 lock의 버전도 맞춘다(`tests/test_packaging.py`가 넷을 비교한다). 사전 릴리스가 아니면 classifier가
    `Development Status :: 5 - Production/Stable`이어야 한다(같은 파일이 본다).
 3. 이 문서의 릴리스 이력 표에 행을 ✅로 두고 맨 아래 "마지막 업데이트" 날짜를 바꾼다. 마이너·메이저 릴리스면
-   `SECURITY.md`의 지원 버전 표("지금은 1.0.x")와 `docs/UPGRADING.md`의 "어디서 오나" 표·버전 범위를 새 버전에 맞춘다.
+   `SECURITY.md`의 지원 버전 표("지금은 1.1.x")와 `docs/UPGRADING.md`의 "어디서 오나" 표·버전 범위를 새 버전에 맞춘다.
 4. `make quality`, `make test`, `make test-latest`, `make test-lowest`, `make test-e2e`, `make test-e2e LAYER=redis`, `make test-matrix`, `make ci-build`, `make ci-smoke`, `make docs-site`.
    태그 뒤의 게이트와 같은 것을 먼저 로컬에서 본다 — 게이트에서 떨어지면 태그를 지우고 다시 찍어야 한다.
 5. 워크플로나 액션 버전을 바꿨다면 태그 전에 `gh workflow run release.yml`로 dry run을 돌린다. 게이트까지 똑같이 돌고
@@ -390,4 +391,4 @@ def button(text: str, variant: str = "primary"):
 
 ---
 
-*마지막 업데이트: 2026-10-02*
+*마지막 업데이트: 2026-10-03*

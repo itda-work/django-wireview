@@ -1218,7 +1218,7 @@ WIREVIEW = {
 - [성능 가이드](https://github.com/itda-work/django-wireview/blob/main/docs/PERFORMANCE.md) - 성능 최적화 팁
 - [튜토리얼](https://github.com/itda-work/django-wireview/tree/main/docs/tutorials) - 단계별 가이드
 - [로드맵](https://github.com/itda-work/django-wireview/blob/main/docs/ROADMAP.md) - 향후 개발 계획
-- [업그레이드 가이드](https://github.com/itda-work/django-wireview/blob/main/docs/UPGRADING.md) - 0.x나 1.0 릴리스 후보에서 1.0으로. 쓰던 버전별로 읽을 절과 보안 조치
+- [업그레이드 가이드](https://github.com/itda-work/django-wireview/blob/main/docs/UPGRADING.md) - 0.x, 1.0 릴리스 후보, 1.0에서 1.1로. 쓰던 버전별로 읽을 절과 보안 조치
 - [호환성 정책](https://github.com/itda-work/django-wireview/blob/main/docs/COMPATIBILITY.md) - 공개 API, 폐기 절차, 지원 범위
 
 ## 개발 및 기여
