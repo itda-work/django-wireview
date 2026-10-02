@@ -428,8 +428,9 @@ The django-reactor era changelog (2.x) is preserved in
   render. That drawing now keeps the parts that read nothing but a reset temporary assign as the
   component's own last render drew them, as its own next render would; such a part goes into the
   host's render as text, so the host's first render after the list loaded sends it once more. A
-  `{% component_block %}` whose fill draws the host's values keeps it too, unless the fill's text
-  changed in that render; a part that names a LiveComponent is drawn as it is now.
+  `{% component_block %}` whose fill draws the host's values, or holds a `{% component %}`, keeps it
+  too, unless the fill's text changed in that render. A part that names a LiveComponent is drawn as
+  it is now; the nested component's own next render still keeps it as it was.
 - A component drawn with `{% component %}` and no fill draws no slot. A boosted visit to another
   page whose host draws a component of the same class and id took over the instance the page
   before had filled, and a render without slots fell back to the ones it remembered: that page's

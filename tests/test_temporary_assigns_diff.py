@@ -98,6 +98,12 @@ TEMPLATES = {
         "{% component_block 'TaSlotted' id='g' %}{% fill body %}{% live_component 'TaLive' id='lc' %}{% endfill %}"
         "{% endcomponent %}</main>"
     ),
+    "ta/componentfill.html": (
+        "{% load wireview %}<main {% tag_header %}><i>{{ this.n }}</i>"
+        "{% component_block 'TaSlotted' id='g' %}{% fill body %}<em>{{ this.title }}</em>{% component 'TaK' id='k' %}"
+        "{% endfill %}{% endcomponent %}</main>"
+    ),
+    "ta/k.html": "{% load wireview %}<p {% tag_header %}>K{{ k }}</p>",
     "ta/withlive.html": (
         "{% load wireview %}<div {% tag_header %}><b>{{ count }}</b>"
         "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>"
@@ -232,6 +238,18 @@ class TaBlockHost(TaHost):
 class TaChangingFillHost(TaHost):
     class Meta:
         template_name = "ta/changingfill.html"
+
+
+class TaComponentFillHost(TaBlockHost):
+    class Meta:
+        template_name = "ta/componentfill.html"
+
+
+class TaK(Component):
+    class Meta:
+        template_name = "ta/k.html"
+
+    k: int = 0
 
 
 class TaLiveFillHost(TaHost):
@@ -432,7 +450,7 @@ async def nested_page(host: str, child: str) -> tuple[WireviewConsumer, FakeOutb
     consumer.outbound = outbound  # type: ignore[assignment]
     host_component = await consumer.repo.join(host, {"id": "p", "child": child})
     await consumer.send_render(host_component)
-    for nested in ("f", "g"):
+    for nested in ("f", "g", "k"):
         if (instance := consumer.repo.get(nested)) is not None:
             await consumer.command_join(type(instance)._fqn, sign_state(instance))
     return consumer, outbound, host_component, consumer.repo.get("g")
@@ -533,6 +551,20 @@ async def test_the_hosts_render_leaves_the_list_of_a_component_block_whose_fill_
 
     drawn = html_now(host)
     assert "<i>1</i>" in drawn and "<em>T</em>" in drawn, "the control: the host's change went out"
+    assert "<li>one</li><li>two</li>" in drawn, drawn
+
+
+async def test_the_hosts_render_leaves_the_list_of_a_component_block_whose_fill_holds_a_component():
+    """The component's own render draws the fill's component with numbered parts, so the host's pass keeps them."""
+    consumer, outbound, host, nested = await nested_page("TaComponentFillHost", "TaSlotted")
+    await consumer.command_user_event("g", "load", {}, {})
+    assert "<li>one</li><li>two</li>" in html_now(nested)
+
+    await consumer.command_user_event("p", "bump", {}, {})
+
+    drawn = html_now(host)
+    assert "<i>1</i>" in drawn and "<em>T</em>" in drawn, "the control: the host's change went out"
+    assert "K0</p>" in drawn, "the fill's component is drawn"
     assert "<li>one</li><li>two</li>" in drawn, drawn
 
 

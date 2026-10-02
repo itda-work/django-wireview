@@ -566,7 +566,8 @@ def keep_stale(html: str, stale: t.Collection[int], previous: Rendered | None, f
     Markers numbered below ``first`` are the enclosing pass's, in a fill it
     drew before the component. The component's own render has that fill as
     text, so they are left out when lining the two up -- all but a
-    LiveComponent's reference, which its own render numbers too.
+    LiveComponent's reference and a nested component's output, which its own
+    render numbers too.
     """
     if not stale or previous is None:
         return html
@@ -587,7 +588,13 @@ def keep_stale(html: str, stale: t.Collection[int], previous: Rendered | None, f
     if stack or not spans:
         return html
     if first:
-        html_own = _MARKER_OR_REF.sub(lambda m: m.group(0) if m.group(1) or int(m.group(3)) >= first else "", html)
+        nested = [match.span() for match in _PLACE.finditer(html) if match.group(2)]
+
+        def own(match: re.Match[str]) -> str:
+            kept = match.group(1) or int(match.group(3)) >= first
+            return match.group(0) if kept or any(a <= match.start() < b for a, b in nested) else ""
+
+        html_own = _MARKER_OR_REF.sub(own, html)
     else:
         html_own = html
     parsed = Rendered.from_marked_html(html_own, stale)
