@@ -17,7 +17,7 @@ import { definition, hover } from "./core/navigation.ts";
 import type { Span } from "./core/scan.ts";
 import { parseTemplate } from "./core/template.ts";
 import type { TemplateDoc } from "./core/template.ts";
-import { FolderProject, isFile } from "./folders.ts";
+import { FolderProject, isFile, SOURCE_SETTINGS } from "./folders.ts";
 import { closeTagsOnType, htmlCompletions, htmlFolds, htmlHover, htmlLinkedEditing } from "./html.ts";
 
 const TEMPLATES: vscode.DocumentSelector = [
@@ -219,7 +219,12 @@ export function activate(context: vscode.ExtensionContext): Api {
       if (document.languageId === "python") folderOf(document)?.pythonSaved();
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration("wireview")) checkAll();
+      if (!event.affectsConfiguration("wireview")) return;
+      for (const folder of folders.values()) {
+        // Another source: what the old one was doing no longer counts
+        if (SOURCE_SETTINGS.some((key) => event.affectsConfiguration(`wireview.${key}`, folder.folder.uri))) void folder.configure();
+      }
+      checkAll();
     }),
     vscode.window.onDidChangeActiveTextEditor(updateStatus),
   );

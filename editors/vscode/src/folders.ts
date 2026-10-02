@@ -11,9 +11,12 @@ import * as vscode from "vscode";
 import { checkVersion, METADATA_MAJOR, METADATA_MINOR } from "./core/metadata.ts";
 import type { Metadata } from "./core/metadata.ts";
 import { Project } from "./core/project.ts";
-import { buildCommand, classifyFailure, interpreterCandidates, pickManagePy, Refresher } from "./core/runner.ts";
+import { buildCommand, classifyFailure, Generations, interpreterCandidates, pickManagePy, Refresher } from "./core/runner.ts";
 
 export type State = "idle" | "running" | "ok" | "failed" | "off";
+
+/** The settings that say where the metadata comes from: a change starts over. */
+export const SOURCE_SETTINGS = ["metadataPath", "managePy", "pythonPath", "metadataCommand"] as const;
 
 export function isFile(path: string): boolean {
   try {
@@ -31,10 +34,12 @@ export class FolderProject implements vscode.Disposable {
   detail = "";
   private names: string[] | undefined;
   private readonly refresher: Refresher;
+  private readonly generations = new Generations();
   private readonly storage: string;
   private readonly output: vscode.OutputChannel;
   private readonly changed: () => void;
-  private readonly disposables: vscode.Disposable[] = [];
+  /** What watches the current source: replaced when the source changes. */
+  private watchers: vscode.Disposable[] = [];
 
   constructor(folder: vscode.WorkspaceFolder, storage: string, output: vscode.OutputChannel, changed: () => void) {
     this.folder = folder;
@@ -57,25 +62,39 @@ export class FolderProject implements vscode.Disposable {
     this.output.appendLine(`[${this.folder.name}] ${line}`);
   }
 
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    return this.configure();
+  }
+
+  /**
+   * Read the settings that say where the metadata comes from and start from them.
+   * Called at the start and when one of them changes: what the old source was
+   * doing, a run or a watcher, no longer counts.
+   */
+  async configure(): Promise<void> {
+    const signal = this.generations.next();
+    for (const watcher of this.watchers) watcher.dispose();
+    this.watchers = [];
+    if (signal.aborted) return;
     const fixed = this.config().get<string>("metadataPath", "");
     if (fixed) {
       // Something else writes it: read it, and again whenever it changes
       const path = this.resolve(fixed);
       const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(nodePath.dirname(path), nodePath.basename(path)));
-      watcher.onDidChange(() => this.load(path, "the metadata file"));
-      watcher.onDidCreate(() => this.load(path, "the metadata file"));
-      this.disposables.push(watcher);
-      this.load(path, "the metadata file");
+      watcher.onDidChange(() => this.load(path, "the metadata file", signal));
+      watcher.onDidCreate(() => this.load(path, "the metadata file", signal));
+      this.watchers.push(watcher);
+      this.load(path, "the metadata file", signal);
       return;
     }
     // What the last session left: the editor works while the first run goes on
-    if (isFile(this.storage)) this.load(this.storage, "the last run");
-    await this.refresh();
+    if (isFile(this.storage)) this.load(this.storage, "the last run", signal);
+    await this.refresher.now();
   }
 
-  /** Read metadata from a file; keep what there was when it cannot be read. */
-  private load(path: string, from: string): boolean {
+  /** Read metadata from a file; keep what there was when it cannot be read. Nothing, once the signal is aborted. */
+  private load(path: string, from: string, signal: AbortSignal): boolean {
+    if (signal.aborted) return false;
     let metadata: unknown;
     try {
       metadata = JSON.parse(readFileSync(path, "utf8"));
@@ -112,8 +131,9 @@ export class FolderProject implements vscode.Disposable {
 
   /** Run now (or right after the run that is going on). */
   refresh(): Promise<void> {
-    if (this.config().get<string>("metadataPath", "")) {
-      this.load(this.resolve(this.config().get<string>("metadataPath", "")), "the metadata file");
+    const fixed = this.config().get<string>("metadataPath", "");
+    if (fixed) {
+      this.load(this.resolve(fixed), "the metadata file", this.generations.signal);
       return Promise.resolve();
     }
     return this.refresher.now();
@@ -166,8 +186,16 @@ export class FolderProject implements vscode.Disposable {
     return candidates.find((candidate, index) => index === candidates.length - 1 || isFile(candidate)) ?? candidates[candidates.length - 1];
   }
 
+  /** The one place a process is spawned. */
   private async run(): Promise<void> {
+    // The run belongs to the generation it starts in: a source changed or a project
+    // gone while it awaits makes everything it finds stale
+    const signal = this.generations.signal;
+    if (signal.aborted) return;
+    // A metadata file took over since this run was asked for
+    if (this.config().get<string>("metadataPath", "")) return;
     const managePy = await this.managePy();
+    if (signal.aborted) return;
     if (!managePy || !isFile(managePy)) {
       this.state = "off";
       this.detail = "No manage.py in this folder.";
@@ -175,6 +203,7 @@ export class FolderProject implements vscode.Disposable {
       return;
     }
     const python = await this.python(nodePath.dirname(managePy));
+    if (signal.aborted) return;
     const next = `${this.storage}.next`;
     mkdirSync(nodePath.dirname(this.storage), { recursive: true });
     // A file a run left is not this run's output
@@ -184,11 +213,13 @@ export class FolderProject implements vscode.Disposable {
     this.changed();
     this.log(`${line.command} ${line.args.join(" ")}  (in ${line.cwd})`);
     const result = await new Promise<{ code: number; stderr: string }>((done) => {
-      execFile(line.command, line.args, { cwd: line.cwd, timeout: 120_000, maxBuffer: 64 * 1024 * 1024 }, (error, _stdout, stderr) => {
+      // The signal stops the process when its generation ends
+      execFile(line.command, line.args, { cwd: line.cwd, timeout: 120_000, maxBuffer: 64 * 1024 * 1024, signal }, (error, _stdout, stderr) => {
         const code = error ? (typeof error.code === "number" ? error.code : 1) : 0;
         done({ code, stderr: stderr || (error && !stderr ? error.message : "") });
       });
     });
+    if (signal.aborted) return;
     if (result.code !== 0 || !existsSync(next)) {
       if (classifyFailure(result.stderr) === "no-command") {
         // Not a django-wireview project, or one too old for this: nothing to do here
@@ -203,7 +234,7 @@ export class FolderProject implements vscode.Disposable {
       this.fail(`manage.py wireview_lsp failed (exit ${result.code}). ${this.project ? "Keeping the last metadata." : ""}`.trim());
       return;
     }
-    if (this.load(next, "manage.py wireview_lsp")) renameSync(next, this.storage);
+    if (this.load(next, "manage.py wireview_lsp", signal)) renameSync(next, this.storage);
   }
 
   /** The template names under the project's template directories. */
@@ -236,7 +267,9 @@ export class FolderProject implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.generations.end();
     this.refresher.dispose();
-    for (const disposable of this.disposables) disposable.dispose();
+    for (const watcher of this.watchers) watcher.dispose();
+    this.watchers = [];
   }
 }

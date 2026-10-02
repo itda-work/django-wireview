@@ -74,6 +74,7 @@ export interface Timers {
 export class Refresher {
   private running: Promise<void> | null = null;
   private again = false;
+  private disposed = false;
   private timer: unknown = null;
   private readonly run: () => Promise<void>;
   private readonly delay: number;
@@ -91,6 +92,7 @@ export class Refresher {
 
   /** After a quiet moment: saves come in bursts. */
   schedule(): void {
+    if (this.disposed) return;
     if (this.timer !== null) this.timers.clearTimeout(this.timer);
     this.timer = this.timers.setTimeout(() => {
       this.timer = null;
@@ -100,6 +102,7 @@ export class Refresher {
 
   /** Now, or right after the run that is going on. Resolves when the metadata reflects this request. */
   now(): Promise<void> {
+    if (this.disposed) return this.running ?? Promise.resolve();
     if (this.running) {
       this.again = true;
       return this.running;
@@ -113,7 +116,7 @@ export class Refresher {
           } catch {
             // The run reports its own failure; the next request still runs
           }
-        } while (this.again);
+        } while (this.again && !this.disposed);
       } finally {
         this.running = null;
       }
@@ -121,8 +124,40 @@ export class Refresher {
     return this.running;
   }
 
+  /** No run starts after this: not the one asked for during a run, not a scheduled one. */
   dispose(): void {
+    this.disposed = true;
+    this.again = false;
     if (this.timer !== null) this.timers.clearTimeout(this.timer);
     this.timer = null;
+  }
+}
+
+/**
+ * Which run's results still count. Changing where the metadata comes from (another
+ * file, another command) starts a new generation, and so does the project's end;
+ * a run holds the signal of the generation it started in, hands it to the process
+ * it spawns, and drops what it finds once the signal is aborted. One place decides
+ * that an old run's answer is not this project's, whatever the run was doing.
+ */
+export class Generations {
+  private controller = new AbortController();
+  private ended = false;
+
+  get signal(): AbortSignal {
+    return this.controller.signal;
+  }
+
+  /** The runs so far are stale: their processes are stopped and their results dropped. */
+  next(): AbortSignal {
+    this.controller.abort();
+    if (!this.ended) this.controller = new AbortController();
+    return this.controller.signal;
+  }
+
+  /** For good: every signal after this is aborted. */
+  end(): void {
+    this.ended = true;
+    this.controller.abort();
   }
 }

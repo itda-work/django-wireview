@@ -112,3 +112,21 @@ test("scheduled requests wait for a quiet moment and run once", () => {
   timers[2].callback();
   assert.equal(calls, 1);
 });
+
+test("after dispose: no run follows, not the one asked for during a run", async () => {
+  let runs = 0;
+  let release = () => {};
+  const refresher = new Refresher(async () => {
+    runs += 1;
+    if (runs === 1) await new Promise<void>((done) => (release = done));
+  }, 0);
+  const running = refresher.now();
+  void refresher.now(); // one more would follow
+  refresher.schedule();
+  refresher.dispose();
+  release();
+  await running;
+  await refresher.now();
+  await new Promise((done) => setTimeout(done, 20));
+  assert.equal(runs, 1);
+});
