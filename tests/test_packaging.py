@@ -104,3 +104,29 @@ def test_the_lock_files_say_the_same_version():
 
     assert locked == [project["version"]]
     assert npm_lock["version"] == npm_lock["packages"][""]["version"] == project["version"]
+
+
+def test_the_sdist_holds_the_package_and_nothing_else_of_the_repository():
+    """The include patterns were not anchored, so they matched at any depth (#156).
+
+    Every README.md, CHANGELOG.md and LICENSE in the repository went into the
+    sdist: the examples' and the docs', and with editors/vscode installed, its
+    node_modules'. Asked of the builder, as test_agent_skill.py does.
+    """
+    hatchling_sdist = pytest.importorskip("hatchling.builders.sdist")
+
+    selected = {f.relative_path for f in hatchling_sdist.SdistBuilder(str(ROOT)).recurse_included_files()}
+
+    tops = {path.split("/", 1)[0] for path in selected}
+    assert tops <= {
+        "wireview",
+        "skills",
+        "README.md",
+        "hatch_build.py",
+        "CHANGELOG.md",
+        "LICENSE",
+        "pyproject.toml",
+        ".gitignore",
+    }
+    assert {"README.md", "CHANGELOG.md", "LICENSE", "hatch_build.py"} <= selected
+    assert "wireview/templatetags/wireview.py" in selected

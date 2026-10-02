@@ -98,14 +98,17 @@ packages = ["wireview"]
 # `manage.py wireview_agent_setup` can find it in an installed project.
 [tool.hatch.build.targets.wheel.hooks.custom]
 
+# Anchored at the root: a pattern without the slash matches at any depth, and
+# "README.md" took every README in the repository into the sdist -- the
+# examples', the docs', and editors/vscode/node_modules' hundreds.
 [tool.hatch.build.targets.sdist]
 include = [
-    "wireview",
-    "skills",
-    "README.md",
-    "hatch_build.py",
-    "CHANGELOG.md",
-    "LICENSE",
+    "/wireview",
+    "/skills",
+    "/README.md",
+    "/hatch_build.py",
+    "/CHANGELOG.md",
+    "/LICENSE",
 ]
 
 # The sdist has to carry skills/wireview, and `include` cannot make it: hatchling's
