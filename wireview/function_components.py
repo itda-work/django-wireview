@@ -179,9 +179,20 @@ class FunctionComponent:
         self._param_info = self._extract_param_info()
 
     def _extract_param_info(self) -> dict[str, dict[str, t.Any]]:
-        """Extract parameter information from function signature."""
+        """Extract parameter information from function signature.
+
+        ``*args`` and ``**kwargs`` are not arguments a template names. They were
+        listed as required ones, so a component with ``**attrs`` failed every
+        render with "missing required argument: 'attrs'".
+        """
         params = {}
+        variadic = (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+        self._takes_any_keyword = any(
+            param.kind is inspect.Parameter.VAR_KEYWORD for param in self._signature.parameters.values()
+        )
         for name, param in self._signature.parameters.items():
+            if param.kind in variadic:
+                continue
             info: dict[str, t.Any] = {"required": param.default is inspect.Parameter.empty}
             if param.default is not inspect.Parameter.empty:
                 info["default"] = param.default
@@ -229,9 +240,11 @@ class FunctionComponent:
             elif "default" in info:
                 validated[name] = info["default"]
 
-        # Check for unexpected arguments
+        # Check for unexpected arguments: ``**kwargs`` takes them as they are
         unexpected = set(kwargs.keys()) - set(self._param_info.keys())
-        if unexpected:
+        if unexpected and self._takes_any_keyword:
+            validated.update((name, kwargs[name]) for name in unexpected)
+        elif unexpected:
             raise TypeError(
                 f"Function component '{self.name}' got unexpected arguments: {', '.join(sorted(unexpected))}"
             )

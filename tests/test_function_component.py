@@ -6,6 +6,7 @@ import pytest
 from django.contrib.auth.models import AnonymousUser
 from django.template import Context, Template, TemplateSyntaxError
 from django.test import override_settings
+from django.utils.html import format_html, format_html_join
 
 from wireview import Component
 from wireview.consumer import WireviewConsumer
@@ -267,6 +268,26 @@ class TestValidation:
             fc.validate_args({"text": "Test", "extra": "bad"})
 
         assert "unexpected arguments" in str(exc_info.value)
+
+    def test_keyword_arguments_go_to_double_star(self):
+        """``**attrs`` was listed as a required argument named 'attrs': every render failed (#156)."""
+
+        @function_component(name="test_attrs_chip")
+        def chip(text: str, *args, **attrs):
+            return format_html("<span {}>{}</span>", format_html_join(" ", '{}="{}"', attrs.items()), text)
+
+        try:
+            assert chip.render({"text": "hi"}) == "<span >hi</span>"
+            assert chip.render({"text": "hi", "title": "t"}) == '<span title="t">hi</span>'
+            with pytest.raises(TypeError, match="missing required argument: 'text'"):
+                chip.validate_args({"title": "t"})
+            rendered = Template('{% load wireview %}{% func "test_attrs_chip" text="x" role="note" %}').render(
+                Context()
+            )
+            assert rendered == '<span role="note">x</span>'
+        finally:
+            for key in [key for key, fc in _registry.items() if fc is chip]:
+                del _registry[key]
 
 
 @pytest.mark.unit

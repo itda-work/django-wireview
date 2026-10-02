@@ -230,6 +230,15 @@ def avatar(src: str, size: int = 40, rounded: bool = True):
 - True: `"true"`, `"1"`, `"yes"`, 비어있지 않은 문자열
 - False: `"false"`, `"0"`, `"no"`, `""`
 
+**정해 두지 않은 인자는 `**kwargs`가 받는다.** 함수가 `**attrs`를 받으면 시그니처에 없는 인자가
+변환 없이 그대로 거기로 간다. 받지 않으면 그런 인자는 `TypeError`다.
+
+```python
+@function_component
+def chip(text: str, **attrs):
+    return format_html("<span {}>{}</span>", format_html_join(" ", '{}="{}"', attrs.items()), text)
+```
+
 ---
 
 ## 컴포넌트 네이밍
