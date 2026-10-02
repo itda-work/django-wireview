@@ -218,6 +218,7 @@ NO_UPGRADE_NOTE = {
     "template directories were read off `TEMPLATES`": "W011의 새 경고는 전부터 있던, 보지 못한 문제다",
     "named a tag that does not exist": DOCS_ONLY,
     "The sdist took every `README.md`": "sdist에서 저장소 파일이 빠졌을 뿐 패키지는 같다",
+    "Two runs of `manage.py wireview_lsp` over the same project": FIXED_ONLY,
 }
 
 

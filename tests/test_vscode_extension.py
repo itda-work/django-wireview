@@ -288,3 +288,21 @@ def test_only_the_host_tests_are_outside_the_release_gate():
     gate = " ".join(str(step.get("run", "")) for step in ci["jobs"]["vscode-extension"]["steps"])
     assert "test:host" in host and "test:host" not in gate
     assert all(command in gate for command in ("npm run typecheck", "npm test", "npm run package"))
+
+
+@pytest.mark.unit
+def test_the_readme_lists_every_setting_with_its_default():
+    manifest = json.loads((EXTENSION / "package.json").read_text(encoding="utf-8"))
+    settings = {
+        name: json.dumps(spec["default"], separators=(", ", ": "))
+        for name, spec in manifest["contributes"]["configuration"]["properties"].items()
+    }
+    readme = (EXTENSION / "README.md").read_text(encoding="utf-8")
+    listed = dict(re.findall(r"^\| `(wireview\.[\w.]+)` \| `([^`]*)` \|", readme, flags=re.M))
+    assert listed == settings
+    # What Restricted Mode keeps to the user's own settings: every one that picks what runs or what is read
+    restricted = manifest["capabilities"]["untrustedWorkspaces"]["restrictedConfigurations"]
+    folders = (EXTENSION / "src" / "folders.ts").read_text(encoding="utf-8")
+    source = re.search(r"SOURCE_SETTINGS = \[([^\]]*)\]", folders)
+    assert source, "folders.ts names the settings that pick the metadata's source"
+    assert set(restricted) == {f"wireview.{key}" for key in re.findall(r'"(\w+)"', source.group(1))}

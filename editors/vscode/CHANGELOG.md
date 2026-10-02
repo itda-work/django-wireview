@@ -10,7 +10,10 @@ git tags `v*` (see the repository's CHANGELOG.md). It reads the metadata of
 
 - The `django-html` language: a TextMate grammar over HTML for `{% %}`, `{{ }}` and `{# #}`
   (in text, attribute values and scripts), comment toggling, auto-closing of `{%` and `{#`,
-  block-tag indentation, and `**/templates/**/*.html` associated with it.
+  block-tag indentation, and `**/templates/**/*.html` associated with it. Once the metadata is
+  read, an `.html` file in any directory the project's template engine searches is switched to it
+  too (`wireview.associateTemplateDirs`), unless `files.associations` names it `html` or the user
+  switched it back.
 - HTML support in `django-html` files from `vscode-html-languageservice`: tag and attribute
   completion (with the `wire-*` attributes), hover, closing tags as `>` and `/` are typed, folding,
   linked editing. Emmet is on for the language.
@@ -24,3 +27,6 @@ git tags `v*` (see the repository's CHANGELOG.md). It reads the metadata of
 - Snippets for templates and for Python.
 - The metadata runs again when a Python file is saved; the last metadata that worked is kept when a
   run fails. Commands: Refresh Project Metadata, Go to Component, Show Output.
+- Restricted Mode: in an untrusted workspace nothing runs and no metadata file is read, not the
+  last session's either; the grammar, the snippets and the HTML support work. Trusting the
+  workspace starts the metadata.

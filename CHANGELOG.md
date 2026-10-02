@@ -14,15 +14,17 @@ The django-reactor era changelog (2.x) is preserved in
 
 - An editor extension for VS Code in `editors/vscode/` (built as a `.vsix`, not published yet).
   It provides the `django-html` language -- a grammar, comment toggling, auto-closing and
-  indentation for `{% %}`, `{{ }}` and `{# #}`, with `**/templates/**/*.html` associated -- and
+  indentation for `{% %}`, `{{ }}` and `{# #}`, with `**/templates/**/*.html` associated and
+  any `.html` in a directory the project's template engine searches switched to it -- and
   gives back the HTML completion, hover and closing tags a file loses when it stops being `html`.
   It completes, explains and goes to Django's tags and filters and django-wireview's components,
   arguments, events, modifiers, handlers, slots and hooks, and reports in a template what Django
   or django-wireview would raise when it renders: an unknown component, handler, tag, filter or
   library, a tag not loaded, a missing id, argument or required slot, an invalid modifier, an
   unclosed block. It says nothing it is not sure of; every template in this repository has
-  nothing to report (`tests/test_vscode_extension.py`). The extension is versioned on its own
-  and reads only the output of `manage.py wireview_lsp` (#156).
+  nothing to report (`tests/test_vscode_extension.py`). In an untrusted workspace (Restricted
+  Mode) it runs nothing and reads no metadata until the workspace is trusted. The extension is
+  versioned on its own and reads only the output of `manage.py wireview_lsp` (#156).
 
 - `manage.py wireview_lsp` writes metadata version 1.1, which adds keys and changes none. A
   component says its `kind` (component or LiveComponent), its `template_path` on disk, whether it
@@ -172,6 +174,10 @@ The django-reactor era changelog (2.x) is preserved in
   required argument named `kwargs`, so every `{% func %}` failed with "missing required
   argument". Arguments the signature does not name now go to it as they are, in the order
   the template passes them.
+
+- Two runs of `manage.py wireview_lsp` over the same project wrote different metadata: a field's
+  `annotation` that holds an `Annotated` validator, and a default's repr, carried the object's
+  memory address. The address is left out now (#156).
 
 - The project's template directories were read off `TEMPLATES`: a project that lists its loaders
   in `OPTIONS` -- the cached loader -- has `APP_DIRS` off, and every app's templates were missed.
