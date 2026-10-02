@@ -107,8 +107,10 @@ CI나 빌드 작업을 `bug`/`enhancement`에 억지로 넣지 않는다.
 ## 6. 명령
 
 PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflows/ci.yml`)는 Python×Django 매트릭스
-테스트, 의존성 최신 해 테스트(`make test-latest`), 하한 테스트(`make test-lowest`), NATS·Redis 레이어마다 한 번씩 도는 E2E, lint, typecheck, build, 그리고 편집기 확장(`vscode-extension`, `make ext-test`·`make ext-test-host`) 여덟 잡이다.
-평소에는 수동 실행 전용이고, 태그 push 때 `.github/workflows/release.yml`이 이 전체를 불러 통과해야만 PyPI에 올린다(#122).
+테스트, 의존성 최신 해 테스트(`make test-latest`), 하한 테스트(`make test-lowest`), NATS·Redis 레이어마다 한 번씩 도는 E2E, lint, typecheck, build, 그리고 편집기 확장(`vscode-extension`: 타입 검사·단위 테스트·패키징, `vscode-extension-host`: VS Code를 내려받아 도는
+호스트 테스트) 아홉 잡이다. 평소에는 수동 실행 전용이고, 태그 push 때 `.github/workflows/release.yml`이 이 전체를
+불러 통과해야만 PyPI에 올린다(#122). `vscode-extension-host`만 예외로, 릴리스가 부를 때(`release: true`)는 돌지 않는다 —
+VS Code 다운로드가 파이썬 패키지의 배포를 막지 않게 한다(#156).
 릴리스 절차는 `docs/ROADMAP.md`의 "릴리스 절차".
 
 | 할 일 | 명령 | 선행 조건 |

@@ -271,3 +271,20 @@ def test_the_python_snippets_are_python_with_async_handlers():
             if isinstance(node, ast.FunctionDef) and node.args.args[:1] and node.args.args[0].arg == "self":
                 pytest.fail(f"{name}: {node.name} is not async")
         assert "f'" not in source and 'f"' not in source, f"{name}: markup from an f-string is not escaped"
+
+
+@pytest.mark.unit
+def test_only_the_host_tests_are_outside_the_release_gate():
+    """release.yml calls ci.yml as its gate: the extension's checks and package are in it, VS Code downloads are not."""
+    import yaml
+
+    workflows = ROOT / ".github" / "workflows"
+    ci = yaml.safe_load((workflows / "ci.yml").read_text(encoding="utf-8"))
+    release = yaml.safe_load((workflows / "release.yml").read_text(encoding="utf-8"))
+    assert release["jobs"]["ci"]["with"] == {"release": True}
+    skipped = {name for name, job in ci["jobs"].items() if "inputs.release" in str(job.get("if", ""))}
+    assert skipped == {"vscode-extension-host"}
+    host = " ".join(str(step.get("run", "")) for step in ci["jobs"]["vscode-extension-host"]["steps"])
+    gate = " ".join(str(step.get("run", "")) for step in ci["jobs"]["vscode-extension"]["steps"])
+    assert "test:host" in host and "test:host" not in gate
+    assert all(command in gate for command in ("npm run typecheck", "npm test", "npm run package"))

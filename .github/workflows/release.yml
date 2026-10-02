@@ -4,7 +4,9 @@ name: Release
 #
 # Nothing is published unless the tagged commit passes the whole CI workflow
 # (ci.yml, called here: the Python x Django matrix, the newest-dependencies run,
-# E2E on NATS, lint, typecheck, the package build) and the built wheel imports in
+# E2E on NATS, lint, typecheck, the package build, the editor extension's checks
+# and package; not its tests in a downloaded VS Code, which `release: true` skips)
+# and the built wheel imports in
 # a fresh environment on the newest dependencies (smoke). Before this gate a tag
 # went to PyPI with no test run at all; 1.0.0rc3 went out importable only on the
 # pydantic uv.lock pinned (#122, #127).
@@ -30,6 +32,8 @@ jobs:
   # The tests, on exactly the commit being released: the caller's ref is the tag.
   ci:
     uses: ./.github/workflows/ci.yml
+    with:
+      release: true
     permissions:
       contents: read
 

@@ -2,10 +2,16 @@ name: CI
 
 # GitHub Actions 사용을 최소화한다 — 평소 검증은 로컬 `make ci-test` 로 하고, 이 워크플로는 필요할 때만 수동 실행한다.
 # release.yml 이 태그 커밋에 대해 이 워크플로 전체를 부르고(workflow_call), 모든 job이 통과해야 배포한다(#122).
-# 그래서 여기 job을 더하면 릴리스 게이트도 함께 넓어진다.
+# 그래서 여기 job을 더하면 릴리스 게이트도 함께 넓어진다. 예외는 vscode-extension-host 하나다 — VS Code를 내려받아
+# 띄우는 편집기 확장의 호스트 테스트는 파이썬 패키지의 배포를 막지 않는다(release 입력, #156).
 on:
   workflow_dispatch:
   workflow_call:
+    inputs:
+      release:
+        description: Called by release.yml as its gate; the jobs outside the gate are skipped
+        type: boolean
+        default: false
 
 # Runners are pinned (not ubuntu-latest) for the reason release.yml gives.
 jobs:
@@ -291,6 +297,36 @@ jobs:
           cache: "npm"
           cache-dependency-path: editors/vscode/package-lock.json
 
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Unit and grammar tests
+        run: npm test
+
+      - name: Package
+        run: npm run package
+
+  # The extension in a real VS Code. Outside the release gate: it downloads VS Code,
+  # and a download that fails must not hold back the Python package.
+  vscode-extension-host:
+    if: ${{ !inputs.release }}
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: editors/vscode/package-lock.json
+
       - name: Install uv
         uses: astral-sh/setup-uv@v10.2.0 # publishes no floating major tag since v8
         with:
@@ -305,15 +341,6 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
-
-      - name: Type-check
-        run: npm run typecheck
-
-      - name: Unit and grammar tests
-        run: npm test
-
-      - name: Package
-        run: npm run package
 
       # In the VS Code release engines.vscode names, which test/host/run.mjs downloads
       - name: Smoke tests in VS Code
