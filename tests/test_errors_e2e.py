@@ -102,14 +102,33 @@ def heard():
 LOADING = re.compile("wireview-click-loading")
 
 
+def _frames(page):
+    """What the page's socket sent and received from here on, parsed."""
+    sent, received = [], []
+    page.sockets[0].on("framesent", lambda frame: sent.append(json.loads(frame)))
+    page.sockets[0].on("framereceived", lambda frame: received.append(json.loads(frame)))
+    return sent, received
+
+
+def _answered_empty(sent, received, id: str) -> None:
+    """Every click on ``id`` was answered with the empty render a refused event gets.
+
+    The loading class alone does not say so: it is gone as well when the
+    element the click marked was redrawn by its parent's patch.
+    """
+    refs = [m["payload"]["ref"] for m in sent if m["command"] == "user_event" and m["payload"]["id"] == id]
+    answers = [m["payload"] for m in received if m["command"] == "render" and m["payload"]["id"] == id]
+    assert refs, f"no click on {id} went out"
+    assert answers == [{"id": id, "diff": None, "ref": ref} for ref in refs], (refs, answers)
+
+
 def test_a_component_whose_join_failed_gets_nothing_when_its_parent_draws_it_again(probe, heard):
     # The holder's render draws ``held`` again, marked live and without the error
     # class, over a new instance its template pass built and nothing joined. The
     # page took that one up, and a click or a hook's push reached an instance
     # whose joined() never ran. The server now refuses them, answering the click
     # so its loading state ends; its HTML marks the element, which stays marked.
-    sent = []
-    probe.sockets[0].on("framesent", lambda frame: sent.append(json.loads(frame)))
+    sent, received = _frames(probe)
     held = probe.locator("#held")
     expect(held).to_have_class("wireview-error")
 
@@ -124,6 +143,7 @@ def test_a_component_whose_join_failed_gets_nothing_when_its_parent_draws_it_aga
 
     expect(held).to_have_class(re.compile("wireview-error"))
     expect(by(probe, "held-poke")).not_to_have_class(LOADING)
+    _answered_empty(sent, received, "held")
     expect_text(by(probe, "held-pokes"), "0")
     assert heard == []
     # The parent's patches draw it over the element the page already took up,
@@ -160,6 +180,7 @@ def test_the_live_components_a_failed_component_owns_get_nothing_either(probe, h
     # server refuses both, before the holder's pass and after it.
     probe.wait_for_function("window.__wireviewErrors.some((e) => e.id === 'held-nest')")
     expect(probe.locator("#held-nest")).to_have_class("wireview-error")
+    sent, received = _frames(probe)
 
     for count in ("1", "2"):
         by(probe, "held-child-poke").click()
@@ -173,6 +194,7 @@ def test_the_live_components_a_failed_component_owns_get_nothing_either(probe, h
     # What the page had for it stays, and its click was answered
     expect(by(probe, "held-child-poke")).to_have_count(1)
     expect(by(probe, "held-child-poke")).not_to_have_class(LOADING)
+    _answered_empty(sent, received, "held-child")
     assert heard == []
     assert _failures(probe, "held-nest") == 1, "not joined again"
 
@@ -244,6 +266,16 @@ def test_a_boosted_navigation_joins_what_failed_once_it_can(probe, monkeypatch):
     monkeypatch.setattr(ErrorJoin, "joined", joined)
     monkeypatch.setattr(ErrorJoinNest, "joined", joined)
     probe.evaluate("window.wireview.visit('/errorprobe/')")
+    probe.wait_for_function(
+        "['held', 'held-nest'].every((id) => document.getElementById(id)?.dataset.isLive === 'true')"
+    )
+    # The holder's join is answered before theirs, with a render its pass made
+    # while both ids still named failed joins (wire-join-failed). Patched after
+    # the page sent their joins, it is not about them. Checked once a later
+    # render of the holder is in: the new page's HTML has no mark at first, so
+    # checking right away passed before that render was patched.
+    by(probe, "holder-bump").click()
+    expect_text(by(probe, "holder-count"), "1")
     expect(probe.locator("#held")).not_to_have_class(re.compile("wireview-error"))
     expect(probe.locator("#held-nest")).not_to_have_class(re.compile("wireview-error"))
 
@@ -292,6 +324,19 @@ def test_a_live_component_in_the_slot_of_a_failed_join_is_its_callers(slot_page,
     assert heard == [("slot-leaf", "poke"), ("slot-leaf", "poke")]
     expect(page.locator("#slot-nest")).to_have_class("wireview-error")
     expect(page.locator("#own-nest")).to_have_class("wireview-error")
+
+
+def test_a_live_component_in_the_slot_of_a_failed_join_uploads(slot_page):
+    # The nest's failed join ends the uploads of the LiveComponents it owns.
+    # ``slot-leaf`` is in its element but is the host's, as data-parent says:
+    # had the page counted what is inside the element, or the component around
+    # it, the leaf's manager would have ended with the nest's, and the file
+    # would have gone nowhere.
+    page = slot_page
+    page.locator("#slot-leaf input[type=file]").set_input_files(
+        {"name": "slot.txt", "mimeType": "text/plain", "buffer": b"slot"}
+    )
+    expect_text(by(page, "slot-leaf-received"), "slot.txt:4")
 
 
 def test_the_hooks_of_a_failed_join_are_destroyed_when_it_leaves(slot_page):

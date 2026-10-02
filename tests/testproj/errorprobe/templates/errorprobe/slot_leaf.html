@@ -5,4 +5,8 @@
   <button type="button"
           data-testid="{{ this.id }}-poke"
           {% on "click" "poke" myself=True %}>poke</button>
+  {% upload_input "files" %}
+  <ul data-testid="{{ this.id }}-received">
+    {% for item in this.received %}<li>{{ item }}</li>{% endfor %}
+  </ul>
 </div>

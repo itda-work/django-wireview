@@ -14,7 +14,8 @@ a LiveComponent, ``nest-child``, whose own render -- or the ``remove`` its
 Enter in the child's field asks for ``vanish`` too, and the field's blur is
 bound, so a test can see whether the page sends it while the ``remove`` applies.
 The ``slot/`` page's ``ErrorSlotHost`` puts its own LiveComponent in the slot
-of a component whose join fails, next to one that holds its own.
+of a component whose join fails, next to one that holds its own. Each
+``ErrorSlotLeaf`` takes an upload once it has joined.
 """
 
 from wireview import Component, LiveComponent
@@ -146,6 +147,14 @@ class ErrorSlotLeaf(LiveComponent):
         template_name = "errorprobe/slot_leaf.html"
 
     pokes: int = 0
+    received: list[str] = []
+
+    async def joined(self):
+        self.allow_upload("files", accept=[".txt"], max_entries=1)
+
+    async def on_upload_complete(self, name: str, entry) -> None:
+        async for upload in self.consume_uploads(name):
+            self.received = [*self.received, f"{upload.name}:{len(upload.read())}"]
 
     async def poke(self, **_rest):
         HEARD.append((self.id, "poke"))
