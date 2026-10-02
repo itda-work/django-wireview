@@ -26,6 +26,7 @@
 
 | 권고 | 심각도 | 영향 | 고친 버전 |
 |------|--------|------|-----------|
+| [GHSA-pv9v-gqcj-f42x](https://github.com/itda-work/django-wireview/security/advisories/GHSA-pv9v-gqcj-f42x) HTTP 렌더에서 함수 컴포넌트 템플릿 안의 `{% component %}`에 페이지의 `live_session` `on_mount` 훅이 돌지 않음 | 중간 | 0.3.0~1.0.0rc4 | 1.0.0 |
 | [GHSA-8q8p-x4w4-p745](https://github.com/itda-work/django-wireview/security/advisories/GHSA-8q8p-x4w4-p745) `on_upload_complete`를 브라우저가 이벤트로 부를 수 있음 | 중간 | 1.0.0rc4 이하(0.x 포함) | 1.0.0 |
 | [GHSA-4v8p-p6p8-78pj](https://github.com/itda-work/django-wireview/security/advisories/GHSA-4v8p-p6p8-78pj) `{% wireview_toasts %}`가 세션 키 원문을 그룹 이름으로 브로커에 보냄 | 중간 | 1.0.0rc3~rc4 | 1.0.0 |
 | [GHSA-q2rr-5q2g-6xqp](https://github.com/itda-work/django-wireview/security/advisories/GHSA-q2rr-5q2g-6xqp) `AUTO_BROADCAST`가 `senders` 없이 모든 모델을 방송 | 중간 | 0.7.0 이하, 1.0.0rc1~rc3 | 1.0.0rc4 |

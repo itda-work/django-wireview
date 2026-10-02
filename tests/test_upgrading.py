@@ -132,6 +132,7 @@ UPGRADE_NOTE = {
     "last-seen helper starts with": ("문서 예시", "Presence API 심화"),
     "stream of the same name share no list": ("스트림 연산", "`dom_id`"),
     "[GHSA-8q8p-x4w4-p745]": ("`on_upload_complete`는", "consume_uploads"),
+    "[GHSA-pv9v-gqcj-f42x]": ("함수 컴포넌트 템플릿 안의 `{% component %}`", "`Meta.live_sessions`를 선언하고"),
     "What a part kept for a reset temporary assign holds from elsewhere": (
         "초기화된 temporary assign",
         "`{% live_component %}`",
@@ -210,7 +211,6 @@ NO_UPGRADE_NOTE = {
     "stops drawing because of a prop its drawer": FIXED_ONLY,
     "hides or shows when the slot's owner": FIXED_ONLY,
     "in a function component's template is the page's in a live render": FIXED_ONLY,
-    "in a function component's template is the page's in an HTTP render too": FIXED_ONLY,
 }
 
 

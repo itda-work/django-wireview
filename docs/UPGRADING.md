@@ -32,6 +32,11 @@
 >   보냈다. 서버 저장형 세션 백엔드와 Redis·NATS 같은 프로세스 밖 브로커 레이어를 썼다면 업그레이드하거나
 >   태그를 빼고, 마지막 rc3·rc4 워커가 내려간 뒤 그 기간의 세션을 무효화한다. 백엔드마다 비울 것이 다르다.
 >   [rc4→1.0 절](#100rc4에서-10으로)의 토스트 항목을 읽는다.
+> - [GHSA-pv9v-gqcj-f42x](https://github.com/itda-work/django-wireview/security/advisories/GHSA-pv9v-gqcj-f42x)
+>   (0.3.0~1.0.0rc4): 첫 화면(HTTP 렌더)에서 함수 컴포넌트의 템플릿 안에 쓴 `{% component %}`에는 페이지의
+>   `live_session` `on_mount` 훅이 돌지 않았다. 그 훅으로 컴포넌트마다 거절하던 앱은 거절했어야 할 컴포넌트의
+>   마크업과 서명 상태를 내보냈고, 그 토큰은 새 소켓에서 누구나 join할 수 있었다.
+>   [rc4→1.0 절](#100rc4에서-10으로)의 함수 컴포넌트 항목을 읽는다.
 
 ## 버전 범위
 
@@ -101,6 +106,25 @@ dependencies = ["django-wireview>=1.0,<2"]
     무효화하고 기록을 점검한다. 태그를 빼도 이미 브로커·로그에 간 키는 세션이 끝날 때까지 유효하다. `InMemoryChannelLayer`는 프로세스 밖으로 보내지 않는다.
   - 1.0.0rc4 워커와 1.0 워커가 섞여 도는 롤링 배포 동안에는 서로 다른 버전의 워커 사이에서 세션 키 토스트가 닿지 않는다.
     토스트는 다시 오지 않는 일회성 메시지라 그동안의 것은 빠진다. 사용자로 보낸 토스트는 이름이 같아 영향이 없다.
+- **함수 컴포넌트 템플릿 안의 `{% component %}`가 첫 화면에서도 페이지의 것이다**(**보안**,
+  [GHSA-pv9v-gqcj-f42x](https://github.com/itda-work/django-wireview/security/advisories/GHSA-pv9v-gqcj-f42x)).
+  HTTP 렌더에서 함수의 템플릿이 그린 `{% component %}`는 요청이 없는 따로의 저장소에 그려졌다. 그래서
+  `self.user`가 익명이고 쿼리 파라미터가 비었으며, 페이지의 `live_session(..., on_mount=[...])` 훅이 그 컴포넌트에
+  돌지 않았다. 훅이 거절했어야 할 컴포넌트의 마크업과 서명 상태(`data-state`)가 첫 응답에 나갔다 — 서명이지
+  암호화가 아니라 모든 필드가 읽힌다. 그 상태는 경계 없이(`s=""`) 서명되어, 새 WebSocket에서 `authorize`·인증 세대·
+  세션 훅 없이 join되고 핸들러를 부를 수 있었다(`STATE_MAX_AGE`, 기본 14일 동안 누구나).
+  - 해당하는 경우: 페이지의 `on_mount` 훅으로 컴포넌트 단위 인가를 하고, 훅이 거절할 컴포넌트를 함수 컴포넌트의
+    템플릿 안에서(함수 안 함수 포함) 그리며, 그 컴포넌트가 `Meta.live_sessions`를 선언하지 않았다. 선언한 컴포넌트는
+    오히려 제 경계의 페이지에서 거절되었는데, 1.0에서는 그려진다.
+  - 1.0에서는 함수의 템플릿이 페이지와 같은 저장소(요청의 user·query·session·`live_session`)로 그리므로 고칠 것이
+    없다. 다만 같은 저장소라 id도 페이지 전체에서 고유해야 한다 — 페이지와 함수의 템플릿이 같은 id를 다른 클래스로
+    쓰면 요청이 `StateMismatch`로 실패한다.
+  - 올릴 수 없으면 세션 훅이 막아야 하는 컴포넌트를 함수의 템플릿이 아니라 페이지·컴포넌트 템플릿에 직접 쓰거나
+    그 컴포넌트에 `Meta.live_sessions`를 선언하고, 핸들러에서 `self.user`를 다시 검사한다.
+  - 그 기간에 발행된 서명 상태는 `STATE_MAX_AGE`가 지나면 만료된다. 바로 무효화하려면 `WIREVIEW["SIGNING_KEY"]`
+    (없으면 `SECRET_KEY`)를 바꾸고 옛 키를 `SIGNING_KEY_FALLBACKS`(없으면 `SECRET_KEY_FALLBACKS`)에 남기지 않는다.
+    그 키로 만든 다른 서명 — 모든 페이지의 상태와 업로드 토큰, `SECRET_KEY`라면 Django의 로그인과 비밀번호 재설정
+    링크 — 도 함께 무효가 된다.
 - **`UploadStatus`·`AsyncState`·`PresenceState`는 `StrEnum`이다**(**조용함**). 템플릿의 `{{ entry.status }}`, `str()`,
   f-string이 `UploadStatus.UPLOADING` 대신 값(`uploading`)을 낸다. `==` 비교와 JSON은 그대로다. 옛 출력에 맞춘 CSS 클래스,
   로그 파싱, `"AsyncState.LOADING"` 같은 문자열 비교를 값으로 고친다.

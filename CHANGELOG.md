@@ -655,17 +655,39 @@ The django-reactor era changelog (2.x) is preserved in
   it in the connection's repository, drawn by the component whose pass draws the function, as the
   enclosing template would. The function's template still gets no `this`.
 
-- A `{% component %}` in a function component's template is the page's in an HTTP render too. The
-  function's template drew it with none of the page's names, in a repository with no request: on
-  the first screen its `self.user` was empty and the query parameters were missing, a component
-  declaring `Meta.live_sessions` was refused on its own page, and the page's `live_session`
-  `on_mount` hooks never ran for it -- one they would refuse was drawn. The function's template now
-  draws it in the page's repository; when the function is the page's first tag, the repository is
-  made from the drawing context by the first component that needs one, and the rest of the page
-  shares it. A page whose functions draw no component still makes none.
-
 ### Security
 
+- [GHSA-pv9v-gqcj-f42x](https://github.com/itda-work/django-wireview/security/advisories/GHSA-pv9v-gqcj-f42x)
+  (medium): a `{% component %}` in a function component's template is the page's in an HTTP render
+  too. On the first screen the function's template drew it with none of the page's names, in a
+  repository with no request, so the page's `live_session` `on_mount` hooks never ran for it: a
+  component they would refuse was drawn, its markup and its signed state with it. That state is
+  signed, not encrypted -- every serialized field reads back -- and it named no boundary
+  (`s=""`), so a new WebSocket joined it with no `authorize`, no authentication generation and no
+  session hook: for `STATE_MAX_AGE` (14 days by default) anyone holding the token, anonymous
+  users included, got the live component and could call its handlers. The component's own
+  `Meta.on_mount` ran, but saw an anonymous `self.user`, no query parameters and no session, so a
+  hook that checks the user refused. Affected: 0.3.0 through 1.0.0rc4, when all three hold: (1)
+  the page's `live_session(..., on_mount=[...])` hooks authorize per component, narrower than the
+  view's `authorize`; (2) a component they refuse is drawn with `{% component %}` in a function
+  component's template (`{% func %}` or `{% func_block %}`, a function in a function included);
+  (3) that component does not declare `Meta.live_sessions` -- one that does was refused on its own
+  page instead. The first response still needs the view's `authorize`; the token it leaks joins for
+  anyone. Fixed here: the function's template draws it in the page's repository, with the
+  request's user, query, session and `live_session`, so the page's hooks run and its signed state
+  carries the page's boundary. When the function is the page's first tag, the repository is made
+  from the drawing context by the first component that needs one, and the rest of the page shares
+  it; a page whose functions draw no component still makes none. The same id now means the same
+  component across the page and its functions' templates, as in a live render: a page that gave
+  one id to two classes fails with `StateMismatch`.
+  **What to do:** upgrade. Until you can, draw a component the session hooks must refuse in the
+  page's or a component's template, not a function's, or declare `Meta.live_sessions` on it, and
+  check `self.user` again in its handlers. The tokens issued meanwhile expire after
+  `STATE_MAX_AGE`; to void them now, change `WIREVIEW["SIGNING_KEY"]` (`SECRET_KEY` when unset)
+  without keeping the old key in `SIGNING_KEY_FALLBACKS` (`SECRET_KEY_FALLBACKS` when unset). That
+  voids every other signature made with the key too -- every page's state and upload tokens, and
+  with `SECRET_KEY` Django's own: everyone is logged out and password reset links stop working
+  (`docs/UPGRADING.md`).
 - [GHSA-8q8p-x4w4-p745](https://github.com/itda-work/django-wireview/security/advisories/GHSA-8q8p-x4w4-p745)
   (medium): `on_upload_complete(name, entry)` is now a method of `Component`, and so framework
   surface a client cannot call. The session only looked the name up, so a component that defined
