@@ -316,9 +316,11 @@ html.dark .theme-toggle .icon-sun {
 
 .toc a {
   display: block;
-  padding: 0.25rem 0;
+  padding: 0.25rem 0 0.25rem 0.75rem;
+  border-left: 2px solid var(--line);
   color: var(--muted);
   line-height: 1.4;
+  transition: color 0.15s;
 }
 
 .toc a:hover {
@@ -326,8 +328,20 @@ html.dark .theme-toggle .icon-sun {
 }
 
 .toc .toc__h3 a {
-  padding-left: 0.75rem;
+  padding-left: 1.5rem;
   font-size: 0.8125rem;
+}
+
+/* The section being read (site.js): the bar and the link colour, as the sidebar marks the page.
+   An h3's h2 keeps its colour a step up, without the bar. No weight change: a bolder line can
+   wrap and move every entry below it while the reader scrolls. */
+.toc a.is-current-parent {
+  color: var(--text);
+}
+
+.toc a.is-current {
+  color: var(--link);
+  border-left-color: var(--link);
 }
 
 .article {
