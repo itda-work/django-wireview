@@ -415,9 +415,11 @@ The django-reactor era changelog (2.x) is preserved in
   comes back with the state it had. The page joins such a `{% component %}` right behind its root,
   before it patches in the root's render that leaves it out, and that join took the entries for it
   and the LiveComponent in it and lost them when the page let it go. The server now takes such a
-  join with the state the page sent, but neither it nor the render that answers it takes or
-  overwrites an entry another root still on the connection carried; that root's later render
-  restores from it. (Ignoring the join instead also dropped the join of a root of the page's own:
+  join with the state the page sent, but neither it nor the renders that answer it (the
+  `params_changed()` one included) take or overwrite an entry another root still on the connection
+  carried; that root's later render restores from it. Only a join for the carried id itself holds
+  back: another root that draws a LiveComponent under such an id carries the page's state for it,
+  which replaces the other root's entry, as it always did. (Ignoring the join instead also dropped the join of a root of the page's own:
   after a boosted navigation, the next page could draw as a root an id a sticky component carried
   and had yet to draw, and that component never joined.) The form is unchanged, so
   `PROTOCOL_VERSION` stays.

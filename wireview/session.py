@@ -398,11 +398,12 @@ class WireviewSession:
                 # speaks, so the client knows what it may send (user_event refs).
                 await self.send_render(component, announce=True, ref=answer)
 
-            # Call params_changed if URL has params (initial load)
-            if self.repo.params:
-                uri = f"?{self.repo.get_query_string()}"
-                await component._handle_params(dict(self.repo.params), uri)
-                await self.send_render(component)
+                # Call params_changed if URL has params (initial load). Its render
+                # answers the join too, and leaves the other root's entries alone
+                if self.repo.params:
+                    uri = f"?{self.repo.get_query_string()}"
+                    await component._handle_params(dict(self.repo.params), uri)
+                    await self.send_render(component)
 
             # Subscriptions first, then the operations queued during joined():
             # a broadcast queued there must not go out before this connection

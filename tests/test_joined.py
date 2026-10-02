@@ -665,3 +665,129 @@ async def test_a_join_under_an_id_another_root_carried_goes_ahead_and_leaves_the
     finally:
         JoinedLateShelf.landed.set()
         await communicator.disconnect()
+
+
+class JoinedSprigPage(Component):
+    """Draws ``j-late-sprig`` as a LiveComponent of its own, behind an ``{% if %}``."""
+
+    shown: bool = True
+
+    async def toggle(self):
+        self.shown = not self.shown
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<section {% tag_header %}>"
+            "{% if this.shown %}{% live_component 'JoinedLateSprig' id='j-late-sprig' %}{% endif %}</section>"
+        )
+
+
+async def test_a_live_component_another_root_carried_starts_from_its_own_page():
+    # A sticky shelf crosses a boosted navigation with the entry its join carried
+    # for a sprig it has yet to draw, and the next page draws that id under a root
+    # of its own. That root's join carries the sprig as the page has it, and it is
+    # that state the answer draws, not the props. The shelf's entry goes: the
+    # sprig the page shows again later is a new instance and starts anew, not
+    # from the state the shelf carried from the previous page.
+    JoinedLateShelf.landed = asyncio.Event()
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
+    communicator.scope["user"] = AnonymousUser()
+    connected, _ = await communicator.connect()
+    assert connected
+    try:
+        await communicator.send_json_to(_late_shelf_join(1))
+        assert "-note" not in str(await _until(communicator, "joined"))
+
+        meta = {"user": AnonymousUser(), "wire": WireviewMeta(params={})}
+        page = sign_state(JoinedSprigPage(**meta, id="j-sprig-page"))
+        sprig = ["JoinedLateSprig", sign_state(JoinedLateSprig(**meta, id="j-late-sprig", note="page-note"))]
+        await communicator.send_json_to(
+            {
+                "command": "join",
+                "payload": {"name": "JoinedSprigPage", "state": page, "children": {"j-late-sprig": sprig}, "ref": 2},
+            }
+        )
+        answered = await _until(communicator, "joined")
+        while answered[-1]["payload"]["id"] != "j-sprig-page":
+            answered += await _until(communicator, "joined")
+        assert "page-note" in str(answered), answered
+
+        toggle = {"id": "j-sprig-page", "command": "toggle", "implicit_args": {}, "explicit_args": {}}
+        await communicator.send_json_to({"command": "user_event", "payload": {**toggle, "ref": 3}})
+        await _until(communicator, "render")
+        await communicator.send_json_to({"command": "user_event", "payload": {**toggle, "ref": 4}})
+        shown_again = str(await _until(communicator, "render"))
+
+        assert "fresh-note" in shown_again, shown_again
+        assert "kept-note" not in shown_again
+    finally:
+        JoinedLateShelf.landed.set()
+        await communicator.disconnect()
+
+
+class JoinedParamsNest(Component):
+    """Draws the sprig only once ``params_changed`` has run."""
+
+    shown: bool = False
+
+    async def params_changed(self, params, uri):
+        self.shown = True
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<b {% tag_header %}>"
+            "{% if this.shown %}{% live_component 'JoinedLateSprig' id='j-late-sprig' %}{% endif %}</b>"
+        )
+
+
+class JoinedParamsShelf(JoinedLateNestShelf):
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% if this.data.ok %}{% component 'JoinedParamsNest' id='j-params-nest' %}{% endif %}</p>"
+        )
+
+
+async def test_the_params_render_of_a_join_leaves_another_roots_entries_too():
+    # As in the nest's join right behind its shelf above, with the URL carrying
+    # params: the render params_changed brings answers the join too, and the
+    # sprig it draws first is not built from the shelf's entry.
+    JoinedLateShelf.landed = asyncio.Event()
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
+    communicator.scope["user"] = AnonymousUser()
+    connected, _ = await communicator.connect()
+    assert connected
+    try:
+        meta = {"user": AnonymousUser(), "wire": WireviewMeta(params={})}
+        shelf = sign_state(JoinedParamsShelf(**meta, id="j-params-shelf", data=AsyncResult.success("ok")))
+        nest = sign_state(JoinedParamsNest(**meta, id="j-params-nest"))
+        sprig = ["JoinedLateSprig", sign_state(JoinedLateSprig(**meta, id="j-late-sprig", note="kept-note"))]
+        children = {"j-params-nest": ["JoinedParamsNest", nest], "j-late-sprig": sprig}
+        await communicator.send_json_to(
+            {
+                "command": "join",
+                "payload": {"name": "JoinedParamsShelf", "state": shelf, "children": children, "ref": 1},
+            }
+        )
+        assert "-note" not in str(await _until(communicator, "joined"))
+        # The shelf hears it and has nothing to send
+        await communicator.send_json_to({"command": "params_changed", "payload": {"params": {"p": "1"}, "uri": "?p=1"}})
+
+        await communicator.send_json_to(
+            {
+                "command": "join",
+                "payload": {"name": "JoinedParamsNest", "state": nest, "children": {"j-late-sprig": sprig}, "ref": 2},
+            }
+        )
+        answered = await _until(communicator, "joined")
+        while answered[-1]["payload"]["id"] != "j-params-nest":
+            answered += await _until(communicator, "joined")
+
+        assert "fresh-note" in str(answered), answered
+        assert "kept-note" not in str(answered)
+    finally:
+        JoinedLateShelf.landed.set()
+        await communicator.disconnect()

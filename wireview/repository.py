@@ -434,11 +434,12 @@ class ComponentRepository:
         An id already held was built by another pass -- the outer join's, when a
         nested component joins with the states inside it -- and nothing would
         take its entry but the next instance built under the id, once an
-        ``{% if %}`` shows it again: that one starts anew. An entry another root
-        still here carried stays that root's (``joining``).
+        ``{% if %}`` shows it again: that one starts anew. An entry the join
+        replaces is the page's word now; one ``joining`` withholds stays the
+        root's that carried it.
         """
         for child_id, entry in children.items():
-            if child_id not in self.components and not self._carried_elsewhere(child_id, root_id):
+            if child_id not in self.components and child_id not in self._withheld:
                 self.children[child_id] = entry
                 self._carried_by[child_id] = root_id
 
@@ -461,11 +462,19 @@ class ComponentRepository:
         meanwhile: a nested component right behind its root, before the root's
         render that leaves it out is patched in, or a sticky root's id the next
         page draws as a root of its own. That join goes ahead with the state the
-        page sent, and neither it nor the render that answers it takes the other
+        page sent, and neither it nor the renders that answer it take the other
         root's entries for the id or the ones its join carried; the nested
         component's element goes, and the root's later render restores both.
+
+        Only the id the join is for says so. A root of another id that draws a
+        component the other root carried has the page's state for it, and its
+        join carries that in place of the other root's (``_carry``).
         """
-        self._withheld = {id for id in (root_id, *children) if self._carried_elsewhere(id, root_id)}
+        self._withheld = (
+            {id for id in (root_id, *children) if self._carried_elsewhere(id, root_id)}
+            if self._carried_elsewhere(root_id, root_id)
+            else set()
+        )
         try:
             yield
         finally:
@@ -496,11 +505,12 @@ class ComponentRepository:
     def reachable(self, id: str) -> Component | None:
         """The instance under ``id`` that server code may run, or ``None``: unknown, or ``refused``.
 
-        Every path that calls a component's code -- an event, a hook, an upload, a
+        Every path that calls a component's code -- a hook, an upload, a
         broadcast, ``params_changed``, ``wire.defer``, a parent's
         ``update_live_component`` -- finds its instance here, so what a failed
-        join left runs nothing until the page joins it again. A render of it on
-        its own is refused in ``WireviewSession.send_render``.
+        join left runs nothing until the page joins it again. An event asks
+        ``refused`` first, as it answers even then, and a render of it on its
+        own is refused in ``WireviewSession.send_render``.
         """
         component = self.components.get(id)
         return None if component is None or self.refused(id) else component
