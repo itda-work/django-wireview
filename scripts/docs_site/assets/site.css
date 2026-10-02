@@ -1,0 +1,720 @@
+/*
+ * The documentation site's own stylesheet (#159).
+ *
+ * The header, footer, colours, font and dark mode follow itda.work, the site these pages live
+ * under. They are reproduced here rather than linked: itda.work's site.css is a Tailwind build
+ * that keeps only the classes its own pages use, so linking it would let an itda.work deploy
+ * break this site without a sound.
+ *
+ * Taken from itda-skills/website at 00f656a1cd95e2f7627d3c5c04fd3f5d2b066592:
+ *   templates/base.html, templates/partials/header.html, footer.html, theme_toggle.html
+ *     the sticky translucent header, the brand link, the footer row, the theme toggle
+ *   static/src/tailwind.css
+ *     body colours (gray-50/gray-900, dark slate-900/slate-100), Pretendard, the .prose rules
+ *   static/js/head-boot.js, static/js/theme.js
+ *     the theme policy: localStorage "theme", "light" by default, html.dark as the switch
+ *   static/src/pygments-one-dark.css
+ *     code blocks in one-dark in both themes (the token colours come from Pygments itself)
+ */
+
+:root {
+  --bg: #f9fafb;
+  --text: #111827;
+  --body: #1f2937;
+  --muted: #6b7280;
+  --faint: #9ca3af;
+  --line: #e5e7eb;
+  --line-soft: #f3f4f6;
+  --surface: #ffffff;
+  --header-bg: rgb(255 255 255 / 0.9);
+  --link: #2563eb;
+  --link-hover: #1d4ed8;
+  --accent-bg: #eff6ff;
+  --code-bg: #fefce8;
+  --code-text: #854d0e;
+  --code-line: rgb(161 98 7 / 0.12);
+  --preview-bg: #fef3c7;
+  --preview-text: #92400e;
+  --problem-bg: #fee2e2;
+  --problem-text: #991b1b;
+  color-scheme: light;
+}
+
+html.dark {
+  --bg: #0f172a;
+  --text: #f1f5f9;
+  --body: #e2e8f0;
+  --muted: #94a3b8;
+  --faint: #64748b;
+  --line: #334155;
+  --line-soft: #1e293b;
+  --surface: #0f172a;
+  --header-bg: rgb(15 23 42 / 0.9);
+  --link: #60a5fa;
+  --link-hover: #93c5fd;
+  --accent-bg: rgb(30 58 138 / 0.25);
+  --code-bg: rgb(253 224 71 / 0.08);
+  --code-text: #fde68a;
+  --code-line: rgb(253 224 71 / 0.18);
+  --preview-bg: #451a03;
+  --preview-text: #fde68a;
+  --problem-bg: #450a0a;
+  --problem-text: #fecaca;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: "Pretendard", system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  scroll-padding-top: 5rem;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+svg {
+  display: block;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ── Header (itda.work partials/header.html) ───────────────────── */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--header-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.site-header__inner {
+  max-width: 80rem;
+  margin: 0 auto;
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.brand__home {
+  font-weight: 700;
+  font-size: 1.125rem;
+  letter-spacing: -0.025em;
+  transition: color 0.15s;
+}
+
+.brand__home:hover,
+.brand__docs:hover {
+  color: var(--link);
+}
+
+.brand__sep {
+  color: var(--faint);
+}
+
+.brand__docs {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.15s;
+}
+
+.site-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.header-link {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted);
+  padding: 0.5rem;
+  transition: color 0.15s;
+}
+
+.header-link:hover {
+  color: var(--text);
+}
+
+.icon-button {
+  padding: 0.5rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.icon-button:hover {
+  background: var(--line-soft);
+}
+
+.icon-button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.theme-toggle .icon-sun,
+html.dark .theme-toggle .icon-moon {
+  display: none;
+}
+
+html.dark .theme-toggle .icon-sun {
+  display: block;
+}
+
+.menu-button {
+  display: none;
+}
+
+/* ── Banners ─────────────────────────────────────────────────── */
+
+.preview-band {
+  background: var(--preview-bg);
+  color: var(--preview-text);
+  font-size: 0.875rem;
+  text-align: center;
+  padding: 0.5rem 1rem;
+}
+
+.preview-band strong {
+  font-weight: 700;
+}
+
+/* ── Layout: sidebar, article, table of contents ─────────────── */
+
+.layout {
+  flex: 1;
+  width: 100%;
+  max-width: 80rem;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 1fr) 13rem;
+  gap: 2rem;
+  padding: 0 1rem;
+}
+
+.layout--no-toc {
+  grid-template-columns: 16rem minmax(0, 1fr);
+}
+
+.sidebar,
+.toc {
+  position: sticky;
+  top: 4rem;
+  align-self: start;
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+  padding: 2rem 0;
+  font-size: 0.875rem;
+}
+
+.sidebar__section + .sidebar__section {
+  margin-top: 1.25rem;
+}
+
+.sidebar__heading {
+  display: block;
+  font-weight: 700;
+  color: var(--text);
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+}
+
+.sidebar__level {
+  margin: 0.75rem 0 0.25rem;
+  padding: 0 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.sidebar ul {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+}
+
+.sidebar li a {
+  display: block;
+  padding: 0.3rem 0.5rem 0.3rem 0.75rem;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+  transition: color 0.15s;
+}
+
+.sidebar a:hover {
+  color: var(--text);
+}
+
+.sidebar a[aria-current="page"] {
+  color: var(--link);
+  font-weight: 600;
+}
+
+.sidebar li a[aria-current="page"] {
+  border-left-color: var(--link);
+}
+
+.toc__title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--faint);
+  margin: 0 0 0.5rem;
+}
+
+.toc ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.toc a {
+  display: block;
+  padding: 0.25rem 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.toc a:hover {
+  color: var(--link);
+}
+
+.toc .toc__h3 a {
+  padding-left: 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.article {
+  min-width: 0;
+  padding: 2rem 0 3rem;
+}
+
+.page-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1.5rem;
+  font-size: 0.8125rem;
+}
+
+.chip {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--link);
+  font-weight: 600;
+}
+
+.page-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.875rem;
+}
+
+.page-source a {
+  color: var(--muted);
+}
+
+.page-source a:hover {
+  color: var(--link);
+}
+
+.pager {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.pager a {
+  display: block;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--surface);
+  transition: border-color 0.15s;
+}
+
+.pager a:hover {
+  border-color: var(--link);
+}
+
+.pager__next {
+  grid-column: 2;
+  text-align: right;
+}
+
+.pager__label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--faint);
+}
+
+.pager__title {
+  display: block;
+  font-weight: 600;
+  color: var(--link);
+  margin: 0.15rem 0;
+}
+
+.pager__meta {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* ── Prose (itda.work static/src/tailwind.css) ───────────────── */
+
+.prose {
+  font-size: 1.0625rem;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  color: var(--body);
+}
+
+.prose h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+  color: var(--text);
+  margin: 0 0 1rem;
+}
+
+.prose h2 {
+  font-size: 1.5em;
+  font-weight: 700;
+  color: var(--text);
+  margin: 2em 0 0.65em;
+  padding-bottom: 0.35em;
+  line-height: 1.3;
+  border-bottom: 1px solid var(--line);
+}
+
+.prose h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+  color: var(--text);
+  margin: 1.6em 0 0.45em;
+  line-height: 1.4;
+}
+
+.prose h4,
+.prose h5,
+.prose h6 {
+  font-size: 1em;
+  font-weight: 600;
+  color: var(--text);
+  margin: 1.4em 0 0.4em;
+}
+
+.heading-anchor {
+  margin-left: 0.4em;
+  color: var(--faint);
+  font-weight: 400;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.prose :is(h1, h2, h3, h4, h5, h6):hover .heading-anchor,
+.heading-anchor:focus {
+  opacity: 1;
+}
+
+.prose p {
+  margin: 1em 0;
+  line-height: 1.8;
+}
+
+.prose strong {
+  font-weight: 650;
+  color: var(--text);
+}
+
+.prose ul,
+.prose ol {
+  margin: 1em 0;
+  padding-left: 1.75em;
+}
+
+.prose li {
+  margin: 0.4em 0;
+  line-height: 1.75;
+}
+
+.prose li::marker {
+  color: var(--faint);
+}
+
+.prose ol > li::marker {
+  font-weight: 600;
+}
+
+.prose li > p {
+  margin: 0.4em 0;
+}
+
+.prose .contains-task-list {
+  list-style: none;
+  padding-left: 0.25em;
+}
+
+.prose img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid rgb(15 23 42 / 0.1);
+  border-radius: 0.5rem;
+}
+
+html.dark .prose img {
+  border-color: rgb(148 163 184 / 0.2);
+}
+
+.prose hr {
+  margin: 2.5em 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.prose blockquote {
+  margin: 1.25em 0;
+  border-left: 3px solid #2563eb;
+  padding-left: 1.2em;
+  color: var(--muted);
+}
+
+.prose a {
+  color: var(--link);
+}
+
+.prose a:hover {
+  text-decoration: underline;
+}
+
+.prose :not(pre) > code {
+  background: var(--code-bg);
+  color: var(--code-text);
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.3rem;
+  border: 1px solid var(--code-line);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  font-weight: 500;
+}
+
+.prose a code {
+  color: inherit;
+}
+
+.prose pre {
+  margin: 1.5em 0;
+  padding: 1.1rem 1.4rem;
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  font-size: 0.875rem;
+  line-height: 1.65;
+}
+
+.prose pre code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.prose table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.875em;
+  margin: 1.5em 0;
+}
+
+.prose th {
+  font-weight: 600;
+  text-align: left;
+  padding: 0.65em 1em;
+  background: var(--line-soft);
+  border-bottom: 2px solid var(--line);
+  white-space: nowrap;
+}
+
+.prose td {
+  padding: 0.6em 1em;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.prose kbd {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.85em;
+  padding: 0.05em 0.35em;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 0.25rem;
+}
+
+/* ── Footer (itda.work partials/footer.html) ─────────────────── */
+
+.site-footer {
+  margin-top: 4rem;
+  padding: 2.5rem 0;
+  border-top: 1px solid var(--line-soft);
+  background: var(--surface);
+  font-size: 0.875rem;
+  color: var(--faint);
+}
+
+.site-footer__inner {
+  max-width: 80rem;
+  margin: 0 auto;
+  padding: 0 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.site-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.site-footer a:hover {
+  color: var(--muted);
+}
+
+/* ── Redirect page ───────────────────────────────────────────── */
+
+.moved {
+  max-width: 40rem;
+  margin: 4rem auto;
+  padding: 0 1rem;
+}
+
+.moved a {
+  color: var(--link);
+}
+
+/* ── Narrow screens ──────────────────────────────────────────── */
+
+@media (max-width: 72rem) {
+  .layout,
+  .layout--no-toc {
+    grid-template-columns: 15rem minmax(0, 1fr);
+  }
+
+  .toc {
+    display: none;
+  }
+}
+
+@media (max-width: 48rem) {
+  .layout,
+  .layout--no-toc {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .menu-button {
+    display: block;
+  }
+
+  .header-link--wide {
+    display: none;
+  }
+
+  .sidebar {
+    display: none;
+    position: static;
+    max-height: none;
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .sidebar.is-open {
+    display: block;
+  }
+
+  .article {
+    padding-top: 1.5rem;
+  }
+
+  .prose h1 {
+    font-size: 1.6rem;
+  }
+
+  .prose pre {
+    padding: 0.9rem 1rem;
+    border-radius: 0.5rem;
+  }
+
+  .pager {
+    grid-template-columns: 1fr;
+  }
+
+  .pager__next {
+    grid-column: 1;
+  }
+}
+
+@media print {
+  .site-header,
+  .site-footer,
+  .sidebar,
+  .toc,
+  .preview-band {
+    display: none;
+  }
+}

@@ -17,7 +17,8 @@ import re
 from pathlib import Path
 
 import pytest
-from testproj import site_nav
+
+from scripts.docs_site import nav as site_nav
 
 pytestmark = pytest.mark.unit
 
@@ -26,7 +27,7 @@ INDEX = (TUTORIALS / "README.md").read_text(encoding="utf-8")
 FILES = sorted(p.name for p in TUTORIALS.glob("[0-9][0-9]-*.md"))
 
 LINK = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
-NAV = re.compile(r"^\[(← |목차\])")
+NAV = site_nav.TUTORIAL_NAV
 
 #: The tutorials in the order docs/site.toml lists them.
 PATH = site_nav.tutorials()

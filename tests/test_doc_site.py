@@ -10,8 +10,9 @@ import re
 from collections import Counter
 
 import pytest
-from testproj import site_nav
-from testproj.site_nav import SLUG, Page
+
+from scripts.docs_site import nav as site_nav
+from scripts.docs_site.nav import SLUG, Page
 
 pytestmark = pytest.mark.unit
 

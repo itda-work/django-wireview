@@ -1,4 +1,4 @@
-.PHONY: all install test test-unit test-e2e test-concurrent test-matrix test-latest test-lowest test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js ci-smoke
+.PHONY: all install test test-unit test-e2e test-concurrent test-matrix test-latest test-lowest test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js ci-smoke docs-site docs-serve
 
 # Default target
 all: install build
@@ -68,19 +68,19 @@ test-cov: collectstatic
 
 # Lint Python code and templates (same checks as CI's lint job)
 lint:
-	uv run ruff check wireview tests bench examples conftest.py
-	uv run ruff format --check wireview tests bench examples conftest.py
+	uv run ruff check wireview tests bench examples scripts conftest.py
+	uv run ruff format --check wireview tests bench examples scripts conftest.py
 	uv run djlint --check .
 
 # Format code with ruff
 format:
-	uv run ruff check --fix wireview tests bench examples conftest.py
-	uv run ruff format wireview tests bench examples conftest.py
+	uv run ruff check --fix wireview tests bench examples scripts conftest.py
+	uv run ruff format wireview tests bench examples scripts conftest.py
 	uv run djlint --reformat .
 
 # Type check with pyright
 check:
-	uv run pyright wireview
+	uv run pyright wireview scripts
 
 # Type check JavaScript
 check-js:
@@ -174,7 +174,7 @@ ci-lint: lint
 
 # CI: Run type checking
 ci-check:
-	uv run pyright wireview
+	uv run pyright wireview scripts
 
 # Unit and integration tests on every supported Python x Django pair (docs/COMPATIBILITY.md).
 # CI only runs when dispatched by hand, so this is how the range gets checked.
@@ -193,7 +193,10 @@ test-matrix: collectstatic
 # collectstatic runs in that environment too, not through the `collectstatic` target:
 # that one uses the project venv, and CI's job never installs the dev extras into it,
 # so testproj's INSTALLED_APPS (daphne) did not import there (#136).
-LATEST_RUN = uv run --no-project --isolated --python $(or $(PYTHON),3.12) --with-editable ".[dev]"
+# The docs dependency group as --with arguments: outside the project uv installs no groups, and
+# tests/test_docs_site_build.py needs them (#159). Names only, so the newest release comes.
+DOCS_WITH = $(shell uv run --no-project --python 3.12 python scripts/docs_site/nav.py)
+LATEST_RUN = uv run --no-project --isolated --python $(or $(PYTHON),3.12) --with-editable ".[dev]" $(DOCS_WITH)
 test-latest:
 	$(LATEST_RUN) python tests/manage.py collectstatic --noinput
 	$(LATEST_RUN) pytest tests examples -m "not e2e and not slow" -q --no-header -p no:warnings $(ARGS)
@@ -212,7 +215,7 @@ test-lowest:
 	floors=$$(uv pip compile pyproject.toml --resolution lowest-direct --no-deps --python-version $(LOWEST_PYTHON) \
 		--quiet --no-header --no-annotate); \
 	echo "test-lowest:" $$floors; \
-	run="uv run --no-project --isolated --python $(LOWEST_PYTHON) --with-editable .[dev] $$(printf -- '--with %s ' $$floors)"; \
+	run="uv run --no-project --isolated --python $(LOWEST_PYTHON) --with-editable .[dev] $(DOCS_WITH) $$(printf -- '--with %s ' $$floors)"; \
 	$$run python tests/manage.py collectstatic --noinput; \
 	$$run pytest tests examples -m "not e2e and not slow" -q --no-header $(ARGS)
 
@@ -301,6 +304,24 @@ ci-smoke:
 	done
 
 # =============================================================================
+# Documentation site (itda.work/wireview/, #159)
+# =============================================================================
+
+# The document guards are the site build's first gate: a broken link or an unclassified page
+# fails here before anything is rendered. The build then checks what it wrote (internal links
+# and anchors, docs/site-urls.txt) and exits non-zero on any problem. Output: build/docs-site,
+# served as is by `python -m http.server -d build/docs-site` at /wireview/.
+DOCS_GUARDS = tests/test_doc_links.py tests/test_doc_examples.py tests/test_tutorials.py tests/test_doc_site.py tests/test_agent_docs.py
+docs-site:
+	uv run pytest $(DOCS_GUARDS) -q --no-header -p no:cacheprovider
+	uv run python -m scripts.docs_site build $(ARGS)
+
+# Build, serve on http://127.0.0.1:8765/wireview/ and rebuild on every change to docs/, README.md
+# or the layout. ARGS="--port 9000" to move it. Skips the document guards on rebuilds.
+docs-serve:
+	uv run python -m scripts.docs_site serve $(ARGS)
+
+# =============================================================================
 # Help
 # =============================================================================
 
@@ -333,6 +354,10 @@ help:
 	@echo "  make build-js         - Build JavaScript bundle only"
 	@echo "  make build-py         - Build Python package only"
 	@echo "  make watch-js         - Watch JS for changes"
+	@echo ""
+	@echo "Documentation site:"
+	@echo "  make docs-site        - Build the documentation site into build/docs-site, with its gates"
+	@echo "  make docs-serve       - Serve the site and rebuild it on every change (ARGS=\"--port N\")"
 	@echo ""
 	@echo "Development:"
 	@echo "  make run              - Run dev server"

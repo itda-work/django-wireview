@@ -124,6 +124,8 @@ PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflow
 | 린트 | `make lint` (ruff + djlint) | |
 | 타입 검사 | `make check` (pyright, `tests/` 제외) | |
 | 클라이언트 테스트 | `make test-js` (`npm test`, node --test) | |
+| 문서 사이트 빌드 | `make docs-site` | 문서 가드 테스트 → 빌드 → 관문(내부 링크·앵커, `docs/site-urls.txt`와 비교한 사라진 URL). 산출물 `build/docs-site/`. 새 페이지 URL은 `python -m scripts.docs_site build --update-urls`로 목록에 더한다 |
+| 문서 사이트 개발 서버 | `make docs-serve` (`ARGS="--port N"`) | 같은 빌드를 `http://127.0.0.1:8765/wireview/`에 띄우고 `docs/`·`README.md`·레이아웃이 바뀌면 다시 빌드한다. 재빌드마다 문서 가드는 건너뛴다 |
 | 포맷 | `make format` | |
 | 품질 일괄 | `make quality` | CI의 lint·typecheck 잡과 동일 범위 |
 | 개발 서버 | `make run-daphne` | JS 빌드, Redis |

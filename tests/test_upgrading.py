@@ -11,7 +11,8 @@ import re
 from pathlib import Path
 
 import pytest
-from test_doc_links import slug
+
+from scripts.docs_site.nav import slug
 
 pytestmark = pytest.mark.unit
 

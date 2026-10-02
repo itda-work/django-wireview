@@ -190,7 +190,13 @@ docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEAT
                            ROADMAP.md, DEPLOYMENT.md, PERFORMANCE.md, design/ 설계 메모(README.md 인덱스), implementation/ 구현 노트
                            (implementation/wire-protocol.md 가 메시지 형태의 정본. 표의 이름은 tests/test_wire_protocol_doc.py 가 코드와 맞춘다)
                            site.toml 이 문서 사이트(itda.work/wireview/)의 목차·주소·튜토리얼 학습 순서의 정본, redirects.toml 이 옮긴 주소.
-                           tests/testproj/site_nav.py 가 읽고, tests/test_doc_site.py 가 분류를, tests/test_tutorials.py 가 튜토리얼 README·nav 줄을 이것과 맞춘다(#158)
+                           scripts/docs_site/nav.py 가 읽고, tests/test_doc_site.py 가 분류를, tests/test_tutorials.py 가 튜토리얼 README·nav 줄을 이것과 맞춘다(#158).
+                           site-urls.txt 가 공개 URL 목록이다 — 사이트 빌드가 이것과 비교해 사라진 URL을 실패시킨다(#159)
+scripts/docs_site/         문서 사이트 빌드(make docs-site·make docs-serve, #159). nav.py 가 site.toml·redirects.toml 해석과 제목 앵커(slug)의
+                           유일한 정본이고 표준 라이브러리만 쓴다 — 문서 가드 테스트도 이것을 import한다. render.py 는 Markdown 렌더와 링크
+                           재작성(사이트 페이지는 사이트 경로로, 그 밖의 저장소 파일은 태그 고정 GitHub로), build.py 는 산출물·관문,
+                           serve.py 는 폴링 재빌드 개발 서버. templates/·assets/ 가 itda.work 레이아웃의 재현이다(원본과 커밋은 site.css 머리 주석).
+                           렌더 의존성은 dependency-group docs(기본 그룹)에만 있다. 산출물은 `build/docs-site/`(gitignore)
 bench/                     성능 벤치마크 (make bench, make bench-compare BASE=<ref>). windows/ 는 Parallels 게스트 실측 레인. 설명은 bench/README.md
 typings/                   channels 타입 스텁 (pyright용)
 skills/wireview/           앱 개발자용 스킬의 정본. 휠에 wireview/agent_skills/ 로 실린다(hatch_build.py가 링크를 태그로 고정).
@@ -229,6 +235,8 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 | 품질 일괄 (lint + typecheck) | `make quality` |
 | JS 빌드 | `make build-js` — clone 직후와 `wireview/static/wireview/wireview.js` 수정 후 필수 |
 | 클라이언트 테스트 | `make test-js` |
+| 문서 사이트 빌드 (관문 포함) | `make docs-site` — 산출물 `build/docs-site/`, `python -m http.server -d build/docs-site`로 `/wireview/`가 열린다 |
+| 문서 사이트 개발 서버 | `make docs-serve` — 바뀌면 다시 빌드하고 브라우저를 새로고침한다(`ARGS="--port N"`) |
 
 전체 표(E2E 레이어, 벤치마크, Windows 실측, 타입 스텁)와 선행 조건은 `wireview-dev` 스킬에.
 정의는 `Makefile` (`make help`)이 정본이다.
@@ -262,8 +270,9 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 - **상태 필드.** JSON 직렬화 가능해야 한다. 모델 인스턴스는 예외다: 단일 필드·목록·dict 값·`AsyncResult`의 결과 어디에 있든 pk로 서명되고, join 때 필드의 타입 표기를 따라 다시 읽힌다(`wireview/core/model_state.py`). 그래서 타입 표기가 곧 복원 규칙이다 — `list` 같은 맨 타입으로 적으면 pk 목록으로 돌아온다. `Meta.temporary_assigns`는 기본값이 있는 필드만 초기화되고, 서명 상태에 실리지 않으며, 초기화는 변경으로 치지 않는다(`wireview/core/render_reads.py`, #111). `Meta.exclude_fields`는 `user`·`wire`·`session`에 **더해진다**(뺄 수 없다).
 - **테스트는 `DJANGO_ALLOW_ASYNC_UNSAFE` 없이 돈다(#120).** 그 플래그는 이벤트 루프 위의 동기 ORM을 막는 Django의 검사를 끄고, 켜 둔 동안 bookmarks·notifications 예제가 실서버에서 join하지 못하는데도 스위트는 초록이었다. 루트 `conftest.py`가 플래그를 보면 시작을 거절하고, `tests/test_async_safety.py`가 진입점(Makefile·e2e.sh·CI·bench)에 다시 들어오는지 본다. 국소 허용은 **E2E 항목의 Playwright 스레드 하나**뿐이다 — sync API가 그 스레드에 루프를 돌려 pytest-django 픽스처가 막히기 때문이고, 라이브 서버 스레드는 검사를 그대로 받는다. async 테스트에서 쿼리를 세려면 `CaptureQueriesContext` 대신 `testproj.queries.capture_queries()`를 쓴다(연결이 스레드마다 따로다). 라이브 렌더는 property를 워커 스레드에서 읽지만, 핸들러가 읽는 property는 루프 위에서 돈다. 워커 스레드가 렌더하는 동안 루프는 계속 돌므로, 루프에서 컴포넌트를 바꾸는 백그라운드 코드는 `wire._render_gate.run()`으로 돌린다 — 아니면 `data-state`와 본문이 다른 상태를 말하는 프레임이 나간다(#138, `wireview/core/render_gate.py`).
 - **사용자 문서를 추가·이동하면 `docs/site.toml`에 분류한다.** 사이트에 싣는 페이지이거나 `[exclude]` 패턴이어야 하고, 어느 쪽도 아니면 tests/test_doc_site.py가 실패한다. 공개 주소가 바뀌면 `docs/redirects.toml`에 옛 주소를 남긴다.
+- **공개 URL은 없애지 않는다.** 페이지를 빼거나 slug를 바꾸면 `docs/redirects.toml`로 옛 주소를 옮긴다 — `make docs-site`가 `docs/site-urls.txt`에 있는데 사이트에도 redirects에도 없는 URL로 실패한다(사라진 URL 관문). 새 URL은 `python -m scripts.docs_site build --update-urls`로 목록에 더한다.
 - **pyright는 `tests/`를 검사하지 않고, `tsc`는 checkJs=false라 JS 본문을 검사하지 않는다.** 둘 다 통과해도 해당 영역은 검증된 것이 아니다.
-- **gitignore 대상.** `*.pyi` (AUTO_GENERATE_STUBS가 DEBUG에서 생성), `.wireview/`, `tests/static/`, `*.min.js`.
+- **gitignore 대상.** `*.pyi` (AUTO_GENERATE_STUBS가 DEBUG에서 생성), `.wireview/`, `tests/static/`, `*.min.js`, `build/docs-site/`(문서 사이트 산출물).
 - **컴포넌트 ID**는 페이지 안에서 고유해야 한다.
 - **LiveComponent는 부모가 소유한다.** 클라이언트는 `wireview-live` 요소에 join을 보내지 않고, 자식의 `joined()`·`update()`·`leaving()`과 렌더는 `WireviewSession.send_render`가 부모 렌더 뒤에 처리해 같은 `render` 메시지의 `children`으로 보낸다. 렌더를 보내는 새 경로를 만들 때 `send_render`를 우회하면 자식 초기화가 조용히 빠진다. 계약은 `docs/design/live-component-ownership.md`.
 - **채널 레이어는 core/transport.py에서만 만진다.** `get_channel_layer`, `group_add`, `group_send`를 다른 모듈에 쓰면 tests/test_transport.py의 가드가 실패한다. fan-out은 `get_broker().publish`, 세션 메시지는 `WireviewMeta.send`.

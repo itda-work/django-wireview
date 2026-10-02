@@ -13,6 +13,8 @@ from urllib.parse import unquote
 
 import pytest
 
+from scripts.docs_site.nav import Slugger, slug
+
 pytestmark = pytest.mark.unit
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -43,24 +45,15 @@ def _prose(path: Path) -> list[str]:
     return lines
 
 
-def slug(heading: str) -> str:
-    """GitHub's anchor for a heading: link text kept, lower case, punctuation dropped, spaces to hyphens."""
-    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", heading)
-    text = re.sub(r"<[^>]+>", "", text)
-    return re.sub(r"[^\w\- ]", "", text.strip().lower()).replace(" ", "-")
-
-
 @cache
 def anchors(path: Path) -> frozenset[str]:
+    """The anchors GitHub gives the headings (the site's heading ids are the same), and the HTML anchors."""
     found: set[str] = set()
-    seen: dict[str, int] = {}
+    slugger = Slugger()
     for line in _prose(path):
         found.update(HTML_ANCHOR.findall(line))
         if match := HEADING.match(line):
-            base = slug(match.group(1))
-            count = seen.get(base, 0)
-            seen[base] = count + 1
-            found.add(base if count == 0 else f"{base}-{count}")
+            found.add(slugger(match.group(1)))
     return frozenset(found)
 
 

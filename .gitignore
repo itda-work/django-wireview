@@ -46,3 +46,4 @@ dump.rdb
 
 # Claude Code worktrees
 .claude/worktrees/
+/build/

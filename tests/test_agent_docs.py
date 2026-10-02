@@ -17,7 +17,7 @@ SKILLS = sorted((ROOT / ".claude" / "skills").glob("*/SKILL.md"))
 HARNESS_DOCS = [ROOT / "CLAUDE.md", *SKILLS]
 
 # Generated at build or run time: referenced on purpose, absent from a clean tree.
-GENERATED = {"wireview.min.js", "*.pyi", ".wireview/", "tests/static/", "*.min.js"}
+GENERATED = {"wireview.min.js", "*.pyi", ".wireview/", "tests/static/", "*.min.js", "build/docs-site/"}
 
 # Slashes that are not directories.
 NOT_PATHS = {

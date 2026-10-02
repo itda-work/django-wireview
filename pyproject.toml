@@ -174,7 +174,19 @@ filterwarnings = [
     "error::pytest.PytestUnhandledThreadExceptionWarning",
 ]
 
+[tool.uv]
+default-groups = ["dev", "docs"]
+
 [dependency-groups]
 dev = [
     "pytest-playwright>=0.4.0",
+]
+# What scripts/docs_site renders the documentation site with (make docs-site, #159). Not a
+# runtime dependency. A default group, so `uv sync` and `uv run` install it and `make test`
+# runs the build's tests; the runs outside the project (test-latest, test-lowest) add it
+# themselves, and tests/test_docs_site_build.py fails where CI is set if it is missing.
+docs = [
+    "markdown-it-py>=3",
+    "mdit-py-plugins>=0.4",
+    "pygments>=2.17",
 ]
