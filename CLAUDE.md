@@ -196,10 +196,10 @@ docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEAT
                            site.toml 이 문서 사이트(itda.work/wireview/)의 목차·주소·튜토리얼 학습 순서의 정본, redirects.toml 이 옮긴 주소.
                            scripts/docs_site/nav.py 가 읽고, tests/test_doc_site.py 가 분류를, tests/test_tutorials.py 가 튜토리얼 README·nav 줄을 이것과 맞춘다(#158).
                            site-urls.txt 가 공개 URL 목록이다 — 사이트 빌드가 이것과 비교해 사라진 URL을 실패시킨다(#159)
-scripts/docs_site/         문서 사이트 빌드(make docs-site·make docs-serve, #159). nav.py 가 site.toml·redirects.toml 해석과 제목 앵커(slug)의
+scripts/docs_site/         문서 사이트 빌드(make docs-site·make docs-site-bundle·make docs-serve, #159). nav.py 가 site.toml·redirects.toml 해석과 제목 앵커(slug)의
                            유일한 정본이고 표준 라이브러리만 쓴다 — 문서 가드 테스트도 이것을 import한다. render.py 는 Markdown 렌더와 링크
                            재작성(사이트 페이지는 사이트 경로로, 그 밖의 저장소 파일은 태그 고정 GitHub로), build.py 는 산출물·관문,
-                           serve.py 는 폴링 재빌드 개발 서버. templates/·assets/ 가 itda.work 레이아웃의 재현이다(원본과 커밋은 site.css 머리 주석).
+                           serve.py 는 폴링 재빌드 개발 서버, bundle.py 는 릴리스 자산 docs-site-v<버전>.tar.gz(결정론적, dist/ 밖 build/site-dist/, #160). templates/·assets/ 가 itda.work 레이아웃의 재현이다(원본과 커밋은 site.css 머리 주석).
                            렌더 의존성은 dependency-group docs(기본 그룹)에만 있다. 산출물은 `build/docs-site/`(gitignore)
 editors/vscode/            VS Code 확장(#156). wheel·sdist에 싣지 않고 버전도 따로다. src/core/ 는 vscode를 import하지 않는 순수 모듈
                            (node --test가 .ts를 그대로 돈다 — import는 .ts까지, enum 금지), src/*.ts 는 등록과 위치 변환뿐인 어댑터.
@@ -250,6 +250,7 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 | JS 빌드 | `make build-js` — clone 직후와 `wireview/static/wireview/wireview.js` 수정 후 필수 |
 | 클라이언트 테스트 | `make test-js` |
 | 문서 사이트 빌드 (관문 포함) | `make docs-site` — 산출물 `build/docs-site/`, `python -m http.server -d build/docs-site`로 `/wireview/`가 열린다 |
+| 문서 사이트 릴리스 묶음 | `make docs-site-bundle` — `build/site-dist/docs-site-v<버전>.tar.gz`(결정론적). dist/ 에 두지 않는다(PyPI가 통째로 받는다) |
 | 문서 사이트 개발 서버 | `make docs-serve` — 바뀌면 다시 빌드하고 브라우저를 새로고침한다(`ARGS="--port N"`) |
 
 전체 표(E2E 레이어, 벤치마크, Windows 실측, 타입 스텁)와 선행 조건은 `wireview-dev` 스킬에.
@@ -286,7 +287,7 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 - **사용자 문서를 추가·이동하면 `docs/site.toml`에 분류한다.** 사이트에 싣는 페이지이거나 `[exclude]` 패턴이어야 하고, 어느 쪽도 아니면 tests/test_doc_site.py가 실패한다. 공개 주소가 바뀌면 `docs/redirects.toml`에 옛 주소를 남긴다.
 - **공개 URL은 없애지 않는다.** 페이지를 빼거나 slug를 바꾸면 `docs/redirects.toml`로 옛 주소를 옮긴다 — `make docs-site`가 `docs/site-urls.txt`에 있는데 사이트에도 redirects에도 없는 URL로 실패한다(사라진 URL 관문). 새 URL은 `python -m scripts.docs_site build --update-urls`로 목록에 더한다.
 - **pyright는 `tests/`를 검사하지 않고, `tsc`는 checkJs=false라 JS 본문을 검사하지 않는다.** 둘 다 통과해도 해당 영역은 검증된 것이 아니다.
-- **gitignore 대상.** `*.pyi` (AUTO_GENERATE_STUBS가 DEBUG에서 생성), `.wireview/`, `tests/static/`, `*.min.js`, `build/docs-site/`(문서 사이트 산출물).
+- **gitignore 대상.** `*.pyi` (AUTO_GENERATE_STUBS가 DEBUG에서 생성), `.wireview/`, `tests/static/`, `*.min.js`, `build/docs-site/`(문서 사이트 산출물), `build/site-dist/`(그 묶음).
 - **컴포넌트 ID**는 페이지 안에서 고유해야 한다.
 - **LiveComponent는 부모가 소유한다.** 클라이언트는 `wireview-live` 요소에 join을 보내지 않고, 자식의 `joined()`·`update()`·`leaving()`과 렌더는 `WireviewSession.send_render`가 부모 렌더 뒤에 처리해 같은 `render` 메시지의 `children`으로 보낸다. 렌더를 보내는 새 경로를 만들 때 `send_render`를 우회하면 자식 초기화가 조용히 빠진다. 계약은 `docs/design/live-component-ownership.md`.
 - **채널 레이어는 core/transport.py에서만 만진다.** `get_channel_layer`, `group_add`, `group_send`를 다른 모듈에 쓰면 tests/test_transport.py의 가드가 실패한다. fan-out은 `get_broker().publish`, 세션 메시지는 `WireviewMeta.send`.

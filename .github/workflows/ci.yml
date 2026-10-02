@@ -345,3 +345,25 @@ jobs:
       # In the VS Code release engines.vscode names, which test/host/run.mjs downloads
       - name: Smoke tests in VS Code
         run: xvfb-run -a npm run test:host
+
+  # The documentation site (itda.work/wireview/, #159): the document guards, the build and its
+  # gates (links, anchors, docs/site-urls.txt). release.yml calls this whole workflow, so a docs
+  # build that fails here keeps a tag off PyPI (#160). No JS, broker or database needed.
+  docs-site:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0 # publishes no floating major tag since v8
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Build the documentation site
+        run: make docs-site

@@ -1,12 +1,14 @@
 name: Release
 
 # Tag push (v*) -> build -> publish to PyPI via trusted publishing -> GitHub release.
+# The release also carries the documentation site, docs-site-v<version>.tar.gz, with a
+# build provenance attestation (#160).
 #
 # Nothing is published unless the tagged commit passes the whole CI workflow
 # (ci.yml, called here: the Python x Django matrix, the newest-dependencies run,
-# E2E on NATS, lint, typecheck, the package build, the editor extension's checks
-# and package; not its tests in a downloaded VS Code, which `release: true` skips)
-# and the built wheel imports in
+# E2E on NATS, lint, typecheck, the package build, the documentation site build, the editor
+# extension's checks and package; not its tests in a downloaded VS Code, which `release: true`
+# skips) and the built wheel imports in
 # a fresh environment on the newest dependencies (smoke). Before this gate a tag
 # went to PyPI with no test run at all; 1.0.0rc3 went out importable only on the
 # pydantic uv.lock pinned (#122, #127).
@@ -15,8 +17,12 @@ name: Release
 # owner itda-work, repository django-wireview, workflow release.yml, environment pypi.
 # No API token is stored anywhere.
 #
+# The documentation bundle never goes into dist/: pypa/gh-action-pypi-publish uploads
+# dist/ whole, so the bundle is its own artifact (docs-site) downloaded to site-dist/,
+# and smoke fails unless dist/ holds exactly one wheel and one sdist.
+#
 # A manual run (workflow_dispatch) is a dry run: it runs the same gate, builds and
-# round-trips the artifact, and publishes nothing. It is how a change to this
+# round-trips both artifacts, and publishes, attests and releases nothing. It is how a change to this
 # file, or an action bump, gets checked before the next tag depends on it (#105).
 #
 # Runners are pinned rather than ubuntu-latest, so a GitHub image migration does
@@ -75,11 +81,53 @@ jobs:
           name: dist
           path: dist/
 
-  # The artifact the publish job would download comes back intact, and the wheel in
+  # The documentation site, packed for the release (make docs-site-bundle: the document guards,
+  # the build and its gates, then the bundle). ci's docs-site job already fails the gate on a
+  # broken docs build; this job is the bundle that ships, built from the same commit.
+  docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0 # publishes no floating major tag since v8
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Build and pack the documentation site
+        run: make docs-site-bundle
+
+      # The bundle names the version pyproject.toml declares -- on a tag, the tag itself
+      # (build checks that the tag and pyproject.toml agree) -- in its file name and VERSION.
+      - name: Check that the bundle is this release's
+        run: |
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          tag="v$version"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "$tag" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME does not match pyproject version $version"
+            exit 1
+          fi
+          ls -l build/site-dist/
+          test "$(ls build/site-dist/)" = "docs-site-$tag.tar.gz"
+          test "$(cat build/docs-site/wireview/VERSION)" = "$tag"
+          test "$(tar -xzOf "build/site-dist/docs-site-$tag.tar.gz" wireview/VERSION)" = "$tag"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: docs-site
+          path: build/site-dist/
+
+  # The artifacts the publish job would download come back intact, and the wheel in
   # it imports and passes `check` in a fresh environment that resolves the
   # dependencies anew -- what `pip install django-wireview` gets today.
   smoke:
-    needs: build
+    needs: [build, docs]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7 # for the Makefile and tests/wheel_smoke.py
@@ -96,19 +144,49 @@ jobs:
           name: dist
           path: dist/
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: docs-site
+          path: site-dist/
+
+      # PyPI gets dist/ whole: exactly one wheel and one sdist, nothing else (#160).
       - name: List what would be published
-        run: ls -l dist/ && test -n "$(ls dist/*.whl)" && test -n "$(ls dist/*.tar.gz)"
+        run: |
+          ls -la dist/
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          expected=$(printf '%s\n' "django_wireview-$version-py3-none-any.whl" "django_wireview-$version.tar.gz" | sort)
+          actual=$(find dist -mindepth 1 -printf '%P\n' | sort)
+          if [ "$actual" != "$expected" ]; then
+            echo "dist/ must hold exactly one wheel and one sdist, and holds:"
+            echo "$actual"
+            exit 1
+          fi
+
+      - name: Unpack the documentation bundle
+        run: |
+          ls -la site-dist/
+          bundles=$(find site-dist -mindepth 1 -printf '%P\n')
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          test "$bundles" = "docs-site-v$version.tar.gz"
+          mkdir -p "$RUNNER_TEMP/docs-site"
+          tar -xzf "site-dist/$bundles" -C "$RUNNER_TEMP/docs-site"
+          test "$(cat "$RUNNER_TEMP/docs-site/wireview/VERSION")" = "v$version"
+          test -f "$RUNNER_TEMP/docs-site/wireview/index.html"
+          test "$(ls "$RUNNER_TEMP/docs-site")" = "wireview"
 
       - name: Import the wheel on the newest dependencies
         run: make ci-smoke
 
+  # Waits for every gate. A docs build that fails stops it twice over: ci (its docs-site job)
+  # and docs both fail, and a job whose needs failed does not run.
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [ci, build, smoke]
+    needs: [ci, build, docs, smoke]
     runs-on: ubuntu-24.04
     environment: pypi
     permissions:
-      id-token: write # PyPI trusted publishing (OIDC)
+      id-token: write # PyPI trusted publishing (OIDC), and signing the attestation
+      attestations: write # the documentation bundle's provenance
       contents: write # GitHub release
     steps:
       - uses: actions/download-artifact@v8
@@ -116,13 +194,31 @@ jobs:
           name: dist
           path: dist/
 
+      # Not into dist/: the next step uploads that directory whole.
+      - uses: actions/download-artifact@v8
+        with:
+          name: docs-site
+          path: site-dist/
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+
+      # A sha256 next to the asset on the same release changes with it; the attestation
+      # ties the bundle to this workflow run. Check with
+      # gh attestation verify docs-site-v<version>.tar.gz -R itda-work/django-wireview
+      - name: Attest the documentation bundle
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: site-dist/docs-site-*.tar.gz
 
       - name: GitHub release
         uses: softprops/action-gh-release@v3
         with:
-          files: dist/*
+          files: |
+            dist/*
+            site-dist/docs-site-*.tar.gz
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref_name, 'a') || contains(github.ref_name, 'b') || contains(github.ref_name, 'rc') }}

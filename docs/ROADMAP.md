@@ -365,17 +365,24 @@ def button(text: str, variant: str = "primary"):
    `Development Status :: 5 - Production/Stable`이어야 한다(같은 파일이 본다).
 3. 이 문서의 릴리스 이력 표에 행을 ✅로 두고 맨 아래 "마지막 업데이트" 날짜를 바꾼다. 마이너·메이저 릴리스면
    `SECURITY.md`의 지원 버전 표("지금은 1.0.x")와 `docs/UPGRADING.md`의 "어디서 오나" 표·버전 범위를 새 버전에 맞춘다.
-4. `make quality`, `make test`, `make test-latest`, `make test-lowest`, `make test-e2e`, `make test-e2e LAYER=redis`, `make test-matrix`, `make ci-build`, `make ci-smoke`.
+4. `make quality`, `make test`, `make test-latest`, `make test-lowest`, `make test-e2e`, `make test-e2e LAYER=redis`, `make test-matrix`, `make ci-build`, `make ci-smoke`, `make docs-site`.
    태그 뒤의 게이트와 같은 것을 먼저 로컬에서 본다 — 게이트에서 떨어지면 태그를 지우고 다시 찍어야 한다.
 5. 워크플로나 액션 버전을 바꿨다면 태그 전에 `gh workflow run release.yml`로 dry run을 돌린다. 게이트까지 똑같이 돌고
    배포만 하지 않는다.
 6. 태그 `v<버전>`을 push한다. `.github/workflows/release.yml`이 다음을 모두 통과해야 PyPI에 올린다(#122).
    - **ci**: `ci.yml` 전체를 태그 커밋에 대해 부른다(`workflow_call`). Python × Django 매트릭스, 새 설치가 받는
-     최신 의존성(`test-latest`, #127), 하한 의존성(`test-lowest`, #132), NATS·Redis 레이어의 E2E(#130), lint, typecheck, 패키지 빌드. `ci.yml`에 job을 더하면 게이트도 넓어진다.
+     최신 의존성(`test-latest`, #127), 하한 의존성(`test-lowest`, #132), NATS·Redis 레이어의 E2E(#130), lint, typecheck, 패키지 빌드,
+     문서 사이트 빌드(`docs-site` 잡: `make docs-site`, 문서 가드와 링크·앵커·사라진 URL 관문, #160). `ci.yml`에 job을 더하면 게이트도 넓어진다.
    - **build**: 태그와 `pyproject.toml`의 버전이 같은지 보고 `make ci-build`. PyPI 페이지가 되는 README, 프로젝트 URL, wheel에 싣는
      스킬의 `main` 링크는 빌드가 그 태그로 바꾼다(`hatch_build.py`). 그래서 태그 이름은 반드시 `v<버전>`이다.
    - **smoke**: 빌드한 wheel을 lock 없이 새로 해석한 의존성에 설치해 import와 `check`를 돈다(`make ci-smoke`).
-     rc3처럼 lock의 버전에서만 import되는 산출물은 여기서 멈춘다.
+     rc3처럼 lock의 버전에서만 import되는 산출물은 여기서 멈춘다. `dist/`에 wheel 하나와 sdist 하나 말고 다른 파일이
+     있으면 실패한다 — PyPI는 `dist/`를 통째로 받는다. 문서 묶음도 내려받아 풀어 본다.
+   - **docs**: `make docs-site-bundle`로 문서 사이트를 `docs-site-v<버전>.tar.gz`로 묶는다. `dist/` 밖(`build/site-dist/`)에
+     만들어 별도 artifact로 올리고, 파일 이름과 묶음 안의 `wireview/VERSION`이 태그와 같은지 본다. 같은 커밋은 같은 바이트로 묶인다.
+   - **publish**: 위 모두를 기다린다 — 문서 빌드가 실패하면 publish는 돌지 않는다. PyPI에는 `dist/`만 올리고, 문서 묶음에
+     빌드 증명(`actions/attest-build-provenance`)을 붙인 뒤 GitHub Release에 `dist/*`와 묶음을 함께 붙인다. 내려받은 묶음은
+     `gh attestation verify docs-site-v<버전>.tar.gz -R itda-work/django-wireview`로 확인한다.
 
    E2E가 불안정해 게이트가 떨어졌다면 Actions의 "Re-run failed jobs"로 그 job만 다시 돌린다. 통과하면 publish가 이어진다.
    게이트는 태그 push와 dry run에서만 돈다. 평소 `ci.yml`은 여전히 수동 실행 전용이다.

@@ -37,6 +37,11 @@ The django-reactor era changelog (2.x) is preserved in
   whether `{% filter %}` refuses it (`forbidden_in_filter_tag`, read as Django reads it). The
   fields in `Meta.exclude_fields` are listed too (`in_state: false`): a template passes them.
 
+- Each GitHub release carries the documentation site for that tag, `docs-site-v<version>.tar.gz`
+  (unpack it where `/wireview/` is served), with a build provenance attestation:
+  `gh attestation verify docs-site-v<version>.tar.gz -R itda-work/django-wireview`. A docs build that
+  fails its gates now stops the release before PyPI, like a failing test.
+
 - The starter template ships a `.gitignore`. In DEBUG wireview writes `hello/live.pyi` whenever
   Django starts, `check` and `migrate` included, and `migrate` makes `db.sqlite3`; a new project's
   first commit took both. The wheel check and the wheel smoke test look for the file.

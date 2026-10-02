@@ -47,8 +47,8 @@ def _workflow(name: str) -> dict:
 
 #: What must pass before a tag reaches PyPI (#122): the tests, the tests on the
 #: dependencies a fresh install resolves (#127) and on the lowest ones pyproject.toml
-#: allows (#132), quality, and the package build.
-GATE_JOBS = {"test", "test-latest", "test-lowest", "test-e2e", "lint", "typecheck", "build"}
+#: allows (#132), quality, the package build, and the documentation site build (#160).
+GATE_JOBS = {"test", "test-latest", "test-lowest", "test-e2e", "lint", "typecheck", "build", "docs-site"}
 
 
 def test_publishing_waits_for_the_whole_ci_workflow():
@@ -68,6 +68,84 @@ def test_publishing_waits_for_the_whole_ci_workflow():
     assert "smoke" in needs, "publish does not wait for the wheel smoke test"
     assert "make ci-smoke" in [step.get("run") for step in jobs["smoke"]["steps"]]
     assert "if" not in jobs["smoke"], "the smoke test is skipped on some runs"
+
+
+def _needs(job: dict) -> set[str]:
+    needs = job.get("needs", [])
+    return {needs} if isinstance(needs, str) else set(needs)
+
+
+def _runs(job: dict) -> list[str]:
+    return [step["run"] for step in job["steps"] if "run" in step]
+
+
+def _step(job: dict, uses: str) -> list[dict]:
+    return [step for step in job.get("steps", []) if step.get("uses", "").split("@")[0] == uses]
+
+
+def _under_dist(path: str) -> bool:
+    return path.strip().lstrip("./").split("/", 1)[0] == "dist"
+
+
+def test_ci_builds_the_documentation_site():
+    """The release calls ci.yml whole, so this job is what keeps a broken docs build off PyPI (#160)."""
+    job = _workflow("ci.yml")["jobs"]["docs-site"]
+
+    assert "make docs-site" in _runs(job)
+    assert "if" not in job
+
+
+def test_the_release_packs_the_documentation_site_outside_dist():
+    """pypa/gh-action-pypi-publish uploads dist/ whole: a tarball there goes to PyPI as a package file."""
+    jobs = _workflow("release.yml")["jobs"]
+    docs = jobs["docs"]
+    uploads = {
+        step["with"]["name"]: step["with"]["path"]
+        for j in jobs.values()
+        for step in _step(j, "actions/upload-artifact")
+    }
+
+    assert "make docs-site-bundle" in _runs(docs)
+    assert "if" not in docs, "the bundle is skipped on some runs (the dry run among them)"
+    assert set(uploads) == {"dist", "docs-site"}
+    assert _under_dist(uploads["dist"]) and not _under_dist(uploads["docs-site"])
+    assert any("wireview/VERSION" in run and "GITHUB_REF_NAME" in run for run in _runs(docs)), (
+        "nothing checks the bundle names the tag"
+    )
+    makefile = (ROOT / "Makefile").read_text()
+    assert "\ndocs-site-bundle: docs-site\n" in makefile
+
+
+def test_smoke_checks_that_dist_holds_only_the_wheel_and_the_sdist():
+    """PyPI gets what dist/ holds; #160's condition is that it stays the wheel and the sdist."""
+    smoke = _workflow("release.yml")["jobs"]["smoke"]
+    downloads = {step["with"]["name"]: step["with"]["path"] for step in _step(smoke, "actions/download-artifact")}
+    listing = next(step["run"] for step in smoke["steps"] if step.get("name") == "List what would be published")
+
+    assert {"build", "docs"} <= _needs(smoke)
+    assert _under_dist(downloads["dist"]) and not _under_dist(downloads["docs-site"])
+    assert "django_wireview-$version-py3-none-any.whl" in listing and "django_wireview-$version.tar.gz" in listing
+    assert "find dist -mindepth 1" in listing, "the listing does not look at everything in dist/"
+    assert any("tar -xzf" in run and "site-dist/" in run for run in _runs(smoke)), "the bundle is not unpacked"
+
+
+def test_publishing_uploads_dist_and_attests_the_bundle():
+    publish = _workflow("release.yml")["jobs"]["publish"]
+    downloads = {step["with"]["name"]: step["with"]["path"] for step in _step(publish, "actions/download-artifact")}
+    (pypi,) = _step(publish, "pypa/gh-action-pypi-publish")
+    (attest,) = _step(publish, "actions/attest-build-provenance")
+    (release,) = _step(publish, "softprops/action-gh-release")
+    names = [step.get("uses", "").split("@")[0] for step in publish["steps"]]
+    assets = release["with"]["files"].split()
+
+    assert {"ci", "docs", "smoke"} <= _needs(publish), "a docs build that fails does not stop the publish"
+    assert publish["if"] == "startsWith(github.ref, 'refs/tags/v')"
+    assert _under_dist(downloads["dist"]) and not _under_dist(downloads["docs-site"])
+    assert pypi["with"]["packages-dir"].rstrip("/") == "dist"
+    assert "docs-site-" in attest["with"]["subject-path"] and not _under_dist(attest["with"]["subject-path"])
+    assert names.index("actions/attest-build-provenance") < names.index("softprops/action-gh-release")
+    assert "dist/*" in assets and attest["with"]["subject-path"] in assets
+    assert publish["permissions"] == {"id-token": "write", "attestations": "write", "contents": "write"}
 
 
 def test_the_build_starts_from_an_empty_dist():
