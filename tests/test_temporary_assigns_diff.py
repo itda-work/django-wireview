@@ -120,6 +120,11 @@ TEMPLATES = {
         "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>"
         "{% component 'TaK' id='k' %}{% endif %}</div>"
     ),
+    "ta/withkblock.html": (
+        "{% load wireview %}<div {% tag_header %}><b>{{ count }}</b>"
+        "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>"
+        "{% component_block 'TaK' id='k' %}{% endcomponent %}{% endif %}</div>"
+    ),
     "ta/klist.html": (
         "{% load wireview %}<div {% tag_header %}><b>{{ count }}</b>"
         "{% for m in messages %}{% component 'TaK' id='k' %}{% endfor %}</div>"
@@ -256,6 +261,11 @@ class TaLiveList(TaBase):
 class TaWithK(TaBase):
     class Meta:
         template_name = "ta/withk.html"
+
+
+class TaWithKBlock(TaBase):
+    class Meta:
+        template_name = "ta/withkblock.html"
 
 
 class TaKList(TaBase):
@@ -748,11 +758,11 @@ async def test_a_live_component_in_a_kept_part_stays_on_the_server(name):
     assert all(consumer.repo.get(id_) is not None for id_ in ids), "the page shows a LiveComponent the server let go"
 
 
-@pytest.mark.parametrize("name", ["TaWithK", "TaKList"])
+@pytest.mark.parametrize("name", ["TaWithK", "TaWithKBlock", "TaKList"])
 async def test_a_kept_part_does_not_put_back_a_nested_components_old_drawing(name):
     """Put back, the nested component's drawing and data-state went back to before its own change."""
     consumer, outbound, component = await page(name)
-    await event(consumer, outbound, "load" if name == "TaWithK" else "load_other")  # one item: one id
+    await event(consumer, outbound, "load_other" if name == "TaKList" else "load")  # one item: one id
     k = await join(consumer, "k")
     await consumer.command_user_event("k", "inc", {}, {})
     assert "K1" in html_now(k)
