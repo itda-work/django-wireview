@@ -136,26 +136,16 @@ def test_minutes_are_written_the_way_the_index_writes_them(minutes, written):
 # --- docs/redirects.toml ---------------------------------------------------------------------------
 
 
+FILES = site_nav.files()
+
+
 def _check_redirects(entries: list[dict], urls: set[str], base: str) -> list[str]:
-    problems = []
-    sources = [entry["from"] for entry in entries]
-    for source, n in Counter(sources).items():
-        if n > 1:
-            problems.append(f"{source} redirects more than once")
-    for entry in entries:
-        old, new = entry["from"], entry["to"]
-        for path in (old, new):
-            if not (path.startswith(base) and path.endswith("/")):
-                problems.append(f"{path} is not a site path under {base}")
-        if old in urls:
-            problems.append(f"{old} is still a page")
-        if new not in urls:
-            problems.append(f"{new} is not a page" + (" (a chain)" if new in sources else ""))
-    return problems
+    return site_nav.check_redirects(entries, urls, FILES, base)
 
 
 def test_the_redirects_lead_to_pages():
-    assert _check_redirects(site_nav.redirects(), URLS, site_nav.site()["base"]) == []
+    """A page's redirect leads to a page; a published file's (llms.txt, the skill) to a published file."""
+    assert site_nav.redirect_problems() == []
 
 
 @pytest.mark.parametrize(
@@ -179,6 +169,17 @@ def test_the_redirects_lead_to_pages():
             "more than once",
         ),
         ([{"from": "/elsewhere/", "to": "/wireview/tutorial/"}], "not a site path"),
+        ([{"from": "/wireview/agent/wireview/old.md", "to": "/wireview/agent/wireview/SKILL.md"}], None),
+        ([{"from": "/wireview/llms-full.txt", "to": "/wireview/llms.txt"}], None),
+        (
+            [{"from": "/wireview/agent/wireview/SKILL.md", "to": "/wireview/llms.txt"}],
+            "the same extension",
+        ),
+        ([{"from": "/wireview/agent/wireview/SKILL.md", "to": "/wireview/llms.txt"}], "still published"),
+        ([{"from": "/wireview/agent/old.md", "to": "/wireview/agent/gone.md"}], "not a published file"),
+        ([{"from": "/wireview/agent/old.md", "to": "/wireview/tutorial/"}], "a file to a file"),
+        ([{"from": "/wireview/old/", "to": "/wireview/llms.txt"}], "a file to a file"),
+        ([{"from": "/wireview/old", "to": "/wireview/tutorial/"}], "a file to a file"),
     ],
 )
 def test_the_redirect_rules_catch_what_they_say(entries, problem):

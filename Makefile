@@ -340,7 +340,7 @@ ci-smoke:
 # fails here before anything is rendered. The build then checks what it wrote (internal links
 # and anchors, docs/site-urls.txt) and exits non-zero on any problem. Output: build/docs-site,
 # served as is by `python -m http.server -d build/docs-site` at /wireview/.
-DOCS_GUARDS = tests/test_doc_links.py tests/test_doc_examples.py tests/test_tutorials.py tests/test_doc_site.py tests/test_agent_docs.py
+DOCS_GUARDS = tests/test_doc_links.py tests/test_doc_examples.py tests/test_tutorials.py tests/test_doc_site.py tests/test_agent_docs.py tests/test_agent_entry.py
 docs-site:
 	uv run pytest $(DOCS_GUARDS) -q --no-header -p no:cacheprovider
 	uv run python -m scripts.docs_site build $(ARGS)

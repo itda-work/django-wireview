@@ -34,7 +34,8 @@ The django-reactor era changelog (2.x) is preserved in
 - The documentation site serves `/wireview/llms.txt` (llmstxt.org), generated from `docs/site.toml`: what an
   agent does first (install, the starter, `wireview_agent_setup`, `manage.py check`), then the agent skill and
   every page's Markdown. The skill is published beside it as Markdown at `/wireview/agent/wireview/`, and the
-  README opens with a one-line prompt that points an agent there (#164).
+  README opens with a one-line prompt that points an agent there (#164). llms.txt and the skill's files are public
+  URLs like the pages: `docs/redirects.toml` moves them too, leaving a note at the old path that names the new one.
 
 ### Changed
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 import subprocess
 import tomllib
+from collections import Counter
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
@@ -168,9 +169,17 @@ class Site:
         names.sort(key=lambda name: name != "SKILL.md")
         return [Published(source=f"{source}/{name}", url=f"{url}{name}") for name in names]
 
+    def files(self) -> set[str]:
+        """The public URLs that are files, not pages: llms.txt and the skill's files."""
+        return {self.llms_url} | {file.url for file in self.skill()}
+
     def public_urls(self) -> set[str]:
         """Every URL a link out there may name: the pages, llms.txt and the skill's files."""
-        return {page.url for page in self.pages()} | {self.llms_url} | {file.url for file in self.skill()}
+        return {page.url for page in self.pages()} | self.files()
+
+    def redirect_problems(self) -> list[str]:
+        """What breaks docs/redirects.toml's rules (its head comment); the build fails on each."""
+        return check_redirects(self.redirects, {page.url for page in self.pages()}, self.files(), self.base)
 
     def tutorials(self) -> list[Page]:
         """The tutorials in learning order (the tutorial section's pages, not its index)."""
@@ -182,6 +191,45 @@ class Site:
     def excluded(self, path: str) -> bool:
         """Whether an [exclude] pattern covers a repository path."""
         return any(_covers(pattern, path) for pattern in self.data["exclude"]["paths"])
+
+
+def _extension(path: str) -> str:
+    name = path.rsplit("/", 1)[-1]
+    return name.rsplit(".", 1)[1] if "." in name else ""
+
+
+def check_redirects(entries: list[dict], pages: set[str], files: set[str], base: str) -> list[str]:
+    """docs/redirects.toml's rules: a page moves to a page, a published file to a file of its kind.
+
+    A page's path ends with "/" and the build leaves an HTML page at the old one; a file's path
+    ends with its extension and the build leaves a file of that kind there, saying where it went.
+    """
+    problems = []
+    sources = [entry["from"] for entry in entries]
+    for source, n in Counter(sources).items():
+        if n > 1:
+            problems.append(f"{source} redirects more than once")
+    for entry in entries:
+        old, new = entry["from"], entry["to"]
+        if not (old.startswith(base) and new.startswith(base)):
+            problems.append(f"{old} -> {new} is not a site path under {base}")
+            continue
+        chain = " (a chain)" if new in sources else ""
+        if old.endswith("/") and new.endswith("/"):
+            if old in pages:
+                problems.append(f"{old} is still a page")
+            if new not in pages:
+                problems.append(f"{new} is not a page{chain}")
+        elif not old.endswith("/") and not new.endswith("/"):
+            if not _extension(old) or _extension(old) != _extension(new):
+                problems.append(f"{old} -> {new}: a file moves to a file with the same extension")
+            if old in files or old in pages:
+                problems.append(f"{old} is still published")
+            if new not in files:
+                problems.append(f"{new} is not a published file{chain}")
+        else:
+            problems.append(f"{old} -> {new}: a page moves to a page (ending in /), a file to a file")
+    return problems
 
 
 @cache
@@ -199,6 +247,14 @@ def redirects() -> list[dict]:
 
 def pages() -> list[Page]:
     return _repository().pages()
+
+
+def files() -> set[str]:
+    return _repository().files()
+
+
+def redirect_problems() -> list[str]:
+    return _repository().redirect_problems()
 
 
 def tutorials() -> list[Page]:

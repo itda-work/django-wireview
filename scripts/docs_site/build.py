@@ -18,8 +18,8 @@ After writing, the build checks what it wrote (each a gate: a problem fails the 
   so does every link of llms.txt and of the published skill that stays on the site;
 - docs/site-urls.txt, the public URLs, against the pages and the redirects: a URL the list
   has and the site no longer serves is a 404 for every link already out there, so it has to
-  move to docs/redirects.toml; a URL the site serves and the list lacks has to be added
-  (``--update-urls`` adds it).
+  move to docs/redirects.toml (a page to a page, a published file to a file of its kind); a URL
+  the site serves and the list lacks has to be added (``--update-urls`` adds it).
 
 The document guards in tests/ are the first gate; ``make docs-site`` runs them before this.
 """
@@ -39,7 +39,18 @@ from string import Template
 from urllib.parse import unquote, urljoin
 
 from . import nav
-from .render import MD_LINK, Linker, Problem, front_matter, pygments_css, render, rewrite_published, source_url
+from .render import (
+    CODE_SPAN,
+    FENCE,
+    MD_LINK,
+    Linker,
+    Problem,
+    front_matter,
+    pygments_css,
+    render,
+    rewrite_published,
+    source_url,
+)
 
 HERE = Path(__file__).resolve().parent
 TEMPLATES = HERE / "templates"
@@ -236,8 +247,15 @@ def _lead(text: str, limit: int = 200) -> str:
     return text[: ends[-1]] if ends else text[:limit].rstrip() + "…"
 
 
-def _title(text: str) -> str:
-    return next(line[2:].strip() for line in text.splitlines() if line.startswith("# "))
+def _title(text: str) -> str | None:
+    """A skill file's H1: the first "# " line outside a code block."""
+    fenced = False
+    for line in text.splitlines():
+        if FENCE.match(line):
+            fenced = not fenced
+        elif not fenced and line.startswith("# "):
+            return line[2:].strip()
+    return None
 
 
 def _skill_entries(site: nav.Site) -> tuple[list[tuple[str, str, str]], list[Problem]]:
@@ -259,7 +277,10 @@ def _skill_entries(site: nav.Site) -> tuple[list[tuple[str, str, str]], list[Pro
         else:
             description = ""
             problems.append(Problem(files[0].source, f"no route to {name}: llms.txt has nothing to say about it"))
-        entries.append((_title(text), nav.ORIGIN + file.url, description))
+        title = _title(text)
+        if title is None:
+            problems.append(Problem(file.source, "no H1: llms.txt has no title for it"))
+        entries.append((title or name, nav.ORIGIN + file.url, description))
     return entries, problems
 
 
@@ -270,6 +291,12 @@ def _llms(site: nav.Site, described: dict[str, str], tag: str, preview: bool) ->
         return f"- [{title}]({url})" + (f": {description}" if description else "")
 
     skill, problems = _skill_entries(site)
+    tutorials = site.tutorials()
+    if tutorials:
+        getting_started = f"{nav.ORIGIN}{tutorials[0].url}index.md"
+    else:
+        getting_started = ""
+        problems.append(Problem("docs/site.toml", "no tutorial: llms.txt's prose names the first one"))
     sections = {section["slug"]: section["name"] for section in site.data["sections"]}
     groups: dict[str, list[str]] = {}
     if skill:
@@ -282,7 +309,14 @@ def _llms(site: nav.Site, described: dict[str, str], tag: str, preview: bool) ->
     listed = "".join(f"\n## {name}\n\n" + "\n".join(items) + "\n" for name, items in groups.items())
     template = Template((TEMPLATES / "llms.txt").read_text(encoding="utf-8"))
     note = " 정식 릴리스 전 미리보기다." if preview else ""
-    return template.substitute(tag=tag, preview=note, sections=listed).rstrip("\n") + "\n", problems
+    return template.substitute(tag=tag, preview=note, getting_started=getting_started, sections=listed).rstrip(
+        "\n"
+    ) + "\n", problems
+
+
+def _moved(url: str) -> str:
+    """What a moved file's old path serves: where it went, in a line a person or an agent reads."""
+    return f"이 파일은 옮겨졌다.\n새 주소: {url}\n"
 
 
 # --- gates ----------------------------------------------------------------------------------------
@@ -348,21 +382,31 @@ def check_markdown(files: dict[str, bytes], base: str, where: dict[str, str]) ->
     Every link that stays on the site -- relative, a /wireview/ path, or an absolute URL under it,
     a link's target or a URL written as text -- reaches a file, and an id when it names one.
     ``where`` maps each such file to its source.
+
+    A link's ``](target)`` counts outside code blocks and code spans only, as the rewrite reads it:
+    ``handlers["save"](payload)`` in a code example is code. An absolute URL of the site counts
+    anywhere, code included: an agent copies it from a code block as readily as from prose, and
+    nothing but a URL of the site starts with the site's origin and base.
     """
     parsed = {path: _parse(data) for path, data in files.items() if path.endswith(".html")}
     site = nav.ORIGIN + base
     bare = re.compile(rf"{re.escape(site)}[^\s|)>`\"']*")
     problems = []
     for path in sorted(where):
+        fenced = False
         for number, line in enumerate(files[path].decode("utf-8").split("\n"), 1):
-            links = [match.group(2) for match in MD_LINK.finditer(line)] + bare.findall(line)
+            if FENCE.match(line):
+                fenced = not fenced
+            prose = "" if fenced or FENCE.match(line) else CODE_SPAN.sub("", line)
+            links = [match.group(2) for match in MD_LINK.finditer(prose)] + bare.findall(line)
             for link in dict.fromkeys(links):
+                written = link
                 if link.startswith(site):
                     link = link.removeprefix(nav.ORIGIN)
                 elif re.match(r"^[a-z][a-z0-9+.-]*:|^//", link, re.IGNORECASE):
                     continue  # another site, or GitHub at the tag
                 if message := _reach(link, "/" + path, files, parsed):
-                    problems.append(Problem(f"{where[path]}:{number}", message))
+                    problems.append(Problem(f"{where[path]}:{number}", message, written))
     return problems
 
 
@@ -471,7 +515,15 @@ def build(
         writer.write(to_file(page.url, "index.md"), rendered.markdown)
         where[html_path] = (page.source, rendered.links)
 
+    # A moved page leaves an HTML page that sends the reader on; a moved file (llms.txt, the skill's
+    # Markdown) leaves a file of its kind that says where it went, for a reader that reads it as text.
+    result.problems += [Problem("docs/redirects.toml", message) for message in site.redirect_problems()]
+    moved: dict[str, str] = {}
     for entry in site.redirects:
+        if not entry["from"].endswith("/"):
+            writer.write(to_file(entry["from"], ""), _moved(origin + entry["to"]))
+            moved[to_file(entry["from"], "")] = "docs/redirects.toml"
+            continue
         writer.write(
             to_file(entry["from"], "index.html"),
             redirect_template.substitute(
@@ -491,7 +543,7 @@ def build(
     writer.write(f"{prefix}VERSION", f"{tag}\n")
 
     # Published as they are, for an agent: the skill, and llms.txt that leads to it and to every page.
-    markdown_sources: dict[str, str] = {}
+    markdown_sources: dict[str, str] = dict(moved)
     for file in site.skill():
         text, problems = rewrite_published(file.path(root).read_text(encoding="utf-8"), file.source, linker)
         result.problems += problems
@@ -503,9 +555,12 @@ def build(
     markdown_sources[to_file(site.llms_url, "")] = f"{to_file(site.llms_url, '')} (the build's)"
 
     result.problems += check_links(writer.written, base, where)
-    # A relative link to a missing file stays as written, and its rewrite has reported it already.
-    reported = {problem.where for problem in result.problems}
-    result.problems += [p for p in check_markdown(writer.written, base, markdown_sources) if p.where not in reported]
+    # A relative link to a missing file stays as written, and its rewrite has reported it already;
+    # another link on the same line has not.
+    reported = {(problem.where, problem.link) for problem in result.problems if problem.link}
+    result.problems += [
+        p for p in check_markdown(writer.written, base, markdown_sources) if (p.where, p.link) not in reported
+    ]
     result.problems += check_urls(root, site.public_urls(), {e["from"] for e in site.redirects}, update_urls)
 
     # Write beside the old output and swap, so a server reading it never sees half a site.

@@ -51,6 +51,7 @@ _FORMATTER = HtmlFormatter(nowrap=True)
 class Problem:
     where: str  # "docs/features/csp.md:12", or a path alone
     message: str
+    link: str = ""  # the link as written, when the problem is one link's
 
     def __str__(self) -> str:
         return f"{self.where}: {self.message}"
@@ -224,13 +225,13 @@ def _rewrite_links(
         image = bool(re.search(r"!\[[^\]]*$", text[: match.start()]))
         new, problem = target(match.group(2), source, image=image)
         if problem:
-            problems.append(Problem(f"{source}:{number}", problem))
+            problems.append(Problem(f"{source}:{number}", problem, match.group(2)))
         return match.group(1) + new + match.group(3)
 
     def replace_bare(match: re.Match) -> str:
         new, problem = target(match.group(0), source)
         if problem:
-            problems.append(Problem(f"{source}:{number}", problem))
+            problems.append(Problem(f"{source}:{number}", problem, match.group(0)))
         return new
 
     text = MD_LINK.sub(replace, text)

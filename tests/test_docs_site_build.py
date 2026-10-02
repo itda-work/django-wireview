@@ -179,17 +179,6 @@ def _llms_sections(text: str) -> dict[str, list[tuple[str, str, str | None]]]:
     return sections
 
 
-def _blocks(text: str) -> list[str]:
-    """The lines of every fenced code block, unindented."""
-    lines, fenced = [], False
-    for line in text.splitlines():
-        if line.strip().startswith("```"):
-            fenced = not fenced
-        elif fenced:
-            lines.append(line.strip())
-    return lines
-
-
 def test_llms_txt_has_the_shape_llmstxt_org_gives(site):
     text = _llms(site.out)
     lines = text.splitlines()
@@ -244,39 +233,20 @@ def test_every_link_of_llms_txt_is_a_file_of_the_build(site):
     assert missing == []
 
 
-def test_the_commands_in_llms_txt_are_the_readmes_and_the_first_tutorials(site):
-    """What the agent runs is what a person following the README or tutorial 01 runs."""
-    commands = _blocks(_llms(site.out))
-    assert commands == [
-        "pip install django-wireview daphne",
-        next(line for line in _blocks((ROOT / "README.md").read_text(encoding="utf-8")) if "startproject" in line),
-    ]
-    tutorial = nav.tutorials()[0]
-    assert tutorial.source == "docs/tutorials/01-getting-started.md"
-    for source in ("README.md", tutorial.source):
-        assert set(commands) <= set(_blocks((ROOT / source).read_text(encoding="utf-8"))), source
+def test_the_urls_the_readme_and_the_skill_page_name_are_files_of_the_build(site):
+    """tests/test_agent_entry.py holds the README and the skill page to these URLs before the build."""
+    for url in (nav.Site.load().llms_url, nav.Site.load().skill()[0].url):
+        assert (site.out / url.lstrip("/")).is_file()
 
 
-def test_the_management_commands_llms_txt_names_exist(site):
-    from django.core.management import get_commands
-
-    named = set(re.findall(r"`python manage\.py (\w+)", _llms(site.out)))
-    assert named == {"wireview_agent_setup", "check"}
-    assert named <= set(get_commands())
-
-
-def test_the_readme_and_the_skill_page_name_where_the_build_writes(site):
-    llms_url = nav.ORIGIN + nav.Site.load().llms_url
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    start = readme.split("## AI 에이전트로 시작하기", 1)[1].split("\n## ", 1)[0]
-    assert f"]({llms_url})" in start
-    assert _blocks(start)[0].startswith(f"{llms_url} ")
-    assert readme.index("## AI 에이전트로 시작하기") < readme.index("## 무엇이 포함되어 있나요?")
-    skill_page = (ROOT / "docs" / "features" / "agent-skill.md").read_text(encoding="utf-8")
-    skill_url = nav.ORIGIN + nav.Site.load().skill()[0].url
-    assert f"`{llms_url}`" in skill_page and f"`{skill_url}`" in skill_page
-    for url in (llms_url, skill_url):
-        assert (site.out / url.removeprefix(f"{nav.ORIGIN}/")).is_file()
+def test_llms_txt_sends_an_existing_project_to_the_first_tutorial(site):
+    """Step 2 names tutorial 01's Markdown, absolutely: not the tutorial section's table of contents."""
+    step2 = _llms(site.out).split("\n2. ", 1)[1].split("\n3. ", 1)[0]
+    first = nav.tutorials()[0]
+    assert step2.splitlines()[0].endswith(f"시작하기 튜토리얼은 이 문서다: https://itda.work{first.url}index.md")
+    assert (site.out / first.url.lstrip("/") / "index.md").is_file()
+    index = next(page for page in nav.pages() if page.section == "tutorial" and not page.slug)
+    assert f"{index.url}index.md" not in step2
 
 
 def _site_page_urls(text: str, tag: str) -> str:
@@ -541,6 +511,17 @@ index = "docs/guide.md"
 source = "docs/next.md"
 slug = "next"
 
+[[sections]]
+slug = "tutorial"
+name = "튜토리얼"
+index = "docs/tutorials.md"
+
+[[sections.pages]]
+source = "docs/start.md"
+slug = "start"
+level = "intro"
+summary = "처음 만들기"
+
 [exclude]
 paths = ["docs/notes.md"]
 """
@@ -556,6 +537,8 @@ def tree(tmp_path):
     (root / "docs" / "guide.md").write_text("# 가이드\n\n## 설치\n\n[다음](next.md) · [메모](notes.md)\n")
     (root / "docs" / "next.md").write_text("# 다음\n\n## 설치\n\n## 설치\n\n[둘째 설치](#설치-1)\n")
     (root / "docs" / "notes.md").write_text("# 메모\n")
+    (root / "docs" / "tutorials.md").write_text("# 튜토리얼 목차\n\n[시작](start.md)\n")
+    (root / "docs" / "start.md").write_text("# 시작\n\n처음 만든다.\n")
     (root / "docs" / "site.toml").write_text(SITE_TOML)
     (root / "docs" / "redirects.toml").write_text("redirects = []\n")
     (root / "skills" / "s" / "references").mkdir(parents=True)
@@ -587,6 +570,8 @@ TREE_URLS = [
     "/wireview/guide/",
     "/wireview/guide/next/",
     "/wireview/llms.txt",
+    "/wireview/tutorial/",
+    "/wireview/tutorial/start/",
 ]
 
 
@@ -617,7 +602,12 @@ def test_a_small_tree_builds_clean(tree):
             ("가이드", "https://itda.work/wireview/guide/index.md", "다음 · 메모"),
             ("다음", "https://itda.work/wireview/guide/next/index.md", "둘째 설치"),
         ],
+        "튜토리얼": [
+            ("튜토리얼 목차", "https://itda.work/wireview/tutorial/index.md", "시작"),
+            ("시작", "https://itda.work/wireview/tutorial/start/index.md", "처음 만들기"),
+        ],
     }
+    assert "시작하기 튜토리얼은 이 문서다: https://itda.work/wireview/tutorial/start/index.md\n" in _llms_of(out)
 
 
 def _llms_of(out: Path) -> str:
@@ -682,6 +672,77 @@ def test_a_vanished_url_fails_until_it_redirects(tree):
     assert '<link rel="canonical" href="https://itda.work/wireview/guide/next/">' in moved
     assert '<meta name="robots" content="noindex">' in moved
     assert '<a href="/wireview/guide/next/">' in moved
+
+
+def test_a_renamed_skill_file_fails_until_it_redirects_and_leaves_a_note_at_its_old_url(tree):
+    """A published file is a public URL like a page: renaming it needs a redirect, which leaves a
+    file of its kind at the old path naming the new one (#164)."""
+    references = tree / "skills" / "s" / "references"
+    (references / "a.md").rename(references / "b.md")
+    (tree / "skills" / "s" / "SKILL.md").write_text(SKILL_MD.replace("references/a.md", "references/b.md"))
+    urls = tree / "docs" / "site-urls.txt"
+    urls.write_text(urls.read_text() + "/wireview/agent/s/references/b.md\n")
+    problems = _problems(_build(tree))
+    assert len(problems) == 1 and "/wireview/agent/s/references/a.md is no longer served" in problems[0]
+
+    (tree / "docs" / "redirects.toml").write_text(
+        '[[redirects]]\nfrom = "/wireview/agent/s/references/a.md"\nto = "/wireview/agent/s/references/b.md"\n'
+    )
+    result = _build(tree)
+    assert _problems(result) == []
+    old = result.out / "wireview" / "agent" / "s" / "references" / "a.md"
+    assert old.read_text(encoding="utf-8") == (
+        "이 파일은 옮겨졌다.\n새 주소: https://itda.work/wireview/agent/s/references/b.md\n"
+    )
+    assert not (old / "index.html").exists() and (old.parent / "a.md.gz").is_file()
+
+
+@pytest.mark.parametrize(
+    ("source", "target", "problem"),
+    [
+        ("/wireview/agent/s/old.md", "/wireview/guide/", "a page moves to a page (ending in /), a file to a file"),
+        ("/wireview/agent/s/old.md", "/wireview/llms.txt", "a file moves to a file with the same extension"),
+        ("/wireview/agent/s/old.md", "/wireview/agent/s/gone.md", "is not a published file"),
+    ],
+)
+def test_a_redirect_the_rules_refuse_fails_the_build(tree, source, target, problem):
+    urls = tree / "docs" / "site-urls.txt"
+    urls.write_text(urls.read_text() + f"{source}\n")
+    (tree / "docs" / "redirects.toml").write_text(f'[[redirects]]\nfrom = "{source}"\nto = "{target}"\n')
+    problems = _problems(_build(tree))
+    assert any(p.startswith("docs/redirects.toml: ") and problem in p for p in problems), problems
+
+
+def test_a_link_shape_in_a_skill_code_block_or_code_span_is_code(tree):
+    """``handlers["save"](payload)`` is a call, not a link; the rewrite leaves it, and so does the gate."""
+    (tree / "skills" / "s" / "references" / "a.md").write_text(
+        '# 참조\n\n```python\nresult = handlers["save"](payload)\n```\n\n`handlers["x"](y)`를 부른다.\n'
+    )
+    assert _problems(_build(tree)) == []
+
+
+def test_a_site_url_in_a_skill_code_block_is_still_checked(tree):
+    (tree / "skills" / "s" / "references" / "a.md").write_text(
+        "# 참조\n\n```bash\ncurl https://itda.work/wireview/nope/\n```\n"
+    )
+    problems = _problems(_build(tree))
+    assert len(problems) == 1 and problems[0].startswith("skills/s/references/a.md:4: /wireview/nope/ leads nowhere")
+
+
+def test_a_skill_file_without_a_title_fails_the_build_without_a_traceback(tree):
+    (tree / "skills" / "s" / "references" / "a.md").write_text("#### 참조\n\n```\n# 주석\n```\n")
+    assert _problems(_build(tree)) == ["skills/s/references/a.md: no H1: llms.txt has no title for it"]
+
+
+def test_every_broken_link_on_a_line_is_reported_once(tree):
+    """The rewrite reports the missing file; the gate still reports the other link on that line."""
+    (tree / "skills" / "s" / "references" / "a.md").write_text(
+        "# 참조\n\n[없음](./gone.md) · https://itda.work/wireview/nope/\n"
+    )
+    problems = _problems(_build(tree))
+    assert len(problems) == 2, problems
+    assert problems[0] == "skills/s/references/a.md:3: ./gone.md (no such file)"
+    assert problems[1].startswith("skills/s/references/a.md:3: /wireview/nope/ leads nowhere")
 
 
 def test_a_new_url_fails_until_it_is_listed(tree):

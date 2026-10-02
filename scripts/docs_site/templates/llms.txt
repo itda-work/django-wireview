@@ -12,11 +12,15 @@
    pip install django-wireview daphne
    ```
 
-2. 새 프로젝트면 스타터 템플릿으로 시작한다. 아래는 macOS·Linux 셸의 명령이다. Windows의 명령과, 이미 있는 프로젝트에 붙이는 설정은 시작하기 튜토리얼(튜토리얼 섹션의 첫 페이지)에 있다.
+2. 프로젝트를 준비한다. 아래에서 말하는 시작하기 튜토리얼은 이 문서다: $getting_started
 
-   ```bash
-   django-admin startproject mysite --template "$$(python -c "import wireview, os; print(os.path.join(os.path.dirname(wireview.__file__), 'project_template'))")"
-   ```
+   - 새 프로젝트면 스타터 템플릿으로 시작한다. 아래는 macOS·Linux 셸의 명령이고, Windows의 명령은 시작하기 튜토리얼에 있다.
+
+     ```bash
+     django-admin startproject mysite --template "$$(python -c "import wireview, os; print(os.path.join(os.path.dirname(wireview.__file__), 'project_template'))")"
+     ```
+
+   - 이미 있는 프로젝트면 시작하기 튜토리얼의 1~2절과 3절의 "뷰 및 URL 설정"을 먼저 적용한다. `INSTALLED_APPS` 맨 위에 `daphne`를 두고 `wireview`·`channels`를 더하며, `ASGI_APPLICATION`과 `CHANNEL_LAYERS`를 정하고, `asgi.py`가 WebSocket을 wireview로 보내게 하고, 루트 URLconf에 `include('wireview.urls')`를 넣는 일이다. `wireview`가 `INSTALLED_APPS`에 들어가기 전에는 3의 명령이 없다(`Unknown command`).
 
 3. 프로젝트 디렉터리에서 `python manage.py wireview_agent_setup`으로 앱 개발자용 스킬을 `.claude/skills/wireview/`에 설치하고, 작업하기 전에 그 `SKILL.md`를 읽는다. 스킬은 무엇을 언제 읽을지와 조용히 실패하는 함정을 담는다. `.claude/skills/`를 읽지 않는 에이전트도 그 파일을 직접 읽으면 된다. 아래 "에이전트 스킬" 섹션은 같은 스킬의 게시본이다.
 

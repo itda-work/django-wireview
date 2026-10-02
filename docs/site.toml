@@ -34,6 +34,8 @@
 #   optional = true goes under "## Optional" instead, which an agent may skip. The prose around the
 #   list is scripts/docs_site/templates/llms.txt. [skill] is published beside the pages as raw
 #   Markdown, at <base><url><file>, and llms.txt lists it first.
+#   llms.txt and the skill's files are public URLs like the pages (docs/site-urls.txt): renaming one
+#   means an entry in docs/redirects.toml, which leaves a file at the old path naming the new URL.
 
 base = "/wireview/"
 
