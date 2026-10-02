@@ -11,9 +11,11 @@ own. ``?live=1``: a list and a LiveComponent kept together in a block the
 host's pass draws. ``?notes=1``: a list kept in a block with a nested component
 whose own temporary assign changes, its signed state staying as it was.
 ``?joined=1``: the same, the nested component loading its temporary assign in joined().
+``?func=1``: the same block drawing a function component whose template draws a
+nested component; that one's joined() sets a signed field, and it counts on its own.
 """
 
-from wireview import Component, LiveComponent
+from wireview import Component, LiveComponent, function_component
 
 
 class TempProbe(Component):
@@ -111,3 +113,27 @@ class TempJoinedProbe(TempProbe):
 class TempJoinedNotes(TempNotes):
     async def joined(self):
         self.notes = ["x", "y"]
+
+
+class TempFuncProbe(TempProbe):
+    class Meta:
+        template_name = "tempprobe/funcprobe.html"
+
+
+@function_component(template="tempprobe/funccard.html")
+def tempprobe_card():
+    return {}
+
+
+class TempFuncCounter(Component):
+    class Meta:
+        template_name = "tempprobe/funccounter.html"
+
+    tag: str = ""
+    hits: int = 0
+
+    async def joined(self):
+        self.tag = "joined"
+
+    async def hit(self):
+        self.hits += 1

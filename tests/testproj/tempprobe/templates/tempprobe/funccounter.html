@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<p {% tag_header %}>
+  <em data-testid="tag">{{ tag }}</em>
+  <i data-testid="hits">{{ hits }}</i>
+  <button data-testid="hit" {% on "click" "hit" %}>hit</button>
+</p>

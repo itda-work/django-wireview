@@ -1,8 +1,15 @@
 """Tests for function components (GAP-003)."""
 
-import pytest
-from django.template import Context, Template, TemplateSyntaxError
+import re
 
+import pytest
+from django.contrib.auth.models import AnonymousUser
+from django.template import Context, Template, TemplateSyntaxError
+from django.test import override_settings
+
+from wireview import Component
+from wireview.consumer import WireviewConsumer
+from wireview.core.state import sign_state, state_of, unsign_state
 from wireview.function_components import (
     FunctionComponent,
     _registry,
@@ -10,6 +17,7 @@ from wireview.function_components import (
     get_function_component,
     list_function_components,
 )
+from wireview.repository import ComponentRepository
 
 # Test fixtures - function components
 
@@ -292,3 +300,110 @@ class TestFunctionComponentUnit:
 
         assert "FunctionComponent" in repr_str
         assert "button" in repr_str
+
+
+# A {% component %} in a function component's template is the page's
+
+
+FC_TEMPLATES = {
+    "fc/host.html": "{% load wireview %}<div {% tag_header %}><b>{{ n }}</b>{% func 'fc_counter_card' %}</div>",
+    "fc/blockhost.html": (
+        "{% load wireview %}<div {% tag_header %}><b>{{ n }}</b>{% func_block 'fc_counter_card' %}{% endfunc %}</div>"
+    ),
+    "fc/card.html": "{% load wireview %}<section>{% component 'FcCounter' id='counter' %}</section>",
+    "fc/counter.html": "{% load wireview %}<p {% tag_header %}>C{{ count }}</p>",
+}
+
+
+@function_component(template="fc/card.html")
+def fc_counter_card():
+    return {}
+
+
+class FcHost(Component):
+    class Meta:
+        template_name = "fc/host.html"
+
+    n: int = 0
+
+    async def bump(self):
+        self.n += 1
+
+
+class FcBlockHost(FcHost):
+    class Meta:
+        template_name = "fc/blockhost.html"
+
+
+class FcCounter(Component):
+    class Meta:
+        template_name = "fc/counter.html"
+
+    count: int = 0
+
+    async def inc(self):
+        self.count += 1
+
+
+class _Outbound:
+    def __init__(self) -> None:
+        self.renders: list[dict] = []
+
+    async def send_command(self, command: str, payload: dict) -> None:
+        if command == "render":
+            self.renders.append(payload)
+
+    async def subscribe(self, topic: str) -> None:
+        pass
+
+    async def unsubscribe(self, topic: str) -> None:
+        pass
+
+
+@pytest.fixture
+def fc_templates():
+    with override_settings(
+        TEMPLATES=[
+            {
+                "BACKEND": "django.template.backends.django.DjangoTemplates",
+                "OPTIONS": {"loaders": [("django.template.loaders.locmem.Loader", FC_TEMPLATES)]},
+            }
+        ]
+    ):
+        yield
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.django_db
+@pytest.mark.usefixtures("fc_templates")
+@pytest.mark.parametrize("host_name", ["FcHost", "FcBlockHost"])
+async def test_a_live_render_draws_the_component_the_page_joined(host_name):
+    """The host draws its function component again: the counter stays as the page changed it.
+
+    Drawn in a repository of its own, each render of the host drew a fresh
+    counter from the template's arguments -- ``C0``, its state signed back to
+    0 -- over the one the page had joined and changed.
+    """
+    consumer = WireviewConsumer()
+    consumer.repo = ComponentRepository(is_live=True, user=AnonymousUser())
+    consumer.subscriptions = set()
+    consumer.query_string = ""
+    consumer.channel_name = "c"
+    consumer.outbound = _Outbound()  # type: ignore[assignment]
+    host = await consumer.repo.join(host_name, {"id": "host"})
+    await consumer.send_render(host)
+    counter = consumer.repo.get("counter")
+    assert counter is not None, "the host's pass built the counter in the page's repository"
+    await consumer.command_join(FcCounter._fqn, sign_state(counter))
+    assert consumer.repo.get("counter") is counter, "the join took up the instance the pass built"
+    await consumer.command_user_event("counter", "inc", {}, {})
+
+    await consumer.command_user_event("host", "bump", {}, {})
+
+    drawn = host.wire._last_rendered.to_html()  # type: ignore[union-attr]
+    assert "<b>1</b>" in drawn, "the control: the host rendered again"
+    assert ">C1</p>" in drawn, drawn
+    token = re.search(r'id="counter" data-name="[^"]+" data-state="([^"]+)"', drawn)
+    assert token is not None, drawn
+    assert unsign_state(token.group(1), FcCounter._fqn) == state_of(counter)

@@ -646,6 +646,15 @@ The django-reactor era changelog (2.x) is preserved in
   and it heard `leaving()` before its first `joined()`. Code that registers in `joined()` and
   unregisters in `leaving()` -- a presence track, a counter -- undid what it never did.
 
+- A `{% component %}` in a function component's template is the page's in a live render. The
+  function's template drew it in a repository of its own, so every render of the component drawing
+  the function drew a fresh instance from the template's arguments over the one the page had
+  joined: its own changes went back on the page, and a reconnect joined it with the old state. Its
+  join built a new instance with no pass to compare its answer to, so what `joined()` drew new went
+  back too when a part kept for a reset temporary assign held it. The function's template now draws
+  it in the connection's repository, drawn by the component whose pass draws the function, as the
+  enclosing template would. The function's template still gets no `this`.
+
 ### Security
 
 - [GHSA-8q8p-x4w4-p745](https://github.com/itda-work/django-wireview/security/advisories/GHSA-8q8p-x4w4-p745)

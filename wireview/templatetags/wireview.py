@@ -20,6 +20,7 @@ from ..core.rendered import inject_marker, marked_component_refs, nested_compone
 from ..core.state import sign_state
 from ..event_transpiler import binding
 from ..features.hooks import hook_files
+from ..function_components import DRAWER as FUNCTION_DRAWER
 from ..function_components import get_function_component
 from ..repository import ComponentRepository
 from ..slots import Slot, SlotContainer
@@ -263,7 +264,10 @@ def _build_and_render_component(
 
     if "id" not in kwargs and (sticky_id := _default_sticky_id(component_name, repo)):
         kwargs = {**kwargs, "id": sticky_id}
+    # In a function component's template the drawer is the one that drew the function
     drawer = context.get("this")
+    if drawer is None:
+        drawer = context.get(FUNCTION_DRAWER)
     component_instance = repo.build(component_name, state=kwargs, drawer=drawer)
     if repo.is_live:
         # A pass with no fill forgets the last one: the next fill has nothing to line up with
@@ -290,8 +294,9 @@ def _build_and_render_component(
         repo.end_inline_pass(
             component_instance.id, drawer.id if drawer is not None else None, marked_component_refs(html)
         )
-    # By id, so a render without the page's repository counts too ({% func %}): the
-    # page joins what it drew under that id, and that has not moved until it renders
+    # By id, so a render without the page's repository counts too (a function
+    # component called from Python): the page joins what it drew under that id,
+    # and that has not moved until it renders
     drew_component(component_instance)
     if repo.is_live and html and not component_instance.wire._rendered_own:
         # Its join's answer tells by this whether joined() drew something new
@@ -880,7 +885,7 @@ def func(context, _name: str, **kwargs: t.Any):
     The function component must be registered with @function_component decorator.
     """
     fc = get_function_component(_name)
-    return fc.render(kwargs)
+    return fc.render(kwargs, context=context)
 
 
 @register.tag("func_block")

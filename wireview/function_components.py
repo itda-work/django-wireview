@@ -117,6 +117,25 @@ __all__ = (
 # Global registry for function components
 _registry: dict[str, "FunctionComponent"] = {}
 
+#: The key under which a ``{% component %}`` in a function component's template
+#: finds the component whose pass draws the function: the template gets no ``this``
+DRAWER = "wireview_drawer"
+
+
+def _page_of(context: t.Any) -> dict[str, t.Any]:
+    """What a function component's template takes from a live render that draws it: the page, never its names.
+
+    A ``{% component %}`` in it is the page's, as one in the enclosing template
+    is: built in the connection's repository, drawn by the component whose pass
+    this is. Drawn in a repository of its own, each render drew a fresh
+    instance from the template's arguments over the one the page had joined,
+    and the join's answer had no pass to tell what ``joined()`` drew new against.
+    """
+    if context is None or (repo := context.get("wireview_repository")) is None or not repo.is_live:
+        return {}
+    drawer = context.get("this")
+    return {"wireview_repository": repo, DRAWER: drawer if drawer is not None else context.get(DRAWER)}
+
 
 @dataclass
 class FunctionComponent:
@@ -217,7 +236,8 @@ class FunctionComponent:
         Args:
             kwargs: Arguments for the component function
             slots: Optional slot container for block-style usage
-            context: Django template context (for slot rendering)
+            context: The Django template context drawing it: in a live render, a
+                component its template draws is the connection's, not a fresh one
 
         Returns:
             Rendered HTML as SafeString
@@ -236,7 +256,7 @@ class FunctionComponent:
                     f"Function component '{self.name}' with template must return a dict, got {type(result).__name__}"
                 )
             template = loader.get_template(self.template)
-            template_context = {**result}
+            template_context = {**_page_of(context), **result}
 
             # Add slots to context if provided
             if slots is not None:

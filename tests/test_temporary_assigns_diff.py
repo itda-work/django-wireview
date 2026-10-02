@@ -207,6 +207,16 @@ TEMPLATES = {
         "{% func 'ta_k' %}{% endif %}</div>"
     ),
     "ta/func_k.html": "{% load wireview %}{% component 'TaK' id='k' %}",
+    # A function component draws the nested component whose joined() changes what it draws
+    **{
+        f"ta/rowsfunc{name}.html": (
+            "{% load wireview %}<div {% tag_header %}><b>{{ count }}</b>"
+            "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>"
+            f"{{% func 'ta_named_k' name='{name}' %}}{{% endif %}}</div>"
+        )
+        for name in ("TaK", "TaJoinedK", "TaLoadedK", "TaHiddenK", "TaFailingK")
+    },
+    "ta/func_named_k.html": "{% load wireview %}{% component name id='k' %}",
     "ta/row.html": "{% load wireview %}<li {% tag_header %}>{{ text }}</li>",
     "ta/constslothost.html": (
         "{% load wireview %}<main {% tag_header %}><i>{{ this.n }}</i>"
@@ -431,6 +441,36 @@ def ta_k() -> dict[str, t.Any]:
     return {}
 
 
+class TaRowsFuncTaK(TaBase):
+    class Meta:
+        template_name = "ta/rowsfuncTaK.html"
+
+
+class TaRowsFuncTaJoinedK(TaBase):
+    class Meta:
+        template_name = "ta/rowsfuncTaJoinedK.html"
+
+
+class TaRowsFuncTaLoadedK(TaBase):
+    class Meta:
+        template_name = "ta/rowsfuncTaLoadedK.html"
+
+
+class TaRowsFuncTaHiddenK(TaBase):
+    class Meta:
+        template_name = "ta/rowsfuncTaHiddenK.html"
+
+
+class TaRowsFuncTaFailingK(TaBase):
+    class Meta:
+        template_name = "ta/rowsfuncTaFailingK.html"
+
+
+@function_component(template="ta/func_named_k.html")
+def ta_named_k(name: str) -> dict[str, t.Any]:
+    return {"name": name}
+
+
 class TaRow(Component):
     class Meta:
         template_name = "ta/row.html"
@@ -574,6 +614,11 @@ class TaK(Component):
 class TaJoinedK(TaK):
     async def joined(self):
         self.k = 5  # what it shows once connected
+
+
+class TaFailingK(TaK):
+    async def joined(self):
+        raise RuntimeError("the join fails")
 
 
 class TaLoadedK(Component):
@@ -1273,9 +1318,10 @@ async def test_a_kept_part_draws_again_once_a_nested_component_in_it_moved():
 
 
 async def test_a_kept_part_keeps_a_nested_component_the_connection_does_not_hold():
-    """Drawn without the page's repository and not joined yet, it has not rendered on its own: nothing moved."""
-    consumer, outbound, component = await page("TaRowsFunc")
+    """Its join failed, so the connection let it go: it never rendered on its own, nothing moved."""
+    consumer, outbound, component = await page("TaRowsFuncTaFailingK")
     await event(consumer, outbound, "load")
+    await join(consumer, "k")
     assert consumer.repo.get("k") is None, "the control: the connection holds no instance under the id"
 
     await event(consumer, outbound, "bump")
@@ -1289,7 +1335,7 @@ async def test_a_component_a_function_component_draws_in_a_kept_part_is_seen():
     """The template of ``{% func %}`` is not the component's, so only what the render drew tells."""
     consumer, outbound, component = await page("TaRowsFunc")
     await event(consumer, outbound, "load")
-    # Drawn without the page's repository, the page joins it from what it was handed
+    # The page joins it from what it was handed
     state = re.search(r'id="k" data-name="[^"]+" data-state="([^"]+)"', component.wire._last_rendered.to_html())  # type: ignore[union-attr]
     assert state is not None, html_now(component)
     await consumer.command_join(TaK._fqn, state.group(1))
@@ -1302,6 +1348,39 @@ async def test_a_component_a_function_component_draws_in_a_kept_part_is_seen():
     await event(consumer, outbound, "bump")
 
     assert "K0" not in html_now(component), html_now(component)
+
+
+@pytest.mark.parametrize(
+    ("name", "joined"), [("TaJoinedK", "K5"), ("TaLoadedK", "<s>2</s>"), ("TaHiddenK", None), ("TaK", "K0")]
+)
+async def test_a_join_that_drew_something_new_moves_a_component_a_function_component_drew(name, joined):
+    """Its template is the function's, not the host's: the pass still draws it in the page's repository.
+
+    Drawn in one of its own, the join built a new instance with nothing to
+    compare its answer to, and the host put back what the pass drew. ``TaK``'s
+    joined() draws nothing new: the list stays.
+    """
+    consumer, outbound, component = await page(f"TaRowsFunc{name}")
+    await event(consumer, outbound, "load")
+    state = re.search(r'id="k" data-name="[^"]+" data-state="([^"]+)"', component.wire._last_rendered.to_html())  # type: ignore[union-attr]
+    assert state is not None, html_now(component)
+    await consumer.command_join(Component._resolve(name)._fqn, state.group(1))
+    k = consumer.repo.get("k")
+    assert k is not None
+    if joined is not None:
+        assert joined in html_now(k), "the control: the join's answer drew what joined() did"
+    else:
+        assert signed_states(consumer, k)["k"]["token"] == "loaded", "the control: the join's answer signed it"
+
+    await event(consumer, outbound, "bump")
+
+    drawn = html_now(component)
+    assert "<b>1</b>" in drawn, "the control: the other field went out"
+    if name == "TaK":
+        assert "<li>one</li><li>two</li>" in drawn and "K0" in drawn, "nothing moved: the list stays"
+    else:
+        assert "K0" not in drawn and "<s>0</s>" not in drawn, "the host put k back as the pass drew it"
+    assert_signed_as_on_the_server(consumer, component)
 
 
 async def test_a_block_whose_fill_did_not_change_keeps_the_list():

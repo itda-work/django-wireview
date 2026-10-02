@@ -7,7 +7,8 @@ do with the list sent it emptied, and the list vanished.
 Fixture: tests/testproj/tempprobe/ (``?nest=1``: the probe in a host's pass, in a slot, and from a
 ``{% component_block %}`` with a fill; ``?rows=1``: rows a nested component draws; ``?live=1``: a
 LiveComponent kept with the list in a block the host's pass draws; ``?notes=1``: a nested component
-kept with the list whose own temporary assign changes; ``?joined=1``: the same, changed by its joined()).
+kept with the list whose own temporary assign changes; ``?joined=1``: the same, changed by its joined();
+``?func=1``: the nested component drawn by a function component's template, its joined() setting a signed field).
 """
 
 import pytest
@@ -126,6 +127,47 @@ def test_what_a_nested_components_joined_drew_is_not_put_back(page, server):
     page.get_by_test_id("bump").click()
     expect_text(page.get_by_test_id("count"), "1")
     expect_count(notes.filter(has_text="0"), 0)
+
+
+def test_what_joined_drew_in_a_function_components_template_is_not_put_back(page, server):
+    """The function's template draws the component in the page's pass, so its join's answer is compared to it.
+
+    joined() drew something new: the kept block is drawn again, its list going,
+    rather than put back as the pass drew it.
+    """
+    open_live(page, f"{server}/tempprobe/?func=1")
+    items = page.locator("[data-testid=messages] li")
+    tag = page.get_by_test_id("tag")
+    page.get_by_test_id("load").click()
+    expect_count(items, 3)
+    expect_text(tag, "joined")
+
+    page.get_by_test_id("bump").click()
+    expect_text(page.get_by_test_id("count"), "1")
+
+    expect_count(items, 0)
+    expect_count(tag, 0)
+
+
+def test_the_host_draws_a_function_components_component_as_it_changed(page, server):
+    """The host draws the function again; the component in it keeps its own change, on the page and on the server.
+
+    The page keeps the element it joined either way; the next hit counting on
+    from it is what tells the server drew the instance the page joined.
+    """
+    open_live(page, f"{server}/tempprobe/?func=1")
+    hits = page.get_by_test_id("hits")
+    page.get_by_test_id("load").click()
+    expect_text(page.get_by_test_id("tag"), "joined")
+    page.get_by_test_id("hit").click()
+    expect_text(hits, "1")
+
+    page.get_by_test_id("load").click()
+    expect_count(page.locator("[data-testid=messages] li"), 3)
+
+    expect_text(hits, "1")
+    page.get_by_test_id("hit").click()
+    expect_text(hits, "2")
 
 
 def test_a_live_component_the_hosts_render_keeps_stays_with_the_list(page, server):
