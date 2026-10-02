@@ -59,6 +59,11 @@ test("wireview's tags are offered before the library is loaded, and load it", ()
   assert.ok(!at(`${W}{% ▮ %}`).items.some((item) => item.edits), "loaded: no edit");
 });
 
+test("a load after the cursor does not count, and the added load goes before the cursor", () => {
+  // Django reads the template in order: the tag here would not see the load below
+  assert.equal(applied(`{% load static %}\n{% comp▮ %}\n${W}`, "component"), `{% load static %}\n{% load wireview %}\n{% component "$1" %}$0\n${W}`);
+});
+
 test("load: the libraries not loaded yet", () => {
   const offered = labels("{% load static %}{% load ▮ %}");
   assert.ok(offered.includes("i18n") && offered.includes("wireview"));
