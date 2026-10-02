@@ -72,7 +72,8 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 
 | 기능 | 설명 | 문서 |
 |------|------|------|
-| **Type Stubs** | 컴포넌트 `.pyi` 자동 생성 (`wireview_stubs`) | [문서](./type-stubs.md) |
+| **Type Stubs** | 컴포넌트 `.pyi` 자동 생성 (`wireview_stubs`). 파이썬 쪽 | [문서](./type-stubs.md) |
+| **편집기 지원** | 템플릿 쪽: VS Code 확장(`editors/vscode`)과 그것이 읽는 `wireview_lsp` 메타데이터 | [문서](./editor-support.md) |
 | **Telemetry** | 이벤트·렌더·diff·브로드캐스트 계측 시그널 (옵트인) | [문서](./telemetry.md) |
 | **System Checks** | 조용히 실패하는 함정을 `manage.py check`가 잡는다 | [문서](./checks.md) |
 | **Agent Skill** | 앱 개발자용 에이전트 스킬 배포 (`wireview_agent_setup`) | [문서](./agent-skill.md) |

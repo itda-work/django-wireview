@@ -1,0 +1,107 @@
+{
+  "Wireview component template": {
+    "prefix": "wv-template",
+    "description": "The root of a component's template: tag_header marks the element the component owns.",
+    "body": [
+      "{% load wireview %}",
+      "",
+      "<div {% tag_header %}>",
+      "\t$0",
+      "</div>"
+    ]
+  },
+  "Wireview LiveComponent template": {
+    "prefix": "wv-live-template",
+    "description": "The root of a LiveComponent's template: its events go to itself with myself=True.",
+    "body": [
+      "{% load wireview %}",
+      "",
+      "<div {% live_tag_header %}>",
+      "\t<button type=\"button\" {% on \"click\" \"${1:handler}\" myself=True %}>${2:Label}</button>$0",
+      "</div>"
+    ]
+  },
+  "Wireview page layout": {
+    "prefix": "wv-page",
+    "description": "A page that renders components: the header loads the client.",
+    "body": [
+      "{% load wireview %}",
+      "<!DOCTYPE html>",
+      "<html>",
+      "<head>",
+      "\t<title>${1:Title}</title>",
+      "\t{% wireview_header %}",
+      "</head>",
+      "<body>",
+      "\t{% wireview_toasts %}",
+      "\t{% component \"${2:Name}\" %}$0",
+      "</body>",
+      "</html>"
+    ]
+  },
+  "Wireview component with slots": {
+    "prefix": "wv-component-block",
+    "description": "component_block with a filled slot; the rest of the body is the default slot.",
+    "body": [
+      "{% component_block \"${1:Name}\" %}",
+      "\t{% fill ${2:header} %}",
+      "\t\t$3",
+      "\t{% endfill %}",
+      "\t$0",
+      "{% endcomponent %}"
+    ]
+  },
+  "Wireview LiveComponent": {
+    "prefix": "wv-live-component",
+    "description": "A LiveComponent in its parent's template: the id is required.",
+    "body": [
+      "{% live_component \"${1:Name}\" id=\"${2:id}\" %}$0"
+    ]
+  },
+  "Wireview slot with let:": {
+    "prefix": "wv-fill-let",
+    "description": "A slot that receives what render_slot passes.",
+    "body": [
+      "{% fill ${1:item} let:${2:item} %}",
+      "\t$0",
+      "{% endfill %}"
+    ]
+  },
+  "Wireview form": {
+    "prefix": "wv-form",
+    "description": "A form whose submit goes to a handler; its values arrive as the handler's arguments.",
+    "body": [
+      "<form {% on \"submit.prevent\" \"${1:save}\" %}>",
+      "\t<input name=\"${2:title}\" {% on \"input.debounce.300\" \"${3:validate}\" %}>",
+      "\t<button type=\"submit\" wire-disabled-with=\"${4:Saving…}\">${5:Save}</button>",
+      "</form>"
+    ]
+  },
+  "Wireview upload": {
+    "prefix": "wv-upload",
+    "description": "A file input and previews for an upload the component allows with allow_upload() in joined().",
+    "body": [
+      "<div {% upload_drop_zone \"${1:files}\" %}>",
+      "\t{% upload_input \"${1:files}\" %}",
+      "\t{% for entry in this.uploads.${1:files} %}",
+      "\t\t{% upload_preview entry class=\"preview\" %}",
+      "\t\t<progress value=\"{{ entry.progress }}\" max=\"100\"></progress>",
+      "\t{% endfor %}",
+      "</div>"
+    ]
+  },
+  "Wireview stream": {
+    "prefix": "wv-stream",
+    "description": "A stream's container: the template renders it empty, and stream operations insert, move and delete its children.",
+    "body": [
+      "<ul id=\"${1:items}\" wire-stream=\"${1:items}\"></ul>$0"
+    ]
+  },
+  "Wireview hook": {
+    "prefix": "wv-hook",
+    "description": "An element a client hook runs on; wire-update=\"ignore\" keeps what the hook drew.",
+    "body": [
+      "<div wire-hook=\"${1:Chart}\" wire-update=\"ignore\"></div>$0"
+    ]
+  }
+}

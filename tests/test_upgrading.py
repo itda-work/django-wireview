@@ -211,6 +211,13 @@ NO_UPGRADE_NOTE = {
     "stops drawing because of a prop its drawer": FIXED_ONLY,
     "hides or shows when the slot's owner": FIXED_ONLY,
     "in a function component's template is the page's in a live render": FIXED_ONLY,
+    "An editor extension for VS Code in `editors/vscode/`": "라이브러리 밖의 새 도구이고 라이브러리 동작은 같다",
+    "writes metadata version 1.1": "키만 더했다. 1.0을 읽던 도구는 major만 보면 그대로 읽는다",
+    "listed a handler only when its name was all lowercase": FIXED_ONLY,
+    "A function component that takes `**kwargs` could not render": FIXED_ONLY,
+    "template directories were read off `TEMPLATES`": "W011의 새 경고는 전부터 있던, 보지 못한 문제다",
+    "named a tag that does not exist": DOCS_ONLY,
+    "The sdist took every `README.md`": "sdist에서 저장소 파일이 빠졌을 뿐 패키지는 같다",
 }
 
 

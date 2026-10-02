@@ -1,4 +1,4 @@
-.PHONY: all install test test-unit test-e2e test-concurrent test-matrix test-latest test-lowest test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js ci-smoke docs-site docs-serve
+.PHONY: ext-install ext-check ext-test ext-build ext-package ext-test-host all install test test-unit test-e2e test-concurrent test-matrix test-latest test-lowest test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js ci-smoke docs-site docs-serve
 
 # Default target
 all: install build
@@ -92,6 +92,35 @@ test-js:
 
 # Run all quality checks
 quality: lint check check-js test-js
+
+# =============================================================================
+# VS Code extension (editors/vscode)
+# =============================================================================
+# Not part of quality or test: they need editors/vscode/node_modules, which the
+# library's own workflow does not install. tests/test_vscode_extension.py runs in
+# `make test` and needs node alone.
+
+EXT = editors/vscode
+
+ext-install:
+	cd $(EXT) && npm ci
+
+ext-check:
+	cd $(EXT) && npm run typecheck
+
+ext-test:
+	cd $(EXT) && npm test
+
+ext-build:
+	cd $(EXT) && npm run build
+
+# The .vsix, in editors/vscode/dist/
+ext-package:
+	cd $(EXT) && npm run package
+
+# Smoke tests in VS Code itself (the release engines.vscode names; downloaded once into .vscode-test)
+ext-test-host:
+	cd $(EXT) && npm run test:host
 
 # =============================================================================
 # Build
@@ -348,6 +377,14 @@ help:
 	@echo "  make format           - Auto-format code"
 	@echo "  make check            - Run type checker (pyright)"
 	@echo "  make quality          - Run all quality checks"
+	@echo ""
+	@echo "VS Code extension (editors/vscode):"
+	@echo "  make ext-install      - Install its npm dependencies"
+	@echo "  make ext-check        - Type-check it"
+	@echo "  make ext-test         - Run its unit and grammar tests"
+	@echo "  make ext-build        - Bundle it"
+	@echo "  make ext-package      - Build the .vsix"
+	@echo "  make ext-test-host    - Run its smoke tests in VS Code"
 	@echo ""
 	@echo "Build:"
 	@echo "  make build            - Build JS and Python package"

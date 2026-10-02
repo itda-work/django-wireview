@@ -12,6 +12,28 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- An editor extension for VS Code in `editors/vscode/` (built as a `.vsix`, not published yet).
+  It provides the `django-html` language -- a grammar, comment toggling, auto-closing and
+  indentation for `{% %}`, `{{ }}` and `{# #}`, with `**/templates/**/*.html` associated -- and
+  gives back the HTML completion, hover and closing tags a file loses when it stops being `html`.
+  It completes, explains and goes to Django's tags and filters and django-wireview's components,
+  arguments, events, modifiers, handlers, slots and hooks, and reports in a template what Django
+  or django-wireview would raise when it renders: an unknown component, handler, tag, filter or
+  library, a tag not loaded, a missing id, argument or required slot, an invalid modifier, an
+  unclosed block. It says nothing it is not sure of; every template in this repository has
+  nothing to report (`tests/test_vscode_extension.py`). The extension is versioned on its own
+  and reads only the output of `manage.py wireview_lsp` (#156).
+
+- `manage.py wireview_lsp` writes metadata version 1.1, which adds keys and changes none. A
+  component says its `kind` (component or LiveComponent), its `template_path` on disk, whether it
+  reads arguments of its own (`accepts_extra_kwargs`) and its `properties`; a method says its
+  `file_path` (a mixin's handler is not in the component's file); a modifier says what its
+  `argument` is. At the top: `wireview_version`, `function_components`, the `hooks` the hook
+  files register and where, the `template_dirs` the loaders search, and the template engine's
+  `template_builtins` and `template_libraries` -- each tag and filter with its file and line,
+  a block tag with its end and middle tags, a filter with whether it takes an argument. The
+  fields in `Meta.exclude_fields` are listed too (`in_state: false`): a template passes them.
+
 - The starter template ships a `.gitignore`. In DEBUG wireview writes `hello/live.pyi` whenever
   Django starts, `check` and `migrate` included, and `migrate` makes `db.sqlite3`; a new project's
   first commit took both. The wheel check and the wheel smoke test look for the file.
@@ -141,6 +163,26 @@ The django-reactor era changelog (2.x) is preserved in
   reworded heading left the links to it opening the top of the page, and nothing failed.
 
 ### Fixed
+
+- `manage.py wireview_lsp` listed a handler only when its name was all lowercase: `toggleAll`
+  was missing from the metadata, and an editor called a working binding unknown. Only a class
+  defined in the component's body (`class Meta:`) is left out now.
+
+- A function component that takes `**kwargs` could not render: the parameter was taken for a
+  required argument named `kwargs`, so every `{% func %}` failed with "missing required
+  argument". Arguments the signature does not name now go to it as they are.
+
+- The project's template directories were read off `TEMPLATES`: a project that lists its loaders
+  in `OPTIONS` -- the cached loader -- has `APP_DIRS` off, and every app's templates were missed.
+  `wireview.W011`'s scan of `wire-hook` names and `wireview_lsp`'s `template_dirs` ask the
+  engines' loaders now.
+
+- `examples/todo/templates/streams/stream_list.html` named a tag that does not exist
+  (`{% component_attrs %}`) and never compiled; the tests that named it never rendered it.
+
+- The sdist took every `README.md`, `CHANGELOG.md` and `LICENSE` in the repository -- the
+  examples', the docs' and, with the editor extension's packages installed,
+  `editors/vscode/node_modules`'. Its include patterns are anchored at the root now.
 
 - `{% wireview_toasts %}` works on a site with the `signed_cookies` session backend. Its key is the
   signed cookie -- `:` in it, over 60 characters -- and `toast_channel()` wrote it into the group

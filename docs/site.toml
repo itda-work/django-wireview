@@ -282,6 +282,10 @@ source = "docs/features/type-stubs.md"
 slug = "type-stubs"
 
 [[sections.pages]]
+source = "docs/features/editor-support.md"
+slug = "editor-support"
+
+[[sections.pages]]
 source = "docs/features/telemetry.md"
 slug = "telemetry"
 

@@ -140,7 +140,7 @@ KOREAN_RATIO_FLOOR = 0.15
 
 #: English on purpose. The changelog reads alongside commit messages, and docs/legacy/ is a
 #: preserved artefact of the django-reactor era, not a document this project maintains.
-ENGLISH_BY_DESIGN = ("CHANGELOG.md", "docs/legacy/")
+ENGLISH_BY_DESIGN = ("CHANGELOG.md", "docs/legacy/", "editors/vscode/CHANGELOG.md")
 
 HANGUL = re.compile(r"[가-힣]")
 LETTERS = re.compile(r"[A-Za-z가-힣]")

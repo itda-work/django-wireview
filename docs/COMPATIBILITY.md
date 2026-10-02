@@ -48,7 +48,7 @@ from wireview import Component, LiveComponent, JS, mount
 | URL | `include("wireview.urls")`, `wireview.urls.websocket_urlpatterns`, 그리고 둘이 여는 경로 `/__wireview__`(WebSocket)와 `/__wireview_upload__/…`(업로드). 프록시·CSP `connect-src`·방화벽이 이 경로를 적으므로 경로도 약속이다. **루트에 마운트해야 한다** — 클라이언트와 업로드 토큰이 이 경로를 루트에서 찾으므로, 접두사 아래(`path("app/", include(...))`)나 하위 경로 배포(`SCRIPT_NAME`)에서는 동작하지 않는다 |
 | 템플릿 태그 | `{% load wireview %}`와 그 태그들 |
 | 설정 | `settings.WIREVIEW`의 키 (`wireview/settings.py`의 `DEFAULT`) |
-| 관리 명령 | `wireview_stubs`, `wireview_lsp`, `wireview_agent_setup`, `wireview_upload_gc`와 문서화된 옵션. `wireview_lsp`의 출력 JSON은 그 안의 `version` 필드로 따로 관리한다 — 모양을 바꾸면 `version`을 올린다 |
+| 관리 명령 | `wireview_stubs`, `wireview_lsp`, `wireview_agent_setup`, `wireview_upload_gc`와 문서화된 옵션. `wireview_lsp`의 출력 JSON은 그 안의 `version` 필드로 따로 관리한다 — 키를 더하면 minor, 있던 키의 뜻이나 모양을 바꾸면 major를 올리고, 읽는 쪽은 major를 본다([editor-support](./features/editor-support.md#버전)). `editors/vscode`의 편집기 확장은 이 JSON만 읽는 별개의 산출물이라 라이브러리의 공개 API가 아니고 버전도 따로 매긴다 |
 | 스타터 템플릿 | 설치된 패키지의 `wireview/project_template/` 디렉터리(`startproject --template`의 대상, [시작하기 튜토리얼](./tutorials/01-getting-started.md)). 약속은 그 경로와, 만든 프로젝트가 `manage.py check`에 아무것도 보고하지 않는다는 것이다. 만들어진 파일은 사용자의 코드이므로 안의 내용은 릴리스마다 바뀔 수 있다 |
 | 시스템 체크 id | `wireview.W001`~. 없앤 번호는 다시 쓰지 않는다 |
 | 컴포넌트 클래스 설정 | `class Meta:`의 키(`ComponentOptions`의 필드)와 `get_subscriptions()` |

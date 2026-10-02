@@ -11,6 +11,7 @@
 /wireview/reference/component-api/
 /wireview/reference/csp/
 /wireview/reference/dead-view/
+/wireview/reference/editor-support/
 /wireview/reference/errors/
 /wireview/reference/external-uploads/
 /wireview/reference/flash/

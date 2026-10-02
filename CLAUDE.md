@@ -81,12 +81,13 @@ wireview/
 ├── utils.py, log.py       db 헬퍼, 로깅
 ├── debug/sync_detector.py sync/async 전환 중첩 감지 (DEBUG_SYNC_TRANSITIONS)
 ├── features/              streams.py, presence.py (PresenceMixin), uploads.py (UploadRegistry·토큰 v2),
-│                          hooks.py (앱의 static/<app_label>/hooks/*.js 수집. 페이지가 아니라 프로젝트 단위),
+│                          hooks.py (앱의 static/<app_label>/hooks/*.js 수집. 페이지가 아니라 프로젝트 단위. 템플릿 디렉터리는 TEMPLATES가 아니라 엔진의 로더에게 묻는다),
 │                          upload_store.py (청크 경로 계산·append·취소 마커·sweep. 워커들이 공유하는 유일한 상태),
 │                          toasts.py (toast()·atoast()와 그것을 받는 컴포넌트. {% wireview_toasts %}가 심는다, #116)
 ├── apps.py                ready()가 시그널 수신자·체크·toasts 컴포넌트를 연결하고 live·live_sessions 모듈을 autodiscover한다
 ├── templatetags/wireview.py  템플릿 태그 전체 (아래 표)
-├── management/commands/   wireview_stubs (.pyi 생성), wireview_lsp (IDE 메타데이터 JSON),
+├── management/commands/   wireview_stubs (.pyi 생성), wireview_lsp (편집기 메타데이터 JSON. 형식은 자기 version 필드로 따로 매기고
+│                          editors/vscode 가 읽는다: 컴포넌트·함수 컴포넌트·훅·템플릿 디렉터리·엔진의 태그와 필터. docs/features/editor-support.md),
 │                          wireview_agent_setup (앱 개발자용 스킬을 프로젝트 .claude/skills/ 에 설치),
 │                          wireview_upload_gc (토큰 만료보다 오래된 청크 파일 정리)
 ├── project_template/       startproject --template 용 스타터(시작하기 튜토리얼의 프로젝트). *.py-tpl 과 html 뿐, 모듈이 아니다.
@@ -200,6 +201,11 @@ scripts/docs_site/         문서 사이트 빌드(make docs-site·make docs-ser
                            재작성(사이트 페이지는 사이트 경로로, 그 밖의 저장소 파일은 태그 고정 GitHub로), build.py 는 산출물·관문,
                            serve.py 는 폴링 재빌드 개발 서버. templates/·assets/ 가 itda.work 레이아웃의 재현이다(원본과 커밋은 site.css 머리 주석).
                            렌더 의존성은 dependency-group docs(기본 그룹)에만 있다. 산출물은 `build/docs-site/`(gitignore)
+editors/vscode/            VS Code 확장(#156). wheel·sdist에 싣지 않고 버전도 따로다. src/core/ 는 vscode를 import하지 않는 순수 모듈
+                           (node --test가 .ts를 그대로 돈다 — import는 .ts까지, enum 금지), src/*.ts 는 등록과 위치 변환뿐인 어댑터.
+                           진단의 원칙: Django·wireview가 렌더할 때 낼 오류만, 확실하지 않으면 말하지 않는다.
+                           tests/test_vscode_extension.py 가 이 저장소의 모든 템플릿에 진단 0건인지, 확장의 표(태그 스니펫·wire-* 속성·
+                           메타데이터 버전·들여쓰기 규칙의 블록 태그)가 라이브러리와 같은지 본다(node만 필요). 확장 자체는 make ext-test·ext-test-host 등(make help)
 bench/                     성능 벤치마크 (make bench, make bench-compare BASE=<ref>). windows/ 는 Parallels 게스트 실측 레인. 설명은 bench/README.md
 typings/                   channels 타입 스텁 (pyright용)
 skills/wireview/           앱 개발자용 스킬의 정본. 휠에 wireview/agent_skills/ 로 실린다(hatch_build.py가 링크를 태그로 고정).

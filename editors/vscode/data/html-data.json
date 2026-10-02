@@ -1,0 +1,54 @@
+{
+  "version": 1.1,
+  "globalAttributes": [
+    {
+      "name": "wire-hook",
+      "description": "The client hook(s) to run on this element: a name registered as `window.wireview.hooks.<Name>`."
+    },
+    {
+      "name": "wire-update",
+      "description": "`wire-update=\"ignore\"`: after the first render no render touches this element, its attributes or its children. Keeps the DOM a hook or a widget changed.",
+      "values": [
+        {
+          "name": "ignore",
+          "description": "Renders leave this element as it is."
+        }
+      ]
+    },
+    {
+      "name": "wire-boost",
+      "description": "On a `<form>`: submit without a full page load when `WIREVIEW[\"BOOST_PAGES\"]` is on.",
+      "valueSet": "v"
+    },
+    {
+      "name": "wire-stream",
+      "description": "The container of a stream: its value is the stream's name, and stream operations insert, move and delete its children."
+    },
+    {
+      "name": "wire-viewport-top",
+      "description": "The handler to call when this element scrolls into view at the top of a list (infinite scroll upwards)."
+    },
+    {
+      "name": "wire-viewport-bottom",
+      "description": "The handler to call when this element scrolls into view at the bottom of a list (infinite scroll)."
+    },
+    {
+      "name": "wire-disabled-with",
+      "description": "The text this element shows, disabled, from the click (or its form's submit) until the server answers the event."
+    },
+    {
+      "name": "wire-feedback-for",
+      "description": "The name of the input this error message belongs to. It stays hidden (`wire-no-feedback` class) until the user has touched that input."
+    },
+    {
+      "name": "wire-auto-recover",
+      "description": "On a `<form>`: after a reconnect the form's values are sent back to the server, to the handler named here or to the form's `change` binding.",
+      "valueSet": "v"
+    },
+    {
+      "name": "wire-flash",
+      "description": "The container flash messages are appended to.",
+      "valueSet": "v"
+    }
+  ]
+}

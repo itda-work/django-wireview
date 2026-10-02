@@ -1,0 +1,75 @@
+{
+  "Wireview Component": {
+    "prefix": "wv-component",
+    "description": "A Component: its fields are the state, its async methods the event handlers.",
+    "body": [
+      "from wireview import Component",
+      "",
+      "",
+      "class ${1:Name}(Component):",
+      "\tclass Meta:",
+      "\t\ttemplate_name = \"${2:app}/${3:name}.html\"",
+      "",
+      "\t${4:count}: ${5:int} = ${6:0}",
+      "",
+      "\tasync def ${7:increment}(self) -> None:",
+      "\t\t${0:self.$4 += 1}"
+    ]
+  },
+  "Wireview LiveComponent": {
+    "prefix": "wv-live-component",
+    "description": "A LiveComponent: nested state its parent renders with {% live_component %} and an id.",
+    "body": [
+      "from wireview import LiveComponent",
+      "",
+      "",
+      "class ${1:Name}(LiveComponent):",
+      "\tclass Meta:",
+      "\t\ttemplate_name = \"${2:app}/${3:name}.html\"",
+      "",
+      "\t${4:value}: ${5:str} = ${6:\"\"}",
+      "",
+      "\tasync def ${7:save}(self) -> None:",
+      "\t\tawait self.send_to_parent(\"${8:saved}\", ${4:value}=self.${4:value})$0"
+    ]
+  },
+  "Wireview event handler": {
+    "prefix": "wv-handler",
+    "description": "An event handler: async, and named without a leading underscore so a client may call it.",
+    "body": ["async def ${1:handler}(self${2:, value: str}) -> None:", "\t${0:...}"]
+  },
+  "Wireview joined": {
+    "prefix": "wv-joined",
+    "description": "Runs when the component joins over the socket, before its first live render.",
+    "body": ["async def joined(self) -> None:", "\t${0:...}"]
+  },
+  "Wireview function component": {
+    "prefix": "wv-function-component",
+    "description": "A stateless function component. format_html escapes the values; an f-string would not.",
+    "body": [
+      "from django.utils.html import format_html",
+      "from wireview import function_component",
+      "",
+      "",
+      "@function_component",
+      "def ${1:badge}(${2:text}: str, ${3:tone}: str = \"${4:info}\"):",
+      "\treturn format_html('<span class=\"${1:badge} ${1:badge}-{}\">{}</span>', ${3:tone}, ${2:text})$0"
+    ]
+  },
+  "Wireview component test": {
+    "prefix": "wv-test",
+    "description": "A component test with mount(): no browser and no socket.",
+    "body": [
+      "import pytest",
+      "",
+      "from wireview import mount",
+      "",
+      "",
+      "@pytest.mark.asyncio",
+      "async def test_${1:it_works}():",
+      "\tview = await mount(${2:Name}${3:, count=0})",
+      "\tawait view.call(\"${4:increment}\")",
+      "\tassert ${0:view.component.count == 1}"
+    ]
+  }
+}

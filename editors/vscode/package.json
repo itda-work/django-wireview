@@ -1,0 +1,184 @@
+{
+  "name": "django-wireview",
+  "displayName": "Django Wireview",
+  "description": "Django template language support and django-wireview component intelligence: syntax, completion, navigation and diagnostics for templates.",
+  "version": "0.1.0",
+  "publisher": "itda-work",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itda-work/django-wireview.git",
+    "directory": "editors/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/itda-work/django-wireview/issues"
+  },
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Snippets"
+  ],
+  "keywords": [
+    "django",
+    "django-html",
+    "django templates",
+    "wireview",
+    "liveview"
+  ],
+  "main": "./dist/extension.cjs",
+  "activationEvents": [
+    "workspaceContains:**/manage.py"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "django-html",
+        "aliases": [
+          "Django HTML",
+          "django-html"
+        ],
+        "extensions": [
+          ".djhtml",
+          ".django-html"
+        ],
+        "filenamePatterns": [
+          "**/templates/**/*.html"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "django-html",
+        "scopeName": "text.html.django",
+        "path": "./syntaxes/django-html.tmLanguage.json",
+        "embeddedLanguages": {
+          "source.css": "css",
+          "source.js": "javascript"
+        }
+      }
+    ],
+    "snippets": [
+      {
+        "language": "django-html",
+        "path": "./snippets/django-html.json"
+      },
+      {
+        "language": "python",
+        "path": "./snippets/python.json"
+      }
+    ],
+    "html": {
+      "customData": [
+        "./data/html-data.json"
+      ]
+    },
+    "commands": [
+      {
+        "command": "wireview.refreshMetadata",
+        "title": "Refresh Project Metadata",
+        "category": "Wireview"
+      },
+      {
+        "command": "wireview.goToComponent",
+        "title": "Go to Component…",
+        "category": "Wireview"
+      },
+      {
+        "command": "wireview.showOutput",
+        "title": "Show Output",
+        "category": "Wireview"
+      }
+    ],
+    "configuration": {
+      "title": "Django Wireview",
+      "properties": {
+        "wireview.pythonPath": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "markdownDescription": "The Python interpreter that runs `manage.py wireview_lsp`. Empty: the interpreter the Python extension selected, then `.venv` in the workspace, then `python3`."
+        },
+        "wireview.managePy": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "markdownDescription": "Path to `manage.py`, relative to the workspace folder. Empty: the one nearest the workspace root."
+        },
+        "wireview.metadataCommand": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "resource",
+          "markdownDescription": "The whole command that prints the metadata, when the interpreter alone is not enough, for example `[\"uv\", \"run\", \"python\", \"manage.py\", \"wireview_lsp\"]`. It runs in the directory of `manage.py` and `--output <file>` is appended."
+        },
+        "wireview.metadataPath": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "markdownDescription": "Read the metadata from this file instead of running the command, relative to the workspace folder. Something else writes it: `python manage.py wireview_lsp --output .wireview/metadata.json`."
+        },
+        "wireview.refreshOnSave": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "markdownDescription": "Run `manage.py wireview_lsp` again when a Python file is saved."
+        },
+        "wireview.diagnostics.enable": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "markdownDescription": "Report problems in templates: an unknown component, handler, tag or filter, a missing argument, an unclosed block."
+        },
+        "wireview.html.enable": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "markdownDescription": "Complete HTML tags and attributes and close tags in `django-html` files, as the built-in HTML support does for `html` files."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "emmet.includeLanguages": {
+        "django-html": "html"
+      },
+      "[django-html]": {
+        "editor.quickSuggestions": {
+          "other": true,
+          "comments": false,
+          "strings": true
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/*.test.ts\"",
+    "test:host": "node esbuild.mjs && node test/host/run.mjs",
+    "package": "node esbuild.mjs --production && vsce package --no-dependencies --baseContentUrl https://github.com/itda-work/django-wireview/blob/main/editors/vscode/ --baseImagesUrl https://github.com/itda-work/django-wireview/raw/main/editors/vscode/ --out dist/",
+    "vscode:prepublish": "node esbuild.mjs --production"
+  },
+  "dependencies": {
+    "vscode-html-languageservice": "^5.6.2",
+    "vscode-languageserver-textdocument": "^1.0.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/vscode": "~1.100.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.0.0",
+    "esbuild": "^0.27.1",
+    "typescript": "^5.9.3",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.3.2"
+  }
+}

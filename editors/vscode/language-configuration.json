@@ -1,0 +1,53 @@
+{
+  "comments": {
+    "blockComment": ["{#", "#}"]
+  },
+  "brackets": [
+    ["<!--", "-->"],
+    ["{%", "%}"],
+    ["{{", "}}"],
+    ["{", "}"],
+    ["(", ")"],
+    ["[", "]"]
+  ],
+  "autoClosingPairs": [
+    { "open": "{", "close": "}" },
+    { "open": "{%", "close": "%" },
+    { "open": "{#", "close": "#" },
+    { "open": "[", "close": "]" },
+    { "open": "(", "close": ")" },
+    { "open": "'", "close": "'" },
+    { "open": "\"", "close": "\"" },
+    { "open": "<!--", "close": "-->", "notIn": ["comment", "string"] }
+  ],
+  "surroundingPairs": [
+    { "open": "'", "close": "'" },
+    { "open": "\"", "close": "\"" },
+    { "open": "{", "close": "}" },
+    { "open": "[", "close": "]" },
+    { "open": "(", "close": ")" },
+    { "open": "<", "close": ">" }
+  ],
+  "colorizedBracketPairs": [],
+  "wordPattern": "(-?\\d*\\.\\d\\w*)|([^\\`\\~\\!\\@\\#\\%\\$\\^\\&\\*\\(\\)\\=\\+\\[\\{\\]\\}\\\\\\|\\;\\:\\'\\\"\\,\\.\\<\\>\\/\\s]+)",
+  "indentationRules": {
+    "increaseIndentPattern": "<(?!\\?|(?:area|base|br|col|frame|hr|html|img|input|keygen|link|menuitem|meta|param|source|track|wbr)\\b|[^>]*\\/>)([-_\\.A-Za-z0-9]+)(?=\\s|>)\\b[^>]*>(?!.*<\\/\\1>)|<!--(?!.*-->)|\\{%\\s*(?:if|elif|else|for|empty|with|block|autoescape|comment|filter|spaceless|verbatim|ifchanged|blocktranslate|blocktrans|plural|language|localize|localtime|timezone|cache|partialdef|component_block|live_component_block|func_block|fill)\\b[^%]*%\\}(?!.*\\{%\\s*end)",
+    "decreaseIndentPattern": "^\\s*(<\\/(?!html)[-_\\.A-Za-z0-9]+\\b[^>]*>|-->|\\{%\\s*(?:end\\w+|elif|else|empty|plural)\\b[^%]*%\\})"
+  },
+  "onEnterRules": [
+    {
+      "beforeText": "<(?!(?:area|base|br|col|embed|hr|img|input|keygen|link|menuitem|meta|param|source|track|wbr))([_:\\w][_:\\w\\-.\\d]*)(?:(?:[^'\"/>]|\"[^\"]*\"|'[^']*')*?(?!\\/)>)[^<]*$",
+      "afterText": "^<\\/([_:\\w][_:\\w\\-.\\d]*)\\s*>",
+      "action": { "indent": "indentOutdent" }
+    },
+    {
+      "beforeText": "<(?!(?:area|base|br|col|embed|hr|img|input|keygen|link|menuitem|meta|param|source|track|wbr))([_:\\w][_:\\w\\-.\\d]*)(?:(?:[^'\"/>]|\"[^\"]*\"|'[^']*')*?(?!\\/)>)[^<]*$",
+      "action": { "indent": "indent" }
+    },
+    {
+      "beforeText": "\\{%\\s*(?:if|elif|else|for|empty|with|block|autoescape|filter|spaceless|ifchanged|blocktranslate|blocktrans|plural|language|localize|localtime|timezone|cache|partialdef|component_block|live_component_block|func_block|fill)\\b[^%]*%\\}\\s*$",
+      "afterText": "^\\s*\\{%\\s*(?:end\\w+|elif|else|empty|plural)\\b",
+      "action": { "indent": "indentOutdent" }
+    }
+  ]
+}

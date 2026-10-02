@@ -272,3 +272,49 @@ jobs:
 
       - name: Build and check
         run: make ci-build
+
+  # The editor extension (#156). Its contract with the library -- the metadata version,
+  # the tag tables, no diagnostics on this repository's templates -- runs in the test
+  # jobs above (tests/test_vscode_extension.py); this job checks the extension itself.
+  vscode-extension:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0 # publishes no floating major tag since v8
+        with:
+          version: "latest"
+
+      # The host tests make the metadata from the test project with `uv run`
+      - name: Set up Python
+        working-directory: .
+        run: |
+          uv python install 3.12
+          uv sync --all-extras
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Unit and grammar tests
+        run: npm test
+
+      - name: Package
+        run: npm run package
+
+      # In the VS Code release engines.vscode names, which test/host/run.mjs downloads
+      - name: Smoke tests in VS Code
+        run: xvfb-run -a npm run test:host

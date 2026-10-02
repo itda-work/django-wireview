@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.vscode-test/
+*.vsix
+# Copied from the repository root when packaging (esbuild.mjs)
+/LICENSE
