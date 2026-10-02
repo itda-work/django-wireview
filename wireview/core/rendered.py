@@ -79,6 +79,11 @@ JOINED_SINCE = 5
 # the error that answer it. Like REFS_SINCE it runs the other way: a client names
 # its join only to a server that announced this version (#139).
 JOIN_REFS_SINCE = 6
+# First version whose clients send the old page's leaves before the new page's
+# joins on a boosted visit (#146). Not a form: it says what a join under an id
+# that already joined can mean. Before it, the join may come while the old page
+# is still in the repository, so a component retired for it keeps no slot.
+LEAVES_FIRST_SINCE = 6
 
 
 def protocol_version(query_string: bytes | str) -> int:

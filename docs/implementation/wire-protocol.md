@@ -124,7 +124,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | 3 | `user_event`의 `ref`와 그것을 돌려주는 render의 `ref`, join 응답의 `vsn` (#92) |
 | 4 | outbound `error` (#94) |
 | 5 | outbound `joined` (#112) |
-| 6 | `join`의 `ref`와 그것을 돌려주는 render·`error`·`remove`·`reload`·`joined`의 `ref` (#139, #146) |
+| 6 | `join`의 `ref`와 그것을 돌려주는 render·`error`·`remove`·`reload`·`joined`의 `ref` (#139, #146). 형태는 아니지만 boost 이동에서 앞 페이지의 `leave`를 새 페이지의 `join`보다 먼저 보내는 클라이언트이기도 하다(`LEAVES_FIRST_SINCE`). 서버는 이 클라이언트에서만 boost로 다시 join하는 컴포넌트에 슬롯을 넘긴다 |
 
 `vsn` 3과 6은 방향이 반대다. `ref`는 클라이언트가 서버로 보내는 필드라, 옛 서버(모르는 인자에 TypeError)에 보내면 안 된다. 그래서 서버가 먼저 join 응답의 `vsn`으로 자기 버전을 알리고, 클라이언트는 그 연결에서만 `ref`를 싣는다. `vsn` 6의 join `ref`도 같다 — 옛 서버는 모르는 인자가 붙은 join을 통째로 버린다(#94). 옛 클라이언트는 render의 모르는 필드를 무시한다.
 
@@ -136,6 +136,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 - 2026-10-01: render가 처음 그린 LiveComponent에도 `joined`를 보낸다. 형태는 그대로이고 `id`가 LiveComponent일 뿐이라 `vsn`을 올리지 않는다. 혼합: `joined`를 아는 옛 클라이언트(`vsn` 5)는 그 id로 무한 스크롤을 시작할 뿐이다 — 그 LiveComponent가 이전에는 시작되지 않던 것이 시작된다. `vsn` 5 미만은 받지 않는다. 새 클라이언트와 옛 서버에서는 신호가 없어 그 LiveComponent의 무한 스크롤이 이전처럼 시작되지 않는다.
 - 2026-10-01: 요소에 패치가 예약된 컴포넌트의 `stream_op`·`exec_js`·`push_event`도 그 프레임까지 기다린다. 클라이언트만의 변경이라 `vsn`을 올리지 않는다. 옛 번들에서는 핸들러가 같은 렌더로 드러낸 요소에 보낸 명령이 이전처럼 사라진다.
 - 2026-10-01: 요소가 아직 없는 `exec_js`·`push_event`도 `stream_op`와 한 줄에서 기다리고, 그 줄은 컴포넌트마다 따로다. 클라이언트만의 변경이고 메시지 형태가 그대로라 `vsn`을 올리지 않는다.
+- 2026-10-02: boost 이동으로 이미 join한 id에 join이 다시 오면, 서버는 그 컴포넌트를 채운 컴포넌트가 새 페이지의 것일 때 슬롯을 새 인스턴스에 넘긴다. 이 판정은 앞 페이지의 `leave`가 먼저 왔다는 데 기대므로 `vsn` 6(`LEAVES_FIRST_SINCE`) 이상의 클라이언트에만 한다. join을 먼저 보내는 옛 번들(v1.0.0rc1~rc3, `vsn` 4·5)은 boost로 다시 join한 컴포넌트의 슬롯이 늘 비어 있다 — 같은 페이지로 이동해도 그렇고, 이는 1.0 전과 같다. 넘기면 다른 페이지가 앞 페이지의 슬롯을 받을 수 있다. 예외 뒤의 다시 join(`error`의 답)은 leave 순서와 무관하므로 모든 버전에서 슬롯을 넘긴다. 메시지 형태가 같아 `vsn`을 올리지 않는다.
 - 2026-10-02: render의 `children`에 그 렌더가 새로 참조한 LiveComponent의 전체 render가, 그 렌더의 소유가 아니어도 실린다. `children`의 형태와 클라이언트가 모르는 id를 등록하는 동작은 그대로라 `vsn`을 올리지 않는다 — 옛 클라이언트도 같이 읽는다. 중첩 `{% component %}`의 출력에 다는 표시(`<!--@wv(:id-->`)는 파싱이 지우므로 어떤 메시지에도 실리지 않는다.
 - 2026-09-30: `remove`·`reload`·`joined`도 그 join의 `ref`를 싣는다. `vsn`을 올리지 않는다 — `vsn` 6은 아직 릴리스되지 않았고(v1.0.0rc3가 5), 이 변경은 6의 뜻을 넓힐 뿐이다. 그래서 클라이언트는 "`ref`가 없는 응답은 받는다"로 읽지 않고, 기다리는 join이 있으면 `ref`가 없는 것도 대체된 인스턴스의 것으로 버린다 — render와 같은 규칙이다. 혼합: 옛 클라이언트는 join에 `ref`를 싣지 않으므로 새 서버의 응답이 바이트까지 이전과 같다. 새 클라이언트와 옛 서버(`vsn` 5 이하를 알림)에서는 join에 `ref`가 없어 모든 응답을 오는 대로 받는다. `vsn` 6을 알리면서 이 필드들을 싣지 않는 서버는 릴리스된 적이 없다 (#146).
 - 2026-09-30: `vsn` 6. `join`의 `ref`, 그 join에 답하는 render와 `error`의 `ref`. 새 클라이언트와 옛 서버(`vsn` 5 이하를 알림)에서는 `ref`를 싣지 않고 응답을 오는 대로 받는다 — 이전과 같다. 옛 클라이언트는 `ref`를 보내지 않으므로 새 서버의 응답도 이전과 바이트까지 같다 (#139).

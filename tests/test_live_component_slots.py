@@ -16,7 +16,8 @@ from django.test import override_settings
 
 from wireview import Component, LiveComponent
 from wireview.consumer import WireviewConsumer
-from wireview.core.rendered import PROTOCOL_VERSION, component_refs
+from wireview.core.rendered import LEAVES_FIRST_SINCE, PROTOCOL_VERSION, component_refs
+from wireview.core.state import sign_state
 from wireview.repository import ComponentRepository
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio, pytest.mark.django_db]
@@ -869,6 +870,57 @@ async def test_another_page_after_the_host_joined_again_draws_no_slot():
 
     assert consumer.repo.get("sf").wire.slots is None
     assert child_html(consumer, "sf").endswith("<span>0</span></section>")
+
+
+# Bundles before LEAVES_FIRST_SINCE (v1.0.0rc1-rc3) join the new page's elements
+# before they send the old page's leaves, so a boosted visit cannot tell the
+# same element from another page's: the host the old page still holds may have
+# come after the frame. They get an empty slot on any boosted visit instead.
+
+
+async def test_a_bundle_that_joins_first_takes_no_slot_from_the_page_before():
+    consumer, outbound = await join_show_page()
+    consumer.repo.vsn = LEAVES_FIRST_SINCE - 1
+    host_state = sign_state(consumer.repo.get("host"))
+    await consumer.command_user_event("host", "boom", {}, {})
+    await consumer.command_join("SlShowPage", host_state)
+    assert consumer.repo.get("host").wire.born > consumer.repo.get("sf").wire.born
+
+    await consumer.command_join("SlShowFrame", another_pages_frame())
+    await consumer.command_leave("host")
+    await consumer.command_leave("g")
+
+    assert consumer.repo.get("sf").wire.slots is None
+    assert child_html(consumer, "sf").endswith("<span>0</span></section>")
+    assert consumer.repo._slots_to_rejoin == {}
+
+
+@pytest.mark.parametrize(
+    ("vsn", "kept"), [(LEAVES_FIRST_SINCE, True), (LEAVES_FIRST_SINCE - 1, False)], ids=["leaves-first", "joins-first"]
+)
+async def test_a_boosted_visit_to_the_same_page_keeps_the_slot_for_a_bundle_that_leaves_first(vsn, kept):
+    consumer, outbound = await join_show_page()
+    consumer.repo.vsn = vsn
+    host_state = sign_state(consumer.repo.get("host"))
+    frame_state = sign_state(consumer.repo.get("sf"))
+
+    await consumer.command_join("SlShowPage", host_state)
+    await consumer.command_join("SlShowFrame", frame_state)
+
+    assert ("A<!--@wv:sl1-->B" in child_html(consumer, "sf")) is kept
+    assert (consumer.repo.get("sf").wire.slots is not None) is kept
+
+
+async def test_a_bundle_that_joins_first_keeps_the_slot_of_an_owner_joined_again_after_an_error():
+    """The join answering ``error`` is that element's whatever the order of leaves."""
+    consumer, outbound = await join_show_page()
+    consumer.repo.vsn = LEAVES_FIRST_SINCE - 1
+    state = sign_state(consumer.repo.get("sf"))
+    await consumer.command_user_event("sf", "boom", {}, {})
+
+    await consumer.command_join("SlShowFrame", state)
+
+    assert "A<!--@wv:sl1-->B<!--@wv:sl2-->C<em" in child_html(consumer, "sf")
 
 
 async def test_an_owner_that_left_before_joining_again_leaves_nothing_kept():

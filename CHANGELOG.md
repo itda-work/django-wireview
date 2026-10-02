@@ -406,12 +406,17 @@ The django-reactor era changelog (2.x) is preserved in
     again: the join answering the `error`, or a boosted visit whose component that filled the slot
     came after the retired instance. Another page with a component of the same class and id and no
     fill draws its slot empty, and the kept slots go when the page that filled them leaves.
+    The boosted visit hands the slot on only to a client that sends the old page's leaves before
+    the new page's joins (`vsn` 6 and later): a v1.0.0rc1-rc3 bundle joins first, so another page
+    could take the page before's slot. Such a page draws the slot empty on any boosted visit, as
+    before; the join answering an `error` keeps it on every version.
   - A nested `{% component %}` in a slot is drawn as it is now on its owner's render. The slot's
     text held it as the filler's pass drew it, so the page went back to its old content and its old
     `data-state`, which a reconnect then joined. A live pass marks a nested component's output (the
     marks are dropped before anything is sent), and the slot's owner draws the component in its
     place from the repository. It puts back what it drew last, markers renumbered, until the
-    component renders on its own: drawing every one again made each render of the owner cost a
+    component renders on its own (a property that reads the database keeps its last value there
+    until then): drawing every one again made each render of the owner cost a
     template render per component (50 of them: about 3.4 ms to 0.45 ms). One that left the page is
     not drawn: after the owner hides the slot and shows it again, it comes back on the filler's next
     render.

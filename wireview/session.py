@@ -17,7 +17,14 @@ from wireview.core.component import Component
 
 from . import serializer, telemetry
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
-from .core.rendered import ERRORS_SINCE, JOINED_SINCE, PROTOCOL_VERSION, component_refs, payload_component_refs
+from .core.rendered import (
+    ERRORS_SINCE,
+    JOINED_SINCE,
+    LEAVES_FIRST_SINCE,
+    PROTOCOL_VERSION,
+    component_refs,
+    payload_component_refs,
+)
 from .core.session import SessionView
 from .core.state import StateMismatch, StatePayload, unsign_envelope
 from .core.transport import Outbound
@@ -373,7 +380,7 @@ class WireviewSession:
             # parent's template pass created but that never joined is adopted by
             # repo.join() instead, as its own join is what completes it.
             log.debug("Re-join of %s: retiring the previous instance", component_id)
-            removed = self.repo.retire(component_id)
+            removed = self.repo.retire(component_id, leaves_first=self.repo.vsn >= LEAVES_FIRST_SINCE)
             await self._call_leaving(removed)
             self._release_uploads(removed)
         try:

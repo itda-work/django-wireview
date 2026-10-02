@@ -542,7 +542,9 @@ class ComponentRepository:
         self.components[component.id] = component
         return component
 
-    def retire(self, id: str, *, failed: bool = False, keep_carried: bool = False) -> list[Component]:
+    def retire(
+        self, id: str, *, failed: bool = False, keep_carried: bool = False, leaves_first: bool = True
+    ) -> list[Component]:
         """Remove ``id`` as :meth:`remove` does, for the page to join it again.
 
         Slots are not part of the signed state: only the component that filled
@@ -556,7 +558,9 @@ class ComponentRepository:
           same element only if a component that came after this instance -- the
           new page's -- filled it in its pass. Another page can draw a component
           of the same class and id with no fill, or a different one, and then
-          the old filler is from before it, or gone.
+          the old filler is from before it, or gone. That holds only when the
+          old page left before the new one joined: ``leaves_first=False`` says
+          the client may join first (``LEAVES_FIRST_SINCE``), and nothing is kept.
 
         Either way the filler has to be on the page still, and they are dropped
         with it, so nothing kept outlives the page it belongs to.
@@ -565,7 +569,8 @@ class ComponentRepository:
         removed = self.remove(id, keep_carried=keep_carried)
         if component is not None and (slots := component.wire.slots) is not None:
             filler = component.wire.slots_from
-            if filler is not None and self._holds(filler) and (failed or filler.wire.born > component.wire.born):
+            refilled = leaves_first and filler is not None and filler.wire.born > component.wire.born
+            if filler is not None and self._holds(filler) and (failed or refilled):
                 self._slots_to_rejoin[id] = (type(component), slots, filler)
         return removed
 
