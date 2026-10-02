@@ -69,20 +69,30 @@ def hook_names() -> dict[str, str]:
     nowhere else. Only ``manage.py check`` needs this; nothing at request time
     does, and nothing here decides whether a file is loaded.
     """
+    names: dict[str, str] = {}
+    for name, static_path, _source, _line in hook_registrations():
+        names.setdefault(name, static_path)
+    return names
+
+
+def hook_registrations() -> t.Iterator[tuple[str, str, Path, int]]:
+    """Each registration the hook files hold: name, static path, source file, line.
+
+    What ``hook_names()`` reads, with where it read it -- an editor goes from
+    ``wire-hook="Chart"`` to that line (``manage.py wireview_lsp``).
+    """
     from django.apps import apps
 
-    names: dict[str, str] = {}
     by_label = {config.label: Path(config.path) for config in apps.get_app_configs()}
     for static_path in hook_files():
-        label, _, tail = static_path.partition("/")
+        label, _, _tail = static_path.partition("/")
         source = by_label[label] / "static" / static_path
         try:
             text = source.read_text(encoding="utf-8", errors="replace")
         except OSError:  # pragma: no cover - unreadable file, nothing to say about it
             continue
-        for dotted, quoted in _REGISTRATION.findall(text):
-            names.setdefault(dotted or quoted, static_path)
-    return names
+        for match in _REGISTRATION.finditer(text):
+            yield match[1] or match[2], static_path, source, text.count("\n", 0, match.start()) + 1
 
 
 def required_hook_names() -> dict[str, list[str]]:

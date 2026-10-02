@@ -2,7 +2,9 @@
 
 This command introspects all registered wireview components and outputs their metadata
 as JSON, which can be used by IDE plugins (VSCode, Neovim, etc.) to provide
-autocompletion, go-to-definition, and hover documentation.
+autocompletion, go-to-definition, and hover documentation. The extension under
+``editors/vscode`` is one such reader; the shape is described in
+``docs/features/editor-support.md`` and versioned by ``METADATA_VERSION``.
 
 Usage:
     python manage.py wireview_lsp
@@ -12,18 +14,32 @@ Usage:
 
 from __future__ import annotations
 
+import functools
+import importlib.util
 import inspect
 import json
+import re
 import sys
 import typing as t
 from datetime import datetime, timezone
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandParser
 
-from wireview.core.component import Component
-from wireview.event_transpiler import MODIFIER_ARGUMENTS, MODIFIERS
-from wireview.repository import ComponentRepository
+from wireview.core.component import ALWAYS_EXCLUDED, Component
+from wireview.core.handlers import is_client_callable, is_framework_class
+from wireview.event_transpiler import MODIFIER_ARGUMENTS, MODIFIERS, NUMBER_ARGUMENTS
+from wireview.live_component import LiveComponent
+
+#: The shape of the output. A reader checks the major number and refuses a newer
+#: one; a key added to what is already there raises the minor number.
+#: 1.1 (#156): ``kind``, ``template_path``, ``accepts_extra_kwargs`` and
+#: ``properties`` on a component, ``file_path`` on a method, the fields in
+#: ``Meta.exclude_fields`` (``in_state`` false), ``argument`` on a modifier, and
+#: ``function_components``, ``hooks``, ``template_dirs``, ``template_builtins``
+#: and ``template_libraries`` (each with its ``module`` and ``file_path``) at the top.
+METADATA_VERSION = "1.1"
 
 
 class Command(BaseCommand):
@@ -95,23 +111,63 @@ def extract_metadata() -> dict[str, t.Any]:
     """Extract metadata from all registered components."""
     components: dict[str, dict[str, t.Any]] = {}
 
+    roots = template_roots()
     for name, cls in Component._all.items():
         try:
-            components[name] = extract_component_metadata(cls)
+            components[name] = extract_component_metadata(cls, roots)
         except Exception as e:
             # Log error but continue processing other components
             sys.stderr.write(f"Warning: Failed to extract metadata for {name}: {e}\n")
 
+    builtins, libraries = extract_template_libraries()
     return {
-        "version": "1.0",
+        "version": METADATA_VERSION,
+        "wireview_version": installed_version(),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "components": components,
+        "function_components": extract_function_components(roots),
+        "hooks": extract_hooks(),
         "modifiers": extract_modifiers(),
+        "template_dirs": [str(root) for root in roots],
+        "template_builtins": builtins,
+        "template_libraries": libraries,
     }
 
 
-def extract_component_metadata(cls: type[Component]) -> dict[str, t.Any]:
+def installed_version() -> str:
+    """The version of the package this ran from, or "" for a source tree nothing installed."""
+    try:
+        return importlib_metadata.version("django-wireview")
+    except importlib_metadata.PackageNotFoundError:
+        return ""
+
+
+def template_roots() -> list[Path]:
+    """Where the project's templates live, in the order the loaders search them."""
+    from wireview.features.hooks import _template_roots
+
+    return [root.resolve() for root in _template_roots()]
+
+
+def find_template(name: str | None, roots: list[Path]) -> str | None:
+    """The file a template name loads, or None when no directory holds it.
+
+    Looked up on disk rather than through the engine: loading compiles the
+    template, and one syntax error in one template would hide every other.
+    """
+    if not name:
+        return None
+    for root in roots:
+        candidate = root / name
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def extract_component_metadata(cls: type[Component], roots: list[Path] | None = None) -> dict[str, t.Any]:
     """Extract metadata from a single component class."""
+    if roots is None:
+        roots = template_roots()
     # Get source file and line number
     try:
         file_path = inspect.getfile(cls)
@@ -132,9 +188,13 @@ def extract_component_metadata(cls: type[Component]) -> dict[str, t.Any]:
         "module": module,
         "file_path": file_path,
         "line_number": line_number,
+        "kind": "live_component" if issubclass(cls, LiveComponent) else "component",
         "docstring": inspect.getdoc(cls),
         "template_name": meta.template_name or "",
+        "template_path": find_template(meta.template_name, roots),
         "fields": extract_fields(cls),
+        "accepts_extra_kwargs": accepts_extra_kwargs(cls),
+        "properties": extract_properties(cls),
         "methods": extract_methods(cls),
         "slots": dict(meta.slots),
         "subscriptions": sorted(meta.subscriptions),
@@ -147,10 +207,10 @@ def extract_fields(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
     """Extract Pydantic field information from a component class."""
     fields: dict[str, dict[str, t.Any]] = {}
 
-    # Skip internal fields
-    internal_fields = {"id", "user", "wire"}
-    exclude_fields = set(cls._meta.exclude_fields)
-    skip_fields = internal_fields | exclude_fields
+    # What the framework fills in. A field the component itself keeps out of the
+    # signed state (``Meta.exclude_fields``) is still one a template passes.
+    skip_fields = {"id"} | ALWAYS_EXCLUDED
+    exclude_fields = cls._meta.exclude_fields
 
     for name, field_info in cls.model_fields.items():
         if name in skip_fields:
@@ -170,9 +230,57 @@ def extract_fields(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
             "default": default_value,
             "required": field_info.is_required(),
             "description": field_info.description,
+            "in_state": name not in exclude_fields,
         }
 
     return fields
+
+
+def accepts_extra_kwargs(cls: type[Component]) -> bool:
+    """Whether a template may pass the component more than its fields.
+
+    ``new()`` builds the instance from the tag's arguments and a LiveComponent's
+    ``update()`` receives them on every parent render: a class that overrides
+    either decides for itself what an argument means.
+    """
+    receivers = ("new", "update", "update_many") if issubclass(cls, LiveComponent) else ("new",)
+    return any(name in vars(klass) for klass in cls.__mro__ if not is_framework_class(klass) for name in receivers)
+
+
+def extract_properties(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
+    """The properties the component's own classes define: template variables, like fields."""
+    properties: dict[str, dict[str, t.Any]] = {}
+    for klass in cls.__mro__:
+        if is_framework_class(klass):
+            continue
+        for name, value in vars(klass).items():
+            if name.startswith("_") or name in properties:
+                continue
+            if isinstance(value, property):
+                getter = value.fget
+            elif isinstance(value, functools.cached_property):
+                getter = value.func
+            else:
+                continue
+            file_path, line_number = source_location(getter)
+            returns = getattr(getter, "__annotations__", {}).get("return")
+            properties[name] = {
+                "type": get_type_string(returns) if returns is not None else None,
+                "is_async": inspect.iscoroutinefunction(getter),
+                "docstring": inspect.getdoc(getter) if getter else None,
+                "file_path": file_path,
+                "line_number": line_number,
+            }
+    return properties
+
+
+def source_location(obj: t.Any) -> tuple[str, int]:
+    """The file and the line an object was defined at, or ``("", 0)``."""
+    try:
+        target = inspect.unwrap(obj)
+        return inspect.getsourcefile(target) or "", inspect.getsourcelines(target)[1]
+    except (TypeError, OSError):
+        return "", 0
 
 
 def extract_methods(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
@@ -185,17 +293,15 @@ def extract_methods(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
         if name.startswith("_"):
             continue
 
-        # Skip non-lowercase names (not event handlers)
-        if not name.islower():
-            continue
-
         try:
             attr = getattr(cls, name)
         except AttributeError:
             continue
 
-        # Only include callable attributes
-        if not callable(attr):
+        # Only include callable attributes. A nested class (``class Meta:``) is
+        # callable and is not a method. Names used to be skipped unless all
+        # lowercase, which dropped a handler named ``toggleAll`` as well.
+        if not callable(attr) or isinstance(attr, type):
             continue
 
         # Check if it's a coroutine function (async method)
@@ -213,19 +319,16 @@ def extract_methods(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
         # Get docstring
         docstring = inspect.getdoc(original_func)
 
-        # Get source location
-        try:
-            source_lines, method_line = inspect.getsourcelines(original_func)
-        except (TypeError, OSError):
-            method_line = 0
+        # A mixin's method lives in the mixin's file, not the component's
+        method_file, method_line = source_location(original_func)
 
         methods[name] = {
             # Whether a client can call it: the check every event meets (#110)
-            "is_handler": ComponentRepository._is_valid_event_handler(name)
-            and ComponentRepository._is_user_defined_method(cls, name),
+            "is_handler": is_client_callable(cls, name),
             "is_async": is_async,
             "parameters": parameters,
             "docstring": docstring,
+            "file_path": method_file,
             "line_number": method_line,
         }
 
@@ -273,9 +376,183 @@ def extract_modifiers() -> dict[str, dict[str, t.Any]]:
     client's now (#119).
     """
     return {
-        name: {"docstring": description, "description": description, "has_argument": name in MODIFIER_ARGUMENTS}
+        name: {
+            "docstring": description,
+            "description": description,
+            "has_argument": name in MODIFIER_ARGUMENTS,
+            # What ``{% on %}`` accepts after it: a whole number, any text, or nothing
+            "argument": ("number" if name in NUMBER_ARGUMENTS else "text") if name in MODIFIER_ARGUMENTS else None,
+        }
         for name, description in MODIFIERS.items()
     }
+
+
+def extract_function_components(roots: list[Path]) -> dict[str, dict[str, t.Any]]:
+    """The ``@function_component`` functions, by the name ``{% func %}`` takes."""
+    from wireview.function_components import _registry
+
+    found: dict[str, dict[str, t.Any]] = {}
+    # The registry lists each one twice, under its name and under module.name
+    for fc in {id(fc): fc for fc in _registry.values()}.values():
+        file_path, line_number = source_location(fc.func)
+        found[fc.name] = {
+            "name": fc.name,
+            "fqn": f"{fc.func.__module__}.{fc.name}",
+            "module": fc.func.__module__,
+            "file_path": file_path,
+            "line_number": line_number,
+            "docstring": inspect.getdoc(fc.func),
+            "template_name": fc.template or "",
+            "template_path": find_template(fc.template, roots),
+            "parameters": extract_parameters(inspect.signature(fc.func)),
+            "slots": dict(fc.slots),
+        }
+    return dict(sorted(found.items()))
+
+
+def extract_hooks() -> dict[str, dict[str, t.Any]]:
+    """The client hooks the apps' hook files register: what ``wire-hook`` may name."""
+    from wireview.features.hooks import hook_registrations
+
+    hooks: dict[str, dict[str, t.Any]] = {}
+    for name, static_path, source, line in hook_registrations():
+        hooks.setdefault(name, {"static_path": static_path, "file_path": str(source), "line_number": line})
+    return hooks
+
+
+# Template tags and filters
+
+#: ``parser.parse(("else", "endif"))`` and ``parser.skip_past("endcomment")``:
+#: the names a block tag reads up to, as its compile function writes them.
+_PARSE_UNTIL = re.compile(r"parser\.(?:parse|skip_past)\(([^)]*)\)")
+_QUOTED_NAME = re.compile(r"""["']([A-Za-z_][\w-]*)["']""")
+_QUOTED_END_NAME = re.compile(r"""["'](end[A-Za-z_][\w-]*)["']""")
+
+#: Block tags whose compile function builds the names at run time, so the source
+#: does not show them: ``(end tag, tags between)``.
+_BLOCK_OVERRIDES: dict[str, tuple[str, list[str]]] = {
+    "blocktranslate": ("endblocktranslate", ["plural"]),
+    "blocktrans": ("endblocktrans", ["plural"]),
+}
+
+
+def block_structure(name: str, compile_func: t.Any) -> tuple[str | None, list[str]]:
+    """The end tag a block tag runs to and the tags that may stand between.
+
+    Django does not record either: a compile function just calls
+    ``parser.parse()`` with the names it will stop at. So this reads them out of
+    its source -- a heuristic. A tag it cannot read is reported as not a block,
+    and a reader must not take that as proof (``end`` is None for ``{% load %}``
+    and for a block tag whose names are computed alike).
+    """
+    if name in _BLOCK_OVERRIDES:
+        return _BLOCK_OVERRIDES[name]
+    try:
+        # ``simple_block_tag`` closes over the name
+        end_name = inspect.getclosurevars(compile_func).nonlocals.get("end_name")
+    except (TypeError, ValueError):
+        end_name = None
+    if isinstance(end_name, str):
+        return end_name, []
+    try:
+        source = inspect.getsource(compile_func)
+    except (TypeError, OSError):
+        return None, []
+    names: list[str] = []
+    for arguments in _PARSE_UNTIL.findall(source):
+        for found in _QUOTED_NAME.findall(arguments):
+            if found not in names:
+                names.append(found)
+    ends = [found for found in names if found.startswith("end")]
+    if not ends and _PARSE_UNTIL.search(source):
+        # ``parser.parse(until)``: the names are in a variable, written somewhere above
+        ends = _QUOTED_END_NAME.findall(source)
+    if not ends:
+        return None, []
+    return ends[0], [found for found in names if not found.startswith("end")]
+
+
+def filter_argument(func: t.Any) -> str:
+    """Whether a filter takes an argument: "none", "optional" or "required".
+
+    Counted as ``FilterExpression.args_check`` counts, without the ``autoescape``
+    parameter Django passes itself to a ``needs_autoescape`` filter.
+    """
+    try:
+        spec = inspect.getfullargspec(inspect.unwrap(func))
+    except TypeError:
+        return "optional"
+    args = list(spec.args)
+    defaults = len(spec.defaults or ())
+    if getattr(func, "needs_autoescape", False) and args[-1:] == ["autoescape"]:
+        args.pop()
+        defaults = max(defaults - 1, 0)
+    if len(args) <= 1:
+        return "none"
+    return "optional" if len(args) - defaults <= 1 else "required"
+
+
+def extract_library(library: t.Any) -> dict[str, t.Any]:
+    """The tags and the filters one template library registers."""
+    tags: dict[str, dict[str, t.Any]] = {}
+    for name, compile_func in library.tags.items():
+        file_path, line_number = source_location(compile_func)
+        end, intermediate = block_structure(name, compile_func)
+        tags[name] = {
+            "docstring": inspect.getdoc(compile_func),
+            "file_path": file_path,
+            "line_number": line_number,
+            "end": end,
+            "intermediate": intermediate,
+        }
+    filters: dict[str, dict[str, t.Any]] = {}
+    for name, func in library.filters.items():
+        file_path, line_number = source_location(func)
+        filters[name] = {
+            "docstring": inspect.getdoc(func),
+            "file_path": file_path,
+            "line_number": line_number,
+            "argument": filter_argument(func),
+        }
+    return {"tags": dict(sorted(tags.items())), "filters": dict(sorted(filters.items()))}
+
+
+def extract_template_libraries() -> tuple[dict[str, t.Any], dict[str, dict[str, t.Any]]]:
+    """What the project's Django template engine knows: its builtins, and each library ``{% load %}`` takes.
+
+    Read from the engine rather than listed here, so an editor offers the tags
+    of the Django that is installed and of every app's ``templatetags``.
+    """
+    from django.template import engines
+    from django.template.backends.django import DjangoTemplates
+
+    builtins: dict[str, t.Any] = {"tags": {}, "filters": {}}
+    libraries: dict[str, dict[str, t.Any]] = {}
+    for backend in engines.all():
+        if not isinstance(backend, DjangoTemplates):
+            continue
+        engine = backend.engine
+        # A later builtin library overrides an earlier one, as the parser has it
+        for library in engine.template_builtins:
+            extracted = extract_library(library)
+            builtins["tags"].update(extracted["tags"])
+            builtins["filters"].update(extracted["filters"])
+        for name, library in engine.template_libraries.items():
+            module = engine.libraries.get(name, "")
+            libraries[name] = {"module": module, "file_path": module_file(module), **extract_library(library)}
+        break
+    return builtins, dict(sorted(libraries.items()))
+
+
+def module_file(module: str) -> str:
+    """The file a module is loaded from, or "" when it has none (or cannot be found)."""
+    if not module:
+        return ""
+    try:
+        spec = importlib.util.find_spec(module)
+    except (ImportError, ValueError):
+        return ""
+    return spec.origin if spec and spec.origin and spec.has_location else ""
 
 
 def get_type_string(annotation: t.Any) -> str:

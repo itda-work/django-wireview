@@ -52,7 +52,7 @@ MODIFIERS: dict[str, str] = {
 }
 MODIFIER_ARGUMENTS = frozenset({"debounce", "throttle", "key", "key_code"})
 # The client reads these arguments as numbers; anything else is NaN there.
-_NUMBER_ARGUMENTS = frozenset({"debounce", "throttle", "key_code"})
+NUMBER_ARGUMENTS = frozenset({"debounce", "throttle", "key_code"})
 
 
 def binding(event_and_modifiers: str, command: str | JS, kwargs: dict[str, t.Any]) -> tuple[str, str]:
@@ -93,7 +93,7 @@ def binding(event_and_modifiers: str, command: str | JS, kwargs: dict[str, t.Any
         if not tokens:
             raise ValueError(f"{token!r} in {event_and_modifiers!r} needs an argument, like {example}")
         argument = tokens.pop()
-        if token in _NUMBER_ARGUMENTS and not (argument.isascii() and argument.isdigit()):
+        if token in NUMBER_ARGUMENTS and not (argument.isascii() and argument.isdigit()):
             raise ValueError(
                 f"{token!r} in {event_and_modifiers!r} takes a whole number, and {argument!r} is not a whole number. "
                 f"The argument comes right after it, like {example}"
