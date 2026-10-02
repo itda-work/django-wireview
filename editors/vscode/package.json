@@ -143,6 +143,12 @@
           "scope": "resource",
           "markdownDescription": "Run `manage.py wireview_lsp` again when a Python file is saved."
         },
+        "wireview.associateTemplateDirs": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "markdownDescription": "Open an `.html` file in a directory the project's template engine searches (`DIRS` and the apps' `templates`, as the metadata lists them) as `django-html`, wherever the directory is. A file `files.associations` names `html`, and a file switched back to `html` by hand, stay as they are."
+        },
         "wireview.diagnostics.enable": {
           "type": "boolean",
           "default": true,

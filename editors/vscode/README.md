@@ -6,7 +6,9 @@ Django 템플릿을 편집하는 데 필요한 것을 이 확장 하나로 준�
 
 ## 기능
 
-**템플릿 언어.** `**/templates/**/*.html` 파일을 `django-html` 언어로 연다. 구문 강조는 텍스트, 속성 값,
+**템플릿 언어.** `**/templates/**/*.html` 파일을 `django-html` 언어로 연다. 이름이 `templates`가 아닌 디렉터리라도
+프로젝트의 템플릿 엔진이 찾는 곳(`TEMPLATES`의 `DIRS`, 환경 변수로 정한 것 포함)이면, 메타데이터를 읽은 뒤 그
+안의 `.html`도 `django-html`로 바꾼다(`wireview.associateTemplateDirs`). 구문 강조는 텍스트, 속성 값,
 `<script>` 안의 `{% %}`·`{{ }}`·`{# #}`를 모두 칠한다. `{% comment %}`와 `{% verbatim %}` 안은 태그로 보지 않는다.
 `Ctrl+/`가 `{# #}`로 주석을 단다. `{%`를 치면 `%}`가, `{#`를 치면 `#}`가 붙고, 블록 태그 다음 줄은 들여 쓰고
 `{% endif %}`·`{% else %}`는 다시 내어 쓴다.
@@ -43,7 +45,7 @@ Django 템플릿을 편집하는 데 필요한 것을 이 확장 하나로 준�
 | `invalid-event`, `unknown-modifier`, `modifier-argument` | `{% on %}`의 이벤트 이름과 수정자 |
 | `missing-slot` | 채우지 않은 필수 슬롯 |
 | `unknown-hook` | 훅 파일이 등록하지 않은 `wire-hook` 이름(정보) |
-| `tag-not-loaded`, `unknown-tag`, `unknown-filter`, `filter-not-loaded`, `filter-argument`, `unknown-library` | `{% load %}`하지 않은 태그·필터, 없는 태그·필터·라이브러리, 필터 인자 개수 |
+| `tag-not-loaded`, `unknown-tag`, `unknown-filter`, `filter-not-loaded`, `filter-argument`, `filter-not-permitted`, `unknown-library` | `{% load %}`하지 않은(또는 그 `{% load %}`보다 앞에 쓴) 태그·필터, 없는 태그·필터·라이브러리, 필터 인자 개수, `{% filter %}`가 거절하는 `escape`·`safe` |
 | `unclosed-block`, `unmatched-end` | 닫지 않은 블록, 여는 태그 없는 끝 태그 |
 | `template-not-found` | 템플릿 디렉터리에 없는 `{% extends %}`·`{% include %}` 경로(경고) |
 
@@ -63,6 +65,12 @@ JSON(프로젝트의 컴포넌트, 템플릿 디렉터리, 태그·필터)을 �
 
 명령 팔레트: `Wireview: Refresh Project Metadata`, `Wireview: Go to Component…`, `Wireview: Show Output`.
 
+**제한 모드(Restricted Mode).** 신뢰하지 않은 워크스페이스에서는 아무 프로세스도 띄우지 않고 메타데이터 파일도
+읽지 않는다 — `manage.py`를 돌리는 것은 그 프로젝트의 코드를 실행하는 것이고, 메타데이터의 경로는 정의로 이동이
+가는 곳이기 때문이다. 지난 세션이 남긴 결과도 쓰지 않는다. 그동안 구문 강조·스니펫·HTML 기능은 그대로 되고,
+상태 표시줄에 `Restricted Mode`가 뜬다. 워크스페이스를 신뢰하면 그때 메타데이터를 만든다. 실행에 쓰이는 설정
+(`pythonPath`, `managePy`, `metadataCommand`, `metadataPath`)은 신뢰하기 전에는 워크스페이스의 값을 따르지 않는다.
+
 ## 설정
 
 | 설정 | 기본값 | 뜻 |
@@ -72,15 +80,19 @@ JSON(프로젝트의 컴포넌트, 템플릿 디렉터리, 태그·필터)을 �
 | `wireview.metadataCommand` | `[]` | 인터프리터만으로 부족할 때 명령 전체. 예: `["uv", "run", "python", "manage.py", "wireview_lsp"]`. `--output <파일>`은 확장이 붙인다 |
 | `wireview.metadataPath` | `""` | 명령을 돌리지 않고 이 파일을 읽고 감시한다. 다른 무엇이 `manage.py wireview_lsp --output`으로 쓴다 |
 | `wireview.refreshOnSave` | `true` | 파이썬 파일을 저장하면 다시 돌린다 |
+| `wireview.associateTemplateDirs` | `true` | 템플릿 엔진이 찾는 디렉터리 안의 `.html`을 `django-html`로 연다 |
 | `wireview.diagnostics.enable` | `true` | 진단 |
 | `wireview.html.enable` | `true` | `django-html`의 HTML 자동완성·호버·닫는 태그 |
 
 ## 알려진 한계
 
-- **`templates` 디렉터리 아래의 `.html`은 모두 `django-html`이 된다.** Django 템플릿이 아닌 HTML이 거기 있으면
-  설정의 `files.associations`로 되돌린다: `{"**/templates/static-site/**/*.html": "html"}`. 반대로
-  `templates` 밖의 Django 템플릿은 `{"**/emails/**/*.html": "django-html"}`처럼 더한다. `html` 언어로 연
-  파일도 템플릿 디렉터리 안에 있으면 진단은 받는다.
+- **`templates` 디렉터리 아래의 `.html`과 템플릿 엔진이 찾는 디렉터리 안의 `.html`은 `django-html`이 된다.**
+  Django 템플릿이 아닌 HTML이 거기 있으면 설정의 `files.associations`로 `html`이라고 적는다:
+  `{"**/templates/static-site/**/*.html": "html"}`. 확장은 `html`로 적힌 파일은 바꾸지 않고, 한 번 바꾼 문서를
+  언어 선택기로 `html`로 되돌리면 그 뒤로는 건드리지 않는다. 엔진이 찾지 않는 곳에서 읽는 템플릿(따로 `Engine`을
+  만들어 읽는 메일 템플릿 등)은 `{"**/emails/**/*.html": "django-html"}`처럼 더한다. 디렉터리를 보고 바꾸는 것은
+  메타데이터를 읽은 뒤라, 제한 모드에서는 `**/templates/**`만 적용된다. `html` 언어로 연 파일도 템플릿 디렉터리
+  안에 있으면 진단은 받는다.
 - **Django가 컨테이너 안에서만 돈다면** VS Code를 Remote(Dev Containers, SSH, WSL)로 그 안에서 연다. 메타데이터의
   경로는 Django가 보는 경로라, 바깥에서 연 편집기의 경로와 맞지 않는다.
 - 블록 태그의 끝 태그는 태그 함수의 소스에서 읽는다. 읽지 못한 서드파티 블록 태그는 블록으로 다루지 않는다 —

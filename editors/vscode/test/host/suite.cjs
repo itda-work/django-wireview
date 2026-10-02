@@ -3,6 +3,8 @@
 // is wired to the editor: the language, the providers, the diagnostics, the
 // HTML support and the metadata runner.
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const vscode = require("vscode");
 
@@ -158,6 +160,46 @@ const tests = {
     const html = await typed("{% if a %}", "<div>");
     await eventually(() => html.getText() === "{% if a %}<div></div>", `</div> after <div> (${JSON.stringify(html.getText())})`, 5000);
     await close();
+  },
+
+  async "an .html file in a template directory outside **/templates/** opens as django-html"() {
+    const folder = await ready(vscode.Uri.file(ITEM));
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "wireview-dirs-"));
+    const views = path.join(fs.realpathSync(scratch), "views");
+    fs.mkdirSync(views);
+    for (const name of ["page.html", "chosen.html", "back.html"]) fs.writeFileSync(path.join(views, name), "{% if a %}<p>{{ a }}</p>{% endif %}\n");
+    const metadata = JSON.parse(fs.readFileSync(process.env.WIREVIEW_HOST_METADATA, "utf8"));
+    metadata.template_dirs = [...metadata.template_dirs, views];
+    const file = path.join(scratch, "metadata.json");
+    fs.writeFileSync(file, JSON.stringify(metadata));
+    const config = vscode.workspace.getConfiguration("wireview", vscode.Uri.file(ITEM));
+    const files = vscode.workspace.getConfiguration("files", vscode.Uri.file(ITEM));
+    await files.update("associations", { "**/views/chosen.html": "html" }, vscode.ConfigurationTarget.Workspace);
+    await config.update("metadataPath", file, vscode.ConfigurationTarget.Workspace);
+    try {
+      await eventually(() => (folder.project.metadata.template_dirs || []).includes(views), "the new metadata");
+      const page = await vscode.workspace.openTextDocument(path.join(views, "page.html"));
+      await eventually(
+        () => vscode.workspace.textDocuments.find((d) => d.uri.fsPath === page.uri.fsPath && d.languageId === "django-html"),
+        "page.html as django-html",
+      );
+      const chosen = await vscode.workspace.openTextDocument(path.join(views, "chosen.html"));
+      const back = await eventually(async () => {
+        const opened = await vscode.workspace.openTextDocument(path.join(views, "back.html"));
+        return opened.languageId === "django-html" ? opened : undefined;
+      }, "back.html as django-html");
+      // The user switches it back: the next pass leaves it
+      await vscode.languages.setTextDocumentLanguage(back, "html");
+      await vscode.commands.executeCommand("wireview.refreshMetadata");
+      await new Promise((done) => setTimeout(done, 500));
+      const now = (document) => vscode.workspace.textDocuments.find((d) => d.uri.fsPath === document.uri.fsPath).languageId;
+      assert.equal(now(chosen), "html", "files.associations names it html");
+      assert.equal(now(back), "html", "switched back by hand");
+    } finally {
+      await config.update("metadataPath", process.env.WIREVIEW_HOST_METADATA, vscode.ConfigurationTarget.Workspace);
+      await files.update("associations", undefined, vscode.ConfigurationTarget.Workspace);
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    }
   },
 
   async "the metadata command runs when no file is given"() {

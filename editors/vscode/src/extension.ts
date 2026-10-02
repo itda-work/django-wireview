@@ -5,6 +5,7 @@ import { readFileSync, realpathSync } from "node:fs";
 import * as vscode from "vscode";
 
 import tagSnippets from "../data/tag-snippets.json";
+import { opensAsTemplate } from "./core/associations.ts";
 import { complete } from "./core/completion.ts";
 import type { Completion, CompletionKind } from "./core/completion.ts";
 import { diagnose } from "./core/diagnostics.ts";
@@ -172,6 +173,30 @@ export function activate(context: vscode.ExtensionContext): Api {
   };
   const checkAll = () => vscode.workspace.textDocuments.forEach(check);
 
+  // An .html file in a directory the project's loaders search is a template, wherever
+  // that directory is: `**/templates/**` in the manifest cannot know a DIRS entry
+  const switched = new Set<string>();
+  const associate = (document: vscode.TextDocument) => {
+    if (document.languageId !== "html" || document.uri.scheme !== "file") return;
+    if (!vscode.workspace.getConfiguration("wireview", document.uri).get("associateTemplateDirs", true)) return;
+    const env = envOf(document);
+    if (!env.project) return;
+    const key = document.uri.toString();
+    const associations = vscode.workspace.getConfiguration("files", document.uri).get<Record<string, unknown>>("associations", {});
+    const candidate = {
+      languageId: document.languageId,
+      scheme: document.uri.scheme,
+      path: document.uri.fsPath,
+      inTemplateDirectory: ownTemplateName(env.project, env) !== undefined,
+      // Switched once: if it is html again, the user picked it
+      switchedBefore: switched.has(key),
+    };
+    if (!opensAsTemplate(candidate, associations, vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath)) return;
+    switched.add(key);
+    void vscode.languages.setTextDocumentLanguage(document, "django-html");
+  };
+  const associateAll = () => vscode.workspace.textDocuments.forEach(associate);
+
   const updateStatus = () => {
     const document = vscode.window.activeTextEditor?.document;
     const folder = document ? folderOf(document) : folders.values().next().value;
@@ -200,6 +225,7 @@ export function activate(context: vscode.ExtensionContext): Api {
   const addFolder = (folder: vscode.WorkspaceFolder) => {
     const project = new FolderProject(folder, storage, output, () => {
       updateStatus();
+      associateAll();
       checkAll();
     });
     folders.set(folder.uri.toString(), project);
@@ -218,7 +244,10 @@ export function activate(context: vscode.ExtensionContext): Api {
   );
 
   context.subscriptions.push(
-    vscode.workspace.onDidOpenTextDocument(check),
+    vscode.workspace.onDidOpenTextDocument((document) => {
+      associate(document);
+      check(document);
+    }),
     vscode.workspace.onDidChangeTextDocument((event) => checkSoon(event.document)),
     vscode.workspace.onDidCloseTextDocument((document) => diagnostics.delete(document.uri)),
     vscode.workspace.onDidSaveTextDocument((document) => {
