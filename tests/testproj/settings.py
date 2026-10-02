@@ -95,6 +95,7 @@ INSTALLED_APPS = [
     "testproj.stickyprobe",
     "testproj.deadprobe",
     "testproj.inheritprobe",
+    "testproj.nestprobe",
     "wireview",
     "channels",
     "daphne",

@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<section {% tag_header %}>
+  <b data-testid="box-shown">{{ shown }}</b>
+  {% if shown %}
+    {% live_component 'NestLeaf' id="nest-leaf" note=note %}
+  {% endif %}
+</section>

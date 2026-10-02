@@ -594,6 +594,16 @@ The django-reactor era changelog (2.x) is preserved in
   again -- once the page tried the id again -- ran `joined()` for the instance that was gone as
   well as for its own: the same id twice, with whatever it pushes, streams or subscribes to.
 
+- A LiveComponent that a nested `{% component %}` stops drawing because of a prop its drawer
+  passes leaves in the drawer's render. The drawer's render runs the nested component's template
+  within its own pass, and only the nested component's own render settled the LiveComponents it
+  draws: the one such a prop hid got no `leaving()` and stayed on the connection, and shown again
+  it came back with the state it had -- or anew, if the nested component had rendered on its own in
+  between. One such a prop showed for the first time got no `joined()` and was not drawn at all,
+  and new props passed through got no `update()`. The drawer's render now settles them as it does
+  its own children and carries their renders in its frame. A nested component the page has yet to
+  join is still left to that join. The forms are unchanged, so `PROTOCOL_VERSION` stays.
+
 ### Security
 
 - [GHSA-8q8p-x4w4-p745](https://github.com/itda-work/django-wireview/security/advisories/GHSA-8q8p-x4w4-p745)

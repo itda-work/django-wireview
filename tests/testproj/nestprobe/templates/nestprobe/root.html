@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <button data-testid="toggle" {% on "click" "toggle" %}>toggle</button>
+  <button data-testid="write" {% on "click" "write" %}>write</button>
+  {% component 'NestBox' id="nest-box" shown=shown note=note %}
+</div>

@@ -108,6 +108,11 @@ class ComponentRepository:
         # For each component, the ids in ``_built_by`` that name it: what the end
         # of its next pass looks at (``end_pass``), rather than all of them
         self._drew: dict[str, set[str]] = {}
+        # For each component, the ones its pass drew within its own whose
+        # LiveComponents its batch settles (``end_inline_pass``), in pass order;
+        # and for each of those, what that pass named
+        self._inline: dict[str, list[str]] = {}
+        self._inline_rendered: dict[str, set[str]] = {}
         # The components whose join failed on this connection, each with the ids
         # its failure removed: itself and the LiveComponents it owned. A parent's
         # later pass builds new instances under those ids that nothing joins.
@@ -344,8 +349,13 @@ class ComponentRepository:
         return [c for c in self.components.values() if isinstance(c, LiveComponent) and c._parent_id == parent_id]
 
     def begin_render(self, parent_id: str) -> None:
-        """Forget which children ``parent_id`` named; its template pass records them again."""
+        """Forget which children ``parent_id`` named; its template pass records them again.
+
+        A pass of it another's ran before is over: what that one named is no
+        longer what the other's batch is to settle (``end_inline_pass``).
+        """
         self._rendered_children[parent_id] = set()
+        self._inline_rendered.pop(parent_id, None)
 
     def end_pass(self, drawer_id: str) -> set[str]:
         """The ids the template pass of ``drawer_id`` that just ran named.
@@ -365,6 +375,36 @@ class ComponentRepository:
             self._drew[drawer_id] = drew
         return rendered
 
+    def end_inline_pass(self, component_id: str, drawer_id: str | None) -> None:
+        """End the pass of ``component_id`` that ran within the pass of ``drawer_id`` (``{% component %}``).
+
+        A component the page has joined is drawn again only within its drawer's
+        pass when the drawer passes it new props: what it draws or stops drawing
+        then is known only there. Its LiveComponents' lifecycle -- ``leaving()``
+        for one it hid, ``joined()`` for one it shows, ``update()`` for new props
+        -- goes into the drawer's batch, and their renders into the drawer's
+        frame (``take_lifecycle``). Left for its own next render, the one it hid
+        lived on and came back as it was.
+
+        One the page has yet to join is left to that join, as ever: it is what
+        completes the instance (docs/design/live-component-ownership.md §3-2),
+        and a failed one refuses what it owns.
+        """
+        rendered = self.end_pass(component_id)
+        component = self.components.get(component_id)
+        if (
+            not self.is_live
+            or drawer_id is None
+            or component is None
+            or not component.wire.has_joined
+            or self.refused(component_id)
+        ):
+            return
+        inline = self._inline.setdefault(drawer_id, [])
+        if component_id not in inline:
+            inline.append(component_id)
+        self._inline_rendered[component_id] = rendered
+
     def take_lifecycle(self, parent_id: str) -> "LifecycleBatch":
         """What the consumer owes the children of ``parent_id`` after its template ran.
 
@@ -374,27 +414,35 @@ class ComponentRepository:
           id reuse), already removed from the repository and waiting for ``leaving()``
         - ``rerender``: existing children whose slot content changed; no hook, just a render
 
+        The same for the children of each component whose pass ran within this
+        one (``end_inline_pass``), and within those, in pass order.
+
         Only call this after a render that evaluated the template. A skipped render
         names no children, and treating that as "every child disappeared" would be wrong.
         """
-        rendered = self.end_pass(parent_id)
+        batch = LifecycleBatch(retired=self._pending_leaving)
+        self._pending_leaving = []
+        self._settle(parent_id, self.end_pass(parent_id), batch)
+        return batch
 
-        new = [c for c in self._pending_live_components if c._parent_id == parent_id]
+    def _settle(self, parent_id: str, rendered: set[str], batch: "LifecycleBatch") -> None:
+        """Put in ``batch`` what the children of ``parent_id`` are owed after a pass that named ``rendered``."""
+        batch.new += [c for c in self._pending_live_components if c._parent_id == parent_id]
         self._pending_live_components = [c for c in self._pending_live_components if c._parent_id != parent_id]
 
-        updates = [(c, p) for c, p in self._pending_updates if c._parent_id == parent_id]
+        batch.updates += [(c, p) for c, p in self._pending_updates if c._parent_id == parent_id]
         self._pending_updates = [(c, p) for c, p in self._pending_updates if c._parent_id != parent_id]
 
-        rerender = [c for c in self._pending_rerender if c._parent_id == parent_id]
+        batch.rerender += [c for c in self._pending_rerender if c._parent_id == parent_id]
         self._pending_rerender = [c for c in self._pending_rerender if c._parent_id != parent_id]
 
-        retired = self._pending_leaving
-        self._pending_leaving = []
         for child in self.get_live_components(parent_id):
             if child.id not in rendered:
-                retired.extend(self.remove(child.id))
+                batch.retired.extend(self.remove(child.id))
 
-        return LifecycleBatch(new=new, updates=updates, retired=retired, rerender=rerender)
+        for inner_id in self._inline.pop(parent_id, []):
+            if (inner_rendered := self._inline_rendered.pop(inner_id, None)) is not None:
+                self._settle(inner_id, inner_rendered, batch)
 
     async def flush_pending_live_components(self) -> list[LiveComponent]:
         """Call joined()/update() on all pending LiveComponents.
@@ -634,6 +682,8 @@ class ComponentRepository:
                 if self._built_by.get(child_id) == id:
                     del self._built_by[child_id]
         self._slots_to_rejoin.pop(id, None)
+        self._inline.pop(id, None)
+        self._inline_rendered.pop(id, None)
         component = self.components.pop(id, None)
         if component is None:
             return []

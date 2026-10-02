@@ -201,6 +201,7 @@ NO_UPGRADE_NOTE = {
     "draws no slot. A boosted visit to another": "앞 페이지의 슬롯이 잠깐 실리던 결함이고, 기댈 동작이 아니었다",
     "keeps the LiveComponents in it when the work lands": FIXED_ONLY,
     "before its parent's render ran its `joined()`": FIXED_ONLY,
+    "stops drawing because of a prop its drawer": FIXED_ONLY,
 }
 
 

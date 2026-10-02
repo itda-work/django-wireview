@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<p {% live_tag_header %}>
+  <b data-testid="leaf-count">{{ count }}</b>
+  <i data-testid="leaf-note">{{ note }}</i>
+  <button data-testid="bump" {% on "click" "bump" %}>bump</button>
+</p>
