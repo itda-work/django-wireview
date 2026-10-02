@@ -15,6 +15,7 @@ import type { Span, TagToken } from "./scan.ts";
 import { kwargOf } from "./scan.ts";
 import { argumentBits, plainLiteral, SLOT_HOSTS, symbols } from "./symbols.ts";
 import type { Sym } from "./symbols.ts";
+import { tagEntry, visibleAt } from "./template.ts";
 import type { TemplateDoc } from "./template.ts";
 
 export type Severity = "error" | "warning" | "information";
@@ -106,20 +107,31 @@ export function diagnose(doc: TemplateDoc, env: Env): Problem[] {
 type Report = (code: string, severity: Severity, span: Span, message: string) => void;
 
 function wireviewTag(doc: TemplateDoc, tag: TagToken): boolean {
-  return isWireviewTag(doc.visible?.tags.get(tag.name));
+  return isWireviewTag(tagEntry(doc, tag));
+}
+
+/** What to say of a name that is in these libraries and not loaded where it stands. */
+function notLoaded(doc: TemplateDoc, what: string, name: string, at: number, libraries: string[]): string {
+  const later = doc.loads.some(
+    (load) => load.tag.start > at && libraries.includes(load.library) && (load.names === null || load.names.includes(name)),
+  );
+  if (later) {
+    // Django reads the template in order: a load adds to what comes after it
+    return `${what} comes before the {% load %} that brings it in: move the load above it.`;
+  }
+  return `${what} is in a library this template does not load: add ${libraries.map((library) => `{% load ${library} %}`).join(" or ")}.`;
 }
 
 function checkTags(doc: TemplateDoc, project: Project, report: Report): void {
-  const visible = doc.visible!;
   for (const tag of doc.tags) {
     if (!tag.name || !tag.nameSpan) continue;
+    const visible = visibleAt(doc, tag.start)!;
     if (visible.tags.has(tag.name) || doc.structural.has(tag)) continue;
     // An end or a middle out of its place: maybe in a block whose end tag the metadata could not read
     if (visible.ends.has(tag.name) || visible.intermediates.has(tag.name)) continue;
     const libraries = project.librariesWithTag(tag.name);
     if (libraries.length) {
-      const load = libraries.map((library) => `{% load ${library} %}`).join(" or ");
-      report("tag-not-loaded", "error", tag.nameSpan, `'${tag.name}' is in a library this template does not load: add ${load}.`);
+      report("tag-not-loaded", "error", tag.nameSpan, notLoaded(doc, `'${tag.name}'`, tag.name, tag.start, libraries));
       continue;
     }
     // The end of a block whose end tag the metadata could not read
@@ -130,19 +142,18 @@ function checkTags(doc: TemplateDoc, project: Project, report: Report): void {
 
 function checkFilter(doc: TemplateDoc, project: Project, sym: Extract<Sym, { kind: "filter" }>, report: Report): void {
   if (sym.tag) {
-    const entry = doc.visible!.tags.get(sym.tag.name);
+    const entry = tagEntry(doc, sym.tag);
     if (!entry || NOT_FILTERED.has(sym.tag.name) || !DJANGO_FILE.test(entry.meta.file_path)) return;
   }
   if (sym.tag?.name === "filter" && NOT_IN_FILTER_TAG.has(sym.name)) {
     report("filter-not-permitted", "error", sym.span, `{% filter %} does not take '${sym.name}': use {% autoescape %} instead.`);
     return;
   }
-  const filter = doc.visible!.filters.get(sym.name);
+  const filter = visibleAt(doc, sym.span.start)!.filters.get(sym.name);
   if (!filter) {
     const libraries = project.librariesWithFilter(sym.name);
     if (libraries.length) {
-      const load = libraries.map((library) => `{% load ${library} %}`).join(" or ");
-      report("filter-not-loaded", "error", sym.span, `The filter '${sym.name}' is in a library this template does not load: add ${load}.`);
+      report("filter-not-loaded", "error", sym.span, notLoaded(doc, `The filter '${sym.name}'`, sym.name, sym.span.start, libraries));
     } else {
       report("unknown-filter", "error", sym.span, `'${sym.name}' is not a filter Django knows here: no library registers it.`);
     }

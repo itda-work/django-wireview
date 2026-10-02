@@ -163,7 +163,12 @@ export function metadata(): Metadata {
         filters: { language_name: filter("none") },
       },
       humanize: { module: "django.contrib.humanize.templatetags.humanize", tags: {}, filters: { intcomma: filter("none") } },
-      thirdparty: { module: "thirdparty.tags", tags: { mystery: tag(null, [], "/site/thirdparty/tags.py") }, filters: {} },
+      thirdparty: {
+        module: "thirdparty.tags",
+        // `component`: another library's tag of the name, as django-components has
+        tags: { mystery: tag(null, [], "/site/thirdparty/tags.py"), component: tag(null, [], "/site/thirdparty/tags.py") },
+        filters: {},
+      },
     },
   };
 }

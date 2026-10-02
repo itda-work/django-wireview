@@ -34,10 +34,10 @@ export interface Visible {
   intermediates: Map<string, Set<string>>;
 }
 
-/** What `{% load %}` brought in. `partial` is `{% load a b from library %}`. */
-export interface Loads {
-  full: Set<string>;
-  partial: Map<string, Set<string>>;
+/** One library a `{% load %}` brings in: all of it, or the names of `{% load a b from library %}`. */
+export interface Load {
+  library: string;
+  names: string[] | null;
 }
 
 const WIREVIEW_LIBRARY = /[\\/]wireview[\\/]templatetags[\\/]wireview\.py$/;
@@ -130,11 +130,9 @@ export class Project {
     return this.libraries[name]?.file_path || undefined;
   }
 
-  visible(loads: Loads): Visible {
-    const key = JSON.stringify([
-      [...loads.full].sort(),
-      [...loads.partial].map(([library, names]) => [library, [...names].sort()]).sort(),
-    ]);
+  /** What a template sees after these loads, in their order: a later one overrides an earlier one, as `Parser.add_library` does. */
+  visible(loads: readonly Load[]): Visible {
+    const key = JSON.stringify(loads.map((load) => [load.library, load.names]));
     const cached = this.visibleCache.get(key);
     if (cached) return cached;
 
@@ -148,11 +146,8 @@ export class Project {
       }
     };
     add(null, this.builtins);
-    for (const library of loads.full) {
-      if (this.libraries[library]) add(library, this.libraries[library]);
-    }
-    for (const [library, names] of loads.partial) {
-      if (this.libraries[library]) add(library, this.libraries[library], names);
+    for (const load of loads) {
+      if (this.libraries[load.library]) add(load.library, this.libraries[load.library], load.names ? new Set(load.names) : undefined);
     }
     for (const entry of visible.tags.values()) {
       if (!entry.meta.end) continue;

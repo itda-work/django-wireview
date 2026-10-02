@@ -171,3 +171,21 @@ test("only an attribute of an HTML start tag is an attribute", () => {
   assert.deepEqual(codes('<DIV WIRE-VIEWPORT-TOP="missing">'), ["unknown-handler"]);
   assert.deepEqual(codes('<div {% if a %}wire-hook="Nope"{% endif %}>'), ["unknown-hook"]);
 });
+
+test("the library loaded last decides what a tag is", () => {
+  // Django runs thirdparty's component here: wireview's checks do not apply
+  assert.deepEqual(codes("{% load component from wireview %}{% load thirdparty %}{% component 'NotRegistered' %}"), []);
+  assert.deepEqual(codes("{% load thirdparty %}{% load component from wireview %}{% component 'NotRegistered' %}"), [
+    "unknown-component",
+  ]);
+});
+
+test("a tag or a filter before the load that brings it in is not loaded yet", () => {
+  const [tag] = problems(`{% component 'Card' %}${W}`);
+  assert.equal(tag.code, "tag-not-loaded");
+  assert.match(tag.message, /before/);
+  assert.deepEqual(codes("{{ x|intcomma }}{% load humanize %}"), ["filter-not-loaded"]);
+  assert.deepEqual(codes("{% load humanize %}{{ x|intcomma }}"), []);
+  // An end tag is matched by the block it closes, whatever is loaded
+  assert.deepEqual(codes(`${W}{% component_block "Card" %}{% fill header %}{% endfill %}{% endcomponent %}`), []);
+});

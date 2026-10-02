@@ -9,6 +9,7 @@ import type { Span } from "./scan.ts";
 import { findFieldLine } from "./source.ts";
 import { symbolAt } from "./symbols.ts";
 import type { Sym } from "./symbols.ts";
+import { visibleAt } from "./template.ts";
 import type { TemplateDoc } from "./template.ts";
 
 export interface Hover {
@@ -47,13 +48,13 @@ export function hover(doc: TemplateDoc, offset: number, env: Env): Hover | undef
 function hoverText(doc: TemplateDoc, sym: Sym, project: Project, env: Env): string | undefined {
   switch (sym.kind) {
     case "tag": {
-      const entry = doc.visible?.tags.get(sym.name);
+      const entry = visibleAt(doc, sym.span.start)?.tags.get(sym.name);
       if (entry) return tagOrFilterDoc(sym.name, entry.library, entry.meta.docstring, "tag");
       const opener = doc.blocks.find((block) => block.close === sym.tag || block.middles.includes(sym.tag));
       return opener ? `Part of \`{% ${opener.open.name} %}\` on line ${lineOf(doc.text, opener.open.start)}.` : undefined;
     }
     case "filter": {
-      const entry = doc.visible?.filters.get(sym.name);
+      const entry = visibleAt(doc, sym.span.start)?.filters.get(sym.name);
       if (!entry) return undefined;
       const argument = { none: "takes no argument", optional: "takes an optional argument", required: "takes an argument" }[entry.meta.argument];
       return `${tagOrFilterDoc(sym.name, entry.library, null, "filter")} · ${argument}${entry.meta.docstring ? `\n\n${entry.meta.docstring}` : ""}`;
@@ -151,13 +152,13 @@ export function definition(doc: TemplateDoc, offset: number, env: Env): Location
     path ? { path, line: Math.max(line ?? 1, 1) } : undefined;
   switch (sym.kind) {
     case "tag": {
-      const entry = doc.visible?.tags.get(sym.name);
+      const entry = visibleAt(doc, sym.span.start)?.tags.get(sym.name);
       if (entry) return at(entry.meta.file_path, entry.meta.line_number);
       const opener = doc.blocks.find((block) => block.close === sym.tag || block.middles.includes(sym.tag));
       return opener ? { path: env.path, line: lineOf(doc.text, opener.open.start) } : undefined;
     }
     case "filter": {
-      const entry = doc.visible?.filters.get(sym.name);
+      const entry = visibleAt(doc, sym.span.start)?.filters.get(sym.name);
       return entry ? at(entry.meta.file_path, entry.meta.line_number) : undefined;
     }
     case "library":

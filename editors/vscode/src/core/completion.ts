@@ -10,7 +10,7 @@ import { inComment, kwargOf, literalOf, tokenAt, withoutStrings } from "./scan.t
 import type { Bit, Span, TagToken, VariableToken } from "./scan.ts";
 import { renderedSlots } from "./source.ts";
 import { COMPONENT_TAGS, FUNCTION_TAGS, LIVE_COMPONENT_TAGS, plainLiteral, SLOT_HOSTS } from "./symbols.ts";
-import { blockAt, blocksAround } from "./template.ts";
+import { blockAt, blocksAround, loadedBefore, visibleAt } from "./template.ts";
 import type { Block, TemplateDoc } from "./template.ts";
 
 export type CompletionKind =
@@ -119,7 +119,7 @@ function tagCompletions(doc: TemplateDoc, tag: TagToken, offset: number, env: En
     const loaded = new Set(tag.bits.filter((candidate) => candidate !== bit).map((candidate) => candidate.text));
     const range = bit ? { start: bit.start, end: bit.end } : { start: offset, end: offset };
     return Object.entries(project.libraries)
-      .filter(([library]) => !loaded.has(library) && !doc.loads.full.has(library))
+      .filter(([library]) => !loaded.has(library) && !doc.loads.some((load) => load.library === library && load.names === null))
       .map(([library, meta]) => ({ label: library, kind: "library", range, insert: library, detail: meta.module }));
   }
   if ((name === "extends" || name === "include") && index === 0) {
@@ -226,7 +226,7 @@ function literalCompletion(
 
 function tagNameCompletions(doc: TemplateDoc, tag: TagToken, offset: number, env: Env, options: CompletionOptions): Completion[] {
   const project = env.project;
-  const visible = doc.visible;
+  const visible = visibleAt(doc, tag.start);
   if (!project || !visible) return [];
   const nameRange = tag.nameSpan ? { start: tag.nameSpan.start, end: tag.nameSpan.end } : { start: offset, end: offset };
   // Only the name so far: the whole tag can go in, its end tag too
@@ -254,7 +254,7 @@ function tagNameCompletions(doc: TemplateDoc, tag: TagToken, offset: number, env
   // What the block the cursor is in waits for
   const block = blockAt(doc, tag.start);
   if (block) {
-    const entry = visible.tags.get(block.open.name);
+    const entry = block.entry;
     for (const name of [...(entry?.meta.intermediate ?? []), entry?.meta.end].filter((name): name is string => Boolean(name))) {
       seen.add(name);
       items.push(make(name, null, { detail: `{% ${block.open.name} %}`, sortText: `0${name === entry?.meta.end ? "0" : "1"}${name}` }));
@@ -266,8 +266,8 @@ function tagNameCompletions(doc: TemplateDoc, tag: TagToken, offset: number, env
     items.push(make(entry.name, entry.meta.end, { detail: entry.library ?? "builtin", documentation: entry.meta.docstring ?? undefined, sortText: `1${entry.name}` }));
   }
   const wireview = project.libraries.wireview;
-  if (wireview && !doc.loads.full.has("wireview")) {
-    const load = loadEdit(doc);
+  if (wireview && !loadedBefore(doc, "wireview", tag.start)) {
+    const load = loadEdit(doc, tag.start);
     for (const [name, meta] of Object.entries(wireview.tags)) {
       if (seen.has(name)) continue;
       const entry: TagEntry = { name, meta, library: "wireview" };
@@ -288,10 +288,10 @@ function escapeSnippet(text: string): string {
   return text.replace(/[$}\\]/g, "\\$&");
 }
 
-/** Where `{% load wireview %}` goes: after `{% extends %}` and the other loads, or at the top. */
-function loadEdit(doc: TemplateDoc): { span: Span; text: string } {
+/** Where `{% load wireview %}` goes: after `{% extends %}` and the other loads before the tag, or at the top. */
+function loadEdit(doc: TemplateDoc, before: number): { span: Span; text: string } {
   let last: TagToken | undefined;
-  for (const tag of doc.tags) if (tag.name === "extends" || tag.name === "load") last = tag;
+  for (const tag of doc.tags) if ((tag.name === "extends" || tag.name === "load") && tag.end <= before) last = tag;
   if (last) return { span: { start: last.end, end: last.end }, text: "\n{% load wireview %}" };
   return { span: { start: 0, end: 0 }, text: "{% load wireview %}\n" };
 }
@@ -299,8 +299,9 @@ function loadEdit(doc: TemplateDoc): { span: Span; text: string } {
 // Filters
 
 function filterCompletions(doc: TemplateDoc, project: Project | undefined, range: Span): Completion[] {
-  if (!project || !doc.visible) return [];
-  return [...doc.visible.filters.values()].map((filter) => ({
+  const visible = visibleAt(doc, range.start);
+  if (!project || !visible) return [];
+  return [...visible.filters.values()].map((filter) => ({
     label: filter.name,
     kind: "filter" as const,
     range,

@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
 
-import { blockAt, readLoads } from "../src/core/template.ts";
+import { blockAt, readLoads, visibleAt } from "../src/core/template.ts";
 import { parse, project } from "./fixture.ts";
 
 test("blocks nest, and each knows its middles and its end", () => {
@@ -47,11 +47,33 @@ test("a tag still being typed is not part of the structure", () => {
 test("load: whole libraries, and names from one", () => {
   const doc = parse("{% load static i18n %}{% load intcomma from humanize %}");
   const loads = readLoads(doc.tags);
-  assert.deepEqual([...loads.full], ["static", "i18n"]);
-  assert.deepEqual([...loads.partial.get("humanize")!], ["intcomma"]);
+  assert.deepEqual(
+    loads.map((load) => [load.library, load.names]),
+    [
+      ["static", null],
+      ["i18n", null],
+      ["humanize", ["intcomma"]],
+    ],
+  );
   assert.ok(doc.visible!.tags.has("blocktranslate"));
   assert.ok(doc.visible!.filters.has("intcomma"));
   assert.ok(!doc.visible!.tags.has("component"));
+});
+
+test("a later load overrides an earlier one, as Parser.add_library does", () => {
+  const library = (text: string) => parse(`${text}{% component "X" %}`).visible!.tags.get("component")?.library;
+  assert.equal(library("{% load component from wireview %}{% load thirdparty %}"), "thirdparty");
+  assert.equal(library("{% load thirdparty %}{% load component from wireview %}"), "wireview");
+  // The same libraries in another order are another answer: the cache keeps the order
+  assert.equal(library("{% load wireview thirdparty %}"), "thirdparty");
+  assert.equal(library("{% load thirdparty wireview %}"), "wireview");
+});
+
+test("a tag sees only the loads before it", () => {
+  const text = "{% component 'A' %}{% load wireview %}{% component 'B' %}";
+  const doc = parse(text);
+  assert.equal(visibleAt(doc, text.indexOf("'A'"))!.tags.has("component"), false);
+  assert.equal(visibleAt(doc, text.indexOf("'B'"))!.tags.get("component")?.library, "wireview");
 });
 
 test("without the engine's tags nothing is said about structure", () => {
