@@ -27,6 +27,13 @@ test("an association to html is the user's: by name, by path, or from the folder
   assert.ok(associatedWithHtml({ "**/views/*.html": "html" }, "C:\\w\\site\\views\\page.html", "C:\\w"), "Windows paths");
 });
 
+test("a pattern that is no glob is passed over, not the others", () => {
+  const path = "/w/site/views/page.html";
+  assert.ok(!associatedWithHtml({ "[z-a].html": "html" }, path, "/w"));
+  assert.ok(associatedWithHtml({ "[z-a].html": "html", "**/views/*.html": "html" }, path, "/w"));
+  assert.ok(opensAsTemplate({ languageId: "html", scheme: "file", path, inTemplateDirectory: true, switchedBefore: false }, { "[z-a]/*": "html" }, "/w"));
+});
+
 test("an html file in a template directory opens as django-html, unless the user chose otherwise", () => {
   const document = { languageId: "html", scheme: "file", path: "/w/site/views/page.html", inTemplateDirectory: true, switchedBefore: false };
   assert.ok(opensAsTemplate(document, {}, "/w"));

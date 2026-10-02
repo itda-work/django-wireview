@@ -63,7 +63,14 @@ export function associatedWithHtml(associations: Record<string, unknown>, path: 
   const relative = root && posix.toLowerCase().startsWith(`${root.toLowerCase()}/`) ? posix.slice(root.length + 1) : undefined;
   return Object.entries(associations).some(([pattern, language]) => {
     if (language !== "html") return false;
-    const glob = globToRegExp(pattern.replace(/\\/g, "/"));
+    let glob: RegExp;
+    try {
+      glob = globToRegExp(pattern.replace(/\\/g, "/"));
+    } catch {
+      // Not a pattern a regular expression can say (a range like [z-a]): it matches
+      // nothing, and the patterns after it still count
+      return false;
+    }
     if (!pattern.includes("/")) return glob.test(name);
     return glob.test(posix) || (relative !== undefined && glob.test(relative));
   });
