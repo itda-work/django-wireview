@@ -136,6 +136,7 @@ UPGRADE_NOTE = {
         "join되고 `joined()`가 돈다",
         "LiveComponent 안의 `wire-viewport-*`",
     ),
+    "`leaving()` pairs with `joined()`": ("`leaving()`은 `joined()`가 돈 인스턴스만", "boost 이동"),
 }
 
 DOCS_ONLY = "문서·저장소만 바뀌었고 라이브러리 동작은 같다"

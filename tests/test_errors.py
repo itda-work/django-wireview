@@ -834,9 +834,11 @@ async def test_a_raising_receiver_costs_only_its_own_component():
 
 async def test_a_live_component_that_raises_rejoins_its_root_with_the_whole_tree():
     consumer, outbound = _consumer()
-    consumer.repo.build("ErrorProbeParent", {"id": "root"})
+    root = consumer.repo.build("ErrorProbeParent", {"id": "root"})
     child = consumer.repo.build("ErrorProbeChild", {"id": "child"})
     child._parent_id = "root"  # type: ignore[union-attr]
+    # The page joined the root, and its render the child: both get leaving()
+    root.wire.has_joined = child.wire.has_joined = True
 
     await consumer.component_update_live_component("root", "child", {"x": 1})
 

@@ -50,7 +50,7 @@ class XTodoList(Component):
 | 메서드 | 언제 |
 |---|---|
 | `joined()` | WebSocket 연결 후 첫 진입. 구독 설정, Streams 초기화, `allow_upload()` 자리 |
-| `leaving()` | 연결 해제. 정리 훅 |
+| `leaving()` | 연결 해제. 정리 훅. `joined()`가 돈 인스턴스만 받는다 — 얻는 일은 `joined()`에 둔다 |
 | `mutation(channel, action, instance)` | `Meta.subscriptions`의 모델이 변경됨. `action`은 `ModelAction.CREATED/UPDATED/DELETED`, m2m 변경이면 `ADDED/REMOVED/CLEARED` |
 | `notification(channel, **kwargs)` | `broadcast(channel, ...)`로 보낸 사용자 정의 알림 |
 | `params_changed(params, uri)` | 브라우저 URL이 바뀜 (뒤로가기, `push_to`) |

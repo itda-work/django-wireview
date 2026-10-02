@@ -335,11 +335,9 @@ async def test_a_boosted_visit_leaves_the_nest_s_leaf_to_the_nest_s_own_join(boo
 
     await _join(consumer, nest, nest_id, shown=after)
 
-    # Whether the nest's join also tells the pending leaf it never joined that
-    # it leaves is a matter of its own, not of the drawer's pass
-    assert HEARD.count(("joined", "in-leaf", 0)) == (1 if after else 0), HEARD
-    assert HEARD.count(("leaving", "in-leaf", 3)) == (1 if before else 0), HEARD
-    assert [hook for hook, *_ in HEARD][-1:] == (["joined"] if after else ["leaving"])
+    # The nest's join retires the leaf the page had, and the one the root's
+    # join render built: that one never joined, so it gets no leaving()
+    assert HEARD == [("leaving", "in-leaf", 3)] * before + [("joined", "in-leaf", 0)] * after
 
     # From the root's next render on, its pass settles the nest's leaf again
     HEARD.clear()

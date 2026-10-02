@@ -115,6 +115,12 @@ dependencies = ["django-wireview>=1.0,<2"]
   - `joined()`가 돌지 않는 것을 우회하려고 `mount()`나 핸들러에서 같은 초기화를 되풀이했다면 걷어낸다. 이제 두 번 돈다.
   - LiveComponent 안의 `wire-viewport-*`는 그 LiveComponent의 핸들러를 부른다. 전에는 페이지의 루트 컴포넌트로 가서
     루트에 같은 이름의 핸들러가 있으면 그것이 불렸다. 자식의 센티널을 루트에서 받던 코드는 자식으로 옮긴다.
+- **`leaving()`은 `joined()`가 돈 인스턴스만 받는다**(**조용함**). 페이지가 join하기 전에 떠난 중첩 `{% component %}`와
+  부모의 렌더가 `joined()`를 부르기 전에 사라진 LiveComponent는 이제 `leaving()` 없이 지워진다. 전에는 받았다 — 같은
+  id의 페이지로 boost 이동하면 루트의 join 렌더가 만든 LiveComponent가 `joined()`보다 `leaving()`을 먼저 받았다.
+  `joined()`에서 등록하고 `leaving()`에서 해제하는 코드(Presence, 카운터)는 고칠 것이 없다 — 이제 짝이 맞는다.
+  `leaving()`에서 `on_mount` 훅이나 `new()`가 얻은 것을 놓았다면, join 전에 떠난 인스턴스에서는 그 일이 빠진다. 얻는
+  일을 `joined()`로 옮긴다. 비동기 작업은 전처럼 취소된다.
 - **렌더가 지우거나 옮긴 포커스 칸은 `blur`·`focusout`·`change`를 보내지 않는다**(**조용함**). 브라우저는 포커스된 요소를
   지울 때 `blur`를(입력했으면 `change`를 먼저) 내고, 전에는 그것이 사용자의 이벤트로 서버에 갔다. 그래서 편집 칸을 숨기는
   핸들러 뒤에 `{% on "blur" "save_edit" %}`가 돌아 Escape가 저장이 되곤 했다. 칸을 지우는 렌더에 저장이 따라오기를

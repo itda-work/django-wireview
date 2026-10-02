@@ -80,14 +80,15 @@ def test_a_leaf_the_box_shows_first_is_drawn_and_answers(page, server, heard):
 def test_a_boosted_visit_joins_the_leaf_once(page, server, heard):
     # The visit brings the root and the box as new elements under the same ids
     # and the page joins both, the root first. The root's join render is not
-    # the one to settle the box's leaf: the box's join right behind it is.
+    # the one to settle the box's leaf: the box's join right behind it is. The
+    # leaf the root's join render built never joined, and gets no leaving().
     open_live(page, f"{server}/nestprobe/?hidden=1")
 
     page.get_by_test_id("visit-shown").click()
 
     expect_text(page.get_by_test_id("leaf-count"), "0")
     _bump(page, 2)
-    assert [hook for hook, *_ in heard].count("joined") == 1, heard
+    assert [hook for hook, *_ in heard] == ["joined"], heard
 
     # From then on, the root's render settles the box's leaf again
     page.get_by_test_id("toggle").click()

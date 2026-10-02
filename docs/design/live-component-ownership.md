@@ -191,6 +191,11 @@ R의 `render`의 `children`에 실린다. 그러지 않던 때는 N 자신의 re
 
 - `command_leave`: `leaving()` await → `_parent_id`가 그 id인 자식에 cascade → 제거 → 구독 재계산.
   예외는 disconnect 경로처럼 로깅하고 삼킨다.
+- `leaving()`은 `joined()`와 짝이다. 지워지는 인스턴스 가운데 `joined()`가 돈 적 없는 것(`has_joined`가 거짓)은
+  `leaving()`을 받지 않고 비동기 작업만 취소된다(`WireviewSession._call_leaving`). 은퇴·leave·연결 종료·예외 뒤의
+  롤백, 어느 경로든 같다. 패스가 만든 pending 자식이 `joined()` 전에 은퇴하는 일은 실제로 있다 — 같은 id의 페이지로
+  boost 이동하면 루트의 join 렌더가 연결이 든 N을 다시 그리며 새 L을 만들고, 바로 뒤의 N의 join이 그 L을 은퇴시킨다.
+  그 L이 `leaving()`부터 받던 때는 `joined()`에서 등록하고 `leaving()`에서 해제하는 코드가 하지 않은 일을 되돌렸다.
 - 클라이언트는 `wireview-live` 요소가 사라져도 `leave`를 보내지 않고 로컬 정리(훅·업로드)만 한다.
   부모 렌더가 이미 그 자식을 떠나보냈다. 보내면 빠른 토글에서 늦게 도착한 `leave`가 다시 보인 **새**
   인스턴스를 지운다. 서버도 LiveComponent id의 `leave`를 무시한다(join과 같은 옛 번들 방어, #140).

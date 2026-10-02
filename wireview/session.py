@@ -639,10 +639,18 @@ class WireviewSession:
         await self.after_mutation_chores()
 
     async def _call_leaving(self, components: list[Component]) -> None:
-        """Run ``leaving()`` on each component and cancel its async tasks, logging instead of propagating errors."""
+        """Run ``leaving()`` on each component and cancel its async tasks, logging instead of propagating errors.
+
+        ``leaving()`` pairs with ``joined()``: an instance that never joined --
+        one a pass built that left before its join or its parent's render ran
+        ``joined()`` -- does not get it. Code that registers in ``joined()`` and
+        unregisters in ``leaving()`` (a presence track, a counter) would undo
+        what it never did.
+        """
         for component in components:
             try:
-                await component.leaving()
+                if component.wire.has_joined:
+                    await component.leaving()
             except Exception as e:
                 log.exception(f"Error in {component._name}.leaving(): {e}")
             finally:

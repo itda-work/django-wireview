@@ -92,6 +92,12 @@ def make_consumer() -> tuple[WireviewConsumer, FakeOutbound]:
     return consumer, outbound
 
 
+def joined(component):
+    """``component`` as the page left it once it joined: ``leaving()`` pairs with ``joined()``."""
+    component.wire.has_joined = True
+    return component
+
+
 @pytest.fixture(autouse=True)
 def _reset_calls():
     CALLS.clear()
@@ -101,7 +107,7 @@ def _reset_calls():
 
 async def test_leave_calls_leaving_and_removes_the_component():
     consumer, _ = make_consumer()
-    consumer.repo.build("LeaveProbeParent", {"id": "p1"})
+    joined(consumer.repo.build("LeaveProbeParent", {"id": "p1"}))
 
     await consumer.command_leave("p1")
 
@@ -111,9 +117,9 @@ async def test_leave_calls_leaving_and_removes_the_component():
 
 async def test_leave_cascades_to_live_components_under_the_parent():
     consumer, _ = make_consumer()
-    consumer.repo.build("LeaveProbeParent", {"id": "p1"})
-    consumer.repo.build_live_component("LeaveProbeChild", {"id": "c1"}, parent_id="p1")
-    consumer.repo.build_live_component("LeaveProbeChild", {"id": "c2"}, parent_id="p1")
+    joined(consumer.repo.build("LeaveProbeParent", {"id": "p1"}))
+    joined(consumer.repo.build_live_component("LeaveProbeChild", {"id": "c1"}, parent_id="p1"))
+    joined(consumer.repo.build_live_component("LeaveProbeChild", {"id": "c2"}, parent_id="p1"))
     consumer.repo.build("LeaveProbeParent", {"id": "other"})
 
     await consumer.command_leave("p1")
@@ -125,7 +131,7 @@ async def test_leave_cascades_to_live_components_under_the_parent():
 
 async def test_a_failing_leaving_hook_is_logged_and_the_component_still_goes():
     consumer, _ = make_consumer()
-    consumer.repo.build("LeaveProbeFailing", {"id": "bad"})
+    joined(consumer.repo.build("LeaveProbeFailing", {"id": "bad"}))
 
     await consumer.command_leave("bad")
 
@@ -135,7 +141,7 @@ async def test_a_failing_leaving_hook_is_logged_and_the_component_still_goes():
 
 async def test_leave_drops_subscriptions_nobody_needs_any_more():
     consumer, outbound = make_consumer()
-    consumer.repo.build("LeaveProbeParent", {"id": "p1"})
+    joined(consumer.repo.build("LeaveProbeParent", {"id": "p1"}))
     await consumer.after_mutation_chores()
     assert outbound.subscribed == ["leave-probe-topic"]
 
@@ -156,13 +162,34 @@ async def test_leave_of_an_unknown_id_is_a_no_op():
 
 async def test_disconnect_still_reaches_every_registered_component():
     consumer, _ = make_consumer()
-    consumer.repo.build("LeaveProbeParent", {"id": "p1"})
-    consumer.repo.build_live_component("LeaveProbeChild", {"id": "c1"}, parent_id="p1")
+    joined(consumer.repo.build("LeaveProbeParent", {"id": "p1"}))
+    joined(consumer.repo.build_live_component("LeaveProbeChild", {"id": "c1"}, parent_id="p1"))
 
     # Consumer.disconnect() on a bare consumer has no transport; the leaving loop is what we test.
     await consumer._call_leaving(list(consumer.repo.components.values()))
 
     assert sorted(CALLS) == [("leaving", "c1"), ("leaving", "p1")]
+
+
+async def test_a_component_that_never_joined_gets_no_leaving():
+    # leaving() pairs with joined(): a component a pass built that left before
+    # its join, and a LiveComponent its parent's render had yet to join, undo
+    # nothing they did. Their background work is cancelled all the same.
+    consumer, _ = make_consumer()
+    joined(consumer.repo.build("LeaveProbeParent", {"id": "p1"}))
+    unjoined = consumer.repo.build("LeaveProbeParent", {"id": "p2"})
+    joined(consumer.repo.build_live_component("LeaveProbeChild", {"id": "c1"}, parent_id="p1"))
+    consumer.repo.build_live_component("LeaveProbeChild", {"id": "c2"}, parent_id="p1")
+    cancelled: list[str] = []
+    for component in consumer.repo.components.values():
+        object.__setattr__(component, "_cancel_async_tasks", lambda id=component.id: cancelled.append(id))
+
+    await consumer.command_leave("p2")
+    await consumer._call_leaving(list(consumer.repo.components.values()))
+
+    assert unjoined.wire.has_joined is False
+    assert sorted(CALLS) == [("leaving", "c1"), ("leaving", "p1")]
+    assert sorted(cancelled) == ["c1", "c2", "p1", "p2"]
 
 
 @pytest.mark.django_db

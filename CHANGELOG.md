@@ -616,6 +616,14 @@ The django-reactor era changelog (2.x) is preserved in
   for components drawn within that one. A LiveComponent placed in the slot itself is still the
   filler's.
 
+- `leaving()` pairs with `joined()`: an instance that never joined no longer gets it. A nested
+  `{% component %}` that left before the page joined it, and a LiveComponent that went before its
+  parent's render joined it, are removed without it; their background work is still
+  cancelled. A boosted visit to a page under the same ids showed it: the root's join render built
+  the nested component's LiveComponent anew, the nested component's join right behind retired it,
+  and it heard `leaving()` before its first `joined()`. Code that registers in `joined()` and
+  unregisters in `leaving()` -- a presence track, a counter -- undid what it never did.
+
 ### Security
 
 - [GHSA-8q8p-x4w4-p745](https://github.com/itda-work/django-wireview/security/advisories/GHSA-8q8p-x4w4-p745)

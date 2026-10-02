@@ -44,7 +44,7 @@ sync로 쓰면 실행되지 않고 `manage.py check`가 `wireview.W002`로 알�
 | 메서드 | 언제 |
 |--------|------|
 | `joined()` | 소켓에 연결되어 첫 렌더를 보내기 전. 이미 연결된 페이지에서 부모의 렌더가 새로 그린 `{% component %}`는 부모 템플릿 안에서 인라인으로 그려져 나가고, 페이지가 그 요소를 받아 join할 때 돈다 — 그 join에 답하는 렌더가 `joined()`가 바꾼 상태를 그린다. LiveComponent는 부모의 렌더가 자기 렌더 전에 부른다 ([live-component](./live-component.md)) |
-| `leaving()` | 컴포넌트가 떠날 때 (소켓이 닫힘, 페이지 이동, 부모가 뺌) |
+| `leaving()` | 컴포넌트가 떠날 때 (소켓이 닫힘, 페이지 이동, 부모가 뺌). `joined()`와 짝이다 — `joined()`가 돈 인스턴스만 받는다(예외로 끝났어도). 페이지가 join하기 전에 떠난 중첩 `{% component %}`, 부모의 렌더가 `joined()`를 부르기 전에 사라진 LiveComponent는 받지 않는다. 그 인스턴스의 비동기 작업은 그래도 취소된다. 그래서 `joined()`에서 등록하고 여기서 해제하면 짝이 맞는다 |
 | `params_changed(params, uri)` | URL 쿼리가 바뀌었을 때 |
 | `mutation(channel, action, instance)` | 구독한 모델이 바뀌었을 때 (`AUTO_BROADCAST`). `instance`는 알림에 실려 온 값에서 복원한 것이다 — DB에서 다시 읽지 않고, 관계는 id만 있다. 같은 알림을 받는 컴포넌트마다 따로 복원하므로 고쳐도 다른 컴포넌트가 받는 값은 그대로다. 페이로드에 없는 필드(다중 테이블 상속의 부모 모델 필드 등)는 deferred라 읽으면 DB를 조회한다. 저장하면 보통의 저장이다(모델의 `save()`, `raw=False` 시그널). 무엇을 쓰는지는 [설정의 모델 알림](./settings.md#모델-알림) |
 | `notification(channel, **kwargs)` | 구독한 채널로 브로드캐스트가 왔을 때 |
