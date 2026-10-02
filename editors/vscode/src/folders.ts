@@ -31,6 +31,18 @@ export function isFile(path: string): boolean {
 }
 
 /** Remove a file if it is there. */
+/** How long a run may take: a file in the runs folder older than this is no run's any more. */
+const RUN_TIMEOUT = 120_000;
+
+/** When a file was last written, or 0 when it is not there. */
+function modified(path: string): number {
+  try {
+    return statSync(path).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
 function remove(path: string): void {
   try {
     unlinkSync(path);
@@ -53,6 +65,8 @@ export class FolderProject implements vscode.Disposable {
   private readonly outputs: string;
   /** The output files of the runs going on now: anything else in `outputs` is left over. */
   private readonly writing = new Set<string>();
+  /** The output files of this project's runs that are over, and when: a stopped process may still write them. */
+  private readonly finished = new Map<string, number>();
   private readonly output: vscode.OutputChannel;
   private readonly changed: () => void;
   /** What watches the current source: replaced when the source changes. */
@@ -242,10 +256,15 @@ export class FolderProject implements vscode.Disposable {
     } finally {
       this.writing.delete(next);
       remove(next);
+      this.finished.set(next, Date.now());
     }
   }
 
-  /** Remove what the runs that are over left in `outputs`: a stopped process may have written there since. */
+  /**
+   * Remove what the runs that are over left in `outputs`: a stopped process may have written there since.
+   * Another file may be the output of a run this project does not know (another window on the same
+   * storage), so it goes only once it is older than a run can take.
+   */
   private sweep(): void {
     let names: string[];
     try {
@@ -253,10 +272,14 @@ export class FolderProject implements vscode.Disposable {
     } catch {
       return;
     }
+    const now = Date.now();
     for (const name of names) {
       const path = nodePath.join(this.outputs, name);
-      if (!this.writing.has(path)) remove(path);
+      if (this.writing.has(path)) continue;
+      if (this.finished.has(path) || now - modified(path) > RUN_TIMEOUT) remove(path);
     }
+    // A file written later than this is old enough by the next sweep's measure
+    for (const [path, at] of this.finished) if (now - at > RUN_TIMEOUT) this.finished.delete(path);
   }
 
   private async spawn(next: string, python: string, managePy: string, signal: AbortSignal): Promise<void> {
@@ -266,7 +289,7 @@ export class FolderProject implements vscode.Disposable {
     this.log(`${line.command} ${line.args.join(" ")}  (in ${line.cwd})`);
     const result = await new Promise<{ code: number; stderr: string }>((done) => {
       // The signal stops the process when its generation ends
-      execFile(line.command, line.args, { cwd: line.cwd, timeout: 120_000, maxBuffer: 64 * 1024 * 1024, signal }, (error, _stdout, stderr) => {
+      execFile(line.command, line.args, { cwd: line.cwd, timeout: RUN_TIMEOUT, maxBuffer: 64 * 1024 * 1024, signal }, (error, _stdout, stderr) => {
         const code = error ? (typeof error.code === "number" ? error.code : 1) : 0;
         done({ code, stderr: stderr || (error && !stderr ? error.message : "") });
       });
@@ -283,10 +306,17 @@ export class FolderProject implements vscode.Disposable {
       }
       if (result.stderr) this.output.append(result.stderr.endsWith("\n") ? result.stderr : `${result.stderr}\n`);
       // The last metadata that worked stays
-      this.fail(`manage.py wireview_lsp failed (exit ${result.code}). ${this.project ? "Keeping the last metadata." : ""}`.trim());
+      const what = result.code === 0 ? "wrote no output file" : `failed (exit ${result.code})`;
+      this.fail(`manage.py wireview_lsp ${what}. ${this.project ? "Keeping the last metadata." : ""}`.trim());
       return;
     }
-    if (this.load(next, "manage.py wireview_lsp", signal)) renameSync(next, this.storage);
+    if (!this.load(next, "manage.py wireview_lsp", signal)) return;
+    try {
+      renameSync(next, this.storage);
+    } catch (error) {
+      // The metadata is in use; the next session starts from the older file and runs again
+      this.log(`Could not keep the metadata in ${this.storage}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   /** The template names under the project's template directories. */

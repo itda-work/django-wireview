@@ -2,7 +2,8 @@
 // replaced by test/stub/vscode.ts and real child processes for the command. What
 // is checked is what a stale run must not do: start again, write, or win.
 import { strict as assert } from "node:assert";
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import { tmpdir } from "node:os";
 import * as nodePath from "node:path";
@@ -179,6 +180,75 @@ test("what a stopped run writes late is not the next run's output, and does not 
   const storage = nodePath.join(root, "storage");
   const left = readdirSync(storage, { recursive: true }).map(String).filter((name) => name.endsWith(".json") || name.includes("next"));
   assert.equal(left.length, 1, `only the metadata that won stays: ${left.join(", ")}`);
+});
+
+/** Where the folder project of `root` keeps its metadata, and where its runs write. */
+function stored(root: string): { metadata: string; runs: string } {
+  const key = createHash("sha256").update(`file://${root}`).digest("hex").slice(0, 16);
+  return { metadata: nodePath.join(root, "storage", `metadata-${key}.json`), runs: nodePath.join(root, "storage", `metadata-${key}.runs`) };
+}
+
+test("a run takes from the runs folder only what its own runs left, or what is older than a run can take", async () => {
+  const { root, command } = workspace();
+  // Writes the metadata first, and exits a while after
+  const early = nodePath.join(root, "early.mjs");
+  writeFileSync(
+    early,
+    `import { writeFileSync } from "node:fs";\nwriteFileSync(process.argv.at(-1), ${JSON.stringify(metadata("Early"))});\nsetTimeout(() => {}, 400);`,
+  );
+  state.config = { managePy: nodePath.join(root, "manage.py"), metadataCommand: [process.execPath, early] };
+  const { folder: first } = project(root);
+  const running = first.start();
+  const written = () => {
+    try {
+      return readdirSync(stored(root).runs).length === 1;
+    } catch {
+      return false;
+    }
+  };
+  await until(written, "the first run's file");
+
+  // Another project on the same storage: the first one's file is not its leftover
+  const { folder: second } = project(root);
+  writeFileSync(nodePath.join(stored(root).runs, "recent.json"), "{}");
+  const old = nodePath.join(stored(root).runs, "old.json");
+  writeFileSync(old, "{}");
+  const past = new Date(Date.now() - 10 * 60_000);
+  utimesSync(old, past, past);
+  state.config = command(0);
+  await second.start();
+  assert.equal(second.state, "ok");
+  await running;
+  assert.equal(first.state, "ok", first.detail);
+  assert.deepEqual(readdirSync(stored(root).runs).sort(), ["recent.json"], "the old leftover went, the recent one may be a run's");
+  first.dispose();
+  second.dispose();
+});
+
+test("a command that exits 0 without writing says it wrote no output file", async () => {
+  const { root, silentCommand } = workspace();
+  state.config = silentCommand(0);
+  const { folder } = project(root);
+  await folder.start();
+  assert.equal(folder.state, "failed");
+  assert.match(folder.detail, /wrote no output file/);
+  folder.dispose();
+});
+
+test("metadata that cannot be kept on disk is used, and the output channel says why", async () => {
+  const { root, command } = workspace();
+  // A directory with something in it where the metadata goes: the rename fails
+  mkdirSync(nodePath.join(stored(root).metadata, "in-the-way"), { recursive: true });
+  state.config = command(0);
+  const { folder, log } = project(root);
+  await folder.start();
+  assert.equal(folder.state, "ok");
+  assert.deepEqual(names(folder), ["Ran"]);
+  assert.ok(
+    log.some((line) => line.includes("Could not keep the metadata")),
+    log.join("\n"),
+  );
+  folder.dispose();
 });
 
 test("from a metadata file to the command: the command runs, and the file is no longer watched", async () => {
