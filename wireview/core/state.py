@@ -156,6 +156,18 @@ def issuing_context(component: "Component") -> tuple[str, str | None]:
     return session.name, auth_fingerprint(component.user, component.session)
 
 
+def _state_json(component: "Component") -> str:
+    # A temporary assign is left out as well: it is reset after this render, and
+    # a join loads it again in joined(). Carried, a list of ten thousand rows went
+    # into a page attribute (#111).
+    return component.model_dump_json(exclude=set(component._meta.exclude_fields | component._meta.temporary_assigns))
+
+
+def state_of(component: "Component") -> dict[str, t.Any]:
+    """The state :func:`sign_state` signs, as :func:`unsign_state` gives it back."""
+    return json.loads(_state_json(component))
+
+
 def sign_state(component: "Component") -> str:
     """Sign the component state for embedding in ``data-state``.
 
@@ -167,12 +179,7 @@ def sign_state(component: "Component") -> str:
     means a component that renders at least once per
     ``STATE_MAX_AGE - STATE_REFRESH_AFTER`` never expires while its page is open.
     """
-    # A temporary assign is left out as well: it is reset after this render, and
-    # a join loads it again in joined(). Carried, a list of ten thousand rows went
-    # into a page attribute (#111).
-    state_json = component.model_dump_json(
-        exclude=set(component._meta.exclude_fields | component._meta.temporary_assigns)
-    )
+    state_json = _state_json(component)
     wire = component.wire
     now = time.time()
     cached = getattr(wire, "_state_token", None)

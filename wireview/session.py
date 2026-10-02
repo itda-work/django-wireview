@@ -384,33 +384,30 @@ class WireviewSession:
             await self._call_leaving(removed)
             self._release_uploads(removed)
         try:
-            # What another root still here carried stays that root's (repo.joining)
-            with self.repo.joining(component_id, decoded_children):
-                component = await self.repo.join(
-                    name,
-                    decoded_state,
-                    children=decoded_children,
-                )
-                if component.wire.mount_halted:
-                    # The boundary refused it. Nothing of the component goes out: no
-                    # render, no signed state. Whatever the hook queued (a redirect to
-                    # a login page) still does, and the client drops the element.
-                    self._join_rejected("halted", name, "an on_mount hook halted the mount")
-                    await self.component_remove(component.id, answer)
-                    await component.wire.flush_pending()
-                    return
-                # Hear this connection's upload progress, if the component has uploads
-                await self._subscribe_upload_group(component)
-                # The render that answers a join says which protocol this server
-                # speaks, so the client knows what it may send (user_event refs).
-                await self.send_render(component, announce=True, ref=answer)
+            component = await self.repo.join(
+                name,
+                decoded_state,
+                children=decoded_children,
+            )
+            if component.wire.mount_halted:
+                # The boundary refused it. Nothing of the component goes out: no
+                # render, no signed state. Whatever the hook queued (a redirect to
+                # a login page) still does, and the client drops the element.
+                self._join_rejected("halted", name, "an on_mount hook halted the mount")
+                await self.component_remove(component.id, answer)
+                await component.wire.flush_pending()
+                return
+            # Hear this connection's upload progress, if the component has uploads
+            await self._subscribe_upload_group(component)
+            # The render that answers a join says which protocol this server
+            # speaks, so the client knows what it may send (user_event refs).
+            await self.send_render(component, announce=True, ref=answer)
 
-                # Call params_changed if URL has params (initial load). Its render
-                # answers the join too, and leaves the other root's entries alone
-                if self.repo.params:
-                    uri = f"?{self.repo.get_query_string()}"
-                    await component._handle_params(dict(self.repo.params), uri)
-                    await self.send_render(component)
+            # Call params_changed if URL has params (initial load)
+            if self.repo.params:
+                uri = f"?{self.repo.get_query_string()}"
+                await component._handle_params(dict(self.repo.params), uri)
+                await self.send_render(component)
 
             # Subscriptions first, then the operations queued during joined():
             # a broadcast queued there must not go out before this connection
@@ -636,7 +633,7 @@ class WireviewSession:
             # bundle still might.
             log.debug("Ignoring leave for LiveComponent %s", id)
             return
-        removed = self.repo.remove(id)
+        removed = self.repo.let_go(id)
         await self._call_leaving(removed)
         self._release_uploads(removed)
         await self.after_mutation_chores()

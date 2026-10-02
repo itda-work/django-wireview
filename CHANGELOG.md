@@ -546,15 +546,16 @@ The django-reactor era changelog (2.x) is preserved in
   `joined()` starts again after the reconnect, directly or inside a `{% component %}` there -- still
   comes back with the state it had. The page joins such a `{% component %}` right behind its root,
   before it patches in the root's render that leaves it out, and that join took the entries for it
-  and the LiveComponent in it and lost them when the page let it go. The server now takes such a
-  join with the state the page sent, but neither it nor the renders that answer it (the
-  `params_changed()` one included) take or overwrite an entry another root still on the connection
-  carried; that root's later render restores from it. Only a join for the carried id itself holds
-  back: another root that draws a LiveComponent under such an id carries the page's state for it,
-  which replaces the other root's entry, as it always did. (Ignoring the join instead also
-  dropped the join of a root of the page's own: after a boosted navigation, the next page could draw as a root an id a sticky component carried
-  and had yet to draw, and that component never joined.) The form is unchanged, so
-  `PROTOCOL_VERSION` stays.
+  and the LiveComponent in it and lost them when the page let it go. The server now keeps what each
+  join carried apart, and a component takes up only an entry that a root it is drawn under carried:
+  the one whose pass draws it, the one whose pass drew that, and so on out. Such a join goes ahead
+  with the states the page sent, and it, the renders that answer it (the `params_changed()` one
+  included) and the component's later renders -- its own work landing before the page lets it go --
+  leave the other root's entries to that root's later render. So does a root of the next page under
+  an id a sticky component carried and had yet to draw: it draws its LiveComponents as that page has
+  them, and one it shows again later starts anew, not from the sticky component's entry. (Ignoring
+  the join instead also dropped the join of a root of the page's own, and that component never
+  joined.) The form is unchanged, so `PROTOCOL_VERSION` stays.
 
 - Nothing reaches a component whose join failed until the page joins it again, even when its
   parent's render draws it again. The parent's template pass built a new instance under the id
@@ -574,6 +575,17 @@ The django-reactor era changelog (2.x) is preserved in
   HTML, an element a render draws anew -- tries the component again. The page keeps the failed
   component registered, so its hooks hear `destroyed()` when it leaves. The `render` that answers
   a refused event is the one an event with no handler already gets, so `PROTOCOL_VERSION` stays.
+
+- A `{% component %}` that the work a root's `joined()` starts again after a reconnect draws keeps
+  the LiveComponents in it when the work lands before the page's joins are through. The root's
+  render drew it anew before the page had patched in the join's render, which left it out, and the
+  page's leave for the element that render took away reached the server after it: it took the
+  component the render drew, which the page's join right behind the root had taken up, with the
+  LiveComponents in it. The page joined the element the render drew without them, having let them
+  go with the old element, and they started from their defaults. A leave for a component that the
+  latest pass of a component still on the connection drew now leaves the states of the
+  LiveComponents in it for the join of the element that pass drew. The forms are unchanged, so
+  `PROTOCOL_VERSION` stays.
 
 - A LiveComponent that leaves the connection before its parent's render ran its `joined()` no
   longer runs it later. The parent's pass builds it and leaves `joined()` to the parent's render;

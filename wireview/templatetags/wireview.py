@@ -262,7 +262,7 @@ def _build_and_render_component(
 
     if "id" not in kwargs and (sticky_id := _default_sticky_id(component_name, repo)):
         kwargs = {**kwargs, "id": sticky_id}
-    component_instance = repo.build(component_name, state=kwargs)
+    component_instance = repo.build(component_name, state=kwargs, drawer=context.get("this"))
     if slots is None:
         # No fill is no slot. The instance may be one another page's pass filled
         # (a boosted visit takes it over), and the slots it remembers are for its

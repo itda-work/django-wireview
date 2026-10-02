@@ -521,6 +521,123 @@ def test_a_live_component_in_a_component_the_work_draws_comes_back_after_a_recon
     expect_text(by(page, "sprig-joins"), "2")
 
 
+def test_a_live_component_in_a_component_the_work_draws_comes_back_when_the_work_lands_first(page, server, late_gate):
+    # As above, with the work landing before the page has patched the shelf's
+    # first render in. The shelf's render after the work drew the box the page
+    # had joined, and the page's leave for the box it let go came after it and
+    # took that box, with the sprig the page let go with the old element. The
+    # page joins the box the render drew without the sprig, and the sprig comes
+    # back as it was: the box's join, and then this one, each ran its joined().
+    page.add_init_script(OFFLINE_SHIM)
+    page.add_init_script(INBOX_SHIM)
+    open_live(page, f"{server}/fileprobe/late/")
+    expect(page.locator("#box")).to_have_count(0)
+    late_gate.set()
+    expect_text(by(page, "sprig-joins"), "1")
+
+    late_gate.clear()
+    page.evaluate("() => { window.__link.offline = true; window.__link.sockets.forEach((s) => s.close()); }")
+    expect(page.locator("#late-shelf")).to_have_class(re.compile("wireview-disconnected"))
+    page.evaluate("() => { window.__inbox.holding = true; window.__link.offline = false; }")
+    # The answers to both joins, held: the box's comes last
+    page.wait_for_function(
+        "() => window.__inbox.held.some((m) => m.command === 'joined' && m.payload.id === 'box')",
+        timeout=WAIT_TIMEOUT * 1000,
+    )
+    late_gate.set()
+    # The shelf's render once the work landed, sent before the page let the box go
+    page.wait_for_function(
+        "() => window.__inbox.held.some((m) => m.command === 'render' && m.payload.id === 'late-shelf'"
+        " && m.payload.vsn === undefined)",
+        timeout=WAIT_TIMEOUT * 1000,
+    )
+    page.evaluate(
+        "() => window.__inbox.release(window.__inbox.held.findIndex((m) => m.command === 'render'"
+        " && m.payload.id === 'late-shelf' && m.payload.vsn === undefined))"
+    )
+    expect(page.locator("#box")).to_have_count(0)
+    page.evaluate("() => window.__inbox.release()")
+
+    expect_text(by(page, "sprig-joins"), "3")
+
+
+#: Holds the page's join for ``box`` and everything it sends after it, until a test
+#: says ``window.__outbox.release()``: the server handles one socket's messages in
+#: order, and work that lands meanwhile runs before that join.
+OUTBOX_SHIM = """
+(() => {
+  const Native = window.WebSocket;
+  const outbox = { holding: false, held: [] };
+  outbox.release = () => {
+    outbox.holding = false;
+    outbox.held.splice(0).forEach((send) => send());
+  };
+  window.__outbox = outbox;
+  window.WebSocket = class extends Native {
+    send(data) {
+      const message = JSON.parse(data);
+      const box = message.command === "join" && message.payload.state && message.payload.name === "FileBox";
+      if (outbox.holding && (box || outbox.held.length)) {
+        outbox.held.push(() => super.send(data));
+        return;
+      }
+      super.send(data);
+    }
+  };
+})();
+"""
+
+
+def test_a_live_component_in_a_component_the_work_drew_before_the_page_joined_it_comes_back(page, server, late_gate):
+    # The work lands between the shelf's join and the box's, right behind it:
+    # the shelf's render drew a new box, and the box's join took it up. The
+    # page then let the box it had go, patching the shelf's first render in,
+    # and that leave reached the server after the render that drew the new
+    # box: it took the new box and the sprig in it. The page joined the box the
+    # render drew, without the sprig, which it had let go with the old box.
+    page.add_init_script(OFFLINE_SHIM)
+    page.add_init_script(INBOX_SHIM)
+    page.add_init_script(OUTBOX_SHIM)
+    open_live(page, f"{server}/fileprobe/late/")
+    expect(page.locator("#box")).to_have_count(0)
+    late_gate.set()
+    expect_text(by(page, "sprig-joins"), "1")
+
+    late_gate.clear()
+    page.evaluate("() => { window.__link.offline = true; window.__link.sockets.forEach((s) => s.close()); }")
+    expect(page.locator("#late-shelf")).to_have_class(re.compile("wireview-disconnected"))
+    page.evaluate(
+        "() => { window.__inbox.holding = true; window.__outbox.holding = true; window.__link.offline = false; }"
+    )
+    # The shelf's join is answered; the box's waits on the page
+    page.wait_for_function(
+        "() => window.__inbox.held.some((m) => m.command === 'joined' && m.payload.id === 'late-shelf')",
+        timeout=WAIT_TIMEOUT * 1000,
+    )
+    late_gate.set()
+    page.wait_for_function(
+        "() => window.__inbox.held.some((m) => m.command === 'render' && m.payload.id === 'late-shelf'"
+        " && m.payload.vsn === undefined)",
+        timeout=WAIT_TIMEOUT * 1000,
+    )
+    page.evaluate("() => window.__outbox.release()")
+    page.wait_for_function(
+        "() => window.__inbox.held.some((m) => m.command === 'joined' && m.payload.id === 'box')",
+        timeout=WAIT_TIMEOUT * 1000,
+    )
+    # The page patches the shelf's first render in and lets the box go, then the rest
+    page.evaluate(
+        "() => window.__inbox.release(window.__inbox.held.findIndex((m) => m.command === 'render'"
+        " && m.payload.id === 'late-shelf' && m.payload.vsn === undefined))"
+    )
+    expect(page.locator("#box")).to_have_count(0)
+    page.evaluate("() => window.__inbox.release()")
+
+    # The sprig's state came back: the new box's join, and then this one, each
+    # ran its joined()
+    expect_text(by(page, "sprig-joins"), "3")
+
+
 def test_a_live_component_shown_again_after_a_reconnect_starts_anew(page, server):
     # The reconnect joins the shelf with every state under it, and then the box
     # with the sprig's: the shelf's pass had built the sprig already, so the box's

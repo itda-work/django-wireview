@@ -109,18 +109,18 @@ async def test_a_direct_join_for_a_live_component_is_ignored_by_the_consumer():
 async def test_a_reconnect_restores_the_childs_own_state_under_the_parents_props():
     repo = repo_with_parent()
     # The parent's join carried the child's signed state from the previous connection.
-    repo.children = {"c1": ("OwnedCounter", {"id": "c1", "count": 7, "note": "kept"})}
+    repo._carry("p1", {"c1": ("OwnedCounter", {"id": "c1", "count": 7, "note": "kept"})})
 
     child = repo.build_live_component("OwnedCounter", {"id": "c1", "count": 0}, parent_id="p1")
 
     assert child.count == 0, "a prop the parent passes is the parent's truth"
     assert child.note == "kept", "a field the parent does not pass is the child's own and comes back"
-    assert repo.children == {}, "the restored entry is consumed"
+    assert repo._restore == {"p1": {}}, "the restored entry is consumed"
 
 
 async def test_restored_state_of_another_class_is_not_applied():
     repo = repo_with_parent()
-    repo.children = {"c1": ("OtherCounter", {"id": "c1", "count": 7, "note": "kept"})}
+    repo._carry("p1", {"c1": ("OtherCounter", {"id": "c1", "count": 7, "note": "kept"})})
 
     child = repo.build_live_component("OwnedCounter", {"id": "c1"}, parent_id="p1")
 

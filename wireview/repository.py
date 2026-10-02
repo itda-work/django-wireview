@@ -2,8 +2,6 @@ import builtins
 import json
 import logging
 import typing as t
-from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import reduce
 from typing import cast
@@ -17,7 +15,7 @@ from . import telemetry
 from .core import handlers
 from .core.component import Component, MessagePayload
 from .core.session import SessionView
-from .core.state import StateMismatch
+from .core.state import StateMismatch, state_of
 from .live_component import LiveComponent
 from .utils import filter_parameters
 
@@ -96,15 +94,17 @@ class ComponentRepository:
         self.live_session = live_session
         self.user = user or AnonymousUser()
         self.components: dict[str, Component] = {}
-        # The restore map: signed states a join carried for the components under
-        # its root, taken by the instance built under each id. An entry lives as
-        # long as the root whose join carried it, as a component under it may be
-        # drawn only by a later render (an async result, an {% if %}).
-        self.children: ChildrenRepo = {}
-        self._carried_by: dict[str, str] = {}
-        # Entries no build takes while a join runs (``joining``): another root
-        # still here carried them, and its later render restores from them.
-        self._withheld: set[str] = set()
+        # The restore maps: for each root, the signed states its join carried for
+        # the components under it, taken by the instance built under each id. A
+        # map lives as long as its root, as a component under it may be drawn
+        # only by a later render (an async result, an {% if %}). Only a pass of
+        # that root's draws one from it (``_take_restored``): two roots can carry
+        # the same id, and each has its own word for it.
+        self._restore: dict[str, ChildrenRepo] = {}
+        # For an id a template pass draws with {% component %}, the component
+        # whose latest pass drew it -- the way to its root's map. It outlives the
+        # instance: the page joins the element that pass drew under the id.
+        self._built_by: dict[str, str] = {}
         # The components whose join failed on this connection, each with the ids
         # its failure removed: itself and the LiveComponents it owned. A parent's
         # later pass builds new instances under those ids that nothing joins.
@@ -165,7 +165,14 @@ class ComponentRepository:
         self,
         name: str,
         state: MessagePayload,
+        drawer: Component | None = None,
     ) -> Component:
+        """The instance under the state's id, built or reused.
+
+        ``drawer`` is the component whose template pass draws it
+        (``{% component %}``), and none for a join's root. A new instance takes
+        up what the drawer's root carried for the id (``_take_restored``).
+        """
         if component_id := state.get("id"):
             if component := self.components.get(component_id):
                 # The id names an instance this connection already holds. Reusing
@@ -184,12 +191,13 @@ class ComponentRepository:
                     validator = component.__class__._load_django_models
                     converted = validator({key: value})  # type: ignore[operator]
                     setattr(component, key, converted.get(key, value))
+                if drawer is not None:
+                    self._drawn(component_id, drawer.id)
                 return component
-            elif component_id not in self._withheld and (child := self.children.get(component_id)):
-                child_name, child_state = child
-                if child_name == name:
-                    state = child_state | state
-                    self._take_restored(component_id)
+            elif drawer is not None:
+                if child := self._take_restored(component_id, drawer.id, name):
+                    state = child[1] | state
+                self._drawn(component_id, drawer.id)
 
         component = Component._build(
             name,
@@ -203,6 +211,17 @@ class ComponentRepository:
             live_session=self.live_session,
         )
         return self.register_component(component)
+
+    def _drawn(self, component_id: str, drawer_id: str) -> None:
+        """Record that a pass of ``drawer_id`` drew ``component_id``, an instance it built or one already here.
+
+        What the drawer's join carried for the id is spent: the page has the
+        component now. Further out, an entry stays for the root that carried it
+        -- the page may let the element go before that root's render draws it.
+        """
+        self._built_by[component_id] = drawer_id
+        self._rendered_children.setdefault(drawer_id, set()).add(component_id)
+        self._restore.get(drawer_id, {}).pop(component_id, None)
 
     def build_live_component(
         self,
@@ -259,6 +278,7 @@ class ComponentRepository:
                     existing.wire.slots = slots.without_markers() if slots is not None else None
                     if not changed_props:
                         self._pending_rerender.append(existing)
+                self._restore.get(parent_id, {}).pop(component_id, None)
                 return existing
             # Same id, different class: the old instance leaves and a new one takes the slot.
             log.debug("Component id %s reused by %s, replacing %s", component_id, name, type(existing).__name__)
@@ -266,7 +286,7 @@ class ComponentRepository:
 
         # A reconnect carries the child's signed state in the parent's join. The
         # parent's props win, everything else is the child's own and comes back.
-        if component_id not in self._withheld and (restored := self._take_restored(component_id)) is not None:
+        if (restored := self._take_restored(component_id, parent_id)) is not None:
             restored_name, restored_state = restored
             if self._same_live_class(restored_name, component_class):
                 state = restored_state | state
@@ -345,6 +365,11 @@ class ComponentRepository:
 
         rerender = [c for c in self._pending_rerender if c._parent_id == parent_id]
         self._pending_rerender = [c for c in self._pending_rerender if c._parent_id != parent_id]
+
+        # A component this pass did not draw is the page's to let go
+        for child_id, drawer_id in list(self._built_by.items()):
+            if drawer_id == parent_id and child_id not in rendered:
+                del self._built_by[child_id]
 
         retired = self._pending_leaving
         self._pending_leaving = []
@@ -443,50 +468,39 @@ class ComponentRepository:
         nested component joins with the states inside it -- and nothing would
         take its entry but the next instance built under the id, once an
         ``{% if %}`` shows it again: that one starts anew. An entry the join
-        replaces is the page's word now; one ``joining`` withholds stays the
-        root's that carried it.
+        replaces in the root's map is the page's word now.
         """
-        for child_id, entry in children.items():
-            if child_id not in self.components and child_id not in self._withheld:
-                self.children[child_id] = entry
-                self._carried_by[child_id] = root_id
+        carried = {child_id: entry for child_id, entry in children.items() if child_id not in self.components}
+        if carried:
+            self._restore.setdefault(root_id, {}).update(carried)
 
-    def _take_restored(self, component_id: str) -> tuple[str, dict[str, t.Any]] | None:
-        self._carried_by.pop(component_id, None)
-        return self.children.pop(component_id, None)
+    def _take_restored(
+        self, component_id: str, drawer_id: str, name: str | None = None
+    ) -> tuple[str, dict[str, t.Any]] | None:
+        """What a pass of ``drawer_id`` draws ``component_id`` from: the first of its roots' entries.
 
-    def _carried_elsewhere(self, component_id: str, root_id: str) -> bool:
-        """Whether a root other than ``root_id``, still here, carried the entry of ``component_id``."""
-        carrier = self._carried_by.get(component_id)
-        return carrier is not None and carrier != root_id and carrier in self.components
-
-    @contextmanager
-    def joining(self, root_id: str, children: t.Iterable[str] = ()) -> Iterator[None]:
-        """While the join of ``root_id`` runs, leave what another root carried to that root.
-
-        A root that joined carried the entries of the components under it, and
-        one it has yet to draw -- the work joined() starts again has not landed --
-        keeps its entry for the render that does. The page may join that id
-        meanwhile: a nested component right behind its root, before the root's
-        render that leaves it out is patched in, or a sticky root's id the next
-        page draws as a root of its own. That join goes ahead with the state the
-        page sent, and neither it nor the renders that answer it take the other
-        root's entries for the id or the ones its join carried; the nested
-        component's element goes, and the root's later render restores both.
-
-        Only the id the join is for says so. A root of another id that draws a
-        component the other root carried has the page's state for it, and its
-        join carries that in place of the other root's (``_carry``).
+        The roots are the drawer and the ones it was drawn under: a
+        LiveComponent's parent, and the component whose pass drew a nested one
+        (``_built_by``). The drawn id's entries along that way are spent, the
+        one taken and any further out; a map of another root keeps its own.
+        That root may still draw the id: a nested component's join right behind
+        its root after a reconnect builds what the root has yet to draw, from
+        the page's states, and the page lets it go before the root's later
+        render draws it again. ``name`` keeps an entry of another class.
         """
-        self._withheld = (
-            {id for id in (root_id, *children) if self._carried_elsewhere(id, root_id)}
-            if self._carried_elsewhere(root_id, root_id)
-            else set()
-        )
-        try:
-            yield
-        finally:
-            self._withheld = set()
+        taken = None
+        seen: set[str] = set()
+        at: str | None = drawer_id
+        while at is not None and at not in seen:
+            seen.add(at)
+            entries = self._restore.get(at, {})
+            entry = entries.get(component_id)
+            if entry is not None and (name is None or entry[0] == name):
+                entries.pop(component_id)
+                taken = taken or entry
+            component = self.components.get(at)
+            at = component._parent_id if isinstance(component, LiveComponent) else self._built_by.get(at)
+        return taken
 
     def join_failed(self, id: str, removed: list[Component]) -> None:
         """Remember that the join of ``id`` failed, until a join under the id tries again."""
@@ -586,17 +600,15 @@ class ComponentRepository:
         The removed instances owe no ``joined()``, ``update()`` or render any
         more: a LiveComponent a parent's pass built is no longer pending.
 
-        The restore map entries the component's join carried go with it: what
-        it did not draw, no later instance under those ids should take up.
-        ``keep_carried`` keeps them for the join that comes under the id next --
+        The restore map the component's join carried goes with it: what it did
+        not draw, no later instance under those ids should take up.
+        ``keep_carried`` keeps it for the join that comes under the id next --
         the rollback after a crash, which joins with the element as the page
         has it, without what only a later render was to draw. Its leave, or
-        its next removal, takes them.
+        its next removal, takes it.
         """
         if not keep_carried:
-            for child_id, root_id in list(self._carried_by.items()):
-                if root_id == id:
-                    self._take_restored(child_id)
+            self._restore.pop(id, None)
         self._slots_to_rejoin.pop(id, None)
         component = self.components.pop(id, None)
         if component is None:
@@ -610,6 +622,25 @@ class ComponentRepository:
         self._pending_live_components = [c for c in self._pending_live_components if builtins.id(c) not in gone]
         self._pending_updates = [(c, p) for c, p in self._pending_updates if builtins.id(c) not in gone]
         self._pending_rerender = [c for c in self._pending_rerender if builtins.id(c) not in gone]
+        return removed
+
+    def let_go(self, id: str) -> list[Component]:
+        """The page let the element of ``id`` go: ``remove`` it.
+
+        A component that the latest pass of a component still here drew is one
+        the page is to be handed again: its leave is for the element an earlier
+        render took away, and came after the render that drew the id anew -- a
+        reconnect's join, and the work its root's joined() starts again landing
+        before the page has patched the join's render in. The page joins the
+        new element without the LiveComponents in it, which it let go with the
+        old one, and their states go into the drawer's restore map for the
+        pass that answers that join.
+        """
+        drawer_id = self._built_by.get(id)
+        removed = self.remove(id)
+        if removed and drawer_id is not None and drawer_id in self.components:
+            left = {c.id: (type(c)._fqn, state_of(c)) for c in removed if isinstance(c, LiveComponent)}
+            self._carry(drawer_id, left)
         return removed
 
     async def dispatch_event(self, id, command, args, kwargs):
