@@ -349,7 +349,7 @@ def button(text: str, variant: str = "primary"):
 | v1.0.0rc2 | ✅ | 1.0 동결 전 공개 API 정리(#119): 공개 범위 선언, `Component` 멤버·설정 레퍼런스, `handle_async`의 `AsyncResult`, `mount()` 키워드 전용, m2m 채널, `dom()` 제거 등. rc1에서 올리는 절차는 [업그레이드 가이드](./UPGRADING.md) |
 | v1.0.0rc3 | ✅ | rc2 뒤의 호환 추가만: `LiveComponent.update_many()`(GAP-035), `toast()`·`atoast()`·`{% wireview_toasts %}`(#116), sticky 컴포넌트(GAP-033), JavaScript 없는 페이지의 약속 문서화(GAP-034), 세션 로직의 `WireviewSession` 분리(GAP-027 1단계). 호환 변경 없음 |
 | v1.0.0rc4 | ✅ | 리뷰 후속과 CI 게이트. `AUTO_BROADCAST`는 `senders`에 적은 모델만 알린다(빈 `senders`는 아무것도 연결하지 않음, W015). async 안전장치(#120), 렌더 중 작업을 미루는 RenderGate(#138·#147), join ref와 프로토콜 6(#139·#146), 스타터 템플릿(#131), W016(#134). 의존성 하한 상향(`channels>=4.2.1`, `pydantic>=2.7,!=2.9.0`, #132). 릴리스 게이트에 하한·Redis E2E 레인. 동작이 바뀌는 것은 [업그레이드 가이드](./UPGRADING.md) |
-| v1.0.0 | ⬜ | API 안정화 선언. 이후 규칙은 [호환성 정책](./COMPATIBILITY.md) |
+| v1.0.0 | ✅ | API 안정화 선언. 이후 규칙은 [호환성 정책](./COMPATIBILITY.md). rc4 뒤의 결함 수정과 보안 권고 셋(GHSA-8q8p-x4w4-p745, GHSA-4v8p-p6p8-78pj, GHSA-pv9v-gqcj-f42x), `mutation()` 인스턴스의 보통 저장(#153), LiveComponent·중첩 컴포넌트의 수명주기와 슬롯·temporary assign 정합성, 문서 사이트와 릴리스 묶음(#157·#160). 동작이 바뀌는 것은 [업그레이드 가이드](./UPGRADING.md#100rc4에서-10으로) |
 
 ### 릴리스 절차
 
@@ -389,4 +389,4 @@ def button(text: str, variant: str = "primary"):
 
 ---
 
-*마지막 업데이트: 2026-10-01*
+*마지막 업데이트: 2026-10-02*

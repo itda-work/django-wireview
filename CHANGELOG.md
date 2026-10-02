@@ -10,6 +10,8 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-02
+
 ### Added
 
 - An editor extension for VS Code in `editors/vscode/` (built as a `.vsix`, not published yet).
@@ -2390,7 +2392,8 @@ auto-recovery, viewport bindings, optimistic UI attributes, type stub
 generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
-[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc4...HEAD
+[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc4...v1.0.0
 [1.0.0rc4]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc3...v1.0.0rc4
 [1.0.0rc3]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc2...v1.0.0rc3
 [1.0.0rc2]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc1...v1.0.0rc2
