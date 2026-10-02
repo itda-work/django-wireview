@@ -24,6 +24,7 @@ from wireview.consumer import WireviewConsumer
 from wireview.core.meta import WireviewMeta
 from wireview.core.rendered import JOINED_SINCE
 from wireview.core.state import sign_state, unsign_state
+from wireview.repository import ComponentRepository
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio, pytest.mark.django_db]
 
@@ -1426,6 +1427,71 @@ async def test_a_frame_a_block_draws_hides_the_box_by_the_pages_flag():
         assert _tallies(shown_again) == ["tally=0"], shown_again
     finally:
         await communicator.disconnect()
+
+
+class JoinedBadge(Component):
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<b {% tag_header %}>b</b>")
+
+
+class JoinedRow(Component):
+    @property
+    def badge(self) -> str:
+        return f"{self.id}-badge"
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<li {% tag_header %}>{% component 'JoinedBadge' id=this.badge %}</li>")
+
+
+class JoinedFeed(Component):
+    start: int = 0
+
+    async def more(self):
+        self.start += 1
+
+    @property
+    def rows(self) -> list[str]:
+        return [f"j-row-{i}" for i in range(self.start, self.start + 5)]
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<ul {% tag_header %}>"
+            "{% for row in this.rows %}{% component 'JoinedRow' id=row %}{% endfor %}</ul>"
+        )
+
+
+class _Outbound:
+    async def send_command(self, command: str, payload: dict[str, t.Any]) -> None: ...
+
+    async def subscribe(self, topic: str) -> None: ...
+
+    async def unsubscribe(self, topic: str) -> None: ...
+
+
+async def test_what_a_component_drew_is_forgotten_when_the_page_lets_it_go():
+    # A feed shows a window of rows, each drawing a badge, and moves it on.
+    # The page lets each row that went out of the window go, and its badge. A
+    # row drew its badge last, and nothing forgot that once the row was gone:
+    # the records grew by one for each, for as long as the connection lived.
+    consumer = WireviewConsumer()
+    consumer.repo = repo = ComponentRepository(is_live=True, user=AnonymousUser())
+    consumer.subscriptions = set()
+    consumer.query_string = ""
+    consumer.channel_name = "test-channel"
+    consumer.outbound = _Outbound()  # type: ignore[assignment]
+    await consumer.send_render(await repo.join("JoinedFeed", {"id": "j-feed"}))
+
+    for start in range(50):
+        await consumer.command_user_event("j-feed", "more", {}, {})
+        await consumer.command_leave(f"j-row-{start}")
+        await consumer.command_leave(f"j-row-{start}-badge")
+
+    rows = {f"j-row-{i}" for i in range(50, 55)}
+    assert repo._built_by == {row: "j-feed" for row in rows} | {f"{row}-badge": row for row in rows}
+    assert repo._drew == {"j-feed": rows} | {row: {f"{row}-badge"} for row in rows}
 
 
 class JoinedFoldingNest(JoinedAsyncNest):

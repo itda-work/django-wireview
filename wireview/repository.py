@@ -623,9 +623,16 @@ class ComponentRepository:
         the rollback after a crash, which joins with the element as the page
         has it, without what only a later render was to draw. Its leave, or
         its next removal, takes it.
+
+        What the component's passes drew goes too: no pass of it ends any more
+        to forget it (``end_pass``). The rollback keeps that as well, as the
+        way from what it drew to the map it keeps.
         """
         if not keep_carried:
             self._restore.pop(id, None)
+            for child_id in self._drew.pop(id, set()):
+                if self._built_by.get(child_id) == id:
+                    del self._built_by[child_id]
         self._slots_to_rejoin.pop(id, None)
         component = self.components.pop(id, None)
         if component is None:
