@@ -251,12 +251,16 @@ def accepts_extra_kwargs(cls: type[Component]) -> bool:
 def extract_properties(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
     """The properties the component's own classes define: template variables, like fields."""
     properties: dict[str, dict[str, t.Any]] = {}
+    # The nearest definition of a name is the one a template reads, whatever it is:
+    # a subclass's plain attribute hides the property its parent defined
+    seen: set[str] = set()
     for klass in cls.__mro__:
         if is_framework_class(klass):
             continue
         for name, value in vars(klass).items():
-            if name.startswith("_") or name in properties:
+            if name.startswith("_") or name in seen:
                 continue
+            seen.add(name)
             if isinstance(value, property):
                 getter = value.fget
             elif isinstance(value, functools.cached_property):

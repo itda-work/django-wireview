@@ -320,6 +320,39 @@ class TestComponentsForAnEditor:
         assert properties["count"]["file_path"] == __file__
         assert properties["first"]["type"] is None
 
+    def test_a_property_the_subclass_redefines_is_the_subclass_one(self):
+        """The nearest definition in the MRO is the one a template reads, property or not."""
+
+        class Base(Component, public=False):
+            @property
+            def value(self) -> str:
+                return "base"
+
+            @property
+            def label(self) -> str:
+                return "base"
+
+            @functools.cached_property
+            def cached(self) -> str:
+                return "base"
+
+        class Shadowed(Base, public=False):
+            value: t.ClassVar[int] = 42
+
+            @property
+            def label(self) -> int:
+                return 1
+
+            def cached(self) -> int:  # a plain method now
+                return 1
+
+        properties = extract_component_metadata(Shadowed)["properties"]
+        assert Shadowed.value == 42
+        assert "value" not in properties, "a class attribute hides the parent's property"
+        assert "cached" not in properties, "a method hides the parent's cached_property"
+        assert properties["label"]["type"] == "int"
+        assert extract_component_metadata(Base)["properties"]["value"]["type"] == "str"
+
 
 @pytest.mark.unit
 class TestTheRestOfTheProject:
