@@ -48,6 +48,7 @@ for (const target of targets) {
     const env: Env = {
       project,
       path,
+      documentPath: path === nodePath.resolve(file) ? undefined : nodePath.resolve(file),
       readFile: (other) => (isFile(other) ? readFileSync(other, "utf8") : undefined),
       isFile,
       templateNames: () => [],

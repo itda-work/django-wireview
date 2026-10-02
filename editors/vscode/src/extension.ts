@@ -9,6 +9,7 @@ import { complete } from "./core/completion.ts";
 import type { Completion, CompletionKind } from "./core/completion.ts";
 import { diagnose } from "./core/diagnostics.ts";
 import type { Severity } from "./core/diagnostics.ts";
+import { ownTemplateName } from "./core/env.ts";
 import type { Env } from "./core/env.ts";
 import { folds } from "./core/folding.ts";
 import { pythonLinks, templateLinks } from "./core/links.ts";
@@ -71,9 +72,11 @@ function realPath(document: vscode.TextDocument): string {
 
 function envOf(document: vscode.TextDocument): Env {
   const folder = folderOf(document);
+  const path = realPath(document);
   return {
     project: folder?.project,
-    path: realPath(document),
+    path,
+    documentPath: document.uri.scheme === "file" && path !== document.uri.fsPath ? document.uri.fsPath : undefined,
     readFile: (path) => {
       const open = vscode.workspace.textDocuments.find((candidate) => candidate.uri.scheme === "file" && candidate.uri.fsPath === path);
       if (open) return open.getText();
@@ -121,7 +124,7 @@ function diagnosable(document: vscode.TextDocument, env: Env): boolean {
   if (!vscode.workspace.getConfiguration("wireview", document.uri).get("diagnostics.enable", true)) return false;
   if (document.languageId === "django-html") return true;
   if (document.languageId !== "html" || document.uri.scheme !== "file") return false;
-  return env.project.templateName(env.path) !== undefined;
+  return ownTemplateName(env.project, env) !== undefined;
 }
 
 /** What the extension hands to whoever asks for its exports: the host tests. */

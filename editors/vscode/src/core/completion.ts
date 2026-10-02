@@ -1,5 +1,6 @@
 // What to offer at the cursor in a template. The position decides: a tag's name,
 // an argument of a known tag, a filter after `|`, a variable, an attribute value.
+import { ownTemplateName } from "./env.ts";
 import type { Env } from "./env.ts";
 import { componentDoc, fieldDoc, functionComponentDoc, handlerDoc, signature } from "./markdown.ts";
 import type { ComponentMeta, FunctionComponentMeta, MethodMeta } from "./metadata.ts";
@@ -122,7 +123,7 @@ function tagCompletions(doc: TemplateDoc, tag: TagToken, offset: number, env: En
       .map(([library, meta]) => ({ label: library, kind: "library", range, insert: library, detail: meta.module }));
   }
   if ((name === "extends" || name === "include") && index === 0) {
-    const own = project.templateName(env.path);
+    const own = ownTemplateName(project, env);
     return env
       .templateNames()
       .filter((template) => template !== own)

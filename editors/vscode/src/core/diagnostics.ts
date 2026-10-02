@@ -6,6 +6,7 @@
 // diagnostics off. So only quoted names are checked (a variable could hold
 // anything), a tag Django reads as text is left alone, and nothing is said
 // without the project's metadata.
+import { ownTemplateName } from "./env.ts";
 import type { Env } from "./env.ts";
 import type { ComponentMeta, FunctionComponentMeta, MethodMeta, ParameterMeta } from "./metadata.ts";
 import { isWireviewTag } from "./project.ts";
@@ -148,7 +149,7 @@ function checkFilter(doc: TemplateDoc, project: Project, sym: Extract<Sym, { kin
 }
 
 function checkTemplate(project: Project, env: Env, sym: Extract<Sym, { kind: "template" }>, report: Report): void {
-  const name = relativeTemplateName(project, env.path, sym.name);
+  const name = relativeTemplateName(project, env, sym.name);
   if (name === undefined) return;
   if (!project.metadata.template_dirs?.length || project.resolveTemplate(name, env.isFile)) return;
   report(
@@ -160,9 +161,9 @@ function checkTemplate(project: Project, env: Env, sym: Extract<Sym, { kind: "te
 }
 
 /** A template name as Django resolves it: `./x.html` and `../x.html` are relative to this template's own name. */
-export function relativeTemplateName(project: Project, path: string, name: string): string | undefined {
+export function relativeTemplateName(project: Project, env: Env, name: string): string | undefined {
   if (!name.startsWith("./") && !name.startsWith("../")) return name;
-  const own = project.templateName(path);
+  const own = ownTemplateName(project, env);
   if (own === undefined) return undefined;
   const parts = own.split("/").slice(0, -1);
   for (const part of name.split("/")) {

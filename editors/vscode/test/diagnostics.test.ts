@@ -141,3 +141,10 @@ test("a template elsewhere is relative to this one's name", () => {
 test("the metadata is read from one project", () => {
   assert.ok(project.component("Card"));
 });
+
+test("a linked template is named by where it stands in a template directory", () => {
+  // The real file is outside every template directory; the loader finds it by the link's name
+  const linked = { ...env("/elsewhere/real.html"), documentPath: `${DIR}/todo/list.html` };
+  assert.deepEqual(diagnose(parse('{% include "./card.html" %}'), linked).map((p) => p.code), ["template-not-found"]);
+  assert.deepEqual(diagnose(parse('{% include "../card.html" %}'), linked).map((p) => p.code), []);
+});

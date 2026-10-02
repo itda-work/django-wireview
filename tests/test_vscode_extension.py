@@ -101,6 +101,26 @@ def test_the_driver_reports_what_is_wrong(metadata_file, tmp_path):
 
 
 @pytest.mark.integration
+def test_a_linked_template_is_checked_against_its_component(tmp_path):
+    """The editor and the metadata name a linked template by the same path, so its handlers are checked."""
+    from wireview.management.commands.wireview_lsp import find_template
+
+    root = tmp_path / "templates"
+    root.mkdir()
+    real = tmp_path / "elsewhere.html"
+    real.write_text('{% load wireview %}<b {% on "click" "no_such_handler" %}>', encoding="utf-8")
+    (root / "linked.html").symlink_to(real)
+    metadata = extract_metadata()
+    component = {**metadata["components"]["XTodoList"], "template_path": find_template("linked.html", [root])}
+    metadata["components"] = {"XTodoList": component}
+    metadata_path = tmp_path / "metadata.json"
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    report = _diagnose(metadata_path, root / "linked.html")
+    assert [p["code"] for p in report[str(root / "linked.html")]] == ["unknown-handler"]
+
+
+@pytest.mark.integration
 def test_the_starter_project_templates_have_nothing_to_report(tmp_path):
     """The starter's components are not the test project's: its own manage.py describes them."""
     env = {key: value for key, value in os.environ.items() if key != "DJANGO_SETTINGS_MODULE"}

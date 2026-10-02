@@ -18,7 +18,7 @@ export function templateLinks(doc: TemplateDoc, env: Env): Link[] {
   const links: Link[] = [];
   for (const sym of symbols(doc)) {
     if (sym.kind !== "template") continue;
-    const name = relativeTemplateName(project, env.path, sym.name);
+    const name = relativeTemplateName(project, env, sym.name);
     const path = name === undefined ? undefined : project.resolveTemplate(name, env.isFile);
     if (path) links.push({ span: sym.span, path });
   }

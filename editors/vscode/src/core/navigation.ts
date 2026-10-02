@@ -66,7 +66,7 @@ function hoverText(doc: TemplateDoc, sym: Sym, project: Project, env: Env): stri
       return [`**${sym.name}** · \`${library.module ?? ""}\``, tags && `Tags: ${tags}`, filters && `Filters: ${filters}`].filter(Boolean).join("\n\n");
     }
     case "template": {
-      const name = relativeTemplateName(project, env.path, sym.name);
+      const name = relativeTemplateName(project, env, sym.name);
       const path = name === undefined ? undefined : project.resolveTemplate(name, env.isFile);
       return path ? `\`${path}\`` : undefined;
     }
@@ -168,7 +168,7 @@ export function definition(doc: TemplateDoc, offset: number, env: Env): Location
       return meta ? at(meta.file_path, meta.line_number) : undefined;
     }
     case "template": {
-      const name = relativeTemplateName(project, env.path, sym.name);
+      const name = relativeTemplateName(project, env, sym.name);
       return at(name === undefined ? undefined : project.resolveTemplate(name, env.isFile), 1);
     }
     case "component": {
