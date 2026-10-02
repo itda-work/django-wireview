@@ -1156,3 +1156,23 @@ class TestTestprojIsClean:
         from django.core.checks.registry import registry
 
         assert check_reconnect_settings in registry.get_checks(include_deployment_checks=False)
+
+    def test_every_check_is_registered(self):
+        """Each ``check_*`` in wireview.checks runs under ``manage.py check``.
+
+        The tests above call the functions directly, so a ``register()`` line
+        dropped from ``register_checks()`` passed them all -- W017 among them,
+        which is what stands between a password hash and the broker.
+        """
+        from django.core.checks.registry import registry
+
+        defined = {
+            func
+            for name, func in inspect.getmembers(wireview_checks, inspect.isfunction)
+            if name.startswith("check_") and func.__module__ == wireview_checks.__name__
+        }
+        plain = set(registry.get_checks(include_deployment_checks=False))
+        deploy = set(registry.get_checks(include_deployment_checks=True)) - plain
+
+        assert defined - plain - deploy == set()
+        assert defined & deploy == {check_channel_layer}
