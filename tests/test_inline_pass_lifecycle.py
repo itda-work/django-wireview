@@ -11,10 +11,12 @@ of N's LiveComponents rides on R's render (docs/design/live-component-ownership.
 import typing as t
 
 import pytest
+from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.template import Template
+from django.test import override_settings
 
-from wireview import Component, LiveComponent
+from wireview import Component, LiveComponent, function_component
 from wireview.consumer import WireviewConsumer
 from wireview.core.meta import WireviewMeta
 from wireview.core.rendered import JOINED_SINCE
@@ -143,6 +145,43 @@ class InlineMoveRoot(InlineRoot):
         )
 
 
+#: A function component's template gets no ``this``: the nest it draws is still the root's pass's
+FUNC_TEMPLATES = {
+    "inline/card.html": "{% load wireview %}{% component 'InlineNest' id='in-nest' shown=shown note=note %}",
+    "inline/outer.html": "{% load wireview %}{% func 'inline_nest_card' shown=shown note=note %}",
+}
+
+
+@function_component(template="inline/card.html")
+def inline_nest_card(shown: bool = True, note: str = ""):
+    return {"shown": shown, "note": note}
+
+
+@function_component(template="inline/outer.html")
+def inline_nest_outer(shown: bool = True, note: str = ""):
+    return {"shown": shown, "note": note}
+
+
+class InlineFuncRoot(InlineRoot):
+    """Draws the nest through a function component's template."""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>{% func 'inline_nest_card' shown=this.shown note=this.note %}</p>"
+        )
+
+
+class InlineFuncInFuncRoot(InlineRoot):
+    """Draws the nest through a function component's template that another one's draws."""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>{% func 'inline_nest_outer' shown=this.shown note=this.note %}</p>"
+        )
+
+
 class InlineOtherRoot(InlineRoot):
     """Another page's root, under another id, that draws the same nest."""
 
@@ -158,6 +197,15 @@ class _Outbound:
     async def subscribe(self, topic: str) -> None: ...
 
     async def unsubscribe(self, topic: str) -> None: ...
+
+
+@pytest.fixture(autouse=True)
+def _func_templates():
+    engine = settings.TEMPLATES[0]
+    options = {**engine["OPTIONS"], "loaders": [("django.template.loaders.locmem.Loader", FUNC_TEMPLATES)]}
+    options["loaders"].append("django.template.loaders.app_directories.Loader")
+    with override_settings(TEMPLATES=[{**engine, "APP_DIRS": False, "OPTIONS": options}]):
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -198,7 +246,12 @@ async def _event(consumer: WireviewConsumer, outbound: _Outbound, id: str, comma
 PAGES = {
     "nest": [(InlineRoot, "in-root"), (InlineNest, "in-nest")],
     "frame": [(InlineDeepRoot, "in-root"), (InlineFrame, "in-frame"), (InlineNest, "in-nest")],
+    "func": [(InlineFuncRoot, "in-root"), (InlineNest, "in-nest")],
+    "func_in_func": [(InlineFuncInFuncRoot, "in-root"), (InlineNest, "in-nest")],
 }
+
+#: The pages whose root draws the nest itself, directly or through function components
+NEST_PAGES = ("nest", "func", "func_in_func")
 
 
 @pytest.mark.parametrize("page", PAGES)
@@ -236,8 +289,9 @@ async def test_a_prop_the_drawer_passes_through_the_nest_reaches_update_in_the_d
     assert _leaves(rendered) == ["leaf=1:hi"], rendered
 
 
-async def test_a_live_component_the_nest_shows_first_by_its_drawers_prop_joins_in_the_drawers_render():
-    consumer, outbound = await _page(*PAGES["nest"], shown=False)
+@pytest.mark.parametrize("page", NEST_PAGES)
+async def test_a_live_component_the_nest_shows_first_by_its_drawers_prop_joins_in_the_drawers_render(page):
+    consumer, outbound = await _page(*PAGES[page], shown=False)
     assert HEARD == []
 
     shown = await _event(consumer, outbound, "in-root", "toggle")
@@ -246,10 +300,11 @@ async def test_a_live_component_the_nest_shows_first_by_its_drawers_prop_joins_i
     assert _leaves(shown) == ["leaf=0:"], shown
 
 
-async def test_the_nest_s_own_join_still_settles_what_the_drawers_first_pass_drew():
+@pytest.mark.parametrize("page", NEST_PAGES)
+async def test_the_nest_s_own_join_still_settles_what_the_drawers_first_pass_drew(page):
     # The root's first render builds the nest and its leaf; the page has yet to
     # join the nest, and that join is what settles them (§3-2).
-    consumer, outbound = await _page(*PAGES["nest"][:1])
+    consumer, outbound = await _page(*PAGES[page][:1])
     assert HEARD == []
 
     state = sign_state(InlineNest(user=AnonymousUser(), wire=WireviewMeta(params={}), id="in-nest"))
