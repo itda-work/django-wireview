@@ -308,12 +308,14 @@ function checkEvent(project: Project, sym: Extract<Sym, { kind: "event" }>, repo
     segments.push({ text: segment, span: { start: offset, end: offset + segment.length } });
     offset += segment.length + 1;
   }
+  // binding() refuses it anywhere after the event, before it walks the modifiers: even as a key's argument
+  const inline = segments.findIndex((segment, index) => index > 0 && segment.text === "inlinejs");
+  if (inline !== -1) {
+    report("unknown-modifier", "error", segments[inline].span, "The inlinejs modifier is not supported: use a JS() command chain, or a hook.");
+    return;
+  }
   for (let index = 1; index < segments.length; index++) {
     const { text: name, span } = segments[index];
-    if (name === "inlinejs") {
-      report("unknown-modifier", "error", span, "The inlinejs modifier is not supported: use a JS() command chain, or a hook.");
-      return;
-    }
     const modifier = modifiers[name];
     if (!modifier) {
       report(

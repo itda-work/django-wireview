@@ -40,7 +40,9 @@ pair("not-a-handler", `${W}<b {% on "click" "joined" %}>`, `${W}<b {% on "click"
 pair("unknown-handler-argument", `${W}<b {% on "click" "add" txt=1 %}>`, `${W}<b {% on "click" "add" text=1 myself=True %}>`);
 pair("invalid-event", `${W}<b {% on "1click" "add" %}>`, `${W}<b {% on "my-event:x" "add" %}>`);
 pair("unknown-modifier", `${W}<b {% on "click.away" "add" %}>`, `${W}<b {% on "click.prevent.stop" "add" %}>`);
-pair("unknown-modifier", `${W}<b {% on "click.inlinejs" "add" %}>`, `${W}<b {% on "keydown.key.inlinejs" "add" %}>`);
+pair("unknown-modifier", `${W}<b {% on "click.inlinejs" "add" %}>`, `${W}<b {% on "keydown.key.Enter" "add" %}>`);
+// binding() refuses inlinejs anywhere in the dotted name, before it reads a key's argument
+pair("unknown-modifier", `${W}<b {% on "keydown.key.inlinejs" "add" %}>`, `${W}<b {% on "keydown.key.inline" "add" %}>`);
 pair("modifier-argument", `${W}<b {% on "input.debounce" "add" %}>`, `${W}<b {% on "input.debounce.300.prevent" "add" %}>`);
 pair("modifier-argument", `${W}<b {% on "input.debounce.fast" "add" %}>`, `${W}<b {% on "keydown.key.Escape" "add" %}>`);
 pair(
