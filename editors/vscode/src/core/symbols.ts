@@ -24,7 +24,7 @@ const KEYWORDS = new Set(["and", "or", "not", "in", "is", "as", "with", "only", 
 
 export type Sym =
   | { kind: "tag"; span: Span; name: string; tag: TagToken }
-  | { kind: "filter"; span: Span; name: string; hasArgument: boolean; tag: TagToken | null }
+  | { kind: "filter"; span: Span; name: string; hasArgument: boolean; tag: TagToken | null; closed: boolean }
   | { kind: "library"; span: Span; name: string; tag: TagToken }
   | { kind: "loaded-name"; span: Span; name: string; library: string; tag: TagToken }
   | { kind: "template"; span: Span; name: string; tag: TagToken }
@@ -165,7 +165,7 @@ function eventSymbols(tag: TagToken, found: Sym[]): void {
 
 /** Filters and variables in a tag's arguments. */
 function expressionSymbols(text: string, tag: TagToken, found: Sym[]): void {
-  filterSymbols(text, tag.contentStart, tag.contentEnd, tag, found);
+  filterSymbols(text, tag.contentStart, tag.contentEnd, tag, tag.closed, found);
   const bits = tag.bits;
   if (EXPRESSION_TAGS.has(tag.name)) {
     variablesIn(text, bits[0]?.start ?? tag.contentEnd, tag.contentEnd, found);
@@ -184,14 +184,15 @@ function expressionSymbols(text: string, tag: TagToken, found: Sym[]): void {
 }
 
 function variableSymbols(text: string, token: VariableToken, found: Sym[]): void {
-  filterSymbols(text, token.contentStart, token.contentEnd, null, found);
+  filterSymbols(text, token.contentStart, token.contentEnd, null, token.closed, found);
   variablesIn(text, token.contentStart, token.contentEnd, found);
 }
 
 // `|name` with an argument when `:` follows at once, as FilterExpression reads it
 const FILTER = /\|\s*([A-Za-z_]\w*)(:)?/g;
 
-function filterSymbols(text: string, start: number, end: number, tag: TagToken | null, found: Sym[]): void {
+/** `closed`: whether Django reads the tag or variable they stand in, or takes it for text. */
+function filterSymbols(text: string, start: number, end: number, tag: TagToken | null, closed: boolean, found: Sym[]): void {
   const source = withoutStrings(text.slice(start, end));
   FILTER.lastIndex = 0;
   for (let match = FILTER.exec(source); match; match = FILTER.exec(source)) {
@@ -202,6 +203,7 @@ function filterSymbols(text: string, start: number, end: number, tag: TagToken |
       name: match[1],
       hasArgument: Boolean(match[2]),
       tag,
+      closed,
     });
   }
 }

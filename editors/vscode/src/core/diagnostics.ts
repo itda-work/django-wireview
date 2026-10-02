@@ -59,7 +59,8 @@ export function diagnose(doc: TemplateDoc, env: Env): Problem[] {
     if ("tag" in sym && sym.tag && !sym.tag.closed) continue;
     switch (sym.kind) {
       case "filter":
-        if (doc.visible) checkFilter(doc, project, sym, report);
+        // A variable Django reads as text holds no filter either
+        if (doc.visible && sym.closed) checkFilter(doc, project, sym, report);
         break;
       case "library":
         if (project.knowsTags && !project.libraries[sym.name]) {

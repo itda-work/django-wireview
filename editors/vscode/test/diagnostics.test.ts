@@ -92,6 +92,12 @@ test("a tag Django reads as text is not checked", () => {
   assert.deepEqual(codes(`${W}{% component "Nope"\n%}`), []);
 });
 
+test("a variable Django reads as text is not checked", () => {
+  assert.deepEqual(codes("{{ x|no_such_filter"), [], "still being typed");
+  assert.deepEqual(codes("{{ x|no_such_filter\n}}"), [], "closed on another line: text to Django");
+  assert.deepEqual(codes("{{ x|no_such_filter }}"), ["unknown-filter"]);
+});
+
 test("handlers are checked against the components that draw the template, and only when one does", () => {
   assert.deepEqual(codes(`${W}<b {% on "click" "nope" %}>`, PARTIAL), [], "a partial: whoever includes it");
   assert.deepEqual(codes(`${W}<b {% on "click" "increment" %}>`, COUNTER), []);
