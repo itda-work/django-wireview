@@ -2,6 +2,7 @@
 
 import functools
 import json
+import typing as t
 from io import StringIO
 from pathlib import Path
 
@@ -417,6 +418,29 @@ class TestTheRestOfTheProject:
         assert any((d / "todo" / "list.html").is_file() for d in dirs)
         todo = extract_metadata()["components"]["XTodoList"]
         assert todo["template_path"] and Path(todo["template_path"]).is_file()
+
+
+@pytest.mark.integration
+def test_the_metadata_is_the_same_on_every_run(tmp_path):
+    """Two runs differ only in when they ran: a repr that holds a memory address made every run differ."""
+    import subprocess
+    import sys
+
+    manage = Path(__file__).parent / "manage.py"
+    outputs = []
+    for run in range(2):
+        output = tmp_path / f"metadata-{run}.json"
+        subprocess.run(
+            [sys.executable, str(manage), "wireview_lsp", "--output", str(output)],
+            cwd=manage.parent,
+            check=True,
+            capture_output=True,
+        )
+        data = json.loads(output.read_text())
+        del data["generated_at"]
+        outputs.append(data)
+    assert outputs[0] == outputs[1]
+    assert " at 0x" not in json.dumps(outputs[0])
 
 
 @pytest.mark.unit

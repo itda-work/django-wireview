@@ -227,7 +227,7 @@ def extract_fields(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
 
         fields[name] = {
             "type": type_str,
-            "annotation": str(annotation) if annotation else None,
+            "annotation": without_addresses(str(annotation)) if annotation else None,
             "default": default_value,
             "required": field_info.is_required(),
             "description": field_info.description,
@@ -235,6 +235,14 @@ def extract_fields(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
         }
 
     return fields
+
+
+_ADDRESS = re.compile(r" at 0x[0-9a-fA-F]+")
+
+
+def without_addresses(text: str) -> str:
+    """A repr without the memory addresses in it: they made every run's output differ."""
+    return _ADDRESS.sub("", text)
 
 
 def accepts_extra_kwargs(cls: type[Component]) -> bool:
@@ -630,11 +638,11 @@ def serialize_default(value: t.Any) -> t.Any:
             if isinstance(value, set):
                 return []
         # Non-empty collections - return string representation
-        return repr(value)
+        return without_addresses(repr(value))
 
     # Handle callable defaults (factory functions)
     if callable(value):
         return f"<factory: {value.__name__}>"
 
     # Fallback to string representation
-    return repr(value)
+    return without_addresses(repr(value))
