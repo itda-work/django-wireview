@@ -1374,11 +1374,11 @@ class JoinedTallyBlockPage(JoinedTallyPage):
 
 
 async def test_a_frame_in_a_slot_whose_owner_drew_it_again_hides_the_box_by_the_pages_flag():
-    # The owner's render on its own draws the frame in its slot outside any
-    # pass of the frame's, and the box the frame drew there stays on record
-    # as named. The frame's next pass, within the page's, has to start from
-    # nothing, or that record says it drew the box it now hides: the box's
-    # leave then keeps the tally's state for it.
+    # The owner's render on its own draws the frame in its slot again, a pass
+    # of the frame's within the owner's render, and the box the frame drew
+    # there goes on record as named. The frame's next pass, within the page's,
+    # has to start from nothing, or that record says it drew the box it now
+    # hides: the box's leave then keeps the tally's state for it.
     communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
     communicator.scope["user"] = AnonymousUser()
     connected, _ = await communicator.connect()

@@ -238,6 +238,13 @@ class _NestedComponentNode(Node):
     cost a template render on every render of the slot's owner. Not when a
     component nested in it was drawn there too: that one renders on its own. A
     LiveComponent in it is only named, and stays named.
+
+    Drawn again, it ran a pass of its own within the owner's render: a
+    LiveComponent that pass hid, showed or passed new props settles in the
+    owner's batch, as one within its drawer's pass does in the drawer's
+    (docs/design/live-component-ownership.md §3-3). Unrecorded, the one it hid
+    lived on without ``leaving()`` until the component's next render of its
+    own, and the one it showed went out as a reference with no ``joined()``.
     """
 
     def __init__(self, component_id: str):
@@ -261,7 +268,12 @@ class _NestedComponentNode(Node):
             html = shift_markers(html, markers.skip(count) - first)
         else:
             first = markers.count
+            # Its pass, within the render of the slot's owner: that one's batch settles it
+            repo.begin_render(component.id)
             html = component._render(repo) or ""
+            if component.wire.template_evaluated:
+                owner = context.get("this")
+                repo.end_inline_pass(component.id, owner.id if owner is not None else None)
             self._drawn = None
             if not holds_nested_components(html):
                 self._drawn = (component.wire.own_render, first, markers.count - first, html)

@@ -202,6 +202,7 @@ NO_UPGRADE_NOTE = {
     "keeps the LiveComponents in it when the work lands": FIXED_ONLY,
     "before its parent's render ran its `joined()`": FIXED_ONLY,
     "stops drawing because of a prop its drawer": FIXED_ONLY,
+    "hides or shows when the slot's owner": FIXED_ONLY,
 }
 
 

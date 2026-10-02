@@ -57,7 +57,8 @@ wireview/
 │                          토큰에서 계산한 경로에 쓴다. 어느 워커에 닿아도 된다 (#83)
 ├── urls.py                websocket_urlpatterns, urlpatterns
 ├── repository.py          ComponentRepository: 연결당 컴포넌트 인스턴스 관리. LiveComponent의 수명주기 배치(take_lifecycle).
-│                          패스 안에서 그려진 {% component %}가 그리는 LiveComponent도 그린 쪽의 배치에 담는다(end_inline_pass)
+│                          패스 안에서 그려진 {% component %}가 그리는 LiveComponent도 그린 쪽의 배치에 담는다(end_inline_pass).
+│                          슬롯 주인이 자기 렌더로 fill의 {% component %}를 다시 그린 패스는 그 주인의 배치에 담는다
 ├── live_component.py      LiveComponent (부모 연결을 공유하는 중첩 상태 컴포넌트)
 ├── function_components.py  @function_component (상태 없는 템플릿 함수). 공개 이름과 겹치지 않게 복수형이다(#98)
 ├── slots.py               슬롯 시스템 ({% fill %}, {% render_slot %})

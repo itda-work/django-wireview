@@ -606,6 +606,16 @@ The django-reactor era changelog (2.x) is preserved in
   visit brings both as new elements that the page joins again. The forms are unchanged, so
   `PROTOCOL_VERSION` stays.
 
+- A LiveComponent that a nested `{% component %}` in a slot hides or shows when the slot's owner
+  renders on its own now leaves or joins in that render. The owner draws the component again from
+  the fill it was given, as the component is then, and that pass ran unrecorded: when what the
+  component draws depends on something outside its state (a query), the LiveComponent it no longer
+  drew stayed on the connection without `leaving()` until the component's own next render, and one
+  it drew for the first time went out as a reference with no `joined()` and no render. The owner's
+  render now settles them as a drawer's render does for a component drawn within its pass, and so
+  for components drawn within that one. A LiveComponent placed in the slot itself is still the
+  filler's.
+
 ### Security
 
 - [GHSA-8q8p-x4w4-p745](https://github.com/itda-work/django-wireview/security/advisories/GHSA-8q8p-x4w4-p745)

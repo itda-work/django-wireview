@@ -394,3 +394,135 @@ async def test_a_drawer_that_raises_after_the_nest_s_pass_takes_the_record_with_
     assert consumer.repo.get("in-leaf").count == 3  # type: ignore[union-attr]
     assert consumer.repo._inline == {}
     assert consumer.repo._inline_rendered == {}
+
+
+# What a replay nest reads from outside its state, as a query would
+LIT = {"rp-nest": True, "rp-inner": True}
+
+
+class ReplayNest(Component):
+    """Draws the leaf by what it reads from outside its state, not by a prop."""
+
+    @property
+    def lit(self) -> bool:
+        return LIT[self.id]
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<s {% tag_header %}>"
+            "{% if this.lit %}{% live_component 'InlineLeaf' id='rp-leaf' %}{% endif %}</s>"
+        )
+
+
+class ReplayInner(ReplayNest):
+    """``ReplayNest`` one level further in: the slot's nest draws it with ``{% component %}``."""
+
+
+class ReplayOuterNest(Component):
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<b {% tag_header %}>{% component 'ReplayInner' id='rp-inner' %}</b>")
+
+
+class ReplayOwner(Component):
+    """Renders the slot its drawer filled, and renders on its own on a click."""
+
+    clicks: int = 0
+
+    async def click(self):
+        self.clicks += 1
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<section {% tag_header %}><u>{{ this.clicks }}</u>{% render_slot 'body' %}</section>"
+        )
+
+
+class ReplayRoot(Component):
+    """Puts the nest in the owner's slot: the owner's render of its own draws the nest again from the fill."""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% component_block 'ReplayOwner' id='rp-owner' %}{% fill body %}"
+            "{% component 'ReplayNest' id='rp-nest' %}"
+            "{% endfill %}{% endcomponent %}</p>"
+        )
+
+
+class ReplayDeepRoot(ReplayRoot):
+    """The nest in the owner's slot draws the one that draws the leaf: that one's pass runs within the nest's."""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% component_block 'ReplayOwner' id='rp-owner' %}{% fill body %}"
+            "{% component 'ReplayOuterNest' id='rp-nest' %}"
+            "{% endfill %}{% endcomponent %}</p>"
+        )
+
+
+REPLAY_PAGES = {
+    "nest": ("rp-nest", [(ReplayRoot, "rp-root"), (ReplayOwner, "rp-owner"), (ReplayNest, "rp-nest")]),
+    "deep": (
+        "rp-inner",
+        [
+            (ReplayDeepRoot, "rp-root"),
+            (ReplayOwner, "rp-owner"),
+            (ReplayOuterNest, "rp-nest"),
+            (ReplayInner, "rp-inner"),
+        ],
+    ),
+}
+
+
+@pytest.fixture
+def _lit():
+    LIT.update({"rp-nest": True, "rp-inner": True})
+    yield LIT
+    LIT.update({"rp-nest": True, "rp-inner": True})
+
+
+@pytest.mark.parametrize("page", REPLAY_PAGES)
+async def test_a_live_component_a_nest_hides_in_the_slot_owner_s_own_render_leaves_in_that_render(_lit, page):
+    # The owner's render of its own draws the nest in its slot again, from the
+    # fill its drawer gave it, and the nest no longer draws the leaf there. What
+    # that pass of the nest drew is known only in the owner's render: the leaf
+    # leaves with it, and the owner's frame draws no leaf. So with a level
+    # between: that one's pass runs within the nest's, within the owner's render.
+    reader, joins = REPLAY_PAGES[page]
+    consumer, outbound = await _page(*joins)
+    for _ in range(2):
+        await _event(consumer, outbound, "rp-leaf", "bump")
+    assert HEARD == [("joined", "rp-leaf", 0)]
+
+    _lit[reader] = False
+    hidden = await _event(consumer, outbound, "rp-owner", "click")
+
+    assert HEARD[1:] == [("leaving", "rp-leaf", 2)]
+    assert consumer.repo.get("rp-leaf") is None
+    assert _leaves(hidden) == [], hidden
+    assert consumer.repo._inline == {}
+    assert consumer.repo._inline_rendered == {}
+
+
+@pytest.mark.parametrize("page", REPLAY_PAGES)
+async def test_a_live_component_a_nest_shows_in_the_slot_owner_s_own_render_joins_in_that_render(_lit, page):
+    reader, joins = REPLAY_PAGES[page]
+    _lit[reader] = False
+    consumer, outbound = await _page(*joins)
+    assert HEARD == []
+
+    _lit[reader] = True
+    shown = await _event(consumer, outbound, "rp-owner", "click")
+
+    assert HEARD == [("joined", "rp-leaf", 0)]
+    assert _leaves(shown) == ["leaf=0:"], shown
+    assert shown[0]["id"] == "rp-owner"
+    assert "rp-leaf" in shown[0]["instances"]
+    assert consumer.repo._inline == {}
+    assert consumer.repo._inline_rendered == {}

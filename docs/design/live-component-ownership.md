@@ -162,6 +162,14 @@ R의 `render`의 `children`에 실린다. 그러지 않던 때는 N 자신의 re
 - R이 배치 전에 사라지면(렌더나 `after_render` 훅이 던져 롤백될 때) R 앞으로 남긴 기록도 함께 지운다. N의 자식은 N
   자신의 다음 render가 정리한다.
 - 슬롯의 LiveComponent는 슬롯을 채운 쪽의 자식이므로(§3-2) 슬롯을 그리는 N의 패스가 건드리지 않는다.
+- **슬롯 주인의 자기 렌더가 다시 그린 N도 같은 모양이다.** R이 슬롯 주인 S의 fill에 N을 그리면, S가 자기 render로
+  슬롯을 그릴 때 기억한 fill에서 N을 지금 상태로 다시 그린다(`wireview/slots.py`의 `_NestedComponentNode`). 그 패스는
+  R의 것이 아니라 S의 render 안에서 돈다. 그래서 S 앞으로 기록하고(`end_inline_pass(N, S)`) S의 배치가 N의 자식을
+  정리한다. N이 상태 밖의 값(쿼리 같은 것)을 읽어 그 패스에서 L을 숨기거나 처음 보이면, 예전에는 기록이 없어 숨긴 L이
+  N 자신의 다음 render까지 `leaving()` 없이 남았고, 처음 보인 L은 `joined()`도 렌더도 없이 참조만 나갔다. 그 패스
+  안에서 그려진 컴포넌트 M의 기록(`_inline[N]`)도 S의 배치가 재귀로 소비한다. 위의 조건(N이 join됐고 S의 렌더가
+  첫 렌더가 아님)은 그대로다. 슬롯에 직접 놓인 LiveComponent(R 소유)는 S의 배치가 은퇴시키지 않는다 — S의 자식이
+  아니라 R의 자식이고, S의 패스는 그것을 참조로만 그린다(`_ComponentRefNode`).
 
 컨슈머의 `_flush_pending_live_components()` 호출 여섯 곳은 전부 삭제된다. 렌더를 보내는 곳이 한 곳이면
 잊을 수 없다.
