@@ -1,7 +1,7 @@
 from django.shortcuts import render
 
-# ?rows=1 and ?live=1: one component of live.py on a page of its own
-ALONE = {"rows": "TempRows", "live": "TempLiveHost"}
+# ?rows=1, ?live=1 and ?notes=1: one component of live.py on a page of its own
+ALONE = {"rows": "TempRows", "live": "TempLiveHost", "notes": "TempNotesProbe"}
 
 
 def index(request):

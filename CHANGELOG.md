@@ -442,9 +442,11 @@ The django-reactor era changelog (2.x) is preserved in
   brought back what the component's names do not decide. A nested `{% component %}` went back to
   that drawing, `data-state` included, so its own changes since were undone on the page and a
   reconnect joined it with the old state; a `{% render_slot %}` hid the changes of the fill. Each
-  render now records what a part drew from elsewhere, and a kept part whose nested component signed
-  another state since, or whose fill is another, renders from what it has -- its list leaves the
-  page. Rows drawn by components that did not change, and a fill that did not, stay as before. A
+  render now records what a part drew from elsewhere, and a kept part whose nested component's own
+  render showed something new since -- its temporary assigns and excluded fields included, which its
+  signed state leaves out; the render answering its join does not count -- or whose fill is another,
+  renders from what it has -- its list leaves the page. A part that did not run because the part
+  around it was kept keeps what it recorded before. Rows drawn by components that did not change, and a fill that did not, stay as before. A
   LiveComponent in a kept part left the server on the next render, since the template had not named
   it, while the page kept it and its events went unanswered; it now stays, and the host's render
   keeps it named instead of taking the part off the page, where the component's own next render did

@@ -135,7 +135,7 @@ class MarkedVariableNode(Node):
 
 
 def drew(item: tuple[t.Any, ...]) -> None:
-    """The render drew ``item`` from elsewhere: ``("c", id, state)`` a nested component, ``("s", name, key)`` a slot.
+    """The render drew ``item`` from elsewhere: ``("c", id, moved)`` a nested component, ``("s", name, key)`` a slot.
 
     Every part open around it records it (``_PartNode``).
     """
@@ -151,14 +151,17 @@ def _wire(component: t.Any) -> t.Any:
         return None
 
 
-def _signed_state(component: t.Any) -> int | None:
-    """The state ``component``'s last ``data-state`` carried, hashed: a record holds one per row."""
-    token = _wire(component)._state_token
-    return hash(token[0]) if token is not None else None
+def _moved_at(component: t.Any) -> int:
+    """When ``component``'s own render last showed something new (``WireviewMeta.moved``): a record holds one per row.
+
+    Not its signed state: what its render shows moves outside it too (a
+    temporary assign, an excluded field, a property).
+    """
+    return _wire(component).moved
 
 
 def drew_component(component: t.Any) -> None:
-    drew(("c", component.id, _signed_state(component)))
+    drew(("c", component.id, _moved_at(component)))
 
 
 class _PartNode(Node):
@@ -166,11 +169,11 @@ class _PartNode(Node):
 
     Kept, a part shows what the component's last render of its own drew there,
     and that may hold what the component's names do not decide: another
-    component's drawing, which carries that component's state, or a slot's fill.
+    component's drawing, which its own renders move, or a slot's fill.
     So each render of its own records, per part, what the part drew from
     elsewhere (``WireviewMeta.drawn``), and a kept part is drawn again only when
-    one of those has moved since: the component signed another state, or the
-    fill is another. A part kept as it was takes its record along.
+    one of those has moved since: the component's own render showed something
+    new, or the fill is another. A part kept as it was takes its record along.
     """
 
     #: Which part of its template this is: the same across compilations of it
@@ -196,7 +199,8 @@ class _PartNode(Node):
             frame |= carried
             for outer in frames:
                 outer |= carried
-        wire.drawing[self.key] = wire.drawing.get(self.key, frozenset()) | frame
+        # A part in a loop's items settles once per item: merged in place, not copied
+        wire.drawing.setdefault(self.key, set()).update(frame)
 
     def _moved(self, wire: t.Any, context: Context) -> bool:
         """Whether something this part drew from elsewhere last time is another now."""
@@ -208,7 +212,7 @@ class _PartNode(Node):
         for kind, name, drawn in record:
             if kind == "c":
                 component = repo.components.get(name) if repo is not None else None
-                if component is not None and _signed_state(component) != drawn:
+                if component is not None and _moved_at(component) != drawn:
                     return True
             elif (slots.drawn_key(name) if slots else None) != drawn:
                 return True

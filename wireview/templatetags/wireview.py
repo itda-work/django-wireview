@@ -288,7 +288,8 @@ def _build_and_render_component(
         html = component_instance._render(repo) or ""
     if component_instance.wire.template_evaluated:
         repo.end_inline_pass(component_instance.id, drawer.id if drawer is not None else None)
-    # By id and signed state, so a render without the page's repository counts too ({% func %})
+    # By id, so a render without the page's repository counts too ({% func %}): the
+    # page joins what it drew under that id, and that has not moved until it renders
     drew_component(component_instance)
     if repo.is_live and html:
         # A fill holding this output keeps it as text; the slot's owner finds the

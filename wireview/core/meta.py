@@ -158,14 +158,20 @@ class WireviewMeta:
         # The slot content that pass gave, markers kept: the next pass keeps what
         # it drew of a reset temporary assign (SlotContainer.keeping_stale)
         self.fills: SlotContainer | None = None
-        # What each part of the last render of its own drew from elsewhere -- a
-        # nested component's signed state, a slot's content -- by the part's
+        # What each part of its renders of its own drew from elsewhere -- a
+        # nested component as it was then, a slot's content -- by the part's
         # key, and the record a render under way builds: a part kept for a
         # reset temporary assign is drawn again when one of those moved on
         # (template_engine._PartNode). Only a component with temporary assigns records.
         self.drawn: dict[tuple[t.Any, ...], frozenset[tuple[t.Any, ...]]] = {}
-        self.drawing: dict[tuple[t.Any, ...], frozenset[tuple[t.Any, ...]]] | None = None
+        self.drawing: dict[tuple[t.Any, ...], set[tuple[t.Any, ...]]] | None = None
         self.born: int = next(_TICKS)
+        # When a render of its own last put something new on the page; 0 until
+        # then. Its first, the join's answer, draws what the pass that made it
+        # drew, so it does not count. Another component's kept part that drew it
+        # before then is old -- whether or not the signed state moved with it.
+        self.moved: int = 0
+        self._rendered_own: bool = False
         # When this instance last rendered on its own (render_diff), or ``born``.
         # A slot's owner puts back what it drew of this instance last while this
         # has not moved since (slots._NestedComponentNode).
@@ -338,6 +344,7 @@ class WireviewMeta:
         """
         self.template_evaluated = False
         self.own_render = next(_TICKS)
+        first, self._rendered_own = not self._rendered_own, True
         if self._skip_render:
             self._skip_render = False
             return None
@@ -383,6 +390,8 @@ class WireviewMeta:
             diff_span.annotate(changed=diff is not None)
             diff_span.measure(diff)
 
+        if diff is not None and not first:
+            self.moved = next(_TICKS)
         return diff
 
     def _compute_rendered_diff(self, html: str, vsn: int = 0, stale: t.Collection[int] = ()) -> dict[str, t.Any] | None:
@@ -723,7 +732,8 @@ class WireviewMeta:
         finally:
             drawing, self.drawing = self.drawing, None
         if drawing is not None:
-            self.drawn = drawing
+            # A part this render did not run -- inside one it kept -- keeps its record
+            self.drawn = {**self.drawn, **{key: frozenset(items) for key, items in drawing.items()}}
 
         return mark_safe(html) if html else None
 

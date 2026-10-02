@@ -1,0 +1,6 @@
+{% load wireview %}
+
+<p {% tag_header %}>
+  <i data-testid="notes">{{ notes|length }}</i>
+  <button data-testid="note" {% on "click" "note" %}>note</button>
+</p>

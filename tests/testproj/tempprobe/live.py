@@ -8,7 +8,8 @@ the host's or the frame's render must leave it too.
 
 ``?rows=1``: a list whose rows a nested component draws, a row changing on its
 own. ``?live=1``: a list and a LiveComponent kept together in a block the
-host's pass draws.
+host's pass draws. ``?notes=1``: a list kept in a block with a nested component
+whose own temporary assign changes, its signed state staying as it was.
 """
 
 from wireview import Component, LiveComponent
@@ -83,3 +84,19 @@ class TempLive(LiveComponent):
 
     async def hit(self):
         self.hits += 1
+
+
+class TempNotesProbe(TempProbe):
+    class Meta:
+        template_name = "tempprobe/notesprobe.html"
+
+
+class TempNotes(Component):
+    class Meta:
+        template_name = "tempprobe/notes.html"
+        temporary_assigns = {"notes"}
+
+    notes: list[str] = []
+
+    async def note(self):
+        self.notes = ["x", "y"]

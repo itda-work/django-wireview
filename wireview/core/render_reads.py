@@ -42,7 +42,7 @@ Two kinds of part need more than the reads of this render:
   Phoenix's ``phx-update="append"`` keeps the DOM.
 
 What a kept part drew from elsewhere is not for this component's names to
-decide: a nested component's drawing carries that component's state, and a
+decide: a nested component draws itself, its own renders moving it, and a
 slot is the filler's. Each render of its own records what each part drew of
 them, and a part is drawn again when one of those moved on since
 (``template_engine._PartNode``). A LiveComponent in a kept part is only named

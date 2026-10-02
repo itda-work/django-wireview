@@ -6,7 +6,8 @@ do with the list sent it emptied, and the list vanished.
 
 Fixture: tests/testproj/tempprobe/ (``?nest=1``: the probe in a host's pass, in a slot, and from a
 ``{% component_block %}`` with a fill; ``?rows=1``: rows a nested component draws; ``?live=1``: a
-LiveComponent kept with the list in a block the host's pass draws).
+LiveComponent kept with the list in a block the host's pass draws; ``?notes=1``: a nested component
+kept with the list whose own temporary assign changes).
 """
 
 import pytest
@@ -92,6 +93,25 @@ def test_rows_a_nested_component_draws_stay_until_one_moves(page, server):
     page.get_by_test_id("bump").click()
     expect_text(page.get_by_test_id("count"), "2")
     expect_count(page.get_by_test_id("row-text").filter(has_text="one"), 0)
+
+
+def test_a_nested_component_that_moved_outside_its_signed_state_is_not_put_back(page, server):
+    """Its own temporary assign changed, so its data-state did not; the kept block drew it as before that (I6)."""
+    open_live(page, f"{server}/tempprobe/?notes=1")
+    items = page.locator("[data-testid=messages] li")
+    notes = page.get_by_test_id("notes")
+    page.get_by_test_id("load").click()
+    expect_count(items, 3)
+
+    page.get_by_test_id("bump").click()
+    expect_text(page.get_by_test_id("count"), "1")
+    expect_count(items, 3)  # its join moved nothing
+    page.get_by_test_id("note").click()
+    expect_text(notes, "2")
+
+    page.get_by_test_id("bump").click()
+    expect_text(page.get_by_test_id("count"), "2")
+    expect_count(notes.filter(has_text="0"), 0)
 
 
 def test_a_live_component_the_hosts_render_keeps_stays_with_the_list(page, server):
