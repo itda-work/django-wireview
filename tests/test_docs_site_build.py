@@ -510,13 +510,17 @@ def test_the_bundle_leaves_one_bundle_in_its_directory(site, tmp_path):
     assert sorted(path.name for path in tmp_path.iterdir()) == sorted([target.name, "keep.txt"])
 
 
-def test_the_bundle_never_goes_into_dist(site):
+def test_the_bundle_never_goes_into_dist(site, tmp_path, monkeypatch):
     """release.yml uploads dist/ to PyPI whole; a tarball there would go up as a package file."""
+    assert PYPI_DIST == ROOT / "dist"
     assert PYPI_DIST not in DEFAULT_BUNDLE_DIR.resolve().parents and DEFAULT_BUNDLE_DIR.resolve() != PYPI_DIST
-    for inside in (PYPI_DIST, PYPI_DIST / "docs"):
+    # Against a stand-in, so a guard that stopped working writes nothing into the real dist/.
+    dist = tmp_path / "dist"
+    monkeypatch.setattr("scripts.docs_site.bundle.PYPI_DIST", dist)
+    for inside in (dist, dist / "docs"):
         with pytest.raises(ValueError, match="dist/"):
             bundle(site=site.out, out_dir=inside)
-    assert not list(PYPI_DIST.glob("docs-site-*"))
+    assert not dist.exists()
 
 
 def test_the_bundle_needs_a_build(tmp_path):

@@ -150,6 +150,7 @@ FIXED_ONLY = "결함 수정이고, 기대어 쓸 수 있던 동작이 아니었�
 LOUD_COPY = "그 예시를 베낀 코드는 이미 오류로 드러났다"
 NO_UPGRADE_NOTE = {
     "ships a `.gitignore`": "새로 만드는 프로젝트만 받는다",
+    "carries the documentation site for that tag": "릴리스 자산이 늘었을 뿐 패키지는 같다",
     "The changelog names the advisory": DOCS_ONLY,
     "opens with a table from the version you run": "버전 범위는 `버전 범위` 절이 말한다",
     "`SECURITY.md` supports the newest": DOCS_ONLY,
