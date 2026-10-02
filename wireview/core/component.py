@@ -490,6 +490,9 @@ class Component(BaseModel):
     async def leaving(self) -> None:
         """Called when the component is about to leave.
 
+        Only an instance whose ``joined()`` ran gets it: one that leaves before
+        joining does not, and its async tasks are still cancelled.
+
         This is called when:
         - The client reports the component gone from the DOM (``leave``); nested
           LiveComponents receive it too

@@ -456,7 +456,10 @@ class ComponentRepository:
                 self._settle(inner_id, inner_rendered, batch)
 
     async def flush_pending_live_components(self) -> list[LiveComponent]:
-        """Call joined()/update() on all pending LiveComponents.
+        """Call joined()/update() on all pending LiveComponents (tests only).
+
+        The library settles them in ``WireviewSession.send_render``. This helper
+        does not set ``has_joined``, so ``leaving()`` skips what it joined.
 
         This should be called after the parent component renders,
         as LiveComponents are created during template rendering (sync context).
