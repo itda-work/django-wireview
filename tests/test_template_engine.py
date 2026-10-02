@@ -153,6 +153,34 @@ class TestRenderWithMarkers:
         assert "<!--$" not in result
 
 
+class TestNextIndex:
+    """Where a template drawn inside a render starts numbering: a fill drawn before it is numbered below that."""
+
+    @pytest.mark.unit
+    def test_it_is_the_count_so_far_inside_a_render(self):
+        clear_template_cache()
+        marker = get_template_marker()
+        seen: list[int] = []
+
+        def probe() -> str:
+            seen.append(marker.next_index())
+            return ""
+
+        render_with_markers(Template("{{ a }}{{ b }}{{ probe }}"), {"a": 1, "b": 2, "probe": probe})
+
+        assert seen and seen[0] >= 2
+
+    @pytest.mark.unit
+    def test_it_is_zero_between_renders(self):
+        """The counter keeps the last render's count until the next render resets it."""
+        clear_template_cache()
+        marker = get_template_marker()
+        render_with_markers(Template("{{ a }}{{ b }}"), {"a": 1, "b": 2})
+
+        assert marker.marker_context.count == 2
+        assert marker.next_index() == 0
+
+
 class TestGlobalTemplateMarker:
     """Test global template marker management."""
 
