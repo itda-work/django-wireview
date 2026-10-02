@@ -205,7 +205,11 @@ editors/vscode/            VS Code 확장(#156). wheel·sdist에 싣지 않고 �
                            (node --test가 .ts를 그대로 돈다 — import는 .ts까지, enum 금지), src/*.ts 는 등록과 위치 변환뿐인 어댑터.
                            진단의 원칙: Django·wireview가 렌더할 때 낼 오류만, 확실하지 않으면 말하지 않는다.
                            tests/test_vscode_extension.py 가 이 저장소의 모든 템플릿에 진단 0건인지, 확장의 표(태그 스니펫·wire-* 속성·
-                           메타데이터 버전·들여쓰기 규칙의 블록 태그)가 라이브러리와 같은지 본다(node만 필요). 확장 자체는 make ext-test·ext-test-host 등(make help)
+                           메타데이터 버전·들여쓰기 규칙의 블록 태그)가 라이브러리와 같은지 본다(node만 필요). 확장 자체는 make ext-test·ext-test-host 등(make help).
+                           어댑터의 수명(폴더 폐기·메타데이터 소스 전환·제한 모드)은 test/folders.test.ts 가 VS Code API를 test/stub/ 로 바꿔
+                           실제 FolderProject와 자식 프로세스로 본다. 낡은 실행의 결과를 버리는 판단은 core/runner.ts 의 Generations 하나다.
+                           신뢰하지 않은 워크스페이스에서는 프로세스를 띄우지도 메타데이터를 읽지도 않는다(folders.ts 의 run·load).
+                           CI의 vscode-extension-host 잡(VS Code 다운로드)만 릴리스 게이트 밖이다
 bench/                     성능 벤치마크 (make bench, make bench-compare BASE=<ref>). windows/ 는 Parallels 게스트 실측 레인. 설명은 bench/README.md
 typings/                   channels 타입 스텁 (pyright용)
 skills/wireview/           앱 개발자용 스킬의 정본. 휠에 wireview/agent_skills/ 로 실린다(hatch_build.py가 링크를 태그로 고정).
