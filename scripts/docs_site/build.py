@@ -150,29 +150,61 @@ def _tutorial_meta(site: nav.Site, page: nav.Page) -> str:
     return '<p class="page-meta">' + "".join(f'<span class="chip">{_e(chip)}</span>' for chip in chips) + "</p>"
 
 
-def _pager(site: nav.Site, page: nav.Page) -> str:
-    """Previous and next tutorial, in docs/site.toml's learning order."""
-    tutorials = site.tutorials()
-    if page not in tutorials:
-        return ""
-    levels = {level["slug"]: level["name"] for level in site.levels()}
-    at = tutorials.index(page)
+def _label(site: nav.Site, page: nav.Page) -> str:
+    """What the sidebar calls a page: 소개 for the home page, a section's name for its index."""
+    if not page.section:
+        return "소개"
+    if not page.slug:
+        return next(section["name"] for section in site.data["sections"] if section["slug"] == page.section)
+    return page.short_title
 
-    def card(other: nav.Page, label: str, css: str) -> str:
-        meta = levels[other.level or ""] + (f" · {nav.human_minutes(other.minutes)}" if other.minutes else "")
+
+def _neighbours(site: nav.Site, page: nav.Page) -> tuple[nav.Page | None, nav.Page | None]:
+    """The pages before and after this one in the sidebar's order, across section boundaries."""
+    pages = site.pages()
+    at = pages.index(page)
+    return (pages[at - 1] if at > 0 else None, pages[at + 1] if at < len(pages) - 1 else None)
+
+
+def _pager(site: nav.Site, page: nav.Page) -> str:
+    """Previous and next page, in docs/site.toml's order: the whole site reads as one sequence.
+
+    A tutorial's card shows its level and time; any other page's card shows its section, and so
+    does a card that crosses into another section. A section's index is titled with the section's
+    name, so its card says what it is instead; the home page's card says nothing more.
+    """
+    levels = {level["slug"]: level["name"] for level in site.levels()}
+    sections = {section["slug"]: section["name"] for section in site.data["sections"]}
+
+    def card(other: nav.Page, rel: str) -> str:
+        meta = []
+        if other.section and not other.slug:
+            meta.append("섹션 목차")
+        elif other.section and (not other.level or other.section != page.section):
+            meta.append(sections[other.section])
+        if other.level:
+            meta.append(levels[other.level])
+            if other.minutes:
+                meta.append(nav.human_minutes(other.minutes))
+        label = "← 이전" if rel == "prev" else "다음 →"
         return (
-            f'<a class="{css}" href="{_e(other.url)}" rel="{"prev" if css.endswith("prev") else "next"}">'
+            f'<a class="pager__{rel}" href="{_e(other.url)}" rel="{rel}">'
             f'<span class="pager__label">{label}</span>'
-            f'<span class="pager__title">{_e(other.short_title)}</span>'
-            f'<span class="pager__meta">{_e(meta)}</span></a>'
+            f'<span class="pager__title">{_e(_label(site, other))}</span>'
+            f'<span class="pager__meta">{_e(" · ".join(meta))}</span></a>'
         )
 
-    cards = []
-    if at > 0:
-        cards.append(card(tutorials[at - 1], "← 이전", "pager__prev"))
-    if at < len(tutorials) - 1:
-        cards.append(card(tutorials[at + 1], "다음 →", "pager__next"))
-    return f'<nav class="pager" aria-label="튜토리얼 이전·다음">{"".join(cards)}</nav>'
+    before, after = _neighbours(site, page)
+    cards = [card(other, rel) for other, rel in ((before, "prev"), (after, "next")) if other]
+    return f'<nav class="pager" aria-label="이전·다음 페이지">{"".join(cards)}</nav>' if cards else ""
+
+
+def _pager_links(site: nav.Site, page: nav.Page) -> str:
+    """The same neighbours as <link rel="prev|next"> in the head."""
+    before, after = _neighbours(site, page)
+    return "".join(
+        f'<link rel="{rel}" href="{_e(other.url)}">' for other, rel in ((before, "prev"), (after, "next")) if other
+    )
 
 
 def _preview(version: str, preview: bool) -> tuple[str, str]:
@@ -330,6 +362,7 @@ def build(
             page_meta=_tutorial_meta(site, page),
             body=rendered.body,
             pager=_pager(site, page),
+            pager_links=_pager_links(site, page),
             source_url=_e(source_url(page, tag)),
             tag=_e(tag),
             toc=toc,

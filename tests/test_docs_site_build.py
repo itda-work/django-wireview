@@ -222,19 +222,64 @@ def test_pinning_is_hatch_builds(linker):
 
 
 def test_the_tutorials_closing_line_becomes_the_pager(site):
-    tutorials = nav.tutorials()
-    for at, page in enumerate(tutorials):
+    for page in nav.tutorials():
+        article = _article(_html(site.out, page.url))
+        assert "← 이전:" not in article and "[목차]" not in article, page.source
+
+
+def _pager(page_html: str) -> str:
+    pager = re.search(r'<nav class="pager".*?</nav>', page_html)
+    assert pager
+    return pager.group(0)
+
+
+def test_every_page_links_its_neighbours_in_the_sidebars_order(site):
+    pages = nav.pages()
+    for at, page in enumerate(pages):
         page_html = _html(site.out, page.url)
-        assert "← 이전:" not in _article(page_html) and "[목차]" not in _article(page_html), page.source
-        pager = re.search(r'<nav class="pager".*?</nav>', page_html)
-        assert pager, page.source
-        links = re.findall(r'href="([^"]+)" rel="(prev|next)"', pager.group(0))
         expected = []
         if at > 0:
-            expected.append((tutorials[at - 1].url, "prev"))
-        if at < len(tutorials) - 1:
-            expected.append((tutorials[at + 1].url, "next"))
-        assert links == expected, page.source
+            expected.append((pages[at - 1].url, "prev"))
+        if at < len(pages) - 1:
+            expected.append((pages[at + 1].url, "next"))
+        assert re.findall(r'href="([^"]+)" rel="(prev|next)"', _pager(page_html)) == expected, page.source
+        head = page_html.split("</head>", 1)[0]
+        assert re.findall(r'<link rel="(prev|next)" href="([^"]+)">', head) == [(r, u) for u, r in expected]
+    # The sequence crosses every section boundary: the home page starts it, the last section's last page ends it.
+    assert 'rel="prev"' not in _pager(_html(site.out, pages[0].url))
+    assert 'rel="next"' not in _pager(_html(site.out, pages[-1].url))
+
+
+def _cards(page_html: str) -> dict[str, tuple[str, str]]:
+    return {
+        rel: (title, meta)
+        for rel, title, meta in re.findall(
+            r'rel="(prev|next)"><span class="pager__label">[^<]*</span>'
+            r'<span class="pager__title">([^<]*)</span><span class="pager__meta">([^<]*)</span>',
+            _pager(page_html),
+        )
+    }
+
+
+def test_a_card_shows_a_tutorials_level_and_otherwise_the_section(site):
+    tutorials = nav.tutorials()
+    first, last = tutorials[0], tutorials[-1]
+    sections = nav.site()["sections"]
+    after_tutorials = sections[[s["slug"] for s in sections].index("tutorial") + 1]
+
+    cards = _cards(_html(site.out, first.url))
+    assert cards["prev"] == ("튜토리얼", "섹션 목차")  # the section's index, as the sidebar names it
+    assert cards["next"][1] == "초급 · 1시간"  # a tutorial within the tutorials: level and time
+    # The last tutorial leads across the boundary, into the next section's index.
+    assert _cards(_html(site.out, last.url))["next"] == (after_tutorials["name"], "섹션 목차")
+    assert _cards(_html(site.out, "/wireview/tutorial/"))["prev"] == ("소개", "")
+    # Back across the boundary, a tutorial's card names the section it belongs to.
+    assert _cards(_html(site.out, f"/wireview/{after_tutorials['slug']}/"))["prev"] == (
+        last.short_title,
+        f"튜토리얼 · {nav.levels()[-1]['name']} · {nav.human_minutes(last.minutes)}",
+    )
+    reference = [page for page in nav.pages() if page.section == "reference" and page.slug][1]
+    assert {meta for _, meta in _cards(_html(site.out, reference.url)).values()} == {"레퍼런스"}
 
 
 def test_a_tutorial_shows_its_level_and_time(site):
