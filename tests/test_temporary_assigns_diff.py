@@ -673,9 +673,15 @@ async def event(consumer: WireviewConsumer, outbound: FakeOutbound, handler: str
     return json.dumps(outbound.last_diff(), ensure_ascii=False)
 
 
+_DATA_STATE = re.compile(r' data-state="[^"]*"')
+
+
 def html_now(component: Component) -> str:
-    """What the client has, rebuilt from the server's last render."""
-    return component.wire._last_rendered.to_html()  # type: ignore[union-attr]
+    """What the client has, rebuilt from the server's last render, without the ``data-state`` tokens.
+
+    A token is signed base64: "K0" not in a drawing failed whenever one happened to hold it.
+    """
+    return _DATA_STATE.sub("", component.wire._last_rendered.to_html())  # type: ignore[union-attr]
 
 
 @pytest.mark.parametrize("name", ["TaThis", "TaName"])
@@ -686,7 +692,9 @@ async def test_an_unrelated_render_leaves_the_list_on_the_page(name):
     diff = await event(consumer, outbound, "bump")
 
     assert '"1"' in diff  # the control: the other field went out
-    assert "one" not in diff and '"d": []' not in diff, diff
+    # The new data-state token is signed base64, which can hold "one" by chance
+    sent = re.sub(r'"\.?[\w-]+:[\w-]+:[\w-]+"', '""', diff)
+    assert "one" not in sent and '"d": []' not in sent, diff
     assert "<li>one</li><li>two</li>" in html_now(component)
     assert component.messages == []  # and the memory is still freed
 
@@ -1166,7 +1174,7 @@ async def test_a_component_a_function_component_draws_in_a_kept_part_is_seen():
     consumer, outbound, component = await page("TaRowsFunc")
     await event(consumer, outbound, "load")
     # Drawn without the page's repository, the page joins it from what it was handed
-    state = re.search(r'id="k" data-name="[^"]+" data-state="([^"]+)"', html_now(component))
+    state = re.search(r'id="k" data-name="[^"]+" data-state="([^"]+)"', component.wire._last_rendered.to_html())  # type: ignore[union-attr]
     assert state is not None, html_now(component)
     await consumer.command_join(TaK._fqn, state.group(1))
     k = consumer.repo.get("k")
