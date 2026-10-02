@@ -1236,13 +1236,10 @@ def _tallies(heard: t.Any) -> list[str]:
     return [found for value in values for found in _tallies(value)]
 
 
-async def _tally_page(communicator: WebsocketCommunicator, root: type[Component], root_id: str) -> None:
-    """Join ``root`` and the components the page joins under it, and bump the tally to 3."""
+async def _tally_page(communicator: WebsocketCommunicator, *joins: tuple[type[Component], str]) -> None:
+    """Join the root and the components the page joins under it, then the box, and bump the tally to 3."""
     meta = {"user": AnonymousUser(), "wire": WireviewMeta(params={})}
-    nested = [(root, root_id)]
-    if root is JoinedTallyPage:
-        nested.append((JoinedTallyFrame, "j-tally-frame"))
-    nested.append((JoinedTallyBox, "j-tally-box"))
+    nested = [*joins, (JoinedTallyBox, "j-tally-box")]
     for ref, (component, id) in enumerate(nested, start=1):
         state = sign_state(component(**meta, id=id))
         await communicator.send_json_to(
@@ -1281,7 +1278,7 @@ async def test_a_live_component_two_component_levels_down_an_if_shows_again_star
     connected, _ = await communicator.connect()
     assert connected
     try:
-        await _tally_page(communicator, JoinedTallyPage, "j-tally-page")
+        await _tally_page(communicator, (JoinedTallyPage, "j-tally-page"), (JoinedTallyFrame, "j-tally-frame"))
 
         await communicator.send_json_to(_event("j-tally-page", "toggle", 21))
         await _until(communicator, "render")
@@ -1308,7 +1305,7 @@ async def test_a_box_hidden_and_shown_again_before_its_leave_lands_keeps_its_tal
     connected, _ = await communicator.connect()
     assert connected
     try:
-        await _tally_page(communicator, JoinedTallyShelf, "j-tally-shelf")
+        await _tally_page(communicator, (JoinedTallyShelf, "j-tally-shelf"))
 
         await communicator.send_json_to(_event("j-tally-shelf", "toggle", 21))
         await _until(communicator, "render")
@@ -1321,6 +1318,112 @@ async def test_a_box_hidden_and_shown_again_before_its_leave_lands_keeps_its_tal
         shown_again = await _join_box_again(communicator, 23)
 
         assert _tallies(shown_again) == [expected], shown_again
+    finally:
+        await communicator.disconnect()
+
+
+class JoinedTallyOwner(Component):
+    """Renders its slot, and renders on its own on a click: the frame in the slot is drawn outside the frame's pass."""
+
+    clicks: int = 0
+
+    async def click(self):
+        self.clicks += 1
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<section {% tag_header %}><u>{{ this.clicks }}</u>{% render_slot 'body' %}</section>"
+        )
+
+
+class JoinedTallySlotPage(JoinedTallyPage):
+    """Passes the frame its flag from inside the owner's slot."""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<main {% tag_header %}>"
+            "{% component_block 'JoinedTallyOwner' id='j-tally-owner' %}{% fill body %}"
+            "{% component 'JoinedTallyFrame' id='j-tally-frame' shown=this.shown %}"
+            "{% endfill %}{% endcomponent %}</main>"
+        )
+
+
+class JoinedTallyBlockFrame(JoinedTallyFrame):
+    """``JoinedTallyFrame`` with a slot: the page draws it with a block, so its pass is given slots."""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<s {% tag_header %}>"
+            "{% if this.shown %}{% component 'JoinedTallyBox' id='j-tally-box' %}{% endif %}"
+            "{% render_slot 'body' %}</s>"
+        )
+
+
+class JoinedTallyBlockPage(JoinedTallyPage):
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% component_block 'JoinedTallyBlockFrame' id='j-tally-frame' shown=this.shown %}"
+            "{% fill body %}<em>x</em>{% endfill %}{% endcomponent %}</p>"
+        )
+
+
+async def test_a_frame_in_a_slot_whose_owner_drew_it_again_hides_the_box_by_the_pages_flag():
+    # The owner's render on its own draws the frame in its slot outside any
+    # pass of the frame's, and the box the frame drew there stays on record
+    # as named. The frame's next pass, within the page's, has to start from
+    # nothing, or that record says it drew the box it now hides: the box's
+    # leave then keeps the tally's state for it.
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
+    communicator.scope["user"] = AnonymousUser()
+    connected, _ = await communicator.connect()
+    assert connected
+    try:
+        await _tally_page(
+            communicator,
+            (JoinedTallySlotPage, "j-tally-page"),
+            (JoinedTallyOwner, "j-tally-owner"),
+            (JoinedTallyFrame, "j-tally-frame"),
+        )
+
+        await communicator.send_json_to(_event("j-tally-owner", "click", 20))
+        await _until(communicator, "render")
+        await communicator.send_json_to(_event("j-tally-page", "toggle", 21))
+        await _until(communicator, "render")
+        await communicator.send_json_to({"command": "leave", "payload": {"id": "j-tally-box"}})
+        await communicator.send_json_to(_event("j-tally-page", "toggle", 22))
+        await _until(communicator, "render")
+        shown_again = await _join_box_again(communicator, 23)
+
+        assert _tallies(shown_again) == ["tally=0"], shown_again
+    finally:
+        await communicator.disconnect()
+
+
+async def test_a_frame_a_block_draws_hides_the_box_by_the_pages_flag():
+    # The page draws the frame with {% component_block %}: the frame's pass
+    # within the page's is given slots, and ends there all the same.
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
+    communicator.scope["user"] = AnonymousUser()
+    connected, _ = await communicator.connect()
+    assert connected
+    try:
+        await _tally_page(
+            communicator, (JoinedTallyBlockPage, "j-tally-page"), (JoinedTallyBlockFrame, "j-tally-frame")
+        )
+
+        await communicator.send_json_to(_event("j-tally-page", "toggle", 21))
+        await _until(communicator, "render")
+        await communicator.send_json_to({"command": "leave", "payload": {"id": "j-tally-box"}})
+        await communicator.send_json_to(_event("j-tally-page", "toggle", 22))
+        await _until(communicator, "render")
+        shown_again = await _join_box_again(communicator, 23)
+
+        assert _tallies(shown_again) == ["tally=0"], shown_again
     finally:
         await communicator.disconnect()
 
