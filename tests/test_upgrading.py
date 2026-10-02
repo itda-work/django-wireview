@@ -95,7 +95,7 @@ def test_every_row_reads_every_section_from_its_own_up():
 
 
 # What changed since 1.0.0rc4, entry by entry. A key is a phrase of one CHANGELOG entry of the
-# release after 1.0.0rc4 ([Unreleased] until 1.0 is cut); its value names the bullet of
+# release after 1.0.0rc4 (the [1.0.0] section); its value names the bullet of
 # "1.0.0rc4에서 1.0으로" that tells an upgrading project what to do -- a phrase of its bold lead --
 # and a phrase its text, sub-bullets included, says about this entry. Under NO_UPGRADE_NOTE the
 # value says why nothing needs telling. The UPGRADING section was written from the entries one
