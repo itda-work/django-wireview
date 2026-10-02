@@ -160,7 +160,8 @@ def find_template(name: str | None, roots: list[Path]) -> str | None:
     for root in roots:
         candidate = root / name
         if candidate.is_file():
-            return str(candidate)
+            # Real, like the roots: an editor names a document by where it really is
+            return str(candidate.resolve())
     return None
 
 

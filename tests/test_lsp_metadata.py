@@ -221,6 +221,20 @@ class TestComponentsForAnEditor:
         missing = [c["name"] for c in components if c["template_name"] and not c["template_path"]]
         assert missing == []
 
+    def test_a_linked_template_has_its_real_path(self, tmp_path):
+        """The editor names a document by its real path: a link's own path never matched an owner."""
+        root = tmp_path / "templates"
+        elsewhere = tmp_path / "elsewhere"
+        (elsewhere / "shared").mkdir(parents=True)
+        (elsewhere / "real.html").write_text("x")
+        (elsewhere / "shared" / "card.html").write_text("x")
+        root.mkdir()
+        (root / "linked.html").symlink_to(elsewhere / "real.html")
+        (root / "shared").symlink_to(elsewhere / "shared", target_is_directory=True)
+
+        assert find_template("linked.html", [root]) == str((elsewhere / "real.html").resolve())
+        assert find_template("shared/card.html", [root]) == str((elsewhere / "shared" / "card.html").resolve())
+
     def test_a_template_no_directory_holds_has_no_path(self):
         assert find_template("no/such/template.html", template_roots()) is None
         assert find_template(None, template_roots()) is None
