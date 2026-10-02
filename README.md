@@ -508,7 +508,7 @@ WIREVIEW = {
 
 `senders`에 적은 모델만 알린다. 집합으로 적으면 인스턴스의 모든 필드가 직렬화되어 채널 레이어로 간다.
 민감한 필드가 있는 모델(`User` 등)은 매핑으로 적어 보낼 필드를 고른다. 받는 쪽 인스턴스에서 적지 않은 필드는
-deferred다([설정](docs/features/settings.md#모델-알림)).
+deferred다([설정](https://github.com/itda-work/django-wireview/blob/main/docs/features/settings.md#모델-알림)).
 
 ```python
 senders={("todo", "Item"): "__all__", ("auth", "User"): ("username",)}  # ()는 pk만
