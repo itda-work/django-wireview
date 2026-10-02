@@ -14,10 +14,12 @@ from wireview import Component, LiveComponent, function_component
 from wireview.management.commands.wireview_lsp import (
     METADATA_VERSION,
     extract_component_metadata,
+    extract_fields,
     extract_function_components,
     extract_library,
     extract_metadata,
     find_template,
+    serialize_default,
     template_roots,
 )
 
@@ -441,6 +443,37 @@ def test_the_metadata_is_the_same_on_every_run(tmp_path):
         outputs.append(data)
     assert outputs[0] == outputs[1]
     assert " at 0x" not in json.dumps(outputs[0])
+
+
+class _Marker:
+    """An object whose repr is the default one: with a memory address."""
+
+
+@pytest.mark.unit
+class TestNoMemoryAddresses:
+    """Only the addresses of objects come out: a string that reads like one is data."""
+
+    def test_a_string_in_a_default_stays_as_it_is(self):
+        assert serialize_default("meet at 0xCAFE") == "meet at 0xCAFE"
+        assert serialize_default(["meet at 0xCAFE"]) == "['meet at 0xCAFE']"
+        assert serialize_default({"where": "meet at 0xCAFE"}) == "{'where': 'meet at 0xCAFE'}"
+        assert serialize_default(("<a at 0x1>",)) == "('<a at 0x1>',)"
+
+    def test_an_object_in_a_default_loses_its_address(self):
+        assert serialize_default([_Marker(), "meet at 0xCAFE"]) == (f"[<{__name__}._Marker object>, 'meet at 0xCAFE']")
+        assert serialize_default(_Marker()) == f"<{__name__}._Marker object>"
+
+    def test_a_literal_keeps_its_strings_and_annotated_loses_its_addresses(self):
+        class Addresses(Component, public=False):
+            choice: t.Literal["meet at 0xCAFE"] = "meet at 0xCAFE"
+            # Inside a union: pydantic keeps the Annotated (at the top it moves the metadata out)
+            marked: t.Annotated[int, _Marker()] | None = None
+
+        fields = extract_fields(Addresses)
+        assert fields["choice"]["annotation"] == "typing.Literal['meet at 0xCAFE']"
+        assert fields["choice"]["default"] == "meet at 0xCAFE"
+        assert " at 0x" not in fields["marked"]["annotation"]
+        assert f"<{__name__}._Marker object>" in fields["marked"]["annotation"]
 
 
 @pytest.mark.unit

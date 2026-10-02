@@ -177,7 +177,8 @@ The django-reactor era changelog (2.x) is preserved in
 
 - Two runs of `manage.py wireview_lsp` over the same project wrote different metadata: a field's
   `annotation` that holds an `Annotated` validator, and a default's repr, carried the object's
-  memory address. The address is left out now (#156).
+  memory address. The address is left out now, from the repr of the objects in the value only: a
+  string that reads like an address (`Literal["meet at 0xCAFE"]`) stays as it is (#156).
 
 - The project's template directories were read off `TEMPLATES`: a project that lists its loaders
   in `OPTIONS` -- the cached loader -- has `APP_DIRS` off, and every app's templates were missed.

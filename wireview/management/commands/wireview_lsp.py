@@ -227,7 +227,7 @@ def extract_fields(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
 
         fields[name] = {
             "type": type_str,
-            "annotation": without_addresses(str(annotation)) if annotation else None,
+            "annotation": without_addresses(annotation, str(annotation)) if annotation else None,
             "default": default_value,
             "required": field_info.is_required(),
             "description": field_info.description,
@@ -237,12 +237,46 @@ def extract_fields(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
     return fields
 
 
-_ADDRESS = re.compile(r" at 0x[0-9a-fA-F]+")
+_ADDRESS = re.compile(r"<([^<>]*?) at 0x[0-9a-fA-F]+>")
+_CONTAINERS = (list, tuple, set, frozenset, dict)
 
 
-def without_addresses(text: str) -> str:
-    """A repr without the memory addresses in it: they made every run's output differ."""
-    return _ADDRESS.sub("", text)
+def _objects(value: t.Any, seen: set[int]) -> t.Iterator[t.Any]:
+    """The objects a value is made of: a collection's items, a type's arguments and Annotated's metadata.
+
+    Strings and other data are not objects here: their text is the user's, whatever it reads like.
+    """
+    if id(value) in seen or isinstance(value, (str, bytes, int, float, complex)) or value is None:
+        return
+    seen.add(id(value))
+    if isinstance(value, dict):
+        parts = [*value.keys(), *value.values()]
+    elif isinstance(value, _CONTAINERS):
+        parts = list(value)
+    else:
+        parts = [*t.get_args(value), *getattr(value, "__metadata__", ())]
+    if not parts and not isinstance(value, _CONTAINERS):
+        yield value
+    for part in parts:
+        yield from _objects(part, seen)
+
+
+def without_addresses(value: t.Any, text: str) -> str:
+    """``text`` (a value's repr or str) without the memory addresses of the objects in the value.
+
+    Only the repr of an object the value is made of is touched, and in it only the
+    ``<... at 0x...>`` of a default repr (an object, a function, a class's method): those
+    made every run's output differ. A string in the value stays as it is.
+    """
+    for part in _objects(value, set()):
+        try:
+            written = repr(part)
+        except Exception:
+            continue
+        stable = _ADDRESS.sub(r"<\1>", written)
+        if stable != written:
+            text = text.replace(written, stable)
+    return text
 
 
 def accepts_extra_kwargs(cls: type[Component]) -> bool:
@@ -638,11 +672,11 @@ def serialize_default(value: t.Any) -> t.Any:
             if isinstance(value, set):
                 return []
         # Non-empty collections - return string representation
-        return without_addresses(repr(value))
+        return without_addresses(value, repr(value))
 
     # Handle callable defaults (factory functions)
     if callable(value):
         return f"<factory: {value.__name__}>"
 
     # Fallback to string representation
-    return without_addresses(repr(value))
+    return without_addresses(value, repr(value))

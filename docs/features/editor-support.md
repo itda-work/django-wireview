@@ -82,7 +82,7 @@ Django를 띄워 등록된 컴포넌트, 함수 컴포넌트, 훅 파일, 템플
 | `docstring` | 클래스의 docstring |
 | `template_name` | `Meta.template_name` |
 | `template_path` | **1.1** 그 이름이 가리키는 디스크의 파일, 없으면 `null`. 템플릿 디렉터리를 순서대로 찾고, 심볼릭 링크를 푼 실제 경로를 적는다 |
-| `fields` | 필드 → `type`, `annotation`(메모리 주소는 지운다 — 실행마다 같은 출력이 나오게), `default`, `required`, `description`, **1.1** `in_state`. `id`·`user`·`session`·`wire`는 빠진다. **1.1부터** `Meta.exclude_fields`의 필드도 실린다(`in_state: false`) — 템플릿이 넘기는 인자이기 때문이다 |
+| `fields` | 필드 → `type`, `annotation`(그 안 객체의 repr에서 메모리 주소를 지운다 — 실행마다 같은 출력이 나오게. 문자열은 그대로다), `default`, `required`, `description`, **1.1** `in_state`. `id`·`user`·`session`·`wire`는 빠진다. **1.1부터** `Meta.exclude_fields`의 필드도 실린다(`in_state: false`) — 템플릿이 넘기는 인자이기 때문이다 |
 | `accepts_extra_kwargs` | **1.1** 사용자 클래스가 `new()`를(LiveComponent면 `update()`·`update_many()`도) 오버라이드했는가. 참이면 필드가 아닌 인자도 그 코드가 읽을 수 있다 |
 | `properties` | **1.1** 사용자 클래스의 `property`·`cached_property` → `type`, `is_async`, `docstring`, `file_path`, `line_number` |
 | `methods` | 메서드 → `is_handler`(클라이언트가 부를 수 있는가, `is_client_callable`과 같은 판정), `is_async`, `parameters`, `docstring`, `line_number`, **1.1** `file_path`(믹스인의 메서드는 믹스인의 파일) |
