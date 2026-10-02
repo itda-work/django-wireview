@@ -1,0 +1,331 @@
+# The documentation site's table of contents: what itda.work/wireview/ publishes, in what order, at what address (#158).
+#
+# This file is the source of truth for the site navigation and for the tutorials' learning order.
+# docs/tutorials/README.md (its learning path, level headings and time table) and every tutorial's
+# closing navigation line are written for GitHub readers; tests/test_tutorials.py checks they say
+# what this file says. tests/test_doc_site.py checks that every user document is classified here.
+#
+# Adding or moving a Markdown file under docs/ (or the root README.md) means classifying it here:
+# either a page of a section below, or a pattern in [exclude]. An unclassified file fails the tests.
+#
+# URLs
+#   base                        the site's root path, "/wireview/"
+#   [home]                      <base>                               e.g. /wireview/
+#   a section's index           <base><section slug>/                e.g. /wireview/tutorial/
+#   a section's page            <base><section slug>/<page slug>/    e.g. /wireview/tutorial/todo-app/
+#   Slugs are [a-z0-9-]+. A page slug is unique within its section and never carries a tutorial's
+#   number, so reordering the path never moves a public URL. Changing a slug means adding an entry
+#   to docs/redirects.toml.
+#
+# Titles
+#   A page's title is its document's first line, "# <title>"; it is not repeated here.
+#   A tutorial's short title (the README's learning path, the time table, the closing navigation
+#   line) is that title up to the first " - ": "# 10. Poll 앱 - 실시간 투표" is "10. Poll 앱".
+#
+# Tutorials
+#   The order of [[sections.pages]] in the tutorial section is the learning order.
+#   level    the slug of one of [[levels]]; the path visits the levels in their order, each once.
+#   minutes  the estimated time, an integer or a [low, high] range. The README writes it as
+#            "30분", "1.5시간", "1-2시간" (human_minutes in tests/testproj/site_nav.py).
+#   summary  the line after the tutorial's link in the README's learning path.
+
+base = "/wireview/"
+
+[home]
+source = "README.md"
+
+[[levels]]
+slug = "intro"
+name = "입문"
+label = "Getting Started"
+
+[[levels]]
+slug = "beginner"
+name = "초급"
+label = "Beginner"
+
+[[levels]]
+slug = "intermediate"
+name = "중급"
+label = "Intermediate"
+
+[[levels]]
+slug = "advanced"
+name = "고급"
+label = "Advanced"
+
+[[levels]]
+slug = "deep-dive"
+name = "심화"
+label = "Deep Dive"
+
+# --- 튜토리얼 -------------------------------------------------------------------------------------
+
+[[sections]]
+slug = "tutorial"
+name = "튜토리얼"
+index = "docs/tutorials/README.md"
+
+[[sections.pages]]
+source = "docs/tutorials/01-getting-started.md"
+slug = "getting-started"
+level = "intro"
+minutes = 30
+summary = "설치, 설정, 첫 컴포넌트"
+
+[[sections.pages]]
+source = "docs/tutorials/02-counter-component.md"
+slug = "counter-component"
+level = "beginner"
+minutes = 60
+summary = "Component 기초, 이벤트, 상태 관리"
+
+[[sections.pages]]
+source = "docs/tutorials/10-poll-app.md"
+slug = "poll-app"
+level = "beginner"
+minutes = 60
+summary = "skip_render, 조건부 클래스, 실시간 투표"
+
+[[sections.pages]]
+source = "docs/tutorials/11-rating-app.md"
+slug = "rating-app"
+level = "beginner"
+minutes = 60
+summary = "URL 상태, 키보드 이벤트, 별점 평가"
+
+[[sections.pages]]
+source = "docs/tutorials/03-todo-app.md"
+slug = "todo-app"
+level = "intermediate"
+minutes = 180
+summary = "CRUD, 모델 구독, 중첩 컴포넌트"
+
+[[sections.pages]]
+source = "docs/tutorials/12-live-search.md"
+slug = "live-search"
+level = "intermediate"
+minutes = 90
+summary = "디바운스, JS 명령, 검색 자동완성"
+
+[[sections.pages]]
+source = "docs/tutorials/13-quiz-app.md"
+slug = "quiz-app"
+level = "intermediate"
+minutes = 120
+summary = "상태 머신, mutation, 리더보드"
+
+[[sections.pages]]
+source = "docs/tutorials/04-chat-app.md"
+slug = "chat-app"
+level = "advanced"
+minutes = 240
+summary = "Streams API, Presence API, 라이프사이클 훅"
+
+[[sections.pages]]
+source = "docs/tutorials/05-dashboard.md"
+slug = "dashboard"
+level = "advanced"
+minutes = 120
+summary = "AsyncResult, 복합 컴포지션"
+
+[[sections.pages]]
+source = "docs/tutorials/14-notifications.md"
+slug = "notifications"
+level = "advanced"
+minutes = 120
+summary = "사용자별 채널, 알림과 토스트, broadcast, JS 명령 체이닝"
+
+[[sections.pages]]
+source = "docs/tutorials/15-live-components.md"
+slug = "live-components"
+level = "advanced"
+minutes = 120
+summary = "중첩 컴포넌트, 부모-자식 통신"
+
+[[sections.pages]]
+source = "docs/tutorials/06-streams-api.md"
+slug = "streams-api"
+level = "deep-dive"
+minutes = [60, 120]
+summary = "성능 최적화, DOM ID 전략"
+
+[[sections.pages]]
+source = "docs/tutorials/07-presence-api.md"
+slug = "presence-api"
+level = "deep-dive"
+minutes = [60, 120]
+summary = "다중 방, 스케일링"
+
+[[sections.pages]]
+source = "docs/tutorials/08-file-uploads.md"
+slug = "file-uploads"
+level = "deep-dive"
+minutes = [60, 120]
+summary = "진행률, 보안"
+
+[[sections.pages]]
+source = "docs/tutorials/09-testing-components.md"
+slug = "testing-components"
+level = "deep-dive"
+minutes = [60, 120]
+summary = "mount(), pytest 활용"
+
+# --- 가이드: how a running app fits together and how to make it fast ----------------------------
+
+[[sections]]
+slug = "guide"
+name = "가이드"
+index = "docs/ARCHITECTURE.md"
+
+[[sections.pages]]
+source = "docs/PERFORMANCE.md"
+slug = "performance"
+
+# --- 레퍼런스: docs/features/, in the order its README first links each page --------------------
+
+[[sections]]
+slug = "reference"
+name = "레퍼런스"
+index = "docs/features/README.md"
+
+[[sections.pages]]
+source = "docs/features/component-api.md"
+slug = "component-api"
+
+[[sections.pages]]
+source = "docs/features/settings.md"
+slug = "settings"
+
+[[sections.pages]]
+source = "docs/features/navigation.md"
+slug = "navigation"
+
+[[sections.pages]]
+source = "docs/features/dead-view.md"
+slug = "dead-view"
+
+[[sections.pages]]
+source = "docs/features/temporary-assigns.md"
+slug = "temporary-assigns"
+
+[[sections.pages]]
+source = "docs/features/html-diff.md"
+slug = "html-diff"
+
+[[sections.pages]]
+source = "docs/features/flash.md"
+slug = "flash"
+
+[[sections.pages]]
+source = "docs/features/async-operations.md"
+slug = "async-operations"
+
+[[sections.pages]]
+source = "docs/features/chunked-uploads.md"
+slug = "chunked-uploads"
+
+[[sections.pages]]
+source = "docs/features/external-uploads.md"
+slug = "external-uploads"
+
+[[sections.pages]]
+source = "docs/features/slots.md"
+slug = "slots"
+
+[[sections.pages]]
+source = "docs/features/function-components.md"
+slug = "function-components"
+
+[[sections.pages]]
+source = "docs/features/live-component.md"
+slug = "live-component"
+
+[[sections.pages]]
+source = "docs/features/lifecycle-hooks.md"
+slug = "lifecycle-hooks"
+
+[[sections.pages]]
+source = "docs/features/boost.md"
+slug = "boost"
+
+[[sections.pages]]
+source = "docs/features/live-session.md"
+slug = "live-session"
+
+[[sections.pages]]
+source = "docs/features/session.md"
+slug = "session"
+
+[[sections.pages]]
+source = "docs/features/errors.md"
+slug = "errors"
+
+[[sections.pages]]
+source = "docs/features/optimistic-ui.md"
+slug = "optimistic-ui"
+
+[[sections.pages]]
+source = "docs/features/form-feedback.md"
+slug = "form-feedback"
+
+[[sections.pages]]
+source = "docs/features/csp.md"
+slug = "csp"
+
+[[sections.pages]]
+source = "docs/features/hooks.md"
+slug = "hooks"
+
+[[sections.pages]]
+source = "docs/features/type-stubs.md"
+slug = "type-stubs"
+
+[[sections.pages]]
+source = "docs/features/telemetry.md"
+slug = "telemetry"
+
+[[sections.pages]]
+source = "docs/features/checks.md"
+slug = "checks"
+
+[[sections.pages]]
+source = "docs/features/agent-skill.md"
+slug = "agent-skill"
+
+[[sections.pages]]
+source = "docs/features/testing.md"
+slug = "testing"
+
+# --- 배포 -----------------------------------------------------------------------------------------
+
+[[sections]]
+slug = "deployment"
+name = "배포"
+index = "docs/DEPLOYMENT.md"
+
+# --- 업그레이드: what to change between versions, and what a version promises not to break -------
+
+[[sections]]
+slug = "upgrade"
+name = "업그레이드"
+index = "docs/UPGRADING.md"
+
+[[sections.pages]]
+source = "docs/COMPATIBILITY.md"
+slug = "compatibility"
+
+# --- Not published -------------------------------------------------------------------------------
+# Design and implementation notes, the gap analysis and the roadmap are for the library's
+# developers. A pattern is a path, or a directory followed by "/**" for every file beneath it.
+# Files outside docs/ other than the root README.md are never published; the site links them on
+# GitHub at the release tag.
+
+[exclude]
+paths = [
+    "docs/design/**",
+    "docs/implementation/**",
+    "docs/legacy/**",
+    "docs/FEATURE-GAP.md",
+    "docs/ROADMAP.md",
+]

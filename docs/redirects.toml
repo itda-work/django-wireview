@@ -1,0 +1,20 @@
+# Site paths that moved (#158). The site publishes only the latest release, so a page whose URL
+# changes would 404 for every old link; each entry here makes the build leave a page at the old
+# path that sends the reader on.
+#
+# Format: one entry per moved path, both sides site paths as docs/site.toml builds them.
+#
+#   [[redirects]]
+#   from = "/wireview/tutorial/todo/"
+#   to = "/wireview/tutorial/todo-app/"
+#
+# Rules (tests/test_doc_site.py checks them):
+#   - Paths start with the site's base, "/wireview/", and end with "/".
+#   - "from" is not a page of the current navigation: a path still in use does not redirect.
+#   - "to" is a page of the current navigation.
+#   - No chains: when a page moves again, point its older entries at the new path too.
+#   - Each "from" appears once.
+#
+# Entries are never removed; a link published once may still be out there.
+
+redirects = []

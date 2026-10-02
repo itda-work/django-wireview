@@ -188,6 +188,8 @@ examples/                  예제 앱 11개. 각 디렉터리 = 개념 하나 + 
 docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEATURE-GAP.md, ARCHITECTURE.md,
                            ROADMAP.md, DEPLOYMENT.md, PERFORMANCE.md, design/ 설계 메모(README.md 인덱스), implementation/ 구현 노트
                            (implementation/wire-protocol.md 가 메시지 형태의 정본. 표의 이름은 tests/test_wire_protocol_doc.py 가 코드와 맞춘다)
+                           site.toml 이 문서 사이트(itda.work/wireview/)의 목차·주소·튜토리얼 학습 순서의 정본, redirects.toml 이 옮긴 주소.
+                           tests/testproj/site_nav.py 가 읽고, tests/test_doc_site.py 가 분류를, tests/test_tutorials.py 가 튜토리얼 README·nav 줄을 이것과 맞춘다(#158)
 bench/                     성능 벤치마크 (make bench, make bench-compare BASE=<ref>). windows/ 는 Parallels 게스트 실측 레인. 설명은 bench/README.md
 typings/                   channels 타입 스텁 (pyright용)
 skills/wireview/           앱 개발자용 스킬의 정본. 휠에 wireview/agent_skills/ 로 실린다(hatch_build.py가 링크를 태그로 고정).
@@ -258,6 +260,7 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 - **컴포넌트 이름은 클래스명으로 전역 등록.** 다른 모듈에서 같은 클래스명을 쓰면 경고가 난다. 템플릿에서 `app:Name` 또는 FQN으로 구분한다.
 - **상태 필드.** JSON 직렬화 가능해야 한다. 모델 인스턴스는 예외다: 단일 필드·목록·dict 값·`AsyncResult`의 결과 어디에 있든 pk로 서명되고, join 때 필드의 타입 표기를 따라 다시 읽힌다(`wireview/core/model_state.py`). 그래서 타입 표기가 곧 복원 규칙이다 — `list` 같은 맨 타입으로 적으면 pk 목록으로 돌아온다. `Meta.temporary_assigns`는 기본값이 있는 필드만 초기화되고, 서명 상태에 실리지 않으며, 초기화는 변경으로 치지 않는다(`wireview/core/render_reads.py`, #111). `Meta.exclude_fields`는 `user`·`wire`·`session`에 **더해진다**(뺄 수 없다).
 - **테스트는 `DJANGO_ALLOW_ASYNC_UNSAFE` 없이 돈다(#120).** 그 플래그는 이벤트 루프 위의 동기 ORM을 막는 Django의 검사를 끄고, 켜 둔 동안 bookmarks·notifications 예제가 실서버에서 join하지 못하는데도 스위트는 초록이었다. 루트 `conftest.py`가 플래그를 보면 시작을 거절하고, `tests/test_async_safety.py`가 진입점(Makefile·e2e.sh·CI·bench)에 다시 들어오는지 본다. 국소 허용은 **E2E 항목의 Playwright 스레드 하나**뿐이다 — sync API가 그 스레드에 루프를 돌려 pytest-django 픽스처가 막히기 때문이고, 라이브 서버 스레드는 검사를 그대로 받는다. async 테스트에서 쿼리를 세려면 `CaptureQueriesContext` 대신 `testproj.queries.capture_queries()`를 쓴다(연결이 스레드마다 따로다). 라이브 렌더는 property를 워커 스레드에서 읽지만, 핸들러가 읽는 property는 루프 위에서 돈다. 워커 스레드가 렌더하는 동안 루프는 계속 돌므로, 루프에서 컴포넌트를 바꾸는 백그라운드 코드는 `wire._render_gate.run()`으로 돌린다 — 아니면 `data-state`와 본문이 다른 상태를 말하는 프레임이 나간다(#138, `wireview/core/render_gate.py`).
+- **사용자 문서를 추가·이동하면 `docs/site.toml`에 분류한다.** 사이트에 싣는 페이지이거나 `[exclude]` 패턴이어야 하고, 어느 쪽도 아니면 tests/test_doc_site.py가 실패한다. 공개 주소가 바뀌면 `docs/redirects.toml`에 옛 주소를 남긴다.
 - **pyright는 `tests/`를 검사하지 않고, `tsc`는 checkJs=false라 JS 본문을 검사하지 않는다.** 둘 다 통과해도 해당 영역은 검증된 것이 아니다.
 - **gitignore 대상.** `*.pyi` (AUTO_GENERATE_STUBS가 DEBUG에서 생성), `.wireview/`, `tests/static/`, `*.min.js`.
 - **컴포넌트 ID**는 페이지 안에서 고유해야 한다.

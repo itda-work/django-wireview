@@ -83,6 +83,7 @@ CI나 빌드 작업을 `bug`/`enhancement`에 억지로 넣지 않는다.
 - [ ] `tests/test_<feature>.py` — 마커(`unit`/`integration`/`slow`/`e2e`) 필수, `--strict-markers`다
 - [ ] `docs/features/<feature>.md`
 - [ ] `docs/features/README.md` 인덱스 갱신
+- [ ] 새 문서는 `docs/site.toml`에 분류 (사이트 페이지 또는 `[exclude]`)
 - [ ] `docs/FEATURE-GAP.md` 상태 갱신 (GAP 작업인 경우)
 - [ ] `CHANGELOG.md` Unreleased 한 줄
 - [ ] 새 모듈·태그·속성이 생겼으면 `CLAUDE.md`의 저장소 지도 갱신

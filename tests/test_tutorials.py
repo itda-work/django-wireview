@@ -1,17 +1,23 @@
-"""Guard: the tutorials lead where their index says they do (#126).
+"""Guard: the tutorials lead where the site navigation says they do (#126, #158).
 
-``docs/tutorials/README.md`` recommended 01 -> 02 -> 10 -> 11 -> 03 -> 12 ..., while
+``docs/tutorials/README.md`` once recommended 01 -> 02 -> 10 -> 11 -> 03 -> 12 ..., while
 each tutorial's "next" link went 01 -> 02 -> 03 ... -> 09 and stopped there, so
 10 to 15 could not be reached by following the tutorials at all. The files keep
-their numbers (examples and the feature reference link to them by name); the
-index is the order, and every tutorial's closing navigation line is derived
-from it here.
+their numbers (examples and the feature reference link to them by name).
+
+The learning order, each tutorial's level and estimated time live in
+``docs/site.toml``, which also builds the documentation site. The README's
+learning path, its level headings, its time table and total, and every
+tutorial's closing navigation line are written for GitHub readers; each is
+checked here against what ``docs/site.toml`` implies. A tutorial's short title
+in all of them is its own ``# <title>`` up to the first " - ".
 """
 
 import re
 from pathlib import Path
 
 import pytest
+from testproj import site_nav
 
 pytestmark = pytest.mark.unit
 
@@ -22,15 +28,15 @@ FILES = sorted(p.name for p in TUTORIALS.glob("[0-9][0-9]-*.md"))
 LINK = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
 NAV = re.compile(r"^\[(← |목차\])")
 
+#: The tutorials in the order docs/site.toml lists them.
+PATH = site_nav.tutorials()
+ORDER = [Path(page.source).name for page in PATH]
+TITLES = {Path(page.source).name: page.short_title for page in PATH}
+LEVELS = {level["slug"]: level for level in site_nav.levels()}
+
 
 def _section(text: str, heading: str) -> str:
     return text.split(f"\n## {heading}\n", 1)[1].split("\n## ", 1)[0]
-
-
-#: (title, file) in the order the index recommends.
-PATH = re.findall(r"^- \[([^\]]+)\]\(([^)]+)\)", _section(INDEX, "학습 경로"), re.MULTILINE)
-ORDER = [file for _, file in PATH]
-TITLES = dict((file, title) for title, file in PATH)
 
 
 def _expected_nav(file: str) -> str:
@@ -48,21 +54,42 @@ def _text(file: str) -> str:
     return (TUTORIALS / file).read_text(encoding="utf-8")
 
 
-def test_the_index_lists_every_tutorial_once():
+def test_the_order_lists_every_tutorial_once():
     assert sorted(ORDER) == FILES
     assert len(ORDER) == len(set(ORDER))
 
 
-def test_the_time_table_follows_the_path():
+def test_the_path_visits_each_level_once_in_order():
+    ranks = [list(LEVELS).index(page.level) for page in PATH]
+    assert ranks == sorted(ranks)
+
+
+def test_the_learning_path_is_the_order():
+    """The README's path: a "### <level> (<label>)" heading, then its tutorials as "- [title](file) - summary"."""
+    expected: list[str] = []
+    for page in PATH:
+        level = LEVELS[page.level]
+        heading = f"### {level['name']} ({level['label']})"
+        if heading not in expected:
+            expected.append(heading)
+        expected.append(f"- [{page.short_title}]({Path(page.source).name}) - {page.summary}")
+    written = [line for line in _section(INDEX, "학습 경로").splitlines() if line.startswith(("### ", "- "))]
+    assert written == expected
+
+
+def test_the_time_table_is_the_order():
     rows = [line for line in _section(INDEX, "학습 시간 예상").splitlines() if line.startswith("| ")][1:]
-    numbers: list[str] = []
-    for row in rows:
-        cell = row.strip("|").split("|")[1].strip()
-        if match := re.fullmatch(r"(\d\d)-(\d\d)", cell):
-            numbers += [f"{n:02d}" for n in range(int(match.group(1)), int(match.group(2)) + 1)]
-        else:
-            numbers.append(cell[:2])
-    assert numbers == [file[:2] for file in ORDER]
+    expected = [
+        f"| {LEVELS[page.level]['name']} | {page.short_title} | {site_nav.human_minutes(page.minutes)} |"
+        for page in PATH
+    ]
+    assert rows == expected
+
+
+def test_the_total_time_is_the_sum():
+    low, high = site_nav.total_minutes([page.minutes for page in PATH])
+    total = site_nav.human_minutes((low, high) if low != high else low)
+    assert f"**총 학습 시간**: 약 {total}" in _section(INDEX, "학습 시간 예상").splitlines()
 
 
 @pytest.mark.parametrize("file", FILES)
