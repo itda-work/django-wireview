@@ -5,9 +5,13 @@ the render, and an event that has nothing to do with it must leave it on the pag
 On ``?nest=1`` the probe is drawn in a host's pass, in a frame's slot, and from
 the host's ``{% component_block %}`` with a fill reading the host's ``title``;
 the host's or the frame's render must leave it too.
+
+``?rows=1``: a list whose rows a nested component draws, a row changing on its
+own. ``?live=1``: a list and a LiveComponent kept together in a block the
+host's pass draws.
 """
 
-from wireview import Component
+from wireview import Component, LiveComponent
 
 
 class TempProbe(Component):
@@ -44,3 +48,38 @@ class TempFrame(Component):
 
     async def bump(self):
         self.count += 1
+
+
+class TempRows(TempProbe):
+    class Meta:
+        template_name = "tempprobe/rows.html"
+
+
+class TempRow(Component):
+    class Meta:
+        template_name = "tempprobe/row.html"
+
+    text: str = ""
+
+    async def shout(self):
+        self.text = self.text.upper()
+
+
+class TempLiveHost(TempHost):
+    class Meta:
+        template_name = "tempprobe/livehost.html"
+
+
+class TempLiveProbe(TempProbe):
+    class Meta:
+        template_name = "tempprobe/liveprobe.html"
+
+
+class TempLive(LiveComponent):
+    class Meta:
+        template_name = "tempprobe/live.html"
+
+    hits: int = 0
+
+    async def hit(self):
+        self.hits += 1

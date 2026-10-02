@@ -9,6 +9,7 @@ outputs with HTML comment markers that identify dynamic regions.
 
 from __future__ import annotations
 
+import itertools
 import typing as t
 from contextlib import contextmanager
 
@@ -16,7 +17,7 @@ from django.http import HttpRequest
 from django.template import Context, Template
 from django.template.base import FilterExpression, Node, NodeList, Variable, VariableNode
 from django.template.exceptions import TemplateDoesNotExist
-from django.template.loader_tags import IncludeNode, construct_relative_path
+from django.template.loader_tags import IncludeNode
 from django.template.smartif import TokenBase
 
 from .core import render_reads
@@ -51,7 +52,7 @@ SKIP_VARIABLE_NAMES = frozenset(
 class MarkerContext:
     """Tracks marker indices and the enclosing comprehensions during a render."""
 
-    __slots__ = ("_counter", "_comprehensions", "reads")
+    __slots__ = ("_counter", "_comprehensions", "reads", "frames")
 
     def __init__(self) -> None:
         self._counter = 0
@@ -59,6 +60,8 @@ class MarkerContext:
         #: The reads this render tracks (#111), read once per render rather than
         #: once per node: every dynamic node of every render asks
         self.reads: render_reads.RenderReads | None = None
+        #: What each open part being recorded drew from elsewhere (``drew()``)
+        self.frames: list[set[tuple[t.Any, ...]]] = []
 
     def next_index(self) -> int:
         """Get the next marker index."""
@@ -76,6 +79,7 @@ class MarkerContext:
         """Reset the counter for a new render."""
         self._counter = 0
         self._comprehensions.clear()
+        self.frames.clear()
 
     def push_comprehension(self, index: int) -> None:
         self._comprehensions.append(index)
@@ -130,7 +134,88 @@ class MarkedVariableNode(Node):
         return f"<MarkedVariableNode: {self.filter_expression!r}>"
 
 
-class ComprehensionNode(Node):
+def drew(item: tuple[t.Any, ...]) -> None:
+    """The render drew ``item`` from elsewhere: ``("c", id, state)`` a nested component, ``("s", name, key)`` a slot.
+
+    Every part open around it records it (``_PartNode``).
+    """
+    for frame in get_template_marker().marker_context.frames:
+        frame.add(item)
+
+
+def _wire(component: t.Any) -> t.Any:
+    """``component.wire``, unseen by the reads a render tracks: ``wire`` is a field, and no part reads it."""
+    try:
+        return object.__getattribute__(component, "wire")
+    except AttributeError:
+        return None
+
+
+def _signed_state(component: t.Any) -> int | None:
+    """The state ``component``'s last ``data-state`` carried, hashed: a record holds one per row."""
+    token = _wire(component)._state_token
+    return hash(token[0]) if token is not None else None
+
+
+def drew_component(component: t.Any) -> None:
+    drew(("c", component.id, _signed_state(component)))
+
+
+class _PartNode(Node):
+    """A block or a loop: a part a reset temporary assign can keep whole (#111).
+
+    Kept, a part shows what the component's last render of its own drew there,
+    and that may hold what the component's names do not decide: another
+    component's drawing, which carries that component's state, or a slot's fill.
+    So each render of its own records, per part, what the part drew from
+    elsewhere (``WireviewMeta.drawn``), and a kept part is drawn again only when
+    one of those has moved since: the component signed another state, or the
+    fill is another. A part kept as it was takes its record along.
+    """
+
+    #: Which part of its template this is: the same across compilations of it
+    key: tuple[t.Any, ...] = ()
+    marker_context: MarkerContext
+
+    def _record(self, context: Context) -> tuple[t.Any, set[tuple[t.Any, ...]] | None]:
+        """The owner's meta and a frame for what this part draws, while the owner records its render."""
+        wire = _wire(context.get("this"))
+        if getattr(wire, "drawing", None) is None:
+            return wire, None
+        frame: set[tuple[t.Any, ...]] = set()
+        self.marker_context.frames.append(frame)
+        return wire, frame
+
+    def _settle_record(self, wire: t.Any, frame: set[tuple[t.Any, ...]] | None, kept: bool) -> None:
+        if frame is None:
+            return
+        frames = self.marker_context.frames
+        frames.pop()
+        if kept:
+            carried = wire.drawn.get(self.key, frozenset())
+            frame |= carried
+            for outer in frames:
+                outer |= carried
+        wire.drawing[self.key] = wire.drawing.get(self.key, frozenset()) | frame
+
+    def _moved(self, wire: t.Any, context: Context) -> bool:
+        """Whether something this part drew from elsewhere last time is another now."""
+        record = wire.drawn.get(self.key) if wire is not None else None
+        if not record:
+            return False
+        repo = context.get("wireview_repository")
+        slots = context.get("slots")
+        for kind, name, drawn in record:
+            if kind == "c":
+                component = repo.components.get(name) if repo is not None else None
+                if component is not None and _signed_state(component) != drawn:
+                    return True
+            elif (slots.drawn_key(name) if slots else None) != drawn:
+                return True
+        return False
+
+
+class ComprehensionNode(_PartNode):
     """Wraps a ``{% for %}`` node so its whole output is one comprehension slot."""
 
     def __init__(self, for_node: Node, marker_context: MarkerContext) -> None:
@@ -143,15 +228,18 @@ class ComprehensionNode(Node):
         self.marker_context.push_comprehension(index)
         reads = self.marker_context.reads
         slot = reads.open(index) if reads else None
+        wire, frame = self._record(context)
+        kept = False
         try:
             output = self.for_node.render(context)
         finally:
             if reads and slot:
-                # Items keep what they drew, but not another component's drawing:
-                # that carries its state, which its own events move on (#111)
-                if slot.stale and not slot.other and DRAWS_COMPONENT in referenced_names(self.for_node):
+                # Items keep what they drew, unless what they drew from elsewhere moved on
+                if slot.stale and not slot.other and self._moved(wire, context):
                     slot.other = True
+                kept = slot.stale and not slot.other
                 reads.close(slot)
+            self._settle_record(wire, frame, kept)
             self.marker_context.pop_comprehension()
         return f"<!--$C{index}-->{output}<!--/$C{index}-->"
 
@@ -159,15 +247,9 @@ class ComprehensionNode(Node):
         return f"<ComprehensionNode: {self.for_node!r}>"
 
 
-#: What ``referenced_names`` reports for parts that draw something the
-#: component's names do not decide: another component's drawing (a nested
-#: ``{% component %}``, whose state it carries), a slot's fill, or an included
-#: template it cannot find. A tag declares the first two with a
-#: ``wireview_draws`` attribute.
-DRAWS_COMPONENT = "<component>"
-DRAWS_SLOT = "<slot>"
+#: What ``referenced_names`` reports for an ``{% include %}`` whose template it
+#: cannot know: one named at render time, or one it cannot find
 DRAWS_UNKNOWN = "<unknown>"
-ELSEWHERE = frozenset({DRAWS_COMPONENT, DRAWS_SLOT, DRAWS_UNKNOWN})
 
 
 def referenced_names(node: Node) -> frozenset[str]:
@@ -177,9 +259,9 @@ def referenced_names(node: Node) -> frozenset[str]:
     not render is included: a block whose condition reads a stale temporary
     assign may hold something else, which a render that took the other branch
     never read (#111). An ``{% include %}`` of a named template counts that
-    template's names. A part that draws from elsewhere adds one of
-    ``ELSEWHERE``. Only template structures are walked -- a node's ``origin``
-    leads to the loader and every template it holds.
+    template's names, and one it cannot know adds ``DRAWS_UNKNOWN``. Only
+    template structures are walked -- a node's ``origin`` leads to the loader
+    and every template it holds.
     """
     cached = getattr(node, "_wireview_names", None)
     if cached is not None:
@@ -189,18 +271,16 @@ def referenced_names(node: Node) -> frozenset[str]:
     included: set[str] = set()
 
     def include(value: IncludeNode) -> None:
+        # The parser already made a relative name absolute
         name = value.template.var
         if not isinstance(name, str):
             names.add(DRAWS_UNKNOWN)  # a template chosen at render time
             return
-        origin = value.origin
-        if origin and isinstance(origin.template_name, str):
-            name = construct_relative_path(origin.template_name, name)
         if name in included:
             return
         included.add(name)
         try:
-            found = origin.loader.engine.get_template(name)  # type: ignore[union-attr]
+            found = value.origin.loader.engine.get_template(name)  # type: ignore[union-attr]
         except (AttributeError, TemplateDoesNotExist):
             names.add(DRAWS_UNKNOWN)
             return
@@ -221,8 +301,6 @@ def referenced_names(node: Node) -> frozenset[str]:
                 for _lookup, arg in args:
                     walk(arg)
         elif isinstance(value, (Node, TokenBase)) or type(value).__name__ == "TemplateLiteral":
-            if (draws := getattr(getattr(value, "func", value), "wireview_draws", None)) is not None:
-                names.add(draws)
             if isinstance(value, IncludeNode):
                 include(value)
             for name, attr in vars(value).items():
@@ -241,7 +319,7 @@ def referenced_names(node: Node) -> frozenset[str]:
     return frozen
 
 
-class _BlockNode(Node):
+class _BlockNode(_PartNode):
     """Wraps a node so its output is a nested block with its own statics."""
 
     def __init__(self, inner: Node, marker_context: MarkerContext) -> None:
@@ -253,16 +331,21 @@ class _BlockNode(Node):
         index = self.marker_context.next_index()
         reads = self.marker_context.reads
         slot = reads.open(index) if reads else None
+        wire, frame = self._record(context)
+        kept = False
         try:
             output = self.inner.render(context)
         finally:
             if reads and slot:
                 # Kept whole, a block would keep whatever else it can show: another
-                # name in a branch that did not render, or what is drawn elsewhere
+                # name in a branch that did not render, a template it cannot see
+                # into, or what it drew from elsewhere that moved on since
                 if slot.stale and not slot.other:
                     names = referenced_names(self.inner)
-                    slot.other = bool(names & reads.other or names & ELSEWHERE)
+                    slot.other = bool(names & reads.other) or DRAWS_UNKNOWN in names or self._moved(wire, context)
+                kept = slot.stale and not slot.other
                 reads.close(slot)
+            self._settle_record(wire, frame, kept)
         return f"<!--$B{index}-->{output}<!--/$B{index}-->"
 
     def __repr__(self) -> str:
@@ -345,20 +428,27 @@ class TemplateMarker:
         # Access nodelist from Django's base Template
         nodelist = getattr(inner_template, "nodelist", None)
         if nodelist is not None:
-            self._wrap_nodelist(nodelist)
+            # A part is known by its place in the template's source, which a
+            # template compiled again (an uncached loader) keeps
+            self._wrap_nodelist(nodelist, (hash(getattr(inner_template, "source", "")), itertools.count()))
         inner_template._wireview_marker = self  # type: ignore[attr-defined]
 
         return template
 
-    def _wrap_nodelist(self, nodelist: NodeList) -> None:
-        """Recursively wrap VariableNodes in a nodelist."""
+    def _wrap_nodelist(self, nodelist: NodeList, parts: tuple[int, itertools.count]) -> None:
+        """Recursively wrap VariableNodes in a nodelist; ``parts`` numbers the template's parts."""
+
+        def part(node: _PartNode) -> _PartNode:
+            node.key = (parts[0], next(parts[1]))
+            return node
+
         for i, node in enumerate(nodelist):
             if isinstance(node, VariableNode):
                 # Check if this variable should be wrapped
                 if self._should_wrap_variable(node):
                     nodelist[i] = MarkedVariableNode(node, self.marker_context)
             elif isinstance(node, IncludeNode):
-                nodelist[i] = IncludedNode(node, self.marker_context)
+                nodelist[i] = part(IncludedNode(node, self.marker_context))
                 continue
 
             # {% if %}: wrap every branch, then the node itself as a block. IfNode's
@@ -366,25 +456,25 @@ class TemplateMarker:
             conditions = getattr(node, "conditions_nodelists", None)
             if conditions is not None and not isinstance(node, ConditionalNode):
                 for _condition, branch in conditions:
-                    self._wrap_nodelist(branch)
-                nodelist[i] = ConditionalNode(node, self.marker_context)
+                    self._wrap_nodelist(branch, parts)
+                nodelist[i] = part(ConditionalNode(node, self.marker_context))
                 continue
 
             # Recursively process child nodelists
             for attr in ("nodelist", "nodelist_true", "nodelist_false"):
                 child_nodelist = getattr(node, attr, None)
                 if child_nodelist is not None:
-                    self._wrap_nodelist(child_nodelist)
+                    self._wrap_nodelist(child_nodelist, parts)
 
             # {% for %}: mark the loop as a comprehension and each iteration as an item
             if hasattr(node, "nodelist_loop") and not isinstance(node, ComprehensionNode):
                 loop_nodelist: NodeList = node.nodelist_loop  # type: ignore[attr-defined]
-                self._wrap_nodelist(loop_nodelist)
+                self._wrap_nodelist(loop_nodelist, parts)
                 if not (len(loop_nodelist) == 1 and isinstance(loop_nodelist[0], ComprehensionItemNode)):
                     node.nodelist_loop = NodeList([ComprehensionItemNode(loop_nodelist, self.marker_context)])  # type: ignore[attr-defined]
                 if hasattr(node, "nodelist_empty"):
-                    self._wrap_nodelist(node.nodelist_empty)  # type: ignore[attr-defined]
-                nodelist[i] = ComprehensionNode(node, self.marker_context)
+                    self._wrap_nodelist(node.nodelist_empty, parts)  # type: ignore[attr-defined]
+                nodelist[i] = part(ComprehensionNode(node, self.marker_context))
 
     def _should_wrap_variable(self, node: VariableNode) -> bool:
         """

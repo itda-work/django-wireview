@@ -254,7 +254,7 @@ class _NestedComponentNode(Node):
 
     def render(self, context: Context) -> str:
         from .core.rendered import holds_nested_components, nested_component_html, shift_markers
-        from .template_engine import get_template_marker
+        from .template_engine import drew_component, get_template_marker
 
         repo = context.get("wireview_repository")
         if repo is None or (component := repo.components.get(self.component_id)) is None:
@@ -277,6 +277,7 @@ class _NestedComponentNode(Node):
             self._drawn = None
             if not holds_nested_components(html):
                 self._drawn = (component.wire.own_render, first, markers.count - first, html)
+        drew_component(component)
         return nested_component_html(component.id, html)
 
 
@@ -457,6 +458,40 @@ class SlotContainer:
         if self._default is not None:
             copy.set_default(kept(self._default, previous._default))
         return copy
+
+    def drawn_key(self, name: str) -> tuple[t.Any, ...]:
+        """A value equal between two containers whose slot ``name`` draws the same.
+
+        The same content compares equal as the enclosing pass hands it --
+        pre-rendered text, its markers in that pass's index space -- and as the
+        component keeps it for its own renders (``without_markers()``): text
+        without markers, a component by its id. A ``let:`` slot renders with
+        what the component hands it, so it equals nothing.
+        """
+        from .core.rendered import split_components, strip_markers
+
+        def key(nodelist: NodeList | None) -> t.Any:
+            if nodelist is None:
+                return None
+            pieces: list[t.Any] = []
+            for node in nodelist:
+                if isinstance(node, (_ComponentRefNode, _NestedComponentNode)):
+                    pieces.append(("c", node.component_id))
+                    continue
+                if not isinstance(node, TextNode):
+                    return object()
+                for text, component_id, _live in split_components(strip_markers(node.s)):
+                    if text and pieces and isinstance(pieces[-1], str):
+                        pieces[-1] += text
+                    elif text:
+                        pieces.append(text)
+                    if component_id is not None:
+                        pieces.append(("c", component_id))
+            return tuple(pieces)
+
+        if not name:
+            return (key(self._default),)
+        return tuple(object() if slot.let_vars else key(slot.nodelist) for slot in self._slots.get(name, []))
 
     def content_key(self) -> tuple[t.Any, ...]:
         """A value equal between two containers whose content would render the same.

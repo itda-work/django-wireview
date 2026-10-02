@@ -549,7 +549,13 @@ def _parse(html: str, stale: set[int] | None = None) -> tuple[list[str], list[Dy
     return static, [_flatten_item(v) for v in dynamic]
 
 
-def keep_stale(html: str, stale: t.Collection[int], previous: Rendered | None, first: int = 0) -> str:
+def keep_stale(
+    html: str,
+    stale: t.Collection[int],
+    previous: Rendered | None,
+    first: int = 0,
+    mark: t.Callable[[], int] | None = None,
+) -> str:
     """``html`` with the parts in ``stale`` as ``previous`` drew them, their markers kept.
 
     For a component drawn in another component's pass (#111): ``stale`` names
@@ -560,8 +566,11 @@ def keep_stale(html: str, stale: t.Collection[int], previous: Rendered | None, f
     component's diff puts that drawing on the page. A part ``previous`` has
     nothing for, or one in a loop, stays as drawn. The part keeps its marker,
     so the enclosing render keeps its structure; what it holds goes in as
-    text, so a value that names a LiveComponent stays as drawn: as text the
-    reference would reach the page as a comment.
+    text. Not a value that names a LiveComponent: as text the reference would
+    reach the page as a comment. With ``mark``, which hands out marker indices
+    of the enclosing pass, it goes in marked as ``previous`` holds it, so the
+    reference stays one and the LiveComponent stays on the page; without, the
+    part stays as drawn.
 
     Markers numbered below ``first`` are the enclosing pass's, in a fill it
     drew before the component. The component's own render has that fill as
@@ -574,7 +583,7 @@ def keep_stale(html: str, stale: t.Collection[int], previous: Rendered | None, f
     stale = set(stale)
     # The outermost stale parts outside any loop, in the order they open: the
     # order settle() meets them, which is what pairs them with ``previous``
-    spans: list[tuple[int, int]] = []
+    spans: list[tuple[int, int, int]] = []
     stack: list[tuple[str, int, int]] = []
     for match in _TOKEN.finditer(html):
         close, kind, index = match.group(1), match.group(2), int(match.group(3))
@@ -584,7 +593,7 @@ def keep_stale(html: str, stale: t.Collection[int], previous: Rendered | None, f
             start = stack.pop()[2]
             if kind != "I" and index in stale and not any(entry[0] in ("I", "C") for entry in stack):
                 spans = [span for span in spans if span[0] < start]  # a stale part inside this one
-                spans.append((start, match.start()))
+                spans.append((start, match.start(), index))
     if stack or not spans:
         return html
     if first:
@@ -614,13 +623,44 @@ def keep_stale(html: str, stale: t.Collection[int], previous: Rendered | None, f
         return html  # markers this parse does not read the same way: draw it as it is
     parts: list[str] = []
     end = 0
-    for (start, stop), value in zip(spans, kept):
-        if value is None or (not isinstance(value, str) and _names_components(value)):
+    for (start, stop, index), value in zip(spans, kept):
+        if value is None:
             continue
-        parts += [html[end:start], value if isinstance(value, str) else value.to_html()]
+        if isinstance(value, str):
+            text = value
+        elif not _names_components(value):
+            text = value.to_html()
+        elif mark is not None:
+            text = _marked_content(value, index, mark)
+        else:
+            continue
+        parts += [html[end:start], text]
         end = stop
     parts.append(html[end:])
     return "".join(parts)
+
+
+def _marked(value: Dynamic, mark: t.Callable[[], int]) -> str:
+    """``value`` as marked HTML that parses back to it, numbered by ``mark``."""
+    if isinstance(value, str):
+        return inject_marker(value, mark())
+    if isinstance(value, ComponentRef):
+        return component_ref_marker(value.id, mark())
+    index = mark()
+    kind = "B" if isinstance(value, Rendered) else "C"
+    return f"<!--${kind}{index}-->{_marked_content(value, index, mark)}<!--/${kind}{index}-->"
+
+
+def _marked_content(value: Dynamic, index: int, mark: t.Callable[[], int]) -> str:
+    """What goes between the markers of part ``index`` for it to parse back to ``value``."""
+    if isinstance(value, Rendered):
+        return _interleave(value.static, [_marked(v, mark) for v in value.dynamic])
+    if isinstance(value, Comprehension):
+        return "".join(
+            f"<!--$I{index}-->{_interleave(value.static, [_marked(v, mark) for v in item])}<!--/$I{index}-->"
+            for item in value.dynamics
+        )
+    return value if isinstance(value, str) else value.to_html()
 
 
 def _names_components(value: Dynamic) -> bool:

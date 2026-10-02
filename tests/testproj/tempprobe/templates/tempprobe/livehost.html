@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <b data-testid="host-count">{{ count }}</b>
+  <button data-testid="host-bump" {% on "click" "bump" %}>bump host</button>
+  {% component 'TempLiveProbe' id="liveprobe" %}
+</div>

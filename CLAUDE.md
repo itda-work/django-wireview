@@ -37,7 +37,8 @@ wireview/
 ├── core/rendered.py       동적 마커 기반 diff 구조. LiveComponent 자리는 참조 dynamic {"c": id}.
 │                          중첩 {% component %}의 라이브 출력은 <!--@wv(:id-->로 감싸고 파싱이 지운다(슬롯을 그리는 쪽이 다시 그릴 자리)
 ├── core/render_reads.py   초기화된 temporary assign만 읽은 동적 부분을 렌더 중에 찾는다. 그 부분은 이전 값 그대로(#111).
-│                          다른 컴포넌트의 패스 안에서 그려지는 중첩 컴포넌트도 자기 것을 따로 찾는다(rendered.keep_stale)
+│                          다른 컴포넌트의 패스 안에서 그려지는 중첩 컴포넌트도 자기 것을 따로 찾는다(rendered.keep_stale).
+│                          남는 부분이 그린 다른 컴포넌트·슬롯이 그 뒤 바뀌었으면 다시 그린다(자기 렌더가 부분별로 기록, template_engine._PartNode)
 ├── core/render_gate.py    RenderGate. 워커 스레드가 렌더하는 동안 그 컴포넌트의 start_async·assign_async 작업 단계를 렌더 뒤로 미룬다(#138).
 │                          렌더가 async property를 오래 기다리는 동안 작업이 막혀 있으면 경고한다(교착 의심, #147)
 ├── core/session.py        SessionView. Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다
@@ -165,7 +166,7 @@ tests/
                            핸들러가 들은 것은 HEARD 에 남아, 서버가 거절했는지를 테스트가 본다),
                            offlineprobe/ 는 연결이 끊긴 페이지의 바인딩·큐와 재연결 뒤의 훅·폼 복구를 보는 E2E(test_offline_e2e.py)의 픽스처,
                            hookprobe/ 는 훅의 소유(중첩 컴포넌트)·이동·떠날 때의 destroyed·pushEvent 응답 짝, 렌더가 새로 그린 LiveComponent·다시 그린 컴포넌트의 훅과 그 joined()의 push_event, 다시 그린 컴포넌트의 join과 viewport, 부모의 패치가 중첩 컴포넌트 안에 그린 훅·바인딩, 같은 렌더가 그린 훅에 가는 push_event, 다른 컴포넌트의 패치가 먼저 돌아도 새 LiveComponent(와 그것의 첫 작업이 그리는 bud)가 그려지는지를 보는 E2E(test_hooks_e2e.py)의 픽스처,
-                           tempprobe/ 는 초기화된 temporary assign이 다음 렌더에 화면에 남는지 보는 E2E(test_temporary_assigns_e2e.py)의 픽스처(?nest=1 은 호스트의 패스, 다른 컴포넌트의 슬롯 안, 호스트 값을 그리는 fill을 받은 component_block으로 그려진 probe),
+                           tempprobe/ 는 초기화된 temporary assign이 다음 렌더에 화면에 남는지 보는 E2E(test_temporary_assigns_e2e.py)의 픽스처(?nest=1 은 호스트의 패스, 다른 컴포넌트의 슬롯 안, 호스트 값을 그리는 fill을 받은 component_block으로 그려진 probe, ?rows=1 은 행을 중첩 컴포넌트가 그리는 목록, ?live=1 은 호스트의 패스가 그리는 블록에 목록과 함께 든 LiveComponent),
                            slotprobe/ 는 슬롯에 넣은 LiveComponent·일반 컴포넌트가 슬롯을 그리는 컴포넌트(component_block·live_component_block)의 자기 렌더, 슬롯을 숨겼다 보이기, 예외 뒤·같은 페이지 boost의 다시 join 뒤에도 남는지 보는 E2E(test_slot_live_components_e2e.py)의 픽스처(?other=1 은 같은 id의 frame을 fill 없이 두는 다른 페이지, ?otherhost=1 은 다른 호스트가 그 frame을 fill 없이 그리는 페이지),
                            stickyprobe/ 는 sticky 컴포넌트가 boost 이동을 건너 이어지는지(id 없는 것 포함), 그 훅과 페이지가
                            이동마다 한 번 navigated 알림을 받는지, late/ 의 sticky LateSticky가 아직 그리지 않은 id를 late-root/ 가

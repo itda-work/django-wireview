@@ -23,7 +23,7 @@ from ..features.hooks import hook_files
 from ..function_components import get_function_component
 from ..repository import ComponentRepository
 from ..slots import Slot, SlotContainer
-from ..template_engine import DRAWS_COMPONENT, DRAWS_SLOT
+from ..template_engine import drew, drew_component
 
 register = template.Library()
 
@@ -265,8 +265,10 @@ def _build_and_render_component(
         kwargs = {**kwargs, "id": sticky_id}
     drawer = context.get("this")
     component_instance = repo.build(component_name, state=kwargs, drawer=drawer)
-    if slots is not None and repo.is_live:
-        slots = component_instance.wire.fills = slots.keeping_stale(component_instance.wire.fills)
+    if repo.is_live:
+        # A pass with no fill forgets the last one: the next fill has nothing to line up with
+        fills = component_instance.wire.fills
+        slots = component_instance.wire.fills = slots.keeping_stale(fills) if slots is not None else None
     if slots is None:
         # No fill is no slot. The instance may be one another page's pass filled
         # (a boosted visit takes it over), and the slots it remembers are for its
@@ -286,6 +288,8 @@ def _build_and_render_component(
         html = component_instance._render(repo) or ""
     if component_instance.wire.template_evaluated:
         repo.end_inline_pass(component_instance.id, drawer.id if drawer is not None else None)
+    # By id and signed state, so a render without the page's repository counts too ({% func %})
+    drew_component(component_instance)
     if repo.is_live and html:
         # A fill holding this output keeps it as text; the slot's owner finds the
         # component by these marks and draws it as it is then (parsing drops them)
@@ -314,10 +318,6 @@ def component(context, _name, **kwargs):
         {% component 'Counter' count=10 %}
     """
     return _build_and_render_component(context, _name, kwargs)
-
-
-# What a part kept for a reset temporary assign must not keep (template_engine.referenced_names)
-component.wireview_draws = DRAWS_COMPONENT  # type: ignore[attr-defined]
 
 
 # Slot-based component rendering
@@ -370,8 +370,6 @@ def do_component_block(parser: Parser, token: Token):
 
 class ComponentBlockNode(Node):
     """Node for {% component_block %}...{% endcomponent %} block tag."""
-
-    wireview_draws = DRAWS_COMPONENT
 
     def __init__(
         self,
@@ -565,13 +563,12 @@ def render_slot(context, name: str = "", **extra_context):
         **extra_context: Variables to pass to slot (for let: binding)
     """
     slots: SlotContainer | None = context.get("slots")
+    # A part kept for a reset temporary assign shows the fill it drew (template_engine._PartNode)
+    drew(("s", name, slots.drawn_key(name) if slots else None))
     if not slots:
         return ""
 
     return slots.render_slot(context, name, extra_context)
-
-
-render_slot.wireview_draws = DRAWS_SLOT  # type: ignore[attr-defined]
 
 
 @register.simple_tag(takes_context=True)

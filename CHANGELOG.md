@@ -437,20 +437,24 @@ The django-reactor era changelog (2.x) is preserved in
   text and LiveComponent references went out in the new host's render until the component's own
   join emptied them. The remembered slots are for the component's own renders; a pass with no fill
   forgets them.
-- What a part kept for a reset temporary assign holds from elsewhere no longer goes back with it.
-  Such a part is what the component's last render drew there (#111), and it brought back what the
-  component's names do not decide. A LiveComponent in it left the server on the next render, since
-  the template had not named it, while the page kept it and its events went unanswered; it now
-  stays. A nested `{% component %}` went back to its drawing then, `data-state` included, so its own
-  changes since were undone on the page and a reconnect joined it with the old state; a
-  `{% render_slot %}` hid the changes of the fill. A block whose branches draw a component or a slot,
-  and a loop whose items draw a component, now render from what they have. An `{% include %}` drew
-  static text, so an included template that read a reset list made a full render that dropped the
-  list; it is now a part of its own, kept like a block, and a block holding one looks into the
-  included template for the names it reads. A fill that read the host's temporary assign was kept by
-  the host and drawn with the reset value by the component's own next render -- by a LiveComponent's
-  every render; the fill now keeps in those parts what it drew last. The diff forms are the ones a
-  block already has, so `PROTOCOL_VERSION` stays.
+- What a part kept for a reset temporary assign holds from elsewhere no longer goes back with it
+  as it was. Such a part is what the component's last render of its own drew there (#111), and it
+  brought back what the component's names do not decide. A nested `{% component %}` went back to
+  that drawing, `data-state` included, so its own changes since were undone on the page and a
+  reconnect joined it with the old state; a `{% render_slot %}` hid the changes of the fill. Each
+  render now records what a part drew from elsewhere, and a kept part whose nested component signed
+  another state since, or whose fill is another, renders from what it has -- its list leaves the
+  page. Rows drawn by components that did not change, and a fill that did not, stay as before. A
+  LiveComponent in a kept part left the server on the next render, since the template had not named
+  it, while the page kept it and its events went unanswered; it now stays, and the host's render
+  keeps it named instead of taking the part off the page, where the component's own next render did
+  not bring the LiveComponent back. An `{% include %}` drew static text, so an included template
+  that read a reset list made a full render that dropped the list; it is now a part of its own,
+  kept like a block, and a block holding one looks into the included template for the names it
+  reads. A fill that read the host's temporary assign was kept by the host and drawn with the reset
+  value by the component's own next render -- by a LiveComponent's every render; the fill now keeps
+  in those parts what it drew last. The diff forms are the ones a block already has, so
+  `PROTOCOL_VERSION` stays.
 
 - What a new component sends from `joined()` reaches it: its streams, its `push_js` and its
   `push_event`. A LiveComponent a parent's render brings in sends them right behind that render,

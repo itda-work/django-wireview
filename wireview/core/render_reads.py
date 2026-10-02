@@ -36,20 +36,21 @@ Two kinds of part need more than the reads of this render:
 - an ``{% if %}`` block whose condition is stale did not render the branch that
   would read the rest, so the names in all its branches are found statically
   (``template_engine.referenced_names``), an included template's among them. An
-  ``{% include %}`` is a block of its own for the same reason. A block that
-  draws another component or a slot is not kept either: what it shows is not
-  for this component's names to decide, and a nested component's drawing
-  carries that component's state;
+  ``{% include %}`` is a block of its own for the same reason;
 - a loop is compared item by item, so a part inside one cannot keep its value
   on its own. The loop decides: over a stale list it keeps its items, like
-  Phoenix's ``phx-update="append"`` keeps the DOM -- unless they draw another
-  component, for the same reason.
+  Phoenix's ``phx-update="append"`` keeps the DOM.
 
-A LiveComponent in a kept part is only named there, so it stays: the
-lifecycle counts the ones the render shows, not only those its template named
-(``ComponentRepository.take_lifecycle``). A fill that read a stale name keeps
-what it drew last in that part (``SlotContainer.keeping_stale``), as the
-enclosing render keeps it on the page.
+What a kept part drew from elsewhere is not for this component's names to
+decide: a nested component's drawing carries that component's state, and a
+slot is the filler's. Each render of its own records what each part drew of
+them, and a part is drawn again when one of those moved on since
+(``template_engine._PartNode``). A LiveComponent in a kept part is only named
+there, so it stays: the lifecycle counts the ones the render shows, not only
+those its template named (``ComponentRepository.take_lifecycle``), and another
+component's pass keeps it named (``rendered.keep_stale``). A fill that read a
+stale name keeps what it drew last in that part
+(``SlotContainer.keeping_stale``), as the enclosing render keeps it on the page.
 """
 
 from __future__ import annotations

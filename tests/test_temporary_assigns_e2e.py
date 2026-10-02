@@ -5,7 +5,8 @@ client applies what the server sent: before #111 an event that had nothing to
 do with the list sent it emptied, and the list vanished.
 
 Fixture: tests/testproj/tempprobe/ (``?nest=1``: the probe in a host's pass, in a slot, and from a
-``{% component_block %}`` with a fill).
+``{% component_block %}`` with a fill; ``?rows=1``: rows a nested component draws; ``?live=1``: a
+LiveComponent kept with the list in a block the host's pass draws).
 """
 
 import pytest
@@ -73,3 +74,49 @@ def test_the_list_stays_when_the_component_around_it_renders(page, server, where
     expect_text(probe.get_by_test_id("how-many"), "3")
     if where == "blocked":
         expect_text(probe.get_by_test_id("fill"), "filled")
+
+
+def test_rows_a_nested_component_draws_stay_until_one_moves(page, server):
+    """Kept as drawn while no row changed on its own; a row that did is not put back as it was."""
+    open_live(page, f"{server}/tempprobe/?rows=1")
+    rows = page.get_by_test_id("row-text")
+    page.get_by_test_id("load").click()
+    expect_count(rows, 3)
+
+    page.get_by_test_id("bump").click()
+    expect_text(page.get_by_test_id("count"), "1")
+    expect_count(rows, 3)
+
+    page.get_by_test_id("shout").first.click()
+    expect_text(rows.first, "ONE")
+    page.get_by_test_id("bump").click()
+    expect_text(page.get_by_test_id("count"), "2")
+    expect_count(page.get_by_test_id("row-text").filter(has_text="one"), 0)
+
+
+def test_a_live_component_the_hosts_render_keeps_stays_with_the_list(page, server):
+    """The host's render keeps the block whole, so the LiveComponent in it answers, render after render."""
+    open_live(page, f"{server}/tempprobe/?live=1")
+    items = page.locator("[data-testid=messages] li")
+    hits = page.get_by_test_id("hits")
+    page.get_by_test_id("load").click()
+    expect_count(items, 3)
+    page.get_by_test_id("hit").click()
+    expect_text(hits, "1")
+
+    page.get_by_test_id("host-bump").click()
+    expect_text(page.get_by_test_id("host-count"), "1")
+    expect_count(items, 3)
+    page.get_by_test_id("hit").click()
+    expect_text(hits, "2")
+
+    page.get_by_test_id("bump").click()
+    expect_text(page.get_by_test_id("count"), "1")
+    expect_count(items, 3)
+    page.get_by_test_id("hit").click()
+    expect_text(hits, "3")
+
+    page.get_by_test_id("load").click()
+    expect_count(items, 3)
+    page.get_by_test_id("hit").click()
+    expect_text(hits, "4")

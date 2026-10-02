@@ -158,6 +158,13 @@ class WireviewMeta:
         # The slot content that pass gave, markers kept: the next pass keeps what
         # it drew of a reset temporary assign (SlotContainer.keeping_stale)
         self.fills: SlotContainer | None = None
+        # What each part of the last render of its own drew from elsewhere -- a
+        # nested component's signed state, a slot's content -- by the part's
+        # key, and the record a render under way builds: a part kept for a
+        # reset temporary assign is drawn again when one of those moved on
+        # (template_engine._PartNode). Only a component with temporary assigns records.
+        self.drawn: dict[tuple[t.Any, ...], frozenset[tuple[t.Any, ...]]] = {}
+        self.drawing: dict[tuple[t.Any, ...], frozenset[tuple[t.Any, ...]]] | None = None
         self.born: int = next(_TICKS)
         # When this instance last rendered on its own (render_diff), or ``born``.
         # A slot's owner puts back what it drew of this instance last while this
@@ -470,11 +477,13 @@ class WireviewMeta:
 
         reads = RenderReads(id(component), stale, type(component).model_fields)
         context = self._get_context(component, repo, slots, reads)
+        marker = get_template_marker()
         # A fill the pass drew before this component holds markers numbered below its own
-        first = get_template_marker().next_index()
-        with get_template_marker().tracking(reads):
+        first = marker.next_index()
+        with marker.tracking(reads):
             html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
-        return keep_stale(html, reads.slots, self._last_rendered, first)
+        # A LiveComponent a kept part names stays named in the pass's render, as on the page
+        return keep_stale(html, reads.slots, self._last_rendered, first, lambda: marker.marker_context.skip(1))
 
     async def send_stream_op(self, op: "StreamOp", owner: str | None = None) -> None:
         """Send a stream operation to the client, on behalf of component ``owner``.
@@ -702,11 +711,19 @@ class WireviewMeta:
 
         template = component._get_template()
         self.template_evaluated = True
-        if reads is None:
-            html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
-        else:
-            with reads:
+        # Its renders of its own are what its kept parts take back (settle), so
+        # only they record what those parts drew
+        self.drawing = {} if component._meta.temporary_assigns else None
+        try:
+            if reads is None:
                 html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
+            else:
+                with reads:
+                    html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
+        finally:
+            drawing, self.drawing = self.drawing, None
+        if drawing is not None:
+            self.drawn = drawing
 
         return mark_safe(html) if html else None
 

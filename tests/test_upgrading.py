@@ -132,6 +132,10 @@ UPGRADE_NOTE = {
     "last-seen helper starts with": ("문서 예시", "튜토리얼 07"),
     "stream of the same name share no list": ("스트림 연산", "`dom_id`"),
     "[GHSA-8q8p-x4w4-p745]": ("`on_upload_complete`는", "consume_uploads"),
+    "What a part kept for a reset temporary assign holds from elsewhere": (
+        "초기화된 temporary assign",
+        "`{% live_component %}`",
+    ),
     "A `{% component %}` a live render draws": ("join되고 `joined()`가 돈다", "`mount()`나 핸들러"),
     "binding inside a LiveComponent calls that LiveComponent's handler": (
         "join되고 `joined()`가 돈다",
@@ -205,9 +209,6 @@ NO_UPGRADE_NOTE = {
     "before its parent's render ran its `joined()`": FIXED_ONLY,
     "stops drawing because of a prop its drawer": FIXED_ONLY,
     "hides or shows when the slot's owner": FIXED_ONLY,
-    "What a part kept for a reset temporary assign holds from elsewhere": (
-        "화면과 서버가 어긋나던 결함이다. 다시 그리게 된 블록의 목록을 남기려면 컴포넌트·슬롯을 블록 밖에 둔다"
-    ),
 }
 
 

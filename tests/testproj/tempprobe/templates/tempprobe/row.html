@@ -1,0 +1,6 @@
+{% load wireview %}
+
+<li {% tag_header %}>
+  <span data-testid="row-text">{{ text }}</span>
+  <button data-testid="shout" {% on "click" "shout" %}>shout</button>
+</li>

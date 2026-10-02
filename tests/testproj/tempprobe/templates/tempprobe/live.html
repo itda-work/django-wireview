@@ -1,0 +1,6 @@
+{% load wireview %}
+
+<span {% live_tag_header %}>
+  <b data-testid="hits">{{ hits }}</b>
+  <button data-testid="hit" {% on "click" "hit" %}>hit</button>
+</span>
