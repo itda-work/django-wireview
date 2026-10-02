@@ -419,8 +419,8 @@ The django-reactor era changelog (2.x) is preserved in
   `params_changed()` one included) take or overwrite an entry another root still on the connection
   carried; that root's later render restores from it. Only a join for the carried id itself holds
   back: another root that draws a LiveComponent under such an id carries the page's state for it,
-  which replaces the other root's entry, as it always did. (Ignoring the join instead also dropped the join of a root of the page's own:
-  after a boosted navigation, the next page could draw as a root an id a sticky component carried
+  which replaces the other root's entry, as it always did. (Ignoring the join instead also
+  dropped the join of a root of the page's own: after a boosted navigation, the next page could draw as a root an id a sticky component carried
   and had yet to draw, and that component never joined.) The form is unchanged, so
   `PROTOCOL_VERSION` stays.
 
