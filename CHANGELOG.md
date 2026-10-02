@@ -602,7 +602,9 @@ The django-reactor era changelog (2.x) is preserved in
   between. One such a prop showed for the first time got no `joined()` and was not drawn at all,
   and new props passed through got no `update()`. The drawer's render now settles them as it does
   its own children and carries their renders in its frame. A nested component the page has yet to
-  join is still left to that join. The forms are unchanged, so `PROTOCOL_VERSION` stays.
+  join is still left to that join, and so is everything the drawer's first render draws: a boosted
+  visit brings both as new elements that the page joins again. The forms are unchanged, so
+  `PROTOCOL_VERSION` stays.
 
 ### Security
 

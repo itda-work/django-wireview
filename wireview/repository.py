@@ -352,7 +352,9 @@ class ComponentRepository:
         """Forget which children ``parent_id`` named; its template pass records them again.
 
         A pass of it another's ran before is over: what that one named is no
-        longer what the other's batch is to settle (``end_inline_pass``).
+        longer what the other's batch is to settle (``end_inline_pass``). Its
+        own render can come in between: a background task of it renders while
+        the other's ``after_render`` hooks await.
         """
         self._rendered_children[parent_id] = set()
         self._inline_rendered.pop(parent_id, None)
@@ -388,19 +390,28 @@ class ComponentRepository:
 
         One the page has yet to join is left to that join, as ever: it is what
         completes the instance (docs/design/live-component-ownership.md §3-2),
-        and a failed one refuses what it owns.
+        and a failed one refuses what it owns. The instance a pass builds again
+        after a failed join is a new one, never joined.
+
+        So is everything the drawer's first render draws, even a component the
+        connection has joined before. Nothing of that render is on the page yet:
+        a boosted visit (or the rejoin after a crash) brings the drawer and the
+        component as new elements, and the page joins each. Recorded, the
+        drawer's batch would join a LiveComponent that the component's own join,
+        right behind, retires and joins anew.
         """
         rendered = self.end_pass(component_id)
         component = self.components.get(component_id)
+        drawer = self.components.get(drawer_id) if drawer_id is not None else None
         if (
             not self.is_live
-            or drawer_id is None
+            or drawer is None
+            or not drawer.wire.instance_announced
             or component is None
             or not component.wire.has_joined
-            or self.refused(component_id)
         ):
             return
-        inline = self._inline.setdefault(drawer_id, [])
+        inline = self._inline.setdefault(drawer.id, [])
         if component_id not in inline:
             inline.append(component_id)
         self._inline_rendered[component_id] = rendered
@@ -682,8 +693,10 @@ class ComponentRepository:
                 if self._built_by.get(child_id) == id:
                     del self._built_by[child_id]
         self._slots_to_rejoin.pop(id, None)
-        self._inline.pop(id, None)
-        self._inline_rendered.pop(id, None)
+        # A pass of it that drew others within its own, with no batch to settle
+        # them any more (a render that raised): the others settle in their own
+        for inner_id in self._inline.pop(id, []):
+            self._inline_rendered.pop(inner_id, None)
         component = self.components.pop(id, None)
         if component is None:
             return []

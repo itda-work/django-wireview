@@ -143,6 +143,10 @@ class InlineMoveRoot(InlineRoot):
         )
 
 
+class InlineOtherRoot(InlineRoot):
+    """Another page's root, under another id, that draws the same nest."""
+
+
 class _Outbound:
     def __init__(self) -> None:
         self.renders: list[dict[str, t.Any]] = []
@@ -258,15 +262,22 @@ async def test_the_nest_s_own_join_still_settles_what_the_drawers_first_pass_dre
 
 async def test_a_leaf_in_a_slot_the_owner_hides_is_the_drawers_and_stays():
     # The slot owner's pass runs within the root's, and the leaf in its slot is
-    # the root's: the owner's pass hiding the slot does not retire it.
+    # the root's: the owner's pass hiding the slot does not retire it, and the
+    # leaf comes back as it was when the owner shows the slot again.
     consumer, outbound = await _page((InlineSlotRoot, "in-root"), (InlineSlotOwner, "in-owner"))
     for _ in range(2):
         await _event(consumer, outbound, "in-leaf", "bump")
 
-    await _event(consumer, outbound, "in-root", "write", note="x")
+    hidden = await _event(consumer, outbound, "in-root", "toggle")
 
-    assert HEARD == [("joined", "in-leaf", 0), ("update", "in-leaf", {"note": "x"})]
+    assert HEARD == [("joined", "in-leaf", 0)]
+    assert _leaves(hidden) == []
     assert consumer.repo.get("in-leaf").count == 2  # type: ignore[union-attr]
+
+    shown = await _event(consumer, outbound, "in-root", "toggle")
+
+    assert HEARD == [("joined", "in-leaf", 0)]
+    assert _leaves(shown) == ["leaf=2:"], shown
 
 
 async def test_a_leaf_the_drawer_takes_over_in_the_same_pass_keeps_its_state():
@@ -282,3 +293,104 @@ async def test_a_leaf_the_drawer_takes_over_in_the_same_pass_keeps_its_state():
     assert HEARD == [("joined", "in-leaf", 0)]
     assert consumer.repo.get("in-leaf").count == 2  # type: ignore[union-attr]
     assert consumer.repo.get("in-leaf")._parent_id == "in-root"  # type: ignore[union-attr]
+
+
+async def _join(consumer: WireviewConsumer, component: type[Component], id: str, **fields: t.Any) -> None:
+    state = sign_state(component(user=AnonymousUser(), wire=WireviewMeta(params={}), id=id, **fields))
+    await consumer.command_join(component.__name__, state, children={})
+
+
+BOOSTS = {
+    # The same page again, under the same ids
+    "same-root": [(InlineRoot, "in-root"), (InlineNest, "in-nest")],
+    # Another page whose root, under another id, draws the same nest
+    "other-root": [(InlineOtherRoot, "in-other"), (InlineNest, "in-nest")],
+    # The same page with a level between: the frame's pass draws the nest
+    "frame": PAGES["frame"],
+}
+
+
+@pytest.mark.parametrize("before,after", [(False, True), (True, True), (True, False)])
+@pytest.mark.parametrize("boost", BOOSTS)
+async def test_a_boosted_visit_leaves_the_nest_s_leaf_to_the_nest_s_own_join(boost, before, after):
+    # A boosted visit brings the root and the nest as new elements under their
+    # ids, and the page joins each, the root first. The root's join renders the
+    # nest the connection already holds; recording that pass had the root's
+    # batch join a leaf that the nest's join, right behind, retired and joined
+    # anew. The root's first render records nothing: the nest's join settles
+    # its leaf, as on the first visit.
+    consumer, outbound = await _page(*(PAGES["frame"] if boost == "frame" else PAGES["nest"]), shown=before)
+    if before:
+        for _ in range(3):
+            await _event(consumer, outbound, "in-leaf", "bump")
+    HEARD.clear()
+
+    *joins, (nest, nest_id) = BOOSTS[boost]
+    for component, id in joins:
+        outbound.renders.clear()
+        await _join(consumer, component, id, shown=after)
+
+        assert HEARD == []
+        assert "in-leaf" not in outbound.renders[-1].get("instances", {}), outbound.renders[-1]
+
+    await _join(consumer, nest, nest_id, shown=after)
+
+    # Whether the nest's join also tells the pending leaf it never joined that
+    # it leaves is a matter of its own, not of the drawer's pass
+    assert HEARD.count(("joined", "in-leaf", 0)) == (1 if after else 0), HEARD
+    assert HEARD.count(("leaving", "in-leaf", 3)) == (1 if before else 0), HEARD
+    assert [hook for hook, *_ in HEARD][-1:] == (["joined"] if after else ["leaving"])
+
+    # From the root's next render on, its pass settles the nest's leaf again
+    HEARD.clear()
+    toggled = await _event(consumer, outbound, joins[0][1], "toggle")
+
+    assert HEARD == ([("leaving", "in-leaf", 0)] if after else [("joined", "in-leaf", 0)])
+    assert _leaves(toggled) == ([] if after else ["leaf=0:"]), toggled
+
+
+async def test_the_nest_s_own_render_between_the_drawer_s_pass_and_its_batch_is_the_newer_word():
+    # The root's after_render hook awaits, and the nest renders on its own in
+    # between (a start_async result): what the root's pass recorded for the
+    # nest is stale, and the leaf the nest's own pass drew again stays.
+    consumer, outbound = await _page(*PAGES["nest"])
+    for _ in range(2):
+        await _event(consumer, outbound, "in-leaf", "bump")
+    nest = consumer.repo.get("in-nest")
+    assert nest is not None
+
+    async def nest_renders_on_its_own():
+        nest.shown = True
+        await consumer.send_render(nest)
+
+    consumer.repo.get("in-root").attach_hook("between", "after_render", nest_renders_on_its_own)  # type: ignore[union-attr]
+
+    await _event(consumer, outbound, "in-root", "toggle")
+
+    assert HEARD == [("joined", "in-leaf", 0)]
+    assert consumer.repo.get("in-leaf").count == 2  # type: ignore[union-attr]
+    assert consumer.repo._inline == {}
+    assert consumer.repo._inline_rendered == {}
+
+
+async def test_a_drawer_that_raises_after_the_nest_s_pass_takes_the_record_with_it():
+    # The root's after_render hook raises: the rollback discards the root
+    # before its batch, what its pass recorded for the nest goes too, and the
+    # leaf the nest hid stays as it was.
+    consumer, outbound = await _page(*PAGES["nest"])
+    for _ in range(3):
+        await _event(consumer, outbound, "in-leaf", "bump")
+
+    async def raises():
+        assert consumer.repo._inline == {"in-root": ["in-nest"]}
+        raise RuntimeError("after_render")
+
+    consumer.repo.get("in-root").attach_hook("raises", "after_render", raises)  # type: ignore[union-attr]
+
+    await _event(consumer, outbound, "in-root", "toggle")
+
+    assert consumer.repo.get("in-root") is None
+    assert HEARD == [("joined", "in-leaf", 0)]
+    assert consumer.repo.get("in-leaf").count == 3  # type: ignore[union-attr]
+    assert consumer.repo._inline == {}
+    assert consumer.repo._inline_rendered == {}

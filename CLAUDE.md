@@ -170,7 +170,8 @@ tests/
                            이동마다 한 번 navigated 알림을 받는지, late/ 의 sticky LateSticky가 아직 그리지 않은 id를 late-root/ 가
                            자기 루트로 그릴 때 그 루트가 join되는지 보는 E2E(test_sticky_e2e.py)의 픽스처,
                            nestprobe/ 는 그린 쪽이 넘긴 prop으로 중첩 컴포넌트가 숨기거나 처음 보이거나 새 props를 넘기는 LiveComponent의
-                           leaving()·joined()·update()가 그린 쪽의 render에 실리는지 보는 E2E(test_inline_pass_lifecycle_e2e.py)의 픽스처(?hidden=1 은 숨긴 채 시작),
+                           leaving()·joined()·update()가 그린 쪽의 render에 실리는지 보는 E2E(test_inline_pass_lifecycle_e2e.py)의 픽스처(?hidden=1 은 숨긴 채 시작,
+                           visit-shown 링크는 같은 id의 둘을 새로 받는 boost 이동 — 그린 쪽의 첫 렌더는 중첩 컴포넌트의 join에 맡긴다),
                            deadprobe/ 는 JavaScript를 끈 브라우저가 첫 렌더를 읽고 폼으로 뷰에 가는지 보는 E2E(test_dead_view_e2e.py)의 픽스처,
                            jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,
                            formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처,

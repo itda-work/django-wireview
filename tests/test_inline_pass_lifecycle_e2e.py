@@ -5,7 +5,8 @@ applies the root's render, which carries the leaf's lifecycle: the leaf the box
 hid has left, the one it shows again starts anew and answers its own events,
 and a note the root passes through the box reaches it.
 
-Fixture: tests/testproj/nestprobe/ (``?hidden=1``: the box starts with the leaf hidden).
+Fixture: tests/testproj/nestprobe/ (``?hidden=1``: the box starts with the leaf hidden;
+the ``visit-shown`` link is a boosted visit to the page with it shown).
 """
 
 import pytest
@@ -74,3 +75,21 @@ def test_a_leaf_the_box_shows_first_is_drawn_and_answers(page, server, heard):
     expect_text(page.get_by_test_id("leaf-count"), "0")
     _bump(page, 2)
     assert [hook for hook, *_ in heard] == ["joined"]
+
+
+def test_a_boosted_visit_joins_the_leaf_once(page, server, heard):
+    # The visit brings the root and the box as new elements under the same ids
+    # and the page joins both, the root first. The root's join render is not
+    # the one to settle the box's leaf: the box's join right behind it is.
+    open_live(page, f"{server}/nestprobe/?hidden=1")
+
+    page.get_by_test_id("visit-shown").click()
+
+    expect_text(page.get_by_test_id("leaf-count"), "0")
+    _bump(page, 2)
+    assert [hook for hook, *_ in heard].count("joined") == 1, heard
+
+    # From then on, the root's render settles the box's leaf again
+    page.get_by_test_id("toggle").click()
+    expect_count(page.get_by_test_id("leaf-count"), 0)
+    assert heard[-1] == ("leaving", "nest-leaf", 2), heard
