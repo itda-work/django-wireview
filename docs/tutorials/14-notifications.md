@@ -566,6 +566,11 @@ async def test_dismissing_deletes_only_the_users_own(alice, bob):
 핸들러가 보지 못하거나, SQLite의 쓰기 잠금을 기다리다 멈춘다. 채널이 실제로 한 사람에게만 가는지,
 브라우저 두 개에서 어떻게 보이는지는 예제의 `tests.py`에 있다.
 
+채널을 직접 듣는 테스트는 `async` 테스트 하나 안에서 `new_channel()`과 `receive()`를 함께 부른다.
+channels-nats 레이어는 다른 이벤트 루프가 만든 채널로 `receive()`하는 것을 거절한다 — 동기 코드에서
+`async_to_sync`로 채널을 만들고 다른 `async_to_sync` 호출에서 받으면, in-memory·Redis에서는 통과하던
+테스트가 nats에서는 `ValueError`로 실패한다(`async_to_sync` 호출마다 루프가 따로다).
+
 ## 연습 문제
 
 1. **알림 그룹**: 같은 유형 알림 그룹화

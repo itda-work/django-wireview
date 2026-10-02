@@ -9,7 +9,7 @@ notification that is not the caller's, whatever id the browser sends.
 import asyncio
 
 import pytest
-from asgiref.sync import async_to_sync
+from asgiref.sync import sync_to_async
 from channels.layers import get_channel_layer
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
@@ -127,18 +127,23 @@ async def test_an_anonymous_sender_with_no_recipient_is_told_and_writes_nothing(
 
 
 @pytest.mark.unit
-def test_a_saved_notification_is_announced_on_its_owners_channel_only(alice, bob, django_capture_on_commit_callbacks):
-    layer, alices = async_to_sync(_listen)(notifications_channel(alice))
-    _, bobs = async_to_sync(_listen)(notifications_channel(bob))
+@pytest.mark.asyncio
+async def test_a_saved_notification_is_announced_on_its_owners_channel_only(alice, bob):
+    # One loop makes the channels and receives on them: a layer may refuse a channel
+    # another loop's new_channel() handed out, and channels-nats does (#155). Two
+    # async_to_sync() calls are two loops.
+    layer, alices = await _listen(notifications_channel(alice))
+    _, bobs = await _listen(notifications_channel(bob))
 
-    with django_capture_on_commit_callbacks(execute=True):
-        notification = notify(alice, "alice 것")
+    # notify() as a view calls it: the save's on_commit publishes, at once here,
+    # since a transaction=True test runs in autocommit
+    notification = await sync_to_async(notify)(alice, "alice 것")
 
-    (heard,) = async_to_sync(_heard)(layer, alices, 1)
+    (heard,) = await _heard(layer, alices, 1)
     assert heard["type"] == "model_mutation"
     assert heard["action"] == ModelAction.CREATED
     assert str(notification.pk) in heard["instance"]
-    assert async_to_sync(_heard)(layer, bobs, 0) == []
+    assert await _heard(layer, bobs, 0) == []
 
 
 @pytest.mark.unit

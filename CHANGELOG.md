@@ -414,6 +414,11 @@ The django-reactor era changelog (2.x) is preserved in
   children's `update()` does not report back, so the parent's sum stayed at the old value.
 - Tutorial 14's `live.py` used `NotificationType` without importing it, so the app failed to load
   with a `NameError` and no command, `check` included, could start. It imports it now.
+- The notifications example's test that a saved notification is announced on its owner's
+  channel only failed on the channels-nats layer every time: it made the channels in one
+  `async_to_sync()` call and received on them in another, a loop of its own, and channels-nats
+  refuses a channel another loop's `new_channel()` handed out. The test is async now, so one loop
+  does both, and tutorial 14 says why a test that listens on a channel should (#155).
 - Tutorial 14's settings and test blocks import what they use (`AutoBroadcast`, `Notification`,
   `XNotificationList`), and it no longer calls the bell a place to receive toasts: the bell hears
   only the notification channels, and `{% wireview_toasts %}` receives toasts.

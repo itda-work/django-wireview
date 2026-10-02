@@ -220,6 +220,7 @@ NO_UPGRADE_NOTE = {
     "named a tag that does not exist": DOCS_ONLY,
     "The sdist took every `README.md`": "sdist에서 저장소 파일이 빠졌을 뿐 패키지는 같다",
     "Two runs of `manage.py wireview_lsp` over the same project": FIXED_ONLY,
+    "announced on its owner's channel only failed on the channels-nats layer": DOCS_ONLY,
 }
 
 
