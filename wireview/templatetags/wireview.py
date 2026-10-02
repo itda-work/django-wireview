@@ -263,6 +263,11 @@ def _build_and_render_component(
     if "id" not in kwargs and (sticky_id := _default_sticky_id(component_name, repo)):
         kwargs = {**kwargs, "id": sticky_id}
     component_instance = repo.build(component_name, state=kwargs)
+    if slots is None:
+        # No fill is no slot. The instance may be one another page's pass filled
+        # (a boosted visit takes it over), and the slots it remembers are for its
+        # own renders: falling back to them drew that page's slot here.
+        component_instance.wire.slots = component_instance.wire.slots_from = None
     if not _mount_in_template(component_instance, repo):
         # Frozen: whatever comes back is a redirect meta or nothing at all.
         return component_instance._render(repo) or ""

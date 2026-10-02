@@ -1,0 +1,16 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <b data-testid="host-count">{{ count }}</b>
+  <button data-testid="host-bump" {% on "click" "bump" %}>bump host</button>
+  <section data-testid="nested">
+    {% component 'TempProbe' id="probe" %}
+  </section>
+  <section data-testid="slotted">
+    {% component_block 'TempFrame' id="frame" %}
+    {% fill body %}
+    {% component 'TempProbe' id="slotted-probe" %}
+  {% endfill %}
+{% endcomponent %}
+</section>
+</div>

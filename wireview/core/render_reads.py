@@ -24,6 +24,13 @@ settles it. A part that also read another name renders from what it has now --
 the reset value included -- since that other name may be the change that has
 to go out.
 
+A component drawn in another component's pass -- a nested ``{% component %}``
+the host draws again, or one in a slot its owner draws -- tracks its own reads
+there with a ``RenderReads`` of its own, numbered in that pass; the pass's
+tracking resumes after it. Its stale parts take back what its own last render
+drew (``rendered.keep_stale``): the other component's diff puts the drawing on
+the page.
+
 Two kinds of part need more than the reads of this render:
 
 - an ``{% if %}`` block whose condition is stale did not render the branch that
@@ -63,6 +70,7 @@ class RenderReads:
         #: Marker indices of the parts that read a stale name and nothing else
         self.slots: set[int] = set()
         self._open: list[_Slot] = []
+        self._outer: RenderReads | None = None
 
     def saw(self, name: str) -> None:
         """The innermost open slot read ``name``."""
@@ -92,11 +100,14 @@ class RenderReads:
         return slot
 
     def __enter__(self) -> RenderReads:
+        # A component drawn in another's pass tracks its own reads inside the
+        # other's, which resumes afterwards
+        self._outer = active()
         _local.active = self
         return self
 
     def __exit__(self, *exc: object) -> None:
-        _local.active = None
+        _local.active, self._outer = self._outer, None
 
 
 def active() -> RenderReads | None:

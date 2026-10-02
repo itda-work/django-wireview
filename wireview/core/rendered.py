@@ -547,6 +547,63 @@ def _parse(html: str, stale: set[int] | None = None) -> tuple[list[str], list[Dy
     return static, [_flatten_item(v) for v in dynamic]
 
 
+def keep_stale(html: str, stale: t.Collection[int], previous: Rendered | None) -> str:
+    """``html`` with the parts in ``stale`` as ``previous`` drew them, their markers kept.
+
+    For a component drawn in another component's pass (#111): ``stale`` names
+    the parts of its marked output that read nothing but a reset temporary
+    assign, and ``previous`` is its own last render. Each such part takes back
+    what that render drew there, exactly as ``settle()`` would give it on the
+    component's own next render -- the page shows it, and the other
+    component's diff puts that drawing on the page. A part ``previous`` has
+    nothing for, or one in a loop, stays as drawn. The part keeps its marker,
+    so the enclosing render keeps its structure; what it holds goes in as
+    text.
+    """
+    if not stale or previous is None:
+        return html
+    stale = set(stale)
+    # The outermost stale parts outside any loop, in the order they open: the
+    # order settle() meets them, which is what pairs them with ``previous``
+    spans: list[tuple[int, int]] = []
+    stack: list[tuple[str, int, int]] = []
+    for match in _TOKEN.finditer(html):
+        close, kind, index = match.group(1), match.group(2), int(match.group(3))
+        if not close:
+            stack.append((kind, index, match.end()))
+        elif stack and stack[-1][0] == kind and stack[-1][1] == index:
+            start = stack.pop()[2]
+            if kind != "I" and index in stale and not any(entry[0] in ("I", "C") for entry in stack):
+                spans = [span for span in spans if span[0] < start]  # a stale part inside this one
+                spans.append((start, match.start()))
+    if stack or not spans:
+        return html
+    parsed = Rendered.from_marked_html(html, stale)
+    kept: list[Dynamic | None] = []
+
+    def walk(rendered: Rendered, before: Rendered | None) -> None:
+        aligned = before is not None and before.static == rendered.static
+        for i, value in enumerate(rendered.dynamic):
+            old = before.dynamic[i] if aligned and before is not None else None
+            if isinstance(value, Stale):
+                kept.append(old)
+            elif isinstance(value, Rendered):
+                walk(value, old if isinstance(old, Rendered) else None)
+
+    walk(parsed, previous)
+    if len(kept) != len(spans):
+        return html  # markers this parse does not read the same way: draw it as it is
+    parts: list[str] = []
+    end = 0
+    for (start, stop), value in zip(spans, kept):
+        if value is None:
+            continue
+        parts += [html[end:start], value if isinstance(value, str) else value.to_html()]
+        end = stop
+    parts.append(html[end:])
+    return "".join(parts)
+
+
 def _flatten_item(value: Dynamic | _Item) -> Dynamic:
     """An item marker outside its comprehension is just text."""
     if isinstance(value, _Item):

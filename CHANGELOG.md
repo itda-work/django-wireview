@@ -420,6 +420,20 @@ The django-reactor era changelog (2.x) is preserved in
     template render per component (50 of them: about 3.4 ms to 0.45 ms). One that left the page is
     not drawn: after the owner hides the slot and shows it again, it comes back on the filler's next
     render.
+- A temporary assign of a nested `{% component %}` stays on the page when the component around it
+  renders. That component's pass draws the nested one again -- the host of a `{% component %}`,
+  and the owner of a slot it sits in -- and its diff puts the drawing on the page. The drawing read
+  the reset value, so the list the nested component's last event loaded left the page on any
+  render of the host, unrelated or not; the #111 rule held only for the nested component's own
+  render. That drawing now keeps the parts that read nothing but a reset temporary assign as the
+  component's own last render drew them, as its own next render would; such a part goes into the
+  host's render as text.
+- A component drawn with `{% component %}` and no fill draws no slot. A boosted visit to another
+  page whose host draws a component of the same class and id took over the instance the page
+  before had filled, and a render without slots fell back to the ones it remembered: that page's
+  text and LiveComponent references went out in the new host's render until the component's own
+  join emptied them. The remembered slots are for the component's own renders; a pass with no fill
+  forgets them.
 
 - What a new component sends from `joined()` reaches it: its streams, its `push_js` and its
   `push_event`. A LiveComponent a parent's render brings in sends them right behind that render,

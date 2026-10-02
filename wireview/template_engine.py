@@ -10,6 +10,7 @@ outputs with HTML comment markers that identify dynamic regions.
 from __future__ import annotations
 
 import typing as t
+from contextlib import contextmanager
 
 from django.http import HttpRequest
 from django.template import Context, Template
@@ -253,6 +254,9 @@ class TemplateMarker:
     def __init__(self) -> None:
         self.marker_context = MarkerContext()
         self._depth = 0
+        # The depth whose template reports the names it resolves: the component
+        # that renders, or one drawn in its pass that tracks its own (tracking())
+        self._tracked_depth = 1
 
     def prepare_template(self, template: Template | BackendTemplate) -> Template | BackendTemplate:
         """
@@ -344,6 +348,22 @@ class TemplateMarker:
         """Reset the marker context for a new render."""
         self.marker_context.reset()
 
+    @contextmanager
+    def tracking(self, reads: render_reads.RenderReads) -> t.Iterator[None]:
+        """Track ``reads`` for the template rendered next, inside the render under way.
+
+        A component drawn in another component's pass has temporary assigns of
+        its own; its parts are numbered in that pass, and what they read is its
+        own business (#111). The render around it tracks again afterwards.
+        """
+        saved = self.marker_context.reads, self._tracked_depth
+        self.marker_context.reads, self._tracked_depth = reads, self._depth + 1
+        try:
+            with reads:
+                yield
+        finally:
+            self.marker_context.reads, self._tracked_depth = saved
+
     def render_marked(self, template: Template | BackendTemplate, context: dict[str, t.Any]) -> str:
         """
         Render a template with dynamic markers.
@@ -367,7 +387,7 @@ class TemplateMarker:
         try:
             # Backend wrappers (from loader.get_template()) accept a dict,
             # raw django.template.base.Template needs a Context.
-            reads = self.marker_context.reads if self._depth == 1 else None
+            reads = self.marker_context.reads if self._depth == self._tracked_depth else None
             if reads is not None:
                 # The names the template resolves are reported (#111). A backend
                 # wrapper builds a plain Context itself, so build this one as it would.

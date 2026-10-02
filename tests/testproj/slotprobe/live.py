@@ -6,7 +6,8 @@ the frame's slot with a plain component too. The frame and the box render those
 slots on their own -- the frame on its join and its events, the box on its
 events -- and what is in them must stay on the page as it is and keep answering
 clicks. The frame can also hide its slot and show it again, and raise, which
-joins it again.
+joins it again. Another page's host draws the frame's class and id with no fill
+(``SlotProbeOtherHost``).
 """
 
 from wireview import Component, LiveComponent
@@ -20,6 +21,11 @@ class SlotProbeHost(Component):
 
     async def bump(self):
         self.n += 1
+
+
+class SlotProbeOtherHost(Component):
+    class Meta:
+        template_name = "slotprobe/other_host_component.html"
 
 
 class SlotProbeFrame(Component):

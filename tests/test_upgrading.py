@@ -197,6 +197,8 @@ NO_UPGRADE_NOTE = {
     "A LiveComponent shown again after a reconnect starts from its defaults": FIXED_ONLY,
     "Nothing reaches a component whose join failed": FIXED_ONLY,
     "A LiveComponent placed in a slot stays on the page": "화면에서 사라지던 결함이고, 기댈 동작이 아니었다",
+    "A temporary assign of a nested `{% component %}` stays": "목록이 화면에서 사라지던 결함이고, 기댈 동작이 아니었다",
+    "draws no slot. A boosted visit to another": "앞 페이지의 슬롯이 잠깐 실리던 결함이고, 기댈 동작이 아니었다",
 }
 
 

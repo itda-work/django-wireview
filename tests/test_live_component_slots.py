@@ -117,6 +117,7 @@ TEMPLATES = {
         "{% component_block 'SlShowFrame' id='rf' %}{% fill body %}{% render_slot 'body' %}{% endfill %}"
         "{% endcomponent %}</div>"
     ),
+    "sl/otherhostpage.html": "{% load wireview %}<div {% tag_header %}>O{% component 'SlShowFrame' id='sf' %}</div>",
     "sl/holderpage.html": (
         "{% load wireview %}<main {% tag_header %}>"
         "{% component_block 'SlShowFrame' id='hf' %}{% fill body %}S{% component 'SlHolder' id='gh' %}{% endfill %}"
@@ -268,6 +269,18 @@ class SlShowPage(Component):
 
     async def boom(self):
         raise RuntimeError("the host went wrong")
+
+
+class SlOtherHostPage(Component):
+    """Another page's host: the frame's class and id, no fill."""
+
+    class Meta:
+        template_name = "sl/otherhostpage.html"
+
+    n: int = 0
+
+    async def bump(self):
+        self.n += 1
 
 
 class SlShowFrame(Component):
@@ -870,6 +883,46 @@ async def test_another_page_after_the_host_joined_again_draws_no_slot():
 
     assert consumer.repo.get("sf").wire.slots is None
     assert child_html(consumer, "sf").endswith("<span>0</span></section>")
+
+
+@pytest.mark.parametrize("frame_joins", [True, False], ids=["frame-joins", "host-renders-again"])
+async def test_another_pages_host_drawing_the_id_with_no_fill_draws_no_slot(frame_joins):
+    """Its pass draws the instance the old page filled, and no fill is no slot.
+
+    The pass takes the old frame over (``repo.build``), and a render without slots
+    used to fall back to the ones it remembered: the old page's text and
+    LiveComponents went out in the new host's render.
+    """
+    from wireview.core.state import sign_state
+
+    consumer, outbound = await join_show_page()
+    http = ComponentRepository(is_live=False, user=AnonymousUser())
+    other_host = sign_state(http.build("SlOtherHostPage", {"id": "other"}))
+    await consumer.command_leave("host")
+    await consumer.command_leave("g")
+    outbound.commands.clear()
+
+    await consumer.command_join("SlOtherHostPage", other_host)
+    if frame_joins:
+        await consumer.command_join("SlShowFrame", another_pages_frame())
+    else:
+        await consumer.command_user_event("other", "bump", {}, {})
+
+    for render in outbound.renders():
+        assert "A<!--@wv:sl1" not in json.dumps(render) and refs(render["diff"]) == [], render
+    assert child_html(consumer, "other").endswith("<span>0</span></section></div>")
+    assert consumer.repo.get("sf").wire.slots is None and consumer.repo.get("sf").wire.slots_from is None
+    assert consumer.repo._slots_to_rejoin == {}
+
+
+async def test_a_slot_the_frame_remembers_is_drawn_on_its_own_render_only():
+    """The frame's own render draws its slot from what it remembers; a host's pass without a fill does not."""
+    consumer, outbound = await join_show_page()
+
+    await consumer.command_user_event("sf", "click", {}, {})
+
+    assert "A<!--@wv:sl1-->B" in child_html(consumer, "sf")
+    assert consumer.repo.get("sf").wire.slots_from is consumer.repo.get("host")
 
 
 # Bundles before LEAVES_FIRST_SINCE (v1.0.0rc1-rc3) join the new page's elements

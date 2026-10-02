@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <b data-testid="frame-count">{{ count }}</b>
+  <button data-testid="frame-bump" {% on "click" "bump" %}>bump frame</button>
+  {% render_slot "body" %}
+</div>

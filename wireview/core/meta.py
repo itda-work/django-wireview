@@ -18,7 +18,7 @@ from .. import telemetry
 from ..utils import db
 from .render_gate import RenderGate
 from .render_reads import RenderReads
-from .rendered import Rendered, strip_markers
+from .rendered import Rendered, keep_stale, strip_markers
 from .transport import Broker, ChannelsBroker, NullBroker
 
 log = logging.getLogger("wireview")
@@ -427,10 +427,13 @@ class WireviewMeta:
                     self.slots = slots.without_markers()
                 elif self.slots is not None:
                     slots = self.slots
-                context = self._get_context(component, repo, slots)
-                # Use marker-injected rendering for efficient diffing
-                # The template type from component matches what render_with_markers expects
-                html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
+                if repo.is_live and self._last_rendered is not None and (stale := component._stale_temporaries()):
+                    html = self._render_keeping(component, repo, template, slots, stale)
+                else:
+                    context = self._get_context(component, repo, slots)
+                    # Use marker-injected rendering for efficient diffing
+                    # The template type from component matches what render_with_markers expects
+                    html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
                 if not repo.is_live:
                     # HTTP render: markers inside attributes (value="<!--$0-->…") would
                     # corrupt the page until the WebSocket join replaces the DOM.
@@ -439,6 +442,31 @@ class WireviewMeta:
         if html:
             return mark_safe(html)
         return None
+
+    def _render_keeping(
+        self,
+        component: "Component",
+        repo: Repo,
+        template: t.Any,
+        slots: "SlotContainer | None",
+        stale: frozenset[str],
+    ) -> str:
+        """Draw the component in another component's pass, keeping what its reset temporary assigns drew.
+
+        A nested ``{% component %}`` is drawn again whenever the component
+        around it renders, and that render's diff puts the drawing on the page
+        in place of the component's own. Its temporary assigns were reset after
+        its own render, so the parts that read only them take back what that
+        render drew -- as its own next render would (#111). Without it the list
+        its last event loaded left the page on any render of the host.
+        """
+        from ..template_engine import get_template_marker, render_with_markers
+
+        reads = RenderReads(id(component), stale, type(component).model_fields)
+        context = self._get_context(component, repo, slots, reads)
+        with get_template_marker().tracking(reads):
+            html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
+        return keep_stale(html, reads.slots, self._last_rendered)
 
     async def send_stream_op(self, op: "StreamOp", owner: str | None = None) -> None:
         """Send a stream operation to the client, on behalf of component ``owner``.
@@ -597,6 +625,20 @@ class WireviewMeta:
             if iscoroutine(value):
                 context[name] = await value
 
+    @staticmethod
+    def _read(component: "Component", attr_name: str, reads: RenderReads | None) -> t.Any:
+        """``component``'s attribute ``attr_name``; with ``reads``, sorted stale or other."""
+        if reads is None:
+            return getattr(component, attr_name)
+        # A property computed from stale fields alone is stale too
+        with reads:
+            slot = reads.open()
+            attr = getattr(component, attr_name)
+            reads.close(slot)
+        if attr_name not in reads.stale and attr_name not in reads.other:
+            (reads.stale if slot.stale and not slot.other else reads.other).add(attr_name)
+        return attr
+
     def _collect_context(self, component: "Component", repo: Repo, reads: RenderReads | None = None) -> Context:
         """Read every public attribute of the component into a context (sync).
 
@@ -606,16 +648,7 @@ class WireviewMeta:
 
         for attr_name in dir(component):
             if not attr_name.startswith("_") and attr_name not in self._PYDANTIC_CLASS_ATTRS:
-                if reads is None:
-                    attr = getattr(component, attr_name)
-                else:
-                    # A property computed from stale fields alone is stale too
-                    with reads:
-                        slot = reads.open()
-                        attr = getattr(component, attr_name)
-                        reads.close(slot)
-                    if attr_name not in reads.stale and attr_name not in reads.other:
-                        (reads.stale if slot.stale and not slot.other else reads.other).add(attr_name)
+                attr = self._read(component, attr_name, reads)
                 if not callable(attr):
                     context[attr_name] = attr
 
@@ -674,6 +707,7 @@ class WireviewMeta:
         component: "Component",
         repo: Repo,
         slots: "SlotContainer | None" = None,
+        reads: RenderReads | None = None,
     ) -> Context:
         """Build the template context for rendering (sync version).
 
@@ -705,7 +739,7 @@ class WireviewMeta:
 
         for attr_name in dir(component):
             if not attr_name.startswith("_") and attr_name not in self._PYDANTIC_CLASS_ATTRS:
-                attr = getattr(component, attr_name)
+                attr = self._read(component, attr_name, reads)
                 if not callable(attr):
                     # Handle async properties that return coroutine objects
                     if iscoroutine(attr):

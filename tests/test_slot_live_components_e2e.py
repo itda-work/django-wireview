@@ -8,7 +8,9 @@ carried the LiveComponent as a bare comment and it left the page. The frame's
 slot also holds a plain component, which its render put back as the host's pass
 had drawn it; the frame can hide its slot and show it again, and joins again
 after it raises or the page is visited again, which emptied its slot. Another
-page with a frame of the same id and no fill draws its slot empty.
+page with a frame of the same id and no fill draws its slot empty, and so does
+another page whose host draws the frame with no fill: the host's render carried
+the old page's slot before the frame's own join emptied it.
 
 Fixture: tests/testproj/slotprobe/.
 """
@@ -181,6 +183,25 @@ def test_a_visit_to_the_same_page_keeps_the_frames_slot(probe):
     expect_text(by(probe, "leaf-pokes"), "1")
     by(probe, "plain-click").click()
     expect_text(by(probe, "plain-clicks"), "1")
+
+
+def test_a_visit_to_another_hosts_page_draws_no_slot_in_the_hosts_render(probe):
+    """The other host's pass takes over the frame this page filled; with no fill it has no slot."""
+    seen = renders_of(probe, "frame")
+
+    by(probe, "otherhost").click()
+    probe.wait_for_url("**/slotprobe/?otherhost=1")
+    expect_text(by(probe, "other-host"), "OTHER HOST")
+    after_render_of(probe, "other-host")
+    after_render_of(probe, "frame", seen)
+
+    host_renders = probe.evaluate(
+        "window.__inbox.seen.filter((m) => m.command === 'render' && m.payload.id === 'other-host')"
+        ".map((m) => JSON.stringify(m.payload))"
+    )
+    assert host_renders and not [r for r in host_renders if "FRAME-SLOT" in r or '"c":"leaf"' in r], host_renders
+    expect_count(by(probe, "frame-slot"), 0)
+    expect_count(probe.locator("#leaf"), 0)
 
 
 def test_a_visit_to_another_page_with_the_frames_id_draws_no_slot(probe):
