@@ -1,4 +1,4 @@
-# 12. Live Search - 실시간 검색
+# Live Search - 실시간 검색
 
 > 동작하는 전체 코드: [examples/search/](../../examples/search/) — `make test`가 함께 돌리고, 릴리스 게이트(CI)가 태그마다 다시 돌리는 예제다.
 
@@ -136,7 +136,7 @@ class XLiveSearch(Component):
 ```
 
 `results`와 `selected_book`은 모델 인스턴스를 그대로 담는다. 서명 상태에는 pk(목록)만 실리고, 다시 join할 때
-타입 표기를 따라 다시 읽힌다(상세는 [03. Todo 앱](03-todo-app.md)).
+타입 표기를 따라 다시 읽힌다(상세는 [Todo 앱](03-todo-app.md)).
 
 ## 3. 템플릿
 
@@ -260,8 +260,8 @@ JS().remove_class(selector, "cls") # 클래스 제거
 
 ## 다음 단계
 
-- [13. Quiz 앱](./13-quiz-app.md) - 상태 머신과 mutation
+- [Quiz 앱](./13-quiz-app.md) - 상태 머신과 mutation
 
 ---
 
-[← 이전: 03. Todo 앱](03-todo-app.md) | [목차](README.md) | [다음: 13. Quiz 앱 →](13-quiz-app.md)
+[← 이전: Todo 앱](03-todo-app.md) | [목차](README.md) | [다음: Quiz 앱 →](13-quiz-app.md)

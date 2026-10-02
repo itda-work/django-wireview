@@ -1,4 +1,4 @@
-# 07. Presence API 심화
+# Presence API 심화
 
 Presence API의 고급 사용법과 스케일링 전략을 다룹니다.
 
@@ -344,4 +344,4 @@ class XOnlineUsers(PresenceTrackerMixin, Component):
 
 ## 다음 단계
 
-[← 이전: 06. Streams API 심화](06-streams-api.md) | [목차](README.md) | [다음: 08. File Uploads 심화 →](08-file-uploads.md)
+[← 이전: Streams API 심화](06-streams-api.md) | [목차](README.md) | [다음: File Uploads 심화 →](08-file-uploads.md)

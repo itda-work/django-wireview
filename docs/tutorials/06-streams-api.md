@@ -1,4 +1,4 @@
-# 06. Streams API 심화
+# Streams API 심화
 
 Streams API의 고급 사용법과 성능 최적화를 다룹니다.
 
@@ -382,4 +382,4 @@ async def reorder(self, item_id: int, new_index: int):
 
 ## 다음 단계
 
-[← 이전: 15. LiveComponent](15-live-components.md) | [목차](README.md) | [다음: 07. Presence API 심화 →](07-presence-api.md)
+[← 이전: LiveComponent](15-live-components.md) | [목차](README.md) | [다음: Presence API 심화 →](07-presence-api.md)

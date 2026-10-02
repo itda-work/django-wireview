@@ -285,6 +285,6 @@ def _presign_upload(self, entry, component):
 
 ## 관련
 
-- [튜토리얼 08 — 파일 업로드](../tutorials/08-file-uploads.md)
+- [튜토리얼: File Uploads 심화](../tutorials/08-file-uploads.md)
 - [chunked-uploads.md](./chunked-uploads.md) — 서버를 지나는 청크 경로
 - [Phoenix LiveView External Uploads](https://hexdocs.pm/phoenix_live_view/uploads.html#external-uploads)

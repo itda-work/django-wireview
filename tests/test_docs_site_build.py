@@ -282,6 +282,16 @@ def test_a_card_shows_a_tutorials_level_and_otherwise_the_section(site):
     assert {meta for _, meta in _cards(_html(site.out, reference.url)).values()} == {"레퍼런스"}
 
 
+def test_the_sidebar_and_the_pager_name_tutorials_without_a_number(site):
+    tutorials = nav.tutorials()
+    page_html = _html(site.out, tutorials[1].url)
+    sidebar = page_html.split('<nav id="sidebar"', 1)[1].split("</nav>", 1)[0]
+    named = dict(re.findall(r'href="(/wireview/tutorial/[^"]+/)"[^>]*>([^<]*)</a>', sidebar))
+    assert [named[page.url] for page in tutorials] == [page.short_title for page in tutorials]
+    titles = [title for title, _ in _cards(page_html).values()] + list(named.values())
+    assert not [title for title in titles if re.match(r"\d+\. ", title)]
+
+
 def test_a_tutorial_shows_its_level_and_time(site):
     page = next(page for page in nav.tutorials() if page.slug == "streams-api")
     meta = re.search(r'<p class="page-meta">(.*?)</p>', _html(site.out, page.url)).group(1)
@@ -292,8 +302,8 @@ def test_the_published_markdown_keeps_the_closing_line_with_site_links(site):
     page = next(page for page in nav.tutorials() if page.slug == "todo-app")
     last = (site.out / page.url.lstrip("/") / "index.md").read_text(encoding="utf-8").rstrip().splitlines()[-1]
     assert last == (
-        "[← 이전: 11. Rating 앱](/wireview/tutorial/rating-app/) | [목차](/wireview/tutorial/) | "
-        "[다음: 12. Live Search →](/wireview/tutorial/live-search/)"
+        "[← 이전: Rating 앱](/wireview/tutorial/rating-app/) | [목차](/wireview/tutorial/) | "
+        "[다음: Live Search →](/wireview/tutorial/live-search/)"
     )
 
 

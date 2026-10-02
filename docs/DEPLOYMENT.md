@@ -249,7 +249,7 @@ ASGI 서버는 정적 파일을 서빙하지 않는다. `{% wireview_header %}`�
 빠뜨리면 페이지는 200으로 그려지는데 어떤 컴포넌트도 살아나지 않는다 — 오류도, 검사 경고도 없다.
 
 - **개발.** `runserver`는 스스로 `/static/`을 서빙하지만 uvicorn은 `asgi.py`의 `application`만 서빙한다.
-  스타터 템플릿과 [튜토리얼 01](tutorials/01-getting-started.md#asgipy-수정)의 `asgi.py`는 `DEBUG`일 때 HTTP 앱을
+  스타터 템플릿과 [시작하기 튜토리얼](tutorials/01-getting-started.md#asgipy-수정)의 `asgi.py`는 `DEBUG`일 때 HTTP 앱을
   `django.contrib.staticfiles.handlers.ASGIStaticFilesHandler`로 감싸 둘 다 된다.
 - **운영(`DEBUG = False`).** 그 래퍼는 꺼진다. `STATIC_ROOT`를 정하고 배포마다 `python manage.py collectstatic`을
   돌린 뒤, 앞단의 웹 서버가 `/static/`을 서빙한다.

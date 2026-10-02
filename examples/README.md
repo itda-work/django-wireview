@@ -4,15 +4,15 @@
 
 | 예제 | 개념 | 튜토리얼 |
 |------|------|----------|
-| [todo](./todo/) | 모델 구독으로 여러 탭이 같은 목록을 함께 본다 | [03](../docs/tutorials/03-todo-app.md) |
-| [poll](./poll/) | 쓰기는 핸들러가, 다시 그리기는 브로드캐스트가 | [10](../docs/tutorials/10-poll-app.md) |
-| [rating](./rating/) | 잠깐 쓰는 상태와 남는 상태를 갈라 둔다 | [11](../docs/tutorials/11-rating-app.md) |
-| [search](./search/) | 디바운스한 입력과 키보드로 고르는 결과 | [12](../docs/tutorials/12-live-search.md) |
-| [quiz](./quiz/) | 컴포넌트 상태로 굴리는 상태 머신 | [13](../docs/tutorials/13-quiz-app.md) |
-| [chat](./chat/) | Streams와 Presence | [04](../docs/tutorials/04-chat-app.md) |
-| [dashboard](./dashboard/) | AsyncResult로 느린 조회를 미룬다 | [05](../docs/tutorials/05-dashboard.md) |
-| [notifications](./notifications/) | 알림은 한 사용자에게 간다. 저장하는 알림과 저장하지 않는 토스트 | [14](../docs/tutorials/14-notifications.md) |
-| [livecomp](./livecomp/) | 연결을 공유하는 중첩 컴포넌트 | [15](../docs/tutorials/15-live-components.md) |
+| [todo](./todo/) | 모델 구독으로 여러 탭이 같은 목록을 함께 본다 | [Todo 앱](../docs/tutorials/03-todo-app.md) |
+| [poll](./poll/) | 쓰기는 핸들러가, 다시 그리기는 브로드캐스트가 | [Poll 앱](../docs/tutorials/10-poll-app.md) |
+| [rating](./rating/) | 잠깐 쓰는 상태와 남는 상태를 갈라 둔다 | [Rating 앱](../docs/tutorials/11-rating-app.md) |
+| [search](./search/) | 디바운스한 입력과 키보드로 고르는 결과 | [Live Search](../docs/tutorials/12-live-search.md) |
+| [quiz](./quiz/) | 컴포넌트 상태로 굴리는 상태 머신 | [Quiz 앱](../docs/tutorials/13-quiz-app.md) |
+| [chat](./chat/) | Streams와 Presence | [Chat 앱](../docs/tutorials/04-chat-app.md) |
+| [dashboard](./dashboard/) | AsyncResult로 느린 조회를 미룬다 | [Dashboard](../docs/tutorials/05-dashboard.md) |
+| [notifications](./notifications/) | 알림은 한 사용자에게 간다. 저장하는 알림과 저장하지 않는 토스트 | [Notifications](../docs/tutorials/14-notifications.md) |
+| [livecomp](./livecomp/) | 연결을 공유하는 중첩 컴포넌트 | [LiveComponent](../docs/tutorials/15-live-components.md) |
 | [slots](./slots/) | 내용을 호출자가 채우는 레이아웃 컴포넌트 | [기능 문서](../docs/features/slots.md) |
 | [hooks](./hooks/) | 브라우저만 할 수 있는 일을 컴포넌트에 붙인다 | [기능 문서](../docs/features/hooks.md) |
 

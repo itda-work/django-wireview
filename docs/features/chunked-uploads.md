@@ -1,6 +1,6 @@
 # 청크 업로드의 서버 쪽 (#83)
 
-> 컴포넌트에서 업로드를 **쓰는 법**은 [튜토리얼 08](../tutorials/08-file-uploads.md)이 정본이다.
+> 컴포넌트에서 업로드를 **쓰는 법**은 [File Uploads 심화 튜토리얼](../tutorials/08-file-uploads.md)이 정본이다.
 > 이 문서는 청크가 서버에서 어떻게 처리되고, 워커가 여럿일 때 무엇이 필요한지를 다룬다.
 > 저장소를 아예 거치지 않는 방식은 [external-uploads.md](./external-uploads.md).
 
@@ -200,7 +200,7 @@ join을 보내지 않는 LiveComponent도 같은 규칙으로 다뤄진다.
 
 ## 관련
 
-- [튜토리얼 08 — 파일 업로드](../tutorials/08-file-uploads.md)
+- [튜토리얼: File Uploads 심화](../tutorials/08-file-uploads.md)
 - [external-uploads.md](./external-uploads.md)
 - [checks.md](./checks.md) — `wireview.W008`, `wireview.W009`
 - [design/distributed-uploads.md](../design/distributed-uploads.md) — 왜 이 설계인지

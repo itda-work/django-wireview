@@ -55,6 +55,16 @@ def _text(file: str) -> str:
     return (TUTORIALS / file).read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize("file", FILES)
+def test_a_title_carries_no_number(file):
+    """The files are numbered in the order they were written, and the path reads them in another:
+    a numbered title made the sidebar and this README read 01, 02, 10, 11, 03, 12 ... The list's
+    position and its level headings tell the order; the file names keep the numbers for links."""
+    title = _text(file).split("\n", 1)[0]
+    assert title.startswith("# ")
+    assert not re.match(r"\d+\. ", title[2:]), f"{file}: {title}"
+
+
 def test_the_order_lists_every_tutorial_once():
     assert sorted(ORDER) == FILES
     assert len(ORDER) == len(set(ORDER))

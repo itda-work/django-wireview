@@ -129,7 +129,7 @@ UPGRADE_NOTE = {
     "nested components without an `id`": ("문서 예시", "`id`를 준다"),
     "never set `AUTO_BROADCAST.senders`": ("문서 예시", "`AUTO_BROADCAST.senders`"),
     "the parent handler `send_to_parent` calls": ("문서 예시", "`send_to_parent`"),
-    "last-seen helper starts with": ("문서 예시", "튜토리얼 07"),
+    "last-seen helper starts with": ("문서 예시", "Presence API 심화"),
     "stream of the same name share no list": ("스트림 연산", "`dom_id`"),
     "[GHSA-8q8p-x4w4-p745]": ("`on_upload_complete`는", "consume_uploads"),
     "What a part kept for a reset temporary assign holds from elsewhere": (

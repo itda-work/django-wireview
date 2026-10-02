@@ -1,8 +1,8 @@
-# 02. Counter 컴포넌트
+# Counter 컴포넌트
 
 이 튜토리얼에서는 카운터 컴포넌트를 만들며 wireview의 핵심 개념을 학습합니다.
 
-아래 경로의 `myapp/`은 [01](./01-getting-started.md)에서 만든 앱입니다. 스타터 템플릿으로 시작했다면 `hello/`로 읽습니다.
+아래 경로의 `myapp/`은 [시작하기](./01-getting-started.md)에서 만든 앱입니다. 스타터 템플릿으로 시작했다면 `hello/`로 읽습니다.
 
 ## 학습 목표
 
@@ -456,4 +456,4 @@ class XCounter(Component):
 
 다음 튜토리얼에서는 모델을 구독해 다른 사용자의 투표까지 실시간으로 보여 주는 Poll 앱을 만들며 렌더링 최적화를 배웁니다.
 
-[← 이전: 01. 시작하기](01-getting-started.md) | [목차](README.md) | [다음: 10. Poll 앱 →](10-poll-app.md)
+[← 이전: 시작하기](01-getting-started.md) | [목차](README.md) | [다음: Poll 앱 →](10-poll-app.md)

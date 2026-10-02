@@ -117,7 +117,7 @@ SECURE_CSP = {
 저장이 됐다. `{% on "change" %}`도 같았다.
 
 사용자가 렌더가 오기 전에 직접 다른 곳을 클릭한 blur는 그대로 간다. 그래서 "이미 끝난 편집"에 온 저장은 핸들러가
-상태로 거른다(튜토리얼 03의 `if not self.editing: return`).
+상태로 거른다(Todo 앱 튜토리얼의 `if not self.editing: return`).
 
 ## 주의사항
 

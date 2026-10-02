@@ -1,4 +1,4 @@
-# 08. File Uploads 심화
+# File Uploads 심화
 
 파일 업로드의 고급 기능과 보안 전략을 다룹니다.
 
@@ -659,4 +659,4 @@ class XProfileEditor(Component):
 
 ## 다음 단계
 
-[← 이전: 07. Presence API 심화](07-presence-api.md) | [목차](README.md) | [다음: 09. 테스트 가이드 →](09-testing-components.md)
+[← 이전: Presence API 심화](07-presence-api.md) | [목차](README.md) | [다음: 테스트 가이드 →](09-testing-components.md)

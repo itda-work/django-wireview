@@ -88,7 +88,7 @@ wireview/
 ├── management/commands/   wireview_stubs (.pyi 생성), wireview_lsp (IDE 메타데이터 JSON),
 │                          wireview_agent_setup (앱 개발자용 스킬을 프로젝트 .claude/skills/ 에 설치),
 │                          wireview_upload_gc (토큰 만료보다 오래된 청크 파일 정리)
-├── project_template/       startproject --template 용 스타터(튜토리얼 01의 프로젝트). *.py-tpl 과 html 뿐, 모듈이 아니다.
+├── project_template/       startproject --template 용 스타터(시작하기 튜토리얼의 프로젝트). *.py-tpl 과 html 뿐, 모듈이 아니다.
 │                          tests/test_project_template.py 가 스크래치에 만들어 check·첫 화면을 보고, ci-build 가 wheel 에 있는지 본다(#131).
 │                          tests/test_starter_e2e.py 는 그 프로젝트를 자기 runserver(daphne)와 uvicorn으로 띄워 브라우저로 입력해 본다(#151).
 │                          uvicorn은 정적 파일을 서빙하지 않으므로 스타터 asgi.py가 DEBUG일 때 ASGIStaticFilesHandler로 감싼다

@@ -1,4 +1,4 @@
-# 15. LiveComponent - 중첩 컴포넌트
+# LiveComponent - 중첩 컴포넌트
 
 > 동작하는 전체 코드: [examples/livecomp/](../../examples/livecomp/) — `make test`가 함께 돌리고, 릴리스 게이트(CI)가 태그마다 다시 돌리는 예제다.
 
@@ -13,8 +13,8 @@
 
 ## 전제 조건
 
-- [02. Counter 컴포넌트](02-counter-component.md) 완료
-- [05. Dashboard](05-dashboard.md) 기본 지식
+- [Counter 컴포넌트](02-counter-component.md) 완료
+- [Dashboard](05-dashboard.md) 기본 지식
 
 ---
 
@@ -187,7 +187,7 @@ class Dashboard(Component):
 `counter_changed`는 `_` 없는 핸들러여야 하고, 같은 이유로 브라우저도 이 핸들러를 임의의 인자로 부를 수 있다.
 자식 쪽 `_notify_parent`는 `_`로 시작해 클라이언트가 부를 수 없지만, 부모의 `counter_changed`는 그렇지 않다.
 여기서는 화면에 보일 합계만 바뀌므로 괜찮다. 권한이나 저장이 걸린 일이면 받은 인자를 믿지 말고 서버에서
-다시 확인한다([14. Notifications의 "브라우저가 보낸 id를 믿지 않는다"](14-notifications.md#브라우저가-보낸-id를-믿지-않는다)와 같은 원칙이다).
+다시 확인한다([Notifications의 "브라우저가 보낸 id를 믿지 않는다"](14-notifications.md#브라우저가-보낸-id를-믿지-않는다)와 같은 원칙이다).
 
 ### 3.2 부모 → 자식 (send_update)
 
@@ -511,7 +511,7 @@ class Counter(LiveComponent):
 ## 다음 단계
 
 - [docs/features/live-component.md](../features/live-component.md) - 상세 레퍼런스
-- [06. Streams API 심화](06-streams-api.md) - 여기서부터는 앞에서 쓴 API를 하나씩 깊이 다룹니다
+- [Streams API 심화](06-streams-api.md) - 여기서부터는 앞에서 쓴 API를 하나씩 깊이 다룹니다
 
 ---
 
@@ -521,4 +521,4 @@ class Counter(LiveComponent):
 
 ---
 
-[← 이전: 14. Notifications](14-notifications.md) | [목차](README.md) | [다음: 06. Streams API 심화 →](06-streams-api.md)
+[← 이전: Notifications](14-notifications.md) | [목차](README.md) | [다음: Streams API 심화 →](06-streams-api.md)

@@ -1,4 +1,4 @@
-# 10. Poll 앱 - 실시간 투표
+# Poll 앱 - 실시간 투표
 
 > 동작하는 전체 코드: [examples/poll/](../../examples/poll/) — `make test`가 함께 돌리고, 릴리스 게이트(CI)가 태그마다 다시 돌리는 예제다.
 
@@ -212,8 +212,8 @@ wireview는 서버 요청 중 자동으로 `.wireview-loading` 클래스를 추�
 
 ## 다음 단계
 
-- [11. Rating 앱](./11-rating-app.md) - 별점 평가와 키보드 이벤트
+- [Rating 앱](./11-rating-app.md) - 별점 평가와 키보드 이벤트
 
 ---
 
-[← 이전: 02. Counter 컴포넌트](02-counter-component.md) | [목차](README.md) | [다음: 11. Rating 앱 →](11-rating-app.md)
+[← 이전: Counter 컴포넌트](02-counter-component.md) | [목차](README.md) | [다음: Rating 앱 →](11-rating-app.md)

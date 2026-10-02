@@ -1,6 +1,6 @@
 # 테스트 헬퍼
 
-> `wireview.testing`이 주는 것 전체. 처음 배우는 순서는 [튜토리얼 09](../tutorials/09-testing-components.md)가 낫고,
+> `wireview.testing`이 주는 것 전체. 처음 배우는 순서는 [테스트 가이드 튜토리얼](../tutorials/09-testing-components.md)가 낫고,
 > 이 문서는 레퍼런스다.
 
 ## 개요
@@ -193,9 +193,9 @@ view = await mount(XAdminPanel, user=staff, live_session="admin")
 - **async ORM으로 쓰는 테스트는 `@pytest.mark.django_db(transaction=True)`.** 그냥 `django_db`의 롤백은
   테스트 스레드의 연결에만 걸리고, `acreate`·`asave`·`adelete`와 async 핸들러 안의 ORM 호출은 워커 스레드의
   연결에서 곧바로 커밋되어 다음 테스트에 남는다. `transaction=True`는 끝에 테이블을 비운다. 이 저장소에서 잰
-  비용은 테스트 하나에 약 15ms다([튜토리얼 09](../tutorials/09-testing-components.md#모델과-함께-테스트)).
+  비용은 테스트 하나에 약 15ms다([테스트 가이드 튜토리얼](../tutorials/09-testing-components.md#모델과-함께-테스트)).
 - **마커는 등록해서 쓴다.** `--strict-markers`에서는 등록하지 않은 마커가 수집 오류다(등록 방법은
-  [튜토리얼 09](../tutorials/09-testing-components.md#테스트-마커)). 이 저장소의 테스트는 `unit`·`integration`·`slow`·`e2e`
+  [테스트 가이드 튜토리얼](../tutorials/09-testing-components.md#테스트-마커)). 이 저장소의 테스트는 `unit`·`integration`·`slow`·`e2e`
   중 하나를 반드시 붙인다.
 - `mount()`에는 컨슈머가 없고 채널 레이어는 흉내 낸 것이다. 렌더는 첫 응답의 것이라 자식이
   그려지지만, 컨슈머 경로 전체(join, 재접속, 자식 LiveComponent의 `joined()`·`update()`·`leaving()`)를
@@ -206,6 +206,6 @@ view = await mount(XAdminPanel, user=staff, live_session="admin")
 
 ## 관련 기능
 
-- [튜토리얼 09 테스트 가이드](../tutorials/09-testing-components.md)
+- [튜토리얼: 테스트 가이드](../tutorials/09-testing-components.md)
 - [live_session](./live-session.md)
 - [Streams 튜토리얼](../tutorials/06-streams-api.md)

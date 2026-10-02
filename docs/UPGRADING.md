@@ -150,7 +150,7 @@ dependencies = ["django-wireview>=1.0,<2"]
   고친다([검사 목록](./features/checks.md#검사-목록)).
 - **스타터로 만든 프로젝트의 `asgi.py`에 정적 파일 줄을 더한다.** 1.0 전 스타터의 `asgi.py`를 uvicorn으로 띄우면
   `wireview.min.js`가 404라 페이지는 그려지고 어떤 컴포넌트도 살아나지 않는다.
-  [튜토리얼 01의 `asgi.py`](./tutorials/01-getting-started.md#asgipy-수정)처럼 `DEBUG`일 때 `ASGIStaticFilesHandler`로 감싼다. `runserver`(daphne)만 쓰면 고칠 것이 없다.
+  [시작하기 튜토리얼의 `asgi.py`](./tutorials/01-getting-started.md#asgipy-수정)처럼 `DEBUG`일 때 `ASGIStaticFilesHandler`로 감싼다. `runserver`(daphne)만 쓰면 고칠 것이 없다.
 - **`public=False`와 함께 준 `name=`이 그 컴포넌트의 이름이 된다**(**조용함**). 등록된 클래스를 상속하면 `name=`이
   버려지고 로그·계측·서명 상태에 부모의 이름이 쓰였다. 계측이나 로그를 컴포넌트 이름으로 거르던 곳은 새 이름을 본다.
   `name=`이 없으면 그대로다.
@@ -161,19 +161,19 @@ dependencies = ["django-wireview>=1.0,<2"]
   덮어쓴다.
 - **문서 예시를 베껴 쓴 코드를 확인한다.** 1.0 전 문서의 예시 몇 개는 그대로 쓰면 결함이었고, 오류 없이 지나간다.
   - 함수 컴포넌트가 f-string으로 마크업을 만들어 인자를 이스케이프하지 않았다(XSS). `format_html`로 만든다.
-  - LiveComponent·훅 가이드, README, 튜토리얼 07·08의 서버 헬퍼가 `_` 없이 이름 붙어 브라우저가 부를 수 있는 핸들러였다
+  - LiveComponent·훅 가이드, README, Presence API 심화·File Uploads 심화 튜토리얼의 서버 헬퍼가 `_` 없이 이름 붙어 브라우저가 부를 수 있는 핸들러였다
     (`notify_user`는 아무 토스트나 띄웠다). `_`를 붙인다. `async def mount(self)`도 프레임워크가 부르지 않는 핸들러다 —
     초기화는 `joined()`에 둔다. `send_to_parent`가 부르는 부모 핸들러는 `_`를 붙일 수 없어(디스패처가 거절한다)
     브라우저도 아무 인자로 부를 수 있다. 그 핸들러 안에서 인자를 검증하고 권한을 확인한다.
-  - 튜토리얼 02·03은 Escape와 Ctrl+Enter를 `keypress`에 묶어 한 번도 발화하지 않았다. `keydown`에 묶는다.
-  - 튜토리얼 03·15는 `QuerySet.aupdate()`로 저장해 `post_save`가 없었고 다른 탭이 듣지 못했다. 인스턴스를 `asave()`한다.
-    튜토리얼 15의 `reset_all`은 부모가 가진 합계도 옛 값으로 남겼다 — 자식의 `update()`는 부모에게 알리지 않으므로
+  - Counter 컴포넌트·Todo 앱 튜토리얼은 Escape와 Ctrl+Enter를 `keypress`에 묶어 한 번도 발화하지 않았다. `keydown`에 묶는다.
+  - Todo 앱·LiveComponent 튜토리얼은 `QuerySet.aupdate()`로 저장해 `post_save`가 없었고 다른 탭이 듣지 못했다. 인스턴스를 `asave()`한다.
+    LiveComponent 튜토리얼의 `reset_all`은 부모가 가진 합계도 옛 값으로 남겼다 — 자식의 `update()`는 부모에게 알리지 않으므로
     부모의 합계를 함께 고친다.
-  - 튜토리얼 05·15는 컴포넌트를 모델 채널에 구독시키고 `AUTO_BROADCAST.senders`를 적지 않아 모델 알림이 한 번도 오지
+  - Dashboard·LiveComponent 튜토리얼은 컴포넌트를 모델 채널에 구독시키고 `AUTO_BROADCAST.senders`를 적지 않아 모델 알림이 한 번도 오지
     않았다. `AUTO_BROADCAST`가 아예 없으면 `wireview.W015`도 조용하다. 구독하는 모델을 `senders`에 적는다
     ([§9](#9-auto_broadcast는-senders에-적은-모델만-알린다-보안)).
-  - 튜토리얼 03~05는 중첩 컴포넌트에 `id`를 주지 않아 부모가 렌더할 때마다 자식이 새로 만들어졌다. `id`를 준다.
-  - 퀴즈 예제와 튜토리얼 13은 `{% class {...} %}`를 여러 줄에 걸쳐 써서 태그가 글자로 찍혔다. 한 줄에 쓴다.
+  - Todo 앱·Chat 앱·Dashboard 튜토리얼은 중첩 컴포넌트에 `id`를 주지 않아 부모가 렌더할 때마다 자식이 새로 만들어졌다. `id`를 준다.
+  - 퀴즈 예제와 Quiz 앱 튜토리얼은 `{% class {...} %}`를 여러 줄에 걸쳐 써서 태그가 글자로 찍혔다. 한 줄에 쓴다.
 
 ## 1.0.0rc1에서 1.0으로
 

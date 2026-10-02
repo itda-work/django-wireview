@@ -1,4 +1,4 @@
-# 11. Rating 앱 - 별점 평가
+# Rating 앱 - 별점 평가
 
 > 동작하는 전체 코드: [examples/rating/](../../examples/rating/) — `make test`가 함께 돌리고, 릴리스 게이트(CI)가 태그마다 다시 돌리는 예제다.
 
@@ -267,8 +267,8 @@ class XRatingStats(Component):
 
 ## 다음 단계
 
-- [03. Todo 앱](./03-todo-app.md) - CRUD, 모델 구독, 중첩 컴포넌트
+- [Todo 앱](./03-todo-app.md) - CRUD, 모델 구독, 중첩 컴포넌트
 
 ---
 
-[← 이전: 10. Poll 앱](10-poll-app.md) | [목차](README.md) | [다음: 03. Todo 앱 →](03-todo-app.md)
+[← 이전: Poll 앱](10-poll-app.md) | [목차](README.md) | [다음: Todo 앱 →](03-todo-app.md)

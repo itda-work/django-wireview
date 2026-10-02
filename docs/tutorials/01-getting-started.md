@@ -1,4 +1,4 @@
-# 01. 시작하기
+# 시작하기
 
 이 튜토리얼에서는 django-wireview를 설치하고 첫 번째 실시간 컴포넌트를 만들어봅니다.
 
@@ -381,4 +381,4 @@ wireview.debug.components()
 
 다음 튜토리얼에서는 Counter 컴포넌트를 만들며 이벤트 핸들링과 상태 관리를 더 자세히 배워봅니다.
 
-[목차](README.md) | [다음: 02. Counter 컴포넌트 →](02-counter-component.md)
+[목차](README.md) | [다음: Counter 컴포넌트 →](02-counter-component.md)

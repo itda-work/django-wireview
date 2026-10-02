@@ -92,7 +92,7 @@ class Page:
 
     @property
     def short_title(self) -> str:
-        """The title up to its subtitle: "10. Poll 앱 - 실시간 투표" is "10. Poll 앱"."""
+        """The title up to its subtitle: "Poll 앱 - 실시간 투표" is "Poll 앱"."""
         return self.title.split(" - ", 1)[0]
 
 

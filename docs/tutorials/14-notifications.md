@@ -1,4 +1,4 @@
-# 14. Notifications - 알림 센터
+# Notifications - 알림 센터
 
 > 동작하는 전체 코드: [examples/notifications/](../../examples/notifications/) — `make test`가 함께 돌리고, 릴리스 게이트(CI)가 태그마다 다시 돌리는 예제다.
 
@@ -585,4 +585,4 @@ async def test_dismissing_deletes_only_the_users_own(alice, bob):
 
 ---
 
-[← 이전: 05. Dashboard](05-dashboard.md) | [목차](README.md) | [다음: 15. LiveComponent →](15-live-components.md)
+[← 이전: Dashboard](05-dashboard.md) | [목차](README.md) | [다음: LiveComponent →](15-live-components.md)

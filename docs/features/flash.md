@@ -132,5 +132,5 @@ toast(request.session.session_key, "장바구니에 담았습니다")
 
 ## 관련 기능
 
-- [튜토리얼 14. 알림 센터](../tutorials/14-notifications.md) — 저장하는 알림과 토스트를 함께 쓴다
+- [튜토리얼: Notifications - 알림 센터](../tutorials/14-notifications.md) — 저장하는 알림과 토스트를 함께 쓴다
 - [세션 읽기](./session.md) — 로그인하지 않은 방문자를 가리키는 값이 필요할 때

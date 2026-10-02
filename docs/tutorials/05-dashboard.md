@@ -1,4 +1,4 @@
-# 05. Dashboard
+# Dashboard
 
 > 동작하는 전체 코드: [examples/dashboard/](../../examples/dashboard/) — `make test`가 함께 돌리고, 릴리스 게이트(CI)가 태그마다 다시 돌리는 예제다.
 
@@ -119,7 +119,7 @@ class XStatCard(Component):
 
 `stat`의 타입은 `AsyncResult[Stat] | None`으로 적는다. 성공한 결과의 모델 인스턴스는 서명 상태에 pk로 실리고,
 다시 join할 때 이 표기를 따라 `Stat`으로 다시 읽힌다. 실패했으면 예외 자체는 서버에 남고 `error_message`만 실린다.
-뒤에 나오는 `XDashboard`의 `stats: list[Stat]`도 같은 방식으로 pk 목록이 된다(상세는 [03. Todo 앱](03-todo-app.md)).
+뒤에 나오는 `XDashboard`의 `stats: list[Stat]`도 같은 방식으로 pk 목록이 된다(상세는 [Todo 앱](03-todo-app.md)).
 
 ### StatCard 템플릿
 
@@ -253,7 +253,7 @@ class XDashboard(Component):
 </div>
 ```
 
-중첩 컴포넌트마다 `id`를 준다. 그래야 부모가 다시 그려도 같은 카드가 이어진다([03. Todo 앱 Part 5](03-todo-app.md#part-5-중첩-컴포넌트)).
+중첩 컴포넌트마다 `id`를 준다. 그래야 부모가 다시 그려도 같은 카드가 이어진다([Todo 앱 Part 5](03-todo-app.md#part-5-중첩-컴포넌트)).
 
 ## Part 4: Activity Feed - Streams + 페이지네이션
 
@@ -380,7 +380,7 @@ WIREVIEW = {
 }
 ```
 
-[03. Todo 앱](03-todo-app.md)을 같은 프로젝트에서 따라 했다면 `AUTO_BROADCAST`는 하나만 두고 `senders`를 합친다.
+[Todo 앱](03-todo-app.md)을 같은 프로젝트에서 따라 했다면 `AUTO_BROADCAST`는 하나만 두고 `senders`를 합친다.
 카드는 이름으로 구분되므로 모델 채널을 구독하고 `mutation()`에서 자기 통계만 고른다.
 
 ```python
@@ -653,4 +653,4 @@ Dashboard를 통해 AsyncResult, 복합 컴포넌트, Streams + 페이지네이�
 
 다음 튜토리얼에서는 사용자마다 따로 받는 알림 센터를 만들며 사용자별 채널과 broadcast를 배웁니다.
 
-[← 이전: 04. Chat 앱](04-chat-app.md) | [목차](README.md) | [다음: 14. Notifications →](14-notifications.md)
+[← 이전: Chat 앱](04-chat-app.md) | [목차](README.md) | [다음: Notifications →](14-notifications.md)

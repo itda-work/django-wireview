@@ -213,4 +213,4 @@ wireview.debug.disableProfiling();
 ## 관련
 
 - [JS 명령](../implementation/js-commands.md)
-- [튜토리얼 02 — Counter 컴포넌트](../tutorials/02-counter-component.md)
+- [튜토리얼: Counter 컴포넌트](../tutorials/02-counter-component.md)

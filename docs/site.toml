@@ -20,7 +20,7 @@
 # Titles
 #   A page's title is its document's first line, "# <title>"; it is not repeated here.
 #   A tutorial's short title (the README's learning path, the time table, the closing navigation
-#   line) is that title up to the first " - ": "# 10. Poll 앱 - 실시간 투표" is "10. Poll 앱".
+#   line) is that title up to the first " - ": "# Poll 앱 - 실시간 투표" is "Poll 앱".
 #
 # Tutorials
 #   The order of [[sections.pages]] in the tutorial section is the learning order.

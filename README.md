@@ -131,7 +131,7 @@ pip install django-wireview daphne
 ```
 
 새 프로젝트라면 아래 설정을 옮겨 적는 대신 스타터 템플릿으로 시작할 수 있습니다. 이 절의 배선이 모두 들어간
-프로젝트와 [튜토리얼 01](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/01-getting-started.md)의 첫 컴포넌트가 생기고, `manage.py check`는
+프로젝트와 [시작하기 튜토리얼](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/01-getting-started.md)의 첫 컴포넌트가 생기고, `manage.py check`는
 아무것도 보고하지 않습니다. `DEBUG`에서는 Django가 뜰 때마다 wireview가 컴포넌트 모듈 옆에 타입 스텁(`hello/live.pyi`)을
 만드는데, 스타터의 `.gitignore`가 그것과 `db.sqlite3`를 커밋에서 뺍니다.
 

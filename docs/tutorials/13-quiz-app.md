@@ -1,4 +1,4 @@
-# 13. Quiz 앱 - 퀴즈와 상태 머신
+# Quiz 앱 - 퀴즈와 상태 머신
 
 > 동작하는 전체 코드: [examples/quiz/](../../examples/quiz/) — `make test`가 함께 돌리고, 릴리스 게이트(CI)가 태그마다 다시 돌리는 예제다.
 
@@ -367,8 +367,8 @@ async def answer(self, choice_id):
 
 ## 다음 단계
 
-- [04. Chat 앱](./04-chat-app.md) - Streams API, Presence API
+- [Chat 앱](./04-chat-app.md) - Streams API, Presence API
 
 ---
 
-[← 이전: 12. Live Search](12-live-search.md) | [목차](README.md) | [다음: 04. Chat 앱 →](04-chat-app.md)
+[← 이전: Live Search](12-live-search.md) | [목차](README.md) | [다음: Chat 앱 →](04-chat-app.md)

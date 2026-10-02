@@ -1,4 +1,4 @@
-# 09. 테스트 가이드
+# 테스트 가이드
 
 wireview 컴포넌트의 효과적인 테스트 방법을 다룹니다.
 
@@ -57,9 +57,9 @@ async def test_counter_with_initial_value():
     assert view.component.count == 10
 ```
 
-아래 예제는 앞선 튜토리얼의 컴포넌트를 테스트한다 — `XCounter`는 [02](02-counter-component.md)의 완성본,
-`XTodoList`·`XTodoItem`과 모델 `Item`은 [03](03-todo-app.md), `XChatRoom`·`XMessageList`와 모델 `Room`은
-[04](04-chat-app.md), `XStatCard`·`XActivityFeed`와 모델 `Activity`는 [05](05-dashboard.md). 위의 `XCounter`처럼
+아래 예제는 앞선 튜토리얼의 컴포넌트를 테스트한다 — `XCounter`는 [Counter 컴포넌트](02-counter-component.md)의 완성본,
+`XTodoList`·`XTodoItem`과 모델 `Item`은 [Todo 앱](03-todo-app.md), `XChatRoom`·`XMessageList`와 모델 `Room`은
+[Chat 앱](04-chat-app.md), `XStatCard`·`XActivityFeed`와 모델 `Activity`는 [Dashboard](05-dashboard.md). 위의 `XCounter`처럼
 각자의 앱에서 import한다. `XForm`·`XLogin`·`XDashboard`·`XProductList`는 설명을 위한 가상의 컴포넌트다.
 
 DB를 읽거나 쓰는 컴포넌트는 `joined()`에서 이미 DB에 닿으므로, 그 테스트에는 `@pytest.mark.django_db`가 필요하다.
@@ -656,4 +656,4 @@ async def test_toggle():
 
 더 많은 정보는 [README](../../README.md)와 [Architecture](../ARCHITECTURE.md) 문서를 참조하세요.
 
-[← 이전: 08. File Uploads 심화](08-file-uploads.md) | [목차](README.md)
+[← 이전: File Uploads 심화](08-file-uploads.md) | [목차](README.md)

@@ -1,4 +1,4 @@
-# 03. Todo 앱
+# Todo 앱
 
 > 동작하는 전체 코드: [examples/todo/](../../examples/todo/) — `make test`가 함께 돌리고, 릴리스 게이트(CI)가 태그마다 다시 돌리는 예제다.
 
@@ -760,4 +760,4 @@ Todo 앱을 통해 실제 애플리케이션의 CRUD, 모델 구독, 중첩 컴�
 
 다음 튜토리얼에서는 디바운스와 JS 명령으로 입력하는 대로 결과가 바뀌는 검색을 만듭니다.
 
-[← 이전: 11. Rating 앱](11-rating-app.md) | [목차](README.md) | [다음: 12. Live Search →](12-live-search.md)
+[← 이전: Rating 앱](11-rating-app.md) | [목차](README.md) | [다음: Live Search →](12-live-search.md)
