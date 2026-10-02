@@ -410,6 +410,74 @@ async def test_a_join_under_the_id_of_a_failed_one_tries_it_again(failing_nests)
     assert str(redrawn[-1]["payload"]["diff"]).count("wire-join-failed") == 1
 
 
+JOINED_LEAVES: list[int] = []
+
+
+class ErrorPendingLeaf(LiveComponent):
+    async def joined(self):
+        JOINED_LEAVES.append(id(self))
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<i {% live_tag_header %}></i>")
+
+
+class ErrorPendingNest(ErrorProbeNest):
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<div {% tag_header %}>{% live_component 'ErrorPendingLeaf' id='e-pend-leaf' %}</div>"
+        )
+
+
+class ErrorPendingHost(Component):
+    shown: bool = True
+
+    async def toggle(self, **_rest):
+        self.shown = not self.shown
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<div {% tag_header %}>"
+            "{% if this.shown %}{% component 'ErrorPendingNest' id='e-pend-nest' %}{% endif %}</div>"
+        )
+
+
+async def test_a_live_component_a_failed_join_took_away_owes_nothing_to_the_next_instance(failing_nests):
+    # The host's pass built the nest and the LiveComponent in it, which waited
+    # for the nest's render to run its joined(). The nest's join failed and both
+    # went, but the LiveComponent still waited: once the page tried the id again
+    # over the instances the host drew since, the nest's first render ran
+    # joined() for the one that was gone as well as for its own.
+    JOINED_LEAVES.clear()
+    communicator = await _connect()
+    meta = {"user": AnonymousUser(), "wire": WireviewMeta(params={})}
+    try:
+        host = sign_state(ErrorPendingHost(**meta, id="e-pend-host"))
+        await _send(communicator, "join", name="ErrorPendingHost", state=host, children={}, ref=1)
+        await _next(communicator, "joined")
+        nest = sign_state(ErrorPendingNest(**meta, id="e-pend-nest"))
+        await _send(communicator, "join", name="ErrorPendingNest", state=nest, children={}, ref=2)
+        assert (await _next(communicator, "error", "render"))["command"] == "error"
+        # The host hides it, the page lets it go, and the host draws it again
+        await _event(communicator, "e-pend-host", "toggle", ref=3)
+        await _next(communicator, "render")
+        await _send(communicator, "leave", id="e-pend-nest")
+        await _event(communicator, "e-pend-host", "toggle", ref=4)
+        await _next(communicator, "render")
+
+        ErrorProbeNest.failing = False
+        await _send(communicator, "join", name="ErrorPendingNest", state=nest, children={}, ref=5)
+        answer = await _next(communicator, "render", "error")
+        await _next(communicator, "joined")
+    finally:
+        await communicator.disconnect()
+
+    assert (answer["command"], answer["payload"]["id"]) == ("render", "e-pend-nest")
+    assert len(JOINED_LEAVES) == 1, "joined() ran for an instance the repository no longer held"
+
+
 class ErrorProbeHearingLeaf(LiveComponent):
     """Hears what its owner hears; its joined() is what a render of a refused owner would run."""
 

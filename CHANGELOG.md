@@ -575,6 +575,13 @@ The django-reactor era changelog (2.x) is preserved in
   component registered, so its hooks hear `destroyed()` when it leaves. The `render` that answers
   a refused event is the one an event with no handler already gets, so `PROTOCOL_VERSION` stays.
 
+- A LiveComponent that leaves the connection before its parent's render ran its `joined()` no
+  longer runs it later. The parent's pass builds it and leaves `joined()` to the parent's render;
+  when the parent's join failed, or the page let the parent go first, both left the connection but
+  the LiveComponent still waited, and the first render of the instance built under the parent's id
+  again -- once the page tried the id again -- ran `joined()` for the instance that was gone as
+  well as for its own: the same id twice, with whatever it pushes, streams or subscribes to.
+
 ### Security
 
 - [GHSA-8q8p-x4w4-p745](https://github.com/itda-work/django-wireview/security/advisories/GHSA-8q8p-x4w4-p745)

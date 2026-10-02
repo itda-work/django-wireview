@@ -1,3 +1,4 @@
+import builtins
 import json
 import logging
 import typing as t
@@ -582,6 +583,8 @@ class ComponentRepository:
 
         Returns the removed instances, parent first, so the caller can run
         ``leaving()`` on each. Removing an unknown id returns an empty list.
+        The removed instances owe no ``joined()``, ``update()`` or render any
+        more: a LiveComponent a parent's pass built is no longer pending.
 
         The restore map entries the component's join carried go with it: what
         it did not draw, no later instance under those ids should take up.
@@ -603,6 +606,10 @@ class ComponentRepository:
         removed = [component]
         for child in self.get_live_components(id):
             removed.extend(self.remove(child.id))
+        gone = {builtins.id(instance) for instance in removed}
+        self._pending_live_components = [c for c in self._pending_live_components if builtins.id(c) not in gone]
+        self._pending_updates = [(c, p) for c, p in self._pending_updates if builtins.id(c) not in gone]
+        self._pending_rerender = [c for c in self._pending_rerender if builtins.id(c) not in gone]
         return removed
 
     async def dispatch_event(self, id, command, args, kwargs):
