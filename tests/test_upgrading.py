@@ -209,7 +209,8 @@ NO_UPGRADE_NOTE = {
     "before its parent's render ran its `joined()`": FIXED_ONLY,
     "stops drawing because of a prop its drawer": FIXED_ONLY,
     "hides or shows when the slot's owner": FIXED_ONLY,
-    "in a function component's template is the page's": FIXED_ONLY,
+    "in a function component's template is the page's in a live render": FIXED_ONLY,
+    "in a function component's template is the page's in an HTTP render too": FIXED_ONLY,
 }
 
 

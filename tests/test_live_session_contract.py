@@ -10,7 +10,7 @@ component is a test about the boundary rather than a test about a bug.
 Two ideas carry it.
 
 **A boundary is only as good as its narrowest path.** A component can come into
-existence nine ways, and an authorization that covers eight of them is not an
+existence eleven ways, and an authorization that covers ten of them is not an
 authorization. So the paths are a parametrized list, every one of them is run
 against every kind of refusal, and the same five assertions are made each time.
 Adding a path means adding a row; forgetting to gate it means the row fails.
@@ -42,6 +42,7 @@ from wireview.core.live_session import (
     AUTH_GENERATION_KEY,
     AUTH_TOPIC_PREFIX,
     AUTH_USER_ID_KEY,
+    REQUEST_ATTR,
     LiveSession,
     auth_fingerprint,
     auth_topic,
@@ -49,6 +50,7 @@ from wireview.core.live_session import (
 from wireview.core.meta import WireviewMeta
 from wireview.core.session import SessionView
 from wireview.core.state import sign_state, unsign_envelope
+from wireview.function_components import function_component
 from wireview.repository import ComponentRepository
 
 pytestmark = [pytest.mark.unit, pytest.mark.django_db]
@@ -94,7 +96,15 @@ TEMPLATES = {
     ),
     "cx/slothost.html": "{% load wireview %}<div {% tag_header %}>{% render_slot slots.default %}</div>",
     "cx/live.html": "{% load wireview %}<main {% tag_header %}>{% live_component NAME id='target' %}</main>",
+    # A function component's template: no ``this``, no names of the page's
+    "cx/func.html": "{% load wireview %}<section>{% component name id='target' %}</section>",
 }
+
+
+@function_component(template="cx/func.html")
+def cx_func_card(name: str):
+    return {"name": name}
+
 
 #: Every hook call, in order: ``(component id, label)``.
 CALLS: list[tuple[str, str]] = []
@@ -599,17 +609,64 @@ async def path_dead_live_child(cls: type, boundary: LiveSession) -> Outcome:
     return Outcome(html, repo, "target", cls, raised, calls_for("target"))
 
 
+async def path_dead_func(cls: type, boundary: LiveSession) -> Outcome:
+    """``{% component %}`` in a function component's template, in an HTTP response.
+
+    The function's template gets none of the page's names. Drawn in a repository
+    of its own, the component had no boundary: a page's hook never ran for it and
+    one that declared its session was refused on its own page.
+    """
+    repo = ComponentRepository(is_live=False, live_session=boundary)
+    raised = None
+    html = ""
+    try:
+        html = Template("{% load wireview %}{% func 'cx_func_card' name=name %}").render(
+            Context({"wireview_repository": repo, "name": cls.__name__})
+        )
+    except Exception as e:
+        raised = e
+    return Outcome(html, repo, "target", cls, raised, calls_for("target"))
+
+
+async def path_dead_func_first(cls: type, boundary: LiveSession) -> Outcome:
+    """The same, as the page's first tag: the page's repository does not exist yet.
+
+    The boundary comes off the request the view decorator marked, as on a real page.
+    """
+    request = RequestFactory().get("/")
+    request.user = AnonymousUser()
+    setattr(request, REQUEST_ATTR, boundary.name)
+    context = Context({"request": request, "user": request.user, "name": cls.__name__})
+    raised = None
+    html = ""
+    try:
+        html = Template("{% load wireview %}{% func 'cx_func_card' name=name %}").render(context)
+    except Exception as e:
+        raised = e
+    return Outcome(html, context.get("wireview_repository"), "target", cls, raised, calls_for("target"))
+
+
 #: Paths on which a failing hook reaches the caller rather than being logged. The
 #: consumer absorbs an exception from a child so one bad component cannot take the
 #: page down; a template render has nobody to absorb it and the request fails,
 #: which is the louder and safer answer for a page that has not been sent yet.
-PATHS_THAT_PROPAGATE = {"dead_render", "dead_live_child", "testing_mount", "nested_plain", "nested_plain_join"}
+PATHS_THAT_PROPAGATE = {
+    "dead_render",
+    "dead_live_child",
+    "dead_func",
+    "dead_func_first",
+    "testing_mount",
+    "nested_plain",
+    "nested_plain_join",
+}
 
 #: ``(name, adapter, index into Refusal.classes)``. The index picks the Component
 #: or the LiveComponent form, because some of the paths only exist for the latter.
 PATHS = [
     ("dead_render", path_dead_render, 0),
     ("dead_live_child", path_dead_live_child, 1),
+    ("dead_func", path_dead_func, 0),
+    ("dead_func_first", path_dead_func_first, 0),
     ("testing_mount", path_testing_mount, 0),
     ("root_join", path_root_join, 0),
     ("rejoin", path_rejoin, 0),

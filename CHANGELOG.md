@@ -655,6 +655,15 @@ The django-reactor era changelog (2.x) is preserved in
   it in the connection's repository, drawn by the component whose pass draws the function, as the
   enclosing template would. The function's template still gets no `this`.
 
+- A `{% component %}` in a function component's template is the page's in an HTTP render too. The
+  function's template drew it with none of the page's names, in a repository with no request: on
+  the first screen its `self.user` was empty and the query parameters were missing, a component
+  declaring `Meta.live_sessions` was refused on its own page, and the page's `live_session`
+  `on_mount` hooks never ran for it -- one they would refuse was drawn. The function's template now
+  draws it in the page's repository; when the function is the page's first tag, the repository is
+  made from the drawing context by the first component that needs one, and the rest of the page
+  shares it. A page whose functions draw no component still makes none.
+
 ### Security
 
 - [GHSA-8q8p-x4w4-p745](https://github.com/itda-work/django-wireview/security/advisories/GHSA-8q8p-x4w4-p745)

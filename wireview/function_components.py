@@ -121,20 +121,34 @@ _registry: dict[str, "FunctionComponent"] = {}
 #: finds the component whose pass draws the function: the template gets no ``this``
 DRAWER = "wireview_drawer"
 
+#: The key under which, in an HTTP render, it finds the template context drawing
+#: the function: the page's repository is made there, by the first tag needing one
+PAGE = "wireview_page"
+
 
 def _page_of(context: t.Any) -> dict[str, t.Any]:
-    """What a function component's template takes from a live render that draws it: the page, never its names.
+    """What a function component's template takes from the render that draws it: the page, never its names.
 
     A ``{% component %}`` in it is the page's, as one in the enclosing template
-    is: built in the connection's repository, drawn by the component whose pass
-    this is. Drawn in a repository of its own, each render drew a fresh
-    instance from the template's arguments over the one the page had joined,
-    and the join's answer had no pass to tell what ``joined()`` drew new against.
+    is: built in the page's repository, drawn by the component whose pass this
+    is. Drawn in a repository of its own, a live render drew a fresh instance
+    from the template's arguments over the one the page had joined, and an HTTP
+    render drew it with no request: no user, no query, no ``live_session``.
+
+    An HTTP render may not have the repository yet (the function is the page's
+    first tag), and a page that draws no component must not get one: the
+    template gets the drawing context instead, and the repository is made in it
+    when a component first needs it, for the rest of the page to share.
     """
-    if context is None or (repo := context.get("wireview_repository")) is None or not repo.is_live:
+    if context is None:
         return {}
     drawer = context.get("this")
-    return {"wireview_repository": repo, DRAWER: drawer if drawer is not None else context.get(DRAWER)}
+    page: dict[str, t.Any] = {DRAWER: drawer if drawer is not None else context.get(DRAWER)}
+    if (repo := context.get("wireview_repository")) is not None:
+        page["wireview_repository"] = repo
+    else:
+        page[PAGE] = context
+    return page
 
 
 @dataclass
@@ -236,8 +250,8 @@ class FunctionComponent:
         Args:
             kwargs: Arguments for the component function
             slots: Optional slot container for block-style usage
-            context: The Django template context drawing it: in a live render, a
-                component its template draws is the connection's, not a fresh one
+            context: The Django template context drawing it: a component its
+                template draws is the page's, not one in a repository of its own
 
         Returns:
             Rendered HTML as SafeString

@@ -407,3 +407,93 @@ async def test_a_live_render_draws_the_component_the_page_joined(host_name):
     token = re.search(r'id="counter" data-name="[^"]+" data-state="([^"]+)"', drawn)
     assert token is not None, drawn
     assert unsign_state(token.group(1), FcCounter._fqn) == state_of(counter)
+
+
+# The HTTP render of a function component's {% component %} is the page's too
+
+
+WHO_TEMPLATES = {
+    "fcwho/card.html": "{% load wireview %}<section>{% component 'FcWho' id='who' %}</section>",
+    "fcwho/outer.html": "{% load wireview %}{% func 'fc_who_card' %}",
+    "fcwho/who.html": "{% load wireview %}<p {% tag_header %}>[{{ this.user.username }}|{{ this.q }}]</p>",
+}
+
+
+@function_component(template="fcwho/card.html")
+def fc_who_card():
+    return {}
+
+
+@function_component(template="fcwho/outer.html")
+def fc_who_outer():
+    return {}
+
+
+class _ReadsTheQuery:
+    @staticmethod
+    async def on_mount(component, params, session):
+        component.q = params.get("q", "")
+        return {"cont": True}
+
+
+class FcWho(Component):
+    class Meta:
+        template_name = "fcwho/who.html"
+        on_mount = [_ReadsTheQuery]
+
+    q: str = ""
+
+
+@pytest.fixture
+def fcwho_templates():
+    with override_settings(
+        TEMPLATES=[
+            {
+                "BACKEND": "django.template.backends.django.DjangoTemplates",
+                "OPTIONS": {"loaders": [("django.template.loaders.locmem.Loader", WHO_TEMPLATES)]},
+            }
+        ]
+    ):
+        yield
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+@pytest.mark.usefixtures("fcwho_templates")
+@pytest.mark.parametrize("card", ["fc_who_card", "fc_who_outer"], ids=["func", "func_in_func"])
+def test_an_http_render_draws_a_function_components_component_for_the_page(card, rf):
+    """The page's first bytes: the component inside the function sees the page's user and query.
+
+    Drawn in a repository of its own, it had no request: ``self.user`` was empty
+    and the query string was not there, on the first screen of every page that
+    drew a component through a function component's template.
+    """
+    from django.contrib.auth import get_user_model
+
+    request = rf.get("/?q=find")
+    request.user = get_user_model()(username="ann")
+    context = Context({"request": request, "user": request.user})
+
+    html = Template("{% load wireview %}{% func '" + card + "' %}").render(context)
+
+    assert "[ann|find]" in html, html
+    repo = context.get("wireview_repository")
+    assert repo is not None and repo.get("who") is not None, "drawn in the page's repository"
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+@pytest.mark.usefixtures("fcwho_templates")
+def test_the_page_shares_the_repository_a_function_component_made_and_a_page_without_components_has_none(rf):
+    """Made by the first tag that needs one, wherever it is: a page of functions alone makes none."""
+    request = rf.get("/")
+    context = Context({"request": request, "user": AnonymousUser()})
+
+    Template("{% load wireview %}{% func 'button' text='a' %}").render(context)
+
+    assert context.get("wireview_repository") is None
+
+    html = Template("{% load wireview %}{% func 'fc_who_card' %}{% component 'FcWho' id='after' %}").render(context)
+
+    repo = context.get("wireview_repository")
+    assert repo is not None and repo.get("who") is not None and repo.get("after") is not None, html

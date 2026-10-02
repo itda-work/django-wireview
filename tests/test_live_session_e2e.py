@@ -17,7 +17,7 @@ boundary exists to get.
 """
 
 import pytest
-from testproj.e2e_browser import WAIT_TIMEOUT, open_live, wait_live
+from testproj.e2e_browser import WAIT_TIMEOUT, expect_text, open_live, wait_live
 from testproj.e2e_server import serve
 
 pytestmark = pytest.mark.e2e
@@ -167,3 +167,22 @@ class TestBoundaryAccess:
         wait_live(page)
 
         assert "staff-only-payload" in page.content()
+
+    def test_a_function_components_component_is_the_pages_on_the_first_screen(self, page, server):
+        """The panel inside a function component's template: the page's user and boundary, from the first bytes.
+
+        Drawn in a repository of its own it had neither: the boundary refused the
+        panel on its own page, and the first screen had no panel at all.
+        """
+        page.goto(f"{server}/livesession/sign-in/?next=/livesession/public/")
+        response = page.goto(f"{server}/livesession/staff-func/")
+        assert response is not None
+        first = response.text()
+
+        assert "staff-only-payload" in first
+        assert '<span data-testid="who">ls-e2e</span>' in first
+
+        wait_live(page)
+        page.get_by_test_id("bump").click()
+        expect_text(page.get_by_test_id("secret"), "staff-only-payload!")
+        expect_text(page.get_by_test_id("who"), "ls-e2e")

@@ -8,6 +8,7 @@ urlpatterns = [
     path("public/", views.public, name="public"),
     path("public2/", views.public_two, name="public2"),
     path("staff/", views.staff_page, name="staff"),
+    path("staff-func/", views.staff_func_page, name="staff-func"),
     path("members/", views.members_page, name="members"),
     path("members2/", views.members_page_two, name="members2"),
     path("bounce/", views.redirect_to_public, name="bounce"),

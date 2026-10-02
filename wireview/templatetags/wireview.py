@@ -21,6 +21,7 @@ from ..core.state import sign_state
 from ..event_transpiler import binding
 from ..features.hooks import hook_files
 from ..function_components import DRAWER as FUNCTION_DRAWER
+from ..function_components import PAGE as FUNCTION_PAGE
 from ..function_components import get_function_component
 from ..repository import ComponentRepository
 from ..slots import Slot, SlotContainer
@@ -240,6 +241,33 @@ def _default_sticky_id(component_name: str, repo: ComponentRepository) -> str | 
     return sticky_id
 
 
+def _page_repository(context: Context) -> ComponentRepository:
+    """The page's repository, made in an HTTP render by the first tag that needs one.
+
+    A function component's template has none of the page's names: there it is
+    made in the context drawing the function, so the request's user, query and
+    boundary reach it and the rest of the page shares it.
+    """
+    if (repo := context.get("wireview_repository")) is None:
+        if (page := context.get(FUNCTION_PAGE)) is not None:
+            repo = _page_repository(page)
+        else:
+            request = context.get("request")
+            qs = request and request.META["QUERY_STRING"] or ""
+            repo = ComponentRepository(
+                is_live=False,
+                user=context.get("user"),
+                params=ComponentRepository.extract_params(qs),
+                session=getattr(request, "session", None),
+                # The view decorator put the name here. Reading it off the request
+                # rather than off a setting is what makes the boundary a property of
+                # the page rather than of the project (#58).
+                live_session=get_live_session(getattr(request, LIVE_SESSION_REQUEST_ATTR, "")) if request else None,
+            )
+        context["wireview_repository"] = repo
+    return repo
+
+
 def _build_and_render_component(
     context: Context,
     component_name: str,
@@ -247,20 +275,7 @@ def _build_and_render_component(
     slots: SlotContainer | None = None,
 ) -> str:
     """Helper function to build and render a component."""
-    if (repo := context.get("wireview_repository")) is None:
-        request = context.get("request")
-        qs = request and request.META["QUERY_STRING"] or ""
-        repo = ComponentRepository(
-            is_live=False,
-            user=context.get("user"),
-            params=ComponentRepository.extract_params(qs),
-            session=getattr(request, "session", None),
-            # The view decorator put the name here. Reading it off the request
-            # rather than off a setting is what makes the boundary a property of
-            # the page rather than of the project (#58).
-            live_session=get_live_session(getattr(request, LIVE_SESSION_REQUEST_ATTR, "")) if request else None,
-        )
-        context["wireview_repository"] = repo
+    repo = _page_repository(context)
 
     if "id" not in kwargs and (sticky_id := _default_sticky_id(component_name, repo)):
         kwargs = {**kwargs, "id": sticky_id}

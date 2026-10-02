@@ -33,6 +33,12 @@ def staff_page(request):
     return render(request, "livesession/staff.html")
 
 
+@staff.view
+def staff_func_page(request):
+    """The staff page with the panel inside a function component, as the page's first tag."""
+    return render(request, "livesession/staff-func.html")
+
+
 @members.view
 def members_page(request):
     return render(request, "livesession/members.html")

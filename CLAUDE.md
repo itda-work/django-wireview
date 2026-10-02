@@ -62,7 +62,8 @@ wireview/
 │                          슬롯 주인이 자기 렌더로 fill의 {% component %}를 다시 그린 패스는 그 주인의 배치에 담는다
 ├── live_component.py      LiveComponent (부모 연결을 공유하는 중첩 상태 컴포넌트)
 ├── function_components.py  @function_component (상태 없는 템플릿 함수). 공개 이름과 겹치지 않게 복수형이다(#98).
-│                          라이브 렌더에서 그 템플릿의 {% component %}는 페이지 저장소에, 함수를 그린 컴포넌트가 그린 것으로 그려진다(this는 넘기지 않는다)
+│                          그 템플릿의 {% component %}는 페이지 저장소에, 함수를 그린 컴포넌트가 그린 것으로 그려진다(this는 넘기지 않는다).
+│                          HTTP 렌더에서 저장소가 아직 없으면 그 컴포넌트가 함수를 그린 컨텍스트에 만든다(templatetags의 _page_repository)
 ├── slots.py               슬롯 시스템 ({% fill %}, {% render_slot %})
 ├── async_result.py        AsyncResult / AsyncState
 ├── auto_broadcast.py      Django signals → 컴포넌트 mutation() 알림. senders에 적은 모델만, 비우면 아무것도 연결하지 않는다.
@@ -118,7 +119,7 @@ tests/
 │                          허용·거절은 저장소 루트의 conftest.py 가 한다(#120)
 │                          test_e2e_harness.py 는 E2E 하네스 자체의 계약을 지킨다. test_e2e_script.py 는 tests/e2e.sh 가 넘긴 경로만 돌리는지 본다
 │                          test_live_session_contract.py 는 회귀가 아니라 계약을 진술한다 —
-│                          컴포넌트가 생기는 경로 9개 × 거절 사유 5종을 parametrize로 돌린다.
+│                          컴포넌트가 생기는 경로 11개 × 거절 사유 5종을 parametrize로 돌린다.
 │                          경로를 새로 만들면 행을 추가한다
 │                          test_feature_gap.py 는 docs/FEATURE-GAP.md 의 ✅ 행마다 근거 칸의 테스트가
 │                          실제로 있는지, 개요의 숫자가 표를 센 값인지 본다(#110)
@@ -156,7 +157,7 @@ tests/
                            그런 테스트는 django_db(transaction=True)로 표시한다(#133).
                            bookmarks/ 는 예제가 아니라 wireview 스킬 검증의 기준선이고,
                            uploadprobe/ 는 워커 둘짜리 업로드 E2E(test_multiworker_uploads.py)의 픽스처,
-                           livesession/ 은 경계 넘는 이동 E2E(test_live_session_e2e.py)의 픽스처다,
+                           livesession/ 은 경계 넘는 이동 E2E(test_live_session_e2e.py)의 픽스처다(staff-func/ 는 경계 안 패널을 첫 태그인 함수 컴포넌트의 템플릿이 그리는 페이지),
                            listprobe/ 는 항목 재배열 diff 를 옛 형태와 비교하는 E2E(test_comprehension_moves_e2e.py)의 픽스처,
                            cspprobe/ 는 인라인 허용 없는 CSP 아래 모든 바인딩 모양과 브라우저 업로드를 도는 E2E(test_csp_e2e.py)의 픽스처,
                            valueprobe/ 는 렌더가 입력 중인 값을 지우지 않는지, 렌더가 지운 포커스 칸의 blur·change가 나가지 않고 폼 피드백도 건드림으로 치지 않는지 보는 E2E(test_input_values_e2e.py)의 픽스처,

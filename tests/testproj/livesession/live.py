@@ -1,6 +1,6 @@
 """Components for the live_session E2E pages."""
 
-from wireview import Component
+from wireview import Component, function_component
 
 
 class LsStaffPanel(Component):
@@ -30,3 +30,9 @@ class LsPublicNote(Component):
 
     async def bump(self) -> None:
         self.note = f"{self.note}!"
+
+
+@function_component(template="livesession/staff-card.html")
+def ls_staff_card():
+    """Draws the staff panel through a function component's template: the page's all the same."""
+    return {}
