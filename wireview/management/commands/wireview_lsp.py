@@ -433,12 +433,21 @@ _PARSE_UNTIL = re.compile(r"parser\.(?:parse|skip_past)\(([^)]*)\)")
 _QUOTED_NAME = re.compile(r"""["']([A-Za-z_][\w-]*)["']""")
 _QUOTED_END_NAME = re.compile(r"""["'](end[A-Za-z_][\w-]*)["']""")
 
-#: Block tags whose compile function builds the names at run time, so the source
-#: does not show them: ``(end tag, tags between)``.
-_BLOCK_OVERRIDES: dict[str, tuple[str, list[str]]] = {
-    "blocktranslate": ("endblocktranslate", ["plural"]),
-    "blocktrans": ("endblocktrans", ["plural"]),
-}
+
+def _block_translate_structure(name: str) -> tuple[str, list[str]]:
+    # do_block_translate ends at "end" + the name it was called by
+    return f"end{name}", ["plural"]
+
+
+def _block_overrides() -> dict[t.Any, t.Callable[[str], tuple[str, list[str]]]]:
+    """Compile functions that build their names at run time, so the source does not show them.
+
+    Keyed by the function, not by the tag's name: another library may register a
+    tag called ``blocktranslate`` that is no block at all.
+    """
+    from django.templatetags.i18n import do_block_translate
+
+    return {do_block_translate: _block_translate_structure}
 
 
 def block_structure(name: str, compile_func: t.Any) -> tuple[str | None, list[str]]:
@@ -450,8 +459,9 @@ def block_structure(name: str, compile_func: t.Any) -> tuple[str | None, list[st
     and a reader must not take that as proof (``end`` is None for ``{% load %}``
     and for a block tag whose names are computed alike).
     """
-    if name in _BLOCK_OVERRIDES:
-        return _BLOCK_OVERRIDES[name]
+    override = _block_overrides().get(compile_func)
+    if override is not None:
+        return override(name)
     try:
         # ``simple_block_tag`` closes over the name
         end_name = inspect.getclosurevars(compile_func).nonlocals.get("end_name")

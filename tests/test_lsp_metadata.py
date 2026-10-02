@@ -440,6 +440,22 @@ class TestTemplateTagsAndFilters:
             ["plural"],
         )
 
+    def test_a_tag_named_like_a_django_block_is_read_for_itself(self):
+        """Only Django's own blocktranslate runs to an end tag: another library's tag of that name may not."""
+        from django.templatetags.i18n import do_block_translate
+
+        register = template.Library()
+        register.simple_tag(lambda: "OK", name="blocktranslate")
+        register.tag("translateblock", do_block_translate)
+
+        tags = extract_library(register)["tags"]
+        assert tags["blocktranslate"]["end"] is None
+        # Django's function under another name ends where it computes from its name
+        assert (tags["translateblock"]["end"], tags["translateblock"]["intermediate"]) == (
+            "endtranslateblock",
+            ["plural"],
+        )
+
     def test_every_builtin_block_tag_is_recognised(self, metadata):
         # The names come out of each compile function's source. A Django that writes one
         # differently would leave its end tag unknown, and the editor would flag it.
