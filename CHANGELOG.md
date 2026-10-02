@@ -414,18 +414,26 @@ The django-reactor era changelog (2.x) is preserved in
   `joined()` starts again after the reconnect, directly or inside a `{% component %}` there -- still
   comes back with the state it had. The page joins such a `{% component %}` right behind its root,
   before it patches in the root's render that leaves it out, and that join took the entries for it
-  and the LiveComponent in it and lost them when the page let it go; the server now ignores a join
-  for an id its root carried an entry for and has yet to draw. The form is unchanged, so
+  and the LiveComponent in it and lost them when the page let it go. The server now takes such a
+  join with the state the page sent, but neither it nor the render that answers it takes or
+  overwrites an entry another root still on the connection carried; that root's later render
+  restores from it. (Ignoring the join instead also dropped the join of a root of the page's own:
+  after a boosted navigation, the next page could draw as a root an id a sticky component carried
+  and had yet to draw, and that component never joined.) The form is unchanged, so
   `PROTOCOL_VERSION` stays.
 
 - Nothing reaches a component whose join failed until the page joins it again, even when its
   parent's render draws it again. The parent's template pass built a new instance under the id
   that nothing joined, and the server's HTML took the `wireview-error` class away: a click or a
   hook's `pushEvent` reached an instance whose `joined()` never ran, or a LiveComponent of one. The
-  server now remembers, for the connection, the joins that failed on it. It runs no handler for
-  such a component nor for the LiveComponents it owns -- as the server counts ownership, so one in
-  its slot is the caller's and works -- and answers their events with an empty render, so the
-  page's loading state ends; it takes no hook push or upload for them. It draws the instance its
+  server now remembers, for the connection, the joins that failed on it. It runs no code of such a
+  component nor of the LiveComponents it owns -- as the server counts ownership, so one in its slot
+  is the caller's and works. It answers their events with an empty render, so the page's loading
+  state ends, and takes no hook push or upload for them; a broadcast (`mutation()`,
+  `notification()`), `params_changed()`, `wire.defer()` and a parent's `update_live_component` do
+  not reach them, and the instance is never rendered on its own, a render that would have run
+  `joined()` for the LiveComponents its pass built. What still runs is its parent's render drawing
+  it inline, the `on_mount` hooks that pass runs, and `leaving()` when it goes. It draws the instance its
   pass builds with a `wire-join-failed` attribute, which the page shows as `wireview-error` after
   the patch; the page also keeps the class it put on when the error came across a patch of the
   same element. A join the page sends under the id -- the next connection, a boosted navigation's

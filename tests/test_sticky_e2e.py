@@ -128,3 +128,33 @@ def test_a_sticky_hook_and_the_page_hear_each_navigation_once(page, server):
     expect(html).to_have_attribute("data-navigated-document", "3")
     expect(html).to_have_attribute("data-destroyed-player", "1")
     assert html_attr(page, "data-navigated-player") == "2"
+
+
+@pytest.fixture
+def late_gate():
+    from testproj.stickyprobe.live import LateSticky
+
+    LateSticky.gate.clear()
+    try:
+        yield LateSticky.gate
+    finally:
+        LateSticky.gate.set()
+
+
+def test_a_page_that_draws_as_a_root_what_the_sticky_one_has_yet_to_draw(page, server, late_gate):
+    # On "late" the sticky component's join carried the entry of the inner
+    # counter the HTTP render drew inside it, and its render -- the work held --
+    # leaves it out. The next page keeps the sticky one and draws the counter
+    # as a root of its own: the server took that join for a nested one's the
+    # sticky component had yet to draw and dropped it, and the counter was dead.
+    open_live(page, f"{server}/stickyprobe/late/", selector="#late[data-is-live='true']")
+    expect_text(by(page, "late-state"), "loading")
+    expect(page.locator("#inner")).to_have_count(0)
+    page.evaluate("() => { window.__notReloaded = true; }")
+
+    go(page, "late-root")
+
+    assert page.evaluate("() => window.__notReloaded") is True, "the move was a boosted one"
+    expect_text(by(page, "late-state"), "loading")
+    by(page, "inner-inc").click()
+    expect_text(by(page, "inner-count"), "1")

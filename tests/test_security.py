@@ -600,9 +600,8 @@ class TestUploadCompletionCallback:
         consumer.channel_name = "test-channel"
         consumer.channel_layer = MagicMock()
         consumer.repo = MagicMock()
-        consumer.repo.get = MagicMock(return_value=view.component)
         # Not a component whose join failed on this connection
-        consumer.repo.refused = MagicMock(return_value=False)
+        consumer.repo.reachable = MagicMock(return_value=view.component)
         consumer.send_command = AsyncMock()
         consumer.send_render = AsyncMock()
 

@@ -1,0 +1,6 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <span data-testid="inner-count">{{ this.count }}</span>
+  <button {% on "click" "increment" %} data-testid="inner-inc">+</button>
+</div>

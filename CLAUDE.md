@@ -157,12 +157,14 @@ tests/
                            errorprobe/ 는 예외를 던지는 핸들러와 join을 보는 E2E(test_errors_e2e.py)의 픽스처(holder 는 join이 실패한 컴포넌트와, 역시 join이 실패하는 held-nest 안의 LiveComponent held-child 를 렌더마다 다시 그린다, late/ 는 같은 id로 다시 join되는 페이지,
                            그 안의 ErrorNest 는 LiveComponent 하나를 들고 ?visit=swap 은 그 id를 루트로 바꾼다. remove가 지운 포커스 칸의 blur도 여기서 본다.
                            slot/ 은 join이 실패하는 컴포넌트 둘 — 슬롯에 호스트의 LiveComponent를 받은 것과 자기 LiveComponent를 든 것 — 과 그 훅들이 떠나는 페이지.
+                           그 LiveComponent는 업로드를 받는다(슬롯의 것은 실패 뒤에도 끝내야 한다).
                            핸들러가 들은 것은 HEARD 에 남아, 서버가 거절했는지를 테스트가 본다),
                            offlineprobe/ 는 연결이 끊긴 페이지의 바인딩·큐와 재연결 뒤의 훅·폼 복구를 보는 E2E(test_offline_e2e.py)의 픽스처,
                            hookprobe/ 는 훅의 소유(중첩 컴포넌트)·이동·떠날 때의 destroyed·pushEvent 응답 짝, 렌더가 새로 그린 LiveComponent·다시 그린 컴포넌트의 훅과 그 joined()의 push_event, 다시 그린 컴포넌트의 join과 viewport, 부모의 패치가 중첩 컴포넌트 안에 그린 훅·바인딩, 같은 렌더가 그린 훅에 가는 push_event, 다른 컴포넌트의 패치가 먼저 돌아도 새 LiveComponent(와 그것의 첫 작업이 그리는 bud)가 그려지는지를 보는 E2E(test_hooks_e2e.py)의 픽스처,
                            tempprobe/ 는 초기화된 temporary assign이 다음 렌더에 화면에 남는지 보는 E2E(test_temporary_assigns_e2e.py)의 픽스처,
                            stickyprobe/ 는 sticky 컴포넌트가 boost 이동을 건너 이어지는지(id 없는 것 포함), 그 훅과 페이지가
-                           이동마다 한 번 navigated 알림을 받는지 보는 E2E(test_sticky_e2e.py)의 픽스처,
+                           이동마다 한 번 navigated 알림을 받는지, late/ 의 sticky LateSticky가 아직 그리지 않은 id를 late-root/ 가
+                           자기 루트로 그릴 때 그 루트가 join되는지 보는 E2E(test_sticky_e2e.py)의 픽스처,
                            deadprobe/ 는 JavaScript를 끈 브라우저가 첫 렌더를 읽고 폼으로 뷰에 가는지 보는 E2E(test_dead_view_e2e.py)의 픽스처,
                            jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,
                            formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처,
@@ -275,9 +277,11 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
   `error`를 보내 이벤트 전 상태로 다시 join하게 한다. join 단계의 예외는 `_join_failed`(재시도 없음 — 재시도하면 루프다).
   클라이언트가 보내지 않는 메시지는 `receive_json`이 로그 후 버린다. 계약은 `docs/features/errors.md`, 테스트는 tests/test_errors.py(#94).
 - **join이 실패한 컴포넌트는 서버가 막는다.** 연결이 그 id를 기억하고(`repo.join_failed`), 부모의 패스가 그 id로
-  다시 만든 인스턴스와 그것이 소유한 LiveComponent는 `repo.refused`가 참이다 — 이벤트는 빈 render로 답하고, 훅·업로드는
-  버린다. 그 id로 join이 오면 다시 시도한다(`retry_join`). 클라이언트가 이벤트를 받는 새 경로를 만들면 `refused`를
-  확인한다. 페이지가 소유를 추정해 막던 때는 슬롯의 LiveComponent까지 막고 boost 뒤 다시 join하지 않았다.
+  다시 만든 인스턴스와 그것이 소유한 LiveComponent는 `repo.refused`가 참이다 — 이벤트는 빈 render로 답하고, 훅·업로드·
+  브로드캐스트·`params_changed`·`wire.defer`·`update_live_component`는 버리며, 따로 렌더하지 않는다(그 렌더가 소유
+  LiveComponent의 `joined()`를 돌린다). 그 id로 join이 오면 다시 시도한다(`retry_join`). 컴포넌트 코드를 부르는 새
+  경로는 인스턴스를 `repo.get`이 아니라 `repo.reachable`(목록은 `reachable_components`)로 찾는다. 페이지가 소유를
+  추정해 막던 때는 슬롯의 LiveComponent까지 막고 boost 뒤 다시 join하지 않았다.
 - **mount가 halt하거나 예외를 던지면 아무것도 렌더되지 않는다** (#58부터). 컴포넌트는 저장소에서도
   지워지므로 그 id로 오는 이벤트도 처리되지 않는다. 렌더를 보내는 새 경로를 만들 때
   `wire.mount_halted`를 건너뛰면 가드가 막으려던 HTML과 `data-state`가 그대로 나간다. 예외를

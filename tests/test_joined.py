@@ -535,13 +535,15 @@ class JoinedLateNestShelf(Component):
         )
 
 
-async def test_a_component_the_root_has_yet_to_draw_does_not_join_with_its_entries():
+async def test_a_component_the_root_has_yet_to_draw_joins_without_its_entries():
     # What a reconnect sends: the shelf's join, carrying the nest and the
     # sprig, and the nest's own join right behind it -- the page sends it once
     # the shelf is marked live, before the shelf's render, which does not draw
     # the nest, is patched in. That join built the nest from the shelf's entry
     # and the sprig from its own, and the page let the nest go a moment later:
-    # once the work landed, both were drawn from their defaults.
+    # once the work landed, both were drawn from their defaults. The join goes
+    # ahead -- the id may be a root of the page's own (tests/test_sticky_e2e.py)
+    # -- but leaves the shelf's entries to the shelf.
     JoinedLateShelf.landed = asyncio.Event()
     communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
     communicator.scope["user"] = AnonymousUser()
@@ -567,12 +569,9 @@ async def test_a_component_the_root_has_yet_to_draw_does_not_join_with_its_entri
                 "payload": {"name": "JoinedLateNest", "state": nest, "children": {"j-late-sprig": sprig}, "ref": 2},
             }
         )
+        answered = str(await _until(communicator, "joined"))
+        assert "fresh-note" in answered, "the shelf's entry for the sprig stays the shelf's"
         await communicator.send_json_to({"command": "leave", "payload": {"id": "j-late-nest"}})
-        # Answered once the server has handled what came before it
-        poke = {"id": "j-late-nshelf", "command": "poke", "implicit_args": {}, "explicit_args": {}, "ref": 3}
-        await communicator.send_json_to({"command": "user_event", "payload": poke})
-        heard = await _until(communicator, "render")
-        assert [m["payload"]["id"] for m in heard] == ["j-late-nshelf"], "nothing answers the nest's join"
 
         JoinedLateShelf.landed.set()
         heard = await _until(communicator, "render")
@@ -588,6 +587,81 @@ async def test_a_component_the_root_has_yet_to_draw_does_not_join_with_its_entri
         adopted = str(await _until(communicator, "joined"))
         assert "kept-note" in adopted, adopted
         assert "fresh-note" not in adopted
+    finally:
+        JoinedLateShelf.landed.set()
+        await communicator.disconnect()
+
+
+class JoinedLateCounter(Component):
+    count: int = 0
+
+    async def increment(self):
+        self.count += 1
+
+    @property
+    def label(self) -> str:
+        # One dynamic part, so a diff carries the whole text
+        return f"count={self.count}"
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<b {% tag_header %}>{{ this.label }}</b>")
+
+
+class JoinedLateCounterShelf(JoinedLateNestShelf):
+    """Draws ``j-late-counter`` once its work lands."""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% if this.data.ok %}{% component 'JoinedLateCounter' id='j-late-counter' %}{% endif %}</p>"
+        )
+
+
+async def test_a_join_under_an_id_another_root_carried_goes_ahead_and_leaves_the_entry():
+    # A sticky root crosses a boosted navigation with the entry its join carried
+    # for a component it has yet to draw, and the next page draws that id as a
+    # root of its own. Its join was taken for a nested one's and dropped: no
+    # answer, and every click on it went nowhere.
+    JoinedLateShelf.landed = asyncio.Event()
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
+    communicator.scope["user"] = AnonymousUser()
+    connected, _ = await communicator.connect()
+    assert connected
+    try:
+        meta = {"user": AnonymousUser(), "wire": WireviewMeta(params={})}
+        shelf = sign_state(JoinedLateCounterShelf(**meta, id="j-late-cshelf", data=AsyncResult.success("ok")))
+        carried = ["JoinedLateCounter", sign_state(JoinedLateCounter(**meta, id="j-late-counter", count=5))]
+        await communicator.send_json_to(
+            {
+                "command": "join",
+                "payload": {
+                    "name": "JoinedLateCounterShelf",
+                    "state": shelf,
+                    "children": {"j-late-counter": carried},
+                    "ref": 1,
+                },
+            }
+        )
+        assert "count=" not in str(await _until(communicator, "joined"))
+
+        own = sign_state(JoinedLateCounter(**meta, id="j-late-counter", count=1))
+        await communicator.send_json_to(
+            {"command": "join", "payload": {"name": "JoinedLateCounter", "state": own, "children": {}, "ref": 2}}
+        )
+        assert "count=1" in str(await _until(communicator, "joined"))
+        increment = {"id": "j-late-counter", "command": "increment", "implicit_args": {}, "explicit_args": {}}
+        await communicator.send_json_to({"command": "user_event", "payload": {**increment, "ref": 3}})
+        assert "count=2" in str(await _until(communicator, "render"))
+
+        # The root goes; the shelf's later render draws the id from the shelf's entry
+        await communicator.send_json_to({"command": "leave", "payload": {"id": "j-late-counter"}})
+        JoinedLateShelf.landed.set()
+        heard = await _until(communicator, "render")
+        while heard[-1]["payload"]["id"] != "j-late-cshelf":
+            heard += await _until(communicator, "render")
+        assert "count=5" in str(heard[-1]), heard[-1]
     finally:
         JoinedLateShelf.landed.set()
         await communicator.disconnect()

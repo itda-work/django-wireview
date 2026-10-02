@@ -1,6 +1,8 @@
 import json
 import logging
 import typing as t
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import reduce
 from typing import cast
@@ -99,6 +101,9 @@ class ComponentRepository:
         # drawn only by a later render (an async result, an {% if %}).
         self.children: ChildrenRepo = {}
         self._carried_by: dict[str, str] = {}
+        # Entries no build takes while a join runs (``joining``): another root
+        # still here carried them, and its later render restores from them.
+        self._withheld: set[str] = set()
         # The components whose join failed on this connection, each with the ids
         # its failure removed: itself and the LiveComponents it owned. A parent's
         # later pass builds new instances under those ids that nothing joins.
@@ -176,7 +181,7 @@ class ComponentRepository:
                     converted = validator({key: value})  # type: ignore[operator]
                     setattr(component, key, converted.get(key, value))
                 return component
-            elif child := self.children.get(component_id):
+            elif component_id not in self._withheld and (child := self.children.get(component_id)):
                 child_name, child_state = child
                 if child_name == name:
                     state = child_state | state
@@ -257,7 +262,7 @@ class ComponentRepository:
 
         # A reconnect carries the child's signed state in the parent's join. The
         # parent's props win, everything else is the child's own and comes back.
-        if (restored := self._take_restored(component_id)) is not None:
+        if component_id not in self._withheld and (restored := self._take_restored(component_id)) is not None:
             restored_name, restored_state = restored
             if self._same_live_class(restored_name, component_class):
                 state = restored_state | state
@@ -429,10 +434,11 @@ class ComponentRepository:
         An id already held was built by another pass -- the outer join's, when a
         nested component joins with the states inside it -- and nothing would
         take its entry but the next instance built under the id, once an
-        ``{% if %}`` shows it again: that one starts anew.
+        ``{% if %}`` shows it again: that one starts anew. An entry another root
+        still here carried stays that root's (``joining``).
         """
         for child_id, entry in children.items():
-            if child_id not in self.components:
+            if child_id not in self.components and not self._carried_elsewhere(child_id, root_id):
                 self.children[child_id] = entry
                 self._carried_by[child_id] = root_id
 
@@ -440,18 +446,30 @@ class ComponentRepository:
         self._carried_by.pop(component_id, None)
         return self.children.pop(component_id, None)
 
-    def undrawn(self, component_id: str) -> bool:
-        """Whether ``component_id`` is under a root that joined but has yet to draw it.
+    def _carried_elsewhere(self, component_id: str, root_id: str) -> bool:
+        """Whether a root other than ``root_id``, still here, carried the entry of ``component_id``."""
+        carrier = self._carried_by.get(component_id)
+        return carrier is not None and carrier != root_id and carrier in self.components
 
-        The root's join carried its entry, and the root's pass would have built
-        it had the root drawn it: the root's render leaves it out -- the work
-        joined() starts again has not landed -- and the page lets its element go
-        once that render is patched in. A join the page sends for it meanwhile is
-        not a root's: it would take the entries the root's later render needs.
+    @contextmanager
+    def joining(self, root_id: str, children: t.Iterable[str] = ()) -> Iterator[None]:
+        """While the join of ``root_id`` runs, leave what another root carried to that root.
+
+        A root that joined carried the entries of the components under it, and
+        one it has yet to draw -- the work joined() starts again has not landed --
+        keeps its entry for the render that does. The page may join that id
+        meanwhile: a nested component right behind its root, before the root's
+        render that leaves it out is patched in, or a sticky root's id the next
+        page draws as a root of its own. That join goes ahead with the state the
+        page sent, and neither it nor the render that answers it takes the other
+        root's entries for the id or the ones its join carried; the nested
+        component's element goes, and the root's later render restores both.
         """
-        root_id = self._carried_by.get(component_id)
-        root = self.components.get(root_id) if root_id is not None else None
-        return component_id not in self.components and root is not None and root.wire.has_joined
+        self._withheld = {id for id in (root_id, *children) if self._carried_elsewhere(id, root_id)}
+        try:
+            yield
+        finally:
+            self._withheld = set()
 
     def join_failed(self, id: str, removed: list[Component]) -> None:
         """Remember that the join of ``id`` failed, until a join under the id tries again."""
@@ -474,6 +492,22 @@ class ComponentRepository:
         if component is None:
             return any(id in removed for removed in self._join_failures.values())
         return self.root_of(component).id in self._join_failures
+
+    def reachable(self, id: str) -> Component | None:
+        """The instance under ``id`` that server code may run, or ``None``: unknown, or ``refused``.
+
+        Every path that calls a component's code -- an event, a hook, an upload, a
+        broadcast, ``params_changed``, ``wire.defer``, a parent's
+        ``update_live_component`` -- finds its instance here, so what a failed
+        join left runs nothing until the page joins it again. A render of it on
+        its own is refused in ``WireviewSession.send_render``.
+        """
+        component = self.components.get(id)
+        return None if component is None or self.refused(id) else component
+
+    def reachable_components(self) -> list[Component]:
+        """Every instance ``reachable`` would return, in registration order."""
+        return [component for component in list(self.components.values()) if not self.refused(component.id)]
 
     def root_of(self, component: Component) -> Component:
         """The component whose join made ``component``'s instance: itself, or a LiveComponent's owner."""
@@ -522,7 +556,7 @@ class ComponentRepository:
         if not self._is_valid_event_handler(command):
             raise InvalidEvent(f"Invalid event handler: {command}")
 
-        component = self.components.get(id)
+        component = self.reachable(id)
         if component is None:
             return None
 
@@ -569,9 +603,7 @@ class ComponentRepository:
         return handlers.is_user_defined_method(component, command)
 
     def components_subscribed_to(self, channel):
-        # XXX: There is a list() here because the dict can change size during
-        # iteration
-        for component in list(self.components.values()):
+        for component in self.reachable_components():
             if channel in component.get_subscriptions():
                 yield component
 
@@ -579,6 +611,6 @@ class ComponentRepository:
     def subscriptions(self):
         return reduce(
             lambda a, b: a.union(b),
-            (component.get_subscriptions() for component in list(self.components.values())),
+            (component.get_subscriptions() for component in self.reachable_components()),
             set(),
         )

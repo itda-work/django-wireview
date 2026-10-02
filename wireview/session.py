@@ -281,10 +281,12 @@ class WireviewSession:
         The connection remembers the failure until then. A parent's later
         render draws the component again over a new instance its template pass
         builds, which nothing joins: that instance and the LiveComponents it
-        owns get no events, hook pushes or upload ops (``repo.refused``), an
-        event is answered with an empty render so the page's loading state
-        ends, and the instance's element carries ``wire-join-failed``, which the
-        page shows as ``wireview-error`` after the parent's patch.
+        owns run no code -- no event, hook push, upload op, broadcast,
+        ``params_changed`` or deferred call reaches them (``repo.reachable``),
+        and they are not rendered on their own (``send_render``). An event is
+        answered with an empty render so the page's loading state ends, and the
+        instance's element carries ``wire-join-failed``, which the page shows as
+        ``wireview-error`` after the parent's patch.
         ``ref`` is the join's: a page that has since sent another join under the
         id tells this answer is not for it (#139).
         """
@@ -361,12 +363,6 @@ class WireviewSession:
             # do not send this; a cached older script still might.
             log.debug("Ignoring direct join for LiveComponent %s", component_id)
             return
-        if existing is None and self.repo.undrawn(component_id):
-            # A nested component the page joined before the root's render that
-            # leaves it out was patched in; the page lets it go. Joined, it took
-            # the entries its root's later render restores it and its own from.
-            log.debug("Ignoring join for %s, which its root has yet to draw", component_id)
-            return
         # The page tries a component whose join failed again: new DOM came for it
         self.repo.retry_join(component_id)
         if existing is not None and existing.wire.has_joined:
@@ -381,24 +377,26 @@ class WireviewSession:
             await self._call_leaving(removed)
             self._release_uploads(removed)
         try:
-            component = await self.repo.join(
-                name,
-                decoded_state,
-                children=decoded_children,
-            )
-            if component.wire.mount_halted:
-                # The boundary refused it. Nothing of the component goes out: no
-                # render, no signed state. Whatever the hook queued (a redirect to
-                # a login page) still does, and the client drops the element.
-                self._join_rejected("halted", name, "an on_mount hook halted the mount")
-                await self.component_remove(component.id, answer)
-                await component.wire.flush_pending()
-                return
-            # Hear this connection's upload progress, if the component has uploads
-            await self._subscribe_upload_group(component)
-            # The render that answers a join says which protocol this server
-            # speaks, so the client knows what it may send (user_event refs).
-            await self.send_render(component, announce=True, ref=answer)
+            # What another root still here carried stays that root's (repo.joining)
+            with self.repo.joining(component_id, decoded_children):
+                component = await self.repo.join(
+                    name,
+                    decoded_state,
+                    children=decoded_children,
+                )
+                if component.wire.mount_halted:
+                    # The boundary refused it. Nothing of the component goes out: no
+                    # render, no signed state. Whatever the hook queued (a redirect to
+                    # a login page) still does, and the client drops the element.
+                    self._join_rejected("halted", name, "an on_mount hook halted the mount")
+                    await self.component_remove(component.id, answer)
+                    await component.wire.flush_pending()
+                    return
+                # Hear this connection's upload progress, if the component has uploads
+                await self._subscribe_upload_group(component)
+                # The render that answers a join says which protocol this server
+                # speaks, so the client knows what it may send (user_event refs).
+                await self.send_render(component, announce=True, ref=answer)
 
             # Call params_changed if URL has params (initial load)
             if self.repo.params:
@@ -669,8 +667,9 @@ class WireviewSession:
         # Update query_string for send_query_string() sync
         self.query_string = self.repo.get_query_string()
 
-        # Call params_changed on all live components and re-render
-        for component in list(self.repo.components.values()):
+        # Call params_changed on all live components and re-render. What a failed
+        # join left hears nothing (repo.reachable).
+        for component in self.repo.reachable_components():
             if self.repo.get(component.id) is not component:
                 # Went with an ancestor that raised earlier in this loop
                 continue
@@ -732,9 +731,9 @@ class WireviewSession:
             ref: Optional reference for callback response
         """
         log.debug(f"<<< HOOK-EVENT {component_id} {event} {payload}")
-        component = self.repo.get(component_id)
         # A component whose join failed hears no hook, as an unknown one does not
-        if not component or self.repo.refused(component_id):
+        component = self.repo.reachable(component_id)
+        if not component:
             return
 
         try:
@@ -765,8 +764,8 @@ class WireviewSession:
 
         log.debug(f"<<< UPLOAD-REGISTER {id} {name} ({len(entries)} entries)")
 
-        component = self.repo.get(id)
-        if not component or self.repo.refused(id):
+        component = self.repo.reachable(id)
+        if not component:
             return
 
         registry = getattr(component, "_upload_registry", None)
@@ -860,8 +859,8 @@ class WireviewSession:
         """Handle upload cancellation from client."""
         log.debug(f"<<< UPLOAD-CANCEL {id} {name} {ref}")
 
-        component = self.repo.get(id)
-        if component and not self.repo.refused(id):
+        component = self.repo.reachable(id)
+        if component:
             try:
                 await component.cancel_upload(name, ref)
                 await self.send_render(component)
@@ -881,8 +880,8 @@ class WireviewSession:
 
         log.debug(f"<<< UPLOAD-COMPLETE {id} {name} {ref}")
 
-        component = self.repo.get(id)
-        if not component or self.repo.refused(id):
+        component = self.repo.reachable(id)
+        if not component:
             return
 
         registry = getattr(component, "_upload_registry", None)
@@ -1105,6 +1104,10 @@ class WireviewSession:
         component = self.repo.get(live_component_id)
         if component is None:
             log.warning(f"LiveComponent {live_component_id} not found")
+            return
+        if self.repo.reachable(live_component_id) is None:
+            # Its owner's join failed: it runs nothing until the page joins that again
+            log.debug("Dropping the update of %s: what a failed join left runs nothing", live_component_id)
             return
 
         # Verify it's a LiveComponent
@@ -1362,7 +1365,14 @@ class WireviewSession:
         ``instances`` names the instance of each component whose first render
         this is -- the join's answer, a LiveComponent that just joined -- so the
         page knows whose upload configs to take from then on (#137).
+
+        What a failed join left is not rendered on its own (``repo.refused``):
+        that render would run ``joined()`` and ``update()`` for the
+        LiveComponents its pass built. Its parent's render draws it inline.
         """
+        if self.repo.refused(component.id):
+            log.debug("Not rendering %s: its join failed on this connection", component.id)
+            return
         diff, children, settled = await self._render_tree(component)
         instances: dict[str, int] = {}
         if diff is not None or children or acknowledge or announce:

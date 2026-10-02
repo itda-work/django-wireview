@@ -1071,9 +1071,8 @@ class TestConsumerUploadHandlers:
         # Create a component with upload registry
         component = await mount(UploadComponent)
         consumer.repo = MagicMock()
-        consumer.repo.get = MagicMock(return_value=component.component)
         # Not a component whose join failed on this connection
-        consumer.repo.refused = MagicMock(return_value=False)
+        consumer.repo.reachable = MagicMock(return_value=component.component)
 
         # Mock send_command and send_render
         consumer.send_command = AsyncMock()
@@ -1119,9 +1118,8 @@ class TestConsumerUploadHandlers:
 
         component = await mount(UploadComponent)
         consumer.repo = MagicMock()
-        consumer.repo.get = MagicMock(return_value=component.component)
         # Not a component whose join failed on this connection
-        consumer.repo.refused = MagicMock(return_value=False)
+        consumer.repo.reachable = MagicMock(return_value=component.component)
         consumer.send_command = AsyncMock()
         consumer.send_render = AsyncMock()
 
@@ -1158,9 +1156,8 @@ class TestConsumerUploadHandlers:
 
         component = await mount(UploadComponent)
         consumer.repo = MagicMock()
-        consumer.repo.get = MagicMock(return_value=component.component)
         # Not a component whose join failed on this connection
-        consumer.repo.refused = MagicMock(return_value=False)
+        consumer.repo.reachable = MagicMock(return_value=component.component)
         consumer.send_command = AsyncMock()
         consumer.send_render = AsyncMock()
 
@@ -1195,9 +1192,8 @@ class TestConsumerUploadHandlers:
 
         component = await mount(UploadComponent)
         consumer.repo = MagicMock()
-        consumer.repo.get = MagicMock(return_value=component.component)
         # Not a component whose join failed on this connection
-        consumer.repo.refused = MagicMock(return_value=False)
+        consumer.repo.reachable = MagicMock(return_value=component.component)
         consumer.send_command = AsyncMock()
         consumer.send_render = AsyncMock()
 
@@ -1238,9 +1234,8 @@ class TestConsumerUploadHandlers:
 
         component = await mount(UploadComponent)
         consumer.repo = MagicMock()
-        consumer.repo.get = MagicMock(return_value=component.component)
         # Not a component whose join failed on this connection
-        consumer.repo.refused = MagicMock(return_value=False)
+        consumer.repo.reachable = MagicMock(return_value=component.component)
         consumer.send_command = AsyncMock()
         consumer.send_render = AsyncMock()
 

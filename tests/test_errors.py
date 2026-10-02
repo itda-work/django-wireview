@@ -410,6 +410,152 @@ async def test_a_join_under_the_id_of_a_failed_one_tries_it_again(failing_nests)
     assert str(redrawn[-1]["payload"]["diff"]).count("wire-join-failed") == 1
 
 
+class ErrorProbeHearingLeaf(LiveComponent):
+    """Hears what its owner hears; its joined() is what a render of a refused owner would run."""
+
+    class Meta:
+        subscriptions = {"error-probe-refused"}
+
+    async def joined(self):
+        CALLS.append(("joined", self.id))
+
+    async def notification(self, channel, **kwargs):
+        CALLS.append(("notification", self.id))
+
+    async def params_changed(self, params, uri):
+        CALLS.append(("params_changed", self.id))
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<i {% live_tag_header %}></i>")
+
+
+class ErrorProbeHearingNest(ErrorProbeNest):
+    class Meta:
+        subscriptions = {"error-probe-refused"}
+
+    async def notification(self, channel, **kwargs):
+        CALLS.append(("notification", self.id))
+
+    async def params_changed(self, params, uri):
+        CALLS.append(("params_changed", self.id))
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<div {% tag_header %}>"
+            "{% live_component 'ErrorProbeHearingLeaf' id='e-hearing-leaf' %}</div>"
+        )
+
+
+class ErrorProbeHearingHost(ErrorProbeHost):
+    """Hears the same topic and the same params as its nest, and defers to it."""
+
+    class Meta:
+        subscriptions = {"error-probe-refused"}
+
+    async def notification(self, channel, **kwargs):
+        CALLS.append(("notification", self.id))
+
+    async def params_changed(self, params, uri):
+        CALLS.append(("params_changed", self.id))
+
+    async def call(self, **_rest):
+        await self.wire.defer("e-hearing-nest", ErrorProbeHearingNest.poke)
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<div {% tag_header %}>{{ this.count }}"
+            "{% component 'ErrorProbeHearingNest' id='e-hearing-nest' %}</div>"
+        )
+
+
+async def test_what_a_failed_join_left_hears_no_broadcast_params_or_deferred_call(failing_nests):
+    # Events, hooks and uploads were refused, but every other path that runs a
+    # component's code still found the instance the host's pass built: a
+    # broadcast, params_changed (a message the page sends) and wire.defer. Each
+    # ran its code and rendered it, and that render ran joined() for the
+    # LiveComponent the instance owns. The host hears all three, so they came.
+    from wireview import utils
+
+    communicator = await _connect()
+    try:
+        host = sign_state(ErrorProbeHearingHost(user=AnonymousUser(), wire=WireviewMeta(params={}), id="e-host"))
+        await _send(communicator, "join", name="ErrorProbeHearingHost", state=host, children={}, ref=1)
+        await _next(communicator, "joined")
+        meta = {"user": AnonymousUser(), "wire": WireviewMeta(params={})}
+        nest = sign_state(ErrorProbeHearingNest(**meta, id="e-hearing-nest"))
+        await _send(communicator, "join", name="ErrorProbeHearingNest", state=nest, children={}, ref=2)
+        assert (await _next(communicator, "error", "render"))["command"] == "error"
+        drawn = await _heard_until_host_answers(communicator, 3)
+        assert "wire-join-failed" in json.dumps(drawn[-1]["payload"]["diff"])
+        CALLS.clear()
+
+        await utils.asend_to("error-probe-refused", "notification", kwargs={"n": 1})
+        await _send(communicator, "params_changed", params={"q": "1"}, uri="?q=1")
+        await _event(communicator, "e-host", "call", ref=4)
+        heard = await _heard_until_host_answers(communicator, 5)
+    finally:
+        await communicator.disconnect()
+
+    assert sorted(CALLS) == [("notification", "e-host"), ("params_changed", "e-host")]
+    assert {m["payload"].get("id") for m in heard} == {"e-host"}, heard
+    assert "joined" not in [m["command"] for m in heard]
+
+
+async def test_a_parent_update_does_not_reach_a_live_component_of_a_failed_join():
+    consumer, outbound = _consumer()
+    consumer.repo.join_failed("root", [])
+    consumer.repo.build("ErrorProbeParent", {"id": "root"})
+    child = consumer.repo.build("ErrorProbeChild", {"id": "child"})
+    child._parent_id = "root"  # type: ignore[union-attr]
+
+    # ErrorProbeChild.update() raises: reaching it would cost the root an ``error``
+    await consumer.component_update_live_component("root", "child", {"x": 1})
+
+    assert outbound.commands == []
+    assert consumer.repo.get("child") is child
+
+
+async def test_a_failed_join_is_not_rendered_on_its_own_nor_its_live_components_joined():
+    # Its parent's render draws it inline. A render of its own would run its
+    # pass and then joined() for the LiveComponent the pass built.
+    consumer, outbound = _consumer()
+    consumer.repo.join_failed("e-hearing-nest", [])
+    nest = consumer.repo.build("ErrorProbeHearingNest", {"id": "e-hearing-nest"})
+
+    await consumer.send_render(nest, acknowledge=True)
+
+    assert outbound.commands == []
+    assert CALLS == []
+
+
+async def test_a_failed_join_takes_no_upload_command_even_with_uploads_set_up():
+    # The instance a parent's pass built under the id of a failed join, with an
+    # upload set up and an entry in it -- what refusing the upload commands is
+    # for. Without a registry, every upload command ends there anyway.
+    from wireview.features.uploads import UploadEntry, UploadStatus
+
+    consumer, outbound = _consumer()
+    consumer.repo.join_failed("u-1", [])
+    component = consumer.repo.build("ErrorProbe", {"id": "u-1"})
+    component.allow_upload("files", max_entries=2)
+    registry = component._upload_registry
+    assert registry is not None
+    entry = UploadEntry(ref="0", upload_name="files", client_name="a.txt", client_size=1, client_type="text/plain")
+    registry.add_entry("files", entry)
+
+    new = {"ref": "1", "name": "b.txt", "size": 1, "type": "text/plain"}
+    await consumer.command_upload_register("u-1", "files", [new])
+    await consumer.command_upload_complete("u-1", "files", "0")
+    await consumer.command_upload_cancel("u-1", "files", "0")
+
+    assert outbound.commands == []
+    assert registry.get_entry("files", "1") is None
+    assert entry.status is UploadStatus.PENDING
+
+
 async def test_a_join_that_raises_after_its_first_render_is_answered_twice():
     # The URL's params reach a joining component after the render that answers
     # the join; if that raises, the join has failed too, and says so. The page

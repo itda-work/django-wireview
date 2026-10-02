@@ -52,9 +52,11 @@
   곧 오고, 페이지의 요소에는 첫 render가 지운 자식이 없어 다시 실을 수 없기 때문이다.
 - 그 결과 안에 **일반 Component**가 있고 그 안에 LiveComponent가 있으면, 재연결한 페이지는 루트의 join 바로
   뒤에 그 일반 Component의 join도 보낸다 — 루트가 live로 표시됐고 첫 render를 아직 패치하지 않아 요소가
-  남아 있다. 루트가 실은 항목이 있는데 루트의 패스가 아직 만들지 않은 id(`repo.undrawn`)의 join은 서버가
-  답하지 않고 버린다. 페이지는 곧 그 요소를 떠나보낸다. 받아들이면 그 join이 루트가 실은 자기 항목과 안의
-  LiveComponent 항목을 꺼내 쓰고 떠나면서 가져가, 작업이 끝난 뒤의 render가 둘 다 기본값으로 그렸다.
+  남아 있다. 서버는 그 join을 받아들이되, 아직 살아 있는 다른 루트가 실은 항목은 그 join과 그 답 render가
+  꺼내지도 덮어쓰지도 않는다(`repo.joining`). 페이지는 곧 그 요소를 떠나보내고, 루트의 항목은 작업이 끝난 뒤의
+  render가 꺼낸다. 전에는 그 join이 항목을 꺼내 쓰고 떠나면서 가져가 둘 다 기본값으로 그려졌고, 그 뒤 한때는
+  그런 join을 답 없이 버렸다 — 그러면 sticky 루트가 실은 id를 boost로 간 다음 페이지가 **자기 루트**로 그릴 때
+  그 join도 버려져 컴포넌트가 죽었다.
 - 이미 만들어진 id의 항목은 싣지 않는다. 중첩된 일반 Component의 join은 안의 컴포넌트 상태를 다시
   싣는데, 그것들은 바깥 join의 패스가 이미 만들었으므로 아무도 꺼내지 않는다. 남겨 두면 `{% if %}`로
   숨겼다 다시 보인 **새** 인스턴스가 그 옛 상태로 시작했다.
@@ -121,8 +123,9 @@
   어느 join의 것으로 볼지(#146), join을 다시 보낼 때와 join이 실패했을 때 누구의 업로드·무한 스크롤을 끝낼지
   (#137, #112)를 정한다.
 - join이 실패한 컴포넌트는 **서버가** 막는다(`repo.refused`). 연결이 그 id를 기억하고, 부모의 패스가 그 id로
-  다시 만든 인스턴스와 그것이 소유한 LiveComponent(`_parent_id` 사슬의 루트가 그 id인 것)에는 이벤트·훅·업로드가
-  닿지 않는다. 그 id로 join이 오면 다시 시도한다. 클라이언트가 소유를 추정해 막던 때는 슬롯의 LiveComponent까지
+  다시 만든 인스턴스와 그것이 소유한 LiveComponent(`_parent_id` 사슬의 루트가 그 id인 것)에는 이벤트·훅·업로드·
+  브로드캐스트·`params_changed`·`wire.defer`·`update_live_component`가 닿지 않는다(`repo.reachable`). 그 인스턴스는
+  따로 렌더되지 않으므로 그 LiveComponent의 `joined()`·`update()`도 돌지 않는다. 그 id로 join이 오면 다시 시도한다. 클라이언트가 소유를 추정해 막던 때는 슬롯의 LiveComponent까지
   막고, boost 이동 뒤 다시 join하지 않았다.
 - 이동 뒤 같은 id가 LiveComponent에서 루트로(또는 반대로) 바뀔 수 있다. 클라이언트는 join할 때마다 요소의
   `wireview-live`로 소유를 다시 정하고, 떠난 것의 `leave`를 새 것의 join보다 **먼저** 보낸다. join을 먼저
