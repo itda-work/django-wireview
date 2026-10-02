@@ -151,3 +151,42 @@ test("from a metadata file to the command: the command runs, and the file is no 
   assert.ok(state.watchers[0].disposed);
   folder.dispose();
 });
+
+test("Restricted Mode: nothing runs and no file is read until the workspace is trusted", async () => {
+  const { root, runs, command } = workspace();
+  // A session before left its metadata in storage
+  state.config = command(0);
+  const before = project(root);
+  await before.folder.start();
+  assert.deepEqual(names(before.folder), ["Ran"]);
+  before.folder.dispose();
+  const ran = runs().length;
+
+  state.trusted = false;
+  const { folder } = project(root);
+  await folder.start();
+  await folder.refresh();
+  folder.pythonSaved();
+  await pause(300);
+  assert.equal(folder.state, "restricted");
+  assert.equal(folder.project, undefined, "the last session's metadata is not read either");
+  assert.equal(runs().length, ran, "no process");
+
+  const a = nodePath.join(root, "a.json");
+  writeFileSync(a, metadata("A"));
+  state.config = { metadataPath: a };
+  await folder.configure();
+  await folder.refresh();
+  assert.equal(folder.project, undefined, "nor a metadata file the workspace names");
+  assert.equal(state.watchers.filter((watcher) => !watcher.disposed).length, 0);
+
+  // Trusted: onDidGrantWorkspaceTrust starts it over
+  state.trusted = true;
+  await folder.configure();
+  assert.deepEqual(names(folder), ["A"]);
+  state.config = command(0);
+  await folder.configure();
+  assert.deepEqual(names(folder), ["Ran"]);
+  assert.equal(runs().length, ran + 2);
+  folder.dispose();
+});

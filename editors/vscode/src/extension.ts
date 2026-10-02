@@ -179,6 +179,12 @@ export function activate(context: vscode.ExtensionContext): Api {
       status.hide();
       return;
     }
+    if (folder.state === "restricted") {
+      status.text = "$(shield) Wireview: Restricted Mode";
+      status.tooltip = folder.detail;
+      status.show();
+      return;
+    }
     const count = folder.project?.components.length ?? 0;
     status.text =
       folder.state === "running"
@@ -226,6 +232,8 @@ export function activate(context: vscode.ExtensionContext): Api {
       }
       checkAll();
     }),
+    // Restricted Mode ran nothing and read no metadata: now it can
+    vscode.workspace.onDidGrantWorkspaceTrust(() => folders.forEach((folder) => void folder.configure())),
     vscode.window.onDidChangeActiveTextEditor(updateStatus),
   );
   const templates = vscode.workspace.createFileSystemWatcher("**/*.html", false, true, false);

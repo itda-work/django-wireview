@@ -34,6 +34,18 @@
   "activationEvents": [
     "workspaceContains:**/manage.py"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In Restricted Mode the extension runs nothing and reads no project metadata: the syntax, the snippets and the HTML support work, the features that need the project's components wait until the workspace is trusted.",
+      "restrictedConfigurations": [
+        "wireview.pythonPath",
+        "wireview.managePy",
+        "wireview.metadataCommand",
+        "wireview.metadataPath"
+      ]
+    }
+  },
   "contributes": {
     "languages": [
       {

@@ -1,6 +1,10 @@
 // One project per workspace folder: where its metadata comes from, running
 // `manage.py wireview_lsp` again when Python changes, and keeping the last
 // metadata that worked when a run fails.
+//
+// Nothing runs and no metadata file is read until the workspace is trusted: the
+// command is the project's code, and the file's paths are where "go to
+// definition" goes.
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
@@ -13,7 +17,7 @@ import type { Metadata } from "./core/metadata.ts";
 import { Project } from "./core/project.ts";
 import { buildCommand, classifyFailure, Generations, interpreterCandidates, pickManagePy, Refresher } from "./core/runner.ts";
 
-export type State = "idle" | "running" | "ok" | "failed" | "off";
+export type State = "idle" | "running" | "ok" | "failed" | "off" | "restricted";
 
 /** The settings that say where the metadata comes from: a change starts over. */
 export const SOURCE_SETTINGS = ["metadataPath", "managePy", "pythonPath", "metadataCommand"] as const;
@@ -68,14 +72,20 @@ export class FolderProject implements vscode.Disposable {
 
   /**
    * Read the settings that say where the metadata comes from and start from them.
-   * Called at the start and when one of them changes: what the old source was
-   * doing, a run or a watcher, no longer counts.
+   * Called at the start, when one of them changes, and when the workspace is trusted:
+   * what the old source was doing, a run or a watcher, no longer counts.
    */
   async configure(): Promise<void> {
     const signal = this.generations.next();
     for (const watcher of this.watchers) watcher.dispose();
     this.watchers = [];
     if (signal.aborted) return;
+    if (!vscode.workspace.isTrusted) {
+      this.state = "restricted";
+      this.detail = "Restricted Mode: trust the workspace to read the project's metadata.";
+      this.changed();
+      return;
+    }
     const fixed = this.config().get<string>("metadataPath", "");
     if (fixed) {
       // Something else writes it: read it, and again whenever it changes
@@ -92,9 +102,13 @@ export class FolderProject implements vscode.Disposable {
     await this.refresher.now();
   }
 
-  /** Read metadata from a file; keep what there was when it cannot be read. Nothing, once the signal is aborted. */
+  /**
+   * Read metadata from a file; keep what there was when it cannot be read. The one
+   * place a metadata file is read: nothing once the signal is aborted, nothing before
+   * the workspace is trusted.
+   */
   private load(path: string, from: string, signal: AbortSignal): boolean {
-    if (signal.aborted) return false;
+    if (signal.aborted || !vscode.workspace.isTrusted) return false;
     let metadata: unknown;
     try {
       metadata = JSON.parse(readFileSync(path, "utf8"));
@@ -186,12 +200,12 @@ export class FolderProject implements vscode.Disposable {
     return candidates.find((candidate, index) => index === candidates.length - 1 || isFile(candidate)) ?? candidates[candidates.length - 1];
   }
 
-  /** The one place a process is spawned. */
+  /** The one place a process is spawned: never before the workspace is trusted. */
   private async run(): Promise<void> {
     // The run belongs to the generation it starts in: a source changed or a project
     // gone while it awaits makes everything it finds stale
     const signal = this.generations.signal;
-    if (signal.aborted) return;
+    if (signal.aborted || !vscode.workspace.isTrusted) return;
     // A metadata file took over since this run was asked for
     if (this.config().get<string>("metadataPath", "")) return;
     const managePy = await this.managePy();
