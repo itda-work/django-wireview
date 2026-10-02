@@ -66,6 +66,8 @@ class Rendered:
     markdown: str  # the source with its links rewritten
     description: str  # the first paragraph's text, cut at 200 characters for the meta tag
     lead: str  # the first paragraph's text, whole
+    lead_line: int = 0  # the first paragraph's 1-based source line
+    lead_unlinked: str = ""  # the first paragraph's text outside its links
     problems: list[Problem] = field(default_factory=list)
     links: list[tuple[int, str]] = field(default_factory=list)  # (source line, href) of every rewritten link
 
@@ -163,10 +165,17 @@ def _markdown() -> MarkdownIt:
 MD = _markdown()
 
 
-def _plain(inline: Token) -> str:
-    parts = []
+def _plain(inline: Token, links: bool = True) -> str:
+    """An inline token's text; without ``links``, the text a link's label holds is left out."""
+    parts, depth = [], 0
     for child in inline.children or []:
-        if child.type in ("text", "code_inline"):
+        if child.type == "link_open":
+            depth += 1
+        elif child.type == "link_close":
+            depth -= 1
+        elif depth and not links:
+            continue
+        elif child.type in ("text", "code_inline"):
             parts.append(child.content)
         elif child.type in ("softbreak", "hardbreak"):
             parts.append(" ")
@@ -297,11 +306,13 @@ def render(page: nav.Page, linker: Linker) -> Rendered:
     body = MD.renderer.render(tokens[3:], MD.options, env)
     # The Markdown pass sees the same links as the HTML pass, which reports their problems.
     markdown, _ = rewrite_markdown(text, page.source, linker)
-    paragraphs = [tokens[i + 1] for i, token in enumerate(tokens) if token.type == "paragraph_open"]
-    lead = " ".join(_plain(paragraphs[0]).split()) if paragraphs else ""
+    opens = [i for i, token in enumerate(tokens) if token.type == "paragraph_open"]
+    lead = " ".join(_plain(tokens[opens[0] + 1]).split()) if opens else ""
     return Rendered(
         description=lead[:200],
         lead=lead,
+        lead_line=(tokens[opens[0]].map or [0])[0] + 1 if opens else 0,
+        lead_unlinked=" ".join(_plain(tokens[opens[0] + 1], links=False).split()) if opens else "",
         title_html=title_html,
         title_id=first.meta["id"],
         body=body,

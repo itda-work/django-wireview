@@ -19,7 +19,9 @@ After writing, the build checks what it wrote (each a gate: a problem fails the 
 - docs/site-urls.txt, the public URLs, against the pages and the redirects: a URL the list
   has and the site no longer serves is a 404 for every link already out there, so it has to
   move to docs/redirects.toml (a page to a page, a published file to a file of its kind); a URL
-  the site serves and the list lacks has to be added (``--update-urls`` adds it).
+  the site serves and the list lacks has to be added (``--update-urls`` adds it);
+- a page described by its first paragraph (no summary in docs/site.toml) has one that can say
+  what the page is: not a label's note, an issue number or links only (#165).
 
 The document guards in tests/ are the first gate; ``make docs-site`` runs them before this.
 """
@@ -45,6 +47,7 @@ from .render import (
     MD_LINK,
     Linker,
     Problem,
+    Rendered,
     front_matter,
     pygments_css,
     render,
@@ -247,6 +250,31 @@ def _lead(text: str, limit: int = 200) -> str:
     return text[: ends[-1]] if ends else text[:limit].rstrip() + "…"
 
 
+#: A first paragraph that opens with a label ("설정:", "동작하는 예제:", "Note:") or an issue number is
+#: metadata about the page, not what the page is.
+LABEL = re.compile(r"^(?:[^\s:.]+ ){0,2}[^\s:.]+:\s")
+ISSUE = re.compile(r"^\(?#\d")
+
+
+def _lead_problem(rendered: Rendered) -> str | None:
+    """Why a page's first paragraph cannot describe it in llms.txt and the meta tag, or None when it can.
+
+    The first paragraph is the page's one description, so it says what the page is. What fails is
+    the shapes that said something else: a label opening a note, an issue number, a paragraph of
+    links only (it sends the reader elsewhere). Wording is not judged beyond that.
+    """
+    lead = rendered.lead
+    if not lead:
+        return "no first paragraph: llms.txt and the meta tag describe a page by it"
+    if LABEL.match(lead):
+        return f"the first paragraph opens with a label ({lead.split(':', 1)[0]}:): say what the page is first"
+    if ISSUE.match(lead):
+        return "the first paragraph opens with an issue number: say what the page is first"
+    if not re.sub(r"[\W_]+", "", rendered.lead_unlinked):
+        return "the first paragraph is links only: say what the page is first"
+    return None
+
+
 def _title(text: str) -> str | None:
     """A skill file's H1: the first "# " line outside a code block."""
     fenced = False
@@ -284,6 +312,24 @@ def _skill_entries(site: nav.Site) -> tuple[list[tuple[str, str, str]], list[Pro
     return entries, problems
 
 
+#: The section of the first tutorial that wires wireview into a project; llms.txt sends a project
+#: that is not the starter's there. Its number may change, so the heading is matched by its end.
+EXISTING_PROJECT = "이미 있는 프로젝트에 붙이기"
+
+
+def _existing_project(tutorial: nav.Page) -> str | None:
+    """The absolute URL of the first tutorial's "이미 있는 프로젝트에 붙이기" section, or None without one."""
+    slugger, fenced = nav.Slugger(), False
+    for line in tutorial.path.read_text(encoding="utf-8").splitlines():
+        if FENCE.match(line):
+            fenced = not fenced
+        elif not fenced and (heading := re.match(r"^(#{1,6}) (.+?)\s*$", line)):
+            anchor = slugger(heading.group(2))  # every heading, as the page's ids count them
+            if heading.group(1) == "##" and heading.group(2).endswith(EXISTING_PROJECT):
+                return f"{nav.ORIGIN}{tutorial.url}#{anchor}"
+    return None
+
+
 def _llms(site: nav.Site, described: dict[str, str], tag: str, preview: bool) -> tuple[str, list[Problem]]:
     """llms.txt: the template's prose, then the skill and every page's Markdown in docs/site.toml's order."""
 
@@ -292,10 +338,15 @@ def _llms(site: nav.Site, described: dict[str, str], tag: str, preview: bool) ->
 
     skill, problems = _skill_entries(site)
     tutorials = site.tutorials()
+    getting_started = existing_project = ""
     if tutorials:
         getting_started = f"{nav.ORIGIN}{tutorials[0].url}index.md"
+        existing_project = _existing_project(tutorials[0]) or ""
+        if not existing_project:
+            problems.append(
+                Problem(tutorials[0].source, f'no "## … {EXISTING_PROJECT}" section: llms.txt sends a project there')
+            )
     else:
-        getting_started = ""
         problems.append(Problem("docs/site.toml", "no tutorial: llms.txt's prose names the first one"))
     sections = {section["slug"]: section["name"] for section in site.data["sections"]}
     groups: dict[str, list[str]] = {}
@@ -309,9 +360,9 @@ def _llms(site: nav.Site, described: dict[str, str], tag: str, preview: bool) ->
     listed = "".join(f"\n## {name}\n\n" + "\n".join(items) + "\n" for name, items in groups.items())
     template = Template((TEMPLATES / "llms.txt").read_text(encoding="utf-8"))
     note = " 정식 릴리스 전 미리보기다." if preview else ""
-    return template.substitute(tag=tag, preview=note, getting_started=getting_started, sections=listed).rstrip(
-        "\n"
-    ) + "\n", problems
+    return template.substitute(
+        tag=tag, preview=note, getting_started=getting_started, existing_project=existing_project, sections=listed
+    ).rstrip("\n") + "\n", problems
 
 
 def _moved(url: str) -> str:
@@ -482,6 +533,9 @@ def build(
         rendered = render(page, linker)
         result.problems += rendered.problems
         described[page.url] = page.summary or _lead(rendered.lead)
+        lead_problem = None if page.summary else _lead_problem(rendered)
+        if lead_problem:
+            result.problems.append(Problem(f"{page.source}:{rendered.lead_line}", lead_problem))
         markdown_url = f"{page.url}index.md"
         toc = _toc(rendered.toc)
         title = page.title if page.url == base else f"{page.title} · django-wireview 문서"

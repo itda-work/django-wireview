@@ -1,5 +1,7 @@
 # System Checks
 
+에러 없이 조용히 실패하는 설정과 코드를 `manage.py check`가 `wireview.W*` 경고로 알리게 하는 Django system checks다.
+
 wireview의 함정 중 상당수는 **에러를 내지 않는다.** sync 핸들러는 클라이언트가 부를 때까지
 조용하고, `wireview.min.js`가 없으면 페이지가 그냥 정적으로 남고, `WIREVIEW`의 키를 잘못 쓰면
 말없이 무시된다. 신호가 없으면 사람도 에이전트도 고칠 수 없다.

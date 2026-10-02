@@ -61,7 +61,8 @@ python manage.py runserver
 `.gitignore`도 함께 생깁니다. 프로젝트가 스스로 만드는 파일 — 개발 DB `db.sqlite3`와 아래의 타입 스텁 —
 을 커밋에서 뺍니다.
 
-이미 있는 프로젝트에 붙이거나 각 줄이 왜 필요한지 보려면 1절부터 읽습니다.
+이미 있는 프로젝트에 붙이려면 1절로 설치하고 [2절](#2-이미-있는-프로젝트에-붙이기)의 세 파일을 고칩니다. 각 줄이 왜
+필요한지 보려면 1절부터 읽습니다.
 
 ## 1. 설치
 
@@ -90,7 +91,11 @@ daphne를 쓰지 않으려면(Windows에서는 쓰지 않습니다 — [배포 �
 프로세스를 여러 개 띄우는 순간부터는 프로세스를 잇는 레이어가 필요합니다 —
 [channels-nats](https://github.com/itda-work/channels-nats)나 `channels_redis`입니다.
 
-## 2. Django 설정
+## 2. 이미 있는 프로젝트에 붙이기
+
+1절에서 설치한 패키지를 Django 프로젝트에 연결합니다. 고칠 파일은 `settings.py`, `asgi.py`, 루트 URLconf(`urls.py`)
+셋이고, 이미 있는 프로젝트에 wireview를 붙일 때도 이 절만 적용하면 됩니다. 세 파일을 고친 뒤
+`python manage.py check`가 `wireview.W*` 경고를 내지 않으면 배선이 끝난 것입니다.
 
 ### settings.py 수정
 
@@ -102,7 +107,6 @@ INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
     # ... 나머지 앱들 (django.contrib.staticfiles 포함)
-    'myapp',
 ]
 
 # ASGI 애플리케이션 설정
@@ -171,9 +175,29 @@ Django 모델을 import하므로, 앱 레지스트리가 준비되기 전에 imp
 uvicorn은 이 `application`만 서빙합니다. 운영(`DEBUG = False`)에서는 정적 파일을 웹 서버나 CDN이 맡습니다
 ([배포 가이드](../DEPLOYMENT.md#정적-파일)).
 
+### urls.py 수정
+
+루트 URLconf `myproject/urls.py`에 wireview의 HTTP 경로를 넣습니다:
+
+```python
+from django.contrib import admin
+from django.urls import path, include
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('', include('wireview.urls')),
+]
+```
+
+`include('wireview.urls')`는 파일 업로드가 청크를 보내는 HTTP 경로입니다. 이 튜토리얼에서는 쓰지 않지만
+8편(업로드)에서 필요하고, 빠뜨리면 업로드만 조용히 404가 나므로 지금 넣어 둡니다. 루트(`''`)에 두어야 합니다.
+
 ## 3. 첫 번째 컴포넌트 만들기
 
 ### 앱 구조
+
+`python manage.py startapp myapp`으로 앱을 만들고 `INSTALLED_APPS`에 `'myapp'`을 더합니다. `live.py`와
+`templates/`, `urls.py`는 직접 만듭니다.
 
 ```
 myapp/
@@ -293,21 +317,11 @@ urlpatterns = [
 ]
 ```
 
-`myproject/urls.py`:
+`myproject/urls.py`의 `urlpatterns`에 앱의 URL을 더합니다. 2절에서 넣은 `include('wireview.urls')` 아래입니다:
 
 ```python
-from django.contrib import admin
-from django.urls import path, include
-
-urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('', include('wireview.urls')),
-    path('', include('myapp.urls')),
-]
+path('', include('myapp.urls')),
 ```
-
-`include('wireview.urls')`는 파일 업로드가 청크를 보내는 HTTP 경로입니다. 이 튜토리얼에서는 쓰지 않지만
-8편(업로드)에서 필요하고, 빠뜨리면 업로드만 조용히 404가 나므로 지금 넣어 둡니다. 루트(`''`)에 두어야 합니다.
 
 ## 4. 실행
 

@@ -1,4 +1,4 @@
-"""Guard: the way in for an AI agent says what the README, tutorial 01 and the build say (#164).
+"""Guard: the way in for an AI agent says what the README, tutorial 01 and the build say (#164, #165).
 
 The README's "AI 에이전트로 시작하기" prompt sends an agent to llms.txt, and llms.txt's prose
 (scripts/docs_site/templates/llms.txt) gives it commands to run. Each names something another
@@ -72,17 +72,82 @@ def test_llms_txt_names_the_getting_started_tutorial_by_the_build_not_by_hand():
     assert first.title == "시작하기"
 
 
+def _section(text: str, heading: str) -> str:
+    """The lines under ``heading`` up to the next heading of its level or higher, code blocks skipped over."""
+    level = len(heading.split(" ", 1)[0])
+    lines = text.split("\n")
+    start = lines.index(heading) + 1
+    fenced = False
+    for number in range(start, len(lines)):
+        if lines[number].startswith("```"):
+            fenced = not fenced
+        elif not fenced and re.match(rf"#{{1,{level}}} ", lines[number]):
+            return "\n".join(lines[start:number])
+    return "\n".join(lines[start:])
+
+
+def _existing_project_heading(text: str) -> str:
+    from scripts.docs_site.build import EXISTING_PROJECT
+
+    headings = [line for line in text.splitlines() if line.startswith("## ") and line.endswith(EXISTING_PROJECT)]
+    assert len(headings) == 1, headings
+    return headings[0]
+
+
 def test_an_existing_project_sets_wireview_up_before_the_skill_command():
     """``wireview_agent_setup`` exists only once ``wireview`` is in INSTALLED_APPS: step 2 says so
-    for a project that is not the starter's, and names the tutorial sections that do it."""
+    for a project that is not the starter's, and sends it to the tutorial's section that does it (#165)."""
     step2 = _prose().split("\n2. ", 1)[1].split("\n3. ", 1)[0]
-    assert "이미 있는 프로젝트면" in step2
+    assert "이미 있는 프로젝트면" in step2 and "$existing_project" in step2
     for setting in ("INSTALLED_APPS", "daphne", "ASGI_APPLICATION", "CHANNEL_LAYERS", "asgi.py", "wireview.urls"):
         assert setting in step2, setting
+
+
+def test_the_tutorials_existing_project_section_holds_all_the_wiring():
+    """One section of tutorial 01 is everything a project needs, so llms.txt can send an agent to it alone."""
     tutorial = nav.tutorials()[0].path.read_text(encoding="utf-8")
-    for heading in ("## 1. 설치", "## 2. Django 설정", "## 3. 첫 번째 컴포넌트 만들기", "### 뷰 및 URL 설정"):
-        assert f"\n{heading}\n" in tutorial, heading
-    assert "include('wireview.urls')" in tutorial.split("### 뷰 및 URL 설정", 1)[1]
+    section = _section(tutorial, _existing_project_heading(tutorial))
+    for needed in (
+        "'daphne',",
+        "'wireview',",
+        "'channels',",
+        "ASGI_APPLICATION = ",
+        "CHANNEL_LAYERS = ",
+        "### asgi.py 수정",
+        "websocket_urlpatterns",
+        "path('', include('wireview.urls'))",
+    ):
+        assert needed in section, needed
+
+
+def test_llms_txt_names_the_existing_project_section_by_its_heading():
+    """The build makes the anchor from the heading (nav.slug), the way the page's ids are made."""
+    from scripts.docs_site.build import _existing_project
+
+    first = nav.tutorials()[0]
+    heading = _existing_project_heading(first.path.read_text(encoding="utf-8"))
+    assert _existing_project(first) == f"{nav.ORIGIN}{first.url}#{nav.slug(heading[3:])}"
+    assert "#2-이미-있는-프로젝트에-붙이기" in _existing_project(first)
+
+
+def _code(text: str, marker: str) -> str:
+    """The one fenced block of ``text`` that contains ``marker``."""
+    blocks = re.findall(r"^```\w*\n(.*?)^```", text, re.MULTILINE | re.DOTALL)
+    found = [block for block in blocks if marker in block]
+    assert len(found) == 1, (marker, len(found))
+    return found[0]
+
+
+def test_the_readme_wires_a_project_as_tutorial_01_does():
+    """The README's setup and the tutorial's section are two copies of the same wiring; they must not drift."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    tutorial = nav.tutorials()[0].path.read_text(encoding="utf-8")
+    section = _section(tutorial, _existing_project_heading(tutorial))
+    marker = "ProtocolTypeRouter({"
+    assert _code(readme, marker).replace("project_name", "myproject") == _code(section, marker)
+    for setting in ("ASGI_APPLICATION", "InMemoryChannelLayer", "'daphne',", "'wireview',", "'channels',"):
+        assert setting in _code(readme, "ASGI_APPLICATION") and setting in _code(section, "ASGI_APPLICATION"), setting
+    assert 'path("", include("wireview.urls"))' in readme
 
 
 def test_the_readme_and_the_skill_page_name_where_the_build_writes():

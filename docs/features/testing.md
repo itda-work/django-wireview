@@ -1,6 +1,6 @@
 # 테스트 헬퍼
 
-> `wireview.testing`이 주는 것 전체. 처음 배우는 순서는 [테스트 가이드 튜토리얼](../tutorials/09-testing-components.md)가 낫고,
+> `wireview.testing`이 주는 것 전체. 처음 배우는 순서는 [테스트 가이드 튜토리얼](../tutorials/09-testing-components.md)이 낫고,
 > 이 문서는 레퍼런스다.
 
 ## 개요

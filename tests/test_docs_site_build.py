@@ -244,6 +244,7 @@ def test_llms_txt_sends_an_existing_project_to_the_first_tutorial(site):
     step2 = _llms(site.out).split("\n2. ", 1)[1].split("\n3. ", 1)[0]
     first = nav.tutorials()[0]
     assert step2.splitlines()[0].endswith(f"시작하기 튜토리얼은 이 문서다: https://itda.work{first.url}index.md")
+    assert f"이 절을 먼저 적용한다: https://itda.work{first.url}#2-이미-있는-프로젝트에-붙이기\n" in step2
     assert (site.out / first.url.lstrip("/") / "index.md").is_file()
     index = next(page for page in nav.pages() if page.section == "tutorial" and not page.slug)
     assert f"{index.url}index.md" not in step2
@@ -534,11 +535,13 @@ def tree(tmp_path):
     (root / "docs").mkdir(parents=True)
     (root / "pyproject.toml").write_text('[project]\nname = "x"\nversion = "1.0.0"\n')
     (root / "README.md").write_text("# 소개\n\n[가이드](docs/guide.md#설치)를 보세요.\n")
-    (root / "docs" / "guide.md").write_text("# 가이드\n\n## 설치\n\n[다음](next.md) · [메모](notes.md)\n")
-    (root / "docs" / "next.md").write_text("# 다음\n\n## 설치\n\n## 설치\n\n[둘째 설치](#설치-1)\n")
+    (root / "docs" / "guide.md").write_text(
+        "# 가이드\n\n설치를 안내한다.\n\n## 설치\n\n[다음](next.md) · [메모](notes.md)\n"
+    )
+    (root / "docs" / "next.md").write_text("# 다음\n\n다음 단계다.\n\n## 설치\n\n## 설치\n\n[둘째 설치](#설치-1)\n")
     (root / "docs" / "notes.md").write_text("# 메모\n")
-    (root / "docs" / "tutorials.md").write_text("# 튜토리얼 목차\n\n[시작](start.md)\n")
-    (root / "docs" / "start.md").write_text("# 시작\n\n처음 만든다.\n")
+    (root / "docs" / "tutorials.md").write_text("# 튜토리얼 목차\n\n튜토리얼의 차례다.\n\n[시작](start.md)\n")
+    (root / "docs" / "start.md").write_text("# 시작\n\n처음 만든다.\n\n## 3. 이미 있는 프로젝트에 붙이기\n")
     (root / "docs" / "site.toml").write_text(SITE_TOML)
     (root / "docs" / "redirects.toml").write_text("redirects = []\n")
     (root / "skills" / "s" / "references").mkdir(parents=True)
@@ -599,15 +602,24 @@ def test_a_small_tree_builds_clean(tree):
         ],
         "소개": [("소개", "https://itda.work/wireview/index.md", "가이드를 보세요.")],
         "가이드": [
-            ("가이드", "https://itda.work/wireview/guide/index.md", "다음 · 메모"),
-            ("다음", "https://itda.work/wireview/guide/next/index.md", "둘째 설치"),
+            ("가이드", "https://itda.work/wireview/guide/index.md", "설치를 안내한다."),
+            ("다음", "https://itda.work/wireview/guide/next/index.md", "다음 단계다."),
         ],
         "튜토리얼": [
-            ("튜토리얼 목차", "https://itda.work/wireview/tutorial/index.md", "시작"),
+            ("튜토리얼 목차", "https://itda.work/wireview/tutorial/index.md", "튜토리얼의 차례다."),
             ("시작", "https://itda.work/wireview/tutorial/start/index.md", "처음 만들기"),
         ],
     }
     assert "시작하기 튜토리얼은 이 문서다: https://itda.work/wireview/tutorial/start/index.md\n" in _llms_of(out)
+    existing = "https://itda.work/wireview/tutorial/start/#3-이미-있는-프로젝트에-붙이기"
+    assert f"이 절을 먼저 적용한다: {existing}\n" in _llms_of(out)
+
+
+def test_a_first_tutorial_without_the_existing_project_section_fails_the_build(tree):
+    (tree / "docs" / "start.md").write_text("# 시작\n\n처음 만든다.\n\n## 3. 붙이기\n")
+    assert _problems(_build(tree)) == [
+        'docs/start.md: no "## … 이미 있는 프로젝트에 붙이기" section: llms.txt sends a project there'
+    ]
 
 
 def _llms_of(out: Path) -> str:
@@ -645,14 +657,16 @@ def test_a_broken_anchor_fails_the_build_at_its_line(tree):
 
 
 def test_a_broken_anchor_on_the_same_page_fails_the_build(tree):
-    (tree / "docs" / "next.md").write_text("# 다음\n\n## 설치\n\n[셋째 설치](#설치-2)\n")
+    (tree / "docs" / "next.md").write_text("# 다음\n\n다음 단계다.\n\n## 설치\n\n[셋째 설치](#설치-2)\n")
     problems = _problems(_build(tree))
-    assert len(problems) == 1 and problems[0].startswith("docs/next.md:5: ") and "no id '설치-2'" in problems[0]
+    assert len(problems) == 1 and problems[0].startswith("docs/next.md:7: ") and "no id '설치-2'" in problems[0]
 
 
 def test_a_link_to_a_missing_file_fails_the_build(tree):
-    (tree / "docs" / "guide.md").write_text("# 가이드\n\n## 설치\n\n[다음](next.md) · [없음](gone.md)\n")
-    assert _problems(_build(tree)) == ["docs/guide.md:5: gone.md (no such file)"]
+    (tree / "docs" / "guide.md").write_text(
+        "# 가이드\n\n설치를 안내한다.\n\n## 설치\n\n[다음](next.md) · [없음](gone.md)\n"
+    )
+    assert _problems(_build(tree)) == ["docs/guide.md:7: gone.md (no such file)"]
 
 
 def test_a_vanished_url_fails_until_it_redirects(tree):
@@ -743,6 +757,46 @@ def test_every_broken_link_on_a_line_is_reported_once(tree):
     assert len(problems) == 2, problems
     assert problems[0] == "skills/s/references/a.md:3: ./gone.md (no such file)"
     assert problems[1].startswith("skills/s/references/a.md:3: /wireview/nope/ leads nowhere")
+
+
+@pytest.mark.parametrize(
+    ("lead", "problem"),
+    [
+        ("> 설정: `X = True`. 기본은 꺼져 있다.", "opens with a label (설정:)"),
+        ("> 동작하는 예제: [examples/x/](notes.md) — 다른 사용자에게 보낸다.", "opens with a label (동작하는 예제:)"),
+        ("Note: 아직 실험 중이다.", "opens with a label (Note:)"),
+        ("#83에서 바뀐 동작이다.", "opens with an issue number"),
+        ("(#83) 바뀐 동작이다.", "opens with an issue number"),
+        ("[다음](next.md) · [메모](notes.md)", "is links only"),
+        ("> [examples/x/](notes.md)", "is links only"),
+    ],
+)
+def test_a_first_paragraph_that_does_not_say_what_the_page_is_fails_the_build(tree, lead, problem):
+    """llms.txt and the meta tag describe a page by its first paragraph (#165)."""
+    (tree / "docs" / "guide.md").write_text(f"# 가이드\n\n{lead}\n\n## 설치\n\n[다음](next.md)\n")
+    problems = _problems(_build(tree))
+    assert problems == [f"docs/guide.md:3: the first paragraph {problem}: say what the page is first"]
+
+
+@pytest.mark.parametrize(
+    "lead",
+    [
+        "설정 하나로 켜는 기능이다: `X = True`.",  # a colon past the opening words
+        "Phoenix LiveView의 boost와 같다. 설정: `X = True`.",
+        "[다음](next.md)에서 이어지는 설치 단계다.",  # a link inside a sentence
+        "`settings.WIREVIEW`의 키 전부다.",
+        "청크가 서버에서 처리되는 방식이다(#83).",
+    ],
+)
+def test_a_first_paragraph_that_says_what_the_page_is_passes(tree, lead):
+    (tree / "docs" / "guide.md").write_text(f"# 가이드\n\n{lead}\n\n## 설치\n\n[다음](next.md)\n")
+    assert _problems(_build(tree)) == []
+
+
+def test_a_page_with_a_summary_is_not_described_by_its_first_paragraph(tree):
+    """A tutorial's summary in docs/site.toml is its description, so its first paragraph is free."""
+    (tree / "docs" / "start.md").write_text("# 시작\n\n> 예제: [메모](notes.md)\n\n## 이미 있는 프로젝트에 붙이기\n")
+    assert _problems(_build(tree)) == []
 
 
 def test_a_new_url_fails_until_it_is_listed(tree):

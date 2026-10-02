@@ -1,8 +1,11 @@
 # django-wireview 아키텍처
 
-> 현재 구조. 모듈별 한 줄 지도는 저장소의 `CLAUDE.md`, 메시지 형태의 정본은
+지금의 구조다. 클릭 하나가 브라우저에서 서버의 컴포넌트를 거쳐 DOM 갱신으로 돌아오기까지의 흐름과, 그 길에 있는
+클래스·기능 모듈·프로토콜을 설명한다.
+
+> 모듈별 한 줄 지도는 저장소의 `CLAUDE.md`, 메시지 형태의 정본은
 > [implementation/wire-protocol.md](./implementation/wire-protocol.md), 기능별 API는 [features/](./features/README.md)에 있다.
-> 이 문서는 그것들을 잇는 흐름을 설명한다.
+> 이 문서는 그것들을 잇는 흐름이다.
 
 ---
 

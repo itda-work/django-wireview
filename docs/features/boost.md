@@ -1,5 +1,8 @@
 # 페이지 이동 boost (`BOOST_PAGES`)
 
+같은 사이트 안의 링크 이동을 전체 페이지 로드 없이 처리한다. WebSocket 연결은 끊기지 않고, 새 페이지의
+컴포넌트가 그 연결로 join한다.
+
 > 설정: `WIREVIEW = {"BOOST_PAGES": True}`. 기본은 꺼져 있다.
 
 ## 개요
