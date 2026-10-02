@@ -748,6 +748,14 @@ def strip_markers(html: str) -> str:
     return _TOKEN.sub("", html)
 
 
+_DATA_STATE = re.compile(r' data-state="[^"]*"')
+
+
+def page_drawing(html: str) -> str:
+    """``html`` as the page shows it: no markers, no nested marks, no ``data-state`` token (signed when, not what)."""
+    return _DATA_STATE.sub("", _NESTED.sub("", strip_markers(html)))
+
+
 def holds_nested_components(html: str) -> bool:
     """Whether ``html`` holds a nested component's marked output."""
     return _NESTED_PREFIX in html

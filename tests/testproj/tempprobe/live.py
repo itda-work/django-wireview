@@ -10,6 +10,7 @@ the host's or the frame's render must leave it too.
 own. ``?live=1``: a list and a LiveComponent kept together in a block the
 host's pass draws. ``?notes=1``: a list kept in a block with a nested component
 whose own temporary assign changes, its signed state staying as it was.
+``?joined=1``: the same, the nested component loading its temporary assign in joined().
 """
 
 from wireview import Component, LiveComponent
@@ -99,4 +100,14 @@ class TempNotes(Component):
     notes: list[str] = []
 
     async def note(self):
+        self.notes = ["x", "y"]
+
+
+class TempJoinedProbe(TempProbe):
+    class Meta:
+        template_name = "tempprobe/joinedprobe.html"
+
+
+class TempJoinedNotes(TempNotes):
+    async def joined(self):
         self.notes = ["x", "y"]

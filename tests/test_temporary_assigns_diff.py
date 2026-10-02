@@ -126,6 +126,18 @@ TEMPLATES = {
         "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>"
         "{% component_block 'TaK' id='k' %}{% endcomponent %}{% endif %}</div>"
     ),
+    # The nested component's joined() changes what it draws: a signed field, its own temporary assign
+    "ta/withjoinedk.html": (
+        "{% load wireview %}<div {% tag_header %}><b>{{ count }}</b>"
+        "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>"
+        "{% component 'TaJoinedK' id='k' %}{% endif %}</div>"
+    ),
+    "ta/withloadedk.html": (
+        "{% load wireview %}<div {% tag_header %}><b>{{ count }}</b>"
+        "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>"
+        "{% component 'TaLoadedK' id='k' %}{% endif %}</div>"
+    ),
+    "ta/loadedk.html": "{% load wireview %}<p {% tag_header %}>K{{ k }}<s>{{ notes|length }}</s></p>",
     "ta/klist.html": (
         "{% load wireview %}<div {% tag_header %}><b>{{ count }}</b>"
         "{% for m in messages %}{% component 'TaK' id='k' %}{% endfor %}</div>"
@@ -338,6 +350,16 @@ class TaWithKBlock(TaBase):
         template_name = "ta/withkblock.html"
 
 
+class TaWithJoinedK(TaBase):
+    class Meta:
+        template_name = "ta/withjoinedk.html"
+
+
+class TaWithLoadedK(TaBase):
+    class Meta:
+        template_name = "ta/withloadedk.html"
+
+
 class TaKList(TaBase):
     class Meta:
         template_name = "ta/klist.html"
@@ -521,6 +543,25 @@ class TaK(Component):
 
     async def same(self):
         pass
+
+
+class TaJoinedK(TaK):
+    async def joined(self):
+        self.k = 5  # what it shows once connected
+
+
+class TaLoadedK(Component):
+    """Loads its own temporary assign in joined(), as the docs advise."""
+
+    class Meta:
+        template_name = "ta/loadedk.html"
+        temporary_assigns = {"notes"}
+
+    k: int = 0
+    notes: list[str] = []
+
+    async def joined(self):
+        self.notes = ["x", "y"]
 
 
 class TaSlotBlockHost(TaHost):
@@ -1061,6 +1102,21 @@ async def test_the_join_does_not_move_a_nested_component():
     await event(consumer, outbound, "bump")
 
     assert "<li>one</li><li>two</li>" in html_now(component), html_now(component)
+
+
+@pytest.mark.parametrize(("name", "joined"), [("TaWithJoinedK", "K5"), ("TaWithLoadedK", "<s>2</s>")])
+async def test_a_join_that_drew_something_new_moves_a_nested_component(name, joined):
+    """joined() changed what the pass drew: a kept part holding the pass's drawing is drawn again."""
+    consumer, outbound, component = await page(name)
+    await event(consumer, outbound, "load")
+    k = await join(consumer, "k")
+    assert joined in html_now(k), "the control: the join's answer drew what joined() did"
+
+    await event(consumer, outbound, "bump")
+
+    drawn = html_now(component)
+    assert "<b>1</b>" in drawn, "the control: the other field went out"
+    assert "K0" not in drawn and "<s>0</s>" not in drawn, "the host put k back as the pass drew it"
 
 
 @pytest.mark.parametrize("name", ["TaRows", "TaRowsNoId"])

@@ -125,7 +125,7 @@ dependencies = ["django-wireview>=1.0,<2"]
   전까지 그 필드만 읽은 블록·루프는 마지막 모습으로 남는다([Temporary Assigns](./features/temporary-assigns.md#다음-렌더에서)).
   1.0에서는 아래 경우 그 부분을 초기화된 값으로 다시 그려, 무관한 렌더에서 목록이 화면에서 빠진다.
   - 부분이 그린 중첩 `{% component %}`가 그 뒤 스스로 렌더해 화면에 다른 것을 그렸다. 서명 상태에 실리지 않는
-    temporary assign이나 `exclude_fields`만 바뀌었어도 그렇다. 전에는 그 컴포넌트가 화면에서 바뀌기 전 모습으로
+    temporary assign이나 `exclude_fields`만 바뀌었어도, join의 답이 `joined()`가 바꾼 것을 그렸어도 그렇다. 전에는 그 컴포넌트가 화면에서 바뀌기 전 모습으로
     돌아갔고, 상태가 바뀐 경우에는 재연결하면 옛 상태로 join했다.
   - 블록이 그리는 `{% render_slot %}`의 fill이 바뀌었다. 전에는 옛 fill이 남았다.
   - 블록 안의 `{% include %}` 템플릿이 그리지 않은 가지에서 다른 필드를 읽거나, 이름을 렌더 때 정하거나(`{% include tpl %}`),

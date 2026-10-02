@@ -18,7 +18,7 @@ from .. import telemetry
 from ..utils import db
 from .render_gate import RenderGate
 from .render_reads import RenderReads
-from .rendered import Rendered, keep_stale, strip_markers
+from .rendered import Rendered, keep_stale, page_drawing, strip_markers
 from .transport import Broker, ChannelsBroker, NullBroker
 
 log = logging.getLogger("wireview")
@@ -167,11 +167,14 @@ class WireviewMeta:
         self.drawing: dict[tuple[t.Any, ...], set[tuple[t.Any, ...]]] | None = None
         self.born: int = next(_TICKS)
         # When a render of its own last put something new on the page; 0 until
-        # then. Its first, the join's answer, draws what the pass that made it
-        # drew, so it does not count. Another component's kept part that drew it
-        # before then is old -- whether or not the signed state moved with it.
+        # then. Another component's kept part that drew it before then is old --
+        # whether or not the signed state moved with it. Its first, the join's
+        # answer, counts only when it drew other than the last pass did
+        # (``passed``, that pass's output and signed state): joined() may have
+        # changed a field or loaded a temporary assign.
         self.moved: int = 0
         self._rendered_own: bool = False
+        self.passed: tuple[str, tuple[str, str, float] | None] | None = None
         # When this instance last rendered on its own (render_diff), or ``born``.
         # A slot's owner puts back what it drew of this instance last while this
         # has not moved since (slots._NestedComponentNode).
@@ -390,9 +393,18 @@ class WireviewMeta:
             diff_span.annotate(changed=diff is not None)
             diff_span.measure(diff)
 
-        if diff is not None and not first:
+        if first:
+            passed, self.passed = self.passed, None
+            if passed is not None and self._drawing(*passed) != self._drawing(html_str, self._state_token):
+                self.moved = next(_TICKS)
+        elif diff is not None:
             self.moved = next(_TICKS)
         return diff
+
+    @staticmethod
+    def _drawing(html: str, state_token: tuple[str, str, float] | None) -> tuple[str, str | None]:
+        """What a render put on the page, whenever its ``data-state`` was signed."""
+        return page_drawing(html), state_token[0] if state_token else None
 
     def _compute_rendered_diff(self, html: str, vsn: int = 0, stale: t.Collection[int] = ()) -> dict[str, t.Any] | None:
         """Compute Phoenix-style static/dynamic diff in the forms protocol ``vsn`` allows.

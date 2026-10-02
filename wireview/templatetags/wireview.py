@@ -291,6 +291,9 @@ def _build_and_render_component(
     # By id, so a render without the page's repository counts too ({% func %}): the
     # page joins what it drew under that id, and that has not moved until it renders
     drew_component(component_instance)
+    if repo.is_live and html and not component_instance.wire._rendered_own:
+        # Its join's answer tells by this whether joined() drew something new
+        component_instance.wire.passed = (html, component_instance.wire._state_token)
     if repo.is_live and html:
         # A fill holding this output keeps it as text; the slot's owner finds the
         # component by these marks and draws it as it is then (parsing drops them)
