@@ -22,7 +22,10 @@ The django-reactor era changelog (2.x) is preserved in
   when encoding. The receiving side defers the fields left out, as it does any field a payload
   does not carry (#153): reading one queries the row -- on the event loop it raises
   `SynchronousOnlyOperation`, so load it with `arefresh_from_db(fields=[...])` -- and `save()`
-  writes only the fields that came. Turn a mapping on only after no process runs 1.0.0rc4 or
+  writes only the fields that came when any did. With `()` Django cannot narrow the save: it reads
+  each deferred field from the row and writes every field, so do not save an instance received
+  with `()`; use `QuerySet.update()` or `asave(update_fields=[...])`. Saving a `DELETED` instance
+  with deferred fields raises `DatabaseError` (`DoesNotExist` with `()`). Turn a mapping on only after no process runs 1.0.0rc4 or
   earlier: those fill the fields a partial payload leaves out with their defaults (#144).
 - `wireview.W017` warns when `AUTO_BROADCAST` turns a broadcast on and sends a credential: a
   user model's password hash (`AbstractBaseUser`, whenever its payload carries `password`), or any session model

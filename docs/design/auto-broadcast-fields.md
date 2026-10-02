@@ -14,7 +14,7 @@
 >    키라 `()`도 키를 보내므로 형태와 관계없이 경고하고 `senders`에서 빼라고 한다. 사용자 모델은 페이로드에 `password`가
 >    실릴 때만 경고한다 — 다중 테이블 상속 자식은 제 테이블만 보내 해시가 없다. hint의 예는 페이로드가 실을 수 있는
 >    `USERNAME_FIELD`일 때만 그것을, 아니면 `()`를 든다. 플래그(`model`·`model_pk`·`related`·`m2m`)가 모두 꺼져 있으면
-   `connect()`가 수신자를 달지 않아 아무것도 나가지 않으므로 W015처럼 조용하다.
+>    `connect()`가 수신자를 달지 않아 아무것도 나가지 않으므로 W015처럼 조용하다.
 
 기준 커밋 `bf2faea`(1.0.0rc3 이후, 1.0.0rc4에 들어간 커밋). 이 문서를 쓰며 코드는 바꾸지 않았다. 실험은 저장소 사본에서 돌렸다.
 
@@ -224,8 +224,8 @@ senders={("todo", "Item"): "__all__"}             # 지금 동작을 원하면 �
 | m2m | 목록에 적으면 pk 목록이 간다(적을 때만 encode 쿼리). 복원 인스턴스에는 지금처럼 싣지 않는다 |
 | 검증 | `connect()`가 `resolve_senders`와 함께 확인한다. 없는 필드나 역관계 이름은 기동 때 `ImproperlyConfigured`다. `senders`의 설치되지 않은 모델과 같은 처리다 |
 | 인코딩 | `serialize("json", [instance], fields=<목록>)`. Django가 `fields=`를 그대로 지원한다(실험 확인). 세 발신 지점(post_save·pre_delete·m2m)이 한 헬퍼를 쓴다 |
-| 복원 | #153의 `decode` 그대로다. `_restore(instance, sent)`가 페이로드에 없는 concrete 필드(pk 제외)를 deferred로 두고, 부모 링크를 `_link_parents`로 잇고, 이미 있는 행(`_state.adding = False`, `_state.db`는 라우터의 쓰기 alias)으로 만든다. 전체와 부분을 가르는 분기는 없다 — 다중 테이블 상속 자식의 전체 페이로드가 이미 부분 페이로드였다. 저장은 모델의 `save`이고 불러온 필드만 쓴다(실험 4). `save` 교체는 1.0 전에 없앴다(#153) |
-| DELETED | 페이로드가 pre_delete 때 만들어지므로 적은 필드가 그대로 온다. `()`면 pk만 온다. 행이 이미 없으니 `arefresh_from_db`는 `DoesNotExist`다. 문서에 "DELETED에서 걸러야 하는 필드(FK 등)는 목록에 적는다"고 쓴다 |
+| 복원 | #153의 `decode` 그대로다. `_restore(instance, sent)`가 페이로드에 없는 concrete 필드(pk 제외)를 deferred로 두고, 부모 링크를 `_link_parents`로 잇고, 이미 있는 행(`_state.adding = False`, `_state.db`는 라우터의 쓰기 alias)으로 만든다. 전체와 부분을 가르는 분기는 없다 — 다중 테이블 상속 자식의 전체 페이로드가 이미 부분 페이로드였다. 저장은 모델의 `save`이고 불러온 필드가 있으면 그것만 쓴다(실험 4). `()`처럼 pk만 불러왔으면 Django가 `update_fields`를 좁히지 못해 deferred 필드를 하나씩 읽고 모든 필드를 쓴다 — 문서는 `()` 인스턴스를 저장하지 말고 `QuerySet.update()`나 `asave(update_fields=[...])`를 쓰라고 한다. `save` 교체는 1.0 전에 없앴다(#153) |
+| DELETED | 페이로드가 pre_delete 때 만들어지므로 적은 필드가 그대로 온다. `()`면 pk만 온다. 행이 이미 없으니 `arefresh_from_db`는 `DoesNotExist`다. 저장하면 적은 필드가 있을 때는 `DatabaseError`(쓸 행이 없다), `()`면 deferred 필드를 읽으려다 `DoesNotExist`다. 문서에 "DELETED에서 걸러야 하는 필드(FK 등)는 목록에 적는다"고 쓴다 |
 
 ### 새 체크 W017 (권고: 추가)
 
