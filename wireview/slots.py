@@ -424,6 +424,40 @@ class SlotContainer:
             copy.set_default(stripped(self._default))
         return copy
 
+    def keeping_stale(self, previous: "SlotContainer | None") -> "SlotContainer":
+        """A copy whose pre-rendered content keeps, in its parts that read only a reset
+        temporary assign, what ``previous`` -- the same tag's content last time -- drew there.
+
+        The enclosing render keeps those parts in its own render (#111), and the
+        component the content goes to keeps it as text for the renders it does
+        on its own. Drawn with the reset value, its own next render erased what
+        the enclosing render kept on the page. ``let:`` slots render in the
+        component's pass, which tracks its own reads.
+        """
+        from .core.rendered import Rendered, keep_stale
+        from .template_engine import get_template_marker
+
+        reads = get_template_marker().marker_context.reads
+        if previous is None or reads is None or not reads.slots:
+            return self
+
+        def kept(nodelist: NodeList, before: NodeList | None) -> NodeList:
+            if before is None or not all(isinstance(node, TextNode) for node in (*nodelist, *before)):
+                return nodelist
+            text = "".join(node.s for node in nodelist)  # type: ignore[attr-defined]
+            drawn = Rendered.from_marked_html("".join(node.s for node in before))  # type: ignore[attr-defined]
+            return NodeList([TextNode(keep_stale(text, reads.slots, drawn))])
+
+        copy = SlotContainer()
+        for name, slots in self._slots.items():
+            earlier = previous._slots.get(name, [])
+            for i, slot in enumerate(slots):
+                before = earlier[i] if i < len(earlier) and not slot.let_vars else None
+                copy.add(Slot(name, kept(slot.nodelist, before and before.nodelist), slot.let_vars))
+        if self._default is not None:
+            copy.set_default(kept(self._default, previous._default))
+        return copy
+
     def content_key(self) -> tuple[t.Any, ...]:
         """A value equal between two containers whose content would render the same.
 

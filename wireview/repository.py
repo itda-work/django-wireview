@@ -359,7 +359,7 @@ class ComponentRepository:
         self._rendered_children[parent_id] = set()
         self._inline_rendered.pop(parent_id, None)
 
-    def end_pass(self, drawer_id: str) -> set[str]:
+    def end_pass(self, drawer_id: str, shown: t.Iterable[str] = ()) -> set[str]:
         """The ids the template pass of ``drawer_id`` that just ran named.
 
         A component it drew before and not in this pass is the page's to let go:
@@ -368,7 +368,7 @@ class ComponentRepository:
         one left a nested component's former pass on record, and the leave for
         a component it no longer drew took it for one drawn again.
         """
-        rendered = self._rendered_children.pop(drawer_id, set())
+        rendered = self._rendered_children.pop(drawer_id, set()).union(shown)
         drew = self._drew.pop(drawer_id, set())
         for child_id in drew - rendered:
             if self._built_by.get(child_id) == drawer_id:
@@ -416,8 +416,12 @@ class ComponentRepository:
             inline.append(component_id)
         self._inline_rendered[component_id] = rendered
 
-    def take_lifecycle(self, parent_id: str) -> "LifecycleBatch":
+    def take_lifecycle(self, parent_id: str, shown: t.Iterable[str] = ()) -> "LifecycleBatch":
         """What the consumer owes the children of ``parent_id`` after its template ran.
+
+        ``shown`` names the LiveComponents the parent's render shows. Those its
+        template did not name are in a part kept for a reset temporary assign
+        (#111): the page keeps them, so they stay.
 
         - ``new``: created in this pass, waiting for ``joined()``
         - ``updates``: existing children whose props changed, with only the changed props
@@ -433,7 +437,7 @@ class ComponentRepository:
         """
         batch = LifecycleBatch(retired=self._pending_leaving)
         self._pending_leaving = []
-        self._settle(parent_id, self.end_pass(parent_id), batch)
+        self._settle(parent_id, self.end_pass(parent_id, shown), batch)
         return batch
 
     def _settle(self, parent_id: str, rendered: set[str], batch: "LifecycleBatch") -> None:

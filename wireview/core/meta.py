@@ -155,6 +155,9 @@ class WireviewMeta:
         # instance came to be: a join under the id takes the slots over only from
         # a page whose filler came after it (ComponentRepository.retire).
         self.slots_from: Component | None = None
+        # The slot content that pass gave, markers kept: the next pass keeps what
+        # it drew of a reset temporary assign (SlotContainer.keeping_stale)
+        self.fills: SlotContainer | None = None
         self.born: int = next(_TICKS)
         # When this instance last rendered on its own (render_diff), or ``born``.
         # A slot's owner puts back what it drew of this instance last while this

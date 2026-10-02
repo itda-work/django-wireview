@@ -110,6 +110,54 @@ TEMPLATES = {
         "{% live_component 'TaLive' id='lc' %}{% endif %}</div>"
     ),
     "ta/live.html": "{% load wireview %}<span {% live_tag_header %}>live</span>",
+    # What a stale block or loop holds that is not the component's own names (R10)
+    "ta/livelist.html": (
+        "{% load wireview %}<div {% tag_header %}><b>{{ count }}</b>"
+        "{% for m in messages %}{% live_component 'TaLive' id=m %}{% endfor %}</div>"
+    ),
+    "ta/withk.html": (
+        "{% load wireview %}<div {% tag_header %}><b>{{ count }}</b>"
+        "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>"
+        "{% component 'TaK' id='k' %}{% endif %}</div>"
+    ),
+    "ta/klist.html": (
+        "{% load wireview %}<div {% tag_header %}><b>{{ count }}</b>"
+        "{% for m in messages %}{% component 'TaK' id='k' %}{% endfor %}</div>"
+    ),
+    "ta/slotblock.html": (
+        "{% load wireview %}<div {% tag_header %}>"
+        "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>"
+        "{% render_slot 'body' %}{% endif %}</div>"
+    ),
+    "ta/slotblockhost.html": (
+        "{% load wireview %}<main {% tag_header %}><i>{{ this.n }}</i>"
+        "{% component_block 'TaSlotBlock' id='g' %}{% fill body %}<em>{{ this.n }}</em>{% endfill %}"
+        "{% endcomponent %}</main>"
+    ),
+    "ta/include.html": "{% load wireview %}<div {% tag_header %}>{% include 'ta/list.html' %}<b>{{ count }}</b></div>",
+    "ta/includeother.html": (
+        "{% load wireview %}<div {% tag_header %}>{% include 'ta/guardedlist.html' %}<b>{{ count }}</b></div>"
+    ),
+    "ta/blockinclude.html": (
+        "{% load wireview %}<div {% tag_header %}>{% if messages %}{% include './list.html' %}{% endif %}"
+        "{% if messages %}{% include 'ta/count.html' %}{% endif %}<b>{{ count }}</b></div>"
+    ),
+    "ta/list.html": "<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>",
+    "ta/guardedlist.html": (
+        "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul><i>{{ count }}</i>{% endif %}"
+    ),
+    "ta/count.html": "<s>{{ count }}</s>",
+    "ta/stalefill.html": (
+        "{% load wireview %}<main {% tag_header %}><i>{{ this.n }}</i>"
+        "{% component_block 'TaSlotted' id='g' %}{% fill body %}<em>{{ notes|length }}</em>{% endfill %}"
+        "{% endcomponent %}</main>"
+    ),
+    "ta/stalelivefill.html": (
+        "{% load wireview %}<main {% tag_header %}><i>{{ this.n }}</i>"
+        "{% live_component_block 'TaLiveSlotted' id='lc' %}{% fill body %}<em>{{ notes|length }}</em>{% endfill %}"
+        "{% endlive_component %}</main>"
+    ),
+    "ta/liveslotted.html": "{% load wireview %}<span {% live_tag_header %}>{% render_slot 'body' %}</span>",
 }
 
 
@@ -200,6 +248,46 @@ class TaLive(LiveComponent):
         template_name = "ta/live.html"
 
 
+class TaLiveList(TaBase):
+    class Meta:
+        template_name = "ta/livelist.html"
+
+
+class TaWithK(TaBase):
+    class Meta:
+        template_name = "ta/withk.html"
+
+
+class TaKList(TaBase):
+    class Meta:
+        template_name = "ta/klist.html"
+
+
+class TaSlotBlock(TaBase):
+    class Meta:
+        template_name = "ta/slotblock.html"
+
+
+class TaInclude(TaBase):
+    class Meta:
+        template_name = "ta/include.html"
+
+
+class TaIncludeOther(TaBase):
+    class Meta:
+        template_name = "ta/includeother.html"
+
+
+class TaBlockInclude(TaBase):
+    class Meta:
+        template_name = "ta/blockinclude.html"
+
+
+class TaLiveSlotted(LiveComponent):
+    class Meta:
+        template_name = "ta/liveslotted.html"
+
+
 class TaHost(Component):
     """Draws a component with temporary assigns in its own pass, passing it ``count``."""
 
@@ -250,6 +338,26 @@ class TaK(Component):
         template_name = "ta/k.html"
 
     k: int = 0
+
+    async def inc(self):
+        self.k += 1
+
+
+class TaSlotBlockHost(TaHost):
+    class Meta:
+        template_name = "ta/slotblockhost.html"
+
+
+class TaStaleFillHost(TaStaleHost):
+    """Reads its own temporary assign in a fill."""
+
+    class Meta:
+        template_name = "ta/stalefill.html"
+
+
+class TaStaleLiveFillHost(TaStaleHost):
+    class Meta:
+        template_name = "ta/stalelivefill.html"
 
 
 class TaLiveFillHost(TaHost):
@@ -607,3 +715,140 @@ async def test_a_kept_part_naming_a_live_component_is_drawn_from_what_it_has():
     assert "<b>1</b>" in html_now(host), "the control: what the host passed went out"
     assert "<!--@wv:lc-->" not in json.dumps(renders), "the LiveComponent went out as text"
     assert "<li>" not in html_now(host)
+
+
+# --- what a kept part holds that is not the component's own names (R10) ---------------------------
+#
+# A part kept for a reset temporary assign is what the component's last render drew. A
+# LiveComponent in it is only a reference, so keeping it keeps the LiveComponent. A nested
+# component, a slot's fill or an included template draws something the component's names
+# do not decide; kept, it showed that as it was.
+
+
+async def join(consumer: WireviewConsumer, id_: str) -> Component:
+    instance = consumer.repo.get(id_)
+    assert instance is not None, id_
+    await consumer.command_join(type(instance)._fqn, sign_state(instance))
+    return instance
+
+
+@pytest.mark.parametrize("name", ["TaWithLive", "TaLiveList"])
+async def test_a_live_component_in_a_kept_part_stays_on_the_server(name):
+    """The page keeps the LiveComponent with the part; the server kept it only while the template named it."""
+    consumer, outbound, component = await page(name)
+    await event(consumer, outbound, "load")
+    ids = ["lc"] if name == "TaWithLive" else ["one", "two"]
+    assert all(consumer.repo.get(id_) is not None for id_ in ids)
+
+    await event(consumer, outbound, "bump")
+
+    drawn = html_now(component)
+    assert "<b>1</b>" in drawn, "the control: the other field went out"
+    assert all(f"<!--@wv:{id_}-->" in drawn for id_ in ids), drawn
+    assert all(consumer.repo.get(id_) is not None for id_ in ids), "the page shows a LiveComponent the server let go"
+
+
+@pytest.mark.parametrize("name", ["TaWithK", "TaKList"])
+async def test_a_kept_part_does_not_put_back_a_nested_components_old_drawing(name):
+    """Put back, the nested component's drawing and data-state went back to before its own change."""
+    consumer, outbound, component = await page(name)
+    await event(consumer, outbound, "load" if name == "TaWithK" else "load_other")  # one item: one id
+    k = await join(consumer, "k")
+    await consumer.command_user_event("k", "inc", {}, {})
+    assert "K1" in html_now(k)
+
+    await event(consumer, outbound, "bump")
+
+    drawn = html_now(component)
+    assert "<b>1</b>" in drawn, "the control: the other field went out"
+    assert "K0" not in drawn, drawn
+
+
+async def test_the_hosts_render_does_not_put_back_a_nested_components_old_drawing():
+    consumer, outbound, host, nested = await nested_page("TaHost", "TaWithK")
+    await consumer.command_user_event("g", "load", {}, {})
+    k = await join(consumer, "k")
+    await consumer.command_user_event("k", "inc", {}, {})
+    assert "K1" in html_now(k)
+
+    await consumer.command_user_event("p", "bump", {}, {})
+
+    assert "K0" not in html_now(host), html_now(host)
+
+
+async def test_a_block_that_draws_a_slot_shows_the_fills_change():
+    """The fill is the host's value, which the block's reads never see."""
+    consumer, outbound, host, nested = await nested_page("TaSlotBlockHost", "TaSlotBlock")
+    await consumer.command_user_event("g", "load", {}, {})
+    assert "<em>0</em>" in html_now(nested)
+
+    await consumer.command_user_event("p", "bump", {}, {})
+
+    drawn = html_now(host)
+    assert "<i>1</i>" in drawn, "the control: the host's change went out"
+    assert "<em>0</em>" not in drawn, drawn
+    await consumer.command_user_event("g", "bump", {}, {})
+    assert "<em>0</em>" not in html_now(nested), html_now(nested)
+
+
+async def test_an_included_template_that_reads_only_it_stays():
+    consumer, outbound, component = await page("TaInclude")
+    await event(consumer, outbound, "load")
+
+    diff = await event(consumer, outbound, "bump")
+
+    assert '"s"' not in diff, f"a full render: {diff}"
+    assert "<li>one</li><li>two</li>" in html_now(component), diff
+    assert "<b>1</b>" in html_now(component)
+
+
+async def test_an_included_template_that_reads_another_name_in_a_branch_it_did_not_draw_is_drawn_again():
+    """As for ``{% if %}``: the branch that would read ``count`` did not render."""
+    consumer, outbound, component = await page("TaIncludeOther")
+    await event(consumer, outbound, "load")
+    assert "<i>0</i>" in html_now(component)
+
+    await event(consumer, outbound, "bump")
+
+    assert "<i>0</i>" not in html_now(component), html_now(component)
+    assert "<b>1</b>" in html_now(component)
+
+
+async def test_a_block_holding_an_included_template_looks_into_it():
+    consumer, outbound, component = await page("TaBlockInclude")
+    await event(consumer, outbound, "load")
+    assert "<s>0</s>" in html_now(component)
+
+    await event(consumer, outbound, "bump")
+
+    drawn = html_now(component)
+    assert "<li>one</li><li>two</li>" in drawn, "the included template reads only the list"
+    assert "<s>0</s>" not in drawn, "the other one reads count"
+
+
+async def test_a_fill_reading_the_hosts_temporary_assign_is_drawn_alike_by_both():
+    """The host keeps what its fill drew last; the component's own render draws the fill it was handed."""
+    consumer, outbound, host, nested = await nested_page("TaStaleFillHost", "TaSlotted")
+    await consumer.command_user_event("p", "note", {}, {})
+    await consumer.command_user_event("g", "load", {}, {})
+    assert "<em>2</em>" in html_now(nested)
+
+    await consumer.command_user_event("p", "bump", {}, {})
+
+    drawn = html_now(host)
+    assert "<i>1</i>" in drawn, "the control: the host's change went out"
+    assert "<em>2</em><ul><li>one</li><li>two</li></ul>" in drawn, drawn
+    await consumer.command_user_event("g", "bump", {}, {})
+    assert "<em>2</em><ul><li>one</li><li>two</li></ul>" in html_now(nested), html_now(nested)
+
+
+async def test_a_live_components_fill_reading_the_hosts_temporary_assign_stays():
+    consumer, outbound, host = await page("TaStaleLiveFillHost")
+    await consumer.command_user_event("p", "note", {}, {})
+    live = consumer.repo.get("lc")
+    assert "<em>2</em>" in html_now(live)
+
+    await consumer.command_user_event("p", "bump", {}, {})
+
+    assert "<i>1</i>" in html_now(host), "the control: the host's change went out"
+    assert "<em>2</em>" in html_now(live), html_now(live)

@@ -40,12 +40,14 @@ DRIVER = Path(__file__).parent / "js" / "roundtrip.mjs"
 
 TEMPLATE_SOURCE = (
     "<section><h1>{{ title }}</h1>"
+    # An included template's output is a block of its own (#111, R10)
+    "{% include partial %}"
     "{% if banner %}<p class=banner>{{ banner }} · {{ title }}</p>{% endif %}"
     # A block whose partial update carries a comprehension update.
     "{% if show_globals %}<div>{{ banner }}{% for g in globals %}<i>{{ g }}</i>{% endfor %}</div>{% endif %}"
     "<ul>"
     "{% for item in items %}"
-    '<li class="{% if item.done %}done{% endif %}">{{ item.name }} × {{ item.qty }}'
+    '<li class="{% if item.done %}done{% endif %}">{{ item.name }} × {{ item.qty }}{% include partial %}'
     "{% if item.tags %}<span>{% for tag in item.tags %}<b>{{ tag }}</b>{% endfor %}</span>{% endif %}"
     # A LiveComponent in a live render leaves only a reference in the parent.
     "{{ item.child }}"
@@ -55,6 +57,9 @@ TEMPLATE_SOURCE = (
     "<ol>{% for n in notes %}<li>{{ n }}</li>{% empty %}<li>none</li>{% endfor %}</ol>"
     "</section>"
 )
+
+# Included by its Template object: what it draws carries no markers of its own
+PARTIAL = Template("<small>{{ title }}{% if banner %}!{{ banner }}{% endif %}{{ item.qty }}</small>")
 
 SEQUENCES = 40
 STEPS = 30
@@ -166,6 +171,7 @@ def _context(state: dict[str, t.Any]) -> dict[str, t.Any]:
     context = copy.deepcopy(state)
     for item in context["items"]:
         item["child"] = mark_safe(component_ref_placeholder(item["child"])) if item["child"] else ""
+    context["partial"] = PARTIAL
     return context
 
 

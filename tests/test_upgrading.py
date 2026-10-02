@@ -205,6 +205,9 @@ NO_UPGRADE_NOTE = {
     "before its parent's render ran its `joined()`": FIXED_ONLY,
     "stops drawing because of a prop its drawer": FIXED_ONLY,
     "hides or shows when the slot's owner": FIXED_ONLY,
+    "What a part kept for a reset temporary assign holds from elsewhere": (
+        "화면과 서버가 어긋나던 결함이다. 다시 그리게 된 블록의 목록을 남기려면 컴포넌트·슬롯을 블록 밖에 둔다"
+    ),
 }
 
 

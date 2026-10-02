@@ -1447,7 +1447,8 @@ class WireviewSession:
             log.error("LiveComponent nesting deeper than %d under %s; not rendering further", depth, component.id)
             return diff, children, settled
 
-        batch = repo.take_lifecycle(component.id)
+        shown = component_refs(last) if (last := component.wire._last_rendered) is not None else ()
+        batch = repo.take_lifecycle(component.id, shown)
         await self._call_leaving(batch.retired)
         self._release_uploads(batch.retired)
         halted: set[str] = set()

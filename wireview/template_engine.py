@@ -15,6 +15,8 @@ from contextlib import contextmanager
 from django.http import HttpRequest
 from django.template import Context, Template
 from django.template.base import FilterExpression, Node, NodeList, Variable, VariableNode
+from django.template.exceptions import TemplateDoesNotExist
+from django.template.loader_tags import IncludeNode, construct_relative_path
 from django.template.smartif import TokenBase
 
 from .core import render_reads
@@ -145,6 +147,10 @@ class ComprehensionNode(Node):
             output = self.for_node.render(context)
         finally:
             if reads and slot:
+                # Items keep what they drew, but not another component's drawing:
+                # that carries its state, which its own events move on (#111)
+                if slot.stale and not slot.other and DRAWS_COMPONENT in referenced_names(self.for_node):
+                    slot.other = True
                 reads.close(slot)
             self.marker_context.pop_comprehension()
         return f"<!--$C{index}-->{output}<!--/$C{index}-->"
@@ -153,20 +159,52 @@ class ComprehensionNode(Node):
         return f"<ComprehensionNode: {self.for_node!r}>"
 
 
+#: What ``referenced_names`` reports for parts that draw something the
+#: component's names do not decide: another component's drawing (a nested
+#: ``{% component %}``, whose state it carries), a slot's fill, or an included
+#: template it cannot find. A tag declares the first two with a
+#: ``wireview_draws`` attribute.
+DRAWS_COMPONENT = "<component>"
+DRAWS_SLOT = "<slot>"
+DRAWS_UNKNOWN = "<unknown>"
+ELSEWHERE = frozenset({DRAWS_COMPONENT, DRAWS_SLOT, DRAWS_UNKNOWN})
+
+
 def referenced_names(node: Node) -> frozenset[str]:
     """Every name ``node`` and the nodes inside it can resolve, in every branch.
 
     ``this.count`` counts as ``count``. Found statically, so a branch that did
     not render is included: a block whose condition reads a stale temporary
     assign may hold something else, which a render that took the other branch
-    never read (#111). Only template structures are walked -- a node's
-    ``origin`` leads to the loader and every template it holds.
+    never read (#111). An ``{% include %}`` of a named template counts that
+    template's names. A part that draws from elsewhere adds one of
+    ``ELSEWHERE``. Only template structures are walked -- a node's ``origin``
+    leads to the loader and every template it holds.
     """
     cached = getattr(node, "_wireview_names", None)
     if cached is not None:
         return cached
     names: set[str] = set()
     seen: set[int] = set()
+    included: set[str] = set()
+
+    def include(value: IncludeNode) -> None:
+        name = value.template.var
+        if not isinstance(name, str):
+            names.add(DRAWS_UNKNOWN)  # a template chosen at render time
+            return
+        origin = value.origin
+        if origin and isinstance(origin.template_name, str):
+            name = construct_relative_path(origin.template_name, name)
+        if name in included:
+            return
+        included.add(name)
+        try:
+            found = origin.loader.engine.get_template(name)  # type: ignore[union-attr]
+        except (AttributeError, TemplateDoesNotExist):
+            names.add(DRAWS_UNKNOWN)
+            return
+        walk(found.nodelist)
 
     def walk(value: t.Any) -> None:
         if id(value) in seen:
@@ -183,6 +221,10 @@ def referenced_names(node: Node) -> frozenset[str]:
                 for _lookup, arg in args:
                     walk(arg)
         elif isinstance(value, (Node, TokenBase)) or type(value).__name__ == "TemplateLiteral":
+            if (draws := getattr(getattr(value, "func", value), "wireview_draws", None)) is not None:
+                names.add(draws)
+            if isinstance(value, IncludeNode):
+                include(value)
             for name, attr in vars(value).items():
                 if name not in ("origin", "token"):
                     walk(attr)
@@ -199,30 +241,46 @@ def referenced_names(node: Node) -> frozenset[str]:
     return frozen
 
 
-class ConditionalNode(Node):
-    """Wraps ``{% if %}`` so each branch is a nested block with its own statics."""
+class _BlockNode(Node):
+    """Wraps a node so its output is a nested block with its own statics."""
 
-    def __init__(self, if_node: Node, marker_context: MarkerContext) -> None:
-        self.if_node = if_node
+    def __init__(self, inner: Node, marker_context: MarkerContext) -> None:
+        self.inner = inner
         self.marker_context = marker_context
-        self.token = getattr(if_node, "token", None)
+        self.token = getattr(inner, "token", None)
 
     def render(self, context: Context) -> str:
         index = self.marker_context.next_index()
         reads = self.marker_context.reads
         slot = reads.open(index) if reads else None
         try:
-            output = self.if_node.render(context)
+            output = self.inner.render(context)
         finally:
             if reads and slot:
-                # Kept whole, a block would keep whatever else its branches show
-                if slot.stale and not slot.other and referenced_names(self.if_node) & reads.other:
-                    slot.other = True
+                # Kept whole, a block would keep whatever else it can show: another
+                # name in a branch that did not render, or what is drawn elsewhere
+                if slot.stale and not slot.other:
+                    names = referenced_names(self.inner)
+                    slot.other = bool(names & reads.other or names & ELSEWHERE)
                 reads.close(slot)
         return f"<!--$B{index}-->{output}<!--/$B{index}-->"
 
     def __repr__(self) -> str:
-        return f"<ConditionalNode: {self.if_node!r}>"
+        return f"<{type(self).__name__}: {self.inner!r}>"
+
+
+class ConditionalNode(_BlockNode):
+    """Wraps ``{% if %}`` so each branch is a nested block with its own statics."""
+
+
+class IncludedNode(_BlockNode):
+    """Wraps ``{% include %}`` so what the included template draws is a part of its own.
+
+    The included template is not given markers -- it may be shared with pages
+    that are not components -- so its output was static: any change to it was
+    a full render, and one that read a reset temporary assign could not keep
+    what it drew (#111).
+    """
 
 
 class ComprehensionItemNode(Node):
@@ -299,6 +357,9 @@ class TemplateMarker:
                 # Check if this variable should be wrapped
                 if self._should_wrap_variable(node):
                     nodelist[i] = MarkedVariableNode(node, self.marker_context)
+            elif isinstance(node, IncludeNode):
+                nodelist[i] = IncludedNode(node, self.marker_context)
+                continue
 
             # {% if %}: wrap every branch, then the node itself as a block. IfNode's
             # ``nodelist`` property builds a throwaway list, so go via the branches.

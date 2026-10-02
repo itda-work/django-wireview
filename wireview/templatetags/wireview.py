@@ -23,6 +23,7 @@ from ..features.hooks import hook_files
 from ..function_components import get_function_component
 from ..repository import ComponentRepository
 from ..slots import Slot, SlotContainer
+from ..template_engine import DRAWS_COMPONENT, DRAWS_SLOT
 
 register = template.Library()
 
@@ -264,6 +265,8 @@ def _build_and_render_component(
         kwargs = {**kwargs, "id": sticky_id}
     drawer = context.get("this")
     component_instance = repo.build(component_name, state=kwargs, drawer=drawer)
+    if slots is not None and repo.is_live:
+        slots = component_instance.wire.fills = slots.keeping_stale(component_instance.wire.fills)
     if slots is None:
         # No fill is no slot. The instance may be one another page's pass filled
         # (a boosted visit takes it over), and the slots it remembers are for its
@@ -311,6 +314,10 @@ def component(context, _name, **kwargs):
         {% component 'Counter' count=10 %}
     """
     return _build_and_render_component(context, _name, kwargs)
+
+
+# What a part kept for a reset temporary assign must not keep (template_engine.referenced_names)
+component.wireview_draws = DRAWS_COMPONENT  # type: ignore[attr-defined]
 
 
 # Slot-based component rendering
@@ -363,6 +370,8 @@ def do_component_block(parser: Parser, token: Token):
 
 class ComponentBlockNode(Node):
     """Node for {% component_block %}...{% endcomponent %} block tag."""
+
+    wireview_draws = DRAWS_COMPONENT
 
     def __init__(
         self,
@@ -560,6 +569,9 @@ def render_slot(context, name: str = "", **extra_context):
         return ""
 
     return slots.render_slot(context, name, extra_context)
+
+
+render_slot.wireview_draws = DRAWS_SLOT  # type: ignore[attr-defined]
 
 
 @register.simple_tag(takes_context=True)
@@ -1037,6 +1049,9 @@ def _render_live_component(
             "This usually means it's not being rendered within a wireview component."
         )
 
+    if slots is not None and repo.is_live and (existing := repo.components.get(kwargs["id"])) is not None:
+        slots = slots.keeping_stale(existing.wire.fills)
+
     # Build (or look up) the LiveComponent and record that this render names it
     live_comp = repo.build_live_component(
         name=name,
@@ -1044,6 +1059,8 @@ def _render_live_component(
         parent_id=parent.id,
         slots=slots,
     )
+    if repo.is_live:
+        live_comp.wire.fills = slots
 
     if not repo.is_live:
         # HTTP render: a dead render of the child, inline, like any nested component.
