@@ -33,7 +33,8 @@ The django-reactor era changelog (2.x) is preserved in
   `argument` is. At the top: `wireview_version`, `function_components`, the `hooks` the hook
   files register and where, the `template_dirs` the loaders search, and the template engine's
   `template_builtins` and `template_libraries` -- each tag and filter with its file and line,
-  a block tag with its end and middle tags, a filter with whether it takes an argument. The
+  a block tag with its end and middle tags, a filter with whether it takes an argument and
+  whether `{% filter %}` refuses it (`forbidden_in_filter_tag`, read as Django reads it). The
   fields in `Meta.exclude_fields` are listed too (`in_state: false`): a template passes them.
 
 - The starter template ships a `.gitignore`. In DEBUG wireview writes `hello/live.pyi` whenever
