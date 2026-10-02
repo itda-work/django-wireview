@@ -121,6 +121,10 @@ Django는 블록 태그가 어디서 끝나는지 기록하지 않는다. 태그
 (`django/forms/...`)은 엔진이 아니라 렌더러가 따로 찾으므로 여기 없다 — Django 자신의 폼 위젯 템플릿을 열면
 그 안의 `{% include %}`가 `template-not-found` 경고를 받을 수 있다.
 
+필드의 `annotation`과 `default`는 실행마다 같도록 객체 repr의 메모리 주소(`<function f.<lambda> at 0x…>`의 ` at 0x…`)를
+뺀다. 값 안의 문자열은 그대로 두지만, 객체 repr 안에 `<… at 0x…>` 모양의 문자열이 있으면 정규화될 수 있다
+(`Label(text='<object at 0xCAFE>')`가 `Label(text='<object>')`로).
+
 필터의 `argument`는 Django의 `FilterExpression.args_check`가 세는 방식으로 함수의 인자를 센다. `needs_autoescape`
 필터가 받는 `autoescape`는 Django가 넘기는 것이라 세지 않는다.
 

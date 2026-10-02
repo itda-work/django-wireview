@@ -3,12 +3,14 @@
 import functools
 import json
 import typing as t
+import weakref
 from io import StringIO
 from pathlib import Path
 
 import pytest
 from django import template
 from django.core.management import call_command
+from pydantic import AfterValidator, PlainSerializer
 
 from wireview import Component, LiveComponent, function_component
 from wireview.management.commands.wireview_lsp import (
@@ -445,6 +447,57 @@ def test_the_metadata_is_the_same_on_every_run(tmp_path):
     assert " at 0x" not in json.dumps(outputs[0])
 
 
+# A component whose reprs hold names with <...> in them: a lambda, a nested function, a weakref
+_ADDRESS_PROBE = """
+import json, os, sys, typing as t, weakref
+os.environ["DJANGO_SETTINGS_MODULE"] = "testproj.settings"
+import django
+django.setup()
+from pydantic import AfterValidator, BeforeValidator, PlainSerializer
+from wireview import Component
+from wireview.management.commands.wireview_lsp import extract_fields, serialize_default
+
+def outer():
+    def inner(v):
+        return v
+    return inner
+
+class Item:
+    pass
+
+item = Item()
+
+class AddressProbe(Component, public=False):
+    lam: t.Annotated[int, AfterValidator(lambda v: v)] | None = None
+    loc: t.Annotated[int, BeforeValidator(outer())] | None = None
+    ser: t.Annotated[int, PlainSerializer(lambda v: v)] | None = None
+    lambdas: list = [lambda: 1]
+    nested: list = [outer()]
+
+out = {name: [field["annotation"], field["default"]] for name, field in extract_fields(AddressProbe).items()}
+out["weakref"] = serialize_default([weakref.ref(item)])
+print(json.dumps(out, sort_keys=True))
+"""
+
+
+@pytest.mark.integration
+def test_a_lambda_a_nested_function_and_a_weakref_are_the_same_on_every_run():
+    """Their names hold <lambda> and <locals>: the address after such a name stayed."""
+    import subprocess
+    import sys
+
+    tests = Path(__file__).parent
+    outputs = [
+        subprocess.run(
+            [sys.executable, "-c", _ADDRESS_PROBE], cwd=tests, check=True, capture_output=True, text=True
+        ).stdout
+        for _ in range(2)
+    ]
+    assert outputs[0] == outputs[1]
+    assert " at 0x" not in outputs[0]
+    assert "<lambda>" in outputs[0] and "<locals>" in outputs[0]
+
+
 class _Marker:
     """An object whose repr is the default one: with a memory address."""
 
@@ -462,6 +515,30 @@ class TestNoMemoryAddresses:
     def test_an_object_in_a_default_loses_its_address(self):
         assert serialize_default([_Marker(), "meet at 0xCAFE"]) == (f"[<{__name__}._Marker object>, 'meet at 0xCAFE']")
         assert serialize_default(_Marker()) == f"<{__name__}._Marker object>"
+
+    def test_a_lambda_a_nested_function_and_a_weakref_lose_their_addresses(self):
+        def outer():
+            def inner(v):
+                return v
+
+            return inner
+
+        lambdas = serialize_default([lambda: 1])
+        assert " at 0x" not in lambdas and "<lambda>" in lambdas
+        nested = serialize_default([outer()])
+        assert " at 0x" not in nested and "<locals>.outer.<locals>.inner>" in nested
+        target = _Marker()
+        reference = serialize_default([weakref.ref(target)])
+        assert " at 0x" not in reference and reference.startswith("[<weakref; to ")
+
+    def test_a_validator_in_a_union_loses_its_address(self):
+        class Validated(Component, public=False):
+            lam: t.Annotated[int, AfterValidator(lambda v: v)] | None = None
+            ser: t.Annotated[int, PlainSerializer(lambda v: v)] | None = None
+
+        for name, field in extract_fields(Validated).items():
+            assert " at 0x" not in field["annotation"], name
+            assert "<lambda>" in field["annotation"], name
 
     def test_a_literal_keeps_its_strings_and_annotated_loses_its_addresses(self):
         class Addresses(Component, public=False):

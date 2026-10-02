@@ -237,7 +237,10 @@ def extract_fields(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
     return fields
 
 
-_ADDRESS = re.compile(r"<([^<>]*?) at 0x[0-9a-fA-F]+>")
+# A default repr in angle brackets, whose name may hold its own: <function f.<locals>.<lambda> at 0x...>,
+# <bound method A.f of <A object at 0x...>>. In it, every address goes: a weakref has two (<weakref at 0x...; to ...>)
+_BRACKETED = re.compile(r"<(?:[^<>]|<(?:[^<>]|<[^<>]*>)*>)*>")
+_ADDRESS = re.compile(r" at 0x[0-9a-fA-F]+(?=[>;])")
 _CONTAINERS = (list, tuple, set, frozenset, dict)
 
 
@@ -273,7 +276,7 @@ def without_addresses(value: t.Any, text: str) -> str:
             written = repr(part)
         except Exception:
             continue
-        stable = _ADDRESS.sub(r"<\1>", written)
+        stable = _BRACKETED.sub(lambda match: _ADDRESS.sub("", match.group()), written)
         if stable != written:
             text = text.replace(written, stable)
     return text
