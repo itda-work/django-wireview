@@ -93,6 +93,11 @@ function tagSymbols(doc: TemplateDoc, tag: TagToken, found: Sym[]): void {
   const name = tag.name;
   if (!NOT_EXPRESSIONS.has(name)) expressionSymbols(doc.text, tag, found);
 
+  if (name === "filter") {
+    // do_filter compiles "var|" + its arguments: a chain whose first filter has no bar before it
+    if (tag.bits.length) filterSymbols(doc.text, tag.bits[0].start, tag.contentEnd, tag, tag.closed, found, true);
+    return;
+  }
   if (name === "load") {
     const bits = tag.bits;
     if (bits.length >= 3 && bits[bits.length - 2].text === "from") {
@@ -192,11 +197,21 @@ function variableSymbols(text: string, token: VariableToken, found: Sym[]): void
 const FILTER = /\|\s*([A-Za-z_]\w*)(:)?/g;
 
 /** `closed`: whether Django reads the tag or variable they stand in, or takes it for text. */
-function filterSymbols(text: string, start: number, end: number, tag: TagToken | null, closed: boolean, found: Sym[]): void {
-  const source = withoutStrings(text.slice(start, end));
+function filterSymbols(
+  text: string,
+  start: number,
+  end: number,
+  tag: TagToken | null,
+  closed: boolean,
+  found: Sym[],
+  chain = false,
+): void {
+  // A bare chain reads as if a bar stood before it; offsets stay the text's
+  const lead = chain ? 1 : 0;
+  const source = withoutStrings((chain ? "|" : "") + text.slice(start, end));
   FILTER.lastIndex = 0;
   for (let match = FILTER.exec(source); match; match = FILTER.exec(source)) {
-    const nameStart = start + match.index + match[0].indexOf(match[1]);
+    const nameStart = start - lead + match.index + match[0].indexOf(match[1]);
     found.push({
       kind: "filter",
       span: { start: nameStart, end: nameStart + match[1].length },

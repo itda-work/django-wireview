@@ -32,7 +32,9 @@ const BINDING_NAME = /^[A-Za-z][A-Za-z0-9_:-]*(\.[A-Za-z0-9_:-]+)*$/;
 const FRAMEWORK_ARGUMENTS = new Set(["id", "user", "session"]);
 /** Tags whose arguments Django reads with its filter syntax; another library's tag may read `|` its own way. */
 const DJANGO_FILE = /[\\/](?:django|wireview)[\\/]/;
-const NOT_FILTERED = new Set(["cond", "class", "filter"]);
+const NOT_FILTERED = new Set(["cond", "class"]);
+/** What `{% filter %}` refuses: the autoescape tag does their work. */
+const NOT_IN_FILTER_TAG = new Set(["escape", "safe"]);
 
 export function diagnose(doc: TemplateDoc, env: Env): Problem[] {
   const project = env.project;
@@ -130,6 +132,10 @@ function checkFilter(doc: TemplateDoc, project: Project, sym: Extract<Sym, { kin
   if (sym.tag) {
     const entry = doc.visible!.tags.get(sym.tag.name);
     if (!entry || NOT_FILTERED.has(sym.tag.name) || !DJANGO_FILE.test(entry.meta.file_path)) return;
+  }
+  if (sym.tag?.name === "filter" && NOT_IN_FILTER_TAG.has(sym.name)) {
+    report("filter-not-permitted", "error", sym.span, `{% filter %} does not take '${sym.name}': use {% autoescape %} instead.`);
+    return;
   }
   const filter = doc.visible!.filters.get(sym.name);
   if (!filter) {

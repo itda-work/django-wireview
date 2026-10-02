@@ -59,6 +59,10 @@ pair("unknown-filter", "{{ x|shout }}", "{{ x|upper }}");
 pair("filter-not-loaded", "{{ x|intcomma }}", "{% load intcomma from humanize %}{{ x|intcomma }}");
 pair("filter-argument", "{{ x|default }}", '{{ x|default:"-" }}');
 pair("filter-argument", "{{ x|upper:1 }}", "{{ x|date }}{{ x|date:'Y' }}");
+// {% filter %} reads a filter chain with no value before it: "var|" + its arguments
+pair("unknown-filter", "{% filter no_such_filter %}t{% endfilter %}", "{% filter upper|default:'-' %}t{% endfilter %}");
+pair("filter-argument", "{% filter default %}t{% endfilter %}", "{% filter date:'Y'|upper %}t{% endfilter %}");
+pair("filter-not-permitted", "{% filter upper|safe %}t{% endfilter %}", "{% filter upper %}t{% endfilter %}");
 pair("unknown-library", "{% load nope %}", "{% load static %}");
 pair("unclosed-block", "{% if a %}", "{% if a %}{% endif %}");
 pair("unmatched-end", "{% endfor %}", "{% for a in b %}{% endfor %}");
