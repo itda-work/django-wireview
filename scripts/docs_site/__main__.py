@@ -1,4 +1,4 @@
-"""python -m scripts.docs_site build|serve (``make docs-site``, ``make docs-serve``)."""
+"""python -m scripts.docs_site build|bundle|serve (``make docs-site``, ``docs-site-bundle``, ``docs-serve``)."""
 
 from __future__ import annotations
 
@@ -20,6 +20,12 @@ def main(argv: list[str] | None = None) -> int:
         "--update-urls", action="store_true", help="add the URLs the site now serves to docs/site-urls.txt"
     )
 
+    bundle_cmd = commands.add_parser("bundle", help="pack a built site into docs-site-<tag>.tar.gz")
+    bundle_cmd.add_argument(
+        "--site", type=Path, default=DEFAULT_OUT, help="the build to pack (default: build/docs-site)"
+    )
+    bundle_cmd.add_argument("--out", type=Path, help="output directory (default: build/site-dist, never dist/)")
+
     serve_cmd = commands.add_parser("serve", help="build, serve, and rebuild when a source changes")
     serve_cmd.add_argument("--port", type=int, default=8765)
     serve_cmd.add_argument("--out", type=Path, default=DEFAULT_OUT)
@@ -30,6 +36,13 @@ def main(argv: list[str] | None = None) -> int:
         from .serve import serve
 
         return serve(port=args.port, out=args.out.resolve(), version=args.version)
+
+    if args.command == "bundle":
+        from .bundle import DEFAULT_BUNDLE_DIR, bundle
+
+        target = bundle(site=args.site.resolve(), out_dir=args.out or DEFAULT_BUNDLE_DIR)
+        print(f"docs-site: {target}")
+        return 0
 
     from .build import build
 

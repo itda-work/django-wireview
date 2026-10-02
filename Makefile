@@ -1,4 +1,4 @@
-.PHONY: ext-install ext-check ext-test ext-build ext-package ext-test-host all install test test-unit test-e2e test-concurrent test-matrix test-latest test-lowest test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js ci-smoke docs-site docs-serve
+.PHONY: ext-install ext-check ext-test ext-build ext-package ext-test-host all install test test-unit test-e2e test-concurrent test-matrix test-latest test-lowest test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js ci-smoke docs-site docs-site-bundle docs-serve
 
 # Default target
 all: install build
@@ -345,6 +345,12 @@ docs-site:
 	uv run pytest $(DOCS_GUARDS) -q --no-header -p no:cacheprovider
 	uv run python -m scripts.docs_site build $(ARGS)
 
+# docs-site, then pack build/docs-site/wireview/ into build/site-dist/docs-site-v<version>.tar.gz,
+# the release asset (#160). The same commit packs the same bytes. Never into dist/: release.yml
+# uploads dist/ to PyPI whole.
+docs-site-bundle: docs-site
+	uv run python -m scripts.docs_site bundle
+
 # Build, serve on http://127.0.0.1:8765/wireview/ and rebuild on every change to docs/, README.md
 # or the layout. ARGS="--port 9000" to move it. Skips the document guards on rebuilds.
 docs-serve:
@@ -394,6 +400,7 @@ help:
 	@echo ""
 	@echo "Documentation site:"
 	@echo "  make docs-site        - Build the documentation site into build/docs-site, with its gates"
+	@echo "  make docs-site-bundle - docs-site, then pack it into build/site-dist/docs-site-v<version>.tar.gz"
 	@echo "  make docs-serve       - Serve the site and rebuild it on every change (ARGS=\"--port N\")"
 	@echo ""
 	@echo "Development:"

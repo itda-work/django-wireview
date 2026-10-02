@@ -14,6 +14,7 @@ import gzip
 import hashlib
 import os
 import re
+import tarfile
 import threading
 import urllib.request
 from functools import partial
@@ -42,6 +43,7 @@ except ImportError as error:  # pragma: no cover - the docs dependency group is 
     _missing(f"the docs dependency group is not installed ({error.name})")
 
 from scripts.docs_site.build import build  # noqa: E402
+from scripts.docs_site.bundle import DEFAULT_BUNDLE_DIR, PYPI_DIST, bundle  # noqa: E402
 from scripts.docs_site.render import Linker  # noqa: E402
 from scripts.docs_site.serve import INJECT, Handler, State, watched  # noqa: E402
 
@@ -455,6 +457,71 @@ def test_the_url_list_is_the_repositorys_pages_sorted():
     listed = (ROOT / "docs" / "site-urls.txt").read_text(encoding="utf-8").splitlines()
     assert listed == sorted(listed)
     assert set(listed) >= {page.url for page in nav.pages()}
+
+
+# --- the release asset (#160) ------------------------------------------------------------------------
+
+
+def test_the_bundle_is_named_by_the_tag_and_holds_the_build(site, tmp_path):
+    target = bundle(site=site.out, out_dir=tmp_path / "site-dist")
+    assert target.name == f"docs-site-{TAG}.tar.gz"
+    with tarfile.open(target) as archive:
+        files = {
+            member.name: archive.extractfile(member).read()  # type: ignore[union-attr]
+            for member in archive.getmembers()
+            if member.isfile()
+        }
+        names = archive.getnames()
+    built = {path.relative_to(site.out).as_posix(): path.read_bytes() for path in site.out.rglob("*") if path.is_file()}
+    assert files == built
+    assert all(name == "wireview" or name.startswith("wireview/") for name in names), names
+    assert files["wireview/VERSION"] == f"{TAG}\n".encode()
+
+
+def test_the_bundle_records_nothing_of_the_machine(site, tmp_path):
+    """Sorted, no times, no owners, the modes normalised -- whatever the umask or tar here."""
+    (site.out / "wireview" / "VERSION").chmod(0o600)
+    try:
+        target = bundle(site=site.out, out_dir=tmp_path)
+    finally:
+        (site.out / "wireview" / "VERSION").chmod(0o644)
+    with tarfile.open(target) as archive:
+        members = archive.getmembers()
+    assert [m.name for m in members] == sorted(m.name for m in members)
+    for member in members:
+        assert (member.mtime, member.uid, member.gid, member.uname, member.gname) == (0, 0, 0, "", ""), member.name
+        assert member.mode == (0o755 if member.isdir() else 0o644), member.name
+        assert member.isdir() or member.isfile(), member.name
+    packed = target.read_bytes()
+    assert packed[4:8] == b"\0\0\0\0" and not packed[3] & 0x08
+
+
+def test_the_same_commit_bundles_the_same_bytes(site, tmp_path):
+    first = bundle(site=site.out, out_dir=tmp_path / "one").read_bytes()
+    again = build(out=tmp_path / "rebuilt")
+    os.utime(again.out / "wireview" / "VERSION", (1_000_000_000, 1_000_000_000))
+    assert bundle(site=again.out, out_dir=tmp_path / "two").read_bytes() == first
+
+
+def test_the_bundle_leaves_one_bundle_in_its_directory(site, tmp_path):
+    (tmp_path / "docs-site-v0.0.1.tar.gz").write_bytes(b"old")
+    (tmp_path / "keep.txt").write_text("not a bundle")
+    target = bundle(site=site.out, out_dir=tmp_path)
+    assert sorted(path.name for path in tmp_path.iterdir()) == sorted([target.name, "keep.txt"])
+
+
+def test_the_bundle_never_goes_into_dist(site):
+    """release.yml uploads dist/ to PyPI whole; a tarball there would go up as a package file."""
+    assert PYPI_DIST not in DEFAULT_BUNDLE_DIR.resolve().parents and DEFAULT_BUNDLE_DIR.resolve() != PYPI_DIST
+    for inside in (PYPI_DIST, PYPI_DIST / "docs"):
+        with pytest.raises(ValueError, match="dist/"):
+            bundle(site=site.out, out_dir=inside)
+    assert not list(PYPI_DIST.glob("docs-site-*"))
+
+
+def test_the_bundle_needs_a_build(tmp_path):
+    with pytest.raises(FileNotFoundError, match="make docs-site"):
+        bundle(site=tmp_path / "nothing", out_dir=tmp_path / "out")
 
 
 # --- docs-serve --------------------------------------------------------------------------------------
