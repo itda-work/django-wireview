@@ -208,6 +208,7 @@ editors/vscode/            VS Code 확장(#156). wheel·sdist에 싣지 않고 �
                            메타데이터 버전·들여쓰기 규칙의 블록 태그)가 라이브러리와 같은지 본다(node만 필요). 확장 자체는 make ext-test·ext-test-host 등(make help).
                            어댑터의 수명(폴더 폐기·메타데이터 소스 전환·제한 모드)은 test/folders.test.ts 가 VS Code API를 test/stub/ 로 바꿔
                            실제 FolderProject와 자식 프로세스로 본다. 낡은 실행의 결과를 버리는 판단은 core/runner.ts 의 Generations 하나다.
+                           실행마다 출력 파일이 따로다 — 멈춘 프로세스가 늦게 쓴 파일은 다음 실행이 지운다.
                            신뢰하지 않은 워크스페이스에서는 프로세스를 띄우지도 메타데이터를 읽지도 않는다(folders.ts 의 run·load).
                            CI의 vscode-extension-host 잡(VS Code 다운로드)만 릴리스 게이트 밖이다
 bench/                     성능 벤치마크 (make bench, make bench-compare BASE=<ref>). windows/ 는 Parallels 게스트 실측 레인. 설명은 bench/README.md

@@ -6,8 +6,8 @@
 // command is the project's code, and the file's paths are where "go to
 // definition" goes.
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync } from "node:fs";
 import * as nodePath from "node:path";
 
 import * as vscode from "vscode";
@@ -30,6 +30,15 @@ export function isFile(path: string): boolean {
   }
 }
 
+/** Remove a file if it is there. */
+function remove(path: string): void {
+  try {
+    unlinkSync(path);
+  } catch {
+    // Not there, or already gone
+  }
+}
+
 export class FolderProject implements vscode.Disposable {
   readonly folder: vscode.WorkspaceFolder;
   project: Project | undefined;
@@ -40,6 +49,10 @@ export class FolderProject implements vscode.Disposable {
   private readonly refresher: Refresher;
   private readonly generations = new Generations();
   private readonly storage: string;
+  /** Where each run writes: a file of its own, so that no other run's output is taken for it. */
+  private readonly outputs: string;
+  /** The output files of the runs going on now: anything else in `outputs` is left over. */
+  private readonly writing = new Set<string>();
   private readonly output: vscode.OutputChannel;
   private readonly changed: () => void;
   /** What watches the current source: replaced when the source changes. */
@@ -51,6 +64,7 @@ export class FolderProject implements vscode.Disposable {
     this.changed = changed;
     const key = createHash("sha256").update(folder.uri.toString()).digest("hex").slice(0, 16);
     this.storage = nodePath.join(storage, `metadata-${key}.json`);
+    this.outputs = nodePath.join(storage, `metadata-${key}.runs`);
     this.refresher = new Refresher(() => this.run(), 1500);
   }
 
@@ -218,10 +232,34 @@ export class FolderProject implements vscode.Disposable {
     }
     const python = await this.python(nodePath.dirname(managePy));
     if (signal.aborted) return;
-    const next = `${this.storage}.next`;
-    mkdirSync(nodePath.dirname(this.storage), { recursive: true });
-    // A file a run left is not this run's output
-    rmSync(next, { force: true });
+    // A run stopped before can still write after it was let go: its file, not this one
+    mkdirSync(this.outputs, { recursive: true });
+    this.sweep();
+    const next = nodePath.join(this.outputs, `${randomUUID()}.json`);
+    this.writing.add(next);
+    try {
+      await this.spawn(next, python, managePy, signal);
+    } finally {
+      this.writing.delete(next);
+      remove(next);
+    }
+  }
+
+  /** Remove what the runs that are over left in `outputs`: a stopped process may have written there since. */
+  private sweep(): void {
+    let names: string[];
+    try {
+      names = readdirSync(this.outputs);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      const path = nodePath.join(this.outputs, name);
+      if (!this.writing.has(path)) remove(path);
+    }
+  }
+
+  private async spawn(next: string, python: string, managePy: string, signal: AbortSignal): Promise<void> {
     const line = buildCommand({ metadataCommand: this.config().get<string[]>("metadataCommand", []), python, managePy, output: next });
     this.state = "running";
     this.changed();

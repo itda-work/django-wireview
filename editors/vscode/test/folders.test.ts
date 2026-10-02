@@ -2,7 +2,7 @@
 // replaced by test/stub/vscode.ts and real child processes for the command. What
 // is checked is what a stale run must not do: start again, write, or win.
 import { strict as assert } from "node:assert";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import { tmpdir } from "node:os";
 import * as nodePath from "node:path";
@@ -40,9 +40,29 @@ function workspace() {
       "}, Number(process.argv[2]));",
     ].join("\n"),
   );
+  // Ignores the SIGTERM that ends its run, and writes the metadata afterwards anyway
+  const stubborn = nodePath.join(root, "stubborn.mjs");
+  writeFileSync(
+    stubborn,
+    [
+      'import { appendFileSync, writeFileSync } from "node:fs";',
+      'process.on("SIGTERM", () => {});',
+      `appendFileSync(${JSON.stringify(marker)}, "stubborn started\\n");`,
+      "setTimeout(() => {",
+      `  writeFileSync(process.argv.at(-1), ${JSON.stringify(metadata("Stale"))});`,
+      `  appendFileSync(${JSON.stringify(marker)}, "stubborn wrote\\n");`,
+      "}, Number(process.argv[2]));",
+    ].join("\n"),
+  );
+  // Exits 0 without writing anything
+  const silent = nodePath.join(root, "silent.mjs");
+  writeFileSync(silent, "setTimeout(() => {}, Number(process.argv[2]));");
   const runs = () => readFileSync(marker, "utf8").split("\n").filter(Boolean);
-  const command = (delay: number) => ({ managePy: nodePath.join(root, "manage.py"), metadataCommand: [process.execPath, child, String(delay)] });
-  return { root, runs, command };
+  const managePy = nodePath.join(root, "manage.py");
+  const command = (delay: number) => ({ managePy, metadataCommand: [process.execPath, child, String(delay)] });
+  const stubbornCommand = (delay: number) => ({ managePy, metadataCommand: [process.execPath, stubborn, String(delay)] });
+  const silentCommand = (delay: number) => ({ managePy, metadataCommand: [process.execPath, silent, String(delay)] });
+  return { root, runs, command, stubbornCommand, silentCommand };
 }
 
 function project(root: string): { folder: Folder; changes: () => number; log: string[] } {
@@ -135,6 +155,30 @@ test("a run that a metadata file takes over from is stopped and dropped", async 
   assert.deepEqual(runs(), ["started"], "the process was stopped");
   assert.equal(folder.state, "ok");
   folder.dispose();
+});
+
+test("what a stopped run writes late is not the next run's output, and does not stay on disk", async () => {
+  const { root, runs, command, stubbornCommand, silentCommand } = workspace();
+  state.config = stubbornCommand(200);
+  const { folder } = project(root);
+  const started = folder.start();
+  await until(() => runs().includes("stubborn started"), "the stubborn process");
+
+  // Another command, which writes nothing while the old process writes: the run fails
+  state.config = silentCommand(600);
+  await folder.configure();
+  await started;
+  assert.ok(runs().includes("stubborn wrote"), "the old process wrote while the new one ran");
+  assert.equal(folder.state, "failed", "the late file is no run's output");
+  assert.equal(folder.project, undefined);
+
+  state.config = command(0);
+  await folder.configure();
+  assert.deepEqual(names(folder), ["Ran"]);
+  folder.dispose();
+  const storage = nodePath.join(root, "storage");
+  const left = readdirSync(storage, { recursive: true }).map(String).filter((name) => name.endsWith(".json") || name.includes("next"));
+  assert.equal(left.length, 1, `only the metadata that won stays: ${left.join(", ")}`);
 });
 
 test("from a metadata file to the command: the command runs, and the file is no longer watched", async () => {
