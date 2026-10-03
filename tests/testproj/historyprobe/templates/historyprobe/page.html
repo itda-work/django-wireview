@@ -8,6 +8,8 @@
   </head>
   <body>
     <span data-testid="page">{{ name }}</span>
+    {# Outside every component: only a fetch of the page brings it up to date #}
+    <span data-testid="page-tab">{{ request.GET.tab|default:"-" }}</span>
     <a data-testid="to-box" href="/historyprobe/">box</a>
     <a data-testid="to-other" href="/historyprobe/other/">other</a>
     {% if name == "box" %}

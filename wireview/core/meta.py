@@ -271,7 +271,12 @@ class WireviewMeta:
         self._is_frozen = True
 
     async def redirect_to(self, to: RedirectDestination, /, **kwargs: t.Any) -> None:
-        """Redirect the client to a new URL."""
+        """Redirect the client to a new URL.
+
+        Always a page fetch, even to the page's own path: the way to move a page
+        whose template reads the query outside its components, which a patch
+        (``push_to``) would leave showing the old one (#169).
+        """
         url = resolve_destination(to, **kwargs)
         self._redirected_to = url
         if self.channel_name:
@@ -279,12 +284,23 @@ class WireviewMeta:
             await self.send("url_change", command="redirect", url=url)
 
     async def replace_to(self, to: RedirectDestination, /, **kwargs: t.Any) -> None:
-        """Replace the current URL without navigation."""
+        """``push_to`` in place of the current history entry (#169).
+
+        The page's own path is a patch; another path is fetched in place.
+        """
         url = resolve_destination(to, **kwargs)
         await self.send("url_change", command="replace", url=url)
 
     async def push_to(self, to: RedirectDestination, /, **kwargs: t.Any) -> None:
-        """Push a new URL to browser history."""
+        """Push a new URL to browser history.
+
+        To the page's own path -- another query or fragment -- it is a patch
+        (Phoenix's ``push_patch``, #169): nothing is fetched, and the page's
+        components hear ``params_changed`` on the instances they are. Another
+        path is fetched and its components join fresh (``push_navigate``); out
+        of the live_session, as a full page load. The client decides, from the
+        address bar it is at (navigation.mjs).
+        """
         url = resolve_destination(to, **kwargs)
         await self.send("url_change", command="push", url=url)
 

@@ -320,9 +320,11 @@ async def test_paging_reloads_the_page_of_products():
     assert view.component.page == 2
 ```
 
-`push_to()`는 절반이다. 나머지 절반은 클라이언트가 새 params를 서버에 알리는 것이고, 그것이
-`params_changed()`를 돌린다. 경계를 넘는 push는 전체 페이지 로드라 `params_changed`가 아예
-가지 않으므로, 그 경우 `follow_push()`는 콜백을 돌리는 대신 실패한다.
+`push_to()`는 절반이다. `"?page=2"`처럼 같은 경로로 가면 나머지 절반은 클라이언트가 새 params를 서버에
+알리는 것이고, 그것이 같은 인스턴스의 `params_changed()`를 돌린다. 이벤트로 바꾼 상태는 남는다.
+다른 경로로 가면 브라우저는 그 페이지를 가져오고 컴포넌트가 새로 join하므로, `follow_push(Destination)`이
+대상 컴포넌트를 새로 마운트해 돌려준다. `"/products/?page=2"`처럼 경로가 있는 목적지는
+`mount(XProductList, path="/products/")`로 컴포넌트가 놓인 경로를 알려 줘야 둘을 가린다.
 
 ## Streams 테스트
 

@@ -72,4 +72,74 @@ export class NavigationLog {
     this.current = url;
     return detail;
   }
+
+  /**
+   * A patch moved the page to `url` without a navigation to announce: the next
+   * navigation leaves from there.
+   * @param {string} url
+   */
+  patched(url) {
+    this.current = url;
+  }
+}
+
+/**
+ * A patch (#169): a move inside the page the browser already shows -- same
+ * path, another query or fragment. Phoenix's `push_patch`: the address bar and
+ * the history change, nothing is fetched, and the components on the page hear
+ * `params_changed` with the state they built up. Another path is Phoenix's
+ * `push_navigate`: the destination is fetched and its components join.
+ *
+ * A Back or Forward between such entries is a patch too, as long as the page
+ * that made them is still the one on screen. Each page the browser shows --
+ * loaded, or fetched by a boosted navigation -- gets an id, and every history
+ * entry it makes or lands on carries it in `history.state`. An entry whose id
+ * is not the page's own (another page, a page since reloaded) is fetched again.
+ */
+
+/** The `history.state` key holding the page id. */
+export const PAGE_KEY = "wireviewPage";
+
+/**
+ * A new page id. Unique enough for one tab's history: a reload starts a new
+ * document whose entries must not match the ones the old document made.
+ * @returns {string}
+ */
+export function newPageId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * `state` with the page id put in, keeping whatever else it holds.
+ * @param {any} state - `history.state`, which may be null
+ * @param {string} page
+ * @returns {Object}
+ */
+export function stamped(state, page) {
+  const base = state !== null && typeof state === "object" ? state : {};
+  return { ...base, [PAGE_KEY]: page };
+}
+
+/**
+ * Whether going from `from` to `to` is a patch: the same origin and path.
+ * @param {string} from - the current location
+ * @param {string} to - where the server asked to go; relative to `from`
+ * @returns {boolean}
+ */
+export function isPatch(from, to) {
+  const here = new URL(from);
+  const there = new URL(to, here);
+  return here.origin === there.origin && here.pathname === there.pathname;
+}
+
+/**
+ * Whether a popstate that landed on `url` with `state` is a patch: the entry
+ * was made or landed on by the page on screen, and it is the same path.
+ * @param {any} state - the entry's `history.state`
+ * @param {string} url - the location after the popstate
+ * @param {{id: string, url: string}} page - the page on screen and the URL it was shown under
+ * @returns {boolean}
+ */
+export function returnsToPatch(state, url, page) {
+  return state?.[PAGE_KEY] === page.id && isPatch(page.url, url);
 }

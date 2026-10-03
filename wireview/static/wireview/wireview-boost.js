@@ -5,6 +5,7 @@
 
 import { Idiomorph } from "idiomorph";
 import { NavigationGate, crossesBoundary, readSessionName } from "./live-session.mjs";
+import { newPageId, returnsToPatch, stamped } from "./navigation.mjs";
 import { STREAM_ATTRIBUTE, isStreamContainer, pinContainerIds } from "./streams.mjs";
 import { ValueGuard } from "./values.mjs";
 
@@ -186,6 +187,14 @@ class NavEvents extends EventTarget {
   }
 
   /**
+   * Dispatches a patched event: the URL moved inside the page on screen, and
+   * nothing was fetched (navigation.mjs).
+   */
+  sendPatched() {
+    this.dispatchEvent(new Event("patched"));
+  }
+
+  /**
    * Dispatches a newContent event.
    * @param {number} token - the navigation this content belongs to
    * @param {boolean} landed - the navigation's own page, not a cached paint
@@ -204,6 +213,23 @@ let navEvent = new NavEvents();
  * @type {NavigationGate}
  */
 const navGate = new NavigationGate();
+
+/**
+ * The page on screen: its id, which the history entries it makes carry, and
+ * the URL it was shown under. A popstate to one of those entries is a patch
+ * (navigation.mjs). A load or a boosted navigation that lands gives a new one.
+ */
+const page = { id: newPageId(), url: document.location.href };
+history.replaceState(stamped(history.state, page.id), document.title, document.location.href);
+
+/**
+ * A new page is on screen: entries the previous one made are another page's now.
+ */
+function landPage() {
+  page.id = newPageId();
+  page.url = document.location.href;
+  history.replaceState(stamped(history.state, page.id), document.title, document.location.href);
+}
 
 // Set up click handler for boosted navigation
 if (BOOST_PAGES) {
@@ -273,6 +299,7 @@ function replaceBodyContent(newBody, scrollY = undefined, landed = true) {
   const token = navGate.token;
   window.requestAnimationFrame(() => {
     if (!navGate.accepts(token)) return;
+    if (landed) landPage();
     morph(document.body, newBody, { navigation: true });
     if (scrollY === undefined) {
       /** @type {HTMLElement|null} */ (document.querySelector("[autofocus]"))?.focus();
@@ -468,15 +495,44 @@ class HistoryCache {
   }
 
   /**
-   * Replaces the current URL without navigation.
+   * Moves to `url` inside the page on screen (#169): a new history entry, or
+   * the current one rewritten, and nothing fetched. The components hear the
+   * new params through `patched`. `url` must be on the page's path
+   * (navigation.mjs isPatch); another path is `push` or `swap`.
+   * @param {string} url
+   * @param {{replace?: boolean}} [options] - rewrite the current entry instead of pushing one
+   */
+  static patch(url, { replace = false } = {}) {
+    // A fetch still in flight lands no more: the address bar now names this page
+    navGate.begin();
+    if (replace) {
+      history.replaceState(stamped({}, page.id), document.title, url);
+    } else {
+      history.replaceState(stamped(history.state, page.id), document.title, document.location.href);
+      history.pushState(stamped({}, page.id), document.title, url);
+    }
+    navEvent.sendPatched();
+  }
+
+  /**
+   * Replaces the current URL without navigation or a word to the server: the
+   * server already knows the params it asked for (`set_query_string`).
    * @param {string} path - The new path
    */
   static replace(path) {
-    history.replaceState({}, document.title, path);
+    history.replaceState(stamped({}, page.id), document.title, path);
   }
 }
 
 window.addEventListener("popstate", (event) => {
+  // An entry the page on screen made: it has what it needs, and only the
+  // params changed. Before the boundary check, which a page cannot fail with
+  // itself.
+  if (returnsToPatch(event.state, document.location.href, page)) {
+    navGate.begin();
+    navEvent.sendPatched();
+    return;
+  }
   // The cached body is morphed in a requestAnimationFrame while the fetch below
   // is still in flight, so the boundary has to be settled before the morph is
   // even scheduled: by the time the fetch answers, the cached DOM is on screen.

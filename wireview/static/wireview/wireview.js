@@ -9,7 +9,7 @@ import { TargetQueue } from "./targets.mjs";
 import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
 import { readReconnectSettings, reconnectOptions } from "./reconnect.mjs";
-import { NAVIGATED_EVENT, NavigationLog, carriedAcross } from "./navigation.mjs";
+import { NAVIGATED_EVENT, NavigationLog, carriedAcross, isPatch } from "./navigation.mjs";
 import { UploadManagers } from "./uploads.mjs";
 import boost from "./wireview-boost";
 
@@ -206,6 +206,12 @@ class ServerConnection {
 
     boost.navEvent.addEventListener("newLocation", () => {
       this.sendQueryString();
+    });
+
+    // A patch: same page, new params (#169). Not a navigation to announce.
+    boost.navEvent.addEventListener("patched", () => {
+      this.navigations.patched(document.location.href);
+      this.sendParamsChanged();
     });
 
     boost.navEvent.addEventListener("newContent", (event) => {
@@ -510,26 +516,21 @@ class ServerConnection {
             boost.HistoryCache.load(url);
             break;
           case "replace":
-            boost.HistoryCache.replace(url);
-            // Send params_changed after URL update
-            {
-              const urlObj = new URL(url, document.location.origin);
-              const params = parseQueryString(urlObj.search);
-              this.sendParamsChanged(url, params);
+          case "push": {
+            const replace = payload.command === "replace";
+            if (isPatch(document.location.href, url)) {
+              // Same path (#169): the page stays and its components hear the
+              // new params through `patched`, keeping what they built up
+              boost.HistoryCache.patch(url, { replace });
+            } else {
+              // Another path is another page: fetched, and its components join
+              // from its render. Its params reach the server through
+              // `newLocation`, and only once the response stayed inside the
+              // live_session; leaving it is a full page load (#58).
+              replace ? boost.HistoryCache.swap(url) : boost.HistoryCache.push(url);
             }
             break;
-          case "push":
-            // params_changed only once the new page is actually on screen. A push
-            // that leaves the live_session becomes a full page load, and telling
-            // the old connection about the new URL would have it re-render under
-            // the policy the navigation was leaving behind (#58).
-            boost.HistoryCache.push(url).then((sameSession) => {
-              if (!sameSession) return;
-              const urlObj = new URL(url, document.location.origin);
-              const params = parseQueryString(urlObj.search);
-              this.sendParamsChanged(url, params);
-            });
-            break;
+          }
         }
         break;
 

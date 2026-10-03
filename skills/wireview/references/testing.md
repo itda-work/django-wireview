@@ -16,10 +16,10 @@ async def test_increment():
     assert view.component.amount == 1
 ```
 
-`mount(component_class, /, *, user=None, params=None, session=None, session_key=None, live_session=None, state=None, **initial_state)`.
+`mount(component_class, /, *, user=None, params=None, session=None, session_key=None, live_session=None, path=None, state=None, **initial_state)`.
 옵션은 모두 키워드로 준다. `user`를 주면 인증된 사용자로, `params`를 주면 URL 쿼리 파라미터가 있는 상태로,
 `session={"k": v}`·`session_key="s1"`을 주면 세션이 있는 상태로, `live_session="admin"`을 주면
-그 경계 안의 페이지에 뜬다. 필드 초깃값은 키워드(`amount=0`)나 `state={"amount": 0}`으로 준다.
+그 경계 안의 페이지에 뜬다. `path="/products/"`는 컴포넌트가 놓인 페이지의 경로로, `follow_push()`가 patch인지 가린다. 필드 초깃값은 키워드(`amount=0`)나 `state={"amount": 0}`으로 준다.
 옵션과 이름이 같은 필드(`params` 같은)는 `state=`로만 줄 수 있다 — 이후 릴리스가 옵션을 더해도 `state=`는 그대로 통한다.
 
 ## MountedComponent가 주는 것
@@ -34,7 +34,7 @@ async def test_increment():
 | `view.assert_pushed_to(url, params=...)` | push 단언. `assert_replaced_to`·`assert_redirected_to`도 같은 모양 |
 | `view.assert_no_navigation()` | URL을 건드리지 않았다 |
 | `await view.follow_redirect(NextComponent)` | 리다이렉트를 따라가 대상 컴포넌트를 마운트 |
-| `await view.follow_push()` | push·replace 뒤에 클라이언트가 하는 `params_changed`를 돌린다 |
+| `await view.follow_push()` | 같은 경로의 push·replace 뒤에 같은 인스턴스의 `params_changed`를 돌린다. 다른 경로면 `follow_push(NextComponent)`가 대상을 새로 마운트한다 |
 | `view.stream_html(name)` | 스트림으로 나간 아이템 HTML (`stream_items`·`stream_ops`도 있다) |
 | `view.is_frozen` | `freeze()` 여부 |
 | `view.broadcasts` | 이 컴포넌트가 낸 브로드캐스트. 채널 레이어가 거절하는 이름(`room:42`)은 기록하지 않고 레이어와 같은 `TypeError`를 던진다. 구독(`Meta.subscriptions`·`get_subscriptions()`)도 세션처럼 `mount()` 끝과 `call()`·`follow_push()`마다 맞추므로, 그런 이름의 구독은 `mount()`나 그 `call()`·`follow_push()`가 같은 `TypeError`로 실패한다 |
@@ -77,11 +77,11 @@ async def test_filter_hides_read_items():
 ```python
 @pytest.mark.asyncio
 async def test_paging():
-    view = await mount(XProductList)
+    view = await mount(XProductList, path="/products/")
     await view.call("next_page")
 
     view.assert_pushed_to("/products/", params={"page": "2"})
-    await view.follow_push()               # 클라이언트가 하는 나머지 절반
+    await view.follow_push()               # 같은 경로: 같은 인스턴스의 params_changed
     assert view.component.page == 2
 ```
 
@@ -91,8 +91,10 @@ async def test_paging():
 - 리다이렉트는 페이지 로드다. `await view.follow_redirect(NextComponent)`가 대상 페이지의
   컴포넌트를 마운트하며, 대상의 `live_session`을 URLconf에서 읽어 그 경계가 거절하면 함께
   거절한다.
-- 경계를 넘는 push는 전체 페이지 로드라 `params_changed`가 가지 않는다. 그 경우
-  `follow_push()`는 실패하고, 대상 페이지를 새로 마운트하라고 알려 준다.
+- push·replace는 같은 경로면 patch(가져오지 않고 같은 인스턴스가 `params_changed`를 받는다), 다른 경로면
+  그 페이지를 가져와 새로 join한다. `follow_push()`도 같다: 같은 경로는 인자 없이, 다른 경로는
+  `follow_push(NextComponent)`로 대상을 마운트한다(경계는 `follow_redirect`처럼 URLconf에서 읽는다).
+  경로가 있는 목적지는 `mount(..., path=)`가 있어야 판단한다.
 
 ## DB를 건드리는 테스트
 

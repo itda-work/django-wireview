@@ -1,7 +1,16 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
 
-import { NAVIGATED_EVENT, NavigationLog, carriedAcross } from "../../wireview/static/wireview/navigation.mjs";
+import {
+  NAVIGATED_EVENT,
+  NavigationLog,
+  PAGE_KEY,
+  carriedAcross,
+  isPatch,
+  newPageId,
+  returnsToPatch,
+  stamped,
+} from "../../wireview/static/wireview/navigation.mjs";
 
 const entry = (hook, navigation, connected = true) => ({ hook, navigation, connected });
 
@@ -29,4 +38,46 @@ test("the log says where each navigation came from", () => {
   assert.deepEqual(log.landed("http://x/b/"), { url: "http://x/b/", previousUrl: "http://x/a/" });
   // A Back has already moved the address bar; the log still knows the page it left
   assert.deepEqual(log.landed("http://x/a/"), { url: "http://x/a/", previousUrl: "http://x/b/" });
+});
+
+test("a patch moves the log without an announcement (#169)", () => {
+  const log = new NavigationLog("http://x/a/");
+  log.patched("http://x/a/?tab=b");
+  assert.deepEqual(log.landed("http://x/b/"), { url: "http://x/b/", previousUrl: "http://x/a/?tab=b" });
+});
+
+test("a move on the same path is a patch; another path or origin is not (#169)", () => {
+  assert.equal(isPatch("http://x/a/", "?tab=b"), true);
+  assert.equal(isPatch("http://x/a/?tab=b", "?tab=c"), true);
+  assert.equal(isPatch("http://x/a/?tab=b", "#top"), true);
+  assert.equal(isPatch("http://x/a/", "/a/?tab=b"), true);
+  assert.equal(isPatch("http://x/a/", "http://x/a/?tab=b"), true);
+  assert.equal(isPatch("http://x/a/?tab=b", "/a/"), true, "dropping the query stays on the page");
+  assert.equal(isPatch("http://x/a/", "/b/"), false);
+  assert.equal(isPatch("http://x/a/", "/a"), false, "another path, though Django may redirect it");
+  assert.equal(isPatch("http://x/a/", "http://y/a/"), false);
+});
+
+test("stamping keeps what the entry held and survives a null state (#169)", () => {
+  assert.deepEqual(stamped(null, "p1"), { [PAGE_KEY]: "p1" });
+  assert.deepEqual(stamped({ content: "<body>", scrollY: 3 }, "p2"), { content: "<body>", scrollY: 3, [PAGE_KEY]: "p2" });
+  assert.deepEqual(stamped({ [PAGE_KEY]: "old" }, "new"), { [PAGE_KEY]: "new" });
+});
+
+test("page ids differ, so a reloaded page owns none of the old entries (#169)", () => {
+  const ids = new Set(Array.from({ length: 100 }, () => newPageId()));
+  assert.equal(ids.size, 100);
+});
+
+test("Back or Forward is a patch only to an entry the page on screen made, on its path (#169)", () => {
+  const page = { id: "p1", url: "http://x/a/" };
+  assert.equal(returnsToPatch({ [PAGE_KEY]: "p1" }, "http://x/a/?tab=b", page), true);
+  assert.equal(returnsToPatch({ [PAGE_KEY]: "p1", content: "<body>" }, "http://x/a/", page), true);
+  // Another page's entry, or one from before a reload
+  assert.equal(returnsToPatch({ [PAGE_KEY]: "p0" }, "http://x/a/?tab=b", page), false);
+  // An entry a boosted push left behind, or a page loaded before this code
+  assert.equal(returnsToPatch({ content: "<body>" }, "http://x/a/", page), false);
+  assert.equal(returnsToPatch(null, "http://x/a/", page), false);
+  // Its id, but not its path: never made by a patch, so fetched
+  assert.equal(returnsToPatch({ [PAGE_KEY]: "p1" }, "http://x/b/", page), false);
 });

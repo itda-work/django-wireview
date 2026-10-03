@@ -64,15 +64,16 @@ class Navigation:
 
     The three commands are not variations on one another:
 
-    - ``push`` is a boosted navigation. The client fetches the destination and,
-      **only if it stays inside the same live_session**, tells the server the new
-      params. Crossing the boundary makes it an ordinary page load instead (#58).
-    - ``replace`` only rewrites the address bar. Nothing is fetched and the body
-      is untouched, so it is for the same page under a different query.
-    - ``redirect`` navigates to another page: the destination is fetched and its
-      components are mounted fresh.
+    - ``push`` adds a history entry. On the page's own path -- another query or
+      fragment -- it is a patch (#169): nothing is fetched and the components
+      on the page hear ``params_changed``, keeping their state. Another path is
+      fetched and its components join fresh; leaving the live_session makes that
+      an ordinary page load (#58).
+    - ``replace`` is the same without the history entry.
+    - ``redirect`` navigates to another page, whatever the path: the destination
+      is fetched and its components are mounted fresh.
 
-    ``follow_push()`` and ``follow_redirect()`` reproduce the first and the third.
+    ``follow_push()`` reproduces the first two, ``follow_redirect()`` the third.
     """
 
     command: str
@@ -269,10 +270,14 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         component: "Component",
         wire: MockWireviewMeta,
         repo: MockRepository,
+        path: str | None = None,
     ):
         self._component = component
         self._wire = wire
         self._repo = repo
+        # The path of the page it is on, when the test said: what tells a patch
+        # from a navigation to another page (follow_push)
+        self._path = path
         self._subscriptions: set[str] = set()
 
     async def _update_subscriptions(self) -> None:
@@ -445,27 +450,44 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             AssertionError: nothing redirected, the destination is not routed, or
                 the destination's boundary refuses this user.
         """
+        nav = self._navigated("redirect", None, None)
+        return await self._mount_destination(
+            nav, "redirected", component_class, params, live_session, state, initial_state
+        )
+
+    async def _mount_destination(
+        self,
+        nav: "Navigation",
+        verb: str,
+        component_class: type["Component"],
+        params: dict[str, t.Any] | None,
+        live_session: t.Any,
+        state: dict[str, t.Any] | None,
+        initial_state: dict[str, t.Any],
+    ) -> "MountedComponent":
+        """Mount ``component_class`` on the page ``nav`` fetches, as the browser
+        would: the destination's boundary from the URLconf, refused when that
+        boundary refuses the user, the user and session carried over."""
         from .core.live_session import session_for_path
 
-        nav = self._navigated("redirect", None, None)
         if live_session is _UNSET:
             if nav.path:
                 try:
                     policy = session_for_path(nav.path)
                 except Resolver404:
                     raise AssertionError(
-                        f"{self._component._name} redirected to {nav.url!r}, which this project's URLconf "
+                        f"{self._component._name} {verb} to {nav.url!r}, which this project's URLconf "
                         f"does not serve. Pass live_session= to say which boundary the destination is in."
                     ) from None
             else:
-                # A query-only redirect stays on the page it was already on.
+                # A query-only URL stays on the page it was already on.
                 policy = self._repo.live_session
         else:
             policy = live_session
 
         if policy is not None and not await sync_to_async(policy.allows)(self._repo.user, self._repo.session):
             raise AssertionError(
-                f"live_session {policy.name!r} refuses this user, so the server would answer the redirect "
+                f"live_session {policy.name!r} refuses this user, so the server would answer the move "
                 f"to {nav.url!r} with a login redirect or a 403 -- not with {component_class.__name__}."
             )
 
@@ -475,64 +497,95 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             params=nav.params if params is None else params,
             session=self._repo.session,
             live_session=policy,
+            path=nav.path or self._path,
             state=state,
             **initial_state,
         )
 
-    async def follow_push(self) -> "Navigation":
-        """Apply the last push or replace to this component, as the client would.
+    @t.overload
+    async def follow_push(self, /) -> "Navigation": ...
 
-        The client updates the address bar and then tells the server the new
-        params, which is what runs ``params_changed``. Doing that by hand means a
-        test knows the wire protocol and still gets the repository's params
-        wrong; this does both.
+    @t.overload
+    async def follow_push(
+        self,
+        component_class: type["Component"],
+        /,
+        *,
+        params: dict[str, t.Any] | None = None,
+        live_session: t.Any = _UNSET,
+        state: dict[str, t.Any] | None = None,
+        **initial_state: t.Any,
+    ) -> "MountedComponent": ...
 
-        A push that leaves the live_session is not this at all -- it becomes a
-        full page load, and no ``params_changed`` is ever sent (#58). That case
-        raises rather than running the callback the server would not run.
+    async def follow_push(
+        self,
+        component_class: type["Component"] | None = None,
+        /,
+        *,
+        params: dict[str, t.Any] | None = None,
+        live_session: t.Any = _UNSET,
+        state: dict[str, t.Any] | None = None,
+        **initial_state: t.Any,
+    ) -> "Navigation | MountedComponent":
+        """Follow the last push or replace, as the browser would (#169).
 
-        Returns:
-            The navigation that was followed.
+        - **The page's own path** -- a query or fragment only, or the ``path``
+          the test mounted with: a patch. The client changes the address bar
+          and tells the server the new params, which runs ``params_changed`` on
+          this same instance; what events changed stays. Call it with no
+          arguments; it returns the :class:`Navigation`.
+        - **Another path**: the client fetches it and the page's components
+          join fresh, as after a redirect -- across a live_session boundary it
+          is a full page load. Pass the component the destination renders; it
+          is mounted there, as :meth:`follow_redirect` does, and returned.
+
+        Which of the two the browser does is the helper's to say, not the
+        test's: asking for the other one fails, and so does a push to a path
+        when the test did not say which path the component is on
+        (``mount(..., path=)``).
 
         Raises:
-            AssertionError: nothing pushed or replaced, or the push left the
-                boundary.
+            AssertionError: nothing pushed or replaced; the call does not match
+                what the browser would do; the destination is not routed or its
+                boundary refuses the user.
         """
-        from .core.live_session import session_for_path
-
         candidates = [n for n in self.navigations if n.command in ("push", "replace")]
         if not candidates:
             raise AssertionError(
                 f"{self._component._name} neither pushed nor replaced the URL.\n{self._navigation_report()}"
             )
         nav = candidates[-1]
+        verb = "pushed" if nav.command == "push" else "replaced the URL with"
 
-        if nav.command == "push" and nav.path:
-            try:
-                destination = session_for_path(nav.path)
-            except Resolver404:
+        if nav.path and self._path is None:
+            raise AssertionError(
+                f"{self._component._name} {verb} {nav.url!r}. On the page's own path that is a patch, on "
+                f"another one a fetch of a new page -- say which page the component is on: "
+                f"mount(..., path=...)."
+            )
+        if not nav.path or nav.path == self._path:
+            if component_class is not None:
                 raise AssertionError(
-                    f"{self._component._name} pushed to {nav.url!r}, which this project's URLconf does not "
-                    f"serve. A push fetches its destination, so the test needs a routed one."
-                ) from None
-            here = self._repo.live_session
-            if (here.name if here else "") != (destination.name if destination else ""):
-                left = repr(here.name) if here else "no boundary"
-                entered = repr(destination.name) if destination else "no boundary"
-                raise AssertionError(
-                    f"Pushing to {nav.url!r} leaves live_session {left} for {entered}, which is a full page "
-                    f"load: the client never sends params_changed. Mount the destination instead."
+                    f"{self._component._name} {verb} {nav.url!r}, on the page it is on: nothing is fetched "
+                    f"and this instance hears params_changed. Call follow_push() with no component."
                 )
+            params = nav.params
+            # The repository and every component's wire share one params dict, so the
+            # server updates it in place rather than rebinding. Same here.
+            self._repo.params.clear()
+            self._repo.params.update(params)
+            await self._component._handle_params(params, nav.url)
+            # The session subscribes after params_changed as after any event
+            await self._update_subscriptions()
+            return nav
 
-        params = nav.params
-        # The repository and every component's wire share one params dict, so the
-        # server updates it in place rather than rebinding. Same here.
-        self._repo.params.clear()
-        self._repo.params.update(params)
-        await self._component._handle_params(params, nav.url)
-        # The session subscribes after params_changed as after any event
-        await self._update_subscriptions()
-        return nav
+        if component_class is None:
+            raise AssertionError(
+                f"{self._component._name} {verb} {nav.url!r}, another path: the browser fetches it and "
+                f"its components mount fresh (a full page load if it leaves the live_session). "
+                f"Pass the component it renders: follow_push(Destination)."
+            )
+        return await self._mount_destination(nav, verb, component_class, params, live_session, state, initial_state)
 
     # Streams
 
@@ -655,6 +708,7 @@ async def mount(
     session: t.Any = None,
     session_key: str | None = None,
     live_session: t.Any = None,
+    path: str | None = None,
     state: dict[str, t.Any] | None = None,
     **initial_state: t.Any,
 ) -> MountedComponent:
@@ -676,6 +730,9 @@ async def mount(
             its name). Without it the component mounts on a page that declares
             none, which is what refuses a component that named its
             ``Meta.live_sessions``
+        path: The path of the page the component is on, like ``"/items/"``.
+            Only :meth:`MountedComponent.follow_push` reads it: a push to this
+            path is a patch, to another one a new page
         state: Initial field values, as a dict. The keyword arguments below say
             the same thing more briefly, but they share a namespace with the
             options above: a field called ``params`` can only be given here. So
@@ -731,7 +788,7 @@ async def mount(
         session=session_view,
         **initial_state,
     )
-    mounted = MountedComponent(component, wire, repo)
+    mounted = MountedComponent(component, wire, repo, path=urlsplit(path).path if path else None)
 
     # The mount hooks run before joined(), as they do on a real mount. A refusal
     # skips joined() and freezes the component, so ``render()`` here answers the
@@ -743,6 +800,11 @@ async def mount(
             result = component.joined()
             if hasattr(result, "__await__"):
                 await result
+        # Then, as the join does when the page's URL has a query, params_changed
+        # with it (WireviewSession.command_join). A helper that skipped it had a
+        # component mounted with params= miss what every page load runs.
+        if param_map:
+            await component._handle_params(dict(param_map), f"?{repo.get_query_string()}")
         await mounted._update_subscriptions()
     else:
         wire.freeze()
@@ -782,6 +844,7 @@ class ComponentTestCase:
         session: t.Any = None,
         session_key: str | None = None,
         live_session: t.Any = None,
+        path: str | None = None,
         state: dict[str, t.Any] | None = None,
         **initial_state: t.Any,
     ) -> MountedComponent:
@@ -797,6 +860,7 @@ class ComponentTestCase:
             session=session,
             session_key=session_key,
             live_session=live_session,
+            path=path,
             state=state,
             **initial_state,
         )

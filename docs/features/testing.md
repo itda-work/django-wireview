@@ -19,8 +19,10 @@ async def test_increment():
     assert view.component.count == 1
 ```
 
-`mount(component_class, /, *, user=None, params=None, session=None, session_key=None, live_session=None, state=None, **initial_state)`.
-옵션은 모두 키워드로 준다. 필드 초깃값은 키워드(`count=0`)나 `state={"count": 0}`로 준다. 옵션과 이름이 같은
+`mount(component_class, /, *, user=None, params=None, session=None, session_key=None, live_session=None, path=None, state=None, **initial_state)`.
+옵션은 모두 키워드로 준다. `params`를 주면 페이지 로드의 join처럼 `joined()` 뒤에 `params_changed()`가 그 값으로
+돈다. `path`는 컴포넌트가 놓인 페이지의 경로(`"/items/"`)이고, `follow_push()`가 patch인지 가린다(아래).
+필드 초깃값은 키워드(`count=0`)나 `state={"count": 0}`로 준다. 옵션과 이름이 같은
 필드(`params` 같은)는 `state=`로만 줄 수 있다 — 이후 릴리스가 옵션을 더해도 그 필드는 `state=`로 계속 줄 수 있다.
 같은 필드를 두 곳에 주면 `TypeError`다.
 `ComponentTestCase`를 상속하면 pytest·unittest 클래스 안에서 `self.mount(...)`으로 같은 것을 쓴다.
@@ -133,13 +135,20 @@ await view.follow_push()              # 클라이언트가 하는 나머지 절�
 assert view.component.page == 2
 ```
 
-`push_to()`·`replace_to()`는 절반만이다. 나머지 절반은 클라이언트가 주소창을 바꾸고 **새 params를
-서버에 알리는 것**이고, 그것이 `params_changed()`를 돌린다. 손으로 하면 테스트가 프로토콜을 알아야
-하고, 그러고도 저장소의 params는 옛것으로 남는다. `follow_push()`가 둘 다 한다.
+`push_to()`·`replace_to()`는 절반만이다. 나머지 절반은 브라우저가 한다. `follow_push()`는 브라우저와 같은
+판단으로 그 절반을 한다(#169).
 
-**경계를 넘는 push는 이것이 아니다.** 그 이동은 전체 페이지 로드가 되고 `params_changed`는 아예
-가지 않는다(#58). 그 경우 `follow_push()`는 콜백을 돌리는 대신 실패한다 — 대상 페이지를 새로
-마운트하라는 뜻이다.
+- **같은 경로**(`"?page=2"`처럼 쿼리나 조각만, 또는 `mount(..., path=)`로 준 경로와 같은 경로): patch다.
+  클라이언트가 주소창을 바꾸고 새 params를 서버에 알리면 **같은 인스턴스**의 `params_changed()`가 돈다.
+  인자 없이 부르고, 따라간 `Navigation`을 돌려준다. 이벤트로 바꾼 상태는 남는다.
+- **다른 경로**: 브라우저는 그 페이지를 가져오고 컴포넌트는 새로 join한다. 그 페이지가 그리는 컴포넌트를
+  넘긴다 — `landed = await view.follow_push(ProductDetail)`. `follow_redirect()`처럼 대상의 `live_session`을
+  URLconf에서 읽고, 그 경계가 사용자를 거절하면 실패한다. 경계를 넘는 이동은 브라우저에서 전체 로드지만,
+  새로 마운트된다는 점에서 결과는 같다.
+
+어느 쪽인지는 헬퍼가 정한다. 같은 경로에 컴포넌트를 넘기거나 다른 경로에 넘기지 않으면 실패하고, 경로가 있는
+목적지인데 `mount()`에 `path`가 없으면 판단할 수 없어 실패한다. 손으로 `params_changed()`를 부르면 테스트가
+프로토콜을 알아야 하고, 그러고도 저장소의 params는 옛것으로 남는다.
 
 `?page=2`처럼 쿼리만 있는 목적지도 그대로 쓸 수 있다. 세 내비게이션 메서드 모두 `?`나 `#`으로
 시작하는 문자열은 URL로 그대로 두고, 나머지는 Django의 `resolve_url`이 처리한다(뷰 이름, 모델,

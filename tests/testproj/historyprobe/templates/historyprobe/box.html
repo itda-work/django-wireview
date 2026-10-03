@@ -9,4 +9,7 @@
   <button data-testid="push-c" {% on "click" "push" tab="c" %}>push c</button>
   <button data-testid="replace-z" {% on "click" "replace" tab="z" %}>replace z</button>
   <button data-testid="push-other" {% on "click" "push_other" %}>push other</button>
+  <button data-testid="replace-other" {% on "click" "replace_other" %}>replace other</button>
+  <button data-testid="redirect-d" {% on "click" "redirect" tab="d" %}>redirect d</button>
+  {% live_component 'HistoryLeaf' id="leaf" %}
 </div>

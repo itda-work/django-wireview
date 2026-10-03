@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<div {% live_tag_header %}>
+  <span data-testid="leaf-count">{{ this.count }}</span>
+  <span data-testid="leaf-heard">{{ this.heard }}</span>
+  <button data-testid="leaf-bump" {% on "click" "bump" myself=True %}>bump</button>
+</div>

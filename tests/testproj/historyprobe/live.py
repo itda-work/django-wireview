@@ -1,15 +1,16 @@
-"""Back and Forward after the ways a page moves (#168).
+"""Back and Forward after the ways a page moves (#168, #169).
 
 tests/test_history_e2e.py drives it. ``tab`` follows the URL (``params_changed``),
-``count`` changes only through events, so after Back a test can tell what the
-URL brought back from what only the left page knew. ``rendered`` names the page
-render the component was built from: a fetch of the URL gives a new number, a
-cached copy the old one.
+``count`` changes only through events, so after a move a test can tell what the
+URL brought back from what only the page on screen knew. ``rendered`` names the
+page render the component was built from: a fetch of the URL gives a new number.
+``HistoryLeaf`` is the box's LiveComponent, whose ``count`` a patch must keep as
+well; it hears ``params_changed`` too (``heard``).
 """
 
 import itertools
 
-from wireview import Component
+from wireview import Component, LiveComponent
 
 _renders = itertools.count(1)
 
@@ -40,4 +41,24 @@ class HistoryBox(Component):
         await self.wire.replace_to(f"?tab={tab}")
 
     async def push_other(self, **_rest):
-        await self.wire.push_to("/historyprobe/other/")
+        await self.wire.push_to("/historyprobe/other/?tab=o")
+
+    async def replace_other(self, **_rest):
+        await self.wire.replace_to("/historyprobe/other/?tab=o")
+
+    async def redirect(self, tab: str = "a", **_rest):
+        await self.wire.redirect_to(f"?tab={tab}")
+
+
+class HistoryLeaf(LiveComponent):
+    class Meta:
+        template_name = "historyprobe/leaf.html"
+
+    count: int = 0
+    heard: str = ""
+
+    async def params_changed(self, params, uri):
+        self.heard = params.get("tab", "a")
+
+    async def bump(self, **_rest):
+        self.count += 1

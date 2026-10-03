@@ -328,8 +328,35 @@ class TestFollowingARedirect:
             await view.follow_redirect(Destination)
 
 
+class TestMountingWithParams:
+    """A page load with a query: the join runs params_changed after joined()
+    (WireviewSession.command_join), and so does mount() (#169)."""
+
+    @pytest.mark.asyncio
+    async def test_params_reach_params_changed(self):
+        view = await mount(Navigator, params={"page": "2"})
+        assert view.component.seen_params == {"page": "2"}
+        assert view.component.seen_uri == "?page=2"
+
+    @pytest.mark.asyncio
+    async def test_no_params_no_call(self):
+        """As the join: an empty query sends nothing."""
+        view = await mount(Navigator)
+        assert view.component.seen_uri == ""
+
+    @pytest.mark.asyncio
+    async def test_a_followed_redirect_hears_the_destinations_query(self):
+        view = await mount(Navigator)
+        await view.call("go_redirect", url="/livesession/public/?tab=open")
+
+        landed = await view.follow_redirect(Navigator)
+        assert landed.component.seen_params == {"tab": "open"}
+
+
 class TestFollowingAPush:
-    """The other half of a push: the client tells the server the new params."""
+    """The other half of a push, as the browser does it (#169): on the page's own
+    path a patch -- the same instance hears params_changed -- and on another path
+    a new page, whose components mount fresh."""
 
     @pytest.mark.asyncio
     async def test_it_runs_params_changed(self):
@@ -340,6 +367,16 @@ class TestFollowingAPush:
         assert nav.command == "push"
         assert view.component.seen_params == {"page": "2"}
         assert view.component.seen_uri == "?page=2"
+
+    @pytest.mark.asyncio
+    async def test_a_patch_keeps_what_events_changed(self):
+        """The browser keeps the instance; so does the helper."""
+        view = await mount(Navigator)
+        await view.call("go_push", url="?page=2")
+        view.component.count = 3
+
+        await view.follow_push()
+        assert view.component.count == 3
 
     @pytest.mark.asyncio
     async def test_it_updates_the_params_the_component_renders_from(self):
@@ -360,31 +397,102 @@ class TestFollowingAPush:
         assert view.component.seen_params == {"tab": "open"}
 
     @pytest.mark.asyncio
-    async def test_a_move_inside_the_boundary_is_followed(self):
-        view = await mount(Navigator, user=member(), live_session=MEMBERS)
-        await view.call("go_push", url="/livesession/members2/?tab=open")
+    async def test_a_push_to_the_pages_own_path_is_a_patch(self):
+        view = await mount(Navigator, user=member(), live_session=MEMBERS, path="/livesession/members/")
+        await view.call("go_push", url="/livesession/members/?tab=open")
 
         await view.follow_push()
         assert view.component.seen_params == {"tab": "open"}
 
     @pytest.mark.asyncio
-    async def test_leaving_the_boundary_is_not_a_push_to_follow(self):
-        """It becomes a full page load, and params_changed is never sent (#58)."""
+    async def test_a_path_needs_the_page_it_is_pushed_from(self):
+        """Patch or new page depends on where the component is; the helper does not guess."""
         view = await mount(Navigator, user=member(), live_session=MEMBERS)
-        await view.call("go_push", url="/livesession/public/")
+        await view.call("go_push", url="/livesession/members/?tab=open")
 
         with pytest.raises(AssertionError) as caught:
             await view.follow_push()
-        assert "full page load" in str(caught.value)
+        assert "path=" in str(caught.value)
         assert view.component.seen_params == {}
 
     @pytest.mark.asyncio
-    async def test_entering_a_boundary_is_not_one_either(self):
-        view = await mount(Navigator, user=member())
+    async def test_another_path_inside_the_boundary_mounts_the_destination(self):
+        view = await mount(Navigator, user=member(), live_session=MEMBERS, path="/livesession/members/")
+        await view.call("go_push", url="/livesession/members2/?tab=open")
+        view.component.count = 3
+
+        landed = await view.follow_push(Navigator)
+        assert landed is not view
+        assert landed.component.count == 0, "the page was fetched: event-only state is gone"
+        assert landed.component.wire.params == {"tab": "open"}
+        assert landed.component.wire.live_session.name == MEMBERS
+        assert view.component.seen_params == {}, "the old instance never hears the new params"
+
+    @pytest.mark.asyncio
+    async def test_the_destination_lands_on_its_own_path(self):
+        """Its next push is judged from the page it is on now."""
+        view = await mount(Navigator, user=member(), live_session=MEMBERS, path="/livesession/members/")
+        await view.call("go_push", url="/livesession/members2/")
+        landed = await view.follow_push(Navigator)
+
+        await landed.call("go_push", url="/livesession/members2/?tab=b")
+        await landed.follow_push()
+        assert landed.component.seen_params == {"tab": "b"}
+
+    @pytest.mark.asyncio
+    async def test_a_replace_to_another_path_mounts_the_destination(self):
+        view = await mount(Navigator, user=member(), live_session=MEMBERS, path="/livesession/members/")
+        await view.call("go_replace", url="/livesession/members2/")
+
+        landed = await view.follow_push(Destination)
+        assert isinstance(landed.component, Destination)
+
+    @pytest.mark.asyncio
+    async def test_another_path_without_the_destination_says_what_to_do(self):
+        view = await mount(Navigator, user=member(), live_session=MEMBERS, path="/livesession/members/")
+        await view.call("go_push", url="/livesession/members2/")
+
+        with pytest.raises(AssertionError) as caught:
+            await view.follow_push()
+        assert "follow_push(Destination)" in str(caught.value)
+        assert view.component.seen_params == {}
+
+    @pytest.mark.asyncio
+    async def test_a_patch_with_a_destination_is_refused(self):
+        """Asking for a new page where the browser keeps the old one would hide the difference."""
+        view = await mount(Navigator)
+        await view.call("go_push", url="?page=2")
+
+        with pytest.raises(AssertionError) as caught:
+            await view.follow_push(Navigator)
+        assert "params_changed" in str(caught.value)
+
+    @pytest.mark.asyncio
+    async def test_leaving_the_boundary_mounts_outside_it(self):
+        """A full page load (#58): the old instance hears nothing, the destination mounts without a boundary."""
+        view = await mount(Navigator, user=member(), live_session=MEMBERS, path="/livesession/members/")
+        await view.call("go_push", url="/livesession/public/")
+
+        landed = await view.follow_push(Destination)
+        assert landed.component.wire.live_session is None
+        assert view.component.seen_params == {}
+
+    @pytest.mark.asyncio
+    async def test_entering_a_boundary_that_refuses_the_user_is_refused(self):
+        view = await mount(Navigator, user=member(), path="/livesession/public/")
+        await view.call("go_push", url="/livesession/staff/")
+
+        with pytest.raises(AssertionError) as caught:
+            await view.follow_push(Destination)
+        assert STAFF in str(caught.value)
+
+    @pytest.mark.asyncio
+    async def test_entering_a_boundary_the_user_passes_mounts_inside_it(self):
+        view = await mount(Navigator, user=member(), path="/livesession/public/")
         await view.call("go_push", url="/livesession/members/")
 
-        with pytest.raises(AssertionError):
-            await view.follow_push()
+        landed = await view.follow_push(MembersOnly)
+        assert landed.component.wire.live_session.name == MEMBERS
 
     @pytest.mark.asyncio
     async def test_it_refuses_when_nothing_pushed(self):
