@@ -49,12 +49,18 @@ interface WireviewNavigatedDetail {
   previousUrl: string;
 }
 
-/** `wireview:navigation-failed`: a boosted form submission got no answer (docs/features/boost.md, #170). */
+/** `wireview:navigation-failed`: a boosted form submission put no page on screen (docs/features/boost.md, #170). */
 interface WireviewNavigationFailedDetail {
   /** The form's action. */
   url: string;
   /** The method it was sent with, upper case. */
   method: string;
+  /**
+   * False: no answer, the network failed, and the form may or may not have
+   * reached the server. True: the server took it and redirected to another
+   * origin, which a boosted request cannot follow.
+   */
+  answered: boolean;
 }
 
 interface DocumentEventMap {

@@ -125,6 +125,7 @@ UPGRADE_NOTE = {
     ),
     "`wireview:navigation-failed` on `document`": ("가져오기가 네트워크 오류로 실패하면", "그 이벤트를 듣는다"),
     "whose fetch fails on the network": ("가져오기가 네트워크 오류로 실패하면", "어긋났다"),
+    "is sent in `no-cors` mode": ("`no-cors` 모드로 보낸다", "`wire-boost`를 뺀다"),
 }
 
 DOCS_ONLY = "문서·저장소만 바뀌었고 라이브러리 동작은 같다"
@@ -135,6 +136,7 @@ NO_UPGRADE_NOTE = {
     "no longer says the layers' logs count": DOCS_ONLY,
     "Browser tests for what the documentation claims": "테스트만 늘었다",
     "IME is composing in": "고친 결함이다. 조합이 끊기던 화면이 끊기지 않을 뿐 할 일은 없다",
+    "the back/forward cache restores": "고친 결함이다. 어긋난 채 되살아나던 문서가 주소창의 페이지로 돌아온다",
 }
 
 PREVIOUS = "1.1.0"

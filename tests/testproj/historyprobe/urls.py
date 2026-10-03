@@ -17,6 +17,13 @@ def page(name):
 def post(request):
     # Post/redirect/get, as a boosted form should answer
     POSTS.append(request.method)
+    if "away" in request.GET:
+        # Off the site, as to a payment page or a sign-in: the other name of
+        # the test server is another origin
+        host = request.get_host()
+        swap = ("127.0.0.1", "localhost") if "127.0.0.1" in host else ("localhost", "127.0.0.1")
+        other = host.replace(*swap)
+        return redirect(f"http://{other}/historyprobe/other/?tab=away")
     return redirect("/historyprobe/other/?tab=p")
 
 

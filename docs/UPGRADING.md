@@ -117,6 +117,10 @@ dependencies = ["django-wireview>=1.1,<2"]
 - **가져오기가 네트워크 오류로 실패하면 그 주소를 boost 없이 연다.** 1.1에서는 처리되지 않은 rejection이 나고
   주소창과 화면이 어긋났다. GET이 아닌 폼은 다시 보내지 않고 `wireview:navigation-failed`를 보낸다. 오프라인에서
   보낸 폼을 사용자에게 알리려면 그 이벤트를 듣는다([boost](./features/boost.md#가져오기가-실패하면)).
+- **boost 폼(GET이 아닌 것)은 `no-cors` 모드로 보낸다.** 같은 사이트 안의 리다이렉트는 전처럼 따라가 그린다.
+  다른 출처로 가는 리다이렉트(결제, SSO)는 따라갈 수 없다 — 1.1은 처리되지 않은 rejection으로 멈췄고, 이제는
+  `wireview:navigation-failed`가 `answered: true`로 온다. 서버는 폼을 이미 처리했다. 그런 폼에서는 `wire-boost`를 뺀다.
+  boost는 폼에 헤더를 더하지 않으므로 서버가 받는 요청은 같다(`Sec-Fetch-Mode`만 `no-cors`).
 
 ## 1.0에서 1.1로
 

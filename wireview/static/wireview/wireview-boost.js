@@ -7,6 +7,9 @@ import { Idiomorph } from "idiomorph";
 import { NavigationGate, crossesBoundary, readSessionName } from "./live-session.mjs";
 import {
   NAVIGATION_FAILED_EVENT,
+  arrivesOnRestore,
+  fetchOutcome,
+  formRequest,
   isFragmentLink,
   isSameUrl,
   newPageId,
@@ -458,10 +461,12 @@ class HistoryCache {
    * An answer that did not redirect (a form re-rendered with its errors) stays
    * on the current URL: reloading it must not send the form again.
    *
-   * If the request fails on the way (the network, not an error page), the
-   * form is not sent again: it may have reached the server. The address bar
-   * has not moved and the page stays, as it was, and `wireview:navigation-failed`
-   * tells the page (#170).
+   * If no page comes of it, the form is not sent again and the page stays as
+   * it was, the address bar unmoved (#170). `wireview:navigation-failed` tells
+   * the page which way: the network failed (`answered: false` -- the form may
+   * have reached the server), or the server took it and redirected to another
+   * origin (`answered: true`), whose address a boosted request cannot see
+   * (`formRequest`). A form that redirects off the site is not one to boost.
    *
    * @param {string} action
    * @param {string} method - lower case
@@ -486,12 +491,16 @@ class HistoryCache {
       },
       document.location.href
     );
-    return this.replaceContentFromUrl(action, { method: method.toUpperCase(), body: data }, "push", () => {
+    const verb = method.toUpperCase();
+    return this.replaceContentFromUrl(action, formRequest(verb, data), "push", (outcome) => {
       // Still the page that sent it, under its own entry
       page.id = left;
       replaceEntry(entry, document.location.href);
+      if (outcome === "aborted") return;
       document.dispatchEvent(
-        new CustomEvent(NAVIGATION_FAILED_EVENT, { detail: { url: action, method: method.toUpperCase() } })
+        new CustomEvent(NAVIGATION_FAILED_EVENT, {
+          detail: { url: action, method: verb, answered: outcome === "elsewhere" },
+        })
       );
     });
   }
@@ -526,10 +535,13 @@ class HistoryCache {
    * @param {"current"|"push"} [entry] - "current": the caller made the history
    *   entry, and a redirect only corrects its URL; "push": the entry is made
    *   here, for where the response ended, when it moved
-   * @param {() => void} [failed] - what a request that never got an answer
-   *   does instead; by default the browser loads `url` itself (#170)
+   * @param {(outcome: "elsewhere" | "aborted" | "unanswered") => void} [failed] -
+   *   what a request that brought no page to show does instead
+   *   (navigation.mjs `fetchOutcome`); by default the browser loads `url`
+   *   itself, unless the request was stopped (#170)
    * @returns {Promise<boolean>} False when the boundary was crossed or the
-   *   request failed, and the browser is doing an ordinary page load instead.
+   *   request brought no page, and the browser is doing an ordinary page load
+   *   instead -- or nothing, for a stopped one.
    */
   static async replaceContentFromUrl(url, init = undefined, entry = "current", failed = undefined) {
     // The caller began the navigation; this reads the generation rather than
@@ -537,24 +549,36 @@ class HistoryCache {
     // navigation as the fetch that validates it.
     const token = navGate.token;
     let response;
-    let content;
+    let content = "";
+    /** @type {unknown} */
+    let error;
     try {
       response = await fetch(url, init);
-      content = await response.text();
-    } catch (error) {
-      // The network, not the server: an answer -- a 404, a 500 -- is a page,
-      // and shown under its URL like any other. Without one the address bar
-      // names a page the screen does not show. A later navigation has it now.
+      if (fetchOutcome({ response }) === "page") content = await response.text();
+    } catch (e) {
+      error = e;
+    }
+    const outcome = fetchOutcome({ response, error });
+    if (outcome !== "page") {
+      // An answer -- a 404, a 500 -- is a page, and shown under its URL like
+      // any other. Without one the address bar names a page the screen does
+      // not show. A later navigation has it now: the one superseded here
+      // must not drag the page back to where it was going.
       if (!navGate.accepts(token)) return false;
-      console.warn("wireview: could not fetch %s; loading it without boost", url, error);
       // Nothing queued for this navigation paints or joins any more
       navGate.abandon();
+      if (outcome === "elsewhere") {
+        console.warn("wireview: %s redirected to another origin, which a boosted form cannot follow", url);
+      } else if (outcome === "unanswered") {
+        console.warn("wireview: could not fetch %s; loading it without boost", url, error);
+      }
       if (failed) {
-        failed();
-      } else {
+        failed(outcome);
+      } else if (outcome !== "aborted") {
         // The entry is the navigation's already (a push made it, a popstate
         // returned to it): the browser loads it there, and shows what went
-        // wrong under the URL it went wrong for.
+        // wrong under the URL it went wrong for -- or follows the redirect
+        // to another origin a `cors` fetch could not.
         document.location.replace(url);
       }
       return false;
@@ -642,18 +666,25 @@ class HistoryCache {
   }
 }
 
-window.addEventListener("popstate", (event) => {
+/**
+ * The page arrives at the history entry the address bar names: a popstate, or
+ * a document the back/forward cache restored (`pageshow`).
+ * @param {any} state - the entry's
+ * @param {{restored?: boolean}} [options] - a restored document: whatever it
+ *   showed when it froze, it arrives, even under the same URL
+ */
+function arrive(state, { restored = false } = {}) {
   const from = here;
   here = document.location.href;
   // Only the fragment moved: a jump inside the document, the browser's own --
   // a fragment link's new entry, or Back from it. Nothing to fetch, no params
   // to tell, as Phoenix ignores such a popstate (#170). The entry needs no
   // stamp of its own: a patch away from it stamps it first.
-  if (onlyFragmentMoved(from, here)) return;
+  if (!restored && onlyFragmentMoved(from, here)) return;
   // An entry the page on screen made: it has what it needs, and only the
   // params changed. Before the boundary check, which a page cannot fail with
   // itself.
-  if (returnsToPatch(event.state, document.location.href, page)) {
+  if (returnsToPatch(state, document.location.href, page)) {
     navGate.begin();
     navEvent.sendPatched();
     return;
@@ -661,7 +692,7 @@ window.addEventListener("popstate", (event) => {
   // The cached body is morphed in a requestAnimationFrame while the fetch below
   // is still in flight, so the boundary has to be settled before the morph is
   // even scheduled: by the time the fetch answers, the cached DOM is on screen.
-  if (event.state?.content !== undefined && crossesBoundary(readSessionName(document), event.state.session)) {
+  if (state?.content !== undefined && crossesBoundary(readSessionName(document), state.session)) {
     // Abandon before handing over: `reload()` does not stop the JavaScript that
     // is already running, so a fetch still in flight from an earlier navigation
     // would otherwise resolve and morph -- and join -- while the browser is
@@ -672,14 +703,27 @@ window.addEventListener("popstate", (event) => {
   }
   navGate.begin();
   leavePage();
-  if (event.state?.content !== undefined) {
+  if (state?.content !== undefined) {
     // The entry's own name matched, but that was true when it was captured; the
     // fetch below may still find the URL has moved. Showing the cache meanwhile
     // is the point of the cache, and the fetch bumps the generation, so a
     // refused destination drops this paint instead of flashing it.
-    replaceBodyContent(event.state.content, event.state.scrollY, false);
+    replaceBodyContent(state.content, state.scrollY, false);
   }
   HistoryCache.replaceContentFromUrl(document.location.href);
+}
+
+window.addEventListener("popstate", (event) => arrive(event.state));
+
+// A document the back/forward cache restored froze with whatever it had: a
+// navigation that handed over to the browser left it with no page id and an
+// address bar it never reached (navigation.mjs arrivesOnRestore, #170). A
+// popstate that follows the restore finds `here` already moved, and does
+// nothing more.
+window.addEventListener("pageshow", (event) => {
+  if (arrivesOnRestore(event.persisted, page, here, document.location.href)) {
+    arrive(history.state, { restored: true });
+  }
 });
 
 /**

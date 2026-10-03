@@ -26,6 +26,14 @@
       {% csrf_token %}
       <button type="submit" data-testid="post-send">post</button>
     </form>
+    {# Its view redirects to another origin (#170) #}
+    <form method="post"
+          action="/historyprobe/post/?away=1"
+          wire-boost
+          data-testid="away-form">
+      {% csrf_token %}
+      <button type="submit" data-testid="away-send">away</button>
+    </form>
     {% component 'HistoryDock' %}
     {% if name == "box" %}
       {% component 'HistoryTray' %}

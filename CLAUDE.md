@@ -107,7 +107,9 @@ wireview/
                            loading.mjs (로딩 표시를 어느 응답이 끝내는가. ref로 짝짓는다),
                            navigation.mjs (boost 이동이 끝났음을 누구에게 알리는가: 훅의 navigated()와 wireview:navigated.
                            push_to·replace_to·popstate가 patch인가: 같은 경로, history.state의 페이지 표식(wireviewPage), #169.
-                           같은 URL인가(기록 항목을 만들지 않는다), 조각만 다른가(브라우저에 맡긴다), #170),
+                           같은 URL인가(기록 항목을 만들지 않는다), 조각만 다른가(브라우저에 맡긴다), #170.
+                           가져오기가 무엇으로 끝났나(fetchOutcome: 페이지·다른 출처 리다이렉트·중단·무응답 — boost 폼은 no-cors로 보내 가른다),
+                           bfcache가 되살린 문서가 주소창에 다시 도착해야 하나(arrivesOnRestore)),
                            reconnect.mjs (재연결 백오프를 헤더 메타에서 읽는다. WIREVIEW RECONNECT_*),
                            uploads.mjs (업로드 manager의 수명. 인스턴스가 끝나면 폐기하고, 렌더의 instances가 알린 인스턴스 번호와
                            같은 config만 받는다. 끝난 인스턴스의 upload_op는 세션이 먼저 버린다.
@@ -190,7 +192,7 @@ tests/
                            imeprobe/ 는 한글 조합 중에 오는 렌더(자기 debounce·브로드캐스트·서버가 바꾼 칸 값)를 CDP IME로 보는 E2E(test_ime_e2e.py)의 픽스처,
                            historyprobe/ 는 push_to·replace_to의 patch와 이동, boost 이동·새로고침 뒤 뒤로·앞으로 가기, follow_push()와 브라우저의 일치,
                            이동의 params를 누가 듣는가(HEARD, 모든 페이지의 sticky HistoryDock과 box 페이지에만 있는 HistoryTray), 같은 URL로의 push,
-                           조각 링크, 네트워크 오류로 실패한 가져오기(boost 폼 포함, post/ 는 받은 POST를 센다)를 보는 E2E(test_history_e2e.py)의 픽스처(members/ 는 ls-members 경계 안),
+                           조각 링크, 네트워크 오류로 실패한 가져오기(boost 폼 포함, post/ 는 받은 POST를 센다. ?away=1 은 다른 출처로 리다이렉트한다)를 보는 E2E(test_history_e2e.py)의 픽스처(members/ 는 ls-members 경계 안),
                            lossprobe/ 는 capacity를 넘는 브로드캐스트가 레이어마다 어떻게 버려지는지 보는 E2E(test_broadcast_loss_e2e.py)의 픽스처,
                            jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,
                            formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처,

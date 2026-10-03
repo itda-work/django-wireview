@@ -745,7 +745,7 @@ def test_a_failed_form_post_is_not_sent_again(box, traffic):
     by(page, "post-send").click()
     page.wait_for_function("() => window.__failed !== null", timeout=WAIT_TIMEOUT * 1000)
     detail = page.evaluate("window.__failed")
-    assert detail == {"url": urljoin(page.url, "/historyprobe/post/"), "method": "POST"}
+    assert detail == {"url": urljoin(page.url, "/historyprobe/post/"), "method": "POST", "answered": False}
     assert failed and POSTS == [], "the form may have reached the server: it is not sent again"
     at(page, "/historyprobe/")
     assert errors == []
@@ -765,6 +765,93 @@ def test_a_failed_form_post_is_not_sent_again(box, traffic):
     at(page, "/historyprobe/other/?tab=p")
     expect_text(by(page, "page"), "other")
     assert POSTS == ["POST"]
+
+
+def test_a_form_post_redirected_to_another_origin_is_answered_and_not_sent_again(box):
+    # The server took the form and sent the browser off the site -- a payment
+    # page, a sign-in. A `cors` fetch made a network error of that, and the
+    # page heard "no answer" for a form the server had handled (#170).
+    from testproj.historyprobe.urls import POSTS
+
+    page = box
+    POSTS.clear()
+    errors = page_errors(page)
+    page.evaluate(
+        "window.__failed = null;"
+        "document.addEventListener('wireview:navigation-failed', (e) => { window.__failed = e.detail; })"
+    )
+
+    by(page, "away-send").click()
+    page.wait_for_function("() => window.__failed !== null", timeout=WAIT_TIMEOUT * 1000)
+
+    detail = page.evaluate("window.__failed")
+    assert detail == {"url": urljoin(page.url, "/historyprobe/post/?away=1"), "method": "POST", "answered": True}
+    assert POSTS == ["POST"], "sent once, and not again"
+    at(page, "/historyprobe/")
+    assert page.evaluate("window.__samePage === true"), "the page stays"
+    assert errors == []
+
+    # A redirect inside the site still lands as a boosted page
+    by(page, "post-send").click()
+    at(page, "/historyprobe/other/?tab=p")
+    expect_text(by(page, "page"), "other")
+    assert page.evaluate("window.__samePage === true")
+    assert POSTS == ["POST", "POST"]
+
+
+def test_a_navigation_overtaken_by_another_does_not_fail_into_it(box):
+    # A slow navigation, a second one that lands, and then the first one's
+    # fetch fails: the second one's page is the one on screen, and the first
+    # must not drag the browser to its own URL (navGate, #170)
+    page = box
+    errors = page_errors(page)
+
+    def abort_a(route) -> None:
+        if route.request.resource_type == "fetch" and route.request.url.endswith("/historyprobe/other/"):
+            route.abort()
+        else:
+            route.continue_()
+
+    page.route("**/historyprobe/**", abort_a)
+    # A's fetch waits in the page until the test lets it go, and then the route
+    # fails it. What settled and what boost warned of are recorded in the page:
+    # the rejection runs boost's catch in the same microtask checkpoint.
+    page.evaluate(
+        """() => {
+          window.__settled = [];
+          window.__warned = [];
+          const fetch = window.fetch;
+          window.fetch = (url, init) => {
+            const go = () => {
+              const answer = fetch(url, init);
+              answer.catch(() => window.__settled.push(String(url)));
+              return answer;
+            };
+            if (String(url).endsWith("/historyprobe/other/") && !window.__releaseA) {
+              return new Promise((resolve) => { window.__releaseA = () => resolve(go()); });
+            }
+            return go();
+          };
+          const warn = console.warn;
+          console.warn = (...args) => { window.__warned.push(args.map(String).join(" ")); warn(...args); };
+        }"""
+    )
+
+    by(page, "to-other").click()  # A
+    page.wait_for_function("() => window.__releaseA !== undefined", timeout=WAIT_TIMEOUT * 1000)
+    by(page, "get-send").click()  # B
+    at(page, "/historyprobe/other/?tab=g")
+    screen(page, page_name="other", tab="g", count=0)
+
+    page.evaluate("window.__releaseA()")
+    page.wait_for_function("() => window.__settled.length > 0", timeout=WAIT_TIMEOUT * 1000)
+
+    assert page.evaluate("window.__warned") == [], "the overtaken navigation is not treated as failed"
+    at(page, "/historyprobe/other/?tab=g")
+    screen(page, page_name="other", tab="g", count=0)
+    assert page.evaluate("window.__samePage === true")
+    assert errors == []
+
 
 #: The page's socket, rewritten so every render that announces the server's
 #: protocol version says 6 -- an older server, behind a load balancer that
@@ -812,3 +899,40 @@ def test_a_navigation_tells_an_older_server_with_params_changed(page, server, he
     assert "params_changed" in sent
     # Where navigated would go: after the leaves, before the joins
     assert sent.index("params_changed") < sent.index("join")
+
+
+def test_a_page_restored_mid_navigation_arrives_at_the_address_bar(box):
+    # The back/forward cache restores a document as it froze. One that froze
+    # mid-navigation -- its fetch handed over to the browser, or a link away
+    # while it was in flight -- has no page id and shows a page the address
+    # bar does not name. Chromium never restores a live page (an open
+    # WebSocket keeps it out: notRestoredReasons "websocket"), so the restore
+    # is stood in for: a navigation whose fetch never answers, and the
+    # pageshow a restore fires (#170).
+    page = box
+    errors = page_errors(page)
+    page.evaluate(
+        """() => {
+          const fetch = window.fetch;
+          let held = false;
+          window.fetch = (url, init) => {
+            if (String(url).includes("/historyprobe/other/") && !held) {
+              held = true;
+              window.__held = true;
+              return new Promise(() => {});
+            }
+            return fetch(url, init);
+          };
+        }"""
+    )
+    by(page, "push-other").click()
+    page.wait_for_function("() => window.__held === true", timeout=WAIT_TIMEOUT * 1000)
+    at(page, "/historyprobe/other/?tab=o")
+    expect_text(by(page, "page"), "box")
+
+    page.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))")
+
+    screen(page, page_name="other", tab="o", count=0)
+    at(page, "/historyprobe/other/?tab=o")
+    assert page.evaluate("window.__samePage === true")
+    assert errors == []

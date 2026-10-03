@@ -68,6 +68,11 @@ The django-reactor era changelog (2.x) is preserved in
   same path and query, with a `#`) and `wireview.visit("#top")` to the browser, which scrolls and
   makes the history entry; Back and Forward between such entries fetch nothing and tell the
   components nothing, as Phoenix ignores a popstate that moved only the hash (#170).
+- **Silently changed:** a boosted form that is not a GET is sent in `no-cors` mode. A redirect
+  inside the site is followed and drawn as before; one to another origin comes back as an answer the
+  page cannot open, where a `cors` fetch made a network error of it and 1.1 stopped on an unhandled
+  rejection. Boost adds no header to the request, so the server sees the same request, with
+  `Sec-Fetch-Mode: no-cors` (#170).
 
 ### Deprecated
 
@@ -81,9 +86,12 @@ The django-reactor era changelog (2.x) is preserved in
   process, another worker), Hangul IME compositions under a render (the field's own debounced
   event and someone else's broadcast), Back and Forward after `push_to`, `replace_to` and boosted
   moves, and broadcasts past the channel layer's capacity on each layer (#168).
-- `wireview:navigation-failed` on `document`, `detail` `{url, method}`: a boosted non-GET form
-  submission got no answer from the network. The form is not sent again (it may have reached the
-  server) and the page stays (#170).
+- `wireview:navigation-failed` on `document`, `detail` `{url, method, answered}`: a boosted non-GET
+  form submission put no page on screen. The form is not sent again and the page stays. `answered`
+  is false when the network failed (the form may have reached the server) and true when the server
+  took it and redirected to another origin -- a payment page, a sign-in -- whose address a boosted
+  request cannot see; such a form is not one to boost. A request that was stopped (`AbortError`)
+  dispatches nothing (#170).
 - `mount()` takes `path=`, the path of the page the component is on, and `follow_push()` takes the
   component a push to another path lands on (#169). A component with a field called `path` sets
   it with `state={"path": ...}`: `path=` without it in `state=` raises `TypeError`, where 1.1 set
@@ -95,7 +103,14 @@ The django-reactor era changelog (2.x) is preserved in
   leaves an unhandled rejection with the address bar on the new URL and the old page on screen.
   A link, `push_to`, `replace_to`, `redirect_to`, Back or Forward, or a GET form loads that URL
   without boost, so the browser shows what went wrong under the URL it went wrong for; a non-GET
-  form stays and dispatches `wireview:navigation-failed` (#170).
+  form stays and dispatches `wireview:navigation-failed` (#170). A navigation another one overtook
+  is not taken for failed when its fetch fails late, and a stopped request (`AbortError`) is not a
+  failure. In Chromium `window.stop()` rejects the fetch with the same `TypeError` a dropped
+  connection does, so it still loads the URL without boost.
+- A document the back/forward cache restores after it froze mid-navigation (its fetch handed over
+  to the browser, or a link away while one was in flight) arrives at the address bar as a popstate
+  there would, instead of keeping a page the address bar does not name and no page id. Chromium
+  keeps live pages out of that cache (an open WebSocket); WebKit may restore them (#170).
 - A render no longer writes the value of a field an IME is composing in, even when the field shows
   exactly what the server last rendered and the server now renders another value (a handler that
   normalizes it, a shared field). Writing it ended the composition, and the next jamo started a new

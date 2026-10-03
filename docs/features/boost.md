@@ -32,15 +32,30 @@ history에 항목을 남긴다. htmx의 `hx-boost`, Turbo Drive와 같은 생각
 보통의 페이지 로드로 다시 연다 — 주소창은 이미 그 주소이고, 브라우저가 무엇이 잘못됐는지 그 주소 아래 보여 준다.
 1.1까지는 처리되지 않은 rejection이 나고 주소창만 새 주소인 채 화면은 옛 페이지로 남았다.
 
-POST 같은 GET이 아닌 폼은 **다시 보내지 않는다.** 요청이 서버에 닿았는지 알 수 없기 때문이다. 주소창은 움직이지
-않았으므로 페이지가 그대로 남고, `document`에 `wireview:navigation-failed` 이벤트가 간다. `detail`은
-`{ url, method }`다. 사용자에게 알리려면 이것을 듣는다.
+POST 같은 GET이 아닌 폼은 **다시 보내지 않는다.** 주소창은 움직이지 않았으므로 페이지가 그대로 남고, `document`에
+`wireview:navigation-failed` 이벤트가 간다. `detail`은 `{ url, method, answered }`다.
+
+- `answered: false` — 답이 오지 않았다(네트워크). 요청이 서버에 닿았는지는 알 수 없다.
+- `answered: true` — 서버가 폼을 받아 **다른 출처로 리다이렉트했다**(결제 페이지, SSO). 폼은 처리됐다. boost가
+  보낸 요청은 그 주소를 볼 수 없어 따라가지 못한다. 사이트 밖으로 리다이렉트하는 폼에는 `wire-boost`를 달지 않는다.
 
 ```javascript
 document.addEventListener("wireview:navigation-failed", (e) => {
-  alert(`보내지 못했습니다: ${e.detail.url}`);
+  if (!e.detail.answered) alert(`보내지 못했습니다: ${e.detail.url}`);
 });
 ```
+
+폼은 `no-cors` 모드로 보낸다. 그래야 같은 출처 안의 리다이렉트는 평소처럼 따라가 읽고(post/redirect/get이 그대로
+그려진다), 다른 출처로 가는 리다이렉트는 네트워크 오류가 아니라 열어 볼 수 없는 응답으로 돌아와 둘을 가를 수 있다.
+`redirect: "manual"`은 같은 출처 리다이렉트의 주소까지 숨긴다. 링크·GET 폼처럼 다시 가져와도 되는 이동이 다른
+출처로 리다이렉트되면, 위처럼 브라우저가 그 주소를 다시 열어 리다이렉트를 따라간다.
+
+중단된 요청(`AbortError`)은 실패가 아니다. 아무것도 하지 않는다. 다른 이동이 앞지른 이동의 가져오기가 늦게
+실패해도 아무것도 하지 않는다 — 화면은 뒤의 이동 것이다. 다만 Chromium의 `window.stop()`은 끊긴 연결과 같은
+`TypeError`로 가져오기를 끝내므로 구별되지 않고, 그 주소를 boost 없이 연다.
+
+뒤로·앞으로 가기 캐시(bfcache)가 이동 도중에 얼어붙은 문서를 되살리면, 그 문서는 주소창이 가리키는 항목에 다시
+도착한다(그 항목으로 가는 popstate처럼). Chromium은 열린 WebSocket이 있는 페이지를 그 캐시에 넣지 않는다.
 
 ## 폼은 스스로 청한다 (`wire-boost`)
 

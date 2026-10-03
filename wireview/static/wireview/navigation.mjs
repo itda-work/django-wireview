@@ -19,9 +19,12 @@
 export const NAVIGATED_EVENT = "wireview:navigated";
 
 /**
- * The event dispatched on `document` when a boosted form submission got no
- * answer -- the network failed, not the server (#170). The form is not sent
- * again, and the page stays. `detail` is `{url, method}`.
+ * The event dispatched on `document` when a boosted form submission put no
+ * page on screen (#170). The form is not sent again, and the page stays.
+ * `detail` is `{url, method, answered}`: `answered` false -- the network
+ * failed, not the server, and the form may or may not have reached it; true --
+ * the server took it and redirected to another origin, which a boosted form
+ * cannot follow (`fetchOutcome`).
  */
 export const NAVIGATION_FAILED_EVENT = "wireview:navigation-failed";
 
@@ -217,4 +220,65 @@ export function onlyFragmentMoved(from, to) {
 export function isFragmentLink(from, to, base = from) {
   const there = new URL(to, base).href;
   return there.includes("#") && onlyFragmentMoved(from, there);
+}
+
+/**
+ * The request a boosted form submission sends (#170). A GET goes as a link
+ * does; anything else is sent once and never again, so it goes in `no-cors`
+ * mode: a redirect inside this origin is followed and read as with any fetch
+ * -- post/redirect/get lands as before -- while one to another origin comes
+ * back as an opaque response instead of the network error a `cors` fetch
+ * makes of it. That is what tells "the server answered" from "nothing did".
+ * (`redirect: "manual"` would hide where a same-origin redirect went too.) A
+ * form's method is GET or POST, both allowed in `no-cors`, and boost adds no
+ * header to it.
+ * @param {string} method - upper case, not GET
+ * @param {FormData} body
+ * @returns {RequestInit}
+ */
+export function formRequest(method, body) {
+  return { method, body, mode: "no-cors" };
+}
+
+/**
+ * What a boosted navigation's fetch came to (#170).
+ * - "page": an answer to show -- a 404 or a 500 included, under its URL
+ * - "elsewhere": the server answered with a redirect to another origin, which
+ *   only a `no-cors` request (`formRequest`) sees as such; its target is
+ *   hidden from the page
+ * - "aborted": the request was stopped (an `AbortError`), not failed: the page
+ *   is going somewhere else, or the user stopped it. Nothing to do.
+ * - "unanswered": the network, not the server -- no answer at all. A
+ *   Chromium `window.stop()` lands here too: it rejects the fetch with the
+ *   same `TypeError` a dropped connection does, and the two cannot be told
+ *   apart.
+ * @param {{response?: {type: string}, error?: unknown}} result - what the
+ *   fetch resolved to, or what it rejected with
+ * @returns {"page" | "elsewhere" | "aborted" | "unanswered"}
+ */
+export function fetchOutcome({ response, error }) {
+  if (error !== undefined || response === undefined) {
+    return /** @type {{name?: string} | null} */ (error)?.name === "AbortError" ? "aborted" : "unanswered";
+  }
+  return response.type === "opaque" || response.type === "opaqueredirect" ? "elsewhere" : "page";
+}
+
+/**
+ * Whether a document the back/forward cache restored has to arrive at the
+ * address bar again, as a popstate there would (#170). It froze as it was:
+ * mid-navigation -- a fetch that handed over to the browser, a link away while
+ * one was in flight -- the page on screen is not the one the address bar names
+ * and `page.id` is null, and the navigation it waited for is gone. Or the
+ * traversal moved past the entry it last showed. Only when nothing but the
+ * fragment moved and the page is its own is there nothing to do. Chromium
+ * never restores a live page (an open WebSocket keeps it out of the cache);
+ * WebKit closes the socket and may.
+ * @param {boolean} persisted - `PageTransitionEvent.persisted`
+ * @param {PageOnScreen} page
+ * @param {string} here - the address bar as of the last move the page saw
+ * @param {string} at - the address bar now
+ * @returns {boolean}
+ */
+export function arrivesOnRestore(persisted, page, here, at) {
+  return persisted && (page.id === null || !onlyFragmentMoved(here, at));
 }

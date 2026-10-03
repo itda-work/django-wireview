@@ -6,7 +6,10 @@ import {
   NAVIGATION_FAILED_EVENT,
   NavigationLog,
   PAGE_KEY,
+  arrivesOnRestore,
   carriedAcross,
+  fetchOutcome,
+  formRequest,
   isFragmentLink,
   isPatch,
   isSameUrl,
@@ -151,4 +154,56 @@ test("a link to a fragment of this document is the browser's; one to the page it
 
 test("the failure event has the documented name (#170)", () => {
   assert.equal(NAVIGATION_FAILED_EVENT, "wireview:navigation-failed");
+});
+
+// --- what a boosted fetch came to (#170) ---
+
+test("a form is sent in no-cors mode, so a redirect off the site is an answer and not a network error", () => {
+  const body = new FormData();
+  assert.deepEqual(formRequest("POST", body), { method: "POST", body, mode: "no-cors" });
+});
+
+test("an answer is a page, an error page included", () => {
+  assert.equal(fetchOutcome({ response: { type: "basic" } }), "page");
+  assert.equal(fetchOutcome({ response: { type: "cors" } }), "page");
+});
+
+test("an opaque answer is a redirect to another origin, whose address the page cannot see", () => {
+  assert.equal(fetchOutcome({ response: { type: "opaque" } }), "elsewhere");
+  assert.equal(fetchOutcome({ response: { type: "opaqueredirect" } }), "elsewhere");
+});
+
+test("a stopped request is not a failed one", () => {
+  const aborted = Object.assign(new Error("The user aborted a request."), { name: "AbortError" });
+  assert.equal(fetchOutcome({ error: aborted }), "aborted");
+});
+
+test("no answer at all is the network's failure", () => {
+  assert.equal(fetchOutcome({ error: new TypeError("Failed to fetch") }), "unanswered");
+  // The body failed on the way: an answer that never arrived
+  assert.equal(fetchOutcome({ response: { type: "basic" }, error: new TypeError("network error") }), "unanswered");
+  assert.equal(fetchOutcome({ error: null }), "unanswered");
+});
+
+// --- a document the back/forward cache restored (#170) ---
+
+test("a page restored mid-navigation arrives at the address bar again, even under the same URL", () => {
+  const frozen = { id: null, url: "http://x/a/" };
+  assert.equal(arrivesOnRestore(true, frozen, "http://x/b/", "http://x/a/"), true);
+  assert.equal(arrivesOnRestore(true, frozen, "http://x/a/", "http://x/a/"), true);
+});
+
+test("a page restored at another entry than it showed arrives there", () => {
+  const own = { id: "p1", url: "http://x/a/" };
+  assert.equal(arrivesOnRestore(true, own, "http://x/a/?tab=x", "http://x/a/?tab=y"), true);
+});
+
+test("a page restored as it was, at its own entry, has nothing to do", () => {
+  const own = { id: "p1", url: "http://x/a/" };
+  assert.equal(arrivesOnRestore(true, own, "http://x/a/", "http://x/a/"), false);
+  assert.equal(arrivesOnRestore(true, own, "http://x/a/", "http://x/a/#section"), false);
+});
+
+test("a page that was loaded, not restored, has nothing to do", () => {
+  assert.equal(arrivesOnRestore(false, { id: null, url: "http://x/a/" }, "http://x/b/", "http://x/a/"), false);
 });
