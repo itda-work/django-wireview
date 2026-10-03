@@ -6,6 +6,10 @@
   params, child joined, child params.
 - A LiveComponent a later render shows for the first time hears the params
   then too, once.
+- ``navigated``: a boosted navigation landed. Its params are the page's for the
+  joins that follow. Of what the server still holds, only the sticky
+  components the navigation carried across -- and their LiveComponents -- hear
+  them, once per URL. A component of the old page does not.
 """
 
 from __future__ import annotations
@@ -61,6 +65,18 @@ class NavRoot(_Recording, Component):
         await super().params_changed(params, uri)
         if "show" in params:
             self.show = params["show"] == "1"
+
+
+class NavDock(NavRoot):
+    class Meta:
+        sticky = True
+
+
+class NavFragileDock(NavDock):
+    async def params_changed(self, params, uri):
+        if params.get("tab") == "boom":
+            raise RuntimeError("params went wrong")
+        await super().params_changed(params, uri)
 
 
 class NavLeaf(_Recording, LiveComponent):
@@ -192,6 +208,64 @@ async def test_a_child_whose_params_raise_leaves_its_parent_joined():
     assert [payload["id"] for payload in outbound.renders()] == ["r"]
     assert not [command for command, _payload in outbound.commands if command == "error"]
     assert session.repo.get("bad") is not None
+
+
+# --- navigated ------------------------------------------------------------------------
+
+
+async def test_navigated_tells_only_the_sticky_components_carried_across():
+    session, _outbound = await started()
+    await send(session, "params_changed", params={"tab": "a"}, uri="http://x/a/?tab=a")
+    await join(session, id="old")
+    await join(session, NavDock, id="dock", leaf="dock-leaf")
+    # The next page has "old" again, not sticky: it is the old page's until its join
+    EVENTS.clear()
+
+    await send(session, "navigated", params={"tab": "o"}, uri="http://x/b/?tab=o")
+
+    assert EVENTS == [("params", "dock", "o"), ("params", "dock-leaf", "o")]
+    assert session.repo.get("old").tab == "a"  # type: ignore[union-attr]
+    assert session.repo.params == {"tab": "o"}
+
+    # The new page's join mounts with them
+    EVENTS.clear()
+    await join(session, id="old")
+    assert ("params", "old", "o") in EVENTS
+
+
+async def test_navigated_to_the_same_url_tells_the_sticky_ones_nothing_new():
+    # A Back paints the cached page and then lands the fetched one, both under
+    # one URL: the sticky component hears it once
+    session, _outbound = await started()
+    await send(session, "params_changed", params={}, uri="http://x/a/")
+    await join(session, NavDock, id="dock", leaf="dock-leaf")
+    EVENTS.clear()
+
+    await send(session, "navigated", params={"tab": "o"}, uri="http://x/b/?tab=o")
+    await send(session, "navigated", params={"tab": "o"}, uri="http://x/b/?tab=o")
+
+    assert EVENTS == [("params", "dock", "o"), ("params", "dock-leaf", "o")]
+
+
+async def test_navigated_after_a_patch_to_the_url_tells_nothing_new():
+    session, _outbound = await started()
+    await send(session, "params_changed", params={"tab": "o"}, uri="http://x/b/?tab=o")
+    await join(session, NavDock, id="dock", leaf="dock-leaf")
+    EVENTS.clear()
+
+    await send(session, "navigated", params={"tab": "o"}, uri="http://x/b/?tab=o")
+
+    assert EVENTS == []
+
+
+async def test_a_sticky_component_that_raises_on_navigated_is_joined_again():
+    session, outbound = await started()
+    await send(session, "params_changed", params={}, uri="http://x/a/")
+    await join(session, NavFragileDock, id="dock", leaf="dock-leaf")
+
+    await send(session, "navigated", params={"tab": "boom"}, uri="http://x/b/?tab=boom")
+
+    assert ("error", {"id": "dock", "during": "event"}) in outbound.commands
 
 
 # --- mount() ----------------------------------------------------------------------------

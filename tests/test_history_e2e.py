@@ -510,6 +510,8 @@ def test_forward_across_a_live_session_boundary_reloads(page, server):
 
 # --- who hears a navigation's params (#170) -------------------------------------------------
 
+DOCK = "sticky-testproj-historyprobe-live-HistoryDock"
+TRAY = "sticky-testproj-historyprobe-live-HistoryTray"
 
 
 @pytest.fixture
@@ -520,6 +522,68 @@ def heard():
     HEARD.clear()
     yield HEARD
     HEARD.clear()
+
+
+def settled(page) -> None:
+    """A round trip after everything the page sent so far: the server has handled it all."""
+    count = int(by(page, "count").inner_text())
+    bump_to(page, count + 1)
+
+
+def test_a_navigation_tells_its_params_to_the_new_page_and_the_sticky_dock_only(box, heard):
+    page = box
+    old = rendered(page)
+
+    by(page, "push-other").click()
+    at(page, "/historyprobe/other/?tab=o")
+    screen(page, page_name="other", tab="o", count=0)
+    expect_text(by(page, "leaf-heard"), "o")
+    expect_text(by(page, "dock-heard"), "o")
+    settled(page)
+
+    landed = rendered(page)
+    destination = urljoin(page.url, "/historyprobe/other/?tab=o")
+    # The page left never heard where it went -- the tray, sticky but not on
+    # the next page, neither; the one landed heard it through its join, the box
+    # before its LiveComponent; the dock was carried and told
+    assert [entry for entry in heard if entry[1] == old or entry[0] == TRAY] == []
+    assert heard == [
+        (DOCK, 0, destination),
+        ("obox", landed, "?tab=o"),
+        ("leaf", 0, "?tab=o"),
+    ]
+    expect_text(by(page, "dock-times"), "1")
+
+
+def test_a_back_with_a_cached_paint_tells_the_dock_once(box, heard):
+    page = box
+    by(page, "push-b").click()
+    at(page, "/historyprobe/?tab=b")
+    expect_text(by(page, "dock-times"), "1")  # a patch tells everyone
+
+    cached = rendered(page)
+    by(page, "to-other").click()
+    at(page, "/historyprobe/other/")
+    expect_text(by(page, "page"), "other")
+    expect_text(by(page, "dock-times"), "2")
+    left = rendered(page)
+
+    # The cached box page is painted and joins, then the fetched one lands and
+    # joins: two navigations' worth of joins under one URL, one for the dock
+    page.go_back()
+    at(page, "/historyprobe/?tab=b")
+    page.wait_for_function(
+        "seen => !seen.includes(document.querySelector('[data-testid=rendered]').textContent)",
+        arg=[str(left), str(cached)],
+        timeout=WAIT_TIMEOUT * 1000,
+    )
+    screen(page, page_name="box", tab="b", count=0)
+    settled(page)
+    expect_text(by(page, "dock-heard"), "b")
+    assert by(page, "dock-times").inner_text() == "3"
+    assert [uri for component, _rendered, uri in heard if component == DOCK].count(
+        urljoin(page.url, "/historyprobe/?tab=b")
+    ) == 2  # the patch, and the Back
 
 
 def test_a_live_component_hears_the_first_params_of_the_page(page, server, heard):

@@ -114,6 +114,10 @@ UPGRADE_NOTE = {
         "join은 첫 렌더 앞에서 `params_changed()`를 부르고",
         "두 번 하는 일이 있으면 하나로 줄인다",
     ),
+    "tells the server its params once the page is on screen": (
+        "떠나는 페이지의 컴포넌트는 목적지의 params를 듣지 않는다",
+        "`leaving()`에 둔다",
+    ),
 }
 
 DOCS_ONLY = "문서·저장소만 바뀌었고 라이브러리 동작은 같다"

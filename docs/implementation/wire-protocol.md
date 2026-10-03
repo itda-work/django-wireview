@@ -32,7 +32,8 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | `leave` | `id` | `leaving()`, 그 아래 LiveComponent에 cascade, 업로드 레지스트리 해제, 구독 재계산, 컴포넌트 제거. **LiveComponent id로는 보내지 않는다** — 부모 렌더가 이미 그 자식을 떠나보냈고, 늦게 온 `leave`는 그 사이 다시 보인 새 인스턴스를 지웠다. 서버는 LiveComponent id의 `leave`를 무시한다(옛 번들 방어, #140) |
 | `user_event` | `id`, `command`, `implicit_args` (폼 직렬화), `explicit_args`, `ref?` | 핸들러 호출 후 render. `ref`(정수)는 확정 액션(#92)과 로딩 표시를 거는 이벤트(#118)에 실리고, 서버는 그 이벤트의 render(또는 `error`)에 그대로 돌려준다. 클라이언트는 그 답으로 입력값 보존과 로딩 표시를 정리한다. 이 연결에서 join이 실패한 컴포넌트와 그것이 소유한 LiveComponent로 온 이벤트는 핸들러를 돌리지 않고 `{"id", "diff": null, "ref"}` render로 답한다(핸들러가 없는 이벤트와 같은 답). 같은 것으로 온 `hook_event`·업로드 명령은 알 수 없는 id처럼 답 없이 버린다. 클라이언트는 서버가 join 응답에서 `vsn` 3 이상을 알렸을 때만 싣는다 |
 | `hook_event` | `component_id`, `hook_id`, `event`, `payload`, `ref` | `handle_hook_event()`, `ref`가 `null`이 아니면 `hook_reply`. `ref`는 문자열 `hook-<n>`(훅이 콜백을 넘겼을 때) 또는 `null`이다. join·`user_event`의 정수 `ref`와 다른 카운터다 |
-| `params_changed` | `params`, `uri` | 모든 컴포넌트에 `params_changed()`. 클라이언트는 patch(같은 경로로 가는 `url_change`의 `push`·`replace`, 그런 항목 사이의 popstate) 뒤에 페이지를 가져오지 않고 이것만 보낸다(#169). 이미 있던 명령이라 옛 서버도 받는다. 옛 번들은 patch를 몰라 전처럼 가져온다. 그래서 `PROTOCOL_VERSION`은 그대로다 |
+| `params_changed` | `params`, `uri` | 모든 컴포넌트에 `params_changed()`. 클라이언트는 patch(같은 경로로 가는 `url_change`의 `push`·`replace`, 그런 항목 사이의 popstate) 뒤에 페이지를 가져오지 않고 이것만 보낸다(#169). 이미 있던 명령이라 옛 서버도 받는다. 옛 번들은 patch를 몰라 전처럼 가져온다. 그래서 `PROTOCOL_VERSION`은 그대로다. 연결이 열리면 첫 join들보다 먼저 한 번 보내 그 join들이 쓸 params를 정한다 |
+| `navigated` | `params`, `uri` | boost 이동이 `uri`의 페이지를 화면에 놓았다(#170). 이 params가 페이지의 params가 되고, 뒤따르는 join이 그것으로 마운트한다. 서버에 남은 컴포넌트 중 이동을 건너온 sticky 컴포넌트와 그 LiveComponent만 `params_changed()`를 받는다 — 연결이 마지막으로 들은 `uri`(`params_changed`·`navigated`)와 다를 때만, 그러니 뒤로 가기가 사본을 그린 뒤 같은 주소의 가져온 페이지가 착지해도 한 번이다. 같은 id로 다시 join할 옛 페이지의 컴포넌트는 듣지 않는다. 클라이언트는 morph 뒤, 떠난 컴포넌트의 `leave` 다음, 새 컴포넌트의 `join` 앞에 보낸다. 서버가 join 응답에서 `vsn` 7 이상을 알렸을 때만 보내고, 그보다 옛 서버(모르는 명령을 버린다)에는 같은 자리에서 `params_changed`를 보낸다 |
 | `upload_register` | `id`, `name`, `entries: [{ref, name, size, type}]` | 검증 후 `upload_op` 응답 |
 | `upload_cancel` | `id`, `name`, `ref` | 항목 취소 |
 | `upload_complete` | `id`, `name`, `ref` | 항목 완료 처리 |
@@ -130,11 +131,13 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | 4 | outbound `error` (#94) |
 | 5 | outbound `joined` (#112) |
 | 6 | `join`의 `ref`와 그것을 돌려주는 render·`error`·`remove`·`reload`·`joined`의 `ref` (#139, #146). 형태는 아니지만 boost 이동에서 앞 페이지의 `leave`를 새 페이지의 `join`보다 먼저 보내는 클라이언트이기도 하다(`LEAVES_FIRST_SINCE`). 서버는 이 클라이언트에서만 boost로 다시 join하는 컴포넌트에 슬롯을 넘긴다 |
+| 7 | inbound `navigated` (#170). 형태가 아니라 클라이언트가 보내는 명령이다. `ref`처럼 방향이 반대라, 클라이언트는 join 응답이 `vsn` 7 이상을 알린 연결에서만 보낸다(`NAVIGATED_SINCE`) |
 
-`vsn` 3과 6은 방향이 반대다. `ref`는 클라이언트가 서버로 보내는 필드라, 옛 서버(모르는 인자에 TypeError)에 보내면 안 된다. 그래서 서버가 먼저 join 응답의 `vsn`으로 자기 버전을 알리고, 클라이언트는 그 연결에서만 `ref`를 싣는다. `vsn` 6의 join `ref`도 같다 — 옛 서버는 모르는 인자가 붙은 join을 통째로 버린다(#94). 옛 클라이언트는 render의 모르는 필드를 무시한다.
+`vsn` 3, 6, 7은 방향이 반대다. `ref`는 클라이언트가 서버로 보내는 필드라, 옛 서버(모르는 인자에 TypeError)에 보내면 안 된다. 그래서 서버가 먼저 join 응답의 `vsn`으로 자기 버전을 알리고, 클라이언트는 그 연결에서만 `ref`를 싣는다. `vsn` 6의 join `ref`도 같다 — 옛 서버는 모르는 인자가 붙은 join을 통째로 버린다(#94). 옛 클라이언트는 render의 모르는 필드를 무시한다.
 
 구버전이 섞이면: 옛 클라이언트와 새 서버는 옛 클라이언트가 `vsn`을 보내지 않으므로 지금까지와 바이트까지 같은 메시지를 받는다. 새 클라이언트와 옛 서버는 옛 서버가 `vsn`을 읽지 않고 옛 형태만 보내며, 새 클라이언트는 그것을 그대로 읽는다. 버전 신호가 없었다면 옛 클라이언트는 `{"k"}`를 모르는 값으로 슬롯에 넣고 `[object Object]`를 그렸을 것이다 — 롤링 배포 중 옛 JS로 열린 페이지가 새 서버에 재연결하는 흔한 경우다.
 
+- 2026-10-03: `vsn` 7. boost 이동의 params는 새 페이지가 화면에 놓인 뒤 `navigated`로 간다(#170). 전에는 가져온 응답이 경계 검사를 통과하자마자, morph 전에 `params_changed`로 보내 옛 페이지의 컴포넌트가 목적지의 params를 들었다. 혼합: 옛 번들은 전처럼 morph 전에 `params_changed`를 보내고 새 서버는 전처럼 받는다. 새 번들과 옛 서버(`vsn` 6 이하를 알림)에서는 같은 자리(leave 뒤, join 앞)에서 `params_changed`를 보낸다 — 떠난 컴포넌트는 듣지 않고, 같은 id로 다시 join할 컴포넌트는 옛 서버에서 여전히 듣는다. 같은 날 join의 `params_changed`가 첫 render 앞으로 왔고, LiveComponent도 처음 그려질 때 `joined()` 뒤에 `params_changed`를 받는다. 메시지 형태는 그대로다.
 - 2026-10-01: `id` 없는 `upload_op`를 클라이언트가 `ref`로 소유 컴포넌트에 보낸다. 형태는 그대로라 `vsn`을 올리지 않는다. 옛 번들에서는 같은 이름의 업로드를 가진 두 컴포넌트 중 뒤의 것의 업로드가 이전처럼 올라가지 않는다.
 - 2026-10-01: 연결된 페이지에서 render가 새로 그린 일반 Component(`data-is-live="true"`, `wireview-live` 아님)를 클라이언트가 join한다. 이미 있는 `join` 형태를 쓰고, 서버는 템플릿 패스가 만든 인스턴스를 받아 주던 그대로라 `vsn`을 올리지 않는다. 혼합: 옛 번들은 그 join을 보내지 않으므로 이전처럼 그 컴포넌트의 `joined()`가 돌지 않는다. 새 클라이언트와 옛 서버에서는 옛 서버도 아직 join되지 않은 인스턴스를 join으로 완성하므로 고쳐진 대로 돈다.
 - 2026-10-01: 클라이언트는 render를 패치하기 전에 렌더 HTML의 `wire-stream` 컨테이너에 화면의 같은 컨테이너의 id를 붙인다(템플릿이 단 id가 있으면 그것, 없으면 `wire-stream-{컴포넌트 id}-{이름}`). 서버가 보내는 HTML은 바뀌지 않으므로 `vsn`을 올리지 않고, 옛 번들은 이전처럼 돈다 — 그 번들에서는 컨테이너 앞에 새 요소가 생기면 목록이 지워지는 결함도 그대로다.

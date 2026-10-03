@@ -34,7 +34,7 @@
  * opens. The server never sends a newer form. Keep in step with
  * `PROTOCOL_VERSION` in wireview/core/rendered.py.
  */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 
 /**
  * First server version that echoes a user event's `ref` on its render (#92).
@@ -54,6 +54,14 @@ export const JOINED_SINCE = 5;
  * older server would be dropped as a payload that does not fit.
  */
 export const JOIN_REFS_SINCE = 6;
+
+/**
+ * First server version that takes `navigated`: a boosted navigation landed, and
+ * the joins that follow mount with its params while only the sticky components
+ * it carried across hear them (#170). An older server drops a command it does
+ * not know, so the client tells it with `params_changed` as before.
+ */
+export const NAVIGATED_SINCE = 7;
 
 /**
  * @param {*} value

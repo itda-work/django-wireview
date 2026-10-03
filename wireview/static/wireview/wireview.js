@@ -1,5 +1,13 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
-import { JOINED_SINCE, JOIN_REFS_SINCE, PROTOCOL_VERSION, REFS_SINCE, applyPartial, buildHtml } from "./rendered.mjs";
+import {
+  JOINED_SINCE,
+  JOIN_REFS_SINCE,
+  NAVIGATED_SINCE,
+  PROTOCOL_VERSION,
+  REFS_SINCE,
+  applyPartial,
+  buildHtml,
+} from "./rendered.mjs";
 import { Joins, settledEvent } from "./joins.mjs";
 import { commitScope, isCommitAction } from "./values.mjs";
 import { LoadingLedger } from "./loading.mjs";
@@ -204,10 +212,6 @@ class ServerConnection {
       });
     });
 
-    boost.navEvent.addEventListener("newLocation", () => {
-      this.sendQueryString();
-    });
-
     // A patch: same page, new params (#169). Not a navigation to announce.
     boost.navEvent.addEventListener("patched", () => {
       this.navigations.patched(document.location.href);
@@ -215,8 +219,12 @@ class ServerConnection {
     });
 
     boost.navEvent.addEventListener("newContent", (event) => {
-      this.joinAllComponents();
-      const { token, landed } = /** @type {CustomEvent} */ (event).detail;
+      // A navigation's page carries its token; a render that drew new
+      // components sends none. The page a navigation put on screen tells the
+      // server its URL between the leaves of the components it dropped and the
+      // joins of the ones it brought (#170).
+      const { token, landed } = /** @type {CustomEvent} */ (event).detail ?? {};
+      this.joinAllComponents({ navigated: token !== undefined });
       if (landed) this.announceNavigation(token);
     });
   }
@@ -300,8 +308,11 @@ class ServerConnection {
   /**
    * Joins all wireview components found in the DOM.
    * Registers new components and removes stale ones.
+   * @param {{navigated?: boolean}} [options] - a boosted navigation put the
+   *   page on screen: its URL goes to the server after the leaves and before
+   *   the joins (`sendNavigated`)
    */
-  joinAllComponents() {
+  joinAllComponents({ navigated = false } = {}) {
     const elements = Array.from(document.querySelectorAll("[wireview-component]"));
     const onPage = new Set(elements.map((element) => element.id));
     // The ones that left go first: an id a LiveComponent had on the page
@@ -333,6 +344,7 @@ class ServerConnection {
       // takes it along.
       if (!component.owned) this.sendLeave(id);
     }
+    if (navigated) this.sendNavigated();
     for (const element of elements) {
       // The server drew it over an instance a parent's pass built under the id
       // of one whose join failed, which nothing reaches -- unless the page has
@@ -524,9 +536,9 @@ class ServerConnection {
               boost.HistoryCache.patch(url, { replace });
             } else {
               // Another path is another page: fetched, and its components join
-              // from its render. Its params reach the server through
-              // `newLocation`, and only once the response stayed inside the
-              // live_session; leaving it is a full page load (#58).
+              // from its render. Its params reach the server once that page is
+              // on screen, and only if the response stayed inside the
+              // live_session; leaving it is a full page load (#58, #170).
               replace ? boost.HistoryCache.swap(url) : boost.HistoryCache.push(url);
             }
             break;
@@ -845,6 +857,23 @@ class ServerConnection {
     params = params || parseQueryString(document.location.search);
     debugLog("send", "params_changed", { uri, params });
     this._send("params_changed", { uri, params });
+  }
+
+  /**
+   * Tells the server a boosted navigation put the page at the address bar on
+   * screen (#170). Sent after the leaves of the components the old page had
+   * and before the joins of the new page's, which mount with these params. The
+   * components that left never hear the destination's params; of the ones
+   * still on the server, the sticky components the navigation carried hear
+   * them. An older server knows only `params_changed`, which every component
+   * still there hears.
+   */
+  sendNavigated() {
+    const uri = document.location.href;
+    const params = parseQueryString(document.location.search);
+    const command = this.serverVsn >= NAVIGATED_SINCE ? "navigated" : "params_changed";
+    debugLog("send", command, { uri, params });
+    this._send(command, { uri, params });
   }
 
   /**

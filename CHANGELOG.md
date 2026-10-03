@@ -53,6 +53,12 @@ The django-reactor era changelog (2.x) is preserved in
   A child restored under an id the previous page had hears the page's params rather than keeping
   what it heard there, which made #169's comparison test fail one run in six. `mount()` of a
   LiveComponent with `params=` runs the same order (#170).
+- **Silently changed:** a boosted navigation to another page tells the server its params once the
+  page is on screen, after the leaves of the components it dropped and before the joins of the ones
+  it brought, with a new `navigated` message (protocol version 7). The old page's components no
+  longer hear the destination's params; the sticky components the navigation carried across hear
+  them, once per URL even when Back paints a cached copy first; a sticky component the next page
+  does not have leaves without hearing them (#170).
 
 ### Deprecated
 

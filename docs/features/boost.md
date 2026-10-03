@@ -87,7 +87,9 @@ class Player(Component):
   훅은 이동 중에 `mounted`·`updated`·`destroyed` 어느 것도 받지 않는다. 훅이 페이지 전체에 건 효과(body class,
   스크롤 잠금 같은 것)는 이동 뒤 풀리므로, 훅의 `navigated()`에서 다시 건다(아래 「이동을 알기」).
   페이지마다 서버 템플릿이 그리게 둘 수 있으면 그쪽이 더 단순하다.
-- 이동한 뒤 쿼리가 바뀌었으면 sticky 컴포넌트도 `params_changed()`를 받는다.
+- **이동이 다른 주소에 착지하면 sticky 컴포넌트는 그 주소로 `params_changed()`를 한 번 받는다**(그 LiveComponent도).
+  새 페이지가 화면에 놓이고 떠난 컴포넌트가 떠난 뒤다. 뒤로 가기가 떠날 때의 사본을 먼저 그리고 가져온 페이지를
+  다시 놓아도 한 번이다. 다음 페이지에 없어 떠나는 sticky 컴포넌트는 듣지 않는다(#170).
 - `Component`에만 쓴다. `LiveComponent`는 부모가 소유하므로 부모와 함께 간다.
 
 ## 이동을 알기 (`wireview:navigated`, `navigated()`)

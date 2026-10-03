@@ -161,6 +161,9 @@ class WireviewSession:
         """
         self.subscriptions = set()
         self.query_string: str = ""
+        # The URL the page last told its params under: a ``navigated`` to the
+        # same one tells the sticky components nothing new (#170)
+        self.page_uri: str | None = None
         self.connection_id = secrets.token_urlsafe(16)
         self._upload_group_subscribed = False
         self.live_session_name = None
@@ -661,6 +664,51 @@ class WireviewSession:
         """The ``uri`` a joining component hears its first ``params_changed`` with."""
         return f"?{self.repo.get_query_string()}"
 
+    def _set_params(self, params: dict[str, t.Any], uri: str) -> dict[str, t.Any]:
+        """Make ``params`` the page's, as the client parsed them from ``uri``; returns them decoded."""
+        # The client parses a query string into plain strings; the first load went
+        # through ``extract_params``. Decoding here is what keeps a ``.json`` key
+        # from being a dict on load and a string after a navigation --
+        # ``get_query_string`` re-encodes with the same rule.
+        params = self.repo.decode_params(params)
+        # In place: every component's wire holds this dict
+        self.repo.params.clear()
+        self.repo.params.update(params)
+        # Update query_string for send_query_string() sync
+        self.query_string = self.repo.get_query_string()
+        self.page_uri = uri
+        return params
+
+    async def command_navigated(self, params: dict[str, str], uri: str):
+        """A boosted navigation put the page at ``uri`` on screen (#170).
+
+        The client sends it once the page is in place, after the leaves of the
+        components it dropped and before the joins of the ones it brought, which
+        mount with these params as a loaded page's do. Of what is still here,
+        only the sticky components the navigation carried across, and their
+        LiveComponents, are the page's: they hear ``params_changed``, once per
+        URL -- a Back paints a cached copy and then lands the fetched one under
+        the same URL. A component the new page has under the same id, not
+        sticky, is the old page's until its join retires it, and hears nothing.
+        """
+        log.debug(f"<<< NAVIGATED {uri} {params}")
+        moved = uri != self.page_uri
+        params = self._set_params(params, uri)
+        if moved:
+            for component in self.repo.reachable_components():
+                if self.repo.get(component.id) is not component:
+                    # Went with an ancestor that raised earlier in this loop
+                    continue
+                root = self.repo.root_of(component)
+                if not (type(root)._meta.sticky and root.wire.has_joined):
+                    continue
+                try:
+                    await component._handle_params(params, uri)
+                    await self.send_render(component)
+                except Exception:
+                    await self._crashed(component)
+        await self.after_mutation_chores()
+
     async def command_params_changed(self, params: dict[str, str], uri: str):
         """Handle URL parameter changes from client.
 
@@ -670,19 +718,7 @@ class WireviewSession:
         - Initial page load with params
         """
         log.debug(f"<<< PARAMS-CHANGED {uri} {params}")
-
-        # The client parses a query string into plain strings; the first load went
-        # through ``extract_params``. Decoding here is what keeps a ``.json`` key
-        # from being a dict on load and a string after a navigation --
-        # ``get_query_string`` re-encodes with the same rule.
-        params = self.repo.decode_params(params)
-
-        # Update repository params
-        self.repo.params.clear()
-        self.repo.params.update(params)
-
-        # Update query_string for send_query_string() sync
-        self.query_string = self.repo.get_query_string()
+        params = self._set_params(params, uri)
 
         # Call params_changed on all live components and re-render. What a failed
         # join left hears nothing (repo.reachable).

@@ -180,16 +180,10 @@ const BOOST_PAGES = JSON.parse(
 
 /**
  * Event target for navigation events.
- * Emits 'newLocation' when URL changes and 'newContent' when DOM updates.
+ * Emits 'patched' when the URL moved inside the page and 'newContent' when a
+ * navigation's page is on screen, which is when its URL reaches the server.
  */
 class NavEvents extends EventTarget {
-  /**
-   * Dispatches a newLocation event.
-   */
-  sendNewLocation() {
-    this.dispatchEvent(new Event("newLocation"));
-  }
-
   /**
    * Dispatches a patched event: the URL moved inside the page on screen, and
    * nothing was fetched (navigation.mjs).
@@ -199,9 +193,10 @@ class NavEvents extends EventTarget {
   }
 
   /**
-   * Dispatches a newContent event.
-   * @param {number} token - the navigation this content belongs to
-   * @param {boolean} landed - the navigation's own page, not a cached paint
+   * Dispatches a newContent event: new components may be on the page.
+   * @param {number} [token] - the navigation this content belongs to; none
+   *   for a component's render that drew new ones
+   * @param {boolean} [landed] - the navigation's own page, not a cached paint
    *   shown while it is fetched: what `wireview:navigated` announces, once
    */
   sendNewContent(token, landed) {
@@ -503,11 +498,12 @@ class HistoryCache {
     } else if (response.redirected && response.url) {
       history.replaceState(history.state, document.title, response.url);
     }
-    // Only now. `newLocation` is what makes the client tell the server its new
-    // params, and announcing it before the response was admitted had the old
+    // The server hears the new params once the page is on screen, between the
+    // leaves of the old page's components and the joins of the new one's
+    // (`newContent`). Telling it before the response was admitted had the old
     // page's components -- under the authentication the navigation was leaving
-    // behind -- handle the destination's query (docs/design/live-session.md §3-3).
-    navEvent.sendNewLocation();
+    // behind -- handle the destination's query (docs/design/live-session.md §3-3),
+    // and before the morph the old page's components heard it at all (#170).
     document.title = doc.querySelector("title")?.text ?? "";
     replaceBodyContent(doc.body);
     return true;

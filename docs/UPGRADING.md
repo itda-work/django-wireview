@@ -98,6 +98,14 @@ dependencies = ["django-wireview>=1.1,<2"]
   - `params_changed()`가 예외를 던지면 join이 렌더 없이 `error` 하나로 실패한다(1.1은 render 뒤에 `error`).
     `wireview:error`(`during: "join"`)는 전처럼 한 번 온다.
   ([LiveComponent](./features/live-component.md#수명주기))
+- **조용히 달라짐: 다른 페이지로 가는 이동에서 떠나는 페이지의 컴포넌트는 목적지의 params를 듣지 않는다.**
+  1.1까지는 가져온 응답이 경계 검사를 통과하자마자, 새 페이지를 그리기 전에 페이지의 모든 컴포넌트가 목적지의
+  params로 `params_changed()`를 받았다. 곧 떠날 컴포넌트가 다른 페이지의 쿼리로 일했다. 이제 params는 새 페이지가
+  화면에 놓인 뒤 간다. 새 페이지의 컴포넌트는 join에서, 이동을 건너온 sticky 컴포넌트는 `params_changed()`로
+  받는다(주소마다 한 번, 뒤로 가기가 사본을 먼저 그려도 한 번). 떠나는 컴포넌트가 떠날 때 할 일은
+  `params_changed()`가 아니라 `leaving()`에 둔다. 와이어 프로토콜은 `vsn` 7이 되었고 클라이언트가 새 명령
+  `navigated`를 보낸다. 롤링 배포 중의 옛 번들은 전처럼 동작하고 새 서버가 받는다.
+  ([boost](./features/boost.md#이동을-건너-살아남기-sticky))
 
 ## 1.0에서 1.1로
 

@@ -5,7 +5,10 @@ tests/test_history_e2e.py drives it. ``tab`` follows the URL (``params_changed``
 URL brought back from what only the page on screen knew. ``rendered`` names the
 page render the component was built from: a fetch of the URL gives a new number.
 ``HistoryLeaf`` is the box's LiveComponent, whose ``count`` a patch must keep as
-well; it hears ``params_changed`` too (``heard``).
+well; it hears ``params_changed`` too (``heard``). ``HistoryDock`` is sticky and on
+every page: a navigation carries it across (#170). ``HistoryTray`` is sticky too,
+but only the box page has it: a navigation away ends it, and it must not hear
+where the navigation went.
 
 ``HEARD`` is every ``params_changed`` on the server, in order: which component,
 which instance (the box's ``rendered``), and the uri. The tests read it to tell
@@ -71,3 +74,30 @@ class HistoryLeaf(LiveComponent):
 
     async def bump(self, **_rest):
         self.count += 1
+
+
+class HistoryDock(Component):
+    """Sticky, on every page: what a navigation tells the components it carries (#170)."""
+
+    class Meta:
+        template_name = "historyprobe/dock.html"
+        sticky = True
+
+    heard: str = "-"
+    times: int = 0
+
+    async def params_changed(self, params, uri):
+        HEARD.append((self.id, 0, uri))
+        self.heard = params.get("tab", "a")
+        self.times += 1
+
+
+class HistoryTray(Component):
+    """Sticky, on the box page only: a navigation to another page ends it (#170)."""
+
+    class Meta:
+        template_name = "historyprobe/tray.html"
+        sticky = True
+
+    async def params_changed(self, params, uri):
+        HEARD.append((self.id, 0, uri))
