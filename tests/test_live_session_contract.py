@@ -201,6 +201,17 @@ async def _joined(self) -> None:
     self.allow_upload("files", accept=[".txt"], max_entries=2)
 
 
+async def _params_changed(self, params, uri) -> None:
+    """Recorded: user code that runs on the page's query, which a refusal must keep from running.
+
+    It used to run after the join's first render, so a refusal -- no render --
+    kept it out by construction. Now it runs before that render (#170), and only
+    the order of two lines in the join stands between a refused component and
+    its queries, broadcasts and redirects.
+    """
+    CALLS.append((self.id, "params"))
+
+
 async def _handle_hook_event(self, hook_id: str, event: str, payload: dict) -> t.Any:
     """Answer a client hook, so ``hook_event`` has an effect to observe."""
     return {"echo": event}
@@ -236,6 +247,7 @@ def _pair(suffix: str, **namespace: t.Any) -> tuple[type, type]:
             Component,
             bump=_bump,
             joined=_joined,
+            params_changed=_params_changed,
             handle_hook_event=_handle_hook_event,
             **dict(namespace),
         ),
@@ -244,6 +256,7 @@ def _pair(suffix: str, **namespace: t.Any) -> tuple[type, type]:
             LiveComponent,
             bump=_bump,
             joined=_joined,
+            params_changed=_params_changed,
             handle_hook_event=_handle_hook_event,
             **dict(namespace),
         ),
@@ -400,10 +413,19 @@ class FakeOutbound:
         return [command for command, _ in self.commands]
 
 
-def make_consumer(*, boundary=None, user=None, session=None) -> tuple[WireviewConsumer, FakeOutbound]:
+#: The page's query on every live mount path, so a join has params to hear (#170).
+PAGE_PARAMS = {"page": "2"}
+
+#: Paths on which an admitted component hears the page's params: the joins, and
+#: a LiveComponent its parent's render brings in. An inline pass and an HTTP
+#: render do not run ``params_changed``.
+PATHS_THAT_HEAR_PARAMS = {"root_join", "rejoin", "nested_plain_join", "live_child", "child_restore"}
+
+
+def make_consumer(*, boundary=None, user=None, session=None, params=None) -> tuple[WireviewConsumer, FakeOutbound]:
     consumer = WireviewConsumer()
     consumer.repo = ComponentRepository(
-        is_live=True, user=user or AnonymousUser(), session=session, live_session=boundary
+        is_live=True, user=user or AnonymousUser(), session=session, live_session=boundary, params=params
     )
     consumer.subscriptions = set()
     consumer.query_string = ""
@@ -491,7 +513,7 @@ async def path_testing_mount(cls: type, boundary: LiveSession) -> Outcome:
 
 async def path_root_join(cls: type, boundary: LiveSession) -> Outcome:
     """The WebSocket join of a page's root component."""
-    consumer, outbound = make_consumer(boundary=boundary)
+    consumer, outbound = make_consumer(boundary=boundary, params=dict(PAGE_PARAMS))
     token = signed(cls, page=boundary, id="target")
     raised = None
     try:
@@ -503,7 +525,7 @@ async def path_root_join(cls: type, boundary: LiveSession) -> Outcome:
 
 async def path_rejoin(cls: type, boundary: LiveSession) -> Outcome:
     """A second join for an id that already joined: boost navigation brought new DOM."""
-    consumer, outbound = make_consumer(boundary=boundary)
+    consumer, outbound = make_consumer(boundary=boundary, params=dict(PAGE_PARAMS))
     token = signed(cls, page=boundary, id="target")
     raised = None
     try:
@@ -518,7 +540,7 @@ async def path_rejoin(cls: type, boundary: LiveSession) -> Outcome:
 
 async def path_nested_plain(cls: type, boundary: LiveSession) -> Outcome:
     """An ordinary ``{% component %}`` inside a live parent, rendered inline during its pass."""
-    consumer, outbound = make_consumer(boundary=boundary)
+    consumer, outbound = make_consumer(boundary=boundary, params=dict(PAGE_PARAMS))
     parent_class = _parent(f"CxNestOf{cls.__name__}", "cx/nest.html")
     with _template_naming("cx/nest.html", cls):
         raised = None
@@ -537,7 +559,7 @@ async def path_nested_plain_join(cls: type, boundary: LiveSession) -> Outcome:
     the page joins the element when it sees it, and the server takes up the
     instance the pass left. A refused one left no element, so nothing joins.
     """
-    consumer, outbound = make_consumer(boundary=boundary)
+    consumer, outbound = make_consumer(boundary=boundary, params=dict(PAGE_PARAMS))
     parent_class = _parent(f"CxNestOf{cls.__name__}", "cx/nest.html")
     with _template_naming("cx/nest.html", cls):
         raised = None
@@ -554,7 +576,7 @@ async def path_nested_plain_join(cls: type, boundary: LiveSession) -> Outcome:
 
 async def path_live_child(cls: type, boundary: LiveSession) -> Outcome:
     """A LiveComponent the parent's render named. Settled after the pass, shipped in the same frame."""
-    consumer, outbound = make_consumer(boundary=boundary)
+    consumer, outbound = make_consumer(boundary=boundary, params=dict(PAGE_PARAMS))
     parent_class = _parent(f"CxLiveParentOf{cls.__name__}", "cx/live.html")
     with _template_naming("cx/live.html", cls):
         raised = None
@@ -568,7 +590,7 @@ async def path_live_child(cls: type, boundary: LiveSession) -> Outcome:
 
 async def path_child_restore(cls: type, boundary: LiveSession) -> Outcome:
     """A child's stored state arriving in the parent's join, to be restored under it."""
-    consumer, outbound = make_consumer(boundary=boundary)
+    consumer, outbound = make_consumer(boundary=boundary, params=dict(PAGE_PARAMS))
     parent_class = _parent(f"CxRestoreParentOf{cls.__name__}", "cx/live.html")
     child_token = signed(cls, page=boundary, id="target", note=RESTORED)
     with _template_naming("cx/live.html", cls):
@@ -741,11 +763,14 @@ class TestARefusalIsTotal:
         """``joined()`` is where a component starts work: subscriptions, queries, uploads.
 
         Cleaning the markup up afterwards does not undo any of that, so a refused
-        component's ``joined()`` must never run at all.
+        component's ``joined()`` must never run at all. Nor its
+        ``params_changed()``, which a join runs before its first render (#170):
+        the page has params here, and a refused component must not hear them.
         """
         outcome = await refused(path, refusal)
 
         assert "joined" not in outcome.calls
+        assert "params" not in outcome.calls
 
     async def test_the_failure_is_carried_rather_than_swallowed(self, path, refusal):
         """A refusal is a verdict; a failure is a verdict *and* a traceback.
@@ -815,12 +840,23 @@ class TestAnAdmissionIsWhole:
         assert outcome.calls[:2] == ["session", "component"]
 
     async def test_lifecycle_runs_once_and_only_after_the_hooks(self, path, boundary):
-        """``joined()`` is the component's own start, so it comes last, and once."""
+        """``joined()`` is the component's own start, so it comes after the hooks, and once.
+
+        Only the page's params follow it, as Phoenix's handle_params follows mount (#170).
+        """
         outcome = await run_path(path, component_for(path, ADMITTED), boundary)
 
         assert outcome.calls.count("joined") <= 1, "a second joined() would repeat its side effects"
         if "joined" in outcome.calls:
-            assert outcome.calls[-1] == "joined"
+            assert outcome.calls[outcome.calls.index("joined") + 1 :] in ([], ["params"])
+
+    async def test_it_hears_the_pages_params(self, path, boundary):
+        """The control for the refusals' "no params": an admitted one does hear them, once."""
+        outcome = await run_path(path, component_for(path, ADMITTED), boundary)
+
+        if path not in PATHS_THAT_HEAR_PARAMS:
+            pytest.skip("this path runs no params_changed")
+        assert outcome.calls.count("params") == 1
 
 
 @pytest.mark.asyncio
