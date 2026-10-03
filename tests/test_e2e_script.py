@@ -97,8 +97,14 @@ def test_an_option_value_taken_for_a_path_still_runs_every_e2e_suite():
 
 #: Stands in for ``uv run pytest``: writes the REDIS_URL it got and whether a redis
 #: answered PING there while the suite ran, then waits or fails as the test asks.
+#:
+#: The record is written by the shell once python3 has exited, not by python3. A test
+#: interrupts the stub as soon as the record has something in it, and python3 writes
+#: its output while it shuts down: a SIGINT landing then is no longer checked, python3
+#: exits 0, and bash goes on with the next command when its foreground child did not
+#: die of the signal. The stub then slept out STUB_SLEEP and the script waited on it.
 REDIS_STUB = """#!/usr/bin/env bash
-python3 - "$REDIS_URL" > {record} <<'PY'
+seen="$(python3 - "$REDIS_URL" <<'PY'
 import socket, sys, urllib.parse
 url = urllib.parse.urlsplit(sys.argv[1])
 try:
@@ -109,6 +115,8 @@ except OSError:
     answered = False
 print(sys.argv[1], answered)
 PY
+)"
+printf '%s\\n' "$seen" > {record}
 [ -z "${{STUB_SLEEP:-}}" ] || sleep "$STUB_SLEEP"
 exit "${{STUB_EXIT:-0}}"
 """
@@ -179,11 +187,20 @@ def start_redis_script(tmp_path: Path, **env: str) -> tuple[subprocess.Popen, Pa
     return own(proc), record
 
 
-def finish_redis_script(proc: subprocess.Popen, record: Path) -> RedisRun:
+def finish_redis_script(proc: subprocess.Popen, record: Path, timeout: float = 30) -> RedisRun:
+    stuck = False
     try:
-        output, _ = proc.communicate(timeout=60)
+        try:
+            output, _ = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # The script's whole group, the server it started included: it is not stopping.
+            stuck = True
+            os.killpg(proc.pid, signal.SIGKILL)
+            output, _ = proc.communicate()
     finally:
         disown(proc)
+    if stuck:
+        pytest.fail(f"tests/e2e.sh was still running after {timeout}s:\n{output}", pytrace=False)
     seen = None
     if record.exists():
         url, answered = record.read_text().split()
@@ -266,12 +283,13 @@ def test_an_interrupted_suite_still_stops_the_server(tmp_path, redis_binary):
     proc, record = start_redis_script(
         tmp_path, REDIS_SERVER=redis_binary, REDIS_URL=f"redis://127.0.0.1:{free_port()}", STUB_SLEEP="60"
     )
-    deadline = time.monotonic() + 30
+    deadline = time.monotonic() + 20
     while not record.exists() or not record.read_text():
         assert proc.poll() is None and time.monotonic() < deadline, "the suite never started"
         time.sleep(0.05)
     os.killpg(proc.pid, signal.SIGINT)  # what Ctrl-C sends: the whole foreground group
-    run = finish_redis_script(proc, record)
+    # Well inside the time limit and STUB_SLEEP: a script that outlives Ctrl-C fails here.
+    run = finish_redis_script(proc, record, timeout=20)
     assert run.returncode == -signal.SIGINT, run.output  # bash dies of the signal, after its EXIT trap
     assert run.seen[1], run.output
     assert_gone(run, tmp_path)
