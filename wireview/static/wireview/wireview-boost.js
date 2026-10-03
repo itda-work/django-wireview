@@ -5,7 +5,7 @@
 
 import { Idiomorph } from "idiomorph";
 import { NavigationGate, crossesBoundary, readSessionName } from "./live-session.mjs";
-import { newPageId, returnsToPatch, stamped } from "./navigation.mjs";
+import { newPageId, patchesPage, returnsToPatch, stamped } from "./navigation.mjs";
 import { STREAM_ATTRIBUTE, isStreamContainer, pinContainerIds } from "./streams.mjs";
 import { ValueGuard } from "./values.mjs";
 
@@ -33,9 +33,13 @@ const beforeElUpdated = new Set();
 const valueGuard = new ValueGuard();
 
 // The fields an IME is composing in, which no render may write (#169). Capture,
-// so a handler that stops the event cannot hide it.
+// so a handler that stops the event cannot hide it. A composition lives in the
+// focused field: one a script's write or a re-insertion dropped, without
+// compositionend, is over once the field loses or regains focus.
 document.addEventListener("compositionstart", (e) => valueGuard.compose(e.target, true), true);
 document.addEventListener("compositionend", (e) => valueGuard.compose(e.target, false), true);
+document.addEventListener("focusin", (e) => valueGuard.compose(e.target, false), true);
+document.addEventListener("focusout", (e) => valueGuard.compose(e.target, false), true);
 
 /** How many server changes are being applied now (a morph may run inside another). */
 let applyingDepth = 0;
@@ -217,10 +221,22 @@ const navGate = new NavigationGate();
 /**
  * The page on screen: its id, which the history entries it makes carry, and
  * the URL it was shown under. A popstate to one of those entries is a patch
- * (navigation.mjs). A load or a boosted navigation that lands gives a new one.
+ * (navigation.mjs). A load or a boosted navigation that lands gives a new one;
+ * a navigation that fetches takes it away until then (`leavePage`).
+ * @type {import("./navigation.mjs").PageOnScreen}
  */
 const page = { id: newPageId(), url: document.location.href };
 history.replaceState(stamped(history.state, page.id), document.title, document.location.href);
+
+/**
+ * A navigation that fetches began. Until its page lands the screen holds the
+ * page being left, or a cached copy of another one a popstate painted, and no
+ * history entry is the page's own: a Forward to an entry the left page made is
+ * fetched, and so is a push the left page's components send meanwhile.
+ */
+function leavePage() {
+  page.id = null;
+}
 
 /**
  * A new page is on screen: entries the previous one made are another page's now.
@@ -370,6 +386,7 @@ class HistoryCache {
   static async push(path) {
     if (document.body == null) debugger;
     navGate.begin();
+    leavePage();
     history.replaceState(
       {
         content: document.body.outerHTML,
@@ -404,6 +421,7 @@ class HistoryCache {
       return this.push(url.href);
     }
     navGate.begin();
+    leavePage();
     // What Back returns to, as `push` keeps it
     history.replaceState(
       {
@@ -425,6 +443,7 @@ class HistoryCache {
    */
   static async swap(path) {
     navGate.begin();
+    leavePage();
     history.replaceState({}, document.title, path);
     return this.replaceContentFromUrl(path);
   }
@@ -495,10 +514,22 @@ class HistoryCache {
   }
 
   /**
+   * Whether the server's push or replace to `url` is a patch of the page on
+   * screen (navigation.mjs patchesPage): resolved as `pushState` and `fetch`
+   * resolve it, compared with the page shown rather than the address bar, and
+   * never while a navigation is fetching.
+   * @param {string} url
+   * @returns {boolean}
+   */
+  static isPatch(url) {
+    return patchesPage(page, url, document.baseURI);
+  }
+
+  /**
    * Moves to `url` inside the page on screen (#169): a new history entry, or
    * the current one rewritten, and nothing fetched. The components hear the
-   * new params through `patched`. `url` must be on the page's path
-   * (navigation.mjs isPatch); another path is `push` or `swap`.
+   * new params through `patched`. `url` must be a patch (`isPatch`); anything
+   * else is `push` or `swap`.
    * @param {string} url
    * @param {{replace?: boolean}} [options] - rewrite the current entry instead of pushing one
    */
@@ -520,7 +551,7 @@ class HistoryCache {
    * @param {string} path - The new path
    */
   static replace(path) {
-    history.replaceState(stamped({}, page.id), document.title, path);
+    history.replaceState(page.id === null ? {} : stamped({}, page.id), document.title, path);
   }
 }
 
@@ -546,6 +577,7 @@ window.addEventListener("popstate", (event) => {
     return;
   }
   navGate.begin();
+  leavePage();
   if (event.state?.content !== undefined) {
     // The entry's own name matched, but that was true when it was captured; the
     // fetch below may still find the URL has moved. Showing the cache meanwhile

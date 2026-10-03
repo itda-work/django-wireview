@@ -9,7 +9,7 @@ import { TargetQueue } from "./targets.mjs";
 import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
 import { readReconnectSettings, reconnectOptions } from "./reconnect.mjs";
-import { NAVIGATED_EVENT, NavigationLog, carriedAcross, isPatch } from "./navigation.mjs";
+import { NAVIGATED_EVENT, NavigationLog, carriedAcross } from "./navigation.mjs";
 import { UploadManagers } from "./uploads.mjs";
 import boost from "./wireview-boost";
 
@@ -518,7 +518,7 @@ class ServerConnection {
           case "replace":
           case "push": {
             const replace = payload.command === "replace";
-            if (isPatch(document.location.href, url)) {
+            if (boost.HistoryCache.isPatch(url)) {
               // Same path (#169): the page stays and its components hear the
               // new params through `patched`, keeping what they built up
               boost.HistoryCache.patch(url, { replace });

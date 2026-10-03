@@ -122,14 +122,38 @@ export function stamped(state, page) {
 
 /**
  * Whether going from `from` to `to` is a patch: the same origin and path.
- * @param {string} from - the current location
- * @param {string} to - where the server asked to go; relative to `from`
+ * @param {string} from - the URL of the page on screen
+ * @param {string} to - where the server asked to go
+ * @param {string} [base] - what a relative `to` resolves against: the
+ *   document's base URL, as `pushState` and `fetch` resolve it; `from` by default
  * @returns {boolean}
  */
-export function isPatch(from, to) {
+export function isPatch(from, to, base = from) {
   const here = new URL(from);
-  const there = new URL(to, here);
+  const there = new URL(to, base);
   return here.origin === there.origin && here.pathname === there.pathname;
+}
+
+/**
+ * @typedef {Object} PageOnScreen
+ * @property {string|null} id - null from the moment a navigation that fetches
+ *   begins until its page lands: meanwhile the screen holds the page being
+ *   left or a cached copy of another one, and no entry is that page's
+ * @property {string} url - the URL it was shown under
+ */
+
+/**
+ * Whether the server's push or replace to `to` is a patch of the page on
+ * screen. Judged against that page, not the address bar: a push that fetches
+ * has already moved the address bar to a page not shown yet. While a fetch is
+ * in flight nothing is a patch -- the page it would patch is on its way out.
+ * @param {PageOnScreen} page
+ * @param {string} to
+ * @param {string} base - the document's base URL
+ * @returns {boolean}
+ */
+export function patchesPage(page, to, base) {
+  return page.id !== null && isPatch(page.url, to, base);
 }
 
 /**
@@ -137,9 +161,9 @@ export function isPatch(from, to) {
  * was made or landed on by the page on screen, and it is the same path.
  * @param {any} state - the entry's `history.state`
  * @param {string} url - the location after the popstate
- * @param {{id: string, url: string}} page - the page on screen and the URL it was shown under
+ * @param {PageOnScreen} page - the page on screen and the URL it was shown under
  * @returns {boolean}
  */
 export function returnsToPatch(state, url, page) {
-  return state?.[PAGE_KEY] === page.id && isPatch(page.url, url);
+  return page.id !== null && state?.[PAGE_KEY] === page.id && isPatch(page.url, url);
 }

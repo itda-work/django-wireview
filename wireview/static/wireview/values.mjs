@@ -27,6 +27,13 @@
  * field like any other -- the user's text stands until a committing action's
  * answer or a later change while it is not focused.
  *
+ * A composition can also end without `compositionend`: a script writing
+ * another value into the field (`JS().set_value`, an input mask) drops it, and
+ * so does taking the element out and putting it back. So a field counts as
+ * composing only while it has the focus a composition needs, and losing or
+ * regaining focus forgets it (ValueGuard.compose). A dropped composition never
+ * holds a field against the server once the user has left it.
+ *
  * Pure function, no DOM: tested with `node --test tests/js/`.
  */
 
@@ -236,7 +243,9 @@ export class ValueGuard {
       committing,
       serverChanged: next.defaultValue !== field.defaultValue,
       typedSinceSent: covering !== undefined && covering !== field.value,
-      composing: this.composing.has(field),
+      // Only under the user's cursor: a composition a script's write to the
+      // value or a re-insertion dropped ends without compositionend (#169)
+      composing: this.composing.has(field) && field === this.activeElement(),
     });
     if (keep) field.defaultValue = next.defaultValue;
     return keep;

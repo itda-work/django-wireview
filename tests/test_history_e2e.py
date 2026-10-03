@@ -14,6 +14,9 @@ What the screen holds after a move, in a browser:
 - ``redirect_to`` always fetches: the way out for a page whose template reads the
   query outside every component.
 - Crossing a live_session boundary is a full page load.
+- While a move fetches its page, nothing is a patch: the screen holds the page
+  being left, or a cached copy Back painted, and not the page an entry or a
+  push would patch.
 
 ``rendered`` names the page render the component was built from: a new number
 means the URL was fetched again. ``window.__samePage`` is lost on a page load
@@ -26,6 +29,8 @@ from __future__ import annotations
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from urllib.parse import urljoin
 
 import pytest
 from playwright.sync_api import expect
@@ -363,6 +368,88 @@ def test_back_after_a_reload_fetches_the_entry(box):
     expect_text(by(page, "page-tab"), "-")
     assert rendered(page) > reloaded
     assert page.evaluate("window.__samePage === true"), "fetched by a boosted move, not loaded"
+
+
+# --- while a page is being fetched --------------------------------------------------------
+
+
+class Held:
+    """Holds the page fetches of one URL until released: a slow network, on cue."""
+
+    def __init__(self, page, url: str) -> None:
+        self.page = page
+        self.url = url
+        self.routes: list = []
+        page.route(url, self._hold)
+
+    def _hold(self, route) -> None:
+        if route.request.resource_type == "fetch":
+            self.routes.append(route)
+        else:
+            route.continue_()
+
+    @contextmanager
+    def requested(self):
+        """The block makes the page fetch the URL; wait until it has asked."""
+        with self.page.expect_request(lambda r: r.url == self.url and r.resource_type == "fetch"):
+            yield
+
+    def release(self) -> None:
+        """Let the held fetches answer, and the page run what it does with them."""
+        assert self.routes, "nothing was held"
+        with self.page.expect_response(lambda r: r.url == self.url):
+            for route in self.routes:
+                route.continue_()
+        self.routes.clear()
+        # The answer is read, parsed and judged before anything is morphed in a
+        # frame; two frames later a stale one has been dropped or painted
+        self.page.evaluate("() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))")
+
+
+def test_forward_after_a_cached_paint_fetches_the_page_it_returns_to(box):
+    """Back paints its cached copy of the box page while the fetch is still out; the
+    page on screen is a copy now, not the "other" page that made the next entry.
+    Forward to it is a fetch -- were it a patch, the copy would stay under the
+    other page's address (#169)."""
+    page = box
+    by(page, "to-other").click()
+    at(page, "/historyprobe/other/")
+    expect_text(by(page, "page"), "other")
+
+    held = Held(page, urljoin(page.url, "/historyprobe/"))
+    with held.requested():
+        page.go_back()
+    at(page, "/historyprobe/")
+    expect_text(by(page, "page"), "box")  # the cached copy
+
+    page.go_forward()
+    at(page, "/historyprobe/other/")
+    expect_text(by(page, "page"), "other")
+    held.release()
+    expect_text(by(page, "page"), "other")
+    at(page, "/historyprobe/other/")
+    bump_to(page, 1)  # its component joined
+
+
+def test_a_push_from_the_page_being_left_is_judged_by_that_page(box):
+    """push-other's fetch is out and the box page is still on screen when its
+    component pushes "?tab=b". The address bar names the other page already; the
+    push is not a patch of either (#169)."""
+    page = box
+    held = Held(page, urljoin(page.url, "/historyprobe/other/?tab=o"))
+    with held.requested():
+        by(page, "push-other").click()
+    at(page, "/historyprobe/other/?tab=o")
+    expect_text(by(page, "page"), "box")  # still the page being left
+
+    by(page, "push-b").click()
+    at(page, "/historyprobe/other/?tab=b")
+    expect_text(by(page, "page"), "other")
+    expect_text(by(page, "page-tab"), "b")
+    held.release()
+    at(page, "/historyprobe/other/?tab=b")
+    screen(page, page_name="other", tab="b", count=0)
+    expect_text(by(page, "page-tab"), "b")
 
 
 # --- live_session ---------------------------------------------------------------------------

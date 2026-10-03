@@ -68,6 +68,13 @@ IME가 조합 중인 키(`event.isComposing`)는 키 수정자에 걸리지 않�
 `compositionend` 없이 버리고 다음 자모가 새 조합으로 시작한다. 서버 값은 `defaultValue`로만 들어가고, 조합이 끝난 칸은
 사용자가 고친 칸으로 일반 규칙을 따른다.
 
+조합이 버려진 칸: `compositionend`가 오지 않는 끝도 있다. 스크립트가 다른 값을 쓰면(`JS().set_value`, 입력 마스크)
+브라우저가 조합을 버리고, 요소를 뺐다 다시 꽂으면(`moveBefore`가 없는 브라우저에서 idiomorph의 이동) 조합 없이 blur된다.
+blur·버튼 클릭·`disabled`·`display:none`은 `compositionend`를 낸다(Chromium). 그래서 "조합 중"은 `composing && focused`로만
+지킨다 — 조합은 포커스된 칸에서만 열려 있을 수 있다. 칸의 `focusin`·`focusout`도 그 칸을 조합 집합에서 뺀다. 버려진 조합을
+기억한 칸이 사용자가 다시 조합을 끝낼 때까지 모든 렌더를 거부하던 것을 막는다(`tests/test_ime_e2e.py`의
+`test_a_dropped_composition_does_not_hold_the_field`).
+
 `examples` 다섯에 대 본 결과: todo(Enter 추가 → 확정, 편집의 blur·Enter 저장 → 확정), chat(Enter 전송 → 확정, 게다가
 `push_js`로 비운다), search(방향키·Escape → 보조, Enter 선택 → 확정), notifications·quiz(`input`에 값 되받기 → 보조, 포커스된
 칸은 어차피 지켜진다).

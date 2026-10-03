@@ -2,10 +2,12 @@
 
 A composition is the IME's: while it runs, the field shows a syllable the user
 has not finished ("하" on the way to "한"). A render that writes the field's
-value, or takes its focus, ends the composition under the IME -- the browser
-drops it without a ``compositionend`` and the next keystroke starts a new one,
-which is where a doubled syllable ("하한") comes from. A morph must leave such a
-field alone, whoever sent the render:
+value, or takes the element out and puts it back, ends the composition under
+the IME -- the browser drops it without a ``compositionend`` and the next
+keystroke starts a new one, which is where a doubled syllable ("하한") comes
+from. (Taking the focus away is not that: a blur ends the composition with a
+``compositionend``, as committing it does.) A morph must leave such a field
+alone, whoever sent the render:
 
 - the field's own debounced ``input`` binding, which fires during a composition
   too, so the server renders the composing text back while the user is still
@@ -14,6 +16,10 @@ field alone, whoever sent the render:
   server last heard from the field;
 - the server changing the field's value while it shows exactly what the server
   last rendered -- a field the user has, by that measure, not edited (#169).
+
+A composition something else dropped -- a script's write to the value, a
+re-insertion -- is over, though no ``compositionend`` said so. Once the user has
+left the field, it takes the server's values again like any other.
 
 **How the IME is driven.** Chrome DevTools Protocol's ``Input.imeSetComposition``
 and ``Input.insertText``: the browser's own composition path, the one an OS IME
@@ -241,3 +247,43 @@ def test_a_server_change_to_the_field_leaves_the_composition_alone(page, browser
     expect(field).to_have_value("한")
     # The committed syllable reaches the server like any other input
     expect_text(by(page, "tag-seen"), "한")
+
+
+# --- a composition dropped without compositionend --------------------------------------------
+
+
+@pytest.mark.parametrize("drop", ["write", "reinsert"])
+def test_a_dropped_composition_does_not_hold_the_field(page, browser, server, drop):
+    """A script's write to the value (``JS().set_value``, an input mask) or taking the
+    element out and putting it back drops the composition, and no ``compositionend``
+    comes. The field is not composing any more: once the user is elsewhere, the
+    server's change lands as in any field not focused (#169)."""
+    open_live(page, f"{server}/imeprobe/")
+    other_context = browser.new_context()
+    try:
+        other = other_context.new_page()
+        open_live(other, f"{server}/imeprobe/")
+        ime = Ime(page)
+        field = by(page, "tag")
+        field.focus()
+        ime.compose("하")
+        expect_text(by(page, "tag-seen"), "하")
+        if drop == "write":
+            page.evaluate("() => { document.querySelector('[data-testid=tag]').value = 'x'; }")
+            by(page, "memo").focus()
+        else:
+            # In place, so the next render has nothing to move back
+            page.evaluate(
+                "() => { const f = document.querySelector('[data-testid=tag]');"
+                " f.parentNode.insertBefore(f, f.nextSibling); }"
+            )
+        assert ime.ended_with() == [], ime.boundaries()
+        assert page.evaluate("() => document.activeElement?.dataset.testid") != "tag"
+
+        by(other, "ping").click()
+        expect_text(by(page, "pings"), "1")
+    finally:
+        other_context.close()
+
+    expect_text(by(page, "tag-seen"), "하!")
+    expect(field).to_have_value("하!")

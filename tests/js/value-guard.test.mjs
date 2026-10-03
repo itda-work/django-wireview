@@ -191,9 +191,22 @@ test("a composing field that left the page is forgotten (#169)", () => {
 });
 
 test("clear() is the connection's: an open composition survives it (#169)", () => {
-  const { g } = guard();
+  const { g, focus } = guard();
   const field = input("하", "하");
+  focus(field);
   g.compose(field, true);
   g.clear();
   assert.equal(g.keep(field, next("x")), true);
+});
+
+test("a composition dropped without compositionend does not hold a field the user left (#169)", () => {
+  // A script wrote another value into the field: the IME dropped the composition
+  // and no compositionend came. The user moved on; the server renders a new value.
+  const { g, focus } = guard();
+  const field = input("x", "하");
+  focus(field);
+  g.compose(field, true);
+  focus(null);
+
+  assert.equal(g.keep(field, next("하!")), false, "not focused: the server's change applies");
 });
