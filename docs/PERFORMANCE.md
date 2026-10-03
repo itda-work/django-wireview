@@ -248,6 +248,27 @@ py-spy record -o profile.svg --pid <PID>
 > `make bench-compare BASE=<ref>`가 과거 커밋을 현재 트리 옆에서 함께 잰다.
 > 사용법과 해석은 [bench/README.md](../bench/README.md).
 
+### 측정값
+
+README가 싣는 숫자의 출처다. 모두 Apple Silicon macOS(Darwin arm64)에서 `make bench`로 잰 값이고, 브라우저까지의
+네트워크 왕복과 DB 조회는 들어 있지 않다. 사용자가 느끼는 응답 시간은 여기에 RTT를 더한 것이다.
+
+| 무엇 | 값 | 조건 | 원본 |
+|------|---:|------|------|
+| 이벤트 하나의 서버 처리 | 0.28 ms | 스칼라 7개 컴포넌트(`BenchFlat`). 핸들러와 `render_diff` 300회 평균, CPU 한 코어 | `bench/results/f0a9d54.json`의 `timing.flat.event_ms` |
+| | 1.1 ms | 항목 50개 목록(`BenchList`)에서 항목 하나를 바꿈 | 같은 파일의 `timing.list.event_ms` |
+| 값 하나가 바뀐 render 페이로드 | 239 B | `BenchFlat`, 컨슈머가 보내는 것과 같은 JSON | 같은 파일의 `payload_bytes.flat.change_one_value` |
+| | 656 B | `BenchList`에서 항목 하나 | 같은 파일의 `payload_bytes.list.change_one_item` |
+| 연결당 서버 메모리 | 55 KB | 연결 2,000개, daphne 4프로세스, channels-nats 0.2.0, 항목 5개 컴포넌트 | `bench/results/a993181-daphne-nats-4proc.json`의 `ws.items_5` |
+| 이벤트 처리량 | 12,387/s | 같은 구성, 프로세스 넷의 합 | 같은 파일 |
+| 브로드캐스트 | 141 ms | 같은 구성. 브로드캐스트 하나가 구독한 2,000연결을 모두 다시 렌더할 때까지 | 같은 파일 |
+
+`f0a9d54`는 2026-09-29에 Python 3.14·Django 6.0으로, `a993181`은 2026-09-08에 Python 3.12·Django 6.0으로 쟀다.
+같은 기계라도 부하가 있으면 시간 값은 두 배까지 흔들린다. 바이트는 흔들리지 않는다. 연결 수는 2,000개까지만 쟀고,
+그보다 많은 연결은 확인하지 않았다. uvicorn은 permessage-deflate 때문에 연결당 메모리가 네 배쯤 된다
+([배포 가이드](DEPLOYMENT.md)). 다른 구성의 수치는 [transport-abstraction.md](design/transport-abstraction.md) §5에 있다.
+**자기 컴포넌트와 배포 구성으로 `make bench`를 다시 잰다.**
+
 ### 기대치
 
 | 동작 | 목표 | 비고 |

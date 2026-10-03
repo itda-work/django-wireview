@@ -8,7 +8,9 @@ the tutorial tells a reader to, and run it in its own process, so nothing of the
 test project leaks in.
 """
 
+import ast
 import os
+import re
 import subprocess
 import sys
 import textwrap
@@ -36,6 +38,31 @@ def project(tmp_path_factory) -> Path:
     made = run(root, "-m", "django", "startproject", "mysite", str(root), "--template", str(TEMPLATE))
     assert made.returncode == 0, made.stderr
     return root
+
+
+def _first_block(text: str, language: str) -> str:
+    return re.search(rf"^```{language}\n(.*?)^```", text, re.MULTILINE | re.DOTALL).group(1)
+
+
+def _without_docstrings(source: str) -> str:
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if isinstance(body, list) and body and isinstance(body[0], ast.Expr):
+            if isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str):
+                node.body = body[1:]
+    return ast.dump(tree)
+
+
+def test_the_readmes_first_example_is_the_starters_component():
+    """The README opens with the starter's XHello, which the tests below and tests/test_starter_e2e.py run (#167).
+
+    Layout may differ (the README fits it on one screen); the code may not."""
+    readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
+    html = (TEMPLATE / "hello" / "templates" / "hello" / "hello.html").read_text(encoding="utf-8")
+    assert _first_block(readme, "html").split() == html.split()
+    python = (TEMPLATE / "hello" / "live.py-tpl").read_text(encoding="utf-8")
+    assert _without_docstrings(_first_block(readme, "python")) == _without_docstrings(python)
 
 
 def test_the_template_ships_in_the_package():

@@ -150,12 +150,31 @@ def test_the_readme_wires_a_project_as_tutorial_01_does():
     assert 'path("", include("wireview.urls"))' in readme
 
 
+def test_the_readme_opens_with_what_a_reader_decides_on_before_the_agent_prompt():
+    """README's first screen (#167): what it is and a link to the AI section, an example, when not to
+    use it, numbers, install, and then the agent prompt."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    first = readme.split("\n```", 1)[0]
+    assert "](#ai-에이전트로-시작하기)" in first and "llms.txt" not in first
+    headings = [line for line in readme.splitlines() if line.startswith("## ")][:5]
+    assert headings == [
+        "## 이럴 땐 쓰지 마세요",
+        "## 숫자",
+        "## 설치",
+        "## AI 에이전트로 시작하기",
+        "## 무엇이 포함되어 있나요?",
+    ]
+    assert readme.index("```html") < readme.index("## 이럴 땐 쓰지 마세요")
+
+
 def test_the_readme_and_the_skill_page_name_where_the_build_writes():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     start = readme.split("## AI 에이전트로 시작하기", 1)[1].split("\n## ", 1)[0]
     assert f"]({LLMS_URL})" in start
     assert _blocks(start)[0].startswith(f"{LLMS_URL} ")
     assert readme.index("## AI 에이전트로 시작하기") < readme.index("## 무엇이 포함되어 있나요?")
+    # The prompt asks the agent to consult llms.txt, not to obey it (#167).
+    assert "참고해" in _blocks(start)[0] and "안내대로" not in _blocks(start)[0]
     skill_page = (ROOT / "docs" / "features" / "agent-skill.md").read_text(encoding="utf-8")
     skill_url = nav.ORIGIN + SITE.skill()[0].url
     assert f"`{LLMS_URL}`" in skill_page and f"`{skill_url}`" in skill_page

@@ -7,6 +7,7 @@
 /wireview/deployment/
 /wireview/guide/
 /wireview/guide/performance/
+/wireview/guide/why/
 /wireview/llms.txt
 /wireview/reference/
 /wireview/reference/agent-skill/

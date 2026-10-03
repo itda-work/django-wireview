@@ -191,6 +191,10 @@ name = "가이드"
 index = "docs/ARCHITECTURE.md"
 
 [[sections.pages]]
+source = "docs/WHY.md"
+slug = "why"
+
+[[sections.pages]]
 source = "docs/PERFORMANCE.md"
 slug = "performance"
 

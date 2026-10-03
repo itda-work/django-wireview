@@ -1,20 +1,87 @@
 # Wireview - Django를 위한 Phoenix LiveView
 
-Wireview는 Django Channels를 사용하여 실시간 서버 렌더링 인터랙티브 UI를 구축할 수 있게 해주는 라이브러리입니다. Phoenix Framework의 LiveView와 유사합니다.
+Wireview는 화면의 상태를 서버의 Django 컴포넌트에 두고, 브라우저의 이벤트를 WebSocket으로 받아 다시 렌더한 HTML의 바뀐 부분만 내려보내는 Django 라이브러리입니다. Phoenix LiveView와 같은 방식이라 프런트엔드를 위한 API 계층을 따로 두지 않습니다.
+
+코딩 에이전트로 바로 시작하려면 [AI 에이전트로 시작하기](#ai-에이전트로-시작하기)로 갑니다.
+
+```html
+{% load wireview %}
+<div {% tag_header %}>
+  <h1>Hello, {{ name }}!</h1>
+  <input type="text" name="name" value="{{ name }}" {% on "input.debounce.300" "change_name" %}>
+</div>
+```
+
+```python
+from wireview import Component
+
+class XHello(Component):
+    class Meta:
+        template_name = "hello/hello.html"
+
+    name: str = "World"
+
+    async def change_name(self, name: str):
+        self.name = name
+```
+
+입력이 300ms 멈추면 `change_name`이 서버에서 돌고, 다시 렌더한 HTML의 바뀐 부분만 diff로 내려와 `<h1>`의 인사말이 바뀝니다. [스타터 템플릿](#설치-및-설정)이 만드는 첫 컴포넌트 그대로입니다.
+
+## 이럴 땐 쓰지 마세요
+
+모든 이벤트는 서버 왕복을 한 번 거칩니다. 로딩 클래스, `wire-disabled-with`, 그 자리에서 실행되는 `JS()` 명령, debounce가 그 시간을 가리지만([Optimistic UI](https://github.com/itda-work/django-wireview/blob/main/docs/features/optimistic-ui.md)) 없애지는 못합니다. 그래서 아래 경우에는 다른 도구가 맞습니다.
+
+- **오프라인에서도 돌아야 하는 앱.** 연결이 끊긴 동안의 이벤트는 보내지 않고 버립니다. 대신 로컬 저장소를 쓰는 PWA나 SPA.
+- **매 프레임 반응해야 하는 상호작용**(드래그, 캔버스, 게임). 프레임마다 왕복을 끼울 수 없습니다. 대신 그 부분만 [JavaScript 훅](https://github.com/itda-work/django-wireview/blob/main/docs/features/hooks.md)으로 브라우저에서 처리하고 결과만 서버로 보냅니다.
+- **왕복 지연(RTT)이 큰 망의 사용자가 주 대상인 앱.** 클릭마다의 체감이 RTT에 묶입니다. 대신 SPA.
+- **서버리스·scale-to-zero 호스팅.** 연결마다 WebSocket과 컴포넌트 상태를 계속 들고 있는 프로세스가 있어야 합니다. 대신 일반 Django 뷰(필요하면 htmx).
+- **WebSocket이 막힌 망**(일부 기업 프록시·VPN). HTTP 폴백이 없고, 만들지 않기로 했습니다([결정 기록](https://github.com/itda-work/django-wireview/blob/main/docs/design/longpolling-fallback.md)). 대신 일반 HTTP 요청만 쓰는 Django 뷰(htmx).
+- **클라이언트 상태가 본체인 앱**(협업 편집기, 리치 에디터, 스프레드시트). 훅이 앱 전체가 됩니다. 대신 SPA와 CRDT(Yjs 등).
+- **읽기만 하는 대량 구독 페이지**(실시간 스코어 등). 연결마다 서버에 상태를 두고, 브로드캐스트 하나가 구독한 연결 수만큼 다시 렌더됩니다. 대신 SSE와 CDN. 조작하는 부분만 wireview로 둡니다.
+- **다른 사이트에 심는 위젯.** 소켓은 Origin이 `ALLOWED_HOSTS`에 있는 페이지에서만 열립니다. 대신 독립 JS 위젯.
+
+결격이 아니라 따로 따질 일도 있습니다. 외부에 공개 API가 필요하면 DRF나 Django Ninja를 함께 둡니다(같은 모델과 인증을 씁니다). SPA 자산과 디자인 시스템이 이미 큰 조직이라면 기술이 아니라 도입 비용의 문제입니다. 느리다·굼뜨다·개발이 어렵다는 반론에 대한 답은 [왜 wireview인가](https://github.com/itda-work/django-wireview/blob/main/docs/WHY.md)에 모았습니다.
+
+## 숫자
+
+Apple Silicon macOS에서 `make bench`로 잰 값이고, 네트워크 왕복과 DB 조회는 들어 있지 않습니다. 조건과 원본 파일은 [성능 가이드](https://github.com/itda-work/django-wireview/blob/main/docs/PERFORMANCE.md#측정값)에 있습니다.
+
+- 이벤트 하나의 서버 처리(핸들러와 diff, CPU 한 코어): 값 7개인 컴포넌트 0.28ms, 항목 50개 목록 1.1ms
+- 값 하나가 바뀐 응답: 239B. 항목 50개 목록에서 항목 하나가 바뀌면 656B
+- 연결 2,000개, daphne 4프로세스와 channels-nats: 연결당 메모리 55KB, 이벤트 초당 12,387개, 브로드캐스트 하나가 2,000연결을 모두 다시 그리기까지 141ms. 그보다 많은 연결은 확인하지 않았으니 직접 잽니다
+
+## 설치
+
+```bash
+pip install django-wireview daphne
+```
+
+새 프로젝트는 스타터 템플릿으로 시작하고, 이미 있는 프로젝트에는 설정 몇 곳을 손으로 더합니다. 둘 다 [설치 및 설정](#설치-및-설정)에 있습니다.
 
 ## AI 에이전트로 시작하기
 
-Claude Code 같은 코딩 에이전트에게 아래 프롬프트를 주면, 에이전트가 [llms.txt](https://itda.work/wireview/llms.txt)에서 문서를 찾아 설치하고, 앱 개발자용 스킬을 넘겨받아 작업을 이어 갑니다. 새 프로젝트에서도 이미 있는 Django 프로젝트에서도 같은 프롬프트를 쓰고, 끝부분만 만들고 싶은 것으로 바꿉니다.
+AI가 코드를 써 줘도 그 코드를 고치고 책임지는 건 사람입니다. wireview는 프런트와 백엔드 사이의 API 계약을 없애 사람이 지켜야 할 코드를 Django 한 벌로 줄이고, AI가 쓴 결과를 브라우저 없이 `mount()` 테스트와 `manage.py check`로 바로 확인하게 합니다.
+
+Claude Code 같은 코딩 에이전트에게 아래 프롬프트를 줍니다. 새 프로젝트에서도 이미 있는 Django 프로젝트에서도 같은 프롬프트를 쓰고, 끝부분만 만들고 싶은 것으로 바꿉니다.
 
 ```text
-https://itda.work/wireview/llms.txt 를 읽고 그 안내대로 django-wireview를 준비한 다음, 실시간 투표 화면을 만들어줘.
+https://itda.work/wireview/llms.txt 를 참고해 django-wireview를 설치하고, 실시간 투표 화면을 만들어줘.
 ```
 
-![Wireview 아키텍처 개요](https://raw.githubusercontent.com/itda-work/django-wireview/main/overview.jpg)
+[llms.txt](https://itda.work/wireview/llms.txt)는 설치 명령, 프로젝트 준비 순서, 문서 페이지 목록을 담은 텍스트 파일입니다. 그 순서에 있는 `python manage.py wireview_agent_setup`은 패키지에 실린 앱 개발자용 [스킬](https://github.com/itda-work/django-wireview/blob/main/docs/features/agent-skill.md)을 프로젝트의 `.claude/skills/wireview/`에 설치합니다. 스킬은 언제 무엇을 읽을지와 조용히 실패하는 함정을 담고, 설치한 뒤에는 네트워크 없이 읽힙니다. `manage.py check`는 그런 함정 17가지를 `wireview.W*` 경고로 알립니다([체크 목록](https://github.com/itda-work/django-wireview/blob/main/docs/features/checks.md)).
 
 ## 무엇이 포함되어 있나요?
 
-VueJS나 ReactJS를 대체하는 것은 아니지만, Django의 모든 잠재력을 활용하여 인터랙티브한 프론트엔드를 만들 수 있습니다. 모든 것이 서버 사이드에서 렌더링되므로, 첫 번째 요청에서 의미 있는 정보가 포함된 인터페이스가 제공됩니다. Django 템플릿과 ORM의 모든 기능을 컴포넌트에서 직접 사용하고, 이벤트 구독을 통해 실시간으로 인터페이스를 업데이트할 수 있습니다.
+wireview는 검증된 Django·Channels 위의 얇은 층입니다. 템플릿·폼·ORM·인증·세션은 Django의 것이고, WebSocket과 채널 레이어는 Channels의 것입니다. 그 근거는 이렇습니다.
+
+- 1.1.0은 PyPI에 `Development Status :: 5 - Production/Stable`로 올라 있습니다.
+- CI가 Python 3.12·3.13·3.14와 Django 5.2·6.0·6.1의 아홉 조합을 모두 돌립니다([지원 범위](https://github.com/itda-work/django-wireview/blob/main/docs/COMPATIBILITY.md#지원-범위)).
+- 1.0부터 공개 API를 마이너·패치 릴리스에서 깨지 않고, 없앨 때는 경고를 거친 뒤 다음 메이저에서 없앱니다([호환성 정책](https://github.com/itda-work/django-wireview/blob/main/docs/COMPATIBILITY.md)).
+- `make test`가 5,000개가 넘는 테스트를 돌리고, 릴리스 태그는 이것과 NATS·Redis 위의 브라우저 E2E를 모두 통과해야 PyPI에 올라갑니다.
+
+Node와 프런트엔드 빌드는 필요 없습니다. 다만 복잡도가 사라지는 것이 아니라 운영 쪽으로 옮겨 옵니다. ASGI 서버(daphne·uvicorn), WebSocket을 통과시키는 프록시, 프로세스가 둘 이상이면 채널 레이어의 브로커(NATS나 Redis)가 필요합니다([배포 가이드](https://github.com/itda-work/django-wireview/blob/main/docs/DEPLOYMENT.md)).
+
+Django의 ORM과 인증도 그대로 쓰지만 규칙이 붙습니다. 핸들러와 라이프사이클 메서드는 이벤트 루프 위에서 도는 async 함수라, `aget()` 같은 async ORM API를 쓰거나 `sync_to_async`로 감쌉니다. 사용자와 세션은 WebSocket을 연결할 때 읽은 것이고, Django의 HTTP 미들웨어는 페이지 요청에만 돌고 WebSocket 이벤트에는 돌지 않습니다. 로그아웃하면 [live_session](https://github.com/itda-work/django-wireview/blob/main/docs/features/live-session.md#로그아웃과-기존-연결) 경계 안의 열린 소켓이 닫히지만, 로그아웃을 거치지 않는 권한 변경(`is_staff`를 떼는 것 등)은 다음 연결에서야 반영됩니다. 이벤트마다 확인할 권한은 핸들러에서 확인합니다.
 
 **주요 기능:**
 - 실시간 업데이트가 가능한 서버 사이드 렌더링 컴포넌트
@@ -27,89 +94,10 @@ VueJS나 ReactJS를 대체하는 것은 아니지만, Django의 모든 잠재력
 - 진행률 추적이 가능한 파일 업로드
 - Chart.js, Mapbox 등 서드파티 라이브러리 통합을 위한 JavaScript Hooks
 
-## django-reactor 대비 개선 사항
-
-Wireview는 [django-reactor](https://github.com/edelvalle/reactor)의 현대적인 진화 버전으로, 다음과 같은 중요한 개선 사항이 있습니다:
-
-### 새로운 기능
-
-| 기능 | reactor | wireview | 설명 |
-|------|---------|----------|------|
-| **Streams API** | - | ✅ | `stream()`, `stream_insert()`, `stream_delete()`로 메모리 효율적인 대규모 리스트 처리 |
-| **Presence API** | - | ✅ | `PresenceMixin`, `PresenceTrackerMixin`으로 실시간 사용자 추적 및 타이핑 표시 |
-| **파일 업로드** | - | ✅ | 진행률 추적, 매직 바이트 검증이 포함된 청크 업로드 |
-| **AsyncResult** | - | ✅ | 비동기 작업을 위한 로딩/성공/에러 상태 관리 |
-| **JS 명령** | - | ✅ | `JS()` 빌더로 Phoenix LiveView.JS 스타일의 클라이언트 사이드 명령 |
-| **테스트 유틸리티** | - | ✅ | WebSocket 없이 쉽게 컴포넌트 테스트를 위한 `mount()` 유틸리티 |
-| **디버그 도구** | - | ✅ | `wireview.debug`로 브라우저 콘솔 디버깅 |
-| **JavaScript Hooks** | - | ✅ | Chart.js, Mapbox 등 서드파티 JavaScript 라이브러리 통합 |
-| **live_session** | - | ✅ | 페이지 단위 인증 경계. 같은 술어가 뷰와 join 양쪽에서 돌고, 경계를 넘는 이동은 전체 페이지 로드가 된다 ([문서](https://github.com/itda-work/django-wireview/blob/main/docs/features/live-session.md)) |
-
-### 아키텍처 개선
-
-| 항목 | reactor | wireview |
-|------|---------|----------|
-| **Pydantic** | v1 (레거시) | v2 (최신) |
-| **DOM Morphing** | morphdom | idiomorph (더 나은 속성 보존) |
-| **Python** | ≥3.9 | ≥3.12 |
-| **Django** | 3.2+ | 5.2, 6.0, 6.1 |
-| **모듈 구조** | 플랫 | 체계적 (`core/`, `features/`) |
-
-### 새로운 컴포넌트 메서드
-
-```python
-# 라이프사이클
-async def leaving(self):
-    """컴포넌트 연결 해제 시 호출 - 정리 훅"""
-
-# UI 제어
-await self.scroll_into_view(element_id, behavior="smooth")
-await self.push_js(JS().set_value("input", ""))
-
-# Streams
-await self.stream("items", items)
-await self.stream_insert("items", item, at=0)
-await self.stream_delete("items", item_id)
-
-# Presence
-await self.presence_join()
-await self.presence_set_typing(True)
-
-# 비동기 로딩
-self.data = await self.assign_async(fetch_data())
-
-# JavaScript Hooks
-await self.push_event("update_chart", {"data": [1, 2, 3]})
-```
-
-### reactor에서 마이그레이션
-
-대부분의 reactor 컴포넌트는 최소한의 변경으로 작동합니다:
-
-```python
-# reactor
-from reactor.component import Component
-
-class XCounter(Component):
-    class Meta:
-        subscriptions = {"counter"}
-
-# wireview (동일한 API)
-from wireview import Component
-
-class XCounter(Component):
-    class Meta:
-        subscriptions = {"counter"}
-```
-
-주요 차이점:
-- 패키지 이름: `reactor` → `wireview`
-- 설정 접두사: `REACTOR_*` → `WIREVIEW` dict
-- 템플릿 태그: `{% load reactor %}` → `{% load wireview %}`
+![Wireview 아키텍처 개요](https://raw.githubusercontent.com/itda-work/django-wireview/main/overview.jpg)
 
 ## 목차
 
-- [django-reactor 대비 개선 사항](#django-reactor-대비-개선-사항)
 - [설치 및 설정](#설치-및-설정)
 - [빠른 시작](#빠른-시작)
 - [예제](#예제)
@@ -129,6 +117,7 @@ class XCounter(Component):
 - [테스트](#컴포넌트-테스트)
 - [디버그 도구](#디버그-도구)
 - [설정](#설정)
+- [django-reactor 대비 개선 사항](#django-reactor-대비-개선-사항)
 
 ## 설치 및 설정
 
@@ -1213,6 +1202,7 @@ WIREVIEW = {
 
 ## 문서
 
+- [왜 wireview인가](https://github.com/itda-work/django-wireview/blob/main/docs/WHY.md) - 서버 렌더링에 대한 반론과 그 답
 - [아키텍처](https://github.com/itda-work/django-wireview/blob/main/docs/ARCHITECTURE.md) - 내부 설계 및 패턴
 - [배포 가이드](https://github.com/itda-work/django-wireview/blob/main/docs/DEPLOYMENT.md) - 프로덕션 배포 설정
 - [성능 가이드](https://github.com/itda-work/django-wireview/blob/main/docs/PERFORMANCE.md) - 성능 최적화 팁
@@ -1220,6 +1210,86 @@ WIREVIEW = {
 - [로드맵](https://github.com/itda-work/django-wireview/blob/main/docs/ROADMAP.md) - 향후 개발 계획
 - [업그레이드 가이드](https://github.com/itda-work/django-wireview/blob/main/docs/UPGRADING.md) - 0.x, 1.0 릴리스 후보, 1.0에서 1.1로. 쓰던 버전별로 읽을 절과 보안 조치
 - [호환성 정책](https://github.com/itda-work/django-wireview/blob/main/docs/COMPATIBILITY.md) - 공개 API, 폐기 절차, 지원 범위
+
+## django-reactor 대비 개선 사항
+
+Wireview는 [django-reactor](https://github.com/edelvalle/reactor)의 현대적인 진화 버전으로, 다음과 같은 중요한 개선 사항이 있습니다:
+
+### 새로운 기능
+
+| 기능 | reactor | wireview | 설명 |
+|------|---------|----------|------|
+| **Streams API** | - | ✅ | `stream()`, `stream_insert()`, `stream_delete()`로 메모리 효율적인 대규모 리스트 처리 |
+| **Presence API** | - | ✅ | `PresenceMixin`, `PresenceTrackerMixin`으로 실시간 사용자 추적 및 타이핑 표시 |
+| **파일 업로드** | - | ✅ | 진행률 추적, 매직 바이트 검증이 포함된 청크 업로드 |
+| **AsyncResult** | - | ✅ | 비동기 작업을 위한 로딩/성공/에러 상태 관리 |
+| **JS 명령** | - | ✅ | `JS()` 빌더로 Phoenix LiveView.JS 스타일의 클라이언트 사이드 명령 |
+| **테스트 유틸리티** | - | ✅ | WebSocket 없이 쉽게 컴포넌트 테스트를 위한 `mount()` 유틸리티 |
+| **디버그 도구** | - | ✅ | `wireview.debug`로 브라우저 콘솔 디버깅 |
+| **JavaScript Hooks** | - | ✅ | Chart.js, Mapbox 등 서드파티 JavaScript 라이브러리 통합 |
+| **live_session** | - | ✅ | 페이지 단위 인증 경계. 같은 술어가 뷰와 join 양쪽에서 돌고, 경계를 넘는 이동은 전체 페이지 로드가 된다 ([문서](https://github.com/itda-work/django-wireview/blob/main/docs/features/live-session.md)) |
+
+### 아키텍처 개선
+
+| 항목 | reactor | wireview |
+|------|---------|----------|
+| **Pydantic** | v1 (레거시) | v2 (최신) |
+| **DOM Morphing** | morphdom | idiomorph (더 나은 속성 보존) |
+| **Python** | ≥3.9 | ≥3.12 |
+| **Django** | 3.2+ | 5.2, 6.0, 6.1 |
+| **모듈 구조** | 플랫 | 체계적 (`core/`, `features/`) |
+
+### 새로운 컴포넌트 메서드
+
+```python
+# 라이프사이클
+async def leaving(self):
+    """컴포넌트 연결 해제 시 호출 - 정리 훅"""
+
+# UI 제어
+await self.scroll_into_view(element_id, behavior="smooth")
+await self.push_js(JS().set_value("input", ""))
+
+# Streams
+await self.stream("items", items)
+await self.stream_insert("items", item, at=0)
+await self.stream_delete("items", item_id)
+
+# Presence
+await self.presence_join()
+await self.presence_set_typing(True)
+
+# 비동기 로딩
+self.data = await self.assign_async(fetch_data())
+
+# JavaScript Hooks
+await self.push_event("update_chart", {"data": [1, 2, 3]})
+```
+
+### reactor에서 마이그레이션
+
+대부분의 reactor 컴포넌트는 최소한의 변경으로 작동합니다:
+
+```python
+# reactor
+from reactor.component import Component
+
+class XCounter(Component):
+    class Meta:
+        subscriptions = {"counter"}
+
+# wireview (동일한 API)
+from wireview import Component
+
+class XCounter(Component):
+    class Meta:
+        subscriptions = {"counter"}
+```
+
+주요 차이점:
+- 패키지 이름: `reactor` → `wireview`
+- 설정 접두사: `REACTOR_*` → `WIREVIEW` dict
+- 템플릿 태그: `{% load reactor %}` → `{% load wireview %}`
 
 ## 개발 및 기여
 

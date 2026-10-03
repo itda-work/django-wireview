@@ -17,6 +17,10 @@ The django-reactor era changelog (2.x) is preserved in
   its own `assets/`, so a page loads nothing from another origin but its font; the release bundle's
   members carry the commit's time (or `SOURCE_DATE_EPOCH`) instead of 0. What the bundle promises
   its host is written down in `docs/implementation/docs-site-bundle.md` (#166).
+- The README opens with a starter-sized example, when not to use wireview, measured numbers with
+  their conditions, and then install and the agent prompt, which now asks an agent to consult
+  llms.txt rather than follow it; the objections and their answers are a new page,
+  `docs/WHY.md` (site: `/wireview/guide/why/`) (#167).
 
 ## [1.1.0] - 2026-10-03
 
