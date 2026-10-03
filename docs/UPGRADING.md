@@ -48,10 +48,11 @@
 1.x는 [공개 API](./COMPATIBILITY.md)를 깨지 않으므로 상한은 다음 메이저다.
 
 ```toml
-dependencies = ["django-wireview>=1.1,<2"]
+dependencies = ["django-wireview>=1.2,<2"]
 ```
 
-하한은 쓰는 기능이 처음 나온 버전이다. `AUTO_BROADCAST.senders`의 매핑은 1.1부터다.
+하한은 쓰는 기능이 처음 나온 버전이다. `AUTO_BROADCAST.senders`의 매핑은 1.1부터, 테스트의 `mount(path=...)`·
+`follow_push(Destination)`와 `wireview:navigation-failed`는 1.2부터다.
 
 릴리스 후보를 쓰던 프로젝트는 rc 하한(`>=1.0.0rc4,<1.1`)과 `pip install --pre`를 지운다. 1.x 릴리스는 사전
 릴리스가 아니므로 평소처럼 설치된다.

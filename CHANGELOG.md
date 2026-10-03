@@ -10,6 +10,25 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-04
+
+### Added
+
+- Browser tests for what the documentation claims about reconnecting (the same server, a restarted
+  process, another worker), Hangul IME compositions under a render (the field's own debounced
+  event and someone else's broadcast), Back and Forward after `push_to`, `replace_to` and boosted
+  moves, and broadcasts past the channel layer's capacity on each layer (#168).
+- `wireview:navigation-failed` on `document`, `detail` `{url, method, answered}`: a boosted non-GET
+  form submission put no page on screen. The form is not sent again and the page stays. `answered`
+  is false when the network failed (the form may have reached the server) and true when the server
+  took it and redirected to another origin -- a payment page, a sign-in -- whose address a boosted
+  request cannot see; such a form is not one to boost. A request that was stopped (`AbortError`)
+  dispatches nothing (#170).
+- `mount()` takes `path=`, the path of the page the component is on, and `follow_push()` takes the
+  component a push to another path lands on (#169). A component with a field called `path` sets
+  it with `state={"path": ...}`: `path=` without it in `state=` raises `TypeError`, where 1.1 set
+  the field.
+
 ### Changed
 
 - The package's Documentation URL is the documentation site, https://itda.work/wireview/ (#166).
@@ -83,23 +102,6 @@ The django-reactor era changelog (2.x) is preserved in
 - `follow_push()` after a push or replace to a URL with a path, on a component mounted without
   `path=`, cannot tell a patch from a new page. It follows it on the same instance as 1.1 did and
   warns with `WireviewDeprecationWarning`; 2.0 fails there. Mount with `path="/items/"` (#169).
-
-### Added
-
-- Browser tests for what the documentation claims about reconnecting (the same server, a restarted
-  process, another worker), Hangul IME compositions under a render (the field's own debounced
-  event and someone else's broadcast), Back and Forward after `push_to`, `replace_to` and boosted
-  moves, and broadcasts past the channel layer's capacity on each layer (#168).
-- `wireview:navigation-failed` on `document`, `detail` `{url, method, answered}`: a boosted non-GET
-  form submission put no page on screen. The form is not sent again and the page stays. `answered`
-  is false when the network failed (the form may have reached the server) and true when the server
-  took it and redirected to another origin -- a payment page, a sign-in -- whose address a boosted
-  request cannot see; such a form is not one to boost. A request that was stopped (`AbortError`)
-  dispatches nothing (#170).
-- `mount()` takes `path=`, the path of the page the component is on, and `follow_push()` takes the
-  component a push to another path lands on (#169). A component with a field called `path` sets
-  it with `state={"path": ...}`: `path=` without it in `state=` raises `TypeError`, where 1.1 set
-  the field.
 
 ### Fixed
 
@@ -2550,7 +2552,8 @@ auto-recovery, viewport bindings, optimistic UI attributes, type stub
 generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
-[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/itda-work/django-wireview/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/itda-work/django-wireview/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc4...v1.0.0
 [1.0.0rc4]: https://github.com/itda-work/django-wireview/compare/v1.0.0rc3...v1.0.0rc4

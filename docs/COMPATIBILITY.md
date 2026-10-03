@@ -98,13 +98,13 @@ warnings.simplefilter("error", WireviewDeprecationWarning)
 
 현재 진행 중인 것:
 
-| 옛 것 | 새 것 | 제거 |
-|-------|-------|------|
-| `wireview.component` 모듈 | `from wireview import ...`로 `Component`·`WireviewMeta`·`broadcast`. 이 모듈이 함께 내보내던 `ComponentNotFound`·`MessagePayload`는 공개였던 적이 없어 **대체 없이** 같이 없어진다 | 2.0 |
-| 테스트의 `view.wire.broadcasts` | `view.broadcasts` | 2.0 |
-| 테스트의 `view.wire.presence_broadcasts` | `view.presence_broadcasts` | 2.0 |
-| DOM 이벤트 `upload:added`·`progress`·`complete`·`error`·`cancel` | `wireview:upload-added` 등 (둘 다 나간다) | 2.0 |
-| 테스트에서 `mount()`에 `path=` 없이, 경로가 있는 URL로 간 push·replace를 `follow_push()`로 따라가기 (1.1처럼 같은 인스턴스가 `params_changed()`를 받는다) | `mount(..., path="/items/")`. 같은 경로면 patch, 다른 경로면 `follow_push(Destination)` | 2.0 (실패한다) |
+| 옛 것 | 새 것 | 폐기 | 제거 |
+|-------|-------|------|------|
+| `wireview.component` 모듈 | `from wireview import ...`로 `Component`·`WireviewMeta`·`broadcast`. 이 모듈이 함께 내보내던 `ComponentNotFound`·`MessagePayload`는 공개였던 적이 없어 **대체 없이** 같이 없어진다 | 0.5.0 | 2.0 |
+| 테스트의 `view.wire.broadcasts` | `view.broadcasts` | 0.6.0 | 2.0 |
+| 테스트의 `view.wire.presence_broadcasts` | `view.presence_broadcasts` | 0.6.0 | 2.0 |
+| DOM 이벤트 `upload:added`·`progress`·`complete`·`error`·`cancel` | `wireview:upload-added` 등 (둘 다 나간다) | 1.0.0rc2 | 2.0 |
+| 테스트에서 `mount()`에 `path=` 없이, 경로가 있는 URL로 간 push·replace를 `follow_push()`로 따라가기 (1.1처럼 같은 인스턴스가 `params_changed()`를 받는다) | `mount(..., path="/items/")`. 같은 경로면 patch, 다른 경로면 `follow_push(Destination)` | 1.2.0 | 2.0 (실패한다) |
 
 ## 지원 범위
 
