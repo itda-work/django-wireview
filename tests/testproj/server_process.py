@@ -15,14 +15,22 @@ from __future__ import annotations
 
 import contextlib
 import http.server
+import os
 import socket
 import subprocess
+import sys
 import threading
 import time
 import typing as t
 import urllib.request
 import uuid
 from pathlib import Path
+
+from .time_limit import disown, own
+
+#: The repository and its tests/ directory, which a server process runs from.
+ROOT = Path(__file__).resolve().parent.parent.parent
+TESTS = ROOT / "tests"
 
 #: What each server logs when the port is taken. Daphne logs its line and exits
 #: with 0; uvicorn logs its line and exits with 1.
@@ -86,3 +94,64 @@ def held_port() -> t.Iterator[int]:
         other.shutdown()
         other.server_close()
         thread.join()
+
+
+def launch_uvicorn(port: int, log_dir: Path) -> tuple[subprocess.Popen, Path]:
+    """One uvicorn process serving the test project, on this interpreter and the configured layer.
+
+    Its output goes to a file rather than to the void: when a request comes back
+    500 the traceback is on the server, not in the test. At ``info``, because the
+    access log in that file is what says this server, not another process on its
+    port, answered (:func:`wait_until_serving`); unbuffered, so what the
+    application prints lands in order with it. Appended, so a server started
+    again on the same port (a restart) keeps the first one's log above its own.
+    """
+    log = log_dir / f"worker-{port}.log"
+    with log.open("ab") as out:
+        # A stopped run skips the fixture's teardown; the stop terminates what it owns.
+        proc = own(
+            subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "testproj.asgi:application",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(port),
+                    "--log-level",
+                    "info",
+                ],
+                cwd=TESTS,
+                env={**os.environ, "PYTHONPATH": os.pathsep.join([str(ROOT), str(TESTS)]), "PYTHONUNBUFFERED": "1"},
+                stdout=out,
+                stderr=subprocess.STDOUT,
+            )
+        )
+    return proc, log
+
+
+def start_uvicorn(ports: list[int], log_dir: Path, timeout: float) -> list[subprocess.Popen]:
+    """Launch a server on each port, then wait for each against one deadline; stop them all if one did not serve."""
+    launched = [launch_uvicorn(port, log_dir) for port in ports]
+    deadline = time.monotonic() + timeout
+    try:
+        for port, (proc, log) in zip(ports, launched):
+            wait_until_serving(port, proc, log, max(deadline - time.monotonic(), 0.0))
+    except BaseException:
+        for proc, _ in launched:
+            stop_process(proc)
+        raise
+    return [proc for proc, _ in launched]
+
+
+def stop_process(proc: subprocess.Popen) -> None:
+    """Stop a server process and wait for it, killing it if it does not go."""
+    proc.terminate()
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:  # pragma: no cover - a wedged server
+        proc.kill()
+        proc.wait()
+    disown(proc)

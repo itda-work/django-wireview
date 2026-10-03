@@ -53,13 +53,23 @@ LIVE_SELECTOR = '[data-is-live="true"]'
 #: and refuse reconnects: ``window.__link.offline = true`` sends every new socket to
 #: a port nothing listens on, which fails the way a lost network does, and
 #: ``window.__link.sockets`` lists every socket the page opened.
+#: ``window.__link.port = n`` sends every new socket to port ``n`` on the same host
+#: instead -- another worker behind the same address, as a load balancer would.
 OFFLINE_SHIM = """
 (() => {
   const Native = window.WebSocket;
-  window.__link = { offline: false, sockets: [] };
+  window.__link = { offline: false, port: null, sockets: [] };
   window.WebSocket = class extends Native {
     constructor(url, protocols) {
-      super(window.__link.offline ? "ws://127.0.0.1:9/" : url, protocols);
+      let target = url;
+      if (window.__link.offline) {
+        target = "ws://127.0.0.1:9/";
+      } else if (window.__link.port) {
+        const moved = new URL(url);
+        moved.port = String(window.__link.port);
+        target = moved.href;
+      }
+      super(target, protocols);
       window.__link.sockets.push(this);
     }
   };
