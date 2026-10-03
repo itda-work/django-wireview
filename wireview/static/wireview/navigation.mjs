@@ -169,6 +169,19 @@ export function returnsToPatch(state, url, page) {
 }
 
 /**
+ * Whether `to` names the very URL `from` is (#170): a push there makes no new
+ * history entry, as the browser makes none for a link to the page it shows
+ * and Phoenix's pushState skips one to `location.href`.
+ * @param {string} from - the address bar
+ * @param {string} to
+ * @param {string} [base] - what a relative `to` resolves against; `from` by default
+ * @returns {boolean}
+ */
+export function isSameUrl(from, to, base = from) {
+  return new URL(to, base).href === new URL(from).href;
+}
+
+/**
  * Whether `from` and `to` are one document's URL apart from the fragment: the
  * same origin, path and query (#170). A move between them -- a click on
  * `<a href="#section">`, Back from it -- is the browser's own: it scrolls and

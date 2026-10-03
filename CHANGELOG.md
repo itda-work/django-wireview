@@ -59,6 +59,10 @@ The django-reactor era changelog (2.x) is preserved in
   longer hear the destination's params; the sticky components the navigation carried across hear
   them, once per URL even when Back paints a cached copy first; a sticky component the next page
   does not have leaves without hearing them (#170).
+- **Silently changed:** a `push_to` to exactly the URL on screen makes no history entry, as
+  Phoenix's makes none; the components still hear `params_changed()`. A boosted link, `redirect_to`
+  or GET form to the URL on screen fetches it in place of the current entry, as the browser does
+  with a link to its own URL (#170).
 - **Silently changed:** boost leaves a link to a fragment of the page (`<a href="#section">`: the
   same path and query, with a `#`) and `wireview.visit("#top")` to the browser, which scrolls and
   makes the history entry; Back and Forward between such entries fetch nothing and tell the

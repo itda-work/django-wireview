@@ -8,6 +8,7 @@ import {
   carriedAcross,
   isFragmentLink,
   isPatch,
+  isSameUrl,
   newPageId,
   onlyFragmentMoved,
   patchesPage,
@@ -109,6 +110,19 @@ test("nothing is a patch while a fetching navigation is in flight (#169)", () =>
   assert.equal(returnsToPatch({ [PAGE_KEY]: "p1" }, "http://x/a/?tab=b", leaving), false);
   assert.equal(returnsToPatch({ [PAGE_KEY]: null }, "http://x/a/?tab=b", leaving), false);
   assert.equal(returnsToPatch({}, "http://x/a/?tab=b", leaving), false);
+});
+
+test("a push to the URL on screen is the same URL, however it is written (#170)", () => {
+  assert.equal(isSameUrl("http://x/a/?tab=b", "?tab=b"), true);
+  assert.equal(isSameUrl("http://x/a/?tab=b", "/a/?tab=b"), true);
+  assert.equal(isSameUrl("http://x/a/?tab=b", "http://x/a/?tab=b"), true);
+  assert.equal(isSameUrl("http://x/a/", "/a/"), true);
+  assert.equal(isSameUrl("http://x/a/?tab=b", "?tab=c"), false);
+  assert.equal(isSameUrl("http://x/a/?tab=b", "/a/"), false, "dropping the query is a move");
+  assert.equal(isSameUrl("http://x/a/", "#top"), false, "a fragment is a move");
+  assert.equal(isSameUrl("http://x/a/#top", "/a/"), false);
+  // Against the document's base, as pushState resolves it
+  assert.equal(isSameUrl("http://x/a/b", "b", "http://x/a/"), true);
 });
 
 test("only the fragment moved between two URLs of one document (#170)", () => {

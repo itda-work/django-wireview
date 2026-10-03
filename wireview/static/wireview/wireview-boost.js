@@ -7,6 +7,7 @@ import { Idiomorph } from "idiomorph";
 import { NavigationGate, crossesBoundary, readSessionName } from "./live-session.mjs";
 import {
   isFragmentLink,
+  isSameUrl,
   newPageId,
   onlyFragmentMoved,
   patchesPage,
@@ -427,7 +428,9 @@ class HistoryCache {
    *   a full page load took over.
    */
   static async push(path) {
-    if (document.body == null) debugger;
+    // The browser makes no entry for a load of the URL it shows, and Back from
+    // a second one would change nothing (#170): fetched in place instead
+    if (isSameUrl(document.location.href, path, document.baseURI)) return this.swap(path);
     navGate.begin();
     leavePage();
     replaceEntry(
@@ -580,10 +583,12 @@ class HistoryCache {
     navGate.begin();
     if (replace) {
       replaceEntry(stamped({}, page.id), url);
-    } else {
+    } else if (!isSameUrl(document.location.href, url, document.baseURI)) {
       replaceEntry(stamped(history.state, page.id), document.location.href);
       pushEntry(stamped({}, page.id), url);
     }
+    // A push to the URL on screen makes no entry, as Phoenix's makes none,
+    // and the components still hear their params, as handle_params runs (#170)
     navEvent.sendPatched();
   }
 

@@ -597,6 +597,43 @@ def test_a_live_component_hears_the_first_params_of_the_page(page, server, heard
     ]
 
 
+# --- a push to the URL on screen (#170) -------------------------------------------------------
+
+
+def test_a_push_to_the_url_on_screen_makes_no_entry_and_still_tells_the_params(box, traffic, heard):
+    page = box
+    built = rendered(page)
+    by(page, "push-b").click()
+    at(page, "/historyprobe/?tab=b")
+    bump_to(page, 1)
+    before = page.evaluate("history.length")
+    told = len(heard)
+
+    by(page, "push-same").click()
+    settled(page)
+    assert page.evaluate("history.length") == before
+    assert len(heard) > told, "the components hear their params, as Phoenix's handle_params runs"
+
+    # Back leaves the URL rather than landing on a copy of it
+    page.go_back()
+    at(page, "/historyprobe/")
+    screen(page, page_name="box", tab="a", count=2)
+    patched(page, traffic, built)
+
+
+def test_a_link_to_the_url_on_screen_fetches_it_in_place(box, traffic):
+    page = box
+    first = rendered(page)
+    before = page.evaluate("history.length")
+
+    by(page, "to-box").click()
+    expect(by(page, "rendered")).not_to_have_text(str(first), timeout=WAIT_TIMEOUT * 1000)
+    at(page, "/historyprobe/")
+    assert page.evaluate("history.length") == before, "as the browser reloads a link to its own URL"
+    assert traffic.fetches
+    assert page.evaluate("window.__samePage === true")
+
+
 # --- a link to a fragment of the page (#170) ---------------------------------------------------
 
 

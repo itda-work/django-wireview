@@ -118,6 +118,7 @@ UPGRADE_NOTE = {
         "떠나는 페이지의 컴포넌트는 목적지의 params를 듣지 않는다",
         "`leaving()`에 둔다",
     ),
+    "makes no history entry, as Phoenix's makes none": ("지금 주소와 똑같은 주소로 가는 `push_to`", "전처럼 돈다"),
     "leaves a link to a fragment of the page": (
         '조각 링크(`<a href="#section">`)를 가로채지 않는다',
         "`redirect_to`로 바꾼다",

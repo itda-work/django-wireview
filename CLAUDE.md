@@ -106,7 +106,8 @@ wireview/
                            values.mjs (morph가 사용자가 고친 입력값을 덮어써도 되는가. IME가 조합 중인 칸은 언제나 지킨다),
                            loading.mjs (로딩 표시를 어느 응답이 끝내는가. ref로 짝짓는다),
                            navigation.mjs (boost 이동이 끝났음을 누구에게 알리는가: 훅의 navigated()와 wireview:navigated.
-                           push_to·replace_to·popstate가 patch인가: 같은 경로, history.state의 페이지 표식(wireviewPage), #169),
+                           push_to·replace_to·popstate가 patch인가: 같은 경로, history.state의 페이지 표식(wireviewPage), #169.
+                           같은 URL인가(기록 항목을 만들지 않는다), 조각만 다른가(브라우저에 맡긴다), #170),
                            reconnect.mjs (재연결 백오프를 헤더 메타에서 읽는다. WIREVIEW RECONNECT_*),
                            uploads.mjs (업로드 manager의 수명. 인스턴스가 끝나면 폐기하고, 렌더의 instances가 알린 인스턴스 번호와
                            같은 config만 받는다. 끝난 인스턴스의 upload_op는 세션이 먼저 버린다.

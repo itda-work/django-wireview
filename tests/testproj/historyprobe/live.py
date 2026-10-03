@@ -45,6 +45,10 @@ class HistoryBox(Component):
     async def bump(self, **_rest):
         self.count += 1
 
+    async def push_same(self, **_rest):
+        # The URL on screen, once a push gave it a query
+        await self.wire.push_to(f"?tab={self.tab}")
+
     async def push(self, tab: str = "a", **_rest):
         await self.wire.push_to(f"?tab={tab}")
 
