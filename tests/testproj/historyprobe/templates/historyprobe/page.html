@@ -14,6 +14,18 @@
     <a data-testid="to-other" href="/historyprobe/other/">other</a>
     {# A jump inside the document: the browser's, not boost's (#170) #}
     <a data-testid="to-section" href="#section">section</a>
+    {# Boosted forms (#170): a GET is a push, a POST is fetched with its body #}
+    <form action="/historyprobe/other/" wire-boost data-testid="get-form">
+      <input name="tab" value="g">
+      <button type="submit" data-testid="get-send">get</button>
+    </form>
+    <form method="post"
+          action="/historyprobe/post/"
+          wire-boost
+          data-testid="post-form">
+      {% csrf_token %}
+      <button type="submit" data-testid="post-send">post</button>
+    </form>
     {% component 'HistoryDock' %}
     {% if name == "box" %}
       {% component 'HistoryTray' %}

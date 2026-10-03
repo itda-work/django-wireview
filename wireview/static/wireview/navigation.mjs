@@ -19,6 +19,13 @@
 export const NAVIGATED_EVENT = "wireview:navigated";
 
 /**
+ * The event dispatched on `document` when a boosted form submission got no
+ * answer -- the network failed, not the server (#170). The form is not sent
+ * again, and the page stays. `detail` is `{url, method}`.
+ */
+export const NAVIGATION_FAILED_EVENT = "wireview:navigation-failed";
+
+/**
  * @typedef {Object} NavigatedDetail
  * @property {string} url - where the navigation ended, after any redirect
  * @property {string} previousUrl - the page it left

@@ -80,6 +80,9 @@ The django-reactor era changelog (2.x) is preserved in
   process, another worker), Hangul IME compositions under a render (the field's own debounced
   event and someone else's broadcast), Back and Forward after `push_to`, `replace_to` and boosted
   moves, and broadcasts past the channel layer's capacity on each layer (#168).
+- `wireview:navigation-failed` on `document`, `detail` `{url, method}`: a boosted non-GET form
+  submission got no answer from the network. The form is not sent again (it may have reached the
+  server) and the page stays (#170).
 - `mount()` takes `path=`, the path of the page the component is on, and `follow_push()` takes the
   component a push to another path lands on (#169). A component with a field called `path` sets
   it with `state={"path": ...}`: `path=` without it in `state=` raises `TypeError`, where 1.1 set
@@ -87,6 +90,11 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A boosted navigation whose fetch fails on the network (offline, a reset connection) no longer
+  leaves an unhandled rejection with the address bar on the new URL and the old page on screen.
+  A link, `push_to`, `replace_to`, `redirect_to`, Back or Forward, or a GET form loads that URL
+  without boost, so the browser shows what went wrong under the URL it went wrong for; a non-GET
+  form stays and dispatches `wireview:navigation-failed` (#170).
 - A render no longer writes the value of a field an IME is composing in, even when the field shows
   exactly what the server last rendered and the server now renders another value (a handler that
   normalizes it, a shared field). Writing it ended the composition, and the next jamo started a new

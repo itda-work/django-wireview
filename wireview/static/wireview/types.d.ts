@@ -49,8 +49,17 @@ interface WireviewNavigatedDetail {
   previousUrl: string;
 }
 
+/** `wireview:navigation-failed`: a boosted form submission got no answer (docs/features/boost.md, #170). */
+interface WireviewNavigationFailedDetail {
+  /** The form's action. */
+  url: string;
+  /** The method it was sent with, upper case. */
+  method: string;
+}
+
 interface DocumentEventMap {
   "wireview:navigated": CustomEvent<WireviewNavigatedDetail>;
+  "wireview:navigation-failed": CustomEvent<WireviewNavigationFailedDetail>;
 }
 
 /** What `window.wireview.hooks.<Name>` may define (docs/features/hooks.md). `this` is the hook's context. */

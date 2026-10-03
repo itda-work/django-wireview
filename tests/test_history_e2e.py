@@ -666,3 +666,102 @@ def test_a_fragment_link_is_the_browsers(box, traffic, heard):
     hashed(page, f"{here}#section")
     screen(page, page_name="box", tab="a", count=1)
     patched(page, traffic, built)
+
+
+# --- a fetch that gets no answer (#170) ---------------------------------------------------------
+
+
+def fail_fetches(page) -> list[str]:
+    """Every page fetch boost makes from here on fails on the way, as if offline.
+    A document load still goes through. Returns the URLs that failed."""
+    failed: list[str] = []
+
+    def handle(route) -> None:
+        if route.request.resource_type == "fetch":
+            failed.append(route.request.url)
+            route.abort()
+        else:
+            route.continue_()
+
+    page.route("**/historyprobe/**", handle)
+    return failed
+
+
+def page_errors(page) -> list[str]:
+    errors: list[str] = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    return errors
+
+
+@pytest.mark.parametrize(
+    ("start", "testid", "path", "page_name", "tab"),
+    [
+        ("", "push-other", "/historyprobe/other/?tab=o", "other", "o"),
+        ("", "replace-other", "/historyprobe/other/?tab=o", "other", "o"),
+        ("", "redirect-d", "/historyprobe/?tab=d", "box", "d"),
+        ("", "to-other", "/historyprobe/other/", "other", "a"),
+        ("", "get-send", "/historyprobe/other/?tab=g", "other", "g"),
+        ("to-other", None, "/historyprobe/", "box", "a"),  # Back, to an entry another page made
+    ],
+    ids=["push", "swap", "redirect", "link", "get-form", "popstate"],
+)
+def test_a_failed_fetch_hands_the_navigation_to_the_browser(box, start, testid, path, page_name, tab):
+    page = box
+    errors = page_errors(page)
+    if start:
+        by(page, start).click()
+        expect_text(by(page, "page"), "other")
+    length = page.evaluate("history.length")
+    failed = fail_fetches(page)
+
+    # The browser loads it: the address bar and the screen name the same page
+    with page.expect_event("load", timeout=WAIT_TIMEOUT * 1000):
+        if testid:
+            by(page, testid).click()
+        else:
+            page.go_back()
+    wait_live(page)
+    assert not page.evaluate("window.__samePage === true")
+    at(page, path)
+    screen(page, page_name=page_name, tab=tab, count=0)
+    assert failed, "the boosted fetch was the one that failed"
+    assert page.evaluate("history.length") == length + (1 if testid and testid != "replace-other" else 0)
+    assert errors == [], "no unhandled rejection"
+
+
+def test_a_failed_form_post_is_not_sent_again(box, traffic):
+    from testproj.historyprobe.urls import POSTS
+
+    page = box
+    POSTS.clear()
+    errors = page_errors(page)
+    built = rendered(page)
+    page.evaluate(
+        "window.__failed = null;"
+        "document.addEventListener('wireview:navigation-failed', (e) => { window.__failed = e.detail; })"
+    )
+    failed = fail_fetches(page)
+
+    by(page, "post-send").click()
+    page.wait_for_function("() => window.__failed !== null", timeout=WAIT_TIMEOUT * 1000)
+    detail = page.evaluate("window.__failed")
+    assert detail == {"url": urljoin(page.url, "/historyprobe/post/"), "method": "POST"}
+    assert failed and POSTS == [], "the form may have reached the server: it is not sent again"
+    at(page, "/historyprobe/")
+    assert errors == []
+
+    # The page stays the one on screen: its own entries are still patches
+    page.unroute("**/historyprobe/**")
+    traffic.fetches.clear()
+    by(page, "push-b").click()
+    at(page, "/historyprobe/?tab=b")
+    page.go_back()
+    at(page, "/historyprobe/")
+    screen(page, page_name="box", tab="a", count=0)
+    patched(page, traffic, built)
+
+    # And sending it again works
+    by(page, "post-send").click()
+    at(page, "/historyprobe/other/?tab=p")
+    expect_text(by(page, "page"), "other")
+    assert POSTS == ["POST"]

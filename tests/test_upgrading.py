@@ -123,6 +123,8 @@ UPGRADE_NOTE = {
         '조각 링크(`<a href="#section">`)를 가로채지 않는다',
         "`redirect_to`로 바꾼다",
     ),
+    "`wireview:navigation-failed` on `document`": ("가져오기가 네트워크 오류로 실패하면", "그 이벤트를 듣는다"),
+    "whose fetch fails on the network": ("가져오기가 네트워크 오류로 실패하면", "어긋났다"),
 }
 
 DOCS_ONLY = "문서·저장소만 바뀌었고 라이브러리 동작은 같다"

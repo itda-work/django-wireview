@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   NAVIGATED_EVENT,
+  NAVIGATION_FAILED_EVENT,
   NavigationLog,
   PAGE_KEY,
   carriedAcross,
@@ -146,4 +147,8 @@ test("a link to a fragment of this document is the browser's; one to the page it
   assert.equal(isFragmentLink("http://x/a/?q=1", "#section", "http://x/a/"), false, "the base drops the query");
   assert.equal(isFragmentLink("http://x/a/", "/b/#section"), false);
   assert.equal(isFragmentLink("http://x/a/", "?q=2#section"), false);
+});
+
+test("the failure event has the documented name (#170)", () => {
+  assert.equal(NAVIGATION_FAILED_EVENT, "wireview:navigation-failed");
 });

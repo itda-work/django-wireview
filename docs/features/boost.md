@@ -25,6 +25,23 @@ history에 항목을 남긴다. htmx의 `hx-boost`, Turbo Drive와 같은 생각
 `live_session` 경계를 넘는 이동은 boost하지 않고 전체 로드로 바꾼다. 응답을 받은 뒤에 판단하므로
 리다이렉트가 경계 밖에서 끝나도 잡는다([live_session](./live-session.md)).
 
+### 가져오기가 실패하면
+
+서버의 답이 오류 페이지(404, 500)면 그 페이지를 그 주소 아래 그린다. **답이 오지 않으면**(네트워크가 끊겼다)
+그 이동을 브라우저에 넘긴다(#170). 링크, `push_to`·`replace_to`·`redirect_to`, 뒤로·앞으로 가기, GET 폼은 그 주소를
+보통의 페이지 로드로 다시 연다 — 주소창은 이미 그 주소이고, 브라우저가 무엇이 잘못됐는지 그 주소 아래 보여 준다.
+1.1까지는 처리되지 않은 rejection이 나고 주소창만 새 주소인 채 화면은 옛 페이지로 남았다.
+
+POST 같은 GET이 아닌 폼은 **다시 보내지 않는다.** 요청이 서버에 닿았는지 알 수 없기 때문이다. 주소창은 움직이지
+않았으므로 페이지가 그대로 남고, `document`에 `wireview:navigation-failed` 이벤트가 간다. `detail`은
+`{ url, method }`다. 사용자에게 알리려면 이것을 듣는다.
+
+```javascript
+document.addEventListener("wireview:navigation-failed", (e) => {
+  alert(`보내지 못했습니다: ${e.detail.url}`);
+});
+```
+
 ## 폼은 스스로 청한다 (`wire-boost`)
 
 ```html

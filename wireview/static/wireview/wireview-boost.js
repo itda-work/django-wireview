@@ -6,6 +6,7 @@
 import { Idiomorph } from "idiomorph";
 import { NavigationGate, crossesBoundary, readSessionName } from "./live-session.mjs";
 import {
+  NAVIGATION_FAILED_EVENT,
   isFragmentLink,
   isSameUrl,
   newPageId,
@@ -264,9 +265,12 @@ function replaceEntry(state, url) {
  * page being left, or a cached copy of another one a popstate painted, and no
  * history entry is the page's own: a Forward to an entry the left page made is
  * fetched, and so is a push the left page's components send meanwhile.
+ * @returns {string|null} the id of the page being left
  */
 function leavePage() {
+  const left = page.id;
   page.id = null;
+  return left;
 }
 
 /**
@@ -454,6 +458,11 @@ class HistoryCache {
    * An answer that did not redirect (a form re-rendered with its errors) stays
    * on the current URL: reloading it must not send the form again.
    *
+   * If the request fails on the way (the network, not an error page), the
+   * form is not sent again: it may have reached the server. The address bar
+   * has not moved and the page stays, as it was, and `wireview:navigation-failed`
+   * tells the page (#170).
+   *
    * @param {string} action
    * @param {string} method - lower case
    * @param {FormData} data
@@ -466,7 +475,8 @@ class HistoryCache {
       return this.push(url.href);
     }
     navGate.begin();
-    leavePage();
+    const left = leavePage();
+    const entry = history.state;
     // What Back returns to, as `push` keeps it
     replaceEntry(
       {
@@ -476,7 +486,14 @@ class HistoryCache {
       },
       document.location.href
     );
-    return this.replaceContentFromUrl(action, { method: method.toUpperCase(), body: data }, "push");
+    return this.replaceContentFromUrl(action, { method: method.toUpperCase(), body: data }, "push", () => {
+      // Still the page that sent it, under its own entry
+      page.id = left;
+      replaceEntry(entry, document.location.href);
+      document.dispatchEvent(
+        new CustomEvent(NAVIGATION_FAILED_EVENT, { detail: { url: action, method: method.toUpperCase() } })
+      );
+    });
   }
 
   /**
@@ -509,16 +526,39 @@ class HistoryCache {
    * @param {"current"|"push"} [entry] - "current": the caller made the history
    *   entry, and a redirect only corrects its URL; "push": the entry is made
    *   here, for where the response ended, when it moved
-   * @returns {Promise<boolean>} False when the boundary was crossed and the
-   *   browser is doing an ordinary page load instead.
+   * @param {() => void} [failed] - what a request that never got an answer
+   *   does instead; by default the browser loads `url` itself (#170)
+   * @returns {Promise<boolean>} False when the boundary was crossed or the
+   *   request failed, and the browser is doing an ordinary page load instead.
    */
-  static async replaceContentFromUrl(url, init = undefined, entry = "current") {
+  static async replaceContentFromUrl(url, init = undefined, entry = "current", failed = undefined) {
     // The caller began the navigation; this reads the generation rather than
     // starting one, so the cached body a popstate queued belongs to the same
     // navigation as the fetch that validates it.
     const token = navGate.token;
-    let response = await fetch(url, init);
-    let content = await response.text();
+    let response;
+    let content;
+    try {
+      response = await fetch(url, init);
+      content = await response.text();
+    } catch (error) {
+      // The network, not the server: an answer -- a 404, a 500 -- is a page,
+      // and shown under its URL like any other. Without one the address bar
+      // names a page the screen does not show. A later navigation has it now.
+      if (!navGate.accepts(token)) return false;
+      console.warn("wireview: could not fetch %s; loading it without boost", url, error);
+      // Nothing queued for this navigation paints or joins any more
+      navGate.abandon();
+      if (failed) {
+        failed();
+      } else {
+        // The entry is the navigation's already (a push made it, a popstate
+        // returned to it): the browser loads it there, and shows what went
+        // wrong under the URL it went wrong for.
+        document.location.replace(url);
+      }
+      return false;
+    }
     let doc = new DOMParser().parseFromString(content, "text/html");
     if (!navGate.accepts(token)) return false;
     if (crossesBoundary(readSessionName(document), readSessionName(doc))) {
