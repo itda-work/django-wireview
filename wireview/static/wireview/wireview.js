@@ -2,11 +2,11 @@ import ReconnectingWebSocket from "reconnecting-websocket";
 import {
   JOINED_SINCE,
   JOIN_REFS_SINCE,
-  NAVIGATED_SINCE,
   PROTOCOL_VERSION,
   REFS_SINCE,
   applyPartial,
   buildHtml,
+  navigationCommand,
 } from "./rendered.mjs";
 import { Joins, settledEvent } from "./joins.mjs";
 import { commitScope, isCommitAction } from "./values.mjs";
@@ -344,7 +344,7 @@ class ServerConnection {
       // takes it along.
       if (!component.owned) this.sendLeave(id);
     }
-    if (navigated) this.sendNavigated();
+    if (navigated) this.sendNavigated(this.componentsCarried(elements));
     for (const element of elements) {
       // The server drew it over an instance a parent's pass built under the id
       // of one whose join failed, which nothing reaches -- unless the page has
@@ -363,6 +363,29 @@ class ServerConnection {
       component.drawnBy = undefined;
       component.join();
     }
+  }
+
+  /**
+   * The components a navigation carried across (#170): their elements are
+   * still on the page, live, and will not join again -- a sticky component and
+   * everything inside it, a plain component it drew included, which the morph
+   * kept as they were. Each new page's element comes with `data-is-live`
+   * false and joins. A LiveComponent goes with its root, so only roots count.
+   * @param {Element[]} elements - the page's components
+   * @returns {string[]}
+   */
+  componentsCarried(elements) {
+    return elements
+      .filter((element) => {
+        const el = /** @type {HTMLElement & {__wireviewHookManager?: HookManager}} */ (element);
+        return (
+          this.components[el.id] !== undefined &&
+          !el.hasAttribute("wireview-live") &&
+          el.dataset.isLive === "true" &&
+          el.__wireviewHookManager !== undefined
+        );
+      })
+      .map((element) => element.id);
   }
 
   /**
@@ -864,16 +887,17 @@ class ServerConnection {
    * screen (#170). Sent after the leaves of the components the old page had
    * and before the joins of the new page's, which mount with these params. The
    * components that left never hear the destination's params; of the ones
-   * still on the server, the sticky components the navigation carried hear
-   * them. An older server knows only `params_changed`, which every component
-   * still there hears.
+   * still on the server, those the navigation carried hear them. An older
+   * server knows only `params_changed`, which every component still there
+   * hears (`navigationCommand`).
+   * @param {string[]} carried - `componentsCarried()`
    */
-  sendNavigated() {
+  sendNavigated(carried) {
     const uri = document.location.href;
     const params = parseQueryString(document.location.search);
-    const command = this.serverVsn >= NAVIGATED_SINCE ? "navigated" : "params_changed";
-    debugLog("send", command, { uri, params });
-    this._send(command, { uri, params });
+    const { command, payload } = navigationCommand(this.serverVsn, { uri, params, carried });
+    debugLog("send", command, payload);
+    this._send(command, payload);
   }
 
   /**

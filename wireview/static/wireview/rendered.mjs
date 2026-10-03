@@ -57,11 +57,28 @@ export const JOIN_REFS_SINCE = 6;
 
 /**
  * First server version that takes `navigated`: a boosted navigation landed, and
- * the joins that follow mount with its params while only the sticky components
- * it carried across hear them (#170). An older server drops a command it does
- * not know, so the client tells it with `params_changed` as before.
+ * the joins that follow mount with its params while only the components it
+ * carried across hear them (#170). An older server drops a command it does not
+ * know, so the client tells it with `params_changed` as before.
  */
 export const NAVIGATED_SINCE = 7;
+
+/**
+ * The message that tells the server a boosted navigation put `uri` on screen
+ * (#170). A server that announced `NAVIGATED_SINCE` gets `navigated`, with the
+ * ids of the components the page carried across -- the only ones on the server
+ * still to hear these params. An older one gets `params_changed`, which it
+ * knows, without `carried`, which its handler would not take. Before any join
+ * has answered, `serverVsn` is 0: the server is taken for an old one.
+ * @param {number} serverVsn - what the server's last join answer announced
+ * @param {{uri: string, params: Record<string, string>, carried: string[]}} what
+ * @returns {{command: "navigated" | "params_changed", payload: Record<string, unknown>}}
+ */
+export function navigationCommand(serverVsn, { uri, params, carried }) {
+  return serverVsn >= NAVIGATED_SINCE
+    ? { command: "navigated", payload: { uri, params, carried } }
+    : { command: "params_changed", payload: { uri, params } };
+}
 
 /**
  * @param {*} value

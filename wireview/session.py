@@ -679,28 +679,32 @@ class WireviewSession:
         self.page_uri = uri
         return params
 
-    async def command_navigated(self, params: dict[str, str], uri: str):
+    async def command_navigated(self, params: dict[str, str], uri: str, carried: list[str]):
         """A boosted navigation put the page at ``uri`` on screen (#170).
 
         The client sends it once the page is in place, after the leaves of the
         components it dropped and before the joins of the ones it brought, which
         mount with these params as a loaded page's do. Of what is still here,
-        only the sticky components the navigation carried across, and their
-        LiveComponents, are the page's: they hear ``params_changed``, once per
-        URL -- a Back paints a cached copy and then lands the fetched one under
-        the same URL. A component the new page has under the same id, not
-        sticky, is the old page's until its join retires it, and hears nothing.
+        only what the navigation carried across is the page's: ``carried`` names
+        the components whose elements the page kept, live, and will not join
+        again -- a sticky component, and whatever ``{% component %}`` drew inside
+        it, which the server cannot tell apart from a component of its own.
+        Those and their LiveComponents hear ``params_changed``, once per URL --
+        a Back paints a cached copy and then lands the fetched one under the
+        same URL. A component the new page has under the same id is the old
+        page's until its join retires it, and hears nothing.
         """
-        log.debug(f"<<< NAVIGATED {uri} {params}")
+        log.debug(f"<<< NAVIGATED {uri} {params} carried={carried}")
         moved = uri != self.page_uri
         params = self._set_params(params, uri)
+        kept = {name for name in carried if isinstance(name, str)} if isinstance(carried, list) else set()
         if moved:
             for component in self.repo.reachable_components():
                 if self.repo.get(component.id) is not component:
                     # Went with an ancestor that raised earlier in this loop
                     continue
                 root = self.repo.root_of(component)
-                if not (type(root)._meta.sticky and root.wire.has_joined):
+                if not (root.id in kept and root.wire.has_joined):
                     continue
                 try:
                     await component._handle_params(params, uri)

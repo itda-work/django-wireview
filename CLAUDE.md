@@ -180,7 +180,8 @@ tests/
                            slotprobe/ 는 슬롯에 넣은 LiveComponent·일반 컴포넌트가 슬롯을 그리는 컴포넌트(component_block·live_component_block)의 자기 렌더, 슬롯을 숨겼다 보이기, 예외 뒤·같은 페이지 boost의 다시 join 뒤에도 남는지 보는 E2E(test_slot_live_components_e2e.py)의 픽스처(?other=1 은 같은 id의 frame을 fill 없이 두는 다른 페이지, ?otherhost=1 은 다른 호스트가 그 frame을 fill 없이 그리는 페이지),
                            stickyprobe/ 는 sticky 컴포넌트가 boost 이동을 건너 이어지는지(id 없는 것 포함), 그 훅과 페이지가
                            이동마다 한 번 navigated 알림을 받는지, late/ 의 sticky LateSticky가 아직 그리지 않은 id를 late-root/ 가
-                           자기 루트로 그릴 때 그 루트가 join되는지 보는 E2E(test_sticky_e2e.py)의 픽스처,
+                           자기 루트로 그릴 때 그 루트가 join되는지, shelf-a/·shelf-b/ 의 sticky StickyShelf 안에 그린 ShelfLabel이
+                           이동의 params를 듣는지(navigated의 carried) 보는 E2E(test_sticky_e2e.py)의 픽스처,
                            nestprobe/ 는 그린 쪽이 넘긴 prop으로 중첩 컴포넌트가 숨기거나 처음 보이거나 새 props를 넘기는 LiveComponent의
                            leaving()·joined()·update()가 그린 쪽의 render에 실리는지 보는 E2E(test_inline_pass_lifecycle_e2e.py)의 픽스처(?hidden=1 은 숨긴 채 시작,
                            visit-shown 링크는 같은 id의 둘을 새로 받는 boost 이동 — 그린 쪽의 첫 렌더는 중첩 컴포넌트의 join에 맡긴다),

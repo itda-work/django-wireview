@@ -7,9 +7,10 @@
 - A LiveComponent a later render shows for the first time hears the params
   then too, once.
 - ``navigated``: a boosted navigation landed. Its params are the page's for the
-  joins that follow. Of what the server still holds, only the sticky
-  components the navigation carried across -- and their LiveComponents -- hear
-  them, once per URL. A component of the old page does not.
+  joins that follow. Of what the server still holds, only the components the
+  navigation carried across -- a sticky one and whatever it drew inside, as the
+  client names them in ``carried`` -- and their LiveComponents hear them, once
+  per URL. A component of the old page does not.
 """
 
 from __future__ import annotations
@@ -43,7 +44,8 @@ EVENTS: list[tuple[str, str, str]] = []
 
 
 class _Recording:
-    tab: str = ""
+    # No ``tab`` here: a plain class attribute the model's field shadows makes
+    # Pydantic warn. Each component declares its own.
 
     async def joined(self):
         EVENTS.append(("joined", self.id, ""))  # type: ignore[attr-defined]
@@ -96,6 +98,25 @@ class NavRaisingRoot(NavRoot):
         template_name = "nav/raising.html"
 
 
+class NavInner(_Recording, Component):
+    class Meta:
+        template_name = "nav/inner.html"
+
+    tab: str = ""
+
+
+class NavHolder(NavRoot):
+    """A sticky component that draws a plain component inside it."""
+
+    class Meta:
+        template_name = "nav/holder.html"
+        sticky = True
+
+
+TEMPLATES["nav/inner.html"] = "{% load wireview %}<span {% tag_header %}>inner={{ this.tab }}</span>"
+TEMPLATES["nav/holder.html"] = (
+    "{% load wireview %}<div {% tag_header %}>tab={{ this.tab }}{% component 'NavInner' id='nav-inner' %}</div>"
+)
 TEMPLATES["nav/raising.html"] = (
     "{% load wireview %}<div {% tag_header %}>tab={{ this.tab }}{% live_component 'NavRaisingLeaf' id='bad' %}</div>"
 )
@@ -213,7 +234,7 @@ async def test_a_child_whose_params_raise_leaves_its_parent_joined():
 # --- navigated ------------------------------------------------------------------------
 
 
-async def test_navigated_tells_only_the_sticky_components_carried_across():
+async def test_navigated_tells_only_the_components_carried_across():
     session, _outbound = await started()
     await send(session, "params_changed", params={"tab": "a"}, uri="http://x/a/?tab=a")
     await join(session, id="old")
@@ -221,7 +242,7 @@ async def test_navigated_tells_only_the_sticky_components_carried_across():
     # The next page has "old" again, not sticky: it is the old page's until its join
     EVENTS.clear()
 
-    await send(session, "navigated", params={"tab": "o"}, uri="http://x/b/?tab=o")
+    await send(session, "navigated", params={"tab": "o"}, uri="http://x/b/?tab=o", carried=["dock"])
 
     assert EVENTS == [("params", "dock", "o"), ("params", "dock-leaf", "o")]
     assert session.repo.get("old").tab == "a"  # type: ignore[union-attr]
@@ -241,8 +262,8 @@ async def test_navigated_to_the_same_url_tells_the_sticky_ones_nothing_new():
     await join(session, NavDock, id="dock", leaf="dock-leaf")
     EVENTS.clear()
 
-    await send(session, "navigated", params={"tab": "o"}, uri="http://x/b/?tab=o")
-    await send(session, "navigated", params={"tab": "o"}, uri="http://x/b/?tab=o")
+    await send(session, "navigated", params={"tab": "o"}, uri="http://x/b/?tab=o", carried=["dock"])
+    await send(session, "navigated", params={"tab": "o"}, uri="http://x/b/?tab=o", carried=["dock"])
 
     assert EVENTS == [("params", "dock", "o"), ("params", "dock-leaf", "o")]
 
@@ -253,7 +274,7 @@ async def test_navigated_after_a_patch_to_the_url_tells_nothing_new():
     await join(session, NavDock, id="dock", leaf="dock-leaf")
     EVENTS.clear()
 
-    await send(session, "navigated", params={"tab": "o"}, uri="http://x/b/?tab=o")
+    await send(session, "navigated", params={"tab": "o"}, uri="http://x/b/?tab=o", carried=["dock"])
 
     assert EVENTS == []
 
@@ -263,9 +284,40 @@ async def test_a_sticky_component_that_raises_on_navigated_is_joined_again():
     await send(session, "params_changed", params={}, uri="http://x/a/")
     await join(session, NavFragileDock, id="dock", leaf="dock-leaf")
 
-    await send(session, "navigated", params={"tab": "boom"}, uri="http://x/b/?tab=boom")
+    await send(session, "navigated", params={"tab": "boom"}, uri="http://x/b/?tab=boom", carried=["dock"])
 
     assert ("error", {"id": "dock", "during": "event"}) in outbound.commands
+
+
+async def test_navigated_tells_a_plain_component_drawn_inside_a_carried_sticky_one():
+    # The page keeps the sticky element and everything in it, so the component
+    # it drew with {% component %} crossed too, joined under its own id: the
+    # server cannot tell it from one of the old page's, the client names it
+    session, _outbound = await started()
+    await send(session, "params_changed", params={"tab": "a"}, uri="http://x/a/?tab=a")
+    await join(session, NavHolder, id="dock")
+    await join(session, NavInner, id="nav-inner")
+    await join(session, id="old")
+    EVENTS.clear()
+
+    await send(session, "navigated", params={"tab": "o"}, uri="http://x/b/?tab=o", carried=["dock", "nav-inner"])
+
+    assert sorted(EVENTS) == [("params", "dock", "o"), ("params", "nav-inner", "o")]
+    assert session.repo.get("nav-inner").tab == "o"  # type: ignore[union-attr]
+    assert session.repo.get("old").tab == "a"  # type: ignore[union-attr]
+
+
+async def test_navigated_with_a_malformed_carried_list_tells_nobody():
+    session, _outbound = await started()
+    await send(session, "params_changed", params={}, uri="http://x/a/")
+    await join(session, NavDock, id="dock", leaf="dock-leaf")
+    EVENTS.clear()
+
+    await send(session, "navigated", params={"tab": "o"}, uri="http://x/b/?tab=o", carried="dock")
+    await send(session, "navigated", params={"tab": "p"}, uri="http://x/c/?tab=p", carried=[["dock"], 1])
+
+    assert EVENTS == []
+    assert session.repo.params == {"tab": "p"}
 
 
 # --- mount() ----------------------------------------------------------------------------

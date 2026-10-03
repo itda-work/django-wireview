@@ -56,9 +56,10 @@ The django-reactor era changelog (2.x) is preserved in
 - **Silently changed:** a boosted navigation to another page tells the server its params once the
   page is on screen, after the leaves of the components it dropped and before the joins of the ones
   it brought, with a new `navigated` message (protocol version 7). The old page's components no
-  longer hear the destination's params; the sticky components the navigation carried across hear
-  them, once per URL even when Back paints a cached copy first; a sticky component the next page
-  does not have leaves without hearing them (#170).
+  longer hear the destination's params; what the navigation carried across hears them -- a sticky
+  component, the components drawn inside it with `{% component %}`, and their LiveComponents --
+  once per URL even when Back paints a cached copy first; a sticky component the next page does not
+  have leaves without hearing them (#170).
 - **Silently changed:** a `push_to` to exactly the URL on screen makes no history entry, as
   Phoenix's makes none; the components still hear `params_changed()`. A boosted link, `redirect_to`
   or GET form to the URL on screen fetches it in place of the current entry, as the browser does

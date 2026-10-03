@@ -14,12 +14,17 @@
       <a href="{% url 'stickyprobe:page' 'c' %}" data-testid="to-c">c</a>
       <a href="{% url 'stickyprobe:page' 'late-root' %}"
          data-testid="to-late-root">late-root</a>
+      <a href="{% url 'stickyprobe:page' 'shelf-b' %}?tab=two"
+         data-testid="to-shelf-b">shelf-b</a>
     </nav>
     {% if with_player %}
       {% component 'StickyPlayer' id="player" %}
       {% component 'StickyTicker' %}
     {% endif %}
     {% component 'PlainCounter' id="plain" %}
+    {% if name == "shelf-a" or name == "shelf-b" %}
+      {% component 'StickyShelf' id="shelf" %}
+    {% endif %}
     {% if name == "late" %}
       {% component 'LateSticky' id="late" %}
     {% elif name == "late-root" %}

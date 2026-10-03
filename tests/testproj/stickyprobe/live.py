@@ -77,3 +77,31 @@ class InnerCounter(Component):
 
     async def increment(self):
         self.count += 1
+
+
+class StickyShelf(Component):
+    """Sticky, with a plain component drawn inside: both hear a navigation's params (#170).
+
+    The page keeps the shelf's element and everything in it, so ``ShelfLabel``
+    crosses the move as it is, joined under its own id. The server cannot tell
+    it from a component of the page that left; the client names it.
+    """
+
+    class Meta:
+        template_name = "stickyprobe/shelf.html"
+        sticky = True
+
+    tab: str = ""
+
+    async def params_changed(self, params, uri):
+        self.tab = params.get("tab", "")
+
+
+class ShelfLabel(Component):
+    class Meta:
+        template_name = "stickyprobe/label.html"
+
+    tab: str = ""
+
+    async def params_changed(self, params, uri):
+        self.tab = params.get("tab", "")

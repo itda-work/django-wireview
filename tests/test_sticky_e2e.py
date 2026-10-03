@@ -158,3 +158,24 @@ def test_a_page_that_draws_as_a_root_what_the_sticky_one_has_yet_to_draw(page, s
     expect_text(by(page, "late-state"), "loading")
     by(page, "inner-inc").click()
     expect_text(by(page, "inner-count"), "1")
+
+
+def test_a_component_drawn_inside_a_sticky_one_hears_the_navigations_params(page, server):
+    # The page keeps the sticky element and everything in it: the label inside
+    # crossed the move as it was, joined under its own id, and is the page's as
+    # much as the shelf is. Only the sticky root heard the params, and the
+    # label kept the old page's (#170).
+    open_live(page, f"{server}/stickyprobe/shelf-a/?tab=one", selector="#shelf-label[data-is-live='true']")
+    expect_text(by(page, "shelf-tab"), "one")
+    expect_text(by(page, "label-tab"), "one")
+    # A property, not an attribute: the shelf's render after the move morphs
+    # the label's attributes back to the server's, but keeps the node
+    page.evaluate("() => { document.getElementById('shelf-label').__kept = true; window.__notReloaded = true; }")
+
+    by(page, "to-shelf-b").click()
+    expect_text(by(page, "page"), "shelf-b")
+
+    expect_text(by(page, "shelf-tab"), "two")
+    expect_text(by(page, "label-tab"), "two")
+    assert page.evaluate("() => window.__notReloaded") is True, "the move was a boosted one"
+    assert page.evaluate("() => document.getElementById('shelf-label').__kept") is True, "the label crossed as it was"

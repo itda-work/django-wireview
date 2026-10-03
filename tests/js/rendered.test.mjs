@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  NAVIGATED_SINCE,
   PROTOCOL_VERSION,
   REFS_SINCE,
   applyPartial,
   buildHtml,
   isBlock,
   isComprehension,
+  navigationCommand,
 } from "../../wireview/static/wireview/rendered.mjs";
 
 const list = () => ({ s: ["<li>", " x ", "</li>"], d: [["a", "1"], ["b", "2"]] });
@@ -185,4 +187,23 @@ test("a rearrangement for a slot that holds no list is refused", (t) => {
   const dynamics = ["plain"];
   applyPartial(dynamics, { 0: { k: [[0, 1]] } });
   assert.deepEqual(dynamics, ["plain"]);
+});
+
+// --- a navigation's params (#170) ---
+
+const landed = { uri: "http://x/b/?tab=o", params: { tab: "o" }, carried: ["dock", "inner"] };
+
+test("a server that takes navigated hears it, with what the page carried across", () => {
+  assert.equal(NAVIGATED_SINCE, 7);
+  assert.deepEqual(navigationCommand(NAVIGATED_SINCE, landed), { command: "navigated", payload: landed });
+  assert.deepEqual(navigationCommand(PROTOCOL_VERSION, landed).command, "navigated");
+});
+
+test("an older server hears params_changed, without carried, which its handler would not take", () => {
+  for (const vsn of [0, 5, NAVIGATED_SINCE - 1]) {
+    assert.deepEqual(navigationCommand(vsn, landed), {
+      command: "params_changed",
+      payload: { uri: landed.uri, params: landed.params },
+    });
+  }
 });

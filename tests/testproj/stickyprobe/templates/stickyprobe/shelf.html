@@ -1,0 +1,6 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <span data-testid="shelf-tab">{{ this.tab }}</span>
+  {% component 'ShelfLabel' id="shelf-label" %}
+</div>

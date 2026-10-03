@@ -765,3 +765,50 @@ def test_a_failed_form_post_is_not_sent_again(box, traffic):
     at(page, "/historyprobe/other/?tab=p")
     expect_text(by(page, "page"), "other")
     assert POSTS == ["POST"]
+
+#: The page's socket, rewritten so every render that announces the server's
+#: protocol version says 6 -- an older server, behind a load balancer that
+#: serves this bundle (#170) -- and recording each command the page sends.
+OLD_SERVER_SHIM = """
+(() => {
+  const Native = window.WebSocket;
+  window.__sent = [];
+  window.WebSocket = class extends Native {
+    send(data) {
+      window.__sent.push(JSON.parse(data).command);
+      return super.send(data);
+    }
+    addEventListener(type, listener, options) {
+      if (type !== "message") return super.addEventListener(type, listener, options);
+      return super.addEventListener(type, (event) => {
+        const message = JSON.parse(event.data);
+        if (message.command !== "render" || typeof message.payload?.vsn !== "number") {
+          return listener.call(this, event);
+        }
+        message.payload.vsn = 6;
+        listener.call(this, new MessageEvent("message", { data: JSON.stringify(message) }));
+      }, options);
+    }
+  };
+})();
+"""
+
+
+def test_a_navigation_tells_an_older_server_with_params_changed(page, server, heard):
+    # An older server drops a command it does not know: navigated would never
+    # reach it, and the joins after the move would mount with the params of
+    # the page that was left (#170)
+    page.add_init_script(OLD_SERVER_SHIM)
+    open_live(page, f"{server}/historyprobe/")
+    page.evaluate("window.__sent.length = 0")
+
+    by(page, "push-other").click()
+    at(page, "/historyprobe/other/?tab=o")
+    screen(page, page_name="other", tab="o", count=0)
+    expect_text(by(page, "dock-heard"), "o")
+
+    sent = page.evaluate("window.__sent")
+    assert "navigated" not in sent
+    assert "params_changed" in sent
+    # Where navigated would go: after the leaves, before the joins
+    assert sent.index("params_changed") < sent.index("join")
