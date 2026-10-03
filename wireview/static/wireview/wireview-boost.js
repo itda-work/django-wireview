@@ -5,7 +5,14 @@
 
 import { Idiomorph } from "idiomorph";
 import { NavigationGate, crossesBoundary, readSessionName } from "./live-session.mjs";
-import { newPageId, patchesPage, returnsToPatch, stamped } from "./navigation.mjs";
+import {
+  isFragmentLink,
+  newPageId,
+  onlyFragmentMoved,
+  patchesPage,
+  returnsToPatch,
+  stamped,
+} from "./navigation.mjs";
 import { STREAM_ATTRIBUTE, isStreamContainer, pinContainerIds } from "./streams.mjs";
 import { ValueGuard } from "./values.mjs";
 
@@ -224,6 +231,34 @@ const page = { id: newPageId(), url: document.location.href };
 history.replaceState(stamped(history.state, page.id), document.title, document.location.href);
 
 /**
+ * The address bar as of the last move: one this module made, or a popstate.
+ * A popstate that moved only the fragment from here is the browser's own
+ * jump inside the document (navigation.mjs onlyFragmentMoved, #170).
+ * @type {string}
+ */
+let here = document.location.href;
+
+/**
+ * `history.pushState`, keeping `here` up to date.
+ * @param {any} state
+ * @param {string} url
+ */
+function pushEntry(state, url) {
+  history.pushState(state, document.title, url);
+  here = document.location.href;
+}
+
+/**
+ * `history.replaceState`, keeping `here` up to date.
+ * @param {any} state
+ * @param {string} url
+ */
+function replaceEntry(state, url) {
+  history.replaceState(state, document.title, url);
+  here = document.location.href;
+}
+
+/**
  * A navigation that fetches began. Until its page lands the screen holds the
  * page being left, or a cached copy of another one a popstate painted, and no
  * history entry is the page's own: a Forward to an entry the left page made is
@@ -239,7 +274,7 @@ function leavePage() {
 function landPage() {
   page.id = newPageId();
   page.url = document.location.href;
-  history.replaceState(stamped(history.state, page.id), document.title, document.location.href);
+  replaceEntry(stamped(history.state, page.id), document.location.href);
 }
 
 // Set up click handler for boosted navigation
@@ -265,6 +300,8 @@ if (BOOST_PAGES) {
       !e.altKey && // download
       !e.shiftKey
     ) {
+      // `<a href="#section">` too: `load` hands a jump inside the document
+      // back to the browser (#170)
       e.preventDefault();
       HistoryCache.load(link.href);
     }
@@ -342,12 +379,23 @@ class HistoryCache {
   /**
    * Loads a URL, using boost navigation if enabled.
    * @param {string} url - The URL to load
-   * @param {{replace?: boolean}} [options] - take the current history entry's
-   *   place instead of pushing a new one
+   * @param {{replace?: boolean, fetch?: boolean}} [options] - `replace`: take
+   *   the current history entry's place instead of pushing a new one; `fetch`:
+   *   fetch even a fragment of this document (`redirect_to` always fetches)
    * @returns {Promise<boolean>} False when the page is being replaced outright,
    *   which is also what leaving a live_session looks like.
    */
-  static async load(url, { replace = false } = {}) {
+  static async load(url, { replace = false, fetch: always = false } = {}) {
+    // A jump to a fragment of this document is the browser's, as a link's is
+    // (#170): `wireview.visit("#top")` scrolls rather than fetching the page
+    if (!always && isFragmentLink(document.location.href, url, document.baseURI)) {
+      if (replace) {
+        document.location.replace(url);
+      } else {
+        document.location.assign(url);
+      }
+      return true;
+    }
     if (BOOST_PAGES && hasSameOriginAsDocument(url)) {
       return replace ? this.swap(url) : this.push(url);
     }
@@ -382,16 +430,15 @@ class HistoryCache {
     if (document.body == null) debugger;
     navGate.begin();
     leavePage();
-    history.replaceState(
+    replaceEntry(
       {
         content: document.body.outerHTML,
         scrollY: window.scrollY,
         session: readSessionName(document),
       },
-      document.title,
       document.location.href
     );
-    history.pushState({}, document.title, path);
+    pushEntry({}, path);
     return this.replaceContentFromUrl(path);
   }
 
@@ -418,13 +465,12 @@ class HistoryCache {
     navGate.begin();
     leavePage();
     // What Back returns to, as `push` keeps it
-    history.replaceState(
+    replaceEntry(
       {
         content: document.body.outerHTML,
         scrollY: window.scrollY,
         session: readSessionName(document),
       },
-      document.title,
       document.location.href
     );
     return this.replaceContentFromUrl(action, { method: method.toUpperCase(), body: data }, "push");
@@ -439,7 +485,7 @@ class HistoryCache {
   static async swap(path) {
     navGate.begin();
     leavePage();
-    history.replaceState({}, document.title, path);
+    replaceEntry({}, path);
     return this.replaceContentFromUrl(path);
   }
 
@@ -494,9 +540,9 @@ class HistoryCache {
     // reads the params from the address bar. The state stays: after a popstate
     // it is the cached page Back returns to.
     if (entry === "push") {
-      if (response.redirected && response.url) history.pushState({}, document.title, response.url);
+      if (response.redirected && response.url) pushEntry({}, response.url);
     } else if (response.redirected && response.url) {
-      history.replaceState(history.state, document.title, response.url);
+      replaceEntry(history.state, response.url);
     }
     // The server hears the new params once the page is on screen, between the
     // leaves of the old page's components and the joins of the new one's
@@ -533,10 +579,10 @@ class HistoryCache {
     // A fetch still in flight lands no more: the address bar now names this page
     navGate.begin();
     if (replace) {
-      history.replaceState(stamped({}, page.id), document.title, url);
+      replaceEntry(stamped({}, page.id), url);
     } else {
-      history.replaceState(stamped(history.state, page.id), document.title, document.location.href);
-      history.pushState(stamped({}, page.id), document.title, url);
+      replaceEntry(stamped(history.state, page.id), document.location.href);
+      pushEntry(stamped({}, page.id), url);
     }
     navEvent.sendPatched();
   }
@@ -547,11 +593,18 @@ class HistoryCache {
    * @param {string} path - The new path
    */
   static replace(path) {
-    history.replaceState(page.id === null ? {} : stamped({}, page.id), document.title, path);
+    replaceEntry(page.id === null ? {} : stamped({}, page.id), path);
   }
 }
 
 window.addEventListener("popstate", (event) => {
+  const from = here;
+  here = document.location.href;
+  // Only the fragment moved: a jump inside the document, the browser's own --
+  // a fragment link's new entry, or Back from it. Nothing to fetch, no params
+  // to tell, as Phoenix ignores such a popstate (#170). The entry needs no
+  // stamp of its own: a patch away from it stamps it first.
+  if (onlyFragmentMoved(from, here)) return;
   // An entry the page on screen made: it has what it needs, and only the
   // params changed. Before the boundary check, which a page cannot fail with
   // itself.

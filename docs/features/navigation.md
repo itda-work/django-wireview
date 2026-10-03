@@ -24,7 +24,7 @@ Phoenix LiveView에 대면 같은 경로의 `push_to`가 `push_patch`, 다른 �
   컴포넌트는 목적지의 params를 듣지 않는다(#170).
 - **`replace_to`는 기록 항목을 늘리지 않는 `push_to`다.** 필터를 바꿨지만 뒤로 가기에 남기고 싶지 않을 때.
   다른 경로면 그 자리에서 목적지를 가져온다 — 주소창이 이 페이지를 그리지 않은 뷰를 가리키는 일이 없다.
-- **`redirect_to`는 언제나 페이지 이동이다.** 같은 경로여도 가져온다. `BOOST_PAGES`가 켜져 있으면 전체
+- **`redirect_to`는 언제나 페이지 이동이다.** 같은 경로여도, 조각만 다른 주소(`"#top"`)여도 가져온다. `BOOST_PAGES`가 켜져 있으면 전체
   로드 없이, 꺼져 있으면 보통의 로드로 간다. 부른 뒤에는 이 컴포넌트가 렌더를 보내지 않는다. 인가가
   실패했을 때 로그인 페이지로 보내는 용도가 이것이다([lifecycle-hooks](./lifecycle-hooks.md)).
 - **`self.wire.params`에 쓰면** 이벤트가 끝난 뒤 쿼리 문자열이 그 값으로 바뀐다(`replaceState`).
@@ -55,6 +55,8 @@ patch는 컴포넌트에만 새 params를 알린다. **컴포넌트 밖의 템�
   있을 뿐, 항목을 만든 페이지가 아니다. 그 사이의 뒤로·앞으로 가기는 그 주소를 가져오고, 떠나는 페이지의
   컴포넌트가 보낸 `push_to`도 가져온다. patch인지는 주소창이 아니라 화면에 있는 페이지의 경로로 판단하고, 상대
   URL은 `pushState`·`fetch`처럼 문서의 기준 URL(`<base href>`)로 푼다.
+- **조각만 다른 항목 사이의 뒤로·앞으로 가기는 브라우저의 것이다.** `<a href="#section">`이 만든 항목이 그렇다.
+  가져오지 않고 `params_changed()`도 돌지 않는다. Phoenix도 경로와 쿼리가 같은 popstate는 무시한다(#170).
 - `live_session` 경계를 넘는 뒤로 가기·앞으로 가기는 전체 로드다([live_session](./live-session.md)).
 
 어느 항목이 "이 페이지가 만든 것"인지는 클라이언트가 `history.state`에 남긴 페이지 표식(`wireviewPage`)으로

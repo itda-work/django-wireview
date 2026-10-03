@@ -595,3 +595,37 @@ def test_a_live_component_hears_the_first_params_of_the_page(page, server, heard
         ("hbox", built, "?tab=b"),
         ("leaf", 0, "?tab=b"),
     ]
+
+
+# --- a link to a fragment of the page (#170) ---------------------------------------------------
+
+
+def hashed(page, url: str) -> None:
+    page.wait_for_function("url => location.href === url", arg=url, timeout=WAIT_TIMEOUT * 1000)
+
+
+def test_a_fragment_link_is_the_browsers(box, traffic, heard):
+    page = box
+    built = rendered(page)
+    here = page.url
+    before = page.evaluate("history.length")
+
+    by(page, "to-section").click()
+    hashed(page, f"{here}#section")
+    assert page.evaluate("history.length") == before + 1
+    # Back and Forward over it move only the fragment
+    page.go_back()
+    hashed(page, here)
+    page.go_forward()
+    hashed(page, f"{here}#section")
+    settled(page)
+    assert heard == [], "nothing to tell: only the fragment moved"
+
+    # A patch from there, and Back to the entry the fragment link made: the
+    # page on screen made it, so it is a patch too
+    by(page, "push-b").click()
+    at(page, "/historyprobe/?tab=b")
+    page.go_back()
+    hashed(page, f"{here}#section")
+    screen(page, page_name="box", tab="a", count=1)
+    patched(page, traffic, built)

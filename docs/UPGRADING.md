@@ -106,6 +106,10 @@ dependencies = ["django-wireview>=1.1,<2"]
   `params_changed()`가 아니라 `leaving()`에 둔다. 와이어 프로토콜은 `vsn` 7이 되었고 클라이언트가 새 명령
   `navigated`를 보낸다. 롤링 배포 중의 옛 번들은 전처럼 동작하고 새 서버가 받는다.
   ([boost](./features/boost.md#이동을-건너-살아남기-sticky))
+- **조용히 달라짐: boost는 같은 페이지 안의 조각 링크(`<a href="#section">`)를 가로채지 않는다.** 1.1은 그 링크에서
+  같은 페이지 전체를 다시 가져왔다. 이제 브라우저가 스크롤하고 기록 항목을 만들며, 그 항목 사이의 뒤로·앞으로
+  가기는 가져오지도 `params_changed()`를 부르지도 않는다. 조각 링크를 눌러 페이지를 다시 그리게 하던 곳은
+  `{% on "click" %}` 핸들러나 `redirect_to`로 바꾼다.
 
 ## 1.0에서 1.1로
 

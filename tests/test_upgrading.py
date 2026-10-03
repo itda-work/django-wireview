@@ -118,6 +118,10 @@ UPGRADE_NOTE = {
         "떠나는 페이지의 컴포넌트는 목적지의 params를 듣지 않는다",
         "`leaving()`에 둔다",
     ),
+    "leaves a link to a fragment of the page": (
+        '조각 링크(`<a href="#section">`)를 가로채지 않는다',
+        "`redirect_to`로 바꾼다",
+    ),
 }
 
 DOCS_ONLY = "문서·저장소만 바뀌었고 라이브러리 동작은 같다"

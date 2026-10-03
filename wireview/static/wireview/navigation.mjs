@@ -167,3 +167,34 @@ export function patchesPage(page, to, base) {
 export function returnsToPatch(state, url, page) {
   return page.id !== null && state?.[PAGE_KEY] === page.id && isPatch(page.url, url);
 }
+
+/**
+ * Whether `from` and `to` are one document's URL apart from the fragment: the
+ * same origin, path and query (#170). A move between them -- a click on
+ * `<a href="#section">`, Back from it -- is the browser's own: it scrolls and
+ * makes or walks a history entry, and the page neither fetches nor tells its
+ * components anything, as Phoenix ignores a popstate that only moved the hash.
+ * @param {string} from
+ * @param {string} to - resolved already
+ * @returns {boolean}
+ */
+export function onlyFragmentMoved(from, to) {
+  const here = new URL(from);
+  const there = new URL(to);
+  return here.origin === there.origin && here.pathname === there.pathname && here.search === there.search;
+}
+
+/**
+ * Whether a link to `to` is a jump inside the document at `from`: a fragment
+ * navigation, which boost leaves to the browser (#170). It has a fragment --
+ * `href="#"` included -- and nothing else differs. A link to the very URL with
+ * no fragment is a new page load to the browser, and so to boost.
+ * @param {string} from - the address bar
+ * @param {string} to
+ * @param {string} [base] - what a relative `to` resolves against; `from` by default
+ * @returns {boolean}
+ */
+export function isFragmentLink(from, to, base = from) {
+  const there = new URL(to, base).href;
+  return there.includes("#") && onlyFragmentMoved(from, there);
+}

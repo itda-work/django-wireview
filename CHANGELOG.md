@@ -59,6 +59,10 @@ The django-reactor era changelog (2.x) is preserved in
   longer hear the destination's params; the sticky components the navigation carried across hear
   them, once per URL even when Back paints a cached copy first; a sticky component the next page
   does not have leaves without hearing them (#170).
+- **Silently changed:** boost leaves a link to a fragment of the page (`<a href="#section">`: the
+  same path and query, with a `#`) and `wireview.visit("#top")` to the browser, which scrolls and
+  makes the history entry; Back and Forward between such entries fetch nothing and tell the
+  components nothing, as Phoenix ignores a popstate that moved only the hash (#170).
 
 ### Deprecated
 

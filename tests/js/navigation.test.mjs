@@ -6,8 +6,10 @@ import {
   NavigationLog,
   PAGE_KEY,
   carriedAcross,
+  isFragmentLink,
   isPatch,
   newPageId,
+  onlyFragmentMoved,
   patchesPage,
   returnsToPatch,
   stamped,
@@ -107,4 +109,27 @@ test("nothing is a patch while a fetching navigation is in flight (#169)", () =>
   assert.equal(returnsToPatch({ [PAGE_KEY]: "p1" }, "http://x/a/?tab=b", leaving), false);
   assert.equal(returnsToPatch({ [PAGE_KEY]: null }, "http://x/a/?tab=b", leaving), false);
   assert.equal(returnsToPatch({}, "http://x/a/?tab=b", leaving), false);
+});
+
+test("only the fragment moved between two URLs of one document (#170)", () => {
+  assert.equal(onlyFragmentMoved("http://x/a/", "http://x/a/#s"), true);
+  assert.equal(onlyFragmentMoved("http://x/a/#s", "http://x/a/"), true, "Back from the fragment");
+  assert.equal(onlyFragmentMoved("http://x/a/?q=1#s", "http://x/a/?q=1#t"), true);
+  assert.equal(onlyFragmentMoved("http://x/a/", "http://x/a/"), true);
+  assert.equal(onlyFragmentMoved("http://x/a/?q=1", "http://x/a/?q=2#s"), false, "the query moved too");
+  assert.equal(onlyFragmentMoved("http://x/a/", "http://x/b/#s"), false);
+  assert.equal(onlyFragmentMoved("http://x/a/", "http://y/a/#s"), false);
+});
+
+test("a link to a fragment of this document is the browser's; one to the page itself is not (#170)", () => {
+  assert.equal(isFragmentLink("http://x/a/", "#section"), true);
+  assert.equal(isFragmentLink("http://x/a/", "http://x/a/#section"), true);
+  assert.equal(isFragmentLink("http://x/a/?q=1", "?q=1#section"), true);
+  assert.equal(isFragmentLink("http://x/a/#one", "#two"), true);
+  assert.equal(isFragmentLink("http://x/a/", "#"), true, "an empty fragment is a fragment too");
+  assert.equal(isFragmentLink("http://x/a/", "/a/"), false, "no fragment: a load of the page");
+  assert.equal(isFragmentLink("http://x/a/#one", "/a/"), false);
+  assert.equal(isFragmentLink("http://x/a/?q=1", "#section", "http://x/a/"), false, "the base drops the query");
+  assert.equal(isFragmentLink("http://x/a/", "/b/#section"), false);
+  assert.equal(isFragmentLink("http://x/a/", "?q=2#section"), false);
 });

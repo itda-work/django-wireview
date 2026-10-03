@@ -525,7 +525,7 @@ class ServerConnection {
         var { url } = payload;
         switch (payload.command) {
           case "redirect":
-            boost.HistoryCache.load(url);
+            boost.HistoryCache.load(url, { fetch: true });
             break;
           case "replace":
           case "push": {
