@@ -141,7 +141,8 @@ Django 5.2 LTS·6.0·6.1, Python 3.12·3.13·3.14다.
   나지 않는다. 개발 서버와 단일 프로세스 배포에만 쓴다.
 - **검증한 버전**은 `uv.lock`이 고정한 버전이다. CI의 E2E 잡이 레이어마다 한 번씩 그 버전으로 돈다
   (`make ci-test-e2e LAYER=nats|redis`, 브로커는 표의 릴리스 태그 이미지를 서비스 컨테이너로 띄운다). 로컬에서는
-  `make test-e2e`(NATS)와 `make test-e2e LAYER=redis`(`REDIS_URL`의 redis-server)다.
+  `make test-e2e`(NATS)와 `make test-e2e LAYER=redis`(Redis)다. `tests/e2e.sh`가 `NATS_URL`·`REDIS_URL`에 이미 떠 있는
+  서버를 쓰고, 없으면 비어 있는 포트에 저장하지 않는 서버를 띄웠다가 끝나면(실패·중단 포함) 끈다. 바이너리만 있으면 된다.
 - **channels-nats는 channels 4.2.1 이상에서만 동작한다.** 4.2.1에서 생긴 `require_valid_channel_name`을 부른다.
   0.2.1부터는 자신도 `channels>=4.2.1`을 선언하지만 0.2.0은 `channels>=4`라고 선언했고 여전히 설치된다.
   django-wireview의 하한이 `channels>=4.2.1`인 이유다(#132).

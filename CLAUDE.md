@@ -124,7 +124,8 @@ tests/
 ├── test_*.py              라이브러리 단위·통합 테스트. WebSocket 없이 mount() 사용
 │                          test_async_safety.py 는 DJANGO_ALLOW_ASYNC_UNSAFE 가 진입점에 돌아오지 않는지 본다.
 │                          허용·거절은 저장소 루트의 conftest.py 가 한다(#120)
-│                          test_e2e_harness.py 는 E2E 하네스 자체의 계약을 지킨다. test_e2e_script.py 는 tests/e2e.sh 가 넘긴 경로만 돌리는지 본다
+│                          test_e2e_harness.py 는 E2E 하네스 자체의 계약을 지킨다. test_e2e_script.py 는 tests/e2e.sh 가 넘긴 경로만 돌리는지,
+│                          redis 레이어의 서버를 쓰거나 띄우고 실패·중단에도 정리하는지 본다(#171. 실제 redis-server가 없으면 CI에서 실패)
 │                          테스트 모듈을 tests.test_x 로 import하지 않는다 — pytest가 이미 test_x 로 읽어 두 번 실행되고
 │                          컴포넌트가 두 번 등록된다. 공용 헬퍼는 testproj/ 에(outbound.py 의 RecordingOutbound). test_suite_imports.py 가 본다
 │                          test_live_session_contract.py 는 회귀가 아니라 계약을 진술한다 —
@@ -292,7 +293,7 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 - **채널 레이어가 없으면 어떤 연결도 살아남지 못한다.** Channels에는 기본 레이어가 없다 — `CHANNEL_LAYERS`에 `default`가 없으면 `get_channel_layer()`가 `None`이고 컨슈머에 `channel_name`도 생기지 않는다. 컨슈머는 accept 전에 `ImproperlyConfigured`로 거절하고 `wireview.W012`가 같은 문장(`wireview/core/transport.py`의 `NO_CHANNEL_LAYER`)으로 미리 알린다(#87). 가드는 `connect()`가 아니라 `websocket_connect()`에 있다 — 단위 테스트는 레이어 없는 bare 컨슈머로 `connect()`를 직접 부르고, **그래서 그 테스트들은 이 실패를 한 번도 보지 못했다.**
 
 - **`wireview.min.js`가 없으면 페이지에서 JS가 로드되지 않는다.** clone 직후와 `wireview/static/wireview/wireview.js` 수정 후 `make build-js`.
-- **testproj의 채널 레이어는 `WIREVIEW_TEST_LAYER`가 고른다.** 기본은 `memory`(브로커 불요), `make test-e2e`는 `nats`, CI의 E2E는 `nats`와 `redis`를 한 번씩 돈다(지원 레이어 표는 `docs/COMPATIBILITY.md`). E2E는 `tests/e2e.sh`가 nats-server를 직접 띄우고 끝나면 정리하므로 미리 켜 둘 필요가 없다(이미 떠 있으면 그것을 쓴다). 바꾸려면 `make test-e2e LAYER=redis` 또는 `LAYER=memory`. channels-nats는 dev extras에 있으므로 `make install`이면 들어온다. `tests/test_nats_layer.py`는 nats-server가 없으면 로컬에서는 건너뛰지만 `CI`가 설정된 곳에서는 실패한다 — channels 하한의 유일한 근거라, 건너뛴 채 초록이면 하한이 검증되지 않는다(#132). `redis`는 `REDIS_URL`의 호스트·포트에 서버가 있어야 한다(`/0` 같은 DB 번호는 붙여도 된다).
+- **testproj의 채널 레이어는 `WIREVIEW_TEST_LAYER`가 고른다.** 기본은 `memory`(브로커 불요), `make test-e2e`는 `nats`, CI의 E2E는 `nats`와 `redis`를 한 번씩 돈다(지원 레이어 표는 `docs/COMPATIBILITY.md`). E2E는 `tests/e2e.sh`가 nats-server·redis-server를 직접 띄우고 끝나면(실패·중단 포함) 정리하므로 미리 켜 둘 필요가 없다(이미 떠 있으면 그것을 쓰고 끄지 않는다, #171). 바꾸려면 `make test-e2e LAYER=redis` 또는 `LAYER=memory`. channels-nats는 dev extras에 있으므로 `make install`이면 들어온다. `tests/test_nats_layer.py`는 nats-server가 없으면 로컬에서는 건너뛰지만 `CI`가 설정된 곳에서는 실패한다 — channels 하한의 유일한 근거라, 건너뛴 채 초록이면 하한이 검증되지 않는다(#132). `redis`는 `REDIS_URL`(기본 `redis://127.0.0.1:6379`, `/0` 같은 DB 번호는 붙여도 된다)에 서버가 없으면 띄운다 — 기본 URL이면 6379가 아니라 비어 있는 포트에(다른 실행이 그것을 자기 서버로 알고 쓰다 잃지 않게), `REDIS_URL`을 적었으면 그 주소에, 이 기계일 때만. 바이너리는 `REDIS_SERVER`, PATH의 `redis-server`, Homebrew 위치 순으로 찾는다.
 - **testproj의 HTTP는 Django ASGI 핸들러(`get_asgi_application()`)다. `WsgiToAsgi`로 되돌리지 않는다.** 그 래퍼는 응답을
   `async_to_sync`로 보내고, uvicorn은 keep-alive 연결의 다음 요청을 그 호출 안에서 시작한다 — 다음 요청이 이미 끝난
   executor를 물려받아 `CurrentThreadExecutor already quit`로 죽는다. 전체 E2E에서만 가끔 보였다(#129). tests/test_e2e_harness.py가

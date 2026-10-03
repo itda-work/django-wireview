@@ -65,6 +65,16 @@ jobs:
           "$RUNNER_TEMP/nats-server" --version
           echo "NATS_SERVER=$RUNNER_TEMP/nats-server" >> "$GITHUB_ENV"
 
+      # tests/test_e2e_script.py starts redis-server through tests/e2e.sh and fails without
+      # it where CI is set (#171). The package starts a service on 6379; it is stopped so
+      # the script's own path, nothing on the default URL, is the one those tests see.
+      - name: Install redis-server
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends redis-server
+          sudo systemctl disable --now redis-server
+          redis-server --version
+
       - name: Run tests
         run: make ci-test DJANGO=${{ matrix.django-version }}
 
@@ -106,6 +116,16 @@ jobs:
           "$RUNNER_TEMP/nats-server" --version
           echo "NATS_SERVER=$RUNNER_TEMP/nats-server" >> "$GITHUB_ENV"
 
+      # tests/test_e2e_script.py starts redis-server through tests/e2e.sh and fails without
+      # it where CI is set (#171). The package starts a service on 6379; it is stopped so
+      # the script's own path, nothing on the default URL, is the one those tests see.
+      - name: Install redis-server
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends redis-server
+          sudo systemctl disable --now redis-server
+          redis-server --version
+
       - name: Run tests on the newest dependencies
         run: make test-latest
 
@@ -146,6 +166,16 @@ jobs:
           docker rm nats-server
           "$RUNNER_TEMP/nats-server" --version
           echo "NATS_SERVER=$RUNNER_TEMP/nats-server" >> "$GITHUB_ENV"
+
+      # tests/test_e2e_script.py starts redis-server through tests/e2e.sh and fails without
+      # it where CI is set (#171). The package starts a service on 6379; it is stopped so
+      # the script's own path, nothing on the default URL, is the one those tests see.
+      - name: Install redis-server
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends redis-server
+          sudo systemctl disable --now redis-server
+          redis-server --version
 
       - name: Run tests on the lowest dependencies
         run: make test-lowest
