@@ -541,11 +541,25 @@ def rendered(sender, component_name, duration_ms, **kwargs):
 두 예시는 `tests/test_deployment_examples.py`가 가짜 `prometheus_client`·`opentelemetry`를 끼워 실제로 돌린다.
 수신자의 인자 이름이 시그널과 어긋나면 그 테스트가 실패한다.
 
-**브로드캐스트 유실은 레이어의 로그에서 센다.** 레이어의 `group_send`는 가득 찬 멤버를 예외 없이 버린다 —
-channels_redis는 `channels_redis.core` 로거에 INFO(`... channels over capacity in group ...`)로, channels-nats는
-받는 쪽 프로세스의 `channels_nats` 로거에 WARNING(`mailbox for ... is full`)으로 남긴다. `publish_failed`가 잡는
-것은 채널 하나로 보내다 거부된 것(`ChannelFull`)과 브로커 오류뿐이다. 로그 수집기에서 이 두 문장을 세면
-브로드캐스트 유실률이 된다.
+**브로드캐스트 유실은 레이어의 로그에서 세지만, 다 세지는 못한다.** 연결 하나가 밀리면(컴포넌트가 알림 하나를
+처리하는 동안 더 온다) 그 연결의 큐는 `capacity`개까지 담고, 레이어는 넘치는 것을 예외 없이 버린다.
+
+- channels-nats — 받는 쪽 프로세스의 `channels_nats` 로거에 WARNING(`mailbox for ... is full`)을 남기고 새로 온
+  것을 버린다. 로그는 첫 유실과 그 뒤 60초마다 한 번이고, 그때까지 버린 수를 함께 적는다.
+- channels_redis — 버리는 곳이 둘이다. 그 프로세스의 어느 연결도 읽지 않아 Redis에 쌓이면 `group_send`가 새로 온
+  것을 버리고 `channels_redis.core` 로거에 INFO(`... channels over capacity in group ...`)를 남긴다. 같은 프로세스의
+  다른 연결이 읽고 있으면 메시지는 연결별 프로세스 내부 버퍼로 옮겨지고, 그 버퍼가 차면 **가장 오래된 것을
+  로그 없이** 버린다. 연결이 많은 운영 프로세스에서는 뒤쪽이 흔하다.
+- InMemory — 로그 없이 새로 온 것을 버린다.
+
+그래서 로그로 센 수는 하한이다. `publish_failed`가 잡는 것은 채널 하나로 보내다 거부된 것(`ChannelFull`)과
+브로커 오류뿐이다.
+
+버려진 브로드캐스트는 오류가 아니라 **낡은 화면**으로 남는다. 다음에 그 컴포넌트가 렌더될 때(다음 알림이나
+사용자 이벤트) 템플릿이 원천에서 다시 읽는 값은 맞아지지만, 들은 것을 상태에 더해 가는 컴포넌트(채팅 목록에
+메시지를 덧붙이는 식)는 버려진 것을 되찾지 못한다. 틀리면 곤란한 값은 렌더 때 다시 읽거나 사용자 액션에서
+다시 조회한다. `capacity`(channels_redis·channels-nats·InMemory 모두 기본 100)를 늘리면 짧은 폭주는 견디지만,
+계속 밀리는 연결은 결국 넘친다. 근거는 `tests/test_broadcast_loss_e2e.py`다.
 
 ### 로깅
 
@@ -690,6 +704,23 @@ websocket-client는 접속 주소로 `Origin`을 채운다.
 인스턴스 하나를 내리면 그 인스턴스가 들고 있던 소켓이 **한꺼번에** 닫힌다. 페이지는 다른 인스턴스로 다시
 연결하고, 연결마다 페이지의 모든 컴포넌트가 서명된 상태로 다시 join한다(상태는 페이지에 있으므로 어느
 인스턴스든 받는다). 그래서 롤링 배포의 부하는 요청 수가 아니라 **join 수**다.
+
+#### 재연결이 돌려주는 것
+
+다시 붙은 페이지는 **마지막으로 받은 렌더의 상태**로 돌아온다. 페이지를 처음 로드했을 때의 상태가 아니다.
+
+- `data-state`는 상태를 바꾼 렌더마다 새로 서명되어 그 렌더의 diff에 실린다. 상태가 그대로인 렌더는 같은 토큰을
+  다시 쓴다(`STATE_REFRESH_AFTER`가 지나기 전까지). 재연결의 join이 보내는 것이 이 속성이다.
+- 받는 서버에 필요한 것은 서명 키뿐이다. 페이지를 그린 프로세스가 재시작했든 다른 워커가 받든 페이지는
+  새로고침 없이 이어진다.
+- 사용자가 입력하고 아직 보내지 않은 값은 입력란에 그대로 남는다. join의 렌더도 사용자가 고친 값을 덮지 않는다.
+  그 값을 서버에 다시 알리려면 [`wire-auto-recover`](./features/form-feedback.md#재연결-뒤-폼-복구-wire-auto-recover)를 단다.
+- 돌아오지 않는 것: 서명 상태에 실리지 않는 값(`Meta.exclude_fields`, temporary assign — `joined()`에서 다시
+  읽는다), 끊긴 동안 보낸 이벤트와 훅의 `pushEvent`(버려진다), 끊긴 동안의 브로드캐스트.
+- 서명이 맞지 않거나(서명 키가 다른 서버) `STATE_MAX_AGE`보다 오래된 상태는 거절되고 페이지가 새로고침된다.
+  그때는 페이지 로드 때의 상태로 시작하고 입력하던 값도 사라진다.
+
+근거는 `tests/test_reconnect_state_e2e.py`(같은 서버·재시작한 프로세스·다른 워커)와 `tests/test_signed_state.py`(거절)다.
 
 #### 용량은 join/s로 잰다
 

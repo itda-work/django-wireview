@@ -113,10 +113,11 @@ props로 다시 만들어지고 경고 로그만 남는다.
   실패하고, 세션은 그 컴포넌트만 격리해 다시 join시킨다([errors](./errors.md)).
 
 **보이는 것은 레이어가 던지는 것뿐이다.** `group_send`는 가득 찬 멤버에 대해 아무것도 던지지 않는다 —
-channels_redis는 버리고 INFO로 로그하고, in-memory 레이어는 말없이 버리고, channels-nats는 받는 쪽에서 WARNING
-로그와 함께 버린다(pub/sub이라 보내는 쪽은 알 수 없다). `ChannelFull`을 던지는 것은 채널 하나로 보내는 `send`,
-즉 `send_to_session`이다. 그러니 브로드캐스트 유실은 이 시그널이 아니라 레이어의 로그(`channels_nats`,
-`channels_redis.core` 로거)에서 센다.
+channels_redis는 Redis에서 버리면 INFO로 로그하지만 프로세스 내부 버퍼에서는 말없이 버리고, in-memory 레이어는
+말없이 버리고, channels-nats는 받는 쪽에서 WARNING 로그와 함께 버린다(pub/sub이라 보내는 쪽은 알 수 없다).
+`ChannelFull`을 던지는 것은 채널 하나로 보내는 `send`, 즉 `send_to_session`이다. 그러니 브로드캐스트 유실은 이
+시그널이 아니라 레이어의 로그(`channels_nats`, `channels_redis.core` 로거)에서 세고, 그 수도 하한이다
+([배포](../DEPLOYMENT.md)의 모니터링 절).
 
 ## 사용법
 

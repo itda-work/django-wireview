@@ -21,6 +21,19 @@ The django-reactor era changelog (2.x) is preserved in
   their conditions, and then install and the agent prompt, which now asks an agent to consult
   llms.txt rather than follow it; the objections and their answers are a new page,
   `docs/WHY.md` (site: `/wireview/guide/why/`) (#167).
+- `docs/DEPLOYMENT.md` no longer says the layers' logs count every dropped broadcast. channels_redis
+  also drops a lagging connection's oldest messages from its process's in-memory buffer, without a
+  log, whenever another connection of the process is reading; only messages dropped in Redis itself
+  are logged. It now also says what a reconnect gives back (the last render's state, on any server
+  with the same signing key), and `docs/features/navigation.md` that `push_to` and Back/Forward fetch
+  the URL again, so state only events changed does not survive them (#168).
+
+### Added
+
+- Browser tests for what the documentation claims about reconnecting (the same server, a restarted
+  process, another worker), Hangul IME compositions under a render (the field's own debounced
+  event and someone else's broadcast), Back and Forward after `push_to`, `replace_to` and boosted
+  moves, and broadcasts past the channel layer's capacity on each layer (#168).
 
 ## [1.1.0] - 2026-10-03
 

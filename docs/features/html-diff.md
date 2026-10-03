@@ -91,6 +91,11 @@ morph는 새 HTML의 값을 입력칸에 옮긴다. 그대로 두면 서버가 �
   - `{% on "keypress.enter" this.chain %}`의 `JS().push`도 같은 규칙을 따른다. `window.wireview.send(el, name, args, {eventType})`는 `eventType`으로 판정하고, `{commit: true}`를 넘기면 확정이 된다.
 - **포커스가 없는 칸에 서버가 새 값을 렌더했을 때.** 포커스된 칸은 커서 아래에서 바뀌지 않는다(Phoenix LiveView와 같다).
 
+**IME 조합.** 한글을 조합하는 동안에도 `input` 이벤트는 자모마다 나고 바인딩을 부른다. 핸들러는 끝나지 않은
+음절("하")을 받는다. 그 응답이 오든 다른 사용자의 브로드캐스트로 렌더가 오든, 조합 중인 칸은 사용자가 고친 칸이라
+morph가 값을 쓰지 않는다. 그래서 조합이 끊기지 않는다. 조합 중인 칸에 값을 쓰면 브라우저가 조합을 버리고 다음
+자모가 새 조합으로 시작해 음절이 겹친다("하한"). 회귀 테스트는 `tests/test_ime_e2e.py`다.
+
 서버가 입력칸을 확실히 비우거나 바꾸려면 `push_js(JS().set_value(...))`를 쓴다. morph를 거치지 않으므로 이 규칙과 무관하다. `examples/chat`이 메시지를 보낸 뒤 이렇게 비운다. 규칙의 정본은 `wireview/static/wireview/values.mjs`, 설계는 [input-values.md](../design/input-values.md), 회귀 테스트는 `tests/test_input_values_e2e.py`다.
 
 ## 주의사항
