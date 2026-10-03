@@ -94,7 +94,8 @@ async def test_paging():
 - push·replace는 같은 경로면 patch(가져오지 않고 같은 인스턴스가 `params_changed`를 받는다), 다른 경로면
   그 페이지를 가져와 새로 join한다. `follow_push()`도 같다: 같은 경로는 인자 없이, 다른 경로는
   `follow_push(NextComponent)`로 대상을 마운트한다(경계는 `follow_redirect`처럼 URLconf에서 읽는다).
-  경로가 있는 목적지는 `mount(..., path=)`가 있어야 판단한다.
+  경로가 있는 목적지는 `mount(..., path=)`가 있어야 판단한다. 없으면 1.1처럼 같은 인스턴스로 따라가며
+  `WireviewDeprecationWarning`을 내고, 2.0에서는 실패한다. `path`라는 필드는 `state={"path": ...}`로 준다.
 
 ## DB를 건드리는 테스트
 

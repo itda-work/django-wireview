@@ -82,8 +82,12 @@ dependencies = ["django-wireview>=1.1,<2"]
     대상을 새로 마운트하므로 그 컴포넌트를 넘긴다: `landed = await view.follow_push(Destination)`. 경계를 넘는
     push에 실패하던 것도 이제 대상을 마운트한다(그 경계가 사용자를 거절하면 실패한다).
   - `"/items/?page=2"`처럼 경로가 있는 목적지는 컴포넌트가 놓인 경로를 알아야 둘을 가린다:
-    `mount(XList, path="/items/")`. 없으면 `follow_push()`가 무엇을 해야 하는지 알려 주며 실패한다.
+    `mount(XList, path="/items/")`. 없으면 `follow_push()`는 1.1처럼 같은 인스턴스에 `params_changed()`를
+    돌리고 `WireviewDeprecationWarning`을 낸다. 2.0에서는 실패하므로 경고가 나는 테스트에 `path=`를 더한다.
   ([testing](./features/testing.md#push를-따라가기))
+- **`mount(path=...)`는 페이지의 경로다.** 1.1에는 이 옵션이 없어서 `path=`가 같은 이름의 필드 값으로
+  들어갔다. 이제 `path`라는 필드가 있는 컴포넌트에 `path=`를 주면 `TypeError`가 난다. 필드 값은
+  `state={"path": "/a/b/"}`로 준다. `state=`에 필드를 두면 `path=`는 페이지의 경로로 함께 줄 수 있다.
 
 ## 1.0에서 1.1로
 

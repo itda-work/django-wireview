@@ -104,6 +104,7 @@ warnings.simplefilter("error", WireviewDeprecationWarning)
 | 테스트의 `view.wire.broadcasts` | `view.broadcasts` | 2.0 |
 | 테스트의 `view.wire.presence_broadcasts` | `view.presence_broadcasts` | 2.0 |
 | DOM 이벤트 `upload:added`·`progress`·`complete`·`error`·`cancel` | `wireview:upload-added` 등 (둘 다 나간다) | 2.0 |
+| 테스트에서 `mount()`에 `path=` 없이, 경로가 있는 URL로 간 push·replace를 `follow_push()`로 따라가기 (1.1처럼 같은 인스턴스가 `params_changed()`를 받는다) | `mount(..., path="/items/")`. 같은 경로면 patch, 다른 경로면 `follow_push(Destination)` | 2.0 (실패한다) |
 
 ## 지원 범위
 

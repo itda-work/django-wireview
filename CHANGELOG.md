@@ -32,7 +32,10 @@ The django-reactor era changelog (2.x) is preserved in
   hear `params_changed()`, so state events changed survives the move. It used to fetch the URL and
   join every component again from that render. Back and Forward between entries the page on screen
   made are patches too; an entry another page made, or one from before a reload, is fetched as
-  before. `push_to` to another path is unchanged (`push_navigate`). A page whose template reads
+  before. `push_to` to another path is unchanged (`push_navigate`). While a move fetches its page
+  nothing is a patch -- a Forward after Back's cached paint, or a `push_to` the page being left sends
+  meanwhile, is fetched -- and a push is judged against the page on screen, its relative URL
+  resolved against the document's base as `pushState` resolves it. A page whose template reads
   `request.GET` outside its components moves with `redirect_to` instead, which always fetches (#169).
 - **Silently changed:** `replace_to` to another path fetches that page in place, as `push_to` there
   does, instead of only rewriting the address bar over the old page. On the page's own path it is a
@@ -41,9 +44,13 @@ The django-reactor era changelog (2.x) is preserved in
   `joined()`, as the join of a page whose URL has a query does. `MountedComponent.follow_push()`
   follows the push the way the browser does: a patch on the same instance for the page's own path,
   and for another path a fresh mount of the component passed in, `follow_push(Destination)`, under
-  the destination's live_session as `follow_redirect()` does. A push to a path needs the page's path,
-  `mount(..., path="/items/")`, to tell the two apart; without it, or called the wrong way, it
-  fails (#169).
+  the destination's live_session as `follow_redirect()` does. Called the wrong way, it fails (#169).
+
+### Deprecated
+
+- `follow_push()` after a push or replace to a URL with a path, on a component mounted without
+  `path=`, cannot tell a patch from a new page. It follows it on the same instance as 1.1 did and
+  warns with `WireviewDeprecationWarning`; 2.0 fails there. Mount with `path="/items/"` (#169).
 
 ### Added
 
@@ -52,7 +59,9 @@ The django-reactor era changelog (2.x) is preserved in
   event and someone else's broadcast), Back and Forward after `push_to`, `replace_to` and boosted
   moves, and broadcasts past the channel layer's capacity on each layer (#168).
 - `mount()` takes `path=`, the path of the page the component is on, and `follow_push()` takes the
-  component a push to another path lands on (#169).
+  component a push to another path lands on (#169). A component with a field called `path` sets
+  it with `state={"path": ...}`: `path=` without it in `state=` raises `TypeError`, where 1.1 set
+  the field.
 
 ### Fixed
 
@@ -60,7 +69,9 @@ The django-reactor era changelog (2.x) is preserved in
   exactly what the server last rendered and the server now renders another value (a handler that
   normalizes it, a shared field). Writing it ended the composition, and the next jamo started a new
   one ("하" became "하!한"). The server's value goes to the field's `defaultValue`; once the
-  composition ends the field is an edited field like any other (#169).
+  composition ends the field is an edited field like any other (#169). Only the focused field counts
+  as composing: a composition a script's write or a re-insertion dropped, without
+  `compositionend`, no longer holds the field once the user leaves it.
 
 ## [1.1.0] - 2026-10-03
 

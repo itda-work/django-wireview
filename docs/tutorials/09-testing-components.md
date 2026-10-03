@@ -324,7 +324,8 @@ async def test_paging_reloads_the_page_of_products():
 알리는 것이고, 그것이 같은 인스턴스의 `params_changed()`를 돌린다. 이벤트로 바꾼 상태는 남는다.
 다른 경로로 가면 브라우저는 그 페이지를 가져오고 컴포넌트가 새로 join하므로, `follow_push(Destination)`이
 대상 컴포넌트를 새로 마운트해 돌려준다. `"/products/?page=2"`처럼 경로가 있는 목적지는
-`mount(XProductList, path="/products/")`로 컴포넌트가 놓인 경로를 알려 줘야 둘을 가린다.
+`mount(XProductList, path="/products/")`로 컴포넌트가 놓인 경로를 알려 줘야 둘을 가린다. 알려 주지 않으면
+1.1처럼 같은 인스턴스로 따라가며 폐기 경고를 내고, 2.0에서는 실패한다.
 
 ## Streams 테스트
 

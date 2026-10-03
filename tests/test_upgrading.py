@@ -108,6 +108,8 @@ UPGRADE_NOTE = {
     "`push_to` to the page's own path": ("같은 경로로 가는 `push_to`", "`redirect_to`로 바꾼다"),
     "`replace_to` to another path fetches": ("다른 경로로 가는 `replace_to`", "같은 경로의 쿼리로 바꾼다"),
     "`mount(params=...)` runs `params_changed()`": ("`mount(params=...)`와 `follow_push()`", 'path="/items/"'),
+    "cannot tell a patch from a new page": ("`mount(params=...)`와 `follow_push()`", "2.0에서는 실패하므로"),
+    "`mount()` takes `path=`": ("`mount(path=...)`는 페이지의 경로다", 'state={"path": "/a/b/"}'),
 }
 
 DOCS_ONLY = "문서·저장소만 바뀌었고 라이브러리 동작은 같다"
@@ -117,7 +119,6 @@ NO_UPGRADE_NOTE = {
     "The README opens with": DOCS_ONLY,
     "no longer says the layers' logs count": DOCS_ONLY,
     "Browser tests for what the documentation claims": "테스트만 늘었다",
-    "`mount()` takes `path=`": "더한 옵션이다. 쓰는 법은 `mount(params=...)`와 `follow_push()` 항목에 있다",
     "IME is composing in": "고친 결함이다. 조합이 끊기던 화면이 끊기지 않을 뿐 할 일은 없다",
 }
 

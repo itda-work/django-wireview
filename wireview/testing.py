@@ -540,9 +540,10 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
           is mounted there, as :meth:`follow_redirect` does, and returned.
 
         Which of the two the browser does is the helper's to say, not the
-        test's: asking for the other one fails, and so does a push to a path
-        when the test did not say which path the component is on
-        (``mount(..., path=)``).
+        test's: asking for the other one fails. A push to a URL with a path
+        needs the path the component is on (``mount(..., path=)``) to tell
+        the two apart. Without it the push is followed on this instance, as
+        1.1 did, with a ``WireviewDeprecationWarning``; 2.0 fails there.
 
         Raises:
             AssertionError: nothing pushed or replaced; the call does not match
@@ -558,25 +559,30 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         verb = "pushed" if nav.command == "push" else "replaced the URL with"
 
         if nav.path and self._path is None:
-            raise AssertionError(
-                f"{self._component._name} {verb} {nav.url!r}. On the page's own path that is a patch, on "
-                f"another one a fetch of a new page -- say which page the component is on: "
-                f"mount(..., path=...)."
+            if component_class is not None:
+                raise AssertionError(
+                    f"{self._component._name} {verb} {nav.url!r}. On the page's own path that is a patch, on "
+                    f"another one a fetch of a new page -- say which page the component is on: "
+                    f"mount(..., path=...)."
+                )
+            # 1.1 followed every push on this instance, and a push to the page's own
+            # path written with the path is right to. Which page it left is unknown
+            # here, so 1.1's answer stands until 2.0, with a warning (#169).
+            warn_deprecated(
+                "follow_push() after a push to a path, on a component mounted without path=",
+                "mount(..., path=...) so follow_push() can tell a patch from a new page; without it 2.0 fails here",
             )
+            if nav.command == "push":
+                self._refuse_leaving_the_boundary(nav)
+            await self._patch(nav)
+            return nav
         if not nav.path or nav.path == self._path:
             if component_class is not None:
                 raise AssertionError(
                     f"{self._component._name} {verb} {nav.url!r}, on the page it is on: nothing is fetched "
                     f"and this instance hears params_changed. Call follow_push() with no component."
                 )
-            params = nav.params
-            # The repository and every component's wire share one params dict, so the
-            # server updates it in place rather than rebinding. Same here.
-            self._repo.params.clear()
-            self._repo.params.update(params)
-            await self._component._handle_params(params, nav.url)
-            # The session subscribes after params_changed as after any event
-            await self._update_subscriptions()
+            await self._patch(nav)
             return nav
 
         if component_class is None:
@@ -586,6 +592,38 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
                 f"Pass the component it renders: follow_push(Destination)."
             )
         return await self._mount_destination(nav, verb, component_class, params, live_session, state, initial_state)
+
+    async def _patch(self, nav: "Navigation") -> None:
+        """Hand ``nav``'s params to this instance, as the client's ``params_changed`` does."""
+        params = nav.params
+        # The repository and every component's wire share one params dict, so the
+        # server updates it in place rather than rebinding. Same here.
+        self._repo.params.clear()
+        self._repo.params.update(params)
+        await self._component._handle_params(params, nav.url)
+        # The session subscribes after params_changed as after any event
+        await self._update_subscriptions()
+
+    def _refuse_leaving_the_boundary(self, nav: "Navigation") -> None:
+        """1.1's check for a push followed on this instance: a destination that is
+        not routed, or that is in another live_session, is no patch (#58)."""
+        from .core.live_session import session_for_path
+
+        try:
+            destination = session_for_path(nav.path)
+        except Resolver404:
+            raise AssertionError(
+                f"{self._component._name} pushed to {nav.url!r}, which this project's URLconf does not "
+                f"serve. A push fetches its destination, so the test needs a routed one."
+            ) from None
+        here = self._repo.live_session
+        if (here.name if here else "") != (destination.name if destination else ""):
+            left = repr(here.name) if here else "no boundary"
+            entered = repr(destination.name) if destination else "no boundary"
+            raise AssertionError(
+                f"Pushing to {nav.url!r} leaves live_session {left} for {entered}, which is a full page "
+                f"load: the client never sends params_changed. Mount the destination instead."
+            )
 
     # Streams
 
@@ -732,7 +770,9 @@ async def mount(
             ``Meta.live_sessions``
         path: The path of the page the component is on, like ``"/items/"``.
             Only :meth:`MountedComponent.follow_push` reads it: a push to this
-            path is a patch, to another one a new page
+            path is a patch, to another one a new page. A component with a field
+            called ``path`` sets that field through ``state=``; ``path=`` without
+            it in ``state=`` raises ``TypeError``, since 1.1 read it as the field
         state: Initial field values, as a dict. The keyword arguments below say
             the same thing more briefly, but they share a namespace with the
             options above: a field called ``params`` can only be given here. So
@@ -761,6 +801,14 @@ async def mount(
 
     from .core.live_session import LiveSession, get_live_session
 
+    # 1.1 had no path= option, and path=... set a field of that name. Taking it as
+    # the page's path now would drop the field's value without a word (#169).
+    # With the field in state=, path= can only be the page's.
+    if path is not None and "path" in component_class.model_fields and "path" not in (state or {}):
+        raise TypeError(
+            f"mount() got path={path!r}, and {component_class.__name__} has a field called path: "
+            f"path= is the page the component is on. Set the field with state={{'path': ...}}."
+        )
     if state:
         if both := set(state) & set(initial_state):
             raise TypeError(f"mount() got {sorted(both)} both in state= and as keywords")

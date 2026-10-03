@@ -16,7 +16,7 @@ no boundary, ``/livesession/members/`` and ``/livesession/members2/`` are inside
 import pytest
 from django.contrib.auth.models import AnonymousUser, User
 
-from wireview import Component
+from wireview import Component, WireviewDeprecationWarning
 from wireview.features.streams import StreamItem, StreamOp
 from wireview.testing import ComponentTestCase, mount
 
@@ -353,6 +353,42 @@ class TestMountingWithParams:
         assert landed.component.seen_params == {"tab": "open"}
 
 
+class Crumb(Component):
+    """A component with a field called ``path``, which 1.1's ``mount(path=)`` set."""
+
+    class Meta:
+        template_name = "todo/counter.html"
+
+    count: int = 0
+    path: str = "/"
+
+
+class TestMountingOnAPath:
+    """mount(path=) names the page; a field of that name is set through state= (#169)."""
+
+    @pytest.mark.asyncio
+    async def test_a_field_called_path_makes_path_ambiguous(self):
+        with pytest.raises(TypeError) as caught:
+            await mount(Crumb, path="/a/b/")
+        assert "state={'path': ...}" in str(caught.value)
+
+    @pytest.mark.asyncio
+    async def test_the_field_goes_through_state(self):
+        view = await mount(Crumb, state={"path": "/a/b/"})
+        assert view.component.path == "/a/b/"
+
+    @pytest.mark.asyncio
+    async def test_with_the_field_in_state_path_is_the_page(self):
+        view = await mount(Crumb, path="/livesession/public/", state={"path": "/a/b/"})
+        assert view.component.path == "/a/b/"
+        assert view._path == "/livesession/public/"
+
+    @pytest.mark.asyncio
+    async def test_the_mixin_refuses_it_too(self):
+        with pytest.raises(TypeError):
+            await ComponentTestCase().mount(Crumb, path="/a/b/")
+
+
 class TestFollowingAPush:
     """The other half of a push, as the browser does it (#169): on the page's own
     path a patch -- the same instance hears params_changed -- and on another path
@@ -405,15 +441,69 @@ class TestFollowingAPush:
         assert view.component.seen_params == {"tab": "open"}
 
     @pytest.mark.asyncio
-    async def test_a_path_needs_the_page_it_is_pushed_from(self):
-        """Patch or new page depends on where the component is; the helper does not guess."""
+    async def test_a_path_without_the_page_is_followed_as_1_1_did_with_a_warning(self):
+        """Patch or new page depends on where the component is. Without mount(path=) the
+        helper cannot tell, so it keeps 1.1's answer -- this instance hears the params --
+        and warns that 2.0 fails here (#169)."""
         view = await mount(Navigator, user=member(), live_session=MEMBERS)
         await view.call("go_push", url="/livesession/members/?tab=open")
+        view.component.count = 3
+
+        with pytest.warns(WireviewDeprecationWarning, match=r"path=") as caught:
+            nav = await view.follow_push()
+        assert "2.0" in str(caught[0].message)
+        assert nav.url == "/livesession/members/?tab=open"
+        assert view.component.seen_params == {"tab": "open"}
+        assert view.component.seen_uri == "/livesession/members/?tab=open"
+        assert view.component.wire.params == {"tab": "open"}
+        assert view.component.count == 3, "the same instance, as in 1.1"
+
+    @pytest.mark.asyncio
+    async def test_a_replace_to_a_path_without_the_page_is_followed_as_1_1_did(self):
+        view = await mount(Navigator, user=member(), live_session=MEMBERS)
+        await view.call("go_replace", url="/livesession/members2/?tab=open")
+
+        with pytest.warns(WireviewDeprecationWarning):
+            await view.follow_push()
+        assert view.component.seen_params == {"tab": "open"}
+
+    @pytest.mark.asyncio
+    async def test_a_push_out_of_the_boundary_without_the_page_still_fails_as_in_1_1(self):
+        view = await mount(Navigator, user=member(), live_session=MEMBERS)
+        await view.call("go_push", url="/livesession/public/")
+
+        with pytest.warns(WireviewDeprecationWarning), pytest.raises(AssertionError) as caught:
+            await view.follow_push()
+        assert "full page load" in str(caught.value)
+        assert view.component.seen_params == {}
+
+    @pytest.mark.asyncio
+    async def test_an_unrouted_push_without_the_page_still_fails_as_in_1_1(self):
+        view = await mount(Navigator)
+        await view.call("go_push", url="/nowhere-at-all/")
+
+        with pytest.warns(WireviewDeprecationWarning), pytest.raises(AssertionError) as caught:
+            await view.follow_push()
+        assert "URLconf" in str(caught.value)
+
+    @pytest.mark.asyncio
+    async def test_a_destination_without_the_page_asks_for_it(self):
+        """follow_push(Destination) is 1.2's: the test that uses it says where the page is."""
+        view = await mount(Navigator, user=member(), live_session=MEMBERS)
+        await view.call("go_push", url="/livesession/members2/")
 
         with pytest.raises(AssertionError) as caught:
-            await view.follow_push()
+            await view.follow_push(Navigator)
         assert "path=" in str(caught.value)
         assert view.component.seen_params == {}
+
+    @pytest.mark.asyncio
+    async def test_a_query_only_push_needs_no_page_and_does_not_warn(self, recwarn):
+        view = await mount(Navigator)
+        await view.call("go_push", url="?page=2")
+
+        await view.follow_push()
+        assert not [w for w in recwarn if issubclass(w.category, WireviewDeprecationWarning)]
 
     @pytest.mark.asyncio
     async def test_another_path_inside_the_boundary_mounts_the_destination(self):
