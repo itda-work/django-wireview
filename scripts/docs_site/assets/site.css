@@ -571,6 +571,12 @@ html.dark .prose img {
   color: inherit;
 }
 
+/* A code block's box (render.py): the copy button sits in its corner while the <pre> scrolls. */
+.code-block {
+  position: relative;
+  margin: 1.5em 0;
+}
+
 .prose pre {
   margin: 1.5em 0;
   padding: 1.1rem 1.4rem;
@@ -582,6 +588,85 @@ html.dark .prose img {
 
 .prose pre code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.prose .code-block > pre {
+  margin: 0;
+}
+
+/* The copy button (site.js, #173). Code blocks are one-dark in both themes, so its colours are
+   the block's own (#ABB2BF on #282C34) rather than the theme's. */
+.copy-button {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem;
+  border: 1px solid rgb(171 178 191 / 0.25);
+  border-radius: 0.4rem;
+  background: rgb(40 44 52 / 0.85);
+  color: #abb2bf;
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.code-block:hover .copy-button,
+.copy-button:hover,
+.copy-button:focus-visible,
+.copy-button[data-state] {
+  opacity: 1;
+}
+
+.copy-button:hover {
+  color: #ffffff;
+  border-color: rgb(171 178 191 / 0.5);
+}
+
+.copy-button:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+.copy-button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.copy-button__done,
+.copy-button__failed,
+.copy-button[data-state] .copy-button__copy {
+  display: none;
+}
+
+.copy-button[data-state="copied"] {
+  color: #98c379;
+}
+
+.copy-button[data-state="copied"] .copy-button__done,
+.copy-button[data-state="failed"] .copy-button__failed {
+  display: block;
+}
+
+.copy-button[data-state="failed"] {
+  color: #e06c75;
+}
+
+.copy-button__note:empty {
+  display: none;
+}
+
+/* The fallback's textarea (site.js selectAndCopy): selectable, never seen. */
+.copy-scratch {
+  position: fixed;
+  top: 0;
+  left: -9999px;
+  opacity: 0;
 }
 
 .prose table {
@@ -714,6 +799,10 @@ html.dark .prose img {
     border-radius: 0.5rem;
   }
 
+  .copy-button {
+    opacity: 1;
+  }
+
   .pager {
     grid-template-columns: 1fr;
   }
@@ -728,7 +817,8 @@ html.dark .prose img {
   .site-footer,
   .sidebar,
   .toc,
-  .preview-band {
+  .preview-band,
+  .copy-button {
     display: none;
   }
 }

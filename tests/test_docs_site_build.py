@@ -181,6 +181,46 @@ def test_the_pages_load_nothing_from_elsewhere_but_pretendard(site):
     assert found == []
 
 
+class _Pres(HTMLParser):
+    """Each ``<pre>`` of a page, with the classes of the element it sits in."""
+
+    VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.stack: list[tuple[str, str]] = []
+        self.parents: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "pre":
+            self.parents.append(self.stack[-1][1] if self.stack else "")
+        if tag not in self.VOID:
+            self.stack.append((tag, dict(attrs).get("class") or ""))
+
+    def handle_endtag(self, tag):
+        while self.stack:
+            if self.stack.pop()[0] == tag:
+                break
+
+
+def test_every_code_block_is_in_the_box_its_copy_button_goes_in(site):
+    """site.js puts a copy button in each ``.code-block``; a ``<pre>`` outside one would have none (#173)."""
+    total, outside = 0, []
+    for path in sorted(site.out.rglob("*.html")):
+        parser = _Pres()
+        parser.feed(path.read_text(encoding="utf-8"))
+        total += len(parser.parents)
+        outside += [path.relative_to(site.out).as_posix() for parent in parser.parents if parent != "code-block"]
+    assert total > 100 and outside == []
+
+
+@pytest.mark.parametrize("source", ["```python\nx = 1\n```\n", "```\nplain\n```\n", "    indented\n"])
+def test_a_code_block_of_every_kind_is_boxed(source):
+    from scripts.docs_site.render import MD
+
+    assert MD.render(source).startswith('<div class="code-block"><pre class="highlight"')
+
+
 def test_the_readmes_image_is_in_the_build(site):
     """The home page's overview.jpg is a file of the build, and the .md names it as the HTML does."""
     image = (ROOT / "overview.jpg").read_bytes()

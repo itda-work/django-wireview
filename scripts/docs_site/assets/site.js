@@ -1,5 +1,5 @@
-// The theme toggle (itda.work's static/js/theme.js policy), the sidebar on narrow screens, and
-// the table of contents marking the section being read.
+// The theme toggle (itda.work's static/js/theme.js policy), the sidebar on narrow screens, the
+// table of contents marking the section being read, and the code blocks' copy buttons.
 (function () {
   "use strict";
 
@@ -44,9 +44,53 @@
     return box.scrollTop;
   }
 
-  var spy = { currentIndex: currentIndex, scrollToShow: scrollToShow };
+  // --- the copy button's decisions (#173), pure so tests/js/docs-site-copy.test.mjs can run them ---
+
+  /**
+   * What a code block copies: its text without the newline that ends the block, so a pasted
+   * command waits in the terminal for Enter instead of running.
+   *
+   * @param {string} text the code element's textContent
+   * @returns {string}
+   */
+  function codeText(text) {
+    return text.replace(/\n+$/, "");
+  }
+
+  /**
+   * Put ``text`` on the clipboard: the Clipboard API where the page has one, and where it has
+   * none (an http page other than localhost) or refuses, ``fallback`` (a selection and
+   * execCommand("copy")).
+   *
+   * @param {string} text
+   * @param {{writeText: function(string): Promise<void>} | undefined} clipboard
+   * @param {function(string): boolean} fallback true when it copied
+   * @returns {Promise<boolean>} whether the text is on the clipboard
+   */
+  function copyText(text, clipboard, fallback) {
+    function viaFallback() {
+      try {
+        return fallback(text);
+      } catch (_) {
+        return false;
+      }
+    }
+    if (!clipboard || typeof clipboard.writeText !== "function") return Promise.resolve(viaFallback());
+    try {
+      return Promise.resolve(clipboard.writeText(text)).then(
+        function () {
+          return true;
+        },
+        viaFallback
+      );
+    } catch (_) {
+      return Promise.resolve(viaFallback());
+    }
+  }
+
+  var pure = { currentIndex: currentIndex, scrollToShow: scrollToShow, codeText: codeText, copyText: copyText };
   if (typeof module === "object" && module.exports) {
-    module.exports = spy;
+    module.exports = pure;
     return;
   }
 
@@ -213,5 +257,83 @@
     measure();
     if (location.hash) pinHash();
     update();
+  }
+
+  // --- the code blocks' copy buttons (#173) -----------------------------------------------------
+
+  // Drawn here rather than by the build: without JavaScript a button could not copy, so it is
+  // better not shown. The build gives every <pre> its .code-block box (render.py's _highlight).
+  var ICON_COPY =
+    '<svg class="copy-button__copy" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">' +
+    '<rect x="9" y="9" width="11" height="11" rx="2" stroke-width="2" />' +
+    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1" /></svg>';
+  var ICON_DONE =
+    '<svg class="copy-button__done" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">' +
+    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>';
+  var ICON_FAILED =
+    '<svg class="copy-button__failed" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">' +
+    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>';
+  var LABEL = "코드 복사";
+  var SAID = { copied: "복사했습니다", failed: "복사하지 못했습니다" };
+  var SHOWN_FOR = 2000;
+
+  addCopyButtons();
+
+  function addCopyButtons() {
+    var blocks = document.querySelectorAll(".code-block");
+    if (!blocks.length) return;
+    // One live region for the page: a button's own label stays "코드 복사", the outcome is said here.
+    var status = document.createElement("span");
+    status.className = "visually-hidden";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    document.body.appendChild(status);
+    blocks.forEach(function (block) {
+      var pre = block.querySelector("pre");
+      if (!pre) return;
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "copy-button";
+      button.setAttribute("aria-label", LABEL);
+      button.title = LABEL;
+      button.innerHTML = ICON_COPY + ICON_DONE + ICON_FAILED + '<span class="copy-button__note" aria-hidden="true"></span>';
+      var timer = 0;
+      button.addEventListener("click", function () {
+        var code = pre.querySelector("code") || pre;
+        copyText(codeText(code.textContent || ""), navigator.clipboard, selectAndCopy).then(function (copied) {
+          var state = copied ? "copied" : "failed";
+          button.setAttribute("data-state", state);
+          button.querySelector(".copy-button__note").textContent = copied ? "복사됨" : "복사 실패";
+          // Emptied first, so the same outcome twice in a row is said twice.
+          status.textContent = "";
+          status.textContent = SAID[state];
+          clearTimeout(timer);
+          timer = setTimeout(function () {
+            button.removeAttribute("data-state");
+            button.querySelector(".copy-button__note").textContent = "";
+            status.textContent = "";
+          }, SHOWN_FOR);
+        });
+      });
+      block.appendChild(button);
+    });
+  }
+
+  function selectAndCopy(text) {
+    var area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.className = "copy-scratch";
+    var focused = document.activeElement;
+    document.body.appendChild(area);
+    area.select();
+    var copied = false;
+    try {
+      copied = document.execCommand("copy");
+    } finally {
+      document.body.removeChild(area);
+      if (focused && typeof focused.focus === "function") focused.focus();
+    }
+    return copied;
   }
 })();

@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from urllib.parse import unquote
 
 from markdown_it import MarkdownIt
+from markdown_it.common.utils import unescapeAll
 from markdown_it.token import Token
 from mdit_py_plugins.footnote import footnote_plugin
 from mdit_py_plugins.tasklists import tasklists_plugin
@@ -158,7 +159,12 @@ class Linker:
         return new, problem
 
 
-def _highlight(code: str, lang: str, _attrs: str) -> str:
+def _highlight(code: str, lang: str) -> str:
+    """A code block: the ``<pre>`` inside the ``.code-block`` box site.js puts its copy button in (#173).
+
+    The box, not the ``<pre>``, holds the button: the ``<pre>`` scrolls sideways, and the button
+    would scroll away with a long line.
+    """
     name = lang.split()[0] if lang else ""
     try:
         lexer = get_lexer_by_name(name) if name else None
@@ -166,13 +172,13 @@ def _highlight(code: str, lang: str, _attrs: str) -> str:
         lexer = None
     body = pygmentize(code, lexer, _FORMATTER) if lexer else html.escape(code)
     label = f' data-lang="{html.escape(name)}"' if name else ""
-    return f'<pre class="highlight"{label}><code>{body}</code></pre>\n'
+    return f'<div class="code-block"><pre class="highlight"{label}><code>{body}</code></pre></div>\n'
 
 
 def _markdown() -> MarkdownIt:
     # GitHub-flavoured as far as the documents go: tables, strikethrough, task lists and footnotes.
     # Raw HTML passes through; the documents are this repository's own.
-    md = MarkdownIt("commonmark", {"html": True, "highlight": _highlight}).enable(["table", "strikethrough"])
+    md = MarkdownIt("commonmark", {"html": True}).enable(["table", "strikethrough"])
     md.use(tasklists_plugin).use(footnote_plugin)
 
     def heading_open(self, tokens, idx, options, env):
@@ -184,7 +190,18 @@ def _markdown() -> MarkdownIt:
         anchor = html.escape(token.meta["id"])
         return f'<a class="heading-anchor" href="#{anchor}" aria-label="이 절의 링크">#</a></{token.tag}>\n'
 
+    # Every code block is _highlight's: the stock fence rule takes a highlighter's output as it is
+    # only when it starts with <pre>, and the indented code block's never asks one.
+    def fence(self, tokens, idx, options, env):
+        token = tokens[idx]
+        return _highlight(token.content, unescapeAll(token.info).strip())
+
+    def code_block(self, tokens, idx, options, env):
+        return _highlight(tokens[idx].content, "")
+
     md.add_render_rule("heading_open", heading_open)
+    md.add_render_rule("fence", fence)
+    md.add_render_rule("code_block", code_block)
     md.add_render_rule("heading_close", heading_close)
     return md
 

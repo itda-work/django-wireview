@@ -10,6 +10,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- Every code block on the documentation site has a copy button in its top right corner. It copies
+  the code as written, says whether it did, and falls back to a selection where the page has no
+  Clipboard API (#173).
+
 ### Changed
 
 - The README says when to use wireview before it says when not to: six kinds of app, each with the
