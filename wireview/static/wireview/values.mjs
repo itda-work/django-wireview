@@ -18,6 +18,15 @@
  *   user's cursor, as in Phoenix LiveView; the server can still set it with
  *   `JS().set_value` (push_js), which does not go through a morph.
  *
+ * Neither applies to a field an IME is composing in (#169): writing its value
+ * ends the composition under the IME, and the next keystroke starts another,
+ * doubling the syllable. That holds even when the field still shows exactly
+ * what the server last rendered, which the rules above would call unedited.
+ * The server's value goes to `defaultValue` as for any kept field; once the
+ * composition ends, the field holds what the user composed and is an edited
+ * field like any other -- the user's text stands until a committing action's
+ * answer or a later change while it is not focused.
+ *
  * Pure function, no DOM: tested with `node --test tests/js/`.
  */
 
@@ -30,10 +39,11 @@
  * @param {boolean} field.serverChanged - the new render's value differs from the last one
  * @param {boolean} [field.typedSinceSent] - the field no longer holds what a committing action
  *   sent from it: the user typed (or deleted) after sending, and the server has not seen that
+ * @param {boolean} [field.composing] - an IME composition is open in it
  * @returns {boolean} true to keep the user's value
  */
-export function keepsUserValue({ edited, focused, committing, serverChanged, typedSinceSent = false }) {
-  if (typedSinceSent) return true;
+export function keepsUserValue({ edited, focused, committing, serverChanged, typedSinceSent = false, composing = false }) {
+  if (composing || typedSinceSent) return true;
   if (!edited || committing) return false;
   return focused || !serverChanged;
 }
@@ -127,6 +137,19 @@ export class ValueGuard {
     this.pending = new Map();
     /** @type {Sent} fields marked without a ref */
     this.unpaired = new Map();
+    /** @type {Set<Field>} fields an IME is composing in (compositionstart, not yet compositionend) */
+    this.composing = new Set();
+  }
+
+  /**
+   * An IME composition opened or closed in `field`. Not a server matter, so
+   * `clear()` leaves it.
+   * @param {Field} field
+   * @param {boolean} open
+   */
+  compose(field, open) {
+    if (open) this.composing.add(field);
+    else this.composing.delete(field);
   }
 
   /**
@@ -169,6 +192,7 @@ export class ValueGuard {
       if (!fields.size) this.pending.delete(ref);
     }
     for (const field of this.unpaired.keys()) if (!field.isConnected) this.unpaired.delete(field);
+    for (const field of this.composing) if (!field.isConnected) this.composing.delete(field);
   }
 
   /** @returns {number} */
@@ -212,6 +236,7 @@ export class ValueGuard {
       committing,
       serverChanged: next.defaultValue !== field.defaultValue,
       typedSinceSent: covering !== undefined && covering !== field.value,
+      composing: this.composing.has(field),
     });
     if (keep) field.defaultValue = next.defaultValue;
     return keep;

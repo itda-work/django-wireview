@@ -31,6 +31,11 @@ const beforeElUpdated = new Set();
  */
 const valueGuard = new ValueGuard();
 
+// The fields an IME is composing in, which no render may write (#169). Capture,
+// so a handler that stops the event cannot hide it.
+document.addEventListener("compositionstart", (e) => valueGuard.compose(e.target, true), true);
+document.addEventListener("compositionend", (e) => valueGuard.compose(e.target, false), true);
+
 /** How many server changes are being applied now (a morph may run inside another). */
 let applyingDepth = 0;
 

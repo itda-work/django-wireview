@@ -62,3 +62,9 @@ test("a click on a form's submit button commits, and so does key_code 13 (#92 re
   assert.equal(isCommitAction("keydown", parseBinding("wire-on-keydown.key_code.13").steps), true);
   assert.equal(isCommitAction("keydown", parseBinding("wire-on-keydown.key_code.40").steps), false);
 });
+
+test("an open IME composition keeps the value whatever else holds (#169)", () => {
+  assert.equal(keepsUserValue(field({ edited: false, composing: true })), true);
+  assert.equal(keepsUserValue(field({ committing: true, composing: true })), true);
+  assert.equal(keepsUserValue(field({ edited: false, focused: true, composing: false })), false);
+});

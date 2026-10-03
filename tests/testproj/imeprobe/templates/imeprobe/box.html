@@ -9,6 +9,11 @@
   <textarea data-testid="notes" name="notes" {% on "input.debounce.100" "note" %}>{{ this.notes }}</textarea>
   <span data-testid="notes-seen">{{ this.notes }}</span>
   <input data-testid="memo" name="memo">
+  <input data-testid="tag"
+         name="tag"
+         value="{{ this.tag }}"
+         {% on "input.debounce.100" "tagged" %}>
+  <span data-testid="tag-seen">{{ this.tag }}</span>
   <span data-testid="pings">{{ this.pings }}</span>
   <button data-testid="ping" {% on "click" "ping" %}>ping</button>
 </div>

@@ -11,7 +11,9 @@ field alone, whoever sent the render:
   too, so the server renders the composing text back while the user is still
   composing;
 - someone else's broadcast, which renders the component with whatever the
-  server last heard from the field.
+  server last heard from the field;
+- the server changing the field's value while it shows exactly what the server
+  last rendered -- a field the user has, by that measure, not edited (#169).
 
 **How the IME is driven.** Chrome DevTools Protocol's ``Input.imeSetComposition``
 and ``Input.insertText``: the browser's own composition path, the one an OS IME
@@ -200,3 +202,42 @@ def test_a_broadcast_render_leaves_the_composition_alone(page, browser, server, 
         other_context.close()
 
     assert_compositions_survived(page, ime, field)
+
+
+# --- the server changes a field that shows the server's own value ---------------------------
+
+
+def test_a_server_change_to_the_field_leaves_the_composition_alone(page, browser, server):
+    """The open syllable has gone to the server and come back, so the field holds the
+    server's value -- unedited, by the rule a morph applies to other fields. Then
+    the server changes it ("하" to "하!"): a composing field keeps its value all the
+    same, and the server's goes to ``defaultValue`` (#169)."""
+    open_live(page, f"{server}/imeprobe/")
+    other_context = browser.new_context()
+    try:
+        other = other_context.new_page()
+        open_live(other, f"{server}/imeprobe/")
+        ime = Ime(page)
+        field = by(page, "tag")
+        field.focus()
+        ime.compose("ㅎ")
+        ime.compose("하")
+        expect_text(by(page, "tag-seen"), "하")
+        assert page.evaluate(
+            "() => { const f = document.querySelector('[data-testid=tag]'); return f.value === f.defaultValue; }"
+        )
+
+        by(other, "ping").click()
+        expect_text(by(page, "tag-seen"), "하!")
+        assert field.evaluate("f => f.defaultValue") == "하!", "the server's value is recorded"
+
+        ime.compose("한")
+        ime.commit("한")
+    finally:
+        other_context.close()
+
+    assert ime.ended_with() == ["한"], ime.boundaries()
+    assert ime.starts() == 1, ime.boundaries()
+    expect(field).to_have_value("한")
+    # The committed syllable reaches the server like any other input
+    expect_text(by(page, "tag-seen"), "한")

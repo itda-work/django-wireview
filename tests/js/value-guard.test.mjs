@@ -154,3 +154,46 @@ test("the committed fields are the ones sent: the element's form when it is the 
   const button = { tagName: "BUTTON", type: "submit" };
   assert.deepEqual([...commitScope(button, component).keys()], [], "a button outside a sent form commits nothing");
 });
+
+test("a field an IME is composing in keeps its value even when it shows the server's (#169)", () => {
+  // The field holds what the server last rendered ("하", its own debounced echo),
+  // so it reads as unedited; the server now renders another value. Writing it
+  // would end the composition under the IME.
+  const { g, focus } = guard();
+  const field = input("하", "하");
+  focus(field);
+  g.compose(field, true);
+
+  assert.equal(g.keep(field, next("HA")), true, "the composition is left alone");
+  assert.equal(field.defaultValue, "HA", "the server's value still lands in defaultValue");
+});
+
+test("a composition is kept against a committing answer too, and only while it is open (#169)", () => {
+  const { g, focus } = guard();
+  const field = input("하", "");
+  focus(field);
+  g.compose(field, true);
+  g.record(1, new Map([[field, "하"]]));
+  assert.equal(g.keep(field, next(""), g.answer(1)), true, "open: the answer waits");
+
+  g.compose(field, false);
+  field.defaultValue = "하";
+  assert.equal(g.keep(field, next("HA")), false, "ended and unedited: the server's value applies");
+});
+
+test("a composing field that left the page is forgotten (#169)", () => {
+  const { g } = guard();
+  const field = input("하");
+  g.compose(field, true);
+  field.isConnected = false;
+  g.prune();
+  assert.equal(g.composing.size, 0);
+});
+
+test("clear() is the connection's: an open composition survives it (#169)", () => {
+  const { g } = guard();
+  const field = input("하", "하");
+  g.compose(field, true);
+  g.clear();
+  assert.equal(g.keep(field, next("x")), true);
+});
