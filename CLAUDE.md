@@ -197,13 +197,15 @@ examples/                  예제 앱 11개. 각 디렉터리 = 개념 하나 + 
 docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEATURE-GAP.md, ARCHITECTURE.md,
                            ROADMAP.md, DEPLOYMENT.md, PERFORMANCE.md, design/ 설계 메모(README.md 인덱스), implementation/ 구현 노트
                            (implementation/wire-protocol.md 가 메시지 형태의 정본. 표의 이름은 tests/test_wire_protocol_doc.py 가 코드와 맞춘다)
+                           implementation/docs-site-bundle.md 가 문서 사이트 묶음이 itda.work(website 저장소)에 약속하는 것의 정본이다 — 바꾸려면 website에 먼저 알린다(#166)
                            site.toml 이 문서 사이트(itda.work/wireview/)의 목차·주소·튜토리얼 학습 순서의 정본, redirects.toml 이 옮긴 주소.
                            scripts/docs_site/nav.py 가 읽고, tests/test_doc_site.py 가 분류를, tests/test_tutorials.py 가 튜토리얼 README·nav 줄을 이것과 맞춘다(#158).
                            site-urls.txt 가 공개 URL 목록이다 — 사이트 빌드가 이것과 비교해 사라진 URL을 실패시킨다(#159)
 scripts/docs_site/         문서 사이트 빌드(make docs-site·make docs-site-bundle·make docs-serve, #159). nav.py 가 site.toml·redirects.toml 해석과 제목 앵커(slug)의
                            유일한 정본이고 표준 라이브러리만 쓴다 — 문서 가드 테스트도 이것을 import한다. render.py 는 Markdown 렌더와 링크
                            재작성(사이트 페이지는 사이트 경로로, 그 밖의 저장소 파일은 태그 고정 GitHub로), build.py 는 산출물·관문,
-                           serve.py 는 폴링 재빌드 개발 서버, bundle.py 는 릴리스 자산 docs-site-v<버전>.tar.gz(결정론적, dist/ 밖 build/site-dist/, #160).
+                           serve.py 는 폴링 재빌드 개발 서버, bundle.py 는 릴리스 자산 docs-site-v<버전>.tar.gz(결정론적, 항목 mtime은 커밋 시각, dist/ 밖 build/site-dist/, #160·#166).
+                           문서가 보여 주는 저장소 이미지는 render.Linker 가 assets/<이름>.<해시>.<확장자>로 묶음에 싣는다(외부 출처는 Pretendard뿐).
                            llms.txt(안내 산문은 templates/llms.txt)와 스킬(skills/wireview/)의 Markdown 게시본도 build.py 가 만든다(#164).
                            templates/·assets/ 가 itda.work 레이아웃의 재현이다(원본과 커밋은 site.css 머리 주석).
                            렌더 의존성은 dependency-group docs(기본 그룹)에만 있다. 산출물은 `build/docs-site/`(gitignore)

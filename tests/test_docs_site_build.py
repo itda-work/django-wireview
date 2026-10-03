@@ -21,7 +21,7 @@ import urllib.request
 from functools import partial
 from html.parser import HTMLParser
 from http.server import ThreadingHTTPServer
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -942,6 +942,33 @@ def test_the_bundle_is_named_by_the_tag_and_holds_the_build(site, tmp_path):
     assert files == built
     assert all(name == "wireview" or name.startswith("wireview/") for name in names), names
     assert files["wireview/VERSION"] == f"{TAG}\n".encode()
+
+
+def test_the_bundle_holds_what_itda_work_checks(site, tmp_path):
+    """The checks website's deploy recipe makes before it unpacks (docs/implementation/docs-site-bundle.md).
+
+    A bundle that fails one of them is not deployed; this fails here first.
+    """
+    target = bundle(site=site.out, out_dir=tmp_path)
+    with tarfile.open(target, "r:gz") as archive:
+        members = archive.getmembers()
+        for member in members:
+            path = PurePosixPath(member.name)
+            assert not path.is_absolute() and ".." not in path.parts, member.name
+            assert member.isfile() or member.isdir(), member.name
+            assert path.parts[0] == "wireview", member.name
+        names = {member.name for member in members if member.isfile()}
+        assert {"wireview/index.html", "wireview/llms.txt", "wireview/sitemap.xml", "wireview/VERSION"} <= names
+        version = archive.extractfile("wireview/VERSION").read().decode("utf-8").strip()  # type: ignore[union-attr]
+    assert version == TAG and target.name == f"docs-site-{version}.tar.gz"
+
+
+def test_the_contract_names_tests_that_exist():
+    """Every test the bundle contract cites is one of this module's, so the table cannot outlive them."""
+    contract = (ROOT / "docs" / "implementation" / "docs-site-bundle.md").read_text(encoding="utf-8")
+    cited = set(re.findall(r"`(test_\w+)`", contract))
+    assert len(cited) >= 10, cited
+    assert sorted(name for name in cited if not callable(globals().get(name))) == []
 
 
 def _commit_time() -> int:

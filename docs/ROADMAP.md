@@ -380,14 +380,26 @@ def button(text: str, variant: str = "primary"):
      rc3처럼 lock의 버전에서만 import되는 산출물은 여기서 멈춘다. `dist/`에 wheel 하나와 sdist 하나 말고 다른 파일이
      있으면 실패한다 — PyPI는 `dist/`를 통째로 받는다. 문서 묶음도 내려받아 풀어 본다.
    - **docs**: `make docs-site-bundle`로 문서 사이트를 `docs-site-v<버전>.tar.gz`로 묶는다. `dist/` 밖(`build/site-dist/`)에
-     만들어 별도 artifact로 올리고, 파일 이름과 묶음 안의 `wireview/VERSION`이 태그와 같은지 본다. 같은 커밋은 같은 바이트로 묶인다.
-     묶음을 서빙하는 쪽은 텍스트 파일(`.html`·`.txt`·`.md`·`.xml`·`.css`·`.js`)에 `charset=utf-8`을 붙여야 한다(`.md`는 `text/markdown; charset=utf-8`) — 없으면 llms.txt와 Markdown 원문의 한국어가 깨진다(#165, 서버 설정은 운영 저장소, #157).
+     만들어 별도 artifact로 올리고, 파일 이름과 묶음 안의 `wireview/VERSION`이 태그와 같은지 본다. 같은 커밋은 같은 바이트로 묶인다 —
+     항목의 mtime은 0이 아니라 태그 커밋의 커밋 시각이다(`SOURCE_DATE_EPOCH`가 있으면 그것, #166). 묶음이 itda.work에
+     약속하는 것(최상위 `wireview/`, `VERSION`, 있어야 하는 파일, 해시 자산 이름, 외부 출처)은
+     [묶음 계약](./implementation/docs-site-bundle.md)이 정본이다. 바꾸려면 website 저장소에 먼저 알린다.
+     서빙(텍스트 파일의 `charset=utf-8` 포함, #165)은 website가 맡는다(website #221, RUNBOOK §18).
    - **publish**: 위 모두를 기다린다 — 문서 빌드가 실패하면 publish는 돌지 않는다. PyPI에는 `dist/`만 올리고, 문서 묶음에
      빌드 증명(`actions/attest`)을 붙인 뒤 GitHub Release에 `dist/*`와 묶음을 함께 붙인다. 내려받은 묶음은
      `gh attestation verify docs-site-v<버전>.tar.gz -R itda-work/django-wireview`로 확인한다.
 
    E2E가 불안정해 게이트가 떨어졌다면 Actions의 "Re-run failed jobs"로 그 job만 다시 돌린다. 통과하면 publish가 이어진다.
    게이트는 태그 push와 dry run에서만 돈다. 평소 `ci.yml`은 여전히 수동 실행 전용이다.
+7. 문서 사이트를 갱신한다. Release가 게시된 뒤 website 저장소(`itda-skills/website`)에서 돌린다(website RUNBOOK §18):
+
+   ```bash
+   just deploy-wireview-docs vX.Y.Z --dry-run
+   just deploy-wireview-docs vX.Y.Z
+   ```
+
+   recipe가 Release의 묶음을 내려받아 빌드 증명과 [묶음 계약](./implementation/docs-site-bundle.md)을 검사한 뒤 갈아 끼운다.
+   `https://itda.work/wireview/VERSION`이 새 태그(`vX.Y.Z`)면 끝이다.
 
 ---
 
