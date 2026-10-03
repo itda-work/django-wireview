@@ -10,6 +10,14 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Changed
+
+- The package's Documentation URL is the documentation site, https://itda.work/wireview/ (#166).
+- The documentation site serves the images its pages show (the home page's `overview.jpg`) from
+  its own `assets/`, so a page loads nothing from another origin but its font; the release bundle's
+  members carry the commit's time (or `SOURCE_DATE_EPOCH`) instead of 0. What the bundle promises
+  its host is written down in `docs/implementation/docs-site-bundle.md` (#166).
+
 ## [1.1.0] - 2026-10-03
 
 ### Added

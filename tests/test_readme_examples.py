@@ -257,7 +257,8 @@ def test_the_package_page_links_to_its_own_release():
     hatch_build.CustomMetadataHook(str(README.parent), config).update(metadata)
 
     urls = metadata["urls"]
-    assert urls["Documentation"] == "https://github.com/itda-work/django-wireview/tree/v1.2.3/docs"
+    # The documentation site has no tag to pin: it is the URL as written (#166).
+    assert urls["Documentation"] == "https://itda.work/wireview/"
     assert urls["Changelog"] == "https://github.com/itda-work/django-wireview/blob/v1.2.3/CHANGELOG.md"
     assert urls["Issues"] == "https://github.com/itda-work/django-wireview/issues"
 
