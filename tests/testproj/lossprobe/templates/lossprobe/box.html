@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <span data-testid="received">{{ this.received }}</span>
+  <span data-testid="last">{{ this.last }}</span>
+  <span data-testid="published">{{ this.published }}</span>
+  <button data-testid="refresh" {% on "click" "refresh" %}>refresh</button>
+</div>

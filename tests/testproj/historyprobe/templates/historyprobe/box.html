@@ -1,0 +1,12 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <span data-testid="tab">{{ this.tab }}</span>
+  <span data-testid="count">{{ this.count }}</span>
+  <span data-testid="rendered">{{ this.rendered }}</span>
+  <button data-testid="bump" {% on "click" "bump" %}>bump</button>
+  <button data-testid="push-b" {% on "click" "push" tab="b" %}>push b</button>
+  <button data-testid="push-c" {% on "click" "push" tab="c" %}>push c</button>
+  <button data-testid="replace-z" {% on "click" "replace" tab="z" %}>replace z</button>
+  <button data-testid="push-other" {% on "click" "push_other" %}>push other</button>
+</div>

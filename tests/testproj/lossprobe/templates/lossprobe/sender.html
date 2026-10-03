@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <span data-testid="sent">{{ this.sent }}</span>
+  <button data-testid="burst" {% on "click" "burst" count=30 %}>burst</button>
+  <button data-testid="one" {% on "click" "burst" count=1 %}>one</button>
+</div>

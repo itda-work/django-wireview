@@ -1,0 +1,14 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <input data-testid="q"
+         name="q"
+         value="{{ this.q }}"
+         {% on "input.debounce.100" "search" %}>
+  <span data-testid="q-seen">{{ this.q }}</span>
+  <textarea data-testid="notes" name="notes" {% on "input.debounce.100" "note" %}>{{ this.notes }}</textarea>
+  <span data-testid="notes-seen">{{ this.notes }}</span>
+  <input data-testid="memo" name="memo">
+  <span data-testid="pings">{{ this.pings }}</span>
+  <button data-testid="ping" {% on "click" "ping" %}>ping</button>
+</div>

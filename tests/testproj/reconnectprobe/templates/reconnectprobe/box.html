@@ -1,0 +1,13 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <span data-testid="count">{{ this.count }}</span>
+  <span data-testid="pid">{{ this.pid }}</span>
+  <button data-testid="bump" {% on "click" "bump" %}>bump</button>
+  <button data-testid="nothing" {% on "click" "nothing" %}>nothing</button>
+  <form {% on "submit.prevent" "save" %}>
+    <input data-testid="note" name="note" value="{{ this.note }}">
+  </form>
+  <span data-testid="saved">{{ this.note }}</span>
+  <input data-testid="scratch" name="scratch">
+</div>

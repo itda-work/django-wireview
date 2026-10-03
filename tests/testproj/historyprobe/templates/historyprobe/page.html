@@ -1,0 +1,19 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>history probe {{ name }}</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    <span data-testid="page">{{ name }}</span>
+    <a data-testid="to-box" href="/historyprobe/">box</a>
+    <a data-testid="to-other" href="/historyprobe/other/">other</a>
+    {% if name == "box" %}
+      {% component 'HistoryBox' id="hbox" %}
+    {% else %}
+      {% component 'HistoryBox' id="obox" %}
+    {% endif %}
+  </body>
+</html>
