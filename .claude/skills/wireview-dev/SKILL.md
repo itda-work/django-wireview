@@ -97,6 +97,11 @@ CI나 빌드 작업을 `bug`/`enhancement`에 억지로 넣지 않는다.
     `tests/test_agent_docs.py`의 `test_the_documentation_is_written_in_korean`이 지킨다.
   - 영어 — 커밋 메시지(Conventional Commits), 코드 주석·docstring, 로그·예외 메시지,
     `CHANGELOG.md`(커밋 메시지와 나란히 읽힌다), `docs/legacy/`(보존된 과거 기록).
+- **수치를 문서에 쓰면 비교군과의 비교 차트를 함께 둔다.** 차트는 원본 측정 결과(`bench/results/*.json`)에서
+  스크립트로 생성하고, 비교는 같은 조건의 공정한 측정이다 — 같은 기계·서버·반복 수, 회차 여러 번의 중앙값,
+  wireview에 불리한 지표도 그대로 싣는다. 비교군은 FastAPI다. 본보기는 README "숫자"와
+  `bench/compare_fastapi/`(`make bench-fastapi`, `make bench-fastapi-charts`)이고, 문서의 숫자·차트·표가
+  결과와 같은지는 `tests/test_bench_fastapi.py`가 본다. 손으로 고친 숫자는 그 테스트에서 실패한다.
 - **GAP 작업이면 커밋 제목에 GAP 번호를 적는다.** 예: `feat: Add on_mount hooks (GAP-021)`
 - **커밋 메시지에는 `#N` 평참조만 쓴다.** `Closes #N`으로 자동 종결하지 않는다.
   완료 정의를 실제로 만족했는지 확인한 뒤 `gh issue close <N> --comment "..."`로 닫는다.
