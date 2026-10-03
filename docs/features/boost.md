@@ -112,7 +112,7 @@ document.addEventListener("wireview:navigated", (e) => {
 
 - 뒤로 가기는 캐시된 페이지를 먼저 그리고 서버의 페이지로 다시 맞추지만, 알림은 서버의 페이지가 그려진 뒤 한 번이다.
 - `live_session` 경계를 넘는 이동과 `BOOST_PAGES`가 꺼진 이동은 전체 로드라서 오지 않는다. 새 문서가 처음부터 시작한다.
-- 리다이렉트·`push_to`처럼 서버가 보낸 이동도 boost로 가면 똑같이 온다.
+- 리다이렉트·다른 경로로 가는 `push_to`처럼 서버가 보낸 이동도 boost로 가면 똑같이 온다. 같은 경로의 `push_to`·`replace_to`와 그 항목 사이의 뒤로·앞으로 가기는 patch라서 오지 않는다 — 페이지가 그대로다([내비게이션](./navigation.md)).
 
 ## 리다이렉트
 

@@ -63,6 +63,11 @@
 IME가 조합 중인 키(`event.isComposing`)는 키 수정자에 걸리지 않는다. 한글 음절을 확정하는 Enter는 IME의 것이지 폼을
 보내는 Enter가 아니다. 이것은 바인딩 전체에 적용되므로 확정 판정만이 아니라 핸들러 호출 자체가 일어나지 않는다.
 
+조합이 열려 있는 칸(`compositionstart`~`compositionend`)은 위의 어느 규칙보다 앞서 지킨다(#169). 칸이 서버가 마지막으로
+그린 값을 그대로 보여 "고치지 않은 칸"이어도, 확정 동작의 응답이어도 값을 쓰지 않는다. 값을 쓰면 브라우저가 조합을
+`compositionend` 없이 버리고 다음 자모가 새 조합으로 시작한다. 서버 값은 `defaultValue`로만 들어가고, 조합이 끝난 칸은
+사용자가 고친 칸으로 일반 규칙을 따른다.
+
 `examples` 다섯에 대 본 결과: todo(Enter 추가 → 확정, 편집의 blur·Enter 저장 → 확정), chat(Enter 전송 → 확정, 게다가
 `push_js`로 비운다), search(방향키·Escape → 보조, Enter 선택 → 확정), notifications·quiz(`input`에 값 되받기 → 보조, 포커스된
 칸은 어차피 지켜진다).

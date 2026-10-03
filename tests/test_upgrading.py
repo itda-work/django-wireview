@@ -60,6 +60,7 @@ FIRST_SECTION = {
     "1.0.0rc2, 1.0.0rc3": "100rc1에서-10으로",
     "1.0.0rc4": "100rc4에서-10으로",
     "1.0.x": "10에서-11로",
+    "1.1.x": "11에서-12로",
 }
 # A row that reads only some subsections of a section names them: rc2 and rc3 already had the
 # rest of rc1-to-1.0.
@@ -95,28 +96,33 @@ def test_every_row_reads_every_section_from_its_own_up():
         assert [a for a in anchors if a not in order] == SUBSECTIONS.get(version, []), version
 
 
-# What changed since 1.0.0, entry by entry. A key is a phrase of one CHANGELOG entry of the
-# release after 1.0.0 (the [1.1.0] section); its value names the bullet of "1.0에서 1.1로" that
-# tells an upgrading project what to do -- a phrase of its bold lead -- and a phrase its text,
-# sub-bullets included, says about this entry. Under NO_UPGRADE_NOTE the value says why nothing
-# needs telling. The rc4-to-1.0 section was written from the entries one track at a time and
-# missed the StrEnum and stream container changes -- both silent. An entry with neither fails
-# here, so each new one is a decision. The next release moves this table to its own entries
-# and section.
+# What changed since 1.1.0, entry by entry. A key is a phrase of one CHANGELOG entry of the
+# release after 1.1.0 (the [Unreleased] section until it is released); its value names the
+# bullet of "1.1에서 1.2로" that tells an upgrading project what to do -- a phrase of its bold
+# lead -- and a phrase its text, sub-bullets included, says about this entry. Under
+# NO_UPGRADE_NOTE the value says why nothing needs telling. The rc4-to-1.0 section was written
+# from the entries one track at a time and missed the StrEnum and stream container changes --
+# both silent. An entry with neither fails here, so each new one is a decision. The next
+# release moves this table to its own entries and section.
 UPGRADE_NOTE = {
-    "`AUTO_BROADCAST.senders` also takes a mapping": ("`senders` 매핑은", "1.0.0rc4 이하 프로세스"),
-    "`wireview.W017` warns": ("`wireview.W017`", "--fail-level WARNING"),
+    "`push_to` to the page's own path": ("같은 경로로 가는 `push_to`", "`redirect_to`로 바꾼다"),
+    "`replace_to` to another path fetches": ("다른 경로로 가는 `replace_to`", "같은 경로의 쿼리로 바꾼다"),
+    "`mount(params=...)` runs `params_changed()`": ("`mount(params=...)`와 `follow_push()`", 'path="/items/"'),
 }
 
 DOCS_ONLY = "문서·저장소만 바뀌었고 라이브러리 동작은 같다"
 NO_UPGRADE_NOTE = {
-    "`wireview.W015`'s hint points": "경고의 hint 문장만 바뀌었다",
-    "serves `/wireview/llms.txt`": "문서 사이트에 파일이 늘었을 뿐 패키지는 같다",
-    "tutorial 01's section 2": DOCS_ONLY,
+    "The package's Documentation URL": "패키지 메타데이터의 링크만 바뀌었다",
+    "The documentation site serves the images": DOCS_ONLY,
+    "The README opens with": DOCS_ONLY,
+    "no longer says the layers' logs count": DOCS_ONLY,
+    "Browser tests for what the documentation claims": "테스트만 늘었다",
+    "`mount()` takes `path=`": "더한 옵션이다. 쓰는 법은 `mount(params=...)`와 `follow_push()` 항목에 있다",
+    "IME is composing in": "고친 결함이다. 조합이 끊기던 화면이 끊기지 않을 뿐 할 일은 없다",
 }
 
-PREVIOUS = "1.0.0"
-SECTION = "1.0에서 1.1로"
+PREVIOUS = "1.1.0"
+SECTION = "1.1에서 1.2로"
 
 
 def _entries_since_previous() -> list[str]:

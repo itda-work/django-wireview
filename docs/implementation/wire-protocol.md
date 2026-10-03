@@ -32,7 +32,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | `leave` | `id` | `leaving()`, 그 아래 LiveComponent에 cascade, 업로드 레지스트리 해제, 구독 재계산, 컴포넌트 제거. **LiveComponent id로는 보내지 않는다** — 부모 렌더가 이미 그 자식을 떠나보냈고, 늦게 온 `leave`는 그 사이 다시 보인 새 인스턴스를 지웠다. 서버는 LiveComponent id의 `leave`를 무시한다(옛 번들 방어, #140) |
 | `user_event` | `id`, `command`, `implicit_args` (폼 직렬화), `explicit_args`, `ref?` | 핸들러 호출 후 render. `ref`(정수)는 확정 액션(#92)과 로딩 표시를 거는 이벤트(#118)에 실리고, 서버는 그 이벤트의 render(또는 `error`)에 그대로 돌려준다. 클라이언트는 그 답으로 입력값 보존과 로딩 표시를 정리한다. 이 연결에서 join이 실패한 컴포넌트와 그것이 소유한 LiveComponent로 온 이벤트는 핸들러를 돌리지 않고 `{"id", "diff": null, "ref"}` render로 답한다(핸들러가 없는 이벤트와 같은 답). 같은 것으로 온 `hook_event`·업로드 명령은 알 수 없는 id처럼 답 없이 버린다. 클라이언트는 서버가 join 응답에서 `vsn` 3 이상을 알렸을 때만 싣는다 |
 | `hook_event` | `component_id`, `hook_id`, `event`, `payload`, `ref` | `handle_hook_event()`, `ref`가 `null`이 아니면 `hook_reply`. `ref`는 문자열 `hook-<n>`(훅이 콜백을 넘겼을 때) 또는 `null`이다. join·`user_event`의 정수 `ref`와 다른 카운터다 |
-| `params_changed` | `params`, `uri` | 모든 컴포넌트에 `params_changed()` |
+| `params_changed` | `params`, `uri` | 모든 컴포넌트에 `params_changed()`. 클라이언트는 patch(같은 경로로 가는 `url_change`의 `push`·`replace`, 그런 항목 사이의 popstate) 뒤에 페이지를 가져오지 않고 이것만 보낸다(#169). 이미 있던 명령이라 옛 서버도 받는다. 옛 번들은 patch를 몰라 전처럼 가져온다. 그래서 `PROTOCOL_VERSION`은 그대로다 |
 | `upload_register` | `id`, `name`, `entries: [{ref, name, size, type}]` | 검증 후 `upload_op` 응답 |
 | `upload_cancel` | `id`, `name`, `ref` | 항목 취소 |
 | `upload_complete` | `id`, `name`, `ref` | 항목 완료 처리 |
@@ -54,7 +54,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | `exec_js` | `id`, `commands` — `id`의 요소에서 돈다. 요소가 아직 없거나, 그 요소(또는 그것을 감싼 컴포넌트)에 다음 프레임의 패치가 예약돼 있으면 `stream_op`처럼 다음 프레임까지 그 컴포넌트의 줄에서 기다린다 — 핸들러가 같은 렌더로 드러낸 요소를 겨냥한 명령이 그 요소를 찾는다 |
 | `push_event` | `component_id`, `hook_id`, `event`, `payload` — 그 컴포넌트의 훅에 간다. 요소가 아직 없거나(훅도 아직 없다) 그 요소에 패치가 예약돼 있으면 `exec_js`처럼 다음 프레임까지 그 컴포넌트의 줄에서 기다린다 — 같은 렌더가 그린 훅에 닿는다 |
 | `hook_reply` | `ref`, `response` |
-| `url_change` | `command` (`redirect`, `replace`, `push`), `url` |
+| `url_change` | `command` (`redirect`, `replace`, `push`), `url` — `push`·`replace`가 지금 경로와 같은 경로를 가리키면 클라이언트는 patch로 처리하고 `params_changed`로 답한다. 다른 경로면 그 페이지를 가져온다. `redirect`는 언제나 가져온다 |
 | `set_query_string` | `qs` |
 | `title` | `title` |
 | `flash` | `flash_type`, `message`, `timeout`, `dismissible` — id는 없다. 클라이언트가 만든다 |

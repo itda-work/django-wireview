@@ -180,7 +180,8 @@ LiveComponent, 부모 템플릿 안의 중첩 `{% component %}`, 재join. 거절
 | 서버 `redirect`/`push` | `wire.push_to()` 등이 `HistoryCache`를 직접 부른다 |
 
 셋 다 `HistoryCache.replaceContentFromUrl`로 모이고, 검사는 거기서 **응답**을 보고 한다(요청한 URL이
-아니라). 리다이렉트 체인이 경계 밖에서 끝나면 그 최종 페이지가 잡힌다. popstate만은 캐시된 body를
+아니라). 같은 경로로 가는 `push_to`·`replace_to`와 그 항목 사이의 뒤로·앞으로 가기는 patch라 가져오지 않으므로
+이 검사에 오지 않는다. 경로가 같으면 같은 뷰이고 같은 경계다([내비게이션](./navigation.md), #169). 리다이렉트 체인이 경계 밖에서 끝나면 그 최종 페이지가 잡힌다. popstate만은 캐시된 body를
 fetch보다 먼저 morph하므로 history 항목에 기록해 둔 세션 이름으로 그 전에 판단한다.
 
 메타가 없는 문서는 "경계 없음"으로 읽힌다. 업그레이드 전에 만들어진 페이지, 캐시된 옛 페이지,

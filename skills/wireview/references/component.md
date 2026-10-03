@@ -53,7 +53,7 @@ class XTodoList(Component):
 | `leaving()` | 연결 해제. 정리 훅. `joined()`가 돈 인스턴스만 받는다 — 얻는 일은 `joined()`에 둔다 |
 | `mutation(channel, action, instance)` | `Meta.subscriptions`의 모델이 변경됨. `action`은 `ModelAction.CREATED/UPDATED/DELETED`, m2m 변경이면 `ADDED/REMOVED/CLEARED` |
 | `notification(channel, **kwargs)` | `broadcast(channel, ...)`로 보낸 사용자 정의 알림 |
-| `params_changed(params, uri)` | 브라우저 URL이 바뀜 (뒤로가기, `push_to`) |
+| `params_changed(params, uri)` | 같은 경로에서 쿼리가 바뀜 (같은 경로의 `push_to`·`replace_to`, 그 항목 사이의 뒤로가기). 같은 인스턴스가 받으므로 상태가 남는다 |
 
 ```python
 from wireview import ModelAction
@@ -105,7 +105,7 @@ class XTodoList(Component):
 | `await self.put_flash(...)` / `await self.clear_flash()` | 플래시 메시지 |
 | `await self.push_js(JS().add_class("#row", "shake"))` | 클라이언트 DOM 명령 |
 | `await self.push_event(name, payload)` | JavaScript Hook으로 이벤트 전달 |
-| `await self.wire.push_to(url)` / `replace_to` / `redirect_to` | 내비게이션 (앞의 둘은 연결 유지) |
+| `await self.wire.push_to(url)` / `replace_to` / `redirect_to` | 내비게이션. `push_to`·`replace_to`는 같은 경로(쿼리만 다름)면 patch — 가져오지 않고 같은 인스턴스가 `params_changed()`를 받는다 — 다른 경로면 그 페이지를 가져온다. `redirect_to`는 언제나 가져온다. 컴포넌트 밖 템플릿이 `request.GET`을 읽는 페이지는 `redirect_to`로 |
 
 `JS()` 빌더: `show`, `hide`, `toggle`, `add_class`, `remove_class`, `toggle_class`,
 `transition`, `set_attr`, `remove_attr`, `set_value`, `focus`, `focus_first`, `push`,

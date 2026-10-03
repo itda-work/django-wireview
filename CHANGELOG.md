@@ -25,8 +25,25 @@ The django-reactor era changelog (2.x) is preserved in
   also drops a lagging connection's oldest messages from its process's in-memory buffer, without a
   log, whenever another connection of the process is reading; only messages dropped in Redis itself
   are logged. It now also says what a reconnect gives back (the last render's state, on any server
-  with the same signing key), and `docs/features/navigation.md` that `push_to` and Back/Forward fetch
-  the URL again, so state only events changed does not survive them (#168).
+  with the same signing key) (#168).
+- **Silently changed:** `push_to` to the page's own path -- another query or fragment -- is a patch,
+  as Phoenix's `push_patch`: the client pushes the history entry and tells the server the new params,
+  and nothing is fetched. The page's components, LiveComponents included, keep their instances and
+  hear `params_changed()`, so state events changed survives the move. It used to fetch the URL and
+  join every component again from that render. Back and Forward between entries the page on screen
+  made are patches too; an entry another page made, or one from before a reload, is fetched as
+  before. `push_to` to another path is unchanged (`push_navigate`). A page whose template reads
+  `request.GET` outside its components moves with `redirect_to` instead, which always fetches (#169).
+- **Silently changed:** `replace_to` to another path fetches that page in place, as `push_to` there
+  does, instead of only rewriting the address bar over the old page. On the page's own path it is a
+  patch, as before (#169).
+- **Silently changed (tests):** `mount(params=...)` runs `params_changed()` with them after
+  `joined()`, as the join of a page whose URL has a query does. `MountedComponent.follow_push()`
+  follows the push the way the browser does: a patch on the same instance for the page's own path,
+  and for another path a fresh mount of the component passed in, `follow_push(Destination)`, under
+  the destination's live_session as `follow_redirect()` does. A push to a path needs the page's path,
+  `mount(..., path="/items/")`, to tell the two apart; without it, or called the wrong way, it
+  fails (#169).
 
 ### Added
 
@@ -34,6 +51,16 @@ The django-reactor era changelog (2.x) is preserved in
   process, another worker), Hangul IME compositions under a render (the field's own debounced
   event and someone else's broadcast), Back and Forward after `push_to`, `replace_to` and boosted
   moves, and broadcasts past the channel layer's capacity on each layer (#168).
+- `mount()` takes `path=`, the path of the page the component is on, and `follow_push()` takes the
+  component a push to another path lands on (#169).
+
+### Fixed
+
+- A render no longer writes the value of a field an IME is composing in, even when the field shows
+  exactly what the server last rendered and the server now renders another value (a handler that
+  normalizes it, a shared field). Writing it ended the composition, and the next jamo started a new
+  one ("하" became "하!한"). The server's value goes to the field's `defaultValue`; once the
+  composition ends the field is an edited field like any other (#169).
 
 ## [1.1.0] - 2026-10-03
 

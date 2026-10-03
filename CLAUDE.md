@@ -103,9 +103,10 @@ wireview/
                            targets.mjs (TargetQueue: 요소가 아직 없는 stream_op·exec_js·push_event는 다음 프레임까지 기다린다. 순서는 컴포넌트별), reload.mjs (reload 쿨다운 판단),
                            live-session.mjs (경계 넘음 판단 순수 함수), ready.mjs (defer 스크립트가 다 돌았는가),
                            events.mjs (wire-on-* 바인딩의 수정자 해석 순수 함수. 렌더 적용 중의 포커스·change 이벤트는 사용자 것이 아니다: isRenderEcho),
-                           values.mjs (morph가 사용자가 고친 입력값을 덮어써도 되는가),
+                           values.mjs (morph가 사용자가 고친 입력값을 덮어써도 되는가. IME가 조합 중인 칸은 언제나 지킨다),
                            loading.mjs (로딩 표시를 어느 응답이 끝내는가. ref로 짝짓는다),
-                           navigation.mjs (boost 이동이 끝났음을 누구에게 알리는가: 훅의 navigated()와 wireview:navigated),
+                           navigation.mjs (boost 이동이 끝났음을 누구에게 알리는가: 훅의 navigated()와 wireview:navigated.
+                           push_to·replace_to·popstate가 patch인가: 같은 경로, history.state의 페이지 표식(wireviewPage), #169),
                            reconnect.mjs (재연결 백오프를 헤더 메타에서 읽는다. WIREVIEW RECONNECT_*),
                            uploads.mjs (업로드 manager의 수명. 인스턴스가 끝나면 폐기하고, 렌더의 instances가 알린 인스턴스 번호와
                            같은 config만 받는다. 끝난 인스턴스의 upload_op는 세션이 먼저 버린다.
@@ -184,8 +185,8 @@ tests/
                            visit-shown 링크는 같은 id의 둘을 새로 받는 boost 이동 — 그린 쪽의 첫 렌더는 중첩 컴포넌트의 join에 맡긴다),
                            deadprobe/ 는 JavaScript를 끈 브라우저가 첫 렌더를 읽고 폼으로 뷰에 가는지 보는 E2E(test_dead_view_e2e.py)의 픽스처,
                            reconnectprobe/ 는 재연결 뒤 상태(같은 서버·재시작한 프로세스·다른 워커)를 보는 E2E(test_reconnect_state_e2e.py)의 픽스처,
-                           imeprobe/ 는 한글 조합 중에 오는 렌더(자기 debounce·브로드캐스트)를 CDP IME로 보는 E2E(test_ime_e2e.py)의 픽스처,
-                           historyprobe/ 는 push_to·replace_to·boost 이동 뒤 뒤로·앞으로 가기를 보는 E2E(test_history_e2e.py)의 픽스처,
+                           imeprobe/ 는 한글 조합 중에 오는 렌더(자기 debounce·브로드캐스트·서버가 바꾼 칸 값)를 CDP IME로 보는 E2E(test_ime_e2e.py)의 픽스처,
+                           historyprobe/ 는 push_to·replace_to의 patch와 이동, boost 이동·새로고침 뒤 뒤로·앞으로 가기, follow_push()와 브라우저의 일치를 보는 E2E(test_history_e2e.py)의 픽스처(members/ 는 ls-members 경계 안),
                            lossprobe/ 는 capacity를 넘는 브로드캐스트가 레이어마다 어떻게 버려지는지 보는 E2E(test_broadcast_loss_e2e.py)의 픽스처,
                            jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,
                            formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처,
