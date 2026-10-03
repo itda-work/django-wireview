@@ -14,6 +14,7 @@ import gzip
 import hashlib
 import os
 import re
+import subprocess
 import tarfile
 import threading
 import urllib.request
@@ -44,7 +45,7 @@ except ImportError as error:  # pragma: no cover - the docs dependency group is 
     _missing(f"the docs dependency group is not installed ({error.name})")
 
 from scripts.docs_site.build import _lead, build  # noqa: E402
-from scripts.docs_site.bundle import DEFAULT_BUNDLE_DIR, PYPI_DIST, bundle  # noqa: E402
+from scripts.docs_site.bundle import DEFAULT_BUNDLE_DIR, PYPI_DIST, bundle, source_date_epoch  # noqa: E402
 from scripts.docs_site.render import Linker  # noqa: E402
 from scripts.docs_site.serve import INJECT, TEXT_TYPES, Handler, State, watched  # noqa: E402
 
@@ -134,7 +135,7 @@ IMMUTABLE = re.compile(r"^/wireview/assets/.+\.[0-9a-f]{8,}\.(?:css|js)$")
 
 
 def test_the_css_and_js_are_what_itda_work_caches_for_good(site):
-    """The bundle contract (docs/design/docs-site-bundle.md): the hashed names match website's rule."""
+    """The bundle contract (docs/implementation/docs-site-bundle.md): the hashed names match website's rule."""
     page = _html(site.out, "/wireview/")
     linked = re.findall(r'<(?:link rel="stylesheet"|script) (?:href|src)="(/wireview/assets/[^"]+)"', page)
     assert len(linked) == 3, linked
@@ -943,8 +944,13 @@ def test_the_bundle_is_named_by_the_tag_and_holds_the_build(site, tmp_path):
     assert files["wireview/VERSION"] == f"{TAG}\n".encode()
 
 
-def test_the_bundle_records_nothing_of_the_machine(site, tmp_path):
-    """Sorted, no times, no owners, the modes normalised -- whatever the umask or tar here."""
+def _commit_time() -> int:
+    return int(subprocess.run(["git", "log", "-1", "--format=%ct"], cwd=ROOT, capture_output=True, text=True).stdout)
+
+
+def test_the_bundle_records_nothing_of_the_machine(site, tmp_path, monkeypatch):
+    """Sorted, the commit's time, no owners, the modes normalised -- whatever the umask or tar here."""
+    monkeypatch.delenv("SOURCE_DATE_EPOCH", raising=False)
     (site.out / "wireview" / "VERSION").chmod(0o600)
     try:
         target = bundle(site=site.out, out_dir=tmp_path)
@@ -952,9 +958,11 @@ def test_the_bundle_records_nothing_of_the_machine(site, tmp_path):
         (site.out / "wireview" / "VERSION").chmod(0o644)
     with tarfile.open(target) as archive:
         members = archive.getmembers()
+    commit = _commit_time()
+    assert commit > 0
     assert [m.name for m in members] == sorted(m.name for m in members)
     for member in members:
-        assert (member.mtime, member.uid, member.gid, member.uname, member.gname) == (0, 0, 0, "", ""), member.name
+        assert (member.mtime, member.uid, member.gid, member.uname, member.gname) == (commit, 0, 0, "", ""), member.name
         assert member.mode == (0o755 if member.isdir() else 0o644), member.name
         assert member.isdir() or member.isfile(), member.name
     packed = target.read_bytes()
@@ -966,6 +974,32 @@ def test_the_same_commit_bundles_the_same_bytes(site, tmp_path):
     again = build(out=tmp_path / "rebuilt")
     os.utime(again.out / "wireview" / "VERSION", (1_000_000_000, 1_000_000_000))
     assert bundle(site=again.out, out_dir=tmp_path / "two").read_bytes() == first
+
+
+def _mtimes(target: Path) -> set[int]:
+    with tarfile.open(target) as archive:
+        return {member.mtime for member in archive.getmembers()}
+
+
+def test_source_date_epoch_sets_the_members_time(site, tmp_path, monkeypatch):
+    """The reproducible-builds convention wins over the commit's time; the gzip header stays 0."""
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", "1700000000")
+    target = bundle(site=site.out, out_dir=tmp_path)
+    assert _mtimes(target) == {1_700_000_000}
+    assert target.read_bytes()[4:8] == b"\0\0\0\0"
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", "yesterday")
+    with pytest.raises(ValueError, match="SOURCE_DATE_EPOCH"):
+        bundle(site=site.out, out_dir=tmp_path)
+
+
+def test_without_git_the_bundle_asks_for_source_date_epoch(site, tmp_path, monkeypatch):
+    """No commit to read a time from: packing stops rather than fall back to 0 or to now."""
+    monkeypatch.delenv("SOURCE_DATE_EPOCH", raising=False)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+    (tmp_path / "export").mkdir()
+    with pytest.raises(RuntimeError, match="set SOURCE_DATE_EPOCH"):
+        source_date_epoch(tmp_path / "export")
+    assert source_date_epoch() == _commit_time()
 
 
 def test_the_bundle_leaves_one_bundle_in_its_directory(site, tmp_path):
