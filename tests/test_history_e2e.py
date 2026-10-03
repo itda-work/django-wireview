@@ -220,6 +220,9 @@ def test_follow_push_and_the_browser_agree(box, traffic, button, handler, kwargs
         # renders the params (the HTTP render shows the default)
         expect(by(page, "rendered")).not_to_have_text(str(first), timeout=WAIT_TIMEOUT * 1000)
     expect_text(by(page, "tab"), tab)
+    # The fetched page's LiveComponent hears the params after joining, whatever
+    # the old page's one under its id last heard (#170)
+    expect_text(by(page, "leaf-heard"), tab)
     assert by(page, "count").inner_text() == str(count)
 
 
@@ -503,3 +506,28 @@ def test_forward_across_a_live_session_boundary_reloads(page, server):
     expect_text(by(page, "page"), "members")
     wait_live(page)
     assert not page.evaluate("window.__samePage === true"), "crossing into the boundary is a page load"
+
+
+# --- who hears a navigation's params (#170) -------------------------------------------------
+
+
+
+@pytest.fixture
+def heard():
+    """Every params_changed the historyprobe components heard on the server, from here on."""
+    from testproj.historyprobe.live import HEARD
+
+    HEARD.clear()
+    yield HEARD
+    HEARD.clear()
+
+
+def test_a_live_component_hears_the_first_params_of_the_page(page, server, heard):
+    open_live(page, f"{server}/historyprobe/?tab=b")
+    expect_text(by(page, "tab"), "b")
+    expect_text(by(page, "leaf-heard"), "b")
+    built = rendered(page)
+    assert [entry for entry in heard if entry[0] in ("hbox", "leaf")] == [
+        ("hbox", built, "?tab=b"),
+        ("leaf", 0, "?tab=b"),
+    ]

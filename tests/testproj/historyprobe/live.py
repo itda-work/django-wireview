@@ -6,6 +6,10 @@ URL brought back from what only the page on screen knew. ``rendered`` names the
 page render the component was built from: a fetch of the URL gives a new number.
 ``HistoryLeaf`` is the box's LiveComponent, whose ``count`` a patch must keep as
 well; it hears ``params_changed`` too (``heard``).
+
+``HEARD`` is every ``params_changed`` on the server, in order: which component,
+which instance (the box's ``rendered``), and the uri. The tests read it to tell
+who heard a navigation's params (#170).
 """
 
 import itertools
@@ -13,6 +17,9 @@ import itertools
 from wireview import Component, LiveComponent
 
 _renders = itertools.count(1)
+
+#: (component id, the box's ``rendered`` or 0, uri), in the order they were heard
+HEARD: list[tuple[str, int, str]] = []
 
 
 class HistoryBox(Component):
@@ -29,6 +36,7 @@ class HistoryBox(Component):
             self.rendered = next(_renders)
 
     async def params_changed(self, params, uri):
+        HEARD.append((self.id, self.rendered, uri))
         self.tab = params.get("tab", "a")
 
     async def bump(self, **_rest):
@@ -58,6 +66,7 @@ class HistoryLeaf(LiveComponent):
     heard: str = ""
 
     async def params_changed(self, params, uri):
+        HEARD.append((self.id, 0, uri))
         self.heard = params.get("tab", "a")
 
     async def bump(self, **_rest):

@@ -624,47 +624,39 @@ async def test_a_failed_join_takes_no_upload_command_even_with_uploads_set_up():
     assert entry.status is UploadStatus.PENDING
 
 
-async def test_a_join_that_raises_after_its_first_render_is_answered_twice():
-    # The URL's params reach a joining component after the render that answers
-    # the join; if that raises, the join has failed too, and says so. The page
-    # hears two things for one join, so nothing on it may count answers (#137).
+async def test_a_join_whose_params_raise_fails_before_its_first_render():
+    # The URL's params reach a joining component before the render that answers
+    # the join, as Phoenix runs handle_params before the first render (#170).
+    # If that raises, the join failed and nothing of the component went out:
+    # one answer, the error. Until #170 the render went first and the page
+    # heard two answers for one join (#137).
     communicator = await _connect()
     try:
         await _send(communicator, "params_changed", params={"q": "x"}, uri="?q=x")
         await _join(communicator, "e-1", fail_on_params=True)
         first = await _next(communicator, "render", "error", "remove")
-        second = await _next(communicator, "render", "error", "remove")
         await _join(communicator, "e-2")
-        after = await _next(communicator, "render", "error")
+        after = await _next(communicator, "render", "error", "remove")
     finally:
         await communicator.disconnect()
 
-    assert first["command"] == "render"
-    assert first["payload"]["id"] == "e-1"
-    assert "vsn" in first["payload"]
-    assert second == {"command": "error", "payload": {"id": "e-1", "during": "join"}}
-    assert after["payload"]["id"] == "e-2"
+    assert first == {"command": "error", "payload": {"id": "e-1", "during": "join"}}
+    assert (after["command"], after["payload"]["id"]) == ("render", "e-2")
 
 
-async def test_both_answers_to_a_join_carry_its_ref():
-    """#139: a page that sent a second join under the id tells the first one's answers by their ref.
-
-    Without it the first join's ``error`` marked the element the second join was
-    for, and dropped the component the second join's render was for.
-    """
+async def test_a_join_whose_params_raise_answers_with_its_ref():
+    """#139: a page that sent a second join under the id tells the first one's answer by its ref."""
     communicator = await _connect()
     try:
         await _send(communicator, "params_changed", params={"q": "x"}, uri="?q=x")
         await _join(communicator, "e-1", ref=7, fail_on_params=True)
         first = await _next(communicator, "render", "error", "remove")
-        second = await _next(communicator, "render", "error", "remove")
         await _join(communicator, "e-1", ref=8)
         again = await _next(communicator, "render", "error")
     finally:
         await communicator.disconnect()
 
-    assert (first["command"], first["payload"]["ref"]) == ("render", 7)
-    assert second == {"command": "error", "payload": {"id": "e-1", "during": "join", "ref": 7}}
+    assert first == {"command": "error", "payload": {"id": "e-1", "during": "join", "ref": 7}}
     assert (again["command"], again["payload"]["ref"]) == ("render", 8)
 
 

@@ -89,6 +89,15 @@ dependencies = ["django-wireview>=1.1,<2"]
   들어갔다. 이제 `path`라는 필드가 있는 컴포넌트에 `path=`를 주면 `TypeError`가 난다. 필드 값은
   `state={"path": "/a/b/"}`로 준다. `state=`에 필드를 두면 `path=`는 페이지의 경로로 함께 줄 수 있다.
   `follow_redirect()`·`follow_push(Destination)`의 키워드는 1.1처럼 그대로 필드다(`path="/docs/"`도).
+- **조용히 달라짐: join은 첫 렌더 앞에서 `params_changed()`를 부르고, LiveComponent도 처음 그려질 때 그것을 받는다.**
+  Phoenix의 mount → handle_params → render 순서다. 1.1까지는 join의 렌더가 먼저 나가고 `params_changed()`가 그
+  뒤에 돌아 렌더가 둘이었고, LiveComponent는 첫 params를 받지 못했다. 이제 순서는 부모 `joined()` → 부모
+  `params_changed()` → 자식 `joined()` → 자식 `params_changed()`다. 고칠 것은 둘이다.
+  - LiveComponent의 `params_changed()`가 patch 때만 돈다고 보고 쓴 코드, 예를 들어 같은 값을 부모가 props로도 넘기고
+    `joined()`에서도 쿼리를 읽는 자식은 이제 처음에도 `params_changed()`를 듣는다. 두 번 하는 일이 있으면 하나로 줄인다.
+  - `params_changed()`가 예외를 던지면 join이 렌더 없이 `error` 하나로 실패한다(1.1은 render 뒤에 `error`).
+    `wireview:error`(`during: "join"`)는 전처럼 한 번 온다.
+  ([LiveComponent](./features/live-component.md#수명주기))
 
 ## 1.0에서 1.1로
 

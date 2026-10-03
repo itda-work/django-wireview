@@ -399,15 +399,15 @@ class WireviewSession:
                 return
             # Hear this connection's upload progress, if the component has uploads
             await self._subscribe_upload_group(component)
+            # The page's query, before the first render as Phoenix's mount ->
+            # handle_params -> render: the render that answers the join draws
+            # it, and the LiveComponents that render brings in join after their
+            # parent heard it, each hearing it in turn (_render_tree, #170).
+            if self.repo.params:
+                await component._handle_params(dict(self.repo.params), self._join_uri())
             # The render that answers a join says which protocol this server
             # speaks, so the client knows what it may send (user_event refs).
             await self.send_render(component, announce=True, ref=answer)
-
-            # Call params_changed if URL has params (initial load)
-            if self.repo.params:
-                uri = f"?{self.repo.get_query_string()}"
-                await component._handle_params(dict(self.repo.params), uri)
-                await self.send_render(component)
 
             # Subscriptions first, then the operations queued during joined():
             # a broadcast queued there must not go out before this connection
@@ -656,6 +656,10 @@ class WireviewSession:
             finally:
                 # After leaving(), which may still want them (#95)
                 component._cancel_async_tasks()
+
+    def _join_uri(self) -> str:
+        """The ``uri`` a joining component hears its first ``params_changed`` with."""
+        return f"?{self.repo.get_query_string()}"
 
     async def command_params_changed(self, params: dict[str, str], uri: str):
         """Handle URL parameter changes from client.
@@ -1481,6 +1485,17 @@ class WireviewSession:
                 log.exception(f"Error in {child._name}.joined(): {e}")
             finally:
                 child.wire.has_joined = True
+            # The page's query, as a root's join hears it after joined(). A
+            # patch tells every LiveComponent its params, so the first ones
+            # come here too, wherever the child joins -- the page's first
+            # render, a navigation's, a later one that shows it (#170). A
+            # child the join restored from the page's states hears the page's
+            # params, not whatever its stored fields last heard.
+            if repo.params:
+                try:
+                    await child._handle_params(dict(repo.params), self._join_uri())
+                except Exception as e:
+                    log.exception(f"Error in {child._name}.params_changed(): {e}")
             # joined() is where allow_upload() runs, so a LiveComponent's registry
             # only exists from here on. Without this a nested component's uploads
             # were never heard from (#77).

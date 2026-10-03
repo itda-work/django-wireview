@@ -45,6 +45,14 @@ The django-reactor era changelog (2.x) is preserved in
   follows the push the way the browser does: a patch on the same instance for the page's own path,
   and for another path a fresh mount of the component passed in, `follow_push(Destination)`, under
   the destination's live_session as `follow_redirect()` does. Called the wrong way, it fails (#169).
+- **Silently changed:** a join runs `params_changed()` before the render that answers it, as
+  Phoenix runs `handle_params` before the first render, so one render draws what the params
+  brought; a `params_changed()` that raises fails the join with a single `error` and no render.
+  A LiveComponent hears the page's params too, right after its `joined()`, wherever it first
+  appears: parent `joined()`, parent `params_changed()`, child `joined()`, child `params_changed()`.
+  A child restored under an id the previous page had hears the page's params rather than keeping
+  what it heard there, which made #169's comparison test fail one run in six. `mount()` of a
+  LiveComponent with `params=` runs the same order (#170).
 
 ### Deprecated
 

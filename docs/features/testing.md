@@ -21,7 +21,8 @@ async def test_increment():
 
 `mount(component_class, /, *, user=None, params=None, session=None, session_key=None, live_session=None, path=None, state=None, **initial_state)`.
 옵션은 모두 키워드로 준다. `params`를 주면 페이지 로드의 join처럼 `joined()` 뒤에 `params_changed()`가 그 값으로
-돈다. `path`는 컴포넌트가 놓인 페이지의 경로(`"/items/"`)이고, `follow_push()`가 patch인지 가린다(아래).
+돈다. `LiveComponent`를 마운트해도 같다 — 페이지에서 처음 그려질 때 그 순서로 듣는다(#170). 마운트한 컴포넌트의
+템플릿이 그리는 자식 LiveComponent의 수명주기는 돌지 않는다(`render()` 참고). `path`는 컴포넌트가 놓인 페이지의 경로(`"/items/"`)이고, `follow_push()`가 patch인지 가린다(아래).
 필드 초깃값은 키워드(`count=0`)나 `state={"count": 0}`로 준다. 옵션과 이름이 같은
 필드(`params` 같은)는 `state=`로만 줄 수 있다 — 이후 릴리스가 옵션을 더해도 그 필드는 `state=`로 계속 줄 수 있다.
 같은 필드를 두 곳에 주면 `TypeError`다.

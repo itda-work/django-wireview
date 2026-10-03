@@ -110,6 +110,10 @@ UPGRADE_NOTE = {
     "`mount(params=...)` runs `params_changed()`": ("`mount(params=...)`와 `follow_push()`", 'path="/items/"'),
     "cannot tell a patch from a new page": ("`mount(params=...)`와 `follow_push()`", "2.0에서는 실패하므로"),
     "`mount()` takes `path=`": ("`mount(path=...)`는 페이지의 경로다", 'state={"path": "/a/b/"}'),
+    "a join runs `params_changed()` before the render": (
+        "join은 첫 렌더 앞에서 `params_changed()`를 부르고",
+        "두 번 하는 일이 있으면 하나로 줄인다",
+    ),
 }
 
 DOCS_ONLY = "문서·저장소만 바뀌었고 라이브러리 동작은 같다"
