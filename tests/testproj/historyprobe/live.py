@@ -8,7 +8,10 @@ page render the component was built from: a fetch of the URL gives a new number.
 well; it hears ``params_changed`` too (``heard``). ``HistoryDock`` is sticky and on
 every page: a navigation carries it across (#170). ``HistoryTray`` is sticky too,
 but only the box page has it: a navigation away ends it, and it must not hear
-where the navigation went.
+where the navigation went. ``HistoryBar`` is not sticky and the bar pages
+both have it under one id, as a layout's navigation bar would be: Back paints
+the cached page over the one being left, and the bar there is still the left
+page's (#170).
 
 ``HEARD`` is every ``params_changed`` on the server, in order: which component,
 which instance (the box's ``rendered``), and the uri. The tests read it to tell
@@ -105,3 +108,23 @@ class HistoryTray(Component):
 
     async def params_changed(self, params, uri):
         HEARD.append((self.id, 0, uri))
+
+
+class HistoryBar(Component):
+    """Not sticky, under the same id on both bar pages (#170). ``built`` names
+    the instance; only the one a page's own join made may hear its params."""
+
+    class Meta:
+        template_name = "historyprobe/bar.html"
+
+    tab: str = "-"
+    built: int = 0
+
+    def model_post_init(self, context) -> None:
+        super().model_post_init(context)
+        if not self.built:
+            self.built = next(_renders)
+
+    async def params_changed(self, params, uri):
+        HEARD.append((self.id, self.built, uri))
+        self.tab = params.get("tab", "-")

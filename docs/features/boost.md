@@ -37,7 +37,9 @@ POST 같은 GET이 아닌 폼은 **다시 보내지 않는다.** 주소창은 �
 
 - `answered: false` — 답이 오지 않았다(네트워크). 요청이 서버에 닿았는지는 알 수 없다.
 - `answered: true` — 서버가 폼을 받아 **다른 출처로 리다이렉트했다**(결제 페이지, SSO). 폼은 처리됐다. boost가
-  보낸 요청은 그 주소를 볼 수 없어 따라가지 못한다. 사이트 밖으로 리다이렉트하는 폼에는 `wire-boost`를 달지 않는다.
+  보낸 요청은 그 주소를 볼 수 없어 따라가지 못한다. 사이트 밖을 거쳐 이 사이트로 돌아오는 리다이렉트(SSO 왕복)도
+  `answered: true`다 — 마지막 페이지가 이 사이트여도 한 번 밖을 거친 응답은 열어 볼 수 없다. 사이트 밖으로
+  리다이렉트하는 폼에는 `wire-boost`를 달지 않는다.
 
 ```javascript
 document.addEventListener("wireview:navigation-failed", (e) => {
@@ -50,9 +52,18 @@ document.addEventListener("wireview:navigation-failed", (e) => {
 `redirect: "manual"`은 같은 출처 리다이렉트의 주소까지 숨긴다. 링크·GET 폼처럼 다시 가져와도 되는 이동이 다른
 출처로 리다이렉트되면, 위처럼 브라우저가 그 주소를 다시 열어 리다이렉트를 따라간다.
 
-중단된 요청(`AbortError`)은 실패가 아니다. 아무것도 하지 않는다. 다른 이동이 앞지른 이동의 가져오기가 늦게
-실패해도 아무것도 하지 않는다 — 화면은 뒤의 이동 것이다. 다만 Chromium의 `window.stop()`은 끊긴 연결과 같은
-`TypeError`로 가져오기를 끝내므로 구별되지 않고, 그 주소를 boost 없이 연다.
+중단된 요청(`AbortError`, Firefox에서 사용자가 중지를 누른 가져오기)은 실패가 아니다. 브라우저의 중지처럼
+화면에 있던 페이지에 머문다(#170).
+
+- 링크·`push_to`·GET 폼: 이동이 이미 만든 기록 항목에서 물러나 주소창이 화면의 페이지로 돌아간다.
+- `replace_to`·`redirect_to`: 바꿔 쓴 지금 항목이 원래 주소를 되찾는다.
+- 뒤로·앞으로 가기: 기록은 이미 그 항목으로 옮겨 갔고 얼마나 옮겼는지 페이지는 알 수 없으므로 주소창은 그대로다.
+  캐시 사본을 그렸다면 그 사본이 그 항목의 페이지로 착지한다. 사본이 없으면 그 항목을 boost 없이 연다.
+- 폼은 그대로 남고 `wireview:navigation-failed`를 보내지 않는다.
+- 문서 자체가 떠나는 중(브라우저가 다른 주소로 가며 가져오기를 끊었다)이면 기록을 건드리지 않는다.
+
+다른 이동이 앞지른 이동의 가져오기가 늦게 실패해도 아무것도 하지 않는다 — 화면은 뒤의 이동 것이다. Chromium의
+`window.stop()`은 끊긴 연결과 같은 `TypeError`로 가져오기를 끝내므로 구별되지 않고, 그 주소를 boost 없이 연다.
 
 뒤로·앞으로 가기 캐시(bfcache)가 이동 도중에 얼어붙은 문서를 되살리면, 그 문서는 주소창이 가리키는 항목에 다시
 도착한다(그 항목으로 가는 popstate처럼). Chromium은 열린 WebSocket이 있는 페이지를 그 캐시에 넣지 않는다.
@@ -70,9 +81,12 @@ document.addEventListener("wireview:navigation-failed", (e) => {
 로그인했는지를 바꾸는 폼이 boost되면 그 연결은 옛 신분으로 남는다. 안전한 폼만 `wire-boost`로 청한다.
 
 - **GET 폼**: 필드를 쿼리로 붙인 주소로 이동한다. 브라우저가 가는 곳과 같다.
-- **그 밖의 폼**: fetch로 보낸다. 응답이 리다이렉트로 끝나면(post/redirect/get) 그 주소로 history 항목을
+- **POST 폼**: fetch로 보낸다. 응답이 리다이렉트로 끝나면(post/redirect/get) 그 주소로 history 항목을
   만든다. 리다이렉트 없이 페이지로 답하면(오류가 있는 폼) 주소는 그대로다. 새로고침해도 폼을 다시 보내지
   않는다.
+- method는 브라우저처럼 읽는다. `get`·`post`·`dialog` 말고는(`put`, `delete`, `patch`, 빈 값) GET이다 —
+  `method="put"` 폼은 브라우저가 보내듯 쿼리를 단 GET 이동이 된다(#170). `dialog` 폼은 boost하지 않는다(대화상자를
+  닫을 뿐 어디로도 가지 않는다).
 - 누른 버튼의 `formaction`·`formmethod`와 `name`/`value`를 따른다. `target`이 다른 창이면 boost하지 않는다.
 - 컴포넌트가 `{% on "submit.prevent" %}`로 처리한 폼은 건드리지 않는다.
 

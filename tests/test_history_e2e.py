@@ -586,6 +586,43 @@ def test_a_back_with_a_cached_paint_tells_the_dock_once(box, heard):
     ) == 2  # the patch, and the Back
 
 
+def test_a_back_does_not_tell_the_page_being_left_under_an_id_the_cached_page_has(page, server, heard):
+    # Back paints the cached page first, over the page being left. A component
+    # both pages have under one id, not sticky -- a layout's navigation bar --
+    # keeps its element there, and its attributes say live: the page being
+    # left's instance. Only what the morph kept as sticky was carried (#170).
+    open_live(page, f"{server}/historyprobe/bar-a/?tab=1")
+    expect_text(by(page, "bar-tab"), "1")
+    first = int(by(page, "bar-built").inner_text())
+
+    by(page, "to-bar-b").click()
+    at(page, "/historyprobe/bar-b/?tab=2")
+    page.wait_for_function(
+        "first => document.querySelector('[data-testid=bar-built]').textContent.trim() !== first",
+        arg=str(first),
+        timeout=WAIT_TIMEOUT * 1000,
+    )
+    expect_text(by(page, "bar-tab"), "2")
+    left = int(by(page, "bar-built").inner_text())
+    heard.clear()
+
+    page.go_back()
+    at(page, "/historyprobe/bar-a/?tab=1")
+    # The fetched page's bar joins as an instance of its own, after the
+    # navigation the cached paint sent on the same socket
+    page.wait_for_function(
+        "seen => !seen.includes(document.querySelector('[data-testid=bar-built]').textContent.trim())",
+        arg=[str(first), str(left)],
+        timeout=WAIT_TIMEOUT * 1000,
+    )
+    expect_text(by(page, "bar-tab"), "1")
+    expect_text(by(page, "dock-heard"), "1")
+
+    destination = urljoin(page.url, "/historyprobe/bar-a/?tab=1")
+    assert [entry for entry in heard if entry[1] == left] == [], "the page being left heard where Back went"
+    assert (DOCK, 0, destination) in heard, "the sticky dock was carried, and told"
+
+
 def test_a_live_component_hears_the_first_params_of_the_page(page, server, heard):
     open_live(page, f"{server}/historyprobe/?tab=b")
     expect_text(by(page, "tab"), "b")
@@ -851,6 +888,161 @@ def test_a_navigation_overtaken_by_another_does_not_fail_into_it(box):
     screen(page, page_name="other", tab="g", count=0)
     assert page.evaluate("window.__samePage === true")
     assert errors == []
+
+
+def test_a_form_with_a_method_html_does_not_know_goes_as_a_get(box, traffic):
+    # The browser sends `method="put"` as a GET. Boost sent a PUT, and once
+    # forms went `no-cors` it could not send one at all: nothing reached the
+    # server, and the page heard that the network had failed (#170)
+    page = box
+    errors = page_errors(page)
+    page.evaluate(
+        "window.__failed = null;"
+        "document.addEventListener('wireview:navigation-failed', (e) => { window.__failed = e.detail; })"
+    )
+    methods: list[str] = []
+    page.on(
+        "request",
+        lambda request: methods.append(request.method) if "/historyprobe/other/" in request.url else None,
+    )
+
+    by(page, "put-send").click()
+    at(page, "/historyprobe/other/?tab=u")
+    screen(page, page_name="other", tab="u", count=0)
+    expect_text(by(page, "page-tab"), "u")
+    assert page.evaluate("window.__samePage === true"), "boosted"
+    assert methods == ["GET"]
+    assert page.evaluate("window.__failed") is None
+    assert errors == []
+
+
+#: Every boosted fetch whose URL contains ``window.__abort`` is stopped: it
+#: rejects with the `AbortError` Firefox gives a fetch the user stopped (Esc).
+#: Chromium has no stop that does that -- its `window.stop()` rejects with a
+#: `TypeError`, as a dropped connection does -- so the rejection is stood in for.
+ABORT_SHIM = """() => {
+  window.__abort = null;
+  window.__warned = [];
+  window.__failed = null;
+  window.__navigated = 0;
+  document.addEventListener("wireview:navigation-failed", (e) => { window.__failed = e.detail; });
+  document.addEventListener("wireview:navigated", () => { window.__navigated += 1; });
+  const fetch = window.fetch;
+  window.fetch = (url, init) => {
+    if (window.__abort !== null && String(url).includes(window.__abort)) {
+      window.__stopped = String(url);
+      return Promise.reject(new DOMException("The operation was aborted.", "AbortError"));
+    }
+    return fetch(url, init);
+  };
+  const warn = console.warn;
+  console.warn = (...args) => { window.__warned.push(args.map(String).join(" ")); warn(...args); };
+}"""
+
+
+def stop_fetches(page, url_part: str) -> None:
+    page.evaluate(ABORT_SHIM)
+    page.evaluate("part => { window.__abort = part; window.__stopped = null; }", url_part)
+
+
+def stopped(page) -> None:
+    page.wait_for_function("() => window.__stopped !== null", timeout=WAIT_TIMEOUT * 1000)
+
+
+def still_the_page(page, traffic: Traffic, built: int) -> None:
+    """Nothing failed, nothing loaded, and the page on screen is still the one
+    its entries belong to: a push from it is a patch, and so is Back to it."""
+    assert page.evaluate("window.__failed") is None
+    assert page.evaluate("window.__warned") == []
+    page.evaluate("window.__abort = null")
+    traffic.fetches.clear()
+    by(page, "push-b").click()
+    at(page, "/historyprobe/?tab=b")
+    page.go_back()
+    at(page, "/historyprobe/")
+    screen(page, page_name="box", tab="a", count=1)
+    patched(page, traffic, built)
+
+
+@pytest.mark.parametrize("testid", ["to-other", "push-other"], ids=["link", "push"])
+def test_a_stopped_navigation_takes_the_address_bar_back_to_the_page_on_screen(box, traffic, testid):
+    # A stop leaves the page that was on screen, and the browser's stop puts
+    # the address bar back on it. The push had made its entry already and let
+    # go of the page id: the address bar named a page the screen did not show,
+    # and the page on screen was no page's (#170).
+    page = box
+    errors = page_errors(page)
+    bump_to(page, 1)
+    built = rendered(page)
+    stop_fetches(page, "/historyprobe/other/")
+
+    by(page, testid).click()
+    stopped(page)
+    at(page, "/historyprobe/")
+    screen(page, page_name="box", tab="a", count=1)
+    still_the_page(page, traffic, built)
+    assert page.evaluate("window.__samePage === true")
+    assert errors == []
+
+
+def test_a_stopped_swap_gives_the_entry_back_its_url(box, traffic):
+    page = box
+    errors = page_errors(page)
+    bump_to(page, 1)
+    built = rendered(page)
+    length = page.evaluate("history.length")
+    stop_fetches(page, "/historyprobe/other/")
+
+    by(page, "replace-other").click()
+    stopped(page)
+    at(page, "/historyprobe/")
+    assert page.evaluate("history.length") == length
+    screen(page, page_name="box", tab="a", count=1)
+    still_the_page(page, traffic, built)
+    assert errors == []
+
+
+def test_a_stopped_back_lands_the_cached_page_it_painted(box, traffic):
+    # The traversal is history's: how far it went is not the page's to know,
+    # so the address bar stays where it went. The cached copy Back painted is
+    # that entry's page, and lands -- its own entries patch it (#170).
+    page = box
+    errors = page_errors(page)
+    by(page, "to-other").click()
+    at(page, "/historyprobe/other/")
+    expect_text(by(page, "page"), "other")
+    stop_fetches(page, "/historyprobe/")
+
+    page.go_back()
+    stopped(page)
+    at(page, "/historyprobe/")
+    screen(page, page_name="box", tab="a", count=0)
+    page.wait_for_function("() => window.__navigated === 1", timeout=WAIT_TIMEOUT * 1000)
+    built = rendered(page)
+    bump_to(page, 1)
+    still_the_page(page, traffic, built)
+    assert page.evaluate("window.__samePage === true")
+    assert errors == []
+
+
+def test_a_stopped_back_without_a_cached_page_loads_the_entry(box):
+    # Nothing of the entry's page to show, and history already moved: the
+    # browser loads it, as a fetch that failed would (#170). An entry the
+    # navigation that left it never cached: Back made Forward's.
+    page = box
+    by(page, "to-other").click()
+    at(page, "/historyprobe/other/")
+    page.go_back()
+    at(page, "/historyprobe/")
+    screen(page, page_name="box", tab="a", count=0)
+    stop_fetches(page, "/historyprobe/other/")
+
+    with page.expect_event("load", timeout=WAIT_TIMEOUT * 1000):
+        page.go_forward()
+    wait_live(page)
+    at(page, "/historyprobe/other/")
+    screen(page, page_name="other", tab="a", count=0)
+    assert not page.evaluate("window.__samePage === true")
 
 
 #: The page's socket, rewritten so every render that announces the server's

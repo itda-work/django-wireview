@@ -223,8 +223,8 @@ class ServerConnection {
       // components sends none. The page a navigation put on screen tells the
       // server its URL between the leaves of the components it dropped and the
       // joins of the ones it brought (#170).
-      const { token, landed } = /** @type {CustomEvent} */ (event).detail ?? {};
-      this.joinAllComponents({ navigated: token !== undefined });
+      const { token, landed, stuck } = /** @type {CustomEvent} */ (event).detail ?? {};
+      this.joinAllComponents({ navigated: token !== undefined, stuck });
       if (landed) this.announceNavigation(token);
     });
   }
@@ -308,11 +308,12 @@ class ServerConnection {
   /**
    * Joins all wireview components found in the DOM.
    * Registers new components and removes stale ones.
-   * @param {{navigated?: boolean}} [options] - a boosted navigation put the
-   *   page on screen: its URL goes to the server after the leaves and before
-   *   the joins (`sendNavigated`)
+   * @param {{navigated?: boolean, stuck?: Element[]}} [options] - a boosted
+   *   navigation put the page on screen: its URL goes to the server after the
+   *   leaves and before the joins (`sendNavigated`), to the components inside
+   *   `stuck`, the sticky ones its morph kept
    */
-  joinAllComponents({ navigated = false } = {}) {
+  joinAllComponents({ navigated = false, stuck = [] } = {}) {
     const elements = Array.from(document.querySelectorAll("[wireview-component]"));
     const onPage = new Set(elements.map((element) => element.id));
     // The ones that left go first: an id a LiveComponent had on the page
@@ -344,7 +345,7 @@ class ServerConnection {
       // takes it along.
       if (!component.owned) this.sendLeave(id);
     }
-    if (navigated) this.sendNavigated(this.componentsCarried(elements));
+    if (navigated) this.sendNavigated(this.componentsCarried(elements, stuck));
     for (const element of elements) {
       // The server drew it over an instance a parent's pass built under the id
       // of one whose join failed, which nothing reaches -- unless the page has
@@ -366,25 +367,25 @@ class ServerConnection {
   }
 
   /**
-   * The components a navigation carried across (#170): their elements are
-   * still on the page, live, and will not join again -- a sticky component and
-   * everything inside it, a plain component it drew included, which the morph
-   * kept as they were. Each new page's element comes with `data-is-live`
-   * false and joins. A LiveComponent goes with its root, so only roots count.
+   * The components a navigation carried across (#170): a sticky component the
+   * morph kept as it was, and everything inside it, a plain component it drew
+   * included. The morph says which (`stuck`); what the element looks like
+   * cannot -- a popstate paints the cached page, whose HTML was captured live,
+   * and a component of the page being left under one of its ids keeps its
+   * element and its attributes, though it is not carried anywhere. A
+   * LiveComponent goes with its root, so only roots count.
    * @param {Element[]} elements - the page's components
+   * @param {Element[]} stuck - the sticky components the morph kept
    * @returns {string[]}
    */
-  componentsCarried(elements) {
+  componentsCarried(elements, stuck) {
     return elements
-      .filter((element) => {
-        const el = /** @type {HTMLElement & {__wireviewHookManager?: HookManager}} */ (element);
-        return (
-          this.components[el.id] !== undefined &&
-          !el.hasAttribute("wireview-live") &&
-          el.dataset.isLive === "true" &&
-          el.__wireviewHookManager !== undefined
-        );
-      })
+      .filter(
+        (element) =>
+          this.components[element.id] !== undefined &&
+          !element.hasAttribute("wireview-live") &&
+          stuck.some((sticky) => sticky.contains(element))
+      )
       .map((element) => element.id);
   }
 

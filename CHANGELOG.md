@@ -56,7 +56,7 @@ The django-reactor era changelog (2.x) is preserved in
 - **Silently changed:** a boosted navigation to another page tells the server its params once the
   page is on screen, after the leaves of the components it dropped and before the joins of the ones
   it brought, with a new `navigated` message (protocol version 7). The old page's components no
-  longer hear the destination's params; what the navigation carried across hears them -- a sticky
+  longer hear the destination's params, one under an id the cached copy Back paints has included; what the navigation carried across hears them -- a sticky
   component, the components drawn inside it with `{% component %}`, and their LiveComponents --
   once per URL even when Back paints a cached copy first; a sticky component the next page does not
   have leaves without hearing them (#170).
@@ -73,6 +73,10 @@ The django-reactor era changelog (2.x) is preserved in
   page cannot open, where a `cors` fetch made a network error of it and 1.1 stopped on an unhandled
   rejection. Boost adds no header to the request, so the server sees the same request, with
   `Sec-Fetch-Mode: no-cors` (#170).
+- **Silently changed:** a boosted form's method is read as the browser reads it: `get`, `post` or
+  `dialog`, and anything else -- `put`, `delete`, `patch`, an empty `formmethod` -- is a GET. 1.1
+  sent `method="put"` with fetch as a PUT, where the browser sends that form as a GET with the
+  fields as the query; boost now does too. A `dialog` form is not boosted (#170).
 
 ### Deprecated
 
@@ -104,9 +108,17 @@ The django-reactor era changelog (2.x) is preserved in
   A link, `push_to`, `replace_to`, `redirect_to`, Back or Forward, or a GET form loads that URL
   without boost, so the browser shows what went wrong under the URL it went wrong for; a non-GET
   form stays and dispatches `wireview:navigation-failed` (#170). A navigation another one overtook
-  is not taken for failed when its fetch fails late, and a stopped request (`AbortError`) is not a
-  failure. In Chromium `window.stop()` rejects the fetch with the same `TypeError` a dropped
-  connection does, so it still loads the URL without boost.
+  is not taken for failed when its fetch fails late. In Chromium `window.stop()` rejects the fetch
+  with the same `TypeError` a dropped connection does, so it still loads the URL without boost.
+- A stopped boosted navigation (its fetch rejected with `AbortError`, as Firefox's stop does) stays
+  on the page on screen, as the browser's stop does: a link, `push_to` or GET form goes back out of
+  the history entry it had made, and `replace_to` or `redirect_to` gives the entry back its URL. 1.1
+  left the address bar on the new URL over the old page, with no page id. Back or Forward cannot be
+  undone, since the page cannot know how far history moved: the cached copy it painted lands as that
+  entry's page, or without one the browser loads the entry. A document the browser is leaving is
+  left alone. A stopped form still dispatches nothing (#170).
+- A boosted form that fails no longer warns that it is "loading it without boost": the form is not
+  sent again, and the warning says so (#170).
 - A document the back/forward cache restores after it froze mid-navigation (its fetch handed over
   to the browser, or a link away while one was in flight) arrives at the address bar as a popstate
   there would, instead of keeping a page the address bar does not name and no page id. Chromium

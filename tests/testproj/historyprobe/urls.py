@@ -27,8 +27,15 @@ def post(request):
     return redirect("/historyprobe/other/?tab=p")
 
 
+def bars(name):
+    return lambda request: render(request, "historyprobe/bars.html", {"name": name})
+
+
 urlpatterns = [
     path("", page("box"), name="index"),
+    # Two pages with HistoryBar under one id (#170)
+    path("bar-a/", bars("bar-a"), name="bar-a"),
+    path("bar-b/", bars("bar-b"), name="bar-b"),
     path("other/", page("other"), name="other"),
     path("post/", post, name="post"),
     # Inside ls-members: a patch stays inside it, a push to other/ leaves it

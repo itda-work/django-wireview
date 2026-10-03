@@ -9,6 +9,7 @@ import {
   NAVIGATION_FAILED_EVENT,
   arrivesOnRestore,
   fetchOutcome,
+  formMethod,
   formRequest,
   isFragmentLink,
   isSameUrl,
@@ -127,10 +128,13 @@ function pinStreamContainers(oldNode, newNode) {
  * @param {{permission?: Map<Element, string>, navigation?: boolean}} [options] - the fields
  *   this morph's render answers (ValueGuard.answer), which may take the server's value;
  *   `navigation` for a boosted page change, which keeps sticky components
+ * @returns {Element[]} the sticky components a navigation kept as they were
  */
 function morph(oldNode, newNode, { permission, navigation = false } = {}) {
   /** @type {WeakSet<Element>} */
   const kept = new WeakSet();
+  /** @type {Element[]} */
+  const stuck = [];
   const options = {
     callbacks: {
       beforeNodeMorphed(fromEl, toEl) {
@@ -148,7 +152,9 @@ function morph(oldNode, newNode, { permission, navigation = false } = {}) {
         // that follows skips it and the server keeps the instance (#72). Only on a
         // navigation -- the component's own renders morph it as usual.
         if (navigation && fromEl.nodeType === Node.ELEMENT_NODE && fromEl.hasAttribute("wire-sticky")) {
-          return /** @type {Element} */ (toEl).id !== fromEl.id;
+          if (/** @type {Element} */ (toEl).id !== fromEl.id) return true;
+          stuck.push(fromEl);
+          return false;
         }
 
         if (fromEl.nodeType === Node.ELEMENT_NODE && valueGuard.keep(fromEl, toEl, permission)) kept.add(fromEl);
@@ -173,6 +179,7 @@ function morph(oldNode, newNode, { permission, navigation = false } = {}) {
   // A component's render; a navigation's new page has new lists anyway
   const content = navigation ? newNode : pinStreamContainers(oldNode, newNode);
   applying(() => Idiomorph.morph(oldNode, content, options));
+  return stuck;
 }
 
 /**
@@ -210,9 +217,11 @@ class NavEvents extends EventTarget {
    *   for a component's render that drew new ones
    * @param {boolean} [landed] - the navigation's own page, not a cached paint
    *   shown while it is fetched: what `wireview:navigated` announces, once
+   * @param {Element[]} [stuck] - the sticky components the navigation's morph
+   *   kept as they were (`morph`): what it carried across
    */
-  sendNewContent(token, landed) {
-    this.dispatchEvent(new CustomEvent("newContent", { detail: { token, landed } }));
+  sendNewContent(token, landed, stuck = []) {
+    this.dispatchEvent(new CustomEvent("newContent", { detail: { token, landed, stuck } }));
   }
 }
 
@@ -277,6 +286,41 @@ function leavePage() {
 }
 
 /**
+ * The document is going away: a navigation the browser makes, for which it
+ * stops the fetches in flight (Firefox rejects them with an `AbortError`). A
+ * stopped boosted navigation then leaves history alone -- moving it would
+ * take the browser's own navigation back (#170). A boosted one that begins
+ * finds the document still here.
+ * @type {boolean}
+ */
+let leavingDocument = false;
+window.addEventListener("beforeunload", () => {
+  leavingDocument = true;
+});
+
+/**
+ * A stopped push going back to the entry it left (`HistoryCache.push`): the
+ * popstate its `history.back()` brings is that, not a traversal to arrive
+ * at -- unless another navigation began first.
+ * @type {{token: number, entry: any, left: string|null} | null}
+ */
+let undoing = null;
+
+/**
+ * What a navigation that brought no page to show does instead (#170): the
+ * entry is the navigation's already (a push made it, a popstate returned to
+ * it), so the browser loads it there, and shows what went wrong under the URL
+ * it went wrong for -- or follows the redirect to another origin a `cors`
+ * fetch could not.
+ * @param {string} url
+ * @param {unknown} error - what the fetch rejected with, if it did
+ */
+function loadInstead(url, error) {
+  if (error !== undefined) console.warn("wireview: could not fetch %s; loading it without boost", url, error);
+  document.location.replace(url);
+}
+
+/**
  * A new page is on screen: entries the previous one made are another page's now.
  */
 function landPage() {
@@ -328,7 +372,9 @@ if (BOOST_PAGES) {
     const target = submitter?.getAttribute("formtarget") ?? form.getAttribute("target");
     if (target && target !== "_self") return;
     const action = submitter?.getAttribute("formaction") ? submitter.formAction : form.action;
-    const method = (submitter?.getAttribute("formmethod") || form.getAttribute("method") || "get").toLowerCase();
+    // As the browser reads it: `method="put"` is a GET (#170)
+    const method = formMethod(form.getAttribute("method"), submitter?.getAttribute("formmethod"));
+    // A dialog's form closes its dialog and goes nowhere
     if (method === "dialog" || !hasSameOriginAsDocument(action)) return;
     e.preventDefault();
     HistoryCache.submit(action, method, new FormData(form, submitter ?? undefined));
@@ -356,13 +402,13 @@ function replaceBodyContent(newBody, scrollY = undefined, landed = true) {
   window.requestAnimationFrame(() => {
     if (!navGate.accepts(token)) return;
     if (landed) landPage();
-    morph(document.body, newBody, { navigation: true });
+    const stuck = morph(document.body, newBody, { navigation: true });
     if (scrollY === undefined) {
       /** @type {HTMLElement|null} */ (document.querySelector("[autofocus]"))?.focus();
     } else {
       window.scrollTo(0, scrollY);
     }
-    navEvent.sendNewContent(token, landed);
+    navEvent.sendNewContent(token, landed, stuck);
   });
 }
 
@@ -439,7 +485,9 @@ class HistoryCache {
     // a second one would change nothing (#170): fetched in place instead
     if (isSameUrl(document.location.href, path, document.baseURI)) return this.swap(path);
     navGate.begin();
-    leavePage();
+    leavingDocument = false;
+    const left = leavePage();
+    const entry = history.state;
     replaceEntry(
       {
         content: document.body.outerHTML,
@@ -449,14 +497,22 @@ class HistoryCache {
       document.location.href
     );
     pushEntry({}, path);
-    return this.replaceContentFromUrl(path);
+    return this.replaceContentFromUrl(path, undefined, "current", (outcome, error) => {
+      if (outcome !== "aborted") return loadInstead(path, error);
+      // Stopped, as the browser's stop button stops a load: the page that was
+      // on screen is still there, so the address bar goes back to it, through
+      // the entry it had (#170)
+      if (leavingDocument) return;
+      undoing = { token: navGate.token, entry, left };
+      history.back();
+    });
   }
 
   /**
    * Submits a form as a boosted navigation (`wire-boost`, #103).
    *
-   * A GET goes where the browser would, with the fields as the query. Anything
-   * else is sent with fetch; the page it ends on -- a redirect's, as a form
+   * A GET goes where the browser would, with the fields as the query. A POST
+   * is sent with fetch; the page it ends on -- a redirect's, as a form
    * should answer with (post/redirect/get) -- gets a history entry of its own.
    * An answer that did not redirect (a form re-rendered with its errors) stays
    * on the current URL: reloading it must not send the form again.
@@ -469,7 +525,7 @@ class HistoryCache {
    * (`formRequest`). A form that redirects off the site is not one to boost.
    *
    * @param {string} action
-   * @param {string} method - lower case
+   * @param {"get" | "post"} method - as the browser reads the form's (`formMethod`)
    * @param {FormData} data
    * @returns {Promise<boolean>} as `push`
    */
@@ -492,11 +548,18 @@ class HistoryCache {
       document.location.href
     );
     const verb = method.toUpperCase();
-    return this.replaceContentFromUrl(action, formRequest(verb, data), "push", (outcome) => {
+    return this.replaceContentFromUrl(action, formRequest(verb, data), "push", (outcome, error) => {
       // Still the page that sent it, under its own entry
       page.id = left;
       replaceEntry(entry, document.location.href);
       if (outcome === "aborted") return;
+      if (outcome === "unanswered") {
+        console.warn(
+          "wireview: could not submit to %s; the page stays as it was and the form is not sent again",
+          action,
+          error
+        );
+      }
       document.dispatchEvent(
         new CustomEvent(NAVIGATION_FAILED_EVENT, {
           detail: { url: action, method: verb, answered: outcome === "elsewhere" },
@@ -513,9 +576,18 @@ class HistoryCache {
    */
   static async swap(path) {
     navGate.begin();
-    leavePage();
+    leavingDocument = false;
+    const left = leavePage();
+    const entry = history.state;
+    const from = document.location.href;
     replaceEntry({}, path);
-    return this.replaceContentFromUrl(path);
+    return this.replaceContentFromUrl(path, undefined, "current", (outcome, error) => {
+      if (outcome !== "aborted") return loadInstead(path, error);
+      // Stopped: the page on screen is still the one it was leaving, and its
+      // entry gets back its URL (#170)
+      page.id = left;
+      replaceEntry(entry, from);
+    });
   }
 
   /**
@@ -535,15 +607,16 @@ class HistoryCache {
    * @param {"current"|"push"} [entry] - "current": the caller made the history
    *   entry, and a redirect only corrects its URL; "push": the entry is made
    *   here, for where the response ended, when it moved
-   * @param {(outcome: "elsewhere" | "aborted" | "unanswered") => void} [failed] -
+   * @param {(outcome: "elsewhere" | "aborted" | "unanswered", error: unknown) => void} failed -
    *   what a request that brought no page to show does instead
-   *   (navigation.mjs `fetchOutcome`); by default the browser loads `url`
-   *   itself, unless the request was stopped (#170)
+   *   (navigation.mjs `fetchOutcome`, #170): `loadInstead`, or for a stopped
+   *   one, what the browser's stop would leave. A stop abandons nothing the
+   *   navigation queued: a cached page a popstate painted is the caller's
    * @returns {Promise<boolean>} False when the boundary was crossed or the
    *   request brought no page, and the browser is doing an ordinary page load
    *   instead -- or nothing, for a stopped one.
    */
-  static async replaceContentFromUrl(url, init = undefined, entry = "current", failed = undefined) {
+  static async replaceContentFromUrl(url, init, entry, failed) {
     // The caller began the navigation; this reads the generation rather than
     // starting one, so the cached body a popstate queued belongs to the same
     // navigation as the fetch that validates it.
@@ -565,22 +638,13 @@ class HistoryCache {
       // not show. A later navigation has it now: the one superseded here
       // must not drag the page back to where it was going.
       if (!navGate.accepts(token)) return false;
-      // Nothing queued for this navigation paints or joins any more
-      navGate.abandon();
       if (outcome === "elsewhere") {
         console.warn("wireview: %s redirected to another origin, which a boosted form cannot follow", url);
-      } else if (outcome === "unanswered") {
-        console.warn("wireview: could not fetch %s; loading it without boost", url, error);
       }
-      if (failed) {
-        failed(outcome);
-      } else if (outcome !== "aborted") {
-        // The entry is the navigation's already (a push made it, a popstate
-        // returned to it): the browser loads it there, and shows what went
-        // wrong under the URL it went wrong for -- or follows the redirect
-        // to another origin a `cors` fetch could not.
-        document.location.replace(url);
-      }
+      // Nothing queued for this navigation paints or joins any more -- but for
+      // a stopped one, what it already painted is the caller's to keep
+      if (outcome !== "aborted") navGate.abandon();
+      failed(outcome, error);
       return false;
     }
     let doc = new DOMParser().parseFromString(content, "text/html");
@@ -701,19 +765,49 @@ function arrive(state, { restored = false } = {}) {
     document.location.reload();
     return;
   }
-  navGate.begin();
+  const token = navGate.begin();
+  leavingDocument = false;
   leavePage();
-  if (state?.content !== undefined) {
+  const url = document.location.href;
+  const cached = state?.content !== undefined;
+  if (cached) {
     // The entry's own name matched, but that was true when it was captured; the
     // fetch below may still find the URL has moved. Showing the cache meanwhile
     // is the point of the cache, and the fetch bumps the generation, so a
     // refused destination drops this paint instead of flashing it.
     replaceBodyContent(state.content, state.scrollY, false);
   }
-  HistoryCache.replaceContentFromUrl(document.location.href);
+  HistoryCache.replaceContentFromUrl(url, undefined, "current", (outcome, error) => {
+    if (outcome !== "aborted") return loadInstead(url, error);
+    // Stopped. The traversal is history's already, and how far it went is not
+    // the page's to know, so the address bar stays (#170). The cached copy it
+    // painted is that entry's page: it lands, after the paint if that is still
+    // to come. Without one the screen holds another page, and the browser
+    // loads the entry -- unless it is leaving the document anyway.
+    if (cached) {
+      window.requestAnimationFrame(() => {
+        if (!navGate.accepts(token)) return;
+        landPage();
+        navEvent.sendNewContent(token, true);
+      });
+    } else {
+      navGate.abandon();
+      if (!leavingDocument) document.location.replace(url);
+    }
+  });
 }
 
-window.addEventListener("popstate", (event) => arrive(event.state));
+window.addEventListener("popstate", (event) => {
+  const undo = undoing;
+  undoing = null;
+  if (undo && navGate.accepts(undo.token)) {
+    // Back on the entry the stopped push left, where the page on screen was
+    page.id = undo.left;
+    replaceEntry(undo.entry, document.location.href);
+    return;
+  }
+  arrive(event.state);
+});
 
 // A document the back/forward cache restored froze with whatever it had: a
 // navigation that handed over to the browser left it with no page id and an

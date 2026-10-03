@@ -121,6 +121,13 @@ dependencies = ["django-wireview>=1.1,<2"]
   다른 출처로 가는 리다이렉트(결제, SSO)는 따라갈 수 없다 — 1.1은 처리되지 않은 rejection으로 멈췄고, 이제는
   `wireview:navigation-failed`가 `answered: true`로 온다. 서버는 폼을 이미 처리했다. 그런 폼에서는 `wire-boost`를 뺀다.
   boost는 폼에 헤더를 더하지 않으므로 서버가 받는 요청은 같다(`Sec-Fetch-Mode`만 `no-cors`).
+- **조용히 달라짐: boost 폼의 method를 브라우저처럼 읽는다.** `get`·`post`·`dialog` 말고는 GET이다. 1.1은
+  `method="put"`(`delete`, `patch`, 버튼의 `formmethod`도)을 그 method 그대로 fetch로 보냈다 — 브라우저라면 쿼리를 단
+  GET으로 보냈을 폼이다. 이제 boost도 GET 이동으로 보낸다. PUT 같은 요청을 받던 뷰는 `{% on "submit.prevent" %}`
+  핸들러에서 처리하거나 POST로 받는다([boost](./features/boost.md#폼은-스스로-청한다-wire-boost)).
+- **중지된 boost 이동은 화면의 페이지에 머문다.** 가져오기가 `AbortError`로 끝나면(Firefox의 중지) 주소창을 화면의
+  페이지로 되돌린다. 1.1은 주소창만 새 주소로 둔 채 옛 페이지를 남겼다. 뒤로·앞으로 가기는 주소창이 그대로이고,
+  그린 캐시 사본이 착지하거나 사본이 없으면 그 항목을 boost 없이 연다([boost](./features/boost.md#가져오기가-실패하면)).
 
 ## 1.0에서 1.1로
 

@@ -223,16 +223,31 @@ export function isFragmentLink(from, to, base = from) {
 }
 
 /**
+ * The method a form submits with, as the browser reads it (#170): the
+ * submitter's `formmethod` if it has one, else the form's `method`, each "get",
+ * "post" or "dialog" whatever its case. Anything else -- `put`, `delete`, an
+ * empty value -- is GET, as the browser sends it; a missing `method` is too.
+ * What `HTMLFormElement.method` and `formMethod` reflect.
+ * @param {string|null} formAttribute - the form's `method`
+ * @param {string|null} [submitterAttribute] - the submitter's `formmethod`
+ * @returns {"get" | "post" | "dialog"}
+ */
+export function formMethod(formAttribute, submitterAttribute = null) {
+  const method = (submitterAttribute ?? formAttribute ?? "").toLowerCase();
+  return method === "post" || method === "dialog" ? method : "get";
+}
+
+/**
  * The request a boosted form submission sends (#170). A GET goes as a link
  * does; anything else is sent once and never again, so it goes in `no-cors`
  * mode: a redirect inside this origin is followed and read as with any fetch
  * -- post/redirect/get lands as before -- while one to another origin comes
  * back as an opaque response instead of the network error a `cors` fetch
  * makes of it. That is what tells "the server answered" from "nothing did".
- * (`redirect: "manual"` would hide where a same-origin redirect went too.) A
- * form's method is GET or POST, both allowed in `no-cors`, and boost adds no
- * header to it.
- * @param {string} method - upper case, not GET
+ * (`redirect: "manual"` would hide where a same-origin redirect went too.)
+ * What it sends is a POST (`formMethod`), allowed in `no-cors`, and boost adds
+ * no header to it.
+ * @param {string} method - upper case: POST
  * @param {FormData} body
  * @returns {RequestInit}
  */

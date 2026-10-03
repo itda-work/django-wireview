@@ -26,6 +26,14 @@
       {% csrf_token %}
       <button type="submit" data-testid="post-send">post</button>
     </form>
+    {# The browser sends a method HTML does not know as a GET, and so does boost (#170) #}
+    <form method="put"
+          action="/historyprobe/other/"
+          wire-boost
+          data-testid="put-form">
+      <input name="tab" value="u">
+      <button type="submit" data-testid="put-send">put</button>
+    </form>
     {# Its view redirects to another origin (#170) #}
     <form method="post"
           action="/historyprobe/post/?away=1"

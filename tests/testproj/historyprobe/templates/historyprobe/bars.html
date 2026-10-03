@@ -1,0 +1,17 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>history probe {{ name }}</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    <span data-testid="page">{{ name }}</span>
+    <a data-testid="to-bar-a" href="/historyprobe/bar-a/?tab=1">bar a</a>
+    <a data-testid="to-bar-b" href="/historyprobe/bar-b/?tab=2">bar b</a>
+    {% component 'HistoryDock' %}
+    {# Not sticky: each page's own, under the id both pages give it #}
+    {% component 'HistoryBar' id="bar" %}
+  </body>
+</html>

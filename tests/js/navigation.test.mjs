@@ -9,6 +9,7 @@ import {
   arrivesOnRestore,
   carriedAcross,
   fetchOutcome,
+  formMethod,
   formRequest,
   isFragmentLink,
   isPatch,
@@ -154,6 +155,33 @@ test("a link to a fragment of this document is the browser's; one to the page it
 
 test("the failure event has the documented name (#170)", () => {
   assert.equal(NAVIGATION_FAILED_EVENT, "wireview:navigation-failed");
+});
+
+// --- the method a boosted form submits with (#170) ---
+
+test("a form's method is read as the browser reads it: get, post or dialog, whatever the case", () => {
+  assert.equal(formMethod("POST"), "post");
+  assert.equal(formMethod("post"), "post");
+  assert.equal(formMethod("Get"), "get");
+  assert.equal(formMethod("DiaLog"), "dialog");
+  assert.equal(formMethod(null), "get");
+});
+
+test("a method HTML has no state for goes as a GET, as the browser sends it -- never as itself", () => {
+  // no-cors would refuse to send a PUT at all, and the browser never does
+  for (const method of ["put", "PUT", "delete", "patch", "", "head", " post"]) {
+    assert.equal(formMethod(method), "get", method);
+  }
+});
+
+test("the submitter's formmethod wins over the form's, an empty or unknown one being a GET", () => {
+  assert.equal(formMethod("get", "post"), "post");
+  assert.equal(formMethod("post", "get"), "get");
+  assert.equal(formMethod("post", "put"), "get");
+  assert.equal(formMethod("post", ""), "get");
+  assert.equal(formMethod("post", null), "post");
+  assert.equal(formMethod("post", undefined), "post");
+  assert.equal(formMethod("get", "dialog"), "dialog");
 });
 
 // --- what a boosted fetch came to (#170) ---
