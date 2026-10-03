@@ -7,7 +7,7 @@
 | [todo](./todo/) | 모델 구독으로 여러 탭이 같은 목록을 함께 본다 | [Todo 앱](../docs/tutorials/03-todo-app.md) |
 | [poll](./poll/) | 쓰기는 핸들러가, 다시 그리기는 브로드캐스트가 | [Poll 앱](../docs/tutorials/10-poll-app.md) |
 | [rating](./rating/) | 잠깐 쓰는 상태와 남는 상태를 갈라 둔다 | [Rating 앱](../docs/tutorials/11-rating-app.md) |
-| [search](./search/) | 디바운스한 입력과 키보드로 고르는 결과 | [Live Search](../docs/tutorials/12-live-search.md) |
+| [search](./search/) | 디바운스한 입력, 주소에 남는 검색어, 키보드로 고르는 결과 | [Live Search](../docs/tutorials/12-live-search.md) |
 | [quiz](./quiz/) | 컴포넌트 상태로 굴리는 상태 머신 | [Quiz 앱](../docs/tutorials/13-quiz-app.md) |
 | [chat](./chat/) | Streams와 Presence | [Chat 앱](../docs/tutorials/04-chat-app.md) |
 | [dashboard](./dashboard/) | AsyncResult로 느린 조회를 미룬다 | [Dashboard](../docs/tutorials/05-dashboard.md) |
@@ -38,7 +38,7 @@ WebSocket이 필요하므로 `runserver`가 아니라 daphne로 띄운다.
 ```bash
 make test                        # 예제 테스트까지 전부
 make test ARGS="-k quiz"         # 예제 하나
-make test-e2e LAYER=memory       # 브라우저 (todo, livecomp, hooks, bookmarks)
+make test-e2e LAYER=memory       # 브라우저 (todo, livecomp, hooks, notifications, search, bookmarks)
 ```
 
 pytest를 직접 부를 때는 `-m "not e2e"`를 붙인다: `uv run pytest examples -m "not e2e"`.

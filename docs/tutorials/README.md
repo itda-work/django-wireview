@@ -14,7 +14,7 @@ django-wireview 단계별 학습 가이드입니다.
 
 ### 중급 (Intermediate)
 - [Todo 앱](03-todo-app.md) - CRUD, 모델 구독, 중첩 컴포넌트
-- [Live Search](12-live-search.md) - 디바운스, JS 명령, 검색 자동완성
+- [Live Search](12-live-search.md) - 디바운스, 주소에 남는 검색어, JS 명령
 - [Quiz 앱](13-quiz-app.md) - 상태 머신, mutation, 리더보드
 
 ### 고급 (Advanced)
@@ -71,7 +71,7 @@ django-wireview 단계별 학습 가이드입니다.
 | [dashboard](../../examples/dashboard/) | AsyncResult, 컴포지션 | [Dashboard](05-dashboard.md) |
 | [poll](../../examples/poll/) | skip_render, 조건부 클래스 | [Poll 앱](10-poll-app.md) |
 | [rating](../../examples/rating/) | URL 상태, 키보드 이벤트 | [Rating 앱](11-rating-app.md) |
-| [search](../../examples/search/) | 디바운스, JS 명령 | [Live Search](12-live-search.md) |
+| [search](../../examples/search/) | 디바운스, 주소에 남는 검색어, JS 명령 | [Live Search](12-live-search.md) |
 | [quiz](../../examples/quiz/) | 상태 머신, 리더보드 | [Quiz 앱](13-quiz-app.md) |
 | [notifications](../../examples/notifications/) | 사용자별 알림과 토스트, 브로드캐스트 | [Notifications](14-notifications.md) |
 | [livecomp](../../examples/livecomp/) | LiveComponent, 부모-자식 | [LiveComponent](15-live-components.md) |

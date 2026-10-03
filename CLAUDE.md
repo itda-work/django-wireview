@@ -203,7 +203,7 @@ tests/
 
 examples/                  예제 앱 11개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.
                            testproj 위에서 돌고 make test가 함께 실행한다(pytest tests examples).
-                           E2E는 todo/tests.py, livecomp/tests.py, hooks/tests.py, notifications/tests.py. 인덱스는 examples/README.md
+                           E2E는 todo/tests.py, livecomp/tests.py, hooks/tests.py, notifications/tests.py, search/tests.py. 인덱스는 examples/README.md
                            hooks/ 는 wire-hook 을 쓰는 유일한 예제다. 훅 경로의 E2E 검증은 그것과
                            testproj의 hookprobe/·stickyprobe/·offlineprobe/ 가 나눠 진다
 

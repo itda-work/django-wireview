@@ -3,11 +3,14 @@ Search App Components
 
 This module demonstrates wireview's form and input handling patterns:
 - .debounce.300 modifier for input events
+- The query kept in the address (push_to, params_changed)
 - focus_on() for focus management
 - push_js() with JS().set_value() to clear input
 - Keyboard navigation (.keydown.key.ArrowDown/Up)
 - Loading state management
 """
+
+from urllib.parse import urlencode
 
 from django.db.models import Q
 
@@ -22,6 +25,7 @@ class XLiveSearch(Component):
 
     Demonstrates:
     - Input debouncing with .debounce modifier
+    - The query in the address: a reload, a shared link and Back show its results
     - Keyboard navigation through results
     - focus_on() and push_js() for UX polish
     - Loading state with .wireview-loading
@@ -38,10 +42,29 @@ class XLiveSearch(Component):
 
     async def search(self, q: str):
         """
-        Search for books matching query.
+        Put the query in the address; params_changed() runs the search.
 
-        Uses debounce in template to avoid excessive queries.
+        Same path, so push_to is a patch: nothing is fetched, this instance
+        stays, and every query the user paused on is a history entry Back
+        returns to. The handler does not search itself -- a reload, a shared
+        link and Back reach the results only through params_changed(), so the
+        typed query takes the same way.
         """
+        q = q.strip()
+        if q:
+            await self.wire.push_to(f"?{urlencode({'q': q})}")
+        else:
+            # The page's own path: no "?q=" left in the address
+            await self.wire.push_to("search:index")
+
+    async def params_changed(self, params, uri):
+        """
+        Show the results for the address's query.
+
+        Runs after joined() when the page loads with a query (a reload, a
+        shared link), on a patch from search() or clear(), and on Back/Forward.
+        """
+        q = params.get("q", "")
         self.query = q
         self.selected_index = -1
 
@@ -112,11 +135,9 @@ class XLiveSearch(Component):
 
         Demonstrates push_js() to clear input value.
         """
-        self.query = ""
-        self.results = []
-        self.selected_index = -1
-        self.is_open = False
         self.selected_book = None
+        # params_changed() empties the query and the results
+        await self.wire.push_to("search:index")
 
         # Clear the input field and refocus
         await self.push_js(JS().set_value(f"#{self.id} input[name=q]", "").focus(f"#{self.id} input[name=q]"))

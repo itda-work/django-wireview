@@ -118,7 +118,7 @@ source = "docs/tutorials/12-live-search.md"
 slug = "live-search"
 level = "intermediate"
 minutes = 90
-summary = "디바운스, JS 명령, 검색 자동완성"
+summary = "디바운스, 주소에 남는 검색어, JS 명령"
 
 [[sections.pages]]
 source = "docs/tutorials/13-quiz-app.md"

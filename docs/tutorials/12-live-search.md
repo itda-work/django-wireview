@@ -2,11 +2,12 @@
 
 > 동작하는 전체 코드: [examples/search/](../../examples/search/) — `make test`가 함께 돌리고, 릴리스 게이트(CI)가 태그마다 다시 돌리는 예제다.
 
-이 튜토리얼에서는 실시간 검색 기능을 만들며 디바운스와 키보드 내비게이션을 학습합니다.
+이 튜토리얼에서는 실시간 검색 기능을 만들며 디바운스, 주소에 남는 검색어, 키보드 내비게이션을 학습합니다.
 
 ## 학습 목표
 
 - `.debounce` 이벤트 수정자
+- `push_to()`와 `params_changed()`로 검색어를 주소에 남기기
 - `focus_on()` 포커스 관리
 - `push_js(JS())` 클라이언트 명령
 - 키보드 내비게이션
@@ -16,6 +17,7 @@
 
 검색어 입력 시 실시간으로 결과가 표시됩니다:
 - 입력 디바운스 (300ms)
+- 검색어가 주소(`/search/?q=장고`)에 남아 새로고침·공유한 링크·뒤로 가기에도 같은 결과
 - 화살표 키로 결과 탐색
 - Enter로 선택
 - Escape로 닫기
@@ -42,6 +44,8 @@ class Book(models.Model):
 `search/live.py`:
 
 ```python
+from urllib.parse import urlencode
+
 from django.db.models import Q
 
 from wireview import Component, JS
@@ -62,7 +66,17 @@ class XLiveSearch(Component):
     selected_book: Book | None = None
 
     async def search(self, q: str):
-        """검색 실행 (디바운스됨)"""
+        """검색어를 주소에 남긴다 (디바운스됨). 검색은 params_changed()가 한다"""
+        q = q.strip()
+        if q:
+            await self.wire.push_to(f"?{urlencode({'q': q})}")
+        else:
+            # 빈 검색어는 ?q= 없는 이 페이지의 주소로
+            await self.wire.push_to("search:index")
+
+    async def params_changed(self, params, uri):
+        """주소의 검색어로 결과를 낸다"""
+        q = params.get("q", "")
         self.query = q
         self.selected_index = -1
 
@@ -121,11 +135,9 @@ class XLiveSearch(Component):
 
     async def clear(self):
         """검색 초기화"""
-        self.query = ""
-        self.results = []
-        self.selected_index = -1
-        self.is_open = False
         self.selected_book = None
+        # 검색어와 결과는 params_changed()가 비운다
+        await self.wire.push_to("search:index")
 
         # JS로 input 초기화 및 포커스
         await self.push_js(
@@ -217,7 +229,80 @@ class XLiveSearch(Component):
 {% on 'scroll.throttle.100' 'on_scroll' %} <!-- 100ms마다 최대 1회 -->
 ```
 
-## 5. JS() 명령
+## 5. 검색어를 주소에 남기기
+
+검색 결과가 컴포넌트 상태에만 있으면 새로고침하면 사라지고, 주소를 보내 줘도 받은 사람은 빈 검색창을 봅니다.
+검색어를 주소의 쿼리(`?q=장고`)에 두면 주소가 곧 검색입니다.
+
+### 핸들러는 주소만 바꾼다
+
+`search`는 결과를 계산하지 않습니다. `push_to("?q=…")`로 주소를 바꿀 뿐이고, 결과는 `params_changed()`가
+냅니다. 같은 경로로 가는 `push_to`는 **patch**입니다. 페이지를 가져오지 않고 연결과 인스턴스가 그대로이며,
+클라이언트가 주소창을 바꾼 뒤 새 params를 서버에 알리면 `params_changed()`가 돕니다
+([내비게이션](../features/navigation.md)).
+
+결과를 내는 길을 `params_changed()` 하나로 두는 이유는 검색어가 들어오는 길이 넷이기 때문입니다.
+
+| 언제 | 무엇이 `params_changed()`를 부르나 |
+|------|-----------------------------------|
+| 입력 | `search`의 `push_to`가 patch로 |
+| 새로고침, 공유한 링크 | 주소에 쿼리가 있는 페이지의 join이 `joined()` 뒤에 |
+| 뒤로·앞으로 가기 | 이 페이지가 만든 항목이면 patch로, 새로고침 전의 항목이면 그 주소를 가져온 페이지의 join으로 |
+| Clear | `clear`의 `push_to`가 patch로 |
+
+`search`가 직접 결과를 계산하면 입력할 때는 맞고 새로고침이나 뒤로 가기에서만 다른 일이 일어납니다.
+하나의 길로 모으면 넷이 같은 결과를 냅니다.
+
+첫 HTTP 응답은 `params_changed()`를 부르지 않습니다. `?q=`가 있는 주소를 열면 빈 결과로 그려지고,
+WebSocket이 join한 직후 결과가 채워집니다.
+
+### 인코딩과 빈 검색어
+
+쿼리 문자열은 `urlencode`로 만듭니다. `f"?q={q}"`라고 쓰면 `&`나 `#`이 들어간 검색어는 거기서 잘리고
+`+`는 공백이 됩니다. 클라이언트는 받은 쿼리를 풀어서 보내므로 `params["q"]`는 입력한 그대로의 문자열입니다.
+
+빈 검색어는 `?q=`를 남기지 않고 페이지의 주소(`search:index`, 즉 `/search/`)로 갑니다. 경로가 지금 페이지와
+같으므로 이것도 patch이고, `params_changed()`가 빈 params를 받아 결과를 비웁니다.
+
+### `push_to`, `replace_to`, `self.wire.params`
+
+주소의 쿼리를 바꾸는 방법은 셋이고, 기록과 `params_changed()`에서 갈립니다.
+
+| 방법 | 기록 | `params_changed()` |
+|------|------|--------------------|
+| `await self.wire.push_to("?q=…")` | 새 항목 | 돈다 |
+| `await self.wire.replace_to("?q=…")` | 지금 항목을 바꾼다 | 돈다 |
+| `self.wire.params["q"] = q` | 지금 항목을 바꾼다 | 돌지 않는다 |
+
+이 예제는 `push_to`를 씁니다. 디바운스가 끝날 때마다, 즉 입력을 멈춘 검색어마다 기록 항목이 생기고,
+뒤로 가기는 바로 전 검색어로 돌아갑니다. 검색어를 고쳐 가며 결과를 비교하는 화면에 맞습니다.
+
+뒤로 가기가 검색창에 들어오기 전 페이지로 바로 가야 한다면 `replace_to`로 바꿉니다. 한 줄만 다르고
+나머지는 같습니다. 주소는 언제나 지금 검색어를 가리키므로 새로고침과 링크 공유는 그대로 됩니다.
+
+`self.wire.params`에 쓰는 것도 기록을 늘리지 않지만 `params_changed()`가 돌지 않습니다. 결과를 핸들러가
+직접 계산해야 하므로 결과를 내는 길이 다시 둘이 됩니다. 이미 그린 상태를 주소에 비춰 두기만 할 때 씁니다.
+
+### 테스트
+
+`mount(params=...)`가 주소에 쿼리가 있는 페이지의 join과 같습니다. 입력은 `call()` 뒤에 `follow_push()`로
+클라이언트가 할 나머지 절반을 합니다. `/search/`로 가는 push를 patch로 따라가려면 컴포넌트가 놓인 경로를
+`path=`로 알려 줍니다([테스트 헬퍼](../features/testing.md#push를-따라가기)).
+
+```python
+view = await mount(XLiveSearch, params={"q": "파이썬"})    # 새로고침·공유한 링크
+assert [book.title for book in view.component.results] == ["파이썬 입문"]
+
+view = await mount(XLiveSearch, path="/search/")
+await view.call("search", q="장고 실전")
+view.assert_pushed_to(params={"q": "장고 실전"})
+await view.follow_push()                                  # 브라우저가 하는 patch
+assert view.component.wire.params == {"q": "장고 실전"}
+```
+
+브라우저에서 입력 → 새로고침 → 뒤로 가기를 도는 E2E는 `examples/search/tests.py`의 `TestQueryInTheAddress`입니다.
+
+## 6. JS() 명령
 
 `push_js()`로 클라이언트에 JavaScript 명령을 보냅니다:
 
@@ -243,7 +328,7 @@ JS().add_class(selector, "class")  # 클래스 추가
 JS().remove_class(selector, "cls") # 클래스 제거
 ```
 
-## 6. 키보드 내비게이션 패턴
+## 7. 키보드 내비게이션 패턴
 
 ```html
 {% on 'keydown.key.ArrowDown.prevent' 'navigate' direction=1 %}
@@ -256,7 +341,7 @@ JS().remove_class(selector, "cls") # 클래스 제거
 
 1. **검색 하이라이트**: 검색어를 결과에서 강조 표시
 2. **최근 검색어**: 최근 검색어 기록 표시
-3. **카테고리 필터**: 카테고리별 필터링 추가
+3. **카테고리 필터**: 카테고리를 `?category=`로 주소에 함께 남기기 (`params_changed()`에서 둘 다 읽는다)
 
 ## 다음 단계
 

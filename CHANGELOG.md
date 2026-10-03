@@ -20,6 +20,8 @@ The django-reactor era changelog (2.x) is preserved in
 
 - The README says when to use wireview before it says when not to: six kinds of app, each with the
   features behind it and a tutorial or example that builds it (#172).
+- The Live Search example and tutorial keep the query in the address: typing pushes `?q=` and
+  `params_changed()` computes the results, so a reload, a shared link and Back show them too (#175).
 
 ## [1.2.0] - 2026-10-04
 
