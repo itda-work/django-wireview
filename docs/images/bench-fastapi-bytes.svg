@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 500" width="760" height="500" role="img" aria-labelledby="bytes-title bytes-desc"><title id="bytes-title">상호작용 하나의 WebSocket 전송량</title><desc id="bytes-desc">페이로드 바이트, 낮을수록 좋다. 프레임 헤더 제외, permessage-deflate 전. 누른 사용자가 보내고 받은 것 (B) — wireview · 값 하나 변경: 201 B (보냄 119 B · 받음 82 B); 누른 사용자가 보내고 받은 것 (B) — FastAPI + React · 값 하나 변경: 48 B (보냄 20 B · 받음 28 B); 누른 사용자가 보내고 받은 것 (B) — FastAPI + 손 JS · 값 하나 변경: 48 B (보냄 20 B · 받음 28 B); 누른 사용자가 보내고 받은 것 (B) — wireview · 50항목 맨 앞 삽입: 241 B (보냄 116 B · 받음 125 B); 누른 사용자가 보내고 받은 것 (B) — FastAPI + React · 50항목 맨 앞 삽입: 92 B (보냄 17 B · 받음 75 B); 누른 사용자가 보내고 받은 것 (B) — FastAPI + 손 JS · 50항목 맨 앞 삽입: 92 B (보냄 17 B · 받음 75 B); 누른 사용자가 보내고 받은 것 (B) — wireview · 다른 사용자에게 브로드캐스트: 201 B (보냄 118 B · 받음 83 B); 누른 사용자가 보내고 받은 것 (B) — FastAPI + React · 다른 사용자에게 브로드캐스트: 57 B (보냄 19 B · 받음 38 B); 누른 사용자가 보내고 받은 것 (B) — FastAPI + 손 JS · 다른 사용자에게 브로드캐스트: 57 B (보냄 19 B · 받음 38 B); 브로드캐스트를 받은 다른 사용자 (B) — wireview · 받은 것: 71 B; 브로드캐스트를 받은 다른 사용자 (B) — FastAPI + React · 받은 것: 38 B; 브로드캐스트를 받은 다른 사용자 (B) — FastAPI + 손 JS · 받은 것: 38 B</desc><style>.bg{fill:#fcfcfb}.t1{fill:#0b0b0b}.t2{fill:#52514e}.t3{fill:#898781}
+.grid{stroke:#e1e0d9}.base{stroke:#c3c2b7}
+.s0{fill:#2a78d6}.s1{fill:#eb6834}.s2{fill:#1baf7a}
+@media (prefers-color-scheme:dark){
+.bg{fill:#1a1a19}.t1{fill:#ffffff}.t2{fill:#c3c2b7}.t3{fill:#898781}
+.grid{stroke:#2c2c2a}.base{stroke:#383835}
+.s0{fill:#3987e5}.s1{fill:#d95926}.s2{fill:#199e70}
+}
+text{font-family:system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Noto Sans KR",sans-serif}</style><rect class="bg" width="760" height="500" rx="8"/>
+<text class="t1" x="24" y="42" font-size="17" font-weight="600">상호작용 하나의 WebSocket 전송량</text>
+<text class="t2" x="24" y="64" font-size="13">페이로드 바이트, 낮을수록 좋다. 프레임 헤더 제외, permessage-deflate 전</text>
+<rect class="s0" x="24" y="80" width="12" height="12" rx="3"/>
+<text class="t2" x="42" y="90" font-size="13">wireview</text>
+<rect class="s1" x="134" y="80" width="12" height="12" rx="3"/>
+<text class="t2" x="152" y="90" font-size="13">FastAPI + React</text>
+<rect class="s2" x="300" y="80" width="12" height="12" rx="3"/>
+<text class="t2" x="318" y="90" font-size="13">FastAPI + 손 JS</text>
+<text class="t1" x="24" y="130" font-size="14" font-weight="600">누른 사용자가 보내고 받은 것 (B)</text>
+<text class="t3" x="220" y="332" font-size="11" text-anchor="middle">0</text>
+<line class="grid" x1="334.7" y1="138" x2="334.7" y2="318"/>
+<text class="t3" x="334.7" y="332" font-size="11" text-anchor="middle">100</text>
+<line class="grid" x1="449.3" y1="138" x2="449.3" y2="318"/>
+<text class="t3" x="449.3" y="332" font-size="11" text-anchor="middle">200</text>
+<line class="grid" x1="564" y1="138" x2="564" y2="318"/>
+<text class="t3" x="564" y="332" font-size="11" text-anchor="middle">300</text>
+<line class="base" x1="220" y1="138" x2="220" y2="318"/>
+<text class="t1" x="24" y="169.5" font-size="13">값 하나 변경</text>
+<path class="s0" d="M220 142h226.3a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-226.3z"><title>wireview · 값 하나 변경: 201 B (보냄 119 B · 받음 82 B)</title></path>
+<text class="t2" x="456.3" y="153" font-size="12">201 B (보냄 119 B · 받음 82 B)</text>
+<path class="s1" d="M220 158h50.6a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-50.6z"><title>FastAPI + React · 값 하나 변경: 48 B (보냄 20 B · 받음 28 B)</title></path>
+<text class="t2" x="280.6" y="169" font-size="12">48 B (보냄 20 B · 받음 28 B)</text>
+<path class="s2" d="M220 174h50.6a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-50.6z"><title>FastAPI + 손 JS · 값 하나 변경: 48 B (보냄 20 B · 받음 28 B)</title></path>
+<text class="t2" x="280.6" y="185" font-size="12">48 B (보냄 20 B · 받음 28 B)</text>
+<text class="t1" x="24" y="231.5" font-size="13">50항목 맨 앞 삽입</text>
+<path class="s0" d="M220 204h272.5a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-272.5z"><title>wireview · 50항목 맨 앞 삽입: 241 B (보냄 116 B · 받음 125 B)</title></path>
+<text class="t2" x="502.5" y="215" font-size="12">241 B (보냄 116 B · 받음 125 B)</text>
+<path class="s1" d="M220 220h101.9a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-101.9z"><title>FastAPI + React · 50항목 맨 앞 삽입: 92 B (보냄 17 B · 받음 75 B)</title></path>
+<text class="t2" x="331.9" y="231" font-size="12">92 B (보냄 17 B · 받음 75 B)</text>
+<path class="s2" d="M220 236h101.9a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-101.9z"><title>FastAPI + 손 JS · 50항목 맨 앞 삽입: 92 B (보냄 17 B · 받음 75 B)</title></path>
+<text class="t2" x="331.9" y="247" font-size="12">92 B (보냄 17 B · 받음 75 B)</text>
+<text class="t1" x="24" y="293.5" font-size="13">다른 사용자에게 브로드캐스트</text>
+<path class="s0" d="M220 266h226a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-226z"><title>wireview · 다른 사용자에게 브로드캐스트: 201 B (보냄 118 B · 받음 83 B)</title></path>
+<text class="t2" x="456" y="277" font-size="12">201 B (보냄 118 B · 받음 83 B)</text>
+<path class="s1" d="M220 282h60.9a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-60.9z"><title>FastAPI + React · 다른 사용자에게 브로드캐스트: 57 B (보냄 19 B · 받음 38 B)</title></path>
+<text class="t2" x="290.9" y="293" font-size="12">57 B (보냄 19 B · 받음 38 B)</text>
+<path class="s2" d="M220 298h60.9a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-60.9z"><title>FastAPI + 손 JS · 다른 사용자에게 브로드캐스트: 57 B (보냄 19 B · 받음 38 B)</title></path>
+<text class="t2" x="290.9" y="309" font-size="12">57 B (보냄 19 B · 받음 38 B)</text>
+<text class="t1" x="24" y="362" font-size="14" font-weight="600">브로드캐스트를 받은 다른 사용자 (B)</text>
+<text class="t3" x="220" y="440" font-size="11" text-anchor="middle">0</text>
+<line class="grid" x1="306" y1="370" x2="306" y2="426"/>
+<text class="t3" x="306" y="440" font-size="11" text-anchor="middle">20</text>
+<line class="grid" x1="392" y1="370" x2="392" y2="426"/>
+<text class="t3" x="392" y="440" font-size="11" text-anchor="middle">40</text>
+<line class="grid" x1="478" y1="370" x2="478" y2="426"/>
+<text class="t3" x="478" y="440" font-size="11" text-anchor="middle">60</text>
+<line class="grid" x1="564" y1="370" x2="564" y2="426"/>
+<text class="t3" x="564" y="440" font-size="11" text-anchor="middle">80</text>
+<line class="base" x1="220" y1="370" x2="220" y2="426"/>
+<text class="t1" x="24" y="401.5" font-size="13">받은 것</text>
+<path class="s0" d="M220 374h299.6a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-299.6z"><title>wireview · 받은 것: 71 B</title></path>
+<text class="t2" x="529.6" y="385" font-size="12">71 B</text>
+<path class="s1" d="M220 390h157.7a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-157.7z"><title>FastAPI + React · 받은 것: 38 B</title></path>
+<text class="t2" x="387.7" y="401" font-size="12">38 B</text>
+<path class="s2" d="M220 406h157.7a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-157.7z"><title>FastAPI + 손 JS · 받은 것: 38 B</title></path>
+<text class="t2" x="387.7" y="417" font-size="12">38 B</text>
+<text class="t3" x="24" y="456" font-size="11">Apple M5 Pro · macOS 27.0 · Python 3.14.7 · Django 6.0 · FastAPI 0.142.2 · React 19.3.0 · chromium 141.0.7390.37 headless</text>
+<text class="t3" x="24" y="472" font-size="11">uvicorn 1프로세스, localhost · 5회차의 중앙값 · 원본 bench/results/95c1a4a-fastapi.json</text>
+</svg>

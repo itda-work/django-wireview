@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 438" width="760" height="438" role="img" aria-labelledby="server-title server-desc"><title id="server-title">서버가 하는 일</title><desc id="server-desc">같은 ASGI 래퍼로 잰 서버 처리 시간과 브로드캐스트 팬아웃, 낮을수록 좋다. 메시지 하나의 서버 처리, 받은 때부터 보낼 때까지 (ms) — wireview · 값 하나 변경: 1.5 ms; 메시지 하나의 서버 처리, 받은 때부터 보낼 때까지 (ms) — FastAPI + React · 값 하나 변경: 0.05 ms; 메시지 하나의 서버 처리, 받은 때부터 보낼 때까지 (ms) — FastAPI + 손 JS · 값 하나 변경: 0.04 ms; 메시지 하나의 서버 처리, 받은 때부터 보낼 때까지 (ms) — wireview · 50항목 맨 앞 삽입: 2.0 ms; 메시지 하나의 서버 처리, 받은 때부터 보낼 때까지 (ms) — FastAPI + React · 50항목 맨 앞 삽입: 0.04 ms; 메시지 하나의 서버 처리, 받은 때부터 보낼 때까지 (ms) — FastAPI + 손 JS · 50항목 맨 앞 삽입: 0.05 ms; 브로드캐스트 하나가 연결 1,000개에 모두 닿기까지 (ms) — wireview · 모든 연결이 받기까지: 632 ms; 브로드캐스트 하나가 연결 1,000개에 모두 닿기까지 (ms) — FastAPI + React · 모든 연결이 받기까지: 19.3 ms; 브로드캐스트 하나가 연결 1,000개에 모두 닿기까지 (ms) — FastAPI + 손 JS · 모든 연결이 받기까지: 21.5 ms</desc><style>.bg{fill:#fcfcfb}.t1{fill:#0b0b0b}.t2{fill:#52514e}.t3{fill:#898781}
+.grid{stroke:#e1e0d9}.base{stroke:#c3c2b7}
+.s0{fill:#2a78d6}.s1{fill:#eb6834}.s2{fill:#1baf7a}
+@media (prefers-color-scheme:dark){
+.bg{fill:#1a1a19}.t1{fill:#ffffff}.t2{fill:#c3c2b7}.t3{fill:#898781}
+.grid{stroke:#2c2c2a}.base{stroke:#383835}
+.s0{fill:#3987e5}.s1{fill:#d95926}.s2{fill:#199e70}
+}
+text{font-family:system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Noto Sans KR",sans-serif}</style><rect class="bg" width="760" height="438" rx="8"/>
+<text class="t1" x="24" y="42" font-size="17" font-weight="600">서버가 하는 일</text>
+<text class="t2" x="24" y="64" font-size="13">같은 ASGI 래퍼로 잰 서버 처리 시간과 브로드캐스트 팬아웃, 낮을수록 좋다</text>
+<rect class="s0" x="24" y="80" width="12" height="12" rx="3"/>
+<text class="t2" x="42" y="90" font-size="13">wireview</text>
+<rect class="s1" x="134" y="80" width="12" height="12" rx="3"/>
+<text class="t2" x="152" y="90" font-size="13">FastAPI + React</text>
+<rect class="s2" x="300" y="80" width="12" height="12" rx="3"/>
+<text class="t2" x="318" y="90" font-size="13">FastAPI + 손 JS</text>
+<text class="t1" x="24" y="130" font-size="14" font-weight="600">메시지 하나의 서버 처리, 받은 때부터 보낼 때까지 (ms)</text>
+<text class="t3" x="220" y="270" font-size="11" text-anchor="middle">0</text>
+<line class="grid" x1="306" y1="138" x2="306" y2="256"/>
+<text class="t3" x="306" y="270" font-size="11" text-anchor="middle">0.5</text>
+<line class="grid" x1="392" y1="138" x2="392" y2="256"/>
+<text class="t3" x="392" y="270" font-size="11" text-anchor="middle">1</text>
+<line class="grid" x1="478" y1="138" x2="478" y2="256"/>
+<text class="t3" x="478" y="270" font-size="11" text-anchor="middle">1.5</text>
+<line class="grid" x1="564" y1="138" x2="564" y2="256"/>
+<text class="t3" x="564" y="270" font-size="11" text-anchor="middle">2</text>
+<line class="base" x1="220" y1="138" x2="220" y2="256"/>
+<text class="t1" x="24" y="169.5" font-size="13">값 하나 변경</text>
+<path class="s0" d="M220 142h257.4a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-257.4z"><title>wireview · 값 하나 변경: 1.5 ms</title></path>
+<text class="t2" x="487.4" y="153" font-size="12">1.5 ms</text>
+<path class="s1" d="M220 158h3.9a3.9 3.9 0 0 1 3.9 3.9v6.2a3.9 3.9 0 0 1 -3.9 3.9h-3.9z"><title>FastAPI + React · 값 하나 변경: 0.05 ms</title></path>
+<text class="t2" x="233.8" y="169" font-size="12">0.05 ms</text>
+<path class="s2" d="M220 174h3.6a3.6 3.6 0 0 1 3.6 3.6v6.8a3.6 3.6 0 0 1 -3.6 3.6h-3.6z"><title>FastAPI + 손 JS · 값 하나 변경: 0.04 ms</title></path>
+<text class="t2" x="233.2" y="185" font-size="12">0.04 ms</text>
+<text class="t1" x="24" y="231.5" font-size="13">50항목 맨 앞 삽입</text>
+<path class="s0" d="M220 204h332.2a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-332.2z"><title>wireview · 50항목 맨 앞 삽입: 2.0 ms</title></path>
+<text class="t2" x="562.2" y="215" font-size="12">2.0 ms</text>
+<path class="s1" d="M220 220h3.8a3.8 3.8 0 0 1 3.8 3.8v6.4a3.8 3.8 0 0 1 -3.8 3.8h-3.8z"><title>FastAPI + React · 50항목 맨 앞 삽입: 0.04 ms</title></path>
+<text class="t2" x="233.6" y="231" font-size="12">0.04 ms</text>
+<path class="s2" d="M220 236h4.1a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-4.1z"><title>FastAPI + 손 JS · 50항목 맨 앞 삽입: 0.05 ms</title></path>
+<text class="t2" x="234.1" y="247" font-size="12">0.05 ms</text>
+<text class="t1" x="24" y="300" font-size="14" font-weight="600">브로드캐스트 하나가 연결 1,000개에 모두 닿기까지 (ms)</text>
+<text class="t3" x="220" y="378" font-size="11" text-anchor="middle">0</text>
+<line class="grid" x1="306" y1="308" x2="306" y2="364"/>
+<text class="t3" x="306" y="378" font-size="11" text-anchor="middle">200</text>
+<line class="grid" x1="392" y1="308" x2="392" y2="364"/>
+<text class="t3" x="392" y="378" font-size="11" text-anchor="middle">400</text>
+<line class="grid" x1="478" y1="308" x2="478" y2="364"/>
+<text class="t3" x="478" y="378" font-size="11" text-anchor="middle">600</text>
+<line class="grid" x1="564" y1="308" x2="564" y2="364"/>
+<text class="t3" x="564" y="378" font-size="11" text-anchor="middle">800</text>
+<line class="base" x1="220" y1="308" x2="220" y2="364"/>
+<text class="t1" x="24" y="339.5" font-size="13">모든 연결이 받기까지</text>
+<path class="s0" d="M220 312h267.6a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-267.6z"><title>wireview · 모든 연결이 받기까지: 632 ms</title></path>
+<text class="t2" x="497.6" y="323" font-size="12">632 ms</text>
+<path class="s1" d="M220 328h4.3a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-4.3z"><title>FastAPI + React · 모든 연결이 받기까지: 19.3 ms</title></path>
+<text class="t2" x="234.3" y="339" font-size="12">19.3 ms</text>
+<path class="s2" d="M220 344h5.2a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-5.2z"><title>FastAPI + 손 JS · 모든 연결이 받기까지: 21.5 ms</title></path>
+<text class="t2" x="235.2" y="355" font-size="12">21.5 ms</text>
+<text class="t3" x="24" y="394" font-size="11">Apple M5 Pro · macOS 27.0 · Python 3.14.7 · Django 6.0 · FastAPI 0.142.2 · React 19.3.0 · chromium 141.0.7390.37 headless</text>
+<text class="t3" x="24" y="410" font-size="11">uvicorn 1프로세스, localhost · 5회차의 중앙값 · 원본 bench/results/95c1a4a-fastapi.json</text>
+</svg>

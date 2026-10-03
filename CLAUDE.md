@@ -233,6 +233,9 @@ editors/vscode/            VS Code 확장(#156). wheel·sdist에 싣지 않고 �
                            신뢰하지 않은 워크스페이스에서는 프로세스를 띄우지도 메타데이터를 읽지도 않는다(folders.ts 의 run·load).
                            CI의 vscode-extension-host 잡(VS Code 다운로드)만 릴리스 게이트 밖이다
 bench/                     성능 벤치마크 (make bench, make bench-compare BASE=<ref>). windows/ 는 Parallels 게스트 실측 레인. 설명은 bench/README.md
+                           compare_fastapi/ 는 같은 화면을 wireview와 FastAPI(React·손 JS)로 만든 비교 벤치(make bench-fastapi, #174).
+                           chart.py 가 RESULT 하나에서 docs/images/bench-fastapi-*.svg 와 PERFORMANCE.md 의 표를 만들고,
+                           tests/test_bench_fastapi.py 가 README "숫자"·PERFORMANCE.md 의 숫자·차트가 그 결과와 같은지 본다
 typings/                   channels 타입 스텁 (pyright용)
 skills/wireview/           앱 개발자용 스킬의 정본. 휠에 wireview/agent_skills/ 로 실린다(hatch_build.py가 링크를 태그로 고정).
                            .claude/skills/wireview 는 이것을 가리키는 심링크(dogfooding)

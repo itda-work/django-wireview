@@ -119,12 +119,15 @@ def test_the_version_file_is_the_tag(site):
 def test_assets_are_named_by_their_content(site):
     assets = sorted((site.out / "wireview" / "assets").iterdir())
     named = [path for path in assets if not path.name.endswith(".gz")]
+    # The documents' images: README's overview and the benchmark charts (docs/images, #174)
+    charts = {path.name for path in (ROOT / "docs" / "images").glob("*.svg")}
+    assert charts
     assert {re.sub(r"\.[0-9a-f]{10}\.", ".", path.name) for path in named} == {
         "site.css",
         "site.js",
         "boot.js",
         "overview.jpg",
-    }
+    } | charts
     for path in named:
         digest = path.name.split(".")[1]
         assert hashlib.sha256(path.read_bytes()).hexdigest().startswith(digest), path.name
@@ -230,6 +233,18 @@ def test_the_readmes_image_is_in_the_build(site):
     assert f"![Wireview 아키텍처 개요]({src.group(1)})" in (site.out / "wireview" / "index.md").read_text(
         encoding="utf-8"
     )
+
+
+def test_the_readmes_charts_are_in_the_build(site):
+    """The home page's benchmark charts (#174) are files of the build, from the raw main URLs README names."""
+    page = _html(site.out, "/wireview/")
+    for chart in sorted((ROOT / "docs" / "images").glob("bench-fastapi-*.svg")):
+        if chart.name == "bench-fastapi-loc.svg":
+            continue  # docs/PERFORMANCE.md shows it, the README does not
+        stem = chart.name.removesuffix(".svg")
+        src = re.search(rf'<img src="(/wireview/assets/{stem}\.[0-9a-f]{{10}}\.svg)"', page)
+        assert src, chart.name
+        assert (site.out / src.group(1).lstrip("/")).read_bytes() == chart.read_bytes()
 
 
 def test_every_text_file_has_its_gzip_twin(site):
@@ -1160,7 +1175,7 @@ def test_every_text_file_the_build_writes_has_a_charset(site):
     # A text file is one the build compresses; an image is served with its own type and no charset.
     suffixes = {path.suffix for path in files if path.with_name(path.name + ".gz").is_file()}
     assert suffixes == set(TEXT_TYPES), suffixes
-    assert {path.suffix for path in files} - suffixes == {".jpg"}
+    assert {path.suffix for path in files} - suffixes == {".jpg", ".svg"}
     assert all(value.endswith("; charset=utf-8") for value in TEXT_TYPES.values())
 
 

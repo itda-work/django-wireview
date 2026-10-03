@@ -61,11 +61,12 @@ pmlab_stop
 
 ## FastAPI와 비교
 
-`bench/compare_fastapi/`는 같은 작은 앱을 wireview와 FastAPI로 한 번씩 만들어 같은 조건에서 잰다(#174). 결과는 `bench/results/<커밋>-fastapi.json`에 남는다.
+`bench/compare_fastapi/`는 같은 작은 앱을 wireview와 FastAPI로 한 번씩 만들어 같은 조건에서 잰다(#174). 결과는 `bench/results/<커밋>-fastapi.json`에, 차트는 `docs/images/bench-fastapi-*.svg`에 남고, 해석은 [성능 가이드](../docs/PERFORMANCE.md#fastapi와-비교)에 있다.
 
 ```bash
 make bench-fastapi                     # 클라이언트 빌드 → 세 구현을 5회차씩 → bench/results/<커밋>[-dirty]-fastapi.json
 make bench-fastapi ARGS="--rounds 1 --clicks 30 --loads 4 --connections 200"   # 빨리 한 번 (몇 분)
+make bench-fastapi-charts              # chart.py 의 RESULT 가 가리키는 결과에서 SVG 차트를 다시 만든다
 ```
 
 node와 Playwright의 chromium이 필요하다. FastAPI는 런타임 의존성이 아니다 — `uv run --with fastapi==<버전>`으로 그 실행에만 얹는다(버전은 Makefile의 `FASTAPI_VERSION`). React·Vite는 `bench/compare_fastapi/client/package.json`과 그 lock에 있다.
@@ -104,3 +105,7 @@ node와 Playwright의 chromium이 필요하다. FastAPI는 런타임 의존성�
 첫 화면을 `about:blank`에서 열지 않는 이유: Django의 `SecurityMiddleware`가 기본으로 보내는 `Cross-Origin-Opener-Policy` 헤더가 있으면 Chromium이 렌더러 프로세스를 바꾸고, 그 값(이 기계에서 약 35ms)을 wireview 쪽만 냈다. 다른 사이트에서 들어오면 헤더와 상관없이 세 구현이 모두 프로세스를 바꾼다. 실제 방문자의 조건이 이쪽이다.
 
 `dom_ms`와 `paint_ms`를 둘 다 싣는 이유: React와 손 JS는 메시지가 오자마자 DOM을 바꾸고 브라우저가 다음 프레임에 그린다. wireview 클라이언트는 패치를 그 다음 프레임(`requestAnimationFrame`)까지 모았다가 그 자리에서 쓴다. 그래서 `dom_ms`는 wireview에서만 프레임 하나만큼 늦게 나오지만, 사용자가 보는 것은 `paint_ms`다.
+
+### 결과를 문서에 싣기
+
+README "숫자"와 성능 가이드의 차트·표·숫자는 모두 `bench/compare_fastapi/chart.py`의 `RESULT`가 가리키는 결과 하나에서 나온다. 새로 쟀으면 `RESULT`를 새 파일로 바꾸고 `make bench-fastapi-charts`로 차트를 다시 만든 뒤, `python -m bench.compare_fastapi.chart --table`의 표를 성능 가이드에 붙이고 README와 성능 가이드의 문장을 새 숫자로 고친다(`--facts`가 README가 인용하는 값을 보여 준다). `tests/test_bench_fastapi.py`가 차트·표·문장의 숫자가 그 결과와 같은지, `RESULT`가 가장 새 측정인지, 결과의 코드 줄 수가 지금 구현과 같은지 본다. 구현을 고치면 다시 잰다.

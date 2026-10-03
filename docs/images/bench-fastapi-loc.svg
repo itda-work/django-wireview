@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 314" width="760" height="314" role="img" aria-labelledby="loc-title loc-desc"><title id="loc-title">같은 화면을 만든 코드 줄 수</title><desc id="loc-desc">사람이 쓴 줄, 빈 줄·주석·docstring 제외 (bench/compare_fastapi/loc.py). 줄 수 — wireview · 앱 코드 (서버 + 화면): 51줄; 줄 수 — FastAPI + React · 앱 코드 (서버 + 화면): 92줄; 줄 수 — FastAPI + 손 JS · 앱 코드 (서버 + 화면): 78줄; 줄 수 — wireview · 프로젝트 골격 (설정·빌드): 64줄; 줄 수 — FastAPI + React · 프로젝트 골격 (설정·빌드): 23줄; 줄 수 — FastAPI + 손 JS · 프로젝트 골격 (설정·빌드): 23줄</desc><style>.bg{fill:#fcfcfb}.t1{fill:#0b0b0b}.t2{fill:#52514e}.t3{fill:#898781}
+.grid{stroke:#e1e0d9}.base{stroke:#c3c2b7}
+.s0{fill:#2a78d6}.s1{fill:#eb6834}.s2{fill:#1baf7a}
+@media (prefers-color-scheme:dark){
+.bg{fill:#1a1a19}.t1{fill:#ffffff}.t2{fill:#c3c2b7}.t3{fill:#898781}
+.grid{stroke:#2c2c2a}.base{stroke:#383835}
+.s0{fill:#3987e5}.s1{fill:#d95926}.s2{fill:#199e70}
+}
+text{font-family:system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Noto Sans KR",sans-serif}</style><rect class="bg" width="760" height="314" rx="8"/>
+<text class="t1" x="24" y="42" font-size="17" font-weight="600">같은 화면을 만든 코드 줄 수</text>
+<text class="t2" x="24" y="64" font-size="13">사람이 쓴 줄, 빈 줄·주석·docstring 제외 (bench/compare_fastapi/loc.py)</text>
+<rect class="s0" x="24" y="80" width="12" height="12" rx="3"/>
+<text class="t2" x="42" y="90" font-size="13">wireview</text>
+<rect class="s1" x="134" y="80" width="12" height="12" rx="3"/>
+<text class="t2" x="152" y="90" font-size="13">FastAPI + React</text>
+<rect class="s2" x="300" y="80" width="12" height="12" rx="3"/>
+<text class="t2" x="318" y="90" font-size="13">FastAPI + 손 JS</text>
+<text class="t1" x="24" y="130" font-size="14" font-weight="600">줄 수</text>
+<text class="t3" x="220" y="270" font-size="11" text-anchor="middle">0</text>
+<line class="grid" x1="392" y1="138" x2="392" y2="256"/>
+<text class="t3" x="392" y="270" font-size="11" text-anchor="middle">50</text>
+<line class="grid" x1="564" y1="138" x2="564" y2="256"/>
+<text class="t3" x="564" y="270" font-size="11" text-anchor="middle">100</text>
+<line class="base" x1="220" y1="138" x2="220" y2="256"/>
+<text class="t1" x="24" y="169.5" font-size="13">앱 코드 (서버 + 화면)</text>
+<path class="s0" d="M220 142h171.4a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-171.4z"><title>wireview · 앱 코드 (서버 + 화면): 51줄</title></path>
+<text class="t2" x="401.4" y="153" font-size="12">51줄</text>
+<path class="s1" d="M220 158h312.5a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-312.5z"><title>FastAPI + React · 앱 코드 (서버 + 화면): 92줄</title></path>
+<text class="t2" x="542.5" y="169" font-size="12">92줄</text>
+<path class="s2" d="M220 174h264.3a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-264.3z"><title>FastAPI + 손 JS · 앱 코드 (서버 + 화면): 78줄</title></path>
+<text class="t2" x="494.3" y="185" font-size="12">78줄</text>
+<text class="t1" x="24" y="231.5" font-size="13">프로젝트 골격 (설정·빌드)</text>
+<path class="s0" d="M220 204h216.2a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-216.2z"><title>wireview · 프로젝트 골격 (설정·빌드): 64줄</title></path>
+<text class="t2" x="446.2" y="215" font-size="12">64줄</text>
+<path class="s1" d="M220 220h75.1a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-75.1z"><title>FastAPI + React · 프로젝트 골격 (설정·빌드): 23줄</title></path>
+<text class="t2" x="305.1" y="231" font-size="12">23줄</text>
+<path class="s2" d="M220 236h75.1a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-75.1z"><title>FastAPI + 손 JS · 프로젝트 골격 (설정·빌드): 23줄</title></path>
+<text class="t2" x="305.1" y="247" font-size="12">23줄</text>
+<text class="t3" x="24" y="286" font-size="11">Apple M5 Pro · 원본 bench/results/95c1a4a-fastapi.json</text>
+</svg>

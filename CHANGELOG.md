@@ -22,6 +22,11 @@ The django-reactor era changelog (2.x) is preserved in
   features behind it and a tutorial or example that builds it (#172).
 - The Live Search example and tutorial keep the query in the address: typing pushes `?q=` and
   `params_changed()` computes the results, so a reload, a shared link and Back show them too (#175).
+- The README's numbers are charts that compare wireview with FastAPI (a React and a framework-free
+  client) building the same page under the same conditions: click to paint, server work, a broadcast
+  to 1,000 connections, the first load and the bytes per interaction, the ones wireview loses
+  included. `make bench-fastapi` measures it, `make bench-fastapi-charts` draws the charts from the
+  result, and `tests/test_bench_fastapi.py` fails until the documents quote what the result says (#174).
 
 ## [1.2.0] - 2026-10-04
 

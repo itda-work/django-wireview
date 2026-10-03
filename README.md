@@ -55,11 +55,25 @@ class XHello(Component):
 
 ## 숫자
 
-Apple Silicon macOS에서 `make bench`로 잰 값이고, 네트워크 왕복과 DB 조회는 들어 있지 않습니다. 조건과 원본 파일은 [성능 가이드](https://github.com/itda-work/django-wireview/blob/main/docs/PERFORMANCE.md#측정값)에 있습니다.
+같은 작은 화면(값 하나, 항목 50개 피드, 다른 사용자에게 가는 알림)을 wireview와 FastAPI로 한 번씩 만들어 같은 기계, 같은 서버(uvicorn 1프로세스), 같은 브라우저에서 쟀습니다. FastAPI 쪽 클라이언트는 React와 프레임워크 없는 손 JS 둘입니다.
 
-- 이벤트 하나의 서버 처리(핸들러와 diff, CPU 한 코어): 값 7개인 컴포넌트 0.28ms, 항목 50개 목록 1.1ms
-- 값 하나가 바뀐 응답: 239B. 항목 50개 목록에서 항목 하나가 바뀌면 656B
-- 연결 2,000개, daphne 4프로세스와 channels-nats: 연결당 메모리 55KB, 이벤트 초당 12,387개, 브로드캐스트 하나가 2,000연결을 모두 다시 그리기까지 141ms. 그보다 많은 연결은 확인하지 않았으니 직접 잽니다
+![클릭에서 화면까지: wireview와 FastAPI](https://raw.githubusercontent.com/itda-work/django-wireview/main/docs/images/bench-fastapi-latency.svg)
+
+클릭이 화면에 그려지기까지는 셋 다 한 프레임 안팎입니다. wireview 12.9 ms, FastAPI + React 10.8 ms, 손 JS 10.9 ms이고, 실제 사용자는 여기에 네트워크 왕복(RTT)이 더해집니다.
+
+![서버가 하는 일: wireview와 FastAPI](https://raw.githubusercontent.com/itda-work/django-wireview/main/docs/images/bench-fastapi-server.svg)
+
+서버의 일은 wireview가 훨씬 많습니다. 메시지 하나에 1.5 ms(FastAPI 0.05 ms)가 들고, 브로드캐스트는 연결마다 다시 렌더하므로 연결 1,000개에 632 ms(FastAPI 19.3 ms)가 걸립니다.
+
+![첫 화면: wireview와 FastAPI](https://raw.githubusercontent.com/itda-work/django-wireview/main/docs/images/bench-fastapi-first-load.svg)
+
+첫 화면은 서버가 끝까지 그린 HTML이라 먼저 보입니다. 첫 페인트(FCP)가 44.0 ms(React 60.0 ms, 손 JS 56.0 ms)이고, 내려받는 HTML과 JS는 gzip으로 25.9 KB(React 68.5 KB, 손 JS 1.1 KB)입니다.
+
+![상호작용 하나의 전송량: wireview와 FastAPI](https://raw.githubusercontent.com/itda-work/django-wireview/main/docs/images/bench-fastapi-bytes.svg)
+
+상호작용 하나의 WebSocket 전송량은 wireview가 더 큽니다. 값 하나를 바꾸면 보내고 받는 것이 201 B(FastAPI 48 B)입니다. wireview의 메시지는 컴포넌트 id, 핸들러 이름, diff 구조를 함께 싣고, FastAPI 쪽은 바뀐 값만 싣습니다.
+
+Apple M5 Pro macOS, localhost, DB 없이 5회차의 중앙값입니다. 방법과 공정성 규칙, 원본 결과, 전체 표는 [성능 가이드](https://github.com/itda-work/django-wireview/blob/main/docs/PERFORMANCE.md#fastapi와-비교)에 있습니다.
 
 ## 설치
 
