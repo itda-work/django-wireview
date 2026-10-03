@@ -27,20 +27,31 @@ class XHello(Component):
 
 입력이 300ms 멈추면 `change_name`이 서버에서 돌고, 다시 렌더한 HTML의 바뀐 부분만 diff로 내려와 `<h1>`의 인사말이 바뀝니다. [스타터 템플릿](#설치-및-설정)이 만드는 첫 컴포넌트 그대로입니다.
 
+## 이럴 때 쓰세요
+
+화면이 서버의 데이터에서 나오고 그 데이터를 이미 Django로 다루는 앱에 맞습니다. 기존 프로젝트에는 뷰·템플릿을 그대로 두고 화면 하나씩 들입니다([이미 있는 프로젝트에 붙이기](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/01-getting-started.md#2-이미-있는-프로젝트에-붙이기)).
+
+- **Django 팀이 만드는 사내 도구·관리 화면·대시보드.** 핸들러가 모델과 로그인 사용자를 바로 쓰고, 그 사이에 API 계층이 없습니다. 느린 집계는 [`assign_async`](https://github.com/itda-work/django-wireview/blob/main/docs/features/async-operations.md)로 미루고, 페이지의 인증 경계는 [live_session](https://github.com/itda-work/django-wireview/blob/main/docs/features/live-session.md)이 지킵니다. 보기: [Dashboard](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/05-dashboard.md).
+- **입력하는 동안 서버 검증이 보이는 업무 폼.** 핸들러에서 Django 폼의 `is_valid()`를 그대로 돌리고, [`wire-feedback-for`](https://github.com/itda-work/django-wireview/blob/main/docs/features/form-feedback.md)가 건드린 칸의 오류만 보여 줍니다. 보기: [Django 폼과 함께 쓰기](https://github.com/itda-work/django-wireview/blob/main/docs/features/form-feedback.md#django-폼과-함께-쓰기).
+- **여러 사람이 같은 데이터를 보며 고치는 화면**(알림, 진행 상황, 채팅, 투표, 접속자). `broadcast()`와 [모델 알림](https://github.com/itda-work/django-wireview/blob/main/docs/features/settings.md#모델-알림)(`AUTO_BROADCAST`)이 열린 화면을 다시 그리고, [Presence](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/07-presence-api.md)가 접속자를, [Streams](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/06-streams-api.md)가 쌓이는 목록을 맡습니다. 보기: [Chat](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/04-chat-app.md), [Poll](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/10-poll-app.md), [Notifications](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/14-notifications.md).
+- **검색·필터·탭이 주소에 남는 목록.** `self.wire.params`가 쿼리를 고치고, 같은 경로로 가는 [`push_to`](https://github.com/itda-work/django-wireview/blob/main/docs/features/navigation.md)는 연결을 유지한 채 `params_changed()`만 부릅니다. 보기: Dashboard의 [탭 네비게이션](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/05-dashboard.md#탭-네비게이션), [Live Search](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/12-live-search.md)의 debounce.
+- **검색엔진과 JavaScript 없는 브라우저에도 보여야 하는 페이지.** 첫 응답이 끝까지 그린 HTML이고, `action`을 적은 폼은 JavaScript가 없으면 그 뷰로 갑니다. 보기: [JavaScript 없는 첫 렌더](https://github.com/itda-work/django-wireview/blob/main/docs/features/dead-view.md).
+- **진행률과 검증이 필요한 파일 업로드.** 확장자·크기·파일 시그니처를 검사하고 진행률을 컴포넌트가 그립니다. 청크 엔드포인트는 상태가 없어 워커가 여럿이어도 됩니다([청크 업로드](https://github.com/itda-work/django-wireview/blob/main/docs/features/chunked-uploads.md)). 보기: [File Uploads](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/08-file-uploads.md).
+
 ## 이럴 땐 쓰지 마세요
 
-모든 이벤트는 서버 왕복을 한 번 거칩니다. 로딩 클래스, `wire-disabled-with`, 그 자리에서 실행되는 `JS()` 명령, debounce가 그 시간을 가리지만([Optimistic UI](https://github.com/itda-work/django-wireview/blob/main/docs/features/optimistic-ui.md)) 없애지는 못합니다. 그래서 아래 경우에는 다른 도구가 맞습니다.
+모든 이벤트는 서버 왕복을 한 번 거칩니다. 로딩 클래스, `wire-disabled-with`, 즉시 실행되는 `JS()` 명령, debounce가 그 시간을 가리지만([Optimistic UI](https://github.com/itda-work/django-wireview/blob/main/docs/features/optimistic-ui.md)) 없애지는 못합니다.
 
-- **오프라인에서도 돌아야 하는 앱.** 연결이 끊긴 동안의 이벤트는 보내지 않고 버립니다. 대신 로컬 저장소를 쓰는 PWA나 SPA.
-- **매 프레임 반응해야 하는 상호작용**(드래그, 캔버스, 게임). 프레임마다 왕복을 끼울 수 없습니다. 대신 그 부분만 [JavaScript 훅](https://github.com/itda-work/django-wireview/blob/main/docs/features/hooks.md)으로 브라우저에서 처리하고 결과만 서버로 보냅니다.
+- **오프라인에서도 돌아야 하는 앱.** 끊긴 동안의 이벤트는 버립니다. 대신 로컬 저장소를 쓰는 PWA나 SPA.
+- **매 프레임 반응해야 하는 상호작용**(드래그, 캔버스, 게임). 대신 그 부분만 [JavaScript 훅](https://github.com/itda-work/django-wireview/blob/main/docs/features/hooks.md)으로 브라우저에서 처리하고 결과만 서버로 보냅니다.
 - **왕복 지연(RTT)이 큰 망의 사용자가 주 대상인 앱.** 클릭마다의 체감이 RTT에 묶입니다. 대신 SPA.
-- **서버리스·scale-to-zero 호스팅.** 연결마다 WebSocket과 컴포넌트 상태를 계속 들고 있는 프로세스가 있어야 합니다. 대신 일반 Django 뷰(필요하면 htmx).
-- **WebSocket이 막힌 망**(일부 기업 프록시·VPN). HTTP 폴백이 없고, 만들지 않기로 했습니다([결정 기록](https://github.com/itda-work/django-wireview/blob/main/docs/design/longpolling-fallback.md)). 대신 일반 HTTP 요청만 쓰는 Django 뷰(htmx).
+- **서버리스·scale-to-zero 호스팅.** 연결마다 WebSocket과 상태를 들고 있는 프로세스가 있어야 합니다. 대신 일반 Django 뷰(필요하면 htmx).
+- **WebSocket이 막힌 망**(일부 기업 프록시·VPN). HTTP 폴백은 만들지 않기로 했습니다([결정 기록](https://github.com/itda-work/django-wireview/blob/main/docs/design/longpolling-fallback.md)). 대신 htmx 같은 일반 HTTP.
 - **클라이언트 상태가 본체인 앱**(협업 편집기, 리치 에디터, 스프레드시트). 훅이 앱 전체가 됩니다. 대신 SPA와 CRDT(Yjs 등).
-- **읽기만 하는 대량 구독 페이지**(실시간 스코어 등). 연결마다 서버에 상태를 두고, 브로드캐스트 하나가 구독한 연결 수만큼 다시 렌더됩니다. 대신 SSE와 CDN. 조작하는 부분만 wireview로 둡니다.
+- **읽기만 하는 대량 구독 페이지**(실시간 스코어 등). 브로드캐스트 하나가 구독한 연결 수만큼 다시 렌더됩니다. 대신 SSE와 CDN, 조작하는 부분만 wireview.
 - **다른 사이트에 심는 위젯.** 소켓은 Origin이 `ALLOWED_HOSTS`에 있는 페이지에서만 열립니다. 대신 독립 JS 위젯.
 
-결격이 아니라 따로 따질 일도 있습니다. 외부에 공개 API가 필요하면 DRF나 Django Ninja를 함께 둡니다(같은 모델과 인증을 씁니다). SPA 자산과 디자인 시스템이 이미 큰 조직이라면 기술이 아니라 도입 비용의 문제입니다. 느리다·굼뜨다·개발이 어렵다는 반론에 대한 답은 [왜 wireview인가](https://github.com/itda-work/django-wireview/blob/main/docs/WHY.md)에 모았습니다.
+외부 공개 API가 필요하면 DRF나 Django Ninja를 같은 모델·인증 위에 함께 둡니다. SPA 자산이 이미 큰 조직이라면 기술이 아니라 도입 비용의 문제입니다. 흔한 반론에 대한 답은 [왜 wireview인가](https://github.com/itda-work/django-wireview/blob/main/docs/WHY.md)에 있습니다.
 
 ## 숫자
 

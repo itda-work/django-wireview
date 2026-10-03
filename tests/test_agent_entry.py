@@ -151,20 +151,21 @@ def test_the_readme_wires_a_project_as_tutorial_01_does():
 
 
 def test_the_readme_opens_with_what_a_reader_decides_on_before_the_agent_prompt():
-    """README's first screen (#167): what it is and a link to the AI section, an example, when not to
-    use it, numbers, install, and then the agent prompt."""
+    """README's first screen (#167, #172): what it is and a link to the AI section, an example, when to
+    use it and then when not to, numbers, install, and then the agent prompt."""
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     first = readme.split("\n```", 1)[0]
     assert "](#ai-에이전트로-시작하기)" in first and "llms.txt" not in first
-    headings = [line for line in readme.splitlines() if line.startswith("## ")][:5]
+    headings = [line for line in readme.splitlines() if line.startswith("## ")][:6]
     assert headings == [
+        "## 이럴 때 쓰세요",
         "## 이럴 땐 쓰지 마세요",
         "## 숫자",
         "## 설치",
         "## AI 에이전트로 시작하기",
         "## 무엇이 포함되어 있나요?",
     ]
-    assert readme.index("```html") < readme.index("## 이럴 땐 쓰지 마세요")
+    assert readme.index("```html") < readme.index("## 이럴 때 쓰세요") < readme.index("## 이럴 땐 쓰지 마세요")
 
 
 def test_the_readme_and_the_skill_page_name_where_the_build_writes():

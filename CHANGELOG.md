@@ -10,6 +10,11 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Changed
+
+- The README says when to use wireview before it says when not to: six kinds of app, each with the
+  features behind it and a tutorial or example that builds it (#172).
+
 ## [1.2.0] - 2026-10-04
 
 ### Added
