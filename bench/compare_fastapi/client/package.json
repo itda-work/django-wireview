@@ -1,0 +1,16 @@
+{
+  "name": "wireview-bench-fastapi-client",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build --mode react && vite build --mode vanilla"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.1",
+    "vite": "^8.3.2"
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  }
+}

@@ -1,4 +1,4 @@
-.PHONY: ext-install ext-check ext-test ext-build ext-package ext-test-host all install test test-unit test-e2e test-concurrent test-matrix test-latest test-lowest test-cov test-js bench bench-compare lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js ci-smoke docs-site docs-site-bundle docs-serve
+.PHONY: ext-install ext-check ext-test ext-build ext-package ext-test-host all install test test-unit test-e2e test-concurrent test-matrix test-latest test-lowest test-cov test-js bench bench-compare bench-fastapi lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js ci-smoke docs-site docs-site-bundle docs-serve
 
 # Default target
 all: install build
@@ -172,6 +172,14 @@ bench:
 # Benchmark a past commit next to the current tree: make bench-compare BASE=997ee59
 bench-compare:
 	./bench/compare.sh $(BASE) $(ARGS)
+
+# The same small app built with wireview and with FastAPI (React and vanilla clients),
+# measured under the same conditions (bench/README.md). Needs node and Playwright's chromium.
+FASTAPI_VERSION ?= 0.142.2
+bench-fastapi: build-js playwright-install
+	npm --prefix bench/compare_fastapi/client ci
+	npm --prefix bench/compare_fastapi/client run build
+	uv run --with fastapi==$(FASTAPI_VERSION) python -m bench.compare_fastapi.measure $(ARGS)
 
 # =============================================================================
 # Cleanup

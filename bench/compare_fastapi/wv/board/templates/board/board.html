@@ -1,0 +1,18 @@
+{% load wireview %}
+
+<main {% tag_header %}>
+  <p>
+    Count <span id="count">{{ count }}</span>
+    <button id="increment" {% on "click" "increment" %}>+1</button>
+  </p>
+  <p>
+    Announcement <span id="announcement">{{ announcement }}</span>
+    <button id="announce" {% on "click" "announce" %}>Announce</button>
+  </p>
+  <button id="insert" {% on "click" "insert" %}>Insert</button>
+  <ul id="items">
+    {% for item in items %}
+      <li class="{% if item.done %}done{% endif %}">{{ item.name }} × {{ item.qty }}</li>
+    {% endfor %}
+  </ul>
+</main>

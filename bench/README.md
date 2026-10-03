@@ -58,3 +58,49 @@ pmlab_stop
 `--layer` 는 `memory`(프로세스 1개 전용), `nats`(channels-nats), `redis`(channels_redis) 셋이다. 브로커는 벤치가 임시 포트에 직접 띄우고 끝나면 정리하므로 미리 켜 둘 필요가 없다. 이미 떠 있는 브로커를 쓰려면 `NATS_URL` 또는 `REDIS_URL` 을 준다.
 
 레이어를 비교할 때는 **회차를 여러 번 돌려 중앙값을 쓴다**. 첫 회차는 콜드 캐시로 처리량이 25%쯤 낮게 나온다. 2026-09-08 비교 결과는 `docs/design/transport-abstraction.md` §5-3, 회차별 수치는 `bench/results/a993181-daphne-layer-comparison.spread.json` 에 있다.
+
+## FastAPI와 비교
+
+`bench/compare_fastapi/`는 같은 작은 앱을 wireview와 FastAPI로 한 번씩 만들어 같은 조건에서 잰다(#174). 결과는 `bench/results/<커밋>-fastapi.json`에 남는다.
+
+```bash
+make bench-fastapi                     # 클라이언트 빌드 → 세 구현을 5회차씩 → bench/results/<커밋>[-dirty]-fastapi.json
+make bench-fastapi ARGS="--rounds 1 --clicks 30 --loads 4 --connections 200"   # 빨리 한 번 (몇 분)
+```
+
+node와 Playwright의 chromium이 필요하다. FastAPI는 런타임 의존성이 아니다 — `uv run --with fastapi==<버전>`으로 그 실행에만 얹는다(버전은 Makefile의 `FASTAPI_VERSION`). React·Vite는 `bench/compare_fastapi/client/package.json`과 그 lock에 있다.
+
+### 무엇을 만들었나
+
+한 화면에 공유 카운터, 알림 값, 항목 50개의 피드가 있다. 버튼 셋이 각각 값 하나를 바꾸고(`#increment`), 피드 맨 앞에 항목을 넣고(맨 뒤 항목이 빠져 늘 50개다, `#insert`), 모든 사용자에게 알림을 브로드캐스트한다(`#announce`). 세 구현이 같은 DOM id를 그린다.
+
+| 구현 | 서버 | 클라이언트 | 사람이 쓴 파일 |
+|------|------|------------|----------------|
+| `wireview` | Django ASGI 핸들러, Channels InMemory 레이어, `Board` 컴포넌트 | `wireview.min.js` (`make build-js`) | `wv/board/live.py`, 템플릿 둘 |
+| `fastapi-react` | FastAPI의 WebSocket 엔드포인트 하나(공식 문서의 방식, 브로드캐스트는 연결 목록을 차례로 돈다) | React 19, Vite 프로덕션 빌드 | `fastapi_app/main.py`, `client/react/` |
+| `fastapi-vanilla` | 같은 엔드포인트 | 프레임워크 없는 손 JS, Vite 빌드 | `fastapi_app/main.py`, `client/vanilla/` |
+
+클라이언트는 둘을 싣는다. FastAPI 생태계의 전형은 React지만, 첫 화면의 JS 크기는 클라이언트 선택이 거의 다 정하므로 하한으로 프레임워크 없는 클라이언트를 함께 잰다. FastAPI 쪽은 첫 데이터와 조작을 모두 WebSocket 하나로 주고받는다. 흔한 REST(`fetch`) 방식이면 요청마다 HTTP 헤더 수백 바이트와 연결 왕복이 붙으므로, 이 선택은 FastAPI에 유리하다. 데이터는 두 쪽 모두 같은 프로세스 메모리의 `store.py`를 읽고 쓴다 — ORM 둘이 아니라 스택 둘을 비교한다.
+
+### 공정성 규칙
+
+- 같은 기계, 같은 Python, 같은 서버: uvicorn 1프로세스, `--ws websockets`, `--log-level warning`, permessage-deflate 기본값(켜짐). wireview는 DEBUG off에 InMemory 레이어다. 정적 파일은 두 쪽 모두 앱이 직접 서빙한다(Django `ASGIStaticFilesHandler`, FastAPI `StaticFiles`).
+- 회차마다 서버를 새로 띄우고, 회차마다 구현의 순서를 뒤집어 어느 쪽도 늘 더 따뜻한 기계에서 돌지 않게 한다. 기본은 5회차, 시나리오마다 워밍업 20번 뒤 200번 클릭, 첫 화면은 워밍업 3번 뒤 20번 로드다. 회차마다 중앙값·p95를 내고, 회차 중앙값들의 중앙값과 범위를 적는다.
+- 측정 환경(CPU, OS, Python·패키지·브라우저·node·React·Vite 버전, 시작과 끝의 load average)은 결과 JSON의 `environment`에 있다.
+- `tracemalloc`은 켜지 않는다.
+
+### 무엇을 어떻게 재나
+
+| 지표 | 방법 |
+|------|------|
+| 클릭에서 화면까지 | 페이지 안에서 잰다. 클릭 시각부터 `MutationObserver`가 바뀐 텍스트를 본 시각(`dom_ms`)과, 그 변화를 그린 프레임이 페인트된 뒤의 첫 작업 시각(`paint_ms`). 클릭은 프레임 안 임의의 위치에 떨어지도록 0~16.7ms 기다렸다 누른다(시드 고정, 세 구현이 같은 순서) |
+| 브로드캐스트 | 다른 브라우저 컨텍스트(다른 사용자)의 페이지가 바뀔 때까지. 두 페이지가 공유하는 시계(`performance.timeOrigin + now()`)로 잰다 |
+| 전송 바이트 | Chromium DevTools가 알려 주는 WebSocket 페이로드 바이트, 보낸 것과 받은 것. 두 쪽 모두 프레임 헤더 제외, deflate 전 |
+| 서버 처리 시간 | `timing.py`의 `Timed`가 두 앱을 똑같이 감싼다. 클라이언트 메시지가 ASGI `receive`에서 나온 때부터 같은 연결의 다음 `send`까지 |
+| 첫 화면 | 매번 새 브라우저 컨텍스트(캐시 없음)로, 다른 사이트의 페이지에서 링크를 따라오듯 들어온다. 내려받은 HTML·JS(원본과 gzip -6), 그동안의 WebSocket 바이트, First Contentful Paint, 조작 가능해진 시각(`data-is-live="true"`) |
+| 팬아웃 | 연결 1,000개(브라우저가 아닌 WebSocket 클라이언트)가 붙은 서버에 브로드캐스트 하나를 보내 모든 연결이 갱신을 받을 때까지 |
+| 코드 줄 수 | `loc.py`. 기능을 위해 사람이 쓴 파일만, 빈 줄·주석·docstring 제외. 두 쪽이 공유하는 저장소와 계측 코드, 생성 파일은 세지 않는다. 프로젝트 골격(wireview의 settings·urls·asgi, FastAPI 쪽의 vite 설정·package.json)은 따로 센다 |
+
+첫 화면을 `about:blank`에서 열지 않는 이유: Django의 `SecurityMiddleware`가 기본으로 보내는 `Cross-Origin-Opener-Policy` 헤더가 있으면 Chromium이 렌더러 프로세스를 바꾸고, 그 값(이 기계에서 약 35ms)을 wireview 쪽만 냈다. 다른 사이트에서 들어오면 헤더와 상관없이 세 구현이 모두 프로세스를 바꾼다. 실제 방문자의 조건이 이쪽이다.
+
+`dom_ms`와 `paint_ms`를 둘 다 싣는 이유: React와 손 JS는 메시지가 오자마자 DOM을 바꾸고 브라우저가 다음 프레임에 그린다. wireview 클라이언트는 패치를 그 다음 프레임(`requestAnimationFrame`)까지 모았다가 그 자리에서 쓴다. 그래서 `dom_ms`는 wireview에서만 프레임 하나만큼 늦게 나오지만, 사용자가 보는 것은 `paint_ms`다.

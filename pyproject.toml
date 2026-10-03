@@ -134,6 +134,7 @@ ignore = ["E203"]
 [tool.ruff.lint.per-file-ignores]
 # ASGI config requires imports after django.setup()
 "tests/testproj/asgi.py" = ["E402"]
+"bench/compare_fastapi/wv/asgi.py" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"
