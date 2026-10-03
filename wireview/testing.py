@@ -491,15 +491,17 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
                 f"to {nav.url!r} with a login redirect or a 403 -- not with {component_class.__name__}."
             )
 
-        return await mount(
+        # The page's path goes in beside the fields, not through mount(path=): a
+        # field called path is the test's to set here, as it was in 1.1 (#169).
+        return await _mount(
             component_class,
             user=self._repo.user,
             params=nav.params if params is None else params,
             session=self._repo.session,
+            session_key=None,
             live_session=policy,
-            path=nav.path or self._path,
-            state=state,
-            **initial_state,
+            page_path=nav.path or self._path,
+            fields=_merge_fields(state, initial_state),
         )
 
     @t.overload
@@ -797,10 +799,6 @@ async def mount(
         # Inside a page boundary, so the session hooks run and Meta.live_sessions passes
         view = await mount(AdminPanel, user=staff, live_session="admin")
     """
-    from django.contrib.auth.models import AnonymousUser
-
-    from .core.live_session import LiveSession, get_live_session
-
     # 1.1 had no path= option, and path=... set a field of that name. Taking it as
     # the page's path now would drop the field's value without a word (#169).
     # With the field in state=, path= can only be the page's.
@@ -809,10 +807,43 @@ async def mount(
             f"mount() got path={path!r}, and {component_class.__name__} has a field called path: "
             f"path= is the page the component is on. Set the field with state={{'path': ...}}."
         )
-    if state:
-        if both := set(state) & set(initial_state):
-            raise TypeError(f"mount() got {sorted(both)} both in state= and as keywords")
-        initial_state = {**state, **initial_state}
+    return await _mount(
+        component_class,
+        user=user,
+        params=params,
+        session=session,
+        session_key=session_key,
+        live_session=live_session,
+        page_path=path,
+        fields=_merge_fields(state, initial_state),
+    )
+
+
+def _merge_fields(state: dict[str, t.Any] | None, initial_state: dict[str, t.Any]) -> dict[str, t.Any]:
+    """The field values a test gave, from ``state=`` and the keywords together."""
+    if not state:
+        return initial_state
+    if both := set(state) & set(initial_state):
+        raise TypeError(f"mount() got {sorted(both)} both in state= and as keywords")
+    return {**state, **initial_state}
+
+
+async def _mount(
+    component_class: type["Component"],
+    *,
+    user: "AbstractBaseUser | AnonymousUser | None",
+    params: dict[str, t.Any] | None,
+    session: t.Any,
+    session_key: str | None,
+    live_session: t.Any,
+    page_path: str | None,
+    fields: dict[str, t.Any],
+) -> MountedComponent:
+    """:func:`mount` once the options and the fields are told apart: ``fields`` is
+    a dict, so no field name can collide with an option."""
+    from django.contrib.auth.models import AnonymousUser
+
+    from .core.live_session import LiveSession, get_live_session
 
     session_view = SessionView.wrap(session, session_key=session_key)
     policy = live_session if isinstance(live_session, LiveSession) or live_session is None else None
@@ -834,9 +865,9 @@ async def mount(
         user=user or AnonymousUser(),
         wire=wire,  # type: ignore[arg-type]
         session=session_view,
-        **initial_state,
+        **fields,
     )
-    mounted = MountedComponent(component, wire, repo, path=urlsplit(path).path if path else None)
+    mounted = MountedComponent(component, wire, repo, path=urlsplit(page_path).path if page_path else None)
 
     # The mount hooks run before joined(), as they do on a real mount. A refusal
     # skips joined() and freezes the component, so ``render()`` here answers the

@@ -51,6 +51,12 @@ class Navigator(Component):
         self.seen_uri = uri
 
 
+class Trail(Navigator):
+    """A destination with a field called path, like a breadcrumb or a file browser."""
+
+    path: str = "/"
+
+
 class Destination(Component):
     """What a redirect lands on."""
 
@@ -222,6 +228,29 @@ class TestFollowingARedirect:
         landed = await view.follow_redirect(Destination, count=7)
         assert isinstance(landed.component, Destination)
         assert landed.component.count == 7
+
+    @pytest.mark.asyncio
+    async def test_a_destination_with_a_path_field_mounts_on_its_page(self, recwarn):
+        """1.1 mounted it; the page's path is the helper's, not the field's (#169)."""
+        view = await mount(Navigator)
+        await view.call("go_redirect", url="/livesession/public/")
+
+        landed = await view.follow_redirect(Trail)
+        assert landed.component.path == "/"
+        # On the destination's page: a push to its own path is a patch, with no warning.
+        await landed.call("go_push", url="/livesession/public/?tab=b")
+        await landed.follow_push()
+        assert landed.component.seen_params == {"tab": "b"}
+        assert not [w for w in recwarn if issubclass(w.category, WireviewDeprecationWarning)]
+
+    @pytest.mark.asyncio
+    async def test_a_path_keyword_sets_the_destinations_field(self):
+        """As in 1.1: follow_redirect's keywords are fields."""
+        view = await mount(Navigator)
+        await view.call("go_redirect", url="/livesession/public/")
+
+        landed = await view.follow_redirect(Trail, path="/docs/")
+        assert landed.component.path == "/docs/"
 
     @pytest.mark.asyncio
     async def test_it_carries_the_destinations_query_as_params(self):
@@ -528,6 +557,15 @@ class TestFollowingAPush:
         await landed.call("go_push", url="/livesession/members2/?tab=b")
         await landed.follow_push()
         assert landed.component.seen_params == {"tab": "b"}
+
+    @pytest.mark.asyncio
+    async def test_another_path_mounts_a_destination_with_a_path_field(self):
+        view = await mount(Navigator, user=member(), live_session=MEMBERS, path="/livesession/members/")
+        await view.call("go_push", url="/livesession/members2/")
+
+        landed = await view.follow_push(Trail)
+        assert isinstance(landed.component, Trail)
+        assert landed.component.path == "/"
 
     @pytest.mark.asyncio
     async def test_a_replace_to_another_path_mounts_the_destination(self):

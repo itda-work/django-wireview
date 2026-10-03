@@ -88,6 +88,7 @@ dependencies = ["django-wireview>=1.1,<2"]
 - **`mount(path=...)`는 페이지의 경로다.** 1.1에는 이 옵션이 없어서 `path=`가 같은 이름의 필드 값으로
   들어갔다. 이제 `path`라는 필드가 있는 컴포넌트에 `path=`를 주면 `TypeError`가 난다. 필드 값은
   `state={"path": "/a/b/"}`로 준다. `state=`에 필드를 두면 `path=`는 페이지의 경로로 함께 줄 수 있다.
+  `follow_redirect()`·`follow_push(Destination)`의 키워드는 1.1처럼 그대로 필드다(`path="/docs/"`도).
 
 ## 1.0에서 1.1로
 
