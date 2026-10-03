@@ -2,7 +2,8 @@
 
     <out>/wireview/                     the home page (README.md)
     <out>/wireview/<section>/<page>/    index.html, and index.md: the document, its links rewritten
-    <out>/wireview/assets/              site.<hash>.css and the scripts, named by their content
+    <out>/wireview/assets/              site.<hash>.css, the scripts and the documents' images
+                                        (overview.<hash>.jpg), named by their content
     <out>/wireview/sitemap.xml          absolute URLs, no lastmod
     <out>/wireview/llms.txt             the site's map for an agent (llmstxt.org): every page's index.md (#164)
     <out>/wireview/agent/wireview/      the agent skill (skills/wireview/) as Markdown, its links rewritten
@@ -29,7 +30,6 @@ The document guards in tests/ are the first gate; ``make docs-site`` runs them b
 from __future__ import annotations
 
 import gzip
-import hashlib
 import html
 import io
 import re
@@ -49,6 +49,7 @@ from .render import (
     Problem,
     Rendered,
     front_matter,
+    hashed_name,
     pygments_css,
     render,
     rewrite_published,
@@ -79,11 +80,6 @@ class Result:
 
 def _e(text: str) -> str:
     return html.escape(text, quote=True)
-
-
-def _hashed(name: str, content: bytes) -> str:
-    stem, suffix = name.rsplit(".", 1)
-    return f"{stem}.{hashlib.sha256(content).hexdigest()[:10]}.{suffix}"
 
 
 def _gzip(data: bytes) -> bytes:
@@ -518,7 +514,7 @@ def build(
         "boot.js": (ASSETS / "boot.js").read_text(encoding="utf-8"),
     }
     for name, content in sorted(sources.items()):
-        hashed = _hashed(name, content.encode("utf-8"))
+        hashed = hashed_name(name, content.encode("utf-8"))
         writer.write(f"{prefix}assets/{hashed}", content)
         assets[name] = f"{base}assets/{hashed}"
 
@@ -607,6 +603,11 @@ def build(
     result.problems += problems
     writer.write(to_file(site.llms_url, ""), llms)
     markdown_sources[to_file(site.llms_url, "")] = f"{to_file(site.llms_url, '')} (the build's)"
+
+    # The repository's images the documents showed, served from the site rather than GitHub (#166).
+    # Two copies of one image share a name, so each name is written once.
+    for url, path in sorted({url: path for path, url in linker.images.items()}.items()):
+        writer.write(to_file(url, ""), (root / path).read_bytes())
 
     result.problems += check_links(writer.written, base, where)
     # A relative link to a missing file stays as written, and its rewrite has reported it already;

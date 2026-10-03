@@ -18,6 +18,7 @@ import tarfile
 import threading
 import urllib.request
 from functools import partial
+from html.parser import HTMLParser
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -117,10 +118,77 @@ def test_the_version_file_is_the_tag(site):
 def test_assets_are_named_by_their_content(site):
     assets = sorted((site.out / "wireview" / "assets").iterdir())
     named = [path for path in assets if not path.name.endswith(".gz")]
-    assert {re.sub(r"\.[0-9a-f]{10}\.", ".", path.name) for path in named} == {"site.css", "site.js", "boot.js"}
+    assert {re.sub(r"\.[0-9a-f]{10}\.", ".", path.name) for path in named} == {
+        "site.css",
+        "site.js",
+        "boot.js",
+        "overview.jpg",
+    }
     for path in named:
         digest = path.name.split(".")[1]
         assert hashlib.sha256(path.read_bytes()).hexdigest().startswith(digest), path.name
+
+
+#: What itda.work caches for good (website's Caddy block, #166): a name the content changes.
+IMMUTABLE = re.compile(r"^/wireview/assets/.+\.[0-9a-f]{8,}\.(?:css|js)$")
+
+
+def test_the_css_and_js_are_what_itda_work_caches_for_good(site):
+    """The bundle contract (docs/design/docs-site-bundle.md): the hashed names match website's rule."""
+    page = _html(site.out, "/wireview/")
+    linked = re.findall(r'<(?:link rel="stylesheet"|script) (?:href|src)="(/wireview/assets/[^"]+)"', page)
+    assert len(linked) == 3, linked
+    assert all(IMMUTABLE.match(url) for url in linked), linked
+    files = [path for path in (site.out / "wireview" / "assets").iterdir() if path.suffix in (".css", ".js")]
+    assert files and all(IMMUTABLE.match(f"/wireview/assets/{path.name}") for path in files)
+
+
+#: The one stylesheet the pages take from elsewhere: Pretendard, as itda.work's own pages do.
+PRETENDARD = "https://cdn.jsdelivr.net/gh/orioncactus/pretendard@"
+
+
+class _Loads(HTMLParser):
+    """Every URL a page loads by itself: src attributes, and the stylesheets and icons it links."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.urls: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        values = dict(attrs)
+        self.urls += [value for name, value in attrs if name in ("src", "srcset", "poster", "data") and value]
+        rel = (values.get("rel") or "").split()
+        if tag == "link" and values.get("href") and {"stylesheet", "icon", "preload", "modulepreload"} & set(rel):
+            self.urls.append(values["href"])
+
+
+def test_the_pages_load_nothing_from_elsewhere_but_pretendard(site):
+    """The bundle contract: no image, script or stylesheet comes from another origin (#166).
+
+    itda.work serves the bundle under a CSP that allows its own origin and jsDelivr; an image
+    from GitHub needed its own exception until the build served it.
+    """
+    outside = re.compile(r"^(?:[a-z][a-z0-9+.-]*:)?//", re.IGNORECASE)
+    found = []
+    for path in sorted(site.out.rglob("*.html")):
+        parser = _Loads()
+        parser.feed(path.read_text(encoding="utf-8"))
+        found += [(path.name, url) for url in parser.urls if outside.match(url) and not url.startswith(PRETENDARD)]
+    for path in sorted(site.out.rglob("*.md")):
+        images = re.findall(r"!\[[^\]]*\]\(([^()\s]+)", path.read_text(encoding="utf-8"))
+        found += [(path.name, url) for url in images if outside.match(url) and not url.startswith(nav.ORIGIN + "/")]
+    assert found == []
+
+
+def test_the_readmes_image_is_in_the_build(site):
+    """The home page's overview.jpg is a file of the build, and the .md names it as the HTML does."""
+    image = (ROOT / "overview.jpg").read_bytes()
+    src = re.search(r'<img src="([^"]+)" alt="Wireview 아키텍처 개요"', _html(site.out, "/wireview/"))
+    assert src and src.group(1).startswith("/wireview/assets/overview."), src
+    assert (site.out / src.group(1).lstrip("/")).read_bytes() == image
+    assert f"![Wireview 아키텍처 개요]({src.group(1)})" in (site.out / "wireview" / "index.md").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_every_text_file_has_its_gzip_twin(site):
@@ -342,11 +410,23 @@ def test_a_link_goes_where_the_site_has_it(linker, source, target, expected):
     assert linker.target(target, source) == (expected, None)
 
 
-def test_an_image_in_the_repository_loads_from_the_tag(linker):
+def test_an_image_in_the_repository_is_served_by_the_site(linker):
+    """Written relative or as a URL into main, an image of the repository is a hashed asset (#166)."""
+    digest = hashlib.sha256((ROOT / "overview.jpg").read_bytes()).hexdigest()[:10]
+    served = f"/wireview/assets/overview.{digest}.jpg"
     raw = "https://raw.githubusercontent.com/itda-work/django-wireview/main/overview.jpg"
-    assert linker.target(raw, "README.md", image=True) == (raw.replace("/main/", f"/{TAG}/"), None)
-    pinned = f"https://raw.githubusercontent.com/itda-work/django-wireview/{TAG}/overview.jpg"
-    assert linker.target("overview.jpg", "README.md", image=True) == (pinned, None)
+    assert linker.target(raw, "README.md", image=True) == (served, None)
+    assert linker.target("overview.jpg", "README.md", image=True) == (served, None)
+    assert linker.target("../../overview.jpg", "docs/features/csp.md", image=True) == (served, None)
+    assert linker.images["overview.jpg"] == served
+    # A link to the image (not an image) is still a file on GitHub at the tag.
+    assert linker.target("overview.jpg", "README.md") == (f"{BLOB}/overview.jpg", None)
+
+
+def test_an_image_url_into_main_that_names_no_file_is_a_problem(linker):
+    raw = "https://raw.githubusercontent.com/itda-work/django-wireview/main/nope.png"
+    _, problem = linker.target(raw, "README.md", image=True)
+    assert problem and "no such file" in problem
 
 
 def test_a_link_to_a_missing_file_is_a_problem(linker):
@@ -669,6 +749,30 @@ def test_a_link_to_a_missing_file_fails_the_build(tree):
     assert _problems(_build(tree)) == ["docs/guide.md:7: gone.md (no such file)"]
 
 
+def test_the_documents_images_are_copied_into_the_build_once(tree):
+    """Two documents show one image, one by a relative path and one by its URL into main (#166)."""
+    image = b"\x89PNG\r\n\x1a\nnot really"
+    (tree / "docs" / "img").mkdir()
+    (tree / "docs" / "img" / "flow.png").write_bytes(image)
+    raw = "https://raw.githubusercontent.com/itda-work/django-wireview/main/docs/img/flow.png"
+    (tree / "README.md").write_text(f"# 소개\n\n[가이드](docs/guide.md#설치)를 보세요.\n\n![흐름]({raw})\n")
+    (tree / "docs" / "next.md").write_text("# 다음\n\n다음 단계다.\n\n![흐름](img/flow.png)\n")
+    result = _build(tree)
+    assert _problems(result) == []
+    served = f"/wireview/assets/flow.{hashlib.sha256(image).hexdigest()[:10]}.png"
+    assert (result.out / served.lstrip("/")).read_bytes() == image
+    assert [name for name in result.files if name.startswith("wireview/assets/flow.")] == [served.lstrip("/")]
+    assert f'<img src="{served}" alt="흐름" />' in _html(result.out, "/wireview/")
+    assert f'<img src="{served}" alt="흐름" />' in _html(result.out, "/wireview/guide/next/")
+    assert f"![흐름]({served})" in (result.out / "wireview" / "guide" / "next" / "index.md").read_text()
+
+
+def test_an_image_url_into_main_that_names_no_file_fails_the_build(tree):
+    raw = "https://raw.githubusercontent.com/itda-work/django-wireview/main/docs/img/gone.png"
+    (tree / "README.md").write_text(f"# 소개\n\n[가이드](docs/guide.md#설치)를 보세요.\n\n![흐름]({raw})\n")
+    assert _problems(_build(tree)) == [f"README.md:5: {raw} (no such file in the repository)"]
+
+
 def test_a_vanished_url_fails_until_it_redirects(tree):
     urls = tree / "docs" / "site-urls.txt"
     urls.write_text(urls.read_text() + "/wireview/guide/old/\n")
@@ -951,8 +1055,11 @@ def test_the_server_says_its_text_files_are_utf_8(site, url, content_type):
 
 def test_every_text_file_the_build_writes_has_a_charset(site):
     """Each kind of text file in the output gets a utf-8 type, and each such type is one the build writes."""
-    suffixes = {path.suffix for path in site.out.rglob("*") if path.is_file() and path.suffix not in ("", ".gz")}
+    files = [path for path in site.out.rglob("*") if path.is_file() and path.suffix not in ("", ".gz")]
+    # A text file is one the build compresses; an image is served with its own type and no charset.
+    suffixes = {path.suffix for path in files if path.with_name(path.name + ".gz").is_file()}
     assert suffixes == set(TEXT_TYPES), suffixes
+    assert {path.suffix for path in files} - suffixes == {".jpg"}
     assert all(value.endswith("; charset=utf-8") for value in TEXT_TYPES.values())
 
 

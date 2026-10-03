@@ -5,7 +5,9 @@ repository's ``main``. On the site it becomes one of three things --
 
 - a page the site publishes: that page's path (``/wireview/tutorial/todo-app/``), anchor kept;
 - any other file of the repository: GitHub at the release tag (``blob/v1.0.0/examples/...``),
-  as hatch_build.py pins the PyPI description;
+  as hatch_build.py pins the PyPI description -- except an image, which the site serves itself
+  (``/wireview/assets/overview.<hash>.jpg``), so a page loads nothing but its fonts from
+  elsewhere (#166);
 - anything else (another site, ``mailto:``): unchanged.
 
 A relative link to a file that does not exist is a problem the build reports.
@@ -17,6 +19,7 @@ and a page of the site is written as an absolute URL, so a bare URL in a table c
 
 from __future__ import annotations
 
+import hashlib
 import html
 import re
 from dataclasses import dataclass, field
@@ -40,11 +43,19 @@ MD_LINK = re.compile(r"(\]\()([^()\s]+)((?:\s+\"[^\"]*\")?\))")
 CODE_SPAN = re.compile(r"(`+)(?:(?!\1).)+?\1")
 RAW_ATTR = re.compile(r"""\b(href|src)=(["'])(.*?)\2""")
 MAIN_URL = re.compile(rf"^{re.escape(nav.REPOSITORY)}/(?:blob|tree)/main/([^#?]*)(#.*)?$")
+RAW_MAIN_URL = re.compile(rf"^{re.escape(nav.BRANCH_URLS[2])}([^#?]*)$")
 # A URL into main written as text, not as a link's target: the agent skill's tables name pages so.
 BARE_MAIN_URL = re.compile(rf"{re.escape(nav.REPOSITORY)}/(?:blob|tree)/main/[^\s|)>`\"']*")
 FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 
 _FORMATTER = HtmlFormatter(nowrap=True)
+
+
+def hashed_name(name: str, content: bytes) -> str:
+    """``site.css`` as ``site.<10 hex>.css``: a name that changes with the content, so it can be cached for good."""
+    stem, dot, suffix = name.rpartition(".")
+    digest = hashlib.sha256(content).hexdigest()[:10]
+    return f"{stem}.{digest}.{suffix}" if dot else f"{name}.{digest}"
 
 
 @dataclass(frozen=True)
@@ -77,9 +88,13 @@ class Linker:
 
     def __init__(self, site: nav.Site, tag: str) -> None:
         self.root = site.root
+        self.base = site.base
         self.tag = tag
         self.urls = {page.source: page.url for page in site.pages()}
         self.published = {file.source: file.url for file in site.skill()}
+        #: The repository's images the documents show, by path: the site path each is served at.
+        #: The build writes them; the Linker only names them.
+        self.images: dict[str, str] = {}
 
     def _page_url(self, path: str) -> str | None:
         """The site path of a repository path (a file, or a directory whose README.md is a page)."""
@@ -90,15 +105,25 @@ class Linker:
             return self.published[path]
         return self.urls.get(f"{path}/README.md" if path else "README.md")
 
-    def _github(self, path: str, image: bool) -> str:
-        if image:
-            return nav.pin(f"{nav.BRANCH_URLS[2]}{path}", self.tag)
+    def _image(self, path: str) -> str:
+        """The site path of a repository image: an asset named by its content, as the css and js are."""
+        if path not in self.images:
+            name = path.rsplit("/", 1)[-1]
+            self.images[path] = f"{self.base}assets/{hashed_name(name, (self.root / path).read_bytes())}"
+        return self.images[path]
+
+    def _github(self, path: str) -> str:
         kind = "tree" if (self.root / path).is_dir() else "blob"
         return nav.pin(f"{nav.REPOSITORY}/{kind}/main/{path}", self.tag)
 
     def target(self, target: str, source: str, image: bool = False) -> tuple[str, str | None]:
         """The target as the site writes it, and the problem with it, if any."""
         if SCHEME.match(target) or target.startswith("//"):
+            if image and (match := RAW_MAIN_URL.match(target)):
+                path = unquote(match.group(1))
+                if not (self.root / path).is_file():
+                    return target, f"{target} (no such file in the repository)"
+                return self._image(path), None
             if match := MAIN_URL.match(target):
                 url = self._page_url(unquote(match.group(1)))
                 if url and not image:
@@ -116,9 +141,11 @@ class Linker:
         if not resolved.exists():
             return target, f"{target} (no such file)"
         path = "" if path == "." else path
+        if image and resolved.is_file():
+            return self._image(path), None
         if not image and (url := self._page_url(path)):
             return url + fragment, None
-        return self._github(path, image) + fragment, None
+        return self._github(path) + fragment, None
 
     def published_target(self, target: str, source: str, image: bool = False) -> tuple[str, str | None]:
         """As ``target`` for a file published as it is (the module docstring's last paragraph)."""
