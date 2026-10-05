@@ -874,8 +874,8 @@ def payload_component_refs(payload: t.Any) -> list[str]:
 def may_name_components(rendered: Rendered | None) -> bool:
     """Whether ``rendered`` can reference a LiveComponent: false only for one known to hold none.
 
-    A render parsed from HTML without a reference comment, with no part kept
-    from the render before, holds none, and walking it to find so is most of
+    A render whose parse made no reference, with no part kept from the
+    render before, holds none, and walking it to find so is most of
     what a component without LiveComponents pays after its render (#176).
     """
     return rendered is None or rendered._names is not False
