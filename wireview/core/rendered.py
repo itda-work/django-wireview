@@ -525,15 +525,32 @@ def _parse(html: str, stale: set[int] | None = None) -> tuple[list[str], list[Dy
     ``[text, close, kind, index, text, close, kind, index, ..., text]``; one pass
     over that list with an explicit stack is several times faster than a
     recursive parser built on ``re.Match`` objects, and this runs on every
-    render.
+    render. Indices stay strings: only a stale part's needs a number.
+
+    A value or a block closed right after it opens holds nothing but its text:
+    most of a render's parts. It is taken whole, without a frame of its own
+    (#176) -- what ``_finish`` makes of it is that text, or the reference it is.
     """
     parts = _TOKEN.split(html)
+    end = len(parts)
     static: list[str] = [parts[0]]
     dynamic: list[t.Any] = []
-    stack: list[tuple[str, int, list[str], list[t.Any]]] = []
-    for i in range(1, len(parts), 4):
-        close, kind, index, text = parts[i], parts[i + 1], int(parts[i + 2]), parts[i + 3]
+    stack: list[tuple[str, str, list[str], list[t.Any]]] = []
+    i = 1
+    while i < end:
+        close, kind, index, text = parts[i], parts[i + 1], parts[i + 2], parts[i + 3]
+        i += 4
         if not close:
+            if (kind == "" or kind == "B") and i < end and parts[i] and parts[i + 1] == kind and parts[i + 2] == index:
+                value: t.Any = text
+                if kind == "" and text.startswith(_REF_PREFIX) and (match := _REF.fullmatch(text)):
+                    value = ComponentRef(match.group(1))
+                if stale and int(index) in stale and not any(entry[0] in ("I", "C") for entry in stack):
+                    value = Stale(value)
+                dynamic.append(value)
+                static.append(parts[i + 3])
+                i += 4
+                continue
             stack.append((kind, index, static, dynamic))
             static, dynamic = [text], []
         elif stack and stack[-1][0] == kind and stack[-1][1] == index:
@@ -541,7 +558,7 @@ def _parse(html: str, stale: set[int] | None = None) -> tuple[list[str], list[Dy
             _kind, _index, static, dynamic = stack.pop()
             # Inside a loop the item is compared whole, so a part there cannot keep
             # its own value; only the loop can (wireview/core/render_reads.py).
-            if stale and kind != "I" and index in stale and not any(entry[0] in ("I", "C") for entry in stack):
+            if stale and kind != "I" and int(index) in stale and not any(entry[0] in ("I", "C") for entry in stack):
                 value = Stale(value)
             dynamic.append(value)
             static.append(text)

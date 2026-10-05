@@ -4,8 +4,12 @@ import pytest
 
 from wireview.core.rendered import (
     MARKER_PATTERN,
+    ComponentRef,
+    Comprehension,
     Rendered,
     RenderedDiff,
+    Stale,
+    _marked_content,
     has_markers,
     inject_marker,
     keep_stale,
@@ -328,3 +332,56 @@ class TestKeepStale:
         assert keep_stale(html, {5}, previous) == html
         kept = keep_stale(html, {5}, previous, first=3)
         assert kept == "<div><em><!--$2-->T<!--/$2--></em><!--$5-->A<!--/$5--></div>"
+
+
+class TestParseRoundTrip:
+    """Any render the template engine can mark parses back to exactly itself (#176).
+
+    The parser takes a value or a block with nothing marked inside it without
+    a frame of its own; everything else folds through the stack. Random renders
+    of every shape -- values, references, blocks, loops in blocks in loops --
+    are marked the way ``keep_stale`` marks a kept part and parsed again.
+    """
+
+    TEXTS = ["", "a", " ", "<li class='x'>", "x\ny", "&amp;"]
+
+    def _value(self, rng, depth):
+        r = rng.random()
+        if depth > 3 or r < 0.45:
+            return rng.choice(self.TEXTS)
+        if r < 0.55:
+            return ComponentRef(f"kid-{rng.randint(0, 9)}")
+        if r < 0.8:
+            return self._rendered(rng, depth + 1, at_least=1)  # a block with nothing dynamic is text
+        static_count = rng.randint(0, 3)
+        static = [rng.choice(self.TEXTS) for _ in range(static_count + 1)]
+        items = [[self._value(rng, depth + 1) for _ in range(static_count)] for _ in range(rng.randint(0, 4))]
+        return Comprehension(static=static, dynamics=items) if items else Comprehension()
+
+    def _rendered(self, rng, depth, at_least=0):
+        count = rng.randint(at_least, 4)
+        return Rendered(
+            static=[rng.choice(self.TEXTS) for _ in range(count + 1)],
+            dynamic=[self._value(rng, depth) for _ in range(count)],
+        )
+
+    @pytest.mark.unit
+    def test_a_marked_render_parses_back_to_itself(self):
+        import itertools
+        import random
+
+        rng = random.Random(176)
+        for _ in range(3000):
+            render = self._rendered(rng, 0)
+            counter = itertools.count()
+            html = _marked_content(render, 0, lambda: next(counter))
+            assert Rendered.from_marked_html(html) == render, html
+
+    @pytest.mark.unit
+    def test_a_stale_part_is_found_without_a_frame_of_its_own(self):
+        html = "<p><!--$0-->a<!--/$0--><!--$B1-->b<!--/$B1--><!--$B2-->c<!--$3-->d<!--/$3--><!--/$B2--></p>"
+        parsed = Rendered.from_marked_html(html, {0, 1, 3})
+
+        assert parsed.dynamic[0] == Stale("a")
+        assert parsed.dynamic[1] == Stale("b")
+        assert parsed.dynamic[2] == Rendered(static=["c", ""], dynamic=[Stale("d")])
