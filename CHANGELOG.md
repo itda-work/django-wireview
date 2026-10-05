@@ -12,12 +12,27 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- `Meta.shared_render = True` declares that a component's render reads nothing of the viewer. The
+  connections of one process handling the same broadcast then render it once between them and
+  share the parsed render; each still runs its own `notification()`/`mutation()`, signs its own
+  `data-state` (the token names the page boundary and its user's login, so it is never shared) and
+  diffs against its own page, and the frames are the bytes an unshared render sends. A render is
+  shared only within one message and between instances of the same class, id, fields, language and
+  time zone. A class out of scope -- a LiveComponent, temporary assigns, slots, `live_sessions`, a
+  template that draws another component or reads `user`, `session`, `request`, `perms`,
+  `csrf_token` or `messages` -- renders on its own, and the new check `wireview.W019` names it. With
+  `VERIFY_SHARED_RENDER` (`DEBUG` by default, always in `wireview.testing`), a declared render that
+  reads one of those names raises `SharedRenderError`, and a connection that took another's render
+  renders its own and raises if the two differ (docs/features/shared-render.md, #176).
 - Every code block on the documentation site has a copy button in its top right corner. It copies
   the code as written, says whether it did, and falls back to a selection where the page has no
   Clipboard API (#173).
 
 ### Changed
 
+- Every fan-out message (`notification`, `model_mutation`) carries a `message_id`, new for each
+  publish, so the sessions that receive it can tell it is one message. Code that compares the
+  messages it sees on the channel layer as a whole (a mocked `group_send`) sees one more key (#176).
 - The README says when to use wireview before it says when not to: six kinds of app, each with the
   features behind it and a tutorial or example that builds it (#172).
 - The Live Search example and tutorial keep the query in the address: typing pushes `?q=` and

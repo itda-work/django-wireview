@@ -114,6 +114,10 @@ UPGRADE_NOTE = {
         "퍼센트 인코딩 없이 온 쿼리를 Django처럼 읽는다",
         "컨텍스트의 `request`에 `.GET`이 있어야 한다",
     ),
+    "Every fan-out message (`notification`, `model_mutation`) carries a `message_id`": (
+        "브로드캐스트 메시지에 `message_id`가 붙는다",
+        "`unittest.mock.ANY`로 그 키를 받거나",
+    ),
 }
 
 DOCS_ONLY = "문서·저장소만 바뀌었고 라이브러리 동작은 같다"
@@ -123,6 +127,7 @@ NO_UPGRADE_NOTE = {
     "The Live Search example and tutorial keep the query in the address": "예제와 튜토리얼만 바뀌었다",
     "The README's numbers are charts": "문서와 벤치마크만 바뀌었다",
     "A live render costs about a third less": "출력은 바이트 단위로 같고 빨라지기만 했다",
+    "`Meta.shared_render = True` declares": "새 opt-in이다. 선언하지 않은 컴포넌트에는 아무것도 바뀌지 않는다",
 }
 
 PREVIOUS = "1.2.0"

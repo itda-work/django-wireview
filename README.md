@@ -1087,6 +1087,7 @@ class Dashboard(Component):
 | `live_sessions` | `set()` | 마운트될 수 있는 `live_session` 이름 |
 | `presence` | `None` | `PresenceMixin` 설정(`PresenceConfig`) |
 | `sticky` | `False` | boost 이동으로 같은 id가 있는 페이지에 가면 인스턴스·DOM·훅이 이어진다 ([boost](https://github.com/itda-work/django-wireview/blob/main/docs/features/boost.md)) |
+| `shared_render` | `False` | 렌더가 보는 사람과 무관하다는 선언. 같은 브로드캐스트를 받은 연결들이 렌더를 한 번만 하고 함께 쓴다. 틀리면 남의 화면이 간다 ([shared-render](https://github.com/itda-work/django-wireview/blob/main/docs/features/shared-render.md)) |
 
 ### 메서드와 필드
 
