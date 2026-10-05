@@ -650,6 +650,24 @@ def test_the_first_response_already_heard_the_params(page, server, heard):
     ], "the box the page joined is the one the response drew, and both heard the query there"
 
 
+def test_the_join_hears_the_params_again_from_the_mounted_state(page, server):
+    """A guard against a query the component already holds does not keep the join from hearing it (#177).
+
+    ``data-state`` carries the state before the HTTP render heard the query.
+    Signed as drawn, the guard skipped the join's params_changed: the load the
+    HTTP render cancelled stayed ``loading``, and the temporary assign it drew
+    was emptied by the join's render.
+    """
+    first = page.request.get(f"{server}/historyprobe/guarded/?q=ab").text()
+    assert "loading" in first
+    assert "items=ab,abab http" in first
+
+    open_live(page, f"{server}/historyprobe/guarded/?q=ab")
+    # "joined" is drawn by the join's render only: the items next to it are what that render drew
+    expect_text(by(page, "guarded-list"), "items=ab,abab joined")
+    expect_text(by(page, "guarded"), "rows=AB")
+
+
 # --- a push to the URL on screen (#170) -------------------------------------------------------
 
 

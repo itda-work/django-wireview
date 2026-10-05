@@ -58,6 +58,7 @@ __all__ = [
     "StateMismatch",
     "StatePayload",
     "sign_state",
+    "signable_json",
     "unsign_envelope",
     "unsign_state",
 ]
@@ -156,7 +157,8 @@ def issuing_context(component: "Component") -> tuple[str, str | None]:
     return session.name, auth_fingerprint(component.user, component.session)
 
 
-def _state_json(component: "Component") -> str:
+def signable_json(component: "Component") -> str:
+    """The component's state as :func:`sign_state` would sign it, as JSON text."""
     # A temporary assign is left out as well: it is reset after this render, and
     # a join loads it again in joined(). Carried, a list of ten thousand rows went
     # into a page attribute (#111).
@@ -165,7 +167,7 @@ def _state_json(component: "Component") -> str:
 
 def state_of(component: "Component") -> dict[str, t.Any]:
     """The state :func:`sign_state` signs, as :func:`unsign_state` gives it back."""
-    return json.loads(_state_json(component))
+    return json.loads(signable_json(component))
 
 
 def sign_state(component: "Component") -> str:
@@ -179,8 +181,17 @@ def sign_state(component: "Component") -> str:
     means a component that renders at least once per
     ``STATE_MAX_AGE - STATE_REFRESH_AFTER`` never expires while its page is open.
     """
-    state_json = _state_json(component)
+    state_json = signable_json(component)
     wire = component.wire
+    unheard = getattr(wire, "_unheard_state", None)
+    if unheard is not None and unheard[1] == state_json:
+        # An HTTP render drew what the query made of the component, but the join
+        # starts from the state before it heard the query and hears it again
+        # (#177). Signed as drawn, a ``params_changed`` that returns early when
+        # the query matches its own field skipped the second hearing: the work the
+        # HTTP render cancelled never restarted and the fields left out of the
+        # state came back empty. Anything that changed the state since drops this.
+        state_json = unheard[0]
     now = time.time()
     cached = getattr(wire, "_state_token", None)
     if cached is not None:

@@ -10,7 +10,8 @@ HTTP 렌더뿐이다. wireview가 그 상태에서 약속하는 것과 약속하
 - **주소의 쿼리가 반영되어 있다.** 쿼리가 있는 주소(`/search/?q=장고`)를 열면 서버는 컴포넌트마다 마운트 훅 뒤에
   `params_changed()`를 부르고 나서 그린다. Phoenix의 dead render와 같은 mount → handle_params → render 순서다(#177).
   검색 결과, 필터한 목록, 고른 탭이 JavaScript 없이도 보이고, 검색엔진이 그 주소를 그대로 색인한다. `params_changed()`는
-  join에서 한 번 더 돌므로 두 번 돌아도 같은 상태를 내야 한다([내비게이션](./navigation.md#첫-응답과-join)).
+  join에서 한 번 더 돌므로 두 번 돌아도 같은 상태를 내야 한다. join은 첫 응답이 그린 상태가 아니라 마운트 상태에서
+  params를 다시 듣는다 — `data-state`에는 `params_changed()` 전의 상태가 서명된다([내비게이션](./navigation.md#첫-응답과-join)).
   `examples/search/tests.py`가 JavaScript를 끈 브라우저로 `?q=`가 있는 주소를 열어 본다.
 - **링크는 링크다.** `BOOST_PAGES`는 JavaScript가 링크를 가로챌 때만 동작하므로, 없으면 보통의 이동이다.
 - **`action`과 `method`를 적은 폼은 그 뷰로 간다.** 같은 폼이 JavaScript가 있으면 `{% on "submit.prevent" %}`
@@ -44,7 +45,7 @@ def add(request):
 - **스트림 항목.** 스트림은 join 뒤에 `stream()`으로 채워지므로 첫 렌더의 컨테이너는 비어 있다. JavaScript 없이도
   보여야 하는 첫 항목은 필드에 담아 템플릿이 그린다 — `<ul wire-stream="items">{% for item in this.initial %}…`.
 - **비동기 작업의 결과.** 첫 렌더에서 `assign_async`·`start_async`로 시작한 작업은 연결이 없어 취소되고, 그
-  자리는 로딩 상태로 그려진다. join이 다시 시작한다. JavaScript 없이도 보여야 하는 값은 `params_changed()`에서
+  자리는 로딩 상태로 그려진다. join이 마운트 상태에서 `params_changed()`를 다시 돌며 작업을 다시 시작한다. JavaScript 없이도 보여야 하는 값은 `params_changed()`에서
   기다려 필드에 담는다.
 - **실시간 갱신, 훅, 업로드, 플래시.** 모두 연결이 있어야 한다.
 - **WebSocket만 막힌 환경.** JavaScript는 있고 소켓이 막히면 페이지는 첫 렌더 그대로 남는다. 롱폴링 폴백은

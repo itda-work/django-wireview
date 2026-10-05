@@ -17,7 +17,7 @@ from ..core.component import Component
 from ..core.live_session import REQUEST_ATTR as LIVE_SESSION_REQUEST_ATTR
 from ..core.live_session import declaration_allows, get_live_session
 from ..core.rendered import inject_marker, marked_component_refs, nested_component_html
-from ..core.state import sign_state
+from ..core.state import sign_state, signable_json
 from ..event_transpiler import binding
 from ..features.hooks import hook_files
 from ..function_components import DRAWER as FUNCTION_DRAWER
@@ -167,11 +167,18 @@ async def _enter_in_template(component: Component, repo: ComponentRepository) ->
     it runs: the page draws the loading state and the join starts it again, as
     Phoenix starts no async work on a dead render. Left alone it ran on the
     server's loop after the response, on an instance nothing would render.
+
+    The HTML shows what the query made of the component, but ``data-state``
+    carries the state from before it heard the query (``sign_state``): the join
+    starts from the mounted state and hears the params again, as Phoenix's
+    connected mount starts afresh rather than from the dead render's assigns.
     """
+    unheard: str | None = None
     try:
         if not await component._mount(repo.params, repo.session):
             return False
         if _hears_params_in_template(repo):
+            unheard = signable_json(component)
             uri = f"?{repo.get_query_string()}"
             if isinstance(component, LiveComponent):
                 try:
@@ -184,6 +191,8 @@ async def _enter_in_template(component: Component, repo: ComponentRepository) ->
     finally:
         if not repo.is_live:
             component._cancel_async_tasks()
+        if unheard is not None:
+            component.wire._unheard_state = (unheard, signable_json(component))
 
 
 def _mount_in_template(component: Component, repo: ComponentRepository) -> bool:

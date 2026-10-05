@@ -35,7 +35,12 @@ The django-reactor era changelog (2.x) is preserved in
   engine saw it empty. A page load now runs it twice, as Phoenix runs `handle_params` on the dead
   render and the connected mount; the same params must give the same state. Work that
   `start_async()` or `assign_async()` starts there is cancelled before it runs -- nothing connected
-  would hear it finish -- so the page draws the loading state and the join starts it again. A
+  would hear it finish -- so the page draws the loading state and the join starts it again. The HTML
+  shows what the query made of the component, but `data-state` carries its state from before
+  `params_changed()`: the join starts from the mounted state and hears the query afresh, as
+  Phoenix's connected mount does not inherit the dead render's assigns, so a `params_changed()` that
+  returns early when the query matches its own field still restarts that work and refills
+  `Meta.temporary_assigns` and `Meta.exclude_fields`. A
   component's `params_changed()` that raises fails the response, as a mount hook's does; a
   LiveComponent's is logged and the child still renders (#177).
 
@@ -43,7 +48,9 @@ The django-reactor era changelog (2.x) is preserved in
 
 - The HTTP render reads the page's query from `request.GET` instead of parsing
   `META["QUERY_STRING"]`, which a WSGI server holds as bytes read as latin-1: a query sent without
-  percent-encoding (`?q=파이썬`) reached the mount hooks and `params_changed()` as mojibake (#177).
+  percent-encoding (`?q=파이썬`) reached the mount hooks and `params_changed()` as mojibake. An empty
+  value (`?q=`) is now kept as `{"q": ""}`, as the join always read it, and a `request` in the
+  template context needs a `.GET` (#177).
 
 ## [1.2.0] - 2026-10-04
 

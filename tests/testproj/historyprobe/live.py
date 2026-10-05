@@ -18,11 +18,15 @@ which instance (the box's ``rendered``), and the uri. The tests read it to tell
 who heard a navigation's params (#170). An HTTP render runs it too, before the
 first HTML (#177): that goes to ``HTTP_HEARD`` instead, as nothing on the page
 was told anything yet.
+
+``HistoryGuarded`` and ``HistoryGuardedList`` (the ``guarded/`` page) return
+early when the query matches their own field: the join must still hear it,
+because it starts from the state before the HTTP render heard it (#177).
 """
 
 import itertools
 
-from wireview import Component, LiveComponent
+from wireview import AsyncResult, Component, LiveComponent
 
 _renders = itertools.count(1)
 
@@ -137,3 +141,50 @@ class HistoryBar(Component):
     async def params_changed(self, params, uri):
         _heard(self, self.built, uri)
         self.tab = params.get("tab", "-")
+
+
+class HistoryGuarded(Component):
+    """Loads rows for the query, and returns early when the query matches its own ``q`` (#177).
+
+    The HTTP render cancels the load (nothing connected would hear it finish).
+    The join starts from the state before that render heard the query, so the
+    guard lets the load start again rather than leave the page on ``loading``.
+    """
+
+    class Meta:
+        template_name = "historyprobe/guarded.html"
+
+    q: str = ""
+    rows: AsyncResult[str] | None = None
+
+    async def params_changed(self, params, uri):
+        q = params.get("q", "")
+        if q == self.q:
+            return
+        self.q = q
+        self.rows = await self.assign_async(self._load(q))
+
+    async def _load(self, q: str) -> str:
+        return q.upper()
+
+
+class HistoryGuardedList(Component):
+    """The same guard, with its result in a temporary assign the signed state leaves out (#177)."""
+
+    class Meta:
+        template_name = "historyprobe/guarded_list.html"
+        temporary_assigns = ["items"]
+
+    q: str = ""
+    items: list[str] = []
+    connected: bool = False
+
+    async def joined(self):
+        self.connected = True
+
+    async def params_changed(self, params, uri):
+        q = params.get("q", "")
+        if q == self.q:
+            return
+        self.q = q
+        self.items = [q, q * 2]

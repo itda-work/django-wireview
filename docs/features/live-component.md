@@ -95,7 +95,7 @@ LiveComponent는 **부모가 소유**합니다. 부모 템플릿이 이름을 �
 
 | 시점 | 호출 | 비고 |
 |------|------|------|
-| 첫 HTTP 응답에서 부모가 그림 | 마운트 훅 → `params_changed(params, uri)` (주소에 쿼리가 있으면) | 렌더 전에, 인스턴스당 한 번. `joined()`는 돌지 않는다. join이 이 자식을 다시 만들어 아래 줄들이 이어진다(#177) |
+| 첫 HTTP 응답에서 부모가 그림 | 마운트 훅 → `params_changed(params, uri)` (주소에 쿼리가 있으면) | 렌더 전에, 인스턴스당 한 번. `joined()`는 돌지 않는다. 자식의 `data-state`는 `params_changed()` 전의 상태다. join이 그 상태로 이 자식을 다시 만들어 아래 줄들이 이어진다(#177) |
 | 부모 렌더에 처음 등장 | `joined()` | 인스턴스당 한 번. 자식의 첫 HTML은 이 뒤에 렌더된다. 여기서 보낸 스트림·`push_js`·`push_event`는 자식 요소가 패치된 뒤 적용된다 |
 | 그 바로 뒤, 페이지 주소에 쿼리가 있으면 | `params_changed(params, uri)` | 루트의 join과 같다. 첫 HTTP 응답에서 이미 들었어도 한 번 더 듣는다 — 같은 params로 두 번 돌아도 같은 상태여야 한다([내비게이션](./navigation.md#첫-응답과-join)). 페이지의 첫 join이면 부모가 먼저 듣는다: 부모 `joined()` → 부모 `params_changed()` → 자식 `joined()` → 자식 `params_changed()`. 같은 id의 자식이 이전 페이지의 상태로 복원되어도 지금 페이지의 params를 듣는다(#170) |
 | 같은 경로의 `push_to`·뒤로 가기(patch) | `params_changed(params, uri)` | 페이지의 모든 컴포넌트와 함께(#169) |

@@ -50,17 +50,27 @@ WebSocket join에서 한 번이다. Phoenix가 dead render와 connected mount에
 | 언제 | 순서 |
 |------|------|
 | 첫 HTTP 응답 | 마운트 훅(`Meta.on_mount`, `live_session`) → `params_changed()` → 렌더. `joined()`는 돌지 않는다 |
-| WebSocket join | 마운트 훅 → `joined()` → `params_changed()` → 첫 렌더. 첫 응답이 서명한 상태에서 시작한다 |
+| WebSocket join | 마운트 훅 → `joined()` → `params_changed()` → 첫 렌더. 첫 응답이 그린 상태가 아니라 마운트 상태에서 시작한다 |
 
 - **같은 params로 두 번 돌아도 같은 상태가 되어야 한다.** 필드는 params에서 다시 계산한다. 메일 발송, 카운터
   증가, 감사 로그처럼 한 번만 일어나야 하는 일은 `params_changed()`가 아니라 이벤트 핸들러에 둔다.
+- **join은 첫 응답이 그린 상태가 아니라 마운트 상태에서 params를 다시 듣는다.** 첫 응답의 HTML은
+  `params_changed()`가 만든 상태를 그리지만, `data-state`에는 그 전, 마운트 직후의 상태가 서명된다. 그래서 join은
+  params를 듣기 전의 컴포넌트에서 출발해 `params_changed()`를 처음부터 다시 돈다. Phoenix의 connected mount가 dead
+  render의 assigns를 물려받지 않는 것과 같다. 같은 params로 다시 계산하므로 join의 첫 렌더는 첫 응답과 같은 화면이다.
+  - `if q == self.q: return`처럼 자기 필드와 비교해 일찍 돌아오는 가드를 두어도 된다. join이 받는 `self.q`는
+    아직 기본값이다.
+  - 서명 상태에 실리지 않는 필드(`Meta.temporary_assigns`, `Meta.exclude_fields`)도 join의 `params_changed()`가
+    다시 채운다.
+  - 쿼리가 없는 페이지는 아무것도 달라지지 않는다. 들은 것이 없으니 서명하는 상태가 곧 그린 상태다.
 - 첫 응답이 이미 쿼리를 반영해 그리므로 JavaScript 없는 브라우저와 검색엔진도 결과를 본다
   ([JavaScript 없는 첫 렌더](./dead-view.md)).
 - 쿼리가 없으면 어느 쪽도 부르지 않는다.
 - 페이지의 모든 컴포넌트가 듣는다. 루트, 그 안의 `{% component %}`, 슬롯 안의 컴포넌트, 함수 컴포넌트가 그린
   컴포넌트, sticky 컴포넌트, LiveComponent 모두 같다. 마운트 훅이 거절한 컴포넌트는 듣지 않는다.
 - 첫 응답에는 연결이 없다. 거기서 `start_async`·`assign_async`로 시작한 작업은 렌더 전에 취소된다 — 페이지는
-  로딩 상태로 그려지고 join의 `params_changed()`가 작업을 다시 시작한다. Phoenix도 연결 전에는 비동기 작업을
+  로딩 상태로 그려지고 join의 `params_changed()`가 작업을 다시 시작한다(join은 마운트 상태에서 시작하므로
+  가드가 있어도 그렇다). Phoenix도 연결 전에는 비동기 작업을
   시작하지 않는다. `push_js`·`push_event`·플래시·`push_to`처럼 클라이언트에 보내는 명령은 갈 곳이 없어 버려진다.
   `redirect_to`는 `<meta http-equiv="refresh">`로 나간다.
 - 첫 응답의 `params_changed()`가 예외를 던지면 그 응답이 실패한다. 마운트 훅이 던질 때와 같다. LiveComponent의

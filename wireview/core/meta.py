@@ -189,6 +189,11 @@ class WireviewMeta:
         # ``sign_state`` reuses it while the state is unchanged so an unchanged
         # render keeps producing the same attribute value (see wireview/core/state.py).
         self._state_token: tuple[str, str, float] | None = None
+        # On an HTTP render that heard the query: (state before params_changed,
+        # state after it). ``sign_state`` signs the first while the instance is
+        # still in the second, so the join starts from the mounted state and
+        # hears the params again, as Phoenix's connected mount starts afresh (#177).
+        self._unheard_state: tuple[str, str] | None = None
 
     def clone(self) -> WireviewMeta:
         """Create a copy of this meta instance."""

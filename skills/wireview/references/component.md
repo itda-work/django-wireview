@@ -53,7 +53,7 @@ class XTodoList(Component):
 | `leaving()` | 연결 해제. 정리 훅. `joined()`가 돈 인스턴스만 받는다 — 얻는 일은 `joined()`에 둔다 |
 | `mutation(channel, action, instance)` | `Meta.subscriptions`의 모델이 변경됨. `action`은 `ModelAction.CREATED/UPDATED/DELETED`, m2m 변경이면 `ADDED/REMOVED/CLEARED` |
 | `notification(channel, **kwargs)` | `broadcast(channel, ...)`로 보낸 사용자 정의 알림 |
-| `params_changed(params, uri)` | 같은 경로에서 쿼리가 바뀜 (같은 경로의 `push_to`·`replace_to`, 그 항목 사이의 뒤로가기). 같은 인스턴스가 받으므로 상태가 남는다. 쿼리가 있는 페이지를 열 때는 첫 HTTP 렌더(렌더 전, `joined()` 없이)와 join(`joined()` 뒤)에서 한 번씩, 두 번 돈다 — 같은 params면 같은 상태를 내게 쓰고, 한 번만 할 일은 핸들러에 둔다. 첫 HTTP 렌더에서 시작한 `assign_async`·`start_async`는 취소되고 join이 다시 시작한다 |
+| `params_changed(params, uri)` | 같은 경로에서 쿼리가 바뀜 (같은 경로의 `push_to`·`replace_to`, 그 항목 사이의 뒤로가기). 같은 인스턴스가 받으므로 상태가 남는다. 쿼리가 있는 페이지를 열 때는 첫 HTTP 렌더(렌더 전, `joined()` 없이)와 join(`joined()` 뒤)에서 한 번씩, 두 번 돈다 — 같은 params면 같은 상태를 내게 쓰고, 한 번만 할 일은 핸들러에 둔다. join은 첫 응답이 그린 상태가 아니라 마운트 상태에서 params를 다시 듣는다(`data-state`는 `params_changed()` 전의 상태) — 자기 필드와 비교하는 가드가 있어도 join에서 다시 돌고, 첫 HTTP 렌더에서 취소된 `assign_async`·`start_async`와 서명 밖 필드(`temporary_assigns`·`exclude_fields`)를 join이 다시 채운다 |
 
 ```python
 from wireview import ModelAction

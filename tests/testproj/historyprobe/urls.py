@@ -40,4 +40,6 @@ urlpatterns = [
     path("post/", post, name="post"),
     # Inside ls-members: a patch stays inside it, a push to other/ leaves it
     path("members/", members.view(page("members")), name="members"),
+    # Components whose params_changed returns early on a query they already hold (#177)
+    path("guarded/", lambda request: render(request, "historyprobe/guarded_page.html"), name="guarded"),
 ]

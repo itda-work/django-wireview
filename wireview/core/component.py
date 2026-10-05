@@ -536,6 +536,8 @@ class Component(BaseModel):
         A page load runs it twice, as Phoenix runs handle_params on the dead
         render and on the connected mount, so the same params must give the
         same state. Work that must happen once belongs in an event handler.
+        The join starts from the state before the HTTP render heard the query
+        (that is what ``data-state`` carries), not from the one it drew.
 
         Args:
             params: URL query parameters as a dict (e.g., {"page": "2", "sort": "name"})

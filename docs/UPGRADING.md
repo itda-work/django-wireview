@@ -68,9 +68,11 @@ dependencies = ["django-wireview>=1.2,<2"]
   컴포넌트는 듣지 않는다. 고칠 것은 셋이다.
   - **`params_changed()`는 이제 한 페이지 로드에 두 번 돈다.** HTTP 렌더에서 한 번, join에서 한 번이다. Phoenix의
     `handle_params`도 그렇다. 같은 params로 두 번 돌아도 결과가 같아야 한다 — 필드를 params에서 다시 계산하고, 메일 발송·
-    카운터 증가·로그 기록 같은 부수 효과는 핸들러로 옮긴다. join 쪽은 HTTP 렌더가 서명해 보낸 상태에서 시작한다.
+    카운터 증가·로그 기록 같은 부수 효과는 핸들러로 옮긴다. join은 첫 응답이 그린 상태가 아니라 마운트 상태에서
+    params를 다시 듣는다 — HTML은 `params_changed()`가 만든 상태를 그리지만 `data-state`에는 그 전의 상태가 서명된다.
+    그래서 `if q == self.q: return`처럼 자기 필드와 비교하는 가드가 있어도 join의 `params_changed()`는 처음부터 돈다.
     HTTP 렌더에서 시작한 `assign_async()`·`start_async()`는 연결이 없어 돌기 전에 취소되고, 페이지는 로딩 상태로
-    그려진 뒤 join이 다시 시작한다.
+    그려진 뒤 join이 다시 시작한다. `Meta.temporary_assigns`·`Meta.exclude_fields`에 둔 결과도 join이 다시 채운다.
   - HTTP 렌더에서는 `joined()`가 돌지 않는다. `params_changed()`가 `joined()`에서 준비한 것(`allow_upload()`,
     `joined()`에서 채운 필드)에 기대고 있었다면, 그것이 없을 때도 돌게 한다. 쿼리로 정해지는 것은 `params_changed()`에서,
     연결이 있어야 하는 일은 `joined()`에서 한다.
@@ -79,7 +81,12 @@ dependencies = ["django-wireview>=1.2,<2"]
   ([JavaScript 없는 첫 렌더](./features/dead-view.md), [내비게이션](./features/navigation.md#첫-응답과-join))
 - **퍼센트 인코딩 없이 온 쿼리를 Django처럼 읽는다.** HTTP 렌더는 쿼리를 `request.META["QUERY_STRING"]`에서 직접 풀었으므로,
   WSGI 서버가 받은 `?q=파이썬`(인코딩하지 않은 UTF-8)이 깨진 글자로 `params`와 `on_mount` 훅에 갔다. 이제
-  `request.GET`에서 읽는다. 할 일은 없다. 깨진 값을 되돌리던 코드가 있으면 지운다.
+  `request.GET`에서 읽는다. 깨진 값을 되돌리던 코드가 있으면 지운다. 같은 변경이 둘을 더 바꾼다.
+  - **빈 값이 남는다.** `?q=`나 `?flag`를 열면 HTTP 렌더의 params가 이제 `{"q": ""}`·`{"flag": ""}`다. 전에는 빠졌다.
+    join(브라우저의 `URLSearchParams`)이 늘 그렇게 읽었으므로 두 쪽이 같아졌다. `on_mount` 훅이 받는 `params`도 같고,
+    빈 값만 있는 주소에서도 `params_changed()`가 돈다. `"q" in params`로 검색어가 있는지 보던 코드는 값이 비었는지도 본다.
+  - **컨텍스트의 `request`에 `.GET`이 있어야 한다.** 템플릿을 직접 렌더하는 테스트가 `request`에 `META`만 가진 가짜
+    객체를 넣었다면 이제 `AttributeError`다. `RequestFactory().get(...)`로 만든 요청을 넣는다.
 
 ## 1.1에서 1.2로
 

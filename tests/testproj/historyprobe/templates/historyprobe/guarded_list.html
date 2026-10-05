@@ -1,0 +1,5 @@
+{% load wireview %}
+
+<p {% tag_header %} data-testid="guarded-list">
+  items={{ this.items|join:"," }} {{ this.connected|yesno:"joined,http" }}
+</p>

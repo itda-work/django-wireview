@@ -1,0 +1,11 @@
+{% load wireview %}
+
+<p {% tag_header %} data-testid="guarded">
+  {% if this.rows.loading %}
+    loading
+  {% elif this.rows.ok %}
+    rows={{ this.rows.result }}
+  {% else %}
+    none
+  {% endif %}
+</p>

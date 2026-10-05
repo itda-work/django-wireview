@@ -108,9 +108,12 @@ def test_every_row_reads_every_section_from_its_own_up():
 UPGRADE_NOTE = {
     "The first HTTP render runs `params_changed()`": (
         "첫 HTTP 렌더도 `params_changed()`를 부른다",
-        "같은 params로 두 번 돌아도 결과가 같아야 한다",
+        "join은 첫 응답이 그린 상태가 아니라 마운트 상태에서",
     ),
-    "reads the page's query from `request.GET`": ("퍼센트 인코딩 없이 온 쿼리를 Django처럼 읽는다", "할 일은 없다"),
+    "reads the page's query from `request.GET`": (
+        "퍼센트 인코딩 없이 온 쿼리를 Django처럼 읽는다",
+        "컨텍스트의 `request`에 `.GET`이 있어야 한다",
+    ),
 }
 
 DOCS_ONLY = "문서·저장소만 바뀌었고 라이브러리 동작은 같다"

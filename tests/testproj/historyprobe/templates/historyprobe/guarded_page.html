@@ -1,0 +1,13 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>history probe guarded</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    {% component 'HistoryGuarded' id="guarded" %}
+    {% component 'HistoryGuardedList' id="guarded-list" %}
+  </body>
+</html>
