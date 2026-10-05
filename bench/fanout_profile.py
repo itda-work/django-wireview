@@ -1356,13 +1356,20 @@ async def _shared_inproc(board: t.Any, store: t.Any, boards: int, repeat: int) -
         views = [await _live(board, id="board") for _ in range(boards)]
         for view in views:
             await view.wire.render_diff(view.component, view._repo)
+        # The render that leads, one message after another as render_diff_us_one_after_another is:
+        # timed alone, each paid the wake of a worker thread that slept through the others
         lead, follow = [], []
+        for n in range(repeat):
+            started = ns()
+            for m in range(boards):
+                store.announce()
+                with shared_render.handling(f"inproc-lead-{n}-{m}"):
+                    await views[0].wire.render_diff(views[0].component, views[0]._repo)
+            lead.append((ns() - started) / boards / 1000)
         for n in range(repeat):
             store.announce()
             with shared_render.handling(f"inproc-{n}"):
-                started = ns()
                 await views[0].wire.render_diff(views[0].component, views[0]._repo)
-                lead.append((ns() - started) / 1000)
                 started = ns()
                 for view in views[1:]:
                     await view.wire.render_diff(view.component, view._repo)
