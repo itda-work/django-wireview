@@ -133,10 +133,13 @@ class MarkedVariableNode(Node):
         slot = reads.open() if reads is not None else None
         try:
             if self._plain:
+                # As VariableNode.render: only the resolve may fail quietly, printing raises
                 try:
-                    output = render_value(self.filter_expression.resolve(context), context)
+                    value = self.filter_expression.resolve(context)
                 except UnicodeDecodeError:
-                    output = ""  # as VariableNode.render
+                    output = ""
+                else:
+                    output = render_value(value, context)
             else:
                 output = self.original_node.render(context)  # a subclass renders its own way
         finally:

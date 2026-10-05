@@ -97,3 +97,38 @@ def test_the_shortcut_takes_plain_ints_alone():
         assert render_value(Shown(12), context) == "#12"
         assert render_value("<b>", context) == "&lt;b&gt;"
         assert render_value(mark_safe("<b>"), context) == "<b>"
+
+
+def _undecodable() -> UnicodeDecodeError:
+    return UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+
+class Bad:
+    """Printing it fails; Django lets that out, only a failing lookup prints nothing."""
+
+    def __str__(self) -> str:
+        raise _undecodable()
+
+    @property
+    def lookup(self) -> str:
+        raise _undecodable()
+
+
+class BadSafe(str):
+    def __html__(self) -> str:
+        raise _undecodable()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("value", [Bad(), BadSafe("x")], ids=["str", "html"])
+def test_a_value_that_cannot_print_raises_as_in_django(value):
+    engine = Engine()
+    with pytest.raises(UnicodeDecodeError):
+        engine.from_string("{{ value }}").render(Context({"value": value}))
+    with pytest.raises(UnicodeDecodeError):
+        TemplateMarker().render_marked(engine.from_string("{{ value }}"), {"value": value})
+
+
+@pytest.mark.unit
+def test_a_lookup_that_cannot_decode_prints_nothing_as_in_django():
+    assert _both("[{{ value.lookup }}]", Bad()) == ("[]", "[]")
