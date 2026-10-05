@@ -46,11 +46,12 @@ from urllib.parse import parse_qs
 
 # Flat marker pattern, kept for callers that only need plain dynamic values.
 MARKER_PATTERN = re.compile(r"<!--\$(\d+)-->(.*?)<!--/\$\1-->", re.DOTALL)
-_TOKEN = re.compile(r"<!--(/?)\$([CIB]?)(\d+)-->")
+# An index is written as f"{index}": "05" is not one, here and in every scan below
+_TOKEN = re.compile(r"<!--(/?)\$([CIB]?)(0|[1-9]\d*)-->")
 _REF_PREFIX = "<!--@wv:"
 _REF = re.compile(r"<!--@wv:([^>]+?)-->")
 # A reference with its marker whole, or any other marker
-_MARKER_OR_REF = re.compile(r"(<!--\$(\d+)--><!--@wv:[^>]+?--><!--/\$\2-->)|<!--/?\$[CIB]?(\d+)-->")
+_MARKER_OR_REF = re.compile(r"(<!--\$(0|[1-9]\d*)--><!--@wv:[^>]+?--><!--/\$\2-->)|<!--/?\$[CIB]?(0|[1-9]\d*)-->")
 _NESTED_PREFIX = "<!--@wv("
 _NESTED = re.compile(r"<!--@wv[()]:[^>]+?-->")
 # A reference, or a nested component's whole output (the outermost, by its own id)
@@ -456,10 +457,10 @@ class Rendered:
         """
         if _NESTED_PREFIX in html:
             html = _NESTED.sub("", html)
-        static, dynamic = _parse(html, set(stale))
+        static, dynamic, names = _parse(html, set(stale))
         rendered = cls(static=static, dynamic=dynamic)
-        # A reference comes from its comment, or from an earlier render through settle()
-        rendered._names = None if stale else _REF_PREFIX in html
+        # A reference comes from the parse, or from an earlier render through settle()
+        rendered._names = None if stale else names
         return rendered
 
     def settle(self, previous: Rendered | None) -> None:
@@ -528,7 +529,7 @@ def _finish(kind: str, static: list[str], dynamic: list[t.Any], items: bool = Tr
     return text
 
 
-def _parse(html: str, stale: set[int] | None = None) -> tuple[list[str], list[Dynamic]]:
+def _parse(html: str, stale: set[int] | None = None) -> tuple[list[str], list[Dynamic], bool]:
     """Split the rendered HTML on marker comments and fold the regions.
 
     ``re.split`` with the three marker groups yields
@@ -541,6 +542,10 @@ def _parse(html: str, stale: set[int] | None = None) -> tuple[list[str], list[Dy
     most of a render's parts. It is taken whole, without a frame of its own
     (#176) -- what ``_finish`` makes of it is that text, or the reference it is.
     And only a frame that holds a loop item outside its loop flattens it (``items``).
+
+    The flag says whether it made a ``ComponentRef`` anywhere: the HTML
+    cannot say, as a stray marker the parse drops can split a reference
+    comment that the parse then joins back (#176).
     """
     parts = iter(_TOKEN.split(html))
     static: list[str] = [next(parts)]
@@ -550,12 +555,14 @@ def _parse(html: str, stale: set[int] | None = None) -> tuple[list[str], list[Dy
     # A value or block just opened, taken whole if the next marker closes it
     held: str | None = None
     held_index = held_text = ""
+    names = False
     for close, kind, index, text in zip(parts, parts, parts, parts):
         if held is not None:
             if close and kind == held and index == held_index:
                 value: t.Any = held_text
                 if held == "" and held_text.startswith(_REF_PREFIX) and (match := _REF.fullmatch(held_text)):
                     value = ComponentRef(match.group(1))
+                    names = True
                 if stale and int(index) in stale and not any(entry[0] in ("I", "C") for entry in stack):
                     value = Stale(value)
                 dynamic.append(value)
@@ -574,6 +581,8 @@ def _parse(html: str, stale: set[int] | None = None) -> tuple[list[str], list[Dy
             static, dynamic, items = [text], [], False
         elif stack and (top := stack[-1])[0] == kind and top[1] == index:
             value = _finish(kind, static, dynamic, items)
+            if value.__class__ is ComponentRef:
+                names = True
             _kind, _index, static, dynamic, items = stack.pop()
             if kind == "I":
                 items = True
@@ -592,7 +601,7 @@ def _parse(html: str, stale: set[int] | None = None) -> tuple[list[str], list[Dy
         kind, index, parent_static, parent_dynamic, parent_items = stack.pop()
         parent_static[-1] += _interleave(static, [_flatten_item(v) for v in dynamic] if items else dynamic)
         static, dynamic, items = parent_static, parent_dynamic, parent_items
-    return static, [_flatten_item(v) for v in dynamic] if items else dynamic
+    return static, [_flatten_item(v) for v in dynamic] if items else dynamic, names
 
 
 def keep_stale(

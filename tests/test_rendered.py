@@ -335,6 +335,15 @@ class TestKeepStale:
         kept = keep_stale(html, {5}, previous, first=3)
         assert kept == "<div><em><!--$2-->T<!--/$2--></em><!--$5-->A<!--/$5--></div>"
 
+    @pytest.mark.unit
+    def test_an_index_with_a_leading_zero_is_text_to_the_scan_as_to_the_parser(self):
+        """The library never writes "05"; a user's string that does is no marker to either (#176)."""
+        previous = Rendered.from_marked_html("<!--$05-->x<!--$0-->A<!--/$0-->")
+        html = "<!--$05-->x<!--$5-->a<!--/$5-->"
+
+        assert previous.static == ["<!--$05-->x", ""]
+        assert keep_stale(html, {5}, previous) == "<!--$05-->x<!--$5-->A<!--/$5-->"
+
 
 class TestParseRoundTrip:
     """Any render the template engine can mark parses back to exactly itself (#176).
@@ -416,6 +425,22 @@ class TestMayNameComponents:
 
         assert may_name_components(rendered)
         assert component_refs(rendered) == ["kid"]
+
+    @pytest.mark.unit
+    def test_a_reference_the_parse_joins_back_is_found(self):
+        """A stray marker inside a reference comment is dropped and the comment joined: the HTML holds no "<!--@wv:"."""
+        rendered = Rendered.from_marked_html("<!--$0--><!--@<!--/$B2-->wv:c9--><!--/$0-->")
+
+        assert rendered.dynamic == [ComponentRef("c9")]
+        assert may_name_components(rendered)
+        assert component_refs(rendered) == ["c9"]
+
+    @pytest.mark.unit
+    def test_a_reference_comment_outside_a_part_names_none(self):
+        rendered = Rendered.from_marked_html("<p><!--@wv:kid--><!--$0-->a<!--/$0--></p>")
+
+        assert not may_name_components(rendered)
+        assert component_refs(rendered) == []
 
     @pytest.mark.unit
     def test_a_render_built_any_other_way_is_walked(self):
