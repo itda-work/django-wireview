@@ -140,3 +140,48 @@ def test_the_in_process_profile_takes_one_render_apart(tmp_path):
         assert us > 0, part
     assert measured["ints_localized_per_render"] > 0
     assert measured["render_diff_us_one_after_another"] > 0
+
+
+# -- stage 1 (B): §6 ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def stage_b():
+    return json.loads(fanout_profile.RESULT_B.read_text())
+
+
+def _stage_b_section() -> str:
+    text = DESIGN.read_text(encoding="utf-8")
+    return text[text.index("\n## 6. ") :]
+
+
+@pytest.mark.unit
+def test_section_6_quotes_every_fact_of_stage_b(stage_b):
+    section = _stage_b_section()
+    facts = {**fanout_profile.progress_facts(stage_b), **fanout_profile.compare_facts()}
+    for key, value in facts.items():
+        assert value in section, f"§6 does not say {key} = {value}"
+
+
+@pytest.mark.unit
+def test_section_6_tables_hold_only_the_results(stage_b):
+    values = set()
+    for value in {**fanout_profile.progress_facts(stage_b), **fanout_profile.compare_facts()}.values():
+        values.update(CELL_NUMBER.findall(value))
+    rows = [line for line in _stage_b_section().splitlines() if line.startswith("|")]
+    quoted = {n for row in rows for n in CELL_NUMBER.findall(row)}
+    assert quoted <= values, f"§6 tables quote numbers the results do not: {quoted - values}"
+
+
+@pytest.mark.unit
+def test_section_6_shows_the_charts_drawn_from_the_results(result, stage_b):
+    section = _stage_b_section()
+    for block in fanout_profile.progress_chart(result, stage_b).split("\n\n"):
+        assert block in section, "§6's chart is stale: print bench.fanout_profile.progress_chart() again"
+
+
+@pytest.mark.integration
+def test_the_click_profile_times_every_action(tmp_path):
+    measured = _run(["clicks", "--clicks", "3", "--warmup", "1", "--gaps", "0"], tmp_path)["clicks"]
+    for action in ("increment", "insert"):
+        assert measured["actions"][action]["0.0"]["median_ms"] > 0

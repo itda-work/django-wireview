@@ -6,7 +6,7 @@
 | 문서 | 무엇 | 상태 |
 |------|------|------|
 | [transport-abstraction.md](./transport-abstraction.md) | 전송 추상화(`Outbound`/`Broker`), 채널 레이어 선택, Windows·NATS 실측, 연결당 메모리의 원인 | 결정됨 (GAP-026 완료). 5절 이후가 실측 기록이다 |
-| [broadcast-fanout.md](./broadcast-fanout.md) | 브로드캐스트 하나가 연결 1,000개에 닿는 632 ms의 단계별 실측(연결당 약 680 µs를 한 코어에서 직렬로, 렌더 52%·마커 파싱 18%), 줄이는 선택지 A~E, Phoenix와의 비교 | **제안 — 메인테이너 확인 대기** ([#176](https://github.com/itda-work/django-wireview/issues/176)). 구현하지 않았다. 측정은 `bench/fanout_profile.py` |
+| [broadcast-fanout.md](./broadcast-fanout.md) | 브로드캐스트 하나가 연결 1,000개에 닿는 632 ms의 단계별 실측(연결당 약 680 µs를 한 코어에서 직렬로, 렌더 52%·마커 파싱 18%), 줄이는 선택지 A~E, Phoenix와의 비교 | **1단계(B) 구현** ([#176](https://github.com/itda-work/django-wireview/issues/176)). 연결당 723 → 460 µs, 팬아웃 722 → 445 ms(같은 날 비교, §6). 2단계(A)·3단계(D)는 남았다. 측정은 `bench/fanout_profile.py` |
 | [distributed-uploads.md](./distributed-uploads.md) | 청크 업로드를 어느 워커에서나 받는 방법: 무상태 HTTP + 계산된 경로 + 브로커로 오는 가변 상태. 버린 갈래 셋(스티키·브로커 RPC·공유 레지스트리)과 이유 | 결정됨, 구현 완료 ([#83](https://github.com/itda-work/django-wireview/issues/83)) |
 | [session-extraction.md](./session-extraction.md) | 컨슈머에서 세션 로직을 떼어 내는 계획과 착수 기준 (GAP-027) | 1단계 완료([#60](https://github.com/itda-work/django-wireview/issues/60), v1.0.0rc3), 3단계는 [#83](https://github.com/itda-work/django-wireview/issues/83)으로 완료. 2·4단계는 5절의 착수 기준을 만족할 때 연다 |
 | [live-session.md](./live-session.md) | 페이지 단위 인증·정책 경계 (Phoenix의 live_session) | 구현 완료. 사용법은 [features/live-session.md](../features/live-session.md) |

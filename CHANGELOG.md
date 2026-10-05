@@ -43,6 +43,12 @@ The django-reactor era changelog (2.x) is preserved in
   `Meta.temporary_assigns` and `Meta.exclude_fields`. A
   component's `params_changed()` that raises fails the response, as a mount hook's does; a
   LiveComponent's is logged and the child still renders (#177).
+- A live render costs about a third less, with the same output byte for byte: a plain `int` or `str`
+  prints without Django's localization detour, the marker path and the diff parser do less per
+  part, the names a render reads are kept per component class, and a render that names no
+  LiveComponent is not walked for one. A broadcast to 1,000 connections on one process went from
+  722 to 445 ms on the same machine; one event's server work from 0.74 to 0.49 ms
+  (docs/design/broadcast-fanout.md §6, #176).
 
 ### Fixed
 

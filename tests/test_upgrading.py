@@ -122,6 +122,7 @@ NO_UPGRADE_NOTE = {
     "The README says when to use wireview": DOCS_ONLY,
     "The Live Search example and tutorial keep the query in the address": "예제와 튜토리얼만 바뀌었다",
     "The README's numbers are charts": "문서와 벤치마크만 바뀌었다",
+    "A live render costs about a third less": "출력은 바이트 단위로 같고 빨라지기만 했다",
 }
 
 PREVIOUS = "1.2.0"

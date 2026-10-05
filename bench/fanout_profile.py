@@ -4,6 +4,7 @@
     uv run python -m bench.fanout_profile --only wireview --rounds 1          # a quick look
     uv run python -m bench.fanout_profile --only wireview --cprofile          # which functions (times inflated)
     uv run python -m bench.fanout_profile inproc                              # one render by part, trips, threads
+    uv run python -m bench.fanout_profile clicks                              # one click's server time, in-process
     uv run --python 3.14t --no-project --with django==6.0 python -m bench.fanout_profile plain   # no GIL
 
 The scenario is ``make bench-fastapi``'s fan-out (bench/compare_fastapi): N WebSocket
@@ -289,7 +290,7 @@ def _patch_wireview() -> None:
     meta.WireviewMeta._collect_context = _timed("collect_context", meta.WireviewMeta._collect_context)
     meta.WireviewMeta._render_with_context = _timed("template render", meta.WireviewMeta._render_with_context)
     tags.sign_state = _timed("sign_state", tags.sign_state)
-    state._state_json = _timed("state json (model_dump_json)", state._state_json)
+    state.signable_json = _timed("state json (model_dump_json)", state.signable_json)
 
     # Back on the loop: the diff, and the frame's JSON
     meta.WireviewMeta._compute_rendered_diff = _timed("diff", meta.WireviewMeta._compute_rendered_diff)
@@ -754,7 +755,8 @@ RESULT = ROOT / "bench" / "results" / "5a4f037-fanout-profile.json"
 
 def _range(values: t.Iterable[float], digits: int = 1) -> str:
     values = list(values)
-    return f"{min(values):.{digits}f}~{max(values):.{digits}f}"
+    low, high = f"{min(values):.{digits}f}", f"{max(values):.{digits}f}"
+    return low if low == high else f"{low}~{high}"
 
 
 def facts(result: dict[str, t.Any]) -> dict[str, str]:
@@ -839,6 +841,170 @@ def facts(result: dict[str, t.Any]) -> dict[str, str]:
                 expired = data["summary"]["cpu"]["loop"].get("layer._clean_expired", 0)
                 out[f"scale.{n}.clean_expired"] = f"{expired / n / 1000:.1f} µs"
     return out
+
+
+#: Stage 1 (B) of #176, measured: docs/design/broadcast-fanout.md §6 quotes it
+RESULT_B = ROOT / "bench" / "results" / "a6994e5-fanout-profile.json"
+#: The inproc parts §6 follows commit by commit
+STEP_PARTS = {
+    "context": "collect_context",
+    "marked": "template render, marked (wireview)",
+    "plain": "template render, plain Django",
+    "localize": "localize() of the ints the template prints",
+    "ints": "the same ints as a marked variable prints them",
+    "parse": "diff: parse markers",
+}
+
+
+def _per_connection(result: dict[str, t.Any]) -> float:
+    s = result["implementations"]["wireview"]["summary"]
+    return (s["loop_cpu_ns"] + s["worker_cpu_ns"]) / result["method"]["connections"] / 1000
+
+
+def _fanout_ms(result: dict[str, t.Any], name: str = "wireview") -> float:
+    return result["implementations"][name]["summary"]["client_span_unarmed_ns"] / 1e6
+
+
+def _sides(result: dict[str, t.Any]) -> dict[str, list[dict[str, t.Any]]]:
+    """The fan-out runs before B and after it: the same day, alternating."""
+    return {"before": result["before"]["fanout"], "after": [result, *result["after_more"]["fanout"]]}
+
+
+def progress_facts(result: dict[str, t.Any]) -> dict[str, str]:
+    """Every number docs/design/broadcast-fanout.md §6 quotes from the stage 1 (B) result."""
+    out: dict[str, str] = {}
+    steps = result["steps"]
+    medians: dict[str, dict[str, float]] = {}
+    for label in steps["order"]:
+        runs = steps["inproc"][label]
+        row = {
+            key: statistics.median(r["board_us"][part] for r in runs)
+            for key, part in STEP_PARTS.items()
+            if part in runs[0]["board_us"]
+        }
+        row["render_diff"] = statistics.median(r["render_diff_us_one_after_another"] for r in runs)
+        medians[label] = row
+        out[f"step.{label}.commit"] = steps["commits"][label]
+        ends = label in (steps["order"][0], steps["order"][-1])
+        for key, value in row.items():
+            if key in ("plain", "localize") and not ends:
+                continue  # the overhead's terms: §6 quotes them before B and after it
+            out[f"step.{label}.{key}"] = f"{value:.1f}"
+    first, last = medians[steps["order"][0]], medians[steps["order"][-1]]
+    out["step.load"] = f"{min(x[0] for x in steps['loads']):.1f}~{max(x[0] for x in steps['loads']):.1f}"
+    out["step.render_diff_cut"] = f"{1 - last['render_diff'] / first['render_diff']:.0%}"
+    out["overhead.before"] = f"{first['marked'] - first['plain']:.1f}"
+    out["overhead.after"] = f"{last['marked'] - (last['plain'] - last['localize'] + last['ints']):.1f}"
+
+    sides = _sides(result)
+    for side, runs in sides.items():
+        spans = [_fanout_ms(r) for r in runs]
+        cpu = [_per_connection(r) for r in runs]
+        out[f"{side}.fanout"] = f"{statistics.median(spans):.1f} ms"
+        out[f"{side}.fanout_runs"] = " · ".join(f"{v:.1f}" for v in spans)
+        out[f"{side}.per_connection"] = f"{statistics.median(cpu):.1f} µs"
+        out[f"{side}.per_connection_runs"] = " · ".join(f"{v:.1f}" for v in cpu)
+        out[f"{side}.load"] = _range(r["environment"]["load_average"][0] for r in runs)
+    out["fastapi.fanout"] = f"{_fanout_ms(result, 'fastapi'):.1f} ms"
+    fastapi = result["implementations"]["fastapi"]["summary"]
+    connections = result["method"]["connections"]
+    out["fastapi.per_connection"] = f"{(fastapi['loop_cpu_ns'] + fastapi['worker_cpu_ns']) / connections / 1000:.1f} µs"
+    before_span = statistics.median(map(_fanout_ms, sides["before"]))
+    before_cpu = statistics.median(map(_per_connection, sides["before"]))
+    out["cut.fanout"] = f"{1 - statistics.median(map(_fanout_ms, sides['after'])) / before_span:.0%}"
+    out["cut.per_connection"] = f"{1 - statistics.median(map(_per_connection, sides['after'])) / before_cpu:.0%}"
+
+    # One pair measured back to back, stage by stage (CPU per connection)
+    before, after = sides["before"][0], result
+    for side, run in (("before", before), ("after", after)):
+        summary = run["implementations"]["wireview"]["summary"]
+        connections = run["method"]["connections"]
+        for group, prefixes in GROUPS.items():
+            used = sum(c for label, c, _ in stages(summary, "wireview") if label.startswith(prefixes))
+            out[f"pair.{side}.{group}"] = f"{used / connections * 1000:.1f}"
+        out[f"pair.{side}.total"] = f"{_per_connection(run):.1f}"
+
+    for side in ("before", "after"):
+        clicks = result["clicks"][side]["implementations"]["wireview"]["summary"]
+        for scenario in ("change_value", "insert_front"):
+            server = clicks[scenario]["server_ms"]
+            out[f"clicks.{side}.{scenario}"] = f"{server['median']:.2f} ms"
+            out[f"clicks.{side}.{scenario}.rounds"] = _range((r["median"] for r in server["rounds"]), 2)
+        out[f"clicks.{side}.fanout"] = f"{clicks['fanout_ms']['median']:.1f} ms"
+        runs = [run["clicks"]["actions"] for run in result["clicks_inproc"][side]]
+        for action in ("increment", "insert"):
+            awake = [run[action]["0.0"]["median_ms"] for run in runs]
+            gapped = [run[action]["0.002"]["median_ms"] for run in runs]
+            out[f"inproc_clicks.{side}.{action}"] = f"{_range(awake, 2)} ms"
+            out[f"inproc_clicks.{side}.{action}.gapped"] = f"{_range(gapped, 2)} ms"
+    return out
+
+
+#: ``make bench-compare BASE=5a4f037`` against stage 1 (B): what §6 quotes of it
+BENCH_COMPARE = ("5a4f037", "a6994e5")
+COMPARED = (
+    "timing.flat.event_ms",
+    "timing.list.event_ms",
+    "timing.list.template_render_ms",
+    "timing.list500.rotate_ms",
+    "ws.items_50.broadcast_ms",
+    "ws.items_50.events_per_s",
+)
+
+
+def compare_facts() -> dict[str, str]:
+    """The ``make bench-compare`` numbers §6 quotes, from the two results it wrote."""
+    out = {}
+    before, after = (json.loads((ROOT / "bench" / "results" / f"{sha}.json").read_text()) for sha in BENCH_COMPARE)
+
+    def get(result: dict[str, t.Any], key: str) -> float:
+        section, rest = key.split(".", 1)
+        if section == "ws":  # nested by scenario: ws.<scenario>.<metric>
+            scenario, metric = rest.split(".", 1)
+            return result[section][scenario][metric]
+        return result[section][rest]  # flat: timing.<scenario.metric>
+
+    for key in COMPARED:
+        a, b = get(before, key), get(after, key)
+        digits = 0 if key.endswith(("_s", "broadcast_ms")) else 3
+        out[f"compare.{key}"] = f"{a:,.{digits}f} → {b:,.{digits}f}"
+        out[f"compare.{key}.change"] = f"{b / a - 1:+.0%}"
+    return out
+
+
+def progress_chart(design: dict[str, t.Any], result: dict[str, t.Any]) -> str:
+    """Mermaid charts of stage 1 (B): before and after it, beside the design's measurement and FastAPI."""
+    sides = _sides(result)
+    names = ["설계 측정 (5a4f037)", "B 전 (같은 날)", "B 후", "FastAPI"]
+    connections = result["method"]["connections"]
+    fastapi = result["implementations"]["fastapi"]["summary"]
+    cpu = [
+        _per_connection(design),
+        statistics.median(map(_per_connection, sides["before"])),
+        statistics.median(map(_per_connection, sides["after"])),
+        (fastapi["loop_cpu_ns"] + fastapi["worker_cpu_ns"]) / connections / 1000,
+    ]
+    spans = [
+        _fanout_ms(design),
+        statistics.median(map(_fanout_ms, sides["before"])),
+        statistics.median(map(_fanout_ms, sides["after"])),
+        _fanout_ms(result, "fastapi"),
+    ]
+
+    def block(title: str, axis: str, numbers: list[float]) -> str:
+        quoted = ", ".join(f'"{n}"' for n in names)
+        shown = ", ".join(f"{v:.1f}" for v in numbers)
+        return (
+            f'```mermaid\nxychart-beta horizontal\n    title "{title}"\n    x-axis [{quoted}]\n'
+            f'    y-axis "{axis}" 0 --> {max(numbers) * 1.1:.0f}\n    bar [{shown}]\n```'
+        )
+
+    return "\n\n".join(
+        [
+            block(f"연결 하나당 CPU, 1단계(B) 전후 (연결 {connections:,}개)", "µs", cpu),
+            block(f"브로드캐스트 팬아웃, 1단계(B) 전후 (연결 {connections:,}개, 계측 끔)", "ms", spans),
+        ]
+    )
 
 
 async def drive(args: argparse.Namespace) -> dict[str, t.Any]:
@@ -1091,6 +1257,81 @@ async def inproc(args: argparse.Namespace) -> dict[str, t.Any]:
     return out
 
 
+# -- in-process: one click's server time ---------------------------------------------------
+
+
+async def clicks(args: argparse.Namespace) -> dict[str, t.Any]:
+    """The server time of a click on Board, in this process: receive to the frame, no uvicorn, no socket.
+
+    ``make bench-fastapi`` times the same span around the same application, but
+    through a browser and a server process, where a click's time also holds how
+    long the idle threads take to wake. Here the clicks come back to back
+    (``gap`` 0: the threads stay awake) or ``gap`` seconds apart.
+    """
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "bench.compare_fastapi.wv.settings")
+    os.environ.setdefault("BENCH_CLIENT", "vanilla")
+    import django
+
+    django.setup()
+    from asgiref.testing import ApplicationCommunicator
+    from django.contrib.auth.models import AnonymousUser
+
+    import bench.compare_fastapi.serve as served
+    from bench.compare_fastapi.wv.board.live import Board
+    from wireview.core.meta import WireviewMeta
+    from wireview.core.state import sign_state
+
+    app = served.wireview  # behind the Timed wrapper make bench-fastapi reads
+    scope = {
+        "type": "websocket",
+        "path": "/__wireview__",
+        "query_string": b"vsn=99",
+        "headers": [(b"host", b"127.0.0.1"), (b"origin", b"http://127.0.0.1")],
+        "subprotocols": [],
+        "client": ("127.0.0.1", 1),
+        "server": ("127.0.0.1", 80),
+    }
+    communicator = ApplicationCommunicator(app, scope)
+
+    async def send(payload: dict[str, t.Any]) -> None:
+        await communicator.send_input({"type": "websocket.receive", "text": json.dumps(payload)})
+
+    async def until(command: str) -> None:
+        while True:
+            out = await communicator.receive_output(5)
+            if out["type"] == "websocket.send" and json.loads(out["text"])["command"] == command:
+                return
+
+    await communicator.send_input({"type": "websocket.connect"})
+    assert (await communicator.receive_output(5))["type"] == "websocket.accept"
+    state = sign_state(Board(user=AnonymousUser(), wire=WireviewMeta(params={}), id="board"))
+    await send({"command": "join", "payload": {"name": "Board", "state": state, "children": {}}})
+    await until("joined")
+
+    async def click(action: str, count: int, gap: float) -> list[float]:
+        event = {"id": "board", "command": action, "implicit_args": {}, "explicit_args": {}}
+        app.records.clear()
+        for _ in range(count):
+            await send({"command": "user_event", "payload": event})
+            await until("render")
+            if gap:
+                await asyncio.sleep(gap)
+        return [ms for _text, ms in app.records]
+
+    out: dict[str, t.Any] = {"clicks": args.clicks, "actions": {}}
+    for action in ("increment", "insert"):
+        for gap in args.gaps:
+            await click(action, args.warmup, gap)
+            ms = sorted(await click(action, args.clicks, gap))
+            out["actions"].setdefault(action, {})[str(gap)] = {
+                "median_ms": statistics.median(ms),
+                "p95_ms": ms[int(len(ms) * 0.95)],
+            }
+    await communicator.send_input({"type": "websocket.disconnect", "code": 1000})
+    await communicator.wait(5)
+    return out
+
+
 # -- main -----------------------------------------------------------------------------------
 
 
@@ -1110,6 +1351,11 @@ def main() -> None:
         mode_parser.add_argument("--repeat", type=int, default=7)
         mode_parser.add_argument("--output", type=Path)
         mode_parser.add_argument("--cprofile", action="store_true", help="inproc: also profile render_diff")
+    clicks_parser = sub.add_parser("clicks", help="one click's server time on Board, in-process, by action and gap")
+    clicks_parser.add_argument("--clicks", type=int, default=300)
+    clicks_parser.add_argument("--warmup", type=int, default=50)
+    clicks_parser.add_argument("--gaps", type=float, nargs="*", default=[0.0, 0.002])
+    clicks_parser.add_argument("--output", type=Path)
     parser.add_argument("--rounds", type=int, default=5)
     parser.add_argument("--connections", type=int, default=1000)
     parser.add_argument("--warmup", type=int, default=3, help="broadcasts before measuring, per round")
@@ -1124,9 +1370,11 @@ def main() -> None:
     if args.mode == "serve":
         serve(args.name, args.port, args.cprofile)
         return
-    if args.mode in ("inproc", "plain"):
+    if args.mode in ("inproc", "plain", "clicks"):
         if args.mode == "plain":
             result = {"plain": plain(args)}
+        elif args.mode == "clicks":
+            result = {"environment": environment(), "clicks": asyncio.run(clicks(args))}
         else:
             result = {"environment": environment(), "inproc": asyncio.run(inproc(args))}
         text = json.dumps(result, indent=2, ensure_ascii=False)
