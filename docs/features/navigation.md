@@ -58,6 +58,7 @@ WebSocket join에서 한 번이다. Phoenix가 dead render와 connected mount에
   `params_changed()`가 만든 상태를 그리지만, `data-state`에는 그 전, 마운트 직후의 상태가 서명된다. 그래서 join은
   params를 듣기 전의 컴포넌트에서 출발해 `params_changed()`를 처음부터 다시 돈다. Phoenix의 connected mount가 dead
   render의 assigns를 물려받지 않는 것과 같다. 같은 params로 다시 계산하므로 join의 첫 렌더는 첫 응답과 같은 화면이다.
+  - 단, params 밖의 입력(시각·난수·그 사이 바뀐 DB 행)에 따라 달라지면 join의 첫 렌더가 화면을 바꾼다.
   - `if q == self.q: return`처럼 자기 필드와 비교해 일찍 돌아오는 가드를 두어도 된다. join이 받는 `self.q`는
     아직 기본값이다.
   - 서명 상태에 실리지 않는 필드(`Meta.temporary_assigns`, `Meta.exclude_fields`)도 join의 `params_changed()`가

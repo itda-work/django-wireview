@@ -5,7 +5,7 @@ import typing as t
 from concurrent.futures import ThreadPoolExecutor
 from importlib import metadata
 
-from asgiref.sync import async_to_sync
+from asgiref.sync import async_to_sync, sync_to_async
 from django import template
 from django.template.base import Node, NodeList, Parser, TextNode, Token, token_kwargs
 from django.template.context import Context
@@ -155,7 +155,9 @@ def _listens_to_params(component: Component) -> bool:
     )
 
 
-async def _enter_in_template(component: Component, repo: ComponentRepository) -> bool:
+async def _enter_in_template(
+    component: Component, repo: ComponentRepository, serialize: t.Callable[[Component], t.Awaitable[str]]
+) -> tuple[bool, str | None]:
     """Mount, then hear the page's query: Phoenix's mount -> handle_params, before the render.
 
     A LiveComponent's ``params_changed`` that raises is logged and the child
@@ -172,13 +174,23 @@ async def _enter_in_template(component: Component, repo: ComponentRepository) ->
     carries the state from before it heard the query (``sign_state``): the join
     starts from the mounted state and hears the params again, as Phoenix's
     connected mount starts afresh rather than from the dead render's assigns.
+    That state is serialized here, by ``serialize``, off this loop
+    (``_mount_in_template`` says where): dumping a QuerySet or reading a
+    computed field queries the database, which Django refuses on an event loop.
+
+    Returns:
+        Whether the component may be rendered, and the state before the query
+        when it heard one.
     """
     unheard: str | None = None
     try:
         if not await component._mount(repo.params, repo.session):
-            return False
+            return False, None
         if _hears_params_in_template(repo):
-            unheard = signable_json(component)
+            try:
+                unheard = await serialize(component)
+            except Exception as e:
+                _snapshot_failed(component, e)
             uri = f"?{repo.get_query_string()}"
             if isinstance(component, LiveComponent):
                 try:
@@ -187,12 +199,40 @@ async def _enter_in_template(component: Component, repo: ComponentRepository) ->
                     log.exception(f"Error in {component._name}.params_changed(): {e}")
             else:
                 await component._handle_params(dict(repo.params), uri)
-        return True
+        return True, unheard
     finally:
         if not repo.is_live:
             component._cancel_async_tasks()
-        if unheard is not None:
-            component.wire._unheard_state = (unheard, signable_json(component))
+
+
+def _hold_back(component: Component, unheard: str) -> None:
+    """Keep ``unheard`` for ``sign_state``, with the state the query left, on the template pass's thread.
+
+    Taken after the bridge rather than inside it: here a state that queries the
+    database to serialize is where ``{% tag_header %}`` will sign it, at no
+    extra crossing, and a failure cannot hide one ``params_changed`` raised.
+    """
+    try:
+        heard = signable_json(component)
+    except Exception as e:
+        _snapshot_failed(component, e)
+        return
+    component.wire._unheard_state = (unheard, heard)
+
+
+def _snapshot_failed(component: Component, error: Exception) -> None:
+    """A LiveComponent's failing snapshot is logged and it signs what it drew; any other component's raises.
+
+    The same contract as a failing ``params_changed``. Called from an ``except``.
+    """
+    if not isinstance(component, LiveComponent):
+        raise error
+    log.exception(f"Error serializing {component._name}'s state: {error}")
+
+
+async def _serialize_on_this_loop(component: Component) -> str:
+    """``signable_json`` on the helper thread's loop: where the template pass signs, it is on a loop too."""
+    return signable_json(component)
 
 
 def _mount_in_template(component: Component, repo: ComponentRepository) -> bool:
@@ -224,12 +264,17 @@ def _mount_in_template(component: Component, repo: ComponentRepository) -> bool:
     - A sync view, a live render (whose template pass is inside
       ``database_sync_to_async``), or an async view whose pass is wrapped in
       ``sync_to_async``: a plain worker thread, where ``async_to_sync`` is the
-      right bridge.
+      right bridge. The state before the query comes back to this thread to
+      be serialized (``sync_to_async``), as the state after it is, where
+      ``{% tag_header %}`` signs and a view under ``ATOMIC_REQUESTS`` holds
+      its transaction.
     - An async view that calls ``render()`` directly renders on the event-loop
       thread itself, where ``async_to_sync`` refuses to run. Rather than fail
       the page, the hooks get a loop of their own on a helper thread. A hook
       that touches the ORM there opens its own connection, which is the same
-      trade Django's own sync/async bridges make.
+      trade Django's own sync/async bridges make. The state before the query
+      is serialized on that loop: ``{% tag_header %}`` signs on a loop as well,
+      and a thread-sensitive executor could be waiting on the loop this blocks.
 
     A refusal freezes the component and answers ``False``, and the caller renders
     nothing for it. Freezing rather than skipping the render outright is what
@@ -262,10 +307,14 @@ def _mount_in_template(component: Component, repo: ComponentRepository) -> bool:
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            mounted = async_to_sync(_enter_in_template)(component, repo)
+            mounted, unheard = async_to_sync(_enter_in_template)(component, repo, sync_to_async(signable_json))
         else:
             with ThreadPoolExecutor(max_workers=1) as pool:
-                mounted = pool.submit(asyncio.run, _enter_in_template(component, repo)).result()
+                mounted, unheard = pool.submit(
+                    asyncio.run, _enter_in_template(component, repo, _serialize_on_this_loop)
+                ).result()
+        if unheard is not None:
+            _hold_back(component, unheard)
     except Exception:
         # A crashing hook is a refusal here too, and the exception on its way out
         # is not the cleanup. On a live render it unwinds to the join, which

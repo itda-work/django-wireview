@@ -184,14 +184,19 @@ def sign_state(component: "Component") -> str:
     state_json = signable_json(component)
     wire = component.wire
     unheard = getattr(wire, "_unheard_state", None)
-    if unheard is not None and unheard[1] == state_json:
-        # An HTTP render drew what the query made of the component, but the join
-        # starts from the state before it heard the query and hears it again
-        # (#177). Signed as drawn, a ``params_changed`` that returns early when
-        # the query matches its own field skipped the second hearing: the work the
-        # HTTP render cancelled never restarted and the fields left out of the
-        # state came back empty. Anything that changed the state since drops this.
-        state_json = unheard[0]
+    if unheard is not None:
+        if unheard[1] == state_json:
+            # An HTTP render drew what the query made of the component, but the join
+            # starts from the state before it heard the query and hears it again
+            # (#177). Signed as drawn, a ``params_changed`` that returns early when
+            # the query matches its own field skipped the second hearing: the work the
+            # HTTP render cancelled never restarted and the fields left out of the
+            # state came back empty.
+            state_json = unheard[0]
+        else:
+            # Anything that changed the state since drops it for good: changed back,
+            # the instance is no longer the one the query left.
+            wire._unheard_state = None
     now = time.time()
     cached = getattr(wire, "_state_token", None)
     if cached is not None:

@@ -11,6 +11,9 @@ a LiveComponent.
 
 ``data-state`` carries the state from before the query, so the join starts
 from the mounted state and hears it again (TestTheJoinStartsFromTheMountedState).
+Those snapshots are serialized where the template signs, not on the bridge's
+loop, so a state that queries the database to sign still renders
+(TestTheSnapshotsQueryOffTheLoop).
 
 The refusals (a halted mount, a component outside the page's boundary) are in
 the path x reason table, tests/test_live_session_contract.py. The browser is in
@@ -19,23 +22,27 @@ examples/search/tests.py and tests/test_history_e2e.py
 test_the_join_hears_the_params_again_from_the_mounted_state).
 """
 
+import asyncio
 import logging
 import re
+import threading
 import typing as t
 from html import unescape
 
 import pytest
-from asgiref.sync import async_to_sync
+from asgiref.sync import async_to_sync, sync_to_async
 from django.contrib.auth.models import AnonymousUser
 from django.template import Context, Template
 from django.test import RequestFactory, override_settings
+from pydantic import computed_field
+from testproj.bookmarks.models import Bookmark
 from testproj.outbound import RecordingOutbound
 from testproj.waiting import eventually
 
 from wireview import AsyncResult, Component, LiveComponent, function_component, mount
 from wireview.consumer import WireviewConsumer
 from wireview.core.rendered import page_drawing
-from wireview.core.state import sign_state, unsign_state
+from wireview.core.state import sign_state, signable_json, unsign_state
 from wireview.repository import ComponentRepository
 
 pytestmark = [pytest.mark.unit, pytest.mark.django_db]
@@ -60,6 +67,12 @@ TEMPLATES = {
         "{% load wireview %}<main {% tag_header %}>{% live_component 'HpLiveCrashes' id='bad' %}</main>"
     ),
     "hp/items.html": "{% load wireview %}<p {% tag_header %}>q={{ this.q }} items={{ this.items|join:',' }}</p>",
+    "hp/hits.html": "{% load wireview %}<p {% tag_header %}>[{{ this.q }}] n={{ this.hits|length }}</p>",
+    "hp/livehits.html": "{% load wireview %}<p {% live_tag_header %}>live[{{ this.q }}] n={{ this.hits|length }}</p>",
+    "hp/livehitshost.html": (
+        "{% load wireview %}<main {% tag_header %}>{% live_component 'HpLiveHits' id='hits' %}</main>"
+    ),
+    "hp/counted.html": "{% load wireview %}<p {% tag_header %}>[{{ this.q }}] total={{ this.total }}</p>",
 }
 
 #: ``(component id, what ran)``, in order
@@ -268,16 +281,96 @@ class HpGuardedExcluded(HpGuardedTemporary):
         exclude_fields = ["items"]
 
 
+class HpHits(Component):
+    """Keeps a QuerySet for the query: signing it dumps its ids, which queries the database (#113)."""
+
+    class Meta:
+        template_name = "hp/hits.html"
+
+    q: str = ""
+    hits: t.Any = None
+
+    async def params_changed(self, params, uri):
+        self.q = params.get("q", "")
+        self.hits = Bookmark.objects.filter(title__icontains=self.q)
+
+
+class HpPropHits(Component):
+    """Is handed a QuerySet by the template and hears only ``q``: the state before the query has it already."""
+
+    class Meta:
+        template_name = "hp/hits.html"
+
+    q: str = ""
+    hits: t.Any = None
+
+    async def params_changed(self, params, uri):
+        self.q = params.get("q", "")
+
+
+class HpLiveHits(LiveComponent):
+    class Meta:
+        template_name = "hp/livehits.html"
+
+    q: str = ""
+    hits: t.Any = None
+
+    async def params_changed(self, params, uri):
+        self.q = params.get("q", "")
+        self.hits = Bookmark.objects.filter(title__icontains=self.q)
+
+
+class HpLiveHitsHost(Component):
+    class Meta:
+        template_name = "hp/livehitshost.html"
+
+
+#: The threads ``HpCounted.total`` was read on
+COUNTED_ON: list[int] = []
+
+
+class HpCounted(Component):
+    """A computed field that reads the database: the signed state includes it."""
+
+    class Meta:
+        template_name = "hp/counted.html"
+
+    q: str = ""
+
+    @computed_field
+    @property
+    def total(self) -> int:
+        COUNTED_ON.append(threading.get_ident())
+        return Bookmark.objects.count()
+
+    async def params_changed(self, params, uri):
+        self.q = params.get("q", "")
+
+
+class HpCrashesUnsignable(Component):
+    """Leaves an unsignable value behind and then raises."""
+
+    class Meta:
+        template_name = "hp/hits.html"
+
+    q: str = ""
+    hits: t.Any = None
+
+    async def params_changed(self, params, uri):
+        self.hits = object()
+        raise RuntimeError("params_changed blew up")
+
+
 @function_component(template="hp/func.html")
 def hp_func(cid: str):
     return {"cid": cid}
 
 
-def render(source: str, query: str = "") -> tuple[str, ComponentRepository]:
+def render(source: str, query: str = "", **extra: t.Any) -> tuple[str, ComponentRepository]:
     """An HTTP response's render of ``source``, for a request at ``/?{query}``."""
     request = RequestFactory().get(f"/?{query}" if query else "/")
     request.user = AnonymousUser()
-    context = Context({"request": request, "user": request.user})
+    context = Context({"request": request, "user": request.user, **extra})
     html = Template("{% load wireview %}" + source).render(context)
     return html, context["wireview_repository"]
 
@@ -435,6 +528,16 @@ class TestTheJoinStartsFromTheMountedState:
 
         assert unsign_state(sign_state(component), "HpQuery")["q"] == "edited"
 
+    def test_a_state_changed_back_signs_what_it_is(self):
+        """Once signed in another state, the instance is no longer the one the query left."""
+        _, repo = render("{% component 'HpQuery' id='root' %}", "q=django")
+        component = repo.get("root")
+        component.q = "edited"
+        sign_state(component)
+        component.q = "django"
+
+        assert unsign_state(sign_state(component), "HpQuery")["q"] == "django"
+
     def test_the_join_restarts_the_work_a_guard_would_have_skipped(self):
         html, _ = render("{% component 'HpGuarded' id='guarded' %}", "q=abc")
         assert "loading" in html
@@ -485,6 +588,47 @@ class TestAsyncWorkWaitsForTheJoin:
 
         assert "loading" in html
         assert WORK == []
+
+    @pytest.mark.asyncio
+    async def test_the_snapshot_is_taken_on_the_event_loop_too(self):
+        repo = ComponentRepository(is_live=False, params={"q": "abc"})
+        html = Template("{% load wireview %}{% component 'HpGuarded' id='g' %}").render(
+            Context({"wireview_repository": repo})
+        )
+
+        assert repo.get("g").q == "abc"
+        assert state_of(html, "g", "HpGuarded")["q"] == ""
+
+    @pytest.mark.asyncio
+    async def test_the_snapshot_does_not_wait_on_the_loop_it_blocks(self):
+        """Not sent to the thread-sensitive executor: what runs there may be waiting on this loop.
+
+        The render holds the loop until its helper thread returns. A snapshot
+        queued behind a sync call that is itself waiting on the loop would
+        never start; this one gives up after a while instead, and says so.
+        """
+        loop = asyncio.get_running_loop()
+        holding = threading.Event()
+
+        async def nothing() -> None:
+            pass
+
+        def waits_on_the_loop() -> str:
+            holding.wait(timeout=5)
+            try:
+                asyncio.run_coroutine_threadsafe(nothing(), loop).result(timeout=2)
+            except TimeoutError:
+                return "the loop was blocked"
+            return "the loop answered"
+
+        waiter = asyncio.ensure_future(sync_to_async(waits_on_the_loop)())
+        await asyncio.sleep(0.05)
+        holding.set()
+        Template("{% load wireview %}{% component 'HpQuery' id='root' %}").render(
+            Context({"wireview_repository": ComponentRepository(is_live=False, params={"q": "x"})})
+        )
+
+        assert await waiter == "the loop answered"
 
 
 class TestOncePerInstance:
@@ -547,6 +691,94 @@ class TestFailures:
 
         assert "live[kept]" in html
         assert "HpLiveCrashes.params_changed()" in caplog.text
+
+
+#: ``(template, what the page draws)``: a state whose signing queries the database
+QUERYING_STATES = [
+    pytest.param("{% component 'HpHits' id='c' %}", "[django] n={n}", id="queryset-from-the-query"),
+    pytest.param("{% component 'HpPropHits' id='c' hits=books %}", "[django] n={all}", id="queryset-prop"),
+    pytest.param("{% component 'HpLiveHitsHost' id='host' %}", "live[django] n={n}", id="live-component"),
+    pytest.param("{% component 'HpCounted' id='c' %}", "[django] total={all}", id="computed-field"),
+]
+
+
+class TestTheSnapshotsQueryOffTheLoop:
+    """The state before and after the query is serialized where ``{% tag_header %}`` signs (#177).
+
+    The snapshots ran on the bridge's event loop, and a state whose signing
+    queries the database -- a QuerySet a field keeps (#113), or a computed field
+    that reads the ORM -- failed the whole page with SynchronousOnlyOperation,
+    though the signing itself, on the template's thread, had always worked.
+    """
+
+    @pytest.mark.parametrize("source,expected", QUERYING_STATES)
+    def test_a_sync_view(self, source, expected):
+        """A WSGI request, or anything else whose template pass runs where no loop does."""
+        Bookmark.objects.create(title="django docs", url="https://example.com/1")
+        Bookmark.objects.create(title="flask docs", url="https://example.com/2")
+        COUNTED_ON.clear()
+
+        html, _ = render(source, "q=django", books=Bookmark.objects.all())
+
+        assert expected.format(n=1, all=2) in html
+        assert set(COUNTED_ON) <= {threading.get_ident()}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("source,expected", QUERYING_STATES)
+    async def test_a_sync_view_under_asgi(self, source, expected):
+        """Django's ASGI handler runs a sync view on a thread-sensitive worker; the snapshots come back to it."""
+        COUNTED_ON.clear()
+        threads: list[int] = []
+
+        def view() -> tuple[str, ComponentRepository]:
+            threads.append(threading.get_ident())
+            return render(source, "q=django", books=Bookmark.objects.all())
+
+        html, _ = await sync_to_async(view)()
+
+        assert expected.format(n=0, all=0) in html
+        assert set(COUNTED_ON) <= set(threads)
+        if "HpCounted" in source:
+            assert COUNTED_ON
+
+    def test_the_snapshot_still_holds_the_state_before_the_query(self):
+        Bookmark.objects.create(title="django docs", url="https://example.com/1")
+
+        html, repo = render("{% component 'HpHits' id='c' %}", "q=django")
+
+        assert list(repo.get("c").hits) and state_of(html, "c", "HpHits")["hits"] is None
+
+    def test_the_exception_params_changed_raised_wins(self):
+        """A snapshot that fails after it does not hide where the page failed."""
+        with pytest.raises(RuntimeError, match="blew up"):
+            render("{% component 'HpCrashesUnsignable' id='bad' %}", "q=x")
+
+    def test_a_live_components_failing_snapshot_is_logged_and_it_still_renders(self, monkeypatch, caplog):
+        """As its failing params_changed is: it signs what it drew."""
+        from wireview.templatetags import wireview as tags
+
+        def fail_the_live_ones(component):
+            if isinstance(component, LiveComponent):
+                raise RuntimeError("snapshot blew up")
+            return signable_json(component)
+
+        monkeypatch.setattr(tags, "signable_json", fail_the_live_ones)
+        with caplog.at_level(logging.ERROR, logger="wireview"):
+            html, _ = render("{% component 'HpHost' id='host' %}", "q=pony")
+
+        assert "live[pony]" in html
+        assert state_of(html, "child", "HpLive")["q"] == "pony"
+        assert "Error serializing HpLive's state" in caplog.text
+
+    def test_any_other_components_failing_snapshot_fails_the_page(self, monkeypatch):
+        from wireview.templatetags import wireview as tags
+
+        def fail(component):
+            raise RuntimeError("snapshot blew up")
+
+        monkeypatch.setattr(tags, "signable_json", fail)
+        with pytest.raises(RuntimeError, match="snapshot blew up"):
+            render("{% component 'HpQuery' id='root' %}", "q=pony")
 
 
 @pytest.mark.asyncio
