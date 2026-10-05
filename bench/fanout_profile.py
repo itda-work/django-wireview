@@ -1089,6 +1089,116 @@ def progress_chart(design: dict[str, t.Any], result: dict[str, t.Any]) -> str:
     )
 
 
+#: Stage 2 (A) of #176, measured: docs/design/broadcast-fanout.md §7 quotes it, with the
+#: make bench-fastapi run it names (``bench_fastapi``)
+RESULT_A = ROOT / "bench" / "results" / "0492b64-fanout-shared.json"
+
+
+def _cpu_per_connection(result: dict[str, t.Any], name: str) -> float:
+    s = result["implementations"][name]["summary"]
+    return (s["loop_cpu_ns"] + s["worker_cpu_ns"]) / result["method"]["connections"] / 1000
+
+
+def shared_facts(result: dict[str, t.Any]) -> dict[str, str]:
+    """Every number docs/design/broadcast-fanout.md §7 quotes from the stage 2 (A) result."""
+    ms = 1e-6
+    out: dict[str, str] = {}
+    connections = result["method"]["connections"]
+    impls = result["implementations"]
+    for name in ("wireview", "wireview-shared", "fastapi"):
+        s = impls[name]["summary"]
+        lo, hi = s["client_span_unarmed_range_ns"]
+        out[f"a.{name}.fanout"] = f"{s['client_span_unarmed_ns'] * ms:.1f} ms"
+        out[f"a.{name}.fanout_rounds"] = f"{lo * ms:.1f}~{hi * ms:.1f}"
+        out[f"a.{name}.per_connection"] = f"{_cpu_per_connection(result, name):.1f} µs"
+    shared = impls["wireview-shared"]["summary"]
+    out["a.wireview-shared.armed"] = f"{shared['client_span_ns'] * ms:.1f} ms"
+    for label, used, _wall in stages(shared, "wireview-shared"):
+        out[f"a.stage.{label}"] = f"{used / connections * 1000:.1f}"
+    for name in ("wireview", "wireview-shared"):
+        summary = impls[name]["summary"]
+        for group, prefixes in GROUPS.items():
+            used = sum(c for label, c, _ in stages(summary, name) if label.startswith(prefixes))
+            out[f"a.group.{name}.{group}"] = f"{used / connections * 1000:.1f}"
+    out["a.worker_calls"] = f"{shared['calls'].get('worker.template render', 0):.0f}"
+    plain = _cpu_per_connection(result, "wireview")
+    out["a.cut.per_connection"] = f"{1 - _cpu_per_connection(result, 'wireview-shared') / plain:.0%}"
+    out["a.cut.fanout"] = (
+        f"{1 - shared['client_span_unarmed_ns'] / impls['wireview']['summary']['client_span_unarmed_ns']:.0%}"
+    )
+    out["a.load"] = (
+        f"{result['environment']['load_average'][0]:.1f} → {result['environment']['load_average_after'][0]:.1f}"
+    )
+
+    runs = [run["inproc"] for run in result["inproc_runs"]]
+    shared_runs = [r["shared_render_us"] for r in runs]
+    out["a.inproc.lead"] = _range(r["render_diff, the connection that renders"] for r in shared_runs)
+    out["a.inproc.take"] = _range(r["render_diff, each connection that takes it"] for r in shared_runs)
+    out["a.inproc.key"] = _range(r["key"] for r in shared_runs)
+    out["a.inproc.render_diff"] = _range(r["render_diff_us_one_after_another"] for r in runs)
+    out["a.inproc.load"] = _range(run["environment"]["load_average"][0] for run in result["inproc_runs"])
+
+    compare = json.loads((ROOT / result["bench_fastapi"]).read_text())
+    for name, data in compare["implementations"].items():
+        s = data["summary"]
+        out[f"b.{name}.fanout"] = f"{s['fanout_ms']['median']:.1f} ms"
+        out[f"b.{name}.fanout_rounds"] = f"{s['fanout_ms']['median_min']:.1f}~{s['fanout_ms']['median_max']:.1f}"
+        out[f"b.{name}.received_bytes"] = f"{s['fanout_received_bytes']:.0f} B"
+        for scenario in ("change_value", "insert_front"):
+            out[f"b.{name}.{scenario}"] = f"{s[scenario]['server_ms']['median']:.2f} ms"
+    loc = compare["loc"]["wireview"]["app"]
+    out["b.loc"] = f"{loc} → {loc + 1}"
+    env = compare["environment"]
+    out["b.load"] = f"{env['load_average'][0]:.1f} → {env['load_average_after'][0]:.1f}"
+    return out
+
+
+def shared_chart(result_b: dict[str, t.Any], result: dict[str, t.Any]) -> str:
+    """Mermaid charts of stage 2 (A): the board with and without shared_render, beside B and FastAPI."""
+    names = ["B 후 (§6)", "A 끔 (같은 회차)", "A 켬", "FastAPI (같은 회차)"]
+    cpu = [
+        statistics.median(map(_per_connection, _sides(result_b)["after"])),
+        _cpu_per_connection(result, "wireview"),
+        _cpu_per_connection(result, "wireview-shared"),
+        _cpu_per_connection(result, "fastapi"),
+    ]
+    spans = [
+        statistics.median(map(_fanout_ms, _sides(result_b)["after"])),
+        _fanout_ms(result, "wireview"),
+        _fanout_ms(result, "wireview-shared"),
+        _fanout_ms(result, "fastapi"),
+    ]
+    connections = result["method"]["connections"]
+
+    def block(title: str, axis: str, numbers: list[float]) -> str:
+        quoted = ", ".join(f'"{n}"' for n in names)
+        shown = ", ".join(f"{v:.1f}" for v in numbers)
+        return (
+            f'```mermaid\nxychart-beta horizontal\n    title "{title}"\n    x-axis [{quoted}]\n'
+            f'    y-axis "{axis}" 0 --> {max(numbers) * 1.1:.0f}\n    bar [{shown}]\n```'
+        )
+
+    return "\n\n".join(
+        [
+            block(f"연결 하나당 CPU, 2단계(A) (연결 {connections:,}개)", "µs", cpu),
+            block(f"브로드캐스트 팬아웃, 2단계(A) (연결 {connections:,}개, 계측 끔)", "ms", spans),
+        ]
+    )
+
+
+def shared_performance_chart(result: dict[str, t.Any]) -> str:
+    """The fan-out chart docs/PERFORMANCE.md shows: the board with and without shared_render, and FastAPI."""
+    names = ["선언하지 않음", "shared_render = True", "FastAPI"]
+    spans = [_fanout_ms(result, name) for name in ("wireview", "wireview-shared", "fastapi")]
+    quoted = ", ".join(f'"{n}"' for n in names)
+    shown = ", ".join(f"{v:.1f}" for v in spans)
+    return (
+        f'```mermaid\nxychart-beta horizontal\n    title "브로드캐스트 하나가 연결 '
+        f'{result["method"]["connections"]:,}개에 닿기까지 (계측 끔)"\n'
+        f'    x-axis [{quoted}]\n    y-axis "ms" 0 --> {max(spans) * 1.1:.0f}\n    bar [{shown}]\n```'
+    )
+
+
 async def drive(args: argparse.Namespace) -> dict[str, t.Any]:
     names = args.only or list(IMPLEMENTATIONS)
     out: dict[str, t.Any] = {name: {"rounds": []} for name in names}

@@ -372,6 +372,27 @@ FastAPI 비교 이전부터 싣던 값이다. 모두 Apple Silicon macOS(Darwin 
   같은 메시지를 받은 연결들이 렌더를 한 번만 한다. 연결마다 남는 것은 메시지 수신, 수신자, 상태 서명, diff, 프레임
   쓰기다.
 
+README 비교 벤치의 Board(항목 50개)로 쟀다. 연결 1,000개, uvicorn 1프로세스, InMemory 레이어, 5회차의 중앙값이고, 선언한 것과
+안 한 것과 FastAPI를 같은 회차에서 번갈아 쟀다.
+
+| | 팬아웃 (계측 끔) | 연결당 CPU |
+|---|---:|---:|
+| 선언하지 않음 | 430.0 ms | 443.4 µs |
+| `shared_render = True` | 87.5 ms | 122.6 µs |
+| FastAPI (JSON 한 번, 같은 텍스트를 연결마다) | 16.1 ms | 16.3 µs |
+
+```mermaid
+xychart-beta horizontal
+    title "브로드캐스트 하나가 연결 1,000개에 닿기까지 (계측 끔)"
+    x-axis ["선언하지 않음", "shared_render = True", "FastAPI"]
+    y-axis "ms" 0 --> 473
+    bar [430.0, 87.5, 16.1]
+```
+
+선언해도 연결당 남는 122.6 µs 가운데 약 3분의 1은 InMemory 레이어의 수신 순회다. Redis·NATS
+레이어에는 이 순회가 없다. 단계별 분해와 측정 방법은 [설계](design/broadcast-fanout.md) §7, 원본은
+`bench/results/0492b64-fanout-shared.json`이다. 프레임 크기와 클릭의 서버 처리는 선언해도 같다.
+
 ### 기대치
 
 | 동작 | 목표 | 비고 |

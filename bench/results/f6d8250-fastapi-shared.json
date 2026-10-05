@@ -1,0 +1,1836 @@
+{
+  "environment": {
+    "date": "2026-10-05T16:58:09+00:00",
+    "commit": "f6d8250",
+    "dirty": false,
+    "os": "Darwin 27.0.0 (arm64)",
+    "os_version": "27.0",
+    "cpu": "Apple M5 Pro",
+    "cpu_count": 18,
+    "load_average": [
+      3.82177734375,
+      4.84423828125,
+      6.1767578125
+    ],
+    "python": "3.14.7",
+    "packages": {
+      "django": "6.0",
+      "channels": "4.3.2",
+      "django-wireview": "1.2.0",
+      "fastapi": "0.142.2",
+      "starlette": "1.7.0",
+      "uvicorn": "0.38.0",
+      "websockets": "15.0.1",
+      "playwright": "1.56.0",
+      "uvloop": null,
+      "httptools": null
+    },
+    "browser": "chromium 141.0.7390.37 (headless, Playwright)",
+    "node": "v26.7.0",
+    "client_packages": {
+      "react": "19.3.0",
+      "react-dom": "19.3.0",
+      "vite": "8.3.2",
+      "@vitejs/plugin-react": "6.1.1"
+    },
+    "server": "uvicorn, 1 process, --ws websockets, --log-level warning, permessage-deflate on (default)",
+    "wireview_layer": "channels.layers.InMemoryChannelLayer",
+    "debug": false,
+    "load_average_after": [
+      4.5908203125,
+      5.04150390625,
+      5.9052734375
+    ]
+  },
+  "method": {
+    "rounds": 5,
+    "clicks_per_scenario": 200,
+    "warmup_clicks": 20,
+    "loads_per_round": 20,
+    "warmup_loads": 3,
+    "fanout_connections": 1000,
+    "bytes": "WebSocket payload as Chromium reports it (no frame header, before permessage-deflate)",
+    "gzip": "gzip -6 of each downloaded file, computed by the benchmark (neither server compresses)"
+  },
+  "implementations": {
+    "wireview": {
+      "rounds": [
+        {
+          "first_load": {
+            "first_screen_ms": {
+              "median": 34.60000014305115,
+              "p95": 35.200000047683716,
+              "n": 20
+            },
+            "first_contentful_paint_ms": {
+              "median": 44.0,
+              "p95": 48,
+              "n": 20
+            },
+            "interactive_ms": {
+              "median": 43.950000047683716,
+              "p95": 47.200000047683716,
+              "n": 20
+            },
+            "download": {
+              "html_bytes": 3404.0,
+              "html_gzip_bytes": 885.0,
+              "js_bytes": 79900.0,
+              "js_gzip_bytes": 25049.0,
+              "ws_sent_bytes": 304.0,
+              "ws_received_bytes": 2162.0,
+              "files": [
+                "/",
+                "/static/wireview/wireview.min.js?v=1.2.0"
+              ]
+            }
+          },
+          "interactions": {
+            "change_value": {
+              "dom_ms": {
+                "median": 11.5999755859375,
+                "p95": 18.89990234375,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 11.800048828125,
+                "p95": 19.099853515625,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.7979994406923652,
+                "p95": 1.1893338523805141,
+                "n": 200
+              },
+              "clicker_sent_bytes": 118.605,
+              "clicker_received_bytes": 82.21,
+              "watcher_received_bytes": 0.0
+            },
+            "insert_front": {
+              "dom_ms": {
+                "median": 11.0,
+                "p95": 18.7998046875,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 11.3499755859375,
+                "p95": 19.099853515625,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.8525624871253967,
+                "p95": 1.8936670385301113,
+                "n": 200
+              },
+              "clicker_sent_bytes": 116.0,
+              "clicker_received_bytes": 125.17,
+              "watcher_received_bytes": 0.0
+            },
+            "broadcast": {
+              "dom_ms": {
+                "median": 12.7001953125,
+                "p95": 18.60009765625,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.900146484375,
+                "p95": 18.800048828125,
+                "n": 200
+              },
+              "server_ms": null,
+              "clicker_sent_bytes": 118.0,
+              "clicker_received_bytes": 82.605,
+              "watcher_received_bytes": 70.605
+            }
+          },
+          "fanout": {
+            "broadcast_ms": 390.84137487225235,
+            "received_bytes": 69.0
+          }
+        },
+        {
+          "first_load": {
+            "first_screen_ms": {
+              "median": 34.10000002384186,
+              "p95": 35.700000047683716,
+              "n": 20
+            },
+            "first_contentful_paint_ms": {
+              "median": 44.0,
+              "p95": 48,
+              "n": 20
+            },
+            "interactive_ms": {
+              "median": 43.299999952316284,
+              "p95": 46.5,
+              "n": 20
+            },
+            "download": {
+              "html_bytes": 3404.0,
+              "html_gzip_bytes": 886.0,
+              "js_bytes": 79900.0,
+              "js_gzip_bytes": 25049.0,
+              "ws_sent_bytes": 304.0,
+              "ws_received_bytes": 2162.0,
+              "files": [
+                "/",
+                "/static/wireview/wireview.min.js?v=1.2.0"
+              ]
+            }
+          },
+          "interactions": {
+            "change_value": {
+              "dom_ms": {
+                "median": 11.85009765625,
+                "p95": 18.099853515625,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.0999755859375,
+                "p95": 18.39990234375,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.8206670172512531,
+                "p95": 1.734541030600667,
+                "n": 200
+              },
+              "clicker_sent_bytes": 118.605,
+              "clicker_received_bytes": 82.21,
+              "watcher_received_bytes": 0.0
+            },
+            "insert_front": {
+              "dom_ms": {
+                "median": 11.3499755859375,
+                "p95": 18.5,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 11.800048828125,
+                "p95": 18.800048828125,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.8420421509072185,
+                "p95": 1.5703330282121897,
+                "n": 200
+              },
+              "clicker_sent_bytes": 116.0,
+              "clicker_received_bytes": 125.17,
+              "watcher_received_bytes": 0.0
+            },
+            "broadcast": {
+              "dom_ms": {
+                "median": 12.44970703125,
+                "p95": 18.7998046875,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.5997314453125,
+                "p95": 18.999755859375,
+                "n": 200
+              },
+              "server_ms": null,
+              "clicker_sent_bytes": 118.0,
+              "clicker_received_bytes": 82.605,
+              "watcher_received_bytes": 70.605
+            }
+          },
+          "fanout": {
+            "broadcast_ms": 410.35608295351267,
+            "received_bytes": 69.0
+          }
+        },
+        {
+          "first_load": {
+            "first_screen_ms": {
+              "median": 34.450000047683716,
+              "p95": 35.89999985694885,
+              "n": 20
+            },
+            "first_contentful_paint_ms": {
+              "median": 44.0,
+              "p95": 48,
+              "n": 20
+            },
+            "interactive_ms": {
+              "median": 44.0,
+              "p95": 47.299999952316284,
+              "n": 20
+            },
+            "download": {
+              "html_bytes": 3404.0,
+              "html_gzip_bytes": 886.0,
+              "js_bytes": 79900.0,
+              "js_gzip_bytes": 25049.0,
+              "ws_sent_bytes": 304.0,
+              "ws_received_bytes": 2162.0,
+              "files": [
+                "/",
+                "/static/wireview/wireview.min.js?v=1.2.0"
+              ]
+            }
+          },
+          "interactions": {
+            "change_value": {
+              "dom_ms": {
+                "median": 12.14990234375,
+                "p95": 18.2001953125,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.2999267578125,
+                "p95": 18.400146484375,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.8675626013427973,
+                "p95": 2.0837499760091305,
+                "n": 200
+              },
+              "clicker_sent_bytes": 118.605,
+              "clicker_received_bytes": 82.21,
+              "watcher_received_bytes": 0.0
+            },
+            "insert_front": {
+              "dom_ms": {
+                "median": 12.900146484375,
+                "p95": 19.900146484375,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 13.7000732421875,
+                "p95": 20.800048828125,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 1.4830000000074506,
+                "p95": 2.1903750021010637,
+                "n": 200
+              },
+              "clicker_sent_bytes": 116.0,
+              "clicker_received_bytes": 125.17,
+              "watcher_received_bytes": 0.0
+            },
+            "broadcast": {
+              "dom_ms": {
+                "median": 12.60009765625,
+                "p95": 18.89990234375,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.800048828125,
+                "p95": 19.0,
+                "n": 200
+              },
+              "server_ms": null,
+              "clicker_sent_bytes": 118.0,
+              "clicker_received_bytes": 82.605,
+              "watcher_received_bytes": 70.605
+            }
+          },
+          "fanout": {
+            "broadcast_ms": 450.4137081094086,
+            "received_bytes": 69.0
+          }
+        },
+        {
+          "first_load": {
+            "first_screen_ms": {
+              "median": 34.14999997615814,
+              "p95": 40.59999990463257,
+              "n": 20
+            },
+            "first_contentful_paint_ms": {
+              "median": 44.0,
+              "p95": 48,
+              "n": 20
+            },
+            "interactive_ms": {
+              "median": 44.14999997615814,
+              "p95": 62.40000009536743,
+              "n": 20
+            },
+            "download": {
+              "html_bytes": 3404.0,
+              "html_gzip_bytes": 885.5,
+              "js_bytes": 79900.0,
+              "js_gzip_bytes": 25049.0,
+              "ws_sent_bytes": 304.0,
+              "ws_received_bytes": 2162.0,
+              "files": [
+                "/",
+                "/static/wireview/wireview.min.js?v=1.2.0"
+              ]
+            }
+          },
+          "interactions": {
+            "change_value": {
+              "dom_ms": {
+                "median": 12.5499267578125,
+                "p95": 18.699951171875,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.699951171875,
+                "p95": 18.800048828125,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.8411455200985074,
+                "p95": 2.2914160508662462,
+                "n": 200
+              },
+              "clicker_sent_bytes": 118.605,
+              "clicker_received_bytes": 82.21,
+              "watcher_received_bytes": 0.0
+            },
+            "insert_front": {
+              "dom_ms": {
+                "median": 11.3499755859375,
+                "p95": 18.60009765625,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 11.7000732421875,
+                "p95": 18.900146484375,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.8618334541097283,
+                "p95": 1.6254161018878222,
+                "n": 200
+              },
+              "clicker_sent_bytes": 116.0,
+              "clicker_received_bytes": 125.17,
+              "watcher_received_bytes": 0.0
+            },
+            "broadcast": {
+              "dom_ms": {
+                "median": 12.5,
+                "p95": 19.5,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.699951171875,
+                "p95": 19.699951171875,
+                "n": 200
+              },
+              "server_ms": null,
+              "clicker_sent_bytes": 118.0,
+              "clicker_received_bytes": 82.605,
+              "watcher_received_bytes": 70.605
+            }
+          },
+          "fanout": {
+            "broadcast_ms": 426.8480408936739,
+            "received_bytes": 69.0
+          }
+        },
+        {
+          "first_load": {
+            "first_screen_ms": {
+              "median": 34.0,
+              "p95": 37.299999952316284,
+              "n": 20
+            },
+            "first_contentful_paint_ms": {
+              "median": 44.0,
+              "p95": 48,
+              "n": 20
+            },
+            "interactive_ms": {
+              "median": 42.65000009536743,
+              "p95": 46,
+              "n": 20
+            },
+            "download": {
+              "html_bytes": 3404.0,
+              "html_gzip_bytes": 885.0,
+              "js_bytes": 79900.0,
+              "js_gzip_bytes": 25049.0,
+              "ws_sent_bytes": 304.0,
+              "ws_received_bytes": 2162.0,
+              "files": [
+                "/",
+                "/static/wireview/wireview.min.js?v=1.2.0"
+              ]
+            }
+          },
+          "interactions": {
+            "change_value": {
+              "dom_ms": {
+                "median": 12.300048828125,
+                "p95": 19.300048828125,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.599853515625,
+                "p95": 19.7001953125,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 1.3798329746350646,
+                "p95": 2.061625011265278,
+                "n": 200
+              },
+              "clicker_sent_bytes": 118.605,
+              "clicker_received_bytes": 82.21,
+              "watcher_received_bytes": 0.0
+            },
+            "insert_front": {
+              "dom_ms": {
+                "median": 12.35009765625,
+                "p95": 19.300048828125,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.7000732421875,
+                "p95": 19.900146484375,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.869042007252574,
+                "p95": 1.9886251538991928,
+                "n": 200
+              },
+              "clicker_sent_bytes": 116.0,
+              "clicker_received_bytes": 125.17,
+              "watcher_received_bytes": 0.0
+            },
+            "broadcast": {
+              "dom_ms": {
+                "median": 12.449951171875,
+                "p95": 18.800048828125,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.5999755859375,
+                "p95": 19.10009765625,
+                "n": 200
+              },
+              "server_ms": null,
+              "clicker_sent_bytes": 118.0,
+              "clicker_received_bytes": 82.605,
+              "watcher_received_bytes": 70.605
+            }
+          },
+          "fanout": {
+            "broadcast_ms": 412.24412503652275,
+            "received_bytes": 69.0
+          }
+        }
+      ],
+      "summary": {
+        "first_screen_ms": {
+          "median": 34.14999997615814,
+          "p95": 35.89999985694885,
+          "median_min": 34.0,
+          "median_max": 34.60000014305115,
+          "rounds": [
+            {
+              "median": 34.60000014305115,
+              "p95": 35.200000047683716,
+              "n": 20
+            },
+            {
+              "median": 34.10000002384186,
+              "p95": 35.700000047683716,
+              "n": 20
+            },
+            {
+              "median": 34.450000047683716,
+              "p95": 35.89999985694885,
+              "n": 20
+            },
+            {
+              "median": 34.14999997615814,
+              "p95": 40.59999990463257,
+              "n": 20
+            },
+            {
+              "median": 34.0,
+              "p95": 37.299999952316284,
+              "n": 20
+            }
+          ]
+        },
+        "first_contentful_paint_ms": {
+          "median": 44.0,
+          "p95": 48,
+          "median_min": 44.0,
+          "median_max": 44.0,
+          "rounds": [
+            {
+              "median": 44.0,
+              "p95": 48,
+              "n": 20
+            },
+            {
+              "median": 44.0,
+              "p95": 48,
+              "n": 20
+            },
+            {
+              "median": 44.0,
+              "p95": 48,
+              "n": 20
+            },
+            {
+              "median": 44.0,
+              "p95": 48,
+              "n": 20
+            },
+            {
+              "median": 44.0,
+              "p95": 48,
+              "n": 20
+            }
+          ]
+        },
+        "interactive_ms": {
+          "median": 43.950000047683716,
+          "p95": 47.200000047683716,
+          "median_min": 42.65000009536743,
+          "median_max": 44.14999997615814,
+          "rounds": [
+            {
+              "median": 43.950000047683716,
+              "p95": 47.200000047683716,
+              "n": 20
+            },
+            {
+              "median": 43.299999952316284,
+              "p95": 46.5,
+              "n": 20
+            },
+            {
+              "median": 44.0,
+              "p95": 47.299999952316284,
+              "n": 20
+            },
+            {
+              "median": 44.14999997615814,
+              "p95": 62.40000009536743,
+              "n": 20
+            },
+            {
+              "median": 42.65000009536743,
+              "p95": 46,
+              "n": 20
+            }
+          ]
+        },
+        "download": {
+          "html_bytes": 3404.0,
+          "html_gzip_bytes": 885.0,
+          "js_bytes": 79900.0,
+          "js_gzip_bytes": 25049.0,
+          "ws_sent_bytes": 304.0,
+          "ws_received_bytes": 2162.0,
+          "files": [
+            "/",
+            "/static/wireview/wireview.min.js?v=1.2.0"
+          ]
+        },
+        "fanout_ms": {
+          "median": 412.24412503652275,
+          "median_min": 390.84137487225235,
+          "median_max": 450.4137081094086
+        },
+        "fanout_received_bytes": 69.0,
+        "change_value": {
+          "dom_ms": {
+            "median": 12.14990234375,
+            "p95": 18.699951171875,
+            "median_min": 11.5999755859375,
+            "median_max": 12.5499267578125,
+            "rounds": [
+              {
+                "median": 11.5999755859375,
+                "p95": 18.89990234375,
+                "n": 200
+              },
+              {
+                "median": 11.85009765625,
+                "p95": 18.099853515625,
+                "n": 200
+              },
+              {
+                "median": 12.14990234375,
+                "p95": 18.2001953125,
+                "n": 200
+              },
+              {
+                "median": 12.5499267578125,
+                "p95": 18.699951171875,
+                "n": 200
+              },
+              {
+                "median": 12.300048828125,
+                "p95": 19.300048828125,
+                "n": 200
+              }
+            ]
+          },
+          "paint_ms": {
+            "median": 12.2999267578125,
+            "p95": 18.800048828125,
+            "median_min": 11.800048828125,
+            "median_max": 12.699951171875,
+            "rounds": [
+              {
+                "median": 11.800048828125,
+                "p95": 19.099853515625,
+                "n": 200
+              },
+              {
+                "median": 12.0999755859375,
+                "p95": 18.39990234375,
+                "n": 200
+              },
+              {
+                "median": 12.2999267578125,
+                "p95": 18.400146484375,
+                "n": 200
+              },
+              {
+                "median": 12.699951171875,
+                "p95": 18.800048828125,
+                "n": 200
+              },
+              {
+                "median": 12.599853515625,
+                "p95": 19.7001953125,
+                "n": 200
+              }
+            ]
+          },
+          "server_ms": {
+            "median": 0.8411455200985074,
+            "p95": 2.061625011265278,
+            "median_min": 0.7979994406923652,
+            "median_max": 1.3798329746350646,
+            "rounds": [
+              {
+                "median": 0.7979994406923652,
+                "p95": 1.1893338523805141,
+                "n": 200
+              },
+              {
+                "median": 0.8206670172512531,
+                "p95": 1.734541030600667,
+                "n": 200
+              },
+              {
+                "median": 0.8675626013427973,
+                "p95": 2.0837499760091305,
+                "n": 200
+              },
+              {
+                "median": 0.8411455200985074,
+                "p95": 2.2914160508662462,
+                "n": 200
+              },
+              {
+                "median": 1.3798329746350646,
+                "p95": 2.061625011265278,
+                "n": 200
+              }
+            ]
+          },
+          "clicker_sent_bytes": 118.605,
+          "clicker_received_bytes": 82.21,
+          "watcher_received_bytes": 0.0
+        },
+        "insert_front": {
+          "dom_ms": {
+            "median": 11.3499755859375,
+            "p95": 18.7998046875,
+            "median_min": 11.0,
+            "median_max": 12.900146484375,
+            "rounds": [
+              {
+                "median": 11.0,
+                "p95": 18.7998046875,
+                "n": 200
+              },
+              {
+                "median": 11.3499755859375,
+                "p95": 18.5,
+                "n": 200
+              },
+              {
+                "median": 12.900146484375,
+                "p95": 19.900146484375,
+                "n": 200
+              },
+              {
+                "median": 11.3499755859375,
+                "p95": 18.60009765625,
+                "n": 200
+              },
+              {
+                "median": 12.35009765625,
+                "p95": 19.300048828125,
+                "n": 200
+              }
+            ]
+          },
+          "paint_ms": {
+            "median": 11.800048828125,
+            "p95": 19.099853515625,
+            "median_min": 11.3499755859375,
+            "median_max": 13.7000732421875,
+            "rounds": [
+              {
+                "median": 11.3499755859375,
+                "p95": 19.099853515625,
+                "n": 200
+              },
+              {
+                "median": 11.800048828125,
+                "p95": 18.800048828125,
+                "n": 200
+              },
+              {
+                "median": 13.7000732421875,
+                "p95": 20.800048828125,
+                "n": 200
+              },
+              {
+                "median": 11.7000732421875,
+                "p95": 18.900146484375,
+                "n": 200
+              },
+              {
+                "median": 12.7000732421875,
+                "p95": 19.900146484375,
+                "n": 200
+              }
+            ]
+          },
+          "server_ms": {
+            "median": 0.8618334541097283,
+            "p95": 1.8936670385301113,
+            "median_min": 0.8420421509072185,
+            "median_max": 1.4830000000074506,
+            "rounds": [
+              {
+                "median": 0.8525624871253967,
+                "p95": 1.8936670385301113,
+                "n": 200
+              },
+              {
+                "median": 0.8420421509072185,
+                "p95": 1.5703330282121897,
+                "n": 200
+              },
+              {
+                "median": 1.4830000000074506,
+                "p95": 2.1903750021010637,
+                "n": 200
+              },
+              {
+                "median": 0.8618334541097283,
+                "p95": 1.6254161018878222,
+                "n": 200
+              },
+              {
+                "median": 0.869042007252574,
+                "p95": 1.9886251538991928,
+                "n": 200
+              }
+            ]
+          },
+          "clicker_sent_bytes": 116.0,
+          "clicker_received_bytes": 125.17,
+          "watcher_received_bytes": 0.0
+        },
+        "broadcast": {
+          "dom_ms": {
+            "median": 12.5,
+            "p95": 18.800048828125,
+            "median_min": 12.44970703125,
+            "median_max": 12.7001953125,
+            "rounds": [
+              {
+                "median": 12.7001953125,
+                "p95": 18.60009765625,
+                "n": 200
+              },
+              {
+                "median": 12.44970703125,
+                "p95": 18.7998046875,
+                "n": 200
+              },
+              {
+                "median": 12.60009765625,
+                "p95": 18.89990234375,
+                "n": 200
+              },
+              {
+                "median": 12.5,
+                "p95": 19.5,
+                "n": 200
+              },
+              {
+                "median": 12.449951171875,
+                "p95": 18.800048828125,
+                "n": 200
+              }
+            ]
+          },
+          "paint_ms": {
+            "median": 12.699951171875,
+            "p95": 19.0,
+            "median_min": 12.5997314453125,
+            "median_max": 12.900146484375,
+            "rounds": [
+              {
+                "median": 12.900146484375,
+                "p95": 18.800048828125,
+                "n": 200
+              },
+              {
+                "median": 12.5997314453125,
+                "p95": 18.999755859375,
+                "n": 200
+              },
+              {
+                "median": 12.800048828125,
+                "p95": 19.0,
+                "n": 200
+              },
+              {
+                "median": 12.699951171875,
+                "p95": 19.699951171875,
+                "n": 200
+              },
+              {
+                "median": 12.5999755859375,
+                "p95": 19.10009765625,
+                "n": 200
+              }
+            ]
+          },
+          "server_ms": null,
+          "clicker_sent_bytes": 118.0,
+          "clicker_received_bytes": 82.605,
+          "watcher_received_bytes": 70.605
+        }
+      }
+    },
+    "wireview-shared": {
+      "rounds": [
+        {
+          "first_load": {
+            "first_screen_ms": {
+              "median": 34.0,
+              "p95": 36.80000019073486,
+              "n": 20
+            },
+            "first_contentful_paint_ms": {
+              "median": 44.0,
+              "p95": 48,
+              "n": 20
+            },
+            "interactive_ms": {
+              "median": 43.09999990463257,
+              "p95": 48.39999985694885,
+              "n": 20
+            },
+            "download": {
+              "html_bytes": 3404.0,
+              "html_gzip_bytes": 887.0,
+              "js_bytes": 79900.0,
+              "js_gzip_bytes": 25049.0,
+              "ws_sent_bytes": 304.0,
+              "ws_received_bytes": 2162.0,
+              "files": [
+                "/",
+                "/static/wireview/wireview.min.js?v=1.2.0"
+              ]
+            }
+          },
+          "interactions": {
+            "change_value": {
+              "dom_ms": {
+                "median": 12.0,
+                "p95": 18.300048828125,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.199951171875,
+                "p95": 18.5,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.8319999324157834,
+                "p95": 2.053000032901764,
+                "n": 200
+              },
+              "clicker_sent_bytes": 118.605,
+              "clicker_received_bytes": 82.21,
+              "watcher_received_bytes": 0.0
+            },
+            "insert_front": {
+              "dom_ms": {
+                "median": 12.050048828125,
+                "p95": 19.5,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.4000244140625,
+                "p95": 20,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.8775420719757676,
+                "p95": 1.9982089288532734,
+                "n": 200
+              },
+              "clicker_sent_bytes": 116.0,
+              "clicker_received_bytes": 125.17,
+              "watcher_received_bytes": 0.0
+            },
+            "broadcast": {
+              "dom_ms": {
+                "median": 13.05029296875,
+                "p95": 19.2001953125,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 13.30029296875,
+                "p95": 19.400146484375,
+                "n": 200
+              },
+              "server_ms": null,
+              "clicker_sent_bytes": 118.0,
+              "clicker_received_bytes": 82.605,
+              "watcher_received_bytes": 70.605
+            }
+          },
+          "fanout": {
+            "broadcast_ms": 119.69229206442833,
+            "received_bytes": 69.0
+          }
+        },
+        {
+          "first_load": {
+            "first_screen_ms": {
+              "median": 34.199999928474426,
+              "p95": 38.59999990463257,
+              "n": 20
+            },
+            "first_contentful_paint_ms": {
+              "median": 44.0,
+              "p95": 48,
+              "n": 20
+            },
+            "interactive_ms": {
+              "median": 44.25,
+              "p95": 48.39999985694885,
+              "n": 20
+            },
+            "download": {
+              "html_bytes": 3404.0,
+              "html_gzip_bytes": 886.0,
+              "js_bytes": 79900.0,
+              "js_gzip_bytes": 25049.0,
+              "ws_sent_bytes": 304.0,
+              "ws_received_bytes": 2162.0,
+              "files": [
+                "/",
+                "/static/wireview/wireview.min.js?v=1.2.0"
+              ]
+            }
+          },
+          "interactions": {
+            "change_value": {
+              "dom_ms": {
+                "median": 12.25,
+                "p95": 18.699951171875,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.39990234375,
+                "p95": 18.800048828125,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.8437500800937414,
+                "p95": 1.666083000600338,
+                "n": 200
+              },
+              "clicker_sent_bytes": 118.605,
+              "clicker_received_bytes": 82.21,
+              "watcher_received_bytes": 0.0
+            },
+            "insert_front": {
+              "dom_ms": {
+                "median": 11.0499267578125,
+                "p95": 18.199951171875,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 11.4000244140625,
+                "p95": 18.5,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.8765205275267363,
+                "p95": 1.3982909731566906,
+                "n": 200
+              },
+              "clicker_sent_bytes": 116.0,
+              "clicker_received_bytes": 125.17,
+              "watcher_received_bytes": 0.0
+            },
+            "broadcast": {
+              "dom_ms": {
+                "median": 12.300048828125,
+                "p95": 19.10009765625,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.4500732421875,
+                "p95": 19.2001953125,
+                "n": 200
+              },
+              "server_ms": null,
+              "clicker_sent_bytes": 118.0,
+              "clicker_received_bytes": 82.605,
+              "watcher_received_bytes": 70.605
+            }
+          },
+          "fanout": {
+            "broadcast_ms": 84.4174160156399,
+            "received_bytes": 69.0
+          }
+        },
+        {
+          "first_load": {
+            "first_screen_ms": {
+              "median": 34.25,
+              "p95": 41.10000014305115,
+              "n": 20
+            },
+            "first_contentful_paint_ms": {
+              "median": 44.0,
+              "p95": 52,
+              "n": 20
+            },
+            "interactive_ms": {
+              "median": 43.299999833106995,
+              "p95": 49.60000014305115,
+              "n": 20
+            },
+            "download": {
+              "html_bytes": 3404.0,
+              "html_gzip_bytes": 887.0,
+              "js_bytes": 79900.0,
+              "js_gzip_bytes": 25049.0,
+              "ws_sent_bytes": 304.0,
+              "ws_received_bytes": 2162.0,
+              "files": [
+                "/",
+                "/static/wireview/wireview.min.js?v=1.2.0"
+              ]
+            }
+          },
+          "interactions": {
+            "change_value": {
+              "dom_ms": {
+                "median": 12.3499755859375,
+                "p95": 19.400146484375,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.699951171875,
+                "p95": 19.800048828125,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.8374578319489956,
+                "p95": 2.0121249835938215,
+                "n": 200
+              },
+              "clicker_sent_bytes": 118.605,
+              "clicker_received_bytes": 82.21,
+              "watcher_received_bytes": 0.0
+            },
+            "insert_front": {
+              "dom_ms": {
+                "median": 11.199951171875,
+                "p95": 19.199951171875,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 11.5,
+                "p95": 19.599853515625,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.8537914836779237,
+                "p95": 1.9846658688038588,
+                "n": 200
+              },
+              "clicker_sent_bytes": 116.0,
+              "clicker_received_bytes": 125.17,
+              "watcher_received_bytes": 0.0
+            },
+            "broadcast": {
+              "dom_ms": {
+                "median": 13.249755859375,
+                "p95": 19.5,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 13.3499755859375,
+                "p95": 19.800048828125,
+                "n": 200
+              },
+              "server_ms": null,
+              "clicker_sent_bytes": 118.0,
+              "clicker_received_bytes": 82.605,
+              "watcher_received_bytes": 70.605
+            }
+          },
+          "fanout": {
+            "broadcast_ms": 85.250583011657,
+            "received_bytes": 69.0
+          }
+        },
+        {
+          "first_load": {
+            "first_screen_ms": {
+              "median": 33.89999997615814,
+              "p95": 36.40000009536743,
+              "n": 20
+            },
+            "first_contentful_paint_ms": {
+              "median": 44.0,
+              "p95": 44,
+              "n": 20
+            },
+            "interactive_ms": {
+              "median": 44.049999952316284,
+              "p95": 46,
+              "n": 20
+            },
+            "download": {
+              "html_bytes": 3404.0,
+              "html_gzip_bytes": 885.0,
+              "js_bytes": 79900.0,
+              "js_gzip_bytes": 25049.0,
+              "ws_sent_bytes": 304.0,
+              "ws_received_bytes": 2162.0,
+              "files": [
+                "/",
+                "/static/wireview/wireview.min.js?v=1.2.0"
+              ]
+            }
+          },
+          "interactions": {
+            "change_value": {
+              "dom_ms": {
+                "median": 11.699951171875,
+                "p95": 18.10009765625,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 11.89990234375,
+                "p95": 18.300048828125,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.8010211167857051,
+                "p95": 0.9286249987781048,
+                "n": 200
+              },
+              "clicker_sent_bytes": 118.605,
+              "clicker_received_bytes": 82.21,
+              "watcher_received_bytes": 0.0
+            },
+            "insert_front": {
+              "dom_ms": {
+                "median": 10.599853515625,
+                "p95": 18,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 11.0,
+                "p95": 18.39990234375,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.8429584559053183,
+                "p95": 1.8543330952525139,
+                "n": 200
+              },
+              "clicker_sent_bytes": 116.0,
+              "clicker_received_bytes": 125.17,
+              "watcher_received_bytes": 0.0
+            },
+            "broadcast": {
+              "dom_ms": {
+                "median": 12.0999755859375,
+                "p95": 18.7001953125,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.300048828125,
+                "p95": 18.800048828125,
+                "n": 200
+              },
+              "server_ms": null,
+              "clicker_sent_bytes": 118.0,
+              "clicker_received_bytes": 82.605,
+              "watcher_received_bytes": 70.605
+            }
+          },
+          "fanout": {
+            "broadcast_ms": 84.79987503960729,
+            "received_bytes": 69.0
+          }
+        },
+        {
+          "first_load": {
+            "first_screen_ms": {
+              "median": 33.90000009536743,
+              "p95": 37.89999985694885,
+              "n": 20
+            },
+            "first_contentful_paint_ms": {
+              "median": 44.0,
+              "p95": 48,
+              "n": 20
+            },
+            "interactive_ms": {
+              "median": 42.5,
+              "p95": 49.89999985694885,
+              "n": 20
+            },
+            "download": {
+              "html_bytes": 3404.0,
+              "html_gzip_bytes": 886.0,
+              "js_bytes": 79900.0,
+              "js_gzip_bytes": 25049.0,
+              "ws_sent_bytes": 304.0,
+              "ws_received_bytes": 2162.0,
+              "files": [
+                "/",
+                "/static/wireview/wireview.min.js?v=1.2.0"
+              ]
+            }
+          },
+          "interactions": {
+            "change_value": {
+              "dom_ms": {
+                "median": 12.0,
+                "p95": 18.699951171875,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.2000732421875,
+                "p95": 19.099853515625,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.8275415748357773,
+                "p95": 2.046958776190877,
+                "n": 200
+              },
+              "clicker_sent_bytes": 118.605,
+              "clicker_received_bytes": 82.21,
+              "watcher_received_bytes": 0.0
+            },
+            "insert_front": {
+              "dom_ms": {
+                "median": 11.300048828125,
+                "p95": 18.300048828125,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 11.60009765625,
+                "p95": 18.699951171875,
+                "n": 200
+              },
+              "server_ms": {
+                "median": 0.8484170539304614,
+                "p95": 1.4770000707358122,
+                "n": 200
+              },
+              "clicker_sent_bytes": 116.0,
+              "clicker_received_bytes": 125.17,
+              "watcher_received_bytes": 0.0
+            },
+            "broadcast": {
+              "dom_ms": {
+                "median": 12.2000732421875,
+                "p95": 19.300048828125,
+                "n": 200
+              },
+              "paint_ms": {
+                "median": 12.400146484375,
+                "p95": 19.5,
+                "n": 200
+              },
+              "server_ms": null,
+              "clicker_sent_bytes": 118.0,
+              "clicker_received_bytes": 82.605,
+              "watcher_received_bytes": 70.605
+            }
+          },
+          "fanout": {
+            "broadcast_ms": 117.841332918033,
+            "received_bytes": 69.0
+          }
+        }
+      ],
+      "summary": {
+        "first_screen_ms": {
+          "median": 34.0,
+          "p95": 37.89999985694885,
+          "median_min": 33.89999997615814,
+          "median_max": 34.25,
+          "rounds": [
+            {
+              "median": 34.0,
+              "p95": 36.80000019073486,
+              "n": 20
+            },
+            {
+              "median": 34.199999928474426,
+              "p95": 38.59999990463257,
+              "n": 20
+            },
+            {
+              "median": 34.25,
+              "p95": 41.10000014305115,
+              "n": 20
+            },
+            {
+              "median": 33.89999997615814,
+              "p95": 36.40000009536743,
+              "n": 20
+            },
+            {
+              "median": 33.90000009536743,
+              "p95": 37.89999985694885,
+              "n": 20
+            }
+          ]
+        },
+        "first_contentful_paint_ms": {
+          "median": 44.0,
+          "p95": 48,
+          "median_min": 44.0,
+          "median_max": 44.0,
+          "rounds": [
+            {
+              "median": 44.0,
+              "p95": 48,
+              "n": 20
+            },
+            {
+              "median": 44.0,
+              "p95": 48,
+              "n": 20
+            },
+            {
+              "median": 44.0,
+              "p95": 52,
+              "n": 20
+            },
+            {
+              "median": 44.0,
+              "p95": 44,
+              "n": 20
+            },
+            {
+              "median": 44.0,
+              "p95": 48,
+              "n": 20
+            }
+          ]
+        },
+        "interactive_ms": {
+          "median": 43.299999833106995,
+          "p95": 48.39999985694885,
+          "median_min": 42.5,
+          "median_max": 44.25,
+          "rounds": [
+            {
+              "median": 43.09999990463257,
+              "p95": 48.39999985694885,
+              "n": 20
+            },
+            {
+              "median": 44.25,
+              "p95": 48.39999985694885,
+              "n": 20
+            },
+            {
+              "median": 43.299999833106995,
+              "p95": 49.60000014305115,
+              "n": 20
+            },
+            {
+              "median": 44.049999952316284,
+              "p95": 46,
+              "n": 20
+            },
+            {
+              "median": 42.5,
+              "p95": 49.89999985694885,
+              "n": 20
+            }
+          ]
+        },
+        "download": {
+          "html_bytes": 3404.0,
+          "html_gzip_bytes": 887.0,
+          "js_bytes": 79900.0,
+          "js_gzip_bytes": 25049.0,
+          "ws_sent_bytes": 304.0,
+          "ws_received_bytes": 2162.0,
+          "files": [
+            "/",
+            "/static/wireview/wireview.min.js?v=1.2.0"
+          ]
+        },
+        "fanout_ms": {
+          "median": 85.250583011657,
+          "median_min": 84.4174160156399,
+          "median_max": 119.69229206442833
+        },
+        "fanout_received_bytes": 69.0,
+        "change_value": {
+          "dom_ms": {
+            "median": 12.0,
+            "p95": 18.699951171875,
+            "median_min": 11.699951171875,
+            "median_max": 12.3499755859375,
+            "rounds": [
+              {
+                "median": 12.0,
+                "p95": 18.300048828125,
+                "n": 200
+              },
+              {
+                "median": 12.25,
+                "p95": 18.699951171875,
+                "n": 200
+              },
+              {
+                "median": 12.3499755859375,
+                "p95": 19.400146484375,
+                "n": 200
+              },
+              {
+                "median": 11.699951171875,
+                "p95": 18.10009765625,
+                "n": 200
+              },
+              {
+                "median": 12.0,
+                "p95": 18.699951171875,
+                "n": 200
+              }
+            ]
+          },
+          "paint_ms": {
+            "median": 12.2000732421875,
+            "p95": 18.800048828125,
+            "median_min": 11.89990234375,
+            "median_max": 12.699951171875,
+            "rounds": [
+              {
+                "median": 12.199951171875,
+                "p95": 18.5,
+                "n": 200
+              },
+              {
+                "median": 12.39990234375,
+                "p95": 18.800048828125,
+                "n": 200
+              },
+              {
+                "median": 12.699951171875,
+                "p95": 19.800048828125,
+                "n": 200
+              },
+              {
+                "median": 11.89990234375,
+                "p95": 18.300048828125,
+                "n": 200
+              },
+              {
+                "median": 12.2000732421875,
+                "p95": 19.099853515625,
+                "n": 200
+              }
+            ]
+          },
+          "server_ms": {
+            "median": 0.8319999324157834,
+            "p95": 2.0121249835938215,
+            "median_min": 0.8010211167857051,
+            "median_max": 0.8437500800937414,
+            "rounds": [
+              {
+                "median": 0.8319999324157834,
+                "p95": 2.053000032901764,
+                "n": 200
+              },
+              {
+                "median": 0.8437500800937414,
+                "p95": 1.666083000600338,
+                "n": 200
+              },
+              {
+                "median": 0.8374578319489956,
+                "p95": 2.0121249835938215,
+                "n": 200
+              },
+              {
+                "median": 0.8010211167857051,
+                "p95": 0.9286249987781048,
+                "n": 200
+              },
+              {
+                "median": 0.8275415748357773,
+                "p95": 2.046958776190877,
+                "n": 200
+              }
+            ]
+          },
+          "clicker_sent_bytes": 118.605,
+          "clicker_received_bytes": 82.21,
+          "watcher_received_bytes": 0.0
+        },
+        "insert_front": {
+          "dom_ms": {
+            "median": 11.199951171875,
+            "p95": 18.300048828125,
+            "median_min": 10.599853515625,
+            "median_max": 12.050048828125,
+            "rounds": [
+              {
+                "median": 12.050048828125,
+                "p95": 19.5,
+                "n": 200
+              },
+              {
+                "median": 11.0499267578125,
+                "p95": 18.199951171875,
+                "n": 200
+              },
+              {
+                "median": 11.199951171875,
+                "p95": 19.199951171875,
+                "n": 200
+              },
+              {
+                "median": 10.599853515625,
+                "p95": 18,
+                "n": 200
+              },
+              {
+                "median": 11.300048828125,
+                "p95": 18.300048828125,
+                "n": 200
+              }
+            ]
+          },
+          "paint_ms": {
+            "median": 11.5,
+            "p95": 18.699951171875,
+            "median_min": 11.0,
+            "median_max": 12.4000244140625,
+            "rounds": [
+              {
+                "median": 12.4000244140625,
+                "p95": 20,
+                "n": 200
+              },
+              {
+                "median": 11.4000244140625,
+                "p95": 18.5,
+                "n": 200
+              },
+              {
+                "median": 11.5,
+                "p95": 19.599853515625,
+                "n": 200
+              },
+              {
+                "median": 11.0,
+                "p95": 18.39990234375,
+                "n": 200
+              },
+              {
+                "median": 11.60009765625,
+                "p95": 18.699951171875,
+                "n": 200
+              }
+            ]
+          },
+          "server_ms": {
+            "median": 0.8537914836779237,
+            "p95": 1.8543330952525139,
+            "median_min": 0.8429584559053183,
+            "median_max": 0.8775420719757676,
+            "rounds": [
+              {
+                "median": 0.8775420719757676,
+                "p95": 1.9982089288532734,
+                "n": 200
+              },
+              {
+                "median": 0.8765205275267363,
+                "p95": 1.3982909731566906,
+                "n": 200
+              },
+              {
+                "median": 0.8537914836779237,
+                "p95": 1.9846658688038588,
+                "n": 200
+              },
+              {
+                "median": 0.8429584559053183,
+                "p95": 1.8543330952525139,
+                "n": 200
+              },
+              {
+                "median": 0.8484170539304614,
+                "p95": 1.4770000707358122,
+                "n": 200
+              }
+            ]
+          },
+          "clicker_sent_bytes": 116.0,
+          "clicker_received_bytes": 125.17,
+          "watcher_received_bytes": 0.0
+        },
+        "broadcast": {
+          "dom_ms": {
+            "median": 12.300048828125,
+            "p95": 19.2001953125,
+            "median_min": 12.0999755859375,
+            "median_max": 13.249755859375,
+            "rounds": [
+              {
+                "median": 13.05029296875,
+                "p95": 19.2001953125,
+                "n": 200
+              },
+              {
+                "median": 12.300048828125,
+                "p95": 19.10009765625,
+                "n": 200
+              },
+              {
+                "median": 13.249755859375,
+                "p95": 19.5,
+                "n": 200
+              },
+              {
+                "median": 12.0999755859375,
+                "p95": 18.7001953125,
+                "n": 200
+              },
+              {
+                "median": 12.2000732421875,
+                "p95": 19.300048828125,
+                "n": 200
+              }
+            ]
+          },
+          "paint_ms": {
+            "median": 12.4500732421875,
+            "p95": 19.400146484375,
+            "median_min": 12.300048828125,
+            "median_max": 13.3499755859375,
+            "rounds": [
+              {
+                "median": 13.30029296875,
+                "p95": 19.400146484375,
+                "n": 200
+              },
+              {
+                "median": 12.4500732421875,
+                "p95": 19.2001953125,
+                "n": 200
+              },
+              {
+                "median": 13.3499755859375,
+                "p95": 19.800048828125,
+                "n": 200
+              },
+              {
+                "median": 12.300048828125,
+                "p95": 18.800048828125,
+                "n": 200
+              },
+              {
+                "median": 12.400146484375,
+                "p95": 19.5,
+                "n": 200
+              }
+            ]
+          },
+          "server_ms": null,
+          "clicker_sent_bytes": 118.0,
+          "clicker_received_bytes": 82.605,
+          "watcher_received_bytes": 70.605
+        }
+      }
+    }
+  },
+  "loc": {
+    "rule": "Counted: the files a person writes for the feature (the server's handlers, the templates or the client, the page). A line counts when it has code on it: blank lines, comment-only lines and Python docstrings do not.",
+    "wireview": {
+      "app": 51,
+      "files": {
+        "wv/board/live.py": 24,
+        "wv/board/templates/board/board.html": 17,
+        "wv/board/templates/board/index.html": 10
+      },
+      "scaffolding": 64,
+      "scaffolding_files": {
+        "wv/settings.py": 43,
+        "wv/urls.py": 6,
+        "wv/asgi.py": 15
+      }
+    },
+    "fastapi-react": {
+      "app": 92,
+      "files": {
+        "fastapi_app/main.py": 28,
+        "client/react/main.jsx": 53,
+        "client/react/index.html": 11
+      },
+      "scaffolding": 23,
+      "scaffolding_files": {
+        "client/vite.config.js": 7,
+        "client/package.json": 16
+      }
+    },
+    "fastapi-vanilla": {
+      "app": 78,
+      "files": {
+        "fastapi_app/main.py": 28,
+        "client/vanilla/main.js": 39,
+        "client/vanilla/index.html": 11
+      },
+      "scaffolding": 23,
+      "scaffolding_files": {
+        "client/vite.config.js": 7,
+        "client/package.json": 16
+      }
+    }
+  }
+}

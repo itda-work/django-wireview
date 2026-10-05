@@ -23,7 +23,10 @@ The django-reactor era changelog (2.x) is preserved in
   `csrf_token` or `messages` -- renders on its own, and the new check `wireview.W019` names it. With
   `VERIFY_SHARED_RENDER` (`DEBUG` by default, always in `wireview.testing`), a declared render that
   reads one of those names raises `SharedRenderError`, and a connection that took another's render
-  renders its own and raises if the two differ (docs/features/shared-render.md, #176).
+  renders its own and raises if the two differ. The comparison benchmark's board declaring it
+  reaches 1,000 connections on one process in 87.5 ms instead of 430.0 ms, 122.6 instead of
+  443.4 us of CPU per connection (docs/features/shared-render.md, docs/design/broadcast-fanout.md §7,
+  #176).
 - Every code block on the documentation site has a copy button in its top right corner. It copies
   the code as written, says whether it did, and falls back to a selection where the page has no
   Clipboard API (#173).

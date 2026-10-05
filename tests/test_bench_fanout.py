@@ -133,6 +133,30 @@ def test_the_fan_out_probes_see_every_stage(tmp_path):
 
 
 @pytest.mark.integration
+def test_the_fan_out_probes_see_the_shared_board(tmp_path):
+    """BENCH_SHARED_RENDER reaches the server, and the probes on the shared path record (#176)."""
+    measured = _run(
+        ["--only", "wireview-shared", "--rounds", "1", "--connections", "3", "--warmup", "1", "--broadcasts", "1"],
+        tmp_path,
+    )
+    summary = measured["implementations"]["wireview-shared"]["summary"]
+    assert summary["frames"] == 3
+    for call in (
+        "loop.shared: key",
+        "loop.shared: with_state",
+        "loop.diff: against last",
+        "loop.sign_state",
+        "loop.send_render outside the shared render",
+    ):
+        assert summary["calls"].get(call, 0) >= 3, f"the probe on {call} saw nothing: {summary['calls']}"
+    # One render for the clicker's event and one for the broadcast, whatever the connections
+    assert summary["calls"]["worker.template render"] == 2
+    assert summary["calls"]["loop.shared: parse"] == 2
+    for label, used, _wall in fanout_profile.stages(summary, "wireview-shared"):
+        assert used >= 0 or label.startswith("loop: 그 밖"), label
+
+
+@pytest.mark.integration
 def test_the_in_process_profile_takes_one_render_apart(tmp_path):
     # Eight renders at least: the thread comparison splits them over up to eight threads
     measured = _run(["inproc", "--boards", "8", "--repeat", "1"], tmp_path)["inproc"]
@@ -140,6 +164,7 @@ def test_the_in_process_profile_takes_one_render_apart(tmp_path):
         assert us > 0, part
     assert measured["ints_localized_per_render"] > 0
     assert measured["render_diff_us_one_after_another"] > 0
+    assert all(us > 0 for us in measured["shared_render_us"].values())
 
 
 # -- stage 1 (B): §6 ---------------------------------------------------------------------------
@@ -152,7 +177,7 @@ def stage_b():
 
 def _stage_b_section() -> str:
     text = DESIGN.read_text(encoding="utf-8")
-    return text[text.index("\n## 6. ") :]
+    return text[text.index("\n## 6. ") : text.index("\n## 7. ")]
 
 
 @pytest.mark.unit
@@ -185,3 +210,59 @@ def test_the_click_profile_times_every_action(tmp_path):
     measured = _run(["clicks", "--clicks", "3", "--warmup", "1", "--gaps", "0"], tmp_path)["clicks"]
     for action in ("increment", "insert"):
         assert measured["actions"][action]["0.0"]["median_ms"] > 0
+
+
+# -- stage 2 (A): §7 ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def stage_a():
+    return json.loads(fanout_profile.RESULT_A.read_text())
+
+
+def _stage_a_section() -> str:
+    text = DESIGN.read_text(encoding="utf-8")
+    return text[text.index("\n## 7. ") :]
+
+
+@pytest.mark.unit
+def test_section_7_quotes_every_fact_of_stage_a(stage_a):
+    section = _stage_a_section()
+    for key, value in fanout_profile.shared_facts(stage_a).items():
+        if key.startswith("a.stage."):
+            label = key.removeprefix("a.stage.").split(": ", 1)[-1]
+            assert f"| {label} | " in section and f" | {value} |" in section, f"§7-3 does not say {key} = {value}"
+        else:
+            assert value in section, f"§7 does not say {key} = {value}"
+
+
+@pytest.mark.unit
+def test_section_7_measured_tables_hold_only_the_results(stage_a, stage_b):
+    """§7-2..§7-5: every number in a table is one the results give, §6's quoted beside A's."""
+    values = set()
+    facts = {**fanout_profile.shared_facts(stage_a), **fanout_profile.progress_facts(stage_b)}
+    for value in facts.values():
+        values.update(CELL_NUMBER.findall(value))
+    section = _stage_a_section()
+    measured = section[section.index("\n### 7-2.") : section.index("\n### 7-6.")]
+    rows = [line for line in measured.splitlines() if line.startswith("|")]
+    quoted = {n for row in rows for n in CELL_NUMBER.findall(row)}
+    assert quoted <= values, f"§7 tables quote numbers the results do not: {quoted - values}"
+
+
+@pytest.mark.unit
+def test_section_7_shows_the_charts_drawn_from_the_results(stage_a, stage_b):
+    section = _stage_a_section()
+    for block in fanout_profile.shared_chart(stage_b, stage_a).split("\n\n"):
+        assert block in section, "§7's chart is stale: print bench.fanout_profile.shared_chart() again"
+
+
+@pytest.mark.unit
+def test_the_performance_guide_quotes_stage_a(stage_a):
+    guide = (ROOT / "docs" / "PERFORMANCE.md").read_text(encoding="utf-8")
+    part = guide[guide.index("#### 브로드캐스트를 많은 연결이 받을 때") : guide.index("### 기대치")]
+    facts = fanout_profile.shared_facts(stage_a)
+    for key in ("wireview", "wireview-shared", "fastapi"):
+        assert f"| {facts[f'a.{key}.fanout']} | {facts[f'a.{key}.per_connection']} |" in part, key
+    assert fanout_profile.shared_performance_chart(stage_a) in part
+    assert fanout_profile.RESULT_A.name in part
