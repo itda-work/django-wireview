@@ -109,7 +109,141 @@ class EveryShape(Component):
 def context_names_of(klass: type) -> set[str]:
     from wireview.core.meta import _CONTEXT_NAMES
 
-    return {name for names in _CONTEXT_NAMES[klass].values() for name in names}
+    return {name for names in _CONTEXT_NAMES[klass][2].values() for name in names}
+
+
+def _by_dir(wire: MockWireviewMeta, component: Component) -> dict[str, t.Any]:
+    """The context as reading every public name of dir() gave it, before the names were kept (#176)."""
+    names = [n for n in dir(component) if not n.startswith("_") and n not in wire._PYDANTIC_CLASS_ATTRS]
+    return {n: v for n in names if not callable(v := getattr(component, n))}
+
+
+def _same_as_dir(wire: MockWireviewMeta, component: Component) -> bool:
+    context = wire._collect_context(component, MockRepository())
+    expected = _by_dir(wire, component)
+    return {k: v for k, v in context.items() if k in expected or k not in _ADDED} == expected
+
+
+_ADDED = {"slots", "this", "wireview_repository"}
+
+
+class _Shape(Component):
+    value: int = 1
+
+    async def act(self) -> None:
+        pass
+
+    def helper(self) -> int:
+        return 1
+
+
+def _make(klass: type[Component], **fields: t.Any) -> Component:
+    from django.contrib.auth.models import AnonymousUser
+
+    return klass(user=AnonymousUser(), wire=MockWireviewMeta(), **fields)
+
+
+class TestContextNamesFollowTheClass:
+    """The kept names give what dir() gives when the class changes after a render (#176)."""
+
+    @pytest.mark.unit
+    def test_a_property_attached_later(self):
+        class LateShape(_Shape):
+            pass
+
+        component = _make(LateShape)
+        assert _same_as_dir(component.wire, component)
+        LateShape.late = property(lambda self: "late")  # type: ignore[attr-defined]
+
+        assert _same_as_dir(component.wire, component)
+        assert component.wire._collect_context(component, MockRepository())["late"] == "late"
+        assert _same_as_dir(component.wire, _make(LateShape))
+
+    @pytest.mark.unit
+    def test_a_class_attribute_added_and_deleted_later(self):
+        class AddedShape(_Shape):
+            pass
+
+        component = _make(AddedShape)
+        assert _same_as_dir(component.wire, component)
+        AddedShape.added = 5  # type: ignore[attr-defined]
+        assert _same_as_dir(component.wire, component)
+        del AddedShape.added  # type: ignore[attr-defined]
+
+        assert _same_as_dir(component.wire, component)  # not an AttributeError
+
+    @pytest.mark.unit
+    def test_a_name_added_to_a_mixin_later(self):
+        class Mixin:
+            pass
+
+        class MixedShape(Mixin, _Shape):
+            pass
+
+        component = _make(MixedShape)
+        assert _same_as_dir(component.wire, component)
+        Mixin.mixed_in = "m"  # type: ignore[attr-defined]
+
+        assert _same_as_dir(component.wire, component)
+
+    @pytest.mark.unit
+    def test_a_dir_that_follows_the_state_is_read_every_time(self):
+        class DirShape(_Shape):
+            mode: int = 0
+
+            def __dir__(self) -> list[str]:
+                return [*super().__dir__(), *(["ghost"] if self.mode else [])]
+
+            def __getattr__(self, name: str) -> t.Any:
+                return "boo" if name == "ghost" else super().__getattr__(name)
+
+        component = _make(DirShape)
+        assert _same_as_dir(component.wire, component)
+        component.mode = 1
+
+        assert _same_as_dir(component.wire, component)
+        assert component.wire._collect_context(component, MockRepository())["ghost"] == "boo"
+
+    @pytest.mark.unit
+    def test_what_the_instance_changes(self):
+        class SwapA(_Shape):
+            a_only: t.ClassVar[str] = "a"
+
+        class SwapB(_Shape):
+            b_only: t.ClassVar[str] = "b"
+
+        component = _make(SwapA)
+        assert _same_as_dir(component.wire, component)
+        object.__setattr__(component, "helper", 99)  # hides the method
+        assert _same_as_dir(component.wire, component)
+        object.__setattr__(component, "__class__", SwapB)
+        assert _same_as_dir(component.wire, component)
+
+    @pytest.mark.unit
+    def test_a_property_that_raises_attribute_error_still_raises(self):
+        class RaisingShape(_Shape):
+            @property
+            def broken(self) -> int:
+                raise AttributeError("broken")
+
+        component = _make(RaisingShape)
+        with pytest.raises(AttributeError):
+            component.wire._collect_context(component, MockRepository())
+
+    @pytest.mark.unit
+    def test_a_method_rebound_in_place_to_a_value_is_not_seen(self):
+        """The one change the names do not follow, as _context_names() says: the counts stay the same."""
+
+        class ReboundShape(_Shape):
+            pass
+
+        ReboundShape.helper = _Shape.helper  # type: ignore[method-assign]
+        component = _make(ReboundShape)
+        assert _same_as_dir(component.wire, component)
+        ReboundShape.helper = 7  # type: ignore[assignment,method-assign]
+
+        assert "helper" in _by_dir(component.wire, component)
+        assert "helper" not in component.wire._collect_context(component, MockRepository())
 
 
 class TestCollectContext:

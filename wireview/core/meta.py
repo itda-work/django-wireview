@@ -39,9 +39,14 @@ if t.TYPE_CHECKING:
 # Orders instances' births and their own renders across the process; only compared
 _TICKS = itertools.count()
 
-#: Per component class, per set of instance attributes: the public names a live
-#: render reads into its context (``WireviewMeta._context_names``)
-_CONTEXT_NAMES: weakref.WeakKeyDictionary[type, dict[tuple[str, ...], tuple[str, ...]]] = weakref.WeakKeyDictionary()
+#: Per component class: the MRO and each of its classes' attribute count the
+#: names were read under, and per set of instance attributes the public names a
+#: live render reads into its context (``WireviewMeta._context_names``)
+_CONTEXT_NAMES: weakref.WeakKeyDictionary[
+    type, tuple[tuple[type, ...], tuple[int, ...], dict[tuple[str, ...], tuple[str, ...]]]
+] = weakref.WeakKeyDictionary()
+#: Marks a name no longer there (``WireviewMeta._collect_context``)
+_MISSING = object()
 #: A plain method, a classmethod or a staticmethod: read on an instance it is always callable
 _METHODS = (FunctionType, classmethod, staticmethod)
 
@@ -713,25 +718,41 @@ class WireviewMeta:
         (#176). Which names those are depends on the class and on the names
         the instance holds itself -- one there hides a method of the same name
         -- so the list is kept per class and per instance attribute set.
+
+        The class side is followed by its MRO and the number of attributes
+        each class in it holds: a name added to or deleted from any of them,
+        later and on a mixin too, reads the names again. A class that writes
+        its own ``__dir__`` is read as it is every time. What is not seen is
+        an attribute rebound in place to a value of another kind (a method
+        replaced by a value): a class is not rewritten that way after its
+        first render.
         """
         klass = type(component)
+        if klass.__dir__ is not object.__dir__:  # its names may follow its state
+            return cls._read_context_names(component, klass, set(component.__dict__))
+        mro = klass.__mro__
+        counts = tuple([len(each.__dict__) for each in mro])
+        kept = _CONTEXT_NAMES.get(klass)
+        if kept is None or kept[0] is not mro or kept[1] != counts:
+            kept = _CONTEXT_NAMES[klass] = (mro, counts, {})
+        by_keys = kept[2]
         keys = tuple(component.__dict__)
-        by_keys = _CONTEXT_NAMES.get(klass)
-        if by_keys is None:
-            by_keys = _CONTEXT_NAMES[klass] = {}
         names = by_keys.get(keys)
         if names is None:
-            own = set(keys)
-            names = tuple(
-                name
-                for name in dir(component)
-                if not name.startswith("_")
-                and name not in cls._PYDANTIC_CLASS_ATTRS
-                and (name in own or not isinstance(inspect.getattr_static(klass, name, None), _METHODS))
-            )
+            names = cls._read_context_names(component, klass, set(keys))
             if len(by_keys) < 32:  # instances that come and go with attributes of their own: read as they are
                 by_keys[keys] = names
         return names
+
+    @classmethod
+    def _read_context_names(cls, component: "Component", klass: type, own: set[str]) -> tuple[str, ...]:
+        return tuple(
+            name
+            for name in dir(component)
+            if not name.startswith("_")
+            and name not in cls._PYDANTIC_CLASS_ATTRS
+            and (name in own or not isinstance(inspect.getattr_static(klass, name, None), _METHODS))
+        )
 
     def _collect_context(self, component: "Component", repo: Repo, reads: RenderReads | None = None) -> Context:
         """Read every public attribute of the component into a context (sync).
@@ -742,7 +763,12 @@ class WireviewMeta:
 
         if reads is None:
             for attr_name in self._context_names(component):
-                attr = getattr(component, attr_name)
+                try:
+                    attr = getattr(component, attr_name)
+                except AttributeError:
+                    if inspect.getattr_static(component, attr_name, _MISSING) is not _MISSING:
+                        raise  # a property that raises: as dir() would have read it
+                    continue  # deleted from its class since the names were kept
                 if not callable(attr):
                     context[attr_name] = attr
         else:

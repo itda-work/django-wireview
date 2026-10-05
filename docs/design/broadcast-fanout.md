@@ -533,6 +533,9 @@ xychart-beta horizontal
   토큰은 넷씩 묶어 돈다. 루프 항목은 `Rendered`로 감싸지 않는다.
 - **B4** (`ce7762c`). 렌더가 읽을 이름을 클래스와 인스턴스 속성 집합마다 기억한다. 함수·classmethod·staticmethod인 이름은
   읽지 않는다. 인스턴스가 같은 이름을 가리면 읽는다. temporary_assigns를 추적하는 렌더는 예전처럼 모두 읽는다.
+  클래스 쪽 변화는 MRO와 그 클래스마다의 속성 수로 따라간다(렌더당 약 0.3 µs). 나중에 붙이거나 지운 이름은 믹스인의 것도
+  다시 읽는다. `__dir__`를 직접 쓴 클래스는 캐시하지 않는다. 따라가지 못하는 것은 하나다. 메서드를 같은 이름의 값으로
+  바꿔 끼우면(속성 수가 그대로다) 보지 못한다. 클래스는 첫 렌더 뒤에 그렇게 고치지 않는다는 전제다.
 - **B5** (`7669c92`). 참조 주석(`<!--@wv:`)이 없는 HTML에서 파싱했고 이전 렌더에서 가져온 부분이 없는 렌더는 LiveComponent
   참조를 담을 수 없다. `Rendered`가 그것을 기억하고, 세션은 그런 렌더에서 참조 걷기 두 번(`component_refs`,
   `_send_shown_again`)을 건너뛴다. 빈 배치의 `leaving()`·업로드 정리·`update_many()` 대기도 건너뛴다. `take_lifecycle()`은
@@ -620,6 +623,7 @@ Channels는 핸들러마다 앞에서 `aclose_old_connections()` 트립을 탄�
   LiveComponent 테스트 15개가 실패한다.
 - `tests/test_async_render.py`. 이름 캐시로 읽은 컨텍스트가 `dir()`로 모두 읽은 컨텍스트와 같은지 본다. 대상은 필드, 클래스
   상수, property, 호출 가능한 값을 돌려주는 property, staticmethod를 담은 ClassVar, 인스턴스가 가린 메서드다.
+  렌더 뒤에 클래스·믹스인에 붙이거나 지운 이름, 상태를 따르는 `__dir__`, `__class__` 교체도 본다(`TestContextNamesFollowTheClass`).
 - `tests/test_diff_roundtrip.py`(기존). 서버 diff를 실제 `rendered.mjs`로 적용해 매 단계 HTML이 렌더와 같은지 본다.
 - `make test`, 전체 `make test-e2e`(NATS).
 
