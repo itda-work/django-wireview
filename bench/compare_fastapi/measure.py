@@ -412,7 +412,7 @@ async def fanout(server: Server, connections: int) -> dict[str, float]:
     import websockets
 
     origin = server.url
-    wireview = server.name == "wireview"
+    wireview = server.name.startswith("wireview")
     if wireview:
         with urllib.request.urlopen(server.url + "/") as response:
             state = re.search(r'data-state="([^"]+)"', response.read().decode()).group(1)
