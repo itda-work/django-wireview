@@ -735,7 +735,7 @@ class WireviewMeta:
         Returns:
             Rendered HTML as SafeText, or None if rendering should be skipped.
         """
-        from ..template_engine import render_with_markers
+        from ..template_engine import get_template_marker, render_with_markers
 
         if not self.channel_name and self._redirected_to:
             return mark_safe(
@@ -753,6 +753,9 @@ class WireviewMeta:
         # Its renders of its own are what its kept parts take back (settle), so
         # only they record what those parts drew
         self.drawing = {} if component._meta.temporary_assigns else None
+        marker_context = get_template_marker().marker_context
+        if self.drawing is not None:
+            marker_context.recording += 1  # the parts look their owner up only while one records
         try:
             if reads is None:
                 html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
@@ -761,6 +764,8 @@ class WireviewMeta:
                     html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
         finally:
             drawing, self.drawing = self.drawing, None
+            if drawing is not None:
+                marker_context.recording -= 1
         if drawing is not None:
             # A part this render did not run -- inside one it kept -- keeps its record
             self.drawn = {**self.drawn, **{key: frozenset(items) for key, items in drawing.items()}}

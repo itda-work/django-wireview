@@ -12,6 +12,7 @@ from __future__ import annotations
 import itertools
 import typing as t
 from contextlib import contextmanager
+from html import escape as escape_html
 
 from django.conf import settings
 from django.http import HttpRequest
@@ -20,9 +21,9 @@ from django.template.base import FilterExpression, Node, NodeList, Variable, Var
 from django.template.exceptions import TemplateDoesNotExist
 from django.template.loader_tags import IncludeNode
 from django.template.smartif import TokenBase
+from django.utils.safestring import SafeString
 
 from .core import render_reads
-from .core.rendered import inject_marker
 
 
 class BackendTemplate(t.Protocol):
@@ -53,7 +54,7 @@ SKIP_VARIABLE_NAMES = frozenset(
 class MarkerContext:
     """Tracks marker indices and the enclosing comprehensions during a render."""
 
-    __slots__ = ("_counter", "_comprehensions", "reads", "frames")
+    __slots__ = ("_counter", "_comprehensions", "reads", "frames", "recording")
 
     def __init__(self) -> None:
         self._counter = 0
@@ -63,6 +64,9 @@ class MarkerContext:
         self.reads: render_reads.RenderReads | None = None
         #: What each open part being recorded drew from elsewhere (``drew()``)
         self.frames: list[set[tuple[t.Any, ...]]] = []
+        #: How many renders under way record what their parts draw (``WireviewMeta.drawing``).
+        #: While none does, a part need not look its owner up to learn that it does not
+        self.recording = 0
 
     def next_index(self) -> int:
         """Get the next marker index."""
@@ -112,6 +116,8 @@ class MarkedVariableNode(Node):
         # Copy attributes from original for compatibility
         self.token = original_node.token
         self.filter_expression = original_node.filter_expression
+        #: Django's own node, whose render this one does itself (``render_value``)
+        self._plain = type(original_node) is VariableNode
 
     def render(self, context: Context) -> str:
         """Render the variable with markers.
@@ -120,43 +126,48 @@ class MarkedVariableNode(Node):
         static parts and shift every following index, turning a value that
         toggles between "" and text into a full render.
         """
-        reads = self.marker_context.reads
-        slot = reads.open() if reads else None
+        # Every dynamic value of every render comes through here (#176): what
+        # inject_marker() and next_index() do is spelled out in place
+        marker_context = self.marker_context
+        reads = marker_context.reads
+        slot = reads.open() if reads is not None else None
         try:
-            output = self._render_value(context)
+            if self._plain:
+                try:
+                    output = render_value(self.filter_expression.resolve(context), context)
+                except UnicodeDecodeError:
+                    output = ""  # as VariableNode.render
+            else:
+                output = self.original_node.render(context)  # a subclass renders its own way
         finally:
             # The index follows the output, as the parser numbers it
-            index = self.marker_context.next_index()
-            if reads and slot:
-                reads.close(slot, index)
-        return inject_marker(output, index)
-
-    def _render_value(self, context: Context) -> str:
-        """What the original node renders: ``VariableNode.render``, by way of ``render_value``."""
-        node = self.original_node
-        if type(node) is not VariableNode:
-            return node.render(context)  # a subclass renders its own way
-        try:
-            value = self.filter_expression.resolve(context)
-        except UnicodeDecodeError:
-            return ""  # as VariableNode.render
-        return render_value(value, context)
+            index = marker_context._counter
+            marker_context._counter = index + 1
+            if slot is not None:
+                reads.close(slot, index)  # type: ignore[union-attr]
+        return f"<!--${index}-->{output}<!--/${index}-->"
 
     def __repr__(self) -> str:
         return f"<MarkedVariableNode: {self.filter_expression!r}>"
 
 
 def render_value(value: t.Any, context: Context) -> str:
-    """``render_value_in_context(value, context)``, a plain ``int`` printed without asking Django first.
+    """``render_value_in_context(value, context)``, a plain ``str`` or ``int`` printed without the detour.
 
     Django prints an int as ``str()`` unless it groups thousands -- but it reaches
     that shortcut only after ``get_language()`` and three ``get_format()`` calls
     (``number_format``), about 2 µs an int and half of a numeric list's render
     (#176). Grouping needs ``USE_THOUSAND_SEPARATOR`` with localization on, so
     without it the text is ``str(value)``, as Django's own shortcut makes it.
-    Not ``bool`` (``type is int``), nor a subclass, whose ``__str__`` may differ.
+    A plain ``str`` passes ``template_localtime()`` and ``localize()`` unchanged
+    and is escaped as ``django.utils.html.escape`` escapes it. Only the exact
+    types: not ``bool``, not ``SafeString``, nor any subclass, whose ``__str__``
+    or ``__html__`` may differ.
     """
-    if type(value) is int and (context.use_l10n is False or not settings.USE_THOUSAND_SEPARATOR):
+    kind = type(value)
+    if kind is str:
+        return SafeString(escape_html(value)) if context.autoescape else value
+    if kind is int and (context.use_l10n is False or not settings.USE_THOUSAND_SEPARATOR):
         return str(value)
     return render_value_in_context(value, context)
 
@@ -208,7 +219,12 @@ class _PartNode(Node):
     marker_context: MarkerContext
 
     def _record(self, context: Context) -> tuple[t.Any, set[tuple[t.Any, ...]] | None]:
-        """The owner's meta and a frame for what this part draws, while the owner records its render."""
+        """The owner's meta and a frame for what this part draws, while the owner records its render.
+
+        ``(None, None)`` when no render under way records: ``_moved()`` looks the owner up itself.
+        """
+        if not self.marker_context.recording:
+            return None, None
         wire = _wire(context.get("this"))
         if getattr(wire, "drawing", None) is None:
             return wire, None
@@ -231,6 +247,8 @@ class _PartNode(Node):
 
     def _moved(self, wire: t.Any, context: Context) -> bool:
         """Whether something this part drew from elsewhere last time is another now."""
+        if wire is None:
+            wire = _wire(context.get("this"))
         record = wire.drawn.get(self.key) if wire is not None else None
         if not record:
             return False
@@ -255,7 +273,16 @@ class ComprehensionNode(_PartNode):
         self.token = getattr(for_node, "token", None)
 
     def render(self, context: Context) -> str:
-        index = self.marker_context.next_index()
+        marker_context = self.marker_context
+        index = marker_context.next_index()
+        if marker_context.reads is None and not marker_context.recording:
+            # Nothing to track or record: the loop and its items, marked (#176)
+            marker_context._comprehensions.append(index)
+            try:
+                output = self.for_node.render(context)
+            finally:
+                marker_context._comprehensions.pop()
+            return f"<!--$C{index}-->{output}<!--/$C{index}-->"
         self.marker_context.push_comprehension(index)
         reads = self.marker_context.reads
         slot = reads.open(index) if reads else None
@@ -359,8 +386,12 @@ class _BlockNode(_PartNode):
         self.token = getattr(inner, "token", None)
 
     def render(self, context: Context) -> str:
-        index = self.marker_context.next_index()
-        reads = self.marker_context.reads
+        marker_context = self.marker_context
+        index = marker_context.next_index()
+        reads = marker_context.reads
+        if reads is None and not marker_context.recording:
+            # Nothing to track or record: the block, marked (#176)
+            return f"<!--$B{index}-->{self.inner.render(context)}<!--/$B{index}-->"
         slot = reads.open(index) if reads else None
         wire, frame = self._record(context)
         kept = False
@@ -406,9 +437,10 @@ class ComprehensionItemNode(Node):
 
     def render(self, context: Context) -> str:
         output = self.nodelist.render(context)
-        index = self.marker_context.current_comprehension
-        if index is None:
+        comprehensions = self.marker_context._comprehensions
+        if not comprehensions:
             return output
+        index = comprehensions[-1]
         return f"<!--$I{index}-->{output}<!--/$I{index}-->"
 
     def __repr__(self) -> str:

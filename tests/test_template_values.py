@@ -2,8 +2,10 @@
 
 ``MarkedVariableNode`` prints a plain ``int`` with ``str()`` instead of asking
 Django's ``localize()``, which costs about 2 µs an int before it reaches the same
-shortcut. That is only right where Django would not group thousands, so the
-output is compared with Django's under every setting that changes it.
+shortcut, and escapes a plain ``str`` without passing it through the localization
+it does not need. That is only right where Django would not group thousands, and
+for exactly those types, so the output is compared with Django's under every
+setting that changes it.
 """
 
 import decimal
@@ -13,6 +15,8 @@ import pytest
 from django.template import Context, Engine
 from django.test import override_settings
 from django.utils import translation
+from django.utils.safestring import mark_safe
+from django.utils.translation import gettext_lazy
 
 from wireview.core.rendered import strip_markers
 from wireview.template_engine import TemplateMarker, render_value
@@ -40,6 +44,9 @@ VALUES = [
     decimal.Decimal("1234567.891"),
     None,
     "1234567",
+    "<b class='x'>Tom & \"Jerry\"</b>",
+    mark_safe("<i>safe</i>"),
+    gettext_lazy("Yes & no"),
 ]
 
 SOURCES = [
@@ -66,7 +73,7 @@ def _both(source: str, value: object) -> tuple[str, str]:
 def test_a_marked_value_prints_as_django_prints_it(grouping, language, source):
     with override_settings(USE_THOUSAND_SEPARATOR=grouping, USE_I18N=True), translation.override(language):
         for value in VALUES:
-            if "add:" in source and not isinstance(value, (int, float, decimal.Decimal)):
+            if "add:" in source and not isinstance(value, (int, float, decimal.Decimal, str)):
                 continue
             django_output, marked = _both(source, value)
             assert marked == django_output, f"{value!r} in {source!r}"
@@ -89,3 +96,4 @@ def test_the_shortcut_takes_plain_ints_alone():
         assert render_value(True, context) == "True"
         assert render_value(Shown(12), context) == "#12"
         assert render_value("<b>", context) == "&lt;b&gt;"
+        assert render_value(mark_safe("<b>"), context) == "<b>"
