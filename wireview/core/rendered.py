@@ -489,11 +489,14 @@ class Rendered:
         return len(self.dynamic) > 0
 
 
-@dataclass
 class _Item:
-    """A parsed comprehension iteration, only alive while parsing."""
+    """A parsed comprehension iteration, only alive while parsing: an item template's statics and dynamics."""
 
-    rendered: Rendered
+    __slots__ = ("static", "dynamic")
+
+    def __init__(self, static: list[str], dynamic: list[Dynamic]) -> None:
+        self.static = static
+        self.dynamic = dynamic
 
 
 @dataclass
@@ -509,13 +512,13 @@ class Stale:
         return self.value if isinstance(self.value, str) else self.value.to_html()
 
 
-def _finish(kind: str, static: list[str], dynamic: list[t.Any]) -> t.Any:
-    """Turn a closed marker region into its dynamic value."""
+def _finish(kind: str, static: list[str], dynamic: list[t.Any], items: bool = True) -> t.Any:
+    """Turn a closed marker region into its dynamic value; ``items`` says whether ``dynamic`` holds an ``_Item``."""
     if kind == "C":
         return _comprehension(static, dynamic)
-    inner = [_flatten_item(v) for v in dynamic]
+    inner = [_flatten_item(v) for v in dynamic] if items else dynamic
     if kind == "I":
-        return _Item(Rendered(static=static, dynamic=inner))
+        return _Item(static, inner)
     if kind == "B" and inner:
         return Rendered(static=static, dynamic=inner)
     # A variable, or a branch with no dynamics of its own: plain text.
@@ -537,45 +540,59 @@ def _parse(html: str, stale: set[int] | None = None) -> tuple[list[str], list[Dy
     A value or a block closed right after it opens holds nothing but its text:
     most of a render's parts. It is taken whole, without a frame of its own
     (#176) -- what ``_finish`` makes of it is that text, or the reference it is.
+    And only a frame that holds a loop item outside its loop flattens it (``items``).
     """
-    parts = _TOKEN.split(html)
-    end = len(parts)
-    static: list[str] = [parts[0]]
+    parts = iter(_TOKEN.split(html))
+    static: list[str] = [next(parts)]
     dynamic: list[t.Any] = []
-    stack: list[tuple[str, str, list[str], list[t.Any]]] = []
-    i = 1
-    while i < end:
-        close, kind, index, text = parts[i], parts[i + 1], parts[i + 2], parts[i + 3]
-        i += 4
-        if not close:
-            if (kind == "" or kind == "B") and i < end and parts[i] and parts[i + 1] == kind and parts[i + 2] == index:
-                value: t.Any = text
-                if kind == "" and text.startswith(_REF_PREFIX) and (match := _REF.fullmatch(text)):
+    items = False
+    stack: list[tuple[str, str, list[str], list[t.Any], bool]] = []
+    # A value or block just opened, taken whole if the next marker closes it
+    held: str | None = None
+    held_index = held_text = ""
+    for close, kind, index, text in zip(parts, parts, parts, parts):
+        if held is not None:
+            if close and kind == held and index == held_index:
+                value: t.Any = held_text
+                if held == "" and held_text.startswith(_REF_PREFIX) and (match := _REF.fullmatch(held_text)):
                     value = ComponentRef(match.group(1))
                 if stale and int(index) in stale and not any(entry[0] in ("I", "C") for entry in stack):
                     value = Stale(value)
                 dynamic.append(value)
-                static.append(parts[i + 3])
-                i += 4
+                static.append(text)
+                held = None
                 continue
-            stack.append((kind, index, static, dynamic))
-            static, dynamic = [text], []
-        elif stack and stack[-1][0] == kind and stack[-1][1] == index:
-            value = _finish(kind, static, dynamic)
-            _kind, _index, static, dynamic = stack.pop()
+            # Something opens or closes inside it: it gets a frame after all
+            stack.append((held, held_index, static, dynamic, items))
+            static, dynamic, items = [held_text], [], False
+            held = None
+        if not close:
+            if kind == "" or kind == "B":
+                held, held_index, held_text = kind, index, text
+                continue
+            stack.append((kind, index, static, dynamic, items))
+            static, dynamic, items = [text], [], False
+        elif stack and (top := stack[-1])[0] == kind and top[1] == index:
+            value = _finish(kind, static, dynamic, items)
+            _kind, _index, static, dynamic, items = stack.pop()
+            if kind == "I":
+                items = True
             # Inside a loop the item is compared whole, so a part there cannot keep
             # its own value; only the loop can (wireview/core/render_reads.py).
-            if stale and kind != "I" and int(index) in stale and not any(entry[0] in ("I", "C") for entry in stack):
+            elif stale and int(index) in stale and not any(entry[0] in ("I", "C") for entry in stack):
                 value = Stale(value)
             dynamic.append(value)
             static.append(text)
         else:
             static[-1] += text  # stray closing marker: drop it, keep the text
+    if held is not None:  # opened last and never closed
+        stack.append((held, held_index, static, dynamic, items))
+        static, dynamic, items = [held_text], [], False
     while stack:  # unclosed regions: fold their content back into the parent as text
-        kind, index, parent_static, parent_dynamic = stack.pop()
-        parent_static[-1] += _interleave(static, [_flatten_item(v) for v in dynamic])
-        static, dynamic = parent_static, parent_dynamic
-    return static, [_flatten_item(v) for v in dynamic]
+        kind, index, parent_static, parent_dynamic, parent_items = stack.pop()
+        parent_static[-1] += _interleave(static, [_flatten_item(v) for v in dynamic] if items else dynamic)
+        static, dynamic, items = parent_static, parent_dynamic, parent_items
+    return static, [_flatten_item(v) for v in dynamic] if items else dynamic
 
 
 def keep_stale(
@@ -699,7 +716,7 @@ def _names_components(value: Dynamic) -> bool:
 def _flatten_item(value: Dynamic | _Item) -> Dynamic:
     """An item marker outside its comprehension is just text."""
     if isinstance(value, _Item):
-        return value.rendered.to_html()
+        return _interleave(value.static, value.dynamic)
     return value
 
 
@@ -715,16 +732,13 @@ def _comprehension(static: list[str], dynamic: list[Dynamic | _Item]) -> Dynamic
     uniform = (
         len(items) == len(dynamic)
         and all(not s.strip() for s in static)
-        and all(item.rendered.static == items[0].rendered.static for item in items[1:])
+        and all(item.static == items[0].static for item in items[1:])
     )
     if not uniform:
         return _interleave(static, [_flatten_item(v) for v in dynamic])
     if not items:
         return Comprehension()
-    return Comprehension(
-        static=items[0].rendered.static,
-        dynamics=[item.rendered.dynamic for item in items],
-    )
+    return Comprehension(static=items[0].static, dynamics=[item.dynamic for item in items])
 
 
 @dataclass
