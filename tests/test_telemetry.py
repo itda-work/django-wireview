@@ -247,7 +247,12 @@ async def test_the_public_abroadcast_is_measured(telemetry_on, broker):
 
     (published,) = telemetry_on.of(telemetry.broadcast_published)
     assert published["topic"] == "orders"
-    assert broker.published[0][1] == {"type": "notification", "channel": "orders", "kwargs": {"action": "created"}}
+    assert broker.published[0][1] == {
+        "type": "notification",
+        "channel": "orders",
+        "message_id": broker.published[0][1]["message_id"],
+        "kwargs": {"action": "created"},
+    }
 
 
 @pytest.mark.asyncio

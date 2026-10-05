@@ -39,6 +39,10 @@ wireview/
 ├── core/render_reads.py   초기화된 temporary assign만 읽은 동적 부분을 렌더 중에 찾는다. 그 부분은 이전 값 그대로(#111).
 │                          다른 컴포넌트의 패스 안에서 그려지는 중첩 컴포넌트도 자기 것을 따로 찾는다(rendered.keep_stale).
 │                          남는 부분이 그린 다른 컴포넌트·슬롯이 그 뒤 바뀌었으면 다시 그린다(자기 렌더가 부분별로 기록, template_engine._PartNode)
+├── core/shared_render.py  Meta.shared_render(#176 2단계). 같은 브로드캐스트 메시지(message_id)를 처리하는 연결들이 같은 클래스·id·필드·언어·시간대의
+│                          렌더를 한 번만 하고 Rendered를 함께 쓴다. data-state는 공유하지 않는다 — 렌더는 그 자리에 STATE_SLOT을 쓰고 연결마다 자기 토큰을 끼운다(Shared.with_state).
+│                          범위 밖(LiveComponent·temporary_assigns·slots·live_sessions·다른 컴포넌트를 그리거나 보는 사람을 읽는 템플릿)은 공유하지 않고 W019가 알린다.
+│                          VERIFY_SHARED_RENDER(DEBUG·wireview.testing)면 user·session·request 읽기가 오류이고, 받은 렌더를 다시 렌더해 비교한다
 ├── core/render_gate.py    RenderGate. 워커 스레드가 렌더하는 동안 그 컴포넌트의 start_async·assign_async 작업 단계를 렌더 뒤로 미룬다(#138).
 │                          렌더가 async property를 오래 기다리는 동안 작업이 막혀 있으면 경고한다(교착 의심, #147)
 ├── core/session.py        SessionView. Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다
@@ -75,7 +79,7 @@ wireview/
 ├── js.py                  JS() 명령 빌더
 ├── schemas.py, serializer.py  Pydantic 스키마, 모델 직렬화
 ├── settings.py            WIREVIEW 설정 기본값
-├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W018)
+├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W019)
 ├── telemetry.py           옵트인 계측 시그널 (event_handled, component_rendered, diff_computed, broadcast_published 구간과
 │                          connection_opened·connection_closed·join_rejected(닫힌 사유 집합)·publish_failed 이벤트, #124)
 ├── testing.py             mount(), MountedComponent, ComponentTestCase.
@@ -196,6 +200,7 @@ tests/
                            이동의 params를 누가 듣는가(HEARD, 모든 페이지의 sticky HistoryDock과 box 페이지에만 있는 HistoryTray. 첫 HTTP 렌더가 들은 것은 HTTP_HEARD, #177), 같은 URL로의 push,
                            조각 링크, 네트워크 오류로 실패한 가져오기(boost 폼 포함, post/ 는 받은 POST를 센다. ?away=1 은 다른 출처로 리다이렉트한다), 중지된(AbortError) 이동, method="put" 폼을 보는 E2E(test_history_e2e.py)의 픽스처(members/ 는 ls-members 경계 안, bar-a/·bar-b/ 는 sticky가 아닌 HistoryBar를 같은 id로 그리는 두 페이지 — 뒤로 가기의 캐시 사본에서 떠나는 페이지의 것이 params를 듣지 않는지 본다. guarded/ 는 자기 필드와 비교해 일찍 돌아오는 params_changed를 가진 두 컴포넌트 — join이 첫 응답의 마운트 상태에서 다시 듣는지 본다, #177),
                            lossprobe/ 는 capacity를 넘는 브로드캐스트가 레이어마다 어떻게 버려지는지 보는 E2E(test_broadcast_loss_e2e.py)의 픽스처,
+                           shareprobe/ 는 shared_render를 선언한 보드와 보는 사람을 부르는 인사를 브라우저 컨텍스트 여럿(사용자 하나씩)이 보는 E2E(test_shared_render_e2e.py)의 픽스처,
                            jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,
                            formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처,
                            fileprobe/ 는 업로드의 모든 입구(입력·드롭 존·미리보기·external)와 숨겼다 다시 보인 LiveComponent의 업로드, 렌더가 새로 그린 일반 컴포넌트와 그 안의 LiveComponent(같은 업로드 이름)의 join·업로드, 재연결 뒤 숨겼다 다시 보인 그 LiveComponent가 새 상태로 시작하는지, late/ 에서 joined()의 작업이 끝나야 그리는 일반 컴포넌트 안의 LiveComponent가 재연결 뒤 제 상태로 돌아오는지를 보는 E2E(test_uploads_e2e.py)의 픽스처,
@@ -292,7 +297,7 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 
 ## 함정
 
-아래 중 여럿은 `manage.py check`가 잡는다 (`wireview.W001`~`W018`, `docs/features/checks.md`).
+아래 중 여럿은 `manage.py check`가 잡는다 (`wireview.W001`~`W019`, `docs/features/checks.md`).
 
 - **채널 레이어가 없으면 어떤 연결도 살아남지 못한다.** Channels에는 기본 레이어가 없다 — `CHANNEL_LAYERS`에 `default`가 없으면 `get_channel_layer()`가 `None`이고 컨슈머에 `channel_name`도 생기지 않는다. 컨슈머는 accept 전에 `ImproperlyConfigured`로 거절하고 `wireview.W012`가 같은 문장(`wireview/core/transport.py`의 `NO_CHANNEL_LAYER`)으로 미리 알린다(#87). 가드는 `connect()`가 아니라 `websocket_connect()`에 있다 — 단위 테스트는 레이어 없는 bare 컨슈머로 `connect()`를 직접 부르고, **그래서 그 테스트들은 이 실패를 한 번도 보지 못했다.**
 
@@ -360,6 +365,10 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
   말한 버전 이하의 형태만 보낸다(`repo.vsn`, 없으면 0). 올리지 않고 새 형태를 보내면 옛 번들로 열린 페이지가
   그것을 모르는 값으로 넣어 `[object Object]`를 그린다. `wireview/core/rendered.py`와 `wireview/static/wireview/rendered.mjs`의 두 상수가
   같은지는 tests/test_comprehension_moves.py가 본다. 규칙은 `docs/implementation/wire-protocol.md` §7.
+- **`Meta.shared_render`는 "선언이 틀리면 남의 화면이 간다"를 들인다(#176).** 같은 브로드캐스트를 처리하는 연결들이 렌더를
+  함께 쓴다. 공유하는 것은 `Rendered`뿐이고 `data-state`는 연결마다 자기 토큰이다 — 서명이 경계와 인증 세대를 묶는다.
+  렌더를 내보내는 새 경로가 선언한 클래스를 렌더하면 `shared_render.render`를 거쳐야 한다(자리 `STATE_SLOT`이 남지 않게).
+  공유는 `shared_render.handling(message_id)` 안에서만 일어나고 지금은 `_dispatch_notifications`의 `send_render`만 그 안에 있다.
 - **data-state는 dynamic 파트다.** `{% tag_header %}`의 서명 상태는 라이브 렌더에서 마커로 감싸진다. static에 넣으면 fingerprint가 매번 바뀌어 부분 diff가 죽는다. 회귀 테스트는 tests/test_diff_stability.py.
 
 ## 문서 인덱스

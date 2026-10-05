@@ -16,6 +16,7 @@ from django.utils.datastructures import MultiValueDict
 from wireview.core.component import Component
 
 from . import serializer, telemetry
+from .core import shared_render
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
 from .core.rendered import (
     ERRORS_SINCE,
@@ -1373,14 +1374,23 @@ class WireviewSession:
                 "instance": serializer.decode(data["instance"]),
                 "action": data["action"],
             },
+            data.get("message_id"),
         )
 
     async def notification(self, data):
         # The signature here is coupled to:
         #   `wireview.utils.send_notification`
-        await self._dispatch_notifications("notification", data["channel"], lambda: data["kwargs"])
+        await self._dispatch_notifications(
+            "notification", data["channel"], lambda: data["kwargs"], data.get("message_id")
+        )
 
-    async def _dispatch_notifications(self, receiver: str, channel: str, arguments: t.Callable[[], dict[str, t.Any]]):
+    async def _dispatch_notifications(
+        self,
+        receiver: str,
+        channel: str,
+        arguments: t.Callable[[], dict[str, t.Any]],
+        message_id: str | None = None,
+    ):
         for component in self.repo.components_subscribed_to(channel):
             if self.repo.get(component.id) is not component:
                 # Went with an ancestor that raised earlier in this loop
@@ -1388,7 +1398,11 @@ class WireviewSession:
             kwargs = arguments()
             try:
                 await getattr(component, receiver)(channel, **kwargs)
-                await self.send_render(component)
+                # The sessions of this process handling the same message render a
+                # Meta.shared_render component once between them (#176). Only the
+                # render: each one's receiver above ran on its own.
+                with shared_render.handling(message_id):
+                    await self.send_render(component)
             except Exception:
                 await self._crashed(component)
         await self.after_mutation_chores()

@@ -19,6 +19,7 @@ from django.utils.safestring import SafeText, mark_safe
 
 from .. import telemetry
 from ..utils import db
+from . import shared_render
 from .render_gate import RenderGate
 from .render_reads import RenderReads
 from .rendered import Rendered, keep_stale, page_drawing, strip_markers
@@ -143,6 +144,10 @@ class WireviewMeta:
         self._redirected_to: str | None = None
         self._last_rendered: Rendered | None = None
         self._skip_render: bool = False
+        # While a render of a ``Meta.shared_render`` class is under way: write the
+        # state's slot instead of its token, and watch the request's names (#176)
+        self._state_slot: bool = False
+        self._watch: bool = False
         # Holds the component's background work while a worker thread renders it (#138)
         self._render_gate = RenderGate()
         # Whether the last render evaluated the template. False when the render
@@ -389,6 +394,7 @@ class WireviewMeta:
             self._skip_render = False
             return None
 
+        shared = shared_render.declared(component)
         with telemetry.span(
             telemetry.component_rendered,
             sender=type(component),
@@ -396,28 +402,23 @@ class WireviewMeta:
             component_name=component._name,
             live=True,
         ) as render_span:
-            # Temporary assigns reset after the last render and not assigned since:
-            # what reads them renders as it did then (#111)
-            stale = component._stale_temporaries()
-            reads = RenderReads(id(component), stale, type(component).model_fields) if stale else None
-
-            # Properties are read and the template rendered off the event loop,
-            # where a property may query the database (#120). An async property
-            # is awaited back on the loop between the two, and only then does
-            # the render take a second trip. The loop runs on meanwhile, so the
-            # component's own background work waits for the render to finish:
-            # a step of it in between signed data-state from one state and drew
-            # the body from another (#138).
-            with self._render_gate.rendering():
-                context, html, pending = await db(self._collect_and_render)(component, repo, reads)
-                if pending:
-                    with self._render_gate.awaiting_properties(f"{component._name} ({component.id})"):
-                        await self._await_properties(context)
-                    html = await db(self._render_with_context)(component, context, reads)
-            if not html:
-                return None
-
-            html_str = str(html)
+            rendered: Rendered | None = None
+            if shared:
+                # Rendered once for the connections handling the same broadcast (#176)
+                drawn = await shared_render.render(self, component, repo)
+                if drawn is None:
+                    return None
+                rendered, html_str = drawn
+                stale: t.Collection[int] = ()
+            else:
+                # Temporary assigns reset after the last render and not assigned since:
+                # what reads them renders as it did then (#111)
+                stale_names = component._stale_temporaries()
+                reads = RenderReads(id(component), stale_names, type(component).model_fields) if stale_names else None
+                html_str = await self._render_marked(component, repo, reads=reads)
+                if html_str is None:
+                    return None
+                stale = reads.slots if reads else ()
             render_span.measure(html_str)
 
         with telemetry.span(
@@ -426,7 +427,10 @@ class WireviewMeta:
             component_id=component.id,
             component_name=component._name,
         ) as diff_span:
-            diff = self._compute_rendered_diff(html_str, repo.vsn, reads.slots if reads else ())
+            if rendered is not None:
+                diff = self._diff_against_last(rendered, repo.vsn)
+            else:
+                diff = self._compute_rendered_diff(html_str, repo.vsn, stale)
             diff_span.annotate(changed=diff is not None)
             diff_span.measure(diff)
 
@@ -438,6 +442,40 @@ class WireviewMeta:
             self.moved = next(_TICKS)
         return diff
 
+    async def _render_marked(
+        self,
+        component: "Component",
+        repo: Repo,
+        *,
+        reads: RenderReads | None = None,
+        state_slot: bool = False,
+        watch: bool = False,
+    ) -> str | None:
+        """The component's live render with its markers, or None when nothing is drawn.
+
+        ``state_slot`` writes ``shared_render.STATE_SLOT`` where the signed
+        state goes, for the caller to put a connection's token there; ``watch``
+        puts the request's names in the context as ones that raise.
+        """
+        # Properties are read and the template rendered off the event loop,
+        # where a property may query the database (#120). An async property
+        # is awaited back on the loop between the two, and only then does
+        # the render take a second trip. The loop runs on meanwhile, so the
+        # component's own background work waits for the render to finish:
+        # a step of it in between signed data-state from one state and drew
+        # the body from another (#138).
+        self._state_slot, self._watch = state_slot, watch
+        try:
+            with self._render_gate.rendering():
+                context, html, pending = await db(self._collect_and_render)(component, repo, reads)
+                if pending:
+                    with self._render_gate.awaiting_properties(f"{component._name} ({component.id})"):
+                        await self._await_properties(context)
+                    html = await db(self._render_with_context)(component, context, reads)
+        finally:
+            self._state_slot = self._watch = False
+        return str(html) if html else None
+
     def _compute_rendered_diff(self, html: str, vsn: int = 0, stale: t.Collection[int] = ()) -> dict[str, t.Any] | None:
         """Compute Phoenix-style static/dynamic diff in the forms protocol ``vsn`` allows.
 
@@ -446,11 +484,13 @@ class WireviewMeta:
         """
         rendered = Rendered.from_marked_html(html, stale)
         rendered.settle(self._last_rendered)
-        diff = rendered.get_diff(self._last_rendered, vsn)
+        return self._diff_against_last(rendered, vsn)
 
+    def _diff_against_last(self, rendered: Rendered, vsn: int = 0) -> dict[str, t.Any] | None:
+        """``rendered``'s diff against what the page shows, which it then becomes; None if nothing changed."""
+        diff = rendered.get_diff(self._last_rendered, vsn)
         if diff is None:
             return None
-
         self._last_rendered = rendered
         return diff.to_payload()
 
@@ -782,6 +822,8 @@ class WireviewMeta:
         from ..slots import SlotContainer
 
         context["slots"] = self.slots if self.slots is not None else SlotContainer()
+        if self._watch:
+            context = {**shared_render.watched_context(component), **context}
 
         return dict(
             context,

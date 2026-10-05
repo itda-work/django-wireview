@@ -33,6 +33,7 @@
 /wireview/reference/optimistic-ui/
 /wireview/reference/session/
 /wireview/reference/settings/
+/wireview/reference/shared-render/
 /wireview/reference/slots/
 /wireview/reference/telemetry/
 /wireview/reference/temporary-assigns/

@@ -52,6 +52,10 @@ DEFAULT: dict[str, t.Any] = {
     "AUTO_GENERATE_STUBS": True,  # Auto-generate .pyi stubs in DEBUG mode
     # Telemetry signals (wireview.telemetry)
     "TELEMETRY": False,
+    # Check the promise of Meta.shared_render: a render that reads the viewer raises,
+    # and a render taken from another connection is rendered again and compared.
+    # None = DEBUG (and always under wireview.testing)
+    "VERIFY_SHARED_RENDER": None,
     # Load each app's static/<app_label>/hooks/*.js from {% wireview_header %}
     "COLLECT_HOOKS": True,
     # Client reconnect backoff, in milliseconds (static/wireview/reconnect.mjs, #124).

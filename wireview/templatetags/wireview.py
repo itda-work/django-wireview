@@ -17,6 +17,7 @@ from ..core.component import Component
 from ..core.live_session import REQUEST_ATTR as LIVE_SESSION_REQUEST_ATTR
 from ..core.live_session import declaration_allows, get_live_session
 from ..core.rendered import inject_marker, marked_component_refs, nested_component_html
+from ..core.shared_render import STATE_SLOT
 from ..core.state import sign_state, signable_json
 from ..event_transpiler import binding
 from ..features.hooks import hook_files
@@ -92,7 +93,11 @@ def _signed_state(component: Component, repo: ComponentRepository) -> str:
     marker inside an attribute would corrupt the value used for the initial
     join.
     """
-    signed = sign_state(component)
+    if repo.is_live and getattr(component.wire, "_state_slot", False):
+        # A render many connections may take: each puts its own token here (#176)
+        signed = STATE_SLOT
+    else:
+        signed = sign_state(component)
     if not repo.is_live:
         return signed
     from ..template_engine import get_template_marker

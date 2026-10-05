@@ -156,6 +156,13 @@ class Counter(Component):
         self.skip_render()
 ```
 
+### 6. 모두가 같은 화면을 보면 렌더를 공유한다
+
+공지판·현황판처럼 많은 사람이 같은 컴포넌트를 같은 상태로 보고, 그 렌더가 보는 사람을 읽지 않으면
+`Meta.shared_render = True`를 선언한다. 같은 브로드캐스트를 받은 연결들이 렌더를 한 번만 하고 함께 쓴다.
+고정 `id=`를 줘야 공유된다. 선언이 틀리면 남의 화면이 가므로 [shared_render](./features/shared-render.md)의
+"언제 쓰면 안 되는가"를 먼저 읽는다. 측정값은 아래 [브로드캐스트를 많은 연결이 받을 때](#브로드캐스트를-많은-연결이-받을-때)에 있다.
+
 ## 튜닝
 
 ### HTML diff 설정
@@ -352,6 +359,18 @@ FastAPI 비교 이전부터 싣던 값이다. 모두 Apple Silicon macOS(Darwin 
 그보다 많은 연결은 확인하지 않았다. uvicorn은 permessage-deflate 때문에 연결당 메모리가 네 배쯤 된다
 ([배포 가이드](DEPLOYMENT.md)). 다른 구성의 수치는 [transport-abstraction.md](design/transport-abstraction.md) §5에 있다.
 **자기 컴포넌트와 배포 구성으로 `make bench`를 다시 잰다.**
+
+#### 브로드캐스트를 많은 연결이 받을 때
+
+브로드캐스트 하나가 닿는 연결마다 서버는 수신자를 돌리고, 컴포넌트를 렌더하고, 그 연결의 화면과 비교한다.
+한 프로세스 안에서 이 일은 한 코어에서 차례로 돈다. 그래서 브로드캐스트 하나의 시간은 연결 수에 비례하고,
+연결 하나의 몫 대부분이 렌더다([설계](design/broadcast-fanout.md) §2). 줄이는 길은 둘이다.
+
+- **프로세스를 늘린다.** 연결이 프로세스들에 나뉘므로 브로드캐스트 시간도 나뉜다. 프로세스 사이는 Redis나 NATS
+  레이어가 잇는다([배포 가이드](DEPLOYMENT.md)).
+- **같은 화면이면 렌더를 공유한다.** `Meta.shared_render`([문서](./features/shared-render.md))를 선언한 컴포넌트는
+  같은 메시지를 받은 연결들이 렌더를 한 번만 한다. 연결마다 남는 것은 메시지 수신, 수신자, 상태 서명, diff, 프레임
+  쓰기다.
 
 ### 기대치
 

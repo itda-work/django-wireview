@@ -31,6 +31,7 @@ from channels.layers import BaseChannelLayer
 from django.contrib.auth.models import AnonymousUser
 from django.urls import Resolver404
 
+from .core import shared_render
 from .core.meta import WireviewMeta
 from .core.rendered import PROTOCOL_VERSION
 from .core.session import SessionView
@@ -730,7 +731,9 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         that skipped the render its page needed -- a button left disabled -- from
         one that did not.
         """
-        diff = await self._wire.render_diff(self._component, self._repo.for_render(self._component, live=True))
+        # A Meta.shared_render class is watched here as under DEBUG (#176)
+        with shared_render.testing():
+            diff = await self._wire.render_diff(self._component, self._repo.for_render(self._component, live=True))
         self._component._clear_temporary_assigns()
         return diff
 

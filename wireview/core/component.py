@@ -189,6 +189,10 @@ class ComponentOptions:
     #: Survive a boosted navigation to a page that has it again, as Phoenix's
     #: sticky LiveView: same instance, same DOM, same hooks (GAP-033, #72).
     sticky: bool = False
+    #: The render reads nothing of the viewer -- no ``user``, ``session`` or query,
+    #: only fields and data every viewer shares -- so the connections handling
+    #: one broadcast render it once between them (#176, wireview/core/shared_render.py).
+    shared_render: bool = False
 
     def extended(self, meta: type, owner: type) -> "ComponentOptions":
         """These options with ``meta``'s attributes on top."""

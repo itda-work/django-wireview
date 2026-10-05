@@ -79,8 +79,8 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 
 | type | 필드 | 발행 지점 | 수신 처리 |
 |------|------|-----------|-----------|
-| `notification` | `channel`, `kwargs` | `broadcast()`, `abroadcast()`, `send_notification()`, `WireviewMeta.queue_broadcast()`, Presence | 구독 컴포넌트의 `notification()` 후 render |
-| `model_mutation` | `channel`, `action`, `instance` (직렬화된 모델) | `auto_broadcast.notify_mutation` (Django signals) | 구독 컴포넌트의 `mutation()` 후 render |
+| `notification` | `channel`, `kwargs`, `message_id` | `broadcast()`, `abroadcast()`, `send_notification()`, `WireviewMeta.queue_broadcast()`, Presence | 구독 컴포넌트의 `notification()` 후 render |
+| `model_mutation` | `channel`, `action`, `instance` (직렬화된 모델), `message_id` | `auto_broadcast.notify_mutation` (Django signals) | 구독 컴포넌트의 `mutation()` 후 render |
 | `upload.progress` | `component`, `upload`, `ref`, `progress`, `bytes_received` | `UploadView` | 엔트리 갱신, 소유 컴포넌트 render, `upload_op progress` 전송 |
 | `upload.completed` | `component`, `upload`, `ref`, `bytes_received`, `path` | `UploadView` (마지막 청크) | 엔트리를 완료로 올린다. 브라우저에는 보내지 않는다 — 브라우저는 자기 `upload_complete`로 알고, `on_upload_complete`도 거기서 한 번만 돈다 |
 | `upload.error` | `component`, `upload`, `ref`, `errors` | `UploadView` | 엔트리를 오류로, 소유 컴포넌트 render, `upload_op error` 전송 |
@@ -90,6 +90,10 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 `fields`는 그 모델에 적은 필드뿐일 수 있다(`()`이면 비어 있다). 받는 쪽 `serializer.decode`는 온 필드와 pk만
 불러오고 나머지는 deferred로 둔다(`_restore`, #153 — 다중 테이블 상속의 부모 필드도 같은 길이다). 메시지 `type`은 같으므로 옛 프로세스도 받는다 — 1.0.0rc4 이전 프로세스는 빠진 필드를 기본값으로
 채운다(#153 이전). 그런 프로세스가 섞여 있으면 매핑 설정은 모두 올린 뒤에 켠다(DEPLOYMENT). 이 메시지는 서버 프로세스 사이의 것이라 `PROTOCOL_VERSION`과는 관계없다.
+
+`message_id`는 발행할 때마다 새로 뽑는 16자리 16진수다(`utils._message`). 같은 메시지를 받은 세션들이 같은 값을 보고,
+같은 프로세스 안에서 `Meta.shared_render` 컴포넌트의 렌더를 한 번만 한다(#176, `core/shared_render.py`). 없는 메시지(1.2
+이전 프로세스가 발행한 것)는 공유하지 않을 뿐 그대로 처리한다. 옛 프로세스는 모르는 키를 읽지 않는다.
 
 토픽 이름은 `Meta.subscriptions`의 값(모델 라벨 `app.model` 또는 임의 채널 이름), `wireview_upload_<connection_id>`, `wireview.auth.<인증 세대 지문>`(경계 안의 연결만)이다. 채널 레이어 그룹 이름이므로 영숫자·`-`·`_`·`.`만, 100자 미만이어야 한다. 컨슈머는 render 뒤마다 저장소의 구독 집합과 자기 구독을 맞춘다(`update_to_which_channels_im_subscribed_to`).
 

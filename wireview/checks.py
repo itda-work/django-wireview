@@ -907,6 +907,38 @@ def check_hook_files(app_configs, **kwargs) -> list[CheckMessage]:
     return messages
 
 
+def check_shared_render(app_configs, **kwargs) -> list[CheckMessage]:
+    """W019: a component declares ``Meta.shared_render`` but cannot share its renders.
+
+    The declaration lets the connections handling one broadcast take one render
+    between them (#176). A class whose render is the connection's own -- a
+    LiveComponent, temporary assigns, slots, a page boundary, a template that
+    draws another component or reads the viewer -- renders on every connection
+    anyway, and says so in the log; this says it before a broadcast does.
+    """
+    from .core.shared_render import out_of_scope
+
+    messages = []
+    for cls in iter_component_classes():
+        if not cls._meta.shared_render:
+            continue
+        reasons = out_of_scope(cls)
+        if reasons:
+            messages.append(
+                Warning(
+                    f"{cls._fqn} declares Meta.shared_render, but its renders cannot be shared: {'; '.join(reasons)}.",
+                    hint=(
+                        "Its renders stay its own, on every connection, so the declaration does nothing. "
+                        "Drop shared_render, or move what differs between viewers out of the render. "
+                        "See docs/features/shared-render.md."
+                    ),
+                    obj=cls,
+                    id="wireview.W019",
+                )
+            )
+    return messages
+
+
 def register_checks() -> None:
     """Register every check. Called from ``WireviewConfig.ready()``."""
     register(check_async_handlers, WIREVIEW_TAG)
@@ -923,6 +955,7 @@ def register_checks() -> None:
     register(check_upload_temp_dir, WIREVIEW_TAG)
     register(check_signing_key, WIREVIEW_TAG)
     register(check_hook_files, WIREVIEW_TAG)
+    register(check_shared_render, WIREVIEW_TAG)
     register(check_channel_layer_configured, WIREVIEW_TAG)
     register(check_runserver_is_asgi, WIREVIEW_TAG)
     register(check_channel_layer, WIREVIEW_TAG, deploy=True)

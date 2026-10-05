@@ -103,6 +103,7 @@ INSTALLED_APPS = [
     "testproj.imeprobe",
     "testproj.historyprobe",
     "testproj.lossprobe",
+    "testproj.shareprobe",
     "wireview",
     "channels",
     "daphne",

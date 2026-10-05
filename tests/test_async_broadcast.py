@@ -1,6 +1,6 @@
 """Tests for async broadcast functions."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import pytest
 
@@ -27,6 +27,7 @@ class TestAbroadcast:
             {
                 "type": "notification",
                 "channel": "test-channel",
+                "message_id": ANY,
                 "kwargs": {"action": "joined", "user": "testuser"},
             },
         )
@@ -50,6 +51,7 @@ class TestAbroadcast:
             {
                 "type": "notification",
                 "channel": "my-channel",
+                "message_id": ANY,
                 "kwargs": {},
             },
         )
@@ -77,6 +79,7 @@ class TestAsendTo:
             {
                 "type": "model_mutation",
                 "channel": "test-channel",
+                "message_id": ANY,
                 "action": "created",
                 "instance": "data",
             },
@@ -121,6 +124,7 @@ class TestAsendNotification:
             {
                 "type": "notification",
                 "channel": "test-channel",
+                "message_id": ANY,
                 "kwargs": {"message": "hello", "count": 5},
             },
         )
@@ -144,6 +148,7 @@ class TestAsendNotification:
             {
                 "type": "notification",
                 "channel": "empty-channel",
+                "message_id": ANY,
                 "kwargs": {},
             },
         )

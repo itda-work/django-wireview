@@ -230,6 +230,10 @@ source = "docs/features/html-diff.md"
 slug = "html-diff"
 
 [[sections.pages]]
+source = "docs/features/shared-render.md"
+slug = "shared-render"
+
+[[sections.pages]]
 source = "docs/features/flash.md"
 slug = "flash"
 

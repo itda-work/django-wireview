@@ -132,10 +132,13 @@ async def test_abroadcast_and_notifications_use_the_process_broker(broker):
     await abroadcast("orders", action="created")
     await asend_notification("orders", action="updated")
 
+    ids = [message.pop("message_id") for _topic, message in broker.published]
     assert broker.published == [
         ("orders", {"type": "notification", "channel": "orders", "kwargs": {"action": "created"}}),
         ("orders", {"type": "notification", "channel": "orders", "kwargs": {"action": "updated"}}),
     ]
+    # Each message is named apart: the sessions sharing a render share it per message (#176)
+    assert len(set(ids)) == 2 and all(isinstance(i, str) and len(i) == 16 for i in ids)
 
 
 @pytest.mark.asyncio

@@ -32,6 +32,7 @@ Sync vs Async Function Selection Guide
 
 import inspect
 import logging
+import secrets
 import typing as t
 from collections import defaultdict
 from functools import wraps
@@ -69,6 +70,13 @@ def on_commit(f: t.Callable[P, None]):
     return wrapper
 
 
+def _message(channel: str, type: str, kwargs: dict[str, t.Any]) -> dict[str, t.Any]:
+    """A fan-out message. ``message_id`` names it in every session it reaches: the
+    sessions of one process that handle it share the render of a
+    ``Meta.shared_render`` component (#176)."""
+    return dict(type=type, channel=channel, message_id=secrets.token_hex(8), **kwargs)
+
+
 @on_commit
 def send_to(channel: str | None, type: str, **kwargs: t.Any) -> None:
     """Send a message to a channel (sync version, deferred to on_commit).
@@ -83,7 +91,7 @@ def send_to(channel: str | None, type: str, **kwargs: t.Any) -> None:
     """
     if channel:
         broker = get_broker()
-        message = dict(type=type, channel=channel, **kwargs)
+        message = _message(channel, type, kwargs)
         with telemetry.span(telemetry.broadcast_published, sender=broker.__class__, topic=channel) as span:
             span.measure(message)
             async_to_sync(broker.publish)(channel, message)
@@ -115,7 +123,7 @@ async def asend_to(channel: str | None, type: str, **kwargs: t.Any) -> None:
     """
     if channel:
         broker = get_broker()
-        message = dict(type=type, channel=channel, **kwargs)
+        message = _message(channel, type, kwargs)
         with telemetry.span(telemetry.broadcast_published, sender=broker.__class__, topic=channel) as span:
             span.measure(message)
             await broker.publish(channel, message)

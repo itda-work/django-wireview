@@ -1,0 +1,13 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>shared render probe</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    {% component "ShareBoard" id="board" %}
+    {% component "ShareGreeting" id="greeting" %}
+  </body>
+</html>

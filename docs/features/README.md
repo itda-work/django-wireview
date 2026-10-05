@@ -14,6 +14,7 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 | **temporary_assigns** | 렌더링 후 필드 자동 초기화로 메모리 절약 | [문서](./temporary-assigns.md) |
 | **skip_render** | 불필요한 렌더링 방지. `skip_render()`·`force_render()` | [Component API](./component-api.md#부르는-것) |
 | **HTML Diff** | 변경된 dynamic 파트만 전송, 목록 항목의 이동·삽입·삭제는 그 항목만, 상태 압축 서명 | [문서](./html-diff.md) |
+| **shared_render** | 모두가 같은 화면을 보는 컴포넌트의 브로드캐스트 렌더를 연결 사이에 공유. opt-in | [문서](./shared-render.md) |
 
 ## 실시간 기능
 

@@ -1,0 +1,9 @@
+{% load wireview %}
+
+<section {% tag_header %}>
+  <h1 data-testid="headline">{{ headline }}</h1>
+  <ul data-testid="items">
+    {% for item in items %}<li>{{ item }}</li>{% endfor %}
+  </ul>
+  <button data-testid="announce" {% on "click" "announce" text="breaking" %}>Announce</button>
+</section>
