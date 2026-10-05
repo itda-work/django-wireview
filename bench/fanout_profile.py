@@ -1,0 +1,1076 @@
+"""Where one broadcast's time goes, stage by stage, on every connection it reaches (#176).
+
+    uv run --with fastapi==0.142.2 python -m bench.fanout_profile             # both stacks, 5 rounds
+    uv run python -m bench.fanout_profile --only wireview --rounds 1          # a quick look
+    uv run python -m bench.fanout_profile --only wireview --cprofile          # which functions (times inflated)
+    uv run python -m bench.fanout_profile inproc                              # one render by part, trips, threads
+    uv run --python 3.14t --no-project --with django==6.0 python -m bench.fanout_profile plain   # no GIL
+
+The scenario is ``make bench-fastapi``'s fan-out (bench/compare_fastapi): N WebSocket
+clients on one uvicorn process (``--ws websockets``, permessage-deflate on), every one
+joined to the same Board; one of them clicks ``announce`` and every client waits for its
+update. The server here is that same application, started fresh each round, with probes
+put in at runtime: the library's code is not changed, its functions are wrapped from the
+outside before uvicorn starts (``install_probes``). The probes only record while armed,
+which the driver does for the measured broadcasts alone.
+
+What the probes measure, in the server process:
+
+- the span of one broadcast: from the ``announce`` message leaving ASGI ``receive`` to the
+  last WebSocket frame written, and from there to the last client's receive (the client
+  side runs in the driver process; ``perf_counter_ns`` is the same clock in both on macOS)
+- how long the event loop sat in ``select()`` inside that span, so the rest is the time it
+  was busy, and how long the one ``sync_to_async`` worker thread was busy
+- per stage: the work each connection does, as the CPU time of the thread that ran it
+  (``thread_time``) beside its wall time. ``WireviewMeta.render_diff``'s worker-thread
+  trip, ``close_old_connections`` around every message, the diff, the JSON, the frame
+  write with its deflate, and so on. The loop and the worker take turns on the GIL, so a
+  stage's wall time also holds the other thread's work; the tables use CPU time
+
+Measured broadcasts alternate between armed and unarmed: the unarmed ones give the
+client's span alone, as ``make bench-fastapi`` sees it, so what the probes cost shows.
+Nothing here runs under tracemalloc. Every number is a median: of the measured broadcasts
+in a round, then of the rounds. The FastAPI side serves a built client: run
+``make bench-fastapi`` once, or ``npm --prefix bench/compare_fastapi/client ci && npm
+--prefix bench/compare_fastapi/client run build``. Results go to ``bench/.data/``;
+``--report <file>`` prints the tables of one again, ``--chart <file>`` the Mermaid charts
+docs/design/broadcast-fanout.md shows.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import functools
+import json
+import os
+import statistics
+import subprocess
+import sys
+import threading
+import time
+import typing as t
+import urllib.request
+from collections import defaultdict
+from datetime import UTC, datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+STATS_PATH = "/__fanout__/stats"
+ARM_PATH = "/__fanout__/arm"
+
+IMPLEMENTATIONS = ("wireview", "fastapi")
+
+ns = time.perf_counter_ns
+cpu = time.thread_time_ns  # what this thread ran, without the time it waited for the GIL
+
+
+# -- server side: probes --------------------------------------------------------------------
+
+
+class Probe:
+    """What the wrapped functions record while armed. One writer per dict: the loop or the worker."""
+
+    def __init__(self) -> None:
+        self.armed = False
+        self.main_thread = threading.get_ident()
+        self.profile: str | None = None  # "cprofile": profile the armed span as well (times inflate)
+        self.reset()
+
+    def reset(self) -> None:
+        # side -> stage -> nanoseconds: wall time, and CPU time of the thread that ran it
+        self.wall: dict[str, dict[str, int]] = {"loop": defaultdict(int), "worker": defaultdict(int)}
+        self.cpu: dict[str, dict[str, int]] = {"loop": defaultdict(int), "worker": defaultdict(int)}
+        self.calls: dict[str, int] = defaultdict(int)
+        self.loop_cpu_marks: list[int] = []
+        self.marks: dict[str, int] = {}
+        self.sends: list[int] = []
+        self.dispatched: list[int] = []
+        self.selects: list[tuple[int, int]] = []
+        self.thread_spans: list[tuple[int, int]] = []
+        self.thread_idents: set[int] = set()
+        self.profiler = None
+
+    def add(self, stage: str, wall: int, cpu: int) -> None:
+        side = "loop" if threading.get_ident() == self.main_thread else "worker"
+        self.wall[side][stage] += wall
+        self.cpu[side][stage] += cpu
+        self.calls[f"{side}.{stage}"] += 1
+
+    def mark(self, name: str) -> None:
+        self.marks.setdefault(name, ns())
+
+
+probe = Probe()
+_local = threading.local()
+
+
+def _timed(stage: str, fn: t.Callable) -> t.Callable:
+    """``fn`` (sync), its time added to ``stage`` while armed."""
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not probe.armed:
+            return fn(*args, **kwargs)
+        started, used = ns(), cpu()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            probe.add(stage, ns() - started, cpu() - used)
+
+    return wrapper
+
+
+def _atimed(stage: str, fn: t.Callable) -> t.Callable:
+    """``fn`` (async), its wall time from call to return added to ``stage`` while armed.
+
+    Only for coroutines that do not give the loop away in the middle, or whose waits the
+    caller subtracts: the wall time of one that does includes other tasks' work.
+    """
+
+    @functools.wraps(fn)
+    async def wrapper(*args, **kwargs):
+        if not probe.armed:
+            return await fn(*args, **kwargs)
+        started, used = ns(), cpu()
+        try:
+            return await fn(*args, **kwargs)
+        finally:
+            probe.add(stage, ns() - started, cpu() - used)
+
+    return wrapper
+
+
+def _patch_select() -> None:
+    """Time the event loop spends blocked in ``select()``: what is left of a span is busy time."""
+    import selectors
+
+    cls = selectors.DefaultSelector
+    original = cls.select
+
+    def select(self, timeout=None):
+        if not probe.armed or threading.get_ident() != probe.main_thread:
+            return original(self, timeout)
+        started = ns()
+        try:
+            return original(self, timeout)
+        finally:
+            probe.selects.append((started, ns()))
+
+    cls.select = select
+
+
+def _patch_worker_thread() -> None:
+    """The ``sync_to_async`` worker: its busy spans, outermost call only."""
+    from asgiref.sync import SyncToAsync
+    from channels.db import DatabaseSyncToAsync
+
+    def wrap(original):
+        @functools.wraps(original)
+        def thread_handler(self, loop, *args, **kwargs):
+            if not probe.armed:
+                return original(self, loop, *args, **kwargs)
+            depth = getattr(_local, "depth", 0)
+            _local.depth = depth + 1
+            started, used = ns(), cpu()
+            try:
+                return original(self, loop, *args, **kwargs)
+            finally:
+                ended = ns()
+                _local.depth = depth
+                if depth == 0:
+                    probe.thread_spans.append((started, ended))
+                    probe.thread_idents.add(threading.get_ident())
+                    probe.add("thread_handler", ended - started, cpu() - used)
+
+        return thread_handler
+
+    # DatabaseSyncToAsync's handler closes connections, then calls SyncToAsync's
+    DatabaseSyncToAsync.thread_handler = wrap(DatabaseSyncToAsync.thread_handler)
+    SyncToAsync.thread_handler = wrap(SyncToAsync.thread_handler)
+
+
+def _patch_uvicorn() -> None:
+    """Every WebSocket frame written: the wall time of uvicorn's send, and the deflate inside it."""
+    from uvicorn.protocols.websockets.websockets_impl import WebSocketProtocol
+    from websockets.extensions.permessage_deflate import PerMessageDeflate
+
+    original = WebSocketProtocol.asgi_send
+
+    @functools.wraps(original)
+    async def asgi_send(self, message):
+        if not probe.armed or message["type"] != "websocket.send":
+            return await original(self, message)
+        started, used = ns(), cpu()
+        try:
+            return await original(self, message)
+        finally:
+            ended, now = ns(), cpu()
+            probe.add("ws_send", ended - started, now - used)
+            probe.sends.append(ended)
+            probe.loop_cpu_marks.append(now)
+
+    WebSocketProtocol.asgi_send = asgi_send
+    PerMessageDeflate.encode = _timed("deflate", PerMessageDeflate.encode)
+
+
+def _patch_wireview() -> None:
+    import channels.consumer
+    import channels.db
+    import channels.layers
+    from channels.generic.websocket import AsyncJsonWebsocketConsumer
+
+    import wireview.core.meta as meta
+    import wireview.core.state as state
+    import wireview.templatetags.wireview as tags
+    from wireview.consumer import WireviewConsumer
+    from wireview.core.rendered import Rendered, RenderedDiff
+    from wireview.core.transport import ChannelsBroker
+    from wireview.session import WireviewSession
+
+    # The fan-out: group_send, and each member's copy of the message into its queue
+    ChannelsBroker.publish = _atimed("publish (group_send, wall)", ChannelsBroker.publish)
+    original_publish = ChannelsBroker.publish
+
+    async def publish(self, topic, message):
+        probe.mark("publish")
+        return await original_publish(self, topic, message)
+
+    ChannelsBroker.publish = publish
+    layer = channels.layers.InMemoryChannelLayer
+    layer.send = _atimed("layer.send (deepcopy + put)", layer.send)
+    # Every receive (and group_send) walks every queued channel and every group member first
+    layer._clean_expired = _timed("layer._clean_expired", layer._clean_expired)
+
+    # Channels' dispatch of each message: close_old_connections on a worker trip first
+    original_dispatch = WireviewConsumer.dispatch
+
+    async def dispatch(self, message):
+        if not probe.armed or message.get("type") != "notification":
+            return await original_dispatch(self, message)
+        started, used = ns(), cpu()
+        probe.dispatched.append(started)
+        try:
+            return await original_dispatch(self, message)
+        finally:
+            probe.add("dispatch (wall)", ns() - started, cpu() - used)
+
+    WireviewConsumer.dispatch = dispatch
+    channels.consumer.aclose_old_connections = _atimed(
+        "await close_old_connections trip (wall)", channels.consumer.aclose_old_connections
+    )
+    channels.db.close_old_connections = _timed("close_old_connections", channels.db.close_old_connections)
+
+    # The session: the receiver, the render, the payload, the subscriptions after
+    WireviewSession.notification = _atimed("notification handler (wall)", WireviewSession.notification)
+    WireviewSession.send_render = _atimed("send_render (wall)", WireviewSession.send_render)
+    WireviewSession.after_mutation_chores = _atimed("after_mutation_chores", WireviewSession.after_mutation_chores)
+    meta.WireviewMeta.render_diff = _atimed("render_diff (wall)", meta.WireviewMeta.render_diff)
+
+    original_db = meta.db
+
+    def db(fn):
+        trip = original_db(fn)
+
+        async def call(*args, **kwargs):
+            if not probe.armed:
+                return await trip(*args, **kwargs)
+            started, used = ns(), cpu()
+            try:
+                return await trip(*args, **kwargs)
+            finally:
+                probe.add("await render trip (wall)", ns() - started, cpu() - used)
+
+        return call
+
+    meta.db = db
+
+    # On the worker thread: the context (every public attribute), the template, the signature
+    meta.WireviewMeta._collect_context = _timed("collect_context", meta.WireviewMeta._collect_context)
+    meta.WireviewMeta._render_with_context = _timed("template render", meta.WireviewMeta._render_with_context)
+    tags.sign_state = _timed("sign_state", tags.sign_state)
+    state._state_json = _timed("state json (model_dump_json)", state._state_json)
+
+    # Back on the loop: the diff, and the frame's JSON
+    meta.WireviewMeta._compute_rendered_diff = _timed("diff", meta.WireviewMeta._compute_rendered_diff)
+    Rendered.from_marked_html = classmethod(_timed("diff: parse markers", Rendered.from_marked_html.__func__))
+    Rendered.settle = _timed("diff: settle", Rendered.settle)
+    Rendered.get_diff = _timed("diff: compare", Rendered.get_diff)
+    RenderedDiff.to_payload = _timed("diff: to_payload", RenderedDiff.to_payload)
+    AsyncJsonWebsocketConsumer.encode_json = classmethod(
+        _atimed("encode_json", AsyncJsonWebsocketConsumer.encode_json.__func__)
+    )
+
+
+def _patch_fastapi() -> None:
+    import types
+
+    from starlette.websockets import WebSocket
+
+    import bench.compare_fastapi.fastapi_app.main as main
+
+    main.json = types.SimpleNamespace(**{**vars(json), "dumps": _timed("json.dumps", json.dumps)})
+    WebSocket.send_text = _atimed("starlette send_text (wall)", WebSocket.send_text)
+
+
+def install_probes(name: str) -> None:
+    _patch_select()
+    _patch_worker_thread()
+    _patch_uvicorn()
+    if name == "wireview":
+        _patch_wireview()
+    else:
+        _patch_fastapi()
+
+
+class Probed:
+    """The served application, with the probe's arm and stats endpoints and the span's start."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"] in (ARM_PATH, STATS_PATH):
+            body = json.dumps(self._arm() if scope["path"] == ARM_PATH else self._stats()).encode()
+            headers = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]
+            await send({"type": "http.response.start", "status": 200, "headers": headers})
+            await send({"type": "http.response.body", "body": body})
+            return
+        if scope["type"] != "websocket":
+            await self.app(scope, receive, send)
+            return
+
+        async def marked_receive():
+            message = await receive()
+            if probe.armed and message["type"] == "websocket.receive" and "announce" in (message.get("text") or ""):
+                if "receive" not in probe.marks:
+                    probe.mark("receive")
+                    probe.marks["receive_cpu"] = cpu()
+            return message
+
+        await self.app(scope, marked_receive, send)
+
+    def _arm(self) -> dict:
+        probe.reset()
+        probe.armed = True
+        if probe.profile:
+            import cProfile
+
+            # Since 3.12 cProfile rides on sys.monitoring: one profiler, every thread
+            probe.profiler = cProfile.Profile()
+            probe.profiler.enable()
+        return {"armed": True}
+
+    def _stats(self) -> dict:
+        probe.armed = False
+        if probe.profiler is not None:
+            probe.profiler.disable()
+        start = probe.marks.get("receive")
+        if start is None or not probe.sends:
+            return {"error": "no broadcast seen", "marks": probe.marks, "sends": len(probe.sends)}
+        end = max(probe.sends)
+        span = end - start
+        idle = _overlap(probe.selects, start, end)
+        worker = _overlap(probe.thread_spans, start, end)
+        both = _both_busy(probe.selects, probe.thread_spans, start, end)
+        result = {
+            "server_span_ns": span,
+            "first_send_ns": min(probe.sends) - start,
+            "publish_ns": probe.marks.get("publish", start) - start,
+            "frames": len(probe.sends),
+            "notifications": len(probe.dispatched),
+            "first_dispatch_ns": (min(probe.dispatched) - start) if probe.dispatched else None,
+            "last_dispatch_ns": (max(probe.dispatched) - start) if probe.dispatched else None,
+            "loop_idle_ns": idle,
+            "loop_busy_ns": span - idle,
+            "loop_cpu_ns": probe.loop_cpu_marks[probe.sends.index(end)] - probe.marks["receive_cpu"],
+            "worker_busy_ns": worker,
+            "worker_cpu_ns": probe.cpu["worker"].get("thread_handler", 0),
+            "both_busy_ns": both,
+            "worker_threads": len(probe.thread_idents),
+            "wall": {side: dict(stages) for side, stages in probe.wall.items()},
+            "cpu": {side: dict(stages) for side, stages in probe.cpu.items()},
+            "calls": dict(probe.calls),
+            "last_send_clock_ns": end,
+            "receive_clock_ns": start,
+        }
+        if probe.profile:
+            result["profile"] = _profile_text(probe.profiler)
+        return result
+
+
+def _overlap(spans: list[tuple[int, int]], start: int, end: int) -> int:
+    """How much of [start, end] the spans cover (they do not overlap one another)."""
+    return sum(max(0, min(b, end) - max(a, start)) for a, b in spans)
+
+
+def _both_busy(selects: list[tuple[int, int]], threads: list[tuple[int, int]], start: int, end: int) -> int:
+    """How long the loop was out of select() while the worker was in a call: the two wanting the GIL."""
+    total = 0
+    for a, b in threads:
+        a, b = max(a, start), min(b, end)
+        if b > a:
+            total += (b - a) - _overlap(selects, a, b)
+    return total
+
+
+def _profile_text(profiler, limit: int = 40) -> dict[str, str]:
+    if profiler is None:
+        return {}
+    import io
+    import pstats
+
+    out = {}
+    for key in ("tottime", "cumulative"):
+        stream = io.StringIO()
+        pstats.Stats(profiler, stream=stream).strip_dirs().sort_stats(key).print_stats(limit)
+        out[key] = stream.getvalue()
+    return out
+
+
+def serve(name: str, port: int, profile: bool) -> None:
+    """The server process: the application ``make bench-fastapi`` serves, with the probes in."""
+    import uvicorn
+
+    os.environ.setdefault("BENCH_CLIENT", "vanilla")
+    probe.profile = "cprofile" if profile else None
+    import bench.compare_fastapi.serve as served
+
+    app = getattr(served, name)  # Django is set up here, so the probes find what they wrap
+    install_probes(name)
+    uvicorn.run(Probed(app), host="127.0.0.1", port=port, log_level="warning", ws="websockets")
+
+
+# -- driver ---------------------------------------------------------------------------------
+
+
+class Server:
+    def __init__(self, name: str, profile: bool) -> None:
+        from bench.ws import LOG_DIR, _free_port, _wait_for_port
+
+        self.name = name
+        self.port = _free_port()
+        self.url = f"http://127.0.0.1:{self.port}"
+        env = {k: v for k, v in os.environ.items() if k != "DJANGO_SETTINGS_MODULE"}
+        env["PYTHONPATH"] = os.pathsep.join([str(ROOT), env.get("PYTHONPATH", "")])
+        cmd = [sys.executable, "-m", "bench.fanout_profile", "serve", name, "--port", str(self.port)]
+        if profile:
+            cmd.append("--cprofile")
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        log = open(LOG_DIR / f"fanout-profile-{name}-{self.port}.log", "wb")  # noqa: SIM115
+        self.proc = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
+        _wait_for_port(self.port, timeout=60, proc=self.proc)
+
+    def get(self, path: str) -> dict:
+        with urllib.request.urlopen(self.url + path) as response:
+            return json.loads(response.read())
+
+    def __enter__(self) -> Server:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        from bench.ws import _stop
+
+        _stop(self.proc)
+
+
+async def _round(server: Server, connections: int, warmup: int, broadcasts: int) -> list[dict]:
+    """Open the connections as ``make bench-fastapi`` does, then broadcast: ``warmup``, then ``broadcasts`` armed
+    ones, each followed by an unarmed one."""
+    import re
+
+    import websockets
+
+    wireview = server.name == "wireview"
+    state = ""
+    if wireview:
+        with urllib.request.urlopen(server.url + "/") as response:
+            state = re.search(r'data-state="([^"]+)"', response.read().decode()).group(1)
+
+    async def open_one():
+        if wireview:
+            ws = await websockets.connect(
+                f"ws://127.0.0.1:{server.port}/__wireview__?vsn=99", origin=server.url, max_size=None, open_timeout=60
+            )
+            await ws.send(json.dumps({"command": "join", "payload": {"name": "Board", "state": state, "children": {}}}))
+            while json.loads(await asyncio.wait_for(ws.recv(), 60))["command"] != "joined":
+                pass
+        else:
+            ws = await websockets.connect(f"ws://127.0.0.1:{server.port}/ws", origin=server.url, max_size=None)
+            assert json.loads(await asyncio.wait_for(ws.recv(), 60))["type"] == "snapshot"
+        return ws
+
+    async def update(ws) -> int:
+        while True:
+            text = await asyncio.wait_for(ws.recv(), 120)
+            message = json.loads(text)
+            if message.get("command") == "render" or message.get("type") == "announcement":
+                return ns()
+
+    conns = []
+    for start in range(0, connections, 50):
+        conns += await asyncio.gather(*(open_one() for _ in range(start, min(start + 50, connections))))
+    await asyncio.sleep(0.5)
+    if wireview:
+        event = {"id": "board", "command": "announce", "implicit_args": {}, "explicit_args": {}}
+        message = json.dumps({"command": "user_event", "payload": event})
+    else:
+        message = json.dumps({"type": "announce"})
+    results = []
+    unarmed = []
+    try:
+        # Measured broadcasts alternate: armed (the probes record) and unarmed (the client's
+        # span alone, what make bench-fastapi sees), so the probes' own cost shows
+        for i in range(warmup + 2 * broadcasts):
+            measured = i >= warmup and (i - warmup) % 2 == 0
+            if measured:
+                server.get(ARM_PATH)
+            sent = ns()
+            await conns[0].send(message)
+            received = await asyncio.gather(*(update(ws) for ws in conns))
+            await asyncio.sleep(0.2)  # what runs after the last frame (subscriptions, query string) is done
+            if not measured:
+                if i >= warmup:
+                    unarmed.append(max(received) - sent)
+                continue
+            stats = server.get(STATS_PATH)
+            if "error" in stats:
+                raise RuntimeError(f"{server.name}: {stats}")
+            stats["client_span_ns"] = max(received) - sent
+            stats["client_to_server_ns"] = stats["receive_clock_ns"] - sent
+            stats["last_receive_after_last_send_ns"] = max(received) - stats["last_send_clock_ns"]
+            results.append(stats)
+    finally:
+        await asyncio.gather(*(ws.close() for ws in conns))
+    for stats in results:
+        stats["client_span_unarmed_ns"] = statistics.median(unarmed)
+    return results
+
+
+SPAN_KEYS = (
+    "client_span_ns",
+    "client_span_unarmed_ns",
+    "client_to_server_ns",
+    "server_span_ns",
+    "publish_ns",
+    "first_dispatch_ns",
+    "last_dispatch_ns",
+    "first_send_ns",
+    "last_receive_after_last_send_ns",
+    "loop_busy_ns",
+    "loop_idle_ns",
+    "loop_cpu_ns",
+    "worker_busy_ns",
+    "worker_cpu_ns",
+    "both_busy_ns",
+    "frames",
+    "worker_threads",
+)
+
+
+def _nested(entries: list[dict], key: str) -> dict[str, dict[str, float]]:
+    sides = {side for e in entries for side in e[key]}
+    out = {}
+    for side in sorted(sides):
+        stages = {s for e in entries for s in e[key].get(side, {})}
+        out[side] = {s: statistics.median(e[key].get(side, {}).get(s, 0) for e in entries) for s in sorted(stages)}
+    return out
+
+
+def _median(entries: list[dict]) -> dict[str, t.Any]:
+    """The median of each number: of a round's measured broadcasts, or of the rounds."""
+    out: dict[str, t.Any] = {}
+    for key in SPAN_KEYS:
+        values = [e[key] for e in entries if e.get(key) is not None]
+        out[key] = statistics.median(values) if values else None
+    out["wall"] = _nested(entries, "wall")
+    out["cpu"] = _nested(entries, "cpu")
+    calls = {k for e in entries for k in e["calls"]}
+    out["calls"] = {k: statistics.median(e["calls"].get(k, 0) for e in entries) for k in sorted(calls)}
+    return out
+
+
+def _across(rounds: list[dict]) -> dict[str, t.Any]:
+    out = _median(rounds)
+    for key in ("server_span_ns", "client_span_ns", "client_span_unarmed_ns"):
+        out[key.replace("_ns", "_range_ns")] = [min(r[key] for r in rounds), max(r[key] for r in rounds)]
+    return out
+
+
+def stages(summary: dict[str, t.Any], name: str) -> list[tuple[str, float, float]]:
+    """The span's CPU split into exclusive stages: (stage, CPU ms, wall ms). What no probe covers is last.
+
+    CPU is the time the thread ran the stage. Wall adds the time it waited for the GIL
+    the other thread held, which is not the stage's cost.
+    """
+    ms = 1e-6
+    rows: list[tuple[str, float, float]] = []
+
+    def get(kind: str, side: str, stage: str) -> float:
+        return summary[kind].get(side, {}).get(stage, 0) * ms
+
+    def row(label: str, side: str, stage: str, minus: tuple[str, ...] = ()) -> tuple[str, float, float]:
+        return (
+            label,
+            get("cpu", side, stage) - sum(get("cpu", side, m) for m in minus),
+            get("wall", side, stage) - sum(get("wall", side, m) for m in minus),
+        )
+
+    if name == "wireview":
+        rows = [
+            row("publish: group_send의 member마다 deepcopy + put", "loop", "layer.send (deepcopy + put)"),
+            row("loop: InMemory 레이어 _clean_expired (receive마다 전체 순회)", "loop", "layer._clean_expired"),
+            row("worker: close_old_connections (메시지마다 3번)", "worker", "close_old_connections"),
+            row("worker: 컨텍스트 읽기 (_collect_context)", "worker", "collect_context"),
+            row("worker: 템플릿 렌더 (서명 제외)", "worker", "template render", ("sign_state",)),
+            row("worker: data-state 서명 (sign_state)", "worker", "sign_state"),
+            row(
+                "worker: sync_to_async 트립 (스레드 쪽 나머지)",
+                "worker",
+                "thread_handler",
+                ("close_old_connections", "collect_context", "template render"),
+            ),
+            row("loop: diff 계산", "loop", "diff"),
+            row("loop: JSON 직렬화 (encode_json)", "loop", "encode_json"),
+            row("loop: WebSocket 프레임 쓰기 (deflate 제외)", "loop", "ws_send", ("deflate",)),
+            row("loop: permessage-deflate 압축", "loop", "deflate"),
+            row(
+                "loop: 세션 코드 (send_render의 나머지)",
+                "loop",
+                "send_render (wall)",
+                ("await render trip (wall)", "diff", "encode_json", "ws_send"),
+            ),
+        ]
+    else:
+        rows = [
+            row("loop: JSON 직렬화 (json.dumps, 한 번)", "loop", "json.dumps"),
+            row("loop: starlette send_text (uvicorn 제외)", "loop", "starlette send_text (wall)", ("ws_send",)),
+            row("loop: WebSocket 프레임 쓰기 (deflate 제외)", "loop", "ws_send", ("deflate",)),
+            row("loop: permessage-deflate 압축", "loop", "deflate"),
+        ]
+    on_loop = [r for r in rows if r[0].startswith(("loop", "publish"))]
+    rows.append(
+        (
+            "loop: 그 밖 (asyncio·Channels 디스패치·트립 예약)",
+            summary["loop_cpu_ns"] * ms - sum(r[1] for r in on_loop),
+            summary["loop_busy_ns"] * ms - sum(r[2] for r in on_loop),
+        )
+    )
+    return rows
+
+
+def report(result: dict[str, t.Any]) -> str:
+    lines = []
+    connections = result["method"]["connections"]
+    ms = 1e-6
+    for name, data in result["implementations"].items():
+        s = data["summary"]
+        lines.append(f"\n## {name} — 연결 {connections}개, 회차 {len(data['rounds'])}개")
+        lines.append(
+            f"클라이언트가 본 팬아웃 {s['client_span_ns'] * ms:.1f} ms "
+            f"(회차 {s['client_span_range_ns'][0] * ms:.1f}~{s['client_span_range_ns'][1] * ms:.1f}), "
+            f"서버 구간 {s['server_span_ns'] * ms:.1f} ms "
+            f"(회차 {s['server_span_range_ns'][0] * ms:.1f}~{s['server_span_range_ns'][1] * ms:.1f}), "
+            f"마지막 프레임 뒤 마지막 수신까지 {s['last_receive_after_last_send_ns'] * ms:.1f} ms"
+        )
+        lines.append(
+            f"계측을 끈 브로드캐스트의 클라이언트 팬아웃 {s['client_span_unarmed_ns'] * ms:.1f} ms "
+            f"(회차 {s['client_span_unarmed_range_ns'][0] * ms:.1f}~{s['client_span_unarmed_range_ns'][1] * ms:.1f})"
+        )
+        lines.append(
+            f"루프: busy {s['loop_busy_ns'] * ms:.1f} ms (CPU {s['loop_cpu_ns'] * ms:.1f}) / "
+            f"select 대기 {s['loop_idle_ns'] * ms:.1f} ms. "
+            f"워커: busy {s['worker_busy_ns'] * ms:.1f} ms (CPU {s['worker_cpu_ns'] * ms:.1f}, "
+            f"스레드 {s['worker_threads']}개). 둘 다 busy {s['both_busy_ns'] * ms:.1f} ms. "
+            f"루프가 GIL을 기다린 시간(busy - CPU) {(s['loop_busy_ns'] - s['loop_cpu_ns']) * ms:.1f} ms"
+        )
+        if s.get("first_dispatch_ns") is not None:
+            lines.append(
+                f"publish {s['publish_ns'] * ms:.2f} ms, 첫 디스패치 {s['first_dispatch_ns'] * ms:.2f} ms, "
+                f"마지막 디스패치 {s['last_dispatch_ns'] * ms:.1f} ms, 첫 프레임 {s['first_send_ns'] * ms:.2f} ms"
+            )
+        rows = stages(s, name)
+        total = (s["loop_cpu_ns"] + s["worker_cpu_ns"]) * ms
+        # CPU only: a stage's wall time also holds the GIL waits the other thread caused
+        lines.append("\n| 단계 | CPU ms | 연결당 CPU µs | CPU 비율 |\n|---|---:|---:|---:|")
+        for stage, used, _wall in rows:
+            lines.append(f"| {stage} | {used:.1f} | {used / connections * 1000:.1f} | {used / total:.1%} |")
+        per_connection = total / connections * 1000
+        lines.append(f"| **합 (루프 CPU + 워커 CPU)** | **{total:.1f}** | **{per_connection:.1f}** | 100% |")
+    return "\n".join(lines)
+
+
+#: The stages of ``stages()`` in the groups docs/design/broadcast-fanout.md charts
+GROUPS = {
+    "렌더": ("worker: 컨텍스트", "worker: 템플릿", "worker: data-state"),
+    "diff": ("loop: diff",),
+    "트립·디스패치": ("loop: 그 밖", "worker: sync_to_async", "worker: close_old"),
+    "채널 레이어": ("publish:", "loop: InMemory"),
+    "세션 코드": ("loop: 세션 코드",),
+    "JSON·프레임·압축": ("loop: JSON", "loop: WebSocket", "loop: permessage"),
+}
+
+
+def chart(result: dict[str, t.Any]) -> str:
+    """Mermaid charts of a result: the per-connection CPU by group beside FastAPI's, and the fan-out."""
+    connections = result["method"]["connections"]
+    impls = result["implementations"]
+    wireview = impls["wireview"]["summary"]
+    per_connection = {}
+    for group, prefixes in GROUPS.items():
+        used = sum(c for label, c, _ in stages(wireview, "wireview") if label.startswith(prefixes))
+        per_connection[group] = used / connections * 1000
+    labels = [*per_connection, "FastAPI 전체"]
+    values = list(per_connection.values())
+    if "fastapi" in impls:
+        fastapi = impls["fastapi"]["summary"]
+        values.append((fastapi["loop_cpu_ns"] + fastapi["worker_cpu_ns"]) / connections / 1000)
+    else:
+        labels.pop()
+
+    def block(title: str, axis: str, names: list[str], numbers: list[float]) -> str:
+        quoted = ", ".join(f'"{n}"' for n in names)
+        shown = ", ".join(f"{v:.1f}" for v in numbers)
+        top = max(numbers) * 1.1
+        return (
+            f'```mermaid\nxychart-beta horizontal\n    title "{title}"\n    x-axis [{quoted}]\n'
+            f'    y-axis "{axis}" 0 --> {top:.0f}\n    bar [{shown}]\n```'
+        )
+
+    spans = {"wireview": wireview["client_span_unarmed_ns"] / 1e6}
+    if "fastapi" in impls:
+        spans["FastAPI"] = impls["fastapi"]["summary"]["client_span_unarmed_ns"] / 1e6
+    return "\n\n".join(
+        [
+            block(f"연결 하나당 CPU, wireview 단계 묶음과 FastAPI 전체 (연결 {connections:,}개)", "µs", labels, values),
+            block(f"브로드캐스트 팬아웃 (연결 {connections:,}개, 계측 끔)", "ms", list(spans), list(spans.values())),
+        ]
+    )
+
+
+async def drive(args: argparse.Namespace) -> dict[str, t.Any]:
+    names = args.only or list(IMPLEMENTATIONS)
+    out: dict[str, t.Any] = {name: {"rounds": []} for name in names}
+    for round_ in range(args.rounds):
+        for name in names if round_ % 2 == 0 else list(reversed(names)):
+            print(f"round {round_ + 1}/{args.rounds}: {name}", flush=True)
+            with Server(name, args.cprofile) as server:
+                broadcasts = await _round(server, args.connections, args.warmup, args.broadcasts)
+            entry = _median(broadcasts)
+            if args.cprofile:
+                entry["profile"] = broadcasts[-1].get("profile")
+            out[name]["rounds"].append(entry)
+    for name in names:
+        out[name]["summary"] = _across(out[name]["rounds"])
+    return out
+
+
+def environment() -> dict[str, t.Any]:
+    import platform
+    from importlib.metadata import version
+
+    from bench.compare_fastapi.measure import _run
+
+    packages = {}
+    for package in (
+        "django",
+        "channels",
+        "django-wireview",
+        "fastapi",
+        "starlette",
+        "uvicorn",
+        "websockets",
+        "asgiref",
+    ):
+        try:
+            packages[package] = version(package)
+        except Exception:
+            packages[package] = None
+    return {
+        "date": datetime.now(UTC).isoformat(timespec="seconds"),
+        "commit": _run("git", "rev-parse", "--short", "HEAD"),
+        "dirty": bool(_run("git", "status", "--porcelain")),
+        "os": f"{platform.system()} {platform.release()} ({platform.machine()})",
+        "cpu": _run("sysctl", "-n", "machdep.cpu.brand_string") or platform.processor(),
+        "cpu_count": os.cpu_count(),
+        "load_average": list(os.getloadavg()) if hasattr(os, "getloadavg") else None,
+        "python": platform.python_version(),
+        "gil": getattr(sys, "_is_gil_enabled", lambda: True)(),
+        "packages": packages,
+        "server": "uvicorn, 1 process, --ws websockets, --log-level warning, permessage-deflate on (default)",
+    }
+
+
+# -- in-process: one Board's render by part, worker trips, render threads -------------------
+
+BOARD_TEMPLATE = ROOT / "bench" / "compare_fastapi" / "wv" / "board" / "templates" / "board" / "board.html"
+
+
+def _plain_board() -> t.Callable[[], str]:
+    """Render Board's template without wireview's tags, compiled by Django alone, with a context like Board's.
+
+    Needs nothing but Django, so the same measurement runs on an interpreter without the GIL.
+    Each call builds its own Context, as Django's backend does: a Context binds to one render.
+    """
+    import re
+
+    from django.template import Context, Engine
+
+    source = BOARD_TEMPLATE.read_text()
+    source = re.sub(r"{%\s*(load wireview|tag_header|on [^%]*?)\s*%}", "", source)
+    template = Engine(autoescape=True).from_string(source)
+    from bench.compare_fastapi.store import Store
+
+    store = Store()
+    context = {"count": store.count, "announcement": store.announcement, "items": list(store.items)}
+    return lambda: template.render(Context(context))
+
+
+def _per_board_us(render: t.Callable[[], t.Any], boards: int, repeat: int) -> float:
+    samples = []
+    for _ in range(repeat):
+        started = ns()
+        for _ in range(boards):
+            render()
+        samples.append((ns() - started) / boards / 1000)
+    return statistics.median(samples)
+
+
+def _threads_us(render: t.Callable[[], t.Any], boards: int, repeat: int) -> dict[str, float]:
+    """``render`` ``boards`` times split over 1, 2, 4, 8 threads: µs of wall time per render."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    out = {}
+    for workers in (1, 2, 4, 8):
+        share = boards // workers
+
+        def run(_):
+            for _ in range(share):
+                render()
+
+        samples = []
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            list(pool.map(run, range(workers)))  # threads started, warm
+            for _ in range(repeat):
+                started = ns()
+                list(pool.map(run, range(workers)))
+                samples.append((ns() - started) / (share * workers) / 1000)
+        out[str(workers)] = statistics.median(samples)
+    return out
+
+
+def plain(args: argparse.Namespace) -> dict[str, t.Any]:
+    """Django's own render of Board's template, alone and on several threads (no wireview, no markers)."""
+    import django
+    from django.conf import settings
+
+    if not settings.configured:
+        settings.configure(USE_TZ=True, USE_I18N=True)
+        django.setup()
+    render = _plain_board()
+    for _ in range(50):
+        render()
+    return {
+        "python": sys.version.split()[0],
+        "gil": getattr(sys, "_is_gil_enabled", lambda: True)(),
+        "plain_render_us": _per_board_us(render, args.boards, args.repeat),
+        "plain_render_us_by_threads": _threads_us(render, args.boards, args.repeat),
+    }
+
+
+async def inproc(args: argparse.Namespace) -> dict[str, t.Any]:
+    """One Board's live render taken apart, what one worker trip costs, and what threads would buy.
+
+    Runs in this process against the compare_fastapi settings: Board mounted with a live
+    repository and rendered through the code the consumer's render runs, one after another.
+    """
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "bench.compare_fastapi.wv.settings")
+    import django
+
+    django.setup()
+    from asgiref.sync import sync_to_async
+    from channels.db import aclose_old_connections, database_sync_to_async
+    from django.utils import formats
+
+    from bench.compare_fastapi.store import store
+    from bench.compare_fastapi.wv.board.live import Board
+    from bench.payload import _live
+    from wireview.core.rendered import Rendered
+    from wireview.core.state import sign_state
+
+    repeat, boards = args.repeat, args.boards
+    out: dict[str, t.Any] = {"gil": getattr(sys, "_is_gil_enabled", lambda: True)(), "boards": boards, "repeat": repeat}
+
+    async def per_call_us(make, calls: int, gathered: bool) -> float:
+        samples = []
+        for _ in range(repeat):
+            started = ns()
+            if gathered:
+                await asyncio.gather(*(make() for _ in range(calls)))
+            else:
+                for _ in range(calls):
+                    await make()
+            samples.append((ns() - started) / calls / 1000)
+        return statistics.median(samples)
+
+    noop = database_sync_to_async(lambda: None)
+    out["trip_us"] = {
+        "database_sync_to_async(noop), one after another": await per_call_us(noop, 1000, False),
+        "sync_to_async(noop), one after another": await per_call_us(sync_to_async(lambda: None), 1000, False),
+        "aclose_old_connections(), one after another": await per_call_us(aclose_old_connections, 1000, False),
+        "database_sync_to_async(noop), 1000 gathered": await per_call_us(noop, 1000, True),
+        "aclose_old_connections(), 1000 gathered": await per_call_us(aclose_old_connections, 1000, True),
+    }
+
+    view = await _live(Board, id="board")
+    wire, component, repo = view.wire, view.component, view._repo
+    await wire.render_diff(component, repo)  # first render: template compiled and prepared, token issued
+
+    def collect():
+        return wire._collect_context(component, repo, None)
+
+    context = collect()
+
+    def marked():
+        return wire._render_with_context(component, context, None)
+
+    plain_render = _plain_board()
+    previous = wire._last_rendered
+    store.announce()
+    html = str(marked())
+
+    def parse():
+        return Rendered.from_marked_html(html)
+
+    def diff():
+        rendered = Rendered.from_marked_html(html)
+        rendered.settle(previous)
+        result = rendered.get_diff(previous, repo.vsn)
+        return result.to_payload() if result is not None else None
+
+    payload = {"command": "render", "payload": {"id": "board", "diff": diff()}}
+    ints = sum(1 for _ in store.items) + 2  # {{ item.qty }} per item, {{ count }}, {{ announcement }}
+
+    def run(fn):
+        return _per_board_us(fn, boards, repeat)
+
+    parts = {
+        "collect_context": run(collect),
+        "template render, marked (wireview)": run(marked),
+        "template render, plain Django": run(plain_render),
+        "localize() of the ints the template prints": run(lambda: [formats.localize(i) for i in range(ints)]),
+        "sign_state": run(lambda: sign_state(component)),
+        "diff: parse markers": run(parse),
+        "diff: parse + settle + compare + to_payload": run(diff),
+        "json.dumps of the render frame": run(lambda: json.dumps(payload)),
+    }
+    out["board_us"] = parts
+    out["ints_localized_per_render"] = ints
+
+    async def full():
+        await wire.render_diff(component, repo)
+
+    samples = []
+    for _ in range(repeat):
+        started = ns()
+        for _ in range(boards):
+            store.announce()
+            await full()
+        samples.append((ns() - started) / boards / 1000)
+    out["render_diff_us_one_after_another"] = statistics.median(samples)
+    if args.cprofile:
+        # Which functions one live render spends its time in (the times are inflated, the shares hold)
+        import cProfile
+
+        profiler = cProfile.Profile()
+        profiler.enable()
+        for _ in range(boards):
+            store.announce()
+            await full()
+            await database_sync_to_async(lambda: None)()  # the trip close_old_connections takes
+        profiler.disable()
+        out["render_diff_profile"] = _profile_text(profiler, limit=60)
+    out["plain_render_us_by_threads"] = _threads_us(plain_render, boards, repeat)
+    return out
+
+
+# -- main -----------------------------------------------------------------------------------
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest="mode")
+    serve_parser = sub.add_parser("serve", help="(internal) the probed server process")
+    serve_parser.add_argument("name", choices=IMPLEMENTATIONS)
+    serve_parser.add_argument("--port", type=int, required=True)
+    serve_parser.add_argument("--cprofile", action="store_true")
+    for mode, help in (
+        ("inproc", "one Board's render by part, worker trips and render threads, in-process"),
+        ("plain", "Django's render of Board's template on 1-8 threads; needs only Django (try python 3.14t)"),
+    ):
+        mode_parser = sub.add_parser(mode, help=help)
+        mode_parser.add_argument("--boards", type=int, default=400)
+        mode_parser.add_argument("--repeat", type=int, default=7)
+        mode_parser.add_argument("--output", type=Path)
+        mode_parser.add_argument("--cprofile", action="store_true", help="inproc: also profile render_diff")
+    parser.add_argument("--rounds", type=int, default=5)
+    parser.add_argument("--connections", type=int, default=1000)
+    parser.add_argument("--warmup", type=int, default=3, help="broadcasts before measuring, per round")
+    parser.add_argument("--broadcasts", type=int, default=10, help="measured broadcasts per round")
+    parser.add_argument("--only", nargs="*", choices=IMPLEMENTATIONS)
+    parser.add_argument("--cprofile", action="store_true", help="profile the functions; the times are then inflated")
+    parser.add_argument("--output", type=Path, help="default: bench/.data/fanout-profile-<commit>[-dirty].json")
+    parser.add_argument("--report", type=Path, help="print the tables of a result written before, and exit")
+    parser.add_argument("--chart", type=Path, help="print the Mermaid charts of a result written before, and exit")
+    args = parser.parse_args()
+
+    if args.mode == "serve":
+        serve(args.name, args.port, args.cprofile)
+        return
+    if args.mode in ("inproc", "plain"):
+        if args.mode == "plain":
+            result = {"plain": plain(args)}
+        else:
+            result = {"environment": environment(), "inproc": asyncio.run(inproc(args))}
+        text = json.dumps(result, indent=2, ensure_ascii=False)
+        if args.output:
+            args.output.write_text(text + "\n")
+        print(text)
+        return
+
+    if args.report:
+        print(report(json.loads(args.report.read_text())))
+        return
+    if args.chart:
+        print(chart(json.loads(args.chart.read_text())))
+        return
+
+    from bench.ws import _raise_fd_limit
+
+    _raise_fd_limit()
+    env = environment()
+    implementations = asyncio.run(drive(args))
+    env["load_average_after"] = list(os.getloadavg()) if hasattr(os, "getloadavg") else None
+    result = {
+        "environment": env,
+        "method": {
+            "connections": args.connections,
+            "rounds": args.rounds,
+            "warmup_broadcasts": args.warmup,
+            "measured_broadcasts": args.broadcasts,
+            "cprofile": args.cprofile,
+        },
+        "implementations": implementations,
+    }
+    suffix = "-cprofile" if args.cprofile else ""
+    output = args.output or (
+        ROOT / "bench" / ".data" / f"fanout-profile-{env['commit']}{'-dirty' if env['dirty'] else ''}{suffix}.json"
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
+    print(report(result))
+    print(f"\nwrote {output.relative_to(ROOT) if output.is_relative_to(ROOT) else output}")
+
+
+if __name__ == "__main__":
+    main()
