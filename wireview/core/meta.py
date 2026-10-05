@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import inspect
 import itertools
 import logging
 import secrets
 import typing as t
+import weakref
 from asyncio import iscoroutine
+from types import FunctionType
 
 from asgiref.sync import async_to_sync
 from channels.layers import BaseChannelLayer
@@ -35,6 +38,12 @@ if t.TYPE_CHECKING:
 
 # Orders instances' births and their own renders across the process; only compared
 _TICKS = itertools.count()
+
+#: Per component class, per set of instance attributes: the public names a live
+#: render reads into its context (``WireviewMeta._context_names``)
+_CONTEXT_NAMES: weakref.WeakKeyDictionary[type, dict[tuple[str, ...], tuple[str, ...]]] = weakref.WeakKeyDictionary()
+#: A plain method, a classmethod or a staticmethod: read on an instance it is always callable
+_METHODS = (FunctionType, classmethod, staticmethod)
 
 # Type aliases
 RedirectDestination = t.Union[t.Callable[..., t.Any], "models.Model", str]
@@ -695,6 +704,35 @@ class WireviewMeta:
             (reads.stale if slot.stale and not slot.other else reads.other).add(attr_name)
         return attr
 
+    @classmethod
+    def _context_names(cls, component: "Component") -> tuple[str, ...]:
+        """The public names of ``component`` a render reads, in ``dir()`` order, but its methods.
+
+        ``dir()`` lists a few hundred names, most of them methods: each read
+        built a bound method only to find it callable, about 15 µs a render
+        (#176). Which names those are depends on the class and on the names
+        the instance holds itself -- one there hides a method of the same name
+        -- so the list is kept per class and per instance attribute set.
+        """
+        klass = type(component)
+        keys = tuple(component.__dict__)
+        by_keys = _CONTEXT_NAMES.get(klass)
+        if by_keys is None:
+            by_keys = _CONTEXT_NAMES[klass] = {}
+        names = by_keys.get(keys)
+        if names is None:
+            own = set(keys)
+            names = tuple(
+                name
+                for name in dir(component)
+                if not name.startswith("_")
+                and name not in cls._PYDANTIC_CLASS_ATTRS
+                and (name in own or not isinstance(inspect.getattr_static(klass, name, None), _METHODS))
+            )
+            if len(by_keys) < 32:  # instances that come and go with attributes of their own: read as they are
+                by_keys[keys] = names
+        return names
+
     def _collect_context(self, component: "Component", repo: Repo, reads: RenderReads | None = None) -> Context:
         """Read every public attribute of the component into a context (sync).
 
@@ -702,11 +740,18 @@ class WireviewMeta:
         """
         context: Context = {}
 
-        for attr_name in dir(component):
-            if not attr_name.startswith("_") and attr_name not in self._PYDANTIC_CLASS_ATTRS:
-                attr = self._read(component, attr_name, reads)
+        if reads is None:
+            for attr_name in self._context_names(component):
+                attr = getattr(component, attr_name)
                 if not callable(attr):
                     context[attr_name] = attr
+        else:
+            # Every name is read: the reads sort the methods too (_read)
+            for attr_name in dir(component):
+                if not attr_name.startswith("_") and attr_name not in self._PYDANTIC_CLASS_ATTRS:
+                    attr = self._read(component, attr_name, reads)
+                    if not callable(attr):
+                        context[attr_name] = attr
 
         from ..slots import SlotContainer
 

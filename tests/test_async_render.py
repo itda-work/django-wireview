@@ -1,5 +1,6 @@
 """Tests for async-native render optimization."""
 
+import inspect
 import typing as t
 
 import pytest
@@ -66,9 +67,94 @@ class ComponentWithQueryingProperty(InlineTemplate, Component):
         return self.base_value * 2
 
 
+def _helper() -> str:
+    return "called"
+
+
+class EveryShape(Component):
+    """Every kind of name a component can have, for the context's name cache (#176)."""
+
+    class Meta:
+        template_name = "todo/todo_list.html"
+
+    LIMIT: t.ClassVar[int] = 3
+    formatter: t.ClassVar[t.Any] = staticmethod(_helper)
+    value: int = 1
+    callback_name: str = "go"
+    items: list[int] = []
+
+    @property
+    def doubled(self) -> int:
+        return self.value * 2
+
+    @property
+    def action(self) -> t.Any:
+        return _helper  # a property whose value is callable stays out
+
+    @classmethod
+    def build(cls) -> None:
+        pass
+
+    @staticmethod
+    def pure() -> None:
+        pass
+
+    async def go(self) -> None:
+        pass
+
+    def _private(self) -> None:
+        pass
+
+
+def context_names_of(klass: type) -> set[str]:
+    from wireview.core.meta import _CONTEXT_NAMES
+
+    return {name for names in _CONTEXT_NAMES[klass].values() for name in names}
+
+
 class TestCollectContext:
     """The live render's context: read by _collect_context(), off the event loop in
     render_diff(), with async properties awaited back on the loop."""
+
+    @pytest.mark.unit
+    def test_the_names_it_reads_are_dir_s_but_the_methods(self):
+        """Kept per class, the names give the context reading every public name of dir() gave (#176)."""
+        from django.contrib.auth.models import AnonymousUser
+
+        wire = MockWireviewMeta()
+        repo = MockRepository()
+
+        def by_dir(component):
+            names = [n for n in dir(component) if not n.startswith("_") and n not in wire._PYDANTIC_CLASS_ATTRS]
+            return {n: v for n in names if not callable(v := getattr(component, n))}
+
+        for component in (
+            EveryShape(user=AnonymousUser(), wire=wire, value=4),
+            EveryShape(user=AnonymousUser(), wire=wire, value=5),  # from the cache
+            SimpleComponent(user=AnonymousUser(), wire=wire, value=42),
+            ComponentWithAsyncProperty(user=AnonymousUser(), wire=wire, base_value=1),
+        ):
+            context = wire._collect_context(component, repo)
+            expected = by_dir(component)
+            for coroutine in [v for v in [*context.values(), *expected.values()] if inspect.iscoroutine(v)]:
+                coroutine.close()
+            assert list(context)[: len(expected)] == list(expected)
+            assert {k: v for k, v in context.items() if k in expected and not inspect.iscoroutine(v)} == {
+                k: v for k, v in expected.items() if not inspect.iscoroutine(v)
+            }
+        assert context_names_of(EveryShape) >= {"LIMIT", "value", "callback_name", "items", "doubled", "action"}
+        assert not context_names_of(EveryShape) & {"build", "pure", "go", "formatter"}
+
+    @pytest.mark.unit
+    def test_an_instance_name_hides_the_method_it_shadows(self):
+        """A name the instance holds itself is read, even where the class has a method of that name."""
+        from django.contrib.auth.models import AnonymousUser
+
+        wire = MockWireviewMeta()
+        component = EveryShape(user=AnonymousUser(), wire=wire)
+        object.__setattr__(component, "go", "shadowed")
+
+        assert wire._collect_context(component, MockRepository())["go"] == "shadowed"
 
     @pytest.mark.unit
     def test_basic_context_building(self):
