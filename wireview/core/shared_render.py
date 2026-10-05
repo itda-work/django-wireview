@@ -49,7 +49,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone, translation
 from django.utils.html import escape
 
-from .rendered import _NESTED_PREFIX, Comprehension, Rendered
+from .rendered import _NESTED_PREFIX, Rendered
 
 if t.TYPE_CHECKING:
     from django.template.base import Node
@@ -287,13 +287,17 @@ class Shared:
         """``html`` parsed, or None when it cannot be shared: it names a component, or holds the slot twice."""
         if _NESTED_PREFIX in html:
             return None
+        slots = html.count(STATE_SLOT)
+        if slots > 1:
+            return None
         rendered = Rendered.from_marked_html(html)
         if rendered._names is not False:
             return None
-        paths = list(_slot_paths(rendered, ()))
-        if len(paths) > 1 or paths == [None]:
-            return None
-        return cls(rendered, html, paths[0] if paths else None)
+        if not slots:
+            return cls(rendered, html, None)
+        path = _slot_path(rendered, ())
+        # Not found outside the loops: inside one, where a path cannot name it
+        return cls(rendered, html, path) if path is not None else None
 
     def with_state(self, token: str) -> Rendered:
         """The render with ``token`` where the slot is: a copy of the path to it, the rest shared."""
@@ -302,18 +306,14 @@ class Shared:
         return _replaced(self.rendered, self.state_path, str(escape(token)))
 
 
-def _slot_paths(rendered: Rendered, path: tuple[int, ...]) -> t.Iterator[tuple[int, ...] | None]:
-    """Where ``STATE_SLOT`` is in ``rendered``; None for one inside a loop, which a path cannot name."""
+def _slot_path(rendered: Rendered, path: tuple[int, ...]) -> tuple[int, ...] | None:
+    """Where ``STATE_SLOT`` is in ``rendered``, looking into blocks but not loops."""
     for i, value in enumerate(rendered.dynamic):
-        if isinstance(value, str):
-            if value == STATE_SLOT:
-                yield (*path, i)
-        elif isinstance(value, Rendered):
-            yield from _slot_paths(value, (*path, i))
-        elif isinstance(value, Comprehension):
-            for item in value.dynamics:
-                if any(STATE_SLOT in (v if isinstance(v, str) else v.to_html()) for v in item):
-                    yield None
+        if value is STATE_SLOT or (isinstance(value, str) and value == STATE_SLOT):
+            return (*path, i)
+        if isinstance(value, Rendered) and (found := _slot_path(value, (*path, i))) is not None:
+            return found
+    return None
 
 
 def _replaced(rendered: Rendered, path: tuple[int, ...], value: str) -> Rendered:
