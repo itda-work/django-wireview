@@ -1,0 +1,2600 @@
+{
+  "environment": {
+    "date": "2026-10-05T12:31:14+00:00",
+    "commit": "5a4f037",
+    "dirty": true,
+    "os": "Darwin 27.0.0 (arm64)",
+    "cpu": "Apple M5 Pro",
+    "cpu_count": 18,
+    "load_average": [
+      4.77734375,
+      7.12939453125,
+      6.54248046875
+    ],
+    "python": "3.14.7",
+    "gil": true,
+    "packages": {
+      "django": "6.0",
+      "channels": "4.3.2",
+      "django-wireview": "1.2.0",
+      "fastapi": "0.142.2",
+      "starlette": "1.7.0",
+      "uvicorn": "0.38.0",
+      "websockets": "15.0.1",
+      "asgiref": "3.11.0"
+    },
+    "server": "uvicorn, 1 process, --ws websockets, --log-level warning, permessage-deflate on (default)",
+    "load_average_after": [
+      3.8701171875,
+      5.77587890625,
+      6.07763671875
+    ]
+  },
+  "method": {
+    "connections": 1000,
+    "rounds": 5,
+    "warmup_broadcasts": 3,
+    "measured_broadcasts": 10,
+    "cprofile": false
+  },
+  "implementations": {
+    "wireview": {
+      "rounds": [
+        {
+          "client_span_ns": 716540354.5,
+          "client_span_unarmed_ns": 659905166.5,
+          "client_to_server_ns": 168583.5,
+          "server_span_ns": 716326000.0,
+          "publish_ns": 297416.5,
+          "first_dispatch_ns": 14129771.0,
+          "last_dispatch_ns": 39572187.5,
+          "first_send_ns": 39549750.0,
+          "last_receive_after_last_send_ns": 47645.5,
+          "loop_busy_ns": 643650415.5,
+          "loop_idle_ns": 72984230.0,
+          "loop_cpu_ns": 342061479.0,
+          "worker_busy_ns": 360499246.0,
+          "worker_cpu_ns": 360753028.0,
+          "both_busy_ns": 333749296.0,
+          "frames": 1000.0,
+          "worker_threads": 1.0,
+          "wall": {
+            "loop": {
+              "after_mutation_chores": 2559793.0,
+              "await close_old_connections trip (wall)": 46937608205.0,
+              "await render trip (wall)": 491416626322.5,
+              "deflate": 20650818.0,
+              "diff": 134910496.0,
+              "diff: compare": 8380213.5,
+              "diff: parse markers": 122533029.5,
+              "diff: settle": 1174369.5,
+              "diff: to_payload": 228967.5,
+              "dispatch (wall)": 553785301931.5,
+              "encode_json": 1880472.5,
+              "layer._clean_expired": 44826061.5,
+              "layer.send (deepcopy + put)": 2531092.5,
+              "notification handler (wall)": 491669953478.0,
+              "publish (group_send, wall)": 12416583.5,
+              "render_diff (wall)": 491560362254.5,
+              "send_render (wall)": 491716399113.5,
+              "ws_send": 168113378.0
+            },
+            "worker": {
+              "close_old_connections": 4861304.5,
+              "collect_context": 23081259.0,
+              "sign_state": 4869580.0,
+              "state json (model_dump_json)": 2781690.0,
+              "template render": 324219887.0,
+              "thread_handler": 360499246.0
+            }
+          },
+          "cpu": {
+            "loop": {
+              "after_mutation_chores": 2576420.0,
+              "await close_old_connections trip (wall)": 35076491224.0,
+              "await render trip (wall)": 136985214293.0,
+              "deflate": 3914066.5,
+              "diff": 134858955.0,
+              "diff: compare": 8390313.0,
+              "diff: parse markers": 122502035.0,
+              "diff: settle": 1190783.5,
+              "diff: to_payload": 247555.0,
+              "dispatch (wall)": 181489923911.5,
+              "encode_json": 1880340.0,
+              "layer._clean_expired": 44842808.5,
+              "layer.send (deepcopy + put)": 2544888.5,
+              "notification handler (wall)": 137130973964.5,
+              "publish (group_send, wall)": 12383334.0,
+              "render_diff (wall)": 137128864892.0,
+              "send_render (wall)": 137176179930.5,
+              "ws_send": 20086643.5
+            },
+            "worker": {
+              "close_old_connections": 4912551.0,
+              "collect_context": 23101071.0,
+              "sign_state": 4864203.0,
+              "state json (model_dump_json)": 2825008.0,
+              "template render": 324212457.0,
+              "thread_handler": 360753028.0
+            }
+          },
+          "calls": {
+            "loop.after_mutation_chores": 1001.0,
+            "loop.await close_old_connections trip (wall)": 1001.0,
+            "loop.await render trip (wall)": 1001.0,
+            "loop.deflate": 1000.0,
+            "loop.diff": 1001.0,
+            "loop.diff: compare": 1001.0,
+            "loop.diff: parse markers": 1001.0,
+            "loop.diff: settle": 1001.0,
+            "loop.diff: to_payload": 1000.0,
+            "loop.dispatch (wall)": 1000.0,
+            "loop.encode_json": 1000.0,
+            "loop.layer._clean_expired": 1001.0,
+            "loop.layer.send (deepcopy + put)": 1000.0,
+            "loop.notification handler (wall)": 1000.0,
+            "loop.publish (group_send, wall)": 1.0,
+            "loop.render_diff (wall)": 1001.0,
+            "loop.send_render (wall)": 1001.0,
+            "loop.ws_send": 1000.0,
+            "worker.close_old_connections": 3003.0,
+            "worker.collect_context": 1001.0,
+            "worker.sign_state": 1001.0,
+            "worker.state json (model_dump_json)": 1001.0,
+            "worker.template render": 1001.0,
+            "worker.thread_handler": 2002.0
+          }
+        },
+        {
+          "client_span_ns": 686374188.0,
+          "client_span_unarmed_ns": 651456291.5,
+          "client_to_server_ns": 175916.5,
+          "server_span_ns": 686160854.0,
+          "publish_ns": 293146.0,
+          "first_dispatch_ns": 9047167.0,
+          "last_dispatch_ns": 39264562.5,
+          "first_send_ns": 39238270.5,
+          "last_receive_after_last_send_ns": 42958.0,
+          "loop_busy_ns": 570448146.0,
+          "loop_idle_ns": 106625044.0,
+          "loop_cpu_ns": 314219479.5,
+          "worker_busy_ns": 361294050.0,
+          "worker_cpu_ns": 361253694.5,
+          "both_busy_ns": 261117487.5,
+          "frames": 1000.0,
+          "worker_threads": 1.0,
+          "wall": {
+            "loop": {
+              "after_mutation_chores": 2638346.5,
+              "await close_old_connections trip (wall)": 64471712679.5,
+              "await render trip (wall)": 477536280023.5,
+              "deflate": 58281119.5,
+              "diff": 136590597.5,
+              "diff: compare": 9144561.0,
+              "diff: parse markers": 123028875.5,
+              "diff: settle": 1230549.0,
+              "diff: to_payload": 230653.5,
+              "dispatch (wall)": 541613288230.5,
+              "encode_json": 1960652.0,
+              "layer._clean_expired": 44891622.0,
+              "layer.send (deepcopy + put)": 2563684.0,
+              "notification handler (wall)": 477882800395.5,
+              "publish (group_send, wall)": 7214416.5,
+              "render_diff (wall)": 477681715126.5,
+              "send_render (wall)": 477897858146.0,
+              "ws_send": 271758866.0
+            },
+            "worker": {
+              "close_old_connections": 4747039.5,
+              "collect_context": 23252608.5,
+              "sign_state": 4836326.0,
+              "state json (model_dump_json)": 2767760.5,
+              "template render": 324719103.5,
+              "thread_handler": 361294050.0
+            }
+          },
+          "cpu": {
+            "loop": {
+              "after_mutation_chores": 2657815.0,
+              "await close_old_connections trip (wall)": 27105774902.0,
+              "await render trip (wall)": 136296783826.0,
+              "deflate": 4368100.0,
+              "diff": 136255495.5,
+              "diff: compare": 9119619.5,
+              "diff: parse markers": 122887560.5,
+              "diff: settle": 1250763.5,
+              "diff: to_payload": 251236.5,
+              "dispatch (wall)": 170904757087.0,
+              "encode_json": 1948338.0,
+              "layer._clean_expired": 44895913.5,
+              "layer.send (deepcopy + put)": 2576365.0,
+              "notification handler (wall)": 136475407595.0,
+              "publish (group_send, wall)": 7158812.5,
+              "render_diff (wall)": 136443316943.0,
+              "send_render (wall)": 136493921862.5,
+              "ws_send": 20986306.5
+            },
+            "worker": {
+              "close_old_connections": 4788813.0,
+              "collect_context": 23263751.0,
+              "sign_state": 4849623.5,
+              "state json (model_dump_json)": 2799538.0,
+              "template render": 324464963.0,
+              "thread_handler": 361253694.5
+            }
+          },
+          "calls": {
+            "loop.after_mutation_chores": 1001.0,
+            "loop.await close_old_connections trip (wall)": 1001.0,
+            "loop.await render trip (wall)": 1001.0,
+            "loop.deflate": 1000.0,
+            "loop.diff": 1001.0,
+            "loop.diff: compare": 1001.0,
+            "loop.diff: parse markers": 1001.0,
+            "loop.diff: settle": 1001.0,
+            "loop.diff: to_payload": 1000.0,
+            "loop.dispatch (wall)": 1000.0,
+            "loop.encode_json": 1000.0,
+            "loop.layer._clean_expired": 1001.0,
+            "loop.layer.send (deepcopy + put)": 1000.0,
+            "loop.notification handler (wall)": 1000.0,
+            "loop.publish (group_send, wall)": 1.0,
+            "loop.render_diff (wall)": 1001.0,
+            "loop.send_render (wall)": 1001.0,
+            "loop.ws_send": 1000.0,
+            "worker.close_old_connections": 3003.0,
+            "worker.collect_context": 1001.0,
+            "worker.sign_state": 1001.0,
+            "worker.state json (model_dump_json)": 1001.0,
+            "worker.template render": 1001.0,
+            "worker.thread_handler": 2002.0
+          }
+        },
+        {
+          "client_span_ns": 679274312.5,
+          "client_span_unarmed_ns": 673500604.5,
+          "client_to_server_ns": 170583.5,
+          "server_span_ns": 679042458.0,
+          "publish_ns": 296270.5,
+          "first_dispatch_ns": 10033791.5,
+          "last_dispatch_ns": 35047479.0,
+          "first_send_ns": 35021041.5,
+          "last_receive_after_last_send_ns": 43895.5,
+          "loop_busy_ns": 583695226.5,
+          "loop_idle_ns": 89713920.0,
+          "loop_cpu_ns": 301297583.5,
+          "worker_busy_ns": 369198711.0,
+          "worker_cpu_ns": 367982948.5,
+          "both_busy_ns": 288738569.0,
+          "frames": 1000.0,
+          "worker_threads": 1.0,
+          "wall": {
+            "loop": {
+              "after_mutation_chores": 2672862.5,
+              "await close_old_connections trip (wall)": 45657275645.5,
+              "await render trip (wall)": 493915765540.0,
+              "deflate": 89961237.0,
+              "diff": 139505911.0,
+              "diff: compare": 8766659.5,
+              "diff: parse markers": 126580036.5,
+              "diff: settle": 1195171.5,
+              "diff: to_payload": 227292.5,
+              "dispatch (wall)": 540559518268.0,
+              "encode_json": 1983895.5,
+              "layer._clean_expired": 44541012.5,
+              "layer.send (deepcopy + put)": 2576058.0,
+              "notification handler (wall)": 494346623529.5,
+              "publish (group_send, wall)": 8203708.0,
+              "render_diff (wall)": 494063912294.0,
+              "send_render (wall)": 494394684728.0,
+              "ws_send": 303092129.5
+            },
+            "worker": {
+              "close_old_connections": 4903195.0,
+              "collect_context": 23557237.5,
+              "sign_state": 5134316.0,
+              "state json (model_dump_json)": 2942483.5,
+              "template render": 332017871.0,
+              "thread_handler": 369198711.0
+            }
+          },
+          "cpu": {
+            "loop": {
+              "after_mutation_chores": 2660958.5,
+              "await close_old_connections trip (wall)": 26218269068.5,
+              "await render trip (wall)": 128316059561.0,
+              "deflate": 4469183.0,
+              "diff": 136785163.5,
+              "diff: compare": 8758387.5,
+              "diff: parse markers": 124442114.0,
+              "diff: settle": 1210312.0,
+              "diff: to_payload": 250009.0,
+              "dispatch (wall)": 164543547645.5,
+              "encode_json": 1960175.5,
+              "layer._clean_expired": 44429738.0,
+              "layer.send (deepcopy + put)": 2594173.5,
+              "notification handler (wall)": 128496788595.0,
+              "publish (group_send, wall)": 8102604.5,
+              "render_diff (wall)": 128459999501.0,
+              "send_render (wall)": 128512763663.0,
+              "ws_send": 21430779.5
+            },
+            "worker": {
+              "close_old_connections": 4949539.5,
+              "collect_context": 23459227.5,
+              "sign_state": 5090490.5,
+              "state json (model_dump_json)": 2946158.0,
+              "template render": 330754697.0,
+              "thread_handler": 367982948.5
+            }
+          },
+          "calls": {
+            "loop.after_mutation_chores": 1001.0,
+            "loop.await close_old_connections trip (wall)": 1001.0,
+            "loop.await render trip (wall)": 1001.0,
+            "loop.deflate": 1000.0,
+            "loop.diff": 1001.0,
+            "loop.diff: compare": 1001.0,
+            "loop.diff: parse markers": 1001.0,
+            "loop.diff: settle": 1001.0,
+            "loop.diff: to_payload": 1000.0,
+            "loop.dispatch (wall)": 1000.0,
+            "loop.encode_json": 1000.0,
+            "loop.layer._clean_expired": 1001.0,
+            "loop.layer.send (deepcopy + put)": 1000.0,
+            "loop.notification handler (wall)": 1000.0,
+            "loop.publish (group_send, wall)": 1.0,
+            "loop.render_diff (wall)": 1001.0,
+            "loop.send_render (wall)": 1001.0,
+            "loop.ws_send": 1000.0,
+            "worker.close_old_connections": 3003.0,
+            "worker.collect_context": 1001.0,
+            "worker.sign_state": 1001.0,
+            "worker.state json (model_dump_json)": 1001.0,
+            "worker.template render": 1001.0,
+            "worker.thread_handler": 2002.0
+          }
+        },
+        {
+          "client_span_ns": 707290229.0,
+          "client_span_unarmed_ns": 651703354.0,
+          "client_to_server_ns": 165791.5,
+          "server_span_ns": 707081916.5,
+          "publish_ns": 299895.5,
+          "first_dispatch_ns": 9057708.0,
+          "last_dispatch_ns": 41287833.5,
+          "first_send_ns": 41260312.5,
+          "last_receive_after_last_send_ns": 47125.0,
+          "loop_busy_ns": 623391395.5,
+          "loop_idle_ns": 67100977.5,
+          "loop_cpu_ns": 326791458.5,
+          "worker_busy_ns": 369238701.0,
+          "worker_cpu_ns": 368141104.5,
+          "both_busy_ns": 304409961.5,
+          "frames": 1000.0,
+          "worker_threads": 1.0,
+          "wall": {
+            "loop": {
+              "after_mutation_chores": 2687129.0,
+              "await close_old_connections trip (wall)": 59120983017.5,
+              "await render trip (wall)": 486015270951.0,
+              "deflate": 120315933.0,
+              "diff": 139113147.0,
+              "diff: compare": 9484342.0,
+              "diff: parse markers": 124927233.0,
+              "diff: settle": 1248965.5,
+              "diff: to_payload": 237275.0,
+              "dispatch (wall)": 548940581944.0,
+              "encode_json": 2044459.5,
+              "layer._clean_expired": 43843065.5,
+              "layer.send (deepcopy + put)": 2519327.0,
+              "notification handler (wall)": 486510833912.5,
+              "publish (group_send, wall)": 7266688.0,
+              "render_diff (wall)": 486176903407.0,
+              "send_render (wall)": 486525615929.0,
+              "ws_send": 306522770.5
+            },
+            "worker": {
+              "close_old_connections": 5035078.0,
+              "collect_context": 24124851.0,
+              "sign_state": 5226284.0,
+              "state json (model_dump_json)": 3062435.0,
+              "template render": 331234634.0,
+              "thread_handler": 369238701.0
+            }
+          },
+          "cpu": {
+            "loop": {
+              "after_mutation_chores": 2672635.5,
+              "await close_old_connections trip (wall)": 34020372453.0,
+              "await render trip (wall)": 132371962002.0,
+              "deflate": 4857335.0,
+              "diff": 138901795.0,
+              "diff: compare": 9442862.5,
+              "diff: parse markers": 124920875.5,
+              "diff: settle": 1270159.5,
+              "diff: to_payload": 254514.0,
+              "dispatch (wall)": 167628972290.0,
+              "encode_json": 2028007.5,
+              "layer._clean_expired": 43736927.0,
+              "layer.send (deepcopy + put)": 2540062.0,
+              "notification handler (wall)": 132520490237.0,
+              "publish (group_send, wall)": 7228646.0,
+              "render_diff (wall)": 132516458854.0,
+              "send_render (wall)": 132568219647.5,
+              "ws_send": 21611212.5
+            },
+            "worker": {
+              "close_old_connections": 5063227.5,
+              "collect_context": 24042099.5,
+              "sign_state": 5209101.5,
+              "state json (model_dump_json)": 3088213.0,
+              "template render": 330112457.0,
+              "thread_handler": 368141104.5
+            }
+          },
+          "calls": {
+            "loop.after_mutation_chores": 1001.0,
+            "loop.await close_old_connections trip (wall)": 1001.0,
+            "loop.await render trip (wall)": 1001.0,
+            "loop.deflate": 1000.0,
+            "loop.diff": 1001.0,
+            "loop.diff: compare": 1001.0,
+            "loop.diff: parse markers": 1001.0,
+            "loop.diff: settle": 1001.0,
+            "loop.diff: to_payload": 1000.0,
+            "loop.dispatch (wall)": 1000.0,
+            "loop.encode_json": 1000.0,
+            "loop.layer._clean_expired": 1001.0,
+            "loop.layer.send (deepcopy + put)": 1000.0,
+            "loop.notification handler (wall)": 1000.0,
+            "loop.publish (group_send, wall)": 1.0,
+            "loop.render_diff (wall)": 1001.0,
+            "loop.send_render (wall)": 1001.0,
+            "loop.ws_send": 1000.0,
+            "worker.close_old_connections": 3003.0,
+            "worker.collect_context": 1001.0,
+            "worker.sign_state": 1001.0,
+            "worker.state json (model_dump_json)": 1001.0,
+            "worker.template render": 1001.0,
+            "worker.thread_handler": 2002.0
+          }
+        },
+        {
+          "client_span_ns": 681010125.0,
+          "client_span_unarmed_ns": 649229792.0,
+          "client_to_server_ns": 163458.5,
+          "server_span_ns": 680795791.5,
+          "publish_ns": 297875.0,
+          "first_dispatch_ns": 8670478.5,
+          "last_dispatch_ns": 36595979.5,
+          "first_send_ns": 36572354.5,
+          "last_receive_after_last_send_ns": 44166.5,
+          "loop_busy_ns": 619286146.5,
+          "loop_idle_ns": 68119084.5,
+          "loop_cpu_ns": 289983833.5,
+          "worker_busy_ns": 366398300.0,
+          "worker_cpu_ns": 365405986.5,
+          "both_busy_ns": 302545896.5,
+          "frames": 1000.0,
+          "worker_threads": 1.0,
+          "wall": {
+            "loop": {
+              "after_mutation_chores": 2666679.0,
+              "await close_old_connections trip (wall)": 45380695836.5,
+              "await render trip (wall)": 501233776330.0,
+              "deflate": 128608128.5,
+              "diff": 137104543.5,
+              "diff: compare": 8442650.0,
+              "diff: parse markers": 125078008.0,
+              "diff: settle": 1167518.5,
+              "diff: to_payload": 230111.0,
+              "dispatch (wall)": 556302954244.0,
+              "encode_json": 1992811.5,
+              "layer._clean_expired": 44561466.0,
+              "layer.send (deepcopy + put)": 2493187.5,
+              "notification handler (wall)": 501690564540.5,
+              "publish (group_send, wall)": 6759249.5,
+              "render_diff (wall)": 501384207701.0,
+              "send_render (wall)": 501736990329.5,
+              "ws_send": 293653906.0
+            },
+            "worker": {
+              "close_old_connections": 4879297.5,
+              "collect_context": 23480235.5,
+              "sign_state": 5085162.0,
+              "state json (model_dump_json)": 2914514.5,
+              "template render": 329447996.5,
+              "thread_handler": 366398300.0
+            }
+          },
+          "cpu": {
+            "loop": {
+              "after_mutation_chores": 2683372.0,
+              "await close_old_connections trip (wall)": 30742549288.0,
+              "await render trip (wall)": 132437131635.5,
+              "deflate": 4721310.5,
+              "diff": 137009510.0,
+              "diff: compare": 8416633.5,
+              "diff: parse markers": 124578332.0,
+              "diff: settle": 1180705.0,
+              "diff: to_payload": 249462.5,
+              "dispatch (wall)": 165428514888.5,
+              "encode_json": 1988607.0,
+              "layer._clean_expired": 44501845.5,
+              "layer.send (deepcopy + put)": 2516949.5,
+              "notification handler (wall)": 132587043789.5,
+              "publish (group_send, wall)": 6695646.5,
+              "render_diff (wall)": 132582082681.0,
+              "send_render (wall)": 132635385320.0,
+              "ws_send": 21320720.0
+            },
+            "worker": {
+              "close_old_connections": 4918119.0,
+              "collect_context": 23441204.5,
+              "sign_state": 5064871.5,
+              "state json (model_dump_json)": 2944930.5,
+              "template render": 328304559.0,
+              "thread_handler": 365405986.5
+            }
+          },
+          "calls": {
+            "loop.after_mutation_chores": 1001.0,
+            "loop.await close_old_connections trip (wall)": 1001.0,
+            "loop.await render trip (wall)": 1001.0,
+            "loop.deflate": 1000.0,
+            "loop.diff": 1001.0,
+            "loop.diff: compare": 1001.0,
+            "loop.diff: parse markers": 1001.0,
+            "loop.diff: settle": 1001.0,
+            "loop.diff: to_payload": 1000.0,
+            "loop.dispatch (wall)": 1000.0,
+            "loop.encode_json": 1000.0,
+            "loop.layer._clean_expired": 1001.0,
+            "loop.layer.send (deepcopy + put)": 1000.0,
+            "loop.notification handler (wall)": 1000.0,
+            "loop.publish (group_send, wall)": 1.0,
+            "loop.render_diff (wall)": 1001.0,
+            "loop.send_render (wall)": 1001.0,
+            "loop.ws_send": 1000.0,
+            "worker.close_old_connections": 3003.0,
+            "worker.collect_context": 1001.0,
+            "worker.sign_state": 1001.0,
+            "worker.state json (model_dump_json)": 1001.0,
+            "worker.template render": 1001.0,
+            "worker.thread_handler": 2002.0
+          }
+        }
+      ],
+      "summary": {
+        "client_span_ns": 686374188.0,
+        "client_span_unarmed_ns": 651703354.0,
+        "client_to_server_ns": 168583.5,
+        "server_span_ns": 686160854.0,
+        "publish_ns": 297416.5,
+        "first_dispatch_ns": 9057708.0,
+        "last_dispatch_ns": 39264562.5,
+        "first_send_ns": 39238270.5,
+        "last_receive_after_last_send_ns": 44166.5,
+        "loop_busy_ns": 619286146.5,
+        "loop_idle_ns": 72984230.0,
+        "loop_cpu_ns": 314219479.5,
+        "worker_busy_ns": 366398300.0,
+        "worker_cpu_ns": 365405986.5,
+        "both_busy_ns": 302545896.5,
+        "frames": 1000.0,
+        "worker_threads": 1.0,
+        "wall": {
+          "loop": {
+            "after_mutation_chores": 2666679.0,
+            "await close_old_connections trip (wall)": 46937608205.0,
+            "await render trip (wall)": 491416626322.5,
+            "deflate": 89961237.0,
+            "diff": 137104543.5,
+            "diff: compare": 8766659.5,
+            "diff: parse markers": 124927233.0,
+            "diff: settle": 1195171.5,
+            "diff: to_payload": 230111.0,
+            "dispatch (wall)": 548940581944.0,
+            "encode_json": 1983895.5,
+            "layer._clean_expired": 44561466.0,
+            "layer.send (deepcopy + put)": 2531092.5,
+            "notification handler (wall)": 491669953478.0,
+            "publish (group_send, wall)": 7266688.0,
+            "render_diff (wall)": 491560362254.5,
+            "send_render (wall)": 491716399113.5,
+            "ws_send": 293653906.0
+          },
+          "worker": {
+            "close_old_connections": 4879297.5,
+            "collect_context": 23480235.5,
+            "sign_state": 5085162.0,
+            "state json (model_dump_json)": 2914514.5,
+            "template render": 329447996.5,
+            "thread_handler": 366398300.0
+          }
+        },
+        "cpu": {
+          "loop": {
+            "after_mutation_chores": 2660958.5,
+            "await close_old_connections trip (wall)": 30742549288.0,
+            "await render trip (wall)": 132437131635.5,
+            "deflate": 4469183.0,
+            "diff": 136785163.5,
+            "diff: compare": 8758387.5,
+            "diff: parse markers": 124442114.0,
+            "diff: settle": 1210312.0,
+            "diff: to_payload": 250009.0,
+            "dispatch (wall)": 167628972290.0,
+            "encode_json": 1960175.5,
+            "layer._clean_expired": 44501845.5,
+            "layer.send (deepcopy + put)": 2544888.5,
+            "notification handler (wall)": 132587043789.5,
+            "publish (group_send, wall)": 7228646.0,
+            "render_diff (wall)": 132582082681.0,
+            "send_render (wall)": 132635385320.0,
+            "ws_send": 21320720.0
+          },
+          "worker": {
+            "close_old_connections": 4918119.0,
+            "collect_context": 23441204.5,
+            "sign_state": 5064871.5,
+            "state json (model_dump_json)": 2944930.5,
+            "template render": 328304559.0,
+            "thread_handler": 365405986.5
+          }
+        },
+        "calls": {
+          "loop.after_mutation_chores": 1001.0,
+          "loop.await close_old_connections trip (wall)": 1001.0,
+          "loop.await render trip (wall)": 1001.0,
+          "loop.deflate": 1000.0,
+          "loop.diff": 1001.0,
+          "loop.diff: compare": 1001.0,
+          "loop.diff: parse markers": 1001.0,
+          "loop.diff: settle": 1001.0,
+          "loop.diff: to_payload": 1000.0,
+          "loop.dispatch (wall)": 1000.0,
+          "loop.encode_json": 1000.0,
+          "loop.layer._clean_expired": 1001.0,
+          "loop.layer.send (deepcopy + put)": 1000.0,
+          "loop.notification handler (wall)": 1000.0,
+          "loop.publish (group_send, wall)": 1.0,
+          "loop.render_diff (wall)": 1001.0,
+          "loop.send_render (wall)": 1001.0,
+          "loop.ws_send": 1000.0,
+          "worker.close_old_connections": 3003.0,
+          "worker.collect_context": 1001.0,
+          "worker.sign_state": 1001.0,
+          "worker.state json (model_dump_json)": 1001.0,
+          "worker.template render": 1001.0,
+          "worker.thread_handler": 2002.0
+        },
+        "server_span_range_ns": [
+          679042458.0,
+          716326000.0
+        ],
+        "client_span_range_ns": [
+          679274312.5,
+          716540354.5
+        ],
+        "client_span_unarmed_range_ns": [
+          649229792.0,
+          673500604.5
+        ]
+      }
+    },
+    "fastapi": {
+      "rounds": [
+        {
+          "client_span_ns": 14819500.5,
+          "client_span_unarmed_ns": 14000250.5,
+          "client_to_server_ns": 162771.0,
+          "server_span_ns": 14364666.5,
+          "publish_ns": 0.0,
+          "first_dispatch_ns": null,
+          "last_dispatch_ns": null,
+          "first_send_ns": 61396.0,
+          "last_receive_after_last_send_ns": 235354.0,
+          "loop_busy_ns": 14364666.5,
+          "loop_idle_ns": 0.0,
+          "loop_cpu_ns": 14224791.5,
+          "worker_busy_ns": 0.0,
+          "worker_cpu_ns": 0.0,
+          "both_busy_ns": 0.0,
+          "frames": 1000.0,
+          "worker_threads": 0.0,
+          "wall": {
+            "loop": {
+              "deflate": 2714734.5,
+              "json.dumps": 4458.5,
+              "starlette send_text (wall)": 13861055.0,
+              "ws_send": 12269497.5
+            },
+            "worker": {}
+          },
+          "cpu": {
+            "loop": {
+              "deflate": 2728635.5,
+              "json.dumps": 4604.0,
+              "starlette send_text (wall)": 13753427.5,
+              "ws_send": 12202210.0
+            },
+            "worker": {}
+          },
+          "calls": {
+            "loop.deflate": 1000.0,
+            "loop.json.dumps": 1.0,
+            "loop.starlette send_text (wall)": 1000.0,
+            "loop.ws_send": 1000.0
+          }
+        },
+        {
+          "client_span_ns": 15052021.0,
+          "client_span_unarmed_ns": 14180041.5,
+          "client_to_server_ns": 164958.5,
+          "server_span_ns": 14404729.5,
+          "publish_ns": 0.0,
+          "first_dispatch_ns": null,
+          "last_dispatch_ns": null,
+          "first_send_ns": 63666.5,
+          "last_receive_after_last_send_ns": 185875.0,
+          "loop_busy_ns": 14404729.5,
+          "loop_idle_ns": 0.0,
+          "loop_cpu_ns": 14396479.0,
+          "worker_busy_ns": 0.0,
+          "worker_cpu_ns": 0.0,
+          "both_busy_ns": 0.0,
+          "frames": 1000.0,
+          "worker_threads": 0.0,
+          "wall": {
+            "loop": {
+              "deflate": 2753074.5,
+              "json.dumps": 4583.5,
+              "starlette send_text (wall)": 13908867.0,
+              "ws_send": 12368415.5
+            },
+            "worker": {}
+          },
+          "cpu": {
+            "loop": {
+              "deflate": 2764695.0,
+              "json.dumps": 4729.5,
+              "starlette send_text (wall)": 13920216.5,
+              "ws_send": 12367260.0
+            },
+            "worker": {}
+          },
+          "calls": {
+            "loop.deflate": 1000.0,
+            "loop.json.dumps": 1.0,
+            "loop.starlette send_text (wall)": 1000.0,
+            "loop.ws_send": 1000.0
+          }
+        },
+        {
+          "client_span_ns": 15851937.0,
+          "client_span_unarmed_ns": 14968916.0,
+          "client_to_server_ns": 183125.5,
+          "server_span_ns": 14776583.5,
+          "publish_ns": 0.0,
+          "first_dispatch_ns": null,
+          "last_dispatch_ns": null,
+          "first_send_ns": 68833.0,
+          "last_receive_after_last_send_ns": 253624.5,
+          "loop_busy_ns": 14776583.5,
+          "loop_idle_ns": 0.0,
+          "loop_cpu_ns": 14765145.5,
+          "worker_busy_ns": 0.0,
+          "worker_cpu_ns": 0.0,
+          "both_busy_ns": 0.0,
+          "frames": 1000.0,
+          "worker_threads": 0.0,
+          "wall": {
+            "loop": {
+              "deflate": 2852596.5,
+              "json.dumps": 5271.0,
+              "starlette send_text (wall)": 14266101.0,
+              "ws_send": 12665175.5
+            },
+            "worker": {}
+          },
+          "cpu": {
+            "loop": {
+              "deflate": 2841122.5,
+              "json.dumps": 5416.0,
+              "starlette send_text (wall)": 14268767.5,
+              "ws_send": 12659923.0
+            },
+            "worker": {}
+          },
+          "calls": {
+            "loop.deflate": 1000.0,
+            "loop.json.dumps": 1.0,
+            "loop.starlette send_text (wall)": 1000.0,
+            "loop.ws_send": 1000.0
+          }
+        },
+        {
+          "client_span_ns": 15626500.0,
+          "client_span_unarmed_ns": 14789437.5,
+          "client_to_server_ns": 173271.0,
+          "server_span_ns": 15156188.0,
+          "publish_ns": 0.0,
+          "first_dispatch_ns": null,
+          "last_dispatch_ns": null,
+          "first_send_ns": 67895.5,
+          "last_receive_after_last_send_ns": 287041.5,
+          "loop_busy_ns": 15156188.0,
+          "loop_idle_ns": 0.0,
+          "loop_cpu_ns": 15010458.5,
+          "worker_busy_ns": 0.0,
+          "worker_cpu_ns": 0.0,
+          "both_busy_ns": 0.0,
+          "frames": 1000.0,
+          "worker_threads": 0.0,
+          "wall": {
+            "loop": {
+              "deflate": 2873263.0,
+              "json.dumps": 4854.5,
+              "starlette send_text (wall)": 14636513.0,
+              "ws_send": 12967667.5
+            },
+            "worker": {}
+          },
+          "cpu": {
+            "loop": {
+              "deflate": 2855629.5,
+              "json.dumps": 4979.0,
+              "starlette send_text (wall)": 14505840.5,
+              "ws_send": 12849802.5
+            },
+            "worker": {}
+          },
+          "calls": {
+            "loop.deflate": 1000.0,
+            "loop.json.dumps": 1.0,
+            "loop.starlette send_text (wall)": 1000.0,
+            "loop.ws_send": 1000.0
+          }
+        },
+        {
+          "client_span_ns": 15932583.0,
+          "client_span_unarmed_ns": 14169333.0,
+          "client_to_server_ns": 169270.5,
+          "server_span_ns": 14996729.5,
+          "publish_ns": 0.0,
+          "first_dispatch_ns": null,
+          "last_dispatch_ns": null,
+          "first_send_ns": 63417.0,
+          "last_receive_after_last_send_ns": 946854.5,
+          "loop_busy_ns": 14996729.5,
+          "loop_idle_ns": 0.0,
+          "loop_cpu_ns": 14969146.0,
+          "worker_busy_ns": 0.0,
+          "worker_cpu_ns": 0.0,
+          "both_busy_ns": 0.0,
+          "frames": 1000.0,
+          "worker_threads": 0.0,
+          "wall": {
+            "loop": {
+              "deflate": 2846198.0,
+              "json.dumps": 4375.0,
+              "starlette send_text (wall)": 14452472.5,
+              "ws_send": 12749626.0
+            },
+            "worker": {}
+          },
+          "cpu": {
+            "loop": {
+              "deflate": 2857172.0,
+              "json.dumps": 4563.0,
+              "starlette send_text (wall)": 14439883.0,
+              "ws_send": 12731971.0
+            },
+            "worker": {}
+          },
+          "calls": {
+            "loop.deflate": 1000.0,
+            "loop.json.dumps": 1.0,
+            "loop.starlette send_text (wall)": 1000.0,
+            "loop.ws_send": 1000.0
+          }
+        }
+      ],
+      "summary": {
+        "client_span_ns": 15626500.0,
+        "client_span_unarmed_ns": 14180041.5,
+        "client_to_server_ns": 169270.5,
+        "server_span_ns": 14776583.5,
+        "publish_ns": 0.0,
+        "first_dispatch_ns": null,
+        "last_dispatch_ns": null,
+        "first_send_ns": 63666.5,
+        "last_receive_after_last_send_ns": 253624.5,
+        "loop_busy_ns": 14776583.5,
+        "loop_idle_ns": 0.0,
+        "loop_cpu_ns": 14765145.5,
+        "worker_busy_ns": 0.0,
+        "worker_cpu_ns": 0.0,
+        "both_busy_ns": 0.0,
+        "frames": 1000.0,
+        "worker_threads": 0.0,
+        "wall": {
+          "loop": {
+            "deflate": 2846198.0,
+            "json.dumps": 4583.5,
+            "starlette send_text (wall)": 14266101.0,
+            "ws_send": 12665175.5
+          },
+          "worker": {}
+        },
+        "cpu": {
+          "loop": {
+            "deflate": 2841122.5,
+            "json.dumps": 4729.5,
+            "starlette send_text (wall)": 14268767.5,
+            "ws_send": 12659923.0
+          },
+          "worker": {}
+        },
+        "calls": {
+          "loop.deflate": 1000.0,
+          "loop.json.dumps": 1.0,
+          "loop.starlette send_text (wall)": 1000.0,
+          "loop.ws_send": 1000.0
+        },
+        "server_span_range_ns": [
+          14364666.5,
+          15156188.0
+        ],
+        "client_span_range_ns": [
+          14819500.5,
+          15932583.0
+        ],
+        "client_span_unarmed_range_ns": [
+          14000250.5,
+          14968916.0
+        ]
+      }
+    }
+  },
+  "inproc_runs": [
+    {
+      "environment": {
+        "date": "2026-10-05T12:28:48+00:00",
+        "commit": "5a4f037",
+        "dirty": true,
+        "os": "Darwin 27.0.0 (arm64)",
+        "cpu": "Apple M5 Pro",
+        "cpu_count": 18,
+        "load_average": [
+          6.71337890625,
+          7.97998046875,
+          6.64013671875
+        ],
+        "python": "3.14.7",
+        "gil": true,
+        "packages": {
+          "django": "6.0",
+          "channels": "4.3.2",
+          "django-wireview": "1.2.0",
+          "fastapi": null,
+          "starlette": null,
+          "uvicorn": "0.38.0",
+          "websockets": "15.0.1",
+          "asgiref": "3.11.0"
+        },
+        "server": "uvicorn, 1 process, --ws websockets, --log-level warning, permessage-deflate on (default)"
+      },
+      "inproc": {
+        "gil": true,
+        "boards": 400,
+        "repeat": 7,
+        "trip_us": {
+          "database_sync_to_async(noop), one after another": 45.984917,
+          "sync_to_async(noop), one after another": 42.593708,
+          "aclose_old_connections(), one after another": 48.337583,
+          "database_sync_to_async(noop), 1000 gathered": 18.283375,
+          "aclose_old_connections(), 1000 gathered": 17.5915
+        },
+        "board_us": {
+          "collect_context": 18.38802,
+          "template render, marked (wireview)": 311.1832275,
+          "template render, plain Django": 212.272395,
+          "localize() of the ints the template prints": 98.819895,
+          "sign_state": 1.732395,
+          "diff: parse markers": 113.70177000000001,
+          "diff: parse + settle + compare + to_payload": 117.869585,
+          "json.dumps of the render frame": 0.6245824999999999
+        },
+        "ints_localized_per_render": 52,
+        "render_diff_us_one_after_another": 570.1885424999999,
+        "render_diff_profile": {
+          "tottime": "         4152001 function calls (4000800 primitive calls) in 0.856 seconds\n\n   Ordered by: internal time\n   List reduced from 307 to 60 due to restriction <60>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n      400    0.053    0.000    0.148    0.000 rendered.py:521(_parse)\n    61200    0.032    0.000    0.055    0.000 base.py:948(_resolve_lookup)\n     2400    0.029    0.000    0.029    0.000 {method 'control' of 'select.kqueue' objects}\n    81600    0.028    0.000    0.061    0.000 rendered.py:505(_finish)\n    48400    0.027    0.000    0.076    0.000 functional.py:224(wrapper)\n27200/400    0.023    0.000    0.519    0.001 base.py:1090(render)\n179200/135600    0.021    0.000    0.084    0.000 {built-in method builtins.getattr}\n    40800    0.021    0.000    0.247    0.000 base.py:1123(render_value_in_context)\n   358400    0.019    0.000    0.020    0.000 {built-in method builtins.isinstance}\n      400    0.017    0.000    0.017    0.000 {method 'split' of 're.Pattern' objects}\n    47200    0.015    0.000    0.067    0.000 html.py:115(conditional_escape)\n    40800    0.015    0.000    0.337    0.000 template_engine.py:115(render)\n83200/3200    0.014    0.000    0.517    0.000 base.py:1044(render_annotated)\n205200/204400    0.014    0.000    0.020    0.000 {built-in method builtins.hasattr}\n   268000    0.014    0.000    0.014    0.000 {method 'append' of 'list' objects}\n    20000    0.013    0.000    0.067    0.000 template_engine.py:334(render)\n    23200    0.013    0.000    0.073    0.000 local.py:119(__getattr__)\n    20800    0.013    0.000    0.147    0.000 formats.py:172(number_format)\n    21600    0.011    0.000    0.013    0.000 local.py:16(__getattr__)\n    41200    0.011    0.000    0.013    0.000 rendered.py:746(inject_marker)\n    40800    0.011    0.000    0.162    0.000 formats.py:193(localize)\n    42000    0.011    0.000    0.013    0.000 functional.py:276(__getattribute__)\n    96800    0.011    0.000    0.013    0.000 functional.py:226(<genexpr>)\n      400    0.010    0.000    0.029    0.000 meta.py:692(_collect_context)\n    40800    0.010    0.000    0.306    0.000 base.py:1148(render)\n    63600    0.010    0.000    0.074    0.000 base.py:785(resolve)\n      400    0.010    0.000    0.459    0.001 defaulttags.py:191(render)\n    24800    0.010    0.000    0.017    0.000 __init__.py:12(escape)\n    20000    0.009    0.000    0.440    0.000 template_engine.py:380(render)\n    61200    0.009    0.000    0.064    0.000 base.py:924(resolve)\n    62000    0.009    0.000    0.009    0.000 context.py:83(__getitem__)\n    46400    0.009    0.000    0.011    0.000 local.py:81(_lock_storage)\n    20800    0.009    0.000    0.043    0.000 numberformat.py:7(format)\n   177200    0.008    0.000    0.008    0.000 {built-in method builtins.callable}\n      400    0.008    0.000    0.008    0.000 {built-in method builtins.dir}\n2401/2400    0.007    0.000    0.856    0.000 base_events.py:1977(_run_once)\n    62400    0.007    0.000    0.007    0.000 formats.py:100(get_format)\n    20400    0.007    0.000    0.015    0.000 template_engine.py:183(_record)\n   124000    0.007    0.000    0.007    0.000 {method 'replace' of 'str' objects}\n    23600    0.007    0.000    0.009    0.000 safestring.py:64(mark_safe)\n    90400    0.007    0.000    0.007    0.000 {method 'join' of 'str' objects}\n    24800    0.007    0.000    0.024    0.000 html.py:50(escape)\n    24400    0.006    0.000    0.008    0.000 contextlib.py:108(__init__)\n    24400    0.006    0.000    0.015    0.000 contextlib.py:145(__exit__)\n    61200    0.006    0.000    0.010    0.000 rendered.py:116(_interleave)\n    61600    0.006    0.000    0.009    0.000 rendered.py:675(_flatten_item)\n   114400    0.006    0.000    0.006    0.000 {method 'startswith' of 'str' objects}\n    24400    0.006    0.000    0.014    0.000 contextlib.py:303(helper)\n    40800    0.005    0.000    0.007    0.000 timezone.py:146(template_localtime)\n    20800    0.005    0.000    0.080    0.000 trans_real.py:327(get_language)\n      799    0.005    0.000    0.005    0.000 {method 'get' of '_queue.SimpleQueue' objects}\n    82800    0.005    0.000    0.005    0.000 {method 'pop' of 'list' objects}\n    90000    0.005    0.000    0.005    0.000 base.py:1113(render_annotated)\n    24400    0.005    0.000    0.016    0.000 contextlib.py:136(__enter__)\n    20000    0.004    0.000    0.036    0.000 defaulttags.py:322(render)\n      400    0.004    0.000    0.010    0.000 rendered.py:682(_comprehension)\n    61600    0.004    0.000    0.004    0.000 template_engine.py:66(next_index)\n    21600    0.004    0.000    0.004    0.000 context.py:100(get)\n     2400    0.004    0.000    0.624    0.000 selectors.py:540(select)\n    26400    0.004    0.000    0.012    0.000 {built-in method builtins.next}\n\n\n",
+          "cumulative": "         4152001 function calls (4000800 primitive calls) in 0.856 seconds\n\n   Ordered by: cumulative time\n   List reduced from 307 to 60 due to restriction <60>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n2401/2400    0.007    0.000    0.856    0.000 base_events.py:1977(_run_once)\n     6400    0.002    0.000    0.784    0.000 {method 'run' of '_contextvars.Context' objects}\n     2400    0.004    0.000    0.624    0.000 selectors.py:540(select)\n      800    0.001    0.000    0.583    0.001 thread.py:81(run)\n      800    0.000    0.000    0.574    0.001 thread.py:71(run)\n      800    0.001    0.000    0.573    0.001 db.py:10(thread_handler)\n      800    0.001    0.000    0.565    0.001 sync.py:538(thread_handler)\n      400    0.001    0.000    0.564    0.001 meta.py:658(_collect_and_render)\n      400    0.001    0.000    0.530    0.001 meta.py:715(_render_with_context)\n      400    0.000    0.000    0.525    0.001 template_engine.py:575(render_with_markers)\n      400    0.001    0.000    0.525    0.001 template_engine.py:526(render_marked)\n      400    0.000    0.000    0.523    0.001 django.py:102(render)\n      400    0.001    0.000    0.522    0.001 base.py:168(render)\n      400    0.000    0.000    0.519    0.001 base.py:165(_render)\n27200/400    0.023    0.000    0.519    0.001 base.py:1090(render)\n83200/3200    0.014    0.000    0.517    0.000 base.py:1044(render_annotated)\n      400    0.001    0.000    0.461    0.001 template_engine.py:230(render)\n      400    0.010    0.000    0.459    0.001 defaulttags.py:191(render)\n    20000    0.009    0.000    0.440    0.000 template_engine.py:380(render)\n    40800    0.015    0.000    0.337    0.000 template_engine.py:115(render)\n    40800    0.010    0.000    0.306    0.000 base.py:1148(render)\n    40800    0.021    0.000    0.247    0.000 base.py:1123(render_value_in_context)\n     5600    0.002    0.000    0.221    0.000 events.py:92(_run)\n      800    0.001    0.000    0.202    0.000 fanout_profile.py:824(inproc)\n      800    0.000    0.000    0.182    0.000 fanout_profile.py:913(full)\n      800    0.003    0.000    0.182    0.000 meta.py:347(render_diff)\n    40800    0.011    0.000    0.162    0.000 formats.py:193(localize)\n      400    0.001    0.000    0.158    0.000 meta.py:421(_compute_rendered_diff)\n      400    0.003    0.000    0.151    0.000 rendered.py:445(from_marked_html)\n      400    0.053    0.000    0.148    0.000 rendered.py:521(_parse)\n    20800    0.013    0.000    0.147    0.000 formats.py:172(number_format)\n179200/135600    0.021    0.000    0.084    0.000 {built-in method builtins.getattr}\n    20800    0.003    0.000    0.084    0.000 __init__.py:210(get_language)\n    20800    0.005    0.000    0.080    0.000 trans_real.py:327(get_language)\n    48400    0.027    0.000    0.076    0.000 functional.py:224(wrapper)\n    63600    0.010    0.000    0.074    0.000 base.py:785(resolve)\n    23200    0.013    0.000    0.073    0.000 local.py:119(__getattr__)\n    20000    0.013    0.000    0.067    0.000 template_engine.py:334(render)\n    47200    0.015    0.000    0.067    0.000 html.py:115(conditional_escape)\n    61200    0.009    0.000    0.064    0.000 base.py:924(resolve)\n    81600    0.028    0.000    0.061    0.000 rendered.py:505(_finish)\n    61200    0.032    0.000    0.055    0.000 base.py:948(_resolve_lookup)\n     1600    0.001    0.000    0.044    0.000 library.py:323(render)\n    20800    0.009    0.000    0.043    0.000 numberformat.py:7(format)\n    20000    0.004    0.000    0.036    0.000 defaulttags.py:322(render)\n      400    0.010    0.000    0.029    0.000 meta.py:692(_collect_context)\n     2400    0.029    0.000    0.029    0.000 {method 'control' of 'select.kqueue' objects}\n    20000    0.003    0.000    0.028    0.000 defaulttags.py:917(eval)\n     1600    0.003    0.000    0.025    0.000 sync.py:448(__call__)\n     1200    0.002    0.000    0.024    0.000 wireview.py:600(on)\n    24800    0.007    0.000    0.024    0.000 html.py:50(escape)\n   358400    0.019    0.000    0.020    0.000 {built-in method builtins.isinstance}\n205200/204400    0.014    0.000    0.020    0.000 {built-in method builtins.hasattr}\n      400    0.017    0.000    0.017    0.000 {method 'split' of 're.Pattern' objects}\n    24800    0.010    0.000    0.017    0.000 __init__.py:12(escape)\n      400    0.001    0.000    0.017    0.000 wireview.py:103(tag_header)\n     1600    0.002    0.000    0.016    0.000 html.py:130(format_html)\n    24400    0.005    0.000    0.016    0.000 contextlib.py:136(__enter__)\n    20400    0.007    0.000    0.015    0.000 template_engine.py:183(_record)\n    24400    0.006    0.000    0.015    0.000 contextlib.py:145(__exit__)\n\n\n"
+        },
+        "plain_render_us_by_threads": {
+          "1": 212.08229,
+          "2": 215.5266675,
+          "4": 213.94666750000002,
+          "8": 218.7170825
+        }
+      }
+    },
+    {
+      "environment": {
+        "date": "2026-10-05T12:34:06+00:00",
+        "commit": "5a4f037",
+        "dirty": true,
+        "os": "Darwin 27.0.0 (arm64)",
+        "cpu": "Apple M5 Pro",
+        "cpu_count": 18,
+        "load_average": [
+          12.46533203125,
+          7.56494140625,
+          6.70849609375
+        ],
+        "python": "3.14.7",
+        "gil": true,
+        "packages": {
+          "django": "6.0",
+          "channels": "4.3.2",
+          "django-wireview": "1.2.0",
+          "fastapi": null,
+          "starlette": null,
+          "uvicorn": "0.38.0",
+          "websockets": "15.0.1",
+          "asgiref": "3.11.0"
+        },
+        "server": "uvicorn, 1 process, --ws websockets, --log-level warning, permessage-deflate on (default)"
+      },
+      "inproc": {
+        "gil": true,
+        "boards": 400,
+        "repeat": 9,
+        "trip_us": {
+          "database_sync_to_async(noop), one after another": 46.933915999999996,
+          "sync_to_async(noop), one after another": 42.000583,
+          "aclose_old_connections(), one after another": 48.378834000000005,
+          "database_sync_to_async(noop), 1000 gathered": 20.017042,
+          "aclose_old_connections(), 1000 gathered": 20.895625
+        },
+        "board_us": {
+          "collect_context": 18.4952075,
+          "template render, marked (wireview)": 365.743645,
+          "template render, plain Django": 214.96604000000002,
+          "localize() of the ints the template prints": 101.4753125,
+          "sign_state": 1.6408325,
+          "diff: parse markers": 114.28375,
+          "diff: parse + settle + compare + to_payload": 116.6841675,
+          "json.dumps of the render frame": 0.6317725000000001
+        },
+        "ints_localized_per_render": 52,
+        "render_diff_us_one_after_another": 601.223645,
+        "render_diff_profile": {
+          "tottime": "         4152001 function calls (4000800 primitive calls) in 0.847 seconds\n\n   Ordered by: internal time\n   List reduced from 307 to 60 due to restriction <60>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n      400    0.052    0.000    0.147    0.000 rendered.py:521(_parse)\n    61200    0.033    0.000    0.055    0.000 base.py:948(_resolve_lookup)\n    81600    0.028    0.000    0.061    0.000 rendered.py:505(_finish)\n    48400    0.027    0.000    0.076    0.000 functional.py:224(wrapper)\n     2400    0.024    0.000    0.024    0.000 {method 'control' of 'select.kqueue' objects}\n27200/400    0.023    0.000    0.520    0.001 base.py:1090(render)\n179200/135600    0.021    0.000    0.084    0.000 {built-in method builtins.getattr}\n    40800    0.020    0.000    0.247    0.000 base.py:1123(render_value_in_context)\n   358400    0.019    0.000    0.020    0.000 {built-in method builtins.isinstance}\n      400    0.017    0.000    0.017    0.000 {method 'split' of 're.Pattern' objects}\n    47200    0.015    0.000    0.067    0.000 html.py:115(conditional_escape)\n    40800    0.015    0.000    0.337    0.000 template_engine.py:115(render)\n83200/3200    0.014    0.000    0.518    0.000 base.py:1044(render_annotated)\n205200/204400    0.014    0.000    0.020    0.000 {built-in method builtins.hasattr}\n   268000    0.014    0.000    0.014    0.000 {method 'append' of 'list' objects}\n    20000    0.013    0.000    0.067    0.000 template_engine.py:334(render)\n    23200    0.013    0.000    0.073    0.000 local.py:119(__getattr__)\n    20800    0.013    0.000    0.147    0.000 formats.py:172(number_format)\n    21600    0.011    0.000    0.013    0.000 local.py:16(__getattr__)\n    41200    0.011    0.000    0.013    0.000 rendered.py:746(inject_marker)\n    42000    0.011    0.000    0.013    0.000 functional.py:276(__getattribute__)\n    40800    0.011    0.000    0.162    0.000 formats.py:193(localize)\n    96800    0.011    0.000    0.013    0.000 functional.py:226(<genexpr>)\n      400    0.010    0.000    0.030    0.000 meta.py:692(_collect_context)\n      400    0.010    0.000    0.461    0.001 defaulttags.py:191(render)\n    40800    0.010    0.000    0.307    0.000 base.py:1148(render)\n    63600    0.010    0.000    0.075    0.000 base.py:785(resolve)\n    24800    0.010    0.000    0.017    0.000 __init__.py:12(escape)\n    61200    0.010    0.000    0.065    0.000 base.py:924(resolve)\n    20000    0.009    0.000    0.441    0.000 template_engine.py:380(render)\n    62000    0.009    0.000    0.009    0.000 context.py:83(__getitem__)\n    20800    0.009    0.000    0.043    0.000 numberformat.py:7(format)\n      400    0.009    0.000    0.009    0.000 {built-in method builtins.dir}\n    46400    0.009    0.000    0.011    0.000 local.py:81(_lock_storage)\n   177200    0.008    0.000    0.008    0.000 {built-in method builtins.callable}\n    20400    0.007    0.000    0.015    0.000 template_engine.py:183(_record)\n2401/2400    0.007    0.000    0.847    0.000 base_events.py:1977(_run_once)\n    62400    0.007    0.000    0.007    0.000 formats.py:100(get_format)\n   124000    0.007    0.000    0.007    0.000 {method 'replace' of 'str' objects}\n    23600    0.007    0.000    0.009    0.000 safestring.py:64(mark_safe)\n    90400    0.007    0.000    0.007    0.000 {method 'join' of 'str' objects}\n    24800    0.007    0.000    0.024    0.000 html.py:50(escape)\n    61200    0.006    0.000    0.010    0.000 rendered.py:116(_interleave)\n    24400    0.006    0.000    0.015    0.000 contextlib.py:145(__exit__)\n    24400    0.006    0.000    0.008    0.000 contextlib.py:108(__init__)\n    24400    0.006    0.000    0.014    0.000 contextlib.py:303(helper)\n    61600    0.006    0.000    0.009    0.000 rendered.py:675(_flatten_item)\n   114400    0.006    0.000    0.006    0.000 {method 'startswith' of 'str' objects}\n    40800    0.005    0.000    0.007    0.000 timezone.py:146(template_localtime)\n    20800    0.005    0.000    0.080    0.000 trans_real.py:327(get_language)\n    90000    0.005    0.000    0.005    0.000 base.py:1113(render_annotated)\n    82800    0.005    0.000    0.005    0.000 {method 'pop' of 'list' objects}\n    24400    0.005    0.000    0.016    0.000 contextlib.py:136(__enter__)\n    20000    0.004    0.000    0.036    0.000 defaulttags.py:322(render)\n    61600    0.004    0.000    0.004    0.000 template_engine.py:66(next_index)\n      400    0.004    0.000    0.010    0.000 rendered.py:682(_comprehension)\n    21600    0.004    0.000    0.004    0.000 context.py:100(get)\n    26400    0.004    0.000    0.013    0.000 {built-in method builtins.next}\n     2400    0.004    0.000    0.617    0.000 selectors.py:540(select)\n    23200    0.004    0.000    0.008    0.000 {method 'throw' of 'generator' objects}\n\n\n",
+          "cumulative": "         4152001 function calls (4000800 primitive calls) in 0.847 seconds\n\n   Ordered by: cumulative time\n   List reduced from 307 to 60 due to restriction <60>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n2401/2400    0.007    0.000    0.847    0.000 base_events.py:1977(_run_once)\n     6400    0.002    0.000    0.784    0.000 {method 'run' of '_contextvars.Context' objects}\n     2400    0.004    0.000    0.617    0.000 selectors.py:540(select)\n      800    0.001    0.000    0.584    0.001 thread.py:81(run)\n      800    0.000    0.000    0.575    0.001 thread.py:71(run)\n      800    0.001    0.000    0.575    0.001 db.py:10(thread_handler)\n      800    0.001    0.000    0.566    0.001 sync.py:538(thread_handler)\n      400    0.001    0.000    0.565    0.001 meta.py:658(_collect_and_render)\n      400    0.001    0.000    0.531    0.001 meta.py:715(_render_with_context)\n      400    0.000    0.000    0.526    0.001 template_engine.py:575(render_with_markers)\n      400    0.001    0.000    0.526    0.001 template_engine.py:526(render_marked)\n      400    0.000    0.000    0.525    0.001 django.py:102(render)\n      400    0.001    0.000    0.523    0.001 base.py:168(render)\n      400    0.000    0.000    0.520    0.001 base.py:165(_render)\n27200/400    0.023    0.000    0.520    0.001 base.py:1090(render)\n83200/3200    0.014    0.000    0.518    0.000 base.py:1044(render_annotated)\n      400    0.001    0.000    0.462    0.001 template_engine.py:230(render)\n      400    0.010    0.000    0.461    0.001 defaulttags.py:191(render)\n    20000    0.009    0.000    0.441    0.000 template_engine.py:380(render)\n    40800    0.015    0.000    0.337    0.000 template_engine.py:115(render)\n    40800    0.010    0.000    0.307    0.000 base.py:1148(render)\n    40800    0.020    0.000    0.247    0.000 base.py:1123(render_value_in_context)\n     5600    0.002    0.000    0.220    0.000 events.py:92(_run)\n      800    0.001    0.000    0.201    0.000 fanout_profile.py:822(inproc)\n      800    0.000    0.000    0.181    0.000 fanout_profile.py:911(full)\n      800    0.003    0.000    0.181    0.000 meta.py:347(render_diff)\n    40800    0.011    0.000    0.162    0.000 formats.py:193(localize)\n      400    0.001    0.000    0.156    0.000 meta.py:421(_compute_rendered_diff)\n      400    0.003    0.000    0.150    0.000 rendered.py:445(from_marked_html)\n      400    0.052    0.000    0.147    0.000 rendered.py:521(_parse)\n    20800    0.013    0.000    0.147    0.000 formats.py:172(number_format)\n    20800    0.003    0.000    0.084    0.000 __init__.py:210(get_language)\n179200/135600    0.021    0.000    0.084    0.000 {built-in method builtins.getattr}\n    20800    0.005    0.000    0.080    0.000 trans_real.py:327(get_language)\n    48400    0.027    0.000    0.076    0.000 functional.py:224(wrapper)\n    63600    0.010    0.000    0.075    0.000 base.py:785(resolve)\n    23200    0.013    0.000    0.073    0.000 local.py:119(__getattr__)\n    20000    0.013    0.000    0.067    0.000 template_engine.py:334(render)\n    47200    0.015    0.000    0.067    0.000 html.py:115(conditional_escape)\n    61200    0.010    0.000    0.065    0.000 base.py:924(resolve)\n    81600    0.028    0.000    0.061    0.000 rendered.py:505(_finish)\n    61200    0.033    0.000    0.055    0.000 base.py:948(_resolve_lookup)\n     1600    0.001    0.000    0.044    0.000 library.py:323(render)\n    20800    0.009    0.000    0.043    0.000 numberformat.py:7(format)\n    20000    0.004    0.000    0.036    0.000 defaulttags.py:322(render)\n      400    0.010    0.000    0.030    0.000 meta.py:692(_collect_context)\n    20000    0.003    0.000    0.028    0.000 defaulttags.py:917(eval)\n     1600    0.003    0.000    0.025    0.000 sync.py:448(__call__)\n     2400    0.024    0.000    0.024    0.000 {method 'control' of 'select.kqueue' objects}\n     1200    0.002    0.000    0.024    0.000 wireview.py:600(on)\n    24800    0.007    0.000    0.024    0.000 html.py:50(escape)\n   358400    0.019    0.000    0.020    0.000 {built-in method builtins.isinstance}\n205200/204400    0.014    0.000    0.020    0.000 {built-in method builtins.hasattr}\n      400    0.017    0.000    0.017    0.000 {method 'split' of 're.Pattern' objects}\n    24800    0.010    0.000    0.017    0.000 __init__.py:12(escape)\n      400    0.001    0.000    0.017    0.000 wireview.py:103(tag_header)\n     1600    0.002    0.000    0.016    0.000 html.py:130(format_html)\n    24400    0.005    0.000    0.016    0.000 contextlib.py:136(__enter__)\n    20400    0.007    0.000    0.015    0.000 template_engine.py:183(_record)\n    24400    0.006    0.000    0.015    0.000 contextlib.py:145(__exit__)\n\n\n"
+        },
+        "plain_render_us_by_threads": {
+          "1": 217.0014575,
+          "2": 216.894375,
+          "4": 218.2525,
+          "8": 214.7166675
+        }
+      }
+    },
+    {
+      "environment": {
+        "date": "2026-10-05T12:35:49+00:00",
+        "commit": "5a4f037",
+        "dirty": true,
+        "os": "Darwin 27.0.0 (arm64)",
+        "cpu": "Apple M5 Pro",
+        "cpu_count": 18,
+        "load_average": [
+          8.62841796875,
+          7.50732421875,
+          6.77197265625
+        ],
+        "python": "3.14.7",
+        "gil": true,
+        "packages": {
+          "django": "6.0",
+          "channels": "4.3.2",
+          "django-wireview": "1.2.0",
+          "fastapi": null,
+          "starlette": null,
+          "uvicorn": "0.38.0",
+          "websockets": "15.0.1",
+          "asgiref": "3.11.0"
+        },
+        "server": "uvicorn, 1 process, --ws websockets, --log-level warning, permessage-deflate on (default)"
+      },
+      "inproc": {
+        "gil": true,
+        "boards": 400,
+        "repeat": 9,
+        "trip_us": {
+          "database_sync_to_async(noop), one after another": 46.9315,
+          "sync_to_async(noop), one after another": 45.444125,
+          "aclose_old_connections(), one after another": 51.282417,
+          "database_sync_to_async(noop), 1000 gathered": 18.852625,
+          "aclose_old_connections(), 1000 gathered": 17.5375
+        },
+        "board_us": {
+          "collect_context": 19.48125,
+          "template render, marked (wireview)": 310.11875,
+          "template render, plain Django": 211.71364499999999,
+          "localize() of the ints the template prints": 102.91271,
+          "sign_state": 1.66104,
+          "diff: parse markers": 113.4046875,
+          "diff: parse + settle + compare + to_payload": 116.417605,
+          "json.dumps of the render frame": 0.6164575
+        },
+        "ints_localized_per_render": 52,
+        "render_diff_us_one_after_another": 568.2090625,
+        "plain_render_us_by_threads": {
+          "1": 210.59854,
+          "2": 214.5070825,
+          "4": 214.39333249999999,
+          "8": 212.7734375
+        }
+      }
+    }
+  ],
+  "plain_runs": [
+    {
+      "plain": {
+        "python": "3.14.7",
+        "gil": true,
+        "plain_render_us": 237.91177,
+        "plain_render_us_by_threads": {
+          "1": 240.91145749999998,
+          "2": 241.7311475,
+          "4": 244.5546875,
+          "8": 236.39375
+        }
+      }
+    },
+    {
+      "plain": {
+        "python": "3.14.7",
+        "gil": false,
+        "plain_render_us": 297.45510249999995,
+        "plain_render_us_by_threads": {
+          "1": 321.89875,
+          "2": 250.6325,
+          "4": 201.58239749999998,
+          "8": 342.10271
+        }
+      }
+    },
+    {
+      "plain": {
+        "python": "3.14.7",
+        "gil": false,
+        "plain_render_us": 262.65369875,
+        "plain_render_us_by_threads": {
+          "1": 277.82276,
+          "2": 217.12953125,
+          "4": 280.21724,
+          "8": 308.06989500000003
+        }
+      }
+    },
+    {
+      "plain": {
+        "python": "3.14.7",
+        "gil": false,
+        "plain_render_us": 232.14552125,
+        "plain_render_us_by_threads": {
+          "1": 255.76349,
+          "2": 197.29151000000002,
+          "4": 145.02520875,
+          "8": 299.85651125
+        }
+      }
+    }
+  ],
+  "scale_runs": [
+    {
+      "environment": {
+        "date": "2026-10-05T12:27:30+00:00",
+        "commit": "5a4f037",
+        "dirty": true,
+        "os": "Darwin 27.0.0 (arm64)",
+        "cpu": "Apple M5 Pro",
+        "cpu_count": 18,
+        "load_average": [
+          8.0185546875,
+          8.34521484375,
+          6.6181640625
+        ],
+        "python": "3.14.7",
+        "gil": true,
+        "packages": {
+          "django": "6.0",
+          "channels": "4.3.2",
+          "django-wireview": "1.2.0",
+          "fastapi": "0.142.2",
+          "starlette": "1.7.0",
+          "uvicorn": "0.38.0",
+          "websockets": "15.0.1",
+          "asgiref": "3.11.0"
+        },
+        "server": "uvicorn, 1 process, --ws websockets, --log-level warning, permessage-deflate on (default)",
+        "load_average_after": [
+          7.84228515625,
+          8.2998046875,
+          6.6220703125
+        ]
+      },
+      "method": {
+        "connections": 250,
+        "rounds": 1,
+        "warmup_broadcasts": 3,
+        "measured_broadcasts": 5,
+        "cprofile": false
+      },
+      "implementations": {
+        "wireview": {
+          "rounds": [
+            {
+              "client_span_ns": 164676458,
+              "client_span_unarmed_ns": 155472416,
+              "client_to_server_ns": 171791,
+              "server_span_ns": 164453917,
+              "publish_ns": 299292,
+              "first_dispatch_ns": 4933417,
+              "last_dispatch_ns": 9787792,
+              "first_send_ns": 9761167,
+              "last_receive_after_last_send_ns": 50375,
+              "loop_busy_ns": 112481542,
+              "loop_idle_ns": 46685708,
+              "loop_cpu_ns": 69597083,
+              "worker_busy_ns": 90803639,
+              "worker_cpu_ns": 90846589,
+              "both_busy_ns": 45056247,
+              "frames": 250,
+              "worker_threads": 1,
+              "wall": {
+                "loop": {
+                  "after_mutation_chores": 673667,
+                  "await close_old_connections trip (wall)": 7508169047,
+                  "await render trip (wall)": 25155377345,
+                  "deflate": 24851827,
+                  "diff": 34477452,
+                  "diff: compare": 1976123,
+                  "diff: parse markers": 31617292,
+                  "diff: settle": 296908,
+                  "diff: to_payload": 58419,
+                  "dispatch (wall)": 32310776754,
+                  "encode_json": 544919,
+                  "layer._clean_expired": 2919789,
+                  "layer.send (deepcopy + put)": 577256,
+                  "notification handler (wall)": 25234177529,
+                  "publish (group_send, wall)": 3851000,
+                  "render_diff (wall)": 25192712536,
+                  "send_render (wall)": 25239127592,
+                  "ws_send": 38280122
+                },
+                "worker": {
+                  "close_old_connections": 1274209,
+                  "collect_context": 5854295,
+                  "sign_state": 1282451,
+                  "state json (model_dump_json)": 748713,
+                  "template render": 81473833,
+                  "thread_handler": 90803639
+                }
+              },
+              "cpu": {
+                "loop": {
+                  "after_mutation_chores": 677710,
+                  "await close_old_connections trip (wall)": 1687512877,
+                  "await render trip (wall)": 7711852414,
+                  "deflate": 1179039,
+                  "diff": 34357667,
+                  "diff: compare": 1980383,
+                  "diff: parse markers": 31522054,
+                  "diff: settle": 301165,
+                  "diff: to_payload": 64001,
+                  "dispatch (wall)": 9371284538,
+                  "encode_json": 533547,
+                  "layer._clean_expired": 2925589,
+                  "layer.send (deepcopy + put)": 581285,
+                  "notification handler (wall)": 7758937793,
+                  "publish (group_send, wall)": 3819750,
+                  "render_diff (wall)": 7749007206,
+                  "send_render (wall)": 7762644248,
+                  "ws_send": 5471666
+                },
+                "worker": {
+                  "close_old_connections": 1282373,
+                  "collect_context": 5861999,
+                  "sign_state": 1283411,
+                  "state json (model_dump_json)": 754790,
+                  "template render": 81452084,
+                  "thread_handler": 90846589
+                }
+              },
+              "calls": {
+                "loop.after_mutation_chores": 251,
+                "loop.await close_old_connections trip (wall)": 251,
+                "loop.await render trip (wall)": 251,
+                "loop.deflate": 250,
+                "loop.diff": 251,
+                "loop.diff: compare": 251,
+                "loop.diff: parse markers": 251,
+                "loop.diff: settle": 251,
+                "loop.diff: to_payload": 250,
+                "loop.dispatch (wall)": 250,
+                "loop.encode_json": 250,
+                "loop.layer._clean_expired": 251,
+                "loop.layer.send (deepcopy + put)": 250,
+                "loop.notification handler (wall)": 250,
+                "loop.publish (group_send, wall)": 1,
+                "loop.render_diff (wall)": 251,
+                "loop.send_render (wall)": 251,
+                "loop.ws_send": 250,
+                "worker.close_old_connections": 753,
+                "worker.collect_context": 251,
+                "worker.sign_state": 251,
+                "worker.state json (model_dump_json)": 251,
+                "worker.template render": 251,
+                "worker.thread_handler": 502
+              }
+            }
+          ],
+          "summary": {
+            "client_span_ns": 164676458,
+            "client_span_unarmed_ns": 155472416,
+            "client_to_server_ns": 171791,
+            "server_span_ns": 164453917,
+            "publish_ns": 299292,
+            "first_dispatch_ns": 4933417,
+            "last_dispatch_ns": 9787792,
+            "first_send_ns": 9761167,
+            "last_receive_after_last_send_ns": 50375,
+            "loop_busy_ns": 112481542,
+            "loop_idle_ns": 46685708,
+            "loop_cpu_ns": 69597083,
+            "worker_busy_ns": 90803639,
+            "worker_cpu_ns": 90846589,
+            "both_busy_ns": 45056247,
+            "frames": 250,
+            "worker_threads": 1,
+            "wall": {
+              "loop": {
+                "after_mutation_chores": 673667,
+                "await close_old_connections trip (wall)": 7508169047,
+                "await render trip (wall)": 25155377345,
+                "deflate": 24851827,
+                "diff": 34477452,
+                "diff: compare": 1976123,
+                "diff: parse markers": 31617292,
+                "diff: settle": 296908,
+                "diff: to_payload": 58419,
+                "dispatch (wall)": 32310776754,
+                "encode_json": 544919,
+                "layer._clean_expired": 2919789,
+                "layer.send (deepcopy + put)": 577256,
+                "notification handler (wall)": 25234177529,
+                "publish (group_send, wall)": 3851000,
+                "render_diff (wall)": 25192712536,
+                "send_render (wall)": 25239127592,
+                "ws_send": 38280122
+              },
+              "worker": {
+                "close_old_connections": 1274209,
+                "collect_context": 5854295,
+                "sign_state": 1282451,
+                "state json (model_dump_json)": 748713,
+                "template render": 81473833,
+                "thread_handler": 90803639
+              }
+            },
+            "cpu": {
+              "loop": {
+                "after_mutation_chores": 677710,
+                "await close_old_connections trip (wall)": 1687512877,
+                "await render trip (wall)": 7711852414,
+                "deflate": 1179039,
+                "diff": 34357667,
+                "diff: compare": 1980383,
+                "diff: parse markers": 31522054,
+                "diff: settle": 301165,
+                "diff: to_payload": 64001,
+                "dispatch (wall)": 9371284538,
+                "encode_json": 533547,
+                "layer._clean_expired": 2925589,
+                "layer.send (deepcopy + put)": 581285,
+                "notification handler (wall)": 7758937793,
+                "publish (group_send, wall)": 3819750,
+                "render_diff (wall)": 7749007206,
+                "send_render (wall)": 7762644248,
+                "ws_send": 5471666
+              },
+              "worker": {
+                "close_old_connections": 1282373,
+                "collect_context": 5861999,
+                "sign_state": 1283411,
+                "state json (model_dump_json)": 754790,
+                "template render": 81452084,
+                "thread_handler": 90846589
+              }
+            },
+            "calls": {
+              "loop.after_mutation_chores": 251,
+              "loop.await close_old_connections trip (wall)": 251,
+              "loop.await render trip (wall)": 251,
+              "loop.deflate": 250,
+              "loop.diff": 251,
+              "loop.diff: compare": 251,
+              "loop.diff: parse markers": 251,
+              "loop.diff: settle": 251,
+              "loop.diff: to_payload": 250,
+              "loop.dispatch (wall)": 250,
+              "loop.encode_json": 250,
+              "loop.layer._clean_expired": 251,
+              "loop.layer.send (deepcopy + put)": 250,
+              "loop.notification handler (wall)": 250,
+              "loop.publish (group_send, wall)": 1,
+              "loop.render_diff (wall)": 251,
+              "loop.send_render (wall)": 251,
+              "loop.ws_send": 250,
+              "worker.close_old_connections": 753,
+              "worker.collect_context": 251,
+              "worker.sign_state": 251,
+              "worker.state json (model_dump_json)": 251,
+              "worker.template render": 251,
+              "worker.thread_handler": 502
+            },
+            "server_span_range_ns": [
+              164453917,
+              164453917
+            ],
+            "client_span_range_ns": [
+              164676458,
+              164676458
+            ],
+            "client_span_unarmed_range_ns": [
+              155472416,
+              155472416
+            ]
+          }
+        },
+        "fastapi": {
+          "rounds": [
+            {
+              "client_span_ns": 4054833,
+              "client_span_unarmed_ns": 3843083,
+              "client_to_server_ns": 170500,
+              "server_span_ns": 3626208,
+              "publish_ns": 0,
+              "first_dispatch_ns": null,
+              "last_dispatch_ns": null,
+              "first_send_ns": 57000,
+              "last_receive_after_last_send_ns": 205083,
+              "loop_busy_ns": 3626208,
+              "loop_idle_ns": 0,
+              "loop_cpu_ns": 3625000,
+              "worker_busy_ns": 0,
+              "worker_cpu_ns": 0,
+              "both_busy_ns": 0,
+              "frames": 250,
+              "worker_threads": 0,
+              "wall": {
+                "loop": {
+                  "deflate": 627755,
+                  "json.dumps": 4375,
+                  "starlette send_text (wall)": 3488653,
+                  "ws_send": 3081410
+                },
+                "worker": {}
+              },
+              "cpu": {
+                "loop": {
+                  "deflate": 630757,
+                  "json.dumps": 4583,
+                  "starlette send_text (wall)": 3492192,
+                  "ws_send": 3083163
+                },
+                "worker": {}
+              },
+              "calls": {
+                "loop.deflate": 250,
+                "loop.json.dumps": 1,
+                "loop.starlette send_text (wall)": 250,
+                "loop.ws_send": 250
+              }
+            }
+          ],
+          "summary": {
+            "client_span_ns": 4054833,
+            "client_span_unarmed_ns": 3843083,
+            "client_to_server_ns": 170500,
+            "server_span_ns": 3626208,
+            "publish_ns": 0,
+            "first_dispatch_ns": null,
+            "last_dispatch_ns": null,
+            "first_send_ns": 57000,
+            "last_receive_after_last_send_ns": 205083,
+            "loop_busy_ns": 3626208,
+            "loop_idle_ns": 0,
+            "loop_cpu_ns": 3625000,
+            "worker_busy_ns": 0,
+            "worker_cpu_ns": 0,
+            "both_busy_ns": 0,
+            "frames": 250,
+            "worker_threads": 0,
+            "wall": {
+              "loop": {
+                "deflate": 627755,
+                "json.dumps": 4375,
+                "starlette send_text (wall)": 3488653,
+                "ws_send": 3081410
+              },
+              "worker": {}
+            },
+            "cpu": {
+              "loop": {
+                "deflate": 630757,
+                "json.dumps": 4583,
+                "starlette send_text (wall)": 3492192,
+                "ws_send": 3083163
+              },
+              "worker": {}
+            },
+            "calls": {
+              "loop.deflate": 250,
+              "loop.json.dumps": 1,
+              "loop.starlette send_text (wall)": 250,
+              "loop.ws_send": 250
+            },
+            "server_span_range_ns": [
+              3626208,
+              3626208
+            ],
+            "client_span_range_ns": [
+              4054833,
+              4054833
+            ],
+            "client_span_unarmed_range_ns": [
+              3843083,
+              3843083
+            ]
+          }
+        }
+      }
+    },
+    {
+      "environment": {
+        "date": "2026-10-05T12:27:41+00:00",
+        "commit": "5a4f037",
+        "dirty": true,
+        "os": "Darwin 27.0.0 (arm64)",
+        "cpu": "Apple M5 Pro",
+        "cpu_count": 18,
+        "load_average": [
+          7.84228515625,
+          8.2998046875,
+          6.6220703125
+        ],
+        "python": "3.14.7",
+        "gil": true,
+        "packages": {
+          "django": "6.0",
+          "channels": "4.3.2",
+          "django-wireview": "1.2.0",
+          "fastapi": "0.142.2",
+          "starlette": "1.7.0",
+          "uvicorn": "0.38.0",
+          "websockets": "15.0.1",
+          "asgiref": "3.11.0"
+        },
+        "server": "uvicorn, 1 process, --ws websockets, --log-level warning, permessage-deflate on (default)",
+        "load_average_after": [
+          7.55126953125,
+          8.2177734375,
+          6.6220703125
+        ]
+      },
+      "method": {
+        "connections": 500,
+        "rounds": 1,
+        "warmup_broadcasts": 3,
+        "measured_broadcasts": 5,
+        "cprofile": false
+      },
+      "implementations": {
+        "wireview": {
+          "rounds": [
+            {
+              "client_span_ns": 363842250,
+              "client_span_unarmed_ns": 323979875,
+              "client_to_server_ns": 147833,
+              "server_span_ns": 363665584,
+              "publish_ns": 294000,
+              "first_dispatch_ns": 5424875,
+              "last_dispatch_ns": 19742167,
+              "first_send_ns": 19722542,
+              "last_receive_after_last_send_ns": 34875,
+              "loop_busy_ns": 339706749,
+              "loop_idle_ns": 26805126,
+              "loop_cpu_ns": 158852958,
+              "worker_busy_ns": 188360698,
+              "worker_cpu_ns": 187941347,
+              "both_busy_ns": 177454698,
+              "frames": 500,
+              "worker_threads": 1,
+              "wall": {
+                "loop": {
+                  "after_mutation_chores": 1435243,
+                  "await close_old_connections trip (wall)": 10917219885,
+                  "await render trip (wall)": 125017389969,
+                  "deflate": 60553245,
+                  "diff": 69780127,
+                  "diff: compare": 4396878,
+                  "diff: parse markers": 63037705,
+                  "diff: settle": 608255,
+                  "diff: to_payload": 118915,
+                  "dispatch (wall)": 133812634679,
+                  "encode_json": 1080450,
+                  "layer._clean_expired": 11459850,
+                  "layer.send (deepcopy + put)": 1334436,
+                  "notification handler (wall)": 125256866737,
+                  "publish (group_send, wall)": 4033959,
+                  "render_diff (wall)": 125090221874,
+                  "send_render (wall)": 125264684459,
+                  "ws_send": 166236550
+                },
+                "worker": {
+                  "close_old_connections": 2739229,
+                  "collect_context": 12739658,
+                  "sign_state": 2797427,
+                  "state json (model_dump_json)": 1626381,
+                  "template render": 168210836,
+                  "thread_handler": 188360698
+                }
+              },
+              "cpu": {
+                "loop": {
+                  "after_mutation_chores": 1428466,
+                  "await close_old_connections trip (wall)": 7544808657,
+                  "await render trip (wall)": 32300549814,
+                  "deflate": 2537463,
+                  "diff": 69513879,
+                  "diff: compare": 4381815,
+                  "diff: parse markers": 62821900,
+                  "diff: settle": 614873,
+                  "diff: to_payload": 129004,
+                  "dispatch (wall)": 39415894880,
+                  "encode_json": 1070826,
+                  "layer._clean_expired": 11463994,
+                  "layer.send (deepcopy + put)": 1327656,
+                  "notification handler (wall)": 32391796741,
+                  "publish (group_send, wall)": 3960917,
+                  "render_diff (wall)": 32373189015,
+                  "send_render (wall)": 32398362577,
+                  "ws_send": 10263139
+                },
+                "worker": {
+                  "close_old_connections": 2744763,
+                  "collect_context": 12706685,
+                  "sign_state": 2787460,
+                  "state json (model_dump_json)": 1645035,
+                  "template render": 167734082,
+                  "thread_handler": 187941347
+                }
+              },
+              "calls": {
+                "loop.after_mutation_chores": 501,
+                "loop.await close_old_connections trip (wall)": 501,
+                "loop.await render trip (wall)": 501,
+                "loop.deflate": 500,
+                "loop.diff": 501,
+                "loop.diff: compare": 501,
+                "loop.diff: parse markers": 501,
+                "loop.diff: settle": 501,
+                "loop.diff: to_payload": 500,
+                "loop.dispatch (wall)": 500,
+                "loop.encode_json": 500,
+                "loop.layer._clean_expired": 501,
+                "loop.layer.send (deepcopy + put)": 500,
+                "loop.notification handler (wall)": 500,
+                "loop.publish (group_send, wall)": 1,
+                "loop.render_diff (wall)": 501,
+                "loop.send_render (wall)": 501,
+                "loop.ws_send": 500,
+                "worker.close_old_connections": 1503,
+                "worker.collect_context": 501,
+                "worker.sign_state": 501,
+                "worker.state json (model_dump_json)": 501,
+                "worker.template render": 501,
+                "worker.thread_handler": 1002
+              }
+            }
+          ],
+          "summary": {
+            "client_span_ns": 363842250,
+            "client_span_unarmed_ns": 323979875,
+            "client_to_server_ns": 147833,
+            "server_span_ns": 363665584,
+            "publish_ns": 294000,
+            "first_dispatch_ns": 5424875,
+            "last_dispatch_ns": 19742167,
+            "first_send_ns": 19722542,
+            "last_receive_after_last_send_ns": 34875,
+            "loop_busy_ns": 339706749,
+            "loop_idle_ns": 26805126,
+            "loop_cpu_ns": 158852958,
+            "worker_busy_ns": 188360698,
+            "worker_cpu_ns": 187941347,
+            "both_busy_ns": 177454698,
+            "frames": 500,
+            "worker_threads": 1,
+            "wall": {
+              "loop": {
+                "after_mutation_chores": 1435243,
+                "await close_old_connections trip (wall)": 10917219885,
+                "await render trip (wall)": 125017389969,
+                "deflate": 60553245,
+                "diff": 69780127,
+                "diff: compare": 4396878,
+                "diff: parse markers": 63037705,
+                "diff: settle": 608255,
+                "diff: to_payload": 118915,
+                "dispatch (wall)": 133812634679,
+                "encode_json": 1080450,
+                "layer._clean_expired": 11459850,
+                "layer.send (deepcopy + put)": 1334436,
+                "notification handler (wall)": 125256866737,
+                "publish (group_send, wall)": 4033959,
+                "render_diff (wall)": 125090221874,
+                "send_render (wall)": 125264684459,
+                "ws_send": 166236550
+              },
+              "worker": {
+                "close_old_connections": 2739229,
+                "collect_context": 12739658,
+                "sign_state": 2797427,
+                "state json (model_dump_json)": 1626381,
+                "template render": 168210836,
+                "thread_handler": 188360698
+              }
+            },
+            "cpu": {
+              "loop": {
+                "after_mutation_chores": 1428466,
+                "await close_old_connections trip (wall)": 7544808657,
+                "await render trip (wall)": 32300549814,
+                "deflate": 2537463,
+                "diff": 69513879,
+                "diff: compare": 4381815,
+                "diff: parse markers": 62821900,
+                "diff: settle": 614873,
+                "diff: to_payload": 129004,
+                "dispatch (wall)": 39415894880,
+                "encode_json": 1070826,
+                "layer._clean_expired": 11463994,
+                "layer.send (deepcopy + put)": 1327656,
+                "notification handler (wall)": 32391796741,
+                "publish (group_send, wall)": 3960917,
+                "render_diff (wall)": 32373189015,
+                "send_render (wall)": 32398362577,
+                "ws_send": 10263139
+              },
+              "worker": {
+                "close_old_connections": 2744763,
+                "collect_context": 12706685,
+                "sign_state": 2787460,
+                "state json (model_dump_json)": 1645035,
+                "template render": 167734082,
+                "thread_handler": 187941347
+              }
+            },
+            "calls": {
+              "loop.after_mutation_chores": 501,
+              "loop.await close_old_connections trip (wall)": 501,
+              "loop.await render trip (wall)": 501,
+              "loop.deflate": 500,
+              "loop.diff": 501,
+              "loop.diff: compare": 501,
+              "loop.diff: parse markers": 501,
+              "loop.diff: settle": 501,
+              "loop.diff: to_payload": 500,
+              "loop.dispatch (wall)": 500,
+              "loop.encode_json": 500,
+              "loop.layer._clean_expired": 501,
+              "loop.layer.send (deepcopy + put)": 500,
+              "loop.notification handler (wall)": 500,
+              "loop.publish (group_send, wall)": 1,
+              "loop.render_diff (wall)": 501,
+              "loop.send_render (wall)": 501,
+              "loop.ws_send": 500,
+              "worker.close_old_connections": 1503,
+              "worker.collect_context": 501,
+              "worker.sign_state": 501,
+              "worker.state json (model_dump_json)": 501,
+              "worker.template render": 501,
+              "worker.thread_handler": 1002
+            },
+            "server_span_range_ns": [
+              363665584,
+              363665584
+            ],
+            "client_span_range_ns": [
+              363842250,
+              363842250
+            ],
+            "client_span_unarmed_range_ns": [
+              323979875,
+              323979875
+            ]
+          }
+        },
+        "fastapi": {
+          "rounds": [
+            {
+              "client_span_ns": 6483500,
+              "client_span_unarmed_ns": 5785708,
+              "client_to_server_ns": 149500,
+              "server_span_ns": 6302166,
+              "publish_ns": 0,
+              "first_dispatch_ns": null,
+              "last_dispatch_ns": null,
+              "first_send_ns": 56417,
+              "last_receive_after_last_send_ns": 53875,
+              "loop_busy_ns": 6302166,
+              "loop_idle_ns": 0,
+              "loop_cpu_ns": 6213459,
+              "worker_busy_ns": 0,
+              "worker_cpu_ns": 0,
+              "both_busy_ns": 0,
+              "frames": 500,
+              "worker_threads": 0,
+              "wall": {
+                "loop": {
+                  "deflate": 1339375,
+                  "json.dumps": 4125,
+                  "starlette send_text (wall)": 6025624,
+                  "ws_send": 5127029
+                },
+                "worker": {}
+              },
+              "cpu": {
+                "loop": {
+                  "deflate": 1344912,
+                  "json.dumps": 4417,
+                  "starlette send_text (wall)": 5944776,
+                  "ws_send": 5084201
+                },
+                "worker": {}
+              },
+              "calls": {
+                "loop.deflate": 500,
+                "loop.json.dumps": 1,
+                "loop.starlette send_text (wall)": 500,
+                "loop.ws_send": 500
+              }
+            }
+          ],
+          "summary": {
+            "client_span_ns": 6483500,
+            "client_span_unarmed_ns": 5785708,
+            "client_to_server_ns": 149500,
+            "server_span_ns": 6302166,
+            "publish_ns": 0,
+            "first_dispatch_ns": null,
+            "last_dispatch_ns": null,
+            "first_send_ns": 56417,
+            "last_receive_after_last_send_ns": 53875,
+            "loop_busy_ns": 6302166,
+            "loop_idle_ns": 0,
+            "loop_cpu_ns": 6213459,
+            "worker_busy_ns": 0,
+            "worker_cpu_ns": 0,
+            "both_busy_ns": 0,
+            "frames": 500,
+            "worker_threads": 0,
+            "wall": {
+              "loop": {
+                "deflate": 1339375,
+                "json.dumps": 4125,
+                "starlette send_text (wall)": 6025624,
+                "ws_send": 5127029
+              },
+              "worker": {}
+            },
+            "cpu": {
+              "loop": {
+                "deflate": 1344912,
+                "json.dumps": 4417,
+                "starlette send_text (wall)": 5944776,
+                "ws_send": 5084201
+              },
+              "worker": {}
+            },
+            "calls": {
+              "loop.deflate": 500,
+              "loop.json.dumps": 1,
+              "loop.starlette send_text (wall)": 500,
+              "loop.ws_send": 500
+            },
+            "server_span_range_ns": [
+              6302166,
+              6302166
+            ],
+            "client_span_range_ns": [
+              6483500,
+              6483500
+            ],
+            "client_span_unarmed_range_ns": [
+              5785708,
+              5785708
+            ]
+          }
+        }
+      }
+    },
+    {
+      "environment": {
+        "date": "2026-10-05T12:27:01+00:00",
+        "commit": "5a4f037",
+        "dirty": true,
+        "os": "Darwin 27.0.0 (arm64)",
+        "cpu": "Apple M5 Pro",
+        "cpu_count": 18,
+        "load_average": [
+          9.24951171875,
+          8.56396484375,
+          6.6298828125
+        ],
+        "python": "3.14.7",
+        "gil": true,
+        "packages": {
+          "django": "6.0",
+          "channels": "4.3.2",
+          "django-wireview": "1.2.0",
+          "fastapi": null,
+          "starlette": null,
+          "uvicorn": "0.38.0",
+          "websockets": "15.0.1",
+          "asgiref": "3.11.0"
+        },
+        "server": "uvicorn, 1 process, --ws websockets, --log-level warning, permessage-deflate on (default)",
+        "load_average_after": [
+          8.416015625,
+          8.4267578125,
+          6.6259765625
+        ]
+      },
+      "method": {
+        "connections": 1000,
+        "rounds": 1,
+        "warmup_broadcasts": 3,
+        "measured_broadcasts": 5,
+        "cprofile": false
+      },
+      "implementations": {
+        "wireview": {
+          "rounds": [
+            {
+              "client_span_ns": 771277958,
+              "client_span_unarmed_ns": 724881417,
+              "client_to_server_ns": 159500,
+              "server_span_ns": 771067750,
+              "publish_ns": 310791,
+              "first_dispatch_ns": 22345125,
+              "last_dispatch_ns": 47538709,
+              "first_send_ns": 47509500,
+              "last_receive_after_last_send_ns": 54917,
+              "loop_busy_ns": 740957164,
+              "loop_idle_ns": 30110586,
+              "loop_cpu_ns": 351061583,
+              "worker_busy_ns": 404656632,
+              "worker_cpu_ns": 400919278,
+              "both_busy_ns": 373144449,
+              "frames": 1000,
+              "worker_threads": 1,
+              "wall": {
+                "loop": {
+                  "after_mutation_chores": 4064860,
+                  "await close_old_connections trip (wall)": 46435193106,
+                  "await render trip (wall)": 553689571228,
+                  "deflate": 148014160,
+                  "diff": 157536916,
+                  "diff: compare": 10135096,
+                  "diff: parse markers": 141147956,
+                  "diff: settle": 1442547,
+                  "diff: to_payload": 265553,
+                  "dispatch (wall)": 607039461123,
+                  "encode_json": 2763514,
+                  "layer._clean_expired": 50064649,
+                  "layer.send (deepcopy + put)": 2692712,
+                  "notification handler (wall)": 554174521375,
+                  "publish (group_send, wall)": 20570375,
+                  "render_diff (wall)": 553855598659,
+                  "send_render (wall)": 554279410562,
+                  "ws_send": 344412513
+                },
+                "worker": {
+                  "close_old_connections": 5591412,
+                  "collect_context": 27762411,
+                  "sign_state": 6481934,
+                  "state json (model_dump_json)": 3859123,
+                  "template render": 359770830,
+                  "thread_handler": 404656632
+                }
+              },
+              "cpu": {
+                "loop": {
+                  "after_mutation_chores": 3948371,
+                  "await close_old_connections trip (wall)": 30422859998,
+                  "await render trip (wall)": 151316947752,
+                  "deflate": 6626682,
+                  "diff": 155620669,
+                  "diff: compare": 10000892,
+                  "diff: parse markers": 139420316,
+                  "diff: settle": 1442878,
+                  "diff: to_payload": 289336,
+                  "dispatch (wall)": 191680889876,
+                  "encode_json": 2738647,
+                  "layer._clean_expired": 49332591,
+                  "layer.send (deepcopy + put)": 2693305,
+                  "notification handler (wall)": 151470154201,
+                  "publish (group_send, wall)": 20530375,
+                  "render_diff (wall)": 151487268618,
+                  "send_render (wall)": 151548744096,
+                  "ws_send": 25365883
+                },
+                "worker": {
+                  "close_old_connections": 5607936,
+                  "collect_context": 27570549,
+                  "sign_state": 6476384,
+                  "state json (model_dump_json)": 3905794,
+                  "template render": 356227083,
+                  "thread_handler": 400919278
+                }
+              },
+              "calls": {
+                "loop.after_mutation_chores": 1001,
+                "loop.await close_old_connections trip (wall)": 1001,
+                "loop.await render trip (wall)": 1001,
+                "loop.deflate": 1000,
+                "loop.diff": 1001,
+                "loop.diff: compare": 1001,
+                "loop.diff: parse markers": 1001,
+                "loop.diff: settle": 1001,
+                "loop.diff: to_payload": 1000,
+                "loop.dispatch (wall)": 1000,
+                "loop.encode_json": 1000,
+                "loop.layer._clean_expired": 1001,
+                "loop.layer.send (deepcopy + put)": 1000,
+                "loop.notification handler (wall)": 1000,
+                "loop.publish (group_send, wall)": 1,
+                "loop.render_diff (wall)": 1001,
+                "loop.send_render (wall)": 1001,
+                "loop.ws_send": 1000,
+                "worker.close_old_connections": 3003,
+                "worker.collect_context": 1001,
+                "worker.sign_state": 1001,
+                "worker.state json (model_dump_json)": 1001,
+                "worker.template render": 1001,
+                "worker.thread_handler": 2002
+              }
+            }
+          ],
+          "summary": {
+            "client_span_ns": 771277958,
+            "client_span_unarmed_ns": 724881417,
+            "client_to_server_ns": 159500,
+            "server_span_ns": 771067750,
+            "publish_ns": 310791,
+            "first_dispatch_ns": 22345125,
+            "last_dispatch_ns": 47538709,
+            "first_send_ns": 47509500,
+            "last_receive_after_last_send_ns": 54917,
+            "loop_busy_ns": 740957164,
+            "loop_idle_ns": 30110586,
+            "loop_cpu_ns": 351061583,
+            "worker_busy_ns": 404656632,
+            "worker_cpu_ns": 400919278,
+            "both_busy_ns": 373144449,
+            "frames": 1000,
+            "worker_threads": 1,
+            "wall": {
+              "loop": {
+                "after_mutation_chores": 4064860,
+                "await close_old_connections trip (wall)": 46435193106,
+                "await render trip (wall)": 553689571228,
+                "deflate": 148014160,
+                "diff": 157536916,
+                "diff: compare": 10135096,
+                "diff: parse markers": 141147956,
+                "diff: settle": 1442547,
+                "diff: to_payload": 265553,
+                "dispatch (wall)": 607039461123,
+                "encode_json": 2763514,
+                "layer._clean_expired": 50064649,
+                "layer.send (deepcopy + put)": 2692712,
+                "notification handler (wall)": 554174521375,
+                "publish (group_send, wall)": 20570375,
+                "render_diff (wall)": 553855598659,
+                "send_render (wall)": 554279410562,
+                "ws_send": 344412513
+              },
+              "worker": {
+                "close_old_connections": 5591412,
+                "collect_context": 27762411,
+                "sign_state": 6481934,
+                "state json (model_dump_json)": 3859123,
+                "template render": 359770830,
+                "thread_handler": 404656632
+              }
+            },
+            "cpu": {
+              "loop": {
+                "after_mutation_chores": 3948371,
+                "await close_old_connections trip (wall)": 30422859998,
+                "await render trip (wall)": 151316947752,
+                "deflate": 6626682,
+                "diff": 155620669,
+                "diff: compare": 10000892,
+                "diff: parse markers": 139420316,
+                "diff: settle": 1442878,
+                "diff: to_payload": 289336,
+                "dispatch (wall)": 191680889876,
+                "encode_json": 2738647,
+                "layer._clean_expired": 49332591,
+                "layer.send (deepcopy + put)": 2693305,
+                "notification handler (wall)": 151470154201,
+                "publish (group_send, wall)": 20530375,
+                "render_diff (wall)": 151487268618,
+                "send_render (wall)": 151548744096,
+                "ws_send": 25365883
+              },
+              "worker": {
+                "close_old_connections": 5607936,
+                "collect_context": 27570549,
+                "sign_state": 6476384,
+                "state json (model_dump_json)": 3905794,
+                "template render": 356227083,
+                "thread_handler": 400919278
+              }
+            },
+            "calls": {
+              "loop.after_mutation_chores": 1001,
+              "loop.await close_old_connections trip (wall)": 1001,
+              "loop.await render trip (wall)": 1001,
+              "loop.deflate": 1000,
+              "loop.diff": 1001,
+              "loop.diff: compare": 1001,
+              "loop.diff: parse markers": 1001,
+              "loop.diff: settle": 1001,
+              "loop.diff: to_payload": 1000,
+              "loop.dispatch (wall)": 1000,
+              "loop.encode_json": 1000,
+              "loop.layer._clean_expired": 1001,
+              "loop.layer.send (deepcopy + put)": 1000,
+              "loop.notification handler (wall)": 1000,
+              "loop.publish (group_send, wall)": 1,
+              "loop.render_diff (wall)": 1001,
+              "loop.send_render (wall)": 1001,
+              "loop.ws_send": 1000,
+              "worker.close_old_connections": 3003,
+              "worker.collect_context": 1001,
+              "worker.sign_state": 1001,
+              "worker.state json (model_dump_json)": 1001,
+              "worker.template render": 1001,
+              "worker.thread_handler": 2002
+            },
+            "server_span_range_ns": [
+              771067750,
+              771067750
+            ],
+            "client_span_range_ns": [
+              771277958,
+              771277958
+            ],
+            "client_span_unarmed_range_ns": [
+              724881417,
+              724881417
+            ]
+          }
+        }
+      }
+    },
+    {
+      "environment": {
+        "date": "2026-10-05T12:27:54+00:00",
+        "commit": "5a4f037",
+        "dirty": true,
+        "os": "Darwin 27.0.0 (arm64)",
+        "cpu": "Apple M5 Pro",
+        "cpu_count": 18,
+        "load_average": [
+          7.55126953125,
+          8.2177734375,
+          6.6220703125
+        ],
+        "python": "3.14.7",
+        "gil": true,
+        "packages": {
+          "django": "6.0",
+          "channels": "4.3.2",
+          "django-wireview": "1.2.0",
+          "fastapi": "0.142.2",
+          "starlette": "1.7.0",
+          "uvicorn": "0.38.0",
+          "websockets": "15.0.1",
+          "asgiref": "3.11.0"
+        },
+        "server": "uvicorn, 1 process, --ws websockets, --log-level warning, permessage-deflate on (default)",
+        "load_average_after": [
+          7.76611328125,
+          8.25537109375,
+          6.70361328125
+        ]
+      },
+      "method": {
+        "connections": 2000,
+        "rounds": 1,
+        "warmup_broadcasts": 3,
+        "measured_broadcasts": 5,
+        "cprofile": false
+      },
+      "implementations": {
+        "wireview": {
+          "rounds": [
+            {
+              "client_span_ns": 1698574458,
+              "client_span_unarmed_ns": 1548606209,
+              "client_to_server_ns": 164667,
+              "server_span_ns": 1698304250,
+              "publish_ns": 317250,
+              "first_dispatch_ns": 26201500,
+              "last_dispatch_ns": 83705792,
+              "first_send_ns": 83657417,
+              "last_receive_after_last_send_ns": 42625,
+              "loop_busy_ns": 1655317706,
+              "loop_idle_ns": 42986544,
+              "loop_cpu_ns": 711603916,
+              "worker_busy_ns": 812935149,
+              "worker_cpu_ns": 798490018,
+              "both_busy_ns": 770051908,
+              "frames": 2000,
+              "worker_threads": 1,
+              "wall": {
+                "loop": {
+                  "after_mutation_chores": 6719804,
+                  "await close_old_connections trip (wall)": 245606382035,
+                  "await render trip (wall)": 2266712979850,
+                  "deflate": 353905335,
+                  "diff": 303967368,
+                  "diff: compare": 16368577,
+                  "diff: parse markers": 277546745,
+                  "diff: settle": 2692296,
+                  "diff: to_payload": 505526,
+                  "dispatch (wall)": 2513385682945,
+                  "encode_json": 5169576,
+                  "layer._clean_expired": 191688890,
+                  "layer.send (deepcopy + put)": 6118473,
+                  "notification handler (wall)": 2267774526384,
+                  "publish (group_send, wall)": 22337833,
+                  "render_diff (wall)": 2267036114689,
+                  "send_render (wall)": 2267924096633,
+                  "ws_send": 818090371
+                },
+                "worker": {
+                  "close_old_connections": 11348433,
+                  "collect_context": 55818109,
+                  "sign_state": 13146107,
+                  "state json (model_dump_json)": 7928060,
+                  "template render": 723982598,
+                  "thread_handler": 812935149
+                }
+              },
+              "cpu": {
+                "loop": {
+                  "after_mutation_chores": 6401299,
+                  "await close_old_connections trip (wall)": 214147972953,
+                  "await render trip (wall)": 684784506176,
+                  "deflate": 11853562,
+                  "diff": 292797482,
+                  "diff: compare": 16068912,
+                  "diff: parse markers": 267398442,
+                  "diff: settle": 2669964,
+                  "diff: to_payload": 545772,
+                  "dispatch (wall)": 881865450539,
+                  "encode_json": 4828340,
+                  "layer._clean_expired": 185992086,
+                  "layer.send (deepcopy + put)": 6083250,
+                  "notification handler (wall)": 685206144076,
+                  "publish (group_send, wall)": 21833000,
+                  "render_diff (wall)": 685119811735,
+                  "send_render (wall)": 685245539832,
+                  "ws_send": 45660638
+                },
+                "worker": {
+                  "close_old_connections": 11226089,
+                  "collect_context": 54385674,
+                  "sign_state": 12722416,
+                  "state json (model_dump_json)": 7705360,
+                  "template render": 711246787,
+                  "thread_handler": 798490018
+                }
+              },
+              "calls": {
+                "loop.after_mutation_chores": 2001,
+                "loop.await close_old_connections trip (wall)": 2001,
+                "loop.await render trip (wall)": 2001,
+                "loop.deflate": 2000,
+                "loop.diff": 2001,
+                "loop.diff: compare": 2001,
+                "loop.diff: parse markers": 2001,
+                "loop.diff: settle": 2001,
+                "loop.diff: to_payload": 2000,
+                "loop.dispatch (wall)": 2000,
+                "loop.encode_json": 2000,
+                "loop.layer._clean_expired": 2001,
+                "loop.layer.send (deepcopy + put)": 2000,
+                "loop.notification handler (wall)": 2000,
+                "loop.publish (group_send, wall)": 1,
+                "loop.render_diff (wall)": 2001,
+                "loop.send_render (wall)": 2001,
+                "loop.ws_send": 2000,
+                "worker.close_old_connections": 6003,
+                "worker.collect_context": 2001,
+                "worker.sign_state": 2001,
+                "worker.state json (model_dump_json)": 2001,
+                "worker.template render": 2001,
+                "worker.thread_handler": 4002
+              }
+            }
+          ],
+          "summary": {
+            "client_span_ns": 1698574458,
+            "client_span_unarmed_ns": 1548606209,
+            "client_to_server_ns": 164667,
+            "server_span_ns": 1698304250,
+            "publish_ns": 317250,
+            "first_dispatch_ns": 26201500,
+            "last_dispatch_ns": 83705792,
+            "first_send_ns": 83657417,
+            "last_receive_after_last_send_ns": 42625,
+            "loop_busy_ns": 1655317706,
+            "loop_idle_ns": 42986544,
+            "loop_cpu_ns": 711603916,
+            "worker_busy_ns": 812935149,
+            "worker_cpu_ns": 798490018,
+            "both_busy_ns": 770051908,
+            "frames": 2000,
+            "worker_threads": 1,
+            "wall": {
+              "loop": {
+                "after_mutation_chores": 6719804,
+                "await close_old_connections trip (wall)": 245606382035,
+                "await render trip (wall)": 2266712979850,
+                "deflate": 353905335,
+                "diff": 303967368,
+                "diff: compare": 16368577,
+                "diff: parse markers": 277546745,
+                "diff: settle": 2692296,
+                "diff: to_payload": 505526,
+                "dispatch (wall)": 2513385682945,
+                "encode_json": 5169576,
+                "layer._clean_expired": 191688890,
+                "layer.send (deepcopy + put)": 6118473,
+                "notification handler (wall)": 2267774526384,
+                "publish (group_send, wall)": 22337833,
+                "render_diff (wall)": 2267036114689,
+                "send_render (wall)": 2267924096633,
+                "ws_send": 818090371
+              },
+              "worker": {
+                "close_old_connections": 11348433,
+                "collect_context": 55818109,
+                "sign_state": 13146107,
+                "state json (model_dump_json)": 7928060,
+                "template render": 723982598,
+                "thread_handler": 812935149
+              }
+            },
+            "cpu": {
+              "loop": {
+                "after_mutation_chores": 6401299,
+                "await close_old_connections trip (wall)": 214147972953,
+                "await render trip (wall)": 684784506176,
+                "deflate": 11853562,
+                "diff": 292797482,
+                "diff: compare": 16068912,
+                "diff: parse markers": 267398442,
+                "diff: settle": 2669964,
+                "diff: to_payload": 545772,
+                "dispatch (wall)": 881865450539,
+                "encode_json": 4828340,
+                "layer._clean_expired": 185992086,
+                "layer.send (deepcopy + put)": 6083250,
+                "notification handler (wall)": 685206144076,
+                "publish (group_send, wall)": 21833000,
+                "render_diff (wall)": 685119811735,
+                "send_render (wall)": 685245539832,
+                "ws_send": 45660638
+              },
+              "worker": {
+                "close_old_connections": 11226089,
+                "collect_context": 54385674,
+                "sign_state": 12722416,
+                "state json (model_dump_json)": 7705360,
+                "template render": 711246787,
+                "thread_handler": 798490018
+              }
+            },
+            "calls": {
+              "loop.after_mutation_chores": 2001,
+              "loop.await close_old_connections trip (wall)": 2001,
+              "loop.await render trip (wall)": 2001,
+              "loop.deflate": 2000,
+              "loop.diff": 2001,
+              "loop.diff: compare": 2001,
+              "loop.diff: parse markers": 2001,
+              "loop.diff: settle": 2001,
+              "loop.diff: to_payload": 2000,
+              "loop.dispatch (wall)": 2000,
+              "loop.encode_json": 2000,
+              "loop.layer._clean_expired": 2001,
+              "loop.layer.send (deepcopy + put)": 2000,
+              "loop.notification handler (wall)": 2000,
+              "loop.publish (group_send, wall)": 1,
+              "loop.render_diff (wall)": 2001,
+              "loop.send_render (wall)": 2001,
+              "loop.ws_send": 2000,
+              "worker.close_old_connections": 6003,
+              "worker.collect_context": 2001,
+              "worker.sign_state": 2001,
+              "worker.state json (model_dump_json)": 2001,
+              "worker.template render": 2001,
+              "worker.thread_handler": 4002
+            },
+            "server_span_range_ns": [
+              1698304250,
+              1698304250
+            ],
+            "client_span_range_ns": [
+              1698574458,
+              1698574458
+            ],
+            "client_span_unarmed_range_ns": [
+              1548606209,
+              1548606209
+            ]
+          }
+        },
+        "fastapi": {
+          "rounds": [
+            {
+              "client_span_ns": 28605667,
+              "client_span_unarmed_ns": 24689417,
+              "client_to_server_ns": 160666,
+              "server_span_ns": 27887166,
+              "publish_ns": 0,
+              "first_dispatch_ns": null,
+              "last_dispatch_ns": null,
+              "first_send_ns": 78667,
+              "last_receive_after_last_send_ns": 195208,
+              "loop_busy_ns": 27887166,
+              "loop_idle_ns": 0,
+              "loop_cpu_ns": 27838875,
+              "worker_busy_ns": 0,
+              "worker_cpu_ns": 0,
+              "both_busy_ns": 0,
+              "frames": 2000,
+              "worker_threads": 0,
+              "wall": {
+                "loop": {
+                  "deflate": 5125799,
+                  "json.dumps": 3958,
+                  "starlette send_text (wall)": 26863843,
+                  "ws_send": 23776556
+                },
+                "worker": {}
+              },
+              "cpu": {
+                "loop": {
+                  "deflate": 5147092,
+                  "json.dumps": 4250,
+                  "starlette send_text (wall)": 26814313,
+                  "ws_send": 23655895
+                },
+                "worker": {}
+              },
+              "calls": {
+                "loop.deflate": 2000,
+                "loop.json.dumps": 1,
+                "loop.starlette send_text (wall)": 2000,
+                "loop.ws_send": 2000
+              }
+            }
+          ],
+          "summary": {
+            "client_span_ns": 28605667,
+            "client_span_unarmed_ns": 24689417,
+            "client_to_server_ns": 160666,
+            "server_span_ns": 27887166,
+            "publish_ns": 0,
+            "first_dispatch_ns": null,
+            "last_dispatch_ns": null,
+            "first_send_ns": 78667,
+            "last_receive_after_last_send_ns": 195208,
+            "loop_busy_ns": 27887166,
+            "loop_idle_ns": 0,
+            "loop_cpu_ns": 27838875,
+            "worker_busy_ns": 0,
+            "worker_cpu_ns": 0,
+            "both_busy_ns": 0,
+            "frames": 2000,
+            "worker_threads": 0,
+            "wall": {
+              "loop": {
+                "deflate": 5125799,
+                "json.dumps": 3958,
+                "starlette send_text (wall)": 26863843,
+                "ws_send": 23776556
+              },
+              "worker": {}
+            },
+            "cpu": {
+              "loop": {
+                "deflate": 5147092,
+                "json.dumps": 4250,
+                "starlette send_text (wall)": 26814313,
+                "ws_send": 23655895
+              },
+              "worker": {}
+            },
+            "calls": {
+              "loop.deflate": 2000,
+              "loop.json.dumps": 1,
+              "loop.starlette send_text (wall)": 2000,
+              "loop.ws_send": 2000
+            },
+            "server_span_range_ns": [
+              27887166,
+              27887166
+            ],
+            "client_span_range_ns": [
+              28605667,
+              28605667
+            ],
+            "client_span_unarmed_range_ns": [
+              24689417,
+              24689417
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "sources": {
+    "main": "final-fanout-1000.json",
+    "inproc_runs": [
+      "inproc-cprof.json",
+      "final-inproc.json",
+      "final-inproc-2.json"
+    ],
+    "plain_runs": [
+      "plain-314.json",
+      "plain-314t.json",
+      "plain-314t-1.json",
+      "plain-314t-2.json"
+    ],
+    "scale_runs": [
+      "scale-250.json",
+      "scale-500.json",
+      "try-clean.json",
+      "scale-2000.json"
+    ]
+  }
+}

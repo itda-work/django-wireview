@@ -78,7 +78,10 @@ uv run --python 3.14t --no-project --with django==6.0 python -m bench.fanout_pro
 uv run python -m bench.fanout_profile --report bench/.data/fanout-profile-<커밋>.json      # 저장한 결과의 표
 ```
 
-결과 JSON은 `bench/.data/`(gitignore)에 남는다. 이 문서의 숫자는 그 JSON에서 옮겼다.
+결과 JSON은 `bench/.data/`(gitignore)에 남는다. 이 문서 §1~§2의 숫자는 `bench/results/5a4f037-fanout-profile.json`에서
+옮겼다. 그 파일은 본 측정(연결 1,000개, 5회차)에 `inproc` 세 번(`inproc_runs`), `plain` 네 번(`plain_runs`, GIL 한 번과
+3.14t 세 번), 연결 수 변화(`scale_runs`)를 함께 담는다. 문서의 숫자와 차트가 그 파일과 같은지는 `tests/test_bench_fanout.py`가
+`bench.fanout_profile.facts()`와 `chart()`로 본다.
 
 ## 2. 결과
 

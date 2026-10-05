@@ -748,6 +748,99 @@ def chart(result: dict[str, t.Any]) -> str:
     )
 
 
+#: The result docs/design/broadcast-fanout.md quotes: the measurement it was written from
+RESULT = ROOT / "bench" / "results" / "5a4f037-fanout-profile.json"
+
+
+def _range(values: t.Iterable[float], digits: int = 1) -> str:
+    values = list(values)
+    return f"{min(values):.{digits}f}~{max(values):.{digits}f}"
+
+
+def facts(result: dict[str, t.Any]) -> dict[str, str]:
+    """Every number docs/design/broadcast-fanout.md §1-§2 quotes from ``result``, as the document writes it.
+
+    ``result`` is a fan-out measurement with the runs the design took beside it:
+    ``inproc_runs`` (``inproc``, three times), ``plain_runs`` (``plain`` with the GIL
+    once, then without it), and ``scale_runs`` (one round at each connection count).
+    """
+    ms = 1e-6
+    connections = result["method"]["connections"]
+    out: dict[str, str] = {}
+    impls = result["implementations"]
+    for name, data in impls.items():
+        s = data["summary"]
+        lo, hi = s["client_span_unarmed_range_ns"]
+        out[f"{name}.fanout"] = f"{s['client_span_unarmed_ns'] * ms:.1f} ms"
+        out[f"{name}.fanout_rounds"] = f"{lo * ms:.1f}~{hi * ms:.1f}"
+        out[f"{name}.server_span"] = f"{s['server_span_ns'] * ms:.1f} ms"
+        out[f"{name}.loop_cpu"] = f"{s['loop_cpu_ns'] * ms:.1f} ms"
+        out[f"{name}.loop_busy"] = f"{s['loop_busy_ns'] * ms:.1f} ms"
+        out[f"{name}.last_receive"] = f"{s['last_receive_after_last_send_ns'] * ms:.2f} ms"
+        rows = stages(s, name)
+        total = (s["loop_cpu_ns"] + s["worker_cpu_ns"]) * ms
+        for label, used, _wall in rows:
+            out[f"{name}.stage.{label}"] = f"{used / connections * 1000:.1f}"
+            out[f"{name}.share.{label}"] = f"{used / total:.1%}"
+        out[f"{name}.per_connection"] = f"{total / connections * 1000:.1f}"
+    w = impls["wireview"]["summary"]
+    out["wireview.client_span_armed"] = f"{w['client_span_ns'] * ms:.1f} ms"
+    out["wireview.worker"] = f"{w['worker_cpu_ns'] * ms:.1f} ms / {w['worker_busy_ns'] * ms:.1f} ms"
+    out["wireview.loop_waited"] = f"{(w['loop_busy_ns'] - w['loop_cpu_ns']) * ms:.1f} ms"
+    out["wireview.loop_idle"] = f"{w['loop_idle_ns'] * ms:.1f} ms"
+    out["wireview.both_busy"] = f"{w['both_busy_ns'] * ms:.1f} ms"
+    out["wireview.cpu_sum"] = f"{(w['loop_cpu_ns'] + w['worker_cpu_ns']) * ms:.1f} ms"
+    out["wireview.dispatch"] = (
+        f"{w['first_dispatch_ns'] * ms:.1f} ms / {w['last_dispatch_ns'] * ms:.1f} ms / {w['first_send_ns'] * ms:.1f} ms"
+    )
+    out["fastapi.first_send"] = f"{impls['fastapi']['summary']['first_send_ns'] * ms:.2f} ms"
+    loop = w["cpu"]["loop"]
+    for key, stage in (("parse", "diff: parse markers"), ("compare", "diff: compare"), ("settle", "diff: settle")):
+        out[f"wireview.diff.{key}"] = f"{loop.get(stage, 0) / connections / 1000:.1f}"
+    out["wireview.diff.payload"] = f"{loop.get('diff: to_payload', 0) / connections / 1000:.1f}"
+    out["wireview.calls.thread_handler"] = f"{w['calls']['worker.thread_handler']:,.0f}"
+    out["wireview.calls.close_old_connections"] = f"{w['calls']['worker.close_old_connections']:,.0f}"
+    total = (w["loop_cpu_ns"] + w["worker_cpu_ns"]) * ms
+    for group, prefixes in GROUPS.items():
+        used = sum(c for label, c, _ in stages(w, "wireview") if label.startswith(prefixes))
+        out[f"group.{group}"] = f"{used / connections * 1000:.1f}"
+        out[f"group_share.{group}"] = f"{used / total:.1%}"
+
+    runs = [run["inproc"] for run in result.get("inproc_runs", [])]
+    if runs:
+        for part in runs[0]["board_us"]:
+            out[f"inproc.{part}"] = f"{statistics.median(r['board_us'][part] for r in runs):.1f}"
+        for trip in runs[0]["trip_us"]:
+            if trip.startswith("sync_to_async"):
+                continue  # measured beside the others, not quoted
+            out[f"trip.{trip}"] = f"{statistics.median(r['trip_us'][trip] for r in runs):.1f} µs"
+        out["inproc.render_diff"] = f"{statistics.median(r['render_diff_us_one_after_another'] for r in runs):.1f}"
+        for threads in ("1", "2", "4", "8"):
+            out[f"threads.gil.{threads}"] = _range(r["plain_render_us_by_threads"][threads] for r in runs)
+    plain = [run["plain"] for run in result.get("plain_runs", [])]
+    if plain:
+        gil = next(p for p in plain if p["gil"])
+        nogil = [p for p in plain if not p["gil"]]
+        for threads in ("1", "2", "4", "8"):
+            out[f"threads.plain.{threads}"] = f"{gil['plain_render_us_by_threads'][threads]:.1f}"
+            out[f"threads.nogil.{threads}"] = _range(p["plain_render_us_by_threads"][threads] for p in nogil)
+        one = gil["plain_render_us_by_threads"]["1"]
+        slower = [p["plain_render_us_by_threads"]["1"] / one - 1 for p in nogil]
+        out["threads.nogil.slower"] = f"{min(slower):.0%}~{max(slower):.0%}".replace("%~", "~")
+        gain = [p["plain_render_us_by_threads"]["1"] / p["plain_render_us_by_threads"]["4"] for p in nogil]
+        out["threads.nogil.gain4"] = f"{_range(gain)}배"
+    for run in result.get("scale_runs", []):
+        n = run["method"]["connections"]
+        for name, data in run["implementations"].items():
+            span = data["summary"]["client_span_unarmed_ns"]
+            out[f"scale.{n}.{name}"] = f"{span * ms:,.1f} ms"
+            out[f"scale.{n}.{name}.per_connection"] = f"{span / n / 1000:.{0 if name == 'wireview' else 1}f} µs"
+            if name == "wireview":
+                expired = data["summary"]["cpu"]["loop"].get("layer._clean_expired", 0)
+                out[f"scale.{n}.clean_expired"] = f"{expired / n / 1000:.1f} µs"
+    return out
+
+
 async def drive(args: argparse.Namespace) -> dict[str, t.Any]:
     names = args.only or list(IMPLEMENTATIONS)
     out: dict[str, t.Any] = {name: {"rounds": []} for name in names}
