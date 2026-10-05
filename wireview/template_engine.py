@@ -13,9 +13,10 @@ import itertools
 import typing as t
 from contextlib import contextmanager
 
+from django.conf import settings
 from django.http import HttpRequest
 from django.template import Context, Template
-from django.template.base import FilterExpression, Node, NodeList, Variable, VariableNode
+from django.template.base import FilterExpression, Node, NodeList, Variable, VariableNode, render_value_in_context
 from django.template.exceptions import TemplateDoesNotExist
 from django.template.loader_tags import IncludeNode
 from django.template.smartif import TokenBase
@@ -122,7 +123,7 @@ class MarkedVariableNode(Node):
         reads = self.marker_context.reads
         slot = reads.open() if reads else None
         try:
-            output = self.original_node.render(context)
+            output = self._render_value(context)
         finally:
             # The index follows the output, as the parser numbers it
             index = self.marker_context.next_index()
@@ -130,8 +131,34 @@ class MarkedVariableNode(Node):
                 reads.close(slot, index)
         return inject_marker(output, index)
 
+    def _render_value(self, context: Context) -> str:
+        """What the original node renders: ``VariableNode.render``, by way of ``render_value``."""
+        node = self.original_node
+        if type(node) is not VariableNode:
+            return node.render(context)  # a subclass renders its own way
+        try:
+            value = self.filter_expression.resolve(context)
+        except UnicodeDecodeError:
+            return ""  # as VariableNode.render
+        return render_value(value, context)
+
     def __repr__(self) -> str:
         return f"<MarkedVariableNode: {self.filter_expression!r}>"
+
+
+def render_value(value: t.Any, context: Context) -> str:
+    """``render_value_in_context(value, context)``, a plain ``int`` printed without asking Django first.
+
+    Django prints an int as ``str()`` unless it groups thousands -- but it reaches
+    that shortcut only after ``get_language()`` and three ``get_format()`` calls
+    (``number_format``), about 2 µs an int and half of a numeric list's render
+    (#176). Grouping needs ``USE_THOUSAND_SEPARATOR`` with localization on, so
+    without it the text is ``str(value)``, as Django's own shortcut makes it.
+    Not ``bool`` (``type is int``), nor a subclass, whose ``__str__`` may differ.
+    """
+    if type(value) is int and (context.use_l10n is False or not settings.USE_THOUSAND_SEPARATOR):
+        return str(value)
+    return render_value_in_context(value, context)
 
 
 def drew(item: tuple[t.Any, ...]) -> None:

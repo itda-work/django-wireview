@@ -983,6 +983,7 @@ async def inproc(args: argparse.Namespace) -> dict[str, t.Any]:
     django.setup()
     from asgiref.sync import sync_to_async
     from channels.db import aclose_old_connections, database_sync_to_async
+    from django.template import Context
     from django.utils import formats
 
     from bench.compare_fastapi.store import store
@@ -990,6 +991,7 @@ async def inproc(args: argparse.Namespace) -> dict[str, t.Any]:
     from bench.payload import _live
     from wireview.core.rendered import Rendered
     from wireview.core.state import sign_state
+    from wireview.template_engine import render_value
 
     repeat, boards = args.repeat, args.boards
     out: dict[str, t.Any] = {"gil": getattr(sys, "_is_gil_enabled", lambda: True)(), "boards": boards, "repeat": repeat}
@@ -1028,6 +1030,7 @@ async def inproc(args: argparse.Namespace) -> dict[str, t.Any]:
         return wire._render_with_context(component, context, None)
 
     plain_render = _plain_board()
+    bare = Context()
     previous = wire._last_rendered
     store.announce()
     html = str(marked())
@@ -1052,6 +1055,7 @@ async def inproc(args: argparse.Namespace) -> dict[str, t.Any]:
         "template render, marked (wireview)": run(marked),
         "template render, plain Django": run(plain_render),
         "localize() of the ints the template prints": run(lambda: [formats.localize(i) for i in range(ints)]),
+        "the same ints as a marked variable prints them": run(lambda: [render_value(i, bare) for i in range(ints)]),
         "sign_state": run(lambda: sign_state(component)),
         "diff: parse markers": run(parse),
         "diff: parse + settle + compare + to_payload": run(diff),
