@@ -23,6 +23,7 @@ from ..features.hooks import hook_files
 from ..function_components import DRAWER as FUNCTION_DRAWER
 from ..function_components import PAGE as FUNCTION_PAGE
 from ..function_components import get_function_component
+from ..live_component import LiveComponent
 from ..repository import ComponentRepository
 from ..slots import Slot, SlotContainer
 from ..template_engine import drew, drew_component
@@ -132,8 +133,61 @@ def _join_failed_mark(component: Component, repo: ComponentRepository) -> str:
     return " wire-join-failed" if repo.is_live and repo.refused(component.id) else ""
 
 
+def _hears_params_in_template(repo: ComponentRepository) -> bool:
+    """Whether a template pass runs ``params_changed`` for what it builds, before drawing it.
+
+    Only an HTTP render, and only with a query, as a join (``command_join``)
+    hears one only then. On a socket the join and the parent's render settle it
+    (``WireviewSession._render_tree``); a live pass draws inline what they will.
+    """
+    return not repo.is_live and bool(repo.params)
+
+
+def _listens_to_params(component: Component) -> bool:
+    """Whether hearing the query could change ``component``: if not, it needs no bridge for it.
+
+    A ``handle_params`` hook an ``on_mount`` hook attaches is still heard: that
+    component crosses the bridge for its hooks anyway.
+    """
+    hooks = getattr(component, "_lifecycle_hooks", None)
+    return type(component).params_changed is not Component.params_changed or bool(
+        isinstance(hooks, dict) and hooks.get("handle_params")
+    )
+
+
+async def _enter_in_template(component: Component, repo: ComponentRepository) -> bool:
+    """Mount, then hear the page's query: Phoenix's mount -> handle_params, before the render.
+
+    A LiveComponent's ``params_changed`` that raises is logged and the child
+    still renders, as on a socket (``_render_tree``). Any other component's
+    raises: its join would fail, and a page not yet sent fails louder.
+
+    On an HTTP render nothing is connected to hear what ``start_async`` or
+    ``assign_async`` would finish, so the work they started is cancelled before
+    it runs: the page draws the loading state and the join starts it again, as
+    Phoenix starts no async work on a dead render. Left alone it ran on the
+    server's loop after the response, on an instance nothing would render.
+    """
+    try:
+        if not await component._mount(repo.params, repo.session):
+            return False
+        if _hears_params_in_template(repo):
+            uri = f"?{repo.get_query_string()}"
+            if isinstance(component, LiveComponent):
+                try:
+                    await component._handle_params(dict(repo.params), uri)
+                except Exception as e:
+                    log.exception(f"Error in {component._name}.params_changed(): {e}")
+            else:
+                await component._handle_params(dict(repo.params), uri)
+        return True
+    finally:
+        if not repo.is_live:
+            component._cancel_async_tasks()
+
+
 def _mount_in_template(component: Component, repo: ComponentRepository) -> bool:
-    """Run a component's mount-time boundary from inside a template pass.
+    """Run a component's mount-time boundary from inside a template pass, and on an HTTP render its params.
 
     ``{% component %}`` builds its component and renders it **inline**, in the
     middle of whoever's template named it. That is the only seam there is, so
@@ -148,6 +202,12 @@ def _mount_in_template(component: Component, repo: ComponentRepository) -> bool:
     became an event target as well as markup. A nested component mounts once per
     instance (``Component._mount`` is idempotent), so running it costs one bridge
     per instance rather than one per render.
+
+    An HTTP render then runs ``params_changed`` with the page's query, once per
+    instance, as a join does before its first render (#177). Without it a page
+    opened at ``?q=...`` went out drawn as if it had no query, and only the
+    join filled it in: a visitor without JavaScript, or a search engine, saw
+    an empty page. A refused component hears nothing.
 
     Getting an async callback out of a synchronous template pass depends on
     which thread that pass runs on:
@@ -175,8 +235,6 @@ def _mount_in_template(component: Component, repo: ComponentRepository) -> bool:
         # Answered without the bridge, because it needs no awaiting.
         repo.abandon(component)
         return False
-    if not component._meta.on_mount and repo.live_session is None:
-        return True
     wire = component.wire
     if wire.has_mounted or wire.has_joined:
         # Already decided, and ``_mount`` would answer from the flag without
@@ -184,20 +242,27 @@ def _mount_in_template(component: Component, repo: ComponentRepository) -> bool:
         # then. A parent re-renders far more often than it mounts, so the cheap
         # question has to be asked on this side of it.
         return not wire.mount_halted
+    if (
+        not component._meta.on_mount
+        and repo.live_session is None
+        and not (_hears_params_in_template(repo) and _listens_to_params(component))
+    ):
+        return True
 
     try:
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            mounted = async_to_sync(component._mount)(repo.params, repo.session)
+            mounted = async_to_sync(_enter_in_template)(component, repo)
         else:
             with ThreadPoolExecutor(max_workers=1) as pool:
-                mounted = pool.submit(asyncio.run, component._mount(repo.params, repo.session)).result()
+                mounted = pool.submit(asyncio.run, _enter_in_template(component, repo)).result()
     except Exception:
         # A crashing hook is a refusal here too, and the exception on its way out
         # is not the cleanup. On a live render it unwinds to the join, which
         # removes the *parent*; an instance left registered here would keep
-        # answering events for a component whose guard never finished.
+        # answering events for a component whose guard never finished. A
+        # ``params_changed`` that raises fails the page the same way.
         repo.abandon(component)
         raise
 
@@ -253,11 +318,14 @@ def _page_repository(context: Context) -> ComponentRepository:
             repo = _page_repository(page)
         else:
             request = context.get("request")
-            qs = request and request.META["QUERY_STRING"] or ""
             repo = ComponentRepository(
                 is_live=False,
                 user=context.get("user"),
-                params=ComponentRepository.extract_params(qs),
+                # From ``request.GET``, not the raw ``QUERY_STRING``: under WSGI that is
+                # the bytes read as latin-1, so a query a client sent unencoded
+                # (``?q=파이썬``) reached the components as mojibake. Django's
+                # QueryDict decodes it with the request's encoding.
+                params=ComponentRepository.decode_params(request.GET.dict()) if request is not None else {},
                 session=getattr(request, "session", None),
                 # The view decorator put the name here. Reading it off the request
                 # rather than off a setting is what makes the boundary a property of

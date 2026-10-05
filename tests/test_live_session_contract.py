@@ -31,6 +31,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.sessions.backends.cache import SessionStore as CacheSessionStore
+from django.http import QueryDict
 from django.template import Context, Template
 from django.test import RequestFactory, override_settings
 from testproj.wireview_setting import set_wireview
@@ -413,13 +414,24 @@ class FakeOutbound:
         return [command for command, _ in self.commands]
 
 
-#: The page's query on every live mount path, so a join has params to hear (#170).
+#: The page's query on every mount path, so a join and an HTTP render have params to hear (#170, #177).
 PAGE_PARAMS = {"page": "2"}
 
-#: Paths on which an admitted component hears the page's params: the joins, and
-#: a LiveComponent its parent's render brings in. An inline pass and an HTTP
-#: render do not run ``params_changed``.
-PATHS_THAT_HEAR_PARAMS = {"root_join", "rejoin", "nested_plain_join", "live_child", "child_restore"}
+#: Paths on which an admitted component hears the page's params: the joins, a
+#: LiveComponent its parent's render brings in, an HTTP render (#177) and
+#: ``testing.mount()``. A live inline pass does not: the join that follows does.
+PATHS_THAT_HEAR_PARAMS = {
+    "dead_render",
+    "dead_live_child",
+    "dead_func",
+    "dead_func_first",
+    "testing_mount",
+    "root_join",
+    "rejoin",
+    "nested_plain_join",
+    "live_child",
+    "child_restore",
+}
 
 
 def make_consumer(*, boundary=None, user=None, session=None, params=None) -> tuple[WireviewConsumer, FakeOutbound]:
@@ -484,7 +496,7 @@ def _template_naming(template: str, cls: type):
 
 async def path_dead_render(cls: type, boundary: LiveSession) -> Outcome:
     """``{% component %}`` in an HTTP response. The first bytes, which no join can recall."""
-    repo = ComponentRepository(is_live=False, live_session=boundary)
+    repo = ComponentRepository(is_live=False, live_session=boundary, params=dict(PAGE_PARAMS))
     raised = None
     html = ""
     try:
@@ -501,7 +513,7 @@ async def path_testing_mount(cls: type, boundary: LiveSession) -> Outcome:
     raised = None
     mounted = None
     try:
-        mounted = await mount(cls, id="target", live_session=boundary)
+        mounted = await mount(cls, id="target", live_session=boundary, params=dict(PAGE_PARAMS))
     except Exception as e:
         raised = e
     # What the helper actually produced. Synthesising this from ``mount_halted``
@@ -617,7 +629,7 @@ async def path_dead_live_child(cls: type, boundary: LiveSession) -> Outcome:
     rather than left as a reference for the consumer to settle, so skipping the
     check here puts a protected child in the first response.
     """
-    repo = ComponentRepository(is_live=False, live_session=boundary)
+    repo = ComponentRepository(is_live=False, live_session=boundary, params=dict(PAGE_PARAMS))
     parent_class = _parent(f"CxDeadLiveParentOf{cls.__name__}", "cx/live.html")
     raised = None
     html = ""
@@ -638,7 +650,7 @@ async def path_dead_func(cls: type, boundary: LiveSession) -> Outcome:
     of its own, the component had no boundary: a page's hook never ran for it and
     one that declared its session was refused on its own page.
     """
-    repo = ComponentRepository(is_live=False, live_session=boundary)
+    repo = ComponentRepository(is_live=False, live_session=boundary, params=dict(PAGE_PARAMS))
     raised = None
     html = ""
     try:
@@ -655,7 +667,7 @@ async def path_dead_func_first(cls: type, boundary: LiveSession) -> Outcome:
 
     The boundary comes off the request the view decorator marked, as on a real page.
     """
-    request = RequestFactory().get("/")
+    request = RequestFactory().get("/", PAGE_PARAMS)
     request.user = AnonymousUser()
     setattr(request, REQUEST_ATTR, boundary.name)
     context = Context({"request": request, "user": request.user, "name": cls.__name__})
@@ -1688,7 +1700,7 @@ class TestAPageAgreesWithItself:
     @pytest.fixture
     def page(self, boundary):
         class Request:
-            META = {"QUERY_STRING": ""}
+            GET = QueryDict()
             session: dict = {}
             wireview_live_session = BOUNDARY
 

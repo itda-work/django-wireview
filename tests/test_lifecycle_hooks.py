@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 from django.contrib.auth.models import AnonymousUser
+from django.http import QueryDict
 from django.template import Context, Template
 from django.test import override_settings
 
@@ -543,7 +544,7 @@ class TestHttpRender:
 
     def test_the_repository_carries_the_request_session(self):
         class FakeRequest:
-            META = {"QUERY_STRING": "q=1"}
+            GET = QueryDict("q=1")
             session = {"uid": 3}
 
         Template("{% load wireview %}{% component 'LhSeen' id='h6' %}").render(Context({"request": FakeRequest()}))

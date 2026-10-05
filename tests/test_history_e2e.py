@@ -516,12 +516,14 @@ TRAY = "sticky-testproj-historyprobe-live-HistoryTray"
 
 @pytest.fixture
 def heard():
-    """Every params_changed the historyprobe components heard on the server, from here on."""
-    from testproj.historyprobe.live import HEARD
+    """Every params_changed the historyprobe components heard on a connection, from here on."""
+    from testproj.historyprobe.live import HEARD, HTTP_HEARD
 
     HEARD.clear()
+    HTTP_HEARD.clear()
     yield HEARD
     HEARD.clear()
+    HTTP_HEARD.clear()
 
 
 def settled(page) -> None:
@@ -632,6 +634,20 @@ def test_a_live_component_hears_the_first_params_of_the_page(page, server, heard
         ("hbox", built, "?tab=b"),
         ("leaf", 0, "?tab=b"),
     ]
+
+
+def test_the_first_response_already_heard_the_params(page, server, heard):
+    """The HTTP render runs params_changed before the first HTML, the box and its LiveComponent alike (#177)."""
+    from testproj.historyprobe.live import HTTP_HEARD
+
+    open_live(page, f"{server}/historyprobe/?tab=b")
+    expect_text(by(page, "tab"), "b")
+    built = rendered(page)
+
+    assert [entry for entry in HTTP_HEARD if entry[0] in ("hbox", "leaf")] == [
+        ("hbox", built, "?tab=b"),
+        ("leaf", 0, "?tab=b"),
+    ], "the box the page joined is the one the response drew, and both heard the query there"
 
 
 # --- a push to the URL on screen (#170) -------------------------------------------------------

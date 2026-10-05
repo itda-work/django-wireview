@@ -13,9 +13,11 @@ both have it under one id, as a layout's navigation bar would be: Back paints
 the cached page over the one being left, and the bar there is still the left
 page's (#170).
 
-``HEARD`` is every ``params_changed`` on the server, in order: which component,
+``HEARD`` is every ``params_changed`` a connection ran, in order: which component,
 which instance (the box's ``rendered``), and the uri. The tests read it to tell
-who heard a navigation's params (#170).
+who heard a navigation's params (#170). An HTTP render runs it too, before the
+first HTML (#177): that goes to ``HTTP_HEARD`` instead, as nothing on the page
+was told anything yet.
 """
 
 import itertools
@@ -26,6 +28,13 @@ _renders = itertools.count(1)
 
 #: (component id, the box's ``rendered`` or 0, uri), in the order they were heard
 HEARD: list[tuple[str, int, str]] = []
+#: The same, heard by an HTTP render
+HTTP_HEARD: list[tuple[str, int, str]] = []
+
+
+def _heard(component, instance: int, uri: str) -> None:
+    # An HTTP render's instance has no connection to send to
+    (HEARD if component.wire.channel_name else HTTP_HEARD).append((component.id, instance, uri))
 
 
 class HistoryBox(Component):
@@ -42,7 +51,7 @@ class HistoryBox(Component):
             self.rendered = next(_renders)
 
     async def params_changed(self, params, uri):
-        HEARD.append((self.id, self.rendered, uri))
+        _heard(self, self.rendered, uri)
         self.tab = params.get("tab", "a")
 
     async def bump(self, **_rest):
@@ -76,7 +85,7 @@ class HistoryLeaf(LiveComponent):
     heard: str = ""
 
     async def params_changed(self, params, uri):
-        HEARD.append((self.id, 0, uri))
+        _heard(self, 0, uri)
         self.heard = params.get("tab", "a")
 
     async def bump(self, **_rest):
@@ -94,7 +103,7 @@ class HistoryDock(Component):
     times: int = 0
 
     async def params_changed(self, params, uri):
-        HEARD.append((self.id, 0, uri))
+        _heard(self, 0, uri)
         self.heard = params.get("tab", "a")
         self.times += 1
 
@@ -107,7 +116,7 @@ class HistoryTray(Component):
         sticky = True
 
     async def params_changed(self, params, uri):
-        HEARD.append((self.id, 0, uri))
+        _heard(self, 0, uri)
 
 
 class HistoryBar(Component):
@@ -126,5 +135,5 @@ class HistoryBar(Component):
             self.built = next(_renders)
 
     async def params_changed(self, params, uri):
-        HEARD.append((self.id, self.built, uri))
+        _heard(self, self.built, uri)
         self.tab = params.get("tab", "-")

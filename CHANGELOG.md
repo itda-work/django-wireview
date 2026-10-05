@@ -27,6 +27,23 @@ The django-reactor era changelog (2.x) is preserved in
   to 1,000 connections, the first load and the bytes per interaction, the ones wireview loses
   included. `make bench-fastapi` measures it, `make bench-fastapi-charts` draws the charts from the
   result, and `tests/test_bench_fastapi.py` fails until the documents quote what the result says (#174).
+- The first HTTP render runs `params_changed()` as the join does: mount hooks, then
+  `params_changed()` with the page's query, then the render, for every component it draws -- the
+  root, a nested `{% component %}`, one in a slot or a function component's template, a sticky one
+  and a LiveComponent -- once per instance and only when the address has a query. A page opened at
+  `?q=...` went out drawn without it until the join, so a browser without JavaScript and a search
+  engine saw it empty. A page load now runs it twice, as Phoenix runs `handle_params` on the dead
+  render and the connected mount; the same params must give the same state. Work that
+  `start_async()` or `assign_async()` starts there is cancelled before it runs -- nothing connected
+  would hear it finish -- so the page draws the loading state and the join starts it again. A
+  component's `params_changed()` that raises fails the response, as a mount hook's does; a
+  LiveComponent's is logged and the child still renders (#177).
+
+### Fixed
+
+- The HTTP render reads the page's query from `request.GET` instead of parsing
+  `META["QUERY_STRING"]`, which a WSGI server holds as bytes read as latin-1: a query sent without
+  percent-encoding (`?q=파이썬`) reached the mount hooks and `params_changed()` as mojibake (#177).
 
 ## [1.2.0] - 2026-10-04
 

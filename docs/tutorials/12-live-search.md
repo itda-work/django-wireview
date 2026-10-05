@@ -246,15 +246,17 @@ class XLiveSearch(Component):
 | 언제 | 무엇이 `params_changed()`를 부르나 |
 |------|-----------------------------------|
 | 입력 | `search`의 `push_to`가 patch로 |
-| 새로고침, 공유한 링크 | 주소에 쿼리가 있는 페이지의 join이 `joined()` 뒤에 |
+| 새로고침, 공유한 링크 | 첫 HTTP 응답이 렌더 전에, 이어서 그 페이지의 join이 `joined()` 뒤에 |
 | 뒤로·앞으로 가기 | 이 페이지가 만든 항목이면 patch로, 새로고침 전의 항목이면 그 주소를 가져온 페이지의 join으로 |
 | Clear | `clear`의 `push_to`가 patch로 |
 
 `search`가 직접 결과를 계산하면 입력할 때는 맞고 새로고침이나 뒤로 가기에서만 다른 일이 일어납니다.
 하나의 길로 모으면 넷이 같은 결과를 냅니다.
 
-첫 HTTP 응답은 `params_changed()`를 부르지 않습니다. `?q=`가 있는 주소를 열면 빈 결과로 그려지고,
-WebSocket이 join한 직후 결과가 채워집니다.
+첫 HTTP 응답도 렌더 전에 `params_changed()`를 부릅니다. `?q=`가 있는 주소를 열면 서버가 결과까지 그려
+보내므로, JavaScript 없는 브라우저와 검색엔진도 결과를 봅니다. join에서 한 번 더 돌기 때문에 `params_changed()`는
+같은 검색어로 두 번 돌아도 같은 화면을 내야 합니다. 여기서는 검색어에서 결과를 다시 계산할 뿐이라 그렇습니다
+([첫 응답과 join](../features/navigation.md#첫-응답과-join)).
 
 ### 인코딩과 빈 검색어
 

@@ -192,7 +192,7 @@ tests/
                            reconnectprobe/ 는 재연결 뒤 상태(같은 서버·재시작한 프로세스·다른 워커)를 보는 E2E(test_reconnect_state_e2e.py)의 픽스처,
                            imeprobe/ 는 한글 조합 중에 오는 렌더(자기 debounce·브로드캐스트·서버가 바꾼 칸 값)를 CDP IME로 보는 E2E(test_ime_e2e.py)의 픽스처,
                            historyprobe/ 는 push_to·replace_to의 patch와 이동, boost 이동·새로고침 뒤 뒤로·앞으로 가기, follow_push()와 브라우저의 일치,
-                           이동의 params를 누가 듣는가(HEARD, 모든 페이지의 sticky HistoryDock과 box 페이지에만 있는 HistoryTray), 같은 URL로의 push,
+                           이동의 params를 누가 듣는가(HEARD, 모든 페이지의 sticky HistoryDock과 box 페이지에만 있는 HistoryTray. 첫 HTTP 렌더가 들은 것은 HTTP_HEARD, #177), 같은 URL로의 push,
                            조각 링크, 네트워크 오류로 실패한 가져오기(boost 폼 포함, post/ 는 받은 POST를 센다. ?away=1 은 다른 출처로 리다이렉트한다), 중지된(AbortError) 이동, method="put" 폼을 보는 E2E(test_history_e2e.py)의 픽스처(members/ 는 ls-members 경계 안, bar-a/·bar-b/ 는 sticky가 아닌 HistoryBar를 같은 id로 그리는 두 페이지 — 뒤로 가기의 캐시 사본에서 떠나는 페이지의 것이 params를 듣지 않는지 본다),
                            lossprobe/ 는 capacity를 넘는 브로드캐스트가 레이어마다 어떻게 버려지는지 보는 E2E(test_broadcast_loss_e2e.py)의 픽스처,
                            jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,

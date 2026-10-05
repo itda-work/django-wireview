@@ -529,7 +529,13 @@ class Component(BaseModel):
         This callback is automatically invoked when:
         - push_to() or replace_to() is called and the client updates the URL
         - Browser back/forward navigation occurs
-        - Initial page load with URL parameters (after joined())
+        - Initial page load with URL parameters: on the HTTP render, after the
+          mount hooks and before the first HTML (no joined() there), and again
+          on the join, after joined() and before its render (#170, #177)
+
+        A page load runs it twice, as Phoenix runs handle_params on the dead
+        render and on the connected mount, so the same params must give the
+        same state. Work that must happen once belongs in an event handler.
 
         Args:
             params: URL query parameters as a dict (e.g., {"page": "2", "sort": "name"})

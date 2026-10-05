@@ -41,6 +41,33 @@ patch는 컴포넌트에만 새 params를 알린다. **컴포넌트 밖의 템�
 `push_to` 대신 `redirect_to`를 쓴다. 같은 경로여도 페이지를 가져와 그 부분까지 다시 그린다. 쿼리를 읽는
 부분을 컴포넌트로 옮기면 patch로 충분하다.
 
+## 첫 응답과 join
+
+쿼리가 있는 주소(`/search/?q=장고`)를 열면 `params_changed()`가 두 번 돈다. 첫 HTTP 응답에서 한 번,
+WebSocket join에서 한 번이다. Phoenix가 dead render와 connected mount에서 `handle_params`를 한 번씩 부르는 것과
+같다(#170, #177).
+
+| 언제 | 순서 |
+|------|------|
+| 첫 HTTP 응답 | 마운트 훅(`Meta.on_mount`, `live_session`) → `params_changed()` → 렌더. `joined()`는 돌지 않는다 |
+| WebSocket join | 마운트 훅 → `joined()` → `params_changed()` → 첫 렌더. 첫 응답이 서명한 상태에서 시작한다 |
+
+- **같은 params로 두 번 돌아도 같은 상태가 되어야 한다.** 필드는 params에서 다시 계산한다. 메일 발송, 카운터
+  증가, 감사 로그처럼 한 번만 일어나야 하는 일은 `params_changed()`가 아니라 이벤트 핸들러에 둔다.
+- 첫 응답이 이미 쿼리를 반영해 그리므로 JavaScript 없는 브라우저와 검색엔진도 결과를 본다
+  ([JavaScript 없는 첫 렌더](./dead-view.md)).
+- 쿼리가 없으면 어느 쪽도 부르지 않는다.
+- 페이지의 모든 컴포넌트가 듣는다. 루트, 그 안의 `{% component %}`, 슬롯 안의 컴포넌트, 함수 컴포넌트가 그린
+  컴포넌트, sticky 컴포넌트, LiveComponent 모두 같다. 마운트 훅이 거절한 컴포넌트는 듣지 않는다.
+- 첫 응답에는 연결이 없다. 거기서 `start_async`·`assign_async`로 시작한 작업은 렌더 전에 취소된다 — 페이지는
+  로딩 상태로 그려지고 join의 `params_changed()`가 작업을 다시 시작한다. Phoenix도 연결 전에는 비동기 작업을
+  시작하지 않는다. `push_js`·`push_event`·플래시·`push_to`처럼 클라이언트에 보내는 명령은 갈 곳이 없어 버려진다.
+  `redirect_to`는 `<meta http-equiv="refresh">`로 나간다.
+- 첫 응답의 `params_changed()`가 예외를 던지면 그 응답이 실패한다. 마운트 훅이 던질 때와 같다. LiveComponent의
+  것은 소켓에서처럼 로그로 남고 자식은 그대로 그려진다.
+
+회귀 테스트는 `tests/test_http_params.py`, 경로 × 거절 사유 표는 `tests/test_live_session_contract.py`다.
+
 ## 뒤로 가기·앞으로 가기
 
 컴포넌트는 언제나 주소와 맞는다. 컴포넌트 밖의 템플릿은 patch 뒤에 옛 쿼리로 남을 수 있다(위 절). 맞추는 방법은

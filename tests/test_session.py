@@ -14,6 +14,7 @@ import typing as t
 
 import pytest
 from django.contrib.auth.models import AnonymousUser
+from django.http import QueryDict
 from django.template import Context, Template
 from django.test import override_settings
 from testproj.queries import capture_queries
@@ -289,7 +290,7 @@ async def test_a_live_component_child_gets_the_connection_session():
 
 def test_the_dead_render_reads_the_request_session():
     class FakeRequest:
-        META = {"QUERY_STRING": ""}
+        GET = QueryDict("")
         session = {"cart": "abc"}
 
     html = Template("{% load wireview %}{% component 'SessProbe' id='p' %}").render(Context({"request": FakeRequest()}))

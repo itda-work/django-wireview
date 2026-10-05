@@ -5,6 +5,7 @@ them too -- and a keyboard-navigable selection in component state."""
 import re
 
 import pytest
+from asgiref.sync import async_to_sync
 from playwright.sync_api import expect
 from testproj.e2e_browser import expect_count, expect_text, open_live
 from testproj.e2e_server import serve
@@ -139,6 +140,30 @@ async def test_clear_empties_the_address_too():
     assert view.component.is_open is False
 
 
+@pytest.mark.unit
+@pytest.mark.django_db
+def test_the_first_response_already_shows_the_results(client):
+    """No JavaScript, a search engine: the HTTP render hears the query too (#177).
+
+    And it draws what ``mount(params=)`` does, which is what the tests above read.
+    """
+    Book.objects.create(title="장고 실전", author="김장고")
+    Book.objects.create(title="파이썬 입문", author="박파이")
+
+    page = client.get("/search/?q=파이썬").content.decode()
+    mounted = async_to_sync(mount)(XLiveSearch, id="search", params={"q": "파이썬"}).render() or ""
+
+    assert "파이썬 입문" in page
+    assert 'value="파이썬"' in page
+    assert "장고 실전" not in page
+    assert _without_state(mounted) in _without_state(page)
+
+
+def _without_state(html: str) -> str:
+    """The signed state carries a timestamp, so two renders of the same state differ there only."""
+    return re.sub(r'data-state="[^"]*"', "", html)
+
+
 @pytest.fixture
 def wireview_server():
     with serve() as base_url:
@@ -201,3 +226,15 @@ class TestQueryInTheAddress:
         expect_text(titles, "장고 실전")
         expect(box).to_have_value("장고")
         assert page.evaluate("window.__samePage === true"), "patched in place, not loaded"
+
+    def test_without_javascript_a_link_with_a_query_shows_its_results(self, browser, wireview_server):
+        """The first HTTP render hears the query, so the page is not empty until a join (#177)."""
+        context = browser.new_context(java_script_enabled=False)
+        try:
+            page = context.new_page()
+            page.goto(f"{wireview_server}/search/?q=%ED%8C%8C%EC%9D%B4%EC%8D%AC")
+
+            expect_text(page.locator(".dropdown .book-title"), "파이썬 입문")
+            expect(page.locator("input[name=q]")).to_have_value("파이썬")
+        finally:
+            context.close()

@@ -361,7 +361,7 @@ def button(text: str, variant: str = "primary"):
    제목에 `[YANKED]`를 붙인다. 옮기기 전에 그 절의 항목을 하나씩 `docs/UPGRADING.md`의 그 버전 절과 대조한다 —
    업그레이드하는 프로젝트가 할 일이 있으면 그 절에 적고(조용히 달라지면 **조용함**), 없으면 그 이유를
    `tests/test_upgrading.py`의 표에 적는다. 여러 브랜치가 각자 CHANGELOG에만 적은 변경이 이렇게 빠졌다. 그 표는
-   1.1에서 1.2로 가는 절을 본다(`PREVIOUS`·`SECTION`). 다음 릴리스는 표와 절을 그 버전으로 옮긴다.
+   1.2에서 1.3으로 가는 절을 본다(`PREVIOUS`·`SECTION`). 다음 릴리스는 표와 절을 그 버전으로 옮긴다.
 2. `pyproject.toml`과 `package.json`의 `version`을 함께 올리고, `uv lock`과 `npm install --package-lock-only`로
    두 lock의 버전도 맞춘다(`tests/test_packaging.py`가 넷을 비교한다). 사전 릴리스가 아니면 classifier가
    `Development Status :: 5 - Production/Stable`이어야 한다(같은 파일이 본다).

@@ -61,6 +61,7 @@ FIRST_SECTION = {
     "1.0.0rc4": "100rc4에서-10으로",
     "1.0.x": "10에서-11로",
     "1.1.x": "11에서-12로",
+    "1.2.x": "12에서-13으로",
 }
 # A row that reads only some subsections of a section names them: rc2 and rc3 already had the
 # rest of rc1-to-1.0.
@@ -96,57 +97,32 @@ def test_every_row_reads_every_section_from_its_own_up():
         assert [a for a in anchors if a not in order] == SUBSECTIONS.get(version, []), version
 
 
-# What changed since 1.1.0, entry by entry. A key is a phrase of one CHANGELOG entry of the
-# release after 1.1.0 (the [Unreleased] section until it is released); its value names the
-# bullet of "1.1에서 1.2로" that tells an upgrading project what to do -- a phrase of its bold
+# What changed since 1.2.0, entry by entry. A key is a phrase of one CHANGELOG entry of the
+# release after 1.2.0 (the [Unreleased] section until it is released); its value names the
+# bullet of "1.2에서 1.3으로" that tells an upgrading project what to do -- a phrase of its bold
 # lead -- and a phrase its text, sub-bullets included, says about this entry. Under
 # NO_UPGRADE_NOTE the value says why nothing needs telling. The rc4-to-1.0 section was written
 # from the entries one track at a time and missed the StrEnum and stream container changes --
 # both silent. An entry with neither fails here, so each new one is a decision. The next
 # release moves this table to its own entries and section.
 UPGRADE_NOTE = {
-    "`push_to` to the page's own path": ("같은 경로로 가는 `push_to`", "`redirect_to`로 바꾼다"),
-    "`replace_to` to another path fetches": ("다른 경로로 가는 `replace_to`", "같은 경로의 쿼리로 바꾼다"),
-    "`mount(params=...)` runs `params_changed()`": ("`mount(params=...)`와 `follow_push()`", 'path="/items/"'),
-    "cannot tell a patch from a new page": ("`mount(params=...)`와 `follow_push()`", "2.0에서는 실패하므로"),
-    "`mount()` takes `path=`": ("`mount(path=...)`는 페이지의 경로다", 'state={"path": "/a/b/"}'),
-    "a join runs `params_changed()` before the render": (
-        "join은 첫 렌더 앞에서 `params_changed()`를 부르고",
-        "두 번 하는 일이 있으면 하나로 줄인다",
+    "The first HTTP render runs `params_changed()`": (
+        "첫 HTTP 렌더도 `params_changed()`를 부른다",
+        "같은 params로 두 번 돌아도 결과가 같아야 한다",
     ),
-    "tells the server its params once the page is on screen": (
-        "떠나는 페이지의 컴포넌트는 목적지의 params를 듣지 않는다",
-        "`leaving()`에 둔다",
-    ),
-    "makes no history entry, as Phoenix's makes none": ("지금 주소와 똑같은 주소로 가는 `push_to`", "전처럼 돈다"),
-    "leaves a link to a fragment of the page": (
-        '조각 링크(`<a href="#section">`)를 가로채지 않는다',
-        "`redirect_to`로 바꾼다",
-    ),
-    "`wireview:navigation-failed` on `document`": ("가져오기가 네트워크 오류로 실패하면", "그 이벤트를 듣는다"),
-    "whose fetch fails on the network": ("가져오기가 네트워크 오류로 실패하면", "어긋났다"),
-    "is sent in `no-cors` mode": ("`no-cors` 모드로 보낸다", "`wire-boost`를 뺀다"),
-    "a boosted form's method is read as the browser reads it": (
-        "boost 폼의 method를 브라우저처럼 읽는다",
-        "POST로 받는다",
-    ),
-    "A stopped boosted navigation": ("중지된 boost 이동은 화면의 페이지에 머문다", "boost 없이 연다"),
+    "reads the page's query from `request.GET`": ("퍼센트 인코딩 없이 온 쿼리를 Django처럼 읽는다", "할 일은 없다"),
 }
 
 DOCS_ONLY = "문서·저장소만 바뀌었고 라이브러리 동작은 같다"
 NO_UPGRADE_NOTE = {
-    "The package's Documentation URL": "패키지 메타데이터의 링크만 바뀌었다",
-    "The documentation site serves the images": DOCS_ONLY,
-    "The README opens with": DOCS_ONLY,
-    "no longer says the layers' logs count": DOCS_ONLY,
-    "Browser tests for what the documentation claims": "테스트만 늘었다",
-    "IME is composing in": "고친 결함이다. 조합이 끊기던 화면이 끊기지 않을 뿐 할 일은 없다",
-    "the back/forward cache restores": "고친 결함이다. 어긋난 채 되살아나던 문서가 주소창의 페이지로 돌아온다",
-    'no longer warns that it is "loading it without boost"': "경고 문구만 바뀌었다",
+    "Every code block on the documentation site has a copy button": DOCS_ONLY,
+    "The README says when to use wireview": DOCS_ONLY,
+    "The Live Search example and tutorial keep the query in the address": "예제와 튜토리얼만 바뀌었다",
+    "The README's numbers are charts": "문서와 벤치마크만 바뀌었다",
 }
 
-PREVIOUS = "1.1.0"
-SECTION = "1.1에서 1.2로"
+PREVIOUS = "1.2.0"
+SECTION = "1.2에서 1.3으로"
 
 
 def _entries_since_previous() -> list[str]:

@@ -21,6 +21,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.contrib.sessions.backends.cache import SessionStore as CacheSessionStore
 from django.contrib.sessions.backends.db import SessionStore
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied
+from django.http import QueryDict
 from django.template import Context, Template
 from django.test import RequestFactory, override_settings
 
@@ -453,7 +454,7 @@ class TestHttpBoundary:
 
     def test_a_guarded_component_renders_inside_its_session(self, admin_session):
         class Request:
-            META = {"QUERY_STRING": ""}
+            GET = QueryDict("")
             session: dict = {}
             wireview_live_session = "lsx-admin"
 
@@ -466,7 +467,7 @@ class TestHttpBoundary:
 
     def test_the_header_publishes_the_page_boundary(self, admin_session):
         class Request:
-            META = {"QUERY_STRING": ""}
+            GET = QueryDict("")
             session: dict = {}
             wireview_live_session = "lsx-admin"
 

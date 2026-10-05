@@ -61,8 +61,11 @@ class XLiveSearch(Component):
         """
         Show the results for the address's query.
 
-        Runs after joined() when the page loads with a query (a reload, a
-        shared link), on a patch from search() or clear(), and on Back/Forward.
+        Runs when the page loads with a query (a reload, a shared link) --
+        on the HTTP render, so the first response already shows the results,
+        and again on the join, after joined() -- on a patch from search() or
+        clear(), and on Back/Forward. Twice for one load, so it only derives
+        the results from the query.
         """
         q = params.get("q", "")
         self.query = q
