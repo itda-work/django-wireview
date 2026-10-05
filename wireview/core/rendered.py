@@ -358,6 +358,9 @@ class Rendered:
     static: list[str]
     dynamic: list[Dynamic]
     _fingerprint: str | None = field(default=None, repr=False, compare=False)
+    #: Whether a LiveComponent's reference can be in it: ``False`` only when parsed
+    #: from HTML without one and nothing kept from an earlier render (``may_name_components``)
+    _names: bool | None = field(default=None, repr=False, compare=False)
 
     def __init__(
         self,
@@ -369,6 +372,7 @@ class Rendered:
         self.dynamic = dynamic if dynamic is not None else []
         # Hashing is deferred: nested blocks and comprehension items never need it.
         self._fingerprint = fingerprint or None
+        self._names = None
 
     @property
     def fingerprint(self) -> str:
@@ -453,7 +457,10 @@ class Rendered:
         if _NESTED_PREFIX in html:
             html = _NESTED.sub("", html)
         static, dynamic = _parse(html, set(stale))
-        return cls(static=static, dynamic=dynamic)
+        rendered = cls(static=static, dynamic=dynamic)
+        # A reference comes from its comment, or from an earlier render through settle()
+        rendered._names = None if stale else _REF_PREFIX in html
+        return rendered
 
     def settle(self, previous: Rendered | None) -> None:
         """Give each ``Stale`` part the value it had in ``previous``, so it is unchanged.
@@ -841,8 +848,20 @@ def payload_component_refs(payload: t.Any) -> list[str]:
     return found
 
 
+def may_name_components(rendered: Rendered | None) -> bool:
+    """Whether ``rendered`` can reference a LiveComponent: false only for one known to hold none.
+
+    A render parsed from HTML without a reference comment, with no part kept
+    from the render before, holds none, and walking it to find so is most of
+    what a component without LiveComponents pays after its render (#176).
+    """
+    return rendered is None or rendered._names is not False
+
+
 def component_refs(rendered: Rendered) -> list[str]:
     """Ids of every LiveComponent referenced anywhere in a render, in document order."""
+    if rendered._names is False:
+        return []
     found: list[str] = []
 
     def walk(value: Dynamic) -> None:

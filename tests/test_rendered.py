@@ -10,9 +10,11 @@ from wireview.core.rendered import (
     RenderedDiff,
     Stale,
     _marked_content,
+    component_refs,
     has_markers,
     inject_marker,
     keep_stale,
+    may_name_components,
 )
 
 
@@ -385,3 +387,38 @@ class TestParseRoundTrip:
         assert parsed.dynamic[0] == Stale("a")
         assert parsed.dynamic[1] == Stale("b")
         assert parsed.dynamic[2] == Rendered(static=["c", ""], dynamic=[Stale("d")])
+
+
+class TestMayNameComponents:
+    """A render known to hold no LiveComponent's reference is not walked for one (#176)."""
+
+    @pytest.mark.unit
+    def test_a_render_without_a_reference_comment_names_none(self):
+        rendered = Rendered.from_marked_html("<p><!--$0-->a<!--/$0--><!--$C1--><!--$I1-->x<!--/$I1--><!--/$C1--></p>")
+
+        assert not may_name_components(rendered)
+        assert component_refs(rendered) == []
+
+    @pytest.mark.unit
+    def test_a_reference_anywhere_is_found(self):
+        html = "<p><!--$C0--><!--$I0--><!--$B1--><!--$2--><!--@wv:kid--><!--/$2--><!--/$B1--><!--/$I0--><!--/$C0--></p>"
+        rendered = Rendered.from_marked_html(html)
+
+        assert may_name_components(rendered)
+        assert component_refs(rendered) == ["kid"]
+
+    @pytest.mark.unit
+    def test_what_a_kept_part_holds_is_not_known_from_the_html(self):
+        """settle() puts back an earlier render's value, which may be a reference."""
+        previous = Rendered.from_marked_html("<p><!--$0--><!--@wv:kid--><!--/$0--></p>")
+        rendered = Rendered.from_marked_html("<p><!--$0--><!--/$0--></p>", {0})
+        rendered.settle(previous)
+
+        assert may_name_components(rendered)
+        assert component_refs(rendered) == ["kid"]
+
+    @pytest.mark.unit
+    def test_a_render_built_any_other_way_is_walked(self):
+        assert may_name_components(None)
+        assert may_name_components(Rendered(["", ""], [ComponentRef("kid")]))
+        assert component_refs(Rendered(["", ""], [ComponentRef("kid")])) == ["kid"]

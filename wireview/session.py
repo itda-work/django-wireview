@@ -23,6 +23,7 @@ from .core.rendered import (
     LEAVES_FIRST_SINCE,
     PROTOCOL_VERSION,
     component_refs,
+    may_name_components,
     payload_component_refs,
 )
 from .core.session import SessionView
@@ -1493,8 +1494,9 @@ class WireviewSession:
 
         shown = component_refs(last) if (last := component.wire._last_rendered) is not None else ()
         batch = repo.take_lifecycle(component.id, shown)
-        await self._call_leaving(batch.retired)
-        self._release_uploads(batch.retired)
+        if batch.retired:
+            await self._call_leaving(batch.retired)
+            self._release_uploads(batch.retired)
         halted: set[str] = set()
         for child in batch.new:
             child.wire.enter_pending_mode()
@@ -1544,7 +1546,8 @@ class WireviewSession:
             child.wire.enter_pending_mode()
         # One update_many() per child class: a list of N rows loads what they show
         # in one query instead of N (GAP-035, #74).
-        await run_updates(batch.updates, _log_update_error)
+        if batch.updates:
+            await run_updates(batch.updates, _log_update_error)
         for child in batch.to_render:
             if child.id in halted:
                 continue
@@ -1553,7 +1556,9 @@ class WireviewSession:
             children.update(grandchildren)
             settled.append(child)
             settled.extend(descendants)
-        self._send_shown_again(diff, before, children)
+        if diff is not None and may_name_components(component.wire._last_rendered):
+            # A diff that names no LiveComponent shows none anew (#176): it is that render's
+            self._send_shown_again(diff, before, children)
         return diff, children, settled
 
     def _send_shown_again(self, diff: t.Any, before: t.Any, children: dict[str, t.Any]) -> None:
