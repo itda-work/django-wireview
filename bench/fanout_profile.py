@@ -60,7 +60,9 @@ ROOT = Path(__file__).resolve().parents[1]
 STATS_PATH = "/__fanout__/stats"
 ARM_PATH = "/__fanout__/arm"
 
-IMPLEMENTATIONS = ("wireview", "fastapi")
+IMPLEMENTATIONS = ("wireview", "wireview-shared", "fastapi")
+#: ``wireview-shared`` is the same server with ``BENCH_SHARED_RENDER=1``: Board declares
+#: ``Meta.shared_render`` (#176, stage 2; bench/compare_fastapi/serve.py)
 
 ns = time.perf_counter_ns
 cpu = time.thread_time_ns  # what this thread ran, without the time it waited for the GIL
@@ -292,6 +294,45 @@ def _patch_wireview() -> None:
     tags.sign_state = _timed("sign_state", tags.sign_state)
     state.signable_json = _timed("state json (model_dump_json)", state.signable_json)
 
+    # A Meta.shared_render class (#176, stage 2): the key and the wait, the parse once, each
+    # connection's token put in, and its diff against its own page
+    import wireview.core.shared_render as shared
+
+    shared.key = _timed("shared: key", shared.key)
+    # shared_render.render waits: for the render trip, or for the render another connection
+    # leads. The loop runs the others meanwhile, so both that wait and send_render around it
+    # hold their CPU. Two medians of such sums, subtracted, are noise; the CPU of send_render
+    # outside shared_render.render is kept per task and recorded as a stage of its own.
+    inside: dict[t.Any, int] = defaultdict(int)
+    render = shared.render
+
+    async def timed_render(*args, **kwargs):
+        if not probe.armed:
+            return await render(*args, **kwargs)
+        used = cpu()
+        try:
+            return await render(*args, **kwargs)
+        finally:
+            inside[asyncio.current_task()] += cpu() - used
+
+    shared.render = timed_render
+    send_render = WireviewSession.send_render
+
+    async def timed_send_render(self, *args, **kwargs):
+        if not probe.armed:
+            return await send_render(self, *args, **kwargs)
+        task, used = asyncio.current_task(), cpu()
+        try:
+            return await send_render(self, *args, **kwargs)
+        finally:
+            spent = cpu() - used - inside.pop(task, 0)
+            probe.add("send_render outside the shared render", spent, spent)
+
+    WireviewSession.send_render = timed_send_render
+    shared.Shared.parse = classmethod(_timed("shared: parse", shared.Shared.parse.__func__))
+    shared.Shared.with_state = _timed("shared: with_state", shared.Shared.with_state)
+    meta.WireviewMeta._diff_against_last = _timed("diff: against last", meta.WireviewMeta._diff_against_last)
+
     # Back on the loop: the diff, and the frame's JSON
     meta.WireviewMeta._compute_rendered_diff = _timed("diff", meta.WireviewMeta._compute_rendered_diff)
     Rendered.from_marked_html = classmethod(_timed("diff: parse markers", Rendered.from_marked_html.__func__))
@@ -318,7 +359,7 @@ def install_probes(name: str) -> None:
     _patch_select()
     _patch_worker_thread()
     _patch_uvicorn()
-    if name == "wireview":
+    if name.startswith("wireview"):
         _patch_wireview()
     else:
         _patch_fastapi()
@@ -437,7 +478,8 @@ def serve(name: str, port: int, profile: bool) -> None:
     probe.profile = "cprofile" if profile else None
     import bench.compare_fastapi.serve as served
 
-    app = getattr(served, name)  # Django is set up here, so the probes find what they wrap
+    app = getattr(served, "wireview" if name.startswith("wireview") else name)  # Django is set up here,
+    # so the probes find what they wrap
     install_probes(name)
     uvicorn.run(Probed(app), host="127.0.0.1", port=port, log_level="warning", ws="websockets")
 
@@ -454,6 +496,9 @@ class Server:
         self.url = f"http://127.0.0.1:{self.port}"
         env = {k: v for k, v in os.environ.items() if k != "DJANGO_SETTINGS_MODULE"}
         env["PYTHONPATH"] = os.pathsep.join([str(ROOT), env.get("PYTHONPATH", "")])
+        env.pop("BENCH_SHARED_RENDER", None)
+        if name == "wireview-shared":
+            env["BENCH_SHARED_RENDER"] = "1"
         cmd = [sys.executable, "-m", "bench.fanout_profile", "serve", name, "--port", str(self.port)]
         if profile:
             cmd.append("--cprofile")
@@ -482,7 +527,7 @@ async def _round(server: Server, connections: int, warmup: int, broadcasts: int)
 
     import websockets
 
-    wireview = server.name == "wireview"
+    wireview = server.name.startswith("wireview")
     state = ""
     if wireview:
         with urllib.request.urlopen(server.url + "/") as response:
@@ -617,7 +662,37 @@ def stages(summary: dict[str, t.Any], name: str) -> list[tuple[str, float, float
             get("wall", side, stage) - sum(get("wall", side, m) for m in minus),
         )
 
-    if name == "wireview":
+    if name == "wireview-shared":
+        # The board renders once per message (the worker rows); each connection takes the key,
+        # its token and its diff on the loop. The parse happens once, in the render that leads.
+        rows = [
+            row("publish: group_send의 member마다 deepcopy + put", "loop", "layer.send (deepcopy + put)"),
+            row("loop: InMemory 레이어 _clean_expired (receive마다 전체 순회)", "loop", "layer._clean_expired"),
+            row("worker: close_old_connections (메시지마다 3번)", "worker", "close_old_connections"),
+            row("worker: 컨텍스트 읽기 (_collect_context)", "worker", "collect_context"),
+            row("worker: 템플릿 렌더", "worker", "template render"),
+            row(
+                "worker: sync_to_async 트립 (스레드 쪽 나머지)",
+                "worker",
+                "thread_handler",
+                ("close_old_connections", "collect_context", "template render"),
+            ),
+            row("loop: 공유 렌더의 키 (필드 JSON·언어·시간대)", "loop", "shared: key"),
+            row("loop: data-state 서명 (sign_state)", "loop", "sign_state"),
+            row("loop: 연결의 토큰 끼우기 (with_state)", "loop", "shared: with_state"),
+            row("loop: diff 계산 (마커 파싱은 메시지당 한 번)", "loop", "diff: against last"),
+            row("loop: 마커 파싱 (메시지당 한 번)", "loop", "shared: parse"),
+            row("loop: JSON 직렬화 (encode_json)", "loop", "encode_json"),
+            row("loop: WebSocket 프레임 쓰기 (deflate 제외)", "loop", "ws_send", ("deflate",)),
+            row("loop: permessage-deflate 압축", "loop", "deflate"),
+            row(
+                "loop: 세션 코드 (send_render의 나머지)",
+                "loop",
+                "send_render outside the shared render",
+                ("diff: against last", "encode_json", "ws_send"),
+            ),
+        ]
+    elif name == "wireview":
         rows = [
             row("publish: group_send의 member마다 deepcopy + put", "loop", "layer.send (deepcopy + put)"),
             row("loop: InMemory 레이어 _clean_expired (receive마다 전체 순회)", "loop", "layer._clean_expired"),
@@ -703,8 +778,15 @@ def report(result: dict[str, t.Any]) -> str:
 
 #: The stages of ``stages()`` in the groups docs/design/broadcast-fanout.md charts
 GROUPS = {
-    "렌더": ("worker: 컨텍스트", "worker: 템플릿", "worker: data-state"),
-    "diff": ("loop: diff",),
+    "렌더": (
+        "worker: 컨텍스트",
+        "worker: 템플릿",
+        "worker: data-state",
+        "loop: 공유 렌더",
+        "loop: data-state",
+        "loop: 연결의 토큰",
+    ),
+    "diff": ("loop: diff", "loop: 마커"),
     "트립·디스패치": ("loop: 그 밖", "worker: sync_to_async", "worker: close_old"),
     "채널 레이어": ("publish:", "loop: InMemory"),
     "세션 코드": ("loop: 세션 코드",),
@@ -1241,6 +1323,7 @@ async def inproc(args: argparse.Namespace) -> dict[str, t.Any]:
             await full()
         samples.append((ns() - started) / boards / 1000)
     out["render_diff_us_one_after_another"] = statistics.median(samples)
+    out["shared_render_us"] = await _shared_inproc(Board, store, boards, repeat)
     if args.cprofile:
         # Which functions one live render spends its time in (the times are inflated, the shares hold)
         import cProfile
@@ -1255,6 +1338,43 @@ async def inproc(args: argparse.Namespace) -> dict[str, t.Any]:
         out["render_diff_profile"] = _profile_text(profiler, limit=60)
     out["plain_render_us_by_threads"] = _threads_us(plain_render, boards, repeat)
     return out
+
+
+async def _shared_inproc(board: t.Any, store: t.Any, boards: int, repeat: int) -> dict[str, float]:
+    """Board declaring ``Meta.shared_render`` (#176, stage 2), ``boards`` connections handling one message.
+
+    The first renders and parses; every other takes that render, signs its own state,
+    puts the token in and diffs against its own page. Timed one after another.
+    """
+    import dataclasses
+
+    from bench.payload import _live
+    from wireview.core import shared_render
+
+    plain, board._meta = board._meta, dataclasses.replace(board._meta, shared_render=True)
+    try:
+        views = [await _live(board, id="board") for _ in range(boards)]
+        for view in views:
+            await view.wire.render_diff(view.component, view._repo)
+        lead, follow = [], []
+        for n in range(repeat):
+            store.announce()
+            with shared_render.handling(f"inproc-{n}"):
+                started = ns()
+                await views[0].wire.render_diff(views[0].component, views[0]._repo)
+                lead.append((ns() - started) / 1000)
+                started = ns()
+                for view in views[1:]:
+                    await view.wire.render_diff(view.component, view._repo)
+                follow.append((ns() - started) / (boards - 1) / 1000)
+        first = views[1]
+        return {
+            "render_diff, the connection that renders": statistics.median(lead),
+            "render_diff, each connection that takes it": statistics.median(follow),
+            "key": _per_board_us(lambda: shared_render.key(first.component), boards, repeat),
+        }
+    finally:
+        board._meta = plain
 
 
 # -- in-process: one click's server time ---------------------------------------------------

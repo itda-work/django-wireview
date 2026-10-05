@@ -45,6 +45,8 @@ CLIENT = HERE / "client"
 IMPLEMENTATIONS = {
     # name -> (uvicorn target, extra environment)
     "wireview": ("bench.compare_fastapi.serve:wireview", {}),
+    # The same board declaring Meta.shared_render (#176): not in the README's comparison
+    "wireview-shared": ("bench.compare_fastapi.serve:wireview", {"BENCH_SHARED_RENDER": "1"}),
     "fastapi-react": ("bench.compare_fastapi.serve:fastapi", {"BENCH_CLIENT": "react"}),
     "fastapi-vanilla": ("bench.compare_fastapi.serve:fastapi", {"BENCH_CLIENT": "vanilla"}),
 }
