@@ -1302,19 +1302,29 @@ class Component(BaseModel):
         template_name = template or self._get_stream_item_template()
         dom_id_fn = dom_id or (lambda item: f"{name}-{item.pk}")
 
-        # A QuerySet is both iterable and async iterable; iterating it
-        # synchronously here would query the database on the event loop,
-        # which Django refuses outside DJANGO_ALLOW_ASYNC_UNSAFE (#120).
-        if isinstance(items, t.AsyncIterable):
-            items = [item async for item in items]
+        # The reset goes out through the connection's channel, behind any
+        # Broadcast patch written meanwhile, and would wipe it: this
+        # component's patches are held from before the list is read below until
+        # the reset is written (#178). joined() holds them already.
+        gate = self.wire.patch_gate
+        held = gate is not None and await gate.hold(self)
+        try:
+            # A QuerySet is both iterable and async iterable; iterating it
+            # synchronously here would query the database on the event loop,
+            # which Django refuses outside DJANGO_ALLOW_ASYNC_UNSAFE (#120).
+            if isinstance(items, t.AsyncIterable):
+                items = [item async for item in items]
 
-        stream_items = []
-        for item in items:
-            html = await self._render_stream_item(template_name, item)
-            stream_items.append(StreamItem(dom_id=dom_id_fn(item), html=html))
+            stream_items = []
+            for item in items:
+                html = await self._render_stream_item(template_name, item)
+                stream_items.append(StreamItem(dom_id=dom_id_fn(item), html=html))
 
-        op = StreamOp(op="reset", stream=name, items=stream_items, limit=limit)
-        await self.wire.send_stream_op(op, self.id)
+            op = StreamOp(op="reset", stream=name, items=stream_items, limit=limit)
+            await self.wire.send_stream_op(op, self.id)
+        finally:
+            if held:
+                await gate.let_through(self)  # type: ignore[union-attr]
 
     async def stream_insert(
         self,

@@ -43,9 +43,11 @@ The django-reactor era changelog (2.x) is preserved in
   viewer: `this`, `user`, `request`, `perms` and `csrf_token` raise `ImproperlyConfigured` where it is
   published, always, and it renders in `LANGUAGE_CODE` and the default time zone. `{% on %}` in it
   checks the handler on the target class. A component receives its patches from before its
-  `joined()` and writes them after the operations `joined()` queued, so a stream reset does not wipe
-  an item committed after its read. `send()` publishes once the transaction commits. More than
-  1,000 frames waiting for one connection close it (1013) and emit the new
+  `joined()` and writes them after the operations `joined()` queued, and a `stream()` reset anywhere
+  else holds them from before it reads its list until the reset is written, so a reset does not wipe
+  an item committed after its read; frames whose release a full channel dropped go out 10 seconds
+  later. `send()` publishes once the transaction commits. More than 1,000 frames waiting for one
+  connection close it (1013, on servers whose socket writes wait) and emit the new
   `telemetry.broadcast_overflowed`. A mounted component in `wireview.testing` hears a Broadcast of
   its process. One item reaching 1,000 connections on one process takes 18.0 to 19.7 ms on the
   in-memory, Redis and NATS layers, against 276.3 to 742.6 ms through a notification and each

@@ -91,6 +91,23 @@ def _log_update_error(cls: type, component: t.Any, error: Exception) -> None:
     log.error("Error in %s", where, exc_info=error)
 
 
+class _Held:
+    """A component's patches held until its stream reset is written (``WireviewSession._hold_patches``)."""
+
+    __slots__ = ("component", "frames", "expiry")
+
+    def __init__(self, component: Component) -> None:
+        self.component = component
+        self.frames: list[str] = []
+        # Armed once the mail that lets them through is on its way (``_let_patches_through``)
+        self.expiry: asyncio.TimerHandle | None = None
+
+    def drop(self) -> None:
+        if self.expiry is not None:
+            self.expiry.cancel()
+            self.expiry = None
+
+
 class WireviewSession:
     """One browser tab's live session, apart from how its messages travel (GAP-027, #60).
 
@@ -162,11 +179,13 @@ class WireviewSession:
         self._patch_book: dict[tuple[str, str], list[Component]] = {}
         # The topics whose patch group this connection is in
         self._patch_topics: set[str] = set()
-        # Components that joined and whose joined() operations are still on the
-        # way through the channel layer, with the frames that came meanwhile:
-        # written after those, so a stream reset does not wipe them
+        # Components whose stream reset -- in joined() or anywhere else -- is
+        # still on the way through the channel layer, with the frames that came
+        # meanwhile: written after it, so it does not wipe them
         # (``_hold_patches``). Keyed by id(): a component's == compares fields.
-        self._patch_held: dict[int, tuple[Component, list[str]]] = {}
+        self._patch_held: dict[int, _Held] = {}
+        # What a component's stream reset holds and lets go (Component.stream)
+        self._patch_gate = patches.Gate(self._hold_patches, self._let_patches_through)
         # Frames waiting for the socket, and the task writing them (``_write_patches``)
         self._patch_queue: collections.deque[str] = collections.deque()
         self._patch_writer: asyncio.Future[None] | None = None
@@ -242,6 +261,7 @@ class WireviewSession:
             await hub.leave(topic, self)
         if self._patch_writer is not None:
             self._patch_writer.cancel()
+        self._close_patches()
         self._init_patches()
         if self._auth_topic:
             await self.outbound.unsubscribe(self._auth_topic)
@@ -299,6 +319,7 @@ class WireviewSession:
         await self._call_leaving(removed)
         self._release_uploads(removed)
         if self.repo.vsn < ERRORS_SINCE:
+            self._close_patches()
             await self.close(code=1011)
             return
         payload: dict[str, t.Any] = {"id": root.id, "during": "event"}
@@ -656,6 +677,8 @@ class WireviewSession:
         the view decorator.
         """
         log.info("Closing connection %s: %s", self.connection_id, event.get("reason", "session invalidated"))
+        # Not one more frame for the login that ended, nor for a socket that is closing
+        self._close_patches()
         await self.close(code=4001)
 
     async def command_leave(self, id):
@@ -1668,6 +1691,8 @@ class WireviewSession:
             subscriptions |= topics
             for topic in topics:
                 book.setdefault((type(component)._fqn, topic), []).append(component)
+            if topics:
+                component.wire.patch_gate = self._patch_gate
         # new subscriptions
         for channel in subscriptions - self.subscriptions:
             log.debug(f"::: SUBSCRIBE {self.channel_name} to {channel}")
@@ -1679,9 +1704,10 @@ class WireviewSession:
         self.subscriptions = subscriptions
         self._patch_book = book
         # A held component that is gone -- its join failed, it left -- is never let through
-        self._patch_held = {
-            key: entry for key, entry in self._patch_held.items() if self.repo.get(entry[0].id) is entry[0]
-        }
+        for key, held in list(self._patch_held.items()):
+            if self.repo.get(held.component.id) is not held.component:
+                held.drop()
+                del self._patch_held[key]
         await self._settle_patch_topics(subscriptions)
 
     # Broadcast patches (#178, docs/design/broadcast-patch.md)
@@ -1705,54 +1731,82 @@ class WireviewSession:
             await hub.leave(topic, self)
         self._patch_topics = wanted
 
-    async def _hold_patches(self, component: Component) -> None:
-        """Receive ``component``'s patches from now, before its ``joined()`` reads anything, and hold them.
+    async def _hold_patches(self, component: Component) -> bool:
+        """Receive ``component``'s patches from now, before it reads its list, and hold them; True if this began a hold.
 
-        ``joined()`` usually reads a list and sends it as a stream reset, and
-        that operation reaches the page through this connection's own channel
-        later than a patch, which is written as it comes. A patch written
-        first would be wiped by the reset; one published after the read and
-        held until the reset is written is not lost. So the component's patches
-        are received from before ``joined()`` -- an item committed before its
-        read is in the reset, one after it comes as a patch, and one in both is
-        put in its place twice -- and kept until ``_let_patches_through``.
+        A component reads a list and sends it as a stream reset -- in
+        ``joined()`` usually, or in a handler, ``params_changed``,
+        ``notification()``, ``update()`` -- and that operation reaches the page
+        through this connection's own channel later than a patch, which is
+        written as it comes. A patch written first would be wiped by the reset;
+        one published after the read and held until the reset is written is not
+        lost. So the component's patches are received from before the read --
+        an item committed before it is in the reset, one after it comes as a
+        patch, and one in both is put in its place twice -- and kept until
+        ``_let_patches_through``. A join holds from before ``joined()``; a
+        reset anywhere else holds from where ``stream()`` begins
+        (``WireviewMeta.patch_gate``).
         """
         if id(component) in self._patch_held:
-            return
+            return False
         topics = component.get_subscriptions()
         if not topics:
             # Nothing to receive yet. A component whose topics joined() decides
             # is held from its first render instead (command_join, send_render).
-            return
-        self._patch_held[id(component)] = (component, [])
+            return False
+        self._patch_held[id(component)] = _Held(component)
+        component.wire.patch_gate = self._patch_gate
         for topic in topics:
             entries = self._patch_book.setdefault((type(component)._fqn, topic), [])
             if not any(entry is component for entry in entries):
                 entries.append(component)
         await self._settle_patch_topics(self._patch_topics | topics)
+        return True
 
     async def _let_patches_through(self, component: Component) -> None:
-        """Release ``component``'s held patches once what its ``joined()`` queued is written.
+        """Release ``component``'s held patches once the operations it sent before -- its stream reset -- are written.
 
-        Through the same channel as those operations, so the release comes after them.
+        Through the same channel as those operations, so the release comes after
+        them. A layer that drops the release (a full channel) would hold the
+        frames for good, so they go out ``patches.HOLD_SECONDS`` after it is
+        sent all the same.
         """
-        if id(component) not in self._patch_held:
+        held = self._patch_held.get(id(component))
+        if held is None or held.component is not component:
             return
         if component.wire.channel_name:
+            held.drop()
+            held.expiry = asyncio.get_running_loop().call_later(patches.HOLD_SECONDS, self._hold_expired, held)
             await component.wire.send("release_patches", id=component.id, instance=component.wire.instance)
         else:
-            # Nothing goes through a channel: what joined() queued went out already
+            # Nothing goes through a channel: what it sent went out already
             await self._release_patches(component)
 
+    def _hold_expired(self, held: _Held) -> None:
+        if self._patch_held.get(id(held.component)) is not held:
+            return
+        log.warning(
+            "Writing the Broadcast patches held for %s (%s): what lets them through did not come in %ss",
+            held.component._name,
+            held.component.id,
+            patches.HOLD_SECONDS,
+        )
+        self._unhold(held.component)
+
     async def _release_patches(self, component: Component) -> None:
-        entry = self._patch_held.get(id(component))
-        if entry is None or entry[0] is not component:
+        self._unhold(component)
+        await self._patches_written()
+
+    def _unhold(self, component: Component) -> None:
+        held = self._patch_held.get(id(component))
+        if held is None or held.component is not component:
             return
         del self._patch_held[id(component)]
-        if self.repo.reachable(component.id) is component:
+        held.drop()
+        # Asked again: it may have left, crashed or failed since it was held
+        if held.frames and self.repo.reachable(component.id) is component:
             # Through the queue: ahead of whatever comes for it next
-            self._queue_patches(component, entry[1], "")
-        await self._patches_written()
+            self._queue_patches(component, held.frames, "")
 
     def _take_patch(self, message: dict[str, t.Any]) -> None:
         """A ``Broadcast`` the process received: queue its frames for each target here. Does not wait.
@@ -1773,9 +1827,9 @@ class WireviewSession:
                 continue
             texts = [patches.join(frame, component.id) for frame in frames]
             held = self._patch_held.get(id(component))
-            if held is not None and held[0] is component:
-                held[1].extend(texts)
-                if len(held[1]) > patches.QUEUE_LIMIT:
+            if held is not None and held.component is component:
+                held.frames.extend(texts)
+                if len(held.frames) > patches.QUEUE_LIMIT:
                     self._fell_behind(component, message["topic"])
                     return
                 continue
@@ -1800,10 +1854,19 @@ class WireviewSession:
         return True
 
     async def _write_patches(self) -> None:
-        """Write the queue to the socket, in order. A task of this connection's, apart from the hub's loop."""
+        """Write the queue to the socket, in order. A task of this connection's, apart from the hub's loop.
+
+        A write the socket refuses -- it closed before the disconnect reached
+        this session -- ends this connection's patches. Raised out of here it
+        would come up in whatever next awaits the task (``_patches_written``).
+        """
         queue = self._patch_queue
-        while queue:
-            await self.outbound.send_text(queue.popleft())
+        while queue and not self._patches_closed:
+            try:
+                await self.outbound.send_text(queue.popleft())
+            except Exception as e:
+                log.debug("Connection %s took no more Broadcast patches: %r", self.connection_id, e)
+                self._close_patches()
 
     async def _patches_written(self) -> None:
         writer = self._patch_writer
@@ -1833,10 +1896,16 @@ class WireviewSession:
             topic=topic,
             limit=patches.QUEUE_LIMIT,
         )
+        self._close_patches()
+        self._patch_closing = asyncio.ensure_future(self.close(code=1013))
+
+    def _close_patches(self) -> None:
+        """Write no more patches: the connection is closing."""
         self._patches_closed = True
+        for held in self._patch_held.values():
+            held.drop()
         self._patch_held.clear()
         self._patch_queue.clear()
-        self._patch_closing = asyncio.ensure_future(self.close(code=1013))
 
     async def send_query_string(self):
         new_qs = self.repo.get_query_string()

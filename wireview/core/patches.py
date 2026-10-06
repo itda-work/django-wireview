@@ -58,6 +58,12 @@ WATCHED_NAMES = ("this", "user", "request", "perms", "csrf_token")
 #: (``WireviewSession._take_patch``).
 QUEUE_LIMIT = 1000
 
+#: How many seconds frames stay held once the mail that lets them through is
+#: on its way through the channel layer. That mail comes in milliseconds; one a
+#: full layer dropped would hold them for good, so past this they are written
+#: anyway, with a warning (``WireviewSession._hold_expired``).
+HOLD_SECONDS = 10.0
+
 #: What a frame holds where the component id goes until it is cut in two.
 #: Random per process, so no rendered HTML holds it by chance.
 _ID_SLOT = f"wireview-patch-id-{secrets.token_hex(12)}"
@@ -65,6 +71,20 @@ _ID_SLOT = f"wireview-patch-id-{secrets.token_hex(12)}"
 #: The receivers ``wireview.testing`` registers: a mounted component hears a
 #: Broadcast published in its process as a session would.
 _listeners: weakref.WeakSet[t.Any] = weakref.WeakSet()
+
+
+class Gate(t.NamedTuple):
+    """What a component's stream reset asks of its connection (``WireviewMeta.patch_gate``).
+
+    A reset reaches the page through the connection's own channel, later than a
+    patch, which is written as it comes: a patch written first would be wiped.
+    ``hold`` holds the component's patches from before the reset reads its
+    list, and is True when it began a hold; ``let_through`` lets them go once
+    the reset is written.
+    """
+
+    hold: t.Callable[[Component], t.Awaitable[bool]]
+    let_through: t.Callable[[Component], t.Awaitable[None]]
 
 
 class BroadcastRenderError(ImproperlyConfigured):

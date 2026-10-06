@@ -166,6 +166,25 @@ class BcSeedHost(Component):
         return _template(cls, template_name)
 
 
+class BcRefreshing(BcFeed):
+    """Reads its list again in a handler, and an item is committed after the read: §4-3 outside joined()."""
+
+    class Meta:
+        subscriptions = {"bc-refresh"}
+
+    async def refresh(self, **_rest):
+        await self.stream("items", [Post(1, "old")])
+        await Broadcast(BcRefreshing, "bc-refresh").stream_insert("items", Post(2, "new"), at=0).asend()
+
+    async def refresh_while_reading(self, **_rest):
+        async def posts():
+            yield Post(1, "old")
+            # Committed and published while the list is still being read
+            await Broadcast(BcRefreshing, "bc-refresh").stream_insert("items", Post(2, "new"), at=0).asend()
+
+        await self.stream("items", posts())
+
+
 class BcFailing(BcFeed):
     async def joined(self):
         raise RuntimeError("joined went wrong")
@@ -486,6 +505,33 @@ async def test_so_is_one_published_during_a_live_components_joined():
     assert ops == [("reset", "bc-seed-live"), ("insert", "bc-seed-live")]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("handler", ["refresh", "refresh_while_reading"])
+async def test_a_patch_published_after_a_handlers_read_is_written_after_its_stream_reset(handler):
+    """The reset goes through the connection's channel; the patch used to be written first and wiped by it."""
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcRefreshing, "refresh")
+        await communicator.send_json_to(
+            {
+                "command": "user_event",
+                "payload": {"id": "refresh", "command": handler, "implicit_args": {}, "explicit_args": {}, "ref": 1},
+            }
+        )
+        ops: list[tuple[str, list[str]]] = []
+
+        def two_ops(message: dict[str, t.Any]) -> bool:
+            if message["command"] == "stream_op":
+                ops.append((message["payload"]["op"], [item["id"] for item in message["payload"]["items"]]))
+            return len(ops) == 2
+
+        await _until(communicator, two_ops)
+    finally:
+        await communicator.disconnect()
+
+    assert ops == [("reset", ["items-1"]), ("insert", ["items-2"])]
+
+
 class _Layer:
     """The part of a channel layer a ``PatchHub`` uses, counting what it is asked."""
 
@@ -661,6 +707,82 @@ async def test_a_component_that_falls_behind_while_held_closes_its_connection(hu
 
     assert closed == [1013]
     assert session.outbound.frames == []  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_what_was_held_for_a_component_that_is_gone_is_not_written(hub):
+    session = await _joined_session(_Recording())
+    feed = session.repo.get("feed")
+    assert await session._hold_patches(feed)
+    hub.dispatch(_message())
+    session.repo.remove("feed")
+
+    await session._release_patches(feed)
+
+    assert session.outbound.frames == []  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_held_frames_go_out_when_what_lets_them_through_never_comes(hub, monkeypatch, caplog):
+    """A full channel may drop the release: the frames were held for good."""
+    monkeypatch.setattr(patches, "HOLD_SECONDS", 0.05)
+    session = await _joined_session(_Recording())
+    feed = session.repo.get("feed")
+    dropped: list[str] = []
+
+    async def send(command: str, **kwargs: t.Any) -> None:
+        dropped.append(command)
+
+    feed.wire.channel_name = "the-sessions-channel"
+    monkeypatch.setattr(feed.wire, "send", send)
+    await session._hold_patches(feed)
+    hub.dispatch(_message())
+    await session._let_patches_through(feed)
+    assert dropped == ["release_patches"]
+    assert session.outbound.frames == []  # type: ignore[attr-defined]
+
+    written = await eventually(lambda: session.outbound.frames)  # type: ignore[attr-defined]
+
+    assert [json.loads(frame)["payload"]["component_id"] for frame in written] == ["feed"]
+    assert session._patch_held == {}
+    assert "did not come in" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_connection_its_login_ended_on_writes_no_more_patches(hub):
+    closed: list[int | None] = []
+
+    class Closing(_Recording):
+        async def close(self, code=None):
+            closed.append(code)
+
+    session = await _joined_session(Closing())
+    await session.session_invalidated({"reason": "logged out"})
+    hub.dispatch(_message())
+    await session._patches_written()
+
+    assert closed == [4001]
+    assert session.outbound.frames == []  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_a_socket_that_refuses_a_write_ends_its_patches_without_raising(hub):
+    """A socket closed before its disconnect reached the session: the error came up in whatever awaited next."""
+    tried: list[str] = []
+
+    class Gone(_Recording):
+        async def send_text(self, text: str) -> None:
+            tried.append(text)
+            raise RuntimeError("Unexpected ASGI message 'websocket.send', after sending 'websocket.close'")
+
+    session = await _joined_session(Gone())
+    hub.dispatch(_message())
+    hub.dispatch(_message())
+    await session._patches_written()
+    hub.dispatch(_message())
+    await session._patches_written()
+
+    assert len(tried) == 1
 
 
 @pytest.mark.asyncio

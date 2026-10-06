@@ -36,6 +36,7 @@ if t.TYPE_CHECKING:
     from ..slots import SlotContainer
     from .component import Component
     from .live_session import LiveSession
+    from .patches import Gate
 
 # Orders instances' births and their own renders across the process; only compared
 _TICKS = itertools.count()
@@ -203,6 +204,10 @@ class WireviewMeta:
         # A slot's owner puts back what it drew of this instance last while this
         # has not moved since (slots._NestedComponentNode).
         self.own_render: int = self.born
+        # The connection's hold on this component's Broadcast patches, which its
+        # stream resets take (Component.stream). Set by the session for a
+        # component that hears a topic; None where nothing writes patches (#178).
+        self.patch_gate: Gate | None = None
         # Pending operations queue for joined() lifecycle
         self._pending_mode: bool = False
         self._pending_operations: list[tuple[str, dict[str, t.Any]]] = []

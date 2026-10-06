@@ -511,7 +511,7 @@ class ComponentRepository:
         name: str,
         state: MessagePayload,
         children: ChildrenRepo | None = None,
-        before_joined: t.Callable[[Component], t.Awaitable[None]] | None = None,
+        before_joined: t.Callable[[Component], t.Awaitable[t.Any]] | None = None,
     ) -> Component:
         """Build the component a join names, mount it and run its ``joined()``.
 
