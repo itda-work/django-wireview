@@ -1,4 +1,4 @@
-.PHONY: ext-install ext-check ext-test ext-build ext-package ext-test-host all install test test-unit test-e2e test-concurrent test-matrix test-latest test-lowest test-cov test-js bench bench-compare bench-fastapi bench-fastapi-charts lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js ci-smoke docs-site docs-site-bundle docs-serve
+.PHONY: ext-install ext-check ext-test ext-build ext-package ext-test-host all install test test-unit test-e2e test-concurrent test-matrix test-latest test-lowest test-cov test-js bench bench-compare bench-fastapi bench-fastapi-charts bench-stream-fanout lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js ci-smoke docs-site docs-site-bundle docs-serve
 
 # Default target
 all: install build
@@ -184,6 +184,11 @@ bench-fastapi: build-js playwright-install
 # The charts the README and docs/PERFORMANCE.md show, from the result chart.py names
 bench-fastapi-charts:
 	uv run python -m bench.compare_fastapi.chart
+
+# One stream item reaching 1,000 connections: notification, Broadcast, FastAPI (#178). Starts and
+# stops redis-server and nats-server itself. `--facts` prints what the documents quote.
+bench-stream-fanout:
+	uv run --with fastapi==$(FASTAPI_VERSION) python -m bench.compare_fastapi.stream_fanout $(ARGS)
 
 # =============================================================================
 # Cleanup

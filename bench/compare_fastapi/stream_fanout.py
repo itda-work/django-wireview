@@ -43,7 +43,10 @@ import psutil
 from bench.ws import LOG_DIR, _free_port, _raise_fd_limit, _stop, _wait_for_port, start_broker
 
 ROOT = Path(__file__).resolve().parents[2]
-RESULT = ROOT / "bench" / "results" / "cd6a6ae-dirty-stream-fanout.json"
+RESULT = ROOT / "bench" / "results" / "3ab5818-stream-fanout.json"
+#: The same measurement of the first stage (D1, ``cd6a6ae``): every connection in the patch group.
+#: Taken from a worktree of that commit with this file's bench, Broadcast and FastAPI only.
+D1_RESULT = ROOT / "bench" / "results" / "cd6a6ae-stream-fanout-d1.json"
 
 #: name -> (uvicorn target, page mode); FastAPI has no page to read a state from
 IMPLEMENTATIONS = {
@@ -304,6 +307,59 @@ def chart(result: dict[str, t.Any]) -> str:
     )
 
 
+def stages_facts(d1: dict[str, t.Any], d2: dict[str, t.Any]) -> dict[str, str]:
+    """What docs/design/broadcast-patch.md §11 quotes: the Broadcast at each stage, by layer."""
+    out = {}
+    for stage, result in (("d1", d1), ("d2", d2)):
+        for layer, x in result["summary"]["wireview-broadcast"].items():
+            out[f"{stage}.{layer}.fanout"] = _ms(x["fanout_ms"])
+            out[f"{stage}.{layer}.spread"] = "~".join(
+                f"{v:,.1f}" for v in (min(x["fanout_ms_rounds"]), max(x["fanout_ms_rounds"]))
+            )
+            out[f"{stage}.{layer}.cpu"] = _us(x["cpu_per_connection_us"])
+        out[f"{stage}.fastapi.fanout"] = _ms(result["summary"]["fastapi"]["none"]["fanout_ms"])
+    return out
+
+
+def stages_table(d1: dict[str, t.Any], d2: dict[str, t.Any]) -> str:
+    f = stages_facts(d1, d2)
+    rows = [
+        "| | "
+        + " | ".join(LAYER_LABELS[layer] for layer in LAYERS)
+        + " | 연결당 CPU ("
+        + ", ".join(LAYER_LABELS[layer] for layer in LAYERS)
+        + ") | FastAPI (같은 회차) |",
+        "|---|" + "---:|" * (len(LAYERS) + 2),
+    ]
+    for stage, label in (("d1", "D1: 연결마다 레이어에서 받는다"), ("d2", "D2: 프로세스가 한 번 받는다")):
+        cells = [f"{f[f'{stage}.{layer}.fanout']} ({f[f'{stage}.{layer}.spread']})" for layer in LAYERS]
+        cpu = " / ".join(f[f"{stage}.{layer}.cpu"] for layer in LAYERS)
+        rows.append(f"| {label} | " + " | ".join(cells) + f" | {cpu} | {f[f'{stage}.fastapi.fanout']} |")
+    return "\n".join(rows)
+
+
+def stages_chart(d1: dict[str, t.Any], d2: dict[str, t.Any]) -> str:
+    """Mermaid: the Broadcast's fan-out at D1 and at D2, by layer, with the 40 ms target."""
+    names, values = [], []
+    for stage, result in (("D1", d1), ("D2", d2)):
+        for layer in LAYERS:
+            names.append(f"{LAYER_LABELS[layer]}: {stage}")
+            values.append(result["summary"]["wireview-broadcast"][layer]["fanout_ms"])
+    connections = d2["method"]["connections"]
+    return "\n".join(
+        [
+            "```mermaid",
+            "xychart-beta horizontal",
+            f'    title "Broadcast 하나가 연결 {connections:,}개에 닿기까지, 단계별 (선: 목표 {TARGET_MS:.0f} ms)"',
+            "    x-axis [" + ", ".join(f'"{n}"' for n in names) + "]",
+            f'    y-axis "ms" 0 --> {max(values) * 1.1:.0f}',
+            "    bar [" + ", ".join(f"{v:.1f}" for v in values) + "]",
+            "    line [" + ", ".join(f"{TARGET_MS:.0f}" for _ in values) + "]",
+            "```",
+        ]
+    )
+
+
 def load(path: Path = RESULT) -> dict[str, t.Any]:
     return json.loads(path.read_text())
 
@@ -320,10 +376,12 @@ def main() -> None:
     parser.add_argument("--facts", action="store_true", help="print what the documents quote from RESULT")
     args = parser.parse_args()
     if args.facts:
-        result = load()
-        print(json.dumps(facts(result), indent=2, ensure_ascii=False))
+        result, d1 = load(), load(D1_RESULT)
+        print(json.dumps({**facts(result), **stages_facts(d1, result)}, indent=2, ensure_ascii=False))
         print(table(result))
         print(chart(result))
+        print(stages_table(d1, result))
+        print(stages_chart(d1, result))
         return
     _raise_fd_limit()
     brokers = [start_broker(layer) for layer in args.layers]
