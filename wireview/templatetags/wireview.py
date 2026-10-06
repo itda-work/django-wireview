@@ -754,31 +754,36 @@ def on(context, _event_and_modifiers, _command, myself: bool = False, **kwargs: 
         {# LiveComponent event targeting itself #}
         {% on "click" "increment" myself=True %}
     """
+    from ..core.watched import stands_for
     from ..js import JS
 
     component: Component | None = context.get("this")
-    assert component, "Can't find a component in this context"
+    # A Broadcast item renders once for every instance of its class (#178), so
+    # its handlers are checked on the class. ``myself`` still reads the
+    # instance's id, which the item cannot have, and raises.
+    checked: Component | type[Component] | None = stands_for(component) or component
+    assert checked, "Can't find a component in this context"
 
     # Validate handler for string commands (not JS objects)
     if isinstance(_command, str):
-        _check_handler(component, _command)
+        _check_handler(checked, _command)
     elif isinstance(_command, JS):
         # Validate push events in JS commands reference valid handlers
         for cmd in _command._commands:
             if cmd.get("cmd") == "push":
                 event_name = cmd.get("event")
                 if event_name:
-                    _check_handler(component, event_name)
+                    _check_handler(checked, event_name)
 
     # Add target ID for LiveComponent @myself targeting
     if myself:
-        kwargs["_target"] = component.id
+        kwargs["_target"] = t.cast("Component", component).id
 
     name, value = binding(_event_and_modifiers, _command, kwargs)
     return format_html('{name}="{value}"', name=name, value=value)
 
 
-def _check_handler(component: "Component", name: str) -> None:
+def _check_handler(component: "Component | type[Component]", name: str) -> None:
     """Refuse a binding the dispatcher would refuse, while the page renders.
 
     The dispatcher takes only names ``is_client_callable`` allows. A binding to
@@ -790,7 +795,7 @@ def _check_handler(component: "Component", name: str) -> None:
 
     # Raised rather than asserted: ``python -O`` strips an assert, and the
     # binding went back to rendering and dropping every click.
-    label = f"{type(component).__name__}.{name}"
+    label = f"{(component if isinstance(component, type) else type(component)).__name__}.{name}"
     handler = getattr(component, name, None)
     if not handler:
         raise AssertionError(f"Missing handler: {label}")

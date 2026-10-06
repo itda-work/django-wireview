@@ -8,6 +8,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.core.exceptions import ImproperlyConfigured
 
 from .core.origin import origin_refusal
+from .core.patches import MESSAGE_TYPE as PATCH_MESSAGE
 from .core.rendered import protocol_version
 from .core.session import load_session
 from .core.transport import NO_CHANNEL_LAYER, ChannelsOutbound, Outbound
@@ -73,3 +74,16 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
 
     async def receive_json(self, content: dict, **kwargs) -> None:  # type: ignore[override]
         await self.handle_message(content)
+
+    async def dispatch(self, message):
+        # Channels closes the thread's old database connections before every
+        # handler: a worker-thread trip, about 30 µs a connection when a
+        # thousand take the same message (#178). A Broadcast's patch runs no
+        # component code and no query -- the session writes frames rendered
+        # where it was published -- so it goes without the trip. Every other
+        # message, the next one included, still takes it (#176 B6:
+        # tests/test_dispatch_connections.py).
+        if message.get("type") == PATCH_MESSAGE:
+            await self.wireview_patch(message)
+            return
+        await super().dispatch(message)

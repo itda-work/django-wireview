@@ -92,7 +92,7 @@ def send_to(channel: str | None, type: str, **kwargs: t.Any) -> None:
     if channel:
         broker = get_broker()
         message = _message(channel, type, kwargs)
-        with telemetry.span(telemetry.broadcast_published, sender=broker.__class__, topic=channel) as span:
+        with telemetry.span(telemetry.broadcast_published, sender=broker.__class__, topic=channel, kind=type) as span:
             span.measure(message)
             async_to_sync(broker.publish)(channel, message)
 
@@ -124,7 +124,7 @@ async def asend_to(channel: str | None, type: str, **kwargs: t.Any) -> None:
     if channel:
         broker = get_broker()
         message = _message(channel, type, kwargs)
-        with telemetry.span(telemetry.broadcast_published, sender=broker.__class__, topic=channel) as span:
+        with telemetry.span(telemetry.broadcast_published, sender=broker.__class__, topic=channel, kind=type) as span:
             span.measure(message)
             await broker.publish(channel, message)
 

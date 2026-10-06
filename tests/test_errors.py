@@ -19,7 +19,7 @@ from channels.testing import WebsocketCommunicator
 from django.contrib.auth.models import AnonymousUser
 from django.template import Template
 
-from wireview import Component, LiveComponent
+from wireview import Broadcast, Component, LiveComponent
 from wireview.consumer import WireviewConsumer
 from wireview.core.meta import WireviewMeta
 from wireview.core.rendered import ERRORS_SINCE, PROTOCOL_VERSION
@@ -561,6 +561,10 @@ async def test_what_a_failed_join_left_hears_no_broadcast_params_or_deferred_cal
         CALLS.clear()
 
         await utils.asend_to("error-probe-refused", "notification", kwargs={"n": 1})
+        # A Broadcast patch runs no code of the instance, but it is still written
+        # to it (#178): the host's, and not the refused one's
+        await Broadcast(ErrorProbeHearingNest, "error-probe-refused").push_event("patched").asend()
+        await Broadcast(ErrorProbeHearingHost, "error-probe-refused").push_event("patched").asend()
         await _send(communicator, "params_changed", params={"q": "1"}, uri="?q=1")
         await _event(communicator, "e-host", "call", ref=4)
         heard = await _heard_until_host_answers(communicator, 5)
@@ -568,7 +572,8 @@ async def test_what_a_failed_join_left_hears_no_broadcast_params_or_deferred_cal
         await communicator.disconnect()
 
     assert sorted(CALLS) == [("notification", "e-host"), ("params_changed", "e-host")]
-    assert {m["payload"].get("id") for m in heard} == {"e-host"}, heard
+    assert {m["payload"].get("id", m["payload"].get("component_id")) for m in heard} == {"e-host"}, heard
+    assert [m["payload"]["component_id"] for m in heard if m["command"] == "push_event"] == ["e-host"]
     assert "joined" not in [m["command"] for m in heard]
 
 

@@ -1380,10 +1380,14 @@ class Component(BaseModel):
         op = StreamOp(op="delete", stream=name, items=[StreamItem(dom_id=dom_id, html="")])
         await self.wire.send_stream_op(op, self.id)
 
-    def _get_stream_item_template(self) -> str:
-        """Get the default stream item template name."""
+    @classmethod
+    def _get_stream_item_template(cls) -> str:
+        """Get the default stream item template name.
+
+        A classmethod: a ``Broadcast`` renders the class's items with no instance (#178).
+        """
         # Convert "myapp/item_list.html" to "myapp/item_list_item.html"
-        base = (self._meta.template_name or "").rsplit(".", 1)[0]
+        base = (cls._meta.template_name or "").rsplit(".", 1)[0]
         return f"{base}_item.html"
 
     async def _render_stream_item(self, template_name: str, item: t.Any) -> str:

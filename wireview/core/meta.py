@@ -292,7 +292,9 @@ class WireviewMeta:
         from ..utils import _message  # wireview.utils imports this module's package first
 
         message = _message(channel, "notification", {"kwargs": kwargs})
-        with telemetry.span(telemetry.broadcast_published, sender=type(self.broker), topic=channel) as span:
+        with telemetry.span(
+            telemetry.broadcast_published, sender=type(self.broker), topic=channel, kind="notification"
+        ) as span:
             span.measure(message)
             await self.broker.publish(channel, message)
 

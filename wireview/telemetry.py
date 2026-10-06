@@ -14,11 +14,12 @@ Signal                       Fired when
 ``connection_closed``        that session ended
 ``join_rejected``            a socket or a join was refused (see ``JOIN_REJECTED_REASONS``)
 ``publish_failed``           the channel layer refused a publish or a session send
+``broadcast_overflowed``     a connection fell behind on ``Broadcast`` patches and was closed
 ===========================  ==================================================
 
 The first four are spans: they carry ``duration_ms`` (float), ``payload_size``
 (bytes, or ``None`` when the size is not measurable) and ``error`` (the
-exception that escaped the measured block, or ``None``). The other four are
+exception that escaped the measured block, or ``None``). The other five are
 events and carry only their own keyword arguments (#124). All of them are
 documented in ``docs/features/telemetry.md``.
 
@@ -47,6 +48,7 @@ __all__ = (
     "connection_closed",
     "join_rejected",
     "publish_failed",
+    "broadcast_overflowed",
     "JOIN_REJECTED_REASONS",
     "is_enabled",
     "enable",
@@ -70,8 +72,9 @@ component_rendered = Signal()
 diff_computed = Signal()
 
 #: A message was published to a fan-out topic.
-#: sender: broker class. Kwargs: ``topic``, ``duration_ms``, ``payload_size``,
-#: ``error``.
+#: sender: broker class. Kwargs: ``topic``, ``kind`` (``"notification"``,
+#: ``"model_mutation"``, another message type ``send_to`` was given, or
+#: ``"patch"`` for a ``Broadcast``), ``duration_ms``, ``payload_size``, ``error``.
 broadcast_published = Signal()
 
 #: A live session started on an accepted socket.
@@ -114,6 +117,13 @@ join_rejected = Signal()
 #: exception), ``dropped`` (``True`` when the message was dropped and the caller
 #: carried on -- a full channel -- and ``False`` when the error was re-raised).
 publish_failed = Signal()
+
+#: A connection was sent more ``Broadcast`` patches for one component than it
+#: holds while that component's ``joined()`` operations are on their way, and
+#: was closed (code 1013) rather than drop them; the page reconnects (#178).
+#: sender: session class. Kwargs: ``connection_id``, ``component_id``,
+#: ``topic``, ``limit`` (how many it holds).
+broadcast_overflowed = Signal()
 
 
 _enabled: bool = settings.TELEMETRY

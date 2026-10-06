@@ -21,6 +21,7 @@ paired with an admission case on the same path, because "refuses everything" and
 """
 
 import asyncio
+import json
 import re
 import typing as t
 from dataclasses import dataclass, field
@@ -36,7 +37,7 @@ from django.template import Context, Template
 from django.test import RequestFactory, override_settings
 from testproj.wireview_setting import set_wireview
 
-from wireview import Component, LiveComponent, live_session, mount
+from wireview import Broadcast, Component, LiveComponent, live_session, mount
 from wireview.consumer import WireviewConsumer
 from wireview.core import live_session as live_session_module
 from wireview.core.live_session import (
@@ -218,6 +219,14 @@ async def _handle_hook_event(self, hook_id: str, event: str, payload: dict) -> t
     return {"echo": event}
 
 
+#: The topic every probe hears, so a ``Broadcast`` patch has somewhere to go (#178)
+PATCH_TOPIC = "cx-patches"
+
+
+def _get_subscriptions(self) -> set[str]:
+    return {PATCH_TOPIC}
+
+
 _PARENTS: dict[str, type] = {}
 
 
@@ -250,6 +259,7 @@ def _pair(suffix: str, **namespace: t.Any) -> tuple[type, type]:
             joined=_joined,
             params_changed=_params_changed,
             handle_hook_event=_handle_hook_event,
+            get_subscriptions=_get_subscriptions,
             **dict(namespace),
         ),
         _component(
@@ -404,6 +414,10 @@ class FakeOutbound:
 
     async def send_command(self, command: str, payload: dict[str, t.Any]) -> None:
         self.commands.append((command, payload))
+
+    async def send_text(self, text: str) -> None:
+        frame = json.loads(text)
+        self.commands.append((frame["command"], frame["payload"]))
 
     async def subscribe(self, topic: str) -> None:
         self.subscribed.append(topic)
@@ -1093,7 +1107,18 @@ CLIENT_COMMANDS = {
     "upload_cancel": lambda c, cid: c.command_upload_cancel(cid, "files", "ref-1"),
     "upload_complete": lambda c, cid: c.command_upload_complete(cid, "files", "ref-1"),
     "leave": lambda c, cid: c.command_leave(cid),
+    # Not a command the client sends, but a way in all the same: a Broadcast's
+    # patch is written to an instance with none of its code run (#178)
+    "broadcast_patch": lambda c, cid: _patch(c),
 }
+
+
+async def _patch(consumer: WireviewConsumer) -> None:
+    """A Broadcast push_event for each probe class whose join the table makes, as the layer brings it."""
+    for cls in (CxOk, CxHalts):
+        (frame,) = Broadcast(cls, PATCH_TOPIC).push_event("cx-patched")._frames()
+        message = {"type": "wireview.patch", "target": cls._fqn, "topic": PATCH_TOPIC, "frames": [frame]}
+        await consumer.wireview_patch(message)
 
 
 #: What each command visibly does when it lands on a component that is really there.
@@ -1111,6 +1136,7 @@ OBSERVABLE = {
     ),
     "upload_complete": lambda c, out, comp: out.commands != [],
     "leave": lambda c, out, comp: c.repo.get("target") is None,
+    "broadcast_patch": lambda c, out, comp: out.kinds() == ["push_event"],
 }
 
 

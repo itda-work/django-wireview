@@ -44,6 +44,11 @@ wireview/
 │                          범위 밖(LiveComponent·temporary_assigns·slots·live_sessions·모델·QuerySet 타입 필드·다른 컴포넌트를 그리거나 보는 사람을 읽는 템플릿)은 공유하지 않고 W019가 알린다.
 │                          필드에 모델 인스턴스·QuerySet이 들어 있으면 키가 없다(같은 pk의 다른 속성). 토큰은 루프 밖에서 서명한다(렌더 트립, 받은 쪽들은 _Signer가 모아 db 트립 하나).
 │                          VERIFY_SHARED_RENDER(DEBUG·wireview.testing)면 user·session·request 읽기가 오류이고, 받은 렌더를 다시 렌더해 비교한다
+├── core/patches.py        Broadcast(#178). 스트림 삽입·삭제, push_event, JS를 발행하는 곳에서 한 번 렌더·직렬화하고 프레임을 id 자리에서 자른다([앞, 뒤]).
+│                          세션(wireview_patch)은 대상 클래스·토픽의 reachable 인스턴스마다 id만 끼워 send_text로 쓴다 — 브라우저가 받는 바이트는 세션의 것과 같다.
+│                          그룹은 알림과 따로 wireview.patch.<토픽>. 컴포넌트는 joined() 전에 패치를 잡아 두고 release_patches 메일에서 놓는다(reset 뒤에 써지게)
+├── core/watched.py        Watched: 보는 사람을 읽으면 오류인 감시 객체. shared_render(VERIFY일 때)와 Broadcast 항목 렌더(언제나)가 함께 쓴다.
+│                          Broadcast 항목의 this는 대상 클래스를 품어 {% on %}이 핸들러를 클래스에서 검사한다(stands_for)
 ├── core/render_gate.py    RenderGate. 워커 스레드가 렌더하는 동안 그 컴포넌트의 start_async·assign_async 작업 단계를 렌더 뒤로 미룬다(#138).
 │                          렌더가 async property를 오래 기다리는 동안 작업이 막혀 있으면 경고한다(교착 의심, #147)
 ├── core/session.py        SessionView. Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다
@@ -56,7 +61,8 @@ wireview/
 ├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳
 ├── template_engine.py     템플릿 VariableNode에 diff 마커 자동 주입. 마커 변수는 값을 직접 resolve하고 평범한 int·str은
 │                          Django의 VariableNode와 같은 출력을 지름길로 찍는다(render_value, #176). 바꾸면 tests/test_template_values.py가 Django 출력과 맞춘다
-├── consumer.py            WireviewConsumer: Channels WebSocket 어댑터(/__wireview__). 소켓 수락·거절과 세션 시작·종료, JSON 전달만
+├── consumer.py            WireviewConsumer: Channels WebSocket 어댑터(/__wireview__). 소켓 수락·거절과 세션 시작·종료, JSON 전달만.
+│                          dispatch는 wireview.patch만 Channels의 aclose_old_connections 트립 없이 넘긴다(#178)
 ├── session.py             WireviewSession: 세션 로직 전부(inbound command_*, 메일 component_*, 렌더). Outbound로만 내보낸다.
 │                          channels를 import하지 않는다(tests/test_session_extraction.py). send_render가 자식 LiveComponent의
 │                          joined/update(update_many)/leaving과 렌더를 함께 처리 (GAP-027, #60)
@@ -375,6 +381,10 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
   함께 쓴다. 공유하는 것은 `Rendered`뿐이고 `data-state`는 연결마다 자기 토큰이다 — 서명이 경계와 인증 세대를 묶는다.
   렌더를 내보내는 새 경로가 선언한 클래스를 렌더하면 `shared_render.render`를 거쳐야 한다(자리 `STATE_SLOT`이 남지 않게).
   공유는 `shared_render.handling(message_id)` 안에서만 일어나고 지금은 `_dispatch_notifications`의 `send_render`만 그 안에 있다.
+- **컴포넌트가 joined()를 도는 새 경로는 Broadcast 패치를 잡았다 놓는다(#178).** `joined()` 전에 `_hold_patches`, 그것이 쌓은
+  작업을 보낸 뒤 `_let_patches_through`. 빠뜨리면 `joined()`의 스트림 reset(세션 메일, 늦게 써진다)이 그 사이에 쓴 패치를
+  지운다. 패치를 쓰는 곳은 `wireview_patch` 하나이고, 쓰기 직전에 `repo.reachable`을 다시 묻는다. `Broadcast` 항목 템플릿의
+  `this`·`user`·`request`·`perms`·`csrf_token`은 언제나 감시 객체다(`wireview/core/watched.py`) — 그 렌더가 모든 구독자의 것이다.
 - **data-state는 dynamic 파트다.** `{% tag_header %}`의 서명 상태는 라이브 렌더에서 마커로 감싸진다. static에 넣으면 fingerprint가 매번 바뀌어 부분 diff가 죽는다. 회귀 테스트는 tests/test_diff_stability.py.
 
 ## 문서 인덱스

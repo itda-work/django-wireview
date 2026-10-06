@@ -78,6 +78,8 @@
 | `core/model_state.py` | 상태 안의 모델 인스턴스를 pk로 서명하고 필드 타입 표기를 따라 다시 읽는다 (#113) |
 | `core/render_reads.py`, `core/render_gate.py` | 초기화된 temporary assign을 읽은 동적 부분 찾기(#111), 워커 스레드 렌더 중 백그라운드 작업 미루기(#138) |
 | `core/shared_render.py` | `Meta.shared_render`: 같은 브로드캐스트를 처리하는 연결들이 렌더 하나를 함께 쓰고, `data-state`만 연결마다 끼운다. 선언 검증(#176) |
+| `core/patches.py` | `Broadcast`: 스트림 항목·훅 이벤트·JS 명령을 발행하는 곳에서 한 번 렌더하고 직렬화해, 구독한 연결마다 컴포넌트 id만 끼워 쓴다(#178) |
+| `core/watched.py` | 보는 사람을 읽으면 오류가 나는 감시 객체. `shared_render`의 검증과 `Broadcast` 항목 렌더가 함께 쓴다 |
 | `core/session.py` | `SessionView`: Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다 |
 | `core/live_session.py` | 페이지 경계(`live_session`)와 인증 세대 |
 | `core/origin.py` | WebSocket Origin 검사 (#96) |
@@ -331,8 +333,8 @@ class StreamOp:
 ```
 wireview/
 ├── __init__.py            # 공개 API (_EXPORTS 표로 지연 로딩)
-├── core/                  # component, handlers, meta, rendered, render_reads, render_gate, shared_render, state,
-│                          # signing, model_state, session(SessionView), live_session, origin, transport
+├── core/                  # component, handlers, meta, rendered, render_reads, render_gate, shared_render, patches,
+│                          # watched, state, signing, model_state, session(SessionView), live_session, origin, transport
 ├── features/              # streams, presence, uploads, upload_store, hooks, toasts
 ├── consumer.py  session.py  repository.py  live_component.py  function_components.py  slots.py
 ├── template_engine.py  event_transpiler.py  js.py  async_result.py  auto_broadcast.py

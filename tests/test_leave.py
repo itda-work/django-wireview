@@ -143,11 +143,13 @@ async def test_leave_drops_subscriptions_nobody_needs_any_more():
     consumer, outbound = make_consumer()
     joined(consumer.repo.build("LeaveProbeParent", {"id": "p1"}))
     await consumer.after_mutation_chores()
-    assert outbound.subscribed == ["leave-probe-topic"]
+    # The topic, and its Broadcast patches (#178)
+    assert outbound.subscribed == ["leave-probe-topic", "wireview.patch.leave-probe-topic"]
 
     await consumer.command_leave("p1")
 
     assert "leave-probe-topic" in outbound.unsubscribed
+    assert "wireview.patch.leave-probe-topic" in outbound.unsubscribed
     assert consumer.subscriptions == set()
 
 

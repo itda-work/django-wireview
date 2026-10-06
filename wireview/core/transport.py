@@ -8,6 +8,9 @@ wireview moves three kinds of traffic:
   own. Today this rides on the channel layer as ``message_from_component``.
 - **Fan-out**: a message is published to every session subscribed to a topic
   (model mutations, notifications, upload progress).
+- **Patches**: frames rendered and serialized once by a ``Broadcast`` (#178),
+  published to the topic's patch group (``patch_group``) and written as they
+  are to every session holding a target component.
 
 ``Outbound`` and ``Broker`` are the only places that touch Django Channels.
 Consumer handlers, ``WireviewMeta`` and the broadcast helpers go through
@@ -22,6 +25,7 @@ import logging
 import typing as t
 
 from channels.exceptions import ChannelFull
+from channels.layers import BaseChannelLayer as _BaseChannelLayer
 from channels.layers import get_channel_layer
 
 from .. import telemetry
@@ -39,6 +43,10 @@ class Outbound(t.Protocol):
 
     async def send_command(self, command: str, payload: Message) -> None:
         """Deliver a server-to-client command to this session."""
+        ...
+
+    async def send_text(self, text: str) -> None:
+        """Deliver a frame serialized already: what ``send_command`` would have written, byte for byte."""
         ...
 
     async def subscribe(self, topic: str) -> None:
@@ -64,6 +72,43 @@ class Broker(t.Protocol):
     async def send_to_session(self, session_id: str, message: Message) -> None:
         """Deliver ``message`` to a single session."""
         ...
+
+    async def publish_patch(self, topic: str, message: Message) -> None:
+        """Deliver a ``wireview.patch`` message to every session receiving patches for ``topic``."""
+        ...
+
+
+#: Where a topic's patches go. Apart from the topic's own group, which carries
+#: notifications: a process from before patches existed has its consumers in
+#: that one, and Channels raises on a message type a consumer has no handler
+#: for. Those consumers are in no patch group, so a rolling deploy costs their
+#: pages the patches until they reconnect, not the socket (#178).
+PATCH_GROUP_PREFIX = "wireview.patch."
+
+#: The longest topic whose patch group is a valid group name: Channels takes
+#: names under 100 characters.
+PATCH_TOPIC_MAX = 99 - len(PATCH_GROUP_PREFIX)
+
+
+def require_patch_topic(topic: t.Any) -> None:
+    """Raise ``ValueError`` unless ``topic``'s patch group is a name every channel layer takes."""
+    if not isinstance(topic, str) or not topic:
+        raise ValueError(f"A Broadcast topic is a non-empty string, not {topic!r}")
+    if len(topic) > PATCH_TOPIC_MAX:
+        raise ValueError(
+            f"A Broadcast topic is at most {PATCH_TOPIC_MAX} characters, so that its patch group "
+            f"{patch_group('')!r}<topic> stays under the channel layers' 100; {topic!r} has {len(topic)}"
+        )
+    if not _BaseChannelLayer.group_name_regex.match(topic):
+        raise ValueError(
+            f"A Broadcast topic holds only ASCII letters, digits, '-', '_' and '.', as a channel layer group "
+            f"name does: {topic!r}"
+        )
+
+
+def patch_group(topic: str) -> str:
+    """The topic that carries ``topic``'s patches: a session receives them by ``Outbound.subscribe`` to it."""
+    return PATCH_GROUP_PREFIX + topic
 
 
 #: What a project without a channel layer is told. The consumer refuses the
@@ -122,6 +167,9 @@ class ChannelsBroker:
                 if not self._dropped("send_to_session", session_id, message, error):
                     raise
 
+    async def publish_patch(self, topic: str, message: Message) -> None:
+        await self.publish(patch_group(topic), message)
+
     def _dropped(self, kind: str, target: str, message: Message, error: Exception) -> bool:
         """Report a refused message. True when it is dropped (a full channel); False when the caller re-raises."""
         dropped = isinstance(error, ChannelFull)
@@ -142,6 +190,9 @@ class NullBroker:
     async def send_to_session(self, session_id: str, message: Message) -> None:
         return None
 
+    async def publish_patch(self, topic: str, message: Message) -> None:
+        return None
+
 
 class ChannelsOutbound:
     """``Outbound`` for a Channels WebSocket consumer.
@@ -154,6 +205,9 @@ class ChannelsOutbound:
 
     async def send_command(self, command: str, payload: Message) -> None:
         await self._consumer.send_json({"command": command, "payload": payload})
+
+    async def send_text(self, text: str) -> None:
+        await self._consumer.send(text_data=text)
 
     async def subscribe(self, topic: str) -> None:
         consumer = self._consumer

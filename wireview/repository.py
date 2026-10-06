@@ -511,7 +511,13 @@ class ComponentRepository:
         name: str,
         state: MessagePayload,
         children: ChildrenRepo | None = None,
+        before_joined: t.Callable[[Component], t.Awaitable[None]] | None = None,
     ) -> Component:
+        """Build the component a join names, mount it and run its ``joined()``.
+
+        ``before_joined`` runs once the mount passed and before ``joined()``:
+        the session starts receiving the component's patches there (#178).
+        """
         # Kept for this join alone, whatever it turns out to be
         kept = self._slots_to_rejoin.pop(state.get("id") or "", None)
         component = await db(self.build)(
@@ -542,6 +548,8 @@ class ComponentRepository:
                 self.abandon(component)
                 raise
             if mounted:
+                if before_joined is not None:
+                    await before_joined(component)
                 await component.joined()
             else:
                 self.abandon(component)

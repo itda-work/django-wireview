@@ -16,7 +16,7 @@ from django.utils.datastructures import MultiValueDict
 from wireview.core.component import Component
 
 from . import serializer, telemetry
-from .core import shared_render
+from .core import patches, shared_render
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
 from .core.rendered import (
     ERRORS_SINCE,
@@ -29,7 +29,7 @@ from .core.rendered import (
 )
 from .core.session import SessionView
 from .core.state import StateMismatch, StatePayload, unsign_envelope
-from .core.transport import Outbound
+from .core.transport import PATCH_TOPIC_MAX, Outbound, patch_group
 from .features import upload_store
 from .features.uploads import upload_group_name
 from .live_component import LiveComponent, run_updates
@@ -150,6 +150,23 @@ class WireviewSession:
         # connect and still names the same login. False until it has, and it stays
         # False when the read fails, so a refused connection cannot retry past it.
         self._auth_revalidated: bool = False
+        self._init_patches()
+
+    def _init_patches(self) -> None:
+        """What this connection knows of ``Broadcast`` patches (#178): none received yet."""
+        # (target class, topic) -> the instances a patch for them is written to.
+        # Settled with the subscriptions, and asked again before each write
+        # (repo.reachable), so a stale entry writes nothing.
+        self._patch_book: dict[tuple[str, str], list[Component]] = {}
+        # The topics whose patch group this connection is in
+        self._patch_topics: set[str] = set()
+        # Components that joined and whose joined() operations are still on the
+        # way through the channel layer, with the frames that came meanwhile:
+        # written after those, so a stream reset does not wipe them
+        # (``_hold_patches``). Keyed by id(): a component's == compares fields.
+        self._patch_held: dict[int, tuple[Component, list[str]]] = {}
+        # A connection closed for falling behind takes no more patches
+        self._patches_closed: bool = False
 
     @property
     def user(self):
@@ -171,6 +188,7 @@ class WireviewSession:
         self.live_session_name = None
         self._auth_topic = ""
         self._auth_revalidated = False
+        self._init_patches()
         self.repo = ComponentRepository(
             is_live=True,
             user=self.user,
@@ -213,6 +231,9 @@ class WireviewSession:
             log.debug(f"::: UNSUBSCRIBE {self.channel_name} from {channel}")
             await self.outbound.unsubscribe(channel)
         self.subscriptions.clear()
+        for topic in self._patch_topics:
+            await self.outbound.unsubscribe(patch_group(topic))
+        self._init_patches()
         if self._auth_topic:
             await self.outbound.unsubscribe(self._auth_topic)
             self._auth_topic = ""
@@ -393,6 +414,7 @@ class WireviewSession:
                 name,
                 decoded_state,
                 children=decoded_children,
+                before_joined=self._hold_patches,
             )
             if component.wire.mount_halted:
                 # The boundary refused it. Nothing of the component goes out: no
@@ -413,6 +435,8 @@ class WireviewSession:
             # The render that answers a join says which protocol this server
             # speaks, so the client knows what it may send (user_event refs).
             await self.send_render(component, announce=True, ref=answer)
+            # Topics joined() decided are received from here, held as well
+            await self._hold_patches(component)
 
             # Subscriptions first, then the operations queued during joined():
             # a broadcast queued there must not go out before this connection
@@ -422,6 +446,8 @@ class WireviewSession:
             # Through the same queue as what was just flushed, so it arrives last:
             # the stream items joined() sent are on the page when the client
             # hears it. Infinite scroll judges the list then, not before (#112).
+            # And the patches held since joined() began (#178), before ``joined``
+            await self._let_patches_through(component)
             if self.repo.vsn >= JOINED_SINCE:
                 await component.wire.send("joined", **_with_ref({"id": component.id}, answer))
         except Exception:
@@ -1015,6 +1041,12 @@ class WireviewSession:
     async def component_joined(self, id, ref=None):
         await self.send_command("joined", _with_ref({"id": id}, ref))
 
+    async def component_release_patches(self, id: str, instance: int):
+        """The operations ``joined()`` queued are written: write the patches held since (``_hold_patches``)."""
+        component = self.repo.get(id)
+        if component is not None and component.wire.instance == instance:
+            await self._release_patches(component)
+
     async def component_remove(self, id, ref=None):
         log.debug(f">>> REMOVE {id}")
         await self.send_command("remove", _with_ref({"id": id}, ref))
@@ -1460,11 +1492,16 @@ class WireviewSession:
                 payload["instances"] = instances
             await self.send_command("render", payload)
         if settled:
+            for child in settled:
+                if child.id in instances:
+                    # Topics its joined() decided are received from here, held as well
+                    await self._hold_patches(child)
             # Subscriptions before the children's queued operations, for the same
             # reason as in command_join.
             await self.update_to_which_channels_im_subscribed_to()
             for child in settled:
                 await child.wire.flush_pending()
+                await self._let_patches_through(child)
                 # A child whose first render this is just ran joined(): like a
                 # root's join, it ends with ``joined`` behind what that queued, so
                 # its infinite scroll judges its list once the list is there.
@@ -1536,6 +1573,7 @@ class WireviewSession:
                 await child.wire.flush_pending()
                 continue
             try:
+                await self._hold_patches(child)
                 await child.joined()
             except Exception as e:
                 log.exception(f"Error in {child._name}.joined(): {e}")
@@ -1613,7 +1651,14 @@ class WireviewSession:
         await self.send_query_string()
 
     async def update_to_which_channels_im_subscribed_to(self):
-        subscriptions = self.repo.subscriptions
+        # One pass for both: the topics, and which instance a topic's patches are for
+        subscriptions: set[str] = set()
+        book: dict[tuple[str, str], list[Component]] = {}
+        for component in self.repo.reachable_components():
+            topics = component.get_subscriptions()
+            subscriptions |= topics
+            for topic in topics:
+                book.setdefault((type(component)._fqn, topic), []).append(component)
         # new subscriptions
         for channel in subscriptions - self.subscriptions:
             log.debug(f"::: SUBSCRIBE {self.channel_name} to {channel}")
@@ -1623,6 +1668,131 @@ class WireviewSession:
             log.debug(f"::: UNSUBSCRIBE {self.channel_name} to {channel}")
             await self.outbound.unsubscribe(channel)
         self.subscriptions = subscriptions
+        self._patch_book = book
+        # A held component that is gone -- its join failed, it left -- is never let through
+        self._patch_held = {
+            key: entry for key, entry in self._patch_held.items() if self.repo.get(entry[0].id) is entry[0]
+        }
+        await self._settle_patch_topics(subscriptions)
+
+    # Broadcast patches (#178, docs/design/broadcast-patch.md)
+    #
+    # A ``Broadcast`` publishes frames rendered and serialized once, cut either
+    # side of the component id. They come to the topic's patch group, apart from
+    # its notifications, and this connection writes them to the instances of
+    # the target class that subscribe to the topic and that it can reach. No
+    # component code runs and nothing is rendered or serialized again.
+
+    async def _settle_patch_topics(self, topics: set[str]) -> None:
+        """Be in the patch group of exactly ``topics``: the ones a patch group can be named for."""
+        wanted = {topic for topic in topics if len(topic) <= PATCH_TOPIC_MAX}
+        for topic in wanted - self._patch_topics:
+            await self.outbound.subscribe(patch_group(topic))
+        for topic in self._patch_topics - wanted:
+            await self.outbound.unsubscribe(patch_group(topic))
+        self._patch_topics = wanted
+
+    async def _hold_patches(self, component: Component) -> None:
+        """Receive ``component``'s patches from now, before its ``joined()`` reads anything, and hold them.
+
+        ``joined()`` usually reads a list and sends it as a stream reset, and
+        that operation reaches the page through this connection's own channel
+        later than a patch, which is written as it comes. A patch written
+        first would be wiped by the reset; one published after the read and
+        held until the reset is written is not lost. So the component's patches
+        are received from before ``joined()`` -- an item committed before its
+        read is in the reset, one after it comes as a patch, and one in both is
+        put in its place twice -- and kept until ``_let_patches_through``.
+        """
+        if id(component) in self._patch_held:
+            return
+        topics = component.get_subscriptions()
+        if not topics:
+            # Nothing to receive yet. A component whose topics joined() decides
+            # is held from its first render instead (command_join, send_render).
+            return
+        self._patch_held[id(component)] = (component, [])
+        for topic in topics:
+            entries = self._patch_book.setdefault((type(component)._fqn, topic), [])
+            if not any(entry is component for entry in entries):
+                entries.append(component)
+        await self._settle_patch_topics(self._patch_topics | topics)
+
+    async def _let_patches_through(self, component: Component) -> None:
+        """Release ``component``'s held patches once what its ``joined()`` queued is written.
+
+        Through the same channel as those operations, so the release comes after them.
+        """
+        if id(component) not in self._patch_held:
+            return
+        if component.wire.channel_name:
+            await component.wire.send("release_patches", id=component.id, instance=component.wire.instance)
+        else:
+            # Nothing goes through a channel: what joined() queued went out already
+            await self._release_patches(component)
+
+    async def _release_patches(self, component: Component) -> None:
+        entry = self._patch_held.get(id(component))
+        if entry is None or entry[0] is not component:
+            return
+        del self._patch_held[id(component)]
+        if self.repo.reachable(component.id) is component:
+            for text in entry[1]:
+                await self.outbound.send_text(text)
+
+    async def wireview_patch(self, message: dict[str, t.Any]) -> None:
+        """A ``Broadcast``: write its frames to each instance of its class on this connection that hears its topic.
+
+        Its component's code does not run, so neither does the database:
+        the consumer hands this message over without the trip Channels takes
+        before every handler to close old connections (``WireviewConsumer.dispatch``).
+        """
+        if self._patches_closed:
+            return
+        components = self._patch_book.get((message["target"], message["topic"]))
+        if not components:
+            return
+        frames = message["frames"]
+        for component in components:
+            # Asked again: the book is settled after events, and a failed join,
+            # a crash or a leave since may have left it naming what is gone
+            if self.repo.reachable(component.id) is not component:
+                continue
+            texts = [patches.join(frame, component.id) for frame in frames]
+            held = self._patch_held.get(id(component))
+            if held is not None and held[0] is component:
+                held[1].extend(texts)
+                if len(held[1]) > patches.HOLD_LIMIT:
+                    await self._fell_behind(component, message["topic"])
+                    return
+                continue
+            for text in texts:
+                await self.outbound.send_text(text)
+
+    async def _fell_behind(self, component: Component, topic: str) -> None:
+        """More patches came for a held component than ``HOLD_LIMIT``: close rather than drop.
+
+        Dropping would leave the page wrong without a word. Closed, it
+        reconnects and joins again, and the joins put its lists right.
+        """
+        log.warning(
+            "Closing connection %s: %s (%s) was sent more than %d patches before its joined() operations were written",
+            self.connection_id,
+            component._name,
+            component.id,
+            patches.HOLD_LIMIT,
+        )
+        telemetry.emit(
+            telemetry.broadcast_overflowed,
+            type(self),
+            connection_id=self.connection_id,
+            component_id=component.id,
+            topic=topic,
+            limit=patches.HOLD_LIMIT,
+        )
+        self._patches_closed = True
+        self._patch_held.clear()
+        await self.close(code=1013)
 
     async def send_query_string(self):
         new_qs = self.repo.get_query_string()

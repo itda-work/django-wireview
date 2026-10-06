@@ -29,6 +29,7 @@ if t.TYPE_CHECKING:
     from .core.live_session import invalidate_authentication as invalidate_authentication
     from .core.live_session import live_session as live_session
     from .core.meta import WireviewMeta as WireviewMeta
+    from .core.patches import Broadcast as Broadcast
     from .core.session import SessionView as SessionView
     from .deprecation import WireviewDeprecationWarning as WireviewDeprecationWarning
     from .features.presence import PresenceConfig as PresenceConfig
@@ -75,6 +76,7 @@ _EXPORTS: dict[str, str] = {
     # Broadcasts and notifications
     "broadcast": ".core.component",
     "abroadcast": ".core.component",
+    "Broadcast": ".core.patches",
     "toast": ".features.toasts",
     "atoast": ".features.toasts",
     "toast_channel": ".features.toasts",
@@ -122,6 +124,7 @@ __all__ = (
     "invalidate_authentication",
     "broadcast",
     "abroadcast",
+    "Broadcast",
     "toast",
     "atoast",
     "toast_channel",

@@ -22,6 +22,7 @@ Example:
 
 from __future__ import annotations
 
+import json
 import typing as t
 from dataclasses import dataclass
 from urllib.parse import urlsplit
@@ -31,7 +32,7 @@ from channels.layers import BaseChannelLayer
 from django.contrib.auth.models import AnonymousUser
 from django.urls import Resolver404
 
-from .core import shared_render
+from .core import patches, shared_render
 from .core.meta import WireviewMeta
 from .core.rendered import PROTOCOL_VERSION
 from .core.session import SessionView
@@ -292,6 +293,21 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         for group in self._subscriptions - subscriptions:
             await layer.group_discard(group, "mounted")
         self._subscriptions = subscriptions
+
+    def _receive_patch(self, message: dict[str, t.Any]) -> None:
+        """A ``Broadcast`` published in this process, heard as a connection hears it (#178).
+
+        The frames land in :attr:`sent_messages` as the component's own operations
+        do, so :meth:`stream_ops`, :meth:`stream_html` and the rest read them alike.
+        """
+        component = self._component
+        if self.is_frozen or type(component)._fqn != message["target"]:
+            return
+        if message["topic"] not in component.get_subscriptions():
+            return
+        for frame in message["frames"]:
+            sent = json.loads(patches.join(frame, component.id))
+            self.wire.sent_messages.append({"type": sent["command"], **sent["payload"]})
 
     @property
     def component(self) -> "Component":
@@ -871,6 +887,8 @@ async def _mount(
         **fields,
     )
     mounted = MountedComponent(component, wire, repo, path=urlsplit(page_path).path if page_path else None)
+    # It hears a Broadcast published in this process for its class and topics (#178)
+    patches.listen(mounted)
 
     # The mount hooks run before joined(), as they do on a real mount. A refusal
     # skips joined() and freezes the component, so ``render()`` here answers the
