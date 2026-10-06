@@ -28,11 +28,11 @@ The django-reactor era changelog (2.x) is preserved in
   always in `wireview.testing`), a declared render that reads one of those names raises
   `SharedRenderError`, after the render when the template swallowed the error (`{% if a and b %}`),
   and a connection that took another's render renders its own and raises if the two differ. Every
-  connection's `data-state` token is signed off the event loop. A process keeps a message's renders
-  for a second, within 16 MB of HTML. The comparison benchmark's board declaring it
-  reaches 1,000 connections on one process in 87.5 ms instead of 430.0 ms, 122.6 instead of
-  443.4 us of CPU per connection (docs/features/shared-render.md, docs/design/broadcast-fanout.md §7,
-  #176).
+  connection's `data-state` token is signed off the event loop, the takers' in trips they share. A
+  process keeps a message's renders for a second, within 16 MB of HTML. The comparison benchmark's
+  board declaring it reaches 1,000 connections on one process in 89.6 ms instead of 429.0 ms, 109.0
+  instead of 436.8 us of CPU per connection (docs/features/shared-render.md,
+  docs/design/broadcast-fanout.md §7, #176).
 - Every code block on the documentation site has a copy button in its top right corner. It copies
   the code as written, says whether it did, and falls back to a selection where the page has no
   Clipboard API (#173).

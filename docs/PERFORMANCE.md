@@ -377,21 +377,21 @@ README 비교 벤치의 Board(항목 50개)로 쟀다. 연결 1,000개, uvicorn 
 
 | | 팬아웃 (계측 끔) | 연결당 CPU |
 |---|---:|---:|
-| 선언하지 않음 | 430.0 ms | 443.4 µs |
-| `shared_render = True` | 87.5 ms | 122.6 µs |
-| FastAPI (JSON 한 번, 같은 텍스트를 연결마다) | 16.1 ms | 16.3 µs |
+| 선언하지 않음 | 429.0 ms | 436.8 µs |
+| `shared_render = True` | 89.6 ms | 109.0 µs |
+| FastAPI (JSON 한 번, 같은 텍스트를 연결마다) | 18.9 ms | 18.3 µs |
 
 ```mermaid
 xychart-beta horizontal
     title "브로드캐스트 하나가 연결 1,000개에 닿기까지 (계측 끔)"
     x-axis ["선언하지 않음", "shared_render = True", "FastAPI"]
-    y-axis "ms" 0 --> 473
-    bar [430.0, 87.5, 16.1]
+    y-axis "ms" 0 --> 472
+    bar [429.0, 89.6, 18.9]
 ```
 
-선언해도 연결당 남는 122.6 µs 가운데 약 3분의 1은 InMemory 레이어의 수신 순회다. Redis·NATS
+선언해도 연결당 남는 109.0 µs 가운데 약 40%는 InMemory 레이어의 수신 순회다. Redis·NATS
 레이어에는 이 순회가 없다. 단계별 분해와 측정 방법은 [설계](design/broadcast-fanout.md) §7, 원본은
-`bench/results/0492b64-fanout-shared.json`이다. 프레임 크기와 클릭의 서버 처리는 선언해도 같다.
+`bench/results/cef17df-fanout-shared.json`이다. 프레임 크기와 클릭의 서버 처리는 선언해도 같다.
 
 ### 기대치
 

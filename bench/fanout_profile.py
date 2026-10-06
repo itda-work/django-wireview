@@ -1097,7 +1097,7 @@ def progress_chart(design: dict[str, t.Any], result: dict[str, t.Any]) -> str:
 
 #: Stage 2 (A) of #176, measured: docs/design/broadcast-fanout.md §7 quotes it, with the
 #: make bench-fastapi run it names (``bench_fastapi``)
-RESULT_A = ROOT / "bench" / "results" / "0492b64-fanout-shared.json"
+RESULT_A = ROOT / "bench" / "results" / "cef17df-fanout-shared.json"
 
 
 def _cpu_per_connection(result: dict[str, t.Any], name: str) -> float:
