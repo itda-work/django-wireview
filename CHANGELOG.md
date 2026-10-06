@@ -17,8 +17,11 @@ The django-reactor era changelog (2.x) is preserved in
   share the parsed render; each still runs its own `notification()`/`mutation()`, signs its own
   `data-state` (the token names the page boundary and its user's login, so it is never shared) and
   diffs against its own page, and the frames are the bytes an unshared render sends. A render is
-  shared only within one message and between instances of the same class, id, fields, language and
-  time zone. A class out of scope -- a LiveComponent, temporary assigns, slots, `live_sessions`, a
+  shared only within one message and between instances of the same class, id, fields (every one,
+  read off the instance: `Field(exclude=True)` too), language and time zone. A field that holds a
+  model instance or a QuerySet keeps the render the connection's own: the same row may carry an
+  unsaved edit or a per-user annotation on another connection. A class out of scope -- a
+  LiveComponent, temporary assigns, slots, `live_sessions`, a field typed as a model or a QuerySet, a
   template that draws another component or reads `user`, `session`, `request`, `perms`,
   `csrf_token` or `messages` -- renders on its own, and the new check `wireview.W019` names it. With
   `VERIFY_SHARED_RENDER` (`DEBUG` by default, always in `wireview.testing`), a declared render that

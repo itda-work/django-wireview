@@ -5,6 +5,8 @@ not. In short, these hold:
 
 - the render is shared only within one message, and only between instances of
   the same class with the same id, fields, language and time zone
+- a field that holds a model instance or a QuerySet keeps the render the
+  connection's own: the same pk may carry other attributes on another connection
 - each connection still diffs against its own page, and its ``data-state`` is
   its own token: what a page boundary signs differs between viewers
 - the frames are the bytes an unshared render sends
@@ -27,6 +29,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.test import override_settings
 from django.utils import translation
+from pydantic import Field, computed_field
 from testproj.bookmarks.models import Bookmark
 from testproj.outbound import RecordingOutbound
 from testproj.wireview_setting import set_wireview
@@ -66,7 +69,10 @@ TEMPLATES = {
     "sh/partial.html": "<i>{{ request.path }}</i>",
     "sh/session_property.html": "{% load wireview %}<p {% tag_header %}>{{ visits }}</p>",
     "sh/twice.html": "{% load wireview %}<p {% tag_header %}>{{ headline }}</p><p {% tag_header %}></p>",
+    "sh/doc.html": "{% load wireview %}<p {% tag_header %}>{{ headline }} {{ doc.title }}</p>",
     "sh/marks.html": "{% load wireview %}<p {% tag_header %}>{% for b in marks %}{{ b.title }}{% endfor %}</p>",
+    "sh/counted.html": "{% load wireview %}<p {% tag_header %}>{{ headline }} {{ rows }}</p>",
+    "sh/hidden.html": "{% load wireview %}<p {% tag_header %}>{{ headline }} {{ viewer }}</p>",
 }
 
 STORE: dict[str, t.Any] = {}
@@ -253,6 +259,29 @@ class ShTwice(_Headline, Component):
         pass
 
 
+class ShDoc(_Headline, Component):
+    """A row typed as one: out of scope before any render."""
+
+    class Meta:
+        template_name = "sh/doc.html"
+        subscriptions = {"sh-board"}
+        shared_render = True
+
+    doc: Bookmark | None = None
+
+    async def notification(self, channel: str, **kwargs: t.Any) -> None:
+        pass
+
+
+class ShAnyDoc(ShDoc):
+    """A row in a field whose type does not say so: the render tells."""
+
+    class Meta:
+        shared_render = True
+
+    doc: t.Any = None
+
+
 class ShMarks(_Headline, Component):
     """A QuerySet in a field whose type does not say so: in scope, and its state's JSON queries."""
 
@@ -262,6 +291,37 @@ class ShMarks(_Headline, Component):
         shared_render = True
 
     marks: t.Any = None
+
+    async def notification(self, channel: str, **kwargs: t.Any) -> None:
+        pass
+
+
+class ShCounted(_Headline, Component):
+    """Shared, with a computed field in its state that queries: every token is signed off the loop."""
+
+    class Meta:
+        template_name = "sh/counted.html"
+        subscriptions = {"sh-board"}
+        shared_render = True
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def rows(self) -> int:
+        return Bookmark.objects.count()
+
+    async def notification(self, channel: str, **kwargs: t.Any) -> None:
+        pass
+
+
+class ShHidden(_Headline, Component):
+    """A field pydantic leaves out of its dumps, which the render reads all the same."""
+
+    class Meta:
+        template_name = "sh/hidden.html"
+        subscriptions = {"sh-board"}
+        shared_render = True
+
+    viewer: str = Field("", exclude=True)
 
     async def notification(self, channel: str, **kwargs: t.Any) -> None:
         pass
@@ -785,6 +845,79 @@ async def test_the_watched_fields_come_back_after_the_render(verify):
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("component", [ShDoc, ShAnyDoc])
+async def test_a_model_instance_is_never_shared(component):
+    """The key could name the row's pk alone: one connection's unsaved edit went to the other's page."""
+    mark = await Bookmark.objects.acreate(title="saved title", url="https://example.com/")
+    try:
+        a, b = await Page.open(component, doc=mark.pk), await Page.open(component, doc=mark.pk)
+        a.component.doc = mark  # type: ignore[attr-defined]
+        b.component.doc = await Bookmark.objects.aget(pk=mark.pk)  # type: ignore[attr-defined]
+        a.component.doc.title = "A's unsaved draft"  # type: ignore[attr-defined]
+        RENDERS.clear()
+
+        await a.session.notification({"channel": "sh-board", "kwargs": {}, "message_id": "m-1"})
+        await b.session.notification({"channel": "sh-board", "kwargs": {}, "message_id": "m-1"})
+
+        assert RENDERS[component.__name__] == 2
+        assert "unsaved draft" in a.html()
+        assert "saved title" in b.html() and "unsaved draft" not in b.html()
+    finally:
+        await Bookmark.objects.filter(pk=mark.pk).adelete()
+
+
+@pytest.mark.unit
+def test_the_system_check_names_a_field_typed_as_a_row():
+    found = {message.obj: message for message in check_shared_render(None)}
+    assert "doc" in found[ShDoc].msg and "model instances or QuerySets" in found[ShDoc].msg
+    assert ShAnyDoc not in found, "its type does not say so: the render finds out"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "value",
+    [
+        Bookmark(pk=1, title="x"),
+        Bookmark.objects.none(),
+        [1, {"a": Bookmark(pk=1)}],
+        {"rows": (Bookmark(pk=1),)},
+    ],
+)
+def test_a_value_that_holds_a_row_has_no_key(value):
+    component = ShAnyDoc(id="board", user=AnonymousUser(), wire=WireviewMeta(params={}), doc=value)
+    assert shared_render.key(component) is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(("one", "other"), [(1, True), ([1], (1,)), ({"1": 1}, {1: 1}), ("2026-10-06", None)])
+def test_values_that_render_otherwise_have_other_keys(one, other):
+    import datetime
+
+    if other is None:
+        other = datetime.date(2026, 10, 6)
+    keys = [
+        shared_render.key(ShAnyDoc(id="board", user=AnonymousUser(), wire=WireviewMeta(params={}), doc=value))
+        for value in (one, other)
+    ]
+    assert None not in keys and keys[0] != keys[1]
+
+
+@pytest.mark.asyncio
+async def test_a_field_pydantic_excludes_is_in_the_key():
+    """``Field(exclude=True)`` keeps a value out of model_dump_json, not out of the render."""
+    a, b = await Page.open(ShHidden), await Page.open(ShHidden)
+    a.component.viewer = "alice"  # type: ignore[attr-defined]
+    b.component.viewer = "bob"  # type: ignore[attr-defined]
+    RENDERS.clear()
+
+    await broadcast([a, b], "m-1")
+
+    assert RENDERS["ShHidden"] == 2
+    assert "alice" in a.html() and "bob" in b.html()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("message_id", [None, "m-1"])
 async def test_a_queryset_field_signs_off_the_loop(message_id):
     """Its state's JSON queries the ids: signed on the loop, every render raised SynchronousOnlyOperation."""
@@ -801,5 +934,24 @@ async def test_a_queryset_field_signs_off_the_loop(message_id):
             assert not any(command == "error" for command, _ in page.outbound.commands)
             assert "one" in page.html()
             assert '"ids":' not in page.html()
+    finally:
+        await Bookmark.objects.all().adelete()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_the_connections_that_take_a_render_sign_off_the_loop():
+    """A computed field in the state queries: the takers' tokens too are signed in a trip."""
+    await Bookmark.objects.acreate(title="one", url="https://example.com/")
+    try:
+        pages = [await Page.open(ShCounted) for _ in range(3)]
+        RENDERS.clear()
+
+        await broadcast(pages, "m-1")
+
+        assert RENDERS["ShCounted"] == 1
+        for page in pages:
+            assert not any(command == "error" for command, _ in page.outbound.commands)
+            assert unsign_envelope(_state_token(page), "ShCounted").state["rows"] == 1
     finally:
         await Bookmark.objects.all().adelete()

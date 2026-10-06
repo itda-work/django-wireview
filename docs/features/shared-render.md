@@ -77,8 +77,15 @@ class Scoreboard(Component):
   쓴다. 다음 브로드캐스트는 다시 렌더한다. 프로세스는 최근 메시지 64개를 10초까지 기억한다.
 - **클래스와 컴포넌트 id.** id는 루트 요소(`{% tag_header %}`)에 찍힌다. **`id=`를 주지 않은 컴포넌트는 페이지마다
   id가 달라 공유되지 않는다.** 모두가 보는 컴포넌트에는 고정 id를 준다.
-- **필드.** `user`·`wire`·`session`을 뺀 모든 필드의 JSON이다. `Meta.exclude_fields`로 서명에서 뺀 필드도 렌더는
-  읽으므로 키에 넣는다. 수신자가 연결마다 필드를 다르게 바꾸면 그 값마다 따로 렌더한다.
+- **필드.** `user`·`wire`·`session`을 뺀 모든 필드를 인스턴스에서 그대로 읽어 키에 넣는다. `Meta.exclude_fields`로
+  서명에서 뺀 필드도, pydantic의 `Field(exclude=True)`로 직렬화에서 뺀 필드도 렌더는 읽으므로 넣는다. field serializer도
+  거치지 않는다. 값의 타입도 본다(`1`과 `True`, 리스트와 튜플은 다르다). 수신자가 연결마다 필드를 다르게 바꾸면 그 값마다
+  따로 렌더한다.
+- **모델 인스턴스와 QuerySet이 없을 것.** 필드 어디에든(목록·dict 안, `AsyncResult`의 결과까지) 모델 인스턴스나
+  QuerySet이 있으면 그 렌더는 공유하지 않는다. 키는 행의 pk까지만 알 수 있는데, 렌더는 인스턴스의 속성을 읽는다.
+  같은 pk라도 연결마다 저장하지 않은 편집, 사용자별 annotate 값, 다른 시각에 읽은 값을 가질 수 있다. 필드의 타입이
+  모델이나 QuerySet을 말하면 그 클래스는 처음부터 [범위](#범위) 밖이다. 모두가 보는 행은 property에서 읽는다(위
+  예시의 `scores`처럼). 필드에는 그 행을 가리키는 값(`game_id`)만 둔다.
 - **활성 언어와 시간대.** `translation.get_language()`와 `timezone.get_current_timezone_name()`이다. 연결마다
   언어나 시간대를 켜는 앱은 그 값마다 따로 렌더한다.
 
@@ -98,6 +105,7 @@ class Scoreboard(Component):
 
 | 경우 | 왜 틀리나 | 대신 |
 |---|---|---|
+| 모델 인스턴스나 QuerySet을 필드에 둠 | 같은 pk의 다른 속성(저장 안 한 편집, 사용자별 annotate)이 다른 사람에게 갈 수 있다 | 공유하지 않는다(자동). 공유하려면 pk를 필드에 두고 행은 property에서 읽는다 |
 | 권한별 화면: `{% if this.user.is_staff %}`, property에서 `self.user.has_perm()` | 처음 렌더한 사람의 권한으로 모두가 본다 | 선언하지 않는다. 또는 권한마다 다른 클래스·토픽으로 나눈다 |
 | 사용자별 데이터: "내 알림 3개", "내가 좋아요 누름" | 남의 숫자가 보인다 | 그 부분을 선언하지 않은 다른 컴포넌트로 뺀다 |
 | 사용자 프로필의 언어·시간대·통화로 직접 포맷 | 키는 Django의 활성 언어·시간대만 본다. 프로필 필드를 템플릿이 읽으면 키에 없다 | 언어·시간대는 `translation.activate()`·`timezone.activate()`로 켠다(그러면 키가 가른다). 아니면 선언하지 않는다 |
@@ -118,6 +126,8 @@ class Scoreboard(Component):
 - `Meta.temporary_assigns`가 있는 컴포넌트. 연결마다 자기 화면에 남은 값으로 맞춘다([temporary_assigns](./temporary-assigns.md)).
 - `Meta.slots`가 있는 컴포넌트. 그리는 페이지가 내용을 채운다.
 - `Meta.live_sessions`가 있는 컴포넌트. 경계는 누가 보는가에 관한 것이다.
+- 필드의 타입이 모델이나 QuerySet을 말하는 컴포넌트(`doc: Bookmark | None`, `rows: list[Bookmark]`). 타입이 말하지
+  않는 필드(`t.Any`)에 들어 있으면 그 렌더에서 알아채고 각자 렌더한다.
 - 템플릿이 다른 컴포넌트·슬롯·업로드를 그리는 컴포넌트(`{% component %}`, `{% live_component %}`, `{% render_slot %}`,
   `{% upload_input %}` …).
 - 템플릿이 `user`·`session`·`this.user`·`this.session`·`request`·`perms`·`csrf_token`·`messages`를 읽는 컴포넌트.
@@ -133,7 +143,7 @@ class Scoreboard(Component):
 ### 시스템 체크
 
 `manage.py check`가 위 [범위](#범위)를 `wireview.W019`로 알린다. 템플릿은 그 파일만 보고, `{% include %}`한 파일과
-property 안은 보지 않는다.
+property 안은 보지 않는다. 필드는 타입 표기를 본다.
 
 ### 렌더 때의 검사 (`VERIFY_SHARED_RENDER`)
 

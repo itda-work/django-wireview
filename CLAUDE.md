@@ -41,8 +41,8 @@ wireview/
 │                          남는 부분이 그린 다른 컴포넌트·슬롯이 그 뒤 바뀌었으면 다시 그린다(자기 렌더가 부분별로 기록, template_engine._PartNode)
 ├── core/shared_render.py  Meta.shared_render(#176 2단계). 같은 브로드캐스트 메시지(message_id)를 처리하는 연결들이 같은 클래스·id·필드·언어·시간대의
 │                          렌더를 한 번만 하고 Rendered를 함께 쓴다. data-state는 공유하지 않는다 — 렌더는 그 자리에 STATE_SLOT을 쓰고 연결마다 자기 토큰을 끼운다(Shared.with_state).
-│                          범위 밖(LiveComponent·temporary_assigns·slots·live_sessions·다른 컴포넌트를 그리거나 보는 사람을 읽는 템플릿)은 공유하지 않고 W019가 알린다.
-│                          토큰은 루프 밖에서 서명한다(렌더 트립, 받은 쪽은 db 트립).
+│                          범위 밖(LiveComponent·temporary_assigns·slots·live_sessions·모델·QuerySet 타입 필드·다른 컴포넌트를 그리거나 보는 사람을 읽는 템플릿)은 공유하지 않고 W019가 알린다.
+│                          필드에 모델 인스턴스·QuerySet이 들어 있으면 키가 없다(같은 pk의 다른 속성). 토큰은 루프 밖에서 서명한다(렌더 트립, 받은 쪽은 db 트립).
 │                          VERIFY_SHARED_RENDER(DEBUG·wireview.testing)면 user·session·request 읽기가 오류이고, 받은 렌더를 다시 렌더해 비교한다
 ├── core/render_gate.py    RenderGate. 워커 스레드가 렌더하는 동안 그 컴포넌트의 start_async·assign_async 작업 단계를 렌더 뒤로 미룬다(#138).
 │                          렌더가 async property를 오래 기다리는 동안 작업이 막혀 있으면 경고한다(교착 의심, #147)

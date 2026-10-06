@@ -18,9 +18,14 @@ broadcast in one process render the component once and share the result:
   (``STATE_SLOT``) and every connection puts its own token there
   (``Shared.with_state``) before its diff.
 - **When two renders are the same.** Only within one broadcast message
-  (``handling``), and only for the same class, component id, fields (all of
-  them but ``user``, ``wire`` and ``session``, those left out of the signed state
-  too), active language and time zone. Anything else renders on its own.
+  (``handling``), and only for the same class, component id, fields (every one
+  of ``model_fields`` but ``user``, ``wire`` and ``session``, read as they are:
+  ``Field(exclude=True)`` and field serializers do not hide a value), active
+  language and time zone. Anything else renders on its own.
+- **When none is shared.** A field that holds a model instance or a QuerySet
+  anywhere: the render reads the instance's attributes -- an unsaved edit, a
+  per-user annotation, a row loaded at another time -- where a key could only
+  name its pk. Such a render is the connection's own.
 
 The promise cannot be checked in full: a property may read anything. What can
 be is checked where it is cheap. ``wireview.W019`` names a class whose Meta or
@@ -35,19 +40,24 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import dataclasses
 import logging
 import secrets
 import time
 import typing as t
 import weakref
 from collections import OrderedDict
+from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 
 from django.conf import settings as django_settings
 from django.core.exceptions import ImproperlyConfigured
+from django.db import models
 from django.utils import timezone, translation
 from django.utils.html import escape
+from pydantic import BaseModel
+from pydantic_core import to_json
 
 from ..utils import db
 from .rendered import _NESTED_PREFIX, Rendered
@@ -154,6 +164,11 @@ def out_of_scope(cls: type[Component]) -> list[str]:
         reasons.append("it has Meta.live_sessions: a page boundary is about who is looking")
     if meta.slots:
         reasons.append("it has Meta.slots, filled by whichever page draws it")
+    if rows := _row_fields(cls):
+        reasons.append(
+            f"its fields {', '.join(rows)} hold model instances or QuerySets, whose attributes differ from "
+            "connection to connection under the same primary key"
+        )
     if meta.template_name:
         try:
             reasons.extend(_template_reasons(cls))
@@ -188,6 +203,23 @@ def _template_reasons(cls: type[Component]) -> list[str]:
     if names:
         reasons.append(f"its template reads {', '.join(sorted(names))}, which differ from viewer to viewer")
     return reasons
+
+
+def _row_fields(cls: type[Component]) -> list[str]:
+    """The fields whose type names a model or a QuerySet anywhere: their render is never shared."""
+    from .component import ALWAYS_EXCLUDED
+
+    return sorted(
+        name
+        for name, field in cls.model_fields.items()
+        if name not in ALWAYS_EXCLUDED and _mentions_rows(field.annotation)
+    )
+
+
+def _mentions_rows(annotation: t.Any) -> bool:
+    if isinstance(annotation, type) and issubclass(annotation, (models.Model, models.QuerySet)):
+        return True
+    return any(_mentions_rows(arg) for arg in t.get_args(annotation) if arg is not Ellipsis)
 
 
 def _owns(cls: type[Component], name: str) -> bool:
@@ -326,13 +358,26 @@ def _replaced(rendered: Rendered, path: tuple[int, ...], value: str) -> Rendered
     return copy
 
 
+class _Rows(Exception):
+    """A value holds a model instance or a QuerySet: its render is the connection's own."""
+
+
 def key(component: Component) -> tuple[t.Any, ...] | None:
-    """What two renders of a declared class must agree on to be the same render; None if it cannot be told."""
+    """What two renders of a declared class must agree on to be the same render; None if it cannot be told.
+
+    The fields are read off the instance, every one the render may read: not
+    through ``model_dump_json``, which leaves out a ``Field(exclude=True)``, runs
+    field serializers and computed fields, and writes a model instance as its
+    pk. A value that holds a model instance or a QuerySet anywhere gives no key
+    at all: two connections can hold the same row with different attributes.
+    """
     from .component import ALWAYS_EXCLUDED
 
     try:
-        fields = component.model_dump_json(exclude=set(ALWAYS_EXCLUDED))
-    except Exception:
+        fields = to_json(
+            [_keyed(getattr(component, name)) for name in type(component).model_fields if name not in ALWAYS_EXCLUDED]
+        )
+    except Exception:  # _Rows, or a value with no JSON form: not to be told apart, so not shared
         return None
     return (
         type(component)._fqn,
@@ -341,6 +386,32 @@ def key(component: Component) -> tuple[t.Any, ...] | None:
         translation.get_language(),
         timezone.get_current_timezone_name(),
     )
+
+
+_SCALARS = (str, int, float, bool, type(None))
+
+
+def _keyed(value: t.Any) -> t.Any:
+    """``value`` as plain data for the key, its type named wherever JSON would lose it.
+
+    ``1`` and ``True``, a list and a tuple, a date and its string render
+    differently and must not share. A set's order may differ between equal
+    sets: that only keeps two renders apart.
+    """
+    if isinstance(value, _SCALARS):
+        return value
+    if isinstance(value, (models.Model, models.QuerySet)):
+        raise _Rows
+    kind = f"{type(value).__module__}.{type(value).__qualname__}"
+    if isinstance(value, BaseModel):
+        return [kind, [[name, _keyed(getattr(value, name))] for name in type(value).model_fields]]
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return [kind, [[field.name, _keyed(getattr(value, field.name))] for field in dataclasses.fields(value)]]
+    if isinstance(value, Mapping):
+        return [kind, [[_keyed(name), _keyed(item)] for name, item in value.items()]]
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [kind, [_keyed(item) for item in value]]
+    return [kind, value]
 
 
 #: What a leader whose render raised or was cancelled leaves its key with: the next one to come renders

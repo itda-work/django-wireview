@@ -679,8 +679,13 @@ JSON은 computed field와 QuerySet 필드의 id 목록 때문에 쿼리할 수 �
 `Rendered`만 복사하고 나머지는 공유한다. 공유 객체는 바뀌지 않는다. `settle`은 temporary assign이 없으면 아무것도 바꾸지
 않고, 그런 클래스는 범위 밖이다.
 
-**같은 입력의 판정.** 키는 브로드캐스트 메시지 id, 클래스 FQN, 컴포넌트 id, `user`·`wire`·`session`을 뺀 모든 필드의 JSON,
-활성 언어, 활성 시간대다. 메시지 id는 발행할 때 붙인다(`utils._message`, `message_id`). 채널 레이어 안의 모양만 바뀌고
+**같은 입력의 판정.** 키는 브로드캐스트 메시지 id, 클래스 FQN, 컴포넌트 id, `user`·`wire`·`session`을 뺀 모든 필드,
+활성 언어, 활성 시간대다. 필드는 `model_dump_json`이 아니라 인스턴스에서 그대로 읽어 타입과 함께 JSON으로 만든다.
+`model_dump_json`은 `Field(exclude=True)`를 빼고 field serializer를 거치므로, 렌더가 읽는 값이 키에 없을 수 있었다(검수 D3).
+필드 어디에든 모델 인스턴스나 QuerySet이 있으면 키가 없다(공유하지 않는다). 키가 담을 수 있는 것은 pk이고 렌더는 속성을
+읽는다. 같은 pk에 저장하지 않은 편집이나 사용자별 annotate가 있으면 남의 화면이 갔다(검수 D1). 인스턴스의 로드된 값을 키에
+넣는 길은 prefetch와 관계 캐시까지 따지면 경계가 흐려져 택하지 않았다. 필드의 타입이 모델·QuerySet을 말하는 클래스는
+범위 밖(W019)이다. 메시지 id는 발행할 때 붙인다(`utils._message`, `message_id`). 채널 레이어 안의 모양만 바뀌고
 브라우저 프로토콜은 그대로다. 설계 §4-A가 넣자고 한 `repo.vsn`은 넣지 않았다. 공유하는 것은 파싱한 렌더이고, 프로토콜
 버전에 따라 달라지는 diff는 연결마다 만들기 때문이다. 대신 설계에 없던 언어와 시간대를 넣었다. 연결마다
 `translation.activate()`·`timezone.activate()`를 하는 앱도 안전하게 하려는 것이다. 키 비용은 프로세스 안에서
@@ -700,7 +705,7 @@ JSON은 computed field와 QuerySet 필드의 id 목록 때문에 쿼리할 수 �
 
 **틀린 선언 잡기.** 세 겹이다.
 
-1. 시스템 체크 `wireview.W019`. Meta와 템플릿 파일(`include`는 열지 않는다)을 정적으로 본다.
+1. 시스템 체크 `wireview.W019`. Meta, 필드의 타입, 템플릿 파일(`include`는 열지 않는다)을 정적으로 본다.
 2. `VERIFY_SHARED_RENDER`(기본 `None`은 `DEBUG`를 따르고, `wireview.testing`의 `render_diff()`에서는 켜진다)가 켜져 있으면,
    선언한 클래스의 렌더 동안 `user`·`session` 필드와 컨텍스트의 `request`·`perms`·`csrf_token`·`messages` 자리에 감시
    객체를 둔다. 쓰는 순간 `SharedRenderError`(`ImproperlyConfigured`)를 던진다. property와 `include`한 템플릿까지 잡는다.
