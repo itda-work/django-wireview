@@ -148,8 +148,10 @@ class WireviewMeta:
         # state's slot instead of its token, and watch the request's names (#176)
         self._state_slot: bool = False
         self._watch: bool = False
-        # The token {% tag_header %} signed in the render trip that wrote the slot
+        # The token {% tag_header %} signed in the render trip that wrote the slot,
+        # and what the watched names were used for in that render
         self._slot_token: str | None = None
+        self._watched_reads: list[str] | None = None
         # Holds the component's background work while a worker thread renders it (#138)
         self._render_gate = RenderGate()
         # Whether the last render evaluated the template. False when the render

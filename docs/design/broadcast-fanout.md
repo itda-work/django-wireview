@@ -710,10 +710,13 @@ refused 컴포넌트는 지금처럼 `send_render`가 렌더 전에 거른다.
 
 **틀린 선언 잡기.** 세 겹이다.
 
-1. 시스템 체크 `wireview.W019`. Meta, 필드의 타입, 템플릿 파일(`include`는 열지 않는다)을 정적으로 본다.
+1. 시스템 체크 `wireview.W019`. Meta, 필드의 타입, 템플릿 파일(`include`는 열지 않는다)을 정적으로 본다. 템플릿에서는
+   노드가 가진 모든 표현식과 그 필터 인자를 본다(`firstof`·`cycle`·`cache`의 `vary_on` 포함, 검수 D7).
 2. `VERIFY_SHARED_RENDER`(기본 `None`은 `DEBUG`를 따르고, `wireview.testing`의 `render_diff()`에서는 켜진다)가 켜져 있으면,
    선언한 클래스의 렌더 동안 `user`·`session` 필드와 컨텍스트의 `request`·`perms`·`csrf_token`·`messages` 자리에 감시
    객체를 둔다. 쓰는 순간 `SharedRenderError`(`ImproperlyConfigured`)를 던진다. property와 `include`한 템플릿까지 잡는다.
+   던지기 전에 읽기를 그 렌더의 기록에 남기고, 렌더가 끝난 뒤 기록이 있으면 다시 던진다. Django의 `{% if a and b %}`는
+   피연산자의 예외를 거짓으로 바꾸고 property는 예외를 스스로 잡을 수 있어서, 감시가 조용히 지나갔다(검수 D7).
 3. 같은 설정에서 다른 연결의 렌더를 받은 연결이 자기도 렌더해 HTML을 비교한다. 감시 이름을 거치지 않는 차이(비공개
    속성, `wire.params`, thread-local)를 두 연결이 실제로 다를 때 잡는다.
 

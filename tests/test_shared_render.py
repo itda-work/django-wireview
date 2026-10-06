@@ -75,6 +75,11 @@ TEMPLATES = {
     "sh/marks.html": "{% load wireview %}<p {% tag_header %}>{% for b in marks %}{{ b.title }}{% endfor %}</p>",
     "sh/counted.html": "{% load wireview %}<p {% tag_header %}>{{ headline }} {{ rows }}</p>",
     "sh/hidden.html": "{% load wireview %}<p {% tag_header %}>{{ headline }} {{ viewer }}</p>",
+    "sh/if_include.html": '{% load wireview %}<p {% tag_header %}>{{ headline }}{% include "sh/if_part.html" %}</p>',
+    "sh/if_part.html": "{% if request.user.is_staff and headline %}staff{% endif %}",
+    "sh/if_property.html": "{% load wireview %}<p {% tag_header %}>{% if staff and headline %}staff{% endif %}</p>",
+    "sh/filter_arg.html": "{% load wireview %}<p {% tag_header %}>{{ headline|default:request.path }}</p>",
+    "sh/firstof.html": "{% load wireview %}<p {% tag_header %}>{% firstof headline user.username %}</p>",
 }
 
 STORE: dict[str, t.Any] = {}
@@ -341,6 +346,41 @@ class ShLeaving(_Headline, Component):
     async def notification(self, channel: str, **kwargs: t.Any) -> None:
         if self.wire.channel_name in REDIRECTED:
             await self.wire.redirect_to("/elsewhere/")
+
+
+class ShIfInclude(_Headline, Component):
+    """Reads the request where ``{% if a and b %}`` swallows what the read raises."""
+
+    class Meta:
+        template_name = "sh/if_include.html"
+        shared_render = True
+
+
+class ShIfProperty(_Headline, Component):
+    """The same through a property that reads the user and swallows what that raises itself."""
+
+    class Meta:
+        template_name = "sh/if_property.html"
+        shared_render = True
+
+    @property
+    def staff(self) -> bool:
+        try:
+            return bool(self.user.is_staff)
+        except Exception:
+            return False
+
+
+class ShFilterArg(_Headline, Component):
+    class Meta:
+        template_name = "sh/filter_arg.html"
+        shared_render = True
+
+
+class ShFirstOf(_Headline, Component):
+    class Meta:
+        template_name = "sh/firstof.html"
+        shared_render = True
 
 
 @pytest.fixture(autouse=True)
@@ -1060,3 +1100,33 @@ async def test_a_component_broadcast_is_shared(monkeypatch):
     await asyncio.gather(*(page.session.notification(dict(first)) for page in pages))
 
     assert RENDERS["ShBoard"] == 1
+
+
+# -- what the checks see ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("component", "name"), [(ShIfInclude, "request"), (ShIfProperty, "user")])
+async def test_a_read_the_template_swallows_raises_after_the_render(verify, component, name):
+    """``{% if a and b %}`` turns any exception of an operand into False, and a property may catch its own:
+    the read is written down first, and raises once the render is over."""
+    mounted = await wireview_testing.mount(component, id="board")
+    with pytest.raises(shared_render.SharedRenderError, match=f"its render read '{name}'"):
+        await mounted.render_diff()
+
+
+@pytest.mark.asyncio
+async def test_a_swallowed_read_is_not_held_against_the_next_render(verify, monkeypatch):
+    mounted = await wireview_testing.mount(ShIfInclude, id="board")
+    with pytest.raises(shared_render.SharedRenderError):
+        await mounted.render_diff()
+    set_wireview(monkeypatch, VERIFY_SHARED_RENDER=False)
+    assert await mounted.render_diff() is not None
+
+
+@pytest.mark.unit
+def test_the_system_check_reads_filter_arguments_and_tag_variables():
+    found = {message.obj: message for message in check_shared_render(None)}
+    assert "request" in found[ShFilterArg].msg
+    assert "user" in found[ShFirstOf].msg
+    assert ShIfInclude not in found, "an included template is the render's to catch"

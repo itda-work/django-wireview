@@ -32,8 +32,10 @@ be is checked where it is cheap. ``wireview.W019`` names a class whose Meta or
 template puts it out of scope, and a render of such a class does not share.
 With ``VERIFY_SHARED_RENDER`` (``DEBUG`` by default, and ``wireview.testing``),
 a declared class's render that reads ``user``, ``session``, ``request``,
-``perms``, ``csrf_token`` or ``messages`` raises, and every connection that took
-a render from another renders on its own as well and raises if the two differ.
+``perms``, ``csrf_token`` or ``messages`` raises -- after the render too, when
+the template swallowed the error (``{% if a and b %}``) -- and every connection
+that took a render from another renders on its own as well and raises if the
+two differ.
 """
 
 from __future__ import annotations
@@ -242,9 +244,8 @@ def _walk(nodelist: t.Iterable[Node]) -> t.Iterator[Node]:
 
 def _watched_names(node: Node) -> t.Iterator[str]:
     """The viewer's names ``node`` reads as the first part of a variable: ``user.x``, ``this.session``."""
-    for expression in _expressions(node):
-        var = getattr(expression, "var", None)
-        lookups = getattr(var, "lookups", None)
+    for variable in _variables(node):
+        lookups = getattr(variable, "lookups", None)
         if not lookups:
             continue
         if lookups[0] in WATCHED_FIELDS or lookups[0] in WATCHED_CONTEXT:
@@ -253,20 +254,34 @@ def _watched_names(node: Node) -> t.Iterator[str]:
             yield f"this.{lookups[1]}"
 
 
-def _expressions(node: Node) -> t.Iterator[t.Any]:
-    kind = type(node).__name__
-    if kind == "VariableNode":
-        yield node.filter_expression  # type: ignore[attr-defined]
-    elif kind == "IfNode":
+def _variables(node: Node) -> t.Iterator[t.Any]:
+    """Every variable ``node`` resolves: its expressions' and their filters' arguments.
+
+    The expressions are found among the node's attributes, so a tag that keeps
+    them in a list or a dict of its own (``firstof``, ``cycle``, ``cache``'s
+    ``vary_on``, ``blocktranslate``'s ``with``) is read as well as ``{{ }}``.
+    """
+    from django.template.base import FilterExpression, Variable
+
+    def of(expression: t.Any) -> t.Iterator[t.Any]:
+        if isinstance(expression, Variable):
+            yield expression
+        elif isinstance(expression, FilterExpression):
+            if isinstance(expression.var, Variable):
+                yield expression.var
+            for _func, arguments in expression.filters:
+                yield from (argument for lookup, argument in arguments if lookup)
+
+    if type(node).__name__ == "IfNode":
         for condition, _branch in node.conditions_nodelists:  # type: ignore[attr-defined]
-            yield from _condition_expressions(condition)
-    elif kind == "ForNode":
-        yield node.sequence  # type: ignore[attr-defined]
-    elif kind == "WithNode":
-        yield from node.extra_context.values()  # type: ignore[attr-defined]
-    else:
-        yield from getattr(node, "args", ()) or ()
-        yield from (getattr(node, "kwargs", None) or {}).values()
+            for expression in _condition_expressions(condition):
+                yield from of(expression)
+        return
+    for value in vars(node).values():
+        if isinstance(value, Mapping):
+            value = list(value.values())
+        for expression in value if isinstance(value, (list, tuple)) else (value,):
+            yield from of(expression)
 
 
 def _condition_expressions(condition: t.Any) -> t.Iterator[t.Any]:
@@ -616,23 +631,33 @@ def _tell_once(cls: type, why: str) -> None:
 # -- watching -------------------------------------------------------------------------------
 
 
+def _read_error(owner: str, name: str) -> SharedRenderError:
+    return SharedRenderError(
+        f"{owner} declares Meta.shared_render, but its render read {name!r}, which differs from viewer to "
+        f"viewer: every connection that handles a broadcast would show what the first one rendered. Read it "
+        f"in a handler or joined() and keep the result in a field, or drop shared_render."
+    )
+
+
 class _Watched:
-    """Stands in for a name a declared class must not read while it renders. Any use raises."""
+    """Stands in for a name a declared class must not read while it renders. Any use raises.
 
-    __slots__ = ("_name", "_owner")
+    The use is written down first, in the render's ``reads``: a template that
+    swallows the error -- Django's ``{% if a and b %}`` makes any exception of
+    an operand False -- still raises once the render is over (``watching``).
+    """
 
-    def __init__(self, name: str, owner: str) -> None:
+    __slots__ = ("_name", "_owner", "_reads")
+
+    def __init__(self, name: str, owner: str, reads: list[str]) -> None:
         object.__setattr__(self, "_name", name)
         object.__setattr__(self, "_owner", owner)
+        object.__setattr__(self, "_reads", reads)
 
     def _raise(self, *args: t.Any, **kwargs: t.Any) -> t.NoReturn:
         name = object.__getattribute__(self, "_name")
-        owner = object.__getattribute__(self, "_owner")
-        raise SharedRenderError(
-            f"{owner} declares Meta.shared_render, but its render read {name!r}, which differs from viewer to "
-            f"viewer: every connection that handles a broadcast would show what the first one rendered. Read it "
-            f"in a handler or joined() and keep the result in a field, or drop shared_render."
-        )
+        object.__getattribute__(self, "_reads").append(name)
+        raise _read_error(object.__getattribute__(self, "_owner"), name)
 
     def __getattr__(self, attr: str) -> t.Any:
         self._raise()
@@ -647,22 +672,31 @@ def watching(component: Component, check: bool) -> t.Iterator[None]:
 
     The fields are swapped on the instance and put back after, so a property
     reading ``self.user`` is caught as well as a template. Only the render's
-    stretch is watched: handlers and ``joined()`` read them as ever.
+    stretch is watched: handlers and ``joined()`` read them as ever. A use the
+    render swallowed raises here, when the render is over.
     """
     if not check:
         yield
         return
     owner = type(component).__qualname__
+    reads: list[str] = []
+    component.wire._watched_reads = reads
     kept = {name: component.__dict__[name] for name in WATCHED_FIELDS if name in component.__dict__}
     for name in kept:
-        component.__dict__[name] = _Watched(name, owner)
+        component.__dict__[name] = _Watched(name, owner, reads)
     try:
         yield
     finally:
         component.__dict__.update(kept)
+        component.wire._watched_reads = None
+    if reads:
+        raise _read_error(owner, reads[0])
 
 
 def watched_context(component: Component) -> dict[str, t.Any]:
     """The request's names a render's context may not read, for the names the component does not have."""
     owner = type(component).__qualname__
-    return {name: _Watched(name, owner) for name in WATCHED_CONTEXT}
+    reads = component.wire._watched_reads
+    if reads is None:  # rendered outside ``watching``: written down where nothing reads it, raising all the same
+        reads = []
+    return {name: _Watched(name, owner, reads) for name in WATCHED_CONTEXT}

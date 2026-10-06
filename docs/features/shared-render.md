@@ -133,7 +133,9 @@ class Scoreboard(Component):
 - 템플릿이 다른 컴포넌트·슬롯·업로드를 그리는 컴포넌트(`{% component %}`, `{% live_component %}`, `{% render_slot %}`,
   `{% upload_input %}` …).
 - 템플릿이 `user`·`session`·`this.user`·`this.session`·`request`·`perms`·`csrf_token`·`messages`를 읽는 컴포넌트.
-  같은 이름의 필드나 property를 가진 컴포넌트는 그것을 읽는 것이므로 빼고 본다.
+  `{{ }}`와 `{% if %}`·`{% for %}`·`{% with %}`뿐 아니라 필터 인자(`{{ x|default:request.path }}`)와 변수를 받는 태그
+  (`{% firstof %}`·`{% cycle %}`·`{% cache %}`의 `vary_on`·`{% blocktranslate with %}` …)도 본다. 같은 이름의 필드나
+  property를 가진 컴포넌트는 그것을 읽는 것이므로 빼고 본다.
 
 정적으로 보이지 않는 것도 있다. 함수 컴포넌트가 다른 컴포넌트를 그리거나, `{% tag_header %}`가 두 번 나오면
 첫 렌더가 그것을 알아채고 그 클래스는 그 뒤로 공유하지 않는다.
@@ -155,7 +157,10 @@ property 안은 보지 않는다. 필드는 타입 표기를 본다.
 1. **보는 사람의 이름을 읽으면 오류다.** 렌더하는 동안 컴포넌트의 `user`와 `session`, 컨텍스트의 `request`·`perms`·
    `csrf_token`·`messages` 자리에 감시 객체를 둔다. 속성 접근·문자열 변환·진릿값 평가·비교에서
    `SharedRenderError`(`ImproperlyConfigured`의 하위 클래스)를 던진다. property 안의 `self.user`와 `{% include %}`한
-   템플릿의 `{{ request.path }}`도 잡는다. 렌더 밖(핸들러, `joined()`, `notification()`)에서는 그대로 읽힌다.
+   템플릿의 `{{ request.path }}`도 잡는다. 감시 객체는 던지기 전에 읽혔다는 사실을 그 렌더에 적어 둔다. 그래서 오류를
+   삼키는 자리 — 연산자가 든 `{% if request.user.is_staff and x %}`(Django는 피연산자의 예외를 거짓으로 바꾼다), 예외를
+   스스로 잡는 property — 에서 읽어도 렌더가 끝난 뒤 던진다. 렌더 밖(핸들러, `joined()`, `notification()`)에서는 그대로
+   읽힌다.
 2. **받은 렌더를 다시 렌더해 비교한다.** 다른 연결의 렌더를 받은 연결이 자기도 렌더해서, 둘이 다르면
    `SharedRenderError`를 던진다. 감시 이름을 거치지 않고 연결마다 달라지는 것(비공개 속성, `self.wire.params`,
    thread-local의 현재 사용자)을, **두 연결이 실제로 다른 값을 가질 때** 잡는다. 개발 중에 브라우저 두 개를 다른
@@ -168,8 +173,18 @@ property 안은 보지 않는다. 필드는 타입 표기를 본다.
 
 ### 잡지 못하는 것
 
-- 감시 이름을 거치지 않는 읽기를, 테스트나 개발에서 **연결 하나로만** 돌렸을 때. 비교할 다른 렌더가 없다.
+감시하는 것은 컴포넌트의 `user`·`session`과 컨텍스트의 `request`·`perms`·`csrf_token`·`messages` **이름**뿐이다. 그
+이름을 거쳐 읽으면 어디서든(템플릿, `{% include %}`, property, 오류를 삼키는 자리) 잡는다. 그 밖은 다음과 같다.
+
+- 감시 이름을 거치지 않는 읽기. 비공개 속성(`self._rows`), `self.wire`의 값(`params`·`channel_name`·`live_session`),
+  thread-local·contextvar의 현재 사용자, 미리 꺼내 둔 사용자 객체(`self._me = self.user`를 `joined()`에서 해 두고 렌더에서
+  읽음), 사용자 id를 property 안에서 다른 경로로 얻어 하는 쿼리. 이것은 2번 비교로만 잡히고, 그것도 아래 조건에서다.
+- 그런 읽기를 테스트나 개발에서 **연결 하나로만** 돌렸을 때. 비교할 다른 렌더가 없다.
 - 개발 환경에서 우연히 모두 같은 값이었던 것(사용자가 한 명뿐, 언어가 하나뿐).
+- 운영(`DEBUG = False`이고 `VERIFY_SHARED_RENDER`를 켜지 않음). 아무것도 검사하지 않는다.
+
+시스템 체크는 템플릿 파일 하나만 본다. `{% include %}`한 파일, 함수 컴포넌트의 템플릿, property 안은 보지 않고, 그것은
+렌더 때의 검사 몫이다.
 
 그래서 테스트에서 사용자 둘을 만들어 보는 것이 가장 확실하다.
 
