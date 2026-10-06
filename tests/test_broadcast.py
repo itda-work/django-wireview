@@ -559,6 +559,43 @@ async def test_the_process_renews_its_membership_before_the_layer_expires_it(hub
 
 
 @pytest.mark.asyncio
+async def test_a_renewal_that_fails_leaves_the_next_one_to_run(hub, caplog):
+    """One error from the layer used to end the renewing task: a day later the process heard nothing."""
+    layer = hub._layer
+    failures = [ConnectionError("the layer went away")]
+
+    async def group_add(group: str, channel: str) -> None:
+        if failures:
+            raise failures.pop()
+        layer.added.append(group)
+
+    hub.RENEW_SECONDS = 0.01
+    await hub.join("a", "key", lambda message: None)
+    await hub.join("b", "key", lambda message: None)
+    layer.added.clear()
+    layer.group_add = group_add
+
+    # The first renewal fails for one topic and renews the other; the ones after renew both
+    renewing = hub._tasks[1]
+    await eventually(
+        lambda: layer.added.count("wireview.patch.a") >= 2 and layer.added.count("wireview.patch.b") >= 2,
+        task=renewing,
+    )
+
+    assert not renewing.done()
+    assert "Could not renew" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_topic_no_one_hears_keeps_no_lock(hub):
+    for room in range(50):
+        await hub.join(f"room.{room}", "key", lambda message: None)
+    await asyncio.gather(*(hub.leave(f"room.{room}", "key") for room in range(50)))
+
+    assert hub._receivers == {} and hub._locks == {}
+
+
+@pytest.mark.asyncio
 async def test_a_slow_socket_holds_up_only_its_own_frames_and_is_closed_past_the_limit(hub):
     closed: list[int | None] = []
     events: list[dict[str, t.Any]] = []

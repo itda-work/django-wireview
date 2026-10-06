@@ -23,6 +23,7 @@ only has to implement these two interfaces. The message shapes are fixed in
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import typing as t
 import weakref
@@ -242,7 +243,7 @@ class PatchHub:
     ``join`` returns once the channel is in the group. Membership expires in
     channels_redis and the in-memory layer (``group_expiry``, a day by default)
     while this channel lives as long as the process, so it is renewed every
-    ``RENEW_SECONDS``.
+    ``RENEW_SECONDS``; a renewal that fails is logged and the next one tried.
     """
 
     RENEW_SECONDS = 3600.0
@@ -252,7 +253,10 @@ class PatchHub:
         self._channel: str | None = None
         self._receivers: dict[str, dict[t.Any, t.Callable[[Message], None]]] = {}
         self._joined: set[str] = set()
-        self._locks: dict[str, asyncio.Lock] = {}
+        # One lock per topic someone is joining, leaving or renewing, with how
+        # many hold or wait for it: let go with the last, so a process that went
+        # through many topics (a room each) keeps none of theirs
+        self._locks: dict[str, tuple[asyncio.Lock, list[int]]] = {}
         self._tasks: list[asyncio.Task[None]] = []
         self._opening: asyncio.Future[None] | None = None
 
@@ -274,9 +278,25 @@ class PatchHub:
             del self._receivers[topic]
         await self._settle(topic)
 
+    @contextlib.asynccontextmanager
+    async def _lock(self, topic: str) -> t.AsyncIterator[None]:
+        """Joining and leaving ``topic``'s group, one at a time."""
+        entry = self._locks.get(topic)
+        if entry is None:
+            entry = self._locks[topic] = (asyncio.Lock(), [0])
+        lock, users = entry
+        users[0] += 1
+        try:
+            async with lock:
+                yield
+        finally:
+            users[0] -= 1
+            if not users[0]:
+                del self._locks[topic]
+
     async def _settle(self, topic: str) -> None:
         """Be in ``topic``'s patch group exactly while someone hears it."""
-        async with self._locks.setdefault(topic, asyncio.Lock()):
+        async with self._lock(topic):
             wanted = topic in self._receivers
             if wanted and topic not in self._joined:
                 await self._start()
@@ -332,11 +352,22 @@ class PatchHub:
             await self.renew()
 
     async def renew(self) -> None:
-        """Join every topic's group again, before the layer's ``group_expiry`` drops this channel."""
+        """Join every topic's group again, before the layer's ``group_expiry`` drops this channel.
+
+        A topic that fails is logged and left to the next renewal; the others
+        are renewed all the same. Raising out of here would end the task that
+        renews, and a day later the process would hear no topic, without a word.
+        """
         for topic in list(self._joined):
-            async with self._locks.setdefault(topic, asyncio.Lock()):
-                if topic in self._joined:
+            async with self._lock(topic):
+                if topic not in self._joined:
+                    continue
+                try:
                     await self._layer.group_add(patch_group(topic), self._channel)  # type: ignore[arg-type]
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    log.exception("Could not renew this process's Broadcast patch group of %r", topic)
 
 
 class NullPatchHub:
