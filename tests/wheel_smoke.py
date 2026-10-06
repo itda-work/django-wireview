@@ -90,6 +90,26 @@ with tempfile.TemporaryDirectory() as target:
     if not all(path.is_file() for path in expected):
         sys.exit(f"the starter template made {sorted(str(p.relative_to(made)) for p in made.rglob('*'))}")
 
+# The template check runs the diagnostics the wheel ships, not the checkout's
+# editors/vscode (#179): a clean template passes and a broken one fails with 1.
+from django.core.management import CommandError  # noqa: E402
+
+from wireview.management.commands.wireview_check_templates import diagnostics_driver  # noqa: E402
+
+if not diagnostics_driver().is_relative_to(installed.parent):
+    sys.exit(f"wireview_check_templates runs {diagnostics_driver()}, not the wheel's")
+with tempfile.TemporaryDirectory() as target:
+    (Path(target) / "fine.html").write_text("{% load wireview %}{{ x|upper }}", encoding="utf-8")
+    call_command("wireview_check_templates", target)
+    (Path(target) / "broken.html").write_text("{% load wireview %}{{ x|no_such_filter }}", encoding="utf-8")
+    try:
+        call_command("wireview_check_templates", target)
+    except CommandError as error:
+        if error.returncode != 1:
+            sys.exit(f"wireview_check_templates could not run: {error}")
+    else:
+        sys.exit("wireview_check_templates passed a template with an unknown filter")
+
 import pydantic  # noqa: E402
 
 print(f"wheel smoke: {installed.parent} on Django {django.get_version()}, pydantic {pydantic.VERSION}")

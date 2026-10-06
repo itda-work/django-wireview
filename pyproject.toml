@@ -96,7 +96,10 @@ packages = ["wireview"]
 # The agent skill lives at the repository root so this repository can dogfood it
 # through .claude/skills/wireview. hatch_build.py ships it inside the package as well,
 # as wireview/agent_skills/wireview with its links pinned to the release tag, where
-# `manage.py wireview_agent_setup` can find it in an installed project.
+# `manage.py wireview_agent_setup` can find it in an installed project. It ships the
+# editor extension's diagnostics too (editors/vscode/src/core and scripts/diagnose.ts,
+# not the extension), as wireview/template_diagnostics, for `manage.py
+# wireview_check_templates` (#179).
 [tool.hatch.build.targets.wheel.hooks.custom]
 
 # Anchored at the root: a pattern without the slash matches at any depth, and
@@ -106,6 +109,8 @@ packages = ["wireview"]
 include = [
     "/wireview",
     "/skills",
+    "/editors/vscode/src/core",
+    "/editors/vscode/scripts/diagnose.ts",
     "/README.md",
     "/hatch_build.py",
     "/CHANGELOG.md",

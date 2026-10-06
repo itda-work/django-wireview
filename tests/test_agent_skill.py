@@ -73,8 +73,9 @@ def test_the_wheel_hook_ships_every_file_of_the_skill_pinned(tmp_path: Path):
     build_data: dict = {"force_include": {}}
     hook.initialize("standard", build_data)
     try:
-        ((source, target),) = build_data["force_include"].items()
-        assert target == "wireview/agent_skills/wireview"
+        (source,) = [
+            s for s, target in build_data["force_include"].items() if target == "wireview/agent_skills/wireview"
+        ]
         shipped = sorted(p.relative_to(source).as_posix() for p in Path(source).rglob("*") if p.is_file())
         assert shipped == sorted(p.relative_to(SKILL).as_posix() for p in SKILL.rglob("*") if p.is_file())
         for name in shipped:

@@ -53,16 +53,22 @@ def _node() -> str:
     return node
 
 
-def _diagnose(metadata_path: Path, *targets: Path) -> dict[str, list[dict]]:
+def _diagnose(metadata_path: Path, *targets: Path, strict: bool = False) -> dict[str, list[dict]]:
     result = subprocess.run(
-        [_node(), str(DRIVER), str(metadata_path), *map(str, targets)],
+        [_node(), str(DRIVER), *(["--strict"] if strict else []), str(metadata_path), *map(str, targets)],
         capture_output=True,
         text=True,
         timeout=120,
         check=False,
     )
-    assert result.returncode == 0, result.stderr
-    return json.loads(result.stdout)
+    assert result.returncode in (0, 1), result.stderr
+    report = json.loads(result.stdout)
+    # The exit status is the gate a CI reads (#179): 1 exactly when an error is
+    # reported, or with --strict a warning
+    failing = {"error", "warning"} if strict else {"error"}
+    found = any(p["severity"] in failing for problems in report.values() for p in problems)
+    assert result.returncode == int(found), (result.returncode, _findings(report))
+    return report
 
 
 def _findings(report: dict[str, list[dict]]) -> list[str]:
@@ -98,6 +104,23 @@ def test_the_driver_reports_what_is_wrong(metadata_file, tmp_path):
     )
     codes = sorted(p["code"] for p in _diagnose(metadata_file, broken)[str(broken)])
     assert codes == ["unclosed-block", "unknown-component", "unknown-filter"]
+
+
+@pytest.mark.integration
+def test_a_warning_fails_the_driver_only_when_strict(metadata_file, tmp_path):
+    """A warning may be fine (another library's tag), so it is a failure only on request (#179)."""
+    page = tmp_path / "page.html"
+    page.write_text("{% no_such_tag %}", encoding="utf-8")
+    assert [p["severity"] for p in _diagnose(metadata_file, page)[str(page)]] == ["warning"]
+    assert [p["severity"] for p in _diagnose(metadata_file, page, strict=True)[str(page)]] == ["warning"]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("args", [[], ["--strict"], ["--strict", "metadata.json"], ["--strict", "--strict", "x"]])
+def test_the_driver_exits_2_on_a_usage_error(args):
+    result = subprocess.run([_node(), str(DRIVER), *args], capture_output=True, text=True, timeout=60, check=False)
+    assert (result.returncode, result.stdout) == (2, "")
+    assert result.stderr.startswith("usage:")
 
 
 @pytest.mark.integration

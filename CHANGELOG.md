@@ -36,6 +36,13 @@ The django-reactor era changelog (2.x) is preserved in
 - Every code block on the documentation site has a copy button in its top right corner. It copies
   the code as written, says whether it did, and falls back to a selection where the page has no
   Clipboard API (#173).
+- `manage.py wireview_check_templates [paths] [--strict] [--format json]` runs the editor
+  extension's template diagnostics as a gate: it exits 1 when a template has an error Django or
+  django-wireview would raise on rendering it (with `--strict`, a warning too) and 2 when it cannot
+  check (no node 22.18 or later, no templates where it was pointed, the diagnostics crashing).
+  Without paths it checks the template directories outside installed packages. The wheel ships the
+  diagnostics (`editors/vscode/src/core`, `scripts/diagnose.ts`) as `wireview/template_diagnostics`;
+  `diagnose.ts` itself now exits 1 on an error and takes `--strict` (#179).
 
 ### Changed
 

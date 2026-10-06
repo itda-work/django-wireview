@@ -317,6 +317,15 @@ ci-build:
 	'project_name/asgi.py-tpl', 'project_name/urls.py-tpl', 'hello/live.py-tpl', 'hello/templates/hello/index.html', '.gitignore')}; \
 	sys.exit(0) if want <= names else sys.exit(f'{w} lacks {sorted(want - names)}')"
 	@echo "ci-build: wheel contains the starter template"
+	@# And the template diagnostics wireview_check_templates runs under node (#179):
+	@# hatch_build.py copies them from editors/vscode, which the sdist has to carry.
+	@python3 -c "import glob, sys, zipfile; \
+	w = sorted(glob.glob('dist/*.whl'))[-1]; \
+	names = set(zipfile.ZipFile(w).namelist()); \
+	want = {'wireview/template_diagnostics/' + n for n in ('package.json', 'scripts/diagnose.ts', \
+	'src/core/diagnostics.ts', 'src/core/project.ts', 'src/core/template.ts')}; \
+	sys.exit(0) if want <= names else sys.exit(f'{w} lacks {sorted(want - names)}')"
+	@echo "ci-build: wheel contains the template diagnostics"
 	@# The PyPI page is this metadata. hatch_build.py pins the README's links to the
 	@# release tag; the wheel is built from the sdist, which has to carry the hook.
 	@python3 -c "import glob, sys, zipfile; \

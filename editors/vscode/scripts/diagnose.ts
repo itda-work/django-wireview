@@ -1,11 +1,18 @@
 // Diagnoses templates the way the extension does, outside VS Code.
 //
-//   node scripts/diagnose.ts <metadata.json> <file or directory>...
+//   node scripts/diagnose.ts [--strict] <metadata.json> <file or directory>...
 //
 // Prints {"<path>": [{code, severity, message, line, column}]} for every .html
-// file given or found under a directory given. tests/test_vscode_extension.py
-// runs it over every template in the repository and expects nothing; it uses
-// the core modules alone, so it needs node and none of the npm packages.
+// file given or found under a directory given, and exits 1 when any of them is an
+// error (with --strict, a warning too), 0 when none is, 2 on a usage error. An
+// error is what Django or django-wireview raises when it renders the template; a
+// warning may be fine (another library's tag, an id that already holds the field),
+// so a gate fails on it only when asked (#179).
+//
+// tests/test_vscode_extension.py runs it over every template in the repository
+// and expects nothing, and `manage.py wireview_check_templates` runs the copy the
+// wheel ships (hatch_build.py). It uses the core modules alone, so it needs node
+// and none of the npm packages.
 import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import * as nodePath from "node:path";
 
@@ -34,13 +41,17 @@ function htmlFiles(path: string): string[] {
   return found.sort();
 }
 
-const [metadataPath, ...targets] = process.argv.slice(2);
-if (!metadataPath || !targets.length) {
-  process.stderr.write("usage: node scripts/diagnose.ts <metadata.json> <file or directory>...\n");
+const args = process.argv.slice(2);
+const strict = args[0] === "--strict";
+const [metadataPath, ...targets] = strict ? args.slice(1) : args;
+if (!metadataPath || !targets.length || metadataPath.startsWith("-")) {
+  process.stderr.write("usage: node scripts/diagnose.ts [--strict] <metadata.json> <file or directory>...\n");
   process.exit(2);
 }
+const failing = new Set<string>(strict ? ["error", "warning"] : ["error"]);
 const project = new Project(JSON.parse(readFileSync(metadataPath, "utf8")) as Metadata);
 const result: Record<string, unknown[]> = {};
+let failed = false;
 for (const target of targets) {
   for (const file of htmlFiles(target)) {
     const path = realpathSync(file);
@@ -54,7 +65,9 @@ for (const target of targets) {
       templateNames: () => [],
     };
     const doc = parseTemplate(text, project);
-    result[file] = diagnose(doc, env).map((problem) => {
+    const problems = diagnose(doc, env);
+    failed ||= problems.some((problem) => failing.has(problem.severity));
+    result[file] = problems.map((problem) => {
       const before = text.slice(0, problem.span.start).split("\n");
       return {
         code: problem.code,
@@ -67,3 +80,4 @@ for (const target of targets) {
   }
 }
 process.stdout.write(JSON.stringify(result, null, 1) + "\n");
+process.exitCode = failed ? 1 : 0;

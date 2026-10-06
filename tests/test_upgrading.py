@@ -128,6 +128,9 @@ NO_UPGRADE_NOTE = {
     "The README's numbers are charts": "문서와 벤치마크만 바뀌었다",
     "A live render costs about a third less": "출력은 바이트 단위로 같고 빨라지기만 했다",
     "`Meta.shared_render = True` declares": "새 opt-in이다. 선언하지 않은 컴포넌트에는 아무것도 바뀌지 않는다",
+    "`manage.py wireview_check_templates": (
+        "새 명령이다. diagnose.ts의 종료 코드는 그 명령이 읽으려고 생긴 것이고, 확장은 공개 API가 아니다"
+    ),
 }
 
 PREVIOUS = "1.2.0"

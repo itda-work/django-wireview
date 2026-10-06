@@ -204,6 +204,8 @@ def test_the_sdist_holds_the_package_and_nothing_else_of_the_repository():
     assert tops <= {
         "wireview",
         "skills",
+        # Only the template diagnostics the wheel ships (#179); test_check_templates.py holds the rest out
+        "editors",
         "README.md",
         "hatch_build.py",
         "CHANGELOG.md",

@@ -38,7 +38,7 @@ class CustomMetadataHook(MetadataHookInterface):
 
 
 class CustomBuildHook(BuildHookInterface):
-    """Ship skills/wireview as wireview/agent_skills/wireview, its links pinned."""
+    """Ship skills/wireview as wireview/agent_skills/wireview, its links pinned, and the template diagnostics."""
 
     def initialize(self, version: str, build_data: dict) -> None:
         if self.target_name != "wheel" or version == "editable":
@@ -58,7 +58,38 @@ class CustomBuildHook(BuildHookInterface):
             else:
                 target.write_bytes(path.read_bytes())
         build_data["force_include"][self._pinned.name] = "wireview/agent_skills/wireview"
+        self._diagnostics = tempfile.TemporaryDirectory()
+        ship_template_diagnostics(Path(self.root), Path(self._diagnostics.name))
+        build_data["force_include"][self._diagnostics.name] = DIAGNOSTICS_PACKAGE_PATH
 
     def finalize(self, version: str, build_data: dict, artifact_path: str) -> None:
-        if hasattr(self, "_pinned"):
-            self._pinned.cleanup()
+        for name in ("_pinned", "_diagnostics"):
+            if hasattr(self, name):
+                getattr(self, name).cleanup()
+
+
+#: Where the wheel puts the template diagnostics; wireview_check_templates looks there.
+DIAGNOSTICS_PACKAGE_PATH = "wireview/template_diagnostics"
+
+
+def ship_template_diagnostics(root: Path, target: Path) -> None:
+    """The editor extension's diagnostics as node runs them, without the extension (#179).
+
+    ``manage.py wireview_check_templates`` runs ``scripts/diagnose.ts``, which imports
+    ``src/core`` and nothing outside node, so the layout is kept and nothing else
+    comes along. The package.json says the ``.ts`` files are ES modules: without it
+    node decides by the nearest package.json above, which in an installed project may
+    be anyone's.
+    """
+    source = root / "editors" / "vscode"
+    driver = source / "scripts" / "diagnose.ts"
+    core = sorted((source / "src" / "core").glob("*.ts"))
+    if not driver.is_file() or not core:
+        # The sdist has to carry them (see the sdist include in pyproject.toml)
+        raise FileNotFoundError(f"{driver}: the wheel would ship without the template diagnostics")
+    (target / "scripts").mkdir(parents=True)
+    (target / "src" / "core").mkdir(parents=True)
+    (target / "scripts" / "diagnose.ts").write_bytes(driver.read_bytes())
+    for path in core:
+        (target / "src" / "core" / path.name).write_bytes(path.read_bytes())
+    (target / "package.json").write_text('{"private": true, "type": "module"}\n', encoding="utf-8")

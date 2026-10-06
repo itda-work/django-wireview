@@ -97,7 +97,9 @@ wireview/
 ├── management/commands/   wireview_stubs (.pyi 생성), wireview_lsp (편집기 메타데이터 JSON. 형식은 자기 version 필드로 따로 매기고
 │                          editors/vscode 가 읽는다: 컴포넌트·함수 컴포넌트·훅·템플릿 디렉터리·엔진의 태그와 필터. docs/features/editor-support.md),
 │                          wireview_agent_setup (앱 개발자용 스킬을 프로젝트 .claude/skills/ 에 설치),
-│                          wireview_upload_gc (토큰 만료보다 오래된 청크 파일 정리)
+│                          wireview_upload_gc (토큰 만료보다 오래된 청크 파일 정리),
+│                          wireview_check_templates (확장의 진단을 node로 돌리는 CI 관문. error면 1, --strict면 warning도, 못 돌면 2.
+│                          wheel의 wireview/template_diagnostics/ 를, 체크아웃에서는 editors/vscode 를 부른다, #179)
 ├── project_template/       startproject --template 용 스타터(시작하기 튜토리얼의 프로젝트). *.py-tpl 과 html 뿐, 모듈이 아니다.
 │                          tests/test_project_template.py 가 스크래치에 만들어 check·첫 화면을 보고, ci-build 가 wheel 에 있는지 본다(#131).
 │                          tests/test_starter_e2e.py 는 그 프로젝트를 자기 runserver(daphne)와 uvicorn으로 띄워 브라우저로 입력해 본다(#151).
@@ -229,7 +231,9 @@ scripts/docs_site/         문서 사이트 빌드(make docs-site·make docs-sit
                            llms.txt(안내 산문은 templates/llms.txt)와 스킬(skills/wireview/)의 Markdown 게시본도 build.py 가 만든다(#164).
                            templates/·assets/ 가 itda.work 레이아웃의 재현이다(원본과 커밋은 site.css 머리 주석).
                            렌더 의존성은 dependency-group docs(기본 그룹)에만 있다. 산출물은 `build/docs-site/`(gitignore)
-editors/vscode/            VS Code 확장(#156). wheel·sdist에 싣지 않고 버전도 따로다. src/core/ 는 vscode를 import하지 않는 순수 모듈
+editors/vscode/            VS Code 확장(#156). wheel·sdist에 싣지 않고 버전도 따로다 — 단 src/core/*.ts 와 scripts/diagnose.ts 는
+                           hatch_build.py 가 wheel의 wireview/template_diagnostics/ 로 싣는다(wireview_check_templates, #179).
+                           그래서 그 둘은 node 내장 모듈 밖을 import하지 않는다. src/core/ 는 vscode를 import하지 않는 순수 모듈
                            (node --test가 .ts를 그대로 돈다 — import는 .ts까지, enum 금지), src/*.ts 는 등록과 위치 변환뿐인 어댑터.
                            진단의 원칙: Django·wireview가 렌더할 때 낼 오류만, 확실하지 않으면 말하지 않는다.
                            tests/test_vscode_extension.py 가 이 저장소의 모든 템플릿에 진단 0건인지, 확장의 표(태그 스니펫·wire-* 속성·
@@ -247,7 +251,8 @@ typings/                   channels 타입 스텁 (pyright용)
 skills/wireview/           앱 개발자용 스킬의 정본. 휠에 wireview/agent_skills/ 로 실린다(hatch_build.py가 링크를 태그로 고정).
                            .claude/skills/wireview 는 이것을 가리키는 심링크(dogfooding)
 AGENTS.md                  .claude/skills/ 를 안 읽는 에이전트(Codex 등)를 위한 포인터
-hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL·휠에 싣는 스킬의 main 링크를 태그 v<버전>으로 바꾼다
+hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL·휠에 싣는 스킬의 main 링크를 태그 v<버전>으로 바꾼다.
+                           템플릿 진단(editors/vscode 의 core·diagnose.ts)을 package.json(type: module)과 함께 휠에 싣는다
 .claude/settings.json      권한 허용 목록과 ruff format 훅
 ```
 
