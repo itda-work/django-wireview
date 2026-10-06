@@ -48,7 +48,8 @@ wireview/
 │                          프로세스(이벤트 루프)마다 transport.PatchHub의 채널 하나가 패치 그룹 wireview.patch.<토픽>(알림 그룹과 따로)에 들고, 받은 메시지를
 │                          그 토픽을 듣는 세션마다 _take_patch로 넘긴다. 세션은 대상 클래스·토픽의 reachable 인스턴스마다 id만 끼워 연결별 큐(상한 QUEUE_LIMIT)에
 │                          넣고 자기 태스크가 send_text로 쓴다 — 브라우저가 받는 바이트는 세션의 것과 같다.
-│                          컴포넌트는 joined() 전에 패치를 잡아 두고 release_patches 메일에서 놓는다(reset 뒤에 써지게)
+│                          컴포넌트는 joined() 전에 패치를 잡아 두고 release_patches 메일에서 놓는다(reset 뒤에 써지게).
+│                          joined() 밖의 stream() reset은 wire.patch_gate로 같은 잡기·놓기를 한다. 놓기가 HOLD_SECONDS 안에 안 오면 그대로 쓴다
 ├── core/watched.py        Watched: 보는 사람을 읽으면 오류인 감시 객체. shared_render(VERIFY일 때)와 Broadcast 항목 렌더(언제나)가 함께 쓴다.
 │                          Broadcast 항목의 this는 대상 클래스를 품어 {% on %}이 핸들러를 클래스에서 검사한다(stands_for)
 ├── core/render_gate.py    RenderGate. 워커 스레드가 렌더하는 동안 그 컴포넌트의 start_async·assign_async 작업 단계를 렌더 뒤로 미룬다(#138).
