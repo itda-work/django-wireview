@@ -245,20 +245,29 @@ class Broadcast:
         return frames
 
     def _render(self, template_name: str, item: t.Any) -> str:
-        """``item`` in its template, as every subscriber will see it."""
+        """``item`` in its template, as every subscriber will see it.
+
+        A read of the viewer the template swallowed (``{% if user.is_staff and item.x %}``)
+        raises here, once the render is over.
+        """
         template = self.target._get_template(template_name)
-        context: dict[str, t.Any] = {name: self._watched(name, template_name) for name in WATCHED_NAMES}
+        reads: list[str] = []
+
+        def error(name: str) -> BroadcastRenderError:
+            return BroadcastRenderError(
+                f"{template_name}, rendered for Broadcast({self.target.__qualname__}, {self.topic!r}), read "
+                f"{name!r}: the item is rendered once and every subscriber gets the same HTML, so it can read "
+                f"nothing of a viewer. Read only 'item', or send the item from each component's notification() "
+                f"instead."
+            )
+
+        context: dict[str, t.Any] = {
+            name: Watched(name, error, reads, stands_for=self.target if name == "this" else None)
+            for name in WATCHED_NAMES
+        }
         context["item"] = item
         with translation.override(django_settings.LANGUAGE_CODE), timezone.override(timezone.get_default_timezone()):
-            return template.render(context)
-
-    def _watched(self, name: str, template_name: str) -> Watched:
-        target = self.target.__qualname__
-        return Watched(
-            name,
-            BroadcastRenderError,
-            f"{template_name}, rendered for Broadcast({target}, {self.topic!r}), read {name!r}: the item is "
-            f"rendered once and every subscriber gets the same HTML, so it can read nothing of a viewer. "
-            f"Read only 'item', or send the item from each component's notification() instead.",
-            stands_for=self.target if name == "this" else None,
-        )
+            html = template.render(context)
+        if reads:
+            raise error(reads[0])
+        return html

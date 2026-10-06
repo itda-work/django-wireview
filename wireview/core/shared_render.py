@@ -62,6 +62,7 @@ from pydantic_core import to_json
 
 from ..utils import db
 from .rendered import _NESTED_PREFIX, Rendered
+from .watched import Watched
 
 if t.TYPE_CHECKING:
     from django.template.base import Node
@@ -698,31 +699,9 @@ def _read_error(owner: str, name: str) -> SharedRenderError:
     )
 
 
-class _Watched:
-    """Stands in for a name a declared class must not read while it renders. Any use raises.
-
-    The use is written down first, in the render's ``reads``: a template that
-    swallows the error -- Django's ``{% if a and b %}`` makes any exception of
-    an operand False -- still raises once the render is over (``watching``).
-    """
-
-    __slots__ = ("_name", "_owner", "_reads")
-
-    def __init__(self, name: str, owner: str, reads: list[str]) -> None:
-        object.__setattr__(self, "_name", name)
-        object.__setattr__(self, "_owner", owner)
-        object.__setattr__(self, "_reads", reads)
-
-    def _raise(self, *args: t.Any, **kwargs: t.Any) -> t.NoReturn:
-        name = object.__getattribute__(self, "_name")
-        object.__getattribute__(self, "_reads").append(name)
-        raise _read_error(object.__getattribute__(self, "_owner"), name)
-
-    def __getattr__(self, attr: str) -> t.Any:
-        self._raise()
-
-    __getitem__ = __str__ = __bool__ = __iter__ = __len__ = __eq__ = __html__ = __contains__ = _raise  # type: ignore[assignment]
-    __hash__ = None  # type: ignore[assignment]
+def _watched(name: str, owner: str, reads: list[str]) -> Watched:
+    """Stands in for a name a declared class must not read while it renders (core/watched.py)."""
+    return Watched(name, lambda read: _read_error(owner, read), reads)
 
 
 @contextmanager
@@ -742,7 +721,7 @@ def watching(component: Component, check: bool) -> t.Iterator[None]:
     component.wire._watched_reads = reads
     kept = {name: component.__dict__[name] for name in WATCHED_FIELDS if name in component.__dict__}
     for name in kept:
-        component.__dict__[name] = _Watched(name, owner, reads)
+        component.__dict__[name] = _watched(name, owner, reads)
     try:
         yield
     finally:
@@ -758,4 +737,4 @@ def watched_context(component: Component) -> dict[str, t.Any]:
     reads = component.wire._watched_reads
     if reads is None:  # rendered outside ``watching``: written down where nothing reads it, raising all the same
         reads = []
-    return {name: _Watched(name, owner, reads) for name in WATCHED_CONTEXT}
+    return {name: _watched(name, owner, reads) for name in WATCHED_CONTEXT}

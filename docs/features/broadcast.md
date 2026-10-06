@@ -114,6 +114,8 @@ def post_deleted(sender, instance, **kwargs):
 </li>
 ```
 
+- `{% if user.is_staff and item.x %}`처럼 태그가 오류를 삼켜도(그 `{% if %}`은 피연산자의 예외를 거짓으로 친다) 읽은 것은
+  기록되어, 렌더가 끝난 뒤 같은 오류가 난다.
 - `{% on %}`은 쓸 수 있다. 핸들러가 있는지는 대상 클래스에서 확인한다. `myself=True`는 인스턴스의 id를 읽으므로 오류다.
 - 항목은 `LANGUAGE_CODE`와 기본 시간대로 렌더된다. 발행한 요청이 켠 언어나 시간대가 모두에게 새지 않는다. 사용자마다
   시각을 달리 보여 주려면 `<time datetime="…">`로 보내고 훅에서 바꾸거나, 언어별 토픽(`feed.ko`, `feed.en`)으로 나눈다.

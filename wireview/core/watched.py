@@ -11,9 +11,12 @@ nothing of the viewer:
 
 Each puts a ``Watched`` where such a name would be. Any use of it -- an
 attribute, ``str()``, a truth test, a comparison, iteration -- raises the
-error its owner gave, naming the variable. The error is not one a template
-swallows: it has no ``silent_variable_failure``, and it is none of the
-exception types Django's variable lookup catches.
+error its owner gave, naming the variable. The error has no
+``silent_variable_failure`` and is none of the exception types Django's
+variable lookup catches, but a tag may still swallow it: ``{% if a and b %}``
+takes any exception of an operand for False. So each use is also written down
+in the render's ``reads`` first, and the owner raises after the render when
+the list is not empty.
 """
 
 from __future__ import annotations
@@ -22,19 +25,27 @@ import typing as t
 
 
 class Watched:
-    """Stands in for a name a render must not read. Any use raises ``error(message)``."""
+    """Stands in for a name a render must not read. Any use writes the name in ``reads`` and raises ``error(name)``."""
 
-    __slots__ = ("_name", "_error", "_message", "_stands_for")
+    __slots__ = ("_name", "_error", "_reads", "_stands_for")
 
-    def __init__(self, name: str, error: type[Exception], message: str, *, stands_for: type | None = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        error: t.Callable[[str], Exception],
+        reads: list[str],
+        *,
+        stands_for: type | None = None,
+    ) -> None:
         object.__setattr__(self, "_name", name)
         object.__setattr__(self, "_error", error)
-        object.__setattr__(self, "_message", message)
+        object.__setattr__(self, "_reads", reads)
         object.__setattr__(self, "_stands_for", stands_for)
 
     def _raise(self, *args: t.Any, **kwargs: t.Any) -> t.NoReturn:
-        error = object.__getattribute__(self, "_error")
-        raise error(object.__getattribute__(self, "_message"))
+        name = object.__getattribute__(self, "_name")
+        object.__getattribute__(self, "_reads").append(name)
+        raise object.__getattribute__(self, "_error")(name)
 
     def __getattr__(self, attr: str) -> t.Any:
         self._raise()

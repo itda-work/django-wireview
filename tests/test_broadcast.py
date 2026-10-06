@@ -44,6 +44,8 @@ TEMPLATES = {
     "bc/request.html": "<li>{{ request.path }}</li>",
     "bc/csrf.html": "<li>{% csrf_token %}</li>",
     "bc/perms.html": "<li>{% if perms.auth.add_user %}yes{% endif %}</li>",
+    # {% if a and b %} takes an operand's exception for False: the read is caught after the render
+    "bc/swallowed.html": "<li>{% if user.is_staff and item.text %}staff{% endif %}</li>",
     "bc/language.html": "{% load i18n tz %}{% get_current_language as L %}{% get_current_timezone as TZ %}"
     "<li>{{ L }} {{ TZ }}</li>",
     "bc/host.html": "{% load wireview %}<div {% tag_header %}>{% live_component 'BcLive' id='bc-live' %}</div>",
@@ -354,6 +356,7 @@ class TestTheItemReadsNothingOfTheViewer:
             ("bc/csrf.html", "csrf_token"),
             ("bc/perms.html", "perms"),
             ("bc/bind_myself.html", "this"),
+            ("bc/swallowed.html", "user"),
         ],
     )
     def test_reading_the_viewer_raises_and_names_what_was_read(self, template, name):
