@@ -422,7 +422,10 @@ def _keyed(value: t.Any) -> t.Any:
         raise _Rows
     kind = f"{type(value).__module__}.{type(value).__qualname__}"
     if isinstance(value, BaseModel):
-        return [kind, [[name, _keyed(getattr(value, name))] for name in type(value).model_fields]]
+        # The extras of an extra="allow" model render as its fields do: {{ prefs.theme }}
+        extra = value.__pydantic_extra__ or {}
+        fields = [[name, _keyed(getattr(value, name))] for name in type(value).model_fields]
+        return [kind, fields, [[name, _keyed(item)] for name, item in extra.items()]]
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return [kind, [[field.name, _keyed(getattr(value, field.name))] for field in dataclasses.fields(value)]]
     if isinstance(value, Mapping):
@@ -540,7 +543,8 @@ class _Signer:
                 if not future.done():
                     future.set_exception(error if isinstance(error, Exception) else asyncio.CancelledError())
             self.pending = []
-            raise
+            if not isinstance(error, Exception):  # the waiters have the error; nobody awaits this task
+                raise
         finally:
             self.task = None
 

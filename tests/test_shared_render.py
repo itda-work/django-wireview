@@ -30,7 +30,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.test import override_settings
 from django.utils import translation
-from pydantic import Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 from testproj.bookmarks.models import Bookmark
 from testproj.outbound import RecordingOutbound
 from testproj.waiting import eventually
@@ -989,6 +989,23 @@ def test_values_that_render_otherwise_have_other_keys(one, other):
     keys = [
         shared_render.key(ShAnyDoc(id="board", user=AnonymousUser(), wire=WireviewMeta(params={}), doc=value))
         for value in (one, other)
+    ]
+    assert None not in keys and keys[0] != keys[1]
+
+
+@pytest.mark.unit
+def test_the_extras_of_a_nested_model_are_in_the_key():
+    """An extra="allow" model renders its extras ({{ prefs.theme }}): two viewers' extras must not share."""
+
+    class Prefs(BaseModel):
+        model_config = ConfigDict(extra="allow")
+        name: str = "x"
+
+    keys = [
+        shared_render.key(
+            ShAnyDoc(id="board", user=AnonymousUser(), wire=WireviewMeta(params={}), doc=Prefs(theme=theme))
+        )
+        for theme in ("dark", "light")
     ]
     assert None not in keys and keys[0] != keys[1]
 
