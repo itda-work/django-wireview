@@ -43,7 +43,6 @@ import contextvars
 import dataclasses
 import logging
 import secrets
-import time
 import typing as t
 import weakref
 from collections import OrderedDict
@@ -79,10 +78,14 @@ _message: contextvars.ContextVar[str | None] = contextvars.ContextVar("wireview_
 #: Set by ``wireview.testing``: its renders verify whatever the setting says, as ``DEBUG`` does
 _testing: contextvars.ContextVar[bool] = contextvars.ContextVar("wireview_shared_testing", default=False)
 
-#: How long, and for how many messages, a process keeps the renders of one. A
-#: connection that reaches a message later than this renders on its own.
-KEEP_SECONDS = 10.0
-KEEP_MESSAGES = 64
+#: How long a process keeps a message's renders, and how much of them at most:
+#: the marked HTML of the renders kept, and their number. A connection that
+#: reaches a message later, or after it was dropped, renders on its own. One
+#: message reaches every connection of the process within a fan-out -- about
+#: 0.1 s for a thousand (docs/PERFORMANCE.md) -- so a second covers a busy loop.
+KEEP_SECONDS = 1.0
+KEEP_BYTES = 16 * 1024 * 1024
+KEEP_RENDERS = 4096
 
 #: Names a viewer-independent render has no business reading. ``user`` and
 #: ``session`` are the component's own; the rest are what context processors
@@ -418,33 +421,69 @@ def _keyed(value: t.Any) -> t.Any:
 _AGAIN: t.Final = object()
 
 
+class _Message:
+    """The renders of one message: key -> future render, and the marked HTML they hold."""
+
+    __slots__ = ("renders", "size")
+
+    def __init__(self) -> None:
+        self.renders: dict[tuple[t.Any, ...], asyncio.Future[t.Any]] = {}
+        self.size = 0
+
+
 class _Store:
     """The renders of the messages one event loop handles: message id -> key -> future render.
 
     A future's result is the ``Shared`` render, None when the leader's render
     cannot be taken (nothing drawn, or not shareable), or ``_AGAIN``.
+
+    A message is dropped ``KEEP_SECONDS`` after its first claim, by a timer, so
+    nothing is held once the traffic stops; and the oldest go first while the
+    renders kept are more than ``KEEP_BYTES`` of HTML or ``KEEP_RENDERS``. Whether
+    another connection will come for a render cannot be known -- each reaches
+    the message when its loop gets to it -- so a render nobody takes is held for
+    that while too, and no longer.
     """
 
     def __init__(self) -> None:
-        self.messages: OrderedDict[str, tuple[float, dict[tuple[t.Any, ...], asyncio.Future[t.Any]]]] = OrderedDict()
+        self.messages: OrderedDict[str, _Message] = OrderedDict()
+        self.size = 0
+        self.renders = 0
 
-    def claim(self, message: str, key: tuple[t.Any, ...]) -> tuple[asyncio.Future[t.Any], bool]:
+    def claim(self, message: str, key: tuple[t.Any, ...]) -> tuple[_Message, asyncio.Future[t.Any], bool]:
         """The future render for ``key`` in ``message``, and whether the caller is to render it."""
-        now = time.monotonic()
-        while self.messages:
-            oldest, (born, _renders) = next(iter(self.messages.items()))
-            if len(self.messages) < KEEP_MESSAGES and now - born < KEEP_SECONDS:
-                break
-            del self.messages[oldest]
+        loop = asyncio.get_running_loop()
         entry = self.messages.get(message)
         if entry is None:
-            entry = self.messages[message] = (now, {})
-        renders = entry[1]
-        future = renders.get(key)
+            entry = self.messages[message] = _Message()
+            loop.call_later(KEEP_SECONDS, self.forget, message, entry)
+        future = entry.renders.get(key)
         if future is not None and not (future.done() and future.result() is _AGAIN):
-            return future, False
-        future = renders[key] = asyncio.get_running_loop().create_future()
-        return future, True
+            return entry, future, False
+        if future is None:
+            self.renders += 1
+        future = entry.renders[key] = loop.create_future()
+        self._trim()
+        return entry, future, True
+
+    def settle(self, message: str, entry: _Message, future: asyncio.Future[t.Any], outcome: t.Any) -> None:
+        """The leader's ``outcome`` for ``future``, counted while ``entry`` is kept."""
+        future.set_result(outcome)
+        if isinstance(outcome, Shared) and self.messages.get(message) is entry:
+            entry.size += len(outcome.html)
+            self.size += len(outcome.html)
+            self._trim()
+
+    def forget(self, message: str, entry: _Message) -> None:
+        if self.messages.get(message) is entry:
+            del self.messages[message]
+            self.size -= entry.size
+            self.renders -= len(entry.renders)
+
+    def _trim(self) -> None:
+        while self.messages and (self.size > KEEP_BYTES or self.renders > KEEP_RENDERS):
+            oldest, entry = next(iter(self.messages.items()))
+            self.forget(oldest, entry)
 
 
 _stores: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _Store] = weakref.WeakKeyDictionary()
@@ -493,8 +532,9 @@ async def _render_for(
     message: str, found: tuple[t.Any, ...], wire: WireviewMeta, component: Component, repo: Repo, check: bool
 ) -> _Drawn:
     """The render of ``found`` in ``message``: rendered here by the first to come, taken by the rest."""
+    store = _store()
     while True:
-        future, lead = _store().claim(message, found)
+        entry, future, lead = store.claim(message, found)
         if lead:
             outcome: t.Any = _AGAIN
             try:
@@ -503,7 +543,7 @@ async def _render_for(
                 return drawn
             finally:
                 # Raised or cancelled: whoever waits renders it again, one of them for the rest
-                future.set_result(outcome)
+                store.settle(message, entry, future, outcome)
         taken = await asyncio.shield(future)
         if taken is _AGAIN:
             continue

@@ -14,6 +14,7 @@ not. In short, these hold:
 - with ``VERIFY_SHARED_RENDER`` a render that reads the viewer raises, and a
   render taken from another connection is rendered again and compared
 - the token is signed off the event loop, by the leader and the takers alike
+- what the process keeps of a message goes after a while, and within a size
 """
 
 import asyncio
@@ -32,6 +33,7 @@ from django.utils import translation
 from pydantic import Field, computed_field
 from testproj.bookmarks.models import Bookmark
 from testproj.outbound import RecordingOutbound
+from testproj.waiting import eventually
 from testproj.wireview_setting import set_wireview
 
 from wireview import Component, LiveComponent, live_session
@@ -642,13 +644,48 @@ async def test_when_the_first_render_fails_the_others_render_on_their_own():
 
 
 @pytest.mark.asyncio
-async def test_the_store_forgets_old_messages(monkeypatch):
-    monkeypatch.setattr(shared_render, "KEEP_MESSAGES", 3)
-    page = await Page.open()
-    for n in range(6):
-        await broadcast([page], f"m-{n}")
+async def test_the_store_forgets_a_message_after_a_while(monkeypatch):
+    """By a timer: nothing is held once the traffic stops, without a next message to clean up."""
+    monkeypatch.setattr(shared_render, "KEEP_SECONDS", 0.05)
+    pages = [await Page.open(page=n) for n in range(3)]
+    await broadcast(pages, "m-1")
     store = shared_render._store()
-    assert list(store.messages) == ["m-3", "m-4", "m-5"]
+    assert list(store.messages) == ["m-1"] and store.renders == 3 and store.size > 0
+
+    await eventually(lambda: not store.messages)
+    assert store.renders == 0 and store.size == 0
+
+
+@pytest.mark.asyncio
+async def test_the_store_keeps_renders_within_a_size(monkeypatch):
+    """Connections whose fields are all their own share nothing: what they leave is bounded."""
+    pages = [await Page.open(page=n) for n in range(4)]
+    store = shared_render._store()
+    await broadcast(pages, "m-0")
+    one = store.size // 4
+    monkeypatch.setattr(shared_render, "KEEP_BYTES", one * 10)
+    for n in range(1, 6):
+        await broadcast(pages, f"m-{n}")
+        assert store.size <= one * 10
+    assert list(store.messages) == ["m-4", "m-5"], "the oldest go first"
+    assert store.renders == 8
+
+    monkeypatch.setattr(shared_render, "KEEP_RENDERS", 5)
+    await broadcast(pages, "m-6")
+    assert list(store.messages) == ["m-6"] and store.renders == 4
+
+
+@pytest.mark.asyncio
+async def test_a_message_dropped_while_its_render_is_under_way_is_not_counted(monkeypatch):
+    pages = [await Page.open() for _ in range(2)]
+    store = shared_render._store()
+    monkeypatch.setattr(shared_render, "KEEP_SECONDS", 0)  # gone as soon as the loop turns
+    STORE["headline"] = "news"
+
+    await broadcast(pages, "m-1")
+
+    assert all(page.outbound.renders()[0]["diff"] == {"1": "news"} for page in pages)
+    assert store.size == 0 and store.renders == 0 and not store.messages
 
 
 @pytest.mark.unit
