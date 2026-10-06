@@ -750,8 +750,9 @@ dict 공유, channels-nats의 멤버별 디코드가 D1의 결과를 바꾸지 �
 Redis·NATS 레이어는 [배포 가이드](../DEPLOYMENT.md)의 `capacity` 1,500을 쓴다 — channels_redis는 한 프로세스의 프로세스
 로컬 채널을 Redis 키 하나에 담아, 기본값 100에서는 join 1,000개가 몰리면 자기 세션 메일(`joined`)을 버렸다. 원본은
 `bench/results/cd6a6ae-stream-fanout-d1.json`(D1, 그 커밋의 worktree에서 같은 벤치로)과 `bench/results/3ab5818-stream-fanout.json`(D2)이다.
-두 해시는 A(#176 2단계)의 검수 수정이 main에 들어가기 전, 그 위로 rebase하기 전의 커밋이다. 같은 변경이 rebase 뒤에는
-`827ebfe`(D1)와 `1f859e6`(D2)이다. Broadcast 경로는 A의 렌더 공유를 지나지 않는다.
+두 해시는 A(#176 2단계)의 검수 수정이 main에 들어가기 전, 그 위로 rebase하기 전의 커밋이다. rebase마다 해시가 바뀌므로
+같은 변경은 커밋 제목으로 찾는다 — D1은 `feat: Send one rendered patch to every subscriber of a topic`, D2는
+`bench: Measure one stream item reaching every page, three ways`다. Broadcast 경로는 A의 렌더 공유를 지나지 않는다.
 
 | | InMemory | Redis | NATS | 연결당 CPU (InMemory, Redis, NATS) | FastAPI (같은 회차) |
 |---|---:|---:|---:|---:|---:|
