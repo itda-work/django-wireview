@@ -148,6 +148,8 @@ class WireviewMeta:
         # state's slot instead of its token, and watch the request's names (#176)
         self._state_slot: bool = False
         self._watch: bool = False
+        # The token {% tag_header %} signed in the render trip that wrote the slot
+        self._slot_token: str | None = None
         # Holds the component's background work while a worker thread renders it (#138)
         self._render_gate = RenderGate()
         # Whether the last render evaluated the template. False when the render
@@ -465,6 +467,7 @@ class WireviewMeta:
         # a step of it in between signed data-state from one state and drew
         # the body from another (#138).
         self._state_slot, self._watch = state_slot, watch
+        self._slot_token = None
         try:
             with self._render_gate.rendering():
                 context, html, pending = await db(self._collect_and_render)(component, repo, reads)

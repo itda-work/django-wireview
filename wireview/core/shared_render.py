@@ -49,6 +49,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone, translation
 from django.utils.html import escape
 
+from ..utils import db
 from .rendered import _NESTED_PREFIX, Rendered
 
 if t.TYPE_CHECKING:
@@ -391,38 +392,44 @@ async def render(wire: WireviewMeta, component: Component, repo: Repo) -> tuple[
 
     Returns the render and its marked HTML (the slot in place of the token), or
     None when nothing is to be drawn (the component is frozen or redirected).
+
+    The token is signed off the event loop, as ``{% tag_header %}`` signs it in
+    a render of its own: the state's JSON runs computed fields and dumps a
+    QuerySet field's ids, either of which may query the database.
     """
     check = verifying()
     message = _message.get()
     found = key(component) if message is not None else None
     if message is None or found is None:
-        shared = await _render_own(wire, component, repo, check)
+        drawn = await _render_own(wire, component, repo, check)
     else:
         # Hold the component's background work from here to the token, as a render of its
-        # own does: the state signed below is the state the key named (#138).
+        # own does: the state signed is the state the key named (#138).
         with wire._render_gate.rendering():
-            shared = await _render_for(message, found, wire, component, repo, check)
-    if shared is None:
+            drawn = await _render_for(message, found, wire, component, repo, check)
+    if drawn is None:
         return None
+    shared, token = drawn
     if isinstance(shared, str):  # out of scope at render time: rendered and parsed as any other
         return Rendered.from_marked_html(shared), shared
-    from ..templatetags.wireview import sign_state
+    return (shared.with_state(token) if token is not None else shared.rendered), shared.html
 
-    return shared.with_state(sign_state(component)), shared.html
+
+_Drawn: t.TypeAlias = "tuple[Shared | str, str | None] | None"
 
 
 async def _render_for(
     message: str, found: tuple[t.Any, ...], wire: WireviewMeta, component: Component, repo: Repo, check: bool
-) -> Shared | str | None:
+) -> _Drawn:
     """The render of ``found`` in ``message``: rendered here by the first to come, taken by the rest."""
     while True:
         future, lead = _store().claim(message, found)
         if lead:
             outcome: t.Any = _AGAIN
             try:
-                shared = await _render_own(wire, component, repo, check)
-                outcome = shared if isinstance(shared, Shared) else None
-                return shared
+                drawn = await _render_own(wire, component, repo, check)
+                outcome = drawn[0] if drawn is not None and isinstance(drawn[0], Shared) else None
+                return drawn
             finally:
                 # Raised or cancelled: whoever waits renders it again, one of them for the rest
                 future.set_result(outcome)
@@ -431,25 +438,38 @@ async def _render_for(
             continue
         if taken is None:
             return await _render_own(wire, component, repo, check)
+        token = None
         if check:
-            _compare(component, taken, await _render_own(wire, component, repo, check))
-        return taken
+            own = await _render_own(wire, component, repo, check)
+            _compare(component, taken, own[0] if own is not None else None)
+            token = own[1] if own is not None else None
+        elif taken.state_path is not None:
+            from .state import sign_state
+
+            token = await db(sign_state)(component)
+        return taken, token
 
 
-async def _render_own(wire: WireviewMeta, component: Component, repo: Repo, check: bool) -> Shared | str | None:
-    """Render ``component`` with the slot for its token; the HTML alone when it cannot be shared."""
+async def _render_own(wire: WireviewMeta, component: Component, repo: Repo, check: bool) -> _Drawn:
+    """Render ``component`` with the slot for its token, and the token signed in the same trip.
+
+    The render alone, its HTML, when it cannot be shared: rendered again as any
+    other, the token in place.
+    """
     with watching(component, check):
         html = await wire._render_marked(component, repo, state_slot=True, watch=check)
     if html is None:
         return None
+    token, wire._slot_token = wire._slot_token, None
     shared = Shared.parse(html)
     if shared is None:
         cls = type(component)
         _tell_once(cls, "its render draws another component or holds data-state more than once")
         _SCOPE[cls] = (cls._meta, False)
         # The slot is this connection's to fill: render again as any other component
-        return await wire._render_marked(component, repo, state_slot=False, watch=False)
-    return shared
+        html = await wire._render_marked(component, repo, state_slot=False, watch=False)
+        return (html, None) if html is not None else None
+    return shared, token
 
 
 def _compare(component: Component, taken: Shared, own: Shared | str | None) -> None:

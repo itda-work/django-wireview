@@ -94,7 +94,10 @@ def _signed_state(component: Component, repo: ComponentRepository) -> str:
     join.
     """
     if repo.is_live and getattr(component.wire, "_state_slot", False):
-        # A render many connections may take: each puts its own token here (#176)
+        # A render many connections may take: each puts its own token here (#176).
+        # This connection's is signed now, off the loop like any other: the state's
+        # JSON may query (a QuerySet field, a computed field)
+        component.wire._slot_token = sign_state(component)
         signed = STATE_SLOT
     else:
         signed = sign_state(component)

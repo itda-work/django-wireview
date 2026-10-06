@@ -23,7 +23,8 @@ The django-reactor era changelog (2.x) is preserved in
   `csrf_token` or `messages` -- renders on its own, and the new check `wireview.W019` names it. With
   `VERIFY_SHARED_RENDER` (`DEBUG` by default, always in `wireview.testing`), a declared render that
   reads one of those names raises `SharedRenderError`, and a connection that took another's render
-  renders its own and raises if the two differ. The comparison benchmark's board declaring it
+  renders its own and raises if the two differ. Every
+  connection's `data-state` token is signed off the event loop. The comparison benchmark's board declaring it
   reaches 1,000 connections on one process in 87.5 ms instead of 430.0 ms, 122.6 instead of
   443.4 us of CPU per connection (docs/features/shared-render.md, docs/design/broadcast-fanout.md §7,
   #176).

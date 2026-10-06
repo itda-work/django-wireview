@@ -270,23 +270,24 @@ def _patch_wireview() -> None:
     WireviewSession.after_mutation_chores = _atimed("after_mutation_chores", WireviewSession.after_mutation_chores)
     meta.WireviewMeta.render_diff = _atimed("render_diff (wall)", meta.WireviewMeta.render_diff)
 
-    original_db = meta.db
+    def timed_trips(label: str, original_db):
+        def db(fn):
+            trip = original_db(fn)
 
-    def db(fn):
-        trip = original_db(fn)
+            async def call(*args, **kwargs):
+                if not probe.armed:
+                    return await trip(*args, **kwargs)
+                started, used = ns(), cpu()
+                try:
+                    return await trip(*args, **kwargs)
+                finally:
+                    probe.add(label, ns() - started, cpu() - used)
 
-        async def call(*args, **kwargs):
-            if not probe.armed:
-                return await trip(*args, **kwargs)
-            started, used = ns(), cpu()
-            try:
-                return await trip(*args, **kwargs)
-            finally:
-                probe.add("await render trip (wall)", ns() - started, cpu() - used)
+            return call
 
-        return call
+        return db
 
-    meta.db = db
+    meta.db = timed_trips("await render trip (wall)", meta.db)
 
     # On the worker thread: the context (every public attribute), the template, the signature
     meta.WireviewMeta._collect_context = _timed("collect_context", meta.WireviewMeta._collect_context)
@@ -299,6 +300,10 @@ def _patch_wireview() -> None:
     import wireview.core.shared_render as shared
 
     shared.key = _timed("shared: key", shared.key)
+    # A connection that takes the render signs its token in a trip of its own, off the loop:
+    # the sign_state that module looks up at the call, apart from the template's in the render
+    shared.db = timed_trips("await sign trip (wall)", shared.db)
+    state.sign_state = _timed("sign_state (taker's trip)", state.sign_state)
     # shared_render.render waits: for the render trip, or for the render another connection
     # leads. The loop runs the others meanwhile, so both that wait and send_render around it
     # hold their CPU. Two medians of such sums, subtracted, are noise; the CPU of send_render
@@ -670,15 +675,16 @@ def stages(summary: dict[str, t.Any], name: str) -> list[tuple[str, float, float
             row("loop: InMemory 레이어 _clean_expired (receive마다 전체 순회)", "loop", "layer._clean_expired"),
             row("worker: close_old_connections (메시지마다 3번)", "worker", "close_old_connections"),
             row("worker: 컨텍스트 읽기 (_collect_context)", "worker", "collect_context"),
-            row("worker: 템플릿 렌더", "worker", "template render"),
+            row("worker: 템플릿 렌더 (서명 제외)", "worker", "template render", ("sign_state",)),
+            row("worker: 렌더한 연결의 data-state 서명 (렌더 트립 안)", "worker", "sign_state"),
+            row("worker: 받은 연결의 data-state 서명 (서명 트립)", "worker", "sign_state (taker's trip)"),
             row(
                 "worker: sync_to_async 트립 (스레드 쪽 나머지)",
                 "worker",
                 "thread_handler",
-                ("close_old_connections", "collect_context", "template render"),
+                ("close_old_connections", "collect_context", "template render", "sign_state (taker's trip)"),
             ),
-            row("loop: 공유 렌더의 키 (필드 JSON·언어·시간대)", "loop", "shared: key"),
-            row("loop: data-state 서명 (sign_state)", "loop", "sign_state"),
+            row("loop: 공유 렌더의 키 (필드·언어·시간대)", "loop", "shared: key"),
             row("loop: 연결의 토큰 끼우기 (with_state)", "loop", "shared: with_state"),
             row("loop: diff 계산 (마커 파싱은 메시지당 한 번)", "loop", "diff: against last"),
             row("loop: 마커 파싱 (메시지당 한 번)", "loop", "shared: parse"),

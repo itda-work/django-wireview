@@ -145,12 +145,16 @@ def test_the_fan_out_probes_see_the_shared_board(tmp_path):
         "loop.shared: key",
         "loop.shared: with_state",
         "loop.diff: against last",
-        "loop.sign_state",
         "loop.send_render outside the shared render",
     ):
         assert summary["calls"].get(call, 0) >= 3, f"the probe on {call} saw nothing: {summary['calls']}"
-    # One render for the clicker's event and one for the broadcast, whatever the connections
+    # One render for the clicker's event and one for the broadcast, whatever the connections:
+    # its token signed in that trip, every other connection's in a trip of its own, off the loop
     assert summary["calls"]["worker.template render"] == 2
+    assert summary["calls"]["worker.sign_state"] == 2
+    assert summary["calls"]["worker.sign_state (taker's trip)"] == 2
+    assert summary["calls"]["loop.await sign trip (wall)"] == 2
+    assert "loop.sign_state" not in summary["calls"]
     assert summary["calls"]["loop.shared: parse"] == 2
     for label, used, _wall in fanout_profile.stages(summary, "wireview-shared"):
         assert used >= 0 or label.startswith("loop: 그 밖"), label

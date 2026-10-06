@@ -11,6 +11,7 @@ not. In short, these hold:
 - a class out of scope does not share, and ``wireview.W019`` says why
 - with ``VERIFY_SHARED_RENDER`` a render that reads the viewer raises, and a
   render taken from another connection is rendered again and compared
+- the token is signed off the event loop, by the leader and the takers alike
 """
 
 import asyncio
@@ -21,10 +22,12 @@ from collections import Counter
 from uuid import uuid4
 
 import pytest
+from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.test import override_settings
 from django.utils import translation
+from testproj.bookmarks.models import Bookmark
 from testproj.outbound import RecordingOutbound
 from testproj.wireview_setting import set_wireview
 
@@ -63,6 +66,7 @@ TEMPLATES = {
     "sh/partial.html": "<i>{{ request.path }}</i>",
     "sh/session_property.html": "{% load wireview %}<p {% tag_header %}>{{ visits }}</p>",
     "sh/twice.html": "{% load wireview %}<p {% tag_header %}>{{ headline }}</p><p {% tag_header %}></p>",
+    "sh/marks.html": "{% load wireview %}<p {% tag_header %}>{% for b in marks %}{{ b.title }}{% endfor %}</p>",
 }
 
 STORE: dict[str, t.Any] = {}
@@ -249,6 +253,20 @@ class ShTwice(_Headline, Component):
         pass
 
 
+class ShMarks(_Headline, Component):
+    """A QuerySet in a field whose type does not say so: in scope, and its state's JSON queries."""
+
+    class Meta:
+        template_name = "sh/marks.html"
+        subscriptions = {"sh-board"}
+        shared_render = True
+
+    marks: t.Any = None
+
+    async def notification(self, channel: str, **kwargs: t.Any) -> None:
+        pass
+
+
 @pytest.fixture(autouse=True)
 def _templates():
     _reset_store()
@@ -291,7 +309,11 @@ class Page:
         session = WireviewSession(outbound, user=user or AnonymousUser(), channel_name=f"sh-{uuid4().hex[:8]}")
         await session.start(session=SessionView(), vsn=PROTOCOL_VERSION)
         await session.handle_message(
-            {"command": "join", "payload": {"name": component._name, "state": signed(component, id=id, **fields)}}
+            {
+                "command": "join",
+                # Off the loop: a state that holds a QuerySet or a computed field queries
+                "payload": {"name": component._name, "state": await sync_to_async(signed)(component, id=id, **fields)},
+            }
         )
         assert outbound.renders(), f"{component._name} did not join"
         outbound.commands.clear()
@@ -756,3 +778,28 @@ async def test_the_watched_fields_come_back_after_the_render(verify):
     await broadcast([page], "m-1")
     assert page.component.user == user
     assert isinstance(page.component.session, SessionView)
+
+
+# -- what keeps a render the connection's own -------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("message_id", [None, "m-1"])
+async def test_a_queryset_field_signs_off_the_loop(message_id):
+    """Its state's JSON queries the ids: signed on the loop, every render raised SynchronousOnlyOperation."""
+    await Bookmark.objects.acreate(title="one", url="https://example.com/")
+    try:
+        mounted = await wireview_testing.mount(ShMarks, id="board", marks=await sync_to_async(Bookmark.objects.all)())
+        assert "one" in json.dumps(await mounted.render_diff())
+
+        pages = [await Page.open(ShMarks) for _ in range(2)]
+        for page in pages:
+            page.component.marks = await sync_to_async(Bookmark.objects.all)()  # type: ignore[attr-defined]
+        await broadcast(pages, message_id)
+        for page in pages:
+            assert not any(command == "error" for command, _ in page.outbound.commands)
+            assert "one" in page.html()
+            assert '"ids":' not in page.html()
+    finally:
+        await Bookmark.objects.all().adelete()

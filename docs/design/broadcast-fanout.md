@@ -672,7 +672,10 @@ make bench-compare BASE=5a4f037
 | diff, `after_render` 훅, LiveComponent 장부, 구독 갱신, 프레임 | | ✓ |
 
 공유 렌더는 `data-state`의 값 자리에 프로세스마다 무작위인 자리표시(`STATE_SLOT`)를 쓴다. 파싱한 뒤 그 동적 부분까지의
-경로를 기억한다. 연결은 자기 토큰(`sign_state`, 토큰 재사용 그대로)을 그 경로에 끼운다(`Shared.with_state`). 이때 경로 위의
+경로를 기억한다. 연결은 자기 토큰(`sign_state`, 토큰 재사용 그대로)을 그 경로에 끼운다(`Shared.with_state`). 토큰은 루프
+밖에서 서명한다. 렌더한 연결은 `{% tag_header %}`가 그 렌더 트립 안에서, 받은 연결은 `db()` 트립 하나로 한다. 상태의
+JSON은 computed field와 QuerySet 필드의 id 목록 때문에 쿼리할 수 있다(검수 D2: 루프 위에서 서명하자 QuerySet 필드를 가진
+선언 클래스의 모든 렌더가 `SynchronousOnlyOperation`으로 죽었다). 이때 경로 위의
 `Rendered`만 복사하고 나머지는 공유한다. 공유 객체는 바뀌지 않는다. `settle`은 temporary assign이 없으면 아무것도 바꾸지
 않고, 그런 클래스는 범위 밖이다.
 
