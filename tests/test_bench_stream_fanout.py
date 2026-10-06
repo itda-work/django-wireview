@@ -101,3 +101,20 @@ def test_the_readme_quotes_the_same_ranges(d2):
     notified = [x["fanout_ms"] for x in summary["wireview"].values()]
     readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
     assert f"하면 {_range(notified, 'ms')}, `Broadcast`는 {_range(broadcast, 'ms')}였다" in readme
+
+
+def test_the_design_quotes_stage_2_as_its_own_result_says():
+    """§1-1 and §8 quote A's measurement; when A is measured again, they follow it."""
+    import json
+
+    from bench import fanout_profile
+
+    a = fanout_profile.shared_facts(json.loads(fanout_profile.RESULT_A.read_text()))
+    text = DESIGN.read_text(encoding="utf-8")
+    shared, per_connection = a["a.wireview-shared.fanout"], a["a.wireview-shared.per_connection"]
+    off = f"{a['a.wireview.fanout']}·{a['a.wireview.per_connection']}"
+    assert f"팬아웃 {shared}, 연결당 {per_connection}. 같은 회차의 A 끔은 {off}" in _section(text, "### 1-1.")
+    assert f"| {shared}, 연결당 {per_connection} (실측, broadcast-fanout §7) |" in _section(text, "## 8.")
+    loop = a["a.stage.loop: InMemory 레이어 _clean_expired (receive마다 전체 순회)"]
+    trips = a["a.group.wireview-shared.트립·디스패치"]
+    assert f"순회 {loop} µs, 트립·디스패치 {trips} µs" in " ".join(_section(text, "### 1-1.").split())
