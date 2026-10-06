@@ -9,8 +9,9 @@ wireview moves three kinds of traffic:
 - **Fan-out**: a message is published to every session subscribed to a topic
   (model mutations, notifications, upload progress).
 - **Patches**: frames rendered and serialized once by a ``Broadcast`` (#178),
-  published to the topic's patch group (``patch_group``) and written as they
-  are to every session holding a target component.
+  published to the topic's patch group (``patch_group``), received once per
+  process (``PatchHub``) and written as they are to every session holding a
+  target component.
 
 ``Outbound`` and ``Broker`` are the only places that touch Django Channels.
 Consumer handlers, ``WireviewMeta`` and the broadcast helpers go through
@@ -21,8 +22,10 @@ only has to implement these two interfaces. The message shapes are fixed in
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import typing as t
+import weakref
 
 from channels.exceptions import ChannelFull
 from channels.layers import BaseChannelLayer as _BaseChannelLayer
@@ -107,7 +110,7 @@ def require_patch_topic(topic: t.Any) -> None:
 
 
 def patch_group(topic: str) -> str:
-    """The topic that carries ``topic``'s patches: a session receives them by ``Outbound.subscribe`` to it."""
+    """The channel-layer group that carries ``topic``'s patches. Its member is each process's ``PatchHub``."""
     return PATCH_GROUP_PREFIX + topic
 
 
@@ -221,6 +224,153 @@ class ChannelsOutbound:
 
     async def close(self, code: int | None = None) -> None:
         await self._consumer.close(code=code)
+
+
+class PatchHub:
+    """Receives each topic's ``Broadcast`` patches once per process and hands them to its sessions (#178).
+
+    One channel per event loop sits in the patch group of every topic a
+    session of the process hears (``patch_group``): a ``Broadcast`` costs the
+    channel layer one message per process, not one per connection, and none of
+    Channels' per-message dispatch. Its loop takes each message off the layer
+    and calls every receiver registered for the topic, in turn and without
+    awaiting: a receiver queues what it writes (``WireviewSession._take_patch``),
+    so a slow socket holds up only its own frames.
+
+    The group is joined when the process's first receiver for a topic comes and
+    left with the last. Joining and leaving one topic are serialized, and a
+    ``join`` returns once the channel is in the group. Membership expires in
+    channels_redis and the in-memory layer (``group_expiry``, a day by default)
+    while this channel lives as long as the process, so it is renewed every
+    ``RENEW_SECONDS``.
+    """
+
+    RENEW_SECONDS = 3600.0
+
+    def __init__(self, layer: BaseChannelLayer) -> None:
+        self._layer = layer
+        self._channel: str | None = None
+        self._receivers: dict[str, dict[t.Any, t.Callable[[Message], None]]] = {}
+        self._joined: set[str] = set()
+        self._locks: dict[str, asyncio.Lock] = {}
+        self._tasks: list[asyncio.Task[None]] = []
+        self._opening: asyncio.Future[None] | None = None
+
+    @property
+    def topics(self) -> set[str]:
+        """The topics whose patch group this process's channel is in."""
+        return set(self._joined)
+
+    async def join(self, topic: str, key: t.Any, receiver: t.Callable[[Message], None]) -> None:
+        """Hand ``topic``'s patches to ``receiver`` (one per ``key``) from when this returns."""
+        self._receivers.setdefault(topic, {})[key] = receiver
+        await self._settle(topic)
+
+    async def leave(self, topic: str, key: t.Any) -> None:
+        receivers = self._receivers.get(topic)
+        if receivers is None or receivers.pop(key, None) is None:
+            return
+        if not receivers:
+            del self._receivers[topic]
+        await self._settle(topic)
+
+    async def _settle(self, topic: str) -> None:
+        """Be in ``topic``'s patch group exactly while someone hears it."""
+        async with self._locks.setdefault(topic, asyncio.Lock()):
+            wanted = topic in self._receivers
+            if wanted and topic not in self._joined:
+                await self._start()
+                await self._layer.group_add(patch_group(topic), self._channel)  # type: ignore[arg-type]
+                self._joined.add(topic)
+            elif not wanted and topic in self._joined:
+                self._joined.discard(topic)
+                await self._layer.group_discard(patch_group(topic), self._channel)  # type: ignore[arg-type]
+            if not self._joined and not self._receivers:
+                self._stop()
+
+    async def _start(self) -> None:
+        # Two topics joined at once open one channel
+        if self._opening is None:
+            self._opening = asyncio.ensure_future(self._open())
+        await self._opening
+
+    async def _open(self) -> None:
+        self._channel = await self._layer.new_channel()
+        self._tasks = [asyncio.ensure_future(self._receive()), asyncio.ensure_future(self._renew())]
+
+    def _stop(self) -> None:
+        for task in self._tasks:
+            task.cancel()
+        self._tasks = []
+        self._channel = None
+        self._opening = None
+
+    async def _receive(self) -> None:
+        channel = self._channel
+        while True:
+            try:
+                message = await self._layer.receive(channel)  # type: ignore[arg-type]
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("Could not receive Broadcast patches on %s", channel)
+                await asyncio.sleep(1)
+                continue
+            self.dispatch(message)
+
+    def dispatch(self, message: Message) -> None:
+        """Hand one patch message to every receiver of its topic."""
+        for receiver in list(self._receivers.get(message.get("topic", ""), {}).values()):
+            try:
+                receiver(message)
+            except Exception:
+                log.exception("A receiver of %r patches raised", message.get("topic"))
+
+    async def _renew(self) -> None:
+        while True:
+            await asyncio.sleep(self.RENEW_SECONDS)
+            await self.renew()
+
+    async def renew(self) -> None:
+        """Join every topic's group again, before the layer's ``group_expiry`` drops this channel."""
+        for topic in list(self._joined):
+            async with self._locks.setdefault(topic, asyncio.Lock()):
+                if topic in self._joined:
+                    await self._layer.group_add(patch_group(topic), self._channel)  # type: ignore[arg-type]
+
+
+class NullPatchHub:
+    """``PatchHub`` for a process with no channel layer: nothing is ever received."""
+
+    topics: set[str] = set()
+
+    async def join(self, topic: str, key: t.Any, receiver: t.Callable[[Message], None]) -> None:
+        return None
+
+    async def leave(self, topic: str, key: t.Any) -> None:
+        return None
+
+
+_hubs: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, PatchHub | NullPatchHub] = weakref.WeakKeyDictionary()
+_hub_override: t.Any = None
+
+
+def get_patch_hub() -> PatchHub | NullPatchHub:
+    """The running event loop's ``PatchHub`` (one per process under an ASGI server)."""
+    if _hub_override is not None:
+        return _hub_override
+    loop = asyncio.get_running_loop()
+    hub = _hubs.get(loop)
+    if hub is None:
+        layer = get_channel_layer()
+        hub = _hubs[loop] = NullPatchHub() if layer is None else PatchHub(layer)
+    return hub
+
+
+def set_patch_hub(hub: t.Any) -> None:
+    """Override the patch hub of every loop. ``None`` restores one per loop on the Channels layer."""
+    global _hub_override
+    _hub_override = hub
 
 
 _broker: Broker | None = None

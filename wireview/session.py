@@ -1,5 +1,7 @@
 """The live session behind one browser tab, apart from its transport (GAP-027, #60)."""
 
+import asyncio
+import collections
 import inspect
 import logging
 import secrets
@@ -29,7 +31,7 @@ from .core.rendered import (
 )
 from .core.session import SessionView
 from .core.state import StateMismatch, StatePayload, unsign_envelope
-from .core.transport import PATCH_TOPIC_MAX, Outbound, patch_group
+from .core.transport import PATCH_TOPIC_MAX, Outbound, get_patch_hub
 from .features import upload_store
 from .features.uploads import upload_group_name
 from .live_component import LiveComponent, run_updates
@@ -165,8 +167,12 @@ class WireviewSession:
         # written after those, so a stream reset does not wipe them
         # (``_hold_patches``). Keyed by id(): a component's == compares fields.
         self._patch_held: dict[int, tuple[Component, list[str]]] = {}
+        # Frames waiting for the socket, and the task writing them (``_write_patches``)
+        self._patch_queue: collections.deque[str] = collections.deque()
+        self._patch_writer: asyncio.Future[None] | None = None
         # A connection closed for falling behind takes no more patches
         self._patches_closed: bool = False
+        self._patch_closing: asyncio.Future[None] | None = None
 
     @property
     def user(self):
@@ -231,8 +237,11 @@ class WireviewSession:
             log.debug(f"::: UNSUBSCRIBE {self.channel_name} from {channel}")
             await self.outbound.unsubscribe(channel)
         self.subscriptions.clear()
+        hub = get_patch_hub()
         for topic in self._patch_topics:
-            await self.outbound.unsubscribe(patch_group(topic))
+            await hub.leave(topic, self)
+        if self._patch_writer is not None:
+            self._patch_writer.cancel()
         self._init_patches()
         if self._auth_topic:
             await self.outbound.unsubscribe(self._auth_topic)
@@ -1678,18 +1687,22 @@ class WireviewSession:
     # Broadcast patches (#178, docs/design/broadcast-patch.md)
     #
     # A ``Broadcast`` publishes frames rendered and serialized once, cut either
-    # side of the component id. They come to the topic's patch group, apart from
-    # its notifications, and this connection writes them to the instances of
-    # the target class that subscribe to the topic and that it can reach. No
-    # component code runs and nothing is rendered or serialized again.
+    # side of the component id. Each process takes them off the channel layer
+    # once (``PatchHub``) and hands them to every session that hears the topic;
+    # a session queues them for the instances of the target class it can reach,
+    # with their ids put in, and a task of its own writes the queue to the
+    # socket. No component code runs and nothing is rendered or serialized again.
 
     async def _settle_patch_topics(self, topics: set[str]) -> None:
-        """Be in the patch group of exactly ``topics``: the ones a patch group can be named for."""
+        """Hear the patches of exactly ``topics``: the ones a patch group can be named for."""
         wanted = {topic for topic in topics if len(topic) <= PATCH_TOPIC_MAX}
+        if wanted == self._patch_topics:
+            return
+        hub = get_patch_hub()
         for topic in wanted - self._patch_topics:
-            await self.outbound.subscribe(patch_group(topic))
+            await hub.join(topic, self, self._take_patch)
         for topic in self._patch_topics - wanted:
-            await self.outbound.unsubscribe(patch_group(topic))
+            await hub.leave(topic, self)
         self._patch_topics = wanted
 
     async def _hold_patches(self, component: Component) -> None:
@@ -1737,15 +1750,15 @@ class WireviewSession:
             return
         del self._patch_held[id(component)]
         if self.repo.reachable(component.id) is component:
-            for text in entry[1]:
-                await self.outbound.send_text(text)
+            # Through the queue: ahead of whatever comes for it next
+            self._queue_patches(component, entry[1], "")
+        await self._patches_written()
 
-    async def wireview_patch(self, message: dict[str, t.Any]) -> None:
-        """A ``Broadcast``: write its frames to each instance of its class on this connection that hears its topic.
+    def _take_patch(self, message: dict[str, t.Any]) -> None:
+        """A ``Broadcast`` the process received: queue its frames for each target here. Does not wait.
 
-        Its component's code does not run, so neither does the database:
-        the consumer hands this message over without the trip Channels takes
-        before every handler to close old connections (``WireviewConsumer.dispatch``).
+        The ``PatchHub`` calls it for every session that hears the topic, one
+        after another, so it only queues; ``_write_patches`` writes.
         """
         if self._patches_closed:
             return
@@ -1762,25 +1775,55 @@ class WireviewSession:
             held = self._patch_held.get(id(component))
             if held is not None and held[0] is component:
                 held[1].extend(texts)
-                if len(held[1]) > patches.HOLD_LIMIT:
-                    await self._fell_behind(component, message["topic"])
+                if len(held[1]) > patches.QUEUE_LIMIT:
+                    self._fell_behind(component, message["topic"])
                     return
                 continue
-            for text in texts:
-                await self.outbound.send_text(text)
+            if not self._queue_patches(component, texts, message["topic"]):
+                return
 
-    async def _fell_behind(self, component: Component, topic: str) -> None:
-        """More patches came for a held component than ``HOLD_LIMIT``: close rather than drop.
+    async def wireview_patch(self, message: dict[str, t.Any]) -> None:
+        """``_take_patch``, returning once what it queued is written."""
+        self._take_patch(message)
+        await self._patches_written()
+
+    def _queue_patches(self, component: Component, texts: list[str], topic: str) -> bool:
+        """Queue ``texts`` for the socket; False when that put it past ``QUEUE_LIMIT`` and it is closing."""
+        queue = self._patch_queue
+        queue.extend(texts)
+        if len(queue) > patches.QUEUE_LIMIT:
+            self._fell_behind(component, topic)
+            return False
+        writer = self._patch_writer
+        if writer is None or writer.done():
+            self._patch_writer = asyncio.ensure_future(self._write_patches())
+        return True
+
+    async def _write_patches(self) -> None:
+        """Write the queue to the socket, in order. A task of this connection's, apart from the hub's loop."""
+        queue = self._patch_queue
+        while queue:
+            await self.outbound.send_text(queue.popleft())
+
+    async def _patches_written(self) -> None:
+        writer = self._patch_writer
+        if writer is not None:
+            await writer
+
+    def _fell_behind(self, component: Component, topic: str) -> None:
+        """More patches waited for this connection than ``QUEUE_LIMIT``: close rather than drop.
 
         Dropping would leave the page wrong without a word. Closed, it
-        reconnects and joins again, and the joins put its lists right.
+        reconnects and joins again, and the joins put its lists right. Waiting
+        are the frames held for a component whose ``joined()`` operations are
+        on their way, or the ones queued for a socket that is not taking them.
         """
         log.warning(
-            "Closing connection %s: %s (%s) was sent more than %d patches before its joined() operations were written",
+            "Closing connection %s: more than %d Broadcast patches waited for it (%s, %s)",
             self.connection_id,
+            patches.QUEUE_LIMIT,
             component._name,
             component.id,
-            patches.HOLD_LIMIT,
         )
         telemetry.emit(
             telemetry.broadcast_overflowed,
@@ -1788,11 +1831,12 @@ class WireviewSession:
             connection_id=self.connection_id,
             component_id=component.id,
             topic=topic,
-            limit=patches.HOLD_LIMIT,
+            limit=patches.QUEUE_LIMIT,
         )
         self._patches_closed = True
         self._patch_held.clear()
-        await self.close(code=1013)
+        self._patch_queue.clear()
+        self._patch_closing = asyncio.ensure_future(self.close(code=1013))
 
     async def send_query_string(self):
         new_qs = self.repo.get_query_string()

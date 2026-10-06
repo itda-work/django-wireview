@@ -132,11 +132,7 @@ def test_the_session_module_knows_nothing_of_channels():
 
 
 def test_the_consumer_is_only_the_adapter():
-    """Every handler lives on the session; the consumer adds the socket's own four and no more.
-
-    And ``dispatch``: which handler a Channels message reaches is Channels', and a
-    Broadcast's patch reaches its handler without the trip Channels takes first (#178).
-    """
+    """Every handler lives on the session; the consumer adds the socket's own four and no more."""
     own = {name for name, value in vars(WireviewConsumer).items() if callable(value) and not name.startswith("__")}
-    assert own <= {"websocket_connect", "connect", "disconnect", "receive_json", "dispatch"}
+    assert own <= {"websocket_connect", "connect", "disconnect", "receive_json"}
     assert issubclass(WireviewConsumer, WireviewSession)

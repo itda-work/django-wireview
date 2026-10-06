@@ -6,11 +6,11 @@ reached, the order against a join's ``joined()`` operations, the dispatch trip,
 mixed versions, the hold limit, ``wireview.testing`` and ``send()``.
 """
 
+import asyncio
 import json
 import typing as t
 from dataclasses import dataclass
 
-import channels.consumer
 import pytest
 from channels.layers import get_channel_layer
 from channels.testing import WebsocketCommunicator
@@ -19,6 +19,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.db import transaction
 from django.template import Template, engines
 from django.utils import timezone, translation
+from testproj.waiting import eventually
 
 from wireview import JS, Broadcast, Component, LiveComponent, mount, telemetry
 from wireview.consumer import WireviewConsumer
@@ -27,7 +28,7 @@ from wireview.core.meta import WireviewMeta
 from wireview.core.rendered import PROTOCOL_VERSION
 from wireview.core.session import SessionView
 from wireview.core.state import sign_state
-from wireview.core.transport import PATCH_TOPIC_MAX, set_broker
+from wireview.core.transport import PATCH_TOPIC_MAX, PatchHub, set_broker, set_patch_hub
 from wireview.session import WireviewSession
 
 pytestmark = [pytest.mark.integration, pytest.mark.django_db]
@@ -482,79 +483,159 @@ async def test_so_is_one_published_during_a_live_components_joined():
     assert ops == [("reset", "bc-seed-live"), ("insert", "bc-seed-live")]
 
 
+class _Layer:
+    """The part of a channel layer a ``PatchHub`` uses, counting what it is asked."""
+
+    def __init__(self) -> None:
+        self.added: list[str] = []
+        self.discarded: list[str] = []
+        self.inbox: asyncio.Queue[dict[str, t.Any]] = asyncio.Queue()
+
+    async def new_channel(self) -> str:
+        return "hub-channel"
+
+    async def group_add(self, group: str, channel: str) -> None:
+        self.added.append(group)
+
+    async def group_discard(self, group: str, channel: str) -> None:
+        self.discarded.append(group)
+
+    async def receive(self, channel: str) -> dict[str, t.Any]:
+        return await self.inbox.get()
+
+
+@pytest.fixture
+def hub():
+    hub = PatchHub(_Layer())  # type: ignore[arg-type]
+    set_patch_hub(hub)
+    yield hub
+    set_patch_hub(None)
+    hub._stop()
+
+
+async def _joined_session(outbound: t.Any, id: str = "feed") -> WireviewSession:
+    session = WireviewSession(outbound)
+    await session.start(session=SessionView.wrap(None))
+    feed = await session.repo.join("BcFeed", {"id": id}, before_joined=session._hold_patches)
+    await session.after_mutation_chores()
+    await session._release_patches(feed)
+    return session
+
+
+def _message(cls: type[Component] = BcFeed, topic: str = "bc-feed") -> dict[str, t.Any]:
+    (frame,) = Broadcast(cls, topic).push_event("posted")._frames()
+    return {"type": "wireview.patch", "target": cls._fqn, "topic": topic, "frames": [frame]}
+
+
 @pytest.mark.asyncio
-async def test_a_component_that_falls_behind_while_held_closes_its_connection():
+async def test_a_process_takes_a_patch_once_and_hands_it_to_every_session(hub):
+    layer = hub._layer
+    first = await _joined_session(_Recording(), "first")
+    second = await _joined_session(_Recording(), "second")
+    assert layer.added == ["wireview.patch.bc-feed"], "one group_add for the process, not one per connection"
+
+    layer.inbox.put_nowait(_message())
+    written = await eventually(lambda: first.outbound.frames and second.outbound.frames)  # type: ignore[attr-defined]
+
+    assert written
+    assert [json.loads(f)["payload"]["component_id"] for f in first.outbound.frames] == ["first"]  # type: ignore[attr-defined]
+    assert [json.loads(f)["payload"]["component_id"] for f in second.outbound.frames] == ["second"]  # type: ignore[attr-defined]
+
+    await first.stop(1000)
+    assert layer.discarded == [], "the other session still hears the topic"
+    await second.stop(1000)
+    assert layer.discarded == ["wireview.patch.bc-feed"]
+    assert hub.topics == set() and hub._tasks == []
+
+
+@pytest.mark.asyncio
+async def test_the_process_renews_its_membership_before_the_layer_expires_it(hub):
+    await _joined_session(_Recording())
+    await hub.renew()
+    assert hub._layer.added == ["wireview.patch.bc-feed", "wireview.patch.bc-feed"]
+
+
+@pytest.mark.asyncio
+async def test_a_slow_socket_holds_up_only_its_own_frames_and_is_closed_past_the_limit(hub):
     closed: list[int | None] = []
     events: list[dict[str, t.Any]] = []
+    never = asyncio.Event()
+
+    class Stuck(_Recording):
+        async def send_text(self, text: str) -> None:
+            await never.wait()
+
+        async def close(self, code=None):
+            closed.append(code)
+
+    def overflowed(sender, **kwargs):
+        events.append(kwargs)
+
+    await _joined_session(Stuck(), "stuck")
+    quick = await _joined_session(_Recording(), "quick")
+    message = _message()
+
+    telemetry.broadcast_overflowed.connect(overflowed)
+    telemetry.enable()
+    try:
+        hub.dispatch(message)
+        await eventually(lambda: quick.outbound.frames)  # type: ignore[attr-defined]
+        # The first frame is with the stuck socket; the queue behind it holds the rest
+        for _ in range(patches.QUEUE_LIMIT):
+            hub.dispatch(message)
+            await asyncio.sleep(0)  # the hub's loop takes one message at a time: writers run between
+        assert closed == []
+        hub.dispatch(message)
+        await eventually(lambda: closed)
+        hub.dispatch(message)
+    finally:
+        telemetry.disable()
+        telemetry.broadcast_overflowed.disconnect(overflowed)
+        never.set()
+
+    assert closed == [1013]
+    # Every frame reached the other socket meanwhile
+    await eventually(lambda: len(quick.outbound.frames) == patches.QUEUE_LIMIT + 3)  # type: ignore[attr-defined]
+    assert [(e["component_id"], e["topic"], e["limit"]) for e in events] == [("stuck", "bc-feed", patches.QUEUE_LIMIT)]
+
+
+@pytest.mark.asyncio
+async def test_a_component_that_falls_behind_while_held_closes_its_connection(hub):
+    closed: list[int | None] = []
 
     class Closing(_Recording):
         async def close(self, code=None):
             closed.append(code)
 
-        async def subscribe(self, topic): ...
-
-    def overflowed(sender, **kwargs):
-        events.append(kwargs)
-
     session = WireviewSession(Closing())  # type: ignore[arg-type]
     await session.start(session=SessionView.wrap(None))
     feed = session.repo.build("BcFeed", {"id": "feed"})
     await session._hold_patches(feed)
-    (frame,) = Broadcast(BcFeed, "bc-feed").push_event("posted")._frames()
-    message = {"type": "wireview.patch", "target": BcFeed._fqn, "topic": "bc-feed", "frames": [frame]}
+    message = _message()
 
-    telemetry.broadcast_overflowed.connect(overflowed)
-    telemetry.enable()
-    try:
-        for _ in range(patches.HOLD_LIMIT):
-            await session.wireview_patch(message)
-        assert closed == []
-        await session.wireview_patch(message)
-        await session.wireview_patch(message)
-    finally:
-        telemetry.disable()
-        telemetry.broadcast_overflowed.disconnect(overflowed)
+    for _ in range(patches.QUEUE_LIMIT):
+        hub.dispatch(message)
+    assert closed == []
+    hub.dispatch(message)
+    await eventually(lambda: closed)
 
     assert closed == [1013]
     assert session.outbound.frames == []  # type: ignore[attr-defined]
-    assert events == [
-        {
-            "signal": telemetry.broadcast_overflowed,
-            "connection_id": session.connection_id,
-            "component_id": "feed",
-            "topic": "bc-feed",
-            "limit": patches.HOLD_LIMIT,
-        }
-    ]
 
 
 @pytest.mark.asyncio
-async def test_the_end_of_a_connection_leaves_no_patch_group_behind():
-    class Topics(_Recording):
-        def __init__(self):
-            super().__init__()
-            self.topics: set[str] = set()
-
-        async def subscribe(self, topic):
-            self.topics.add(topic)
-
-        async def unsubscribe(self, topic):
-            self.topics.discard(topic)
-
-    session = WireviewSession(Topics())  # type: ignore[arg-type]
-    await session.start(session=SessionView.wrap(None))
-    await session.repo.join("BcFeed", {"id": "feed"}, before_joined=session._hold_patches)
-    await session.after_mutation_chores()
-    assert session.outbound.topics == {"bc-feed", "wireview.patch.bc-feed"}  # type: ignore[attr-defined]
+async def test_the_end_of_a_connection_leaves_no_patch_group_behind(hub):
+    session = await _joined_session(_Recording())
+    assert hub.topics == {"bc-feed"}
 
     await session.stop(1000)
 
-    assert session.outbound.topics == set()  # type: ignore[attr-defined]
+    assert hub.topics == set()
     assert session._patch_book == {} and session._patch_held == {}
 
 
 @pytest.mark.asyncio
-async def test_a_topic_too_long_for_a_patch_group_still_subscribes_its_notifications():
+async def test_a_topic_too_long_for_a_patch_group_still_subscribes_its_notifications(hub):
     class Long(BcFeed):
         class Meta:
             subscriptions = {"x" * (PATCH_TOPIC_MAX + 1)}
@@ -572,31 +653,10 @@ async def test_a_topic_too_long_for_a_patch_group_still_subscribes_its_notificat
     await session.after_mutation_chores()
 
     assert session.outbound.topics == ["x" * (PATCH_TOPIC_MAX + 1)]  # type: ignore[attr-defined]
+    assert hub.topics == set()
 
 
 # --- the channel layer -------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_a_patch_skips_the_dispatch_trip_and_nothing_else_does(monkeypatch):
-    trips: list[str] = []
-    handled: list[str] = []
-
-    async def counted() -> None:
-        trips.append("trip")
-
-    async def record(self, message):
-        handled.append(message["type"])
-
-    monkeypatch.setattr(channels.consumer, "aclose_old_connections", counted)
-    monkeypatch.setattr(WireviewSession, "wireview_patch", record)
-    monkeypatch.setattr(WireviewSession, "notification", record)
-    consumer = WireviewConsumer()
-
-    await consumer.dispatch({"type": "wireview.patch"})
-    assert (handled, trips) == (["wireview.patch"], [])
-    await consumer.dispatch({"type": "notification"})
-    assert (handled, trips) == (["wireview.patch", "notification"], ["trip"])
 
 
 @pytest.mark.asyncio

@@ -19,7 +19,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | (2) outbound | `{"command": str, "payload": {...}}` JSON 프레임 | `Outbound.send_command` (`wireview/core/transport.py`) |
 | (3) session mail | `{"type": "message_from_component", "command": str, "kwargs": {...}}` | `Broker.send_to_session` → `WireviewConsumer.message_from_component` → `component_<command>(**kwargs)` |
 | (4) fan-out | `{"type": <아래 표>, "channel": str, ...}` | `Broker.publish` → 컨슈머의 `type` 핸들러 |
-| (4) fan-out: 패치 | `{"type": "wireview.patch", "target": str, "topic": str, "frames": [[str, str], ...]}` | `Broker.publish_patch` → `WireviewSession.wireview_patch` → `Outbound.send_text` (5절, #178) |
+| (4) fan-out: 패치 | `{"type": "wireview.patch", "target": str, "topic": str, "frames": [[str, str], ...]}` | `Broker.publish_patch` → 프로세스마다 `PatchHub` → 세션의 `_take_patch` → 연결별 큐 → `Outbound.send_text` (5절, #178) |
 
 브라우저는 `/__wireview__?vsn=<n>`으로 연결한다. `vsn`은 클라이언트가 적용할 수 있는 형태의 버전이고(`PROTOCOL_VERSION`, 번호별 내용은 7절의 표), 서버는 그보다 새 형태를 보내지 않는다. 없거나 잘못된 값(정수 아님, 음수, 여러 번)은 0으로 읽는다. 규칙은 7절에 있다.
 
@@ -87,14 +87,17 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | `upload.completed` | `component`, `upload`, `ref`, `bytes_received`, `path` | `UploadView` (마지막 청크) | 엔트리를 완료로 올린다. 브라우저에는 보내지 않는다 — 브라우저는 자기 `upload_complete`로 알고, `on_upload_complete`도 거기서 한 번만 돈다 |
 | `upload.error` | `component`, `upload`, `ref`, `errors` | `UploadView` | 엔트리를 오류로, 소유 컴포넌트 render, `upload_op error` 전송 |
 | `session_invalidated` | `reason` | `invalidate_authentication()` (로그아웃, 재로그인) | 소켓을 코드 4001로 닫는다 |
-| `wireview.patch` | `target` (클래스 FQN), `topic`, `frames: [[앞, 뒤], ...]` | `Broadcast.asend()`·`send()` (#178) | 정확히 그 클래스이고 그 토픽을 구독하며 `repo.reachable`인 인스턴스마다 `앞 + json.dumps(id) + 뒤`를 그대로 쓴다. 컴포넌트 코드는 돌지 않고, 다시 렌더하지도 직렬화하지도 않는다. Channels가 핸들러 앞에서 타는 `aclose_old_connections()` 트립도 이 메시지만 건너뛴다 |
+| `wireview.patch` | `target` (클래스 FQN), `topic`, `frames: [[앞, 뒤], ...]` | `Broadcast.asend()`·`send()` (#178) | 컨슈머가 아니라 **프로세스가 한 번** 받는다(`transport.PatchHub`). 그 토픽을 듣는 세션마다, 정확히 그 클래스이고 `repo.reachable`인 인스턴스에 `앞 + json.dumps(id) + 뒤`를 연결별 큐에 넣고 그 연결의 태스크가 쓴다. 컴포넌트 코드는 돌지 않고, 다시 렌더하지도 직렬화하지도 않는다. 세션의 처리기는 `WireviewSession.wireview_patch`(`_take_patch` 뒤 쓰기를 기다린다) |
 
 `instance`는 Django JSON 직렬화기의 출력(`[{"model", "pk", "fields"}]`)이다. `AUTO_BROADCAST.senders`가 매핑이면
 `fields`는 그 모델에 적은 필드뿐일 수 있다(`()`이면 비어 있다). 받는 쪽 `serializer.decode`는 온 필드와 pk만
 불러오고 나머지는 deferred로 둔다(`_restore`, #153 — 다중 테이블 상속의 부모 필드도 같은 길이다). 메시지 `type`은 같으므로 옛 프로세스도 받는다 — 1.0.0rc4 이전 프로세스는 빠진 필드를 기본값으로
 채운다(#153 이전). 그런 프로세스가 섞여 있으면 매핑 설정은 모두 올린 뒤에 켠다(DEPLOYMENT). 이 메시지는 서버 프로세스 사이의 것이라 `PROTOCOL_VERSION`과는 관계없다.
 
-`wireview.patch`는 토픽 그룹이 아니라 **패치 그룹 `wireview.patch.<토픽>`**으로 간다(`transport.patch_group`). 같은 그룹이면
+`wireview.patch`는 토픽 그룹이 아니라 **패치 그룹 `wireview.patch.<토픽>`**으로 간다(`transport.patch_group`). 그 그룹의
+멤버는 연결이 아니라 프로세스(이벤트 루프)마다 하나인 `PatchHub`의 채널이다. 그 프로세스에서 토픽을 처음 듣는 세션이 생기면
+들고(`group_add`), 마지막이 떠나면 나온다. channels_redis와 InMemory는 그룹 멤버십을 `group_expiry`(기본 하루) 뒤에 버리므로
+한 시간마다 다시 든다. 그래서 Broadcast 하나가 채널 레이어에 드는 비용은 연결 수가 아니라 프로세스 수에 비례한다. 같은 그룹이면
 롤링 배포 중 그 토픽을 구독한 옛 프로세스의 컨슈머가 처리기가 없는 `type`을 받는다. Channels는 그때 `ValueError`를 던지고,
 컨슈머가 죽어 페이지가 다시 연결한다. 그룹을 나누면 옛 프로세스는 패치 그룹에 들어 있지 않아 아무것도 받지 않는다. 그 페이지는
 다시 연결할 때까지 패치를 받지 못할 뿐이다. 그룹 이름이 100자 미만이어야 하므로 토픽은 84자까지다(`PATCH_TOPIC_MAX`). 더 긴
@@ -108,9 +111,11 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 
 **순서.** 세션은 컴포넌트가 `joined()`를 시작하기 전에 패치 그룹에 들고, 그 컴포넌트 앞으로 온 패치를 잡아 둔다. `joined()`가
 쌓은 작업(스트림 reset 같은 세션 메일)은 채널 레이어를 한 번 돌아 나중에 써지므로, 그 사이에 쓴 패치는 reset에 지워진다.
-잡아 둔 패치는 그 작업들 뒤에 보낸 세션 메일 `release_patches`가 오면 쓴다(4절). 잡아 둔 프레임이 1,000개(`HOLD_LIMIT`)를
-넘으면 버리지 않고 소켓을 코드 1013으로 닫는다 — 페이지가 다시 연결해 join하면서 목록을 바로잡는다(텔레메트리
-`broadcast_overflowed`). 전달은 알림처럼 최대 한 번이다. 설계는 [broadcast-patch](../design/broadcast-patch.md)에 있다.
+잡아 둔 패치는 그 작업들 뒤에 보낸 세션 메일 `release_patches`가 오면 쓴다(4절). 연결에서 기다리는 프레임 — 잡아 둔 것,
+또는 소켓이 받지 못해 큐에 쌓인 것 — 이 1,000개(`QUEUE_LIMIT`)를 넘으면 버리지 않고 소켓을 코드 1013으로 닫는다. 페이지가
+다시 연결해 join하면서 목록을 바로잡는다(텔레메트리 `broadcast_overflowed`). 큐는 연결마다 따로라서 느린 소켓 하나가 다른
+연결의 프레임을 막지 않는다. 다른 태스크에서 ASGI `send`를 부르는 셈인데, uvicorn(websockets·websockets-sansio·wsproto)과
+daphne 모두 `websocket.send` 하나를 프레임 하나로 transport에 한 번에 쓰므로 섞이지 않는다. 전달은 알림처럼 최대 한 번이다. 설계는 [broadcast-patch](../design/broadcast-patch.md)에 있다.
 
 `message_id`는 발행할 때마다 새로 뽑는 16자리 16진수다(`utils._message`). 같은 메시지를 받은 세션들이 같은 값을 보고,
 같은 프로세스 안에서 `Meta.shared_render` 컴포넌트의 렌더를 한 번만 한다(#176, `core/shared_render.py`). 없는 메시지(1.2
@@ -129,7 +134,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | 컴포넌트 인스턴스와 필드 | `ComponentRepository.components` | `data-state`로 이미 클라이언트에 복제됨 |
 | 마지막 렌더 스냅샷 (`Rendered`) | `WireviewMeta._last_rendered` | `Rendered.to_dict()` / `from_dict()` |
 | 구독 집합 | `WireviewSession.subscriptions` | 토픽 이름 목록 |
-| 패치 장부 | `WireviewSession._patch_book`, `_patch_topics`, `_patch_held` | `(클래스, 토픽)`마다 받을 인스턴스, 든 패치 그룹, 잡아 둔 프레임. 구독 집합에서 다시 계산할 수 있다. 잡아 둔 프레임은 옮기지 않아도 된다 — 새 워커의 join이 목록을 다시 보낸다 |
+| 패치 장부 | `WireviewSession._patch_book`, `_patch_topics`, `_patch_held`, `_patch_queue` | `(클래스, 토픽)`마다 받을 인스턴스, 듣는 토픽, 잡아 둔 프레임, 쓰기를 기다리는 프레임. 구독 집합에서 다시 계산할 수 있다. 프레임은 옮기지 않아도 된다 — 새 워커의 join이 목록을 다시 보낸다 |
 | 쿼리스트링 | `WireviewSession.query_string` | 문자열 |
 | 업로드 레지스트리 | 컴포넌트의 `_upload_registry` (연결에 묶인다, #77) | 컴포넌트와 함께 옮긴다. 청크 파일은 `UPLOAD_TEMP_DIR`에 있고 엔드포인트는 서명 토큰만 보므로 프로세스 전역 상태는 없다(#83) |
 | 페이지 경계 | `WireviewSession.live_session_name` | 이름 문자열. 첫 join이 정하고 이후 join은 일치해야 한다 |

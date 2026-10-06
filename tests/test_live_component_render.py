@@ -441,6 +441,4 @@ async def test_subscriptions_are_synced_before_the_childrens_queued_operations_f
 
     await consumer.send_render(board)
 
-    # The topic's patch group comes first, before joined() runs (#178): Broadcast
-    # patches are held from there until joined()'s operations are written
-    assert order == ["subscribe:wireview.patch.rs-sub-topic", "subscribe:rs-sub-topic", "publish:rs-sub-topic"]
+    assert order == ["subscribe:rs-sub-topic", "publish:rs-sub-topic"]

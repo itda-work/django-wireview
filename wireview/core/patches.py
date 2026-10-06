@@ -52,10 +52,11 @@ MESSAGE_TYPE = "wireview.patch"
 #: The names an item's template may not read: what tells one viewer from another.
 WATCHED_NAMES = ("this", "user", "request", "perms", "csrf_token")
 
-#: How many frames a component may be sent while it is held -- joined, its
-#: ``joined()`` operations not yet written -- before its connection is closed
-#: rather than let fall behind (``WireviewSession.wireview_patch``).
-HOLD_LIMIT = 1000
+#: How many frames may wait for one connection -- held for a component whose
+#: ``joined()`` operations are on their way, or queued for a socket that is
+#: not taking them -- before it is closed rather than let fall behind
+#: (``WireviewSession._take_patch``).
+QUEUE_LIMIT = 1000
 
 #: What a frame holds where the component id goes until it is cut in two.
 #: Random per process, so no rendered HTML holds it by chance.
