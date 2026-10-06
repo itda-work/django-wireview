@@ -81,15 +81,31 @@ def test_a_directory_is_searched_and_json_is_the_report(tmp_path):
 @pytest.mark.integration
 def test_without_paths_it_checks_the_project_and_not_installed_packages():
     """Django's own templates are Django's to check; the project's are the ones a CI gates."""
-    installed = command.installed_package_dirs()
+    import django
+
+    admin = (Path(django.__file__).parent / "contrib" / "admin" / "templates").resolve()
     every = template_roots()
-    assert any(any(root.is_relative_to(d) for d in installed) for root in every), "nothing installed to leave out"
+    assert admin in every, "the test project lost the admin, and with it an installed package's templates"
     roots = command.project_template_roots()
-    assert roots == [root for root in every if not any(root.is_relative_to(d) for d in installed)]
+    assert admin not in roots
     assert (ROOT / "examples" / "todo" / "templates").resolve() in roots
+    assert (ROOT / "wireview" / "templates").resolve() in roots  # this checkout's editable install
     status, out = _check()
     assert status == 0, out
     assert out.startswith("No problems in ")
+
+
+@pytest.mark.unit
+def test_a_package_outside_the_interpreters_site_packages_is_still_installed(tmp_path):
+    """``uv run --with`` and a ``.pth`` put packages in a site-packages the interpreter does not list (#179)."""
+    own = tmp_path / "venv" / "lib" / "python3.12" / "site-packages"
+    layered = tmp_path / "cache" / "env" / "lib" / "python3.12" / "site-packages" / "django" / "templates"
+    debian = Path("/usr/lib/python3/dist-packages/someapp/templates")
+    project = tmp_path / "project" / "myapp" / "templates"
+    assert command.is_installed(own / "app" / "templates", [own])
+    assert command.is_installed(layered, [own])
+    assert command.is_installed(debian, [own])
+    assert not command.is_installed(project, [own])
 
 
 @pytest.mark.integration

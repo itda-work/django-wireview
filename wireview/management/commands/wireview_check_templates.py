@@ -81,8 +81,12 @@ def find_node(given: str | None) -> str:
     return node
 
 
+#: Directory names installers put packages in, wherever the environment is.
+SITE_DIR_NAMES = {"site-packages", "dist-packages"}
+
+
 def installed_package_dirs() -> list[Path]:
-    """Where installed distributions live: their templates are theirs to check, not the project's."""
+    """The interpreter's own site directories."""
     dirs = {sysconfig.get_paths()[key] for key in ("purelib", "platlib")}
     dirs.update(site.getsitepackages())
     if site.ENABLE_USER_SITE:
@@ -90,10 +94,22 @@ def installed_package_dirs() -> list[Path]:
     return [Path(d).resolve() for d in dirs]
 
 
+def is_installed(root: Path, site_dirs: list[Path]) -> bool:
+    """Whether a template directory belongs to an installed package: its templates are its own to check.
+
+    By the directory's name as well as the interpreter's site directories: an
+    environment layered over another (``uv run --with``, a ``.pth`` that adds a
+    directory) keeps packages in a site-packages of its own, and Django's
+    templates there were checked as the project's. An editable install keeps its
+    source where the project is, so its templates are still checked.
+    """
+    return any(root.is_relative_to(d) for d in site_dirs) or not SITE_DIR_NAMES.isdisjoint(root.parts)
+
+
 def project_template_roots() -> list[Path]:
     """The template directories the project's loaders search, less those of installed packages."""
-    installed = installed_package_dirs()
-    return [root for root in template_roots() if not any(root.is_relative_to(d) for d in installed)]
+    site_dirs = installed_package_dirs()
+    return [root for root in template_roots() if not is_installed(root, site_dirs)]
 
 
 def shown(path: str) -> str:
