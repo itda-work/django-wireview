@@ -16,8 +16,14 @@ def __getattr__(name: str):
 
         if os.environ.get("BENCH_SHARED_RENDER") == "1":
             _share_the_board()
+    elif name == "wireview_feed":
+        # The feed of the stream fan-out (#178), on the layer BENCH_LAYER names
+        os.environ["DJANGO_SETTINGS_MODULE"] = "bench.compare_fastapi.wv.settings_feed"
+        from bench.compare_fastapi.wv.asgi import application
     elif name == "fastapi":
         from bench.compare_fastapi.fastapi_app.main import app as application
+    elif name == "fastapi_feed":
+        from bench.compare_fastapi.fastapi_app.feed import app as application
     else:
         raise AttributeError(name)
     return Timed(application)

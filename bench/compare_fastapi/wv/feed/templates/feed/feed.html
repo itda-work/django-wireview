@@ -1,0 +1,6 @@
+{% load wireview %}
+
+<main {% tag_header %}>
+  <button id="post" {% on "click" "post" %}>Post</button>
+  <ul id="items" wire-stream="items"></ul>
+</main>
