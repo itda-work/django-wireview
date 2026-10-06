@@ -9,6 +9,9 @@ wireview의 함정 중 상당수는 **에러를 내지 않는다.** sync 핸들�
 이 검사들을 Django의 `checks` 프레임워크에 등록해 두면 `manage.py check`, `runserver`, CI에
 **자동으로** 걸린다. 새 명령을 기억할 필요가 없다는 것이 핵심이다.
 
+이 검사들은 파이썬 쪽만 본다. 템플릿 안의 틀린 이름(모르는 필터·핸들러·컴포넌트, 닫히지 않은 블록)은
+`manage.py wireview_check_templates`가 Node.js로 편집기 확장과 같은 진단을 돌려 잡는다 — [편집기 지원](./editor-support.md#ci에서-managepy-wireview_check_templates).
+
 ```console
 $ python manage.py check
 System check identified some issues:

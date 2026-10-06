@@ -32,6 +32,7 @@ myapp/
 2. **컴포넌트 클래스**를 만든다: `from wireview import Component`, `Meta.template_name`, Pydantic 필드, `async def` 핸들러.
 3. **페이지 템플릿**에서 `{% component 'XCounter' id="counter" %}`로 심는다. 베이스 템플릿 `<head>`에 `{% wireview_header %}`.
 4. **`manage.py check`를 돌린다.** 아래 함정 중 넷(`W001`·`W003`·`W004`·`W012`)을 여기서 잡는다. `W013`은 `runserver`가 뜰 때, `W006`은 `check --deploy`에서 나온다.
+5. **Node.js 22.18 이상이 있으면 `manage.py wireview_check_templates`를 돌린다.** 템플릿의 틀린 핸들러·컴포넌트·필터 이름과 닫히지 않은 블록을 렌더 전에 잡는다. 종료 코드 1이면 찍힌 줄을 고치고, 2면 검사가 돌지 못한 것이다(node 없음 등). 상세는 [편집기 지원](https://github.com/itda-work/django-wireview/blob/main/docs/features/editor-support.md#ci에서-managepy-wireview_check_templates).
 
 ```python
 from wireview import Component

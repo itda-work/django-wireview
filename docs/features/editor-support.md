@@ -5,7 +5,8 @@
 
 두 갈래가 있다. 파이썬 쪽은 [타입 스텁](./type-stubs.md)이 맡는다 — 컴포넌트 클래스의 `.pyi`로 pyright·mypy와
 IDE가 필드와 핸들러를 안다. 템플릿 쪽이 이 문서다. `manage.py wireview_lsp`가 프로젝트를 읽어 JSON 하나로 내고,
-편집기가 그것을 읽는다. 이 저장소의 `editors/vscode/`에 VS Code 확장이 있다.
+편집기가 그것을 읽는다. 이 저장소의 `editors/vscode/`에 VS Code 확장이 있고, 같은 진단을 CI에서 돌리는 것이
+`manage.py wireview_check_templates`다.
 
 ## VS Code 확장
 
@@ -35,6 +36,53 @@ code --install-extension editors/vscode/dist/django-wireview-0.1.0.vsix
 
 확장은 라이브러리의 공개 API가 아니고 버전을 따로 매긴다(`editors/vscode/package.json`). 라이브러리와 확장
 사이의 약속은 아래 JSON 하나다.
+
+## CI에서: `manage.py wireview_check_templates`
+
+확장과 같은 진단을 편집기 없이 돌리고, 문제가 있으면 **실패로 끝난다**. CI와 코딩 에이전트가 "템플릿이 틀렸다"를
+종료 코드로 받는 길이다.
+
+```console
+$ python manage.py wireview_check_templates
+myapp/templates/myapp/board.html:12:31: error [unknown-handler] XBoard has no method 'incremnt'.
+1 error in 24 templates
+CommandError: templates have problems that fail the check
+$ echo $?
+1
+```
+
+```bash
+python manage.py wireview_check_templates                      # 프로젝트의 템플릿 디렉터리 전부
+python manage.py wireview_check_templates myapp/templates a.html  # 파일·디렉터리를 골라서
+python manage.py wireview_check_templates --strict             # warning도 실패로
+python manage.py wireview_check_templates --format json        # 진단의 JSON 그대로
+python manage.py wireview_check_templates --node /opt/node/bin/node
+```
+
+**Node.js 22.18 이상이 필요하다.** 진단은 확장의 코드(`editors/vscode/src/core/`) 그대로이고 node가 TypeScript
+소스를 그대로 실행한다 — npm 패키지는 필요 없다. 그 코드는 wheel에 함께 실린다(`wireview/template_diagnostics/`).
+파이썬은 메타데이터(`wireview_lsp`)를 임시 파일로 만들어 넘길 뿐이다.
+
+| 종료 코드 | 뜻 |
+|----|----|
+| `0` | error가 없다(`--strict`면 warning도 없다) |
+| `1` | 문제가 있다. 무엇이 어디에 있는지 한 줄씩 찍는다 |
+| `2` | 검사를 하지 못했다: node가 없거나 22.18보다 낮다, 경로가 없다, 템플릿이 하나도 없다, 진단이 죽었다 |
+
+`2`를 `1`과 나눈 것은 CI가 "node가 낡았다"를 "템플릿이 틀렸다"로 읽지 않게 하려는 것이다. 템플릿을 하나도 찾지 못한
+경로도 `2`다 — 잘못된 디렉터리를 가리킨 관문은 언제나 통과한다.
+
+**error만 실패다.** error는 Django나 django-wireview가 렌더할 때 낼 오류(모르는 필터·핸들러·컴포넌트, 닫히지 않은
+블록, load하지 않은 태그 …)이고, warning은 그렇지 않을 수 있는 것이다 — 어느 라이브러리도 등록하지 않은 태그
+(`unknown-tag`), 컴포넌트에 없는 인자(`unknown-argument`), 빠진 필수 인자(`missing-argument`, 같은 id의 인스턴스가
+이미 그 값을 들고 있으면 괜찮다), 핸들러에 없는 인자(`unknown-handler-argument`), 파일 시스템에 없는
+템플릿(`template-not-found`, 다른 로더가 찾을 수 있다). `--strict`가 이것도 실패로 친다. information(훅 파일이
+등록하지 않은 훅, `unknown-hook`)은 찍기만 하고 `--strict`에서도 실패로 치지 않는다.
+
+경로를 주지 않으면 템플릿 엔진의 로더가 찾는 디렉터리(`template_dirs`) 가운데 **설치된 패키지(site-packages) 밖의
+것**만 본다. Django admin이나 서드파티 앱의 템플릿은 그 패키지가 검사할 것이다.
+
+Node가 없는 CI라면 `manage.py check`의 [System Checks](./checks.md)가 파이썬 쪽 함정만 본다. 템플릿은 보지 않는다.
 
 ## `manage.py wireview_lsp`
 
@@ -141,8 +189,12 @@ Django는 블록 태그가 어디서 끝나는지 기록하지 않는다. 태그
    같은 이름을 덮어쓰고(`Parser.add_library`), load보다 앞에 쓴 태그·필터는 그 라이브러리를 아직 모른다
 
 확장의 판단은 `editors/vscode/src/core/`의 순수 모듈에 있다(VS Code를 import하지 않는다). 다른 편집기의 플러그인이
-그대로 가져다 쓸 수도 있다. `editors/vscode/scripts/diagnose.ts`가 VS Code 없이 그 모듈로 템플릿을 진단하는 예다:
+그대로 가져다 쓸 수도 있다. `editors/vscode/scripts/diagnose.ts`가 VS Code 없이 그 모듈로 템플릿을 진단하는 예다
+(`wireview_check_templates`가 부르는 것도 이것이다):
 
 ```bash
-node editors/vscode/scripts/diagnose.ts metadata.json myapp/templates
+node editors/vscode/scripts/diagnose.ts [--strict] metadata.json myapp/templates
 ```
+
+경로마다 문제 목록을 JSON으로 찍고, 종료 코드는 위 표와 같다(error면 `1`, `--strict`면 warning도, 사용법 오류는
+`2`). node 자신이 죽어도 `1`로 끝나므로 JSON을 읽지 못하면 문제가 아니라 실패로 다룬다.
