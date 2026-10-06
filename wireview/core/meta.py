@@ -211,6 +211,8 @@ class WireviewMeta:
         # Pending operations queue for joined() lifecycle
         self._pending_mode: bool = False
         self._pending_operations: list[tuple[str, dict[str, t.Any]]] = []
+        # What to do once the pending operations are sent (``after_flush``)
+        self._after_flush: list[t.Callable[[], None]] = []
         # Pending broadcasts queue (separate from operations since they go through channel layer)
         self._pending_broadcasts: list[tuple[str, dict[str, t.Any]]] = []
         # Last ``data-state`` token this component issued: (state_json, token, issued_at).
@@ -267,11 +269,21 @@ class WireviewMeta:
         for command, kwargs in self._pending_operations:
             await self._do_send(command, **kwargs)
         self._pending_operations.clear()
+        after, self._after_flush = self._after_flush, []
+        for callback in after:
+            callback()
 
         # Flush pending broadcasts
         for channel, kwargs in self._pending_broadcasts:
             await self._send_broadcast(channel, **kwargs)
         self._pending_broadcasts.clear()
+
+    def after_flush(self, callback: t.Callable[[], None]) -> None:
+        """Call ``callback`` once the operations queued so far have been sent: now, out of pending mode."""
+        if self._pending_mode:
+            self._after_flush.append(callback)
+        else:
+            callback()
 
     async def queue_broadcast(self, channel: str, **kwargs: t.Any) -> None:
         """Queue or send a broadcast.

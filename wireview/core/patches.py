@@ -79,12 +79,13 @@ class Gate(t.NamedTuple):
     A reset reaches the page through the connection's own channel, later than a
     patch, which is written as it comes: a patch written first would be wiped.
     ``hold`` holds the component's patches from before the reset reads its
-    list, and is True when it began a hold; ``let_through`` lets them go once
-    the reset is written.
+    list and returns a token for it, or None when nothing is held;
+    ``let_through`` gives the token back once the reset is sent, and the
+    patches go out behind it when no other reset holds them.
     """
 
-    hold: t.Callable[[Component], t.Awaitable[bool]]
-    let_through: t.Callable[[Component], t.Awaitable[None]]
+    hold: t.Callable[[Component], t.Awaitable[int | None]]
+    let_through: t.Callable[[Component, int], t.Awaitable[None]]
 
 
 class BroadcastRenderError(ImproperlyConfigured):

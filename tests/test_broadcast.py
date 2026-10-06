@@ -51,6 +51,10 @@ TEMPLATES = {
     "bc/host.html": "{% load wireview %}<div {% tag_header %}>{% live_component 'BcLive' id='bc-live' %}</div>",
     "bc/live.html": '{% load wireview %}<ul {% live_tag_header %} wire-stream="items"></ul>',
     "bc/live_item.html": '<li id="items-{{ item.pk }}">{{ item.text }}</li>',
+    "bc/updating-host.html": (
+        "{% load wireview %}<div {% tag_header %}>"
+        "{% live_component 'BcUpdatedLive' id='bc-updated' revision=this.revision %}</div>"
+    ),
     "bc/seed-host.html": (
         "{% load wireview %}<div {% tag_header %}>{% live_component 'BcSeedLive' id='bc-seed-live' %}</div>"
     ),
@@ -183,6 +187,71 @@ class BcRefreshing(BcFeed):
             await Broadcast(BcRefreshing, "bc-refresh").stream_insert("items", Post(2, "new"), at=0).asend()
 
         await self.stream("items", posts())
+
+
+def _holding(component: Component) -> list[str]:
+    """The frames this component's connection holds for it now (white box: the session behind its gate)."""
+    session = component.wire.patch_gate.hold.__self__  # type: ignore[union-attr]
+    held = session._patch_held.get(id(component))
+    return [] if held is None else held.frames
+
+
+class BcTwice(BcFeed):
+    """Resets its list twice in one handler, and an item is published while the second reads it."""
+
+    class Meta:
+        subscriptions = {"bc-twice"}
+
+    async def refresh(self, **_rest):
+        await self.stream("items", [Post(1, "old")])
+
+        async def posts():
+            yield Post(1, "old")
+            await Broadcast(BcTwice, "bc-twice").stream_insert("items", Post(2, "new"), at=0).asend()
+            # The patch is with the connection, held, while this reset still reads
+            await eventually(lambda: _holding(self))
+
+        await self.stream("items", posts())
+        await self.push_event("finished")
+
+
+class BcUpdatedLive(LiveComponent):
+    """Resets its list in update(), then keeps working there past the hold's deadline."""
+
+    revision: int = 0
+
+    class Meta:
+        template_name = "bc/live.html"
+        subscriptions = {"bc-updated"}
+
+    async def update(self, **assigns):
+        await super().update(**assigns)
+        if not self.revision:
+            return
+        await self.stream("items", [Post(1, "old")])
+        await Broadcast(BcUpdatedLive, "bc-updated").stream_insert("items", Post(2, "new"), at=0).asend()
+        await eventually(lambda: _holding(self))
+        # Longer than HOLD_SECONDS, while the reset waits in the pending queue for the render
+        await asyncio.sleep(patches.HOLD_SECONDS * 5)
+        await self.push_event("finished")
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return _template(cls, template_name)
+
+
+class BcUpdatingHost(Component):
+    revision: int = 0
+
+    class Meta:
+        template_name = "bc/updating-host.html"
+
+    async def refresh(self, **_rest):
+        self.revision += 1
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return _template(cls, template_name)
 
 
 class BcFailing(BcFeed):
@@ -532,6 +601,62 @@ async def test_a_patch_published_after_a_handlers_read_is_written_after_its_stre
     assert ops == [("reset", ["items-1"]), ("insert", ["items-2"])]
 
 
+async def _event(communicator: WebsocketCommunicator, id: str, handler: str) -> None:
+    await communicator.send_json_to(
+        {
+            "command": "user_event",
+            "payload": {"id": id, "command": handler, "implicit_args": {}, "explicit_args": {}, "ref": 1},
+        }
+    )
+
+
+def _stream_ops(heard: list[dict[str, t.Any]]) -> list[tuple[str, list[str]]]:
+    return [
+        (m["payload"]["op"], [item["id"] for item in m["payload"]["items"]])
+        for m in heard
+        if m["command"] == "stream_op"
+    ]
+
+
+def _posted(session: WireviewSession) -> int:
+    """How many patch frames (``_message``'s push_event) the session wrote."""
+    return sum(json.loads(frame)["command"] == "push_event" for frame in session.outbound.frames)  # type: ignore[attr-defined]
+
+
+def _finished(message: dict[str, t.Any]) -> bool:
+    return message["command"] == "push_event" and message["payload"]["event"] == "finished"
+
+
+@pytest.mark.asyncio
+async def test_a_patch_held_across_two_resets_is_written_after_the_second():
+    """The first reset's release used to let out what came while the second was on its way."""
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcTwice, "twice")
+        await _event(communicator, "twice", "refresh")
+        heard = await _until(communicator, _finished)
+    finally:
+        await communicator.disconnect()
+
+    assert _stream_ops(heard) == [("reset", ["items-1"]), ("reset", ["items-1"]), ("insert", ["items-2"])]
+
+
+@pytest.mark.asyncio
+async def test_the_deadline_starts_when_a_pending_reset_is_sent_not_when_it_is_queued(monkeypatch):
+    """update() queues its reset until the render: a deadline counted from the queue let the patch out first."""
+    monkeypatch.setattr(patches, "HOLD_SECONDS", 0.02)
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcUpdatingHost, "updating")
+        await _event(communicator, "updating", "refresh")
+        # The release is queued behind the reset and ahead of ``finished``
+        heard = await _until(communicator, _finished)
+    finally:
+        await communicator.disconnect()
+
+    assert _stream_ops(heard) == [("reset", ["items-1"]), ("insert", ["items-2"])]
+
+
 class _Layer:
     """The part of a channel layer a ``PatchHub`` uses, counting what it is asked."""
 
@@ -567,6 +692,8 @@ async def _joined_session(outbound: t.Any, id: str = "feed") -> WireviewSession:
     await session.start(session=SessionView.wrap(None))
     feed = await session.repo.join("BcFeed", {"id": id}, before_joined=session._hold_patches)
     await session.after_mutation_chores()
+    # Out of pending mode, as command_join leaves it
+    await feed.wire.flush_pending()
     await session._release_patches(feed)
     return session
 
@@ -785,6 +912,117 @@ async def test_a_socket_that_refuses_a_write_ends_its_patches_without_raising(hu
     assert len(tried) == 1
 
 
+async def _mailing(session: WireviewSession, component: Component, monkeypatch) -> list[tuple[str, dict[str, t.Any]]]:
+    """Keep the session mail ``component`` sends, for the test to deliver when it says."""
+    mail: list[tuple[str, dict[str, t.Any]]] = []
+
+    async def send(command: str, **kwargs: t.Any) -> None:
+        mail.append((command, kwargs))
+
+    component.wire.channel_name = "the-sessions-channel"
+    monkeypatch.setattr(component.wire, "_do_send", send)
+    return mail
+
+
+async def _deliver(session: WireviewSession, mail: list[tuple[str, dict[str, t.Any]]]) -> None:
+    for command, kwargs in mail:
+        await getattr(session, f"component_{command}")(**kwargs)
+
+
+@pytest.mark.asyncio
+async def test_a_release_lets_go_of_its_own_token_only(hub, monkeypatch):
+    """A release names its token: a late one, or one sent twice, lets out nothing of a later hold."""
+    session = await _joined_session(_Recording())
+    feed = session.repo.get("feed")
+    mail = await _mailing(session, feed, monkeypatch)
+
+    # A reset queued in pending mode, flushed, and the join's release after it (send_render does both)
+    feed.wire.enter_pending_mode()
+    await feed.stream("items", [])
+    await feed.wire.flush_pending()
+    await session._let_patches_through(feed)
+    # And one whose release did not come in time
+    await feed.stream("items", [])
+    expired = session._patch_held[id(feed)]
+    session._hold_expired(expired, max(expired.tokens))
+    first = list(mail)
+    await _deliver(session, first)
+    assert session._patch_held == {}
+
+    await feed.stream("items", [])
+    later = session._patch_held[id(feed)]
+    hub.dispatch(_message())
+    await _deliver(session, first)
+
+    assert session._patch_held[id(feed)] is later
+    assert _posted(session) == 0
+
+
+@pytest.mark.asyncio
+async def test_a_hold_that_could_not_subscribe_is_given_back(hub, monkeypatch):
+    """The reset raised before it took its release: a retry inherited a hold nothing would let go."""
+    session = WireviewSession(_Recording())  # type: ignore[arg-type]
+    await session.start(session=SessionView.wrap(None))
+    feed = await session.repo.join("BcDynamic", {"id": "feed"}, before_joined=session._hold_patches)
+    await session.after_mutation_chores()
+    await feed.wire.flush_pending()
+    await session._release_patches(feed)
+    mail = await _mailing(session, feed, monkeypatch)
+    layer = hub._layer
+    group_add = layer.group_add
+
+    async def unavailable_once(group: str, channel: str) -> None:
+        if group == "wireview.patch.room.new" and not layer.added.count("failed"):
+            layer.added.append("failed")
+            raise ConnectionError("the layer went away")
+        await group_add(group, channel)
+
+    layer.group_add = unavailable_once
+    feed.room = "room.new"
+    with pytest.raises(ConnectionError):
+        await feed.stream("items", [])
+    await feed.stream("items", [])
+    await _deliver(session, mail)
+    hub.dispatch(_message(BcDynamic, "room.new"))
+    await session._patches_written()
+
+    assert session._patch_held == {}
+    assert _posted(session) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_component_that_left_holds_nothing_and_hears_no_topic_again(hub, monkeypatch):
+    session = await _joined_session(_Recording())
+    feed = session.repo.get("feed")
+    mail = await _mailing(session, feed, monkeypatch)
+    session.repo.remove("feed")
+    await session.after_mutation_chores()
+    assert hub.topics == set()
+
+    # A reference kept to it, a task that ran late
+    await feed.stream("items", [])
+    await _deliver(session, mail)
+
+    assert hub.topics == set() and session._patch_held == {}
+
+
+@pytest.mark.asyncio
+async def test_a_closed_connection_holds_nothing_and_its_deadlines_are_cancelled(hub, monkeypatch):
+    session = await _joined_session(_Recording())
+    feed = session.repo.get("feed")
+    await _mailing(session, feed, monkeypatch)
+    await feed.stream("items", [])
+    deadlines = list(session._patch_held[id(feed)].expiries.values())
+    hub.dispatch(_message())
+
+    session._close_patches()
+    await feed.stream("items", [])
+    await session._patches_written()
+
+    assert deadlines and all(deadline.cancelled() for deadline in deadlines)
+    assert session._patch_held == {} and session.outbound.frames == []  # type: ignore[attr-defined]
+
+
 @pytest.mark.asyncio
 async def test_the_end_of_a_connection_leaves_no_patch_group_behind(hub):
     session = await _joined_session(_Recording())
@@ -897,6 +1135,20 @@ async def test_a_mounted_component_hears_a_broadcast_for_its_class_and_topic():
     assert view.stream_html("items") == '<li id="items-3">new</li>'
     assert [op["id"] for op in view.stream_ops("items")] == ["feed"]
     assert child.sent_messages == []
+
+
+@pytest.mark.asyncio
+async def test_a_mounted_component_writes_a_patch_after_the_reset_it_came_during():
+    """As a connection does: the order a test sees is the browser's."""
+    view = await mount(BcRefreshing, id="refresh")
+    view.clear_messages()
+
+    await view.component.refresh_while_reading()
+
+    assert [(op["op"], [item["id"] for item in op["items"]]) for op in view.stream_ops("items")] == [
+        ("reset", ["items-1"]),
+        ("insert", ["items-2"]),
+    ]
 
 
 # --- send(): after the commit ------------------------------------------------------------

@@ -1305,9 +1305,9 @@ class Component(BaseModel):
         # The reset goes out through the connection's channel, behind any
         # Broadcast patch written meanwhile, and would wipe it: this
         # component's patches are held from before the list is read below until
-        # the reset is written (#178). joined() holds them already.
+        # the reset is written (#178), each reset with a release of its own.
         gate = self.wire.patch_gate
-        held = gate is not None and await gate.hold(self)
+        token = None if gate is None else await gate.hold(self)
         try:
             # A QuerySet is both iterable and async iterable; iterating it
             # synchronously here would query the database on the event loop,
@@ -1323,8 +1323,8 @@ class Component(BaseModel):
             op = StreamOp(op="reset", stream=name, items=stream_items, limit=limit)
             await self.wire.send_stream_op(op, self.id)
         finally:
-            if held:
-                await gate.let_through(self)  # type: ignore[union-attr]
+            if token is not None:
+                await gate.let_through(self, token)  # type: ignore[union-attr]
 
     async def stream_insert(
         self,

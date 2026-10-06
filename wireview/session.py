@@ -3,6 +3,7 @@
 import asyncio
 import collections
 import inspect
+import itertools
 import logging
 import secrets
 import time
@@ -92,20 +93,31 @@ def _log_update_error(cls: type, component: t.Any, error: Exception) -> None:
 
 
 class _Held:
-    """A component's patches held until its stream reset is written (``WireviewSession._hold_patches``)."""
+    """A component's patches held until its stream resets are written (``WireviewSession._hold_patches``).
 
-    __slots__ = ("component", "frames", "expiry")
+    Each reset -- and a join's ``joined()``, which may send several -- takes a
+    token and sends a ``release_patches`` mail naming it behind its operations.
+    The frames go out once no token is left: a release for one reset does not
+    let out what came while another is on its way, and a release for a token
+    this hold never gave (a duplicate, one for a hold that expired) lets out
+    nothing.
+    """
+
+    __slots__ = ("component", "frames", "tokens", "lifecycle", "expiries")
 
     def __init__(self, component: Component) -> None:
         self.component = component
         self.frames: list[str] = []
-        # Armed once the mail that lets them through is on its way (``_let_patches_through``)
-        self.expiry: asyncio.TimerHandle | None = None
+        self.tokens: set[int] = set()
+        # The token of the join's hold, until its release is sent (``_let_patches_through``)
+        self.lifecycle: int | None = None
+        # A token's deadline, armed once its release mail is on its way to the channel
+        self.expiries: dict[int, asyncio.TimerHandle] = {}
 
     def drop(self) -> None:
-        if self.expiry is not None:
-            self.expiry.cancel()
-            self.expiry = None
+        for expiry in self.expiries.values():
+            expiry.cancel()
+        self.expiries.clear()
 
 
 class WireviewSession:
@@ -185,7 +197,9 @@ class WireviewSession:
         # (``_hold_patches``). Keyed by id(): a component's == compares fields.
         self._patch_held: dict[int, _Held] = {}
         # What a component's stream reset holds and lets go (Component.stream)
-        self._patch_gate = patches.Gate(self._hold_patches, self._let_patches_through)
+        self._patch_gate = patches.Gate(self._hold_for_reset, self._let_reset_through)
+        # Release tokens, unique on this connection: a stale mail names none in use
+        self._patch_tokens = itertools.count(1)
         # Frames waiting for the socket, and the task writing them (``_write_patches``)
         self._patch_queue: collections.deque[str] = collections.deque()
         self._patch_writer: asyncio.Future[None] | None = None
@@ -1073,11 +1087,12 @@ class WireviewSession:
     async def component_joined(self, id, ref=None):
         await self.send_command("joined", _with_ref({"id": id}, ref))
 
-    async def component_release_patches(self, id: str, instance: int):
-        """The operations ``joined()`` queued are written: write the patches held since (``_hold_patches``)."""
+    async def component_release_patches(self, id: str, instance: int, token: int = 0):
+        """The operations sent before this are written: let ``token`` go (``_hold_patches``)."""
         component = self.repo.get(id)
         if component is not None and component.wire.instance == instance:
-            await self._release_patches(component)
+            self._discard_token(component, token)
+            await self._patches_written()
 
     async def component_remove(self, id, ref=None):
         log.debug(f">>> REMOVE {id}")
@@ -1731,69 +1746,131 @@ class WireviewSession:
             await hub.leave(topic, self)
         self._patch_topics = wanted
 
-    async def _hold_patches(self, component: Component) -> bool:
-        """Receive ``component``'s patches from now, before it reads its list, and hold them; True if this began a hold.
+    async def _hold_patches(self, component: Component) -> int | None:
+        """Receive ``component``'s patches from now, before its ``joined()`` reads anything, and hold them.
 
-        A component reads a list and sends it as a stream reset -- in
-        ``joined()`` usually, or in a handler, ``params_changed``,
-        ``notification()``, ``update()`` -- and that operation reaches the page
-        through this connection's own channel later than a patch, which is
-        written as it comes. A patch written first would be wiped by the reset;
-        one published after the read and held until the reset is written is not
-        lost. So the component's patches are received from before the read --
-        an item committed before it is in the reset, one after it comes as a
-        patch, and one in both is put in its place twice -- and kept until
-        ``_let_patches_through``. A join holds from before ``joined()``; a
-        reset anywhere else holds from where ``stream()`` begins
-        (``WireviewMeta.patch_gate``).
+        A component reads a list and sends it as a stream reset, and that
+        operation reaches the page through this connection's own channel later
+        than a patch, which is written as it comes. A patch written first would
+        be wiped by the reset; one published after the read and held until the
+        reset is written is not lost. So the component's patches are received
+        from before the read -- an item committed before it is in the reset,
+        one after it comes as a patch, and one in both is put in its place
+        twice -- and kept until the reset is written.
+
+        This is the join's hold, from before ``joined()`` to
+        ``_let_patches_through`` once its operations are flushed; a second call
+        before that adds nothing. A reset anywhere else -- a handler,
+        ``params_changed``, ``notification()``, ``update()`` -- holds from where
+        ``stream()`` begins (``_hold_for_reset``). Returns the token, or None.
         """
-        if id(component) in self._patch_held:
-            return False
+        held = self._patch_held.get(id(component))
+        if held is not None and held.component is component and held.lifecycle is not None:
+            return None
+        token = await self._take_token(component)
+        if token is not None:
+            self._patch_held[id(component)].lifecycle = token
+        return token
+
+    async def _hold_for_reset(self, component: Component) -> int | None:
+        """``patches.Gate.hold``: a token for one ``stream()`` reset, None when nothing is held for it.
+
+        Only for the instance this connection can reach: a reference kept to
+        one that left would otherwise hear its topics again.
+        """
+        if self._patches_closed or self.repo.reachable(component.id) is not component:
+            return None
+        return await self._take_token(component)
+
+    async def _take_token(self, component: Component) -> int | None:
         topics = component.get_subscriptions()
         if not topics:
             # Nothing to receive yet. A component whose topics joined() decides
             # is held from its first render instead (command_join, send_render).
-            return False
-        self._patch_held[id(component)] = _Held(component)
+            return None
+        held = self._patch_held.get(id(component))
+        if held is None or held.component is not component:
+            held = self._patch_held[id(component)] = _Held(component)
+        token = next(self._patch_tokens)
+        held.tokens.add(token)
         component.wire.patch_gate = self._patch_gate
         for topic in topics:
             entries = self._patch_book.setdefault((type(component)._fqn, topic), [])
             if not any(entry is component for entry in entries):
                 entries.append(component)
-        await self._settle_patch_topics(self._patch_topics | topics)
-        return True
+        try:
+            await self._settle_patch_topics(self._patch_topics | topics)
+        except BaseException:
+            # Nobody will send this token's release: give it back, so a retry holds afresh
+            self._discard_token(component, token)
+            raise
+        return token
 
     async def _let_patches_through(self, component: Component) -> None:
-        """Release ``component``'s held patches once the operations it sent before -- its stream reset -- are written.
-
-        Through the same channel as those operations, so the release comes after
-        them. A layer that drops the release (a full channel) would hold the
-        frames for good, so they go out ``patches.HOLD_SECONDS`` after it is
-        sent all the same.
-        """
+        """Let the join's hold go once the operations its ``joined()`` queued are written."""
         held = self._patch_held.get(id(component))
-        if held is None or held.component is not component:
+        if held is None or held.component is not component or held.lifecycle is None:
             return
-        if component.wire.channel_name:
-            held.drop()
-            held.expiry = asyncio.get_running_loop().call_later(patches.HOLD_SECONDS, self._hold_expired, held)
-            await component.wire.send("release_patches", id=component.id, instance=component.wire.instance)
-        else:
-            # Nothing goes through a channel: what it sent went out already
-            await self._release_patches(component)
+        token, held.lifecycle = held.lifecycle, None
+        await self._send_release(component, token)
 
-    def _hold_expired(self, held: _Held) -> None:
-        if self._patch_held.get(id(held.component)) is not held:
+    async def _let_reset_through(self, component: Component, token: int) -> None:
+        """``patches.Gate.let_through``: the reset that took ``token`` is sent."""
+        await self._send_release(component, token)
+
+    async def _send_release(self, component: Component, token: int) -> None:
+        """Release ``token`` behind what ``component`` sent before, through the same channel.
+
+        A layer that drops the release (a full channel) would hold the frames
+        for good, so its token goes ``patches.HOLD_SECONDS`` after the mail
+        leaves for the channel all the same -- after, not when it is queued:
+        a ``joined()`` or ``update()`` queues its operations until its render
+        is out, however long that takes.
+        """
+        wire = component.wire
+        if not wire.channel_name:
+            # Nothing goes through a channel: what it sent went out already
+            self._discard_token(component, token)
+            await self._patches_written()
+            return
+        if wire._pending_mode:
+            wire.after_flush(lambda: self._arm_expiry(component, token))
+        else:
+            self._arm_expiry(component, token)
+        await wire.send("release_patches", id=component.id, instance=wire.instance, token=token)
+
+    def _arm_expiry(self, component: Component, token: int) -> None:
+        held = self._patch_held.get(id(component))
+        if held is None or held.component is not component or token not in held.tokens:
+            return
+        held.expiries[token] = asyncio.get_running_loop().call_later(
+            patches.HOLD_SECONDS, self._hold_expired, held, token
+        )
+
+    def _hold_expired(self, held: _Held, token: int) -> None:
+        if self._patch_held.get(id(held.component)) is not held or token not in held.tokens:
             return
         log.warning(
-            "Writing the Broadcast patches held for %s (%s): what lets them through did not come in %ss",
+            "Letting go of Broadcast patches held for %s (%s): what lets them through did not come in %ss",
             held.component._name,
             held.component.id,
             patches.HOLD_SECONDS,
         )
-        self._unhold(held.component)
+        self._discard_token(held.component, token)
+
+    def _discard_token(self, component: Component, token: int) -> None:
+        """``token`` is released; with the last one, the frames held go out."""
+        held = self._patch_held.get(id(component))
+        if held is None or held.component is not component or token not in held.tokens:
+            return
+        held.tokens.discard(token)
+        if (expiry := held.expiries.pop(token, None)) is not None:
+            expiry.cancel()
+        if not held.tokens:
+            self._unhold(component)
 
     async def _release_patches(self, component: Component) -> None:
+        """Let every hold on ``component`` go now."""
         self._unhold(component)
         await self._patches_written()
 

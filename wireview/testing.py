@@ -22,6 +22,7 @@ Example:
 
 from __future__ import annotations
 
+import itertools
 import json
 import typing as t
 from dataclasses import dataclass
@@ -281,6 +282,23 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         # from a navigation to another page (follow_push)
         self._path = path
         self._subscriptions: set[str] = set()
+        # Broadcast frames held while a stream reset of the component is under
+        # way, and the resets' tokens: a session writes them behind the reset (#178)
+        self._held_frames: list[dict[str, t.Any]] = []
+        self._held_tokens: set[int] = set()
+        self._tokens = itertools.count(1)
+        wire.patch_gate = patches.Gate(self._hold_for_reset, self._let_reset_through)
+
+    async def _hold_for_reset(self, component: "Component") -> int | None:
+        token = next(self._tokens)
+        self._held_tokens.add(token)
+        return token
+
+    async def _let_reset_through(self, component: "Component", token: int) -> None:
+        self._held_tokens.discard(token)
+        if not self._held_tokens:
+            held, self._held_frames = self._held_frames, []
+            self.wire.sent_messages.extend(held)
 
     async def _update_subscriptions(self) -> None:
         """Subscribe to what the component listens on now, as a session does after join
@@ -307,7 +325,8 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             return
         for frame in message["frames"]:
             sent = json.loads(patches.join(frame, component.id))
-            self.wire.sent_messages.append({"type": sent["command"], **sent["payload"]})
+            received = {"type": sent["command"], **sent["payload"]}
+            (self._held_frames if self._held_tokens else self.wire.sent_messages).append(received)
 
     @property
     def component(self) -> "Component":
