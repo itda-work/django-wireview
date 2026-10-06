@@ -9,6 +9,8 @@
   <body>
     {% component "BroadcastFeed" id="feed" %}
     {% component "BroadcastLookalike" id="lookalike" %}
-    {% if failing %}{% component "BroadcastFailing" id="failing" %}{% endif %}
+    {% if failing %}
+      {% component "BroadcastFailing" id="failing" %}
+    {% endif %}
   </body>
 </html>

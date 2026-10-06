@@ -7,5 +7,11 @@
     <title>Feed</title>
     {% wireview_header %}
   </head>
-  <body>{% if mode == "notified" %}{% component "NotifiedFeed" id="feed" %}{% else %}{% component "Feed" id="feed" %}{% endif %}</body>
+  <body>
+    {% if mode == "notified" %}
+      {% component "NotifiedFeed" id="feed" %}
+    {% else %}
+      {% component "Feed" id="feed" %}
+    {% endif %}
+  </body>
 </html>
