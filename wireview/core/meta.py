@@ -282,8 +282,14 @@ class WireviewMeta:
             await self._send_broadcast(channel, **kwargs)
 
     async def _send_broadcast(self, channel: str, **kwargs: t.Any) -> None:
-        """Publish a notification to every session subscribed to ``channel``."""
-        message = {"type": "notification", "channel": channel, "kwargs": kwargs}
+        """Publish a notification to every session subscribed to ``channel``.
+
+        Named by a ``message_id`` as the module functions' are, so the sessions
+        of a process handling it share a ``Meta.shared_render`` render (#176).
+        """
+        from ..utils import _message  # wireview.utils imports this module's package first
+
+        message = _message(channel, "notification", {"kwargs": kwargs})
         with telemetry.span(telemetry.broadcast_published, sender=type(self.broker), topic=channel) as span:
             span.measure(message)
             await self.broker.publish(channel, message)

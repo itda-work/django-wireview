@@ -38,9 +38,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
-- Every fan-out message (`notification`, `model_mutation`) carries a `message_id`, new for each
-  publish, so the sessions that receive it can tell it is one message. Code that compares the
-  messages it sees on the channel layer as a whole (a mocked `group_send`) sees one more key (#176).
+- Every fan-out message (`notification` from `abroadcast()`, a component's `self.broadcast()` and
+  Presence alike, and `model_mutation`) carries a `message_id`, new for each publish, so the
+  sessions that receive it can tell it is one message. Code that compares the messages it sees on
+  the channel layer as a whole (a mocked `group_send`) sees one more key (#176).
 - The README says when to use wireview before it says when not to: six kinds of app, each with the
   features behind it and a tutorial or example that builds it (#172).
 - The Live Search example and tutorial keep the query in the address: typing pushes `?q=` and

@@ -87,7 +87,7 @@ dependencies = ["django-wireview>=1.2,<2"]
     빈 값만 있는 주소에서도 `params_changed()`가 돈다. `"q" in params`로 검색어가 있는지 보던 코드는 값이 비었는지도 본다.
   - **컨텍스트의 `request`에 `.GET`이 있어야 한다.** 템플릿을 직접 렌더하는 테스트가 `request`에 `META`만 가진 가짜
     객체를 넣었다면 이제 `AttributeError`다. `RequestFactory().get(...)`로 만든 요청을 넣는다.
-- **브로드캐스트 메시지에 `message_id`가 붙는다.** `abroadcast()`·`broadcast()`·모델 알림이 채널 레이어에 보내는 메시지에
+- **브로드캐스트 메시지에 `message_id`가 붙는다.** `abroadcast()`·`broadcast()`·컴포넌트의 `self.broadcast()`·Presence·모델 알림이 채널 레이어에 보내는 메시지에
   키가 하나 늘었다. 같은 메시지를 받은 연결들이 그것을 알아보고 `Meta.shared_render` 컴포넌트의 렌더를 함께 쓰게
   하려는 것이다([shared_render](./features/shared-render.md)). 앱이 할 일은 없다. 다만 `group_send`를 모의 객체로 바꾸고
   메시지 딕셔너리를 통째로 비교하던 테스트는 이제 실패한다. `unittest.mock.ANY`로 그 키를 받거나 필요한 키만 본다.

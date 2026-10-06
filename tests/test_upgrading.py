@@ -114,7 +114,7 @@ UPGRADE_NOTE = {
         "퍼센트 인코딩 없이 온 쿼리를 Django처럼 읽는다",
         "컨텍스트의 `request`에 `.GET`이 있어야 한다",
     ),
-    "Every fan-out message (`notification`, `model_mutation`) carries a `message_id`": (
+    "Every fan-out message (`notification` from `abroadcast()`, a component's `self.broadcast()` and": (
         "브로드캐스트 메시지에 `message_id`가 붙는다",
         "`unittest.mock.ANY`로 그 키를 받거나",
     ),

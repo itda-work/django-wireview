@@ -1036,3 +1036,27 @@ async def test_a_connection_that_takes_a_render_evaluated_the_template():
 
     assert RENDERS["ShBoard"] == 1
     assert all(page.component.wire.template_evaluated for page in pages)
+
+
+@pytest.mark.asyncio
+async def test_a_component_broadcast_is_shared(monkeypatch):
+    """``self.broadcast()``, as the tutorials and Presence publish, names its message as abroadcast() does."""
+    published: list[dict[str, t.Any]] = []
+
+    class Broker:
+        async def publish(self, channel: str, message: dict[str, t.Any]) -> None:
+            published.append(message)
+
+    pages = [await Page.open() for _ in range(3)]
+    pages[0].component.wire.broker = Broker()  # type: ignore[assignment]
+    await pages[0].component.broadcast("sh-board", n=1)
+    await pages[0].component.broadcast("sh-board", n=2)
+    (first, second) = published
+    assert first["message_id"] != second["message_id"]
+    assert first["kwargs"] == {"n": 1} and first["type"] == "notification" and first["channel"] == "sh-board"
+    RENDERS.clear()
+    STORE["headline"] = "news"
+
+    await asyncio.gather(*(page.session.notification(dict(first)) for page in pages))
+
+    assert RENDERS["ShBoard"] == 1

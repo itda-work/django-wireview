@@ -1,7 +1,7 @@
 """The transport seam: everything that reaches the connection layer goes through it."""
 
 import typing as t
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 
 import pytest
 
@@ -114,8 +114,9 @@ async def test_meta_publishes_and_sends_through_its_broker():
     await meta.queue_broadcast("orders", action="joined")
     await meta.send("remove", id="cmp-1")
 
+    # Named as every fan-out message is: the sessions handling it may share a render (#176)
     assert recording.published == [
-        ("orders", {"type": "notification", "channel": "orders", "kwargs": {"action": "joined"}})
+        ("orders", {"type": "notification", "channel": "orders", "kwargs": {"action": "joined"}, "message_id": ANY})
     ]
     assert recording.direct == [
         ("specific.abc", {"type": "message_from_component", "command": "remove", "kwargs": {"id": "cmp-1"}})
