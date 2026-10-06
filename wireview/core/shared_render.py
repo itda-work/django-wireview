@@ -507,6 +507,9 @@ async def render(wire: WireviewMeta, component: Component, repo: Repo) -> tuple[
     a render of its own: the state's JSON runs computed fields and dumps a
     QuerySet field's ids, either of which may query the database.
     """
+    if wire._is_frozen or wire._redirected_to:
+        # As a render of its own would find out in its trip: nothing more is drawn
+        return None
     check = verifying()
     message = _message.get()
     found = key(component) if message is not None else None
@@ -558,6 +561,8 @@ async def _render_for(
             from .state import sign_state
 
             token = await db(sign_state)(component)
+        # Drawn as a render of its own would have: what reads this goes the same way
+        wire.template_evaluated = True
         return taken, token
 
 

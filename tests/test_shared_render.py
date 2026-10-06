@@ -329,6 +329,20 @@ class ShHidden(_Headline, Component):
         pass
 
 
+REDIRECTED: set[str] = set()
+
+
+class ShLeaving(_Headline, Component):
+    class Meta:
+        template_name = "sh/plain.html"
+        subscriptions = {"sh-board"}
+        shared_render = True
+
+    async def notification(self, channel: str, **kwargs: t.Any) -> None:
+        if self.wire.channel_name in REDIRECTED:
+            await self.wire.redirect_to("/elsewhere/")
+
+
 @pytest.fixture(autouse=True)
 def _templates():
     _reset_store()
@@ -992,3 +1006,33 @@ async def test_the_connections_that_take_a_render_sign_off_the_loop():
             assert unsign_envelope(_state_token(page), "ShCounted").state["rows"] == 1
     finally:
         await Bookmark.objects.all().adelete()
+
+
+@pytest.mark.asyncio
+async def test_a_component_its_receiver_redirected_takes_no_render():
+    """Frozen by its own receiver: nothing more is drawn, a taken render as little as its own."""
+    leader, follower = await Page.open(ShLeaving), await Page.open(ShLeaving)
+    REDIRECTED.clear()
+    REDIRECTED.add(follower.session.channel_name)  # type: ignore[arg-type]
+    STORE["headline"] = "news"
+    try:
+        await leader.session.notification({"channel": "sh-board", "kwargs": {}, "message_id": "m-1"})
+        await follower.session.notification({"channel": "sh-board", "kwargs": {}, "message_id": "m-1"})
+    finally:
+        REDIRECTED.clear()
+
+    assert leader.outbound.renders()[0]["diff"] == {"1": "news"}
+    assert follower.outbound.renders() == []
+    assert leader.component.wire.template_evaluated
+
+
+@pytest.mark.asyncio
+async def test_a_connection_that_takes_a_render_evaluated_the_template():
+    pages = [await Page.open() for _ in range(2)]
+    STORE["headline"] = "news"
+    RENDERS.clear()
+
+    await broadcast(pages, "m-1")
+
+    assert RENDERS["ShBoard"] == 1
+    assert all(page.component.wire.template_evaluated for page in pages)
