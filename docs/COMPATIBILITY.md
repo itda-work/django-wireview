@@ -52,7 +52,8 @@ from wireview import Component, LiveComponent, JS, mount
 | 스타터 템플릿 | 설치된 패키지의 `wireview/project_template/` 디렉터리(`startproject --template`의 대상, [시작하기 튜토리얼](./tutorials/01-getting-started.md)). 약속은 그 경로와, 만든 프로젝트가 `manage.py check`에 아무것도 보고하지 않는다는 것이다. 만들어진 파일은 사용자의 코드이므로 안의 내용은 릴리스마다 바뀔 수 있다 |
 | 시스템 체크 id | `wireview.W001`~. 없앤 번호는 다시 쓰지 않는다 |
 | 컴포넌트 클래스 설정 | `class Meta:`의 키(`ComponentOptions`의 필드)와 `get_subscriptions()` |
-| 템플릿 컨텍스트 | 컴포넌트 템플릿의 `this`, 슬롯의 `let` 이름 |
+| 템플릿 컨텍스트 | 컴포넌트 템플릿의 `this`, 슬롯의 `let` 이름. `Broadcast` 항목 템플릿의 `item`, 그리고 그 템플릿에서 `this`·`user`·`request`·`perms`·`csrf_token`을 읽으면 오류라는 것 |
+| 채널 레이어 그룹 | `Broadcast`가 발행하는 `wireview.patch.<토픽>`. 그래서 `Broadcast`의 토픽은 84자까지다. 메시지의 모양은 아래 와이어 프로토콜처럼 공개가 아니다 |
 | 훅 파일 위치 | 앱의 `static/<app_label>/hooks/*.js` ([hooks](./features/hooks.md)) |
 | 모델 채널 이름 | `AUTO_BROADCAST`가 알리는 채널: `<app_label>.<model>`, `<app_label>.<model>.<pk>`, 가리키는 행의 `<app_label>.<model>.<pk>.<related_name>`, m2m은 양쪽 행의 `<app_label>.<model>.<pk>.<field>`(어느 쪽에서 바꿨든 같다). 밑줄은 하이픈이 된다. 알리는 모델은 `senders`에 적은 것뿐이고(비우면 없다), m2m은 바꾼 쪽의 모델이 `senders`에 있을 때 알린다. `senders`는 집합 또는 모델→필드 매핑이고, 집합은 모든 필드를 보낸다 |
 | `self.wire` | `params`, `redirect_to`, `replace_to`, `push_to`만([navigation](./features/navigation.md)). 나머지는 프레임워크 내부이고, 같은 일은 `Component`의 메서드(`put_flash`, `push_js`, `push_title`, `defer` 등)로 한다 |

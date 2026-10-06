@@ -280,6 +280,29 @@ async def add_item(self, item):
     self.skip_render()  # 컴포넌트 전체 렌더링 방지
 ```
 
+### 5. 모두에게 같은 항목이면 `Broadcast`
+
+새 글을 피드를 연 **모든** 페이지에 넣을 때, 알림을 보내 연결마다 `notification()`에서 `stream_insert()`하면 같은 항목을
+연결 수만큼 렌더합니다. `Broadcast`는 발행하는 곳에서 한 번 렌더하고, 각 연결은 그 결과에 자기 컴포넌트 id만 끼워
+씁니다. 연결 1,000개에서 수백 ms가 수십 ms가 됩니다.
+
+```python
+from wireview import Broadcast
+
+
+class XFeed(Component):
+    class Meta:
+        template_name = "feed/x_feed.html"
+        subscriptions = {"feed"}
+
+    async def publish(self, text: str):
+        post = await Post.objects.acreate(text=text)
+        await Broadcast(XFeed, "feed").stream_insert("posts", post, at=0, limit=100).asend()
+```
+
+항목 템플릿은 `item`만 읽을 수 있습니다. 모두가 같은 HTML을 받으므로 `this`·`user`·`request`를 읽으면 오류가 납니다.
+자세한 규칙은 [Broadcast](../features/broadcast.md)에 있습니다.
+
 ## 트러블슈팅
 
 ### 아이템이 표시되지 않음

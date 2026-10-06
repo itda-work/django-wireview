@@ -604,6 +604,28 @@ await self.stream("items", items, dom_id=lambda item: f"item-{item.uuid}")
 await self.stream_insert("messages", message, template="chat/special_message.html")
 ```
 
+### 모든 구독자에게 한 번에: `Broadcast`
+
+새 항목을 같은 목록을 연 **모든** 페이지에 넣을 때는 `Broadcast`를 쓴다. 발행하는 곳에서 항목을 한 번 렌더하고,
+받는 페이지마다 컴포넌트 id만 끼워 쓴다. 받는 쪽에서는 코드가 돌지 않으므로 항목 템플릿은 `item`만 읽을 수 있다.
+
+```python
+from wireview import Broadcast
+
+
+class MessageList(Component):
+    class Meta:
+        template_name = "chat/message_list.html"
+        subscriptions = {"chat"}
+
+    async def add_message(self, text: str):
+        message = await Message.objects.acreate(sender=self.user, text=text)
+        await Broadcast(MessageList, "chat").stream_insert("messages", message, at=-1).asend()
+```
+
+연결 1,000개에 항목 하나가 닿는 데 알림을 받아 연결마다 `stream_insert()`하면 276.3~742.6 ms, `Broadcast`는
+18.0~19.7 ms였다(프로세스 1개, InMemory·Redis·NATS). 규칙과 수치는 [Broadcast](https://github.com/itda-work/django-wireview/blob/main/docs/features/broadcast.md)에 있다.
+
 ## Presence API
 
 온라인 사용자와 타이핑 표시를 실시간으로 추적합니다.

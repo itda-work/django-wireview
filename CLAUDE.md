@@ -90,7 +90,7 @@ wireview/
 ├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W019)
 ├── telemetry.py           옵트인 계측 시그널 (event_handled, component_rendered, diff_computed, broadcast_published 구간과
 │                          connection_opened·connection_closed·join_rejected(닫힌 사유 집합)·publish_failed 이벤트, #124)
-├── testing.py             mount(), MountedComponent, ComponentTestCase.
+├── testing.py             mount(), MountedComponent, ComponentTestCase. mount한 컴포넌트는 같은 프로세스의 Broadcast를 받는다(core/patches.listen).
 │                          render()는 실제 저장소의 HTTP 렌더 모드로 자식까지 그린다(자식 수명주기는 컨슈머 몫, #115).
 │                          내비게이션 단언·follow_redirect·follow_push·스트림 검사
 ├── utils.py, log.py       db 헬퍼, 로깅
@@ -211,6 +211,8 @@ tests/
                            조각 링크, 네트워크 오류로 실패한 가져오기(boost 폼 포함, post/ 는 받은 POST를 센다. ?away=1 은 다른 출처로 리다이렉트한다), 중지된(AbortError) 이동, method="put" 폼을 보는 E2E(test_history_e2e.py)의 픽스처(members/ 는 ls-members 경계 안, bar-a/·bar-b/ 는 sticky가 아닌 HistoryBar를 같은 id로 그리는 두 페이지 — 뒤로 가기의 캐시 사본에서 떠나는 페이지의 것이 params를 듣지 않는지 본다. guarded/ 는 자기 필드와 비교해 일찍 돌아오는 params_changed를 가진 두 컴포넌트 — join이 첫 응답의 마운트 상태에서 다시 듣는지 본다, #177),
                            lossprobe/ 는 capacity를 넘는 브로드캐스트가 레이어마다 어떻게 버려지는지 보는 E2E(test_broadcast_loss_e2e.py)의 픽스처,
                            shareprobe/ 는 shared_render를 선언한 보드와 보는 사람을 부르는 인사를 브라우저 컨텍스트 여럿(사용자 하나씩)이 보는 E2E(test_shared_render_e2e.py)의 픽스처,
+                           broadcastprobe/ 는 Broadcast로 항목·훅 이벤트·JS를 받는 피드를 브라우저 컨텍스트 둘이 보는 E2E(test_broadcast_e2e.py)의 픽스처(같은 이름의 스트림을 그리는 다른 클래스,
+                           ?failing=1 은 join이 실패한 대상, 끊겼다 다시 붙은 페이지),
                            jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,
                            formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처,
                            fileprobe/ 는 업로드의 모든 입구(입력·드롭 존·미리보기·external)와 숨겼다 다시 보인 LiveComponent의 업로드, 렌더가 새로 그린 일반 컴포넌트와 그 안의 LiveComponent(같은 업로드 이름)의 join·업로드, 재연결 뒤 숨겼다 다시 보인 그 LiveComponent가 새 상태로 시작하는지, late/ 에서 joined()의 작업이 끝나야 그리는 일반 컴포넌트 안의 LiveComponent가 재연결 뒤 제 상태로 돌아오는지를 보는 E2E(test_uploads_e2e.py)의 픽스처,

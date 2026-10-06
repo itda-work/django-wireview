@@ -234,6 +234,10 @@ source = "docs/features/shared-render.md"
 slug = "shared-render"
 
 [[sections.pages]]
+source = "docs/features/broadcast.md"
+slug = "broadcast"
+
+[[sections.pages]]
 source = "docs/features/flash.md"
 slug = "flash"
 

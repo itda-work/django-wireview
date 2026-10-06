@@ -168,6 +168,9 @@ assert view.component.page == 2
 | `view.stream_items(stream=None)` | `{"id", "html"}` 목록 |
 | `view.stream_ops(stream=None)` | 원본 연산 목록 (`op`, `stream`, `items`, `at`, `limit`). 와이어 메시지 그대로라 모양은 공개가 아니다 — 단언은 위 둘로 한다 |
 
+`mount()`한 컴포넌트는 같은 프로세스에서 발행한 [`Broadcast`](./broadcast.md)를 연결처럼 받는다 — 정확히 그 클래스이고
+그 토픽을 구독할 때만. 받은 스트림 연산·훅 이벤트·JS 명령은 컴포넌트 자신의 것처럼 위 헬퍼와 `sent_messages`에 남는다.
+
 ```python
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)   # acreate가 커밋한다. 아래 "주의사항"

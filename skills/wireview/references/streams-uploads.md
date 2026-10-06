@@ -46,6 +46,38 @@ class XChatRoom(Component):
 - **필터·정렬 전환은 `stream()`을 다시 부르면 된다.** 상태를 바꿔 재렌더가 일어나도 스트림
   컨테이너의 내용은 보존된다 (`wire-stream` 컨테이너는 morph 대상에서 제외된다).
 
+### 모두에게 같은 항목이면 `Broadcast`
+
+피드·채팅처럼 새 항목을 구독한 **모든** 페이지에 넣을 때는 알림을 보내 각 연결의 `notification()`이 `stream_insert`하게
+하지 말고 `Broadcast`로 보낸다. 항목을 발행하는 곳에서 한 번 렌더하고, 각 연결은 그 프레임에 자기 컴포넌트 id만 끼워 쓴다.
+연결 1,000개에서 수백 ms가 수십 ms가 된다.
+
+```python
+from wireview import Broadcast, Component
+
+
+class XFeed(Component):
+    class Meta:
+        template_name = "feed/feed.html"
+        subscriptions = {"feed"}
+
+    async def joined(self):
+        await self.stream("items", Post.objects.order_by("-id")[:50])
+
+    async def publish(self, text: str = ""):
+        post = await Post.objects.acreate(text=text)
+        await Broadcast(XFeed, "feed").stream_insert("items", post, at=0, limit=50).asend()
+```
+
+- **대상은 정확히 그 클래스**이고 그 토픽을 구독한 인스턴스만 받는다. 토픽이 `Meta.subscriptions`에 없으면 바로 `ValueError`.
+- **항목 템플릿은 보는 사람을 읽을 수 없다.** `this`·`user`·`request`·`perms`·`csrf_token`을 읽으면 발행하는 곳에서
+  `ImproperlyConfigured`. 컨텍스트는 `item`뿐이고 언어·시간대는 기본값이다. `{% on "click" "remove" pk=item.pk %}`는 된다
+  (핸들러는 대상 클래스에서 확인), `myself=True`는 안 된다. 사람마다 다르면 토픽을 나누거나 알림을 쓴다.
+- 보낼 수 있는 것은 `stream_insert`·`stream_delete`·`push_event`·`js`뿐이다. 필드는 바꿀 수 없다 — 개수 같은 필드는 알림으로.
+- 동기 코드(신호 수신자)에서는 `.send()` — 커밋 뒤에 렌더하고 보낸다. 같은 항목을 `mutation()`에서도 넣지 않는다.
+- `mount()`한 컴포넌트는 같은 프로세스의 Broadcast를 받으므로 `view.stream_html()`로 확인한다.
+- 상세: https://github.com/itda-work/django-wireview/blob/main/docs/features/broadcast.md
+
 ## Presence — 접속자·타이핑 표시
 
 `PresenceMixin`(자기 상태를 알리는 쪽)과 `PresenceTrackerMixin`(모아서 보여주는 쪽)을 조합한다.

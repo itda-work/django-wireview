@@ -13,6 +13,7 @@
 /wireview/reference/agent-skill/
 /wireview/reference/async-operations/
 /wireview/reference/boost/
+/wireview/reference/broadcast/
 /wireview/reference/checks/
 /wireview/reference/chunked-uploads/
 /wireview/reference/component-api/

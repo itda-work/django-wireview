@@ -33,6 +33,23 @@ The django-reactor era changelog (2.x) is preserved in
   board declaring it reaches 1,000 connections on one process in 89.6 ms instead of 429.0 ms, 109.0
   instead of 436.8 us of CPU per connection (docs/features/shared-render.md,
   docs/design/broadcast-fanout.md §7, #176).
+- `Broadcast(Feed, "feed").stream_insert("items", post, at=0).asend()` puts one stream item, a hook
+  event or a JS command on every page that hears a topic, rendered once where it is published.
+  Each process takes the message off the channel layer once and hands it to its connections; each
+  puts its component id into frames serialized once and writes them, the bytes its own
+  `stream_insert`, `stream_delete`, `push_event` or `push_js` would have sent, so the browser
+  protocol does not change. It reaches exactly the target class's instances that subscribe to the
+  topic and that their connection can reach. The item template can read `item` and nothing of the
+  viewer: `this`, `user`, `request`, `perms` and `csrf_token` raise `ImproperlyConfigured` where it is
+  published, always, and it renders in `LANGUAGE_CODE` and the default time zone. `{% on %}` in it
+  checks the handler on the target class. A component receives its patches from before its
+  `joined()` and writes them after the operations `joined()` queued, so a stream reset does not wipe
+  an item committed after its read. `send()` publishes once the transaction commits. More than
+  1,000 frames waiting for one connection close it (1013) and emit the new
+  `telemetry.broadcast_overflowed`. A mounted component in `wireview.testing` hears a Broadcast of
+  its process. One item reaching 1,000 connections on one process takes 18.0 to 19.7 ms on the
+  in-memory, Redis and NATS layers, against 276.3 to 742.6 ms through a notification and each
+  connection's `stream_insert` (docs/features/broadcast.md, docs/design/broadcast-patch.md, #178).
 - Every code block on the documentation site has a copy button in its top right corner. It copies
   the code as written, says whether it did, and falls back to a selection where the page has no
   Clipboard API (#173).
@@ -46,6 +63,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- `telemetry.broadcast_published` carries `kind`: the message type a fan-out published
+  (`"notification"`, `"model_mutation"`, `"patch"` for a `Broadcast`) (#178).
+- A component that subscribes to a topic now also makes its process's channel join the topic's
+  patch group `wireview.patch.<topic>` -- one `group_add` per process and topic, not per connection
+  -- so a `Broadcast` reaches it. A topic longer than 84 characters cannot name that group and
+  gets notifications only (#178).
 - Every fan-out message (`notification` from `abroadcast()`, a component's `self.broadcast()` and
   Presence alike, and `model_mutation`) carries a `message_id`, new for each publish, so the
   sessions that receive it can tell it is one message. Code that compares the messages it sees on

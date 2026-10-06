@@ -238,6 +238,11 @@ Pydantic은 커스텀 serializer, `field_serializer`, wireview의 Django 모델 
 런타임에 판단한다. 정적으로 흉내 내면 오탐이 나온다 — 정상 컴포넌트에 경고를 띄우는 검사는
 없느니만 못하다. 이건 런타임에 터지므로 조용한 실패도 아니다.
 
+**`Broadcast`**([문서](./broadcast.md))도 검사하지 않는다. 어떤 클래스·토픽·템플릿으로 발행하는지는 코드가 돌 때에야
+알 수 있다. 대신 조용히 실패할 수 있는 곳은 발행하는 곳에서 오류로 막는다 — 대상 클래스의 `Meta.subscriptions`에 없는
+토픽(`get_subscriptions()`를 오버라이드하지 않았을 때), 패치 그룹 이름이 될 수 없는 토픽(84자 초과, 허용되지 않는 글자),
+JSON이 아닌 `push_event` 페이로드, 보는 사람을 읽는 항목 템플릿. 다음 번호는 `wireview.W020`부터다.
+
 ## 관련 문서
 
 - [LiveComponent](./live-component.md) — 노출 규칙과 라이프사이클 콜백

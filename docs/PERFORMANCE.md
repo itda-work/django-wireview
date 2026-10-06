@@ -156,7 +156,13 @@ class Counter(Component):
         self.skip_render()
 ```
 
-### 6. 모두가 같은 화면을 보면 렌더를 공유한다
+### 6. 모두에게 같은 항목이면 `Broadcast`로 보낸다
+
+피드·채팅·알림 목록에 들어오는 항목처럼 모두가 같은 HTML을 받는 것은 알림으로 연결마다 `stream_insert()`하지 말고
+[`Broadcast`](./features/broadcast.md)로 보낸다. 항목을 발행하는 곳에서 한 번 렌더하고, 연결마다는 컴포넌트 id만 끼워
+쓴다. 측정값은 아래 [스트림 항목 하나를 많은 연결에](#스트림-항목-하나를-많은-연결에)에 있다.
+
+### 7. 모두가 같은 화면을 보면 렌더를 공유한다
 
 공지판·현황판처럼 많은 사람이 같은 컴포넌트를 같은 상태로 보고, 그 렌더가 보는 사람을 읽지 않으면
 `Meta.shared_render = True`를 선언한다. 같은 브로드캐스트를 받은 연결들이 렌더를 한 번만 하고 함께 쓴다.
@@ -392,6 +398,35 @@ xychart-beta horizontal
 선언해도 연결당 남는 109.0 µs 가운데 약 40%는 InMemory 레이어의 수신 순회다. Redis·NATS
 레이어에는 이 순회가 없다. 단계별 분해와 측정 방법은 [설계](design/broadcast-fanout.md) §7, 원본은
 `bench/results/cef17df-fanout-shared.json`이다. 프레임 크기와 클릭의 서버 처리는 선언해도 같다.
+
+#### 스트림 항목 하나를 많은 연결에
+
+항목 하나가 구독한 모든 페이지의 목록에 들어갈 때다. 알림을 보내면 연결마다 수신자가 돌고, 항목을 렌더하고, 그 연산을
+채널 레이어로 자기 세션에 다시 보낸다. [`Broadcast`](./features/broadcast.md)는 발행하는 곳에서 한 번 렌더하고 프레임도 한
+번 직렬화한다. 프로세스가 메시지를 한 번 받아 연결마다 id만 끼워 쓴다.
+
+같은 피드로 쟀다. 항목 `<li>` 하나, 연결 1,000개, uvicorn 1프로세스, 3회차의 중앙값(괄호는 회차 범위)이고, 세 경로를 같은
+회차에서 번갈아 쟀다. Redis·NATS는 [배포 가이드](DEPLOYMENT.md)의 `capacity` 1,500이다.
+
+| | InMemory | Redis | NATS | 연결당 CPU (InMemory, Redis, NATS) |
+|---|---:|---:|---:|---:|
+| wireview, 알림 | 379.4 ms (368.4~384.9) | 742.6 ms (710.9~763.6) | 276.3 ms (273.8~278.4) | 373.7 µs / 644.0 µs / 269.0 µs |
+| wireview, Broadcast | 18.8 ms (18.0~19.7) | 19.7 ms (18.4~20.5) | 18.0 ms (17.9~18.8) | 18.5 µs / 19.0 µs / 17.4 µs |
+| FastAPI (레이어 없음) | 12.0 ms (11.4~12.2) | 12.0 ms (11.4~12.2) | 12.0 ms (11.4~12.2) | 11.5 µs |
+
+```mermaid
+xychart-beta horizontal
+    title "스트림 항목 하나가 연결 1,000개에 닿기까지, 프로세스 1개 (선: 목표 40 ms)"
+    x-axis ["InMemory: 알림", "Redis: 알림", "NATS: 알림", "InMemory: Broadcast", "Redis: Broadcast", "NATS: Broadcast", "FastAPI"]
+    y-axis "ms" 0 --> 817
+    bar [379.4, 742.6, 276.3, 18.8, 19.7, 18.0, 12.0]
+    line [40, 40, 40, 40, 40, 40, 40]
+```
+
+알림 경로는 Redis에서 가장 느리다. 연결마다 하는 세션 메일이 Redis를 한 번 오가기 때문이다. Broadcast는 레이어를
+프로세스마다 한 번만 거치므로 레이어에 따라 거의 달라지지 않는다. FastAPI와 남은 차이는 프레임의 크기(205 B 대 80 B)와
+연결마다의 큐다. 측정 방법과 1단계(D1)의 수치는 [설계](design/broadcast-patch.md) §11, 원본은
+`bench/results/3ab5818-stream-fanout.json`, 재현은 `make bench-stream-fanout`이다.
 
 ### 기대치
 

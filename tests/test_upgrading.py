@@ -131,6 +131,11 @@ NO_UPGRADE_NOTE = {
     "`manage.py wireview_check_templates": (
         "새 명령이다. diagnose.ts의 종료 코드는 그 명령이 읽으려고 생긴 것이고, 확장은 공개 API가 아니다"
     ),
+    "puts one stream item, a hook event or a JS command on every page": "새 이름이다. 쓰지 않으면 아무것도 바뀌지 않는다",
+    "`telemetry.broadcast_published` carries `kind`": "시그널에 키워드가 하나 늘었을 뿐이다. `**kwargs`로 받는 수신자는 그대로다",
+    "also makes its process's channel join the topic's patch group": (
+        "프로세스마다 토픽당 그룹 하나가 늘 뿐 앱이 할 일은 없다. 84자를 넘는 토픽은 전처럼 알림만 받는다"
+    ),
 }
 
 PREVIOUS = "1.2.0"

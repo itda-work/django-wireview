@@ -2,10 +2,9 @@
 
 > 2026-10-06. [#178](https://github.com/itda-work/django-wireview/issues/178)의 설계다.
 > [#176](https://github.com/itda-work/django-wireview/issues/176)의 3단계(D)에 해당한다.
-> **상태: 제안. 메인테이너 확인을 기다린다.** 코드는 바꾸지 않았다. 측정은 저장소 밖의 스크래치 스크립트로 했고,
-> 방법은 §6-1에 재현할 수 있을 만큼 적었다.
-> #176의 측정과 선택지는 `docs/design/broadcast-fanout.md`에 있다. 그 문서는 아직 `perf/fanout` 브랜치에만 있어서
-> 여기서는 링크하지 않는다.
+> **상태: 구현됨(2026-10-06).** 메인테이너가 §10의 권장안을 그대로 택했고, 1단계(D1)를 잰 뒤 2단계(D2)까지 했다.
+> 결과는 §11에 있다. §1~§10은 제안 당시의 글이고, §6-1의 수치는 저장소 밖의 시제품으로 잰 것이다.
+> 사용법은 [Broadcast](../features/broadcast.md), #176의 측정과 선택지는 [broadcast-fanout](./broadcast-fanout.md)에 있다.
 
 ---
 
@@ -45,11 +44,13 @@ InMemory).
 |---|---:|
 | 팬아웃 (계측 끔, `5a4f037`) | 651.7 ms. #174에서는 632 ms였다 |
 | 연결당 CPU | 679.6 µs. 그중 렌더 351.7, diff 136.8, 트립·디스패치 82.6, 채널 레이어 47.0, 세션 코드 38.2, JSON·프레임·압축 23.3 |
-| 1단계(B) 뒤 (`a6994e5`, `perf/fanout` 브랜치) | 팬아웃 445.2 ms, 연결당 459.5 µs. 그중 렌더와 diff가 약 275 µs, 트립·디스패치와 채널 레이어가 약 150 µs |
+| 1단계(B) 뒤 (`a6994e5`) | 팬아웃 445.2 ms, 연결당 459.5 µs. 그중 렌더와 diff가 약 275 µs, 트립·디스패치와 채널 레이어가 약 150 µs |
+| 2단계(A) 켬 (`0492b64`, [broadcast-fanout](./broadcast-fanout.md) §7) | 팬아웃 87.5 ms, 연결당 122.6 µs. 같은 회차의 A 끔은 430.0 ms·443.4 µs |
 | FastAPI (같은 기계, 같은 회차) | 14.2~16.4 ms. JSON을 한 번 만들고 연결 목록을 돌며 같은 텍스트를 쓴다 |
 
-B는 연결 하나의 비용을 줄였을 뿐 구조는 그대로다. 2단계(A, opt-in 렌더 공유)를 해도 연결마다 메시지를 받고
-핸들러를 돌리는 구조 비용(연결당 약 150~175 µs, 추정)은 남는다. 그 비용을 없애는 길은 이 문서의 D뿐이다.
+B는 연결 하나의 비용을 줄였을 뿐 구조는 그대로다. 2단계(A, opt-in 렌더 공유)는 렌더를 메시지당 한 번으로 줄여 연결당
+122.6 µs가 됐다. 그래도 연결마다 메시지를 받고 수신자를 돌리고 diff를 만드는 일은 남는다. 그중 InMemory 레이어의 수신
+순회 44.0 µs, 디스패치·트립 32.6 µs가 크다(broadcast-fanout §7-3). 그 비용을 없애는 길은 이 문서의 D뿐이다.
 
 ### 1-2. 이 문서가 다루는 경우
 
@@ -632,7 +633,7 @@ Phoenix처럼 id를 프레임에서 빼고 "토픽에 걸린 컨테이너"를 �
 | 받는 쪽 | 연결마다 `notification()`이 돌고 diff를 만든다. 렌더만 메시지당 한 번이다 | 받는 쪽 코드가 없다 |
 | 선언 | 컴포넌트가 "내 렌더는 보는 사람과 무관하다"고 선언(Meta 키) | 발행하는 쪽이 `Broadcast(클래스, 토픽)`으로 보낸다 |
 | 틀렸을 때 | 선언이 틀리면 남의 화면이 간다. DEBUG의 읽기 검증으로 막는다 | 항목 템플릿이 보는 사람을 읽으면 발행이 실패한다 |
-| 1,000연결 예상 | 약 175 ms (#176 추정) | 약 20~40 ms (§6-6) |
+| 1,000연결 | 87.5 ms, 연결당 122.6 µs (실측, broadcast-fanout §7) | 18.0~19.7 ms, 연결당 17.4~19.0 µs (실측, §11) |
 | API | Meta 키 하나 | 이름 하나(`Broadcast`) |
 
 **서로 대체하지 않는다.** Board의 공지처럼 필드에 기대는 화면은 D로 바꿀 수 없다. `JS()`에는 텍스트를 바꾸는
@@ -724,3 +725,82 @@ dict 공유, channels-nats의 멤버별 디코드가 D1의 결과를 바꾸지 �
 | 11 | 다른 태스크에서 ASGI `send` 부르기(D2) | uvicorn(websockets·wsproto)과 daphne에서 확인한 뒤에 쓴다. 안 되면 연결별 큐를 컨슈머 자신의 디스패치 루프로 옮긴다 | — |
 | 12 | 텔레메트리 | `broadcast_published` 구간을 재사용한다(`kind` 필드). 넘침 이벤트 하나를 새로 둔다 | 새 구간 시그널 |
 | 13 | 선언형 모델 결합(`broadcasts_to`류) | 별도 이슈로 미룬다 | 이번에 함께 |
+
+## 11. 구현 결과
+
+### 11-1. 무엇을 만들었나
+
+§10의 권장안 그대로다. 공개 이름은 `Broadcast` 하나이고 연산은 넷, 대상은 정확히 그 클래스, 감시 객체는 언제나,
+언어·시간대는 기본값, 등록은 `joined()` 전, `toOthers`와 시퀀스 번호는 없다. 텔레메트리는 `broadcast_published`에
+`kind`를 더하고 이벤트 `broadcast_overflowed`를 새로 뒀다. 선언형 모델 결합은 만들지 않았다(별도 이슈 거리).
+
+| 설계와 다른 점 | 왜 |
+|---|---|
+| 감시 객체를 `core/watched.py`로 모았다 | A의 `shared_render`와 같은 일이다. 켜는 조건만 다르다(A는 `VERIFY_SHARED_RENDER`, D는 언제나) |
+| 항목 템플릿의 `this`는 대상 클래스를 품는다 | `{% on "click" "remove" pk=item.pk %}`는 `this`로 핸들러가 있는지 확인하므로, 그대로 두면 항목 안의 바인딩이 모두 오류였다. 이제 클래스에서 확인한다. `myself=True`는 인스턴스 id를 읽으므로 여전히 오류다 |
+| 대상 클래스가 정적으로 구독하지 않는 토픽은 만들 때 `ValueError` | 오타 하나로 모든 패치가 조용히 사라진다. `get_subscriptions()`를 오버라이드한 클래스는 검사하지 않는다 |
+| 시스템 체크는 더하지 않았다 | §3-3대로 런타임이 정확히 잡는다. 조용한 실패는 위의 생성자 검사와 감시 객체가 막는다. 다음 번호는 W020이다 |
+| 토픽이 정해지기 전에는 잡지 않는다 | `get_subscriptions()`가 비었으면 `joined()` 전에 잡을 것이 없다. 그런 컴포넌트는 첫 렌더 뒤에 잡는다(§4-3이 말한 틈과 같다) |
+| 잡아 둔 프레임과 큐를 한 상한(`QUEUE_LIMIT`, 1,000)으로 | 둘 다 "이 연결에 쓰지 못한 프레임"이다. 넘으면 소켓을 1013으로 닫는다 |
+
+### 11-2. D1을 재고 D2로 갔다
+
+`bench.compare_fastapi.stream_fanout`이 잰다. README 비교 벤치의 스토어 위에 피드 하나를 두고, 연결 1,000개, uvicorn
+1프로세스, 항목 `<li>` 하나를 삽입한다. 워밍업 3번 뒤 10번의 중앙값이 회차의 값이고, 3회차의 중앙값과 범위를 적는다.
+Redis·NATS 레이어는 [배포 가이드](../DEPLOYMENT.md)의 `capacity` 1,500을 쓴다 — channels_redis는 한 프로세스의 프로세스
+로컬 채널을 Redis 키 하나에 담아, 기본값 100에서는 join 1,000개가 몰리면 자기 세션 메일(`joined`)을 버렸다. 원본은
+`bench/results/cd6a6ae-stream-fanout-d1.json`(D1, 그 커밋의 worktree에서 같은 벤치로)과 `bench/results/3ab5818-stream-fanout.json`(D2)이다.
+
+| | InMemory | Redis | NATS | 연결당 CPU (InMemory, Redis, NATS) | FastAPI (같은 회차) |
+|---|---:|---:|---:|---:|---:|
+| D1: 연결마다 레이어에서 받는다 | 107.8 ms (106.3~108.3) | 41.6 ms (40.3~41.9) | 30.7 ms (30.6~31.2) | 111.0 µs / 44.9 µs / 31.7 µs | 12.1 ms |
+| D2: 프로세스가 한 번 받는다 | 18.8 ms (18.0~19.7) | 19.7 ms (18.4~20.5) | 18.0 ms (17.9~18.8) | 18.5 µs / 19.0 µs / 17.4 µs | 12.0 ms |
+
+```mermaid
+xychart-beta horizontal
+    title "Broadcast 하나가 연결 1,000개에 닿기까지, 단계별 (선: 목표 40 ms)"
+    x-axis ["InMemory: D1", "Redis: D1", "NATS: D1", "InMemory: D2", "Redis: D2", "NATS: D2"]
+    y-axis "ms" 0 --> 119
+    bar [107.8, 41.6, 30.7, 18.8, 19.7, 18.0]
+    line [40, 40, 40, 40, 40, 40]
+```
+
+D1은 Redis에서 목표 35 ms(§10-10)를 넘었다. 그래서 결정 8대로 D2까지 했다. D1에서 InMemory가 유독 느린 것은
+§6-2의 `_clean_expired` 때문이다 — 연결마다 메시지를 받을 때 모든 채널을 훑으므로 연결 수의 제곱으로 는다. D2는
+프로세스가 메시지를 한 번 받으므로 레이어 사이의 차이가 사라졌다. 연결당 CPU 17.4~19.0 µs는 #176이 잰 "JSON·프레임·압축"
+몫과 같은 크기로, 남은 일이 사실상 프레임 쓰기와 압축이다.
+
+**다른 태스크에서 ASGI `send`(§10-11).** D2는 연결별 큐를 그 연결의 태스크가 쓰므로, 컨슈머 자신의 태스크가 아닌 곳에서
+`send`를 부른다. uvicorn의 websockets 구현(legacy 프로토콜의 `write_frame`이 프레임을 `transport.write` 한 번으로 쓰고
+`drain`은 락을 잡는다), websockets-sansio와 wsproto 구현(`conn.send` 뒤 `transport.write` 한 번), daphne(`handle_reply`가
+`sendMessage`로 한 번에 쓴다)를 소스로 확인했다. 모두 `websocket.send` 하나를 프레임 하나로 동기적으로 쓰므로 섞이지 않는다.
+
+### 11-3. 알림 경로, FastAPI와 함께
+
+같은 회차에 알림을 받아 연결마다 `stream_insert()`하는 지금까지의 쓰임과 FastAPI(항목 HTML을 JSON 한 번에 담아 연결마다
+같은 텍스트를 쓴다)를 함께 쟀다. 프레임은 wireview 205 B, FastAPI 80 B다 — `stream_op`의 봉투와 컴포넌트 id 때문이다.
+
+| | InMemory | Redis | NATS | 연결당 CPU (InMemory, Redis, NATS) |
+|---|---:|---:|---:|---:|
+| wireview, 알림 | 379.4 ms (368.4~384.9) | 742.6 ms (710.9~763.6) | 276.3 ms (273.8~278.4) | 373.7 µs / 644.0 µs / 269.0 µs |
+| wireview, Broadcast | 18.8 ms (18.0~19.7) | 19.7 ms (18.4~20.5) | 18.0 ms (17.9~18.8) | 18.5 µs / 19.0 µs / 17.4 µs |
+| FastAPI (레이어 없음) | 12.0 ms (11.4~12.2) | 12.0 ms (11.4~12.2) | 12.0 ms (11.4~12.2) | 11.5 µs |
+
+```mermaid
+xychart-beta horizontal
+    title "스트림 항목 하나가 연결 1,000개에 닿기까지, 프로세스 1개 (선: 목표 40 ms)"
+    x-axis ["InMemory: 알림", "Redis: 알림", "NATS: 알림", "InMemory: Broadcast", "Redis: Broadcast", "NATS: Broadcast", "FastAPI"]
+    y-axis "ms" 0 --> 817
+    bar [379.4, 742.6, 276.3, 18.8, 19.7, 18.0, 12.0]
+    line [40, 40, 40, 40, 40, 40, 40]
+```
+
+### 11-4. 재현
+
+```console
+uv run --with fastapi python -m bench.compare_fastapi.stream_fanout          # 결과 JSON을 bench/results/에
+uv run python -m bench.compare_fastapi.stream_fanout --facts                 # 문서가 인용하는 숫자·표·차트
+```
+
+redis-server와 nats-server는 드라이버가 띄우고 끝에 끈다. 문서의 숫자·표·차트가 결과와 같은지는
+`tests/test_bench_stream_fanout.py`가 본다.

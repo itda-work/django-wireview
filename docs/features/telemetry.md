@@ -55,6 +55,7 @@ telemetry.disable()
 | `connection_closed` | 그 세션이 끝났을 때(소켓이 닫혔을 때) | 세션 클래스 |
 | `join_rejected` | 소켓이나 join이 거절됐을 때 | 세션 클래스 |
 | `publish_failed` | 채널 레이어가 발행이나 세션 전송을 거부했을 때 | 브로커 클래스(`ChannelsBroker`) |
+| `broadcast_overflowed` | `Broadcast` 패치가 연결에 쌓여 소켓을 닫았을 때 | 세션 클래스 |
 
 ### 구간 시그널
 
@@ -73,11 +74,11 @@ telemetry.disable()
 | `event_handled` | `component_id`, `component_name`, `event` (핸들러 이름). `payload_size`는 핸들러 인자 크기 |
 | `component_rendered` | `component_id`, `component_name`, `live` (WebSocket 렌더면 `True`, HTTP 최초 렌더면 `False`). `payload_size`는 렌더된 HTML 크기 |
 | `diff_computed` | `component_id`, `component_name`, `changed` (보낼 diff가 있으면 `True`). `payload_size`는 diff 페이로드 크기이고 `changed`가 `False`면 `None` |
-| `broadcast_published` | `topic`. `payload_size`는 발행 메시지 크기 |
+| `broadcast_published` | `topic`, `kind`(발행한 메시지의 종류: `"notification"`, `"model_mutation"`, `send_to()`에 준 다른 type, [`Broadcast`](./broadcast.md)면 `"patch"`). `payload_size`는 발행 메시지 크기 |
 
 ### 이벤트 시그널
 
-아래 네 개는 일어난 일을 알린다. `duration_ms`·`payload_size`·`error` 공통 키가 없고 자기 키만 싣는다.
+아래 다섯 개는 일어난 일을 알린다. `duration_ms`·`payload_size`·`error` 공통 키가 없고 자기 키만 싣는다.
 
 | 시그널 | 키워드 |
 |--------|--------|
@@ -85,6 +86,7 @@ telemetry.disable()
 | `connection_closed` | `connection_id`, `code`(닫힘 코드, 모르면 `None`), `duration_ms`(세션이 산 시간, 세션이 열린 뒤에 telemetry를 켰으면 `None`), `components`(닫힐 때 살아 있던 컴포넌트 수) |
 | `join_rejected` | `reason`(아래 표), `component_name`(`origin`이면 `None`), `detail`(로그와 같은 설명 문장) |
 | `publish_failed` | `kind`(`"publish"` 또는 `"send_to_session"`), `target`(토픽 또는 세션의 채널 이름), `error`(예외), `dropped`(아래) |
+| `broadcast_overflowed` | `connection_id`, `component_id`, `topic`, `limit`(기다릴 수 있는 프레임 수, 1,000). 한 연결에 쓰지 못한 `Broadcast` 프레임이 그보다 많아 소켓을 코드 1013으로 닫았다 — `joined()`의 작업을 기다리며 잡아 둔 것이거나, 소켓이 받지 못해 큐에 쌓인 것이다. 버리지 않고 닫으므로 페이지는 다시 연결해 목록을 바로잡는다([broadcast](./broadcast.md#순서와-유실)) |
 
 `connection_opened`는 Origin 검사를 통과하고 수락된 소켓에만 난다. 거절된 소켓은 `join_rejected(reason="origin")`
 하나만 남기고 `connection_closed`도 내지 않으므로, 둘을 빼면 열린 소켓 수가 된다.
