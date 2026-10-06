@@ -36,7 +36,6 @@ WIREVIEW = {
         # partial payload to the browser; rating's receivers read only product_id.
         senders={
             ("bookmarks", "Bookmark"): ("title", "url", "is_read"),
-            ("chat", "Message"): "__all__",
             ("dashboard", "Activity"): "__all__",
             ("dashboard", "Stat"): "__all__",
             ("notifications", "Notification"): "__all__",

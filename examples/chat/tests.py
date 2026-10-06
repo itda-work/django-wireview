@@ -2,7 +2,10 @@
 
 import pytest
 
+from wireview import mount
+
 from .live import XChatRoom, XMessageList
+from .models import Room
 
 
 class TestXMessageList:
@@ -20,10 +23,28 @@ class TestXMessageList:
         expected_item_template = f"{base}_item.html"
         assert expected_item_template == "chat/message_list_item.html"
 
-    @pytest.mark.unit
-    def test_has_message_subscription(self):
-        """XMessageList should subscribe to message model mutations."""
-        assert "chat.message" in XMessageList._meta.subscriptions
+    @pytest.mark.integration
+    @pytest.mark.asyncio
+    @pytest.mark.django_db(transaction=True)  # acreate commits on the worker thread
+    async def test_a_message_reaches_the_lists_of_its_room_only(self):
+        """send_message broadcasts the new message: every list of the room shows it, another room's does not."""
+        room = await Room.objects.acreate(name="lobby")
+        elsewhere = await Room.objects.acreate(name="elsewhere")
+        lists = [
+            await mount(XMessageList, id="a", room=room),
+            await mount(XMessageList, id="b", room=room),
+            await mount(XMessageList, id="c", room=elsewhere),
+        ]
+        chat = await mount(XChatRoom, room=room, username="ada")
+        for view in lists:
+            view.clear_messages()
+
+        await chat.call("send_message", content="hello <b>room</b>")
+
+        for view in lists[:2]:
+            assert "hello &lt;b&gt;room&lt;/b&gt;" in view.stream_html("messages")
+            assert [op["at"] for op in view.stream_ops("messages")] == [0]
+        assert lists[2].stream_ops() == []
 
 
 class TestXChatRoom:
@@ -31,10 +52,8 @@ class TestXChatRoom:
 
     @pytest.mark.unit
     def test_no_message_subscription(self):
-        """XChatRoom should NOT subscribe to message mutations (delegated to XMessageList)."""
-        # XChatRoom does not listen for new messages itself
-        subscriptions = XChatRoom._meta.subscriptions
-        assert "chat.message" not in subscriptions
+        """XChatRoom does not hear new messages itself: XMessageList does."""
+        assert not XChatRoom._meta.subscriptions
 
     @pytest.mark.unit
     def test_template_name(self):

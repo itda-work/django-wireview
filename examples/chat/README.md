@@ -4,7 +4,10 @@
 
 ## 무엇을 보여주나
 
-- `stream()` / `stream_insert()`로 메시지를 개별 렌더
+- `stream()`으로 메시지를 개별 렌더하고, 새 메시지는 `Broadcast`로 그 방의 모든 페이지에 넣는다 — 보내는 곳에서 한 번
+  렌더하고, 받는 페이지에서는 코드가 돌지 않는다([Broadcast](../../docs/features/broadcast.md))
+- 목록은 DOM에서 최신이 앞이고 `flex-direction: column-reverse`로 아래부터 그린다. 새 메시지를 `at=0`에 넣으면
+  페이지마다 스크롤 명령 없이 맨 아래에 붙어 있다
 - `PresenceMixin`, `PresenceTrackerMixin`으로 접속자·타이핑 표시
 - 메시지 목록과 입력창을 분리해 구독 범위를 좁힌다
 
