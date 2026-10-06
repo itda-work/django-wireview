@@ -7,12 +7,13 @@ the browser reported no violation (#90, docs/design/csp-event-binding.md).
 
 import asyncio
 
-from wireview import JS, Component
+from wireview import JS, Broadcast, Component
 
 
 class CspProbe(Component):
     class Meta:
         template_name = "cspprobe/probe.html"
+        subscriptions = {"cspprobe"}
 
     count: int = 0
     first: str = ""
@@ -33,6 +34,11 @@ class CspProbe(Component):
 
     async def increment(self, **_rest):
         self.count += 1
+
+    async def broadcast_note(self, **_rest):
+        """An item rendered once by a Broadcast (#178): its binding works as one the page rendered."""
+        note = {"pk": 1, "text": "from a broadcast"}
+        await Broadcast(CspProbe, "cspprobe").stream_insert("notes", note, dom_id=lambda n: f"notes-{n['pk']}").asend()
 
     # Events send every named input of the component along; the handlers take the one they want.
     async def set_first(self, first: str = "", **_rest):

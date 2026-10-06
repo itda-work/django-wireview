@@ -1,0 +1,1 @@
+{% load wireview %}<li data-testid="item">{{ item.text }} <button data-testid="remove-{{ item.pk }}" {% on "click" "remove" pk=item.pk %}>x</button></li>

@@ -1,0 +1,14 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>broadcast probe</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    {% component "BroadcastFeed" id="feed" %}
+    {% component "BroadcastLookalike" id="lookalike" %}
+    {% if failing %}{% component "BroadcastFailing" id="failing" %}{% endif %}
+  </body>
+</html>

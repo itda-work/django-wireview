@@ -36,4 +36,6 @@
   <button type="button" {% upload_button "files" %} data-testid="pick">pick</button>
   {% upload_input "files" data_testid="file-input" %}
   <span data-testid="received">{{ this.received }}</span>
+  <button data-testid="broadcast-note" {% on "click" "broadcast_note" %}>note</button>
+  <ul wire-stream="notes"></ul>
 </div>

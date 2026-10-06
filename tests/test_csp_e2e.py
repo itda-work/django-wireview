@@ -122,6 +122,11 @@ def test_every_binding_works_under_a_strict_policy(page, server):
     )
     expect_text(by(page, "received"), "note.txt:12")
 
+    # A binding in an item a Broadcast rendered once for every subscriber (#178)
+    by(page, "broadcast-note").click()
+    by(page, "note").click()
+    expect_text(by(page, "count"), "2")
+
     assert page.evaluate("window.__violations") == []
 
     # Control: the policy is enforced, so an inline handler would have been refused.
