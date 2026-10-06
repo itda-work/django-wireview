@@ -149,11 +149,11 @@ def test_the_fan_out_probes_see_the_shared_board(tmp_path):
     ):
         assert summary["calls"].get(call, 0) >= 3, f"the probe on {call} saw nothing: {summary['calls']}"
     # One render for the clicker's event and one for the broadcast, whatever the connections:
-    # its token signed in that trip, every other connection's in a trip of its own, off the loop
+    # its token signed in that trip, the other connections' in trips they share, off the loop
     assert summary["calls"]["worker.template render"] == 2
     assert summary["calls"]["worker.sign_state"] == 2
     assert summary["calls"]["worker.sign_state (taker's trip)"] == 2
-    assert summary["calls"]["loop.await sign trip (wall)"] == 2
+    assert 1 <= summary["calls"]["loop.await sign trip (wall)"] <= 2
     assert "loop.sign_state" not in summary["calls"]
     assert summary["calls"]["loop.shared: parse"] == 2
     for label, used, _wall in fanout_profile.stages(summary, "wireview-shared"):

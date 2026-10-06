@@ -464,6 +464,7 @@ class _Store:
         self.messages: OrderedDict[str, _Message] = OrderedDict()
         self.size = 0
         self.renders = 0
+        self.signer = _Signer()
 
     def claim(self, message: str, key: tuple[t.Any, ...]) -> tuple[_Message, asyncio.Future[t.Any], bool]:
         """The future render for ``key`` in ``message``, and whether the caller is to render it."""
@@ -499,6 +500,62 @@ class _Store:
         while self.messages and (self.size > KEEP_BYTES or self.renders > KEEP_RENDERS):
             oldest, entry = next(iter(self.messages.items()))
             self.forget(oldest, entry)
+
+
+class _Signer:
+    """Signs the tokens of the connections that take a render, off the loop, in as few trips as come.
+
+    Each taker asks for its own component's token. One trip signs every token
+    asked for meanwhile, and the next trip those asked for during it: a trip
+    per taker cost more on the loop (scheduling it, waking the worker) than the
+    signature itself.
+    """
+
+    def __init__(self) -> None:
+        self.pending: list[tuple[Component, asyncio.Future[str]]] = []
+        self.task: asyncio.Task[None] | None = None
+
+    async def sign(self, component: Component) -> str:
+        future: asyncio.Future[str] = asyncio.get_running_loop().create_future()
+        self.pending.append((component, future))
+        if self.task is None:
+            self.task = asyncio.get_running_loop().create_task(self._drain())
+        return await future
+
+    async def _drain(self) -> None:
+        batch: list[tuple[Component, asyncio.Future[str]]] = []
+        try:
+            while self.pending:
+                batch, self.pending = self.pending, []
+                signed = await db(_sign_each)([component for component, _ in batch])
+                for (_, future), (token, error) in zip(batch, signed, strict=True):
+                    if not future.done():  # its connection went meanwhile
+                        if error is None:
+                            future.set_result(t.cast(str, token))
+                        else:
+                            future.set_exception(error)
+                batch = []
+        except BaseException as error:  # the trip failed, or the loop is closing: nobody is left waiting
+            for _, future in [*batch, *self.pending]:
+                if not future.done():
+                    future.set_exception(error if isinstance(error, Exception) else asyncio.CancelledError())
+            self.pending = []
+            raise
+        finally:
+            self.task = None
+
+
+def _sign_each(components: list[Component]) -> list[tuple[str | None, Exception | None]]:
+    """Each component's token, or what signing it raised: one connection's failure is its own."""
+    from .state import sign_state
+
+    signed: list[tuple[str | None, Exception | None]] = []
+    for component in components:
+        try:
+            signed.append((sign_state(component), None))
+        except Exception as error:
+            signed.append((None, error))
+    return signed
 
 
 _stores: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _Store] = weakref.WeakKeyDictionary()
@@ -573,9 +630,7 @@ async def _render_for(
             _compare(component, taken, own[0] if own is not None else None)
             token = own[1] if own is not None else None
         elif taken.state_path is not None:
-            from .state import sign_state
-
-            token = await db(sign_state)(component)
+            token = await store.signer.sign(component)
         # Drawn as a render of its own would have: what reads this goes the same way
         wire.template_evaluated = True
         return taken, token

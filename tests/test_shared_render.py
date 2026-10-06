@@ -1130,3 +1130,48 @@ def test_the_system_check_reads_filter_arguments_and_tag_variables():
     assert "request" in found[ShFilterArg].msg
     assert "user" in found[ShFirstOf].msg
     assert ShIfInclude not in found, "an included template is the render's to catch"
+
+
+@pytest.mark.asyncio
+async def test_the_connections_that_take_a_render_sign_in_few_trips(monkeypatch):
+    """A trip per taker cost more on the loop than the signature: those waiting together sign in one."""
+    trips: list[int] = []
+    sign_each = shared_render._sign_each
+
+    def counted(components):
+        trips.append(len(components))
+        return sign_each(components)
+
+    monkeypatch.setattr(shared_render, "_sign_each", counted)
+    pages = [await Page.open() for _ in range(6)]
+    STORE["headline"] = "news"
+
+    await broadcast(pages, "m-1")
+
+    assert sum(trips) == 5, "every connection but the one that rendered"
+    assert len(trips) < 5
+    tokens = {_state_token(page) for page in pages}
+    assert all(unsign_envelope(token, "ShBoard") for token in tokens)
+
+
+@pytest.mark.asyncio
+async def test_a_token_that_fails_to_sign_fails_its_own_connection(monkeypatch):
+    from wireview.core import state
+
+    pages = [await Page.open() for _ in range(3)]
+    failing = pages[2].component
+    sign = state.sign_state
+
+    def sign_state(component):
+        if component is failing:
+            raise RuntimeError("this one cannot be signed")
+        return sign(component)
+
+    monkeypatch.setattr(state, "sign_state", sign_state)
+    STORE["headline"] = "news"
+
+    await broadcast(pages, "m-1")
+
+    errors = [page for page in pages if any(command == "error" for command, _ in page.outbound.commands)]
+    assert errors == [pages[2]]
+    assert all(page.outbound.renders()[0]["diff"] == {"1": "news"} for page in pages[:2])

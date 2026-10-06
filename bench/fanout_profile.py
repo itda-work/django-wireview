@@ -300,7 +300,7 @@ def _patch_wireview() -> None:
     import wireview.core.shared_render as shared
 
     shared.key = _timed("shared: key", shared.key)
-    # A connection that takes the render signs its token in a trip of its own, off the loop:
+    # The connections that take the render sign their tokens off the loop, in trips they share:
     # the sign_state that module looks up at the call, apart from the template's in the render
     shared.db = timed_trips("await sign trip (wall)", shared.db)
     state.sign_state = _timed("sign_state (taker's trip)", state.sign_state)
@@ -677,7 +677,7 @@ def stages(summary: dict[str, t.Any], name: str) -> list[tuple[str, float, float
             row("worker: 컨텍스트 읽기 (_collect_context)", "worker", "collect_context"),
             row("worker: 템플릿 렌더 (서명 제외)", "worker", "template render", ("sign_state",)),
             row("worker: 렌더한 연결의 data-state 서명 (렌더 트립 안)", "worker", "sign_state"),
-            row("worker: 받은 연결의 data-state 서명 (서명 트립)", "worker", "sign_state (taker's trip)"),
+            row("worker: 받은 연결들의 data-state 서명 (함께 쓰는 서명 트립)", "worker", "sign_state (taker's trip)"),
             row(
                 "worker: sync_to_async 트립 (스레드 쪽 나머지)",
                 "worker",
