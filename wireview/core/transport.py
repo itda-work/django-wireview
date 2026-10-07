@@ -266,7 +266,10 @@ class PatchHub:
         return set(self._joined)
 
     async def join(self, topic: str, key: t.Any, receiver: t.Callable[[Message], None]) -> None:
-        """Hand ``topic``'s patches to ``receiver`` (one per ``key``) from when this returns."""
+        """Hand ``topic``'s patches to ``receiver`` (one per ``key``) from when this returns.
+
+        One join of a ``key`` at a time: a session settles its topics in turn.
+        """
         receivers = self._receivers.setdefault(topic, {})
         previous = receivers.get(key)
         receivers[key] = receiver

@@ -58,10 +58,12 @@ WATCHED_NAMES = ("this", "user", "request", "perms", "csrf_token")
 #: (``WireviewSession._take_patch``).
 QUEUE_LIMIT = 1000
 
-#: How many seconds frames stay held once the mail that lets them through is
-#: on its way through the channel layer. That mail comes in milliseconds; one a
-#: full layer dropped would hold them for good, so past this they are written
-#: anyway, with a warning (``WireviewSession._hold_expired``).
+#: How many seconds frames stay held once the mail that lets them through -- a
+#: stream reset, a join's release -- is on its way through the channel layer
+#: and the connection has nothing else to handle. That mail comes in
+#: milliseconds; past this it was dropped (a full layer), and the frames are
+#: not written out of order: the connection is closed and its page joins again
+#: (``WireviewSession._hold_expired``).
 HOLD_SECONDS = 10.0
 
 #: What a frame holds where the component id goes until it is cut in two.
@@ -79,13 +81,15 @@ class Gate(t.NamedTuple):
     A reset reaches the page through the connection's own channel, later than a
     patch, which is written as it comes: a patch written first would be wiped.
     ``hold`` holds the component's patches from before the reset reads its
-    list and returns a token for it, or None when nothing is held;
-    ``let_through`` gives the token back once the reset is sent, and the
-    patches go out behind it when no other reset holds them.
+    list and returns a token for it, or None when nothing is held. The reset
+    carries the token (``send_stream_op(hold=...)``) and lets it go where it
+    is written; the patches go out when no other token holds them.
+    ``let_through(component, token, sent)`` follows the reset: a token whose
+    reset was not sent (its read raised) goes at once.
     """
 
     hold: t.Callable[[Component], t.Awaitable[int | None]]
-    let_through: t.Callable[[Component, int], t.Awaitable[None]]
+    let_through: t.Callable[[Component, int, bool], t.Awaitable[None]]
 
 
 class BroadcastRenderError(ImproperlyConfigured):

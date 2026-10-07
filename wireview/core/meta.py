@@ -608,18 +608,20 @@ class WireviewMeta:
         # A LiveComponent a kept part names stays named in the pass's render, as on the page
         return keep_stale(html, reads.slots, self._last_rendered, first, lambda: marker.marker_context.skip(1))
 
-    async def send_stream_op(self, op: "StreamOp", owner: str | None = None) -> None:
+    async def send_stream_op(self, op: "StreamOp", owner: str | None = None, hold: int | None = None) -> None:
         """Send a stream operation to the client, on behalf of component ``owner``.
 
         The page looks for the ``wire-stream`` container inside the owner's element
         and not inside a component nested in it, so two components can name their
         streams alike. Without an owner it takes the first container of that name
-        on the page.
+        on the page. ``hold`` is the Broadcast hold token a reset lets go once it
+        is written (``WireviewSession.component_stream_op``); it does not reach the page.
         """
+        extra: dict[str, t.Any] = {} if hold is None else {"hold": hold}
         if owner is None:
-            await self.send("stream_op", **op.to_payload())
+            await self.send("stream_op", **op.to_payload(), **extra)
         else:
-            await self.send("stream_op", **op.to_payload(), id=owner)
+            await self.send("stream_op", **op.to_payload(), id=owner, **extra)
 
     async def send_upload_op(self, op: "UploadOp", owner: str) -> None:
         """Send an upload operation to the client, on behalf of component ``owner``.

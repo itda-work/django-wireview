@@ -205,6 +205,8 @@ class MockWireviewMeta(WireviewMeta):
 
     async def send(self, _command: str, **kwargs: t.Any) -> None:
         """Override to track messages instead of sending via WebSocket."""
+        # A reset's Broadcast hold token is the session's, not the page's (#178)
+        kwargs.pop("hold", None)
         self.sent_messages.append({"type": _command, **kwargs})
 
     async def send_to(self, _channel: str, _command: str, **kwargs: t.Any) -> None:
@@ -311,7 +313,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         self._held_tokens.add(token)
         return token
 
-    async def _let_reset_through(self, component: "Component", token: int) -> None:
+    async def _let_reset_through(self, component: "Component", token: int, sent: bool = True) -> None:
         if self._handling:
             self._released.append(token)
         else:

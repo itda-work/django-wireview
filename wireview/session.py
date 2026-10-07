@@ -104,7 +104,7 @@ class _Held:
     nothing.
     """
 
-    __slots__ = ("component", "frames", "tokens", "lifecycle", "expiries", "senders")
+    __slots__ = ("component", "frames", "tokens", "lifecycle", "expiries")
 
     def __init__(self, component: Component) -> None:
         self.component = component
@@ -112,16 +112,13 @@ class _Held:
         self.tokens: set[int] = set()
         # The token of the join's hold, until its release is sent (``_let_patches_through``)
         self.lifecycle: int | None = None
-        # A token's deadline, armed once its release mail is on its way to the channel
+        # A token's deadline, armed once the mail that lets it go is on its way to the channel
         self.expiries: dict[int, asyncio.TimerHandle] = {}
-        # The messages being handled when a token's release left: it waits behind them
-        self.senders: dict[int, frozenset[int]] = {}
 
     def drop(self) -> None:
         for expiry in self.expiries.values():
             expiry.cancel()
         self.expiries.clear()
-        self.senders.clear()
 
 
 class WireviewSession:
@@ -161,10 +158,9 @@ class WireviewSession:
 
     def _init_session_state(self) -> None:
         """The attributes a session has before ``start()``: what a bare instance in a test gets."""
-        # The messages the adapter is handling now, by number (WireviewConsumer.dispatch).
+        # How many messages the adapter is handling now (WireviewConsumer.dispatch).
         # The mail they sent is not handled before they end.
-        self._handling: set[int] = set()
-        self._messages = itertools.count(1)
+        self.handling: int = 0
         # When start() ran, for connection_closed's duration. Read only while
         # telemetry is on, so an unmeasured session reads no clock (#124).
         self._opened_at: float | None = None
@@ -225,20 +221,15 @@ class WireviewSession:
         """The adapter handles one message -- inbound or mail -- inside this.
 
         It handles them one at a time, so the mail a handler sends waits in the
-        channel until the handler returns: a Broadcast hold's deadline waits
-        for the message that sent its release (``_hold_expired``).
+        channel until the handler -- and whatever came before that mail -- is
+        done: a Broadcast hold's deadline waits while any message is handled
+        (``_hold_expired``).
         """
-        number = next(self._messages)
-        self._handling.add(number)
+        self.handling += 1
         try:
             yield
         finally:
-            self._handling.discard(number)
-
-    @property
-    def handling(self) -> int:
-        """How many messages the adapter is handling now."""
-        return len(self._handling)
+            self.handling -= 1
 
     async def start(self, *, session: SessionView, vsn: int = 0) -> None:
         """Begin: a fresh repository for this connection, and the login it stands on.
@@ -1140,7 +1131,7 @@ class WireviewSession:
             except Exception:
                 await self._crashed(component)
 
-    async def component_stream_op(self, op, stream, items, at, limit=0, id=None):
+    async def component_stream_op(self, op, stream, items, at, limit=0, id=None, hold=None):
         log.debug(f">>> STREAM {op.upper()} {stream}")
         payload = {"op": op, "stream": stream, "items": items, "at": at}
         if limit:
@@ -1149,6 +1140,10 @@ class WireviewSession:
             # The component whose element holds the container
             payload["id"] = id
         await self.send_command("stream_op", payload)
+        if hold is not None and id is not None and (component := self.repo.get(id)) is not None:
+            # The reset is written: the Broadcast patches held for it follow (#178)
+            self._discard_token(component, hold)
+            await self._patches_written()
 
     async def component_scroll_into_view(self, id, behavior, block, inline):
         log.debug(f">>> SCROLL-INTO-VIEW {id}")
@@ -1788,6 +1783,10 @@ class WireviewSession:
             hub = get_patch_hub()
             for topic in wanted - self._patch_topics:
                 await hub.join(topic, self, self._take_patch)
+                if self._patches_closed:
+                    # The connection stopped while this joined: nothing will leave it
+                    await hub.leave(topic, self)
+                    return
                 self._patch_topics = self._patch_topics | {topic}
             for topic in self._patch_topics - wanted if leave else ():
                 self._patch_topics = self._patch_topics - {topic}
@@ -1861,59 +1860,77 @@ class WireviewSession:
         token, held.lifecycle = held.lifecycle, None
         await self._send_release(component, token)
 
-    async def _let_reset_through(self, component: Component, token: int) -> None:
-        """``patches.Gate.let_through``: the reset that took ``token`` is sent."""
-        await self._send_release(component, token)
+    async def _let_reset_through(self, component: Component, token: int, sent: bool) -> None:
+        """``patches.Gate.let_through``: the reset that took ``token`` is sent, or never will be.
+
+        A sent reset carries the token and lets it go where it is written
+        (``component_stream_op``); this only arms its deadline.
+        """
+        if sent and component.wire.channel_name:
+            self._arm_when_sent(component, token)
+            return
+        # Not sent (its read raised), or sent through no channel: written already
+        self._discard_token(component, token)
+        await self._patches_written()
 
     async def _send_release(self, component: Component, token: int) -> None:
-        """Release ``token`` behind what ``component`` sent before, through the same channel.
-
-        A layer that drops the release (a full channel) would hold the frames
-        for good, so its token goes ``patches.HOLD_SECONDS`` after the mail
-        leaves for the channel all the same -- after, not when it is queued:
-        a ``joined()`` or ``update()`` queues its operations until its render
-        is out, however long that takes.
-        """
+        """Release the join's ``token`` behind what its ``joined()`` queued, through the same channel."""
         wire = component.wire
         if not wire.channel_name:
             # Nothing goes through a channel: what it sent went out already
             self._discard_token(component, token)
             await self._patches_written()
             return
+        self._arm_when_sent(component, token)
+        await wire.send("release_patches", id=component.id, instance=wire.instance, token=token)
+
+    def _arm_when_sent(self, component: Component, token: int) -> None:
+        """Arm ``token``'s deadline once the mail that lets it go leaves for the channel.
+
+        Not when it is queued: a ``joined()`` or ``update()`` queues its
+        operations until its render is out, however long that takes.
+        """
+        wire = component.wire
         if wire._pending_mode:
             wire.after_flush(lambda: self._arm_expiry(component, token))
         else:
             self._arm_expiry(component, token)
-        await wire.send("release_patches", id=component.id, instance=wire.instance, token=token)
 
     def _arm_expiry(self, component: Component, token: int) -> None:
         held = self._patch_held.get(id(component))
         if held is None or held.component is not component or token not in held.tokens:
             return
-        held.senders[token] = frozenset(self._handling)
         held.expiries[token] = asyncio.get_running_loop().call_later(
             patches.HOLD_SECONDS, self._hold_expired, held, token
         )
 
     def _hold_expired(self, held: _Held, token: int) -> None:
+        """The mail that lets ``token`` go has not been written in ``HOLD_SECONDS``.
+
+        While a message is handled it may be waiting behind it -- a handler still
+        running, another one the connection took first -- so the deadline counts
+        again. With nothing handled, it was dropped. Writing the frames now
+        could put them ahead of a reset that is late after all, which would
+        wipe them without a word; so the connection closes instead, as when
+        frames pile up (``_fell_behind``), and its page joins again with its
+        lists read afresh.
+        """
         if self._patch_held.get(id(held.component)) is not held or token not in held.tokens:
             return
-        if held.senders.get(token, frozenset()) & self._handling:
-            # The message that sent the release -- a handler still running --
-            # is being handled, and the release waits behind it in the channel.
-            # It is late, not lost: the deadline counts again. Other messages
-            # being handled do not hold it back (they may never stop coming).
+        if self.handling:
             held.expiries[token] = asyncio.get_running_loop().call_later(
                 patches.HOLD_SECONDS, self._hold_expired, held, token
             )
             return
         log.warning(
-            "Letting go of Broadcast patches held for %s (%s): what lets them through did not come in %ss",
+            "Closing connection %s: what lets the Broadcast patches held for %s (%s) through did not come in %ss",
+            self.connection_id,
             held.component._name,
             held.component.id,
             patches.HOLD_SECONDS,
         )
-        self._discard_token(held.component, token)
+        self._close_patches()
+        self._patch_closing = asyncio.ensure_future(self.close(code=1013))
 
     def _discard_token(self, component: Component, token: int) -> None:
         """``token`` is released; with the last one, the frames held go out."""
@@ -1921,7 +1938,6 @@ class WireviewSession:
         if held is None or held.component is not component or token not in held.tokens:
             return
         held.tokens.discard(token)
-        held.senders.pop(token, None)
         if (expiry := held.expiries.pop(token, None)) is not None:
             expiry.cancel()
         if not held.tokens:

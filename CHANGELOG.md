@@ -44,11 +44,11 @@ The django-reactor era changelog (2.x) is preserved in
   published, always, and it renders in `LANGUAGE_CODE` and the default time zone. `{% on %}` in it
   checks the handler on the target class. A component receives its patches from before its
   `joined()` and writes them after the operations `joined()` queued, and a `stream()` reset anywhere
-  else holds them from before it reads its list until the reset is written, each reset with a
-  release of its own, so a reset does not wipe an item committed after its read; frames whose
-  release a full channel dropped go out 10 seconds after it left for the channel and the
-  message that sent it was handled. A mounted component in `wireview.testing` keeps the same
-  order. `send()` publishes once the transaction commits. More than 1,000 frames waiting for one
+  else holds them from before it reads its list until that reset is written, so a reset does not
+  wipe an item committed after its read. When the reset (or a join's release) is not written 10
+  seconds after it left for the channel with no message being handled, a full channel dropped it:
+  the connection closes (1013) and the page joins again rather than write the frames out of order.
+  A mounted component in `wireview.testing` keeps the same order. `send()` publishes once the transaction commits. More than 1,000 frames waiting for one
   connection close it (1013, on servers whose socket writes wait) and emit the new
   `telemetry.broadcast_overflowed`. A mounted component in `wireview.testing` hears a Broadcast of
   its process. One item reaching 1,000 connections on one process takes 18.0 to 19.7 ms on the

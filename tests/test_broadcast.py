@@ -308,6 +308,32 @@ class BcBusy(BcFeed):
 BUSY = asyncio.Event()
 
 
+class BcBusyAfterTwo(BcFeed):
+    """Two resets; an item is published while the second reads. Then another handler keeps the connection busy."""
+
+    busy_running: t.ClassVar[bool] = False
+
+    class Meta:
+        subscriptions = {"bc-busy-after"}
+
+    async def refresh(self, **_rest):
+        await self.stream("items", [Post(1, "old")])
+
+        async def posts():
+            yield Post(1, "old")
+            await Broadcast(BcBusyAfterTwo, "bc-busy-after").stream_insert("items", Post(2, "new"), at=0).asend()
+            await eventually(lambda: _holding(self))
+
+        await self.stream("items", posts())
+        await self.push_event("finished")
+
+    async def busy(self, **_rest):
+        type(self).busy_running = True
+        await BUSY.wait()
+        type(self).busy_running = False
+        await self.push_event("idle")
+
+
 class BcPublishingFirst(BcFeed):
     """joined() publishes an item before it resets its list."""
 
@@ -762,32 +788,32 @@ async def test_a_mounted_component_lets_a_patch_out_after_its_handler_as_a_conne
 
 
 @pytest.mark.asyncio
-async def test_a_lost_release_lets_go_while_other_messages_keep_the_connection_busy(monkeypatch):
-    """Only the message that sent the release holds its deadline back: the others may never stop coming."""
+async def test_a_reset_late_behind_the_next_handler_is_waited_for(monkeypatch):
+    """The handler that sent the reset is done, the next one runs past the deadline: the reset is late, not lost."""
     monkeypatch.setattr(patches, "HOLD_SECONDS", 0.02)
     BUSY.clear()
     communicator = await _connect()
     try:
-        await _join(communicator, BcBusy, "busy")
-        send = WireviewMeta._do_send
-
-        async def dropping_releases(wire, command, **kwargs):
-            if command != "release_patches":
-                await send(wire, command, **kwargs)
-
-        monkeypatch.setattr(WireviewMeta, "_do_send", dropping_releases)
-        await _event(communicator, "busy", "refresh")
-        heard = await _until(communicator, _finished)
-        # A handler that is not done before the patch goes out
-        await _event(communicator, "busy", "busy")
-        heard += await _until(communicator, lambda m: m["command"] == "stream_op" and m["payload"]["op"] == "insert")
+        await _join(communicator, BcBusyAfterTwo, "late")
+        await _event(communicator, "late", "refresh")
+        # Taken before refresh's mail: it runs between refresh and its second reset
+        await _event(communicator, "late", "busy")
+        await eventually(lambda: BcBusyAfterTwo.busy_running)
+        await asyncio.sleep(patches.HOLD_SECONDS * 5)
         BUSY.set()
-        await _until(communicator, lambda m: m["command"] == "push_event" and m["payload"]["event"] == "idle")
+        events: set[str] = set()
+
+        def both(message: dict[str, t.Any]) -> bool:
+            if message["command"] == "push_event":
+                events.add(message["payload"]["event"])
+            return events >= {"idle", "finished"}
+
+        heard = await _until(communicator, both)
     finally:
         BUSY.set()
         await communicator.disconnect()
 
-    assert _stream_ops(heard) == [("reset", ["items-1"]), ("insert", ["items-2"])]
+    assert _stream_ops(heard) == [("reset", ["items-1"]), ("reset", ["items-1"]), ("insert", ["items-2"])]
 
 
 @pytest.mark.asyncio
@@ -997,28 +1023,31 @@ async def test_what_was_held_for_a_component_that_is_gone_is_not_written(hub):
 
 
 @pytest.mark.asyncio
-async def test_held_frames_go_out_when_what_lets_them_through_never_comes(hub, monkeypatch, caplog):
-    """A full channel may drop the release: the frames were held for good."""
-    monkeypatch.setattr(patches, "HOLD_SECONDS", 0.05)
-    session = await _joined_session(_Recording())
+async def test_a_connection_whose_release_never_comes_closes_rather_than_write_out_of_order(hub, monkeypatch, caplog):
+    """A full channel may drop the mail: written then, the frames could go ahead of a reset that is only late."""
+    monkeypatch.setattr(patches, "HOLD_SECONDS", 0.02)
+    closed: list[int | None] = []
+
+    class Closing(_Recording):
+        async def close(self, code=None):
+            closed.append(code)
+
+    session = await _joined_session(Closing())
     feed = session.repo.get("feed")
-    dropped: list[str] = []
-
-    async def send(command: str, **kwargs: t.Any) -> None:
-        dropped.append(command)
-
-    feed.wire.channel_name = "the-sessions-channel"
-    monkeypatch.setattr(feed.wire, "send", send)
+    mail = await _mailing(session, feed, monkeypatch)
     await session._hold_patches(feed)
     hub.dispatch(_message())
     await session._let_patches_through(feed)
-    assert dropped == ["release_patches"]
+    assert [command for command, _ in mail] == ["release_patches"]
+
+    # Handling a message, it waits
+    with session.handling_message():
+        await asyncio.sleep(patches.HOLD_SECONDS * 3)
+        assert closed == []
+    await eventually(lambda: closed)
+
+    assert closed == [1013]
     assert session.outbound.frames == []  # type: ignore[attr-defined]
-
-    written = await eventually(lambda: session.outbound.frames)  # type: ignore[attr-defined]
-
-    assert [json.loads(frame)["payload"]["component_id"] for frame in written] == ["feed"]
-    assert session._patch_held == {}
     assert "did not come in" in caplog.text
 
 
@@ -1077,8 +1106,8 @@ async def _deliver(session: WireviewSession, mail: list[tuple[str, dict[str, t.A
 
 
 @pytest.mark.asyncio
-async def test_a_release_lets_go_of_its_own_token_only(hub, monkeypatch):
-    """A release names its token: a late one, or one sent twice, lets out nothing of a later hold."""
+async def test_a_reset_lets_go_of_its_own_token_only(hub, monkeypatch):
+    """A reset carries its token: written again, or late, it lets out nothing of a later hold."""
     session = await _joined_session(_Recording())
     feed = session.repo.get("feed")
     mail = await _mailing(session, feed, monkeypatch)
@@ -1088,11 +1117,8 @@ async def test_a_release_lets_go_of_its_own_token_only(hub, monkeypatch):
     await feed.stream("items", [])
     await feed.wire.flush_pending()
     await session._let_patches_through(feed)
-    # And one whose release did not come in time
-    await feed.stream("items", [])
-    expired = session._patch_held[id(feed)]
-    session._hold_expired(expired, max(expired.tokens))
     first = list(mail)
+    assert [command for command, _ in first] == ["stream_op"]
     await _deliver(session, first)
     assert session._patch_held == {}
 
@@ -1154,21 +1180,76 @@ async def test_a_component_that_left_holds_nothing_and_hears_no_topic_again(hub,
 
 
 @pytest.mark.asyncio
-async def test_a_pending_release_that_never_comes_lets_go_once_it_was_sent(hub, monkeypatch):
+async def test_a_pending_reset_starts_its_deadline_once_it_was_sent(hub, monkeypatch):
     monkeypatch.setattr(patches, "HOLD_SECONDS", 0.02)
-    session = await _joined_session(_Recording())
+    closed: list[int | None] = []
+
+    class Closing(_Recording):
+        async def close(self, code=None):
+            closed.append(code)
+
+    session = await _joined_session(Closing())
     feed = session.repo.get("feed")
     await _mailing(session, feed, monkeypatch)
     feed.wire.enter_pending_mode()
     await feed.stream("items", [])
     hub.dispatch(_message())
-    assert session._patch_held[id(feed)].expiries == {}
+    await asyncio.sleep(patches.HOLD_SECONDS * 3)
+    assert session._patch_held[id(feed)].expiries == {} and closed == []
 
     # Sent, and never delivered
     await feed.wire.flush_pending()
 
-    await eventually(lambda: _posted(session) == 1)
-    assert session._patch_held == {}
+    await eventually(lambda: closed)
+    assert _posted(session) == 0
+
+
+@pytest.mark.asyncio
+async def test_a_reset_whose_read_raised_lets_its_hold_go(hub, monkeypatch):
+    session = await _joined_session(_Recording())
+    feed = session.repo.get("feed")
+    mail = await _mailing(session, feed, monkeypatch)
+
+    async def posts():
+        yield Post(1, "old")
+        raise ValueError("the read failed")
+
+    hub.dispatch(_message())
+    await session._patches_written()
+    assert _posted(session) == 1
+    feed.wire.channel_name = "the-sessions-channel"
+    with pytest.raises(ValueError):
+        await feed.stream("items", posts())
+    hub.dispatch(_message())
+    await session._patches_written()
+
+    assert mail == [] and session._patch_held == {}
+    assert _posted(session) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_subscription_that_ends_after_its_connection_stopped_leaves_no_receiver(hub, monkeypatch):
+    session = await _joined_session(_Recording())
+    feed = session.repo.get("feed")
+    await _mailing(session, feed, monkeypatch)
+    adding, proceed = asyncio.Event(), asyncio.Event()
+    group_add = hub._layer.group_add
+
+    async def slow_group_add(group: str, channel: str) -> None:
+        if group == "wireview.patch.bc-late":
+            adding.set()
+            await proceed.wait()
+        await group_add(group, channel)
+
+    hub._layer.group_add = slow_group_add
+    monkeypatch.setattr(BcFeed, "get_subscriptions", lambda self: {"bc-late"})
+    resetting = asyncio.ensure_future(feed.stream("items", []))
+    await adding.wait()
+    await session.stop(1000)
+    proceed.set()
+    await resetting
+
+    assert session._patch_topics == set() and hub._receivers == {}
 
 
 @pytest.mark.asyncio
