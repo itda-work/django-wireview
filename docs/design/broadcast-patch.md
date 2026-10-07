@@ -399,7 +399,7 @@ reset 동안 온 패치까지 내보냈고(`reset → insert → reset`), 만료
 - reset 메일(`stream_op`)이 토큰을 싣고(`hold`, 페이지에는 가지 않는다), 세션은 그 reset을 소켓에 쓴 직후 토큰을 놓는다.
   "쓰였다"를 추정하지 않고 본다. join의 lifecycle 토큰만 `joined()`의 작업 뒤를 따르는 `release_patches` 메일로 놓는다.
 - 기한이 지나면 패치를 쓰지 않는다. 처리 중인 메시지가 있으면(`WireviewConsumer.dispatch` → `handling_message`) 메일이
-  그 뒤에 있을 수 있으므로 기한을 다시 건다. 없으면 메일이 버려진 것이고, 연결을 1013으로 닫는다. reset이 버려진 화면은
+  그 뒤에 있을 수 있으므로 기한을 다시 건다. 없으면 늦음과 유실을 가를 수 없으므로 연결을 1013으로 닫는다. reset이 버려진 화면은
   이미 틀렸고, 다시 join하면 목록을 다시 읽는다. 순서를 어기며 쓰는 일은 없다.
 - 기한은 메일이 **채널로 나갈 때**부터 잰다. pending 모드(`joined()`, LiveComponent `update()`)의 메일은 렌더 뒤
   `flush_pending`까지 큐에 있으므로 `WireviewMeta.after_flush`로 그때 건다(재검수 R2).
