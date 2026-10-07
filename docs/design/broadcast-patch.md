@@ -397,6 +397,9 @@ reset 동안 온 패치까지 내보냈고(`reset → insert → reset`), 만료
 맞기 때문이다. 기한은 메일이 **채널로 나갈 때**부터 잰다. 잡을 때부터 재면 오래 걸리는 `joined()`가 기한을 넘겨 reset
 전에 풀린다. pending 모드(`joined()`, LiveComponent `update()`)의 메일은 렌더 뒤 `flush_pending`까지 큐에 있으므로
 `WireviewMeta.after_flush`로 그때 건다 — 큐에 넣을 때 건 첫 수정은 렌더가 길면 reset보다 먼저 풀렸다(재검수 R2).
+채널로 나간 뒤에도, 메일을 보낸 핸들러가 아직 돌고 있으면 컨슈머는 그 메일을 처리하지 못한다(3차 검수 S1). 그래서 기한이
+지났을 때 컨슈머가 메시지를 처리하는 중이면(`WireviewConsumer.dispatch`가 세는 `handling`) 놓지 않고 기한을 다시 건다.
+놓기 메일이 늦는 것과 버려진 것을 가르는 유일한 신호는 "처리할 메시지가 없는데도 오지 않는다"이다.
 
 ### 4-4. 유실과 순서
 

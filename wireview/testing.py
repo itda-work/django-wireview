@@ -22,6 +22,7 @@ Example:
 
 from __future__ import annotations
 
+import contextlib
 import itertools
 import json
 import typing as t
@@ -287,7 +288,23 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         self._held_frames: list[dict[str, t.Any]] = []
         self._held_tokens: set[int] = set()
         self._tokens = itertools.count(1)
+        # A connection handles the release behind a reset only once the handler
+        # that sent it returned: the tokens let go meanwhile wait for that
+        self._handling = 0
+        self._released: list[int] = []
         wire.patch_gate = patches.Gate(self._hold_for_reset, self._let_reset_through)
+
+    @contextlib.asynccontextmanager
+    async def _handling_message(self) -> t.AsyncIterator[None]:
+        self._handling += 1
+        try:
+            yield
+        finally:
+            self._handling -= 1
+            if not self._handling:
+                released, self._released = self._released, []
+                for token in released:
+                    self._let_go(token)
 
     async def _hold_for_reset(self, component: "Component") -> int | None:
         token = next(self._tokens)
@@ -295,6 +312,12 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         return token
 
     async def _let_reset_through(self, component: "Component", token: int) -> None:
+        if self._handling:
+            self._released.append(token)
+        else:
+            self._let_go(token)
+
+    def _let_go(self, token: int) -> None:
         self._held_tokens.discard(token)
         if not self._held_tokens:
             held, self._held_frames = self._held_frames, []
@@ -734,12 +757,13 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
 
         # Arguments the handler does not take are dropped, as they are for an event
         # that carries a form's other fields.
-        result = handler(**filter_parameters(handler, kwargs))
-        # Handle async handlers
-        import inspect
+        async with self._handling_message():
+            result = handler(**filter_parameters(handler, kwargs))
+            # Handle async handlers
+            import inspect
 
-        if inspect.iscoroutine(result):
-            result = await result
+            if inspect.iscoroutine(result):
+                result = await result
         await self._update_subscriptions()
         return result
 
@@ -914,16 +938,18 @@ async def _mount(
     # way the server would: with the redirect a hook queued, or with nothing. The
     # component is still returned so the test can assert on what the hook did.
     if await component._mount(param_map, session_view):
-        # Call joined() if it exists and is async
-        if hasattr(component, "joined"):
-            result = component.joined()
-            if hasattr(result, "__await__"):
-                await result
-        # Then, as the join does when the page's URL has a query, params_changed
-        # with it (WireviewSession.command_join). A helper that skipped it had a
-        # component mounted with params= miss what every page load runs.
-        if param_map:
-            await component._handle_params(dict(param_map), f"?{repo.get_query_string()}")
+        # One message, as the join is: its resets' Broadcast patches come after it
+        async with mounted._handling_message():
+            # Call joined() if it exists and is async
+            if hasattr(component, "joined"):
+                result = component.joined()
+                if hasattr(result, "__await__"):
+                    await result
+            # Then, as the join does when the page's URL has a query, params_changed
+            # with it (WireviewSession.command_join). A helper that skipped it had a
+            # component mounted with params= miss what every page load runs.
+            if param_map:
+                await component._handle_params(dict(param_map), f"?{repo.get_query_string()}")
         await mounted._update_subscriptions()
     else:
         wire.freeze()

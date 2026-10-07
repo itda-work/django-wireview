@@ -268,7 +268,17 @@ class PatchHub:
     async def join(self, topic: str, key: t.Any, receiver: t.Callable[[Message], None]) -> None:
         """Hand ``topic``'s patches to ``receiver`` (one per ``key``) from when this returns."""
         self._receivers.setdefault(topic, {})[key] = receiver
-        await self._settle(topic)
+        try:
+            await self._settle(topic)
+        except BaseException:
+            # Not joined (the layer raised, the caller was cancelled): the caller
+            # does not count it as heard and will not leave it
+            receivers = self._receivers.get(topic)
+            if receivers is not None and receivers.get(key) is receiver:
+                del receivers[key]
+                if not receivers:
+                    del self._receivers[topic]
+            raise
 
     async def leave(self, topic: str, key: t.Any) -> None:
         receivers = self._receivers.get(topic)

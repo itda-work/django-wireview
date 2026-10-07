@@ -2,6 +2,7 @@
 
 import asyncio
 import collections
+import contextlib
 import inspect
 import itertools
 import logging
@@ -157,6 +158,9 @@ class WireviewSession:
 
     def _init_session_state(self) -> None:
         """The attributes a session has before ``start()``: what a bare instance in a test gets."""
+        # How many messages the adapter is handling now (WireviewConsumer.dispatch).
+        # The mail they sent is not handled before they end.
+        self.handling: int = 0
         # When start() ran, for connection_closed's duration. Read only while
         # telemetry is on, so an unmeasured session reads no clock (#124).
         self._opened_at: float | None = None
@@ -210,6 +214,20 @@ class WireviewSession:
     @property
     def user(self):
         return self._user
+
+    @contextlib.contextmanager
+    def handling_message(self) -> t.Iterator[None]:
+        """The adapter handles one message -- inbound or mail -- inside this.
+
+        It handles them one at a time, so the mail a handler sends waits in the
+        channel until the handler returns: a Broadcast hold's deadline waits
+        with it (``_hold_expired``).
+        """
+        self.handling += 1
+        try:
+            yield
+        finally:
+            self.handling -= 1
 
     async def start(self, *, session: SessionView, vsn: int = 0) -> None:
         """Begin: a fresh repository for this connection, and the login it stands on.
@@ -275,8 +293,9 @@ class WireviewSession:
             await hub.leave(topic, self)
         if self._patch_writer is not None:
             self._patch_writer.cancel()
-        self._close_patches()
         self._init_patches()
+        # Until start(): a kept reference to one of its components holds nothing
+        self._close_patches()
         if self._auth_topic:
             await self.outbound.unsubscribe(self._auth_topic)
             self._auth_topic = ""
@@ -376,6 +395,8 @@ class WireviewSession:
         self.repo.join_failed(id, removed)
         await self._call_leaving(removed)
         self._release_uploads(removed)
+        # Its joined() may have held patches; nothing will let them through
+        self._forget_holds()
         if self.repo.vsn < ERRORS_SINCE:
             await self.component_remove(id)
             return
@@ -1718,12 +1739,15 @@ class WireviewSession:
             await self.outbound.unsubscribe(channel)
         self.subscriptions = subscriptions
         self._patch_book = book
-        # A held component that is gone -- its join failed, it left -- is never let through
+        self._forget_holds()
+        await self._settle_patch_topics(subscriptions)
+
+    def _forget_holds(self) -> None:
+        """A held component that is gone -- its join failed, it left -- is never let through."""
         for key, held in list(self._patch_held.items()):
             if self.repo.get(held.component.id) is not held.component:
                 held.drop()
                 del self._patch_held[key]
-        await self._settle_patch_topics(subscriptions)
 
     # Broadcast patches (#178, docs/design/broadcast-patch.md)
     #
@@ -1849,6 +1873,15 @@ class WireviewSession:
 
     def _hold_expired(self, held: _Held, token: int) -> None:
         if self._patch_held.get(id(held.component)) is not held or token not in held.tokens:
+            return
+        if self.handling:
+            # A message is being handled -- the one that sent the release, maybe,
+            # a handler still running -- and the release waits behind it in the
+            # channel. It has not been dropped; the deadline counts from when
+            # nothing is being handled.
+            held.expiries[token] = asyncio.get_running_loop().call_later(
+                patches.HOLD_SECONDS, self._hold_expired, held, token
+            )
             return
         log.warning(
             "Letting go of Broadcast patches held for %s (%s): what lets them through did not come in %ss",

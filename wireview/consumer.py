@@ -71,5 +71,10 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
             await self.stop(code)
         await super().disconnect(code)
 
+    async def dispatch(self, message):
+        # Where one message ends is the adapter's to know (#178)
+        with self.handling_message():
+            await super().dispatch(message)
+
     async def receive_json(self, content: dict, **kwargs) -> None:  # type: ignore[override]
         await self.handle_message(content)

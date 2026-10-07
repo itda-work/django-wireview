@@ -254,6 +254,46 @@ class BcUpdatingHost(Component):
         return _template(cls, template_name)
 
 
+class BcSlowHandler(BcFeed):
+    """Resets its list, then keeps working in the same handler past the hold's deadline."""
+
+    class Meta:
+        subscriptions = {"bc-slow"}
+
+    async def refresh(self, **_rest):
+        await self.stream("items", [Post(1, "old")])
+        await Broadcast(BcSlowHandler, "bc-slow").stream_insert("items", Post(2, "new"), at=0).asend()
+        await eventually(lambda: _holding(self))
+        # The reset and its release wait in the channel until this returns
+        await asyncio.sleep(patches.HOLD_SECONDS * 5)
+        await self.push_event("finished")
+
+
+class BcTwiceReading(BcFeed):
+    """An item is published while the first of two resets reads its list."""
+
+    class Meta:
+        subscriptions = {"bc-twice-reading"}
+
+    async def refresh(self, **_rest):
+        async def posts():
+            yield Post(1, "old")
+            await Broadcast(BcTwiceReading, "bc-twice-reading").stream_insert("items", Post(2, "new"), at=0).asend()
+            session = self.wire.patch_gate.hold.__self__  # type: ignore[union-attr]
+            if isinstance(session, WireviewSession):
+                await eventually(lambda: _holding(self))
+
+        await self.stream("items", posts())
+        await self.stream("items", [Post(1, "old")])
+        await self.push_event("finished")
+
+
+class BcResetThenFail(BcFeed):
+    async def joined(self):
+        await self.stream("items", [])
+        raise RuntimeError("joined went wrong after its reset")
+
+
 class BcFailing(BcFeed):
     async def joined(self):
         raise RuntimeError("joined went wrong")
@@ -657,6 +697,39 @@ async def test_the_deadline_starts_when_a_pending_reset_is_sent_not_when_it_is_q
     assert _stream_ops(heard) == [("reset", ["items-1"]), ("insert", ["items-2"])]
 
 
+@pytest.mark.asyncio
+async def test_a_handler_that_runs_past_the_deadline_does_not_let_its_patch_out_first(monkeypatch):
+    """The release waits behind the handler in the channel: it is late, not lost."""
+    monkeypatch.setattr(patches, "HOLD_SECONDS", 0.02)
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcSlowHandler, "slow")
+        await _event(communicator, "slow", "refresh")
+        heard = await _until(communicator, _finished)
+    finally:
+        await communicator.disconnect()
+
+    assert _stream_ops(heard) == [("reset", ["items-1"]), ("insert", ["items-2"])]
+
+
+@pytest.mark.asyncio
+async def test_a_mounted_component_lets_a_patch_out_after_its_handler_as_a_connection_does():
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcTwiceReading, "twice")
+        await _event(communicator, "twice", "refresh")
+        connection = _stream_ops(await _until(communicator, _finished))
+    finally:
+        await communicator.disconnect()
+    view = await mount(BcTwiceReading, id="twice")
+    view.clear_messages()
+
+    await view.call("refresh")
+
+    assert connection == [("reset", ["items-1"]), ("reset", ["items-1"]), ("insert", ["items-2"])]
+    assert [(op["op"], [item["id"] for item in op["items"]]) for op in view.stream_ops("items")] == connection
+
+
 class _Layer:
     """The part of a channel layer a ``PatchHub`` uses, counting what it is asked."""
 
@@ -1004,6 +1077,70 @@ async def test_a_component_that_left_holds_nothing_and_hears_no_topic_again(hub,
     await _deliver(session, mail)
 
     assert hub.topics == set() and session._patch_held == {}
+
+
+@pytest.mark.asyncio
+async def test_a_pending_release_that_never_comes_lets_go_once_it_was_sent(hub, monkeypatch):
+    monkeypatch.setattr(patches, "HOLD_SECONDS", 0.02)
+    session = await _joined_session(_Recording())
+    feed = session.repo.get("feed")
+    await _mailing(session, feed, monkeypatch)
+    feed.wire.enter_pending_mode()
+    await feed.stream("items", [])
+    hub.dispatch(_message())
+    assert session._patch_held[id(feed)].expiries == {}
+
+    # Sent, and never delivered
+    await feed.wire.flush_pending()
+
+    await eventually(lambda: _posted(session) == 1)
+    assert session._patch_held == {}
+
+
+@pytest.mark.asyncio
+async def test_a_stopped_connection_holds_nothing_for_a_component_kept_after_it(hub, monkeypatch):
+    session = await _joined_session(_Recording())
+    feed = session.repo.get("feed")
+    await session.stop(1000)
+
+    await feed.stream("items", [])
+
+    assert session._patch_held == {} and hub.topics == set() and hub._receivers == {}
+
+
+@pytest.mark.asyncio
+async def test_a_subscription_that_was_cancelled_leaves_no_receiver(hub, monkeypatch):
+    session = await _joined_session(_Recording())
+    feed = session.repo.get("feed")
+    adding = asyncio.Event()
+
+    async def group_add(group: str, channel: str) -> None:
+        adding.set()
+        await asyncio.Event().wait()
+
+    hub._layer.group_add = group_add
+    monkeypatch.setattr(BcFeed, "get_subscriptions", lambda self: {"bc-new"})
+    resetting = asyncio.ensure_future(feed.stream("items", []))
+    await adding.wait()
+    resetting.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await resetting
+    await session.stop(1000)
+
+    assert session._patch_held == {}
+    assert hub._receivers == {}
+
+
+@pytest.mark.asyncio
+async def test_a_join_that_failed_after_its_reset_holds_nothing(hub):
+    session = WireviewSession(_Recording())  # type: ignore[arg-type]
+    session.channel_name = "the-sessions-channel"
+    await session.start(session=SessionView.wrap(None), vsn=PROTOCOL_VERSION)
+
+    await session.command_join("BcResetThenFail", _state(BcResetThenFail, "failed"), {})
+
+    assert session.repo.get("failed") is None
+    assert session._patch_held == {}
 
 
 @pytest.mark.asyncio

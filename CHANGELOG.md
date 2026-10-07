@@ -46,8 +46,9 @@ The django-reactor era changelog (2.x) is preserved in
   `joined()` and writes them after the operations `joined()` queued, and a `stream()` reset anywhere
   else holds them from before it reads its list until the reset is written, each reset with a
   release of its own, so a reset does not wipe an item committed after its read; frames whose
-  release a full channel dropped go out 10 seconds after it left for the channel. A mounted
-  component in `wireview.testing` keeps the same order. `send()` publishes once the transaction commits. More than 1,000 frames waiting for one
+  release a full channel dropped go out 10 seconds after it left for the channel and the
+  connection had no message to handle. A mounted component in `wireview.testing` keeps the same
+  order. `send()` publishes once the transaction commits. More than 1,000 frames waiting for one
   connection close it (1013, on servers whose socket writes wait) and emit the new
   `telemetry.broadcast_overflowed`. A mounted component in `wireview.testing` hears a Broadcast of
   its process. One item reaching 1,000 connections on one process takes 18.0 to 19.7 ms on the
