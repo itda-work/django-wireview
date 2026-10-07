@@ -123,6 +123,10 @@ The django-reactor era changelog (2.x) is preserved in
   percent-encoding (`?q=파이썬`) reached the mount hooks and `params_changed()` as mojibake. An empty
   value (`?q=`) is now kept as `{"q": ""}`, as the join always read it, and a `request` in the
   template context needs a `.GET` (#177).
+- The README, the getting-started tutorial and the bundled skill start uvicorn with
+  `--reload --reload-include '*.html'` and install `uvicorn[standard]`. uvicorn watches only `*.py`
+  by default, so an edited template kept rendering its old content until a Python file changed, and
+  without watchfiles (not in plain `uvicorn`) the include option is ignored with a warning (#181).
 
 ## [1.2.0] - 2026-10-04
 

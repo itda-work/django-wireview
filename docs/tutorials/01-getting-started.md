@@ -81,7 +81,9 @@ pip install django-wireview daphne
 페이지는 그려지는데 아무 버튼도 반응하지 않습니다.
 
 daphne를 쓰지 않으려면(Windows에서는 쓰지 않습니다 — [배포 가이드](../DEPLOYMENT.md)) `uvicorn`을
-설치하고 4절의 `runserver` 대신 `uvicorn myproject.asgi:application --reload`로 띄웁니다. uvicorn은 정적 파일을
+`uvicorn[standard]`로 설치하고 4절의 `runserver` 대신 `uvicorn myproject.asgi:application --reload --reload-include '*.html'`로
+띄웁니다. uvicorn은 기본으로 `*.py`만 감시하므로 `--reload-include`가 없으면 템플릿을 고쳐도 옛 내용이 그려지고,
+그 옵션은 `[standard]`에 든 watchfiles가 있어야 듣습니다. uvicorn은 정적 파일을
 서빙하지 않으므로 2절 `asgi.py`의 `ASGIStaticFilesHandler` 줄이 이때 필요합니다 — 빠뜨리면 `wireview.min.js`가
 404이고 페이지는 그려지지만 아무것도 반응하지 않습니다.
 
