@@ -370,12 +370,29 @@ function readPid(path: string): number | undefined {
   }
 }
 
+/**
+ * Whether the process is still running. A zombie is not: a grandchild whose
+ * wrapper died is reparented to pid 1, and in a container whose pid 1 never
+ * reaps (act runs `tail -f /dev/null`) it stays a zombie after the SIGKILL, which
+ * `kill(pid, 0)` still finds.
+ */
 function alive(pid: number): boolean {
   try {
     process.kill(pid, 0);
-    return true;
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+  return !zombie(pid);
+}
+
+/** On Linux, from /proc: the state field follows the parenthesised command name, which may itself hold ")". */
+function zombie(pid: number): boolean {
+  if (process.platform !== "linux") return false;
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    return stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3) === "Z";
+  } catch {
+    return false;
   }
 }
 
