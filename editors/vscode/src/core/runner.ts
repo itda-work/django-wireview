@@ -161,3 +161,132 @@ export class Generations {
     this.controller.abort();
   }
 }
+
+/** One way to stop a run: a signal to its process group, or a command that ends the tree. */
+export type StopStep = { kind: "group"; pid: number; signal: "SIGTERM" | "SIGKILL" } | { kind: "command"; command: string; args: string[] };
+
+/**
+ * Whether a run's process is spawned as the leader of a group of its own. A
+ * wrapper such as `uv run` starts the Django process as its child: a signal to
+ * the wrapper alone leaves that one running, a signal to the group reaches both.
+ * Windows has no groups to signal; taskkill walks the tree instead.
+ */
+export function ownsGroup(platform: NodeJS.Platform): boolean {
+  return platform !== "win32";
+}
+
+/**
+ * The group's leader on POSIX: a shell that runs the command in the foreground,
+ * with its stdin at /dev/null, and hands on its exit status, while the
+ * command's stderr is the run's. A SIGTERM does not end the shell, which has a
+ * trap for it: the trap runs once the command is over and leaves the shell
+ * waiting in `read` on its own stdin, a pipe the editor holds open and never
+ * writes, with no output held. So the leader is there until the stop's SIGKILL:
+ * the wrapper the user named may die on SIGTERM and leave a process in the
+ * group that ignores it.
+ *
+ * Only builtins keep the leader: `exec sleep` would look the name up on the
+ * user's PATH, and a PATH without it, or with another sleep first, would let
+ * the leader go before the SIGKILL. If the editor goes away while the trap waits
+ * in `read`, the pipe closes and the shell exits; a command that is still
+ * running keeps the shell waiting for it. The command runs in the foreground because a background one
+ * starts with SIGINT and SIGQUIT ignored, which no trap in the shell undoes. The
+ * trap is a handler, not "", which the command would inherit as SIGTERM ignored.
+ */
+export const SUPERVISOR = [`trap 'exec >/dev/null 2>&1; read -r _; exit 1' TERM`, '"$@" </dev/null', "exit $?"].join("\n");
+
+/** The command line that is spawned: on POSIX the command under SUPERVISOR, passed as arguments so that no shell reads them. */
+export function supervised(line: CommandLine, platform: NodeJS.Platform): CommandLine {
+  if (!ownsGroup(platform)) return line;
+  return { command: "/bin/sh", args: ["-c", SUPERVISOR, "wireview-run", line.command, ...line.args], cwd: line.cwd };
+}
+
+/**
+ * How a run is stopped, in order, `grace` ms apart: everything it started asked
+ * to end, then made to. On Windows a console process cannot be asked, so the one
+ * step forces the tree.
+ */
+export function stopSteps(pid: number, platform: NodeJS.Platform): StopStep[] {
+  if (!ownsGroup(platform)) return [{ kind: "command", command: "taskkill", args: ["/T", "/F", "/PID", String(pid)] }];
+  return [
+    { kind: "group", pid, signal: "SIGTERM" },
+    { kind: "group", pid, signal: "SIGKILL" },
+  ];
+}
+
+/**
+ * What a stopper is handed: how to take a step, whether the exit of the run's
+ * own process (the group's leader, the root of the tree) has not been reported
+ * yet, and how to let go of what the run still holds once the steps are over.
+ */
+export interface StopperHooks {
+  /** Take a step; false when there was nothing left to take it to. */
+  take(step: StopStep): boolean;
+  /** Whether the leader's exit has not been reported. */
+  unreported(): boolean;
+  /** The steps are over: let go of the run's output, whoever still holds it. */
+  release(): void;
+}
+
+/**
+ * Takes a run through its stop steps once, `grace` ms apart, and releases it
+ * `grace` ms after the last.
+ *
+ * A step is taken only while Node has not reported the leader's exit. That is
+ * what Node knows, not what the system knows, but on POSIX it is close: a pid
+ * is not handed out again before its process is reaped, and libuv reaps its
+ * children when it handles SIGCHLD and reports each exit in that same pass, not
+ * from a timer. A step taken from a timer while the exit is unreported goes to
+ * the leader's group. A stop set off synchronously by another child's exit
+ * report can fall between this one's reaping and its report: that window stays
+ * open. On Windows the step starts taskkill, which looks the pid up a moment
+ * later: the check is not atomic with it there.
+ *
+ * Once the exit is reported nothing more is sent, even to a process the leader
+ * left in its group; on POSIX the leader is SUPERVISOR, which stays until the
+ * SIGKILL, so that happens when its command finished before the stop reached it
+ * (or the editor closed the supervisor's stdin).
+ */
+export class Stopper {
+  private started = false;
+  private timer: unknown = null;
+  private readonly steps: StopStep[];
+  private readonly hooks: StopperHooks;
+  private readonly grace: number;
+  private readonly timers: Timers;
+
+  constructor(steps: StopStep[], hooks: StopperHooks, grace: number, timers: Timers = globalThis as unknown as Timers) {
+    this.steps = steps;
+    this.hooks = hooks;
+    this.grace = grace;
+    this.timers = timers;
+  }
+
+  /** Begin; a second call does nothing. */
+  stop(): void {
+    if (this.started) return;
+    this.started = true;
+    this.step(0);
+  }
+
+  /** The leader is gone and the output closed: nothing more is taken or released. */
+  cancel(): void {
+    this.started = true;
+    if (this.timer !== null) this.timers.clearTimeout(this.timer);
+    this.timer = null;
+  }
+
+  private step(index: number): void {
+    const more = index < this.steps.length && this.hooks.unreported() && this.hooks.take(this.steps[index]);
+    const last = !more || index + 1 >= this.steps.length;
+    // Not unref'd: what started the stop sees it through, or a supervisor is left waiting for it
+    this.timer = this.timers.setTimeout(
+      () => {
+        this.timer = null;
+        if (last) this.hooks.release();
+        else this.step(index + 1);
+      },
+      this.grace,
+    );
+  }
+}

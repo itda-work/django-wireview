@@ -5,7 +5,7 @@
 // Nothing runs and no metadata file is read until the workspace is trusted: the
 // command is the project's code, and the file's paths are where "go to
 // definition" goes.
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync } from "node:fs";
 import * as nodePath from "node:path";
@@ -15,7 +15,8 @@ import * as vscode from "vscode";
 import { checkVersion, METADATA_MAJOR, METADATA_MINOR } from "./core/metadata.ts";
 import type { Metadata } from "./core/metadata.ts";
 import { Project } from "./core/project.ts";
-import { buildCommand, classifyFailure, Generations, interpreterCandidates, pickManagePy, Refresher } from "./core/runner.ts";
+import { buildCommand, classifyFailure, Generations, interpreterCandidates, ownsGroup, pickManagePy, Refresher, Stopper, stopSteps, supervised } from "./core/runner.ts";
+import type { CommandLine, StopStep, Timers } from "./core/runner.ts";
 
 export type State = "idle" | "running" | "ok" | "failed" | "off" | "restricted";
 
@@ -30,9 +31,34 @@ export function isFile(path: string): boolean {
   }
 }
 
-/** Remove a file if it is there. */
-/** How long a run may take: a file in the runs folder older than this is no run's any more. */
+/** How long a run may take before it is stopped. */
 const RUN_TIMEOUT = 120_000;
+/** How long a stopped run's processes have to end before they are killed. */
+const STOP_GRACE = 2_000;
+/** A file in the runs folder older than this is no run's any more: by then a run stopped at its timeout has had its group killed. */
+const RUN_LIFETIME = RUN_TIMEOUT + 3 * STOP_GRACE;
+/** The most of a run's stderr kept for the output channel. */
+const STDERR_LIMIT = 1024 * 1024;
+
+/** How long a run may take, and how long its processes have to end once it is stopped. */
+export interface Timing {
+  run: number;
+  grace: number;
+  /** What times a run out: the tests start the timeout themselves. */
+  clock?: Timers;
+}
+
+/** Take one step in stopping a run's processes; false when the group is gone. */
+function take(step: StopStep): boolean {
+  try {
+    if (step.kind === "group") process.kill(-step.pid, step.signal);
+    else execFile(step.command, step.args, { windowsHide: true }, () => {});
+    return true;
+  } catch {
+    // Nothing left in the group
+    return false;
+  }
+}
 
 /** When a file was last written, or 0 when it is not there. */
 function modified(path: string): number {
@@ -43,6 +69,7 @@ function modified(path: string): number {
   }
 }
 
+/** Remove a file if it is there. */
 function remove(path: string): void {
   try {
     unlinkSync(path);
@@ -69,11 +96,19 @@ export class FolderProject implements vscode.Disposable {
   private readonly finished = new Map<string, number>();
   private readonly output: vscode.OutputChannel;
   private readonly changed: () => void;
+  private readonly timing: Timing;
   /** What watches the current source: replaced when the source changes. */
   private watchers: vscode.Disposable[] = [];
 
-  constructor(folder: vscode.WorkspaceFolder, storage: string, output: vscode.OutputChannel, changed: () => void) {
+  constructor(
+    folder: vscode.WorkspaceFolder,
+    storage: string,
+    output: vscode.OutputChannel,
+    changed: () => void,
+    timing: Timing = { run: RUN_TIMEOUT, grace: STOP_GRACE },
+  ) {
     this.folder = folder;
+    this.timing = timing;
     this.output = output;
     this.changed = changed;
     const key = createHash("sha256").update(folder.uri.toString()).digest("hex").slice(0, 16);
@@ -276,10 +311,10 @@ export class FolderProject implements vscode.Disposable {
     for (const name of names) {
       const path = nodePath.join(this.outputs, name);
       if (this.writing.has(path)) continue;
-      if (this.finished.has(path) || now - modified(path) > RUN_TIMEOUT) remove(path);
+      if (this.finished.has(path) || now - modified(path) > RUN_LIFETIME) remove(path);
     }
     // A file written later than this is old enough by the next sweep's measure
-    for (const [path, at] of this.finished) if (now - at > RUN_TIMEOUT) this.finished.delete(path);
+    for (const [path, at] of this.finished) if (now - at > RUN_LIFETIME) this.finished.delete(path);
   }
 
   private async spawn(next: string, python: string, managePy: string, signal: AbortSignal): Promise<void> {
@@ -287,13 +322,7 @@ export class FolderProject implements vscode.Disposable {
     this.state = "running";
     this.changed();
     this.log(`${line.command} ${line.args.join(" ")}  (in ${line.cwd})`);
-    const result = await new Promise<{ code: number; stderr: string }>((done) => {
-      // The signal stops the process when its generation ends
-      execFile(line.command, line.args, { cwd: line.cwd, timeout: RUN_TIMEOUT, maxBuffer: 64 * 1024 * 1024, signal }, (error, _stdout, stderr) => {
-        const code = error ? (typeof error.code === "number" ? error.code : 1) : 0;
-        done({ code, stderr: stderr || (error && !stderr ? error.message : "") });
-      });
-    });
+    const result = await this.execute(line, signal);
     if (signal.aborted) return;
     if (result.code !== 0 || !existsSync(next)) {
       if (classifyFailure(result.stderr) === "no-command") {
@@ -317,6 +346,85 @@ export class FolderProject implements vscode.Disposable {
       // The metadata is in use; the next session starts from the older file and runs again
       this.log(`Could not keep the metadata in ${this.storage}: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  /**
+   * Run a command line to its end, or until it is stopped. On POSIX the process
+   * leads a group of its own (SUPERVISOR, with the command under it), and the
+   * signal or the timeout sends the group SIGTERM, then SIGKILL `grace` ms later:
+   * a wrapper such as `uv run` need not pass a SIGTERM on, and the Django process
+   * under it would run on. On Windows taskkill ends the tree.
+   *
+   * A stopped run is over at once: what was asked of it no longer counts, and the
+   * stop goes on without holding the next run up. Its stderr is let go `grace` ms
+   * after the last step, as a process outside the group may hold it open.
+   */
+  private execute(line: CommandLine, signal: AbortSignal): Promise<{ code: number; stderr: string }> {
+    const clock = this.timing.clock ?? (globalThis as unknown as Timers);
+    return new Promise((done) => {
+      let stderr = "";
+      let over = false;
+      let stopper: Stopper | undefined;
+      const finish = (code: number, more = "") => {
+        if (over) return;
+        over = true;
+        clock.clearTimeout(timer);
+        signal.removeEventListener("abort", aborted);
+        if (more) stderr += `${stderr && !stderr.endsWith("\n") ? "\n" : ""}${more}`;
+        done({ code, stderr });
+      };
+      const stop = (why: string) => {
+        stopper?.stop();
+        finish(1, why);
+      };
+      const aborted = () => stop("Stopped.");
+      const timer = clock.setTimeout(() => stop(`Stopped after ${this.timing.run / 1000}s.`), this.timing.run);
+      const spawned = supervised(line, process.platform);
+      let child;
+      try {
+        child = spawn(spawned.command, spawned.args, {
+          cwd: spawned.cwd,
+          // The supervisor's stdin: held open, never written, closed when the stop is over
+          stdio: [ownsGroup(process.platform) ? "pipe" : "ignore", "ignore", "pipe"],
+          detached: ownsGroup(process.platform),
+          windowsHide: true,
+        });
+      } catch (error) {
+        finish(1, error instanceof Error ? error.message : String(error));
+        return;
+      }
+      const leader = child;
+      if (leader.pid !== undefined) {
+        stopper = new Stopper(
+          stopSteps(leader.pid, process.platform),
+          {
+            take,
+            // Set when Node reports the exit, in the pass that reaps the process
+            unreported: () => leader.exitCode === null && leader.signalCode === null,
+            release: () => {
+              leader.stderr?.destroy();
+              leader.stdin?.destroy();
+            },
+          },
+          this.timing.grace,
+        );
+      }
+      // Never written: a supervisor that is gone must not make it an unhandled error
+      leader.stdin?.on("error", () => {});
+      leader.stderr?.setEncoding("utf8");
+      leader.stderr?.on("data", (chunk: string) => {
+        if (stderr.length < STDERR_LIMIT) stderr += chunk.slice(0, STDERR_LIMIT - stderr.length);
+      });
+      // Not spawned at all: no command by that name, or no directory
+      leader.on("error", (error) => finish(1, stderr ? "" : error.message));
+      leader.on("close", (code) => {
+        stopper?.cancel();
+        leader.stdin?.destroy();
+        finish(code ?? 1);
+      });
+      if (signal.aborted) aborted();
+      else signal.addEventListener("abort", aborted, { once: true });
+    });
   }
 
   /** The template names under the project's template directories. */

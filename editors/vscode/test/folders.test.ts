@@ -66,14 +66,14 @@ function workspace() {
   return { root, runs, command, stubbornCommand, silentCommand };
 }
 
-function project(root: string): { folder: Folder; changes: () => number; log: string[] } {
+function project(root: string, timing?: ConstructorParameters<typeof FolderProject>[4]): { folder: Folder; changes: () => number; log: string[] } {
   let changes = 0;
   const log: string[] = [];
   const output = { appendLine: (line: string) => log.push(line), append: (text: string) => log.push(text) };
   const uri = { fsPath: root, toString: () => `file://${root}` };
   const folder = new FolderProject({ name: "w", uri, index: 0 } as never, nodePath.join(root, "storage"), output as never, () => {
     changes += 1;
-  });
+  }, timing);
   return { folder, changes: () => changes, log };
 }
 
@@ -82,6 +82,19 @@ async function until(check: () => boolean, what: string, timeout = 5000): Promis
   while (!check()) {
     if (Date.now() - start > timeout) throw new Error(`timed out waiting for ${what}`);
     await new Promise((done) => setTimeout(done, 10));
+  }
+}
+
+/** A run that must be over soon: one that waits on a process forever fails the test instead of hanging it. */
+async function within(promise: Promise<unknown>, what: string, timeout = 3000): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, fail) => {
+    timer = setTimeout(() => fail(new Error(`timed out waiting for ${what}`)), timeout);
+  });
+  try {
+    await Promise.race([promise, late]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -303,4 +316,245 @@ test("Restricted Mode: nothing runs and no file is read until the workspace is t
   assert.deepEqual(names(folder), ["Ran"]);
   assert.equal(runs().length, ran + 2);
   folder.dispose();
+});
+
+/**
+ * A wrapper and the process it starts, which ignores SIGTERM, writes its pid and
+ * runs until killed; `held` says whether it keeps the wrapper's stderr open, as
+ * one that logs does. The wrapper `dies` on SIGTERM, as one that does nothing
+ * about signals does; or `waits` like `uv run`, letting the signal be the
+ * process's to answer and exiting with it; or lets the process `escape` into a
+ * group of its own, holding stderr, and dies on SIGTERM itself. The wrapper
+ * writes its parent's pid (the supervisor's, on POSIX) and the PATH it was given.
+ */
+function wrapped(root: string, how: { held: boolean; wrapper: "dies" | "waits" | "escapes" }) {
+  const pidFile = nodePath.join(root, "grandchild.pid");
+  const parentFile = nodePath.join(root, "parent.pid");
+  const pathFile = nodePath.join(root, "wrapper.path");
+  const grandchild = nodePath.join(root, "grandchild.mjs");
+  writeFileSync(
+    grandchild,
+    [
+      'import { writeFileSync } from "node:fs";',
+      'process.on("SIGTERM", () => {});',
+      `writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));`,
+      "setInterval(() => {}, 1000);",
+    ].join("\n"),
+  );
+  const wrapper = nodePath.join(root, "wrapper.mjs");
+  const options = how.wrapper === "escapes" ? '{ stdio: ["ignore", "ignore", "inherit"], detached: true }' : `{ stdio: ${JSON.stringify(how.held ? "inherit" : "ignore")} }`;
+  writeFileSync(
+    wrapper,
+    [
+      'import { spawn } from "node:child_process";',
+      'import { writeFileSync } from "node:fs";',
+      `writeFileSync(${JSON.stringify(parentFile)}, String(process.ppid));`,
+      `writeFileSync(${JSON.stringify(pathFile)}, process.env.PATH ?? "");`,
+      `const child = spawn(process.execPath, [${JSON.stringify(grandchild)}], ${options});`,
+      ...(how.wrapper === "waits" ? ['process.on("SIGTERM", () => {});', 'child.on("exit", (code) => process.exit(code ?? 1));'] : ["setInterval(() => {}, 1000);"]),
+    ].join("\n"),
+  );
+  return {
+    command: { managePy: nodePath.join(root, "manage.py"), metadataCommand: [process.execPath, wrapper] },
+    pid: () => readPid(pidFile),
+    supervisor: () => readPid(parentFile),
+    path: () => readFileSync(pathFile, "utf8"),
+  };
+}
+
+function readPid(path: string): number | undefined {
+  try {
+    return Number(readFileSync(path, "utf8")) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** The supervisor is gone; without one (Windows) the wrapper's parent is this process. */
+function ended(supervisor: number | undefined): boolean {
+  return supervisor === process.pid || !alive(supervisor!);
+}
+
+/** Kill what a test left running: the next tests must not inherit it. */
+function reap(...pids: (number | undefined)[]): void {
+  for (const pid of pids) if (pid !== undefined && pid !== process.pid && alive(pid)) process.kill(pid, "SIGKILL");
+}
+
+/** A run timeout that goes off when the test says, not when a slow machine has not started the process yet. */
+function clock() {
+  const pending: (() => void)[] = [];
+  return {
+    timers: {
+      setTimeout: (callback: () => void) => pending.push(callback) - 1,
+      clearTimeout: (handle: unknown) => {
+        pending[handle as number] = () => {};
+      },
+    },
+    fire: () => {
+      for (const callback of pending.splice(0)) callback();
+    },
+  };
+}
+
+for (const wrapper of ["dies", "waits"] as const) {
+  for (const held of [true, false]) {
+    const how = `a wrapper that ${wrapper === "dies" ? "dies on SIGTERM" : "waits for it"} (${held ? "holding" : "not holding"} its stderr)`;
+    for (const by of ["a folder that goes away", "a timeout"] as const) {
+      test(`${by} stops the process under ${how}, and the supervisor`, async () => {
+        const { root } = workspace();
+        const { command, pid, supervisor } = wrapped(root, { held, wrapper });
+        state.config = command;
+        const timeout = clock();
+        const { folder, log } = project(root, { run: 500, grace: 300, clock: timeout.timers });
+        try {
+          const started = folder.start();
+          await until(() => pid() !== undefined && supervisor() !== undefined, "the process under the wrapper");
+          if (by === "a timeout") timeout.fire();
+          else folder.dispose();
+          await within(started, "the run to be over");
+          await until(() => !alive(pid()!), "the process under the wrapper to end", 3000);
+          await until(() => ended(supervisor()), "the supervisor to end", 3000);
+          if (by === "a timeout") {
+            assert.equal(folder.state, "failed");
+            assert.ok(
+              log.some((line) => line.includes("Stopped after 0.5s")),
+              log.join("\n"),
+            );
+          }
+        } finally {
+          folder.dispose();
+          reap(pid(), supervisor());
+        }
+      });
+    }
+  }
+}
+
+test("a process that left the group and holds stderr does not keep the next command from running", async () => {
+  const { root, runs, command } = workspace();
+  const escaped = wrapped(root, { held: true, wrapper: "escapes" });
+  state.config = escaped.command;
+  const { folder } = project(root, { run: 60_000, grace: 300 });
+  try {
+    const started = folder.start();
+    await until(() => escaped.pid() !== undefined, "the process that left the group");
+    state.config = command(0);
+    const next = folder.configure();
+    await until(() => runs().includes("completed"), "the next command", 3000);
+    await within(next, "the next run");
+    await within(started, "the first run to be over");
+    assert.deepEqual(names(folder), ["Ran"]);
+    assert.equal(folder.state, "ok");
+    await until(() => ended(escaped.supervisor()), "the supervisor to end", 3000);
+  } finally {
+    folder.dispose();
+    reap(escaped.pid(), escaped.supervisor());
+  }
+});
+
+/** A command that writes its parent's pid, checks the arguments it was given, writes to stderr and exits with `code`. */
+function plain(root: string, code: number) {
+  const parentFile = nodePath.join(root, "parent.pid");
+  const script = nodePath.join(root, "plain.mjs");
+  writeFileSync(
+    script,
+    [
+      'import { writeFileSync } from "node:fs";',
+      `writeFileSync(${JSON.stringify(parentFile)}, String(process.ppid));`,
+      `const given = JSON.stringify(process.argv.slice(2, -2));`,
+      `if (given !== ${JSON.stringify(JSON.stringify(["a b", "$HOME", "'q'", '"; exit 9'])) }) { process.stderr.write("arguments: " + given); process.exit(2); }`,
+      'process.stderr.write("said on stderr\\n");',
+      `if (${code} === 0) writeFileSync(process.argv.at(-1), ${JSON.stringify(metadata("Plain"))});`,
+      `process.exit(${code});`,
+    ].join("\n"),
+  );
+  return {
+    command: { managePy: nodePath.join(root, "manage.py"), metadataCommand: [process.execPath, script, "a b", "$HOME", "'q'", '"; exit 9'] },
+    supervisor: () => readPid(parentFile),
+  };
+}
+
+test("a command that ends by itself: its arguments as given, its exit status and stderr, and no supervisor left", async () => {
+  const { root } = workspace();
+  const ok = plain(root, 0);
+  state.config = ok.command;
+  const { folder, log } = project(root);
+  try {
+    await folder.start();
+    assert.equal(folder.state, "ok", folder.detail);
+    assert.deepEqual(names(folder), ["Plain"]);
+    await until(() => ended(ok.supervisor()), "the supervisor to end");
+
+    const failing = plain(root, 3);
+    state.config = failing.command;
+    await folder.refresh();
+    assert.equal(folder.state, "failed");
+    assert.match(folder.detail, /failed \(exit 3\)/);
+    assert.ok(
+      log.some((line) => line.includes("said on stderr")),
+      log.join("\n"),
+    );
+    await until(() => ended(failing.supervisor()), "the supervisor to end");
+  } finally {
+    folder.dispose();
+    reap(ok.supervisor());
+  }
+});
+
+for (const user of ["no sleep on it", "another sleep first on it"] as const) {
+  // The supervisor and the fake sleep are POSIX shell scripts
+  test(`with ${user}, the user's PATH, a stop still reaches what a wrapper that died on SIGTERM left`, { skip: process.platform === "win32" }, async () => {
+    const { root } = workspace();
+    const { command, pid, supervisor, path } = wrapped(root, { held: false, wrapper: "dies" });
+    let PATH = "/nonexistent";
+    if (user === "another sleep first on it") {
+      // Ends at once, as a sleep the supervisor must not count on
+      const bin = nodePath.join(root, "bin");
+      mkdirSync(bin);
+      writeFileSync(nodePath.join(bin, "sleep"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+      PATH = `${bin}${nodePath.delimiter}${process.env.PATH}`;
+    }
+    const before = process.env.PATH;
+    process.env.PATH = PATH;
+    state.config = command;
+    const { folder } = project(root, { run: 60_000, grace: 300 });
+    try {
+      const started = folder.start();
+      await until(() => pid() !== undefined && supervisor() !== undefined, "the process under the wrapper");
+      assert.equal(path(), PATH, "the command gets the user's PATH as it is");
+      folder.dispose();
+      await within(started, "the run to be over");
+      await until(() => !alive(pid()!), "the process under the wrapper to end", 3000);
+      await until(() => ended(supervisor()), "the supervisor to end", 3000);
+    } finally {
+      process.env.PATH = before;
+      folder.dispose();
+      reap(pid(), supervisor());
+    }
+  });
+}
+
+test("a command starts with SIGINT's default action: one it sends itself ends it", { skip: process.platform === "win32" }, async () => {
+  const { root } = workspace();
+  // A shell, not node: node puts the signals it inherits ignored back to their defaults.
+  // The command line ends in `--output <file>`: $0 and $1 here; printf is a builtin.
+  const write = `printf '%s' '${metadata("Interrupted")}' > "$1"`;
+  state.config = { managePy: nodePath.join(root, "manage.py"), metadataCommand: ["/bin/sh", "-c", `kill -INT $$; ${write}`] };
+  const { folder } = project(root);
+  try {
+    await within(folder.start(), "the run");
+    assert.equal(folder.state, "failed", folder.detail);
+    assert.equal(folder.project, undefined, "the command went on past its SIGINT");
+  } finally {
+    folder.dispose();
+  }
 });

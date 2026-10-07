@@ -27,6 +27,17 @@ git tags `v*` (see the repository's CHANGELOG.md). It reads the metadata of
 - Snippets for templates and for Python.
 - The metadata runs again when a Python file is saved; the last metadata that worked is kept when a
   run fails. Commands: Refresh Project Metadata, Go to Component, Show Output.
+- A run that is no longer wanted (the folder closed, the metadata source changed) or that takes
+  longer than 120 seconds is stopped with the processes it started, within the limits below. On
+  macOS and Linux the command runs under a small `/bin/sh` supervisor that leads a process group of
+  its own; the group gets SIGTERM, then SIGKILL two seconds later. The supervisor stays until that
+  SIGKILL, so a process a `wireview.metadataCommand` wrapper such as `uv run` left in the group is
+  killed even when the wrapper died on the SIGTERM. It keeps itself there with shell builtins, not
+  with a program found on the user's PATH, and runs the command in the foreground, so the command
+  starts with SIGINT and SIGQUIT as they were. Signals are sent only while Node has not
+  reported the supervisor's exit. A process that moved to a group of its own is out of reach. On
+  Windows `taskkill /T /F` ends the tree, which no longer reaches what an exited process started.
+  The run itself is over as soon as it is stopped, so the next one is not held up.
 - Restricted Mode: in an untrusted workspace nothing runs and no metadata file is read, not the
   last session's either; the grammar, the snippets and the HTML support work. Trusting the
   workspace starts the metadata.
