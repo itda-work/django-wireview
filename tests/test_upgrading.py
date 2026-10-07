@@ -141,6 +141,11 @@ NO_UPGRADE_NOTE = {
     "`telemetry.broadcast_published` carries `kind`": (
         "시그널에 키워드가 하나 늘었을 뿐이다. `**kwargs`로 받는 수신자는 그대로다"
     ),
+    "The README, the getting-started tutorial and the bundled skill start uvicorn": DOCS_ONLY,
+    "a template the autoreloader saw change reaches the open pages at once": (
+        "개발 서버(DEBUG)에서만 돈다. 운영 서버에는 자동 리로더가 없어 아무것도 바뀌지 않고, "
+        "개발 중에 끄려면 REJOIN_ON_TEMPLATE_CHANGE=False"
+    ),
     "also makes its process's channel join the topic's patch group": (
         "프로세스마다 토픽당 그룹 하나가 늘 뿐 앱이 할 일은 없다. 84자를 넘는 토픽은 전처럼 알림만 받는다"
     ),
