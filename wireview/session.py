@@ -20,20 +20,21 @@ from django.utils.datastructures import MultiValueDict
 from wireview.core.component import Component
 
 from . import serializer, telemetry
-from .core import patches, shared_render
+from .core import patches, shared_render, template_reload
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
 from .core.rendered import (
     ERRORS_SINCE,
     JOINED_SINCE,
     LEAVES_FIRST_SINCE,
     PROTOCOL_VERSION,
+    REJOIN_SINCE,
     component_refs,
     may_name_components,
     payload_component_refs,
 )
 from .core.session import SessionView
 from .core.state import StateMismatch, StatePayload, unsign_envelope
-from .core.transport import PATCH_TOPIC_MAX, Outbound, get_patch_hub
+from .core.transport import PATCH_TOPIC_MAX, Outbound, get_broker, get_patch_hub
 from .features import upload_store
 from .features.uploads import upload_group_name
 from .live_component import LiveComponent, run_updates
@@ -185,6 +186,8 @@ class WireviewSession:
         # connect and still names the same login. False until it has, and it stays
         # False when the read fails, so a refused connection cannot retry past it.
         self._auth_revalidated: bool = False
+        # Whether a template change was mailed to this session and not yet handled (#180)
+        self._rejoin_mailed: bool = False
         self._init_patches()
 
     def _init_patches(self) -> None:
@@ -267,12 +270,16 @@ class WireviewSession:
         # Which login this socket stands on. Compared against the fingerprint inside
         # every state a live_session page issued, and the topic a logout publishes to.
         self.auth_fingerprint = auth_fingerprint(self.user, self.repo.session)
+        # In development, a template the autoreloader saw change reaches this
+        # connection as ``templates_changed`` (#180). Nothing when it is off.
+        template_reload.register(self)
         if telemetry.is_enabled():
             self._opened_at = time.monotonic()
             telemetry.emit(telemetry.connection_opened, type(self), connection_id=self.connection_id)
 
     async def stop(self, code: int | None = None) -> None:
         """End: every component leaves, and every subscription goes. ``code`` is the socket's close code."""
+        template_reload.unregister(self)
         if telemetry.is_enabled():
             opened_at = self._opened_at
             telemetry.emit(
@@ -720,6 +727,71 @@ class WireviewSession:
         # Not one more frame for the login that ended, nor for a socket that is closing
         self._close_patches()
         await self.close(code=4001)
+
+    async def templates_changed(self) -> None:
+        """A template changed under the dev server (``core/template_reload.py``, #180).
+
+        Called on the session's loop, outside the messages the adapter handles
+        one at a time. So nothing goes to the page from here: the change is
+        mailed to this session's own channel and its ``rejoin`` is written when
+        that mail's turn comes (``component_template_changed``), after the
+        answers of the handler or join being handled now. Sent from here, the
+        page joined again from a state that handler's render had yet to bring,
+        and the join put back what the handler had done. Saves that come before
+        the mail is handled make one ``rejoin``.
+        """
+        if self.repo.vsn < REJOIN_SINCE or not template_reload.registered(self) or self._rejoin_mailed:
+            return
+        self._rejoin_mailed = True
+        if not self.channel_name:
+            # A bare session in a test: no channel, no adapter to take turns with
+            await self.component_template_changed()
+            return
+        try:
+            taken = await get_broker().send_to_session(
+                self.channel_name, {"type": "message_from_component", "command": "template_changed", "kwargs": {}}
+            )
+        except Exception:
+            taken = False
+            log.warning("Could not tell %s a template changed", self.connection_id, exc_info=True)
+        if taken is False:
+            # No mail is coming to clear it: the next save must mail again. A
+            # full channel is dropped by the broker without raising (#124).
+            self._rejoin_mailed = False
+
+    async def component_template_changed(self) -> None:
+        """Mail from ``templates_changed``: its turn has come, so the page joins its components again.
+
+        The page joins each of them from the state its element carries, once it
+        has the answers to what it sent before (``sync``). Nothing is reset
+        here first. A join under an id is what tries a failed one again
+        (``repo.retry_join``) and what replaces a joined instance, so a page
+        that does not join leaves the connection as it was, refusals included:
+        lifting one with no join behind it would let events reach an instance
+        whose ``joined()`` never ran.
+        """
+        self._rejoin_mailed = False
+        # Closed since it was mailed: a closing socket takes nothing more
+        if not template_reload.registered(self):
+            return
+        try:
+            await self.send_command("rejoin", {})
+        except Exception:
+            # The socket is closing; the page reconnects and joins anyway
+            log.debug("Could not send rejoin on %s", self.connection_id, exc_info=True)
+
+    async def command_sync(self, ref):
+        """The page asks for ``synced`` once everything it sent before is answered (#180).
+
+        Messages are handled in the order they came, so this answer goes out
+        behind the answers to all of them. The page sends it on ``rejoin`` and
+        joins again when it hears back, from states that have every render
+        those messages brought.
+        """
+        if (answer := _event_ref(ref)) is None:
+            log.warning("Ignoring sync with a ref that is not an integer: %r", ref)
+            return
+        await self.send_command("synced", {"ref": answer})
 
     async def command_leave(self, id):
         """The client saw a component disappear from the DOM.

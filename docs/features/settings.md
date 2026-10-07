@@ -131,6 +131,7 @@ m2m 변경(`m2m`)은 **바꾼 쪽의 모델**이 `senders`에 있을 때 알린�
 | `AUTO_GENERATE_STUBS` | `True` | `DEBUG`에서 컴포넌트 타입 스텁(`.pyi`)을 만든다 ([type-stubs](./type-stubs.md)). **기동 시** |
 | `TELEMETRY` | `False` | 계측 시그널을 켠 채로 시작한다. 실행 중에는 `telemetry.enable()`·`disable()` ([telemetry](./telemetry.md)). **기동 시** |
 | `VERIFY_SHARED_RENDER` | `None` | `Meta.shared_render`를 선언한 컴포넌트의 약속을 검사한다. 렌더가 `user`·`session`·`request`·`perms`·`csrf_token`·`messages`를 읽으면 오류를 내고, 다른 연결의 렌더를 받은 연결이 직접 다시 렌더해 둘이 다르면 오류를 낸다. `None`은 `DEBUG`를 따르고 `wireview.testing`의 렌더에서는 켜진다. 켜 두면 받은 연결도 렌더하므로 공유로 아끼는 시간이 없다 ([shared-render](./shared-render.md#틀린-선언-잡기)) |
+| `REJOIN_ON_TEMPLATE_CHANGE` | `None` | 개발 서버(`runserver`)의 자동 리로더가 템플릿 파일이 바뀐 것을 보면, 그 프로세스의 열린 페이지가 컴포넌트를 지금 상태로 다시 join한다. 새 템플릿이 저장 직후 보이고, 깨진 템플릿 때문에 join이 실패했던 컴포넌트도 고치면 돌아온다. `None`은 `DEBUG`를 따른다. 꺼져 있으면 연결이 등록되지 않고 신호 수신자도 바로 돌아간다 ([errors](./errors.md#개발-중에-템플릿을-고치면)) |
 | `DEBUG_SYNC_TRANSITIONS` | `False` | sync/async 전환이 겹치는지 감시한다 ([성능](../PERFORMANCE.md)). **기동 시** |
 | `DEBUG_SYNC_TRANSITIONS_WARNING_THRESHOLD` | `2` | 이 깊이를 넘으면 경고 |
 | `DEBUG_SYNC_TRANSITIONS_ERROR_THRESHOLD` | `3` | 이 깊이를 넘으면 오류 |

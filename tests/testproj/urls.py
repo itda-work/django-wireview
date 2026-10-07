@@ -54,6 +54,7 @@ urlpatterns = [
     path("shareprobe/", include("testproj.shareprobe.urls")),
     path("broadcastprobe/", include("testproj.broadcastprobe.urls")),
     path("lossprobe/", include("testproj.lossprobe.urls")),
+    path("reloadprobe/", include("testproj.reloadprobe.urls")),
     # The chunk endpoint. A project that leaves this out has no uploads at all,
     # so the test project carries it the way a real one would.
     path("", include("wireview.urls")),

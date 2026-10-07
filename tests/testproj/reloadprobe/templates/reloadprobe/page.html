@@ -1,0 +1,14 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>reload probe</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    {% component 'ReloadBox' id="box" %}
+    {% component 'ReloadBox' id="other" %}
+    <a href="{% url 'reloadprobe:away' %}" data-testid="away-link">away</a>
+  </body>
+</html>

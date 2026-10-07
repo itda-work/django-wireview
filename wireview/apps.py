@@ -11,6 +11,7 @@ class WireviewConfig(AppConfig):
 
         from . import auto_broadcast
         from .checks import register_checks
+        from .core import template_reload
         from .core.live_session import _on_user_logged_in, _on_user_logged_out
 
         # The toast receiver joins like any component, so every process has to know
@@ -33,6 +34,10 @@ class WireviewConfig(AppConfig):
 
         # Model signals -> channel messages, for the models AUTO_BROADCAST.senders names
         auto_broadcast.connect()
+
+        # A template the dev server's autoreloader saw change -> the open pages join
+        # again (#180). Returns at once unless REJOIN_ON_TEMPLATE_CHANGE (DEBUG).
+        template_reload.connect()
 
         # Components must be imported before the checks run
         register_checks()

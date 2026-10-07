@@ -8,7 +8,8 @@ import {
   buildHtml,
   navigationCommand,
 } from "./rendered.mjs";
-import { Joins, settledEvent } from "./joins.mjs";
+import { Joins, rejoinable, settledEvent } from "./joins.mjs";
+import { RejoinBarrier, SYNC_TIMEOUT_MS } from "./rejoins.mjs";
 import { commitScope, isCommitAction } from "./values.mjs";
 import { LoadingLedger } from "./loading.mjs";
 import { BINDING_PREFIX, bindingsFor, isRenderEcho, parseBinding, runSteps } from "./events.mjs";
@@ -105,6 +106,8 @@ class ServerConnection {
     this.lastRef = 0;
     /** @type {Joins} which answers are for the join the page holds under an id (#139) */
     this.joins = new Joins();
+    /** @type {RejoinBarrier} a rejoin waiting for the answers to what was sent before it (#180) */
+    this.rejoins = new RejoinBarrier();
     /**
      * @type {number} The last ref given to a hook's pushEvent. One counter for
      * the page, not one per component: a reply finds its callback by the ref
@@ -205,6 +208,7 @@ class ServerConnection {
       // the first connection, belongs to no instance yet and waits for the next.
       uploadManagers.connectionClosed();
       this.joins.clear();
+      this.rejoins.clear();
       document.querySelectorAll("[wireview-component]").forEach((el) => {
         const element = /** @type {HTMLElement} */ (el);
         element.classList.add("wireview-disconnected");
@@ -486,6 +490,42 @@ class ServerConnection {
         break;
       }
 
+      case "rejoin": {
+        // A template changed under the dev server (#180). First the answers to
+        // what the page already sent, so the states it joins with have them
+        const ref = this.rejoins.asked(() => ++this.lastRef);
+        if (ref === null) break;
+        this._send("sync", { ref });
+        // An answer that never comes must not hold the page for good
+        window.setTimeout(() => {
+          const held = this.rejoins.expired(ref);
+          if (held === null) return;
+          console.warn("wireview: no answer to sync; the components keep the templates they had");
+          for (const message of held) this._send(message.command, message.payload);
+        }, SYNC_TIMEOUT_MS);
+        break;
+      }
+      case "synced": {
+        if (!this.rejoins.synced(payload.ref)) break;
+        // The components join again from their elements' states, so they
+        // render from the new file -- one whose join failed on the broken
+        // file included. rejoin() lands a render still waiting for its frame;
+        // what the DOM callbacks and hooks send then stays held, and only the
+        // joins go past, so it reaches the new instances after them.
+        const joinedMeanwhile = this.rejoins.heldJoins();
+        try {
+          const elements = Array.from(document.querySelectorAll("[wireview-component]"));
+          const registered = (/** @type {string} */ id) =>
+            id in this.components && !joinedMeanwhile.has(/** @type {number} */ (this.joins.byId.get(id)?.ref));
+          for (const id of rejoinable(/** @type {HTMLElement[]} */ (elements), registered)) {
+            this.components[id].rejoin({ through: true });
+          }
+        } finally {
+          // Then what the page sent meanwhile, to the new instances
+          for (const message of this.rejoins.release()) this._send(message.command, message.payload);
+        }
+        break;
+      }
       case "error": {
         // Server code raised for this component (#94). The connection lives on.
         const { id, during, ref } = payload;
@@ -1023,13 +1063,14 @@ class ServerConnection {
    * @param {string} state - Serialized component state
    * @param {Object<string, [string, string]>} children - Child component info
    * @param {number} [ref] - names the join to a server that returns it (#139)
+   * @param {boolean} [through] - a rejoin's own join, sent past its barrier (#180)
    */
-  sendJoin(name, component_id, state, children, ref) {
+  sendJoin(name, component_id, state, children, ref, through = false) {
     debugLog("send", `join ${name}`, { component_id, ref });
     /** @type {{name: string, state: string, children: Object<string, [string, string]>, ref?: number}} */
     const payload = { name, state, children };
     if (ref !== undefined) payload.ref = ref;
-    this._send("join", payload);
+    this._send("join", payload, through);
   }
 
   /**
@@ -1060,10 +1101,18 @@ class ServerConnection {
    * Sends a message to the server.
    * @param {string} command - Command type
    * @param {Object} payload - Message payload
+   * @param {boolean} [through] - a rejoin's own join, not held by its barrier (#180)
    * @private
    */
-  _send(command, payload) {
+  _send(command, payload, through = false) {
     const message = { command, payload };
+    // A rejoin waits for its sync's answer and holds what the page sends
+    // meanwhile, until its own joins are out (#180)
+    if (!through && this.rejoins.holds(command)) {
+      debugLog("send", `holding ${command} until synced`, payload);
+      this.rejoins.hold(message);
+      return;
+    }
     const doSend = () => {
       if (this.isOpen) {
         this.socket.send(JSON.stringify(message));
@@ -1366,9 +1415,12 @@ class WireviewComponent {
   /**
    * Joins this component again after the server discarded it (`error` during
    * an event, #94). The element and its hooks stay; only the render state is
-   * dropped, since the join's answer is a full render.
+   * dropped, since the join's answer is a full render. Also what a `rejoin`
+   * does for each component (#180), with `through`: its join goes past the
+   * barrier that holds what the page sends meanwhile.
+   * @param {{through?: boolean}} [options]
    */
-  rejoin() {
+  rejoin({ through = false } = {}) {
     const element = /** @type {HTMLElement|null} */ (this.getElemenet());
     if (!element) return;
     // A render that arrived before the error may still wait for its frame;
@@ -1377,14 +1429,15 @@ class WireviewComponent {
     this.static = null;
     this.dynamic = [];
     this.fingerprint = null;
-    this.sendJoin(element);
+    this.sendJoin(element, through);
   }
 
   /**
    * Sends a join with the element's signed state and its nested components'.
    * @param {HTMLElement} element
+   * @param {boolean} [through] - past a rejoin's barrier (#180)
    */
-  sendJoin(element) {
+  sendJoin(element, through = false) {
     // A second join on this connection replaces the instance: new DOM from a
     // boosted navigation, or the rollback after a crash. The server retires the
     // old one with its LiveComponents and their uploads, and so does the page:
@@ -1416,7 +1469,8 @@ class WireviewComponent {
       element.id,
       element.dataset.state || "",
       children,
-      ref
+      ref,
+      through
     );
   }
 

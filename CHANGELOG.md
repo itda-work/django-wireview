@@ -12,6 +12,29 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- In development, a template the autoreloader saw change reaches the open pages at once (#180).
+  Django's `runserver` reloader answers a template change by emptying the template loaders rather
+  than restarting, so an open page used to show the old markup until its next event -- and a
+  component whose join had failed on a broken template stayed refused on its connection after the
+  file was fixed, until the page was reloaded. Now the same `file_changed` signal has every open
+  connection of the process send the new outbound `rejoin` (protocol version 8): the page joins each
+  of its components again with the state its element carries, so they render from the new file with
+  their signed state kept, and a failed one is tried again. It fires no `wireview:error`. Neither end
+  gets ahead of a message still being answered, so a click being handled when the file is saved is
+  not undone: the session mails the change to its own channel (`template_changed`) and writes
+  `rejoin` in that mail's turn, behind the answer it is writing, and the page asks the new inbound
+  `sync` and joins once `synced` comes back -- behind the answers to everything it sent -- holding
+  what it would send meanwhile, including what its DOM callbacks and hooks send while the joins go
+  out, and sending it to the new instances after. A boosted visit made while it waits keeps its own
+  joins, after its leaves. With no `synced` in 10 seconds the page gives up the joins and sends what
+  it held. Saves before the mail is handled make one `rejoin`; a mail the broker drops (a full
+  channel) does not stop the next save from mailing again -- `Broker.send_to_session` now returns
+  `False` when it sent nothing. The joins run `leaving()` and `joined()` again; unfinished async work
+  and uploads end with the old instances. On by default
+  under `DEBUG`; the new setting `REJOIN_ON_TEMPLATE_CHANGE` (`None` follows `DEBUG`) turns it on or
+  off. Off, a connection does not register and the receiver returns at once; no autoreloader runs in
+  production. Only the connections of the process whose reloader saw the change hear it; each mails
+  only itself. A bundle older than version 8 is sent nothing and behaves as before.
 - `Meta.shared_render = True` declares that a component's render reads nothing of the viewer. The
   connections of one process handling the same broadcast then render it once between them and
   share the parsed render; each still runs its own `notification()`/`mutation()`, signs its own

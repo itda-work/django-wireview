@@ -79,6 +79,7 @@
 | `core/render_reads.py`, `core/render_gate.py` | 초기화된 temporary assign을 읽은 동적 부분 찾기(#111), 워커 스레드 렌더 중 백그라운드 작업 미루기(#138) |
 | `core/shared_render.py` | `Meta.shared_render`: 같은 브로드캐스트를 처리하는 연결들이 렌더 하나를 함께 쓰고, `data-state`만 연결마다 끼운다. 선언 검증(#176) |
 | `core/patches.py` | `Broadcast`: 스트림 항목·훅 이벤트·JS 명령을 발행하는 곳에서 한 번 렌더하고 직렬화해, 구독한 연결마다 컴포넌트 id만 끼워 쓴다(#178) |
+| `core/template_reload.py` | 개발 서버에서 템플릿이 바뀌면(자동 리로더의 `file_changed`) 이 프로세스의 열린 연결마다 처리 순서 안에서(자기 채널로 보낸 메일의 차례에) `rejoin`을 보낸다. 페이지는 `sync`의 답을 기다렸다가 컴포넌트를 지금 상태로 다시 join한다(#180) |
 | `core/watched.py` | 보는 사람을 읽으면 오류가 나는 감시 객체. `shared_render`의 검증과 `Broadcast` 항목 렌더가 함께 쓴다 |
 | `core/session.py` | `SessionView`: Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다 |
 | `core/live_session.py` | 페이지 경계(`live_session`)와 인증 세대 |
@@ -325,6 +326,8 @@ class StreamOp:
 채널 레이어는 이 모듈에서만 만진다. 세션으로 가는 출력은 `Outbound.send_command`, 세션들 사이의 fan-out은
 `Broker.publish`, 컴포넌트에서 자기 세션으로 보내는 메시지는 `Broker.send_to_session`이다. 다른 연결 계층은
 이 두 인터페이스만 구현하면 된다([design/transport-abstraction.md](./design/transport-abstraction.md)).
+`send_to_session`은 보내지 못했을 때(레이어 없음, 가득 찬 채널에서 버림) `False`를 돌려준다 — 가득 찬 채널은 예외 없이
+버리므로, 자기 메일을 기다리는 쪽(템플릿 변경을 합치는 세션, #180)이 알 수 있게 한다. 말하지 않는 `Broker`는 `None`을 돌려줘도 된다.
 
 ---
 
@@ -334,7 +337,8 @@ class StreamOp:
 wireview/
 ├── __init__.py            # 공개 API (_EXPORTS 표로 지연 로딩)
 ├── core/                  # component, handlers, meta, rendered, render_reads, render_gate, shared_render, patches,
-│                          # watched, state, signing, model_state, session(SessionView), live_session, origin, transport
+│                          # watched, state, signing, model_state, session(SessionView), live_session, origin, transport,
+│                          # template_reload
 ├── features/              # streams, presence, uploads, upload_store, hooks, toasts
 ├── consumer.py  session.py  repository.py  live_component.py  function_components.py  slots.py
 ├── template_engine.py  event_transpiler.py  js.py  async_result.py  auto_broadcast.py
@@ -350,7 +354,7 @@ wireview/
     ├── wireview.js        # 소스 (wireview.min.js는 make build-js의 산출물)
     ├── wireview-boost.js
     ├── rendered.mjs  streams.mjs  targets.mjs  events.mjs  values.mjs  live-session.mjs  ready.mjs  reload.mjs
-    ├── loading.mjs  navigation.mjs  reconnect.mjs  uploads.mjs  joins.mjs
+    ├── loading.mjs  navigation.mjs  reconnect.mjs  uploads.mjs  joins.mjs  rejoins.mjs
     └── types.d.ts
 ```
 

@@ -73,8 +73,14 @@ class Broker(t.Protocol):
         """Deliver ``message`` to every session subscribed to ``topic``."""
         ...
 
-    async def send_to_session(self, session_id: str, message: Message) -> None:
-        """Deliver ``message`` to a single session."""
+    async def send_to_session(self, session_id: str, message: Message) -> bool | None:
+        """Deliver ``message`` to a single session.
+
+        Returns ``False`` when nothing was sent: no layer, or the layer refused
+        it and it was dropped (a full channel). A caller that waits on its own
+        mail -- a session coalescing template changes (#180) -- would wait for
+        good otherwise. ``None`` from a broker that does not say.
+        """
         ...
 
     async def publish_patch(self, topic: str, message: Message) -> None:
@@ -162,14 +168,17 @@ class ChannelsBroker:
                 if not self._dropped("publish", topic, message, error):
                     raise
 
-    async def send_to_session(self, session_id: str, message: Message) -> None:
+    async def send_to_session(self, session_id: str, message: Message) -> bool:
         layer = self.channel_layer
-        if layer is not None:
-            try:
-                await layer.send(session_id, message)
-            except Exception as error:
-                if not self._dropped("send_to_session", session_id, message, error):
-                    raise
+        if layer is None:
+            return False
+        try:
+            await layer.send(session_id, message)
+        except Exception as error:
+            if not self._dropped("send_to_session", session_id, message, error):
+                raise
+            return False
+        return True
 
     async def publish_patch(self, topic: str, message: Message) -> None:
         await self.publish(patch_group(topic), message)
@@ -191,8 +200,8 @@ class NullBroker:
     async def publish(self, topic: str, message: Message) -> None:
         return None
 
-    async def send_to_session(self, session_id: str, message: Message) -> None:
-        return None
+    async def send_to_session(self, session_id: str, message: Message) -> bool:
+        return False
 
     async def publish_patch(self, topic: str, message: Message) -> None:
         return None

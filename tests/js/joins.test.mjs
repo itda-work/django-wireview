@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { Joins, settledEvent } from "../../wireview/static/wireview/joins.mjs";
+import { Joins, rejoinable, settledEvent } from "../../wireview/static/wireview/joins.mjs";
 
 test("the first join under an id replaces nothing; the next one does", () => {
   const joins = new Joins();
@@ -176,4 +176,29 @@ test("a join the page sent stands over a failure an older render reports", () =>
   joins.sent("held");
   joins.clear();
   assert.equal(joins.holds("held"), false);
+});
+
+/** An element as `rejoinable` reads it. */
+const el = (id, isLive, attributes = []) => ({
+  id,
+  dataset: { isLive },
+  hasAttribute: (name) => attributes.includes(name),
+});
+
+test("a rejoin joins every joined root again, in document order (#180)", () => {
+  const page = [el("outer", "true"), el("inner", "true"), el("failed", "true", ["wire-join-failed"])];
+  assert.deepEqual(rejoinable(page, () => true), ["outer", "inner", "failed"]);
+});
+
+test("a rejoin leaves out LiveComponents and what the page has not joined", () => {
+  const page = [
+    el("root", "true"),
+    // its root's join brings it back
+    el("child", "true", ["wireview-live"]),
+    // the next joinAllComponents joins it
+    el("fresh", "false"),
+    // drawn live by a render, not registered yet
+    el("drawn", "true"),
+  ];
+  assert.deepEqual(rejoinable(page, (id) => id !== "drawn"), ["root"]);
 });

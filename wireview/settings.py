@@ -56,6 +56,10 @@ DEFAULT: dict[str, t.Any] = {
     # and a render taken from another connection is rendered again and compared.
     # None = DEBUG (and always under wireview.testing)
     "VERIFY_SHARED_RENDER": None,
+    # A template the dev server's autoreloader saw change makes every open page of this
+    # process join its components again (wireview.core.template_reload, #180).
+    # None = DEBUG
+    "REJOIN_ON_TEMPLATE_CHANGE": None,
     # Load each app's static/<app_label>/hooks/*.js from {% wireview_header %}
     "COLLECT_HOOKS": True,
     # Client reconnect backoff, in milliseconds (static/wireview/reconnect.mjs, #124).
@@ -152,6 +156,7 @@ if t.TYPE_CHECKING:
     STATE_REFRESH_AFTER: int
     AUTO_GENERATE_STUBS: bool
     TELEMETRY: bool
+    REJOIN_ON_TEMPLATE_CHANGE: bool | None
     COLLECT_HOOKS: bool
     RECONNECT_MIN_DELAY_MS: int
     RECONNECT_JITTER_MS: int

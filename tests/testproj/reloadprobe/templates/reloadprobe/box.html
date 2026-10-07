@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <span data-testid="box-version">shipped</span> <span data-testid="box-count">{{ count }}</span>
+  <button {% on "click" "bump" %} data-testid="box-bump">bump</button>
+  <button {% on "click" "slow_bump" %} data-testid="box-slow">slow</button>
+</div>

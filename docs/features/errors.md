@@ -74,6 +74,34 @@ join을 새 시도로 받아 실패 기억을 지우고 정상적으로 join한�
 나가지 않는다. 요소가 페이지에 남는 것은 HTTP 렌더가 이미 보낸 것이 남는 것뿐이다
 ([lifecycle-hooks](./lifecycle-hooks.md#실행-순서)).
 
+## 개발 중에 템플릿을 고치면
+
+join 실패는 다시 시도하지 않으므로, 템플릿을 깨뜨린 채 저장하면 그 컴포넌트는 그 연결에서 막힌다. 파일을
+고쳐도 페이지가 그 id로 join을 다시 보내기 전까지는 그대로다. 그래서 개발 서버에서는 템플릿이 바뀔 때마다
+열린 페이지가 컴포넌트를 다시 join한다(#180).
+
+- Django의 자동 리로더(`runserver`, daphne의 `runserver` 포함)는 템플릿 디렉터리의 파일이 바뀌면 프로세스를
+  다시 시작하지 않고 템플릿 로더만 비운다. 같은 신호(`django.utils.autoreload.file_changed`)를 받아 그
+  프로세스의 열린 연결마다 `rejoin`을 보낸다([wire-protocol](../implementation/wire-protocol.md) §3).
+- 페이지는 join한 컴포넌트마다 요소의 `data-state`, 곧 지금 상태로 다시 join한다 — 예외 뒤의 다시 join과 같은
+  길이다. 멀쩡하던 컴포넌트는 저장 직후 새 템플릿으로 다시 그려지고 상태는 그대로다. join이 실패했던
+  컴포넌트는 그 join에서 다시 시도된다. 고친 뒤라면 돌아오고, 아직 깨져 있으면 다시 `wireview-error`가 된다.
+- 저장하는 순간 처리 중이던 클릭도 되돌리지 않는다. 서버는 처리 중인 핸들러나 join의 답을 보낸 뒤에 알리고,
+  페이지는 그때까지 보낸 이벤트의 답을 모두 받은 뒤(`sync`) 그 render가 담은 상태로 join한다. 기다리는 동안의
+  클릭, 그리고 다시 join하며 도는 DOM 콜백·훅이 보내는 것은 붙잡았다가 다시 join한 컴포넌트에 보낸다. 답이 10초
+  안에 오지 않으면 다시 join하지 않고 붙잡은 것을 보낸다 — 저장 전과 같은 화면이다. 지켜지는 것은 서명 상태(`data-state`)에 실린 필드다 —
+  다시 join은 `joined()`·`leaving()`을 다시 부르고, 끝나지 않은 `start_async()`·`assign_async()` 작업과 업로드는
+  예전 인스턴스와 함께 끝나며, temporary assign과 `joined()`가 불러온 것은 새로 채운다.
+- `wireview:error`는 나지 않는다. 다시 join이 실패한 경우에만 그 실패의 `error`가 온다.
+- `.py` 파일과 템플릿 디렉터리 밖의 파일은 Django가 프로세스를 다시 시작한다. 그러면 페이지는 끊겼다 다시
+  연결하고, 새 연결은 실패를 기억하지 않으므로 모든 컴포넌트가 지금 상태로 join한다. `uvicorn --reload`처럼
+  바뀔 때마다 프로세스를 다시 시작하는 서버도 같은 길이다 — 재연결 대기(`RECONNECT_*`)만큼 늦을 뿐이다.
+
+`REJOIN_ON_TEMPLATE_CHANGE`(기본 `None` = `DEBUG`)로 끄고 켠다([설정](./settings.md#개발-도구)). 자동 리로더가
+없는 운영 서버에서는 신호가 오지 않고, 꺼져 있으면 연결이 등록되지도 않는다. 알리는 범위는 리로더가 돈 그
+프로세스의 연결이다 — 각 연결은 알림을 자기 채널로 한 번 보내 처리 순서에 넣을 뿐, 다른 프로세스에 퍼뜨리지
+않는다. Redis·NATS 레이어에서도 같다. 깨진 동안 무엇이 틀렸는지는 서버 로그에 있다(`Could not join …`의 traceback).
+
 ## 브라우저에서 알리기
 
 두 경우 모두 요소에서 `wireview:error` 이벤트가 버블링된다.
@@ -121,3 +149,4 @@ WebSocket 연결의 동작이다. 복구 자체를 검증하려면 `tests/test_e
 | LiveView 프로세스가 죽고 클라이언트가 다시 마운트 | 그 컴포넌트만 이벤트 전 상태로 다시 join. 연결은 유지 |
 | mount가 계속 실패하면 클라이언트가 재시도 후 오류 표시 | 재시도 없이 `wireview-error` |
 | `phx-error` 클래스 | `wireview-error` 클래스, `wireview:error` 이벤트 |
+| 개발 중 템플릿 변경을 live reload가 페이지 새로고침으로 반영 | 같은 소켓에서 컴포넌트만 지금 상태로 다시 join(`rejoin`) |

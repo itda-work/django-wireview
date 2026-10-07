@@ -54,6 +54,11 @@ wireview/
 │                          처리 중인 메시지 없이 HOLD_SECONDS가 지나면 패치를 쓰지 않고 연결을 닫는다(1013, WireviewConsumer.dispatch → handling_message)
 ├── core/watched.py        Watched: 보는 사람을 읽으면 오류인 감시 객체. shared_render(VERIFY일 때)와 Broadcast 항목 렌더(언제나)가 함께 쓴다.
 │                          Broadcast 항목의 this는 대상 클래스를 품어 {% on %}이 핸들러를 클래스에서 검사한다(stands_for)
+├── core/template_reload.py 개발 서버에서 템플릿이 바뀌면(자동 리로더의 file_changed) 이 프로세스의 열린 연결마다 rejoin을 보낸다(#180).
+│                          세션은 start()에서 자기 루프와 함께 등록하고(REJOIN_ON_TEMPLATE_CHANGE, 기본 DEBUG일 때만), 리로더 스레드는 call_soon_threadsafe로 넘긴다.
+│                          세션은 rejoin을 바로 쓰지 않고 자기 채널로 메일(template_changed)을 보내 그 차례에 쓴다 — 처리 중인 핸들러·join의 답 뒤.
+│                          페이지는 sync를 보내 synced가 올 때까지 기다렸다가 다시 join한다(static의 rejoins.mjs). 앞지르면 처리 중이던 이벤트가 되돌아갔다.
+│                          refused는 여기서 풀지 않는다 — 페이지의 다시 join이 retry_join으로 푼다
 ├── core/render_gate.py    RenderGate. 워커 스레드가 렌더하는 동안 그 컴포넌트의 start_async·assign_async 작업 단계를 렌더 뒤로 미룬다(#138).
 │                          렌더가 async property를 오래 기다리는 동안 작업이 막혀 있으면 경고한다(교착 의심, #147)
 ├── core/session.py        SessionView. Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다
@@ -134,7 +139,9 @@ wireview/
                            join·join 실패·렌더가 알린 인스턴스에서 페이지가 할 일도 여기 있다: joining·joinFailed·named, #142),
                            joins.mjs (같은 id로 다시 보낸 join의 응답을 기다리는 동안 어느 render·error·remove·reload·joined가
                            지금 join의 것인가. LiveComponent의 render는 루트의 join으로 가른다(#146). join의 ref로 짝짓는다. vsn 6 이상의 서버에만 싣는다. settledEvent가 join의 ref를
-                           이벤트 정산(로딩·valueGuard)에서 뺀다),
+                           이벤트 정산(로딩·valueGuard)에서 뺀다. rejoinable은 rejoin(#180)이 다시 join할 컴포넌트를 고른다),
+                           rejoins.mjs (rejoin이 sync의 답을 기다리는 동안, 그리고 다시 join하는 동안 보낼 메시지를 붙잡는다. 다시 join만 through로 지나간다.
+                           소켓에 쓰는 곳은 _send 하나다 — 다른 길은 그 붙잡기를 지나친다(tests/js/rejoins.test.mjs가 본다), #180),
                            wireview-boost.js, types.d.ts
                            wireview.min.js는 빌드 산출물이며 gitignore
 
@@ -216,6 +223,7 @@ tests/
                            shareprobe/ 는 shared_render를 선언한 보드와 보는 사람을 부르는 인사를 브라우저 컨텍스트 여럿(사용자 하나씩)이 보는 E2E(test_shared_render_e2e.py)의 픽스처,
                            broadcastprobe/ 는 Broadcast로 항목·훅 이벤트·JS를 받는 피드를 브라우저 컨텍스트 둘이 보는 E2E(test_broadcast_e2e.py)의 픽스처(같은 이름의 스트림을 그리는 다른 클래스,
                            ?failing=1 은 join이 실패한 대상, 끊겼다 다시 붙은 페이지),
+                           reloadprobe/ 는 개발 서버에서 템플릿을 저장하면(file_changed) 새로고침 없이 새 템플릿이 보이고, 깨진 템플릿으로 막힌 컴포넌트가 고친 뒤 상태 그대로 돌아오는지 보는 E2E(test_template_reload_e2e.py)의 픽스처(shadow.py 가 TEMPLATES DIRS 앞에 테스트의 디렉터리를 두고 그 사본을 고친다. slow_bump 은 저장하는 순간 처리 중인 핸들러, away/ 는 rejoin이 기다리는 동안의 boost 이동 대상),
                            jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,
                            formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처,
                            fileprobe/ 는 업로드의 모든 입구(입력·드롭 존·미리보기·external)와 숨겼다 다시 보인 LiveComponent의 업로드, 렌더가 새로 그린 일반 컴포넌트와 그 안의 LiveComponent(같은 업로드 이름)의 join·업로드, 재연결 뒤 숨겼다 다시 보인 그 LiveComponent가 새 상태로 시작하는지, late/ 에서 joined()의 작업이 끝나야 그리는 일반 컴포넌트 안의 LiveComponent가 재연결 뒤 제 상태로 돌아오는지를 보는 E2E(test_uploads_e2e.py)의 픽스처,

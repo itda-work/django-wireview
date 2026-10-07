@@ -153,3 +153,21 @@ export class Joins {
     this.byId.clear();
   }
 }
+
+/**
+ * The components a `rejoin` joins again (#180), in document order: a template
+ * changed under the dev server, and each joins with the state its element
+ * carries -- the latest one -- as after a crash's rollback. A component whose
+ * join failed is among them: the server tries an id again on its join. A
+ * LiveComponent comes back with its root's join, and an element not joined yet
+ * (not live, or live but not taken up) is the next `joinAllComponents`'s.
+ * @param {Array<{id: string, dataset: {isLive?: string}, hasAttribute: (name: string) => boolean}>} elements
+ *   - the page's `[wireview-component]` elements, in document order
+ * @param {(id: string) => boolean} registered - whether the page holds a component under the id
+ * @returns {string[]}
+ */
+export function rejoinable(elements, registered) {
+  return elements
+    .filter((el) => !el.hasAttribute("wireview-live") && el.dataset.isLive === "true" && registered(el.id))
+    .map((el) => el.id);
+}
