@@ -313,7 +313,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         self._held_tokens.add(token)
         return token
 
-    async def _let_reset_through(self, component: "Component", token: int, sent: bool = True) -> None:
+    async def _let_reset_through(self, component: "Component", token: int, tried: bool = True) -> None:
         if self._handling:
             self._released.append(token)
         else:

@@ -60,9 +60,10 @@ QUEUE_LIMIT = 1000
 
 #: How many seconds frames stay held once the mail that lets them through -- a
 #: stream reset, a join's release -- is on its way through the channel layer
-#: and the connection has nothing else to handle. That mail comes in
-#: milliseconds; past this it was dropped (a full layer), and the frames are
-#: not written out of order: the connection is closed and its page joins again
+#: and the connection is handling no message when the deadline comes. That mail
+#: comes in milliseconds; past this it was most likely dropped (a full layer).
+#: Late or lost cannot be told apart, so the frames are not written out of
+#: order: the connection is closed and its page joins again
 #: (``WireviewSession._hold_expired``).
 HOLD_SECONDS = 10.0
 
@@ -84,8 +85,10 @@ class Gate(t.NamedTuple):
     list and returns a token for it, or None when nothing is held. The reset
     carries the token (``send_stream_op(hold=...)``) and lets it go where it
     is written; the patches go out when no other token holds them.
-    ``let_through(component, token, sent)`` follows the reset: a token whose
-    reset was not sent (its read raised) goes at once.
+    ``let_through(component, token, tried)`` follows the reset: a token whose
+    reset was never tried (its read raised) goes at once. One whose send was
+    tried stays held even if the send raised -- a layer can raise after the
+    message is in the channel -- until the reset is written or its deadline closes the connection.
     """
 
     hold: t.Callable[[Component], t.Awaitable[int | None]]

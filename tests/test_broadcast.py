@@ -1228,6 +1228,30 @@ async def test_a_reset_whose_read_raised_lets_its_hold_go(hub, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_a_reset_whose_send_raised_after_queueing_keeps_its_hold(hub, monkeypatch):
+    """channels_redis adds the message, then sets its expiry: the send can raise with the reset in the channel."""
+    session = await _joined_session(_Recording())
+    feed = session.repo.get("feed")
+    mail = await _mailing(session, feed, monkeypatch)
+    queued = feed.wire._do_send
+
+    async def queued_then_raised(command: str, **kwargs: t.Any) -> None:
+        await queued(command, **kwargs)
+        raise ConnectionError("the expiry could not be set")
+
+    monkeypatch.setattr(feed.wire, "_do_send", queued_then_raised)
+    with pytest.raises(ConnectionError):
+        await feed.stream("items", [Post(1, "old")])
+    hub.dispatch(_message())
+    await session._patches_written()
+    assert _posted(session) == 0
+
+    await _deliver(session, mail)
+
+    assert [json.loads(frame)["command"] for frame in session.outbound.frames] == ["stream_op", "push_event"]  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
 async def test_a_subscription_that_ends_after_its_connection_stopped_leaves_no_receiver(hub, monkeypatch):
     session = await _joined_session(_Recording())
     feed = session.repo.get("feed")

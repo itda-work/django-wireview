@@ -96,12 +96,12 @@ def _log_update_error(cls: type, component: t.Any, error: Exception) -> None:
 class _Held:
     """A component's patches held until its stream resets are written (``WireviewSession._hold_patches``).
 
-    Each reset -- and a join's ``joined()``, which may send several -- takes a
-    token and sends a ``release_patches`` mail naming it behind its operations.
-    The frames go out once no token is left: a release for one reset does not
-    let out what came while another is on its way, and a release for a token
-    this hold never gave (a duplicate, one for a hold that expired) lets out
-    nothing.
+    Each reset takes a token and carries it in its ``stream_op`` mail, which
+    lets it go once written; a join takes one for its ``joined()``, which a
+    ``release_patches`` mail behind its operations lets go. The frames go out
+    once no token is left: one reset written does not let out what came while
+    another is on its way, and a token this hold never gave (a duplicate, a
+    stale mail) lets out nothing.
     """
 
     __slots__ = ("component", "frames", "tokens", "lifecycle", "expiries")
@@ -1860,16 +1860,18 @@ class WireviewSession:
         token, held.lifecycle = held.lifecycle, None
         await self._send_release(component, token)
 
-    async def _let_reset_through(self, component: Component, token: int, sent: bool) -> None:
-        """``patches.Gate.let_through``: the reset that took ``token`` is sent, or never will be.
+    async def _let_reset_through(self, component: Component, token: int, tried: bool) -> None:
+        """``patches.Gate.let_through``: the reset that took ``token`` was sent, or never will be.
 
-        A sent reset carries the token and lets it go where it is written
-        (``component_stream_op``); this only arms its deadline.
+        A reset whose send was tried carries the token and lets it go where it
+        is written (``component_stream_op``); this only arms its deadline. So
+        does one whose send raised: the layer may have put it in the channel
+        before raising (channels_redis adds, then sets the expiry).
         """
-        if sent and component.wire.channel_name:
+        if tried and component.wire.channel_name:
             self._arm_when_sent(component, token)
             return
-        # Not sent (its read raised), or sent through no channel: written already
+        # Never tried (its read raised), or sent through no channel: written already
         self._discard_token(component, token)
         await self._patches_written()
 
@@ -1909,11 +1911,11 @@ class WireviewSession:
 
         While a message is handled it may be waiting behind it -- a handler still
         running, another one the connection took first -- so the deadline counts
-        again. With nothing handled, it was dropped. Writing the frames now
-        could put them ahead of a reset that is late after all, which would
-        wipe them without a word; so the connection closes instead, as when
-        frames pile up (``_fell_behind``), and its page joins again with its
-        lists read afresh.
+        again. With none handled when the deadline comes, it was most likely
+        dropped, though late cannot be ruled out. Writing the frames now could
+        put them ahead of a reset that is late after all, which would wipe them
+        without a word; so the connection closes instead, as when frames pile
+        up (``_fell_behind``), and its page joins again with its lists read afresh.
         """
         if self._patch_held.get(id(held.component)) is not held or token not in held.tokens:
             return

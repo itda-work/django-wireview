@@ -1308,7 +1308,8 @@ class Component(BaseModel):
         # the reset is written (#178). The reset carries its hold's token.
         gate = self.wire.patch_gate
         token = None if gate is None else await gate.hold(self)
-        sent = False
+        # Once the send is tried the reset may be in the channel, even if the send raised
+        tried = False
         try:
             # A QuerySet is both iterable and async iterable; iterating it
             # synchronously here would query the database on the event loop,
@@ -1322,11 +1323,11 @@ class Component(BaseModel):
                 stream_items.append(StreamItem(dom_id=dom_id_fn(item), html=html))
 
             op = StreamOp(op="reset", stream=name, items=stream_items, limit=limit)
+            tried = True
             await self.wire.send_stream_op(op, self.id, hold=token)
-            sent = True
         finally:
             if token is not None:
-                await gate.let_through(self, token, sent)  # type: ignore[union-attr]
+                await gate.let_through(self, token, tried)  # type: ignore[union-attr]
 
     async def stream_insert(
         self,
