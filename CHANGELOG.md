@@ -67,6 +67,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- `manage.py wireview_lsp` writes metadata version 2.0 (#162). A component's `methods` holds only
+  the methods its own code defines; those wireview and pydantic define, the same on every
+  component and 97% of the output, are named in its `inherited_methods` and described once, in
+  `framework_methods` at the top. The test project's metadata goes from 6.9 MB to 0.5 MB. The
+  major changed because `methods` means something else: a 1.x reader would call a framework name
+  like `joined` unknown rather than not a handler. The VS Code extension reads 2.0 and 1.1 alike;
+  another reader that checks the major refuses 2.0 until it reads `inherited_methods`.
 - `telemetry.broadcast_published` carries `kind`: the message type a fan-out published
   (`"notification"`, `"model_mutation"`, `"patch"` for a `Broadcast`) (#178).
 - A component that subscribes to a topic now also makes its process's channel join the topic's

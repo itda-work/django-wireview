@@ -591,6 +591,7 @@ BINDING = re.compile(
 #: Bindings shown to say they are refused, by file and name.
 REFUSED_ON_PURPOSE = {
     ("docs/features/component-api.md", "joined"),  # "{% on "click" "joined" %}처럼 그 밖의 이름에 ..."
+    ("docs/features/editor-support.md", "joined"),  # what a 1.x reader of metadata 2.0 would say of it
 }
 
 

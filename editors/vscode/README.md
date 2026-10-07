@@ -52,8 +52,9 @@ Django 템플릿을 편집하는 데 필요한 것을 이 확장 하나로 준�
 ## 요구 사항
 
 - VS Code 1.100 이상
-- 프로젝트의 django-wireview가 메타데이터 형식 1.1을 낸다: `python manage.py wireview_lsp`의 출력에
-  `"version": "1.1"`이 있으면 된다. 낮으면 상태 표시줄과 출력 채널이 django-wireview를 올리라고 알린다.
+- 프로젝트의 django-wireview가 메타데이터 형식 1.1 이상의 1.x나 2.x를 낸다: `python manage.py wireview_lsp`의
+  출력에 `"version": "1.1"`(django-wireview 1.0~1.2)이나 `"version": "2.0"`이 있으면 된다. 낮으면 상태 표시줄과
+  출력 채널이 django-wireview를, 높으면 확장을 올리라고 알린다.
   django-wireview가 없는 Django 프로젝트에서도 구문 강조·HTML 기능·스니펫은 쓸 수 있다
 
 ## 동작

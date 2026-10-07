@@ -143,6 +143,54 @@ def test_a_linked_template_is_checked_against_its_component(tmp_path):
     assert [p["code"] for p in report[str(root / "linked.html")]] == ["unknown-handler"]
 
 
+def _as_written_by_1_1(metadata: dict) -> dict:
+    """What a django-wireview before #162 wrote: every method on every component, nothing at the top."""
+    described = metadata.pop("framework_methods")
+    for component in metadata["components"].values():
+        inherited = component.pop("inherited_methods")
+        methods = {
+            name: {"is_handler": False, **described[owner][name]}
+            for owner, names in inherited.items()
+            for name in names
+        }
+        component["methods"] = dict(sorted({**methods, **component["methods"]}.items()))
+    return {**metadata, "version": "1.1"}
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("shape", ["2.0", "1.1"])
+def test_a_framework_method_is_not_a_handler_in_either_shape(tmp_path, shape):
+    """2.0 names the framework's methods on a component and describes them once at the top (#162).
+
+    The extension puts them back on the component, so a framework name in
+    ``{% on %}`` is still "not a handler" rather than "no such method", and it
+    reads a project whose django-wireview still writes 1.1 alike.
+    """
+    from wireview.management.commands.wireview_lsp import find_template
+
+    root = tmp_path / "templates"
+    root.mkdir()
+    page = root / "page.html"
+    page.write_text(
+        '{% load wireview %}<b {% on "click" "model_dump" %}></b><b {% on "click" "destroy" %}></b>'
+        '<b {% on "click" "mutation" %}></b><b {% on "click" "no_such_handler" %}></b><b {% on "click" "add" %}></b>',
+        encoding="utf-8",
+    )
+    metadata = extract_metadata()
+    assert metadata["version"] == "2.0"
+    if shape == "1.1":
+        metadata = _as_written_by_1_1(metadata)
+    component = {**metadata["components"]["XTodoList"], "template_path": find_template("page.html", [root])}
+    # model_dump and destroy are the framework's; mutation is XTodoList's own override of a framework name
+    assert component["methods"]["add"]["is_handler"] and not component["methods"]["mutation"]["is_handler"]
+    metadata["components"] = {"XTodoList": component}
+    metadata_path = tmp_path / "metadata.json"
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    report = _diagnose(metadata_path, page)
+    assert [p["code"] for p in report[str(page)]] == ["not-a-handler"] * 3 + ["unknown-handler"]
+
+
 @pytest.mark.integration
 def test_the_filter_tag_is_checked_as_the_engine_has_the_filters(tmp_path):
     """Django refuses {% filter safe %} by the function's _filter_name: a project that renames it is not refused."""

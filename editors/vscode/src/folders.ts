@@ -12,7 +12,7 @@ import * as nodePath from "node:path";
 
 import * as vscode from "vscode";
 
-import { checkVersion, METADATA_MAJOR, METADATA_MINOR } from "./core/metadata.ts";
+import { checkVersion, READABLE_VERSIONS } from "./core/metadata.ts";
 import type { Metadata } from "./core/metadata.ts";
 import { Project } from "./core/project.ts";
 import { buildCommand, classifyFailure, Generations, interpreterCandidates, ownsGroup, pickManagePy, Refresher, Stopper, stopSteps, supervised } from "./core/runner.ts";
@@ -181,14 +181,13 @@ export class FolderProject implements vscode.Disposable {
     }
     const version = checkVersion(metadata);
     if (!version.ok) {
-      const wanted = `${METADATA_MAJOR}.${METADATA_MINOR}`;
       const advice =
         version.reason === "newer"
           ? "Update the Django Wireview extension."
           : version.reason === "older"
             ? "Upgrade django-wireview in the project."
             : "Is it the output of manage.py wireview_lsp?";
-      this.fail(`The metadata is version ${version.version}; this extension reads ${wanted}. ${advice}`);
+      this.fail(`The metadata is version ${version.version}; this extension reads ${READABLE_VERSIONS}. ${advice}`);
       return false;
     }
     this.project = new Project(metadata as Metadata);

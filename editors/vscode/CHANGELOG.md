@@ -2,7 +2,7 @@
 
 The extension is versioned on its own; the library it reads is versioned by
 git tags `v*` (see the repository's CHANGELOG.md). It reads the metadata of
-`manage.py wireview_lsp` version 1.1 or a later 1.x.
+`manage.py wireview_lsp` version 1.1 or a later 1.x (django-wireview 1.0 to 1.2), and 2.x.
 
 ## [0.1.0] - Unreleased
 
@@ -41,3 +41,7 @@ git tags `v*` (see the repository's CHANGELOG.md). It reads the metadata of
 - Restricted Mode: in an untrusted workspace nothing runs and no metadata file is read, not the
   last session's either; the grammar, the snippets and the HTML support work. Trusting the
   workspace starts the metadata.
+- Metadata 2.0 (#162), which describes the framework's methods once at the top instead of on every
+  component, is read as 1.1 was: the inherited methods are put back on each component when the
+  metadata is loaded, so a framework name in `{% on %}` is still "not a handler", with its hover
+  and its definition. 1.1 is read as before. Metadata of a later major asks for a newer extension.

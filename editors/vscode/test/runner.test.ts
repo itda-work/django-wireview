@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
 
-import { checkVersion } from "../src/core/metadata.ts";
+import { checkVersion, READABLE_VERSIONS } from "../src/core/metadata.ts";
 import { buildCommand, classifyFailure, interpreterCandidates, ownsGroup, pickManagePy, Refresher, Stopper, stopSteps, SUPERVISOR, supervised } from "../src/core/runner.ts";
 import type { StopStep } from "../src/core/runner.ts";
 
@@ -163,11 +163,15 @@ test("a run that ends while it is stopped cancels what was still to come", () =>
   assert.equal(timers.length, 1, "and a stop after it does nothing");
 });
 
-test("versions: the same major with at least the minor this reads", () => {
+test("versions: 1.1 and later 1.x, which a django-wireview before #162 writes, and 2.x", () => {
   assert.deepEqual(checkVersion({ version: "1.1" }), { ok: true });
   assert.deepEqual(checkVersion({ version: "1.7" }), { ok: true });
+  assert.deepEqual(checkVersion({ version: "2.0" }), { ok: true });
+  assert.deepEqual(checkVersion({ version: "2.4" }), { ok: true });
   assert.deepEqual(checkVersion({ version: "1.0" }), { ok: false, reason: "older", version: "1.0" });
-  assert.deepEqual(checkVersion({ version: "2.0" }), { ok: false, reason: "newer", version: "2.0" });
+  assert.deepEqual(checkVersion({ version: "0.9" }), { ok: false, reason: "older", version: "0.9" });
+  assert.deepEqual(checkVersion({ version: "3.0" }), { ok: false, reason: "newer", version: "3.0" });
+  assert.equal(READABLE_VERSIONS, "1.1 to 2.x");
   assert.equal(checkVersion({}).ok, false);
   assert.equal(checkVersion(null).ok, false);
 });

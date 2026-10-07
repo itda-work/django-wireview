@@ -28,7 +28,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandParser
 
 from wireview.core.component import ALWAYS_EXCLUDED, Component
-from wireview.core.handlers import is_client_callable, is_framework_class
+from wireview.core.handlers import is_client_callable, is_framework_class, is_framework_module
 from wireview.event_transpiler import MODIFIER_ARGUMENTS, MODIFIERS, NUMBER_ARGUMENTS
 from wireview.live_component import LiveComponent
 
@@ -39,7 +39,13 @@ from wireview.live_component import LiveComponent
 #: ``Meta.exclude_fields`` (``in_state`` false), ``argument`` on a modifier, and
 #: ``function_components``, ``hooks``, ``template_dirs``, ``template_builtins``
 #: and ``template_libraries`` (each with its ``module`` and ``file_path``) at the top.
-METADATA_VERSION = "1.1"
+#: 2.0 (#162): a component's ``methods`` holds only the methods its own code
+#: defines. Those wireview or pydantic define are named in ``inherited_methods``
+#: (owner -> names) and described once, in ``framework_methods`` at the top:
+#: the same entries on every component were 97% of the output. A 1.x reader
+#: would call a framework name like ``joined`` unknown rather than not a
+#: handler, so the meaning of ``methods`` changed and so did the major.
+METADATA_VERSION = "2.0"
 
 
 class Command(BaseCommand):
@@ -110,11 +116,12 @@ def get_class_attribute_safe(cls: type, attr_name: str, default: t.Any = None) -
 def extract_metadata() -> dict[str, t.Any]:
     """Extract metadata from all registered components."""
     components: dict[str, dict[str, t.Any]] = {}
+    framework_methods: dict[str, dict[str, dict[str, t.Any]]] = {}
 
     roots = template_roots()
     for name, cls in Component._all.items():
         try:
-            components[name] = extract_component_metadata(cls, roots)
+            components[name] = extract_component_metadata(cls, roots, framework_methods)
         except Exception as e:
             # Log error but continue processing other components
             sys.stderr.write(f"Warning: Failed to extract metadata for {name}: {e}\n")
@@ -125,6 +132,9 @@ def extract_metadata() -> dict[str, t.Any]:
         "wireview_version": installed_version(),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "components": components,
+        "framework_methods": {
+            owner: dict(sorted(methods.items())) for owner, methods in sorted(framework_methods.items())
+        },
         "function_components": extract_function_components(roots),
         "hooks": extract_hooks(),
         "modifiers": extract_modifiers(),
@@ -165,8 +175,16 @@ def find_template(name: str | None, roots: list[Path]) -> str | None:
     return None
 
 
-def extract_component_metadata(cls: type[Component], roots: list[Path] | None = None) -> dict[str, t.Any]:
-    """Extract metadata from a single component class."""
+def extract_component_metadata(
+    cls: type[Component],
+    roots: list[Path] | None = None,
+    framework_methods: dict[str, dict[str, dict[str, t.Any]]] | None = None,
+) -> dict[str, t.Any]:
+    """Extract metadata from a single component class.
+
+    The methods it inherits from the framework are described in
+    ``framework_methods``, which the caller shares between components.
+    """
     if roots is None:
         roots = template_roots()
     # Get source file and line number
@@ -182,6 +200,7 @@ def extract_component_metadata(cls: type[Component], roots: list[Path] | None = 
     app_name = module.split(".")[0]
 
     meta = cls._meta
+    methods, inherited = extract_methods(cls, {} if framework_methods is None else framework_methods)
     return {
         "name": cls._name,
         "fqn": cls._fqn,
@@ -196,7 +215,8 @@ def extract_component_metadata(cls: type[Component], roots: list[Path] | None = 
         "fields": extract_fields(cls),
         "accepts_extra_kwargs": accepts_extra_kwargs(cls),
         "properties": extract_properties(cls),
-        "methods": extract_methods(cls),
+        "methods": methods,
+        "inherited_methods": inherited,
         "slots": dict(meta.slots),
         "subscriptions": sorted(meta.subscriptions),
         "subscriptions_is_dynamic": subscriptions_are_dynamic(cls),
@@ -333,9 +353,76 @@ def source_location(obj: t.Any) -> tuple[str, int]:
         return "", 0
 
 
-def extract_methods(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
-    """Extract public async methods (event handlers) from a component class."""
+def defining_class(cls: type, name: str) -> type | None:
+    """The class whose own attribute ``getattr(cls, name)`` reads, or None when none of them has it."""
+    for klass in cls.__mro__:
+        if name in vars(klass):
+            return klass
+    return None
+
+
+def original_function(attr: t.Any) -> t.Any:
+    """The function a method attribute was written as, under the wrappers in front of it.
+
+    ``validate_call`` wraps a handler and pydantic wraps a ``model_post_init``
+    when the class has private attributes. Older pydantic (2.7, the lowest
+    supported) did not mark that wrapper with ``functools.wraps``: the function
+    it calls is in its closure.
+    """
+    func = getattr(attr, "__wrapped__", attr)
+    if getattr(func, "__name__", None) == "wrapped_model_post_init" and is_framework_module(
+        getattr(func, "__module__", None) or ""
+    ):
+        code = getattr(func, "__code__", None)
+        cells = dict(zip(code.co_freevars, func.__closure__ or ())) if code is not None else {}
+        cell = cells.get("original_model_post_init")
+        if cell is not None:
+            return original_function(cell.cell_contents)
+    return func
+
+
+def framework_owner(cls: type, name: str) -> tuple[str, t.Any] | None:
+    """Where the framework defines a method of ``cls``, and the method to describe; None when the component's own.
+
+    Components share the entry ``framework_methods[owner][name]``, so it must
+    read the same on all of them. It does when the attribute is a framework
+    class's own (``vars(owner)[name]``): one object, described as that class
+    has it, whichever component comes first. A name any user class or mixin
+    sets is the component's own -- an override, a framework function stored
+    under another name (``leaving = Component.joined``) or bound otherwise
+    (``new = staticmethod(Component.new.__func__)``) -- with one exception:
+    the function pydantic puts on a class with private attributes
+    (``model_post_init``), when it is written outside any class. Its key is
+    that function's own path.
+    """
+    owner = defining_class(cls, name)
+    if owner is None:
+        return None
+    if is_framework_class(owner):
+        return f"{owner.__module__}.{owner.__qualname__}", getattr(owner, name)
+    value = vars(owner)[name]
+    if name != "model_post_init" or not inspect.isfunction(value):
+        return None
+    func = original_function(value)
+    module = getattr(func, "__module__", None) or ""
+    qualname = getattr(func, "__qualname__", None)
+    if inspect.isfunction(func) and is_framework_module(module) and isinstance(qualname, str) and "." not in qualname:
+        return f"{module}.{qualname}", func
+    return None
+
+
+def extract_methods(
+    cls: type[Component], framework_methods: dict[str, dict[str, dict[str, t.Any]]]
+) -> tuple[dict[str, dict[str, t.Any]], dict[str, list[str]]]:
+    """The component's public methods: its own, and the names of those the framework defines.
+
+    A method wireview or pydantic defines is the same on every component, so it
+    is described once, in ``framework_methods[owner][name]``, and only named
+    here. None of them is a handler: a client never calls a name the framework
+    owns. A user class's override of such a name (``joined``) is its own.
+    """
     methods: dict[str, dict[str, t.Any]] = {}
+    inherited: dict[str, list[str]] = {}
 
     # Get all class attributes
     for name in dir(cls):
@@ -354,35 +441,37 @@ def extract_methods(cls: type[Component]) -> dict[str, dict[str, t.Any]]:
         if not callable(attr) or isinstance(attr, type):
             continue
 
-        # Check if it's a coroutine function (async method)
-        # Need to unwrap validate_call decorator if present
-        original_func = getattr(attr, "__wrapped__", attr)
-        is_async = inspect.iscoroutinefunction(original_func)
+        # Whether a client can call it: the check every event meets (#110)
+        is_handler = is_client_callable(cls, name)
+        shared = None if is_handler else framework_owner(cls, name)
+        if shared is not None:
+            owner, method = shared
+            described = framework_methods.setdefault(owner, {})
+            if name not in described:
+                described[name] = method_metadata(original_function(method))
+            inherited.setdefault(owner, []).append(name)
+            continue
 
-        # Get signature
-        try:
-            sig = inspect.signature(original_func)
-            parameters = extract_parameters(sig)
-        except (ValueError, TypeError):
-            parameters = {}
+        methods[name] = {"is_handler": is_handler, **method_metadata(original_function(attr))}
 
-        # Get docstring
-        docstring = inspect.getdoc(original_func)
+    return methods, dict(sorted(inherited.items()))
 
-        # A mixin's method lives in the mixin's file, not the component's
-        method_file, method_line = source_location(original_func)
 
-        methods[name] = {
-            # Whether a client can call it: the check every event meets (#110)
-            "is_handler": is_client_callable(cls, name),
-            "is_async": is_async,
-            "parameters": parameters,
-            "docstring": docstring,
-            "file_path": method_file,
-            "line_number": method_line,
-        }
-
-    return methods
+def method_metadata(func: t.Any) -> dict[str, t.Any]:
+    """What a method is, apart from whether a client may call it."""
+    try:
+        parameters = extract_parameters(inspect.signature(func))
+    except (ValueError, TypeError):
+        parameters = {}
+    # A mixin's method lives in the mixin's file, not the component's
+    file_path, line_number = source_location(func)
+    return {
+        "is_async": inspect.iscoroutinefunction(func),
+        "parameters": parameters,
+        "docstring": inspect.getdoc(func),
+        "file_path": file_path,
+        "line_number": line_number,
+    }
 
 
 def extract_parameters(sig: inspect.Signature) -> dict[str, dict[str, t.Any]]:

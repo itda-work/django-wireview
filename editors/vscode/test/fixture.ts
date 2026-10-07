@@ -1,7 +1,7 @@
 // A small project's metadata, written by hand: the shape `manage.py wireview_lsp`
 // prints, with only what the tests need.
 import type { Env } from "../src/core/env.ts";
-import type { ComponentMeta, FilterMeta, LibraryMeta, Metadata, MethodMeta, ParameterMeta, TagMeta } from "../src/core/metadata.ts";
+import type { ComponentMeta, FilterMeta, FrameworkMethodMeta, LibraryMeta, Metadata, MethodMeta, ParameterMeta, TagMeta } from "../src/core/metadata.ts";
 import { Project } from "../src/core/project.ts";
 import { parseTemplate } from "../src/core/template.ts";
 import type { TemplateDoc } from "../src/core/template.ts";
@@ -11,6 +11,10 @@ export const LIVE_PY = "/proj/app/live.py";
 const DJANGO = "/site/django/template/defaulttags.py";
 const FILTERS = "/site/django/template/defaultfilters.py";
 const WIREVIEW = "/site/wireview/templatetags/wireview.py";
+export const PYDANTIC_MAIN = "/site/pydantic/main.py";
+export const WIREVIEW_COMPONENT = "/site/wireview/core/component.py";
+const BASE_MODEL = "pydantic.main.BaseModel";
+const COMPONENT = "wireview.core.component.Component";
 
 function tag(end: string | null = null, intermediate: string[] = [], file = DJANGO): TagMeta {
   return { docstring: null, file_path: file, line_number: 1, end, intermediate };
@@ -28,6 +32,10 @@ function method(isHandler: boolean, parameters: Record<string, ParameterMeta> = 
   return { is_handler: isHandler, is_async: isHandler, parameters, docstring: null, file_path: LIVE_PY, line_number: line };
 }
 
+function frameworkMethod(file: string, line: number, docstring: string, parameters: Record<string, ParameterMeta> = {}): FrameworkMethodMeta {
+  return { is_async: false, parameters, docstring, file_path: file, line_number: line };
+}
+
 function component(name: string, extra: Partial<ComponentMeta>): ComponentMeta {
   return {
     name,
@@ -43,7 +51,9 @@ function component(name: string, extra: Partial<ComponentMeta>): ComponentMeta {
     fields: {},
     accepts_extra_kwargs: false,
     properties: {},
-    methods: { joined: method(false), model_dump: method(false) },
+    // As 2.0 has it: what the framework defines is named here and described at the top
+    methods: {},
+    inherited_methods: { [BASE_MODEL]: ["model_dump"], [COMPONENT]: ["joined"] },
     slots: {},
     subscriptions: [],
     subscriptions_is_dynamic: false,
@@ -73,9 +83,15 @@ const wireviewLibrary: LibraryMeta = {
 
 export function metadata(): Metadata {
   return {
-    version: "1.1",
-    wireview_version: "1.0.0",
+    version: "2.0",
+    wireview_version: "1.2.0",
     generated_at: "",
+    framework_methods: {
+      [BASE_MODEL]: {
+        model_dump: frameworkMethod(PYDANTIC_MAIN, 400, "Generate a dictionary representation of the model.", { mode: parameter("str", "python", "KEYWORD_ONLY") }),
+      },
+      [COMPONENT]: { joined: frameworkMethod(WIREVIEW_COMPONENT, 120, "Called when the component joins.") },
+    },
     components: {
       TodoList: component("TodoList", {
         template_name: "todo/list.html",
@@ -86,13 +102,14 @@ export function metadata(): Metadata {
           items: { type: "list", annotation: null, default: [], required: false, description: null, in_state: true },
         },
         properties: { remaining: { type: "int", is_async: false, docstring: "Items left.", file_path: LIVE_PY, line_number: 30 } },
+        // joined: the component's own override of a framework name
         methods: {
           joined: method(false),
-          model_dump: method(false),
           add: method(true, { text: parameter("str") }, 21),
           toggleAll: method(true, {}, 25),
           anything: method(true, { kwargs: parameter(null, undefined, "VAR_KEYWORD") }, 27),
         },
+        inherited_methods: { [BASE_MODEL]: ["model_dump"] },
       }),
       Counter: component("Counter", {
         kind: "live_component",
@@ -100,6 +117,7 @@ export function metadata(): Metadata {
         template_path: `${DIR}/todo/counter.html`,
         fields: { count: { type: "int", annotation: null, default: 0, required: false, description: null, in_state: true } },
         methods: { joined: method(false), increment: method(true, { by: parameter("int", 1) }) },
+        inherited_methods: { [BASE_MODEL]: ["model_dump"] },
       }),
       Card: component("Card", {
         template_name: "card.html",
@@ -174,6 +192,38 @@ export function metadata(): Metadata {
 }
 
 export const project = new Project(metadata());
+
+/**
+ * The same project as 1.1 wrote it: every method on every component, nothing at the top.
+ * Written out here rather than made by expandMethods, which it is the reference for.
+ */
+export function legacyMetadata(): Metadata {
+  const { framework_methods: _described, ...rest } = metadata();
+  const modelDump = (): MethodMeta => ({
+    is_handler: false,
+    is_async: false,
+    parameters: { mode: { type: "str", default: "python", has_default: true, kind: "KEYWORD_ONLY" } },
+    docstring: "Generate a dictionary representation of the model.",
+    file_path: PYDANTIC_MAIN,
+    line_number: 400,
+  });
+  const joined = (): MethodMeta => ({
+    is_handler: false,
+    is_async: false,
+    parameters: {},
+    docstring: "Called when the component joins.",
+    file_path: WIREVIEW_COMPONENT,
+    line_number: 120,
+  });
+  const components = Object.fromEntries(
+    Object.entries(rest.components).map(([key, { inherited_methods: _named, ...component }]) => {
+      // TodoList and Counter define joined themselves; Card and Flexible inherit it
+      const own = component.methods;
+      return [key, { ...component, methods: { model_dump: modelDump(), ...(own.joined ? {} : { joined: joined() }), ...own } }];
+    }),
+  );
+  return { ...rest, version: "1.1", wireview_version: "1.1.0", components };
+}
 
 export const FILES: Record<string, string> = {
   [`${DIR}/card.html`]: '<div {% tag_header %}>{% render_slot "header" %}{% render_slot "footer" note=x %}{% render_slot %}</div>',

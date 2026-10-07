@@ -7,12 +7,15 @@ import weakref
 from io import StringIO
 from pathlib import Path
 
+import pydantic
 import pytest
 from django import template
 from django.core.management import call_command
-from pydantic import AfterValidator, PlainSerializer
+from pydantic import AfterValidator, PlainSerializer, PrivateAttr
 
+import wireview as wireview_package
 from wireview import Component, LiveComponent, function_component
+from wireview.core.handlers import is_client_callable
 from wireview.management.commands.wireview_lsp import (
     METADATA_VERSION,
     extract_component_metadata,
@@ -21,6 +24,8 @@ from wireview.management.commands.wireview_lsp import (
     extract_library,
     extract_metadata,
     find_template,
+    method_metadata,
+    original_function,
     serialize_default,
     template_roots,
 )
@@ -53,7 +58,7 @@ class TestWireviewLspCommand:
         assert "modifiers" in data
 
         # The shape's own version: the extension under editors/vscode refuses another major
-        assert data["version"] == METADATA_VERSION == "1.1"
+        assert data["version"] == METADATA_VERSION == "2.0"
 
     def test_component_metadata(self):
         """Component metadata should include all expected fields."""
@@ -192,8 +197,10 @@ def test_is_handler_says_what_a_client_can_call():
     (chat,) = [c for c in json.loads(out.getvalue())["components"].values() if c["name"] == "XChatRoom"]
 
     assert chat["methods"]["send_message"]["is_handler"] is True
-    assert chat["methods"]["presence_join"]["is_handler"] is False
-    assert chat["methods"]["model_dump"]["is_handler"] is False
+    # A mixin's and pydantic's methods are the framework's: never handlers, so 2.0 only names them (#162)
+    assert "presence_join" in chat["inherited_methods"]["wireview.features.presence.PresenceMixin"]
+    assert "model_dump" in chat["inherited_methods"]["pydantic.main.BaseModel"]
+    assert "presence_join" not in chat["methods"] and "model_dump" not in chat["methods"]
 
 
 # What the editor extension reads (#156). Each of these was missing from 1.0, and
@@ -249,7 +256,7 @@ class TestComponentsForAnEditor:
         chat = metadata["components"]["XChatRoom"]
         own = chat["methods"]["send_message"]
         assert own["file_path"] == chat["file_path"]
-        mixed_in = chat["methods"]["presence_join"]
+        mixed_in = metadata["framework_methods"]["wireview.features.presence.PresenceMixin"]["presence_join"]
         assert mixed_in["file_path"].endswith("presence.py")
         line = Path(own["file_path"]).read_text().splitlines()[own["line_number"] - 1]
         assert "def send_message" in line
@@ -683,3 +690,152 @@ class TestTemplateTagsAndFilters:
         tags = extract_library(register)["tags"]
         assert tags["panel"]["end"] == "endpanel"
         assert tags["card"]["end"] == "closecard"
+
+
+# Format 2.0 (#162): what the framework defines is described once, at the top.
+# The same entries on every component were 97% of the output.
+
+
+@pytest.mark.unit
+class TestFrameworkMethodsDescribedOnce:
+    def test_a_component_lists_only_what_its_own_code_defines(self, metadata):
+        framework_code = (Path(wireview_package.__file__).parent, Path(pydantic.__file__).parent)
+        for component in metadata["components"].values():
+            for name, method in component["methods"].items():
+                assert not Path(method["file_path"]).is_relative_to(framework_code[0]), (component["name"], name)
+                assert not Path(method["file_path"]).is_relative_to(framework_code[1]), (component["name"], name)
+
+    def test_every_inherited_name_is_described_as_the_component_has_it(self, metadata):
+        """Read back onto a component, the description is what 1.1 listed there: nothing is lost."""
+        described = metadata["framework_methods"]
+        for key, cls in Component._all.items():
+            for owner, names in metadata["components"][key]["inherited_methods"].items():
+                for name in names:
+                    attr = getattr(cls, name)
+                    assert described[owner][name] == method_metadata(original_function(attr)), (key, name)
+                    assert not is_client_callable(cls, name), (key, name)
+        assert all("is_handler" not in method for owner in described.values() for method in owner.values())
+
+    def test_an_override_of_a_framework_name_is_the_components_own(self):
+        class Overrides(Component, public=False):
+            _scratch: int = PrivateAttr(default=0)
+
+            async def joined(self) -> None:
+                """Mine."""
+
+            def model_post_init(self, context: t.Any) -> None:
+                """Mine too: pydantic wraps it to set the private attributes first."""
+
+        extracted = extract_component_metadata(Overrides)
+        joined = extracted["methods"]["joined"]
+        assert (joined["is_handler"], joined["docstring"], joined["file_path"]) == (False, "Mine.", __file__)
+        assert extracted["methods"]["model_post_init"]["file_path"] == __file__
+        assert not any("joined" in names for names in extracted["inherited_methods"].values())
+
+    def test_a_method_pydantic_puts_on_the_class_is_the_frameworks(self):
+        class Private(Component, public=False):
+            _scratch: int = PrivateAttr(default=0)
+
+        assert "model_post_init" in vars(Private), "pydantic sets it on the class itself"
+        framework: dict = {}
+        extracted = extract_component_metadata(Private, framework_methods=framework)
+        assert "model_post_init" not in extracted["methods"]
+        (owner,) = [owner for owner, names in extracted["inherited_methods"].items() if "model_post_init" in names]
+        # The path of the function pydantic runs, whichever pydantic this is: its module alone
+        # would stand for every function that module puts on a class under that name
+        injected = original_function(vars(Private)["model_post_init"])
+        assert owner == f"{injected.__module__}.{injected.__qualname__}"
+        assert framework[owner]["model_post_init"] == method_metadata(injected)
+
+    def test_two_injected_functions_under_one_name_are_two_entries(self):
+        def init_one(self, context: t.Any, /) -> None:
+            """One."""
+
+        def init_two(self, context: t.Any, /) -> None:
+            """Two."""
+
+        for func in (init_one, init_two):
+            func.__module__ = "pydantic._internal._fake"
+            func.__qualname__ = func.__name__
+
+        class One(Component, public=False):
+            pass
+
+        class Two(Component, public=False):
+            pass
+
+        One.model_post_init = init_one  # type: ignore[method-assign]
+        Two.model_post_init = init_two  # type: ignore[method-assign]
+        shared: dict = {}
+        one = extract_component_metadata(One, framework_methods=shared)["inherited_methods"]
+        two = extract_component_metadata(Two, framework_methods=shared)["inherited_methods"]
+        assert "model_post_init" in one["pydantic._internal._fake.init_one"]
+        assert "model_post_init" in two["pydantic._internal._fake.init_two"]
+        assert shared["pydantic._internal._fake.init_one"]["model_post_init"]["docstring"] == "One."
+        assert shared["pydantic._internal._fake.init_two"]["model_post_init"]["docstring"] == "Two."
+
+    def test_a_handler_is_never_the_frameworks(self):
+        # A framework function a user class names as its own handler is the component's
+        def shout(self) -> None:
+            """Shout."""
+
+        shout.__module__ = "wireview.somewhere"
+
+        class Borrowed(Component, public=False):
+            pass
+
+        Borrowed.shout = shout  # type: ignore[attr-defined]
+        extracted = extract_component_metadata(Borrowed)
+        assert extracted["methods"]["shout"]["is_handler"] is True
+
+    @pytest.mark.parametrize("reversed_order", [False, True], ids=["ordinary-first", "reused-first"])
+    @pytest.mark.parametrize("reuse", ["alias", "rebound"])
+    def test_a_framework_function_a_user_class_sets_is_not_shared(self, reuse, reversed_order):
+        """A framework function a user class sets is the component's own entry.
+
+        ``leaving = Component.joined`` is joined's function under leaving's name, and
+        ``new = staticmethod(Component.new.__func__)`` is new's function bound otherwise: its
+        signature takes ``cls``. Shared, either was whichever component came first's, and the
+        other's hover, arguments and definition were the wrong ones.
+        """
+
+        class Ordinary(Component, public=False):
+            pass
+
+        if reuse == "alias":
+
+            class Reused(Component, public=False):
+                leaving = Component.joined
+
+            name = "leaving"
+        else:
+
+            class Reused(Component, public=False):
+                new = staticmethod(Component.new.__func__)
+
+            name = "new"
+
+        classes = (Reused, Ordinary) if reversed_order else (Ordinary, Reused)
+        shared: dict = {}
+        extracted = [(cls, extract_component_metadata(cls, framework_methods=shared)) for cls in classes]
+        for cls, component in extracted:
+            expanded = {
+                each: shared[owner][each] for owner, names in component["inherited_methods"].items() for each in names
+            }
+            expanded.update({each: _without_handler(method) for each, method in component["methods"].items()})
+            # As 1.1 described each method on each component
+            assert expanded == {each: method_metadata(original_function(getattr(cls, each))) for each in expanded}, (
+                cls.__name__
+            )
+        reused = dict(extracted)[Reused]
+        assert reused["methods"][name]["is_handler"] is False
+        if reuse == "rebound":
+            assert list(reused["methods"]["new"]["parameters"]) == ["cls", "kwargs"]
+            assert (
+                list(dict(extracted)[Ordinary]["inherited_methods"])
+                and "cls" not in (shared["wireview.core.component.Component"]["new"]["parameters"])
+            )
+
+
+def _without_handler(method: dict) -> dict:
+    return {key: value for key, value in method.items() if key != "is_handler"}

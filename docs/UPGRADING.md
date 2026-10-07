@@ -92,6 +92,11 @@ dependencies = ["django-wireview>=1.2,<2"]
   하려는 것이다([shared_render](./features/shared-render.md)). 앱이 할 일은 없다. 다만 `group_send`를 모의 객체로 바꾸고
   메시지 딕셔너리를 통째로 비교하던 테스트는 이제 실패한다. `unittest.mock.ANY`로 그 키를 받거나 필요한 키만 본다.
   1.2 프로세스와 섞여 돌아도 된다 — 옛 프로세스는 이 키를 읽지 않고, 새 프로세스는 키가 없는 메시지를 공유 없이 처리한다.
+- **`manage.py wireview_lsp`가 메타데이터 형식 2.0을 낸다.** 컴포넌트의 `methods`에는 컴포넌트 자신의 코드가 정의한
+  메서드만 남고, pydantic과 wireview가 정의한 메서드는 `inherited_methods`에 이름만, 최상위 `framework_methods`에 한
+  번 적힌다. testproj의 출력이 6.9MB에서 0.5MB로 줄었다. VS Code 확장은 1.1과 2.0을 똑같이 읽으므로 할 일이 없다.
+  그 JSON을 직접 읽는 도구가 있으면 `inherited_methods`를 `framework_methods`에서 찾아 펼친다
+  ([편집기 지원](./features/editor-support.md#1x에서-20으로)).
 
 ## 1.1에서 1.2로
 

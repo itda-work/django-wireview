@@ -2,14 +2,8 @@
 // template sees, which component draws a template.
 import * as nodePath from "node:path";
 
-import type {
-  ComponentMeta,
-  FilterMeta,
-  FunctionComponentMeta,
-  LibraryMeta,
-  Metadata,
-  TagMeta,
-} from "./metadata.ts";
+import { expandMethods } from "./metadata.ts";
+import type { ComponentMeta, FilterMeta, FunctionComponentMeta, LibraryMeta, Metadata, TagMeta } from "./metadata.ts";
 
 export interface TagEntry {
   name: string;
@@ -62,11 +56,12 @@ export class Project {
   private readonly visibleCache = new Map<string, Visible>();
 
   constructor(metadata: Metadata) {
-    this.metadata = metadata;
+    // 2.0 describes the framework's methods once; the components get them back here
+    this.metadata = expandMethods(metadata);
     this.builtins = metadata.template_builtins ?? EMPTY_LIBRARY;
     this.libraries = metadata.template_libraries ?? {};
     // As Component._resolve() looks a name up: the full path, app:Name, then the name alone
-    const components = Object.values(metadata.components ?? {});
+    const components = Object.values(this.metadata.components ?? {});
     for (const component of components) this.componentsByName.set(component.name, component);
     for (const component of components) this.componentsByName.set(component.app_key, component);
     for (const component of components) this.componentsByName.set(component.fqn, component);

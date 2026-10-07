@@ -19,9 +19,12 @@ def is_framework_class(cls: type) -> bool:
     """Whether a class comes from the framework rather than from user code."""
     if cls is object:
         return True
-    module = getattr(cls, "__module__", "") or ""
-    root = module.partition(".")[0]
-    return root in _FRAMEWORK_ROOTS
+    return is_framework_module(getattr(cls, "__module__", "") or "")
+
+
+def is_framework_module(module: str) -> bool:
+    """Whether a module (by its dotted name) is the framework's."""
+    return module.partition(".")[0] in _FRAMEWORK_ROOTS
 
 
 def is_valid_event_handler(command: str) -> bool:

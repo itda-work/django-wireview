@@ -98,21 +98,47 @@ Django를 띄워 등록된 컴포넌트, 함수 컴포넌트, 훅 파일, 템플
 ### 버전
 
 최상위의 `version`이 형식의 버전이다. **minor는 키를 더할 때, major는 있던 키의 뜻이나 모양을 바꿀 때 올린다.**
-읽는 쪽은 major가 같고 minor가 자기가 아는 것 이상이면 읽는다. 확장은 1.1 이상의 1.x를 읽고, 2.0이면 확장을,
-1.0이면 django-wireview를 올리라고 알린다. 규칙은 [호환성 정책](../COMPATIBILITY.md)에도 있다.
+읽는 쪽은 자기가 아는 major이고 minor가 그 major에서 자기가 아는 것 이상이면 읽는다. 규칙은 [호환성 정책](../COMPATIBILITY.md)에도 있다.
 
-### 형식 1.1
+지금 형식은 **2.0**이다. django-wireview 1.0부터 1.2까지는 1.1을 낸다. 확장은 둘 다 읽는다:
 
-1.0에 있던 키는 그대로다. **1.1**이라고 적은 것이 더해진 것이다.
+| 읽는 쪽 \ 메타데이터 | 1.1 (django-wireview 1.0~1.2) | 2.0 |
+|------|------|------|
+| 1.1 이상의 1.x만 읽는 확장(#162 전) | 읽는다 | 읽지 않는다. 확장을 올리라고 알린다 |
+| 1.1 이상의 1.x와 2.x를 읽는 확장 | 읽는다. 펼칠 것이 없다 | 읽는다. 프레임워크 메서드를 컴포넌트에 다시 펼친다 |
+| `wireview_check_templates` | — | 같은 휠의 진단이 같은 휠의 메타데이터를 읽으므로 언제나 2.0 |
+
+확장은 1.0이면 django-wireview를, 3.0 이상이면 확장을 올리라고 알린다. major를 보는 다른 도구는 2.0을 거절할
+것이다 — 그것이 major를 올린 이유다(아래).
+
+### 1.x에서 2.0으로
+
+1.x의 컴포넌트 `methods`는 공개 메서드를 전부 담았다. 그 대부분은 모든 컴포넌트에 똑같이 있는 pydantic과
+wireview의 메서드(`model_dump`, `joined`, `allow_upload` …)와 그 docstring이었다 — testproj에서 출력의 97%다.
+2.0은 그것을 최상위 `framework_methods`에 **한 번** 적고, 컴포넌트에는 `inherited_methods`로 이름만 적는다.
+`methods`에는 **컴포넌트 자신의 코드가 정의한 메서드만** 남는다. 프레임워크 이름을 사용자 클래스가 오버라이드한 것
+(`async def joined`)은 자기 것이므로 `methods`에 남고 `is_handler`는 여전히 거짓이다.
+
+키를 더하기만 한 것이 아니라 `methods`의 뜻이 바뀌었으므로 major를 올렸다. 1.x 독자가 2.0을 읽으면
+`{% on "click" "joined" %}`를 "핸들러가 아니다"가 아니라 "그런 메서드가 없다"로 말하고, 그 메서드로 가는
+호버와 정의로 이동을 잃는다. 확장은 읽을 때 `inherited_methods`를 `framework_methods`에서 찾아 컴포넌트의
+`methods`에 다시 넣으므로(`editors/vscode/src/core/metadata.ts`의 `expandMethods`) 1.1과 2.0에서 같은 진단·호버·
+완성·정의로 이동을 낸다(`editors/vscode/test/metadata.test.ts`).
+
+### 형식 2.0
+
+1.1에 있던 키는 그대로다. **1.1**이라고 적은 것은 1.0에 더해진 것, **2.0**이라고 적은 것은 2.0에서 바뀌거나
+더해진 것이다.
 
 최상위:
 
 | 키 | 뜻 |
 |----|----|
-| `version` | 형식의 버전, `"1.1"` |
+| `version` | 형식의 버전, `"2.0"` |
 | `wireview_version` | **1.1** 이 JSON을 만든 django-wireview의 버전. 설치되지 않은 소스 트리면 `""` |
 | `generated_at` | 만든 시각(UTC, ISO 8601) |
 | `components` | 등록된 이름 → 컴포넌트(아래). 같은 이름이 둘이면 템플릿의 이름 찾기처럼 나중 것 |
+| `framework_methods` | **2.0** 메서드를 정의한 곳 → 메서드 이름 → `is_async`, `parameters`, `docstring`, `file_path`, `line_number`. 정의한 곳은 그 메서드를 자기 속성으로 가진 프레임워크 클래스의 점 경로(`pydantic.main.BaseModel`, `wireview.core.component.Component`, `wireview.features.presence.PresenceMixin`)이고, 설명은 그 클래스에서 읽은 것이다. 사용자 클래스나 사용자 믹스인이 그 이름을 자기 속성으로 가지면 — 오버라이드든, 프레임워크 함수를 다른 이름에 넣은 것(`leaving = Component.joined`)이든, 다르게 바인딩한 것(`new = staticmethod(Component.new.__func__)`)이든 — 공유하지 않고 그 컴포넌트의 `methods`에 남는다. 예외는 pydantic이 private 속성이 있는 클래스에 넣는 클래스 밖 함수(`model_post_init`) 하나로, 그 키는 그 함수의 점 경로(`pydantic._internal._model_construction.init_private_attributes`)다. pydantic이 사용자의 `model_post_init`을 감싼 것은 감싼 안의 함수로 읽는다(`functools.wraps`가 없는 pydantic 2.7에서도). 모두 핸들러가 아니므로 `is_handler`가 없다 |
 | `function_components` | **1.1** `{% func %}`의 이름 → 함수 컴포넌트(아래) |
 | `hooks` | **1.1** 훅 파일이 등록한 이름 → `static_path`(`<app_label>/hooks/x.js`), `file_path`, `line_number`(등록한 줄) |
 | `modifiers` | `{% on %}`의 수정자 → `description`, `docstring`(1.0부터 있던 키, `description`과 같은 값), `has_argument`, **1.1** `argument`(`"number"`, `"text"`, `null`) |
@@ -133,7 +159,8 @@ Django를 띄워 등록된 컴포넌트, 함수 컴포넌트, 훅 파일, 템플
 | `fields` | 필드 → `type`, `annotation`(그 안 객체의 repr에서 메모리 주소를 지운다 — 실행마다 같은 출력이 나오게. 문자열은 그대로다), `default`, `required`, `description`, **1.1** `in_state`. `id`·`user`·`session`·`wire`는 빠진다. **1.1부터** `Meta.exclude_fields`의 필드도 실린다(`in_state: false`) — 템플릿이 넘기는 인자이기 때문이다 |
 | `accepts_extra_kwargs` | **1.1** 사용자 클래스가 `new()`를(LiveComponent면 `update()`·`update_many()`도) 오버라이드했는가. 참이면 필드가 아닌 인자도 그 코드가 읽을 수 있다 |
 | `properties` | **1.1** 사용자 클래스의 `property`·`cached_property` → `type`, `is_async`, `docstring`, `file_path`, `line_number` |
-| `methods` | 메서드 → `is_handler`(클라이언트가 부를 수 있는가, `is_client_callable`과 같은 판정), `is_async`, `parameters`, `docstring`, `line_number`, **1.1** `file_path`(믹스인의 메서드는 믹스인의 파일) |
+| `methods` | **2.0** 컴포넌트 자신의 코드(wireview·pydantic 밖)가 정의한 메서드 → `is_handler`(클라이언트가 부를 수 있는가, `is_client_callable`과 같은 판정), `is_async`, `parameters`, `docstring`, `line_number`, **1.1** `file_path`(믹스인의 메서드는 믹스인의 파일). 1.x에서는 프레임워크의 메서드도 여기 있었다 |
+| `inherited_methods` | **2.0** 프레임워크가 정의하고 컴포넌트가 오버라이드하지 않은 메서드: 정의한 곳(`framework_methods`의 키) → 이름 목록. 컴포넌트의 공개 메서드 전부는 `methods`와 이것을 합친 것이다 |
 | `slots` | `Meta.slots` |
 | `subscriptions`, `subscriptions_is_dynamic`, `temporary_assigns` | `Meta`의 그것. `get_subscriptions()`를 오버라이드하면 `subscriptions_is_dynamic` |
 

@@ -118,6 +118,10 @@ UPGRADE_NOTE = {
         "브로드캐스트 메시지에 `message_id`가 붙는다",
         "`unittest.mock.ANY`로 그 키를 받거나",
     ),
+    "`manage.py wireview_lsp` writes metadata version 2.0": (
+        "`manage.py wireview_lsp`가 메타데이터 형식 2.0을 낸다",
+        "`inherited_methods`를 `framework_methods`에서 찾아 펼친다",
+    ),
 }
 
 DOCS_ONLY = "문서·저장소만 바뀌었고 라이브러리 동작은 같다"
