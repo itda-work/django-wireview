@@ -1534,6 +1534,257 @@ async def test_a_mounted_component_writes_a_patch_after_the_reset_it_came_during
     ]
 
 
+# --- the process's channel, the connection's queue and its limit (#185) ------------------
+
+
+class _Opening(_Layer):
+    """A layer whose new_channel() the test controls: fails once, or waits until let go."""
+
+    def __init__(self, fail: int = 0) -> None:
+        super().__init__()
+        self.opened = 0
+        self.fail = fail
+        self.entered = asyncio.Event()
+        self.go = asyncio.Event()
+        self.go.set()
+
+    async def new_channel(self) -> str:
+        self.opened += 1
+        self.entered.set()
+        await self.go.wait()
+        if self.fail:
+            self.fail -= 1
+            raise OSError("the layer could not open a channel")
+        return f"hub-channel-{self.opened}"
+
+
+@pytest.mark.asyncio
+async def test_a_channel_that_could_not_be_opened_is_opened_again_by_the_next_join():
+    """One failed new_channel() used to stay the answer to every join of the process."""
+    layer = _Opening(fail=1)
+    hub = PatchHub(layer)  # type: ignore[arg-type]
+    try:
+        with pytest.raises(OSError):
+            await hub.join("a", "first", lambda message: None)
+        assert hub._receivers == {} and hub.topics == set()
+
+        heard: list[dict[str, t.Any]] = []
+        await hub.join("a", "second", heard.append)
+        layer.inbox.put_nowait({"topic": "a"})
+        await eventually(lambda: heard)
+
+        assert layer.opened == 2
+        assert hub.topics == {"a"} and layer.added == ["wireview.patch.a"]
+    finally:
+        hub._stop()
+
+
+@pytest.mark.asyncio
+async def test_a_join_cancelled_while_the_channel_opens_leaves_the_others_joining():
+    """The opening is the process's: one join giving up must not cancel it for the rest."""
+    layer = _Opening()
+    layer.go.clear()
+    hub = PatchHub(layer)  # type: ignore[arg-type]
+    try:
+        first = asyncio.ensure_future(hub.join("a", "first", lambda message: None))
+        await layer.entered.wait()
+        heard: list[dict[str, t.Any]] = []
+        second = asyncio.ensure_future(hub.join("b", "second", heard.append))
+        await asyncio.sleep(0)
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        layer.go.set()
+        await second
+        layer.inbox.put_nowait({"topic": "b"})
+        await eventually(lambda: heard)
+
+        assert layer.opened == 1
+        assert hub.topics == {"b"} and set(hub._receivers) == {"b"}
+    finally:
+        hub._stop()
+
+
+@pytest.mark.asyncio
+async def test_a_channel_opened_for_a_join_that_gave_up_starts_nothing():
+    layer = _Opening()
+    layer.go.clear()
+    hub = PatchHub(layer)  # type: ignore[arg-type]
+    try:
+        first = asyncio.ensure_future(hub.join("a", "first", lambda message: None))
+        await layer.entered.wait()
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        layer.go.set()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        assert hub._tasks == [] and hub._receivers == {} and hub.topics == set()
+        # And the next join uses it rather than open another
+        await hub.join("a", "again", lambda message: None)
+        assert layer.opened == 1 and hub.topics == {"a"}
+    finally:
+        hub._stop()
+
+
+@pytest.mark.asyncio
+async def test_a_queued_frame_is_not_written_for_a_component_that_left_before_it(hub):
+    """Asked again right before each write, as the documentation says: queued is not written."""
+    session = await _joined_session(_Recording())
+    session._take_patch(_message())
+    # Before the writer took it: the component leaves
+    session.repo.remove("feed")
+    await session._patches_written()
+
+    assert _posted(session) == 0
+
+
+@pytest.mark.asyncio
+async def test_a_queued_frame_is_not_written_for_another_instance_under_the_same_id(hub):
+    session = await _joined_session(_Recording())
+    old = session.repo.get("feed")
+    session._take_patch(_message())
+    session.repo.remove("feed")
+    new = session.repo.build("BcFeed", {"id": "feed"})
+    assert session.repo.reachable("feed") is new and new is not old
+    await session._patches_written()
+
+    assert _posted(session) == 0
+
+
+@pytest.mark.asyncio
+async def test_the_frames_of_components_still_there_go_out_in_order(hub):
+    session = await _joined_session(_Recording(), "first")
+    await session.repo.join("BcFeed", {"id": "second"}, before_joined=session._hold_patches)
+    second = session.repo.get("second")
+    await second.wire.flush_pending()
+    await session.after_mutation_chores()
+    await session._release_patches(second)
+    for event in ("one", "two"):
+        (frame,) = Broadcast(BcFeed, "bc-feed").push_event(event)._frames()
+        session._take_patch({"type": "wireview.patch", "target": BcFeed._fqn, "topic": "bc-feed", "frames": [frame]})
+    session.repo.remove("first")
+    await session._patches_written()
+
+    written = [json.loads(frame)["payload"] for frame in session.outbound.frames]  # type: ignore[attr-defined]
+    assert [(p["component_id"], p["event"]) for p in written] == [("second", "one"), ("second", "two")]
+
+
+def _stuck() -> tuple[t.Any, list[int | None]]:
+    """An Outbound whose socket takes nothing, and the close codes it got."""
+    closed: list[int | None] = []
+    never = asyncio.Event()
+
+    class Stuck(_Recording):
+        async def send_text(self, text: str) -> None:
+            await never.wait()
+
+        async def close(self, code=None):
+            closed.append(code)
+
+    return Stuck(), closed
+
+
+async def _held_feeds(session: WireviewSession, count: int) -> list[Component]:
+    feeds = []
+    for index in range(count):
+        feed = session.repo.build("BcFeed", {"id": f"held-{index}"})
+        assert await session._hold_patches(feed) is not None
+        feeds.append(feed)
+    return feeds
+
+
+@pytest.mark.asyncio
+async def test_the_limit_counts_every_frame_held_on_the_connection(hub):
+    """Two components holding QUEUE_LIMIT each used to keep twice the limit waiting."""
+    outbound, closed = _stuck()
+    session = WireviewSession(outbound)
+    await session.start(session=SessionView.wrap(None))
+    await _held_feeds(session, 2)
+    events: list[dict[str, t.Any]] = []
+
+    def overflowed(sender, **kwargs):
+        events.append(kwargs)
+
+    telemetry.broadcast_overflowed.connect(overflowed)
+    telemetry.enable()
+    try:
+        # Each message puts a frame in each hold: 2 per message
+        for _ in range(patches.QUEUE_LIMIT // 2):
+            session._take_patch(_message())
+        assert closed == [] and not session._patches_closed
+        session._take_patch(_message())
+        await eventually(lambda: closed)
+    finally:
+        telemetry.disable()
+        telemetry.broadcast_overflowed.disconnect(overflowed)
+
+    assert closed == [1013]
+    assert len(events) == 1 and events[0]["limit"] == patches.QUEUE_LIMIT
+
+
+@pytest.mark.asyncio
+async def test_the_limit_counts_held_and_queued_frames_together(hub):
+    """Frames held for one component count when another's are queued: the limit is the connection's."""
+    outbound, closed = _stuck()
+    session = await _joined_session(outbound, "queued")
+    quiet = session.repo.build("BcQuiet", {"id": "quiet"})
+    assert await session._hold_patches(quiet) is not None
+    for _ in range(patches.QUEUE_LIMIT // 2):
+        session._take_patch(_message(BcQuiet, "bc-quiet"))
+    # Now only the queue grows; the socket is stuck with the first frame
+    for _ in range(patches.QUEUE_LIMIT // 2):
+        session._take_patch(_message())
+        await asyncio.sleep(0)
+    assert closed == []
+    session._take_patch(_message())
+    session._take_patch(_message())
+    await eventually(lambda: closed)
+
+    assert closed == [1013]
+
+
+@pytest.mark.asyncio
+async def test_frames_moved_from_a_hold_to_the_queue_are_counted_once(hub):
+    outbound, closed = _stuck()
+    session = WireviewSession(outbound)
+    await session.start(session=SessionView.wrap(None))
+    (feed,) = await _held_feeds(session, 1)
+    for _ in range(patches.QUEUE_LIMIT):
+        session._take_patch(_message())
+    assert closed == [] and not session._patches_closed
+
+    # At the limit, held: let through, they are the same frames waiting elsewhere
+    session._unhold(feed)
+    await asyncio.sleep(0)
+    assert closed == [] and not session._patches_closed
+    session._take_patch(_message())
+    session._take_patch(_message())
+    await eventually(lambda: closed)
+
+    assert closed == [1013]
+
+
+@pytest.mark.asyncio
+async def test_frames_dropped_with_a_component_that_left_free_the_limit(hub):
+    outbound, closed = _stuck()
+    session = WireviewSession(outbound)
+    await session.start(session=SessionView.wrap(None))
+    gone, kept = await _held_feeds(session, 2)
+    for _ in range(patches.QUEUE_LIMIT // 2):
+        session._take_patch(_message())
+    session.repo.remove(gone.id)
+    await session.after_mutation_chores()
+    # What the one that left held is gone; the other's hold has room again
+    for _ in range(patches.QUEUE_LIMIT // 2 - 1):
+        session._take_patch(_message())
+    await asyncio.sleep(0)
+
+    assert closed == [] and not session._patches_closed
+    assert id(kept) in session._patch_held
+
+
 # --- send(): after the commit ------------------------------------------------------------
 
 

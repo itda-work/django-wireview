@@ -206,7 +206,8 @@ class WireviewSession:
         self._patch_tokens = itertools.count(1)
         self._patch_settling = asyncio.Lock()
         # Frames waiting for the socket, and the task writing them (``_write_patches``)
-        self._patch_queue: collections.deque[str] = collections.deque()
+        # With the instance each is for: asked again right before it is written (#185)
+        self._patch_queue: collections.deque[tuple[Component, str]] = collections.deque()
         self._patch_writer: asyncio.Future[None] | None = None
         # A connection closed for falling behind takes no more patches
         self._patches_closed: bool = False
@@ -1982,12 +1983,16 @@ class WireviewSession:
             held = self._patch_held.get(id(component))
             if held is not None and held.component is component:
                 held.frames.extend(texts)
-                if len(held.frames) > patches.QUEUE_LIMIT:
+                if self._patches_waiting() > patches.QUEUE_LIMIT:
                     self._fell_behind(component, message["topic"])
                     return
                 continue
             if not self._queue_patches(component, texts, message["topic"]):
                 return
+
+    def _patches_waiting(self) -> int:
+        """The frames this connection has not written: queued for the socket, and held, every hold (#185)."""
+        return len(self._patch_queue) + sum(len(held.frames) for held in self._patch_held.values())
 
     async def wireview_patch(self, message: dict[str, t.Any]) -> None:
         """``_take_patch``, returning once what it queued is written."""
@@ -1995,10 +2000,9 @@ class WireviewSession:
         await self._patches_written()
 
     def _queue_patches(self, component: Component, texts: list[str], topic: str) -> bool:
-        """Queue ``texts`` for the socket; False when that put it past ``QUEUE_LIMIT`` and it is closing."""
-        queue = self._patch_queue
-        queue.extend(texts)
-        if len(queue) > patches.QUEUE_LIMIT:
+        """Queue ``texts`` for the socket; False when that put the connection past ``QUEUE_LIMIT`` and it is closing."""
+        self._patch_queue.extend((component, text) for text in texts)
+        if self._patches_waiting() > patches.QUEUE_LIMIT:
             self._fell_behind(component, topic)
             return False
         writer = self._patch_writer
@@ -2015,8 +2019,12 @@ class WireviewSession:
         """
         queue = self._patch_queue
         while queue and not self._patches_closed:
+            component, text = queue.popleft()
+            if self.repo.reachable(component.id) is not component:
+                # It left, failed or was joined again under its id since it was queued
+                continue
             try:
-                await self.outbound.send_text(queue.popleft())
+                await self.outbound.send_text(text)
             except Exception as e:
                 log.debug("Connection %s took no more Broadcast patches: %r", self.connection_id, e)
                 self._close_patches()

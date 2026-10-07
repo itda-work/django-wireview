@@ -258,7 +258,8 @@ class PatchHub:
         # through many topics (a room each) keeps none of theirs
         self._locks: dict[str, tuple[asyncio.Lock, list[int]]] = {}
         self._tasks: list[asyncio.Task[None]] = []
-        self._opening: asyncio.Future[None] | None = None
+        # The process's channel being opened, or opened (``_start``)
+        self._opening: asyncio.Future[str] | None = None
 
     @property
     def topics(self) -> set[str]:
@@ -328,14 +329,24 @@ class PatchHub:
                 self._stop()
 
     async def _start(self) -> None:
-        # Two topics joined at once open one channel
-        if self._opening is None:
-            self._opening = asyncio.ensure_future(self._open())
-        await self._opening
+        """Have the process's channel, and the tasks that receive on it and renew it.
 
-    async def _open(self) -> None:
-        self._channel = await self._layer.new_channel()
-        self._tasks = [asyncio.ensure_future(self._receive()), asyncio.ensure_future(self._renew())]
+        Two topics joined at once open one channel. The opening is the
+        process's, not the join's: a join that gives up while it waits does
+        not cancel it for the others (``shield``), and one that failed is tried
+        again by the next join rather than kept as every join's answer (#185).
+        """
+        if self._channel is not None:
+            return
+        opening = self._opening
+        if opening is None or (opening.done() and (opening.cancelled() or opening.exception() is not None)):
+            opening = self._opening = asyncio.ensure_future(self._layer.new_channel())
+            # A failure no join is left to await is not "never retrieved"
+            opening.add_done_callback(lambda done: done.cancelled() or done.exception())
+        channel = await asyncio.shield(opening)
+        if self._channel is None:
+            self._channel = channel
+            self._tasks = [asyncio.ensure_future(self._receive()), asyncio.ensure_future(self._renew())]
 
     def _stop(self) -> None:
         for task in self._tasks:
