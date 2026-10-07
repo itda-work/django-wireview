@@ -104,7 +104,7 @@ class _Held:
     nothing.
     """
 
-    __slots__ = ("component", "frames", "tokens", "lifecycle", "expiries")
+    __slots__ = ("component", "frames", "tokens", "lifecycle", "expiries", "senders")
 
     def __init__(self, component: Component) -> None:
         self.component = component
@@ -114,11 +114,14 @@ class _Held:
         self.lifecycle: int | None = None
         # A token's deadline, armed once its release mail is on its way to the channel
         self.expiries: dict[int, asyncio.TimerHandle] = {}
+        # The messages being handled when a token's release left: it waits behind them
+        self.senders: dict[int, frozenset[int]] = {}
 
     def drop(self) -> None:
         for expiry in self.expiries.values():
             expiry.cancel()
         self.expiries.clear()
+        self.senders.clear()
 
 
 class WireviewSession:
@@ -158,9 +161,10 @@ class WireviewSession:
 
     def _init_session_state(self) -> None:
         """The attributes a session has before ``start()``: what a bare instance in a test gets."""
-        # How many messages the adapter is handling now (WireviewConsumer.dispatch).
+        # The messages the adapter is handling now, by number (WireviewConsumer.dispatch).
         # The mail they sent is not handled before they end.
-        self.handling: int = 0
+        self._handling: set[int] = set()
+        self._messages = itertools.count(1)
         # When start() ran, for connection_closed's duration. Read only while
         # telemetry is on, so an unmeasured session reads no clock (#124).
         self._opened_at: float | None = None
@@ -204,6 +208,7 @@ class WireviewSession:
         self._patch_gate = patches.Gate(self._hold_for_reset, self._let_reset_through)
         # Release tokens, unique on this connection: a stale mail names none in use
         self._patch_tokens = itertools.count(1)
+        self._patch_settling = asyncio.Lock()
         # Frames waiting for the socket, and the task writing them (``_write_patches``)
         self._patch_queue: collections.deque[str] = collections.deque()
         self._patch_writer: asyncio.Future[None] | None = None
@@ -221,13 +226,19 @@ class WireviewSession:
 
         It handles them one at a time, so the mail a handler sends waits in the
         channel until the handler returns: a Broadcast hold's deadline waits
-        with it (``_hold_expired``).
+        for the message that sent its release (``_hold_expired``).
         """
-        self.handling += 1
+        number = next(self._messages)
+        self._handling.add(number)
         try:
             yield
         finally:
-            self.handling -= 1
+            self._handling.discard(number)
+
+    @property
+    def handling(self) -> int:
+        """How many messages the adapter is handling now."""
+        return len(self._handling)
 
     async def start(self, *, session: SessionView, vsn: int = 0) -> None:
         """Begin: a fresh repository for this connection, and the login it stands on.
@@ -293,6 +304,8 @@ class WireviewSession:
             await hub.leave(topic, self)
         if self._patch_writer is not None:
             self._patch_writer.cancel()
+        # Its holds' deadlines go with it
+        self._close_patches()
         self._init_patches()
         # Until start(): a kept reference to one of its components holds nothing
         self._close_patches()
@@ -1758,17 +1771,27 @@ class WireviewSession:
     # with their ids put in, and a task of its own writes the queue to the
     # socket. No component code runs and nothing is rendered or serialized again.
 
-    async def _settle_patch_topics(self, topics: set[str]) -> None:
-        """Hear the patches of exactly ``topics``: the ones a patch group can be named for."""
+    async def _settle_patch_topics(self, topics: set[str], *, leave: bool = True) -> None:
+        """Hear the patches of exactly ``topics``: the ones a patch group can be named for.
+
+        ``leave=False`` only adds: a hold names its component's topics, not every
+        topic the connection hears.
+
+        One settling at a time: two resets of a connection may hold at once, and
+        one cancelled while the other joins must not undo what the other did.
+        Each topic counts as heard once its join returned.
+        """
         wanted = {topic for topic in topics if len(topic) <= PATCH_TOPIC_MAX}
-        if wanted == self._patch_topics:
+        if wanted == self._patch_topics or (not leave and wanted <= self._patch_topics):
             return
-        hub = get_patch_hub()
-        for topic in wanted - self._patch_topics:
-            await hub.join(topic, self, self._take_patch)
-        for topic in self._patch_topics - wanted:
-            await hub.leave(topic, self)
-        self._patch_topics = wanted
+        async with self._patch_settling:
+            hub = get_patch_hub()
+            for topic in wanted - self._patch_topics:
+                await hub.join(topic, self, self._take_patch)
+                self._patch_topics = self._patch_topics | {topic}
+            for topic in self._patch_topics - wanted if leave else ():
+                self._patch_topics = self._patch_topics - {topic}
+                await hub.leave(topic, self)
 
     async def _hold_patches(self, component: Component) -> int | None:
         """Receive ``component``'s patches from now, before its ``joined()`` reads anything, and hold them.
@@ -1823,7 +1846,7 @@ class WireviewSession:
             if not any(entry is component for entry in entries):
                 entries.append(component)
         try:
-            await self._settle_patch_topics(self._patch_topics | topics)
+            await self._settle_patch_topics(topics, leave=False)
         except BaseException:
             # Nobody will send this token's release: give it back, so a retry holds afresh
             self._discard_token(component, token)
@@ -1867,6 +1890,7 @@ class WireviewSession:
         held = self._patch_held.get(id(component))
         if held is None or held.component is not component or token not in held.tokens:
             return
+        held.senders[token] = frozenset(self._handling)
         held.expiries[token] = asyncio.get_running_loop().call_later(
             patches.HOLD_SECONDS, self._hold_expired, held, token
         )
@@ -1874,11 +1898,11 @@ class WireviewSession:
     def _hold_expired(self, held: _Held, token: int) -> None:
         if self._patch_held.get(id(held.component)) is not held or token not in held.tokens:
             return
-        if self.handling:
-            # A message is being handled -- the one that sent the release, maybe,
-            # a handler still running -- and the release waits behind it in the
-            # channel. It has not been dropped; the deadline counts from when
-            # nothing is being handled.
+        if held.senders.get(token, frozenset()) & self._handling:
+            # The message that sent the release -- a handler still running --
+            # is being handled, and the release waits behind it in the channel.
+            # It is late, not lost: the deadline counts again. Other messages
+            # being handled do not hold it back (they may never stop coming).
             held.expiries[token] = asyncio.get_running_loop().call_later(
                 patches.HOLD_SECONDS, self._hold_expired, held, token
             )
@@ -1897,6 +1921,7 @@ class WireviewSession:
         if held is None or held.component is not component or token not in held.tokens:
             return
         held.tokens.discard(token)
+        held.senders.pop(token, None)
         if (expiry := held.expiries.pop(token, None)) is not None:
             expiry.cancel()
         if not held.tokens:

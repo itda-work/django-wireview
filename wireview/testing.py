@@ -938,8 +938,11 @@ async def _mount(
     # way the server would: with the redirect a hook queued, or with nothing. The
     # component is still returned so the test can assert on what the hook did.
     if await component._mount(param_map, session_view):
-        # One message, as the join is: its resets' Broadcast patches come after it
+        # One message, as the join is: its resets' Broadcast patches come after
+        # it, held from before joined() as a connection holds them
         async with mounted._handling_message():
+            if component.get_subscriptions():
+                await mounted._let_reset_through(component, await mounted._hold_for_reset(component))  # type: ignore[arg-type]
             # Call joined() if it exists and is async
             if hasattr(component, "joined"):
                 result = component.joined()

@@ -47,7 +47,7 @@ The django-reactor era changelog (2.x) is preserved in
   else holds them from before it reads its list until the reset is written, each reset with a
   release of its own, so a reset does not wipe an item committed after its read; frames whose
   release a full channel dropped go out 10 seconds after it left for the channel and the
-  connection had no message to handle. A mounted component in `wireview.testing` keeps the same
+  message that sent it was handled. A mounted component in `wireview.testing` keeps the same
   order. `send()` publishes once the transaction commits. More than 1,000 frames waiting for one
   connection close it (1013, on servers whose socket writes wait) and emit the new
   `telemetry.broadcast_overflowed`. A mounted component in `wireview.testing` hears a Broadcast of

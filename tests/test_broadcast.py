@@ -288,6 +288,37 @@ class BcTwiceReading(BcFeed):
         await self.push_event("finished")
 
 
+class BcBusy(BcFeed):
+    """Resets its list in one handler; another keeps the connection busy until the test says."""
+
+    class Meta:
+        subscriptions = {"bc-busy"}
+
+    async def refresh(self, **_rest):
+        await self.stream("items", [Post(1, "old")])
+        await Broadcast(BcBusy, "bc-busy").stream_insert("items", Post(2, "new"), at=0).asend()
+        await eventually(lambda: _holding(self))
+        await self.push_event("finished")
+
+    async def busy(self, **_rest):
+        await BUSY.wait()
+        await self.push_event("idle")
+
+
+BUSY = asyncio.Event()
+
+
+class BcPublishingFirst(BcFeed):
+    """joined() publishes an item before it resets its list."""
+
+    class Meta:
+        subscriptions = {"bc-first"}
+
+    async def joined(self):
+        await Broadcast(BcPublishingFirst, "bc-first").stream_insert("items", Post(2, "new"), at=0).asend()
+        await self.stream("items", [Post(1, "old")])
+
+
 class BcResetThenFail(BcFeed):
     async def joined(self):
         await self.stream("items", [])
@@ -730,6 +761,49 @@ async def test_a_mounted_component_lets_a_patch_out_after_its_handler_as_a_conne
     assert [(op["op"], [item["id"] for item in op["items"]]) for op in view.stream_ops("items")] == connection
 
 
+@pytest.mark.asyncio
+async def test_a_lost_release_lets_go_while_other_messages_keep_the_connection_busy(monkeypatch):
+    """Only the message that sent the release holds its deadline back: the others may never stop coming."""
+    monkeypatch.setattr(patches, "HOLD_SECONDS", 0.02)
+    BUSY.clear()
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcBusy, "busy")
+        send = WireviewMeta._do_send
+
+        async def dropping_releases(wire, command, **kwargs):
+            if command != "release_patches":
+                await send(wire, command, **kwargs)
+
+        monkeypatch.setattr(WireviewMeta, "_do_send", dropping_releases)
+        await _event(communicator, "busy", "refresh")
+        heard = await _until(communicator, _finished)
+        # A handler that is not done before the patch goes out
+        await _event(communicator, "busy", "busy")
+        heard += await _until(communicator, lambda m: m["command"] == "stream_op" and m["payload"]["op"] == "insert")
+        BUSY.set()
+        await _until(communicator, lambda m: m["command"] == "push_event" and m["payload"]["event"] == "idle")
+    finally:
+        BUSY.set()
+        await communicator.disconnect()
+
+    assert _stream_ops(heard) == [("reset", ["items-1"]), ("insert", ["items-2"])]
+
+
+@pytest.mark.asyncio
+async def test_a_mounted_component_holds_from_before_its_joined_as_a_connection_does():
+    communicator = await _connect()
+    try:
+        connection = _stream_ops(await _join(communicator, BcPublishingFirst, "first"))
+    finally:
+        await communicator.disconnect()
+
+    view = await mount(BcPublishingFirst, id="first")
+
+    assert connection == [("reset", ["items-1"]), ("insert", ["items-2"])]
+    assert [(op["op"], [item["id"] for item in op["items"]]) for op in view.stream_ops("items")] == connection
+
+
 class _Layer:
     """The part of a channel layer a ``PatchHub`` uses, counting what it is asked."""
 
@@ -1129,6 +1203,73 @@ async def test_a_subscription_that_was_cancelled_leaves_no_receiver(hub, monkeyp
 
     assert session._patch_held == {}
     assert hub._receivers == {}
+
+
+@pytest.mark.asyncio
+async def test_a_reset_cancelled_while_another_subscribes_leaves_the_subscription(hub, monkeypatch):
+    """Two resets of one connection hold at once; undoing the cancelled one undid the other's join."""
+    session = await _joined_session(_Recording())
+    feed = session.repo.get("feed")
+    mail = await _mailing(session, feed, monkeypatch)
+    adding, proceed = asyncio.Event(), asyncio.Event()
+    group_add = hub._layer.group_add
+
+    async def slow_group_add(group: str, channel: str) -> None:
+        if group == "wireview.patch.bc-new":
+            adding.set()
+            await proceed.wait()
+        await group_add(group, channel)
+
+    hub._layer.group_add = slow_group_add
+    monkeypatch.setattr(BcFeed, "get_subscriptions", lambda self: {"bc-new"})
+    first = asyncio.ensure_future(feed.stream("items", []))
+    await adding.wait()
+    second = asyncio.ensure_future(feed.stream("items", []))
+    await eventually(lambda: session._patch_settling._waiters)  # type: ignore[attr-defined]
+    second.cancel()
+    proceed.set()
+    await first
+    with pytest.raises(asyncio.CancelledError):
+        await second
+    await _deliver(session, mail)
+    hub.dispatch(_message(BcFeed, "bc-new"))
+    await session._patches_written()
+
+    assert "bc-new" in session._patch_topics
+    assert _posted(session) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_join_that_fails_gives_back_the_receiver_it_replaced(hub):
+    heard: list[str] = []
+    await hub.join("t", "key", lambda message: heard.append("first"))
+    layer = hub._layer
+
+    async def unavailable(group: str, channel: str) -> None:
+        raise ConnectionError("the layer went away")
+
+    await hub.leave("t", "key")
+    await hub.join("t", "key", lambda message: heard.append("first"))
+    hub._joined.discard("t")  # as if the group expired: the next join adds it again
+    layer.group_add = unavailable
+    with pytest.raises(ConnectionError):
+        await hub.join("t", "key", lambda message: heard.append("second"))
+    hub.dispatch({"topic": "t"})
+
+    assert heard == ["first"]
+
+
+@pytest.mark.asyncio
+async def test_stopping_cancels_the_deadlines_of_what_it_held(hub, monkeypatch):
+    session = await _joined_session(_Recording())
+    feed = session.repo.get("feed")
+    await _mailing(session, feed, monkeypatch)
+    await feed.stream("items", [])
+    deadlines = list(session._patch_held[id(feed)].expiries.values())
+
+    await session.stop(1000)
+
+    assert deadlines and all(deadline.cancelled() for deadline in deadlines)
 
 
 @pytest.mark.asyncio
