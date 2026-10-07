@@ -23,8 +23,13 @@ from html import escape
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-RESULT = ROOT / "bench" / "results" / "95c1a4a-fastapi.json"
+RESULT = ROOT / "bench" / "results" / "33bf6b9-fastapi.json"
 IMAGES = ROOT / "docs" / "images"
+#: The feed's stream fan-out (#178): the one broadcast wireview can send without rendering per
+#: connection (``Broadcast``). The board's broadcast changes a field, which only a render can do,
+#: so the comparison takes this path's numbers from that measurement, on the board's layer
+#: (InMemory). The same file as ``bench.compare_fastapi.stream_fanout.RESULT``.
+FEED_RESULT = ROOT / "bench" / "results" / "3ab5818-stream-fanout.json"
 
 SERIES = ("wireview", "fastapi-react", "fastapi-vanilla")
 SERIES_LABELS = {"wireview": "wireview", "fastapi-react": "FastAPI + React", "fastapi-vanilla": "FastAPI + 손 JS"}
@@ -226,8 +231,26 @@ def _footer(result: dict) -> list[str]:
     ]
 
 
-def charts(result: dict) -> dict[str, str]:
+def _feed(feed: dict | None) -> dict[str, dict]:
+    """The feed's fan-out on InMemory: wireview's notification and Broadcast paths, and FastAPI."""
+    summary = (feed if feed is not None else load(FEED_RESULT))["summary"]
+    return {
+        "notified": summary["wireview"]["memory"],
+        "broadcast": summary["wireview-broadcast"]["memory"],
+        "fastapi": summary["fastapi"]["none"],
+    }
+
+
+def _feed_rounds(x: dict) -> str:
+    """A feed measurement's rounds, lowest to highest, in the precision of ``ms``."""
+    rounds = x["fanout_ms_rounds"]
+    return f"{ms(min(rounds)).removesuffix(' ms')}~{ms(max(rounds))}"
+
+
+def charts(result: dict, feed: dict | None = None) -> dict[str, str]:
     s = _summary(result)
+    f = _feed(feed)
+    feed_rounds = len(f["broadcast"]["fanout_ms_rounds"])
     footer = _footer(result)
     method = result["method"]
 
@@ -323,11 +346,23 @@ def charts(result: dict) -> dict[str, str]:
             ),
             Panel(
                 f"브로드캐스트 하나가 연결 {method['fanout_connections']:,}개에 모두 닿기까지 (ms)",
-                [Group("모든 연결이 받기까지", {n: s[n]["fanout_ms"]["median"] for n in SERIES})],
+                [
+                    Group("보드 공지 (알림)", {n: s[n]["fanout_ms"]["median"] for n in SERIES}),
+                    Group(
+                        "피드 새 항목 (Broadcast)",
+                        {
+                            "wireview": f["broadcast"]["fanout_ms"],
+                            **{n: f["fastapi"]["fanout_ms"] for n in SERIES[1:]},
+                        },
+                    ),
+                ],
                 ms,
             ),
         ],
-        footer,
+        [
+            *footer,
+            f"피드의 새 항목: 같은 서버·레이어, {feed_rounds}회차의 중앙값 · 원본 bench/results/{FEED_RESULT.name}",
+        ],
     )
 
     loc = result["loc"]
@@ -353,9 +388,10 @@ def charts(result: dict) -> dict[str, str]:
 # -- the numbers the documents quote ------------------------------------------------------
 
 
-def facts(result: dict) -> dict[str, str]:
+def facts(result: dict, feed: dict | None = None) -> dict[str, str]:
     """Every number README's "숫자" section quotes, formatted as it quotes them."""
     s = _summary(result)
+    f = _feed(feed)
     w, r, v = (s[n] for n in SERIES)
 
     def gz(x: dict) -> float:
@@ -381,12 +417,15 @@ def facts(result: dict) -> dict[str, str]:
         "fanout_connections": f"{result['method']['fanout_connections']:,}",
         "fanout_wireview": ms(w["fanout_ms"]["median"]),
         "fanout_react": ms(r["fanout_ms"]["median"]),
+        "fanout_feed_wireview": ms(f["broadcast"]["fanout_ms"]),
+        "fanout_feed_fastapi": ms(f["fastapi"]["fanout_ms"]),
     }
 
 
-def table(result: dict) -> str:
+def table(result: dict, feed: dict | None = None) -> str:
     """The docs/PERFORMANCE.md table: every metric, median over rounds, with p95 or the rounds' range."""
     s = _summary(result)
+    f = _feed(feed)
 
     def spread(x: dict) -> str:
         return f"{ms(x['median'])} (p95 {ms(x['p95'])}, 회차 {_range(x)})"
@@ -411,8 +450,21 @@ def table(result: dict) -> str:
     )
     rows.append(
         (
-            f"브로드캐스트 팬아웃 (연결 {result['method']['fanout_connections']:,}개)",
+            f"보드의 공지 팬아웃 (연결 {result['method']['fanout_connections']:,}개)",
             [f"{ms(s[n]['fanout_ms']['median'])} (회차 {_range(s[n]['fanout_ms'])})" for n in SERIES],
+        )
+    )
+    fastapi = f"{ms(f['fastapi']['fanout_ms'])} (회차 {_feed_rounds(f['fastapi'])})"
+    feed_rounds = len(f["broadcast"]["fanout_ms_rounds"])
+    rows.append(
+        (
+            f"피드의 새 항목 팬아웃 (연결 {result['method']['fanout_connections']:,}개, {feed_rounds}회차)",
+            [
+                f"Broadcast {ms(f['broadcast']['fanout_ms'])} (회차 {_feed_rounds(f['broadcast'])}), "
+                f"알림 {ms(f['notified']['fanout_ms'])} (회차 {_feed_rounds(f['notified'])})",
+                fastapi,
+                fastapi,
+            ],
         )
     )
     rows.append(("첫 화면: HTML (gzip / 원본)", [_pair(s[n]["download"], "html") for n in SERIES]))

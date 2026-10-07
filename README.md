@@ -48,7 +48,7 @@ class XHello(Component):
 - **서버리스·scale-to-zero 호스팅.** 연결마다 WebSocket과 상태를 들고 있는 프로세스가 있어야 합니다. 대신 일반 Django 뷰(필요하면 htmx).
 - **WebSocket이 막힌 망**(일부 기업 프록시·VPN). HTTP 폴백은 만들지 않기로 했습니다([결정 기록](https://github.com/itda-work/django-wireview/blob/main/docs/design/longpolling-fallback.md)). 대신 htmx 같은 일반 HTTP.
 - **클라이언트 상태가 본체인 앱**(협업 편집기, 리치 에디터, 스프레드시트). 훅이 앱 전체가 됩니다. 대신 SPA와 CRDT(Yjs 등).
-- **읽기만 하는 대량 구독 페이지**(실시간 스코어 등). 브로드캐스트 하나가 구독한 연결 수만큼 다시 렌더됩니다. 대신 SSE와 CDN, 조작하는 부분만 wireview.
+- **읽기만 하는 대량 구독 페이지**(실시간 스코어 등). 브로드캐스트 하나가 구독한 연결 수만큼 다시 렌더됩니다. 대신 SSE와 CDN, 조작하는 부분만 wireview. 모두가 같은 화면이면 `Meta.shared_render`가, 목록에 항목을 넣거나 빼기만 하면 `Broadcast`가 그 렌더를 한 번으로 줄입니다.
 - **다른 사이트에 심는 위젯.** 소켓은 Origin이 `ALLOWED_HOSTS`에 있는 페이지에서만 열립니다. 대신 독립 JS 위젯.
 
 외부 공개 API가 필요하면 DRF나 Django Ninja를 같은 모델·인증 위에 함께 둡니다. SPA 자산이 이미 큰 조직이라면 기술이 아니라 도입 비용의 문제입니다. 흔한 반론에 대한 답은 [왜 wireview인가](https://github.com/itda-work/django-wireview/blob/main/docs/WHY.md)에 있습니다.
@@ -59,15 +59,15 @@ class XHello(Component):
 
 ![클릭에서 화면까지: wireview와 FastAPI](https://raw.githubusercontent.com/itda-work/django-wireview/main/docs/images/bench-fastapi-latency.svg)
 
-클릭이 화면에 그려지기까지는 셋 다 한 프레임 안팎입니다. wireview 12.9 ms, FastAPI + React 10.8 ms, 손 JS 10.9 ms이고, 실제 사용자는 여기에 네트워크 왕복(RTT)이 더해집니다.
+클릭이 화면에 그려지기까지는 셋 다 한 프레임 안팎입니다. wireview 11.8 ms, FastAPI + React 10.5 ms, 손 JS 10.7 ms이고, 실제 사용자는 여기에 네트워크 왕복(RTT)이 더해집니다.
 
 ![서버가 하는 일: wireview와 FastAPI](https://raw.githubusercontent.com/itda-work/django-wireview/main/docs/images/bench-fastapi-server.svg)
 
-서버의 일은 wireview가 훨씬 많습니다. 메시지 하나에 1.5 ms(FastAPI 0.05 ms)가 들고, 브로드캐스트는 연결마다 다시 렌더하므로 연결 1,000개에 632 ms(FastAPI 19.3 ms)가 걸립니다.
+서버의 일은 wireview가 훨씬 많습니다. 메시지 하나에 0.85 ms(FastAPI 0.03 ms)가 들고, 화면을 바꾸는 브로드캐스트는 연결마다 다시 렌더하므로 연결 1,000개에 434 ms(FastAPI 20.7 ms)가 걸립니다. 모두에게 같은 항목을 넣을 때는 `Broadcast`가 한 번만 렌더해 보내므로 18.8 ms(FastAPI 12.0 ms)입니다.
 
 ![첫 화면: wireview와 FastAPI](https://raw.githubusercontent.com/itda-work/django-wireview/main/docs/images/bench-fastapi-first-load.svg)
 
-첫 화면은 서버가 끝까지 그린 HTML이라 먼저 보입니다. 첫 페인트(FCP)가 44.0 ms(React 60.0 ms, 손 JS 56.0 ms)이고, 내려받는 HTML과 JS는 gzip으로 25.9 KB(React 68.5 KB, 손 JS 1.1 KB)입니다.
+첫 화면은 서버가 끝까지 그린 HTML이라 먼저 보입니다. 첫 페인트(FCP)가 44.0 ms(React 64.0 ms, 손 JS 60.0 ms)이고, 내려받는 HTML과 JS는 gzip으로 25.9 KB(React 68.5 KB, 손 JS 1.1 KB)입니다.
 
 ![상호작용 하나의 전송량: wireview와 FastAPI](https://raw.githubusercontent.com/itda-work/django-wireview/main/docs/images/bench-fastapi-bytes.svg)
 

@@ -64,6 +64,15 @@ def test_the_named_result_is_the_newest_measurement():
 
 
 @pytest.mark.unit
+def test_the_feed_row_reads_the_stream_fan_out_the_broadcast_guides_quote(result):
+    """The comparison's Broadcast numbers are the feed measurement's, at the board's connection count."""
+    from bench.compare_fastapi import stream_fanout
+
+    assert chart.FEED_RESULT == stream_fanout.RESULT
+    assert chart.load(chart.FEED_RESULT)["method"]["connections"] == result["method"]["fanout_connections"]
+
+
+@pytest.mark.unit
 def test_the_result_counts_the_lines_the_implementations_have_now(result):
     """The line counts are part of the result; changing an implementation means measuring again."""
     assert result["loc"] == loc.count()
