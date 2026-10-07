@@ -255,6 +255,9 @@ editors/vscode/            VS Code 확장(#156). wheel·sdist에 싣지 않고 �
                            실행마다 출력 파일이 따로다 — 멈춘 프로세스가 늦게 쓴 파일은 다음 실행이 지운다. 자기 실행의 것이 아닌 파일은 실행 timeout보다 오래된 것만.
                            신뢰하지 않은 워크스페이스에서는 프로세스를 띄우지도 메타데이터를 읽지도 않는다(folders.ts 의 run·load).
                            CI의 vscode-extension-host 잡(VS Code 다운로드)만 릴리스 게이트 밖이다
+scripts/act_ci.py          make ci-local. ci.yml을 act로 잡·매트릭스 칸 하나씩 돌린다. 러너 이미지는 .github/act/Dockerfile, act 옵션은 .actrc.
+                           GitHub 러너와 다른 점(좀비를 거두지 않는 pid 1 → --init, 칸끼리 같은 데몬, colima의 소켓)은 그 머리 주석에.
+                           tests/test_act_ci.py 가 잡·칸을 ci.yml에서 빠짐없이 읽는지, .actrc가 그 이미지를 쓰는지 본다
 bench/                     성능 벤치마크 (make bench, make bench-compare BASE=<ref>). windows/ 는 Parallels 게스트 실측 레인. 설명은 bench/README.md
                            compare_fastapi/ 는 같은 화면을 wireview와 FastAPI(React·손 JS)로 만든 비교 벤치(make bench-fastapi, #174).
                            chart.py 가 RESULT 하나에서 docs/images/bench-fastapi-*.svg 와 PERFORMANCE.md 의 표를 만들고,
@@ -335,7 +338,7 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 - **사용자 문서를 추가·이동하면 `docs/site.toml`에 분류한다.** 사이트에 싣는 페이지이거나 `[exclude]` 패턴이어야 하고, 어느 쪽도 아니면 tests/test_doc_site.py가 실패한다. 공개 주소가 바뀌면 `docs/redirects.toml`에 옛 주소를 남긴다.
 - **공개 URL은 없애지 않는다.** 페이지를 빼거나 slug를 바꾸면 `docs/redirects.toml`로 옛 주소를 옮긴다 — `make docs-site`가 `docs/site-urls.txt`에 있는데 사이트에도 redirects에도 없는 URL로 실패한다(사라진 URL 관문). 새 URL은 `python -m scripts.docs_site build --update-urls`로 목록에 더한다. llms.txt와 게시 스킬 파일도 공개 URL이다 — 그 redirect는 파일에서 같은 확장자의 파일로만 가고, 옛 경로에 새 주소를 적은 짧은 파일이 남는다.
 - **pyright는 `tests/`를 검사하지 않고, `tsc`는 checkJs=false라 JS 본문을 검사하지 않는다.** 둘 다 통과해도 해당 영역은 검증된 것이 아니다.
-- **gitignore 대상.** `*.pyi` (AUTO_GENERATE_STUBS가 DEBUG에서 생성), `.wireview/`, `tests/static/`, `*.min.js`, `build/docs-site/`(문서 사이트 산출물), `build/site-dist/`(그 묶음).
+- **gitignore 대상.** `*.pyi` (AUTO_GENERATE_STUBS가 DEBUG에서 생성), `.wireview/`, `tests/static/`, `*.min.js`, `build/docs-site/`(문서 사이트 산출물), `build/site-dist/`(그 묶음), `build/act/`(`make ci-local`의 로그).
 - **컴포넌트 ID**는 페이지 안에서 고유해야 한다.
 - **LiveComponent는 부모가 소유한다.** 클라이언트는 `wireview-live` 요소에 join을 보내지 않고, 자식의 `joined()`·`update()`·`leaving()`과 렌더는 `WireviewSession.send_render`가 부모 렌더 뒤에 처리해 같은 `render` 메시지의 `children`으로 보낸다. 렌더를 보내는 새 경로를 만들 때 `send_render`를 우회하면 자식 초기화가 조용히 빠진다. 계약은 `docs/design/live-component-ownership.md`.
 - **Channels가 핸들러 앞에서 타는 `aclose_old_connections()` 트립을 생략하지 않는다.** 렌더 트립이 앞뒤로 닫아도, 렌더 뒤의 코드

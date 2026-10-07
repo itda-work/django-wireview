@@ -116,6 +116,7 @@ PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflow
 호스트 테스트) 열 잡이다. 평소에는 수동 실행 전용이고, 태그 push 때 `.github/workflows/release.yml`이 이 전체를
 불러 통과해야만 PyPI에 올린다(#122). `vscode-extension-host`만 예외로, 릴리스가 부를 때(`release: true`)는 돌지 않는다 —
 VS Code 다운로드가 파이썬 패키지의 배포를 막지 않게 한다(#156).
+같은 워크플로를 push 전에 로컬 Docker에서 통째로 돌리려면 `make ci-local`(아래 표).
 릴리스 절차는 `docs/ROADMAP.md`의 "릴리스 절차".
 
 | 할 일 | 명령 | 선행 조건 |
@@ -127,6 +128,7 @@ VS Code 다운로드가 파이썬 패키지의 배포를 막지 않게 한다(#1
 | 최신 의존성 테스트 | `make test-latest` | `uv.lock`을 무시하고 새로 설치하는 사람이 받는 최신 해로 돈다. lock이 옛 버전에 묶여 있으면 기본 레인은 새 설치의 결함을 못 본다(#127) |
 | 하한 의존성 테스트 | `make test-lowest` | `pyproject.toml`이 허용하는 가장 오래된 런타임 의존성(django·channels·pydantic)으로 돈다. dev 도구는 그에 맞는 최신이다. 깨지면 하한을 올린다(#132). channels 하한은 nats-server 바이너리가 있어야 검증된다 |
 | E2E | `make test-e2e` (NATS), `LAYER=redis`·`LAYER=memory`로 변경 | 레이어의 서버 바이너리(nats-server, redis는 redis-server — `NATS_SERVER`·`REDIS_SERVER`로 지정)와 JS 빌드. 서버 기동·정리는 `tests/e2e.sh`가 한다 — `NATS_URL`·`REDIS_URL`에 이미 떠 있으면 그것을 쓰고 끄지 않으며, 없으면 비어 있는 포트에 띄우고 실패·중단에도 끈다(#171). redis-server를 손으로 띄우지 않는다. 일부만 돌리려면 `WIREVIEW_TEST_LAYER=memory ./tests/e2e.sh tests/test_streams_e2e.py`나 `-k streams` — 경로를 넘기면 기본 경로(`tests examples`)는 빠진다 |
+| CI 전체를 로컬에서 | `make ci-local` (`JOBS="lint test"`로 일부) | act와 Docker 데몬. `.github/workflows/ci.yml`의 잡과 매트릭스 칸을 하나씩 돌리고 로그는 `build/act/`. 러너 이미지는 `.github/act/Dockerfile`, act 옵션은 `.actrc`, GitHub 러너와 다른 점(좀비를 거두지 않는 pid 1, 칸끼리 같은 데몬, colima 소켓)과 그 처리는 `scripts/act_ci.py` 머리 주석에. 칸 하나에 3~6분, 전체는 1시간 남짓 |
 | 빌드한 wheel 스모크 | `make ci-build` 뒤 `make ci-smoke` | wheel을 lock 없이 새 의존성에 설치해 import·`check`. 릴리스 게이트의 마지막 단계 |
 | 린트 | `make lint` (ruff + djlint) | |
 | 타입 검사 | `make check` (pyright, `tests/` 제외) | |

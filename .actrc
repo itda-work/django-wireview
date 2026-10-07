@@ -1,0 +1,5 @@
+-W .github/workflows/ci.yml
+-P ubuntu-24.04=wireview-act-runner
+--pull=false
+--container-options=--init
+--container-daemon-socket=/var/run/docker.sock

@@ -233,6 +233,12 @@ test-matrix: collectstatic
 			pytest tests examples -m "not e2e and not slow" -q --no-header -p no:warnings $(ARGS); \
 	done; done
 
+# The whole of .github/workflows/ci.yml in Docker through act, one job and matrix cell at a time,
+# before a push (CI itself runs only when dispatched). Needs act and a Docker daemon; logs go to
+# build/act/. JOBS="lint test" runs only those. scripts/act_ci.py says what it does that act does not.
+ci-local:
+	uv run python -m scripts.act_ci $(JOBS)
+
 # The dependencies a fresh `pip install django-wireview` gets today, not uv.lock's:
 # the newest release of each within pyproject.toml's bounds. uv.lock held pydantic
 # at 2.12 while new installs got 2.13, which broke the import (#127).
@@ -401,6 +407,7 @@ help:
 	@echo "  make test-matrix      - Run tests on every supported Python x Django pair"
 	@echo "  make test-latest      - Run tests on the newest dependencies, ignoring uv.lock"
 	@echo "  make test-lowest      - Run tests on the oldest dependencies pyproject.toml allows"
+	@echo "  make ci-local         - Run ci.yml with act in Docker, every matrix cell (JOBS=\"lint test\")"
 	@echo "  make test-all         - Run all tests including E2E"
 	@echo "  make test-cov         - Run tests with coverage report"
 	@echo ""

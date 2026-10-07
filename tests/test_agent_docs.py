@@ -25,6 +25,7 @@ GENERATED = {
     "*.min.js",
     "build/docs-site/",
     "build/site-dist/",
+    "build/act/",
 }
 
 # Slashes that are not directories.
