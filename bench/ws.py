@@ -52,13 +52,34 @@ def _uvicorn_args(port: int, ws: str, deflate: bool = True) -> list[str]:
     return args
 
 
+def _granian_args(port: int, loop: str = "auto") -> list[str]:
+    # Granian's sockets live in its Rust runtime, not on the Python event loop.
+    # It does not offer permessage-deflate, so it compares with uvicorn-nodeflate.
+    return [
+        "--interface",
+        "asgi",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        str(port),
+        "--log-level",
+        "warning",
+        "--loop",
+        loop,
+        "testproj.asgi:application",
+    ]
+
+
 # server name -> (python module, argv builder). "uvicorn-wsproto" is uvicorn on its
-# alternative WebSocket implementation (pip install wsproto).
+# alternative WebSocket implementation (pip install wsproto). The granian entries need
+# granian on the interpreter (uv run --with granian); it is not a dev dependency.
 SERVERS: dict[str, tuple[str, t.Callable[[int], list[str]]]] = {
     "daphne": ("daphne", lambda port: ["-b", "127.0.0.1", "-p", str(port), "testproj.asgi:application"]),
     "uvicorn": ("uvicorn", lambda port: _uvicorn_args(port, "websockets")),
     "uvicorn-wsproto": ("uvicorn", lambda port: _uvicorn_args(port, "wsproto")),
     "uvicorn-nodeflate": ("uvicorn", lambda port: _uvicorn_args(port, "websockets", deflate=False)),
+    "granian": ("granian", lambda port: _granian_args(port)),
+    "granian-uvloop": ("granian", lambda port: _granian_args(port, "uvloop")),
 }
 
 
