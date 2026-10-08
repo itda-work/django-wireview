@@ -382,6 +382,29 @@ def test_only_the_host_tests_are_outside_the_release_gate():
     assert all(command in gate for command in ("npm run typecheck", "npm test", "npm run package"))
 
 
+#: The Marketplace page (English) and its Korean text (#163)
+READMES = ("README.md", "README.ko.md")
+
+
+@pytest.mark.unit
+def test_the_readmes_list_every_diagnostic_and_command():
+    """The two READMEs are kept by hand side by side; the tables they share are held against the code."""
+    diagnostics = (EXTENSION / "src" / "core" / "diagnostics.ts").read_text(encoding="utf-8")
+    codes = set(re.findall(r'report\(\s*"([a-z]+(?:-[a-z]+)+)"', diagnostics))
+    manifest = json.loads((EXTENSION / "package.json").read_text(encoding="utf-8"))
+    commands = {f"{c['category']}: {c['title']}" for c in manifest["contributes"]["commands"]}
+    assert len(codes) > 20, "the diagnostic codes are no longer read from diagnostics.ts"
+    for name in READMES:
+        readme = (EXTENSION / name).read_text(encoding="utf-8")
+        rows = [line for line in readme.splitlines() if line.startswith("| `") and "-" in line.split("|")[1]]
+        listed = {code for row in rows for code in re.findall(r"`([a-z]+(?:-[a-z]+)+)`", row.split("|")[1])}
+        assert listed == codes, name
+        assert all(f"`{command}`" in readme for command in commands), name
+    english = (EXTENSION / "README.md").read_text(encoding="utf-8")
+    assert "[README.ko.md](./README.ko.md)" in english
+    assert "[README.md](./README.md)" in (EXTENSION / "README.ko.md").read_text(encoding="utf-8")
+
+
 @pytest.mark.unit
 def test_the_readme_lists_every_setting_with_its_default():
     manifest = json.loads((EXTENSION / "package.json").read_text(encoding="utf-8"))
@@ -389,9 +412,10 @@ def test_the_readme_lists_every_setting_with_its_default():
         name: json.dumps(spec["default"], separators=(", ", ": "))
         for name, spec in manifest["contributes"]["configuration"]["properties"].items()
     }
-    readme = (EXTENSION / "README.md").read_text(encoding="utf-8")
-    listed = dict(re.findall(r"^\| `(wireview\.[\w.]+)` \| `([^`]*)` \|", readme, flags=re.M))
-    assert listed == settings
+    for name in READMES:
+        readme = (EXTENSION / name).read_text(encoding="utf-8")
+        listed = dict(re.findall(r"^\| `(wireview\.[\w.]+)` \| `([^`]*)` \|", readme, flags=re.M))
+        assert listed == settings, name
     # What Restricted Mode keeps to the user's own settings: every one that picks what runs or what is read
     restricted = manifest["capabilities"]["untrustedWorkspaces"]["restrictedConfigurations"]
     folders = (EXTENSION / "src" / "folders.ts").read_text(encoding="utf-8")

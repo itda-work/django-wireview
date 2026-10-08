@@ -27,7 +27,8 @@ make ext-package    # editors/vscode/dist/django-wireview-<버전>.vsix
 code --install-extension editors/vscode/dist/django-wireview-<버전>.vsix
 ```
 
-할 수 있는 일, 설정, 알려진 한계는 확장의 [README](../../editors/vscode/README.md)에 있다. 요약하면:
+할 수 있는 일, 설정, 알려진 한계는 확장의 [README](../../editors/vscode/README.ko.md)에 있다(Marketplace 페이지가 되는
+[영어판](../../editors/vscode/README.md)과 같은 내용). 요약하면:
 
 - `**/templates/**/*.html`과, 메타데이터의 `template_dirs` 안에 있는 `.html`을 `django-html` 언어로 열고 구문
   강조·주석·자동 닫기·들여쓰기를 준다. `files.associations`가 `html`로 적은 파일과 사용자가 `html`로 되돌린

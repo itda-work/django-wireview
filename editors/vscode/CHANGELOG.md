@@ -14,6 +14,7 @@ the release workflow refuses a tag whose section has no date
 ### Added
 
 - Published to the Visual Studio Marketplace and Open VSX as `itda.django-wireview`, with an icon.
+- The README, the Marketplace and Open VSX page, is in English; the Korean text is `README.ko.md`.
 - The `django-html` language: a TextMate grammar over HTML for `{% %}`, `{{ }}` and `{# #}`
   (in text, attribute values and scripts), comment toggling, auto-closing of `{%` and `{#`,
   block-tag indentation, and `**/templates/**/*.html` associated with it. Once the metadata is

@@ -1,110 +1,143 @@
 # Django Wireview
 
-Django 템플릿을 편집하는 데 필요한 것을 이 확장 하나로 준다. 다른 Django 확장은 깔지 않아도 된다.
-[django-wireview](https://github.com/itda-work/django-wireview) 프로젝트라면 컴포넌트·핸들러·슬롯까지
-알아듣는다 — 이름을 틀리면 페이지를 그려 보기 전에 편집기가 먼저 말한다.
+> 한국어: [README.ko.md](./README.ko.md)
 
-## 기능
+Everything you need to edit Django templates, in one extension — no other Django extension required.
+In a [django-wireview](https://github.com/itda-work/django-wireview) project it also understands your
+components, handlers and slots, so a misspelled name is flagged in the editor before you ever render the page.
 
-**템플릿 언어.** `**/templates/**/*.html` 파일을 `django-html` 언어로 연다. 이름이 `templates`가 아닌 디렉터리라도
-프로젝트의 템플릿 엔진이 찾는 곳(`TEMPLATES`의 `DIRS`, 환경 변수로 정한 것 포함)이면, 메타데이터를 읽은 뒤 그
-안의 `.html`도 `django-html`로 바꾼다(`wireview.associateTemplateDirs`). 구문 강조는 텍스트, 속성 값,
-`<script>` 안의 `{% %}`·`{{ }}`·`{# #}`를 모두 칠한다. `{% comment %}`와 `{% verbatim %}` 안은 태그로 보지 않는다.
-`Ctrl+/`가 `{# #}`로 주석을 단다. `{%`를 치면 `%}`가, `{#`를 치면 `#}`가 붙고, 블록 태그 다음 줄은 들여 쓰고
-`{% endif %}`·`{% else %}`는 다시 내어 쓴다.
+## Install
 
-**HTML은 그대로.** 언어가 `html`에서 바뀌어도 태그·속성 자동완성, 호버, 닫는 태그 자동 삽입, 짝 태그 이름 동시
-수정, 접기가 그대로 된다(`vscode-html-languageservice`). Emmet도 켜 둔다. `wire-hook` 같은 `wire-*` 속성도
-속성 목록에 나온다.
+The extension ID is `itda.django-wireview`.
 
-**Django 태그와 필터.** 목록을 확장이 갖고 있지 않고 프로젝트의 템플릿 엔진에서 읽는다. 그래서 설치된 Django
-버전의 내장 태그와, `{% load %}`할 수 있는 모든 라이브러리(서드파티 포함)가 그대로 나온다.
+- **VS Code**: install it from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=itda.django-wireview),
+  search for "Django Wireview" in the Extensions view, or run `code --install-extension itda.django-wireview`.
+- **Cursor, VSCodium and other editors that use Open VSX**: install it from
+  [Open VSX](https://open-vsx.org/extension/itda/django-wireview).
+- Every version's `.vsix` is also attached to its GitHub release (tag `vscode-v<version>`), for machines that
+  cannot reach either registry.
 
-- 자동완성: 태그 이름(블록 태그는 끝 태그까지 한 번에, 감싸는 블록이 기다리는 `endif`·`else`가 맨 위), `{% load %}`의
-  라이브러리, `|` 뒤의 필터, `{% extends %}`·`{% include %}`의 템플릿 경로, 변수(필드, `{% for %}`·`{% with %}`의 이름)
-- 호버와 정의로 이동: 태그·필터는 그것을 등록한 파이썬 함수로, 라이브러리는 그 모듈로, 템플릿 경로는 그 파일로
-- 접기: 블록 태그마다(`{% if %}`부터 `{% else %}`까지, 거기서 `{% endif %}`까지)
+## Requirements
+
+- VS Code 1.100 or later.
+- For the project-aware features (Django's tags and filters, components, handlers, diagnostics): a Django project with
+  django-wireview 1.0 or later installed, and a Python interpreter that can run its `manage.py`. The extension runs
+  `python manage.py wireview_lsp` and reads metadata format 1.1 or a later 1.x (django-wireview 1.0 to 1.2) or 2.x
+  (django-wireview 1.3 and later). If the format is too old, the status bar and the output channel ask you to upgrade
+  django-wireview; if it is too new, they ask you to upgrade the extension.
+- Without django-wireview — in any Django project — syntax highlighting, the HTML features and the snippets still work.
+
+## Features
+
+**A Django template language.** Files matching `**/templates/**/*.html` open as `django-html`. Once the project's
+metadata has been read, an `.html` file in any directory the template engine searches is switched to `django-html` as
+well, even when the directory is not called `templates` (`DIRS` in `TEMPLATES`, including directories set through
+environment variables; `wireview.associateTemplateDirs`). `{% %}`, `{{ }}` and `{# #}` are highlighted in text, in
+attribute values and inside `<script>`; nothing inside `{% comment %}` or `{% verbatim %}` is treated as a tag.
+`Ctrl+/` comments with `{# #}`. Typing `{%` adds `%}` and typing `{#` adds `#}`; the line after a block tag is indented,
+and `{% endif %}` or `{% else %}` is outdented again.
+
+**HTML keeps working.** Switching the language away from `html` does not cost you anything: tag and attribute
+completion, hover, automatic closing tags, linked editing of tag pairs and folding all still work
+(`vscode-html-languageservice`). Emmet is enabled too, and the `wire-*` attributes such as `wire-hook` appear in the
+attribute list.
+
+**Django's tags and filters.** The extension does not ship its own list: it reads them from the project's template
+engine, so you get the built-ins of the Django version you have installed and every library you can `{% load %}`,
+third-party ones included.
+
+- Completion: tag names (a block tag is inserted together with its end tag, and the `endif` or `else` the enclosing
+  block is waiting for comes first), libraries in `{% load %}`, filters after `|`, template paths in `{% extends %}` and
+  `{% include %}`, and variables (fields, and the names `{% for %}` and `{% with %}` introduce).
+- Hover and go to definition: a tag or filter takes you to the Python function that registers it, a library to its
+  module, a template path to the file.
+- Folding for every block tag (from `{% if %}` to `{% else %}`, and from there to `{% endif %}`).
 
 **django-wireview.**
 
-- 자동완성: `{% component %}`·`{% live_component %}`·`{% func %}`(와 `_block`)의 이름과 인자, `{% on %}`의 이벤트·수정자·
-  핸들러·핸들러 인자, `{% fill %}`의 슬롯과 `let:`, `{% render_slot %}`, `wire-hook`, `wire-viewport-*`
-- 호버와 정의로 이동: 컴포넌트 → 클래스, 인자 → 필드 선언, 핸들러 → 메서드, 훅 → JS 파일의 등록 줄,
-  변수 → 필드나 프로퍼티. 파이썬 파일의 `template_name = "todo/list.html"` 같은 문자열은 템플릿으로 가는 링크가 된다
-- 스니펫: 템플릿(`wv-template`, `wv-component-block`, `wv-form`, `wv-upload` …)과 파이썬(`wv-component`,
-  `wv-handler`, `wv-function-component`, `wv-test` …)
+- Completion: the names and arguments of `{% component %}`, `{% live_component %}` and `{% func %}` (and their `_block`
+  forms); events, modifiers, handlers and handler arguments in `{% on %}`; slots and `let:` in `{% fill %}`;
+  `{% render_slot %}`; `wire-hook`; `wire-viewport-*`.
+- Hover and go to definition: component → class, argument → field declaration, handler → method, hook → the line of the
+  JS file that registers it, variable → field or property. In Python files, strings such as
+  `template_name = "todo/list.html"` become links to the template.
+- Snippets for templates (`wv-template`, `wv-component-block`, `wv-form`, `wv-upload`, …) and for Python
+  (`wv-component`, `wv-handler`, `wv-function-component`, `wv-test`, …).
 
-**진단.** Django나 django-wireview가 템플릿을 읽거나 그릴 때 낼 오류만 미리 말한다. 확실하지 않으면 말하지
-않는다 — 변수로 넘긴 이름은 보지 않고, 메타데이터가 없으면 아무것도 말하지 않는다.
+**Diagnostics.** The extension reports only what Django or django-wireview would raise when reading or rendering the
+template, and stays silent when it is not sure: a name passed in a variable is not checked, and without metadata
+nothing is reported.
 
-| 코드 | 무엇 |
-|------|------|
-| `unknown-component`, `not-a-live-component`, `live-component-needs-id`, `unknown-function-component` | 없는 컴포넌트, `live_component`에 일반 컴포넌트, `id` 없는 LiveComponent |
-| `unknown-argument`, `missing-argument` | 필드가 아닌 인자, 넘기지 않은 필수 필드(경고) |
-| `unknown-handler`, `not-a-handler`, `unknown-handler-argument` | 템플릿을 그리는 컴포넌트에 없는 핸들러, 클라이언트가 부를 수 없는 메서드, 핸들러가 받지 않는 인자 |
-| `invalid-event`, `unknown-modifier`, `modifier-argument` | `{% on %}`의 이벤트 이름과 수정자 |
-| `missing-slot` | 채우지 않은 필수 슬롯 |
-| `unknown-hook` | 훅 파일이 등록하지 않은 `wire-hook` 이름(정보) |
-| `tag-not-loaded`, `unknown-tag`, `unknown-filter`, `filter-not-loaded`, `filter-argument`, `filter-not-permitted`, `unknown-library` | `{% load %}`하지 않은(또는 그 `{% load %}`보다 앞에 쓴) 태그·필터, 없는 태그·필터·라이브러리, 필터 인자 개수, `{% filter %}`가 거절하는 `escape`·`safe`(그 이름으로 마지막에 등록된 함수) |
-| `unclosed-block`, `unmatched-end` | 닫지 않은 블록, 여는 태그 없는 끝 태그 |
-| `template-not-found` | 템플릿 디렉터리에 없는 `{% extends %}`·`{% include %}` 경로(경고) |
+| Code | Severity | What |
+|------|----------|------|
+| `unknown-component`, `not-a-live-component`, `live-component-needs-id`, `unknown-function-component` | Error | An unknown component, a regular component in `live_component`, a LiveComponent without an `id` |
+| `unknown-argument`, `missing-argument` | Warning | An argument that is not a field, a required field that is not passed |
+| `unknown-handler`, `not-a-handler` | Error | A handler the component rendering the template does not have, a method the client cannot call |
+| `unknown-handler-argument` | Warning | An argument the handler does not take |
+| `invalid-event`, `unknown-modifier`, `modifier-argument` | Error | The event name and modifiers of `{% on %}` |
+| `missing-slot` | Error | A required slot that is not filled |
+| `unknown-hook` | Information | A `wire-hook` name no hook file registers |
+| `tag-not-loaded`, `filter-not-loaded` | Error | A tag or filter used without its `{% load %}`, or before it |
+| `unknown-tag` | Warning | A tag no library defines |
+| `unknown-filter`, `unknown-library` | Error | A filter or library that does not exist |
+| `filter-argument`, `filter-not-permitted` | Error | The wrong number of filter arguments; `escape` or `safe` in `{% filter %}`, which Django refuses (whichever function was registered last under that name) |
+| `unclosed-block`, `unmatched-end` | Error | A block that is never closed, an end tag with no opening tag |
+| `template-not-found` | Warning | An `{% extends %}` or `{% include %}` path that is not in any template directory |
 
-## 요구 사항
+## How it works
 
-- VS Code 1.100 이상
-- 프로젝트의 django-wireview가 메타데이터 형식 1.1 이상의 1.x나 2.x를 낸다: `python manage.py wireview_lsp`의
-  출력에 `"version": "1.1"`(django-wireview 1.0~1.2)이나 `"version": "2.0"`이 있으면 된다. 낮으면 상태 표시줄과
-  출력 채널이 django-wireview를, 높으면 확장을 올리라고 알린다.
-  django-wireview가 없는 Django 프로젝트에서도 구문 강조·HTML 기능·스니펫은 쓸 수 있다
+For each workspace folder the extension finds `manage.py`, runs `python manage.py wireview_lsp --output <file>` and
+reads the JSON it writes: the project's components, template directories, tags and filters. The file goes to the
+extension's own storage, not into your project. Saving a Python file runs the command again. If a run fails (Django
+does not start, or the file you are editing has a syntax error), the last metadata that worked stays in use and the
+status bar shows a warning; click it to open the output channel.
 
-## 동작
+Commands: `Wireview: Refresh Project Metadata`, `Wireview: Go to Component…`, `Wireview: Show Output`.
 
-확장은 워크스페이스 폴더마다 `manage.py`를 찾아 `python manage.py wireview_lsp --output <파일>`을 돌리고, 그
-JSON(프로젝트의 컴포넌트, 템플릿 디렉터리, 태그·필터)을 읽는다. 출력 파일은 프로젝트가 아니라 확장의 저장소에
-쓴다. 파이썬 파일을 저장하면 다시 돌린다. 실패하면(Django가 뜨지 않음, 편집 중인 파일의 구문 오류) 마지막으로
-성공한 결과를 그대로 쓰고, 상태 표시줄에 경고를 띄운다. 상태 표시줄을 누르면 출력 채널이 열린다.
+**Restricted Mode.** In an untrusted workspace the extension starts no process and reads no metadata file — running
+`manage.py` executes the project's code, and the paths in the metadata are where go to definition takes you. Results
+left by an earlier session are not used either. Syntax highlighting, snippets and the HTML features keep working, and
+the status bar shows `Restricted Mode`; the metadata is built as soon as you trust the workspace. Until then, the
+settings that decide what runs (`pythonPath`, `managePy`, `metadataCommand`, `metadataPath`) ignore the workspace's
+values.
 
-명령 팔레트: `Wireview: Refresh Project Metadata`, `Wireview: Go to Component…`, `Wireview: Show Output`.
+## Settings
 
-**제한 모드(Restricted Mode).** 신뢰하지 않은 워크스페이스에서는 아무 프로세스도 띄우지 않고 메타데이터 파일도
-읽지 않는다 — `manage.py`를 돌리는 것은 그 프로젝트의 코드를 실행하는 것이고, 메타데이터의 경로는 정의로 이동이
-가는 곳이기 때문이다. 지난 세션이 남긴 결과도 쓰지 않는다. 그동안 구문 강조·스니펫·HTML 기능은 그대로 되고,
-상태 표시줄에 `Restricted Mode`가 뜬다. 워크스페이스를 신뢰하면 그때 메타데이터를 만든다. 실행에 쓰이는 설정
-(`pythonPath`, `managePy`, `metadataCommand`, `metadataPath`)은 신뢰하기 전에는 워크스페이스의 값을 따르지 않는다.
+| Setting | Default | Meaning |
+|---------|---------|---------|
+| `wireview.pythonPath` | `""` | The Python that runs `manage.py`. Empty: the interpreter the Python extension selected, then `.venv` next to `manage.py` (or at the folder root), then `python3` (`python` on Windows) |
+| `wireview.managePy` | `""` | Path to `manage.py`, relative to the folder. Empty: the shallowest one |
+| `wireview.metadataCommand` | `[]` | The whole command, when an interpreter alone is not enough, e.g. `["uv", "run", "python", "manage.py", "wireview_lsp"]`. The extension appends `--output <file>` |
+| `wireview.metadataPath` | `""` | Read and watch this file instead of running a command. Something else writes it with `manage.py wireview_lsp --output` |
+| `wireview.refreshOnSave` | `true` | Run the command again when a Python file is saved |
+| `wireview.associateTemplateDirs` | `true` | Open `.html` files in the directories the template engine searches as `django-html` |
+| `wireview.diagnostics.enable` | `true` | Diagnostics |
+| `wireview.html.enable` | `true` | HTML completion, hover and closing tags in `django-html` |
 
-## 설정
+## Known limitations
 
-| 설정 | 기본값 | 뜻 |
-|------|--------|-----|
-| `wireview.pythonPath` | `""` | `manage.py`를 돌릴 파이썬. 비우면 Python 확장이 고른 인터프리터, 그다음 `.venv`, 그다음 `python3` |
-| `wireview.managePy` | `""` | `manage.py`의 경로(폴더 기준). 비우면 가장 얕은 것 |
-| `wireview.metadataCommand` | `[]` | 인터프리터만으로 부족할 때 명령 전체. 예: `["uv", "run", "python", "manage.py", "wireview_lsp"]`. `--output <파일>`은 확장이 붙인다 |
-| `wireview.metadataPath` | `""` | 명령을 돌리지 않고 이 파일을 읽고 감시한다. 다른 무엇이 `manage.py wireview_lsp --output`으로 쓴다 |
-| `wireview.refreshOnSave` | `true` | 파이썬 파일을 저장하면 다시 돌린다 |
-| `wireview.associateTemplateDirs` | `true` | 템플릿 엔진이 찾는 디렉터리 안의 `.html`을 `django-html`로 연다 |
-| `wireview.diagnostics.enable` | `true` | 진단 |
-| `wireview.html.enable` | `true` | `django-html`의 HTML 자동완성·호버·닫는 태그 |
-
-## 알려진 한계
-
-- **`templates` 디렉터리 아래의 `.html`과 템플릿 엔진이 찾는 디렉터리 안의 `.html`은 `django-html`이 된다.**
-  Django 템플릿이 아닌 HTML이 거기 있으면 설정의 `files.associations`로 `html`이라고 적는다:
-  `{"**/templates/static-site/**/*.html": "html"}`. 확장은 `html`로 적힌 파일은 바꾸지 않고, 한 번 바꾼 문서를
-  언어 선택기로 `html`로 되돌리면 그 뒤로는 건드리지 않는다. 엔진이 찾지 않는 곳에서 읽는 템플릿(따로 `Engine`을
-  만들어 읽는 메일 템플릿 등)은 `{"**/emails/**/*.html": "django-html"}`처럼 더한다. 디렉터리를 보고 바꾸는 것은
-  메타데이터를 읽은 뒤라, 제한 모드에서는 `**/templates/**`만 적용된다. `html` 언어로 연 파일도 템플릿 디렉터리
-  안에 있으면 진단은 받는다.
-- **Django가 컨테이너 안에서만 돈다면** VS Code를 Remote(Dev Containers, SSH, WSL)로 그 안에서 연다. 메타데이터의
-  경로는 Django가 보는 경로라, 바깥에서 연 편집기의 경로와 맞지 않는다.
-- 블록 태그의 끝 태그는 태그 함수의 소스에서 읽는다. 읽지 못한 서드파티 블록 태그는 블록으로 다루지 않는다 —
-  그 끝 태그와 중간 태그에 대해서는 아무것도 말하지 않으므로 거짓 경고는 없지만, 접기와 끝 태그 자동완성은 없다.
-- 핸들러 진단은 그 템플릿을 `template_name`으로 쓰는 컴포넌트가 있을 때만 한다. `{% include %}`되는 조각과
-  스트림 항목 템플릿은 누가 그리는지 알 수 없어서 보지 않는다(자동완성은 모든 컴포넌트의 핸들러를 낸다).
-- `wire-*` 속성은 브라우저가 HTML을 읽는 규칙대로 시작 태그에서만 읽는다(주석·`<script>`·끝 태그 안은 속성이 아니고,
-  같은 이름이 두 번이면 첫 것만). 어디서 끝나는지 확실하지 않은 곳 — SVG·MathML 안의 `<![CDATA[`, `<!--`와
-  `<script`를 품은 `<script>`, SVG의 `<foreignObject>` 안의 HTML — 을 만나면 그 뒤의 속성은 보지 않는다.
-  열린 SVG 요소에 없는 끝 태그(`<svg>` 안의 `</p>`, 갈래마다 다른 `<svg>`를 닫는 `</div>`) 뒤는 HTML로 읽는다.
-  브라우저가 아직 SVG 안이라고 보는 경우가 있어서, 그 뒤의 `<![CDATA[`를 만나면 거기서 멈춘다.
-  `&#97;` 같은 문자 참조가 든 값도 보지 않는다.
-- 메타데이터 형식은 [docs/features/editor-support.md](../../docs/features/editor-support.md)에 있다. 다른 편집기도
-  같은 JSON을 읽을 수 있다.
+- **Every `.html` under a `templates` directory, and in any directory the template engine searches, becomes
+  `django-html`.** If plain HTML that is not a Django template lives there, map it back to `html` with
+  `files.associations`: `{"**/templates/static-site/**/*.html": "html"}`. The extension leaves alone any file
+  `files.associations` maps to `html`, and once you switch a document back to `html` with the language picker it does
+  not touch that document again. Templates read from places the engine does not search (mail templates loaded through
+  a separate `Engine`, for instance) can be added the other way: `{"**/emails/**/*.html": "django-html"}`. Switching by
+  directory happens after the metadata is read, so in Restricted Mode only `**/templates/**` applies. A file opened as
+  `html` still gets diagnostics when it is inside a template directory.
+- **If Django only runs inside a container,** open VS Code inside it with Remote Development (Dev Containers, SSH,
+  WSL). The paths in the metadata are the ones Django sees, and they do not match those of an editor running outside.
+- The end tag of a block tag is read from the source of the tag function. A third-party block tag whose source cannot
+  be read is not treated as a block: nothing is said about its end and intermediate tags, so there are no false
+  warnings, but there is no folding or end-tag completion for it either.
+- Handler diagnostics run only when some component uses the template as its `template_name`. Fragments pulled in with
+  `{% include %}` and stream item templates are not checked, because there is no telling which component renders them
+  (completion offers the handlers of every component).
+- `wire-*` attributes are read the way a browser parses HTML: only in start tags (not in comments, inside `<script>` or
+  in end tags), and only the first of two attributes with the same name. Where it is not certain where something ends —
+  `<![CDATA[` inside SVG or MathML, a `<script>` containing both `<!--` and `<script`, HTML inside SVG's
+  `<foreignObject>` — attributes after that point are not checked. After an end tag that matches no open SVG element
+  (`</p>` inside `<svg>`, or a `</div>` that closes a `<svg>` opened differently in two branches) the rest is read as
+  HTML; since a browser may still consider itself inside SVG there, checking stops at the next `<![CDATA[`. Values
+  containing character references such as `&#97;` are not checked either.
+- The metadata format is documented in
+  [docs/features/editor-support.md](../../docs/features/editor-support.md) (Korean); other editors can read the same JSON.

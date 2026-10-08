@@ -148,8 +148,9 @@ def test_skill_frontmatter_names_its_own_directory(skill: Path):
 KOREAN_RATIO_FLOOR = 0.15
 
 #: English on purpose. The changelog reads alongside commit messages, and docs/legacy/ is a
-#: preserved artefact of the django-reactor era, not a document this project maintains.
-ENGLISH_BY_DESIGN = ("CHANGELOG.md", "docs/legacy/", "editors/vscode/CHANGELOG.md")
+#: preserved artefact of the django-reactor era, not a document this project maintains. The
+#: extension's README is its Marketplace and Open VSX page (#163); its Korean text is README.ko.md.
+ENGLISH_BY_DESIGN = ("CHANGELOG.md", "docs/legacy/", "editors/vscode/CHANGELOG.md", "editors/vscode/README.md")
 
 HANGUL = re.compile(r"[가-힣]")
 LETTERS = re.compile(r"[A-Za-z가-힣]")

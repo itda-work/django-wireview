@@ -96,7 +96,8 @@ CI나 빌드 작업을 `bug`/`enhancement`에 억지로 넣지 않는다.
   - 한국어 — `docs/` 전부, `README.md`, `CLAUDE.md`, `AGENTS.md`, `skills/`, 예제 README.
     `tests/test_agent_docs.py`의 `test_the_documentation_is_written_in_korean`이 지킨다.
   - 영어 — 커밋 메시지(Conventional Commits), 코드 주석·docstring, 로그·예외 메시지,
-    `CHANGELOG.md`(커밋 메시지와 나란히 읽힌다), `docs/legacy/`(보존된 과거 기록).
+    `CHANGELOG.md`(커밋 메시지와 나란히 읽힌다), `docs/legacy/`(보존된 과거 기록), 그리고 편집기 확장의
+    `editors/vscode/README.md`·`editors/vscode/CHANGELOG.md`(Marketplace·Open VSX 페이지가 된다. README의 한국어판은 `editors/vscode/README.ko.md`이고 둘을 함께 고친다).
 - **수치를 문서에 쓰면 비교군과의 비교 차트를 함께 둔다.** 차트는 원본 측정 결과(`bench/results/*.json`)에서
   스크립트로 생성하고, 비교는 같은 조건의 공정한 측정이다 — 같은 기계·서버·반복 수, 회차 여러 번의 중앙값,
   wireview에 불리한 지표도 그대로 싣는다. 비교군은 FastAPI다. 본보기는 README "숫자"와
