@@ -37,7 +37,7 @@ from django.template import loader
 from django.template.base import Node
 from django.test import AsyncClient, override_settings
 from django.urls import path
-from pydantic import computed_field
+from pydantic import BaseModel, computed_field
 from testproj.outbound import RecordingOutbound
 from testproj.waiting import eventually
 from testproj.wireview_setting import set_wireview
@@ -255,6 +255,29 @@ class RqWorker(Component):
     async def handle_async(self, name, result):
         await Question.objects.acount()
         self.count = result.result
+
+
+def _reads_per_dump() -> int:
+    """How many times ``model_dump_json`` reads a computed field: twice before pydantic 2.12.
+
+    The floor is 2.7 (``make test-lowest``), so a signature of ``RqBoard``'s state runs
+    ``total``'s statement this many times.
+    """
+    reads = []
+
+    class Probe(BaseModel):
+        @computed_field  # type: ignore[prop-decorator]
+        @property
+        def read(self) -> int:
+            reads.append(1)
+            return 0
+
+    Probe().model_dump_json(exclude=set())
+    return len(reads)
+
+
+#: The statements one signature of ``RqBoard``'s state runs
+SIGN = _reads_per_dump()
 
 
 class RqBoard(_Lists, Component):
@@ -660,19 +683,19 @@ async def test_each_shared_render_connection_gets_its_own_statements(quiz, monke
     ]
     assert len(leaders) == 1
     leader = leaders[0]
-    # The board: {{ choices.count }}, the computed field read twice (the context, the signature)
-    assert len(leader.block.rows) == 3
+    # The board: {{ choices.count }}, the computed field read by the context and by the signature
+    assert len(leader.block.rows) == 2 + SIGN
     takers = [tab for tab in tabs if tab is not leader]
     for taker in takers:
         kinds = _kinds(taker.block.rows)
         if verify is False:
-            assert kinds == ["sign"], "the taker's own signature, not the other taker's"
+            assert kinds == ["sign"] * SIGN, "the taker's own signature, not the other taker's"
         elif verify is True:
-            assert set(kinds) == {"verify"} and len(kinds) == 3
+            assert set(kinds) == {"verify"} and len(kinds) == 2 + SIGN
     if verify is None:
         # Django's test runner turns DEBUG off: the takers sign, as with False
         for taker in takers:
-            assert _kinds(taker.block.rows) == ["sign"]
+            assert _kinds(taker.block.rows) == ["sign"] * SIGN
 
 
 @pytest.mark.asyncio
@@ -718,12 +741,12 @@ async def test_a_signature_batch_gives_each_statement_to_its_asker(quiz, monkeyp
     await asyncio.gather(*tasks)
     assert trips == [2]
     if restore:
-        assert (a.count, b.count, outer.count) == (1, 1, 1)
+        assert (a.count, b.count, outer.count) == (SIGN, SIGN, SIGN)
         assert render_of(a.rows[0]) == "state signing RqBoard#a"
         assert a.rows[0].scope.outer.describe() == "render RqBoard#a (probe)"
         assert b.rows[0].scope.outer.describe() == "render RqBoard#b (probe)"
     else:
-        assert sorted((a.count, b.count)) == [0, 2], "the batch's starter took both"
+        assert sorted((a.count, b.count)) == [0, 2 * SIGN], "the batch's starter took both"
 
 
 @pytest.mark.asyncio
@@ -743,7 +766,7 @@ async def test_a_signature_whose_asker_left_is_dropped(quiz):
         await asked  # B's block ended before the batch ran
 
     await asyncio.gather(ask_a(), ask_b())
-    assert (a.count, b.count) == (1, 0)
+    assert (a.count, b.count) == (SIGN, 0)
 
 
 # -- isolation -------------------------------------------------------------------------------
