@@ -135,18 +135,28 @@ def _tick(value: float, step: float) -> str:
     return f"{value:,.0f}" if step >= 1 else f"{value:g}"
 
 
-def render(name: str, title: str, subtitle: str, panels: list[Panel], footer: list[str]) -> str:
+def render(
+    name: str,
+    title: str,
+    subtitle: str,
+    panels: list[Panel],
+    footer: list[str],
+    series_order: tuple[str, ...] = SERIES,
+    series_labels: dict[str, str] = SERIES_LABELS,
+    style: str = STYLE,
+) -> str:
+    """One SVG. bench/servers_chart.py draws its servers with this too, passing its own series."""
     out: list[str] = []
     y = PAD + 18
     out.append(f'<text class="t1" x="{PAD}" y="{y}" font-size="17" font-weight="600">{escape(title)}</text>')
     y += 22
     out.append(f'<text class="t2" x="{PAD}" y="{y}" font-size="13">{escape(subtitle)}</text>')
     y += 26
-    # Legend: every chart has three series
+    # Legend: every series of the chart
     x = PAD
-    for i, series in enumerate(SERIES):
+    for i, series in enumerate(series_order):
         out.append(f'<rect class="s{i}" x="{x}" y="{y - 10}" width="12" height="12" rx="3"/>')
-        label = SERIES_LABELS[series]
+        label = series_labels[series]
         out.append(f'<text class="t2" x="{x + 18}" y="{y}" font-size="13">{escape(label)}</text>')
         x += 18 + 8 * len(label) + 28
     y += 18
@@ -161,7 +171,7 @@ def render(name: str, title: str, subtitle: str, panels: list[Panel], footer: li
         end, step = _nice_max(max(v for g in panel.groups for v in g.values.values()))
         body: list[str] = []
         for group in panel.groups:
-            series = [s for s in SERIES if s in group.values]
+            series = [s for s in series_order if s in group.values]
             height = len(series) * BAR_H + (len(series) - 1) * BAR_GAP
             label_y = y + height / 2 + 4.5
             body.append(f'<text class="t1" x="{PAD}" y="{_num(label_y)}" font-size="13">{escape(group.label)}</text>')
@@ -170,9 +180,9 @@ def render(name: str, title: str, subtitle: str, panels: list[Panel], footer: li
                 w = span * value / end
                 text = panel.fmt(value)  # type: ignore[operator]
                 note = (group.notes or {}).get(s)
-                full = f"{SERIES_LABELS[s]} · {group.label}: {text}" + (f" ({note})" if note else "")
+                full = f"{series_labels[s]} · {group.label}: {text}" + (f" ({note})" if note else "")
                 desc.append(f"{panel.title} — {full}")
-                body.append(_bar(left, y, w, f"s{SERIES.index(s)}", full))
+                body.append(_bar(left, y, w, f"s{series_order.index(s)}", full))
                 label = text + (f" ({note})" if note else "")
                 body.append(
                     f'<text class="t2" x="{_num(left + w + 6)}" y="{_num(y + BAR_H - 3)}" font-size="12">'
@@ -206,7 +216,7 @@ def render(name: str, title: str, subtitle: str, panels: list[Panel], footer: li
         f' role="img" aria-labelledby="{name}-title {name}-desc">'
         f'<title id="{name}-title">{escape(title)}</title>'
         f'<desc id="{name}-desc">{escape(subtitle + ". " + "; ".join(desc))}</desc>'
-        f"<style>{STYLE.strip()}</style>"
+        f"<style>{style.strip()}</style>"
         f'<rect class="bg" width="{WIDTH}" height="{height}" rx="8"/>'
     )
     return head + "\n" + "\n".join(out) + "\n</svg>\n"

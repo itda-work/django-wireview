@@ -112,3 +112,32 @@ class BenchAsync(Component):
 
     async def handle_async(self, name, result):
         self.found = str(result.result if isinstance(result, AsyncResult) else result)
+
+
+class BenchLeaving(Component):
+    """leaving() that takes a while, for bench/servers_shutdown.py: does the server let it finish?"""
+
+    class Meta:
+        template_name = "bench/flat.html"
+
+    title: str = "Leaving"
+    a: int = 1
+    b: int = 2
+    c: int = 3
+    d: int = 4
+    e: int = 5
+    count: int = 0
+
+    async def increment(self):
+        self.count += 1
+
+    async def leaving(self):
+        import os
+        import time
+
+        log = os.environ["BENCH_LEAVING_LOG"]
+        with open(log, "a") as f:
+            f.write(f"start {self.id} {time.time()}\n")
+        await asyncio.sleep(float(os.environ.get("BENCH_LEAVING_SECONDS", "2")))
+        with open(log, "a") as f:
+            f.write(f"done {self.id} {time.time()}\n")
