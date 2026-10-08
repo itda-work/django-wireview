@@ -11,3 +11,5 @@ uv run python -m bench.compare bench/results/997ee59.json bench/results/<sha>.js
 |------|------|
 | `997ee59.json` | GAP-024 이전 main. 비교의 기준점 |
 | `<sha>.json` | 그 커밋에서 잰 값 |
+| `<sha>-servers-<라벨>[-<접미사>].json` | `bench/servers.py`의 ASGI 서버 비교. 서버마다 회차별 원자료와 측정 환경. 문서가 싣는 파일은 `bench/servers_chart.py`의 `MACHINES` |
+| `<sha>-servers-shutdown-<라벨>.json` | `bench/servers_shutdown.py`. SIGTERM에 서버가 닫는 방식과 `leaving()`이 끝까지 도는지 |

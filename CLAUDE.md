@@ -275,7 +275,11 @@ editors/vscode/            VS Code 확장(#156). wheel·sdist에 싣지 않고 �
 scripts/act_ci.py          make ci-local. ci.yml을 act로 잡·매트릭스 칸 하나씩 돌린다. 러너 이미지는 .github/act/Dockerfile, act 옵션은 .actrc.
                            GitHub 러너와 다른 점(좀비를 거두지 않는 pid 1 → --init, 칸끼리 같은 데몬, colima의 소켓)은 그 머리 주석에.
                            tests/test_act_ci.py 가 잡·칸을 ci.yml에서 빠짐없이 읽는지, .actrc가 그 이미지를 쓰는지 본다
-bench/                     성능 벤치마크 (make bench, make bench-compare BASE=<ref>). windows/ 는 Parallels 게스트 실측 레인. 설명은 bench/README.md
+bench/                     성능 벤치마크 (make bench, make bench-compare BASE=<ref>). windows/ 는 Windows 실측 레인 —
+                           run.sh 는 Parallels 게스트, ssh.sh 는 SSH로 닿는 x64 실기. 설명은 bench/README.md
+                           servers.py 는 ASGI 서버(daphne·uvicorn·Granian)를 회차를 번갈아 재고(make bench-servers, #191),
+                           servers_shutdown.py 는 SIGTERM이 leaving()에 하는 일을, servers_chart.py 가 그 결과에서
+                           docs/images/bench-servers-*.svg 와 PERFORMANCE.md 의 표를 만든다. tests/test_bench_servers.py 가 문서와 결과를 맞춘다
                            compare_fastapi/ 는 같은 화면을 wireview와 FastAPI(React·손 JS)로 만든 비교 벤치(make bench-fastapi, #174).
                            chart.py 가 RESULT 하나에서 docs/images/bench-fastapi-*.svg 와 PERFORMANCE.md 의 표를 만들고,
                            tests/test_bench_fastapi.py 가 README "숫자"·PERFORMANCE.md 의 숫자·차트가 그 결과와 같은지 본다

@@ -1,0 +1,782 @@
+{
+ "environment": {
+  "date": "2026-10-08T14:49:00+00:00",
+  "commit": "606e407",
+  "dirty": false,
+  "machine": "Mac",
+  "os": "Darwin 27.0.0 (arm64)",
+  "os_version": "27.0",
+  "cpu": "Apple M5 Pro",
+  "cpu_count": 18,
+  "ram_gb": 64.0,
+  "python": "3.14.7",
+  "packages": {
+   "django": "6.0",
+   "channels": "4.3.2",
+   "channels-nats": "0.6.1",
+   "channels-redis": "4.3.0",
+   "daphne": "4.2.1",
+   "uvicorn": "0.38.0",
+   "granian": "2.8.4",
+   "websockets": "15.0.1",
+   "uvloop": null,
+   "httptools": null,
+   "twisted": "25.5.0"
+  },
+  "client": "websockets, same machine as the servers"
+ },
+ "settings": {
+  "connections": 2000,
+  "items": [
+   5,
+   50
+  ],
+  "layer": "memory",
+  "processes": 1,
+  "rounds": 5,
+  "argv": {
+   "daphne": [
+    "-b",
+    "127.0.0.1",
+    "-p",
+    "0",
+    "testproj.asgi:application"
+   ],
+   "uvicorn": [
+    "testproj.asgi:application",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "0",
+    "--log-level",
+    "warning",
+    "--ws",
+    "websockets"
+   ],
+   "uvicorn-nodeflate": [
+    "testproj.asgi:application",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "0",
+    "--log-level",
+    "warning",
+    "--ws",
+    "websockets",
+    "--ws-per-message-deflate",
+    "false"
+   ],
+   "granian": [
+    "--interface",
+    "asgi",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "0",
+    "--log-level",
+    "warning",
+    "--loop",
+    "auto",
+    "testproj.asgi:application"
+   ]
+  }
+ },
+ "servers": {
+  "daphne": {
+   "rounds": [
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 55.576,
+      "per_connection_kb_by_process": {
+       "daphne-0": 55.576
+      },
+      "joins_per_s": 914.0539800603565,
+      "events_per_s": 3189.229121816739,
+      "render_bytes": 374,
+      "broadcast_ms": 809.5997080672532,
+      "broadcast_renders_per_s": 2470.356622008392,
+      "layer": "memory",
+      "processes": 1,
+      "server": "daphne"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 78.808,
+      "per_connection_kb_by_process": {
+       "daphne-0": 78.808
+      },
+      "joins_per_s": 691.0717403057138,
+      "events_per_s": 1566.445587776194,
+      "render_bytes": 677,
+      "broadcast_ms": 1458.3440420683473,
+      "broadcast_renders_per_s": 1371.4185009206951,
+      "layer": "memory",
+      "processes": 1,
+      "server": "daphne"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 55.576,
+      "per_connection_kb_by_process": {
+       "daphne-0": 55.576
+      },
+      "joins_per_s": 834.5861978293742,
+      "events_per_s": 3025.7624748423723,
+      "render_bytes": 374,
+      "broadcast_ms": 832.5310421641916,
+      "broadcast_renders_per_s": 2402.3128252382453,
+      "layer": "memory",
+      "processes": 1,
+      "server": "daphne"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 78.776,
+      "per_connection_kb_by_process": {
+       "daphne-0": 78.776
+      },
+      "joins_per_s": 623.3511388335908,
+      "events_per_s": 1537.8272343074354,
+      "render_bytes": 677,
+      "broadcast_ms": 1549.265124835074,
+      "broadcast_renders_per_s": 1290.9346295476114,
+      "layer": "memory",
+      "processes": 1,
+      "server": "daphne"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 55.64,
+      "per_connection_kb_by_process": {
+       "daphne-0": 55.64
+      },
+      "joins_per_s": 903.1092470132663,
+      "events_per_s": 3102.1950278212257,
+      "render_bytes": 374,
+      "broadcast_ms": 838.9981661457568,
+      "broadcast_renders_per_s": 2383.7954368693404,
+      "layer": "memory",
+      "processes": 1,
+      "server": "daphne"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 78.928,
+      "per_connection_kb_by_process": {
+       "daphne-0": 78.928
+      },
+      "joins_per_s": 630.9592209588398,
+      "events_per_s": 1484.8207695492508,
+      "render_bytes": 677,
+      "broadcast_ms": 1708.1640840042382,
+      "broadcast_renders_per_s": 1170.8477064519743,
+      "layer": "memory",
+      "processes": 1,
+      "server": "daphne"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 55.32,
+      "per_connection_kb_by_process": {
+       "daphne-0": 55.32
+      },
+      "joins_per_s": 948.5954543610356,
+      "events_per_s": 3031.338162435071,
+      "render_bytes": 374,
+      "broadcast_ms": 805.6364171206951,
+      "broadcast_renders_per_s": 2482.5094267062823,
+      "layer": "memory",
+      "processes": 1,
+      "server": "daphne"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 78.68,
+      "per_connection_kb_by_process": {
+       "daphne-0": 78.68
+      },
+      "joins_per_s": 679.7270651018189,
+      "events_per_s": 1669.3957222896386,
+      "render_bytes": 677,
+      "broadcast_ms": 1416.8003748636693,
+      "broadcast_renders_per_s": 1411.6314729182993,
+      "layer": "memory",
+      "processes": 1,
+      "server": "daphne"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 55.24,
+      "per_connection_kb_by_process": {
+       "daphne-0": 55.24
+      },
+      "joins_per_s": 937.9846008834143,
+      "events_per_s": 3142.2716484806547,
+      "render_bytes": 374,
+      "broadcast_ms": 835.6498749926686,
+      "broadcast_renders_per_s": 2393.346854766832,
+      "layer": "memory",
+      "processes": 1,
+      "server": "daphne"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 78.568,
+      "per_connection_kb_by_process": {
+       "daphne-0": 78.568
+      },
+      "joins_per_s": 674.3085115559235,
+      "events_per_s": 1621.6228815816319,
+      "render_bytes": 677,
+      "broadcast_ms": 1493.115457938984,
+      "broadcast_renders_per_s": 1339.4811428452372,
+      "layer": "memory",
+      "processes": 1,
+      "server": "daphne"
+     }
+    }
+   ]
+  },
+  "uvicorn": {
+   "rounds": [
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 222.168,
+      "per_connection_kb_by_process": {
+       "uvicorn-0": 222.168
+      },
+      "joins_per_s": 1030.0619283139074,
+      "events_per_s": 2778.9197407119773,
+      "render_bytes": 374,
+      "broadcast_ms": 666.7574159801006,
+      "broadcast_renders_per_s": 2999.5916836711867,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 247.056,
+      "per_connection_kb_by_process": {
+       "uvicorn-0": 247.056
+      },
+      "joins_per_s": 708.0065390903783,
+      "events_per_s": 1559.9836635378138,
+      "render_bytes": 677,
+      "broadcast_ms": 1191.3883748929948,
+      "broadcast_renders_per_s": 1678.71371095058,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 224.568,
+      "per_connection_kb_by_process": {
+       "uvicorn-0": 224.568
+      },
+      "joins_per_s": 868.347155914804,
+      "events_per_s": 2546.1844696944468,
+      "render_bytes": 374,
+      "broadcast_ms": 696.8965420965105,
+      "broadcast_renders_per_s": 2869.8664424181165,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 246.984,
+      "per_connection_kb_by_process": {
+       "uvicorn-0": 246.984
+      },
+      "joins_per_s": 693.7773664191392,
+      "events_per_s": 1642.733129112168,
+      "render_bytes": 677,
+      "broadcast_ms": 1322.8491670452058,
+      "broadcast_renders_per_s": 1511.8881651997547,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 221.928,
+      "per_connection_kb_by_process": {
+       "uvicorn-0": 221.928
+      },
+      "joins_per_s": 858.377694664522,
+      "events_per_s": 2638.9164059034383,
+      "render_bytes": 374,
+      "broadcast_ms": 694.4025000557303,
+      "broadcast_renders_per_s": 2880.1739622761825,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 245.632,
+      "per_connection_kb_by_process": {
+       "uvicorn-0": 245.632
+      },
+      "joins_per_s": 636.1440339738895,
+      "events_per_s": 1339.6970057823876,
+      "render_bytes": 677,
+      "broadcast_ms": 1268.6787920538336,
+      "broadcast_renders_per_s": 1576.4431568705015,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 222.376,
+      "per_connection_kb_by_process": {
+       "uvicorn-0": 222.376
+      },
+      "joins_per_s": 987.5190552550171,
+      "events_per_s": 2990.5029116943465,
+      "render_bytes": 374,
+      "broadcast_ms": 687.3583749402314,
+      "broadcast_renders_per_s": 2909.6903055468088,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 246.744,
+      "per_connection_kb_by_process": {
+       "uvicorn-0": 246.744
+      },
+      "joins_per_s": 722.9410508814592,
+      "events_per_s": 1746.2540123172325,
+      "render_bytes": 677,
+      "broadcast_ms": 1180.3458749782294,
+      "broadcast_renders_per_s": 1694.418595767015,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 222.304,
+      "per_connection_kb_by_process": {
+       "uvicorn-0": 222.304
+      },
+      "joins_per_s": 992.7860851520275,
+      "events_per_s": 2851.582100901536,
+      "render_bytes": 374,
+      "broadcast_ms": 698.5360828693956,
+      "broadcast_renders_per_s": 2863.1305512301465,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 247.376,
+      "per_connection_kb_by_process": {
+       "uvicorn-0": 247.376
+      },
+      "joins_per_s": 667.7973495302622,
+      "events_per_s": 1572.6850301905656,
+      "render_bytes": 677,
+      "broadcast_ms": 1141.1922089755535,
+      "broadcast_renders_per_s": 1752.5531494781208,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn"
+     }
+    }
+   ]
+  },
+  "uvicorn-nodeflate": {
+   "rounds": [
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 60.952,
+      "per_connection_kb_by_process": {
+       "uvicorn-nodeflate-0": 60.952
+      },
+      "joins_per_s": 1002.3135486480223,
+      "events_per_s": 3055.801223942945,
+      "render_bytes": 374,
+      "broadcast_ms": 727.9254170134664,
+      "broadcast_renders_per_s": 2747.5342298193177,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn-nodeflate"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 84.96,
+      "per_connection_kb_by_process": {
+       "uvicorn-nodeflate-0": 84.96
+      },
+      "joins_per_s": 716.9884513789939,
+      "events_per_s": 1770.8580516454435,
+      "render_bytes": 677,
+      "broadcast_ms": 1445.634959032759,
+      "broadcast_renders_per_s": 1383.4751210901497,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn-nodeflate"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 60.976,
+      "per_connection_kb_by_process": {
+       "uvicorn-nodeflate-0": 60.976
+      },
+      "joins_per_s": 985.929633558592,
+      "events_per_s": 3213.355564561291,
+      "render_bytes": 374,
+      "broadcast_ms": 687.324833124876,
+      "broadcast_renders_per_s": 2909.8322999725397,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn-nodeflate"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 85.112,
+      "per_connection_kb_by_process": {
+       "uvicorn-nodeflate-0": 85.112
+      },
+      "joins_per_s": 666.846187219262,
+      "events_per_s": 1440.2943961895703,
+      "render_bytes": 677,
+      "broadcast_ms": 1532.2840409353375,
+      "broadcast_renders_per_s": 1305.24103010246,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn-nodeflate"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 60.992,
+      "per_connection_kb_by_process": {
+       "uvicorn-nodeflate-0": 60.992
+      },
+      "joins_per_s": 946.4292830896298,
+      "events_per_s": 2791.2528422339387,
+      "render_bytes": 374,
+      "broadcast_ms": 712.4047500547022,
+      "broadcast_renders_per_s": 2807.392847740599,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn-nodeflate"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 84.712,
+      "per_connection_kb_by_process": {
+       "uvicorn-nodeflate-0": 84.712
+      },
+      "joins_per_s": 693.1348085705939,
+      "events_per_s": 1633.6148388131087,
+      "render_bytes": 677,
+      "broadcast_ms": 1448.4057500958443,
+      "broadcast_renders_per_s": 1380.8285419107563,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn-nodeflate"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 60.84,
+      "per_connection_kb_by_process": {
+       "uvicorn-nodeflate-0": 60.84
+      },
+      "joins_per_s": 990.4524920965662,
+      "events_per_s": 3108.4726779545854,
+      "render_bytes": 374,
+      "broadcast_ms": 707.704917062074,
+      "broadcast_renders_per_s": 2826.036603366678,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn-nodeflate"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 84.72,
+      "per_connection_kb_by_process": {
+       "uvicorn-nodeflate-0": 84.72
+      },
+      "joins_per_s": 686.683303716461,
+      "events_per_s": 1771.5065782244437,
+      "render_bytes": 677,
+      "broadcast_ms": 1443.1344580370933,
+      "broadcast_renders_per_s": 1385.8722511001074,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn-nodeflate"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 60.904,
+      "per_connection_kb_by_process": {
+       "uvicorn-nodeflate-0": 60.904
+      },
+      "joins_per_s": 1030.1140979659772,
+      "events_per_s": 2913.4464245952745,
+      "render_bytes": 374,
+      "broadcast_ms": 770.9788330830634,
+      "broadcast_renders_per_s": 2594.10494060156,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn-nodeflate"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 84.896,
+      "per_connection_kb_by_process": {
+       "uvicorn-nodeflate-0": 84.896
+      },
+      "joins_per_s": 718.4004813758112,
+      "events_per_s": 1763.343311303517,
+      "render_bytes": 677,
+      "broadcast_ms": 1386.5717079024762,
+      "broadcast_renders_per_s": 1442.4064681266877,
+      "layer": "memory",
+      "processes": 1,
+      "server": "uvicorn-nodeflate"
+     }
+    }
+   ]
+  },
+  "granian": {
+   "rounds": [
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 193.392,
+      "per_connection_kb_by_process": {
+       "granian-0": 193.392
+      },
+      "joins_per_s": 1161.5575833080338,
+      "events_per_s": 3302.6498823557936,
+      "render_bytes": 374,
+      "broadcast_ms": 822.1136669162661,
+      "broadcast_renders_per_s": 2432.753620921989,
+      "layer": "memory",
+      "processes": 1,
+      "server": "granian"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 218.296,
+      "per_connection_kb_by_process": {
+       "granian-0": 218.296
+      },
+      "joins_per_s": 802.4148543370791,
+      "events_per_s": 1476.2565817269824,
+      "render_bytes": 677,
+      "broadcast_ms": 1456.092583015561,
+      "broadcast_renders_per_s": 1373.5390340757103,
+      "layer": "memory",
+      "processes": 1,
+      "server": "granian"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 193.736,
+      "per_connection_kb_by_process": {
+       "granian-0": 193.736
+      },
+      "joins_per_s": 989.7635766338711,
+      "events_per_s": 2644.1467620216167,
+      "render_bytes": 374,
+      "broadcast_ms": 809.1442079748958,
+      "broadcast_renders_per_s": 2471.747285944919,
+      "layer": "memory",
+      "processes": 1,
+      "server": "granian"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 218.232,
+      "per_connection_kb_by_process": {
+       "granian-0": 218.232
+      },
+      "joins_per_s": 830.2403852164715,
+      "events_per_s": 1642.6087224163327,
+      "render_bytes": 677,
+      "broadcast_ms": 1427.817625226453,
+      "broadcast_renders_per_s": 1400.739117282432,
+      "layer": "memory",
+      "processes": 1,
+      "server": "granian"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 193.344,
+      "per_connection_kb_by_process": {
+       "granian-0": 193.344
+      },
+      "joins_per_s": 1170.8535903172967,
+      "events_per_s": 3486.035231194645,
+      "render_bytes": 374,
+      "broadcast_ms": 741.9020410161465,
+      "broadcast_renders_per_s": 2695.773686322117,
+      "layer": "memory",
+      "processes": 1,
+      "server": "granian"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 218.312,
+      "per_connection_kb_by_process": {
+       "granian-0": 218.312
+      },
+      "joins_per_s": 778.623577327925,
+      "events_per_s": 1642.0287100033104,
+      "render_bytes": 677,
+      "broadcast_ms": 1487.7720831427723,
+      "broadcast_renders_per_s": 1344.291926606928,
+      "layer": "memory",
+      "processes": 1,
+      "server": "granian"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 193.528,
+      "per_connection_kb_by_process": {
+       "granian-0": 193.528
+      },
+      "joins_per_s": 1168.45140305891,
+      "events_per_s": 3354.3968496255216,
+      "render_bytes": 374,
+      "broadcast_ms": 788.957207929343,
+      "broadcast_renders_per_s": 2534.991733264087,
+      "layer": "memory",
+      "processes": 1,
+      "server": "granian"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 218.312,
+      "per_connection_kb_by_process": {
+       "granian-0": 218.312
+      },
+      "joins_per_s": 751.5305271509291,
+      "events_per_s": 1542.0919299543682,
+      "render_bytes": 677,
+      "broadcast_ms": 1486.609083134681,
+      "broadcast_renders_per_s": 1345.343589440996,
+      "layer": "memory",
+      "processes": 1,
+      "server": "granian"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 193.736,
+      "per_connection_kb_by_process": {
+       "granian-0": 193.736
+      },
+      "joins_per_s": 992.8905930790901,
+      "events_per_s": 3036.694655821046,
+      "render_bytes": 374,
+      "broadcast_ms": 873.4423748683184,
+      "broadcast_renders_per_s": 2289.79044015528,
+      "layer": "memory",
+      "processes": 1,
+      "server": "granian"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 218.192,
+      "per_connection_kb_by_process": {
+       "granian-0": 218.192
+      },
+      "joins_per_s": 743.2438553349306,
+      "events_per_s": 1655.4542408517993,
+      "render_bytes": 677,
+      "broadcast_ms": 1510.2099168580025,
+      "broadcast_renders_per_s": 1324.3192073331154,
+      "layer": "memory",
+      "processes": 1,
+      "server": "granian"
+     }
+    }
+   ]
+  }
+ }
+}

@@ -1,0 +1,69 @@
+{
+ "environment": {
+  "date": "2026-10-08T15:10:55+00:00",
+  "commit": "2b213a8",
+  "dirty": false,
+  "machine": "Mac",
+  "os": "Darwin 27.0.0 (arm64)",
+  "os_version": "27.0",
+  "cpu": "Apple M5 Pro",
+  "cpu_count": 18,
+  "ram_gb": 64.0,
+  "python": "3.14.7",
+  "packages": {
+   "django": "6.0",
+   "channels": "4.3.2",
+   "channels-nats": "0.6.1",
+   "channels-redis": "4.3.0",
+   "daphne": "4.2.1",
+   "uvicorn": "0.38.0",
+   "granian": "2.8.4",
+   "websockets": "15.0.1",
+   "uvloop": null,
+   "httptools": null,
+   "twisted": "25.5.0"
+  },
+  "client": "websockets, same machine as the servers"
+ },
+ "servers": {
+  "daphne": {
+   "connections": 20,
+   "leaving_seconds": 2.0,
+   "flags": [],
+   "close_codes": [
+    "None"
+   ],
+   "exit_seconds": 0.15,
+   "leaving_started": 0,
+   "leaving_finished": 0
+  },
+  "uvicorn-nodeflate": {
+   "connections": 20,
+   "leaving_seconds": 2.0,
+   "flags": [
+    "--timeout-graceful-shutdown",
+    "10"
+   ],
+   "close_codes": [
+    "1012"
+   ],
+   "exit_seconds": 2.12,
+   "leaving_started": 20,
+   "leaving_finished": 20
+  },
+  "granian": {
+   "connections": 20,
+   "leaving_seconds": 2.0,
+   "flags": [
+    "--workers-kill-timeout",
+    "10"
+   ],
+   "close_codes": [
+    "None"
+   ],
+   "exit_seconds": 0.1,
+   "leaving_started": 4,
+   "leaving_finished": 0
+  }
+ }
+}

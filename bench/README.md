@@ -54,6 +54,40 @@ pmlab_stop
 
 게스트에는 venv가 둘이다. `.venv`는 네이티브 ARM64 Python으로 uvicorn 스택만 있다. daphne는 autobahn과 cryptography의 ARM64 wheel이 없어 컴파일러 없이는 설치되지 않는다. `.venv-x64`는 x64 에뮬레이션 Python으로 daphne와 uvicorn이 모두 있다. 에뮬레이션은 CPU 비용을 2배쯤 부풀리므로 x64 수치는 상대 비교용이다. 여섯 구성은 `bench/windows/seq.ps1`에 있고, 결과 해석은 `docs/design/transport-abstraction.md` §5-2에 있다. 핵심은 하나다. daphne는 Windows에서 프로세스당 연결 약 500개에서 `select()` 한계로 죽고, 단일 프로세스 uvicorn은 죽지 않는다.
 
+## ASGI 서버 비교
+
+`bench/servers.py`는 위 WebSocket 구간을 서버마다 여러 회차 돌린다(#191). 회차마다 서버를 새로 띄우고 서버의 순서를
+뒤집어 어느 서버도 늘 더 따뜻한 기계에서 돌지 않게 한다. 컴포넌트 크기 하나씩 따로 재므로, 한 크기에서 죽은 서버(Windows의
+daphne)는 그 크기의 실패로 남고 나머지는 그대로 잰다. 결과는 `bench/results/<커밋>-servers-<라벨>[-<접미사>].json` 하나이고,
+측정 환경(CPU, OS, Python과 서버 패키지 버전)이 `environment`에 들어 있다. 해석은
+[성능 가이드](../docs/PERFORMANCE.md#asgi-서버-비교)에 있다.
+
+```bash
+make bench-servers ARGS="--label macos"                     # daphne·uvicorn·uvicorn-nodeflate·granian, 2,000연결, 3회차
+make bench-servers ARGS="--label macos --servers uvicorn-nodeflate,granian --layer nats --processes 4 --suffix nats-4proc"
+uv run --with granian==2.8.4 python -m bench.servers_shutdown --label macos   # SIGTERM이 leaving()에 하는 일 (POSIX)
+make bench-servers-charts                                   # docs/images/bench-servers-*.svg
+uv run python -m bench.servers_chart --table                # docs/PERFORMANCE.md의 표
+```
+
+Granian은 의존성이 아니다. `make bench-servers`가 Makefile의 `GRANIAN_VERSION`으로 그 실행에만 얹는다.
+
+### Windows 실기 (SSH)
+
+`bench/windows/ssh.sh`는 SSH로 닿는 네이티브 x64 Windows 기계(OpenSSH 서버, 기본 셸 PowerShell)에서 같은 비교를 돈다.
+Parallels 게스트(위)와 달리 에뮬레이션이 없다. 호스트는 `WIN_HOST`(기본 `allieus-macbook-2017-win10`)다.
+
+```bash
+bench/windows/ssh.sh stage       # HEAD 아카이브, uv.lock에서 뽑은 requirements.txt(+ granian), nats-server amd64를 C:\bench로
+bench/windows/ssh.sh provision   # uv, Python 3.14 x64, venv 하나
+bench/windows/ssh.sh run         # ssh-seq.ps1의 단계 전부, 포그라운드 (SSH 세션이 끝나면 자식도 끝난다)
+bench/windows/ssh.sh run '--servers daphne --connections 600 --rounds 1 --suffix daphne-600'   # 단계 하나만
+bench/windows/ssh.sh collect     # 결과를 bench/results로
+```
+
+두 기계가 같은 의존성으로 돌도록 `stage`가 `uv export --frozen`으로 `uv.lock`의 버전을 넘긴다. `ssh-seq.ps1`은 도는 동안
+절전을 막지만(`SetThreadExecutionState`) 노트북의 덮개를 닫으면 잠든다. 전원을 꽂고 덮개를 연 채로 둔다.
+
 ## 레이어 비교
 
 `--layer` 는 `memory`(프로세스 1개 전용), `nats`(channels-nats), `redis`(channels_redis) 셋이다. 브로커는 벤치가 임시 포트에 직접 띄우고 끝나면 정리하므로 미리 켜 둘 필요가 없다. 이미 떠 있는 브로커를 쓰려면 `NATS_URL` 또는 `REDIS_URL` 을 준다.

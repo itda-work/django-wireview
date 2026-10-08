@@ -1,0 +1,215 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 1720" width="760" height="1720" role="img" aria-labelledby="servers-win10-title servers-win10-desc"><title id="servers-win10-title">ASGI 서버 비교 — Windows 10 실기 (Intel i7-7567U, 2코어 4스레드)</title><desc id="servers-win10-desc">같은 wireview 앱(testproj)을 서버만 바꿔 띄우고 실제 WebSocket 연결로 잰다. 연결당 서버 메모리 (KB), 낮을수록 좋다 — daphne · 1프로세스 400연결 · 항목 5: 60.5 KB; 연결당 서버 메모리 (KB), 낮을수록 좋다 — uvicorn 압축 끔 · 1프로세스 400연결 · 항목 5: 128.5 KB; 연결당 서버 메모리 (KB), 낮을수록 좋다 — Granian · 1프로세스 400연결 · 항목 5: 248.0 KB; 연결당 서버 메모리 (KB), 낮을수록 좋다 — daphne · 1프로세스 400연결 · 항목 50: 85.7 KB; 연결당 서버 메모리 (KB), 낮을수록 좋다 — uvicorn 압축 끔 · 1프로세스 400연결 · 항목 50: 153.8 KB; 연결당 서버 메모리 (KB), 낮을수록 좋다 — Granian · 1프로세스 400연결 · 항목 50: 267.8 KB; 연결당 서버 메모리 (KB), 낮을수록 좋다 — uvicorn · 1프로세스 2,000연결 · 항목 5: 365.9 KB; 연결당 서버 메모리 (KB), 낮을수록 좋다 — uvicorn 압축 끔 · 1프로세스 2,000연결 · 항목 5: 124.6 KB; 연결당 서버 메모리 (KB), 낮을수록 좋다 — Granian · 1프로세스 2,000연결 · 항목 5: 188.8 KB; 연결당 서버 메모리 (KB), 낮을수록 좋다 — uvicorn · 1프로세스 2,000연결 · 항목 50: 391.1 KB; 연결당 서버 메모리 (KB), 낮을수록 좋다 — uvicorn 압축 끔 · 1프로세스 2,000연결 · 항목 50: 148.7 KB; 연결당 서버 메모리 (KB), 낮을수록 좋다 — Granian · 1프로세스 2,000연결 · 항목 50: 214.2 KB; 연결당 서버 메모리 (KB), 낮을수록 좋다 — uvicorn 압축 끔 · NATS ×4 2,000연결 · 항목 5: 132.1 KB; 연결당 서버 메모리 (KB), 낮을수록 좋다 — Granian · NATS ×4 2,000연결 · 항목 5: 209.7 KB; 연결당 서버 메모리 (KB), 낮을수록 좋다 — uvicorn 압축 끔 · NATS ×4 2,000연결 · 항목 50: 158.9 KB; 연결당 서버 메모리 (KB), 낮을수록 좋다 — Granian · NATS ×4 2,000연결 · 항목 50: 236.1 KB; 초당 join, 높을수록 좋다 — daphne · 1프로세스 400연결 · 항목 5: 253/s; 초당 join, 높을수록 좋다 — uvicorn 압축 끔 · 1프로세스 400연결 · 항목 5: 275/s; 초당 join, 높을수록 좋다 — Granian · 1프로세스 400연결 · 항목 5: 213/s; 초당 join, 높을수록 좋다 — daphne · 1프로세스 400연결 · 항목 50: 206/s; 초당 join, 높을수록 좋다 — uvicorn 압축 끔 · 1프로세스 400연결 · 항목 50: 219/s; 초당 join, 높을수록 좋다 — Granian · 1프로세스 400연결 · 항목 50: 167/s; 초당 join, 높을수록 좋다 — uvicorn · 1프로세스 2,000연결 · 항목 5: 244/s; 초당 join, 높을수록 좋다 — uvicorn 압축 끔 · 1프로세스 2,000연결 · 항목 5: 258/s; 초당 join, 높을수록 좋다 — Granian · 1프로세스 2,000연결 · 항목 5: 274/s; 초당 join, 높을수록 좋다 — uvicorn · 1프로세스 2,000연결 · 항목 50: 189/s; 초당 join, 높을수록 좋다 — uvicorn 압축 끔 · 1프로세스 2,000연결 · 항목 50: 195/s; 초당 join, 높을수록 좋다 — Granian · 1프로세스 2,000연결 · 항목 50: 198/s; 초당 join, 높을수록 좋다 — uvicorn 압축 끔 · NATS ×4 2,000연결 · 항목 5: 470/s; 초당 join, 높을수록 좋다 — Granian · NATS ×4 2,000연결 · 항목 5: 417/s; 초당 join, 높을수록 좋다 — uvicorn 압축 끔 · NATS ×4 2,000연결 · 항목 50: 349/s; 초당 join, 높을수록 좋다 — Granian · NATS ×4 2,000연결 · 항목 50: 308/s; 초당 이벤트 (모든 연결이 한 번씩), 높을수록 좋다 — daphne · 1프로세스 400연결 · 항목 5: 762/s; 초당 이벤트 (모든 연결이 한 번씩), 높을수록 좋다 — uvicorn 압축 끔 · 1프로세스 400연결 · 항목 5: 806/s; 초당 이벤트 (모든 연결이 한 번씩), 높을수록 좋다 — Granian · 1프로세스 400연결 · 항목 5: 830/s; 초당 이벤트 (모든 연결이 한 번씩), 높을수록 좋다 — daphne · 1프로세스 400연결 · 항목 50: 435/s; 초당 이벤트 (모든 연결이 한 번씩), 높을수록 좋다 — uvicorn 압축 끔 · 1프로세스 400연결 · 항목 50: 426/s; 초당 이벤트 (모든 연결이 한 번씩), 높을수록 좋다 — Granian · 1프로세스 400연결 · 항목 50: 439/s; 초당 이벤트 (모든 연결이 한 번씩), 높을수록 좋다 — uvicorn · 1프로세스 2,000연결 · 항목 5: 734/s; 초당 이벤트 (모든 연결이 한 번씩), 높을수록 좋다 — uvicorn 압축 끔 · 1프로세스 2,000연결 · 항목 5: 762/s; 초당 이벤트 (모든 연결이 한 번씩), 높을수록 좋다 — Granian · 1프로세스 2,000연결 · 항목 5: 848/s; 초당 이벤트 (모든 연결이 한 번씩), 높을수록 좋다 — uvicorn · 1프로세스 2,000연결 · 항목 50: 417/s; 초당 이벤트 (모든 연결이 한 번씩), 높을수록 좋다 — uvicorn 압축 끔 · 1프로세스 2,000연결 · 항목 50: 432/s; 초당 이벤트 (모든 연결이 한 번씩), 높을수록 좋다 — Granian · 1프로세스 2,000연결 · 항목 50: 431/s; 초당 이벤트 (모든 연결이 한 번씩), 높을수록 좋다 — uvicorn 압축 끔 · NATS ×4 2,000연결 · 항목 5: 1,742/s; 초당 이벤트 (모든 연결이 한 번씩), 높을수록 좋다 — Granian · NATS ×4 2,000연결 · 항목 5: 1,468/s; 초당 이벤트 (모든 연결이 한 번씩), 높을수록 좋다 — uvicorn 압축 끔 · NATS ×4 2,000연결 · 항목 50: 941/s; 초당 이벤트 (모든 연결이 한 번씩), 높을수록 좋다 — Granian · NATS ×4 2,000연결 · 항목 50: 925/s; 브로드캐스트 하나가 모든 연결에 닿기까지 (ms), 낮을수록 좋다 — daphne · 1프로세스 400연결 · 항목 5: 473 ms; 브로드캐스트 하나가 모든 연결에 닿기까지 (ms), 낮을수록 좋다 — uvicorn 압축 끔 · 1프로세스 400연결 · 항목 5: 482 ms; 브로드캐스트 하나가 모든 연결에 닿기까지 (ms), 낮을수록 좋다 — Granian · 1프로세스 400연결 · 항목 5: 426 ms; 브로드캐스트 하나가 모든 연결에 닿기까지 (ms), 낮을수록 좋다 — daphne · 1프로세스 400연결 · 항목 50: 984 ms; 브로드캐스트 하나가 모든 연결에 닿기까지 (ms), 낮을수록 좋다 — uvicorn 압축 끔 · 1프로세스 400연결 · 항목 50: 925 ms; 브로드캐스트 하나가 모든 연결에 닿기까지 (ms), 낮을수록 좋다 — Granian · 1프로세스 400연결 · 항목 50: 869 ms; 브로드캐스트 하나가 모든 연결에 닿기까지 (ms), 낮을수록 좋다 — uvicorn · 1프로세스 2,000연결 · 항목 5: 2,843 ms; 브로드캐스트 하나가 모든 연결에 닿기까지 (ms), 낮을수록 좋다 — uvicorn 압축 끔 · 1프로세스 2,000연결 · 항목 5: 2,845 ms; 브로드캐스트 하나가 모든 연결에 닿기까지 (ms), 낮을수록 좋다 — Granian · 1프로세스 2,000연결 · 항목 5: 2,058 ms; 브로드캐스트 하나가 모든 연결에 닿기까지 (ms), 낮을수록 좋다 — uvicorn · 1프로세스 2,000연결 · 항목 50: 5,162 ms; 브로드캐스트 하나가 모든 연결에 닿기까지 (ms), 낮을수록 좋다 — uvicorn 압축 끔 · 1프로세스 2,000연결 · 항목 50: 5,435 ms; 브로드캐스트 하나가 모든 연결에 닿기까지 (ms), 낮을수록 좋다 — Granian · 1프로세스 2,000연결 · 항목 50: 5,016 ms; 브로드캐스트 하나가 모든 연결에 닿기까지 (ms), 낮을수록 좋다 — uvicorn 압축 끔 · NATS ×4 2,000연결 · 항목 5: 1,001 ms; 브로드캐스트 하나가 모든 연결에 닿기까지 (ms), 낮을수록 좋다 — Granian · NATS ×4 2,000연결 · 항목 5: 956 ms; 브로드캐스트 하나가 모든 연결에 닿기까지 (ms), 낮을수록 좋다 — uvicorn 압축 끔 · NATS ×4 2,000연결 · 항목 50: 2,096 ms; 브로드캐스트 하나가 모든 연결에 닿기까지 (ms), 낮을수록 좋다 — Granian · NATS ×4 2,000연결 · 항목 50: 1,979 ms</desc><style>.bg{fill:#fcfcfb}.t1{fill:#0b0b0b}.t2{fill:#52514e}.t3{fill:#898781}
+.grid{stroke:#e1e0d9}.base{stroke:#c3c2b7}
+.s0{fill:#2a78d6}.s1{fill:#eb6834}.s2{fill:#1baf7a}.s3{fill:#eda100}
+@media (prefers-color-scheme:dark){
+.bg{fill:#1a1a19}.t1{fill:#ffffff}.t2{fill:#c3c2b7}.t3{fill:#898781}
+.grid{stroke:#2c2c2a}.base{stroke:#383835}
+.s0{fill:#3987e5}.s1{fill:#d95926}.s2{fill:#199e70}.s3{fill:#c98500}
+}
+text{font-family:system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Noto Sans KR",sans-serif}</style><rect class="bg" width="760" height="1720" rx="8"/>
+<text class="t1" x="24" y="42" font-size="17" font-weight="600">ASGI 서버 비교 — Windows 10 실기 (Intel i7-7567U, 2코어 4스레드)</text>
+<text class="t2" x="24" y="64" font-size="13">같은 wireview 앱(testproj)을 서버만 바꿔 띄우고 실제 WebSocket 연결로 잰다</text>
+<rect class="s0" x="24" y="80" width="12" height="12" rx="3"/>
+<text class="t2" x="42" y="90" font-size="13">daphne</text>
+<rect class="s1" x="118" y="80" width="12" height="12" rx="3"/>
+<text class="t2" x="136" y="90" font-size="13">uvicorn</text>
+<rect class="s2" x="220" y="80" width="12" height="12" rx="3"/>
+<text class="t2" x="238" y="90" font-size="13">uvicorn 압축 끔</text>
+<rect class="s3" x="362" y="80" width="12" height="12" rx="3"/>
+<text class="t2" x="380" y="90" font-size="13">Granian</text>
+<text class="t1" x="24" y="130" font-size="14" font-weight="600">연결당 서버 메모리 (KB), 낮을수록 좋다</text>
+<text class="t3" x="220" y="486" font-size="11" text-anchor="middle">0</text>
+<line class="grid" x1="306" y1="138" x2="306" y2="472"/>
+<text class="t3" x="306" y="486" font-size="11" text-anchor="middle">100</text>
+<line class="grid" x1="392" y1="138" x2="392" y2="472"/>
+<text class="t3" x="392" y="486" font-size="11" text-anchor="middle">200</text>
+<line class="grid" x1="478" y1="138" x2="478" y2="472"/>
+<text class="t3" x="478" y="486" font-size="11" text-anchor="middle">300</text>
+<line class="grid" x1="564" y1="138" x2="564" y2="472"/>
+<text class="t3" x="564" y="486" font-size="11" text-anchor="middle">400</text>
+<line class="base" x1="220" y1="138" x2="220" y2="472"/>
+<text class="t1" x="24" y="169.5" font-size="13">1프로세스 400연결 · 항목 5</text>
+<path class="s0" d="M220 142h48a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-48z"><title>daphne · 1프로세스 400연결 · 항목 5: 60.5 KB</title></path>
+<text class="t2" x="278" y="153" font-size="12">60.5 KB</text>
+<path class="s2" d="M220 158h106.5a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-106.5z"><title>uvicorn 압축 끔 · 1프로세스 400연결 · 항목 5: 128.5 KB</title></path>
+<text class="t2" x="336.5" y="169" font-size="12">128.5 KB</text>
+<path class="s3" d="M220 174h209.3a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-209.3z"><title>Granian · 1프로세스 400연결 · 항목 5: 248.0 KB</title></path>
+<text class="t2" x="439.3" y="185" font-size="12">248.0 KB</text>
+<text class="t1" x="24" y="231.5" font-size="13">1프로세스 400연결 · 항목 50</text>
+<path class="s0" d="M220 204h69.7a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-69.7z"><title>daphne · 1프로세스 400연결 · 항목 50: 85.7 KB</title></path>
+<text class="t2" x="299.7" y="215" font-size="12">85.7 KB</text>
+<path class="s2" d="M220 220h128.3a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-128.3z"><title>uvicorn 압축 끔 · 1프로세스 400연결 · 항목 50: 153.8 KB</title></path>
+<text class="t2" x="358.3" y="231" font-size="12">153.8 KB</text>
+<path class="s3" d="M220 236h226.3a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-226.3z"><title>Granian · 1프로세스 400연결 · 항목 50: 267.8 KB</title></path>
+<text class="t2" x="456.3" y="247" font-size="12">267.8 KB</text>
+<text class="t1" x="24" y="293.5" font-size="13">1프로세스 2,000연결 · 항목 5</text>
+<path class="s1" d="M220 266h310.7a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-310.7z"><title>uvicorn · 1프로세스 2,000연결 · 항목 5: 365.9 KB</title></path>
+<text class="t2" x="540.7" y="277" font-size="12">365.9 KB</text>
+<path class="s2" d="M220 282h103.2a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-103.2z"><title>uvicorn 압축 끔 · 1프로세스 2,000연결 · 항목 5: 124.6 KB</title></path>
+<text class="t2" x="333.2" y="293" font-size="12">124.6 KB</text>
+<path class="s3" d="M220 298h158.4a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-158.4z"><title>Granian · 1프로세스 2,000연결 · 항목 5: 188.8 KB</title></path>
+<text class="t2" x="388.4" y="309" font-size="12">188.8 KB</text>
+<text class="t1" x="24" y="355.5" font-size="13">1프로세스 2,000연결 · 항목 50</text>
+<path class="s1" d="M220 328h332.4a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-332.4z"><title>uvicorn · 1프로세스 2,000연결 · 항목 50: 391.1 KB</title></path>
+<text class="t2" x="562.4" y="339" font-size="12">391.1 KB</text>
+<path class="s2" d="M220 344h123.9a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-123.9z"><title>uvicorn 압축 끔 · 1프로세스 2,000연결 · 항목 50: 148.7 KB</title></path>
+<text class="t2" x="353.9" y="355" font-size="12">148.7 KB</text>
+<path class="s3" d="M220 360h180.2a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-180.2z"><title>Granian · 1프로세스 2,000연결 · 항목 50: 214.2 KB</title></path>
+<text class="t2" x="410.2" y="371" font-size="12">214.2 KB</text>
+<text class="t1" x="24" y="409.5" font-size="13">NATS ×4 2,000연결 · 항목 5</text>
+<path class="s2" d="M220 390h109.6a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-109.6z"><title>uvicorn 압축 끔 · NATS ×4 2,000연결 · 항목 5: 132.1 KB</title></path>
+<text class="t2" x="339.6" y="401" font-size="12">132.1 KB</text>
+<path class="s3" d="M220 406h176.4a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-176.4z"><title>Granian · NATS ×4 2,000연결 · 항목 5: 209.7 KB</title></path>
+<text class="t2" x="406.4" y="417" font-size="12">209.7 KB</text>
+<text class="t1" x="24" y="455.5" font-size="13">NATS ×4 2,000연결 · 항목 50</text>
+<path class="s2" d="M220 436h132.6a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-132.6z"><title>uvicorn 압축 끔 · NATS ×4 2,000연결 · 항목 50: 158.9 KB</title></path>
+<text class="t2" x="362.6" y="447" font-size="12">158.9 KB</text>
+<path class="s3" d="M220 452h199.1a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-199.1z"><title>Granian · NATS ×4 2,000연결 · 항목 50: 236.1 KB</title></path>
+<text class="t2" x="429.1" y="463" font-size="12">236.1 KB</text>
+<text class="t1" x="24" y="516" font-size="14" font-weight="600">초당 join, 높을수록 좋다</text>
+<text class="t3" x="220" y="872" font-size="11" text-anchor="middle">0</text>
+<line class="grid" x1="334.7" y1="524" x2="334.7" y2="858"/>
+<text class="t3" x="334.7" y="872" font-size="11" text-anchor="middle">200</text>
+<line class="grid" x1="449.3" y1="524" x2="449.3" y2="858"/>
+<text class="t3" x="449.3" y="872" font-size="11" text-anchor="middle">400</text>
+<line class="grid" x1="564" y1="524" x2="564" y2="858"/>
+<text class="t3" x="564" y="872" font-size="11" text-anchor="middle">600</text>
+<line class="base" x1="220" y1="524" x2="220" y2="858"/>
+<text class="t1" x="24" y="555.5" font-size="13">1프로세스 400연결 · 항목 5</text>
+<path class="s0" d="M220 528h140.8a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-140.8z"><title>daphne · 1프로세스 400연결 · 항목 5: 253/s</title></path>
+<text class="t2" x="370.8" y="539" font-size="12">253/s</text>
+<path class="s2" d="M220 544h153.4a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-153.4z"><title>uvicorn 압축 끔 · 1프로세스 400연결 · 항목 5: 275/s</title></path>
+<text class="t2" x="383.4" y="555" font-size="12">275/s</text>
+<path class="s3" d="M220 560h118a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-118z"><title>Granian · 1프로세스 400연결 · 항목 5: 213/s</title></path>
+<text class="t2" x="348" y="571" font-size="12">213/s</text>
+<text class="t1" x="24" y="617.5" font-size="13">1프로세스 400연결 · 항목 50</text>
+<path class="s0" d="M220 590h114.3a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-114.3z"><title>daphne · 1프로세스 400연결 · 항목 50: 206/s</title></path>
+<text class="t2" x="344.3" y="601" font-size="12">206/s</text>
+<path class="s2" d="M220 606h121.4a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-121.4z"><title>uvicorn 압축 끔 · 1프로세스 400연결 · 항목 50: 219/s</title></path>
+<text class="t2" x="351.4" y="617" font-size="12">219/s</text>
+<path class="s3" d="M220 622h91.8a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-91.8z"><title>Granian · 1프로세스 400연결 · 항목 50: 167/s</title></path>
+<text class="t2" x="321.8" y="633" font-size="12">167/s</text>
+<text class="t1" x="24" y="679.5" font-size="13">1프로세스 2,000연결 · 항목 5</text>
+<path class="s1" d="M220 652h136a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-136z"><title>uvicorn · 1프로세스 2,000연결 · 항목 5: 244/s</title></path>
+<text class="t2" x="366" y="663" font-size="12">244/s</text>
+<path class="s2" d="M220 668h144.1a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-144.1z"><title>uvicorn 압축 끔 · 1프로세스 2,000연결 · 항목 5: 258/s</title></path>
+<text class="t2" x="374.1" y="679" font-size="12">258/s</text>
+<path class="s3" d="M220 684h153.1a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-153.1z"><title>Granian · 1프로세스 2,000연결 · 항목 5: 274/s</title></path>
+<text class="t2" x="383.1" y="695" font-size="12">274/s</text>
+<text class="t1" x="24" y="741.5" font-size="13">1프로세스 2,000연결 · 항목 50</text>
+<path class="s1" d="M220 714h104.1a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-104.1z"><title>uvicorn · 1프로세스 2,000연결 · 항목 50: 189/s</title></path>
+<text class="t2" x="334.1" y="725" font-size="12">189/s</text>
+<path class="s2" d="M220 730h107.8a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-107.8z"><title>uvicorn 압축 끔 · 1프로세스 2,000연결 · 항목 50: 195/s</title></path>
+<text class="t2" x="337.8" y="741" font-size="12">195/s</text>
+<path class="s3" d="M220 746h109.7a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-109.7z"><title>Granian · 1프로세스 2,000연결 · 항목 50: 198/s</title></path>
+<text class="t2" x="339.7" y="757" font-size="12">198/s</text>
+<text class="t1" x="24" y="795.5" font-size="13">NATS ×4 2,000연결 · 항목 5</text>
+<path class="s2" d="M220 776h265.4a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-265.4z"><title>uvicorn 압축 끔 · NATS ×4 2,000연결 · 항목 5: 470/s</title></path>
+<text class="t2" x="495.4" y="787" font-size="12">470/s</text>
+<path class="s3" d="M220 792h235.3a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-235.3z"><title>Granian · NATS ×4 2,000연결 · 항목 5: 417/s</title></path>
+<text class="t2" x="465.3" y="803" font-size="12">417/s</text>
+<text class="t1" x="24" y="841.5" font-size="13">NATS ×4 2,000연결 · 항목 50</text>
+<path class="s2" d="M220 822h196.1a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-196.1z"><title>uvicorn 압축 끔 · NATS ×4 2,000연결 · 항목 50: 349/s</title></path>
+<text class="t2" x="426.1" y="833" font-size="12">349/s</text>
+<path class="s3" d="M220 838h172.5a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-172.5z"><title>Granian · NATS ×4 2,000연결 · 항목 50: 308/s</title></path>
+<text class="t2" x="402.5" y="849" font-size="12">308/s</text>
+<text class="t1" x="24" y="902" font-size="14" font-weight="600">초당 이벤트 (모든 연결이 한 번씩), 높을수록 좋다</text>
+<text class="t3" x="220" y="1258" font-size="11" text-anchor="middle">0</text>
+<line class="grid" x1="306" y1="910" x2="306" y2="1244"/>
+<text class="t3" x="306" y="1258" font-size="11" text-anchor="middle">500</text>
+<line class="grid" x1="392" y1="910" x2="392" y2="1244"/>
+<text class="t3" x="392" y="1258" font-size="11" text-anchor="middle">1,000</text>
+<line class="grid" x1="478" y1="910" x2="478" y2="1244"/>
+<text class="t3" x="478" y="1258" font-size="11" text-anchor="middle">1,500</text>
+<line class="grid" x1="564" y1="910" x2="564" y2="1244"/>
+<text class="t3" x="564" y="1258" font-size="11" text-anchor="middle">2,000</text>
+<line class="base" x1="220" y1="910" x2="220" y2="1244"/>
+<text class="t1" x="24" y="941.5" font-size="13">1프로세스 400연결 · 항목 5</text>
+<path class="s0" d="M220 914h127.1a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-127.1z"><title>daphne · 1프로세스 400연결 · 항목 5: 762/s</title></path>
+<text class="t2" x="357.1" y="925" font-size="12">762/s</text>
+<path class="s2" d="M220 930h134.7a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-134.7z"><title>uvicorn 압축 끔 · 1프로세스 400연결 · 항목 5: 806/s</title></path>
+<text class="t2" x="364.7" y="941" font-size="12">806/s</text>
+<path class="s3" d="M220 946h138.7a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-138.7z"><title>Granian · 1프로세스 400연결 · 항목 5: 830/s</title></path>
+<text class="t2" x="368.7" y="957" font-size="12">830/s</text>
+<text class="t1" x="24" y="1003.5" font-size="13">1프로세스 400연결 · 항목 50</text>
+<path class="s0" d="M220 976h70.8a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-70.8z"><title>daphne · 1프로세스 400연결 · 항목 50: 435/s</title></path>
+<text class="t2" x="300.8" y="987" font-size="12">435/s</text>
+<path class="s2" d="M220 992h69.3a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-69.3z"><title>uvicorn 압축 끔 · 1프로세스 400연결 · 항목 50: 426/s</title></path>
+<text class="t2" x="299.3" y="1003" font-size="12">426/s</text>
+<path class="s3" d="M220 1008h71.5a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-71.5z"><title>Granian · 1프로세스 400연결 · 항목 50: 439/s</title></path>
+<text class="t2" x="301.5" y="1019" font-size="12">439/s</text>
+<text class="t1" x="24" y="1065.5" font-size="13">1프로세스 2,000연결 · 항목 5</text>
+<path class="s1" d="M220 1038h122.3a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-122.3z"><title>uvicorn · 1프로세스 2,000연결 · 항목 5: 734/s</title></path>
+<text class="t2" x="352.3" y="1049" font-size="12">734/s</text>
+<path class="s2" d="M220 1054h127a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-127z"><title>uvicorn 압축 끔 · 1프로세스 2,000연결 · 항목 5: 762/s</title></path>
+<text class="t2" x="357" y="1065" font-size="12">762/s</text>
+<path class="s3" d="M220 1070h141.9a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-141.9z"><title>Granian · 1프로세스 2,000연결 · 항목 5: 848/s</title></path>
+<text class="t2" x="371.9" y="1081" font-size="12">848/s</text>
+<text class="t1" x="24" y="1127.5" font-size="13">1프로세스 2,000연결 · 항목 50</text>
+<path class="s1" d="M220 1100h67.7a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-67.7z"><title>uvicorn · 1프로세스 2,000연결 · 항목 50: 417/s</title></path>
+<text class="t2" x="297.7" y="1111" font-size="12">417/s</text>
+<path class="s2" d="M220 1116h70.3a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-70.3z"><title>uvicorn 압축 끔 · 1프로세스 2,000연결 · 항목 50: 432/s</title></path>
+<text class="t2" x="300.3" y="1127" font-size="12">432/s</text>
+<path class="s3" d="M220 1132h70.1a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-70.1z"><title>Granian · 1프로세스 2,000연결 · 항목 50: 431/s</title></path>
+<text class="t2" x="300.1" y="1143" font-size="12">431/s</text>
+<text class="t1" x="24" y="1181.5" font-size="13">NATS ×4 2,000연결 · 항목 5</text>
+<path class="s2" d="M220 1162h295.7a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-295.7z"><title>uvicorn 압축 끔 · NATS ×4 2,000연결 · 항목 5: 1,742/s</title></path>
+<text class="t2" x="525.7" y="1173" font-size="12">1,742/s</text>
+<path class="s3" d="M220 1178h248.5a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-248.5z"><title>Granian · NATS ×4 2,000연결 · 항목 5: 1,468/s</title></path>
+<text class="t2" x="478.5" y="1189" font-size="12">1,468/s</text>
+<text class="t1" x="24" y="1227.5" font-size="13">NATS ×4 2,000연결 · 항목 50</text>
+<path class="s2" d="M220 1208h157.9a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-157.9z"><title>uvicorn 압축 끔 · NATS ×4 2,000연결 · 항목 50: 941/s</title></path>
+<text class="t2" x="387.9" y="1219" font-size="12">941/s</text>
+<path class="s3" d="M220 1224h155.1a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-155.1z"><title>Granian · NATS ×4 2,000연결 · 항목 50: 925/s</title></path>
+<text class="t2" x="385.1" y="1235" font-size="12">925/s</text>
+<text class="t1" x="24" y="1288" font-size="14" font-weight="600">브로드캐스트 하나가 모든 연결에 닿기까지 (ms), 낮을수록 좋다</text>
+<text class="t3" x="220" y="1644" font-size="11" text-anchor="middle">0</text>
+<line class="grid" x1="334.7" y1="1296" x2="334.7" y2="1630"/>
+<text class="t3" x="334.7" y="1644" font-size="11" text-anchor="middle">2,000</text>
+<line class="grid" x1="449.3" y1="1296" x2="449.3" y2="1630"/>
+<text class="t3" x="449.3" y="1644" font-size="11" text-anchor="middle">4,000</text>
+<line class="grid" x1="564" y1="1296" x2="564" y2="1630"/>
+<text class="t3" x="564" y="1644" font-size="11" text-anchor="middle">6,000</text>
+<line class="base" x1="220" y1="1296" x2="220" y2="1630"/>
+<text class="t1" x="24" y="1327.5" font-size="13">1프로세스 400연결 · 항목 5</text>
+<path class="s0" d="M220 1300h23.1a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-23.1z"><title>daphne · 1프로세스 400연결 · 항목 5: 473 ms</title></path>
+<text class="t2" x="253.1" y="1311" font-size="12">473 ms</text>
+<path class="s2" d="M220 1316h23.6a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-23.6z"><title>uvicorn 압축 끔 · 1프로세스 400연결 · 항목 5: 482 ms</title></path>
+<text class="t2" x="253.6" y="1327" font-size="12">482 ms</text>
+<path class="s3" d="M220 1332h20.4a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-20.4z"><title>Granian · 1프로세스 400연결 · 항목 5: 426 ms</title></path>
+<text class="t2" x="250.4" y="1343" font-size="12">426 ms</text>
+<text class="t1" x="24" y="1389.5" font-size="13">1프로세스 400연결 · 항목 50</text>
+<path class="s0" d="M220 1362h52.4a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-52.4z"><title>daphne · 1프로세스 400연결 · 항목 50: 984 ms</title></path>
+<text class="t2" x="282.4" y="1373" font-size="12">984 ms</text>
+<path class="s2" d="M220 1378h49a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-49z"><title>uvicorn 압축 끔 · 1프로세스 400연결 · 항목 50: 925 ms</title></path>
+<text class="t2" x="279" y="1389" font-size="12">925 ms</text>
+<path class="s3" d="M220 1394h45.8a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-45.8z"><title>Granian · 1프로세스 400연결 · 항목 50: 869 ms</title></path>
+<text class="t2" x="275.8" y="1405" font-size="12">869 ms</text>
+<text class="t1" x="24" y="1451.5" font-size="13">1프로세스 2,000연결 · 항목 5</text>
+<path class="s1" d="M220 1424h159a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-159z"><title>uvicorn · 1프로세스 2,000연결 · 항목 5: 2,843 ms</title></path>
+<text class="t2" x="389" y="1435" font-size="12">2,843 ms</text>
+<path class="s2" d="M220 1440h159.1a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-159.1z"><title>uvicorn 압축 끔 · 1프로세스 2,000연결 · 항목 5: 2,845 ms</title></path>
+<text class="t2" x="389.1" y="1451" font-size="12">2,845 ms</text>
+<path class="s3" d="M220 1456h114a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-114z"><title>Granian · 1프로세스 2,000연결 · 항목 5: 2,058 ms</title></path>
+<text class="t2" x="344" y="1467" font-size="12">2,058 ms</text>
+<text class="t1" x="24" y="1513.5" font-size="13">1프로세스 2,000연결 · 항목 50</text>
+<path class="s1" d="M220 1486h291.9a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-291.9z"><title>uvicorn · 1프로세스 2,000연결 · 항목 50: 5,162 ms</title></path>
+<text class="t2" x="521.9" y="1497" font-size="12">5,162 ms</text>
+<path class="s2" d="M220 1502h307.6a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-307.6z"><title>uvicorn 압축 끔 · 1프로세스 2,000연결 · 항목 50: 5,435 ms</title></path>
+<text class="t2" x="537.6" y="1513" font-size="12">5,435 ms</text>
+<path class="s3" d="M220 1518h283.6a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-283.6z"><title>Granian · 1프로세스 2,000연결 · 항목 50: 5,016 ms</title></path>
+<text class="t2" x="513.6" y="1529" font-size="12">5,016 ms</text>
+<text class="t1" x="24" y="1567.5" font-size="13">NATS ×4 2,000연결 · 항목 5</text>
+<path class="s2" d="M220 1548h53.4a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-53.4z"><title>uvicorn 압축 끔 · NATS ×4 2,000연결 · 항목 5: 1,001 ms</title></path>
+<text class="t2" x="283.4" y="1559" font-size="12">1,001 ms</text>
+<path class="s3" d="M220 1564h50.8a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-50.8z"><title>Granian · NATS ×4 2,000연결 · 항목 5: 956 ms</title></path>
+<text class="t2" x="280.8" y="1575" font-size="12">956 ms</text>
+<text class="t1" x="24" y="1613.5" font-size="13">NATS ×4 2,000연결 · 항목 50</text>
+<path class="s2" d="M220 1594h116.2a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-116.2z"><title>uvicorn 압축 끔 · NATS ×4 2,000연결 · 항목 50: 2,096 ms</title></path>
+<text class="t2" x="346.2" y="1605" font-size="12">2,096 ms</text>
+<path class="s3" d="M220 1610h109.5a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-109.5z"><title>Granian · NATS ×4 2,000연결 · 항목 50: 1,979 ms</title></path>
+<text class="t2" x="339.5" y="1621" font-size="12">1,979 ms</text>
+<text class="t3" x="24" y="1660" font-size="11">Intel(R) Core(TM) i7-7567U CPU @ 3.50GHz · Windows 10 (AMD64) · Python 3.14.8</text>
+<text class="t3" x="24" y="1676" font-size="11">Django 6.0 · daphne 4.2.1 · uvicorn 0.38.0 · Granian 2.8.4</text>
+<text class="t3" x="24" y="1692" font-size="11">같은 기계의 WebSocket 클라이언트 · 회차의 중앙값 · 원본 bench/results/*-servers-win10*.json</text>
+</svg>

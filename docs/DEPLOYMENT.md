@@ -60,6 +60,15 @@ pip install hypercorn
 hypercorn myproject.asgi:application --bind 0.0.0.0:8000 --workers 4
 ```
 
+### 권하지 않는 것: Granian
+
+Rust로 만든 ASGI 서버라 빨라 보이지만, wireview 앱에서는 처리량이 압축 끈 uvicorn과 측정 편차 안에서 엎치락뒤치락하고
+연결당 메모리는 더 쓴다. 무엇보다 **SIGTERM에 `leaving()`을 끝까지 돌려 주지 않는다** — 닫힘 프레임 없이 0.1초 안에
+프로세스가 끝나서, `leaving()`에서 presence를 지우거나 DB에 쓰는 앱은 배포할 때마다 그 정리를 잃는다(daphne와 같은 문제다).
+`--workers-kill-timeout`을 줘도 같다. 프록시 헤더도 CLI 옵션이 없어 `granian.utils.proxies.wrap_asgi_with_proxy_headers`로
+`application`을 감싸야 한다. 두 기계(macOS, Windows 10 실기)의 수치와 종료 동작 표는
+[성능 가이드](PERFORMANCE.md#asgi-서버-비교)에 있다.
+
 ## 채널 레이어
 
 이 프로젝트가 겨냥하는 것은 NATS다. E2E 스위트가 그 위에서 돌고 아래 배포 레시피도 그것을 전제한다.

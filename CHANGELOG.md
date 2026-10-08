@@ -33,12 +33,27 @@ The django-reactor era changelog (2.x) is preserved in
   block stops collecting and logs nothing. A process with the setting off that never imported
   `wireview.testing` has no wrapper; its boundaries still read the setting.
 
+- `make bench-servers` compares ASGI servers on the same app -- daphne, uvicorn with and without
+  permessage-deflate, and Granian -- flipping their order every round, with a dying server recorded as
+  a result per component size (#191). `bench/windows/ssh.sh` runs it on a native x64 Windows machine
+  over SSH with `uv.lock`'s versions, and `bench/servers_shutdown.py` records what SIGTERM does to each
+  server's open connections and `leaving()`. docs/PERFORMANCE.md shows both machines' charts and
+  tables; `tests/test_bench_servers.py` fails until they say what the results say. Granian is not
+  recommended: no faster beyond the rounds' spread, more memory per connection, and on SIGTERM it
+  exits without a close frame in a tenth of a second, so `leaving()` does not finish.
+
 ### Changed
 
 - The release workflow starts on tags `v<digit>...` only (#163). `v*` matched `vscode-v<version>`
   too, the tags of the editor extension, which `.github/workflows/vscode-release.yml` now publishes
   on its own to the Visual Studio Marketplace and Open VSX as `itda.django-wireview`, gated by the
   extension's checks and its tests in VS Code. The library and its release are unchanged.
+
+### Fixed
+
+- The benchmark no longer hands a run's servers the URL of a broker an earlier run stopped (#191).
+  `bench.ws.run()` left `NATS_URL`/`REDIS_URL` set after stopping the NATS or Redis server it had
+  started, and the next run in the same process took it for an external broker.
 
 ## [1.3.0] - 2026-10-08
 

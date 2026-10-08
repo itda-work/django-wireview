@@ -1,0 +1,61 @@
+{
+ "environment": {
+  "date": "2026-10-08T15:11:37+00:00",
+  "commit": "2b213a8",
+  "dirty": false,
+  "machine": " Microsoft Windows 10 Pro, Intel(R) Core(TM) i7-7567U CPU @ 3.50GHz, native x64, over SSH",
+  "os": "Windows 10 (AMD64)",
+  "os_version": "10.0.19045",
+  "cpu": "Intel(R) Core(TM) i7-7567U CPU @ 3.50GHz",
+  "cpu_count": 4,
+  "ram_gb": 15.9,
+  "python": "3.14.8",
+  "packages": {
+   "django": "6.0",
+   "channels": "4.3.2",
+   "channels-nats": "0.6.1",
+   "channels-redis": "4.3.0",
+   "daphne": "4.2.1",
+   "uvicorn": "0.38.0",
+   "granian": "2.8.4",
+   "websockets": "15.0.1",
+   "uvloop": null,
+   "httptools": null,
+   "twisted": "25.5.0"
+  },
+  "client": "websockets, same machine as the servers"
+ },
+ "settings": {
+  "connections": 600,
+  "items": [
+   5,
+   50
+  ],
+  "layer": "memory",
+  "processes": 1,
+  "rounds": 1,
+  "argv": {
+   "daphne": [
+    "-b",
+    "127.0.0.1",
+    "-p",
+    "0",
+    "testproj.asgi:application"
+   ]
+  }
+ },
+ "servers": {
+  "daphne": {
+   "rounds": [
+    {
+     "items_5": {
+      "error": "RuntimeError: joined 500 of 600 connections, then: InvalidMessage('did not receive a valid HTTP response')"
+     },
+     "items_50": {
+      "error": "RuntimeError: joined 500 of 600 connections, then: InvalidMessage('did not receive a valid HTTP response')"
+     }
+    }
+   ]
+  }
+ }
+}

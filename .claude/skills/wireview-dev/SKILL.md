@@ -145,6 +145,7 @@ VS Code 다운로드가 파이썬 패키지의 배포를 막지 않게 한다(#1
 | 타입 스텁 확인 | `cd tests && uv run python manage.py wireview_stubs --check` | |
 | 성능 실측 | `make bench`, 비교는 `make bench-compare BASE=<ref>`, 서버 선택은 `ARGS="--server uvicorn"` | WebSocket 구간은 daphne 또는 uvicorn을 직접 띄우며 Redis 불필요 |
 | Windows 실측 | `bench/windows/run.sh` (stage → provision → run → collect) | macOS + Parallels 랩 클론 + `windows-parallels-lab` 스킬. 상세는 `bench/README.md` |
+| ASGI 서버 비교 | `make bench-servers ARGS="--label macos"`, Windows 실기는 `bench/windows/ssh.sh` (stage → provision → run → collect), 문서 갱신은 `make bench-servers-charts`와 `python -m bench.servers_chart --table` | SSH로 닿는 x64 Windows(전원 연결, 덮개 열림). 결과 파일을 바꾸면 `bench/servers_chart.py`의 `MACHINES`도 바꾼다 |
 
 `uv.lock`에서 채널 레이어 패키지(`channels-nats`, `channels-redis`)를 올리면 그 레이어의 E2E 레인을 돌리고
 `docs/COMPATIBILITY.md`의 채널 레이어 표를 같은 커밋에서 고친다. 표와 lock이 어긋나면 `tests/test_supported_versions.py`가 실패한다(#130).

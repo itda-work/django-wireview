@@ -1,0 +1,316 @@
+{
+ "environment": {
+  "date": "2026-10-08T15:07:28+00:00",
+  "commit": "6e27122",
+  "dirty": false,
+  "machine": " Microsoft Windows 10 Pro, Intel(R) Core(TM) i7-7567U CPU @ 3.50GHz, native x64, over SSH",
+  "os": "Windows 10 (AMD64)",
+  "os_version": "10.0.19045",
+  "cpu": "Intel(R) Core(TM) i7-7567U CPU @ 3.50GHz",
+  "cpu_count": 4,
+  "ram_gb": 15.9,
+  "python": "3.14.8",
+  "packages": {
+   "django": "6.0",
+   "channels": "4.3.2",
+   "channels-nats": "0.6.1",
+   "channels-redis": "4.3.0",
+   "daphne": "4.2.1",
+   "uvicorn": "0.38.0",
+   "granian": "2.8.4",
+   "websockets": "15.0.1",
+   "uvloop": null,
+   "httptools": null,
+   "twisted": "25.5.0"
+  },
+  "client": "websockets, same machine as the servers"
+ },
+ "settings": {
+  "connections": 2000,
+  "items": [
+   5,
+   50
+  ],
+  "layer": "nats",
+  "processes": 4,
+  "rounds": 3,
+  "argv": {
+   "uvicorn-nodeflate": [
+    "testproj.asgi:application",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "0",
+    "--log-level",
+    "warning",
+    "--ws",
+    "websockets",
+    "--ws-per-message-deflate",
+    "false"
+   ],
+   "granian": [
+    "--interface",
+    "asgi",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "0",
+    "--log-level",
+    "warning",
+    "--loop",
+    "auto",
+    "testproj.asgi:application"
+   ]
+  }
+ },
+ "servers": {
+  "uvicorn-nodeflate": {
+   "rounds": [
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 132.078,
+      "per_connection_kb_by_process": {
+       "uvicorn-nodeflate-0": 31.834,
+       "uvicorn-nodeflate-1": 33.462,
+       "uvicorn-nodeflate-2": 33.378,
+       "uvicorn-nodeflate-3": 33.404
+      },
+      "joins_per_s": 461.318203388032,
+      "events_per_s": 1742.2426862031004,
+      "render_bytes": 374,
+      "broadcast_ms": 1027.8177000000142,
+      "broadcast_renders_per_s": 1945.870362030127,
+      "layer": "nats",
+      "processes": 4,
+      "server": "uvicorn-nodeflate"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 160.034,
+      "per_connection_kb_by_process": {
+       "uvicorn-nodeflate-0": 40.294,
+       "uvicorn-nodeflate-1": 39.72,
+       "uvicorn-nodeflate-2": 39.956,
+       "uvicorn-nodeflate-3": 40.064
+      },
+      "joins_per_s": 351.07466940429424,
+      "events_per_s": 949.4479719606793,
+      "render_bytes": 675,
+      "broadcast_ms": 2175.913400002173,
+      "broadcast_renders_per_s": 919.1542273686088,
+      "layer": "nats",
+      "processes": 4,
+      "server": "uvicorn-nodeflate"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 132.492,
+      "per_connection_kb_by_process": {
+       "uvicorn-nodeflate-0": 33.062,
+       "uvicorn-nodeflate-1": 33.128,
+       "uvicorn-nodeflate-2": 33.2,
+       "uvicorn-nodeflate-3": 33.102
+      },
+      "joins_per_s": 483.79631875153996,
+      "events_per_s": 1447.2149686544562,
+      "render_bytes": 374,
+      "broadcast_ms": 967.1833000029437,
+      "broadcast_renders_per_s": 2067.860352834786,
+      "layer": "nats",
+      "processes": 4,
+      "server": "uvicorn-nodeflate"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 158.868,
+      "per_connection_kb_by_process": {
+       "uvicorn-nodeflate-0": 39.754,
+       "uvicorn-nodeflate-1": 39.728,
+       "uvicorn-nodeflate-2": 39.634,
+       "uvicorn-nodeflate-3": 39.752
+      },
+      "joins_per_s": 341.16226238461553,
+      "events_per_s": 941.3015640275423,
+      "render_bytes": 675,
+      "broadcast_ms": 2095.680899990839,
+      "broadcast_renders_per_s": 954.3437648397439,
+      "layer": "nats",
+      "processes": 4,
+      "server": "uvicorn-nodeflate"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 132.016,
+      "per_connection_kb_by_process": {
+       "uvicorn-nodeflate-0": 32.962,
+       "uvicorn-nodeflate-1": 32.982,
+       "uvicorn-nodeflate-2": 33.196,
+       "uvicorn-nodeflate-3": 32.876
+      },
+      "joins_per_s": 469.8782658180962,
+      "events_per_s": 1744.9226676427156,
+      "render_bytes": 374,
+      "broadcast_ms": 1001.2739999947371,
+      "broadcast_renders_per_s": 1997.4552420321634,
+      "layer": "nats",
+      "processes": 4,
+      "server": "uvicorn-nodeflate"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 158.326,
+      "per_connection_kb_by_process": {
+       "uvicorn-nodeflate-0": 39.324,
+       "uvicorn-nodeflate-1": 39.812,
+       "uvicorn-nodeflate-2": 39.304,
+       "uvicorn-nodeflate-3": 39.886
+      },
+      "joins_per_s": 349.0083816801046,
+      "events_per_s": 920.2519760342757,
+      "render_bytes": 675,
+      "broadcast_ms": 1972.7028000052087,
+      "broadcast_renders_per_s": 1013.8374619809529,
+      "layer": "nats",
+      "processes": 4,
+      "server": "uvicorn-nodeflate"
+     }
+    }
+   ]
+  },
+  "granian": {
+   "rounds": [
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 209.716,
+      "per_connection_kb_by_process": {
+       "granian-0": 46.602,
+       "granian-1": 46.28,
+       "granian-2": 51.004,
+       "granian-3": 65.83
+      },
+      "joins_per_s": 419.4260795824237,
+      "events_per_s": 1432.321143018397,
+      "render_bytes": 374,
+      "broadcast_ms": 964.9190000054659,
+      "broadcast_renders_per_s": 2072.712839097034,
+      "layer": "nats",
+      "processes": 4,
+      "server": "granian"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 235.306,
+      "per_connection_kb_by_process": {
+       "granian-0": 53.09,
+       "granian-1": 53.304,
+       "granian-2": 56.882,
+       "granian-3": 72.03
+      },
+      "joins_per_s": 307.7773773594761,
+      "events_per_s": 935.7474619707751,
+      "render_bytes": 675,
+      "broadcast_ms": 1948.0711999931373,
+      "broadcast_renders_per_s": 1026.6565205661095,
+      "layer": "nats",
+      "processes": 4,
+      "server": "granian"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 210.364,
+      "per_connection_kb_by_process": {
+       "granian-0": 46.646,
+       "granian-1": 46.576,
+       "granian-2": 50.692,
+       "granian-3": 66.45
+      },
+      "joins_per_s": 394.23464163783933,
+      "events_per_s": 1671.6973612756385,
+      "render_bytes": 374,
+      "broadcast_ms": 955.7021999935387,
+      "broadcast_renders_per_s": 2092.702099057135,
+      "layer": "nats",
+      "processes": 4,
+      "server": "granian"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 236.638,
+      "per_connection_kb_by_process": {
+       "granian-0": 53.448,
+       "granian-1": 53.244,
+       "granian-2": 57.158,
+       "granian-3": 72.788
+      },
+      "joins_per_s": 311.4222066707092,
+      "events_per_s": 925.1210705972629,
+      "render_bytes": 675,
+      "broadcast_ms": 1978.8547000061953,
+      "broadcast_renders_per_s": 1010.6856253739794,
+      "layer": "nats",
+      "processes": 4,
+      "server": "granian"
+     }
+    },
+    {
+     "items_5": {
+      "connections": 2000,
+      "items": 5,
+      "per_connection_kb": 209.652,
+      "per_connection_kb_by_process": {
+       "granian-0": 46.426,
+       "granian-1": 46.458,
+       "granian-2": 50.798,
+       "granian-3": 65.97
+      },
+      "joins_per_s": 417.2973246354826,
+      "events_per_s": 1467.8150362306303,
+      "render_bytes": 374,
+      "broadcast_ms": 952.1305999951437,
+      "broadcast_renders_per_s": 2100.5521721602067,
+      "layer": "nats",
+      "processes": 4,
+      "server": "granian"
+     },
+     "items_50": {
+      "connections": 2000,
+      "items": 50,
+      "per_connection_kb": 236.106,
+      "per_connection_kb_by_process": {
+       "granian-0": 53.168,
+       "granian-1": 52.972,
+       "granian-2": 57.276,
+       "granian-3": 72.69
+      },
+      "joins_per_s": 296.7290635460845,
+      "events_per_s": 922.0566602885965,
+      "render_bytes": 675,
+      "broadcast_ms": 1979.5622000092408,
+      "broadcast_renders_per_s": 1010.3244040478565,
+      "layer": "nats",
+      "processes": 4,
+      "server": "granian"
+     }
+    }
+   ]
+  }
+ }
+}

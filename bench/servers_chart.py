@@ -59,19 +59,22 @@ MACHINES = (
     Machine(
         "macos",
         "macOS (Apple M5 Pro)",
-        ("606e407-servers-macos.json", "606e407-servers-macos-nats-4proc.json"),
+        ("606e407-servers-macos.json", "6e27122-servers-macos-nats-4proc.json"),
     ),
     Machine(
         "win10",
         "Windows 10 실기 (Intel i7-7567U, 2코어 4스레드)",
         (
             "51e1456-servers-win10-400.json",
-            "51e1456-servers-win10-daphne-600.json",
+            "2b213a8-servers-win10-daphne-600.json",
             "51e1456-servers-win10.json",
-            "51e1456-servers-win10-nats-4proc.json",
+            "6e27122-servers-win10-nats-4proc.json",
         ),
     ),
 )
+
+#: bench/servers_shutdown.py's result: what SIGTERM does to open connections and leaving()
+SHUTDOWN = "2b213a8-servers-shutdown-macos.json"
 
 METRICS = ("per_connection_kb", "joins_per_s", "events_per_s", "broadcast_ms")
 JOINED = re.compile(r"joined (\d+) of (\d+) connections")
@@ -96,6 +99,13 @@ def setting(result: dict) -> str:
     s = result["settings"]
     layer = "InMemory" if s["layer"] == "memory" else s["layer"].upper()
     return f"{layer} {s['processes']}프로세스 · {s['connections']:,}연결"
+
+
+def short(result: dict) -> str:
+    """The chart's group label: the label column is narrow."""
+    s = result["settings"]
+    procs = f"{s['layer'].upper()} ×{s['processes']}" if s["layer"] != "memory" else "1프로세스"
+    return f"{procs} {s['connections']:,}연결"
 
 
 def cells(result: dict) -> dict[tuple[int, str], Cell]:
@@ -175,13 +185,30 @@ def table(machine: Machine) -> str:
     return "\n".join(rows)
 
 
+def shutdown_table() -> str:
+    """SIGTERM with joined components whose leaving() takes a while, per server."""
+    result = load(SHUTDOWN)
+    rows = [
+        "| 서버 | 종료 옵션 | 클라이언트가 받은 닫힘 코드 | 프로세스가 끝나기까지 | leaving() 시작 / 끝 |",
+        "|------|------|------|---:|---:|",
+    ]
+    for server, r in result["servers"].items():
+        codes = ", ".join("없음 (TCP만 끊김)" if c == "None" else c for c in r["close_codes"])
+        flags = f"`{' '.join(r['flags'])}`" if r["flags"] else "—"
+        rows.append(
+            f"| {SERIES_LABELS[server]} | {flags} | {codes} | {r['exit_seconds']:.2f}초 | "
+            f"{r['leaving_started']} / {r['leaving_finished']} (연결 {r['connections']}개) |"
+        )
+    return "\n".join(rows)
+
+
 def _footer(machine: Machine) -> list[str]:
     env = load(machine.files[0])["environment"]
     pkg = env["packages"]
     return [
-        f"{env['cpu']} · {env['os']} · Python {env['python']} · Django {pkg['django']} · daphne {pkg['daphne']} · "
-        f"uvicorn {pkg['uvicorn']} · Granian {pkg['granian']}",
-        f"같은 기계의 WebSocket 클라이언트 · 회차의 중앙값 · 원본 bench/results/{machine.files[0]} 외",
+        f"{env['cpu']} · {env['os']} · Python {env['python']}",
+        f"Django {pkg['django']} · daphne {pkg['daphne']} · uvicorn {pkg['uvicorn']} · Granian {pkg['granian']}",
+        f"같은 기계의 WebSocket 클라이언트 · 회차의 중앙값 · 원본 bench/results/*-servers-{machine.label}*.json",
     ]
 
 
@@ -194,7 +221,7 @@ def chart(machine: Machine) -> str:
         result = load(name)
         by = cells(result)
         for items in result["settings"]["items"]:
-            label = f"{setting(result)} · 항목 {items}"
+            label = f"{short(result)} · 항목 {items}"
             for metric in METRICS:
                 values = {
                     s: by[(items, s)].median[metric] for s in SERIES if (items, s) in by and by[(items, s)].rounds
@@ -252,6 +279,7 @@ def main() -> None:
     if args.table:
         for machine in MACHINES:
             print(f"{machine.title}\n\n{table(machine)}\n")
+        print(f"SIGTERM\n\n{shutdown_table()}")
         return
     if args.facts:
         print(json.dumps(facts(), indent=2, ensure_ascii=False))
