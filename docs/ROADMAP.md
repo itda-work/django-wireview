@@ -453,6 +453,10 @@ Microsoft Entra ID 관리 ID로, Open VSX는 Trusted Publishing(OIDC)으로 올�
   Members에 Contributor로 더한다. 그 전에는 `vsce publish`가 권한 오류로 실패한다.
 - **Open VSX**: 네임스페이스 `itda`의 Trusted Publishing에 저장소 `itda-work/django-wireview`, 워크플로
   `vscode-release.yml`, environment `vscode-marketplace`를 등록한다. 게시는 `open-vsx` 잡이 한다.
+  등록에는 두 조건이 있었다. 네임스페이스의 **소유자**여야 하고(만든 사람은 검증 전까지 기여자다 — 소유권 주장
+  [EclipseFdn/open-vsx.org#13895](https://github.com/EclipseFdn/open-vsx.org/issues/13895)), 확장에 활성 버전이 있어야 한다.
+  그래서 0.1.0은 태그 실행의 `open-vsx` 잡이 실패한 뒤, 그 실행의 vsix artifact를 일회용 access token으로 직접 올리고
+  (토큰은 바로 폐기) 등록한 다음 실패한 잡을 다시 돌렸다(`--skip-duplicate`). 미검증 네임스페이스의 버전은 공개되지 않는다.
 - 관리 ID를 다시 만들면 클라이언트 ID와 Marketplace 신원 ID가 바뀐다. environment 변수를 고치고 dry run으로 새 ID를 얻어
   Members를 다시 맞춘다. 워크플로 파일 이름이나 environment 이름을 바꾸면 federated credential의 subject와 Open VSX
   등록도 함께 바꾼다.
