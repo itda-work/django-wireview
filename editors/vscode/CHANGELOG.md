@@ -9,7 +9,7 @@ A version's section says "Unreleased" until the commit that publishes it dates i
 the release workflow refuses a tag whose section has no date
 ([release procedure](../../docs/ROADMAP.md#vs-code-확장-릴리스-절차)).
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-10-08
 
 ### Added
 
