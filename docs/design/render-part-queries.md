@@ -443,6 +443,9 @@ q.assert_no_repeats()                    # 같은 파일:줄·같은 SQL이 두 
 
 ### 5-3. 후속: 패널·편집기
 
+> 이 절은 처음 스케치다. 결정된 설계는 [render-queries-editor.md](./render-queries-editor.md)(#188)이고, 파일과 형식은
+> [render-queries](../features/render-queries.md#편집기로-보내기)에 있다.
+
 VS Code 확장([editor-support](../features/editor-support.md))이 인라인 힌트를 그리는 데는 파일 하나면 된다. 개발 서버가
 스코프마다 `.wireview/render-queries.jsonl`(이미 gitignore된 디렉터리)에 한 줄씩 덧붙인다.
 

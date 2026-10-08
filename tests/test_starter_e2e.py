@@ -169,9 +169,16 @@ def _first_page_answers_typing(page, starter: Starter) -> None:
     assert starter.trouble() == [], starter.output()
 
 
-def test_the_first_page_is_live_and_answers_typing(page, starter):
+def _nothing_for_the_editor(project: Path) -> None:
+    """The starter runs with DEBUG, so it would write render queries for the editor (#188).
+    conftest.py's WIREVIEW_RENDER_QUERIES_DIR=off reaches this other process through its environment."""
+    assert not (project / ".wireview" / "render-queries").exists()
+
+
+def test_the_first_page_is_live_and_answers_typing(page, starter, project):
     """Tutorial 01's page from daphne's runserver."""
     _first_page_answers_typing(page, starter)
+    _nothing_for_the_editor(project)
     # Not staticfiles' WSGI runserver, where the page draws and no socket connects
     # (W013). The startup line itself: W013's hint quotes the phrase. Asserted
     # here rather than in a test of its own, which pytest-playwright's browser
@@ -179,7 +186,7 @@ def test_the_first_page_is_live_and_answers_typing(page, starter):
     assert re.search(r"^Starting ASGI/Daphne version ", starter.output(), re.MULTILINE), starter.output()
 
 
-def test_the_first_page_is_live_under_uvicorn(page, uvicorn_starter):
+def test_the_first_page_is_live_under_uvicorn(page, uvicorn_starter, project):
     """The same page from the uvicorn line tutorial 01 offers instead of runserver (Windows' way).
 
     uvicorn serves the project's ``application`` and nothing else: no static
@@ -187,6 +194,7 @@ def test_the_first_page_is_live_under_uvicorn(page, uvicorn_starter):
     page drew without a component joining.
     """
     _first_page_answers_typing(page, uvicorn_starter)
+    _nothing_for_the_editor(project)
 
 
 def test_a_port_another_server_holds_is_not_taken_for_the_starter(project, browser_name):

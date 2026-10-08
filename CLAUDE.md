@@ -110,6 +110,11 @@ wireview/
 │                          래퍼는 execute_wrappers 맨 아래에 한 번 두고 남긴다. 요청을 모아 다른 태스크가 처리하는 길은 capture()·restored()로
 │                          항목마다 요청한 쪽의 상태를 되살린다(_Signer). 태스크를 만드는 새 길은 시작에서 detach()하고 scope("task")를 연다.
 │                          MountedComponent.queries()가 테스트 단언. 계약 표는 tests/test_render_queries.py
+├── debug/render_queries_file.py 그 귀속을 편집기가 읽을 JSON 줄로 쓴다(DEBUG_RENDER_QUERIES_DIR, #188). 가장 바깥 일 하나가 한 줄이고, 안에서 끝난
+│                          렌더마다 클래스 단위 스냅샷(0건 포함)이 든다. 템플릿 줄은 실행 중인 Template.source의 지문과 함께(filesystem·app_directories
+│                          로더만). 프로세스마다 덧붙이기만 하는 세그먼트 파일이고, 끝까지 쓰지 못한 줄은 되돌리고 끈다. DEBUG가 아니거나
+│                          WIREVIEW_RENDER_QUERIES_DIR=off(루트 conftest.py가 둔다)이거나 wireview.testing을 import했으면 쓰지 않는다.
+│                          형식의 정본은 docs/features/render-queries.md "편집기로 보내기", 계약은 tests/test_render_queries_file.py
 ├── features/              streams.py, presence.py (PresenceMixin), uploads.py (UploadRegistry·토큰 v2),
 │                          hooks.py (앱의 static/<app_label>/hooks/*.js 수집. 페이지가 아니라 프로젝트 단위. 템플릿 디렉터리는 TEMPLATES가 아니라 엔진의 로더에게 묻는다),
 │                          upload_store.py (청크 경로 계산·append·취소 마커·sweep. 워커들이 공유하는 유일한 상태),

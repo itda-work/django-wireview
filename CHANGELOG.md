@@ -14,6 +14,17 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- In development, the render-part SQL also goes to a file an editor reads (#188): one JSON line per outermost
+  piece of work, under `BASE_DIR/.wireview/render-queries/` (setting `DEBUG_RENDER_QUERIES_DIR`; `False` turns
+  it off). A line holds a snapshot of every render that ended in it, none-statement renders included, keyed by
+  component class, so a reader that keeps the latest snapshot per class sees a fixed N+1 clear. A template line
+  carries the digest of the source the running template was compiled from (Django's filesystem and app
+  directories loaders), so a line run by a stale cached template is told apart from the file on disk; a
+  property carries its `def` line and the file's `stat` as strings. Written only with `DEBUG` on, never from a
+  process that imported `wireview.testing` or has `WIREVIEW_RENDER_QUERIES_DIR=off` in its environment (the
+  suite's servers inherit it). Each process appends to numbered segments of its own, sweeps other processes'
+  idle files, writes a line whole or takes it back and stops. The format is versioned by its own `version`
+  field; docs/features/render-queries.md describes it. The VS Code extension's display follows.
 - In development, each statement a render, handler or task ran is told with the template line or the
   property it came from (#182). With `DEBUG_RENDER_QUERIES` (`None` follows `DEBUG`), the logger
   `wireview.queries` gets one block per outermost piece of work that ran SQL -- a render, a handler, a

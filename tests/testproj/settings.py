@@ -25,6 +25,9 @@ BASE_DIR = up(up(os.path.abspath(__file__)))
 
 WIREVIEW = {
     "BOOST_PAGES": True,
+    # The suite writes nothing for the editor (#188); conftest.py also sets the variable
+    # that keeps the servers it starts in other processes from writing
+    "DEBUG_RENDER_QUERIES_DIR": False,
     "AUTO_BROADCAST": AutoBroadcast(
         model=True,
         model_pk=True,

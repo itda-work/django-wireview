@@ -19,6 +19,7 @@ pins the old one. The module refuses it; use ``override_settings``.
 
 from __future__ import annotations
 
+import os
 import sys
 import types
 import typing as t
@@ -64,6 +65,10 @@ DEFAULT: dict[str, t.Any] = {
     # property, and log it to wireview.queries (wireview.debug.render_queries, #182).
     # None = DEBUG
     "DEBUG_RENDER_QUERIES": None,
+    # Where those statements are written, one JSON line per render, for the editor
+    # (wireview.debug.render_queries_file, #188). Only while DEBUG_RENDER_QUERIES and
+    # DEBUG are on. None = BASE_DIR/.wireview/render-queries, a path, or False (off)
+    "DEBUG_RENDER_QUERIES_DIR": None,
     # Load each app's static/<app_label>/hooks/*.js from {% wireview_header %}
     "COLLECT_HOOKS": True,
     # Client reconnect backoff, in milliseconds (static/wireview/reconnect.mjs, #124).
@@ -162,6 +167,7 @@ if t.TYPE_CHECKING:
     TELEMETRY: bool
     REJOIN_ON_TEMPLATE_CHANGE: bool | None
     DEBUG_RENDER_QUERIES: bool | None
+    DEBUG_RENDER_QUERIES_DIR: str | os.PathLike[str] | bool | None
     COLLECT_HOOKS: bool
     RECONNECT_MIN_DELAY_MS: int
     RECONNECT_JITTER_MS: int

@@ -28,6 +28,39 @@ pytest_plugins = ["testproj.warning_guard", "testproj.time_limit", "testproj.row
 
 FLAG = "DJANGO_ALLOW_ASYNC_UNSAFE"
 
+# Nothing the suite renders goes to the editor's file (#188), in this process or in
+# the servers it starts in others (the starter's runserver, the upload workers):
+# they inherit the environment. tests/test_render_queries_file.py lifts it per test.
+os.environ["WIREVIEW_RENDER_QUERIES_DIR"] = "off"
+
+#: The editor's directory under the test project, and what was in it when the run began
+_EDITOR_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tests", ".wireview", "render-queries")
+_editor_files_before: set[str] = set()
+
+
+def _editor_files() -> set[str]:
+    try:
+        return set(os.listdir(_EDITOR_DIR))
+    except FileNotFoundError:
+        return set()
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    _editor_files_before.update(_editor_files())
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Fail a run that wrote render queries for the editor into the test project (#188)."""
+    new = _editor_files() - _editor_files_before
+    if new:
+        session.config.get_terminal_writer().line(
+            f"The run wrote render queries for the editor into {_EDITOR_DIR}: {sorted(new)}. "
+            f"Nothing the suite renders may (#188).",
+            red=True,
+        )
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
 _real_get_running_loop = asyncio.get_running_loop
 _exempt_thread: threading.Thread | None = None
 

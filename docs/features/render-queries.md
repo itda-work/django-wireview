@@ -127,6 +127,113 @@ Debug Toolbar)와 `CaptureQueriesContext`는 그대로 함께 돈다.
 설정이 꺼져 있으면 모으는 것은 **아직 열려 있는** `queries()` 블록뿐이다. 블록 안에서 만든 작업이 블록이 끝난 뒤에도
 돌면, 그 뒤의 SQL은 어디에도 쌓이지 않고 로그도 남지 않는다. 바깥 블록이 아직 열려 있으면 그쪽이 계속 모은다.
 
+## 편집기로 보내기
+
+개발 서버는 같은 귀속을 파일에도 쓴다. 편집기가 그것을 읽어 템플릿 줄과 property의 `def` 줄 끝에 쿼리 수를 단다.
+VS Code 확장이 그 표시를 맡는다(확장의 표시는 다음 단계에서 이 절에 더한다). 설계와 그 근거는
+[설계 메모](../design/render-queries-editor.md)(#188)에 있다. 이 절이 파일 형식의 정본이다.
+
+### 켜기와 끄기
+
+아래가 모두 참일 때만 쓴다. 일이 시작할 때와 끝날 때 두 번 묻는다. 그 사이에 하나라도 꺼지면 쓰지 않는다.
+
+1. 수집이 설정으로 켜져 있다(`DEBUG_RENDER_QUERIES`, `None` = `DEBUG`). `queries()` 블록이 모으는 것은 쓰지 않는다.
+2. Django의 `DEBUG`가 참이다. `DEBUG_RENDER_QUERIES=True`를 적어도 `DEBUG=False`면 쓰지 않는다.
+3. 억제되지 않았다. 환경 변수 `WIREVIEW_RENDER_QUERIES_DIR=off`가 있으면 쓰지 않는다. 그 프로세스가 띄운 자식 프로세스도
+   환경을 물려받으므로 함께 꺼진다. `wireview.testing`을 import한 프로세스도 쓰지 않는다.
+4. 위치가 정해진다. 설정 `DEBUG_RENDER_QUERIES_DIR`이 `False`가 아니고, 경로이거나, `None`이면서 `BASE_DIR`이 있다.
+
+```python
+WIREVIEW = {
+    "DEBUG_RENDER_QUERIES_DIR": None,  # None = BASE_DIR/.wireview/render-queries, 경로, 또는 False(끔)
+}
+```
+
+테스트가 별도 프로세스로 띄우는 개발 서버(E2E의 `runserver`)는 `wireview.testing`을 import하지 않는다. 그런 서버를
+띄우는 테스트 실행은 환경 변수로 끈다. 끄지 않아도 파일은 아래 디렉터리 안에만 생긴다.
+
+**지원하는 서버는 동시에 쓰는 프로세스가 하나인 개발 서버다**(`runserver`, `uvicorn` 단일 프로세스, daphne). 워커를 여럿
+띄운다면 워커마다 `DEBUG_RENDER_QUERIES_DIR`을 나누거나 끈다. 같은 디렉터리에 여러 프로세스가 쓰면 고친 뒤의 0건이 옛 숫자를
+지운다는 보장이 없다.
+
+### 파일
+
+- 디렉터리는 기본으로 `BASE_DIR/.wireview/render-queries/`다. 처음 만들 때 권한을 `0700`으로 두고, `*` 한 줄짜리
+  `.gitignore`를 넣는다. 그래서 프로젝트가 `.wireview/`를 무시하지 않아도 커밋되지 않는다.
+- 프로세스마다 `<UTC 시작 시각>-<pid>.<n>.jsonl`에 쓴다. 시작 시각은 `YYYYmmddTHHMMSS`이고 `n`은 1부터다. 파일 권한은
+  `0600`이다.
+- 파일은 덧붙이기만 한다. 1 MiB를 넘으려 하면 `n+1`로 넘어가고 `n-1`을 지운다. 그래서 프로세스마다 지금 것과 바로 앞
+  것만 남는다. 쓰던 파일이 지워지면 다음 번호로 새로 연다.
+- 새 파일을 열 때 다른 프로세스의 파일을 정리한다. 10분 넘게 바뀌지 않은 것만 대상이고, 24시간 넘은 것은 지우며, 그런
+  파일이 32개를 넘으면 오래된 것부터 지운다. 디렉터리의 크기는 보장하지 않는 목표다.
+- 한 줄은 잠금 아래 끝까지 쓴다. 다 쓰지 못하면 그 줄을 되돌리고, 그 프로세스는 더 쓰지 않으며(그때 잠금을 기다리던 다른
+  스레드도. 줄을 준비하다 실패해도 같다), `wireview.queries`에 WARNING을 한 번 남긴다. 렌더는 그대로 진행된다. 템플릿의 지문을 만들지 못하면 그 행만
+  `source` 없이 쓴다. SQL은 그대로 실행된다.
+
+### 무엇을 쓰나
+
+가장 바깥 일 하나가 한 줄이다. 그 안에서 끝난 **렌더**마다 스냅샷이 들고, 쿼리가 없던 렌더도 들어간다. 읽는 쪽은 컴포넌트
+클래스마다 가장 최근의 스냅샷 하나를 현재 상태로 둔다. 그래서 고쳐서 쿼리가 없어진 컴포넌트는 다음 렌더가 그 숫자를
+지운다. 다른 컴포넌트 안에서 그려졌든 혼자 그려졌든 같다.
+
+- 렌더가 없는 일(핸들러, 작업, `mount`, `joined()`, 서명, `Broadcast` 항목)은 쓰지 않는다. 렌더가 든 일 안의 렌더 밖
+  행은 `by` 없이 싣는다.
+- 한 클래스의 관측이 그 클래스에 대해 마지막으로 쓴 줄이 말한 것과 같으면(위치·SQL·횟수·지문·완전한지까지) 60초 안에는 다시
+  쓰지 않는다. 바이트 상한으로 잘려 쓰였던 클래스는 새 줄에 실제로 담길 것으로 비교하므로, 온전히 다시 관측되면 다시 쓴다. 그 프로세스에서 처음 보는 클래스는 0건이어도
+  쓴다.
+
+### 형식 1.0
+
+한 줄이 JSON 객체 하나다(UTF-8, 64 KiB 이하).
+
+```json
+{"version": "1.0", "at": "2026-10-08T13:10:05.573Z", "process": "20261008T131003-80673", "segment": 1,
+ "base": "/home/me/proj", "kind": "render", "detail": "event bump", "count": 7,
+ "renders": [{"kind": "render", "component": "shelf.live.Shelf", "name": "Shelf", "id": "shelf", "why": "event bump"},
+             {"kind": "render", "component": "shelf.live.Badge", "name": "Badge", "id": "b1", "why": "nested"}],
+ "rows": [
+  {"by": 0, "count": 6, "repeated": true, "sql": "SELECT … WHERE \"quiz_question\".\"id\" = %s LIMIT 21",
+   "template": {"file": "/home/me/proj/shelf/templates/shelf/child.html", "rel": "shelf/templates/shelf/child.html",
+                "name": "shelf/child.html", "source": "3e3d7c29…", "line": 2, "node": "{{ }}", "text": "c.question.text"}},
+  {"by": 0, "count": 1, "sql": "SELECT COUNT(*) AS \"__count\" FROM \"quiz_choice\"",
+   "property": {"name": "total", "owner": "shelf.live.Shelf", "async": false, "file": "/home/me/proj/shelf/live.py",
+                "rel": "shelf/live.py", "line": 43, "stat": ["1791465001123456789", "4211"]}}]}
+```
+
+| 키 | 뜻 |
+|----|----|
+| `version` | 형식의 버전 `"major.minor"` |
+| `at` | 일이 끝난 시각, UTC ISO 8601(밀리초) |
+| `process`, `segment` | 쓴 프로세스와 세그먼트 번호. 파일 이름과 같다 |
+| `base` | 서버가 본 `BASE_DIR`의 실제 경로. 없으면 `null` |
+| `kind`, `detail` | 가장 바깥 일의 종류(`render`, `handler` …)와 이름. 정보일 뿐이다 |
+| `count` | 그 일이 실행한 SQL 전체 수. 상한 때문에 뺀 행도 센다: `count = rows[].count의 합 + more.statements` |
+| `renders` | 그 안에서 끝난 렌더. 바깥 일이 렌더면 그것이 0번이다. 각각 `kind`, `component`(`module.Qualname`), `name`, `id`, `why`(`join`, `event <핸들러>`, `http`, `nested` …). 100개까지 |
+| `renders_more` | 100개를 넘어 뺀 렌더의 수 |
+| `rows[].by` | 그 행을 낸 렌더의 `renders` 위치. 없으면 렌더 밖의 행이다 |
+| `rows[].count`, `repeated` | 같은 자리·같은 SQL의 횟수. 한 줄 안에서 세 번 이상이면 `repeated: true` |
+| `rows[].sql` | 실행한 문장. 파라미터는 없다(`%s`). 1,000자에서 자르고 `truncated: true` |
+| `rows[].template` | `file`(실제 경로. 파일 시스템의 템플릿일 때만), `rel`(`base` 아래면), `name`, `source`, `line`, `node`(`{{ }}` 또는 태그 이름), `text`(`token.contents`, 200자까지), 근사면 `approximate: true` |
+| `rows[].template.source` | 그 줄을 실행한 컴파일본의 원본 지문: `sha256`(줄바꿈을 `\n`으로 바꾼 UTF-8). Django의 filesystem·app_directories 로더(cached로 감싼 것 포함)의 템플릿이고 실행 중인 `Template`을 찾았을 때만 있다 |
+| `rows[].property` | `name`, `owner`(정의한 클래스), `async`, 그리고 위치가 확정되면 `file`·`rel`·`line`(`def` 줄)·`stat`(`[st_mtime_ns, st_size]`, **10진 문자열**). 그 파일이 라이브러리를 import한 뒤 바뀌었으면 위치를 싣지 않는다 |
+| `rows[].in` | 그 행이 렌더 안의 다른 일(async property, 서명)에서 돌았으면 그 `kind`·`detail` |
+| `more` | 64 KiB에 맞추려고 뺀 행: `{"groups": …, "statements": …}` |
+| `partial` | 스냅샷이 완전하지 않은 클래스(`component` 값)의 목록. 그 클래스의 렌더나 행이 상한 때문에 빠졌다. 읽는 쪽은 그 클래스의 스냅샷을 "0건"으로 읽으면 안 된다 |
+
+**줄이 맞다는 근거.** `source`가 디스크 파일의 지문과 같으면, 서버가 실행한 원본이 지금 그 파일이고 `line`은 그 파일의
+줄이다. 개발 서버가 캐시된 옛 컴파일본을 실행했으면 지문이 다르다. property의 위치는 그만큼 강하지 않다. 보증하는 것은
+"모듈을 로드한 뒤 그 파일이 바뀌지 않았고(`stat`이 같다), 그 줄에 그 `def`가 있다"까지다.
+
+**버전.** 키를 더하면 minor, 있던 키의 뜻이나 모양을 바꾸면 major를 올린다. 파일 이름과 "덧붙이기만 하고 번호를 올린다"는
+규칙도 이 버전에 든다. 읽는 쪽은 줄마다 판정하고, 자기가 아는 major이고 minor가 그 이상인 줄만 읽으며, 모르는 키는 무시한다.
+
+**한계.**
+
+- 렌더가 끝난 뒤 따로 그려지는 노드리스트에는 `source`가 없다. `live_component_block`의 `let:` 슬롯을 라이브로 그릴 때가
+  그렇다. HTTP 렌더에서는 있다.
+- 위 로더가 만든 `Origin`을 사용자 코드가 다른 `Template`에 넘기면 지문이 그 노드의 것이 아닐 수 있다.
+- `RawSQL`·`extra()`가 문장에 넣은 리터럴은 파일에 남는다.
+
 ## 비용
 
 켠 상태에서 템플릿이 실행한 쿼리 하나에 스택을 훑는 비용이 붙는다. 구현 후 같은 프로세스에서 끔과 켬을 번갈아
