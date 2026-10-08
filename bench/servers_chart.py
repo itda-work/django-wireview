@@ -103,8 +103,9 @@ def cells(result: dict) -> dict[tuple[int, str], Cell]:
     out: dict[tuple[int, str], Cell] = {}
     for server, data in result["servers"].items():
         for items in result["settings"]["items"]:
-            done = [r[f"items_{items}"] for r in data["rounds"] if f"items_{items}" in r]
-            failed = [r["error"] for r in data["rounds"] if "error" in r]
+            sized = [r[f"items_{items}"] for r in data["rounds"] if f"items_{items}" in r]
+            done = [r for r in sized if "error" not in r]
+            failed = [r["error"] for r in sized if "error" in r]
             if not done and not failed:
                 continue
             values = {m: [r[m] for r in done] for m in METRICS}

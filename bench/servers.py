@@ -6,7 +6,7 @@
 
 Each round starts fresh servers, and the order of the servers flips every round so none of
 them always runs on the warmer machine. A round that fails (daphne at the Windows select()
-limit) is recorded with its error instead of ending the run. One JSON per invocation:
+limit) is recorded with its error, per component size, instead of ending the run. One JSON per invocation:
 bench/results/<sha>[-dirty]-servers-<label>[-<suffix>].json, read by bench/servers_chart.py.
 """
 
@@ -119,17 +119,19 @@ def main(argv: list[str] | None = None) -> int:
     for round_ in range(args.rounds):
         for server in servers if round_ % 2 == 0 else reversed(servers):
             print(f"round {round_ + 1}/{args.rounds}: {server}", flush=True)
-            try:
-                measured: dict[str, t.Any] = ws.run(
-                    connections=args.connections,
-                    item_counts=tuple(result["settings"]["items"]),
-                    processes=args.processes,
-                    layer=args.layer,
-                    server=server,
-                )
-            except Exception as exc:  # noqa: BLE001 (a dying server is a result, not the end of the run)
-                measured = {"error": f"{type(exc).__name__}: {exc}"[:2000]}
-                print(f"  failed: {measured['error'][:300]}", flush=True)
+            measured: dict[str, t.Any] = {}
+            for items in result["settings"]["items"]:  # one size at a time: a size that dies keeps the others
+                try:
+                    measured |= ws.run(
+                        connections=args.connections,
+                        item_counts=(items,),
+                        processes=args.processes,
+                        layer=args.layer,
+                        server=server,
+                    )
+                except Exception as exc:  # noqa: BLE001 (a dying server is a result, not the end of the run)
+                    measured[f"items_{items}"] = {"error": f"{type(exc).__name__}: {exc}"[:2000]}
+                    print(f"  items {items} failed: {exc!s:.300}", flush=True)
             result["servers"][server]["rounds"].append(measured)
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(json.dumps(result, indent=1))
