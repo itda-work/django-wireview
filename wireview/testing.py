@@ -38,6 +38,7 @@ from .core import patches, shared_render
 from .core.meta import WireviewMeta
 from .core.rendered import PROTOCOL_VERSION
 from .core.session import SessionView
+from .debug import render_queries
 from .deprecation import warn_deprecated
 from .repository import ComponentRepository
 
@@ -56,6 +57,10 @@ __all__ = (
     "MockWireviewMeta",
 )
 
+
+# A test's queries() block sees the SQL of connections opened from here on, whatever
+# DEBUG_RENDER_QUERIES says: a test module is imported before the first query (#182)
+render_queries.install()
 
 #: Sentinel for "work the boundary out from the URL" -- ``None`` is a real answer
 #: (a page that declares no boundary), so it cannot double as "not given".
@@ -760,12 +765,13 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         # Arguments the handler does not take are dropped, as they are for an event
         # that carries a form's other fields.
         async with self._handling_message():
-            result = handler(**filter_parameters(handler, kwargs))
-            # Handle async handlers
-            import inspect
+            with render_queries.scope("handler", self._component, handler_name):
+                result = handler(**filter_parameters(handler, kwargs))
+                # Handle async handlers
+                import inspect
 
-            if inspect.iscoroutine(result):
-                result = await result
+                if inspect.iscoroutine(result):
+                    result = await result
         await self._update_subscriptions()
         return result
 
@@ -801,6 +807,27 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
     def clear_messages(self) -> None:
         """Clear the list of sent messages."""
         self._wire.sent_messages.clear()
+
+    def queries(self) -> render_queries.Queries:
+        """Collect the SQL the code inside the block runs: ``async with view.queries() as q:``.
+
+        What ``call()``, ``render_diff()`` and ``render()`` run inside it is
+        counted, with the tasks they start until the block ends, whatever
+        ``DEBUG_RENDER_QUERIES`` says (#182). ``q.count`` is how many statements
+        ran; ``q.assert_no_repeats()`` fails when one ran twice or more from the
+        same template line or property -- an N+1 -- and its message lists where
+        each statement came from. Blocks nest; an inner one's statements are the
+        outer one's too.
+
+        Example:
+            view = await mount(Shelf)
+            async with view.queries() as q:
+                await view.call("refresh")
+                await view.render_diff()
+            assert q.count <= 3
+            q.assert_no_repeats()
+        """
+        return render_queries.Queries()
 
 
 async def mount(
@@ -947,9 +974,10 @@ async def _mount(
                 await mounted._let_reset_through(component, await mounted._hold_for_reset(component))  # type: ignore[arg-type]
             # Call joined() if it exists and is async
             if hasattr(component, "joined"):
-                result = component.joined()
-                if hasattr(result, "__await__"):
-                    await result
+                with render_queries.scope("joined", component):
+                    result = component.joined()
+                    if hasattr(result, "__await__"):
+                        await result
             # Then, as the join does when the page's URL has a query, params_changed
             # with it (WireviewSession.command_join). A helper that skipped it had a
             # component mounted with params= miss what every page load runs.

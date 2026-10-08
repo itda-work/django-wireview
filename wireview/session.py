@@ -35,6 +35,7 @@ from .core.rendered import (
 from .core.session import SessionView
 from .core.state import StateMismatch, StatePayload, unsign_envelope
 from .core.transport import PATCH_TOPIC_MAX, Outbound, get_broker, get_patch_hub
+from .debug import render_queries
 from .features import upload_store
 from .features.uploads import upload_group_name
 from .live_component import LiveComponent, run_updates
@@ -931,7 +932,8 @@ class WireviewSession:
             return
         try:
             await self.repo.dispatch_event(id, command, [], kwargs)
-            await self.send_render(component, acknowledge=True, ref=answer)
+            with render_queries.reason(f"event {command}"):
+                await self.send_render(component, acknowledge=True, ref=answer)
         except InvalidEvent as e:
             # No handler ran. The answer still goes out, so the client clears
             # the loading state the event started and settles its ref.
@@ -967,14 +969,16 @@ class WireviewSession:
 
         try:
             # Call the component's hook event handler
-            response = await component.handle_hook_event(hook_id, event, payload)
+            with render_queries.scope("handler", component, f"handle_hook_event({event!r})"):
+                response = await component.handle_hook_event(hook_id, event, payload)
 
             # Send reply if ref was provided (callback expected)
             if ref is not None:
                 await self.send_command("hook_reply", {"ref": ref, "response": response})
 
             # Re-render component if state may have changed
-            await self.send_render(component)
+            with render_queries.reason(f"hook {event}"):
+                await self.send_render(component)
         except Exception:
             await self._crashed(component)
             return
@@ -1364,7 +1368,8 @@ class WireviewSession:
 
         try:
             # Call update callback
-            await component.update(**assigns)
+            with render_queries.scope("handler", component, "update"):
+                await component.update(**assigns)
 
             # Re-render the LiveComponent
             await self.send_render(component)
@@ -1578,11 +1583,12 @@ class WireviewSession:
                 continue
             kwargs = arguments()
             try:
-                await getattr(component, receiver)(channel, **kwargs)
+                with render_queries.scope("handler", component, f"{receiver}({channel!r})"):
+                    await getattr(component, receiver)(channel, **kwargs)
                 # The sessions of this process handling the same message render a
                 # Meta.shared_render component once between them (#176). Only the
                 # render: each one's receiver above ran on its own.
-                with shared_render.handling(message_id):
+                with shared_render.handling(message_id), render_queries.reason(f"{receiver} {channel}"):
                     await self.send_render(component)
             except Exception:
                 await self._crashed(component)
@@ -1723,7 +1729,8 @@ class WireviewSession:
                 continue
             try:
                 await self._hold_patches(child)
-                await child.joined()
+                with render_queries.scope("joined", child):
+                    await child.joined()
             except Exception as e:
                 log.exception(f"Error in {child._name}.joined(): {e}")
             finally:

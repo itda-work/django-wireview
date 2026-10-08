@@ -103,6 +103,11 @@ wireview/
 │                          내비게이션 단언·follow_redirect·follow_push·스트림 검사
 ├── utils.py, log.py       db 헬퍼, 로깅
 ├── debug/sync_detector.py sync/async 전환 중첩 감지 (DEBUG_SYNC_TRANSITIONS)
+├── debug/render_queries.py 렌더 부분별 SQL 귀속(DEBUG_RENDER_QUERIES, None = DEBUG, #182). 굵은 경계(렌더·async property·핸들러·mount·joined·작업·서명)는
+│                          ContextVar 스코프이고, 템플릿 파일:줄과 sync property 이름은 쿼리 순간 스택에서 읽는다(노드 자신의 origin·token).
+│                          래퍼는 execute_wrappers 맨 아래에 한 번 두고 남긴다. 요청을 모아 다른 태스크가 처리하는 길은 capture()·restored()로
+│                          항목마다 요청한 쪽의 상태를 되살린다(_Signer). 태스크를 만드는 새 길은 시작에서 detach()하고 scope("task")를 연다.
+│                          MountedComponent.queries()가 테스트 단언. 계약 표는 tests/test_render_queries.py
 ├── features/              streams.py, presence.py (PresenceMixin), uploads.py (UploadRegistry·토큰 v2),
 │                          hooks.py (앱의 static/<app_label>/hooks/*.js 수집. 페이지가 아니라 프로젝트 단위. 템플릿 디렉터리는 TEMPLATES가 아니라 엔진의 로더에게 묻는다),
 │                          upload_store.py (청크 경로 계산·append·취소 마커·sweep. 워커들이 공유하는 유일한 상태),

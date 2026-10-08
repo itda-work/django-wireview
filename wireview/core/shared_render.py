@@ -60,6 +60,7 @@ from django.utils.html import escape
 from pydantic import BaseModel
 from pydantic_core import to_json
 
+from ..debug import render_queries
 from ..utils import db
 from .rendered import _NESTED_PREFIX, Rendered
 from .watched import Watched
@@ -516,23 +517,25 @@ class _Signer:
     """
 
     def __init__(self) -> None:
-        self.pending: list[tuple[Component, asyncio.Future[str]]] = []
+        #: Each waiting component, its future, and the collecting state it asked in (render_queries.capture)
+        self.pending: list[tuple[Component, asyncio.Future[str], t.Any]] = []
         self.task: asyncio.Task[None] | None = None
 
     async def sign(self, component: Component) -> str:
         future: asyncio.Future[str] = asyncio.get_running_loop().create_future()
-        self.pending.append((component, future))
+        # The trip runs in the task of whoever asked first: each signature's SQL is its own asker's (#182)
+        self.pending.append((component, future, render_queries.capture()))
         if self.task is None:
             self.task = asyncio.get_running_loop().create_task(self._drain())
         return await future
 
     async def _drain(self) -> None:
-        batch: list[tuple[Component, asyncio.Future[str]]] = []
+        batch: list[tuple[Component, asyncio.Future[str], t.Any]] = []
         try:
             while self.pending:
                 batch, self.pending = self.pending, []
-                signed = await db(_sign_each)([component for component, _ in batch])
-                for (_, future), (token, error) in zip(batch, signed, strict=True):
+                signed = await db(_sign_each)([(component, asked) for component, _, asked in batch])
+                for (_, future, _), (token, error) in zip(batch, signed, strict=True):
                     if not future.done():  # its connection went meanwhile
                         if error is None:
                             future.set_result(t.cast(str, token))
@@ -540,7 +543,7 @@ class _Signer:
                             future.set_exception(error)
                 batch = []
         except BaseException as error:  # the trip failed, or the loop is closing: nobody is left waiting
-            for _, future in [*batch, *self.pending]:
+            for _, future, _ in [*batch, *self.pending]:
                 if not future.done():
                     future.set_exception(error if isinstance(error, Exception) else asyncio.CancelledError())
             self.pending = []
@@ -550,14 +553,18 @@ class _Signer:
             self.task = None
 
 
-def _sign_each(components: list[Component]) -> list[tuple[str | None, Exception | None]]:
-    """Each component's token, or what signing it raised: one connection's failure is its own."""
+def _sign_each(components: list[tuple[Component, t.Any]]) -> list[tuple[str | None, Exception | None]]:
+    """Each component's token, or what signing it raised: one connection's failure is its own.
+
+    Each one signs as the context that asked for it (``render_queries.restored``).
+    """
     from .state import sign_state
 
     signed: list[tuple[str | None, Exception | None]] = []
-    for component in components:
+    for component, asked in components:
         try:
-            signed.append((sign_state(component), None))
+            with render_queries.restored(asked), render_queries.scope("sign", component):
+                signed.append((sign_state(component), None))
         except Exception as error:
             signed.append((None, error))
     return signed
@@ -631,7 +638,8 @@ async def _render_for(
             return await _render_own(wire, component, repo, check)
         token = None
         if check:
-            own = await _render_own(wire, component, repo, check)
+            with render_queries.scope("render", component, "verify render, taken from another connection"):
+                own = await _render_own(wire, component, repo, check)
             _compare(component, taken, own[0] if own is not None else None)
             token = own[1] if own is not None else None
         elif taken.state_path is not None:

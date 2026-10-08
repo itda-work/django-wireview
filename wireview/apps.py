@@ -39,6 +39,13 @@ class WireviewConfig(AppConfig):
         # again (#180). Returns at once unless REJOIN_ON_TEMPLATE_CHANGE (DEBUG).
         template_reload.connect()
 
+        # Which template line ran which SQL (#182): the wrapper goes on every connection
+        # from here, when DEBUG_RENDER_QUERIES (DEBUG) is on. Off, no connection gets one.
+        from .debug import render_queries
+
+        if render_queries.enabled():
+            render_queries.install()
+
         # Components must be imported before the checks run
         register_checks()
 

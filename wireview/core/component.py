@@ -18,6 +18,7 @@ from pydantic.errors import PydanticUserError
 
 from .. import utils
 from ..async_result import AsyncResult
+from ..debug import render_queries
 from ..schemas import ModelAction
 from ..utils import db
 from . import handlers, model_state, render_reads
@@ -43,6 +44,12 @@ log = logging.getLogger("wireview")
 ComponentState = dict[str, t.Any]
 MessagePayload = dict[str, t.Any]
 P = t.ParamSpec("P")
+
+
+def _coroutine_name(coro: t.Any) -> str:
+    """A coroutine's name for a diagnostic, without running any code of the object's own (``__str__``)."""
+    name = getattr(coro, "__qualname__", None)
+    return name if isinstance(name, str) else type(coro).__qualname__
 
 
 def _log_failure(message: str, *args: object) -> t.Callable[["asyncio.Task[t.Any]"], None]:
@@ -674,9 +681,10 @@ class Component(BaseModel):
         Every path that tells a component its URL changed comes through here, so
         an attached hook cannot be skipped by one of them (#110).
         """
-        if (await self._run_hooks("handle_params", params, uri)).get("halt"):
-            return
-        await self.params_changed(params, uri)
+        with render_queries.scope("handler", self, "params_changed"):
+            if (await self._run_hooks("handle_params", params, uri)).get("halt"):
+                return
+            await self.params_changed(params, uri)
 
     async def _mount(
         self,
@@ -711,9 +719,10 @@ class Component(BaseModel):
 
         self.wire.has_mounted = True
         try:
-            result = await self._run_live_session_gate(params, session)
-            if not result.get("halt"):
-                result = await self._run_on_mount_hooks(params, session)
+            with render_queries.scope("mount", self):
+                result = await self._run_live_session_gate(params, session)
+                if not result.get("halt"):
+                    result = await self._run_on_mount_hooks(params, session)
         except BaseException:
             # A hook that crashes has not authorized anything. The flag is set
             # before the exception travels so that every caller's cleanup path
@@ -1065,10 +1074,14 @@ class Component(BaseModel):
         await self.cancel_async(name)
 
         async def run_and_handle() -> None:
+            # A task of its own: what it runs is not the handler's that started it (#182)
+            render_queries.detach()
             try:
                 result: AsyncResult[t.Any]
                 try:
-                    result = AsyncResult.success(await coro)
+                    with render_queries.scope("task", self, name):
+                        value = await coro
+                    result = AsyncResult.success(value)
                 except asyncio.CancelledError:
                     # Replaced, cancel_async(), or the component left: nothing
                     # to hand over and nothing to render.
@@ -1084,7 +1097,8 @@ class Component(BaseModel):
                 self._assign_tasks.add(task)
                 task.add_done_callback(self._assign_tasks.discard)
                 try:
-                    await self.handle_async(name, result)
+                    with render_queries.scope("handler", self, f"handle_async({name!r})"):
+                        await self.handle_async(name, result)
                 except Exception:
                     # Raised inside a task nobody awaits, it was never even logged,
                     # and the render was skipped. Recover as for a raising handler (#94).
@@ -1210,8 +1224,11 @@ class Component(BaseModel):
 
         async def run_and_update() -> None:
             nonlocal result
+            # A task of its own: what it runs is not the handler's that started it (#182)
+            render_queries.detach()
             try:
-                value = await coro
+                with render_queries.scope("task", self, lambda: f"assign_async({_coroutine_name(coro)})"):
+                    value = await coro
                 result.state = AsyncResult.success(value).state
                 result.result = value
             except asyncio.CancelledError:
@@ -1409,7 +1426,7 @@ class Component(BaseModel):
         context = {"item": item, "this": self}
         # Read off the loop like the component's own render, and kept apart from
         # its background work the same way (#138)
-        with self.wire._render_gate.rendering():
+        with self.wire._render_gate.rendering(), render_queries.scope("render", self, "stream item"):
             return await db(template.render)(context)
 
     # Upload operations

@@ -37,6 +37,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone, translation
 
 from .. import telemetry
+from ..debug import render_queries
 from ..utils import db
 from .transport import get_broker, require_patch_topic
 from .watched import Watched
@@ -221,7 +222,8 @@ class Broadcast:
         if not self._ops:
             return
         rendering = any(op[0] == "insert" for op in self._ops)
-        frames = await db(self._frames)() if rendering else self._frames()
+        with render_queries.scope("broadcast", None, f"{self.target.__qualname__} {self.topic!r}"):
+            frames = await db(self._frames)() if rendering else self._frames()
         message = {"type": "wireview.patch", "target": self.target._fqn, "topic": self.topic, "frames": frames}
         broker = get_broker()
         with telemetry.span(telemetry.broadcast_published, sender=type(broker), topic=self.topic, kind="patch") as span:

@@ -16,6 +16,7 @@ from .core import handlers
 from .core.component import Component, MessagePayload
 from .core.session import SessionView
 from .core.state import StateMismatch, state_of
+from .debug import render_queries
 from .live_component import LiveComponent
 from .utils import filter_parameters
 
@@ -487,7 +488,8 @@ class ComponentRepository:
 
         for component in pending:
             component.wire.enter_pending_mode()
-            await component.joined()
+            with render_queries.scope("joined", component):
+                await component.joined()
             result.append(component)
 
         # Handle existing LiveComponents with changed props (call update)
@@ -550,7 +552,8 @@ class ComponentRepository:
             if mounted:
                 if before_joined is not None:
                     await before_joined(component)
-                await component.joined()
+                with render_queries.scope("joined", component):
+                    await component.joined()
             else:
                 self.abandon(component)
         finally:
@@ -772,20 +775,21 @@ class ComponentRepository:
         if not self._is_user_defined_method(component, command):
             raise InvalidEvent(f"Cannot call base class method: {command}")
 
-        # An attached handle_event hook sees the event first and may stop it (#110).
-        if (await component._run_hooks("handle_event", command, kwargs)).get("halt"):
-            return component
+        with render_queries.scope("handler", component, command):
+            # An attached handle_event hook sees the event first and may stop it (#110).
+            if (await component._run_hooks("handle_event", command, kwargs)).get("halt"):
+                return component
 
-        # Handler methods are async (defined in Component subclasses)
-        with telemetry.span(
-            telemetry.event_handled,
-            sender=type(component),
-            component_id=component.id,
-            component_name=component._name,
-            event=command,
-        ) as span:
-            span.measure(kwargs)
-            await handler(*args, **filter_parameters(handler, kwargs))  # type: ignore[misc]
+            # Handler methods are async (defined in Component subclasses)
+            with telemetry.span(
+                telemetry.event_handled,
+                sender=type(component),
+                component_id=component.id,
+                component_name=component._name,
+                event=command,
+            ) as span:
+                span.measure(kwargs)
+                await handler(*args, **filter_parameters(handler, kwargs))  # type: ignore[misc]
         return component
 
     @staticmethod

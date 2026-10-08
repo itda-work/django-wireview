@@ -68,6 +68,21 @@ WIREVIEW = {
 }
 ```
 
+### N+1 찾기
+
+렌더가 낸 쿼리를 템플릿 줄과 property로 나눠 본다. `DEBUG`에서는 기본으로 켜져 있고(`DEBUG_RENDER_QUERIES`),
+로거 `wireview.queries`의 레벨을 `DEBUG`로 두면 렌더·핸들러·작업마다 한 덩어리가 남는다. 같은 줄에서 같은 SQL이
+세 번 이상 돌면 `WARNING`이다.
+
+```text
+WARNING wireview.queries render Shelf#shelf (join): 12 queries, 1 repeated
+  shelf/child.html:9  {{ }}                           3×  SELECT … FROM "quiz_question" WHERE … <- repeated
+```
+
+그 줄의 관계를 `select_related()`·`prefetch_related()`로 미리 읽고(아래 3), 테스트에 `view.queries()`의
+`assert_no_repeats()`를 둬 되돌아오지 않게 한다. property의 쿼리는 줄이 아니라 `property <이름>`으로 나온다 —
+렌더는 템플릿이 쓰지 않는 property도 읽는다. 자세한 것은 [렌더의 SQL 찾기](./features/render-queries.md).
+
 ## 권장 사항
 
 ### 1. 데이터는 `joined()`에서 미리 읽는다

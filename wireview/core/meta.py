@@ -18,6 +18,7 @@ from django.utils.html import format_html
 from django.utils.safestring import SafeText, mark_safe
 
 from .. import telemetry
+from ..debug import render_queries
 from ..utils import db
 from . import shared_render
 from .render_gate import RenderGate
@@ -424,13 +425,16 @@ class WireviewMeta:
             return None
 
         shared = shared_render.declared(component)
-        with telemetry.span(
-            telemetry.component_rendered,
-            sender=type(component),
-            component_id=component.id,
-            component_name=component._name,
-            live=True,
-        ) as render_span:
+        with (
+            render_queries.render_scope(component, "join" if first else "render"),
+            telemetry.span(
+                telemetry.component_rendered,
+                sender=type(component),
+                component_id=component.id,
+                component_name=component._name,
+                live=True,
+            ) as render_span,
+        ):
             rendered: Rendered | None = None
             if shared:
                 # Rendered once for the connections handling the same broadcast (#176)
@@ -542,13 +546,16 @@ class WireviewMeta:
         """
         from ..template_engine import render_with_markers
 
-        with telemetry.span(
-            telemetry.component_rendered,
-            sender=type(component),
-            component_id=component.id,
-            component_name=component._name,
-            live=repo.is_live,
-        ) as span:
+        with (
+            render_queries.nested_render_scope(component),
+            telemetry.span(
+                telemetry.component_rendered,
+                sender=type(component),
+                component_id=component.id,
+                component_name=component._name,
+                live=repo.is_live,
+            ) as span,
+        ):
             html = None
             self.template_evaluated = False
             if not self.channel_name and self._redirected_to:
@@ -765,7 +772,8 @@ class WireviewMeta:
     async def _await_properties(context: Context) -> None:
         for name, value in context.items():
             if iscoroutine(value):
-                context[name] = await value
+                with render_queries.scope("property", context.get("this"), name):
+                    context[name] = await value
 
     @staticmethod
     def _read(component: "Component", attr_name: str, reads: RenderReads | None) -> t.Any:
@@ -944,11 +952,12 @@ class WireviewMeta:
 
         context: Context = {}
 
-        def _run_coro(coro: t.Coroutine) -> t.Any:
+        def _run_coro(coro: t.Coroutine, name: str) -> t.Any:
             """Helper to run a coroutine object synchronously."""
 
             async def awaiter():
-                return await coro
+                with render_queries.scope("property", component, name):
+                    return await coro
 
             return async_to_sync(awaiter)()
 
@@ -966,7 +975,7 @@ class WireviewMeta:
                             attr_name,
                             type(component).__name__,
                         )
-                        attr = _run_coro(attr)
+                        attr = _run_coro(attr, attr_name)
                     context[attr_name] = attr
 
         # Add slots to context (use empty container if not provided)

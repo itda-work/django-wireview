@@ -83,6 +83,15 @@ sync로 쓰면 실행되지 않고 `manage.py check`가 `wireview.W002`로 알�
 | `await send_update(live_component_id, **assigns)` | 자식 LiveComponent에 값을 준다 |
 | `await LiveComponent.send_to_parent(event, **kwargs)` | 부모의 핸들러를 부른다 |
 
+## 렌더가 읽는 것
+
+렌더는 템플릿을 그리기 전에 컴포넌트의 **공개 속성을 모두** 읽어 템플릿 컨텍스트에 넣는다. 밑줄로 시작하지 않는
+필드와 property 전부이고, 메서드는 빠진다. 템플릿이 그 이름을 쓰는지는 보지 않는다. 그래서 템플릿이 쓰지 않는
+property도 렌더마다 계산되고, 그 안의 쿼리도 렌더마다 돈다. 템플릿에서 쓰지 않을 값을 계산하는 property는
+밑줄 이름(`_stats`)으로 두거나 메서드로 만든다. 렌더가 무엇을 쿼리하는지는 [렌더의 SQL 찾기](./render-queries.md)가
+property 이름으로 보여 준다. 읽기 자체를 템플릿이 쓰는 이름으로 좁히는 것은
+[#187](https://github.com/itda-work/django-wireview/issues/187)에서 검토한다.
+
 ## 내부
 
 밑줄이 없지만 공개가 아닌 것: `LiveComponent.myself`. Pydantic `BaseModel`에서 온 멤버

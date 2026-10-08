@@ -32,6 +32,7 @@
 /wireview/reference/live-session/
 /wireview/reference/navigation/
 /wireview/reference/optimistic-ui/
+/wireview/reference/render-queries/
 /wireview/reference/session/
 /wireview/reference/settings/
 /wireview/reference/shared-render/

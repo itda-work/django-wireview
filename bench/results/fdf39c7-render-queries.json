@@ -1,0 +1,892 @@
+{
+  "what": "render-part SQL attribution (#182), docs/design/render-part-queries.md §4-4",
+  "machine": "Apple M5 Pro, Python 3.12.14, Django 6.0, testproj, SQLite file; load average 7-9 from other work during every run",
+  "base_tree": "git archive of fdf39c7 (main before #182)",
+  "compare_base_off_on": {
+    "unit": "µs per render: each run the median of 15 rounds x 40, the summary the median of the runs",
+    "clocks": {
+      "wall": "time.perf_counter",
+      "cpu": "time.process_time (every thread of the process)"
+    },
+    "runs": {
+      "base": [
+        {
+          "no queries": {
+            "wall": 288.885401096195,
+            "cpu": 268.05000000000024
+          },
+          "template SQL x7": {
+            "wall": 1042.5541491713375,
+            "cpu": 1022.1249999999959
+          },
+          "sync property SQL x1": {
+            "wall": 528.6656261887401,
+            "cpu": 507.1500000000007
+          },
+          "async property SQL x1": {
+            "wall": 686.8625001516193,
+            "cpu": 624.9499999999963
+          }
+        },
+        {
+          "no queries": {
+            "wall": 286.19792428798974,
+            "cpu": 266.17499999999905
+          },
+          "template SQL x7": {
+            "wall": 1016.7000000365078,
+            "cpu": 997.3750000000005
+          },
+          "sync property SQL x1": {
+            "wall": 515.6375002115965,
+            "cpu": 495.49999999999875
+          },
+          "async property SQL x1": {
+            "wall": 682.2812487371266,
+            "cpu": 617.8499999999976
+          }
+        },
+        {
+          "no queries": {
+            "wall": 287.0447759050876,
+            "cpu": 266.6249999999995
+          },
+          "template SQL x7": {
+            "wall": 1030.6541749741882,
+            "cpu": 1010.4749999999996
+          },
+          "sync property SQL x1": {
+            "wall": 519.0114723518491,
+            "cpu": 497.7250000000044
+          },
+          "async property SQL x1": {
+            "wall": 666.423951042816,
+            "cpu": 604.4500000000008
+          }
+        },
+        {
+          "no queries": {
+            "wall": 353.7687472999096,
+            "cpu": 320.75000000000017
+          },
+          "template SQL x7": {
+            "wall": 1955.9541484341025,
+            "cpu": 1893.6000000000008
+          },
+          "sync property SQL x1": {
+            "wall": 562.4031240586191,
+            "cpu": 536.7750000000004
+          },
+          "async property SQL x1": {
+            "wall": 770.0333255343139,
+            "cpu": 697.5749999999948
+          }
+        },
+        {
+          "no queries": {
+            "wall": 539.8916488047689,
+            "cpu": 450.1000000000005
+          },
+          "template SQL x7": {
+            "wall": 1736.0468744300306,
+            "cpu": 1691.1249999999989
+          },
+          "sync property SQL x1": {
+            "wall": 904.5396000146866,
+            "cpu": 870.9499999999981
+          },
+          "async property SQL x1": {
+            "wall": 1116.5093746967614,
+            "cpu": 1039.5500000000002
+          }
+        }
+      ],
+      "off": [
+        {
+          "no queries": {
+            "wall": 288.44375046901405,
+            "cpu": 268.07499999999817
+          },
+          "template SQL x7": {
+            "wall": 1022.7906226646156,
+            "cpu": 1003.7500000000006
+          },
+          "sync property SQL x1": {
+            "wall": 513.410399435088,
+            "cpu": 492.94999999999754
+          },
+          "async property SQL x1": {
+            "wall": 735.9010225627571,
+            "cpu": 669.6250000000015
+          }
+        },
+        {
+          "no queries": {
+            "wall": 470.8145745098591,
+            "cpu": 398.5500000000003
+          },
+          "template SQL x7": {
+            "wall": 1463.2687496487051,
+            "cpu": 1397.9749999999958
+          },
+          "sync property SQL x1": {
+            "wall": 1039.0728944912553,
+            "cpu": 1002.8999999999954
+          },
+          "async property SQL x1": {
+            "wall": 976.889574667439,
+            "cpu": 902.2749999999969
+          }
+        },
+        {
+          "no queries": {
+            "wall": 294.26980181597173,
+            "cpu": 274.07500000000005
+          },
+          "template SQL x7": {
+            "wall": 1214.9031274020672,
+            "cpu": 1191.724999999999
+          },
+          "sync property SQL x1": {
+            "wall": 579.1010509710759,
+            "cpu": 556.325000000002
+          },
+          "async property SQL x1": {
+            "wall": 698.4885490965098,
+            "cpu": 635.3249999999977
+          }
+        },
+        {
+          "no queries": {
+            "wall": 372.42292310111225,
+            "cpu": 337.17500000000064
+          },
+          "template SQL x7": {
+            "wall": 1348.171877907589,
+            "cpu": 1315.275000000002
+          },
+          "sync property SQL x1": {
+            "wall": 563.2729211356491,
+            "cpu": 538.8749999999998
+          },
+          "async property SQL x1": {
+            "wall": 726.2354250997305,
+            "cpu": 662.625
+          }
+        },
+        {
+          "no queries": {
+            "wall": 356.02604621089995,
+            "cpu": 324.9000000000002
+          },
+          "template SQL x7": {
+            "wall": 1734.7864515613765,
+            "cpu": 1692.4749999999988
+          },
+          "sync property SQL x1": {
+            "wall": 683.8552246335894,
+            "cpu": 658.750000000008
+          },
+          "async property SQL x1": {
+            "wall": 1196.8916514888406,
+            "cpu": 1086.0250000000015
+          }
+        }
+      ],
+      "on": [
+        {
+          "no queries": {
+            "wall": 301.0833519510925,
+            "cpu": 279.50000000000057
+          },
+          "template SQL x7": {
+            "wall": 1097.1499956212938,
+            "cpu": 1077.6249999999986
+          },
+          "sync property SQL x1": {
+            "wall": 532.4781232047826,
+            "cpu": 512.1250000000022
+          },
+          "async property SQL x1": {
+            "wall": 757.2385249659419,
+            "cpu": 693.8500000000014
+          }
+        },
+        {
+          "no queries": {
+            "wall": 320.1239509508014,
+            "cpu": 292.8249999999993
+          },
+          "template SQL x7": {
+            "wall": 1269.2958523984998,
+            "cpu": 1246.1250000000034
+          },
+          "sync property SQL x1": {
+            "wall": 553.4916475880891,
+            "cpu": 531.7999999999989
+          },
+          "async property SQL x1": {
+            "wall": 813.3895753417164,
+            "cpu": 746.749999999996
+          }
+        },
+        {
+          "no queries": {
+            "wall": 294.02499785646796,
+            "cpu": 273.0250000000004
+          },
+          "template SQL x7": {
+            "wall": 1184.25625259988,
+            "cpu": 1160.2749999999994
+          },
+          "sync property SQL x1": {
+            "wall": 564.6489502396435,
+            "cpu": 540.6000000000022
+          },
+          "async property SQL x1": {
+            "wall": 699.108320986852,
+            "cpu": 638.5250000000009
+          }
+        },
+        {
+          "no queries": {
+            "wall": 293.6750010121614,
+            "cpu": 273.37500000000074
+          },
+          "template SQL x7": {
+            "wall": 1301.0104012209922,
+            "cpu": 1275.0499999999997
+          },
+          "sync property SQL x1": {
+            "wall": 746.6302020475268,
+            "cpu": 715.6750000000045
+          },
+          "async property SQL x1": {
+            "wall": 1075.4208487924188,
+            "cpu": 968.3500000000067
+          }
+        },
+        {
+          "no queries": {
+            "wall": 481.7478999029845,
+            "cpu": 419.3499999999989
+          },
+          "template SQL x7": {
+            "wall": 2120.538550661877,
+            "cpu": 1976.3749999999968
+          },
+          "sync property SQL x1": {
+            "wall": 1026.0468756314367,
+            "cpu": 934.2750000000067
+          },
+          "async property SQL x1": {
+            "wall": 1467.2760269604623,
+            "cpu": 1345.375000000004
+          }
+        }
+      ]
+    },
+    "summary": {
+      "wall": {
+        "no queries": {
+          "base": 289,
+          "off": 356,
+          "on": 301,
+          "base range": [
+            286,
+            540
+          ],
+          "off range": [
+            288,
+            471
+          ],
+          "on range": [
+            294,
+            482
+          ],
+          "on - base, per pair": [
+            12,
+            34,
+            7,
+            -60,
+            -58
+          ],
+          "off - base, per pair": [
+            0,
+            185,
+            7,
+            19,
+            -184
+          ]
+        },
+        "template SQL x7": {
+          "base": 1043,
+          "off": 1348,
+          "on": 1269,
+          "base range": [
+            1017,
+            1956
+          ],
+          "off range": [
+            1023,
+            1735
+          ],
+          "on range": [
+            1097,
+            2121
+          ],
+          "on - base, per pair": [
+            55,
+            253,
+            154,
+            -655,
+            384
+          ],
+          "off - base, per pair": [
+            -20,
+            447,
+            184,
+            -608,
+            -1
+          ]
+        },
+        "sync property SQL x1": {
+          "base": 529,
+          "off": 579,
+          "on": 565,
+          "base range": [
+            516,
+            905
+          ],
+          "off range": [
+            513,
+            1039
+          ],
+          "on range": [
+            532,
+            1026
+          ],
+          "on - base, per pair": [
+            4,
+            38,
+            46,
+            184,
+            122
+          ],
+          "off - base, per pair": [
+            -15,
+            523,
+            60,
+            1,
+            -221
+          ]
+        },
+        "async property SQL x1": {
+          "base": 687,
+          "off": 736,
+          "on": 813,
+          "base range": [
+            666,
+            1117
+          ],
+          "off range": [
+            698,
+            1197
+          ],
+          "on range": [
+            699,
+            1467
+          ],
+          "on - base, per pair": [
+            70,
+            131,
+            33,
+            305,
+            351
+          ],
+          "off - base, per pair": [
+            49,
+            295,
+            32,
+            -44,
+            80
+          ]
+        }
+      },
+      "cpu": {
+        "no queries": {
+          "base": 268,
+          "off": 325,
+          "on": 280,
+          "base range": [
+            266,
+            450
+          ],
+          "off range": [
+            268,
+            399
+          ],
+          "on range": [
+            273,
+            419
+          ],
+          "on - base, per pair": [
+            11,
+            27,
+            6,
+            -47,
+            -31
+          ],
+          "off - base, per pair": [
+            0,
+            132,
+            7,
+            16,
+            -125
+          ]
+        },
+        "template SQL x7": {
+          "base": 1022,
+          "off": 1315,
+          "on": 1246,
+          "base range": [
+            997,
+            1894
+          ],
+          "off range": [
+            1004,
+            1692
+          ],
+          "on range": [
+            1078,
+            1976
+          ],
+          "on - base, per pair": [
+            56,
+            249,
+            150,
+            -619,
+            285
+          ],
+          "off - base, per pair": [
+            -18,
+            401,
+            181,
+            -578,
+            1
+          ]
+        },
+        "sync property SQL x1": {
+          "base": 507,
+          "off": 556,
+          "on": 541,
+          "base range": [
+            495,
+            871
+          ],
+          "off range": [
+            493,
+            1003
+          ],
+          "on range": [
+            512,
+            934
+          ],
+          "on - base, per pair": [
+            5,
+            36,
+            43,
+            179,
+            63
+          ],
+          "off - base, per pair": [
+            -14,
+            507,
+            59,
+            2,
+            -212
+          ]
+        },
+        "async property SQL x1": {
+          "base": 625,
+          "off": 670,
+          "on": 747,
+          "base range": [
+            604,
+            1040
+          ],
+          "off range": [
+            635,
+            1086
+          ],
+          "on range": [
+            639,
+            1345
+          ],
+          "on - base, per pair": [
+            69,
+            129,
+            34,
+            271,
+            306
+          ],
+          "off - base, per pair": [
+            45,
+            284,
+            31,
+            -35,
+            46
+          ]
+        }
+      }
+    }
+  },
+  "paired_off_on": [
+    {
+      "unit": "µs per render, wall clock. Each run: off and on in turns, 15 rounds x 40 each; 'on - off' is the median of the rounds' differences. The summary is the range over the runs",
+      "runs": [
+        {
+          "no queries": {
+            "off": 315.12395362369716,
+            "on": 316.82707485742867,
+            "on - off": 7.492699660360792
+          },
+          "template SQL x7": {
+            "off": 1392.8604254033417,
+            "on": 1411.2791744992137,
+            "on - off": 64.48647473007458
+          },
+          "sync property SQL x1": {
+            "off": 691.4489495102316,
+            "on": 694.9666771106422,
+            "on - off": 19.7187764570117
+          },
+          "async property SQL x1": {
+            "off": 882.783328415826,
+            "on": 912.0416478253901,
+            "on - off": 33.769791480153884
+          }
+        },
+        {
+          "no queries": {
+            "off": 317.41770217195153,
+            "on": 321.87500037252903,
+            "on - off": 6.617692997679147
+          },
+          "template SQL x7": {
+            "off": 1374.581252457574,
+            "on": 1490.9114746842533,
+            "on - off": 77.94269477017207
+          },
+          "sync property SQL x1": {
+            "off": 845.2489506453276,
+            "on": 799.9052002560347,
+            "on - off": -16.215629875659964
+          },
+          "async property SQL x1": {
+            "off": 864.9302239064127,
+            "on": 940.2166469953954,
+            "on - off": 75.28642308898273
+          }
+        },
+        {
+          "no queries": {
+            "off": 353.40727772563696,
+            "on": 359.044800279662,
+            "on - off": 7.221853593364358
+          },
+          "template SQL x7": {
+            "off": 1319.0302008297294,
+            "on": 1452.387496829033,
+            "on - off": 135.16249600797892
+          },
+          "sync property SQL x1": {
+            "off": 617.3531233798712,
+            "on": 630.6812516413629,
+            "on - off": -0.7281545549630902
+          },
+          "async property SQL x1": {
+            "off": 718.7979237642139,
+            "on": 717.3416786827147,
+            "on - off": 10.84897085092964
+          }
+        },
+        {
+          "no queries": {
+            "off": 302.78227059170604,
+            "on": 305.85522181354463,
+            "on - off": 1.9478960894047996
+          },
+          "template SQL x7": {
+            "off": 1098.5489469021559,
+            "on": 1166.0104268230498,
+            "on - off": 56.68124649673692
+          },
+          "sync property SQL x1": {
+            "off": 509.0624967124313,
+            "on": 526.2093734927475,
+            "on - off": 15.145831275731238
+          },
+          "async property SQL x1": {
+            "off": 856.4052055589855,
+            "on": 862.5218702945858,
+            "on - off": 27.42605283856392
+          }
+        },
+        {
+          "no queries": {
+            "off": 308.21042601019144,
+            "on": 310.7875003479421,
+            "on - off": 0.13852841220792855
+          },
+          "template SQL x7": {
+            "off": 1293.4083526488394,
+            "on": 1396.1000018753111,
+            "on - off": 119.75519591942417
+          },
+          "sync property SQL x1": {
+            "off": 629.7739455476403,
+            "on": 624.3968731723726,
+            "on - off": -4.980200901627605
+          },
+          "async property SQL x1": {
+            "off": 897.0479015260935,
+            "on": 835.1395779754966,
+            "on - off": -3.063573967665369
+          }
+        }
+      ],
+      "summary": {
+        "no queries": {
+          "off": [
+            303,
+            353
+          ],
+          "on": [
+            306,
+            359
+          ],
+          "on - off": [
+            0,
+            7
+          ]
+        },
+        "template SQL x7": {
+          "off": [
+            1099,
+            1393
+          ],
+          "on": [
+            1166,
+            1491
+          ],
+          "on - off": [
+            57,
+            135
+          ]
+        },
+        "sync property SQL x1": {
+          "off": [
+            509,
+            845
+          ],
+          "on": [
+            526,
+            800
+          ],
+          "on - off": [
+            -16,
+            20
+          ]
+        },
+        "async property SQL x1": {
+          "off": [
+            719,
+            897
+          ],
+          "on": [
+            717,
+            940
+          ],
+          "on - off": [
+            -3,
+            75
+          ]
+        }
+      }
+    },
+    {
+      "unit": "µs per render, wall clock. Each run: off and on in turns, 15 rounds x 40 each; 'on - off' is the median of the rounds' differences. The summary is the range over the runs",
+      "runs": [
+        {
+          "no queries": {
+            "off": 312.56352085620165,
+            "on": 323.36042495444417,
+            "on - off": -0.35832636058330536
+          },
+          "template SQL x7": {
+            "off": 1193.636452080682,
+            "on": 1270.8583264611661,
+            "on - off": 142.47290091589076
+          },
+          "sync property SQL x1": {
+            "off": 583.4541749209166,
+            "on": 622.0323033630848,
+            "on - off": 13.519800268113526
+          },
+          "async property SQL x1": {
+            "off": 1048.4322963748127,
+            "on": 1027.1906270645559,
+            "on - off": -12.58124830201264
+          }
+        },
+        {
+          "no queries": {
+            "off": 297.5541749037802,
+            "on": 300.813524518162,
+            "on - off": -0.04375469870866429
+          },
+          "template SQL x7": {
+            "off": 1219.280227087438,
+            "on": 1303.0937523581088,
+            "on - off": 106.37185187079012
+          },
+          "sync property SQL x1": {
+            "off": 558.423949405551,
+            "on": 592.2208249103278,
+            "on - off": 15.767698641866446
+          },
+          "async property SQL x1": {
+            "off": 737.5156274065375,
+            "on": 752.9177004471421,
+            "on - off": 11.60207320936022
+          }
+        },
+        {
+          "no queries": {
+            "off": 304.93750236928463,
+            "on": 312.22187681123614,
+            "on - off": 7.284374441951492
+          },
+          "template SQL x7": {
+            "off": 1140.0812480133027,
+            "on": 1230.0218746531755,
+            "on - off": 71.94065256044269
+          },
+          "sync property SQL x1": {
+            "off": 678.8489525206387,
+            "on": 816.3135265931487,
+            "on - off": 10.829151142388495
+          },
+          "async property SQL x1": {
+            "off": 820.1187534723431,
+            "on": 851.1249965522438,
+            "on - off": 11.011451715603405
+          }
+        },
+        {
+          "no queries": {
+            "off": 307.05207609571517,
+            "on": 310.63230126164854,
+            "on - off": 4.440621705725833
+          },
+          "template SQL x7": {
+            "off": 1207.1989476680756,
+            "on": 1319.0666504669935,
+            "on - off": 78.77917378209544
+          },
+          "sync property SQL x1": {
+            "off": 598.7541517242789,
+            "on": 633.9750019833446,
+            "on - off": 30.986475758254507
+          },
+          "async property SQL x1": {
+            "off": 928.8031258620322,
+            "on": 802.7801988646388,
+            "on - off": -33.38957903906701
+          }
+        },
+        {
+          "no queries": {
+            "off": 313.5895763989538,
+            "on": 310.5979005340487,
+            "on - off": 4.192721098661444
+          },
+          "template SQL x7": {
+            "off": 1348.3989518135786,
+            "on": 1366.8520783539861,
+            "on - off": 51.55624239705503
+          },
+          "sync property SQL x1": {
+            "off": 655.8302033226937,
+            "on": 654.5104028191417,
+            "on - off": -1.31980050355196
+          },
+          "async property SQL x1": {
+            "off": 864.2260276246816,
+            "on": 929.3437527958304,
+            "on - off": 3.7396035622805575
+          }
+        }
+      ],
+      "summary": {
+        "no queries": {
+          "off": [
+            298,
+            314
+          ],
+          "on": [
+            301,
+            323
+          ],
+          "on - off": [
+            0,
+            7
+          ]
+        },
+        "template SQL x7": {
+          "off": [
+            1140,
+            1348
+          ],
+          "on": [
+            1230,
+            1367
+          ],
+          "on - off": [
+            52,
+            142
+          ]
+        },
+        "sync property SQL x1": {
+          "off": [
+            558,
+            679
+          ],
+          "on": [
+            592,
+            816
+          ],
+          "on - off": [
+            -1,
+            31
+          ]
+        },
+        "async property SQL x1": {
+          "off": [
+            738,
+            1048
+          ],
+          "on": [
+            753,
+            1027
+          ],
+          "on - off": [
+            -33,
+            12
+          ]
+        }
+      }
+    }
+  ]
+}

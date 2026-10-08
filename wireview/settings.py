@@ -60,6 +60,10 @@ DEFAULT: dict[str, t.Any] = {
     # process join its components again (wireview.core.template_reload, #180).
     # None = DEBUG
     "REJOIN_ON_TEMPLATE_CHANGE": None,
+    # Attribute each statement a render, handler or task runs to its template line or
+    # property, and log it to wireview.queries (wireview.debug.render_queries, #182).
+    # None = DEBUG
+    "DEBUG_RENDER_QUERIES": None,
     # Load each app's static/<app_label>/hooks/*.js from {% wireview_header %}
     "COLLECT_HOOKS": True,
     # Client reconnect backoff, in milliseconds (static/wireview/reconnect.mjs, #124).
@@ -157,6 +161,7 @@ if t.TYPE_CHECKING:
     AUTO_GENERATE_STUBS: bool
     TELEMETRY: bool
     REJOIN_ON_TEMPLATE_CHANGE: bool | None
+    DEBUG_RENDER_QUERIES: bool | None
     COLLECT_HOOKS: bool
     RECONNECT_MIN_DELAY_MS: int
     RECONNECT_JITTER_MS: int

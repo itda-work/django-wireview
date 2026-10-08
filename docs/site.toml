@@ -310,6 +310,10 @@ source = "docs/features/editor-support.md"
 slug = "editor-support"
 
 [[sections.pages]]
+source = "docs/features/render-queries.md"
+slug = "render-queries"
+
+[[sections.pages]]
 source = "docs/features/telemetry.md"
 slug = "telemetry"
 

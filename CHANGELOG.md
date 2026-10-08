@@ -12,6 +12,27 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- In development, each statement a render, handler or task ran is told with the template line or the
+  property it came from (#182). With `DEBUG_RENDER_QUERIES` (`None` follows `DEBUG`), the logger
+  `wireview.queries` gets one block per outermost piece of work that ran SQL -- a render, a handler, a
+  `joined()`, a mount, a `start_async`/`assign_async` task. Work inside another (a nested component's
+  render, an async property, the state signature a render asked for, a verify render) is a marked row in
+  the outer block. `DEBUG`, or `WARNING` when one statement ran three times from the same place -- an
+  N+1: the same template line whichever instance drew it, the same property of the same defining class,
+  or the same kind of work of the same class and name. The line is the node's own (`origin`, `token.lineno`): the file that wrote
+  the block under inheritance, the included file, a function component's template, the filling file of
+  a slot. A property the render's context read is told by its name, an async property by its scope.
+  Concurrent connections and requests keep their own; a batch that signs many connections' tokens gives
+  each signature to the connection that asked. Tests assert with `MountedComponent.queries()`:
+  `async with view.queries() as q:`, then `q.count` and `q.assert_no_repeats()`, whatever the setting
+  says. A wrapper goes at the bottom of each connection's `execute_wrappers` once the setting is on at
+  startup, `wireview.testing` is imported or a `queries()` block is entered, and stays. With the setting
+  off it collects only for a context whose `queries()` block is still open: a task that outlives its
+  block stops collecting and logs nothing. A process with the setting off that never imported
+  `wireview.testing` has no wrapper; its boundaries still read the setting.
+
 ### Changed
 
 - The release workflow starts on tags `v<digit>...` only (#163). `v*` matched `vscode-v<version>`

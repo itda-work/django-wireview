@@ -76,10 +76,11 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 |------|------|------|
 | **Type Stubs** | 컴포넌트 `.pyi` 자동 생성 (`wireview_stubs`). 파이썬 쪽 | [문서](./type-stubs.md) |
 | **편집기 지원** | 템플릿 쪽: VS Code 확장(`editors/vscode`)과 그것이 읽는 `wireview_lsp` 메타데이터, 같은 진단을 CI 관문으로 돌리는 `wireview_check_templates` | [문서](./editor-support.md) |
+| **렌더의 SQL 찾기** | 렌더·핸들러·작업의 SQL을 템플릿 줄·property와 함께 로그로, N+1은 경고로. 테스트에서는 `view.queries()` (개발용, `DEBUG`) | [문서](./render-queries.md) |
 | **Telemetry** | 이벤트·렌더·diff·브로드캐스트 계측 시그널 (옵트인) | [문서](./telemetry.md) |
 | **System Checks** | 조용히 실패하는 함정을 `manage.py check`가 잡는다 | [문서](./checks.md) |
 | **Agent Skill** | 앱 개발자용 에이전트 스킬 배포 (`wireview_agent_setup`) | [문서](./agent-skill.md) |
-| **테스트 헬퍼** | `mount()`, 내비게이션 단언, 리다이렉트 따라가기, 스트림 검사 | [문서](./testing.md) |
+| **테스트 헬퍼** | `mount()`, 내비게이션 단언, 리다이렉트 따라가기, 스트림 검사, 쿼리 단언 | [문서](./testing.md) |
 
 ---
 

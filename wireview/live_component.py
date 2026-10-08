@@ -84,6 +84,7 @@ import typing as t
 from pydantic import PrivateAttr
 
 from .core.component import Component
+from .debug import render_queries
 
 if t.TYPE_CHECKING:
     from .repository import ComponentRepository
@@ -303,11 +304,13 @@ async def run_updates(
         if getattr(cls.update_many, "__func__", None) is LiveComponent.update_many.__func__:  # type: ignore[attr-defined]
             for component, assigns in group:
                 try:
-                    await component.update(**assigns)
+                    with render_queries.scope("handler", component, "update"):
+                        await component.update(**assigns)
                 except Exception as e:
                     on_error(cls, component, e)
         else:
             try:
-                await cls.update_many(group)
+                with render_queries.scope("handler", group[0][0], "update_many"):
+                    await cls.update_many(group)
             except Exception as e:
                 on_error(cls, None, e)
