@@ -1,5 +1,5 @@
 # Provision C:\bench on a native x64 Windows machine (run by ssh.sh provision).
-# Expects in C:\bench: wireview.zip and nats-server.zip (from ssh.sh stage).
+# Expects in C:\bench: wireview.zip, nats-server.zip and requirements.txt (uv.lock's versions, from ssh.sh stage).
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $root = 'C:\bench'
@@ -23,7 +23,7 @@ if (Test-Path "$root\nats") { Remove-Item -Recurse -Force "$root\nats" }
 Expand-Archive -Path "$root\nats-server.zip" -DestinationPath "$root\nats" -Force
 Set-Location "$root\wireview"
 & $uv venv --python $python .venv
-& $uv pip install --python .venv\Scripts\python.exe -e . daphne uvicorn granian websockets psutil whitenoise channels-nats
+& $uv pip install --python .venv\Scripts\python.exe -r "$root\requirements.txt" -e .
 if ($LASTEXITCODE -ne 0) { Write-Output 'venv failed'; exit 12 }
 & .venv\Scripts\python.exe -c "import sys, platform, granian, uvicorn, daphne; print(sys.version, platform.platform(), granian.__version__, uvicorn.__version__, daphne.__version__)"
 (Get-ChildItem -Recurse "$root\nats" -Filter nats-server.exe | Select-Object -First 1).FullName

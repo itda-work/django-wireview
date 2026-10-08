@@ -13,6 +13,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 HOST="${WIN_HOST:-allieus-macbook-2017-win10}"
 NATS_VERSION="${NATS_VERSION:-v2.14.6}"
+GRANIAN_VERSION="${GRANIAN_VERSION:-$(sed -n 's/^GRANIAN_VERSION ?= //p' "$ROOT/Makefile")}"
 SSH=(ssh -o BatchMode=yes -o ServerAliveInterval=30 "$HOST")
 
 ps() { "${SSH[@]}" "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $1"; }
@@ -25,8 +26,11 @@ stage() {
   curl -sfL -o "$tmp/nats-server.zip" \
     "https://github.com/nats-io/nats-server/releases/download/$NATS_VERSION/nats-server-$NATS_VERSION-windows-amd64.zip"
   echo "$sha" > "$tmp/commit.txt"
+  # The same versions as uv.lock on the host, so both machines measure the same stack.
+  { uv export --project "$ROOT" --frozen --all-extras --no-hashes --no-emit-project; echo "granian==$GRANIAN_VERSION"; } \
+    > "$tmp/requirements.txt"
   "${SSH[@]}" "New-Item -ItemType Directory -Force -Path C:\\bench | Out-Null"
-  scp -q -o BatchMode=yes "$tmp/wireview.zip" "$tmp/nats-server.zip" "$tmp/commit.txt" \
+  scp -q -o BatchMode=yes "$tmp/wireview.zip" "$tmp/nats-server.zip" "$tmp/commit.txt" "$tmp/requirements.txt" \
     "$ROOT/bench/windows/ssh-setup.ps1" "$ROOT/bench/windows/ssh-seq.ps1" "$HOST:C:/bench/"
   rm -rf "$tmp"
   echo "staged: $sha"

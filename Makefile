@@ -1,4 +1,4 @@
-.PHONY: ext-install ext-check ext-test ext-build ext-package ext-test-host all install test test-unit test-e2e test-concurrent test-matrix test-latest test-lowest test-cov test-js bench bench-compare bench-fastapi bench-fastapi-charts bench-stream-fanout lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js ci-smoke docs-site docs-site-bundle docs-serve
+.PHONY: ext-install ext-check ext-test ext-build ext-package ext-test-host all install test test-unit test-e2e test-concurrent test-matrix test-latest test-lowest test-cov test-js bench bench-compare bench-fastapi bench-fastapi-charts bench-stream-fanout bench-servers bench-servers-charts lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js ci-smoke docs-site docs-site-bundle docs-serve
 
 # Default target
 all: install build
@@ -172,6 +172,16 @@ bench:
 # Benchmark a past commit next to the current tree: make bench-compare BASE=997ee59
 bench-compare:
 	./bench/compare.sh $(BASE) $(ARGS)
+
+# ASGI servers side by side, several rounds each: make bench-servers ARGS="--label macos" (#191).
+# Granian is not a dependency; it rides along at this version. Windows: bench/windows/ssh.sh
+GRANIAN_VERSION ?= 2.8.4
+bench-servers:
+	uv run --with granian==$(GRANIAN_VERSION) python -m bench.servers $(ARGS)
+
+# The chart and table docs/DEPLOYMENT.md shows, from the results servers_chart.py names
+bench-servers-charts:
+	uv run python -m bench.servers_chart
 
 # The same small app built with wireview and with FastAPI (React and vanilla clients),
 # measured under the same conditions (bench/README.md). Needs node and Playwright's chromium.
