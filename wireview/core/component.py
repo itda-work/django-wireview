@@ -22,7 +22,7 @@ from ..debug import render_queries
 from ..schemas import ModelAction
 from ..utils import db
 from . import handlers, model_state, render_reads
-from .meta import Repo, WireviewMeta
+from .meta import HTTP_RENDER, Repo, WireviewMeta
 from .session import SessionView
 
 if t.TYPE_CHECKING:
@@ -1316,6 +1316,9 @@ class Component(BaseModel):
         """
         from ..features.streams import StreamItem, StreamOp
 
+        if self._streams_reach_nothing():
+            return
+
         template_name = template or self._get_stream_item_template()
         dom_id_fn = dom_id or (lambda item: f"{name}-{item.pk}")
 
@@ -1380,6 +1383,9 @@ class Component(BaseModel):
         """
         from ..features.streams import StreamItem, StreamOp
 
+        if self._streams_reach_nothing():
+            return
+
         template_name = template or self._get_stream_item_template()
         dom_id_fn = dom_id or (lambda i: f"{name}-{i.pk}")
 
@@ -1404,11 +1410,24 @@ class Component(BaseModel):
         """
         from ..features.streams import StreamItem, StreamOp
 
+        if self._streams_reach_nothing():
+            return
+
         if isinstance(dom_id, int):
             dom_id = f"{name}-{dom_id}"
 
         op = StreamOp(op="delete", stream=name, items=[StreamItem(dom_id=dom_id, html="")])
         await self.wire.send_stream_op(op, self.id)
+
+    def _streams_reach_nothing(self) -> bool:
+        """Whether no socket would receive a stream operation: the HTTP render.
+
+        Nothing is connected to hear it there, and it was dropped after the items were drawn -- with
+        ``database_sync_to_async``, on the request's thread, which closed the
+        request's connection under ``ATOMIC_REQUESTS`` (#190). The page draws the
+        list with the ``{% for %}`` inside ``wire-stream``, and the join streams it.
+        """
+        return HTTP_RENDER.get()
 
     @classmethod
     def _get_stream_item_template(cls) -> str:

@@ -59,6 +59,8 @@ wireview/
 │                          세션은 rejoin을 바로 쓰지 않고 자기 채널로 메일(template_changed)을 보내 그 차례에 쓴다 — 처리 중인 핸들러·join의 답 뒤.
 │                          페이지는 sync를 보내 synced가 올 때까지 기다렸다가 다시 join한다(static의 rejoins.mjs). 앞지르면 처리 중이던 이벤트가 되돌아갔다.
 │                          refused는 여기서 풀지 않는다 — 페이지의 다시 join이 retry_join으로 푼다
+├── core/connections.py   keep_connections(). 동기 렌더가 컴포넌트의 async 코드로 건너는 다리(async_to_sync)가 그 스레드의 DB 연결을 닫지 않게 붙잡는다(#190).
+│                          wireview의 어떤 모듈도 import하지 않는다 — utils가 core를 import하는 도중에 meta가 이것을 읽는다
 ├── core/render_gate.py    RenderGate. 워커 스레드가 렌더하는 동안 그 컴포넌트의 start_async·assign_async 작업 단계를 렌더 뒤로 미룬다(#138).
 │                          렌더가 async property를 오래 기다리는 동안 작업이 막혀 있으면 경고한다(교착 의심, #147)
 ├── core/session.py        SessionView. Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다
@@ -411,6 +413,10 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
   작업을 보낸 뒤 `_let_patches_through`. 빠뜨리면 `joined()`의 스트림 reset(세션 메일, 늦게 써진다)이 그 사이에 쓴 패치를
   지운다. 패치를 쓰는 곳은 `wireview_patch` 하나이고, 쓰기 직전에 `repo.reachable`을 다시 묻는다. `Broadcast` 항목 템플릿의
   `this`·`user`·`request`·`perms`·`csrf_token`은 언제나 감시 객체다(`wireview/core/watched.py`) — 그 렌더가 모든 구독자의 것이다.
+- **동기 렌더에서 컴포넌트의 async 코드로 건너는 새 다리는 `keep_connections()` 안에서 `async_to_sync`를 부른다(#190).** 그 스레드는
+  요청의 것이고, 훅이 기다리는 Channels `database_sync_to_async`가 거기로 돌아와 `close_old_connections()`로 요청의 연결을 닫는다 —
+  트랜잭션 안이면 뷰의 쓰기가 예외 없이 롤백된다. 메모리 SQLite는 `close()`를 무시하므로 테스트는 파일 DB(testproj의 기본)에서 본다.
+  HTTP 렌더에서 스트림 연산은 아무것도 하지 않는다 — 다리마다 `wireview/core/meta.py`의 `HTTP_RENDER`(ContextVar)를 자기 저장소의 `not is_live`로 세운다. `channel_name`이 없다는 것으로 가르지 않는다(채널 없이 패치 게이트를 쓰는 세션 테스트가 있다). 회귀 테스트는 tests/test_http_render_connections.py.
 - **data-state는 dynamic 파트다.** `{% tag_header %}`의 서명 상태는 라이브 렌더에서 마커로 감싸진다. static에 넣으면 fingerprint가 매번 바뀌어 부분 diff가 죽는다. 회귀 테스트는 tests/test_diff_stability.py.
 
 ## 문서 인덱스

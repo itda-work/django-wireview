@@ -40,6 +40,10 @@ The django-reactor era changelog (2.x) is preserved in
   on its own to the Visual Studio Marketplace and Open VSX as `itda.django-wireview`, gated by the
   extension's checks and its tests in VS Code. The library and its release are unchanged.
 
+### Fixed
+
+- An HTTP render no longer closes the request's database connection: under `ATOMIC_REQUESTS` a `params_changed()` that called `stream()`, a hook that awaited Channels' `database_sync_to_async`, or an async property rolled the view's writes back without an exception and dropped its `on_commit` callbacks. `stream()`, `stream_insert()` and `stream_delete()` do nothing where no socket receives them, and the bridges into component code keep the caller's connections open (#190).
+
 ## [1.3.0] - 2026-10-08
 
 ### Added

@@ -9,6 +9,7 @@ import secrets
 import typing as t
 import weakref
 from asyncio import iscoroutine
+from contextvars import ContextVar
 from types import FunctionType
 
 from asgiref.sync import async_to_sync
@@ -21,6 +22,7 @@ from .. import telemetry
 from ..debug import render_queries
 from ..utils import db
 from . import shared_render
+from .connections import keep_connections
 from .render_gate import RenderGate
 from .render_reads import RenderReads
 from .rendered import Rendered, keep_stale, page_drawing, strip_markers
@@ -90,6 +92,13 @@ class Repo(t.Protocol):
 #: The rest of this class is the framework's plumbing; a component reaches that
 #: behaviour through Component's own methods (put_flash, push_js, defer ...).
 PUBLIC_MEMBERS = frozenset({"params", "redirect_to", "replace_to", "push_to"})
+
+
+#: True while component code runs for an HTTP render, across the bridges the
+#: template takes into it (``_enter_in_template``, an async property): no socket
+#: receives a stream operation sent there (#190). Each bridge sets it for its own
+#: repository, so a live one entered from inside an HTTP one is live again.
+HTTP_RENDER: ContextVar[bool] = ContextVar("wireview_http_render", default=False)
 
 
 class WireviewMeta:
@@ -956,10 +965,16 @@ class WireviewMeta:
             """Helper to run a coroutine object synchronously."""
 
             async def awaiter():
-                with render_queries.scope("property", component, name):
-                    return await coro
+                http_render = HTTP_RENDER.set(not repo.is_live)
+                try:
+                    with render_queries.scope("property", component, name):
+                        return await coro
+                finally:
+                    HTTP_RENDER.reset(http_render)
 
-            return async_to_sync(awaiter)()
+            # On this thread, the request's: its connection stays open (#190)
+            with keep_connections():
+                return async_to_sync(awaiter)()
 
         for attr_name in dir(component):
             if not attr_name.startswith("_") and attr_name not in self._PYDANTIC_CLASS_ATTRS:
