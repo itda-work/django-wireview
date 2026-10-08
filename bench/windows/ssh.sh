@@ -5,6 +5,7 @@
 #   bench/windows/ssh.sh stage       # archive HEAD, fetch nats-server, copy them and the scripts to C:\bench
 #   bench/windows/ssh.sh provision   # uv, Python, one venv (daphne, uvicorn, granian, channels-nats)
 #   bench/windows/ssh.sh run         # ssh-seq.ps1 in the foreground (the SSH session ends its children)
+#   bench/windows/ssh.sh run '<bench.servers args>[;<more>]'   # only these steps
 #   bench/windows/ssh.sh collect     # copy the bench.servers results into bench/results
 #
 # WIN_HOST picks the machine (default allieus-macbook-2017-win10). Keep the machine on AC power
@@ -36,7 +37,14 @@ stage() {
   echo "staged: $sha"
 }
 provision() { ps 'C:\bench\ssh-setup.ps1'; }
-run() { ps 'C:\bench\ssh-seq.ps1'; }
+run() {
+  local steps="${1:-}"
+  if [ -n "$steps" ]; then
+    "${SSH[@]}" "\$env:BENCH_STEPS='$steps'; powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\\bench\\ssh-seq.ps1"
+  else
+    ps 'C:\bench\ssh-seq.ps1'
+  fi
+}
 collect() {
   local tmp
   tmp="$(mktemp -d)"
@@ -46,6 +54,6 @@ collect() {
 }
 
 case "${1:-}" in
-  stage|provision|run|collect) "$1" ;;
-  *) sed -n '2,11p' "$0"; exit 2 ;;
+  stage|provision|run|collect) "$@" ;;
+  *) sed -n '2,12p' "$0"; exit 2 ;;
 esac

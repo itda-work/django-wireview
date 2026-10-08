@@ -170,6 +170,10 @@ def find_redis_server() -> str | None:
     return _find_binary("REDIS_SERVER", "redis-server", "/opt/homebrew/bin/redis-server", "/usr/local/bin/redis-server")
 
 
+#: The environment variable start_broker() fills in per cross-process layer
+BROKER_URL_VARS = {"nats": "NATS_URL", "redis": "REDIS_URL"}
+
+
 def start_broker(layer: str) -> subprocess.Popen | None:
     """Start the broker a cross-process layer needs, unless its URL env var already points at one.
 
@@ -392,4 +396,8 @@ def run(
                 _stop(*procs)
     finally:
         _stop(broker)
+        if broker is not None:
+            # The URL names a broker that is gone now. Left set, the next run() in this process
+            # (bench.servers runs one per server and round) would hand its servers a dead URL.
+            os.environ.pop(BROKER_URL_VARS[layer], None)
     return results

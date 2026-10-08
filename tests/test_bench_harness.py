@@ -61,3 +61,33 @@ async def test_the_in_process_bench_runs_every_scenario():
     assert results["timing"]["async.start_async_idle_ms"] >= 0
     assert results["timing"]["async.assign_async_idle_ms"] >= 0
     assert results["timing"]["async.busy_renders_per_op"] >= 1
+
+
+@pytest.mark.parametrize("layer", ["nats", "redis"])
+async def test_a_run_does_not_leave_the_url_of_the_broker_it_stopped(layer, monkeypatch):
+    """bench.servers calls ws.run() once per server and round in one process (#191). The broker
+    a run starts is stopped when it ends; its URL stayed in the environment, so the next run
+    took it for an external broker and every server of that run connected to a dead port."""
+    import os
+    import subprocess
+
+    from bench import ws
+
+    url_var = ws.BROKER_URL_VARS[layer]
+    monkeypatch.delenv(url_var, raising=False)
+    started: list[str] = []
+
+    def start_broker(layer_):
+        if os.environ.get(url_var):
+            return None  # the real one's rule: a set URL means somebody else's broker
+        started.append(layer_)
+        os.environ[url_var] = f"{layer_}://127.0.0.1:1"
+        return subprocess.Popen(["python", "-c", "pass"])
+
+    monkeypatch.setattr(ws, "start_broker", start_broker)
+    monkeypatch.setattr(ws, "start_server", lambda port, server: subprocess.Popen(["python", "-c", "pass"]))
+    monkeypatch.setattr(ws, "_run_client", lambda coro: (coro.close(), {})[1])
+    for _ in range(2):
+        ws.run(connections=1, item_counts=(5,), processes=2, layer=layer, server="daphne")
+    assert started == [layer, layer]
+    assert url_var not in os.environ

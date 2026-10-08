@@ -53,7 +53,7 @@ async def probe(server: str, connections: int, seconds: float) -> dict[str, t.An
     os.environ["BENCH_LEAVING_SECONDS"] = str(seconds)
     module, args = ws.SERVERS[server]
     original = ws.SERVERS[server]
-    ws.SERVERS[server] = (module, lambda port: [*args(port)[:-1], *GRACE[server], args(port)[-1]])
+    ws.SERVERS[server] = (module, lambda port: [*args(port), *GRACE[server]])
     port = ws._free_port()
     try:
         proc = ws.start_server(port, server)
