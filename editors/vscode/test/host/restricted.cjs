@@ -22,6 +22,12 @@ const tests = {
     assert.equal(folder.project, undefined, "nor on Refresh");
   },
 
+  async "no render-part SQL record is read"() {
+    const document = await vscode.workspace.openTextDocument(ITEM);
+    const hints = await vscode.commands.executeCommand("vscode.executeInlayHintProvider", document.uri, new vscode.Range(0, 0, document.lineCount, 0));
+    assert.deepEqual(hints, [], "the record the workspace's directory holds is not read");
+  },
+
   async "a template still opens as django-html, with HTML completion"() {
     const document = await vscode.workspace.openTextDocument(ITEM);
     assert.equal(document.languageId, "django-html");

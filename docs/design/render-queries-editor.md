@@ -1,7 +1,8 @@
 # 렌더 부분별 SQL을 편집기에 (#188)
 
-> **상태: 결정됨(3판), 서버(A) 구현됨, 확장(B) 구현 전.** 메인테이너가 §9의 권고를 모두 받아들였다(§9 끝). 구현은
-> `wireview/debug/render_queries_file.py`, 형식의 정본은 [render-queries](../features/render-queries.md#편집기로-보내기), 구현 후 비용은 §7-5다. [#182](https://github.com/itda-work/django-wireview/issues/182)의 단계 3을 뗀
+> **상태: 결정됨(3판), 서버·확장 구현됨.** 메인테이너가 §9의 권고를 모두 받아들였다(§9 끝). 서버 구현은
+> `wireview/debug/render_queries_file.py`, 형식의 정본은 [render-queries](../features/render-queries.md#편집기로-보내기), 구현 후 비용은 §7-5다.
+> 확장 구현은 `editors/vscode/src/core/queries.ts`(판단)·`src/queries.ts`(감시)·`src/queryFiles.ts`(디스크)이고, 이 메모와 달리 정한 것은 §6-5다. [#182](https://github.com/itda-work/django-wireview/issues/182)의 단계 3을 뗀
 > [#188](https://github.com/itda-work/django-wireview/issues/188)의 설계다. 근거는 main `10cdeb3`의 코드와, 이 메모를 쓰며 돌린
 > 스파이크 다섯 벌(§7)이다. 스파이크 코드는 저장소에 없다. 결정은 §9에 있다.
 > 2판은 1판에 대한 리뷰(REQUEST_CHANGES, P1 2건·P2 6건)를 반영했다. 3판은 2판에 대한 리뷰(REQUEST_CHANGES, P2 5건)를
@@ -615,6 +616,36 @@ E2E는 필요 없다. 브라우저가 보는 것이 없다.
 
 **확장 0.2.0은 B를 넣은 뒤 바로 낸다.** 기록을 쓰지 않는 라이브러리 앞에서 0.2.0은 디렉터리가 없을 뿐이다(§3). 라이브러리 쪽은
 다음 minor의 Unreleased에 들어간다.
+
+### 6-5. 구현(B)에서 정한 것
+
+메모가 열어 두었거나 구현하며 드러난 것이다. 코드와 테스트가 정본이다.
+
+- **디스크는 어댑터도 코어도 아닌 `src/queryFiles.ts`가 맡는다.** §2-5는 파일 읽기와 해시 캐시를 어댑터에 두었다. 그러면
+  계약 테스트의 드라이버(`test/queries-driver.ts`)가 같은 읽기를 쓸 수 없다. 그래서 vscode를 import하지 않는 별도 모듈로
+  뺐다. 코어(`src/core/queries.ts`)는 `node:path`만 쓰고, 읽기는 `Files`, 지문과 `stat`은 `DocumentFacts`로 받는다. 코어는
+  wheel의 `template_diagnostics`에도 실린다(hatch_build가 `src/core/*.ts`를 모두 싣는다).
+- **오래된 기록은 새 스냅샷을 바꾸지 않는다.** 확장이 시작할 때 여러 프로세스의 파일을 읽는 순서는 정해져 있지 않다. 그래서
+  스냅샷은 `at`이 같거나 늦을 때만 바꾼다(§1-2의 "가장 최근"을 읽은 순서가 아니라 `at`으로 정했다).
+- **세그먼트의 경계 사례.** 읽던 세그먼트가 사라졌는데 다음 번호도 없으면 그 프로세스와 그 번호를 기억해 둔다(정리나 사용자가
+  지운 것이다). 그것만으로는 잃은 것으로 보지 않으므로 숫자는 시간 제한까지 남는다. 그 프로세스가 다시 나타나면(파일이
+  지워진 writer는 다음 번호를 연다) 사라지기 전에 덧붙인 것을 알 수 없으므로 잃은 것으로 보고, 기억한 번호 다음부터 읽는다.
+  처음 1판 구현은 커서를 지워 다시 나타난 프로세스를 새 프로세스로 읽었고, 삭제와 다음 세그먼트가 다른 스캔에 오면 누락을
+  놓쳤다(구현 리뷰 B1 P2-2). 디렉터리를 읽지 못한 스캔은 아무것도 바꾸지 않는다. 크기가 읽은 위치보다 작아지면 잃은 것으로
+  보고 처음부터 다시 읽는다. 확장이 시작한 뒤에 나타난 프로세스는 보이는 가장 낮은 번호부터 읽는다.
+- **`partial`인 스냅샷.** 그 클래스의 상태를 바꾸되 tooltip에 "잘린 기록"을 적는다. 잘려서 빠진 줄에는 옛 숫자도 0도 보이지
+  않는다. hint는 행이 있는 줄에만 그리므로 "0건"을 그리는 일은 원래 없다. 렌더가 모두 상한(100) 밖으로 밀려 `renders`에는
+  없고 `partial`에만 있는 클래스도 그 `at`의 빈 부분 스냅샷으로 둔다. 처음 구현은 `renders`의 클래스만 보아 옛 숫자가 남았다
+  (구현 리뷰 B1 P2-1).
+- **hint의 글.** 같은 줄에 반복과 다른 문장이 함께 있으면 `⚠ 6× same query · 7 queries`, property 줄은 `N queries per render`에
+  반복이면 `⚠`를 앞에 둔다. 서버가 200자에서 자른 `text`(길이 200)는 앞부분만 맞춘다.
+- **표시를 다시 그리는 신호.** 기록이 바뀔 때, 문서를 저장할 때, `renderQueries` 설정이 바뀔 때, 그리고 상태가 있는 동안
+  1분마다(tooltip의 나이와 시간 제한). `renderQueries.directory`는 §2-5대로 `SOURCE_SETTINGS`에 있으므로 바꾸면 메타데이터도
+  다시 만든다. `renderQueries.enable`만 바뀌면 기록 읽기만 다시 시작한다.
+- **`mapRelative`의 기준.** `manage.py`의 디렉터리다. `renderQueries.directory`를 적었는데 `manage.py`가 없으면 폴더 루트다.
+- **호스트 테스트의 기록 위치.** §6-2는 `examples/todo`의 템플릿에 기록 파일을 써 둔다고 했다. 기록은 저장소가 아니라 실행의
+  임시 디렉터리에 두고 `wireview.renderQueries.directory`로 가리킨다(`tests/.wireview/`를 만들지 않는다). 제한 모드 스위트는 그
+  기록의 hint가 없음을 본다.
 
 ## 7. 스파이크
 

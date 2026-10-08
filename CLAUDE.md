@@ -276,6 +276,9 @@ editors/vscode/            VS Code 확장(#156). wheel·sdist에 싣지 않고 �
                            실제 FolderProject와 자식 프로세스로 본다. 낡은 실행의 결과를 버리는 판단은 core/runner.ts 의 Generations 하나다.
                            실행마다 출력 파일이 따로다 — 멈춘 프로세스가 늦게 쓴 파일은 다음 실행이 지운다. 자기 실행의 것이 아닌 파일은 실행 timeout보다 오래된 것만.
                            신뢰하지 않은 워크스페이스에서는 프로세스를 띄우지도 메타데이터를 읽지도 않는다(folders.ts 의 run·load).
+                           렌더 부분별 SQL의 inlay hint(#188): core/queries.ts 가 판단(세그먼트 이어 읽기·클래스별 최신 스냅샷·줄 확신 규칙),
+                           queries.ts 가 FolderProject의 세대에 묶인 감시, queryFiles.ts 가 디스크. 서버가 쓴 실제 파일은 test/queries-driver.ts 로
+                           tests/test_vscode_extension.py 가 읽어 본다
                            CI의 vscode-extension-host 잡(VS Code 다운로드)만 릴리스 게이트 밖이다
                            게시는 태그 vscode-v<버전>의 .github/workflows/vscode-release.yml이 Marketplace·Open VSX(itda.django-wireview)에 한다(#163).
                            아이콘은 images/icon.png, 원본은 images/icon.svg

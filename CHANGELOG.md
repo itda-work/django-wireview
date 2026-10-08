@@ -24,7 +24,9 @@ The django-reactor era changelog (2.x) is preserved in
   process that imported `wireview.testing` or has `WIREVIEW_RENDER_QUERIES_DIR=off` in its environment (the
   suite's servers inherit it). Each process appends to numbered segments of its own, sweeps other processes'
   idle files, writes a line whole or takes it back and stops. The format is versioned by its own `version`
-  field; docs/features/render-queries.md describes it. The VS Code extension's display follows.
+  field; docs/features/render-queries.md describes it. The VS Code extension shows the counts as inlay hints
+  at the end of each line (released on its own; see editors/vscode/CHANGELOG.md). The extension's reader runs on
+  files the library really wrote in tests/test_vscode_extension.py.
 - In development, each statement a render, handler or task ran is told with the template line or the
   property it came from (#182). With `DEBUG_RENDER_QUERIES` (`None` follows `DEBUG`), the logger
   `wireview.queries` gets one block per outermost piece of work that ran SQL -- a render, a handler, a

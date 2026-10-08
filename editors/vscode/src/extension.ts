@@ -16,10 +16,12 @@ import { folds } from "./core/folding.ts";
 import { pythonLinks, templateLinks } from "./core/links.ts";
 import { definition, hover } from "./core/navigation.ts";
 import type { Span } from "./core/scan.ts";
+import type { DocumentFacts } from "./core/queries.ts";
 import { parseTemplate } from "./core/template.ts";
 import type { TemplateDoc } from "./core/template.ts";
 import { FolderProject, isFile, SOURCE_SETTINGS } from "./folders.ts";
 import { closeTagsOnType, htmlCompletions, htmlFolds, htmlHover, htmlLinkedEditing } from "./html.ts";
+import { Digests, statOf } from "./queryFiles.ts";
 
 const TEMPLATES: vscode.DocumentSelector = [
   { language: "django-html", scheme: "file" },
@@ -29,6 +31,12 @@ const TEMPLATES: vscode.DocumentSelector = [
 const DJANGO_HTML: vscode.DocumentSelector = [
   { language: "django-html", scheme: "file" },
   { language: "django-html", scheme: "untitled" },
+];
+/** Where render-part SQL is told (#188): files the dev server ran, templates and Python. */
+const QUERIED: vscode.DocumentSelector = [
+  { language: "django-html", scheme: "file" },
+  { language: "html", scheme: "file" },
+  { language: "python", scheme: "file" },
 ];
 
 const KINDS: Record<CompletionKind, vscode.CompletionItemKind> = {
@@ -128,6 +136,21 @@ function diagnosable(document: vscode.TextDocument, env: Env): boolean {
   return ownTemplateName(env.project, env) !== undefined;
 }
 
+const digests = new Digests();
+
+/** What the render-part SQL hints need of a document. */
+function factsOf(document: vscode.TextDocument): DocumentFacts {
+  const path = realPath(document);
+  return {
+    path,
+    kind: document.languageId === "python" ? "python" : "template",
+    dirty: document.isDirty,
+    lineText: (line) => (line >= 1 && line <= document.lineCount ? document.lineAt(line - 1).text : undefined),
+    digest: () => digests.of(path),
+    stat: () => statOf(path),
+  };
+}
+
 /** What the extension hands to whoever asks for its exports: the host tests. */
 export interface Api {
   /** The project a document's folder has, once its metadata is read. */
@@ -221,6 +244,10 @@ export function activate(context: vscode.ExtensionContext): Api {
     status.show();
   };
 
+  // The render-part SQL hints are drawn again when the records or a setting change
+  const hintsChanged = new vscode.EventEmitter<void>();
+  context.subscriptions.push(hintsChanged);
+
   const storage = (context.storageUri ?? context.globalStorageUri).fsPath;
   const addFolder = (folder: vscode.WorkspaceFolder) => {
     const project = new FolderProject(folder, storage, output, () => {
@@ -228,6 +255,7 @@ export function activate(context: vscode.ExtensionContext): Api {
       associateAll();
       checkAll();
     });
+    project.onQueries = () => hintsChanged.fire();
     folders.set(folder.uri.toString(), project);
     void project.start();
   };
@@ -252,13 +280,17 @@ export function activate(context: vscode.ExtensionContext): Api {
     vscode.workspace.onDidCloseTextDocument((document) => diagnostics.delete(document.uri)),
     vscode.workspace.onDidSaveTextDocument((document) => {
       if (document.languageId === "python") folderOf(document)?.pythonSaved();
+      // Saved: its hints may show again once the file is the one the server ran
+      hintsChanged.fire();
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (!event.affectsConfiguration("wireview")) return;
       for (const folder of folders.values()) {
         // Another source: what the old one was doing no longer counts
         if (SOURCE_SETTINGS.some((key) => event.affectsConfiguration(`wireview.${key}`, folder.folder.uri))) void folder.configure();
+        else if (event.affectsConfiguration("wireview.renderQueries.enable", folder.folder.uri)) void folder.configureQueries();
       }
+      if (event.affectsConfiguration("wireview.renderQueries")) hintsChanged.fire();
       checkAll();
     }),
     // Restricted Mode ran nothing and read no metadata: now it can
@@ -337,7 +369,29 @@ export function activate(context: vscode.ExtensionContext): Api {
       provideLinkedEditingRanges: (document, position) => htmlLinkedEditing(document, position),
     }),
     closeTagsOnType(),
+    vscode.languages.registerInlayHintsProvider(QUERIED, {
+      onDidChangeInlayHints: hintsChanged.event,
+      provideInlayHints(document, range) {
+        const folder = folderOf(document);
+        if (!folder?.queries) return [];
+        return folder
+          .queryHints(factsOf(document))
+          .filter((hint) => hint.line - 1 >= range.start.line && hint.line - 1 <= range.end.line)
+          .map((hint) => {
+            const line = document.lineAt(hint.line - 1);
+            const inlay = new vscode.InlayHint(line.range.end, hint.label);
+            inlay.paddingLeft = true;
+            inlay.tooltip = new vscode.MarkdownString(hint.tooltip);
+            return inlay;
+          });
+      },
+    }),
   );
+  // An age in a tooltip, and the time limit, move on without a new record
+  const aging = setInterval(() => {
+    if ([...folders.values()].some((folder) => folder.queries?.state.size)) hintsChanged.fire();
+  }, 60_000);
+  context.subscriptions.push({ dispose: () => clearInterval(aging) });
 
   context.subscriptions.push(
     vscode.commands.registerCommand("wireview.refreshMetadata", async () => {
@@ -346,6 +400,10 @@ export function activate(context: vscode.ExtensionContext): Api {
       await Promise.all((folder ? [folder] : [...folders.values()]).map((target) => target.refresh()));
     }),
     vscode.commands.registerCommand("wireview.showOutput", () => output.show(true)),
+    vscode.commands.registerCommand("wireview.clearRenderQueries", () => {
+      folders.forEach((folder) => folder.clearQueries());
+      hintsChanged.fire();
+    }),
     vscode.commands.registerCommand("wireview.goToComponent", async () => {
       const document = vscode.window.activeTextEditor?.document;
       const folder = (document && folderOf(document)) || [...folders.values()].find((candidate) => candidate.project);

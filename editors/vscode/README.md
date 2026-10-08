@@ -84,6 +84,31 @@ nothing is reported.
 | `unclosed-block`, `unmatched-end` | Error | A block that is never closed, an end tag with no opening tag |
 | `template-not-found` | Warning | An `{% extends %}` or `{% include %}` path that is not in any template directory |
 
+**SQL per line, from the dev server.** In development (`DEBUG`), django-wireview newer than 1.3.0 writes which template
+line or property ran each SQL statement of a render into `.wireview/render-queries/` beside `manage.py`. The extension
+reads it and puts the count at the end of the line, as an inlay hint: `6 queries`, `⚠ 6× same query` for an N+1, or
+`1 query per render` on a property's `def` line. The tooltip shows the statements, the component and how long ago the
+render was. For each component class the latest render counts, so once you fix an N+1 and the page is drawn again the
+number goes away, whether the component was drawn on its own or inside another one.
+
+A number is shown only where it is certain to belong to that line:
+
+- the file is saved — while you edit, its numbers are hidden;
+- for a template, the source the server's running template was compiled from is this very file (a SHA-256 the server
+  writes). A dev server still running a cached compile of an older file shows nothing for it until it renders the new
+  one, which django-wireview's template reload does right away;
+- for a property, the file is unchanged since the server loaded the module (its `mtime` and size, to the nanosecond),
+  and its `def` is on that line. The body that ran is not checked;
+- the render was at most `wireview.renderQueries.maxAge` minutes ago (a component still being drawn is written again
+  every minute).
+
+One process writing at a time is supported: `runserver`, a single `uvicorn` or `daphne`; with several workers, give each
+its own `DEBUG_RENDER_QUERIES_DIR`. When the records it has read show two processes writing over the same span of time,
+the extension shows nothing and says why in the output channel. That detection is best effort: the server does not
+write a render again that it already wrote within the minute, so writers that do overlap can go unnoticed, and their
+counts can then be wrong. The format is described in
+[docs/features/render-queries.md](../../docs/features/render-queries.md#편집기로-보내기) (Korean).
+
 ## How it works
 
 For each workspace folder the extension finds `manage.py`, runs `python manage.py wireview_lsp --output <file>` and
@@ -92,14 +117,15 @@ extension's own storage, not into your project. Saving a Python file runs the co
 does not start, or the file you are editing has a syntax error), the last metadata that worked stays in use and the
 status bar shows a warning; click it to open the output channel.
 
-Commands: `Wireview: Refresh Project Metadata`, `Wireview: Go to Component…`, `Wireview: Show Output`.
+Commands: `Wireview: Refresh Project Metadata`, `Wireview: Go to Component…`, `Wireview: Show Output`,
+`Wireview: Clear Render Queries` (forgets the counts read so far; the files are the server's and stay).
 
 **Restricted Mode.** In an untrusted workspace the extension starts no process and reads no metadata file — running
 `manage.py` executes the project's code, and the paths in the metadata are where go to definition takes you. Results
 left by an earlier session are not used either. Syntax highlighting, snippets and the HTML features keep working, and
-the status bar shows `Restricted Mode`; the metadata is built as soon as you trust the workspace. Until then, the
-settings that decide what runs (`pythonPath`, `managePy`, `metadataCommand`, `metadataPath`) ignore the workspace's
-values.
+the status bar shows `Restricted Mode`; the metadata is built as soon as you trust the workspace. The render queries
+the dev server writes are not read either. Until then, the settings that decide what runs or what is read
+(`pythonPath`, `managePy`, `metadataCommand`, `metadataPath`, `renderQueries.directory`) ignore the workspace's values.
 
 ## Settings
 
@@ -113,6 +139,10 @@ values.
 | `wireview.associateTemplateDirs` | `true` | Open `.html` files in the directories the template engine searches as `django-html` |
 | `wireview.diagnostics.enable` | `true` | Diagnostics |
 | `wireview.html.enable` | `true` | HTML completion, hover and closing tags in `django-html` |
+| `wireview.renderQueries.enable` | `true` | Show the dev server's SQL count at the end of template and property lines |
+| `wireview.renderQueries.directory` | `""` | Where the dev server writes them, relative to the folder: the `DEBUG_RENDER_QUERIES_DIR` of `WIREVIEW`. Empty: `.wireview/render-queries` beside `manage.py` |
+| `wireview.renderQueries.maxAge` | `30` | Minutes a component's last render is shown for |
+| `wireview.renderQueries.mapRelative` | `false` | For a server in a container: also match a record to the file at its path relative to the server's `BASE_DIR`, under the directory of `manage.py`. A file with the same contents at that place is taken for the one the server ran |
 
 ## Known limitations
 
@@ -126,6 +156,12 @@ values.
   `html` still gets diagnostics when it is inside a template directory.
 - **If Django only runs inside a container,** open VS Code inside it with Remote Development (Dev Containers, SSH,
   WSL). The paths in the metadata are the ones Django sees, and they do not match those of an editor running outside.
+  The render queries name files by the server's paths too; `wireview.renderQueries.mapRelative` is the fallback when
+  the editor stays outside.
+- Render queries are counted per component class, not per instance: two instances of a class with different data show
+  the one drawn last (the tooltip names its id). LiveComponents drawn under the same parent are each their own render,
+  so an N+1 across siblings shows as one sibling's count. Handlers, background tasks and `Broadcast` items are not
+  counted yet, and neither is a slot that a LiveComponent draws after its parent's render.
 - The end tag of a block tag is read from the source of the tag function. A third-party block tag whose source cannot
   be read is not treated as a block: nothing is said about its end and intermediate tags, so there are no false
   warnings, but there is no folding or end-tag completion for it either.

@@ -61,6 +61,28 @@ Cursor·VSCodium처럼 Open VSX를 쓰는 편집기는 [Open VSX](https://open-v
 | `unclosed-block`, `unmatched-end` | 오류 | 닫지 않은 블록, 여는 태그 없는 끝 태그 |
 | `template-not-found` | 경고 | 템플릿 디렉터리에 없는 `{% extends %}`·`{% include %}` 경로 |
 
+**줄마다 SQL 수(개발 서버).** 개발 중(`DEBUG`)에 1.3.0보다 새 django-wireview는 렌더의 SQL을 어느 템플릿 줄이나
+property가 실행했는지 `manage.py` 옆의 `.wireview/render-queries/`에 쓴다. 확장은 그것을 읽어 그 줄 끝에 inlay
+hint로 수를 단다: `6 queries`, N+1이면 `⚠ 6× same query`, property의 `def` 줄에는 `1 query per render`. tooltip에는
+문장, 컴포넌트, 몇 분 전의 렌더인지가 나온다. 컴포넌트 클래스마다 가장 최근의 렌더가 기준이다. 그래서 N+1을 고치고
+페이지가 다시 그려지면 숫자가 사라진다. 그 컴포넌트가 혼자 그려졌든 다른 컴포넌트 안에서 그려졌든 같다.
+
+숫자는 그 줄의 것이 확실할 때만 보인다.
+
+- 파일이 저장된 상태다. 고치는 동안에는 그 파일의 숫자를 감춘다.
+- 템플릿이면, 서버가 실행한 템플릿의 컴파일 원본이 바로 이 파일이다(서버가 쓰는 SHA-256). 개발 서버가 옛 파일의
+  캐시된 컴파일본을 아직 실행하고 있으면 새 파일을 그릴 때까지 그 파일에는 아무것도 보이지 않는다. django-wireview의
+  템플릿 리로드가 곧바로 다시 그린다.
+- property면, 서버가 모듈을 로드한 뒤로 그 파일이 바뀌지 않았고(`mtime`과 크기, 나노초까지) 그 줄에 그 `def`가 있다.
+  실행된 본문이 같은지까지는 보지 않는다.
+- 그 렌더가 `wireview.renderQueries.maxAge`분 안이다(계속 그려지는 컴포넌트는 1분마다 다시 쓰인다).
+
+지원하는 것은 동시에 쓰는 프로세스가 하나인 경우다: `runserver`, `uvicorn` 하나, `daphne`. 워커가 여럿이면 워커마다
+`DEBUG_RENDER_QUERIES_DIR`을 나눈다. 읽은 기록에서 두 프로세스가 같은 시간대에 쓴 것이 보이면 확장은 아무것도
+보이지 않고 출력 채널에 이유를 적는다. 이 감지는 최선 노력이다. 서버는 1분 안에 같은 렌더를 다시 쓰지 않으므로 실제로
+겹친 writer를 놓칠 수 있고, 그때는 숫자가 틀릴 수 있다. 형식은
+[docs/features/render-queries.md](../../docs/features/render-queries.md#편집기로-보내기)에 있다.
+
 ## 요구 사항
 
 - VS Code 1.100 이상
@@ -76,13 +98,15 @@ JSON(프로젝트의 컴포넌트, 템플릿 디렉터리, 태그·필터)을 �
 쓴다. 파이썬 파일을 저장하면 다시 돌린다. 실패하면(Django가 뜨지 않음, 편집 중인 파일의 구문 오류) 마지막으로
 성공한 결과를 그대로 쓰고, 상태 표시줄에 경고를 띄운다. 상태 표시줄을 누르면 출력 채널이 열린다.
 
-명령 팔레트: `Wireview: Refresh Project Metadata`, `Wireview: Go to Component…`, `Wireview: Show Output`.
+명령 팔레트: `Wireview: Refresh Project Metadata`, `Wireview: Go to Component…`, `Wireview: Show Output`,
+`Wireview: Clear Render Queries`(지금까지 읽은 SQL 수를 잊는다. 파일은 서버의 것이라 지우지 않는다).
 
 **제한 모드(Restricted Mode).** 신뢰하지 않은 워크스페이스에서는 아무 프로세스도 띄우지 않고 메타데이터 파일도
 읽지 않는다 — `manage.py`를 돌리는 것은 그 프로젝트의 코드를 실행하는 것이고, 메타데이터의 경로는 정의로 이동이
 가는 곳이기 때문이다. 지난 세션이 남긴 결과도 쓰지 않는다. 그동안 구문 강조·스니펫·HTML 기능은 그대로 되고,
-상태 표시줄에 `Restricted Mode`가 뜬다. 워크스페이스를 신뢰하면 그때 메타데이터를 만든다. 실행에 쓰이는 설정
-(`pythonPath`, `managePy`, `metadataCommand`, `metadataPath`)은 신뢰하기 전에는 워크스페이스의 값을 따르지 않는다.
+상태 표시줄에 `Restricted Mode`가 뜬다. 워크스페이스를 신뢰하면 그때 메타데이터를 만든다. 개발 서버가 쓰는 SQL
+기록도 읽지 않는다. 무엇을 실행하고 읽을지 정하는 설정(`pythonPath`, `managePy`, `metadataCommand`, `metadataPath`,
+`renderQueries.directory`)은 신뢰하기 전에는 워크스페이스의 값을 따르지 않는다.
 
 ## 설정
 
@@ -96,6 +120,10 @@ JSON(프로젝트의 컴포넌트, 템플릿 디렉터리, 태그·필터)을 �
 | `wireview.associateTemplateDirs` | `true` | 템플릿 엔진이 찾는 디렉터리 안의 `.html`을 `django-html`로 연다 |
 | `wireview.diagnostics.enable` | `true` | 진단 |
 | `wireview.html.enable` | `true` | `django-html`의 HTML 자동완성·호버·닫는 태그 |
+| `wireview.renderQueries.enable` | `true` | 개발 서버의 SQL 수를 템플릿 줄과 property 줄 끝에 단다 |
+| `wireview.renderQueries.directory` | `""` | 개발 서버가 쓰는 곳(폴더 기준). `WIREVIEW`의 `DEBUG_RENDER_QUERIES_DIR`. 비우면 `manage.py` 옆의 `.wireview/render-queries` |
+| `wireview.renderQueries.maxAge` | `30` | 컴포넌트의 마지막 렌더를 몇 분 동안 보이는가 |
+| `wireview.renderQueries.mapRelative` | `false` | 컨테이너의 서버용. 기록의 경로를 서버의 `BASE_DIR` 기준 상대 경로로 `manage.py`의 디렉터리 아래에서도 찾는다. 그 자리에 내용이 같은 다른 파일이 있으면 그것을 서버가 실행한 파일로 본다 |
 
 ## 알려진 한계
 
@@ -107,7 +135,12 @@ JSON(프로젝트의 컴포넌트, 템플릿 디렉터리, 태그·필터)을 �
   메타데이터를 읽은 뒤라, 제한 모드에서는 `**/templates/**`만 적용된다. `html` 언어로 연 파일도 템플릿 디렉터리
   안에 있으면 진단은 받는다.
 - **Django가 컨테이너 안에서만 돈다면** VS Code를 Remote(Dev Containers, SSH, WSL)로 그 안에서 연다. 메타데이터의
-  경로는 Django가 보는 경로라, 바깥에서 연 편집기의 경로와 맞지 않는다.
+  경로는 Django가 보는 경로라, 바깥에서 연 편집기의 경로와 맞지 않는다. SQL 기록의 경로도 서버의 것이다. 편집기가
+  바깥에 있어야 하면 `wireview.renderQueries.mapRelative`를 쓴다.
+- SQL 수는 인스턴스가 아니라 컴포넌트 클래스 단위다. 같은 클래스의 두 인스턴스가 다른 데이터로 그려지면 마지막에
+  그려진 것이 보인다(tooltip이 그 id를 적는다). 한 부모 아래의 LiveComponent는 각자 따로 렌더되므로, 형제에 걸친
+  N+1은 한 형제의 수로 보인다. 핸들러, 백그라운드 작업, `Broadcast` 항목, 부모의 렌더가 끝난 뒤 LiveComponent가 그리는
+  슬롯은 아직 세지 않는다.
 - 블록 태그의 끝 태그는 태그 함수의 소스에서 읽는다. 읽지 못한 서드파티 블록 태그는 블록으로 다루지 않는다 —
   그 끝 태그와 중간 태그에 대해서는 아무것도 말하지 않으므로 거짓 경고는 없지만, 접기와 끝 태그 자동완성은 없다.
 - 핸들러 진단은 그 템플릿을 `template_name`으로 쓰는 컴포넌트가 있을 때만 한다. `{% include %}`되는 조각과

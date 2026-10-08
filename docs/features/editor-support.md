@@ -39,13 +39,27 @@ code --install-extension editors/vscode/dist/django-wireview-<버전>.vsix
 - Django나 django-wireview가 렌더할 때 낼 오류의 진단. **확실하지 않으면 말하지 않는다** — 이 저장소의 모든
   템플릿이 진단 0건인 것을 `tests/test_vscode_extension.py`가 확인한다
 - 파이썬 파일을 저장하면 메타데이터를 다시 만든다. 실패하면 마지막으로 성공한 것을 쓴다
+- 개발 서버가 렌더마다 쓰는 [부분별 SQL](./render-queries.md#편집기로-보내기)을 읽어 템플릿 줄과 property의 `def` 줄
+  끝에 inlay hint로 수를 단다(`6 queries`, `⚠ 6× same query`, `1 query per render`). 저장된 파일이고 서버가 실행한
+  원본이 바로 그 파일일 때만 보인다. 무엇을 확인하는지는 [편집기에서 보기](./render-queries.md#편집기에서-보기)에 있다
+
+| 설정 | 기본값 | 뜻 |
+|------|--------|-----|
+| `wireview.renderQueries.enable` | `true` | SQL 수를 단다 |
+| `wireview.renderQueries.directory` | `""` | 개발 서버가 쓰는 디렉터리(폴더 기준). 비우면 `manage.py` 옆의 `.wireview/render-queries`. `DEBUG_RENDER_QUERIES_DIR`을 바꿨을 때 같은 곳을 적는다 |
+| `wireview.renderQueries.maxAge` | `30` | 컴포넌트의 마지막 렌더를 몇 분 동안 보이는가 |
+| `wireview.renderQueries.mapRelative` | `false` | 기록의 `rel`을 `manage.py`의 디렉터리 아래에서도 찾는다. 편집기 밖의 컨테이너에서 서버가 돌 때 |
 
 신뢰하지 않은 워크스페이스(제한 모드)에서 확장은 프로세스를 하나도 띄우지 않고 메타데이터 파일도 읽지 않는다.
 `wireview_lsp`를 돌리는 것은 프로젝트의 코드를 실행하는 일이고, 메타데이터에 적힌 경로는 정의로 이동이 여는
-파일이기 때문이다. 구문 강조·스니펫·HTML 기능만 되고, 워크스페이스를 신뢰하는 순간 메타데이터를 만든다.
+파일이기 때문이다. 개발 서버가 쓰는 SQL 기록도 읽지 않는다. 구문 강조·스니펫·HTML 기능만 되고, 워크스페이스를
+신뢰하는 순간 메타데이터를 만들고 기록을 읽는다.
 
 확장은 라이브러리의 공개 API가 아니고 버전을 따로 매긴다(`editors/vscode/package.json`, 변경은
-[확장의 CHANGELOG](../../editors/vscode/CHANGELOG.md)). 라이브러리와 확장 사이의 약속은 아래 JSON 하나다.
+[확장의 CHANGELOG](../../editors/vscode/CHANGELOG.md)). 라이브러리와 확장 사이의 약속은 둘이다. 아래 JSON과,
+[렌더 부분별 SQL의 파일 형식](./render-queries.md#형식-10)이다. 둘 다 자기 `version`으로 따로 매긴다.
+`tests/test_vscode_extension.py`가 서버가 실제로 쓴 SQL 기록을 확장의 코드(`editors/vscode/src/core/queries.ts`)로
+읽어 본다.
 
 ## CI에서: `manage.py wireview_check_templates`
 
@@ -233,6 +247,9 @@ Django는 블록 태그가 어디서 끝나는지 기록하지 않는다. 태그
    `this`다 — 핸들러와 변수를 거기서 찾는다
 4. 태그가 보이는가는 `template_builtins`에 템플릿의 `{% load %}`를 **적힌 순서대로** 얹은 것이다. 나중 load가
    같은 이름을 덮어쓰고(`Parser.add_library`), load보다 앞에 쓴 태그·필터는 그 라이브러리를 아직 모른다
+
+SQL 기록을 읽는 법(세그먼트 이어 읽기, 클래스별 최신 스냅샷, 줄이 맞다는 확인)은
+[편집기에서 보기](./render-queries.md#편집기에서-보기)에 있고, 그 판단은 `editors/vscode/src/core/queries.ts`다.
 
 확장의 판단은 `editors/vscode/src/core/`의 순수 모듈에 있다(VS Code를 import하지 않는다). 다른 편집기의 플러그인이
 그대로 가져다 쓸 수도 있다. `editors/vscode/scripts/diagnose.ts`가 VS Code 없이 그 모듈로 템플릿을 진단하는 예다

@@ -43,7 +43,8 @@
         "wireview.pythonPath",
         "wireview.managePy",
         "wireview.metadataCommand",
-        "wireview.metadataPath"
+        "wireview.metadataPath",
+        "wireview.renderQueries.directory"
       ]
     }
   },
@@ -106,6 +107,11 @@
         "command": "wireview.showOutput",
         "title": "Show Output",
         "category": "Wireview"
+      },
+      {
+        "command": "wireview.clearRenderQueries",
+        "title": "Clear Render Queries",
+        "category": "Wireview"
       }
     ],
     "configuration": {
@@ -161,6 +167,31 @@
           "default": true,
           "scope": "resource",
           "markdownDescription": "Complete HTML tags and attributes and close tags in `django-html` files, as the built-in HTML support does for `html` files."
+        },
+        "wireview.renderQueries.enable": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "markdownDescription": "Show at the end of a template line, or of a property's `def` line, how many SQL queries the dev server's last render of each component ran there. The dev server writes them in development (`DEBUG`); hints are shown only for a saved file the server ran as it is."
+        },
+        "wireview.renderQueries.directory": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "markdownDescription": "Where the dev server writes the render queries, relative to the workspace folder: the `DEBUG_RENDER_QUERIES_DIR` of `WIREVIEW`. Empty: `.wireview/render-queries` beside `manage.py`."
+        },
+        "wireview.renderQueries.maxAge": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "scope": "resource",
+          "markdownDescription": "Minutes a component's last render is shown for. The server writes an unchanged render again every minute, so a component still being drawn does not run out."
+        },
+        "wireview.renderQueries.mapRelative": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "markdownDescription": "Also match a record to the file at its path relative to the server's `BASE_DIR`, under the directory of `manage.py`: for a server in a container with the project mounted. A file with the same contents at that place is taken for the one the server ran."
         }
       }
     },
