@@ -352,6 +352,7 @@ def button(text: str, variant: str = "primary"):
 | v1.0.0 | ✅ | API 안정화 선언. 이후 규칙은 [호환성 정책](./COMPATIBILITY.md). rc4 뒤의 결함 수정과 보안 권고 셋(GHSA-8q8p-x4w4-p745, GHSA-4v8p-p6p8-78pj, GHSA-pv9v-gqcj-f42x), `mutation()` 인스턴스의 보통 저장(#153), LiveComponent·중첩 컴포넌트의 수명주기와 슬롯·temporary assign 정합성, 문서 사이트와 릴리스 묶음(#157·#160). 동작이 바뀌는 것은 [업그레이드 가이드](./UPGRADING.md#100rc4에서-10으로) |
 | v1.1.0 | ✅ | 첫 마이너. `AUTO_BROADCAST.senders`가 모델마다 보낼 필드를 적는 매핑도 받는다(집합은 그대로 모든 필드, #144), 비밀번호 해시·세션 키를 보내는 설정을 알리는 `wireview.W017`, 문서 사이트의 llms.txt와 에이전트 스킬 Markdown 게시(#164·#165). 호환 변경 없음. 할 일은 [업그레이드 가이드](./UPGRADING.md#10에서-11로) |
 | v1.2.0 | ✅ | 내비게이션을 브라우저와 Phoenix에 맞춘다. 같은 경로의 `push_to`·`replace_to`는 다시 가져오지 않는 patch(#169), join은 첫 렌더 앞에서 `params_changed()`, boost 이동의 params는 새 페이지가 화면에 놓인 뒤 `navigated`로(프로토콜 7), 조각 링크·같은 URL·폼 method·`no-cors` 폼·실패하거나 중지된 가져오기와 `wireview:navigation-failed`(#170), IME 조합 중인 칸의 값 보존(#169). 테스트의 `mount(path=...)`·`follow_push(Destination)`와 `path=` 없는 `follow_push()`의 폐기. 문서 사이트의 자기 자산과 묶음 mtime(#166), README와 WHY(#167), 문서의 주장을 지키는 브라우저 테스트(#168). 조용히 달라지는 동작이 여럿이다. 할 일은 [업그레이드 가이드](./UPGRADING.md#11에서-12로) |
+| v1.3.0 | ✅ | 팬아웃을 싸게 하고 개발 루프를 줄인다. 스트림 항목·훅 이벤트·JS를 한 번 렌더해 구독자마다 id만 끼우는 `Broadcast`(#178), 보는 사람을 읽지 않는 렌더를 같은 메시지의 연결들이 함께 쓰는 `Meta.shared_render`(#176)와 `wireview.W019`, 평범한 값의 렌더 지름길(라이브 렌더 약 3분의 1 감소), 개발 서버에서 템플릿을 저장하면 열린 페이지가 다시 join하는 rejoin(#180, 프로토콜 8), 취소할 수 있는 `wireview:before-navigate`와 이동 종류(#154), 첫 HTTP 렌더의 `params_changed()`와 `request.GET`의 쿼리, `wireview_check_templates`(#179), `wireview_lsp` 메타데이터 2.0(#162), FastAPI 비교 벤치(#174). 조용히 달라지는 동작이 있다. 할 일은 [업그레이드 가이드](./UPGRADING.md#12에서-13으로) |
 
 ### 릴리스 절차
 
@@ -366,7 +367,7 @@ def button(text: str, variant: str = "primary"):
    두 lock의 버전도 맞춘다(`tests/test_packaging.py`가 넷을 비교한다). 사전 릴리스가 아니면 classifier가
    `Development Status :: 5 - Production/Stable`이어야 한다(같은 파일이 본다).
 3. 이 문서의 릴리스 이력 표에 행을 ✅로 두고 맨 아래 "마지막 업데이트" 날짜를 바꾼다. 마이너·메이저 릴리스면
-   `SECURITY.md`의 지원 버전 표("지금은 1.2.x")와 `docs/UPGRADING.md`의 "어디서 오나" 표·버전 범위를 새 버전에 맞춘다.
+   `SECURITY.md`의 지원 버전 표("지금은 1.3.x")와 `docs/UPGRADING.md`의 "어디서 오나" 표·버전 범위를 새 버전에 맞춘다.
 4. `make quality`, `make test`, `make test-latest`, `make test-lowest`, `make test-e2e`, `make test-e2e LAYER=redis`, `make test-matrix`, `make ci-build`, `make ci-smoke`, `make docs-site-bundle`(`make docs-site`를 먼저 돈다).
    태그 뒤의 게이트와 같은 것을 먼저 로컬에서 본다 — 게이트에서 떨어지면 태그를 지우고 다시 찍어야 한다.
 5. 워크플로나 액션 버전을 바꿨다면 태그 전에 `gh workflow run release.yml`로 dry run을 돌린다. 게이트까지 똑같이 돌고
@@ -404,4 +405,4 @@ def button(text: str, variant: str = "primary"):
 
 ---
 
-*마지막 업데이트: 2026-10-04*
+*마지막 업데이트: 2026-10-08*
