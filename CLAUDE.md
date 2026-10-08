@@ -18,7 +18,7 @@ Phoenix LiveView 스타일의 Django 실시간 컴포넌트 라이브러리. Pyd
 | 기능 로드맵과 미구현 목록 | `docs/FEATURE-GAP.md` (GAP 번호), 작업 추적은 GitHub Issues |
 | 기능별 API 상세 | `docs/features/README.md` (인덱스) |
 | 학습 순서 | `docs/tutorials/README.md` |
-| 릴리스 버전 | git 태그 `v*`와 `pyproject.toml`의 version |
+| 릴리스 버전 | git 태그 `v<버전>`과 `pyproject.toml`의 version. 편집기 확장은 따로: 태그 `vscode-v<버전>`과 `editors/vscode/package.json`, 절차는 `docs/ROADMAP.md`의 "VS Code 확장 릴리스 절차" |
 | 무엇이 공개 API인가, 폐기 절차 | `docs/COMPATIBILITY.md` |
 
 ## 저장소 지도
@@ -265,6 +265,8 @@ editors/vscode/            VS Code 확장(#156). wheel·sdist에 싣지 않고 �
                            실행마다 출력 파일이 따로다 — 멈춘 프로세스가 늦게 쓴 파일은 다음 실행이 지운다. 자기 실행의 것이 아닌 파일은 실행 timeout보다 오래된 것만.
                            신뢰하지 않은 워크스페이스에서는 프로세스를 띄우지도 메타데이터를 읽지도 않는다(folders.ts 의 run·load).
                            CI의 vscode-extension-host 잡(VS Code 다운로드)만 릴리스 게이트 밖이다
+                           게시는 태그 vscode-v<버전>의 .github/workflows/vscode-release.yml이 Marketplace·Open VSX(itda.django-wireview)에 한다(#163).
+                           아이콘은 images/icon.png, 원본은 images/icon.svg
 scripts/act_ci.py          make ci-local. ci.yml을 act로 잡·매트릭스 칸 하나씩 돌린다. 러너 이미지는 .github/act/Dockerfile, act 옵션은 .actrc.
                            GitHub 러너와 다른 점(좀비를 거두지 않는 pid 1 → --init, 칸끼리 같은 데몬, colima의 소켓)은 그 머리 주석에.
                            tests/test_act_ci.py 가 잡·칸을 ci.yml에서 빠짐없이 읽는지, .actrc가 그 이미지를 쓰는지 본다

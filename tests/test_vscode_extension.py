@@ -398,3 +398,30 @@ def test_the_readme_lists_every_setting_with_its_default():
     source = re.search(r"SOURCE_SETTINGS = \[([^\]]*)\]", folders)
     assert source, "folders.ts names the settings that pick the metadata's source"
     assert set(restricted) == {f"wireview.{key}" for key in re.findall(r'"(\w+)"', source.group(1))}
+
+
+@pytest.mark.unit
+def test_the_extension_id_is_the_publishers():
+    """The Marketplace publisher is ``itda``; the host tests look the extension up by its id."""
+    manifest = json.loads((EXTENSION / "package.json").read_text(encoding="utf-8"))
+    extension_id = f"{manifest['publisher']}.{manifest['name']}"
+    host = [path.read_text(encoding="utf-8") for path in (EXTENSION / "test" / "host").glob("*.cjs")]
+
+    assert extension_id == "itda.django-wireview"
+    assert set(re.findall(r'getExtension\("([^"]+)"\)', " ".join(host))) == {extension_id}
+
+
+@pytest.mark.unit
+def test_the_icon_is_a_square_png_the_package_carries():
+    """The Marketplace takes a PNG of 128px or more. images/icon.svg is its source."""
+    import struct
+
+    manifest = json.loads((EXTENSION / "package.json").read_text(encoding="utf-8"))
+    icon = EXTENSION / manifest["icon"]
+    head = icon.read_bytes()[:24]
+    width, height = struct.unpack(">II", head[16:24])
+
+    assert head[:8] == b"\x89PNG\r\n\x1a\n"
+    assert width == height >= 128
+    assert icon.with_suffix(".svg").is_file()
+    assert f"!{manifest['icon']}" in (EXTENSION / ".vscodeignore").read_text(encoding="utf-8").splitlines()

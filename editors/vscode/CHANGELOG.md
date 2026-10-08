@@ -1,13 +1,19 @@
 # Changelog
 
-The extension is versioned on its own; the library it reads is versioned by
-git tags `v*` (see the repository's CHANGELOG.md). It reads the metadata of
-`manage.py wireview_lsp` version 1.1 or a later 1.x (django-wireview 1.0 to 1.2), and 2.x.
+The extension is versioned on its own (semver, git tags `vscode-v<version>`); the
+library it reads is versioned by git tags `v<version>` (see the repository's
+CHANGELOG.md). It reads the metadata of `manage.py wireview_lsp` version 1.1 or a
+later 1.x (django-wireview 1.0 to 1.2), and 2.x.
+
+A version's section says "Unreleased" until the commit that publishes it dates it;
+the release workflow refuses a tag whose section has no date
+([release procedure](../../docs/ROADMAP.md#vs-code-확장-릴리스-절차)).
 
 ## [0.1.0] - Unreleased
 
 ### Added
 
+- Published to the Visual Studio Marketplace and Open VSX as `itda.django-wireview`, with an icon.
 - The `django-html` language: a TextMate grammar over HTML for `{% %}`, `{{ }}` and `{# #}`
   (in text, attribute values and scripts), comment toggling, auto-closing of `{%` and `{#`,
   block-tag indentation, and `**/templates/**/*.html` associated with it. Once the metadata is

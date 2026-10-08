@@ -3,8 +3,9 @@
   "displayName": "Django Wireview",
   "description": "Django template language support and django-wireview component intelligence: syntax, completion, navigation and diagnostics for templates.",
   "version": "0.1.0",
-  "publisher": "itda-work",
+  "publisher": "itda",
   "license": "MIT",
+  "icon": "images/icon.png",
   "private": true,
   "type": "module",
   "repository": {
@@ -195,6 +196,7 @@
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^4.0.0",
     "esbuild": "^0.27.1",
+    "ovsx": "^1.2.0",
     "parse5": "^8.0.1",
     "typescript": "^5.9.3",
     "vscode-oniguruma": "^2.0.1",

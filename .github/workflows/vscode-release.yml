@@ -1,0 +1,311 @@
+name: VS Code extension release
+
+# Tag push (vscode-v*) -> the extension's gate -> one .vsix -> the Visual Studio Marketplace, Open VSX
+# and a GitHub release of its own (#163). The extension (editors/vscode) is versioned apart from the
+# library: its tag is vscode-v<version of editors/vscode/package.json>, and release.yml's v[0-9]* does
+# not match it. The procedure and the one-time setup are in docs/ROADMAP.md, "VS Code 확장 릴리스 절차".
+#
+# Nothing is published unless the tagged commit passes the extension's checks and its tests in a real
+# VS Code: ci.yml's vscode-extension and vscode-extension-host, copied here step for step
+# (tests/test_packaging.py keeps the copies equal) so that a tag does not run the library's Python
+# matrix. The host tests are outside the library's gate (a VS Code download must not hold back
+# PyPI); here they are the point.
+#
+# The .vsix is built once (package) and every publishing job uploads that same file. Its README and
+# CHANGELOG links point at the tag, not at main.
+#
+# No token is stored anywhere. The Marketplace takes a Microsoft Entra ID token: azure/login signs in
+# as the user-assigned managed identity whose federated credential trusts this repository's
+# environment vscode-marketplace, and `vsce publish --azure-credential` uses that login. Open VSX
+# takes this run's OIDC token (`ovsx publish --trusted-publishing`), trusted for this workflow file.
+# The environment's variables AZURE_CLIENT_ID and AZURE_TENANT_ID are not secrets.
+#
+# A manual run (workflow_dispatch, from main: the environment allows main and vscode-v* tags) is a
+# dry run, from a tag as well -- the publishing jobs ask for the push event, not only a tag ref: the same gate and package, then a sign-in as the managed identity that prints its
+# Marketplace identity -- the id the publisher's Members list needs -- and publishes nothing.
+#
+# Runners are pinned for the reason release.yml gives.
+
+on:
+  push:
+    tags:
+      - 'vscode-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ci.yml's vscode-extension, unchanged
+  vscode-extension:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Unit and grammar tests
+        run: npm test
+
+      - name: Package
+        run: npm run package
+
+  # ci.yml's vscode-extension-host, unchanged, and part of this gate
+  vscode-extension-host:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0 # publishes no floating major tag since v8
+        with:
+          version: "latest"
+
+      # The host tests make the metadata from the test project with `uv run`
+      - name: Set up Python
+        working-directory: .
+        run: |
+          uv python install 3.12
+          uv sync --all-extras
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      # In the VS Code release engines.vscode names, which test/host/run.mjs downloads
+      - name: Smoke tests in VS Code
+        run: xvfb-run -a npm run test:host
+
+  # The one .vsix every publishing job uploads, with the release notes beside it.
+  package:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: editors/vscode
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      vsix: ${{ steps.version.outputs.vsix }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      # On a tag: the tag is vscode-v<package.json's version>, and CHANGELOG.md dates that version's
+      # section (an "Unreleased" section is dated in the release commit). A dry run only needs the section.
+      - name: Check that the tag matches package.json and the changelog
+        id: version
+        run: |
+          version=$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            if [ "vscode-v$version" != "$GITHUB_REF_NAME" ]; then
+              echo "tag $GITHUB_REF_NAME does not match editors/vscode/package.json version $version"
+              exit 1
+            fi
+            if ! grep -qE "^## \[$version\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" CHANGELOG.md; then
+              echo "CHANGELOG.md has no dated section for $version: ## [$version] - YYYY-MM-DD"
+              exit 1
+            fi
+          fi
+          grep -qF "## [$version]" CHANGELOG.md || { echo "CHANGELOG.md has no section for $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "vsix=django-wireview-$version.vsix" >> "$GITHUB_OUTPUT"
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      # vsce runs vscode:prepublish (the production bundle). The README's relative links and images
+      # resolve against the tag, which a dry run has not pushed yet.
+      - name: Package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          VSIX: ${{ steps.version.outputs.vsix }}
+        run: |
+          ref="vscode-v$VERSION"
+          mkdir -p "$RUNNER_TEMP/release"
+          npx vsce package --no-dependencies \
+            --baseContentUrl "https://github.com/itda-work/django-wireview/blob/$ref/editors/vscode/" \
+            --baseImagesUrl "https://github.com/itda-work/django-wireview/raw/$ref/editors/vscode/" \
+            --out "$RUNNER_TEMP/release/$VSIX"
+          unzip -l "$RUNNER_TEMP/release/$VSIX"
+          for entry in extension/package.json extension/readme.md extension/changelog.md \
+            extension/dist/extension.cjs extension/images/icon.png; do
+            unzip -l "$RUNNER_TEMP/release/$VSIX" "$entry" > /dev/null || { echo "the package lacks $entry"; exit 1; }
+          done
+          if unzip -p "$RUNNER_TEMP/release/$VSIX" extension/readme.md | grep -q "/main/editors/vscode/"; then
+            echo "the packaged README links main, not $ref"
+            exit 1
+          fi
+
+      - name: Cut the release notes from the changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          awk -v head="## [$VERSION]" 'index($0, head) == 1 { on = 1; next } on && /^## \[/ { exit } on' \
+            CHANGELOG.md > "$RUNNER_TEMP/release/notes.md"
+          cat "$RUNNER_TEMP/release/notes.md"
+          grep -q '[^[:space:]]' "$RUNNER_TEMP/release/notes.md" || { echo "the section is empty"; exit 1; }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vsix
+          path: ${{ runner.temp }}/release/
+
+  # Dry run only. The managed identity's id on the Marketplace: add it to the publisher's Members as
+  # a Contributor before the first tag (a failed sign-in fails the dry run).
+  marketplace-identity:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    environment: vscode-marketplace
+    permissions:
+      id-token: write # azure/login (OIDC)
+    steps:
+      - name: Sign in as the publishing identity
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Print the Marketplace identity
+        run: |
+          id=$(az rest -u https://app.vssps.visualstudio.com/_apis/profile/profiles/me \
+            --resource 499b84ac-1321-427f-aa17-267ca6975798 --query id -o tsv)
+          test -n "$id"
+          echo "Marketplace identity: $id"
+          echo "Marketplace identity of the publishing managed identity: \`$id\`" >> "$GITHUB_STEP_SUMMARY"
+
+  # The publishing jobs run on a pushed tag only: a manual run from a tag has a tag ref too, and is
+  # still a dry run. A re-run keeps the run's event (push), so "Re-run failed jobs" publishes.
+  # Each registry has its own job, so a re-run of one does not upload to the other again; and each
+  # publishes with --skip-duplicate, so a job that failed after its registry had stored the version
+  # (the answer lost, the runner gone) passes when re-run instead of failing on the version it sent.
+  marketplace:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/vscode-v')
+    needs: [vscode-extension, vscode-extension-host, package]
+    runs-on: ubuntu-24.04
+    environment: vscode-marketplace
+    permissions:
+      id-token: write # azure/login (OIDC)
+      contents: read # checkout
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v7 # for the locked vsce
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: vsix
+          path: ${{ runner.temp }}/release/
+
+      - name: Sign in as the publishing identity
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Publish to the Visual Studio Marketplace
+        env:
+          VSIX: ${{ needs.package.outputs.vsix }}
+        run: npx vsce publish --azure-credential --skip-duplicate --packagePath "$RUNNER_TEMP/release/$VSIX"
+
+  open-vsx:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/vscode-v')
+    needs: [vscode-extension, vscode-extension-host, package]
+    runs-on: ubuntu-24.04
+    environment: vscode-marketplace
+    permissions:
+      id-token: write # Open VSX trusted publishing (OIDC)
+      contents: read # checkout
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v7 # for the locked ovsx
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: vsix
+          path: ${{ runner.temp }}/release/
+
+      - name: Publish to Open VSX
+        env:
+          VSIX: ${{ needs.package.outputs.vsix }}
+        run: npx ovsx publish --trusted-publishing --skip-duplicate --packagePath "$RUNNER_TEMP/release/$VSIX"
+
+  # Once both registries have it. Never the repository's latest release: that is the library's.
+  github-release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/vscode-v')
+    needs: [package, marketplace, open-vsx]
+    runs-on: ubuntu-24.04
+    environment: vscode-marketplace
+    permissions:
+      contents: write # GitHub release
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: vsix
+          path: ${{ runner.temp }}/release/
+
+      - name: GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: VS Code extension ${{ needs.package.outputs.version }}
+          body_path: ${{ runner.temp }}/release/notes.md
+          files: ${{ runner.temp }}/release/${{ needs.package.outputs.vsix }}
+          draft: false
+          prerelease: false
+          make_latest: "false"

@@ -118,6 +118,8 @@ PR 전에 `make quality`와 `make test`를 통과시킨다. CI(`.github/workflow
 VS Code 다운로드가 파이썬 패키지의 배포를 막지 않게 한다(#156).
 같은 워크플로를 push 전에 로컬 Docker에서 통째로 돌리려면 `make ci-local`(아래 표).
 릴리스 절차는 `docs/ROADMAP.md`의 "릴리스 절차".
+편집기 확장은 따로 릴리스한다: 태그 `vscode-v<버전>`이면 `.github/workflows/vscode-release.yml`이 `.github/workflows/ci.yml`의 두 확장 잡과
+같은 게이트를 돌고 Marketplace·Open VSX에 올린다(#163). 절차와 운영 메모는 `docs/ROADMAP.md`의 "VS Code 확장 릴리스 절차".
 
 | 할 일 | 명령 | 선행 조건 |
 |------|------|-----------|

@@ -28,7 +28,7 @@ async function eventually(check, what, timeout = 30000) {
 }
 
 async function api() {
-  const extension = vscode.extensions.getExtension("itda-work.django-wireview");
+  const extension = vscode.extensions.getExtension("itda.django-wireview");
   assert.ok(extension, "the extension is installed");
   return extension.activate();
 }

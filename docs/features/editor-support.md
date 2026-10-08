@@ -10,12 +10,21 @@ IDE가 필드와 핸들러를 안다. 템플릿 쪽이 이 문서다. `manage.py
 
 ## VS Code 확장
 
-Marketplace에는 아직 올리지 않았다. 저장소에서 `.vsix`를 만들어 설치한다.
+확장 ID는 `itda.django-wireview`다. VS Code는 [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=itda.django-wireview)에서,
+Cursor·VSCodium처럼 Open VSX를 쓰는 편집기는 [Open VSX](https://open-vsx.org/extension/itda/django-wireview)에서 설치한다.
+확장 보기에서 "Django Wireview"를 찾거나 명령으로 설치한다.
+
+```bash
+code --install-extension itda.django-wireview
+```
+
+Marketplace에 닿지 않는 환경이거나 아직 게시하지 않은 변경을 써 보려면 `.vsix` 파일을 직접 설치한다. 게시한 버전의
+`.vsix`는 그 버전의 GitHub Release(태그 `vscode-v<버전>`)에 붙어 있고, 저장소에서 만들 수도 있다.
 
 ```bash
 make ext-install    # editors/vscode 의 npm 의존성
 make ext-package    # editors/vscode/dist/django-wireview-<버전>.vsix
-code --install-extension editors/vscode/dist/django-wireview-0.1.0.vsix
+code --install-extension editors/vscode/dist/django-wireview-<버전>.vsix
 ```
 
 할 수 있는 일, 설정, 알려진 한계는 확장의 [README](../../editors/vscode/README.md)에 있다. 요약하면:
@@ -34,8 +43,8 @@ code --install-extension editors/vscode/dist/django-wireview-0.1.0.vsix
 `wireview_lsp`를 돌리는 것은 프로젝트의 코드를 실행하는 일이고, 메타데이터에 적힌 경로는 정의로 이동이 여는
 파일이기 때문이다. 구문 강조·스니펫·HTML 기능만 되고, 워크스페이스를 신뢰하는 순간 메타데이터를 만든다.
 
-확장은 라이브러리의 공개 API가 아니고 버전을 따로 매긴다(`editors/vscode/package.json`). 라이브러리와 확장
-사이의 약속은 아래 JSON 하나다.
+확장은 라이브러리의 공개 API가 아니고 버전을 따로 매긴다(`editors/vscode/package.json`, 변경은
+[확장의 CHANGELOG](../../editors/vscode/CHANGELOG.md)). 라이브러리와 확장 사이의 약속은 아래 JSON 하나다.
 
 ## CI에서: `manage.py wireview_check_templates`
 

@@ -11,7 +11,7 @@ const ITEM = path.join(repository, "examples", "todo", "templates", "todo", "ite
 const tests = {
   async "the workspace is not trusted, and the extension says so"() {
     assert.equal(vscode.workspace.isTrusted, false);
-    const extension = vscode.extensions.getExtension("itda-work.django-wireview");
+    const extension = vscode.extensions.getExtension("itda.django-wireview");
     const exports = await extension.activate();
     // Long enough for a run or a read to have landed
     await new Promise((done) => setTimeout(done, 2000));

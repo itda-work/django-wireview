@@ -7,7 +7,7 @@
 ## 개요
 
 ```
-현재 버전: pyproject.toml 과 git 태그 v* 가 정본
+현재 버전: pyproject.toml 과 git 태그 v<버전> 이 정본 (편집기 확장은 따로: vscode-v<버전>)
 남은 갭 목록: docs/FEATURE-GAP.md 의 GAP-nnn 이 정본
 
 Phase 1: Foundation     ████████████████████ 완료
@@ -333,7 +333,7 @@ def button(text: str, variant: str = "primary"):
 
 ## 릴리스 이력과 계획
 
-패키지 버전은 git 태그 `v*` 가 정본이다. reactor 시절의 v6.0.0 마일스톤 번호는 쓰지 않는다.
+패키지 버전은 git 태그 `v<버전>`(`v1.3.0`)이 정본이다. 편집기 확장의 태그 `vscode-v<버전>`은 따로 매긴다([VS Code 확장 릴리스 절차](#vs-code-확장-릴리스-절차)). reactor 시절의 v6.0.0 마일스톤 번호는 쓰지 않는다.
 
 | 버전 | 상태 | 내용 |
 |------|:----:|------|
@@ -371,7 +371,7 @@ def button(text: str, variant: str = "primary"):
 4. `make quality`, `make test`, `make test-latest`, `make test-lowest`, `make test-e2e`, `make test-e2e LAYER=redis`, `make test-matrix`, `make ci-build`, `make ci-smoke`, `make docs-site-bundle`(`make docs-site`를 먼저 돈다).
    태그 뒤의 게이트와 같은 것을 먼저 로컬에서 본다 — 게이트에서 떨어지면 태그를 지우고 다시 찍어야 한다.
 5. 워크플로나 액션 버전을 바꿨다면 태그 전에 `gh workflow run release.yml`로 dry run을 돌린다. 게이트까지 똑같이 돌고
-   배포만 하지 않는다.
+   배포만 하지 않는다. publish는 태그 push 이벤트에서만 돌므로 태그를 `--ref`로 골라 수동 실행해도 배포하지 않는다(#163).
 6. 태그 `v<버전>`을 push한다. `.github/workflows/release.yml`이 다음을 모두 통과해야 PyPI에 올린다(#122).
    - **ci**: `ci.yml` 전체를 태그 커밋에 대해 부른다(`workflow_call`). Python × Django 매트릭스, 새 설치가 받는
      최신 의존성(`test-latest`, #127), 하한 의존성(`test-lowest`, #132), NATS·Redis 레이어의 E2E(#130), lint, typecheck, 패키지 빌드,
@@ -402,6 +402,60 @@ def button(text: str, variant: str = "primary"):
 
    recipe가 Release의 묶음을 내려받아 빌드 증명과 [묶음 계약](./implementation/docs-site-bundle.md)을 검사한 뒤 갈아 끼운다.
    `https://itda.work/wireview/VERSION`이 새 태그(`vX.Y.Z`)면 끝이다.
+
+### VS Code 확장 릴리스 절차
+
+편집기 확장(`editors/vscode/`, Marketplace·Open VSX의 `itda.django-wireview`)은 라이브러리와 따로 릴리스한다.
+확장의 버전·게시 절차·운영 메모는 이 절이 정본이다.
+
+- **버전.** 라이브러리와 독립된 semver이고 `editors/vscode/package.json`의 `version`이 정본이다. 라이브러리와 확장
+  사이의 약속은 [메타데이터 형식](./features/editor-support.md)뿐이라, 한쪽이 올라도 다른 쪽을 올리지 않는다. Marketplace는
+  `0.2.0-beta.1` 같은 사전 릴리스 버전을 받지 않으므로 `x.y.z`만 쓴다.
+- **변경 기록.** `editors/vscode/CHANGELOG.md`(영어). 작업 중에는 다음 버전의 절 `## [<버전>] - Unreleased`에 쌓고,
+  날짜는 게시 커밋에서 넣는다(`## [<버전>] - YYYY-MM-DD`). 날짜 없는 절로 태그를 찍으면 워크플로가 실패한다. 그 절이
+  GitHub Release 본문이 되고, 파일 전체가 Marketplace 페이지의 Changelog 탭이 된다. 확장이 읽는 메타데이터 버전의 범위가
+  바뀌면 그 파일의 머리말도 고친다.
+- **태그.** `vscode-v<버전>`. 라이브러리의 `release.yml`은 `v[0-9]*`만 보므로 확장 태그로 PyPI 릴리스가 돌지 않는다.
+
+1. 게시 커밋: `editors/vscode/CHANGELOG.md`의 절에 날짜를 넣고 `editors/vscode/package.json`의 `version`을 맞춘 뒤
+   `editors/vscode`에서 `npm install --package-lock-only`로 lock의 버전도 맞춘다.
+2. `make ext-check ext-test ext-test-host ext-package`. 만든 `.vsix`를 `code --install-extension`으로 설치해 본다.
+3. 워크플로나 액션 버전을 바꿨다면 태그 전에 `gh workflow run vscode-release.yml --ref main`으로 dry run을 돌린다. 게이트와
+   패키징까지 똑같이 돌고, 게시 대신 Marketplace 신원 ID를 출력한다(아래 운영 메모). 게시 잡은 태그 push 이벤트에서만 돌므로
+   이미 있는 태그를 `--ref`로 골라 수동 실행해도 게시하지 않는다.
+4. 태그 `vscode-v<버전>`을 push한다. `.github/workflows/vscode-release.yml`이 다음을 모두 통과해야 게시한다.
+   - **vscode-extension**, **vscode-extension-host**: `ci.yml`의 같은 이름 잡을 그대로 옮긴 게이트(타입 검사·단위 테스트·
+     패키징, 내려받은 VS Code에서의 호스트 테스트). 라이브러리의 파이썬 매트릭스는 돌지 않는다. 두 사본이 같은지는
+     `tests/test_packaging.py`가 본다 — `ci.yml`의 잡을 고치면 이쪽도 고친다.
+   - **package**: 태그가 `vscode-v<package.json의 version>`인지, CHANGELOG에 날짜 있는 절이 있는지 보고 `.vsix`를 한 번 만든다.
+     README·CHANGELOG의 상대 링크와 이미지는 `main`이 아니라 그 태그를 가리킨다. 아이콘·README가 들었는지 보고, CHANGELOG의
+     그 절을 릴리스 노트로 잘라 `.vsix`와 함께 artifact로 올린다.
+   - **marketplace**, **open-vsx**: 같은 `.vsix`를 `--skip-duplicate`로 올린다. 따로 도는 잡이라 한쪽만 실패하면 Actions의
+     "Re-run failed jobs"로 그쪽만 다시 돌린다. 레지스트리가 버전을 받아 둔 뒤에 잡이 실패했어도(응답이 끊김, 러너 종료) 다시 돌린
+     잡은 이미 있는 그 버전을 성공으로 보고 넘어가므로, 그 뒤 `github-release`까지 이어진다. 다시 돌려도 태그 push의 실행이라
+     게시 잡이 돈다.
+   - **github-release**: 둘 다 끝나면 태그 `vscode-v<버전>`의 GitHub Release에 `.vsix`를 붙인다. 저장소의 latest 릴리스는
+     라이브러리의 것이므로 이 Release는 latest가 되지 않는다(`make_latest: false`).
+5. [Marketplace 페이지](https://marketplace.visualstudio.com/items?itemName=itda.django-wireview)와
+   [Open VSX 페이지](https://open-vsx.org/extension/itda/django-wireview)에 새 버전이 보이면 끝이다. Marketplace는 올린 뒤
+   검사에 몇 분이 걸린다.
+
+**운영 메모.** 토큰은 어디에도 저장하지 않는다. Azure DevOps의 global PAT는 2026-12-01에 폐지되므로 Marketplace는
+Microsoft Entra ID 관리 ID로, Open VSX는 Trusted Publishing(OIDC)으로 올린다. 처음 한 번 맞춰 둔 것은 다음과 같다.
+
+- **Marketplace publisher** `itda`. 확장 ID는 `itda.django-wireview`다.
+- **Azure**: 구독 '종량제', 리소스 그룹 `rg-wireview-publish`, 사용자 할당 관리 ID `id-wireview-vscode-publish`(koreacentral).
+  그 federated credential의 subject는 `repo:itda-work/django-wireview:environment:vscode-marketplace`(GitHub Actions 발급자,
+  audience는 기본값). 구독의 역할 할당은 필요 없다 — `azure/login`이 `allow-no-subscriptions`로 로그인한다.
+- **GitHub environment** `vscode-marketplace`: 배포는 태그 `vscode-v*`와 브랜치 `main`(dry run)만. 변수(secret 아님)
+  `AZURE_CLIENT_ID`(관리 ID의 클라이언트 ID)와 `AZURE_TENANT_ID`. 게시하는 세 잡이 모두 이 environment에서 돈다.
+- **Marketplace Members**: dry run의 `marketplace-identity` 잡이 출력하는 ID(실행 요약에도 남는다)를 publisher `itda`의
+  Members에 Contributor로 더한다. 그 전에는 `vsce publish`가 권한 오류로 실패한다.
+- **Open VSX**: 네임스페이스 `itda`의 Trusted Publishing에 저장소 `itda-work/django-wireview`, 워크플로
+  `vscode-release.yml`, environment `vscode-marketplace`를 등록한다. 게시는 `open-vsx` 잡이 한다.
+- 관리 ID를 다시 만들면 클라이언트 ID와 Marketplace 신원 ID가 바뀐다. environment 변수를 고치고 dry run으로 새 ID를 얻어
+  Members를 다시 맞춘다. 워크플로 파일 이름이나 environment 이름을 바꾸면 federated credential의 subject와 Open VSX
+  등록도 함께 바꾼다.
 
 ---
 

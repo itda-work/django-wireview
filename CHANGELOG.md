@@ -1,14 +1,23 @@
 # Changelog
 
 All notable changes to django-wireview are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Git tags `v*` are the
-version source of truth; `pyproject.toml` is bumped in the release commit.
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Git tags `v<version>` are the
+version source of truth; `pyproject.toml` is bumped in the release commit. The editor
+extension is released on its own, with `vscode-v<version>` tags and
+[editors/vscode/CHANGELOG.md](./editors/vscode/CHANGELOG.md).
 Feature-level history is tracked by GAP number in `docs/FEATURE-GAP.md`.
 
 The django-reactor era changelog (2.x) is preserved in
 [docs/legacy/CHANGELOG-reactor.md](./docs/legacy/CHANGELOG-reactor.md).
 
 ## [Unreleased]
+
+### Changed
+
+- The release workflow starts on tags `v<digit>...` only (#163). `v*` matched `vscode-v<version>`
+  too, the tags of the editor extension, which `.github/workflows/vscode-release.yml` now publishes
+  on its own to the Visual Studio Marketplace and Open VSX as `itda.django-wireview`, gated by the
+  extension's checks and its tests in VS Code. The library and its release are unchanged.
 
 ## [1.3.0] - 2026-10-08
 

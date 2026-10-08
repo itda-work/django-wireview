@@ -1,6 +1,7 @@
 """What ships, and what must not (#93)."""
 
 import json
+import re
 import tomllib
 from pathlib import Path
 
@@ -79,6 +80,43 @@ def _runs(job: dict) -> list[str]:
     return [step["run"] for step in job["steps"] if "run" in step]
 
 
+#: The runs a release workflow sees: a pushed tag of either workflow, a manual run from main and a
+#: manual run from a tag (``gh workflow run --ref <tag>``, whose ref is the tag). A re-run keeps its
+#: run's event, so it is one of these too.
+RUNS = [
+    (event, ref)
+    for event in ("push", "workflow_dispatch")
+    for ref in ("refs/heads/main", "refs/tags/v1.3.0", "refs/tags/vscode-v0.1.0")
+    if not (event == "push" and ref == "refs/heads/main")
+]
+
+
+def _condition(expression: str, event: str, ref: str) -> bool:
+    """The job conditions used here: ``&&`` of ``github.event_name == '...'`` and
+    ``startsWith(github.ref, '...')``. Anything else fails, so a new form gets a reading here first."""
+    result = True
+    for term in (t.strip() for t in expression.split("&&")):
+        if match := re.fullmatch(r"github\.event_name == '([^']+)'", term):
+            result = result and event == match.group(1)
+        elif match := re.fullmatch(r"startsWith\(github\.ref, '([^']+)'\)", term):
+            result = result and ref.startswith(match.group(1))
+        else:
+            raise AssertionError(f"cannot read the condition {term!r}")
+    return result
+
+
+def _runs_on(workflow: str, job: str) -> set[tuple[str, str]]:
+    """The runs of RUNS that start ``workflow`` (a push only on a tag its filter matches) and run ``job``."""
+    filters = _workflow(workflow)["on"]["push"]["tags"]
+    condition = _workflow(workflow)["jobs"][job].get("if")
+    started = [
+        (event, ref)
+        for event, ref in RUNS
+        if event == "workflow_dispatch" or _matches(filters, ref.removeprefix("refs/tags/"))
+    ]
+    return {run for run in started if condition is None or _condition(condition, *run)}
+
+
 def _step(job: dict, uses: str) -> list[dict]:
     return [step for step in job.get("steps", []) if step.get("uses", "").split("@")[0] == uses]
 
@@ -139,7 +177,7 @@ def test_publishing_uploads_dist_and_attests_the_bundle():
     assets = release["with"]["files"].split()
 
     assert {"ci", "docs", "smoke"} <= _needs(publish), "a docs build that fails does not stop the publish"
-    assert publish["if"] == "startsWith(github.ref, 'refs/tags/v')"
+    assert _runs_on("release.yml", "publish") == {("push", "refs/tags/v1.3.0")}, "a manual run publishes (#163)"
     assert _under_dist(downloads["dist"]) and not _under_dist(downloads["docs-site"])
     assert pypi["with"]["packages-dir"].rstrip("/") == "dist"
     assert "docs-site-" in attest["with"]["subject-path"] and not _under_dist(attest["with"]["subject-path"])
@@ -215,3 +253,133 @@ def test_the_sdist_holds_the_package_and_nothing_else_of_the_repository():
     }
     assert {"README.md", "CHANGELOG.md", "LICENSE", "hatch_build.py"} <= selected
     assert "wireview/templatetags/wireview.py" in selected
+
+
+# The editor extension's release (#163): its own tags, its own gate, one .vsix for every registry.
+LIBRARY_TAGS = ["v1.3.0", "v1.0.0rc4", "v2.0.0"]
+EXTENSION_TAGS = ["vscode-v0.1.0", "vscode-v1.2.3"]
+PUBLISHING_JOBS = {"marketplace", "open-vsx", "github-release"}
+
+
+def _tag_filters(name: str) -> list[str]:
+    return _workflow(name)["on"]["push"]["tags"]
+
+
+def _matches(filters: list[str], tag: str) -> bool:
+    from fnmatch import fnmatchcase  # GitHub's filters as used here: `*` and a `[0-9]` class
+
+    return any(fnmatchcase(tag, pattern) for pattern in filters)
+
+
+def test_a_tag_starts_one_release_workflow():
+    """``v*`` matched ``vscode-v0.1.0`` too: an extension tag would have released the library to PyPI."""
+    library, extension = _tag_filters("release.yml"), _tag_filters("vscode-release.yml")
+
+    assert [tag for tag in LIBRARY_TAGS if not _matches(library, tag) or _matches(extension, tag)] == []
+    assert [tag for tag in EXTENSION_TAGS if not _matches(extension, tag) or _matches(library, tag)] == []
+
+
+def test_the_extension_release_gates_on_the_same_jobs_as_ci():
+    """Copies of ci.yml's two extension jobs (calling ci.yml would run the library's whole matrix).
+    The host tests are outside the library's gate and inside this one."""
+    ci = _workflow("ci.yml")["jobs"]
+    jobs = _workflow("vscode-release.yml")["jobs"]
+
+    for name in ("vscode-extension", "vscode-extension-host"):
+        copy = {key: value for key, value in ci[name].items() if key != "if"}
+        assert jobs[name] == copy, f"{name} differs from ci.yml's"
+    for name in PUBLISHING_JOBS - {"github-release"}:
+        assert {"vscode-extension", "vscode-extension-host", "package"} <= _needs(jobs[name]), name
+    assert {"package", "marketplace", "open-vsx"} <= _needs(jobs["github-release"])
+
+
+def test_the_extension_tag_must_be_the_manifest_version_with_a_dated_changelog_section():
+    package = _workflow("vscode-release.yml")["jobs"]["package"]
+    check = next(step for step in package["steps"] if step.get("id") == "version")["run"]
+
+    assert "if" not in package, "the package is skipped on some runs (the dry run among them)"
+    assert '"vscode-v$version" != "$GITHUB_REF_NAME"' in check
+    assert "package.json" in check
+    assert r"^## \[$version\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" in check, "an undated section can be published"
+
+
+def test_every_registry_gets_the_one_vsix_the_package_job_built():
+    jobs = _workflow("vscode-release.yml")["jobs"]
+    (upload,) = _step(jobs["package"], "actions/upload-artifact")
+    packaging = " ".join(_runs(jobs["package"]))
+
+    assert "vsce package" in packaging and "/blob/$ref/" in packaging and "/raw/$ref/" in packaging, (
+        "the packaged README does not link the tag"
+    )
+    assert "extension/images/icon.png" in packaging and "extension/readme.md" in packaging
+    for name in PUBLISHING_JOBS:
+        (download,) = _step(jobs[name], "actions/download-artifact")
+        assert download["with"]["name"] == upload["with"]["name"], name
+        assert "vsce package" not in " ".join(_runs(jobs[name])), f"{name} builds its own package"
+    assert "vsce publish --azure-credential --skip-duplicate --packagePath" in " ".join(_runs(jobs["marketplace"]))
+    assert "ovsx publish --trusted-publishing --skip-duplicate --packagePath" in " ".join(_runs(jobs["open-vsx"]))
+
+
+def test_a_rerun_of_a_publishing_job_passes_once_its_registry_has_the_version():
+    """A registry can store the upload and the job still fail (the answer lost, the runner gone).
+    Without --skip-duplicate the re-run fails on that version for good, and github-release never runs:
+    vsce and ovsx both raise on a version that exists unless told to skip it."""
+    jobs = _workflow("vscode-release.yml")["jobs"]
+
+    for name, command in (("marketplace", "vsce publish"), ("open-vsx", "ovsx publish")):
+        (publish,) = [run for run in _runs(jobs[name]) if command in run]
+        assert "--skip-duplicate" in publish.split(), name
+
+
+def test_the_extension_publishes_from_its_environment_with_least_permissions():
+    """OIDC for the registries, write access to the repository only where the release is made."""
+    workflow = _workflow("vscode-release.yml")
+    jobs = workflow["jobs"]
+
+    assert workflow["permissions"] == {"contents": "read"}
+    for name in PUBLISHING_JOBS | {"marketplace-identity"}:
+        assert jobs[name]["environment"] == "vscode-marketplace", name
+    writers = {name for name, job in jobs.items() if job.get("permissions", {}).get("contents") == "write"}
+    assert writers == {"github-release"}
+    oidc = {name for name, job in jobs.items() if job.get("permissions", {}).get("id-token") == "write"}
+    assert oidc == {"marketplace", "open-vsx", "marketplace-identity"}
+    for name in ("marketplace", "marketplace-identity"):
+        (login,) = _step(jobs[name], "azure/login")
+        assert login["with"] == {
+            "client-id": "${{ vars.AZURE_CLIENT_ID }}",
+            "tenant-id": "${{ vars.AZURE_TENANT_ID }}",
+            "allow-no-subscriptions": True,
+        }, name
+
+
+def test_the_extension_release_is_never_the_latest_release():
+    """The repository's latest release is the library's: the README badge and `gh release download` read it."""
+    (release,) = _step(_workflow("vscode-release.yml")["jobs"]["github-release"], "softprops/action-gh-release")
+
+    assert release["with"]["make_latest"] == "false"
+    assert release["with"]["prerelease"] is False and release["with"]["draft"] is False
+
+
+def test_a_dry_run_of_the_extension_release_publishes_nothing():
+    """A manual run checks, packages and prints the Marketplace identity of the managed identity."""
+    workflow = _workflow("vscode-release.yml")
+    jobs = workflow["jobs"]
+
+    assert "workflow_dispatch" in workflow["on"]
+    # A manual run from a tag has the tag's ref (#163): only the pushed tag publishes
+    pushed = {("push", "refs/tags/vscode-v0.1.0")}
+    assert {name: _runs_on("vscode-release.yml", name) for name in PUBLISHING_JOBS} == dict.fromkeys(
+        PUBLISHING_JOBS, pushed
+    )
+    assert _runs_on("vscode-release.yml", "marketplace-identity") == {
+        run for run in RUNS if run[0] == "workflow_dispatch"
+    }
+    assert jobs["marketplace-identity"]["if"] == "github.event_name == 'workflow_dispatch'"
+    identity = " ".join(_runs(jobs["marketplace-identity"]))
+    assert "_apis/profile/profiles/me" in identity and "499b84ac-1321-427f-aa17-267ca6975798" in identity
+    for name, job in jobs.items():
+        if name in PUBLISHING_JOBS:
+            continue
+        runs = " ".join(_runs(job))
+        assert not re.search(r"\b(vsce|ovsx) publish\b", runs), name
+        assert not _step(job, "softprops/action-gh-release"), name

@@ -1,6 +1,6 @@
 name: Release
 
-# Tag push (v*) -> build -> publish to PyPI via trusted publishing -> GitHub release.
+# Tag push (v<digit>*) -> build -> publish to PyPI via trusted publishing -> GitHub release.
 # The release also carries the documentation site, docs-site-v<version>.tar.gz, with a
 # build provenance attestation (#160).
 #
@@ -23,15 +23,19 @@ name: Release
 #
 # A manual run (workflow_dispatch) is a dry run: it runs the same gate, builds and
 # round-trips both artifacts, and publishes, attests and releases nothing. It is how a change to this
-# file, or an action bump, gets checked before the next tag depends on it (#105).
+# file, or an action bump, gets checked before the next tag depends on it (#105). That holds for a
+# manual run from a tag too: its ref is the tag, so publish asks for the push event as well (#163).
+# A re-run keeps the run's event, so "Re-run failed jobs" after a tag push still publishes.
 #
 # Runners are pinned rather than ubuntu-latest, so a GitHub image migration does
 # not land inside a release unannounced. Move the pin on purpose, with a dry run.
 
+# The tag filter starts with a digit: 'v*' also matched vscode-v<version>, the editor extension's
+# tags, which vscode-release.yml publishes (#163).
 on:
   push:
     tags:
-      - 'v*'
+      - 'v[0-9]*'
   workflow_dispatch:
 
 jobs:
@@ -187,7 +191,7 @@ jobs:
   # Waits for every gate. A docs build that fails stops it twice over: ci (its docs-site job)
   # and docs both fail, and a job whose needs failed does not run.
   publish:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: [ci, build, docs, smoke]
     runs-on: ubuntu-24.04
     environment: pypi

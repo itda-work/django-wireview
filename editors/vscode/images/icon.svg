@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- The source of icon.png, the Marketplace and Open VSX icon (PNG, 128px or more):
+       rsvg-convert -w 256 -h 256 images/icon.svg -o images/icon.png
+       A filled tile, so it reads on light and dark themes alike: template braces around a wire. -->
+  <rect x="8" y="8" width="240" height="240" rx="48" fill="#0c4b33"/>
+  <g fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M88 64 h-10 a14 14 0 0 0 -14 14 v34 l-18 16 l18 16 v34 a14 14 0 0 0 14 14 h10"/>
+    <path d="M168 64 h10 a14 14 0 0 1 14 14 v34 l18 16 l-18 16 v34 a14 14 0 0 1 -14 14 h-10"/>
+  </g>
+  <path d="M92 110 l14 40 l22 -44 l22 44 l14 -40" fill="none" stroke="#6ee7b7" stroke-width="16"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
