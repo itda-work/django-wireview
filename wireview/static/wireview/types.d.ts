@@ -41,12 +41,32 @@ interface WireviewDebug {
   component(id: string): unknown;
 }
 
+/** What started a boosted move (docs/features/boost.md, #154). */
+type WireviewNavigationKind = "link" | "form" | "visit" | "push" | "replace" | "redirect" | "popstate";
+
+/**
+ * `wireview:before-navigate`: a boosted move is about to happen, and
+ * `preventDefault()` keeps the page where it is (docs/features/boost.md, #154).
+ * A `redirect` is not cancelable, nor is a popstate where the browser has no Navigation API.
+ */
+interface WireviewBeforeNavigateDetail {
+  /** Where it goes, resolved. For a popstate, the entry the address bar names already. */
+  url: string;
+  kind: WireviewNavigationKind;
+  /** The page stays and only its params change: nothing is fetched. */
+  patch: boolean;
+  /** The form being sent, for `kind: "form"`. */
+  form?: HTMLFormElement;
+}
+
 /** `wireview:navigated`: a boosted navigation landed (docs/features/boost.md, #128). */
 interface WireviewNavigatedDetail {
   /** Where the navigation ended, after any redirect. */
   url: string;
   /** The page it left. */
   previousUrl: string;
+  /** What started it (#154). */
+  kind: WireviewNavigationKind;
 }
 
 /** `wireview:navigation-failed`: a boosted form submission put no page on screen (docs/features/boost.md, #170). */
@@ -64,6 +84,7 @@ interface WireviewNavigationFailedDetail {
 }
 
 interface DocumentEventMap {
+  "wireview:before-navigate": CustomEvent<WireviewBeforeNavigateDetail>;
   "wireview:navigated": CustomEvent<WireviewNavigatedDetail>;
   "wireview:navigation-failed": CustomEvent<WireviewNavigationFailedDetail>;
 }
@@ -84,7 +105,7 @@ interface Window {
   wireview: {
     /**
      * Go to a URL as a boosted link does (in place under `BOOST_PAGES`, otherwise a page load).
-     * Resolves to false when a full page load took over.
+     * Resolves to false when a full page load took over, or `wireview:before-navigate` was cancelled.
      */
     visit(url: string, options?: { replace?: boolean }): Promise<boolean>;
     /**

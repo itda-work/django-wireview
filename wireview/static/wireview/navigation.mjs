@@ -29,9 +29,54 @@ export const NAVIGATED_EVENT = "wireview:navigated";
 export const NAVIGATION_FAILED_EVENT = "wireview:navigation-failed";
 
 /**
+ * The cancelable event dispatched on `document` before a move boost makes
+ * (#154): `preventDefault()` keeps the page where it is -- a form with unsaved
+ * input, say. `beforeunload` covers a full page load and never a boosted one,
+ * whose `pushState` the browser does not see as leaving.
+ */
+export const BEFORE_NAVIGATE_EVENT = "wireview:before-navigate";
+
+/**
+ * What started a move (#154), in `wireview:before-navigate` and
+ * `wireview:navigated`:
+ * - "link": a boosted link
+ * - "form": a boosted form (`wire-boost`), GET or POST
+ * - "visit": page code -- `wireview.visit()`, the `JS().navigate()` command
+ * - "push", "replace": the server's `push_to`, `replace_to`
+ * - "redirect": the server's `redirect_to`
+ * - "popstate": Back or Forward
+ * @typedef {"link" | "form" | "visit" | "push" | "replace" | "redirect" | "popstate"} NavigationKind
+ */
+
+/**
+ * @typedef {Object} BeforeNavigateDetail
+ * @property {string} url - where the move goes, resolved; for a popstate, the
+ *   entry the address bar already names
+ * @property {NavigationKind} kind
+ * @property {boolean} patch - the page stays and only its params change
+ *   (`push_to` on the same path, Back between such entries): nothing is
+ *   fetched, and the components hear `params_changed`
+ * @property {HTMLFormElement} [form] - the form being sent, for "form"
+ */
+
+/**
+ * The detail of `wireview:before-navigate`.
+ * @param {string} url
+ * @param {string} base - what a relative `url` resolves against
+ * @param {NavigationKind} kind
+ * @param {{patch?: boolean, form?: HTMLFormElement | null}} [options]
+ * @returns {BeforeNavigateDetail}
+ */
+export function beforeNavigateDetail(url, base, kind, { patch = false, form = null } = {}) {
+  const detail = { url: new URL(url, base).href, kind, patch };
+  return form ? { ...detail, form } : detail;
+}
+
+/**
  * @typedef {Object} NavigatedDetail
  * @property {string} url - where the navigation ended, after any redirect
  * @property {string} previousUrl - the page it left
+ * @property {NavigationKind} kind - what started it (#154)
  */
 
 /**
@@ -75,10 +120,11 @@ export class NavigationLog {
   /**
    * A navigation landed on `url`.
    * @param {string} url
+   * @param {NavigationKind} kind - what started it
    * @returns {NavigatedDetail}
    */
-  landed(url) {
-    const detail = { url, previousUrl: this.current };
+  landed(url, kind) {
+    const detail = { url, previousUrl: this.current, kind };
     this.current = url;
     return detail;
   }
@@ -109,6 +155,65 @@ export class NavigationLog {
 
 /** The `history.state` key holding the page id. */
 export const PAGE_KEY = "wireviewPage";
+
+/**
+ * Undoing a cancelled Back or Forward (#154). The address bar has moved by the
+ * time `popstate` runs, and the History API tells no page which entry it left
+ * or how far it went: a guess written into `history.state` sent a later undo
+ * the wrong way once an entry boost never stamped was in between. The
+ * Navigation API knows: `currententrychange` names the entry a traversal
+ * left, and `navigation.traverseTo(key)` returns there whatever else is queued
+ * -- a relative `history.go()` issued from a popstate lands somewhere else
+ * when another Back runs first. Without that API a traversal is announced and
+ * not cancelable.
+ *
+ * While the undo is on its way, a popstate is either its arrival -- the entry
+ * it left -- or another traversal that ran first, which the undo then
+ * overrides. Neither asks the page or arrives anywhere.
+ */
+export class TraversalUndo {
+  constructor() {
+    /** @type {{key: string} | null} the undo on its way, and the entry it returns to */
+    this.current = null;
+  }
+
+  /**
+   * An undo to the entry `key` began.
+   * @param {string} key
+   * @returns {{key: string}} the undo, for `failed`
+   */
+  start(key) {
+    this.current = { key };
+    return this.current;
+  }
+
+  /**
+   * A popstate arrived at the entry `key`.
+   * - "none": no undo is on its way; an ordinary traversal
+   * - "returned": the undo arrived, and is over
+   * - "passing": another traversal ran before the undo, which will override it
+   * @param {string | null} key
+   * @returns {"none" | "returned" | "passing"}
+   */
+  arrived(key) {
+    if (this.current === null) return "none";
+    if (key !== this.current.key) return "passing";
+    this.current = null;
+    return "returned";
+  }
+
+  /**
+   * `undo` will not arrive: the browser refused or dropped its traversal.
+   * @param {{key: string}} undo
+   * @returns {boolean} whether it was still on its way -- the page then has to
+   *   arrive at wherever the address bar is
+   */
+  failed(undo) {
+    if (this.current !== undo) return false;
+    this.current = null;
+    return true;
+  }
+}
 
 /**
  * A new page id. Unique enough for one tab's history: a reload starts a new

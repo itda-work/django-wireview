@@ -12,6 +12,20 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- A boosted move can be stopped by the page (#154). Before boost moves -- a link, a `wire-boost`
+  form, `wireview.visit()` and `JS().navigate()`, the server's `push_to`, `replace_to` and
+  `redirect_to`, Back and Forward -- it dispatches a cancelable `wireview:before-navigate` on
+  `document`, `detail = {url, kind, patch}` (and `form` for a form), so a form with unsaved input can
+  ask first: `beforeunload` sees a full page load and never a boosted `pushState`. Cancelled, nothing
+  moves -- no fetch, no history entry, no `params_changed` -- and `wireview.visit()` resolves `false`.
+  A cancelled Back or Forward has moved the address bar already: the page returns to the entry it
+  left -- which the Navigation API's `currententrychange` names -- with `navigation.traverseTo()`,
+  absolute, so a second Back that runs first is overridden rather than sending the page elsewhere,
+  and that return asks and tells nothing. Without the Navigation API a traversal is announced with
+  `cancelable: false`. A `redirect_to` is announced but not cancelable either: the server froze the
+  component that sent it. Fragment links and full page loads are
+  the browser's, and fire nothing. `wireview:navigated` now carries the same `kind` alongside `url`
+  and `previousUrl`. No message changes shape; the protocol version stays.
 - In development, a template the autoreloader saw change reaches the open pages at once (#180).
   Django's `runserver` reloader answers a template change by emptying the template loaders rather
   than restarting, so an open page used to show the old markup until its next event -- and a

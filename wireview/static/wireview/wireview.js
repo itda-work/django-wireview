@@ -227,9 +227,9 @@ class ServerConnection {
       // components sends none. The page a navigation put on screen tells the
       // server its URL between the leaves of the components it dropped and the
       // joins of the ones it brought (#170).
-      const { token, landed, stuck } = /** @type {CustomEvent} */ (event).detail ?? {};
+      const { token, landed, stuck, kind } = /** @type {CustomEvent} */ (event).detail ?? {};
       this.joinAllComponents({ navigated: token !== undefined, stuck });
-      if (landed) this.announceNavigation(token);
+      if (landed) this.announceNavigation(token, kind);
     });
   }
 
@@ -239,13 +239,14 @@ class ServerConnection {
    * -- a sticky component's among them, which nothing else tells -- and then
    * `wireview:navigated` on `document`.
    * @param {number} token - the navigation that landed
+   * @param {import("./navigation.mjs").NavigationKind} kind - what started it (#154)
    */
-  announceNavigation(token) {
+  announceNavigation(token, kind) {
     for (const component of Object.values(this.components)) {
       component.hookManager.navigated(token);
     }
     document.dispatchEvent(
-      new CustomEvent(NAVIGATED_EVENT, { detail: this.navigations.landed(document.location.href) })
+      new CustomEvent(NAVIGATED_EVENT, { detail: this.navigations.landed(document.location.href, kind) })
     );
   }
 
@@ -589,12 +590,16 @@ class ServerConnection {
         var { url } = payload;
         switch (payload.command) {
           case "redirect":
-            boost.HistoryCache.load(url, { fetch: true });
+            boost.HistoryCache.load(url, { fetch: true, kind: "redirect" });
             break;
           case "replace":
           case "push": {
             const replace = payload.command === "replace";
-            if (boost.HistoryCache.isPatch(url)) {
+            const patch = boost.HistoryCache.isPatch(url);
+            // The page may keep the user where they are: nothing moves, and the
+            // server hears no params (#154)
+            if (!boost.HistoryCache.mayNavigate(url, payload.command, patch)) break;
+            if (patch) {
               // Same path (#169): the page stays and its components hear the
               // new params through `patched`, keeping what they built up
               boost.HistoryCache.patch(url, { replace });
@@ -603,7 +608,7 @@ class ServerConnection {
               // from its render. Its params reach the server once that page is
               // on screen, and only if the response stayed inside the
               // live_session; leaving it is a full page load (#58, #170).
-              replace ? boost.HistoryCache.swap(url) : boost.HistoryCache.push(url);
+              replace ? boost.HistoryCache.swap(url, "replace") : boost.HistoryCache.push(url, "push");
             }
             break;
           }
@@ -3664,7 +3669,8 @@ window.wireview = {
    * and the URL is this site's, otherwise an ordinary page load (#103).
    * @param {string} url
    * @param {{replace?: boolean}} [options] - take the current history entry's place
-   * @returns {Promise<boolean>} false when a full page load took over
+   * @returns {Promise<boolean>} false when a full page load took over, or the
+   *   page cancelled the move (`wireview:before-navigate`, #154)
    */
   visit(url, options = {}) {
     return boost.HistoryCache.load(url, options);

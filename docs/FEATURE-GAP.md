@@ -2,18 +2,18 @@
 
 > django-wireview가 Phoenix LiveView 수준에 도달하기 위해 필요한 기능 목록
 >
-> **최종 업데이트**: 2026-10-01
+> **최종 업데이트**: 2026-10-08
 
 ---
 
 ## 개요
 
-아래 2절의 비교표 115행 기준이다. 어림수가 아니라 표를 센 값이고, `tests/test_feature_gap.py`가
+아래 2절의 비교표 116행 기준이다. 어림수가 아니라 표를 센 값이고, `tests/test_feature_gap.py`가
 표를 다시 세어 이 숫자와 비교한다.
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 113 |
+| ✅ 지원 | 114 |
 | 🟡 부분 지원 | 0 |
 | 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 0 |
 | ⚪ 설계상 제외 | 2 |
@@ -53,7 +53,7 @@ GAP 번호로 추적한다.
 | 2.5 Streams | 10 | 0 |
 | 2.6 File Uploads | 9 | 0 |
 | 2.7 Async Operations | 5 | 0 |
-| 2.8 Navigation | 6 | 0 |
+| 2.8 Navigation | 7 | 0 |
 | 2.9 JavaScript Interoperability | 13 | 0 |
 | 2.10 Components | 10 | 1 |
 | 2.11 Form Handling | 8 | 0 |
@@ -165,6 +165,7 @@ GAP 번호로 추적한다.
 | handle_params | ✅ | `params_changed()` | ✅ | `tests/test_js_commands_e2e.py::test_push_to_adds_an_entry_and_runs_params_changed`<br>`tests/test_live_component_render.py::test_a_child_that_appears_through_params_changed_is_joined` |
 | live_session | ✅ | `live_session()` + `@session.view` | ✅ (GAP-009. 경계는 페이지 단위다 — Django 뷰가 라우트이기 때문. [문서](./features/live-session.md)) | `tests/test_live_session_e2e.py::TestBoundaryNavigation::test_a_link_click_out_of_the_boundary_reloads`<br>`tests/test_live_session.py::TestValidSignaturesDoNotCombine::test_a_state_from_another_boundary_is_refused` |
 | Client-side boost | ✅ | `WIREVIEW["BOOST_PAGES"]`. 폼은 `wire-boost`로 청한다, `wireview.visit()` | ✅ | `tests/test_live_session_e2e.py::TestBoundaryNavigation::test_a_boosted_move_inside_the_boundary_still_morphs`<br>`tests/test_js_commands_e2e.py::test_a_boosted_post_form_lands_where_it_redirected` |
+| phx:before-navigate | ✅ | `wireview:before-navigate` (#154: boost 이동 앞에 `document`로 가는 이벤트, `detail.kind`. 취소할 수 있다 — 단 `redirect_to`는 서버가 컴포넌트를 얼려 알리기만 하고, 뒤로·앞으로 가기는 Navigation API가 있는 브라우저에서만 취소되어 떠난 항목으로 돌아간다. `wireview:navigated`도 `kind`를 단다) | ✅ | `tests/test_before_navigate_e2e.py::test_a_guard_that_asks_the_user`<br>`tests/test_before_navigate_e2e.py::test_a_cancelled_back_returns_to_the_entry_it_left`<br>`tests/test_before_navigate_e2e.py::test_a_cancelled_move_leaves_everything_where_it_was`<br>`tests/test_before_navigate_e2e.py::test_a_redirect_is_told_and_goes`<br>`tests/test_before_navigate_e2e.py::test_without_the_navigation_api_back_is_announced_and_not_cancelable` |
 
 ### 2.9 JavaScript Interoperability ✅
 

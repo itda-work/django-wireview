@@ -6,8 +6,10 @@
 import { Idiomorph } from "idiomorph";
 import { NavigationGate, crossesBoundary, readSessionName } from "./live-session.mjs";
 import {
+  BEFORE_NAVIGATE_EVENT,
   NAVIGATION_FAILED_EVENT,
   arrivesOnRestore,
+  beforeNavigateDetail,
   fetchOutcome,
   formMethod,
   formRequest,
@@ -18,6 +20,7 @@ import {
   patchesPage,
   returnsToPatch,
   stamped,
+  TraversalUndo,
 } from "./navigation.mjs";
 import { STREAM_ATTRIBUTE, isStreamContainer, pinContainerIds } from "./streams.mjs";
 import { ValueGuard } from "./values.mjs";
@@ -219,9 +222,11 @@ class NavEvents extends EventTarget {
    *   shown while it is fetched: what `wireview:navigated` announces, once
    * @param {Element[]} [stuck] - the sticky components the navigation's morph
    *   kept as they were (`morph`): what it carried across
+   * @param {import("./navigation.mjs").NavigationKind} [kind] - what started
+   *   the navigation, for `wireview:navigated` (#154)
    */
-  sendNewContent(token, landed, stuck = []) {
-    this.dispatchEvent(new CustomEvent("newContent", { detail: { token, landed, stuck } }));
+  sendNewContent(token, landed, stuck = [], kind = undefined) {
+    this.dispatchEvent(new CustomEvent("newContent", { detail: { token, landed, stuck, kind } }));
   }
 }
 
@@ -242,6 +247,7 @@ const navGate = new NavigationGate();
  * @type {import("./navigation.mjs").PageOnScreen}
  */
 const page = { id: newPageId(), url: document.location.href };
+
 history.replaceState(stamped(history.state, page.id), document.title, document.location.href);
 
 /**
@@ -271,6 +277,40 @@ function replaceEntry(state, url) {
   history.replaceState(state, document.title, url);
   here = document.location.href;
 }
+
+/**
+ * Asks the page whether a move may go ahead (#154): `wireview:before-navigate`
+ * on `document`, which a listener cancels with `preventDefault()`.
+ * @param {string} url - where it goes
+ * @param {import("./navigation.mjs").NavigationKind} kind - what started it
+ * @param {{patch?: boolean, form?: HTMLFormElement | null, cancelable?: boolean}} [options] -
+ *   `cancelable` false for a popstate boost cannot undo: it is announced, and goes ahead
+ * @returns {boolean} false when a listener cancelled it
+ */
+function mayNavigate(url, kind, { patch = false, form = null, cancelable = true } = {}) {
+  const detail = beforeNavigateDetail(url, document.baseURI, kind, { patch, form });
+  return document.dispatchEvent(new CustomEvent(BEFORE_NAVIGATE_EVENT, { detail, cancelable })) || !cancelable;
+}
+
+/**
+ * The Navigation API, where the browser has it: what makes a Back or Forward
+ * cancelable (navigation.mjs TraversalUndo, #154).
+ * @type {any}
+ */
+const navigationApi = /** @type {any} */ (window).navigation ?? null;
+
+/**
+ * The entry the last traversal left, as `currententrychange` names it before
+ * the popstate runs; taken by that popstate. Null without the Navigation API.
+ * @type {any}
+ */
+let traversedFrom = null;
+navigationApi?.addEventListener("currententrychange", (/** @type {any} */ event) => {
+  if (event.navigationType === "traverse") traversedFrom = event.from;
+});
+
+/** A cancelled Back or Forward on its way back to the entry it left. */
+const traversalUndo = new TraversalUndo();
 
 /**
  * A navigation that fetches began. Until its page lands the screen holds the
@@ -355,7 +395,7 @@ if (BOOST_PAGES) {
       // `<a href="#section">` too: `load` hands a jump inside the document
       // back to the browser (#170)
       e.preventDefault();
-      HistoryCache.load(link.href);
+      HistoryCache.load(link.href, { kind: "link" });
     }
   });
 
@@ -377,8 +417,24 @@ if (BOOST_PAGES) {
     // A dialog's form closes its dialog and goes nowhere
     if (method === "dialog" || !hasSameOriginAsDocument(action)) return;
     e.preventDefault();
-    HistoryCache.submit(action, method, new FormData(form, submitter ?? undefined));
+    const data = new FormData(form, submitter ?? undefined);
+    // Not the browser's submission any more: the page is asked, as for a link (#154)
+    if (!mayNavigate(method === "get" ? queryUrl(action, data) : action, "form", { form })) return;
+    HistoryCache.submit(action, method, data);
   });
+}
+
+/**
+ * Where a GET form goes: its action with the fields as the query, as the
+ * browser sends it.
+ * @param {string} action
+ * @param {FormData} data
+ * @returns {string}
+ */
+function queryUrl(action, data) {
+  const url = new URL(action, document.location.href);
+  url.search = new URLSearchParams(/** @type {any} */ (data)).toString();
+  return url.href;
 }
 
 /**
@@ -396,8 +452,9 @@ function navigationToken() {
  * @param {number} [scrollY] - Optional scroll position to restore
  * @param {boolean} [landed] - the navigation's own page; false for the cached
  *   page a popstate shows until the fetch answers
+ * @param {import("./navigation.mjs").NavigationKind} [kind] - what started the navigation
  */
-function replaceBodyContent(newBody, scrollY = undefined, landed = true) {
+function replaceBodyContent(newBody, scrollY = undefined, landed = true, kind = undefined) {
   const token = navGate.token;
   window.requestAnimationFrame(() => {
     if (!navGate.accepts(token)) return;
@@ -408,7 +465,7 @@ function replaceBodyContent(newBody, scrollY = undefined, landed = true) {
     } else {
       window.scrollTo(0, scrollY);
     }
-    navEvent.sendNewContent(token, landed, stuck);
+    navEvent.sendNewContent(token, landed, stuck, kind);
   });
 }
 
@@ -433,13 +490,15 @@ class HistoryCache {
   /**
    * Loads a URL, using boost navigation if enabled.
    * @param {string} url - The URL to load
-   * @param {{replace?: boolean, fetch?: boolean}} [options] - `replace`: take
-   *   the current history entry's place instead of pushing a new one; `fetch`:
-   *   fetch even a fragment of this document (`redirect_to` always fetches)
+   * @param {{replace?: boolean, fetch?: boolean, kind?: import("./navigation.mjs").NavigationKind}} [options] -
+   *   `replace`: take the current history entry's place instead of pushing a
+   *   new one; `fetch`: fetch even a fragment of this document (`redirect_to`
+   *   always fetches); `kind`: what started it, for `wireview:before-navigate`
    * @returns {Promise<boolean>} False when the page is being replaced outright,
-   *   which is also what leaving a live_session looks like.
+   *   which is also what leaving a live_session looks like -- or when the page
+   *   cancelled the move.
    */
-  static async load(url, { replace = false, fetch: always = false } = {}) {
+  static async load(url, { replace = false, fetch: always = false, kind = "visit" } = {}) {
     // A jump to a fragment of this document is the browser's, as a link's is
     // (#170): `wireview.visit("#top")` scrolls rather than fetching the page
     if (!always && isFragmentLink(document.location.href, url, document.baseURI)) {
@@ -451,7 +510,12 @@ class HistoryCache {
       return true;
     }
     if (BOOST_PAGES && hasSameOriginAsDocument(url)) {
-      return replace ? this.swap(url) : this.push(url);
+      // A page load is the browser's to announce (`beforeunload`); this one is
+      // not (#154). A `redirect_to` is announced but goes: the server froze the
+      // component that sent it, which renders no more, and left on screen it
+      // would take events and answer none.
+      if (!mayNavigate(url, kind, { cancelable: kind !== "redirect" })) return false;
+      return replace ? this.swap(url, kind) : this.push(url, kind);
     }
     if (replace) {
       document.location.replace(url);
@@ -476,14 +540,17 @@ class HistoryCache {
    * popstate can tell whether restoring it would carry a page from one boundary
    * into another.
    *
+   * The page was asked already (`mayNavigate`): this goes.
+   *
    * @param {string} path - The path to navigate to
+   * @param {import("./navigation.mjs").NavigationKind} [kind] - what started it
    * @returns {Promise<boolean>} False when the navigation left the boundary and
    *   a full page load took over.
    */
-  static async push(path) {
+  static async push(path, kind = "push") {
     // The browser makes no entry for a load of the URL it shows, and Back from
     // a second one would change nothing (#170): fetched in place instead
-    if (isSameUrl(document.location.href, path, document.baseURI)) return this.swap(path);
+    if (isSameUrl(document.location.href, path, document.baseURI)) return this.swap(path, kind);
     navGate.begin();
     leavingDocument = false;
     const left = leavePage();
@@ -497,15 +564,21 @@ class HistoryCache {
       document.location.href
     );
     pushEntry({}, path);
-    return this.replaceContentFromUrl(path, undefined, "current", (outcome, error) => {
-      if (outcome !== "aborted") return loadInstead(path, error);
-      // Stopped, as the browser's stop button stops a load: the page that was
-      // on screen is still there, so the address bar goes back to it, through
-      // the entry it had (#170)
-      if (leavingDocument) return;
-      undoing = { token: navGate.token, entry, left };
-      history.back();
-    });
+    return this.replaceContentFromUrl(
+      path,
+      undefined,
+      "current",
+      (outcome, error) => {
+        if (outcome !== "aborted") return loadInstead(path, error);
+        // Stopped, as the browser's stop button stops a load: the page that was
+        // on screen is still there, so the address bar goes back to it, through
+        // the entry it had (#170)
+        if (leavingDocument) return;
+        undoing = { token: navGate.token, entry, left };
+        history.back();
+      },
+      kind
+    );
   }
 
   /**
@@ -524,17 +597,15 @@ class HistoryCache {
    * origin (`answered: true`), whose address a boosted request cannot see
    * (`formRequest`). A form that redirects off the site is not one to boost.
    *
+   * The page was asked already (`mayNavigate`): this goes.
+   *
    * @param {string} action
    * @param {"get" | "post"} method - as the browser reads the form's (`formMethod`)
    * @param {FormData} data
    * @returns {Promise<boolean>} as `push`
    */
   static async submit(action, method, data) {
-    if (method === "get") {
-      const url = new URL(action, document.location.href);
-      url.search = new URLSearchParams(/** @type {any} */ (data)).toString();
-      return this.push(url.href);
-    }
+    if (method === "get") return this.push(queryUrl(action, data), "form");
     navGate.begin();
     const left = leavePage();
     const entry = history.state;
@@ -548,46 +619,60 @@ class HistoryCache {
       document.location.href
     );
     const verb = method.toUpperCase();
-    return this.replaceContentFromUrl(action, formRequest(verb, data), "push", (outcome, error) => {
-      // Still the page that sent it, under its own entry
-      page.id = left;
-      replaceEntry(entry, document.location.href);
-      if (outcome === "aborted") return;
-      if (outcome === "unanswered") {
-        console.warn(
-          "wireview: could not submit to %s; the page stays as it was and the form is not sent again",
-          action,
-          error
+    return this.replaceContentFromUrl(
+      action,
+      formRequest(verb, data),
+      "push",
+      (outcome, error) => {
+        // Still the page that sent it, under its own entry
+        page.id = left;
+        replaceEntry(entry, document.location.href);
+        if (outcome === "aborted") return;
+        if (outcome === "unanswered") {
+          console.warn(
+            "wireview: could not submit to %s; the page stays as it was and the form is not sent again",
+            action,
+            error
+          );
+        }
+        document.dispatchEvent(
+          new CustomEvent(NAVIGATION_FAILED_EVENT, {
+            detail: { url: action, method: verb, answered: outcome === "elsewhere" },
+          })
         );
-      }
-      document.dispatchEvent(
-        new CustomEvent(NAVIGATION_FAILED_EVENT, {
-          detail: { url: action, method: verb, answered: outcome === "elsewhere" },
-        })
-      );
-    });
+      },
+      "form"
+    );
   }
 
   /**
    * Loads a URL in place of the current history entry: `push` without the
    * entry it would leave behind, so there is no page to cache for back.
+   * The page was asked already (`mayNavigate`).
    * @param {string} path - The path to navigate to
+   * @param {import("./navigation.mjs").NavigationKind} [kind] - what started it
    * @returns {Promise<boolean>} as `push`
    */
-  static async swap(path) {
+  static async swap(path, kind = "replace") {
     navGate.begin();
     leavingDocument = false;
     const left = leavePage();
     const entry = history.state;
     const from = document.location.href;
     replaceEntry({}, path);
-    return this.replaceContentFromUrl(path, undefined, "current", (outcome, error) => {
-      if (outcome !== "aborted") return loadInstead(path, error);
-      // Stopped: the page on screen is still the one it was leaving, and its
-      // entry gets back its URL (#170)
-      page.id = left;
-      replaceEntry(entry, from);
-    });
+    return this.replaceContentFromUrl(
+      path,
+      undefined,
+      "current",
+      (outcome, error) => {
+        if (outcome !== "aborted") return loadInstead(path, error);
+        // Stopped: the page on screen is still the one it was leaving, and its
+        // entry gets back its URL (#170)
+        page.id = left;
+        replaceEntry(entry, from);
+      },
+      kind
+    );
   }
 
   /**
@@ -612,11 +697,13 @@ class HistoryCache {
    *   (navigation.mjs `fetchOutcome`, #170): `loadInstead`, or for a stopped
    *   one, what the browser's stop would leave. A stop abandons nothing the
    *   navigation queued: a cached page a popstate painted is the caller's
+   * @param {import("./navigation.mjs").NavigationKind} kind - what started the
+   *   navigation, for `wireview:navigated` (#154)
    * @returns {Promise<boolean>} False when the boundary was crossed or the
    *   request brought no page, and the browser is doing an ordinary page load
    *   instead -- or nothing, for a stopped one.
    */
-  static async replaceContentFromUrl(url, init, entry, failed) {
+  static async replaceContentFromUrl(url, init, entry, failed, kind) {
     // The caller began the navigation; this reads the generation rather than
     // starting one, so the cached body a popstate queued belongs to the same
     // navigation as the fetch that validates it.
@@ -682,7 +769,7 @@ class HistoryCache {
     // behind -- handle the destination's query (docs/design/live-session.md §3-3),
     // and before the morph the old page's components heard it at all (#170).
     document.title = doc.querySelector("title")?.text ?? "";
-    replaceBodyContent(doc.body);
+    replaceBodyContent(doc.body, undefined, true, kind);
     return true;
   }
 
@@ -696,6 +783,19 @@ class HistoryCache {
    */
   static isPatch(url) {
     return patchesPage(page, url, document.baseURI);
+  }
+
+  /**
+   * Whether the page lets a move the server asked for go ahead (#154): what
+   * `load` asks itself, for the `push_to` and `replace_to` that call `patch`,
+   * `push` or `swap` directly.
+   * @param {string} url
+   * @param {"push" | "replace"} kind
+   * @param {boolean} patch - it stays on the page (`isPatch`)
+   * @returns {boolean}
+   */
+  static mayNavigate(url, kind, patch) {
+    return mayNavigate(url, kind, { patch });
   }
 
   /**
@@ -731,24 +831,65 @@ class HistoryCache {
 }
 
 /**
+ * Takes a cancelled Back or Forward back to the entry it left (#154), with
+ * `traverseTo`: absolute, so a traversal queued before it does not send it
+ * elsewhere, as a relative `history.go()` would be. Should the browser drop it,
+ * the page arrives where the address bar is after all, as a traversal it
+ * could not stop.
+ * @param {any} left - the `NavigationHistoryEntry` the traversal left
+ */
+function undoTraversal(left) {
+  const undo = traversalUndo.start(left.key);
+  const fail = () => {
+    if (traversalUndo.failed(undo)) arrive(history.state, { left: null });
+  };
+  let result;
+  try {
+    result = navigationApi.traverseTo(left.key);
+  } catch {
+    fail();
+    return;
+  }
+  // Refused before it commits -- a `navigate` listener's preventDefault() --
+  // both promises reject, and only `finished` is handled by default: the
+  // other one reached the page as an unhandled rejection. One failure, handled
+  // once, on `finished`.
+  result.committed.catch(() => {});
+  result.finished.catch(fail);
+}
+
+/**
  * The page arrives at the history entry the address bar names: a popstate, or
  * a document the back/forward cache restored (`pageshow`).
  * @param {any} state - the entry's
- * @param {{restored?: boolean}} [options] - a restored document: whatever it
- *   showed when it froze, it arrives, even under the same URL
+ * @param {{restored?: boolean, left?: any}} [options] - `restored`: a restored
+ *   document, which whatever it showed when it froze arrives, even under the
+ *   same URL; `left`: the `NavigationHistoryEntry` a popstate left, which a
+ *   cancelled one returns to -- null when it is not known, and the traversal
+ *   cannot be cancelled
  */
-function arrive(state, { restored = false } = {}) {
+function arrive(state, { restored = false, left = null } = {}) {
   const from = here;
   here = document.location.href;
   // Only the fragment moved: a jump inside the document, the browser's own --
   // a fragment link's new entry, or Back from it. Nothing to fetch, no params
   // to tell, as Phoenix ignores such a popstate (#170). The entry needs no
-  // stamp of its own: a patch away from it stamps it first.
+  // page stamp of its own: a patch away from it stamps it first.
   if (!restored && onlyFragmentMoved(from, here)) return;
+  const patch = returnsToPatch(state, document.location.href, page);
+  // Back or Forward is the page's to stop as well (#154). The address bar has
+  // moved already: a cancelled traversal returns to the entry it left, and
+  // the popstate that brings is not one to arrive at. A document the
+  // back/forward cache restored is not asked -- the browser left it and came back.
+  if (!restored && !mayNavigate(here, "popstate", { patch, cancelable: left !== null })) {
+    here = from;
+    undoTraversal(left);
+    return;
+  }
   // An entry the page on screen made: it has what it needs, and only the
   // params changed. Before the boundary check, which a page cannot fail with
   // itself.
-  if (returnsToPatch(state, document.location.href, page)) {
+  if (patch) {
     navGate.begin();
     navEvent.sendPatched();
     return;
@@ -775,29 +916,43 @@ function arrive(state, { restored = false } = {}) {
     // fetch below may still find the URL has moved. Showing the cache meanwhile
     // is the point of the cache, and the fetch bumps the generation, so a
     // refused destination drops this paint instead of flashing it.
-    replaceBodyContent(state.content, state.scrollY, false);
+    replaceBodyContent(state.content, state.scrollY, false, "popstate");
   }
-  HistoryCache.replaceContentFromUrl(url, undefined, "current", (outcome, error) => {
-    if (outcome !== "aborted") return loadInstead(url, error);
-    // Stopped. The traversal is history's already, and how far it went is not
-    // the page's to know, so the address bar stays (#170). The cached copy it
-    // painted is that entry's page: it lands, after the paint if that is still
-    // to come. Without one the screen holds another page, and the browser
-    // loads the entry -- unless it is leaving the document anyway.
-    if (cached) {
-      window.requestAnimationFrame(() => {
-        if (!navGate.accepts(token)) return;
-        landPage();
-        navEvent.sendNewContent(token, true);
-      });
-    } else {
-      navGate.abandon();
-      if (!leavingDocument) document.location.replace(url);
-    }
-  });
+  HistoryCache.replaceContentFromUrl(
+    url,
+    undefined,
+    "current",
+    (outcome, error) => {
+      if (outcome !== "aborted") return loadInstead(url, error);
+      // Stopped. The traversal is history's already, and the address bar
+      // stays (#170). The cached copy it painted is that entry's page: it
+      // lands, after the paint if that is still to come. Without one the
+      // screen holds another page, and the browser loads the entry -- unless
+      // it is leaving the document anyway.
+      if (cached) {
+        window.requestAnimationFrame(() => {
+          if (!navGate.accepts(token)) return;
+          landPage();
+          navEvent.sendNewContent(token, true, [], "popstate");
+        });
+      } else {
+        navGate.abandon();
+        if (!leavingDocument) document.location.replace(url);
+      }
+    },
+    "popstate"
+  );
 }
 
 window.addEventListener("popstate", (event) => {
+  const left = traversedFrom;
+  traversedFrom = null;
+  // A cancelled traversal's way back (#154): its arrival on the entry it left,
+  // where the page on screen still is, or another traversal that ran first and
+  // that it overrides. Neither is a move to ask about or to arrive at.
+  const returning = traversalUndo.arrived(navigationApi?.currentEntry?.key ?? null);
+  if (returning === "returned") here = document.location.href;
+  if (returning !== "none") return;
   const undo = undoing;
   undoing = null;
   if (undo && navGate.accepts(undo.token)) {
@@ -806,7 +961,7 @@ window.addEventListener("popstate", (event) => {
     replaceEntry(undo.entry, document.location.href);
     return;
   }
-  arrive(event.state);
+  arrive(event.state, { left });
 });
 
 // A document the back/forward cache restored froze with whatever it had: a

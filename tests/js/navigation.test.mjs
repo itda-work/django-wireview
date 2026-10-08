@@ -2,11 +2,14 @@ import { strict as assert } from "node:assert";
 import test from "node:test";
 
 import {
+  BEFORE_NAVIGATE_EVENT,
   NAVIGATED_EVENT,
   NAVIGATION_FAILED_EVENT,
   NavigationLog,
   PAGE_KEY,
+  TraversalUndo,
   arrivesOnRestore,
+  beforeNavigateDetail,
   carriedAcross,
   fetchOutcome,
   formMethod,
@@ -42,17 +45,75 @@ test("a hook the morph removed is left to destroyed", () => {
   assert.deepEqual(carriedAcross([entry("gone", 0, false), entry("kept", 0)], 1), ["kept"]);
 });
 
-test("the log says where each navigation came from", () => {
+test("the log says where each navigation came from, and what started it (#154)", () => {
   const log = new NavigationLog("http://x/a/");
-  assert.deepEqual(log.landed("http://x/b/"), { url: "http://x/b/", previousUrl: "http://x/a/" });
+  assert.deepEqual(log.landed("http://x/b/", "link"), { url: "http://x/b/", previousUrl: "http://x/a/", kind: "link" });
   // A Back has already moved the address bar; the log still knows the page it left
-  assert.deepEqual(log.landed("http://x/a/"), { url: "http://x/a/", previousUrl: "http://x/b/" });
+  assert.deepEqual(log.landed("http://x/a/", "popstate"), {
+    url: "http://x/a/",
+    previousUrl: "http://x/b/",
+    kind: "popstate",
+  });
 });
 
 test("a patch moves the log without an announcement (#169)", () => {
   const log = new NavigationLog("http://x/a/");
   log.patched("http://x/a/?tab=b");
-  assert.deepEqual(log.landed("http://x/b/"), { url: "http://x/b/", previousUrl: "http://x/a/?tab=b" });
+  assert.deepEqual(log.landed("http://x/b/", "push"), {
+    url: "http://x/b/",
+    previousUrl: "http://x/a/?tab=b",
+    kind: "push",
+  });
+});
+
+test("the event before a move has the documented name (#154)", () => {
+  assert.equal(BEFORE_NAVIGATE_EVENT, "wireview:before-navigate");
+});
+
+test("the event before a move names where it goes, resolved, and what started it (#154)", () => {
+  assert.deepEqual(beforeNavigateDetail("?tab=b", "http://x/a/", "push", { patch: true }), {
+    url: "http://x/a/?tab=b",
+    kind: "push",
+    patch: true,
+  });
+  assert.deepEqual(beforeNavigateDetail("/b/", "http://x/a/", "link"), { url: "http://x/b/", kind: "link", patch: false });
+  // A form's move names the form, so a guard can let the form it guards go
+  const form = { tagName: "FORM" };
+  assert.equal(beforeNavigateDetail("/post/", "http://x/a/", "form", { form }).form, form);
+  assert.equal("form" in beforeNavigateDetail("/b/", "http://x/a/", "link"), false);
+});
+
+test("without an undo on its way, a popstate is an ordinary traversal (#154)", () => {
+  assert.equal(new TraversalUndo().arrived("k1"), "none");
+});
+
+test("an undo is over when it arrives at the entry it returns to (#154)", () => {
+  const undo = new TraversalUndo();
+  undo.start("c");
+  assert.equal(undo.arrived("c"), "returned");
+  // The next popstate is the user's again
+  assert.equal(undo.arrived("b"), "none");
+});
+
+test("a traversal that runs before the undo is passed over, and the undo still arrives (#154)", () => {
+  // Back from c to b, cancelled; another Back queued first lands on a
+  const undo = new TraversalUndo();
+  undo.start("c");
+  assert.equal(undo.arrived("a"), "passing");
+  assert.equal(undo.arrived("b"), "passing");
+  assert.equal(undo.arrived("c"), "returned");
+});
+
+test("an undo the browser dropped stops swallowing popstates (#154)", () => {
+  const undo = new TraversalUndo();
+  const first = undo.start("c");
+  assert.equal(undo.failed(first), true, "the page has to arrive where the address bar is");
+  assert.equal(undo.arrived("a"), "none");
+  // A failure reported for an undo another one replaced changes nothing
+  const second = undo.start("b");
+  assert.equal(undo.failed(first), false);
+  assert.equal(undo.arrived("b"), "returned");
+  assert.equal(undo.failed(second), false, "it arrived already");
 });
 
 test("a move on the same path is a patch; another path or origin is not (#169)", () => {

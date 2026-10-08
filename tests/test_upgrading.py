@@ -149,6 +149,9 @@ NO_UPGRADE_NOTE = {
     "also makes its process's channel join the topic's patch group": (
         "프로세스마다 토픽당 그룹 하나가 늘 뿐 앱이 할 일은 없다. 84자를 넘는 토픽은 전처럼 알림만 받는다"
     ),
+    "A boosted move can be stopped by the page": (
+        "새 이벤트다. 듣지 않으면 이동은 전과 같다. wireview:navigated의 detail에 키가 하나 늘 뿐이다"
+    ),
 }
 
 PREVIOUS = "1.2.0"
