@@ -173,11 +173,26 @@ export class QueryState {
       }
       if (typeof render.id === "string" && !snapshot.ids.includes(render.id)) snapshot.ids.push(render.id);
     }
+    // A row is one render's. The renders of one class -- sibling LiveComponents, the rows of a
+    // loop drawn as components -- that ran one statement from one place are one row of the
+    // snapshot, their counts summed: three siblings once each is "3× same query", not three 1×.
+    const same = new Map<string, QueryRow>();
     for (const row of record.rows) {
       // A row outside every render (a handler's own) has no class: 1.0 readers leave it
       if (typeof row?.by !== "number" || typeof row.count !== "number") continue;
       const component = record.renders[row.by]?.component;
-      if (component !== undefined) found.get(component)?.rows.push(row);
+      const snapshot = component === undefined ? undefined : found.get(component);
+      if (!snapshot) continue;
+      const { by: _by, count: _count, ...place } = row;
+      const key = `${component}\u0000${JSON.stringify(place)}`;
+      const seen = same.get(key);
+      if (seen) {
+        seen.count += row.count;
+        continue;
+      }
+      const copy = { ...row };
+      same.set(key, copy);
+      snapshot.rows.push(copy);
     }
     // A class whose every render was cut at the render limit is still seen at this `at`, just not
     // whole: its last snapshot no longer holds, and an older record read later must not bring it back

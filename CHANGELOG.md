@@ -23,6 +23,14 @@ The django-reactor era changelog (2.x) is preserved in
   recommended: no faster beyond the rounds' spread, more memory per connection, and on SIGTERM it
   exits without a close frame in a tenth of a second, so `leaving()` does not finish.
 
+### Changed
+
+- The render-part SQL log and the editor's record count a live render and the LiveComponents it names as one
+  piece of work (#189): `send_render` opens a `tree` scope around them, so sibling LiveComponents running the
+  same statement once each are logged as one repeat and written as one line whose class snapshot sums them.
+  Their `joined()`, `update()` and `leaving()` land in the same log entry, and the log groups renders of one
+  class into one row (`[render Card ×3 (join)]`). The record format stays 1.0; its `kind` gains the value `tree`.
+
 ### Fixed
 
 - The benchmark no longer hands a run's servers the URL of a broker an earlier run stopped (#191).

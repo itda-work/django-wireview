@@ -181,6 +181,28 @@ test("a line's label: a count, a repeat, several components", () => {
   assert.match(tooltip, /```sql\nSELECT 3\n```/);
 });
 
+test("the renders of one class that ran one statement from one place are one row (#189)", () => {
+  // Three sibling LiveComponents, one statement each: the server writes one row per render
+  const siblings = ["app.live.Rack", "app.live.Card", "app.live.Card", "app.live.Card"];
+  const rows = [1, 2, 3].map((by) => ({ ...templateRow(3, 1, { repeated: true }), by }));
+  const kept = state(record(T0, [...rows, { ...templateRow(5, 1), by: 2 }], siblings));
+  assert.deepEqual(hints(kept), [
+    { line: 3, label: "⚠ 3× same query" },
+    { line: 5, label: "1 query" },
+  ]);
+  assert.deepEqual(
+    kept.get("app.live.Card")!.rows.map((row) => [row.template!.line, row.count]),
+    [
+      [3, 3],
+      [5, 1],
+    ],
+  );
+  assert.equal(rows[0].count, 1, "the record's rows are not changed");
+  // Another class on the same line stays apart
+  const two = state(record(T0, [{ ...templateRow(3, 1, { repeated: true }), by: 0 }, ...rows], siblings));
+  assert.deepEqual(hints(two), [{ line: 3, label: "⚠ 4 queries · 2 components" }]);
+});
+
 test("a snapshot older than the limit is not shown", () => {
   const kept = state(record(T0, [templateRow(3, 6)]));
   assert.equal(hints(kept, facts("template"), { ...OPTIONS, now: T0 + 30 * MINUTE }).length, 1);

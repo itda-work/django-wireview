@@ -838,6 +838,74 @@ async def test_a_render_with_repeats_logs_a_warning(quiz, monkeypatch, caplog):
     assert "rq/child.html:9" in repeated and "3×" in repeated and "[render RqOwner#own (nested)]" in repeated
 
 
+TEMPLATES["rq/rack.html"] = (
+    '{% load wireview %}<main {% tag_header %}>{% for k in keys %}{% live_component "RqSibling" id=k n=n %}{% endfor %}'
+    "</main>"
+)
+TEMPLATES["rq/sibling.html"] = "{% load wireview %}<p {% live_tag_header %}>\n{{ questions.first.text }}\n</p>"
+
+
+class RqRack(Component):
+    class Meta:
+        template_name = "rq/rack.html"
+
+    keys: list[str] = ["s1", "s2", "s3"]
+    n: int = 0
+
+    async def bump(self):
+        self.n += 1
+
+
+class RqSibling(_Lists, LiveComponent):
+    class Meta:
+        template_name = "rq/sibling.html"
+
+    n: int = 0
+
+
+def _heads(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [record.getMessage() for record in caplog.records if record.name == "wireview.queries"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["join", "event"])
+async def test_sibling_live_components_running_one_statement_each_log_one_repeat(quiz, monkeypatch, caplog, path):
+    """#189: the LiveComponents a render names render after it, each on its own; one send_render is one log."""
+    set_wireview(monkeypatch, DEBUG_RENDER_QUERIES=True)
+    session, _ = await started()
+    if path == "event":
+        await join(session, RqRack, "rack")
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger="wireview.queries"):
+        if path == "join":
+            await join(session, RqRack, "rack")
+        else:
+            # A new prop for each: update() and a render of every sibling
+            payload = {"id": "rack", "command": "bump", "implicit_args": {}, "explicit_args": {}}
+            await session.handle_message({"command": "user_event", "payload": payload})
+    messages = _heads(caplog)
+    why = "join" if path == "join" else "event bump"
+    (text,) = [message for message in messages if message.startswith("render RqRack#rack")]
+    assert text.splitlines()[0] == f"render RqRack#rack ({why}): 3 queries, 1 repeated", messages
+    (line,) = text.splitlines()[1:]
+    assert "rq/sibling.html:2" in line and "3×" in line and "<- repeated" in line
+    assert f"[render RqSibling ×3 ({why})]" in line
+    assert not any(message.startswith("render RqSibling") for message in messages), messages
+    assert [record.levelname for record in caplog.records if record.getMessage() == text] == ["WARNING"]
+
+
+@pytest.mark.asyncio
+async def test_a_send_render_is_one_scope_around_its_live_components(quiz):
+    """The rows keep their own render; the tree is the outermost scope above them."""
+    session, _ = await started()
+    async with Queries() as q:
+        await join(session, RqRack, "rack")
+    assert table(q.rows) == [("rq/sibling.html:2", f"render RqSibling#{k} (join)") for k in ("s1", "s2", "s3")]
+    (tree,) = {row.scope.outer for row in q.rows}
+    assert tree is not None and tree.kind == "tree" and tree.outer is None
+    assert tree.describe() == "render RqRack#rack (join)"
+
+
 @pytest.mark.asyncio
 async def test_below_the_threshold_it_logs_at_debug(quiz, monkeypatch, caplog):
     set_wireview(monkeypatch, DEBUG_RENDER_QUERIES=True)

@@ -1632,7 +1632,12 @@ class WireviewSession:
         if self.repo.refused(component.id):
             log.debug("Not rendering %s: its join failed on this connection", component.id)
             return
-        diff, children, settled = await self._render_tree(component)
+        # One piece of work for the render SQL log and the editor's record: sibling
+        # LiveComponents running the same statement once each are a repeat (#189).
+        # Named as render_diff names the component's own render.
+        first = not component.wire._rendered_own
+        with render_queries.tree_scope(component, "join" if first else "render"):
+            diff, children, settled = await self._render_tree(component)
         instances: dict[str, int] = {}
         if diff is not None or children or acknowledge or announce:
             log.debug(f">>> RENDER {component._name} {component.id} (+{len(children)} children)")

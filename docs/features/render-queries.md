@@ -46,6 +46,11 @@ LOGGING = {
 않고, 바깥 일의 덩어리에 대괄호로 표시된 행으로 들어간다. 그래서 덩어리는 가장 바깥 일마다 하나다. 같은 자리에서
 같은 SQL이 **세 번 이상** 돌았으면 `WARNING`, 아니면 `DEBUG`다.
 
+라이브 연결에서 렌더 하나를 보내는 일은 그 컴포넌트의 렌더와, 그 템플릿이 이름 붙인 `LiveComponent`들의 렌더·`joined()`·
+`update()`·`leaving()`을 함께 담은 한 덩어리다. `LiveComponent`는 부모의 렌더가 끝난 **뒤에** 하나씩 따로 그려지지만,
+같은 `render` 메시지로 나가는 것들이라 한 일로 센다(#189). 그래서 형제 `LiveComponent` 여럿이 같은 줄에서 쿼리를 하나씩
+내는 N+1도 반복으로 잡힌다. 덩어리의 이름은 그 컴포넌트의 렌더 이름 그대로다.
+
 "같은 자리"는 템플릿 줄이면 그 파일:줄이다 — 어느 인스턴스가 그렸든 같은 줄이라, 행마다 중첩 컴포넌트가 같은
 줄에서 쿼리하는 N+1도 잡힌다. property는 그것을 정의한 클래스와 이름이다(두 클래스의 `total`은 다른 자리). 템플릿
 밖의 쿼리는 일의 종류·컴포넌트 클래스·이름(핸들러 이름, 작업 이름)이다.
@@ -58,6 +63,8 @@ WARNING wireview.queries render Shelf#shelf (event bump): 12 queries, 1 repeated
   shelf/owner.html:3  for  [render Owner#own (nested)]  1  SELECT … FROM "quiz_choice" …
   shelf/child.html:9  {{ }}  [render Owner#own (nested)]  3×  SELECT … FROM "quiz_question" WHERE … <- repeated
 DEBUG wireview.queries handler Shelf#shelf.bump: 1 query
+WARNING wireview.queries render Rack#rack (join): 3 queries, 1 repeated
+  rack/card.html:2  {{ }}  [render Card ×3 (join)]      3×  SELECT … FROM "quiz_question" … <- repeated
 ```
 
 - 첫 줄은 일의 이름이다. 렌더는 왜 돌았는지(`join`, `event <핸들러>`, `hook <이벤트>`, `notification <채널>`,
@@ -66,6 +73,8 @@ DEBUG wireview.queries handler Shelf#shelf.bump: 1 query
   또는 템플릿 밖(`(outside a template)` — 핸들러나 `joined()`의 쿼리).
 - 대괄호는 그 쿼리가 바깥 일 안의 다른 일에서 돌았다는 표시다. 위 예에서 `Owner`는 `Shelf`의 템플릿이 그린 중첩
   컴포넌트이고, `let:` 슬롯의 쿼리는 슬롯을 **채운** 파일의 줄로, 슬롯을 그린 `Owner`의 렌더 안에서 센다.
+  같은 클래스의 렌더 여럿이 같은 자리에서 같은 SQL을 냈으면 한 행으로 묶고 `[render Card ×3 (join)]`처럼 렌더 수를 적는다.
+  위 둘째 덩어리의 `Card`는 `Rack`의 템플릿이 반복문으로 그린 `LiveComponent` 셋이다.
 - 로그의 모양은 약속하지 않는다. 테스트는 아래 `queries()`로 단언한다.
 
 ## 테스트에서 단언하기
@@ -172,8 +181,10 @@ WIREVIEW = {
 
 ### 무엇을 쓰나
 
-가장 바깥 일 하나가 한 줄이다. 그 안에서 끝난 **렌더**마다 스냅샷이 들고, 쿼리가 없던 렌더도 들어간다. 읽는 쪽은 컴포넌트
-클래스마다 가장 최근의 스냅샷 하나를 현재 상태로 둔다. 그래서 고쳐서 쿼리가 없어진 컴포넌트는 다음 렌더가 그 숫자를
+가장 바깥 일 하나가 한 줄이다. 라이브 렌더 하나와 그것이 그린 `LiveComponent`들은 한 일이므로(위 "로그") 한 줄이다.
+그 안에서 끝난 **렌더**마다 스냅샷이 들고, 쿼리가 없던 렌더도 들어간다. 읽는 쪽은 컴포넌트
+클래스마다 가장 최근의 스냅샷 하나를 현재 상태로 둔다. 한 줄에 같은 클래스의 렌더가 여럿이면(형제 `LiveComponent`, 행마다
+그린 중첩 컴포넌트) 그 클래스의 스냅샷은 그 렌더들의 행을 모두 합친 것이다. 그래서 고쳐서 쿼리가 없어진 컴포넌트는 다음 렌더가 그 숫자를
 지운다. 다른 컴포넌트 안에서 그려졌든 혼자 그려졌든 같다.
 
 - 렌더가 없는 일(핸들러, 작업, `mount`, `joined()`, 서명, `Broadcast` 항목)은 쓰지 않는다. 렌더가 든 일 안의 렌더 밖
@@ -206,11 +217,11 @@ WIREVIEW = {
 | `at` | 일이 끝난 시각, UTC ISO 8601(밀리초) |
 | `process`, `segment` | 쓴 프로세스와 세그먼트 번호. 파일 이름과 같다 |
 | `base` | 서버가 본 `BASE_DIR`의 실제 경로. 없으면 `null` |
-| `kind`, `detail` | 가장 바깥 일의 종류(`render`, `handler` …)와 이름. 정보일 뿐이다 |
+| `kind`, `detail` | 가장 바깥 일의 종류(`render`, `handler` …)와 이름. 정보일 뿐이다. 라이브 연결이 보내는 렌더는 `tree`이고(그 컴포넌트와 그것이 그린 `LiveComponent`들, #189), 그 컴포넌트의 렌더가 `renders`의 0번이다 |
 | `count` | 그 일이 실행한 SQL 전체 수. 상한 때문에 뺀 행도 센다: `count = rows[].count의 합 + more.statements` |
-| `renders` | 그 안에서 끝난 렌더. 바깥 일이 렌더면 그것이 0번이다. 각각 `kind`, `component`(`module.Qualname`), `name`, `id`, `why`(`join`, `event <핸들러>`, `http`, `nested` …). 100개까지 |
+| `renders` | 그 안에서 끝난 렌더. 바깥 일이 렌더나 `tree`면 그 컴포넌트의 렌더가 0번이다. 각각 `kind`, `component`(`module.Qualname`), `name`, `id`, `why`(`join`, `event <핸들러>`, `http`, `nested` …). 100개까지 |
 | `renders_more` | 100개를 넘어 뺀 렌더의 수 |
-| `rows[].by` | 그 행을 낸 렌더의 `renders` 위치. 없으면 렌더 밖의 행이다 |
+| `rows[].by` | 그 행을 낸 렌더의 `renders` 위치. 없으면 렌더 밖의 행이다(`tree` 안의 `joined()`·`update()` 쿼리 등). 같은 클래스의 렌더 셋이 같은 문장을 하나씩 냈으면 `by`가 다른 행 셋이고, 읽는 쪽이 클래스의 스냅샷으로 합친다 |
 | `rows[].count`, `repeated` | 같은 자리·같은 SQL의 횟수. 한 줄 안에서 세 번 이상이면 `repeated: true` |
 | `rows[].sql` | 실행한 문장. 파라미터는 없다(`%s`). 1,000자에서 자르고 `truncated: true` |
 | `rows[].template` | `file`(실제 경로. 파일 시스템의 템플릿일 때만), `rel`(`base` 아래면), `name`, `source`, `line`, `node`(`{{ }}` 또는 태그 이름), `text`(`token.contents`, 200자까지), 근사면 `approximate: true` |
@@ -238,7 +249,8 @@ WIREVIEW = {
 
 [VS Code 확장](./editor-support.md)이 이 파일을 읽어 그 줄 끝에 inlay hint로 수를 단다. 템플릿 줄에는 `6 queries`,
 한 자리에서 같은 문장이 세 번 이상이면 `⚠ 6× same query`, property의 `def` 줄에는 `1 query per render`다. 한 줄에
-여러 컴포넌트 클래스의 렌더가 있으면 합과 클래스 수(`7 queries · 2 components`)를 단다. tooltip에는 문장과 횟수,
+여러 컴포넌트 클래스의 렌더가 있으면 합과 클래스 수(`7 queries · 2 components`)를 단다. 같은 클래스의 렌더 여럿이 같은
+문장을 하나씩 냈으면(형제 `LiveComponent` 셋) 한 행으로 합쳐 `⚠ 3× same query`다. tooltip에는 문장과 횟수,
 컴포넌트와 id, 몇 분 전의 렌더인지가 나온다. Problems에는 넣지 않는다. N+1은 렌더 오류가 아니고, 관측은 시간이
 지나면 낡는다.
 

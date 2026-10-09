@@ -100,7 +100,7 @@ wireview의 래퍼는 `original_node`·`for_node`·`inner`를 따라 풀어 Djan
 | join 렌더 | `WireviewSession.command_join` → `send_render` → `_render_tree` → `render_diff` | 그 컴포넌트의 렌더 | 그 컴포넌트의 템플릿(상속이면 블록을 쓴 파일) |
 | 이벤트 렌더 | `command_user_event` → `repository.dispatch_event`(핸들러) → `send_render` | 핸들러와 렌더가 **따로** | 같음 |
 | 중첩 `{% component %}` | 부모의 ③ 안에서 `_build_and_render_component` → `WireviewMeta.render`(동기) | 자식의 렌더 | 자식 템플릿. 자식의 ① property는 이름으로 |
-| `LiveComponent` | 부모의 렌더 **뒤에** `_render_tree`가 자식마다 `render_diff`. HTTP 렌더에서는 부모의 ③ 안에서 인라인 | 자식의 렌더. 자식의 `joined()`·`update_many()`는 렌더 밖 | 자식 템플릿 |
+| `LiveComponent` | 부모의 렌더 **뒤에** `_render_tree`가 자식마다 `render_diff`. HTTP 렌더에서는 부모의 ③ 안에서 인라인 | 자식의 렌더. 자식의 `joined()`·`update_many()`는 렌더 밖. 라이브에서는 `send_render`가 부모와 자식 모두를 `tree` 스코프로 감싼다(#189, [render-queries-editor §10](./render-queries-editor.md#10-형제-livecomponent를-한-일로-189)) | 자식 템플릿 |
 | 함수 컴포넌트 | 그린 컴포넌트의 ③ 안. 마커 없는 템플릿 | 그린 컴포넌트의 렌더 | 함수의 템플릿 |
 | 슬롯, `let:` 없음 | `_extract_slots`(`templatetags/wireview.py`)가 **채우는 쪽의 패스에서 미리 렌더**하고 결과를 `TextNode`로 넘긴다 | 채우는 쪽의 렌더 | 채우는 쪽 템플릿의 `{% fill %}` 안 |
 | 슬롯, `let:` 있음 | 노드리스트를 보관했다가(`slots.py`의 `Slot`) **슬롯 주인의 렌더 안에서** `{% render_slot %}`이 그린다 | **슬롯 주인**의 렌더 | **채우는 쪽** 템플릿의 `{% fill %}` 안. 행에 "슬롯 `row`(채운 곳: …)"을 곁들인다 |

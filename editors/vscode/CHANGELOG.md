@@ -10,6 +10,14 @@ A version's section says "Unreleased" until the commit that publishes it dates i
 the release workflow refuses a tag whose section has no date
 ([release procedure](../../docs/ROADMAP.md#vs-code-확장-릴리스-절차)).
 
+## [Unreleased]
+
+### Fixed
+
+- A component class drawn several times in one record -- sibling LiveComponents, or a loop of nested
+  components -- that ran one statement from one place once each is one row of its snapshot, its counts
+  summed: the hint reads `⚠ 3× same query`, not `⚠ 1× same query · 3 queries` (#189).
+
 ## [0.2.0] - 2026-10-09
 
 ### Added

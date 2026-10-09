@@ -13,6 +13,10 @@ stack for the innermost template node -- a frame named ``render`` or
 frame that collects the context (its ``attr_name``). Neither costs anything
 until a query runs.
 
+A live render and the renders of the LiveComponents it names are one piece of
+work: ``send_render`` opens a ``tree`` scope around them (#189), so siblings that
+ran the same statement once each are a repeat like the rows of one loop.
+
 A scope that ends hands its rows to the scope around it, if that one is still
 open; the outermost one logs them to ``wireview.queries``: ``DEBUG``, or
 ``WARNING`` when the same SQL ran ``REPEAT_THRESHOLD`` times from one place. The
@@ -108,7 +112,7 @@ class Scope:
 
     def describe(self) -> str:
         who = f"{self.name}#{self.id}" if self.name is not None else ""
-        if self.kind == "render":
+        if self.kind == "render" or self.kind == "tree":
             return f"render {who} ({self.detail})"
         if self.kind == "handler":
             return f"handler {who}.{self.detail}"
@@ -406,6 +410,24 @@ def nested_render_scope(component: Component) -> t.Any:
     return scope("render", component, "nested" if inside else "http")
 
 
+def tree_scope(component: Component, default: str) -> t.Any:
+    """The boundary around one ``send_render``: the component's render and its LiveComponents' (#189).
+
+    The renders of the LiveComponents a render names run after it, each in a
+    render scope of its own. Without a scope around them all, each was the
+    outermost: siblings drawing the same line once each were never one repeat.
+    Their ``joined()``, ``update()`` and ``leaving()`` land in it too. It is
+    named like the component's own render, so the log reads as it did.
+    """
+    return scope("tree", component, lambda: _reason_or(default))
+
+
+def _reason_or(default: str) -> str:
+    """Why the renders inside run (``reason()``), else ``default``."""
+    state = _state.get()
+    return (state.reason if state is not None else None) or default
+
+
 class _Reason:
     __slots__ = ("reason", "token")
 
@@ -516,18 +538,47 @@ def _repeats(rows: t.Iterable[Row], threshold: int) -> set[tuple[t.Any, ...]]:
     return {key for key, count in counts.items() if count >= threshold}
 
 
+def _owner_key(scope: Scope | None) -> t.Any:
+    """What makes two rows' scopes one in the log: renders of one class for one reason are one.
+
+    Sibling LiveComponents, or the rows a loop drew as components, are each a
+    render of their own; the statement they all ran is one line of the table.
+    """
+    if scope is not None and scope.kind == "render":
+        return ("render", scope.cls, scope.detail)
+    return scope
+
+
+def _is_top(scope: Scope, top: Scope | None) -> bool:
+    """Whether ``scope`` is the work the log is headed with: ``top``, or the render a tree is named after."""
+    if scope is top:
+        return True
+    return (
+        top is not None
+        and top.kind == "tree"
+        and scope.kind == "render"
+        and scope.outer is top
+        and scope.cls is top.cls
+        and scope.id == top.id
+    )
+
+
 def _table(rows: list[Row], repeated: set[tuple[t.Any, ...]], top: Scope | None = None) -> str:
     groups: dict[tuple[t.Any, ...], list[Row]] = {}
     for row in rows:
-        groups.setdefault((row.place, row.sql, row.scope), []).append(row)
+        groups.setdefault((row.place, row.sql, _owner_key(row.scope)), []).append(row)
     lines = []
-    for (place, sql, owner), same in groups.items():
+    for (place, sql, _owner), same in groups.items():
         row = same[0]
         where = row.where
         if row.node is not None:
             where = f"{where}  {row.node}"
-        if owner is not None and owner is not top and owner.kind != "property":
-            where = f"{where}  [{owner.describe()}]"
+        owners = list(dict.fromkeys(other.scope for other in same if other.scope is not None))
+        if owners and not all(_is_top(owner, top) for owner in owners) and owners[0].kind != "property":
+            if len(owners) == 1:
+                where = f"{where}  [{owners[0].describe()}]"
+            else:
+                where = f"{where}  [render {owners[0].name} ×{len(owners)} ({owners[0].detail})]"
         count = f"{len(same)}×" if len(same) > 1 else "1"
         text = " ".join(sql.split())
         if len(text) > _SQL_WIDTH:
@@ -744,5 +795,6 @@ __all__ = [
     "render_scope",
     "restored",
     "scope",
+    "tree_scope",
     "unattributed",
 ]

@@ -84,6 +84,11 @@ TEMPLATES = {
     ),
     "rqf/props.html": "{% load wireview %}<p {% tag_header %}></p>",
     "rqf/plain.html": "{% load wireview %}<p {% tag_header %}>\n{{ choices.count }}\n</p>",
+    "rqf/rack.html": (
+        '{% load wireview %}<main {% tag_header %}>{% for k in keys %}{% live_component "RqfSibling" id=k %}'
+        "{% endfor %}</main>"
+    ),
+    "rqf/sibling.html": "{% load wireview %}<p {% live_tag_header %}>\n{{ questions.first.text }}\n</p>",
 }
 
 
@@ -213,6 +218,22 @@ class RqfBook(Component):
     @property
     def choices(self):
         return Choice.objects.none() if self.empty else Choice.objects.all()
+
+
+class RqfRack(Component):
+    class Meta:
+        template_name = "rqf/rack.html"
+
+    keys: list[str] = ["s1", "s2", "s3"]
+
+
+class RqfSibling(LiveComponent):
+    class Meta:
+        template_name = "rqf/sibling.html"
+
+    @property
+    def questions(self):
+        return Question.objects.all()
 
 
 class RqfFeed(Component):
@@ -545,6 +566,26 @@ async def test_a_component_fixed_alone_clears_what_it_ran_inside_another(sink, q
     assert len(records) == 2
     assert [r["name"] for r in records[1]["renders"]] == ["RqfBook"]
     assert records[1]["rows"] == [] and records[1]["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_sibling_live_components_are_one_line_and_their_statement_is_repeated(sink, quiz):
+    """#189: a render and the LiveComponents it names are one piece of work, so one line."""
+    await _join(RqfRack, "rack")
+    [record] = lines(sink)
+    assert record["kind"] == "tree" and record["detail"] == "join"
+    assert [(r["name"], r["id"], r["why"]) for r in record["renders"]] == [
+        ("RqfRack", "rack", "join"),
+        ("RqfSibling", "s1", "join"),
+        ("RqfSibling", "s2", "join"),
+        ("RqfSibling", "s3", "join"),
+    ]
+    assert_whole(record)
+    rows = rows_of(record, ".RqfSibling")
+    # One row per render, as ever: a reader sums a class's rows (the snapshot of a class drawn many times)
+    assert sorted(row["by"] for row in rows) == [1, 2, 3]
+    assert {(row["template"]["line"], row["count"], row.get("repeated")) for row in rows} == {(2, 1, True)}
+    assert len({row["sql"] for row in rows}) == 1
 
 
 @pytest.mark.asyncio
