@@ -886,16 +886,25 @@ class CondNode(Node):
     def __init__(self, dict_expression):
         self.dict_expression = dict_expression
 
+    def _tree(self) -> ast.Expression | None:
+        tree = self.__dict__.get("_parsed", False)
+        if tree is False:
+            try:
+                tree = ast.parse(self.dict_expression, mode="eval")
+            except SyntaxError:
+                tree = None
+            self._parsed = tree
+        return tree  # type: ignore[return-value]
+
     def context_names(self) -> frozenset[str] | None:
         """The context names the expression reads, ``this.x`` as ``x``; None if it does not parse.
 
-        The expression is held as text and read from the flattened context at
-        render time, so a scan of the template's variables does not see it
+        The expression is held as text and read from the context at render
+        time, so a scan of the template's variables does not see it
         (``template_engine.referenced_names``).
         """
-        try:
-            tree = ast.parse(self.dict_expression, mode="eval")
-        except SyntaxError:
+        tree = self._tree()
+        if tree is None:
             return None
         names: set[str] = set()
         for node in ast.walk(tree):
@@ -906,7 +915,14 @@ class CondNode(Node):
         return frozenset(names)
 
     def render(self, context):
-        variables: dict[str, t.Any] = {name: _dotted(value) for name, value in context.flatten().items()}  # type: ignore
+        tree = self._tree()
+        if tree is None:  # eval raises the SyntaxError
+            variables: dict[str, t.Any] = {}
+        else:
+            # The names it reads, each looked up: flattening the context read
+            # every property a lazy context holds (#187)
+            roots = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+            variables = {name: _dotted(context[name]) for name in roots if name in context}
         terms = eval(self.dict_expression, variables)
         return " ".join(term for term, ok in terms.items() if ok)
 

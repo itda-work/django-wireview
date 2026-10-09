@@ -23,6 +23,7 @@ from ..debug import render_queries
 from ..utils import db
 from . import shared_render
 from .connections import keep_connections
+from .lazy_context import LazyContext, PropertyFailed, is_lazy
 from .render_gate import RenderGate
 from .render_reads import RenderReads
 from .rendered import Rendered, keep_stale, page_drawing, strip_markers
@@ -63,6 +64,23 @@ Context = dict[str, t.Any]
 P = t.ParamSpec("P")
 
 ScrollPosition = t.Literal["start"] | t.Literal["end"] | t.Literal["center"] | t.Literal["nearest"]
+
+
+def _render_lazily(template: t.Any, context: Context) -> str:
+    """``render_with_markers``, raising what a property of a lazy context raised while the template read it.
+
+    Django swallows some of it -- an ``AttributeError``, anything under an
+    ``{% if %}`` operator -- where reading the property up front raised (#187).
+    """
+    from ..template_engine import render_with_markers
+
+    try:
+        html = render_with_markers(template, context)
+    except PropertyFailed as failed:
+        raise t.cast(BaseException, failed.__cause__) from None
+    if isinstance(context, LazyContext) and context.failure is not None:
+        raise context.failure
+    return html
 
 
 def resolve_destination(to: RedirectDestination, **kwargs: t.Any) -> str:
@@ -553,8 +571,6 @@ class WireviewMeta:
         Returns:
             Rendered HTML as SafeText, or None if rendering should be skipped.
         """
-        from ..template_engine import render_with_markers
-
         with (
             render_queries.nested_render_scope(component),
             telemetry.span(
@@ -584,8 +600,7 @@ class WireviewMeta:
                 else:
                     context = self._get_context(component, repo, slots)
                     # Use marker-injected rendering for efficient diffing
-                    # The template type from component matches what render_with_markers expects
-                    html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
+                    html = _render_lazily(template, context).strip()
                 if not repo.is_live:
                     # HTTP render: markers inside attributes (value="<!--$0-->…") would
                     # corrupt the page until the WebSocket join replaces the DOM.
@@ -773,16 +788,17 @@ class WireviewMeta:
         the caller awaits it on the loop and renders then.
         """
         context = self._collect_context(component, repo, reads)
-        if any(iscoroutine(value) for value in context.values()):
+        # Through dict's own: a lazy context's pending names are not read for it
+        if any(iscoroutine(value) for value in dict.values(context)):
             return context, None, True
         return context, self._render_with_context(component, context, reads), False
 
     @staticmethod
     async def _await_properties(context: Context) -> None:
-        for name, value in context.items():
+        for name, value in list(dict.items(context)):
             if iscoroutine(value):
-                with render_queries.scope("property", context.get("this"), name):
-                    context[name] = await value
+                with render_queries.scope("property", dict.get(context, "this"), name):
+                    dict.__setitem__(context, name, await value)
 
     @staticmethod
     def _read(component: "Component", attr_name: str, reads: RenderReads | None) -> t.Any:
@@ -849,9 +865,13 @@ class WireviewMeta:
         Async properties are left as coroutines for the caller to await.
         """
         context: Context = {}
+        pending: list[str] | None = [] if reads is None and component._meta.lazy_properties else None
 
         if reads is None:
             for attr_name in self._context_names(component):
+                if pending is not None and is_lazy(component, attr_name):
+                    pending.append(attr_name)
+                    continue
                 try:
                     attr = getattr(component, attr_name)
                 except AttributeError:
@@ -874,11 +894,12 @@ class WireviewMeta:
         if self._watch:
             context = {**shared_render.watched_context(component), **context}
 
-        return dict(
+        context = dict(
             context,
             this=component,
             wireview_repository=repo,
         )
+        return context if pending is None else LazyContext(context, component, pending)
 
     def _render_with_context(
         self, component: "Component", context: Context, reads: RenderReads | None = None
@@ -920,7 +941,7 @@ class WireviewMeta:
             marker_context.recording += 1  # the parts look their owner up only while one records
         try:
             if reads is None:
-                html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
+                html = _render_lazily(template, context).strip()
             else:
                 with reads:
                     html = render_with_markers(template, context).strip()  # type: ignore[arg-type]
@@ -976,8 +997,12 @@ class WireviewMeta:
             with keep_connections():
                 return async_to_sync(awaiter)()
 
+        pending: list[str] | None = [] if reads is None and component._meta.lazy_properties else None
         for attr_name in dir(component):
             if not attr_name.startswith("_") and attr_name not in self._PYDANTIC_CLASS_ATTRS:
+                if pending is not None and is_lazy(component, attr_name):
+                    pending.append(attr_name)
+                    continue
                 attr = self._read(component, attr_name, reads)
                 if not callable(attr):
                     # Handle async properties that return coroutine objects
@@ -996,8 +1021,9 @@ class WireviewMeta:
         # Add slots to context (use empty container if not provided)
         context["slots"] = slots if slots is not None else SlotContainer()
 
-        return dict(
+        context = dict(
             context,
             this=component,
             wireview_repository=repo,
         )
+        return context if pending is None else LazyContext(context, component, pending)

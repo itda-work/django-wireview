@@ -200,6 +200,9 @@ class ComponentOptions:
     #: only fields and data every viewer shares -- so the connections handling
     #: one broadcast render it once between them (#176, wireview/core/shared_render.py).
     shared_render: bool = False
+    #: Read a sync property when the template reads its name, once a render, instead of
+    #: every public property before it: one the template does not name is not run (#187).
+    lazy_properties: bool = False
 
     def extended(self, meta: type, owner: type) -> "ComponentOptions":
         """These options with ``meta``'s attributes on top."""

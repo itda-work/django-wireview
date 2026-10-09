@@ -657,6 +657,7 @@ _transparent: tuple[type, ...] = ()
 def _collecting_codes() -> frozenset[CodeType]:
     global _collecting, _transparent
     if _collecting is None:
+        from ..core.lazy_context import LazyContext
         from ..core.meta import WireviewMeta
         from ..template_engine import ComprehensionItemNode
 
@@ -666,6 +667,7 @@ def _collecting_codes() -> frozenset[CodeType]:
                 WireviewMeta._collect_context.__code__,
                 WireviewMeta._get_context.__code__,
                 WireviewMeta._read.__code__,
+                LazyContext._compute.__code__,
             }
         )
     return _collecting

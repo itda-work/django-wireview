@@ -38,6 +38,7 @@ class XTodoList(Component):
 | `presence` | `PresenceMixin`의 `PresenceConfig` |
 | `sticky` | `True`면 boost 이동으로 같은 컴포넌트가 있는 페이지에 가도 인스턴스·DOM·훅이 이어진다 |
 | `shared_render` | `True`면 같은 브로드캐스트를 받은 연결들이 렌더를 한 번만 하고 함께 쓴다(같은 클래스·id·필드·언어·시간대일 때). **렌더가 보는 사람을 읽지 않는 컴포넌트에만** — `self.user`·권한·사용자별 숫자를 그리면 처음 렌더한 사람의 화면이 모두에게 간다. 고정 `id=`를 준다. `wireview.testing`의 `render_diff()`가 `user`·`session` 읽기를 `SharedRenderError`로 잡는다. LiveComponent·`temporary_assigns`·`slots`·`live_sessions`가 있거나 다른 컴포넌트를 그리는 템플릿은 공유하지 않는다(W019) |
+| `lazy_properties` | `True`면 sync property(`property`·`cached_property`)를 렌더 전에 모두 읽지 않고 **템플릿이 그 이름을 읽을 때** 렌더마다 한 번 읽는다. 템플릿이 쓰지 않는 property와 그 SQL은 돌지 않는다. **property가 순수 조회일 때만** — 렌더 중에 필드를 바꾸는 property는 서명 상태와 본문이 갈라질 수 있다. `{{ this.x }}`는 컴포넌트를 직접 읽으므로 따로 계산된다 |
 
 `self.user`(요청 사용자), `self.wire`(클라이언트 명령 채널), `self.session`(Django 세션,
 **읽기 전용**)은 항상 있다. `self.wire.params`는 URL 쿼리 파라미터다.

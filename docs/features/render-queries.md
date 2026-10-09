@@ -108,7 +108,8 @@ async def test_the_shelf_has_no_n_plus_one():
 **property는 템플릿 줄이 아니라 이름으로 나온다.** 렌더는 템플릿보다 먼저 컴포넌트의 공개 속성을 모두 읽어
 컨텍스트에 넣는다. 그래서 property가 부른 쿼리는 템플릿에서 그 이름을 쓰는 줄이 아니라 `property <이름>`으로
 나오고, **템플릿이 쓰지 않는 property도 렌더마다 읽힌다**([Component API](./component-api.md#렌더가-읽는-것)).
-`{{ this.total }}`처럼 템플릿이 property를 다시 읽으면 그 줄에서 한 번 더 쿼리한다.
+`{{ this.total }}`처럼 템플릿이 property를 다시 읽으면 그 줄에서 한 번 더 쿼리한다. `Meta.lazy_properties`를 켠 컴포넌트는
+템플릿이 이름을 읽을 때 property를 읽으므로 쓰지 않는 property는 나오지 않는다. 그때도 쿼리는 `property <이름>`으로 나온다.
 
 **템플릿 줄은 노드 자신의 위치다.** 쿼리가 실행되는 순간 스택에서 가장 안쪽 템플릿 노드(이름이 `render`나
 `render_annotated`인 메서드의 `self`)를 찾아 그 노드의 `origin`과 `token.lineno`를 읽는다. 사용자 태그에 대한

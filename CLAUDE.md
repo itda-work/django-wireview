@@ -59,6 +59,10 @@ wireview/
 │                          세션은 rejoin을 바로 쓰지 않고 자기 채널로 메일(template_changed)을 보내 그 차례에 쓴다 — 처리 중인 핸들러·join의 답 뒤.
 │                          페이지는 sync를 보내 synced가 올 때까지 기다렸다가 다시 join한다(static의 rejoins.mjs). 앞지르면 처리 중이던 이벤트가 되돌아갔다.
 │                          refused는 여기서 풀지 않는다 — 페이지의 다시 join이 retry_join으로 푼다
+├── core/lazy_context.py  Meta.lazy_properties(#187). LazyContext: sync property(property·cached_property)를 템플릿이 이름을 읽을 때 렌더마다 한 번 계산하는 dict(__missing__).
+│                          request 없는 make_context가 dict를 복사하지 않아 그대로 쓰인다. 순회(flatten·dict())는 남은 것을 모두 읽는다 — 수집을 세는
+│                          코드는 dict.values·dict.items로 읽는다. Django가 삼킨 property 예외(failure)는 meta._render_lazily가 렌더 뒤에 다시 던진다.
+│                          temporary assign이 초기화된 렌더(reads)는 지금처럼 모두 미리 읽는다
 ├── core/connections.py   keep_connections(). 동기 렌더가 컴포넌트의 async 코드로 건너는 다리(async_to_sync)가 그 스레드의 DB 연결을 닫지 않게 붙잡는다(#190).
 │                          wireview의 어떤 모듈도 import하지 않는다 — utils가 core를 import하는 도중에 meta가 이것을 읽는다
 ├── core/render_gate.py    RenderGate. 워커 스레드가 렌더하는 동안 그 컴포넌트의 start_async·assign_async 작업 단계를 렌더 뒤로 미룬다(#138).
