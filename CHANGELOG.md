@@ -38,6 +38,14 @@ The django-reactor era changelog (2.x) is preserved in
   same statement once each are logged as one repeat and written as one line whose class snapshot sums them.
   Their `joined()`, `update()` and `leaving()` land in the same log entry, and the log groups renders of one
   class into one row (`[render Card ×3 (join)]`). The record format stays 1.0; its `kind` gains the value `tree`.
+- An HTTP render is one piece of work too (#193): the outermost Django template render opens a `page` scope
+  (`page shop/list.html`), so the components a view's template draws side by side are logged as one repeat
+  and written as one line, with `http` as each render's reason as before. It covers `render()`,
+  `TemplateResponse`, `render_to_string` and `Template(...).render()`; a template that drew no component
+  leaves nothing, and the view's own SQL outside the template is not in it. The template's own statements
+  and the components' mounts are rows outside a render. The record format stays 1.0; `kind` gains `page`.
+- A component a template draws while the event loop runs mounts on a pool thread; that thread now takes the
+  render-SQL scope and the `queries()` block along, so its mount is counted in the page and in the block (#193).
 
 ### Fixed
 

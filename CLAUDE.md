@@ -113,6 +113,8 @@ wireview/
 │                          ContextVar 스코프이고, 템플릿 파일:줄과 sync property 이름은 쿼리 순간 스택에서 읽는다(노드 자신의 origin·token).
 │                          래퍼는 execute_wrappers 맨 아래에 한 번 두고 남긴다. 요청을 모아 다른 태스크가 처리하는 길은 capture()·restored()로
 │                          항목마다 요청한 쪽의 상태를 되살린다(_Signer). 태스크를 만드는 새 길은 시작에서 detach()하고 scope("task")를 연다.
+│                          install()이 Django의 Template.render도 한 번 감싼다: 가장 바깥 템플릿 렌더가 page 스코프다(#193). 컴포넌트를
+│                          그리지 않은 page는 버린다(Scope.drew — 파일 기록용 renders로 판정하지 않는다).
 │                          MountedComponent.queries()가 테스트 단언. 계약 표는 tests/test_render_queries.py
 ├── debug/render_queries_file.py 그 귀속을 편집기가 읽을 JSON 줄로 쓴다(DEBUG_RENDER_QUERIES_DIR, #188). 가장 바깥 일 하나가 한 줄이고, 안에서 끝난
 │                          렌더마다 클래스 단위 스냅샷(0건 포함)이 든다. 템플릿 줄은 실행 중인 Template.source의 지문과 함께(filesystem·app_directories

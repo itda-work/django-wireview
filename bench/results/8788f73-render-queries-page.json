@@ -1,0 +1,129 @@
+{
+  "unit": "µs per template render, wall clock. Each run: Django's Template.render and the page boundary in turns, 15 rounds x 40 each; 'page - django' is the median of the rounds' differences. The summary is the range over the runs",
+  "runs": [
+    {
+      "plain page (20 includes), off": {
+        "django": 462.62082178145647,
+        "page": 472.24999871104956,
+        "page - django": 9.97500610537826
+      },
+      "plain page (20 includes), on": {
+        "django": 456.32499968633056,
+        "page": 471.2395719252527,
+        "page - django": 14.407269190996885
+      },
+      "3 components, off": {
+        "django": 578.5322980955243,
+        "page": 580.494775203988,
+        "page - django": 3.6749988794326782
+      },
+      "3 components, on": {
+        "django": 580.5885535664856,
+        "page": 585.03124746494,
+        "page - django": 2.6875000912695257
+      }
+    },
+    {
+      "plain page (20 includes), off": {
+        "django": 459.71355284564197,
+        "page": 470.21249774843454,
+        "page - django": 8.585397154092789
+      },
+      "plain page (20 includes), on": {
+        "django": 452.55625154823065,
+        "page": 469.2031245213002,
+        "page - django": 14.359375927597295
+      },
+      "3 components, off": {
+        "django": 574.6801965869963,
+        "page": 576.9218725617975,
+        "page - django": 1.0250019840895261
+      },
+      "3 components, on": {
+        "django": 580.7916517369449,
+        "page": 587.7749994397163,
+        "page - django": 5.648972000926712
+      }
+    },
+    {
+      "plain page (20 includes), off": {
+        "django": 463.54897785931826,
+        "page": 473.46875071525574,
+        "page - django": 9.92607674561442
+      },
+      "plain page (20 includes), on": {
+        "django": 462.63542026281357,
+        "page": 478.2656265888363,
+        "page - django": 14.93022427894174
+      },
+      "3 components, off": {
+        "django": 567.5895721651614,
+        "page": 571.1031262762845,
+        "page - django": 3.1864503398536987
+      },
+      "3 components, on": {
+        "django": 577.9739527497441,
+        "page": 581.6197779495269,
+        "page - django": 2.2760475985705417
+      }
+    }
+  ],
+  "summary": {
+    "plain page (20 includes), off": {
+      "django": [
+        459.7,
+        463.5
+      ],
+      "page": [
+        470.2,
+        473.5
+      ],
+      "page - django": [
+        8.6,
+        10.0
+      ]
+    },
+    "plain page (20 includes), on": {
+      "django": [
+        452.6,
+        462.6
+      ],
+      "page": [
+        469.2,
+        478.3
+      ],
+      "page - django": [
+        14.4,
+        14.9
+      ]
+    },
+    "3 components, off": {
+      "django": [
+        567.6,
+        578.5
+      ],
+      "page": [
+        571.1,
+        580.5
+      ],
+      "page - django": [
+        1.0,
+        3.7
+      ]
+    },
+    "3 components, on": {
+      "django": [
+        578.0,
+        580.8
+      ],
+      "page": [
+        581.6,
+        587.8
+      ],
+      "page - django": [
+        2.3,
+        5.6
+      ]
+    }
+  }
+}

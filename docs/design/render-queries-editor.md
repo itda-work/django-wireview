@@ -881,4 +881,186 @@ wireview 경로에서는 `tests/test_render_queries.py`의 23개 테스트(위�
   생기고, 그것은 이벤트 하나가 아니다.
 - 자식 렌더의 행은 로그에서 대괄호를 단다. 자식이 많은 페이지의 덩어리는 이전보다 길다.
 - HTTP 첫 렌더에서 한 뷰 템플릿이 최상위 `{% component %}`를 여럿 그리면 그것들은 지금도 각자 가장 바깥이다. 형제
-  `LiveComponent`가 아니라 형제 루트이고, 감쌀 자리가 Django의 뷰 렌더다. 이 이슈의 범위 밖이다.
+  `LiveComponent`가 아니라 형제 루트이고, 감쌀 자리가 Django의 뷰 렌더다. 이 이슈의 범위 밖이다. 후속은 §11(#193)이다.
+
+## 11. 뷰 템플릿이 그린 최상위 컴포넌트를 한 일로 (#193)
+
+> 상태: 결정됨(1판), 구현됨. 0판(이슈 #193의 질문에 대한 첫 답)을 외부 리뷰(gpt-6-astra, medium)에 돌려 P1 1건·P2 4건을
+> 반영했고, 메인테이너가 11-7을 모두 권고대로 정했다. 무엇이 틀렸는지는 이 절 끝의 "0판에서 바뀐 것"에 있다. 근거는 main
+> `8788f73`의 코드와 Django 6.0 소스다. 코드는 `wireview/debug/render_queries.py`의 `_page_render`·`Scope.drew`,
+> `wireview/templatetags/wireview.py`의 mount 경로, 테스트는 `tests/test_render_queries.py`·`tests/test_render_queries_file.py`의 #193 항목이다.
+
+**문제.** HTTP 첫 렌더에서 `{% component %}`는 각자 `nested_render_scope`(`wireview/core/meta.py:575`)를 연다. 바깥에 열린
+스코프가 없으므로 종류 `render`, 이유 `http`인 가장 바깥 일이다. 뷰 템플릿 자체는 컴포넌트가 아니어서 그것들을 감싸는 경계가
+없다. 그래서 `{% for %}`로 `Card` 열 개를 그리면 로그에 `render Card#… (http): 1 query` 덩어리가 열 개, 기록에 줄이 열 개 나가고
+(같은 스냅샷이면 60초 생략), 반복은 어디에도 없다. 확장은 클래스마다 최신 스냅샷 하나를 두므로 `1 query`를 보인다. §10이
+라이브 렌더에서 푼 것과 같은 결함이 HTTP에 남아 있다.
+
+### 11-1. 경계: Django 템플릿 렌더 한 번
+
+**위치는 `django.template.base.Template.render`다.** `render_queries.install()`이 그 메서드를 한 번 감싼다(멱등, 원본은 모듈에
+보관). 래퍼는 이렇다.
+
+- 수집하는 것이 없으면(`_active`가 거짓) 원본을 바로 부른다. 꺼진 설정의 비용은 `ContextVar` 읽기 하나다. 한 번 패치한 뒤에는
+  설정을 꺼도 래퍼 호출 자체는 남는다 — "꺼 두면 비용 0"이라고 쓰지 않는다.
+- 이미 열린 스코프가 있으면 원본을 바로 부른다. 컴포넌트 자신의 템플릿(렌더 스코프 안), `{% include %}`·`{% extends %}`의 부모
+  (`IncludeNode`는 base `Template.render`를 부른다, `django/template/loader_tags.py`), 핸들러·작업 안의 `render_to_string`이 모두
+  여기 든다. 그래서 새 스코프는 **가장 바깥에서만** 열린다.
+- 그 밖이면 종류 `page` 스코프를 열고 원본을 부른다. `with` 안에서 열고 닫으므로 반환·예외 모두 같은 실행 컨텍스트에서
+  닫힌다.
+
+열린 스코프 판정은 `state.scope is not None and state.scope.open`이다. `sync_to_async`가 복사해 넘긴, 이미 닫힌 스코프는 막지
+않는다(`scope()`가 `outer`를 고를 때와 같은 규칙).
+
+**백엔드 래퍼(`django.template.backends.django.Template.render`)가 아닌 이유.** `Template(...).render(Context(...))`와
+`engine.get_template(...).render(...)`는 래퍼를 지나지 않는다. 래퍼만 감싸면 그런 페이지의 형제 N+1이 그대로 남는다. base를
+감싸면 래퍼 경로(`render`, `TemplateResponse`, `render_to_string`)도 결국 base `render`를 지나므로 둘 다 덮는다. 둘을 함께 패치할
+이유는 없다.
+
+**`_render`가 아닌 이유.** Django 테스트 러너가 `instrumented_test_render`로 `Template._render`를 바꾼다
+(`django/test/utils.py`). 같은 자리를 다투지 않는다. `render`는 `bind_template`(컨텍스트 프로세서)까지 감싸므로 그 SQL도 든다.
+
+**미들웨어·`TemplateResponse`·첫 `{% component %}`가 아닌 이유.**
+
+| 후보 | 버린 이유 |
+|---|---|
+| 요청 미들웨어 | 사용자가 설정에 넣어야 한다. 뷰 본문과 다른 미들웨어의 SQL이 섞인다. 스트리밍 응답은 미들웨어가 돌아간 뒤에 소비된다 |
+| `TemplateResponse.render` | `shortcuts.render`, `render_to_string`, 직접 `Template` API를 놓친다 |
+| 첫 `{% component %}`가 여는 ContextVar | 닫을 자리가 없다. 태그가 돌아갈 때 닫으면 형제를 놓치고, 열어 두면 템플릿이 끝났을 때 닫을 주체가 없다 |
+
+**범위는 "HTTP 요청"이 아니라 "Django 템플릿 렌더 한 번"이다.** 그래서:
+
+- 뷰 본문의 SQL(템플릿 밖)은 들지 않는다. 템플릿이 평가하는 lazy QuerySet은 렌더 시점에 돌므로 든다.
+- `render_to_string`으로 만드는 이메일·문자열도 가장 바깥이면 `page`다. 그 안에 컴포넌트가 있으면 기록되고 그 클래스의 최신
+  스냅샷을 바꾼다. 지금 그 컴포넌트가 각자 `http` 렌더로 기록되는 것과 같은 결과다.
+- `StreamingHttpResponse`의 이터레이터 안에서 템플릿을 여러 번 그리면 그 호출마다 `page`다. chunk 사이의 형제는 묶지 않는다.
+- Jinja2 등 다른 백엔드는 범위 밖이다. 위치 추적부터 Django 노드를 전제로 한다.
+
+### 11-2. 컴포넌트가 없는 페이지는 아무것도 남기지 않는다
+
+`page`가 생기면 wireview를 쓰지 않는 Django 페이지도 가장 바깥 스코프를 얻는다. 지금 `_close`는 가장 바깥 스코프에 행이
+있으면 로그를 쓰므로, 그대로 두면 일반 페이지의 SQL과 N+1이 `wireview.queries`에 WARNING으로 샌다. 그래서 **안에서 렌더 스코프가
+하나도 닫히지 않은 `page`는 로그도 기록도 남기지 않고 버린다.**
+
+판정은 `scope.renders`로 하지 않는다(0판의 P1). `_close`는 `scope.sink`일 때만 렌더를 바깥의 `renders`에 올리고, `sink`는 편집기
+파일이 켜져 있을 때만 참이다. 파일을 꺼 두었거나(`DEBUG_RENDER_QUERIES_DIR=False`, 환경 변수) `wireview.testing`을 import했으면
+컴포넌트를 그려도 `renders`가 비어, 형제 N+1 로그까지 사라진다.
+
+- `Scope`에 `drew: bool`을 더한다. `_close`에서 바깥이 열려 있으면 `scope.kind == "render" or scope.drew`일 때 `outer.drew = True`.
+  파일 설정과 무관하게 모든 중간 스코프를 지나 올라간다.
+- 버림은 `page`에만 적용한다. 일반 `_close`에 넓히면 렌더 없는 핸들러·`mount`·작업의 로그가 사라진다.
+- 행 유무와도 분리한다. 0건 컴포넌트만 그린 `page`도 `drew`가 참이고, 그 기록이 이전 힌트를 지운다(§1-2의 0건 스냅샷).
+- `queries()` 블록의 행은 쿼리 순간 블록에 따로 들어간다(`_record`). `page`를 버려도 블록의 행은 그대로이고, 다시 넣지도 않는다.
+
+함수 컴포넌트만 있는 페이지는 렌더 스코프가 없으므로 `drew`가 거짓이다. 편집기 계약이 상태 있는 렌더의 스냅샷이므로 그것이
+맞다.
+
+### 11-3. 이름과 로그
+
+- **`page`의 detail은 템플릿 이름이다.** `origin.template_name`, 없으면 `Template.name`, 둘 다 없으면(`from_string`)
+  `<string>`. 백엔드 래퍼의 `.name`을 가정하지 않는다.
+- **`describe()`에 분기를 더한다**: `page {detail}`. 지금은 마지막 줄(`f"{kind} {who}"`)로 떨어져 `page `만 남는다(0판의 P2).
+- **최상위 렌더의 이유는 그대로 `http`다.** `nested_render_scope`는 지금 "열린 스코프가 있으면 `nested`"이므로, `page` 아래의
+  모든 최상위 컴포넌트가 `nested`가 된다(0판의 P2). 가장 가까운 열린 스코프가 `page`이면 `http`, 다른 열린 스코프면 `nested`로
+  바꾼다. "조상에 `page`가 있으면 `http`"로 하면 진짜 중첩 컴포넌트까지 `http`가 된다. 함수 컴포넌트의 템플릿은 스코프를
+  열지 않으므로(`wireview/function_components.py`) 그 안의 최상위 `{% component %}`도 `http`다. 지금과 같다.
+- 로그는 이렇게 된다.
+
+  ```
+  WARNING wireview.queries page shop/list.html: 11 queries, 1 repeated
+    shop/list.html:4  for                               1  SELECT … FROM "shop_card" …
+    shop/card.html:2  {{ }}  [render Card ×10 (http)]  10×  SELECT … FROM "shop_price" … <- repeated
+  ```
+
+  `_owner_key`가 이미 `(클래스, 이유)`로 묶으므로 표 코드는 바뀌지 않는다. `_is_top`은 `tree`에만 해당하므로 `page` 아래의 렌더
+  행은 모두 대괄호를 단다.
+- **로그 모양이 바뀌는 곳.** (1) 컴포넌트 하나만 그린 페이지도 머리가 `render Card#c (http)`에서 `page …`로 바뀌고 행에 대괄호가
+  붙는다. (2) `{% component %}`의 `mount` 스코프(`wireview/core/component.py:725`)가 따로 내던 `mount Card#c: 1 query` 덩어리가
+  `page`에 `[mount Card#c]` 행으로 들어간다. (3) 템플릿의 lazy QuerySet과 컨텍스트 프로세서의 SQL이 `page`의 렌더 밖 행으로
+  보인다. 지금은 스코프 없이 `unattributed()`로만 셌다. 로그의 모양은 약속하지 않는다(#182).
+
+### 11-4. 기록: 형식 1.0 그대로
+
+- `page`는 가장 바깥 일이므로 줄 하나다. `kind`는 `page`, `detail`은 템플릿 이름이다. 둘 다 정보용 키이고 확장은 읽지 않는다
+  (`tree`를 더했을 때와 같다). minor도 올리지 않는다.
+- `renders`에는 최상위 컴포넌트와 그 안의 중첩 렌더가 닫힌 순서로 든다. `page`는 렌더가 아니므로 "0번이 그 컴포넌트"인 규칙은
+  해당하지 않는다. `docs/features/render-queries.md`의 `renders` 행에 "`page`면 0번 규칙이 없다"를 더한다.
+- 형제 행은 `by`가 다른 `count: 1`, 셋 다 `repeated: true`다. 확장의 `QueryState.add`(#189)가 같은 클래스의 같은 행을 합쳐
+  `⚠ 10× same query`로 보인다. **확장은 바꾸지 않는다.**
+- 렌더 밖 행(`mount`, lazy QuerySet, 컨텍스트 프로세서)은 `by` 없이 실리고 1.0 독자는 무시한다. 그래서 로그가 11건이어도 힌트의
+  합은 10건일 수 있다. 그리고 `_Record`의 스냅샷 비교는 `by` 없는 행을 보지 않으므로, 페이지 고유의 SQL만 바뀐 렌더는 새 줄을
+  쓰지 않을 수 있다(60초 생략). `page`는 "컴포넌트 스냅샷을 함께 담는 템플릿 실행 경계"이지 페이지 전체 SQL의 스냅샷이 아니다.
+- `page`에 바로 든 행(렌더 밖, 다른 일 안도 아님)에는 `in`을 달지 않는다. `in`은 "렌더 안의 다른 일"이고 `page`는 그 줄의
+  일 자체다(구현에서 정함, `_group`의 `root`). `mount`처럼 `page` 안의 다른 일에서 돈 행은 지금처럼 `in`을 단다.
+- `emit`의 "렌더가 없으면 쓰지 않는다"(`render_queries_file.py:505`)는 `sink`일 때 `renders`로 판정하므로 그대로 맞는다. 11-2의
+  버림은 그 앞, 로그에도 걸린다.
+
+### 11-5. async 뷰
+
+- ASGI에서 동기 뷰와 `TemplateResponse.render`는 `sync_to_async(thread_sensitive=True)` 안에서 돈다. 래퍼가 `with`로 열고 닫으므로
+  열기·닫기·토큰 reset이 한 스레드, 한 컨텍스트에서 끝난다.
+- **이벤트 루프 위에서 템플릿을 직접 그리는 경로**(async 뷰가 `Template.render`를 동기로 부르는 경우)는 `{% component %}`의 mount를
+  `ThreadPoolExecutor.submit(asyncio.run, …)`로 돌린다(`wireview/templatetags/wireview.py:331`). `submit`은 컨텍스트를 복사하지
+  않으므로 그 스레드에서 도는 mount와 `params_changed`의 SQL은 `page` 밖의 따로 된 가장 바깥 일이 되고, 열린 `queries()` 블록에도 들지 않는다.
+  지금도 같은 한계이고 이 변경이 만든 회귀는 아니다. 고치는 길은 CLAUDE.md의 규칙("요청을 모아 다른 태스크가 처리하는 길은
+  `capture()`·`restored()`")대로 `_enter_in_template`을 `render_queries.restored(capture())` 안에서 돌리는 것이다(정할 것 3).
+
+### 11-6. 테스트
+
+`tests/test_render_queries.py`와 `tests/test_render_queries_file.py`에 둔다. 구현 전에 실패를 먼저 본다.
+
+1. 뷰 템플릿이 `Card` 셋을 그린다: 로그 덩어리 하나, 반복 하나, 대괄호 `[render Card ×3 (http)]`. JSONL 한 줄, `kind: "page"`,
+   `by`가 다른 `count: 1`·`repeated: true` 셋. 파일 기록을 끈 상태에서도 로그는 같다(11-2의 P1).
+2. 컴포넌트 없는 페이지와 lazy QuerySet: 로그도 JSONL도 없다. 0건 `Card` 하나만 그린 페이지: 0건 스냅샷이 쓰인다.
+3. 경로: 백엔드 `render`, 직접 `Template(...).render(Context())`, `{% include … only %}` 안의 형제, `{% extends %}`, 함수 컴포넌트
+   템플릿 안의 형제는 모두 한 `page`. 진짜 중첩 `Card`의 이유는 `nested`, 최상위는 `http`.
+4. `render_to_string` 두 번, 스트리밍 응답의 chunk 둘: 호출마다 `page`이고 끝난 뒤 `_state`가 비어 있다.
+5. 핸들러·`joined()` 안의 `render_to_string`, `MountedComponent.render()`: 새 `page`를 열지 않는다(열린 스코프).
+6. 렌더 예외: `page`가 닫히고 상태가 남지 않는다. 이미 닫힌 스코프를 물려받은 컨텍스트에서는 `page`가 열린다.
+7. `queries()` 블록 안: 행이 두 번 세어지지 않고, 블록을 연 동안 파일에 쓰지 않는다(`_enter`가 `sink`를 끈다).
+8. `install()`을 여러 번 불러도 한 번만 감싼다. Django 테스트 러너의 `_render` 계측과 함께 돈다. 지원 범위(Django 5.2 이상)의
+   격자(`make test-matrix`)에서 돈다.
+9. 비용: include가 많은 페이지를 설정 켬·끔으로 잰다. 숫자 없이 "싸다"고 쓰지 않는다(11-9).
+
+### 11-7. 메인테이너가 정할 것 (결정됨)
+
+1. **경계 위치.** base `Template.render`(권고). 대안은 백엔드 래퍼로, 패치가 공개 백엔드 클래스에 머무는 대신 직접 `Template` API를
+   놓친다.
+2. **범위의 이름.** "Django 템플릿 렌더 한 번"으로 문서에 고정하고 이메일·`render_to_string`도 포함(권고). 대안은 `request`가 있는
+   컨텍스트에서만 여는 것으로, HTTP 전용이 되지만 `RequestContext` 없이 그린 페이지를 놓친다.
+3. **async 직접 렌더의 mount.** 이 변경에 함께 넣는다(권고, `restored(capture())` 한 줄). 대안은 따로 이슈로 둔다.
+4. **로그 머리.** 컴포넌트 하나뿐인 페이지도 `page …`로 바뀐다(권고, 규칙이 하나). 대안은 렌더가 하나뿐이면 그 렌더의 이름을
+   머리로 쓰는 것으로, `tree`의 `_is_top`처럼 예외 규칙이 하나 는다.
+
+**결정.** 메인테이너가 1~4를 모두 권고대로 정했다.
+
+### 11-8. 0판에서 바뀐 것
+
+| 0판 | 지적 | 1판 |
+|---|---|---|
+| 백엔드 래퍼 `Template.render` | P2: 직접 `Template` API를 놓친다 | base `Template.render`(11-1) |
+| 렌더가 없으면 버린다(`renders`로 판정) | P1: `renders`는 파일 기록이 켜졌을 때만 찬다. 파일을 끄면 로그까지 사라진다 | 파일과 무관한 `drew`(11-2) |
+| 로그 행 `[render Card ×10 (http)]` | P2: `page` 아래에서는 `nested`가 된다. `describe()`가 detail을 버린다 | 가장 가까운 스코프로 이유를 정하고 `describe()` 분기(11-3) |
+| "페이지의 SQL" | P2: 렌더 밖 행은 힌트에 안 보이고 스냅샷 비교에서도 빠진다 | "컴포넌트 스냅샷을 담는 템플릿 실행 경계"(11-4) |
+| async는 `sync_to_async`가 컨텍스트를 넘긴다 | P2: 루프 위 직접 렌더의 mount는 `submit(asyncio.run)`이라 넘기지 않는다 | 11-5, 정할 것 3 |
+| "꺼 두면 비용 없음" | 패치 뒤에는 래퍼 호출이 남는다 | 11-1, 측정은 11-6의 9 |
+
+### 11-9. 비용 (구현 후)
+
+벤치는 [`bench/render_queries.py`](../../bench/render_queries.py)의 `--page`이고, 원본 결과는
+[`bench/results/8788f73-render-queries-page.json`](../../bench/results/8788f73-render-queries-page.json)이다(`8788f73` 위의 이 변경).
+한 프로세스에서 Django의 `Template.render`와 `page` 경계를 라운드마다 번갈았다(라운드 15회 × 40렌더, 차이는 라운드 차이의
+중앙값). 그래서 차이는 경계의 비용뿐이다. 편집기 파일은 껐다. 칸은 프로세스 3개의 범위이고, 측정하는 동안 load average는
+5~7이었다.
+
+| 템플릿 | 설정 끔 | 설정 켬 |
+|------|------|------|
+| 컴포넌트 없는 페이지, include 20개(템플릿 렌더 21번) | +8.6~10.0 µs (렌더 460 µs의 약 2%) | +14.4~14.9 µs (약 3%) |
+| 컴포넌트 셋 | +1.0~3.7 µs (렌더 570 µs의 1% 미만) | +2.3~5.6 µs (약 1%) |
+
+- 끔의 비용은 `Template.render`를 부를 때마다 하는 `_active` 확인(설정 조회)이다. include 20개짜리 페이지에서 한 번에 약
+  0.4~0.5 µs다. 패치는 수집이 켜지거나 `wireview.testing`을 import했을 때만 놓이므로, 설정이 꺼진 채 시작한 운영 프로세스에는
+  없다.
+- 켬에서 컴포넌트 없는 페이지는 `page`를 열었다가 버린다. include 스무 번은 열린 스코프를 보고 바로 원본을 부른다.
+- 컴포넌트 셋의 페이지가 컴포넌트 없는 페이지보다 싼 것은 Django 템플릿 렌더 횟수가 적어서다. 컴포넌트 자신의 템플릿은
+  렌더 스코프 안이라 `page`를 열지 않는다.

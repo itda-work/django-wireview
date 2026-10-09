@@ -22,6 +22,13 @@ both halves, the templates come from the filesystem loader (cached) so the sourc
 and ``DEBUG`` is on. ``file`` writes as a dev server does, a class's unchanged snapshot once a minute;
 ``file-every`` writes every render (``REPEAT_WINDOW`` 0), the cost of a render whose rows change.
 
+``--page`` measures the page boundary around Django's ``Template.render`` (#193): in one process,
+the wrapped and the original method in turns, round by round, on a view's template rendered as a
+view renders it. ``plain`` is a page of 20 includes and no component (the boundary opens and drops),
+``cards`` a page of three components; each with the setting off and on.
+
+    uv run python -m bench.render_queries --page --times 3
+
 Results go to stdout as JSON (``--compare`` writes ``bench/results/render-queries-<sha>.json``).
 """
 
@@ -53,6 +60,18 @@ TEMPLATES = {
     "bq/async.html": (
         "{% load wireview %}<div {% tag_header %}>{% for i in rows %}<i>{{ i }}</i>{% endfor %}{{ first_title }}</div>"
     ),
+}
+PAGE_TEMPLATES = {
+    "bq/frag.html": "{% for i in rows %}<i>{{ i }}</i>{% endfor %}",
+    "bq/plain_page.html": '{% for n in pieces %}{% include "bq/frag.html" %}{% endfor %}',
+    "bq/cards_page.html": '{% load wireview %}{% for k in keys %}{% component "BqNone" id=k %}{% endfor %}',
+}
+TEMPLATES.update(PAGE_TEMPLATES)
+PAGE_SCENARIOS = {
+    "plain page (20 includes), off": ("bq/plain_page.html", False),
+    "plain page (20 includes), on": ("bq/plain_page.html", True),
+    "3 components, off": ("bq/cards_page.html", False),
+    "3 components, on": ("bq/cards_page.html", True),
 }
 SCENARIOS = {
     "no queries": "BqNone",
@@ -231,6 +250,77 @@ async def _measure_file(cls: type, warmup: int, rounds: int, per_round: int) -> 
     }
 
 
+def _measure_page(name: str, on: bool, warmup: int, rounds: int, per_round: int) -> dict[str, float]:
+    """The page boundary around ``Template.render`` and Django's own method in turns (#193)."""
+    from django.conf import settings
+    from django.template import loader
+    from django.template.base import Template
+
+    from wireview.debug import render_queries
+
+    settings.WIREVIEW = {**settings.WIREVIEW, "DEBUG_RENDER_QUERIES": on, "DEBUG_RENDER_QUERIES_DIR": False}
+    wrapped, original = render_queries._page_render, render_queries._template_render
+    assert Template.render is wrapped and original is not None
+    page = loader.get_template(name)
+    context = {"rows": list(range(10)), "pieces": range(20), "keys": ["a", "b", "c"]}
+    for _ in range(warmup):
+        page.render(context)
+    timings: dict[str, list[float]] = {"django": [], "page": []}
+    try:
+        for _ in range(rounds):
+            for label, method in (("django", original), ("page", wrapped)):
+                Template.render = method  # type: ignore[method-assign]
+                start = time.perf_counter()
+                for _ in range(per_round):
+                    page.render(context)
+                timings[label].append((time.perf_counter() - start) / per_round)
+    finally:
+        Template.render = wrapped  # type: ignore[method-assign]
+    differences = [b - a for a, b in zip(timings["django"], timings["page"], strict=True)]
+    return {
+        "django": statistics.median(timings["django"]) * 1e6,
+        "page": statistics.median(timings["page"]) * 1e6,
+        "page - django": statistics.median(differences) * 1e6,
+    }
+
+
+def run_page() -> dict[str, dict[str, float]]:
+    with tempfile.TemporaryDirectory() as scratch:
+        _setup("off", None, str(Path(scratch) / "bench.sqlite3"))
+        _seed()
+        _components()
+        import wireview.testing  # noqa: F401 -- puts the wrapper and the page boundary on
+
+        return {name: _measure_page(template, on, 30, 15, 40) for name, (template, on) in PAGE_SCENARIOS.items()}
+
+
+def page_runs(times: int) -> dict[str, object]:
+    runs = []
+    for _ in range(times):
+        done = subprocess.run(
+            [sys.executable, "-m", "bench.render_queries", "--mode", "page"],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            check=True,
+        )
+        runs.append(json.loads(done.stdout))
+    summary = {
+        scenario: {
+            key: [round(min(r[scenario][key] for r in runs), 1), round(max(r[scenario][key] for r in runs), 1)]
+            for key in ("django", "page", "page - django")
+        }
+        for scenario in PAGE_SCENARIOS
+    }
+    return {
+        "unit": "µs per template render, wall clock. Each run: Django's Template.render and the page boundary "
+        "in turns, 15 rounds x 40 each; 'page - django' is the median of the rounds' differences. The summary "
+        "is the range over the runs",
+        "runs": runs,
+        "summary": summary,
+    }
+
+
 def run(mode: str, tree: str | None) -> dict[str, dict[str, float]]:
     with tempfile.TemporaryDirectory() as scratch:
         files = mode in ("file", "file-every")
@@ -328,16 +418,19 @@ def compare(tree: str, times: int) -> dict[str, object]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--mode", choices=["base", "off", "on", "paired", "file", "file-every"])
+    parser.add_argument("--mode", choices=["base", "off", "on", "paired", "file", "file-every", "page"])
     parser.add_argument("--tree", help="the base tree (a git archive of the commit before the feature)")
     parser.add_argument("--compare", metavar="BASE_TREE", help="run base, off and on alternately")
     parser.add_argument("--paired", action="store_true", help="off and on in turns in one process, --times runs")
     parser.add_argument("--file", action="store_true", help="the editor's file off and on, --times runs of each mode")
+    parser.add_argument("--page", action="store_true", help="the page boundary and Django's own render (#193)")
     parser.add_argument("--times", type=int, default=3)
     parser.add_argument("--out", help="where --compare writes its JSON")
     args = parser.parse_args()
-    if args.compare or args.paired or args.file:
-        if args.file:
+    if args.compare or args.paired or args.file or args.page:
+        if args.page:
+            result = page_runs(args.times)
+        elif args.file:
             result = {mode: paired(args.times, mode) for mode in ("file", "file-every")}
         else:
             result = compare(args.compare, args.times) if args.compare else paired(args.times)
@@ -345,6 +438,8 @@ def main() -> None:
         if args.out:
             Path(args.out).write_text(text + "\n")
         print(text)
+    elif args.mode == "page":
+        print(json.dumps(run_page()))
     else:
         print(json.dumps(run(args.mode, args.tree)))
 

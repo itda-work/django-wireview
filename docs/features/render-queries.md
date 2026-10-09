@@ -51,6 +51,18 @@ LOGGING = {
 같은 `render` 메시지로 나가는 것들이라 한 일로 센다(#189). 그래서 형제 `LiveComponent` 여럿이 같은 줄에서 쿼리를 하나씩
 내는 N+1도 반복으로 잡힌다. 덩어리의 이름은 그 컴포넌트의 렌더 이름 그대로다.
 
+HTTP 첫 렌더에서는 **Django 템플릿 렌더 한 번**이 한 덩어리다(`page <템플릿 이름>`, #193). 뷰 템플릿이 `{% component %}`를
+반복문으로 여럿 그리면 그 렌더들이 한 `page`에 들어가, 형제가 같은 줄에서 쿼리를 하나씩 내는 N+1도 반복으로 잡힌다.
+`render()`, `TemplateResponse`, `render_to_string`, `Template(...).render()`가 모두 같다. 그래서 컴포넌트를 그린 이메일
+템플릿도 `page`다 — HTTP 요청 단위가 아니다.
+
+- 뷰 본문(템플릿 밖)의 쿼리는 들지 않는다. 템플릿이 평가하는 QuerySet, 컨텍스트 프로세서, `{% component %}`의 마운트는
+  든다.
+- **컴포넌트를 하나도 그리지 않은 템플릿은 아무것도 남기지 않는다.** wireview를 쓰지 않는 페이지의 SQL은 이 로거의 몫이
+  아니다.
+- 다른 일 안에서 그린 템플릿(컴포넌트 자신의 템플릿, include, 핸들러의 `render_to_string`)은 새 `page`가 아니라 그 일의 것이다.
+- Django 템플릿만이다. Jinja2 등 다른 백엔드는 지금처럼 컴포넌트마다 따로다.
+
 "같은 자리"는 템플릿 줄이면 그 파일:줄이다 — 어느 인스턴스가 그렸든 같은 줄이라, 행마다 중첩 컴포넌트가 같은
 줄에서 쿼리하는 N+1도 잡힌다. property는 그것을 정의한 클래스와 이름이다(두 클래스의 `total`은 다른 자리). 템플릿
 밖의 쿼리는 일의 종류·컴포넌트 클래스·이름(핸들러 이름, 작업 이름)이다.
@@ -63,18 +75,22 @@ WARNING wireview.queries render Shelf#shelf (event bump): 12 queries, 1 repeated
   shelf/owner.html:3  for  [render Owner#own (nested)]  1  SELECT … FROM "quiz_choice" …
   shelf/child.html:9  {{ }}  [render Owner#own (nested)]  3×  SELECT … FROM "quiz_question" WHERE … <- repeated
 DEBUG wireview.queries handler Shelf#shelf.bump: 1 query
+WARNING wireview.queries page shop/list.html: 4 queries, 1 repeated
+  shop/list.html:4  for                               1  SELECT … FROM "shop_card" …
+  shop/card.html:2  {{ }}  [render Card ×3 (http)]     3×  SELECT … FROM "shop_price" … <- repeated
 WARNING wireview.queries render Rack#rack (join): 3 queries, 1 repeated
   rack/card.html:2  {{ }}  [render Card ×3 (join)]      3×  SELECT … FROM "quiz_question" … <- repeated
 ```
 
-- 첫 줄은 일의 이름이다. 렌더는 왜 돌았는지(`join`, `event <핸들러>`, `hook <이벤트>`, `notification <채널>`,
+- 첫 줄은 일의 이름이다. `page`는 그린 템플릿의 이름(이름이 없으면 `<string>`)을 적는다. 렌더는 왜 돌았는지(`join`, `event <핸들러>`, `hook <이벤트>`, `notification <채널>`,
   `http`, `stream item`)를 괄호에 적는다.
 - 행의 위치는 셋 중 하나다. 템플릿 `파일:줄`과 노드 종류(`{{ }}`, `for`, `if`, `include` …), `property <이름>`,
   또는 템플릿 밖(`(outside a template)` — 핸들러나 `joined()`의 쿼리).
 - 대괄호는 그 쿼리가 바깥 일 안의 다른 일에서 돌았다는 표시다. 위 예에서 `Owner`는 `Shelf`의 템플릿이 그린 중첩
   컴포넌트이고, `let:` 슬롯의 쿼리는 슬롯을 **채운** 파일의 줄로, 슬롯을 그린 `Owner`의 렌더 안에서 센다.
   같은 클래스의 렌더 여럿이 같은 자리에서 같은 SQL을 냈으면 한 행으로 묶고 `[render Card ×3 (join)]`처럼 렌더 수를 적는다.
-  위 둘째 덩어리의 `Card`는 `Rack`의 템플릿이 반복문으로 그린 `LiveComponent` 셋이다.
+  위 둘째 덩어리의 `Card`는 `Rack`의 템플릿이 반복문으로 그린 `LiveComponent` 셋이고, 셋째 덩어리의 `Card`는 뷰 템플릿이
+  그린 컴포넌트 셋이다. 대괄호 없는 행은 `page` 자신의 것이다(템플릿의 QuerySet).
 - 로그의 모양은 약속하지 않는다. 테스트는 아래 `queries()`로 단언한다.
 
 ## 테스트에서 단언하기
@@ -218,11 +234,11 @@ WIREVIEW = {
 | `at` | 일이 끝난 시각, UTC ISO 8601(밀리초) |
 | `process`, `segment` | 쓴 프로세스와 세그먼트 번호. 파일 이름과 같다 |
 | `base` | 서버가 본 `BASE_DIR`의 실제 경로. 없으면 `null` |
-| `kind`, `detail` | 가장 바깥 일의 종류(`render`, `handler` …)와 이름. 정보일 뿐이다. 라이브 연결이 보내는 렌더는 `tree`이고(그 컴포넌트와 그것이 그린 `LiveComponent`들, #189), 그 컴포넌트의 렌더가 `renders`의 0번이다 |
+| `kind`, `detail` | 가장 바깥 일의 종류(`render`, `handler` …)와 이름. 정보일 뿐이다. 라이브 연결이 보내는 렌더는 `tree`이고(그 컴포넌트와 그것이 그린 `LiveComponent`들, #189), 그 컴포넌트의 렌더가 `renders`의 0번이다. HTTP 첫 렌더는 `page`이고 `detail`이 템플릿 이름이다(#193). 컴포넌트를 그리지 않은 `page`는 쓰지 않는다 |
 | `count` | 그 일이 실행한 SQL 전체 수. 상한 때문에 뺀 행도 센다: `count = rows[].count의 합 + more.statements` |
-| `renders` | 그 안에서 끝난 렌더. 바깥 일이 렌더나 `tree`면 그 컴포넌트의 렌더가 0번이다. 각각 `kind`, `component`(`module.Qualname`), `name`, `id`, `why`(`join`, `event <핸들러>`, `http`, `nested` …). 100개까지 |
+| `renders` | 그 안에서 끝난 렌더. 바깥 일이 렌더나 `tree`면 그 컴포넌트의 렌더가 0번이다. `page`에는 0번 규칙이 없다 — 템플릿이 그린 컴포넌트들이 끝난 순서로 든다. 각각 `kind`, `component`(`module.Qualname`), `name`, `id`, `why`(`join`, `event <핸들러>`, `http`, `nested` …). 100개까지 |
 | `renders_more` | 100개를 넘어 뺀 렌더의 수 |
-| `rows[].by` | 그 행을 낸 렌더의 `renders` 위치. 없으면 렌더 밖의 행이다(`tree` 안의 `joined()`·`update()` 쿼리 등). 같은 클래스의 렌더 셋이 같은 문장을 하나씩 냈으면 `by`가 다른 행 셋이고, 읽는 쪽이 클래스의 스냅샷으로 합친다 |
+| `rows[].by` | 그 행을 낸 렌더의 `renders` 위치. 없으면 렌더 밖의 행이다(`tree` 안의 `joined()`·`update()` 쿼리, `page` 템플릿 자신의 QuerySet·마운트 등). 편집기는 이 행을 보이지 않으므로 로그의 쿼리 수가 힌트의 합보다 클 수 있다. 같은 클래스의 렌더 셋이 같은 문장을 하나씩 냈으면 `by`가 다른 행 셋이고, 읽는 쪽이 클래스의 스냅샷으로 합친다 |
 | `rows[].count`, `repeated` | 같은 자리·같은 SQL의 횟수. 한 줄 안에서 세 번 이상이면 `repeated: true` |
 | `rows[].sql` | 실행한 문장. 파라미터는 없다(`%s`). 1,000자에서 자르고 `truncated: true` |
 | `rows[].template` | `file`(실제 경로. 파일 시스템의 템플릿일 때만), `rel`(`base` 아래면), `name`, `source`, `line`, `node`(`{{ }}` 또는 태그 이름), `text`(`token.contents`, 200자까지), 근사면 `approximate: true` |
@@ -290,6 +306,10 @@ WIREVIEW = {
 잰 값은 템플릿 SQL 하나에 약 7~20 µs, 쿼리가 없는 렌더는 0~7 µs였다([설계 메모 §4-4](../design/render-part-queries.md#4-4-구현-후-재측정-3판-규칙-182-12단계)).
 끈 상태가 기능 전과 비교해 얼마인지는 재지 못했다(측정하던 기계의 부하로 차이가 잡음에 묻혔다). 끈 상태에도 경계마다
 설정 조회가, 래퍼가 놓였으면 SQL마다 위의 확인이 남으므로 0은 아니다.
+
+HTTP 렌더의 `page` 경계(#193)는 Django 템플릿 렌더마다 수집 여부를 한 번 묻는다. include 20개짜리 페이지에서 끔 +9~10 µs,
+켬 +14~15 µs(렌더의 2~3%)였다([설계 메모 §11-9](../design/render-queries-editor.md#11-9-비용-구현-후)). 그 경계는 수집이 켜졌거나
+`wireview.testing`을 import한 프로세스에만 놓인다.
 
 ## 관련 기능
 

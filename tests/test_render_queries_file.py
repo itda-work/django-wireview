@@ -89,6 +89,13 @@ TEMPLATES = {
         "{% endfor %}</main>"
     ),
     "rqf/sibling.html": "{% load wireview %}<p {% live_tag_header %}>\n{{ questions.first.text }}\n</p>",
+    "rqf/cards.html": (
+        '{% load wireview %}{% for k in keys %}{% component "RqfCard" id=k %}{% endfor %}\n'  # 1
+        "{{ choices.count }}"  # 2
+    ),
+    "rqf/card_row.html": "{% load wireview %}<p {% tag_header %}>\n{{ questions.first.text }}\n</p>",
+    "rqf/quiet_page.html": '{% load wireview %}{% component "RqfQuiet" id="quiet" %}',
+    "rqf/lazy.html": "{{ choices.count }}",
 }
 
 
@@ -230,6 +237,15 @@ class RqfRack(Component):
 class RqfSibling(LiveComponent):
     class Meta:
         template_name = "rqf/sibling.html"
+
+    @property
+    def questions(self):
+        return Question.objects.all()
+
+
+class RqfCard(Component):
+    class Meta:
+        template_name = "rqf/card_row.html"
 
     @property
     def questions(self):
@@ -586,6 +602,46 @@ async def test_sibling_live_components_are_one_line_and_their_statement_is_repea
     assert sorted(row["by"] for row in rows) == [1, 2, 3]
     assert {(row["template"]["line"], row["count"], row.get("repeated")) for row in rows} == {(2, 1, True)}
     assert len({row["sql"] for row in rows}) == 1
+
+
+def _page(name: str) -> str:
+    from django.template import loader
+
+    return loader.get_template(name).render({"keys": ["c1", "c2", "c3"], "choices": Choice.objects.all()})
+
+
+@pytest.mark.asyncio
+async def test_the_components_a_view_template_draws_are_one_line(sink, quiz):
+    """#193: the template render is the work; its components are its renders, its own rows have no ``by``."""
+    await sync_to_async(_page)("rqf/cards.html")
+    [record] = lines(sink)
+    assert record["kind"] == "page" and record["detail"] == "rqf/cards.html"
+    assert [(r["name"], r["id"], r["why"]) for r in record["renders"]] == [
+        ("RqfCard", "c1", "http"),
+        ("RqfCard", "c2", "http"),
+        ("RqfCard", "c3", "http"),
+    ]
+    assert_whole(record)
+    rows = rows_of(record, ".RqfCard")
+    assert sorted(row["by"] for row in rows) == [0, 1, 2]
+    assert {(row["template"]["line"], row["count"], row.get("repeated")) for row in rows} == {(2, 1, True)}
+    # The page's own statement: outside every render, and not "in" other work
+    (own,) = [row for row in record["rows"] if "by" not in row]
+    assert own["template"]["line"] == 2 and "in" not in own and not own.get("repeated")
+
+
+@pytest.mark.asyncio
+async def test_a_page_of_a_component_that_ran_nothing_is_still_a_snapshot(sink, quiz):
+    await sync_to_async(_page)("rqf/quiet_page.html")
+    [record] = lines(sink)
+    assert record["kind"] == "page" and record["rows"] == []
+    assert [(r["name"], r["why"]) for r in record["renders"]] == [("RqfQuiet", "http")]
+
+
+@pytest.mark.asyncio
+async def test_a_page_that_drew_no_component_is_not_written(sink, quiz):
+    assert await sync_to_async(_page)("rqf/lazy.html") == "3"
+    assert lines(sink) == []
 
 
 @pytest.mark.asyncio

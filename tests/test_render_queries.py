@@ -45,6 +45,7 @@ from testproj.wireview_setting import set_wireview
 from examples.quiz.models import Choice, Question, Quiz
 from wireview import Broadcast, Component, LiveComponent, function_component, mount
 from wireview.core import shared_render
+from wireview.core.component import ComponentNotFound
 from wireview.core.meta import WireviewMeta
 from wireview.core.rendered import PROTOCOL_VERSION
 from wireview.core.session import SessionView
@@ -815,9 +816,10 @@ async def test_two_http_requests_at_once_log_their_own(quiz, caplog):
     heads = sorted(
         record.getMessage().splitlines()[0] for record in caplog.records if record.name == "wireview.queries"
     )
+    # Each request's template render is one page (#193): two pages, each with its own rows
     assert heads == [
-        "render RqPage#x (http): 11 queries",
-        "render RqProbe#x (http): 3 queries",
+        "page rq/http.html: 11 queries",
+        "page rq/http.html: 3 queries",
     ]
 
 
@@ -904,6 +906,158 @@ async def test_a_send_render_is_one_scope_around_its_live_components(quiz):
     (tree,) = {row.scope.outer for row in q.rows}
     assert tree is not None and tree.kind == "tree" and tree.outer is None
     assert tree.describe() == "render RqRack#rack (join)"
+
+
+# -- a page: the components a view's template draws side by side (#193) ----------------------
+
+TEMPLATES["rq/cards.html"] = '{% load wireview %}{% for k in keys %}{% component "RqCard" id=k %}{% endfor %}'
+TEMPLATES["rq/card_row.html"] = "{% load wireview %}<p {% tag_header %}>\n{{ questions.first.text }}\n</p>"
+TEMPLATES["rq/cards_only.html"] = '{% include "rq/cards.html" with keys=keys only %}'
+TEMPLATES["rq/cards_base.html"] = "{% block body %}{% endblock %}"
+TEMPLATES["rq/cards_child.html"] = (
+    '{% extends "rq/cards_base.html" %}{% block body %}{% include "rq/cards.html" %}{% endblock %}'
+)
+TEMPLATES["rq/cards_func.html"] = '{% load wireview %}{% func "rqcards" keys=keys %}'
+TEMPLATES["rq/lazy.html"] = "{{ choices.count }} {{ choices.first.text }}"
+TEMPLATES["rq/hosts.html"] = '{% load wireview %}{% component "RqHost" id="h" %}'
+TEMPLATES["rq/guarded_page.html"] = '{% load wireview %}{% component "RqGuarded" id="g" %}'
+KEYS = ["c1", "c2", "c3"]
+
+
+class RqCard(_Lists, Component):
+    class Meta:
+        template_name = "rq/card_row.html"
+
+
+@function_component(name="rqcards", template="rq/cards.html")
+def rqcards(keys: t.Any = None):
+    return {"keys": keys}
+
+
+def _backend(name: str) -> str:
+    return loader.get_template(name).render({"keys": KEYS})
+
+
+def _raw(name: str) -> str:
+    # Django's own Template API: no backend wrapper on the way
+    return django_template.Template(TEMPLATES[name]).render(django_template.Context({"keys": KEYS}))
+
+
+PAGE_PATHS = {
+    "backend": (_backend, "rq/cards.html", "rq/cards.html"),
+    "raw Template": (_raw, "rq/cards.html", "<string>"),
+    "include only": (_backend, "rq/cards_only.html", "rq/cards_only.html"),
+    "extends": (_backend, "rq/cards_child.html", "rq/cards_child.html"),
+    "function component": (_backend, "rq/cards_func.html", "rq/cards_func.html"),
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path_name", list(PAGE_PATHS))
+async def test_every_way_django_renders_a_template_is_one_page_around_its_components(quiz, path_name):
+    draw, name, detail = PAGE_PATHS[path_name]
+    async with Queries() as q:
+        await sync_to_async(draw)(name)
+    assert table(q.rows) == [("rq/card_row.html:2", f"render RqCard#{k} (http)") for k in KEYS]
+    (page,) = {row.scope.outer for row in q.rows}
+    assert page is not None and page.kind == "page" and page.outer is None
+    assert page.describe() == f"page {detail}"
+
+
+@pytest.mark.asyncio
+async def test_components_a_view_template_draws_side_by_side_log_one_repeat(quiz, monkeypatch, caplog):
+    """#193: the view's template is not a component; without a page each card was the outermost work.
+
+    ``wireview.testing`` turns the editor's file off, so the page knows it drew
+    from its own mark, not from the renders a file would be given.
+    """
+    set_wireview(monkeypatch, DEBUG_RENDER_QUERIES=True)
+    with caplog.at_level(logging.DEBUG, logger="wireview.queries"):
+        await sync_to_async(_backend)("rq/cards.html")
+    (text,) = _heads(caplog)
+    assert text.splitlines()[0] == "page rq/cards.html: 3 queries, 1 repeated"
+    (line,) = text.splitlines()[1:]
+    assert "rq/card_row.html:2" in line and "3×" in line and "<- repeated" in line
+    assert "[render RqCard ×3 (http)]" in line
+    assert [record.levelname for record in caplog.records if record.getMessage() == text] == ["WARNING"]
+
+
+@pytest.mark.asyncio
+async def test_a_template_that_draws_no_component_logs_nothing(quiz, monkeypatch, caplog):
+    set_wireview(monkeypatch, DEBUG_RENDER_QUERIES=True)
+    with caplog.at_level(logging.DEBUG, logger="wireview.queries"):
+        lazy = loader.get_template("rq/lazy.html")
+        html = await sync_to_async(lambda: lazy.render({"choices": Choice.objects.all()}))()
+    assert html.startswith("2 ")
+    assert _heads(caplog) == []
+
+
+@pytest.mark.asyncio
+async def test_a_page_tells_the_components_it_draws_from_the_ones_they_draw(quiz):
+    async with Queries() as q:
+        await sync_to_async(lambda: loader.get_template("rq/hosts.html").render({}))()
+    rows = [row for row in q.rows if row.template is not None]
+    assert table(rows) == [("rq/probe.html:2", "render RqProbe#p (nested)")]
+    host = rows[0].scope.outer
+    assert host.kind == "render" and host.detail == "http" and host.outer.kind == "page"
+
+
+@pytest.mark.asyncio
+async def test_a_template_rendered_inside_other_work_opens_no_page(quiz):
+    view = await mount(RqProbe, id="p")
+    async with view.queries() as q:
+        await sync_to_async(view.render)()
+
+        def in_a_handler() -> str:
+            with render_queries.scope("handler", view._component, "send_mail"):
+                return loader.get_template("rq/lazy.html").render({"choices": Choice.objects.all()})
+
+        await sync_to_async(in_a_handler)()
+    kinds = set()
+    for row in q.rows:
+        scope = row.scope
+        while scope is not None:
+            kinds.add(scope.kind)
+            scope = scope.outer
+    assert "page" not in kinds and {"render", "handler"} <= kinds
+
+
+@pytest.mark.asyncio
+async def test_a_page_rendered_on_the_event_loop_keeps_the_mount_it_runs_on_a_pool_thread(quiz):
+    """The tag mounts on a thread of its own there: the page and the block go along (capture/restored)."""
+    async with Queries() as q:
+        loader.get_template("rq/guarded_page.html").render({})
+    assert ("(outside a template)", "mount RqGuarded#g") in table(q.rows)
+    (mount_row,) = [row for row in q.rows if render_of(row) == "mount RqGuarded#g"]
+    assert mount_row.scope.outer is not None and mount_row.scope.outer.kind == "page"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("draw", ["once", "twice"])
+async def test_each_page_ends_with_its_render_even_when_it_raises(quiz, draw):
+    before = render_queries._state.get()
+    async with Queries():
+
+        def pages() -> None:
+            for _ in range(1 if draw == "once" else 2):
+                _backend("rq/cards.html")
+            with pytest.raises(ComponentNotFound):
+                django_template.Template('{% load wireview %}{% component "RqNoSuch" %}').render(
+                    django_template.Context({})
+                )
+            assert render_queries._state.get().scope is None
+
+        await sync_to_async(pages)()
+    assert render_queries._state.get() is before
+
+
+def test_the_page_boundary_goes_around_django_once():
+    from django.template.base import Template
+
+    render_queries.install()
+    render_queries.install()
+    assert Template.render is render_queries._page_render
+    assert render_queries._template_render is not render_queries._page_render
 
 
 @pytest.mark.asyncio

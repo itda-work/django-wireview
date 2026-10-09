@@ -16,6 +16,9 @@ until a query runs.
 A live render and the renders of the LiveComponents it names are one piece of
 work: ``send_render`` opens a ``tree`` scope around them (#189), so siblings that
 ran the same statement once each are a repeat like the rows of one loop.
+An HTTP render is the same: the outermost Django template render opens a
+``page`` scope (#193), so the components a view's template draws side by side
+are one piece of work too. A page that drew none leaves nothing.
 
 A scope that ends hands its rows to the scope around it, if that one is still
 open; the outermost one logs them to ``wireview.queries``: ``DEBUG``, or
@@ -63,7 +66,7 @@ from collections import Counter
 from django.core.exceptions import ImproperlyConfigured
 from django.db import connections
 from django.db.backends.signals import connection_created
-from django.template.base import Node, TokenType
+from django.template.base import Node, Template, TokenType
 
 from .. import settings
 from . import render_queries_file
@@ -84,7 +87,7 @@ _SQL_WIDTH = 160
 class Scope:
     """A boundary that was open while SQL ran: a render, a handler, a task, a signature."""
 
-    __slots__ = ("kind", "cls", "name", "id", "detail", "outer", "blocks", "rows", "open", "sink", "renders")
+    __slots__ = ("kind", "cls", "name", "id", "detail", "outer", "blocks", "rows", "open", "sink", "renders", "drew")
 
     def __init__(
         self,
@@ -109,6 +112,8 @@ class Scope:
         self.sink = sink
         #: The render scopes that ended inside it, rows or none: each is a snapshot in the record
         self.renders: list[Scope] = []
+        #: Whether a render scope ended inside it, whether or not anything is written (#193)
+        self.drew = False
 
     def describe(self) -> str:
         who = f"{self.name}#{self.id}" if self.name is not None else ""
@@ -124,6 +129,8 @@ class Scope:
             return f"state signing {who}"
         if self.kind == "broadcast":
             return f"broadcast {self.detail}"
+        if self.kind == "page":
+            return f"page {self.detail}"
         return f"{self.kind} {who}"
 
     def __repr__(self) -> str:
@@ -402,11 +409,17 @@ def render_scope(component: Component, default: str) -> t.Any:
 
 
 def nested_render_scope(component: Component) -> t.Any:
-    """The boundary of a render inside another one's pass, or of an HTTP render when none is open."""
+    """The boundary of a render inside another one's pass, or of an HTTP render.
+
+    An HTTP render is one with nothing open around it, or only the ``page`` of
+    the template that draws it: the components a view's template draws are
+    ``http``, the ones their templates draw ``nested``.
+    """
     state = _state.get()
     if not _active(state):
         return _NULL
-    inside = state is not None and state.scope is not None and state.scope.open
+    around = state.scope if state is not None else None
+    inside = around is not None and around.open and around.kind != "page"
     return scope("render", component, "nested" if inside else "http")
 
 
@@ -507,6 +520,13 @@ def _close(scope: Scope) -> None:
     scope.open = False
     outer = scope.outer
     inside = outer is not None and outer.open
+    if inside and (scope.kind == "render" or scope.drew):
+        assert outer is not None
+        outer.drew = True
+    if scope.kind == "page" and not scope.drew and not inside:
+        # A template that drew no component: its SQL is not wireview's to tell
+        scope.rows = []
+        return
     if scope.sink and inside:
         # A render that ends is a snapshot of the work around it, rows or none (#188)
         assert outer is not None
@@ -733,17 +753,48 @@ def _locate(row: Row, frame: FrameType | None, sink: bool = False) -> None:
 #: Whether ``connection_created`` puts the wrapper on every new connection
 _connected = False
 _lock = threading.Lock()
+#: Django's own ``Template.render``, kept when the page boundary goes around it
+_template_render: t.Callable[[Template, t.Any], t.Any] | None = None
 
 
 def install() -> None:
-    """Put the wrapper on every connection this thread holds, and on every one opened from now on, in any thread."""
-    global _connected
+    """Put the wrapper on every connection this thread holds, and on every one opened from now on, in any thread.
+
+    It also puts the page boundary around Django's ``Template.render``, once.
+    """
+    global _connected, _template_render
     if not _connected:
         with _lock:
             if not _connected:
                 connection_created.connect(_on_connection_created, dispatch_uid="wireview.render_queries")
+                _template_render = Template.render
+                Template.render = _page_render  # type: ignore[method-assign]
                 _connected = True
     _install_here()
+
+
+def _page_render(self: Template, context: t.Any) -> t.Any:
+    """Django's ``Template.render`` in a ``page`` scope when it is the outermost work (#193).
+
+    Every Django template render passes here: a backend's ``render``,
+    ``TemplateResponse``, ``render_to_string`` and ``Template(...).render()``
+    alike. One with a scope open around it -- a component's own template, an
+    include, a template a handler renders -- is that scope's, as before.
+    Without the boundary, the components a view's template draws were each the
+    outermost work, and siblings running one statement each were never a repeat.
+    ``_render`` is left to Django's test runner, which instruments it.
+    """
+    assert _template_render is not None
+    state = _state.get()
+    if not _active(state) or (state is not None and state.scope is not None and state.scope.open):
+        return _template_render(self, context)
+    with scope("page", None, lambda: _template_name(self)):
+        return _template_render(self, context)
+
+
+def _template_name(template: Template) -> str:
+    origin = getattr(template, "origin", None)
+    return getattr(origin, "template_name", None) or template.name or "<string>"
 
 
 def installed() -> bool:

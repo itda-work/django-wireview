@@ -288,7 +288,7 @@ def _rel(path: str, base: str | None) -> str | None:
     return rel.replace(os.sep, "/")
 
 
-def _group(row: Row, count: int, base: str | None) -> dict[str, t.Any]:
+def _group(row: Row, count: int, base: str | None, root: Scope | None = None) -> dict[str, t.Any]:
     sql = row.sql
     item: dict[str, t.Any] = {"count": count, "sql": sql[:SQL_WIDTH]}
     if len(sql) > SQL_WIDTH:
@@ -330,7 +330,8 @@ def _group(row: Row, count: int, base: str | None) -> dict[str, t.Any]:
                 prop["stat"] = [str(stat.st_mtime_ns), str(stat.st_size)]
         item["property"] = prop
     inner = row.scope
-    if inner is not None and inner is not row.render and inner.kind != "render":
+    # The work the line is of is not "other work": a page's own rows (#193) say nothing more
+    if inner is not None and inner is not row.render and inner is not root and inner.kind != "render":
         item["in"] = {"kind": inner.kind, "detail": inner.detail}
     return item
 
@@ -364,7 +365,7 @@ class _Record:
                 more_groups += 1
                 more_statements += len(same)
                 continue
-            item = _group(same[0], len(same), base)
+            item = _group(same[0], len(same), base, scope)
             if by is not None:
                 item = {"by": by, **item}
             is_repeated = (place, sql) in repeated

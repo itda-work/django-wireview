@@ -22,6 +22,7 @@ from ..core.meta import HTTP_RENDER
 from ..core.rendered import inject_marker, marked_component_refs, nested_component_html
 from ..core.shared_render import STATE_SLOT
 from ..core.state import sign_state, signable_json
+from ..debug import render_queries
 from ..event_transpiler import binding
 from ..features.hooks import hook_files
 from ..function_components import DRAWER as FUNCTION_DRAWER
@@ -328,10 +329,16 @@ def _mount_in_template(component: Component, repo: ComponentRepository) -> bool:
             with keep_connections():
                 mounted, unheard = async_to_sync(_enter_in_template)(component, repo, sync_to_async(signable_json))
         else:
+            # A pool thread starts with an empty context: the page's SQL scope is taken
+            # along, or the mount ran outside it and outside any queries() block (#193)
+            asked = render_queries.capture()
+
+            def enter() -> tuple[bool, str | None]:
+                with render_queries.restored(asked):
+                    return asyncio.run(_enter_in_template(component, repo, _serialize_on_this_loop))
+
             with ThreadPoolExecutor(max_workers=1) as pool:
-                mounted, unheard = pool.submit(
-                    asyncio.run, _enter_in_template(component, repo, _serialize_on_this_loop)
-                ).result()
+                mounted, unheard = pool.submit(enter).result()
         if unheard is not None:
             _hold_back(component, unheard)
     except Exception:
