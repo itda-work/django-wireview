@@ -623,4 +623,7 @@ Django의 `BaseDatabaseWrapper.execute_wrapper()`는 끝날 때 자기 래퍼를
    - "정적 참조 없음" 진단을 더하되, 불확실한 경우는 진단하지 않는다.
    - 렌더의 property 읽기 자체를 좁히는 별도 이슈를 연다.
    - 셋 중 어느 쪽이든, 사용자 문서(component-api)에 "렌더는 컨텍스트 대상 공개 속성을 모두 읽는다"를 적을지도 함께 정한다.
+   - **결과(#187):** 정적 판정으로 좁히는 길은 버렸다 — `referenced_names()`가 `{% class %}`·extends 부모·컨텍스트
+     태그·필터 include를 놓쳤고(#194에서 고침), 예제 템플릿 대부분이 판정 밖이었다. 대신 `Meta.lazy_properties`가
+     sync property를 템플릿이 이름을 읽을 때 계산한다(`wireview/core/lazy_context.py`). 기본은 꺼짐이다.
 6. **단계 3(JSONL·VS Code)을 이 이슈에 둘지, 새 이슈로 뗄지.**

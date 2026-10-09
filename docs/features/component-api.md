@@ -89,8 +89,35 @@ sync로 쓰면 실행되지 않고 `manage.py check`가 `wireview.W002`로 알�
 필드와 property 전부이고, 메서드는 빠진다. 템플릿이 그 이름을 쓰는지는 보지 않는다. 그래서 템플릿이 쓰지 않는
 property도 렌더마다 계산되고, 그 안의 쿼리도 렌더마다 돈다. 템플릿에서 쓰지 않을 값을 계산하는 property는
 밑줄 이름(`_stats`)으로 두거나 메서드로 만든다. 렌더가 무엇을 쿼리하는지는 [렌더의 SQL 찾기](./render-queries.md)가
-property 이름으로 보여 준다. 읽기 자체를 템플릿이 쓰는 이름으로 좁히는 것은
-[#187](https://github.com/itda-work/django-wireview/issues/187)에서 검토한다.
+property 이름으로 보여 준다.
+
+`Meta.lazy_properties = True`이면 sync property(`property`, `functools.cached_property`)는 미리 읽지 않고
+**템플릿이 그 이름을 읽을 때** 렌더마다 한 번 읽는다(#187). 템플릿이 쓰지 않는 property는 돌지 않고, 그 SQL도
+나가지 않는다. 필드와 async property는 지금처럼 템플릿 전에 읽는다.
+
+```python
+class Dashboard(Component):
+    class Meta:
+        template_name = "dashboard.html"
+        lazy_properties = True
+
+    @property
+    def open_orders(self):  # 템플릿이 {{ open_orders }}를 읽을 때만 쿼리한다
+        return Order.objects.filter(status="open").count()
+```
+
+- 이름은 어디서 읽혀도 된다. `{% include %}`한 템플릿, `{% extends %}`한 부모, `{% with %}`, `{% class %}`·`{% cond %}`,
+  컨텍스트를 받는 사용자 태그(`context["x"]`)가 읽어도 그때 계산한다. 컨텍스트를 통째로 순회하는 코드
+  (`context.flatten()`, `dict(context)`)는 남은 property를 모두 읽는다 — 결과는 같고 아끼는 것만 사라진다.
+- **`{{ this.x }}`는 컨텍스트가 아니라 컴포넌트를 읽는다.** 그래서 `{{ x }}`와 `{{ this.x }}`를 함께 쓰면 두 번
+  계산된다. 템플릿이 `{{ this.x }}`만 쓰면 한 번이다.
+- property가 던진 예외는 지금처럼 렌더를 실패시킨다. Django는 변수 조회에서 `AttributeError`나
+  `{% if a and b %}` 안의 예외를 삼켜 빈 값으로 그리지만, 렌더가 끝난 뒤 그 예외를 다시 던진다.
+- temporary assign이 초기화된 뒤의 렌더는 지금처럼 모든 이름을 미리 읽는다. 어느 부분이 초기화된 값만
+  읽었는지 가리려면 다 읽어야 한다.
+- **property가 순수 조회일 때만 켠다.** 템플릿이 쓰지 않는 property의 부작용과 예외는 사라진다. 렌더
+  중에 필드를 바꾸는 property는 `{% tag_header %}`가 이미 상태를 서명한 뒤에 돌 수 있어, 서명 상태와
+  본문이 서로 다른 값을 말하게 된다.
 
 ## 내부
 

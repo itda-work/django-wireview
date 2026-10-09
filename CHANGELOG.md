@@ -14,6 +14,14 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- `Meta.lazy_properties` reads a sync property (`property`, `cached_property`) when the template reads
+  its name, once a render, instead of every public property before the template runs (#187). A property
+  the template does not name is not run, nor its SQL; one it names is read wherever the template reads it
+  -- an include, an extends parent, `{% class %}`, a tag that takes the context -- and a template that
+  only reads `{{ this.x }}` runs it once. What a property raises still fails the render, also where
+  Django's lookup swallows it. Off by default: with it, a property's side effects run only when the
+  template reads it. `{% class %}` and `{% cond %}` look up only the names their expression reads.
+
 - `make bench-servers` compares ASGI servers on the same app -- daphne, uvicorn with and without
   permessage-deflate, and Granian -- flipping their order every round, with a dying server recorded as
   a result per component size (#191). `bench/windows/ssh.sh` runs it on a native x64 Windows machine
