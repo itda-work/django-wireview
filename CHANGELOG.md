@@ -12,6 +12,8 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-10
+
 ### Added
 
 - `Meta.lazy_properties` reads a sync property (`property`, `cached_property`) when the template reads
@@ -2803,7 +2805,8 @@ auto-recovery, viewport bindings, optimistic UI attributes, type stub
 generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
-[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/itda-work/django-wireview/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/itda-work/django-wireview/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/itda-work/django-wireview/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/itda-work/django-wireview/compare/v1.1.0...v1.2.0
