@@ -2,7 +2,7 @@
   "name": "django-wireview",
   "displayName": "Django Wireview",
   "description": "Django template language support and django-wireview component intelligence: syntax, completion, navigation and diagnostics for templates.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "itda",
   "license": "MIT",
   "icon": "images/icon.png",
