@@ -1,3 +1,4 @@
+import ast
 import asyncio
 import logging
 import re
@@ -884,6 +885,25 @@ def _dotted(value: t.Any) -> t.Any:
 class CondNode(Node):
     def __init__(self, dict_expression):
         self.dict_expression = dict_expression
+
+    def context_names(self) -> frozenset[str] | None:
+        """The context names the expression reads, ``this.x`` as ``x``; None if it does not parse.
+
+        The expression is held as text and read from the flattened context at
+        render time, so a scan of the template's variables does not see it
+        (``template_engine.referenced_names``).
+        """
+        try:
+            tree = ast.parse(self.dict_expression, mode="eval")
+        except SyntaxError:
+            return None
+        names: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "this":
+                names.add(node.attr)
+            elif isinstance(node, ast.Name):
+                names.add(node.id)
+        return frozenset(names)
 
     def render(self, context):
         variables: dict[str, t.Any] = {name: _dotted(value) for name, value in context.flatten().items()}  # type: ignore
