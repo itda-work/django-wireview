@@ -18,6 +18,7 @@ import typing as t
 from unittest import mock
 
 import pytest
+from django import template
 from django.contrib.auth.models import AnonymousUser
 from django.test import override_settings
 
@@ -233,6 +234,30 @@ TEMPLATES = {
         "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>{% include tpl %}{% endif %}"
         "{% endwith %}<b>{{ count }}</b></div>"
     ),
+    # The branch the list drew reads count only where the name scan cannot see it
+    "ta/condblock.html": (
+        "{% load wireview %}<div {% tag_header %}>"
+        "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>"
+        "<p {% class {'on': count} %}></p>{% endif %}<b>{{ count }}</b></div>"
+    ),
+    "ta/extendsblock.html": (
+        "{% load wireview %}<div {% tag_header %}>"
+        "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>"
+        "{% include 'ta/child.html' %}{% endif %}<b>{{ count }}</b></div>"
+    ),
+    "ta/tagblock.html": (
+        "{% load wireview ta_tags %}<div {% tag_header %}>"
+        "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>"
+        "<p>{% count_from_context %}</p>{% endif %}<b>{{ count }}</b></div>"
+    ),
+    "ta/filteredblock.html": (
+        "{% load wireview %}<div {% tag_header %}>"
+        "{% if messages %}<ul>{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>"
+        "{% include 'ta/plain.html'|yesno:'ta/parent.html,ta/plain.html' %}{% endif %}<b>{{ count }}</b></div>"
+    ),
+    "ta/plain.html": "<i>plain</i>",
+    "ta/parent.html": "<p>{{ count }}</p>{% block body %}{% endblock %}",
+    "ta/child.html": "{% extends 'ta/parent.html' %}{% block body %}<i>child</i>{% endblock %}",
     "ta/kslothost.html": (
         "{% load wireview %}<main {% tag_header %}><i>{{ this.n }}</i>"
         "{% component_block 'TaSlotBlock' id='g' %}{% fill body %}{% component 'TaK' id='k' %}{% endfill %}"
@@ -491,6 +516,26 @@ class TaNamedInclude(TaBase):
         template_name = "ta/namedinclude.html"
 
 
+class TaTagBlock(TaBase):
+    class Meta:
+        template_name = "ta/tagblock.html"
+
+
+class TaFilteredBlock(TaBase):
+    class Meta:
+        template_name = "ta/filteredblock.html"
+
+
+class TaCondBlock(TaBase):
+    class Meta:
+        template_name = "ta/condblock.html"
+
+
+class TaExtendsBlock(TaBase):
+    class Meta:
+        template_name = "ta/extendsblock.html"
+
+
 class TaMissingInclude(TaBase):
     class Meta:
         template_name = "ta/missinginclude.html"
@@ -745,13 +790,24 @@ class FakeOutbound:
         return [payload for command, payload in self.commands if command == "render"][-1]["diff"]
 
 
+register = template.Library()
+
+
+@register.simple_tag(takes_context=True)
+def count_from_context(context):
+    return context["count"]
+
+
 @pytest.fixture(autouse=True)
 def _templates():
     with override_settings(
         TEMPLATES=[
             {
                 "BACKEND": "django.template.backends.django.DjangoTemplates",
-                "OPTIONS": {"loaders": [("django.template.loaders.locmem.Loader", TEMPLATES)]},
+                "OPTIONS": {
+                    "loaders": [("django.template.loaders.locmem.Loader", TEMPLATES)],
+                    "libraries": {"ta_tags": __name__},
+                },
             }
         ]
     ):
@@ -1446,6 +1502,33 @@ async def test_a_block_holding_a_template_named_at_render_time_is_drawn_again():
 
     assert "<b>1</b>" in html_now(component), "the control: the other field went out"
     assert "<s>0</s>" not in html_now(component), html_now(component)
+
+
+@pytest.mark.parametrize(
+    ("name", "old"),
+    [
+        ("TaCondBlock", '<p class=""></p>'),
+        ("TaExtendsBlock", "<p>0</p>"),
+        ("TaTagBlock", "<p>0</p>"),
+        ("TaFilteredBlock", "<p>0</p>"),
+    ],
+    ids=["cond", "extends", "context-tag", "filtered-include"],
+)
+async def test_a_block_whose_hidden_branch_reads_a_changed_field_is_drawn_again(name, old):
+    """What the hidden branch reads is not in its variables (#194).
+
+    ``{% class %}`` reads names held as text, an included template's parent is
+    another template, a tag that takes the context reads what it likes, and a
+    filter picks the template an include draws.
+    """
+    consumer, outbound, component = await page(name)
+    await event(consumer, outbound, "load")
+    assert old in html_now(component)
+
+    await event(consumer, outbound, "bump")
+
+    assert "<b>1</b>" in html_now(component), "the control: the other field went out"
+    assert old not in html_now(component), html_now(component)
 
 
 async def test_a_block_holding_a_template_it_cannot_find_is_drawn_again():

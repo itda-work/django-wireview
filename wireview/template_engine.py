@@ -19,7 +19,7 @@ from django.http import HttpRequest
 from django.template import Context, Template
 from django.template.base import FilterExpression, Node, NodeList, Variable, VariableNode, render_value_in_context
 from django.template.exceptions import TemplateDoesNotExist
-from django.template.loader_tags import IncludeNode
+from django.template.loader_tags import ExtendsNode, IncludeNode
 from django.template.smartif import TokenBase
 from django.utils.safestring import SafeString
 
@@ -313,6 +313,11 @@ class ComprehensionNode(_PartNode):
 DRAWS_UNKNOWN = "<unknown>"
 
 
+def _is_wireview(func: t.Any) -> bool:
+    """Whether a tag's function is one of wireview's: those read ``this``, the repository, slots or the request."""
+    return (getattr(func, "__module__", None) or "").partition(".")[0] == "wireview"
+
+
 def referenced_names(node: Node) -> frozenset[str]:
     """Every name ``node`` and the nodes inside it can resolve, in every branch.
 
@@ -320,9 +325,13 @@ def referenced_names(node: Node) -> frozenset[str]:
     not render is included: a block whose condition reads a stale temporary
     assign may hold something else, which a render that took the other branch
     never read (#111). An ``{% include %}`` of a named template counts that
-    template's names, and one it cannot know adds ``DRAWS_UNKNOWN``. Only
-    template structures are walked -- a node's ``origin`` leads to the loader
-    and every template it holds.
+    template's names, and one it cannot know adds ``DRAWS_UNKNOWN``; so does
+    an ``{% extends %}`` for its parent. A node that reads the context by
+    names it holds as text (``{% cond %}``, ``{% class %}``) says which
+    through ``context_names()``; a tag of another library that takes the
+    context reads what it likes, and adds ``DRAWS_UNKNOWN``. Only template
+    structures are walked -- a node's ``origin`` leads to the loader and
+    every template it holds.
     """
     cached = getattr(node, "_wireview_names", None)
     if cached is not None:
@@ -331,10 +340,10 @@ def referenced_names(node: Node) -> frozenset[str]:
     seen: set[int] = set()
     included: set[str] = set()
 
-    def include(value: IncludeNode) -> None:
+    def load(value: Node, expression: t.Any) -> None:
         # The parser already made a relative name absolute
-        name = value.template.var
-        if not isinstance(name, str):
+        name = expression.var if isinstance(expression, FilterExpression) else None
+        if not isinstance(name, str) or expression.filters:
             names.add(DRAWS_UNKNOWN)  # a template chosen at render time
             return
         if name in included:
@@ -363,7 +372,15 @@ def referenced_names(node: Node) -> frozenset[str]:
                     walk(arg)
         elif isinstance(value, (Node, TokenBase)) or type(value).__name__ == "TemplateLiteral":
             if isinstance(value, IncludeNode):
-                include(value)
+                load(value, value.template)
+            elif isinstance(value, ExtendsNode):
+                load(value, value.parent_name)
+            reads = getattr(value, "context_names", None)
+            if callable(reads):
+                found = t.cast("frozenset[str] | None", reads())
+                names.update(found if found is not None else (DRAWS_UNKNOWN,))
+            elif getattr(value, "takes_context", False) and not _is_wireview(getattr(value, "func", None)):
+                names.add(DRAWS_UNKNOWN)
             for name, attr in vars(value).items():
                 if name not in ("origin", "token"):
                     walk(attr)

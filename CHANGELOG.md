@@ -33,6 +33,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A block kept after a temporary assign reset is drawn again when its hidden branch reads a field that
+  changed through `{% class %}`/`{% cond %}`, an included template's `{% extends %}` parent, another
+  library's `takes_context` tag or an include whose name has a filter (#194). The name scan missed
+  them, so the block stayed as it was drawn with the old value.
 - The benchmark no longer hands a run's servers the URL of a broker an earlier run stopped (#191).
   `bench.ws.run()` left `NATS_URL`/`REDIS_URL` set after stopping the NATS or Redis server it had
   started, and the next run in the same process took it for an external broker.
