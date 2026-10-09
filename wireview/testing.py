@@ -38,7 +38,7 @@ from .core import patches, shared_render
 from .core.meta import WireviewMeta
 from .core.rendered import PROTOCOL_VERSION
 from .core.session import SessionView
-from .debug import render_queries
+from .debug import render_queries, render_queries_file
 from .deprecation import warn_deprecated
 from .repository import ComponentRepository
 
@@ -61,6 +61,8 @@ __all__ = (
 # A test's queries() block sees the SQL of connections opened from here on, whatever
 # DEBUG_RENDER_QUERIES says: a test module is imported before the first query (#182)
 render_queries.install()
+# ...and a test process writes nothing for the editor (#188): what it renders is the test's
+render_queries_file.suppress()
 
 #: Sentinel for "work the boundary out from the URL" -- ``None`` is a real answer
 #: (a page that declares no boundary), so it cannot double as "not given".

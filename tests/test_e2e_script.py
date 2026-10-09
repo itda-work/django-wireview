@@ -103,6 +103,14 @@ def test_an_option_value_taken_for_a_path_still_runs_every_e2e_suite():
 #: its output while it shuts down: a SIGINT landing then is no longer checked, python3
 #: exits 0, and bash goes on with the next command when its foreground child did not
 #: die of the signal. The stub then slept out STUB_SLEEP and the script waited on it.
+#:
+#: For the same reason the sleep is not a foreground child either (#192). A SIGINT that
+#: landed after bash forked it and before it ran ``sleep`` reached bash's own handler in
+#: the child, which then slept the whole STUB_SLEEP; bash, whose child had not died of the
+#: signal, waited for it. The sleep runs in the background (where SIGINT is ignored
+#: anyway) and the stub waits for it with the ``wait`` builtin, which a SIGINT ends. Its
+#: EXIT trap stops the sleep. STUB_DEAF makes the sleep ignore SIGINT outright, which is
+#: what that window did, so the case is run on purpose rather than by luck.
 REDIS_STUB = """#!/usr/bin/env bash
 seen="$(python3 - "$REDIS_URL" <<'PY'
 import socket, sys, urllib.parse
@@ -116,8 +124,17 @@ except OSError:
 print(sys.argv[1], answered)
 PY
 )"
+if [ -n "${{STUB_SLEEP:-}}" ]; then
+  if [ -n "${{STUB_DEAF:-}}" ]; then
+    (trap '' INT; exec sleep "$STUB_SLEEP") </dev/null >/dev/null 2>&1 &
+  else
+    sleep "$STUB_SLEEP" </dev/null >/dev/null 2>&1 &
+  fi
+  sleeper=$!
+  trap 'kill "$sleeper" 2>/dev/null' EXIT
+fi
 printf '%s\\n' "$seen" > {record}
-[ -z "${{STUB_SLEEP:-}}" ] || sleep "$STUB_SLEEP"
+[ -z "${{STUB_SLEEP:-}}" ] || wait "$sleeper"
 exit "${{STUB_EXIT:-0}}"
 """
 
@@ -279,9 +296,16 @@ def test_a_failing_suite_still_stops_the_server(tmp_path, redis_binary):
     assert_gone(run, tmp_path)
 
 
-def test_an_interrupted_suite_still_stops_the_server(tmp_path, redis_binary):
+@pytest.mark.parametrize("deaf", [False, True], ids=["sleeping", "deaf"])
+def test_an_interrupted_suite_still_stops_the_server(tmp_path, redis_binary, deaf):
+    """``deaf``: the suite's process does not die of the SIGINT, as a sleep forked a moment
+    before it did not (#192), and the script still ends at once."""
     proc, record = start_redis_script(
-        tmp_path, REDIS_SERVER=redis_binary, REDIS_URL=f"redis://127.0.0.1:{free_port()}", STUB_SLEEP="60"
+        tmp_path,
+        REDIS_SERVER=redis_binary,
+        REDIS_URL=f"redis://127.0.0.1:{free_port()}",
+        STUB_SLEEP="60",
+        **({"STUB_DEAF": "1"} if deaf else {}),
     )
     deadline = time.monotonic() + 20
     while not record.exists() or not record.read_text():

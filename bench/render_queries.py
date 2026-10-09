@@ -15,6 +15,12 @@ and the value is the median of the rounds' per-render time. Every template has a
     uv run python -m bench.render_queries --mode on
     uv run python -m bench.render_queries --compare BASE_TREE   # base, off, on alternately, three times each
     uv run python -m bench.render_queries --paired --times 5    # off and on in turns within each process
+    uv run python -m bench.render_queries --file --times 5      # the editor's file off and on, collecting on (#188)
+
+``--file`` measures what writing for the editor adds (``render_queries_file``): collecting is on in
+both halves, the templates come from the filesystem loader (cached) so the source digest is looked up,
+and ``DEBUG`` is on. ``file`` writes as a dev server does, a class's unchanged snapshot once a minute;
+``file-every`` writes every render (``REPEAT_WINDOW`` 0), the cost of a render whose rows change.
 
 Results go to stdout as JSON (``--compare`` writes ``bench/results/render-queries-<sha>.json``).
 """
@@ -30,6 +36,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import typing as t
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -55,7 +62,7 @@ SCENARIOS = {
 }
 
 
-def _setup(mode: str, tree: str | None, database: str) -> None:
+def _setup(mode: str, tree: str | None, database: str, template_dir: str | None = None) -> None:
     if mode == "base":
         assert tree, "--tree names the base checkout"
         sys.path.insert(0, tree)
@@ -71,14 +78,19 @@ def _setup(mode: str, tree: str | None, database: str) -> None:
         "DEBUG_SYNC_TRANSITIONS": False,
         "DEBUG_RENDER_QUERIES": mode == "on",
     }
+    if template_dir is not None:
+        for name, text in TEMPLATES.items():
+            path = Path(template_dir) / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text)
+        loader: t.Any = ("django.template.loaders.cached.Loader", ["django.template.loaders.filesystem.Loader"])
+    else:
+        loader = ("django.template.loaders.cached.Loader", [("django.template.loaders.locmem.Loader", TEMPLATES)])
     settings.TEMPLATES = [
         {
             "BACKEND": "django.template.backends.django.DjangoTemplates",
-            "OPTIONS": {
-                "loaders": [
-                    ("django.template.loaders.cached.Loader", [("django.template.loaders.locmem.Loader", TEMPLATES)])
-                ]
-            },
+            "DIRS": [template_dir] if template_dir is not None else [],
+            "OPTIONS": {"loaders": [loader]},
         }
     ]
     import logging
@@ -167,7 +179,7 @@ async def _measure_paired(cls: type, warmup: int, rounds: int, per_round: int) -
     from wireview.testing import mount
 
     off = {**settings.WIREVIEW, "DEBUG_RENDER_QUERIES": False}
-    on = {**settings.WIREVIEW, "DEBUG_RENDER_QUERIES": True}
+    on = {**settings.WIREVIEW, "DEBUG_RENDER_QUERIES": True, "DEBUG_RENDER_QUERIES_DIR": None}
     view = await mount(cls, id="b")
     for _ in range(warmup):
         await view.render_diff()
@@ -187,9 +199,55 @@ async def _measure_paired(cls: type, warmup: int, rounds: int, per_round: int) -
     }
 
 
+async def _measure_file(cls: type, warmup: int, rounds: int, per_round: int) -> dict[str, float]:
+    """The editor's file off and on in turns, collecting on in both (#188)."""
+    from django.conf import settings
+
+    from wireview.testing import mount
+
+    off = {**settings.WIREVIEW, "DEBUG_RENDER_QUERIES": True, "DEBUG_RENDER_QUERIES_DIR": False}
+    on = {**settings.WIREVIEW, "DEBUG_RENDER_QUERIES": True, "DEBUG_RENDER_QUERIES_DIR": None}
+    view = await mount(cls, id="b")
+    settings.WIREVIEW = on
+    for _ in range(warmup):
+        await view.render_diff()
+    timings: dict[str, list[float]] = {"off": [], "on": []}
+    for _ in range(rounds):
+        for name, values in (("off", off), ("on", on)):
+            settings.WIREVIEW = values
+            start = time.perf_counter()
+            for _ in range(per_round):
+                await view.render_diff()
+            timings[name].append((time.perf_counter() - start) / per_round)
+    differences = [b - a for a, b in zip(timings["off"], timings["on"], strict=True)]
+    out = Path(settings.BASE_DIR) / ".wireview" / "render-queries"
+    written = sum(len(path.read_bytes().splitlines()) for path in out.glob("*.jsonl"))
+    assert written, "the editor's file was not written"
+    return {
+        "off": statistics.median(timings["off"]) * 1e6,
+        "on": statistics.median(timings["on"]) * 1e6,
+        "on - off": statistics.median(differences) * 1e6,
+        "lines": written,
+    }
+
+
 def run(mode: str, tree: str | None) -> dict[str, dict[str, float]]:
     with tempfile.TemporaryDirectory() as scratch:
-        _setup(mode, tree, str(Path(scratch) / "bench.sqlite3"))
+        files = mode in ("file", "file-every")
+        _setup(mode, tree, str(Path(scratch) / "bench.sqlite3"), str(Path(scratch) / "templates") if files else None)
+        if files:
+            from django.conf import settings
+
+            from wireview.debug import render_queries_file
+
+            settings.DEBUG = True
+            settings.BASE_DIR = scratch  # the file goes to <scratch>/.wireview/render-queries
+            os.environ.pop(render_queries_file.ENVIRONMENT, None)
+            import wireview.testing  # noqa: F401 -- suppresses writing, as in a test process; lifted below
+
+            render_queries_file._suppressed = False
+            if mode == "file-every":
+                render_queries_file.REPEAT_WINDOW = 0.0
         _seed()
         components = _components()
         if mode != "base":
@@ -197,10 +255,10 @@ def run(mode: str, tree: str | None) -> dict[str, dict[str, float]]:
             from wireview.debug import render_queries
 
             assert render_queries.installed(), "wireview.testing puts the wrapper on"
-            if mode != "paired":
+            if mode in ("on", "off"):
                 assert render_queries.enabled() is (mode == "on")
 
-        measure = _measure_paired if mode == "paired" else _measure
+        measure = _measure_paired if mode == "paired" else _measure_file if files else _measure
 
         async def all_scenarios() -> dict[str, dict[str, float]]:
             return {name: await measure(components[cls], 30, 15, 40) for name, cls in SCENARIOS.items()}
@@ -208,11 +266,11 @@ def run(mode: str, tree: str | None) -> dict[str, dict[str, float]]:
         return asyncio.run(all_scenarios())
 
 
-def paired(times: int) -> dict[str, object]:
+def paired(times: int, mode: str = "paired") -> dict[str, object]:
     runs = []
     for _ in range(times):
         done = subprocess.run(
-            [sys.executable, "-m", "bench.render_queries", "--mode", "paired"],
+            [sys.executable, "-m", "bench.render_queries", "--mode", mode],
             capture_output=True,
             text=True,
             cwd=ROOT,
@@ -270,15 +328,19 @@ def compare(tree: str, times: int) -> dict[str, object]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--mode", choices=["base", "off", "on", "paired"])
+    parser.add_argument("--mode", choices=["base", "off", "on", "paired", "file", "file-every"])
     parser.add_argument("--tree", help="the base tree (a git archive of the commit before the feature)")
     parser.add_argument("--compare", metavar="BASE_TREE", help="run base, off and on alternately")
     parser.add_argument("--paired", action="store_true", help="off and on in turns in one process, --times runs")
+    parser.add_argument("--file", action="store_true", help="the editor's file off and on, --times runs of each mode")
     parser.add_argument("--times", type=int, default=3)
     parser.add_argument("--out", help="where --compare writes its JSON")
     args = parser.parse_args()
-    if args.compare or args.paired:
-        result = compare(args.compare, args.times) if args.compare else paired(args.times)
+    if args.compare or args.paired or args.file:
+        if args.file:
+            result = {mode: paired(args.times, mode) for mode in ("file", "file-every")}
+        else:
+            result = compare(args.compare, args.times) if args.compare else paired(args.times)
         text = json.dumps(result, indent=2, ensure_ascii=False)
         if args.out:
             Path(args.out).write_text(text + "\n")

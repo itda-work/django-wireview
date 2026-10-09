@@ -1,4 +1,4 @@
-// The few pieces of the VS Code API that src/folders.ts reaches for, so that its
+// The few pieces of the VS Code API that src/folders.ts and src/queries.ts reach for, so that their
 // lifecycle runs under node: test/folders.test.ts maps the "vscode" import here.
 // What the editor would decide (the settings, the trust) is in `state`.
 
@@ -21,6 +21,11 @@ export class Watcher implements Disposable {
   }
 
   onDidCreate(handler: () => void): Disposable {
+    this.handlers.push(handler);
+    return { dispose() {} };
+  }
+
+  onDidDelete(handler: () => void): Disposable {
     this.handlers.push(handler);
     return { dispose() {} };
   }

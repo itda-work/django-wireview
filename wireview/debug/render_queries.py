@@ -39,6 +39,12 @@ from the render (docs/design/render-part-queries.md §4-4).
 What it cannot see: a connection opened before the wrapper was installed, on a
 thread no install reached (a ``thread_sensitive=False`` pool thread, another
 request's worker, a thread of the user's), runs its SQL unseen.
+
+In development the outermost scope also goes to a file the editor reads
+(``render_queries_file``, #188). A scope that will be written knows it when it
+opens (``Scope.sink``): only then does a statement look up the source its
+template was compiled from, and a render scope that ends tell the one around it
+that it ran, rows or none.
 """
 
 from __future__ import annotations
@@ -56,6 +62,7 @@ from django.db.backends.signals import connection_created
 from django.template.base import Node, TokenType
 
 from .. import settings
+from . import render_queries_file
 
 if t.TYPE_CHECKING:
     from types import CodeType, FrameType
@@ -73,7 +80,7 @@ _SQL_WIDTH = 160
 class Scope:
     """A boundary that was open while SQL ran: a render, a handler, a task, a signature."""
 
-    __slots__ = ("kind", "cls", "name", "id", "detail", "outer", "blocks", "rows", "open")
+    __slots__ = ("kind", "cls", "name", "id", "detail", "outer", "blocks", "rows", "open", "sink", "renders")
 
     def __init__(
         self,
@@ -82,6 +89,7 @@ class Scope:
         detail: str | None,
         outer: Scope | None,
         blocks: tuple[Queries, ...] = (),
+        sink: bool = False,
     ) -> None:
         self.kind = kind
         self.cls = type(component) if component is not None else None
@@ -93,6 +101,10 @@ class Scope:
         self.blocks = blocks
         self.rows: list[Row] = []
         self.open = True
+        #: Whether the record of the work this is part of goes to the editor's file (#188)
+        self.sink = sink
+        #: The render scopes that ended inside it, rows or none: each is a snapshot in the record
+        self.renders: list[Scope] = []
 
     def describe(self) -> str:
         who = f"{self.name}#{self.id}" if self.name is not None else ""
@@ -117,7 +129,22 @@ class Scope:
 class Row:
     """One statement: where it ran from and in which scope."""
 
-    __slots__ = ("sql", "template", "path", "line", "node", "approximate", "prop", "owner", "scope")
+    __slots__ = (
+        "sql",
+        "template",
+        "path",
+        "line",
+        "node",
+        "text",
+        "approximate",
+        "source",
+        "prop",
+        "owner",
+        "owner_cls",
+        "prop_async",
+        "scope",
+        "render",
+    )
 
     def __init__(self, sql: str, scope: Scope | None) -> None:
         self.sql = sql
@@ -128,12 +155,20 @@ class Row:
         self.line: int | None = None
         #: ``{{ }}``, or the block tag's name
         self.node: str | None = None
+        #: The tag's text as written, ``token.contents``
+        self.text: str | None = None
         #: The node that ran it was made while rendering and has no place of its own: the one around it is named
         self.approximate = False
+        #: The digest of the source the running template was compiled from (written records only)
+        self.source: str | None = None
         #: A property the render's context read (sync), or the async property scope it ran in
         self.prop: str | None = None
         #: The class that defines that property (``module.Qualname``): two classes' ``total`` are two places
         self.owner: str | None = None
+        self.owner_cls: type | None = None
+        self.prop_async = False
+        #: The render scope that ran it (written records only)
+        self.render: Scope | None = None
 
     @property
     def where(self) -> str:
@@ -195,6 +230,11 @@ class Queries:
     def _enter(self) -> None:
         global _open_blocks
         state = _state.get()
+        # The work this block opens in is a test's now: none of it goes to the editor's file
+        outer = state.scope if state is not None else None
+        while outer is not None:
+            outer.sink = False
+            outer = outer.outer
         self.open = True
         _open_blocks += 1
         if state is None:
@@ -254,11 +294,11 @@ def _qualified(cls: type | None) -> str | None:
     return f"{cls.__module__}.{cls.__qualname__}" if cls is not None else None
 
 
-def _owner(cls: type, name: str) -> str | None:
-    """The class in ``cls``'s MRO that defines ``name``, qualified."""
+def _owner_class(cls: type, name: str) -> type | None:
+    """The class in ``cls``'s MRO that defines ``name``."""
     for klass in cls.__mro__:
         if name in klass.__dict__:
-            return _qualified(klass)
+            return klass
     return None
 
 
@@ -338,8 +378,15 @@ def scope(kind: str, component: Component | None = None, detail: str | t.Callabl
     if callable(detail):
         detail = detail()
     outer = state.scope if state is not None else None
+    if outer is not None and not outer.open:
+        outer = None
     blocks = state.blocks if state is not None else ()
-    return _Open(state, Scope(kind, component, detail, outer if outer is not None and outer.open else None, blocks))
+    if outer is not None:
+        sink = outer.sink
+    else:
+        # A block's collecting is the test's, not the editor's
+        sink = not any(block.open for block in blocks) and enabled() and render_queries_file.wanted()
+    return _Open(state, Scope(kind, component, detail, outer, blocks, sink))
 
 
 def render_scope(component: Component, default: str) -> t.Any:
@@ -436,18 +483,29 @@ def restored(state: _State | None) -> t.Any:
 
 def _close(scope: Scope) -> None:
     scope.open = False
-    rows = scope.rows
-    if not rows:
-        return
-    if not any(block.open for block in scope.blocks) and not enabled():
-        # Its blocks ended and the setting is off: what it has is nobody's any more
-        scope.rows = []
-        return
     outer = scope.outer
-    if outer is not None and outer.open:
-        outer.rows.extend(rows)
-        return
-    _log(scope)
+    inside = outer is not None and outer.open
+    if scope.sink and inside:
+        # A render that ends is a snapshot of the work around it, rows or none (#188)
+        assert outer is not None
+        if scope.kind == "render":
+            outer.renders.append(scope)
+        outer.renders.extend(scope.renders)
+        scope.renders = []
+    rows = scope.rows
+    if rows:
+        if not any(block.open for block in scope.blocks) and not enabled():
+            # Its blocks ended and the setting is off: what it has is nobody's any more
+            scope.rows = []
+            return
+        if inside:
+            assert outer is not None
+            outer.rows.extend(rows)
+            return
+        _log(scope)
+    # Asked again at the end: suppression, DEBUG or the setting may have turned off since it began
+    if scope.sink and not inside and enabled() and render_queries_file.wanted():
+        render_queries_file.emit(scope)
 
 
 # Logging
@@ -520,11 +578,19 @@ def _record(state: _State, sql: str) -> None:
         _count_unattributed()
         return
     row = Row(sql, scope)
-    _locate(row, sys._getframe(2))
+    sink = scope is not None and scope.sink
+    _locate(row, sys._getframe(2), sink)
     if row.template is None and row.prop is None and scope is not None and scope.kind == "property":
         row.prop = scope.detail
+        row.prop_async = True
         if scope.cls is not None and scope.detail is not None:
-            row.owner = _owner(scope.cls, scope.detail)
+            row.owner_cls = _owner_class(scope.cls, scope.detail)
+            row.owner = _qualified(row.owner_cls)
+    if sink:
+        render = scope
+        while render is not None and render.kind != "render":
+            render = render.outer
+        row.render = render
     if scope is not None:
         scope.rows.append(row)
     for block in blocks:
@@ -563,8 +629,12 @@ def _unwrap(node: t.Any) -> t.Any:
         node = inner
 
 
-def _locate(row: Row, frame: FrameType | None) -> None:
-    """Put on ``row`` the innermost template node on the stack, or the property being read."""
+def _locate(row: Row, frame: FrameType | None, sink: bool = False) -> None:
+    """Put on ``row`` the innermost template node on the stack, or the property being read.
+
+    For a record that goes to the editor's file (``sink``), also the digest of the
+    source the node's template was compiled from (``render_queries_file.source_of``).
+    """
     collecting = _collecting_codes()
     skipped = False
     while frame is not None:
@@ -584,7 +654,10 @@ def _locate(row: Row, frame: FrameType | None) -> None:
                         row.node = "{{ }}"
                     else:
                         row.node = token.contents.split()[0] if token.contents else None
+                    row.text = token.contents
                     row.approximate = skipped
+                    if sink:
+                        row.source = render_queries_file.source_of(node, frame)
                     return
                 if not isinstance(node, _transparent):
                     skipped = True
@@ -595,7 +668,8 @@ def _locate(row: Row, frame: FrameType | None) -> None:
                 row.prop = attr
                 component = local.get("component")
                 if component is not None:
-                    row.owner = _owner(type(component), attr)
+                    row.owner_cls = _owner_class(type(component), attr)
+                    row.owner = _qualified(row.owner_cls)
                 return
         frame = frame.f_back
 

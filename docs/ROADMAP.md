@@ -333,7 +333,7 @@ def button(text: str, variant: str = "primary"):
 
 ## 릴리스 이력과 계획
 
-패키지 버전은 git 태그 `v<버전>`(`v1.3.0`)이 정본이다. 편집기 확장의 태그 `vscode-v<버전>`은 따로 매긴다([VS Code 확장 릴리스 절차](#vs-code-확장-릴리스-절차)). reactor 시절의 v6.0.0 마일스톤 번호는 쓰지 않는다.
+패키지 버전은 git 태그 `v<버전>`(`v1.4.0`)이 정본이다. 편집기 확장의 태그 `vscode-v<버전>`은 따로 매긴다([VS Code 확장 릴리스 절차](#vs-code-확장-릴리스-절차)). reactor 시절의 v6.0.0 마일스톤 번호는 쓰지 않는다.
 
 | 버전 | 상태 | 내용 |
 |------|:----:|------|
@@ -353,6 +353,7 @@ def button(text: str, variant: str = "primary"):
 | v1.1.0 | ✅ | 첫 마이너. `AUTO_BROADCAST.senders`가 모델마다 보낼 필드를 적는 매핑도 받는다(집합은 그대로 모든 필드, #144), 비밀번호 해시·세션 키를 보내는 설정을 알리는 `wireview.W017`, 문서 사이트의 llms.txt와 에이전트 스킬 Markdown 게시(#164·#165). 호환 변경 없음. 할 일은 [업그레이드 가이드](./UPGRADING.md#10에서-11로) |
 | v1.2.0 | ✅ | 내비게이션을 브라우저와 Phoenix에 맞춘다. 같은 경로의 `push_to`·`replace_to`는 다시 가져오지 않는 patch(#169), join은 첫 렌더 앞에서 `params_changed()`, boost 이동의 params는 새 페이지가 화면에 놓인 뒤 `navigated`로(프로토콜 7), 조각 링크·같은 URL·폼 method·`no-cors` 폼·실패하거나 중지된 가져오기와 `wireview:navigation-failed`(#170), IME 조합 중인 칸의 값 보존(#169). 테스트의 `mount(path=...)`·`follow_push(Destination)`와 `path=` 없는 `follow_push()`의 폐기. 문서 사이트의 자기 자산과 묶음 mtime(#166), README와 WHY(#167), 문서의 주장을 지키는 브라우저 테스트(#168). 조용히 달라지는 동작이 여럿이다. 할 일은 [업그레이드 가이드](./UPGRADING.md#11에서-12로) |
 | v1.3.0 | ✅ | 팬아웃을 싸게 하고 개발 루프를 줄인다. 스트림 항목·훅 이벤트·JS를 한 번 렌더해 구독자마다 id만 끼우는 `Broadcast`(#178), 보는 사람을 읽지 않는 렌더를 같은 메시지의 연결들이 함께 쓰는 `Meta.shared_render`(#176)와 `wireview.W019`, 평범한 값의 렌더 지름길(라이브 렌더 약 3분의 1 감소), 개발 서버에서 템플릿을 저장하면 열린 페이지가 다시 join하는 rejoin(#180, 프로토콜 8), 취소할 수 있는 `wireview:before-navigate`와 이동 종류(#154), 첫 HTTP 렌더의 `params_changed()`와 `request.GET`의 쿼리, `wireview_check_templates`(#179), `wireview_lsp` 메타데이터 2.0(#162), FastAPI 비교 벤치(#174). 조용히 달라지는 동작이 있다. 할 일은 [업그레이드 가이드](./UPGRADING.md#12에서-13으로) |
+| v1.4.0 | ✅ | 개발 중 SQL을 부른 자리를 알린다. 렌더·핸들러·작업이 실행한 문장마다 템플릿 줄이나 property를 로거 `wireview.queries`에 남기고 같은 자리의 반복을 `WARNING`으로(`DEBUG_RENDER_QUERIES`, #182), 테스트는 `MountedComponent.queries()`로 단언한다. 같은 기록을 개발 서버가 JSON 줄로 남겨 VS Code 확장이 인라인 힌트로 보인다(#188). 첫 HTTP 렌더가 요청의 DB 연결을 닫아 `ATOMIC_REQUESTS`의 쓰기가 조용히 롤백되던 결함 수정(#190). 할 일은 [업그레이드 가이드](./UPGRADING.md#13에서-14로) |
 
 ### 릴리스 절차
 
@@ -463,4 +464,4 @@ Microsoft Entra ID 관리 ID로, Open VSX는 Trusted Publishing(OIDC)으로 올�
 
 ---
 
-*마지막 업데이트: 2026-10-08*
+*마지막 업데이트: 2026-10-09*

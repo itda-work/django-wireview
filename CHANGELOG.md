@@ -14,6 +14,38 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- `make bench-servers` compares ASGI servers on the same app -- daphne, uvicorn with and without
+  permessage-deflate, and Granian -- flipping their order every round, with a dying server recorded as
+  a result per component size (#191). `bench/windows/ssh.sh` runs it on a native x64 Windows machine
+  over SSH with `uv.lock`'s versions, and `bench/servers_shutdown.py` records what SIGTERM does to each
+  server's open connections and `leaving()`. docs/PERFORMANCE.md shows both machines' charts and
+  tables; `tests/test_bench_servers.py` fails until they say what the results say. Granian is not
+  recommended: no faster beyond the rounds' spread, more memory per connection, and on SIGTERM it
+  exits without a close frame in a tenth of a second, so `leaving()` does not finish.
+
+### Fixed
+
+- The benchmark no longer hands a run's servers the URL of a broker an earlier run stopped (#191).
+  `bench.ws.run()` left `NATS_URL`/`REDIS_URL` set after stopping the NATS or Redis server it had
+  started, and the next run in the same process took it for an external broker.
+
+## [1.4.0] - 2026-10-09
+
+### Added
+
+- In development, the render-part SQL also goes to a file an editor reads (#188): one JSON line per outermost
+  piece of work, under `BASE_DIR/.wireview/render-queries/` (setting `DEBUG_RENDER_QUERIES_DIR`; `False` turns
+  it off). A line holds a snapshot of every render that ended in it, none-statement renders included, keyed by
+  component class, so a reader that keeps the latest snapshot per class sees a fixed N+1 clear. A template line
+  carries the digest of the source the running template was compiled from (Django's filesystem and app
+  directories loaders), so a line run by a stale cached template is told apart from the file on disk; a
+  property carries its `def` line and the file's `stat` as strings. Written only with `DEBUG` on, never from a
+  process that imported `wireview.testing` or has `WIREVIEW_RENDER_QUERIES_DIR=off` in its environment (the
+  suite's servers inherit it). Each process appends to numbered segments of its own, sweeps other processes'
+  idle files, writes a line whole or takes it back and stops. The format is versioned by its own `version`
+  field; docs/features/render-queries.md describes it. The VS Code extension shows the counts as inlay hints
+  at the end of each line (released on its own; see editors/vscode/CHANGELOG.md). The extension's reader runs on
+  files the library really wrote in tests/test_vscode_extension.py.
 - In development, each statement a render, handler or task ran is told with the template line or the
   property it came from (#182). With `DEBUG_RENDER_QUERIES` (`None` follows `DEBUG`), the logger
   `wireview.queries` gets one block per outermost piece of work that ran SQL -- a render, a handler, a
@@ -33,15 +65,6 @@ The django-reactor era changelog (2.x) is preserved in
   block stops collecting and logs nothing. A process with the setting off that never imported
   `wireview.testing` has no wrapper; its boundaries still read the setting.
 
-- `make bench-servers` compares ASGI servers on the same app -- daphne, uvicorn with and without
-  permessage-deflate, and Granian -- flipping their order every round, with a dying server recorded as
-  a result per component size (#191). `bench/windows/ssh.sh` runs it on a native x64 Windows machine
-  over SSH with `uv.lock`'s versions, and `bench/servers_shutdown.py` records what SIGTERM does to each
-  server's open connections and `leaving()`. docs/PERFORMANCE.md shows both machines' charts and
-  tables; `tests/test_bench_servers.py` fails until they say what the results say. Granian is not
-  recommended: no faster beyond the rounds' spread, more memory per connection, and on SIGTERM it
-  exits without a close frame in a tenth of a second, so `leaving()` does not finish.
-
 ### Changed
 
 - The release workflow starts on tags `v<digit>...` only (#163). `v*` matched `vscode-v<version>`
@@ -51,9 +74,7 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
-- The benchmark no longer hands a run's servers the URL of a broker an earlier run stopped (#191).
-  `bench.ws.run()` left `NATS_URL`/`REDIS_URL` set after stopping the NATS or Redis server it had
-  started, and the next run in the same process took it for an external broker.
+- An HTTP render no longer closes the request's database connection: under `ATOMIC_REQUESTS` a `params_changed()` that called `stream()`, a hook that awaited Channels' `database_sync_to_async`, or an async property rolled the view's writes back without an exception and dropped its `on_commit` callbacks. `stream()`, `stream_insert()` and `stream_delete()` do nothing where no socket receives them, and the bridges into component code keep the caller's connections open (#190).
 
 ## [1.3.0] - 2026-10-08
 
@@ -2754,7 +2775,8 @@ auto-recovery, viewport bindings, optimistic UI attributes, type stub
 generation, and `mount()` testing utilities. See `docs/FEATURE-GAP.md` for the
 Phoenix LiveView parity table.
 
-[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/itda-work/django-wireview/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/itda-work/django-wireview/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/itda-work/django-wireview/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/itda-work/django-wireview/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/itda-work/django-wireview/compare/v1.0.0...v1.1.0

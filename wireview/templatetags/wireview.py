@@ -14,8 +14,10 @@ from django.utils.safestring import mark_safe
 
 from .. import settings
 from ..core.component import Component
+from ..core.connections import keep_connections
 from ..core.live_session import REQUEST_ATTR as LIVE_SESSION_REQUEST_ATTR
 from ..core.live_session import declaration_allows, get_live_session
+from ..core.meta import HTTP_RENDER
 from ..core.rendered import inject_marker, marked_component_refs, nested_component_html
 from ..core.shared_render import STATE_SLOT
 from ..core.state import sign_state, signable_json
@@ -191,6 +193,8 @@ async def _enter_in_template(
         when it heard one.
     """
     unheard: str | None = None
+    # Set on this coroutine's context, which reaches what the hooks await on either bridge
+    http_render = HTTP_RENDER.set(not repo.is_live)
     try:
         if not await component._mount(repo.params, repo.session):
             return False, None
@@ -209,6 +213,7 @@ async def _enter_in_template(
                 await component._handle_params(dict(repo.params), uri)
         return True, unheard
     finally:
+        HTTP_RENDER.reset(http_render)
         if not repo.is_live:
             component._cancel_async_tasks()
 
@@ -275,7 +280,9 @@ def _mount_in_template(component: Component, repo: ComponentRepository) -> bool:
       right bridge. The state before the query comes back to this thread to
       be serialized (``sync_to_async``), as the state after it is, where
       ``{% tag_header %}`` signs and a view under ``ATOMIC_REQUESTS`` holds
-      its transaction.
+      its transaction. The bridge keeps this thread's connections open: the
+      hooks' ``database_sync_to_async`` runs here, and its connection hygiene
+      closed the request's connection and rolled the transaction back (#190).
     - An async view that calls ``render()`` directly renders on the event-loop
       thread itself, where ``async_to_sync`` refuses to run. Rather than fail
       the page, the hooks get a loop of their own on a helper thread. A hook
@@ -315,7 +322,10 @@ def _mount_in_template(component: Component, repo: ComponentRepository) -> bool:
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            mounted, unheard = async_to_sync(_enter_in_template)(component, repo, sync_to_async(signable_json))
+            # The hooks' thread-sensitive work comes back to this thread, the
+            # request's: its connection, and the transaction on it, stay open (#190)
+            with keep_connections():
+                mounted, unheard = async_to_sync(_enter_in_template)(component, repo, sync_to_async(signable_json))
         else:
             with ThreadPoolExecutor(max_workers=1) as pool:
                 mounted, unheard = pool.submit(

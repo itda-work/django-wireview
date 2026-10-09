@@ -62,6 +62,7 @@ FIRST_SECTION = {
     "1.0.x": "10에서-11로",
     "1.1.x": "11에서-12로",
     "1.2.x": "12에서-13으로",
+    "1.3.x": "13에서-14로",
 }
 # A row that reads only some subsections of a section names them: rc2 and rc3 already had the
 # rest of rc1-to-1.0.
@@ -97,65 +98,34 @@ def test_every_row_reads_every_section_from_its_own_up():
         assert [a for a in anchors if a not in order] == SUBSECTIONS.get(version, []), version
 
 
-# What changed since 1.2.0, entry by entry. A key is a phrase of one CHANGELOG entry of the
-# release after 1.2.0 (the [Unreleased] section until it is released); its value names the
-# bullet of "1.2에서 1.3으로" that tells an upgrading project what to do -- a phrase of its bold
+# What changed since 1.3.0, entry by entry. A key is a phrase of one CHANGELOG entry of the
+# release after 1.3.0 (the [Unreleased] section until it is released); its value names the
+# bullet of "1.3에서 1.4로" that tells an upgrading project what to do -- a phrase of its bold
 # lead -- and a phrase its text, sub-bullets included, says about this entry. Under
 # NO_UPGRADE_NOTE the value says why nothing needs telling. The rc4-to-1.0 section was written
 # from the entries one track at a time and missed the StrEnum and stream container changes --
 # both silent. An entry with neither fails here, so each new one is a decision. The next
 # release moves this table to its own entries and section.
 UPGRADE_NOTE = {
-    "The first HTTP render runs `params_changed()`": (
-        "첫 HTTP 렌더도 `params_changed()`를 부른다",
-        "join은 첫 응답이 그린 상태가 아니라 마운트 상태에서",
+    "the render-part SQL also goes to a file an editor reads": (
+        "개발 서버가 `BASE_DIR/.wireview/render-queries/`에 파일을 쓴다",
+        "`.wireview/`를 `.gitignore`에 더한다",
     ),
-    "reads the page's query from `request.GET`": (
-        "퍼센트 인코딩 없이 온 쿼리를 Django처럼 읽는다",
-        "컨텍스트의 `request`에 `.GET`이 있어야 한다",
-    ),
-    "Every fan-out message (`notification` from `abroadcast()`, a component's `self.broadcast()` and": (
-        "브로드캐스트 메시지에 `message_id`가 붙는다",
-        "`unittest.mock.ANY`로 그 키를 받거나",
-    ),
-    "`manage.py wireview_lsp` writes metadata version 2.0": (
-        "`manage.py wireview_lsp`가 메타데이터 형식 2.0을 낸다",
-        "`inherited_methods`를 `framework_methods`에서 찾아 펼친다",
+    "An HTTP render no longer closes the request's database connection": (
+        "첫 HTTP 렌더가 요청의 DB 연결을 닫지 않는다",
+        "`stream()`을 건너뛰던 코드가 있으면 지워도 된다",
     ),
 }
 
-DOCS_ONLY = "문서·저장소만 바뀌었고 라이브러리 동작은 같다"
 NO_UPGRADE_NOTE = {
-    "Every code block on the documentation site has a copy button": DOCS_ONLY,
-    "The README says when to use wireview": DOCS_ONLY,
-    "The Live Search example and tutorial keep the query in the address": "예제와 튜토리얼만 바뀌었다",
-    "The README's numbers are charts": "문서와 벤치마크만 바뀌었다",
-    "A live render costs about a third less": "출력은 바이트 단위로 같고 빨라지기만 했다",
-    "`Meta.shared_render = True` declares": "새 opt-in이다. 선언하지 않은 컴포넌트에는 아무것도 바뀌지 않는다",
-    "`manage.py wireview_check_templates": (
-        "새 명령이다. diagnose.ts의 종료 코드는 그 명령이 읽으려고 생긴 것이고, 확장은 공개 API가 아니다"
+    "In development, each statement a render, handler or task ran is told": (
+        "개발(DEBUG)에서 로거 wireview.queries에 남길 뿐 동작은 같다. 운영은 DEBUG가 꺼져 래퍼가 없다"
     ),
-    "puts one stream item, a hook event or a JS command on every page": (
-        "새 이름이다. 쓰지 않으면 아무것도 바뀌지 않는다"
-    ),
-    "`telemetry.broadcast_published` carries `kind`": (
-        "시그널에 키워드가 하나 늘었을 뿐이다. `**kwargs`로 받는 수신자는 그대로다"
-    ),
-    "The README, the getting-started tutorial and the bundled skill start uvicorn": DOCS_ONLY,
-    "a template the autoreloader saw change reaches the open pages at once": (
-        "개발 서버(DEBUG)에서만 돈다. 운영 서버에는 자동 리로더가 없어 아무것도 바뀌지 않고, "
-        "개발 중에 끄려면 REJOIN_ON_TEMPLATE_CHANGE=False"
-    ),
-    "also makes its process's channel join the topic's patch group": (
-        "프로세스마다 토픽당 그룹 하나가 늘 뿐 앱이 할 일은 없다. 84자를 넘는 토픽은 전처럼 알림만 받는다"
-    ),
-    "A boosted move can be stopped by the page": (
-        "새 이벤트다. 듣지 않으면 이동은 전과 같다. wireview:navigated의 detail에 키가 하나 늘 뿐이다"
-    ),
+    "The release workflow starts on tags `v<digit>...` only": "저장소의 릴리스 워크플로만 바뀌었다",
 }
 
-PREVIOUS = "1.2.0"
-SECTION = "1.2에서 1.3으로"
+PREVIOUS = "1.3.0"
+SECTION = "1.3에서 1.4로"
 
 
 def _entries_since_previous() -> list[str]:

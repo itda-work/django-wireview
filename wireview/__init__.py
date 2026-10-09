@@ -14,6 +14,10 @@ from __future__ import annotations
 
 import importlib
 import typing as t
+from time import time_ns as _time_ns
+
+#: When the library was first imported: a component module edited after this may not be what runs (#188)
+_IMPORTED_AT_NS = _time_ns()
 
 # Type hints for lazy imports (helps IDE and type checkers)
 if t.TYPE_CHECKING:

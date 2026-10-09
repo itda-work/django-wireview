@@ -76,7 +76,7 @@ sync로 쓰면 실행되지 않고 `manage.py check`가 `wireview.W002`로 알�
 | `await start_async(name, coro)` / `await cancel_async(name)` | 백그라운드 작업 ([async-operations](./async-operations.md)) |
 | `await assign_async(coro, *, on_error=None)` | 결과를 `AsyncResult` 필드로 받는다 |
 | `await stream(name, items, *, template=None, dom_id=None, limit=0)` | 스트림을 채우거나 다시 채운다 ([Streams API 심화 튜토리얼](../tutorials/06-streams-api.md)) |
-| `await stream_insert(name, item, *, at=-1, template=None, dom_id=None, limit=0)` / `await stream_delete(name, dom_id)` | 스트림 항목 |
+| `await stream_insert(name, item, *, at=-1, template=None, dom_id=None, limit=0)` / `await stream_delete(name, dom_id)` | 스트림 항목. 셋 다 첫 HTTP 렌더에서는 아무것도 하지 않는다 — 받을 소켓이 없다([dead view](./dead-view.md#약속하지-않는-것)) |
 | `allow_upload(name, *, accept=None, max_entries=1, max_file_size=None, chunk_size=None, auto_upload=True, external=None)` | 업로드를 받는다 ([chunked-uploads](./chunked-uploads.md)) |
 | `consume_uploads(name)` / `await cancel_upload(name, ref)` | 완료된 업로드를 꺼낸다 / 취소한다 |
 | `attach_hook(name, stage, callback)` / `detach_hook(name, stage=None)` | 이 인스턴스에 수명주기 훅을 단다 ([lifecycle-hooks](./lifecycle-hooks.md)) |

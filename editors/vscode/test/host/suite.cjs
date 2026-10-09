@@ -202,6 +202,32 @@ const tests = {
     }
   },
 
+  async "a line the dev server ran SQL on gets its count, and loses it while edited"() {
+    const document = await vscode.workspace.openTextDocument(ITEM);
+    await vscode.window.showTextDocument(document);
+    await ready(document.uri);
+    const line = Number(process.env.WIREVIEW_HOST_QUERIED_LINE) - 1;
+    const range = new vscode.Range(0, 0, document.lineCount, 0);
+    const hints = await eventually(async () => {
+      const found = await vscode.commands.executeCommand("vscode.executeInlayHintProvider", document.uri, range);
+      return found.length ? found : undefined;
+    }, "the render-part SQL hint");
+    assert.equal(hints.length, 1);
+    assert.equal(hints[0].position.line, line);
+    const label = typeof hints[0].label === "string" ? hints[0].label : hints[0].label.map((part) => part.value).join("");
+    assert.equal(label, "⚠ 6× same query");
+
+    const edit = new vscode.WorkspaceEdit();
+    edit.insert(document.uri, new vscode.Position(0, 0), " ");
+    assert.ok(await vscode.workspace.applyEdit(edit));
+    try {
+      const edited = await vscode.commands.executeCommand("vscode.executeInlayHintProvider", document.uri, range);
+      assert.deepEqual(edited, [], "an unsaved file is not the one the server ran");
+    } finally {
+      await vscode.commands.executeCommand("workbench.action.files.revert");
+    }
+  },
+
   async "the metadata command runs when no file is given"() {
     const folder = await ready(vscode.Uri.file(ITEM));
     const config = vscode.workspace.getConfiguration("wireview", vscode.Uri.file(ITEM));

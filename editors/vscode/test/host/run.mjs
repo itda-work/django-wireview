@@ -6,8 +6,13 @@
 // extension as wireview.metadataPath: the suite then checks the features
 // against what the project really holds. One test switches to running
 // `uv run python manage.py wireview_lsp` itself, the path a user gets.
+//
+// A render-part SQL record (#188) for a line of the todo example is written to
+// a directory of the run's, named by wireview.renderQueries.directory: the
+// trusted suite sees its hint, the restricted one does not.
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +31,41 @@ execFileSync("uv", ["run", "python", "manage.py", "wireview_lsp", "--output", me
   stdio: "inherit",
 });
 
+const queries = path.join(scratch, "render-queries");
+mkdirSync(queries);
+const item = realpathSync(path.join(repository, "examples", "todo", "templates", "todo", "item.html"));
+const itemText = readFileSync(item, "utf8");
+const QUERIED_LINE = itemText.split(/\r?\n/).findIndex((line) => line.includes("{{ item.text }}</label>")) + 1;
+writeFileSync(
+  path.join(queries, "20261008T130000-1.1.jsonl"),
+  `${JSON.stringify({
+    version: "1.0",
+    at: new Date().toISOString(),
+    process: "20261008T130000-1",
+    segment: 1,
+    base: null,
+    kind: "render",
+    count: 6,
+    renders: [{ kind: "render", component: "todo.live.XTodoItem", name: "XTodoItem", id: "item-1", why: "http" }],
+    rows: [
+      {
+        by: 0,
+        count: 6,
+        repeated: true,
+        sql: 'SELECT "todo_item"."id" FROM "todo_item" WHERE "todo_item"."id" = %s',
+        template: {
+          file: item,
+          name: "todo/item.html",
+          source: createHash("sha256").update(itemText.replace(/\r\n?/g, "\n")).digest("hex"),
+          line: QUERIED_LINE,
+          node: "{{ }}",
+          text: "item.text",
+        },
+      },
+    ],
+  })}\n`,
+);
+
 const workspace = path.join(scratch, "wireview.code-workspace");
 writeFileSync(
   workspace,
@@ -35,6 +75,7 @@ writeFileSync(
       settings: {
         "wireview.metadataPath": metadata,
         "wireview.managePy": "tests/manage.py",
+        "wireview.renderQueries.directory": queries,
         "workbench.startupEditor": "none",
         "extensions.autoUpdate": false,
         "update.mode": "none",
@@ -51,7 +92,7 @@ mkdirSync(userData, { recursive: true });
 // Already in .vscode-test when it was fetched once: nothing is downloaded then
 const vscodeExecutablePath = await downloadAndUnzipVSCode({ version: VERSION, cachePath: path.join(extension, ".vscode-test") });
 
-const env = { WIREVIEW_HOST_REPOSITORY: repository, WIREVIEW_HOST_METADATA: metadata };
+const env = { WIREVIEW_HOST_REPOSITORY: repository, WIREVIEW_HOST_METADATA: metadata, WIREVIEW_HOST_QUERIED_LINE: String(QUERIED_LINE) };
 const run = (suite, args) =>
   runTests({
     vscodeExecutablePath,

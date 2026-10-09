@@ -1,10 +1,11 @@
 // One project per workspace folder: where its metadata comes from, running
 // `manage.py wireview_lsp` again when Python changes, and keeping the last
-// metadata that worked when a run fails.
+// metadata that worked when a run fails. It also owns the reading of the
+// render-part SQL the dev server writes beside manage.py (src/queries.ts).
 //
-// Nothing runs and no metadata file is read until the workspace is trusted: the
-// command is the project's code, and the file's paths are where "go to
-// definition" goes.
+// Nothing runs and no metadata or record file is read until the workspace is
+// trusted: the command is the project's code, and the files' paths are where "go
+// to definition" goes and where the hints are drawn.
 import { execFile, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync } from "node:fs";
@@ -15,13 +16,20 @@ import * as vscode from "vscode";
 import { checkVersion, READABLE_VERSIONS } from "./core/metadata.ts";
 import type { Metadata } from "./core/metadata.ts";
 import { Project } from "./core/project.ts";
+import { READABLE_QUERIES } from "./core/queries.ts";
+import type { DocumentFacts, Hint, Refusal } from "./core/queries.ts";
 import { buildCommand, classifyFailure, Generations, interpreterCandidates, ownsGroup, pickManagePy, Refresher, Stopper, stopSteps, supervised } from "./core/runner.ts";
 import type { CommandLine, StopStep, Timers } from "./core/runner.ts";
+import { FolderQueries } from "./queries.ts";
+import { nodeFiles } from "./queryFiles.ts";
 
 export type State = "idle" | "running" | "ok" | "failed" | "off" | "restricted";
 
 /** The settings that say where the metadata comes from: a change starts over. */
-export const SOURCE_SETTINGS = ["metadataPath", "managePy", "pythonPath", "metadataCommand"] as const;
+export const SOURCE_SETTINGS = ["metadataPath", "managePy", "pythonPath", "metadataCommand", "renderQueries.directory"] as const;
+
+/** How long a render's snapshot is shown, in minutes, when the setting says nothing usable. */
+const MAX_AGE = 30;
 
 export function isFile(path: string): boolean {
   try {
@@ -99,6 +107,15 @@ export class FolderProject implements vscode.Disposable {
   private readonly timing: Timing;
   /** What watches the current source: replaced when the source changes. */
   private watchers: vscode.Disposable[] = [];
+  /** The render-part SQL records of the current generation, once there is a directory to read. */
+  queries: FolderQueries | undefined;
+  /** Told when the records change what a document's hints may be. */
+  onQueries: () => void = () => {};
+  /** The latest start of the records' reader: an earlier one still awaiting manage.py starts nothing. */
+  private queriesStart = 0;
+  /** What the output channel was told about the records once already. */
+  private readonly said = new Set<string>();
+  private overlapSaid = false;
 
   constructor(
     folder: vscode.WorkspaceFolder,
@@ -142,6 +159,7 @@ export class FolderProject implements vscode.Disposable {
     const signal = this.generations.next();
     for (const watcher of this.watchers) watcher.dispose();
     this.watchers = [];
+    this.stopQueries();
     if (signal.aborted) return;
     if (!vscode.workspace.isTrusted) {
       this.state = "restricted";
@@ -149,6 +167,7 @@ export class FolderProject implements vscode.Disposable {
       this.changed();
       return;
     }
+    void this.startQueries(signal);
     const fixed = this.config().get<string>("metadataPath", "");
     if (fixed) {
       // Something else writes it: read it, and again whenever it changes
@@ -455,10 +474,99 @@ export class FolderProject implements vscode.Disposable {
     this.names = undefined;
   }
 
+  /** `wireview.renderQueries.enable` changed: start or stop reading, in the generation there is. */
+  configureQueries(): Promise<void> {
+    return this.startQueries(this.generations.signal);
+  }
+
+  private stopQueries(): void {
+    this.queriesStart += 1;
+    if (!this.queries) return;
+    this.queries.dispose();
+    this.queries = undefined;
+    this.onQueries();
+  }
+
+  /**
+   * Read the records the dev server writes: `.wireview/render-queries` beside
+   * manage.py, or `wireview.renderQueries.directory`. Bound to the generation's
+   * signal like a run: a reader of an older one reads nothing more.
+   */
+  private async startQueries(signal: AbortSignal): Promise<void> {
+    this.stopQueries();
+    const start = this.queriesStart;
+    if (signal.aborted || !vscode.workspace.isTrusted) return;
+    if (!this.config().get<boolean>("renderQueries.enable", true)) return;
+    const managePy = await this.managePy();
+    if (signal.aborted || start !== this.queriesStart) return;
+    const setting = this.config().get<string>("renderQueries.directory", "");
+    const found = managePy && isFile(managePy) ? managePy : undefined;
+    if (!setting && !found) return;
+    const base = found ? nodePath.dirname(found) : this.folder.uri.fsPath;
+    this.queries = new FolderQueries({
+      directory: setting ? this.resolve(setting) : nodePath.join(base, ".wireview", "render-queries"),
+      base,
+      signal,
+      files: nodeFiles,
+      changed: () => {
+        this.sayOverlap();
+        this.onQueries();
+      },
+      refused: (refusal) => this.sayRefused(refusal),
+    });
+    this.queries.read();
+  }
+
+  private maxAge(): number {
+    const minutes = this.config().get<number>("renderQueries.maxAge", MAX_AGE);
+    return (typeof minutes === "number" && minutes > 0 ? minutes : MAX_AGE) * 60_000;
+  }
+
+  /** The hints of a document of this folder. */
+  queryHints(document: DocumentFacts, now = Date.now()): Hint[] {
+    if (!this.queries) return [];
+    return this.queries.hints(document, {
+      now,
+      maxAge: this.maxAge(),
+      mapRelative: this.config().get<boolean>("renderQueries.mapRelative", false),
+    });
+  }
+
+  /** Forget what the records said: `Wireview: Clear Render Queries`. The files are the server's and stay. */
+  clearQueries(): void {
+    if (!this.queries?.state.size) return;
+    this.queries.state.clear();
+    this.onQueries();
+  }
+
+  private sayRefused(refusal: Refusal): void {
+    if (this.said.has(refusal.reason)) return;
+    this.said.add(refusal.reason);
+    const advice =
+      refusal.reason === "newer"
+        ? "Update the Django Wireview extension."
+        : refusal.reason === "older"
+          ? "Upgrade django-wireview in the project."
+          : "Is something else writing to that directory?";
+    this.log(`Render queries of version ${refusal.version} are left out; this extension reads ${READABLE_QUERIES}. ${advice}`);
+  }
+
+  private sayOverlap(): void {
+    const pair = this.queries?.state.overlapping(Date.now(), this.maxAge());
+    if (pair && !this.overlapSaid) {
+      this.log(
+        `Render queries: processes ${pair[0]} and ${pair[1]} write to ${this.queries?.directory} at once, so no counts are shown. ` +
+          "Run one worker, or give each worker its own DEBUG_RENDER_QUERIES_DIR in WIREVIEW.",
+      );
+    }
+    this.overlapSaid = pair !== undefined;
+  }
+
   dispose(): void {
     this.generations.end();
     this.refresher.dispose();
     for (const watcher of this.watchers) watcher.dispose();
     this.watchers = [];
+    this.stopQueries();
   }
 }

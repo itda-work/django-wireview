@@ -60,6 +60,9 @@ async def test_increment():
 `render_diff()`의 diff, 스트림 검사가 돌려주는 항목은 [호환성 정책](../COMPATIBILITY.md)의
 와이어 프로토콜에 속한다. 마이너 릴리스에서 모양이 바뀔 수 있으니 단언은 헬퍼로 한다.
 
+`wireview.testing`을 import한 프로세스는 렌더 쿼리를 편집기용 파일에 쓰지 않는다. 테스트가 별도 프로세스로 띄우는
+서버도 쓰지 않게 하려면 환경 변수 `WIREVIEW_RENDER_QUERIES_DIR=off`를 둔다([render-queries](./render-queries.md#켜기와-끄기)).
+
 ## 내비게이션 단언
 
 ```python

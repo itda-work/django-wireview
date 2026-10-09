@@ -77,6 +77,7 @@
 | `core/state.py`, `core/signing.py` | `data-state` 서명·복원, 서명 키 |
 | `core/model_state.py` | 상태 안의 모델 인스턴스를 pk로 서명하고 필드 타입 표기를 따라 다시 읽는다 (#113) |
 | `core/render_reads.py`, `core/render_gate.py` | 초기화된 temporary assign을 읽은 동적 부분 찾기(#111), 워커 스레드 렌더 중 백그라운드 작업 미루기(#138) |
+| `core/connections.py` | 동기 렌더가 컴포넌트의 async 코드로 건너는 다리가 그 스레드(요청)의 DB 연결을 닫지 않게 붙잡는다 (#190) |
 | `core/shared_render.py` | `Meta.shared_render`: 같은 브로드캐스트를 처리하는 연결들이 렌더 하나를 함께 쓰고, `data-state`만 연결마다 끼운다. 선언 검증(#176) |
 | `core/patches.py` | `Broadcast`: 스트림 항목·훅 이벤트·JS 명령을 발행하는 곳에서 한 번 렌더하고 직렬화해, 구독한 연결마다 컴포넌트 id만 끼워 쓴다(#178) |
 | `core/template_reload.py` | 개발 서버에서 템플릿이 바뀌면(자동 리로더의 `file_changed`) 이 프로세스의 열린 연결마다 처리 순서 안에서(자기 채널로 보낸 메일의 차례에) `rejoin`을 보낸다. 페이지는 `sync`의 답을 기다렸다가 컴포넌트를 지금 상태로 다시 join한다(#180) |
@@ -338,7 +339,7 @@ wireview/
 ├── __init__.py            # 공개 API (_EXPORTS 표로 지연 로딩)
 ├── core/                  # component, handlers, meta, rendered, render_reads, render_gate, shared_render, patches,
 │                          # watched, state, signing, model_state, session(SessionView), live_session, origin, transport,
-│                          # template_reload
+│                          # template_reload, connections
 ├── features/              # streams, presence, uploads, upload_store, hooks, toasts
 ├── consumer.py  session.py  repository.py  live_component.py  function_components.py  slots.py
 ├── template_engine.py  event_transpiler.py  js.py  async_result.py  auto_broadcast.py

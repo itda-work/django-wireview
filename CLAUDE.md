@@ -59,6 +59,8 @@ wireview/
 │                          세션은 rejoin을 바로 쓰지 않고 자기 채널로 메일(template_changed)을 보내 그 차례에 쓴다 — 처리 중인 핸들러·join의 답 뒤.
 │                          페이지는 sync를 보내 synced가 올 때까지 기다렸다가 다시 join한다(static의 rejoins.mjs). 앞지르면 처리 중이던 이벤트가 되돌아갔다.
 │                          refused는 여기서 풀지 않는다 — 페이지의 다시 join이 retry_join으로 푼다
+├── core/connections.py   keep_connections(). 동기 렌더가 컴포넌트의 async 코드로 건너는 다리(async_to_sync)가 그 스레드의 DB 연결을 닫지 않게 붙잡는다(#190).
+│                          wireview의 어떤 모듈도 import하지 않는다 — utils가 core를 import하는 도중에 meta가 이것을 읽는다
 ├── core/render_gate.py    RenderGate. 워커 스레드가 렌더하는 동안 그 컴포넌트의 start_async·assign_async 작업 단계를 렌더 뒤로 미룬다(#138).
 │                          렌더가 async property를 오래 기다리는 동안 작업이 막혀 있으면 경고한다(교착 의심, #147)
 ├── core/session.py        SessionView. Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다
@@ -108,6 +110,11 @@ wireview/
 │                          래퍼는 execute_wrappers 맨 아래에 한 번 두고 남긴다. 요청을 모아 다른 태스크가 처리하는 길은 capture()·restored()로
 │                          항목마다 요청한 쪽의 상태를 되살린다(_Signer). 태스크를 만드는 새 길은 시작에서 detach()하고 scope("task")를 연다.
 │                          MountedComponent.queries()가 테스트 단언. 계약 표는 tests/test_render_queries.py
+├── debug/render_queries_file.py 그 귀속을 편집기가 읽을 JSON 줄로 쓴다(DEBUG_RENDER_QUERIES_DIR, #188). 가장 바깥 일 하나가 한 줄이고, 안에서 끝난
+│                          렌더마다 클래스 단위 스냅샷(0건 포함)이 든다. 템플릿 줄은 실행 중인 Template.source의 지문과 함께(filesystem·app_directories
+│                          로더만). 프로세스마다 덧붙이기만 하는 세그먼트 파일이고, 끝까지 쓰지 못한 줄은 되돌리고 끈다. DEBUG가 아니거나
+│                          WIREVIEW_RENDER_QUERIES_DIR=off(루트 conftest.py가 둔다)이거나 wireview.testing을 import했으면 쓰지 않는다.
+│                          형식의 정본은 docs/features/render-queries.md "편집기로 보내기", 계약은 tests/test_render_queries_file.py
 ├── features/              streams.py, presence.py (PresenceMixin), uploads.py (UploadRegistry·토큰 v2),
 │                          hooks.py (앱의 static/<app_label>/hooks/*.js 수집. 페이지가 아니라 프로젝트 단위. 템플릿 디렉터리는 TEMPLATES가 아니라 엔진의 로더에게 묻는다),
 │                          upload_store.py (청크 경로 계산·append·취소 마커·sweep. 워커들이 공유하는 유일한 상태),
@@ -269,6 +276,9 @@ editors/vscode/            VS Code 확장(#156). wheel·sdist에 싣지 않고 �
                            실제 FolderProject와 자식 프로세스로 본다. 낡은 실행의 결과를 버리는 판단은 core/runner.ts 의 Generations 하나다.
                            실행마다 출력 파일이 따로다 — 멈춘 프로세스가 늦게 쓴 파일은 다음 실행이 지운다. 자기 실행의 것이 아닌 파일은 실행 timeout보다 오래된 것만.
                            신뢰하지 않은 워크스페이스에서는 프로세스를 띄우지도 메타데이터를 읽지도 않는다(folders.ts 의 run·load).
+                           렌더 부분별 SQL의 inlay hint(#188): core/queries.ts 가 판단(세그먼트 이어 읽기·클래스별 최신 스냅샷·줄 확신 규칙),
+                           queries.ts 가 FolderProject의 세대에 묶인 감시, queryFiles.ts 가 디스크. 서버가 쓴 실제 파일은 test/queries-driver.ts 로
+                           tests/test_vscode_extension.py 가 읽어 본다
                            CI의 vscode-extension-host 잡(VS Code 다운로드)만 릴리스 게이트 밖이다
                            게시는 태그 vscode-v<버전>의 .github/workflows/vscode-release.yml이 Marketplace·Open VSX(itda.django-wireview)에 한다(#163).
                            아이콘은 images/icon.png, 원본은 images/icon.svg
@@ -415,6 +425,10 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
   작업을 보낸 뒤 `_let_patches_through`. 빠뜨리면 `joined()`의 스트림 reset(세션 메일, 늦게 써진다)이 그 사이에 쓴 패치를
   지운다. 패치를 쓰는 곳은 `wireview_patch` 하나이고, 쓰기 직전에 `repo.reachable`을 다시 묻는다. `Broadcast` 항목 템플릿의
   `this`·`user`·`request`·`perms`·`csrf_token`은 언제나 감시 객체다(`wireview/core/watched.py`) — 그 렌더가 모든 구독자의 것이다.
+- **동기 렌더에서 컴포넌트의 async 코드로 건너는 새 다리는 `keep_connections()` 안에서 `async_to_sync`를 부른다(#190).** 그 스레드는
+  요청의 것이고, 훅이 기다리는 Channels `database_sync_to_async`가 거기로 돌아와 `close_old_connections()`로 요청의 연결을 닫는다 —
+  트랜잭션 안이면 뷰의 쓰기가 예외 없이 롤백된다. 메모리 SQLite는 `close()`를 무시하므로 테스트는 파일 DB(testproj의 기본)에서 본다.
+  HTTP 렌더에서 스트림 연산은 아무것도 하지 않는다 — 다리마다 `wireview/core/meta.py`의 `HTTP_RENDER`(ContextVar)를 자기 저장소의 `not is_live`로 세운다. `channel_name`이 없다는 것으로 가르지 않는다(채널 없이 패치 게이트를 쓰는 세션 테스트가 있다). 회귀 테스트는 tests/test_http_render_connections.py.
 - **data-state는 dynamic 파트다.** `{% tag_header %}`의 서명 상태는 라이브 렌더에서 마커로 감싸진다. static에 넣으면 fingerprint가 매번 바뀌어 부분 diff가 죽는다. 회귀 테스트는 tests/test_diff_stability.py.
 
 ## 문서 인덱스
@@ -426,6 +440,6 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) 아키텍처
 - [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) 배포
 - [docs/COMPATIBILITY.md](./docs/COMPATIBILITY.md) 공개 API, 폐기 절차, 지원 범위
-- [docs/UPGRADING.md](./docs/UPGRADING.md) 0.x, 1.0 릴리스 후보, 1.0에서 1.1로, 1.1에서 1.2로, 1.2에서 1.3으로. 쓰던 버전별로 읽을 절과 보안 조치
+- [docs/UPGRADING.md](./docs/UPGRADING.md) 0.x, 1.0 릴리스 후보, 1.0에서 1.1로, 1.1에서 1.2로, 1.2에서 1.3으로, 1.3에서 1.4로. 쓰던 버전별로 읽을 절과 보안 조치
 - [docs/PERFORMANCE.md](./docs/PERFORMANCE.md) 성능
 - [CHANGELOG.md](./CHANGELOG.md) 변경 이력

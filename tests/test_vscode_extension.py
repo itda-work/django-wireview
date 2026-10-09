@@ -12,6 +12,10 @@ what Django or django-wireview would raise, and a template that renders is the
 proof of the other half -- a rule that flags one is wrong. It runs the
 extension's own code under node (scripts/diagnose.ts imports only the core
 modules, which import only node's), so it needs node and no npm packages.
+
+The render-part SQL the dev server writes (#188) is held the same way: the
+extension's reader runs on the files the library really wrote, through
+test/queries-driver.ts, at the end of this module.
 """
 
 from __future__ import annotations
@@ -27,10 +31,15 @@ from pathlib import Path
 
 import django
 import pytest
+from asgiref.sync import sync_to_async
 from django.template import engines
 from django.template.loader import get_template
+from testproj.wireview_setting import set_wireview
 
 import wireview
+from examples.quiz.models import Choice, Question, Quiz
+from wireview import Component, mount
+from wireview.debug import render_queries, render_queries_file
 from wireview.management.commands.wireview_lsp import METADATA_VERSION, extract_metadata
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -421,7 +430,7 @@ def test_the_readme_lists_every_setting_with_its_default():
     folders = (EXTENSION / "src" / "folders.ts").read_text(encoding="utf-8")
     source = re.search(r"SOURCE_SETTINGS = \[([^\]]*)\]", folders)
     assert source, "folders.ts names the settings that pick the metadata's source"
-    assert set(restricted) == {f"wireview.{key}" for key in re.findall(r'"(\w+)"', source.group(1))}
+    assert set(restricted) == {f"wireview.{key}" for key in re.findall(r'"([\w.]+)"', source.group(1))}
 
 
 @pytest.mark.unit
@@ -449,3 +458,235 @@ def test_the_icon_is_a_square_png_the_package_carries():
     assert width == height >= 128
     assert icon.with_suffix(".svg").is_file()
     assert f"!{manifest['icon']}" in (EXTENSION / ".vscodeignore").read_text(encoding="utf-8").splitlines()
+
+
+# -- render-part SQL: what the library writes is what the extension reads (#188) -----------------
+#
+# The server's records (wireview/debug/render_queries_file.py) are read by the
+# extension's own code (editors/vscode/src/core/queries.ts) through
+# test/queries-driver.ts, as an editor that has just started reads them: the
+# scenarios of docs/design/render-queries-editor.md §6-2.
+
+QUERIES_DRIVER = EXTENSION / "test" / "queries-driver.ts"
+
+VSX_TEMPLATES = {
+    "vsx/plain.html": "{% load wireview %}<p {% tag_header %}>\n{{ choices.count }}\n</p>",
+    "vsx/shelf.html": '{% load wireview %}<main {% tag_header %}>\n{% component "VsxBook" id="book" %}\n</main>',
+    "vsx/book.html": (
+        "{% load wireview %}<ol {% tag_header %}>\n{% for c in choices %}{{ c.question.text }}{% endfor %}\n</ol>"
+    ),
+    "vsx/props.html": "{% load wireview %}<p {% tag_header %}></p>",
+}
+
+
+class VsxPlain(Component):
+    class Meta:
+        template_name = "vsx/plain.html"
+
+    @property
+    def choices(self):
+        return Choice.objects.all()
+
+
+class VsxShelf(Component):
+    class Meta:
+        template_name = "vsx/shelf.html"
+
+
+class VsxBook(Component):
+    class Meta:
+        template_name = "vsx/book.html"
+
+    empty: bool = False
+
+    @property
+    def choices(self):
+        return Choice.objects.none() if self.empty else Choice.objects.all()
+
+
+class VsxProps(Component):
+    class Meta:
+        template_name = "vsx/props.html"
+
+    @property
+    def total(self) -> int:
+        return Choice.objects.count()
+
+
+@pytest.fixture
+def vsx_templates(tmp_path: Path, settings) -> Path:
+    root = tmp_path / "templates"
+    for name, text in VSX_TEMPLATES.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    settings.TEMPLATES = [
+        {
+            "BACKEND": "django.template.backends.django.DjangoTemplates",
+            "DIRS": [str(root)],
+            "OPTIONS": {
+                "loaders": [("django.template.loaders.cached.Loader", ["django.template.loaders.filesystem.Loader"])]
+            },
+        }
+    ]
+    return root
+
+
+@pytest.fixture
+def records(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, settings, vsx_templates: Path):
+    """Writing on, as on a dev server, to a directory of the test's."""
+    out = tmp_path / "render-queries"
+    monkeypatch.delenv(render_queries_file.ENVIRONMENT, raising=False)
+    monkeypatch.setattr(render_queries_file, "_suppressed", False)
+    settings.DEBUG = True
+    set_wireview(monkeypatch, DEBUG_RENDER_QUERIES=True, DEBUG_RENDER_QUERIES_DIR=str(out))
+    render_queries_file._reset()
+    yield out
+    render_queries_file._reset()
+
+
+@pytest.fixture
+def quiz(db):
+    quiz = Quiz.objects.create(title="Q")
+    for n in range(3):
+        Choice.objects.create(question=Question.objects.create(quiz=quiz, text=f"q{n}"), text=f"c{n}")
+    return quiz
+
+
+def _hints(directory: Path, *documents: tuple[Path, str]) -> dict[Path, dict[int, str]]:
+    """What the extension would show on each document: {line: label}."""
+    spec = directory.parent / "spec.json"
+    spec.write_text(
+        json.dumps({"directory": str(directory), "documents": [{"path": str(p), "kind": k} for p, k in documents]}),
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [_node(), str(QUERIES_DRIVER), str(spec)], capture_output=True, text=True, timeout=60, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    answer = json.loads(result.stdout)
+    assert answer["refused"] == [] and answer["overlapping"] is None, answer
+    return {Path(path): {hint["line"]: hint["label"] for hint in hints} for path, hints in answer["hints"].items()}
+
+
+def _reset_loaders() -> None:
+    """What the autoreloader's template_changed does."""
+    for loader in engines["django"].engine.template_loaders:
+        loader.reset()
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_the_extension_tells_the_line_the_server_ran_and_hides_a_compile_the_cache_still_runs(
+    records, quiz, vsx_templates
+):
+    plain = vsx_templates / "vsx/plain.html"
+    view = await mount(VsxPlain, id="plain")
+    await sync_to_async(view.render)()
+    assert _hints(records, (plain, "template")) == {plain: {2: "1 query"}}
+
+    # Another line changes on disk; the cached compile is what runs, and its digest is the old file's
+    plain.write_text(plain.read_text().replace("<p ", "<p data-new ", 1), encoding="utf-8")
+    await sync_to_async(view.render)()
+    assert _hints(records, (plain, "template")) == {plain: {}}
+
+    _reset_loaders()
+    view = await mount(VsxPlain, id="plain")
+    await sync_to_async(view.render)()
+    assert _hints(records, (plain, "template")) == {plain: {2: "1 query"}}
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_a_component_fixed_alone_clears_what_it_ran_inside_another_in_the_editor(records, quiz, vsx_templates):
+    """B inside A runs 4 (a loop and a repeat of 3), B alone the same, then B alone none: the line ends at nothing."""
+    book = vsx_templates / "vsx/book.html"
+    shelf = await mount(VsxShelf, id="shelf")
+    await sync_to_async(shelf.render)()
+    assert _hints(records, (book, "template")) == {book: {2: "⚠ 3× same query · 4 queries"}}
+    alone = await mount(VsxBook, id="book")
+    await sync_to_async(alone.render)()
+    assert _hints(records, (book, "template")) == {book: {2: "⚠ 3× same query · 4 queries"}}, "replaced, not added"
+    fixed = await mount(VsxBook, id="book", empty=True)
+    await sync_to_async(fixed.render)()
+    assert _hints(records, (book, "template")) == {book: {}}
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_a_property_of_an_unchanged_module_is_told_at_its_def_line_by_its_exact_stat(records, quiz):
+    view = await mount(VsxProps, id="props")
+    await view.render_diff()
+    [record] = [json.loads(line) for path in records.glob("*.jsonl") for line in path.read_text().splitlines()]
+    [prop] = [row["property"] for row in record["rows"] if "property" in row]
+    assert int(prop["stat"][0]) > 2**53, "past what a JSON number holds: read as a string, compared exactly"
+    here = Path(__file__).resolve()
+    lines = here.read_text().splitlines()
+    line = next(n for n, text in enumerate(lines, 1) if text.strip() == "def total(self) -> int:")
+    assert prop["line"] == line
+    assert _hints(records, (here, "python")) == {here: {line: "1 query per render"}}
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_a_new_process_whose_file_is_one_line_of_none_clears_the_number_of_the_one_before(
+    records, quiz, vsx_templates
+):
+    """2판 리뷰 2: an editor reading a one-line file takes that line, and a restart is not an overlap."""
+    book = vsx_templates / "vsx/book.html"
+    view = await mount(VsxBook, id="book")
+    await sync_to_async(view.render)()
+    # What a process before this one wrote: the same lines under another process's name
+    [written] = list(records.glob("*.jsonl"))
+    written.rename(records / "20200101T000000-1.1.jsonl")
+    assert _hints(records, (book, "template")) == {book: {2: "⚠ 3× same query · 4 queries"}}
+
+    render_queries_file._reset()  # a new process: it has published nothing yet
+    view = await mount(VsxBook, id="book", empty=True)
+    await sync_to_async(view.render)()
+    [fresh] = list(records.glob(f"{written.name.split('.', 1)[0]}.*.jsonl"))
+    assert len(fresh.read_text().splitlines()) == 1
+    assert _hints(records, (book, "template")) == {book: {}}
+
+
+def _stand_in(qualname: str, id: str) -> object:
+    """What a render scope reads of a component: its type, ``_name`` and ``id``."""
+    item = type(qualname, (), {"__module__": __name__, "__qualname__": qualname})()
+    item._name = qualname  # type: ignore[attr-defined]
+    item.id = id  # type: ignore[attr-defined]
+    return item
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_a_class_past_the_render_limit_behind_other_classes_loses_its_old_count_in_the_editor(
+    records, quiz, vsx_templates
+):
+    """Review B1 P2-1: other classes fill the kept renders, the book's render is cut; its old count must not stay."""
+    from django.db import connection
+
+    book = vsx_templates / "vsx/book.html"
+    view = await mount(VsxBook, id="book")
+    await sync_to_async(view.render)()
+    assert _hints(records, (book, "template")) == {book: {2: "⚠ 3× same query · 4 queries"}}
+
+    def crowded() -> None:
+        with render_queries.scope("render", _stand_in("VsxFiller", "host"), "http"):
+            for n in range(render_queries_file.RENDERS_LIMIT - 1):
+                with render_queries.scope("render", _stand_in("VsxFiller", f"f{n}"), "nested"):
+                    pass
+            with render_queries.scope("render", _stand_in("VsxBook", "book"), "nested"):
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT 1")
+
+    await sync_to_async(crowded)()
+    last = [json.loads(line) for path in records.glob("*.jsonl") for line in path.read_text().splitlines()][-1]
+    fqn = f"{__name__}.VsxBook"
+    assert last["renders_more"] == 1 and fqn not in {render["component"] for render in last["renders"]}
+    assert fqn in last["partial"]
+    assert _hints(records, (book, "template")) == {book: {}}

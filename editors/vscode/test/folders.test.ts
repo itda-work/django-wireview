@@ -3,7 +3,7 @@
 // is checked is what a stale run must not do: start again, write, or win.
 import { strict as assert } from "node:assert";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import { tmpdir } from "node:os";
 import * as nodePath from "node:path";
@@ -17,6 +17,7 @@ registerHooks({
 });
 const { state } = await import("./stub/vscode.ts");
 const { FolderProject } = await import("../src/folders.ts");
+const { digestOf } = await import("../src/queryFiles.ts");
 type Folder = InstanceType<typeof FolderProject>;
 
 function metadata(name: string): string {
@@ -574,4 +575,184 @@ test("a command starts with SIGINT's default action: one it sends itself ends it
   } finally {
     folder.dispose();
   }
+});
+
+// -- render-part SQL records (#188) ------------------------------------------------------------
+
+const PROCESS = "20261008T130000-1";
+
+/** A record of the dev server's: `List` ran `count` queries at line 2 of `template`. */
+function queryLine(template: string, count: number, version = "1.0"): string {
+  const source = digestOf(readFileSync(template));
+  const rows = count ? [{ by: 0, count, sql: "SELECT 1", template: { file: template, rel: "templates/list.html", source, line: 2, node: "{{ }}", text: "items.count" } }] : [];
+  const renders = [{ kind: "render", component: "app.live.List", name: "List", id: "list", why: "http" }];
+  return `${JSON.stringify({ version, at: new Date().toISOString(), process: PROCESS, segment: 1, base: null, kind: "render", count, renders, rows })}\n`;
+}
+
+/** A folder with a manage.py and a template, its metadata from a file so that nothing runs. */
+function queriesWorkspace() {
+  const { root } = workspace();
+  const templates = nodePath.join(root, "templates");
+  mkdirSync(templates);
+  const template = nodePath.join(templates, "list.html");
+  writeFileSync(template, "<ul>\n{{ items.count }}\n</ul>\n");
+  const records = nodePath.join(root, ".wireview", "render-queries");
+  mkdirSync(records, { recursive: true });
+  const meta = nodePath.join(root, "metadata.json");
+  writeFileSync(meta, metadata("A"));
+  const config = { metadataPath: meta, managePy: nodePath.join(root, "manage.py") };
+  const facts = () => ({
+    path: template,
+    kind: "template" as const,
+    dirty: false,
+    lineText: (line: number) => readFileSync(template, "utf8").split("\n")[line - 1],
+    digest: () => digestOf(readFileSync(template)),
+    stat: () => undefined,
+  });
+  return { root, template, records, config, facts };
+}
+
+const labels = (folder: Folder, facts: Parameters<Folder["queryHints"]>[0]) => folder.queryHints(facts).map((hint) => `${hint.line}: ${hint.label}`);
+
+test("the records beside manage.py are read, and again when the watcher says they grew", async () => {
+  const { root, template, records, config, facts } = queriesWorkspace();
+  writeFileSync(nodePath.join(records, `${PROCESS}.1.jsonl`), queryLine(template, 6));
+  state.config = config;
+  const { folder } = project(root);
+  let told = 0;
+  folder.onQueries = () => (told += 1);
+  await folder.start();
+  await until(() => folder.queries?.state.size === 1, "the first read");
+  assert.deepEqual(labels(folder, facts()), ["2: 6 queries"]);
+  const watcher = state.watchers.find((each) => each.pattern.pattern === "*.jsonl");
+  assert.ok(watcher, "the directory is watched");
+
+  appendFileSync(nodePath.join(records, `${PROCESS}.1.jsonl`), queryLine(template, 0));
+  const before = told;
+  watcher.fire();
+  watcher.fire(); // a burst: one read
+  await until(() => labels(folder, facts()).length === 0, "the read after the event");
+  assert.equal(told, before + 1);
+  folder.dispose();
+});
+
+test("a reader of an older generation reads nothing more and its state is not the folder's", async () => {
+  const { root, template, records, config, facts } = queriesWorkspace();
+  writeFileSync(nodePath.join(records, `${PROCESS}.1.jsonl`), queryLine(template, 6));
+  const other = nodePath.join(root, "elsewhere");
+  mkdirSync(other);
+  state.config = config;
+  const { folder } = project(root);
+  await folder.start();
+  await until(() => folder.queries?.state.size === 1, "the first read");
+  const old = folder.queries!;
+  const oldWatcher = state.watchers.find((each) => each.pattern.pattern === "*.jsonl" && !each.disposed)!;
+
+  state.config = { ...config, "renderQueries.directory": other };
+  await folder.configure();
+  await until(() => folder.queries !== undefined && folder.queries !== old, "the new reader");
+  assert.equal(folder.queries!.directory, other);
+  assert.ok(oldWatcher.disposed, "the old directory is no longer watched");
+  assert.deepEqual(labels(folder, facts()), [], "what the old directory said is not the new one's");
+
+  // An event already on its way, and a read asked of the old reader: nothing comes in
+  appendFileSync(nodePath.join(records, `${PROCESS}.1.jsonl`), queryLine(template, 9));
+  oldWatcher.fireAnyway();
+  old.read();
+  await pause(300);
+  assert.equal([...old.state.all()][0].rows[0].count, 6);
+  assert.deepEqual(labels(folder, facts()), []);
+
+  folder.dispose();
+  assert.equal(folder.queries, undefined);
+});
+
+test("a reader still finding manage.py when the folder is configured again starts nothing", async () => {
+  const { root, template, records, config } = queriesWorkspace();
+  writeFileSync(nodePath.join(records, `${PROCESS}.1.jsonl`), queryLine(template, 6));
+  state.config = config;
+  const { folder } = project(root);
+  const first = folder.start();
+  folder.dispose(); // before the reader found its directory
+  await first;
+  await pause(50);
+  assert.equal(folder.queries, undefined);
+  assert.equal(state.watchers.filter((each) => each.pattern.pattern === "*.jsonl" && !each.disposed).length, 0);
+});
+
+test("Restricted Mode: the records are not read until the workspace is trusted", async () => {
+  const { root, template, records, config, facts } = queriesWorkspace();
+  writeFileSync(nodePath.join(records, `${PROCESS}.1.jsonl`), queryLine(template, 6));
+  state.config = config;
+  state.trusted = false;
+  const { folder } = project(root);
+  await folder.start();
+  await pause(100);
+  assert.equal(folder.queries, undefined);
+  assert.equal(state.watchers.filter((each) => each.pattern.pattern === "*.jsonl").length, 0, "not even watched");
+  assert.deepEqual(labels(folder, facts()), []);
+
+  state.trusted = true;
+  await folder.configure();
+  await until(() => folder.queries?.state.size === 1, "the read once trusted");
+  assert.deepEqual(labels(folder, facts()), ["2: 6 queries"]);
+  folder.dispose();
+});
+
+test("turned off, nothing is read; turned on, the generation there is reads", async () => {
+  const { root, template, records, config, facts } = queriesWorkspace();
+  writeFileSync(nodePath.join(records, `${PROCESS}.1.jsonl`), queryLine(template, 6));
+  state.config = { ...config, "renderQueries.enable": false };
+  const { folder } = project(root);
+  await folder.start();
+  await pause(100);
+  assert.equal(folder.queries, undefined);
+
+  state.config = config;
+  await folder.configureQueries();
+  assert.deepEqual(labels(folder, facts()), ["2: 6 queries"]);
+  state.config = { ...config, "renderQueries.enable": false };
+  await folder.configureQueries();
+  assert.equal(folder.queries, undefined);
+  folder.dispose();
+});
+
+test("Clear forgets what was read; the files stay", async () => {
+  const { root, template, records, config, facts } = queriesWorkspace();
+  const file = nodePath.join(records, `${PROCESS}.1.jsonl`);
+  writeFileSync(file, queryLine(template, 6));
+  state.config = config;
+  const { folder } = project(root);
+  await folder.start();
+  await until(() => folder.queries?.state.size === 1, "the first read");
+  folder.clearQueries();
+  assert.deepEqual(labels(folder, facts()), []);
+  assert.ok(readFileSync(file, "utf8").length > 0);
+  folder.dispose();
+});
+
+test("lines of a version this extension does not read are left, and said once", async () => {
+  const { root, template, records, config, facts } = queriesWorkspace();
+  writeFileSync(nodePath.join(records, `${PROCESS}.1.jsonl`), queryLine(template, 6, "2.0") + queryLine(template, 6, "2.1") + queryLine(template, 3));
+  state.config = config;
+  const { folder, log } = project(root);
+  await folder.start();
+  await until(() => folder.queries?.state.size === 1, "the first read");
+  assert.deepEqual(labels(folder, facts()), ["2: 3 queries"]);
+  const said = log.filter((line) => line.includes("Render queries of version"));
+  assert.equal(said.length, 1, said.join("\n"));
+  assert.match(said[0], /Update the Django Wireview extension/);
+  folder.dispose();
+});
+
+test("the time limit is the setting's, in minutes", async () => {
+  const { root, template, records, config, facts } = queriesWorkspace();
+  writeFileSync(nodePath.join(records, `${PROCESS}.1.jsonl`), queryLine(template, 6));
+  state.config = { ...config, "renderQueries.maxAge": 5 };
+  const { folder } = project(root);
+  await folder.start();
+  await until(() => folder.queries?.state.size === 1, "the first read");
+  assert.equal(folder.queryHints(facts(), Date.now() + 4 * 60_000).length, 1);
+  assert.equal(folder.queryHints(facts(), Date.now() + 6 * 60_000).length, 0);
+  folder.dispose();
 });
