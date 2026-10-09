@@ -61,7 +61,7 @@ Cursor·VSCodium처럼 Open VSX를 쓰는 편집기는 [Open VSX](https://open-v
 | `unclosed-block`, `unmatched-end` | 오류 | 닫지 않은 블록, 여는 태그 없는 끝 태그 |
 | `template-not-found` | 경고 | 템플릿 디렉터리에 없는 `{% extends %}`·`{% include %}` 경로 |
 
-**줄마다 SQL 수(개발 서버).** 개발 중(`DEBUG`)에 1.3.0보다 새 django-wireview는 렌더의 SQL을 어느 템플릿 줄이나
+**줄마다 SQL 수(개발 서버).** 개발 중(`DEBUG`)에 django-wireview 1.4.0 이상은 렌더의 SQL을 어느 템플릿 줄이나
 property가 실행했는지 `manage.py` 옆의 `.wireview/render-queries/`에 쓴다. 확장은 그것을 읽어 그 줄 끝에 inlay
 hint로 수를 단다: `6 queries`, N+1이면 `⚠ 6× same query`, property의 `def` 줄에는 `1 query per render`. tooltip에는
 문장, 컴포넌트, 몇 분 전의 렌더인지가 나온다. 컴포넌트 클래스마다 가장 최근의 렌더가 기준이다. 그래서 N+1을 고치고

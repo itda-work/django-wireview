@@ -10,14 +10,14 @@ A version's section says "Unreleased" until the commit that publishes it dates i
 the release workflow refuses a tag whose section has no date
 ([release procedure](../../docs/ROADMAP.md#vs-code-확장-릴리스-절차)).
 
-## [Unreleased]
+## [0.2.0] - 2026-10-09
 
 ### Added
 
 - The SQL count of each template line and property the dev server's renders ran, as inlay hints at the end
   of the line (#188): `6 queries`, `⚠ 6× same query` for an N+1, `1 query per render` on a property's `def`
   line, with the statements, the component and the render's age in the tooltip. The extension reads the JSON
-  lines django-wireview (newer than 1.3.0) writes in development to `.wireview/render-queries/` beside
+  lines django-wireview (1.4.0 or later) writes in development to `.wireview/render-queries/` beside
   `manage.py`, following each process's numbered segments as they grow, and keeps the latest render of each
   component class, so a fixed N+1 clears on the next render. A template line is shown only while the file is
   saved and is the source the server's running template was compiled from (a SHA-256 the server writes); a

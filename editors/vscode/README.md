@@ -84,7 +84,7 @@ nothing is reported.
 | `unclosed-block`, `unmatched-end` | Error | A block that is never closed, an end tag with no opening tag |
 | `template-not-found` | Warning | An `{% extends %}` or `{% include %}` path that is not in any template directory |
 
-**SQL per line, from the dev server.** In development (`DEBUG`), django-wireview newer than 1.3.0 writes which template
+**SQL per line, from the dev server.** In development (`DEBUG`), django-wireview 1.4.0 or later writes which template
 line or property ran each SQL statement of a render into `.wireview/render-queries/` beside `manage.py`. The extension
 reads it and puts the count at the end of the line, as an inlay hint: `6 queries`, `⚠ 6× same query` for an N+1, or
 `1 query per render` on a property's `def` line. The tooltip shows the statements, the component and how long ago the
