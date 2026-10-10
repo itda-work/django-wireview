@@ -1,0 +1,60 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  {# The items are rendered once for every page of the room (a Broadcast), so they cannot say whose they are to this viewer. #}
+  {# This component's own render is this viewer's: it shows the buttons on the messages they wrote. The server checks anyway. #}
+  <style>
+    .message[data-author="{{ this.user.pk }}"] .own-actions {
+      display: flex;
+    }
+  </style>
+  {# Bottom up: the newest message is first in the list and drawn last, and the view stays at the bottom #}
+  <div class="message-list"
+       style="height: 400px;
+              overflow-y: auto;
+              display: flex;
+              flex-direction: column-reverse;
+              border: 1px solid #ddd;
+              border-radius: 4px;
+              padding: 16px;
+              background: #fafafa">
+    <ul wire-stream="messages"
+        style="list-style: none;
+               display: flex;
+               flex-direction: column-reverse">
+      {# Items arrive as stream operations; the first one, the join's reset, empties this list #}
+    </ul>
+    {# Outside the list, which a reset empties: base.html shows it while the list holds nothing #}
+    <p class="empty-message">No messages yet. Start the conversation!</p>
+    {# After the list in the DOM, so above it on screen: scrolling up to it loads the page before #}
+    {% if this.reached_start %}
+      <p class="history-start"
+         style="color: #999;
+                font-size: 12px;
+                text-align: center;
+                padding: 8px">The beginning of {{ this.room.name }}</p>
+    {% else %}
+      <p class="history-more"
+         wire-viewport-top="load_older"
+         style="color: #999;
+                font-size: 12px;
+                text-align: center;
+                padding: 8px">Loading older messages...</p>
+    {% endif %}
+  </div>
+  {% if this.editing %}
+    <form class="message-editor"
+          style="margin-top: 8px;
+                 display: flex;
+                 gap: 8px"
+          {% on 'submit.prevent' 'save_edit' %}>
+      <input type="text"
+             name="text"
+             value="{{ this.draft }}"
+             autocomplete="off"
+             aria-label="Edit your message" />
+      <button type="submit" class="btn">Save</button>
+      <button type="button" class="link-button" {% on 'click' 'cancel_edit' %}>Cancel</button>
+    </form>
+  {% endif %}
+</div>

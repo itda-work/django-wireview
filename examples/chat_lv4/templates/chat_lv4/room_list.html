@@ -1,0 +1,37 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  {# Rendered for this user alone: the badges are theirs. Join and Leave are events, not forms: a live render has no CSRF token #}
+  <ul style="list-style: none; margin-top: 16px;">
+    {% for room in this.rooms %}
+      <li style="margin-bottom: 8px;
+                 display: flex;
+                 gap: 12px;
+                 align-items: center"
+          data-room="{{ room.name }}">
+        {% if room.joined %}
+          <a href="{% url 'chat_lv4:room' room.id %}">{{ room.name }}</a>
+          {% if room.unread %}
+            <span class="unread"
+                  aria-label="{{ room.unread }} unread"
+                  style="background: #d32f2f;
+                         color: white;
+                         border-radius: 10px;
+                         padding: 0 8px;
+                         font-size: 12px">{{ room.unread }}</span>
+          {% endif %}
+          <button type="button"
+                  class="link-button"
+                  {% on 'click' 'leave_room' room_id=room.id %}>Leave</button>
+        {% else %}
+          <span>{{ room.name }}</span>
+          <button type="button"
+                  class="link-button"
+                  {% on 'click' 'join_room' room_id=room.id %}>Join</button>
+        {% endif %}
+      </li>
+    {% empty %}
+      <li>No rooms available. Create one!</li>
+    {% endfor %}
+  </ul>
+</div>

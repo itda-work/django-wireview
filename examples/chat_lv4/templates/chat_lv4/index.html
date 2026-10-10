@@ -1,0 +1,46 @@
+{% extends "chat_lv4/base.html" %}
+
+{% load wireview %}
+
+{% block title %}Chat Rooms{% endblock %}
+{% block body %}
+  <h1>Chat Rooms</h1>
+  {% if user.is_authenticated %}
+    <div class="card">
+      <h2>Rooms</h2>
+      {# A component: the unread badges change while the page is open #}
+      {% component 'Lv4RoomList' id="room-list" %}
+    </div>
+    <div class="card">
+      <h2>Create Room</h2>
+      <form method="post"
+            action="{% url 'chat_lv4:create_room' %}"
+            style="margin-top: 16px">
+        {% csrf_token %}
+        <div style="display: flex; gap: 8px;">
+          <input type="text" name="name" placeholder="Room name" required />
+          <button type="submit" class="btn">Create</button>
+        </div>
+      </form>
+    </div>
+  {% else %}
+    <div class="card">
+      <h2>Sign in</h2>
+      <p style="margin: 12px 0;">
+        A message is written by a signed-in user, and a room is read by its members. Sign in here as one person and in a private window as another: windows that share cookies share a user.
+      </p>
+      <div style="display: flex; gap: 8px;">
+        {% for username in demo_users %}
+          <form method="post" action="{% url 'chat_lv4:sign_in' username %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ next }}" />
+            <button type="submit" class="btn">Sign in as {{ username }}</button>
+          </form>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+  <p style="margin-top: 20px;">
+    <a href="{% url 'chat_lv3:index' %}">&larr; Level 3: chat_lv3</a>
+  </p>
+{% endblock %}
