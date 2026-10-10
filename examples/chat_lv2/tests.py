@@ -15,6 +15,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.test import AsyncClient, Client
 from django.urls import reverse
+from playwright.sync_api import expect
 from testproj.asgi import application
 from testproj.e2e_browser import expect_count, expect_text, open_live, wait_live
 from testproj.e2e_server import serve
@@ -488,6 +489,24 @@ async def test_a_message_reaches_the_lists_of_its_room_only(room, alice):
     assert lists[2].stream_ops() == []
 
 
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_empty_rooms_note_is_outside_the_list_a_reset_empties(room, alice):
+    """In the list, the first render showed it in a room with messages and the join's reset took it from an empty one.
+
+    base.html shows it while the list holds nothing (the browser half: the E2E).
+    """
+    await Message.objects.acreate(room=room, author=alice, content="hello")
+    view = await mount(Lv2MessageList, room=room, user=alice, live_session=BOUNDARY)
+
+    html = view.render() or ""
+
+    start = html.index('wire-stream="messages"')
+    assert "No messages yet" not in html[start : html.index("</ul>", start)]
+    assert "No messages yet" in html[html.index("</ul>", start) :]
+    assert len(view.stream_items("messages")) == 1
+
+
 # In a browser: two people, two sets of cookies, one room
 
 
@@ -537,11 +556,14 @@ def test_two_members_see_each_others_messages_and_presence(browser, server):
         expect_count(page.locator(".online-user"), 2)
         expect_count(page.locator(".online-user", has_text="alice"), 1)
         expect_count(page.locator(".online-user", has_text="bob"), 1)
+        # A new room: the join's reset emptied the list, and the note outside it shows
+        expect(page.locator(".empty-message")).to_be_visible()
 
     _say(alice, "hi bob")
     _say(bob, "hi alice")
 
     for page in (alice, bob):
         expect_count(page.locator("[wire-stream=messages] li[id^=messages-]"), 2)
+        expect(page.locator(".empty-message")).to_be_hidden()
         expect_text(page.locator("[wire-stream=messages] li", has_text="hi bob").locator("strong"), "alice")
         expect_text(page.locator("[wire-stream=messages] li", has_text="hi alice").locator("strong"), "bob")

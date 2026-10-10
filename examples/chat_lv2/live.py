@@ -223,7 +223,6 @@ class Lv2MessageList(Component):
         live_sessions = {"chat_lv2"}
 
     room: Room
-    messages: list[Message] = []
     # Set when this user's membership of the room ends while the page is open
     _left: bool = False
 

@@ -135,7 +135,6 @@ class XMessageList(Component):
         template_name = "chat/message_list.html"
 
     room: Room
-    messages: list[Message] = []
 
     def get_subscriptions(self) -> set[str]:
         return {room_topic(self.room)}

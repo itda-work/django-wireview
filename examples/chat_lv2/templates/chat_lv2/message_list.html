@@ -15,14 +15,9 @@
         style="list-style: none;
                display: flex;
                flex-direction: column-reverse">
-      {% for item in messages %}
-        {% include "chat_lv2/message_list_item.html" %}
-      {% empty %}
-        <li class="empty-message"
-            style="color: #999;
-                   text-align: center;
-                   padding: 20px">No messages yet. Start the conversation!</li>
-      {% endfor %}
+      {# Items arrive as stream operations; the first one, the join's reset, empties this list #}
     </ul>
+    {# Outside the list, which a reset empties: base.html shows it while the list holds nothing #}
+    <p class="empty-message">No messages yet. Start the conversation!</p>
   </div>
 </div>

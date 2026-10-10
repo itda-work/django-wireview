@@ -31,6 +31,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- The chat examples (`chat`, `chat_lv2`, `chat_lv3`) drew "No messages yet" inside the stream container from a field
+  nothing filled: a room with messages showed it until the join, and the join's reset took it from an empty room
+  (#199). It sits after the list now, shown by CSS while the list is empty. `examples/dashboard` had the same note,
+  and its "Load More" counted the page's items from that empty field, so every click loaded the first page again.
 - `wire-viewport-top` and `wire-viewport-bottom` inside an element with its own scrollbar (`overflow-y: auto`) fired
   only when the binding was past the middle of the window: the scroll direction was read from the window, which does
   not move when a list scrolls in its own box (#199). A binding now fires when any scroller that can move it -- an

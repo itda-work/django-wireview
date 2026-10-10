@@ -83,3 +83,40 @@ async def test_the_activity_feed_subscribes_to_its_model():
     view = await mount(XActivityFeed)
 
     assert any(m.get("type") == "stream_op" for m in view.sent_messages)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_load_more_loads_the_next_page_and_stops_at_the_end():
+    """It counted the page's items from a field nothing filled, so every click loaded the first page again."""
+    for n in range(25):
+        await Activity.objects.acreate(type="login", user_name=f"u{n}", description=f"activity {n}")
+    view = await mount(XActivityFeed)
+    first = [item["id"] for item in view.stream_items("activities")]
+
+    pages = []
+    for _ in range(2):
+        view.clear_messages()
+        await view.call("load_more")
+        [op] = view.stream_ops("activities")
+        assert (op["op"], op["at"]) == ("insert", -1), "one insert, under what the page shows"
+        pages.append([item["id"] for item in op["items"]])
+
+    shown = first + pages[0] + pages[1]
+    assert [len(first), *map(len, pages)] == [10, 10, 5]
+    assert sorted(shown) == sorted([f"activities-{a.pk}" async for a in Activity.objects.all()])
+    assert view.component.has_more is False
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db
+async def test_the_empty_feeds_note_is_outside_the_list_a_reset_empties():
+    view = await mount(XActivityFeed)
+
+    html = view.render() or ""
+
+    start = html.index('wire-stream="activities"')
+    assert "No activity yet" not in html[start : html.index("</ul>", start)]
+    assert "No activity yet" in html

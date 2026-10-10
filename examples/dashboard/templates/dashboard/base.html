@@ -117,6 +117,17 @@
         0% { background-position: 200% 0; }
         100% { background-position: -200% 0; }
       }
+      /* The empty feed's note, while the stream holds nothing. A reset empties the
+         list; before the join it still holds the template's whitespace */
+      .empty-activity {
+        display: none;
+        color: #999;
+        text-align: center;
+        padding: 40px;
+      }
+      [wire-stream]:empty + .empty-activity {
+        display: block;
+      }
     </style>
     {% wireview_header %}
   </head>

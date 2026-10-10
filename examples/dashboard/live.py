@@ -137,7 +137,9 @@ class XActivityFeed(Component):
         template_name = "dashboard/activity_feed.html"
         subscriptions = {"dashboard.activity"}
 
-    activities: list[Activity] = []
+    # How many activities the page was sent: where the next page starts. The
+    # items themselves are the page's; the server keeps none of them
+    loaded: int = 0
     is_loading: bool = False
     has_more: bool = True
 
@@ -145,6 +147,7 @@ class XActivityFeed(Component):
         """Load initial activities using Streams."""
         activities = [a async for a in Activity.objects.all()[:10]]
         await self.stream("activities", activities)
+        self.loaded = len(activities)
         self.has_more = len(activities) == 10
 
     async def mutation(
@@ -167,13 +170,12 @@ class XActivityFeed(Component):
         self.is_loading = True
         await self.send_render()  # Show loading state
 
-        offset = len(self.activities)
-        older = [a async for a in Activity.objects.all()[offset : offset + 10]]
+        older = [a async for a in Activity.objects.all()[self.loaded : self.loaded + 10]]
 
-        for activity in older:
-            # Append each item (at=-1)
-            await self.stream_insert("activities", activity, at=-1)
+        # Appended (at=-1) in one operation; reset=False keeps what the page shows
+        await self.stream("activities", older, reset=False)
 
+        self.loaded += len(older)
         self.has_more = len(older) == 10
         self.is_loading = False
 

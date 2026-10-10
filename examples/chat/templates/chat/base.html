@@ -65,6 +65,17 @@
         outline: none;
         border-color: #0066cc;
       }
+      /* The empty room's note, while the stream holds no message. A reset empties
+         the list; before the join it still holds the template's whitespace */
+      .empty-message {
+        display: none;
+        color: #999;
+        text-align: center;
+        padding: 20px;
+      }
+      [wire-stream]:empty + .empty-message {
+        display: block;
+      }
     </style>
     {% wireview_header %}
   </head>

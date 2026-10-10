@@ -3,12 +3,10 @@
 <div {% tag_header %}>
   <div class="activity-feed">
     <ul wire-stream="activities" style="list-style: none;">
-      {% for item in activities %}
-        {% include "dashboard/activity_feed_item.html" %}
-      {% empty %}
-        <li class="empty" style="color: #999; text-align: center; padding: 40px;">No activity yet</li>
-      {% endfor %}
+      {# Items arrive as stream operations; the first one, the join's reset, empties this list #}
     </ul>
+    {# Outside the list, which a reset empties: base.html shows it while the list holds nothing #}
+    <p class="empty-activity">No activity yet</p>
     {% if has_more %}
       <div style="text-align: center; margin-top: 16px;">
         <button class="btn"
