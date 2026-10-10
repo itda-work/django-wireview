@@ -576,6 +576,51 @@ async def test_scrolling_up_loads_the_room_a_page_at_a_time_to_its_first_message
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["delete", "edit"])
+async def test_a_message_changed_while_the_past_is_read_stays_changed(room, alice, monkeypatch, change):
+    """Another member deletes or edits a message of the page while it is read (#199).
+
+    The page goes out through the connection's channel, the Broadcast as it
+    comes. Read before stream(), the page came after the patch: the delete found
+    nothing and the page brought the message back, the edit found nothing and
+    the page brought the message as it was.
+    """
+    messages = await sync_to_async(_seed)(room, alice, PAGE_SIZE + 5)
+    view = await mount(Lv3MessageList, user=alice, room=room, live_session=BOUNDARY)
+    target = messages[PAGE_SIZE + 2]
+    history = live._history
+
+    async def changed_while_read(room, before):
+        read = history(room, before)
+        async for message in read:
+            yield message
+            if before is not None and message.pk == messages[PAGE_SIZE].pk:
+                broadcast = Broadcast(Lv3MessageList, live.room_topic(room))
+                if change == "delete":
+                    await Message.objects.filter(pk=target.pk).adelete()
+                    await broadcast.stream_delete("messages", f"messages-{target.pk}").asend()
+                else:
+                    target.content = "changed"
+                    await target.asave(update_fields=["content"])
+                    await broadcast.stream_insert("messages", target, update_only=True).asend()
+
+    monkeypatch.setattr(live, "_history", changed_while_read)
+    await view.call("load_older")
+
+    shown = _shown(view)
+    if change == "delete":
+        assert f"messages-{target.pk}" not in shown
+        assert shown == _ids([m for m in messages if m.pk != target.pk])
+    else:
+        assert shown == _ids(messages)
+        # The last word on it is the edit, behind the page
+        dom_id = f"messages-{target.pk}"
+        last = [op for op in view.stream_ops("messages") if any(item["id"] == dom_id for item in op["items"])][-1]
+        assert last.get("update_only") and "changed" in last["items"][0]["html"]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 @pytest.mark.parametrize(("count", "reached_start"), [(0, True), (PAGE_SIZE, True), (PAGE_SIZE + 1, False)])
 async def test_a_room_that_fits_one_page_shows_its_beginning_at_once(room, alice, count, reached_start):
     """The list reads one message more than it shows: that one says whether anything is above."""

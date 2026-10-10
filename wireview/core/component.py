@@ -28,6 +28,7 @@ from .session import SessionView
 if t.TYPE_CHECKING:
     import asyncio
 
+    from ..features.streams import StreamOp
     from ..features.uploads import (
         ConsumedUpload,
         ExternalUploadCallback,
@@ -1345,42 +1346,46 @@ class Component(BaseModel):
         template_name = template or self._get_stream_item_template()
         dom_id_fn = dom_id or (lambda item: f"{name}-{item.pk}")
 
-        if not reset:
-            if isinstance(items, t.AsyncIterable):
-                items = [item async for item in items]
-            inserted = [
-                StreamItem(dom_id=dom_id_fn(item), html=await self._render_stream_item(template_name, item))
-                for item in items
-            ]
-            if inserted:
-                await self.wire.send_stream_op(
-                    StreamOp(op="insert", stream=name, items=inserted, at=at, limit=limit), self.id
-                )
-            return
-
-        # The reset goes out through the connection's channel, behind any
-        # Broadcast patch written meanwhile, and would wipe it: this
-        # component's patches are held from before the list is read below until
-        # the reset is written (#178). The reset carries its hold's token.
-        gate = self.wire.patch_gate
-        token = None if gate is None else await gate.hold(self)
-        # Once the send is tried the reset may be in the channel, even if the send raised
-        tried = False
-        try:
+        async def read() -> "StreamOp | None":
+            nonlocal items
             # A QuerySet is both iterable and async iterable; iterating it
             # synchronously here would query the database on the event loop,
             # which Django refuses outside DJANGO_ALLOW_ASYNC_UNSAFE (#120).
             if isinstance(items, t.AsyncIterable):
                 items = [item async for item in items]
+            stream_items = [
+                StreamItem(dom_id=dom_id_fn(item), html=await self._render_stream_item(template_name, item))
+                for item in items
+            ]
+            if reset:
+                return StreamOp(op="reset", stream=name, items=stream_items, limit=limit)
+            if not stream_items:
+                return None
+            return StreamOp(op="insert", stream=name, items=stream_items, at=at, limit=limit)
 
-            stream_items = []
-            for item in items:
-                html = await self._render_stream_item(template_name, item)
-                stream_items.append(StreamItem(dom_id=dom_id_fn(item), html=html))
+        await self._send_stream_read(read)
 
-            op = StreamOp(op="reset", stream=name, items=stream_items, limit=limit)
-            tried = True
-            await self.wire.send_stream_op(op, self.id, hold=token)
+    async def _send_stream_read(self, read: t.Callable[[], t.Awaitable["StreamOp | None"]]) -> None:
+        """Send the stream operation ``read()`` builds, with this component's Broadcast patches held meanwhile.
+
+        The operation goes out through the connection's channel, behind any
+        Broadcast patch written meanwhile. A reset would wipe that patch, and an
+        insert would undo it: a delete written first finds nothing and the insert
+        brings the item back, an ``update_only`` edit written first finds nothing
+        and the insert brings the item as it was. So the component's patches are
+        held from before ``read()`` reads its items until the operation is
+        written (#178, #199); the operation carries its hold's token, and lets it
+        go even when it is not sent to the page (``update_only`` to an older client).
+        """
+        gate = self.wire.patch_gate
+        token = None if gate is None else await gate.hold(self)
+        # Once the send is tried the operation may be in the channel, even if the send raised
+        tried = False
+        try:
+            op = await read()
+            if op is not None:
+                tried = True
+                await self.wire.send_stream_op(op, self.id, hold=token)
         finally:
             if token is not None:
                 await gate.let_through(self, token, tried)  # type: ignore[union-attr]
@@ -1429,11 +1434,15 @@ class Component(BaseModel):
         template_name = template or self._get_stream_item_template()
         dom_id_fn = dom_id or (lambda i: f"{name}-{i.pk}")
 
-        html = await self._render_stream_item(template_name, item)
-        stream_item = StreamItem(dom_id=dom_id_fn(item), html=html)
+        async def read() -> StreamOp:
+            # Held as stream() is. The hold begins here, so what the handler read
+            # before the call is not covered: a page read and appended goes to
+            # stream(queryset, reset=False), which holds from before its read
+            html = await self._render_stream_item(template_name, item)
+            stream_item = StreamItem(dom_id=dom_id_fn(item), html=html)
+            return StreamOp(op="insert", stream=name, items=[stream_item], at=at, limit=limit, update_only=update_only)
 
-        op = StreamOp(op="insert", stream=name, items=[stream_item], at=at, limit=limit, update_only=update_only)
-        await self.wire.send_stream_op(op, self.id)
+        await self._send_stream_read(read)
 
     async def stream_delete(self, name: str, dom_id: str | int) -> None:
         """

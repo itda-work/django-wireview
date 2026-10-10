@@ -193,6 +193,40 @@ class BcRefreshing(BcFeed):
         await self.stream("items", posts())
 
 
+class BcAppending(BcFeed):
+    """Appends a page it reads, and an item of it is deleted or edited while it reads (#199).
+
+    The insert goes through the connection's channel as a reset does: a patch
+    written first used to be undone by it -- the delete found nothing and the
+    insert brought the item back, the edit found nothing and the insert brought
+    the item as it was.
+    """
+
+    class Meta:
+        subscriptions = {"bc-append"}
+
+    async def _page(self, change: str) -> t.AsyncIterator[Post]:
+        yield Post(5, "five")
+        # Another connection commits its change to 5 and publishes, while this page is read
+        broadcast = Broadcast(BcAppending, "bc-append")
+        if change == "delete":
+            await broadcast.stream_delete("items", 5).asend()
+        else:
+            await broadcast.stream_insert("items", Post(5, "edited"), update_only=True).asend()
+        yield Post(6, "six")
+
+    async def older(self, change: str = "delete", **_rest):
+        await self.stream("items", self._page(change), reset=False)
+
+    async def older_one_by_one(self, change: str = "delete", **_rest):
+        async for post in self._page(change):
+            await self.stream_insert("items", post)
+
+    async def edit_then_publish(self, **_rest):
+        await self.stream_insert("items", Post(1, "edited"), update_only=True)
+        await Broadcast(BcAppending, "bc-append").push_event("after").asend()
+
+
 class BcRevocable(BcFeed):
     """Hears ``bc-revocable`` until a notification on ``bc-revoke`` says it may not any more.
 
@@ -811,6 +845,96 @@ async def test_a_patch_published_after_a_handlers_read_is_written_after_its_stre
         await communicator.disconnect()
 
     assert ops == [("reset", ["items-1"]), ("insert", ["items-2"])]
+
+
+def _shown(ops: t.Iterable[dict[str, t.Any]]) -> dict[str, str]:
+    """What a page that showed ``items-1`` shows after ``ops``, applied in order: id to HTML."""
+    shown = {"items-1": "<li>one</li>"}
+    for op in ops:
+        items = {item["id"]: item["html"] for item in op["items"]}
+        if op["op"] == "reset":
+            shown = items
+        elif op["op"] == "delete":
+            shown = {key: html for key, html in shown.items() if key not in items}
+        else:
+            shown |= {key: html for key, html in items.items() if key in shown or not op.get("update_only")}
+    return shown
+
+
+def _assert_change_kept(shown: dict[str, str], change: str) -> None:
+    if change == "delete":
+        assert "items-5" not in shown, shown
+    else:
+        assert "edited" in shown["items-5"], shown
+    assert "items-6" in shown
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["delete", "edit"])
+@pytest.mark.parametrize("handler", ["older", "older_one_by_one"])
+async def test_a_patch_published_during_an_appended_read_is_written_after_the_insert(handler, change):
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcAppending, "append")
+        await communicator.send_json_to(
+            {
+                "command": "user_event",
+                "payload": {
+                    "id": "append",
+                    "command": handler,
+                    "implicit_args": {},
+                    "explicit_args": {"change": change},
+                    "ref": 1,
+                },
+            }
+        )
+        ops: list[dict[str, t.Any]] = []
+        # One frame for stream(reset=False), one each for stream_insert, and the patch
+        expected = 2 if handler == "older" else 3
+
+        def all_ops(message: dict[str, t.Any]) -> bool:
+            if message["command"] == "stream_op":
+                ops.append(message["payload"])
+            return len(ops) == expected
+
+        await _until(communicator, all_ops)
+    finally:
+        await communicator.disconnect()
+
+    # The patch last, behind what the page read
+    assert ops[-1]["items"][0]["id"] == "items-5"
+    assert ops[-1]["op"] == ("delete" if change == "delete" else "insert")
+    _assert_change_kept(_shown(ops), change)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("vsn", [UPDATE_ONLY_SINCE - 1, UPDATE_ONLY_SINCE])
+async def test_an_update_only_insert_not_sent_to_an_older_client_lets_its_hold_go(vsn):
+    """Not written, it still releases its token: what is held behind it goes out, the connection stays."""
+    communicator = await _connect(vsn)
+    try:
+        await _join(communicator, BcAppending, "append")
+        await _event(communicator, "append", "edit_then_publish")
+        heard = await _until(communicator, lambda m: m["command"] == "push_event")
+    finally:
+        await communicator.disconnect()
+
+    assert heard[-1]["payload"]["event"] == "after"
+    assert len(_stream_ops(heard)) == (1 if vsn >= UPDATE_ONLY_SINCE else 0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["delete", "edit"])
+@pytest.mark.parametrize("handler", ["older", "older_one_by_one"])
+async def test_a_mounted_component_writes_it_after_the_insert_too(handler, change):
+    view = await mount(BcAppending, id="append")
+    view.clear_messages()
+
+    await view.call(handler, change=change)
+
+    ops = view.stream_ops("items")
+    assert ops[-1]["items"][0]["id"] == "items-5"
+    _assert_change_kept(_shown(ops), change)
 
 
 async def _event(communicator: WebsocketCommunicator, id: str, handler: str) -> None:
@@ -1633,6 +1757,21 @@ async def test_a_mounted_component_hears_a_broadcast_for_its_class_and_topic():
     assert view.stream_html("items") == '<li id="items-3">new</li>'
     assert [op["id"] for op in view.stream_ops("items")] == ["feed"]
     assert child.sent_messages == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("vsn", "sent"), [(UPDATE_ONLY_SINCE - 1, False), (UPDATE_ONLY_SINCE, True)])
+async def test_a_mounted_component_leaves_out_a_frame_its_client_would_misread(vsn, sent):
+    """As a session does (``patches.reaches``). mount() talks to this release's
+    client, so the test lowers its repository's version (white box)."""
+    view = await mount(BcFeed, id="feed")
+    view._repo.vsn = vsn
+    view.clear_messages()
+
+    broadcast = Broadcast(BcFeed, "bc-feed").stream_insert("items", Post(1, "edited"), update_only=True)
+    await broadcast.stream_delete("items", 2).asend()
+
+    assert [op["op"] for op in view.stream_ops("items")] == (["insert", "delete"] if sent else ["delete"])
 
 
 @pytest.mark.asyncio

@@ -28,6 +28,7 @@ The rest is the chat example's:
 - leaving() lifecycle hook for disconnect handling
 """
 
+import typing as t
 from datetime import datetime
 from uuid import UUID
 
@@ -235,6 +236,19 @@ def _history(room: Room, before: tuple[datetime, UUID] | None):
     return messages[: PAGE_SIZE + 1]
 
 
+async def _page_of(history, read: list[Message]) -> t.AsyncIterator[Message]:
+    """The page of ``history`` (a page and one more), each message kept in ``read`` as it is read.
+
+    An async iterable rather than a list: ``stream()`` holds the list's
+    Broadcast patches from before it reads one. A list read first would leave
+    the read uncovered, and a message deleted meanwhile could come back with the page.
+    """
+    async for message in history:
+        read.append(message)
+        if len(read) <= PAGE_SIZE:
+            yield message
+
+
 class Lv3MessageList(Component):
     """
     Message list using Streams for efficient updates.
@@ -311,10 +325,14 @@ class Lv3MessageList(Component):
         if self.reached_start or self.oldest_at is None or not await ais_member(self.user, self.room):
             self.skip_render()
             return
-        older = [message async for message in _history(self.room, (self.oldest_at, self.oldest_id))]
+        older: list[Message] = []
         # One operation for the page, in its order (newest first) under what the
-        # list holds: reset=False keeps the list, and the page is one frame
-        await self.stream("messages", older[:PAGE_SIZE], at=-1, reset=False)
+        # list holds: reset=False keeps the list, and the page is one frame.
+        # stream() reads the query itself, so an edit or a delete published
+        # while it reads is written after the page, not undone by it
+        await self.stream(
+            "messages", _page_of(_history(self.room, (self.oldest_at, self.oldest_id)), older), at=-1, reset=False
+        )
         self._moved_to(older)
 
     def _moved_to(self, page: list[Message]) -> None:
