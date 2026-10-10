@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from wireview import mount
 
-from .live import XActivityFeed, XDashboard, XStatCard
+from .live import PAGE_SIZE, XActivityFeed, XDashboard, XStatCard
 from .models import Activity, Stat
 
 
@@ -152,6 +152,19 @@ async def test_the_next_page_follows_the_oldest_shown_whatever_was_added_or_dele
     assert [len(first), *map(len, pages)] == [10, 10, 5]
     assert first + pages[0] + pages[1] == ids
     assert view.component.has_more is False
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(("count", "has_more"), [(PAGE_SIZE, False), (PAGE_SIZE + 1, True)])
+async def test_load_more_shows_only_when_there_is_more_than_a_page(count, has_more):
+    """It asks for a page and one more: exactly a page is the whole feed, and no button leads to an empty page."""
+    await sync_to_async(_seed)(count, same_time=False)
+    view = await mount(XActivityFeed)
+
+    assert len(view.stream_items("activities")) == PAGE_SIZE
+    assert view.component.has_more is has_more
 
 
 @pytest.mark.unit
