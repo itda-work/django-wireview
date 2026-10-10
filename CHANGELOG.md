@@ -27,8 +27,11 @@ The django-reactor era changelog (2.x) is preserved in
 
 - `wire-viewport-top` and `wire-viewport-bottom` inside an element with its own scrollbar (`overflow-y: auto`) fired
   only when the binding was past the middle of the window: the scroll direction was read from the window, which does
-  not move when a list scrolls in its own box (#199). Direction and "overran" are now measured in the nearest scrolling
-  ancestor, as Phoenix LiveView's infinite scroll does.
+  not move when a list scrolls in its own box (#199). A binding now fires when any scroller that can move it -- an
+  ancestor whose `overflow-y` scrolls, or the window -- moved toward it, and "overran" is measured in the nearest
+  ancestor that actually overflows, or the window. Not the nearest ancestor that computes `overflow-y: auto` alone: a
+  wrapper with `overflow-x: hidden` computes that too and never scrolls, and a window-scrolled list inside it stopped
+  loading.
 
 ### Changed
 

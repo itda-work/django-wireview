@@ -166,6 +166,58 @@ def test_scrolling_back_to_the_top_calls_the_top_binding(probe):
     expect_text(by(probe, "newer"), "1")
 
 
+WRAPPER_BOX = """() => { const el = document.querySelector('[data-testid=wrapper]');
+  return [getComputedStyle(el).overflowY, el.scrollHeight > el.clientHeight]; }"""
+
+
+@pytest.mark.parametrize("wrap", ["x", "y"])
+def test_a_window_scrolled_list_in_a_wrapper_that_never_scrolls_loads_more(page, server, wrap):
+    """``overflow-x: hidden`` alone computes ``overflow-y: auto``. Taken for the
+    list's scroll box, the wrapper -- which holds all its content and never
+    scrolls -- stood still while the window moved, and the list stopped loading (#199)."""
+    page.set_viewport_size({"width": 800, "height": 600})
+    open_live(page, f"{server}/streamprobe/?wrap={wrap}")
+    expect_count(by(page, "rows").locator("li"), 15)
+    assert page.evaluate(WRAPPER_BOX) == ["auto", False]
+    by(page, "sentinel").scroll_into_view_if_needed()
+    expect_text(by(page, "pages"), "2")
+    expect_count(by(page, "rows").locator("li"), 30)
+
+
+@pytest.mark.parametrize("wrap", ["x", "y"])
+def test_the_top_binding_of_a_window_scrolled_list_in_a_wrapper_that_never_scrolls(page, server, wrap):
+    page.set_viewport_size({"width": 800, "height": 600})
+    open_live(page, f"{server}/streamprobe/?wrap={wrap}")
+    expect_count(by(page, "rows").locator("li"), 15)
+    page.mouse.wheel(0, 3000)
+    expect_text(by(page, "pages"), "2")
+    expect_text(by(page, "newer"), "0")
+    page.mouse.wheel(0, -100000)
+    expect_text(by(page, "newer"), "1")
+
+
+def test_a_list_in_a_box_of_its_own_loads_more_and_newer_scrolling_the_box(page, server):
+    """The box scrolls while the window stands still, and sits lower than the
+    middle of the window: neither direction nor "overran" measured in the window
+    would call the bindings (#199)."""
+    page.set_viewport_size({"width": 800, "height": 600})
+    open_live(page, f"{server}/streamprobe/?boxed=1")
+    expect_count(by(page, "rows").locator("li"), 15)
+    assert page.evaluate(WRAPPER_BOX) == ["auto", True]
+    assert page.evaluate("document.documentElement.scrollHeight <= window.innerHeight"), "the window cannot scroll"
+    _settled(page)
+    expect_text(by(page, "newer"), "0")
+    expect_text(by(page, "pages"), "1")
+
+    by(page, "wrapper").hover()
+    page.mouse.wheel(0, 3000)
+    expect_text(by(page, "pages"), "2")
+    expect_count(by(page, "rows").locator("li"), 30)
+    assert page.evaluate("window.scrollY") == 0
+    page.mouse.wheel(0, -100000)
+    expect_text(by(page, "newer"), "1")
+
+
 def test_two_components_with_a_stream_of_one_name_keep_their_own_lists(page, server):
     # The page looked for the first `wire-stream="ticks"` anywhere: the second
     # probe's ticks went into the first probe's list.

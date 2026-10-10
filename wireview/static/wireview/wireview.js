@@ -14,7 +14,7 @@ import { commitScope, isCommitAction } from "./values.mjs";
 import { LoadingLedger } from "./loading.mjs";
 import { BINDING_PREFIX, bindingsFor, isRenderEcho, parseBinding, runSteps } from "./events.mjs";
 import { planInsert, planTrim } from "./streams.mjs";
-import { fires, overran, scrolls } from "./viewport.mjs";
+import { fires, overran, scrollBox, scrolls, visibleFrame } from "./viewport.mjs";
 import { TargetQueue } from "./targets.mjs";
 import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
@@ -2009,11 +2009,14 @@ class ViewportObserver {
     /** @type {Map<Element, {type: string, handler: string}>} */
     this.observed = new Map();
     /**
-     * Each scroll box's position when last looked at, the window's under
-     * `window`: the direction a binding was scrolled toward (viewport.mjs)
-     * @type {Map<Element | Window, number>}
+     * Each scrolling ancestor's position when last looked at: the direction a
+     * binding was scrolled toward (viewport.mjs). Weakly, so a box a morph
+     * removed is not kept.
+     * @type {WeakMap<Element, number>}
      */
-    this.lastScroll = new Map();
+    this.lastScroll = new WeakMap();
+    /** @type {number|null} the window's, likewise */
+    this.lastWindowScroll = null;
     /** @type {boolean} */
     this.pendingTop = false;
     /** @type {boolean} */
@@ -2036,35 +2039,30 @@ class ViewportObserver {
   }
 
   /**
-   * The element a binding scrolls in: its nearest ancestor that scrolls, or
-   * the window, as Phoenix LiveView's infinite scroll finds it.
+   * A binding's ancestors, nearest first, up to the page itself: `body` and
+   * `html` scroll as the window.
    * @param {Element} element
-   * @returns {Element | Window}
+   * @returns {Element[]}
    */
-  scrollBox(element) {
+  ancestors(element) {
+    const found = [];
     for (let el = element.parentElement; el; el = el.parentElement) {
-      // The page itself scrolls as the window
       if (el === document.body || el === document.documentElement) break;
-      if (scrolls(getComputedStyle(el).overflowY)) return el;
+      found.push(el);
     }
-    return window;
+    return found;
   }
 
   /**
-   * @param {Element | Window} box
-   * @returns {number}
-   */
-  scrollPosition(box) {
-    return box === window ? window.scrollY : /** @type {Element} */ (box).scrollTop;
-  }
-
-  /**
-   * Remember where `element`'s scroll box stands, unless it is remembered already.
+   * Remember where each scroller that can move `element` stands -- its
+   * scrolling ancestors and the window -- unless it is remembered already.
    * @param {Element} element
    */
   rememberScroll(element) {
-    const box = this.scrollBox(element);
-    if (!this.lastScroll.has(box)) this.lastScroll.set(box, this.scrollPosition(box));
+    for (const el of this.ancestors(element)) {
+      if (scrolls(getComputedStyle(el).overflowY) && !this.lastScroll.has(el)) this.lastScroll.set(el, el.scrollTop);
+    }
+    if (this.lastWindowScroll === null) this.lastWindowScroll = window.scrollY;
   }
 
   /**
@@ -2136,22 +2134,38 @@ class ViewportObserver {
     if (!info) return;
     const type = /** @type {"top" | "bottom"} */ (info.type);
 
-    // Measured in the box the binding scrolls in: a list with its own
-    // scrollbar moves while the window stands still
-    const box = this.scrollBox(element);
-    const position = this.scrollPosition(box);
-    const before = this.lastScroll.get(box) ?? position;
-    const frame =
-      box === window ? { top: 0, bottom: window.innerHeight } : /** @type {Element} */ (box).getBoundingClientRect();
+    // Toward it in any scroller that can move it: a list with its own
+    // scrollbar moves while the window stands still, and a window-scrolled
+    // page moves while a wrapper that computes overflow-y: auto does not
+    const ancestors = this.ancestors(element);
+    const boxes = ancestors.map((el) => ({
+      overflowY: getComputedStyle(el).overflowY,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    }));
+    /** @type {Array<[number, number]>} */
+    const moves = [];
+    ancestors.forEach((el, i) => {
+      if (!scrolls(boxes[i].overflowY)) return;
+      const now = el.scrollTop;
+      moves.push([this.lastScroll.get(el) ?? now, now]);
+      this.lastScroll.set(el, now);
+    });
+    const now = window.scrollY;
+    moves.push([this.lastWindowScroll ?? now, now]);
+    this.lastWindowScroll = now;
+
+    // Past the middle of what the user sees of its scroll box: the nearest
+    // ancestor that actually scrolls, or the window
+    const box = scrollBox(boxes);
+    const frame = visibleFrame(box === -1 ? null : ancestors[box].getBoundingClientRect(), window.innerHeight);
     const past = overran(type, element.getBoundingClientRect(), frame);
 
     // The top binding fires scrolling up, the bottom one scrolling down, and
     // either one the user is already past
-    if (fires(type, before, position, past)) {
+    if (fires(type, moves, past)) {
       this.sendViewportEvent(info.handler, past);
     }
-
-    this.lastScroll.set(box, position);
   }
 
   /**
@@ -2212,7 +2226,8 @@ class ViewportObserver {
       this.observer = null;
     }
     this.observed.clear();
-    this.lastScroll.clear();
+    this.lastScroll = new WeakMap();
+    this.lastWindowScroll = null;
   }
 }
 

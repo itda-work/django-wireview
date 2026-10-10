@@ -142,7 +142,7 @@ wireview/
 └── static/wireview/       wireview.js (소스), rendered.mjs (diff 적용·HTML 복원 순수 함수),
                            streams.mjs (스트림 DOM 판단 순수 함수. pinContainerIds: morph 전에 렌더의 컨테이너에 화면 컨테이너의 id를 붙여 자리 짝짓기로 지워지지 않게 한다),
                            targets.mjs (TargetQueue: 요소가 아직 없는 stream_op·exec_js·push_event는 다음 프레임까지 기다린다. 순서는 컴포넌트별), reload.mjs (reload 쿨다운 판단),
-                           viewport.mjs (wire-viewport-top/bottom이 불리는가. 방향과 "지나침"을 창이 아니라 가장 가까운 스크롤 상자에서 잰다 — 자기 스크롤바가 있는 채팅 목록, #199),
+                           viewport.mjs (wire-viewport-top/bottom이 불리는가. 방향은 스크롤하는 조상들과 창 중 하나라도 그쪽으로 움직였는가, "지나침"은 실제로 넘치는 가장 가까운 상자(없으면 창)에서 잰다 — 자기 스크롤바가 있는 채팅 목록, 스크롤하지 않는 overflow-x: hidden 래퍼, #199),
                            live-session.mjs (경계 넘음 판단 순수 함수), ready.mjs (defer 스크립트가 다 돌았는가),
                            events.mjs (wire-on-* 바인딩의 수정자 해석 순수 함수. 렌더 적용 중의 포커스·change 이벤트는 사용자 것이 아니다: isRenderEcho),
                            values.mjs (morph가 사용자가 고친 입력값을 덮어써도 되는가. IME가 조합 중인 칸은 언제나 지킨다),

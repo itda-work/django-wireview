@@ -12,7 +12,11 @@ def index(request):
     the SeedChild from the start, so it is on the page when the probe joins.
     ``?fill=1`` has the SeedChild's joined() stream a list taller than the window
     ahead of its bottom binding. The page's ``reseed`` link is a boosted move to
-    ``?fill=1&seeded=1``, which joins the probe again under its id."""
+    ``?fill=1&seeded=1``, which joins the probe again under its id.
+    ``?wrap=x`` puts the probe in a wrapper with ``overflow-x: hidden``, which
+    computes ``overflow-y: auto`` though the window scrolls it; ``?wrap=y`` sets
+    ``overflow-y: auto`` itself. ``?boxed=1`` puts it in a box with a scrollbar of
+    its own, lower on the page, while the window stands still (#199)."""
     context = {
         "size": int(request.GET.get("size", 15)),
         "delay": float(request.GET.get("delay", 0)),
@@ -21,6 +25,8 @@ def index(request):
         "nest": bool(request.GET.get("nest")),
         "seeded": bool(request.GET.get("seeded")),
         "fill": bool(request.GET.get("fill")),
+        "wrap": request.GET.get("wrap", ""),
+        "boxed": bool(request.GET.get("boxed")),
     }
     return render(request, "streamprobe/page.html", context)
 
