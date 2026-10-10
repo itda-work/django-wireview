@@ -296,6 +296,24 @@ class CnHideable(CnTyping):
         await self.presence_leave()
 
 
+class CnPage(InlineTemplate, Component):
+    """A page that draws its producer without an id, as the README's ``{% component %}`` does."""
+
+    source: t.ClassVar[str] = '<section {% tag_header %}>{% component "CnTyping" name=this.name %}</section>'
+
+    name: str = ""
+
+
+class CnNamedPage(InlineTemplate, Component):
+    """The same page naming its producer."""
+
+    source: t.ClassVar[str] = (
+        '<section {% tag_header %}>{% component "CnTyping" id="a-named-typing" name=this.name %}</section>'
+    )
+
+    name: str = ""
+
+
 @pytest.fixture(autouse=True)
 def _calls():
     CALLS.clear()
@@ -545,6 +563,57 @@ async def test_a_tab_that_reconnects_replaces_what_a_lost_leave_left(monkeypatch
         monkeypatch.undo()
 
         back = await connect(CnTyping, "a-typing", tab=ANN_TAB, name="ann")
+        await render_containing(bob, "ann-online")
+        await back.disconnect()
+        await render_containing(bob, '"online-1"')
+    finally:
+        await bob.disconnect()
+
+
+async def join_page(communicator: WebsocketCommunicator, page: type[Component], children=None) -> str:
+    """Join ``page`` as its element carries it, then the producer it drew, as the bundle does; its id."""
+    signed = sign_state(page(user=AnonymousUser(), wire=WireviewMeta(params={}), id="a-page", name="ann"))
+    await communicator.send_json_to(
+        {"command": "join", "payload": {"name": page.__name__, "state": signed, "children": children or {}}}
+    )
+    while True:
+        message = await communicator.receive_json_from(timeout=5)
+        if message["command"] == "render" and message["payload"]["id"] == "a-page":
+            break
+    diff = message["payload"]["diff"]
+    statics = "".join(diff["s"])
+    producer_id = statics.split('" data-name="CnTyping"')[0].rsplit('id="', 1)[1]
+    at = next(i for i, part in enumerate(diff["s"]) if part.endswith('data-name="CnTyping" data-state="'))
+    await communicator.send_json_to(
+        {"command": "join", "payload": {"name": "CnTyping", "state": diff["d"][at], "children": {}}}
+    )
+    return producer_id
+
+
+@pytest.mark.parametrize("page", [CnPage, CnNamedPage], ids=["minted-id", "given-id"])
+async def test_a_tab_that_reconnects_replaces_what_its_drawn_producer_left(monkeypatch, page):
+    """The producer is drawn by the page's component; its process died without the leave (#202).
+
+    Without an id, the rejoin after the reconnect draws it under a new ``rx-``
+    id. Keyed by that id, the join made a second meta and the lost one stayed
+    on bob's list after the tab closed.
+    """
+    bob = await connect(CnOnline, "b-list", name="bob")
+    try:
+        lost = await open_socket(ANN_TAB)
+        first = await join_page(lost, page)
+        await render_containing(bob, "ann-online")
+
+        async def dies(self):
+            pass  # the process ends: leaving() never runs
+
+        monkeypatch.setattr(CnTyping, "leaving", dies)
+        await lost.disconnect()
+        monkeypatch.undo()
+
+        back = await open_socket(ANN_TAB)
+        again = await join_page(back, page)
+        assert (again == first) == (page is CnNamedPage)
         await render_containing(bob, "ann-online")
         await back.disconnect()
         await render_containing(bob, '"online-1"')

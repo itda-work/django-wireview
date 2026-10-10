@@ -180,12 +180,15 @@ class ComponentRepository:
         name: str,
         state: MessagePayload,
         drawer: Component | None = None,
+        id_given: bool | None = None,
     ) -> Component:
         """The instance under the state's id, built or reused.
 
         ``drawer`` is the component whose template pass draws it
         (``{% component %}``), and none for a join's root. A new instance takes
         up what the drawer's root carried for the id (``_take_restored``).
+        ``id_given`` is False when the caller minted the state's id
+        (``Component._build``).
         """
         if component_id := state.get("id"):
             if component := self.components.get(component_id):
@@ -224,6 +227,7 @@ class ComponentRepository:
             tab_id=self.tab_id,
             session=self.session,
             live_session=self.live_session,
+            id_given=id_given,
         )
         return self.register_component(component)
 

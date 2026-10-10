@@ -107,14 +107,20 @@ def _presence_tab(component: t.Any) -> str:
 
 
 def _presence_ref(component: t.Any) -> str:
-    """The key of a producer's meta: its tab and its component id (#202).
+    """The key of a producer's meta: its tab and its name on the page (#202).
 
     A meta per producer, as Phoenix keeps one per ``track``: a page with two
     producers that hides one (``presence_leave()``) still has the other's
-    meta, so its user stays listed. The tab and the id stay the same across a
+    meta, so its user stays listed. The tab and the name stay the same across a
     reconnect, so the join after it replaces what the producer said before.
+
+    The name is the id the template or the page gave. A minted one is new on
+    every pass that draws the component (an id-less ``{% component %}`` in
+    another's template), so such a producer is named by its class: two of one
+    class without ids on one tab share a meta.
     """
-    return _digest(f"producer\0{_presence_tab(component)}\0{component.id}")
+    name = component.id if component.wire.id_given else f"class\0{type(component)._fqn}"
+    return _digest(f"producer\0{_presence_tab(component)}\0{name}")
 
 
 def _presence_connection(component: t.Any) -> str:

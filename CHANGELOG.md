@@ -22,13 +22,15 @@ The django-reactor era changelog (2.x) is preserved in
 - Presence keeps a meta per producer under each user, as Phoenix Presence keeps one per `track`, so a user
   with two tabs open stays on the others' lists until the last tab leaves (#202). A producer's meta is keyed
   by its tab and its component id, so a page that hides one of its two producers (`presence_leave()`) stays
-  listed while the other is joined. The user was the key: closing one tab
+  listed while the other is joined. A producer drawn without an id is keyed by its class instead: the id
+  minted for it is new on every pass that draws it, a reconnect's too. Two id-less producers of one class on a
+  page share a meta. The user was the key: closing one tab
   removed them while the other was still open, and one tab's typing state overwrote the other's. The list
   `presence_users` still has one entry per user, merged from their tabs: typing if any tab types, otherwise
   online, with the name and metadata heard from last. A page names its load in the socket URL (`tab`) and
   keeps that name across reconnects; join, leave, typing and the sync answer carry `presence_ref`, a digest
   of that name under the signed-in user (a page cannot speak for another user's tab) and of the producer's
-  id, and `presence_conn`,
+  id (its class when it was drawn without one), and `presence_conn`,
   the connection that sent them. So when a process ends without its `leaving()` (daphne, Granian, a crash),
   the tab's join after it reconnects replaces what the dead process left, and its leave removes it; a late
   leave from the socket a tab reconnected away from is dropped. A tab whose old and new sockets both

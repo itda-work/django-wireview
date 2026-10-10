@@ -455,21 +455,29 @@ class Component(BaseModel):
         tab_id: str = "",
         session: SessionView | None = None,
         live_session: "LiveSession | None" = None,
+        id_given: bool | None = None,
     ) -> "Component":
-        """Build a component instance from state."""
+        """Build a component instance from state.
+
+        ``id_given`` says whether the state's id is one the template or the
+        page gave; left out, any id in the state is. A caller that put a
+        minted id there says False.
+        """
         component_class = cls._resolve(_component_name)
 
+        wire = WireviewMeta(
+            params=params,
+            channel_name=channel_name,
+            channel_layer=channel_layer,
+            connection_id=connection_id,
+            tab_id=tab_id,
+            live_session=live_session,
+        )
+        wire.id_given = bool(state.get("id")) if id_given is None else id_given
         instance = component_class.new(
             user=user or AnonymousUser(),
             session=session if session is not None else SessionView(),
-            wire=WireviewMeta(
-                params=params,
-                channel_name=channel_name,
-                channel_layer=channel_layer,
-                connection_id=connection_id,
-                tab_id=tab_id,
-                live_session=live_session,
-            ),
+            wire=wire,
             **state,
         )
         return instance

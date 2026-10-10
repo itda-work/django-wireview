@@ -429,13 +429,15 @@ def _build_and_render_component(
     """Helper function to build and render a component."""
     repo = _page_repository(context)
 
-    if "id" not in kwargs and (sticky_id := _default_sticky_id(component_name, repo)):
+    # The template named it, or the framework mints its id: the sticky default here, ``rx-`` otherwise
+    id_given = "id" in kwargs
+    if not id_given and (sticky_id := _default_sticky_id(component_name, repo)):
         kwargs = {**kwargs, "id": sticky_id}
     # In a function component's template the drawer is the one that drew the function
     drawer = context.get("this")
     if drawer is None:
         drawer = context.get(FUNCTION_DRAWER)
-    component_instance = repo.build(component_name, state=kwargs, drawer=drawer)
+    component_instance = repo.build(component_name, state=kwargs, drawer=drawer, id_given=id_given)
     if repo.is_live:
         # A pass with no fill forgets the last one: the next fill has nothing to line up with
         fills = component_instance.wire.fills

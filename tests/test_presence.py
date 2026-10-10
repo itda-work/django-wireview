@@ -1029,15 +1029,17 @@ class TestPresenceTabs:
     """
 
     @staticmethod
-    def ref(tab: str = "", connection: str = "conn", user=None, id: str = "producer", key=None) -> str:
-        """A producer's ref (or, with ``key``, another key of it)."""
+    def ref(
+        tab: str = "", connection: str = "conn", user=None, id: str = "producer", key=None, id_given: bool = True
+    ) -> str:
+        """A producer's ref (or, with ``key``, another key of it); ``id_given=False`` is an id the framework minted."""
         from django.contrib.auth.models import AnonymousUser
 
         from wireview.core.meta import WireviewMeta
 
-        component = XProducerComponent(
-            id=id, user=user or AnonymousUser(), wire=WireviewMeta(params={}, connection_id=connection, tab_id=tab)
-        )
+        wire = WireviewMeta(params={}, connection_id=connection, tab_id=tab)
+        wire.id_given = id_given
+        component = XProducerComponent(id=id, user=user or AnonymousUser(), wire=wire)
         return (key or presence._presence_ref)(component)
 
     @pytest.mark.unit
@@ -1056,6 +1058,14 @@ class TestPresenceTabs:
         tab_key = presence._presence_tab
         assert self.ref(tab, id="composer", key=tab_key) == self.ref(tab, id="sidebar", key=tab_key)
         assert self.ref(tab, id="composer", key=tab_key) != self.ref(tab, id="composer")
+
+    @pytest.mark.unit
+    def test_a_producer_whose_id_was_minted_is_named_by_its_class(self):
+        """An id-less ``{% component %}`` gets a new ``rx-`` id on every pass that draws it, a reconnect's too."""
+        tab = "abcdefghijklmnopqrstuv"
+        assert self.ref(tab, "conn-1", id="rx-1", id_given=False) == self.ref(tab, "conn-2", id="rx-2", id_given=False)
+        assert self.ref(tab, id="rx-1", id_given=False) != self.ref(tab, id="rx-1")
+        assert self.ref(tab, id="rx-1", id_given=False) != self.ref("vutsrqponmlkjihgfedcba", id="rx-1", id_given=False)
 
     @pytest.mark.unit
     def test_without_a_tab_the_connection_is_the_key(self):

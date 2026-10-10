@@ -950,6 +950,7 @@ async def _mount(
     # from the other.
     param_map = dict(params or {})
     wire = MockWireviewMeta(params=param_map, live_session=policy)
+    wire.id_given = bool(fields.get("id"))
     repo = MockRepository(user=user, params=param_map, session=session_view, live_session=policy)
 
     # Through new(), as a page builds it: the tutorials override new() to read
