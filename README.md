@@ -716,9 +716,12 @@ class OnlineUsers(PresenceTrackerMixin, Component):
 | `presence_users` | 모든 추적된 사용자 목록 |
 | `presence_online_count` | 온라인 사용자 수 |
 | `presence_typing_users` | 현재 타이핑 중인 사용자 목록 |
+| `presence_users_in(topic)` | 토픽 하나의 사용자 목록 (트래커가 토픽 여럿을 구독할 때) |
 
-같은 사용자가 탭을 여럿 열면 탭(연결)마다 기록하고 목록에는 한 번만 나온다. 마지막 탭이 떠날 때 빠지고, 한 탭이라도
-입력 중이면 입력 중이다([탭이 여럿인 사용자](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/07-presence-api.md#탭이-여럿인-사용자)).
+같은 사용자가 탭을 여럿 열면 탭마다 기록하고 목록에는 한 번만 나온다. 마지막 탭이 떠날 때 빠지고, 한 탭이라도
+입력 중이면 입력 중이다. 다른 사람의 목록에 오르게 하는 것은 프로듀서(`ChatInput`)다 — 입장해 있는 동안 나중에
+들어온 트래커의 sync 요청에 답한다. 트래커만 있는 페이지는 다른 사람의 목록에 오르지 않는다
+([탭이 여럿인 사용자](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/07-presence-api.md#탭이-여럿인-사용자)).
 
 ### Presence 설정
 

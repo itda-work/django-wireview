@@ -107,6 +107,13 @@ class CnOnline(InlineTemplate, PresenceTrackerMixin, Component):
         await self.presence_track_self(username=self.name)
 
 
+class CnFragileOnline(CnOnline):
+    """A list of the room whose handler raises: the session drops it, and the page joins it again."""
+
+    async def boom(self):
+        raise RuntimeError("boom")
+
+
 class CnTab(InlineTemplate, PresenceMixin, PresenceTrackerMixin, Component):
     """A tab of the room: it types and lists who is here, on one connection (#202)."""
 
@@ -179,15 +186,26 @@ def _calls():
     CALLS.clear()
 
 
-async def connect(component: type[Component], id: str, **state) -> WebsocketCommunicator:
-    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), "/__wireview__?vsn=99")
+async def open_socket(tab: str = "") -> WebsocketCommunicator:
+    """A socket, as a page opens it; ``tab`` names the page load, as the bundle does (#202)."""
+    path = "/__wireview__?vsn=99" + (f"&tab={tab}" if tab else "")
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), path)
     communicator.scope["user"] = AnonymousUser()
     connected, _ = await communicator.connect()
     assert connected
+    return communicator
+
+
+async def join(communicator: WebsocketCommunicator, component: type[Component], id: str, **state) -> None:
     signed = sign_state(component(user=AnonymousUser(), wire=WireviewMeta(params={}), id=id, **state))
     await communicator.send_json_to(
         {"command": "join", "payload": {"name": component.__name__, "state": signed, "children": {}}}
     )
+
+
+async def connect(component: type[Component], id: str, *, tab: str = "", **state) -> WebsocketCommunicator:
+    communicator = await open_socket(tab)
+    await join(communicator, component, id, **state)
     await render_containing(communicator, "")
     return communicator
 
@@ -319,6 +337,124 @@ async def test_a_connection_that_only_tracks_is_not_listed_by_others():
         await render_containing(carol, "[ann:online carol:online]")
     finally:
         for communicator in (bob, ann, *([carol] if carol else [])):
+            await communicator.disconnect()
+
+
+@pytest.mark.parametrize("producer_first", [True, False], ids=["producer-first", "tracker-first"])
+async def test_a_page_whose_producer_and_tracker_are_apart_is_listed_by_a_later_observer(producer_first):
+    """The producer answers the sync, whichever of the page's roots joined first (#202).
+
+    A tracker that answered for its page once its producer's join came back
+    never heard that join when the producer was a root joined before it.
+    """
+    ann = await open_socket()
+    bob = None
+    try:
+        roots = [(CnTyping, "a-typing"), (CnOnline, "a-list")]
+        for component, id in roots if producer_first else roots[::-1]:
+            await join(ann, component, id, name="ann")
+        await render_containing(ann, "ann-online")
+        bob = await connect(CnOnline, "b-list", name="bob")
+        await render_containing(bob, "ann-online")
+    finally:
+        for communicator in (ann, *([bob] if bob else [])):
+            await communicator.disconnect()
+
+
+async def test_a_tracker_joined_again_after_it_raised_hears_who_is_here_and_its_page_stays_listed():
+    """A tracker made after the page's producer joined: the producer still answers for the page (#202)."""
+    carol = await connect(CnTyping, "c-typing", name="carol")
+    ann = await open_socket()
+    bob = None
+    try:
+        await join(ann, CnTyping, "a-typing", name="ann")
+        await join(ann, CnFragileOnline, "a-list", name="ann")
+        await render_containing(ann, "carol-online")
+        await event(ann, "a-list", "boom")
+        error = await ann.receive_json_from(timeout=5)
+        while error["command"] != "error":
+            error = await ann.receive_json_from(timeout=5)
+        assert error["payload"]["id"] == "a-list"
+        # The page joins it again, with the state its element carries
+        await join(ann, CnFragileOnline, "a-list", name="ann")
+        await render_containing(ann, "carol-online")
+        bob = await connect(CnOnline, "b-list", name="bob")
+        await render_containing(bob, "ann-online")
+    finally:
+        for communicator in (carol, ann, *([bob] if bob else [])):
+            await communicator.disconnect()
+
+
+async def test_a_sticky_producer_answers_for_the_page_it_moved_to():
+    """A boosted navigation keeps the producer and joins the next page's tracker (#202)."""
+    carol = await connect(CnTyping, "c-typing", name="carol")
+    ann = await open_socket()
+    bob = None
+    try:
+        await join(ann, CnTyping, "a-typing", name="ann")
+        await join(ann, CnOnline, "a-list-1", name="ann")
+        await render_containing(ann, "carol-online")
+        # The navigation: the old page's list leaves, the producer is carried, the next page's list joins
+        await ann.send_json_to({"command": "leave", "payload": {"id": "a-list-1"}})
+        await ann.send_json_to(
+            {"command": "navigated", "payload": {"params": {}, "uri": "/next/", "carried": ["a-typing"]}}
+        )
+        await join(ann, CnOnline, "a-list-2", name="ann")
+        await render_containing(ann, "carol-online")
+        bob = await connect(CnOnline, "b-list", name="bob")
+        await render_containing(bob, "ann-online")
+    finally:
+        for communicator in (carol, ann, *([bob] if bob else [])):
+            await communicator.disconnect()
+
+
+ANN_TAB = "ann-first-page-load"
+
+
+async def test_a_tab_that_reconnects_replaces_what_a_lost_leave_left(monkeypatch):
+    """The socket's process died without the leave; the tab came back on a new socket, then closed (#202).
+
+    The page names its load in the socket URL and keeps it across reconnects,
+    so the second join replaces the first one's meta and its leave removes it.
+    """
+    bob = await connect(CnOnline, "b-list", name="bob")
+    try:
+        lost = await connect(CnTyping, "a-typing", tab=ANN_TAB, name="ann")
+        await render_containing(bob, "ann-online")
+
+        async def dies(self):
+            pass  # the process ends: leaving() never runs
+
+        monkeypatch.setattr(CnTyping, "leaving", dies)
+        await lost.disconnect()
+        monkeypatch.undo()
+
+        back = await connect(CnTyping, "a-typing", tab=ANN_TAB, name="ann")
+        await render_containing(bob, "ann-online")
+        await back.disconnect()
+        await render_containing(bob, '"online-1"')
+    finally:
+        await bob.disconnect()
+
+
+async def test_a_late_leave_from_the_socket_a_tab_left_keeps_it_listed():
+    """The tab reconnected while the server still held its old socket; that one's leave comes after (#202)."""
+    bob = await connect(CnOnline, "b-list", name="bob")
+    old = await connect(CnTyping, "a-typing", tab=ANN_TAB, name="ann")
+    new = None
+    try:
+        await render_containing(bob, "ann-online")
+        new = await connect(CnTyping, "a-typing", tab=ANN_TAB, name="ann")
+        await old.disconnect()
+        # A render after the old socket's leave: carol arrives
+        carol = await connect(CnTyping, "c-typing", name="carol")
+        # bob, ann and carol: had the old socket's leave removed ann, two
+        assert '"online-3"' in await render_containing(bob, "carol-online")
+        await carol.disconnect()
+        await new.disconnect()
+        await render_containing(bob, '"online-1"')
+    finally:
+        for communicator in (bob, old, *([new] if new else [])):
             await communicator.disconnect()
 
 

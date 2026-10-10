@@ -452,6 +452,7 @@ class Component(BaseModel):
         channel_name: str | None = None,
         channel_layer=None,
         connection_id: str | None = None,
+        tab_id: str = "",
         session: SessionView | None = None,
         live_session: "LiveSession | None" = None,
     ) -> "Component":
@@ -466,6 +467,7 @@ class Component(BaseModel):
                 channel_name=channel_name,
                 channel_layer=channel_layer,
                 connection_id=connection_id,
+                tab_id=tab_id,
                 live_session=live_session,
             ),
             **state,

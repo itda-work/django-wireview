@@ -1,5 +1,7 @@
 """Tests for Chat app components."""
 
+import threading
+
 import pytest
 from playwright.sync_api import expect
 from testproj.e2e_browser import expect_text, open_live
@@ -82,7 +84,18 @@ class TestOnlineUsers:
     def room(self, transactional_db):
         return Room.objects.create(name="lobby")
 
-    def test_closing_one_of_two_tabs_keeps_the_user_listed(self, page, wireview_server, room):
+    def test_closing_one_of_two_tabs_keeps_the_user_listed(self, page, wireview_server, room, monkeypatch):
+        # Closing a tab shows nothing on bob's page when the fix holds; the server
+        # says when the tab's leave went out, so carol comes after it
+        left = threading.Event()
+        leaving = XChatRoom.leaving
+
+        async def leaving_and_tell(self):
+            await leaving(self)
+            left.set()
+
+        monkeypatch.setattr(XChatRoom, "leaving", leaving_and_tell)
+
         def open_tab(username):
             tab = page if username == "bob" else page.context.new_page()
             open_live(
@@ -102,7 +115,14 @@ class TestOnlineUsers:
         expect(listed(bob)).to_have_text(["bob", "ann"])
 
         ann_tabs[0].close()
-        # carol's arrival renders bob's list after the closed tab's leave
+        assert left.wait(timeout=10), "the closed tab never left"
+        # bob's typing renders his list after that leave: his connection hears it first.
+        # Not another arrival: ann's remaining tab answers its sync, and every list
+        # on the topic hears that answer, so it would put back what the leave took.
+        bob.locator("input[name=content]").press_sequentially("hi")
+        expect(bob.locator(".online-users li", has_text="typing...")).to_have_count(1)
+        expect(listed(bob)).to_have_text(["bob", "ann"])
+
         carol = open_tab("carol")
         expect_text(heading, "Online Users (3)")
         expect(listed(bob)).to_have_text(["bob", "ann", "carol"])

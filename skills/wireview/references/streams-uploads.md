@@ -100,9 +100,11 @@ class ChatInput(PresenceMixin, Component):
         await self.presence_set_typing(True)      # 서버가 타임아웃으로 자동 해제한다
 ```
 
-Presence는 연결(탭)마다 기록하고 목록은 사용자마다 하나로 합친다 — 마지막 탭이 떠날 때 빠지고, 한 탭이라도
-입력 중이면 입력 중이다. 트래커만 있는 페이지는 다른 사람의 목록에 오르지 않으므로, 보는 사람도 올리려면 같은
-페이지에 `presence_join()`을 부르는 컴포넌트를 둔다.
+Presence는 브라우저 탭마다 기록하고 목록은 사용자마다 하나로 합친다 — 마지막 탭이 떠날 때 빠지고, 한 탭이라도
+입력 중이면 입력 중이다. 다른 사람의 목록에 올리는 것은 프로듀서(`presence_join()`)다: 입장해 있는 동안 나중에 온
+트래커의 sync 요청에 답하므로, 트래커와 같은 페이지에 있기만 하면 순서와 상관없이 오른다. 트래커만 있는 페이지는
+다른 사람의 목록에 오르지 않는다. 프로듀서가 `notification()`을 오버라이드하면 presence 메시지는 `super()`로 넘긴다.
+트래커 하나가 토픽 여럿을 구독하면 `presence_users_in(topic)`으로 토픽마다 꺼낸다.
 
 상세: https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/07-presence-api.md
 

@@ -71,6 +71,7 @@ class ComponentRepository:
         channel_layer: BaseChannelLayer | None = None,
         session: t.Any = None,
         connection_id: str | None = None,
+        tab_id: str = "",
         live_session: "LiveSession | None" = None,
         vsn: int = 0,
     ):
@@ -89,6 +90,9 @@ class ComponentRepository:
         # Handed to every component's WireviewMeta so upload artefacts can be
         # scoped to the connection that owns them (#77).
         self.connection_id = connection_id
+        # The page load the client named in its socket URL, kept across its
+        # reconnects; empty when it named none (#202)
+        self.tab_id = tab_id
         # The page boundary every component built here belongs to (#58). A page
         # has one: the view decorator sets it on the HTTP side, and on a socket
         # the first join's envelope names it and later joins have to agree.
@@ -216,6 +220,7 @@ class ComponentRepository:
             channel_name=self.channel_name,
             channel_layer=self.channel_layer,
             connection_id=self.connection_id,
+            tab_id=self.tab_id,
             session=self.session,
             live_session=self.live_session,
         )
@@ -311,6 +316,7 @@ class ComponentRepository:
                 channel_name=self.channel_name,
                 channel_layer=self.channel_layer,
                 connection_id=self.connection_id,
+                tab_id=self.tab_id,
                 session=self.session,
                 live_session=self.live_session,
             ),

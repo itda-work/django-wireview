@@ -21,7 +21,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | (4) fan-out | `{"type": <아래 표>, "channel": str, ...}` | `Broker.publish` → 컨슈머의 `type` 핸들러 |
 | (4) fan-out: 패치 | `{"type": "wireview.patch", "target": str, "topic": str, "frames": [[str, str], ...]}` | `Broker.publish_patch` → 프로세스마다 `PatchHub` → 세션의 `_take_patch` → 연결별 큐 → `Outbound.send_text` (5절, #178) |
 
-브라우저는 `/__wireview__?vsn=<n>`으로 연결한다. `vsn`은 클라이언트가 적용할 수 있는 형태의 버전이고(`PROTOCOL_VERSION`, 번호별 내용은 7절의 표), 서버는 그보다 새 형태를 보내지 않는다. 없거나 잘못된 값(정수 아님, 음수, 여러 번)은 0으로 읽는다. 규칙은 7절에 있다.
+브라우저는 `/__wireview__?vsn=<n>`으로 연결한다. `vsn`은 클라이언트가 적용할 수 있는 형태의 버전이고(`PROTOCOL_VERSION`, 번호별 내용은 7절의 표), 서버는 그보다 새 형태를 보내지 않는다. 없거나 잘못된 값(정수 아님, 음수, 여러 번)은 0으로 읽는다. 규칙은 7절에 있다. `tab`은 페이지 로드의 이름이다(`tab.mjs`의 `newTab`: 16바이트 난수의 URL-safe base64). 페이지는 재연결마다 같은 값을 보내고, 서버는 `socket_tab`으로 읽어(`[A-Za-z0-9_-]{16,64}` 하나가 아니면 없는 것으로) `WireviewMeta.tab_id`에 둔다. 클라이언트가 고른 값이므로 그 자체로는 아무것도 인가하지 않는다 — presence가 로그인한 사용자 아래에서 요약해 탭을 가를 때만 쓴다(#202).
 
 세션 식별자는 Channels에서 `channel_name`이다. 토픽은 채널 레이어 그룹 이름이다. 다른 연결 계층은 `Outbound`와 `Broker` 두 인터페이스만 구현하면 된다.
 
@@ -146,6 +146,7 @@ daphne 모두 `websocket.send` 하나를 프레임 하나로 transport에 한 �
 | 인증 토픽 구독 | `WireviewSession._auth_topic` | 토픽 이름. 경계 안에서만 생긴다 |
 | 세션 재확인 여부 | `WireviewSession._auth_revalidated` | bool. **거절된 연결이 다시 물어 통과하지 못하게 하는 값이다** |
 | 업로드 인스턴스 번호 | `WireviewMeta.instance`, `WireviewMeta.instance_announced` | 정수와 bool. 컴포넌트와 함께 옮긴다. **새 인스턴스는** 번호를 무작위로 뽑으므로, 다른 프로세스에서 만들어져도 옛 번호와 겹치지 않는다 — 프로세스마다 처음부터 세는 카운터였다면 겹쳐서, 옛 인스턴스가 늦게 보낸 `config`를 페이지가 새 인스턴스의 것으로 받는다(#141). **옮긴 인스턴스는** 번호와 `instance_announced`를 둘 다 그대로 옮긴다. 번호를 새로 뽑으면 같은 인스턴스가 새 인스턴스로 취급된다 — 다음 render가 새 번호를 알리면 페이지가 그 id의 업로드 manager를 버려 진행 중인 업로드가 끝나고, 옛 번호로 오는 `config`(옮기기 전에 시작한 태스크가 보낸 것)는 세션이 버린다. 새로 뽑으면서 `instance_announced`를 `True`로 두면 페이지가 새 번호를 끝내 알지 못해 이후 `config`를 전부 버린다 |
+| 페이지 로드 이름 | `ComponentRepository.tab_id`, `WireviewMeta.tab_id` | 문자열. connect 때 소켓 URL의 `tab`에서 읽는다. 빈 값으로 복원하면 presence가 그 연결을 탭으로 셈할 뿐이다(재연결이 남은 항목을 덮지 못한다, #202) |
 | 프로토콜 버전 | `ComponentRepository.vsn` | 정수. connect 때 소켓 URL에서 읽고, 페이지 쿼리스트링(`query_string`)과는 섞지 않는다. 0으로 복원하면 옛 형태만 보낼 뿐이라 안전하다 |
 
 아래 넷은 #58이 더했고 **외부화 목록의 일부다**. 세션을 프로세스 밖으로 옮기면서 이것을 빠뜨리면
@@ -173,6 +174,7 @@ daphne 모두 `websocket.send` 하나를 프레임 하나로 transport에 한 �
 
 구버전이 섞이면: 옛 클라이언트와 새 서버는 옛 클라이언트가 `vsn`을 보내지 않으므로 지금까지와 바이트까지 같은 메시지를 받는다. 새 클라이언트와 옛 서버는 옛 서버가 `vsn`을 읽지 않고 옛 형태만 보내며, 새 클라이언트는 그것을 그대로 읽는다. 버전 신호가 없었다면 옛 클라이언트는 `{"k"}`를 모르는 값으로 슬롯에 넣고 `[object Object]`를 그렸을 것이다 — 롤링 배포 중 옛 JS로 열린 페이지가 새 서버에 재연결하는 흔한 경우다.
 
+- 2026-10-10: 소켓 URL에 `tab`(페이지 로드의 이름, 재연결마다 같다)이 더해졌다(#202). 클라이언트가 보내는 값이고 옛 서버는 `vsn` 말고는 쿼리를 읽지 않으므로 `vsn`을 올리지 않는다. 혼합: 옛 번들은 보내지 않고, 새 서버는 그 페이지의 presence를 연결 단위로 셈한다.
 - 2026-10-07: `vsn` 8. outbound `rejoin`(#180). 같은 날 릴리스 전에 inbound `sync`·outbound `synced`와 세션 메일 `template_changed`가 더해졌다 — 처리 중인 이벤트의 render보다 `rejoin`이 앞서 그 이벤트가 바꾼 상태를 되돌렸다. 개발 서버에서 템플릿이 바뀌면 열린 페이지가 컴포넌트를 다시 join한다. `error`(`during: "event"`)도 같은 다시 join을 일으키지만 `wireview:error`를 내므로 쓰지 않았다 — 앱이 그 이벤트로 오류 알림을 띄운다. 혼합: 옛 번들(`vsn` 7 이하)은 받지 않는다. 새 번들과 옛 서버에서는 오지 않을 뿐이다.
 - 2026-10-03: `vsn` 7. boost 이동의 params는 새 페이지가 화면에 놓인 뒤 `navigated`로 간다(#170). 같은 날, 릴리스 전에 `carried`가 더해졌다 — sticky 루트만 알리던 판정이 그 안에 그린 컴포넌트를 빠뜨렸다. 전에는 가져온 응답이 경계 검사를 통과하자마자, morph 전에 `params_changed`로 보내 옛 페이지의 컴포넌트가 목적지의 params를 들었다. 혼합: 옛 번들은 전처럼 morph 전에 `params_changed`를 보내고 새 서버는 전처럼 받는다. 새 번들과 옛 서버(`vsn` 6 이하를 알림)에서는 같은 자리(leave 뒤, join 앞)에서 `params_changed`를 보낸다 — 떠난 컴포넌트는 듣지 않고, 같은 id로 다시 join할 컴포넌트는 옛 서버에서 여전히 듣는다. 같은 날 join의 `params_changed`가 첫 render 앞으로 왔고, LiveComponent도 처음 그려질 때 `joined()` 뒤에 `params_changed`를 받는다. 메시지 형태는 그대로다.
 - 2026-10-01: `id` 없는 `upload_op`를 클라이언트가 `ref`로 소유 컴포넌트에 보낸다. 형태는 그대로라 `vsn`을 올리지 않는다. 옛 번들에서는 같은 이름의 업로드를 가진 두 컴포넌트 중 뒤의 것의 업로드가 이전처럼 올라가지 않는다.

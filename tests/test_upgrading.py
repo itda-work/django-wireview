@@ -109,9 +109,17 @@ def test_every_row_reads_every_section_from_its_own_up():
 # both silent. An entry with neither fails here, so each new one is a decision. The next
 # release moves this table to its own entries and section.
 UPGRADE_NOTE = {
-    "Presence keeps a meta per connection under each user": (
-        "Presence는 연결마다 기록한다",
+    "Presence keeps a meta per browser tab under each user": (
+        "Presence는 탭마다 기록한다",
         "롤링 배포 중에는",
+    ),
+    "A presence producer answers the sync requests": (
+        "다른 사람의 목록에 올리는 것은 프로듀서다",
+        "`super().notification(channel, **kwargs)`로 넘긴다",
+    ),
+    "A presence tracker that subscribes to several topics keeps each topic's metas apart": (
+        "토픽 여럿을 듣는 트래커는 토픽마다 기록한다",
+        "`presence_users_in(topic)`",
     ),
 }
 

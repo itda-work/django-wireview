@@ -14,19 +14,31 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
-- Presence keeps a meta per connection under each user, as Phoenix Presence does, so a user with two tabs
+- Presence keeps a meta per browser tab under each user, as Phoenix Presence does, so a user with two tabs
   open stays on the others' lists until the last tab leaves (#202). The user was the key: closing one tab
   removed them while the other was still open, and one tab's typing state overwrote the other's. The list
-  `presence_users` still has one entry per user, merged from their connections: typing if any connection
-  types, otherwise online, with the name and metadata heard from last. Join, leave, typing and the sync
-  answer carry the connection in a new `presence_ref` (a digest of the connection, not its id), and a sync
-  request in `requester_ref`; a message without it, from a process before this release, stands for one
-  connection per user, as that process tracks it. A sync answer now fills only a connection not heard from
-  yet: a tab that typed while the request waited in its queue answered with its state from before, and the
-  answer replaced the newer one. And a tracker answers a sync request only once its connection's producer
-  has announced the connection: a page with a tracker alone never says it joined or left, so answering put
-  it on the lists of those who came later and nothing took it off. `presence_track_self()` keeps the
-  connection's entry when its producer's join came first, instead of replacing its name and metadata.
+  `presence_users` still has one entry per user, merged from their tabs: typing if any tab types, otherwise
+  online, with the name and metadata heard from last. A page names its load in the socket URL (`tab`) and
+  keeps that name across reconnects; join, leave, typing and the sync answer carry `presence_ref`, a digest
+  of that name under the signed-in user (a page cannot speak for another user's tab), and `presence_conn`,
+  the connection that sent them. So when a process ends without its `leaving()` (daphne, Granian, a crash),
+  the tab's join after it reconnects replaces what the dead process left, and its leave removes it; a late
+  leave from the socket a tab reconnected away from is dropped. A page from an older bundle is keyed by its
+  connection. A message without `presence_ref`, from a process before this release, stands for one tab per
+  user, as that process tracks it. A sync answer now fills only a tab not heard from yet: a tab that typed
+  while the request waited in its queue answered with its state from before, and the answer replaced the
+  newer one. `presence_track_self()` keeps the tab's entry when its producer's join came first, instead of
+  replacing its name and metadata.
+- A presence producer answers the sync requests of trackers that join later, as Phoenix's `track` does
+  (#202). A tracker answered for its page, so a page with a tracker alone, which never says it joined or
+  left, went on the lists of those who came later and nothing took it off; and once a tracker answered only
+  after hearing its page's join, a tracker joined after its producer (a sibling root, one joined again after
+  an exception, the next page of a sticky producer) never answered. The producer listens on its presence
+  channel whatever its `get_subscriptions()` returns, renders nothing for what it hears there, and answers
+  between `presence_join()` and `presence_leave()`.
+- A presence tracker that subscribes to several topics keeps each topic's metas apart (#202): leaving one
+  room removed the user though they were still in another, and the tracker answered requests on every
+  topic. `presence_users` lists a user once across the topics; the new `presence_users_in(topic)` reads one.
 
 ## [1.5.1] - 2026-10-10
 

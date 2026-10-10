@@ -236,11 +236,12 @@ class WireviewSession:
         finally:
             self.handling -= 1
 
-    async def start(self, *, session: SessionView, vsn: int = 0) -> None:
+    async def start(self, *, session: SessionView, vsn: int = 0, tab: str = "") -> None:
         """Begin: a fresh repository for this connection, and the login it stands on.
 
         ``session`` is the Django session already read (off the event loop), and
-        ``vsn`` the protocol version the client named in its socket URL.
+        ``vsn`` the protocol version the client named in its socket URL, and
+        ``tab`` the page load it named there (``socket_tab``; empty from an older bundle).
         """
         self.subscriptions = set()
         self.query_string: str = ""
@@ -263,6 +264,7 @@ class WireviewSession:
             # handler would raise SynchronousOnlyOperation instead (#68).
             session=session,
             connection_id=self.connection_id,
+            tab_id=tab,
             # Read from the socket URL once and kept apart from the page's query
             # string, which navigation changes: moving between pages must not
             # change which diff forms this client can apply (GAP-030).
