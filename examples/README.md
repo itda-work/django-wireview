@@ -10,6 +10,7 @@
 | [search](./search/) | 디바운스한 입력, 주소에 남는 검색어, 키보드로 고르는 결과 | [Live Search](../docs/tutorials/12-live-search.md) |
 | [quiz](./quiz/) | 컴포넌트 상태로 굴리는 상태 머신 | [Quiz 앱](../docs/tutorials/13-quiz-app.md) |
 | [chat](./chat/) | Streams와 Presence | [Chat 앱](../docs/tutorials/04-chat-app.md) |
+| [chat_lv2](./chat_lv2/) | chat 2단계: 누가 말하는가를 서버가 정한다 (로그인 사용자, 방 멤버십, `live_session`) | [기능 문서](../docs/features/live-session.md) |
 | [dashboard](./dashboard/) | AsyncResult로 느린 조회를 미룬다 | [Dashboard](../docs/tutorials/05-dashboard.md) |
 | [notifications](./notifications/) | 알림은 한 사용자에게 간다. 저장하는 알림과 저장하지 않는 토스트 | [Notifications](../docs/tutorials/14-notifications.md) |
 | [livecomp](./livecomp/) | 연결을 공유하는 중첩 컴포넌트 | [LiveComponent](../docs/tutorials/15-live-components.md) |
@@ -38,7 +39,7 @@ WebSocket이 필요하므로 `runserver`가 아니라 daphne로 띄운다.
 ```bash
 make test                        # 예제 테스트까지 전부
 make test ARGS="-k quiz"         # 예제 하나
-make test-e2e LAYER=memory       # 브라우저 (todo, livecomp, hooks, notifications, search, bookmarks)
+make test-e2e LAYER=memory       # 브라우저 (todo, livecomp, hooks, notifications, search, chat_lv2, bookmarks)
 ```
 
 pytest를 직접 부를 때는 `-m "not e2e"`를 붙인다: `uv run pytest examples -m "not e2e"`.

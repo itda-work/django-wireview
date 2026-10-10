@@ -12,6 +12,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- `examples/chat_lv2`, the second step of the chat series: the author of a message is the signed-in user, a room is
+  read by its members only, and the room page sits inside a `live_session` whose hook checks the membership of each
+  component's own room on every join (#198).
+
 ## [1.5.1] - 2026-10-10
 
 ### Added

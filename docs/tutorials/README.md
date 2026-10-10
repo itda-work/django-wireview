@@ -68,6 +68,7 @@ django-wireview 단계별 학습 가이드입니다.
 |------|------|----------|
 | [todo](../../examples/todo/) | 모델 구독, 중첩 컴포넌트 | [Todo 앱](03-todo-app.md) |
 | [chat](../../examples/chat/) | Streams, Presence | [Chat 앱](04-chat-app.md) |
+| [chat_lv2](../../examples/chat_lv2/) | chat 2단계: 로그인 사용자, 방 멤버십, live_session 경계 | [기능 문서](../features/live-session.md) |
 | [dashboard](../../examples/dashboard/) | AsyncResult, 컴포지션 | [Dashboard](05-dashboard.md) |
 | [poll](../../examples/poll/) | skip_render, 조건부 클래스 | [Poll 앱](10-poll-app.md) |
 | [rating](../../examples/rating/) | URL 상태, 키보드 이벤트 | [Rating 앱](11-rating-app.md) |

@@ -30,3 +30,4 @@ make test ARGS="-k chat"
 
 - 튜토리얼: [docs/tutorials/04-chat-app.md](../../docs/tutorials/04-chat-app.md)
 - 핵심 파일: live.py · templates/chat/message_list_item.html (스트림 아이템)
+- 다음 단계: [chat_lv2](../chat_lv2/) — 로그인 사용자, 방 멤버십, `live_session` 경계

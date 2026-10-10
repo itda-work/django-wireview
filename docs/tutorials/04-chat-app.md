@@ -631,6 +631,10 @@ class XChatRoom(PresenceMixin, Component):
 
 Chat 앱을 통해 Streams API와 Presence API의 핵심 개념을 학습했습니다.
 
+이 앱은 이름을 브라우저에서 받으므로 누구나 남의 이름으로 말할 수 있습니다. 다음 레벨
+[examples/chat_lv2](../../examples/chat_lv2/)는 이름을 로그인 사용자에서만 읽고, 방 멤버만 방 페이지와 그 컴포넌트에
+닿게 합니다(`live_session` 경계와 `on_mount` 훅).
+
 다음 튜토리얼에서는 AsyncResult를 사용한 비동기 데이터 로딩과 복합 컴포지션을 배워봅니다.
 
 [← 이전: Quiz 앱](13-quiz-app.md) | [목차](README.md) | [다음: Dashboard →](05-dashboard.md)
