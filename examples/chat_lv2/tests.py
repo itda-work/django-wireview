@@ -17,7 +17,7 @@ from django.test import AsyncClient, Client
 from django.urls import reverse
 from playwright.sync_api import expect
 from testproj.asgi import application
-from testproj.e2e_browser import expect_count, expect_text, open_live, wait_live
+from testproj.e2e_browser import expect_count, expect_text, wait_live
 from testproj.e2e_server import serve
 
 from wireview import mount, telemetry
@@ -526,7 +526,19 @@ def _signed_in(browser, server: str, username: str):
 
 
 def _in_room(page, room_url: str) -> None:
-    open_live(page, room_url, '[data-name=Lv2ChatRoom][data-is-live="true"]')
+    """Go to the room and wait until its components have joined."""
+    page.goto(room_url)
+    _joined_room(page, room_url)
+
+
+def _joined_room(page, room_url: str) -> None:
+    """Wait for the room the page is going to -- by a click -- to be live. It does not go there itself.
+
+    A goto of its own after the click would race the click's navigation to the
+    same URL, and one of the two is aborted.
+    """
+    expect(page).to_have_url(room_url)
+    wait_live(page, '[data-name=Lv2ChatRoom][data-is-live="true"]')
     wait_live(page, '[data-name=Lv2MessageList][data-is-live="true"]')
     wait_live(page, '[data-name=Lv2OnlineUsers][data-is-live="true"]')
 
@@ -549,7 +561,7 @@ def test_two_members_see_each_others_messages_and_presence(browser, server):
     bob.goto(room_url)
     expect_count(bob.locator("[data-name=Lv2ChatRoom]"), 0)
     bob.locator('[data-room="tea"]').get_by_role("button", name="Join").click()
-    _in_room(bob, room_url)
+    _joined_room(bob, room_url)
     _in_room(alice, room_url)
 
     for page in (alice, bob):
