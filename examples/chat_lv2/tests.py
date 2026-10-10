@@ -12,6 +12,7 @@ from html.parser import HTMLParser
 import pytest
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.test import AsyncClient, Client
 from django.urls import reverse
 from testproj.asgi import application
@@ -20,6 +21,7 @@ from testproj.e2e_server import serve
 
 from wireview import mount
 
+from . import live
 from .live import Lv2ChatRoom, Lv2MessageList, Lv2OnlineUsers, membership_topic
 from .models import Membership, Message, Room
 
@@ -97,6 +99,23 @@ def test_joining_from_the_list_makes_a_member_and_leaving_ends_it(room, bob):
     client.post(reverse("chat_lv2:leave_room", args=[room.id]))
     assert not Membership.objects.filter(room=room, user=bob).exists()
     assert client.get(_room_url(room)).status_code == 302
+
+
+@pytest.mark.integration
+def test_the_list_tells_the_open_pages_once_the_leave_is_committed(room, bob, monkeypatch):
+    """A page told asks ``is_member`` on a connection of its own. Inside the view's
+    transaction (ATOMIC_REQUESTS) the delete is not visible to it yet."""
+    Membership.objects.create(room=room, user=bob)
+    told = []
+    monkeypatch.setattr(
+        live, "broadcast", lambda topic: told.append((topic, transaction.get_connection().in_atomic_block))
+    )
+    client = Client()
+    client.force_login(bob)
+
+    client.post(reverse("chat_lv2:leave_room", args=[room.id]))
+
+    assert told == [(membership_topic(room.id, bob.pk), False)]
 
 
 @pytest.mark.integration
@@ -209,7 +228,7 @@ async def test_a_member_who_left_cannot_join_with_the_page_they_kept(room, alice
     finally:
         await communicator.disconnect()
 
-    assert heard == [] or not any("members only" in text or "after the refusal" in text for text in heard), heard
+    assert not any("members only" in text or "after the refusal" in text for text in heard), heard
 
 
 @pytest.mark.integration
@@ -338,20 +357,20 @@ async def test_after_leaving_the_open_page_writes_nothing(room, alice):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_after_leaving_the_open_page_does_not_say_it_is_typing(room, alice):
-    """The typing indicator is the room's to see: the handler asks before it tells them."""
+@pytest.mark.parametrize("still_member", [True, False])
+async def test_after_leaving_the_open_page_does_not_say_it_is_typing(room, alice, still_member):
+    """The typing indicator is the room's to see: the handler asks before it tells them.
+
+    The membership ends with no notice, as when it is deleted some other way.
+    """
     view = await mount(Lv2ChatRoom, user=alice, room=room, live_session=BOUNDARY)
-
-    def typing():
-        return [b["kwargs"]["state"] for b in view.presence_broadcasts if b["kwargs"]["action"] == "presence_typing"]
-
-    await view.call("on_typing")
-    assert typing() == ["typing"]
-    await Membership.objects.filter(room=room, user=alice).adelete()
+    if not still_member:
+        await Membership.objects.filter(room=room, user=alice).adelete()
 
     await view.call("on_typing")
 
-    assert typing() == ["typing"]
+    typing = [b["kwargs"]["state"] for b in view.presence_broadcasts if b["kwargs"]["action"] == "presence_typing"]
+    assert typing == (["typing"] if still_member else [])
 
 
 @pytest.mark.unit
