@@ -21,7 +21,8 @@ The django-reactor era changelog (2.x) is preserved in
   cursor in the signed state, and an author edits or deletes their own messages on every open page of the room (#199).
 - `examples/chat_lv4`, the last step of the chat series: the room list shows each room's unread messages, counted in
   one query from a read cursor on the membership; a new message tells each other member on a topic of their own, and
-  an open page of the room reads it (#200).
+  an open page of the room reads it (#200). The root README's example table lists all fourteen examples, in the index's
+  words, and `tests/test_examples_index.py` keeps the tables and counts with `examples/`.
 - `stream_insert(..., update_only=True)`, on a component and on `Broadcast`: replace the item where a page shows it and
   insert nothing where it does not, as Phoenix LiveView's `update_only` (#199). Pages that loaded different parts of a
   list get the same Broadcast, and an edit of an item a page never loaded turned up at `at`, out of its place.

@@ -181,6 +181,8 @@ tests/
 │                          실제로 있는지, 개요의 숫자가 표를 센 값인지 본다(#110)
 │                          test_doc_links.py 는 추적되는 모든 .md 의 상대 링크가 파일에, 앵커가 그 파일의 제목에 닿는지 본다.
 │                          제목을 고치면 그 제목을 가리키던 링크가 이 테스트에서 실패한다
+│                          test_examples_index.py 는 examples/README.md 표가 예제 디렉터리 전부인지, 루트 README 표가 그 표와
+│                          같은 행인지, 세 문서(두 README·CLAUDE.md)의 "예제 앱 N개"가 디렉터리 수인지 본다
 │                          test_deployment_examples.py 는 docs/DEPLOYMENT.md 의 수신자·readiness 코드 블록을
 │                          꺼내 실제로 돌린다. 문서의 예시를 고치면 이 테스트가 본다
 │                          test_doc_examples.py 는 사용자 문서(README·features·tutorials·skills·examples)의 코드가
