@@ -79,12 +79,14 @@ dependencies = ["django-wireview>=1.5,<2"]
   - 배포가 섞인 동안 옛 프로세스에 붙은 페이지는 새 프로세스가 발행한 `update_only` 삽입을 보통 삽입으로 받아, 그 항목을
     불러오지 않은 목록의 `at` 자리에 넣을 수 있다. 옛 프로세스는 프레임에 붙은 최소 버전을 읽지 않는다. 배포가 끝난 뒤
     다시 join하면 바로잡힌다([wire-protocol §7](./implementation/wire-protocol.md#7-버전)).
-- **조용히 달라짐: 읽어 붙이는 삽입이 Broadcast 패치를 잡는다.** `stream_insert`와 `stream(..., reset=False)`는 이제
-  reset처럼 호출부터 그 삽입이 소켓에 쓰일 때까지 그 컴포넌트의 Broadcast 패치를 잡아 둔다(#199). 1.5에서는 그 사이에
-  발행된 delete가 삽입보다 먼저 쓰여 지운 항목이 되살아났다. 잡힌 패치는 핸들러의 렌더와 삽입 뒤에 나가므로 그만큼 늦다
-  (memory 레이어에서 1ms 미만). 읽은 목록을 붙인다면 `stream_insert`를 반복하지 말고 QuerySet을
-  `stream(..., reset=False)`에 넘긴다. 그래야 읽기까지 잡힌다
-  ([Broadcast — 순서와 유실](./features/broadcast.md#순서와-유실)).
+- **읽어 붙이는 목록은 QuerySet을 `stream(..., reset=False)`에 넘긴다.** 핸들러가 목록을 읽어 `stream_insert`를
+  반복하면, 읽는 동안 발행된 Broadcast delete나 `update_only` 수정이 먼저 쓰이고 뒤에 나가는 삽입이 그것을 되돌린다 —
+  지운 항목이 되살아난다(#199). 1.5와 같고, `stream_insert`는 1.6에서도 패치를 잡지 않는다. 1.6의
+  `stream(queryset, reset=False)`는 reset처럼 읽기 전부터 그 컴포넌트의 Broadcast 패치를 잡아 두고 삽입이 소켓에 쓰일 때
+  놓는다. 비용도 reset과 같다. 잡힌 패치는 `stream()`을 부른 핸들러(`joined()`·`notification()`·`handle_async` 포함)가
+  끝나고 그 연산이 쓰일 때 나가므로, 그 뒤에 오래 걸리는 일이 있으면 그만큼 늦는다. 그런 일은 `start_async`로 넘기거나
+  `stream()`을 핸들러 끝에 둔다. 그동안 잡힌 프레임이 1,000개(`QUEUE_LIMIT`)를 넘으면 연결이 닫히고(1013) 페이지가
+  다시 join한다([Broadcast — 순서와 유실](./features/broadcast.md#순서와-유실)).
 
 ## 1.4에서 1.5로
 

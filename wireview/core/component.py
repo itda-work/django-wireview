@@ -1371,12 +1371,17 @@ class Component(BaseModel):
         The operation goes out through the connection's channel, behind any
         Broadcast patch written meanwhile. A reset would wipe that patch, and an
         insert would undo it: a delete written first finds nothing and the insert
-        brings the item back, an ``update_only`` edit written first finds nothing
-        and the insert brings the item as it was. So the component's patches are
-        held from before ``read()`` reads its items until the operation is
-        written (#178, #199); the operation carries its hold's token, and lets it
-        go even when it is not sent to the page (``update_only`` to an older client).
+        brings the item back, an edit written first finds nothing and the insert
+        brings the item as it was. So the component's patches are held from
+        before ``read()`` reads its items until the operation is written (#178,
+        #199); the operation carries its hold's token.
+
+        The connection handles the operation's mail once the handler (or
+        ``joined()``, ``notification()``, the task) that called this returned:
+        the patches wait for all of it, and too many of them close the connection.
         """
+        import asyncio
+
         gate = self.wire.patch_gate
         token = None if gate is None else await gate.hold(self)
         # Once the send is tried the operation may be in the channel, even if the send raised
@@ -1385,7 +1390,16 @@ class Component(BaseModel):
             op = await read()
             if op is not None:
                 tried = True
-                await self.wire.send_stream_op(op, self.id, hold=token)
+                send = asyncio.ensure_future(self.wire.send_stream_op(op, self.id, hold=token))
+                try:
+                    await asyncio.shield(send)
+                except asyncio.CancelledError:
+                    # Cancelled on its way to a layer with a round trip (start_async
+                    # replacing the task): the mail still reaches the channel and
+                    # lets the token go there. Left half sent, the token would
+                    # stay and close the connection once the hold ran out
+                    await asyncio.wait({send})
+                    raise
         finally:
             if token is not None:
                 await gate.let_through(self, token, tried)  # type: ignore[union-attr]
@@ -1434,15 +1448,15 @@ class Component(BaseModel):
         template_name = template or self._get_stream_item_template()
         dom_id_fn = dom_id or (lambda i: f"{name}-{i.pk}")
 
-        async def read() -> StreamOp:
-            # Held as stream() is. The hold begins here, so what the handler read
-            # before the call is not covered: a page read and appended goes to
-            # stream(queryset, reset=False), which holds from before its read
-            html = await self._render_stream_item(template_name, item)
-            stream_item = StreamItem(dom_id=dom_id_fn(item), html=html)
-            return StreamOp(op="insert", stream=name, items=[stream_item], at=at, limit=limit, update_only=update_only)
+        html = await self._render_stream_item(template_name, item)
+        stream_item = StreamItem(dom_id=dom_id_fn(item), html=html)
 
-        await self._send_stream_read(read)
+        # Not held, unlike stream(): a hold taken here would not cover what the
+        # handler read before the call, and would keep this component's Broadcast
+        # patches back until the handler returns. A page read and appended goes
+        # to stream(queryset, reset=False), which holds from before its read (#199)
+        op = StreamOp(op="insert", stream=name, items=[stream_item], at=at, limit=limit, update_only=update_only)
+        await self.wire.send_stream_op(op, self.id)
 
     async def stream_delete(self, name: str, dom_id: str | int) -> None:
         """

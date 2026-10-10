@@ -193,6 +193,10 @@ class BcRefreshing(BcFeed):
         await self.stream("items", posts())
 
 
+# What a test hands the server's handlers to wait on: a fresh asyncio.Event per test
+WAIT: dict[str, asyncio.Event] = {}
+
+
 class BcAppending(BcFeed):
     """Appends a page it reads, and an item of it is deleted or edited while it reads (#199).
 
@@ -205,7 +209,7 @@ class BcAppending(BcFeed):
     class Meta:
         subscriptions = {"bc-append"}
 
-    async def _page(self, change: str) -> t.AsyncIterator[Post]:
+    async def _page(self, change: str, wait: bool = False) -> t.AsyncIterator[Post]:
         yield Post(5, "five")
         # Another connection commits its change to 5 and publishes, while this page is read
         broadcast = Broadcast(BcAppending, "bc-append")
@@ -213,18 +217,70 @@ class BcAppending(BcFeed):
             await broadcast.stream_delete("items", 5).asend()
         else:
             await broadcast.stream_insert("items", Post(5, "edited"), update_only=True).asend()
+        if wait:
+            # Until the page has the patch: nothing holds it
+            await WAIT["patched"].wait()
         yield Post(6, "six")
 
     async def older(self, change: str = "delete", **_rest):
         await self.stream("items", self._page(change), reset=False)
 
     async def older_one_by_one(self, change: str = "delete", **_rest):
-        async for post in self._page(change):
+        async for post in self._page(change, wait=True):
             await self.stream_insert("items", post)
 
     async def edit_then_publish(self, **_rest):
         await self.stream_insert("items", Post(1, "edited"), update_only=True)
         await Broadcast(BcAppending, "bc-append").push_event("after").asend()
+        # Behind the insert's mail
+        await self.push_event("finished")
+
+
+class BcLingering(BcFeed):
+    """Streams, then goes on working while patches for it are published (#199).
+
+    A stream() holds the component's patches until its operation is written,
+    which the connection does once the handler returned: the cost of the hold.
+    A stream_insert does not hold.
+    """
+
+    class Meta:
+        subscriptions = {"bc-linger"}
+
+    async def linger(self, how: str = "insert", published: int = 1, **_rest):
+        if how == "insert":
+            await self.stream_insert("items", Post(1, "one"))
+        else:
+            await self.stream("items", [Post(1, "one")], reset=how == "reset")
+        for n in range(published):
+            await Broadcast(BcLingering, "bc-linger").push_event("other", {"n": n}).asend()
+        if how != "insert" and published <= patches.QUEUE_LIMIT:
+            # With the connection, behind the stream operation
+            await eventually(lambda: len(_holding(self)) == published)
+            WAIT["held"].set()
+        # A slow call, say, until the test lets the handler end
+        await WAIT["end"].wait()
+        await self.push_event("done")
+
+
+class BcReplacing(BcFeed):
+    """Replaces an operation whose stream() is on its way to a layer with a round trip (#199)."""
+
+    class Meta:
+        subscriptions = {"bc-replace"}
+
+    async def poll(self, reset: bool = False, **_rest):
+        await self.start_async("poll", self._append(reset))
+        await WAIT["sending"].wait()
+        await self.start_async("poll", self._idle())
+        WAIT["sent"].set()
+        await self.push_event("done")
+
+    async def _append(self, reset: bool) -> None:
+        await self.stream("items", [Post(1, "one")], reset=reset)
+
+    async def _idle(self) -> None:
+        return None
 
 
 class BcRevocable(BcFeed):
@@ -869,35 +925,43 @@ def _assert_change_kept(shown: dict[str, str], change: str) -> None:
     assert "items-6" in shown
 
 
+async def _appended(
+    communicator: WebsocketCommunicator, handler: str, change: str, count: int
+) -> list[dict[str, t.Any]]:
+    """Call ``handler`` of the BcAppending joined as ``append``: its first ``count`` stream operations."""
+    await communicator.send_json_to(
+        {
+            "command": "user_event",
+            "payload": {
+                "id": "append",
+                "command": handler,
+                "implicit_args": {},
+                "explicit_args": {"change": change},
+                "ref": 1,
+            },
+        }
+    )
+    ops: list[dict[str, t.Any]] = []
+
+    def all_ops(message: dict[str, t.Any]) -> bool:
+        if message["command"] == "stream_op":
+            ops.append(message["payload"])
+            if handler == "older_one_by_one" and len(ops) == 1:
+                WAIT["patched"].set()
+        return len(ops) == count
+
+    await _until(communicator, all_ops)
+    return ops
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("change", ["delete", "edit"])
-@pytest.mark.parametrize("handler", ["older", "older_one_by_one"])
-async def test_a_patch_published_during_an_appended_read_is_written_after_the_insert(handler, change):
+async def test_a_patch_published_during_an_appended_read_is_written_after_the_insert(change):
     communicator = await _connect()
     try:
         await _join(communicator, BcAppending, "append")
-        await communicator.send_json_to(
-            {
-                "command": "user_event",
-                "payload": {
-                    "id": "append",
-                    "command": handler,
-                    "implicit_args": {},
-                    "explicit_args": {"change": change},
-                    "ref": 1,
-                },
-            }
-        )
-        ops: list[dict[str, t.Any]] = []
-        # One frame for stream(reset=False), one each for stream_insert, and the patch
-        expected = 2 if handler == "older" else 3
-
-        def all_ops(message: dict[str, t.Any]) -> bool:
-            if message["command"] == "stream_op":
-                ops.append(message["payload"])
-            return len(ops) == expected
-
-        await _until(communicator, all_ops)
+        # The page in one frame, and the patch
+        ops = await _appended(communicator, "older", change, 2)
     finally:
         await communicator.disconnect()
 
@@ -908,29 +972,179 @@ async def test_a_patch_published_during_an_appended_read_is_written_after_the_in
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["delete", "edit"])
+async def test_a_page_inserted_one_by_one_does_not_keep_a_change_made_while_it_was_read(change):
+    """Why a page read and appended goes to stream(queryset, reset=False) (#199).
+
+    stream_insert does not hold the patches: the change is written while the
+    handler still reads, and the inserts the connection writes after the handler
+    bring the item back as the page read it.
+    """
+    WAIT["patched"] = asyncio.Event()
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcAppending, "append")
+        # The patch, then one insert each
+        ops = await _appended(communicator, "older_one_by_one", change, 3)
+    finally:
+        await communicator.disconnect()
+
+    assert [op["items"][0]["id"] for op in ops] == ["items-5", "items-5", "items-6"]
+    shown = _shown(ops)
+    assert shown["items-5"] == '<li id="items-5">five</li>', shown
+
+
+async def _lingering(communicator: WebsocketCommunicator, how: str, published: int = 1) -> None:
+    await _join(communicator, BcLingering, "linger")
+    await communicator.send_json_to(
+        {
+            "command": "user_event",
+            "payload": {
+                "id": "linger",
+                "command": "linger",
+                "implicit_args": {},
+                "explicit_args": {"how": how, "published": published},
+                "ref": 1,
+            },
+        }
+    )
+
+
+def _written(heard: list[dict[str, t.Any]]) -> list[str]:
+    return [
+        m["command"] if m["command"] == "stream_op" else m["payload"]["event"]
+        for m in heard
+        if m["command"] in ("stream_op", "push_event")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_patch_published_while_a_handler_goes_on_after_its_stream_insert_is_written_meanwhile():
+    """An insert does not hold the component's patches: they are not late behind the rest of the handler (#199)."""
+    WAIT["end"] = asyncio.Event()
+    communicator = await _connect()
+    try:
+        await _lingering(communicator, "insert")
+        # The handler waits for the test, which waits for the patch
+        meanwhile = await _until(communicator, lambda m: m["command"] == "push_event")
+        WAIT["end"].set()
+        after = await _until(communicator, lambda m: m["command"] == "push_event")
+    finally:
+        WAIT["end"].set()
+        await communicator.disconnect()
+
+    assert _written(meanwhile) == ["other"]
+    # The insert goes out with the handler's other operations, once it returned
+    assert _written(after) == ["stream_op", "done"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("how", ["append", "reset"])
+async def test_a_patch_published_while_a_handler_goes_on_after_its_stream_waits_for_the_handler(how):
+    """The cost of the hold: the patch is written behind the stream operation, once the handler returned (#199)."""
+    WAIT["held"], WAIT["end"] = asyncio.Event(), asyncio.Event()
+    communicator = await _connect()
+    try:
+        await _lingering(communicator, how)
+        await asyncio.wait_for(WAIT["held"].wait(), timeout=5)
+        # Held with the connection while the handler goes on: nothing is written
+        assert await communicator.receive_nothing(timeout=0.1)
+        WAIT["end"].set()
+        heard = await _until(communicator, lambda m: m["command"] == "push_event" and m["payload"]["event"] == "done")
+    finally:
+        WAIT["end"].set()
+        await communicator.disconnect()
+
+    assert _written(heard) == ["stream_op", "other", "done"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("how", ["append", "reset"])
+async def test_too_many_patches_held_while_a_handler_goes_on_after_its_stream_close_the_connection(how, monkeypatch):
+    """Past QUEUE_LIMIT the connection closes and the page joins again (#199)."""
+    monkeypatch.setattr(patches, "QUEUE_LIMIT", 3)
+    WAIT["end"] = asyncio.Event()
+    communicator = await _connect()
+    try:
+        await _lingering(communicator, how, published=patches.QUEUE_LIMIT + 1)
+        while (out := await communicator.receive_output(timeout=5))["type"] != "websocket.close":
+            assert json.loads(out["text"])["command"] != "push_event", out
+    finally:
+        WAIT["end"].set()
+        await communicator.disconnect()
+
+    assert out["code"] == 1013
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reset", [False, True])
+async def test_a_stream_cancelled_on_its_way_to_the_channel_still_lets_its_hold_go(reset, monkeypatch):
+    """start_async replaces the operation while its stream() waits for a layer's round trip (#199).
+
+    Cancelled there, the mail never reached the channel: its token stayed and
+    the connection closed once HOLD_SECONDS ran out. The send now goes on.
+    """
+    monkeypatch.setattr(patches, "HOLD_SECONDS", 0.05)
+    WAIT["sending"], WAIT["sent"] = asyncio.Event(), asyncio.Event()
+    real = WireviewMeta.send_to
+
+    async def round_trip(self, channel, command, **kwargs):
+        if command == "stream_op":
+            # A layer with a network round trip (redis, nats): cancelled meanwhile
+            WAIT["sending"].set()
+            await WAIT["sent"].wait()
+        return await real(self, channel, command, **kwargs)
+
+    monkeypatch.setattr(WireviewMeta, "send_to", round_trip)
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcReplacing, "replace")
+        await communicator.send_json_to(
+            {
+                "command": "user_event",
+                "payload": {
+                    "id": "replace",
+                    "command": "poll",
+                    "implicit_args": {},
+                    "explicit_args": {"reset": reset},
+                    "ref": 1,
+                },
+            }
+        )
+        await _until(communicator, lambda m: m["command"] == "push_event")
+        # Well past the hold's deadline, the connection is open and writes what comes
+        await asyncio.sleep(patches.HOLD_SECONDS * 6)
+        await Broadcast(BcReplacing, "bc-replace").push_event("after").asend()
+        heard = await _until(communicator, lambda m: m["command"] == "push_event" and m["payload"]["event"] == "after")
+    finally:
+        await communicator.disconnect()
+
+    assert _written(heard)[-1] == "after"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("vsn", [UPDATE_ONLY_SINCE - 1, UPDATE_ONLY_SINCE])
-async def test_an_update_only_insert_not_sent_to_an_older_client_lets_its_hold_go(vsn):
-    """Not written, it still releases its token: what is held behind it goes out, the connection stays."""
+async def test_an_update_only_insert_not_sent_to_an_older_client_holds_nothing_back(vsn):
+    """Sent or not, it keeps nothing behind it: what is published after it goes out while the handler runs."""
     communicator = await _connect(vsn)
     try:
         await _join(communicator, BcAppending, "append")
         await _event(communicator, "append", "edit_then_publish")
-        heard = await _until(communicator, lambda m: m["command"] == "push_event")
+        heard = await _until(communicator, _finished)
     finally:
         await communicator.disconnect()
 
-    assert heard[-1]["payload"]["event"] == "after"
-    assert len(_stream_ops(heard)) == (1 if vsn >= UPDATE_ONLY_SINCE else 0)
+    sent = vsn >= UPDATE_ONLY_SINCE
+    assert _written(heard) == (["after", "stream_op", "finished"] if sent else ["after", "finished"])
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("change", ["delete", "edit"])
-@pytest.mark.parametrize("handler", ["older", "older_one_by_one"])
-async def test_a_mounted_component_writes_it_after_the_insert_too(handler, change):
+async def test_a_mounted_component_writes_it_after_the_insert_too(change):
     view = await mount(BcAppending, id="append")
     view.clear_messages()
 
-    await view.call(handler, change=change)
+    await view.call("older", change=change)
 
     ops = view.stream_ops("items")
     assert ops[-1]["items"][0]["id"] == "items-5"

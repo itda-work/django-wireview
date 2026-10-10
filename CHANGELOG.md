@@ -28,6 +28,11 @@ The django-reactor era changelog (2.x) is preserved in
   operation -- one frame for a page of items where a loop of `stream_insert` sent one each -- as a block in the order
   given, as Phoenix LiveView's `stream/4` without `reset` (#199). A client below protocol version 9 inserts each item
   at `at` in turn, so it is sent them in reverse when `at` is not -1.
+- A page read and appended with `stream(queryset, reset=False)` keeps a Broadcast delete or `update_only` edit
+  published while it was read (#199): like a reset since #178, `stream()` holds the component's Broadcast patches from
+  before it reads until its operation is written. A loop of `stream_insert` over a list read first does not hold, as
+  in 1.5 -- a hold taken at the call would not cover the read -- and an item deleted meanwhile comes back. What is held
+  waits for the rest of the handler (or `joined()`, `notification()`, the task) that called `stream()`.
 
 ### Fixed
 
@@ -43,12 +48,9 @@ The django-reactor era changelog (2.x) is preserved in
   ancestor whose `overflow-y` scrolls, or the window -- moved toward it, and "overran" is measured in the nearest
   ancestor that actually overflows, or the window. A wrapper with `overflow-x: hidden`, which computes
   `overflow-y: auto` but never scrolls, still counts as the window.
-- A Broadcast delete or `update_only` edit published while a handler read the items it then inserted with
-  `stream_insert` was written to the page first, and the insert undid it: the deleted item came back, the edit was
-  lost until the page joined again (#199). The insert goes out through the connection's channel and a patch is written
-  as it comes. `stream_insert` and `stream(..., reset=False)` now hold the component's Broadcast patches from the call
-  until the insert is written, as a stream reset has since #178; given a QuerySet, `stream()` holds from before it
-  reads it. `stream_delete` does not hold: a delete carries nothing it read.
+- A `stream()` in a `start_async` task replaced or cancelled while its operation waited on the channel layer
+  (channels_redis, channels-nats) left its Broadcast hold behind: the operation never reached the connection, which
+  closed with 1013 `HOLD_SECONDS` later (#199). The send now goes on to the channel before the cancellation does.
 
 ### Changed
 

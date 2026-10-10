@@ -278,7 +278,12 @@ await self.stream("items", newer, at=0, reset=False)    # 맨 앞에
 
 읽어 붙일 때 `stream_insert` 반복보다 나은 점이 하나 더 있다. `reset=False`에 QuerySet을 그대로 넘기면 읽기 전부터
 그 컴포넌트의 Broadcast 패치를 잡아 두고 삽입이 나간 뒤에 쓴다. 그래서 읽는 동안 다른 사람이 지우거나 고친 항목이
-삽입에 덮여 되살아나지 않는다. `stream_insert`도 패치를 잡지만 호출이 시작된 뒤부터라, 그 앞에 읽은 목록은 덮지 못한다
+삽입에 덮여 되살아나지 않는다. `stream_insert`는 패치를 잡지 않으므로, 읽은 목록을 하나씩 넣으면 그 사이의 삭제·수정이
+되돌려진다.
+
+잡아 둔 패치는 핸들러가 끝나고 삽입이 쓰일 때 나간다. `stream()` 뒤에 오래 걸리는 일(외부 API 호출 등)이 있으면 그동안
+이 컴포넌트에 오는 Broadcast가 화면에 나타나지 않고, 너무 많이 쌓이면 연결이 닫혀 다시 join한다. 그런 일은
+`start_async`로 넘기거나 `stream()`을 핸들러 끝에 둔다
 ([Broadcast — 순서와 유실](../features/broadcast.md#순서와-유실)).
 
 ### 2. 초기 로딩 최적화

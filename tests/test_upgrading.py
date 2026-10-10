@@ -118,9 +118,9 @@ UPGRADE_NOTE = {
         "`wire-viewport-*`가 더 자주 불린다",
         "우회하는 JS 훅",
     ),
-    "A Broadcast delete or `update_only` edit published while a handler read": (
-        "읽어 붙이는 삽입이 Broadcast 패치를 잡는다",
-        "QuerySet을 `stream(..., reset=False)`에 넘긴다",
+    "A page read and appended with `stream(queryset, reset=False)`": (
+        "읽어 붙이는 목록은 QuerySet을 `stream(..., reset=False)`에 넘긴다",
+        "`start_async`로 넘기거나",
     ),
 }
 
@@ -130,6 +130,7 @@ NO_UPGRADE_NOTE = {
     "`examples/chat_lv3`, the third step": EXAMPLE,
     'The chat examples (`chat`, `chat_lv2`, `chat_lv3`) drew "No messages yet"': EXAMPLE,
     "Documented when `broadcast()` (after the commit) and `abroadcast()` (at once) publish": "문서와 테스트만 바뀌었다",
+    "A `stream()` in a `start_async` task replaced or cancelled": "닫히던 연결이 닫히지 않을 뿐 할 일이 없다",
 }
 
 PREVIOUS = "1.5.1"

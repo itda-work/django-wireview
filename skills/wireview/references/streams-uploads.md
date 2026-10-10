@@ -49,6 +49,11 @@ class XChatRoom(Component):
   핸들러가 조회 조건으로 다시 묻는다(`aget(pk=pk, owner=self.user.pk)`) — 브라우저가 보낸 pk다.
 - **여러 항목을 덧붙일 때는 `stream(..., reset=False)`.** `stream_insert`를 반복하면 항목마다 프레임 하나다.
   `reset=False`면 화면의 것을 두고 `at` 자리에 주어진 순서대로 연산 하나로 넣는다. `stream()`의 기본은 reset이다.
+  **읽어 붙일 때는 리스트가 아니라 QuerySet을 넘긴다** — 그러면 읽기 전부터 그 컴포넌트의 Broadcast 패치를 잡아,
+  읽는 동안 다른 사람이 지우거나 고친 항목이 삽입에 덮여 되살아나지 않는다. `stream_insert` 반복은 잡지 않는다.
+- **`stream()` 뒤에 오래 걸리는 일을 두지 않는다.** reset이든 `reset=False`든 잡은 패치는 핸들러(`joined()`·
+  `notification()`·`handle_async` 포함)가 끝나고 그 연산이 쓰일 때 나간다. 그동안 그 컴포넌트의 Broadcast가 늦고,
+  1,000개가 넘게 쌓이면 연결이 닫혀 다시 join한다. 느린 일은 `start_async`로 넘기거나 `stream()`을 핸들러 끝에 둔다.
 - **무한 스크롤은 `wire-viewport-top`·`wire-viewport-bottom`.** 목록 위(아래)에 둔 요소가 사용자가 그쪽으로
   스크롤해 보이면 그 핸들러가 불린다. 방향은 그 요소를 움직일 수 있는 모든 스크롤(`overflow-y`가 `auto`·`scroll`인
   조상들과 창)에서 보므로, 자기 스크롤바가 있는 상자 안의 목록도, `overflow-x: hidden` 래퍼 안에서 창으로
