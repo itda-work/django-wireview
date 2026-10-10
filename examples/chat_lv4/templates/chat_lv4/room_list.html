@@ -1,7 +1,7 @@
 {% load wireview %}
 
 <div {% tag_header %}>
-  {# Rendered for this user alone: the badges are theirs. Join and Leave are events, not forms: a live render has no CSRF token #}
+  {# Rendered for this user alone: the badges are theirs. Join and Leave are events, not forms: in wireview as it is, a live render has no CSRF token (#206) #}
   <ul style="list-style: none; margin-top: 16px;">
     {% for room in this.rooms %}
       <li style="margin-bottom: 8px;

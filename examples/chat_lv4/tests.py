@@ -23,8 +23,9 @@ import pytest
 from asgiref.sync import sync_to_async
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.db import connection, transaction
 from django.test import AsyncClient, Client
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import expect
@@ -54,6 +55,8 @@ from .models import Membership, Message, Room
 pytestmark = pytest.mark.django_db(transaction=True)
 
 BOUNDARY = "chat_lv4"
+# The room list's page: a boundary with no policy, so that a logout closes it
+ROOMS = "chat_lv4_rooms"
 
 
 @pytest.fixture
@@ -121,14 +124,14 @@ async def test_joining_from_the_list_makes_a_member_and_leaving_ends_it(room, bo
     """
     client = AsyncClient()
     await client.aforce_login(bob)
-    rooms = await mount(Lv4RoomList, user=bob)
+    rooms = await mount(Lv4RoomList, user=bob, live_session=ROOMS)
 
     await rooms.call("join_room", room_id=room.id)
     rooms.assert_redirected_to(_room_url(room))
     assert user_topic(bob.pk) in [topic for topic, _ in published]
     assert (await client.get(_room_url(room))).status_code == 200
 
-    rooms = await mount(Lv4RoomList, user=bob)
+    rooms = await mount(Lv4RoomList, user=bob, live_session=ROOMS)
     await rooms.call("leave_room", room_id=room.id)
     assert not await Membership.objects.filter(room=room, user=bob).aexists()
     assert (await client.get(_room_url(room))).status_code == 302
@@ -317,7 +320,7 @@ async def test_leaving_sends_the_users_open_page_away_and_it_hears_the_room_no_m
         await _drain(kept)
 
         if where == "room list":
-            await (await mount(Lv4RoomList, user=bob)).call("leave_room", room_id=room.id)
+            await (await mount(Lv4RoomList, user=bob, live_session=ROOMS)).call("leave_room", room_id=room.id)
         else:
             other = await mount(Lv4ChatRoom, id="other-tab", user=bob, room=room, live_session=BOUNDARY)
             await other.call("leave_room")
@@ -940,7 +943,7 @@ async def test_a_page_whose_user_left_gets_no_edit_or_delete(room, alice, bob_in
         await speaker.call("save_edit", text="while bob is here")
         assert any("while bob is here" in text for text in await _drain(kept))
 
-        await (await mount(Lv4RoomList, user=bob_in_room)).call("leave_room", room_id=room.id)
+        await (await mount(Lv4RoomList, user=bob_in_room, live_session=ROOMS)).call("leave_room", room_id=room.id)
         assert any('"redirect"' in text for text in await _drain(kept))
 
         speaker.clear_messages()
@@ -1079,7 +1082,7 @@ async def test_the_badge_counts_the_others_messages_and_opening_the_room_clears_
     """Never opened, every message alice wrote is unread; bob's own never are. Opening the room reads it all."""
     await sync_to_async(_seed)(room, alice, 3)
     await Message.objects.acreate(room=room, author=bob_in_room, content="bob's own")
-    rooms = await mount(Lv4RoomList, user=bob_in_room)
+    rooms = await mount(Lv4RoomList, user=bob_in_room, live_session=ROOMS)
     assert await sync_to_async(unread_counts)(bob_in_room) == {room.id: 3}
     assert await _badges(rooms) == {"lobby": "3"}
 
@@ -1114,6 +1117,28 @@ async def test_the_cursor_only_moves_forward(room, alice, bob_in_room, published
 
     assert await _cursor(room, bob_in_room) == ahead
     assert _notices(published) == []
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_notice_moves_the_cursor_to_the_newest_message_of_the_pages_own_room(room, alice, bob_in_room):
+    """bob's lobby page is told of a new lobby message while another room of his has a newer one.
+
+    The cursor is a place in the lobby's history: it names the lobby's newest
+    message, never another room's, however much newer that is. The notice is
+    handed to the component directly -- a mounted component is not delivered
+    notifications (#201); test_an_open_room_page_reads_what_arrives_in_its_room_only
+    shows over a real socket that the page does get them.
+    """
+    elsewhere = await Room.objects.acreate(name="elsewhere")
+    await Membership.objects.acreate(room=elsewhere, user=bob_in_room)
+    view = await mount(Lv4MessageList, user=bob_in_room, room=room, live_session=BOUNDARY)
+    in_the_lobby = await _said(room, alice, "in the lobby")
+    await _said(elsewhere, alice, "newer, elsewhere", after=in_the_lobby)
+
+    await view.component.notification(user_topic(bob_in_room.pk), room=str(room.id), event="message")
+
+    assert await _cursor(room, bob_in_room) == (in_the_lobby.created_at, in_the_lobby.id)
 
 
 @pytest.mark.integration
@@ -1154,7 +1179,7 @@ async def test_a_deleted_message_is_no_longer_unread(room, alice, bob_in_room):
 @pytest.mark.asyncio
 async def test_a_room_left_has_no_badge(room, alice, bob_in_room):
     await sync_to_async(_seed)(room, alice, 2)
-    rooms = await mount(Lv4RoomList, user=bob_in_room)
+    rooms = await mount(Lv4RoomList, user=bob_in_room, live_session=ROOMS)
     assert await _badges(rooms) == {"lobby": "2"}
 
     await rooms.call("leave_room", room_id=room.id)
@@ -1181,7 +1206,7 @@ async def test_the_badges_are_counted_in_one_query_however_many_rooms(alice, bob
         await Message.objects.acreate(room=room, author=alice, content="news")
 
     await a_room_with_news("first")
-    rooms = await mount(Lv4RoomList, user=bob)
+    rooms = await mount(Lv4RoomList, user=bob, live_session=ROOMS)
     one = await rendering(rooms)
     for number in range(4):
         await a_room_with_news(f"room {number}")
@@ -1191,13 +1216,38 @@ async def test_the_badges_are_counted_in_one_query_however_many_rooms(alice, bob
     assert one == five, (one, five)
 
 
+@pytest.mark.integration
+def test_the_count_reads_the_history_after_the_cursor_only(room, bob):
+    """The count's plan, on SQLite: the room's messages are a range of the history index, from the cursor on.
+
+    A cursor condition written as one OR (no cursor, or later, or the same
+    time and a later id) is not a range: the plan reads every message of the
+    room by room_id and filters them. Another database plans differently; what
+    the query offers it, the cursor as a lower bound on the index, is the same.
+    """
+    if connection.vendor != "sqlite":
+        pytest.skip("the plan is SQLite's")
+    Membership.objects.create(room=room, user=bob)
+    with CaptureQueriesContext(connection) as queries:
+        unread_counts(bob)
+    (query,) = queries.captured_queries
+    with connection.cursor() as cursor:
+        cursor.execute("EXPLAIN QUERY PLAN " + query["sql"])
+        plan = [row[-1] for row in cursor.fetchall()]
+
+    assert "SEARCH chat_lv4_message USING INDEX chat_lv4_history (room_id=? AND created_at>?)" in plan, plan
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_the_room_list_hears_its_users_topic_only(bob):
     from django.contrib.auth.models import AnonymousUser
 
-    assert (await mount(Lv4RoomList, user=bob)).component.get_subscriptions() == {user_topic(bob.pk)}
-    assert (await mount(Lv4RoomList, user=AnonymousUser())).component.get_subscriptions() == set()
+    bobs = await mount(Lv4RoomList, user=bob, live_session=ROOMS)
+    anonymous = await mount(Lv4RoomList, user=AnonymousUser(), live_session=ROOMS)
+
+    assert bobs.component.get_subscriptions() == {user_topic(bob.pk)}
+    assert anonymous.component.get_subscriptions() == set()
 
 
 @pytest.mark.integration
@@ -1241,6 +1291,106 @@ async def test_an_open_room_page_reads_what_arrives_in_its_room_only(room, alice
     assert await sync_to_async(unread_counts)(bob) == {elsewhere.id: 1}
 
 
+#: A badge, as a render message's JSON spells it
+_BADGE = json.dumps('<span class="unread"')[1:-1]
+
+
+async def _open_room_list(client: AsyncClient) -> tuple[WebsocketCommunicator, str, dict]:
+    """A room list joined over a real socket with ``client``'s cookies: the socket, the list's id, its first render."""
+    list_id, state = _states((await client.get(reverse("chat_lv4:index"))).content.decode())["Lv4RoomList"]
+    socket = await _socket(client)
+    await _join(socket, "Lv4RoomList", state)
+    first = await _answer(socket, list_id)
+    assert first["command"] == "render"
+    return socket, list_id, first
+
+
+async def _list_event(socket: WebsocketCommunicator, list_id: str, command: str, **args) -> None:
+    await socket.send_json_to(
+        {
+            "command": "user_event",
+            "payload": {"id": list_id, "command": command, "implicit_args": {}, "explicit_args": args},
+        }
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize("news", ["read", "deleted", "joined", "left"])
+async def test_the_room_list_counts_again_on_each_notice_alone(room, alice, bob, news):
+    """bob's room list, open over a real socket, hears one notice of one kind, and renders the new count.
+
+    Nothing else reaches it: each case makes exactly the notice it names, from
+    where the app makes it -- a page of the room joining (``read``), alice
+    deleting a message bob has not read (``deleted``), bob's other tab joining
+    or leaving the room (``joined``, ``left``). The test waits for the list's
+    render to the end, so a list that let one kind of notice pass would fail
+    here by a timeout, and not by a quiet spell that ran out.
+    """
+    if news != "joined":
+        await Membership.objects.acreate(room=room, user=bob)
+    message = await Message.objects.acreate(room=room, author=alice, content="unread")
+    client = AsyncClient()
+    await client.aforce_login(bob)
+    socket, list_id, first = await _open_room_list(client)
+    other = None
+    try:
+        before = json.dumps(first)
+        assert (_BADGE in before) == (news != "joined"), before
+        if news == "read":
+            # bob opens the lobby in another tab: its list's joined() moves the cursor and tells "read"
+            msg_id, msg_state = _states((await client.get(_room_url(room))).content.decode())["Lv4MessageList"]
+            other = await _socket(client)
+            await _join(other, "Lv4MessageList", msg_state)
+            assert (await _answer(other, msg_id))["command"] == "render"
+        elif news == "deleted":
+            (alices,) = await _lists(room, alice)
+            await alices.call("delete_message", message_id=message.id)
+        else:
+            # bob's other tab of the room list: the event runs on its socket, and its notice reaches this one
+            other, other_id, _ = await _open_room_list(client)
+            await _list_event(other, other_id, "join_room" if news == "joined" else "leave_room", room_id=str(room.id))
+        after = json.dumps(await _answer(socket, list_id))
+    finally:
+        if other is not None:
+            await other.disconnect()
+        await socket.disconnect()
+
+    if news == "joined":
+        # The link, the badge for alice's message, and the Leave button
+        assert _BADGE in after and "Leave" in after, after
+        assert await sync_to_async(unread_counts)(bob) == {room.id: 1}
+    else:
+        assert _BADGE not in after, after
+        assert ("Join" if news == "left" else "Leave") in after, after
+        assert await sync_to_async(unread_counts)(bob) == {}
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_logout_closes_the_open_room_list(room, bob):
+    """bob signs out in another tab. His room list tab, still open, is closed by the server.
+
+    Its Join and Leave are events on the socket, and a socket keeps the user it
+    connected with: open after the logout, it would go on joining and leaving
+    rooms as bob. A form posted to a view would have been anonymous by then. The
+    list's page is a live_session of its own, with no policy, for this: a
+    logout reaches the connections inside a boundary, and closes them.
+    """
+    client = AsyncClient()
+    await client.aforce_login(bob)
+    socket, _, _ = await _open_room_list(client)
+    try:
+        await client.post(reverse("chat_lv4:sign_out"))
+        output = await socket.receive_output(timeout=5)
+        while output["type"] == "websocket.send":
+            output = await socket.receive_output(timeout=5)
+    finally:
+        await socket.disconnect()
+
+    assert output["type"] == "websocket.close", output
+
+
 # In a browser: two people, two sets of cookies, one room
 
 
@@ -1260,7 +1410,19 @@ def _signed_in(browser, server: str, username: str):
 
 
 def _in_room(page, room_url: str) -> None:
-    open_live(page, room_url, '[data-name=Lv4ChatRoom][data-is-live="true"]')
+    """Go to the room and wait until its components have joined."""
+    page.goto(room_url)
+    _joined_room(page, room_url)
+
+
+def _joined_room(page, room_url: str) -> None:
+    """Wait for the room the page is going to -- by a click -- to be live. It does not go there itself.
+
+    A goto of its own after the click would race the click's navigation to the
+    same URL, and one of the two is aborted.
+    """
+    expect(page).to_have_url(room_url)
+    wait_live(page, '[data-name=Lv4ChatRoom][data-is-live="true"]')
     wait_live(page, '[data-name=Lv4MessageList][data-is-live="true"]')
     wait_live(page, '[data-name=Lv4OnlineUsers][data-is-live="true"]')
 
@@ -1284,7 +1446,7 @@ def test_two_members_see_each_others_messages_and_presence(browser, server):
     expect_count(bob.locator("[data-name=Lv4ChatRoom]"), 0)
     wait_live(bob, '[data-name=Lv4RoomList][data-is-live="true"]')
     bob.locator('[data-room="tea"]').get_by_role("button", name="Join").click()
-    _in_room(bob, room_url)
+    _joined_room(bob, room_url)
     _in_room(alice, room_url)
 
     for page in (alice, bob):
@@ -1437,7 +1599,7 @@ def test_a_badge_rises_for_the_member_not_looking_and_clears_when_they_open_the_
 
     # bob opens tea: the page that shows the messages has read them
     bob.locator('[data-room="tea"] a').click()
-    _in_room(bob, f"{server}{_room_url(tea)}")
+    _joined_room(bob, f"{server}{_room_url(tea)}")
     expect_count(bob.locator("[wire-stream=messages] li.message"), 2)
 
     # Back on the list, nothing is unread
@@ -1482,11 +1644,14 @@ def test_reading_in_one_tab_keeps_the_badge_at_zero_in_another(browser, server, 
     """bob has tea open in one tab and the room list in another. What alice writes in tea is read in the first.
 
     The list hears of alice's message and of bob's tab reading it, each on
-    bob's topic, in the order they were published. Which of the two it counts
-    after first is a race, and the badge may show 1 for a moment; after both it
-    is 0. That is told by order: once bob's tab has published its read, alice
-    writes in coffee. The list shows coffee's badge only after it has counted
-    again for the read, so tea's is 0 in the same render.
+    bob's topic. Which of the two it counts after first is a race, and the
+    badge may show 1 for a moment. What this test holds is the browser's side
+    and the end: the open tab reads what arrives, and the list's tea badge is 0
+    after. It waits for the tab's read to be published, then alice writes in
+    coffee; the render that shows coffee's badge counts tea from a database
+    that has the read by then, so tea's is 0 in it. It does not show that the
+    list counts again on the read notice itself -- by then any notice would do.
+    test_the_room_list_counts_again_on_each_notice_alone does, over sockets.
     """
     tea, coffee = two_members_of_tea
     alice = _signed_in(browser, server, "alice")

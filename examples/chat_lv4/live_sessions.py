@@ -1,7 +1,7 @@
 """
-The room page's boundary. Autodiscovered like ``live.py``.
+The example's two boundaries: the room page's, and the room list's. Autodiscovered like ``live.py``.
 
-``authorize`` runs before the room view renders and again before a join mounts
+For the room page, ``authorize`` runs before the room view renders and again before a join mounts
 anything; the hook runs for every component the page draws or joins. Together
 they say "signed in, and a member of this component's room" (``access.py``).
 """
@@ -18,3 +18,10 @@ chat_lv4 = live_session(
     on_mount=[RoomMembersOnly],
     login_url="chat_lv4:index",
 )
+
+#: The room list's page. No policy: anyone may see it, a visitor signs in there.
+#: It is a boundary so that a logout reaches it. A connection outside every
+#: boundary does not hear logouts, and keeps the user it connected with: the
+#: list's Join and Leave would go on acting as someone who signed out. Inside
+#: one, the logout closes the socket, and the page comes back as the visitor.
+chat_lv4_rooms = live_session("chat_lv4_rooms")

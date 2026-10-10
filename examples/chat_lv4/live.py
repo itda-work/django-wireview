@@ -39,11 +39,12 @@ The rest is the chat example's:
 """
 
 import typing as t
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from asgiref.sync import sync_to_async
-from django.db.models import Count, Exists, F, OuterRef, Q
+from django.db.models import Count, DateTimeField, Exists, F, OuterRef, Q, Value
+from django.db.models.functions import Coalesce
 from django.urls import reverse
 from django.utils import timezone
 
@@ -532,6 +533,10 @@ class Lv4OnlineUsers(PresenceTrackerMixin, Component):
         await self.presence_track_self(username=self.user.get_username())
 
 
+#: Where the cursor of a room never opened is: before every message
+EARLIEST = datetime.min.replace(tzinfo=UTC)
+
+
 def unread_counts(user) -> dict[UUID, int]:
     """How many messages ``user`` has not read, by room: one query, however many rooms they are in.
 
@@ -542,11 +547,19 @@ def unread_counts(user) -> dict[UUID, int]:
 
     The membership conditions are in one filter() so they name one join: the
     user's own membership of the message's room, with its cursor.
+
+    And the cursor is a range on the room's history index (room, created_at):
+    "at or after the cursor's time" alone reads only what follows the cursor,
+    and the rest of the pair is checked on those rows. Written as one OR --
+    no cursor, or later, or the same time and a later id -- the condition
+    cannot be a range, and every count would read the room's whole history.
+    A room never opened starts at the earliest time there is.
     """
-    mine_and_unread = Q(room__memberships__user_id=user.pk) & (
+    cursor_at = Coalesce(F("room__memberships__read_at"), Value(EARLIEST, output_field=DateTimeField()))
+    mine_and_unread = Q(room__memberships__user_id=user.pk, created_at__gte=cursor_at) & (
         Q(room__memberships__read_at__isnull=True)
         | Q(created_at__gt=F("room__memberships__read_at"))
-        | Q(created_at=F("room__memberships__read_at"), id__gt=F("room__memberships__read_id"))
+        | Q(id__gt=F("room__memberships__read_id"))
     )
     rows = (
         Message.objects.filter(mine_and_unread)
@@ -569,8 +582,13 @@ class Lv4RoomList(Component):
       database, so a notice that is late, doubled or crossed with another
       still ends in the right number
     - a count in one query for every room (unread_counts)
-    - Join and Leave as events: a form posted from a live render would carry
-      no CSRF token
+    - Join and Leave as events: in wireview as it is, a form posted from a
+      live render would carry no CSRF token (#206)
+    - what moving them from views costs, and how it is had back: a view read
+      request.user on every POST, and a socket keeps the user it connected
+      with. So the list's page is a boundary of its own (chat_lv4_rooms, no
+      policy), and a logout closes the list's socket instead of leaving it to
+      join and leave rooms as someone who signed out
 
     Not in the chat_lv4 live_session: the list is every room, a member's or not.
     Anyone signed in may see it; an anonymous visitor has no rooms and no topic.
@@ -578,6 +596,7 @@ class Lv4RoomList(Component):
 
     class Meta:
         template_name = "chat_lv4/room_list.html"
+        live_sessions = {"chat_lv4_rooms"}
 
     def get_subscriptions(self) -> set[str]:
         return {user_topic(self.user.pk)} if self.user.is_authenticated else set()

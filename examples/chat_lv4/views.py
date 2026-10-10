@@ -8,7 +8,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .access import is_member
-from .live_sessions import chat_lv4
+from .live_sessions import chat_lv4, chat_lv4_rooms
 from .models import Membership, Room
 
 #: The people the demo signs in as. Open a window per person: windows that share
@@ -16,11 +16,13 @@ from .models import Membership, Room
 DEMO_USERS = ("alice", "bob", "carol")
 
 
+@chat_lv4_rooms.view
 def index(request: HttpRequest) -> HttpResponse:
     """The room list, and the demo sign-in for a visitor who is not signed in.
 
     The list is a component (``Lv4RoomList``): its unread badges change while
-    the page is open. Joining and leaving are its events.
+    the page is open. Joining and leaving are its events. The page is in a
+    boundary with no policy, so that a logout closes the list's socket.
     """
     return render(
         request,
