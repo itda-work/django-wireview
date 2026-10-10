@@ -24,10 +24,10 @@ from django.contrib.auth.models import AnonymousUser
 from django.template import Template
 from django.test import override_settings
 
-from wireview import Component, function_component
+from wireview import Component, LiveComponent, function_component
 from wireview.consumer import WireviewConsumer
 from wireview.core.meta import WireviewMeta
-from wireview.core.rendered import JOINED_SINCE
+from wireview.core.rendered import GONE_SINCE, JOINED_SINCE
 from wireview.core.state import sign_state
 from wireview.repository import ComponentRepository
 
@@ -35,6 +35,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio, pytest.mark.django_d
 
 TOPIC = "retire.nested"
 HEARD: list[tuple[str, str]] = []
+SENT: list[tuple[str, dict[str, t.Any]]] = []
 
 
 class RetireLeaf(Component):
@@ -52,6 +53,12 @@ class RetireLeaf(Component):
 
     async def notification(self, channel: str, **kwargs: t.Any) -> None:
         HEARD.append(("notified", self.id))
+
+    async def poke(self):
+        HEARD.append(("poked", self.id))
+
+    async def rename(self, note: str):
+        self.note = note
 
     @classmethod
     def _get_template(cls, template_name=None):
@@ -173,8 +180,138 @@ class RetireKeptRoot(Component):
         )
 
 
+class RetireKeptMiddle(Component):
+    """Drawn by the root with an id; draws a leaf per row of a temporary assign it keeps."""
+
+    class Meta:
+        temporary_assigns = ["rows"]
+
+    rows: list[str] = []
+    note: str = ""
+    count: int = 0
+
+    async def load(self):
+        self.rows = ["a", "b"]
+
+    async def touch(self):
+        self.count += 1
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<b {% tag_header %}>{{ this.count }}"
+            "{% for row in rows %}{% component 'RetireLeaf' note=this.note %}{% endfor %}</b>"
+        )
+
+
+class RetireKeptMiddleRoot(RetireRoot):
+    """Draws the middle within its pass: the middle's reset rows are kept there too."""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>{{ this.note }}{% component 'RetireKeptMiddle' id='km' %}</p>"
+        )
+
+
+class RetireKeptSlotRoot(RetireRoot):
+    """Fills the slot owner with the middle: the owner's own render draws it again."""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% component_block 'RetireSlotOwner' id='slot-owner' %}{% fill body %}"
+            "{% component 'RetireKeptMiddle' id='km' %}"
+            "{% endfill %}{% endcomponent %}</p>"
+        )
+
+
+class RetireBox(Component):
+    draw: bool = False
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<b {% tag_header %}>"
+            "{% if this.draw %}{% component 'RetireLeaf' id='moving' %}{% endif %}</b>"
+        )
+
+
+class RetireMoveAfterRoot(RetireRoot):
+    """Moves the id out of the box into its own pass, after the box's."""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>{% component 'RetireBox' id='box' draw=this.shown %}"
+            "{% if not this.shown %}{% component 'RetireLeaf' id='moving' %}{% endif %}</p>"
+        )
+
+
+class RetireMoveBeforeRoot(RetireRoot):
+    """Moves the id out of the box into its own pass, before the box's."""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% if not this.shown %}{% component 'RetireLeaf' id='moving' %}{% endif %}"
+            "{% component 'RetireBox' id='box' draw=this.shown %}</p>"
+        )
+
+
+class RetireLive(LiveComponent):
+    """A LiveComponent that draws a leaf without an id."""
+
+    note: str = ""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<u {% live_tag_header %}>{% component 'RetireLeaf' note=this.note %}</u>")
+
+
+class RetireLiveRoot(RetireRoot):
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% if this.shown %}{% live_component 'RetireLive' id='live' %}{% endif %}</p>"
+        )
+
+
+class RetireOwner(Component):
+    """Drawn without an id; owns a LiveComponent that draws a leaf."""
+
+    note: str = ""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<b {% tag_header %}>{% live_component 'RetireLive' id='owned-'|concat:this.id %}</b>"
+        )
+
+
+class RetireOwnerRoot(RetireRoot):
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<p {% tag_header %}>{% component 'RetireOwner' note=this.note %}</p>")
+
+
+class RetireIgnoreRoot(RetireRoot):
+    """Draws the leaf where the page keeps what it has: its drawer's new one never reaches the page."""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>{{ this.note }}"
+            "<span wire-update='ignore'>{% component 'RetireLeaf' %}</span></p>"
+        )
+
+
 class _Outbound:
-    async def send_command(self, command: str, payload: dict[str, t.Any]) -> None: ...
+    async def send_command(self, command: str, payload: dict[str, t.Any]) -> None:
+        SENT.append((command, payload))
 
     async def subscribe(self, topic: str) -> None: ...
 
@@ -193,8 +330,10 @@ def _func_templates():
 @pytest.fixture(autouse=True)
 def _reset_heard():
     HEARD.clear()
+    SENT.clear()
     yield
     HEARD.clear()
+    SENT.clear()
 
 
 async def _join(consumer: WireviewConsumer, component: Component) -> None:
@@ -204,7 +343,9 @@ async def _join(consumer: WireviewConsumer, component: Component) -> None:
 
 async def _join_drawn(consumer: WireviewConsumer) -> None:
     """Join what the latest render put on the page and the page has yet to join, as the page does."""
-    while drawn := [c for c in consumer.repo.components.values() if not c.wire.has_joined]:
+    while drawn := [
+        c for c in consumer.repo.components.values() if not c.wire.has_joined and not isinstance(c, LiveComponent)
+    ]:
         await _join(consumer, drawn[0])
 
 
@@ -386,17 +527,136 @@ class RetireBoomRoot(Component):
         )
 
 
-async def test_a_leaf_retired_by_a_render_that_raised_still_leaves_when_the_connection_ends():
-    # The middle's pass within the root's retires the leaf it drew before; the
-    # root's render raises after it, so no batch takes the leaf's leaving().
-    # The connection's end does.
+async def test_a_leaf_a_render_that_raised_stopped_drawing_leaves_when_the_connection_ends():
+    # The middle's pass within the root's stops drawing the leaf it drew
+    # before; the root's render raises after it, so that render never reaches
+    # the page and the leaf is still on it. It retires with a render that does,
+    # or, as here, with the connection.
     consumer = await _page(RetireBoomRoot)
     (leaf,) = _leaves(consumer)
 
     await consumer.command_user_event("root", "explode", {}, {"note": "x"})
-    assert consumer.repo.get(leaf.id) is None
+    assert consumer.repo.get(leaf.id) is leaf
     assert _ids("leaving") == []
 
     await consumer.stop()
 
     assert leaf.id in _ids("leaving")
+
+
+async def test_a_leaf_a_kept_part_shows_stays_when_another_component_s_pass_draws_its_drawer():
+    # The root draws the middle again within its pass: the middle's rows reset,
+    # its loop keeps the leaves the page shows -- and so does the end of that pass
+    consumer = await _page(RetireKeptMiddleRoot)
+    await _event(consumer, "km", "load")
+    leaves = _leaves(consumer)
+    assert len(leaves) == 2
+
+    await _event(consumer, "root", "write", note="x")
+    await _event(consumer, "root", "write", note="y")
+
+    assert _leaves(consumer) == leaves
+    assert _ids("leaving") == []
+    assert consumer.repo.get("km").wire.kept_components == {leaf.id for leaf in leaves}  # type: ignore[union-attr]
+
+
+async def test_a_leaf_a_kept_part_shows_stays_when_the_slot_owner_draws_its_drawer_again():
+    # The middle fills the slot owner's slot: the owner's own render draws it again
+    consumer = await _page(RetireKeptSlotRoot)
+    await _event(consumer, "km", "load")
+    leaves = _leaves(consumer)
+    assert len(leaves) == 2
+
+    await _event(consumer, "slot-owner", "bump")
+    await _event(consumer, "slot-owner", "bump")
+
+    assert _leaves(consumer) == leaves
+    assert _ids("leaving") == []
+
+
+async def test_what_a_part_kept_before_named_does_not_hold_a_leaf_a_later_pass_draws_no_more():
+    # The middle's own render keeps its loop. A leaf then renders something new
+    # on its own, so the root's pass draws the middle's loop again -- over the
+    # reset rows, without the leaves. What the middle's own render kept before
+    # does not keep them: they are gone from the page.
+    consumer = await _page(RetireKeptMiddleRoot)
+    await _event(consumer, "km", "load")
+    leaves = _leaves(consumer)
+    assert len(leaves) == 2
+    await _event(consumer, "km", "touch")
+    assert _leaves(consumer) == leaves
+    assert consumer.repo.get("km").wire.kept_components == {leaf.id for leaf in leaves}  # type: ignore[union-attr]
+    await _event(consumer, leaves[0].id, "rename", note="moved")
+
+    await _event(consumer, "root", "write", note="x")
+
+    assert _leaves(consumer) == []
+    assert sorted(_ids("leaving")) == sorted(leaf.id for leaf in leaves)
+
+
+@pytest.mark.parametrize("root", [RetireMoveAfterRoot, RetireMoveBeforeRoot])
+async def test_an_id_that_moves_out_of_its_drawer_within_one_render_stays_the_same_instance(root):
+    # Whichever pass comes first, the render draws the id: nothing retires
+    consumer = await _page(root)
+    (leaf,) = _leaves(consumer)
+    leaf.note = "own"
+
+    await _event(consumer, "root", "toggle")
+    assert _leaves(consumer) == [leaf]
+    assert leaf.note == "own"
+
+    await _event(consumer, "root", "toggle")
+    assert _leaves(consumer) == [leaf]
+    assert _ids("joined") == ["moving"]
+    assert _ids("leaving") == []
+
+
+async def test_a_leaf_a_live_component_drew_retires_with_the_live_component():
+    consumer = await _page(RetireLiveRoot)
+    (leaf,) = _leaves(consumer)
+
+    await _event(consumer, "root", "toggle")
+
+    assert consumer.repo.get("live") is None
+    assert _leaves(consumer) == []
+    assert _ids("leaving") == [leaf.id]
+    await consumer.notification({"channel": TOPIC, "kwargs": {}})
+    assert _ids("notified") == []
+
+
+async def test_a_leaf_the_live_component_of_a_retired_component_drew_retires_with_it():
+    consumer = await _page(RetireOwnerRoot)
+    (first,) = _leaves(consumer)
+
+    for n in range(3):
+        await _event(consumer, "root", "write", note=f"n{n}")
+
+    assert len(_leaves(consumer)) == 1
+    assert first.id in _ids("leaving")
+    assert len(_ids("leaving")) == 3
+
+
+@pytest.mark.parametrize("vsn", [GONE_SINCE, JOINED_SINCE])
+async def test_an_event_for_a_retired_leaf_the_page_kept_is_answered(vsn):
+    # Under wire-update="ignore" the page keeps the leaf its drawer's render
+    # retired. Its event runs nothing, and the answer ends its loading state;
+    # a page that knows ``gone`` joins the element again
+    consumer = await _page(RetireIgnoreRoot)
+    consumer.repo.vsn = vsn
+    (leaf,) = _leaves(consumer)
+    await consumer.command_user_event("root", "write", {}, {"note": "x"})
+    assert consumer.repo.get(leaf.id) is None
+    SENT.clear()
+
+    await consumer.command_user_event(leaf.id, "poke", {}, {}, ref=7)
+
+    assert _ids("poked") == []
+    if vsn >= GONE_SINCE:
+        assert SENT == [("gone", {"id": leaf.id, "ref": 7})]
+    else:
+        assert SENT == [("render", {"id": leaf.id, "diff": None, "ref": 7})]
+
+    # The join the page sends answers from then on
+    await _join(consumer, leaf)
+    await consumer.command_user_event(leaf.id, "poke", {}, {}, ref=8)
+    assert _ids("poked") == [leaf.id]

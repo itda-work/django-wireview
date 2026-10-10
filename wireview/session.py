@@ -24,6 +24,7 @@ from .core import patches, shared_render, template_reload
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
 from .core.rendered import (
     ERRORS_SINCE,
+    GONE_SINCE,
     JOINED_SINCE,
     LEAVES_FIRST_SINCE,
     PROTOCOL_VERSION,
@@ -931,8 +932,7 @@ class WireviewSession:
             return
         component = self.repo.get(id)
         if component is None:
-            # Unknown, refused or already gone: nothing is sent, not even an
-            # empty answer (tests/test_live_session_contract.py).
+            await self._answer_gone(id, answer)
             return
         try:
             await self.repo.dispatch_event(id, command, [], kwargs)
@@ -947,6 +947,23 @@ class WireviewSession:
             await self._crashed(component, ref)
             return
         await self.after_mutation_chores()
+
+    async def _answer_gone(self, id: str, answer: int | None) -> None:
+        """Answer an event for an id this connection holds no instance under. No handler runs.
+
+        Unknown, refused at its mount, left -- or retired by its drawer's render
+        while the page held on to the element (``wire-update="ignore"``, #204).
+        The answer ends the loading state the event started, and a page that
+        still holds the element joins it again from the state it carries
+        (``gone``). Unanswered, the event left its button disabled for good and
+        the element dead. A client older than ``gone`` gets the empty render an
+        event with no handler gets.
+        """
+        log.debug("No instance under %s for a user_event; answering gone", id)
+        if self.repo.vsn >= GONE_SINCE:
+            await self.send_command("gone", _with_ref({"id": id}, answer))
+        else:
+            await self.send_command("render", _with_ref({"id": id, "diff": None}, answer))
 
     async def command_hook_event(
         self,

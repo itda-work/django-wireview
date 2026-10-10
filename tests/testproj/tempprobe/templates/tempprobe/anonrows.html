@@ -1,0 +1,10 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <ul data-testid="messages">
+    {% for m in messages %}
+      {% component 'TempRow' text=m %}
+    {% endfor %}
+  </ul>
+  <button data-testid="load" {% on "click" "load" %}>load</button>
+</div>

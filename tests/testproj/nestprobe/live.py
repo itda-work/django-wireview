@@ -7,6 +7,8 @@ the leaf's ``leaving()``, ``joined()`` and ``update()`` ride on that render.
 
 With ``anon`` the root also draws ``NestAnon`` without an id: every render of
 the root draws a new one, and the one before leaves with that render (#204).
+With ``ignore`` it draws one under ``wire-update="ignore"`` once its note is
+set: the page keeps the first, which the root's next render retires (#204).
 """
 
 from wireview import Component, LiveComponent
@@ -65,6 +67,7 @@ class NestRoot(Component):
 
     shown: bool = True
     anon: bool = False
+    ignore: bool = False
     note: str = ""
 
     async def toggle(self):

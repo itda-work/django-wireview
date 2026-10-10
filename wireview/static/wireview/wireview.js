@@ -565,6 +565,26 @@ class ServerConnection {
         );
         break;
       }
+      case "gone": {
+        // The server held no instance under the id when an event for it came
+        // (#204): its drawer's render retired it, or it left. Nothing ran;
+        // the event's loading state ends here, as a render would end it.
+        const { id, ref } = payload;
+        const eventRef = settledEvent("gone", payload);
+        if (eventRef !== undefined) {
+          boost.valueGuard.answer(eventRef);
+          this.loading.answer(eventRef).forEach(unmarkLoading);
+        }
+        // After the frame a render scheduled: one that takes the element
+        // away leaves nothing to join
+        window.requestAnimationFrame(() => {
+          const target = this.components[id];
+          const present = Boolean(target && document.getElementById(id));
+          if (!this.joins.joinsAgainWhenGone(id, ref, { present, owned: Boolean(target?.owned) })) return;
+          /** @type {WireviewComponent} */ (target).rejoin();
+        });
+        break;
+      }
       case "reload":
         // The server refused a signed state (expired, pre-envelope, or invalid)
         // and mounted nothing. Reloading re-renders the page with fresh tokens.

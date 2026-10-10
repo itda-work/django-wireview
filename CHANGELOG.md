@@ -12,6 +12,17 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Changed
+
+- A nested `{% component %}` its drawer's render stops drawing leaves with that render, an id or not
+  (#204): one an `{% if %}` hides and shows again starts anew, its old state gone, whatever order the
+  page's leave and the next render come in. Keep it drawn and hide it with CSS to keep its state.
+- An event for a component id the connection holds no instance under is answered (#204): with `gone`
+  (protocol version 9), which ends the loading state the event started and joins the element again
+  from its state when the page still holds it -- one under `wire-update="ignore"` its drawer's render
+  retired. An older client gets the empty render an event with no handler gets. Before, nothing came
+  back and the button stayed loading.
+
 ### Fixed
 
 - A nested `{% component %}` its drawer's render no longer draws leaves with that render (#204): it is
@@ -22,7 +33,10 @@ The django-reactor era changelog (2.x) is preserved in
   each render. What it drew in its own passes goes with it. A component drawn with an id that an
   `{% if %}` hides retires the same way, so shown again it starts anew whatever order the page's leave
   and the next render come in; before, it came back with its old state when the leave came last. One
-  that a part kept for a reset temporary assign still shows stays.
+  that a part kept for a reset temporary assign still shows stays -- in a render of its drawer's own,
+  or where another component's pass draws that drawer. An id the render draws in another pass of it
+  (moved from a nested component to the one around it) is the same instance, whichever pass comes
+  first. A nested component a LiveComponent drew leaves with that LiveComponent.
 
 ## [1.5.1] - 2026-10-10
 

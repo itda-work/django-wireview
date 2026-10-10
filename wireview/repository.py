@@ -125,6 +125,9 @@ class ComponentRepository:
         self._pending_updates: list[tuple[LiveComponent, dict[str, t.Any]]] = []
         # Instances replaced under a reused id; they owe a leaving() call
         self._pending_leaving: list[Component] = []
+        # Nested components a pass stopped drawing, retired once the render that
+        # ran it is over unless another pass of it drew them again (``take_lifecycle``, #204)
+        self._undrawn: dict[str, None] = {}
         # Child ids each parent named in its current template pass
         self._rendered_children: dict[str, set[str]] = {}
         # Existing children whose slot content changed on the parent's re-render
@@ -373,11 +376,14 @@ class ComponentRepository:
         for one drawn again.
 
         A component it drew before and not in this pass is gone from the page
-        with the render this pass makes, and it retires here (``_retire_drawn``):
-        its ``leaving()`` goes into the next batch (``take_lifecycle``), and from
-        now on no broadcast, patch or task of it runs. Left for the page's leave,
-        it ran all of that until the leave came -- and for good where none came.
-        One drawn without an id is never drawn again: each pass draws a new one
+        with the render this pass is part of, unless another pass of that render
+        draws it -- an id the template moved from a nested component to the one
+        around it, which may come after this pass or before it. So it is only
+        noted here, and retires when the render is over (``take_lifecycle``):
+        its ``leaving()`` goes into that render's batch, and from then on no
+        broadcast, patch or task of it runs. Left for the page's leave, it ran
+        all of that until the leave came -- and for good where none came. One
+        drawn without an id is never drawn again: each pass draws a new one
         under a new ``rx-<uuid>`` (#204). The ones a part the pass kept for a
         reset temporary assign shows are still on the page and stay
         (``WireviewMeta.kept_components``, #111).
@@ -388,25 +394,48 @@ class ComponentRepository:
         drew = self._drew.pop(drawer_id, set())
         for child_id in drew - rendered:
             if self._built_by.get(child_id) == drawer_id:
+                del self._built_by[child_id]
                 if self.is_live:
-                    self._pending_leaving.extend(self._retire_drawn(child_id))
-                self._built_by.pop(child_id, None)
+                    self._undrawn[child_id] = None
         if drew := {child_id for child_id in drew & rendered if self._built_by.get(child_id) == drawer_id}:
             self._drew[drawer_id] = drew
         return rendered
 
+    def _retire_undrawn(self) -> None:
+        """Retire what the passes of the render just over stopped drawing and none drew again (``end_pass``)."""
+        undrawn, self._undrawn = self._undrawn, {}
+        for id in undrawn:
+            if id not in self._built_by:
+                self._pending_leaving.extend(self._retire_drawn(id))
+
     def _retire_drawn(self, id: str) -> list[Component]:
-        """Remove the nested component ``id`` a pass stopped drawing, with what its own passes drew.
+        """Remove the nested component ``id`` no pass draws any more, with what its own passes drew.
 
         Its element went with the drawer's render, and the elements of what it
         drew inside it with it: no pass of it runs any more to retire those.
-        The LiveComponents it owns go along, as in :meth:`remove`. A
-        LiveComponent is its parent's to settle and is not drawn this way.
+        A LiveComponent is its parent's to settle and is not drawn this way.
         """
         component = self.components.get(id)
         if component is None or isinstance(component, LiveComponent):
             return []
-        inner = [child_id for child_id in self._drew.get(id, ()) if self._built_by.get(child_id) == id]
+        return self._remove_with_drawn(id)
+
+    def _remove_with_drawn(self, id: str) -> list[Component]:
+        """:meth:`remove` ``id``, and retire what the passes of the removed instances drew.
+
+        The removed are ``id`` and the LiveComponents it owns. A nested
+        component one of them drew is inside its element, which leaves the page
+        with it, and no pass of it runs any more to retire what it drew.
+        """
+        owners = [id]
+        for owner in owners:
+            owners.extend(child.id for child in self.get_live_components(owner))
+        inner = [
+            child_id
+            for owner in owners
+            for child_id in self._drew.get(owner, ())
+            if self._built_by.get(child_id) == owner
+        ]
         removed = self.remove(id)
         for child_id in inner:
             removed.extend(self._retire_drawn(child_id))
@@ -475,8 +504,9 @@ class ComponentRepository:
         Only call this after a render that evaluated the template. A skipped render
         names no children, and treating that as "every child disappeared" would be wrong.
         """
-        # The pass's end first: what it stopped drawing retires into this batch
+        # The pass's end first: what the render stopped drawing retires into this batch
         rendered = self.end_pass(parent_id, shown)
+        self._retire_undrawn()
         batch = LifecycleBatch(retired=self.take_retired())
         self._settle(parent_id, rendered, batch)
         return batch
@@ -499,7 +529,7 @@ class ComponentRepository:
 
         for child in self.get_live_components(parent_id):
             if child.id not in rendered:
-                batch.retired.extend(self.remove(child.id))
+                batch.retired.extend(self._remove_with_drawn(child.id))
 
         for inner_id in self._inline.pop(parent_id, []):
             if (inner_rendered := self._inline_rendered.pop(inner_id, None)) is not None:

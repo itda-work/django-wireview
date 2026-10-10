@@ -113,6 +113,14 @@ UPGRADE_NOTE = {
         "그린 쪽이 더는 그리지 않는 중첩 컴포넌트는 그 렌더와 함께 떠난다",
         "id가 있어도 언제나 새로 시작한다",
     ),
+    "its old state gone, whatever order the page's leave and the next render come in": (
+        "그린 쪽이 더는 그리지 않는 중첩 컴포넌트는 그 렌더와 함께 떠난다",
+        "숨겨도 상태를 지켜야 하면",
+    ),
+    "An event for a component id the connection holds no instance under is answered": (
+        "인스턴스 없는 id로 온 이벤트에 답하고",
+        "`gone`(프로토콜 `vsn` 9)으로 답하고",
+    ),
 }
 
 NO_UPGRADE_NOTE: dict[str, str] = {}

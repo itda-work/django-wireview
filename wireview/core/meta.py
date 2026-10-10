@@ -217,9 +217,10 @@ class WireviewMeta:
         # (template_engine._PartNode). Only a component with temporary assigns records.
         self.drawn: dict[tuple[t.Any, ...], frozenset[tuple[t.Any, ...]]] = {}
         self.drawing: dict[tuple[t.Any, ...], set[tuple[t.Any, ...]]] | None = None
-        # The nested components a part its last render kept still shows: the
-        # page has them though the pass did not draw them, so the end of the
-        # pass does not retire them (``ComponentRepository.end_pass``, #204)
+        # The nested components a part its last pass kept still shows -- a
+        # render of its own, or one in another component's pass: the page has
+        # them though the pass did not draw them, so the end of the pass does
+        # not retire them (``ComponentRepository.end_pass``, #204)
         self.kept_components: set[str] = set()
         self.born: int = next(_TICKS)
         # When a render of its own last put something new on the page; 0 until
@@ -595,6 +596,8 @@ class WireviewMeta:
             elif not (self._is_frozen or self._redirected_to) and html is None:
                 template = component._get_template()
                 self.template_evaluated = True
+                # The pass this render is ends with what its kept parts show (#204)
+                self.kept_components = set()
                 if slots is not None:
                     self.slots = slots.without_markers()
                 elif self.slots is not None:

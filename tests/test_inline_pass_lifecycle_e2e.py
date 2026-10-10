@@ -7,10 +7,14 @@ and a note the root passes through the box reaches it.
 
 Fixture: tests/testproj/nestprobe/ (``?hidden=1``: the box starts with the leaf hidden;
 the ``visit-shown`` link is a boosted visit to the page with it shown; ``?anon=1``: the
-root also draws a component without an id, a new one in each of its renders).
+root also draws a component without an id, a new one in each of its renders; ``?ignore=1``:
+one under ``wire-update="ignore"``, which the page keeps while the root's renders retire it).
 """
 
+import re
+
 import pytest
+from playwright.sync_api import expect
 from testproj.e2e_browser import expect_count, expect_text, open_live
 from testproj.e2e_server import serve
 
@@ -107,6 +111,21 @@ WebSocket.prototype.send = function (data) {
 """
 
 
+#: What the page's sockets received, and the wireview:error events it heard
+RECEIVED = """
+window.__received = [];
+window.__errors = [];
+document.addEventListener("wireview:error", (e) => window.__errors.push(e.detail));
+const Socket = window.WebSocket;
+window.WebSocket = class extends Socket {
+  constructor(...args) {
+    super(...args);
+    this.addEventListener("message", (e) => window.__received.push(JSON.parse(e.data)));
+  }
+};
+"""
+
+
 def _anon_hooks(heard, hook: str) -> list[str]:
     return [id for each, id, _ in heard if each == hook and id.startswith("rx-")]
 
@@ -143,3 +162,39 @@ def test_a_component_drawn_without_an_id_leaves_with_the_render_that_draws_anoth
     expect_text(page.get_by_test_id("anon-note"), "poked")
     assert ("poked", shown, 0) in heard
     assert shown not in _anon_hooks(heard, "leaving")
+
+
+def test_a_retired_component_the_page_kept_answers_its_event_and_joins_again(page, server, heard):
+    # Under wire-update="ignore" the page keeps the element of the NestAnon the
+    # root's first render with a note drew; the next render draws another and
+    # retires that one. The click on the kept element reaches no instance: the
+    # server says so (gone), its loading state ends, and the page joins the
+    # element again from its state -- the next click answers (#204). Before,
+    # nothing came back and the button stayed loading.
+    page.add_init_script(RECEIVED)
+    open_live(page, f"{server}/nestprobe/?ignore=1")
+    page.get_by_test_id("write").click()
+    expect_text(page.get_by_test_id("anon-note"), "!")
+    kept = page.get_by_test_id("anon").get_attribute("id")
+    page.get_by_test_id("write").click()
+    expect_text(page.get_by_test_id("leaf-note"), "!!")
+    expect_text(page.get_by_test_id("anon-note"), "!")
+    assert kept in _anon_hooks(heard, "leaving"), heard
+
+    poke = page.get_by_test_id("anon-poke")
+    poke.click()
+    expect(poke).not_to_have_class(re.compile("wireview-click-loading"))
+    # The join's answer: a render carrying the server's version
+    page.wait_for_function(
+        "id => window.__received.some((m) => m.command === 'render' && m.payload.id === id && m.payload.vsn)",
+        arg=kept,
+    )
+    assert ("poked", kept, 0) not in heard
+    assert page.evaluate("window.__received.filter((m) => m.command === 'gone').map((m) => m.payload.id)") == [kept]
+    assert page.evaluate("window.__errors") == []
+
+    expect_count(page.get_by_test_id("anon"), 1)
+    poke.click()
+    expect_text(page.get_by_test_id("anon-note"), "poked")
+    assert ("poked", kept, 0) in heard
+    assert _anon_hooks(heard, "joined").count(kept) == 2, heard

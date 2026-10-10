@@ -7,4 +7,8 @@
   {% if anon %}
     {% component 'NestAnon' note=note %}
   {% endif %}
+  {# The page keeps the first one a render drew here; the root's next render retires it #}
+  {% if ignore and note %}
+    <span wire-update="ignore">{% component 'NestAnon' note=note %}</span>
+  {% endif %}
 </div>
