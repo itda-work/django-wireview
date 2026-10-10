@@ -101,7 +101,7 @@ await (
 
 `update_only=True`는 그 id가 페이지에 없으면 아무것도 하지 않는다(Phoenix LiveView의 `update_only`). 그 페이지가
 나중에 그 자리를 불러오면 DB에서 고쳐진 판을 읽는다. 지우기는 원래 없는 id에 아무 일도 하지 않으므로
-`stream_delete`는 그대로 쓴다.
+`stream_delete`는 그대로 쓴다. 예제: [chat_lv3](../../examples/chat_lv3/).
 
 ---
 

@@ -17,6 +17,8 @@ The django-reactor era changelog (2.x) is preserved in
 - `examples/chat_lv2`, the second step of the chat series: the author of a message is the signed-in user, a room is
   read by its members only, and the room page sits inside a `live_session` whose hook checks the membership of each
   component's own room on every join (#198).
+- `examples/chat_lv3`, the third step of the chat series: scrolling up loads older messages a page at a time from a
+  cursor in the signed state, and an author edits or deletes their own messages on every open page of the room (#199).
 - `stream_insert(..., update_only=True)`, on a component and on `Broadcast`: replace the item where a page shows it and
   insert nothing where it does not, as Phoenix LiveView's `update_only` (#199). Pages that loaded different parts of a
   list get the same Broadcast, and an edit of an item a page never loaded turned up at `at`, out of its place.

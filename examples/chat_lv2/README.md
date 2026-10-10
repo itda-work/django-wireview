@@ -94,5 +94,6 @@ WIREVIEW_TEST_LAYER=memory ./tests/e2e.sh examples/chat_lv2    # 브라우저 �
 ## 더 읽기
 
 - 이전 단계: [chat](../chat/) — Streams, Broadcast, Presence
+- 다음 단계: [chat_lv3](../chat_lv3/) — 위로 스크롤해 과거 불러오기, 내 메시지 수정·삭제
 - 경계: [live_session](../../docs/features/live-session.md), 훅: [라이프사이클 훅](../../docs/features/lifecycle-hooks.md)
 - 핵심 파일: access.py · live_sessions.py · live.py · views.py
