@@ -52,6 +52,9 @@ wireview/
 │                          joined() 밖의 stream() reset은 wire.patch_gate로 잡는다. 잡기는 토큰으로 센다: reset의 stream_op 메일이 자기 토큰(hold)을
 │                          싣고 소켓에 쓰일 때 놓는다, join의 토큰은 release_patches 메일이 놓는다. 마지막 토큰이 놓일 때 쓴다. 메일이 채널로 나간 뒤
 │                          처리 중인 메시지 없이 HOLD_SECONDS가 지나면 패치를 쓰지 않고 연결을 닫는다(1013, WireviewConsumer.dispatch → handling_message)
+├── core/notifications.py  알림·모델 변경의 배달 규칙(#201). 구독한 컴포넌트마다 notification()·mutation() → 렌더 → after_mutation_chores.
+│                          WireviewSession.notification·model_mutation과 testing의 mount가 같은 deliver()를 Host 프로토콜로 부른다 — 사본을 두지 않는다.
+│                          utils.publish가 모든 알림 발행의 한 곳이고, 발행 뒤 같은 프로세스·같은 이벤트 루프의 mount 인스턴스에 건넨다(listen·published)
 ├── core/watched.py        Watched: 보는 사람을 읽으면 오류인 감시 객체. shared_render(VERIFY일 때)와 Broadcast 항목 렌더(언제나)가 함께 쓴다.
 │                          Broadcast 항목의 this는 대상 클래스를 품어 {% on %}이 핸들러를 클래스에서 검사한다(stands_for)
 ├── core/template_reload.py 개발 서버에서 템플릿이 바뀌면(자동 리로더의 file_changed) 이 프로세스의 열린 연결마다 rejoin을 보낸다(#180).
@@ -105,6 +108,9 @@ wireview/
 ├── telemetry.py           옵트인 계측 시그널 (event_handled, component_rendered, diff_computed, broadcast_published 구간과
 │                          connection_opened·connection_closed·join_rejected(닫힌 사유 집합)·publish_failed 이벤트, #124)
 ├── testing.py             mount(), MountedComponent, ComponentTestCase. mount한 컴포넌트는 같은 프로세스의 Broadcast를 받는다(core/patches.listen).
+│                          구독한 채널의 알림·모델 변경도 세션의 규칙(core/notifications.deliver)으로 받고 render를 sent_messages에 남긴다(#201).
+│                          핸들러(이벤트·joined()·params_changed·알림)가 보낸 메일은 연결의 채널처럼 핸들러가 끝난 뒤 쓰고, 그 사이 온 알림도 그 줄에 선다.
+│                          Broadcast 패치는 기다리지 않고 바로 쓴다 — 브라우저와 같은 순서(#205)
 │                          render()는 실제 저장소의 HTTP 렌더 모드로 자식까지 그린다(자식 수명주기는 컨슈머 몫, #115).
 │                          내비게이션 단언·follow_redirect·follow_push·스트림 검사
 ├── utils.py, log.py       db 헬퍼, 로깅
@@ -446,6 +452,6 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) 아키텍처
 - [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) 배포
 - [docs/COMPATIBILITY.md](./docs/COMPATIBILITY.md) 공개 API, 폐기 절차, 지원 범위
-- [docs/UPGRADING.md](./docs/UPGRADING.md) 0.x, 1.0 릴리스 후보, 1.0에서 1.1로, 1.1에서 1.2로, 1.2에서 1.3으로, 1.3에서 1.4로, 1.4에서 1.5로. 쓰던 버전별로 읽을 절과 보안 조치
+- [docs/UPGRADING.md](./docs/UPGRADING.md) 0.x, 1.0 릴리스 후보, 1.0에서 1.1로, 1.1에서 1.2로, 1.2에서 1.3으로, 1.3에서 1.4로, 1.4에서 1.5로, 1.5에서 1.6으로. 쓰던 버전별로 읽을 절과 보안 조치
 - [docs/PERFORMANCE.md](./docs/PERFORMANCE.md) 성능
 - [CHANGELOG.md](./CHANGELOG.md) 변경 이력

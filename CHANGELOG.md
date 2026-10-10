@@ -12,6 +12,27 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- A component `mount()`ed in a test hears the notifications published in its process, as a page does (#201):
+  `abroadcast()`, `broadcast()`, `self.broadcast()`, `atoast()` and auto-broadcast's model mutations on a
+  channel it subscribes to run its `notification()` or `mutation()`, then the render a session sends
+  (recorded in `sent_messages`) and its subscriptions settled again. Before, a broadcast was only recorded in
+  `view.broadcasts`, and a test that called `component.notification()` itself skipped the render and the
+  subscriptions. The session and the test helper hand a notification over with the same code
+  (`wireview/core/notifications.py`), so they cannot drift. Publishing returns once the receivers are done;
+  one that raises raises where it was published. Only a component mounted on the running event loop hears
+  it, so one an earlier test left behind does not.
+
+### Fixed
+
+- `mount()` recorded a handler's mail -- stream operations, `push_event`, JS, navigation -- as it was sent,
+  while a connection writes it once the handler is done (#205). A `Broadcast` patch published during the
+  handler, which a connection writes at once, landed after the mail instead of before it: a delete of an
+  item the handler was inserting looked kept in the test and came back in the browser. A handler's mail,
+  and a notification published during it, now wait in the order they were sent until `call()`,
+  `joined()`, `follow_push()`'s `params_changed()` or the notification's handling ends.
+
 ## [1.5.1] - 2026-10-10
 
 ### Added

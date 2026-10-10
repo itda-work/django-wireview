@@ -19,8 +19,8 @@ from django.utils.datastructures import MultiValueDict
 
 from wireview.core.component import Component
 
-from . import serializer, telemetry
-from .core import patches, shared_render, template_reload
+from . import telemetry
+from .core import notifications, patches, template_reload
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
 from .core.rendered import (
     ERRORS_SINCE,
@@ -1549,50 +1549,18 @@ class WireviewSession:
     # Incoming messages from subscriptions
 
     async def model_mutation(self, data):
-        # The signature here is coupled to:
-        #   `wireview.auto_broadcast.notify_mutation`
-        # Each component gets an instance of its own: one that edits what it heard
-        # must not change what the next one hears.
-        await self._dispatch_notifications(
-            "mutation",
-            data["channel"],
-            lambda: {
-                "instance": serializer.decode(data["instance"]),
-                "action": data["action"],
-            },
-            data.get("message_id"),
-        )
+        await notifications.deliver(self, "mutation", data)
 
     async def notification(self, data):
-        # The signature here is coupled to:
-        #   `wireview.utils.send_notification`
-        await self._dispatch_notifications(
-            "notification", data["channel"], lambda: data["kwargs"], data.get("message_id")
-        )
+        await notifications.deliver(self, "notification", data)
 
-    async def _dispatch_notifications(
-        self,
-        receiver: str,
-        channel: str,
-        arguments: t.Callable[[], dict[str, t.Any]],
-        message_id: str | None = None,
-    ):
-        for component in self.repo.components_subscribed_to(channel):
-            if self.repo.get(component.id) is not component:
-                # Went with an ancestor that raised earlier in this loop
-                continue
-            kwargs = arguments()
-            try:
-                with render_queries.scope("handler", component, f"{receiver}({channel!r})"):
-                    await getattr(component, receiver)(channel, **kwargs)
-                # The sessions of this process handling the same message render a
-                # Meta.shared_render component once between them (#176). Only the
-                # render: each one's receiver above ran on its own.
-                with shared_render.handling(message_id), render_queries.reason(f"{receiver} {channel}"):
-                    await self.send_render(component)
-            except Exception:
-                await self._crashed(component)
-        await self.after_mutation_chores()
+    def _subscribed_to(self, channel: str) -> t.Iterable[Component]:
+        """``notifications.Host``: what a failed join left hears nothing (repo.reachable)."""
+        return self.repo.components_subscribed_to(channel)
+
+    def _holds(self, component: Component) -> bool:
+        """``notifications.Host``: false once it went with an ancestor that raised earlier in the loop."""
+        return self.repo.get(component.id) is component
 
     # Reply to front-end
 

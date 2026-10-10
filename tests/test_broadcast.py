@@ -21,7 +21,7 @@ from django.template import Template, engines
 from django.utils import timezone, translation
 from testproj.waiting import eventually
 
-from wireview import JS, Broadcast, Component, LiveComponent, mount, telemetry
+from wireview import JS, Broadcast, Component, LiveComponent, abroadcast, mount, telemetry
 from wireview.consumer import WireviewConsumer
 from wireview.core import patches
 from wireview.core.meta import WireviewMeta
@@ -1848,3 +1848,189 @@ def test_send_outside_a_transaction_sends_at_once():
         set_broker(None)
 
     assert len(published) == 1
+
+
+# --- wireview.testing: mail behind the handler (#205), notifications (#201) ----------------
+
+
+async def _publish_and_write(component: Component, broadcast: Broadcast) -> None:
+    """Publish; on a connection, wait until the patch is on the socket: it is written during the handler."""
+    session = component.wire.patch_gate.hold.__self__  # type: ignore[union-attr]
+    writer = getattr(session, "_patch_writer", None)
+    await broadcast.asend()
+    if isinstance(session, WireviewSession):
+        await eventually(lambda: session._patch_writer is not writer and session._patch_writer.done())  # type: ignore[union-attr]
+
+
+class BcInserting(BcFeed):
+    """Inserts the rows it read one by one; a delete of the first is published between the two."""
+
+    class Meta:
+        subscriptions = {"bc-inserting"}
+
+    async def add(self, **_rest):
+        await self.stream_insert("items", Post(5, "five"))
+        await _publish_and_write(self, Broadcast(BcInserting, "bc-inserting").stream_delete("items", 5))
+        await self.stream_insert("items", Post(6, "six"))
+        await self.push_event("finished")
+
+
+@pytest.mark.asyncio
+async def test_a_mounted_component_writes_its_handlers_mail_after_a_patch_that_came_during_it():
+    """The patch is written as it comes, the handler's mail once the handler is done: the item is not kept (#205)."""
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcInserting, "inserting")
+        await _event(communicator, "inserting", "add")
+        connection = _stream_ops(await _until(communicator, _finished))
+    finally:
+        await communicator.disconnect()
+    view = await mount(BcInserting, id="inserting")
+    view.clear_messages()
+
+    await view.call("add")
+
+    assert connection == [("delete", ["items-5"]), ("insert", ["items-5"]), ("insert", ["items-6"])]
+    assert [(op["op"], [item["id"] for item in op["items"]]) for op in view.stream_ops("items")] == connection
+
+
+TEMPLATES["bc/listener.html"] = "{% load wireview %}<p {% tag_header %}>{{ room }}: {{ heard|join:',' }}</p>"
+
+
+class BcListener(Component):
+    """Hears its room; a notification can move it to another one, and mails what it heard."""
+
+    room: str = "a"
+    heard: list[str] = []
+
+    class Meta:
+        template_name = "bc/listener.html"
+
+    def get_subscriptions(self) -> set[str]:
+        return {f"bc-room-{self.room}"}
+
+    async def notification(self, channel: str, **kwargs: t.Any) -> None:
+        self.heard = [*self.heard, kwargs["text"]]
+        if move := kwargs.get("move"):
+            self.room = move
+        await self.push_event("heard", {"text": kwargs["text"]})
+
+    async def shout(self, **_rest):
+        """Mails, publishes to its own room, mails again: the notification waits between the two."""
+        await self.push_event("before")
+        await abroadcast(f"bc-room-{self.room}", text="own")
+        await self.push_event("after")
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return _template(cls, template_name)
+
+
+def _heard(message: dict[str, t.Any]) -> tuple[str, ...]:
+    """A frame as a test compares it: a render by its id, a push_event by its event and text."""
+    if message["command"] == "render":
+        return ("render", message["payload"]["id"])
+    payload = message["payload"]
+    return ("push_event", payload["event"], *([payload["payload"]["text"]] if payload["payload"] else []))
+
+
+def _recorded(view: t.Any) -> list[tuple[str, ...]]:
+    return [
+        ("render", m["id"]) if m["type"] == "render" else ("push_event", m["event"], *m["payload"].values())
+        for m in view.sent_messages
+    ]
+
+
+def _event_answer(message: dict[str, t.Any]) -> bool:
+    """The render that answers a user_event: ``call()`` returns the handler's result instead."""
+    return message["command"] == "render" and "ref" in message["payload"]
+
+
+@pytest.mark.asyncio
+async def test_a_mounted_component_hears_a_notification_as_a_connection_does():
+    """Receiver, render, subscriptions settled again: the move to room b is heard there, not in room a (#201)."""
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcListener, "listener")
+        await abroadcast("bc-room-a", text="one", move="b")
+        heard = await _until(communicator, lambda m: _heard(m) == ("push_event", "heard", "one"))
+        await abroadcast("bc-room-a", text="two")
+        await abroadcast("bc-room-b", text="three")
+        heard += await _until(communicator, lambda m: _heard(m) == ("push_event", "heard", "three"))
+    finally:
+        await communicator.disconnect()
+    connection = [_heard(m) for m in heard]
+    view = await mount(BcListener, id="listener")
+
+    await abroadcast("bc-room-a", text="one", move="b")
+    await abroadcast("bc-room-a", text="two")
+    await abroadcast("bc-room-b", text="three")
+
+    assert connection == [
+        ("render", "listener"),
+        ("push_event", "heard", "one"),
+        ("render", "listener"),
+        ("push_event", "heard", "three"),
+    ]
+    assert _recorded(view) == connection
+    assert view.component.heard == ["one", "three"]
+    assert "b: one,three" in view.render()
+
+
+@pytest.mark.asyncio
+async def test_a_notification_published_during_a_handler_waits_behind_the_mail_sent_before_it():
+    """In the channel the handler's mail and the notification are in the order they were sent (#201, #205)."""
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcListener, "listener")
+        await _event(communicator, "listener", "shout")
+        heard = await _until(communicator, lambda m: _heard(m) == ("push_event", "heard", "own"))
+    finally:
+        await communicator.disconnect()
+    connection = [_heard(m) for m in heard if not _event_answer(m)]
+    view = await mount(BcListener, id="listener")
+
+    await view.call("shout")
+
+    assert connection == [
+        ("push_event", "before"),
+        ("render", "listener"),
+        ("push_event", "after"),
+        ("push_event", "heard", "own"),
+    ]
+    assert _recorded(view) == connection
+
+
+@pytest.mark.asyncio
+async def test_a_mounted_component_hears_another_mounted_components_broadcast():
+    speaker = await mount(BcListener, id="speaker")
+    listener = await mount(BcListener, id="listener", room="b")
+
+    await speaker.component.broadcast("bc-room-b", text="hi")
+
+    assert speaker.component.heard == []
+    assert listener.component.heard == ["hi"]
+    assert [b["channel"] for b in speaker.broadcasts] == ["bc-room-b"]
+
+
+class BcFailingListener(BcListener):
+    async def notification(self, channel: str, **kwargs: t.Any) -> None:
+        raise RuntimeError("receiver failed")
+
+
+@pytest.mark.asyncio
+async def test_a_receiver_that_raises_raises_where_the_notification_was_published():
+    """A session would recover the component alone; a test is told."""
+    await mount(BcFailingListener, id="failing")
+
+    with pytest.raises(RuntimeError, match="receiver failed"):
+        await abroadcast("bc-room-a", text="one")
+
+
+def test_a_component_mounted_by_an_earlier_test_hears_nothing():
+    """Its loop is gone: what a later test publishes is not its (#201)."""
+    left_behind = asyncio.run(mount(BcListener, id="left"))
+
+    asyncio.run(abroadcast("bc-room-a", text="later"))
+
+    assert left_behind.component.heard == []

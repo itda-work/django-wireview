@@ -418,6 +418,28 @@ async def test_typing_indicator():
     assert typing[-1]["state"] == "typing"
 ```
 
+## 알림 테스트
+
+`mount()`한 컴포넌트는 같은 프로세스에서 발행한 알림을 페이지처럼 받는다. 구독한 채널에 `abroadcast()`·
+`self.broadcast()`가 보낸 알림이나 auto-broadcast의 모델 변경이 오면 `notification()`·`mutation()`이 돌고, 세션처럼
+렌더하고 구독을 다시 맞춘다. 그래서 "어디선가 생긴 행이 열린 페이지에 나타난다"를 소켓 없이 쓴다. 발행이
+돌아오면 받는 쪽도 끝나 있다. 아래 `XNotificationList`와 모델 `Notification`은 [notifications 예제](../../examples/notifications/README.md)의 것이다.
+
+```python
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_a_new_notification_reaches_the_open_list(alice):
+    view = await mount(XNotificationList, user=alice)   # alice의 알림 채널을 구독한다
+
+    # auto-broadcast가 그 채널로 model_mutation을 보내고, 목록의 mutation()이 받는다
+    await Notification.objects.acreate(user=alice, title="새 알림", message="…")
+
+    assert "새 알림" in view.stream_html("notifications")
+```
+
+`component.mutation(...)`·`component.notification(...)`을 직접 부르지 않는다 — 그러면 그 뒤의 렌더와 구독 맞추기를
+건너뛰어 페이지와 어긋난다. 순서와 예외는 [테스트 헬퍼의 알림 받기](../features/testing.md#알림-받기)에 있다.
+
 ## 픽스처 활용
 
 ### 공통 설정

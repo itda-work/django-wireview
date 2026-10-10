@@ -81,6 +81,7 @@
 | `core/connections.py` | 동기 렌더가 컴포넌트의 async 코드로 건너는 다리가 그 스레드(요청)의 DB 연결을 닫지 않게 붙잡는다 (#190) |
 | `core/shared_render.py` | `Meta.shared_render`: 같은 브로드캐스트를 처리하는 연결들이 렌더 하나를 함께 쓰고, `data-state`만 연결마다 끼운다. 선언 검증(#176) |
 | `core/patches.py` | `Broadcast`: 스트림 항목·훅 이벤트·JS 명령을 발행하는 곳에서 한 번 렌더하고 직렬화해, 구독한 연결마다 컴포넌트 id만 끼워 쓴다(#178) |
+| `core/notifications.py` | 알림·모델 변경을 듣는 컴포넌트에 건네는 규칙(받는 메서드 → 렌더 → 구독 재조정). 세션과 `wireview.testing`의 mount가 함께 쓰고, 같은 프로세스에서 발행된 알림을 mount한 컴포넌트에 건넨다(#201) |
 | `core/template_reload.py` | 개발 서버에서 템플릿이 바뀌면(자동 리로더의 `file_changed`) 이 프로세스의 열린 연결마다 처리 순서 안에서(자기 채널로 보낸 메일의 차례에) `rejoin`을 보낸다. 페이지는 `sync`의 답을 기다렸다가 컴포넌트를 지금 상태로 다시 join한다(#180) |
 | `core/watched.py` | 보는 사람을 읽으면 오류가 나는 감시 객체. `shared_render`의 검증과 `Broadcast` 항목 렌더가 함께 쓴다 |
 | `core/session.py` | `SessionView`: Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다 |
@@ -340,7 +341,7 @@ wireview/
 ├── __init__.py            # 공개 API (_EXPORTS 표로 지연 로딩)
 ├── core/                  # component, handlers, meta, rendered, render_reads, render_gate, shared_render, patches,
 │                          # watched, state, signing, model_state, session(SessionView), live_session, origin, transport,
-│                          # template_reload, connections, lazy_context
+│                          # template_reload, connections, lazy_context, notifications
 ├── features/              # streams, presence, uploads, upload_store, hooks, toasts
 ├── consumer.py  session.py  repository.py  live_component.py  function_components.py  slots.py
 ├── template_engine.py  event_transpiler.py  js.py  async_result.py  auto_broadcast.py

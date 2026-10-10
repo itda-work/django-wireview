@@ -334,14 +334,9 @@ class WireviewMeta:
         Named by a ``message_id`` as the module functions' are, so the sessions
         of a process handling it share a ``Meta.shared_render`` render (#176).
         """
-        from ..utils import _message  # wireview.utils imports this module's package first
+        from ..utils import _message, publish  # wireview.utils imports this module's package first
 
-        message = _message(channel, "notification", {"kwargs": kwargs})
-        with telemetry.span(
-            telemetry.broadcast_published, sender=type(self.broker), topic=channel, kind="notification"
-        ) as span:
-            span.measure(message)
-            await self.broker.publish(channel, message)
+        await publish(self.broker, _message(channel, "notification", {"kwargs": kwargs}))
 
     async def destroy(self, component_id: str) -> None:
         """Destroy a component and notify the client."""

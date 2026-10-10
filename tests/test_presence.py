@@ -83,6 +83,13 @@ def presence_clock(monkeypatch):
     return clock
 
 
+def _presence_template(cls, template_name=None):
+    """What both components draw: a mounted one renders after each notification it hears (#201)."""
+    from django.template import Template
+
+    return Template("{% load wireview %}<div {% tag_header %}>{{ username }}</div>")
+
+
 # Test Components (prefixed with X to avoid pytest collection)
 class XProducerComponent(PresenceMixin, Component):
     """Test component that produces presence updates."""
@@ -107,6 +114,8 @@ class XProducerComponent(PresenceMixin, Component):
         """Call presence_join on mount."""
         await self.presence_join()
 
+    _get_template = classmethod(_presence_template)
+
 
 class XTrackerComponent(PresenceTrackerMixin, Component):
     """Test component that tracks presence of other users."""
@@ -125,6 +134,8 @@ class XTrackerComponent(PresenceTrackerMixin, Component):
 
     def get_subscriptions(self) -> set[str]:
         return {self._presence_channel()}
+
+    _get_template = classmethod(_presence_template)
 
 
 # Unit Tests for PresenceUser
@@ -323,6 +334,8 @@ class TestPresenceMixin:
 
 
 # Unit Tests for PresenceTrackerMixin
+# A tracker renders after each presence notification it hears, as a page does (#201)
+@pytest.mark.django_db
 class TestPresenceTrackerMixin:
     """Tests for PresenceTrackerMixin."""
 
@@ -486,13 +499,15 @@ class TestPresenceTrackerMixin:
 
 
 # Integration Tests
+# A tracker renders after each presence notification it hears, as a page does (#201)
+@pytest.mark.django_db
 class TestPresenceIntegration:
     """Integration tests for presence system."""
 
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_producer_to_tracker_flow(self):
-        """Test presence flow from producer to tracker."""
+        """Test presence flow from producer to tracker: the tracker hears it as a page would (#201)."""
         # Create producer
         producer = await mount(XProducerComponent, room_id=1, username="alice")
 
@@ -500,20 +515,12 @@ class TestPresenceIntegration:
         tracker = await mount(XTrackerComponent, room_id=1, username="bob")
         await tracker.component.presence_track_self(username="bob")
 
-        # Simulate producer typing by getting the broadcast data
         producer.wire._mock_channel_layer.clear()
         await producer.component.presence_set_typing(typing=True)
 
         # Get the broadcast
         broadcasts = producer.presence_broadcasts
         assert len(broadcasts) == 1
-
-        # Simulate tracker receiving the notification
-        broadcast_kwargs = broadcasts[0]["kwargs"]
-        await tracker.component.notification(
-            "presence.room.1",
-            **broadcast_kwargs,
-        )
 
         # Tracker should now show alice as typing
         assert "alice" in tracker.component._presence_registry
@@ -529,27 +536,13 @@ class TestPresenceIntegration:
         # Create tracker
         tracker = await mount(XTrackerComponent, room_id=1, username="bob")
 
-        # Producer starts typing
-        producer.wire._mock_channel_layer.clear()
+        # Producer starts typing, and the tracker hears it
         await producer.component.presence_set_typing(typing=True)
-
-        # Tracker receives typing notification
-        broadcast = producer.presence_broadcasts[0]
-        await tracker.component.notification("presence.room.1", **broadcast["kwargs"])
 
         assert tracker.component._presence_registry["alice"].is_typing()
 
-        # Wait for the timeout's clear broadcast
-        clear_broadcasts = await eventually(
-            lambda: [b for b in producer.presence_broadcasts if b.get("kwargs", {}).get("state") == "online"],
+        # The timeout's clear broadcast reaches the tracker the same way
+        await eventually(
+            lambda: not tracker.component._presence_registry["alice"].is_typing(),
             task=producer.component._presence_typing_task,
         )
-
-        # Tracker receives clear notification
-        await tracker.component.notification(
-            "presence.room.1",
-            **clear_broadcasts[-1]["kwargs"],
-        )
-
-        # Should no longer be typing
-        assert not tracker.component._presence_registry["alice"].is_typing()

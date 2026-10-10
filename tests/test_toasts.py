@@ -138,18 +138,17 @@ async def test_the_receiver_shows_a_toast_as_a_flash_and_renders_nothing():
     alice = await User.objects.acreate(username="alice")
     view = await mount(WireviewToasts, user=alice)
 
-    await view.component.notification(
-        toast_channel(alice), flash_type="success", message="배포 끝", timeout=0, dismissible=False
-    )
+    # Heard as a page hears it: the receiver, then the render a session sends (#201)
+    await atoast(alice, "배포 끝", flash_type="success", timeout=0, dismissible=False)
 
-    (flash,) = [m for m in view.sent_messages if m.get("type") == "flash"]
-    assert (flash["flash_type"], flash["message"], flash["timeout"], flash["dismissible"]) == (
+    (flash,) = view.sent_messages
+    assert (flash["type"], flash["flash_type"], flash["message"], flash["timeout"], flash["dismissible"]) == (
+        "flash",
         "success",
         "배포 끝",
         0,
         False,
     )
-    assert await view.render_diff() is None or view.component.wire._skip_render
 
 
 @pytest.mark.asyncio

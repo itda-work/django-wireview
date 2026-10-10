@@ -50,7 +50,7 @@ async def test_increment():
 | `view.is_frozen` | `freeze()` 여부 |
 | `view.redirected_to` | `wire.redirect_to()`로 간 URL. 없으면 `None`. 단언은 `assert_redirected_to()`가 낫다 — 실패하면 일어난 이동을 나열한다 |
 | `view.sent_messages` | 클라이언트로 나간 메시지 목록 (원본. 항목의 모양은 공개가 아니다) |
-| `view.broadcasts` | 이 컴포넌트가 낸 브로드캐스트. 채널 레이어가 거절하는 이름(`room:42`)은 기록하지 않고 레이어와 같은 `TypeError`를 던진다. 구독(`Meta.subscriptions`·`get_subscriptions()`)도 세션처럼 `mount()` 끝과 `call()`·`follow_push()`마다 맞추므로, 그런 이름의 구독은 `mount()`나 그 `call()`·`follow_push()`가 같은 `TypeError`로 실패한다 |
+| `view.broadcasts` | 이 컴포넌트가 낸 브로드캐스트. 같은 프로세스에서 마운트한 다른 컴포넌트에도 닿는다(아래 "알림 받기"). 채널 레이어가 거절하는 이름(`room:42`)은 기록하지 않고 레이어와 같은 `TypeError`를 던진다. 구독(`Meta.subscriptions`·`get_subscriptions()`)도 세션처럼 `mount()` 끝과 `call()`·`follow_push()`마다 맞추므로, 그런 이름의 구독은 `mount()`나 그 `call()`·`follow_push()`가 같은 `TypeError`로 실패한다 |
 | `view.presence_broadcasts` | 그중 `PresenceMixin`이 낸 것(입장·퇴장·타이핑). 항목마다 `kwargs`에 `action` |
 | `view.clear_messages()` | 다음 단계 전에 비운다 |
 | `async with view.queries() as q:` | 블록 안의 `call()`·`render_diff()`·`render()`와 그것이 만든 작업이 실행한 SQL. `q.count`는 몇 건인지, `q.assert_no_repeats(threshold=2)`는 같은 템플릿 줄·property에서 같은 SQL이 두 번 이상이면 실패한다(N+1). 설정과 무관하게 모은다. 행과 실패 메시지의 모양은 공개가 아니다 ([render-queries](./render-queries.md#테스트에서-단언하기)) |
@@ -197,6 +197,49 @@ async def test_filter_hides_read_items():
 **`clear_messages()`를 잊지 않는다.** `stream()`을 다시 부르는 핸들러(필터·정렬·페이지 전환)는
 이전 메시지 위에 누적되므로, 비우지 않으면 방금 걸러 낸 아이템이 앞선 메시지에 남아 있다.
 
+## 알림 받기
+
+`mount()`한 컴포넌트는 같은 프로세스에서 발행한 알림을 세션처럼 받는다(#201) — `abroadcast()`·`broadcast()`·
+`self.broadcast()`·`atoast()`의 알림, auto-broadcast의 모델 변경 모두. 받는 것은 구독한 채널(`Meta.subscriptions`·
+`get_subscriptions()`)에 온 것뿐이고, 받으면 세션과 같은 순서로 돈다: `notification()`(모델 변경은 `mutation()`)
+→ 렌더 → 구독 다시 맞추기. 렌더가 보낸 것은 `sent_messages`에 `render`로 남고, 받는 메서드가 보낸 스트림 연산·
+`push_event`·JS도 그 뒤에 남는다. 규칙은 세션과 같은 코드다(사본이 아니다). `component.notification()`을 직접
+부르면 렌더와 구독 맞추기를 건너뛰므로 페이지와 어긋난다.
+
+```python
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_a_new_notification_reaches_the_open_list(alice):
+    view = await mount(XNotificationList, user=alice)   # examples/notifications
+
+    # auto-broadcast의 model_mutation → mutation() → 렌더
+    await Notification.objects.acreate(user=alice, title="새 알림", message="…")
+
+    assert "새 알림" in view.stream_html("notifications")
+```
+
+- **발행이 돌아오기 전에 받는다.** `await abroadcast(...)`나 그것을 부른 `call()`이 끝나면 받은 쪽의
+  `notification()`과 렌더도 끝나 있다. 기다릴 것이 없다.
+- **핸들러가 도는 동안 온 알림은 기다린다.** 연결은 메시지를 하나씩 처리한다. 핸들러가 자기가 듣는
+  채널에 발행하면, 그 알림은 핸들러가 그때까지 보낸 메일(스트림 연산·`push_event`·JS) 뒤에 서고 핸들러가
+  끝난 뒤 처리된다(#205).
+- **받는 메서드가 예외를 던지면 발행한 곳에서 올라온다.** 세션은 그 컴포넌트만 버리고 다시 join시키지만,
+  테스트에는 그 예외를 알린다.
+- **다른 테스트로 새지 않는다.** 마운트한 테스트의 이벤트 루프에서 발행한 것만 받는다. 앞 테스트가 남긴
+  인스턴스는 다음 테스트의 알림을 듣지 않는다.
+- **받은 쪽의 렌더는 `render_diff()`와 같은 경로다.** pytest-django에서는 알림을 받는 컴포넌트가 있는 테스트에
+  `django_db` 표시가 필요하다.
+- **같은 프로세스 안에서만이다.** 다른 프로세스, 실제 소켓의 연결로는 채널 레이어로 간다.
+
+## 핸들러의 메일과 Broadcast 패치의 순서
+
+세션은 `Broadcast` 패치를 오는 대로 쓰고, 핸들러가 보낸 메일(스트림 연산·`push_event`·JS·내비게이션)은 핸들러가
+끝난 뒤 쓴다. `mount()`도 그렇다(#205): `call()`·`joined()`·`follow_push()`의 `params_changed`·알림 처리가 보낸
+메일은 그것이 끝날 때 `sent_messages`에 들어가고, 그 사이에 온 패치는 그 앞에 든다. 그래서 목록을 읽어
+`stream_insert`하는 핸들러 도중에 그 항목의 삭제 패치가 오면, 브라우저처럼 `delete` 뒤에 `insert`가 남는다 —
+항목이 되살아나는 결함이 테스트에도 보인다. `start_async`·`assign_async`의 작업은 핸들러가 아니다. 연결이 그것을
+기다리지 않으므로 작업이 보낸 것은 바로 들어간다.
+
 ## 경계 안에서 마운트하기
 
 ```python
@@ -216,7 +259,7 @@ view = await mount(XAdminPanel, user=staff, live_session="admin")
 - **마커는 등록해서 쓴다.** `--strict-markers`에서는 등록하지 않은 마커가 수집 오류다(등록 방법은
   [테스트 가이드 튜토리얼](../tutorials/09-testing-components.md#테스트-마커)). 이 저장소의 테스트는 `unit`·`integration`·`slow`·`e2e`
   중 하나를 반드시 붙인다.
-- `mount()`에는 컨슈머가 없고 채널 레이어는 흉내 낸 것이다. 렌더는 첫 응답의 것이라 자식이
+- `mount()`에는 컨슈머가 없고 채널 레이어는 흉내 낸 것이다(같은 프로세스의 알림·`Broadcast`만 전해진다). 렌더는 첫 응답의 것이라 자식이
   그려지지만, 컨슈머 경로 전체(join, 재접속, 자식 LiveComponent의 `joined()`·`update()`·`leaving()`)를
   검사하려면 `tests/test_live_component_render.py`나 `tests/test_live_session_contract.py`처럼
   컨슈머를 직접 만든다. `view.call()`은 부모의 핸들러만 부른다.
