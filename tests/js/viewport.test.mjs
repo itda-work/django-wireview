@@ -62,6 +62,10 @@ test("a list drawn bottom up scrolls up into negative positions, and up is still
   assert.equal(fires("top", [[-1600, -800]], false), false);
 });
 
+// Tested here, not in a browser: the clip is arithmetic on the box's
+// getBoundingClientRect() and innerHeight, which wireview.js passes in
+// unchanged. A page that showed it would need a box taller than the window with
+// a binding past the middle of the part in view, and would check these numbers again.
 test("what the user sees of a scroll box is the box clipped to the window", () => {
   assert.deepEqual(visibleFrame(null, 800), { top: 0, bottom: 800 });
   assert.deepEqual(visibleFrame({ top: 200, bottom: 600 }, 800), { top: 200, bottom: 600 });

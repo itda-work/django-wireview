@@ -220,6 +220,20 @@ def test_the_top_binding_of_a_window_scrolled_list_in_a_wrapper_that_never_scrol
     expect_text(by(page, "newer"), "1")
 
 
+@pytest.mark.parametrize("wrap", ["x", "y"])
+def test_a_short_list_in_a_wrapper_that_never_scrolls_loads_on_its_own(page, server, wrap):
+    """Nothing scrolls, and the bottom binding sits above the middle of the window: "overran" alone.
+
+    The window-scrolled tests above do not see it: the window moved, and that
+    calls the binding whatever the box. Here only "overran" can, and measured
+    in the wrapper -- which does not overflow -- it is the window's (#199).
+    """
+    page.set_viewport_size({"width": 800, "height": 900})
+    open_live(page, f"{server}/streamprobe/?size=2&wrap={wrap}")
+    assert page.evaluate(WRAPPER_BOX) == ["auto", False]
+    expect_text(by(page, "pages"), "2")
+
+
 def test_a_list_in_a_box_of_its_own_loads_more_and_newer_scrolling_the_box(page, server):
     """The box scrolls while the window stands still, and sits lower than the
     middle of the window: neither direction nor "overran" measured in the window
