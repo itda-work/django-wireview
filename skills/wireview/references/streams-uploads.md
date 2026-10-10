@@ -43,6 +43,18 @@ class XChatRoom(Component):
   둘 생긴다. 구독 중이라면 **삽입은 `mutation()` 한 곳에서만** 하고 핸들러는 저장만 한다.
 - **같은 dom id로 다시 넣으면 제자리에서 갱신된다.** 항목 하나가 바뀌었을 때 `stream_delete` 후
   `stream_insert` 할 필요가 없다. 생성과 갱신을 한 줄로 처리한다.
+- **일부만 불러온 목록(무한 스크롤)에서 고친 항목은 `update_only=True`로 보낸다.** 보통의 `stream_insert`는 그
+  항목을 불러오지 않은 페이지에서 `at` 자리에 새로 넣는다 — 오래된 항목이 목록 끝에 나타난다. `update_only`는
+  보이는 곳에서만 바꾸고 없는 곳에서는 아무것도 하지 않는다. `Broadcast.stream_insert`도 같다. 누가 고칠 수 있는가는
+  핸들러가 조회 조건으로 다시 묻는다(`aget(pk=pk, owner=self.user.pk)`) — 브라우저가 보낸 pk다.
+- **여러 항목을 덧붙일 때는 `stream(..., reset=False)`.** `stream_insert`를 반복하면 항목마다 프레임 하나다.
+  `reset=False`면 화면의 것을 두고 `at` 자리에 주어진 순서대로 연산 하나로 넣는다. `stream()`의 기본은 reset이다.
+- **무한 스크롤은 `wire-viewport-top`·`wire-viewport-bottom`.** 목록 위(아래)에 둔 요소가 사용자가 그쪽으로
+  스크롤해 보이면 그 핸들러가 불린다. 방향은 그 요소를 움직일 수 있는 모든 스크롤(`overflow-y`가 `auto`·`scroll`인
+  조상들과 창)에서 보므로, 자기 스크롤바가 있는 상자 안의 목록도, `overflow-x: hidden` 래퍼 안에서 창으로
+  스크롤하는 목록도 된다. "이미 지나쳤나"는 실제로 넘치는 가장 가까운 상자(없으면 창)의 가운데로 잰다.
+  `flex-direction: column-reverse`로 아래에서 위로 그리는 목록(채팅)은 DOM의 끝이 화면 맨 위이므로, 위에 붙일
+  과거는 `at=-1`, 새 항목은 `at=0`이다. 예: `examples/chat_lv3`.
 - **필터·정렬 전환은 `stream()`을 다시 부르면 된다.** 상태를 바꿔 재렌더가 일어나도 스트림
   컨테이너의 내용은 보존된다 (`wire-stream` 컨테이너는 morph 대상에서 제외된다).
 

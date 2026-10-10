@@ -262,7 +262,6 @@ class Lv3MessageList(Component):
         live_sessions = {"chat_lv3"}
 
     room: Room
-    messages: list[Message] = []
     # The oldest message the page shows, where the next older page starts. In
     # the signed state like every field: the browser holds it and cannot change it
     oldest_at: datetime | None = None
@@ -313,8 +312,9 @@ class Lv3MessageList(Component):
             self.skip_render()
             return
         older = [message async for message in _history(self.room, (self.oldest_at, self.oldest_id))]
-        for message in older[:PAGE_SIZE]:
-            await self.stream_insert("messages", message, at=-1)
+        # One operation for the page, in its order (newest first) under what the
+        # list holds: reset=False keeps the list, and the page is one frame
+        await self.stream("messages", older[:PAGE_SIZE], at=-1, reset=False)
         self._moved_to(older)
 
     def _moved_to(self, page: list[Message]) -> None:

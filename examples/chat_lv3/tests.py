@@ -28,7 +28,7 @@ from testproj.e2e_browser import expect_count, expect_text, open_live, wait_live
 from testproj.e2e_server import serve
 from testproj.queries import capture_queries
 
-from wireview import mount, telemetry
+from wireview import Broadcast, mount, telemetry
 
 from . import live
 from .live import PAGE_SIZE, Lv3ChatRoom, Lv3MessageList, Lv3OnlineUsers, membership_topic
@@ -518,9 +518,10 @@ def _ids(messages: list[Message]) -> list[str]:
 def _shown(view) -> list[str]:
     """The ids a page's list holds, first in the DOM first, after the stream operations ``view`` received.
 
-    What the page does with them: a reset replaces the list, at=0 goes first
-    and at=-1 last, an id already there is replaced where it stands, an
-    update-only insert of one that is not there adds nothing, a delete removes.
+    What the page does with them: a reset replaces the list, an insert's items
+    go first (at=0) or last (at=-1) as a block in their order, an id already
+    there is replaced where it stands, an update-only insert of one that is not
+    there adds nothing, a delete removes.
     """
     shown: list[str] = []
     for op in view.stream_ops("messages"):
@@ -530,10 +531,8 @@ def _shown(view) -> list[str]:
         elif op["op"] == "delete":
             shown = [dom_id for dom_id in shown if dom_id not in ids]
         else:
-            for dom_id in ids:
-                if dom_id in shown or op.get("update_only"):
-                    continue
-                shown = [dom_id, *shown] if op["at"] == 0 else [*shown, dom_id]
+            new = [] if op.get("update_only") else [dom_id for dom_id in ids if dom_id not in shown]
+            shown = [*new, *shown] if op["at"] == 0 else [*shown, *new]
     return shown
 
 
@@ -561,8 +560,10 @@ async def test_scrolling_up_loads_the_room_a_page_at_a_time_to_its_first_message
     assert _shown(view) == _ids(messages)
     assert view.component.reached_start
     assert "The beginning of lobby" in view.render()
-    # An older page goes above: the end of the DOM, the top of a list drawn bottom up
-    assert {op["at"] for op in view.stream_ops("messages") if op["op"] == "insert"} == {-1}
+    # An older page goes above: the end of the DOM, the top of a list drawn bottom up.
+    # Each page is one operation, one frame, not one per message
+    inserts = [op for op in view.stream_ops("messages") if op["op"] == "insert"]
+    assert [(op["at"], len(op["items"])) for op in inserts] == [(-1, PAGE_SIZE), (-1, 5)]
 
     # At the start it stops: a late scroll event asks nothing more of the database.
     # Not "loads nothing" -- a query past the start finds nothing either
@@ -842,14 +843,22 @@ async def test_a_page_whose_user_left_gets_no_edit_or_delete(room, alice, bob_in
     While he is a member his page gets alice's edit -- so what follows is not a
     socket that hears nothing anyway. After he leaves it gets neither her next
     edit nor her delete, which her own page does.
+
+    "Neither" is told by order, not by a quiet spell: the same socket also holds
+    the list of another room bob is still in, and a marker published to that
+    room after the delete arrives through the same channel behind anything
+    published before it. What came before the marker is all the lobby sent.
     """
     message = await Message.objects.acreate(room=room, author=alice, content="before")
+    elsewhere = await Room.objects.acreate(name="elsewhere")
+    await Membership.objects.acreate(room=elsewhere, user=bob_in_room)
     bob_client = AsyncClient()
     await bob_client.aforce_login(bob_in_room)
     bob_states = _states((await bob_client.get(_room_url(room))).content.decode())
+    other_id, other_state = _states((await bob_client.get(_room_url(elsewhere))).content.decode())["Lv3MessageList"]
     kept = await _socket(bob_client)
     try:
-        for name, (component_id, state) in bob_states.items():
+        for name, (component_id, state) in [*bob_states.items(), ("Lv3MessageList", (other_id, other_state))]:
             await _join(kept, name, state)
             assert (await _answer(kept, component_id))["command"] == "render", name
         await _drain(kept)
@@ -867,10 +876,33 @@ async def test_a_page_whose_user_left_gets_no_edit_or_delete(room, alice, bob_in
         await speaker.call("save_edit", text="after bob left")
         await speaker.call("delete_message", message_id=message.id)
         assert [op["op"] for op in speaker.stream_ops("messages")] == ["insert", "delete"]
+        await Broadcast(Lv3MessageList, live.room_topic(elsewhere)).push_event("marker").asend()
 
-        assert await _drain(kept) == []
+        heard = []
+        while not heard or '"marker"' not in heard[-1]:
+            heard.append(json.dumps(await kept.receive_json_from(timeout=5)))
+        assert heard[:-1] == []
+        assert json.loads(heard[-1])["payload"]["component_id"] == other_id
     finally:
         await kept.disconnect()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_empty_rooms_note_is_outside_the_list_a_reset_empties(room, alice):
+    """In the list, the first render showed it in a room with messages and the join's reset took it from an empty one.
+
+    base.html shows it while the list holds nothing (the browser half: the E2E).
+    """
+    await Message.objects.acreate(room=room, author=alice, content="hello")
+    view = await mount(Lv3MessageList, room=room, user=alice, live_session=BOUNDARY)
+
+    html = view.render() or ""
+
+    start = html.index('wire-stream="messages"')
+    assert "No messages yet" not in html[start : html.index("</ul>", start)]
+    assert "No messages yet" in html[html.index("</ul>", start) :]
+    assert len(view.stream_items("messages")) == 1
 
 
 # In a browser: two people, two sets of cookies, one room
@@ -922,12 +954,15 @@ def test_two_members_see_each_others_messages_and_presence(browser, server):
         expect_count(page.locator(".online-user"), 2)
         expect_count(page.locator(".online-user", has_text="alice"), 1)
         expect_count(page.locator(".online-user", has_text="bob"), 1)
+        # A new room: the join's reset emptied the list, and the note outside it shows
+        expect(page.locator(".empty-message")).to_be_visible()
 
     _say(alice, "hi bob")
     _say(bob, "hi alice")
 
     for page in (alice, bob):
         expect_count(page.locator("[wire-stream=messages] li[id^=messages-]"), 2)
+        expect(page.locator(".empty-message")).to_be_hidden()
         expect_text(page.locator("[wire-stream=messages] li", has_text="hi bob").locator("strong"), "alice")
         expect_text(page.locator("[wire-stream=messages] li", has_text="hi alice").locator("strong"), "bob")
 
@@ -967,6 +1002,7 @@ def test_scrolling_up_loads_the_past_and_an_edit_or_delete_reaches_the_other_mem
 
     for page in (alice, bob):
         expect_count(items(page), PAGE_SIZE)
+        expect(page.locator(".empty-message")).to_be_hidden()
     # The buttons are on the viewer's own messages: all of these are alice's
     expect_count(alice.get_by_role("button", name="Edit"), PAGE_SIZE)
     expect_count(bob.get_by_role("button", name="Edit"), 0)
@@ -1012,6 +1048,9 @@ def test_scrolling_up_loads_the_past_and_an_edit_or_delete_reaches_the_other_mem
     expect_count(items(bob), total - 1)
     expect(bob.locator(".history-start")).to_be_visible()
     expect(items(bob).last).to_have_id(f"messages-{oldest.pk}")
+    # Every page went in under the one before, in its order: the room, newest first
+    shown = items(bob).evaluate_all("(els) => els.map((el) => el.id)")
+    assert shown == [f"messages-{m.pk}" for m in messages if m != newest]
     expect_text(bob.locator(f"#messages-{oldest.pk} p"), "the first, fixed")
     expect_count(bob.locator(f"#messages-{oldest.pk} .edited"), 1)
     # Drawn bottom up: the last in the DOM is the highest on screen

@@ -28,8 +28,8 @@ diff -r -x __pycache__ -x '*.pyi' examples/chat_lv2 examples/chat_lv3
 ## 무엇을 보여주나
 
 **과거는 커서로 한 페이지씩 읽는다.** `joined()`는 최근 30개를 `stream()`으로 보내고, 그 가운데 가장 오래된
-메시지를 커서로 기억한다. `load_older()`는 "커서보다 오래된 30개"를 읽어 `stream_insert(at=-1)`로 붙이고 커서를
-옮긴다. 목록은 DOM에서 최신이 먼저이고 `flex-direction: column-reverse`로 아래에서 위로 그려지므로, DOM의
+메시지를 커서로 기억한다. `load_older()`는 "커서보다 오래된 30개"를 읽어 `stream(..., at=-1, reset=False)`로
+한 번에 붙이고 커서를 옮긴다 — 화면의 목록을 두고 30개를 연산 하나(프레임 하나)로, 읽은 순서 그대로 넣는다. 목록은 DOM에서 최신이 먼저이고 `flex-direction: column-reverse`로 아래에서 위로 그려지므로, DOM의
 끝(`at=-1`)이 화면의 맨 위다. 새 메시지는 그대로 `at=0`(화면 맨 아래)이다.
 
 - **커서는 시각과 id의 쌍이다.** 두 메시지가 같은 `created_at`을 가질 수 있으므로 "더 오래된"은
@@ -58,6 +58,13 @@ diff -r -x __pycache__ -x '*.pyi' examples/chat_lv2 examples/chat_lv3
 둔다. 버튼을 감추는 것은 화면의 일이고, 막는 것은 서버다. 이벤트는 아무 메시지 id나 보낼 수 있으므로 핸들러가
 `_own_message()`로 "이 방의 메시지이고, 작성자가 `self.user`이고, 아직 멤버인가"를 다시 묻는다. 저장할 때도
 편집기를 연 메시지를 믿지 않고 다시 묻는다.
+
+- `data-author`에는 작성자의 pk가 실린다. 그 HTML을 받는 사람은 같은 방의 멤버뿐이고 그들은 이미 작성자 이름을
+  본다. pk가 더하는 것은 순차 정수 id(가입 순서·규모를 짐작할 단서)뿐이다. 그것도 감추려면 pk 대신 공개해도 되는
+  값(작성자별 무작위 토큰 등)을 싣는다.
+- 버튼을 고르는 스타일은 목록 템플릿의 인라인 `<style>`이다. `'unsafe-inline'` 없는 `style-src` CSP에서는
+  nonce가 없어 막히고, 그러면 버튼이 안 보이는 쪽으로 실패한다(서버의 판정은 그대로다). 이 시리즈의 `style=` 속성과
+  `base.html`의 `<style>`도 같은 처지다. 엄격한 CSP를 쓰는 앱은 이 규칙을 정적 CSS로 옮긴다.
 
 | 어디서 | 무엇이 거절하나 | 거절의 모양 |
 |------|------|------|
@@ -97,10 +104,15 @@ limit이 필요하다면 잘린 쪽의 커서도 함께 옮겨야 한다(잘린 
 이 예제를 만들며 라이브러리 두 곳을 고쳤다.
 
 - `Component.stream_insert`와 `Broadcast.stream_insert`의 `update_only=True`(Phoenix LiveView의 `update_only`와 같다).
-  위의 "수정은 보이는 곳에서만"이 이것이다.
+  위의 "수정은 보이는 곳에서만"이 이것이다. 이 필드를 모르는 옛 JS는 없는 항목을 넣어 버리므로, 서버는 프로토콜
+  버전 9 미만의 페이지에 그 연산을 보내지 않는다. 롤링 배포 중 옛 JS로 열린 페이지는 다시 join할 때까지 고치기 전
+  내용을 보인다([wire-protocol §7](../../docs/implementation/wire-protocol.md#7-버전)).
+- `stream(..., reset=False)`: 화면의 것을 두고 여러 항목을 `at`에 한 연산으로 넣는다. `load_older()`가 쓴다.
+  전에는 `stream_insert`를 항목마다 불러 한 페이지가 프레임 30개였다.
 - `wire-viewport-top`·`wire-viewport-bottom`은 스크롤 방향을 창(`window.scrollY`)에서만 쟀다. 이 목록처럼 자기
-  스크롤바가 있는 상자 안에서는 창이 움직이지 않으므로 위로 스크롤해도 아무것도 불리지 않았다. 이제 가장
-  가까운 스크롤 상자에서 잰다(`static/wireview/viewport.mjs`).
+  스크롤바가 있는 상자 안에서는 창이 움직이지 않으므로 위로 스크롤해도 아무것도 불리지 않았다. 이제 그 요소를
+  움직일 수 있는 스크롤(스크롤하는 조상들과 창) 중 하나라도 그쪽으로 움직였으면 부르고, "지나침"은 실제로 넘치는
+  가장 가까운 상자에서 잰다(`static/wireview/viewport.mjs`).
 
 **한계.** chat_lv2의 한계(알림이 닿아야 끊긴다)가 수정·삭제 패치에도 그대로다. 방을 나간 뒤 열린 페이지가
 멤버십 알림을 처리하기 전의 짧은 창에는 수정·삭제가 아직 닿을 수 있다. 끊긴 동안의 수정·삭제는 다음 join의
