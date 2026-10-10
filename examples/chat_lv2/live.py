@@ -22,7 +22,6 @@ The rest is the chat example's:
 """
 
 from asgiref.sync import sync_to_async
-from django.db import transaction
 from django.urls import reverse
 
 from wireview import (
@@ -49,12 +48,14 @@ def end_membership(room: Room, user) -> None:
     Take ``user`` out of ``room``, and tell their open pages of it.
 
     The notice goes out once the delete is committed. A component that hears
-    it asks ``is_member`` again, and must get the answer after the delete: in
-    a transaction (the view's ATOMIC_REQUESTS) it waits for the commit, and
-    outside one on_commit runs it at once.
+    it asks ``is_member`` again, and must get the answer after the delete.
+    broadcast() already waits for that: in a transaction (the view's
+    ATOMIC_REQUESTS) it publishes on commit, outside one at once
+    (docs/features/broadcast.md). abroadcast() publishes at once, inside a
+    transaction or not, so an async caller must not send it before the commit.
     """
     Membership.objects.filter(room=room, user_id=user.pk).delete()
-    transaction.on_commit(lambda: broadcast(membership_topic(room.id, user.pk)))
+    broadcast(membership_topic(room.id, user.pk))
 
 
 # The components of the room page share one rule after they mount. The boundary's
@@ -65,7 +66,7 @@ def end_membership(room: Room, user) -> None:
 # leaves out every topic of the room. The session reads get_subscriptions() of each
 # component again after it delivered a notification, and unsubscribes the
 # connection from the topics no component asks for any more
-# (WireviewSession._dispatch_notifications -> after_mutation_chores). From then on
+# (docs/features/live-session.md#세션-백엔드가-정하는-한계). From then on
 # the socket gets none of the room's messages or presence, whether the page went or
 # not.
 
@@ -127,8 +128,12 @@ class Lv2ChatRoom(PresenceMixin, Component):
 
         Broadcast "left" action so other users can remove this user
         from their online users list. Cleans up typing timeout.
+
+        A page that left the room said so in _leave(). Saying it again would
+        take the user off the list of a page they opened since.
         """
-        await self.presence_leave()
+        if not self._left:
+            await self.presence_leave()
 
     async def notification(self, channel: str, **kwargs):
         """This user's membership of the room may have ended, on this page or another."""

@@ -19,7 +19,7 @@ from testproj.asgi import application
 from testproj.e2e_browser import expect_count, expect_text, open_live, wait_live
 from testproj.e2e_server import serve
 
-from wireview import mount
+from wireview import mount, telemetry
 
 from . import live
 from .live import Lv2ChatRoom, Lv2MessageList, Lv2OnlineUsers, membership_topic
@@ -101,21 +101,50 @@ def test_joining_from_the_list_makes_a_member_and_leaving_ends_it(room, bob):
     assert client.get(_room_url(room)).status_code == 302
 
 
+@pytest.fixture
+def published():
+    """Each topic wireview publishes to, and whether a transaction was still open then.
+
+    Watched through the public telemetry signal, below ``broadcast()``: the
+    test sees when the notice really leaves, whoever defers it.
+    """
+    seen = []
+
+    def record(sender, topic, **info):
+        seen.append((topic, transaction.get_connection().in_atomic_block))
+
+    telemetry.enable()
+    telemetry.broadcast_published.connect(record)
+    try:
+        yield seen
+    finally:
+        telemetry.broadcast_published.disconnect(record)
+        telemetry.disable()
+
+
 @pytest.mark.integration
-def test_the_list_tells_the_open_pages_once_the_leave_is_committed(room, bob, monkeypatch):
+def test_the_list_tells_the_open_pages_once_the_leave_is_committed(room, bob, published):
     """A page told asks ``is_member`` on a connection of its own. Inside the view's
     transaction (ATOMIC_REQUESTS) the delete is not visible to it yet."""
     Membership.objects.create(room=room, user=bob)
-    told = []
-    monkeypatch.setattr(
-        live, "broadcast", lambda topic: told.append((topic, transaction.get_connection().in_atomic_block))
-    )
     client = Client()
     client.force_login(bob)
 
     client.post(reverse("chat_lv2:leave_room", args=[room.id]))
 
-    assert told == [(membership_topic(room.id, bob.pk), False)]
+    assert published == [(membership_topic(room.id, bob.pk), False)]
+
+
+@pytest.mark.integration
+def test_a_leave_rolled_back_tells_no_one(room, bob, published):
+    Membership.objects.create(room=room, user=bob)
+
+    with pytest.raises(RuntimeError), transaction.atomic():
+        live.end_membership(room, bob)
+        raise RuntimeError
+
+    assert published == []
+    assert Membership.objects.filter(room=room, user=bob).exists()
 
 
 @pytest.mark.integration
@@ -383,6 +412,22 @@ async def test_leaving_from_the_room_ends_the_membership_and_the_page_hears_noth
     assert not await Membership.objects.filter(room=room, user=alice).aexists()
     view.assert_redirected_to(reverse("chat_lv2:index"))
     assert view.component.get_subscriptions() == set()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize("left", [True, False])
+async def test_a_page_says_once_that_its_user_is_gone(room, alice, left):
+    """A page that left the room said so then. When its socket closes later it does
+    not say it again: by then the user may have joined again on another page."""
+    view = await mount(Lv2ChatRoom, user=alice, room=room, live_session=BOUNDARY)
+    if left:
+        await view.call("leave_room")
+
+    await view.component.leaving()
+
+    leaves = [b for b in view.presence_broadcasts if b["kwargs"]["action"] == "presence_leave"]
+    assert len(leaves) == 1
 
 
 @pytest.mark.unit
