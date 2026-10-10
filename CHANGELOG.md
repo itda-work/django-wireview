@@ -12,6 +12,22 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Fixed
+
+- Presence keeps a meta per connection under each user, as Phoenix Presence does, so a user with two tabs
+  open stays on the others' lists until the last tab leaves (#202). The user was the key: closing one tab
+  removed them while the other was still open, and one tab's typing state overwrote the other's. The list
+  `presence_users` still has one entry per user, merged from their connections: typing if any connection
+  types, otherwise online, with the name and metadata heard from last. Join, leave, typing and the sync
+  answer carry the connection in a new `presence_ref` (a digest of the connection, not its id), and a sync
+  request in `requester_ref`; a message without it, from a process before this release, stands for one
+  connection per user, as that process tracks it. A sync answer now fills only a connection not heard from
+  yet: a tab that typed while the request waited in its queue answered with its state from before, and the
+  answer replaced the newer one. And a tracker answers a sync request only once its connection's producer
+  has announced the connection: a page with a tracker alone never says it joined or left, so answering put
+  it on the lists of those who came later and nothing took it off. `presence_track_self()` keeps the
+  connection's entry when its producer's join came first, instead of replacing its name and metadata.
+
 ## [1.5.1] - 2026-10-10
 
 ### Added

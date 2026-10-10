@@ -19,7 +19,7 @@ from channels.testing import WebsocketCommunicator
 from django.contrib.auth.models import AnonymousUser
 from django.template import Template
 
-from wireview import Component, PresenceMixin, PresenceTrackerMixin, broadcast
+from wireview import Component, PresenceConfig, PresenceMixin, PresenceTrackerMixin, broadcast
 from wireview.consumer import WireviewConsumer
 from wireview.core.meta import WireviewMeta
 from wireview.core.state import sign_state
@@ -107,6 +107,73 @@ class CnOnline(InlineTemplate, PresenceTrackerMixin, Component):
         await self.presence_track_self(username=self.name)
 
 
+class CnTab(InlineTemplate, PresenceMixin, PresenceTrackerMixin, Component):
+    """A tab of the room: it types and lists who is here, on one connection (#202)."""
+
+    source: t.ClassVar[str] = "<div {% tag_header %}><i>{{ this.roster }}</i></div>"
+
+    class Meta:
+        # Longer than any test here: only stop() clears typing
+        presence = PresenceConfig(typing_timeout=600)
+
+    name: str = ""
+
+    def _presence_topic(self) -> str:
+        return "cn-tabs"
+
+    def _presence_user_id(self) -> str:
+        return self.name
+
+    def _presence_my_user_id(self) -> str:
+        return self.name
+
+    def _presence_username(self) -> str:
+        return self.name
+
+    def get_subscriptions(self) -> set[str]:
+        return super().get_subscriptions() | {self._presence_channel()}
+
+    @property
+    def roster(self) -> str:
+        """Every listed user and their state, in one dynamic, so a render says the whole list."""
+        return "[" + " ".join(sorted(f"{u.username}:{u.state.value}" for u in self.presence_users)) + "]"
+
+    async def joined(self):
+        await self.presence_track_self(username=self.name)
+        await self.presence_join()
+
+    async def leaving(self):
+        await self.presence_leave()
+
+    async def typing(self):
+        await self.presence_set_typing(True)
+
+    async def stop(self):
+        await self.presence_set_typing(False)
+
+
+class CnViewer(InlineTemplate, PresenceTrackerMixin, Component):
+    """A page of the room that only lists who is here: nothing on it announces the connection."""
+
+    source: t.ClassVar[str] = CnTab.source
+
+    name: str = ""
+
+    roster = CnTab.roster
+
+    def _presence_topic(self) -> str:
+        return "cn-tabs"
+
+    def _presence_my_user_id(self) -> str:
+        return self.name
+
+    def get_subscriptions(self) -> set[str]:
+        return super().get_subscriptions() | {self._presence_channel()}
+
+    async def joined(self):
+        await self.presence_track_self(username=self.name)
+
+
 @pytest.fixture(autouse=True)
 def _calls():
     CALLS.clear()
@@ -178,6 +245,81 @@ async def test_presence_join_typing_and_leave_reach_the_tracker():
         await render_containing(tracker, '"online-1"')
     finally:
         await tracker.disconnect()
+
+
+async def test_a_user_stays_listed_until_their_last_connection_leaves():
+    """Closing one of ann's two tabs leaves her listed; closing the other removes her (#202)."""
+    bob = await connect(CnTab, "bob", name="bob")
+    ann_tabs = [await connect(CnTab, "ann1", name="ann"), await connect(CnTab, "ann2", name="ann")]
+    carol = None
+    try:
+        await render_containing(bob, "[ann:online bob:online]")
+        await ann_tabs[0].disconnect()
+        # carol's join renders bob's list again, after ann1's leave
+        carol = await connect(CnTab, "carol", name="carol")
+        await render_containing(bob, "[ann:online bob:online carol:online]")
+        await ann_tabs[1].disconnect()
+        await render_containing(bob, "[bob:online carol:online]")
+    finally:
+        for communicator in (bob, *ann_tabs, *([carol] if carol else [])):
+            await communicator.disconnect()
+
+
+async def test_a_user_types_while_any_of_their_connections_types():
+    """One tab typing makes the user typing; another tab's stop does not clear it (#202)."""
+    bob = await connect(CnTab, "bob", name="bob")
+    ann_tabs = [await connect(CnTab, "ann1", name="ann"), await connect(CnTab, "ann2", name="ann")]
+    carol = None
+    try:
+        await render_containing(bob, "[ann:online bob:online]")
+        await event(ann_tabs[0], "ann1", "typing")
+        await render_containing(bob, "[ann:typing bob:online]")
+        await event(ann_tabs[1], "ann2", "typing")
+        await event(ann_tabs[1], "ann2", "stop")
+        carol = await connect(CnTab, "carol", name="carol")
+        await render_containing(bob, "[ann:typing bob:online carol:online]")
+        await event(ann_tabs[0], "ann1", "stop")
+        await render_containing(bob, "[ann:online bob:online carol:online]")
+    finally:
+        for communicator in (bob, *ann_tabs, *([carol] if carol else [])):
+            await communicator.disconnect()
+
+
+async def test_a_late_observer_hears_every_connection_of_a_user():
+    """The sync answers are per connection: one of ann's tabs leaving keeps her on a later list (#202)."""
+    ann_tabs = [await connect(CnTab, "ann1", name="ann"), await connect(CnTab, "ann2", name="ann")]
+    dave = None
+    try:
+        await event(ann_tabs[1], "ann2", "typing")
+        await render_containing(ann_tabs[0], "[ann:typing]")
+        dave = await connect(CnTab, "dave", name="dave")
+        await render_containing(dave, "[ann:typing dave:online]")
+        await ann_tabs[1].disconnect()
+        await render_containing(dave, "[ann:online dave:online]")
+        await ann_tabs[0].disconnect()
+        await render_containing(dave, "[dave:online]")
+    finally:
+        for communicator in (*ann_tabs, *([dave] if dave else [])):
+            await communicator.disconnect()
+
+
+async def test_a_connection_that_only_tracks_is_not_listed_by_others():
+    """A tracker alone never announces its connection, nor its leave: it does not answer a sync either (#202).
+
+    Answering put it on the lists of those who came later, and nothing took it off.
+    """
+    bob = await connect(CnViewer, "viewer", name="bob")
+    ann = await connect(CnTab, "ann", name="ann")
+    carol = None
+    try:
+        await render_containing(ann, "[ann:online]")
+        await bob.disconnect()
+        carol = await connect(CnTab, "carol", name="carol")
+        await render_containing(ann, "[ann:online carol:online]")
+        await render_containing(carol, "[ann:online carol:online]")
+    finally:
+        for communicator in (bob, ann, *([carol] if carol else [])):
+            await communicator.disconnect()
 
 
 async def test_closing_the_socket_calls_leaving():

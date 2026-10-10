@@ -100,6 +100,10 @@ class ChatInput(PresenceMixin, Component):
         await self.presence_set_typing(True)      # 서버가 타임아웃으로 자동 해제한다
 ```
 
+Presence는 연결(탭)마다 기록하고 목록은 사용자마다 하나로 합친다 — 마지막 탭이 떠날 때 빠지고, 한 탭이라도
+입력 중이면 입력 중이다. 트래커만 있는 페이지는 다른 사람의 목록에 오르지 않으므로, 보는 사람도 올리려면 같은
+페이지에 `presence_join()`을 부르는 컴포넌트를 둔다.
+
 상세: https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/07-presence-api.md
 
 ## 파일 업로드

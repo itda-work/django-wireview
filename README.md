@@ -717,6 +717,9 @@ class OnlineUsers(PresenceTrackerMixin, Component):
 | `presence_online_count` | 온라인 사용자 수 |
 | `presence_typing_users` | 현재 타이핑 중인 사용자 목록 |
 
+같은 사용자가 탭을 여럿 열면 탭(연결)마다 기록하고 목록에는 한 번만 나온다. 마지막 탭이 떠날 때 빠지고, 한 탭이라도
+입력 중이면 입력 중이다([탭이 여럿인 사용자](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/07-presence-api.md#탭이-여럿인-사용자)).
+
 ### Presence 설정
 
 ```python

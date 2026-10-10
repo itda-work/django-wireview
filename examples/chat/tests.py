@@ -1,6 +1,9 @@
 """Tests for Chat app components."""
 
 import pytest
+from playwright.sync_api import expect
+from testproj.e2e_browser import expect_text, open_live
+from testproj.e2e_server import serve
 
 from wireview import mount
 
@@ -59,3 +62,53 @@ class TestXChatRoom:
     def test_template_name(self):
         """XChatRoom should use room_component.html template."""
         assert XChatRoom._meta.template_name == "chat/room_component.html"
+
+
+@pytest.fixture
+def wireview_server():
+    with serve() as base_url:
+        yield base_url
+
+
+@pytest.mark.e2e
+class TestOnlineUsers:
+    """A user with two tabs open stays on the others' lists until both are closed (#202).
+
+    The room page's XChatRoom announces the tab and its XOnlineUsers lists who is
+    here: two components of one connection, speaking for one tab.
+    """
+
+    @pytest.fixture
+    def room(self, transactional_db):
+        return Room.objects.create(name="lobby")
+
+    def test_closing_one_of_two_tabs_keeps_the_user_listed(self, page, wireview_server, room):
+        def open_tab(username):
+            tab = page if username == "bob" else page.context.new_page()
+            open_live(
+                tab,
+                f"{wireview_server}/chat/room/{room.id}/?username={username}",
+                "[data-name=XOnlineUsers][data-is-live=true]",
+            )
+            return tab
+
+        def listed(tab):
+            return tab.locator(".online-users li span:nth-child(2)")
+
+        bob = open_tab("bob")
+        ann_tabs = [open_tab("ann"), open_tab("ann")]
+        heading = bob.locator(".online-users h3")
+        expect_text(heading, "Online Users (2)")
+        expect(listed(bob)).to_have_text(["bob", "ann"])
+
+        ann_tabs[0].close()
+        # carol's arrival renders bob's list after the closed tab's leave
+        carol = open_tab("carol")
+        expect_text(heading, "Online Users (3)")
+        expect(listed(bob)).to_have_text(["bob", "ann", "carol"])
+        # A tab that came after hears ann from her remaining tab
+        expect(listed(carol)).to_contain_text(["ann"])
+
+        ann_tabs[1].close()
+        expect_text(heading, "Online Users (2)")
+        expect(listed(bob)).to_have_text(["bob", "carol"])
