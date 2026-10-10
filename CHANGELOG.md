@@ -34,14 +34,21 @@ The django-reactor era changelog (2.x) is preserved in
 - The chat examples (`chat`, `chat_lv2`, `chat_lv3`) drew "No messages yet" inside the stream container from a field
   nothing filled: a room with messages showed it until the join, and the join's reset took it from an empty room
   (#199). It sits after the list now, shown by CSS while the list is empty. `examples/dashboard` had the same note,
-  and its "Load More" counted the page's items from that empty field, so every click loaded the first page again.
+  and its "Load More" counted the page's items from that empty field, so every click loaded the first page again. It
+  loads the page before the oldest activity shown now, from a `(created_at, id)` cursor: an activity added on top or
+  deleted meanwhile no longer makes the next page repeat or skip one.
 - `wire-viewport-top` and `wire-viewport-bottom` inside an element with its own scrollbar (`overflow-y: auto`) fired
   only when the binding was past the middle of the window: the scroll direction was read from the window, which does
   not move when a list scrolls in its own box (#199). A binding now fires when any scroller that can move it -- an
   ancestor whose `overflow-y` scrolls, or the window -- moved toward it, and "overran" is measured in the nearest
-  ancestor that actually overflows, or the window. Not the nearest ancestor that computes `overflow-y: auto` alone: a
-  wrapper with `overflow-x: hidden` computes that too and never scrolls, and a window-scrolled list inside it stopped
-  loading.
+  ancestor that actually overflows, or the window. A wrapper with `overflow-x: hidden`, which computes
+  `overflow-y: auto` but never scrolls, still counts as the window.
+- A Broadcast delete or `update_only` edit published while a handler read the items it then inserted with
+  `stream_insert` was written to the page first, and the insert undid it: the deleted item came back, the edit was
+  lost until the page joined again (#199). The insert goes out through the connection's channel and a patch is written
+  as it comes. `stream_insert` and `stream(..., reset=False)` now hold the component's Broadcast patches from the call
+  until the insert is written, as a stream reset has since #178; given a QuerySet, `stream()` holds from before it
+  reads it. `stream_delete` does not hold: a delete carries nothing it read.
 
 ### Changed
 

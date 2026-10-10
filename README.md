@@ -587,7 +587,9 @@ class MessageList(Component):
 | 메서드 | 설명 |
 |--------|------|
 | `stream(name, items)` | 스트림 초기화/리셋 |
+| `stream(name, items, at=-1, reset=False)` | 화면의 것을 두고 여러 아이템을 `at`에 주어진 순서대로 삽입 (연산·프레임 하나, 1.6) |
 | `stream_insert(name, item, at=-1)` | 아이템 삽입 (-1=끝, 0=처음, n=인덱스) |
+| `stream_insert(name, item, update_only=True)` | 화면에 있는 아이템만 제자리에서 교체, 없으면 넣지 않음 (1.6) |
 | `stream_delete(name, dom_id)` | DOM ID 또는 PK로 아이템 삭제 |
 
 ### DOM ID 규칙
