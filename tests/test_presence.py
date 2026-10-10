@@ -978,7 +978,7 @@ class TestPresenceProducerAnswers:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_its_receiver_does_not_hear_what_the_mixin_subscribed_to(self):
+    async def test_its_receiver_does_not_hear_what_only_the_framework_hears(self):
         """Its notification() hears its own channels only, as before #202; the sync is still answered."""
         heard: list[str] = []
 

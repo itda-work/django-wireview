@@ -604,7 +604,7 @@ async def drain(communicator: WebsocketCommunicator, quiet: float = 0.5) -> list
     return messages
 
 
-async def test_a_producers_receiver_does_not_hear_the_presence_channel_the_mixin_added():
+async def test_a_producers_receiver_does_not_hear_the_presence_channel_only_the_framework_hears():
     """A producer listens on its presence channel to answer syncs; its notification() does not hear it (#202).
 
     The README's receiver reads ``kwargs["message"]``: handed ann's own join
