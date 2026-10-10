@@ -64,7 +64,7 @@ Payload = t.Union[str, dict[str, t.Any]]
 # understands in the WebSocket URL (``?vsn=``); the server never sends a form
 # newer than that, and a client that names none gets version 0. Keep in step
 # with ``PROTOCOL_VERSION`` in static/wireview/rendered.mjs.
-PROTOCOL_VERSION = 8
+PROTOCOL_VERSION = 9
 # First version whose clients apply ``{"k": [...]}`` comprehension updates.
 MOVES_SINCE = 2
 # First version that pairs a user event with its render through ``ref`` (#92).
@@ -96,6 +96,16 @@ NAVIGATED_SINCE = 7
 # server, and the page joins each of its components again with the state its
 # element carries (#180).
 REJOIN_SINCE = 8
+# First version whose clients honour ``update_only`` on a stream insert: replace
+# the item where the page shows it, insert it nowhere else (#199). An older one
+# ignores the field and inserts the item at ``at``, out of its place, on a page
+# that never loaded it -- the opposite of what was asked -- so it is not sent one.
+UPDATE_ONLY_SINCE = 9
+# First version whose clients insert the items of one stream insert as a block,
+# in the order given, at ``at`` (``stream(..., reset=False)``, #199). An older
+# one inserts each at ``at`` in turn, which reverses them unless ``at`` is -1:
+# it is sent them in reverse.
+INSERTS_IN_ORDER_SINCE = 9
 
 
 def protocol_version(query_string: bytes | str) -> int:

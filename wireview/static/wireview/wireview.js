@@ -860,7 +860,9 @@ class ServerConnection {
         }
         break;
 
-      case "insert":
+      case "insert": {
+        // How many of this operation's items went in: the next goes after them
+        let placed = 0;
         for (const item of items) {
           const el = this._parseHtml(item.html);
           if (el) {
@@ -871,7 +873,9 @@ class ServerConnection {
               at,
               childCount: container.children.length,
               updateOnly,
+              placed,
             });
+            if (plan.mode !== "replace" && plan.mode !== "skip") placed++;
             switch (plan.mode) {
               case "replace":
                 // Same id: a newer version of an item already on screen.
@@ -893,6 +897,7 @@ class ServerConnection {
           }
         }
         break;
+      }
 
       case "delete":
         // In this container: another component's list may hold an item of the same id

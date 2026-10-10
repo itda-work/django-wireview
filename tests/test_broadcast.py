@@ -25,7 +25,7 @@ from wireview import JS, Broadcast, Component, LiveComponent, abroadcast, mount,
 from wireview.consumer import WireviewConsumer
 from wireview.core import patches
 from wireview.core.meta import WireviewMeta
-from wireview.core.rendered import PROTOCOL_VERSION
+from wireview.core.rendered import PROTOCOL_VERSION, UPDATE_ONLY_SINCE
 from wireview.core.session import SessionView
 from wireview.core.state import sign_state
 from wireview.core.transport import PATCH_TOPIC_MAX, PatchHub, set_broker, set_patch_hub
@@ -81,6 +81,10 @@ class BcFeed(Component):
 
     async def remove(self, pk: int = 0, **_rest):
         await self.stream_delete("items", pk)
+
+    async def edit(self, pk: int = 0, **_rest):
+        await self.stream_insert("items", Post(pk, "edited"), update_only=True)
+        await self.stream_delete("items", pk + 1)
 
     @classmethod
     def _get_template(cls, template_name=None):
@@ -382,8 +386,8 @@ def _state(cls: type[Component], id: str) -> str:
     return sign_state(cls(user=AnonymousUser(), wire=WireviewMeta(params={}), id=id))
 
 
-async def _connect() -> WebsocketCommunicator:
-    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={PROTOCOL_VERSION}")
+async def _connect(vsn: int = PROTOCOL_VERSION) -> WebsocketCommunicator:
+    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={vsn}")
     communicator.scope["user"] = AnonymousUser()
     connected, _ = await communicator.connect()
     assert connected
@@ -491,6 +495,7 @@ class _Recording:
 async def _as_the_session_writes(sent: dict[str, t.Any]) -> str:
     """The frame a session writes for a component's own operation, as ``mount()`` recorded it."""
     session = WireviewSession(_Recording())  # type: ignore[arg-type]
+    await session.start(session=SessionView.wrap(None), vsn=PROTOCOL_VERSION)
     kwargs = {key: value for key, value in sent.items() if key != "type"}
     await getattr(session, f"component_{sent['type']}")(**kwargs)
     return session.outbound.frames[0]  # type: ignore[attr-defined]
@@ -685,6 +690,67 @@ async def test_a_stale_book_writes_nothing_to_what_is_no_longer_reachable():
     )
 
     assert session.outbound.frames == []  # type: ignore[attr-defined]
+
+
+# --- what an older client is not sent ----------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("vsn", "sent"), [(UPDATE_ONLY_SINCE - 1, False), (UPDATE_ONLY_SINCE, True)])
+async def test_an_update_only_patch_reaches_only_a_client_that_honours_it(vsn, sent):
+    """An older client would insert the item where the page does not show it (#199).
+
+    The frames are the same bytes for every subscriber: the one that carries
+    ``update_only`` names the version it needs, and the delete after it, which
+    every client reads alike, goes to both.
+    """
+    communicator = await _connect(vsn)
+    try:
+        await _join(communicator, BcQuiet, "quiet")
+        await _join(communicator, BcFeed, "feed")
+        await (
+            Broadcast(BcFeed, "bc-feed")
+            .stream_insert("items", Post(7, "x"), update_only=True)
+            .stream_delete("items", 8)
+            .asend()
+        )
+        heard = await _patched_until_quiet(communicator)
+    finally:
+        await communicator.disconnect()
+
+    expected = [("insert", ["items-7"]), ("delete", ["items-8"])] if sent else [("delete", ["items-8"])]
+    assert _stream_ops(heard) == expected
+    assert all("update_only" in m["payload"] for m in heard if m["payload"]["op"] == "insert")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("vsn", "sent"), [(UPDATE_ONLY_SINCE - 1, False), (UPDATE_ONLY_SINCE, True)])
+async def test_a_components_own_update_only_insert_reaches_only_a_client_that_honours_it(vsn, sent):
+    communicator = await _connect(vsn)
+    try:
+        await _join(communicator, BcFeed, "feed")
+        await _event(communicator, "feed", "edit")
+        heard = await _until(communicator, lambda m: m["command"] == "stream_op" and m["payload"]["op"] == "delete")
+    finally:
+        await communicator.disconnect()
+
+    expected = [("insert", ["items-0"]), ("delete", ["items-1"])] if sent else [("delete", ["items-1"])]
+    assert _stream_ops(heard) == expected
+
+
+def test_a_frame_names_the_version_it_needs_only_when_it_needs_one():
+    insert, edit, delete, event = (
+        Broadcast(BcFeed, "bc-feed")
+        .stream_insert("items", Post(1, "a"))
+        .stream_insert("items", Post(1, "b"), update_only=True)
+        .stream_delete("items", 1)
+        .push_event("posted")
+        ._frames()
+    )
+    assert [len(frame) for frame in (insert, edit, delete, event)] == [2, 3, 2, 2]
+    assert edit[2] == UPDATE_ONLY_SINCE
+    assert [patches.reaches(edit, vsn) for vsn in (0, UPDATE_ONLY_SINCE - 1, UPDATE_ONLY_SINCE)] == [False, False, True]
+    assert patches.reaches(insert, 0)
 
 
 # --- the order against joined() ----------------------------------------------------------

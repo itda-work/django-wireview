@@ -103,6 +103,10 @@ await (
 나중에 그 자리를 불러오면 DB에서 고쳐진 판을 읽는다. 지우기는 원래 없는 id에 아무 일도 하지 않으므로
 `stream_delete`는 그대로 쓴다. 예제: [chat_lv3](../../examples/chat_lv3/).
 
+이 프레임은 `vsn` 9 이상의 클라이언트에만 쓴다. 옛 번들은 `update_only`를 몰라 없는 항목을 `at`에 넣으므로, 세션이
+그 연결에서는 프레임을 뺀다. 그 항목을 보이던 옛 페이지는 다시 join할 때까지 고치기 전 내용을 보인다
+([wire-protocol §7](../implementation/wire-protocol.md#7-버전)).
+
 ---
 
 ## 무엇을 보낼 수 있나

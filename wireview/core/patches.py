@@ -39,6 +39,7 @@ from django.utils import timezone, translation
 from .. import telemetry
 from ..debug import render_queries
 from ..utils import db
+from .rendered import UPDATE_ONLY_SINCE
 from .transport import get_broker, require_patch_topic
 from .watched import Watched
 
@@ -105,17 +106,31 @@ def encode(command: str, payload: dict[str, t.Any]) -> str:
     return json.dumps({"command": command, "payload": payload})
 
 
-def cut(command: str, payload: dict[str, t.Any]) -> list[str]:
-    """``[head, tail]``: the frame of ``payload``, whose component id is ``_ID_SLOT``, either side of the id."""
-    parts = encode(command, payload).split(json.dumps(_ID_SLOT))
+def cut(command: str, payload: dict[str, t.Any], since: int = 0) -> list[t.Any]:
+    """``[head, tail]``: the frame of ``payload``, whose component id is ``_ID_SLOT``, either side of the id.
+
+    ``since`` is the first protocol version whose clients may be written the
+    frame (``reaches``), as ``[head, tail, since]``; 0 is every client.
+    """
+    parts: list[t.Any] = encode(command, payload).split(json.dumps(_ID_SLOT))
     if len(parts) != 2:
         raise RuntimeError(f"A {command} frame holds the component id other than once")
-    return parts
+    return [*parts, since] if since else parts
 
 
-def join(frame: t.Sequence[str], component_id: str) -> str:
+def join(frame: t.Sequence[t.Any], component_id: str) -> str:
     """The frame ``cut`` made, for the component ``component_id``."""
     return frame[0] + json.dumps(component_id) + frame[1]
+
+
+def reaches(frame: t.Sequence[t.Any], vsn: int) -> bool:
+    """Whether a connection whose client speaks protocol ``vsn`` is written ``frame``.
+
+    The frame's bytes are the same for every subscriber, so a frame an older
+    client would misread names the version it needs and each session leaves it
+    out for a client below that (docs/implementation/wire-protocol.md §7).
+    """
+    return len(frame) < 3 or vsn >= frame[2]
 
 
 def listen(receiver: t.Any) -> None:
@@ -193,7 +208,9 @@ class Broadcast:
 
         ``update_only`` replaces the item on the pages that show it and inserts
         nothing on the others: subscribers that loaded different parts of a
-        list all get the same frame.
+        list all get the same frame. A page whose client predates it
+        (``UPDATE_ONLY_SINCE``) is not sent the frame at all, and keeps the
+        item as it was until it joins again.
         """
         self._ops.append(("insert", name, item, at, limit, template, dom_id, update_only))
         return self
@@ -251,7 +268,7 @@ class Broadcast:
 
     # Frames
 
-    def _frames(self) -> list[list[str]]:
+    def _frames(self) -> list[list[t.Any]]:
         """Every operation's frame, cut either side of the component id. Renders the items: off the loop."""
         from ..features.streams import StreamItem, StreamOp
 
@@ -270,7 +287,9 @@ class Broadcast:
                     limit=limit,
                     update_only=update_only,
                 )
-                frames.append(cut("stream_op", {**stream_op.to_payload(), "id": _ID_SLOT}))
+                # An older client inserts an update_only item where the page does not show it
+                since = UPDATE_ONLY_SINCE if update_only else 0
+                frames.append(cut("stream_op", {**stream_op.to_payload(), "id": _ID_SLOT}, since))
             elif kind == "delete":
                 _, name, item_id = op
                 stream_op = StreamOp(op="delete", stream=name, items=[StreamItem(item_id, "")])

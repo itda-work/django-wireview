@@ -20,7 +20,8 @@
       <a href="?size={{ size }}&away=1" data-testid="away">away</a>
       <a href="?fill=1&seeded=1" data-testid="reseed">reseed</a>
       {% if boxed %}<div class="spacer"></div>{% endif %}
-      <main data-testid="wrapper" class="{% if wrap %}wrap-{{ wrap }}{% endif %}{% if boxed %} box{% endif %}">
+      <main data-testid="wrapper"
+            class="{% if wrap %}wrap-{{ wrap }}{% endif %}{% if boxed %} box{% endif %}">
         {% component 'StreamProbe' id="probe" size=size delay=delay nest=nest seeded=seeded fill=fill %}
       </main>
       {% if pair %}

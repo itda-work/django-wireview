@@ -166,6 +166,30 @@ def test_scrolling_back_to_the_top_calls_the_top_binding(probe):
     expect_text(by(probe, "newer"), "1")
 
 
+@pytest.mark.parametrize(
+    ("button", "first"),
+    [
+        ("front", ["row--3", "row--2", "row--1", "row-0", "row-1"]),
+        ("middle", ["row-0", "row-1", "row-100", "row-101", "row-102", "row-2"]),
+    ],
+)
+def test_the_items_of_one_insert_land_as_a_block_in_the_order_given(page, server, button, first):
+    """``stream(..., reset=False)`` sends them in one frame; inserted one by one at
+    ``at`` they came out reversed (#199)."""
+    received = []
+    page.on("websocket", lambda ws: ws.on("framereceived", lambda frame: received.append(json.loads(frame))))
+    page.set_viewport_size({"width": 800, "height": 600})
+    open_live(page, f"{server}/streamprobe/")
+    rows = by(page, "rows").locator("li")
+    expect_count(rows, 15)
+    by(page, button).click()
+    expect_count(rows, 18)
+    ids = rows.evaluate_all("(els) => els.map((el) => el.id)")
+    assert ids[: len(first)] == first
+    inserts = [m for m in received if m["command"] == "stream_op" and m["payload"]["op"] == "insert"]
+    assert len(inserts) == 1
+
+
 WRAPPER_BOX = """() => { const el = document.querySelector('[data-testid=wrapper]');
   return [getComputedStyle(el).overflowY, el.scrollHeight > el.clientHeight]; }"""
 

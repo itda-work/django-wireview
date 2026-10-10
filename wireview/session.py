@@ -24,10 +24,12 @@ from .core import patches, shared_render, template_reload
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
 from .core.rendered import (
     ERRORS_SINCE,
+    INSERTS_IN_ORDER_SINCE,
     JOINED_SINCE,
     LEAVES_FIRST_SINCE,
     PROTOCOL_VERSION,
     REJOIN_SINCE,
+    UPDATE_ONLY_SINCE,
     component_refs,
     may_name_components,
     payload_component_refs,
@@ -1210,6 +1212,10 @@ class WireviewSession:
 
     async def component_stream_op(self, op, stream, items, at, limit=0, update_only=False, id=None, hold=None):
         log.debug(f">>> STREAM {op.upper()} {stream}")
+        vsn = self.repo.vsn
+        if op == "insert" and len(items) > 1 and at != -1 and vsn < INSERTS_IN_ORDER_SINCE:
+            # An older client inserts each at `at` in turn: given in reverse, they land in order
+            items = items[::-1]
         payload = {"op": op, "stream": stream, "items": items, "at": at}
         if limit:
             payload["limit"] = limit
@@ -1219,7 +1225,10 @@ class WireviewSession:
         if id is not None:
             # The component whose element holds the container
             payload["id"] = id
-        await self.send_command("stream_op", payload)
+        # An older client would insert it where the page does not show it: not sent,
+        # and a page that shows the item keeps it as it was until it joins again
+        if not (update_only and vsn < UPDATE_ONLY_SINCE):
+            await self.send_command("stream_op", payload)
         if hold is not None and id is not None and (component := self.repo.get(id)) is not None:
             # The reset is written: the Broadcast patches held for it follow (#178)
             self._discard_token(component, hold)
@@ -2060,7 +2069,10 @@ class WireviewSession:
         components = self._patch_book.get((message["target"], message["topic"]))
         if not components:
             return
-        frames = message["frames"]
+        # A frame this page's client would misread is left out (wire-protocol.md §7)
+        frames = [frame for frame in message["frames"] if patches.reaches(frame, self.repo.vsn)]
+        if not frames:
+            return
         for component in components:
             # Asked again: the book is settled after events, and a failed join,
             # a crash or a leave since may have left it naming what is gone

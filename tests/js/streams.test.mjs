@@ -43,6 +43,46 @@ test("an index past the end appends instead of throwing", () => {
   assert.deepEqual(planInsert({ exists: false, at: 3, childCount: 3 }), { mode: "append" });
 });
 
+/**
+ * One insert operation's items into `list`, as wireview.js applies them: the
+ * running count of items put in is `placed`.
+ * @param {string[]} list
+ * @param {string[]} items
+ * @param {number} at
+ */
+function insertAll(list, items, at) {
+  const out = [...list];
+  let placed = 0;
+  for (const id of items) {
+    const plan = planInsert({ exists: out.includes(id), at, childCount: out.length, placed });
+    if (plan.mode === "replace") continue;
+    if (plan.mode === "prepend") out.unshift(id);
+    else if (plan.mode === "append") out.push(id);
+    else if (plan.mode === "before") out.splice(plan.index, 0, id);
+    if (plan.mode !== "skip") placed++;
+  }
+  return out;
+}
+
+test("the items of one insert go in as a block, in the order given, wherever `at` is", () => {
+  assert.deepEqual(insertAll(["x", "y"], ["a", "b", "c"], -1), ["x", "y", "a", "b", "c"]);
+  assert.deepEqual(insertAll(["x", "y"], ["a", "b", "c"], 0), ["a", "b", "c", "x", "y"]);
+  assert.deepEqual(insertAll(["x", "y"], ["a", "b", "c"], 1), ["x", "a", "b", "c", "y"]);
+  assert.deepEqual(insertAll(["x", "y"], ["a", "b", "c"], 2), ["x", "y", "a", "b", "c"]);
+  assert.deepEqual(insertAll([], ["a", "b"], 0), ["a", "b"]);
+});
+
+test("an item of the block already on screen is replaced where it stands and the rest keep their order", () => {
+  assert.deepEqual(insertAll(["x", "b", "y"], ["a", "b", "c"], 0), ["a", "c", "x", "b", "y"]);
+  assert.deepEqual(insertAll(["x", "b", "y"], ["a", "b", "c"], -1), ["x", "b", "y", "a", "c"]);
+});
+
+test("one item is placed as before: `placed` defaults to none", () => {
+  assert.deepEqual(planInsert({ exists: false, at: 2, childCount: 3 }), { mode: "before", index: 2 });
+  assert.deepEqual(planInsert({ exists: false, at: 2, childCount: 3, placed: 1 }), { mode: "append" });
+  assert.deepEqual(planInsert({ exists: false, at: 0, childCount: 3, placed: 1 }), { mode: "before", index: 1 });
+});
+
 test("no limit means no trimming", () => {
   assert.deepEqual(planTrim({ childCount: 100, limit: 0, at: -1 }), { count: 0, fromEnd: false });
   assert.deepEqual(planTrim({ childCount: 3, limit: 5, at: -1 }), { count: 0, fromEnd: false });

@@ -22,6 +22,12 @@ The django-reactor era changelog (2.x) is preserved in
 - `stream_insert(..., update_only=True)`, on a component and on `Broadcast`: replace the item where a page shows it and
   insert nothing where it does not, as Phoenix LiveView's `update_only` (#199). Pages that loaded different parts of a
   list get the same Broadcast, and an edit of an item a page never loaded turned up at `at`, out of its place.
+  It raises the wire protocol to version 9 (`UPDATE_ONLY_SINCE`): a client below it ignores the field and would insert
+  the item, so it is not sent the operation, and a page that shows the item keeps it as it was until it joins again.
+- `stream(..., at=-1, reset=True)`: `reset=False` keeps what the page shows and inserts the items at `at` in one
+  operation -- one frame for a page of items where a loop of `stream_insert` sent one each -- as a block in the order
+  given, as Phoenix LiveView's `stream/4` without `reset` (#199). A client below protocol version 9 inserts each item
+  at `at` in turn, so it is sent them in reverse when `at` is not -1.
 
 ### Fixed
 

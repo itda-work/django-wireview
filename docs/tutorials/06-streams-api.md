@@ -211,12 +211,22 @@ async def mutation(self, channel, action, instance):
 
 ```python
 async def save(self, pk: int, text: str):
-    item = await Item.objects.aget(pk=pk)
+    # pk는 브라우저가 보낸 값이다: 이 사용자가 고칠 수 있는 항목인지 조회에서 다시 묻는다
+    item = await Item.objects.filter(pk=pk, owner=self.user.pk).afirst()
+    if item is None:
+        return
     item.text = text
     await item.asave()
     # 보이는 페이지는 제자리에서 바꾸고, 없는 페이지는 아무것도 하지 않는다
     await self.stream_insert("items", item, update_only=True)
 ```
+
+누가 무엇을 고칠 수 있는가는 서버가 핸들러마다 다시 묻는다. 버튼을 숨겨도 이벤트는 손으로 만들 수 있다 —
+[chat_lv3](../../examples/chat_lv3/)의 `_own_message`가 작성자·방·멤버십을 한 곳에서 묻는다.
+
+`update_only`는 `vsn` 9 이상의 클라이언트에만 간다. 그 전의 번들은 이 필드를 몰라 없는 항목을 `at`에 넣으므로,
+서버가 그 연결에는 보내지 않는다. 롤링 배포 중 옛 JS로 열린 페이지는 다시 join할 때까지 고치기 전 내용을 보인다
+([wire-protocol §7](../implementation/wire-protocol.md#7-버전)).
 
 **핸들러와 `mutation()` 양쪽에서 넣지 마세요.** 모델을 구독하고 있으면 저장 신호가 자기
 연결로도 돌아옵니다. 두 곳에서 넣으면 같은 항목이 두 번 들어갑니다 — 구독 중이라면
@@ -249,13 +259,21 @@ morph는 id가 없는 요소를 자리로 짝짓기 때문에, 그대로 두면 
 여러 아이템을 한 번에 추가:
 
 ```python
-# 비효율적
+# 비효율적: 항목마다 연산 하나, 프레임 하나
 for item in items:
     await self.stream_insert("items", item)
 
-# 효율적 - stream()으로 리셋
+# 효율적 - 목록을 바꾸려면 stream()으로 리셋
 await self.stream("items", items)
+
+# 효율적 - 화면의 것을 두고 덧붙이려면 reset=False: 연산 하나, 프레임 하나
+await self.stream("items", items, reset=False)          # 끝에
+await self.stream("items", newer, at=0, reset=False)    # 맨 앞에
 ```
+
+`reset=False`면 항목들이 `at` 자리에 **주어진 순서대로 한 덩어리로** 들어간다. `at=0`에 `[a, b, c]`를 넣으면
+화면 맨 앞이 `a, b, c` 순서다(하나씩 `stream_insert(at=0)`하면 `c, b, a`가 된다). 이미 화면에 있는 id는 제자리에서
+바뀐다. `limit`은 다 넣은 뒤 반대쪽 끝에서 한 번 자른다. 빈 목록이면 아무것도 보내지 않는다.
 
 ### 2. 초기 로딩 최적화
 
@@ -366,8 +384,8 @@ async def add_message(self, message):
 ```python
 async def load_more(self):
     self.page += 1
-    async for row in Row.objects.all()[self.page * 20:(self.page + 1) * 20]:
-        await self.stream_insert("rows", row)
+    # 한 페이지를 연산 하나로 붙인다
+    await self.stream("rows", Row.objects.all()[self.page * 20:(self.page + 1) * 20], reset=False)
 ```
 
 스크롤 방향과 맞을 때만 불린다. 페이지를 열었을 때 이미 보이는 요소는 부르지 않지만, 요소가 화면

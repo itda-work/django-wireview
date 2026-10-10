@@ -1298,9 +1298,11 @@ class Component(BaseModel):
         template: str | None = None,
         dom_id: t.Callable[[t.Any], str] | None = None,
         limit: int = 0,
+        at: int = -1,
+        reset: bool = True,
     ) -> None:
         """
-        Initialize or reset a stream with items.
+        Initialize or reset a stream with items, or insert several at once.
 
         Streams provide memory-efficient handling of large lists by rendering
         items individually and sending them to the client via WebSocket.
@@ -1316,6 +1318,12 @@ class Component(BaseModel):
                    (default: {name}-{item.pk})
             limit: Maximum number of items to keep in DOM (0 = no limit).
                   When exceeded, oldest items are removed automatically.
+            at: With ``reset=False``, where the items go (-1 = append,
+                0 = prepend, n = at index), as a block in the order given.
+            reset: False keeps what the page shows and inserts the items at
+                ``at``, as one operation: one frame however many there are,
+                where ``stream_insert`` in a loop sends one each. An item
+                already on the page is replaced where it stands.
 
         Example:
             async def joined(self):
@@ -1324,6 +1332,10 @@ class Component(BaseModel):
             # With limit - keeps only 50 most recent items in DOM
             async def joined(self):
                 await self.stream("messages", messages, limit=50)
+
+            # The page before, under what the page shows, in one frame
+            async def load_more(self):
+                await self.stream("items", next_page, reset=False)
         """
         from ..features.streams import StreamItem, StreamOp
 
@@ -1332,6 +1344,19 @@ class Component(BaseModel):
 
         template_name = template or self._get_stream_item_template()
         dom_id_fn = dom_id or (lambda item: f"{name}-{item.pk}")
+
+        if not reset:
+            if isinstance(items, t.AsyncIterable):
+                items = [item async for item in items]
+            inserted = [
+                StreamItem(dom_id=dom_id_fn(item), html=await self._render_stream_item(template_name, item))
+                for item in items
+            ]
+            if inserted:
+                await self.wire.send_stream_op(
+                    StreamOp(op="insert", stream=name, items=inserted, at=at, limit=limit), self.id
+                )
+            return
 
         # The reset goes out through the connection's channel, behind any
         # Broadcast patch written meanwhile, and would wipe it: this

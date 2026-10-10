@@ -75,7 +75,7 @@ sync로 쓰면 실행되지 않고 `manage.py check`가 `wireview.W002`로 알�
 | `await defer(f, *args, **kwargs)` | 지금 이벤트가 끝난 뒤 `f`를 부른다. 호출은 클라이언트 이벤트처럼 연결을 한 바퀴 돌아 이름으로 다시 들어오므로, `f`는 **클라이언트가 부를 수 있는 이 컴포넌트의 핸들러**여야 한다. `_` 헬퍼나 프레임워크 메서드를 넘기면 오류 없이 경고 로그 한 줄만 남기고 버려진다 |
 | `await start_async(name, coro)` / `await cancel_async(name)` | 백그라운드 작업 ([async-operations](./async-operations.md)) |
 | `await assign_async(coro, *, on_error=None)` | 결과를 `AsyncResult` 필드로 받는다 |
-| `await stream(name, items, *, template=None, dom_id=None, limit=0)` | 스트림을 채우거나 다시 채운다 ([Streams API 심화 튜토리얼](../tutorials/06-streams-api.md)) |
+| `await stream(name, items, *, template=None, dom_id=None, limit=0, at=-1, reset=True)` | 스트림을 채우거나 다시 채운다 ([Streams API 심화 튜토리얼](../tutorials/06-streams-api.md)). `reset=False`면 화면의 것을 두고 항목들을 `at` 자리에 주어진 순서대로 연산 하나로 넣는다([배치 삽입](../tutorials/06-streams-api.md#1-배치-삽입)) |
 | `await stream_insert(name, item, *, at=-1, template=None, dom_id=None, limit=0, update_only=False)` / `await stream_delete(name, dom_id)` | 스트림 항목. `update_only=True`는 그 id가 화면에 있을 때만 제자리에서 바꾸고, 없으면 아무것도 넣지 않는다([Streams 튜토리얼](../tutorials/06-streams-api.md#이미-화면에-있는-항목이면-제자리-갱신)). 셋 다 첫 HTTP 렌더에서는 아무것도 하지 않는다 — 받을 소켓이 없다([dead view](./dead-view.md#약속하지-않는-것)) |
 | `allow_upload(name, *, accept=None, max_entries=1, max_file_size=None, chunk_size=None, auto_upload=True, external=None)` | 업로드를 받는다 ([chunked-uploads](./chunked-uploads.md)) |
 | `consume_uploads(name)` / `await cancel_upload(name, ref)` | 완료된 업로드를 꺼낸다 / 취소한다 |

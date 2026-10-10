@@ -39,15 +39,22 @@ export function isStreamContainer(node) {
  * parts of a list, and an edit of an item a page never loaded must not turn up
  * at `at`, out of its place.
  *
- * @param {{exists: boolean, at: number, childCount: number, updateOnly?: boolean}} state
+ * The items of one operation go in as a block, in the order given: `placed`
+ * is how many of its items before this one were inserted (not replaced or
+ * skipped), and this one goes after them. Inserting each at `at` reversed
+ * them unless `at` was -1 (`stream(..., reset=False)`, #199).
+ *
+ * @param {{exists: boolean, at: number, childCount: number, updateOnly?: boolean, placed?: number}} state
  * @returns {{mode: "replace"} | {mode: "skip"} | {mode: "prepend"} | {mode: "append"} | {mode: "before", index: number}}
  */
-export function planInsert({ exists, at, childCount, updateOnly = false }) {
+export function planInsert({ exists, at, childCount, updateOnly = false, placed = 0 }) {
   if (exists) return { mode: "replace" };
   if (updateOnly) return { mode: "skip" };
-  if (at === 0) return { mode: "prepend" };
-  if (at === -1 || at >= childCount) return { mode: "append" };
-  return { mode: "before", index: at };
+  if (at === -1) return { mode: "append" };
+  const index = at + placed;
+  if (index === 0) return { mode: "prepend" };
+  if (index >= childCount) return { mode: "append" };
+  return { mode: "before", index };
 }
 
 /**

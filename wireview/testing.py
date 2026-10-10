@@ -356,6 +356,8 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         if message["topic"] not in component.get_subscriptions():
             return
         for frame in message["frames"]:
+            if not patches.reaches(frame, self._repo.vsn):
+                continue
             sent = json.loads(patches.join(frame, component.id))
             received = {"type": sent["command"], **sent["payload"]}
             (self._held_frames if self._held_tokens else self.wire.sent_messages).append(received)
