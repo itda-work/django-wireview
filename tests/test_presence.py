@@ -796,6 +796,17 @@ class XProducerThenTracker(PresenceMixin, PresenceTrackerMixin, Component):
     def _presence_username(self) -> str:
         return self.username
 
+    def get_subscriptions(self) -> set[str]:
+        # A tracker hears its channel because it subscribes to it
+        return super().get_subscriptions() | {self._presence_channel()}
+
+
+class XSubclassedTab(XProducerThenTracker):
+    """Its own receiver over a class already wrapped, passing everything on."""
+
+    async def notification(self, channel: str, **kwargs):
+        await super().notification(channel, **kwargs)
+
 
 class XTrackerThenProducer(PresenceTrackerMixin, PresenceMixin, Component):
     class Meta:
@@ -807,6 +818,9 @@ class XTrackerThenProducer(PresenceTrackerMixin, PresenceMixin, Component):
     _presence_user_id = XProducerThenTracker._presence_user_id
     _presence_my_user_id = XProducerThenTracker._presence_my_user_id
     _presence_username = XProducerThenTracker._presence_username
+
+    def get_subscriptions(self) -> set[str]:
+        return super().get_subscriptions() | {self._presence_channel()}
 
 
 async def ask(view, channel: str = "presence.room.1", requester_ref: str = "bobs-tab") -> list[dict]:
@@ -867,6 +881,64 @@ class TestPresenceProducerAnswers:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
+    async def test_it_hears_its_channel_while_it_is_joined(self):
+        """Not before presence_join(): a topic joined() decides is not known yet, and there is nothing to answer."""
+
+        class XLateProducer(XProducerComponent):
+            async def joined(self):
+                pass
+
+        producer = await mount(XLateProducer, room_id=1, username="ann")
+        assert producer.component.get_subscriptions() == set()
+        await producer.component.presence_join()
+        assert producer.component.get_subscriptions() == {"presence.room.1"}
+        await producer.component.presence_leave()
+        assert producer.component.get_subscriptions() == set()
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_it_hears_its_channel_whatever_an_app_mixin_returns(self):
+        class RoomMixin:
+            def get_subscriptions(self) -> set[str]:
+                return {"chat.room.1"}
+
+        class XMixedProducer(RoomMixin, XProducerComponent):
+            pass
+
+        producer = await mount(XMixedProducer, room_id=1, username="ann")
+        assert producer.component.get_subscriptions() == {"chat.room.1", "presence.room.1"}
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_its_receiver_does_not_hear_what_the_mixin_subscribed_to(self):
+        """Its notification() hears its own channels only, as before #202; the sync is still answered."""
+        heard: list[str] = []
+
+        class XListeningProducer(XNarrowProducer):
+            async def notification(self, channel: str, **kwargs):
+                heard.append(kwargs["message"])
+
+        producer = await mount(XListeningProducer, room_id=1, username="ann")
+        await hear(producer, "presence_join", "bob")
+        [answer] = await ask(producer)
+        assert answer["action"] == "presence_sync_response"
+        await producer.component.notification("chat.room.1", message="hi")
+        assert heard == ["hi"]
+
+    @pytest.mark.unit
+    def test_a_broadcast_to_a_topic_it_does_not_subscribe_to_is_refused(self):
+        from wireview import Broadcast
+
+        class XTopicProducer(XProducerComponent):
+            class Meta:
+                subscriptions = {"chat.room.1"}
+
+        Broadcast(XTopicProducer, "chat.room.1")
+        with pytest.raises(ValueError, match="does not subscribe"):
+            Broadcast(XTopicProducer, "chat.room.2")
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
     async def test_it_renders_nothing_for_what_it_hears(self):
         producer = await mount(XProducerComponent, room_id=1, username="ann")
         for action in ("presence_join", "presence_typing", "presence_leave", "presence_sync_response"):
@@ -879,7 +951,7 @@ class TestPresenceProducerAnswers:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    @pytest.mark.parametrize("component", [XProducerThenTracker, XTrackerThenProducer])
+    @pytest.mark.parametrize("component", [XProducerThenTracker, XTrackerThenProducer, XSubclassedTab])
     async def test_a_class_that_produces_and_tracks_answers_once(self, component):
         view = await mount(component)
         await view.component.presence_join()
@@ -962,6 +1034,35 @@ class TestPresenceTabs:
         await hear(view, "presence_typing", "ann", ref="ann-tab", presence_conn="c2", state="typing")
         assert view.component.presence_get_user("ann").is_typing()
         await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c2")
+        assert view.component.presence_get_user("ann") is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_tab_that_answers_on_two_sockets_stays_until_both_leave(self):
+        """Both sockets of a reconnected tab answer a new tracker's sync; the old one's leave keeps the tab."""
+        view = await mount(XTrackerComponent, room_id=1, username="bob")
+        await hear(view, "presence_sync_response", "ann", ref="ann-tab", presence_conn="c-old")
+        await hear(view, "presence_sync_response", "ann", ref="ann-tab", presence_conn="c-new")
+
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c-old")
+        assert view.component.presence_get_user("ann") is not None
+        await hear(view, "presence_typing", "ann", ref="ann-tab", presence_conn="c-new", state="typing")
+        assert view.component.presence_get_user("ann").is_typing()
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c-new")
+        assert view.component.presence_get_user("ann") is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_join_says_which_socket_the_tab_speaks_on_now(self):
+        """Joined again after two sockets answered: the one it left says nothing for it."""
+        view = await mount(XTrackerComponent, room_id=1, username="bob")
+        await hear(view, "presence_sync_response", "ann", ref="ann-tab", presence_conn="c1")
+        await hear(view, "presence_sync_response", "ann", ref="ann-tab", presence_conn="c2")
+        await hear(view, "presence_join", "ann", ref="ann-tab", presence_conn="c3")
+
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c2")
+        assert view.component.presence_get_user("ann") is not None
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c3")
         assert view.component.presence_get_user("ann") is None
 
     @pytest.mark.asyncio

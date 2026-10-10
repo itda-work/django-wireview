@@ -181,6 +181,82 @@ class CnViewer(InlineTemplate, PresenceTrackerMixin, Component):
         await self.presence_track_self(username=self.name)
 
 
+class CnChat(InlineTemplate, PresenceMixin, Component):
+    """A chat input that hears its room's messages, with the README's receiver: no super(), ``kwargs["message"]``."""
+
+    source: t.ClassVar[str] = "<div {% tag_header %}>{{ this.last }}</div>"
+
+    class Meta:
+        subscriptions = {"cn-chat"}
+
+    name: str = ""
+    last: str = ""
+
+    _presence_topic = CnTyping._presence_topic
+    _presence_user_id = CnTyping._presence_user_id
+    _presence_username = CnTyping._presence_username
+    joined = CnTyping.joined
+    leaving = CnTyping.leaving
+
+    async def notification(self, channel: str, **kwargs):
+        self.last = kwargs["message"]
+
+
+class CnQuietChat(CnChat):
+    """The same, reading with ``.get()``: it never passes a presence message on."""
+
+    async def notification(self, channel: str, **kwargs):
+        self.last = kwargs.get("message", "")
+
+
+class CnCounter(InlineTemplate, PresenceMixin, Component):
+    """A producer that hears its presence channel itself, as before #202, and counts who came."""
+
+    source: t.ClassVar[str] = "<div {% tag_header %}><b>{{ this.came }}</b></div>"
+
+    name: str = ""
+    joins: int = 0
+
+    _presence_topic = CnTyping._presence_topic
+    _presence_user_id = CnTyping._presence_user_id
+    _presence_username = CnTyping._presence_username
+    joined = CnTyping.joined
+    leaving = CnTyping.leaving
+
+    @property
+    def came(self) -> str:
+        return f"came-{self.joins}"
+
+    def get_subscriptions(self) -> set[str]:
+        return super().get_subscriptions() | {self._presence_channel()}
+
+    async def notification(self, channel: str, **kwargs):
+        await super().notification(channel, **kwargs)
+        if kwargs.get("action") == "presence_join" and kwargs.get("user_id") != self.name:
+            self.joins += 1
+
+
+class CnLateRoom(InlineTemplate, PresenceMixin, Component):
+    """A producer whose topic is known once joined() has loaded its room."""
+
+    source: t.ClassVar[str] = CnTyping.source
+
+    name: str = ""
+    room: str | None = None
+
+    def _presence_topic(self) -> str:
+        assert self.room is not None, "the topic was read before joined() loaded the room"
+        return self.room
+
+    _presence_user_id = CnTyping._presence_user_id
+    _presence_username = CnTyping._presence_username
+    leaving = CnTyping.leaving
+
+    async def joined(self):
+        self.room = "cn-room"
+        await self.presence_join()
+
+
 @pytest.fixture(autouse=True)
 def _calls():
     CALLS.clear()
@@ -455,6 +531,98 @@ async def test_a_late_leave_from_the_socket_a_tab_left_keeps_it_listed():
         await render_containing(bob, '"online-1"')
     finally:
         for communicator in (bob, old, *([new] if new else [])):
+            await communicator.disconnect()
+
+
+async def test_two_sockets_of_one_tab_answer_a_new_observer_and_the_old_ones_leave_keeps_it_listed():
+    """The tab reconnected before the server noticed its old socket, then someone came (#202).
+
+    Both sockets answer the newcomer's sync. Keeping the first answer's socket
+    alone, the old socket's leave then removed a tab still open on the new one.
+    """
+    old = await connect(CnTyping, "a-typing", tab=ANN_TAB, name="ann")
+    new = await connect(CnTyping, "a-typing", tab=ANN_TAB, name="ann")
+    bob = carol = None
+    try:
+        bob = await connect(CnOnline, "b-list", name="bob")
+        await render_containing(bob, "ann-online")
+        await old.disconnect()
+        # A render after the old socket's leave: carol arrives
+        carol = await connect(CnTyping, "c-typing", name="carol")
+        assert '"online-3"' in await render_containing(bob, "carol-online")
+        await new.disconnect()
+        await render_containing(bob, '"online-2"')
+    finally:
+        for communicator in (old, new, *(c for c in (bob, carol) if c)):
+            await communicator.disconnect()
+
+
+async def drain(communicator: WebsocketCommunicator, quiet: float = 0.5) -> list[dict]:
+    """Every message until the socket has been quiet for ``quiet`` seconds."""
+    messages = []
+    while not await communicator.receive_nothing(timeout=quiet):
+        messages.append(await communicator.receive_json_from())
+    return messages
+
+
+async def test_a_producers_receiver_does_not_hear_the_presence_channel_the_mixin_added():
+    """A producer listens on its presence channel to answer syncs; its notification() does not hear it (#202).
+
+    The README's receiver reads ``kwargs["message"]``: handed ann's own join
+    and bob's, it raised, and the page joined it again into the same join.
+    """
+    ann = await open_socket()
+    bob = None
+    try:
+        for _ in range(2):
+            # The page joins it again as it would after an error
+            await join(ann, CnChat, "a-chat", name="ann")
+            assert [m["command"] for m in await drain(ann)].count("error") == 0
+        bob = await connect(CnChat, "b-chat", name="bob")
+        assert [m["command"] for m in await drain(ann)].count("error") == 0
+        await sync_to_async(broadcast)("cn-chat", message="hello")
+        await render_containing(ann, "hello")
+    finally:
+        for communicator in (ann, *([bob] if bob else [])):
+            await communicator.disconnect()
+
+
+async def test_a_producer_whose_receiver_passes_nothing_on_still_answers_for_its_page():
+    """No super() in its notification(), no error either: its page is still on a later list (#202)."""
+    ann = await connect(CnQuietChat, "a-chat", name="ann")
+    bob = None
+    try:
+        await join(ann, CnOnline, "a-list", name="ann")
+        await render_containing(ann, "ann-online")
+        bob = await connect(CnOnline, "b-list", name="bob")
+        await render_containing(bob, "ann-online")
+    finally:
+        for communicator in (ann, *([bob] if bob else [])):
+            await communicator.disconnect()
+
+
+async def test_a_producer_that_hears_its_presence_channel_itself_renders_what_it_did_with_it():
+    """Subscribed by the component, the channel is the component's: its receiver hears it and renders (#202)."""
+    ann = await connect(CnCounter, "a-count", name="ann")
+    bob = None
+    try:
+        bob = await connect(CnTyping, "b-typing", name="bob")
+        await render_containing(ann, "came-1")
+    finally:
+        for communicator in (ann, *([bob] if bob else [])):
+            await communicator.disconnect()
+
+
+async def test_a_producer_whose_topic_joined_decides_joins_and_answers():
+    """The channel is added once it has joined: before joined() its topic may not be known (#202)."""
+    ann = await connect(CnLateRoom, "a-late", name="ann")
+    bob = None
+    try:
+        assert [m["command"] for m in await drain(ann)].count("error") == 0
+        bob = await connect(CnOnline, "b-list", name="bob")
+        await render_containing(bob, "ann-online")
+    finally:
+        for communicator in (ann, *([bob] if bob else [])):
             await communicator.disconnect()
 
 

@@ -12,6 +12,11 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- `presence_users_in(topic)` lists the users of one topic, one entry each, for a presence tracker that
+  subscribes to several (#202). `presence_users` lists them across all of its topics.
+
 ### Fixed
 
 - Presence keeps a meta per browser tab under each user, as Phoenix Presence does, so a user with two tabs
@@ -23,7 +28,8 @@ The django-reactor era changelog (2.x) is preserved in
   of that name under the signed-in user (a page cannot speak for another user's tab), and `presence_conn`,
   the connection that sent them. So when a process ends without its `leaving()` (daphne, Granian, a crash),
   the tab's join after it reconnects replaces what the dead process left, and its leave removes it; a late
-  leave from the socket a tab reconnected away from is dropped. A page from an older bundle is keyed by its
+  leave from the socket a tab reconnected away from is dropped. A tab whose old and new sockets both
+  answered a newcomer's sync stays on that list until the last of them leaves. A page from an older bundle is keyed by its
   connection. A message without `presence_ref`, from a process before this release, stands for one tab per
   user, as that process tracks it. A sync answer now fills only a tab not heard from yet: a tab that typed
   while the request waited in its queue answered with its state from before, and the answer replaced the
@@ -33,12 +39,15 @@ The django-reactor era changelog (2.x) is preserved in
   (#202). A tracker answered for its page, so a page with a tracker alone, which never says it joined or
   left, went on the lists of those who came later and nothing took it off; and once a tracker answered only
   after hearing its page's join, a tracker joined after its producer (a sibling root, one joined again after
-  an exception, the next page of a sticky producer) never answered. The producer listens on its presence
-  channel whatever its `get_subscriptions()` returns, renders nothing for what it hears there, and answers
-  between `presence_join()` and `presence_leave()`.
+  an exception, the next page of a sticky producer) never answered. Between `presence_join()` and
+  `presence_leave()` the producer listens on its presence channel, whatever its `get_subscriptions()` (or
+  an app mixin's) returns, and answers there. What it hears there only because of that is the framework's:
+  its `notification()` does not get it, as before, and nothing renders for it. A producer that subscribes
+  to the channel itself hears it in `notification()` as before. `Broadcast` still refuses a topic a
+  producer's `Meta.subscriptions` lacks.
 - A presence tracker that subscribes to several topics keeps each topic's metas apart (#202): leaving one
   room removed the user though they were still in another, and the tracker answered requests on every
-  topic. `presence_users` lists a user once across the topics; the new `presence_users_in(topic)` reads one.
+  topic. `presence_users` lists a user once across the topics; `presence_users_in(topic)` (Added) reads one.
 
 ## [1.5.1] - 2026-10-10
 

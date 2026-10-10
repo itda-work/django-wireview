@@ -320,11 +320,10 @@ class TestTheRecordedLayerRefusesWhatARealLayerRefuses:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_a_presence_topic_with_it_fails_at_mount(self):
-        # A producer listens on its presence channel to answer sync requests (#202),
-        # so it fails where a subscription does, before it can announce anything
+    async def test_a_presence_topic_with_it_fails(self):
+        view = await mount(self.Typist)
         with pytest.raises(TypeError, match="Group name"):
-            await mount(self.Typist)
+            await view.call("arrive")
 
     class Listener(Component):
         class Meta:

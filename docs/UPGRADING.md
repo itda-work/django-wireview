@@ -88,10 +88,10 @@ dependencies = ["django-wireview>=1.5,<2"]
     목록에 오르지 않는다. 그런 페이지는 들어왔다고도 떠났다고도 알리지 않는데, 나중에 들어온 사람의 sync 요청에
     답해서 그 사람의 목록에만 올랐고 닫혀도 내려가지 않았다. 보는 사람도 목록에 올리려면 그 페이지에
     `presence_join()`·`presence_leave()`를 부르는 컴포넌트를 둔다.
-  - 프로듀서는 자기 presence 채널을 듣는다. `get_subscriptions()`를 오버라이드했어도 믹스인이 채널을 더한다. 거기서
-    들은 것으로는 렌더하지 않는다. 프로듀서가 `notification()`을 오버라이드했다면 presence 메시지(`action`이
-    `presence_`로 시작)를 `super().notification(channel, **kwargs)`로 넘긴다 — 넘기지 않으면 sync에 답하지 못해 그
-    사용자가 나중에 온 사람의 목록에 오르지 않는다.
+  - 프로듀서는 `presence_join()`부터 `presence_leave()`까지 자기 presence 채널을 구독한다. `get_subscriptions()`를
+    오버라이드했어도 믹스인이 채널을 더한다. 거기서 들은 것은 프레임워크가 처리한다 — 프로듀서의 `notification()`은
+    전처럼 그 메시지를 받지 않고, 렌더도 없다. 코드를 고칠 일은 없다. 그 채널을 직접 구독하던 프로듀서는 전처럼
+    `notification()`이 받는다.
 - **조용히 달라짐: 토픽 여럿을 듣는 트래커는 토픽마다 기록한다.** 한 방에서 떠난 사용자가 다른 방에 남아 있으면
   그대로 목록에 있다(#202). 전에는 방 하나의 퇴장이 그 사용자를 통째로 지웠다. `presence_users`와 그것을 세는
   속성은 모든 토픽을 합쳐 사용자마다 한 번이고, 토픽 하나만 보려면 새 메서드 `presence_users_in(topic)`을 쓴다

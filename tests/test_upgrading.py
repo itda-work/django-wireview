@@ -115,7 +115,11 @@ UPGRADE_NOTE = {
     ),
     "A presence producer answers the sync requests": (
         "다른 사람의 목록에 올리는 것은 프로듀서다",
-        "`super().notification(channel, **kwargs)`로 넘긴다",
+        "프로듀서의 `notification()`은 전처럼 그 메시지를 받지 않고",
+    ),
+    "`presence_users_in(topic)` lists the users of one topic": (
+        "토픽 여럿을 듣는 트래커는 토픽마다 기록한다",
+        "새 메서드 `presence_users_in(topic)`",
     ),
     "A presence tracker that subscribes to several topics keeps each topic's metas apart": (
         "토픽 여럿을 듣는 트래커는 토픽마다 기록한다",

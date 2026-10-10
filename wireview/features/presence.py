@@ -52,6 +52,7 @@ Example:
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import functools
 import hashlib
 import secrets
@@ -182,8 +183,10 @@ class PresenceMixin:
     presence state to others. Only a producer puts its user on other people's
     lists: between ``presence_join()`` and ``presence_leave()`` it also answers
     the sync request of a tracker that joins later, as Phoenix's ``track`` does
-    (#202). It listens on its presence channel for that, whatever its own
-    ``get_subscriptions()`` returns, and renders nothing for what it hears there.
+    (#202). For that it listens on its presence channel while joined, whatever
+    its own ``get_subscriptions()`` returns. What it hears there only because
+    of that is the framework's: its ``notification()`` does not get it, and
+    nothing renders for it.
 
     Required methods to implement:
         _presence_topic(): Return the topic/room identifier
@@ -203,26 +206,24 @@ class PresenceMixin:
     Usage in event handlers:
         async def on_typing(self):
             await self.presence_set_typing(True)
-
-    A subclass that overrides ``notification()`` passes presence messages on
-    with ``super()``, or it does not answer sync requests.
     """
 
     def __init_subclass__(cls, **kwargs: t.Any) -> None:
         super().__init_subclass__(**kwargs)
-        # A producer has to hear its channel to answer a sync request, and the
-        # usual override returns the component's own topics without super():
-        # add the channel to whatever a subclass returns
-        own = cls.__dict__.get("get_subscriptions")
-        if own is None or getattr(own, "_presence_hears_its_channel", False):
-            return
+        # The producer's channel is added outside whatever the class resolves
+        # these two to -- its own, an app's mixin's, Component's -- so neither
+        # an override without super() nor one that reads every message the way
+        # the README's receiver does can lose the channel or hear it (#202)
+        for name, wrap in (("get_subscriptions", _hear_presence_channel), ("notification", _answer_presence)):
+            resolved = getattr(cls, name, None)
+            if resolved is not None and not getattr(resolved, "_presence_wrapped", False):
+                from wireview.core.component import Component
 
-        @functools.wraps(own)
-        def get_subscriptions(self: t.Any) -> set[str]:
-            return own(self) | {self._presence_channel()}
-
-        get_subscriptions._presence_hears_its_channel = True  # type: ignore[attr-defined]
-        cls.get_subscriptions = get_subscriptions  # type: ignore[attr-defined]
+                wrapper = wrap(resolved)
+                wrapper._presence_wrapped = True  # type: ignore[attr-defined]
+                # Its topics are still Meta's and the channel: Broadcast checks a topic against them
+                wrapper._subscriptions_from_meta = resolved is Component.get_subscriptions  # type: ignore[attr-defined]
+                setattr(cls, name, wrapper)
 
     # Configuration: ``presence = PresenceConfig(...)`` in the component's Meta
     @property
@@ -255,8 +256,13 @@ class PresenceMixin:
     def _presence_joined(self, value: bool) -> None:
         self.__dict__["__presence_joined"] = value
 
-    def get_subscriptions(self) -> set[str]:
-        return super().get_subscriptions() | {self._presence_channel()}  # type: ignore[misc]
+    def _presence_app_hears(self, channel: str) -> bool:
+        """Whether the component's own ``get_subscriptions()`` names ``channel``, before the mixin adds it."""
+        token = _subscriptions_inner.set(self)
+        try:
+            return channel in self.get_subscriptions()  # type: ignore[attr-defined]
+        finally:
+            _subscriptions_inner.reset(token)
 
     def _presence_topic(self) -> str:
         """Return the presence topic/room identifier.
@@ -418,23 +424,70 @@ class PresenceMixin:
             channel, action="presence_sync_response", **self._presence_user_data(state)
         )
 
-    async def notification(self, channel: str, **kwargs: t.Any) -> None:
-        """Answer sync requests on the presence channel; render nothing for presence messages.
 
-        On a class that also tracks (``PresenceTrackerMixin``), the tracker reads
-        every presence message and has this answer, so a request gets one answer
-        whichever mixin comes first.
-        """
-        action = kwargs.get("action", "")
-        if not action.startswith("presence_") or isinstance(self, PresenceTrackerMixin):
-            parent_notification = getattr(super(), "notification", None)
-            if parent_notification is not None:
-                await parent_notification(channel, **kwargs)
+# The component a presence wrapper is running for: one called inside it -- by a
+# subclass's super(), or to read the app's own subscriptions -- runs only what it
+# wraps. One for each method: the one around notification() is still set in a task
+# the app's receiver starts, and must not take the channel off its subscriptions
+_subscriptions_inner: contextvars.ContextVar[object] = contextvars.ContextVar("presence_subscriptions", default=None)
+_notification_inner: contextvars.ContextVar[object] = contextvars.ContextVar("presence_notification", default=None)
+
+
+def _hear_presence_channel(own: t.Callable[..., set[str]]) -> t.Callable[..., set[str]]:
+    """``get_subscriptions`` with the producer's channel added while it is joined.
+
+    Not before: a topic ``joined()`` decides is not there to read yet, and a
+    producer that has not joined has nothing to answer.
+    """
+
+    @functools.wraps(own)
+    def get_subscriptions(self: t.Any) -> set[str]:
+        if _subscriptions_inner.get() is self:
+            return own(self)
+        token = _subscriptions_inner.set(self)
+        try:
+            topics = set(own(self))
+        finally:
+            _subscriptions_inner.reset(token)
+        if self._presence_joined:
+            topics.add(self._presence_channel())
+        return topics
+
+    return get_subscriptions
+
+
+def _answer_presence(own: t.Callable[..., t.Awaitable[None]]) -> t.Callable[..., t.Awaitable[None]]:
+    """``notification`` that answers the producer's sync requests, once.
+
+    A presence message on the channel the mixin added stays with the framework:
+    the component's ``notification()`` never heard it before #202 and does not
+    now, and nothing of the component changed, so nothing renders. On a channel
+    the component subscribes to itself -- a class that also tracks, an app that
+    counts arrivals -- its ``notification()`` hears it as before, and renders.
+    """
+
+    @functools.wraps(own)
+    async def notification(self: t.Any, channel: str, **kwargs: t.Any) -> None:
+        if _notification_inner.get() is self:
+            await own(self, channel, **kwargs)
             return
-        if action == "presence_sync_request":
+        ours = (
+            self._presence_joined
+            and str(kwargs.get("action", "")).startswith("presence_")
+            and channel == self._presence_channel()
+        )
+        if ours and kwargs["action"] == "presence_sync_request":
             await self._presence_answer(channel, kwargs)
-        # It hears the channel only to answer: nothing of it changed
-        t.cast("Component", self).skip_render()
+        if ours and not self._presence_app_hears(channel):
+            self.skip_render()
+            return
+        token = _notification_inner.set(self)
+        try:
+            await own(self, channel, **kwargs)
+        finally:
+            _notification_inner.reset(token)
+
+    return notification
 
 
 class PresenceTrackerMixin:
@@ -489,9 +542,9 @@ class PresenceTrackerMixin:
     def _presence_registry(self, value: dict[str, dict[str, dict[str, PresenceUser]]]) -> None:
         self.__dict__["__presence_registry"] = value
 
-    # (channel, user_id, presence_ref) -> the connection that said the meta, when it named one
+    # (channel, user_id, presence_ref) -> the connections the tab speaks on, of those that named one
     @property
-    def _presence_conns(self) -> dict[tuple[str, str, str], str]:
+    def _presence_conns(self) -> dict[tuple[str, str, str], set[str]]:
         if "__presence_conns" not in self.__dict__:
             self.__dict__["__presence_conns"] = {}
         return self.__dict__["__presence_conns"]
@@ -580,14 +633,14 @@ class PresenceTrackerMixin:
         return self._presence_merge(user_id, metas) if metas else None
 
     def _presence_put(self, channel: str, user_id: str, ref: str, conn: str, data: dict[str, t.Any]) -> None:
-        """Record what a tab said about its user, replacing its meta."""
+        """Record what a tab said about its user, replacing its meta: it speaks on ``conn`` now."""
         self._presence_registry.setdefault(channel, {}).setdefault(user_id, {})[ref] = PresenceUser(
             user_id=user_id,
             username=data.get("username", ""),
             state=PresenceState(data.get("state", "online")),
             metadata=data.get("metadata", {}),
         )
-        self._presence_conns[(channel, user_id, ref)] = conn
+        self._presence_conns[(channel, user_id, ref)] = {conn} if conn else set()
 
     def _presence_drop(self, channel: str, user_id: str, ref: str) -> None:
         """Forget a tab; the user goes with their last one."""
@@ -605,12 +658,29 @@ class PresenceTrackerMixin:
     def _presence_from_another_connection(self, channel: str, user_id: str, ref: str, conn: str) -> bool:
         """Whether a message comes from a socket the tab has since reconnected away from.
 
-        Its meta names the connection that said it last. A late leave (or typing)
-        from the one before -- the server noticed the dropped socket after the
-        tab came back on a new one -- is not about what the tab says now.
+        Its meta names the connections the tab speaks on: the one its last join
+        came from, and any other that answered a sync for it -- for a while a tab
+        that reconnected has two, the new one and the old one the server has not
+        noticed is gone. A late leave (or typing) from a socket the tab joined
+        again away from is not about what the tab says now.
         """
-        heard = self._presence_conns.get((channel, user_id, ref), "")
-        return bool(conn and heard and conn != heard)
+        heard = self._presence_conns.get((channel, user_id, ref), set())
+        return bool(conn and heard and conn not in heard)
+
+    def _presence_heard_on(self, channel: str, user_id: str, ref: str, conn: str) -> None:
+        """A sync answer about a tab already recorded: the tab speaks on ``conn`` too."""
+        heard = self._presence_conns.get((channel, user_id, ref))
+        if conn and heard:
+            heard.add(conn)
+
+    def _presence_left(self, channel: str, user_id: str, ref: str, conn: str) -> None:
+        """A socket of a tab left: the tab goes with the last socket it speaks on."""
+        heard = self._presence_conns.get((channel, user_id, ref))
+        if conn and heard:
+            heard.discard(conn)
+            if heard:
+                return
+        self._presence_drop(channel, user_id, ref)
 
     async def presence_track_self(
         self,
@@ -684,10 +754,14 @@ class PresenceTrackerMixin:
             if ref not in self._presence_registry.get(channel, {}).get(user_id, {}):
                 self._presence_put(channel, user_id, ref, conn, kwargs)
                 component.force_render()
+            else:
+                # Two sockets of one tab answer while the server has not noticed
+                # the old one is gone: the old one's leave must not take the tab
+                self._presence_heard_on(channel, user_id, ref, conn)
 
         elif action == "presence_leave" and user_id:
             if not self._presence_from_another_connection(channel, user_id, ref, conn):
-                self._presence_drop(channel, user_id, ref)
+                self._presence_left(channel, user_id, ref, conn)
                 component.force_render()
 
         elif action == "presence_typing" and user_id:
@@ -701,8 +775,5 @@ class PresenceTrackerMixin:
                 meta.last_active = time.time()
                 component.force_render()
 
-        elif action == "presence_sync_request":
-            # Answered by the producers: they are what other people's lists
-            # show (#202). One on this class answers here.
-            if isinstance(self, PresenceMixin):
-                await self._presence_answer(channel, kwargs)
+        # presence_sync_request is answered by the producers: they are what other
+        # people's lists show (#202). One on this class answers around this method.

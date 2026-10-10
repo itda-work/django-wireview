@@ -158,9 +158,13 @@ class Broadcast:
         if not (isinstance(target, type) and issubclass(target, Component)) or target is Component:
             raise TypeError(f"Broadcast() takes the component class that receives it, not {target!r}")
         require_patch_topic(topic)
-        if target.get_subscriptions is Component.get_subscriptions and topic not in target._meta.subscriptions:
-            # Its topics are its Meta's, so no instance of it could hear this one:
-            # a typo would send every patch nowhere without a word
+        from_meta = target.get_subscriptions is Component.get_subscriptions or getattr(
+            target.get_subscriptions, "_subscriptions_from_meta", False
+        )
+        if from_meta and topic not in target._meta.subscriptions:
+            # Its topics are its Meta's (a presence producer's add only its presence
+            # channel), so no instance of it could hear this one: a typo would send
+            # every patch nowhere without a word
             raise ValueError(
                 f"{target.__qualname__} does not subscribe to {topic!r}: its Meta.subscriptions are "
                 f"{sorted(target._meta.subscriptions)}, so no instance would receive this Broadcast"
