@@ -51,7 +51,7 @@ sync로 쓰면 실행되지 않고 `manage.py check`가 `wireview.W002`로 알�
 | `handle_async(name, result)` | `start_async()`가 끝났을 때. `result`는 끝난 `AsyncResult`(`ok`/`failed`) ([async-operations](./async-operations.md)) |
 | `handle_hook_event(hook_id, event, payload)` | 클라이언트 훅이 `pushEvent`로 보냈을 때 ([hooks](./hooks.md)) |
 | `on_upload_complete(name, entry)` | 업로드 항목 하나가 끝났을 때, 다시 렌더하기 전. 청크 업로드는 파일이 서버에 다 있을 때만 불린다 ([chunked-uploads](./chunked-uploads.md), [external-uploads](./external-uploads.md)) |
-| `get_subscriptions()` | 구독 채널을 상태에 따라 정할 때. 기본은 `Meta.subscriptions` |
+| `get_subscriptions()` | 구독 채널을 상태에 따라 정할 때. 기본은 `Meta.subscriptions`. 세션이 언제 다시 읽는지는 아래 [구독을 다시 맞추는 때](#구독을-다시-맞추는-때) |
 | `new(**kwargs)` (classmethod) | 인스턴스를 만들 때. 페이지 렌더, join, 테스트의 `mount()` 모두 이것을 거친다. `wire`·`user`·`session`과 상태 필드를 키워드로 받고 `cls(**kwargs)`를 돌려줘야 한다 |
 | `LiveComponent.update(**assigns)` | 부모가 새 값을 줄 때 ([live-component](./live-component.md)) |
 | `LiveComponent.update_many(updates)` (classmethod) | 부모 렌더 한 번에 값이 바뀐 같은 클래스 자식 전부를 `[(component, assigns), ...]`로. 기본은 각자의 `update()` |
@@ -65,7 +65,7 @@ sync로 쓰면 실행되지 않고 `manage.py check`가 `wireview.W002`로 알�
 | `await send_render()` | 지금 렌더를 보낸다 (긴 작업의 중간 진행률) |
 | `freeze()` | 이후 렌더를 보내지 않는다 |
 | `await destroy()` | 컴포넌트를 페이지에서 뺀다 |
-| `await broadcast(channel, **kwargs)` | 채널로 보낸다. `joined()` 전이면 모았다가 보낸다 |
+| `await broadcast(channel, **kwargs)` | 채널로 보낸다. `joined()` 전이면 모았다가 보낸다. 그 밖에는 즉시 보내고 트랜잭션 커밋을 기다리지 않는다 |
 | `await push_event(event, payload=None, hook_id=None)` | 클라이언트 훅으로 보낸다 |
 | `await push_js(js)` | `JS()` 명령을 실행한다. 같은 핸들러의 렌더가 아직 패치되지 않았으면 그 패치 뒤에 돈다 — 렌더로 드러낸 요소를 `to=`로 겨냥해도 된다 |
 | `await push_title(title)` | 문서 제목을 바꾼다 |
@@ -82,6 +82,32 @@ sync로 쓰면 실행되지 않고 `manage.py check`가 `wireview.W002`로 알�
 | `attach_hook(name, stage, callback)` / `detach_hook(name, stage=None)` | 이 인스턴스에 수명주기 훅을 단다 ([lifecycle-hooks](./lifecycle-hooks.md)) |
 | `await send_update(live_component_id, **assigns)` | 자식 LiveComponent에 값을 준다 |
 | `await LiveComponent.send_to_parent(event, **kwargs)` | 부모의 핸들러를 부른다 |
+
+컴포넌트 밖에서 알릴 때는 모듈 함수 `wireview.broadcast(channel, **kwargs)`와 `wireview.abroadcast(channel, **kwargs)`를
+쓴다. 둘은 보내는 때가 다르다.
+
+- `broadcast()`(동기): 트랜잭션 안이면 **커밋된 뒤**에 보낸다. 롤백되면 보내지 않는다. 트랜잭션 밖이면 즉시 보낸다
+- `abroadcast()`(async): 트랜잭션과 상관없이 **즉시** 보낸다
+
+알림을 받은 쪽이 DB를 다시 읽는다면 그 쓰기가 커밋된 뒤에 보내야 한다. 동기 코드에서는 `broadcast()`가 이미
+그렇게 하므로 `transaction.on_commit()`으로 다시 감쌀 필요가 없다. async 코드에서 `abroadcast()`(또는 컴포넌트의
+`broadcast()`)를 부를 때는 커밋 뒤에 부른다. 상세는 [broadcast](./broadcast.md).
+
+## 구독을 다시 맞추는 때
+
+세션은 아래 일을 처리한 뒤 연결의 모든 컴포넌트에서 `get_subscriptions()`를 다시 읽는다. 새로 생긴 토픽은 구독하고,
+어느 컴포넌트도 원하지 않게 된 토픽은 구독을 해제한다. 해제한 토픽의 알림과 [Broadcast](./broadcast.md) 패치는 그 뒤로
+그 연결에 오지 않는다.
+
+- join. 첫 렌더를 보낸 뒤, `joined()`가 모아 둔 `broadcast()`를 보내기 전
+- 클라이언트 이벤트와 훅 이벤트, `defer()`와 `send_to_parent()`가 다시 들어온 호출
+- `notification()`·`mutation()` 전달. 그 알림을 받은 컴포넌트를 모두 처리한 뒤
+- URL 이동(`params_changed()`), 페이지에서 컴포넌트가 떠남, 핸들러 예외로 컴포넌트를 버림
+
+그래서 상태로 토픽을 정하는 컴포넌트는 핸들러나 `notification()`에서 그 상태를 바꾸기만 하면 된다. 권한이 사라졌다는
+알림을 받고 그 객체의 토픽을 빼는 모양이 그 예다([live_session](./live-session.md#세션-백엔드가-정하는-한계)).
+`start_async()` 작업과 `handle_async()`, `on_upload_complete()`, `send_render()`, `send_update()`가 바꾼 상태는
+그 자리에서 다시 읽지 않는다 — 다음 이벤트나 알림을 처리할 때 반영된다.
 
 ## 렌더가 읽는 것
 

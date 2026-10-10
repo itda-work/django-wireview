@@ -103,6 +103,11 @@ def broadcast(channel: str, **kwargs: t.Any) -> None:
     This is the synchronous version. Use `abroadcast()` for async contexts
     like Component methods (joined, mutation, notification, etc.)
 
+    Inside a transaction the notification is published once it commits, and
+    not at all if it rolls back; outside one it is published at once. A
+    receiver that reads the database again sees what was written before the
+    call, so there is no need to wrap this in ``transaction.on_commit()``.
+
     Args:
         channel: The channel name to broadcast to.
         **kwargs: Additional keyword arguments to include in the notification.
@@ -115,6 +120,9 @@ async def abroadcast(channel: str, **kwargs: t.Any) -> None:
 
     This is the async version of `broadcast()`. Use this in async contexts
     like Component methods (joined, mutation, notification, etc.)
+
+    Unlike `broadcast()` it publishes at once, inside a transaction or not.
+    If the receivers read what the caller wrote, call it after the commit.
 
     Args:
         channel: The channel name to broadcast to.

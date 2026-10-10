@@ -18,6 +18,11 @@ The django-reactor era changelog (2.x) is preserved in
   read by its members only, and the room page sits inside a `live_session` whose hook checks the membership of each
   component's own room on every join (#198).
 
+### Changed
+
+- Documented when `broadcast()` (after the commit) and `abroadcast()` (at once) publish, and when a session reads
+  `get_subscriptions()` again, with a test that a topic given up in `notification()` is heard no more (#203).
+
 ## [1.5.1] - 2026-10-10
 
 ### Added

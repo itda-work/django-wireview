@@ -21,7 +21,7 @@ from django.template import Template, engines
 from django.utils import timezone, translation
 from testproj.waiting import eventually
 
-from wireview import JS, Broadcast, Component, LiveComponent, mount, telemetry
+from wireview import JS, Broadcast, Component, LiveComponent, abroadcast, mount, telemetry
 from wireview.consumer import WireviewConsumer
 from wireview.core import patches
 from wireview.core.meta import WireviewMeta
@@ -187,6 +187,25 @@ class BcRefreshing(BcFeed):
             await Broadcast(BcRefreshing, "bc-refresh").stream_insert("items", Post(2, "new"), at=0).asend()
 
         await self.stream("items", posts())
+
+
+class BcRevocable(BcFeed):
+    """Hears ``bc-revocable`` until a notification on ``bc-revoke`` says it may not any more.
+
+    The topics come from state, so the connection keeps them only while the
+    session reads get_subscriptions() again after the notification (#203).
+    """
+
+    _revoked: bool = False
+
+    def get_subscriptions(self) -> set[str]:
+        return {"bc-revoke"} if self._revoked else {"bc-revoke", "bc-revocable"}
+
+    async def notification(self, channel: str, **kwargs):
+        if channel == "bc-revoke":
+            self._revoked = True
+        await self.push_event("heard", {"channel": channel})
+        self.skip_render()
 
 
 def _holding(component: Component) -> list[str]:
@@ -618,6 +637,32 @@ async def test_a_failed_join_and_a_component_that_left_receive_nothing():
         await communicator.disconnect()
 
     assert _ids(heard) == ["here"]
+
+
+@pytest.mark.asyncio
+async def test_a_topic_given_up_in_a_notification_is_heard_no_more():
+    """The session reads get_subscriptions() again after it delivered a notification (#203).
+
+    Nothing else on the connection wants the topic, so the connection leaves its
+    group: neither a notification nor a Broadcast on it reaches the page after.
+    """
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcQuiet, "quiet")
+        await _join(communicator, BcRevocable, "revocable")
+        await Broadcast(BcRevocable, "bc-revocable").push_event("before").asend()
+        before = await _patched_until_quiet(communicator)
+
+        await abroadcast("bc-revoke")
+        await _until(communicator, lambda m: m["command"] == "push_event" and m["payload"]["event"] == "heard")
+        await abroadcast("bc-revocable")
+        await Broadcast(BcRevocable, "bc-revocable").push_event("after").asend()
+        after = await _patched_until_quiet(communicator)
+    finally:
+        await communicator.disconnect()
+
+    assert [frame["payload"]["event"] for frame in before] == ["before"]
+    assert after == []
 
 
 @pytest.mark.asyncio
