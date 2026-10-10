@@ -1,0 +1,20 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>csrf probe</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    <form method="post"
+          action="{% url 'csrfprobe:post' %}"
+          data-testid="page-form">
+      {% csrf_token %}
+      <input type="hidden" name="text" value="page">
+      <button data-testid="page-submit">page</button>
+    </form>
+    {% component "CsrfNotes" id="notes" %}
+    {% component "CsrfPublisher" id="publisher" %}
+  </body>
+</html>

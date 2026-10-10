@@ -64,6 +64,7 @@ FIRST_SECTION = {
     "1.2.x": "12에서-13으로",
     "1.3.x": "13에서-14로",
     "1.4.x": "14에서-15로",
+    "1.5.x": "15에서-16으로",
 }
 # A row that reads only some subsections of a section names them: rc2 and rc3 already had the
 # rest of rc1-to-1.0.
@@ -99,39 +100,25 @@ def test_every_row_reads_every_section_from_its_own_up():
         assert [a for a in anchors if a not in order] == SUBSECTIONS.get(version, []), version
 
 
-# What changed since 1.4.0, entry by entry. A key is a phrase of one CHANGELOG entry of the
-# release after 1.4.0 (the [Unreleased] section until it is released); its value names the
-# bullet of "1.4에서 1.5로" that tells an upgrading project what to do -- a phrase of its bold
+# What changed since 1.5.1, entry by entry. A key is a phrase of one CHANGELOG entry of the
+# release after 1.5.1 (the [Unreleased] section until it is released); its value names the
+# bullet of "1.5에서 1.6으로" that tells an upgrading project what to do -- a phrase of its bold
 # lead -- and a phrase its text, sub-bullets included, says about this entry. Under
 # NO_UPGRADE_NOTE the value says why nothing needs telling. The rc4-to-1.0 section was written
 # from the entries one track at a time and missed the StrEnum and stream container changes --
 # both silent. An entry with neither fails here, so each new one is a decision. The next
 # release moves this table to its own entries and section.
 UPGRADE_NOTE = {
-    "A component a template draws while the event loop runs mounts on a pool thread": (
-        "`queries()`가 이벤트 루프 위에서 그린 템플릿의 마운트를 센다",
-        "`q.count`의 상한을 단언했다면",
+    "`{% csrf_token %}` in a component's template renders a token": (
+        "컴포넌트 템플릿의 `{% csrf_token %}`이 토큰을 그린다",
+        "`csrf_exempt`를 붙여 두었다면",
     ),
 }
 
-DEV_LOG = (
-    "개발 도구의 로그 모양과 기록의 묶음만 바뀐다. 로그의 모양은 약속하지 않고(#182) 기록 형식은 1.0 그대로라 "
-    "확장 0.2.x가 그대로 읽는다. queries() 블록이 세는 행은 같다"
-)
-NO_UPGRADE_NOTE = {
-    "`Meta.lazy_properties` reads a sync property": (
-        "새 opt-in이다. 선언하지 않은 컴포넌트는 그대로이고, {% class %}·{% cond %}는 식이 읽는 이름을 "
-        "펼친 컨텍스트와 같은 우선순위로 찾으므로 출력이 같다"
-    ),
-    "`make bench-servers` compares ASGI servers": "저장소의 벤치와 문서만 바뀌었다",
-    "count a live render and the LiveComponents it names as one piece of work": DEV_LOG,
-    "An HTTP render is one piece of work too": DEV_LOG,
-    "A block kept after a temporary assign reset is drawn again": "화면이 옛 값 대신 바뀐 값을 그릴 뿐 할 일이 없다",
-    "The benchmark no longer hands a run's servers the URL": "저장소의 벤치만 바뀌었다",
-}
+NO_UPGRADE_NOTE: dict[str, str] = {}
 
-PREVIOUS = "1.4.0"
-SECTION = "1.4에서 1.5로"
+PREVIOUS = "1.5.1"
+SECTION = "1.5에서 1.6으로"
 
 
 def _entries_since_previous() -> list[str]:

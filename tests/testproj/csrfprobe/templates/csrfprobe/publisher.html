@@ -1,0 +1,7 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <button type="button"
+          data-testid="publish"
+          {% on "click" "publish" text="noted" %}>publish</button>
+</div>

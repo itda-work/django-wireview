@@ -1,0 +1,11 @@
+{% load wireview %}
+
+<div {% live_tag_header %}>
+  <form method="post"
+        action="{% url 'csrfprobe:post' %}"
+        data-testid="child-form">
+    {% csrf_token %}
+    <input type="hidden" name="text" value="child">
+    <button data-testid="child-submit">child</button>
+  </form>
+</div>

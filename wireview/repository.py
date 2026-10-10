@@ -12,7 +12,7 @@ from channels.layers import BaseChannelLayer
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 
 from . import telemetry
-from .core import handlers
+from .core import csrf, handlers
 from .core.component import Component, MessagePayload
 from .core.session import SessionView
 from .core.state import StateMismatch, state_of
@@ -73,6 +73,8 @@ class ComponentRepository:
         connection_id: str | None = None,
         live_session: "LiveSession | None" = None,
         vsn: int = 0,
+        csrf_token: t.Any = None,
+        csrf_cookies: t.Mapping[str, str] | None = None,
     ):
         # The caller's dict itself, even an empty one: whoever handed it over may
         # update it in place and expect the repository to see the change.
@@ -94,6 +96,12 @@ class ComponentRepository:
         # the first join's envelope names it and later joins have to agree.
         self.live_session = live_session
         self.user = user or AnonymousUser()
+        # What a component's template gets for {% csrf_token %} (#206, core/csrf.py):
+        # an HTTP render takes the page's lazy token, a connection masks the secret
+        # its handshake carried -- the cookie, or the session -- once per secret.
+        self._page_csrf_token = csrf_token
+        self._csrf_cookies = csrf_cookies
+        self._csrf: tuple[SessionView, t.Any] | None = None
         self.components: dict[str, Component] = {}
         # The restore maps: for each root, the signed states its join carried for
         # the components under it, taken by the instance built under each id. A
@@ -324,6 +332,7 @@ class ComponentRepository:
             live_component.wire.slots = slots.without_markers()
 
         # Register in components dict
+        live_component.wire.csrf = self._csrf_of_connection
         self.components[live_component.id] = live_component
 
         # Queue for joined() call after parent render completes
@@ -652,9 +661,28 @@ class ComponentRepository:
         component.wire.freeze()
         self.remove(component.id)
 
+    @property
+    def csrf_token(self) -> t.Any:
+        """``csrf_token`` for this repository's renders, or ``None`` when it has none to give."""
+        if not self.is_live:
+            return self._page_csrf_token
+        if self._csrf_cookies is None:
+            return None
+        # Keyed by the session: a boundary reads it again (``_reload_session``), and
+        # under CSRF_USE_SESSIONS the secret is in it
+        if self._csrf is None or self._csrf[0] is not self.session:
+            found = csrf.secret(self._csrf_cookies, self.session)
+            token = csrf.mask(found) if found is not None else None
+            self._csrf = (self.session, token if token is not None else csrf.NO_TOKEN)
+        return self._csrf[1]
+
     def register_component(self, component: Component):
+        component.wire.csrf = self._csrf_of_connection
         self.components[component.id] = component
         return component
+
+    def _csrf_of_connection(self) -> t.Any:
+        return self.csrf_token
 
     def retire(
         self, id: str, *, failed: bool = False, keep_carried: bool = False, leaves_first: bool = True

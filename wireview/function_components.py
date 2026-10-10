@@ -129,6 +129,8 @@ PAGE = "wireview_page"
 def _page_of(context: t.Any) -> dict[str, t.Any]:
     """What a function component's template takes from the render that draws it: the page, never its names.
 
+    The one name it takes is ``csrf_token``, which Django's own templates get too.
+
     A ``{% component %}`` in it is the page's, as one in the enclosing template
     is: built in the page's repository, drawn by the component whose pass this
     is. Drawn in a repository of its own, a live render drew a fresh instance
@@ -148,6 +150,10 @@ def _page_of(context: t.Any) -> dict[str, t.Any]:
         page["wireview_repository"] = repo
     else:
         page[PAGE] = context
+    if (token := context.get("csrf_token")) is not None:
+        # The viewer's, as the drawing template has it: the page's, the connection's,
+        # or one that raises in a render many viewers share (#206)
+        page["csrf_token"] = token
     return page
 
 

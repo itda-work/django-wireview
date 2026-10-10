@@ -7,6 +7,7 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
 from django.core.exceptions import ImproperlyConfigured
 
+from .core.csrf import cookies_of
 from .core.origin import origin_refusal
 from .core.rendered import protocol_version
 from .core.session import load_session
@@ -62,6 +63,8 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
         await self.start(
             session=await load_session(self.scope.get("session")),
             vsn=protocol_version(self.scope.get("query_string", b"")),
+            # Where a component's {% csrf_token %} comes from on this socket (#206)
+            csrf_cookies=cookies_of(self.scope),
         )
 
     async def disconnect(self, code):

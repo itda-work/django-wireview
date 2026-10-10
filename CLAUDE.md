@@ -65,6 +65,10 @@ wireview/
 │                          temporary assign이 초기화된 렌더(reads)는 지금처럼 모두 미리 읽는다
 ├── core/connections.py   keep_connections(). 동기 렌더가 컴포넌트의 async 코드로 건너는 다리(async_to_sync)가 그 스레드의 DB 연결을 닫지 않게 붙잡는다(#190).
 │                          wireview의 어떤 모듈도 import하지 않는다 — utils가 core를 import하는 도중에 meta가 이것을 읽는다
+├── core/csrf.py          컴포넌트 템플릿의 csrf_token(#206). 페이지의 RequestContext를 물려받지 않아 HTTP·라이브 렌더 모두 빈 값이었다.
+│                          HTTP 렌더는 페이지의 lazy 토큰(컨텍스트 프로세서), 라이브 렌더는 핸드셰이크의 쿠키(CSRF_USE_SESSIONS면 세션) 시크릿을
+│                          Django의 CsrfViewMiddleware.process_request로 읽어 연결당 한 번 get_token으로 마스킹한다(저장소의 csrf_token, 정적 부분이 안 바뀌게).
+│                          공유 렌더(state_slot)·Broadcast 항목에는 넣지 않는다. 컨텍스트에 넣는 곳은 meta._add_csrf_token, 스트림 항목은 wire.csrf
 ├── core/render_gate.py    RenderGate. 워커 스레드가 렌더하는 동안 그 컴포넌트의 start_async·assign_async 작업 단계를 렌더 뒤로 미룬다(#138).
 │                          렌더가 async property를 오래 기다리는 동안 작업이 막혀 있으면 경고한다(교착 의심, #147)
 ├── core/session.py        SessionView. Django 세션의 읽기 전용 뷰. 소켓에서는 connect 때 한 번 읽는다
@@ -244,6 +248,8 @@ tests/
                            broadcastprobe/ 는 Broadcast로 항목·훅 이벤트·JS를 받는 피드를 브라우저 컨텍스트 둘이 보는 E2E(test_broadcast_e2e.py)의 픽스처(같은 이름의 스트림을 그리는 다른 클래스,
                            ?failing=1 은 join이 실패한 대상, 끊겼다 다시 붙은 페이지),
                            reloadprobe/ 는 개발 서버에서 템플릿을 저장하면(file_changed) 새로고침 없이 새 템플릿이 보이고, 깨진 템플릿으로 막힌 컴포넌트가 고친 뒤 상태 그대로 돌아오는지 보는 E2E(test_template_reload_e2e.py)의 픽스처(shadow.py 가 TEMPLATES DIRS 앞에 테스트의 디렉터리를 두고 그 사본을 고친다. slow_bump 은 저장하는 순간 처리 중인 핸들러, away/ 는 rejoin이 기다리는 동안의 boost 이동 대상),
+                           csrfprobe/ 는 컴포넌트·LiveComponent·함수 컴포넌트가 그린 일반 POST 폼({% csrf_token %})을 JavaScript 없이, join·이벤트·알림 뒤,
+                           CSRF_USE_SESSIONS, 로그인(시크릿 회전) 뒤, 다른 사용자로 토큰을 검사하는 뷰에 제출하는 E2E(test_csrf_token_e2e.py)의 픽스처,
                            jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,
                            formprobe/ 는 Django 폼 검증·wire-feedback-for·debounce·throttle을 보는 E2E(test_forms_e2e.py)의 픽스처,
                            fileprobe/ 는 업로드의 모든 입구(입력·드롭 존·미리보기·external)와 숨겼다 다시 보인 LiveComponent의 업로드, 렌더가 새로 그린 일반 컴포넌트와 그 안의 LiveComponent(같은 업로드 이름)의 join·업로드, 재연결 뒤 숨겼다 다시 보인 그 LiveComponent가 새 상태로 시작하는지, late/ 에서 joined()의 작업이 끝나야 그리는 일반 컴포넌트 안의 LiveComponent가 재연결 뒤 제 상태로 돌아오는지를 보는 E2E(test_uploads_e2e.py)의 픽스처,
@@ -446,6 +452,6 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) 아키텍처
 - [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) 배포
 - [docs/COMPATIBILITY.md](./docs/COMPATIBILITY.md) 공개 API, 폐기 절차, 지원 범위
-- [docs/UPGRADING.md](./docs/UPGRADING.md) 0.x, 1.0 릴리스 후보, 1.0에서 1.1로, 1.1에서 1.2로, 1.2에서 1.3으로, 1.3에서 1.4로, 1.4에서 1.5로. 쓰던 버전별로 읽을 절과 보안 조치
+- [docs/UPGRADING.md](./docs/UPGRADING.md) 0.x, 1.0 릴리스 후보, 1.0에서 1.1로, 1.1에서 1.2로, 1.2에서 1.3으로, 1.3에서 1.4로, 1.4에서 1.5로, 1.5에서 1.6으로. 쓰던 버전별로 읽을 절과 보안 조치
 - [docs/PERFORMANCE.md](./docs/PERFORMANCE.md) 성능
 - [CHANGELOG.md](./CHANGELOG.md) 변경 이력
