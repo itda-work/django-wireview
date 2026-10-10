@@ -12,11 +12,24 @@
 | [chat](./chat/) | Streams와 Presence | [Chat 앱](../docs/tutorials/04-chat-app.md) |
 | [chat_lv2](./chat_lv2/) | chat 2단계: 누가 말하는가를 서버가 정한다 (로그인 사용자, 방 멤버십, `live_session`) | [기능 문서](../docs/features/live-session.md) |
 | [chat_lv3](./chat_lv3/) | chat 3단계: 스트림은 붙이기만 하는 목록이 아니다 (위로 스크롤해 과거 불러오기, 내 메시지 수정·삭제) | [Streams 심화](../docs/tutorials/06-streams-api.md) |
+| [chat_lv4](./chat_lv4/) | chat 4단계: 한 사람에게만 가는 소식 (방 목록의 안 읽은 메시지 배지) | [Broadcast](../docs/features/broadcast.md) |
 | [dashboard](./dashboard/) | AsyncResult로 느린 조회를 미룬다 | [Dashboard](../docs/tutorials/05-dashboard.md) |
 | [notifications](./notifications/) | 알림은 한 사용자에게 간다. 저장하는 알림과 저장하지 않는 토스트 | [Notifications](../docs/tutorials/14-notifications.md) |
 | [livecomp](./livecomp/) | 연결을 공유하는 중첩 컴포넌트 | [LiveComponent](../docs/tutorials/15-live-components.md) |
 | [slots](./slots/) | 내용을 호출자가 채우는 레이아웃 컴포넌트 | [기능 문서](../docs/features/slots.md) |
 | [hooks](./hooks/) | 브라우저만 할 수 있는 일을 컴포넌트에 붙인다 | [기능 문서](../docs/features/hooks.md) |
+
+## 채팅 시리즈
+
+`chat`에서 시작해 단계마다 개념 하나를 더한다. 단계마다 독립된 복사본이라 앞 단계를 import하지 않고,
+각 README 맨 위에 앞 단계에서 바뀐 것과 `diff -r` 명령이 있다.
+
+| 단계 | 더하는 것 | 핵심 |
+|------|-----------|------|
+| [chat](./chat/) | 방 하나의 실시간 채팅 | Streams, Broadcast, Presence |
+| [chat_lv2](./chat_lv2/) | 누가 말하는가를 서버가 정한다 | 로그인 사용자, 방 멤버십, `live_session` 경계와 `on_mount` 훅, 나간 뒤 구독 놓기 |
+| [chat_lv3](./chat_lv3/) | 스트림은 붙이기만 하는 목록이 아니다 | 커서로 과거 불러오기(`wire-viewport-top`, `stream(reset=False)`), 수정·삭제(`update_only`, `stream_delete`) |
+| [chat_lv4](./chat_lv4/) | 한 사람에게만 가는 소식 | 읽은 자리 커서, 사용자마다의 토픽, 한 쿼리로 세는 안 읽은 수 |
 
 ## 예제는 테스트다
 
@@ -40,7 +53,7 @@ WebSocket이 필요하므로 `runserver`가 아니라 daphne로 띄운다.
 ```bash
 make test                        # 예제 테스트까지 전부
 make test ARGS="-k quiz"         # 예제 하나
-make test-e2e LAYER=memory       # 브라우저 (todo, livecomp, hooks, notifications, search, chat, chat_lv2, chat_lv3, bookmarks)
+make test-e2e LAYER=memory       # 브라우저 (todo, livecomp, hooks, notifications, search, chat, chat_lv2, chat_lv3, chat_lv4, bookmarks)
 ```
 
 pytest를 직접 부를 때는 `-m "not e2e"`를 붙인다: `uv run pytest examples -m "not e2e"`.

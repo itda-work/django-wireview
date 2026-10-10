@@ -128,6 +128,7 @@ EXAMPLE = "저장소의 예제만 바뀌었다"
 NO_UPGRADE_NOTE = {
     "`examples/chat_lv2`, the second step": EXAMPLE,
     "`examples/chat_lv3`, the third step": EXAMPLE,
+    "`examples/chat_lv4`, the last step": EXAMPLE,
     'The chat examples (`chat`, `chat_lv2`, `chat_lv3`) drew "No messages yet"': EXAMPLE,
     "Documented when `broadcast()` (after the commit) and `abroadcast()` (at once) publish": "문서와 테스트만 바뀌었다",
     "A `stream()` in a `start_async` task replaced or cancelled": "닫히던 연결이 닫히지 않을 뿐 할 일이 없다",

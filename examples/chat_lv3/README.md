@@ -146,5 +146,6 @@ WIREVIEW_TEST_LAYER=memory ./tests/e2e.sh examples/chat_lv3    # 브라우저 �
 ## 더 읽기
 
 - 이전 단계: [chat_lv2](../chat_lv2/) — 로그인 사용자, 방 멤버십, `live_session` 경계
+- 다음 단계: [chat_lv4](../chat_lv4/) — 방 목록의 안 읽은 메시지 배지(한 사용자에게만 가는 소식)
 - 스트림과 무한 스크롤: [Streams 튜토리얼](../../docs/tutorials/06-streams-api.md), 렌더 없는 발행: [Broadcast](../../docs/features/broadcast.md)
 - 핵심 파일: live.py(`_history`, `Lv3MessageList`) · templates/chat_lv3/message_list.html · message_list_item.html
