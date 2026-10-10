@@ -14,6 +14,7 @@ import { commitScope, isCommitAction } from "./values.mjs";
 import { LoadingLedger } from "./loading.mjs";
 import { BINDING_PREFIX, bindingsFor, isRenderEcho, parseBinding, runSteps } from "./events.mjs";
 import { planInsert, planTrim } from "./streams.mjs";
+import { fires, overran, scrolls } from "./viewport.mjs";
 import { TargetQueue } from "./targets.mjs";
 import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
@@ -2007,8 +2008,12 @@ class ViewportObserver {
     this.observer = null;
     /** @type {Map<Element, {type: string, handler: string}>} */
     this.observed = new Map();
-    /** @type {number} */
-    this.lastScrollY = 0;
+    /**
+     * Each scroll box's position when last looked at, the window's under
+     * `window`: the direction a binding was scrolled toward (viewport.mjs)
+     * @type {Map<Element | Window, number>}
+     */
+    this.lastScroll = new Map();
     /** @type {boolean} */
     this.pendingTop = false;
     /** @type {boolean} */
@@ -2028,7 +2033,38 @@ class ViewportObserver {
     this.started = true;
     this.setupObserver();
     this.scanAndObserve();
-    this.lastScrollY = window.scrollY;
+  }
+
+  /**
+   * The element a binding scrolls in: its nearest ancestor that scrolls, or
+   * the window, as Phoenix LiveView's infinite scroll finds it.
+   * @param {Element} element
+   * @returns {Element | Window}
+   */
+  scrollBox(element) {
+    for (let el = element.parentElement; el; el = el.parentElement) {
+      // The page itself scrolls as the window
+      if (el === document.body || el === document.documentElement) break;
+      if (scrolls(getComputedStyle(el).overflowY)) return el;
+    }
+    return window;
+  }
+
+  /**
+   * @param {Element | Window} box
+   * @returns {number}
+   */
+  scrollPosition(box) {
+    return box === window ? window.scrollY : /** @type {Element} */ (box).scrollTop;
+  }
+
+  /**
+   * Remember where `element`'s scroll box stands, unless it is remembered already.
+   * @param {Element} element
+   */
+  rememberScroll(element) {
+    const box = this.scrollBox(element);
+    if (!this.lastScroll.has(box)) this.lastScroll.set(box, this.scrollPosition(box));
   }
 
   /**
@@ -2073,6 +2109,7 @@ class ViewportObserver {
       const handler = el.getAttribute("wire-viewport-top");
       if (handler && !this.observed.has(el)) {
         this.observed.set(el, { type: "top", handler });
+        this.rememberScroll(el);
         this.observer?.observe(el);
         debugLog("viewport", `Observing top: ${handler}`, { el });
       }
@@ -2083,6 +2120,7 @@ class ViewportObserver {
       const handler = el.getAttribute("wire-viewport-bottom");
       if (handler && !this.observed.has(el)) {
         this.observed.set(el, { type: "bottom", handler });
+        this.rememberScroll(el);
         this.observer?.observe(el);
         debugLog("viewport", `Observing bottom: ${handler}`, { el });
       }
@@ -2096,45 +2134,24 @@ class ViewportObserver {
   handleIntersection(element) {
     const info = this.observed.get(element);
     if (!info) return;
+    const type = /** @type {"top" | "bottom"} */ (info.type);
 
-    const currentScrollY = window.scrollY;
-    const scrollingDown = currentScrollY > this.lastScrollY;
-    const scrollingUp = currentScrollY < this.lastScrollY;
+    // Measured in the box the binding scrolls in: a list with its own
+    // scrollbar moves while the window stands still
+    const box = this.scrollBox(element);
+    const position = this.scrollPosition(box);
+    const before = this.lastScroll.get(box) ?? position;
+    const frame =
+      box === window ? { top: 0, bottom: window.innerHeight } : /** @type {Element} */ (box).getBoundingClientRect();
+    const past = overran(type, element.getBoundingClientRect(), frame);
 
-    // Determine if overran (rapid scroll past boundary)
-    const overran = this.detectOverran(info.type, element);
-
-    // For top viewport, trigger when scrolling up or overran
-    // For bottom viewport, trigger when scrolling down or overran
-    const shouldTrigger =
-      (info.type === "top" && (scrollingUp || overran)) ||
-      (info.type === "bottom" && (scrollingDown || overran));
-
-    if (shouldTrigger) {
-      this.sendViewportEvent(info.handler, overran);
+    // The top binding fires scrolling up, the bottom one scrolling down, and
+    // either one the user is already past
+    if (fires(type, before, position, past)) {
+      this.sendViewportEvent(info.handler, past);
     }
 
-    this.lastScrollY = currentScrollY;
-  }
-
-  /**
-   * Detect if the viewport has overran the boundary.
-   * @param {string} type - "top" or "bottom"
-   * @param {Element} element
-   * @returns {boolean}
-   */
-  detectOverran(type, element) {
-    const rect = element.getBoundingClientRect();
-
-    if (type === "top") {
-      // Overran if the element is well below the top of viewport
-      // (user scrolled rapidly to top)
-      return rect.top > window.innerHeight * 0.5;
-    } else {
-      // Overran if the element is well above the bottom of viewport
-      // (user scrolled rapidly to bottom)
-      return rect.bottom < window.innerHeight * 0.5;
-    }
+    this.lastScroll.set(box, position);
   }
 
   /**
@@ -2195,6 +2212,7 @@ class ViewportObserver {
       this.observer = null;
     }
     this.observed.clear();
+    this.lastScroll.clear();
   }
 }
 

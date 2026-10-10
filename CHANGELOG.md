@@ -21,6 +21,13 @@ The django-reactor era changelog (2.x) is preserved in
   insert nothing where it does not, as Phoenix LiveView's `update_only` (#199). Pages that loaded different parts of a
   list get the same Broadcast, and an edit of an item a page never loaded turned up at `at`, out of its place.
 
+### Fixed
+
+- `wire-viewport-top` and `wire-viewport-bottom` inside an element with its own scrollbar (`overflow-y: auto`) fired
+  only when the binding was past the middle of the window: the scroll direction was read from the window, which does
+  not move when a list scrolls in its own box (#199). Direction and "overran" are now measured in the nearest scrolling
+  ancestor, as Phoenix LiveView's infinite scroll does.
+
 ### Changed
 
 - Documented when `broadcast()` (after the commit) and `abroadcast()` (at once) publish, and when a session reads
