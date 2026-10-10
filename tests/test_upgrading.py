@@ -117,6 +117,14 @@ UPGRADE_NOTE = {
         "핸들러의 메일이 핸들러가 끝난 뒤 `sent_messages`에 들어간다",
         "브라우저가 받는 순서로 고친다",
     ),
+    "A pytest plugin, `wireview`": (
+        "새로: pytest 플러그인 `wireview`",
+        "`-p no:wireview`",
+    ),
+    "`follow_push(Destination)` to another path left the instance it came from listening": (
+        "다른 경로로 `follow_push(Destination)`한 뒤 원래 인스턴스는 언다",
+        "목적지 컴포넌트로 옮긴다",
+    ),
 }
 
 NO_UPGRADE_NOTE: dict[str, str] = {}

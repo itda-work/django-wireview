@@ -46,11 +46,11 @@ async def test_increment():
 | `await view.call("handler", **kwargs)` | 핸들러 호출. 클라이언트가 보내는 것과 같은 경로 |
 | `view.component` | 컴포넌트 인스턴스 |
 | `view.render()` | 렌더된 HTML (freeze됐으면 `None`). 페이지의 첫 응답처럼 그린다 — 아래 참고 |
-| `await view.render_diff()` | 다음 라이브 렌더가 클라이언트에 보낼 diff. 건너뛰었거나(`skip_render()`) 바뀐 것이 없으면 `None`. **약속하는 것은 `None`인지 아닌지뿐이고**, diff의 모양은 와이어 프로토콜이라 공개가 아니다. 첫 호출은 전체 렌더이고 그 뒤는 앞 호출 대비다. 컨슈머처럼 끝나면 `temporary_assigns`를 비운다. LiveComponent 자식은 참조(`{"c": id}`)로만 나온다. 컨슈머와 같은 경로로 렌더하므로 pytest-django에서는 `django_db` 표시가 필요하다. `Meta.shared_render`를 선언한 컴포넌트는 `DEBUG`와 상관없이 검사한다 — 렌더가 `user`·`session`·`request` 등을 읽으면 `SharedRenderError`다(`VERIFY_SHARED_RENDER = False`로 끈다, [shared-render](./shared-render.md#틀린-선언-잡기)) |
+| `await view.render_diff()` | 다음 라이브 렌더가 클라이언트에 보낼 diff. 건너뛰었거나(`skip_render()`) 바뀐 것이 없으면 `None`. **약속하는 것은 `None`인지 아닌지뿐이고**, diff의 모양은 와이어 프로토콜이라 공개가 아니다. 첫 호출은 전체 렌더이고 그 뒤는 앞 호출 대비다. 단 컴포넌트가 알림을 받으면 그 렌더도 기준선을 옮긴다 — 페이지가 이미 받은 것이므로 알림이 그린 것은 `sent_messages`의 `render`에 있고, 그 뒤의 `render_diff()`는 알림 뒤의 변화만 본다(바뀐 것이 없으면 `None`, 아래 "알림 받기"). 컨슈머처럼 끝나면 `temporary_assigns`를 비운다. LiveComponent 자식은 참조(`{"c": id}`)로만 나온다. 컨슈머와 같은 경로로 렌더하므로 pytest-django에서는 `django_db` 표시가 필요하다. `Meta.shared_render`를 선언한 컴포넌트는 `DEBUG`와 상관없이 검사한다 — 렌더가 `user`·`session`·`request` 등을 읽으면 `SharedRenderError`다(`VERIFY_SHARED_RENDER = False`로 끈다, [shared-render](./shared-render.md#틀린-선언-잡기)) |
 | `view.is_frozen` | `freeze()` 여부 |
 | `view.redirected_to` | `wire.redirect_to()`로 간 URL. 없으면 `None`. 단언은 `assert_redirected_to()`가 낫다 — 실패하면 일어난 이동을 나열한다 |
 | `view.sent_messages` | 클라이언트로 나간 메시지 목록 (원본. 항목의 모양은 공개가 아니다) |
-| `view.broadcasts` | 이 컴포넌트가 낸 브로드캐스트. 같은 프로세스에서 마운트한 다른 컴포넌트에도 닿는다(아래 "알림 받기"). 채널 레이어가 거절하는 이름(`room:42`)은 기록하지 않고 레이어와 같은 `TypeError`를 던진다. 구독(`Meta.subscriptions`·`get_subscriptions()`)도 세션처럼 `mount()` 끝과 `call()`·`follow_push()`마다 맞추므로, 그런 이름의 구독은 `mount()`나 그 `call()`·`follow_push()`가 같은 `TypeError`로 실패한다 |
+| `view.broadcasts` | 이 컴포넌트가 낸 브로드캐스트. 기록만 하지 않고 페이지의 것처럼 발행한다: 같은 프로세스에서 마운트한 컴포넌트(자기 자신 포함)와 그 프로세스의 채널 레이어로 연결된 소켓에 닿는다(아래 "알림 받기"). 채널 레이어가 거절하는 이름(`room:42`)은 기록하지 않고 레이어와 같은 `TypeError`를 던진다. 구독(`Meta.subscriptions`·`get_subscriptions()`)도 세션처럼 `mount()` 끝과 `call()`·`follow_push()`마다 맞추므로, 그런 이름의 구독은 `mount()`나 그 `call()`·`follow_push()`가 같은 `TypeError`로 실패한다 |
 | `view.presence_broadcasts` | 그중 `PresenceMixin`이 낸 것(입장·퇴장·타이핑). 항목마다 `kwargs`에 `action` |
 | `view.clear_messages()` | 다음 단계 전에 비운다 |
 | `async with view.queries() as q:` | 블록 안의 `call()`·`render_diff()`·`render()`와 그것이 만든 작업이 실행한 SQL. `q.count`는 몇 건인지, `q.assert_no_repeats(threshold=2)`는 같은 템플릿 줄·property에서 같은 SQL이 두 번 이상이면 실패한다(N+1). 설정과 무관하게 모은다. 행과 실패 메시지의 모양은 공개가 아니다 ([render-queries](./render-queries.md#테스트에서-단언하기)) |
@@ -149,7 +149,9 @@ assert view.component.page == 2
 - **다른 경로**: 브라우저는 그 페이지를 가져오고 컴포넌트는 새로 join한다. 그 페이지가 그리는 컴포넌트를
   넘긴다 — `landed = await view.follow_push(ProductDetail)`. `follow_redirect()`처럼 대상의 `live_session`을
   URLconf에서 읽고, 그 경계가 사용자를 거절하면 실패한다. 경계를 넘는 이동은 브라우저에서 전체 로드지만,
-  새로 마운트된다는 점에서 결과는 같다.
+  새로 마운트된다는 점에서 결과는 같다. 떠난 페이지의 원래 인스턴스(`view`)는 브라우저에서처럼 사라진다 —
+  얼고(`view.is_frozen`) 알림·`Broadcast`를 더 받지 않는다. 같은 `live_session` 안으로 가는 sticky 컴포넌트
+  (`Meta.sticky`)만 boost 이동을 건너 남아 계속 받는다.
 
 어느 쪽인지는 헬퍼가 정한다. 같은 경로에 컴포넌트를 넘기거나 다른 경로에 넘기지 않으면 실패한다. 경로가 있는
 목적지(`"/items/?page=2"`)인데 `mount()`에 `path`가 없으면 판단할 수 없다. 그때는 1.1처럼 같은 인스턴스에
@@ -224,12 +226,26 @@ async def test_a_new_notification_reaches_the_open_list(alice):
   채널에 발행하면, 그 알림은 핸들러가 그때까지 보낸 메일(스트림 연산·`push_event`·JS) 뒤에 서고 핸들러가
   끝난 뒤 처리된다(#205).
 - **받는 메서드가 예외를 던지면 발행한 곳에서 올라온다.** 세션은 그 컴포넌트만 버리고 다시 join시키지만,
-  테스트에는 그 예외를 알린다.
-- **다른 테스트로 새지 않는다.** 마운트한 테스트의 이벤트 루프에서 발행한 것만 받는다. 앞 테스트가 남긴
-  인스턴스는 다음 테스트의 알림을 듣지 않는다.
+  테스트에는 그 예외를 알린다. 그래서 다른 컴포넌트의 `call()`이나 `abroadcast()`, auto-broadcast라면 행을 쓴
+  `acreate()`·`save()`가 받는 쪽의 예외로 실패한다.
+- **자기가 듣는 채널에 보내면 자기도 받는다.** 채팅의 "보내고 받기"가 브라우저처럼 돈다. 핸들러에서 목록에
+  넣고 `notification()`에서 또 넣는 컴포넌트는 항목이 둘이 된다 — 브라우저에서도 그렇다.
+  `joined()`에서 보낸 `self.broadcast()`도 구독을 맞춘 뒤에 나가므로 자기가 받는다(세션의 join과 같다).
+- **알림의 렌더는 페이지가 가진 것 대비다.** 세션은 join이 이미 페이지 전체를 보냈으므로 알림 뒤에는 바뀐 것만
+  보낸다. `mount()`는 그 기준선을 첫 알림을 처리하기 전에 잡는다(기록하지 않는다). 그래서 상태를 바꾸지 않는
+  알림은 `render`를 남기지 않고, 알림 뒤의 `render_diff()`는 알림이 그린 것을 다시 내지 않는다.
+- **다른 테스트로 새지 않는다.** 테스트가 끝나면 그 테스트가 마운트한 컴포넌트는 더 듣지 않는다. pytest에서는
+  wireview와 함께 설치되는 플러그인(`wireview`, `pytest11` 진입점)이 테스트마다 끊는다 — 켤 것이 없다. 이벤트
+  루프를 여러 테스트가 함께 쓰는 설정(pytest-asyncio의 `loop_scope="module"`·`"session"`)에서도 그렇다.
+  `-p no:wireview`로 플러그인을 끄거나 pytest가 아닌 러너(`manage.py test`)에서는 이벤트 루프만이 가른다:
+  마운트한 루프에서 발행한 것만 받으므로 테스트마다 새 루프인 Django의 async `TestCase`·`IsolatedAsyncioTestCase`
+  에서는 새지 않지만, 루프를 함께 쓰는 테스트 사이에서는 앞 테스트의 인스턴스가 사라질 때까지 듣는다.
+  모듈·세션 범위 픽스처에서 마운트한 컴포넌트도 그것을 처음 만든 테스트가 끝나면 듣지 않는다.
 - **받은 쪽의 렌더는 `render_diff()`와 같은 경로다.** pytest-django에서는 알림을 받는 컴포넌트가 있는 테스트에
   `django_db` 표시가 필요하다.
-- **같은 프로세스 안에서만이다.** 다른 프로세스, 실제 소켓의 연결로는 채널 레이어로 간다.
+- **같은 프로세스 안에서만이다.** 다른 프로세스의 연결로는 채널 레이어가 나른다. 마운트한 컴포넌트의
+  `self.broadcast()`도 그 프로세스의 채널 레이어로 나가므로 같은 프로세스의 소켓(`WebsocketCommunicator`,
+  라이브 서버)은 받는다.
 
 ## 핸들러의 메일과 Broadcast 패치의 순서
 
@@ -259,7 +275,7 @@ view = await mount(XAdminPanel, user=staff, live_session="admin")
 - **마커는 등록해서 쓴다.** `--strict-markers`에서는 등록하지 않은 마커가 수집 오류다(등록 방법은
   [테스트 가이드 튜토리얼](../tutorials/09-testing-components.md#테스트-마커)). 이 저장소의 테스트는 `unit`·`integration`·`slow`·`e2e`
   중 하나를 반드시 붙인다.
-- `mount()`에는 컨슈머가 없고 채널 레이어는 흉내 낸 것이다(같은 프로세스의 알림·`Broadcast`만 전해진다). 렌더는 첫 응답의 것이라 자식이
+- `mount()`에는 컨슈머가 없고 채널 레이어는 흉내 낸 것이다(구독은 기록되고, 받는 것은 같은 프로세스의 알림·`Broadcast`다). 렌더는 첫 응답의 것이라 자식이
   그려지지만, 컨슈머 경로 전체(join, 재접속, 자식 LiveComponent의 `joined()`·`update()`·`leaving()`)를
   검사하려면 `tests/test_live_component_render.py`나 `tests/test_live_session_contract.py`처럼
   컨슈머를 직접 만든다. `view.call()`은 부모의 핸들러만 부른다.

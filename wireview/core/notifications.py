@@ -28,7 +28,8 @@ class Host(t.Protocol):
     """What delivers a notification: a session, or a mounted component in a test."""
 
     def _subscribed_to(self, channel: str) -> t.Iterable[Component]:
-        """The components that hear ``channel`` now, in the order they receive it."""
+        """The components that hear ``channel``, in the order they receive it: lazily,
+        each one asked when its turn comes."""
         ...
 
     def _holds(self, component: Component) -> bool:
@@ -61,7 +62,10 @@ async def deliver(host: Host, receiver: str, data: dict[str, t.Any]) -> None:
     channel = data["channel"]
     arguments = _arguments(receiver, data)
     message_id = data.get("message_id")
-    for component in list(host._subscribed_to(channel)):
+    # Asked of each component in its turn, not all at the start: one's receiver or
+    # render can move another off the channel -- a parent's render handing its
+    # LiveComponent another room -- and then it no longer hears this
+    for component in host._subscribed_to(channel):
         if not host._holds(component):
             continue
         kwargs = arguments()
@@ -89,6 +93,13 @@ _order = itertools.count()
 def listen(receiver: t.Any) -> None:
     """Hand ``receiver._receive_notification(message)`` each notification published in this process."""
     _listeners[next(_order)] = receiver
+
+
+def forget(receiver: t.Any) -> None:
+    """Hand ``receiver`` nothing more."""
+    for key, listener in list(_listeners.items()):
+        if listener is receiver:
+            del _listeners[key]
 
 
 async def published(message: dict[str, t.Any]) -> None:

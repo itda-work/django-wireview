@@ -70,11 +70,30 @@ dependencies = ["django-wireview>=1.5,<2"]
   실패하고, 그 렌더는 `render_diff()`와 같은 경로라 pytest-django에서는 `django_db` 표시가 없는 테스트가 DB 접근
   오류로 실패한다. `sent_messages`를 통째로 비교하던 테스트는 받은 쪽의 `render`와 메일이 더해질 수 있다
   ([알림 받기](./features/testing.md#알림-받기)).
+  - **알림 뒤의 `render_diff()`가 `None`일 수 있다.** 받은 쪽의 렌더가 페이지처럼 기준선을 옮긴다.
+    1.5에서는 `mount()` → `abroadcast(...)` → `render_diff()`가 전체 렌더(곧 `None`이 아님)였지만, 이제 알림이 그린
+    것은 `sent_messages`의 `render`에 있고 그 뒤의 `render_diff()`는 알림 뒤의 변화만 본다. "브로드캐스트 뒤
+    `render_diff() is not None`"이나 diff에 새 값이 있는지를 단언하던 테스트는 `sent_messages`의 `render`나
+    `render()`의 HTML로 단언한다. 상태를 바꾸지 않는 알림은 `render`를 남기지 않는다(페이지에도 가지 않는다).
+  - **받는 쪽의 예외가 발행한 쪽에서 올라온다.** 알림을 받는 컴포넌트를 마운트해 둔 테스트에서
+    그 `notification()`·`mutation()`이나 렌더가 던지면, 발행한 `abroadcast()`, `self.broadcast()`를 부른 다른
+    컴포넌트의 `call()`, auto-broadcast라면 행을 쓴 `acreate()`·`save()`가 그 예외로 실패한다. 1.5에서는 받지
+    않았으므로 통과했다. 받는 메서드를 고치거나, 그 테스트에서 받는 컴포넌트를 마운트하지 않는다.
+  - **자기가 듣는 채널에 보내는 컴포넌트는 자기 알림을 받는다.** 핸들러나 `joined()`의
+    `self.broadcast()`가 자기 구독 채널로 가면 그 컴포넌트의 `notification()`도 돈다 — 브라우저와 같다. 핸들러에서
+    목록에 한 번 넣고 `notification()`에서 또 넣는 컴포넌트는 테스트에서 항목이 둘이 된다(브라우저에서도 둘이었다).
+    `self.broadcast()`는 기록만 하지 않고 같은 프로세스의 채널 레이어로도 나가므로 같은 프로세스의 소켓도 받는다.
 - **조용히 달라짐: 핸들러의 메일이 핸들러가 끝난 뒤 `sent_messages`에 들어간다.** 연결처럼, `call()`·`joined()`·알림
   처리 중에 보낸 스트림 연산·`push_event`·JS·내비게이션은 그것이 끝날 때 기록되고, 그 사이에 온 `Broadcast` 패치는
   그 앞에 든다(#205). 핸들러가 도는 동안 `sent_messages`를 들여다보던 코드는 아직 비어 있는 목록을 본다. 패치와
   핸들러의 연산 순서를 단언하던 테스트는 브라우저가 받는 순서로 고친다
   ([핸들러의 메일과 Broadcast 패치의 순서](./features/testing.md#핸들러의-메일과-broadcast-패치의-순서)).
+- **조용히 달라짐: 다른 경로로 `follow_push(Destination)`한 뒤 원래 인스턴스는 언다.** 브라우저에서 떠난 페이지의
+  컴포넌트처럼 `view.is_frozen`이 참이고 알림·`Broadcast`를 더 받지 않는다. 같은 `live_session` 안의 sticky
+  컴포넌트만 남는다. 이동한 뒤에도 원래 `view`로 `call()`을 이어 가던 테스트는 목적지 컴포넌트로 옮긴다.
+- **새로: pytest 플러그인 `wireview`.** wireview를 설치하면 pytest가 진입점(`pytest11`)으로 읽는다. 테스트가 끝나면
+  그 테스트가 마운트한 컴포넌트가 듣기를 멈춘다. 끄려면 `-p no:wireview`
+  ([알림 받기](./features/testing.md#알림-받기)).
 
 ## 1.4에서 1.5로
 

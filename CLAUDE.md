@@ -53,6 +53,7 @@ wireview/
 │                          싣고 소켓에 쓰일 때 놓는다, join의 토큰은 release_patches 메일이 놓는다. 마지막 토큰이 놓일 때 쓴다. 메일이 채널로 나간 뒤
 │                          처리 중인 메시지 없이 HOLD_SECONDS가 지나면 패치를 쓰지 않고 연결을 닫는다(1013, WireviewConsumer.dispatch → handling_message)
 ├── core/notifications.py  알림·모델 변경의 배달 규칙(#201). 구독한 컴포넌트마다 notification()·mutation() → 렌더 → after_mutation_chores.
+│                          구독은 컴포넌트마다 그 차례에 묻는다(제너레이터) — 앞 컴포넌트의 렌더가 뒤 LiveComponent의 채널을 옮길 수 있다.
 │                          WireviewSession.notification·model_mutation과 testing의 mount가 같은 deliver()를 Host 프로토콜로 부른다 — 사본을 두지 않는다.
 │                          utils.publish가 모든 알림 발행의 한 곳이고, 발행 뒤 같은 프로세스·같은 이벤트 루프의 mount 인스턴스에 건넨다(listen·published)
 ├── core/watched.py        Watched: 보는 사람을 읽으면 오류인 감시 객체. shared_render(VERIFY일 때)와 Broadcast 항목 렌더(언제나)가 함께 쓴다.
@@ -110,9 +111,13 @@ wireview/
 ├── testing.py             mount(), MountedComponent, ComponentTestCase. mount한 컴포넌트는 같은 프로세스의 Broadcast를 받는다(core/patches.listen).
 │                          구독한 채널의 알림·모델 변경도 세션의 규칙(core/notifications.deliver)으로 받고 render를 sent_messages에 남긴다(#201).
 │                          핸들러(이벤트·joined()·params_changed·알림)가 보낸 메일은 연결의 채널처럼 핸들러가 끝난 뒤 쓰고, 그 사이 온 알림도 그 줄에 선다.
-│                          Broadcast 패치는 기다리지 않고 바로 쓴다 — 브라우저와 같은 순서(#205)
+│                          Broadcast 패치는 기다리지 않고 바로 쓴다 — 브라우저와 같은 순서(#205). joined()는 세션처럼 pending 모드라 그 broadcast는
+│                          구독을 맞춘 뒤 나간다. 알림의 렌더는 첫 알림 전에 잡은 기준선(페이지가 가진 것) 대비다. self.broadcast()는 기록하고
+│                          프로세스의 채널 레이어로도 발행한다. 테스트가 끝나면 듣기를 끊는다(_end_of_test, pytest_plugin.py)
 │                          render()는 실제 저장소의 HTTP 렌더 모드로 자식까지 그린다(자식 수명주기는 컨슈머 몫, #115).
 │                          내비게이션 단언·follow_redirect·follow_push·스트림 검사
+├── pytest_plugin.py       pytest 플러그인 wireview(pyproject의 pytest11 진입점, 앱의 스위트에도 실린다). 테스트가 끝나면 그 테스트의 mount가
+│                          듣기를 멈춘다(#201). wireview를 import하지 않는다 — wireview.testing이 sys.modules에 있을 때만 부른다
 ├── utils.py, log.py       db 헬퍼, 로깅
 ├── debug/sync_detector.py sync/async 전환 중첩 감지 (DEBUG_SYNC_TRANSITIONS)
 ├── debug/render_queries.py 렌더 부분별 SQL 귀속(DEBUG_RENDER_QUERIES, None = DEBUG, #182). 굵은 경계(렌더·async property·핸들러·mount·joined·작업·서명)는

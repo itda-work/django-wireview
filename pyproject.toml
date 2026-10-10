@@ -40,6 +40,10 @@ dependencies = [
     "pydantic>=2.7,!=2.9.0,<3",
 ]
 
+# Ends what a test's mount() hears when the test ends (wireview/pytest_plugin.py, #201)
+[project.entry-points.pytest11]
+wireview = "wireview.pytest_plugin"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",

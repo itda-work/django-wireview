@@ -346,7 +346,7 @@ wireview/
 ├── consumer.py  session.py  repository.py  live_component.py  function_components.py  slots.py
 ├── template_engine.py  event_transpiler.py  js.py  async_result.py  auto_broadcast.py
 ├── views.py  urls.py  apps.py  settings.py  checks.py  telemetry.py  testing.py  deprecation.py
-├── schemas.py  serializer.py  utils.py  log.py
+├── schemas.py  serializer.py  utils.py  log.py  pytest_plugin.py
 ├── component.py           # 폐기 예정 re-export (2.0에서 제거)
 ├── debug/                 # sync_detector (DEBUG_SYNC_TRANSITIONS)
 ├── templatetags/wireview.py

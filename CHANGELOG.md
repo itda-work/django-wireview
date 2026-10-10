@@ -21,8 +21,16 @@ The django-reactor era changelog (2.x) is preserved in
   `view.broadcasts`, and a test that called `component.notification()` itself skipped the render and the
   subscriptions. The session and the test helper hand a notification over with the same code
   (`wireview/core/notifications.py`), so they cannot drift. Publishing returns once the receivers are done;
-  one that raises raises where it was published. Only a component mounted on the running event loop hears
-  it, so one an earlier test left behind does not.
+  one that raises raises where it was published -- in the `abroadcast()`, the other component's `call()` or
+  the `save()` that sent it. A component hears its own broadcasts, from `joined()` too, which goes out once
+  the subscriptions are settled as on a connection. The render is a diff against the page the component
+  already has: a notification that changes nothing records no `render`, and `render_diff()` after a
+  notification sees only what changed since. `self.broadcast()` from a mounted component is also published
+  to the process's channel layer, so a socket of the same process hears it; `view.broadcasts` still records
+  it.
+- A pytest plugin, `wireview` (a `pytest11` entry point installed with the package): a component a test
+  mounted hears nothing published once that test ends, whatever event loop the tests share. Without it
+  (`-p no:wireview`, or another runner) only the event loop keeps tests apart (#201).
 
 ### Fixed
 
@@ -32,6 +40,11 @@ The django-reactor era changelog (2.x) is preserved in
   item the handler was inserting looked kept in the test and came back in the browser. A handler's mail,
   and a notification published during it, now wait in the order they were sent until `call()`,
   `joined()`, `follow_push()`'s `params_changed()` or the notification's handling ends.
+  A `handle_event` hook attached to the component runs inside the event's message, its mail waiting with
+  the handler's, and the join's release of held patches follows `joined()`'s mail.
+- `follow_push(Destination)` to another path left the instance it came from listening: it heard the
+  notifications and `Broadcast` patches of the page the browser had left. It is frozen now, as after a
+  redirect, unless it is a sticky component staying in the same `live_session` (#201).
 
 ## [1.5.1] - 2026-10-10
 
