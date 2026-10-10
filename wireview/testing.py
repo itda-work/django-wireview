@@ -27,6 +27,7 @@ import collections
 import contextlib
 import itertools
 import json
+import sys
 import typing as t
 import weakref
 from dataclasses import dataclass
@@ -370,6 +371,9 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         # The loop of the test that mounted it: a component a finished test left
         # behind hears nothing published in the next one
         self._loop = asyncio.get_running_loop()
+        # An event call() handled since the last render: a session renders after
+        # each event, call() does not (render_diff() is the test's)
+        self._unrendered_event = False
         self._host = _Connection(self)
         wire._post = self._post
         wire.patch_gate = patches.Gate(self._hold_for_reset, self._let_reset_through)
@@ -415,10 +419,14 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         diff, so a notification's render sends only what the notification
         changed. ``mount()`` drew none of them. Until a render (this, or the test's
         own ``render_diff()``) set the baseline, it is set here, unrecorded: the
-        page already has it.
+        page already has it. Once the test set it, an event ``call()`` handled
+        since is rendered here, and recorded, as its session sent it: what it
+        changed, or nothing after ``skip_render()``, is not the notification's.
         """
         if self.wire._last_rendered is None:
             await self.render_diff()
+        elif self._unrendered_event:
+            await self._host.send_render(self._component)
 
     def _stop_listening(self) -> None:
         """Hear nothing more published in this process: no notification, no Broadcast."""
@@ -512,8 +520,10 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
     def broadcasts(self) -> list[dict[str, t.Any]]:
         """What the component broadcast, in order. Each has ``channel`` and ``kwargs``.
 
-        ``mount()`` stands in for the channel layer, so a broadcast is recorded here
-        and reaches only the components mounted in this process (#201), not a socket.
+        Recorded here and published as a page's broadcast is (#201): the components
+        mounted in this process hear it, the component itself included, and so do
+        the sockets on the channel layer of the test settings -- a layer whose
+        server is not running fails the ``call()`` that sent it.
         """
         return self.wire._mock_channel_layer.sent_messages
 
@@ -913,6 +923,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             )
 
         async with self._handling_message():
+            self._unrendered_event = True
             # The server runs attached handle_event hooks first, in the same
             # message: what they mail waits with the handler's. A test must not
             # get past one.
@@ -958,6 +969,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         with shared_render.testing():
             diff = await self._wire.render_diff(self._component, self._repo.for_render(self._component, live=True))
         self._component._clear_temporary_assigns()
+        self._unrendered_event = False
         return diff
 
     def clear_messages(self) -> None:
@@ -1119,8 +1131,11 @@ async def _mount(
     # and the notifications on the channels it subscribes to (#201)
     patches.listen(mounted)
     notifications.listen(mounted)
-    # ...until the test that mounted it ends (_end_of_test)
-    _mounted_in_test.add(mounted)
+    # ...until the test that mounted it ends (_end_of_test), or the fixture wider
+    # than a test that did (the pytest plugin)
+    plugin = sys.modules.get("wireview.pytest_plugin")
+    if plugin is None or not plugin.kept(mounted):
+        _mounted_in_test.add(mounted)
 
     # The mount hooks run before joined(), as they do on a real mount. A refusal
     # skips joined() and freezes the component, so ``render()`` here answers the
@@ -1168,6 +1183,8 @@ def _end_of_test() -> None:
     """The test that mounted them is over: they hear nothing published after it.
 
     The pytest plugin (``wireview.pytest_plugin``) calls this when each test ends.
+    What a fixture wider than a test mounted is not here: the plugin ends it with
+    the fixture.
     """
     for mounted in list(_mounted_in_test):
         mounted._stop_listening()

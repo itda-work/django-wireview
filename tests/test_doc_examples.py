@@ -156,6 +156,12 @@ def _mistakes(tree: ast.Module) -> list[str]:
                 found.append(f"awaits {chain[-1]}(), which is synchronous")
         if isinstance(node, ast.Attribute) and node.attr == "abroadcast" and _chain(node) == ["self", "abroadcast"]:
             found.append("self.abroadcast does not exist: await self.broadcast(...)")
+        if isinstance(node, ast.Call) and _chain(node.func)[-2:] in (
+            ["component", "mutation"],
+            ["component", "notification"],
+        ):
+            # mount() hears the broadcast and ran it already: a second call puts the item in twice (#201)
+            found.append(f"calls component.{_chain(node.func)[-1]}() itself; the mounted component hears the broadcast")
         if isinstance(node, ast.For) and _chain(node.iter)[-1:] == ["consume_uploads"]:
             found.append("consume_uploads() is an async generator: async for")
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and any(
@@ -517,6 +523,8 @@ def test_the_nested_rule_does_not_take_item_id_for_an_id(template, missing):
         "@function_component\ndef b(text):\n    return '<b>' + text + '</b>'",
         "@function_component\ndef b(text):\n    return '<b>{}</b>'.format(text)",
         "@function_component\ndef b(text):\n    return '<b>%s</b>' % text",
+        "async def t(view, item):\n    await view.component.mutation('todo.item', ModelAction.CREATED, item)",
+        "async def t(view):\n    await view.component.notification('room', text='hi')",
     ],
 )
 def test_each_rule_catches_its_mistake(code):

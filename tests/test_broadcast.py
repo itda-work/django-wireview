@@ -21,7 +21,8 @@ from django.template import Template, engines
 from django.utils import timezone, translation
 from testproj.waiting import eventually
 
-from wireview import JS, Broadcast, Component, LiveComponent, abroadcast, mount, telemetry
+from examples.todo.models import Item as TodoItem
+from wireview import JS, Broadcast, Component, LiveComponent, ModelAction, abroadcast, mount, telemetry
 from wireview.consumer import WireviewConsumer
 from wireview.core import patches
 from wireview.core.meta import WireviewMeta
@@ -2280,30 +2281,149 @@ async def test_a_sticky_component_hears_on_after_a_push_to_another_page():
     assert view.component.heard == ["after the move"]
 
 
-# Two tests on one event loop: the first leaves a mount behind, held here so the
-# collector cannot be what stops it hearing; the second publishes (#201 review)
-_LEFT_BEHIND: list[t.Any] = []
+# --- an event call() handled before a notification (#201 review) --------------------------
 
 
-@pytest.mark.asyncio(loop_scope="module")
-async def test_a_test_on_a_shared_loop_leaves_a_mount_behind():
-    _LEFT_BEHIND.extend([await mount(BcListener, id="left-on-the-loop"), await mount(BcFeed, id="left-feed")])
+class BcQuietListener(BcListener):
+    async def quiet(self, **_rest):
+        self.skip_render()
 
 
-@pytest.mark.asyncio(loop_scope="module")
-async def test_a_later_test_on_the_same_loop_is_not_heard_by_it():
-    """The plugin ends what a test's mounts hear when the test ends, whatever the loop."""
-    left, feed = _LEFT_BEHIND
-    assert left._loop is asyncio.get_running_loop(), "the two share the loop, or this proves nothing"
-    feed.clear_messages()
-
-    await abroadcast("bc-room-a", text="later")
-    await Broadcast(BcFeed, "bc-feed").push_event("later").asend()
-
-    assert left.component.heard == []
-    assert feed.sent_messages == []
+class BcBumping(BcIdle):
+    async def bump(self, **_rest):
+        self.heard = ["bumped"]
 
 
-def test_the_pytest_plugin_is_registered(request: pytest.FixtureRequest):
-    """Installed with the package (the pytest11 entry point), so an app's suite runs it too."""
-    assert request.config.pluginmanager.has_plugin("wireview")
+class BcBumpingListener(BcListener):
+    async def bump(self, **_rest):
+        self.heard = ["bumped"]
+
+
+def _drawn(diff: dict[str, t.Any]) -> dict[str, t.Any]:
+    """A render's diff but the signed state, which differs between any two renders."""
+    return {k: v for k, v in diff.items() if k != "0"}
+
+
+def _rendered(message: dict[str, t.Any]) -> tuple[t.Any, ...]:
+    """A frame with what it drew: a render by its diff, a push_event by its event."""
+    if message["command"] == "render":
+        return ("render", _drawn(message["payload"]["diff"]))
+    return ("push_event", message["payload"]["event"])
+
+
+def _recorded_renders(view: t.Any) -> list[tuple[t.Any, ...]]:
+    return [
+        ("render", _drawn(m["diff"])) if m["type"] == "render" else ("push_event", m["event"])
+        for m in view.sent_messages
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("cls", "handler", "last"),
+    [
+        (BcQuietListener, "quiet", ("push_event", "heard")),
+        (BcBumping, "bump", ("push_event", "idle")),
+        (BcBumpingListener, "bump", ("push_event", "heard")),
+    ],
+    ids=["skipped", "changed", "both-changed"],
+)
+async def test_an_events_render_is_not_a_notifications_on_a_mounted_component(cls, handler, last):
+    """A session renders after each event; call() does not. With the page taken, a notification renders the
+    event's own first: what it changed is not the notification's, and a skip_render() is not either."""
+    communicator = await _connect()
+    try:
+        await _join(communicator, cls, "evented")
+        await _event(communicator, "evented", handler)
+        await abroadcast("bc-room-a", text="one")
+        heard = await _until(communicator, lambda m: m["command"] == "push_event" and _rendered(m) == last)
+    finally:
+        await communicator.disconnect()
+    # A render with no diff is the event's answer to the page; a mount records none
+    connection = [_rendered(m) for m in heard if not (m["command"] == "render" and m["payload"]["diff"] is None)]
+    view = await mount(cls, id="evented")
+    await view.render_diff()
+
+    await view.call(handler)
+    await abroadcast("bc-room-a", text="one")
+
+    assert (
+        connection
+        == {
+            BcQuietListener: [("render", {"2": "one"}), ("push_event", "heard")],
+            BcBumping: [("render", {"2": "bumped"}), ("push_event", "idle")],
+            BcBumpingListener: [("render", {"2": "bumped"}), ("render", {"2": "bumped,one"}), ("push_event", "heard")],
+        }[cls]
+    )
+    assert _recorded_renders(view) == connection
+
+
+class BcJoinTalker(BcListener):
+    """joined() publishes a patch to its class, then broadcasts to its own room."""
+
+    async def joined(self):
+        await Broadcast(BcJoinTalker, "bc-room-a").push_event("patch").asend()
+        await self.broadcast("bc-room-a", text="self")
+
+    def get_subscriptions(self) -> set[str]:
+        return {"bc-room-a"}
+
+
+@pytest.mark.asyncio
+async def test_a_mounted_component_hears_joineds_broadcast_before_the_join_lets_its_patches_go():
+    """The join's release follows the notification joined() brought: its render comes ahead of the held patch."""
+    communicator = await _connect()
+    try:
+        joined = await _join(communicator, BcJoinTalker, "join-talker")
+        heard = joined + await _until(communicator, lambda m: _heard(m) == ("push_event", "heard", "self"))
+    finally:
+        await communicator.disconnect()
+    # The join's own render is the page the mounted component starts from
+    connection = [_heard(m) for m in heard[1:] if m["command"] in ("render", "push_event")]
+    view = await mount(BcJoinTalker, id="join-talker")
+
+    assert connection == [("render", "join-talker"), ("push_event", "patch"), ("push_event", "heard", "self")]
+    assert _recorded(view) == connection
+
+
+# --- tutorial 09 "복잡한 상태": the broadcast fills the list, once (#201 review) ------------
+
+TEMPLATES["bc/tutorial-todo.html"] = (
+    "{% load wireview %}<ul {% tag_header %}>{% for item in items %}<li>{{ item.text }}</li>{% endfor %}</ul>"
+)
+
+
+class BcTutorialTodo(Component):
+    """Tutorial 03's list: add_item() saves the row, mutation() puts it in."""
+
+    items: list[TodoItem] = []
+
+    class Meta:
+        template_name = "bc/tutorial-todo.html"
+        subscriptions = {"todo.item"}
+
+    async def joined(self):
+        self.items = [item async for item in TodoItem.objects.all()]
+
+    async def add_item(self, text: str):
+        await TodoItem.objects.acreate(text=text)
+
+    async def mutation(self, channel: str, action: ModelAction, instance: TodoItem):
+        if action == ModelAction.CREATED:
+            self.items.insert(0, instance)
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return _template(cls, template_name)
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_the_tutorials_list_is_filled_by_the_model_broadcast_once():
+    """docs/tutorials/09: the test does not call mutation() itself -- the broadcast did."""
+    view = await mount(BcTutorialTodo, id="tutorial-todo")
+
+    await view.call("add_item", text="New item")
+
+    assert [item.text for item in view.component.items] == ["New item"]
+    assert "<li>New item</li>" in view.render()

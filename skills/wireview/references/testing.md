@@ -37,7 +37,7 @@ async def test_increment():
 | `await view.follow_push()` | 같은 경로의 push·replace 뒤에 같은 인스턴스의 `params_changed`를 돌린다. 다른 경로면 `follow_push(NextComponent)`가 대상을 새로 마운트한다 |
 | `view.stream_html(name)` | 스트림으로 나간 아이템 HTML (`stream_items`·`stream_ops`도 있다) |
 | `view.is_frozen` | `freeze()` 여부 |
-| `view.broadcasts` | 이 컴포넌트가 낸 브로드캐스트. 채널 레이어가 거절하는 이름(`room:42`)은 기록하지 않고 레이어와 같은 `TypeError`를 던진다. 구독(`Meta.subscriptions`·`get_subscriptions()`)도 세션처럼 `mount()` 끝과 `call()`·`follow_push()`마다 맞추므로, 그런 이름의 구독은 `mount()`나 그 `call()`·`follow_push()`가 같은 `TypeError`로 실패한다 |
+| `view.broadcasts` | 이 컴포넌트가 낸 브로드캐스트. 기록만 하지 않고 페이지처럼 발행한다 — 같은 프로세스에서 마운트한 컴포넌트(자기 포함)가 받고, **테스트 설정의 채널 레이어로도 나간다.** 그 레이어가 redis·nats면 서버가 떠 있어야 하므로 단위 테스트 설정은 InMemory이거나 `CHANNEL_LAYERS` 없이 둔다. 채널 레이어가 거절하는 이름(`room:42`)은 기록하지 않고 레이어와 같은 `TypeError`를 던진다. 구독(`Meta.subscriptions`·`get_subscriptions()`)도 세션처럼 `mount()` 끝과 `call()`·`follow_push()`마다 맞추므로, 그런 이름의 구독은 `mount()`나 그 `call()`·`follow_push()`가 같은 `TypeError`로 실패한다 |
 | `view.presence_broadcasts` | 그중 `PresenceMixin`이 낸 것(입장·퇴장·타이핑). 항목마다 `kwargs`에 `action` |
 | `view.clear_messages()` | 다음 단계 전에 비운다. 필터 전환처럼 `stream()`을 다시 부르는 핸들러를 검사하기 전에 필수 |
 
@@ -71,6 +71,32 @@ async def test_filter_hides_read_items():
 `stream()`을 다시 부르는 핸들러(필터·정렬·페이지 전환)는 이전 메시지 위에 **누적**된다.
 `clear_messages()`를 빼면 방금 걸러 낸 아이템이 앞선 메시지에 남아 있어, 통과해야 할
 테스트가 실패하거나 반대로 오탐 통과한다.
+
+## 알림·모델 변경을 받는 테스트
+
+`mount()`한 컴포넌트는 같은 프로세스에서 발행한 알림(`abroadcast()`·`self.broadcast()`·auto-broadcast의
+모델 변경)을 세션처럼 받는다: `notification()`·`mutation()` → 렌더 → 구독 다시 맞추기. 발행이 돌아오면 끝나 있다.
+
+```python
+@pytest.mark.django_db(transaction=True)   # acreate가 커밋한다. 아래 "DB를 건드리는 테스트"
+@pytest.mark.asyncio
+async def test_add_item_fills_the_list():
+    view = await mount(XTodoList)          # Meta.subscriptions = {"todo.item"}
+
+    await view.call("add_item", text="New item")   # 저장만 한다. 목록은 mutation()이 채운다
+
+    assert [item.text for item in view.component.items] == ["New item"]
+```
+
+- **`component.mutation(...)`·`component.notification(...)`을 직접 부르지 않는다.** 브로드캐스트가 이미 불렀으므로
+  항목이 둘이 되고, 렌더와 구독 맞추기는 빠진다. 단언은 `any(...)`가 아니라 목록 전체로 한다 — 느슨한 단언은
+  두 번 들어간 것을 보지 못한다.
+- 받는 메서드가 던지면 발행한 곳(`call()`·`abroadcast()`·`acreate()`)에서 올라온다.
+- 마운트한 컴포넌트는 그것을 만든 테스트가(모듈·클래스 범위 픽스처나 `setUpClass`면 그 픽스처가) 끝나면 더 듣지
+  않는다. wireview와 함께 설치되는 pytest 플러그인(`wireview`)이 한다 — 켤 것이 없다.
+
+상세(순서, `render_diff()`와의 관계, 플러그인 끄기)는 다음 문서의 "알림 받기":
+https://github.com/itda-work/django-wireview/blob/main/docs/features/testing.md
 
 ## URL을 바꾸는 핸들러를 테스트할 때
 

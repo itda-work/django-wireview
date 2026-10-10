@@ -117,7 +117,9 @@ wireview/
 │                          render()는 실제 저장소의 HTTP 렌더 모드로 자식까지 그린다(자식 수명주기는 컨슈머 몫, #115).
 │                          내비게이션 단언·follow_redirect·follow_push·스트림 검사
 ├── pytest_plugin.py       pytest 플러그인 wireview(pyproject의 pytest11 진입점, 앱의 스위트에도 실린다). 테스트가 끝나면 그 테스트의 mount가
-│                          듣기를 멈춘다(#201). wireview를 import하지 않는다 — wireview.testing이 sys.modules에 있을 때만 부른다
+│                          듣기를 멈춘다(#201). 테스트보다 넓은 픽스처(모듈·클래스·세션, setUpClass)의 setup 중 만든 mount는 그 픽스처가
+│                          정리될 때(pytest_fixture_setup이 단 finalizer). wireview.testing을 import하지 않는다 — 그쪽이 kept()를 묻고,
+│                          플러그인은 wireview.testing이 sys.modules에 있을 때만 부른다. 계약은 tests/test_pytest_plugin.py(따로 띄운 pytest)
 ├── utils.py, log.py       db 헬퍼, 로깅
 ├── debug/sync_detector.py sync/async 전환 중첩 감지 (DEBUG_SYNC_TRANSITIONS)
 ├── debug/render_queries.py 렌더 부분별 SQL 귀속(DEBUG_RENDER_QUERIES, None = DEBUG, #182). 굵은 경계(렌더·async property·핸들러·mount·joined·작업·서명)는

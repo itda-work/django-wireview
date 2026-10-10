@@ -25,12 +25,17 @@ The django-reactor era changelog (2.x) is preserved in
   the `save()` that sent it. A component hears its own broadcasts, from `joined()` too, which goes out once
   the subscriptions are settled as on a connection. The render is a diff against the page the component
   already has: a notification that changes nothing records no `render`, and `render_diff()` after a
-  notification sees only what changed since. `self.broadcast()` from a mounted component is also published
-  to the process's channel layer, so a socket of the same process hears it; `view.broadcasts` still records
-  it.
+  notification sees only what changed since. Once a test took the page with `render_diff()`, an event
+  `call()` handled since is rendered, and recorded, ahead of the next notification's render, as a session
+  renders after each event. `self.broadcast()` from a mounted component is also published to the channel
+  layer of the test settings, so a socket of the same process hears it, and a layer whose server is not
+  running fails the `call()` as it fails a connection; `view.broadcasts` still records it.
 - A pytest plugin, `wireview` (a `pytest11` entry point installed with the package): a component a test
-  mounted hears nothing published once that test ends, whatever event loop the tests share. Without it
-  (`-p no:wireview`, or another runner) only the event loop keeps tests apart (#201).
+  mounted hears nothing published once that test ends, whatever event loop the tests share. One a fixture
+  wider than a test mounted -- module, class or session scope, or unittest's `setUpClass` -- hears until
+  that fixture is torn down, so every test sharing it hears. Without it (`-p no:wireview`, or another
+  runner) only the event loop keeps tests apart (#201). Loading it imports the package `wireview` and has
+  pytest rewrite its asserts; `PYTEST_DISABLE_PLUGIN_AUTOLOAD` keeps it from loading.
 
 ### Fixed
 

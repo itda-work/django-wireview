@@ -75,6 +75,8 @@ dependencies = ["django-wireview>=1.5,<2"]
     것은 `sent_messages`의 `render`에 있고 그 뒤의 `render_diff()`는 알림 뒤의 변화만 본다. "브로드캐스트 뒤
     `render_diff() is not None`"이나 diff에 새 값이 있는지를 단언하던 테스트는 `sent_messages`의 `render`나
     `render()`의 HTML로 단언한다. 상태를 바꾸지 않는 알림은 `render`를 남기지 않는다(페이지에도 가지 않는다).
+    `render_diff()`로 기준선을 잡은 뒤 `call()`한 이벤트가 있으면, 알림은 세션처럼 그 이벤트의 렌더를 먼저 해
+    `render`로 남긴다 — 이벤트가 바꾼 것은 그 `render`에 있고 알림의 것에 섞이지 않는다.
   - **받는 쪽의 예외가 발행한 쪽에서 올라온다.** 알림을 받는 컴포넌트를 마운트해 둔 테스트에서
     그 `notification()`·`mutation()`이나 렌더가 던지면, 발행한 `abroadcast()`, `self.broadcast()`를 부른 다른
     컴포넌트의 `call()`, auto-broadcast라면 행을 쓴 `acreate()`·`save()`가 그 예외로 실패한다. 1.5에서는 받지
@@ -83,6 +85,11 @@ dependencies = ["django-wireview>=1.5,<2"]
     `self.broadcast()`가 자기 구독 채널로 가면 그 컴포넌트의 `notification()`도 돈다 — 브라우저와 같다. 핸들러에서
     목록에 한 번 넣고 `notification()`에서 또 넣는 컴포넌트는 테스트에서 항목이 둘이 된다(브라우저에서도 둘이었다).
     `self.broadcast()`는 기록만 하지 않고 같은 프로세스의 채널 레이어로도 나가므로 같은 프로세스의 소켓도 받는다.
+  - **마운트한 컴포넌트의 `self.broadcast()`가 테스트 설정의 채널 레이어로 나간다.** 1.5에서는 `view.broadcasts`에
+    기록만 했다. 테스트 설정의 `CHANNEL_LAYERS`가 redis·nats를 가리키는데 그 서버가 떠 있지 않으면, 그것을 부른
+    `call()`이 레이어의 연결 오류로 실패한다 — 실제 연결도 그렇게 실패하므로 삼키지 않는다. 단위 테스트 설정은
+    InMemory 레이어(`channels.layers.InMemoryChannelLayer`)이거나 `CHANNEL_LAYERS` 없이 둔다. 테스트 설정이 개발
+    서버와 같은 redis를 가리키면 테스트의 `self.broadcast()`가 그 서버에 열린 페이지에도 간다.
 - **조용히 달라짐: 핸들러의 메일이 핸들러가 끝난 뒤 `sent_messages`에 들어간다.** 연결처럼, `call()`·`joined()`·알림
   처리 중에 보낸 스트림 연산·`push_event`·JS·내비게이션은 그것이 끝날 때 기록되고, 그 사이에 온 `Broadcast` 패치는
   그 앞에 든다(#205). 핸들러가 도는 동안 `sent_messages`를 들여다보던 코드는 아직 비어 있는 목록을 본다. 패치와
@@ -92,7 +99,10 @@ dependencies = ["django-wireview>=1.5,<2"]
   컴포넌트처럼 `view.is_frozen`이 참이고 알림·`Broadcast`를 더 받지 않는다. 같은 `live_session` 안의 sticky
   컴포넌트만 남는다. 이동한 뒤에도 원래 `view`로 `call()`을 이어 가던 테스트는 목적지 컴포넌트로 옮긴다.
 - **새로: pytest 플러그인 `wireview`.** wireview를 설치하면 pytest가 진입점(`pytest11`)으로 읽는다. 테스트가 끝나면
-  그 테스트가 마운트한 컴포넌트가 듣기를 멈춘다. 끄려면 `-p no:wireview`
+  그 테스트가 마운트한 컴포넌트가 듣기를 멈춘다. 모듈·클래스·세션 범위 픽스처와 unittest의 `setUpClass`가
+  마운트한 것은 그 픽스처가 정리될 때 멈추므로, 그것을 함께 쓰는 테스트는 1.5처럼 모두 `Broadcast`를 받는다.
+  끄려면 `-p no:wireview`. 플러그인을 읽으면 패키지 `wireview`가 import되고 pytest가 그 패키지의 `assert`를
+  다시 쓴다(assertion rewriting) — 이것까지 피하려면 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`
   ([알림 받기](./features/testing.md#알림-받기)).
 
 ## 1.4에서 1.5로
