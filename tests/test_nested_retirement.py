@@ -8,11 +8,14 @@ another client, a leave lost with the connection) left it for good: it
 stayed reachable, heard broadcasts, received patches and kept its tasks until
 the connection ended, and ``leaving()`` came only then.
 
-The end of the drawer's pass retires it instead (``ComponentRepository.end_pass``):
-it is removed, with what its own passes drew, and its ``leaving()`` runs with
-the drawer's render. A component drawn with an id that the pass hides by an
-``{% if %}`` retires the same way. One a part kept for a reset temporary
-assign still shows stays.
+The end of the drawer's render retires it instead (``ComponentRepository.end_pass``):
+it is removed, with what its own passes drew, and from then on nothing but the
+page's events reaches it. Those the page sent before it saw that render still
+run its handlers, until the page's leave says no more will come; its
+``leaving()`` runs then (``Tombstone``). A page that never leaves it gets it
+buried by the first render ``TOMBSTONE_SECONDS`` later, or with the connection.
+A component drawn with an id that the pass hides by an ``{% if %}`` retires
+the same way. One a part kept for a reset temporary assign still shows stays.
 """
 
 import asyncio
@@ -24,7 +27,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.template import Template
 from django.test import override_settings
 
-from wireview import Component, LiveComponent, function_component
+from wireview import Component, LiveComponent, function_component, repository
 from wireview.consumer import WireviewConsumer
 from wireview.core.meta import WireviewMeta
 from wireview.core.rendered import GONE_SINCE, JOINED_SINCE
@@ -59,6 +62,9 @@ class RetireLeaf(Component):
 
     async def rename(self, note: str):
         self.note = note
+
+    async def explode(self):
+        raise RuntimeError("boom")
 
     @classmethod
     def _get_template(cls, template_name=None):
@@ -362,8 +368,16 @@ async def _page(root: type[Component], **fields: t.Any) -> WireviewConsumer:
 
 
 async def _event(consumer: WireviewConsumer, id: str, command: str, **args: t.Any) -> None:
+    """An event, and what the page does once its answer is on screen: the leaves, then the joins."""
     await consumer.command_user_event(id, command, {}, args)
+    await _leave_dropped(consumer)
     await _join_drawn(consumer)
+
+
+async def _leave_dropped(consumer: WireviewConsumer) -> None:
+    """Leave what the latest render took off the page, as the page does: the retired ones kept for its events."""
+    for id in list(consumer.repo._tombstones):
+        await consumer.command_leave(id)
 
 
 def _leaves(consumer: WireviewConsumer) -> list[RetireLeaf]:
@@ -412,12 +426,25 @@ async def test_a_leaf_the_drawer_hides_retires_and_the_topic_goes():
     (leaf,) = _leaves(consumer)
     assert TOPIC in consumer.subscriptions
 
-    await _event(consumer, "root", "toggle")
+    task = leaf._async_tasks["wait"]
+    await consumer.command_user_event("root", "toggle", {}, {})
 
+    # Out of the repository with the render: no broadcast, patch or topic of it
     assert _leaves(consumer) == []
-    assert _ids("leaving") == [leaf.id]
+    assert consumer.repo.get(leaf.id) is None
     assert TOPIC not in consumer.subscriptions
     assert (RetireLeaf._fqn, TOPIC) not in consumer._patch_book
+    await consumer.notification({"channel": TOPIC, "kwargs": {}})
+    assert _ids("notified") == []
+    # Its leaving() waits for the page to say it let the element go
+    assert _ids("leaving") == []
+    assert not task.done()
+
+    await consumer.command_leave(leaf.id)
+
+    assert _ids("leaving") == [leaf.id]
+    await asyncio.wait([task], timeout=5)
+    assert task.done()
 
 
 async def test_a_leaf_drawn_with_an_id_retires_when_hidden_and_comes_back_anew():
@@ -624,6 +651,24 @@ async def test_a_leaf_a_live_component_drew_retires_with_the_live_component():
     assert _ids("notified") == []
 
 
+async def test_a_leaf_a_hidden_live_component_drew_runs_an_event_the_page_sent_before():
+    # The LiveComponent goes with its parent's render; the leaf it drew is kept
+    # for the page's events like one its own drawer stopped drawing
+    consumer = await _page(RetireLiveRoot)
+    consumer.repo.vsn = GONE_SINCE
+    (leaf,) = _leaves(consumer)
+    await consumer.command_user_event("root", "toggle", {}, {})
+    SENT.clear()
+
+    await consumer.command_user_event(leaf.id, "poke", {}, {}, ref=5)
+
+    assert _ids("poked") == [leaf.id]
+    assert SENT == [("gone", {"id": leaf.id, "ref": 5})]
+    assert _ids("leaving") == []
+    await consumer.command_leave(leaf.id)
+    assert _ids("leaving") == [leaf.id]
+
+
 async def test_a_leaf_the_live_component_of_a_retired_component_drew_retires_with_it():
     consumer = await _page(RetireOwnerRoot)
     (first,) = _leaves(consumer)
@@ -639,8 +684,9 @@ async def test_a_leaf_the_live_component_of_a_retired_component_drew_retires_wit
 @pytest.mark.parametrize("vsn", [GONE_SINCE, JOINED_SINCE])
 async def test_an_event_for_a_retired_leaf_the_page_kept_is_answered(vsn):
     # Under wire-update="ignore" the page keeps the leaf its drawer's render
-    # retired. Its event runs nothing, and the answer ends its loading state;
-    # a page that knows ``gone`` joins the element again
+    # retired, and never leaves it. Its event runs on the retired instance,
+    # nothing of it is rendered, and the answer ends its loading state; a page
+    # that knows ``gone`` joins the element again
     consumer = await _page(RetireIgnoreRoot)
     consumer.repo.vsn = vsn
     (leaf,) = _leaves(consumer)
@@ -650,13 +696,187 @@ async def test_an_event_for_a_retired_leaf_the_page_kept_is_answered(vsn):
 
     await consumer.command_user_event(leaf.id, "poke", {}, {}, ref=7)
 
-    assert _ids("poked") == []
+    assert _ids("poked") == [leaf.id]
     if vsn >= GONE_SINCE:
         assert SENT == [("gone", {"id": leaf.id, "ref": 7})]
     else:
         assert SENT == [("render", {"id": leaf.id, "diff": None, "ref": 7})]
 
-    # The join the page sends answers from then on
+    # The join the page sends takes the id: the retired one leaves before the new one joins
+    del HEARD[:]
     await _join(consumer, leaf)
+    assert HEARD == [("leaving", leaf.id), ("joined", leaf.id)]
+    joined = consumer.repo.get(leaf.id)
+    assert joined is not None and joined is not leaf
     await consumer.command_user_event(leaf.id, "poke", {}, {}, ref=8)
     assert _ids("poked") == [leaf.id]
+    assert consumer.repo._tombstones == {}
+
+
+async def test_an_event_the_page_sent_before_the_drawer_s_render_runs_its_handler():
+    # The page clicked the leaf before the root's render that draws a new one
+    # reached it: the click is on its way while the server renders
+    consumer = await _page(RetireRoot)
+    consumer.repo.vsn = GONE_SINCE
+    (old,) = _leaves(consumer)
+    await consumer.command_user_event("root", "write", {}, {"note": "x"}, ref=1)
+    SENT.clear()
+
+    await consumer.command_user_event(old.id, "poke", {}, {}, ref=2)
+
+    assert _ids("poked") == [old.id]
+    # Nothing of the retired one is rendered; the page has its element going
+    assert SENT == [("gone", {"id": old.id, "ref": 2})]
+    assert _ids("leaving") == []
+
+    # The page saw the render: its leave buries it, and nothing reaches it after
+    await consumer.command_leave(old.id)
+    assert _ids("leaving") == [old.id]
+    SENT.clear()
+    await consumer.command_user_event(old.id, "poke", {}, {}, ref=3)
+    assert _ids("poked") == [old.id]
+    assert SENT == [("gone", {"id": old.id, "ref": 3})]
+
+
+async def test_a_retired_leaf_whose_handler_raises_is_buried_without_a_rejoin():
+    consumer = await _page(RetireRoot)
+    consumer.repo.vsn = GONE_SINCE
+    (old,) = _leaves(consumer)
+    await consumer.command_user_event("root", "write", {}, {"note": "x"})
+    SENT.clear()
+
+    await consumer.command_user_event(old.id, "explode", {}, {}, ref=4)
+
+    # No error: there is nothing to join again
+    assert SENT == [("gone", {"id": old.id, "ref": 4})]
+    assert _ids("leaving") == [old.id]
+    assert consumer.repo._tombstones == {}
+    assert len(_leaves(consumer)) == 1
+
+
+async def test_a_retired_leaf_the_page_never_leaves_is_buried_by_a_later_render(monkeypatch):
+    # A page that keeps the element (wire-update="ignore") or lost the leave:
+    # the first render TOMBSTONE_SECONDS after the one that retired it buries it
+    consumer = await _page(RetireIgnoreRoot)
+    now = [1000.0]
+    consumer.repo.clock = lambda: now[0]
+    (first,) = _leaves(consumer)
+    await consumer.command_user_event("root", "write", {}, {"note": "a"})
+    await _join_drawn(consumer)
+
+    now[0] += repository.TOMBSTONE_SECONDS - 1
+    await consumer.command_user_event("root", "write", {}, {"note": "b"})
+    await _join_drawn(consumer)
+    assert _ids("leaving") == []
+    # One kept for each element the page joined, never more than those
+    assert len(consumer.repo._tombstones) == 2
+
+    now[0] += 1
+    await consumer.command_user_event("root", "write", {}, {"note": "c"})
+    assert _ids("leaving") == [first.id]
+    assert len(consumer.repo._tombstones) == 2
+
+    # The last one the page has yet to join: no leaving() for it
+    await consumer.stop()
+    assert len(_ids("leaving")) == 3
+    assert consumer.repo._tombstones == {}
+
+
+async def test_an_id_drawn_again_buries_the_retired_one_under_it():
+    # Hidden and shown again before the page's leave came: the new instance
+    # takes the id, and the one retired under it leaves with that render
+    consumer = await _page(RetireNamedRoot)
+    (leaf,) = _leaves(consumer)
+    await consumer.command_user_event("root", "toggle", {}, {})
+    assert consumer.repo.buried("named-leaf") is leaf
+
+    await consumer.command_user_event("root", "toggle", {}, {})
+
+    assert consumer.repo.buried("named-leaf") is None
+    assert _ids("leaving") == ["named-leaf"]
+    shown = consumer.repo.get("named-leaf")
+    assert shown is not None and shown is not leaf
+
+
+class RetireShowingMiddle(Component):
+    show: bool = True
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<b {% tag_header %}>"
+            "{% if this.show %}{% component 'RetireLeaf' id='shown-leaf' %}{% endif %}</b>"
+        )
+
+
+class RetireHideBoomRoot(Component):
+    """Hides the middle's leaf and raises after the middle's pass, in the same render."""
+
+    boom: bool = False
+
+    async def explode(self):
+        self.boom = True
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% component 'RetireShowingMiddle' id='middle' show=this.boom|yesno:'0,1'|add:0 %}"
+            "{% component 'RetireFuse' id='fuse' armed=this.boom %}</p>"
+        )
+
+
+async def test_a_leaf_a_raised_render_stopped_drawing_survives_another_component_s_render():
+    # The render that raised never reached the page. What its passes stopped
+    # drawing goes back to its drawer: another component's render before the
+    # page's join of the root does not retire it, and that join finds it
+    consumer = await _page(RetireHideBoomRoot)
+    await _join(consumer, RetireSlotOwner(user=AnonymousUser(), wire=WireviewMeta(params={}), id="other"))
+    leaf = consumer.repo.get("shown-leaf")
+    assert leaf is not None and leaf.wire.has_joined
+    states = {
+        id: [type(component).__name__, sign_state(component)]
+        for id in ("middle", "fuse", "shown-leaf")
+        if (component := consumer.repo.get(id)) is not None
+    }
+    root_state = sign_state(consumer.repo.get("root"))  # type: ignore[arg-type]
+
+    await consumer.command_user_event("root", "explode", {}, {})
+    assert [command for command, _ in SENT][-1] == "error"
+    await consumer.command_user_event("other", "bump", {}, {})
+    assert consumer.repo.get("shown-leaf") is leaf
+    assert _ids("leaving") == []
+
+    await consumer.command_join("RetireHideBoomRoot", root_state, children=states)
+
+    assert consumer.repo.get("shown-leaf") is leaf
+    assert leaf.wire.has_joined
+    assert _ids("leaving") == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "command": "user_event",
+            "payload": {"id": ["x"], "command": "poke", "implicit_args": {}, "explicit_args": {}},
+        },
+        {
+            "command": "user_event",
+            "payload": {"id": {"x": 1}, "command": "poke", "implicit_args": {}, "explicit_args": {}},
+        },
+        {"command": "leave", "payload": {"id": ["x"]}},
+        {
+            "command": "hook_event",
+            "payload": {"component_id": ["x"], "hook_id": "h", "event": "e", "payload": {}},
+        },
+    ],
+)
+async def test_a_message_naming_a_component_by_what_is_not_a_string_is_dropped(payload, caplog):
+    consumer = await _page(RetireRoot)
+    SENT.clear()
+
+    await consumer.handle_message(payload)
+
+    assert SENT == []
+    assert "not a string" in caplog.text

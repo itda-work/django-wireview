@@ -1,6 +1,7 @@
 import builtins
 import json
 import logging
+import time
 import typing as t
 from dataclasses import dataclass, field
 from functools import reduce
@@ -29,6 +30,11 @@ ChildrenRepo = dict[str, tuple[str, dict[str, t.Any]]]
 log = logging.getLogger("wireview")
 
 
+# How long a nested component its drawer's render retired still answers the
+# page's events, if the page never says it let the element go (``Tombstone``)
+TOMBSTONE_SECONDS = 10.0
+
+
 class InvalidEvent(ValueError):
     """An event names something that is not one of the component's handlers.
 
@@ -38,12 +44,40 @@ class InvalidEvent(ValueError):
 
 
 @dataclass
+class Tombstone:
+    """A nested component a render retired, kept for the events the page sent before it saw that render (#204).
+
+    The drawer's render took the element away, or put a new one under another
+    id in its place; the page sees that one round trip later. An event it sent
+    from the element before then would find no instance. So the instance --
+    with the LiveComponents it owns, ``instances[0]`` first -- leaves the
+    repository with the render, and nothing but those events reaches it any
+    more: no broadcast, Broadcast patch, task result or deferred call
+    (``ComponentRepository.reachable``), and no subscription of it is heard.
+    An event for one runs its handler, as Phoenix runs one for a component the
+    client has yet to confirm destroyed (``cids_will_destroy`` before
+    ``cids_destroyed``); nothing of it is rendered.
+
+    It is buried, and ``leaving()`` runs, when the page leaves the id, when an
+    instance is built under one of its ids, when the connection ends, or at
+    the end of the first render ``TOMBSTONE_SECONDS`` after it was retired --
+    a page that keeps the element under ``wire-update="ignore"`` never leaves it.
+    """
+
+    instances: list[Component]
+    at: float
+
+
+@dataclass
 class LifecycleBatch:
     """The lifecycle work one parent's render left behind (``ComponentRepository.take_lifecycle``)."""
 
     new: list[LiveComponent] = field(default_factory=list)
     updates: list[tuple[LiveComponent, dict[str, t.Any]]] = field(default_factory=list)
     retired: list[Component] = field(default_factory=list)
+    # Nested components the render retired that the page joined: left as
+    # ``Tombstone``s, their leaving() comes later
+    entombed: list[Component] = field(default_factory=list)
     # Existing children whose slot content changed: no hook, just a render
     rerender: list[LiveComponent] = field(default_factory=list)
 
@@ -125,9 +159,16 @@ class ComponentRepository:
         self._pending_updates: list[tuple[LiveComponent, dict[str, t.Any]]] = []
         # Instances replaced under a reused id; they owe a leaving() call
         self._pending_leaving: list[Component] = []
-        # Nested components a pass stopped drawing, retired once the render that
-        # ran it is over unless another pass of it drew them again (``take_lifecycle``, #204)
-        self._undrawn: dict[str, None] = {}
+        # Nested components a pass stopped drawing, each with the drawer whose
+        # pass did: retired once the render that ran it is over unless another
+        # pass of it drew them again (``take_lifecycle``, #204), given back to
+        # that drawer if the render raised (``render_failed``)
+        self._undrawn: dict[str, str] = {}
+        # Retired nested components the page may still send events for, by the
+        # id of the one their element is (``Tombstone``)
+        self._tombstones: dict[str, Tombstone] = {}
+        # What a tombstone's age is read on; tests move it
+        self.clock: t.Callable[[], float] = time.monotonic
         # Child ids each parent named in its current template pass
         self._rendered_children: dict[str, set[str]] = {}
         # Existing children whose slot content changed on the parent's re-render
@@ -330,7 +371,8 @@ class ComponentRepository:
         if slots is not None:
             live_component.wire.slots = slots.without_markers()
 
-        # Register in components dict
+        # Register in components dict, over a retired instance the page may still have sent events for
+        self._pending_leaving.extend(self.bury(live_component.id))
         self.components[live_component.id] = live_component
 
         # Queue for joined() call after parent render completes
@@ -380,9 +422,13 @@ class ComponentRepository:
         draws it -- an id the template moved from a nested component to the one
         around it, which may come after this pass or before it. So it is only
         noted here, and retires when the render is over (``take_lifecycle``):
-        its ``leaving()`` goes into that render's batch, and from then on no
-        broadcast, patch or task of it runs. Left for the page's leave, it ran
-        all of that until the leave came -- and for good where none came. One
+        from then on no broadcast, patch or task of it runs. Left for the
+        page's leave, it ran all of that until the leave came -- and for good
+        where none came. One the page joined still answers the events the page
+        sent before it saw that render, and its ``leaving()`` waits for the
+        page's leave (``Tombstone``); one it never joined leaves with the
+        render's batch. A render that raised never reached the page: it gives
+        them back to their drawers (``render_failed``). One
         drawn without an id is never drawn again: each pass draws a new one
         under a new ``rx-<uuid>`` (#204). The ones a part the pass kept for a
         reset temporary assign shows are still on the page and stay
@@ -396,17 +442,94 @@ class ComponentRepository:
             if self._built_by.get(child_id) == drawer_id:
                 del self._built_by[child_id]
                 if self.is_live:
-                    self._undrawn[child_id] = None
+                    self._undrawn[child_id] = drawer_id
         if drew := {child_id for child_id in drew & rendered if self._built_by.get(child_id) == drawer_id}:
             self._drew[drawer_id] = drew
         return rendered
 
-    def _retire_undrawn(self) -> None:
-        """Retire what the passes of the render just over stopped drawing and none drew again (``end_pass``)."""
+    def _retire_undrawn(self) -> list[Component]:
+        """Retire what the passes of the render just over stopped drawing and none drew again (``end_pass``).
+
+        Returns the instances left as tombstones. The rest, and the tombstones
+        whose time is up, owe ``leaving()`` now (``take_retired``).
+        """
         undrawn, self._undrawn = self._undrawn, {}
+        self._bury_expired()
+        entombed: list[Component] = []
         for id in undrawn:
             if id not in self._built_by:
-                self._pending_leaving.extend(self._retire_drawn(id))
+                kept, leaving = self._entomb(self._retire_drawn(id))
+                entombed += kept
+                self._pending_leaving += leaving
+        return entombed
+
+    def render_failed(self) -> None:
+        """The render the passes since the last ``take_lifecycle`` belong to raised: it never reaches the page.
+
+        What those passes stopped drawing is still on the page, so it does not
+        retire: it goes back to the drawer whose pass drew it, as that pass had
+        not run. Left noted, the next render of any component retired it --
+        ``leaving()`` for a component the page still showed, and the join of its
+        drawer after the crash built a new instance there, never joined, that
+        the page's element (kept by its morph) does not join.
+        """
+        undrawn, self._undrawn = self._undrawn, {}
+        for child_id, drawer_id in undrawn.items():
+            if child_id in self._built_by or child_id not in self.components or drawer_id not in self.components:
+                continue
+            self._built_by[child_id] = drawer_id
+            self._drew.setdefault(drawer_id, set()).add(child_id)
+
+    def _entomb(self, removed: list[Component]) -> tuple[list[Component], list[Component]]:
+        """Leave what a render retired as ``Tombstone``s, one for each nested component the page joined.
+
+        ``removed`` is in :meth:`remove` order: each nested component before
+        the LiveComponents it owns, which go with it. A LiveComponent before
+        any -- one its parent stopped naming -- is its parent's to settle, and
+        one the page never joined has no element the page sent anything from:
+        those owe their ``leaving()`` now. Returns the entombed instances and those.
+        """
+        entombed: list[Component] = []
+        leaving: list[Component] = []
+        tombstone: Tombstone | None = None
+        for component in removed:
+            if not isinstance(component, LiveComponent):
+                tombstone = Tombstone([component], self.clock()) if component.wire.has_joined else None
+                if tombstone is not None:
+                    self._tombstones[component.id] = tombstone
+            elif tombstone is not None:
+                tombstone.instances.append(component)
+            (leaving if tombstone is None else entombed).append(component)
+        return entombed, leaving
+
+    def buried(self, id: str) -> Component | None:
+        """The instance under ``id`` a tombstone keeps for the page's events, or ``None`` (``Tombstone``)."""
+        for tombstone in self._tombstones.values():
+            for component in tombstone.instances:
+                if component.id == id:
+                    return component
+        return None
+
+    def bury(self, id: str) -> list[Component]:
+        """Bury the tombstone that keeps an instance under ``id``. Returns its instances, which owe ``leaving()``."""
+        for key, tombstone in self._tombstones.items():
+            if any(component.id == id for component in tombstone.instances):
+                del self._tombstones[key]
+                return tombstone.instances
+        return []
+
+    def bury_all(self) -> list[Component]:
+        """Bury every tombstone: the connection ends. Returns their instances."""
+        tombstones, self._tombstones = self._tombstones, {}
+        return [component for tombstone in tombstones.values() for component in tombstone.instances]
+
+    def _bury_expired(self) -> None:
+        """Bury the tombstones older than ``TOMBSTONE_SECONDS``: their ``leaving()`` goes into the batch at hand."""
+        now = self.clock()
+        for key, tombstone in list(self._tombstones.items()):
+            if now - tombstone.at >= TOMBSTONE_SECONDS:
+                del self._tombstones[key]
+                self._pending_leaving.extend(tombstone.instances)
 
     def _retire_drawn(self, id: str) -> list[Component]:
         """Remove the nested component ``id`` no pass draws any more, with what its own passes drew.
@@ -496,6 +619,8 @@ class ComponentRepository:
         - ``updates``: existing children whose props changed, with only the changed props
         - ``retired``: children the parent no longer names (and instances displaced by an
           id reuse), already removed from the repository and waiting for ``leaving()``
+        - ``entombed``: nested components the render retired that wait for the page's
+          leave instead (``Tombstone``)
         - ``rerender``: existing children whose slot content changed; no hook, just a render
 
         The same for the children of each component whose pass ran within this
@@ -506,8 +631,8 @@ class ComponentRepository:
         """
         # The pass's end first: what the render stopped drawing retires into this batch
         rendered = self.end_pass(parent_id, shown)
-        self._retire_undrawn()
-        batch = LifecycleBatch(retired=self.take_retired())
+        entombed = self._retire_undrawn()
+        batch = LifecycleBatch(retired=self.take_retired(), entombed=entombed)
         self._settle(parent_id, rendered, batch)
         return batch
 
@@ -529,7 +654,10 @@ class ComponentRepository:
 
         for child in self.get_live_components(parent_id):
             if child.id not in rendered:
-                batch.retired.extend(self._remove_with_drawn(child.id))
+                # What the LiveComponent drew is kept for the page's events, as when its drawer stops drawing it
+                entombed, leaving = self._entomb(self._remove_with_drawn(child.id))
+                batch.entombed += entombed
+                batch.retired += leaving
 
         for inner_id in self._inline.pop(parent_id, []):
             if (inner_rendered := self._inline_rendered.pop(inner_id, None)) is not None:
@@ -723,6 +851,8 @@ class ComponentRepository:
         self.remove(component.id)
 
     def register_component(self, component: Component):
+        # The id is this instance's now: a retired one under it answers no event any more
+        self._pending_leaving.extend(self.bury(component.id))
         self.components[component.id] = component
         return component
 
@@ -823,13 +953,18 @@ class ComponentRepository:
             self._carry(drawer_id, left)
         return removed
 
-    async def dispatch_event(self, id, command, args, kwargs):
+    async def dispatch_event(self, id, command, args, kwargs, *, component: Component | None = None):
+        """Run the handler ``command`` of the instance under ``id``: the one ``reachable`` finds, or ``component``.
+
+        ``component`` is one a ``Tombstone`` keeps, which nothing else reaches.
+        """
         # Security: Validate command name to prevent unauthorized method access
         # This replaces `assert` which can be disabled with `python -O`
         if not self._is_valid_event_handler(command):
             raise InvalidEvent(f"Invalid event handler: {command}")
 
-        component = self.reachable(id)
+        if component is None:
+            component = self.reachable(id)
         if component is None:
             return None
 

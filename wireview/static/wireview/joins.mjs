@@ -142,7 +142,11 @@ export class Joins {
    * frame a render scheduled, which takes away one it no longer draws), nor a
    * LiveComponent (`owned`, its parent's: it has no join of its own), nor when
    * the page sent a join under the id after the event: that join is the new
-   * instance, and refs share one counter with events.
+   * instance, and refs share one counter with events. An event without a ref
+   * (`wire-viewport-*`) cannot tell when it went: then a join under the id
+   * still waiting for its answer is that join -- an earlier `gone` sent it.
+   * Joined again for each such `gone`, the server built and retired the
+   * instance once more per event.
    * @param {string} id
    * @param {number} [ref] - the event's, when it carried one
    * @param {{ present: boolean, owned: boolean }} element
@@ -151,7 +155,8 @@ export class Joins {
   joinsAgainWhenGone(id, ref, { present, owned }) {
     if (!present || owned) return false;
     const join = this.byId.get(id);
-    return !(typeof ref === "number" && typeof join?.ref === "number" && join.ref > ref);
+    if (typeof join?.ref !== "number") return true;
+    return typeof ref === "number" ? join.ref < ref : join.answered;
   }
 
   /**

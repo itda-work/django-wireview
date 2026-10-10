@@ -88,7 +88,8 @@ wireview/
 │                          패스 안에서 그려진 {% component %}가 그리는 LiveComponent도 그린 쪽의 배치에 담는다(end_inline_pass).
 │                          슬롯 주인이 자기 렌더로 fill의 {% component %}를 다시 그린 패스는 그 주인의 배치에 담는다
 │                          그린 쪽의 패스가 더는 그리지 않는 {% component %}(id 없는 것은 패스마다 새 rx-)는 그 render가 끝날 때
-│                          같은 render의 다른 패스도 그리지 않았으면 은퇴해 그 배치에서 leaving()을 받는다(end_pass가 적고 take_lifecycle이 정한다).
+│                          같은 render의 다른 패스도 그리지 않았으면 은퇴한다(end_pass가 적고 take_lifecycle이 정한다, 예외로 끝난 render는 render_failed가 되돌린다).
+│                          페이지가 join한 것은 묘비(Tombstone)로 남아 그 전에 보낸 이벤트만 받고, leaving()은 페이지의 leave·같은 id의 새 인스턴스·연결 끝·10초 뒤 render 끝에
 │                          temporary assign이 유지한 부분이 든 것은 남긴다 — 다른 컴포넌트의 패스 안에서도(kept_components, #204)
 ├── live_component.py      LiveComponent (부모 연결을 공유하는 중첩 상태 컴포넌트)
 ├── function_components.py  @function_component (상태 없는 템플릿 함수). 공개 이름과 겹치지 않게 복수형이다(#98).

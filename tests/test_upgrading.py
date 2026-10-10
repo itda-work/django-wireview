@@ -109,12 +109,12 @@ def test_every_row_reads_every_section_from_its_own_up():
 # both silent. An entry with neither fails here, so each new one is a decision. The next
 # release moves this table to its own entries and section.
 UPGRADE_NOTE = {
-    "A nested `{% component %}` its drawer's render no longer draws leaves with that render": (
-        "그린 쪽이 더는 그리지 않는 중첩 컴포넌트는 그 렌더와 함께 떠난다",
+    "A nested `{% component %}` its drawer's render no longer draws retires with that render": (
+        "그린 쪽이 더는 그리지 않는 중첩 컴포넌트는 그 렌더와 함께 은퇴한다",
         "id가 있어도 언제나 새로 시작한다",
     ),
     "its old state gone, whatever order the page's leave and the next render come in": (
-        "그린 쪽이 더는 그리지 않는 중첩 컴포넌트는 그 렌더와 함께 떠난다",
+        "그린 쪽이 더는 그리지 않는 중첩 컴포넌트는 그 렌더와 함께 은퇴한다",
         "숨겨도 상태를 지켜야 하면",
     ),
     "An event for a component id the connection holds no instance under is answered": (
@@ -123,7 +123,9 @@ UPGRADE_NOTE = {
     ),
 }
 
-NO_UPGRADE_NOTE: dict[str, str] = {}
+NO_UPGRADE_NOTE: dict[str, str] = {
+    "A message naming a component by something that is not a string": "no client of ours sends one",
+}
 
 PREVIOUS = "1.5.1"
 SECTION = "1.5에서 1.6으로"

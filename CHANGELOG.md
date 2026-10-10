@@ -21,22 +21,30 @@ The django-reactor era changelog (2.x) is preserved in
   (protocol version 9), which ends the loading state the event started and joins the element again
   from its state when the page still holds it -- one under `wire-update="ignore"` its drawer's render
   retired. An older client gets the empty render an event with no handler gets. Before, nothing came
-  back and the button stayed loading.
+  back and the button stayed loading. An event for a component its drawer's render retired a moment
+  before runs its handler and is answered the same way: nothing of the component is rendered.
 
 ### Fixed
 
-- A nested `{% component %}` its drawer's render no longer draws leaves with that render (#204): it is
-  removed from the connection, its `leaving()` runs, its tasks are cancelled, and no broadcast or
-  `Broadcast` patch reaches it. One drawn without an id is a new instance under a new `rx-<uuid>` in
-  every pass of its drawer, and the one before stayed until the page's leave came -- for the
-  connection's lifetime where none came -- hearing broadcasts and running its tasks, one more for
-  each render. What it drew in its own passes goes with it. A component drawn with an id that an
+- A nested `{% component %}` its drawer's render no longer draws retires with that render (#204): no
+  broadcast, `Broadcast` patch, task result or deferred call reaches it, and its topics go. The events
+  the page sent before it saw that render still run its handlers -- a click on a row of a list a
+  broadcast just drew anew -- and its `leaving()` runs, its tasks are cancelled, when the page's leave
+  says no more will come: or at the end of the first render ten seconds later for a page that never
+  leaves it (`wire-update="ignore"`), or with the connection. One drawn without an id is a new
+  instance under a new `rx-<uuid>` in every pass of its drawer, and the one before stayed until the
+  page's leave came -- for the connection's lifetime where none came -- hearing broadcasts and
+  running its tasks, one more for each render. What it drew in its own passes goes with it. A render
+  that raised retires nothing: it never reached the page. A component drawn with an id that an
   `{% if %}` hides retires the same way, so shown again it starts anew whatever order the page's leave
   and the next render come in; before, it came back with its old state when the leave came last. One
   that a part kept for a reset temporary assign still shows stays -- in a render of its drawer's own,
   or where another component's pass draws that drawer. An id the render draws in another pass of it
   (moved from a nested component to the one around it) is the same instance, whichever pass comes
   first. A nested component a LiveComponent drew leaves with that LiveComponent.
+- A message naming a component by something that is not a string -- a list or a dict as a
+  `user_event`'s `id` -- is logged and dropped, as a payload that does not fit its command is. It
+  raised `TypeError` out of the session.
 
 ## [1.5.1] - 2026-10-10
 

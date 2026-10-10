@@ -295,8 +295,8 @@ class WireviewSession:
                 duration_ms=None if opened_at is None else (time.monotonic() - opened_at) * 1000,
                 components=len(self.repo.components),
             )
-        # With those a pass retired that no batch took yet: the render raised after it (#204)
-        await self._call_leaving([*self.repo.components.values(), *self.repo.take_retired()])
+        # With those retired that no batch took yet, and the ones kept for the page's events (#204)
+        await self._call_leaving([*self.repo.components.values(), *self.repo.take_retired(), *self.repo.bury_all()])
         await self._release_connection_uploads()
 
         # Cleanup subscriptions
@@ -342,6 +342,10 @@ class WireviewSession:
             inspect.signature(handler).bind(**payload)
         except TypeError as e:
             log.warning("Ignoring %s with a payload that does not fit it: %s", command, e)
+            return
+        # A component id is a string: a list or a dict raised looking it up
+        if any(not isinstance(payload[key], str) for key in ("id", "component_id") if key in payload):
+            log.warning("Ignoring %s naming a component by something that is not a string", command)
             return
         await handler(**payload)
 
@@ -481,6 +485,11 @@ class WireviewSession:
             return
         # The page tries a component whose join failed again: new DOM came for it
         self.repo.retry_join(component_id)
+        # One its drawer's render retired, whose element the page kept: it
+        # leaves before the instance this join builds runs joined() (#204)
+        if buried := self.repo.bury(component_id):
+            await self._call_leaving(buried)
+            self._release_uploads(buried)
         if existing is not None and existing.wire.has_joined:
             # The client only joins an element whose data-is-live is false, so a
             # second join for an id that already joined means new DOM arrived for
@@ -814,7 +823,9 @@ class WireviewSession:
             # bundle still might.
             log.debug("Ignoring leave for LiveComponent %s", id)
             return
-        removed = self.repo.let_go(id)
+        # One its drawer's render retired was kept for the events the page sent
+        # before it saw that render: this leave says no more will come (#204)
+        removed = [*self.repo.let_go(id), *self.repo.bury(id)]
         await self._call_leaving(removed)
         self._release_uploads(removed)
         await self.after_mutation_chores()
@@ -932,7 +943,10 @@ class WireviewSession:
             return
         component = self.repo.get(id)
         if component is None:
-            await self._answer_gone(id, answer)
+            if (buried := self.repo.buried(id)) is not None:
+                await self._handle_on_tombstone(buried, command, kwargs, answer)
+            else:
+                await self._answer_gone(id, answer)
             return
         try:
             await self.repo.dispatch_event(id, command, [], kwargs)
@@ -948,11 +962,43 @@ class WireviewSession:
             return
         await self.after_mutation_chores()
 
+    async def _handle_on_tombstone(
+        self, component: Component, command: str, kwargs: dict[str, t.Any], answer: int | None
+    ) -> None:
+        """Run an event the page sent before it saw the render that retired ``component`` (``Tombstone``, #204).
+
+        The handler runs, as it did when the instance lived on until the page's
+        leave -- the click on a row of a list its drawer's broadcast just drew
+        anew, a row hidden while the click was on its way -- and what it does
+        beyond the component goes out: its writes, its broadcasts, a
+        ``push_event``, a navigation. Nothing of the component is rendered:
+        the page has let its element go or is about to, and one kept under
+        ``wire-update="ignore"`` would show an instance nothing else reaches.
+        The answer is ``gone``, as for an id with no instance: a page that
+        still holds the element joins it again from the state it carries.
+
+        Phoenix does the same for a component the client has yet to confirm
+        destroyed, and its client drops the diff for an element no longer there.
+        """
+        try:
+            await self.repo.dispatch_event(component.id, command, [], kwargs, component=component)
+        except InvalidEvent as e:
+            log.warning("Ignoring user_event for %s: %s", component.id, e)
+        except Exception:
+            # Nothing to join again: the page has the element or will let it go
+            log.exception("%s (%s), retired, raised handling %s", component._name, component.id, command)
+            removed = self.repo.bury(component.id)
+            await self._call_leaving(removed)
+            self._release_uploads(removed)
+        await self._answer_gone(component.id, answer)
+        await self.after_mutation_chores()
+
     async def _answer_gone(self, id: str, answer: int | None) -> None:
         """Answer an event for an id this connection holds no instance under. No handler runs.
 
         Unknown, refused at its mount, left -- or retired by its drawer's render
-        while the page held on to the element (``wire-update="ignore"``, #204).
+        while the page held on to the element (``wire-update="ignore"``, #204),
+        and buried since (``Tombstone``); ``_handle_on_tombstone`` answers the same.
         The answer ends the loading state the event started, and a page that
         still holds the element joins it again from the state it carries
         (``gone``). Unanswered, the event left its button disabled for good and
@@ -1712,11 +1758,16 @@ class WireviewSession:
         repo = self.repo
         repo.begin_render(component.id)
         before = component.wire._last_rendered
-        diff = await component._render_diff(repo)
-        await component._run_hooks("after_render")
-        # Clear temporary assigns after rendering to free memory
-        # This is called regardless of whether diff was sent (skip_render case)
-        component._clear_temporary_assigns()
+        try:
+            diff = await component._render_diff(repo)
+            await component._run_hooks("after_render")
+            # Clear temporary assigns after rendering to free memory
+            # This is called regardless of whether diff was sent (skip_render case)
+            component._clear_temporary_assigns()
+        except BaseException:
+            # Nothing of this render reaches the page: what its passes stopped drawing is still there
+            repo.render_failed()
+            raise
 
         children: dict[str, t.Any] = {}
         settled: list[LiveComponent] = []
@@ -1728,6 +1779,8 @@ class WireviewSession:
 
         shown = component_refs(last) if (last := component.wire._last_rendered) is not None else ()
         batch = repo.take_lifecycle(component.id, shown)
+        if batch.entombed:
+            self._retired_in_render = True
         if batch.retired:
             self._retired_in_render = True
             await self._call_leaving(batch.retired)

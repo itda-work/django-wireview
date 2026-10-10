@@ -215,8 +215,21 @@ test("a gone joins again the element the page still holds", () => {
   const joins = new Joins();
   joins.sent("box", 1);
   assert.equal(joins.joinsAgainWhenGone("box", 5, { present: true, owned: false }), true);
-  assert.equal(joins.joinsAgainWhenGone("box", undefined, { present: true, owned: false }), true);
   assert.equal(joins.joinsAgainWhenGone("never-joined", 5, { present: true, owned: false }), true);
+  assert.equal(joins.joinsAgainWhenGone("never-joined", undefined, { present: true, owned: false }), true);
+});
+
+test("a gone of an event without a ref joins again unless a join under the id waits for its answer", () => {
+  // A wire-viewport-* event carries no ref: when it went is unknown
+  const joins = new Joins();
+  joins.sent("box", 1);
+  // The join this gone would send is already on its way: an earlier gone sent it
+  assert.equal(joins.joinsAgainWhenGone("box", undefined, { present: true, owned: false }), false);
+  joins.render("box", 1, true);
+  assert.equal(joins.joinsAgainWhenGone("box", undefined, { present: true, owned: false }), true);
+  // The first join on a connection carries no ref, and pairs nothing
+  joins.sent("first", undefined);
+  assert.equal(joins.joinsAgainWhenGone("first", undefined, { present: true, owned: false }), true);
 });
 
 test("a gone joins nothing the page let go, nor a LiveComponent, nor what a later join covers", () => {
