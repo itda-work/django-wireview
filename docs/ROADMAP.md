@@ -333,7 +333,7 @@ def button(text: str, variant: str = "primary"):
 
 ## 릴리스 이력과 계획
 
-패키지 버전은 git 태그 `v<버전>`(`v1.5.0`)이 정본이다. 편집기 확장의 태그 `vscode-v<버전>`은 따로 매긴다([VS Code 확장 릴리스 절차](#vs-code-확장-릴리스-절차)). reactor 시절의 v6.0.0 마일스톤 번호는 쓰지 않는다.
+패키지 버전은 git 태그 `v<버전>`(`v1.5.1`)이 정본이다. 편집기 확장의 태그 `vscode-v<버전>`은 따로 매긴다([VS Code 확장 릴리스 절차](#vs-code-확장-릴리스-절차)). reactor 시절의 v6.0.0 마일스톤 번호는 쓰지 않는다.
 
 | 버전 | 상태 | 내용 |
 |------|:----:|------|
@@ -355,6 +355,7 @@ def button(text: str, variant: str = "primary"):
 | v1.3.0 | ✅ | 팬아웃을 싸게 하고 개발 루프를 줄인다. 스트림 항목·훅 이벤트·JS를 한 번 렌더해 구독자마다 id만 끼우는 `Broadcast`(#178), 보는 사람을 읽지 않는 렌더를 같은 메시지의 연결들이 함께 쓰는 `Meta.shared_render`(#176)와 `wireview.W019`, 평범한 값의 렌더 지름길(라이브 렌더 약 3분의 1 감소), 개발 서버에서 템플릿을 저장하면 열린 페이지가 다시 join하는 rejoin(#180, 프로토콜 8), 취소할 수 있는 `wireview:before-navigate`와 이동 종류(#154), 첫 HTTP 렌더의 `params_changed()`와 `request.GET`의 쿼리, `wireview_check_templates`(#179), `wireview_lsp` 메타데이터 2.0(#162), FastAPI 비교 벤치(#174). 조용히 달라지는 동작이 있다. 할 일은 [업그레이드 가이드](./UPGRADING.md#12에서-13으로) |
 | v1.4.0 | ✅ | 개발 중 SQL을 부른 자리를 알린다. 렌더·핸들러·작업이 실행한 문장마다 템플릿 줄이나 property를 로거 `wireview.queries`에 남기고 같은 자리의 반복을 `WARNING`으로(`DEBUG_RENDER_QUERIES`, #182), 테스트는 `MountedComponent.queries()`로 단언한다. 같은 기록을 개발 서버가 JSON 줄로 남겨 VS Code 확장이 인라인 힌트로 보인다(#188). 첫 HTTP 렌더가 요청의 DB 연결을 닫아 `ATOMIC_REQUESTS`의 쓰기가 조용히 롤백되던 결함 수정(#190). 할 일은 [업그레이드 가이드](./UPGRADING.md#13에서-14로) |
 | v1.5.0 | ✅ | 템플릿이 읽는 것만 계산한다. `Meta.lazy_properties`를 켠 컴포넌트는 sync property를 템플릿이 그 이름을 읽을 때 렌더마다 한 번 계산하므로 쓰지 않는 property의 SQL이 돌지 않는다(#187). 렌더 SQL 로그와 편집기 기록이 라이브 렌더와 그 `LiveComponent`들(#189), 뷰 템플릿이 그린 컴포넌트들(#193)을 한 일로 묶어 형제 사이의 N+1을 반복으로 보인다. 초기화된 temporary assign 뒤에 남긴 블록이 `{% class %}`·extends 부모 등으로 읽은 바뀐 값을 다시 그리지 않던 결함 수정(#194). ASGI 서버 비교 벤치(#191). 할 일은 [업그레이드 가이드](./UPGRADING.md#14에서-15로) |
+| v1.5.1 | ✅ | 문서 사이트만 바뀐 패치. 모든 페이지 헤더가 그 문서가 설명하는 릴리스를 태그 배지로 보이고, 그 릴리스의 CHANGELOG 절로 잇는다(#196). 라이브러리 코드는 1.5.0과 같다. 할 일 없음 |
 
 ### 릴리스 절차
 
