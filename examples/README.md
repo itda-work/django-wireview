@@ -40,7 +40,7 @@ WebSocket이 필요하므로 `runserver`가 아니라 daphne로 띄운다.
 ```bash
 make test                        # 예제 테스트까지 전부
 make test ARGS="-k quiz"         # 예제 하나
-make test-e2e LAYER=memory       # 브라우저 (todo, livecomp, hooks, notifications, search, chat_lv2, chat_lv3, bookmarks)
+make test-e2e LAYER=memory       # 브라우저 (todo, livecomp, hooks, notifications, search, chat, chat_lv2, chat_lv3, bookmarks)
 ```
 
 pytest를 직접 부를 때는 `-m "not e2e"`를 붙인다: `uv run pytest examples -m "not e2e"`.
