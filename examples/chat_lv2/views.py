@@ -1,6 +1,5 @@
 import uuid
 
-from asgiref.sync import async_to_sync
 from django.contrib import messages
 from django.contrib.auth import get_user_model, login, logout
 from django.http import HttpRequest, HttpResponse
@@ -9,7 +8,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .access import is_member
-from .live import aend_membership
+from .live import end_membership
 from .live_sessions import chat_lv2
 from .models import Membership, Room
 
@@ -75,7 +74,7 @@ def leave_room(request: HttpRequest, room_id: uuid.UUID) -> HttpResponse:
     """Stop being a member. Pages of the room this user still has open go back to the list."""
     if request.user.is_authenticated:
         room = get_object_or_404(Room, id=room_id)
-        async_to_sync(aend_membership)(room, request.user)
+        end_membership(room, request.user)
     return redirect("chat_lv2:index")
 
 

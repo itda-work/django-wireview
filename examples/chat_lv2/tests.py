@@ -146,6 +146,20 @@ async def _join(communicator: WebsocketCommunicator, name: str, state: str) -> N
     await communicator.send_json_to({"command": "join", "payload": {"name": name, "state": state, "children": {}}})
 
 
+async def _drain(communicator: WebsocketCommunicator, quiet: float = 0.5) -> list[str]:
+    """Every frame the socket gets until it has been ``quiet`` seconds without one.
+
+    ``receive_nothing`` and not a timeout on ``receive_output``: the latter
+    cancels the application when it runs out.
+    """
+    heard = []
+    while not await communicator.receive_nothing(timeout=quiet):
+        output = await communicator.receive_output()
+        if output.get("type") == "websocket.send":
+            heard.append(output.get("text") or "")
+    return heard
+
+
 async def _answer(communicator: WebsocketCommunicator, component_id: str) -> dict:
     """The first render or remove for ``component_id``: how the server answered its join."""
     while True:
@@ -187,13 +201,74 @@ async def test_a_member_who_left_cannot_join_with_the_page_they_kept(room, alice
             await _join(communicator, name, state)
             answer = await _answer(communicator, component_id)
             assert answer["command"] == "remove", name
-        # Nothing of the room went out after the refusals either: no stream of its messages
-        heard = []
-        while not await communicator.receive_nothing(timeout=0.3):
-            heard.append(await communicator.receive_json_from())
-        assert "members only" not in json.dumps(heard)
+        heard = await _drain(communicator)
+        # Nor later: a refused component subscribed to nothing, so alice's new message passes him by
+        speaker = await mount(Lv2ChatRoom, user=alice, room=room, live_session=BOUNDARY)
+        await speaker.call("send_message", content="after the refusal")
+        heard += await _drain(communicator)
     finally:
         await communicator.disconnect()
+
+    assert heard == [] or not any("members only" in text or "after the refusal" in text for text in heard), heard
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize("where", ["room list", "another page of the room"])
+async def test_leaving_sends_the_users_open_page_away_and_it_hears_the_room_no_more(room, alice, bob, where):
+    """bob keeps a page of the room open and leaves elsewhere. The page is told to go.
+
+    That is a request, and a client may ignore it and keep the socket, as this
+    one does. What the page would hear is stopped on the server: alice arriving,
+    typing and writing reaches her own socket and not his.
+    """
+    await Membership.objects.acreate(room=room, user=bob)
+    bob_client = AsyncClient()
+    await bob_client.aforce_login(bob)
+    bob_states = _states((await bob_client.get(_room_url(room))).content.decode())
+    kept = await _socket(bob_client)
+    alice_socket = None
+    try:
+        for name, (component_id, state) in bob_states.items():
+            await _join(kept, name, state)
+            assert (await _answer(kept, component_id))["command"] == "render", name
+        await _drain(kept)
+
+        if where == "room list":
+            await bob_client.post(reverse("chat_lv2:leave_room", args=[room.id]))
+        else:
+            other = await mount(Lv2ChatRoom, id="other-tab", user=bob, room=room, live_session=BOUNDARY)
+            await other.call("leave_room")
+        told = [json.loads(text) for text in await _drain(kept)]
+        assert {"command": "redirect", "url": reverse("chat_lv2:index")} in [
+            {key: message["payload"].get(key) for key in ("command", "url")}
+            for message in told
+            if message["command"] == "url_change"
+        ], told
+
+        alice_client = AsyncClient()
+        await alice_client.aforce_login(alice)
+        alice_states = _states((await alice_client.get(_room_url(room))).content.decode())
+        alice_socket = await _socket(alice_client)
+        for name, (component_id, state) in alice_states.items():
+            await _join(alice_socket, name, state)
+            assert (await _answer(alice_socket, component_id))["command"] == "render", name
+        chat_id = alice_states["Lv2ChatRoom"][0]
+        for command, args in (("on_typing", {}), ("send_message", {"content": ["after bob left"]})):
+            await alice_socket.send_json_to(
+                {
+                    "command": "user_event",
+                    "payload": {"id": chat_id, "command": command, "implicit_args": args, "explicit_args": {}},
+                }
+            )
+        # alice's page shows what she did, so it happened
+        assert any("after bob left" in text for text in await _drain(alice_socket))
+
+        assert await _drain(kept) == []
+    finally:
+        await kept.disconnect()
+        if alice_socket is not None:
+            await alice_socket.disconnect()
 
 
 @pytest.mark.integration
@@ -263,14 +338,56 @@ async def test_after_leaving_the_open_page_writes_nothing(room, alice):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_leaving_from_the_room_ends_the_membership_and_tells_the_users_pages(room, alice):
+async def test_after_leaving_the_open_page_does_not_say_it_is_typing(room, alice):
+    """The typing indicator is the room's to see: the handler asks before it tells them."""
+    view = await mount(Lv2ChatRoom, user=alice, room=room, live_session=BOUNDARY)
+
+    def typing():
+        return [b["kwargs"]["state"] for b in view.presence_broadcasts if b["kwargs"]["action"] == "presence_typing"]
+
+    await view.call("on_typing")
+    assert typing() == ["typing"]
+    await Membership.objects.filter(room=room, user=alice).adelete()
+
+    await view.call("on_typing")
+
+    assert typing() == ["typing"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_leaving_from_the_room_ends_the_membership_and_the_page_hears_nothing_more(room, alice):
     view = await mount(Lv2ChatRoom, user=alice, room=room, live_session=BOUNDARY)
 
     await view.call("leave_room")
 
     assert not await Membership.objects.filter(room=room, user=alice).aexists()
     view.assert_redirected_to(reverse("chat_lv2:index"))
-    assert view.component.get_subscriptions() == {membership_topic(room.id, alice.pk)}
+    assert view.component.get_subscriptions() == set()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize("component", [Lv2ChatRoom, Lv2MessageList, Lv2OnlineUsers])
+async def test_told_of_the_end_a_component_asks_again_and_gives_up_the_room(room, alice, component):
+    """The notice says only "ask again": a component that is still a member keeps listening."""
+    view = await mount(component, user=alice, room=room, live_session=BOUNDARY)
+    topic = membership_topic(room.id, alice.pk)
+    listening = view.component.get_subscriptions()
+    assert topic in listening
+
+    await view.component.notification(topic)
+    assert view.component.get_subscriptions() == listening
+    view.assert_no_navigation()
+
+    await Membership.objects.filter(room=room, user=alice).adelete()
+    await view.component.notification(topic)
+
+    assert view.component.get_subscriptions() == set()
+    if component is Lv2ChatRoom:
+        view.assert_redirected_to(reverse("chat_lv2:index"))
+        # Gone from the others' online lists too, whatever the page does next
+        assert view.presence_broadcasts[-1]["kwargs"]["action"] == "presence_leave"
 
 
 @pytest.mark.unit
