@@ -219,6 +219,10 @@ class ComponentRepository:
             session=self.session,
             live_session=self.live_session,
         )
+        if drawer is not None and not state.get("id"):
+            # Drawn without an id, under the one it was just given: the drawer's
+            # next pass draws another, and retires this one (``end_pass``, #204)
+            self._drawn(component.id, drawer.id)
         return self.register_component(component)
 
     def _drawn(self, component_id: str, drawer_id: str) -> None:
@@ -363,20 +367,50 @@ class ComponentRepository:
     def end_pass(self, drawer_id: str, shown: t.Iterable[str] = ()) -> set[str]:
         """The ids the template pass of ``drawer_id`` that just ran named.
 
-        A component it drew before and not in this pass is the page's to let go:
-        ``_built_by`` forgets that the drawer drew it. Every pass ends here, the
-        one a parent's pass runs within its own (``{% component %}``) too. That
-        one left a nested component's former pass on record, and the leave for
-        a component it no longer drew took it for one drawn again.
+        Every pass ends here, the one a parent's pass runs within its own
+        (``{% component %}``) too. That one left a nested component's former
+        pass on record, and the leave for a component it no longer drew took it
+        for one drawn again.
+
+        A component it drew before and not in this pass is gone from the page
+        with the render this pass makes, and it retires here (``_retire_drawn``):
+        its ``leaving()`` goes into the next batch (``take_lifecycle``), and from
+        now on no broadcast, patch or task of it runs. Left for the page's leave,
+        it ran all of that until the leave came -- and for good where none came.
+        One drawn without an id is never drawn again: each pass draws a new one
+        under a new ``rx-<uuid>`` (#204). The ones a part the pass kept for a
+        reset temporary assign shows are still on the page and stay
+        (``WireviewMeta.kept_components``, #111).
         """
         rendered = self._rendered_children.pop(drawer_id, set()).union(shown)
+        if (drawer := self.components.get(drawer_id)) is not None:
+            rendered |= drawer.wire.kept_components
         drew = self._drew.pop(drawer_id, set())
         for child_id in drew - rendered:
             if self._built_by.get(child_id) == drawer_id:
-                del self._built_by[child_id]
+                if self.is_live:
+                    self._pending_leaving.extend(self._retire_drawn(child_id))
+                self._built_by.pop(child_id, None)
         if drew := {child_id for child_id in drew & rendered if self._built_by.get(child_id) == drawer_id}:
             self._drew[drawer_id] = drew
         return rendered
+
+    def _retire_drawn(self, id: str) -> list[Component]:
+        """Remove the nested component ``id`` a pass stopped drawing, with what its own passes drew.
+
+        Its element went with the drawer's render, and the elements of what it
+        drew inside it with it: no pass of it runs any more to retire those.
+        The LiveComponents it owns go along, as in :meth:`remove`. A
+        LiveComponent is its parent's to settle and is not drawn this way.
+        """
+        component = self.components.get(id)
+        if component is None or isinstance(component, LiveComponent):
+            return []
+        inner = [child_id for child_id in self._drew.get(id, ()) if self._built_by.get(child_id) == id]
+        removed = self.remove(id)
+        for child_id in inner:
+            removed.extend(self._retire_drawn(child_id))
+        return removed
 
     def end_inline_pass(self, component_id: str, drawer_id: str | None, shown: t.Iterable[str] = ()) -> None:
         """End the pass of ``component_id`` that ran within the pass of ``drawer_id`` (``{% component %}``).
@@ -441,10 +475,16 @@ class ComponentRepository:
         Only call this after a render that evaluated the template. A skipped render
         names no children, and treating that as "every child disappeared" would be wrong.
         """
-        batch = LifecycleBatch(retired=self._pending_leaving)
-        self._pending_leaving = []
-        self._settle(parent_id, self.end_pass(parent_id, shown), batch)
+        # The pass's end first: what it stopped drawing retires into this batch
+        rendered = self.end_pass(parent_id, shown)
+        batch = LifecycleBatch(retired=self.take_retired())
+        self._settle(parent_id, rendered, batch)
         return batch
+
+    def take_retired(self) -> list[Component]:
+        """The instances removed for good that still owe ``leaving()`` and no batch took (``take_lifecycle``)."""
+        retired, self._pending_leaving = self._pending_leaving, []
+        return retired
 
     def _settle(self, parent_id: str, rendered: set[str], batch: "LifecycleBatch") -> None:
         """Put in ``batch`` what the children of ``parent_id`` are owed after a pass that named ``rendered``."""

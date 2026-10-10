@@ -1293,14 +1293,14 @@ async def test_a_live_component_two_component_levels_down_an_if_shows_again_star
         await communicator.disconnect()
 
 
-@pytest.mark.parametrize(("late", "expected"), [(False, "tally=0"), (True, "tally=3")])
-async def test_a_box_hidden_and_shown_again_before_its_leave_lands_keeps_its_tally(late, expected):
-    # The shelf hides the box and shows it again. When the page's leave for the
-    # hidden element comes between the two renders, the box shown again is a
-    # new instance and starts anew. When it comes after both, the second render
-    # has drawn the instance the page had, tally and all, and the leave cannot
-    # be told from the one a reconnect's root sends late (the tests above): the
-    # page joins the box with the tally the render drew.
+@pytest.mark.parametrize("late", [False, True])
+async def test_a_box_hidden_and_shown_again_starts_anew_wherever_its_leave_lands(late):
+    # The shelf hides the box and shows it again. The pass that hid it retired
+    # it, tally and all (#204), so the box shown again is a new instance and
+    # starts anew -- whether the page's leave for the hidden element comes
+    # between the two renders or after both. Before, the second render drew
+    # the instance a late leave had not yet removed, and the box came back with
+    # the tally it had: the outcome turned on the order of the messages.
     communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={JOINED_SINCE}")
     communicator.scope["user"] = AnonymousUser()
     connected, _ = await communicator.connect()
@@ -1318,7 +1318,7 @@ async def test_a_box_hidden_and_shown_again_before_its_leave_lands_keeps_its_tal
             await communicator.send_json_to({"command": "leave", "payload": {"id": "j-tally-box"}})
         shown_again = await _join_box_again(communicator, 23)
 
-        assert _tallies(shown_again) == [expected], shown_again
+        assert _tallies(shown_again) == ["tally=0"], shown_again
     finally:
         await communicator.disconnect()
 

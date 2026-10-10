@@ -12,6 +12,18 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Fixed
+
+- A nested `{% component %}` its drawer's render no longer draws leaves with that render (#204): it is
+  removed from the connection, its `leaving()` runs, its tasks are cancelled, and no broadcast or
+  `Broadcast` patch reaches it. One drawn without an id is a new instance under a new `rx-<uuid>` in
+  every pass of its drawer, and the one before stayed until the page's leave came -- for the
+  connection's lifetime where none came -- hearing broadcasts and running its tasks, one more for
+  each render. What it drew in its own passes goes with it. A component drawn with an id that an
+  `{% if %}` hides retires the same way, so shown again it starts anew whatever order the page's leave
+  and the next render come in; before, it came back with its old state when the leave came last. One
+  that a part kept for a reset temporary assign still shows stays.
+
 ## [1.5.1] - 2026-10-10
 
 ### Added

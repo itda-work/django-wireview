@@ -189,6 +189,9 @@ class WireviewSession:
         self._auth_revalidated: bool = False
         # Whether a template change was mailed to this session and not yet handled (#180)
         self._rejoin_mailed: bool = False
+        # Whether a render retired a component since the subscriptions were last
+        # settled: a nested one its drawer's pass stopped drawing hears no more (#204)
+        self._retired_in_render: bool = False
         self._init_patches()
 
     def _init_patches(self) -> None:
@@ -291,7 +294,8 @@ class WireviewSession:
                 duration_ms=None if opened_at is None else (time.monotonic() - opened_at) * 1000,
                 components=len(self.repo.components),
             )
-        await self._call_leaving(list(self.repo.components.values()))
+        # With those a pass retired that no batch took yet: the render raised after it (#204)
+        await self._call_leaving([*self.repo.components.values(), *self.repo.take_retired()])
         await self._release_connection_uploads()
 
         # Cleanup subscriptions
@@ -1651,6 +1655,8 @@ class WireviewSession:
             if instances := self._first_renders([component, *(c for c in settled if c.id in children)]):
                 payload["instances"] = instances
             await self.send_command("render", payload)
+        if self._retired_in_render and not settled:
+            await self.update_to_which_channels_im_subscribed_to()
         if settled:
             for child in settled:
                 if child.id in instances:
@@ -1706,6 +1712,7 @@ class WireviewSession:
         shown = component_refs(last) if (last := component.wire._last_rendered) is not None else ()
         batch = repo.take_lifecycle(component.id, shown)
         if batch.retired:
+            self._retired_in_render = True
             await self._call_leaving(batch.retired)
             self._release_uploads(batch.retired)
         halted: set[str] = set()
@@ -1812,6 +1819,7 @@ class WireviewSession:
         await self.send_query_string()
 
     async def update_to_which_channels_im_subscribed_to(self):
+        self._retired_in_render = False
         # One pass for both: the topics, and which instance a topic's patches are for
         subscriptions: set[str] = set()
         book: dict[tuple[str, str], list[Component]] = {}

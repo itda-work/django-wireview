@@ -87,6 +87,8 @@ wireview/
 ├── repository.py          ComponentRepository: 연결당 컴포넌트 인스턴스 관리. LiveComponent의 수명주기 배치(take_lifecycle).
 │                          패스 안에서 그려진 {% component %}가 그리는 LiveComponent도 그린 쪽의 배치에 담는다(end_inline_pass).
 │                          슬롯 주인이 자기 렌더로 fill의 {% component %}를 다시 그린 패스는 그 주인의 배치에 담는다
+│                          그린 쪽의 패스가 더는 그리지 않는 {% component %}(id 없는 것은 패스마다 새 rx-)는 그 패스 끝에서 은퇴해
+│                          같은 배치에서 leaving()을 받는다. temporary assign이 유지한 부분이 든 것은 남긴다(end_pass, #204)
 ├── live_component.py      LiveComponent (부모 연결을 공유하는 중첩 상태 컴포넌트)
 ├── function_components.py  @function_component (상태 없는 템플릿 함수). 공개 이름과 겹치지 않게 복수형이다(#98).
 │                          그 템플릿의 {% component %}는 페이지 저장소에, 함수를 그린 컴포넌트가 그린 것으로 그려진다(this는 넘기지 않는다).

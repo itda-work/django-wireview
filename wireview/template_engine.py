@@ -245,6 +245,7 @@ class _PartNode(Node):
             frame |= carried
             for outer in frames:
                 outer |= carried
+            wire.kept_components.update(name for kind, name, _drawn in carried if kind == "c")
         # A part in a loop's items settles once per item: merged in place, not copied
         wire.drawing.setdefault(self.key, set()).update(frame)
 

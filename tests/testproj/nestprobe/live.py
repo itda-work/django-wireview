@@ -4,6 +4,9 @@ tests/test_inline_pass_lifecycle_e2e.py drives it. The root passes ``shown``
 and ``note`` to the nest; the nest draws the leaf behind ``{% if shown %}`` and
 passes it the note. The root's render draws the nest within its own pass, so
 the leaf's ``leaving()``, ``joined()`` and ``update()`` ride on that render.
+
+With ``anon`` the root also draws ``NestAnon`` without an id: every render of
+the root draws a new one, and the one before leaves with that render (#204).
 """
 
 from wireview import Component, LiveComponent
@@ -29,6 +32,25 @@ class NestLeaf(LiveComponent):
         self.count += 1
 
 
+class NestAnon(Component):
+    """Drawn by the root without an id (``?anon=1``): every pass of the root builds a new one (#204)."""
+
+    class Meta:
+        template_name = "nestprobe/anon.html"
+
+    note: str = ""
+
+    async def joined(self):
+        HEARD.append(("joined", self.id, 0))
+
+    async def leaving(self):
+        HEARD.append(("leaving", self.id, 0))
+
+    async def poke(self):
+        HEARD.append(("poked", self.id, 0))
+        self.note = "poked"
+
+
 class NestBox(Component):
     class Meta:
         template_name = "nestprobe/box.html"
@@ -42,6 +64,7 @@ class NestRoot(Component):
         template_name = "nestprobe/root.html"
 
     shown: bool = True
+    anon: bool = False
     note: str = ""
 
     async def toggle(self):

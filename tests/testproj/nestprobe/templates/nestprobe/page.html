@@ -9,6 +9,6 @@
   <body>
     {# A boosted visit to the page with the leaf shown: the root and the box come as new elements under the same ids #}
     <a data-testid="visit-shown" href="/nestprobe/">shown</a>
-    {% component 'NestRoot' id="nest-root" shown=shown %}
+    {% component 'NestRoot' id="nest-root" shown=shown anon=anon %}
   </body>
 </html>

@@ -217,6 +217,10 @@ class WireviewMeta:
         # (template_engine._PartNode). Only a component with temporary assigns records.
         self.drawn: dict[tuple[t.Any, ...], frozenset[tuple[t.Any, ...]]] = {}
         self.drawing: dict[tuple[t.Any, ...], set[tuple[t.Any, ...]]] | None = None
+        # The nested components a part its last render kept still shows: the
+        # page has them though the pass did not draw them, so the end of the
+        # pass does not retire them (``ComponentRepository.end_pass``, #204)
+        self.kept_components: set[str] = set()
         self.born: int = next(_TICKS)
         # When a render of its own last put something new on the page; 0 until
         # then. Another component's kept part that drew it before then is old --
@@ -936,6 +940,7 @@ class WireviewMeta:
         # Its renders of its own are what its kept parts take back (settle), so
         # only they record what those parts drew
         self.drawing = {} if component._meta.temporary_assigns else None
+        self.kept_components = set()
         marker_context = get_template_marker().marker_context
         if self.drawing is not None:
             marker_context.recording += 1  # the parts look their owner up only while one records
