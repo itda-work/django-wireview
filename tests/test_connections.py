@@ -257,6 +257,45 @@ class CnLateRoom(InlineTemplate, PresenceMixin, Component):
         await self.presence_join()
 
 
+class CnProducerBase(PresenceMixin, Component):
+    """A reusable producer base: presence only, no subscriptions of its own."""
+
+    name: str = ""
+
+    _presence_topic = CnTyping._presence_topic
+    _presence_user_id = CnTyping._presence_user_id
+    _presence_username = CnTyping._presence_username
+    joined = CnTyping.joined
+    leaving = CnTyping.leaving
+
+
+class CnRoomBase(Component):
+    """An app base that hears its room, cooperatively."""
+
+    last: str = ""
+
+    def get_subscriptions(self) -> set[str]:
+        return super().get_subscriptions() | {"cn-chat"}
+
+    async def notification(self, channel: str, **kwargs):
+        if channel == "cn-chat":
+            self.last = kwargs.get("message", "")
+        await super().notification(channel, **kwargs)
+
+
+class CnDiamond(InlineTemplate, CnProducerBase, CnRoomBase):
+    """The two combined: the MRO puts CnRoomBase's methods before Component's."""
+
+    source: t.ClassVar[str] = '<div {% tag_header %}>{{ "last-"|add:this.last }}</div>'
+
+
+class CnHideable(CnTyping):
+    """A second producer of a page that can go quiet, as a widget hidden by the page."""
+
+    async def hide(self):
+        await self.presence_leave()
+
+
 @pytest.fixture(autouse=True)
 def _calls():
     CALLS.clear()
@@ -623,6 +662,97 @@ async def test_a_producer_whose_topic_joined_decides_joins_and_answers():
         await render_containing(bob, "ann-online")
     finally:
         for communicator in (ann, *([bob] if bob else [])):
+            await communicator.disconnect()
+
+
+async def test_a_producer_renders_nothing_for_what_only_the_framework_hears():
+    """Joins, leaves and syncs on the channel the framework listens on reach no app code and no render (#202)."""
+    ann = await connect(CnTyping, "a-typing", name="ann")
+    bob = carol = None
+    try:
+        await drain(ann)
+        bob = await connect(CnTyping, "b-typing", name="bob")
+        carol = await connect(CnOnline, "c-list", name="carol")
+        await render_containing(carol, "ann-online")
+        await event(bob, "b-typing", "typing")
+        await bob.disconnect()
+        bob = None
+        assert [m["command"] for m in await drain(ann)] == []
+    finally:
+        for communicator in (ann, *(c for c in (bob, carol) if c)):
+            await communicator.disconnect()
+
+
+async def test_a_producer_mixed_with_an_app_base_keeps_the_app_bases_room():
+    """The mixin does not touch get_subscriptions() or notification(): the app base's are the class's (#202)."""
+    ann = await connect(CnDiamond, "a-diamond", name="ann")
+    bob = None
+    try:
+        await sync_to_async(broadcast)("cn-chat", message="hello")
+        await render_containing(ann, "last-hello")
+        bob = await connect(CnOnline, "b-list", name="bob")
+        await render_containing(bob, "ann-online")
+    finally:
+        for communicator in (ann, *([bob] if bob else [])):
+            await communicator.disconnect()
+
+
+async def test_a_receiver_patched_onto_the_class_does_not_hear_the_frameworks_channel(monkeypatch):
+    """What the framework hears is the session's to route, whatever the class's methods are (#202)."""
+
+    async def notification(self, channel: str, **kwargs):
+        self.last = kwargs["message"]  # the README's shape
+
+    monkeypatch.setattr(CnChat, "notification", notification)
+    ann = await connect(CnChat, "a-chat", name="ann")
+    bob = None
+    try:
+        bob = await connect(CnChat, "b-chat", name="bob")
+        assert [m["command"] for m in await drain(ann)].count("error") == 0
+        await sync_to_async(broadcast)("cn-chat", message="hello")
+        await render_containing(ann, "hello")
+    finally:
+        for communicator in (ann, *([bob] if bob else [])):
+            await communicator.disconnect()
+
+
+async def test_a_producer_whose_subscriptions_are_patched_still_answers(monkeypatch):
+    monkeypatch.setattr(CnChat, "get_subscriptions", lambda self: {"cn-chat"})
+    ann = await connect(CnChat, "a-chat", name="ann")
+    bob = None
+    try:
+        bob = await connect(CnOnline, "b-list", name="bob")
+        await render_containing(bob, "ann-online")
+    finally:
+        for communicator in (ann, *([bob] if bob else [])):
+            await communicator.disconnect()
+
+
+async def test_two_producers_of_one_tab_one_leaves_the_user_stays():
+    """A meta per producer, as Phoenix keeps one per track: a page hiding one of two keeps its user (E1, #202)."""
+    ann = await open_socket("e" * 20)
+    bob = carol = None
+    try:
+        await join(ann, CnTyping, "a-input", name="ann")
+        await render_containing(ann, "a-input")
+        await join(ann, CnHideable, "a-widget", name="ann")
+        await render_containing(ann, "a-widget")
+        bob = await connect(CnOnline, "b-list", name="bob")
+        await render_containing(bob, "online-2")
+
+        await event(ann, "a-widget", "hide")
+        assert not [m for m in await drain(bob) if "online-1" in json.dumps(m)]
+        # And one who comes later sees the same list: carol and ann
+        carol = await connect(CnOnline, "c-list", name="carol")
+        assert "ann-online" in await render_containing(carol, "online-2")
+
+        # The page goes: its other producer's leave takes the user off
+        await ann.disconnect()
+        ann = None
+        await render_containing(bob, "online-1")
+        await render_containing(carol, "online-1")
+    finally:
+        for communicator in (c for c in (ann, bob, carol) if c):
             await communicator.disconnect()
 
 

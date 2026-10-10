@@ -121,8 +121,8 @@ wireview/
 │                          로더만). 프로세스마다 덧붙이기만 하는 세그먼트 파일이고, 끝까지 쓰지 못한 줄은 되돌리고 끈다. DEBUG가 아니거나
 │                          WIREVIEW_RENDER_QUERIES_DIR=off(루트 conftest.py가 둔다)이거나 wireview.testing을 import했으면 쓰지 않는다.
 │                          형식의 정본은 docs/features/render-queries.md "편집기로 보내기", 계약은 tests/test_render_queries_file.py
-├── features/              streams.py, presence.py (PresenceMixin. 채널 → 사용자 → 탭마다 meta, 목록은 사용자 단위로 합친다. sync에는 프로듀서가 답한다(#202).
-                           그 답을 위해 입장해 있는 동안 get_subscriptions·notification을 바깥에서 감싸 채널을 더하고, 더한 채널의 메시지는 앱의 notification()에 넘기지 않는다), uploads.py (UploadRegistry·토큰 v2),
+├── features/              streams.py, presence.py (PresenceMixin. 채널 → 사용자 → 프로듀서(탭 + 컴포넌트 id)마다 meta, 트래커의 자기 항목은 탭 키, 목록은 사용자 단위로 합친다. sync에는 프로듀서가 답한다(#202).
+                           그 답을 위해 세션이 입장한 프로듀서의 presence 채널(presence_channels)을 따로 듣고 hear()에 넘긴다. 그 채널의 메시지는 앱의 notification()에 넘기지 않는다 — 앱이 직접 구독한 채널이면 평소대로), uploads.py (UploadRegistry·토큰 v2),
 │                          hooks.py (앱의 static/<app_label>/hooks/*.js 수집. 페이지가 아니라 프로젝트 단위. 템플릿 디렉터리는 TEMPLATES가 아니라 엔진의 로더에게 묻는다),
 │                          upload_store.py (청크 경로 계산·append·취소 마커·sweep. 워커들이 공유하는 유일한 상태),
 │                          toasts.py (toast()·atoast()와 그것을 받는 컴포넌트. {% wireview_toasts %}가 심는다, #116)

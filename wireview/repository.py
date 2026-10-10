@@ -17,6 +17,7 @@ from .core.component import Component, MessagePayload
 from .core.session import SessionView
 from .core.state import StateMismatch, state_of
 from .debug import render_queries
+from .features.presence import presence_channels
 from .live_component import LiveComponent
 from .utils import filter_parameters
 
@@ -813,14 +814,15 @@ class ComponentRepository:
         return handlers.is_user_defined_method(component, command)
 
     def components_subscribed_to(self, channel):
+        # A joined presence producer hears its channel too, for the framework (#202)
         for component in self.reachable_components():
-            if channel in component.get_subscriptions():
+            if channel in component.get_subscriptions() or channel in presence_channels(component):
                 yield component
 
     @property
     def subscriptions(self):
         return reduce(
             lambda a, b: a.union(b),
-            (component.get_subscriptions() for component in self.reachable_components()),
+            (component.get_subscriptions() | presence_channels(component) for component in self.reachable_components()),
             set(),
         )

@@ -36,7 +36,7 @@ from .core.session import SessionView
 from .core.state import StateMismatch, StatePayload, unsign_envelope
 from .core.transport import PATCH_TOPIC_MAX, Outbound, get_broker, get_patch_hub
 from .debug import render_queries
-from .features import upload_store
+from .features import presence, upload_store
 from .features.uploads import upload_group_name
 from .live_component import LiveComponent, run_updates
 from .repository import ComponentRepository, InvalidEvent
@@ -1585,6 +1585,10 @@ class WireviewSession:
                 continue
             kwargs = arguments()
             try:
+                if receiver == "notification":
+                    await presence.hear(component, channel, kwargs)
+                if channel not in component.get_subscriptions():
+                    continue  # only the framework listens here (#202): no app code, no render
                 with render_queries.scope("handler", component, f"{receiver}({channel!r})"):
                     await getattr(component, receiver)(channel, **kwargs)
                 # The sessions of this process handling the same message render a
@@ -1819,7 +1823,8 @@ class WireviewSession:
         book: dict[tuple[str, str], list[Component]] = {}
         for component in self.repo.reachable_components():
             topics = component.get_subscriptions()
-            subscriptions |= topics
+            # The patches' book and gate are the app's topics; a presence channel is not one
+            subscriptions |= topics | presence.presence_channels(component)
             for topic in topics:
                 book.setdefault((type(component)._fqn, topic), []).append(component)
             if topics:

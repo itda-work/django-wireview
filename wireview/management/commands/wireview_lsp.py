@@ -401,13 +401,6 @@ def framework_owner(cls: type, name: str) -> tuple[str, t.Any] | None:
     if is_framework_class(owner):
         return f"{owner.__module__}.{owner.__qualname__}", getattr(owner, name)
     value = vars(owner)[name]
-    if getattr(value, "_presence_wrapped", False):
-        # PresenceMixin wraps, on the class, what the class resolves the name to
-        # (#202): the component has whatever that is, a framework's or its own
-        for klass in cls.__mro__[cls.__mro__.index(owner) + 1 :]:
-            if vars(klass).get(name) is value.__wrapped__:
-                return framework_owner(klass, name)
-        return None
     if name != "model_post_init" or not inspect.isfunction(value):
         return None
     func = original_function(value)
