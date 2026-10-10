@@ -116,6 +116,18 @@ def test_the_version_file_is_the_tag(site):
     assert (site.out / "wireview" / "VERSION").read_text() == f"{TAG}\n"
 
 
+def test_every_pages_header_names_the_release_and_links_its_changelog_section(site):
+    """The site serves one release; each page says which at the top, not only in the footer (#196)."""
+    changelog = (nav.ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    (heading,) = re.findall(rf"^## (\[{re.escape(TAG[1:])}\] - [0-9-]+)$", changelog, re.MULTILINE)
+    notes = f"{BLOB}/CHANGELOG.md#{nav.slug(heading)}"
+    assert notes.endswith(f"#{TAG[1:].replace('.', '')}---{heading.rsplit(' ', 1)[1]}")
+    for page in nav.pages():
+        header = _html(site.out, page.url).split('<header class="site-header">', 1)[1].split("</header>", 1)[0]
+        (badge,) = re.findall(r'<a class="brand__version"\s+href="([^"]+)"[^>]*>([^<]+)</a>', header)
+        assert badge == (notes, TAG), page.url
+
+
 def test_assets_are_named_by_their_content(site):
     assets = sorted((site.out / "wireview" / "assets").iterdir())
     named = [path for path in assets if not path.name.endswith(".gz")]
@@ -670,6 +682,7 @@ def tree(tmp_path):
     root = tmp_path / "repo"
     (root / "docs").mkdir(parents=True)
     (root / "pyproject.toml").write_text('[project]\nname = "x"\nversion = "1.0.0"\n')
+    (root / "CHANGELOG.md").write_text("# Changelog\n\n## [Unreleased]\n\n## [1.0.0] - 2026-01-02\n\n- First.\n")
     (root / "README.md").write_text("# 소개\n\n[가이드](docs/guide.md#설치)를 보세요.\n")
     (root / "docs" / "guide.md").write_text(
         "# 가이드\n\n설치를 안내한다.\n\n## 설치\n\n[다음](next.md) · [메모](notes.md)\n"
@@ -749,6 +762,14 @@ def test_a_small_tree_builds_clean(tree):
     assert "시작하기 튜토리얼은 이 문서다: https://itda.work/wireview/tutorial/start/index.md\n" in _llms_of(out)
     existing = "https://itda.work/wireview/tutorial/start/#3-이미-있는-프로젝트에-붙이기"
     assert f"이 절을 먼저 적용한다: {existing}\n" in _llms_of(out)
+
+
+def test_a_release_without_its_changelog_section_fails_the_build(tree):
+    """The header's version links to the release's section of CHANGELOG.md (#196)."""
+    (tree / "CHANGELOG.md").write_text("# Changelog\n\n## [Unreleased]\n\n## [0.9.0] - 2025-12-01\n")
+    assert _problems(_build(tree)) == [
+        'CHANGELOG.md: no "## [1.0.0]" section: the version in every page\'s header links there'
+    ]
 
 
 def test_a_first_tutorial_without_the_existing_project_section_fails_the_build(tree):

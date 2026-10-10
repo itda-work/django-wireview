@@ -158,6 +158,46 @@ svg {
   transition: color 0.15s;
 }
 
+/* The release the documents describe: the site serves one, the latest (#196) */
+.brand__version {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--muted);
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 9999px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.brand__version:hover {
+  color: var(--link);
+  border-color: var(--link);
+}
+
+/* A phone keeps the name and the version whole: "django-wireview v1.5.0" */
+@media (max-width: 30rem) {
+  .site-header__inner {
+    padding-inline: 0.75rem;
+  }
+
+  .brand {
+    gap: 0.25rem;
+  }
+
+  .brand__suffix {
+    display: none;
+  }
+
+  .brand__version {
+    font-size: 0.6875rem;
+    padding: 0.25rem 0.375rem;
+  }
+}
+
 .site-header__actions {
   display: flex;
   align-items: center;

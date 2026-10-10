@@ -485,6 +485,15 @@ def check_urls(root: Path, served: set[str], redirected: set[str], update: bool)
 # --- the build ------------------------------------------------------------------------------------
 
 
+def _release_notes(root: Path, version: str) -> str | None:
+    """The anchor of CHANGELOG.md's ``## [<version>]`` section, which the header's version links to."""
+    changelog = root / "CHANGELOG.md"
+    if not changelog.is_file():
+        return None
+    found = re.search(rf"^## (\[{re.escape(version)}\].*)$", changelog.read_text(encoding="utf-8"), re.MULTILINE)
+    return nav.slug(found.group(1)) if found else None
+
+
 def build(
     out: Path = DEFAULT_OUT,
     root: Path = nav.ROOT,
@@ -521,6 +530,13 @@ def build(
     page_template = Template((TEMPLATES / "page.html").read_text(encoding="utf-8"))
     redirect_template = Template((TEMPLATES / "redirect.html").read_text(encoding="utf-8"))
     robots, band = _preview(version, preview)
+    changelog = nav.pin(f"{nav.REPOSITORY}/blob/main/CHANGELOG.md", tag)
+    section = _release_notes(root, version)
+    if section is None:
+        result.problems.append(
+            Problem("CHANGELOG.md", f'no "## [{version}]" section: the version in every page\'s header links there')
+        )
+    release_notes = f"{changelog}#{section}" if section else changelog
     where: dict[str, tuple[str, list[tuple[int, str]]]] = {}
     pages = site.pages()
     described: dict[str, str] = {}
@@ -546,7 +562,8 @@ def build(
             site_js=assets["site.js"],
             home_url=_e(base),
             repository=nav.REPOSITORY,
-            changelog=_e(nav.pin(f"{nav.REPOSITORY}/blob/main/CHANGELOG.md", tag)),
+            changelog=_e(changelog),
+            release_notes=_e(release_notes),
             preview=band,
             layout_class="layout" if toc else "layout layout--no-toc",
             sidebar=_sidebar(site, page),

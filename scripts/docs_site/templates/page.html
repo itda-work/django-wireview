@@ -32,7 +32,10 @@
         <div class="brand">
           <a class="brand__home" href="https://itda.work/">스킬.잇다</a>
           <span class="brand__sep" aria-hidden="true">/</span>
-          <a class="brand__docs" href="${home_url}">django-wireview 문서</a>
+          <a class="brand__docs" href="${home_url}">django-wireview <span class="brand__suffix">문서</span></a>
+          <a class="brand__version"
+             href="${release_notes}"
+             title="이 문서가 설명하는 릴리스: ${tag}의 변경 이력">${tag}</a>
         </div>
         <div class="site-header__actions">
           <a class="header-link header-link--wide" href="${repository}">GitHub</a>

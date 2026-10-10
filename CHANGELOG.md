@@ -12,6 +12,13 @@ The django-reactor era changelog (2.x) is preserved in
 
 ## [Unreleased]
 
+### Added
+
+- Every page of the documentation site names the release it describes at the top, next to the title: a
+  `v1.5.0` badge that links to that release's section of CHANGELOG.md at its tag (#196). The site serves
+  the latest release only, and the version was in the footer alone. The build fails when CHANGELOG.md has
+  no section for the version. On a phone the title drops "문서" so the name and the version stay whole.
+
 ## [1.5.0] - 2026-10-10
 
 ### Added
