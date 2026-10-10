@@ -1,4 +1,5 @@
 import builtins
+import contextvars
 import json
 import logging
 import time
@@ -66,6 +67,29 @@ class Tombstone:
 
     instances: list[Component]
     at: float
+
+
+@dataclass
+class TreeUndo:
+    """What one render tree retired that the page still shows if a render in it raises (``begin_tree``).
+
+    A render goes out whole -- the component's and its LiveComponents', in
+    one frame -- or not at all, and each level settles its children before
+    the next renders. So what a level retired is known before a render below
+    it can raise, and none of it reached the page then.
+    """
+
+    # The tombstones the tree's renders made, by key
+    tombstones: dict[str, Tombstone] = field(default_factory=dict)
+    # The LiveComponents a parent stopped naming, with what went with them:
+    # their leaving() waits for the tree's end
+    settled: list[Component] = field(default_factory=list)
+    # Who drew what as the tree began: what the retirements took from there goes back
+    built_by: dict[str, str] = field(default_factory=dict)
+
+
+# The render tree under way in this task (``ComponentRepository.begin_tree``)
+_TREE: contextvars.ContextVar[TreeUndo | None] = contextvars.ContextVar("wireview_render_tree", default=None)
 
 
 @dataclass
@@ -167,6 +191,8 @@ class ComponentRepository:
         # Retired nested components the page may still send events for, by the
         # id of the one their element is (``Tombstone``)
         self._tombstones: dict[str, Tombstone] = {}
+        # For each instance a tombstone keeps, the id the tombstone is under
+        self._entombed: dict[str, str] = {}
         # What a tombstone's age is read on; tests move it
         self.clock: t.Callable[[], float] = time.monotonic
         # Child ids each parent named in its current template pass
@@ -494,42 +520,89 @@ class ComponentRepository:
         tombstone: Tombstone | None = None
         for component in removed:
             if not isinstance(component, LiveComponent):
-                tombstone = Tombstone([component], self.clock()) if component.wire.has_joined else None
+                tombstone = Tombstone([], self.clock()) if component.wire.has_joined else None
                 if tombstone is not None:
                     self._tombstones[component.id] = tombstone
-            elif tombstone is not None:
+                    if (tree := _TREE.get()) is not None:
+                        tree.tombstones[component.id] = tombstone
+            if tombstone is not None:
                 tombstone.instances.append(component)
+                self._entombed[component.id] = tombstone.instances[0].id
             (leaving if tombstone is None else entombed).append(component)
         return entombed, leaving
 
     def buried(self, id: str) -> Component | None:
         """The instance under ``id`` a tombstone keeps for the page's events, or ``None`` (``Tombstone``)."""
-        for tombstone in self._tombstones.values():
-            for component in tombstone.instances:
-                if component.id == id:
-                    return component
-        return None
+        if (key := self._entombed.get(id)) is None:
+            return None
+        return next(component for component in self._tombstones[key].instances if component.id == id)
 
     def bury(self, id: str) -> list[Component]:
         """Bury the tombstone that keeps an instance under ``id``. Returns its instances, which owe ``leaving()``."""
-        for key, tombstone in self._tombstones.items():
-            if any(component.id == id for component in tombstone.instances):
-                del self._tombstones[key]
-                return tombstone.instances
-        return []
+        if (key := self._entombed.get(id)) is None:
+            return []
+        return self._unmark(key)
 
     def bury_all(self) -> list[Component]:
         """Bury every tombstone: the connection ends. Returns their instances."""
-        tombstones, self._tombstones = self._tombstones, {}
-        return [component for tombstone in tombstones.values() for component in tombstone.instances]
+        return [component for key in list(self._tombstones) for component in self._unmark(key)]
 
     def _bury_expired(self) -> None:
         """Bury the tombstones older than ``TOMBSTONE_SECONDS``: their ``leaving()`` goes into the batch at hand."""
         now = self.clock()
         for key, tombstone in list(self._tombstones.items()):
             if now - tombstone.at >= TOMBSTONE_SECONDS:
-                del self._tombstones[key]
-                self._pending_leaving.extend(tombstone.instances)
+                self._pending_leaving.extend(self._unmark(key))
+
+    def _unmark(self, key: str) -> list[Component]:
+        """Take the tombstone under ``key`` away. Returns its instances."""
+        tombstone = self._tombstones.pop(key)
+        for component in tombstone.instances:
+            del self._entombed[component.id]
+        return tombstone.instances
+
+    def begin_tree(self) -> contextvars.Token:
+        """A render tree begins in this task: until it ends, what it retires can go back (``tree_failed``).
+
+        ``WireviewSession`` renders a component and the LiveComponents it
+        settles as one tree. The render of a child can raise after its parent's
+        level retired what the parent's pass stopped drawing; then nothing of
+        the tree reached the page, which still shows all of it. Pass the token
+        to ``end_tree`` or ``tree_failed``.
+        """
+        return _TREE.set(TreeUndo(built_by=dict(self._built_by)))
+
+    def end_tree(self, token: contextvars.Token) -> list[Component]:
+        """The tree's renders reached the page. Returns the LiveComponents it settled away: they owe ``leaving()``."""
+        tree = _TREE.get()
+        _TREE.reset(token)
+        return [] if tree is None else tree.settled
+
+    def tree_failed(self, token: contextvars.Token) -> None:
+        """A render in the tree raised: what its renders retired is still on the page, and comes back.
+
+        Its tombstones' instances go back where they were, and so do the
+        LiveComponents its levels settled away, whose ``leaving()`` had waited
+        for this. Left retired, the join after the crash built new instances
+        under those ids that the page's elements, kept by its morph, never
+        join: never ``joined()``, and the page's own ones got ``leaving()``.
+        """
+        tree = _TREE.get()
+        _TREE.reset(token)
+        if tree is None:
+            return
+        back: list[Component] = list(tree.settled)
+        for key, tombstone in tree.tombstones.items():
+            if self._tombstones.get(key) is tombstone:
+                back += self._unmark(key)
+        for component in back:
+            if component.id not in self.components:
+                self.components[component.id] = component
+        for child_id, drawer_id in tree.built_by.items():
+            if child_id in self._built_by or child_id not in self.components or drawer_id not in self.components:
+                continue
+            self._built_by[child_id] = drawer_id
+            self._drew.setdefault(drawer_id, set()).add(child_id)
 
     def _retire_drawn(self, id: str) -> list[Component]:
         """Remove the nested component ``id`` no pass draws any more, with what its own passes drew.
@@ -657,7 +730,11 @@ class ComponentRepository:
                 # What the LiveComponent drew is kept for the page's events, as when its drawer stops drawing it
                 entombed, leaving = self._entomb(self._remove_with_drawn(child.id))
                 batch.entombed += entombed
-                batch.retired += leaving
+                # Its leaving() waits for the tree to reach the page (``tree_failed``)
+                if (tree := _TREE.get()) is not None:
+                    tree.settled += leaving
+                else:
+                    batch.retired += leaving
 
         for inner_id in self._inline.pop(parent_id, []):
             if (inner_rendered := self._inline_rendered.pop(inner_id, None)) is not None:

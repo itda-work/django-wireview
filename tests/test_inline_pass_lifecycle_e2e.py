@@ -19,6 +19,8 @@ from playwright.sync_api import expect
 from testproj.e2e_browser import expect_count, expect_text, open_live
 from testproj.e2e_server import serve
 
+from wireview import repository
+
 pytestmark = pytest.mark.e2e
 
 
@@ -141,7 +143,9 @@ def _until(check, what) -> None:
 
 
 @pytest.mark.parametrize("leaves", ["sent", "lost"])
-def test_a_component_drawn_without_an_id_leaves_with_the_render_that_draws_another(page, server, heard, leaves):
+def test_a_component_drawn_without_an_id_leaves_with_the_render_that_draws_another(
+    page, server, heard, leaves, monkeypatch
+):
     # Each render of the root draws a new NestAnon under a new rx-<uuid>. The
     # one it replaced retires with that render, and is kept only for the events
     # the page sent before it saw the render (a tombstone, #204): its leaving()
@@ -150,6 +154,9 @@ def test_a_component_drawn_without_an_id_leaves_with_the_render_that_draws_anoth
     # ones it never came for stayed live for the connection's life.
     if leaves == "lost":
         page.add_init_script(DROP_LEAVES)
+        # Nothing here is about that cap, which tests/test_nested_retirement.py moves a clock for: a
+        # slow run reaching its third write ten seconds after the first one retired would bury it
+        monkeypatch.setattr(repository, "TOMBSTONE_SECONDS", 3600.0)
     open_live(page, f"{server}/nestprobe/?anon=1")
     page.get_by_test_id("anon-poke").click()
     expect_text(page.get_by_test_id("anon-note"), "poked")

@@ -29,13 +29,13 @@ The django-reactor era changelog (2.x) is preserved in
 - A nested `{% component %}` its drawer's render no longer draws retires with that render (#204): no
   broadcast, `Broadcast` patch, task result or deferred call reaches it, and its topics go. The events
   the page sent before it saw that render still run its handlers -- a click on a row of a list a
-  broadcast just drew anew -- and its `leaving()` runs, its tasks are cancelled, when the page's leave
-  says no more will come: or at the end of the first render ten seconds later for a page that never
+  broadcast just drew anew, and what a LiveComponent's handler there sends its parent -- and its `leaving()` runs, its tasks are cancelled, when the page's leave
+  says no more will come: or at the end of the first render that ends ten seconds after, for a page that never
   leaves it (`wire-update="ignore"`), or with the connection. One drawn without an id is a new
   instance under a new `rx-<uuid>` in every pass of its drawer, and the one before stayed until the
   page's leave came -- for the connection's lifetime where none came -- hearing broadcasts and
   running its tasks, one more for each render. What it drew in its own passes goes with it. A render
-  that raised retires nothing: it never reached the page. A component drawn with an id that an
+  that raised retires nothing, the render of a LiveComponent in it included: it never reached the page. A component drawn with an id that an
   `{% if %}` hides retires the same way, so shown again it starts anew whatever order the page's leave
   and the next render come in; before, it came back with its old state when the leave came last. One
   that a part kept for a reset temporary assign still shows stays -- in a render of its drawer's own,

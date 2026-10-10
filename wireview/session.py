@@ -980,18 +980,29 @@ class WireviewSession:
         Phoenix does the same for a component the client has yet to confirm
         destroyed, and its client drops the diff for an element no longer there.
         """
+        await self._run_on_tombstone(component, command, [], kwargs)
+        await self._answer_gone(component.id, answer)
+        await self.after_mutation_chores()
+
+    async def _run_on_tombstone(
+        self, component: Component, command: str, args: list[t.Any], kwargs: dict[str, t.Any]
+    ) -> None:
+        """Run the handler ``command`` of ``component``, which a ``Tombstone`` keeps. Nothing of it is rendered.
+
+        Both ways in are what began before the page saw the render that
+        retired it: the page's event, and the ``send_to_parent`` of a
+        LiveComponent kept with it, which that event ran.
+        """
         try:
-            await self.repo.dispatch_event(component.id, command, [], kwargs, component=component)
+            await self.repo.dispatch_event(component.id, command, args, kwargs, component=component)
         except InvalidEvent as e:
-            log.warning("Ignoring user_event for %s: %s", component.id, e)
+            log.warning("Ignoring event for %s: %s", component.id, e)
         except Exception:
             # Nothing to join again: the page has the element or will let it go
             log.exception("%s (%s), retired, raised handling %s", component._name, component.id, command)
             removed = self.repo.bury(component.id)
             await self._call_leaving(removed)
             self._release_uploads(removed)
-        await self._answer_gone(component.id, answer)
-        await self.after_mutation_chores()
 
     async def _answer_gone(self, id: str, answer: int | None) -> None:
         """Answer an event for an id this connection holds no instance under. No handler runs.
@@ -1239,6 +1250,12 @@ class WireviewSession:
     async def component_dispatch_event(self, id, command, args, kwargs):
         log.debug(f"<<< EVENT {id} {command} {args} {kwargs}")
         target = self.repo.get(id)
+        if target is None and (buried := self.repo.buried(id)) is not None:
+            # A LiveComponent a tombstone keeps sent it to its parent, kept with
+            # it: the handler runs there, as an event of the page's does (#204)
+            await self._run_on_tombstone(buried, command, args, kwargs)
+            await self.after_mutation_chores()
+            return
         try:
             component = await self.repo.dispatch_event(id, command, args, kwargs)
             if component is not None:
@@ -1747,14 +1764,32 @@ class WireviewSession:
                 instances[component.id] = component.wire.instance
         return instances
 
-    async def _render_tree(
-        self, component: Component, depth: int = 0
-    ) -> tuple[t.Any, dict[str, t.Any], list[LiveComponent]]:
-        """Render one component and settle the children its template named.
+    async def _render_tree(self, component: Component) -> tuple[t.Any, dict[str, t.Any], list[LiveComponent]]:
+        """Render ``component`` and the LiveComponents it settles: one frame, reaching the page whole or not at all.
 
         Returns the component's diff, a flat ``{id: diff}`` of every descendant
         rendered along the way, and those descendants in render order.
+
+        A render below the top can raise after a level above it retired what
+        its pass stopped drawing. The page never saw that: it still shows all
+        of it, so it comes back (``repo.tree_failed``, #204).
         """
+        token = self.repo.begin_tree()
+        try:
+            rendered = await self._render_level(component, 0)
+        except BaseException:
+            self.repo.tree_failed(token)
+            raise
+        if settled := self.repo.end_tree(token):
+            self._retired_in_render = True
+            await self._call_leaving(settled)
+            self._release_uploads(settled)
+        return rendered
+
+    async def _render_level(
+        self, component: Component, depth: int
+    ) -> tuple[t.Any, dict[str, t.Any], list[LiveComponent]]:
+        """Render one component of a tree (``_render_tree``) and settle the children its template named."""
         repo = self.repo
         repo.begin_render(component.id)
         before = component.wire._last_rendered
@@ -1841,7 +1876,7 @@ class WireviewSession:
         for child in batch.to_render:
             if child.id in halted:
                 continue
-            child_diff, grandchildren, descendants = await self._render_tree(child, depth + 1)
+            child_diff, grandchildren, descendants = await self._render_level(child, depth + 1)
             children[child.id] = child_diff
             children.update(grandchildren)
             settled.append(child)

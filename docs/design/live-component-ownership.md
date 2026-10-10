@@ -245,11 +245,22 @@ R의 `render`의 `children`에 실린다. 그러지 않던 때는 N 자신의 re
   보존해 join하지 않으므로 `joined()` 없는 인스턴스가 그 요소의 이벤트를 받았다. render는 한 연결 안에서 하나씩
   돌므로(컨슈머가 메시지를 차례로 처리하고 템플릿 패스는 한 스레드다) 마지막 `take_lifecycle` 뒤에 적힌 후보는
   지금 render의 것이다.
+- **되돌리는 단위는 render 트리 하나다**(`begin_tree`·`tree_failed`, #204 3라운드). 한 render는 컴포넌트와 그것이
+  정산하는 LiveComponent들의 render를 한 프레임으로 보낸다. 각 단계는 아래 단계를 그리기 전에 자식을 정산하므로,
+  부모 단계의 `take_lifecycle`이 은퇴를 확정하고 묘비를 만든 **뒤에** 자식 LiveComponent의 render가 던질 수 있다.
+  그 render도 페이지에 닿지 않았다. 그래서 가장 바깥 `_render_tree`가 트리를 열고(`ContextVar` — 다른 태스크의
+  render와 섞이지 않는다), 트리 어디서든 던지면 그 트리가 만든 묘비와 `_settle`이 뺀 LiveComponent를 저장소로,
+  `_built_by`·`_drew`를 트리가 시작할 때로 되돌린다. 그래서 `_settle`이 뺀 LiveComponent의 `leaving()`은 트리가
+  끝날 때(`end_tree`) 돈다 — 같은 render의 새 자식 `joined()`보다 뒤지만, 같은 id의 둘이 한 패스에서 빠지고
+  생기는 일은 없다. 이 레벨만 감쌀 때는 루트가 숨긴 id 있는 컴포넌트가 묘비로 남아, 크래시 뒤 다시 join의 패스가
+  그 id로 새 인스턴스를 만들었다(위와 같은 `joined()` 없는 인스턴스). 크래시 복구가 루트와 그 LiveComponent를
+  모두 은퇴시키므로 되돌린 LiveComponent는 그때 `leaving()`을 한 번 받는다.
 - **페이지가 join한 것은 묘비로 남는다**(`Tombstone`, #204 2라운드). 은퇴는 서버가 render를 끝낸 순간이고, 페이지는
   그 render를 한 왕복 뒤에 본다. 그 사이 페이지가 옛 요소에서 보낸 이벤트 — 채팅처럼 브로드캐스트마다 루트가 다시
   그리는 목록에서 id 없는 행의 "삭제" 클릭, `{% if %}`로 숨겨지는 render와 겹친 클릭 — 는 인스턴스 없는 id로 왔고
   핸들러 없이 버려졌다. 그래서 은퇴한 인스턴스 가운데 페이지가 join한 것(소유한 LiveComponent와 함께)은 저장소에서
-  빠지되 묘비로 남아 **그 id의 `user_event`만** 받는다. 핸들러가 돌고, 컴포넌트 밖으로 가는 것(DB 쓰기·브로드캐스트·
+  빠지되 묘비로 남아 **그 id의 `user_event`만** 받는다 — 그리고 그 핸들러가 부른 묘비 안 LiveComponent의
+  `send_to_parent`(함께 묘비에 있는 부모에 간다, 3라운드). 핸들러가 돌고, 컴포넌트 밖으로 가는 것(DB 쓰기·브로드캐스트·
   `push_event`·이동)은 나간다. 그 render는 보내지 않는다 — 페이지는 그 요소를 놓았거나 곧 놓고, `wire-update="ignore"`
   안에 남은 요소라면 다른 무엇도 닿지 않는 인스턴스를 살아 있는 것처럼 보이게 한다. 답은 `gone`이다(아래). 핸들러가
   던지면 로그를 남기고 묻는다(다시 join할 것이 없다). join하지 않은 것(페이지가 아직 받지 못한 것)은 페이지가 보낸 것이

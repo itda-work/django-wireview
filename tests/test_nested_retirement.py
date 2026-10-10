@@ -355,9 +355,9 @@ async def _join_drawn(consumer: WireviewConsumer) -> None:
         await _join(consumer, drawn[0])
 
 
-async def _page(root: type[Component], **fields: t.Any) -> WireviewConsumer:
+async def _page(root: type[Component], *, channel_name: str | None = None, **fields: t.Any) -> WireviewConsumer:
     consumer = WireviewConsumer()
-    consumer.repo = ComponentRepository(is_live=True, user=AnonymousUser(), vsn=JOINED_SINCE)
+    consumer.repo = ComponentRepository(is_live=True, user=AnonymousUser(), vsn=JOINED_SINCE, channel_name=channel_name)
     consumer.subscriptions = set()
     consumer.query_string = ""
     consumer.channel_name = "test-channel"
@@ -710,7 +710,7 @@ async def test_an_event_for_a_retired_leaf_the_page_kept_is_answered(vsn):
     assert joined is not None and joined is not leaf
     await consumer.command_user_event(leaf.id, "poke", {}, {}, ref=8)
     assert _ids("poked") == [leaf.id]
-    assert consumer.repo._tombstones == {}
+    assert consumer.repo._tombstones == {} and consumer.repo._entombed == {}
 
 
 async def test_an_event_the_page_sent_before_the_drawer_s_render_runs_its_handler():
@@ -750,7 +750,7 @@ async def test_a_retired_leaf_whose_handler_raises_is_buried_without_a_rejoin():
     # No error: there is nothing to join again
     assert SENT == [("gone", {"id": old.id, "ref": 4})]
     assert _ids("leaving") == [old.id]
-    assert consumer.repo._tombstones == {}
+    assert consumer.repo._tombstones == {} and consumer.repo._entombed == {}
     assert len(_leaves(consumer)) == 1
 
 
@@ -779,7 +779,7 @@ async def test_a_retired_leaf_the_page_never_leaves_is_buried_by_a_later_render(
     # The last one the page has yet to join: no leaving() for it
     await consumer.stop()
     assert len(_ids("leaving")) == 3
-    assert consumer.repo._tombstones == {}
+    assert consumer.repo._tombstones == {} and consumer.repo._entombed == {}
 
 
 async def test_an_id_drawn_again_buries_the_retired_one_under_it():
@@ -880,3 +880,156 @@ async def test_a_message_naming_a_component_by_what_is_not_a_string_is_dropped(p
 
     assert SENT == []
     assert "not a string" in caplog.text
+
+
+class RetireLiveFuse(LiveComponent):
+    armed: bool = False
+
+    @property
+    def fuse(self) -> str:
+        if self.armed:
+            raise RuntimeError("boom")
+        return ""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<s {% live_tag_header %}>{{ this.fuse }}</s>")
+
+
+class RetireNamedLive(LiveComponent):
+    """A LiveComponent that draws a leaf with an id."""
+
+    async def joined(self):
+        HEARD.append(("joined", self.id))
+
+    async def leaving(self):
+        HEARD.append(("leaving", self.id))
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<u {% live_tag_header %}>{% component 'RetireLeaf' id='live-leaf' %}</u>")
+
+
+class RetireChildBoomRoot(Component):
+    """Hides a leaf and a LiveComponent, then arms a LiveComponent whose render raises: all in one render."""
+
+    shown: bool = True
+    boom: bool = False
+
+    async def explode(self):
+        self.shown = False
+        self.boom = True
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% if this.shown %}{% component 'RetireLeaf' id='named-leaf' %}"
+            "{% live_component 'RetireNamedLive' id='live' %}{% endif %}"
+            "{% live_component 'RetireLiveFuse' id='live-fuse' armed=this.boom %}</p>"
+        )
+
+
+async def test_a_raised_render_of_a_live_component_retires_nothing_its_tree_stopped_drawing(monkeypatch):
+    # The root's level retires the leaf and the LiveComponent its pass no
+    # longer draws, then the render of another LiveComponent of that render
+    # raises. Nothing of the render reached the page, which still shows them
+    rejoined: list[str] = []
+
+    async def join_again(self, component, ref=None):
+        rejoined.append(component.id)
+
+    consumer = await _page(RetireChildBoomRoot)
+    leaf, live_leaf, live = (consumer.repo.get(id) for id in ("named-leaf", "live-leaf", "live"))
+    assert leaf is not None and live_leaf is not None and live is not None
+    monkeypatch.setattr(WireviewConsumer, "_join_again", join_again)
+    HEARD.clear()
+
+    await consumer.command_user_event("root", "explode", {}, {})
+
+    # The recovery joins the root again, the LiveComponent's owner
+    assert rejoined == ["root"]
+    assert [consumer.repo.get(id) for id in ("named-leaf", "live-leaf", "live")] == [leaf, live_leaf, live]
+    assert consumer.repo.buried("named-leaf") is None and consumer.repo.buried("live-leaf") is None
+    assert HEARD == []
+
+
+async def test_a_leaf_a_raised_render_of_a_live_component_stopped_drawing_is_the_one_the_page_joins_again():
+    # The crash's recovery joins the root again from the state its element
+    # carries: the leaves are the instances the page has, joined, and none of
+    # them left. Retired, they came back as new instances the page's elements,
+    # kept by its morph, never joined
+    consumer = await _page(RetireChildBoomRoot)
+    leaves = {id: consumer.repo.get(id) for id in ("named-leaf", "live-leaf")}
+    states = {
+        id: [type(component).__name__, sign_state(component)]
+        for id in ("named-leaf", "live", "live-leaf", "live-fuse")
+        if (component := consumer.repo.get(id)) is not None
+    }
+    root_state = sign_state(consumer.repo.get("root"))  # type: ignore[arg-type]
+    HEARD.clear()
+
+    await consumer.command_user_event("root", "explode", {}, {})
+    assert [command for command, _ in SENT][-1] == "error"
+    await consumer.command_join("RetireChildBoomRoot", root_state, children=states)
+
+    for id, leaf in leaves.items():
+        assert consumer.repo.get(id) is leaf and leaf is not None and leaf.wire.has_joined
+    assert not set(_ids("leaving")) & set(leaves)
+    # The LiveComponent its root's recovery took leaves once, and joins anew
+    assert _ids("leaving") == ["live"] and _ids("joined") == ["live"]
+
+
+class RetireTapLive(LiveComponent):
+    async def tap(self):
+        HEARD.append(("tapped", self.id))
+        await self.send_to_parent("got", which=self.id)
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<u {% live_tag_header %}>c</u>")
+
+
+class RetireHolder(Component):
+    async def got(self, which: str):
+        HEARD.append(("got", which))
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<b {% tag_header %}>{% live_component 'RetireTapLive' id='tap-'|concat:this.id %}</b>"
+        )
+
+
+class RetireHolderRoot(RetireRoot):
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<p {% tag_header %}>{{ this.note }}{% component 'RetireHolder' %}</p>")
+
+
+async def test_a_live_component_a_tombstone_keeps_reaches_its_parent_kept_with_it(monkeypatch):
+    # The page clicked the LiveComponent of a holder its drawer's render just
+    # replaced. The click runs, and what the handler sends its parent reaches
+    # the parent, kept with it: the documented LiveComponent-to-parent way
+    mail: list[tuple[str, dict[str, t.Any]]] = []
+
+    async def send_to(self, _channel, _command, **kwargs):
+        mail.append((_command, kwargs))
+
+    monkeypatch.setattr(WireviewMeta, "send_to", send_to)
+    consumer = await _page(RetireHolderRoot, channel_name="test-channel")
+    consumer.repo.vsn = GONE_SINCE
+    (holder,) = [c for c in consumer.repo.components.values() if isinstance(c, RetireHolder)]
+    await consumer.command_user_event("root", "write", {}, {"note": "x"})
+    assert consumer.repo.buried(holder.id) is holder
+    mail.clear()
+    SENT.clear()
+
+    await consumer.command_user_event(f"tap-{holder.id}", "tap", {}, {}, ref=3)
+    while mail:
+        command, kwargs = mail.pop(0)
+        await consumer.message_from_component({"command": command, "kwargs": kwargs})
+
+    assert HEARD == [("tapped", f"tap-{holder.id}"), ("got", f"tap-{holder.id}")]
+    # Nothing of the holder is rendered: the page let it go
+    assert SENT == [("gone", {"id": f"tap-{holder.id}", "ref": 3})]
