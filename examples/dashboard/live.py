@@ -10,10 +10,32 @@ This module demonstrates wireview's advanced patterns:
 """
 
 import asyncio
+from datetime import datetime
+from uuid import UUID
+
+from django.db.models import Q
 
 from wireview import AsyncResult, Component, ModelAction
 
 from .models import Activity, Stat
+
+#: How many activities the feed opens on, and how many each "Load More" adds
+PAGE_SIZE = 10
+
+
+def _activities_before(before: tuple[datetime, UUID] | None):
+    """The activities older than ``before``, newest first: a page, and one more to tell if there are more.
+
+    ``before`` is the oldest activity the page shows, as (created_at, id). A
+    cursor, not an offset: an activity added on top in real time, or deleted,
+    moves every offset by one, and the next page repeats or skips one. Two
+    activities can share a created_at, so the id breaks the tie.
+    """
+    activities = Activity.objects.order_by("-created_at", "-id")
+    if before is not None:
+        at, pk = before
+        activities = activities.filter(Q(created_at__lt=at) | Q(created_at=at, id__lt=pk))
+    return activities[: PAGE_SIZE + 1]
 
 
 class XDashboard(Component):
@@ -137,18 +159,18 @@ class XActivityFeed(Component):
         template_name = "dashboard/activity_feed.html"
         subscriptions = {"dashboard.activity"}
 
-    # How many activities the page was sent: where the next page starts. The
+    # The oldest activity the page was sent: where the next page starts. The
     # items themselves are the page's; the server keeps none of them
-    loaded: int = 0
+    oldest_at: datetime | None = None
+    oldest_id: UUID | None = None
     is_loading: bool = False
     has_more: bool = True
 
     async def joined(self):
         """Load initial activities using Streams."""
-        activities = [a async for a in Activity.objects.all()[:10]]
-        await self.stream("activities", activities)
-        self.loaded = len(activities)
-        self.has_more = len(activities) == 10
+        latest = [a async for a in _activities_before(None)]
+        await self.stream("activities", latest[:PAGE_SIZE])
+        self._moved_to(latest)
 
     async def mutation(
         self,
@@ -170,14 +192,21 @@ class XActivityFeed(Component):
         self.is_loading = True
         await self.send_render()  # Show loading state
 
-        older = [a async for a in Activity.objects.all()[self.loaded : self.loaded + 10]]
+        before = None if self.oldest_at is None else (self.oldest_at, self.oldest_id)
+        older = [a async for a in _activities_before(before)]
 
         # Appended (at=-1) in one operation; reset=False keeps what the page shows
-        await self.stream("activities", older, reset=False)
+        await self.stream("activities", older[:PAGE_SIZE], reset=False)
 
-        self.loaded += len(older)
-        self.has_more = len(older) == 10
+        self._moved_to(older)
         self.is_loading = False
+
+    def _moved_to(self, page: list[Activity]) -> None:
+        """Remember where ``page`` (a page and one more, newest first) ends."""
+        shown = page[:PAGE_SIZE]
+        if shown:
+            self.oldest_at, self.oldest_id = shown[-1].created_at, shown[-1].id
+        self.has_more = len(page) > PAGE_SIZE
 
     async def clear_activity(self, activity_id: str):
         """
