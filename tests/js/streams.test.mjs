@@ -30,6 +30,14 @@ test("a new item lands where `at` says", () => {
   assert.deepEqual(planInsert({ exists: false, at: 1, childCount: 3 }), { mode: "before", index: 1 });
 });
 
+test("an update-only insert replaces an item on screen and adds none that is not", () => {
+  // One Broadcast reaches pages that loaded different parts of a list: an edit
+  // of an item this page never loaded must not turn up at `at`
+  assert.deepEqual(planInsert({ exists: true, at: 0, childCount: 3, updateOnly: true }), { mode: "replace" });
+  assert.deepEqual(planInsert({ exists: false, at: 0, childCount: 3, updateOnly: true }), { mode: "skip" });
+  assert.deepEqual(planInsert({ exists: false, at: -1, childCount: 0, updateOnly: true }), { mode: "skip" });
+});
+
 test("an index past the end appends instead of throwing", () => {
   assert.deepEqual(planInsert({ exists: false, at: 5, childCount: 3 }), { mode: "append" });
   assert.deepEqual(planInsert({ exists: false, at: 3, childCount: 3 }), { mode: "append" });

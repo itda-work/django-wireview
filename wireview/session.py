@@ -1208,11 +1208,14 @@ class WireviewSession:
             except Exception:
                 await self._crashed(component)
 
-    async def component_stream_op(self, op, stream, items, at, limit=0, id=None, hold=None):
+    async def component_stream_op(self, op, stream, items, at, limit=0, update_only=False, id=None, hold=None):
         log.debug(f">>> STREAM {op.upper()} {stream}")
         payload = {"op": op, "stream": stream, "items": items, "at": at}
         if limit:
             payload["limit"] = limit
+        if update_only:
+            # Replace the item where the page shows it, insert it nowhere else
+            payload["update_only"] = True
         if id is not None:
             # The component whose element holds the container
             payload["id"] = id

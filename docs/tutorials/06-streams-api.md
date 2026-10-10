@@ -205,6 +205,19 @@ async def mutation(self, channel, action, instance):
         await self.stream_insert("items", instance, at=0)
 ```
 
+화면에 **없으면 넣지 않으려면** `update_only=True`를 줍니다. 목록의 일부만 불러온 페이지(무한 스크롤)에
+고친 항목을 보낼 때입니다. 보통의 `stream_insert`는 없는 id를 `at` 자리에 새로 넣으므로, 그 페이지가 불러온
+적 없는 오래된 항목이 목록 끝에 나타납니다.
+
+```python
+async def save(self, pk: int, text: str):
+    item = await Item.objects.aget(pk=pk)
+    item.text = text
+    await item.asave()
+    # 보이는 페이지는 제자리에서 바꾸고, 없는 페이지는 아무것도 하지 않는다
+    await self.stream_insert("items", item, update_only=True)
+```
+
 **핸들러와 `mutation()` 양쪽에서 넣지 마세요.** 모델을 구독하고 있으면 저장 신호가 자기
 연결로도 돌아옵니다. 두 곳에서 넣으면 같은 항목이 두 번 들어갑니다 — 구독 중이라면
 삽입은 `mutation()` 한 곳에서만 하고 핸들러는 저장만 합니다.

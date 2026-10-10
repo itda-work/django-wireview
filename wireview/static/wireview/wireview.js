@@ -641,8 +641,8 @@ class ServerConnection {
         break;
 
       case "stream_op":
-        var { op, stream, items, at, limit, id } = payload;
-        this._handleStreamOp(op, stream, items, at, limit, id);
+        var { op, stream, items, at, limit, id, update_only } = payload;
+        this._handleStreamOp(op, stream, items, at, limit, id, update_only === true);
         break;
 
       case "upload_op":
@@ -795,16 +795,17 @@ class ServerConnection {
    * @param {number} at - Insert position (-1 = append, 0 = prepend)
    * @param {number} limit - Maximum items to keep (0 = no limit)
    * @param {string} [owner] - The component that sent it; a server before it said so leaves it out
+   * @param {boolean} [updateOnly] - Replace items already on the page, insert none
    * @private
    */
-  _handleStreamOp(op, stream, items, at, limit = 0, owner) {
+  _handleStreamOp(op, stream, items, at, limit = 0, owner, updateOnly = false) {
     // A new component's joined() streams arrive right behind the render that
     // brings its element, before the frame that patches it in: the queue holds
     // them for that frame rather than drop them
     this.targeted.push(owner, {
       find: () => this._streamContainer(stream, owner),
       apply: (container) => {
-        boost.applying(() => this._applyStreamOp(container, op, items, at, limit));
+        boost.applying(() => this._applyStreamOp(container, op, items, at, limit, updateOnly));
         boost.navEvent.sendNewContent();
       },
       drop: () => console.warn(`[wireview] Stream container not found: ${stream}`),
@@ -840,9 +841,10 @@ class ServerConnection {
    * @param {Array<{id: string, html: string}>} items
    * @param {number} at
    * @param {number} limit
+   * @param {boolean} [updateOnly]
    * @private
    */
-  _applyStreamOp(container, op, items, at, limit) {
+  _applyStreamOp(container, op, items, at, limit, updateOnly = false) {
 
     switch (op) {
       case "reset":
@@ -867,11 +869,15 @@ class ServerConnection {
               exists: existing !== null,
               at,
               childCount: container.children.length,
+              updateOnly,
             });
             switch (plan.mode) {
               case "replace":
                 // Same id: a newer version of an item already on screen.
                 existing.replaceWith(el);
+                break;
+              case "skip":
+                // An update of an item this page does not show
                 break;
               case "prepend":
                 container.prepend(el);

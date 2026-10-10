@@ -34,11 +34,17 @@ export function isStreamContainer(node) {
  * an item the user is looking at, so it is replaced where it stands rather than
  * added a second time.
  *
- * @param {{exists: boolean, at: number, childCount: number}} state
- * @returns {{mode: "replace"} | {mode: "prepend"} | {mode: "append"} | {mode: "before", index: number}}
+ * An `updateOnly` insert is only that newer version: where the item is not on
+ * the page it is skipped. One Broadcast reaches pages that loaded different
+ * parts of a list, and an edit of an item a page never loaded must not turn up
+ * at `at`, out of its place.
+ *
+ * @param {{exists: boolean, at: number, childCount: number, updateOnly?: boolean}} state
+ * @returns {{mode: "replace"} | {mode: "skip"} | {mode: "prepend"} | {mode: "append"} | {mode: "before", index: number}}
  */
-export function planInsert({ exists, at, childCount }) {
+export function planInsert({ exists, at, childCount, updateOnly = false }) {
   if (exists) return { mode: "replace" };
+  if (updateOnly) return { mode: "skip" };
   if (at === 0) return { mode: "prepend" };
   if (at === -1 || at >= childCount) return { mode: "append" };
   return { mode: "before", index: at };

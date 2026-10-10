@@ -183,14 +183,19 @@ class Broadcast:
         limit: int = 0,
         template: str | None = None,
         dom_id: t.Callable[[t.Any], str] | None = None,
+        update_only: bool = False,
     ) -> Broadcast:
         """Insert ``item`` into the stream ``name``, as ``Component.stream_insert``.
 
         The template defaults to the target class's (``<template_name>_item.html``)
         and the DOM id to ``"<name>-<pk>"``, as the component's own methods do, so
         a ``stream()`` in ``joined()`` and a Broadcast name an item alike.
+
+        ``update_only`` replaces the item on the pages that show it and inserts
+        nothing on the others: subscribers that loaded different parts of a
+        list all get the same frame.
         """
-        self._ops.append(("insert", name, item, at, limit, template, dom_id))
+        self._ops.append(("insert", name, item, at, limit, template, dom_id, update_only))
         return self
 
     def stream_delete(self, name: str, dom_id: str | int) -> Broadcast:
@@ -254,10 +259,17 @@ class Broadcast:
         for op in self._ops:
             kind = op[0]
             if kind == "insert":
-                _, name, item, at, limit, template, dom_id = op
+                _, name, item, at, limit, template, dom_id, update_only = op
                 html = self._render(template or self.target._get_stream_item_template(), item)
                 item_id = dom_id(item) if dom_id is not None else f"{name}-{item.pk}"
-                stream_op = StreamOp(op="insert", stream=name, items=[StreamItem(item_id, html)], at=at, limit=limit)
+                stream_op = StreamOp(
+                    op="insert",
+                    stream=name,
+                    items=[StreamItem(item_id, html)],
+                    at=at,
+                    limit=limit,
+                    update_only=update_only,
+                )
                 frames.append(cut("stream_op", {**stream_op.to_payload(), "id": _ID_SLOT}))
             elif kind == "delete":
                 _, name, item_id = op

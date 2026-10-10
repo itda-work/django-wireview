@@ -195,9 +195,10 @@ class TestConsumerAcceptsEveryStreamPayload:
             StreamOp(op="reset", stream="items", items=[], limit=50),
             StreamOp(op="insert", stream="items", items=[StreamItem(dom_id="items-1", html="<li></li>")], at=0),
             StreamOp(op="insert", stream="items", items=[], at=0, limit=10),
+            StreamOp(op="insert", stream="items", items=[], update_only=True),
             StreamOp(op="delete", stream="items", items=[StreamItem(dom_id="items-1", html="")]),
         ],
-        ids=["reset", "reset-limit", "insert", "insert-limit", "delete"],
+        ids=["reset", "reset-limit", "insert", "insert-limit", "insert-update-only", "delete"],
     )
     def test_the_consumer_signature_accepts_what_the_component_sends(self, op: StreamOp):
         signature = inspect.signature(WireviewConsumer.component_stream_op)
@@ -232,3 +233,20 @@ class TestConsumerAcceptsEveryStreamPayload:
         await consumer.component_stream_op(**StreamOp(op="reset", stream="items", items=[]).to_payload(), id="feed-a")
 
         assert sent == [("stream_op", {"op": "reset", "stream": "items", "items": [], "at": -1, "id": "feed-a"})]
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_update_only_survives_the_consumer_hop(self):
+        """Dropped on the way, the page would insert an edit of an item it never loaded."""
+        consumer = WireviewConsumer()
+        sent: list[tuple[str, dict]] = []
+
+        async def fake_send_command(command, payload):
+            sent.append((command, payload))
+
+        consumer.send_command = fake_send_command  # type: ignore[method-assign]
+        op = StreamOp(op="insert", stream="items", items=[], at=0, update_only=True)
+        await consumer.component_stream_op(**op.to_payload(), id="feed-a")
+
+        payload = {"op": "insert", "stream": "items", "items": [], "at": 0, "update_only": True, "id": "feed-a"}
+        assert sent == [("stream_op", payload)]

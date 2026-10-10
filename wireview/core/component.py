@@ -1369,6 +1369,7 @@ class Component(BaseModel):
         template: str | None = None,
         dom_id: t.Callable[[t.Any], str] | None = None,
         limit: int = 0,
+        update_only: bool = False,
     ) -> None:
         """
         Insert an item into a stream.
@@ -1381,6 +1382,9 @@ class Component(BaseModel):
             dom_id: Function to generate DOM ID
             limit: Maximum items to keep in DOM (0 = no limit).
                   When exceeded, items are removed from the opposite end.
+            update_only: Only replace the item where the page shows it. A page
+                  without it inserts nothing: an edit of a message the page has
+                  not loaded must not turn up at ``at``, out of its place.
 
         Example:
             async def add_item(self, name: str):
@@ -1403,7 +1407,7 @@ class Component(BaseModel):
         html = await self._render_stream_item(template_name, item)
         stream_item = StreamItem(dom_id=dom_id_fn(item), html=html)
 
-        op = StreamOp(op="insert", stream=name, items=[stream_item], at=at, limit=limit)
+        op = StreamOp(op="insert", stream=name, items=[stream_item], at=at, limit=limit, update_only=update_only)
         await self.wire.send_stream_op(op, self.id)
 
     async def stream_delete(self, name: str, dom_id: str | int) -> None:

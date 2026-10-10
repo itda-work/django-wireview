@@ -511,6 +511,10 @@ ODD_ID = 'bc-"odd"-\\-한'
             lambda b: b.stream_insert("items", Post(7, "x"), at=0, limit=50),
         ),
         (
+            lambda c: c.stream_insert("items", Post(7, "x"), update_only=True),
+            lambda b: b.stream_insert("items", Post(7, "x"), update_only=True),
+        ),
+        (
             lambda c: c.stream_insert("items", Post(7, "x"), dom_id=lambda i: f"row-{i.pk}", template="bc/bind.html"),
             lambda b: b.stream_insert("items", Post(7, "x"), dom_id=lambda i: f"row-{i.pk}", template="bc/bind.html"),
         ),

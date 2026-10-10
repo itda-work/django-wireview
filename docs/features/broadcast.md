@@ -43,7 +43,7 @@ class Feed(Component):
 
 ```text
 Broadcast(target, topic)
-    .stream_insert(name, item, *, at=-1, limit=0, template=None, dom_id=None)
+    .stream_insert(name, item, *, at=-1, limit=0, template=None, dom_id=None, update_only=False)
     .stream_delete(name, dom_id)
     .push_event(event, payload=None, *, hook_id=None)
     .js(js)
@@ -54,7 +54,7 @@ broadcast.send()          동기 코드에서. 트랜잭션이 커밋된 뒤에 
 
 | 연산 | 같은 일을 하는 컴포넌트 메서드 |
 |---|---|
-| `stream_insert` | `stream_insert()`. 기본 템플릿(`<template_name>_item.html`)과 DOM id(`"<name>-<pk>"`)를 대상 클래스에서 얻는다 |
+| `stream_insert` | `stream_insert()`. 기본 템플릿(`<template_name>_item.html`)과 DOM id(`"<name>-<pk>"`)를 대상 클래스에서 얻는다. `update_only=True`면 그 항목을 보이는 페이지만 제자리에서 바꾸고, 없는 페이지에는 넣지 않는다 |
 | `stream_delete` | `stream_delete()`. 정수를 주면 `"<name>-<정수>"` |
 | `push_event` | `push_event()`. `payload`는 JSON이어야 하고, 아니면 연산을 더할 때 `TypeError` |
 | `js` | `push_js()` |
@@ -83,6 +83,25 @@ def post_deleted(sender, instance, **kwargs):
 ```
 
 같은 항목을 `mutation()`의 `stream_insert()`로도 넣으면 일을 두 번 한다(결과는 같다). 한쪽만 쓴다.
+
+### 고친 항목: `update_only=True`
+
+한 Broadcast는 구독한 모든 페이지에 같은 프레임으로 간다. 그런데 페이지마다 목록의 다른 부분을 들고 있을 수
+있다 — 위로 스크롤해 과거를 불러온 페이지와 최근 것만 본 페이지. 고친 항목을 보통의 `stream_insert`로 보내면
+그것을 보이는 페이지는 제자리에서 바꾸지만, 없는 페이지는 `at` 자리에 새로 넣는다. 오래된 항목이 목록 맨 끝에
+나타나고, 나중에 그 자리까지 불러오면 순서가 어긋난다.
+
+```python
+await (
+    Broadcast(Feed, "feed")
+    .stream_insert("items", post, update_only=True)  # 보이는 곳에서만 바꾼다
+    .asend()
+)
+```
+
+`update_only=True`는 그 id가 페이지에 없으면 아무것도 하지 않는다(Phoenix LiveView의 `update_only`). 그 페이지가
+나중에 그 자리를 불러오면 DB에서 고쳐진 판을 읽는다. 지우기는 원래 없는 id에 아무 일도 하지 않으므로
+`stream_delete`는 그대로 쓴다.
 
 ---
 
