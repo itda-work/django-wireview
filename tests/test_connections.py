@@ -84,6 +84,17 @@ class CnTyping(InlineTemplate, PresenceMixin, Component):
         await self.presence_set_typing(True)
 
 
+class CnCountedTyping(CnTyping):
+    """A producer whose every render differs: a render of it is a frame on the socket."""
+
+    source: t.ClassVar[str] = "<div {% tag_header %}>{{ this.name }} {{ this.renders }}</div>"
+
+    @property
+    def renders(self) -> int:
+        self.__dict__["_renders"] = self.__dict__.get("_renders", 0) + 1
+        return self.__dict__["_renders"]
+
+
 class CnOnline(InlineTemplate, PresenceTrackerMixin, Component):
     source: t.ClassVar[str] = (
         "<ul {% tag_header %}>{% for user in this.presence_users %}"
@@ -735,8 +746,11 @@ async def test_a_producer_whose_topic_joined_decides_joins_and_answers():
 
 
 async def test_a_producer_renders_nothing_for_what_only_the_framework_hears():
-    """Joins, leaves and syncs on the channel the framework listens on reach no app code and no render (#202)."""
-    ann = await connect(CnTyping, "a-typing", name="ann")
+    """Joins, leaves and syncs on the channel the framework listens on reach no app code and no render (#202).
+
+    ann's producer renders something new every time, so a render would be a frame.
+    """
+    ann = await connect(CnCountedTyping, "a-typing", name="ann")
     bob = carol = None
     try:
         await drain(ann)
