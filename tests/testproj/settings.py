@@ -74,6 +74,7 @@ INSTALLED_APPS = [
     "examples.todo",
     "examples.chat",
     "examples.chat_lv2",
+    "examples.chat_lv3",
     "examples.dashboard",
     "examples.poll",
     "examples.rating",
