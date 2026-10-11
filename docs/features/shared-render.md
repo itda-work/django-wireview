@@ -148,7 +148,14 @@ field나 QuerySet 필드 때문에 쿼리할 수 있기 때문이다. 렌더한 
 - 템플릿에 `{% debug %}`가 있는 컴포넌트. 보는 사람의 것을 포함한 컨텍스트 전체를 찍는다.
 - 템플릿에 매핑 인자 없는 Django의 `{% querystring %}`(`{% querystring page=2 %}`)이 있는 컴포넌트. 컨텍스트의
   `request`에서 지금 페이지의 쿼리를 읽는다([내비게이션](./navigation.md#컴포넌트-템플릿의-querystring-태그), #210). 자기 매핑을
-  넘긴 `{% querystring this.query page=2 %}`은 읽지 않는다(Django 5.2는 그 인자로 `QueryDict`만 받는다).
+  넘긴 `{% querystring this.query page=2 %}`은 읽지 않는다(Django 5.2는 그 인자로 `QueryDict`만 받는다). 단 Django
+  5.2는 그 값이 `None`이면 페이지의 쿼리를 읽는다 — 리터럴 `{% querystring None page=2 %}`은 W019가 읽음으로 보고, 렌더
+  때 `None`으로 풀리는 변수는 아래의 공유 렌더가 막는다.
+
+공유되는 렌더(선언한 클래스의 라이브 렌더와 그것이 그리는 함수 컴포넌트)에는 `context.request`가 없다. 1.5와 같다 —
+`getattr(context, "request", None)`으로 요청을 찾는 서드파티 태그는 요청이 없는 것으로 알고 넘어가고, `context.request.GET`을
+바로 읽는 것은 `AttributeError`로 실패한다. 첫 연결의 쿼리가 다른 연결의 화면으로 가지 않는다. 검사가 켜져 있으면
+그 자리에 감시 객체가 있다(아래).
 
 위 두 항목의 "템플릿"은 컴포넌트의 템플릿 파일 하나가 아니라 **렌더가 닿는 템플릿 전부**다. `{% include %}`한 템플릿,
 `{% extends %}`의 부모(그 부모의 부모까지), 함수 컴포넌트(`{% func %}`·`{% func_block %}`)의 템플릿, inclusion 태그의
@@ -195,7 +202,8 @@ extends할 때 고르는 부모가 지나온 템플릿에 따라 다르다). 함
 `None`은 `DEBUG`를 따르고, `wireview.testing`의 `render_diff()`에서는 언제나 켜진다. `False`로 끈다.
 
 1. **보는 사람의 이름을 읽으면 오류다.** 렌더하는 동안 컴포넌트의 `user`와 `session`, 컨텍스트의 `request`·`perms`·
-   `csrf_token`·`messages` 자리에 감시 객체를 둔다(`{% querystring %}`이 읽는 `context.request`의 `GET`도). 속성 접근·문자열 변환·진릿값 평가·비교에서
+   `csrf_token`·`messages` 자리에 감시 객체를 둔다(`{% querystring %}`이나 서드파티 태그가 읽는 `context.request`의
+   `GET`도, 그 렌더가 그리는 함수 컴포넌트의 템플릿에서도). 속성 접근·문자열 변환·진릿값 평가·비교에서
    `SharedRenderError`(`ImproperlyConfigured`의 하위 클래스)를 던진다. property 안의 `self.user`와 다른 이름으로 받은
    컴포넌트의 `{% with viewer=this %}{{ viewer.user }}`처럼 시스템 체크가 보지 못하는 읽기도 잡는다. 감시 객체는 던지기 전에 읽혔다는 사실을 그 렌더에 적어 둔다. 그래서 오류를
    삼키는 자리 — 연산자가 든 `{% if request.user.is_staff and x %}`(Django는 피연산자의 예외를 거짓으로 바꾼다), 예외를

@@ -265,8 +265,13 @@ dependencies = ["django-wireview>=1.5,<2"]
     `getattr(context, "request", None)`으로 요청이 없음을 알아채고 넘어가던 서드파티 태그가 이제 그 객체를 받아
     `request.user`·`request.path` 같은 다른 속성을 읽으면 이유를 적은 `AttributeError`로 실패한다 — 첫 HTTP 렌더에서
     바로 보인다. 그런 태그에는 컴포넌트가 읽은 값을 인자로 넘긴다. `AttributeError`를 잡는 `{% url %}`은 1.5와 같다.
+  - 달라짐: 그런 태그가 `GET`을 읽으면 `Broadcast` 항목 템플릿(언제나)과 검사가 켜진 공유 렌더(`VERIFY_SHARED_RENDER`,
+    기본은 `DEBUG`)에서 이제 `BroadcastRenderError`·`SharedRenderError`다. 1.5에서는 요청이 없는 것으로 알고 넘어갔다.
+    그 자리의 쿼리는 보는 사람마다 다르다 — 항목에는 `item`으로, 공유 렌더에는 필드로 넘긴다. 검사가 꺼진 운영의 공유
+    렌더에는 `context.request`가 없어 1.5와 같다.
   - `shared_render`를 선언한 클래스의 템플릿에 페이지의 쿼리를 읽는 `{% querystring %}`이 있으면 `wireview.W019`가 알리고
-    공유하지 않는다. 1.5에서는 그 템플릿이 렌더되지 않았으므로 새로 공유를 잃는 클래스는 없다.
+    공유하지 않는다. 1.5에서는 그 템플릿이 렌더되지 않았으므로 새로 공유를 잃는 `{% querystring %}`은 없다. Django 5.2의
+    `{% querystring None page=2 %}`도 읽음으로 본다.
 
 ### 테스트
 

@@ -88,8 +88,11 @@ The django-reactor era changelog (2.x) is preserved in
   `AttributeError` that says why, so a tag reading `request.user` or `request.path` fails on the first render
   rather than only live; `{% url %}` still reverses without `current_app`, and `request` is still no template
   variable. LiveComponents, function components and stream items get it too. A `Meta.shared_render` class
-  whose templates hold a `{% querystring %}` without a mapping of its own is out of scope (`wireview.W019`), a
-  verified shared render that reads it raises, and so does a `Broadcast` item.
+  whose templates hold a `{% querystring %}` without a mapping of its own (or, on Django 5.2, given `None`) is
+  out of scope (`wireview.W019`). A render many connections share has no `context.request`, as in 1.5, so a
+  tag that asks for one with `getattr` goes on without it rather than showing the first connection's query;
+  verified, a shared render that reads it raises, and so does a `Broadcast` item. A template of a backend
+  other than Django's is rendered by its backend, as before.
 - A boosted navigation after another tab logged in, logged out, logged in as someone else or rotated the CSRF
   secret no longer joins the new page's components under the socket's old identity (#209). Every `data-state`
   carries a fingerprint of who its page was rendered for (the login and the CSRF secret, hashed), and a join

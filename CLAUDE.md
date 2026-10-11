@@ -81,7 +81,9 @@ wireview/
 ├── core/page_request.py  컴포넌트 템플릿의 context.request(#210). GET(지금 페이지의 쿼리)만 가진 PageRequest — Django의 {% querystring %}이 읽는다.
 │                          HTTP 렌더는 요청의 GET, 라이브 렌더는 페이지가 알린 주소의 쿼리(repo.page_query: params_changed·navigated의 uri, 서버의 set_query_string,
 │                          params와 다르면 params). 다른 속성은 이유를 적은 AttributeError. 템플릿 변수 request는 여전히 없다. 컴포넌트 템플릿을 그리는 곳은
-│                          page_request.render로 그린다(template_engine.render_marked·함수 컴포넌트·스트림 항목(wire.query)·Broadcast 항목). 감시 이름 request가 있으면 GET이 감시 오류다
+│                          page_request.render로 그린다(template_engine.render_marked·함수 컴포넌트·스트림 항목(wire.query)·Broadcast 항목). 감시 이름 request가 있으면 GET이 감시 오류다.
+│                          공유되는 렌더(wire._state_slot, 그것이 그리는 함수 컴포넌트 포함)에는 context.request를 달지 않는다 — 첫 연결의 쿼리가 남에게 간다.
+│                          Django가 아닌 백엔드(engine 없음)의 템플릿은 백엔드가 그린다. 컨텍스트는 dict.get으로 읽는다(lazy property를 계산하지 않게)
 ├── core/csrf.py          컴포넌트 템플릿의 csrf_token(#206). 페이지의 RequestContext를 물려받지 않아 HTTP·라이브 렌더 모두 빈 값이었다.
 │                          HTTP 렌더는 페이지의 lazy 토큰(컨텍스트 프로세서), 라이브 렌더는 핸드셰이크의 쿠키(CSRF_USE_SESSIONS면 세션) 시크릿을
 │                          Django의 CsrfViewMiddleware.process_request로 읽어 연결당 한 번 get_token으로 마스킹한다(저장소의 csrf_token, 정적 부분이 안 바뀌게).
@@ -244,7 +246,9 @@ tests/
                            warning_guard.py 는 ASGI 핸들러가 동기 이터레이터를 서빙했다는 경고가 기록되면 실행을 실패시키는 플러그인이다.
                            page.wait_for_selector 를 다른 곳에 쓰면 test_e2e_harness.py 의 가드가 실패한다
                            inclusion_tags.py 는 test_shared_render.py 가 엔진의 libraries로 싣는 태그(sh_tags)다 — W019가 inclusion 태그(문자열 Template·하위 노드 포함)의 템플릿, 태그가 어디에 두든 그 본문·인자, 태그가 직접 만든 Variable을 읽는지 본다(#208).
-                           qs_tags.py 는 test_querystring.py 가 엔진의 libraries로 싣는 태그(qs_tags)다 — context.request.path를 읽어, 컴포넌트 템플릿에서 GET 밖을 읽는 태그가 이유를 적은 오류로 실패하는지 본다(#210).
+                           qs_tags.py 는 test_querystring.py 가 엔진의 libraries로 싣는 태그(qs_tags)다 — context.request.path를 읽어, 컴포넌트 템플릿에서 GET 밖을 읽는 태그가 이유를 적은 오류로 실패하는지,
+                           getattr(context, "request", None)로 쿼리를 읽어 공유 렌더가 첫 연결의 쿼리를 남에게 주지 않는지 본다(#210).
+                           other_backend.py 는 Django가 아닌 템플릿 백엔드(Jinja2 래퍼 모양, engine 없음)다 — 그 템플릿이 백엔드대로 그려지는지 본다(#210).
                            template_partials.py 는 Django 5.2의 django-template-partials 모양("file#name"을 답하는 로더의 TemplateProxy, extra_data의 partialdef)이다 — 조각을 클래스가 아니라 모양으로 아는지 본다(#208).
                            waiting.py 의 eventually() 가 async 테스트에서 백그라운드 작업의 결과를 기다리는 정본이다 —
                            고정 sleep 으로 기다리지 않는다. 타이머(debounce·throttle·만료)를 재는 테스트만 sleep 을 둔다(#143).
