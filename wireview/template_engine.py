@@ -23,7 +23,7 @@ from django.template.loader_tags import ExtendsNode, IncludeNode
 from django.template.smartif import TokenBase
 from django.utils.safestring import SafeString
 
-from .core import render_reads
+from .core import page_request, render_reads
 
 
 class BackendTemplate(t.Protocol):
@@ -630,18 +630,13 @@ class TemplateMarker:
 
         self._depth += 1
         try:
-            # Backend wrappers (from loader.get_template()) accept a dict,
-            # raw django.template.base.Template needs a Context.
+            # Built as a backend wrapper builds it for a dict, with the page's
+            # query at ``context.request`` (#210)
             reads = self.marker_context.reads if self._depth == self._tracked_depth else None
             if reads is not None:
-                # The names the template resolves are reported (#111). A backend
-                # wrapper builds a plain Context itself, so build this one as it would.
-                inner = t.cast(Template, getattr(prepared, "template", prepared))
-                autoescape = getattr(getattr(prepared, "backend", None), "engine", inner.engine).autoescape
-                return inner.render(render_reads.TrackingContext(context, autoescape=autoescape))
-            if hasattr(prepared, "template"):
-                return prepared.render(context)  # type: ignore[arg-type]
-            return prepared.render(Context(context))  # type: ignore[arg-type]
+                # The names the template resolves are reported (#111)
+                return page_request.render(prepared, context, render_reads.TrackingContext)
+            return page_request.render(prepared, context)
         finally:
             self._depth -= 1
 

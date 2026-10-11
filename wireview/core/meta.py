@@ -14,6 +14,7 @@ from types import FunctionType
 
 from asgiref.sync import async_to_sync
 from channels.layers import BaseChannelLayer
+from django.http import QueryDict
 from django.shortcuts import resolve_url
 from django.utils.html import format_html
 from django.utils.safestring import SafeText, mark_safe
@@ -265,6 +266,9 @@ class WireviewMeta:
         # Who the page or connection rendering it is for, which ``sign_state``
         # writes into every token (set by the repository, #209)
         self.identity: t.Callable[[], str | None] | None = None
+        # The page's query, ``context.request.GET`` in a render that has no context
+        # of the component's: a stream item (set by the repository, #210)
+        self.query: t.Callable[[], QueryDict] | None = None
         # Pending broadcasts queue (separate from operations since they go through channel layer)
         self._pending_broadcasts: list[tuple[str, dict[str, t.Any]]] = []
         # Last ``data-state`` token this component issued: (state_json, token, issued_at).

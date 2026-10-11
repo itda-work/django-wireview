@@ -3,4 +3,6 @@
 <aside {% tag_header %}>
   <span data-testid="dock-heard">{{ this.heard }}</span>
   <span data-testid="dock-times">{{ this.times }}</span>
+  {# The page's query, which a boosted visit tells the dock it carries (#210) #}
+  <a data-testid="dock-query" href="{% querystring page=2 %}">page 2</a>
 </aside>

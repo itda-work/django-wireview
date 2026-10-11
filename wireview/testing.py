@@ -329,6 +329,8 @@ class MockRepository(ComponentRepository):
             is_live=live,
             page_csrf=self._page_csrf,
         )
+        # The query as the page last told it, which a followed push set (#210)
+        repo._told_query = self._told_query
         repo.register_component(root)
         if live:
             repo.begin_render(root.id)
@@ -877,6 +879,8 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         # server updates it in place rather than rebinding. Same here.
         self._repo.params.clear()
         self._repo.params.update(params)
+        # As the address bar has it, for {% querystring %} (#210)
+        self._repo.tell_query(urlsplit(nav.url).query)
         async with self._handling_message():
             await self._component._handle_params(params, nav.url)
             # The session subscribes after params_changed as after any event

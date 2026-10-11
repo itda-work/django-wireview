@@ -21,7 +21,7 @@ from ..async_result import AsyncResult
 from ..debug import render_queries
 from ..schemas import ModelAction
 from ..utils import db
-from . import handlers, model_state, render_reads
+from . import handlers, model_state, page_request, render_reads
 from .meta import HTTP_RENDER, Repo, WireviewMeta
 from .session import SessionView
 
@@ -1521,7 +1521,7 @@ class Component(BaseModel):
         # Read off the loop like the component's own render, and kept apart from
         # its background work the same way (#138)
         with self.wire._render_gate.rendering(), render_queries.scope("render", self, "stream item"):
-            return await db(template.render)(context)
+            return await db(page_request.render)(template, context)
 
     # Upload operations
 

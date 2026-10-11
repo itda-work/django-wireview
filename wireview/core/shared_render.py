@@ -322,6 +322,7 @@ class _Reach:
             self.names.setdefault(name, set()).add(where)
 
     def node(self, node: Node, parsed: _Parse, where: str, owned: bool, history: tuple[t.Any, ...]) -> None:
+        from django.template import defaulttags
         from django.template.defaulttags import CsrfTokenNode, DebugNode
         from django.template.library import InclusionNode, SimpleNode
         from django.template.loader_tags import ExtendsNode, IncludeNode
@@ -337,6 +338,9 @@ class _Reach:
             self.tags.setdefault(tag if simple else type(node).__name__, set()).add(where)
         if isinstance(node, CsrfTokenNode):
             self.names.setdefault("csrf_token", set()).add(where)
+        if simple and not node.args and func is getattr(defaulttags, "querystring", None):  # type: ignore[attr-defined]
+            # Django's {% querystring %} without a mapping of its own starts from the page's query (#210)
+            self.names.setdefault("request", set()).add(where)
         if isinstance(node, DebugNode):
             self.dumps.setdefault("{% debug %}", set()).add(where)
         reads = getattr(node, "context_names", None)

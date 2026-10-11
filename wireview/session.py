@@ -9,6 +9,7 @@ import logging
 import secrets
 import time
 import typing as t
+from urllib.parse import urlsplit
 
 from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
@@ -1105,6 +1106,8 @@ class WireviewSession:
         # Update query_string for send_query_string() sync
         self.query_string = self.repo.get_query_string()
         self.page_uri = uri
+        # As the address bar has it, for {% querystring %} (#210)
+        self.repo.tell_query(urlsplit(uri).query if isinstance(uri, str) else self.query_string)
         return params
 
     async def command_navigated(self, params: dict[str, str], uri: str, carried: list[str]):
@@ -2554,5 +2557,6 @@ class WireviewSession:
         new_qs = self.repo.get_query_string()
         if self.query_string != new_qs:
             self.query_string = new_qs
+            self.repo.tell_query(new_qs)
             log.debug(f">>> QS {new_qs}")
             await self.send_command("set_query_string", {"qs": new_qs})

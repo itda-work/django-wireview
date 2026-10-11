@@ -103,6 +103,8 @@ from dataclasses import dataclass, field
 from django.template import TemplateSyntaxError, loader
 from django.utils.safestring import SafeString, mark_safe
 
+from .core import page_request
+
 if t.TYPE_CHECKING:
     from .slots import SlotContainer
 
@@ -295,7 +297,8 @@ class FunctionComponent:
             if slots is not None:
                 template_context["slots"] = slots
 
-            html = template.render(template_context)
+            # With the page's query at ``context.request`` (#210)
+            html = page_request.render(template, template_context)
             return mark_safe(html)
         else:
             # Inline: result should be a string

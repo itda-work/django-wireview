@@ -532,6 +532,37 @@ def settled(page) -> None:
     bump_to(page, count + 1)
 
 
+def test_querystring_draws_the_query_of_the_page_on_screen(box):
+    """``{% querystring %}`` in a component's template starts from the page's query on every render (#210):
+    the join's, a patch's, a boosted visit's -- the one it lands and the dock it carries -- and Back's."""
+    page = box
+
+    def links(href: str) -> None:
+        expect(by(page, "box-query")).to_have_attribute("href", href, timeout=WAIT_TIMEOUT * 1000)
+        expect(by(page, "dock-query")).to_have_attribute("href", href, timeout=WAIT_TIMEOUT * 1000)
+
+    links("?page=2")
+    by(page, "push-b").click()
+    at(page, "/historyprobe/?tab=b")
+    links("?tab=b&page=2")
+
+    by(page, "get-send").click()
+    at(page, "/historyprobe/other/?tab=g")
+    expect_text(by(page, "page"), "other")
+    links("?tab=g&page=2")
+
+    page.go_back()
+    at(page, "/historyprobe/?tab=b")
+    expect_text(by(page, "page"), "box")
+    links("?tab=b&page=2")
+
+    # The link itself: a boosted visit to the query it drew
+    by(page, "box-query").click()
+    at(page, "/historyprobe/?tab=b&page=2")
+    expect_text(by(page, "tab"), "b")
+    links("?tab=b&page=2")
+
+
 def test_a_navigation_tells_its_params_to_the_new_page_and_the_sticky_dock_only(box, heard):
     page = box
     old = rendered(page)

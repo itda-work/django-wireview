@@ -44,6 +44,7 @@ TEMPLATES = {
     "bc/user.html": "<li>{% if user.is_staff %}staff{% endif %}</li>",
     "bc/request.html": "<li>{{ request.path }}</li>",
     "bc/csrf.html": "<li>{% csrf_token %}</li>",
+    "bc/querystring.html": '<li><a href="{% querystring page=2 %}">2</a></li>',
     "bc/perms.html": "<li>{% if perms.auth.add_user %}yes{% endif %}</li>",
     # {% if a and b %} takes an operand's exception for False: the read is caught after the render
     "bc/swallowed.html": "<li>{% if user.is_staff and item.text %}staff{% endif %}</li>",
@@ -658,6 +659,8 @@ class TestTheItemReadsNothingOfTheViewer:
             ("bc/user.html", "user"),
             ("bc/request.html", "request"),
             ("bc/csrf.html", "csrf_token"),
+            # The page's query, which Django's tag reads at context.request (#210)
+            ("bc/querystring.html", "request"),
             ("bc/perms.html", "perms"),
             ("bc/bind_myself.html", "this"),
             ("bc/swallowed.html", "user"),
