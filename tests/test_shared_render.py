@@ -188,6 +188,37 @@ TEMPLATES = {
     "sh/variable.html": (
         "{% load wireview sh_tags %}<p {% tag_header %}>{{ headline }}<b>{% sh_variable user.username %}</b></p>"
     ),
+    # Shapes the recording parser missed (#208, round 3): wireview's own {% cond %} and {% class %}, which
+    # hold their expression as text; a partial that renders a macro parsed outside it; a body taken as tokens
+    "sh/cond.html": "{% load wireview %}<p {% tag_header %}>{{ headline }}<b>{% cond {user.username: True} %}</b></p>",
+    "sh/class.html": (
+        "{% load wireview %}<p {% tag_header %}>{{ headline }}<b {% class {this.user.username: True} %}></b></p>"
+    ),
+    "sh/macro.html": '{% load wireview %}<p {% tag_header %}>{{ headline }}{% include "sh/macro_parts.html#row" %}</p>',
+    "sh/macro_parts.html": (
+        ("{% load sh_tags %}" if django.VERSION >= (6, 0) else "{% load sh_partials sh_tags %}")
+        + "{% sh_macro who %}<b>{{ user.username }}</b>{% endsh_macro %}"
+        "{% partialdef row %}[{% sh_use who %}]{% endpartialdef %}"
+    ),
+    "sh/later.html": (
+        "{% load wireview sh_tags %}<p {% tag_header %}>{{ headline }}"
+        "{% sh_later %}<b>{{ user.username }}</b>{% endsh_later %}</p>"
+    ),
+    "sh/fresh.html": (
+        "{% load wireview sh_tags %}<p {% tag_header %}>{{ headline }}"
+        "{% sh_fresh %}<b>{{ user.username }}</b>{% endsh_fresh %}</p>"
+    ),
+    "sh/comment.html": (
+        "{% load wireview %}<p {% tag_header %}>{{ headline }}{% comment %}{{ user.username }}{% endcomment %}</p>"
+    ),
+    "sh/cond_broken.html": "{% load wireview %}<p {% tag_header %}>{{ headline }}<b>{% cond {user: } %}</b></p>",
+    "sh/later_unread.html": (
+        "{% load wireview sh_tags %}<p {% tag_header %}>{{ headline }}{% sh_later %}{{ a b }}{% endsh_later %}</p>"
+    ),
+    "sh/alias_parts.html": (
+        "{% load sh_partials sh_tags %}{% sh_alias row %}<b>{{ user.username }}</b>{% endsh_alias %}"
+        "{% partialdef row %}<i>s</i>{% endpartialdef %}"
+    ),
 }
 #: The next loader's namesakes: ``sh/hn.html`` there is what the chain ``hn -> hq -> hn`` finds last
 NAMESAKES = {
@@ -690,6 +721,46 @@ class ShShow(_Shared):
 class ShVariable(_Shared):
     class Meta:
         template_name = "sh/variable.html"
+
+
+class ShCond(_Shared):
+    class Meta:
+        template_name = "sh/cond.html"
+
+
+class ShClass(_Shared):
+    class Meta:
+        template_name = "sh/class.html"
+
+
+class ShMacro(_Shared):
+    class Meta:
+        template_name = "sh/macro.html"
+
+
+class ShLater(_Shared):
+    class Meta:
+        template_name = "sh/later.html"
+
+
+class ShFresh(_Shared):
+    class Meta:
+        template_name = "sh/fresh.html"
+
+
+class ShComment(_Shared):
+    class Meta:
+        template_name = "sh/comment.html"
+
+
+class ShCondBroken(_Shared):
+    class Meta:
+        template_name = "sh/cond_broken.html"
+
+
+class ShLaterUnread(_Shared):
+    class Meta:
+        template_name = "sh/later_unread.html"
 
 
 class ShRequestCard(_Shared):
@@ -1597,7 +1668,19 @@ async def test_no_shape_of_template_reads_past_the_check(monkeypatch, component)
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize(
     "component",
-    [pytest.param(ShProxy, marks=package_partials), ShHistory, ShSlot, ShBranches, ShShow, ShVariable],
+    [
+        pytest.param(ShProxy, marks=package_partials),
+        ShHistory,
+        ShSlot,
+        ShBranches,
+        ShShow,
+        ShVariable,
+        ShCond,
+        ShClass,
+        ShMacro,
+        ShLater,
+        ShFresh,
+    ],
 )
 async def test_no_tag_or_partial_keeps_what_it_reads_from_the_check(monkeypatch, component):
     """Shapes the walk of the node tree missed, each of which put one viewer's name on another's page.
@@ -1606,6 +1689,11 @@ async def test_no_tag_or_partial_keeps_what_it_reads_from_the_check(monkeypatch,
     tag's own or four containers down, an argument in a value object, were not found. It reads
     what the parser made instead. A partial on Django 5.2 is django-template-partials', of no class
     of Django's; a template that extends another finds its parent by the chain it came through.
+
+    Then what the parser made missed (round 3): wireview's ``{% cond %}`` and ``{% class %}`` hold
+    their expression as text and tell its names (``context_names``); a partial whose tag renders a
+    macro parsed outside it; a body a tag takes as tokens, to compile at render or with a parser of
+    its own.
     """
     set_wireview(monkeypatch, VERIFY_SHARED_RENDER=False)
     assert shared_render.out_of_scope(component)
@@ -1629,8 +1717,10 @@ class _Lookalike:
     def __init__(self, file: str, name: str) -> None:
         from django.template import engines
 
-        self.origin = engines["django"].engine.get_template(file).origin  # type: ignore[attr-defined]
+        template = engines["django"].engine.get_template(file)  # type: ignore[attr-defined]
+        self.origin = template.origin
         self.name = name
+        self.nodelist = template.extra_data["template-partials"][name].nodelist
 
 
 @pytest.mark.unit
@@ -1650,6 +1740,55 @@ def test_a_partial_is_told_by_its_name_whatever_its_class():
 
 
 @pytest.mark.unit
+def test_a_partial_that_two_libraries_define_is_read_as_its_whole_file():
+    """Which of the two bodies the render takes is not known: the file is read, both bodies with it."""
+    reach = shared_render._Reach(ShIncPlain)
+    reach.template(_Lookalike("sh/alias_parts.html", "row"), owned=True)
+    assert reach.names == {"user": {"sh/alias_parts.html#row"}}
+
+
+@partials
+@pytest.mark.unit
+def test_a_partial_is_read_from_the_file_its_render_uses():
+    """A cached loader keeps the file it read first; the check read the file as it is now (#208, round 3).
+
+    Without the autoreloader -- ``runserver --noreload``, a deploy that changes the files before the
+    restart -- the render drew the old partial, which read the user, and the check passed the new one.
+    """
+
+    class ShStale(_Shared):
+        class Meta:
+            template_name = "sh/stale.html"
+
+    sources = {
+        "sh/stale.html": '{% load wireview %}<p {% tag_header %}>{% include "sh/stale_parts.html#row" %}</p>',
+        "sh/stale_parts.html": "{% partialdef row %}<b>{{ user.username }}</b>{% endpartialdef %}",
+    }
+    cached = [("django.template.loaders.cached.Loader", [("django.template.loaders.locmem.Loader", sources)])]
+    with override_settings(
+        TEMPLATES=[{"BACKEND": "django.template.backends.django.DjangoTemplates", "OPTIONS": {"loaders": cached}}]
+    ):
+        from django.template.loader import get_template
+
+        get_template("sh/stale_parts.html#row")  # what the render draws from now on
+        sources["sh/stale_parts.html"] = "{% partialdef row %}<b>safe</b>{% endpartialdef %}"
+        reasons = shared_render.out_of_scope(ShStale)
+    assert any("reads user (through sh/stale_parts.html#row)" in reason for reason in reasons), reasons
+
+
+@pytest.mark.unit
+def test_a_template_whose_source_is_not_its_tree_keeps_the_render_its_own(monkeypatch):
+    """Parsed again, a source left out made no node: the tree the render draws was not read."""
+    from django.template import engines, loader
+
+    template = engines["django"].get_template("sh/inc_user.html")
+    template.template.source = ""  # type: ignore[attr-defined]
+    monkeypatch.setattr(loader, "get_template", lambda name, using=None: template)
+    reasons = shared_render.out_of_scope(ShIncUser)
+    assert any("could not be read through (LookupError" in reason for reason in reasons), reasons
+
+
+@pytest.mark.unit
 def test_the_system_check_names_where_those_shapes_read_the_viewer():
     found = {message.obj: message.msg for message in check_shared_render(None)}
     if django.VERSION >= (6, 0):
@@ -1665,8 +1804,12 @@ def test_the_system_check_names_where_those_shapes_read_the_viewer():
         assert "reads user (through sh/proxy_parts.html#viewer)" in found[ShProxy]
     assert "reads user (through sh/hn.html)" in found[ShHistory]
     assert "reads user (through sh/user_part.html)" in found[ShSlot]
-    for cls in (ShBranches, ShShow, ShVariable):
-        assert "its template reads user," in found[cls]
+    for cls in (ShBranches, ShShow, ShVariable, ShCond, ShClass, ShLater, ShFresh):
+        assert "its template reads user," in found[cls], cls
+    assert "reads user (through sh/macro_parts.html#row)" in found[ShMacro]
+    assert ShComment not in found, "a {% comment %} is not read"
+    assert "holds an expression this check cannot read ({% cond {user: } %})" in found[ShCondBroken]
+    assert "holds an expression this check cannot read ({{ a b }})" in found[ShLaterUnread]
 
 
 @pytest.mark.unit

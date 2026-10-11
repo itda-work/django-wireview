@@ -43,7 +43,8 @@ wireview/
 │                          렌더를 한 번만 하고 Rendered를 함께 쓴다. data-state는 공유하지 않는다 — 렌더는 그 자리에 STATE_SLOT을 쓰고 연결마다 자기 토큰을 끼운다(Shared.with_state).
 │                          범위 밖(LiveComponent·temporary_assigns·slots·live_sessions·모델·QuerySet 타입 필드·다른 컴포넌트를 그리거나 보는 사람을 읽는 템플릿)은 공유하지 않고 W019가 알린다.
 │                          템플릿은 렌더가 닿는 것 전부를 걷는다(_Reach: include(조각 포함)·extends 부모(사슬마다)·함수 컴포넌트·inclusion 태그, #208). 템플릿마다 소스를 기록 파서(_recorder: extend_nodelist·compile_filter·command_stack)로 다시 파싱해
-│                          파서가 만든 노드·표현식을 본다 — 태그가 본문·인자를 어디에 두든. 조각은 클래스가 아니라 모양(name ≠ origin.template_name)으로 알고 자기 partialdef 안만 읽는다(_Parse.part). 이름을 렌더만 아는 템플릿
+│                          파서가 만든 노드·표현식을 본다 — 태그가 본문·인자를 어디에 두든. 조각은 클래스가 아니라 모양(name ≠ origin.template_name)으로 알고 자기 partialdef 안만 읽는다(_Parse.part — 안의 태그가 모두 Django·wireview·조각 라이브러리의 것일 때만, 아니면 파일 전체).
+│                          토큰째 가져간 {{ }}(next_token)도 식으로 읽고, context_names()를 내놓는 노드({% cond %}·{% class %})는 그 이름을 본다. 다시 파싱한 트리가 렌더의 것과 다르면(_Parse.agrees) 공유하지 않는다. 이름을 렌더만 아는 템플릿
 │                          (변수 이름의 include·extends·func, 미등록 함수, 불러올 수 없는 것)은 공유하지 않는다. 범위는 클래스마다 한 번, 자동 리로더의 file_changed 뒤 다시(templates_changed)
 │                          필드에 모델 인스턴스·QuerySet이 들어 있으면 키가 없다(같은 pk의 다른 속성). 토큰은 루프 밖에서 서명한다(렌더 트립, 받은 쪽들은 _Signer가 모아 db 트립 하나).
 │                          VERIFY_SHARED_RENDER(DEBUG·wireview.testing)면 user·session·request 읽기가 오류이고, 받은 렌더를 다시 렌더해 비교한다

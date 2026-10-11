@@ -183,8 +183,12 @@ The django-reactor era changelog (2.x) is preserved in
   and read again for each chain a template that extends comes through), function components' and inclusion tags'
   templates (one made from a string as well). Each is read from what its parser makes: the check parses the
   source again with a parser that writes down every node and expression, so a tag's body and arguments are read
-  wherever the tag keeps them (in an object of its own, wrapped in a value object), the body of
-  `{% blocktranslate %}` included; `{% debug %}` is out of scope. A template only the render can name
+  wherever the tag keeps them (in an object of its own, wrapped in a value object), and a `{{ }}` a tag takes as
+  a token and makes no node of (`{% blocktranslate %}`'s body, a body compiled at render) as the expression it
+  writes; wireview's own `{% cond %}` and `{% class %}` are read by the names their expression reads. A partial is
+  read from the file its render uses, and only its part when every tag in it is Django's, wireview's or the
+  partial library's and holds nothing parsed outside it -- else the whole file. A parse that does not match the
+  render's tree keeps the render its own; `{% debug %}` is out of scope. A template only the render can name
   (`{% include part %}`, `{% extends base %}`, `{% func kind %}`, an unregistered function, one that fails to
   load, the component's own included) or one the check fails to read keeps the render each connection's own,
   in production until the process restarts. A class out of scope that way renders on every connection again.

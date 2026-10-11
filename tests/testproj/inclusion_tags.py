@@ -7,6 +7,7 @@ the scope check must read through.
 
 from django import template
 from django.template import Template
+from django.template.base import Parser
 from django.template.library import InclusionNode
 
 register = template.Library()
@@ -144,3 +145,86 @@ class _VariableNode(template.Node):
 def sh_variable(parser, token):
     _tag, argument = token.split_contents()
     return _VariableNode(argument)
+
+
+class _MacroNode(template.Node):
+    """A macro's body: parsed where it is written, rendered where it is used (django-macros' shape)."""
+
+    def __init__(self, nodelist):
+        self.nodelist = nodelist
+
+    def render(self, context):
+        return ""
+
+
+class _UseNode(template.Node):
+    def __init__(self, body):
+        self.body = body
+
+    def render(self, context):
+        return self.body.render(context)
+
+
+@register.tag
+def sh_macro(parser, token):
+    """``{% sh_macro m %}...{% endsh_macro %}``: keeps the body on the parser for ``{% sh_use m %}``."""
+    _tag, name = token.split_contents()
+    nodelist = parser.parse(("endsh_macro",))
+    parser.delete_first_token()
+    parser.extra_data.setdefault("sh-macros", {})[name] = nodelist
+    return _MacroNode(nodelist)
+
+
+@register.tag
+def sh_use(parser, token):
+    """Renders a body parsed elsewhere in the file: inside a partial, one parsed outside it."""
+    _tag, name = token.split_contents()
+    return _UseNode(parser.extra_data["sh-macros"][name])
+
+
+def _raw(parser, end):
+    """The tokens up to ``{% end %}``, taken as they are: no node is made of them."""
+    tokens = []
+    while (token := parser.next_token()).contents != end:
+        tokens.append(token)
+    return tokens
+
+
+class _LaterNode(template.Node):
+    """Keeps its body as text and compiles it at render."""
+
+    def __init__(self, text):
+        self.text = text
+
+    def render(self, context):
+        return context.template.engine.from_string(self.text).render(context)
+
+
+@register.tag
+def sh_later(parser, token):
+    shapes = {"VAR": "{{ %s }}", "BLOCK": "{%% %s %%}", "TEXT": "%s", "COMMENT": "{# %s #}"}
+    return _LaterNode("".join(shapes[each.token_type.name] % each.contents for each in _raw(parser, "endsh_later")))
+
+
+@register.tag
+def sh_fresh(parser, token):
+    """Parses its body with a parser of its own."""
+    inner = Parser(_raw(parser, "endsh_fresh"), parser.libraries, None, parser.origin)
+    inner.tags = dict(parser.tags)
+    inner.filters = dict(parser.filters)
+    return _WrapNode(inner.parse())
+
+
+class _Alias:
+    def __init__(self, nodelist):
+        self.nodelist = nodelist
+
+
+@register.tag
+def sh_alias(parser, token):
+    """Keeps its body in ``extra_data`` under a name, as a partial library does: a partial's namesake."""
+    _tag, name = token.split_contents()
+    nodelist = parser.parse(("endsh_alias",))
+    parser.delete_first_token()
+    parser.extra_data.setdefault("sh-aliases", {})[name] = _Alias(nodelist)
+    return _MacroNode(nodelist)

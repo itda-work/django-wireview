@@ -89,11 +89,12 @@ dependencies = ["django-wireview>=1.5,<2"]
   템플릿에서 `user`·`session`·`request`·`perms`·`messages`를 읽는 클래스가 공유 대상이었다. 자기 파일 안이라도
   `{% blocktranslate %}`의 본문(`{% blocktranslate %}{{ user }}{% endblocktranslate %}`)과, 본문을
   `child_nodelists`로 알리지 않는 서드파티 블록 태그의 본문, 인자를 자기 객체로 감싸는 태그(django-classytags류)의
-  인자에서 읽는 것도 그랬다. `VERIFY_SHARED_RENDER`가 꺼진 운영(`DEBUG = False`의 기본)에서는 같은 브로드캐스트를
+  인자, 본문을 토큰째 가져가 렌더 때 컴파일하는 태그의 본문, wireview 자신의 `{% cond %}`·`{% class %}`의 식
+  (`{% class {'staff': user.is_staff} %}`)에서 읽는 것도 그랬다. `VERIFY_SHARED_RENDER`가 꺼진 운영(`DEBUG = False`의 기본)에서는 같은 브로드캐스트를
   처리한 연결들이 **처음 렌더한 연결의 사용자로 그린 화면**을 받았다 — 다른 사람의 이름·권한별 화면이 보였을 수 있다.
   1.6은 렌더가 닿는 템플릿(`{% include %}`(`"파일#조각"` — Django 6의 것과 django-template-partials의 것 — 포함),
   `{% extends %}`의 부모, 함수 컴포넌트와 inclusion 태그의 템플릿)을 모두 걷고, 템플릿마다 소스를 파서로 다시 읽어
-  태그가 어디에 두든 그 본문과 인자를 본다. 그리고 이름이 변수인 `{% include part %}`·`{% extends base %}`·
+  태그가 어디에 두든 그 본문과 인자를, 태그가 토큰째 가져간 `{{ }}`와 `{% cond %}`·`{% class %}`의 식도 본다. 그리고 이름이 변수인 `{% include part %}`·`{% extends base %}`·
   `{% func kind %}`처럼 렌더 전에는 알 수 없는 템플릿을 불러오면 공유하지 않는다. 범위는 [shared_render](./features/shared-render.md#범위).
   - 보안 조치: `shared_render`를 선언한 클래스가 있으면 1.6에서 `manage.py check`를 돌린다. 새로 나온
     `wireview.W019`의 클래스가 이전 운영에서 다른 사람의 화면을 그렸을 수 있는 클래스다(이유에 `through <파일>`이
