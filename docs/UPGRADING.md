@@ -255,6 +255,19 @@ dependencies = ["django-wireview>=1.5,<2"]
   `stream()`을 핸들러 끝에 둔다. 그동안 잡힌 프레임이 1,000개(`QUEUE_LIMIT`)를 넘으면 연결이 닫히고(1013) 페이지가
   다시 join한다([Broadcast — 순서와 유실](./features/broadcast.md#순서와-유실)).
 
+### 템플릿
+
+- **고쳐짐: 컴포넌트 템플릿의 `{% querystring %}`이 동작한다(#210).** 1.5까지는 첫 HTTP 렌더에서도 라이브 렌더에서도
+  `AttributeError`로 실패했다(라이브에서는 join이 실패했다). 이제 지금 페이지의 쿼리 — 첫 렌더는 요청의 것, 라이브 렌더는
+  페이지가 마지막으로 알린 주소의 것 — 에서 시작한다. 쿼리를 필드로 옮겨 링크를 만들던 우회는 그대로 둬도 된다.
+  설명은 [내비게이션](./features/navigation.md#컴포넌트-템플릿의-querystring-태그).
+  - 달라짐: 컴포넌트 템플릿을 그리는 컨텍스트에 `context.request`가 생겼다. `GET`만 가진 객체다. 1.5에서
+    `getattr(context, "request", None)`으로 요청이 없음을 알아채고 넘어가던 서드파티 태그가 이제 그 객체를 받아
+    `request.user`·`request.path` 같은 다른 속성을 읽으면 이유를 적은 `AttributeError`로 실패한다 — 첫 HTTP 렌더에서
+    바로 보인다. 그런 태그에는 컴포넌트가 읽은 값을 인자로 넘긴다. `AttributeError`를 잡는 `{% url %}`은 1.5와 같다.
+  - `shared_render`를 선언한 클래스의 템플릿에 페이지의 쿼리를 읽는 `{% querystring %}`이 있으면 `wireview.W019`가 알리고
+    공유하지 않는다. 1.5에서는 그 템플릿이 렌더되지 않았으므로 새로 공유를 잃는 클래스는 없다.
+
 ### 테스트
 
 - **조용히 달라짐: 테스트의 `mount()`가 같은 프로세스의 알림을 받는다.** 구독한 채널에 온 `abroadcast()`·`broadcast()`·

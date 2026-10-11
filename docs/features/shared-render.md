@@ -112,6 +112,7 @@ field나 QuerySet 필드 때문에 쿼리할 수 있기 때문이다. 렌더한 
 | 사용자별 데이터: "내 알림 3개", "내가 좋아요 누름" | 남의 숫자가 보인다 | 그 부분을 선언하지 않은 다른 컴포넌트로 뺀다 |
 | 사용자 프로필의 언어·시간대·통화로 직접 포맷 | 키는 Django의 활성 언어·시간대만 본다. 프로필 필드를 템플릿이 읽으면 키에 없다 | 언어·시간대는 `translation.activate()`·`timezone.activate()`로 켠다(그러면 키가 가른다). 아니면 선언하지 않는다 |
 | 쿼리 파라미터를 렌더에서 직접 읽음 (`self.wire.params`) | 키에 없다 | `params_changed()`에서 필드에 옮긴다. 필드는 키에 들어간다 |
+| 페이지의 쿼리에서 시작하는 `{% querystring %}` | 쿼리는 연결마다 다르다 | 범위 밖이다(아래). 공유하려면 `params_changed()`에서 쿼리를 필드에 옮기고, 그 필드로 `QueryDict`를 만드는 property를 넘긴다(`{% querystring this.query page=2 %}`) |
 | 연결마다 다른 비공개 속성(`_rows`)을 수신자가 채움 | 비공개 속성은 키에 없다 | 공개 필드에 둔다 |
 | "현재 사용자"를 thread-local·contextvar로 읽는 property (django-crum류) | 처음 렌더한 연결의 사용자로 계산된다 | 선언하지 않는다 |
 | `{% now %}`·현재 시각 | 메시지 하나를 처리하는 수백 ms 안에서는 같은 값이 간다. 대개 괜찮다 | 초 단위가 중요하면 필드로 |
@@ -145,6 +146,9 @@ field나 QuerySet 필드 때문에 쿼리할 수 있기 때문이다. 렌더한 
   없으면 공유하지 않는다. 다시 파싱한 트리가 렌더가 쓰는 트리와 맞지 않아도(최상위 노드 수) 공유하지 않는다. 같은
   이름의 필드나 property를 가진 컴포넌트는 그것을 읽는 것이므로 빼고 본다.
 - 템플릿에 `{% debug %}`가 있는 컴포넌트. 보는 사람의 것을 포함한 컨텍스트 전체를 찍는다.
+- 템플릿에 매핑 인자 없는 Django의 `{% querystring %}`(`{% querystring page=2 %}`)이 있는 컴포넌트. 컨텍스트의
+  `request`에서 지금 페이지의 쿼리를 읽는다([내비게이션](./navigation.md#컴포넌트-템플릿의-querystring-태그), #210). 자기 매핑을
+  넘긴 `{% querystring this.query page=2 %}`은 읽지 않는다(Django 5.2는 그 인자로 `QueryDict`만 받는다).
 
 위 두 항목의 "템플릿"은 컴포넌트의 템플릿 파일 하나가 아니라 **렌더가 닿는 템플릿 전부**다. `{% include %}`한 템플릿,
 `{% extends %}`의 부모(그 부모의 부모까지), 함수 컴포넌트(`{% func %}`·`{% func_block %}`)의 템플릿, inclusion 태그의
@@ -191,7 +195,7 @@ extends할 때 고르는 부모가 지나온 템플릿에 따라 다르다). 함
 `None`은 `DEBUG`를 따르고, `wireview.testing`의 `render_diff()`에서는 언제나 켜진다. `False`로 끈다.
 
 1. **보는 사람의 이름을 읽으면 오류다.** 렌더하는 동안 컴포넌트의 `user`와 `session`, 컨텍스트의 `request`·`perms`·
-   `csrf_token`·`messages` 자리에 감시 객체를 둔다. 속성 접근·문자열 변환·진릿값 평가·비교에서
+   `csrf_token`·`messages` 자리에 감시 객체를 둔다(`{% querystring %}`이 읽는 `context.request`의 `GET`도). 속성 접근·문자열 변환·진릿값 평가·비교에서
    `SharedRenderError`(`ImproperlyConfigured`의 하위 클래스)를 던진다. property 안의 `self.user`와 다른 이름으로 받은
    컴포넌트의 `{% with viewer=this %}{{ viewer.user }}`처럼 시스템 체크가 보지 못하는 읽기도 잡는다. 감시 객체는 던지기 전에 읽혔다는 사실을 그 렌더에 적어 둔다. 그래서 오류를
    삼키는 자리 — 연산자가 든 `{% if request.user.is_staff and x %}`(Django는 피연산자의 예외를 거짓으로 바꾼다), 예외를
