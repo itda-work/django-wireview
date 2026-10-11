@@ -981,11 +981,11 @@ class TestPresenceProducerAnswers:
         """
         heard: list[str] = []
 
-        class XQuietProducer(XNarrowProducer):
+        class XUnsubscribedProducer(XNarrowProducer):
             async def notification(self, channel: str, **kwargs):
                 heard.append(channel)
 
-        producer = await mount(XQuietProducer, id="ann-widget", room_id=1, username="ann")
+        producer = await mount(XUnsubscribedProducer, id="ann-widget", room_id=1, username="ann")
         tracker = await mount(XTrackerComponent, room_id=1, username="bob")
         await tracker.component.presence_track_self(username="bob")
 
