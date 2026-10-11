@@ -220,11 +220,10 @@ async def test_clearing_all_leaves_other_users_alone(alice, bob):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_a_new_notification_is_streamed_in_and_pulses(alice):
-    # The path auto-broadcast takes when a row is created anywhere
+    # Created anywhere, the row reaches the mounted list as it reaches a page:
+    # auto-broadcast's model_mutation, then mutation() and a render (#201)
     view = await mount(XNotificationList, user=alice)
-    notification = await Notification.objects.acreate(user=alice, title="새 알림", message="…")
-
-    await view.component.mutation(notifications_channel(alice), ModelAction.CREATED, notification)
+    await Notification.objects.acreate(user=alice, title="새 알림", message="…")
 
     assert "새 알림" in view.stream_html("notifications")
     (js,) = [m for m in view.sent_messages if m.get("type") == "exec_js"]

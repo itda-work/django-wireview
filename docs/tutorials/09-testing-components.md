@@ -162,30 +162,27 @@ async def test_state_changes():
 ### 복잡한 상태
 
 03의 `add_item()`은 DB에 저장만 한다. 목록은 모델 브로드캐스트가 부르는 `mutation()`이 채운다.
-`mount()`는 채널 레이어를 흉내 낼 뿐 모델 브로드캐스트를 컴포넌트에 전달하지 않으므로, 테스트가
-`mutation()`을 직접 부른다. 채널 이름은 모델의 `label_lower`(`todo.item`)다.
+`mount()`한 컴포넌트도 그 브로드캐스트를 페이지처럼 받으므로(아래 "알림 테스트"), 테스트는 `call()` 뒤에
+바로 목록을 본다. 채널 이름은 모델의 `label_lower`(`todo.item`)다.
 
 ```python
-from wireview import ModelAction
-
-
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db(transaction=True)   # acreate가 커밋한다
 @pytest.mark.asyncio
 async def test_list_state():
     view = await mount(XTodoList)
 
     await view.call("add_item", text="New item")
 
-    # 브로드캐스트가 할 일을 대신한다
-    item = await Item.objects.filter(text="New item").afirst()
-    await view.component.mutation("todo.item", ModelAction.CREATED, item)
-
-    # 리스트에 아이템 추가됨
-    assert any(
-        item.text == "New item"
-        for item in view.component.items
-    )
+    # auto-broadcast → mutation()이 넣었다. 한 번만
+    assert [item.text for item in view.component.items] == ["New item"]
 ```
+
+**`transaction=True`로 표시한다.** `acreate()`는 워커 스레드의 연결에서 곧바로 커밋되고, auto-broadcast는 그
+커밋 뒤에(`on_commit`) 발행한다. 그냥 `django_db`의 롤백은 그 연결에 닿지 않으므로 행이 다음 테스트에 남는다
+(아래 "모델과 함께 테스트").
+
+`view.component.mutation(...)`을 테스트가 직접 부르지 않는다. 브로드캐스트가 이미 불렀으므로 항목이 둘이 되고,
+`any(...)` 같은 느슨한 단언은 그것을 보지 못한다. 단언은 목록 전체로 한다.
 
 ### 속성 검증
 
@@ -417,6 +414,28 @@ async def test_typing_indicator():
     ]
     assert typing[-1]["state"] == "typing"
 ```
+
+## 알림 테스트
+
+`mount()`한 컴포넌트는 같은 프로세스에서 발행한 알림을 페이지처럼 받는다. 구독한 채널에 `abroadcast()`·
+`self.broadcast()`가 보낸 알림이나 auto-broadcast의 모델 변경이 오면 `notification()`·`mutation()`이 돌고, 세션처럼
+렌더하고 구독을 다시 맞춘다. 그래서 "어디선가 생긴 행이 열린 페이지에 나타난다"를 소켓 없이 쓴다. 발행이
+돌아오면 받는 쪽도 끝나 있다. 아래 `XNotificationList`와 모델 `Notification`은 [notifications 예제](../../examples/notifications/README.md)의 것이다.
+
+```python
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_a_new_notification_reaches_the_open_list(alice):
+    view = await mount(XNotificationList, user=alice)   # alice의 알림 채널을 구독한다
+
+    # auto-broadcast가 그 채널로 model_mutation을 보내고, 목록의 mutation()이 받는다
+    await Notification.objects.acreate(user=alice, title="새 알림", message="…")
+
+    assert "새 알림" in view.stream_html("notifications")
+```
+
+`component.mutation(...)`·`component.notification(...)`을 직접 부르지 않는다 — 그러면 그 뒤의 렌더와 구독 맞추기를
+건너뛰어 페이지와 어긋난다. 순서와 예외는 [테스트 헬퍼의 알림 받기](../features/testing.md#알림-받기)에 있다.
 
 ## 픽스처 활용
 

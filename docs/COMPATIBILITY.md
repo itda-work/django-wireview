@@ -60,6 +60,7 @@ from wireview import Component, LiveComponent, JS, mount
 | `self.wire` | `params`, `redirect_to`, `replace_to`, `push_to`만([navigation](./features/navigation.md)). 나머지는 프레임워크 내부이고, 같은 일은 `Component`의 메서드(`put_flash`, `push_js`, `push_title`, `defer` 등)로 한다 |
 | 클라이언트 | `window.wireview`의 문서화된 멤버, `docs/features/`에 문서화된 `wire-*` DOM 속성·`wireview-*` CSS 클래스·`wireview:*` DOM 이벤트, 훅 객체의 문서화된 멤버([hooks](./features/hooks.md)). 접두사가 맞는다고 공개가 아니다 — 아래 "내부" 참고 |
 | 테스트 도구 | `mount()`가 돌려주는 `MountedComponent`의 문서화된 멤버([testing](./features/testing.md)). 그 `view.wire`는 컴포넌트의 `self.wire`와 같은 범위만 공개다. `sent_messages`·`stream_ops`의 항목과 `render_diff()`의 diff는 와이어 메시지라 **모양은 공개가 아니다** — `render_diff()`는 `None`인지만 약속한다. `queries()`는 `q.count`와 `q.assert_no_repeats()`만 공개이고, 그 행과 실패 메시지, 로거 `wireview.queries`의 로그 모양은 공개가 아니다 |
+| pytest 플러그인 | 이름 `wireview`(`pytest11` 진입점). 사용자가 `-p no:wireview`로 설정에 적으므로 이름이 약속이다. 약속하는 동작은 [testing](./features/testing.md#알림-받기)에 적은 것 — 마운트한 컴포넌트가 그것을 만든 테스트나 테스트보다 넓은 픽스처가 끝나면 듣기를 멈춘다는 것이다. 모듈 `wireview.pytest_plugin`과 그 훅은 내부다 |
 
 ### 내부 (공개처럼 보이지만 아닌 것)
 

@@ -13,6 +13,7 @@ import pytest
 from testproj.waiting import eventually
 
 from wireview import Component
+from wireview.core import notifications
 from wireview.features import presence
 from wireview.features.presence import (
     PresenceConfig,
@@ -94,17 +95,21 @@ async def hear(view, action: str, user_id: str, ref: str | None = "tab", **data)
 
 
 async def deliver(view, channel: str = "presence.room.1", **kwargs) -> None:
-    """A notification reaches ``view`` the way the session hands it over (#202).
+    """A notification reaches ``view`` alone, the way a session hands it over (#202).
 
-    The framework hears a joined producer's presence channel (``presence.hear``);
-    the component's ``notification()`` gets only the channels it subscribes to.
-    The real path is in tests/test_connections.py.
+    Through the rule sessions and mounts share (``notifications.deliver``): the
+    framework hears a joined producer's presence channel (``presence.hear``),
+    and the component's ``notification()`` gets only the channels it subscribes
+    to. The socket path is in tests/test_connections.py.
     """
-    component = view.component
-    if channel in component.get_subscriptions() | presence_channels(component):
-        await presence.hear(component, channel, kwargs)
-        if channel in component.get_subscriptions():
-            await component.notification(channel, **kwargs)
+    await notifications.deliver(view._host, "notification", {"channel": channel, "kwargs": kwargs})
+
+
+def _presence_template(cls, template_name=None):
+    """What both components draw: a mounted one renders after each notification it hears (#201)."""
+    from django.template import Template
+
+    return Template("{% load wireview %}<div {% tag_header %}>{{ username }}</div>")
 
 
 # Test Components (prefixed with X to avoid pytest collection)
@@ -131,6 +136,8 @@ class XProducerComponent(PresenceMixin, Component):
         """Call presence_join on mount."""
         await self.presence_join()
 
+    _get_template = classmethod(_presence_template)
+
 
 class XTrackerComponent(PresenceTrackerMixin, Component):
     """Test component that tracks presence of other users."""
@@ -149,6 +156,8 @@ class XTrackerComponent(PresenceTrackerMixin, Component):
 
     def get_subscriptions(self) -> set[str]:
         return {self._presence_channel()}
+
+    _get_template = classmethod(_presence_template)
 
 
 # Unit Tests for PresenceUser
@@ -347,6 +356,8 @@ class TestPresenceMixin:
 
 
 # Unit Tests for PresenceTrackerMixin
+# A tracker renders after each presence notification it hears, as a page does (#201)
+@pytest.mark.django_db
 class TestPresenceTrackerMixin:
     """Tests for PresenceTrackerMixin."""
 
@@ -478,13 +489,15 @@ class TestPresenceTrackerMixin:
 
 
 # Integration Tests
+# A tracker renders after each presence notification it hears, as a page does (#201)
+@pytest.mark.django_db
 class TestPresenceIntegration:
     """Integration tests for presence system."""
 
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_producer_to_tracker_flow(self):
-        """Test presence flow from producer to tracker."""
+        """Test presence flow from producer to tracker: the tracker hears it as a page would (#201)."""
         # Create producer
         producer = await mount(XProducerComponent, room_id=1, username="alice")
 
@@ -492,20 +505,12 @@ class TestPresenceIntegration:
         tracker = await mount(XTrackerComponent, room_id=1, username="bob")
         await tracker.component.presence_track_self(username="bob")
 
-        # Simulate producer typing by getting the broadcast data
         producer.wire._mock_channel_layer.clear()
         await producer.component.presence_set_typing(typing=True)
 
         # Get the broadcast
         broadcasts = producer.presence_broadcasts
         assert len(broadcasts) == 1
-
-        # Simulate tracker receiving the notification
-        broadcast_kwargs = broadcasts[0]["kwargs"]
-        await tracker.component.notification(
-            "presence.room.1",
-            **broadcast_kwargs,
-        )
 
         # Tracker should now show alice as typing
         assert tracker.component.presence_get_user("alice").is_typing()
@@ -520,40 +525,20 @@ class TestPresenceIntegration:
         # Create tracker
         tracker = await mount(XTrackerComponent, room_id=1, username="bob")
 
-        # Producer starts typing
-        producer.wire._mock_channel_layer.clear()
+        # Producer starts typing, and the tracker hears it
         await producer.component.presence_set_typing(typing=True)
-
-        # Tracker receives typing notification
-        broadcast = producer.presence_broadcasts[0]
-        await tracker.component.notification("presence.room.1", **broadcast["kwargs"])
 
         assert tracker.component.presence_get_user("alice").is_typing()
 
-        # Wait for the timeout's clear broadcast
-        clear_broadcasts = await eventually(
-            lambda: [b for b in producer.presence_broadcasts if b.get("kwargs", {}).get("state") == "online"],
+        # The timeout's clear broadcast reaches the tracker the same way
+        await eventually(
+            lambda: not tracker.component.presence_get_user("alice").is_typing(),
             task=producer.component._presence_typing_task,
         )
 
-        # Tracker receives clear notification
-        await tracker.component.notification(
-            "presence.room.1",
-            **clear_broadcasts[-1]["kwargs"],
-        )
 
-        # Should no longer be typing
-        assert not tracker.component.presence_get_user("alice").is_typing()
-
-
-async def relay(producer, tracker) -> None:
-    """Deliver what ``producer`` broadcast since the last relay to ``tracker``, in order."""
-    layer = producer.wire._mock_channel_layer
-    for message in [m for m in layer.sent_messages if m.get("kwargs", {}).get("action", "").startswith("presence_")]:
-        await tracker.component.notification("presence.room.1", **message["kwargs"])
-    layer.clear()
-
-
+# A mounted component renders after each presence notification it hears, as a page does (#201)
+@pytest.mark.django_db
 class TestPresencePerConnection:
     """A user is listed while any of their connections is, and types while any of them types (#202)."""
 
@@ -602,28 +587,25 @@ class TestPresencePerConnection:
     @pytest.mark.asyncio
     @pytest.mark.unit
     async def test_each_connection_times_out_its_own_typing(self, presence_clock):
-        """Two tabs of one user type; the first to time out does not clear the user."""
+        """Two tabs of one user type; the first to time out does not clear the user.
+
+        The tracker hears the producers as a page would (#201): mounted first, it hears their joins.
+        """
+        view = await mount(XTrackerComponent, room_id=1, username="tracker")
         tab1 = await mount(XProducerComponent, id="tab1", room_id=1, username="ann")
         tab2 = await mount(XProducerComponent, id="tab2", room_id=1, username="ann")
-        view = await mount(XTrackerComponent, room_id=1, username="tracker")
-        await relay(tab1, view)
-        await relay(tab2, view)
 
         await tab1.component.presence_set_typing(True)  # times out at 0.10
         await presence_clock.advance(0.06)
         await tab2.component.presence_set_typing(True)  # times out at 0.16
-        await relay(tab1, view)
-        await relay(tab2, view)
         assert view.component.presence_get_user("ann").is_typing()
 
         await presence_clock.advance(0.06)  # 0.12: tab1 cleared, tab2 still types
         await asyncio.wait({tab1.component._presence_typing_task}, timeout=5)
-        await relay(tab1, view)
         assert view.component.presence_get_user("ann").is_typing()
 
         await presence_clock.advance(0.04)  # 0.16
         await asyncio.wait({tab2.component._presence_typing_task}, timeout=5)
-        await relay(tab2, view)
         assert not view.component.presence_get_user("ann").is_typing()
 
     @pytest.mark.asyncio
@@ -694,11 +676,18 @@ class TestPresencePerConnection:
             presence._presence_ref(producer.component),
         )
 
-        # And that tab's own answer is kept: it is another tab of the user
+        # And that tab's own answer is kept: it is another tab of the user. The
+        # tracker heard this producer's answer too, as a page hears it (#201)
         await hear(tracker, "presence_sync_response", "ann", ref="ann-tab2")
-        assert set(tracker.component._presence_registry["presence.room.1"]["ann"]) == {my_ref, "ann-tab2"}
+        assert set(tracker.component._presence_registry["presence.room.1"]["ann"]) == {
+            my_ref,
+            "ann-tab2",
+            presence._presence_ref(producer.component),
+        }
 
 
+# A mounted component renders after each presence notification it hears, as a page does (#201)
+@pytest.mark.django_db
 class TestPresenceTrackerAlone:
     """A connection with a tracker and no producer never says it joined or left (#202)."""
 
@@ -736,27 +725,27 @@ class TestPresenceTrackerAlone:
         producer's leave (a hidden widget) does not take the tracker's user off
         its own list.
         """
-        view = await mount(XTrackerComponent, room_id=1, username="ann")
-        view.wire.connection_id = "conn"
+        # The producer first: what it said at its mount, before it is given the
+        # tracker's connection, the tracker never hears (#201)
         producer = await mount(XProducerComponent, room_id=1, username="ann")
-        producer.wire.connection_id = "conn"
-        producer.wire._mock_channel_layer.clear()
+        view = await mount(XTrackerComponent, room_id=1, username="ann")
+        for each in (view, producer):
+            each.wire.connection_id = "conn"
         await producer.component.presence_join()
-        await relay(producer, view)
         await view.component.presence_track_self(username="ann")
         assert len(view.component._presence_registry["presence.room.1"]["ann"]) == 2
         assert [u.user_id for u in view.component.presence_users] == ["ann"]
 
         await producer.component.presence_set_typing(True)
-        await relay(producer, view)
         assert view.component.presence_get_user("ann").is_typing()
 
         await producer.component.presence_leave()
-        await relay(producer, view)
         user = view.component.presence_get_user("ann")
         assert user is not None and not user.is_typing()
 
 
+# A mounted component renders after each presence notification it hears, as a page does (#201)
+@pytest.mark.django_db
 class TestPresenceLegacyPayload:
     """A message without presence_ref comes from a process older than #202 (a rolling deploy).
 
@@ -834,6 +823,8 @@ class XProducerThenTracker(PresenceMixin, PresenceTrackerMixin, Component):
         # A tracker hears its channel because it subscribes to it
         return super().get_subscriptions() | {self._presence_channel()}
 
+    _get_template = classmethod(_presence_template)
+
 
 class XSubclassedTab(XProducerThenTracker):
     """Its own receiver over a class that produces and tracks, passing everything on."""
@@ -856,6 +847,8 @@ class XTrackerThenProducer(PresenceTrackerMixin, PresenceMixin, Component):
     def get_subscriptions(self) -> set[str]:
         return super().get_subscriptions() | {self._presence_channel()}
 
+    _get_template = classmethod(_presence_template)
+
 
 async def ask(view, channel: str = "presence.room.1", requester_ref: str = "bobs-tab") -> list[dict]:
     """A sync request from another tab reaches ``view``; what it broadcast in answer."""
@@ -864,6 +857,8 @@ async def ask(view, channel: str = "presence.room.1", requester_ref: str = "bobs
     return [b["kwargs"] for b in view.presence_broadcasts]
 
 
+# A mounted component renders after each presence notification it hears, as a page does (#201)
+@pytest.mark.django_db
 class TestPresenceProducerAnswers:
     """The producer answers sync requests: it is what other people's lists show (#202).
 
@@ -978,6 +973,34 @@ class TestPresenceProducerAnswers:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
+    async def test_a_mounted_producer_answers_a_mounted_trackers_sync(self):
+        """Mounted, it listens on its presence channel as its connection would (#201, #202).
+
+        It does not subscribe to that channel: only the framework hears it there,
+        and the tracker mounted after its join learns of it from the answer.
+        """
+        heard: list[str] = []
+
+        class XQuietProducer(XNarrowProducer):
+            async def notification(self, channel: str, **kwargs):
+                heard.append(channel)
+
+        producer = await mount(XQuietProducer, id="ann-widget", room_id=1, username="ann")
+        tracker = await mount(XTrackerComponent, room_id=1, username="bob")
+        await tracker.component.presence_track_self(username="bob")
+
+        assert [u.user_id for u in tracker.component.presence_users] == ["bob", "ann"]
+        assert heard == []
+        assert not [m for m in producer.sent_messages if m["type"] == "render"]
+
+        # Gone from the channel with its leave: a later tracker hears no answer
+        await producer.component.presence_leave()
+        later = await mount(XTrackerComponent, room_id=1, username="cid")
+        await later.component.presence_track_self(username="cid")
+        assert [u.user_id for u in later.component.presence_users] == ["cid"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
     async def test_its_receiver_does_not_hear_what_only_the_framework_hears(self):
         """Its notification() hears its own channels only, as before #202; the sync is still answered."""
         heard: list[str] = []
@@ -1013,13 +1036,16 @@ class TestPresenceProducerAnswers:
         await view.component.presence_join()
         [answer] = await ask(view)
         assert answer["action"] == "presence_sync_response"
-        # And it tracks what it hears, rendering it
+        # And it tracks what it hears, rendering it: its own join and answer
+        # too, which it hears on its channel as a page does (#201)
         view.wire._skip_render = False
         await hear(view, "presence_join", "bob", ref="bobs-tab")
-        assert [u.user_id for u in view.component.presence_users] == ["bob"]
+        assert [u.user_id for u in view.component.presence_users] == ["ann", "bob"]
         assert not view.wire._skip_render
 
 
+# A mounted component renders after each presence notification it hears, as a page does (#201)
+@pytest.mark.django_db
 class TestPresenceTabs:
     """A meta is a browser tab's, across its reconnects (#202).
 
@@ -1167,6 +1193,8 @@ class TestPresenceTabs:
             assert socket_tab(query) == "", query
 
 
+# A mounted component renders after each presence notification it hears, as a page does (#201)
+@pytest.mark.django_db
 class TestPresenceTopics:
     """A tracker on several topics keeps each one's metas apart (#202).
 

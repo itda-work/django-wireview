@@ -22,10 +22,14 @@ Example:
 
 from __future__ import annotations
 
+import asyncio
+import collections
 import contextlib
 import itertools
 import json
+import sys
 import typing as t
+import weakref
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -34,12 +38,13 @@ from channels.layers import BaseChannelLayer
 from django.contrib.auth.models import AnonymousUser
 from django.urls import Resolver404
 
-from .core import patches, shared_render
+from .core import notifications, patches, shared_render
 from .core.meta import WireviewMeta
 from .core.rendered import PROTOCOL_VERSION
 from .core.session import SessionView
 from .debug import render_queries, render_queries_file
 from .deprecation import warn_deprecated
+from .features import presence
 from .repository import ComponentRepository
 
 if t.TYPE_CHECKING:
@@ -170,6 +175,9 @@ class MockWireviewMeta(WireviewMeta):
         )
         # Track calls for assertions
         self.sent_messages: list[dict[str, t.Any]] = []
+        # Where a mounted component's mail goes: its connection's channel, read
+        # once the message it is handling ends (MountedComponent._post)
+        self._post: t.Callable[[dict[str, t.Any], int | None], None] | None = None
 
     @property
     def broadcasts(self) -> list[dict[str, t.Any]]:
@@ -212,13 +220,32 @@ class MockWireviewMeta(WireviewMeta):
 
     async def send(self, _command: str, **kwargs: t.Any) -> None:
         """Override to track messages instead of sending via WebSocket."""
-        # A reset's Broadcast hold token is the session's, not the page's (#178)
-        kwargs.pop("hold", None)
-        self.sent_messages.append({"type": _command, **kwargs})
+        # A reset's Broadcast hold token is the session's, not the page's (#178):
+        # it lets the held patches go where the reset is written
+        hold = kwargs.pop("hold", None)
+        message = {"type": _command, **kwargs}
+        if self._post is not None:
+            self._post(message, hold)
+        else:
+            self.sent_messages.append(message)
 
     async def send_to(self, _channel: str, _command: str, **kwargs: t.Any) -> None:
         """Override to track messages instead of sending via WebSocket."""
         self.sent_messages.append({"channel": _channel, "command": _command, **kwargs})
+
+    async def _send_broadcast(self, channel: str, **kwargs: t.Any) -> None:
+        """Record the broadcast (``view.broadcasts``) and publish it as a page's is (#201).
+
+        It reaches the sockets of this process through its channel layer and the
+        components mounted in it, as ``abroadcast()`` does. Recorded first, with
+        the check of the group name every layer makes.
+        """
+        from .core.transport import get_broker
+        from .utils import _message, publish
+
+        message = _message(channel, "notification", {"kwargs": kwargs})
+        await self._mock_channel_layer.group_send(channel, message)
+        await publish(get_broker(), message)
 
 
 class MockRepository(ComponentRepository):
@@ -270,6 +297,44 @@ class MockRepository(ComponentRepository):
         return repo
 
 
+class _Connection:
+    """``notifications.Host`` for one mounted component: the connection it would be on."""
+
+    def __init__(self, mounted: "MountedComponent") -> None:
+        self._mounted = weakref.ref(mounted)
+
+    @property
+    def mounted(self) -> "MountedComponent":
+        mounted = self._mounted()
+        assert mounted is not None
+        return mounted
+
+    def _subscribed_to(self, channel: str) -> t.Iterator["Component"]:
+        # Asked when its turn comes, as a session asks (notifications.deliver)
+        component = self.mounted.component
+        if channel in component.get_subscriptions() or channel in presence.presence_channels(component):
+            yield component
+
+    def _holds(self, component: "Component") -> bool:
+        return not self.mounted.is_frozen
+
+    async def send_render(self, component: "Component") -> None:
+        """As a session renders after a notification: the diff goes out, when there is one."""
+        if (diff := await self.mounted.render_diff()) is not None:
+            # Written at once, not mailed: ahead of what the receiver mailed
+            self._record("render", id=component.id, diff=diff)
+
+    def _record(self, command: str, **payload: t.Any) -> None:
+        self.mounted.wire.sent_messages.append({"type": command, **payload})
+
+    async def _crashed(self, component: "Component") -> None:
+        # A session would log it and join the component again; a test is told
+        raise
+
+    async def after_mutation_chores(self) -> None:
+        await self.mounted._update_subscriptions()
+
+
 class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
     """
     A wrapper for a mounted component that provides testing utilities.
@@ -297,23 +362,77 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         self._held_frames: list[dict[str, t.Any]] = []
         self._held_tokens: set[int] = set()
         self._tokens = itertools.count(1)
-        # A connection handles the release behind a reset only once the handler
-        # that sent it returned: the tokens let go meanwhile wait for that
+        # A connection handles one message at a time. What a handler mails -- its
+        # stream operations, push_event, JS, a reset's release -- and the
+        # notifications that come meanwhile wait in its channel, in the order they
+        # were sent, until the handler is done (#205, #201); a Broadcast patch
+        # does not, it is written as it comes (_receive_patch).
         self._handling = 0
-        self._released: list[int] = []
+        self._channel: collections.deque[tuple[str, t.Any, int | None]] = collections.deque()
+        # The loop of the test that mounted it: a component a finished test left
+        # behind hears nothing published in the next one
+        self._loop = asyncio.get_running_loop()
+        # An event call() handled since the last render: a session renders after
+        # each event, call() does not (render_diff() is the test's)
+        self._unrendered_event = False
+        self._host = _Connection(self)
+        wire._post = self._post
         wire.patch_gate = patches.Gate(self._hold_for_reset, self._let_reset_through)
 
     @contextlib.asynccontextmanager
     async def _handling_message(self) -> t.AsyncIterator[None]:
+        """Handle one message: the mail it sends is written once it is over, as a connection's is."""
         self._handling += 1
         try:
             yield
         finally:
             self._handling -= 1
             if not self._handling:
-                released, self._released = self._released, []
-                for token in released:
-                    self._let_go(token)
+                await self._read_channel()
+
+    def _post(self, message: dict[str, t.Any] | None, hold: int | None) -> None:
+        """Mail from the component: ``message`` for the page, ``hold`` the Broadcast token it lets go."""
+        if self._handling:
+            self._channel.append(("mail", message, hold))
+        else:
+            # Sent from no handler -- a test calling a method itself: nothing is ahead of it
+            self._write(message, hold)
+
+    def _write(self, message: dict[str, t.Any] | None, hold: int | None) -> None:
+        if message is not None:
+            self.wire.sent_messages.append(message)
+        if hold is not None:
+            self._let_go(hold)
+
+    async def _read_channel(self) -> None:
+        """What waited in the channel, in order: mail is written, a notification handled."""
+        while self._channel and not self._handling:
+            kind, item, hold = self._channel.popleft()
+            if kind == "mail":
+                self._write(item, hold)
+            else:
+                await self._handle_notification(item)
+
+    async def _take_the_page(self) -> None:
+        """What the page has, before a notification renders: the render after it is a diff against that.
+
+        A session's join sent the whole page and the render after each event its
+        diff, so a notification's render sends only what the notification
+        changed. ``mount()`` drew none of them. Until a render (this, or the test's
+        own ``render_diff()``) set the baseline, it is set here, unrecorded: the
+        page already has it. Once the test set it, an event ``call()`` handled
+        since is rendered here, and recorded, as its session sent it: what it
+        changed, or nothing after ``skip_render()``, is not the notification's.
+        """
+        if self.wire._last_rendered is None:
+            await self.render_diff()
+        elif self._unrendered_event:
+            await self._host.send_render(self._component)
+
+    def _stop_listening(self) -> None:
+        """Hear nothing more published in this process: no notification, no Broadcast."""
+        patches.forget(self)
+        notifications.forget(self)
 
     async def _hold_for_reset(self, component: "Component") -> int | None:
         token = next(self._tokens)
@@ -321,9 +440,8 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         return token
 
     async def _let_reset_through(self, component: "Component", token: int, tried: bool = True) -> None:
-        if self._handling:
-            self._released.append(token)
-        else:
+        # A reset that was sent carries its token and lets it go where it is written
+        if not tried:
             self._let_go(token)
 
     def _let_go(self, token: int) -> None:
@@ -337,7 +455,8 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         and after each event: through the recorded layer, which refuses the names a
         real one refuses (``Meta.subscriptions = {"room:42"}`` fails the join)."""
         layer = self.wire._mock_channel_layer
-        subscriptions = self._component.get_subscriptions()
+        # A joined presence producer's connection hears its presence channel too (#202)
+        subscriptions = self._component.get_subscriptions() | presence.presence_channels(self._component)
         for group in subscriptions - self._subscriptions:
             await layer.group_add(group, "mounted")
         for group in self._subscriptions - subscriptions:
@@ -360,6 +479,34 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
             received = {"type": sent["command"], **sent["payload"]}
             (self._held_frames if self._held_tokens else self.wire.sent_messages).append(received)
 
+    async def _receive_notification(self, message: dict[str, t.Any]) -> None:
+        """A notification or model mutation published in this process (#201).
+
+        Heard when the component's connection is subscribed to its channel --
+        what :meth:`_update_subscriptions` last settled -- and handled as a
+        session handles it (``notifications.deliver``): the receiver, a render,
+        the subscriptions settled again. While a handler runs it waits behind
+        the mail sent so far, as in a connection's channel.
+        """
+        if self._loop is not asyncio.get_running_loop() or self.is_frozen:
+            return
+        if message["channel"] not in self._subscriptions:
+            return
+        self._channel.append(("notification", message, None))
+        if not self._handling:
+            await self._read_channel()
+
+    async def _handle_notification(self, message: dict[str, t.Any]) -> None:
+        async def handle() -> None:
+            # Another connection's work, not the scope of whatever published it
+            render_queries.detach()
+            async with self._handling_message():
+                if not self.is_frozen and message["channel"] in self._component.get_subscriptions():
+                    await self._take_the_page()
+                await notifications.deliver(self._host, notifications.RECEIVERS[message["type"]], message)
+
+        await asyncio.ensure_future(handle())
+
     @property
     def component(self) -> "Component":
         """Access the wrapped component instance."""
@@ -375,8 +522,10 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
     def broadcasts(self) -> list[dict[str, t.Any]]:
         """What the component broadcast, in order. Each has ``channel`` and ``kwargs``.
 
-        ``mount()`` stands in for the channel layer, so a broadcast is recorded here
-        instead of reaching anyone.
+        Recorded here and published as a page's broadcast is (#201): the components
+        mounted in this process hear it, the component itself included, and so do
+        the sockets on the channel layer of the test settings -- a layer whose
+        server is not running fails the ``call()`` that sent it.
         """
         return self.wire._mock_channel_layer.sent_messages
 
@@ -661,7 +810,21 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
                 f"its components mount fresh (a full page load if it leaves the live_session). "
                 f"Pass the component it renders: follow_push(Destination)."
             )
-        return await self._mount_destination(nav, verb, component_class, params, live_session, state, initial_state)
+        destination = await self._mount_destination(
+            nav, verb, component_class, params, live_session, state, initial_state
+        )
+        if not self._stays_for(destination):
+            # The page it was on is gone: it hears nothing more, as a redirect's
+            # component does (the redirect froze it)
+            self.wire.freeze()
+            self._stop_listening()
+        return destination
+
+    def _stays_for(self, destination: "MountedComponent") -> bool:
+        """Whether this instance outlives the move to ``destination``'s page: a sticky
+        component does across a boosted navigation, which stays in the live_session."""
+        here, there = self._repo.live_session, destination._repo.live_session
+        return self._component._meta.sticky and (here.name if here else "") == (there.name if there else "")
 
     async def _patch(self, nav: "Navigation") -> None:
         """Hand ``nav``'s params to this instance, as the client's ``params_changed`` does."""
@@ -670,9 +833,10 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         # server updates it in place rather than rebinding. Same here.
         self._repo.params.clear()
         self._repo.params.update(params)
-        await self._component._handle_params(params, nav.url)
-        # The session subscribes after params_changed as after any event
-        await self._update_subscriptions()
+        async with self._handling_message():
+            await self._component._handle_params(params, nav.url)
+            # The session subscribes after params_changed as after any event
+            await self._update_subscriptions()
 
     def _refuse_leaving_the_boundary(self, nav: "Navigation") -> None:
         """1.1's check for a push followed on this instance: a destination that is
@@ -760,13 +924,15 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
                 f"Call the component's method directly if the test means the method, not the event."
             )
 
-        # The server runs attached handle_event hooks first; a test must not get past one.
-        if (await self._component._run_hooks("handle_event", handler_name, kwargs)).get("halt"):
-            return None
-
-        # Arguments the handler does not take are dropped, as they are for an event
-        # that carries a form's other fields.
         async with self._handling_message():
+            self._unrendered_event = True
+            # The server runs attached handle_event hooks first, in the same
+            # message: what they mail waits with the handler's. A test must not
+            # get past one.
+            if (await self._component._run_hooks("handle_event", handler_name, kwargs)).get("halt"):
+                return None
+            # Arguments the handler does not take are dropped, as they are for an event
+            # that carries a form's other fields.
             with render_queries.scope("handler", self._component, handler_name):
                 result = handler(**filter_parameters(handler, kwargs))
                 # Handle async handlers
@@ -774,7 +940,8 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
 
                 if inspect.iscoroutine(result):
                     result = await result
-        await self._update_subscriptions()
+            # Inside the event, as a session subscribes before it reads the next message
+            await self._update_subscriptions()
         return result
 
     def render(self) -> str | None:
@@ -804,6 +971,7 @@ class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
         with shared_render.testing():
             diff = await self._wire.render_diff(self._component, self._repo.for_render(self._component, live=True))
         self._component._clear_temporary_assigns()
+        self._unrendered_event = False
         return diff
 
     def clear_messages(self) -> None:
@@ -962,8 +1130,15 @@ async def _mount(
         **fields,
     )
     mounted = MountedComponent(component, wire, repo, path=urlsplit(page_path).path if page_path else None)
-    # It hears a Broadcast published in this process for its class and topics (#178)
+    # It hears a Broadcast published in this process for its class and topics (#178),
+    # and the notifications on the channels it subscribes to (#201)
     patches.listen(mounted)
+    notifications.listen(mounted)
+    # ...until the test that mounted it ends (_end_of_test), or the fixture wider
+    # than a test that did (the pytest plugin)
+    plugin = sys.modules.get("wireview.pytest_plugin")
+    if plugin is None or not plugin.kept(mounted):
+        _mounted_in_test.add(mounted)
 
     # The mount hooks run before joined(), as they do on a real mount. A refusal
     # skips joined() and freezes the component, so ``render()`` here answers the
@@ -973,8 +1148,10 @@ async def _mount(
         # One message, as the join is: its resets' Broadcast patches come after
         # it, held from before joined() as a connection holds them
         async with mounted._handling_message():
-            if component.get_subscriptions():
-                await mounted._let_reset_through(component, await mounted._hold_for_reset(component))  # type: ignore[arg-type]
+            hold = await mounted._hold_for_reset(component) if component.get_subscriptions() else None
+            # A broadcast joined() sends waits until the subscriptions are settled,
+            # so the component hears its own, as the session's join does
+            wire.enter_pending_mode()
             # Call joined() if it exists and is async
             if hasattr(component, "joined"):
                 with render_queries.scope("joined", component):
@@ -986,11 +1163,35 @@ async def _mount(
             # component mounted with params= miss what every page load runs.
             if param_map:
                 await component._handle_params(dict(param_map), f"?{repo.get_query_string()}")
-        await mounted._update_subscriptions()
+            await mounted._update_subscriptions()
+            await wire.flush_pending()
+            if hold is not None:
+                # The join's release, behind what joined() mailed and the
+                # notifications its broadcasts brought this connection
+                mounted._post(None, hold)
     else:
         wire.freeze()
 
     return mounted
+
+
+#: What mount() made in the test that is running: they stop hearing what is
+#: published when it ends. Mounted components that never ran out of scope
+#: otherwise live on until the collector finds them -- a test that shares an
+#: event loop with the one before it would hear what that one left (#201).
+_mounted_in_test: weakref.WeakSet[MountedComponent] = weakref.WeakSet()
+
+
+def _end_of_test() -> None:
+    """The test that mounted them is over: they hear nothing published after it.
+
+    The pytest plugin (``wireview.pytest_plugin``) calls this when each test ends.
+    What a fixture wider than a test mounted is not here: the plugin ends it with
+    the fixture.
+    """
+    for mounted in list(_mounted_in_test):
+        mounted._stop_listening()
+    _mounted_in_test.clear()
 
 
 class ComponentTestCase:

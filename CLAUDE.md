@@ -52,6 +52,11 @@ wireview/
 │                          joined() 밖의 stream() reset은 wire.patch_gate로 잡는다. 잡기는 토큰으로 센다: reset의 stream_op 메일이 자기 토큰(hold)을
 │                          싣고 소켓에 쓰일 때 놓는다, join의 토큰은 release_patches 메일이 놓는다. 마지막 토큰이 놓일 때 쓴다. 메일이 채널로 나간 뒤
 │                          처리 중인 메시지 없이 HOLD_SECONDS가 지나면 패치를 쓰지 않고 연결을 닫는다(1013, WireviewConsumer.dispatch → handling_message)
+├── core/notifications.py  알림·모델 변경의 배달 규칙(#201). 구독한 컴포넌트마다 notification()·mutation() → 렌더 → after_mutation_chores.
+│                          구독은 컴포넌트마다 그 차례에 묻는다(제너레이터) — 앞 컴포넌트의 렌더가 뒤 LiveComponent의 채널을 옮길 수 있다.
+│                          WireviewSession.notification·model_mutation과 testing의 mount가 같은 deliver()를 Host 프로토콜로 부른다 — 사본을 두지 않는다.
+│                          utils.publish가 모든 알림 발행의 한 곳이고, 발행 뒤 같은 프로세스·같은 이벤트 루프의 mount 인스턴스에 건넨다(listen·published)
+│                          입장한 presence 프로듀서가 자기 presence 채널을 프레임워크로만 듣는 규칙(presence.hear 뒤 continue, #202)도 여기 있어 세션과 mount가 함께 쓴다
 ├── core/watched.py        Watched: 보는 사람을 읽으면 오류인 감시 객체. shared_render(VERIFY일 때)와 Broadcast 항목 렌더(언제나)가 함께 쓴다.
 │                          Broadcast 항목의 this는 대상 클래스를 품어 {% on %}이 핸들러를 클래스에서 검사한다(stands_for)
 ├── core/template_reload.py 개발 서버에서 템플릿이 바뀌면(자동 리로더의 file_changed) 이 프로세스의 열린 연결마다 rejoin을 보낸다(#180).
@@ -105,8 +110,17 @@ wireview/
 ├── telemetry.py           옵트인 계측 시그널 (event_handled, component_rendered, diff_computed, broadcast_published 구간과
 │                          connection_opened·connection_closed·join_rejected(닫힌 사유 집합)·publish_failed 이벤트, #124)
 ├── testing.py             mount(), MountedComponent, ComponentTestCase. mount한 컴포넌트는 같은 프로세스의 Broadcast를 받는다(core/patches.listen).
+│                          구독한 채널의 알림·모델 변경도 세션의 규칙(core/notifications.deliver)으로 받고 render를 sent_messages에 남긴다(#201).
+│                          핸들러(이벤트·joined()·params_changed·알림)가 보낸 메일은 연결의 채널처럼 핸들러가 끝난 뒤 쓰고, 그 사이 온 알림도 그 줄에 선다.
+│                          Broadcast 패치는 기다리지 않고 바로 쓴다 — 브라우저와 같은 순서(#205). joined()는 세션처럼 pending 모드라 그 broadcast는
+│                          구독을 맞춘 뒤 나간다. 알림의 렌더는 첫 알림 전에 잡은 기준선(페이지가 가진 것) 대비다. self.broadcast()는 기록하고
+│                          프로세스의 채널 레이어로도 발행한다. 테스트가 끝나면 듣기를 끊는다(_end_of_test, pytest_plugin.py)
 │                          render()는 실제 저장소의 HTTP 렌더 모드로 자식까지 그린다(자식 수명주기는 컨슈머 몫, #115).
 │                          내비게이션 단언·follow_redirect·follow_push·스트림 검사
+├── pytest_plugin.py       pytest 플러그인 wireview(pyproject의 pytest11 진입점, 앱의 스위트에도 실린다). 테스트가 끝나면 그 테스트의 mount가
+│                          듣기를 멈춘다(#201). 테스트보다 넓은 픽스처(모듈·클래스·세션, setUpClass)의 setup 중 만든 mount는 그 픽스처가
+│                          정리될 때(pytest_fixture_setup이 단 finalizer). wireview.testing을 import하지 않는다 — 그쪽이 kept()를 묻고,
+│                          플러그인은 wireview.testing이 sys.modules에 있을 때만 부른다. 계약은 tests/test_pytest_plugin.py(따로 띄운 pytest)
 ├── utils.py, log.py       db 헬퍼, 로깅
 ├── debug/sync_detector.py sync/async 전환 중첩 감지 (DEBUG_SYNC_TRANSITIONS)
 ├── debug/render_queries.py 렌더 부분별 SQL 귀속(DEBUG_RENDER_QUERIES, None = DEBUG, #182). 굵은 경계(렌더·async property·핸들러·mount·joined·작업·서명)는
@@ -122,7 +136,7 @@ wireview/
 │                          WIREVIEW_RENDER_QUERIES_DIR=off(루트 conftest.py가 둔다)이거나 wireview.testing을 import했으면 쓰지 않는다.
 │                          형식의 정본은 docs/features/render-queries.md "편집기로 보내기", 계약은 tests/test_render_queries_file.py
 ├── features/              streams.py, presence.py (PresenceMixin. 채널 → 사용자 → 프로듀서(탭 + 준 id, id가 없으면 클래스 — wire.id_given)마다 meta, 트래커의 자기 항목은 탭 키, 목록은 사용자 단위로 합친다. sync에는 프로듀서가 답한다(#202).
-                           그 답을 위해 세션이 입장한 프로듀서의 presence 채널(presence_channels)을 따로 듣고 hear()에 넘긴다. 그 채널의 메시지는 앱의 notification()에 넘기지 않는다 — 앱이 직접 구독한 채널이면 평소대로), uploads.py (UploadRegistry·토큰 v2),
+                           그 답을 위해 세션과 mount가 입장한 프로듀서의 presence 채널(presence_channels)을 따로 듣고 hear()에 넘긴다(core/notifications.deliver). 그 채널의 메시지는 앱의 notification()에 넘기지 않는다 — 앱이 직접 구독한 채널이면 평소대로), uploads.py (UploadRegistry·토큰 v2),
 │                          hooks.py (앱의 static/<app_label>/hooks/*.js 수집. 페이지가 아니라 프로젝트 단위. 템플릿 디렉터리는 TEMPLATES가 아니라 엔진의 로더에게 묻는다),
 │                          upload_store.py (청크 경로 계산·append·취소 마커·sweep. 워커들이 공유하는 유일한 상태),
 │                          toasts.py (toast()·atoast()와 그것을 받는 컴포넌트. {% wireview_toasts %}가 심는다, #116)
@@ -448,6 +462,6 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) 아키텍처
 - [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) 배포
 - [docs/COMPATIBILITY.md](./docs/COMPATIBILITY.md) 공개 API, 폐기 절차, 지원 범위
-- [docs/UPGRADING.md](./docs/UPGRADING.md) 0.x, 1.0 릴리스 후보, 1.0에서 1.1로, 1.1에서 1.2로, 1.2에서 1.3으로, 1.3에서 1.4로, 1.4에서 1.5로. 쓰던 버전별로 읽을 절과 보안 조치
+- [docs/UPGRADING.md](./docs/UPGRADING.md) 0.x, 1.0 릴리스 후보, 1.0에서 1.1로, 1.1에서 1.2로, 1.2에서 1.3으로, 1.3에서 1.4로, 1.4에서 1.5로, 1.5에서 1.6으로. 쓰던 버전별로 읽을 절과 보안 조치
 - [docs/PERFORMANCE.md](./docs/PERFORMANCE.md) 성능
 - [CHANGELOG.md](./CHANGELOG.md) 변경 이력

@@ -347,6 +347,14 @@ ci-build:
 	'src/core/diagnostics.ts', 'src/core/project.ts', 'src/core/template.ts')}; \
 	sys.exit(0) if want <= names else sys.exit(f'{w} lacks {sorted(want - names)}')"
 	@echo "ci-build: wheel contains the template diagnostics"
+	@# And the pytest plugin an app's suite loads by name (`-p no:wireview` names it, #201):
+	@# the entry point is metadata, which nothing imports to notice when it goes missing.
+	@python3 -c "import glob, sys, zipfile; \
+	w = sorted(glob.glob('dist/*.whl'))[-1]; z = zipfile.ZipFile(w); \
+	ep = z.read(next(n for n in z.namelist() if n.endswith('.dist-info/entry_points.txt'))).decode(); \
+	ok = 'wireview/pytest_plugin.py' in z.namelist() and '[pytest11]\nwireview = wireview.pytest_plugin' in ep; \
+	sys.exit(0) if ok else sys.exit(f'{w} lacks the pytest11 entry point wireview = wireview.pytest_plugin')"
+	@echo "ci-build: wheel registers the pytest plugin"
 	@# The PyPI page is this metadata. hatch_build.py pins the README's links to the
 	@# release tag; the wheel is built from the sdist, which has to carry the hook.
 	@python3 -c "import glob, sys, zipfile; \

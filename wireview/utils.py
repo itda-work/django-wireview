@@ -77,6 +77,22 @@ def _message(channel: str, type: str, kwargs: dict[str, t.Any]) -> dict[str, t.A
     return dict(type=type, channel=channel, message_id=secrets.token_hex(8), **kwargs)
 
 
+async def publish(broker: t.Any, message: dict[str, t.Any]) -> None:
+    """Publish a fan-out ``message`` (``_message``) to its channel through ``broker``.
+
+    Every notification goes out here: the components ``wireview.testing``
+    mounted in this process hear it too, as a session hears it through its
+    channel layer (#201).
+    """
+    from .core import notifications
+
+    channel, kind = message["channel"], message["type"]
+    with telemetry.span(telemetry.broadcast_published, sender=broker.__class__, topic=channel, kind=kind) as span:
+        span.measure(message)
+        await broker.publish(channel, message)
+    await notifications.published(message)
+
+
 @on_commit
 def send_to(channel: str | None, type: str, **kwargs: t.Any) -> None:
     """Send a message to a channel (sync version, deferred to on_commit).
@@ -90,11 +106,7 @@ def send_to(channel: str | None, type: str, **kwargs: t.Any) -> None:
         **kwargs: Additional keyword arguments to include in the message.
     """
     if channel:
-        broker = get_broker()
-        message = _message(channel, type, kwargs)
-        with telemetry.span(telemetry.broadcast_published, sender=broker.__class__, topic=channel, kind=type) as span:
-            span.measure(message)
-            async_to_sync(broker.publish)(channel, message)
+        async_to_sync(publish)(get_broker(), _message(channel, type, kwargs))
 
 
 @on_commit
@@ -122,11 +134,7 @@ async def asend_to(channel: str | None, type: str, **kwargs: t.Any) -> None:
         **kwargs: Additional keyword arguments to include in the message.
     """
     if channel:
-        broker = get_broker()
-        message = _message(channel, type, kwargs)
-        with telemetry.span(telemetry.broadcast_published, sender=broker.__class__, topic=channel, kind=type) as span:
-            span.measure(message)
-            await broker.publish(channel, message)
+        await publish(get_broker(), _message(channel, type, kwargs))
 
 
 async def asend_notification(channel: str, **kwargs: t.Any) -> None:

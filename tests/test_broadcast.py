@@ -21,7 +21,8 @@ from django.template import Template, engines
 from django.utils import timezone, translation
 from testproj.waiting import eventually
 
-from wireview import JS, Broadcast, Component, LiveComponent, mount, telemetry
+from examples.todo.models import Item as TodoItem
+from wireview import JS, Broadcast, Component, LiveComponent, ModelAction, abroadcast, mount, telemetry
 from wireview.consumer import WireviewConsumer
 from wireview.core import patches
 from wireview.core.meta import WireviewMeta
@@ -1848,3 +1849,581 @@ def test_send_outside_a_transaction_sends_at_once():
         set_broker(None)
 
     assert len(published) == 1
+
+
+# --- wireview.testing: mail behind the handler (#205), notifications (#201) ----------------
+
+
+async def _publish_and_write(component: Component, broadcast: Broadcast) -> None:
+    """Publish; on a connection, wait until the patch is on the socket: it is written during the handler."""
+    session = component.wire.patch_gate.hold.__self__  # type: ignore[union-attr]
+    writer = getattr(session, "_patch_writer", None)
+    await broadcast.asend()
+    if isinstance(session, WireviewSession):
+        await eventually(lambda: session._patch_writer is not writer and session._patch_writer.done())  # type: ignore[union-attr]
+
+
+class BcInserting(BcFeed):
+    """Inserts the rows it read one by one; a delete of the first is published between the two."""
+
+    class Meta:
+        subscriptions = {"bc-inserting"}
+
+    async def add(self, **_rest):
+        await self.stream_insert("items", Post(5, "five"))
+        await _publish_and_write(self, Broadcast(BcInserting, "bc-inserting").stream_delete("items", 5))
+        await self.stream_insert("items", Post(6, "six"))
+        await self.push_event("finished")
+
+
+@pytest.mark.asyncio
+async def test_a_mounted_component_writes_its_handlers_mail_after_a_patch_that_came_during_it():
+    """The patch is written as it comes, the handler's mail once the handler is done: the item is not kept (#205)."""
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcInserting, "inserting")
+        await _event(communicator, "inserting", "add")
+        connection = _stream_ops(await _until(communicator, _finished))
+    finally:
+        await communicator.disconnect()
+    view = await mount(BcInserting, id="inserting")
+    view.clear_messages()
+
+    await view.call("add")
+
+    assert connection == [("delete", ["items-5"]), ("insert", ["items-5"]), ("insert", ["items-6"])]
+    assert [(op["op"], [item["id"] for item in op["items"]]) for op in view.stream_ops("items")] == connection
+
+
+TEMPLATES["bc/listener.html"] = "{% load wireview %}<p {% tag_header %}>{{ room }}: {{ heard|join:',' }}</p>"
+
+
+class BcListener(Component):
+    """Hears its room; a notification can move it to another one, and mails what it heard."""
+
+    room: str = "a"
+    heard: list[str] = []
+
+    class Meta:
+        template_name = "bc/listener.html"
+
+    def get_subscriptions(self) -> set[str]:
+        return {f"bc-room-{self.room}"}
+
+    async def notification(self, channel: str, **kwargs: t.Any) -> None:
+        self.heard = [*self.heard, kwargs["text"]]
+        if move := kwargs.get("move"):
+            self.room = move
+        await self.push_event("heard", {"text": kwargs["text"]})
+
+    async def shout(self, **_rest):
+        """Mails, publishes to its own room, mails again: the notification waits between the two."""
+        await self.push_event("before")
+        await abroadcast(f"bc-room-{self.room}", text="own")
+        await self.push_event("after")
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return _template(cls, template_name)
+
+
+def _heard(message: dict[str, t.Any]) -> tuple[str, ...]:
+    """A frame as a test compares it: a render by its id, a push_event by its event and text."""
+    if message["command"] == "render":
+        return ("render", message["payload"]["id"])
+    payload = message["payload"]
+    return ("push_event", payload["event"], *([payload["payload"]["text"]] if payload["payload"] else []))
+
+
+def _recorded(view: t.Any) -> list[tuple[str, ...]]:
+    return [
+        ("render", m["id"]) if m["type"] == "render" else ("push_event", m["event"], *m["payload"].values())
+        for m in view.sent_messages
+    ]
+
+
+def _event_answer(message: dict[str, t.Any]) -> bool:
+    """The render that answers a user_event: ``call()`` returns the handler's result instead."""
+    return message["command"] == "render" and "ref" in message["payload"]
+
+
+@pytest.mark.asyncio
+async def test_a_mounted_component_hears_a_notification_as_a_connection_does():
+    """Receiver, render, subscriptions settled again: the move to room b is heard there, not in room a (#201)."""
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcListener, "listener")
+        await abroadcast("bc-room-a", text="one", move="b")
+        heard = await _until(communicator, lambda m: _heard(m) == ("push_event", "heard", "one"))
+        await abroadcast("bc-room-a", text="two")
+        await abroadcast("bc-room-b", text="three")
+        heard += await _until(communicator, lambda m: _heard(m) == ("push_event", "heard", "three"))
+    finally:
+        await communicator.disconnect()
+    connection = [_heard(m) for m in heard]
+    view = await mount(BcListener, id="listener")
+
+    await abroadcast("bc-room-a", text="one", move="b")
+    await abroadcast("bc-room-a", text="two")
+    await abroadcast("bc-room-b", text="three")
+
+    assert connection == [
+        ("render", "listener"),
+        ("push_event", "heard", "one"),
+        ("render", "listener"),
+        ("push_event", "heard", "three"),
+    ]
+    assert _recorded(view) == connection
+    assert view.component.heard == ["one", "three"]
+    assert "b: one,three" in view.render()
+
+
+@pytest.mark.asyncio
+async def test_a_notification_published_during_a_handler_waits_behind_the_mail_sent_before_it():
+    """In the channel the handler's mail and the notification are in the order they were sent (#201, #205)."""
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcListener, "listener")
+        await _event(communicator, "listener", "shout")
+        heard = await _until(communicator, lambda m: _heard(m) == ("push_event", "heard", "own"))
+    finally:
+        await communicator.disconnect()
+    connection = [_heard(m) for m in heard if not _event_answer(m)]
+    view = await mount(BcListener, id="listener")
+
+    await view.call("shout")
+
+    assert connection == [
+        ("push_event", "before"),
+        ("render", "listener"),
+        ("push_event", "after"),
+        ("push_event", "heard", "own"),
+    ]
+    assert _recorded(view) == connection
+
+
+@pytest.mark.asyncio
+async def test_a_mounted_component_hears_another_mounted_components_broadcast():
+    speaker = await mount(BcListener, id="speaker")
+    listener = await mount(BcListener, id="listener", room="b")
+
+    await speaker.component.broadcast("bc-room-b", text="hi")
+
+    assert speaker.component.heard == []
+    assert listener.component.heard == ["hi"]
+    assert [b["channel"] for b in speaker.broadcasts] == ["bc-room-b"]
+
+
+class BcFailingListener(BcListener):
+    async def notification(self, channel: str, **kwargs: t.Any) -> None:
+        raise RuntimeError("receiver failed")
+
+
+@pytest.mark.asyncio
+async def test_a_receiver_that_raises_raises_where_the_notification_was_published():
+    """A session would recover the component alone; a test is told."""
+    await mount(BcFailingListener, id="failing")
+
+    with pytest.raises(RuntimeError, match="receiver failed"):
+        await abroadcast("bc-room-a", text="one")
+
+
+def test_a_component_mounted_by_an_earlier_test_hears_nothing():
+    """Its loop is gone: what a later test publishes is not its (#201)."""
+    left_behind = asyncio.run(mount(BcListener, id="left"))
+
+    asyncio.run(abroadcast("bc-room-a", text="later"))
+
+    assert left_behind.component.heard == []
+
+
+# --- the session asks each component in its turn (#201 review) -----------------------------
+
+TEMPLATES["bc/moving-host.html"] = (
+    "{% load wireview %}<div {% tag_header %}>{{ room }}"
+    "{% live_component 'BcMovingChild' id='bc-moving-child' room=this.room %}</div>"
+)
+TEMPLATES["bc/moving-child.html"] = "{% load wireview %}<p {% live_tag_header %}>{{ room }}</p>"
+
+
+class BcMovingHost(Component):
+    """Hears room 1; a notification moves it, and its render moves its LiveComponent with it."""
+
+    room: str = "1"
+
+    class Meta:
+        template_name = "bc/moving-host.html"
+        subscriptions = {"bc-moving-1"}
+
+    async def notification(self, channel: str, **kwargs: t.Any) -> None:
+        self.room = kwargs["move"]
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return _template(cls, template_name)
+
+
+class BcMovingChild(LiveComponent):
+    room: str = "1"
+
+    class Meta:
+        template_name = "bc/moving-child.html"
+
+    def get_subscriptions(self) -> set[str]:
+        return {f"bc-moving-{self.room}"}
+
+    async def notification(self, channel: str, **kwargs: t.Any) -> None:
+        await self.push_event("child-heard", {"text": channel})
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return _template(cls, template_name)
+
+
+@pytest.mark.asyncio
+async def test_a_component_moved_off_a_channel_earlier_in_the_loop_does_not_hear_it():
+    """The parent's render hands the child room 2 before the child's turn: it no longer hears room 1."""
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcMovingHost, "moving-host")
+        await abroadcast("bc-moving-1", move="2")
+        # Room 2 is the child's once the connection settled its subscriptions again
+        layer = get_channel_layer()
+        await eventually(lambda: "bc-moving-2" in layer.groups)  # type: ignore[union-attr]
+        await abroadcast("bc-moving-2", move="2")
+        heard = await _until(communicator, lambda m: _heard(m) == ("push_event", "child-heard", "bc-moving-2"))
+    finally:
+        await communicator.disconnect()
+
+    assert [_heard(m) for m in heard if m["command"] == "push_event"] == [("push_event", "child-heard", "bc-moving-2")]
+
+
+# --- wireview.testing as a connection: the review of #201/#205 ------------------------------
+
+
+class BcJoiner(BcListener):
+    """Tells its own room it joined, from joined()."""
+
+    async def joined(self):
+        await self.broadcast(f"bc-room-{self.room}", text="hello")
+
+
+@pytest.mark.asyncio
+async def test_a_mounted_component_hears_what_its_joined_broadcast():
+    """joined()'s broadcast goes out once the subscriptions are settled, so the component hears its own."""
+    communicator = await _connect()
+    try:
+        joined = await _join(communicator, BcJoiner, "joiner")
+        heard = joined + await _until(communicator, lambda m: _heard(m) == ("push_event", "heard", "hello"))
+    finally:
+        await communicator.disconnect()
+    # The join's own render is the page the mounted component starts from
+    connection = [_heard(m) for m in heard[1:] if m["command"] in ("render", "push_event")]
+    view = await mount(BcJoiner, id="joiner")
+
+    assert connection == [("render", "joiner"), ("push_event", "heard", "hello")]
+    assert _recorded(view) == connection
+    assert view.component.heard == ["hello"]
+
+
+class BcIdle(BcListener):
+    """Hears without changing anything: nothing to render."""
+
+    async def notification(self, channel: str, **kwargs: t.Any) -> None:
+        await self.push_event("idle")
+
+
+@pytest.mark.asyncio
+async def test_a_notification_that_changes_nothing_renders_nothing_on_a_mounted_component():
+    """The join drew the page: a notification's render is a diff against it, empty here."""
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcIdle, "idle")
+        await abroadcast("bc-room-a", text="one")
+        heard = await _until(communicator, lambda m: _heard(m) == ("push_event", "idle"))
+    finally:
+        await communicator.disconnect()
+    connection = [_heard(m) for m in heard]
+    view = await mount(BcIdle, id="idle")
+
+    await abroadcast("bc-room-a", text="one")
+
+    assert connection == [("push_event", "idle")]
+    assert _recorded(view) == connection
+
+
+class BcJoinInserting(BcFeed):
+    """Inserts in joined(); a delete of that item is published while joined() runs."""
+
+    class Meta:
+        subscriptions = {"bc-join-inserting"}
+
+    async def joined(self):
+        await self.stream_insert("items", Post(5, "five"))
+        await Broadcast(BcJoinInserting, "bc-join-inserting").stream_delete("items", 5).asend()
+
+
+@pytest.mark.asyncio
+async def test_a_mounted_component_writes_a_patch_from_its_join_after_joineds_mail():
+    """The join holds the patches until its release, which follows joined()'s mail: the delete lands last."""
+    communicator = await _connect()
+    try:
+        connection = _stream_ops(await _join(communicator, BcJoinInserting, "join-inserting"))
+    finally:
+        await communicator.disconnect()
+    view = await mount(BcJoinInserting, id="join-inserting")
+
+    assert connection == [("insert", ["items-5"]), ("delete", ["items-5"])]
+    assert [(op["op"], [item["id"] for item in op["items"]]) for op in view.stream_ops("items")] == connection
+
+
+class BcHooked(BcFeed):
+    """A handle_event hook mails; the handler publishes a patch to its class and mails after it."""
+
+    class Meta:
+        subscriptions = {"bc-hooked"}
+
+    async def joined(self):
+        self.attach_hook("mail", "handle_event", self._mail)
+
+    async def _mail(self, event: str, payload: dict[str, t.Any]) -> None:
+        await self.push_event("hooked")
+
+    async def post(self, **_rest):
+        await _publish_and_write(self, Broadcast(BcHooked, "bc-hooked").push_event("posted"))
+        await self.push_event("finished")
+
+
+@pytest.mark.asyncio
+async def test_a_mounted_components_handle_event_hook_mails_inside_the_event():
+    """The hook runs in the event's message: its mail waits behind a patch written during the handler."""
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcHooked, "hooked")
+        await _event(communicator, "hooked", "post")
+        heard = await _until(communicator, lambda m: _heard(m) == ("push_event", "finished"))
+    finally:
+        await communicator.disconnect()
+    connection = [_heard(m) for m in heard if m["command"] == "push_event"]
+    view = await mount(BcHooked, id="hooked")
+    view.clear_messages()
+
+    await view.call("post")
+
+    assert connection == [("push_event", "posted"), ("push_event", "hooked"), ("push_event", "finished")]
+    assert [("push_event", m["event"]) for m in view.sent_messages if m["type"] == "push_event"] == connection
+
+
+class BcTeller(BcListener):
+    async def tell(self, room: str = "b", text: str = "", **_rest):
+        await self.broadcast(f"bc-room-{room}", text=text)
+
+
+@pytest.mark.asyncio
+async def test_a_mounted_components_broadcast_reaches_a_socket_of_its_process():
+    """self.broadcast() from a mount is published as a page's is, and still recorded (#201)."""
+    communicator = await _connect()
+    try:
+        await _join(communicator, BcListener, "socket-listener")
+        await communicator.send_json_to(
+            {
+                "command": "user_event",
+                "payload": {
+                    "id": "socket-listener",
+                    "command": "shout",
+                    "implicit_args": {},
+                    "explicit_args": {},
+                    "ref": 1,
+                },
+            }
+        )
+        await _until(communicator, lambda m: _heard(m) == ("push_event", "heard", "own"))
+        view = await mount(BcTeller, id="teller")
+
+        await view.call("tell", room="a", text="from a mount")
+
+        heard = await _until(communicator, lambda m: m["command"] == "push_event")
+    finally:
+        await communicator.disconnect()
+
+    assert _heard(heard[-1]) == ("push_event", "heard", "from a mount")
+    assert [(b["channel"], b["kwargs"]) for b in view.broadcasts] == [("bc-room-a", {"text": "from a mount"})]
+    assert view.component.heard == ["from a mount"], "and the mount hears its own room, as the socket does"
+
+
+@pytest.mark.asyncio
+async def test_a_component_whose_page_a_push_left_hears_nothing_more():
+    """follow_push() to another path mounts the destination; the page it left is gone, as after a boosted move."""
+    view = await mount(BcListener, id="leaving", path="/here/")
+    await view.component.wire.push_to("/elsewhere/")
+    await view.follow_push(BcIdle, live_session=None, id="arrived")
+
+    await abroadcast("bc-room-a", text="after leaving")
+
+    assert view.component.heard == []
+    assert view.is_frozen
+
+
+class BcStickyListener(BcListener):
+    class Meta:
+        sticky = True
+
+
+@pytest.mark.asyncio
+async def test_a_sticky_component_hears_on_after_a_push_to_another_page():
+    """A sticky component survives a boosted move within its live_session."""
+    view = await mount(BcStickyListener, id="sticky", path="/here/")
+    await view.component.wire.push_to("/elsewhere/")
+    await view.follow_push(BcIdle, live_session=None, id="arrived")
+
+    await abroadcast("bc-room-a", text="after the move")
+
+    assert view.component.heard == ["after the move"]
+
+
+# --- an event call() handled before a notification (#201 review) --------------------------
+
+
+class BcQuietListener(BcListener):
+    async def quiet(self, **_rest):
+        self.skip_render()
+
+
+class BcBumping(BcIdle):
+    async def bump(self, **_rest):
+        self.heard = ["bumped"]
+
+
+class BcBumpingListener(BcListener):
+    async def bump(self, **_rest):
+        self.heard = ["bumped"]
+
+
+def _drawn(diff: dict[str, t.Any]) -> dict[str, t.Any]:
+    """A render's diff but the signed state, which differs between any two renders."""
+    return {k: v for k, v in diff.items() if k != "0"}
+
+
+def _rendered(message: dict[str, t.Any]) -> tuple[t.Any, ...]:
+    """A frame with what it drew: a render by its diff, a push_event by its event."""
+    if message["command"] == "render":
+        return ("render", _drawn(message["payload"]["diff"]))
+    return ("push_event", message["payload"]["event"])
+
+
+def _recorded_renders(view: t.Any) -> list[tuple[t.Any, ...]]:
+    return [
+        ("render", _drawn(m["diff"])) if m["type"] == "render" else ("push_event", m["event"])
+        for m in view.sent_messages
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("cls", "handler", "last"),
+    [
+        (BcQuietListener, "quiet", ("push_event", "heard")),
+        (BcBumping, "bump", ("push_event", "idle")),
+        (BcBumpingListener, "bump", ("push_event", "heard")),
+    ],
+    ids=["skipped", "changed", "both-changed"],
+)
+async def test_an_events_render_is_not_a_notifications_on_a_mounted_component(cls, handler, last):
+    """A session renders after each event; call() does not. With the page taken, a notification renders the
+    event's own first: what it changed is not the notification's, and a skip_render() is not either."""
+    communicator = await _connect()
+    try:
+        await _join(communicator, cls, "evented")
+        await _event(communicator, "evented", handler)
+        await abroadcast("bc-room-a", text="one")
+        heard = await _until(communicator, lambda m: m["command"] == "push_event" and _rendered(m) == last)
+    finally:
+        await communicator.disconnect()
+    # A render with no diff is the event's answer to the page; a mount records none
+    connection = [_rendered(m) for m in heard if not (m["command"] == "render" and m["payload"]["diff"] is None)]
+    view = await mount(cls, id="evented")
+    await view.render_diff()
+
+    await view.call(handler)
+    await abroadcast("bc-room-a", text="one")
+
+    assert (
+        connection
+        == {
+            BcQuietListener: [("render", {"2": "one"}), ("push_event", "heard")],
+            BcBumping: [("render", {"2": "bumped"}), ("push_event", "idle")],
+            BcBumpingListener: [("render", {"2": "bumped"}), ("render", {"2": "bumped,one"}), ("push_event", "heard")],
+        }[cls]
+    )
+    assert _recorded_renders(view) == connection
+
+
+class BcJoinTalker(BcListener):
+    """joined() publishes a patch to its class, then broadcasts to its own room."""
+
+    async def joined(self):
+        await Broadcast(BcJoinTalker, "bc-room-a").push_event("patch").asend()
+        await self.broadcast("bc-room-a", text="self")
+
+    def get_subscriptions(self) -> set[str]:
+        return {"bc-room-a"}
+
+
+@pytest.mark.asyncio
+async def test_a_mounted_component_hears_joineds_broadcast_before_the_join_lets_its_patches_go():
+    """The join's release follows the notification joined() brought: its render comes ahead of the held patch."""
+    communicator = await _connect()
+    try:
+        joined = await _join(communicator, BcJoinTalker, "join-talker")
+        heard = joined + await _until(communicator, lambda m: _heard(m) == ("push_event", "heard", "self"))
+    finally:
+        await communicator.disconnect()
+    # The join's own render is the page the mounted component starts from
+    connection = [_heard(m) for m in heard[1:] if m["command"] in ("render", "push_event")]
+    view = await mount(BcJoinTalker, id="join-talker")
+
+    assert connection == [("render", "join-talker"), ("push_event", "patch"), ("push_event", "heard", "self")]
+    assert _recorded(view) == connection
+
+
+# --- tutorial 09 "복잡한 상태": the broadcast fills the list, once (#201 review) ------------
+
+TEMPLATES["bc/tutorial-todo.html"] = (
+    "{% load wireview %}<ul {% tag_header %}>{% for item in items %}<li>{{ item.text }}</li>{% endfor %}</ul>"
+)
+
+
+class BcTutorialTodo(Component):
+    """Tutorial 03's list: add_item() saves the row, mutation() puts it in."""
+
+    items: list[TodoItem] = []
+
+    class Meta:
+        template_name = "bc/tutorial-todo.html"
+        subscriptions = {"todo.item"}
+
+    async def joined(self):
+        self.items = [item async for item in TodoItem.objects.all()]
+
+    async def add_item(self, text: str):
+        await TodoItem.objects.acreate(text=text)
+
+    async def mutation(self, channel: str, action: ModelAction, instance: TodoItem):
+        if action == ModelAction.CREATED:
+            self.items.insert(0, instance)
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return _template(cls, template_name)
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_the_tutorials_list_is_filled_by_the_model_broadcast_once():
+    """docs/tutorials/09: the test does not call mutation() itself -- the broadcast did."""
+    view = await mount(BcTutorialTodo, id="tutorial-todo")
+
+    await view.call("add_item", text="New item")
+
+    assert [item.text for item in view.component.items] == ["New item"]
+    assert "<li>New item</li>" in view.render()

@@ -125,6 +125,22 @@ UPGRADE_NOTE = {
         "토픽 여럿을 듣는 트래커는 토픽마다 기록한다",
         "`presence_users_in(topic)`",
     ),
+    "A component `mount()`ed in a test hears the notifications published in its process": (
+        "테스트의 `mount()`가 같은 프로세스의 알림을 받는다",
+        "직접 부르기를 지운다",
+    ),
+    "`mount()` recorded a handler's mail": (
+        "핸들러의 메일이 핸들러가 끝난 뒤 `sent_messages`에 들어간다",
+        "브라우저가 받는 순서로 고친다",
+    ),
+    "A pytest plugin, `wireview`": (
+        "새로: pytest 플러그인 `wireview`",
+        "`-p no:wireview`",
+    ),
+    "`follow_push(Destination)` to another path left the instance it came from listening": (
+        "다른 경로로 `follow_push(Destination)`한 뒤 원래 인스턴스는 언다",
+        "목적지 컴포넌트로 옮긴다",
+    ),
 }
 
 NO_UPGRADE_NOTE: dict[str, str] = {}

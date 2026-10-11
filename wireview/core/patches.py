@@ -123,6 +123,11 @@ def listen(receiver: t.Any) -> None:
     _listeners.add(receiver)
 
 
+def forget(receiver: t.Any) -> None:
+    """Hand ``receiver`` nothing more."""
+    _listeners.discard(receiver)
+
+
 class Broadcast:
     """Stream items, hook events and JS commands for every subscriber of a topic, rendered once.
 

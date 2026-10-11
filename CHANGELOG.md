@@ -16,6 +16,28 @@ The django-reactor era changelog (2.x) is preserved in
 
 - `presence_users_in(topic)` lists the users of one topic, one entry each, for a presence tracker that
   subscribes to several (#202). `presence_users` lists them across all of its topics.
+- A component `mount()`ed in a test hears the notifications published in its process, as a page does (#201):
+  `abroadcast()`, `broadcast()`, `self.broadcast()`, `atoast()` and auto-broadcast's model mutations on a
+  channel it subscribes to run its `notification()` or `mutation()`, then the render a session sends
+  (recorded in `sent_messages`) and its subscriptions settled again. Before, a broadcast was only recorded in
+  `view.broadcasts`, and a test that called `component.notification()` itself skipped the render and the
+  subscriptions. The session and the test helper hand a notification over with the same code
+  (`wireview/core/notifications.py`), so they cannot drift. Publishing returns once the receivers are done;
+  one that raises raises where it was published -- in the `abroadcast()`, the other component's `call()` or
+  the `save()` that sent it. A component hears its own broadcasts, from `joined()` too, which goes out once
+  the subscriptions are settled as on a connection. The render is a diff against the page the component
+  already has: a notification that changes nothing records no `render`, and `render_diff()` after a
+  notification sees only what changed since. Once a test took the page with `render_diff()`, an event
+  `call()` handled since is rendered, and recorded, ahead of the next notification's render, as a session
+  renders after each event. `self.broadcast()` from a mounted component is also published to the channel
+  layer of the test settings, so a socket of the same process hears it, and a layer whose server is not
+  running fails the `call()` as it fails a connection; `view.broadcasts` still records it.
+- A pytest plugin, `wireview` (a `pytest11` entry point installed with the package): a component a test
+  mounted hears nothing published once that test ends, whatever event loop the tests share. One a fixture
+  wider than a test mounted -- module, class or session scope, or unittest's `setUpClass` -- hears until
+  that fixture is torn down, so every test sharing it hears. Without it (`-p no:wireview`, or another
+  runner) only the event loop keeps tests apart (#201). Loading it imports the package `wireview` and has
+  pytest rewrite its asserts; `PYTEST_DISABLE_PLUGIN_AUTOLOAD` keeps it from loading.
 
 ### Fixed
 
@@ -55,6 +77,17 @@ The django-reactor era changelog (2.x) is preserved in
 - A presence tracker that subscribes to several topics keeps each topic's metas apart (#202): leaving one
   room removed the user though they were still in another, and the tracker answered requests on every
   topic. `presence_users` lists a user once across the topics; `presence_users_in(topic)` (Added) reads one.
+- `mount()` recorded a handler's mail -- stream operations, `push_event`, JS, navigation -- as it was sent,
+  while a connection writes it once the handler is done (#205). A `Broadcast` patch published during the
+  handler, which a connection writes at once, landed after the mail instead of before it: a delete of an
+  item the handler was inserting looked kept in the test and came back in the browser. A handler's mail,
+  and a notification published during it, now wait in the order they were sent until `call()`,
+  `joined()`, `follow_push()`'s `params_changed()` or the notification's handling ends.
+  A `handle_event` hook attached to the component runs inside the event's message, its mail waiting with
+  the handler's, and the join's release of held patches follows `joined()`'s mail.
+- `follow_push(Destination)` to another path left the instance it came from listening: it heard the
+  notifications and `Broadcast` patches of the page the browser had left. It is frozen now, as after a
+  redirect, unless it is a sticky component staying in the same `live_session` (#201).
 
 ## [1.5.1] - 2026-10-10
 
