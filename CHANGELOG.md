@@ -174,6 +174,11 @@ The django-reactor era changelog (2.x) is preserved in
   none. A connection with no secret renders an empty token and logs once, naming `ensure_csrf_cookie`. A
   component `mount()`ed in a test renders as a page that has the cookie: a token of a secret new with each
   `mount()`, masked anew for each `render()` and shared by the live renders, as on a connection.
+- A nested `{% component %}` a render drew that the page has yet to join goes with the component that drew it
+  when that one leaves -- the page let its element go, new DOM came under its id, its join failed -- along
+  with the LiveComponents it owns and what it drew in turn (#207). The page sends no leave for an element it
+  never joined, so the instance stayed on the connection until it closed, subscribed to its channels and
+  running their receivers. It gets no `leaving()`, as it never ran `joined()`; its tasks are cancelled.
 - A nested `{% component %}` its drawer's render drew anew hears its channels from its `joined()` on (#207).
   It is on the connection from that render, and the page's join for it comes a round trip later; a
   notification or model mutation that came in between ran its `notification()` or `mutation()` -- and

@@ -156,12 +156,25 @@ class NajSlowHost(NajHost):
 @pytest.fixture(autouse=True)
 def _calls():
     CALLS.clear()
+    SESSIONS.clear()
     DRAWING.clear()
     PUBLISHED.clear()
 
 
+#: The sessions ``_open`` started, latest last
+SESSIONS: list[WireviewConsumer] = []
+
+
+class _Consumer(WireviewConsumer):
+    """A consumer the test can look into."""
+
+    async def start(self, **kwargs: t.Any) -> None:
+        await super().start(**kwargs)
+        SESSIONS.append(self)
+
+
 async def _open() -> WebsocketCommunicator:
-    communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), "/__wireview__?vsn=99")
+    communicator = WebsocketCommunicator(_Consumer.as_asgi(), "/__wireview__?vsn=99")
     communicator.scope["user"] = AnonymousUser()
     connected, _ = await communicator.connect()
     assert connected
@@ -375,5 +388,51 @@ async def test_a_receiver_that_raises_on_what_came_before_the_join_is_recovered_
         # The page joins it again from what it shows; what came after the one that raised goes with the instance
         assert {"command": "error", "payload": {"id": "naj-leaf", "during": "event"}} in heard
         assert _leaf() == [("joined", "naj-leaf"), ("notified", "naj-leaf", 13)]
+    finally:
+        await communicator.disconnect()
+
+
+async def test_a_component_its_drawer_drew_goes_with_the_drawer_when_the_page_lets_that_go_before_joining_it():
+    # A boosted visit right behind the render that drew it: the page leaves the
+    # drawer, and the leaf's element with it, and never joins the leaf
+    communicator = await _open()
+    try:
+        await _join(communicator, NajHost, "naj-host")
+        await _event(communicator, "naj-host", "show")
+        await _quiet(communicator)
+        session = SESSIONS[-1]
+        leaf = session.repo.get("naj-leaf")
+        assert leaf is not None and not leaf.wire.has_joined
+
+        await communicator.send_json_to({"command": "leave", "payload": {"id": "naj-host"}})
+        await _quiet(communicator)
+        assert session.repo.components == {}
+        # Nothing on the connection hears the room any more
+        assert session.subscriptions == set()
+        await asyncio.to_thread(broadcast, ROOM, n=1)
+        await _quiet(communicator)
+        assert leaf.wire.unheard == []
+        assert _leaf() == []
+    finally:
+        await communicator.disconnect()
+
+
+async def test_a_component_its_drawer_drew_goes_with_the_drawer_new_dom_replaces_before_joining_it():
+    communicator = await _open()
+    try:
+        await _join(communicator, NajHost, "naj-host")
+        await _event(communicator, "naj-host", "show")
+        await _quiet(communicator)
+        session = SESSIONS[-1]
+        leaf = session.repo.get("naj-leaf")
+        assert leaf is not None
+
+        # A boosted visit brings the host anew, without the leaf
+        await _join(communicator, NajHost, "naj-host")
+        await _quiet(communicator)
+        assert list(session.repo.components) == ["naj-host"]
+        await asyncio.to_thread(broadcast, ROOM, n=1)
+        await _heard_the_room(communicator, 1)
+        assert leaf.wire.unheard == []
     finally:
         await communicator.disconnect()

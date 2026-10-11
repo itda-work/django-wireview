@@ -1039,13 +1039,19 @@ class ComponentRepository:
 
         What the component's passes drew goes too: no pass of it ends any more
         to forget it (``end_pass``). The rollback keeps that as well, as the
-        way from what it drew to the map it keeps.
+        way from what it drew to the map it keeps. An instance one of them
+        built that the page has yet to join is removed with it, and with what
+        it owns and drew: its element went with this one's, and the page sends
+        no leave for an element it never joined. Left, it held its channels
+        and ran their receivers until the connection ended (#207).
         """
+        drawn: list[str] = []
         if not keep_carried:
             self._restore.pop(id, None)
             for child_id in self._drew.pop(id, set()):
                 if self._built_by.get(child_id) == id:
                     del self._built_by[child_id]
+                    drawn.append(child_id)
         self._slots_to_rejoin.pop(id, None)
         # A pass of it that drew others within its own, with no batch to settle
         # them any more (a render that raised): the others settle in their own
@@ -1059,6 +1065,10 @@ class ComponentRepository:
         removed = [component]
         for child in self.get_live_components(id):
             removed.extend(self.remove(child.id))
+        for child_id in drawn:
+            child = self.components.get(child_id)
+            if child is not None and not isinstance(child, LiveComponent) and not child.wire.has_joined:
+                removed.extend(self.remove(child_id))
         gone = {builtins.id(instance) for instance in removed}
         self._pending_live_components = [c for c in self._pending_live_components if builtins.id(c) not in gone]
         self._pending_updates = [(c, p) for c, p in self._pending_updates if builtins.id(c) not in gone]
