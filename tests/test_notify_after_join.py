@@ -21,14 +21,19 @@ from channels.exceptions import ChannelFull
 from channels.layers import get_channel_layer
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth.models import AnonymousUser
+from django.contrib.sessions.backends.db import SessionStore
 from django.template import Template
 from testproj.waiting import eventually
 
 from wireview import Component, LiveComponent, broadcast
+from wireview import session as session_module
 from wireview.consumer import WireviewConsumer
 from wireview.core import notifications
+from wireview.core.live_session import AUTH_GENERATION_KEY, AUTH_USER_ID_KEY, identity_fingerprint
 from wireview.core.meta import WireviewMeta
+from wireview.core.session import SessionView
 from wireview.core.state import sign_state
+from wireview.session import RenewBudget
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio, pytest.mark.django_db(transaction=True)]
 
@@ -202,9 +207,12 @@ class _Consumer(WireviewConsumer):
         SESSIONS.append(self)
 
 
-async def _open() -> WebsocketCommunicator:
+async def _open(*, session: bool = False) -> WebsocketCommunicator:
     communicator = WebsocketCommunicator(_Consumer.as_asgi(), "/__wireview__?vsn=99")
     communicator.scope["user"] = AnonymousUser()
+    if session:
+        # A handshake that carried a session, so a join's identity is compared (#209)
+        communicator.scope["session"] = SessionStore()
     connected, _ = await communicator.connect()
     assert connected
     return communicator
@@ -650,3 +658,37 @@ async def test_the_mail_for_an_instance_that_joined_hands_nothing_to_another_one
         assert len(fresh.wire.unheard) == 1
     finally:
         await communicator.disconnect()
+
+
+async def test_a_join_told_to_renew_hands_over_nothing_that_waited_and_leaves_it_waiting(monkeypatch):
+    """#209's answer to a join for another identity comes before the handover (#207).
+
+    Another tab logged in, and the page's join for the leaf carries a state drawn
+    for that login: nothing is mounted, so nothing that waited runs -- not under
+    this socket's identity either. The instance still waits, bounded as ever, and
+    goes with this socket when the page opens another.
+    """
+    monkeypatch.setattr(session_module, "renew_budget", RenewBudget())
+    communicator = await _open(session=True)
+    try:
+        await _join(communicator, NajHost, "naj-host")
+        await _event(communicator, "naj-host", "shout", n=1)
+        await _heard_the_room(communicator, 1)
+        session = SESSIONS[-1]
+        waiting = session.repo.get("naj-leaf")
+        assert waiting is not None and len(waiting.wire.unheard) == 1
+
+        ada = SessionView({AUTH_USER_ID_KEY: "1", AUTH_GENERATION_KEY: "ada-1"}, session_key="k-ada")
+        leaf = NajLeaf(user=AnonymousUser(), wire=WireviewMeta(params={}), id="naj-leaf")
+        leaf.wire.identity = lambda: identity_fingerprint(ada, None)
+        for renewed in (False, True):
+            payload = {"name": "NajLeaf", "state": sign_state(leaf), "children": {}, "renewed": renewed}
+            await communicator.send_json_to({"command": "join", "payload": payload})
+            answer = await communicator.receive_json_from(timeout=5)
+            assert answer["command"] == ("reload" if renewed else "renew")
+            assert await communicator.receive_nothing(timeout=0.3)
+        assert _leaf() == []
+        assert session.repo.get("naj-leaf") is waiting and len(waiting.wire.unheard) == 1
+    finally:
+        await communicator.disconnect()
+    assert _leaf() == []
