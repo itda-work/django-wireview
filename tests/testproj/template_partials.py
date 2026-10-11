@@ -9,6 +9,7 @@ without the package: the scope check must tell a partial by its shape.
 """
 
 from django import template
+from django.template.loaders.base import Loader as BaseLoader
 from django.template.loaders.locmem import Loader as LocmemLoader
 
 register = template.Library()
@@ -38,6 +39,37 @@ class Loader(LocmemLoader):
             return found.extra_data["template-partials"][partial]
         except KeyError:
             raise template.TemplateDoesNotExist(template_name) from None
+
+
+class WrappingLoader(BaseLoader):
+    """The package's loader as it ships: around other loaders, a cached one among them.
+
+    ``"file#name"`` is the file the loaders under it give -- the cached one's
+    copy, read once -- and the partial taken out of it.
+    """
+
+    def __init__(self, engine, loaders):
+        super().__init__(engine)
+        self.loaders = engine.get_template_loaders(loaders)
+
+    def get_template_sources(self, template_name):
+        for loader in self.loaders:
+            yield from loader.get_template_sources(template_name)
+
+    def get_template(self, template_name, skip=None):
+        name, _, partial = template_name.partition("#")
+        for loader in self.loaders:
+            try:
+                found = loader.get_template(name, skip=skip)
+            except template.TemplateDoesNotExist:
+                continue
+            if not partial:
+                return found
+            try:
+                return found.extra_data["template-partials"][partial]
+            except KeyError:
+                break
+        raise template.TemplateDoesNotExist(template_name)
 
 
 class DefineNode(template.Node):

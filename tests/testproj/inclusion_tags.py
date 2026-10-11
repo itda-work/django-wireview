@@ -8,6 +8,7 @@ the scope check must read through.
 from django import template
 from django.template import Template
 from django.template.base import Parser
+from django.template.defaulttags import WithNode
 from django.template.library import InclusionNode
 
 register = template.Library()
@@ -180,6 +181,34 @@ def sh_use(parser, token):
     """Renders a body parsed elsewhere in the file: inside a partial, one parsed outside it."""
     _tag, name = token.split_contents()
     return _UseNode(parser.extra_data["sh-macros"][name])
+
+
+class _Ref:
+    def __init__(self, body):
+        self.body = body
+
+
+class _UseObjNode(template.Node):
+    """Keeps the body it renders in an object of its own: only the node's module tells it from Django's."""
+
+    def __init__(self, body):
+        self.ref = _Ref(body)
+
+    def render(self, context):
+        return self.ref.body.render(context)
+
+
+@register.tag
+def sh_use_obj(parser, token):
+    _tag, name = token.split_contents()
+    return _UseObjNode(parser.extra_data["sh-macros"][name])
+
+
+@register.tag
+def sh_use_with(parser, token):
+    """Renders a body parsed elsewhere through a node of Django's: only what the node holds tells it."""
+    _tag, name = token.split_contents()
+    return WithNode(None, None, parser.extra_data["sh-macros"][name], {})
 
 
 def _raw(parser, end):

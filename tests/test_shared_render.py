@@ -200,6 +200,23 @@ TEMPLATES = {
         + "{% sh_macro who %}<b>{{ user.username }}</b>{% endsh_macro %}"
         "{% partialdef row %}[{% sh_use who %}]{% endpartialdef %}"
     ),
+    # The same macro used through an object of the tag's own, and through a node of Django's
+    "sh/macro_obj.html": (
+        '{% load wireview %}<p {% tag_header %}>{{ headline }}{% include "sh/macro_obj_parts.html#row" %}</p>'
+    ),
+    "sh/macro_obj_parts.html": (
+        ("{% load sh_tags %}" if django.VERSION >= (6, 0) else "{% load sh_partials sh_tags %}")
+        + "{% sh_macro who %}<b>{{ user.username }}</b>{% endsh_macro %}"
+        "{% partialdef row %}[{% sh_use_obj who %}]{% endpartialdef %}"
+    ),
+    "sh/macro_with.html": (
+        '{% load wireview %}<p {% tag_header %}>{{ headline }}{% include "sh/macro_with_parts.html#row" %}</p>'
+    ),
+    "sh/macro_with_parts.html": (
+        ("{% load sh_tags %}" if django.VERSION >= (6, 0) else "{% load sh_partials sh_tags %}")
+        + "{% sh_macro who %}<b>{{ user.username }}</b>{% endsh_macro %}"
+        "{% partialdef row %}[{% sh_use_with who %}]{% endpartialdef %}"
+    ),
     "sh/later.html": (
         "{% load wireview sh_tags %}<p {% tag_header %}>{{ headline }}"
         "{% sh_later %}<b>{{ user.username }}</b>{% endsh_later %}</p>"
@@ -736,6 +753,16 @@ class ShClass(_Shared):
 class ShMacro(_Shared):
     class Meta:
         template_name = "sh/macro.html"
+
+
+class ShMacroObj(_Shared):
+    class Meta:
+        template_name = "sh/macro_obj.html"
+
+
+class ShMacroWith(_Shared):
+    class Meta:
+        template_name = "sh/macro_with.html"
 
 
 class ShLater(_Shared):
@@ -1678,6 +1705,8 @@ async def test_no_shape_of_template_reads_past_the_check(monkeypatch, component)
         ShCond,
         ShClass,
         ShMacro,
+        ShMacroObj,
+        ShMacroWith,
         ShLater,
         ShFresh,
     ],
@@ -1693,7 +1722,9 @@ async def test_no_tag_or_partial_keeps_what_it_reads_from_the_check(monkeypatch,
     Then what the parser made missed (round 3): wireview's ``{% cond %}`` and ``{% class %}`` hold
     their expression as text and tell its names (``context_names``); a partial whose tag renders a
     macro parsed outside it; a body a tag takes as tokens, to compile at render or with a parser of
-    its own.
+    its own. Of the macro's uses, ``ShMacroObj`` keeps the body where only the node's module tells
+    it (a tag of no known library), ``ShMacroWith`` in a node of Django's, where only what the node
+    holds does: each rule is the one thing that keeps its row out.
     """
     set_wireview(monkeypatch, VERIFY_SHARED_RENDER=False)
     assert shared_render.out_of_scope(component)
@@ -1773,6 +1804,37 @@ def test_a_partial_is_read_from_the_file_its_render_uses():
         get_template("sh/stale_parts.html#row")  # what the render draws from now on
         sources["sh/stale_parts.html"] = "{% partialdef row %}<b>safe</b>{% endpartialdef %}"
         reasons = shared_render.out_of_scope(ShStale)
+    assert any("reads user (through sh/stale_parts.html#row)" in reason for reason in reasons), reasons
+
+
+@package_partials
+@pytest.mark.unit
+def test_a_package_partial_is_read_from_the_file_its_render_uses():
+    """Django 5.2's partials are the package's, whose loader wraps the cached one: the same file is read."""
+
+    class ShStalePackage(_Shared):
+        class Meta:
+            template_name = "sh/stale.html"
+
+    sources = {
+        "sh/stale.html": '{% load wireview %}<p {% tag_header %}>{% include "sh/stale_parts.html#row" %}</p>',
+        "sh/stale_parts.html": (
+            "{% load sh_partials %}{% partialdef row %}<b>{{ user.username }}</b>{% endpartialdef %}"
+        ),
+    }
+    cached = [("django.template.loaders.cached.Loader", [("django.template.loaders.locmem.Loader", sources)])]
+    options = {
+        "loaders": [("testproj.template_partials.WrappingLoader", cached)],
+        "libraries": {"sh_partials": "testproj.template_partials"},
+    }
+    with override_settings(
+        TEMPLATES=[{"BACKEND": "django.template.backends.django.DjangoTemplates", "OPTIONS": options}]
+    ):
+        from django.template.loader import get_template
+
+        get_template("sh/stale_parts.html#row")  # what the render draws from now on
+        sources["sh/stale_parts.html"] = "{% load sh_partials %}{% partialdef row %}<b>safe</b>{% endpartialdef %}"
+        reasons = shared_render.out_of_scope(ShStalePackage)
     assert any("reads user (through sh/stale_parts.html#row)" in reason for reason in reasons), reasons
 
 
