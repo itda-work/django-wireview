@@ -13,6 +13,8 @@ whose own temporary assign changes, its signed state staying as it was.
 ``?joined=1``: the same, the nested component loading its temporary assign in joined().
 ``?func=1``: the same block drawing a function component whose template draws a
 nested component; that one's joined() sets a signed field, and it counts on its own.
+``?nestrows=1``: rows drawn without an id by a component the host's pass draws;
+the host's render keeps them, and each still answers its own events (#204).
 """
 
 from wireview import Component, LiveComponent, function_component
@@ -67,6 +69,16 @@ class TempRow(Component):
 
     async def shout(self):
         self.text = self.text.upper()
+
+
+class TempRowsHost(TempHost):
+    class Meta:
+        template_name = "tempprobe/rowshost.html"
+
+
+class TempAnonRows(TempProbe):
+    class Meta:
+        template_name = "tempprobe/anonrows.html"
 
 
 class TempLiveHost(TempHost):

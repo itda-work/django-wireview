@@ -5,7 +5,8 @@ client applies what the server sent: before #111 an event that had nothing to
 do with the list sent it emptied, and the list vanished.
 
 Fixture: tests/testproj/tempprobe/ (``?nest=1``: the probe in a host's pass, in a slot, and from a
-``{% component_block %}`` with a fill; ``?rows=1``: rows a nested component draws; ``?live=1``: a
+``{% component_block %}`` with a fill; ``?rows=1``: rows a nested component draws; ``?nestrows=1``:
+rows drawn without an id by a component the host's pass draws; ``?live=1``: a
 LiveComponent kept with the list in a block the host's pass draws; ``?notes=1``: a nested component
 kept with the list whose own temporary assign changes; ``?joined=1``: the same, changed by its joined();
 ``?func=1``: the nested component drawn by a function component's template, its joined() setting a signed field).
@@ -94,6 +95,25 @@ def test_rows_a_nested_component_draws_stay_until_one_moves(page, server):
     page.get_by_test_id("bump").click()
     expect_text(page.get_by_test_id("count"), "2")
     expect_count(page.get_by_test_id("row-text").filter(has_text="one"), 0)
+
+
+def test_rows_a_kept_part_shows_in_the_host_s_pass_still_answer(page, server):
+    """The host's pass draws the rows' component, and its loop keeps the rows: they stay live (#204).
+
+    Retired with that pass, a row's element stayed on the page and its click went nowhere.
+    """
+    open_live(page, f"{server}/tempprobe/?nestrows=1")
+    rows = page.get_by_test_id("row-text")
+    page.get_by_test_id("load").click()
+    expect_count(rows, 3)
+
+    for n in ("1", "2"):
+        page.get_by_test_id("host-bump").click()
+        expect_text(page.get_by_test_id("host-count"), n)
+    expect_count(rows, 3)
+
+    page.get_by_test_id("shout").first.click()
+    expect_text(rows.first, "ONE")
 
 
 def test_a_nested_component_that_moved_outside_its_signed_state_is_not_put_back(page, server):

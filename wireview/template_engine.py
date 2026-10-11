@@ -235,7 +235,14 @@ class _PartNode(Node):
         self.marker_context.frames.append(frame)
         return wire, frame
 
-    def _settle_record(self, wire: t.Any, frame: set[tuple[t.Any, ...]] | None, kept: bool) -> None:
+    def _settle_record(self, wire: t.Any, frame: set[tuple[t.Any, ...]] | None, kept: bool, context: Context) -> None:
+        if kept:
+            # The nested components it shows again stay on the page: in another
+            # component's pass too, where no record is under way (#204)
+            owner = wire if wire is not None else _wire(context.get("this"))
+            if owner is not None:
+                carried = owner.drawn.get(self.key, frozenset())
+                owner.kept_components.update(name for kind, name, _drawn in carried if kind == "c")
         if frame is None:
             return
         frames = self.marker_context.frames
@@ -300,7 +307,7 @@ class ComprehensionNode(_PartNode):
                     slot.other = True
                 kept = slot.stale and not slot.other
                 reads.close(slot)
-            self._settle_record(wire, frame, kept)
+            self._settle_record(wire, frame, kept, context)
             self.marker_context.pop_comprehension()
         return f"<!--$C{index}-->{output}<!--/$C{index}-->"
 
@@ -427,7 +434,7 @@ class _BlockNode(_PartNode):
                     slot.other = bool(names & reads.other) or DRAWS_UNKNOWN in names or self._moved(wire, context)
                 kept = slot.stale and not slot.other
                 reads.close(slot)
-            self._settle_record(wire, frame, kept)
+            self._settle_record(wire, frame, kept, context)
         return f"<!--$B{index}-->{output}<!--/$B{index}-->"
 
     def __repr__(self) -> str:

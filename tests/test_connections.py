@@ -632,6 +632,95 @@ async def test_a_tab_that_reconnects_replaces_what_its_drawn_producer_left(monke
         await bob.disconnect()
 
 
+class CnToggle(InlineTemplate, Component):
+    """A page that hides and shows its producer, drawn without an id (or with one)."""
+
+    source: t.ClassVar[str] = (
+        '<section {% tag_header %}><i>{{ "n-"|add:this.n }}</i>{% if this.show %}'
+        '{% if this.named %}{% component "CnTyping" id="a-toggled" name=this.name %}'
+        '{% else %}{% component "CnTyping" name=this.name %}{% endif %}{% endif %}</section>'
+    )
+
+    name: str = ""
+    named: bool = False
+    show: bool = True
+    n: str = "0"
+
+    async def toggle(self):
+        self.show = not self.show
+
+    async def bump(self):
+        self.n = str(int(self.n) + 1)
+
+
+def drawn_producer_state(node: t.Any) -> str | None:
+    """The signed state of the CnTyping a render drew, wherever its part sits in the diff."""
+    if isinstance(node, dict):
+        statics = node.get("s") or node.get("r")
+        if isinstance(statics, list):
+            for i, part in enumerate(statics):
+                if isinstance(part, str) and part.endswith('data-name="CnTyping" data-state="'):
+                    return node["d"][i]
+        node = list(node.values())
+    if isinstance(node, list):
+        for value in node:
+            if (state := drawn_producer_state(value)) is not None:
+                return state
+    return None
+
+
+async def page_render(communicator: WebsocketCommunicator) -> dict:
+    while True:
+        message = await communicator.receive_json_from(timeout=5)
+        if message["command"] == "render" and message["payload"]["id"] == "a-page":
+            return message["payload"]
+
+
+@pytest.mark.parametrize("named", [False, True], ids=["minted-id", "given-id"])
+async def test_a_hidden_producers_late_leave_keeps_the_one_shown_in_its_place(monkeypatch, named):
+    """Hidden, then shown again before the hidden one's leaving() ran (#202, #204).
+
+    The hidden producer retires with the render that stops drawing it and
+    leaves when its tombstone is buried: here the page held its element, so
+    when its time is up. Drawn without an id, it shares its meta with the one
+    shown in its place; its leave, said after that one's join, took the user
+    off bob's list while the page showed them joined.
+    """
+    from wireview import repository
+
+    monkeypatch.setattr(repository, "TOMBSTONE_SECONDS", 3600.0)
+    bob = await connect(CnOnline, "b-list", name="bob")
+    ann = await open_socket(ANN_TAB)
+    carol = None
+    try:
+        page = CnToggle(user=AnonymousUser(), wire=WireviewMeta(params={}), id="a-page", name="ann", named=named)
+        await ann.send_json_to(
+            {"command": "join", "payload": {"name": "CnToggle", "state": sign_state(page), "children": {}}}
+        )
+        drawn = drawn_producer_state((await page_render(ann))["diff"])
+        await ann.send_json_to({"command": "join", "payload": {"name": "CnTyping", "state": drawn, "children": {}}})
+        await render_containing(bob, "ann-online")
+
+        await event(ann, "a-page", "toggle")  # hidden; the page holds its element and sends no leave
+        await page_render(ann)
+        await event(ann, "a-page", "toggle")  # shown again, as a new producer
+        drawn = drawn_producer_state((await page_render(ann))["diff"])
+        await ann.send_json_to({"command": "join", "payload": {"name": "CnTyping", "state": drawn, "children": {}}})
+        await render_containing(bob, "ann-online")
+
+        # The hidden one's time is up: the next render of the page buries it
+        monkeypatch.setattr(repository, "TOMBSTONE_SECONDS", 0.0)
+        await event(ann, "a-page", "bump")
+        await page_render(ann)
+        carol = await connect(CnTyping, "c-typing", name="carol")
+        # bob, ann and carol: had the hidden one's leave removed ann, two
+        assert '"online-3"' in await render_containing(bob, "carol-online")
+    finally:
+        for communicator in (bob, ann, carol):
+            if communicator is not None:
+                await communicator.disconnect()
+
+
 async def test_a_late_leave_from_the_socket_a_tab_left_keeps_it_listed():
     """The tab reconnected while the server still held its old socket; that one's leave comes after (#202)."""
     bob = await connect(CnOnline, "b-list", name="bob")

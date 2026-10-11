@@ -24,6 +24,7 @@ from .core import notifications, patches, template_reload
 from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
 from .core.rendered import (
     ERRORS_SINCE,
+    GONE_SINCE,
     JOINED_SINCE,
     LEAVES_FIRST_SINCE,
     PROTOCOL_VERSION,
@@ -189,6 +190,9 @@ class WireviewSession:
         self._auth_revalidated: bool = False
         # Whether a template change was mailed to this session and not yet handled (#180)
         self._rejoin_mailed: bool = False
+        # Whether a render retired a component since the subscriptions were last
+        # settled: a nested one its drawer's pass stopped drawing hears no more (#204)
+        self._retired_in_render: bool = False
         self._init_patches()
 
     def _init_patches(self) -> None:
@@ -293,7 +297,8 @@ class WireviewSession:
                 duration_ms=None if opened_at is None else (time.monotonic() - opened_at) * 1000,
                 components=len(self.repo.components),
             )
-        await self._call_leaving(list(self.repo.components.values()))
+        # With those retired that no batch took yet, and the ones kept for the page's events (#204)
+        await self._call_leaving([*self.repo.components.values(), *self.repo.take_retired(), *self.repo.bury_all()])
         await self._release_connection_uploads()
 
         # Cleanup subscriptions
@@ -339,6 +344,10 @@ class WireviewSession:
             inspect.signature(handler).bind(**payload)
         except TypeError as e:
             log.warning("Ignoring %s with a payload that does not fit it: %s", command, e)
+            return
+        # A component id is a string: a list or a dict raised looking it up
+        if any(not isinstance(payload[key], str) for key in ("id", "component_id") if key in payload):
+            log.warning("Ignoring %s naming a component by something that is not a string", command)
             return
         await handler(**payload)
 
@@ -478,6 +487,11 @@ class WireviewSession:
             return
         # The page tries a component whose join failed again: new DOM came for it
         self.repo.retry_join(component_id)
+        # One its drawer's render retired, whose element the page kept: it
+        # leaves before the instance this join builds runs joined() (#204)
+        if buried := self.repo.bury(component_id):
+            await self._call_leaving(buried)
+            self._release_uploads(buried)
         if existing is not None and existing.wire.has_joined:
             # The client only joins an element whose data-is-live is false, so a
             # second join for an id that already joined means new DOM arrived for
@@ -811,7 +825,9 @@ class WireviewSession:
             # bundle still might.
             log.debug("Ignoring leave for LiveComponent %s", id)
             return
-        removed = self.repo.let_go(id)
+        # One its drawer's render retired was kept for the events the page sent
+        # before it saw that render: this leave says no more will come (#204)
+        removed = [*self.repo.let_go(id), *self.repo.bury(id)]
         await self._call_leaving(removed)
         self._release_uploads(removed)
         await self.after_mutation_chores()
@@ -929,8 +945,10 @@ class WireviewSession:
             return
         component = self.repo.get(id)
         if component is None:
-            # Unknown, refused or already gone: nothing is sent, not even an
-            # empty answer (tests/test_live_session_contract.py).
+            if (buried := self.repo.buried(id)) is not None:
+                await self._handle_on_tombstone(buried, command, kwargs, answer)
+            else:
+                await self._answer_gone(id, answer)
             return
         try:
             await self.repo.dispatch_event(id, command, [], kwargs)
@@ -945,6 +963,66 @@ class WireviewSession:
             await self._crashed(component, ref)
             return
         await self.after_mutation_chores()
+
+    async def _handle_on_tombstone(
+        self, component: Component, command: str, kwargs: dict[str, t.Any], answer: int | None
+    ) -> None:
+        """Run an event the page sent before it saw the render that retired ``component`` (``Tombstone``, #204).
+
+        The handler runs, as it did when the instance lived on until the page's
+        leave -- the click on a row of a list its drawer's broadcast just drew
+        anew, a row hidden while the click was on its way -- and what it does
+        beyond the component goes out: its writes, its broadcasts, a
+        ``push_event``, a navigation. Nothing of the component is rendered:
+        the page has let its element go or is about to, and one kept under
+        ``wire-update="ignore"`` would show an instance nothing else reaches.
+        The answer is ``gone``, as for an id with no instance: a page that
+        still holds the element joins it again from the state it carries.
+
+        Phoenix does the same for a component the client has yet to confirm
+        destroyed, and its client drops the diff for an element no longer there.
+        """
+        await self._run_on_tombstone(component, command, [], kwargs)
+        await self._answer_gone(component.id, answer)
+        await self.after_mutation_chores()
+
+    async def _run_on_tombstone(
+        self, component: Component, command: str, args: list[t.Any], kwargs: dict[str, t.Any]
+    ) -> None:
+        """Run the handler ``command`` of ``component``, which a ``Tombstone`` keeps. Nothing of it is rendered.
+
+        Both ways in are what began before the page saw the render that
+        retired it: the page's event, and the ``send_to_parent`` of a
+        LiveComponent kept with it, which that event ran.
+        """
+        try:
+            await self.repo.dispatch_event(component.id, command, args, kwargs, component=component)
+        except InvalidEvent as e:
+            log.warning("Ignoring event for %s: %s", component.id, e)
+        except Exception:
+            # Nothing to join again: the page has the element or will let it go
+            log.exception("%s (%s), retired, raised handling %s", component._name, component.id, command)
+            removed = self.repo.bury(component.id)
+            await self._call_leaving(removed)
+            self._release_uploads(removed)
+
+    async def _answer_gone(self, id: str, answer: int | None) -> None:
+        """Answer an event for an id this connection holds no instance under. No handler runs.
+
+        Unknown, refused at its mount, left -- or retired by its drawer's render
+        while the page held on to the element (``wire-update="ignore"``, #204),
+        and buried since (``Tombstone``); ``_handle_on_tombstone`` answers the same.
+        The answer ends the loading state the event started, and a page that
+        still holds the element joins it again from the state it carries
+        (``gone``). Unanswered, the event left its button disabled for good and
+        the element dead. A client older than ``gone`` gets the empty render an
+        event with no handler gets.
+        """
+        log.debug("No instance under %s for a user_event; answering gone", id)
+        if self.repo.vsn >= GONE_SINCE:
+            await self.send_command("gone", _with_ref({"id": id}, answer))
+        else:
+            await self.send_command("render", _with_ref({"id": id, "diff": None}, answer))
 
     async def command_hook_event(
         self,
@@ -1174,6 +1252,12 @@ class WireviewSession:
     async def component_dispatch_event(self, id, command, args, kwargs):
         log.debug(f"<<< EVENT {id} {command} {args} {kwargs}")
         target = self.repo.get(id)
+        if target is None and (buried := self.repo.buried(id)) is not None:
+            # A LiveComponent a tombstone keeps sent it to its parent, kept with
+            # it: the handler runs there, as an event of the page's does (#204)
+            await self._run_on_tombstone(buried, command, args, kwargs)
+            await self.after_mutation_chores()
+            return
         try:
             component = await self.repo.dispatch_event(id, command, args, kwargs)
             if component is not None:
@@ -1622,6 +1706,8 @@ class WireviewSession:
             if instances := self._first_renders([component, *(c for c in settled if c.id in children)]):
                 payload["instances"] = instances
             await self.send_command("render", payload)
+        if self._retired_in_render and not settled:
+            await self.update_to_which_channels_im_subscribed_to()
         if settled:
             for child in settled:
                 if child.id in instances:
@@ -1649,22 +1735,45 @@ class WireviewSession:
                 instances[component.id] = component.wire.instance
         return instances
 
-    async def _render_tree(
-        self, component: Component, depth: int = 0
-    ) -> tuple[t.Any, dict[str, t.Any], list[LiveComponent]]:
-        """Render one component and settle the children its template named.
+    async def _render_tree(self, component: Component) -> tuple[t.Any, dict[str, t.Any], list[LiveComponent]]:
+        """Render ``component`` and the LiveComponents it settles: one frame, reaching the page whole or not at all.
 
         Returns the component's diff, a flat ``{id: diff}`` of every descendant
         rendered along the way, and those descendants in render order.
+
+        A render below the top can raise after a level above it retired what
+        its pass stopped drawing. The page never saw that: it still shows all
+        of it, so it comes back (``repo.tree_failed``, #204).
         """
+        token = self.repo.begin_tree()
+        try:
+            rendered = await self._render_level(component, 0)
+        except BaseException:
+            self.repo.tree_failed(token)
+            raise
+        if settled := self.repo.end_tree(token):
+            self._retired_in_render = True
+            await self._call_leaving(settled)
+            self._release_uploads(settled)
+        return rendered
+
+    async def _render_level(
+        self, component: Component, depth: int
+    ) -> tuple[t.Any, dict[str, t.Any], list[LiveComponent]]:
+        """Render one component of a tree (``_render_tree``) and settle the children its template named."""
         repo = self.repo
         repo.begin_render(component.id)
         before = component.wire._last_rendered
-        diff = await component._render_diff(repo)
-        await component._run_hooks("after_render")
-        # Clear temporary assigns after rendering to free memory
-        # This is called regardless of whether diff was sent (skip_render case)
-        component._clear_temporary_assigns()
+        try:
+            diff = await component._render_diff(repo)
+            await component._run_hooks("after_render")
+            # Clear temporary assigns after rendering to free memory
+            # This is called regardless of whether diff was sent (skip_render case)
+            component._clear_temporary_assigns()
+        except BaseException:
+            # Nothing of this render reaches the page: what its passes stopped drawing is still there
+            repo.render_failed()
+            raise
 
         children: dict[str, t.Any] = {}
         settled: list[LiveComponent] = []
@@ -1676,7 +1785,10 @@ class WireviewSession:
 
         shown = component_refs(last) if (last := component.wire._last_rendered) is not None else ()
         batch = repo.take_lifecycle(component.id, shown)
+        if batch.entombed:
+            self._retired_in_render = True
         if batch.retired:
+            self._retired_in_render = True
             await self._call_leaving(batch.retired)
             self._release_uploads(batch.retired)
         halted: set[str] = set()
@@ -1735,7 +1847,7 @@ class WireviewSession:
         for child in batch.to_render:
             if child.id in halted:
                 continue
-            child_diff, grandchildren, descendants = await self._render_tree(child, depth + 1)
+            child_diff, grandchildren, descendants = await self._render_level(child, depth + 1)
             children[child.id] = child_diff
             children.update(grandchildren)
             settled.append(child)
@@ -1783,6 +1895,7 @@ class WireviewSession:
         await self.send_query_string()
 
     async def update_to_which_channels_im_subscribed_to(self):
+        self._retired_in_render = False
         # One pass for both: the topics, and which instance a topic's patches are for
         subscriptions: set[str] = set()
         book: dict[tuple[str, str], list[Component]] = {}

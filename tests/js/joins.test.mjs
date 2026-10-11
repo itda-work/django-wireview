@@ -202,3 +202,44 @@ test("a rejoin leaves out LiveComponents and what the page has not joined", () =
   ];
   assert.deepEqual(rejoinable(page, (id) => id !== "drawn"), ["root"]);
 });
+
+test("a gone answers the event it carries the ref of", () => {
+  // #204: an event for an id the server holds no instance under ran nothing
+  assert.equal(settledEvent("gone", { id: "box", ref: 5 }), 5);
+  assert.equal(settledEvent("gone", { id: "box" }), undefined);
+});
+
+test("a gone joins again the element the page still holds", () => {
+  // #204: a drawer's render retired it while the page kept the element
+  // (wire-update="ignore"), so its events went nowhere
+  const joins = new Joins();
+  joins.sent("box", 1);
+  assert.equal(joins.joinsAgainWhenGone("box", 5, { present: true, owned: false }), true);
+  assert.equal(joins.joinsAgainWhenGone("never-joined", 5, { present: true, owned: false }), true);
+  assert.equal(joins.joinsAgainWhenGone("never-joined", undefined, { present: true, owned: false }), true);
+});
+
+test("a gone of an event without a ref joins again unless a join under the id waits for its answer", () => {
+  // A wire-viewport-* event carries no ref: when it went is unknown
+  const joins = new Joins();
+  joins.sent("box", 1);
+  // The join this gone would send is already on its way: an earlier gone sent it
+  assert.equal(joins.joinsAgainWhenGone("box", undefined, { present: true, owned: false }), false);
+  joins.render("box", 1, true);
+  assert.equal(joins.joinsAgainWhenGone("box", undefined, { present: true, owned: false }), true);
+  // The first join on a connection carries no ref, and pairs nothing
+  joins.sent("first", undefined);
+  assert.equal(joins.joinsAgainWhenGone("first", undefined, { present: true, owned: false }), true);
+});
+
+test("a gone joins nothing the page let go, nor a LiveComponent, nor what a later join covers", () => {
+  const joins = new Joins();
+  joins.sent("box", 7);
+  // The render before it took the element away
+  assert.equal(joins.joinsAgainWhenGone("box", 5, { present: false, owned: false }), false);
+  // A LiveComponent comes back with its root, which is there
+  assert.equal(joins.joinsAgainWhenGone("box", 8, { present: true, owned: true }), false);
+  // The page joined it after the event: that join is the instance now
+  assert.equal(joins.joinsAgainWhenGone("box", 5, { present: true, owned: false }), false);
+  assert.equal(joins.joinsAgainWhenGone("box", 8, { present: true, owned: false }), true);
+});

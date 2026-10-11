@@ -43,7 +43,9 @@
  * a component's join answer would settle every event up to it (the value
  * guard settles by `<=`), and another component's committing event would lose
  * the permission to reset its fields.
- * @param {string} command - "render" or "error"
+ * A `gone` answers the event it carries the ref of: the server held no
+ * instance under the id, and ran nothing (#204).
+ * @param {string} command - "render", "error" or "gone"
  * @param {{ ref?: number, vsn?: number, during?: string }} payload
  * @returns {number | undefined} undefined when the message answers no event
  *   by ref: a join's answer (a render carrying vsn, a `during: "join"` error),
@@ -54,6 +56,7 @@ export function settledEvent(command, payload) {
   if (typeof ref !== "number") return undefined;
   if (command === "render") return typeof payload.vsn === "number" ? undefined : ref;
   if (command === "error") return payload.during === "event" ? ref : undefined;
+  if (command === "gone") return ref;
   return undefined;
 }
 
@@ -126,6 +129,34 @@ export class Joins {
     // An event's: until the join is answered, the instance that raised is the
     // one it replaces
     return join.answered;
+  }
+
+  /**
+   * Whether the page joins `id` again on a `gone` (#204): the server held no
+   * instance under it when the event `ref` came. A drawer's render retired
+   * it, and the page held on to the element -- under `wire-update="ignore"`,
+   * where the drawer's new one never reaches it -- so its events went nowhere.
+   * Joined with the state its element carries, it answers again.
+   *
+   * Not when the element left the page meanwhile (`present` is read after the
+   * frame a render scheduled, which takes away one it no longer draws), nor a
+   * LiveComponent (`owned`, its parent's: it has no join of its own), nor when
+   * the page sent a join under the id after the event: that join is the new
+   * instance, and refs share one counter with events. An event without a ref
+   * (`wire-viewport-*`) cannot tell when it went: then a join under the id
+   * still waiting for its answer is that join -- an earlier `gone` sent it.
+   * Joined again for each such `gone`, the server built and retired the
+   * instance once more per event.
+   * @param {string} id
+   * @param {number} [ref] - the event's, when it carried one
+   * @param {{ present: boolean, owned: boolean }} element
+   * @returns {boolean}
+   */
+  joinsAgainWhenGone(id, ref, { present, owned }) {
+    if (!present || owned) return false;
+    const join = this.byId.get(id);
+    if (typeof join?.ref !== "number") return true;
+    return typeof ref === "number" ? join.ref < ref : join.answered;
   }
 
   /**

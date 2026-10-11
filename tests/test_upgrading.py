@@ -141,9 +141,23 @@ UPGRADE_NOTE = {
         "다른 경로로 `follow_push(Destination)`한 뒤 원래 인스턴스는 언다",
         "목적지 컴포넌트로 옮긴다",
     ),
+    "A nested `{% component %}` its drawer's render no longer draws retires with that render": (
+        "그린 쪽이 더는 그리지 않는 중첩 컴포넌트는 그 렌더와 함께 은퇴한다",
+        "id가 있어도 언제나 새로 시작한다",
+    ),
+    "its old state gone, whatever order the page's leave and the next render come in": (
+        "그린 쪽이 더는 그리지 않는 중첩 컴포넌트는 그 렌더와 함께 은퇴한다",
+        "숨겨도 상태를 지켜야 하면",
+    ),
+    "An event for a component id the connection holds no instance under is answered": (
+        "인스턴스 없는 id로 온 이벤트에 답하고",
+        "`gone`(프로토콜 `vsn` 9)으로 답하고",
+    ),
 }
 
-NO_UPGRADE_NOTE: dict[str, str] = {}
+NO_UPGRADE_NOTE: dict[str, str] = {
+    "A message naming a component by something that is not a string": "no client of ours sends one",
+}
 
 PREVIOUS = "1.5.1"
 SECTION = "1.5에서 1.6으로"

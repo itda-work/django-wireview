@@ -50,6 +50,7 @@ from wireview.core.live_session import (
     auth_topic,
 )
 from wireview.core.meta import WireviewMeta
+from wireview.core.rendered import GONE_SINCE
 from wireview.core.session import SessionView
 from wireview.core.state import sign_state, unsign_envelope
 from wireview.function_components import function_component
@@ -1140,17 +1141,27 @@ OBSERVABLE = {
 }
 
 
+#: What a command addressed to a refused id still sends: nothing ran, and an
+#: event's answer ends the loading state the page started for it (#204). A
+#: client that knows ``gone`` gets that, and an older one the empty render an
+#: event with no handler gets. Neither names an instance, nor carries HTML.
+ANSWERS: dict[str, list[tuple[str, dict[str, t.Any]]]] = {
+    "user_event": [("render", {"id": "target", "diff": None})],
+}
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("command", list(CLIENT_COMMANDS), ids=list(CLIENT_COMMANDS))
 class TestARefusedIdAnswersNothing:
-    async def test_the_command_changes_nothing_and_sends_nothing(self, command, boundary):
+    async def test_the_command_changes_nothing_and_sends_no_more_than_the_answer(self, command, boundary):
         consumer, outbound = make_consumer(boundary=boundary)
         await consumer.command_join("CxHalts", signed(CxHalts, page=boundary, id="target"))
         outbound.commands.clear()
 
         await CLIENT_COMMANDS[command](consumer, "target")
 
-        assert outbound.commands == []
+        assert outbound.commands == ANSWERS.get(command, [])
+        assert consumer.repo.get("target") is None
 
     async def test_the_control_reaches_an_admitted_component(self, command, boundary):
         """The same command, on the same id, when the component was admitted.
@@ -1173,6 +1184,19 @@ class TestARefusedIdAnswersNothing:
         assert OBSERVABLE[command](consumer, outbound, component), (
             f"{command} did nothing for an admitted component, so its refusal proves nothing"
         )
+
+
+@pytest.mark.asyncio
+async def test_an_event_for_a_refused_id_tells_a_page_that_knows_gone(boundary):
+    consumer, outbound = make_consumer(boundary=boundary)
+    consumer.repo.vsn = GONE_SINCE
+    await consumer.command_join("CxHalts", signed(CxHalts, page=boundary, id="target"))
+    outbound.commands.clear()
+
+    await consumer.command_user_event("target", "bump", {}, {}, ref=4)
+
+    assert outbound.commands == [("gone", {"id": "target", "ref": 4})]
+    assert consumer.repo.get("target") is None
 
 
 # --- a refusal does not wear off ----------------------------------------------------------------

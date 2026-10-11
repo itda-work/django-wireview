@@ -92,6 +92,10 @@ wireview/
 ├── repository.py          ComponentRepository: 연결당 컴포넌트 인스턴스 관리. LiveComponent의 수명주기 배치(take_lifecycle).
 │                          패스 안에서 그려진 {% component %}가 그리는 LiveComponent도 그린 쪽의 배치에 담는다(end_inline_pass).
 │                          슬롯 주인이 자기 렌더로 fill의 {% component %}를 다시 그린 패스는 그 주인의 배치에 담는다
+│                          그린 쪽의 패스가 더는 그리지 않는 {% component %}(id 없는 것은 패스마다 새 rx-)는 그 render가 끝날 때
+│                          같은 render의 다른 패스도 그리지 않았으면 은퇴한다(end_pass가 적고 take_lifecycle이 정한다, 예외로 끝난 render는 render_failed가, 그 render 트리의 은퇴는 tree_failed가 되돌린다).
+│                          페이지가 join한 것은 묘비(Tombstone)로 남아 그 전에 보낸 이벤트만 받고, leaving()은 페이지의 leave·같은 id의 새 인스턴스·연결 끝·은퇴 10초 뒤 끝나는 render에
+│                          temporary assign이 유지한 부분이 든 것은 남긴다 — 다른 컴포넌트의 패스 안에서도(kept_components, #204)
 ├── live_component.py      LiveComponent (부모 연결을 공유하는 중첩 상태 컴포넌트)
 ├── function_components.py  @function_component (상태 없는 템플릿 함수). 공개 이름과 겹치지 않게 복수형이다(#98).
 │                          그 템플릿의 {% component %}는 페이지 저장소에, 함수를 그린 컴포넌트가 그린 것으로 그려진다(this는 넘기지 않는다).
@@ -175,7 +179,8 @@ wireview/
                            join·join 실패·렌더가 알린 인스턴스에서 페이지가 할 일도 여기 있다: joining·joinFailed·named, #142),
                            joins.mjs (같은 id로 다시 보낸 join의 응답을 기다리는 동안 어느 render·error·remove·reload·joined가
                            지금 join의 것인가. LiveComponent의 render는 루트의 join으로 가른다(#146). join의 ref로 짝짓는다. vsn 6 이상의 서버에만 싣는다. settledEvent가 join의 ref를
-                           이벤트 정산(로딩·valueGuard)에서 뺀다. rejoinable은 rejoin(#180)이 다시 join할 컴포넌트를 고른다),
+                           이벤트 정산(로딩·valueGuard)에서 뺀다. rejoinable은 rejoin(#180)이 다시 join할 컴포넌트를 고른다.
+                           joinsAgainWhenGone은 gone(인스턴스 없는 id로 간 이벤트의 답, #204)에 페이지가 붙든 요소를 다시 join할지 정한다),
                            rejoins.mjs (rejoin이 sync의 답을 기다리는 동안, 그리고 다시 join하는 동안 보낼 메시지를 붙잡는다. 다시 join만 through로 지나간다.
                            소켓에 쓰는 곳은 _send 하나다 — 다른 길은 그 붙잡기를 지나친다(tests/js/rejoins.test.mjs가 본다), #180),
                            wireview-boost.js, types.d.ts
@@ -240,7 +245,7 @@ tests/
                            핸들러가 들은 것은 HEARD 에 남아, 서버가 거절했는지를 테스트가 본다),
                            offlineprobe/ 는 연결이 끊긴 페이지의 바인딩·큐와 재연결 뒤의 훅·폼 복구를 보는 E2E(test_offline_e2e.py)의 픽스처,
                            hookprobe/ 는 훅의 소유(중첩 컴포넌트)·이동·떠날 때의 destroyed·pushEvent 응답 짝, 렌더가 새로 그린 LiveComponent·다시 그린 컴포넌트의 훅과 그 joined()의 push_event, 다시 그린 컴포넌트의 join과 viewport, 부모의 패치가 중첩 컴포넌트 안에 그린 훅·바인딩, 같은 렌더가 그린 훅에 가는 push_event, 다른 컴포넌트의 패치가 먼저 돌아도 새 LiveComponent(와 그것의 첫 작업이 그리는 bud)가 그려지는지를 보는 E2E(test_hooks_e2e.py)의 픽스처,
-                           tempprobe/ 는 초기화된 temporary assign이 다음 렌더에 화면에 남는지 보는 E2E(test_temporary_assigns_e2e.py)의 픽스처(?nest=1 은 호스트의 패스, 다른 컴포넌트의 슬롯 안, 호스트 값을 그리는 fill을 받은 component_block으로 그려진 probe, ?rows=1 은 행을 중첩 컴포넌트가 그리는 목록, ?live=1 은 호스트의 패스가 그리는 블록에 목록과 함께 든 LiveComponent, ?notes=1 은 서명 상태 밖의 temporary assign이 바뀌는 중첩 컴포넌트를 목록과 함께 든 블록, ?joined=1 은 그 temporary assign을 joined()에서 불러오는 것, ?func=1 은 그 자리를 함수 컴포넌트의 템플릿이 그리고 그것의 joined()가 서명 필드를 바꾸는 것),
+                           tempprobe/ 는 초기화된 temporary assign이 다음 렌더에 화면에 남는지 보는 E2E(test_temporary_assigns_e2e.py)의 픽스처(?nest=1 은 호스트의 패스, 다른 컴포넌트의 슬롯 안, 호스트 값을 그리는 fill을 받은 component_block으로 그려진 probe, ?rows=1 은 행을 중첩 컴포넌트가 그리는 목록, ?live=1 은 호스트의 패스가 그리는 블록에 목록과 함께 든 LiveComponent, ?notes=1 은 서명 상태 밖의 temporary assign이 바뀌는 중첩 컴포넌트를 목록과 함께 든 블록, ?joined=1 은 그 temporary assign을 joined()에서 불러오는 것, ?func=1 은 그 자리를 함수 컴포넌트의 템플릿이 그리고 그것의 joined()가 서명 필드를 바꾸는 것, ?nestrows=1 은 호스트의 패스가 그리는 컴포넌트가 유지한 id 없는 행이 계속 답하는지),
                            slotprobe/ 는 슬롯에 넣은 LiveComponent·일반 컴포넌트가 슬롯을 그리는 컴포넌트(component_block·live_component_block)의 자기 렌더, 슬롯을 숨겼다 보이기, 예외 뒤·같은 페이지 boost의 다시 join 뒤에도 남는지 보는 E2E(test_slot_live_components_e2e.py)의 픽스처(?other=1 은 같은 id의 frame을 fill 없이 두는 다른 페이지, ?otherhost=1 은 다른 호스트가 그 frame을 fill 없이 그리는 페이지),
                            stickyprobe/ 는 sticky 컴포넌트가 boost 이동을 건너 이어지는지(id 없는 것 포함), 그 훅과 페이지가
                            이동마다 한 번 navigated 알림을 받는지, late/ 의 sticky LateSticky가 아직 그리지 않은 id를 late-root/ 가
@@ -248,7 +253,8 @@ tests/
                            이동의 params를 듣는지(navigated의 carried) 보는 E2E(test_sticky_e2e.py)의 픽스처,
                            nestprobe/ 는 그린 쪽이 넘긴 prop으로 중첩 컴포넌트가 숨기거나 처음 보이거나 새 props를 넘기는 LiveComponent의
                            leaving()·joined()·update()가 그린 쪽의 render에 실리는지 보는 E2E(test_inline_pass_lifecycle_e2e.py)의 픽스처(?hidden=1 은 숨긴 채 시작,
-                           visit-shown 링크는 같은 id의 둘을 새로 받는 boost 이동 — 그린 쪽의 첫 렌더는 중첩 컴포넌트의 join에 맡긴다),
+                           visit-shown 링크는 같은 id의 둘을 새로 받는 boost 이동 — 그린 쪽의 첫 렌더는 중첩 컴포넌트의 join에 맡긴다.
+                           ?anon=1 은 id 없이 그린 컴포넌트, ?ignore=1 은 wire-update="ignore" 안에 그것을 그려 은퇴한 요소의 이벤트가 gone으로 답받고 다시 join하는지),
                            deadprobe/ 는 JavaScript를 끈 브라우저가 첫 렌더를 읽고 폼으로 뷰에 가는지 보는 E2E(test_dead_view_e2e.py)의 픽스처,
                            reconnectprobe/ 는 재연결 뒤 상태(같은 서버·재시작한 프로세스·다른 워커)를 보는 E2E(test_reconnect_state_e2e.py)의 픽스처,
                            imeprobe/ 는 한글 조합 중에 오는 렌더(자기 debounce·브로드캐스트·서버가 바꾼 칸 값)를 CDP IME로 보는 E2E(test_ime_e2e.py)의 픽스처,

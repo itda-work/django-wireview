@@ -39,6 +39,18 @@ The django-reactor era changelog (2.x) is preserved in
   runner) only the event loop keeps tests apart (#201). Loading it imports the package `wireview` and has
   pytest rewrite its asserts; `PYTEST_DISABLE_PLUGIN_AUTOLOAD` keeps it from loading.
 
+### Changed
+
+- A nested `{% component %}` its drawer's render stops drawing leaves with that render, an id or not
+  (#204): one an `{% if %}` hides and shows again starts anew, its old state gone, whatever order the
+  page's leave and the next render come in. Keep it drawn and hide it with CSS to keep its state.
+- An event for a component id the connection holds no instance under is answered (#204): with `gone`
+  (protocol version 9), which ends the loading state the event started and joins the element again
+  from its state when the page still holds it -- one under `wire-update="ignore"` its drawer's render
+  retired. An older client gets the empty render an event with no handler gets. Before, nothing came
+  back and the button stayed loading. An event for a component its drawer's render retired a moment
+  before runs its handler and is answered the same way: nothing of the component is rendered.
+
 ### Fixed
 
 - Presence keeps a meta per producer under each user, as Phoenix Presence keeps one per `track`, so a user
@@ -53,9 +65,11 @@ The django-reactor era changelog (2.x) is preserved in
   keeps that name across reconnects; join, leave, typing and the sync answer carry `presence_ref`, a digest
   of that name under the signed-in user (a page cannot speak for another user's tab) and of the producer's
   id (its class when it was drawn without one), and `presence_conn`,
-  the connection that sent them. So when a process ends without its `leaving()` (daphne, Granian, a crash),
+  a name of the producer instance that sent them, new with every instance. So when a process ends without its `leaving()` (daphne, Granian, a crash),
   the tab's join after it reconnects replaces what the dead process left, and its leave removes it; a late
-  leave from the socket a tab reconnected away from is dropped. A tab whose old and new sockets both
+  leave from the socket a tab reconnected away from is dropped, as is the late leave of a producer drawn
+  without an id that the page hid and showed again: the hidden one's `leaving()` can come after the
+  new one joined under the same meta (#204). A tab whose old and new sockets both
   answered a newcomer's sync stays on that list until the last of them leaves. A page from an older bundle is keyed by its
   connection. A message without `presence_ref`, from a process before this release, stands for one tab per
   user, as that process tracks it. A sync answer now fills only a tab not heard from yet: a tab that typed
@@ -88,6 +102,26 @@ The django-reactor era changelog (2.x) is preserved in
 - `follow_push(Destination)` to another path left the instance it came from listening: it heard the
   notifications and `Broadcast` patches of the page the browser had left. It is frozen now, as after a
   redirect, unless it is a sticky component staying in the same `live_session` (#201).
+- A nested `{% component %}` its drawer's render no longer draws retires with that render (#204): no
+  broadcast, `Broadcast` patch, task result or deferred call reaches it, and its topics go. The events
+  the page sent before it saw that render still run its handlers -- a click on a row of a list a
+  broadcast just drew anew, and what a LiveComponent's handler there sends its parent -- and its `leaving()` runs, its tasks are cancelled, when the page's leave
+  says no more will come: or at the end of the first render that ends ten seconds after, for a page that never
+  leaves it (`wire-update="ignore"`), or with the connection. One drawn without an id is a new
+  instance under a new `rx-<uuid>` in every pass of its drawer, and the one before stayed until the
+  page's leave came -- for the connection's lifetime where none came -- hearing broadcasts and
+  running its tasks, one more for each render. What it drew in its own passes goes with it. A render
+  that raised retires nothing, the render of a LiveComponent in it included: it never reached the page. A component drawn with an id that an
+  `{% if %}` hides retires the same way, so shown again it starts anew whatever order the page's leave
+  and the next render come in; before, it came back with its old state when the leave came last. One
+  that a part kept for a reset temporary assign still shows stays -- in a render of its drawer's own,
+  or where another component's pass draws that drawer. An id the render draws in another pass of it
+  (moved from a nested component to the one around it) is the same instance, whichever pass comes
+  first. A nested component a LiveComponent drew leaves with that LiveComponent.
+- A message naming a component by something that is not a string -- a list or a dict as a
+  `user_event`'s `id` -- is logged and dropped, as a payload that does not fit its command is. It
+  raised `TypeError` out of the session.
+
 
 ## [1.5.1] - 2026-10-10
 

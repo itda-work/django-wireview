@@ -127,9 +127,9 @@ def _presence_connection(component: t.Any) -> str:
     """The key of this component's WebSocket connection: a new one on every reconnect.
 
     A digest of ``connection_id``, not the id: that scopes the connection's
-    uploads, and this travels to every subscriber of the topic. A tab's meta
-    remembers which connection said it, so a late leave from the socket a tab
-    reconnected away from does not remove what the new socket said.
+    uploads, and this travels to every subscriber of the topic. It keys a page
+    that names no tab, and a tracker's own entry; which producer said a
+    message is ``_presence_speaker``.
     """
     connection_id = component.wire.connection_id
     if connection_id:
@@ -138,6 +138,24 @@ def _presence_connection(component: t.Any) -> str:
     if ref is None:
         ref = component.__dict__["__presence_ref"] = secrets.token_hex(8)
     return ref
+
+
+def _presence_speaker(component: t.Any) -> str:
+    """Which producer instance says a message (``presence_conn``): new with every instance.
+
+    A tab's meta remembers who said it, so a late leave from another speaker
+    does not remove what a newer one said. That is a socket the tab
+    reconnected away from, and also an instance its page stopped drawing: a
+    producer drawn without an id shares its meta with the one drawn in its
+    place (``_presence_ref``), and the hidden one's ``leaving()`` can come
+    after the new one joined -- when its tombstone is buried (#204), or when
+    the page's leave of it arrives after a quick hide and show. A random
+    name, kept on the instance; it says nothing about the connection.
+    """
+    speaker = component.__dict__.get("__presence_speaker")
+    if speaker is None:
+        speaker = component.__dict__["__presence_speaker"] = secrets.token_hex(8)
+    return speaker
 
 
 class PresenceState(StrEnum):
@@ -284,7 +302,7 @@ class PresenceMixin:
         return {
             "user_id": self._presence_user_id(),
             "presence_ref": _presence_ref(self),
-            "presence_conn": _presence_connection(self),
+            "presence_conn": _presence_speaker(self),
             "username": self._presence_username(),
             "state": state.value,
             "metadata": self._presence_metadata(),
@@ -326,7 +344,7 @@ class PresenceMixin:
             action="presence_leave",
             user_id=self._presence_user_id(),
             presence_ref=_presence_ref(self),
-            presence_conn=_presence_connection(self),
+            presence_conn=_presence_speaker(self),
             username=self._presence_username(),
         )
 
@@ -666,8 +684,8 @@ class PresenceTrackerMixin:
         presence_sync_request, presence_sync_response
 
         Each is recorded under the channel it came on. Each names its producer
-        (its tab and component id) in ``presence_ref`` and its connection in
-        ``presence_conn``. One without
+        (its tab and component id) in ``presence_ref`` and the producer
+        instance that said it, on its connection, in ``presence_conn``. One without
         ``presence_ref`` comes from a process older than #202, which keeps one
         meta per user: it is kept under ``LEGACY_REF``, so that process's join,
         typing and leave land on one meta of the user and leave the user's other

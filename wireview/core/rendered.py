@@ -64,7 +64,7 @@ Payload = t.Union[str, dict[str, t.Any]]
 # understands in the WebSocket URL (``?vsn=``); the server never sends a form
 # newer than that, and a client that names none gets version 0. Keep in step
 # with ``PROTOCOL_VERSION`` in static/wireview/rendered.mjs.
-PROTOCOL_VERSION = 8
+PROTOCOL_VERSION = 9
 # First version whose clients apply ``{"k": [...]}`` comprehension updates.
 MOVES_SINCE = 2
 # First version that pairs a user event with its render through ``ref`` (#92).
@@ -96,6 +96,10 @@ NAVIGATED_SINCE = 7
 # server, and the page joins each of its components again with the state its
 # element carries (#180).
 REJOIN_SINCE = 8
+# First version whose clients hear ``gone``: the answer to an event for an id
+# the connection holds no instance under, which ends its loading state and joins
+# an element the page still holds again (#204). Older clients get an empty render.
+GONE_SINCE = 9
 
 
 def protocol_version(query_string: bytes | str) -> int:
