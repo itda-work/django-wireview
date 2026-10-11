@@ -118,7 +118,7 @@ def test_a_member_gets_the_room(room, alice):
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_joining_from_the_list_makes_a_member_and_leaving_ends_it(room, bob, published):
-    """Join and Leave are the room list's events: a form in a live render would have no CSRF token.
+    """Join and Leave are the room list's events, not forms posted to views.
 
     Either way the user's other room lists are told, on the user's topic.
     """

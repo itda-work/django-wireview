@@ -11,8 +11,9 @@
 
 - `Membership`에 마지막으로 읽은 자리 `read_at`·`read_id`. 목록의 커서와 같은 `(created_at, id)`다
 - 방 목록이 컴포넌트(`Lv4RoomList`)다. 방마다 안 읽은 수를 배지로 보이고, 열어 둔 동안 바뀐다. Join·Leave는 폼 POST가
-  아니라 그 컴포넌트의 이벤트다 — 지금의 wireview에서는 라이브 렌더에 CSRF 토큰이 없다([#206](https://github.com/itda-work/django-wireview/issues/206)).
-  그래서 뷰 `join_room`·`leave_room`과 그 URL이 없다
+  아니라 그 컴포넌트의 이벤트다 — Leave는 페이지를 다시 받지 않고 목록이 그 자리에서 바뀐다. 그래서 뷰
+  `join_room`·`leave_room`과 그 URL이 없다. 컴포넌트 안의 POST 폼도 동작한다: 1.6부터 `{% csrf_token %}`이 라이브
+  렌더에서도 토큰을 그린다([#206](https://github.com/itda-work/django-wireview/issues/206))
 - 방 목록 페이지에도 경계가 있다: 정책 없는 live_session `chat_lv4_rooms`. 로그아웃이 열린 목록의 소켓을 닫게 하려는 것이다
 - 사용자마다 토픽 하나: `chat_lv4.user.<pk>`. 새 메시지와 삭제는 보낸 사람을 뺀 멤버 각자의 토픽에, 읽음·Join·Leave는
   그 사용자 자신의 토픽에 알린다(`user_topic`, `tell_members`)
@@ -92,12 +93,13 @@ alice의 새 메시지 알림과, tea 탭이 그것을 읽었다는 알림이다
 없애려면 보내는 쪽이 "지금 그 방을 보는 사람"을 알아야 하는데, 그것은 연결이 끊길 때 지워지지 않을 수 있는 상태다.
 이 예제는 그 상태를 두지 않는다.
 
-**방 목록은 컴포넌트이고 Join·Leave는 이벤트다.** 배지가 바뀌려면 목록이 다시 렌더되어야 한다. 지금의
-wireview에서는 라이브 렌더의 컨텍스트에 요청이 없어 `{% csrf_token %}`이 빈 값이 된다([#206](https://github.com/itda-work/django-wireview/issues/206)).
-그 렌더가 그린 폼을 POST하면 403이다. 그래서 Join·Leave는 WebSocket 이벤트다. Join은 멤버십을 만들고 방으로
-보낸다(`redirect_to`, 방 페이지는 다른 live_session이다). Leave는 chat_lv3의 `end_membership()`을 그대로 부른다.
-방 만들기는 목록 밖의 정적 폼이라 그대로 POST다. #206이 고쳐지면 폼으로 되돌릴 수 있다. 이것은 이 예제의 규칙이
-아니라 지금의 우회다.
+**방 목록은 컴포넌트이고 Join·Leave는 이벤트다.** 배지가 바뀌려면 목록이 다시 렌더되어야 한다. Join·Leave는 그
+목록의 WebSocket 이벤트다. Join은 멤버십을 만들고 방으로 보낸다(`redirect_to`, 방 페이지는 다른 live_session이다).
+Leave는 chat_lv3의 `end_membership()`을 그대로 부르고, 목록은 페이지를 다시 받지 않고 그 자리에서 바뀐다. 방 만들기는
+목록 밖의 정적 폼이라 그대로 POST다. 목록 안에 chat_lv3처럼 POST 폼을 두어도 된다 — 1.6부터 컴포넌트 템플릿의
+`{% csrf_token %}`이 라이브 렌더에서도 그 연결의 토큰을 그린다([#206](https://github.com/itda-work/django-wireview/issues/206)).
+1.5에서는 빈 값이라 그 폼이 403을 받았고, 이 예제가 이벤트로 옮긴 처음 이유가 그것이었다. 폼으로 두면 아래의
+"잃은 것"도 없다 — 뷰가 POST마다 `request.user`를 읽는다.
 
 **옮기며 잃은 것: 요청마다의 인증.** chat_lv3의 Join·Leave 뷰는 POST마다 `request.user`를 읽었다. 로그아웃한 뒤의
 POST는 익명이라 아무것도 하지 않았다. 소켓 이벤트는 다르다 — 연결은 connect 때의 사용자를 쥐고, 어느 경계에도

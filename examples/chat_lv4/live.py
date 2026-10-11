@@ -582,8 +582,9 @@ class Lv4RoomList(Component):
       database, so a notice that is late, doubled or crossed with another
       still ends in the right number
     - a count in one query for every room (unread_counts)
-    - Join and Leave as events: in wireview as it is, a form posted from a
-      live render would carry no CSRF token (#206)
+    - Join and Leave as events: Leave changes the list where it is, with no
+      page loaded again. A POST form here would pass too: since #206 a live
+      render draws {% csrf_token %} a token of the connection's secret
     - what moving them from views costs, and how it is had back: a view read
       request.user on every POST, and a socket keeps the user it connected
       with. So the list's page is a boundary of its own (chat_lv4_rooms, no
