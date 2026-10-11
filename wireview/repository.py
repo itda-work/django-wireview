@@ -98,10 +98,11 @@ class ComponentRepository:
         self.user = user or AnonymousUser()
         # What a component's template gets for {% csrf_token %} (#206, core/csrf.py):
         # an HTTP render takes the page's lazy token, a connection masks the secret
-        # its handshake carried -- the cookie, or the session -- once per secret.
+        # its handshake carried -- the cookie, or the session -- once per secret for
+        # its renders, and again for every stream item.
         self._page_csrf_token = csrf_token
         self._csrf_cookies = csrf_cookies
-        self._csrf: tuple[SessionView, t.Any] | None = None
+        self._csrf: tuple[SessionView, str | None, t.Any] | None = None
         self.components: dict[str, Component] = {}
         # The restore maps: for each root, the signed states its join carried for
         # the components under it, taken by the instance built under each id. A
@@ -332,7 +333,7 @@ class ComponentRepository:
             live_component.wire.slots = slots.without_markers()
 
         # Register in components dict
-        live_component.wire.csrf = self._csrf_of_connection
+        live_component.wire.csrf = self._fresh_csrf_token
         self.components[live_component.id] = live_component
 
         # Queue for joined() call after parent render completes
@@ -668,21 +669,35 @@ class ComponentRepository:
             return self._page_csrf_token
         if self._csrf_cookies is None:
             return None
+        return self._connection_csrf()[1]
+
+    def _connection_csrf(self) -> tuple[str | None, t.Any]:
+        """The connection's CSRF secret and the token its renders share."""
         # Keyed by the session: a boundary reads it again (``_reload_session``), and
         # under CSRF_USE_SESSIONS the secret is in it
         if self._csrf is None or self._csrf[0] is not self.session:
-            found = csrf.secret(self._csrf_cookies, self.session)
+            found = csrf.secret(t.cast(t.Mapping[str, str], self._csrf_cookies), self.session)
             token = csrf.mask(found) if found is not None else None
-            self._csrf = (self.session, token if token is not None else csrf.NO_TOKEN)
-        return self._csrf[1]
+            self._csrf = (self.session, found if token is not None else None, token or csrf.NO_TOKEN)
+        return self._csrf[1], self._csrf[2]
 
     def register_component(self, component: Component):
-        component.wire.csrf = self._csrf_of_connection
+        component.wire.csrf = self._fresh_csrf_token
         self.components[component.id] = component
         return component
 
-    def _csrf_of_connection(self) -> t.Any:
-        return self.csrf_token
+    def _fresh_csrf_token(self) -> t.Any:
+        """``csrf_token`` for a stream item: masked anew every time.
+
+        A stream item goes as its whole HTML, next to text a viewer may have
+        chosen, in every insert -- not a static part sent once. A mask that
+        stays the same from one to the next is what BREACH needs on a
+        compressed socket (#206).
+        """
+        if not self.is_live or self._csrf_cookies is None:
+            return self.csrf_token
+        found, token = self._connection_csrf()
+        return (csrf.mask(found) or token) if found is not None else token
 
     def retire(
         self, id: str, *, failed: bool = False, keep_carried: bool = False, leaves_first: bool = True

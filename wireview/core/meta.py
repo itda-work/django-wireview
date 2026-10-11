@@ -242,7 +242,7 @@ class WireviewMeta:
         # What to do once the pending operations are sent (``after_flush``)
         self._after_flush: list[t.Callable[[], None]] = []
         # The connection's ``csrf_token`` for a render that has no context of the
-        # component's: a stream item (set by the repository, #206)
+        # component's: a stream item, masked anew for each (set by the repository, #206)
         self.csrf: t.Callable[[], t.Any] | None = None
         # Pending broadcasts queue (separate from operations since they go through channel layer)
         self._pending_broadcasts: list[tuple[str, dict[str, t.Any]]] = []

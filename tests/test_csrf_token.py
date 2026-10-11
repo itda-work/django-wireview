@@ -12,7 +12,8 @@ plain POST form in a component posted an empty token. These hold now:
 - a token is valid for its connection's secret and for no other
 - a connection without a secret Django would accept gets none, and says so once
 - a render shared between connections gets none; verified, reading it raises
-- LiveComponents, function components and stream items get it as well
+- LiveComponents, function components and stream items get it as well; a
+  stream item, sent whole in every insert, gets one masked anew each time
 
 The browser side, a form submitted to a view that checks the token, is
 tests/test_csrf_token_e2e.py.
@@ -311,6 +312,7 @@ async def test_a_connection_without_a_secret_renders_none_and_says_so_once(caplo
     assert tokens(page.html()) == []
     told = [r for r in caplog.records if "carries no CSRF cookie" in r.getMessage()]
     assert len(told) == 1 and "ensure_csrf_cookie" in told[0].getMessage()
+    assert "CSRF_COOKIE_PATH" in told[0].getMessage(), "a cookie the handshake did not carry is the other cause"
 
 
 @pytest.mark.asyncio
@@ -345,6 +347,20 @@ async def test_a_stream_item_gets_it():
     items = page.session.repo.get("form")
     (token,) = tokens(await items._render_stream_item("csrf/items_item.html", {"id": 1}))
     assert accepts(token, cookie=SECRET)
+
+
+@pytest.mark.asyncio
+async def test_every_stream_item_gets_a_token_masked_anew():
+    """An item goes whole, next to text a viewer may have chosen, every insert: the same mask each
+    time is what BREACH needs on a compressed socket. The renders' own token stays one."""
+    page = await Page.open(CsrfItems)
+    items = page.session.repo.get("form")
+    (first,) = tokens(await items._render_stream_item("csrf/items_item.html", {"id": 1}))
+    (second,) = tokens(await items._render_stream_item("csrf/items_item.html", {"id": 2}))
+    assert first != second
+    assert first != page.session.repo.csrf_token != second
+    assert accepts(first, cookie=SECRET) and accepts(second, cookie=SECRET)
+    assert page.session.repo.csrf_token == page.session.repo.csrf_token
 
 
 @pytest.mark.asyncio

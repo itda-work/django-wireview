@@ -68,6 +68,7 @@ wireview/
 ├── core/csrf.py          컴포넌트 템플릿의 csrf_token(#206). 페이지의 RequestContext를 물려받지 않아 HTTP·라이브 렌더 모두 빈 값이었다.
 │                          HTTP 렌더는 페이지의 lazy 토큰(컨텍스트 프로세서), 라이브 렌더는 핸드셰이크의 쿠키(CSRF_USE_SESSIONS면 세션) 시크릿을
 │                          Django의 CsrfViewMiddleware.process_request로 읽어 연결당 한 번 get_token으로 마스킹한다(저장소의 csrf_token, 정적 부분이 안 바뀌게).
+│                          스트림 항목은 HTML 통째로 삽입마다 가므로 매번 새로 마스킹한다(_fresh_csrf_token, BREACH — 운영은 deflate를 끈다).
 │                          공유 렌더(state_slot)·Broadcast 항목에는 넣지 않는다. 컨텍스트에 넣는 곳은 meta._add_csrf_token, 스트림 항목은 wire.csrf
 ├── core/render_gate.py    RenderGate. 워커 스레드가 렌더하는 동안 그 컴포넌트의 start_async·assign_async 작업 단계를 렌더 뒤로 미룬다(#138).
 │                          렌더가 async property를 오래 기다리는 동안 작업이 막혀 있으면 경고한다(교착 의심, #147)

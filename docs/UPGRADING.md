@@ -71,6 +71,10 @@ dependencies = ["django-wireview>=1.5,<2"]
     응답에 `Set-Cookie`(`CSRF_USE_SESSIONS`면 세션 쓰기)와 `Vary: Cookie`가 붙는다. 그 페이지를 공용 캐시에 두었다면
     이제 사용자마다 나뉜다. 1.5에서는 그 태그가 아무것도 하지 않았으므로 쿠키도 없었다.
   - 컴포넌트에 `csrf_token`이라는 필드나 property가 있으면 지금처럼 그것이 템플릿의 `csrf_token`이다.
+  - 보안 조치: uvicorn을 `--ws-per-message-deflate false` 없이 띄우고 있다면 붙인다. 컴포넌트 렌더의 토큰은 연결마다
+    하나라, 압축한 소켓에서는 다른 사용자가 정한 텍스트와 한 압축 문맥에 거듭 실린다(BREACH). 이유는
+    [배포](./DEPLOYMENT.md#권장-uvicorn--uvloop), 토큰이 언제 다시 실리는지는
+    [dead view](./features/dead-view.md#폼의-csrf-토큰).
 
 ## 1.4에서 1.5로
 

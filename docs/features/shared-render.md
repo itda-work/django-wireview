@@ -170,7 +170,10 @@ property 안은 보지 않는다. 필드는 타입 표기를 본다.
 남는다.
 
 검사가 꺼져 있으면 공유 렌더의 `csrf_token`은 비어 있다. 한 연결이 모두를 위해 그리는 렌더에 그 연결의 토큰을
-넣지 않는다([dead view](./dead-view.md#폼의-csrf-토큰)).
+넣지 않는다([dead view](./dead-view.md#폼의-csrf-토큰)). `{% include %}`한 템플릿이나 함수 컴포넌트(`{% func %}`)의
+템플릿 안의 `{% csrf_token %}`은 `wireview.W019`가 보지 못한다. 그 클래스는 공유된 채 운영에서 빈 토큰의 폼(403)을
+그린다 — DEBUG의 검사가 잡는다. W019가 그 템플릿들을 걷게 하는 것은
+[#208](https://github.com/itda-work/django-wireview/issues/208)이다.
 
 켜 두면 받은 연결도 렌더하므로 공유로 아끼는 시간이 없다. 운영에서는 끈다(`DEBUG = False`면 기본으로 꺼진다).
 

@@ -10,10 +10,19 @@ every live render after, and a plain POST form in a component got a 403.
   so only a page that draws a form gets the cookie, as on any Django page.
 - **A live render** has no request. The socket's handshake carried the
   browser's cookies (and the session), so the connection reads the CSRF secret
-  there once and masks it once. One token per connection, as Phoenix masks once
-  per LiveView process: a ``{% csrf_token %}`` is a static part, sent with a
-  join's full render and not again, and a mask that changed every render would
-  change the statics' fingerprint every render.
+  there once and masks it once for the component renders, as Phoenix masks once
+  per LiveView process: a mask that changed every render would change the
+  statics' fingerprint every render. That token is on the socket again whenever
+  its part is: a block drawn anew, a component's first render, a branch of an
+  ``{% if %}`` with no variable in it (one dynamic string). A **stream item**
+  goes as its whole HTML in every insert, so it gets a token masked anew each
+  time (``ComponentRepository._fresh_csrf_token``).
+
+  Django masks anew for every response because of BREACH; a socket is one
+  response that goes on. On a server that compresses the socket
+  (permessage-deflate, uvicorn's default) the same token next to text another
+  viewer chose, in one compression context, is what BREACH needs -- which is
+  why docs/DEPLOYMENT.md turns it off.
 
 The secret is read with Django's own middleware, so the cookie name,
 ``CSRF_USE_SESSIONS``, the format check and the masked cookies of Django before
@@ -112,5 +121,7 @@ def _tell() -> None:
         log.warning(
             "A component's template rendered {%% csrf_token %%} on a connection that carries no CSRF cookie, "
             "so the token is empty and the form will be refused (403). The page's first render set no cookie: "
-            "it drew no {%% csrf_token %%}. Decorate the view with django.views.decorators.csrf.ensure_csrf_cookie."
+            "it drew no {%% csrf_token %%}. Decorate the view with django.views.decorators.csrf.ensure_csrf_cookie. "
+            "Or the cookie's CSRF_COOKIE_PATH or CSRF_COOKIE_DOMAIN does not cover the WebSocket's URL, "
+            "so the browser did not send it with the handshake."
         )
