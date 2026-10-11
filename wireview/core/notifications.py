@@ -9,6 +9,12 @@ nothing renders, unless it subscribes to that channel itself.
 ``WireviewSession`` follows these rules for what the channel layer brings it,
 and ``wireview.testing`` for a mounted component, which hears what is
 published in its process (``listen``): one copy, so a test sees what a page sees.
+
+A component hears from its ``joined()`` on (#207). One its drawer's pass built
+(``{% component %}``) is on the connection a round trip before the page's join
+for it comes; what it would have heard meanwhile waits on the instance and is
+handed to it, in order, once it joined (``deliver_unheard``). Not dropped: the
+join restores the state the page holds, the one drawn before it.
 """
 
 from __future__ import annotations
@@ -79,16 +85,52 @@ async def deliver(host: Host, receiver: str, data: dict[str, t.Any]) -> None:
                 await presence.hear(component, channel, kwargs)
             if channel not in component.get_subscriptions():
                 continue  # only the framework listens here (#202): no app code, no render
-            with render_queries.scope("handler", component, f"{receiver}({channel!r})"):
-                await getattr(component, receiver)(channel, **kwargs)
-            # The sessions of this process handling the same message render a
-            # Meta.shared_render component once between them (#176). Only the
-            # render: each one's receiver above ran on its own.
-            with shared_render.handling(message_id), render_queries.reason(f"{receiver} {channel}"):
-                await host.send_render(component)
+            if not component.wire.has_joined or component.wire.unheard:
+                # Not yet (#207): it hears this once it joined -- and once what
+                # came before it is handed over, which a join mails behind it
+                component.wire.unheard.append((receiver, channel, kwargs))
+                continue
+            await _hand(host, component, receiver, channel, kwargs, message_id)
         except Exception:
             await host._crashed(component)
     await host.after_mutation_chores()
+
+
+async def deliver_unheard(host: Host, component: Component) -> None:
+    """Hand ``component``, which just joined, what it would have heard before: in order, as ``deliver`` would have.
+
+    Each still has to be on a channel it subscribes to -- ``joined()`` may have
+    chosen others -- and the first that raises ends the rest with the instance.
+    """
+    unheard, component.wire.unheard = component.wire.unheard, []
+    if not unheard:
+        return
+    for receiver, channel, kwargs in unheard:
+        if not host._holds(component):
+            break
+        if channel not in component.get_subscriptions():
+            continue
+        try:
+            # Not shared with another session's render (#176): that one is of
+            # the message as it came, this one of the component as it joined
+            await _hand(host, component, receiver, channel, kwargs, None)
+        except Exception:
+            await host._crashed(component)
+            break
+    await host.after_mutation_chores()
+
+
+async def _hand(
+    host: Host, component: Component, receiver: str, channel: str, kwargs: dict[str, t.Any], message_id: t.Any
+) -> None:
+    """Run ``component``'s receiver and render it."""
+    with render_queries.scope("handler", component, f"{receiver}({channel!r})"):
+        await getattr(component, receiver)(channel, **kwargs)
+    # The sessions of this process handling the same message render a
+    # Meta.shared_render component once between them (#176). Only the
+    # render: each one's receiver above ran on its own.
+    with shared_render.handling(message_id), render_queries.reason(f"{receiver} {channel}"):
+        await host.send_render(component)
 
 
 # -- in this process: the components wireview.testing mounted ------------------------------

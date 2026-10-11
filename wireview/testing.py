@@ -1196,6 +1196,9 @@ async def _mount(
                     result = component.joined()
                     if hasattr(result, "__await__"):
                         await result
+            # As ComponentRepository.join marks it: what it hears from here goes
+            # to its receiver (notifications.deliver, #207)
+            wire.has_joined = True
             # Then, as the join does when the page's URL has a query, params_changed
             # with it (WireviewSession.command_join). A helper that skipped it had a
             # component mounted with params= miss what every page load runs.
@@ -1209,6 +1212,7 @@ async def _mount(
                 mounted._post(None, hold)
     else:
         wire.freeze()
+        wire.has_joined = True
 
     return mounted
 

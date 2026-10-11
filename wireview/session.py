@@ -561,6 +561,16 @@ class WireviewSession:
             # Everything up to the first render counts as the join: a failure
             # here is not retried, where a handler's is (#94).
             await self._join_failed(component_id or "", name, answer)
+            return
+        if component.wire.unheard:
+            # What it would have heard since its drawer's pass built it, now that
+            # it joined (#207): mailed, so it comes in its turn as each message
+            # the channel brings from here on -- behind ``joined`` and whatever
+            # joined() sent
+            if self.channel_name:
+                await component.wire.send("deliver_unheard", id=component.id, instance=component.wire.instance)
+            else:
+                await notifications.deliver_unheard(self, component)
 
     async def _enter_live_session(self, payload: StatePayload) -> str:
         """Settle which ``live_session`` this connection is in, for one join.
@@ -934,6 +944,10 @@ class WireviewSession:
             if self.repo.get(component.id) is not component:
                 # Went with an ancestor that raised earlier in this loop
                 continue
+            if not component.wire.has_joined:
+                # Its drawer's pass built it and its join is on the way: that
+                # join tells it the params after joined(), as every join does (#207)
+                continue
             try:
                 await component._handle_params(params, uri)
                 await self.send_render(component)
@@ -1287,6 +1301,12 @@ class WireviewSession:
 
     async def component_joined(self, id, ref=None):
         await self.send_command("joined", _with_ref({"id": id}, ref))
+
+    async def component_deliver_unheard(self, id: str, instance: int):
+        """What the instance that joined would have heard before (``command_join``, #207)."""
+        component = self.repo.reachable(id)
+        if component is not None and component.wire.instance == instance:
+            await notifications.deliver_unheard(self, component)
 
     async def component_release_patches(self, id: str, instance: int, token: int = 0):
         """The operations sent before this are written: let ``token`` go (``_hold_patches``)."""

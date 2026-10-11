@@ -174,6 +174,14 @@ The django-reactor era changelog (2.x) is preserved in
   none. A connection with no secret renders an empty token and logs once, naming `ensure_csrf_cookie`. A
   component `mount()`ed in a test renders as a page that has the cookie: a token of a secret new with each
   `mount()`, masked anew for each `render()` and shared by the live renders, as on a connection.
+- A nested `{% component %}` its drawer's render drew anew hears its channels from its `joined()` on (#207).
+  It is on the connection from that render, and the page's join for it comes a round trip later; a
+  notification or model mutation that came in between ran its `notification()` or `mutation()` -- and
+  rendered it -- before `joined()`, and the join that followed put back the state the page held, so what it
+  heard never reached the screen. It now waits on the instance and is handed over in order once the
+  component joined, behind the join's render and `joined`: not if `joined()` left the channel, and not at all
+  if the page lets the element go first. A URL change in between no longer runs its `params_changed()`
+  either: its join does, after `joined()`, with the params of the moment.
 
 ## [1.5.1] - 2026-10-10
 

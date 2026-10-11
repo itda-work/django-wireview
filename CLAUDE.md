@@ -57,6 +57,8 @@ wireview/
 │                          WireviewSession.notification·model_mutation과 testing의 mount가 같은 deliver()를 Host 프로토콜로 부른다 — 사본을 두지 않는다.
 │                          utils.publish가 모든 알림 발행의 한 곳이고, 발행 뒤 같은 프로세스·같은 이벤트 루프의 mount 인스턴스에 건넨다(listen·published)
 │                          입장한 presence 프로듀서가 자기 presence 채널을 프레임워크로만 듣는 규칙(presence.hear 뒤 continue, #202)도 여기 있어 세션과 mount가 함께 쓴다
+│                          joined() 전 인스턴스(그린 쪽의 패스가 새로 만들고 페이지의 join을 기다리는 {% component %})는 받지 않는다: wire.unheard에 모았다가
+│                          joined() 뒤 deliver_unheard가 순서대로 넘긴다(세션은 join 끝에 메일 deliver_unheard로 — joined 뒤, #207)
 ├── core/watched.py        Watched: 보는 사람을 읽으면 오류인 감시 객체. shared_render(VERIFY일 때)와 Broadcast 항목 렌더(언제나)가 함께 쓴다.
 │                          Broadcast 항목의 this는 대상 클래스를 품어 {% on %}이 핸들러를 클래스에서 검사한다(stands_for)
 ├── core/template_reload.py 개발 서버에서 템플릿이 바뀌면(자동 리로더의 file_changed) 이 프로세스의 열린 연결마다 rejoin을 보낸다(#180).

@@ -170,6 +170,10 @@ UPGRADE_NOTE = {
         "컴포넌트 템플릿의 `{% csrf_token %}`이 토큰을 그린다",
         "`csrf_exempt`를 붙여 두었다면",
     ),
+    "A nested `{% component %}` its drawer's render drew anew hears its channels from its `joined()` on": (
+        "부모의 렌더가 새로 그린 중첩 컴포넌트는 `joined()` 뒤에야 알림을 받는다",
+        "`joined()`에서 초기화하는 상태를 `notification()`에서 읽어도 된다",
+    ),
 }
 
 EXAMPLE = "저장소의 예제만 바뀌었다"
