@@ -124,6 +124,13 @@ class UvicornThread(threading.Thread):
             self.server = None
             if loop is not None:
                 try:
+                    # What outlives the server -- the process's Broadcast receiver
+                    # (PatchHub) -- is cancelled and run to its end, as asyncio.run
+                    # does. Left pending, a receive on channels_redis kept the lock
+                    # the layer shares between every channel of the process, bound
+                    # to this loop: each later server's receive raised "bound to a
+                    # different event loop", and its pages heard nothing.
+                    loop.run_until_complete(_cancel_what_is_left())
                     # The layer keeps this loop's connection (channels-nats does),
                     # and its tasks would be collected after the loop closed, each
                     # one a "Event loop is closed" warning in a later test (#150).
@@ -218,6 +225,14 @@ def _collecting_errors() -> t.Iterator[None]:
         _collector = previous
         for logger in loggers:
             logger.removeHandler(handler)
+
+
+async def _cancel_what_is_left() -> None:
+    """Cancel every other task of the running loop, and wait for each to end."""
+    tasks = asyncio.all_tasks() - {asyncio.current_task()}
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def _close_the_layer() -> None:

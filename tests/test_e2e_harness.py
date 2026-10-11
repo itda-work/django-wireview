@@ -186,6 +186,33 @@ def test_the_event_loop_is_closed_with_the_thread(started_threads):
     assert loop.is_closed()
 
 
+def test_a_task_the_server_leaves_behind_ends_before_the_loop_closes(started_threads):
+    """A task that outlives the server -- the Broadcast receiver -- is cancelled, and its ``finally`` runs.
+
+    Left pending, a channels_redis receive kept the lock that every channel of
+    the process shares, bound to a loop that was gone: the next servers' receives
+    raised, and their pages heard no Broadcast.
+    """
+    import asyncio
+
+    started, ended = threading.Event(), threading.Event()
+
+    async def receives_forever():
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            ended.set()
+
+    with serve():
+        loop = started_threads[0].loop
+        assert loop is not None
+        loop.call_soon_threadsafe(lambda: loop.create_task(receives_forever()))
+        assert started.wait(timeout=5)
+
+    assert ended.is_set()
+
+
 def test_no_test_module_runs_a_server_thread_of_its_own():
     """Guard against a fifth copy.
 
