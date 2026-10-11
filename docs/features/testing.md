@@ -297,6 +297,11 @@ view = await mount(XAdminPanel, user=staff, live_session="admin")
   그려지지만, 컨슈머 경로 전체(join, 재접속, 자식 LiveComponent의 `joined()`·`update()`·`leaving()`)를
   검사하려면 `tests/test_live_component_render.py`나 `tests/test_live_session_contract.py`처럼
   컨슈머를 직접 만든다. `view.call()`은 부모의 핸들러만 부른다.
+- **`mount()`는 CSRF 쿠키를 가진 페이지다.** 컴포넌트 템플릿의 `{% csrf_token %}`은 브라우저처럼
+  `csrfmiddlewaretoken` 입력을 그린다(#206). 시크릿은 `mount()`마다 새것이다. `render()`는 응답 하나라 부를 때마다 새로
+  마스킹하고, 라이브 렌더(`render_diff()`, 이벤트·알림 뒤)는 연결처럼 토큰 하나를 함께 쓴다. 스트림 항목은 삽입마다
+  새로 마스킹한다. 값은 테스트마다 다르므로 HTML을 통째로 비교하는 단언은 그 입력을 빼고 비교한다
+  ([폼의 CSRF 토큰](./dead-view.md#폼의-csrf-토큰)).
 - 자식은 `mount()`가 만든 것이 아니라 렌더가 만든 것이다. 자식이 낸 브로드캐스트는
   `view.broadcasts`에 남지 않는다.
 

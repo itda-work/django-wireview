@@ -125,6 +125,7 @@ wireview/
 │                          구독을 맞춘 뒤 나간다. 알림의 렌더는 첫 알림 전에 잡은 기준선(페이지가 가진 것) 대비다. self.broadcast()는 기록하고
 │                          프로세스의 채널 레이어로도 발행한다. 테스트가 끝나면 듣기를 끊는다(_end_of_test, pytest_plugin.py)
 │                          render()는 실제 저장소의 HTTP 렌더 모드로 자식까지 그린다(자식 수명주기는 컨슈머 몫, #115).
+│                          mount는 CSRF 쿠키를 가진 페이지다(_PageCsrf, #206): {% csrf_token %}이 mount마다 새 시크릿의 토큰을 그린다
 │                          내비게이션 단언·follow_redirect·follow_push·스트림 검사
 ├── pytest_plugin.py       pytest 플러그인 wireview(pyproject의 pytest11 진입점, 앱의 스위트에도 실린다). 테스트가 끝나면 그 테스트의 mount가
 │                          듣기를 멈춘다(#201). 테스트보다 넓은 픽스처(모듈·클래스·세션, setUpClass)의 setup 중 만든 mount는 그 픽스처가

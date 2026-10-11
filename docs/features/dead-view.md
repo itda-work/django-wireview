@@ -66,6 +66,7 @@ def add(request):
 |------|------|
 | 첫 HTTP 렌더 | 페이지의 것 — Django `csrf` 컨텍스트 프로세서의 lazy 값 그대로. 템플릿이 읽을 때에야 `get_token()`이 돌아, `{% csrf_token %}`을 그린 페이지만 CSRF 쿠키(`Set-Cookie`, `Vary: Cookie`)를 받는다 |
 | 라이브 렌더 (join, 이벤트·알림 뒤, LiveComponent, 함수 컴포넌트, 스트림 항목) | 연결이 WebSocket 핸드셰이크에서 받은 CSRF 쿠키의 시크릿으로 만든 것. `CSRF_USE_SESSIONS = True`면 세션의 시크릿 |
+| 테스트의 [`mount()`](./testing.md#주의사항) | 쿠키를 가진 페이지처럼, `mount()`마다 만든 시크릿의 것. `render()`는 부를 때마다 새로 마스킹하고 라이브 렌더는 하나를 함께 쓴다 |
 
 - **컴포넌트 렌더의 라이브 토큰은 연결마다 하나다.** 시크릿을 연결이 처음 그릴 때 한 번 마스킹해 그 연결의 모든
   렌더에 쓴다. 렌더마다 마스크를 바꾸면 정적 부분이 매번 달라져 부분 diff가 사라진다. Phoenix LiveView도 프로세스마다

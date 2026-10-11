@@ -14,6 +14,8 @@ plain POST form in a component posted an empty token. These hold now:
 - a render shared between connections gets none; verified, reading it raises
 - LiveComponents, function components and stream items get it as well; a
   stream item, sent whole in every insert, gets one masked anew each time
+- a ``mount()`` in a test is a page that has the cookie: its renders draw a
+  token of a secret of its own, as the browser shows the form
 
 The browser side, a form submitted to a view that checks the token, is
 tests/test_csrf_token_e2e.py.
@@ -382,6 +384,56 @@ async def test_the_websocket_reads_the_handshakes_cookie():
         assert accepts(token, cookie=SECRET)
     finally:
         await communicator.disconnect()
+
+
+# -- a mounted component --------------------------------------------------------------------
+
+
+def live_html(view: wireview_testing.MountedComponent) -> str:
+    last = view.component.wire._last_rendered
+    assert last is not None
+    return last.to_html()
+
+
+@pytest.mark.asyncio
+async def test_a_mounted_component_draws_a_token_as_the_browser_does():
+    """A mount stands for a page that has the CSRF cookie: its renders draw the input the browser
+    shows, valid for that page's secret. ``render()`` is a response of its own; the live renders
+    share one token, so an event's diff sends no statics again (#201)."""
+    view = await wireview_testing.mount(CsrfForm, id="form")
+    secret = view._repo._page_csrf.secret
+    (http,) = tokens(view.render())
+    (http_again,) = tokens(view.render())
+    assert accepts(http, cookie=secret) and accepts(http_again, cookie=secret)
+    assert not accepts(http, cookie=OTHER)
+
+    await view.render_diff()
+    (live,) = tokens(live_html(view))
+    assert accepts(live, cookie=secret)
+    await view.call("bump")
+    diff = await view.render_diff()
+    assert diff is not None and "s" not in diff, "only the field moved: no statics sent again"
+    assert tokens(live_html(view)) == [live]
+
+
+@pytest.mark.asyncio
+async def test_a_mounted_components_stream_items_get_a_token_masked_anew():
+    view = await wireview_testing.mount(CsrfItems, id="form")
+    await view.render_diff()
+    secret = view._repo._page_csrf.secret
+    (first,) = tokens(await view.component._render_stream_item("csrf/items_item.html", {"id": 1}))
+    (second,) = tokens(await view.component._render_stream_item("csrf/items_item.html", {"id": 2}))
+    assert first != second
+    assert accepts(first, cookie=secret) and accepts(second, cookie=secret)
+
+
+@pytest.mark.asyncio
+async def test_two_mounts_are_two_pages():
+    one = await wireview_testing.mount(CsrfForm, id="form")
+    two = await wireview_testing.mount(CsrfForm, id="form")
+    (token,) = tokens(one.render())
+    assert accepts(token, cookie=one._repo._page_csrf.secret)
+    assert not accepts(token, cookie=two._repo._page_csrf.secret)
 
 
 # -- renders many viewers share -------------------------------------------------------------

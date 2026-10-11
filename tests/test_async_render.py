@@ -124,7 +124,8 @@ def _same_as_dir(wire: MockWireviewMeta, component: Component) -> bool:
     return {k: v for k, v in context.items() if k in expected or k not in _ADDED} == expected
 
 
-_ADDED = {"slots", "this", "wireview_repository"}
+#: What the framework puts in beside the component's names: csrf_token is the viewer's (#206)
+_ADDED = {"slots", "this", "wireview_repository", "csrf_token"}
 
 
 class _Shape(Component):

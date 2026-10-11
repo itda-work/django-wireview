@@ -36,9 +36,11 @@ from urllib.parse import urlsplit
 from asgiref.sync import sync_to_async
 from channels.layers import BaseChannelLayer
 from django.contrib.auth.models import AnonymousUser
+from django.http import HttpRequest
+from django.middleware.csrf import get_token
 from django.urls import Resolver404
 
-from .core import notifications, patches, shared_render
+from .core import csrf, notifications, patches, shared_render
 from .core.meta import WireviewMeta
 from .core.rendered import PROTOCOL_VERSION
 from .core.session import SessionView
@@ -248,6 +250,23 @@ class MockWireviewMeta(WireviewMeta):
         await publish(get_broker(), message)
 
 
+class _PageCsrf:
+    """The CSRF secret of a mounted component's page, as the browser holds it in its cookie (#206).
+
+    A page whose first render draws ``{% csrf_token %}`` sets the cookie, and its
+    socket carries it: every render gets a token the form passes with. A mount
+    stands for that page, so its renders draw one too -- a test that reads the
+    form sees the ``csrfmiddlewaretoken`` input the browser shows.
+    """
+
+    def __init__(self) -> None:
+        request = HttpRequest()
+        get_token(request)  # a new secret, as the first response that draws a token makes one
+        self.secret: str = request.META["CSRF_COOKIE"]
+        #: The connection's token: masked once, shared by its live renders (``core/csrf.py``)
+        self.token = csrf.mask(self.secret)
+
+
 class MockRepository(ComponentRepository):
     """The repository a mounted component renders with: the HTTP first render's.
 
@@ -270,6 +289,7 @@ class MockRepository(ComponentRepository):
         session: SessionView | None = None,
         live_session: t.Any = None,
         is_live: bool = False,
+        page_csrf: _PageCsrf | None = None,
     ):
         # A mounted component talks to the client this release ships.
         super().__init__(
@@ -280,6 +300,17 @@ class MockRepository(ComponentRepository):
             live_session=live_session,
             vsn=PROTOCOL_VERSION,
         )
+        self._page_csrf = page_csrf or _PageCsrf()
+        # An HTTP render is a response of its own: a token masked for it alone
+        self._page_csrf_token = csrf.mask(self._page_csrf.secret)
+
+    @property
+    def csrf_token(self) -> t.Any:
+        return self._page_csrf.token if self.is_live else self._page_csrf_token
+
+    def _fresh_csrf_token(self) -> t.Any:
+        # A stream item goes on the socket; it is masked anew, as a connection masks one
+        return csrf.mask(self._page_csrf.secret)
 
     def for_render(self, root: "Component", live: bool = False) -> "MockRepository":
         """A repository holding only ``root``, as the first response's does when it
@@ -289,7 +320,12 @@ class MockRepository(ComponentRepository):
         a LiveComponent child is a reference (``{"c": id}``) rather than its HTML.
         """
         repo = MockRepository(
-            user=self.user, params=self.params, session=self.session, live_session=self.live_session, is_live=live
+            user=self.user,
+            params=self.params,
+            session=self.session,
+            live_session=self.live_session,
+            is_live=live,
+            page_csrf=self._page_csrf,
         )
         repo.register_component(root)
         if live:

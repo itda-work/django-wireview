@@ -171,7 +171,9 @@ The django-reactor era changelog (2.x) is preserved in
   a stream item, sent whole in every insert, one masked anew each time. Turn permessage-deflate off on
   the server (uvicorn negotiates it by default): on a compressed socket a token that stays the same
   across messages, next to text other viewers chose, is what BREACH needs. A render shared between connections (`Meta.shared_render`) and a `Broadcast` item get
-  none. A connection with no secret renders an empty token and logs once, naming `ensure_csrf_cookie`.
+  none. A connection with no secret renders an empty token and logs once, naming `ensure_csrf_cookie`. A
+  component `mount()`ed in a test renders as a page that has the cookie: a token of a secret new with each
+  `mount()`, masked anew for each `render()` and shared by the live renders, as on a connection.
 
 ## [1.5.1] - 2026-10-10
 
