@@ -88,17 +88,18 @@ dependencies = ["django-wireview>=1.5,<2"]
   그래서 `{% include %}`한 템플릿, `{% extends %}`의 부모, `takes_context`로 `user`를 넘겨받는 inclusion 태그의
   템플릿에서 `user`·`session`·`request`·`perms`·`messages`를 읽는 클래스가 공유 대상이었다. 자기 파일 안이라도
   `{% blocktranslate %}`의 본문(`{% blocktranslate %}{{ user }}{% endblocktranslate %}`)과, 본문을
-  `child_nodelists`로 알리지 않는 서드파티 블록 태그의 본문에서 읽는 것도 그랬다. `VERIFY_SHARED_RENDER`가 꺼진
-  운영(`DEBUG = False`의 기본)에서는 같은 브로드캐스트를 처리한 연결들이 **처음 렌더한 연결의 사용자로 그린 화면**을
-  받았다 — 다른 사람의 이름·권한별 화면이 보였을 수 있다. 1.6은 렌더가 닿는 템플릿(`{% include %}`(Django 6의
-  `"파일#조각"` 포함), `{% extends %}`의 부모, 함수 컴포넌트와 inclusion 태그의 템플릿)과 태그의 본문을 모두 걷고,
-  이름이 변수인 `{% include part %}`·`{% extends base %}`·`{% func kind %}`처럼 렌더 전에는 알 수 없는 템플릿을
-  불러오면 공유하지 않는다. 범위는 [shared_render](./features/shared-render.md#범위).
+  `child_nodelists`로 알리지 않는 서드파티 블록 태그의 본문, 인자를 자기 객체로 감싸는 태그(django-classytags류)의
+  인자에서 읽는 것도 그랬다. `VERIFY_SHARED_RENDER`가 꺼진 운영(`DEBUG = False`의 기본)에서는 같은 브로드캐스트를
+  처리한 연결들이 **처음 렌더한 연결의 사용자로 그린 화면**을 받았다 — 다른 사람의 이름·권한별 화면이 보였을 수 있다.
+  1.6은 렌더가 닿는 템플릿(`{% include %}`(`"파일#조각"` — Django 6의 것과 django-template-partials의 것 — 포함),
+  `{% extends %}`의 부모, 함수 컴포넌트와 inclusion 태그의 템플릿)을 모두 걷고, 템플릿마다 소스를 파서로 다시 읽어
+  태그가 어디에 두든 그 본문과 인자를 본다. 그리고 이름이 변수인 `{% include part %}`·`{% extends base %}`·
+  `{% func kind %}`처럼 렌더 전에는 알 수 없는 템플릿을 불러오면 공유하지 않는다. 범위는 [shared_render](./features/shared-render.md#범위).
   - 보안 조치: `shared_render`를 선언한 클래스가 있으면 1.6에서 `manage.py check`를 돌린다. 새로 나온
     `wireview.W019`의 클래스가 이전 운영에서 다른 사람의 화면을 그렸을 수 있는 클래스다(이유에 `through <파일>`이
     붙는다). 그 화면이 민감했다면 그 기간의 노출을 따로 판단한다.
   - W019가 없다고 안전한 것은 아니다. property, 템플릿 태그·필터의 파이썬 코드(`takes_context` 태그가 컨텍스트에서
-    꺼내는 것), 다른 이름으로 받은 컴포넌트(`{% with viewer=this %}`)는 체크가 보지 못한다. 그런 클래스는 사용자 둘로
+    꺼내는 것, 태그가 파서를 거치지 않고 스스로 만든 노드·변수), 다른 이름으로 받은 컴포넌트(`{% with viewer=this %}`)는 체크가 보지 못한다. 그런 클래스는 사용자 둘로
     브로드캐스트해 보는 테스트로 확인한다([잡지 못하는 것](./features/shared-render.md#잡지-못하는-것)).
   - 조용히 달라짐: 그런 클래스는 이제 연결마다 렌더한다. 결과는 맞아지지만 공유로 아끼던 시간은 없어진다 — 브로드캐스트
     한 번의 렌더 수가 연결 수만큼 는다. 보는 사람을 읽는 부분을 선언하지 않은 다른 컴포넌트로 빼면 다시 공유된다.

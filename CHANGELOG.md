@@ -178,11 +178,16 @@ The django-reactor era changelog (2.x) is preserved in
   class whose `{% include %}`d template or `{% extends %}` parent read `user` shared its render, and with
   `VERIFY_SHARED_RENDER` off -- production -- the first connection's user went to every other viewer of the
   broadcast (#208). The scope now follows every template a render reaches -- includes (each partial of a file,
-  `"parts.html#row"`, on its own), extends parents (skipping as Django does), function components' and inclusion
-  tags' templates (one made from a string as well) -- and every tag's body wherever the tag keeps it, the body of
+  `"parts.html#row"`, on its own, Django 6's and django-template-partials' alike: the part of the file inside its
+  `{% partialdef %}`, and the partials it renders with `{% partial %}`), extends parents (skipping as Django does,
+  and read again for each chain a template that extends comes through), function components' and inclusion tags'
+  templates (one made from a string as well). Each is read from what its parser makes: the check parses the
+  source again with a parser that writes down every node and expression, so a tag's body and arguments are read
+  wherever the tag keeps them (in an object of its own, wrapped in a value object), the body of
   `{% blocktranslate %}` included; `{% debug %}` is out of scope. A template only the render can name
   (`{% include part %}`, `{% extends base %}`, `{% func kind %}`, an unregistered function, one that fails to
-  load, the component's own included) or one the check fails to read keeps the render each connection's own. A class out of scope that way renders on every connection again.
+  load, the component's own included) or one the check fails to read keeps the render each connection's own,
+  in production until the process restarts. A class out of scope that way renders on every connection again.
   Under the dev server's autoreloader a template change has the scope read anew.
 
 ## [1.5.1] - 2026-10-10

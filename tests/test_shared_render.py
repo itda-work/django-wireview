@@ -153,6 +153,46 @@ TEMPLATES = {
     ),
     "sh/request_card.html": "<i>{{ request.path }}</i>",
     "sh/request_func.html": '{% load wireview %}<p {% tag_header %}>{{ request }}{% func "sh_request" %}</p>',
+    # Shapes the attribute walk missed (#208, round 2): django-template-partials' partials on Django 5.2,
+    # a chain of namesakes, a body in an object or four containers down, an argument in a value object
+    "sh/proxy.html": (
+        "{% load wireview %}<p {% tag_header %}>{{ headline }}"
+        '{% include "sh/proxy_parts.html#safe" %}{% include "sh/proxy_parts.html#viewer" %}</p>'
+    ),
+    "sh/proxy_parts.html": (
+        "{% load sh_partials %}{% partialdef safe %}<i>s</i>{% endpartialdef %}"
+        "{% partialdef viewer %}<b>{{ user.username }}</b>{% endpartialdef %}"
+    ),
+    "sh/page_parts.html": (
+        "{% load sh_partials %}<nav>{{ user.username }}</nav>"
+        "{% partialdef row %}<i>{{ headline }}</i>{% endpartialdef %}"
+        "{% partialdef linked %}<i>{% partial named %}</i>{% endpartialdef %}"
+        "{% partialdef named %}{{ user.username }}{% endpartialdef %}"
+    ),
+    "sh/history.html": (
+        '{% load wireview %}<p {% tag_header %}>{{ headline }}{% include "sh/hq.html" %}{% include "sh/hn.html" %}</p>'
+    ),
+    "sh/hq.html": '{% extends "sh/hn.html" %}{% block b %}q1{% endblock %}',
+    "sh/hn.html": '{% extends "sh/hq.html" %}{% block b %}n1{% endblock %}',
+    "sh/slot.html": (
+        "{% load wireview sh_tags %}<p {% tag_header %}>{{ headline }}"
+        '{% sh_slot %}<b>{% include "sh/user_part.html" %}</b>{% endsh_slot %}</p>'
+    ),
+    "sh/branches.html": (
+        "{% load wireview sh_tags %}<p {% tag_header %}>{{ headline }}"
+        "{% sh_deep %}<b>{{ user.username }}</b>{% endsh_deep %}</p>"
+    ),
+    "sh/show.html": (
+        "{% load wireview sh_tags %}<p {% tag_header %}>{{ headline }}<b>{% sh_show user.username %}</b></p>"
+    ),
+    "sh/variable.html": (
+        "{% load wireview sh_tags %}<p {% tag_header %}>{{ headline }}<b>{% sh_variable user.username %}</b></p>"
+    ),
+}
+#: The next loader's namesakes: ``sh/hn.html`` there is what the chain ``hn -> hq -> hn`` finds last
+NAMESAKES = {
+    "sh/hq.html": "[q2 {% block b %}{% endblock %}]",
+    "sh/hn.html": "[n2 <b>{{ user.username }}</b>{% block b %}{% endblock %}]",
 }
 
 STORE: dict[str, t.Any] = {}
@@ -622,6 +662,36 @@ class ShDebug(_Shared):
         template_name = "sh/debug.html"
 
 
+class ShProxy(_Shared):
+    class Meta:
+        template_name = "sh/proxy.html"
+
+
+class ShHistory(_Shared):
+    class Meta:
+        template_name = "sh/history.html"
+
+
+class ShSlot(_Shared):
+    class Meta:
+        template_name = "sh/slot.html"
+
+
+class ShBranches(_Shared):
+    class Meta:
+        template_name = "sh/branches.html"
+
+
+class ShShow(_Shared):
+    class Meta:
+        template_name = "sh/show.html"
+
+
+class ShVariable(_Shared):
+    class Meta:
+        template_name = "sh/variable.html"
+
+
 class ShRequestCard(_Shared):
     class Meta:
         template_name = "sh/request_card_tag.html"
@@ -638,6 +708,8 @@ class ShRequestFunc(_Shared):
 
 #: Template partials (``{% partialdef %}``) came with Django 6.0
 partials = pytest.mark.skipif(django.VERSION < (6, 0), reason="template partials are Django 6.0's")
+#: Before 6.0, django-template-partials' loader names a partial; from 6.0 the engine does, before any loader
+package_partials = pytest.mark.skipif(django.VERSION >= (6, 0), reason="the package's loader shape is Django 5.2's")
 
 
 @pytest.fixture(autouse=True)
@@ -648,12 +720,16 @@ def _templates():
             {
                 "BACKEND": "django.template.backends.django.DjangoTemplates",
                 "OPTIONS": {
-                    "loaders": [("django.template.loaders.locmem.Loader", TEMPLATES)],
+                    "loaders": [
+                        # A locmem loader that also answers "file#name" as django-template-partials' does
+                        ("testproj.template_partials.Loader", TEMPLATES),
+                        ("django.template.loaders.locmem.Loader", NAMESAKES),
+                    ],
                     "context_processors": [
                         "django.template.context_processors.request",
                         "django.contrib.auth.context_processors.auth",
                     ],
-                    "libraries": {"sh_tags": "testproj.inclusion_tags"},
+                    "libraries": {"sh_tags": "testproj.inclusion_tags", "sh_partials": "testproj.template_partials"},
                 },
             }
         ]
@@ -1517,6 +1593,62 @@ async def test_no_shape_of_template_reads_past_the_check(monkeypatch, component)
     assert RENDERS[component.__name__] == 2, "each connection renders its own"
 
 
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "component",
+    [pytest.param(ShProxy, marks=package_partials), ShHistory, ShSlot, ShBranches, ShShow, ShVariable],
+)
+async def test_no_tag_or_partial_keeps_what_it_reads_from_the_check(monkeypatch, component):
+    """Shapes the walk of the node tree missed, each of which put one viewer's name on another's page.
+
+    The check read what a tag left on its node, and guessed where: a body in an object of the
+    tag's own or four containers down, an argument in a value object, were not found. It reads
+    what the parser made instead. A partial on Django 5.2 is django-template-partials', of no class
+    of Django's; a template that extends another finds its parent by the chain it came through.
+    """
+    set_wireview(monkeypatch, VERIFY_SHARED_RENDER=False)
+    assert shared_render.out_of_scope(component)
+    model = get_user_model()
+    ann = await model.objects.acreate(username=f"sh-ann-{uuid4().hex[:6]}")
+    bob = await model.objects.acreate(username=f"sh-bob-{uuid4().hex[:6]}")
+    a, b = await Page.open(component, user=ann), await Page.open(component, user=bob)
+    RENDERS.clear()
+    STORE["headline"] = "news"
+
+    await broadcast([a, b], "m-1")
+
+    assert ann.username in a.html() and bob.username not in a.html()
+    assert bob.username in b.html() and ann.username not in b.html()
+    assert RENDERS[component.__name__] == 2, "each connection renders its own"
+
+
+class _Lookalike:
+    """A partial of no class the check knows: its file's Origin, and a name of its own."""
+
+    def __init__(self, file: str, name: str) -> None:
+        from django.template import engines
+
+        self.origin = engines["django"].engine.get_template(file).origin  # type: ignore[attr-defined]
+        self.name = name
+
+
+@pytest.mark.unit
+def test_a_partial_is_told_by_its_name_whatever_its_class():
+    """Two partials of one file share its Origin: each is read, and only the part of the file it renders."""
+    reach = shared_render._Reach(ShIncPlain)
+    reach.template(_Lookalike("sh/proxy_parts.html", "safe"), owned=True)
+    assert reach.names == {}
+    reach.template(_Lookalike("sh/proxy_parts.html", "viewer"), owned=True)
+    assert reach.names == {"user": {"sh/proxy_parts.html#viewer"}}
+
+    reach = shared_render._Reach(ShIncPlain)
+    reach.template(_Lookalike("sh/page_parts.html", "row"), owned=True)
+    assert reach.names == {}, "the page around the partial reads the user; the partial does not"
+    reach.template(_Lookalike("sh/page_parts.html", "linked"), owned=True)
+    assert reach.names == {"user": {"sh/page_parts.html#named"}}, "{% partial named %} is followed"
+
+
 @pytest.mark.unit
 def test_the_system_check_names_where_those_shapes_read_the_viewer():
     found = {message.obj: message.msg for message in check_shared_render(None)}
@@ -1529,6 +1661,12 @@ def test_the_system_check_names_where_those_shapes_read_the_viewer():
     assert "reads user (through <unknown source>)" in found[ShAnonCards]
     assert "reads user (through sh/card.html)" in found[ShSubCard]
     assert "prints the whole context" in found[ShDebug] and "{% debug %}" in found[ShDebug]
+    if django.VERSION < (6, 0):
+        assert "reads user (through sh/proxy_parts.html#viewer)" in found[ShProxy]
+    assert "reads user (through sh/hn.html)" in found[ShHistory]
+    assert "reads user (through sh/user_part.html)" in found[ShSlot]
+    for cls in (ShBranches, ShShow, ShVariable):
+        assert "its template reads user," in found[cls]
 
 
 @pytest.mark.unit

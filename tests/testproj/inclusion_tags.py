@@ -65,3 +65,82 @@ def sh_wrap(parser, token):
     body = parser.parse(("endsh_wrap",))
     parser.delete_first_token()
     return _WrapNode(body)
+
+
+class _Slot:
+    """Not a node, a list or a dict: a body kept in an object of the tag's own."""
+
+    def __init__(self, nodelist):
+        self.nodelist = nodelist
+
+
+class _SlotsNode(template.Node):
+    def __init__(self, slots):
+        self.slots = slots
+
+    def render(self, context):
+        return "".join(slot.nodelist.render(context) for slot in self.slots.values())
+
+
+@register.tag
+def sh_slot(parser, token):
+    body = parser.parse(("endsh_slot",))
+    parser.delete_first_token()
+    return _SlotsNode({"main": _Slot(body)})
+
+
+class _BranchesNode(template.Node):
+    """A body four containers down: list, tuple, list, node list."""
+
+    def __init__(self, branches):
+        self.branches = branches
+
+    def render(self, context):
+        return "".join(body.render(context) for _key, bodies in self.branches for body in bodies)
+
+
+@register.tag
+def sh_deep(parser, token):
+    body = parser.parse(("endsh_deep",))
+    parser.delete_first_token()
+    return _BranchesNode([("x", [body])])
+
+
+class _Value:
+    """An argument wrapped in a value object, as django-classytags does."""
+
+    def __init__(self, expression):
+        self.expression = expression
+
+    def resolve(self, context):
+        return self.expression.resolve(context)
+
+
+class _ShowNode(template.Node):
+    def __init__(self, kwargs):
+        self.kwargs = kwargs
+
+    def render(self, context):
+        return str(self.kwargs["value"].resolve(context))
+
+
+@register.tag
+def sh_show(parser, token):
+    _tag, argument = token.split_contents()
+    return _ShowNode({"value": _Value(parser.compile_filter(argument))})
+
+
+class _VariableNode(template.Node):
+    """Makes its ``Variable`` itself, as Django's docs show: past the parser's ``compile_filter``."""
+
+    def __init__(self, variable):
+        self.variable = template.Variable(variable)
+
+    def render(self, context):
+        return str(self.variable.resolve(context))
+
+
+@register.tag
+def sh_variable(parser, token):
+    _tag, argument = token.split_contents()
+    return _VariableNode(argument)
