@@ -417,6 +417,8 @@ def _page_repository(context: Context) -> ComponentRepository:
                 live_session=get_live_session(getattr(request, LIVE_SESSION_REQUEST_ATTR, "")) if request else None,
                 # The context processor's lazy token: the components' templates get the page's (#206)
                 csrf_token=context.get("csrf_token"),
+                # Who the page is for, in every state it signs (#209)
+                request=request,
             )
         context["wireview_repository"] = repo
     return repo

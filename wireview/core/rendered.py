@@ -64,7 +64,7 @@ Payload = t.Union[str, dict[str, t.Any]]
 # understands in the WebSocket URL (``?vsn=``); the server never sends a form
 # newer than that, and a client that names none gets version 0. Keep in step
 # with ``PROTOCOL_VERSION`` in static/wireview/rendered.mjs.
-PROTOCOL_VERSION = 10
+PROTOCOL_VERSION = 11
 # First version whose clients apply ``{"k": [...]}`` comprehension updates.
 MOVES_SINCE = 2
 # First version that pairs a user event with its render through ``ref`` (#92).
@@ -110,6 +110,13 @@ UPDATE_ONLY_SINCE = 10
 # one inserts each at ``at`` in turn, which reverses them unless ``at`` is -1:
 # it is sent them in reverse.
 INSERTS_IN_ORDER_SINCE = 10
+# First version whose clients hear ``renew``: a join's state was issued for
+# someone other than the connection's handshake -- another tab logged in or out
+# since the socket opened -- so the page opens a new socket and joins on it, its
+# first round of joins there marked ``renewed`` (#209). Such a join whose login
+# still differs is answered with ``reload`` (reason ``identity``). An older
+# client joins as it did before: on the socket it has, as the connection's identity.
+RENEW_SINCE = 11
 
 
 def protocol_version(query_string: bytes | str) -> int:

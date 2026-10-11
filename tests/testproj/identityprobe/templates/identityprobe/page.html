@@ -1,0 +1,27 @@
+{% load wireview %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>identity {{ name }}</title>
+    {% wireview_header %}
+  </head>
+  <body>
+    <h1 data-testid="page">{{ name }}</h1>
+    <p data-testid="page-who">{{ user.get_username|default:"anonymous" }}</p>
+    <nav>
+      <a href="{% url 'identityprobe:a' %}" data-testid="to-a">a</a>
+      <a href="{% url 'identityprobe:b' %}" data-testid="to-b">b</a>
+      <a href="{% url 'identityprobe:inside-a' %}" data-testid="to-inside-a">inside-a</a>
+      <a href="{% url 'identityprobe:inside-b' %}" data-testid="to-inside-b">inside-b</a>
+    </nav>
+    <form method="post"
+          action="{% url 'identityprobe:post' %}"
+          data-testid="page-form">
+      {% csrf_token %}
+      <input type="hidden" name="text" value="page">
+      <button data-testid="page-submit">page</button>
+    </form>
+    {% component "IdentityCard" id="card" %}
+  </body>
+</html>

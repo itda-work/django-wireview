@@ -548,6 +548,152 @@ def check_channel_layer_configured(app_configs, **kwargs) -> list[CheckMessage]:
     ]
 
 
+def _websocket_paths(app: t.Any, under_session: bool = False, depth: int = 0) -> t.Iterator[bool | None]:
+    """Walk an ASGI application down to wireview's consumer, saying whether a session middleware was on the way.
+
+    Yields ``True``/``False`` for each route that reaches ``WireviewConsumer``
+    (with or without Channels' ``SessionMiddleware`` above it), and ``None``
+    where the walk meets a layer with neither ``.inner`` nor ``.application``
+    -- a plain ASGI class of the project's own, a function -- which says
+    nothing either way. A layer that has one (any subclass of Channels'
+    ``BaseMiddleware``) is walked through and is not taken for a session.
+    """
+    from channels.routing import ProtocolTypeRouter, URLRouter
+    from channels.sessions import SessionMiddleware
+
+    from .consumer import WireviewConsumer
+
+    if depth > 32:
+        yield None
+        return
+    consumer = getattr(app, "consumer_class", None)
+    if isinstance(consumer, type):
+        if issubclass(consumer, WireviewConsumer):
+            yield under_session
+        return
+    if isinstance(app, ProtocolTypeRouter):
+        if "websocket" in app.application_mapping:
+            yield from _websocket_paths(app.application_mapping["websocket"], under_session, depth + 1)
+        return
+    if isinstance(app, URLRouter):
+        for route in app.routes:
+            yield from _websocket_paths(getattr(route, "callback", None), under_session, depth + 1)
+        return
+    inner = getattr(app, "inner", None) or getattr(app, "application", None)
+    if inner is None:
+        yield None
+        return
+    yield from _websocket_paths(inner, under_session or isinstance(app, SessionMiddleware), depth + 1)
+
+
+def check_websocket_session(app_configs, **kwargs) -> list[CheckMessage]:
+    """W020: the WebSocket route to wireview has no ``SessionMiddleware`` above it.
+
+    Without it the socket's handshake carries no session: every component's
+    ``self.session`` is empty, its ``user`` anonymous (``AuthMiddlewareStack``
+    is what fills both), and a join cannot tell a page rendered for a logged-in
+    user from one that was not -- the connection does not compare who a page
+    was for (#209). Nothing raises. Reported only when the walk from
+    ``ASGI_APPLICATION`` reaches the consumer (``_websocket_paths``): it goes
+    through Channels' routers and every layer with an ``.inner`` or an
+    ``.application`` (Channels' middleware, origin validators, any
+    ``BaseMiddleware`` subclass), and stops silently at one with neither. So a
+    ``BaseMiddleware`` of the project's own that fills ``scope["session"]``
+    itself is reported, which the hint answers: silence the check.
+    """
+    from django.conf import settings
+    from django.utils.module_loading import import_string
+
+    path = getattr(settings, "ASGI_APPLICATION", None)
+    if not path:
+        return []
+    try:
+        application = import_string(path)
+    except Exception:
+        return []
+    if False not in set(_websocket_paths(application)):
+        return []
+    return [
+        Warning(
+            f"The WebSocket route to wireview in {path} has no SessionMiddleware above it.",
+            hint=(
+                "The socket's handshake then carries no session and no user: components see an empty "
+                "self.session and an anonymous user, and a page rendered for a logged-in user cannot be "
+                "told from one that was not. Wrap the route in channels.auth.AuthMiddlewareStack "
+                "(or channels.sessions.SessionMiddlewareStack). If a middleware of your own provides the "
+                "session, add 'wireview.W020' to SILENCED_SYSTEM_CHECKS."
+            ),
+            id="wireview.W020",
+        )
+    ]
+
+
+def _path_matches(request_path: str, cookie_path: str) -> bool:
+    """Whether a browser sends a cookie of ``cookie_path`` to ``request_path`` (RFC 6265 §5.1.4)."""
+    if request_path == cookie_path:
+        return True
+    if not request_path.startswith(cookie_path):
+        return False
+    return cookie_path.endswith("/") or request_path[len(cookie_path)] == "/"
+
+
+def check_cookie_paths(app_configs, **kwargs) -> list[CheckMessage]:
+    """W021: the session or CSRF cookie's path does not cover the WebSocket's.
+
+    The browser opens its socket at ``/__wireview__`` on the page's host
+    (``wireview.urls.SOCKET_PATH``), whatever ``FORCE_SCRIPT_NAME`` says, and
+    sends a cookie there only if its path path-matches. A cookie that does
+    not reach the socket leaves the handshake without it, while the pages are
+    rendered with it: every join then differs in identity from its connection
+    (#209). Without the session cookie a logged-in user's components are not
+    mounted -- the page reloads and stays as the HTTP render drew it. Without
+    the CSRF cookie (and ``CSRF_USE_SESSIONS`` off) each boosted navigation
+    opens one more socket, and a live render draws ``{% csrf_token %}`` with
+    no token. A path that does not start with ``/`` leaves the browser to
+    pick one and is not judged. The hint says what ``/`` costs (the cookie
+    reaches every app on the host) and that a sub-path deployment is not
+    supported, so narrowing the cookie to one is no way to share a host.
+    """
+    from django.conf import settings
+
+    from .urls import SOCKET_PATH
+
+    socket = f"/{SOCKET_PATH}"
+    cookies = [
+        (
+            "SESSION_COOKIE_PATH",
+            "A logged-in user's components are not mounted (since wireview 1.6): the socket's handshake "
+            "says nobody, so every page reloads once and stays as the HTTP render drew it.",
+        )
+    ]
+    if not getattr(settings, "CSRF_USE_SESSIONS", False):
+        cookies.append(
+            (
+                "CSRF_COOKIE_PATH",
+                "Every boosted navigation opens one more socket (since wireview 1.6), and a form a live render "
+                "draws gets no CSRF token.",
+            )
+        )
+    found = []
+    for name, consequence in cookies:
+        value = getattr(settings, name, "/")
+        if not isinstance(value, str) or not value.startswith("/") or _path_matches(socket, value):
+            continue
+        found.append(
+            Warning(
+                f"{name} = {value!r} does not cover the WebSocket's path {socket!r}.",
+                hint=(
+                    f"The browser sends the cookie only to paths under {value!r}, and wireview's socket is "
+                    f"opened at {socket!r} on the page's host. {consequence} Set {name} to '/' -- the cookie then "
+                    "reaches every app on this host too. Deploying wireview under a sub-path is not supported "
+                    "(docs/COMPATIBILITY.md): it has to be mounted at the root."
+                ),
+                id="wireview.W021",
+            )
+        )
+    return found
+
+
 def _invoked_subcommand() -> str | None:
     """The management command this process was started with, read the way Django reads it.
 
@@ -958,4 +1104,6 @@ def register_checks() -> None:
     register(check_shared_render, WIREVIEW_TAG)
     register(check_channel_layer_configured, WIREVIEW_TAG)
     register(check_runserver_is_asgi, WIREVIEW_TAG)
+    register(check_websocket_session, WIREVIEW_TAG)
+    register(check_cookie_paths, WIREVIEW_TAG)
     register(check_channel_layer, WIREVIEW_TAG, deploy=True)

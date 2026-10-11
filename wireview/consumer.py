@@ -66,6 +66,9 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
             tab=socket_tab(self.scope.get("query_string", b"")),
             # Where a component's {% csrf_token %} comes from on this socket (#206)
             csrf_cookies=cookies_of(self.scope),
+            # Without Channels' SessionMiddleware the handshake says nobody: a join
+            # cannot be told from another identity's (#209, wireview.W020)
+            session_known="session" in self.scope,
         )
 
     async def disconnect(self, code):

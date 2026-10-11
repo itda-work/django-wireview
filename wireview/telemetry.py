@@ -99,6 +99,9 @@ JOIN_REJECTED_REASONS = frozenset(
         "invalid",
         # The live_session boundary refused it (other boundary, logout, the predicate)
         "live_session",
+        # Its page was rendered for another login or CSRF secret than the socket's
+        # handshake; the page was told to open a new socket (``renew``, #209)
+        "identity",
         # An on_mount hook halted the mount
         "halted",
         # Mounting raised

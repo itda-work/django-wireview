@@ -69,7 +69,7 @@ from django.utils.decorators import method_decorator
 
 from .. import settings as wireview_settings
 from .session import SessionView
-from .signing import signing_key
+from .signing import signing_key, signing_key_fallbacks
 
 if t.TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
@@ -86,6 +86,9 @@ __all__ = [
     "auth_fingerprint",
     "auth_topic",
     "get_live_session",
+    "identity_difference",
+    "identity_fingerprint",
+    "identity_fingerprints",
     "live_session",
 ]
 
@@ -97,6 +100,10 @@ REQUEST_ATTR = "wireview_live_session"
 #: Salt for the authentication fingerprint. It never leaves a signed envelope, but
 #: it is derived from the session key, so it is hashed rather than carried.
 AUTH_SALT = "wireview.live_session.auth"
+
+#: Salt for the CSRF half of the identity fingerprint (#209). Like the auth one it
+#: is hashed rather than carried: the secret is what a form's token is masked from.
+IDENTITY_CSRF_SALT = "wireview.identity.csrf"
 
 #: Topic prefix for "this authentication generation is over". Connections inside a
 #: live_session subscribe to the topic for their own fingerprint;
@@ -115,7 +122,7 @@ AUTH_GENERATION_KEY = "_wireview_auth_gen"
 AnyUser = t.Union[AbstractBaseUser, AnonymousUser]
 
 
-def auth_fingerprint(user: AnyUser | None, session: t.Any) -> str:
+def auth_fingerprint(user: AnyUser | None, session: t.Any, *, key: str | bytes | None = None) -> str:
     """Identify the authentication *generation* a state was issued under.
 
     Two values go in: who, and which login.
@@ -153,6 +160,9 @@ def auth_fingerprint(user: AnyUser | None, session: t.Any) -> str:
             request has no ``request.user``.
         session: a :class:`~wireview.core.session.SessionView`, a Django session
             store, a plain mapping, or ``None``.
+        key: the signing key to hash under; the current one (``signing_key()``)
+            when omitted. A fallback key answers what a page rendered before a
+            key rotation said (``identity_fingerprints``).
 
     Returns:
         A short hex digest. Equal digests mean "the same login"; the value is
@@ -171,7 +181,91 @@ def auth_fingerprint(user: AnyUser | None, session: t.Any) -> str:
         "" if pk is None else str(pk),
         str(view.get(AUTH_GENERATION_KEY, "")),
     ]
-    return salted_hmac(AUTH_SALT, "\x1f".join(parts), secret=signing_key(), algorithm="sha256").hexdigest()[:32]
+    secret = signing_key() if key is None else key
+    return salted_hmac(AUTH_SALT, "\x1f".join(parts), secret=secret, algorithm="sha256").hexdigest()[:32]
+
+
+def identity_fingerprint(session: t.Any, csrf_secret: str | None, *, key: str | bytes | None = None) -> str:
+    """Who a page or a connection renders for: the login and the CSRF secret (#209).
+
+    A boosted navigation keeps the socket, and the page it fetches is rendered
+    for whoever the browser's cookies name *now*. Every ``data-state`` carries
+    this value, so a join can tell a page rendered for someone other than the
+    connection's handshake (``WireviewSession._identity_mismatch``).
+
+    Two halves, ``"<login>.<csrf>"``:
+
+    - **The login** is :func:`auth_fingerprint` of the session alone -- the user
+      pk Django keeps there and the generation nonce ``login()`` writes. Read
+      from the session rather than from a user object, so an HTTP render loads
+      no user it was not going to, and both sides answer from the same kind of
+      data: the request's session, and the one the socket read at connect.
+    - **The CSRF secret** a form's token is masked from: the cookie (or, under
+      ``CSRF_USE_SESSIONS``, the session) as Django's middleware read it, or the
+      new one it made for this response. Empty when there is none yet -- a page
+      whose first ``{% csrf_token %}`` comes after the state is signed -- which
+      :func:`identity_difference` reads as "nothing to compare", not as a secret.
+
+    Neither half reveals what it was made from: both are HMACs under the signing
+    key, ``key`` when given (a fallback, :func:`identity_fingerprints`).
+
+    It keeps an honest browser's screen to one identity; it is not an
+    authorization. Outside a live_session a state is not bound to a login, and a
+    client that wants to can still join one under another identity (the
+    ``renewed`` join, which goes on as the connection's). Authorization is what
+    a live_session is for.
+    """
+    secret_key = signing_key() if key is None else key
+    login = auth_fingerprint(None, session, key=secret_key)[:16]
+    if not csrf_secret:
+        return f"{login}."
+    secret = salted_hmac(IDENTITY_CSRF_SALT, csrf_secret, secret=secret_key, algorithm="sha256")
+    return f"{login}.{secret.hexdigest()[:16]}"
+
+
+def identity_fingerprints(session: t.Any, csrf_secret: str | None) -> tuple[str, ...]:
+    """:func:`identity_fingerprint` under the current key and under each fallback.
+
+    A page rendered before a key rotation -- or by a process still on the old
+    key during a rolling deploy -- hashed its identity under a key that is now a
+    fallback. The connection's identity is any of these (:func:`identity_difference`).
+    """
+    keys = [signing_key(), *signing_key_fallbacks()]
+    return tuple(identity_fingerprint(session, csrf_secret, key=key) for key in keys)
+
+
+#: :func:`identity_difference`'s answers. The login half outranks the CSRF one.
+IDENTITY_SAME = ""
+IDENTITY_LOGIN = "login"
+IDENTITY_CSRF = "csrf"
+
+
+def identity_difference(page: str, connection: t.Iterable[str]) -> str:
+    """How a state issued for ``page`` differs from the connection's identity (#209).
+
+    ``connection`` is the connection's fingerprint under each key it accepts
+    (:func:`identity_fingerprints`); the page is the same identity when it
+    matches any of them. Otherwise the answer is the half that differs:
+
+    - ``"login"``: another login (or none) -- the user pk or the generation
+      ``login()`` writes. Joining as the connection would draw one person's
+      state under another's ``user``.
+    - ``"csrf"``: the same login, but the page knew a CSRF secret and the
+      connection has another or none, so its components' forms would post a
+      token the page's cookie no longer matches. A page that knew none says
+      nothing about it.
+    - ``""``: the same.
+    """
+    page_login, _, page_csrf = page.partition(".")
+    logins_match = False
+    for candidate in connection:
+        connection_login, _, connection_csrf = candidate.partition(".")
+        if page_login != connection_login:
+            continue
+        logins_match = True
+        if not page_csrf or page_csrf == connection_csrf:
+            return IDENTITY_SAME
+    return IDENTITY_CSRF if logins_match else IDENTITY_LOGIN
 
 
 def declaration_allows(component_class: type, policy: "LiveSession | None") -> bool:

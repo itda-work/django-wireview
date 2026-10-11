@@ -112,6 +112,7 @@ INSTALLED_APPS = [
     "testproj.broadcastprobe",
     "testproj.reloadprobe",
     "testproj.csrfprobe",
+    "testproj.identityprobe",
     "wireview",
     "channels",
     "daphne",

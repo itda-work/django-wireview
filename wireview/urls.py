@@ -36,8 +36,13 @@ upload_endpoint = UploadView.as_view()
 for _alias in connections:
     upload_endpoint = non_atomic_requests(_alias)(upload_endpoint)
 
+#: Where the browser opens its socket: at the host's root, whatever the page's
+#: path or FORCE_SCRIPT_NAME (``socketUrl`` in static/wireview/tab.mjs, whose
+#: caller's default is the same name). wireview.W021 holds the cookies to it.
+SOCKET_PATH = "__wireview__"
+
 websocket_urlpatterns = [
-    path("__wireview__", WireviewConsumer.as_asgi()),  # type: ignore
+    path(SOCKET_PATH, WireviewConsumer.as_asgi()),  # type: ignore
 ]
 
 # HTTP URL patterns for upload endpoint

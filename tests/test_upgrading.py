@@ -174,6 +174,10 @@ UPGRADE_NOTE = {
         "부모의 렌더가 새로 그린 중첩 컴포넌트는 `joined()` 뒤에야 알림을 받는다",
         "`joined()`에서 초기화하는 상태를 `notification()`에서 읽어도 된다",
     ),
+    "A boosted navigation after another tab logged in, logged out": (
+        "다른 탭이 신분을 바꾼 뒤의 boost 이동이 새 소켓을 연다",
+        "쿠키가 소켓에 닿게 고친다",
+    ),
 }
 
 EXAMPLE = "저장소의 예제만 바뀌었다"

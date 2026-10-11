@@ -21,7 +21,16 @@ from wireview.core.component import Component
 
 from . import telemetry
 from .core import notifications, patches, template_reload
-from .core.live_session import AUTH_USER_ID_KEY, auth_fingerprint, auth_topic, get_live_session
+from .core.live_session import (
+    AUTH_USER_ID_KEY,
+    IDENTITY_CSRF,
+    IDENTITY_LOGIN,
+    IDENTITY_SAME,
+    auth_fingerprint,
+    auth_topic,
+    get_live_session,
+    identity_difference,
+)
 from .core.rendered import (
     ERRORS_SINCE,
     GONE_SINCE,
@@ -30,6 +39,7 @@ from .core.rendered import (
     LEAVES_FIRST_SINCE,
     PROTOCOL_VERSION,
     REJOIN_SINCE,
+    RENEW_SINCE,
     UPDATE_ONLY_SINCE,
     component_refs,
     may_name_components,
@@ -76,6 +86,26 @@ def _reload_payload(name: str, error: BadSignature) -> dict[str, t.Any]:
     return {"id": None, "reason": "invalid"}
 
 
+#: Why a join's identity differs from the connection's, for the log and telemetry (#209)
+_IDENTITY_DETAIL = {
+    IDENTITY_LOGIN: "the state was issued for another login than this connection's handshake",
+    IDENTITY_CSRF: "the state was issued for another CSRF secret than this connection's handshake",
+}
+
+
+def _identity_cookie(difference: str) -> str:
+    """The cookie that holds the half of the identity that differs (#209)."""
+    from django.conf import settings
+
+    if difference == IDENTITY_CSRF and not settings.CSRF_USE_SESSIONS:
+        return settings.CSRF_COOKIE_NAME
+    return settings.SESSION_COOKIE_NAME
+
+
+#: What the page does about it, for the log
+_IDENTITY_ACTION = {"renew": "opens a new socket", "reload": "reloads"}
+
+
 def _event_ref(ref: t.Any) -> int | None:
     """The ``ref`` of a user event or a join if it is one the client can pair, else ``None``."""
     return ref if isinstance(ref, int) and not isinstance(ref, bool) else None
@@ -96,6 +126,61 @@ def _log_update_error(cls: type, component: t.Any, error: Exception) -> None:
     """A child's update() is logged, not propagated, as joined()'s is on this path."""
     where = f"{cls.__name__}.update()" if component is not None else f"{cls.__name__}.update_many()"
     log.error("Error in %s", where, exc_info=error)
+
+
+class RenewBudget:
+    """How many sockets a tab may be told to open afresh, in a while (#209).
+
+    A join whose identity differs is answered with ``renew`` -- open a socket
+    under the cookies the browser holds now -- and the page's first round of
+    joins on that socket says ``renewed``, which is not told to renew again.
+    That flag is the client's; this is the server's own stop. A tab (the page
+    load its socket URL names, ``socket_tab``) is told to renew at most
+    ``LIMIT`` times in ``WINDOW`` seconds, counted once per connection. Past
+    that, its joins are taken as ``renewed`` ones. The tab comes from the
+    client, so it is kept under the connection's user, as ``socket_tab`` asks.
+    Per process: a tab's sockets may land on another, which then counts its own.
+
+    Bounded: the tabs whose window has passed are dropped once per ``WINDOW``,
+    and past ``MAX_TABS`` the least recently told goes first (its budget is
+    full again, which costs it nothing a fresh tab would not get).
+    """
+
+    LIMIT = 3
+    WINDOW = 60.0
+    #: Tabs remembered at most
+    MAX_TABS = 4096
+
+    def __init__(self, clock: t.Callable[[], float] = time.monotonic) -> None:
+        self._clock = clock
+        self._renews: collections.OrderedDict[tuple[str, str], collections.deque[float]] = collections.OrderedDict()
+        self._next_sweep = clock() + self.WINDOW
+
+    def take(self, user: str, tab: str) -> bool:
+        """Spend one renew for ``user``'s ``tab``; ``False`` when it has none left."""
+        now = self._clock()
+        if now >= self._next_sweep:
+            self._next_sweep = now + self.WINDOW
+            for stale in [key for key, at in self._renews.items() if not at or now - at[-1] >= self.WINDOW]:
+                del self._renews[stale]
+        key = (user, tab)
+        renews = self._renews.get(key)
+        if renews is None:
+            renews = self._renews[key] = collections.deque()
+            while len(self._renews) > self.MAX_TABS:
+                self._renews.popitem(last=False)
+        else:
+            self._renews.move_to_end(key)
+        while renews and now - renews[0] >= self.WINDOW:
+            renews.popleft()
+        if len(renews) >= self.LIMIT:
+            return False
+        renews.append(now)
+        return True
+
+
+#: The process's renew budget, which every connection here spends from
+renew_budget = RenewBudget()
 
 
 class _Held:
@@ -190,6 +275,11 @@ class WireviewSession:
         # connect and still names the same login. False until it has, and it stays
         # False when the read fails, so a refused connection cannot retry past it.
         self._auth_revalidated: bool = False
+        # Whether a join on this connection was told to ``renew`` (#209) -- the
+        # tab's renew budget is spent once per connection -- and whether one was
+        # let through under a different identity
+        self._renewing: bool = False
+        self._identity_warned: bool = False
         # Whether a template change was mailed to this session and not yet handled (#180)
         self._rejoin_mailed: bool = False
         # Whether a render retired a component since the subscriptions were last
@@ -249,6 +339,7 @@ class WireviewSession:
         vsn: int = 0,
         tab: str = "",
         csrf_cookies: t.Mapping[str, str] | None = None,
+        session_known: bool = True,
     ) -> None:
         """Begin: a fresh repository for this connection, and the login it stands on.
 
@@ -257,6 +348,9 @@ class WireviewSession:
         ``tab`` the page load it named there (``socket_tab``; empty from an older bundle), and
         ``csrf_cookies`` the cookies its handshake carried, where the CSRF
         secret is (``core/csrf.py``). Without them the renders get no token.
+        ``session_known`` is whether the handshake carried a session at all:
+        without one the connection cannot say whose page a join is from, and
+        does not compare (#209, ``wireview.W020``).
         """
         self.subscriptions = set()
         self.query_string: str = ""
@@ -268,6 +362,11 @@ class WireviewSession:
         self.live_session_name = None
         self._auth_topic = ""
         self._auth_revalidated = False
+        self._renewing = False
+        self._identity_warned = False
+        # Which cookies the handshake carried, to tell a page older than them
+        # from cookies that never reach the socket (#209)
+        self._handshake_cookies = frozenset(csrf_cookies or ())
         self._init_patches()
         self.repo = ComponentRepository(
             is_live=True,
@@ -286,6 +385,7 @@ class WireviewSession:
             vsn=vsn,
             # Read on a render that draws {% csrf_token %}, once per secret (#206)
             csrf_cookies=csrf_cookies,
+            session_known=session_known,
         )
         # Which login this socket stands on. Compared against the fingerprint inside
         # every state a live_session page issued, and the topic a logout publishes to.
@@ -445,7 +545,10 @@ class WireviewSession:
         state: str,
         children: dict[str, ChildComponent] | None = None,
         ref: int | None = None,
+        renewed: bool = False,
     ):
+        # ``renewed``: the page sent this join in its first round on a socket it
+        # opened because the server said ``renew`` (#209). Not told to renew again.
         # The page names its join when this server announced a version that
         # takes it (JOIN_REFS_SINCE), and hears it back on the render and the
         # error that answer the join: a second join under the same id may be on
@@ -463,6 +566,28 @@ class WireviewSession:
             await self.send_command("reload", _with_ref(reload, answer))
             return
         decoded_state: dict[str, t.Any] = payload.state
+        if difference := self._identity_mismatch(payload):
+            renewed = renewed is True
+            outcome = self._identity_outcome(difference, renewed)
+            if outcome != "renew":
+                self._warn_another_identity(name, difference, outcome, renewed)
+            if outcome != "join":
+                # The page was rendered for someone else than this socket's handshake.
+                # Nothing is mounted. ``renew``: another tab logged in or out and a
+                # boosted navigation kept the socket; the page opens a socket under the
+                # cookies the browser holds now and joins there. ``reload``: it did,
+                # or may not, and the login still differs -- the page is older than the
+                # cookies (a reconnect, a sticky component, the back button) or they
+                # never reach the socket. A full load draws it for whoever they name (#209).
+                detail = _IDENTITY_DETAIL[difference]
+                log.info("JOIN %s: %s; the page %s", name, detail, _IDENTITY_ACTION[outcome])
+                self._join_rejected("identity", name, detail)
+                component_id = decoded_state.get("id") or None
+                if outcome == "renew":
+                    await self.send_command("renew", _with_ref({"id": component_id}, answer))
+                else:
+                    await self.send_command("reload", _with_ref({"id": component_id, "reason": "identity"}, answer))
+                return
         if refusal := await self._enter_live_session(payload):
             # Same recovery as a bad signature, and for the same reason: the page
             # has to be re-rendered by a view that can apply the policy from the
@@ -571,6 +696,95 @@ class WireviewSession:
             # then, rather than never -- what comes meanwhile waits behind it.
             if not await component.wire.send("deliver_unheard", id=component.id, instance=component.wire.instance):
                 await notifications.deliver_unheard(self, waiting)
+
+    def _identity_mismatch(self, payload: StatePayload) -> str:
+        """Which half of the identity this state's page differs in, or ``""`` (#209).
+
+        Every state carries who its page was rendered for -- the login and the
+        CSRF secret, hashed (``live_session.identity_fingerprint``) -- and this
+        connection knows who its handshake was for (under each signing key it
+        accepts). A state from an older server carries none and is not checked;
+        neither is any state on a connection whose handshake carried no session.
+        """
+        if payload.identity is None or not self.repo.session_known:
+            return IDENTITY_SAME
+        return identity_difference(payload.identity, self.repo.identities())
+
+    def _identity_outcome(self, difference: str, renewed: bool) -> str:
+        """What a join whose identity differs gets: ``renew``, ``reload`` or ``join`` (#209).
+
+        - A client older than ``RENEW_SINCE`` joins as it did before: as this
+          connection's identity (and a boundary then refuses it into a reload).
+        - A first difference is told to ``renew`` -- once per connection from the
+          tab's budget (``RenewBudget``); further joins on a connection already
+          told go the same way.
+        - A ``renewed`` join -- the page's first round on the socket it opened
+          for that -- or one past the budget, where another socket would not
+          change anything: the login differs, so ``reload`` (the page's reload
+          cooldown keeps that from looping); only the CSRF secret differs, so
+          ``join`` as this connection, with a warning.
+        """
+        if self.repo.vsn < RENEW_SINCE:
+            return "join"
+        if not renewed and (self._renewing or renew_budget.take(self._budget_user(), self.repo.tab_id)):
+            self._renewing = True
+            return "renew"
+        return "reload" if difference == IDENTITY_LOGIN else "join"
+
+    def _budget_user(self) -> str:
+        """Who the handshake was for, as the renew budget keys a tab (``""`` for nobody).
+
+        Read from the session the handshake carried, not from the user, which
+        would be a query on the event loop.
+        """
+        return str(self.repo.session.get(AUTH_USER_ID_KEY) or "")
+
+    def _warn_another_identity(self, name: str, difference: str, outcome: str, renewed: bool) -> None:
+        """Say once per connection that a join's identity differs and a new socket would not help.
+
+        A join whose CSRF secret alone differs goes on as this connection's
+        (``join``): inside a live_session the boundary then checks it as ever,
+        outside one it is rendered for this connection and its forms post with
+        the connection's token. One whose login differs is not mounted
+        (``reload``).
+
+        Which cookie holds the half that differs tells the two causes apart.
+        The handshake carried it: the page is older than the cookie (a
+        reconnect, a sticky component, the back button), and the reload settles
+        it -- INFO. It did not: the cookie does not reach the socket
+        (``wireview.W021``), and every page meets this -- WARNING. A page drawn
+        logged in before another tab logged out (the logout drops the session
+        cookie) lands there too, once; the warning names it.
+        """
+        if self.repo.vsn < RENEW_SINCE or self._identity_warned:
+            return
+        self._identity_warned = True
+        cookie = _identity_cookie(difference)
+        where = "on the socket the page opened afresh for it" if renewed else "past the tab's renew budget"
+        if cookie in self._handshake_cookies:
+            log.info(
+                "JOIN %s: %s, %s. The handshake carried the %s cookie, so the page is older than it "
+                "(a reconnect, a sticky component, the back button). %s",
+                name,
+                _IDENTITY_DETAIL[difference],
+                where,
+                cookie,
+                "Joining as this connection." if outcome == "join" else "The page reloads to be drawn for it.",
+            )
+            return
+        log.warning(
+            "JOIN %s: %s, %s. The handshake carried no %s cookie while the page was drawn with one: "
+            "the cookies do not reach the socket, as SESSION_COOKIE_PATH/CSRF_COOKIE_PATH (or the cookie domain) "
+            "does not cover the WebSocket's URL (wireview.W021), unless another tab has just logged out. %s",
+            name,
+            _IDENTITY_DETAIL[difference],
+            where,
+            cookie,
+            "Joining as this connection."
+            if outcome == "join"
+            else "The page reloads to be drawn for the cookies the browser holds; while they do not reach "
+            "the socket, its components are never mounted.",
+        )
 
     async def _enter_live_session(self, payload: StatePayload) -> str:
         """Settle which ``live_session`` this connection is in, for one join.

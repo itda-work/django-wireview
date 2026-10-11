@@ -1,0 +1,13 @@
+{% load wireview %}
+
+<section {% tag_header %}>
+  <p data-testid="card-who">{{ this.user.get_username|default:"anonymous" }}</p>
+  <button type="button" data-testid="bump" {% on "click" "bump" %}>{{ clicks }}</button>
+  <form method="post"
+        action="{% url 'identityprobe:post' %}"
+        data-testid="card-form">
+    {% csrf_token %}
+    <input type="hidden" name="text" value="card">
+    <button data-testid="card-submit">card</button>
+  </form>
+</section>

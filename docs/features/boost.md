@@ -79,6 +79,10 @@ document.addEventListener("wireview:navigation-failed", (e) => {
 
 **폼은 기본으로 boost하지 않는다.** boost한 이동은 WebSocket을 그대로 쓰는데, 로그인·로그아웃처럼 누가
 로그인했는지를 바꾸는 폼이 boost되면 그 연결은 옛 신분으로 남는다. 안전한 폼만 `wire-boost`로 청한다.
+1.6부터는 신분이 바뀐 뒤 컴포넌트가 join하는 페이지가 새 소켓을 연다
+([다른 탭이 신분을 바꾼 뒤의 이동](./live-session.md#다른-탭이-신분을-바꾼-뒤의-이동), #209) — 다른 탭에서 로그인한
+경우를 위한 것이고, 로그인 폼은 여전히 boost하지 않는다. 그 응답이 컴포넌트 없는 페이지면 다음 join까지 소켓이
+옛 신분이다.
 
 - **GET 폼**: 필드를 쿼리로 붙인 주소로 이동한다. 브라우저가 가는 곳과 같다.
 - **POST 폼**: fetch로 보낸다. 응답이 리다이렉트로 끝나면(post/redirect/get) 그 주소로 history 항목을

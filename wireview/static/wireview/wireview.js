@@ -22,6 +22,7 @@ import { readReconnectSettings, reconnectOptions } from "./reconnect.mjs";
 import { NAVIGATED_EVENT, NavigationLog, carriedAcross } from "./navigation.mjs";
 import { UploadManagers } from "./uploads.mjs";
 import { newTab, socketUrl } from "./tab.mjs";
+import { Renewal } from "./renew.mjs";
 import boost from "./wireview-boost";
 
 /**
@@ -98,6 +99,10 @@ class ServerConnection {
      * server tells one tab from another by it across reconnects (#202)
      */
     this.tab = newTab();
+    /** @type {Renewal} a socket the server said to open afresh, for another identity (#209) */
+    this.renewal = new Renewal(readReconnectSettings(document));
+    /** @type {boolean} whether the joins being sent are the first round on a renewal's socket (#209) */
+    this.renewedRound = false;
     /** @type {WireviewMessage[]} */
     this.messageQueue = [];
     /** @type {ReconnectingWebSocket|null} */
@@ -167,6 +172,9 @@ class ServerConnection {
 
       const reconnecting = this.wasConnected;
       this.wasConnected = true;
+      // The socket a `renew` asked for: its first round of joins says so (#209).
+      // The next socket is an ordinary one unless asked again.
+      const renewed = this.renewal.opened();
       this.epoch += 1;
 
       this.sendQueryString();
@@ -174,7 +182,12 @@ class ServerConnection {
       // page's own hook definitions among them -- has run before anything joins.
       whenDocumentReady(() => {
         this.components = {};
-        this.joinAllComponents();
+        this.renewedRound = renewed;
+        try {
+          this.joinAllComponents();
+        } finally {
+          this.renewedRound = false;
+        }
         // Flush messages queued while the socket was connecting
         while (this.messageQueue.length) {
           const { command, payload } = this.messageQueue.shift();
@@ -598,6 +611,20 @@ class ServerConnection {
         // A join the page has since replaced is answered on its own (#146).
         if (!this.joins.about(payload.id, payload.ref)) break;
         this._reloadPage(payload.reason);
+        break;
+      case "renew":
+        // The join was for someone other than this socket's handshake -- another
+        // tab logged in or out since it opened -- and nothing was mounted (#209).
+        // Open a socket under the cookies the browser holds now and join every
+        // component there, as a reconnect does; once, however many joins said it.
+        if (!this.joins.about(payload.id, payload.ref)) break;
+        {
+          // At once the first time; a renew soon after the last waits, as a reconnect does
+          const epoch = this.epoch;
+          const wait = this.renewal.request(epoch, Date.now());
+          if (wait === 0) this.socket?.reconnect();
+          else if (wait !== null) setTimeout(() => this.epoch === epoch && this.socket?.reconnect(), wait);
+        }
         break;
       case "focus_on":
         var { selector } = payload;
@@ -1110,9 +1137,11 @@ class ServerConnection {
    */
   sendJoin(name, component_id, state, children, ref, through = false) {
     debugLog("send", `join ${name}`, { component_id, ref });
-    /** @type {{name: string, state: string, children: Object<string, [string, string]>, ref?: number}} */
+    /** @type {{name: string, state: string, children: Object<string, [string, string]>, ref?: number, renewed?: boolean}} */
     const payload = { name, state, children };
     if (ref !== undefined) payload.ref = ref;
+    // The first round on a socket opened for a `renew`: not to be told again (#209)
+    if (this.renewedRound) payload.renewed = true;
     this._send("join", payload, through);
   }
 

@@ -33,6 +33,7 @@ from wireview.checks import (
     check_channel_layer_configured,
     check_client_bundle,
     check_component_name_collisions,
+    check_cookie_paths,
     check_live_sessions,
     check_reconnect_settings,
     check_runserver_is_asgi,
@@ -40,6 +41,7 @@ from wireview.checks import (
     check_shadowed_framework_names,
     check_signing_key,
     check_upload_temp_dir,
+    check_websocket_session,
     iter_component_classes,
     iter_exposed_handlers,
     reconnect_value,
@@ -868,6 +870,91 @@ class TestChannelLayerConfiguredCheck:
 
         assert check_channel_layer_configured in registry.get_checks(include_deployment_checks=False)
         assert check_channel_layer not in registry.get_checks(include_deployment_checks=False)
+
+
+class TestWebsocketSessionCheck:
+    """W020: no SessionMiddleware above wireview's consumer, so a handshake says nobody (#209)."""
+
+    @pytest.mark.parametrize("app", ["BARE", "NESTED_BARE"])
+    def test_a_stack_without_a_session_is_flagged(self, app):
+        with override_settings(ASGI_APPLICATION=f"testproj.asgi_variants.{app}"):
+            messages = check_websocket_session(None)
+        assert [m.id for m in messages] == ["wireview.W020"]
+        assert "AuthMiddlewareStack" in messages[0].hint
+
+    def test_a_base_middleware_of_the_projects_own_is_walked_through(self):
+        """It may fill scope["session"] itself; the check cannot know, and the hint says to silence it."""
+        with override_settings(ASGI_APPLICATION="testproj.asgi_variants.OWN_BASE_MIDDLEWARE"):
+            messages = check_websocket_session(None)
+        assert [m.id for m in messages] == ["wireview.W020"]
+        assert "SILENCED_SYSTEM_CHECKS" in messages[0].hint
+
+    @pytest.mark.parametrize("app", ["AUTH", "SESSION_ONLY", "OPAQUE", "HTTP_ONLY", "NOT_THERE"])
+    def test_otherwise_silent(self, app):
+        """A session on the way, a layer of the project's own, no WebSocket, an unimportable path."""
+        with override_settings(ASGI_APPLICATION=f"testproj.asgi_variants.{app}"):
+            assert check_websocket_session(None) == []
+
+    def test_the_test_projects_own_stack_is_silent(self):
+        assert check_websocket_session(None) == []
+
+    @override_settings()
+    def test_no_asgi_application_is_silent(self):
+        from django.conf import settings
+
+        del settings.ASGI_APPLICATION
+        assert check_websocket_session(None) == []
+
+    def test_runs_without_deploy(self):
+        from django.core.checks.registry import registry
+
+        assert check_websocket_session in registry.get_checks(include_deployment_checks=False)
+
+
+class TestCookiePathsCheck:
+    """W021: a session or CSRF cookie the browser does not send to the socket (#209)."""
+
+    @pytest.mark.parametrize("path", ["/", "/__wireview__"])
+    def test_a_path_that_covers_the_socket_is_silent(self, path):
+        with override_settings(SESSION_COOKIE_PATH=path, CSRF_COOKIE_PATH=path):
+            assert check_cookie_paths(None) == []
+
+    @pytest.mark.parametrize("path", ["/app", "/app/", "/__wireview", "/__wireview__/"])
+    def test_a_path_that_does_not_is_flagged(self, path):
+        with override_settings(SESSION_COOKIE_PATH=path, CSRF_COOKIE_PATH=path):
+            messages = check_cookie_paths(None)
+        assert [m.id for m in messages] == ["wireview.W021"] * 2
+        session, csrf = messages
+        assert "SESSION_COOKIE_PATH" in session.msg and "not mounted" in session.hint and "1.6" in session.hint
+        assert "CSRF_COOKIE_PATH" in csrf.msg and "one more socket" in csrf.hint
+        for message in messages:
+            assert "every app on this host" in message.hint, "what '/' costs"
+            assert "sub-path is not supported" in message.hint and "COMPATIBILITY" in message.hint
+
+    def test_the_csrf_cookie_is_not_judged_when_the_secret_is_in_the_session(self):
+        with override_settings(SESSION_COOKIE_PATH="/", CSRF_COOKIE_PATH="/app/", CSRF_USE_SESSIONS=True):
+            assert check_cookie_paths(None) == []
+        with override_settings(SESSION_COOKIE_PATH="/app/", CSRF_COOKIE_PATH="/app/", CSRF_USE_SESSIONS=True):
+            assert [m.msg.split(" ")[0] for m in check_cookie_paths(None)] == ["SESSION_COOKIE_PATH"]
+
+    def test_force_script_name_does_not_move_the_socket(self):
+        """The client opens the socket at the host's root; a cookie under the script name misses it."""
+        with override_settings(FORCE_SCRIPT_NAME="/app", SESSION_COOKIE_PATH="/app/", CSRF_COOKIE_PATH="/"):
+            assert [m.id for m in check_cookie_paths(None)] == ["wireview.W021"]
+
+    def test_the_socket_path_is_the_clients(self):
+        """The path the check holds the cookies to is where wireview.js opens the socket."""
+        from wireview.urls import SOCKET_PATH, websocket_urlpatterns
+
+        static = Path(__file__).resolve().parent.parent / "wireview" / "static" / "wireview"
+        assert f'open(path = "{SOCKET_PATH}")' in (static / "wireview.js").read_text()
+        assert "${location.host}/${path}?" in (static / "tab.mjs").read_text(), "at the host's root"
+        assert [str(pattern.pattern) for pattern in websocket_urlpatterns] == [SOCKET_PATH]
+
+    def test_runs_without_deploy(self):
+        from django.core.checks.registry import registry
+
+        assert check_cookie_paths in registry.get_checks(include_deployment_checks=False)
 
 
 class TestRunserverIsAsgiCheck:
