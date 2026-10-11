@@ -34,9 +34,12 @@ export function newTab(fill = (bytes) => globalThis.crypto.getRandomValues(bytes
  * @param {string} path - The socket endpoint, without a leading slash.
  * @param {number} vsn - `PROTOCOL_VERSION`.
  * @param {string} tab - What `newTab` made for this page load.
+ * @param {boolean} [renewed] - the server said `renew`, and this socket is the
+ *   one the page opens for it (`renew.mjs`, #209)
  * @returns {string}
  */
-export function socketUrl(location, path, vsn, tab) {
+export function socketUrl(location, path, vsn, tab, renewed = false) {
   const protocol = location.protocol.replace("http", "ws");
-  return `${protocol}//${location.host}/${path}?vsn=${vsn}&tab=${encodeURIComponent(tab)}`;
+  const url = `${protocol}//${location.host}/${path}?vsn=${vsn}&tab=${encodeURIComponent(tab)}`;
+  return renewed ? `${url}&renewed=1` : url;
 }

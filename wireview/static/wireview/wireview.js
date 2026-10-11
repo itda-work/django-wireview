@@ -22,6 +22,7 @@ import { readReconnectSettings, reconnectOptions } from "./reconnect.mjs";
 import { NAVIGATED_EVENT, NavigationLog, carriedAcross } from "./navigation.mjs";
 import { UploadManagers } from "./uploads.mjs";
 import { newTab, socketUrl } from "./tab.mjs";
+import { Renewal } from "./renew.mjs";
 import boost from "./wireview-boost";
 
 /**
@@ -98,6 +99,8 @@ class ServerConnection {
      * server tells one tab from another by it across reconnects (#202)
      */
     this.tab = newTab();
+    /** @type {Renewal} a socket the server said to open afresh, for another identity (#209) */
+    this.renewal = new Renewal();
     /** @type {WireviewMessage[]} */
     this.messageQueue = [];
     /** @type {ReconnectingWebSocket|null} */
@@ -151,8 +154,9 @@ class ServerConnection {
     this.socket = new ReconnectingWebSocket(
       // The diff forms this client applies. Without it the server assumes
       // the oldest, so an older bundle never receives a form it cannot read.
-      // The same URL, tab and all, for every reconnect.
-      socketUrl(location, path, PROTOCOL_VERSION, this.tab),
+      // The same URL, tab and all, for every reconnect -- and the one a
+      // `renew` asked for says so (#209).
+      () => socketUrl(location, path, PROTOCOL_VERSION, this.tab, this.renewal.pending),
       [],
       {
         maxEnqueuedMessages: 0,
@@ -167,6 +171,8 @@ class ServerConnection {
 
       const reconnecting = this.wasConnected;
       this.wasConnected = true;
+      // Its URL is read; the next socket is an ordinary one unless asked again
+      this.renewal.opened();
       this.epoch += 1;
 
       this.sendQueryString();
@@ -598,6 +604,14 @@ class ServerConnection {
         // A join the page has since replaced is answered on its own (#146).
         if (!this.joins.about(payload.id, payload.ref)) break;
         this._reloadPage(payload.reason);
+        break;
+      case "renew":
+        // The join was for someone other than this socket's handshake -- another
+        // tab logged in or out since it opened -- and nothing was mounted (#209).
+        // Open a socket under the cookies the browser holds now and join every
+        // component there, as a reconnect does; once, however many joins said it.
+        if (!this.joins.about(payload.id, payload.ref)) break;
+        if (this.renewal.request(this.epoch)) this.socket?.reconnect();
         break;
       case "focus_on":
         var { selector } = payload;

@@ -84,6 +84,21 @@ dependencies = ["django-wireview>=1.5,<2"]
     [배포](./DEPLOYMENT.md#권장-uvicorn--uvloop), 토큰이 언제 다시 실리는지는
     [dead view](./features/dead-view.md#폼의-csrf-토큰).
 
+- **고쳐짐: 다른 탭이 신분을 바꾼 뒤의 boost 이동이 새 소켓을 연다(#209).** 1.5까지는 같은 브라우저의 다른 탭이
+  로그인·로그아웃·다른 사용자로 로그인한 뒤 이 탭이 boost 이동하면, 새 페이지의 Django 부분은 새 신분이고 컴포넌트는
+  소켓 핸드셰이크 때의 `user`(와 CSRF 시크릿)로 join했다. 이제 모든 `data-state`가 그 페이지의 신분 지문을 싣고, 다른
+  연결에서 join하면 서버가 `renew`로 답해 페이지가 지금의 쿠키로 새 소켓을 연다. 할 일은 없다. 설명은
+  [live_session](./features/live-session.md#다른-탭이-신분을-바꾼-뒤의-이동).
+  - 조용히 달라짐: `data-state`가 40자쯤 길어진다(경계 밖 페이지도). 그리고 HTTP 렌더가 상태를 서명할 때 요청의
+    세션을 읽는다 — 세션 쿠키가 있는데 그 전에 아무도 세션(`request.user` 포함)을 읽지 않은 페이지는 세션 백엔드
+    조회가 한 번 는다.
+  - 조용히 달라짐: 그 경우 훅은 `disconnected()`·`reconnected()`를 받고 `wire-auto-recover` 폼은 복구 이벤트를 보낸다 — 재연결과
+    같은 길이다. 경계 안의 같은 경우는 전체 새로고침이었는데 이제 새 소켓이다.
+  - 조용히 달라짐: `telemetry.join_rejected`의 `reason`에 `identity`가 더해졌다(닫힌 집합).
+  - 점검: 세션·CSRF 쿠키의 `SESSION_COOKIE_PATH`·`CSRF_COOKIE_PATH`·도메인이 `/__wireview__`를 덮지 않으면 페이지마다 소켓을
+    한 번 더 열고 서버 로그에 경고("still names another identity")가 남는다. 그 설정에서는 원래 컴포넌트가 익명으로
+    그려졌다 — 쿠키가 소켓에 닿게 고친다.
+
 ### 중첩 컴포넌트
 
 - **조용히 달라짐: 그린 쪽이 더는 그리지 않는 중첩 컴포넌트는 그 렌더와 함께 은퇴한다.** `{% component %}`로 그린 컴포넌트를

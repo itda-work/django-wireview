@@ -170,6 +170,10 @@ UPGRADE_NOTE = {
         "컴포넌트 템플릿의 `{% csrf_token %}`이 토큰을 그린다",
         "`csrf_exempt`를 붙여 두었다면",
     ),
+    "A boosted navigation after another tab logged in, logged out": (
+        "다른 탭이 신분을 바꾼 뒤의 boost 이동이 새 소켓을 연다",
+        "쿠키가 소켓에 닿게 고친다",
+    ),
 }
 
 EXAMPLE = "저장소의 예제만 바뀌었다"

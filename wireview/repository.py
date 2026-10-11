@@ -135,6 +135,7 @@ class ComponentRepository:
         vsn: int = 0,
         csrf_token: t.Any = None,
         csrf_cookies: t.Mapping[str, str] | None = None,
+        request: t.Any = None,
     ):
         # The caller's dict itself, even an empty one: whoever handed it over may
         # update it in place and expect the repository to see the change.
@@ -166,6 +167,10 @@ class ComponentRepository:
         self._page_csrf_token = csrf_token
         self._csrf_cookies = csrf_cookies
         self._csrf: tuple[SessionView, str | None, t.Any] | None = None
+        # The request an HTTP render answers: who its page is for is read from it
+        # when a state is signed (``identity``, #209). None on a connection.
+        self._request = request
+        self._identity: tuple[SessionView, str] | None = None
         self.components: dict[str, Component] = {}
         # The restore maps: for each root, the signed states its join carried for
         # the components under it, taken by the instance built under each id. A
@@ -420,6 +425,7 @@ class ComponentRepository:
         # Register in components dict, over a retired instance the page may still have sent events for
         self._pending_leaving.extend(self.bury(live_component.id))
         live_component.wire.csrf = self._fresh_csrf_token
+        live_component.wire.identity = self.identity
         self.components[live_component.id] = live_component
 
         # Queue for joined() call after parent render completes
@@ -967,10 +973,42 @@ class ComponentRepository:
             self._csrf = (self.session, found if token is not None else None, token or csrf.NO_TOKEN)
         return self._csrf[1], self._csrf[2]
 
+    def identity(self) -> str | None:
+        """Who this repository renders for, as every ``data-state`` it signs says (#209).
+
+        On a connection: the session and the CSRF secret its handshake carried,
+        which a join compares the page's against (``WireviewSession._identity_mismatch``).
+        Kept per session, as a boundary reads the session again.
+
+        On an HTTP render: the request's session and the secret Django's middleware
+        read or made for this response, read when asked -- a ``{% csrf_token %}``
+        earlier on the page may have made it since the last state was signed.
+        ``None`` when there is no request, or when its session cannot be read
+        here: an async view renders on the event loop, where a database session
+        backend refuses to load. A state with no identity is not checked.
+        """
+        from django.core.exceptions import SynchronousOnlyOperation
+
+        from .core.live_session import identity_fingerprint
+
+        if self.is_live:
+            if self._identity is None or self._identity[0] is not self.session:
+                secret = self._connection_csrf()[0] if self._csrf_cookies is not None else None
+                self._identity = (self.session, identity_fingerprint(self.session, secret))
+            return self._identity[1]
+        if self._request is None:
+            return None
+        meta = getattr(self._request, "META", {})
+        try:
+            return identity_fingerprint(self.session, meta.get("CSRF_COOKIE"))
+        except SynchronousOnlyOperation:
+            return None
+
     def register_component(self, component: Component):
         # The id is this instance's now: a retired one under it answers no event any more
         self._pending_leaving.extend(self.bury(component.id))
         component.wire.csrf = self._fresh_csrf_token
+        component.wire.identity = self.identity
         self.components[component.id] = component
         return component
 

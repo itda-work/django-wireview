@@ -81,7 +81,9 @@ wireview/
 ├── core/live_session.py   페이지 경계 정본. live_session() 선언과 레지스트리, @session.view,
 │                          인증 세대 지문(auth_fingerprint), 로그아웃 무효화 발행 (GAP-009)
 ├── core/origin.py         WebSocket Origin 검사. 컨슈머가 accept 전에 ALLOWED_HOSTS와 대조한다(CSWSH, #96)
-├── core/state.py          data-state 서명·복원 (v2 봉투: 클래스·경계·인증 세대 결합, 만료, 토큰 재사용)
+├── core/state.py          data-state 서명·복원 (v2 봉투: 클래스·경계·인증 세대 결합, 만료, 토큰 재사용).
+│                          봉투의 i는 그 상태를 낸 요청·연결의 신분(로그인 + CSRF 시크릿 지문, live_session.identity_fingerprint).
+│                          저장소가 등록하는 컴포넌트에 wire.identity를 달아 sign_state가 읽는다. join이 연결의 것과 다르면 renew(#209)
 ├── core/signing.py        서명 키 정본. get_signer(salt) 하나로 모든 서명 지점이 SIGNING_KEY와 fallback을 공유
 ├── core/model_state.py    상태 안의 모델 인스턴스를 pk로 서명하고(어디에 있든) 필드 타입 표기를 따라 다시 불러온다 (#113)
 ├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳
@@ -181,6 +183,7 @@ wireview/
                            알려 준 떠난 항목으로 traverseTo로 돌아가고, 그 사이의 popstate를 TraversalUndo가 가른다, #154),
                            reconnect.mjs (재연결 백오프를 헤더 메타에서 읽는다. WIREVIEW RECONNECT_*),
                            tab.mjs (페이지 로드의 이름. 소켓 URL의 tab으로 재연결마다 같은 값을 보낸다 — presence가 탭을 가른다, #202),
+                           renew.mjs (서버의 renew에 새 소켓을 소켓마다 한 번 연다. 그 소켓은 URL에 renewed=1 — 서버는 거기서 다시 renew하지 않는다, #209),
                            uploads.mjs (업로드 manager의 수명. 인스턴스가 끝나면 폐기하고, 렌더의 instances가 알린 인스턴스 번호와
                            같은 config만 받는다. 끝난 인스턴스의 upload_op는 세션이 먼저 버린다.
                            join·join 실패·렌더가 알린 인스턴스에서 페이지가 할 일도 여기 있다: joining·joinFailed·named, #142),
@@ -275,6 +278,7 @@ tests/
                            broadcastprobe/ 는 Broadcast로 항목·훅 이벤트·JS를 받는 피드를 브라우저 컨텍스트 둘이 보는 E2E(test_broadcast_e2e.py)의 픽스처(같은 이름의 스트림을 그리는 다른 클래스,
                            ?failing=1 은 join이 실패한 대상, 끊겼다 다시 붙은 페이지),
                            reloadprobe/ 는 개발 서버에서 템플릿을 저장하면(file_changed) 새로고침 없이 새 템플릿이 보이고, 깨진 템플릿으로 막힌 컴포넌트가 고친 뒤 상태 그대로 돌아오는지 보는 E2E(test_template_reload_e2e.py)의 픽스처(shadow.py 가 TEMPLATES DIRS 앞에 테스트의 디렉터리를 두고 그 사본을 고친다. slow_bump 은 저장하는 순간 처리 중인 핸들러, away/ 는 rejoin이 기다리는 동안의 boost 이동 대상),
+                           identityprobe/ 는 다른 탭이 로그인·로그아웃·사용자 교체·CSRF 회전을 한 뒤 boost 이동한 페이지의 컴포넌트가 페이지와 같은 신분인지(새 소켓, 새로고침 없이), 바뀐 것이 없으면 소켓을 그대로 쓰는지 보는 E2E(test_socket_identity_e2e.py)의 픽스처(경계 밖 a/·b/, 경계 안 inside-a/·inside-b/),
                            csrfprobe/ 는 컴포넌트·LiveComponent·함수 컴포넌트가 그린 일반 POST 폼({% csrf_token %})을 JavaScript 없이, join·이벤트·알림 뒤,
                            CSRF_USE_SESSIONS, 로그인(시크릿 회전) 뒤, 다른 사용자로 토큰을 검사하는 뷰에 제출하는 E2E(test_csrf_token_e2e.py)의 픽스처,
                            jsprobe/ 는 JS() 명령 전부와 로딩 클래스를 브라우저에서 도는 E2E(test_js_commands_e2e.py)의 픽스처,
@@ -468,6 +472,10 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
   요청의 것이고, 훅이 기다리는 Channels `database_sync_to_async`가 거기로 돌아와 `close_old_connections()`로 요청의 연결을 닫는다 —
   트랜잭션 안이면 뷰의 쓰기가 예외 없이 롤백된다. 메모리 SQLite는 `close()`를 무시하므로 테스트는 파일 DB(testproj의 기본)에서 본다.
   HTTP 렌더에서 스트림 연산은 아무것도 하지 않는다 — 다리마다 `wireview/core/meta.py`의 `HTTP_RENDER`(ContextVar)를 자기 저장소의 `not is_live`로 세운다. `channel_name`이 없다는 것으로 가르지 않는다(채널 없이 패치 게이트를 쓰는 세션 테스트가 있다). 회귀 테스트는 tests/test_http_render_connections.py.
+- **소켓의 신분은 핸드셰이크의 것이다(#209).** boost 이동은 소켓을 두고, 가져온 페이지는 지금의 쿠키로 그려진다. 그래서
+  모든 서명 상태가 낸 쪽의 신분(`i`)을 싣고 join이 연결의 것과 비교해 다르면 `renew`(새 소켓)로 답한다. 컴포넌트를 저장소에
+  넣는 새 경로는 `wire.identity`를 단다(`ComponentRepository.register_component`처럼) — 빠뜨리면 그 상태는 `i`가 없어
+  검사되지 않는다. 다시 연 소켓(`renewed`)에는 다시 `renew`하지 않는다 — 쿠키가 소켓에 닿지 않는 설정에서 고리가 된다.
 - **data-state는 dynamic 파트다.** `{% tag_header %}`의 서명 상태는 라이브 렌더에서 마커로 감싸진다. static에 넣으면 fingerprint가 매번 바뀌어 부분 diff가 죽는다. 회귀 테스트는 tests/test_diff_stability.py.
 
 ## 문서 인덱스

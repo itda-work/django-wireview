@@ -78,6 +78,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A boosted navigation after another tab logged in, logged out, logged in as someone else or rotated the CSRF
+  secret no longer joins the new page's components under the socket's old identity (#209). Every `data-state`
+  carries a fingerprint of who its page was rendered for (the login and the CSRF secret, hashed), and a join
+  whose fingerprint is not the connection's is answered with `renew`: the page opens a socket under the cookies
+  it holds now and joins there, without a page load. A move with no change keeps its socket. Protocol `vsn` 11;
+  an older bundle joins as before.
 - Presence keeps a meta per producer under each user, as Phoenix Presence keeps one per `track`, so a user
   with two tabs open stays on the others' lists until the last tab leaves (#202). A producer's meta is keyed
   by its tab and its component id, so a page that hides one of its two producers (`presence_leave()`) stays

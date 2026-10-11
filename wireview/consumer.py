@@ -9,7 +9,7 @@ from django.core.exceptions import ImproperlyConfigured
 
 from .core.csrf import cookies_of
 from .core.origin import origin_refusal
-from .core.rendered import protocol_version, socket_tab
+from .core.rendered import protocol_version, socket_renewed, socket_tab
 from .core.session import load_session
 from .core.transport import NO_CHANNEL_LAYER, ChannelsOutbound, Outbound
 from .session import WireviewSession
@@ -64,6 +64,8 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
             session=await load_session(self.scope.get("session")),
             vsn=protocol_version(self.scope.get("query_string", b"")),
             tab=socket_tab(self.scope.get("query_string", b"")),
+            # Opened because a join here was told to renew (#209)
+            renewed=socket_renewed(self.scope.get("query_string", b"")),
             # Where a component's {% csrf_token %} comes from on this socket (#206)
             csrf_cookies=cookies_of(self.scope),
         )

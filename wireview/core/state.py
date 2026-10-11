@@ -5,7 +5,7 @@ element and sends it back on (re)connect so the server can rebuild the
 component. Since #76 the signed payload is a versioned envelope that binds the
 state to what it was issued for; #58 added the page's boundary to that::
 
-    {"v": 2, "n": "<component FQN>", "s": "<live_session>", "a": "<auth>", "d": {<state>}}
+    {"v": 2, "n": "<component FQN>", "s": "<live_session>", "a": "<auth>", "i": "<identity>", "d": {<state>}}
 
 A ``TimestampSigner`` on the ``wireview.state.v2`` salt signs it, so the token also
 carries an issue time and ``unsign_state`` rejects anything older than
@@ -24,6 +24,15 @@ carries an issue time and ``unsign_state`` rejects anything older than
 
 Both ``s`` and ``a`` are absent from pages that declare no live_session, which
 is what keeps the feature opt-in.
+
+- ``i`` (who the page was rendered for: the login and the CSRF secret, as
+  ``live_session.identity_fingerprint`` hashes them) is on every page, inside
+  a boundary or not (#209). A boosted navigation keeps the socket while the
+  page it fetches is rendered for whoever the cookies name now; a join whose
+  ``i`` is not the connection's is answered with ``renew`` -- open a socket
+  under the cookies the browser holds -- instead of rendering the new page's
+  components for the old identity. Absent from a token an older server issued,
+  and from one issued where no request or connection is known; neither is checked.
 
 ``sign_object`` keeps the value base64 (no quotes, so it does not inflate when
 HTML-escaped into an attribute) and zlib-compresses it when that is smaller.
@@ -97,6 +106,9 @@ class StatePayload:
             ``""`` when it declared none (and for every pre-v2 format).
         auth: the authentication generation the token was issued under, or
             ``None`` outside a live_session, where nothing binds it.
+        identity: who the page or connection that issued it rendered for
+            (``live_session.identity_fingerprint``), or ``None`` when it was
+            not known there (#209).
         version: the envelope version it came from. ``0`` for the two
             unversioned formats.
     """
@@ -104,6 +116,7 @@ class StatePayload:
     state: dict[str, t.Any]
     live_session: str = ""
     auth: str | None = None
+    identity: str | None = None
     version: int = ENVELOPE_VERSION
 
 
@@ -125,19 +138,21 @@ def _signer() -> TimestampSigner:
     return get_signer(STATE_SALT)
 
 
-def _envelope_json(name: str, state_json: str, live_session: str, auth: str | None) -> str:
+def _envelope_json(name: str, state_json: str, live_session: str, auth: str | None, identity: str | None = None) -> str:
     """Wrap an already-serialized state in the v2 envelope, as JSON text.
 
     Built by hand so ``state_json`` passes through untouched: Pydantic stays
     the only thing that decides how a field serializes.
 
     ``s`` and ``a`` are omitted outside a live_session rather than written as
-    empty values, so a page that declares no boundary keeps issuing a token the
-    same size it always did.
+    empty values: nothing outside one reads them. ``i`` is written wherever it
+    is known (#209), some forty characters.
     """
     boundary = ""
     if live_session:
         boundary = f',"s":{json.dumps(live_session)},"a":{json.dumps(auth or "")}'
+    if identity is not None:
+        boundary += f',"i":{json.dumps(identity)}'
     return f'{{"v":{ENVELOPE_VERSION},"n":{json.dumps(name)}{boundary},"d":{state_json}}}'
 
 
@@ -155,6 +170,17 @@ def issuing_context(component: "Component") -> tuple[str, str | None]:
     from .live_session import auth_fingerprint
 
     return session.name, auth_fingerprint(component.user, component.session)
+
+
+def issuing_identity(component: "Component") -> str | None:
+    """Who the page or connection issuing a token for ``component`` renders for (#209).
+
+    The repository that built the component answers (``ComponentRepository.identity``):
+    the request on an HTTP render, the handshake on a connection. ``None`` for a
+    component no repository registered, which a join does not check.
+    """
+    identity = getattr(component.wire, "identity", None)
+    return identity() if identity is not None else None
 
 
 def signable_json(component: "Component") -> str:
@@ -205,7 +231,7 @@ def sign_state(component: "Component") -> str:
             return cached_token
 
     live_session, auth = issuing_context(component)
-    envelope_json = _envelope_json(type(component)._fqn, state_json, live_session, auth)
+    envelope_json = _envelope_json(type(component)._fqn, state_json, live_session, auth, issuing_identity(component))
     token = _signer().sign_object(envelope_json, serializer=_JSONStringSerializer, compress=True)
     wire._state_token = (state_json, token, now)
     return token
@@ -239,11 +265,12 @@ def unsign_envelope(value: str, name: str) -> StatePayload:
         raise BadSignature("Malformed state envelope")
     live_session = envelope.get("s", "")
     auth = envelope.get("a")
-    if not isinstance(live_session, str) or not (auth is None or isinstance(auth, str)):
+    identity = envelope.get("i")
+    if not isinstance(live_session, str) or not all(v is None or isinstance(v, str) for v in (auth, identity)):
         raise BadSignature("Malformed state envelope")
 
     _check_class(signed_name, name, state)
-    return StatePayload(state=state, live_session=live_session, auth=auth)
+    return StatePayload(state=state, live_session=live_session, auth=auth, identity=identity)
 
 
 def unsign_state(value: str, name: str) -> dict[str, t.Any]:
