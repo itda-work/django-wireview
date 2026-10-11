@@ -927,6 +927,9 @@ class TestCookiePathsCheck:
         session, csrf = messages
         assert "SESSION_COOKIE_PATH" in session.msg and "not mounted" in session.hint and "1.6" in session.hint
         assert "CSRF_COOKIE_PATH" in csrf.msg and "one more socket" in csrf.hint
+        for message in messages:
+            assert "every app on this host" in message.hint, "what '/' costs"
+            assert "sub-path is not supported" in message.hint and "COMPATIBILITY" in message.hint
 
     def test_the_csrf_cookie_is_not_judged_when_the_secret_is_in_the_session(self):
         with override_settings(SESSION_COOKIE_PATH="/", CSRF_COOKIE_PATH="/app/", CSRF_USE_SESSIONS=True):

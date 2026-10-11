@@ -91,6 +91,17 @@ _IDENTITY_DETAIL = {
     IDENTITY_LOGIN: "the state was issued for another login than this connection's handshake",
     IDENTITY_CSRF: "the state was issued for another CSRF secret than this connection's handshake",
 }
+
+
+def _identity_cookie(difference: str) -> str:
+    """The cookie that holds the half of the identity that differs (#209)."""
+    from django.conf import settings
+
+    if difference == IDENTITY_CSRF and not settings.CSRF_USE_SESSIONS:
+        return settings.CSRF_COOKIE_NAME
+    return settings.SESSION_COOKIE_NAME
+
+
 #: What the page does about it, for the log
 _IDENTITY_ACTION = {"renew": "opens a new socket", "reload": "reloads"}
 
@@ -353,6 +364,9 @@ class WireviewSession:
         self._auth_revalidated = False
         self._renewing = False
         self._identity_warned = False
+        # Which cookies the handshake carried, to tell a page older than them
+        # from cookies that never reach the socket (#209)
+        self._handshake_cookies = frozenset(csrf_cookies or ())
         self._init_patches()
         self.repo = ComponentRepository(
             is_live=True,
@@ -722,23 +736,44 @@ class WireviewSession:
         (``join``): inside a live_session the boundary then checks it as ever,
         outside one it is rendered for this connection and its forms post with
         the connection's token. One whose login differs is not mounted
-        (``reload``). A reconnect or the back button gets here on its way to
-        the reload that settles it, so this is said once, not per join; when
-        the cookies never reach the socket, it is said on every page.
+        (``reload``).
+
+        Which cookie holds the half that differs tells the two causes apart.
+        The handshake carried it: the page is older than the cookie (a
+        reconnect, a sticky component, the back button), and the reload settles
+        it -- INFO. It did not: the cookie does not reach the socket
+        (``wireview.W021``), and every page meets this -- WARNING. A page drawn
+        logged in before another tab logged out (the logout drops the session
+        cookie) lands there too, once; the warning names it.
         """
         if self.repo.vsn < RENEW_SINCE or self._identity_warned:
             return
         self._identity_warned = True
+        cookie = _identity_cookie(difference)
+        where = "on the socket the page opened afresh for it" if renewed else "past the tab's renew budget"
+        if cookie in self._handshake_cookies:
+            log.info(
+                "JOIN %s: %s, %s. The handshake carried the %s cookie, so the page is older than it "
+                "(a reconnect, a sticky component, the back button). %s",
+                name,
+                _IDENTITY_DETAIL[difference],
+                where,
+                cookie,
+                "Joining as this connection." if outcome == "join" else "The page reloads to be drawn for it.",
+            )
+            return
         log.warning(
-            "JOIN %s: %s, %s. The page is older than the browser's cookies (a reconnect, a sticky component, "
-            "the back button), or the cookies do not reach the socket: SESSION_COOKIE_PATH/CSRF_COOKIE_PATH "
-            "(or the cookie domain) does not cover the WebSocket's URL (wireview.W021). %s",
+            "JOIN %s: %s, %s. The handshake carried no %s cookie while the page was drawn with one: "
+            "the cookies do not reach the socket, as SESSION_COOKIE_PATH/CSRF_COOKIE_PATH (or the cookie domain) "
+            "does not cover the WebSocket's URL (wireview.W021), unless another tab has just logged out. %s",
             name,
             _IDENTITY_DETAIL[difference],
-            "on the socket the page opened afresh for it" if renewed else "past the tab's renew budget",
+            where,
+            cookie,
             "Joining as this connection."
             if outcome == "join"
-            else "The page reloads; the component is not mounted until the cookies reach the socket.",
+            else "The page reloads to be drawn for the cookies the browser holds; while they do not reach "
+            "the socket, its components are never mounted.",
         )
 
     async def _enter_live_session(self, payload: StatePayload) -> str:

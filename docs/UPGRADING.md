@@ -106,10 +106,12 @@ dependencies = ["django-wireview>=1.5,<2"]
   - 점검: 세션·CSRF 쿠키의 `SESSION_COOKIE_PATH`·`CSRF_COOKIE_PATH`·도메인이 `/__wireview__`를 덮지 않으면 로그인한
     사용자의 컴포넌트는 마운트되지 않는다. 30초 넘게 간격을 둔 이동마다 소켓을 두 번 더 열고 한 번 더 새로고침하며,
     컴포넌트는 HTTP 렌더 그대로 흐리게 남아 클릭을 받지 않는다(새로고침 쿨다운이 그 사이를 막는다). CSRF 쿠키만 닿지
-    않으면 이동마다 소켓을 한 번 더 연다. 어느 쪽이든 서버 로그에 연결마다 경고("do not reach the socket")가 한 번 남고,
+    않으면 이동마다 소켓을 한 번 더 연다. 어느 쪽이든 서버 로그에 연결마다 경고("do not reach the socket")가 한 번 남고
+    (핸드셰이크에 그 쿠키가 실려 왔으면 쿠키보다 오래된 페이지의 정상 경로라 INFO 한 줄이다),
     `manage.py check`가 경로를 `wireview.W021`로 알린다(도메인은 보지 못한다). 그 설정에서는 원래 컴포넌트가 익명으로
     그려졌다 — 쿠키가 소켓에 닿게 고친다. `FORCE_SCRIPT_NAME`으로 서브 경로에 배포해도 소켓은 호스트의 루트
-    `/__wireview__`에 열린다.
+    `/__wireview__`에 열린다. 서브 경로 배포는 지원하지 않는다([호환성](./COMPATIBILITY.md)) — 쿠키 경로만 `/`로 바꾼다고
+    지원되는 것이 아니다. 같은 호스트의 다른 앱과 나누려고 쿠키를 좁혀 두었다면, `/`로 넓힌 쿠키는 그 앱들에도 실린다.
   - 점검: WebSocket 라우트를 `AuthMiddlewareStack`(또는 `SessionMiddlewareStack`)으로 감싸지 않았다면 소켓에는 세션도
     사용자도 없다. 그 연결은 신분을 비교하지 않으므로 1.5처럼 동작하지만, 컴포넌트의 `user`는 늘 익명이다.
     `manage.py check`가 `wireview.W020`으로 알린다.

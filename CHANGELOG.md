@@ -94,8 +94,9 @@ The django-reactor era changelog (2.x) is preserved in
   `SessionMiddleware` above it, where the handshake carries no session and no user. Another, `wireview.W021`,
   reports a `SESSION_COOKIE_PATH` or `CSRF_COOKIE_PATH` that does not cover `/__wireview__`: the browser does not
   send that cookie to the socket, and a logged-in user's components are then never mounted (the page reloads
-  once per move more than 30 seconds apart). The server warns once per connection when a join's login still
-  differs on a renewed socket or past the tab's budget.
+  once per move more than 30 seconds apart). The server logs once per connection when a join's login still
+  differs on a renewed socket or past the tab's budget: at INFO when the handshake carried the cookie that
+  differs (the page is older than it), at WARNING when it did not (the cookie does not reach the socket).
 - Presence keeps a meta per producer under each user, as Phoenix Presence keeps one per `track`, so a user
   with two tabs open stays on the others' lists until the last tab leaves (#202). A producer's meta is keyed
   by its tab and its component id, so a page that hides one of its two producers (`presence_leave()`) stays

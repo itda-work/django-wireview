@@ -314,17 +314,34 @@ class TestTheJoin:
         assert session.repo.get("card") is None
 
     async def test_a_reload_for_the_login_warns_once_per_connection(self, caplog):
-        """Where the cookies never reach the socket the component is never mounted:
-        the operator hears it at WARNING, not only as an INFO line per join (wireview.W021)."""
-        session, _ = await started(NOBODY)
+        """Where the session cookie never reaches the socket the component is never mounted:
+        the handshake carried no session cookie for a page drawn logged in, and the operator
+        hears it at WARNING, not only as an INFO line per join (wireview.W021)."""
+        session, _ = await started(NOBODY, csrf={"csrftoken": "a" * 32})
         with caplog.at_level("INFO", logger="wireview"):
             await join(session, page_state(ADA), renewed=True)
             await join(session, page_state(ADA, id="other"), renewed=True)
         warnings = [record.getMessage() for record in caplog.records if record.levelname == "WARNING"]
         assert len(warnings) == 1, warnings
         assert "on the socket the page opened afresh for it" in warnings[0]
+        assert "carried no sessionid cookie" in warnings[0]
         assert "do not reach the socket" in warnings[0] and "wireview.W021" in warnings[0]
-        assert "the component is not mounted" in warnings[0]
+        assert "its components are never mounted" in warnings[0]
+
+    async def test_a_reload_with_the_session_cookie_carried_is_the_page_being_older(self, caplog):
+        """A reconnect or the back button after a login elsewhere: the cookie reached the socket,
+        so it is not a setting to fix -- INFO, once, saying the page is older than the cookie."""
+        session, outbound = await started(NOBODY, csrf={"sessionid": "k" * 32, "csrftoken": "a" * 32})
+        with caplog.at_level("INFO", logger="wireview"):
+            await join(session, page_state(ADA), renewed=True)
+            await join(session, page_state(ADA, id="other"), renewed=True)
+        assert commands(outbound) == ["reload", "reload"]
+        assert "WARNING" not in [record.levelname for record in caplog.records]
+        told = [record.getMessage() for record in caplog.records if "older than it" in record.getMessage()]
+        assert len(told) == 1, told
+        assert "carried the sessionid cookie" in told[0]
+        assert "The page reloads to be drawn for it." in told[0]
+        assert "W021" not in told[0]
 
     async def test_a_reload_past_the_budget_says_so(self, caplog):
         for _ in range(RenewBudget.LIMIT):
@@ -338,15 +355,23 @@ class TestTheJoin:
         assert "opened afresh" not in caplog.text
 
     async def test_a_renewed_join_whose_csrf_secret_alone_differs_joins_as_the_connection(self, caplog):
+        """The CSRF cookie reached the socket: the page is older than it."""
         session, outbound = await started(ADA, csrf={"csrftoken": "a" * 32})
+        with caplog.at_level("INFO", logger="wireview"):
+            await join(session, page_state(ADA, csrf="b" * 32), renewed=True)
+        assert commands(outbound)[:1] == ["render"]
+        assert "WARNING" not in [record.levelname for record in caplog.records]
+        assert "carried the csrftoken cookie, so the page is older than it" in caplog.text
+        assert "Joining as this connection." in caplog.text
+
+    async def test_a_csrf_cookie_that_never_reaches_the_socket_warns(self, caplog):
+        session, outbound = await started(ADA, csrf={"sessionid": "k" * 32})
         await join(session, page_state(ADA, csrf="b" * 32), renewed=True)
         assert commands(outbound)[:1] == ["render"]
-        assert (
-            "The page is older than the browser's cookies (a reconnect, a sticky component, the back button)"
-            in caplog.text
-        )
-        assert "do not reach the socket" in caplog.text
-        assert "Joining as this connection." in caplog.text
+        warnings = [record.getMessage() for record in caplog.records if record.levelname == "WARNING"]
+        assert len(warnings) == 1, warnings
+        assert "carried no csrftoken cookie" in warnings[0] and "wireview.W021" in warnings[0]
+        assert "Joining as this connection." in warnings[0]
 
     async def test_only_the_renewed_join_is_spared_a_second_renew(self):
         """A renewed socket meets another tab's change later: the boosted move's join is told again."""
@@ -367,7 +392,7 @@ class TestTheJoin:
         else:
             assert outbound.commands == [("reload", {"id": "card", "reason": "live_session", "ref": 3})]
         assert "renew" not in commands(outbound)
-        assert "older than the browser's cookies" not in caplog.text
+        assert "JOIN SiCard: the state was issued" not in caplog.text
 
     async def test_a_socket_with_no_session_compares_nothing(self):
         """A WebSocket stack without SessionMiddleware (wireview.W020): the handshake says nobody."""

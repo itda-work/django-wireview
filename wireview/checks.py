@@ -650,7 +650,9 @@ def check_cookie_paths(app_configs, **kwargs) -> list[CheckMessage]:
     the CSRF cookie (and ``CSRF_USE_SESSIONS`` off) each boosted navigation
     opens one more socket, and a live render draws ``{% csrf_token %}`` with
     no token. A path that does not start with ``/`` leaves the browser to
-    pick one and is not judged.
+    pick one and is not judged. The hint says what ``/`` costs (the cookie
+    reaches every app on the host) and that a sub-path deployment is not
+    supported, so narrowing the cookie to one is no way to share a host.
     """
     from django.conf import settings
 
@@ -682,7 +684,9 @@ def check_cookie_paths(app_configs, **kwargs) -> list[CheckMessage]:
                 f"{name} = {value!r} does not cover the WebSocket's path {socket!r}.",
                 hint=(
                     f"The browser sends the cookie only to paths under {value!r}, and wireview's socket is "
-                    f"opened at {socket!r} on the page's host. {consequence} Set {name} to '/'."
+                    f"opened at {socket!r} on the page's host. {consequence} Set {name} to '/' -- the cookie then "
+                    "reaches every app on this host too. Deploying wireview under a sub-path is not supported "
+                    "(docs/COMPATIBILITY.md): it has to be mounted at the root."
                 ),
                 id="wireview.W021",
             )
