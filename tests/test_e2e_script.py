@@ -15,6 +15,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import time
 import tomllib
 import typing as t
@@ -179,6 +180,12 @@ class RedisRun(t.NamedTuple):
     started: int | None
 
 
+# Runs argv[1:] with SIGINT's default disposition, whatever this process inherited
+SIGINT_DEFAULT = (
+    "import os, signal, sys; signal.signal(signal.SIGINT, signal.SIG_DFL); os.execvp(sys.argv[1], sys.argv[1:])"
+)
+
+
 def start_redis_script(tmp_path: Path, **env: str) -> tuple[subprocess.Popen, Path]:
     record = tmp_path / "seen"
     stub = tmp_path / "bin" / "uv"
@@ -188,7 +195,10 @@ def start_redis_script(tmp_path: Path, **env: str) -> tuple[subprocess.Popen, Pa
     (tmp_path / "tmp").mkdir()
     base = {k: v for k, v in os.environ.items() if k not in ("REDIS_URL", "REDIS_SERVER")}
     proc = subprocess.Popen(
-        ["bash", str(ROOT / "tests" / "e2e.sh")],
+        # Ctrl-C as a terminal delivers it: a run started in the background (make
+        # test-concurrent's `&`) hands its children SIGINT ignored, and bash cannot
+        # take back a signal ignored on entry -- the script outlived every Ctrl-C
+        [sys.executable, "-c", SIGINT_DEFAULT, "bash", str(ROOT / "tests" / "e2e.sh")],
         env={
             **base,
             "PATH": f"{stub.parent}{os.pathsep}{os.environ['PATH']}",
