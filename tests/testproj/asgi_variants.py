@@ -1,6 +1,7 @@
 """WebSocket stacks for wireview.W020's tests (#209): which ones carry a session to the consumer."""
 
 from channels.auth import AuthMiddlewareStack
+from channels.middleware import BaseMiddleware
 from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.security.websocket import AllowedHostsOriginValidator
 from channels.sessions import SessionMiddlewareStack
@@ -29,6 +30,15 @@ class ProjectSessionMiddleware:
     async def __call__(self, scope, receive, send):
         return await self.app(scope, receive, send)
 
+
+class OwnSessionMiddleware(BaseMiddleware):
+    """A Channels middleware of the project's own that fills the session itself: walked through, so flagged."""
+
+    async def __call__(self, scope, receive, send):
+        return await super().__call__({**scope, "session": {}}, receive, send)
+
+
+OWN_BASE_MIDDLEWARE = ProtocolTypeRouter({"websocket": OwnSessionMiddleware(URLRouter(websocket_urlpatterns))})
 
 #: Unknown: the walk stops at the project's middleware and says nothing
 OPAQUE = ProtocolTypeRouter({"websocket": ProjectSessionMiddleware(URLRouter(websocket_urlpatterns))})

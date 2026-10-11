@@ -12,10 +12,13 @@ instead. The browser side is tests/test_socket_identity_e2e.py.
 """
 
 import pytest
+from asgiref.sync import sync_to_async
+from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.core.exceptions import SynchronousOnlyOperation
 from django.test import override_settings
+from testproj import asgi_variants
 from testproj.outbound import RecordingOutbound
 
 from wireview import Component, live_session, telemetry
@@ -310,6 +313,30 @@ class TestTheJoin:
         assert outbound.commands == [("reload", {"id": "card", "reason": "identity", "ref": 4})]
         assert session.repo.get("card") is None
 
+    async def test_a_reload_for_the_login_warns_once_per_connection(self, caplog):
+        """Where the cookies never reach the socket the component is never mounted:
+        the operator hears it at WARNING, not only as an INFO line per join (wireview.W021)."""
+        session, _ = await started(NOBODY)
+        with caplog.at_level("INFO", logger="wireview"):
+            await join(session, page_state(ADA), renewed=True)
+            await join(session, page_state(ADA, id="other"), renewed=True)
+        warnings = [record.getMessage() for record in caplog.records if record.levelname == "WARNING"]
+        assert len(warnings) == 1, warnings
+        assert "on the socket the page opened afresh for it" in warnings[0]
+        assert "do not reach the socket" in warnings[0] and "wireview.W021" in warnings[0]
+        assert "the component is not mounted" in warnings[0]
+
+    async def test_a_reload_past_the_budget_says_so(self, caplog):
+        for _ in range(RenewBudget.LIMIT):
+            session, _ = await started(NOBODY, tab="spent")
+            await join(session, page_state(ADA))
+        assert "WARNING" not in [record.levelname for record in caplog.records], "a renew is not a warning"
+        session, outbound = await started(NOBODY, tab="spent")
+        await join(session, page_state(ADA))
+        assert commands(outbound) == ["reload"]
+        assert "past the tab's renew budget" in caplog.text
+        assert "opened afresh" not in caplog.text
+
     async def test_a_renewed_join_whose_csrf_secret_alone_differs_joins_as_the_connection(self, caplog):
         session, outbound = await started(ADA, csrf={"csrftoken": "a" * 32})
         await join(session, page_state(ADA, csrf="b" * 32), renewed=True)
@@ -319,6 +346,7 @@ class TestTheJoin:
             in caplog.text
         )
         assert "do not reach the socket" in caplog.text
+        assert "Joining as this connection." in caplog.text
 
     async def test_only_the_renewed_join_is_spared_a_second_renew(self):
         """A renewed socket meets another tab's change later: the boosted move's join is told again."""
@@ -339,7 +367,7 @@ class TestTheJoin:
         else:
             assert outbound.commands == [("reload", {"id": "card", "reason": "live_session", "ref": 3})]
         assert "renew" not in commands(outbound)
-        assert "socket opened afresh" not in caplog.text
+        assert "older than the browser's cookies" not in caplog.text
 
     async def test_a_socket_with_no_session_compares_nothing(self):
         """A WebSocket stack without SessionMiddleware (wireview.W020): the handshake says nobody."""
@@ -359,6 +387,9 @@ class TestTheJoin:
         session, outbound = await started(NOBODY, tab="another")
         await join(session, page_state(ADA))
         assert commands(outbound) == ["renew"], "another tab has its own"
+        session, outbound = await started(GRACE, tab="looping")
+        await join(session, page_state(ADA))
+        assert commands(outbound) == ["renew"], "the tab is kept under the connection's user"
 
     async def test_a_connection_spends_one_renew_however_many_joins_it_answers(self):
         session, outbound = await started(NOBODY, tab="many")
@@ -395,15 +426,80 @@ class TestTheRenewBudget:
     def test_a_tab_gets_its_renews_back_after_the_window(self):
         now = [0.0]
         budget = RenewBudget(clock=lambda: now[0])
-        assert [budget.take("t") for _ in range(RenewBudget.LIMIT + 1)] == [True] * RenewBudget.LIMIT + [False]
+        taken = [budget.take("", "t") for _ in range(RenewBudget.LIMIT + 1)]
+        assert taken == [True] * RenewBudget.LIMIT + [False]
         now[0] = RenewBudget.WINDOW
-        assert budget.take("t")
+        assert budget.take("", "t")
 
-    def test_stale_tabs_are_forgotten(self):
+    def test_a_tab_is_kept_under_its_user(self):
+        """The tab comes from the client (``socket_tab``): one user's page cannot spend another's."""
+        budget = RenewBudget(clock=lambda: 0.0)
+        for _ in range(RenewBudget.LIMIT):
+            budget.take("1", "t")
+        assert not budget.take("1", "t")
+        assert budget.take("2", "t") and budget.take("", "t")
+
+    def test_stale_tabs_are_forgotten_once_per_window(self):
         now = [0.0]
         budget = RenewBudget(clock=lambda: now[0])
-        for index in range(RenewBudget.SWEEP_AT):
-            budget.take(f"t{index}")
-        now[0] = RenewBudget.WINDOW
-        budget.take("fresh")
-        assert len(budget._renews) == 1
+        for index in range(10):
+            budget.take("", f"t{index}")
+        now[0] = RenewBudget.WINDOW - 1
+        budget.take("", "fresh")
+        assert len(budget._renews) == 11, "nothing is swept before the window"
+        now[0] = RenewBudget.WINDOW + 0.5
+        budget.take("", "fresher")
+        assert sorted(budget._renews) == [("", "fresh"), ("", "fresher")]
+        # "fresh" goes stale at 2 * WINDOW - 1; the next sweep is not until 2 * WINDOW + 0.5
+        now[0] = 2 * RenewBudget.WINDOW
+        budget.take("", "late")
+        assert ("", "fresh") in budget._renews, "a take between sweeps scans nothing"
+        now[0] = 2 * RenewBudget.WINDOW + 0.5
+        budget.take("", "later")
+        assert ("", "fresh") not in budget._renews
+
+    def test_it_never_holds_more_than_its_cap(self):
+        """Each tab costs a connection; however many come within one window, the work per take stays flat."""
+        budget = RenewBudget(clock=lambda: 0.0)
+        for index in range(RenewBudget.MAX_TABS * 3):
+            budget.take("", f"t{index}")
+        assert len(budget._renews) == RenewBudget.MAX_TABS
+        assert ("", f"t{RenewBudget.MAX_TABS * 3 - 1}") in budget._renews
+        assert ("", "t0") not in budget._renews, "the least recently told goes first"
+
+    def test_a_tab_told_again_is_not_the_first_to_go(self):
+        budget = RenewBudget(clock=lambda: 0.0)
+        budget.take("", "kept")
+        for index in range(RenewBudget.MAX_TABS - 1):
+            budget.take("", f"t{index}")
+        budget.take("", "kept")
+        budget.take("", "one-more")
+        assert ("", "kept") in budget._renews and ("", "t0") not in budget._renews
+
+
+@pytest.mark.asyncio
+class TestTheConsumerReadsTheSessionFromTheScope:
+    """``WireviewConsumer`` tells the session whether its handshake carried one (wireview.W020).
+
+    A stack without Channels' SessionMiddleware cannot say who the socket is
+    for. Comparing there would tell every logged-in page to renew, then reload,
+    and never mount it.
+    """
+
+    async def answer(self, application) -> str:
+        communicator = WebsocketCommunicator(application, f"/__wireview__?vsn={PROTOCOL_VERSION}&tab=tab-scope")
+        connected, _ = await communicator.connect()
+        assert connected
+        try:
+            state = await sync_to_async(page_state)(ADA)
+            await communicator.send_json_to({"command": "join", "payload": {"name": "SiCard", "state": state}})
+            return (await communicator.receive_json_from(timeout=5))["command"]
+        finally:
+            await communicator.disconnect()
+
+    async def test_a_stack_without_a_session_mounts_a_logged_in_page(self):
+        assert await self.answer(asgi_variants.BARE) == "render"
+
+    async def test_a_stack_with_one_compares(self):
+        """The handshake carried an empty session: nobody, where the page was for a login."""
+        assert await self.answer(asgi_variants.SESSION_ONLY) == "renew"
