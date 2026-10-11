@@ -451,21 +451,37 @@ def _condition_expressions(condition: t.Any) -> t.Iterator[t.Any]:
             yield from _condition_expressions(part)
 
 
-_SCOPE: weakref.WeakKeyDictionary[type, tuple[t.Any, bool]] = weakref.WeakKeyDictionary()
+_SCOPE: weakref.WeakKeyDictionary[type, tuple[t.Any, int, bool]] = weakref.WeakKeyDictionary()
+#: Counts the template changes the dev server's reloader saw: a scope read before one is read again
+_templates_seen = 0
+
+
+def templates_changed() -> None:
+    """A file changed under the autoreloader: read every class's scope again at its next render.
+
+    The scope follows every template the class reaches (#208), and Django reads
+    a changed one anew; a scope kept from before the change would share a
+    render whose template now reads the viewer, or keep one apart that no
+    longer does. Called from the reloader's thread: a counter, not the mapping.
+    """
+    global _templates_seen
+    _templates_seen += 1
 
 
 def declared(component: Component) -> bool:
     """Whether ``component``'s live render goes the shared way: declared and in scope.
 
     A class out of scope is told once in the log and renders as any other.
-    The scope is kept per class and Meta; the templates are read once.
+    The scope is kept per class and Meta; the templates are read once, and
+    again after the dev server sees a template change (``templates_changed``).
     """
     cls = type(component)
     meta = cls._meta
     if not meta.shared_render:
         return False
     kept = _SCOPE.get(cls)
-    if kept is None or kept[0] is not meta:
+    seen = _templates_seen
+    if kept is None or kept[0] is not meta or kept[1] != seen:
         reasons = out_of_scope(cls)
         if reasons:
             log.warning(
@@ -473,8 +489,8 @@ def declared(component: Component) -> bool:
                 cls.__qualname__,
                 "; ".join(reasons),
             )
-        kept = _SCOPE[cls] = (meta, not reasons)
-    return kept[1]
+        kept = _SCOPE[cls] = (meta, seen, not reasons)
+    return kept[2]
 
 
 # -- the renders ----------------------------------------------------------------------------
@@ -819,7 +835,7 @@ async def _render_own(wire: WireviewMeta, component: Component, repo: Repo, chec
     if shared is None:
         cls = type(component)
         _tell_once(cls, "its render draws another component or holds data-state more than once")
-        _SCOPE[cls] = (cls._meta, False)
+        _SCOPE[cls] = (cls._meta, _templates_seen, False)
         # The slot is this connection's to fill: render again as any other component
         html = await wire._render_marked(component, repo, state_slot=False, watch=False)
         return (html, None) if html is not None else None

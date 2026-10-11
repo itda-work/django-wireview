@@ -43,7 +43,7 @@ wireview/
 │                          렌더를 한 번만 하고 Rendered를 함께 쓴다. data-state는 공유하지 않는다 — 렌더는 그 자리에 STATE_SLOT을 쓰고 연결마다 자기 토큰을 끼운다(Shared.with_state).
 │                          범위 밖(LiveComponent·temporary_assigns·slots·live_sessions·모델·QuerySet 타입 필드·다른 컴포넌트를 그리거나 보는 사람을 읽는 템플릿)은 공유하지 않고 W019가 알린다.
 │                          템플릿은 렌더가 닿는 것 전부를 걷는다(_Reach: include·extends 부모·함수 컴포넌트·inclusion 태그, #208). 이름을 렌더만 아는 템플릿
-│                          (변수 이름의 include·extends·func, 미등록 함수, 불러올 수 없는 것)은 공유하지 않는다
+│                          (변수 이름의 include·extends·func, 미등록 함수, 불러올 수 없는 것)은 공유하지 않는다. 범위는 클래스마다 한 번, 자동 리로더의 file_changed 뒤 다시(templates_changed)
 │                          필드에 모델 인스턴스·QuerySet이 들어 있으면 키가 없다(같은 pk의 다른 속성). 토큰은 루프 밖에서 서명한다(렌더 트립, 받은 쪽들은 _Signer가 모아 db 트립 하나).
 │                          VERIFY_SHARED_RENDER(DEBUG·wireview.testing)면 user·session·request 읽기가 오류이고, 받은 렌더를 다시 렌더해 비교한다
 ├── core/patches.py        Broadcast(#178). 스트림 삽입·삭제, push_event, JS를 발행하는 곳에서 한 번 렌더·직렬화하고 프레임을 id 자리에서 자른다([앞, 뒤]).

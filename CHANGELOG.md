@@ -181,6 +181,7 @@ The django-reactor era changelog (2.x) is preserved in
   as Django does), function components' and inclusion tags' templates -- and a template only the render can name
   (`{% include part %}`, `{% extends base %}`, `{% func kind %}`, an unregistered function, one that fails to
   load) keeps the render each connection's own. A class out of scope that way renders on every connection again.
+  Under the dev server's autoreloader a template change has the scope read anew.
 
 ## [1.5.1] - 2026-10-10
 

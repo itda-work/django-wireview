@@ -1477,3 +1477,34 @@ def test_a_template_that_extends_its_namesake_is_followed_to_the_next_loader():
         ]
     ):
         assert any("reads user" in reason for reason in shared_render.out_of_scope(ShNamesake))
+
+
+@pytest.mark.unit
+def test_a_template_change_under_the_dev_server_reads_the_scope_again(tmp_path):
+    """The scope was kept for the process: an include edited to read the user went on sharing."""
+    from pathlib import Path
+
+    from django.utils.autoreload import file_changed
+
+    class ShEdited(_Shared):
+        class Meta:
+            template_name = "sh/inc_plain.html"
+
+    def templates(part: str):
+        sources = {**TEMPLATES, "sh/plain_part.html": part}
+        return override_settings(
+            TEMPLATES=[
+                {
+                    "BACKEND": "django.template.backends.django.DjangoTemplates",
+                    "OPTIONS": {"loaders": [("django.template.loaders.locmem.Loader", sources)]},
+                }
+            ]
+        )
+
+    component = ShEdited(id="board", user=AnonymousUser(), wire=WireviewMeta(params={}))
+    with templates("<i>{{ headline }}</i>"):
+        assert shared_render.declared(component)
+    with templates("<i>{{ user.username }}</i>"):
+        assert shared_render.declared(component), "kept until the reloader says a file changed"
+        file_changed.send(sender=None, file_path=Path(tmp_path / "plain_part.html"))
+        assert not shared_render.declared(component)
