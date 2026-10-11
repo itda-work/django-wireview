@@ -117,6 +117,10 @@ property도 렌더마다 계산되고, 그 안의 쿼리도 렌더마다 돈다.
 밑줄 이름(`_stats`)으로 두거나 메서드로 만든다. 렌더가 무엇을 쿼리하는지는 [렌더의 SQL 찾기](./render-queries.md)가
 property 이름으로 보여 준다.
 
+컴포넌트의 이름 말고 컨텍스트에 있는 것은 `this`, `slots`, 그리고 `csrf_token`이다. `csrf_token`은 보는 사람의 CSRF
+토큰이라 `{% csrf_token %}`을 쓴 일반 POST 폼이 Django 페이지에서처럼 통과한다([dead view](./dead-view.md#폼의-csrf-토큰)).
+같은 이름의 필드나 property가 있으면 그것이 이긴다.
+
 `Meta.lazy_properties = True`이면 sync property(`property`, `functools.cached_property`)는 미리 읽지 않고
 **템플릿이 그 이름을 읽을 때** 렌더마다 한 번 읽는다(#187). 템플릿이 쓰지 않는 property는 돌지 않고, 그 SQL도
 나가지 않는다. 필드와 async property는 지금처럼 템플릿 전에 읽는다.

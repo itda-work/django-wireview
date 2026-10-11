@@ -161,7 +161,17 @@ The django-reactor era changelog (2.x) is preserved in
 - A `stream()` in a `start_async` task replaced or cancelled while its operation waited on the channel layer
   (channels_redis, channels-nats) left its Broadcast hold behind: the operation never reached the connection, which
   closed with 1013 `HOLD_SECONDS` later (#199). The send now goes on to the channel before the cancellation does.
-
+- `{% csrf_token %}` in a component's template renders a token the form actually passes with (#206). A
+  component's template renders with its own context, not the page's `RequestContext`, so the token was
+  empty -- on the first HTTP render and on every live render -- and a plain POST form in a component got
+  a 403. The HTTP render now gives the page's token (the context processor's lazy value: only a page
+  that draws one gets the CSRF cookie), and a live render one masked once per connection from the
+  secret its WebSocket handshake carried -- the CSRF cookie, or the session under `CSRF_USE_SESSIONS`,
+  read as Django's middleware reads a request's. LiveComponents and function components get it too, and
+  a stream item, sent whole in every insert, one masked anew each time. Turn permessage-deflate off on
+  the server (uvicorn negotiates it by default): on a compressed socket a token that stays the same
+  across messages, next to text other viewers chose, is what BREACH needs. A render shared between connections (`Meta.shared_render`) and a `Broadcast` item get
+  none. A connection with no secret renders an empty token and logs once, naming `ensure_csrf_cookie`.
 
 ## [1.5.1] - 2026-10-10
 

@@ -1516,6 +1516,8 @@ class Component(BaseModel):
         """Render a single stream item to HTML."""
         template = self._get_template(template_name)
         context = {"item": item, "this": self}
+        if (csrf := self.wire.csrf) is not None and (token := csrf()) is not None:
+            context["csrf_token"] = token  # this connection's, masked for this item (#206)
         # Read off the loop like the component's own render, and kept apart from
         # its background work the same way (#138)
         with self.wire._render_gate.rendering(), render_queries.scope("render", self, "stream item"):

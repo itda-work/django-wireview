@@ -1,0 +1,22 @@
+{% load wireview %}
+
+<section {% tag_header %}>
+  {% func "csrf_form" name="joined" %}
+  <button type="button" data-testid="show" {% on "click" "show" %}>show</button>
+  {% if this.shown %}
+    {% func "csrf_form" name="event" %}
+  {% endif %}
+  <ul data-testid="notes">
+    {% for note in notes %}
+      <li>{% func "csrf_form" name=note %}</li>
+    {% endfor %}
+  </ul>
+  <form method="post"
+        action="{% url 'csrfprobe:post' %}"
+        data-testid="own-form">
+    {% csrf_token %}
+    <input type="hidden" name="text" value="own">
+    <button data-testid="own-submit">own</button>
+  </form>
+  {% live_component "CsrfChild" id="child" %}
+</section>

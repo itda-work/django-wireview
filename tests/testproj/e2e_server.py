@@ -112,6 +112,10 @@ class UvicornThread(threading.Thread):
             # log_config=None: Uvicorn's own dictConfig sets its loggers not to
             # propagate, and an exception in the application is logged there -- so
             # server_errors() read empty while every request was failing (#129).
+            # permessage-deflate stays on, uvicorn's default: the browser path a
+            # deployment that skipped docs/DEPLOYMENT.md would run. It is off in
+            # production for BREACH (#206), which needs an observer a loopback
+            # test server has none of.
             config = UvicornConfig(
                 self.application, host=self.host, port=self.port, log_level="warning", log_config=None
             )

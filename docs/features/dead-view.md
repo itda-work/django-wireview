@@ -38,6 +38,9 @@ def add(request):
     return redirect("notes:index")
 ```
 
+컴포넌트 템플릿의 `{% csrf_token %}`은 그 폼이 실제로 통과하는 토큰을 그린다 — 첫 HTTP 렌더에서도, JavaScript가
+다시 그린 뒤에도. 아래 [폼의 CSRF 토큰](#폼의-csrf-토큰)이 어디서 오는지 적는다.
+
 ## 약속하지 않는 것
 
 - **이벤트 핸들러.** `{% on "click" ... %}`만 단 버튼은 아무 일도 하지 않는다. 폼으로 대신할 수 있는 동작만
@@ -52,6 +55,53 @@ def add(request):
 - **실시간 갱신, 훅, 업로드, 플래시.** 모두 연결이 있어야 한다.
 - **WebSocket만 막힌 환경.** JavaScript는 있고 소켓이 막히면 페이지는 첫 렌더 그대로 남는다. 롱폴링 폴백은
   설계상 제외다(GAP-012). 그 경우도 위의 폼과 링크는 동작한다.
+
+## 폼의 CSRF 토큰
+
+컴포넌트 템플릿은 페이지의 `RequestContext`가 아니라 컴포넌트의 컨텍스트(필드·property·`this`)로 그려진다. 그래도
+`{% csrf_token %}`과 `{{ csrf_token }}`은 Django 페이지에서처럼 동작한다(#206). 1.5까지는 컴포넌트 안에서 빈 값이라
+일반 POST 폼이 403을 받았다.
+
+| 렌더 | 토큰 |
+|------|------|
+| 첫 HTTP 렌더 | 페이지의 것 — Django `csrf` 컨텍스트 프로세서의 lazy 값 그대로. 템플릿이 읽을 때에야 `get_token()`이 돌아, `{% csrf_token %}`을 그린 페이지만 CSRF 쿠키(`Set-Cookie`, `Vary: Cookie`)를 받는다 |
+| 라이브 렌더 (join, 이벤트·알림 뒤, LiveComponent, 함수 컴포넌트, 스트림 항목) | 연결이 WebSocket 핸드셰이크에서 받은 CSRF 쿠키의 시크릿으로 만든 것. `CSRF_USE_SESSIONS = True`면 세션의 시크릿 |
+
+- **컴포넌트 렌더의 라이브 토큰은 연결마다 하나다.** 시크릿을 연결이 처음 그릴 때 한 번 마스킹해 그 연결의 모든
+  렌더에 쓴다. 렌더마다 마스크를 바꾸면 정적 부분이 매번 달라져 부분 diff가 사라진다. Phoenix LiveView도 프로세스마다
+  한 번 마스킹한 토큰을 쓴다. 그 토큰이 소켓에 다시 실리는 때는 이렇다.
+  - 변수가 있는 `{% if %}`·`{% for %}` 블록 안의 폼은 블록의 정적 부분이라, 처음 그려질 때 한 번 가고 그 뒤 부분
+    diff에는 다시 실리지 않는다.
+  - 변수가 없는 조건 블록(`{% if %}` 안이 고정 마크업)은 블록 전체가 하나의 동적 문자열이라 분기가 바뀔 때마다 다시 간다.
+  - 새로 그려진 컴포넌트·블록의 첫 렌더는 정적 부분(토큰)과 동적 부분(필드 값)을 한 메시지에 싣는다.
+  - **스트림 항목**은 diff가 아니라 HTML 통째로 삽입마다 간다. 그래서 항목의 토큰은 삽입마다 새로 마스킹한다.
+- **압축한 소켓에서는 연결 안의 BREACH 완화가 없다.** Django는 응답마다 마스크를 바꿔 압축된 응답에서 토큰을
+  추측하지 못하게 한다(BREACH). 위의 경우 연결의 토큰은 같은 값으로 여러 메시지에, 다른 사용자가 정한 텍스트(채팅
+  메시지 같은 필드 값) 옆에 실린다. 서버가 WebSocket 압축(permessage-deflate)을 협상하면 그 메시지들이 한 압축
+  문맥에 들어가고, 경로를 엿보는 쪽이 피해자 화면에 텍스트를 반사시킬 수 있으면 길이로 토큰을 한 글자씩 맞혀 볼
+  수 있다. 운영에서는 압축을 끈다 — uvicorn은 기본으로 켜므로 `--ws-per-message-deflate false`([배포](../DEPLOYMENT.md#권장-uvicorn--uvloop)).
+  daphne는 기본으로 협상하지 않는다.
+- **보는 사람의 것이다.** 토큰은 그 연결의 시크릿에만 맞는다. 여러 연결이 렌더를 함께 쓰는
+  [`Meta.shared_render`](./shared-render.md)의 공유 렌더와 [`Broadcast`](./broadcast.md) 항목에는 넣지 않는다 —
+  검사(`VERIFY_SHARED_RENDER`, `Broadcast`는 언제나)에서는 읽으면 오류이고, 템플릿에 직접 쓰면 `wireview.W019`가
+  그 클래스를 공유에서 뺀다(그러면 렌더는 연결 자기 것이라 자기 토큰을 받는다).
+- **시크릿이 바뀌면(로그인의 `rotate_token`)** 이미 열린 연결은 옛 시크릿의 토큰을 계속 그린다. 그 폼은 403이다 —
+  로그인 전에 그려 둔 Django 페이지의 폼과 같다. 로그인 폼은 boost하지 않으므로([boost](./boost.md#폼은-스스로-청한다-wire-boost))
+  로그인 뒤의 새 페이지와 새 연결은 새 시크릿을 받는다. `CSRF_USE_SESSIONS`이면 경계([live_session](./live-session.md))에
+  들어갈 때 세션을 다시 읽으므로 그 뒤 렌더는 새 시크릿을 따른다. 단 `BOOST_PAGES`에서 **다른 탭**이 로그인하면 이
+  탭의 연결은 새로고침 전까지 옛 시크릿이다 — boost 이동은 소켓을 그대로 두므로, 새로 받은 페이지에서도 Django가 그린
+  폼은 통과하고 컴포넌트가 join하며 그린 폼은 403이다. 소켓의 신분(`user`도)이 다른 탭의 로그인을 모르는 문제로
+  [#209](https://github.com/itda-work/django-wireview/issues/209)에서 다룬다.
+- **연결에 시크릿이 없으면** 토큰은 비고, 서버 로그에 경고가 한 번 남는다. 첫 렌더가 `{% csrf_token %}`을 그리지
+  않아 쿠키를 받은 적이 없는 페이지 — 폼이 이벤트 뒤에야 나타나는 페이지 — 가 그렇다. 그 뷰에
+  `django.views.decorators.csrf.ensure_csrf_cookie`를 붙인다. 쿠키가 있는데도 그렇다면 `CSRF_COOKIE_PATH`·
+  `CSRF_COOKIE_DOMAIN`이 WebSocket 주소(`/__wireview__`)를 덮지 않아 브라우저가 핸드셰이크에 싣지 않은 것이다. Django가 받아 주지 않을 쿠키(형식이 틀린 것)도 없는 것과
+  같다. 시크릿은 Django의 `CsrfViewMiddleware`가 요청에서 읽듯 읽는다(쿠키 이름, `CSRF_USE_SESSIONS`, 4.0 이전의
+  마스킹된 쿠키).
+- 같은 이름의 필드나 property(`csrf_token`)를 가진 컴포넌트는 그것을 읽는다.
+
+`tests/test_csrf_token_e2e.py`가 이 렌더들이 그린 폼을 토큰을 검사하는 뷰로 제출해 보고, `tests/test_csrf_token.py`가
+연결마다의 토큰과 공유 렌더를 본다.
 
 ## 첫 렌더의 훅과 데이터베이스
 

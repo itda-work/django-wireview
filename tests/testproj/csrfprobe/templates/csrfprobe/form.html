@@ -1,0 +1,7 @@
+<form method="post"
+      action="{% url 'csrfprobe:post' %}"
+      data-testid="{{ name }}-form">
+  {% csrf_token %}
+  <input type="hidden" name="text" value="{{ name }}">
+  <button data-testid="{{ name }}-submit">{{ name }}</button>
+</form>

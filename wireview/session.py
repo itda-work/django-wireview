@@ -242,12 +242,21 @@ class WireviewSession:
         finally:
             self.handling -= 1
 
-    async def start(self, *, session: SessionView, vsn: int = 0, tab: str = "") -> None:
+    async def start(
+        self,
+        *,
+        session: SessionView,
+        vsn: int = 0,
+        tab: str = "",
+        csrf_cookies: t.Mapping[str, str] | None = None,
+    ) -> None:
         """Begin: a fresh repository for this connection, and the login it stands on.
 
-        ``session`` is the Django session already read (off the event loop), and
-        ``vsn`` the protocol version the client named in its socket URL, and
-        ``tab`` the page load it named there (``socket_tab``; empty from an older bundle).
+        ``session`` is the Django session already read (off the event loop),
+        ``vsn`` the protocol version the client named in its socket URL,
+        ``tab`` the page load it named there (``socket_tab``; empty from an older bundle), and
+        ``csrf_cookies`` the cookies its handshake carried, where the CSRF
+        secret is (``core/csrf.py``). Without them the renders get no token.
         """
         self.subscriptions = set()
         self.query_string: str = ""
@@ -275,6 +284,8 @@ class WireviewSession:
             # string, which navigation changes: moving between pages must not
             # change which diff forms this client can apply (GAP-030).
             vsn=vsn,
+            # Read on a render that draws {% csrf_token %}, once per secret (#206)
+            csrf_cookies=csrf_cookies,
         )
         # Which login this socket stands on. Compared against the fingerprint inside
         # every state a live_session page issued, and the topic a logout publishes to.

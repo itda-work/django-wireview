@@ -16,8 +16,14 @@ uvicorn myproject.asgi:application --host 0.0.0.0 --port 8000 --workers 4 --loop
 zlib의 deflate·inflate 컨텍스트를 들고 있게 된다 — 실측 연결당 159KB다. uvicorn이 연결당 daphne보다
 4배 무거워 보이는 이유가 통째로 이것이다(2,000연결에서 211KB 대 46KB, 압축을 끄면 51KB). wireview가
 보내는 것은 잘 안 줄어드는 작은 diff라서(전형적인 이벤트 페이로드가 16% 남짓 줄어든다) 그 메모리로
-사는 대역폭이 거의 없다. 첫 렌더나 스트림이 큰 HTML을 밀어내는 경우에만 켜 두고, 켜기 전에 양쪽을
-재 본다.
+사는 대역폭이 거의 없다.
+
+보안 이유도 있다. 압축은 한 연결의 메시지들을 한 문맥(컨텍스트 테이크오버, 32KB 창)에서 줄인다. 그 안에서 연결의
+비밀 — 페이지에 그린 개인 정보, 컴포넌트 폼의 CSRF 토큰([연결마다 하나](./features/dead-view.md#폼의-csrf-토큰)) —
+이 다른 사용자가 정한 텍스트(채팅 메시지, 스트림 항목) 옆에 거듭 실리면, 경로를 엿보는 쪽이 압축된 길이로 그 비밀을
+맞혀 볼 수 있다(BREACH·CRIME). Django가 HTTP 응답마다 CSRF 마스크를 바꾸는 이유가 이것인데, 소켓은 응답이 하나가
+아니라 연결 내내 이어진다. 그래서 운영에서는 끈다. 첫 렌더나 스트림이 큰 HTML을 밀어내 대역폭이 정말 문제일 때에만,
+양쪽을 재 보고 그 위험을 받아들일 수 있는 화면에서 켠다. daphne는 압축을 협상하지 않는다.
 
 ```bash
 make bench ARGS="--connections 2000 --server uvicorn"
@@ -178,7 +184,7 @@ Windows에서는 `INSTALLED_APPS`에서 `"daphne"`도 뺀다. `runserver`를 받
 # 코어마다 단일 프로세스 uvicorn 하나, 각자 자기 포트에 (--workers 없이).
 # 운영에서는 NSSM이나 작업 스케줄러로 서비스 등록한다.
 1..4 | ForEach-Object {
-    Start-Process uvicorn -ArgumentList "myproject.asgi:application --host 127.0.0.1 --port $(8000 + $_)"
+    Start-Process uvicorn -ArgumentList "myproject.asgi:application --host 127.0.0.1 --port $(8000 + $_) --ws-per-message-deflate false"
 }
 ```
 

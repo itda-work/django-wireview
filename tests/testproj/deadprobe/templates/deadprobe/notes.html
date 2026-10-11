@@ -7,6 +7,7 @@
   <form method="post"
         action="{% url 'deadprobe:add' %}"
         {% on "submit.prevent" "add" %}>
+    {% csrf_token %}
     <input name="text" data-testid="text">
     <button type="submit" data-testid="add">add</button>
   </form>

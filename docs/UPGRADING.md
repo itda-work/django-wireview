@@ -66,6 +66,21 @@ dependencies = ["django-wireview>=1.5,<2"]
 
 주제별로 묶었다. 괄호 안의 번호가 그 변경의 이슈다.
 
+### 보안
+
+- **고쳐짐: 컴포넌트 템플릿의 `{% csrf_token %}`이 토큰을 그린다(#206).** 1.5까지는 첫 HTTP 렌더에서도 라이브 렌더에서도
+  빈 값이라, 컴포넌트 안의 일반 POST 폼은 403을 받았다. 그래서 그 뷰에 `csrf_exempt`를 붙여 두었다면 떼고 폼에
+  `{% csrf_token %}`을 둔다 — 그 예외는 그 뷰의 CSRF 보호를 통째로 끈 것이다. 무엇이 어디서 오는지는
+  [dead view](./features/dead-view.md#폼의-csrf-토큰).
+  - 조용히 달라짐: 컴포넌트 템플릿이 `{% csrf_token %}`을 그리는 페이지는 CSRF 쿠키를 받는다. 페이지 템플릿에서처럼
+    응답에 `Set-Cookie`(`CSRF_USE_SESSIONS`면 세션 쓰기)와 `Vary: Cookie`가 붙는다. 그 페이지를 공용 캐시에 두었다면
+    이제 사용자마다 나뉜다. 1.5에서는 그 태그가 아무것도 하지 않았으므로 쿠키도 없었다.
+  - 컴포넌트에 `csrf_token`이라는 필드나 property가 있으면 지금처럼 그것이 템플릿의 `csrf_token`이다.
+  - 보안 조치: uvicorn을 `--ws-per-message-deflate false` 없이 띄우고 있다면 붙인다. 컴포넌트 렌더의 토큰은 연결마다
+    하나라, 압축한 소켓에서는 다른 사용자가 정한 텍스트와 한 압축 문맥에 거듭 실린다(BREACH). 이유는
+    [배포](./DEPLOYMENT.md#권장-uvicorn--uvloop), 토큰이 언제 다시 실리는지는
+    [dead view](./features/dead-view.md#폼의-csrf-토큰).
+
 ### 중첩 컴포넌트
 
 - **조용히 달라짐: 그린 쪽이 더는 그리지 않는 중첩 컴포넌트는 그 렌더와 함께 은퇴한다.** `{% component %}`로 그린 컴포넌트를

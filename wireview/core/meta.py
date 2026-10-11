@@ -256,6 +256,9 @@ class WireviewMeta:
         self._pending_operations: list[tuple[str, dict[str, t.Any]]] = []
         # What to do once the pending operations are sent (``after_flush``)
         self._after_flush: list[t.Callable[[], None]] = []
+        # The connection's ``csrf_token`` for a render that has no context of the
+        # component's: a stream item, masked anew for each (set by the repository, #206)
+        self.csrf: t.Callable[[], t.Any] | None = None
         # Pending broadcasts queue (separate from operations since they go through channel layer)
         self._pending_broadcasts: list[tuple[str, dict[str, t.Any]]] = []
         # Last ``data-state`` token this component issued: (state_json, token, issued_at).
@@ -904,6 +907,7 @@ class WireviewMeta:
         from ..slots import SlotContainer
 
         context["slots"] = self.slots if self.slots is not None else SlotContainer()
+        self._add_csrf_token(context, repo, pending)
         if self._watch:
             context = {**shared_render.watched_context(component), **context}
 
@@ -968,6 +972,17 @@ class WireviewMeta:
             self.drawn = {**self.drawn, **{key: frozenset(items) for key, items in drawing.items()}}
 
         return mark_safe(html) if html else None
+
+    def _add_csrf_token(self, context: Context, repo: Repo, pending: list[str] | None) -> None:
+        """Put the repository's ``csrf_token`` in ``context``, unless the component has its own (#206).
+
+        Not in a render that may be shared between connections (``state_slot``):
+        the token is the viewer's. Its verification watches the name instead.
+        """
+        if self._state_slot or "csrf_token" in context or (pending is not None and "csrf_token" in pending):
+            return
+        if (token := getattr(repo, "csrf_token", None)) is not None:
+            context["csrf_token"] = token
 
     def _get_context(
         self,
@@ -1034,6 +1049,7 @@ class WireviewMeta:
 
         # Add slots to context (use empty container if not provided)
         context["slots"] = slots if slots is not None else SlotContainer()
+        self._add_csrf_token(context, repo, pending)
 
         context = dict(
             context,

@@ -166,6 +166,10 @@ UPGRADE_NOTE = {
         "읽어 붙이는 목록은 QuerySet을 `stream(..., reset=False)`에 넘긴다",
         "`start_async`로 넘기거나",
     ),
+    "`{% csrf_token %}` in a component's template renders a token": (
+        "컴포넌트 템플릿의 `{% csrf_token %}`이 토큰을 그린다",
+        "`csrf_exempt`를 붙여 두었다면",
+    ),
 }
 
 EXAMPLE = "저장소의 예제만 바뀌었다"

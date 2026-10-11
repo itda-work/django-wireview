@@ -415,6 +415,8 @@ def _page_repository(context: Context) -> ComponentRepository:
                 # rather than off a setting is what makes the boundary a property of
                 # the page rather than of the project (#58).
                 live_session=get_live_session(getattr(request, LIVE_SESSION_REQUEST_ATTR, "")) if request else None,
+                # The context processor's lazy token: the components' templates get the page's (#206)
+                csrf_token=context.get("csrf_token"),
             )
         context["wireview_repository"] = repo
     return repo

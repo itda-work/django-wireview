@@ -93,6 +93,9 @@ async 핸들러 안에서 그 조회가 일어나면 `SynchronousOnlyOperation`�
 
 세션 미들웨어가 없는 프로젝트나 손으로 만든 컴포넌트에서는 빈 세션(`session_key`는 `None`)이다.
 
+`CSRF_USE_SESSIONS = True`이면 컴포넌트 템플릿의 `{% csrf_token %}`도 이 스냅샷의 시크릿으로 만든다
+([dead view](./dead-view.md#폼의-csrf-토큰)).
+
 ## 테스트
 
 `mount()`에 세션을 주입한다.
