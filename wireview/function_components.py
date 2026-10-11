@@ -295,7 +295,9 @@ class FunctionComponent:
                 raise TypeError(
                     f"Function component '{self.name}' with template must return a dict, got {type(result).__name__}"
                 )
-            template = loader.get_template(self.template)
+            template = page_request.django_template(
+                loader.get_template(self.template), f"Function component {self.name!r}", self.template
+            )
             template_context = {**_page_of(context), **result}
 
             # Add slots to context if provided

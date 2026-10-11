@@ -24,14 +24,16 @@ one. Being verified, and in a ``Broadcast`` item, ``request`` is watched
 ``Meta.shared_render`` class whose template holds a ``{% querystring %}`` that
 reads the request is out of scope (``wireview.W019``).
 
-A template of another backend than Django's renders as its backend renders it:
-only Django's nodes read ``context.request``.
+A component's template is a Django template (``django_template``): wireview's
+tags and the render's markers are Django's, so another backend's template never
+rendered live. A page's template may be any backend's.
 """
 
 from __future__ import annotations
 
 import typing as t
 
+from django.core.exceptions import ImproperlyConfigured
 from django.http import QueryDict
 from django.template import Context
 from django.template.exceptions import TemplateDoesNotExist
@@ -105,16 +107,14 @@ def render(template: t.Any, context: dict[str, t.Any], make: type[Context] = Con
 
     As the backend renders a dict without a request (``make_context``: the dict
     itself, not a copy), with ``context.request`` the page's (``page_request``).
-    ``make`` builds the ``Context``. A template of another backend (no
-    ``engine``, as Jinja2's) is the backend's to render, ``make`` or not.
+    ``make`` builds the ``Context``. ``template`` is a Django template
+    (``django_template``).
     """
     from django.template.backends.django import reraise
 
     backend = getattr(template, "backend", None)
-    if backend is not None and getattr(backend, "engine", None) is None:
-        return template.render(context)
     inner = t.cast("Template", getattr(template, "template", template))
-    autoescape = backend.engine.autoescape if backend is not None else inner.engine.autoescape
+    autoescape = (backend.engine if backend is not None else inner.engine).autoescape
     built = make(context, autoescape=autoescape)
     if (request := page_request(context)) is not None:
         built.request = request  # type: ignore[attr-defined]
@@ -124,3 +124,33 @@ def render(template: t.Any, context: dict[str, t.Any], make: type[Context] = Con
         if backend is None:
             raise
         reraise(exc, backend)
+
+
+def is_django(template: t.Any) -> bool:
+    """Whether ``template`` is Django's: a ``DjangoTemplates`` backend's wrapper, or a ``Template``."""
+    from django.template.backends.django import DjangoTemplates
+    from django.template.base import Template
+
+    return isinstance(template, Template) or isinstance(getattr(template, "backend", None), DjangoTemplates)
+
+
+def not_django(template: t.Any, owner: str, name: str) -> str:
+    """Why ``template``, found for ``owner`` under ``name``, cannot render: it is another backend's."""
+    backend = getattr(template, "backend", None)
+    engine = type(backend) if backend is not None else type(template)
+    alias = getattr(backend, "name", None)
+    return (
+        f"{owner}'s template {name!r} was found by the {alias!r} template engine "
+        f"({engine.__module__}.{engine.__qualname__}), not by a DjangoTemplates one: wireview renders a "
+        f"component's template with Django's template engine only -- its tags ({{% tag_header %}}, {{% on %}}, "
+        f"{{% component %}}) and the markers of a live render are Django's. Put the template in a "
+        f"DjangoTemplates engine's DIRS or app directories, ahead of the other engine in TEMPLATES. "
+        f"A page's template may use any engine."
+    )
+
+
+def django_template(template: t.Any, owner: str, name: str) -> t.Any:
+    """``template`` when it is Django's, as a component's template must be; ``ImproperlyConfigured`` if not."""
+    if not is_django(template):
+        raise ImproperlyConfigured(not_django(template, owner, name))
+    return template

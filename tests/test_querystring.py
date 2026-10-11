@@ -21,7 +21,6 @@ where a join that raises fails. These hold now:
   component it draws; verified, one that reads it raises; a ``Broadcast`` item that
   reads it raises always (tests/test_broadcast.py)
 - a ``Meta.lazy_properties`` component's own ``request`` property is not computed for it
-- a template of another backend than Django's renders as the backend renders it
 - on a real socket: the join, an event, and a ``push_to`` the page follows
 - ``mount()`` draws its ``params``, and a ``follow_push()``'s
 
@@ -496,56 +495,6 @@ async def test_a_lazy_property_named_request_is_not_computed():
     assert mounted.render().endswith(">0</div>")
     await mounted.render_diff()
     assert QsLazy._requests == []
-
-
-class OtCount(Component):
-    class Meta:
-        template_name = "other/count.html"
-
-    n: int = 0
-
-    async def bump(self):
-        self.n += 1
-
-
-class OtKept(Component):
-    """Its renders after the first are tracked for the temporary assign they do not set (#111)."""
-
-    class Meta:
-        template_name = "other/kept.html"
-        temporary_assigns = {"rows": []}
-
-    n: int = 0
-    rows: list[int] = []
-
-    async def bump(self):
-        self.n += 1
-
-
-@function_component(template="other/fn.html")
-def ot_fn(n: int):
-    return {"n": n}
-
-
-@pytest.fixture
-def _other_backend():
-    with override_settings(TEMPLATES=[{"BACKEND": "testproj.other_backend.OtherTemplates", "DIRS": [], "OPTIONS": {}}]):
-        yield
-
-
-@pytest.mark.asyncio
-@pytest.mark.usefixtures("_other_backend")
-async def test_a_template_of_another_backend_renders_as_the_backend_renders_it():
-    """Only Django's nodes read ``context.request``: Jinja2's templates rendered with no ``engine`` to ask."""
-    assert ot_fn(n=2) == "<p>fn 2</p>"
-    counted = await wireview_testing.mount(OtCount, id="c")
-    await counted.call("bump")
-    assert counted.render() == '<div id="c">1</div>'
-    kept = await wireview_testing.mount(OtKept, id="k")
-    await kept.render_diff()
-    await kept.call("bump")
-    await kept.render_diff()  # the tracked render: rows reset and not set since
-    assert kept.render() == '<div id="k">1 []</div>'
 
 
 # -- a socket -------------------------------------------------------------------------------

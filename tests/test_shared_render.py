@@ -1942,7 +1942,7 @@ def test_a_template_that_is_not_django_s_keeps_the_render_its_own(monkeypatch):
 
     monkeypatch.setattr(loader, "get_template", lambda name, using=None: Elsewhere())
     assert shared_render.out_of_scope(ShIncPlain) == [
-        "its template is not a Django template, which this check cannot read"
+        "its template is not a Django template, as a component's template must be (wireview.W022)"
     ]
 
 

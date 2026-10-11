@@ -1,10 +1,10 @@
 """A template backend that is not Django's, shaped as ``django.template.backends.jinja2`` (#210).
 
-tests/test_querystring.py renders components and function components with it:
-a template of another backend is the backend's to render. The wrapper has
-``template`` and ``backend`` as Django's own wrappers do, and the backend has
-``env`` -- no ``engine``. jinja2 is not a dependency, so its templates are
-``str.format`` strings over the context.
+A component's template renders with Django's engine only. tests/test_component_templates.py
+and the W022 rows of tests/test_checks.py put this engine ahead of a DjangoTemplates one:
+the wrapper has ``template`` and ``backend`` as Django's own wrappers do, and the
+backend has ``env`` -- no ``engine``. jinja2 is not a dependency, so its templates
+are ``str.format`` strings over the context.
 """
 
 from django.template import TemplateDoesNotExist
@@ -14,7 +14,6 @@ from django.template.backends.base import BaseEngine
 TEMPLATES = {
     "other/count.html": '<div id="{id}">{n}</div>',
     "other/fn.html": "<p>fn {n}</p>",
-    "other/kept.html": '<div id="{id}">{n} {rows}</div>',
 }
 
 

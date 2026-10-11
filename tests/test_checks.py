@@ -34,6 +34,7 @@ from wireview.checks import (
     check_client_bundle,
     check_component_name_collisions,
     check_cookie_paths,
+    check_django_templates,
     check_live_sessions,
     check_reconnect_settings,
     check_runserver_is_asgi,
@@ -1220,6 +1221,66 @@ class TestLiveSessions:
         assert check_live_sessions(None) == []
 
 
+class TestDjangoTemplatesCheck:
+    """W022: a component's or function component's template is found by another engine than Django's (#210)."""
+
+    ENGINES = [
+        {"BACKEND": "testproj.other_backend.OtherTemplates", "DIRS": [], "OPTIONS": {}},
+        {
+            "BACKEND": "django.template.backends.django.DjangoTemplates",
+            "OPTIONS": {
+                "loaders": [
+                    (
+                        "django.template.loaders.locmem.Loader",
+                        {"other/count.html": "<div></div>", "dj/count.html": "<div></div>", "dj/fn.html": "<p></p>"},
+                    )
+                ]
+            },
+        },
+    ]
+
+    @pytest.fixture
+    def functions(self, monkeypatch):
+        from wireview import function_components
+
+        def _functions(**templates):
+            registry = {
+                name: function_components.FunctionComponent(func=lambda: {}, name=name, template=template)
+                for name, template in templates.items()
+            }
+            monkeypatch.setattr(function_components, "_registry", registry)
+
+        return _functions
+
+    def test_a_template_another_engine_finds_first_is_flagged(self, only, functions):
+        only(make_component("OtherCount", meta={"template_name": "other/count.html"}))
+        functions(other_fn="other/fn.html")
+        with override_settings(TEMPLATES=self.ENGINES):
+            messages = check_django_templates(None)
+        assert [m.id for m in messages] == ["wireview.W022", "wireview.W022"]
+        assert (
+            "probeapp.live.OtherCount's template 'other/count.html' was found by the 'other_backend'" in messages[0].msg
+        )
+        assert "Function component 'other_fn''s template 'other/fn.html'" in messages[1].msg
+        assert "DjangoTemplates" in messages[0].hint
+
+    def test_django_templates_and_missing_ones_are_silent(self, only, functions):
+        """A template no engine finds is the render's to tell: not this check's."""
+        only(
+            make_component("DjCount", meta={"template_name": "dj/count.html"}),
+            make_component("Nowhere", meta={"template_name": "nowhere.html"}),
+        )
+        functions(dj_fn="dj/fn.html", nowhere_fn="nowhere.html")
+        with override_settings(TEMPLATES=self.ENGINES):
+            assert check_django_templates(None) == []
+
+    def test_django_ahead_of_the_other_engine_is_silent(self, only, functions):
+        only(make_component("OtherCount", meta={"template_name": "other/count.html"}))
+        functions()
+        with override_settings(TEMPLATES=list(reversed(self.ENGINES))):
+            assert check_django_templates(None) == []
+
+
 class TestTestprojIsClean:
     """AC3: zero false positives on the project we actually ship tests for."""
 
@@ -1237,6 +1298,7 @@ class TestTestprojIsClean:
         assert check_upload_temp_dir(None) == []
         assert check_signing_key(None) == []
         assert check_live_sessions(None) == []
+        assert check_django_templates(None) == []
 
     def test_the_settings_checks_run_with_plain_check(self):
         """A check nobody registers is silent too: the calls above cannot tell."""

@@ -178,6 +178,10 @@ UPGRADE_NOTE = {
         "다른 탭이 신분을 바꾼 뒤의 boost 이동이 새 소켓을 연다",
         "쿠키가 소켓에 닿게 고친다",
     ),
+    "A component's template renders with Django's template engine only": (
+        "컴포넌트 템플릿은 Django 템플릿 엔진만 그린다",
+        "`DjangoTemplates` 엔진의 `DIRS`나 앱 디렉터리로 옮긴다",
+    ),
     "Django's `{% querystring %}` works in a component's template": (
         "컴포넌트 템플릿의 `{% querystring %}`이 동작한다",
         "이유를 적은 `AttributeError`로 실패한다",

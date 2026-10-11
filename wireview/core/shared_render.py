@@ -192,7 +192,7 @@ def _template_reasons(cls: type[Component]) -> list[str]:
         return [f"its template could not be loaded ({type(error).__name__}: {error})"]
     inner = getattr(template, "template", template)
     if getattr(inner, "nodelist", None) is None:
-        return ["its template is not a Django template, which this check cannot read"]
+        return ["its template is not a Django template, as a component's template must be (wireview.W022)"]
     reach = _Reach(cls)
     try:
         reach.template(inner, owned=True)

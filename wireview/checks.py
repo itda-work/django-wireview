@@ -1085,6 +1085,50 @@ def check_shared_render(app_configs, **kwargs) -> list[CheckMessage]:
     return messages
 
 
+def check_django_templates(app_configs, **kwargs) -> list[CheckMessage]:
+    """W022: a component's or function component's template is found by another engine than Django's.
+
+    wireview renders a component's template with Django's engine only: its tags
+    and a live render's markers are Django's (#210). With a Jinja2 engine ahead
+    of the DjangoTemplates one in TEMPLATES, a name both can find goes to Jinja2,
+    and the first render raises. A template no engine finds is not this check's:
+    the render says so.
+    """
+    from django.template import TemplateDoesNotExist, TemplateSyntaxError, loader
+
+    from .core.page_request import is_django, not_django
+    from .function_components import _registry
+
+    found: list[tuple[t.Any, str, str]] = [
+        (cls, cls._fqn, cls._meta.template_name) for cls in iter_component_classes() if cls._meta.template_name
+    ]
+    seen: set[int] = set()
+    for function in _registry.values():
+        if function.template and id(function) not in seen:
+            seen.add(id(function))
+            found.append((function.func, f"Function component {function.name!r}", function.template))
+
+    messages = []
+    for obj, owner, name in found:
+        try:
+            template = loader.get_template(name)
+        except (TemplateDoesNotExist, TemplateSyntaxError):
+            continue
+        if not is_django(template):
+            messages.append(
+                Warning(
+                    not_django(template, owner, name),
+                    hint=(
+                        "A component's template renders with Django's template engine only. Move it where a "
+                        "DjangoTemplates engine finds it first. See docs/COMPATIBILITY.md."
+                    ),
+                    obj=obj,
+                    id="wireview.W022",
+                )
+            )
+    return messages
+
+
 def register_checks() -> None:
     """Register every check. Called from ``WireviewConfig.ready()``."""
     register(check_async_handlers, WIREVIEW_TAG)
@@ -1102,6 +1146,7 @@ def register_checks() -> None:
     register(check_signing_key, WIREVIEW_TAG)
     register(check_hook_files, WIREVIEW_TAG)
     register(check_shared_render, WIREVIEW_TAG)
+    register(check_django_templates, WIREVIEW_TAG)
     register(check_channel_layer_configured, WIREVIEW_TAG)
     register(check_runserver_is_asgi, WIREVIEW_TAG)
     register(check_websocket_session, WIREVIEW_TAG)
