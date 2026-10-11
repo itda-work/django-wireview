@@ -272,6 +272,12 @@ dependencies = ["django-wireview>=1.5,<2"]
   - `shared_render`를 선언한 클래스의 템플릿에 페이지의 쿼리를 읽는 `{% querystring %}`이 있으면 `wireview.W019`가 알리고
     공유하지 않는다. 1.5에서는 그 템플릿이 렌더되지 않았으므로 새로 공유를 잃는 `{% querystring %}`은 없다. Django 5.2의
     `{% querystring None page=2 %}`도 읽음으로 본다.
+- **달라짐: 컴포넌트 템플릿은 Django 템플릿 엔진만 그린다(#210).** 컴포넌트·함수 컴포넌트·스트림·`Broadcast` 항목의
+  템플릿을 Jinja2 같은 다른 엔진이 찾으면(`TEMPLATES`에서 그 엔진이 `DjangoTemplates`보다 앞에 있을 때) 첫 렌더가
+  어느 클래스·템플릿·엔진인지 적은 `ImproperlyConfigured`로 실패하고, `manage.py check`가 `wireview.W022`로 먼저 알린다.
+  1.5에서는 그 엔진이 그렸지만 `{% tag_header %}`도 마커도 없어 페이지가 join하지 못했다 — 라이브로 동작한 적이 없다.
+  그런 템플릿은 `DjangoTemplates` 엔진의 `DIRS`나 앱 디렉터리로 옮긴다. 페이지 템플릿은 그대로 둬도 된다
+  ([호환성](./COMPATIBILITY.md#지원-범위)).
 
 ### 테스트
 

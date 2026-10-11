@@ -70,7 +70,8 @@ LiveView가 `handle_params`의 uri로 같은 일을 한다.
 - [`Meta.shared_render`](./shared-render.md#범위)를 선언한 클래스의 템플릿에 페이지의 쿼리를 읽는 `{% querystring %}`이
   있으면 공유하지 않는다(`wireview.W019`). 쿼리는 연결마다 다르다. 공유되는 렌더에는 `context.request`가 없다(1.5와
   같다). [`Broadcast`](./broadcast.md) 항목 템플릿에서는 `request`를 읽은 것으로 보고 오류다.
-- Django가 아닌 백엔드(Jinja2 등)의 템플릿은 지금처럼 그 백엔드가 그린다. `context.request`는 Django의 태그만 읽는다.
+- 컴포넌트 템플릿은 Django 템플릿이다([호환성](../COMPATIBILITY.md#지원-범위)). 다른 엔진이 찾은 것은 첫 렌더에서
+  오류다(`wireview.W022`).
 
 ## 첫 응답과 join
 

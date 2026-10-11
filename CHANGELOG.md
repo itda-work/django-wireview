@@ -73,6 +73,12 @@ The django-reactor era changelog (2.x) is preserved in
   retired. An older client gets the empty render an event with no handler gets. Before, nothing came
   back and the button stayed loading. An event for a component its drawer's render retired a moment
   before runs its handler and is answered the same way: nothing of the component is rendered.
+- A component's template renders with Django's template engine only (#210): a component's, a function
+  component's, a stream or `Broadcast` item's. One another engine finds -- Jinja2 ahead of DjangoTemplates in
+  `TEMPLATES` -- raises `ImproperlyConfigured` on its first render, naming the class, the template and the
+  engine, and `manage.py check` warns of it first (`wireview.W022`). Such a template rendered before, but with
+  none of wireview's tags or a live render's markers its page never joined it. A page's template may use any
+  engine.
 - Documented when `broadcast()` (after the commit) and `abroadcast()` (at once) publish, and when a session reads
   `get_subscriptions()` again, with a test that a topic given up in `notification()` is heard no more (#203).
 
@@ -91,8 +97,7 @@ The django-reactor era changelog (2.x) is preserved in
   whose templates hold a `{% querystring %}` without a mapping of its own (or, on Django 5.2, given `None`) is
   out of scope (`wireview.W019`). A render many connections share has no `context.request`, as in 1.5, so a
   tag that asks for one with `getattr` goes on without it rather than showing the first connection's query;
-  verified, a shared render that reads it raises, and so does a `Broadcast` item. A template of a backend
-  other than Django's is rendered by its backend, as before.
+  verified, a shared render that reads it raises, and so does a `Broadcast` item.
 - A boosted navigation after another tab logged in, logged out, logged in as someone else or rotated the CSRF
   secret no longer joins the new page's components under the socket's old identity (#209). Every `data-state`
   carries a fingerprint of who its page was rendered for (the login and the CSRF secret, hashed), and a join
