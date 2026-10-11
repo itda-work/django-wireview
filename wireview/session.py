@@ -195,6 +195,8 @@ class WireviewSession:
         # Whether a render retired a component since the subscriptions were last
         # settled: a nested one its drawer's pass stopped drawing hears no more (#204)
         self._retired_in_render: bool = False
+        # Mails the session sends itself from a timer (``_join_deadline``), kept until done
+        self._background: set[asyncio.Future[None]] = set()
         self._init_patches()
 
     def _init_patches(self) -> None:
@@ -313,6 +315,9 @@ class WireviewSession:
         # With those retired that no batch took yet, and the ones kept for the page's events (#204)
         await self._call_leaving([*self.repo.components.values(), *self.repo.take_retired(), *self.repo.bury_all()])
         await self._release_connection_uploads()
+        # Nothing waits for a join any more (#207)
+        for component in self.repo.components.values():
+            self._end_wait(component)
 
         # Cleanup subscriptions
         for channel in self.subscriptions:
@@ -562,15 +567,15 @@ class WireviewSession:
             # here is not retried, where a handler's is (#94).
             await self._join_failed(component_id or "", name, answer)
             return
-        if component.wire.unheard:
-            # What it would have heard since its drawer's pass built it, now that
-            # it joined (#207): mailed, so it comes in its turn as each message
-            # the channel brings from here on -- behind ``joined`` and whatever
-            # joined() sent
-            if self.channel_name:
-                await component.wire.send("deliver_unheard", id=component.id, instance=component.wire.instance)
-            else:
-                await notifications.deliver_unheard(self, component)
+        if waiting := self._waiting_on(component):
+            # What it -- and a LiveComponent its render ran joined() for -- would
+            # have heard since its drawer's pass built it, now that it joined
+            # (#207): mailed, so it comes in its turn as each message the channel
+            # brings from here on -- behind ``joined`` and whatever joined() sent.
+            # A mail that did not go (no channel, a full one) never comes: now
+            # then, rather than never -- what comes meanwhile waits behind it.
+            if not await component.wire.send("deliver_unheard", id=component.id, instance=component.wire.instance):
+                await notifications.deliver_unheard(self, waiting)
 
     async def _enter_live_session(self, payload: StatePayload) -> str:
         """Settle which ``live_session`` this connection is in, for one join.
@@ -1303,10 +1308,122 @@ class WireviewSession:
         await self.send_command("joined", _with_ref({"id": id}, ref))
 
     async def component_deliver_unheard(self, id: str, instance: int):
-        """What the instance that joined would have heard before (``command_join``, #207)."""
+        """What the instance that joined would have heard before (``command_join``, #207).
+
+        Only that instance's: another one under the id since -- one a pass built
+        anew, waiting for its own join -- hears nothing before its ``joined()``.
+        """
         component = self.repo.reachable(id)
         if component is not None and component.wire.instance == instance:
-            await notifications.deliver_unheard(self, component)
+            await notifications.deliver_unheard(self, self._waiting_on(component))
+
+    def _waiting_on(self, component: Component) -> list[Component]:
+        """``component``, which just joined, and the LiveComponents under it, if something waits on them (#207).
+
+        The LiveComponents the component's pass built before its join -- its
+        join's render ran their ``joined()`` -- waited as it did. Their wait is
+        over: no deadline retires them any more.
+        """
+        tree = [component]
+        tree += [
+            each
+            for each in self.repo.reachable_components()
+            if isinstance(each, LiveComponent) and each.wire.has_joined and self.repo.root_of(each) is component
+        ]
+        for each in tree:
+            self._end_wait(each)
+        return [each for each in tree if each.wire.unheard]
+
+    @staticmethod
+    def _end_wait(component: Component) -> None:
+        wire = component.wire
+        wire.unheard_since = None
+        if wire.join_deadline is not None:
+            wire.join_deadline.cancel()
+            wire.join_deadline = None
+
+    async def _awaits_join(self, component: Component) -> None:
+        """``notifications.Host``: ``component`` has yet to join and a notification waits on it (#207).
+
+        A page joins a component a round trip after the render that drew it,
+        so the wait has an end: one that is not joined ``JOIN_SECONDS`` after
+        the first came, or with more than ``UNHEARD_LIMIT`` waiting, is taken
+        for one the page never joins (``_never_joined``). Read as each comes,
+        and once more when the time is up, with nothing coming.
+        """
+        wire = component.wire
+        now = self.repo.clock()
+        if wire.unheard_since is None:
+            wire.unheard_since = now
+            wire.join_deadline = asyncio.get_running_loop().call_later(
+                notifications.JOIN_SECONDS, self._join_deadline, component
+            )
+        if len(wire.unheard) > notifications.UNHEARD_LIMIT or now - wire.unheard_since >= notifications.JOIN_SECONDS:
+            await self._never_joined(component)
+
+    def _join_deadline(self, component: Component) -> None:
+        """``JOIN_SECONDS`` after the first notification waited on ``component``: mail the session to look.
+
+        Mailed, so it comes in its turn: a join already in the channel ahead of
+        it is handled first.
+        """
+        component.wire.join_deadline = None
+        if self.repo.get(component.id) is not component or component.wire.has_joined:
+            return
+        task = asyncio.ensure_future(self._mail_join_overdue(component.id, component.wire.instance))
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
+
+    async def _mail_join_overdue(self, id: str, instance: int) -> None:
+        if not self.channel_name:
+            # A bare session in a test: no channel, no adapter to take turns with
+            await self.component_join_overdue(id, instance)
+            return
+        try:
+            await get_broker().send_to_session(
+                self.channel_name,
+                {
+                    "type": "message_from_component",
+                    "command": "join_overdue",
+                    "kwargs": {"id": id, "instance": instance},
+                },
+            )
+        except Exception:
+            # The next notification that waits on it looks again
+            log.warning("Could not tell %s a join is overdue", self.connection_id, exc_info=True)
+
+    async def component_join_overdue(self, id: str, instance: int):
+        """The instance under ``id`` has not joined ``JOIN_SECONDS`` after a notification first waited on it."""
+        component = self.repo.reachable(id)
+        if component is None or component.wire.instance != instance or component.wire.has_joined:
+            return
+        await self._never_joined(component)
+        await self.after_mutation_chores()
+
+    async def _never_joined(self, component: Component) -> None:
+        """Retire the component the page has not joined, with what waited on it (``_awaits_join``).
+
+        It is the one a join completes: ``component`` itself, or the component
+        that owns it. It never ran ``joined()``, so no ``leaving()``; its tasks
+        are cancelled. A join that comes for it after all builds it anew from
+        what the page holds.
+        """
+        root = self.repo.root_of(component)
+        if root.wire.has_joined:
+            # A LiveComponent of a joined one is joined in the render that built it
+            return
+        log.warning(
+            "%s (%s) was drawn and not joined; retiring it with %d notification(s) it was to hear (#207)",
+            root._name,
+            root.id,
+            len(component.wire.unheard),
+        )
+        removed = self.repo.remove(root.id)
+        for each in removed:
+            self._end_wait(each)
+            each.wire.unheard = []
+        await self._call_leaving(removed)
+        self._release_uploads(removed)
 
     async def component_release_patches(self, id: str, instance: int, token: int = 0):
         """The operations sent before this are written: let ``token`` go (``_hold_patches``)."""

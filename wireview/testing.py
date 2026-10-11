@@ -220,7 +220,7 @@ class MockWireviewMeta(WireviewMeta):
         url = resolve_destination(to, **kwargs)
         await self.send("url_change", command="push", url=url)
 
-    async def send(self, _command: str, **kwargs: t.Any) -> None:
+    async def send(self, _command: str, **kwargs: t.Any) -> bool:
         """Override to track messages instead of sending via WebSocket."""
         # A reset's Broadcast hold token is the session's, not the page's (#178):
         # it lets the held patches go where the reset is written
@@ -230,10 +230,12 @@ class MockWireviewMeta(WireviewMeta):
             self._post(message, hold)
         else:
             self.sent_messages.append(message)
+        return True
 
-    async def send_to(self, _channel: str, _command: str, **kwargs: t.Any) -> None:
+    async def send_to(self, _channel: str, _command: str, **kwargs: t.Any) -> bool:
         """Override to track messages instead of sending via WebSocket."""
         self.sent_messages.append({"channel": _channel, "command": _command, **kwargs})
+        return True
 
     async def _send_broadcast(self, channel: str, **kwargs: t.Any) -> None:
         """Record the broadcast (``view.broadcasts``) and publish it as a page's is (#201).
@@ -369,6 +371,10 @@ class _Connection:
 
     async def after_mutation_chores(self) -> None:
         await self.mounted._update_subscriptions()
+
+    async def _awaits_join(self, component: "Component") -> None:
+        # A mounted component joins as it mounts: nothing waits on one
+        pass
 
 
 class MountedComponent(t.Generic[t.TypeVar("C", bound="Component")]):
@@ -1212,7 +1218,6 @@ async def _mount(
                 mounted._post(None, hold)
     else:
         wire.freeze()
-        wire.has_joined = True
 
     return mounted
 

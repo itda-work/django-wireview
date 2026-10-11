@@ -115,8 +115,12 @@ dependencies = ["django-wireview>=1.5,<2"]
   그린 인스턴스는 그 렌더부터 연결에 있고 페이지의 join은 한 왕복 뒤에 온다. 그 사이에 구독한 채널로 온 알림이 전에는
   `joined()`보다 먼저 `notification()`·`mutation()`을 돌렸고, 그 결과는 곧이어 오는 join이 페이지가 가진 상태로 덮어써
   화면에서 사라졌다(#207). 이제 그 알림은 인스턴스에 모였다가 `joined()`와 join의 렌더 뒤에 온 순서대로 넘어간다.
-  같은 사이에 온 URL 변경(`params_changed()`)은 건너뛴다 — join이 `joined()` 뒤에 그때의 쿼리로 부른다.
-  `joined()`에서 초기화하는 상태를 `notification()`에서 읽어도 된다.
+  그 컴포넌트가 그리는 LiveComponent도 같다. 같은 사이에 온 URL 변경(`params_changed()`)은 건너뛴다 — join이
+  `joined()` 뒤에 그때의 쿼리로 부른다. `joined()`에서 초기화하는 상태를 `notification()`에서 읽어도 된다.
+  기다림에는 끝이 있다: 첫 알림이 모인 뒤 10초, 또는 1000개를 넘도록 페이지가 join하지 않는 인스턴스는(예:
+  `wire-update="ignore"` 안에 새로 그린 `{% component %}`) `leaving()` 없이 은퇴하고 경고 로그가 남는다. 전에는 그런
+  인스턴스가 연결이 끝날 때까지 알림마다 `notification()`을 돌렸다. 페이지가 그 요소를 join하게 두면 할 일이 없다.
+  그 뒤에 join이 오면 페이지가 가진 상태로 새로 시작한다.
 
 ### Presence
 

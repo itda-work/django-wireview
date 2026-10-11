@@ -185,8 +185,12 @@ The django-reactor era changelog (2.x) is preserved in
   rendered it -- before `joined()`, and the join that followed put back the state the page held, so what it
   heard never reached the screen. It now waits on the instance and is handed over in order once the
   component joined, behind the join's render and `joined`: not if `joined()` left the channel, and not at all
-  if the page lets the element go first. A URL change in between no longer runs its `params_changed()`
-  either: its join does, after `joined()`, with the params of the moment.
+  if the page lets the element go first. The LiveComponents it draws wait with it, and hear theirs once its
+  join's render ran their `joined()`. A URL change in between no longer runs its `params_changed()` either: its join does, after `joined()`, with the params of the moment. The wait has an end: one the page
+  has not joined 10 seconds after the first notification waited on it, or with more than 1000 waiting --
+  drawn under `wire-update="ignore"`, say -- is retired with a warning, without `leaving()`; a join that comes
+  later starts it from what the page holds. When the channel layer drops the mail that hands them over (a
+  full channel), the join hands them over at once rather than never.
 
 ## [1.5.1] - 2026-10-10
 

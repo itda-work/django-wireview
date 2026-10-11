@@ -24,6 +24,7 @@ from testproj.waiting import eventually
 
 from wireview import Component, LiveComponent, broadcast
 from wireview.consumer import WireviewConsumer
+from wireview.core import notifications
 from wireview.core.meta import WireviewMeta
 from wireview.core.state import sign_state
 
@@ -94,6 +95,28 @@ class NajSprout(LiveComponent):
         return Template("{% load wireview %}<b {% live_tag_header %}></b>")
 
 
+class NajBud(Component):
+    """A nested component that draws a LiveComponent hearing the room."""
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>{% live_component 'NajSprout' id='naj-bud-sprout' %}</p>"
+        )
+
+
+class NajLoudBud(NajBud):
+    """Hears the room too, and raises on 13 as the leaf does."""
+
+    class Meta:
+        subscriptions = {ROOM}
+
+    async def notification(self, channel: str, **kwargs):
+        CALLS.append(("notified", self.id, kwargs["n"]))
+        if kwargs["n"] == 13:
+            raise RuntimeError("unlucky")
+
+
 class NajHost(Component):
     """Draws a leaf (or a LiveComponent) once shown; ``shout`` shows it and tells the room."""
 
@@ -104,6 +127,8 @@ class NajHost(Component):
     live: bool = False
     mover: bool = False
     echo: bool = False
+    bud: bool = False
+    loud: bool = False
 
     async def shout(self, n: int):
         self.shown = True
@@ -125,6 +150,8 @@ class NajHost(Component):
             "{% if this.live %}{% live_component 'NajSprout' id='naj-sprout' %}"
             "{% elif this.mover %}{% component 'NajMover' id='naj-leaf' %}"
             "{% elif this.echo %}{% component 'NajEcho' id='naj-leaf' %}"
+            "{% elif this.bud %}{% component 'NajBud' id='naj-bud' %}"
+            "{% elif this.loud %}{% component 'NajLoudBud' id='naj-bud' %}"
             "{% else %}{% component 'NajLeaf' id='naj-leaf' %}{% endif %}"
             "{% endif %}</div>"
         )
@@ -351,9 +378,10 @@ async def test_a_live_component_its_parents_handler_shows_hears_that_handlers_br
         await _join(communicator, NajHost, "naj-host", live=True)
         await _event(communicator, "naj-host", "shout", n=1)
         await _heard_the_room(communicator, 1)
-        sprout = [call for call in CALLS if call[1] == "naj-sprout"]
-        assert sprout[0] == ("joined", "naj-sprout")
-        assert sprout.count(("notified", "naj-sprout", 1)) <= 1
+        assert [call for call in CALLS if call[1] == "naj-sprout"] == [
+            ("joined", "naj-sprout"),
+            ("notified", "naj-sprout", 1),
+        ]
     finally:
         await communicator.disconnect()
 
@@ -434,5 +462,181 @@ async def test_a_component_its_drawer_drew_goes_with_the_drawer_new_dom_replaces
         await asyncio.to_thread(broadcast, ROOM, n=1)
         await _heard_the_room(communicator, 1)
         assert leaf.wire.unheard == []
+    finally:
+        await communicator.disconnect()
+
+
+async def test_a_live_component_in_a_component_its_drawer_drew_hears_what_came_before_their_join_and_after():
+    communicator = await _open()
+    try:
+        await _join(communicator, NajHost, "naj-host", bud=True)
+        await _event(communicator, "naj-host", "shout", n=1)
+        await _heard_the_room(communicator, 1)
+        assert [call for call in CALLS if call[1] == "naj-bud-sprout"] == []
+
+        # The bud's join runs its LiveComponent's joined(), and then it hears what it missed
+        await _join(communicator, NajBud, "naj-bud")
+        await _quiet(communicator)
+        await _event(communicator, "naj-host", "shout", n=2)
+        await _heard_the_room(communicator, 2)
+        assert [call for call in CALLS if call[1] == "naj-bud-sprout"] == [
+            ("joined", "naj-bud-sprout"),
+            ("notified", "naj-bud-sprout", 1),
+            ("notified", "naj-bud-sprout", 2),
+        ]
+    finally:
+        await communicator.disconnect()
+
+
+def _sprout() -> list[tuple[t.Any, ...]]:
+    return [call for call in CALLS if call[1] == "naj-bud-sprout"]
+
+
+async def test_a_live_component_in_a_component_whose_receiver_raised_on_what_came_before_hears_nothing_of_it():
+    communicator = await _open()
+    try:
+        await _join(communicator, NajHost, "naj-host", loud=True)
+        await _event(communicator, "naj-host", "shout", n=13)
+        await _heard_the_room(communicator, 13)
+
+        await _join(communicator, NajLoudBud, "naj-bud")
+        heard = await _quiet(communicator)
+        # The bud goes, and the LiveComponent it owns with it: what waited on that one is not handed over
+        assert {"command": "error", "payload": {"id": "naj-bud", "during": "event"}} in heard
+        assert _sprout() == [("joined", "naj-bud-sprout")]
+    finally:
+        await communicator.disconnect()
+
+
+async def test_a_component_the_page_never_joins_is_retired_once_too_much_waits_on_it(monkeypatch, caplog):
+    # Drawn under wire-update="ignore", say: the page never joins it
+    monkeypatch.setattr(notifications, "UNHEARD_LIMIT", 3)
+    communicator = await _open()
+    try:
+        await _join(communicator, NajHost, "naj-host")
+        await _event(communicator, "naj-host", "show")
+        await _quiet(communicator)
+        session = SESSIONS[-1]
+        leaf = session.repo.get("naj-leaf")
+        assert leaf is not None
+        for n in range(1, 5):
+            await asyncio.to_thread(broadcast, ROOM, n=n)
+            await _heard_the_room(communicator, n)
+            assert len(leaf.wire.unheard) <= 3
+
+        assert session.repo.get("naj-leaf") is None
+        assert [record.message for record in caplog.records if "not joined" in record.message] == [
+            "NajLeaf (naj-leaf) was drawn and not joined; retiring it with 4 notification(s) it was to hear (#207)"
+        ]
+        assert _leaf() == []
+        # A join that comes after all starts from what the page holds
+        await _join(communicator, NajLeaf, "naj-leaf")
+        await _quiet(communicator)
+        await asyncio.to_thread(broadcast, ROOM, n=5)
+        await _render_of(communicator, "naj-leaf", '"5"')
+        assert _leaf() == [("joined", "naj-leaf"), ("notified", "naj-leaf", 5)]
+    finally:
+        await communicator.disconnect()
+
+
+async def test_a_component_the_page_never_joins_is_retired_once_what_waits_on_it_waited_too_long():
+    communicator = await _open()
+    try:
+        await _join(communicator, NajHost, "naj-host")
+        await _event(communicator, "naj-host", "show")
+        await _quiet(communicator)
+        session = SESSIONS[-1]
+        now = [0.0]
+        session.repo.clock = lambda: now[0]
+        await asyncio.to_thread(broadcast, ROOM, n=1)
+        await _heard_the_room(communicator, 1)
+        assert session.repo.get("naj-leaf") is not None
+
+        now[0] = notifications.JOIN_SECONDS
+        await asyncio.to_thread(broadcast, ROOM, n=2)
+        await _heard_the_room(communicator, 2)
+        assert session.repo.get("naj-leaf") is None
+        assert session.subscriptions == {ROOM}  # the host's
+    finally:
+        await communicator.disconnect()
+
+
+async def test_a_component_the_page_never_joins_is_retired_when_its_time_is_up_with_nothing_coming(monkeypatch):
+    monkeypatch.setattr(notifications, "JOIN_SECONDS", 0.5)
+    communicator = await _open()
+    try:
+        await _join(communicator, NajHost, "naj-host")
+        await _event(communicator, "naj-host", "show")
+        await _quiet(communicator)
+        session = SESSIONS[-1]
+        leaf = session.repo.get("naj-leaf")
+        assert leaf is not None
+        await asyncio.to_thread(broadcast, ROOM, n=1)
+        await _heard_the_room(communicator, 1)
+
+        await eventually(lambda: session.repo.get("naj-leaf") is None)
+        assert leaf.wire.unheard == []
+        assert _leaf() == []
+    finally:
+        await communicator.disconnect()
+
+
+async def test_a_component_that_joined_in_time_is_not_retired_when_the_time_comes(monkeypatch):
+    monkeypatch.setattr(notifications, "JOIN_SECONDS", 0.5)
+    communicator = await _open()
+    try:
+        await _join(communicator, NajHost, "naj-host")
+        await _event(communicator, "naj-host", "shout", n=1)
+        await _heard_the_room(communicator, 1)
+        await _join(communicator, NajLeaf, "naj-leaf")
+        await _render_of(communicator, "naj-leaf", '"1"')
+        await asyncio.sleep(0.6)  # past the deadline: the timer is what this measures
+        await _quiet(communicator)
+        assert SESSIONS[-1].repo.get("naj-leaf") is not None
+        assert _leaf() == [("joined", "naj-leaf"), ("notified", "naj-leaf", 1)]
+    finally:
+        await communicator.disconnect()
+
+
+async def test_what_waited_on_a_component_reaches_it_when_the_mail_that_hands_it_over_is_dropped(monkeypatch):
+    sent = WireviewMeta.send
+
+    async def send(self, _command, **kwargs):
+        if _command == "deliver_unheard":
+            return False  # a full channel: the broker drops it and says so
+        return await sent(self, _command, **kwargs)
+
+    monkeypatch.setattr(WireviewMeta, "send", send)
+    communicator = await _open()
+    try:
+        await _join(communicator, NajHost, "naj-host")
+        await _event(communicator, "naj-host", "shout", n=1)
+        await _heard_the_room(communicator, 1)
+        # Handed over at once, then: its render goes ahead of the ``joined`` the channel carries
+        await _join(communicator, NajLeaf, "naj-leaf")
+        await _quiet(communicator)
+        assert t.cast(NajLeaf, SESSIONS[-1].repo.get("naj-leaf")).heard == 1
+        # And it hears as any component does from there: nothing waits behind a mail that never comes
+        await _event(communicator, "naj-host", "shout", n=2)
+        await _render_of(communicator, "naj-leaf", '"2"')
+        assert _leaf() == [("joined", "naj-leaf"), ("notified", "naj-leaf", 1), ("notified", "naj-leaf", 2)]
+    finally:
+        await communicator.disconnect()
+
+
+async def test_the_mail_for_an_instance_that_joined_hands_nothing_to_another_one_under_its_id():
+    communicator = await _open()
+    try:
+        await _join(communicator, NajHost, "naj-host")
+        await _event(communicator, "naj-host", "shout", n=1)
+        await _heard_the_room(communicator, 1)
+        session = SESSIONS[-1]
+        fresh = session.repo.get("naj-leaf")
+        assert fresh is not None and fresh.wire.unheard
+
+        # A mail an earlier instance under the id sent, late: this one has yet to join
+        await session.component_deliver_unheard("naj-leaf", fresh.wire.instance + 1)
+        assert _leaf() == []
+        assert len(fresh.wire.unheard) == 1
     finally:
         await communicator.disconnect()

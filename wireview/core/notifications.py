@@ -14,7 +14,9 @@ A component hears from its ``joined()`` on (#207). One its drawer's pass built
 (``{% component %}``) is on the connection a round trip before the page's join
 for it comes; what it would have heard meanwhile waits on the instance and is
 handed to it, in order, once it joined (``deliver_unheard``). Not dropped: the
-join restores the state the page holds, the one drawn before it.
+join restores the state the page holds, the one drawn before it. The wait has
+an end (``UNHEARD_LIMIT``, ``JOIN_SECONDS``): a page may never join it -- drawn
+under ``wire-update="ignore"``, say -- and then the connection retires it.
 """
 
 from __future__ import annotations
@@ -32,6 +34,17 @@ if t.TYPE_CHECKING:
 
 #: The fan-out messages a component receives, and the method each one runs.
 RECEIVERS = {"notification": "notification", "model_mutation": "mutation"}
+
+#: How many notifications may wait on a component the page has yet to join
+#: (``WireviewMeta.unheard``). Past this it is taken for one the page never
+#: joins, and retired with what it owns: no ``leaving()``, its tasks cancelled.
+UNHEARD_LIMIT = 1000
+
+#: How many seconds they may wait, from the first. The page joins a component a
+#: round trip after the render that drew it; one that has not joined by then is
+#: taken for one the page never joins, as past ``UNHEARD_LIMIT``. A join that
+#: comes later after all builds the component anew from the state the page holds.
+JOIN_SECONDS = 10.0
 
 
 class Host(t.Protocol):
@@ -54,6 +67,10 @@ class Host(t.Protocol):
         ...
 
     async def after_mutation_chores(self) -> None: ...
+
+    async def _awaits_join(self, component: Component) -> None:
+        """``component`` has yet to join and something waits on it (``wire.unheard``): the wait has an end."""
+        ...
 
 
 def _arguments(receiver: str, data: dict[str, t.Any]) -> t.Callable[[], dict[str, t.Any]]:
@@ -89,6 +106,8 @@ async def deliver(host: Host, receiver: str, data: dict[str, t.Any]) -> None:
                 # Not yet (#207): it hears this once it joined -- and once what
                 # came before it is handed over, which a join mails behind it
                 component.wire.unheard.append((receiver, channel, kwargs))
+                if not component.wire.has_joined:
+                    await host._awaits_join(component)
                 continue
             await _hand(host, component, receiver, channel, kwargs, message_id)
         except Exception:
@@ -96,27 +115,29 @@ async def deliver(host: Host, receiver: str, data: dict[str, t.Any]) -> None:
     await host.after_mutation_chores()
 
 
-async def deliver_unheard(host: Host, component: Component) -> None:
-    """Hand ``component``, which just joined, what it would have heard before: in order, as ``deliver`` would have.
+async def deliver_unheard(host: Host, components: t.Iterable[Component]) -> None:
+    """Hand each of ``components``, which just joined, what it would have heard before, in order, as ``deliver`` would.
 
-    Each still has to be on a channel it subscribes to -- ``joined()`` may have
-    chosen others -- and the first that raises ends the rest with the instance.
+    A component's are handed before the next one's: a join's root, then the
+    LiveComponents its render ran ``joined()`` for. Each still has to be on a
+    channel it subscribes to -- ``joined()`` may have chosen others -- and one
+    that raises ends the rest of its own with the instance, and of those it
+    owns, which go with it.
     """
-    unheard, component.wire.unheard = component.wire.unheard, []
-    if not unheard:
-        return
-    for receiver, channel, kwargs in unheard:
-        if not host._holds(component):
-            break
-        if channel not in component.get_subscriptions():
-            continue
-        try:
-            # Not shared with another session's render (#176): that one is of
-            # the message as it came, this one of the component as it joined
-            await _hand(host, component, receiver, channel, kwargs, None)
-        except Exception:
-            await host._crashed(component)
-            break
+    for component in components:
+        unheard, component.wire.unheard = component.wire.unheard, []
+        for receiver, channel, kwargs in unheard:
+            if not host._holds(component):
+                break
+            if channel not in component.get_subscriptions():
+                continue
+            try:
+                # Not shared with another session's render (#176): that one is of
+                # the message as it came, this one of the component as it joined
+                await _hand(host, component, receiver, channel, kwargs, None)
+            except Exception:
+                await host._crashed(component)
+                break
     await host.after_mutation_chores()
 
 
