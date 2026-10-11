@@ -174,6 +174,26 @@ The django-reactor era changelog (2.x) is preserved in
   none. A connection with no secret renders an empty token and logs once, naming `ensure_csrf_cookie`. A
   component `mount()`ed in a test renders as a page that has the cookie: a token of a secret new with each
   `mount()`, masked anew for each `render()` and shared by the live renders, as on a connection.
+- A nested `{% component %}` a render drew that the page has yet to join goes with the component that drew it
+  when that one leaves -- the page let its element go, new DOM came under its id, its join failed -- along
+  with the LiveComponents it owns and what it drew in turn (#207). The page sends no leave for an element it
+  never joined, so the instance stayed on the connection until it closed, subscribed to its channels and
+  running their receivers. It gets no `leaving()`, as it never ran `joined()`; its tasks are cancelled.
+- A nested `{% component %}` its drawer's render drew anew hears its channels from its `joined()` on (#207).
+  It is on the connection from that render, and the page's join for it comes once the page applied that
+  render -- a round trip later, or when a hidden tab is shown again; a
+  notification or model mutation that came in between ran its `notification()` or `mutation()` -- and
+  rendered it -- before `joined()`, and the join that followed put back the state the page held, so what it
+  heard never reached the screen. It now waits on the instance and is handed over in order once the
+  component joined, behind the join's render and `joined`: not if `joined()` left the channel, and not at all
+  if the page lets the element go first. The LiveComponents it draws wait with it, and hear theirs once its
+  join's render ran their `joined()`, in the order they came with its own. A URL change in between no longer
+  runs its `params_changed()` either: its join does, after `joined()`, with the params of the moment. What
+  waits is bounded, not how long: one with more than 1000 waiting -- a tab hidden that long, or drawn under
+  `wire-update="ignore"` where the page never joins it -- is retired with a warning, without `leaving()`; a
+  join that comes later starts it from what the page holds, and `joined()` reads the current values. When the
+  channel layer drops the mail that hands them over (a full channel), the join hands them over at once rather
+  than never.
 
 ## [1.5.1] - 2026-10-10
 

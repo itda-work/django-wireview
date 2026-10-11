@@ -81,6 +81,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | `update_live_component` | `parent_id`, `live_component_id`, `assigns` | LiveComponent `update()` 후 render |
 | `template_changed` | 없음 | 개발 서버에서 템플릿이 바뀌었다(#180). 리로더 스레드가 넘긴 알림을 세션이 자기 채널로 보낸 것이라 컴포넌트가 보내지 않는다. 처리 순서를 지키려고 메일로 간다 — 처리 중인 메시지의 답 뒤에 outbound `rejoin`을 쓴다. 그 사이 연결이 닫혔으면 아무것도 보내지 않는다 |
 | `release_patches` | `id`, `instance` | 이 인스턴스가 `joined()` 전부터 잡아 둔 `Broadcast` 패치를 쓴다(5절의 `wireview.patch`). `joined()`가 쌓아 둔 작업 뒤, `joined` 앞에 보낸다. 브라우저에는 아무것도 보내지 않는다 — 잡아 둔 프레임만 나간다 |
+| `deliver_unheard` | `id`, `instance` | 이 인스턴스가 `joined()` 전에 받았을 알림·모델 변경을 넘긴다(#207). 그린 쪽의 패스가 새로 만든 `{% component %}`는 페이지의 join을 기다리는 동안 알림을 받지 않고 모아 둔다 — 그 패스가 만든 LiveComponent도. join이 그것을 모아 둔 인스턴스면 join의 끝 — `joined` 뒤 — 에 보내고, 그 차례에 `notification()`·`mutation()`과 render를 온 순서대로 돈다 — 컴포넌트와 그 join의 렌더가 `joined()`를 부른 LiveComponent들의 것을 합쳐, 받은 차례 그대로(한 메시지의 것은 컴포넌트 먼저). 그 사이 다른 인스턴스가 그 id를 차지했으면 아무것도 하지 않는다. 채널이 메일을 버리면(가득 참) 보내지 않고 join 안에서 바로 넘긴다 — 그 render가 `joined`보다 먼저 나간다. 모인 것이 `UNHEARD_LIMIT`(1000)을 넘으면 페이지가 join하지 않을 것으로 보고 그 인스턴스와 그것이 소유한 것을 은퇴시킨다 — `leaving()` 없이, 작업은 취소하고 경고 로그를 한 번 남긴다. 시간으로는 은퇴시키지 않는다(숨은 탭은 보일 때까지 join하지 않는다). 브라우저에는 그 render만 나간다 |
 
 ## 5. Fan-out (세션들 사이)
 

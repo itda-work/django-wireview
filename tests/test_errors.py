@@ -818,8 +818,9 @@ def _consumer() -> tuple[WireviewConsumer, FakeOutbound]:
 
 async def test_a_raising_receiver_costs_only_its_own_component():
     consumer, outbound = _consumer()
-    consumer.repo.build("ErrorProbeListener", {"id": "n-1"})
-    consumer.repo.build("ErrorProbeListener", {"id": "n-2"})
+    for id in ("n-1", "n-2"):
+        # Joined: one that has not yet hears it after its joined() (#207)
+        consumer.repo.build("ErrorProbeListener", {"id": id}).wire.has_joined = True
 
     await consumer.notification({"channel": "error-probe-topic", "kwargs": {"fail": "n-1"}})
 
@@ -846,8 +847,9 @@ async def test_a_live_component_that_raises_rejoins_its_root_with_the_whole_tree
 
 async def test_params_changed_that_raises_spares_the_components_after_it():
     consumer, outbound = _consumer()
-    consumer.repo.build("ErrorProbe", {"id": "p-1"})
-    consumer.repo.build("ErrorProbe", {"id": "p-2"})
+    for id in ("p-1", "p-2"):
+        # Joined: one that has not yet hears the params from its join (#207)
+        consumer.repo.build("ErrorProbe", {"id": id}).wire.has_joined = True
     first = consumer.repo.get("p-1")
     assert first is not None
 

@@ -9,6 +9,16 @@ nothing renders, unless it subscribes to that channel itself.
 ``WireviewSession`` follows these rules for what the channel layer brings it,
 and ``wireview.testing`` for a mounted component, which hears what is
 published in its process (``listen``): one copy, so a test sees what a page sees.
+
+A component hears from its ``joined()`` on (#207). One its drawer's pass built
+(``{% component %}``) is on the connection before the page's join for it comes:
+a round trip later, or much later -- a hidden tab applies no render, and so
+joins nothing, until it is shown again. What it would have heard meanwhile
+waits on the instance and is handed to it, in arrival order, once it joined
+(``deliver_unheard``). Not dropped: the join restores the state the page holds,
+the one drawn before it. The wait is bounded by how much waits, not by how
+long (``UNHEARD_LIMIT``): a page may never join it -- drawn under
+``wire-update="ignore"``, say -- and then the connection retires it.
 """
 
 from __future__ import annotations
@@ -26,6 +36,17 @@ if t.TYPE_CHECKING:
 
 #: The fan-out messages a component receives, and the method each one runs.
 RECEIVERS = {"notification": "notification", "model_mutation": "mutation"}
+
+#: How many notifications may wait on a component the page has yet to join
+#: (``WireviewMeta.unheard``). Past this it is taken for one the page never
+#: joins, and retired with what it owns: no ``leaving()``, its tasks cancelled.
+#: A join that comes for it after all builds it anew from the state the page
+#: holds. No time limit: a hidden tab joins when it is shown again, hours on.
+UNHEARD_LIMIT = 1000
+
+#: The order notifications arrived in, across components: a join hands its
+#: root's and its LiveComponents' over as they came (``deliver_unheard``)
+_arrival = itertools.count()
 
 
 class Host(t.Protocol):
@@ -48,6 +69,10 @@ class Host(t.Protocol):
         ...
 
     async def after_mutation_chores(self) -> None: ...
+
+    async def _awaits_join(self, component: Component) -> None:
+        """``component`` has yet to join and something waits on it (``wire.unheard``): not without bound."""
+        ...
 
 
 def _arguments(receiver: str, data: dict[str, t.Any]) -> t.Callable[[], dict[str, t.Any]]:
@@ -79,16 +104,56 @@ async def deliver(host: Host, receiver: str, data: dict[str, t.Any]) -> None:
                 await presence.hear(component, channel, kwargs)
             if channel not in component.get_subscriptions():
                 continue  # only the framework listens here (#202): no app code, no render
-            with render_queries.scope("handler", component, f"{receiver}({channel!r})"):
-                await getattr(component, receiver)(channel, **kwargs)
-            # The sessions of this process handling the same message render a
-            # Meta.shared_render component once between them (#176). Only the
-            # render: each one's receiver above ran on its own.
-            with shared_render.handling(message_id), render_queries.reason(f"{receiver} {channel}"):
-                await host.send_render(component)
+            if not component.wire.has_joined or component.wire.unheard:
+                # Not yet (#207): it hears this once it joined -- and once what
+                # came before it is handed over, which a join mails behind it
+                component.wire.unheard.append((next(_arrival), receiver, channel, kwargs))
+                if not component.wire.has_joined:
+                    await host._awaits_join(component)
+                continue
+            await _hand(host, component, receiver, channel, kwargs, message_id)
         except Exception:
             await host._crashed(component)
     await host.after_mutation_chores()
+
+
+async def deliver_unheard(host: Host, components: t.Iterable[Component]) -> None:
+    """Hand ``components``, which just joined, what they would have heard before, as ``deliver`` would.
+
+    A join's root and the LiveComponents its render ran ``joined()`` for, in
+    the order it arrived: the root's first and a LiveComponent's second of one
+    message, then the next message's. Each still has to be on a channel it
+    subscribes to -- ``joined()`` may have chosen others -- and one that raises
+    hears no more of its own, nor do those it owns, which go with it.
+    """
+    waiting = []
+    for component in components:
+        unheard, component.wire.unheard = component.wire.unheard, []
+        waiting += [(arrival, component, rest) for arrival, *rest in unheard]
+    waiting.sort(key=lambda each: each[0])
+    for _, component, (receiver, channel, kwargs) in waiting:
+        if not host._holds(component) or channel not in component.get_subscriptions():
+            continue
+        try:
+            # Not shared with another session's render (#176): that one is of
+            # the message as it came, this one of the component as it joined
+            await _hand(host, component, receiver, channel, kwargs, None)
+        except Exception:
+            await host._crashed(component)
+    await host.after_mutation_chores()
+
+
+async def _hand(
+    host: Host, component: Component, receiver: str, channel: str, kwargs: dict[str, t.Any], message_id: t.Any
+) -> None:
+    """Run ``component``'s receiver and render it."""
+    with render_queries.scope("handler", component, f"{receiver}({channel!r})"):
+        await getattr(component, receiver)(channel, **kwargs)
+    # The sessions of this process handling the same message render a
+    # Meta.shared_render component once between them (#176). Only the
+    # render: each one's receiver above ran on its own.
+    with shared_render.handling(message_id), render_queries.reason(f"{receiver} {channel}"):
+        await host.send_render(component)
 
 
 # -- in this process: the components wireview.testing mounted ------------------------------

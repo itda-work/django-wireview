@@ -203,6 +203,9 @@ class WireviewMeta:
         # that instance leaves and a fresh one joins, so joined() stays once per
         # instance.
         self.has_joined: bool = False
+        # What it would have heard on its channels before joined(), with the order
+        # it arrived in: handed to it once it joined (notifications.deliver_unheard, #207)
+        self.unheard: list[tuple[int, str, str, dict[str, t.Any]]] = []
         # Set once the _on_mount hooks have run for this instance. The hooks are a
         # mount-time boundary (authentication, tracking), so they run once per
         # instance no matter how many render passes name the component.
@@ -735,25 +738,30 @@ class WireviewMeta:
         """Defer a function call to be executed later."""
         await self.send("dispatch_event", command=_f.__name__, id=_id, args=args, kwargs=kwargs)
 
-    async def send(self, _command: str, **kwargs: t.Any) -> None:
+    async def send(self, _command: str, **kwargs: t.Any) -> bool:
         """Send a command to the current channel.
 
         If in pending mode (during joined() lifecycle), the command is queued
         and will be sent when flush_pending() is called after render.
+
+        False when it is known not to have gone: no channel, or the layer
+        dropped it (a full channel, ``Broker.send_to_session``). A mail the
+        session waits on has to be done some other way then (#207).
         """
         if self._pending_mode:
             self._pending_operations.append((_command, kwargs))
-        else:
-            await self._do_send(_command, **kwargs)
+            return True
+        return await self._do_send(_command, **kwargs)
 
-    async def _do_send(self, _command: str, **kwargs: t.Any) -> None:
+    async def _do_send(self, _command: str, **kwargs: t.Any) -> bool:
         """Actually send a command to the current channel."""
         if self.channel_name:
-            await self.send_to(self.channel_name, _command, **kwargs)
+            return await self.send_to(self.channel_name, _command, **kwargs)
+        return False
 
-    async def send_to(self, _channel: str, _command: str, **kwargs: t.Any) -> None:
-        """Send a command to a specific session (channel name)."""
-        await self.broker.send_to_session(
+    async def send_to(self, _channel: str, _command: str, **kwargs: t.Any) -> bool:
+        """Send a command to a specific session (channel name). False when the layer dropped it."""
+        taken = await self.broker.send_to_session(
             _channel,
             {
                 "type": "message_from_component",
@@ -761,6 +769,7 @@ class WireviewMeta:
                 "kwargs": kwargs,
             },
         )
+        return taken is not False
 
     async def send_to_parent(
         self,
