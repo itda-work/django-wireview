@@ -26,13 +26,14 @@ from testproj.e2e_server import serve
 
 pytestmark = pytest.mark.e2e
 
-# Stands in for an old bundle: the page's socket opens without ?vsn=.
+# Stands in for an old bundle: the page's socket opens without ?vsn= -- and without the
+# tab it never named (#202), which left alone made the path "__wireview__&tab=...".
 STRIP_VERSION = """
 (() => {
   const Native = window.WebSocket;
   window.WebSocket = class extends Native {
     constructor(url, protocols) {
-      super(String(url).replace(/[?&]vsn=\\d+/, ""), protocols);
+      super(String(url).split("?")[0], protocols);
     }
   };
 })();
