@@ -1114,10 +1114,10 @@ class TestPresenceTabs:
     @pytest.mark.unit
     async def test_a_tab_joining_again_replaces_what_a_lost_leave_left(self):
         view = await mount(XTrackerComponent, room_id=1, username="bob")
-        await hear(view, "presence_join", "ann", ref="ann-tab", presence_conn="c1")
+        await hear(view, "presence_join", "ann", ref="ann-tab", presence_speaker="c1")
         # The process holding c1 died without the leave; the tab reconnects
-        await hear(view, "presence_join", "ann", ref="ann-tab", presence_conn="c2")
-        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c2")
+        await hear(view, "presence_join", "ann", ref="ann-tab", presence_speaker="c2")
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_speaker="c2")
         assert view.component.presence_users == []
 
     @pytest.mark.asyncio
@@ -1125,17 +1125,17 @@ class TestPresenceTabs:
     async def test_the_socket_a_tab_left_says_nothing_for_it(self):
         """Its late typing and leave come after the tab joined on a new socket."""
         view = await mount(XTrackerComponent, room_id=1, username="bob")
-        await hear(view, "presence_join", "ann", ref="ann-tab", presence_conn="c1")
-        await hear(view, "presence_join", "ann", ref="ann-tab", presence_conn="c2")
+        await hear(view, "presence_join", "ann", ref="ann-tab", presence_speaker="c1")
+        await hear(view, "presence_join", "ann", ref="ann-tab", presence_speaker="c2")
 
-        await hear(view, "presence_typing", "ann", ref="ann-tab", presence_conn="c1", state="typing")
+        await hear(view, "presence_typing", "ann", ref="ann-tab", presence_speaker="c1", state="typing")
         assert view.component.presence_get_user("ann").state == PresenceState.ONLINE
-        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c1")
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_speaker="c1")
         assert view.component.presence_get_user("ann") is not None
 
-        await hear(view, "presence_typing", "ann", ref="ann-tab", presence_conn="c2", state="typing")
+        await hear(view, "presence_typing", "ann", ref="ann-tab", presence_speaker="c2", state="typing")
         assert view.component.presence_get_user("ann").is_typing()
-        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c2")
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_speaker="c2")
         assert view.component.presence_get_user("ann") is None
 
     @pytest.mark.asyncio
@@ -1143,14 +1143,14 @@ class TestPresenceTabs:
     async def test_a_tab_that_answers_on_two_sockets_stays_until_both_leave(self):
         """Both sockets of a reconnected tab answer a new tracker's sync; the old one's leave keeps the tab."""
         view = await mount(XTrackerComponent, room_id=1, username="bob")
-        await hear(view, "presence_sync_response", "ann", ref="ann-tab", presence_conn="c-old")
-        await hear(view, "presence_sync_response", "ann", ref="ann-tab", presence_conn="c-new")
+        await hear(view, "presence_sync_response", "ann", ref="ann-tab", presence_speaker="c-old")
+        await hear(view, "presence_sync_response", "ann", ref="ann-tab", presence_speaker="c-new")
 
-        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c-old")
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_speaker="c-old")
         assert view.component.presence_get_user("ann") is not None
-        await hear(view, "presence_typing", "ann", ref="ann-tab", presence_conn="c-new", state="typing")
+        await hear(view, "presence_typing", "ann", ref="ann-tab", presence_speaker="c-new", state="typing")
         assert view.component.presence_get_user("ann").is_typing()
-        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c-new")
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_speaker="c-new")
         assert view.component.presence_get_user("ann") is None
 
     @pytest.mark.asyncio
@@ -1158,21 +1158,21 @@ class TestPresenceTabs:
     async def test_a_join_says_which_socket_the_tab_speaks_on_now(self):
         """Joined again after two sockets answered: the one it left says nothing for it."""
         view = await mount(XTrackerComponent, room_id=1, username="bob")
-        await hear(view, "presence_sync_response", "ann", ref="ann-tab", presence_conn="c1")
-        await hear(view, "presence_sync_response", "ann", ref="ann-tab", presence_conn="c2")
-        await hear(view, "presence_join", "ann", ref="ann-tab", presence_conn="c3")
+        await hear(view, "presence_sync_response", "ann", ref="ann-tab", presence_speaker="c1")
+        await hear(view, "presence_sync_response", "ann", ref="ann-tab", presence_speaker="c2")
+        await hear(view, "presence_join", "ann", ref="ann-tab", presence_speaker="c3")
 
-        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c2")
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_speaker="c2")
         assert view.component.presence_get_user("ann") is not None
-        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c3")
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_speaker="c3")
         assert view.component.presence_get_user("ann") is None
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_a_message_that_names_no_connection_is_heard(self):
-        """From a process before presence_conn: as before, by the ref alone."""
+    async def test_a_message_that_names_no_speaker_is_heard(self):
+        """From a process before presence_speaker: as before, by the ref alone."""
         view = await mount(XTrackerComponent, room_id=1, username="bob")
-        await hear(view, "presence_join", "ann", ref="ann-tab", presence_conn="c1")
+        await hear(view, "presence_join", "ann", ref="ann-tab", presence_speaker="c1")
         await hear(view, "presence_leave", "ann", ref="ann-tab")
         assert view.component.presence_get_user("ann") is None
 

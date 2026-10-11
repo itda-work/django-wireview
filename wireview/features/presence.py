@@ -141,7 +141,7 @@ def _presence_connection(component: t.Any) -> str:
 
 
 def _presence_speaker(component: t.Any) -> str:
-    """Which producer instance says a message (``presence_conn``): new with every instance.
+    """Which producer instance says a message (``presence_speaker``): new with every instance.
 
     A tab's meta remembers who said it, so a late leave from another speaker
     does not remove what a newer one said. That is a socket the tab
@@ -302,7 +302,7 @@ class PresenceMixin:
         return {
             "user_id": self._presence_user_id(),
             "presence_ref": _presence_ref(self),
-            "presence_conn": _presence_speaker(self),
+            "presence_speaker": _presence_speaker(self),
             "username": self._presence_username(),
             "state": state.value,
             "metadata": self._presence_metadata(),
@@ -344,7 +344,7 @@ class PresenceMixin:
             action="presence_leave",
             user_id=self._presence_user_id(),
             presence_ref=_presence_ref(self),
-            presence_conn=_presence_speaker(self),
+            presence_speaker=_presence_speaker(self),
             username=self._presence_username(),
         )
 
@@ -505,12 +505,12 @@ class PresenceTrackerMixin:
     def _presence_registry(self, value: dict[str, dict[str, dict[str, PresenceUser]]]) -> None:
         self.__dict__["__presence_registry"] = value
 
-    # (channel, user_id, presence_ref) -> the connections the tab speaks on, of those that named one
+    # (channel, user_id, presence_ref) -> the producer instances the meta is heard from, of those that named one
     @property
-    def _presence_conns(self) -> dict[tuple[str, str, str], set[str]]:
-        if "__presence_conns" not in self.__dict__:
-            self.__dict__["__presence_conns"] = {}
-        return self.__dict__["__presence_conns"]
+    def _presence_speakers(self) -> dict[tuple[str, str, str], set[str]]:
+        if "__presence_speakers" not in self.__dict__:
+            self.__dict__["__presence_speakers"] = {}
+        return self.__dict__["__presence_speakers"]
 
     def _presence_topic(self) -> str:
         """Return the presence topic/room identifier."""
@@ -595,15 +595,15 @@ class PresenceTrackerMixin:
         metas = self._presence_by_user(self._presence_registry).get(user_id)
         return self._presence_merge(user_id, metas) if metas else None
 
-    def _presence_put(self, channel: str, user_id: str, ref: str, conn: str, data: dict[str, t.Any]) -> None:
-        """Record what a tab said about its user, replacing its meta: it speaks on ``conn`` now."""
+    def _presence_put(self, channel: str, user_id: str, ref: str, speaker: str, data: dict[str, t.Any]) -> None:
+        """Record what a producer said about its user, replacing its meta: ``speaker`` says it now."""
         self._presence_registry.setdefault(channel, {}).setdefault(user_id, {})[ref] = PresenceUser(
             user_id=user_id,
             username=data.get("username", ""),
             state=PresenceState(data.get("state", "online")),
             metadata=data.get("metadata", {}),
         )
-        self._presence_conns[(channel, user_id, ref)] = {conn} if conn else set()
+        self._presence_speakers[(channel, user_id, ref)] = {speaker} if speaker else set()
 
     def _presence_drop(self, channel: str, user_id: str, ref: str) -> None:
         """Forget a meta; the user goes with their last one."""
@@ -612,35 +612,36 @@ class PresenceTrackerMixin:
         if metas is None:
             return
         metas.pop(ref, None)
-        self._presence_conns.pop((channel, user_id, ref), None)
+        self._presence_speakers.pop((channel, user_id, ref), None)
         if not metas:
             del users[user_id]
         if not users:
             self._presence_registry.pop(channel, None)
 
-    def _presence_from_another_connection(self, channel: str, user_id: str, ref: str, conn: str) -> bool:
-        """Whether a message comes from a socket the tab has since reconnected away from.
+    def _presence_from_another_speaker(self, channel: str, user_id: str, ref: str, speaker: str) -> bool:
+        """Whether a message comes from a producer instance the meta has since moved away from.
 
-        Its meta names the connections the tab speaks on: the one its last join
-        came from, and any other that answered a sync for it -- for a while a tab
-        that reconnected has two, the new one and the old one the server has not
-        noticed is gone. A late leave (or typing) from a socket the tab joined
-        again away from is not about what the tab says now.
+        Its meta names the instances it is heard from: the one its last join came
+        from, and any other that answered a sync for it -- for a while a tab that
+        reconnected has two, the new socket's and the old one's the server has
+        not noticed is gone. A late leave (or typing) from an instance a newer
+        join replaced -- on a socket the tab left, or one its page stopped
+        drawing -- is not about what the tab says now.
         """
-        heard = self._presence_conns.get((channel, user_id, ref), set())
-        return bool(conn and heard and conn not in heard)
+        heard = self._presence_speakers.get((channel, user_id, ref), set())
+        return bool(speaker and heard and speaker not in heard)
 
-    def _presence_heard_on(self, channel: str, user_id: str, ref: str, conn: str) -> None:
-        """A sync answer about a tab already recorded: the tab speaks on ``conn`` too."""
-        heard = self._presence_conns.get((channel, user_id, ref))
-        if conn and heard:
-            heard.add(conn)
+    def _presence_heard_on(self, channel: str, user_id: str, ref: str, speaker: str) -> None:
+        """A sync answer about a meta already recorded: ``speaker`` says it too."""
+        heard = self._presence_speakers.get((channel, user_id, ref))
+        if speaker and heard:
+            heard.add(speaker)
 
-    def _presence_left(self, channel: str, user_id: str, ref: str, conn: str) -> None:
-        """A socket of a tab left: the tab goes with the last socket it speaks on."""
-        heard = self._presence_conns.get((channel, user_id, ref))
-        if conn and heard:
-            heard.discard(conn)
+    def _presence_left(self, channel: str, user_id: str, ref: str, speaker: str) -> None:
+        """A producer instance left: the meta goes with the last instance it is heard from."""
+        heard = self._presence_speakers.get((channel, user_id, ref))
+        if speaker and heard:
+            heard.discard(speaker)
             if heard:
                 return
         self._presence_drop(channel, user_id, ref)
@@ -685,7 +686,7 @@ class PresenceTrackerMixin:
 
         Each is recorded under the channel it came on. Each names its producer
         (its tab and component id) in ``presence_ref`` and the producer
-        instance that said it, on its connection, in ``presence_conn``. One without
+        instance that said it in ``presence_speaker``. One without
         ``presence_ref`` comes from a process older than #202, which keeps one
         meta per user: it is kept under ``LEGACY_REF``, so that process's join,
         typing and leave land on one meta of the user and leave the user's other
@@ -703,12 +704,12 @@ class PresenceTrackerMixin:
         component = t.cast("Component", self)
         user_id: str | None = kwargs.get("user_id")
         ref: str = kwargs.get("presence_ref") or LEGACY_REF
-        conn: str = kwargs.get("presence_conn") or ""
+        speaker: str = kwargs.get("presence_speaker") or ""
 
         if action == "presence_join" and user_id:
             # A tab joining again after a reconnect replaces what it said
             # before, a meta whose leave a dead process never sent among it
-            self._presence_put(channel, user_id, ref, conn, kwargs)
+            self._presence_put(channel, user_id, ref, speaker, kwargs)
             component.force_render()
 
         elif action == "presence_sync_response" and user_id:
@@ -717,25 +718,25 @@ class PresenceTrackerMixin:
             # one: a tab that typed while the request sat in its queue answers
             # with the state from before (#202).
             if ref not in self._presence_registry.get(channel, {}).get(user_id, {}):
-                self._presence_put(channel, user_id, ref, conn, kwargs)
+                self._presence_put(channel, user_id, ref, speaker, kwargs)
                 component.force_render()
             else:
                 # Two sockets of one tab answer while the server has not noticed
                 # the old one is gone: the old one's leave must not take the tab
-                self._presence_heard_on(channel, user_id, ref, conn)
+                self._presence_heard_on(channel, user_id, ref, speaker)
 
         elif action == "presence_leave" and user_id:
-            if not self._presence_from_another_connection(channel, user_id, ref, conn):
-                self._presence_left(channel, user_id, ref, conn)
+            if not self._presence_from_another_speaker(channel, user_id, ref, speaker):
+                self._presence_left(channel, user_id, ref, speaker)
                 component.force_render()
 
         elif action == "presence_typing" and user_id:
             meta = self._presence_registry.get(channel, {}).get(user_id, {}).get(ref)
             if meta is None:
                 # Tab not tracked yet, add it
-                self._presence_put(channel, user_id, ref, conn, kwargs)
+                self._presence_put(channel, user_id, ref, speaker, kwargs)
                 component.force_render()
-            elif not self._presence_from_another_connection(channel, user_id, ref, conn):
+            elif not self._presence_from_another_speaker(channel, user_id, ref, speaker):
                 meta.state = PresenceState(kwargs.get("state", "online"))
                 meta.last_active = time.time()
                 component.force_render()

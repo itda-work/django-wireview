@@ -89,7 +89,7 @@ The django-reactor era changelog (2.x) is preserved in
   online, with the name and metadata heard from last. A page names its load in the socket URL (`tab`) and
   keeps that name across reconnects; join, leave, typing and the sync answer carry `presence_ref`, a digest
   of that name under the signed-in user (a page cannot speak for another user's tab) and of the producer's
-  id (its class when it was drawn without one), and `presence_conn`,
+  id (its class when it was drawn without one), and `presence_speaker`,
   a name of the producer instance that sent them, new with every instance. So when a process ends without its `leaving()` (daphne, Granian, a crash),
   the tab's join after it reconnects replaces what the dead process left, and its leave removes it; a late
   leave from the socket a tab reconnected away from is dropped, as is the late leave of a producer drawn
