@@ -582,14 +582,13 @@ class Lv4RoomList(Component):
       database, so a notice that is late, doubled or crossed with another
       still ends in the right number
     - a count in one query for every room (unread_counts)
-    - Join and Leave as events: Leave changes the list where it is, with no
-      page loaded again. A POST form here would pass too: since #206 a live
-      render draws {% csrf_token %} a token of the connection's secret
-    - what moving them from views costs, and how it is had back: a view read
-      request.user on every POST, and a socket keeps the user it connected
-      with. So the list's page is a boundary of its own (chat_lv4_rooms, no
-      policy), and a logout closes the list's socket instead of leaving it to
-      join and leave rooms as someone who signed out
+    - Join and Leave as POST forms to views, inside the component: since #206
+      a live render draws {% csrf_token %} a token of the connection's secret,
+      so a form the list redrew for a new badge still posts. Each POST reads
+      request.user, as a view does
+    - a logout that reaches the open list: its page is a live_session of its
+      own (chat_lv4_rooms, no policy), so a logout closes the list's socket,
+      and a tab left open stops showing the badges of who signed out
 
     Not in the chat_lv4 live_session: the list is every room, a member's or not.
     Anyone signed in may see it; an anonymous visitor has no rooms and no topic.
@@ -617,22 +616,3 @@ class Lv4RoomList(Component):
 
     async def notification(self, channel: str, **kwargs):
         """News of one of this user's rooms. Whatever it was, the render counts again."""
-
-    async def join_room(self, room_id: UUID):
-        """Become a member of a room, and go in."""
-        room = await Room.objects.filter(id=room_id).afirst()
-        if room is None or not self.user.is_authenticated:
-            self.skip_render()
-            return
-        await Membership.objects.aget_or_create(room=room, user=self.user)
-        # The user's other lists show the link and the badge
-        await self.broadcast(user_topic(self.user.pk), room=str(room.id), event="joined")
-        await self.wire.redirect_to(reverse("chat_lv4:room", args=[room.id]))
-
-    async def leave_room(self, room_id: UUID):
-        """Stop being a member. Pages of the room this user still has open go back to the list."""
-        room = await Room.objects.filter(id=room_id).afirst()
-        if room is None or not self.user.is_authenticated:
-            self.skip_render()
-            return
-        await sync_to_async(end_membership)(room, self.user)

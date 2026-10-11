@@ -115,26 +115,83 @@ def test_a_member_gets_the_room(room, alice):
     assert {"Lv4ChatRoom", "Lv4MessageList", "Lv4OnlineUsers"} <= set(_states(response.content.decode()))
 
 
+class _Forms(HTMLParser):
+    """Each POST form on a page: its action, and the CSRF token it carries."""
+
+    def __init__(self):
+        super().__init__()
+        self.tokens: dict[str, str] = {}
+        self._action = None
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "form" and attrs.get("method") == "post":
+            self._action = attrs["action"]
+        elif tag == "input" and attrs.get("name") == "csrfmiddlewaretoken" and self._action:
+            self.tokens[self._action] = attrs["value"] or ""
+
+    def handle_endtag(self, tag):
+        if tag == "form":
+            self._action = None
+
+
+def _form_tokens(html: str) -> dict[str, str]:
+    parser = _Forms()
+    parser.feed(html)
+    return parser.tokens
+
+
+def _form_url(action: str, room: Room) -> str:
+    """Where the room list's Join or Leave form for ``room`` posts."""
+    return reverse(f"chat_lv4:{action}_room", args=[room.id])
+
+
 @pytest.mark.integration
-@pytest.mark.asyncio
-async def test_joining_from_the_list_makes_a_member_and_leaving_ends_it(room, bob, published):
-    """Join and Leave are the room list's events, not forms posted to views.
+def test_joining_from_the_list_makes_a_member_and_leaving_ends_it(room, bob, published):
+    """Join and Leave are forms in the room list, posted to views, with the token the list drew.
 
-    Either way the user's other room lists are told, on the user's topic.
+    The client checks CSRF as a browser's request is checked. Either way the
+    user's other room lists are told, on the user's topic, once the request's
+    transaction is committed.
     """
-    client = AsyncClient()
-    await client.aforce_login(bob)
-    rooms = await mount(Lv4RoomList, user=bob, live_session=ROOMS)
+    client = Client(enforce_csrf_checks=True)
+    client.force_login(bob)
+    tokens = _form_tokens(client.get(reverse("chat_lv4:index")).content.decode())
+    assert _form_url("join", room) in tokens and _form_url("leave", room) not in tokens, tokens
 
-    await rooms.call("join_room", room_id=room.id)
-    rooms.assert_redirected_to(_room_url(room))
-    assert user_topic(bob.pk) in [topic for topic, _ in published]
-    assert (await client.get(_room_url(room))).status_code == 200
+    response = client.post(_form_url("join", room), {"csrfmiddlewaretoken": tokens[_form_url("join", room)]})
+    assert response["Location"] == _room_url(room)
+    assert published == [(user_topic(bob.pk), False)]
+    assert client.get(_room_url(room)).status_code == 200
 
-    rooms = await mount(Lv4RoomList, user=bob, live_session=ROOMS)
-    await rooms.call("leave_room", room_id=room.id)
-    assert not await Membership.objects.filter(room=room, user=bob).aexists()
-    assert (await client.get(_room_url(room))).status_code == 302
+    tokens = _form_tokens(client.get(reverse("chat_lv4:index")).content.decode())
+    response = client.post(_form_url("leave", room), {"csrfmiddlewaretoken": tokens[_form_url("leave", room)]})
+    assert response["Location"] == reverse("chat_lv4:index")
+    assert not Membership.objects.filter(room=room, user=bob).exists()
+    assert client.get(_room_url(room)).status_code == 302
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("action", ["join", "leave"])
+def test_after_a_logout_the_forms_the_list_drew_do_nothing(room, alice, bob, published, action):
+    """bob signs out in another tab and then presses Join or Leave on the list he kept open.
+
+    The POST is the request's user: anonymous by then. The view sends him to
+    the list and changes nothing, and tells no one.
+    """
+    if action == "leave":
+        Membership.objects.create(room=room, user=bob)
+    client = Client(enforce_csrf_checks=True)
+    client.force_login(bob)
+    tokens = _form_tokens(client.get(reverse("chat_lv4:index")).content.decode())
+    client.post(reverse("chat_lv4:sign_out"), {"csrfmiddlewaretoken": tokens[reverse("chat_lv4:sign_out")]})
+
+    response = client.post(_form_url(action, room), {"csrfmiddlewaretoken": tokens[_form_url(action, room)]})
+
+    assert response.status_code == 302
+    assert response["Location"] == reverse("chat_lv4:index")
+    assert Membership.objects.filter(room=room, user=bob).exists() == (action == "leave")
+    assert published == []
 
 
 @pytest.fixture
@@ -320,7 +377,8 @@ async def test_leaving_sends_the_users_open_page_away_and_it_hears_the_room_no_m
         await _drain(kept)
 
         if where == "room list":
-            await (await mount(Lv4RoomList, user=bob, live_session=ROOMS)).call("leave_room", room_id=room.id)
+            # The Leave form of another tab's room list
+            await bob_client.post(_form_url("leave", room))
         else:
             other = await mount(Lv4ChatRoom, id="other-tab", user=bob, room=room, live_session=BOUNDARY)
             await other.call("leave_room")
@@ -946,7 +1004,7 @@ async def test_a_page_whose_user_left_gets_no_edit_or_delete(room, alice, bob_in
         await speaker.call("save_edit", text="while bob is here")
         assert any("while bob is here" in text for text in await _drain(kept))
 
-        await (await mount(Lv4RoomList, user=bob_in_room, live_session=ROOMS)).call("leave_room", room_id=room.id)
+        await bob_client.post(_form_url("leave", room))
         assert any('"redirect"' in text for text in await _drain(kept))
 
         speaker.clear_messages()
@@ -1186,7 +1244,9 @@ async def test_a_room_left_has_no_badge(room, alice, bob_in_room):
     rooms = await mount(Lv4RoomList, user=bob_in_room, live_session=ROOMS)
     assert await _badges(rooms) == {"lobby": "2"}
 
-    await rooms.call("leave_room", room_id=room.id)
+    client = AsyncClient()
+    await client.aforce_login(bob_in_room)
+    await client.post(_form_url("leave", room))
 
     assert await sync_to_async(unread_counts)(bob_in_room) == {}
     assert await _badges(rooms) == {}
@@ -1318,8 +1378,8 @@ async def test_the_room_list_counts_again_on_each_notice_alone(room, alice, bob,
     Nothing else reaches it: each case makes exactly the notice it names, from
     where the app makes it -- a page of the room joining (``read``), alice
     deleting a message bob has not read (``deleted``), bob's other tab joining
-    or leaving the room (``joined``, ``left``; that tab is mounted, and its
-    broadcast reaches the socket of the same process). The test waits for the list's
+    or leaving the room (``joined``, ``left``: that tab's form, posted to the
+    view, which publishes once its transaction commits). The test waits for the list's
     render to the end, so a list that let one kind of notice pass would fail
     here by a timeout, and not by a quiet spell that ran out.
     """
@@ -1343,9 +1403,8 @@ async def test_the_room_list_counts_again_on_each_notice_alone(room, alice, bob,
             (alices,) = await _lists(room, alice)
             await alices.call("delete_message", message_id=message.id)
         else:
-            # bob's other tab of the room list, mounted: its notice reaches this socket as another tab's does (#201)
-            tab = await mount(Lv4RoomList, user=bob, live_session=ROOMS)
-            await tab.call("join_room" if news == "joined" else "leave_room", room_id=str(room.id))
+            # bob's other tab of the room list posts its Join or Leave form
+            await client.post(_form_url("join" if news == "joined" else "leave", room))
         after = json.dumps(await _answer(socket, list_id))
     finally:
         if other is not None:
@@ -1367,11 +1426,12 @@ async def test_the_room_list_counts_again_on_each_notice_alone(room, alice, bob,
 async def test_a_logout_closes_the_open_room_list(room, bob):
     """bob signs out in another tab. His room list tab, still open, is closed by the server.
 
-    Its Join and Leave are events on the socket, and a socket keeps the user it
-    connected with: open after the logout, it would go on joining and leaving
-    rooms as bob. A form posted to a view would have been anonymous by then. The
-    list's page is a live_session of its own, with no policy, for this: a
-    logout reaches the connections inside a boundary, and closes them.
+    Its Join and Leave are forms, so they are anonymous after the logout
+    (test_after_a_logout_the_forms_the_list_drew_do_nothing). But the socket
+    keeps the user it connected with, and its topic: open after the logout, the
+    tab would go on showing bob's badges. The list's page is a live_session of
+    its own, with no policy, for this: a logout reaches the connections inside
+    a boundary, and closes them.
     """
     client = AsyncClient()
     await client.aforce_login(bob)
@@ -1670,3 +1730,45 @@ def test_reading_in_one_tab_keeps_the_badge_at_zero_in_another(browser, server, 
 
     expect_text(_badge(bob_list, "coffee"), "1")
     assert _badge(bob_list, "tea").count() == 0
+
+
+@pytest.mark.e2e
+def test_the_lists_forms_post_after_a_badge_redrew_it(browser, server, two_members_of_tea):
+    """bob's list is redrawn by alice's messages; its Join and Leave forms still post, and are not refused.
+
+    The forms are in the room list component, and what the page shows of it is
+    the live render's: the join's, then one per badge. Up to 1.5 that render
+    drew ``{% csrf_token %}`` empty, and the form got a 403 (#206). Each POST
+    here is answered with the redirect of its view.
+    """
+    tea, coffee = two_members_of_tea
+    Membership.objects.filter(room=coffee, user__username="bob").delete()
+    alice = _signed_in(browser, server, "alice")
+    _in_room(alice, f"{server}{_room_url(tea)}")
+    bob = _signed_in(browser, server, "bob")
+    list_url = f"{server}/chat-lv4/"
+    _rooms(bob, list_url)
+
+    def posted(action: str, room: Room):
+        url = f"{server}{_form_url(action, room)}"
+        return bob.expect_response(lambda response: response.request.method == "POST" and response.url == url)
+
+    _say(alice, "one")
+    expect_text(_badge(bob, "tea"), "1")
+    with posted("join", coffee) as joined:
+        bob.locator('[data-room="coffee"]').get_by_role("button", name="Join").click()
+    assert joined.value.status == 302
+    _joined_room(bob, f"{server}{_room_url(coffee)}")
+
+    bob.get_by_role("link", name="All Rooms").click()
+    expect(bob).to_have_url(list_url)
+    wait_live(bob, '[data-name=Lv4RoomList][data-is-live="true"]')
+    _say(alice, "two")
+    expect_text(_badge(bob, "tea"), "2")
+    with posted("leave", tea) as left:
+        bob.locator('[data-room="tea"]').get_by_role("button", name="Leave").click()
+    assert left.value.status == 302
+    # Back on the list: tea is to join again, and has no badge
+    expect_count(bob.locator('[data-room="tea"]').get_by_role("button", name="Join"), 1)
+    expect_count(_badge(bob, "tea"), 0)
+    assert not Membership.objects.filter(room=tea, user__username="bob").exists()

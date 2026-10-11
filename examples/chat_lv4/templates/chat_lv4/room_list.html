@@ -1,7 +1,7 @@
 {% load wireview %}
 
 <div {% tag_header %}>
-  {# Rendered for this user alone: the badges are theirs. Join and Leave are events, not forms: Leave changes the list in place #}
+  {# Rendered for this user alone: the badges are theirs. Join and Leave post to views; a live render draws the connection's token (#206) #}
   <ul style="list-style: none; margin-top: 16px;">
     {% for room in this.rooms %}
       <li style="margin-bottom: 8px;
@@ -20,14 +20,20 @@
                          padding: 0 8px;
                          font-size: 12px">{{ room.unread }}</span>
           {% endif %}
-          <button type="button"
-                  class="link-button"
-                  {% on 'click' 'leave_room' room_id=room.id %}>Leave</button>
+          <form method="post"
+                action="{% url 'chat_lv4:leave_room' room.id %}"
+                wire-boost>
+            {% csrf_token %}
+            <button type="submit" class="link-button">Leave</button>
+          </form>
         {% else %}
           <span>{{ room.name }}</span>
-          <button type="button"
-                  class="link-button"
-                  {% on 'click' 'join_room' room_id=room.id %}>Join</button>
+          <form method="post"
+                action="{% url 'chat_lv4:join_room' room.id %}"
+                wire-boost>
+            {% csrf_token %}
+            <button type="submit" class="link-button">Join</button>
+          </form>
         {% endif %}
       </li>
     {% empty %}

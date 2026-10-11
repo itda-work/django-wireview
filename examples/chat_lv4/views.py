@@ -7,7 +7,10 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
+from wireview import broadcast
+
 from .access import is_member
+from .live import end_membership, user_topic
 from .live_sessions import chat_lv4, chat_lv4_rooms
 from .models import Membership, Room
 
@@ -21,8 +24,9 @@ def index(request: HttpRequest) -> HttpResponse:
     """The room list, and the demo sign-in for a visitor who is not signed in.
 
     The list is a component (``Lv4RoomList``): its unread badges change while
-    the page is open. Joining and leaving are its events. The page is in a
-    boundary with no policy, so that a logout closes the list's socket.
+    the page is open. Its Join and Leave are forms posted to the views below.
+    The page is in a boundary with no policy, so that a logout closes the
+    list's socket.
     """
     return render(
         request,
@@ -57,6 +61,27 @@ def create_room(request: HttpRequest) -> HttpResponse:
         room = Room.objects.create(name=name)
         Membership.objects.create(room=room, user=request.user)
         return redirect("chat_lv4:room", room_id=room.id)
+    return redirect("chat_lv4:index")
+
+
+@require_POST
+def join_room(request: HttpRequest, room_id: uuid.UUID) -> HttpResponse:
+    """Become a member of a room, and go in. The user's other room lists show its link and badge."""
+    if not request.user.is_authenticated:
+        return redirect("chat_lv4:index")
+    room = get_object_or_404(Room, id=room_id)
+    Membership.objects.get_or_create(room=room, user=request.user)
+    # Published once the request's transaction commits: a list that counts again sees the membership
+    broadcast(user_topic(request.user.pk), room=str(room.id), event="joined")
+    return redirect("chat_lv4:room", room_id=room.id)
+
+
+@require_POST
+def leave_room(request: HttpRequest, room_id: uuid.UUID) -> HttpResponse:
+    """Stop being a member. Pages of the room this user still has open go back to the list."""
+    if request.user.is_authenticated:
+        room = get_object_or_404(Room, id=room_id)
+        end_membership(room, request.user)
     return redirect("chat_lv4:index")
 
 

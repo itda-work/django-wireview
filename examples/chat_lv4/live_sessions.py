@@ -22,6 +22,7 @@ chat_lv4 = live_session(
 #: The room list's page. No policy: anyone may see it, a visitor signs in there.
 #: It is a boundary so that a logout reaches it. A connection outside every
 #: boundary does not hear logouts, and keeps the user it connected with: the
-#: list's Join and Leave would go on acting as someone who signed out. Inside
-#: one, the logout closes the socket, and the page comes back as the visitor.
+#: list would go on hearing, and showing, the badges of someone who signed out.
+#: (Its Join and Leave are forms: each POST is the request's user.) Inside one,
+#: the logout closes the socket, and the page comes back as the visitor.
 chat_lv4_rooms = live_session("chat_lv4_rooms")
