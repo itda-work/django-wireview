@@ -174,6 +174,13 @@ The django-reactor era changelog (2.x) is preserved in
   none. A connection with no secret renders an empty token and logs once, naming `ensure_csrf_cookie`. A
   component `mount()`ed in a test renders as a page that has the cookie: a token of a secret new with each
   `mount()`, masked anew for each `render()` and shared by the live renders, as on a connection.
+- Security: `Meta.shared_render`'s scope (and `wireview.W019`) read the component's own template file only, so a
+  class whose `{% include %}`d template or `{% extends %}` parent read `user` shared its render, and with
+  `VERIFY_SHARED_RENDER` off -- production -- the first connection's user went to every other viewer of the
+  broadcast (#208). The scope now follows every template a render reaches -- includes, extends parents (skipping
+  as Django does), function components' and inclusion tags' templates -- and a template only the render can name
+  (`{% include part %}`, `{% extends base %}`, `{% func kind %}`, an unregistered function, one that fails to
+  load) keeps the render each connection's own. A class out of scope that way renders on every connection again.
 
 ## [1.5.1] - 2026-10-10
 

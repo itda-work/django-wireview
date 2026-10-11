@@ -170,6 +170,10 @@ UPGRADE_NOTE = {
         "컴포넌트 템플릿의 `{% csrf_token %}`이 토큰을 그린다",
         "`csrf_exempt`를 붙여 두었다면",
     ),
+    "`Meta.shared_render`'s scope (and `wireview.W019`) read the component's own template file only": (
+        "끼워 넣은 템플릿에서 보는 사람을 읽는 클래스를 공유하지 않는다",
+        "`manage.py check`를 돌린다",
+    ),
 }
 
 EXAMPLE = "저장소의 예제만 바뀌었다"

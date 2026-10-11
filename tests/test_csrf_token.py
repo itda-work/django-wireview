@@ -11,7 +11,9 @@ plain POST form in a component posted an empty token. These hold now:
   connection, the same in every render, so the statics do not change
 - a token is valid for its connection's secret and for no other
 - a connection without a secret Django would accept gets none, and says so once
-- a render shared between connections gets none; verified, reading it raises
+- a class that declares ``shared_render`` and reads it, in its own template or
+  one it includes or draws, does not share (W019): each connection gets its own
+- a render shared all the same -- what the check missed -- gets none; verified, reading it raises
 - LiveComponents, function components and stream items get it as well; a
   stream item, sent whole in every insert, gets one masked anew each time
 - a ``mount()`` in a test is a page that has the cookie: its renders draw a
@@ -113,7 +115,7 @@ class CsrfParent(Component):
 
 
 class CsrfShared(Component):
-    """In scope for the system check -- the token is read in an include it does not look into."""
+    """Declares a shared render, and reads the token in a template it includes: out of scope (#208)."""
 
     class Meta:
         template_name = "csrf/shared.html"
@@ -440,7 +442,28 @@ async def test_two_mounts_are_two_pages():
 
 
 @pytest.mark.asyncio
-async def test_a_shared_render_gives_no_viewer_a_token(monkeypatch):
+async def test_a_shared_render_that_reads_the_token_in_an_include_is_each_viewer_s_own(monkeypatch):
+    set_wireview(monkeypatch, VERIFY_SHARED_RENDER=False)
+    assert any("csrf_token (through csrf/partial.html)" in why for why in shared_render.out_of_scope(CsrfShared))
+    pages = [await Page.open(CsrfShared, cookie=SECRET), await Page.open(CsrfShared, cookie=OTHER)]
+    data = {"channel": "csrf-shared", "kwargs": {}, "message_id": uuid4().hex}
+    for page in pages:
+        page.session.repo.get("form").n = 1
+    for page in pages:
+        await page.session.notification(dict(data))
+    (mine,), (theirs,) = (tokens(page.html()) for page in pages)
+    assert accepts(mine, cookie=SECRET) and not accepts(mine, cookie=OTHER)
+    assert accepts(theirs, cookie=OTHER) and not accepts(theirs, cookie=SECRET)
+
+
+@pytest.fixture
+def unseen(monkeypatch):
+    """The system check misses the read, as it misses one in a property: the render is shared."""
+    monkeypatch.setattr(shared_render, "_template_reasons", lambda cls: [])
+
+
+@pytest.mark.asyncio
+async def test_a_shared_render_gives_no_viewer_a_token(monkeypatch, unseen):
     """Unverified, the render one connection draws for all has no token: never another viewer's."""
     set_wireview(monkeypatch, VERIFY_SHARED_RENDER=False)
     pages = [await Page.open(CsrfShared, cookie=SECRET), await Page.open(CsrfShared, cookie=OTHER)]
@@ -455,7 +478,7 @@ async def test_a_shared_render_gives_no_viewer_a_token(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_a_verified_shared_render_that_reads_the_token_raises(monkeypatch):
+async def test_a_verified_shared_render_that_reads_the_token_raises(monkeypatch, unseen):
     set_wireview(monkeypatch, VERIFY_SHARED_RENDER=True)
     mounted = await wireview_testing.mount(CsrfShared, id="form")
     with pytest.raises(shared_render.SharedRenderError, match="its render read 'csrf_token'"):

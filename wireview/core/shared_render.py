@@ -29,7 +29,8 @@ broadcast in one process render the component once and share the result:
 
 The promise cannot be checked in full: a property may read anything. What can
 be is checked where it is cheap. ``wireview.W019`` names a class whose Meta or
-template puts it out of scope, and a render of such a class does not share.
+templates -- its own and every one its render reaches (``_Reach``) -- put it out
+of scope, and a render of such a class does not share.
 With ``VERIFY_SHARED_RENDER`` (``DEBUG`` by default, and ``wireview.testing``),
 a declared class's render that reads ``user``, ``session``, ``request``,
 ``perms``, ``csrf_token`` or ``messages`` raises -- after the render too, when
@@ -177,39 +178,193 @@ def out_of_scope(cls: type[Component]) -> list[str]:
             "connection to connection under the same primary key"
         )
     if meta.template_name:
-        try:
-            reasons.extend(_template_reasons(cls))
-        except Exception:  # a missing template is not this check's to report
-            pass
+        reasons.extend(_template_reasons(cls))
     return reasons
 
 
 def _template_reasons(cls: type[Component]) -> list[str]:
+    from django.template import TemplateDoesNotExist, TemplateSyntaxError
     from django.template.loader import get_template
 
-    template = get_template(t.cast(str, cls._meta.template_name))
-    nodelist = getattr(getattr(template, "template", template), "nodelist", None)
-    if nodelist is None:
+    try:
+        template = get_template(t.cast(str, cls._meta.template_name))
+    except (TemplateDoesNotExist, TemplateSyntaxError):  # its render fails: not this check's to report
         return []
-    tags: set[str] = set()
-    names: set[str] = set()
-    for node in _walk(nodelist):
-        kind = type(node).__name__
-        func = getattr(node, "func", None)
-        if kind in _COMPONENT_NODES or (kind == "SimpleNode" and getattr(func, "__name__", "") in _COMPONENT_TAGS):
-            tags.add(getattr(func, "__name__", None) or kind)
-        if kind == "CsrfTokenNode":
-            names.add("csrf_token")
-        names.update(name for name in _watched_names(node) if not _owns(cls, name))
+    inner = getattr(template, "template", template)
+    if getattr(inner, "nodelist", None) is None:
+        return ["its template is not a Django template, which this check cannot read"]
+    reach = _Reach(cls)
+    try:
+        reach.template(inner, owned=True)
+    except Exception as error:  # what was not read may read the viewer: no sharing on a guess
+        log.debug("Reading the templates of %s failed", cls.__qualname__, exc_info=True)
+        return [f"its templates could not be read through ({type(error).__name__}: {error})"]
     reasons = []
-    if tags:
+    if reach.tags:
         reasons.append(
-            f"its template draws another component, a slot or an upload ({', '.join(sorted(tags))}), "
+            f"its template draws another component, a slot or an upload ({reach.listed(reach.tags)}), "
             "which each connection draws from its own repository"
         )
-    if names:
-        reasons.append(f"its template reads {', '.join(sorted(names))}, which differ from viewer to viewer")
+    if reach.names:
+        reasons.append(f"its template reads {reach.listed(reach.names)}, which differ from viewer to viewer")
+    if reach.unknown:
+        reasons.append(
+            f"its template loads a template only the render can name ({', '.join(sorted(reach.unknown))}), "
+            "which this check cannot follow, and which may read the viewer"
+        )
     return reasons
+
+
+class _Reach:
+    """Every template a render of ``cls`` reaches from its own: what they draw and read of the viewer (#208).
+
+    The render reaches past its file: ``{% include %}``, the parents of
+    ``{% extends %}``, the template of a function component (``{% func %}``,
+    ``{% func_block %}``) or of an inclusion tag. Each is followed by its
+    literal name, as Django's render finds it -- the same engine, the extends
+    chain skipping the templates it came through -- and read as the
+    component's own. A name only the render knows (a variable, a function not
+    registered, a template that fails to load) cannot be followed, and counts
+    against sharing: what it would load may read anything.
+
+    A template another tag renders with a context of its own -- a function
+    component's, an inclusion tag's -- holds no field of the component, so a
+    watched name read there is the viewer's even when the component has a
+    field of that name.
+    """
+
+    def __init__(self, cls: type[Component]) -> None:
+        self.cls = cls
+        self.root: str | None = None
+        #: What was found, each with the templates beyond the component's own it was found in
+        self.tags: dict[str, set[str]] = {}
+        self.names: dict[str, set[str]] = {}
+        self.unknown: set[str] = set()
+        self._seen: set[tuple[str, int, bool]] = set()
+
+    def listed(self, found: dict[str, set[str]]) -> str:
+        """``user (through a.html), request``: the names, and where beyond the component's own template."""
+        return ", ".join(
+            f"{name} (through {', '.join(sorted(where))})" if (where := found[name] - {self.root}) else name
+            for name in sorted(found)
+        )
+
+    def template(self, template: t.Any, owned: bool, history: tuple[t.Any, ...] = ()) -> None:
+        """Read ``template`` (a ``django.template.base.Template``) and what it reaches, once each."""
+        origin = template.origin
+        seen = (origin.name, id(origin.loader), owned)  # an Origin compares so, and does not hash
+        if seen in self._seen:
+            return
+        self._seen.add(seen)
+        name = origin.template_name or origin.name
+        if self.root is None:
+            self.root = name
+        for node in _walk(template.nodelist):
+            self.node(node, template, name, owned, history or (origin,))
+
+    def node(self, node: Node, template: t.Any, where: str, owned: bool, history: tuple[t.Any, ...]) -> None:
+        kind = type(node).__name__
+        func = getattr(node, "func", None)
+        tag = getattr(func, "__name__", "")
+        if kind in _COMPONENT_NODES or (kind == "SimpleNode" and tag in _COMPONENT_TAGS):
+            self.tags.setdefault(tag or kind, set()).add(where)
+        if kind == "CsrfTokenNode":
+            self.names.setdefault("csrf_token", set()).add(where)
+        for name in _watched_names(node):
+            if not (owned and _owns(self.cls, name)):
+                self.names.setdefault(name, set()).add(where)
+        if kind == "IncludeNode":
+            self._include(node, template, owned)
+        elif kind == "ExtendsNode":
+            self._extends(node, template, owned, history)
+        elif kind == "SimpleNode" and tag == "func" and _is_wireview(func):
+            self._function(_literal(node.args[0]) if node.args else None, _said(node), owned=False)  # type: ignore[attr-defined]
+        elif kind == "FuncBlockNode":
+            self._function(node.component_name, f'{{% func_block "{node.component_name}" %}}', owned=False)  # type: ignore[attr-defined]
+        elif kind == "InclusionNode":
+            self._inclusion(node, template)
+
+    def _include(self, node: t.Any, template: t.Any, owned: bool) -> None:
+        from django.template.loader_tags import construct_relative_path
+
+        name = _literal(node.template)
+        if name is None:
+            self.unknown.add(_said(node))
+            return
+        try:
+            included = template.engine.get_template(construct_relative_path(template.origin.template_name, name))
+        except Exception:
+            self.unknown.add(_said(node))
+            return
+        self.template(included, owned)
+
+    def _extends(self, node: t.Any, template: t.Any, owned: bool, history: tuple[t.Any, ...]) -> None:
+        name = _literal(node.parent_name)
+        if name is None:
+            self.unknown.add(_said(node))
+            return
+        try:
+            parent, origin = template.engine.find_template(name, skip=list(history))
+        except Exception:
+            self.unknown.add(_said(node))
+            return
+        self.template(parent, owned, (*history, origin))
+
+    def _function(self, name: str | None, said: str, owned: bool) -> None:
+        from django.template.loader import get_template
+
+        from ..function_components import get_function_component
+
+        try:
+            if name is None:
+                raise LookupError("a function component named by a variable")
+            function = get_function_component(name)
+            if function.template is None:  # its Python returns the markup: no template to read
+                return
+            loaded = get_template(function.template)
+        except Exception:
+            self.unknown.add(said)
+            return
+        self.template(getattr(loaded, "template", loaded), owned)
+
+    def _inclusion(self, node: t.Any, template: t.Any) -> None:
+        from django.template.base import Template
+
+        filename = node.filename
+        try:
+            if isinstance(getattr(filename, "template", None), Template):
+                filename = filename.template
+            if isinstance(filename, Template):
+                loaded = [filename]
+            elif isinstance(filename, str):
+                loaded = [template.engine.get_template(filename)]
+            else:  # select_template takes the first that loads: any of them may be the one
+                loaded = [template.engine.get_template(name) for name in filename]
+        except Exception:
+            self.unknown.add(f"{{% {getattr(node.func, '__name__', 'inclusion tag')} %}}")
+            return
+        for each in loaded:
+            self.template(each, owned=False)
+
+
+def _literal(expression: t.Any) -> str | None:
+    """The string ``expression`` always resolves to, or None when the render decides it."""
+    from django.template.base import FilterExpression
+
+    if isinstance(expression, FilterExpression) and isinstance(expression.var, str) and not expression.filters:
+        return str(expression.var)
+    return None
+
+
+def _said(node: t.Any) -> str:
+    """How the template wrote ``node``'s tag, for a reason that names it."""
+    token = getattr(node, "token", None)
+    contents = getattr(token, "contents", None)
+    return f"{{% {contents} %}}" if contents else f"{{% {type(node).__name__} %}}"
+
+
+def _is_wireview(func: t.Any) -> bool:
+    return getattr(func, "__module__", "") == "wireview.templatetags.wireview"
 
 
 def _row_fields(cls: type[Component]) -> list[str]:
@@ -303,7 +458,7 @@ def declared(component: Component) -> bool:
     """Whether ``component``'s live render goes the shared way: declared and in scope.
 
     A class out of scope is told once in the log and renders as any other.
-    The scope is kept per class and Meta; the template is read once.
+    The scope is kept per class and Meta; the templates are read once.
     """
     cls = type(component)
     meta = cls._meta
