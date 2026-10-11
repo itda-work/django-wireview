@@ -213,6 +213,25 @@ The django-reactor era changelog (2.x) is preserved in
   join that comes later starts it from what the page holds, and `joined()` reads the current values. When the
   channel layer drops the mail that hands them over (a full channel), the join hands them over at once rather
   than never.
+- Security: `Meta.shared_render`'s scope (and `wireview.W019`) read the component's own template file only, so a
+  class whose `{% include %}`d template or `{% extends %}` parent read `user` shared its render, and with
+  `VERIFY_SHARED_RENDER` off -- production -- the first connection's user went to every other viewer of the
+  broadcast (#208). The scope now follows every template a render reaches -- includes (each partial of a file,
+  `"parts.html#row"`, on its own, Django 6's and django-template-partials' alike: the part of the file inside its
+  `{% partialdef %}`, and the partials it renders with `{% partial %}`), extends parents (skipping as Django does,
+  and read again for each chain a template that extends comes through), function components' and inclusion tags'
+  templates (one made from a string as well). Each is read from what its parser makes: the check parses the
+  source again with a parser that writes down every node and expression, so a tag's body and arguments are read
+  wherever the tag keeps them (in an object of its own, wrapped in a value object), and a `{{ }}` a tag takes as
+  a token and makes no node of (`{% blocktranslate %}`'s body, a body compiled at render) as the expression it
+  writes; wireview's own `{% cond %}` and `{% class %}` are read by the names their expression reads. A partial is
+  read from the file its render uses, and only its part when every tag in it is Django's, wireview's or the
+  partial library's and holds nothing parsed outside it -- else the whole file. A parse that does not match the
+  render's tree keeps the render its own; `{% debug %}` is out of scope. A template only the render can name
+  (`{% include part %}`, `{% extends base %}`, `{% func kind %}`, an unregistered function, one that fails to
+  load, the component's own included) or one the check fails to read keeps the render each connection's own,
+  in production until the process restarts. A class out of scope that way renders on every connection again.
+  Under the dev server's autoreloader a template change has the scope read anew.
 
 ## [1.5.1] - 2026-10-10
 

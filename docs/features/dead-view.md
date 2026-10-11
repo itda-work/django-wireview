@@ -84,8 +84,9 @@ def add(request):
   daphne는 기본으로 협상하지 않는다.
 - **보는 사람의 것이다.** 토큰은 그 연결의 시크릿에만 맞는다. 여러 연결이 렌더를 함께 쓰는
   [`Meta.shared_render`](./shared-render.md)의 공유 렌더와 [`Broadcast`](./broadcast.md) 항목에는 넣지 않는다 —
-  검사(`VERIFY_SHARED_RENDER`, `Broadcast`는 언제나)에서는 읽으면 오류이고, 템플릿에 직접 쓰면 `wireview.W019`가
-  그 클래스를 공유에서 뺀다(그러면 렌더는 연결 자기 것이라 자기 토큰을 받는다).
+  검사(`VERIFY_SHARED_RENDER`, `Broadcast`는 언제나)에서는 읽으면 오류이고, 템플릿에 쓰면 — `{% include %}`한 템플릿,
+  함수 컴포넌트·inclusion 태그의 템플릿이어도 — `wireview.W019`가 그 클래스를 공유에서 뺀다(그러면 렌더는 연결 자기
+  것이라 자기 토큰을 받는다).
 - **시크릿이 바뀌면(로그인의 `rotate_token`)** 이미 열린 연결은 옛 시크릿의 토큰을 계속 그린다. 그 폼은 403이다 —
   로그인 전에 그려 둔 Django 페이지의 폼과 같다. 로그인 폼은 boost하지 않으므로([boost](./boost.md#폼은-스스로-청한다-wire-boost))
   로그인 뒤의 새 페이지와 새 연결은 새 시크릿을 받는다. `CSRF_USE_SESSIONS`이면 경계([live_session](./live-session.md))에

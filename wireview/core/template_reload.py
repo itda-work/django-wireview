@@ -100,7 +100,13 @@ def templates_changed(sender: t.Any, file_path: Path, **kwargs: t.Any) -> None:
     Returns ``None`` whatever it does. A true result tells the autoreloader the
     change is handled and not to restart; that is Django's own receiver's to
     say for a template, and for anything else a restart is still due.
+
+    Whatever the setting, the scope of ``Meta.shared_render`` is read again:
+    it follows the templates a class reaches, and one of them may be this file.
     """
+    from . import shared_render
+
+    shared_render.templates_changed()
     if not enabled():
         return
     with _lock:

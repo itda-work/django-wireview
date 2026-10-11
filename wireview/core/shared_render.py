@@ -29,7 +29,8 @@ broadcast in one process render the component once and share the result:
 
 The promise cannot be checked in full: a property may read anything. What can
 be is checked where it is cheap. ``wireview.W019`` names a class whose Meta or
-template puts it out of scope, and a render of such a class does not share.
+templates -- its own and every one its render reaches (``_Reach``) -- put it out
+of scope, and a render of such a class does not share.
 With ``VERIFY_SHARED_RENDER`` (``DEBUG`` by default, and ``wireview.testing``),
 a declared class's render that reads ``user``, ``session``, ``request``,
 ``perms``, ``csrf_token`` or ``messages`` raises -- after the render too, when
@@ -43,6 +44,7 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import dataclasses
+import functools
 import logging
 import secrets
 import typing as t
@@ -114,7 +116,6 @@ _COMPONENT_TAGS = frozenset(
         "upload_preview",
     }
 )
-_COMPONENT_NODES = frozenset({"ComponentBlockNode", "LiveComponentBlockNode", "FillNode"})
 
 
 class SharedRenderError(ImproperlyConfigured):
@@ -177,39 +178,496 @@ def out_of_scope(cls: type[Component]) -> list[str]:
             "connection to connection under the same primary key"
         )
     if meta.template_name:
-        try:
-            reasons.extend(_template_reasons(cls))
-        except Exception:  # a missing template is not this check's to report
-            pass
+        reasons.extend(_template_reasons(cls))
     return reasons
 
 
 def _template_reasons(cls: type[Component]) -> list[str]:
     from django.template.loader import get_template
 
-    template = get_template(t.cast(str, cls._meta.template_name))
-    nodelist = getattr(getattr(template, "template", template), "nodelist", None)
-    if nodelist is None:
-        return []
-    tags: set[str] = set()
-    names: set[str] = set()
-    for node in _walk(nodelist):
-        kind = type(node).__name__
-        func = getattr(node, "func", None)
-        if kind in _COMPONENT_NODES or (kind == "SimpleNode" and getattr(func, "__name__", "") in _COMPONENT_TAGS):
-            tags.add(getattr(func, "__name__", None) or kind)
-        if kind == "CsrfTokenNode":
-            names.add("csrf_token")
-        names.update(name for name in _watched_names(node) if not _owns(cls, name))
+    try:
+        template = get_template(t.cast(str, cls._meta.template_name))
+    except Exception as error:  # its render fails as well: nothing is lost, and nothing kept on a guess
+        log.debug("Loading the template of %s failed", cls.__qualname__, exc_info=True)
+        return [f"its template could not be loaded ({type(error).__name__}: {error})"]
+    inner = getattr(template, "template", template)
+    if getattr(inner, "nodelist", None) is None:
+        return ["its template is not a Django template, which this check cannot read"]
+    reach = _Reach(cls)
+    try:
+        reach.template(inner, owned=True)
+    except Exception as error:  # what was not read may read the viewer: no sharing on a guess
+        log.debug("Reading the templates of %s failed", cls.__qualname__, exc_info=True)
+        return [f"its templates could not be read through ({type(error).__name__}: {error})"]
     reasons = []
-    if tags:
+    if reach.tags:
         reasons.append(
-            f"its template draws another component, a slot or an upload ({', '.join(sorted(tags))}), "
+            f"its template draws another component, a slot or an upload ({reach.listed(reach.tags)}), "
             "which each connection draws from its own repository"
         )
-    if names:
-        reasons.append(f"its template reads {', '.join(sorted(names))}, which differ from viewer to viewer")
+    if reach.names:
+        reasons.append(f"its template reads {reach.listed(reach.names)}, which differ from viewer to viewer")
+    if reach.dumps:
+        reasons.append(f"its template prints the whole context, the viewer's with it ({reach.listed(reach.dumps)})")
+    if reach.unknown:
+        reasons.append(
+            f"its template loads a template only the render can name ({', '.join(sorted(reach.unknown))}), "
+            "which this check cannot follow, and which may read the viewer"
+        )
+    if reach.unreadable:
+        reasons.append(
+            f"its template holds an expression this check cannot read ({reach.listed(reach.unreadable)}), "
+            "which may read the viewer"
+        )
     return reasons
+
+
+class _Reach:
+    """Every template a render of ``cls`` reaches from its own: what they draw and read of the viewer (#208).
+
+    The render reaches past its file: ``{% include %}``, the parents of
+    ``{% extends %}``, the template of a function component (``{% func %}``,
+    ``{% func_block %}``) or of an inclusion tag. Each is followed by its
+    literal name, as Django's render finds it -- the same engine, the extends
+    chain skipping the templates it came through -- and read as the
+    component's own. A name only the render knows (a variable, a function not
+    registered, a template that fails to load) cannot be followed, and counts
+    against sharing: what it would load may read anything.
+
+    A template is read from what its parser makes (``_Parse``), not from the
+    tree it left: a tag keeps its body and its arguments wherever it likes,
+    and every one of them went through the parser. A file is read once per
+    name; a partial of it (``"parts.html#row"``: Django 6's, or
+    django-template-partials') as the part of the file inside its definition
+    (``_Parse.part``: the whole file when a tag there may render more), and a
+    template made from a string, which has no name, once per object. A
+    template that extends another is read again when it comes through other
+    templates: the chain decides which parent ``{% extends %}`` finds.
+
+    A template another tag renders with a context of its own -- a function
+    component's, an inclusion tag's -- holds no field of the component, so a
+    watched name read there is the viewer's even when the component has a
+    field of that name.
+    """
+
+    def __init__(self, cls: type[Component]) -> None:
+        self.cls = cls
+        self.root: str | None = None
+        #: What was found, each with the templates beyond the component's own it was found in
+        self.tags: dict[str, set[str]] = {}
+        self.names: dict[str, set[str]] = {}
+        self.unknown: set[str] = set()
+        self.dumps: dict[str, set[str]] = {}
+        self.unreadable: dict[str, set[str]] = {}
+        self._seen: set[tuple[t.Any, ...]] = set()
+        #: Each file parsed, once however many of its partials are read
+        self._parsed: dict[tuple[t.Any, ...], _Parse] = {}
+        #: The templates read by identity, held so that no other takes the identity of one gone
+        self._held: list[t.Any] = []
+
+    def listed(self, found: dict[str, set[str]]) -> str:
+        """``user (through a.html), request``: the names, and where beyond the component's own template."""
+        return ", ".join(
+            f"{name} (through {', '.join(sorted(where))})" if (where := found[name] - {self.root}) else name
+            for name in sorted(found)
+        )
+
+    def template(self, template: t.Any, owned: bool, history: tuple[t.Any, ...] = ()) -> None:
+        """Read ``template`` (a ``django.template.base.Template`` or a partial of one) and what it reaches."""
+        from django.template.base import UNKNOWN_SOURCE
+
+        origin = template.origin
+        # A partial has its file's Origin and a name of its own: Django 6's PartialTemplate, the
+        # package's TemplateProxy. Any other Template is named as its Origin is.
+        named = getattr(template, "name", None)
+        fragment = named if named is not None and named != origin.template_name else None
+        if origin.name == UNKNOWN_SOURCE:  # made from a string: every one is another template
+            file: tuple[t.Any, ...] = (id(template),)
+            self._held.append(template)
+        else:  # by name, as an Origin compares, and does not hash: a loader without a cache gives a new object
+            file = (origin.name, id(origin.loader))
+        parsed = self._parsed.get(file)
+        if parsed is None:
+            parsed = self._parsed[file] = _Parse.of(file, template, origin, fragment is not None)
+        parsed.agrees(template, fragment)
+        self._read(parsed, fragment, owned, history or (origin,))
+
+    def _read(self, parsed: _Parse, fragment: str | None, owned: bool, history: tuple[t.Any, ...]) -> None:
+        part = parsed.part(fragment)
+        # Which parent {% extends %} finds depends on the templates the chain came through
+        chain = tuple((origin.name, id(origin.loader)) for origin in history) if part.extends else None
+        seen = (*parsed.file, fragment, owned, chain)
+        if seen in self._seen:
+            return
+        self._seen.add(seen)
+        where = parsed.origin.template_name or parsed.origin.name
+        if fragment is not None:
+            where = f"{where}#{fragment}"
+        if self.root is None:
+            self.root = where
+        for node in part.nodes:
+            self.node(node, parsed, where, owned, history)
+        self._names(part.expressions, where, owned)
+        for said in part.unread:
+            self.unreadable.setdefault(said, set()).add(where)
+        for other in part.partials:  # {% partial name %}: another partial of the same file
+            self._read(parsed, other, owned, history)
+
+    def _names(self, expressions: t.Iterable[t.Any], where: str, owned: bool) -> None:
+        for name in _watched_names(expressions):
+            self._name(name, where, owned)
+
+    def _name(self, name: str, where: str, owned: bool) -> None:
+        if not (owned and _owns(self.cls, name)):
+            self.names.setdefault(name, set()).add(where)
+
+    def node(self, node: Node, parsed: _Parse, where: str, owned: bool, history: tuple[t.Any, ...]) -> None:
+        from django.template.defaulttags import CsrfTokenNode, DebugNode
+        from django.template.library import InclusionNode, SimpleNode
+        from django.template.loader_tags import ExtendsNode, IncludeNode
+
+        from ..templatetags.wireview import ComponentBlockNode, FillNode, FuncBlockNode, LiveComponentBlockNode
+
+        func = getattr(node, "func", None)
+        tag = getattr(func, "__name__", "")
+        simple = isinstance(node, SimpleNode)
+        if isinstance(node, (ComponentBlockNode, LiveComponentBlockNode, FillNode)) or (
+            simple and tag in _COMPONENT_TAGS
+        ):
+            self.tags.setdefault(tag if simple else type(node).__name__, set()).add(where)
+        if isinstance(node, CsrfTokenNode):
+            self.names.setdefault("csrf_token", set()).add(where)
+        if isinstance(node, DebugNode):
+            self.dumps.setdefault("{% debug %}", set()).add(where)
+        reads = getattr(node, "context_names", None)
+        if callable(reads):
+            # An expression held as text and read from the context by name at render: wireview's
+            # {% cond %} and {% class %}, and any tag that tells its names as they do (referenced_names)
+            found = t.cast("frozenset[str] | None", reads())
+            if found is None:  # its render fails as well; what it would read is not known
+                self.unreadable.setdefault(_said(node), set()).add(where)
+            for name in found or ():
+                if name in WATCHED_FIELDS or name in WATCHED_CONTEXT:
+                    self._name(name, where, owned)
+        self._names(_made_by_tag(node), where, owned)
+        if isinstance(node, IncludeNode):
+            self._include(node, parsed, owned)
+        elif isinstance(node, ExtendsNode):
+            self._extends(node, parsed, owned, history)
+        elif simple and tag == "func" and _is_wireview(func):
+            self._function(_literal(node.args[0]) if node.args else None, _said(node), owned=False)  # type: ignore[attr-defined]
+        elif isinstance(node, FuncBlockNode):
+            self._function(node.component_name, f'{{% func_block "{node.component_name}" %}}', owned=False)
+        elif isinstance(node, InclusionNode):
+            self._inclusion(node, parsed)
+
+    def _include(self, node: t.Any, parsed: _Parse, owned: bool) -> None:
+        from django.template.loader_tags import construct_relative_path
+
+        name = _literal(node.template)
+        if name is None:
+            self.unknown.add(_said(node))
+            return
+        try:
+            included = parsed.engine.get_template(construct_relative_path(parsed.origin.template_name, name))
+        except Exception:
+            self.unknown.add(_said(node))
+            return
+        self.template(included, owned)
+
+    def _extends(self, node: t.Any, parsed: _Parse, owned: bool, history: tuple[t.Any, ...]) -> None:
+        name = _literal(node.parent_name)
+        if name is None:
+            self.unknown.add(_said(node))
+            return
+        try:
+            parent, origin = parsed.engine.find_template(name, skip=list(history))
+        except Exception:
+            self.unknown.add(_said(node))
+            return
+        self.template(parent, owned, (*history, origin))
+
+    def _function(self, name: str | None, said: str, owned: bool) -> None:
+        from django.template.loader import get_template
+
+        from ..function_components import get_function_component
+
+        try:
+            if name is None:
+                raise LookupError("a function component named by a variable")
+            function = get_function_component(name)
+            if function.template is None:  # its Python returns the markup: no template to read
+                return
+            loaded = get_template(function.template)
+        except Exception:
+            self.unknown.add(said)
+            return
+        self.template(getattr(loaded, "template", loaded), owned)
+
+    def _inclusion(self, node: t.Any, parsed: _Parse) -> None:
+        from django.template.base import Template
+
+        filename = node.filename
+        try:
+            if isinstance(getattr(filename, "template", None), Template):
+                filename = filename.template
+            if isinstance(filename, Template):
+                loaded = [filename]
+            elif isinstance(filename, str):
+                loaded = [parsed.engine.get_template(filename)]
+            else:  # select_template takes the first that loads: any of them may be the one
+                loaded = [parsed.engine.get_template(name) for name in filename]
+        except Exception:
+            self.unknown.add(f"{{% {getattr(node.func, '__name__', 'inclusion tag')} %}}")
+            return
+        for each in loaded:
+            self.template(each, owned=False)
+
+
+@dataclass
+class _Part:
+    """What a render of a file, or of one partial of it, reaches of its parse."""
+
+    nodes: list[t.Any]
+    expressions: list[t.Any]
+    #: How the template wrote each ``{{ }}`` a tag took as a token and the check cannot read
+    unread: list[str]
+    #: The other partials of the file it renders (``{% partial name %}``)
+    partials: list[str]
+    extends: bool
+
+
+@dataclass
+class _Parse:
+    """A template's source parsed again by a parser that writes down all it makes (``_recorder``).
+
+    Every node a template holds went through ``Parser.extend_nodelist``, and
+    every expression a tag takes -- ``{{ }}``, an argument, a condition, a
+    filter's argument -- through ``Parser.compile_filter``: whatever a tag does
+    with them after, wherever it keeps them, they are here. A ``{{ }}`` a tag
+    takes as a token (``Parser.next_token``) and makes no node of -- the body
+    of ``{% blocktranslate %}``, a body compiled at render or by a parser of
+    the tag's own -- is read as the expression it writes. Each is written down
+    with the tags it is inside, which is how a partial's part is told.
+    """
+
+    file: tuple[t.Any, ...]
+    engine: t.Any
+    origin: t.Any
+    #: The node list the parse made: what the template's own must match
+    nodelist: t.Any
+    #: Each node, the node list it went into, and the tokens of the tags it is inside
+    nodes: list[tuple[t.Any, t.Any, tuple[t.Any, ...]]]
+    #: Each expression, and the tokens of the tags it is inside
+    expressions: list[tuple[t.Any, tuple[t.Any, ...]]]
+    #: Each ``{{ }}`` a tag took as a token that does not read as an expression, and the tags it is inside
+    unread: list[tuple[str, tuple[t.Any, ...]]]
+    #: Each partial the file defines: its name, and the node list of its body (None: defined twice)
+    defined: dict[str, t.Any]
+    #: Each partial's bodies, every one a library defined under its name
+    bodies: dict[str, list[t.Any]]
+
+    @classmethod
+    def of(cls, file: tuple[t.Any, ...], template: t.Any, origin: t.Any, partial: bool) -> _Parse:
+        from django.template.base import FilterExpression, Lexer, TokenType
+
+        engine = getattr(template, "engine", None) or getattr(origin.loader, "engine", None)
+        if engine is None:
+            raise LookupError(f"no engine renders {origin.name}")
+        parser = _recorder()(
+            Lexer(_source(engine, template, origin, partial)).tokenize(),
+            engine.template_libraries,
+            engine.template_builtins,
+            origin,
+        )
+        nodelist = parser.parse()
+        expressions = list(parser.expressions)
+        unread = []
+        for token, inside in parser.taken:
+            if token.token_type != TokenType.VAR or id(token) in parser.made:
+                continue
+            try:
+                expressions.append((FilterExpression(token.contents, parser), inside))
+            except Exception:  # a body the tag reads its own way: what it reads is not known
+                unread.append((f"{{{{ {token.contents} }}}}", inside))
+        bodies: dict[str, list[t.Any]] = {}
+        for value in getattr(parser, "extra_data", {}).values():
+            if not isinstance(value, Mapping):  # Django 6's "partials", the package's "template-partials"
+                continue
+            for name, each in value.items():
+                if isinstance(name, str):
+                    bodies.setdefault(name, []).append(getattr(each, "nodelist", None))
+        # A name two libraries define: which body the render takes is not known, and the whole file is read
+        defined = {name: found[0] if len(found) == 1 else None for name, found in bodies.items()}
+        return cls(file, engine, origin, nodelist, parser.nodes, expressions, unread, defined, bodies)
+
+    def agrees(self, template: t.Any, fragment: str | None) -> None:
+        """Raise unless the parse made the tree ``template`` renders: as many nodes at its top.
+
+        The source read again is not always the one the render's tree was
+        made from: a Template whose source was left out or that compiles
+        otherwise, a partial whose file changed under a cached loader.
+        Wireview's markers replace a node one for one, which keeps the count.
+        """
+        made = [self.nodelist] if fragment is None else self.bodies.get(fragment, [])
+        renders = getattr(template, "nodelist", None)
+        if renders is None or not any(each is not None and len(each) == len(renders) for each in made):
+            raise LookupError(f"{self.origin.name} parsed again is not the template its render uses")
+
+    def part(self, fragment: str | None) -> _Part:
+        """What a render of the partial ``fragment`` reaches, or of the whole file.
+
+        A partial is the part of the file inside its definition's tag. One the
+        parse did not define as named, or whose part cannot be told, is read
+        as the whole file: more than its render reaches, never less.
+        """
+        from django.template.loader_tags import ExtendsNode
+
+        within: t.Callable[[tuple[t.Any, ...]], bool] = lambda inside: True  # noqa: E731
+        body = self.defined.get(fragment) if fragment is not None else None
+        if body is not None:
+            # Its definition's tag: the one every node of its body is directly inside
+            tags = {id(inside[-1]) for _node, nodelist, inside in self.nodes if nodelist is body and inside}
+            if tags or not len(body):
+                part = lambda inside: any(id(token) in tags for token in inside)  # noqa: E731
+                if self._alone(part, tags):
+                    within = part
+        nodes = [node for node, _nodelist, inside in self.nodes if within(inside)]
+        return _Part(
+            nodes,
+            [expression for expression, inside in self.expressions if within(inside)],
+            [said for said, inside in self.unread if within(inside)],
+            sorted({name for node in nodes if (name := _partial_named(node)) in self.defined and name != fragment}),
+            any(isinstance(node, ExtendsNode) for node in nodes),
+        )
+
+    def _alone(self, part: t.Callable[[tuple[t.Any, ...]], bool], tags: set[int]) -> bool:
+        """Whether a render of the part reaches nothing parsed outside it.
+
+        A tag may render a body parsed elsewhere in the file -- a macro defined
+        before the partial, kept on the parser and used inside it. Only Django's
+        tags, wireview's and the partial library's own are known not to, and
+        then only when none of them holds a node or node list from outside.
+        """
+        library = {type(node).__module__ for node, _nodelist, _inside in self.nodes if id(node.token) in tags}
+        outside = {id(each) for node, nodelist, inside in self.nodes if not part(inside) for each in (node, nodelist)}
+        for node, _nodelist, inside in self.nodes:
+            if not part(inside):
+                continue
+            module = type(node).__module__
+            if module not in library and not module.startswith(_KNOWN_TAGS):
+                return False
+            if id(node) in outside or any(id(each) in outside for each in _held(node)):
+                return False
+        return True
+
+
+#: Where the node classes of the tags known to render only what they were parsed with are defined
+_KNOWN_TAGS = ("django.template.", "django.templatetags.", "wireview.")
+
+
+def _held(node: t.Any) -> t.Iterator[t.Any]:
+    """What ``node`` keeps in an attribute, or in a list, tuple or dict there."""
+    for value in getattr(node, "__dict__", {}).values():
+        if isinstance(value, Mapping):
+            value = list(value.values())
+        yield from value if isinstance(value, (list, tuple)) else (value,)
+
+
+def _source(engine: t.Any, template: t.Any, origin: t.Any, partial: bool) -> str:
+    """The source ``template``'s tree was made from: for a partial, its file's, as the engine holds it now.
+
+    A cached loader keeps the file it read first; the file on disk may have
+    changed since. The partial is taken from the file the engine gives.
+    """
+    if not partial:
+        return template.source
+    whole = engine.get_template(origin.template_name)
+    whole = getattr(whole, "template", whole)
+    if whole.origin != origin:
+        raise LookupError(f"{origin.template_name} is not the file of the partial {origin.name}")
+    return whole.source
+
+
+@functools.cache
+def _recorder() -> type[t.Any]:
+    """A Django ``Parser`` that writes down each node and expression it makes, and the tags it makes them in.
+
+    It writes down the tokens a tag takes (``next_token``) as well, and the
+    ones that became nodes: a ``{{ }}`` taken that is not a node is one the tag
+    reads its own way. The tokens ``{% comment %}`` skips (``skip_past``) are not.
+    """
+    from django.template.base import Parser
+
+    class Recorder(Parser):
+        def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
+            super().__init__(*args, **kwargs)
+            self.nodes: list[tuple[t.Any, t.Any, tuple[t.Any, ...]]] = []
+            self.expressions: list[tuple[t.Any, tuple[t.Any, ...]]] = []
+            self.taken: list[tuple[t.Any, tuple[t.Any, ...]]] = []
+            self.made: set[int] = set()
+            self._skipping = False
+
+        def _inside(self) -> tuple[t.Any, ...]:
+            return tuple(token for _command, token in self.command_stack)
+
+        def next_token(self) -> t.Any:
+            token = super().next_token()
+            if not self._skipping:
+                self.taken.append((token, self._inside()))
+            return token
+
+        def skip_past(self, endtag: str) -> None:
+            self._skipping = True
+            try:
+                super().skip_past(endtag)
+            finally:
+                self._skipping = False
+
+        def extend_nodelist(self, nodelist: t.Any, node: t.Any, token: t.Any) -> None:
+            inside = self._inside()
+            if inside and inside[-1] is token:  # a tag's own node: inside the tags around the tag
+                inside = inside[:-1]
+            self.nodes.append((node, nodelist, inside))
+            self.made.add(id(token))
+            super().extend_nodelist(nodelist, node, token)
+
+        def compile_filter(self, token: str) -> t.Any:
+            expression = super().compile_filter(token)
+            self.expressions.append((expression, self._inside()))
+            return expression
+
+    return Recorder
+
+
+def _partial_named(node: t.Any) -> str | None:
+    """The partial ``{% partial name %}`` renders, by its node or, for a library's own, its token."""
+    name = getattr(node, "partial_name", None)
+    if isinstance(name, str):
+        return name
+    token = getattr(node, "token", None)
+    bits = token.split_contents() if token is not None and token.contents.startswith("partial ") else []
+    return bits[1] if len(bits) == 2 else None
+
+
+def _literal(expression: t.Any) -> str | None:
+    """The string ``expression`` always resolves to, or None when the render decides it."""
+    from django.template.base import FilterExpression
+
+    if isinstance(expression, FilterExpression) and isinstance(expression.var, str) and not expression.filters:
+        return str(expression.var)
+    return None
+
+
+def _said(node: t.Any) -> str:
+    """How the template wrote ``node``'s tag, for a reason that names it."""
+    token = getattr(node, "token", None)
+    contents = getattr(token, "contents", None)
+    return f"{{% {contents} %}}" if contents else f"{{% {type(node).__name__} %}}"
+
+
+def _is_wireview(func: t.Any) -> bool:
+    return getattr(func, "__module__", "") == "wireview.templatetags.wireview"
 
 
 def _row_fields(cls: type[Component]) -> list[str]:
@@ -234,83 +692,76 @@ def _owns(cls: type[Component], name: str) -> bool:
     return name in WATCHED_CONTEXT and (name in cls.model_fields or hasattr(cls, name))
 
 
-def _walk(nodelist: t.Iterable[Node]) -> t.Iterator[Node]:
-    for node in nodelist:
-        yield node
-        for attr in getattr(node, "child_nodelists", ()):
-            yield from _walk(getattr(node, attr, None) or ())
-        if type(node).__name__ == "IfNode":
-            for _condition, branch in node.conditions_nodelists:  # type: ignore[attr-defined]
-                yield from _walk(branch)
+def _watched_names(expressions: t.Iterable[t.Any]) -> t.Iterator[str]:
+    """The viewer's names ``expressions`` read as the first part of a variable: ``user.x``, ``this.session``.
 
-
-def _watched_names(node: Node) -> t.Iterator[str]:
-    """The viewer's names ``node`` reads as the first part of a variable: ``user.x``, ``this.session``."""
-    for variable in _variables(node):
-        lookups = getattr(variable, "lookups", None)
-        if not lookups:
-            continue
-        if lookups[0] in WATCHED_FIELDS or lookups[0] in WATCHED_CONTEXT:
-            yield lookups[0]
-        elif lookups[0] == "this" and len(lookups) > 1 and lookups[1] in WATCHED_FIELDS:
-            yield f"this.{lookups[1]}"
-
-
-def _variables(node: Node) -> t.Iterator[t.Any]:
-    """Every variable ``node`` resolves: its expressions' and their filters' arguments.
-
-    The expressions are found among the node's attributes, so a tag that keeps
-    them in a list or a dict of its own (``firstof``, ``cycle``, ``cache``'s
-    ``vary_on``, ``blocktranslate``'s ``with``) is read as well as ``{{ }}``.
+    An expression's filters read their arguments too: ``{{ a|default:user }}``.
     """
     from django.template.base import FilterExpression, Variable
 
-    def of(expression: t.Any) -> t.Iterator[t.Any]:
-        if isinstance(expression, Variable):
-            yield expression
-        elif isinstance(expression, FilterExpression):
+    for expression in expressions:
+        variables = [expression] if isinstance(expression, Variable) else []
+        if isinstance(expression, FilterExpression):
             if isinstance(expression.var, Variable):
-                yield expression.var
-            for _func, arguments in expression.filters:
-                yield from (argument for lookup, argument in arguments if lookup)
-
-    if type(node).__name__ == "IfNode":
-        for condition, _branch in node.conditions_nodelists:  # type: ignore[attr-defined]
-            for expression in _condition_expressions(condition):
-                yield from of(expression)
-        return
-    for value in vars(node).values():
-        if isinstance(value, Mapping):
-            value = list(value.values())
-        for expression in value if isinstance(value, (list, tuple)) else (value,):
-            yield from of(expression)
+                variables.append(expression.var)
+            variables.extend(
+                argument for _func, arguments in expression.filters for lookup, argument in arguments if lookup
+            )
+        for variable in variables:
+            lookups = variable.lookups
+            if not lookups:
+                continue
+            if lookups[0] in WATCHED_FIELDS or lookups[0] in WATCHED_CONTEXT:
+                yield lookups[0]
+            elif lookups[0] == "this" and len(lookups) > 1 and lookups[1] in WATCHED_FIELDS:
+                yield f"this.{lookups[1]}"
 
 
-def _condition_expressions(condition: t.Any) -> t.Iterator[t.Any]:
-    if condition is None:
-        return
-    if hasattr(condition, "value") and hasattr(condition.value, "var"):  # a TemplateLiteral
-        yield condition.value
-    for side in ("first", "second"):
-        if (part := getattr(condition, side, None)) is not None:
-            yield from _condition_expressions(part)
+def _made_by_tag(node: Node) -> t.Iterator[t.Any]:
+    """The expressions a tag made itself from its token, past the parser, and keeps on its node.
+
+    Django's docs show a tag that makes ``template.Variable(bit)`` in its node:
+    that one never goes through ``compile_filter``. It is found where such a
+    tag keeps it -- an attribute, or a list, tuple or dict there.
+    """
+    from django.template.base import FilterExpression, Variable
+
+    for each in _held(node):
+        if isinstance(each, (Variable, FilterExpression)):
+            yield each
 
 
-_SCOPE: weakref.WeakKeyDictionary[type, tuple[t.Any, bool]] = weakref.WeakKeyDictionary()
+_SCOPE: weakref.WeakKeyDictionary[type, tuple[t.Any, int, bool]] = weakref.WeakKeyDictionary()
+#: Counts the template changes the dev server's reloader saw: a scope read before one is read again
+_templates_seen = 0
+
+
+def templates_changed() -> None:
+    """A file changed under the autoreloader: read every class's scope again at its next render.
+
+    The scope follows every template the class reaches (#208), and Django reads
+    a changed one anew; a scope kept from before the change would share a
+    render whose template now reads the viewer, or keep one apart that no
+    longer does. Called from the reloader's thread: a counter, not the mapping.
+    """
+    global _templates_seen
+    _templates_seen += 1
 
 
 def declared(component: Component) -> bool:
     """Whether ``component``'s live render goes the shared way: declared and in scope.
 
     A class out of scope is told once in the log and renders as any other.
-    The scope is kept per class and Meta; the template is read once.
+    The scope is kept per class and Meta; the templates are read once, and
+    again after the dev server sees a template change (``templates_changed``).
     """
     cls = type(component)
     meta = cls._meta
     if not meta.shared_render:
         return False
     kept = _SCOPE.get(cls)
-    if kept is None or kept[0] is not meta:
+    seen = _templates_seen
+    if kept is None or kept[0] is not meta or kept[1] != seen:
         reasons = out_of_scope(cls)
         if reasons:
             log.warning(
@@ -318,8 +769,8 @@ def declared(component: Component) -> bool:
                 cls.__qualname__,
                 "; ".join(reasons),
             )
-        kept = _SCOPE[cls] = (meta, not reasons)
-    return kept[1]
+        kept = _SCOPE[cls] = (meta, seen, not reasons)
+    return kept[2]
 
 
 # -- the renders ----------------------------------------------------------------------------
@@ -664,7 +1115,7 @@ async def _render_own(wire: WireviewMeta, component: Component, repo: Repo, chec
     if shared is None:
         cls = type(component)
         _tell_once(cls, "its render draws another component or holds data-state more than once")
-        _SCOPE[cls] = (cls._meta, False)
+        _SCOPE[cls] = (cls._meta, _templates_seen, False)
         # The slot is this connection's to fill: render again as any other component
         html = await wire._render_marked(component, repo, state_slot=False, watch=False)
         return (html, None) if html is not None else None
