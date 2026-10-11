@@ -39,15 +39,17 @@ from testproj.waiting import eventually
 from testproj.wireview_setting import set_wireview
 
 from wireview import Component, LiveComponent, function_component, live_session
+from wireview import session as session_module
 from wireview import testing as wireview_testing
 from wireview.checks import check_shared_render
 from wireview.core import live_session as live_session_module
 from wireview.core import shared_render
+from wireview.core.live_session import AUTH_GENERATION_KEY, AUTH_USER_ID_KEY
 from wireview.core.meta import WireviewMeta
 from wireview.core.rendered import PROTOCOL_VERSION, Rendered
 from wireview.core.session import SessionView
 from wireview.core.state import sign_state, unsign_envelope
-from wireview.session import WireviewSession
+from wireview.session import RenewBudget, WireviewSession
 
 pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
@@ -852,10 +854,18 @@ class Page:
         self.id = id
 
     @classmethod
-    async def open(cls, component: type[Component] = ShBoard, *, user=None, id: str = "board", **fields) -> "Page":
+    async def open(
+        cls,
+        component: type[Component] = ShBoard,
+        *,
+        user=None,
+        id: str = "board",
+        session_view: SessionView | None = None,
+        **fields,
+    ) -> "Page":
         outbound = RecordingOutbound()
         session = WireviewSession(outbound, user=user or AnonymousUser(), channel_name=f"sh-{uuid4().hex[:8]}")
-        await session.start(session=SessionView(), vsn=PROTOCOL_VERSION)
+        await session.start(session=session_view or SessionView(), vsn=PROTOCOL_VERSION)
         await session.handle_message(
             {
                 "command": "join",
@@ -1095,6 +1105,32 @@ def _state_token(page: Page) -> str:
     html = page.html()
     start = html.index('data-state="') + len('data-state="')
     return html[start : html.index('"', start)]
+
+
+@pytest.mark.asyncio
+async def test_a_shared_render_signs_each_connection_s_own_identity(monkeypatch):
+    """The render is shared; who its page is for is not (#209): each token names its own connection's handshake.
+
+    A token carrying another connection's identity would be told to ``renew`` on
+    its own socket -- and pass for that other one's page on the other's.
+    """
+    monkeypatch.setattr(session_module, "renew_budget", RenewBudget())
+    ann = SessionView({AUTH_USER_ID_KEY: "1", AUTH_GENERATION_KEY: "ann-1"}, session_key="k-ann")
+    bob = SessionView({AUTH_USER_ID_KEY: "2", AUTH_GENERATION_KEY: "bob-1"}, session_key="k-bob")
+    pages = [await Page.open(session_view=ann), await Page.open(session_view=bob)]
+    RENDERS.clear()
+    STORE["headline"] = "news"
+
+    await broadcast(pages, "m-1")
+
+    assert RENDERS["ShBoard"] == 1
+    identities = [unsign_envelope(_state_token(page), "ShBoard").identity for page in pages]
+    assert identities == [page.session.repo.identity() for page in pages]
+    assert None not in identities and identities[0] != identities[1]
+    for page, other in (pages, pages[::-1]):
+        state = _state_token(other)
+        await page.session.handle_message({"command": "join", "payload": {"name": "ShBoard", "state": state}})
+        assert [command for command, _ in page.outbound.commands][-1:] == ["renew"]
 
 
 @pytest.mark.asyncio
