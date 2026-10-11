@@ -667,6 +667,14 @@ class TestTheItemReadsNothingOfTheViewer:
         with pytest.raises(ImproperlyConfigured, match=f"read '{name}'"):
             Broadcast(BcFeed, "bc-feed").stream_insert("items", Post(1, "x"), template=template)._frames()
 
+    def test_an_update_only_item_is_watched_the_same(self):
+        """The item #199's ``update_only`` replaces is drawn once for every viewer too: no one's CSRF token (#206)."""
+        builder = Broadcast(BcFeed, "bc-feed").stream_insert(
+            "items", Post(1, "x"), template="bc/csrf.html", update_only=True
+        )
+        with pytest.raises(ImproperlyConfigured, match="read 'csrf_token'"):
+            builder._frames()
+
     def test_the_item_alone_renders(self):
         (frame,) = Broadcast(BcFeed, "bc-feed").stream_insert("items", Post(1, "x"))._frames()
         assert json.loads(patches.join(frame, "f"))["payload"]["items"][0]["html"] == '<li id="items-1">x</li>'
