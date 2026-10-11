@@ -40,6 +40,7 @@ from wireview.checks import (
     check_shadowed_framework_names,
     check_signing_key,
     check_upload_temp_dir,
+    check_websocket_session,
     iter_component_classes,
     iter_exposed_handlers,
     reconnect_value,
@@ -868,6 +869,38 @@ class TestChannelLayerConfiguredCheck:
 
         assert check_channel_layer_configured in registry.get_checks(include_deployment_checks=False)
         assert check_channel_layer not in registry.get_checks(include_deployment_checks=False)
+
+
+class TestWebsocketSessionCheck:
+    """W020: no SessionMiddleware above wireview's consumer, so a handshake says nobody (#209)."""
+
+    @pytest.mark.parametrize("app", ["BARE", "NESTED_BARE"])
+    def test_a_stack_without_a_session_is_flagged(self, app):
+        with override_settings(ASGI_APPLICATION=f"testproj.asgi_variants.{app}"):
+            messages = check_websocket_session(None)
+        assert [m.id for m in messages] == ["wireview.W020"]
+        assert "AuthMiddlewareStack" in messages[0].hint
+
+    @pytest.mark.parametrize("app", ["AUTH", "SESSION_ONLY", "OPAQUE", "HTTP_ONLY", "NOT_THERE"])
+    def test_otherwise_silent(self, app):
+        """A session on the way, a layer of the project's own, no WebSocket, an unimportable path."""
+        with override_settings(ASGI_APPLICATION=f"testproj.asgi_variants.{app}"):
+            assert check_websocket_session(None) == []
+
+    def test_the_test_projects_own_stack_is_silent(self):
+        assert check_websocket_session(None) == []
+
+    @override_settings()
+    def test_no_asgi_application_is_silent(self):
+        from django.conf import settings
+
+        del settings.ASGI_APPLICATION
+        assert check_websocket_session(None) == []
+
+    def test_runs_without_deploy(self):
+        from django.core.checks.registry import registry
+
+        assert check_websocket_session in registry.get_checks(include_deployment_checks=False)
 
 
 class TestRunserverIsAsgiCheck:

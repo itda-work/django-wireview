@@ -82,8 +82,16 @@ The django-reactor era changelog (2.x) is preserved in
   secret no longer joins the new page's components under the socket's old identity (#209). Every `data-state`
   carries a fingerprint of who its page was rendered for (the login and the CSRF secret, hashed), and a join
   whose fingerprint is not the connection's is answered with `renew`: the page opens a socket under the cookies
-  it holds now and joins there, without a page load. A move with no change keeps its socket. Protocol `vsn` 11;
-  an older bundle joins as before.
+  it holds now and joins there, without a page load. The first round of joins on that socket says `renewed`;
+  where the login still differs there -- a page older than the cookies: a reconnect, a sticky component, the back
+  button -- the page reloads (`reason: identity`) rather than restore one person's state under another's user.
+  Later moves on the renewed socket are compared again. The server renews a tab at most three connections a
+  minute, and the page waits its reconnect backoff between renews in a row. The connection's fingerprint is
+  taken under each signing key fallback too, so a key rotation does not renew; a socket with no session (no
+  `SessionMiddleware`) compares nothing. A move with no change keeps its socket. A request with no session cookie
+  is signed as anonymous without reading its session, so it gets no `Vary: Cookie`. Protocol `vsn` 11; an older
+  bundle joins as before. A new check, `wireview.W020`, reports a WebSocket route to wireview with no Channels
+  `SessionMiddleware` above it, where the handshake carries no session and no user.
 - Presence keeps a meta per producer under each user, as Phoenix Presence keeps one per `track`, so a user
   with two tabs open stays on the others' lists until the last tab leaves (#202). A producer's meta is keyed
   by its tab and its component id, so a page that hides one of its two producers (`presence_leave()`) stays

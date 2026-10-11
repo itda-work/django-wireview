@@ -2,7 +2,8 @@
 
 Two pages outside every boundary and two inside ``ip-inside``, each with an
 ``IdentityCard``, and the views another tab uses to change who is logged in:
-a login, a logout, and a CSRF rotation that leaves the login alone.
+a login, a logout, and a CSRF rotation that leaves the login alone. ``stale/``
+is a page whose components are always for someone else.
 """
 
 from django.contrib.auth import get_user_model, login, logout
@@ -11,6 +12,8 @@ from django.middleware.csrf import rotate_token
 from django.shortcuts import render
 from django.utils.html import format_html
 from django.views.decorators.http import require_POST
+
+from wireview.core.live_session import AUTH_GENERATION_KEY, AUTH_USER_ID_KEY
 
 from .live_sessions import inside
 
@@ -34,6 +37,23 @@ def inside_a(request):
 @inside.view
 def inside_b(request):
     return render(request, "identityprobe/page.html", {"name": "inside-b"})
+
+
+def stale(request):
+    """A page always rendered for someone the browser's cookies do not name.
+
+    What a page looks like when the cookies never reach the socket (a cookie
+    path that does not cover it): neither a new socket nor a reload makes the
+    page and the connection agree. The page's own ``user`` is read first, from
+    the real session; only the components' states are signed for the other login.
+    """
+    request.user.get_username()
+    real = request.session
+    request.session = {AUTH_USER_ID_KEY: "-1", AUTH_GENERATION_KEY: "elsewhere"}
+    try:
+        return render(request, "identityprobe/page.html", {"name": "stale"})
+    finally:
+        request.session = real
 
 
 def sign_in(request, name: str):

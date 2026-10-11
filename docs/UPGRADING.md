@@ -91,13 +91,27 @@ dependencies = ["django-wireview>=1.5,<2"]
   [live_session](./features/live-session.md#다른-탭이-신분을-바꾼-뒤의-이동).
   - 조용히 달라짐: `data-state`가 40자쯤 길어진다(경계 밖 페이지도). 그리고 HTTP 렌더가 상태를 서명할 때 요청의
     세션을 읽는다 — 세션 쿠키가 있는데 그 전에 아무도 세션(`request.user` 포함)을 읽지 않은 페이지는 세션 백엔드
-    조회가 한 번 는다.
+    조회가 한 번 늘고, 응답에 `Vary: Cookie`가 붙는다(Django의 `SessionMiddleware`가 읽힌 세션에 붙인다). 그런 페이지를
+    `cache_page`나 CDN 같은 공유 캐시에 두었다면 이제 쿠키마다 나뉘거나 캐시되지 않는다. 세션 쿠키가 없는 요청(첫 방문,
+    로그인하지 않은 방문자)은 세션을 건드리지 않고 익명으로 서명하므로 1.5와 같다.
+  - 주의: 컴포넌트가 있는 페이지를 `Vary`를 무시하는 캐시(직접 짠 캐시, `Vary`를 지우는 CDN 설정)에 두면 그 HTML의
+    `data-state`는 첫 요청자의 신분을 싣는다. 다른 방문자는 소켓을 한 번 더 열고, 로그인이 다르면 새로고침한다.
+    그런 캐시에는 로그인한 사용자의 페이지를 두지 않는다.
   - 조용히 달라짐: 그 경우 훅은 `disconnected()`·`reconnected()`를 받고 `wire-auto-recover` 폼은 복구 이벤트를 보낸다 — 재연결과
     같은 길이다. 경계 안의 같은 경우는 전체 새로고침이었는데 이제 새 소켓이다.
   - 조용히 달라짐: `telemetry.join_rejected`의 `reason`에 `identity`가 더해졌다(닫힌 집합).
-  - 점검: 세션·CSRF 쿠키의 `SESSION_COOKIE_PATH`·`CSRF_COOKIE_PATH`·도메인이 `/__wireview__`를 덮지 않으면 페이지마다 소켓을
-    한 번 더 열고 서버 로그에 경고("still names another identity")가 남는다. 그 설정에서는 원래 컴포넌트가 익명으로
-    그려졌다 — 쿠키가 소켓에 닿게 고친다.
+  - 조용히 달라짐: 새 소켓에서도 로그인이 다른 페이지는 전체 새로고침한다(`reload`, 사유 `identity`) — 다른 탭이 로그인한
+    뒤 끊긴 소켓이 다시 붙을 때(배포), sticky 컴포넌트, 뒤로 가기가 보여 준 옛 본문이 그렇다. 1.5에서는 옛 사용자의
+    상태가 소켓의 사용자 아래에서 복원됐다.
+  - 점검: 세션·CSRF 쿠키의 `SESSION_COOKIE_PATH`·`CSRF_COOKIE_PATH`·도메인이 `/__wireview__`를 덮지 않으면 로그인한
+    사용자의 페이지가 소켓을 한 번 더 열고 한 번 새로고침한 뒤, 컴포넌트가 마운트되지 않은 채 남는다(새로고침 쿨다운).
+    CSRF 쿠키만 닿지 않으면 소켓을 한 번 더 열고 서버 로그에 경고("even on a socket opened afresh")가 남는다. 그 설정에서는
+    원래 컴포넌트가 익명으로 그려졌다 — 쿠키가 소켓에 닿게 고친다.
+  - 점검: WebSocket 라우트를 `AuthMiddlewareStack`(또는 `SessionMiddlewareStack`)으로 감싸지 않았다면 소켓에는 세션도
+    사용자도 없다. 그 연결은 신분을 비교하지 않으므로 1.5처럼 동작하지만, 컴포넌트의 `user`는 늘 익명이다.
+    `manage.py check`가 `wireview.W020`으로 알린다.
+  - 알아 둘 것: 첫 방문에 CSRF 쿠키가 없었고 다음 이동의 페이지가 `{% csrf_token %}`을 그리면, 그 이동에서 소켓을 한 번
+    다시 연다. 서명 키를 돌린 배포(`SIGNING_KEY_FALLBACKS`)는 다시 열지 않는다.
 
 ### 중첩 컴포넌트
 

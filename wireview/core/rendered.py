@@ -112,9 +112,10 @@ UPDATE_ONLY_SINCE = 10
 INSERTS_IN_ORDER_SINCE = 10
 # First version whose clients hear ``renew``: a join's state was issued for
 # someone other than the connection's handshake -- another tab logged in or out
-# since the socket opened -- so the page opens a new socket and joins on it, and
-# names that socket ``renewed`` (#209). An older client joins as it did before:
-# on the socket it has, as the connection's identity.
+# since the socket opened -- so the page opens a new socket and joins on it, its
+# first round of joins there marked ``renewed`` (#209). Such a join whose login
+# still differs is answered with ``reload`` (reason ``identity``). An older
+# client joins as it did before: on the socket it has, as the connection's identity.
 RENEW_SINCE = 11
 
 
@@ -153,19 +154,6 @@ def socket_tab(query_string: bytes | str) -> str:
     if len(values) != 1 or not _TAB.fullmatch(values[0]):
         return ""
     return values[0]
-
-
-def socket_renewed(query_string: bytes | str) -> bool:
-    """Whether a client opened this socket because the server said ``renew`` (#209).
-
-    It comes from the client, and all it decides is what a join whose identity
-    still differs gets: on a renewed socket it is not told to renew again, which
-    would loop when the cookies never reach the socket. The join then goes as it
-    went before ``renew`` existed, so naming it buys a client nothing.
-    """
-    if isinstance(query_string, bytes):
-        query_string = query_string.decode("latin-1")
-    return parse_qs(query_string, keep_blank_values=True).get("renewed", []) == ["1"]
 
 
 def _fingerprint(static: list[str]) -> str:

@@ -16,8 +16,11 @@ What arrives there is a view, not Django's ``SessionStore``, for two reasons.
   the event loop, before any component sees it. With ``AuthMiddlewareStack`` the
   data is already in memory by then, so the snapshot usually costs nothing.
 
-The HTTP (dead) render keeps the store and materializes on first read: a page
-whose components never look at the session pays nothing for this.
+The HTTP (dead) render keeps the store and materializes on first read. Every
+state a page signs reads the login out of it (#209), so a page with components
+reads its session once -- and Django's ``SessionMiddleware`` then varies the
+response on ``Cookie`` -- unless the request carried no session cookie and
+nothing read the session yet: that page is signed as anonymous without a read.
 """
 
 from __future__ import annotations

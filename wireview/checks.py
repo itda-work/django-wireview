@@ -548,6 +548,81 @@ def check_channel_layer_configured(app_configs, **kwargs) -> list[CheckMessage]:
     ]
 
 
+def _websocket_paths(app: t.Any, under_session: bool = False, depth: int = 0) -> t.Iterator[bool | None]:
+    """Walk an ASGI application down to wireview's consumer, saying whether a session middleware was on the way.
+
+    Yields ``True``/``False`` for each route that reaches ``WireviewConsumer``
+    (with or without Channels' ``SessionMiddleware`` above it), and ``None``
+    where the walk meets something it cannot see through -- a middleware of the
+    project's own, a function -- which says nothing either way.
+    """
+    from channels.routing import ProtocolTypeRouter, URLRouter
+    from channels.sessions import SessionMiddleware
+
+    from .consumer import WireviewConsumer
+
+    if depth > 32:
+        yield None
+        return
+    consumer = getattr(app, "consumer_class", None)
+    if isinstance(consumer, type):
+        if issubclass(consumer, WireviewConsumer):
+            yield under_session
+        return
+    if isinstance(app, ProtocolTypeRouter):
+        if "websocket" in app.application_mapping:
+            yield from _websocket_paths(app.application_mapping["websocket"], under_session, depth + 1)
+        return
+    if isinstance(app, URLRouter):
+        for route in app.routes:
+            yield from _websocket_paths(getattr(route, "callback", None), under_session, depth + 1)
+        return
+    inner = getattr(app, "inner", None) or getattr(app, "application", None)
+    if inner is None:
+        yield None
+        return
+    yield from _websocket_paths(inner, under_session or isinstance(app, SessionMiddleware), depth + 1)
+
+
+def check_websocket_session(app_configs, **kwargs) -> list[CheckMessage]:
+    """W020: the WebSocket route to wireview has no ``SessionMiddleware`` above it.
+
+    Without it the socket's handshake carries no session: every component's
+    ``self.session`` is empty, its ``user`` anonymous (``AuthMiddlewareStack``
+    is what fills both), and a join cannot tell a page rendered for a logged-in
+    user from one that was not -- the connection does not compare who a page
+    was for (#209). Nothing raises. Reported only when the walk from
+    ``ASGI_APPLICATION`` reaches the consumer through layers it knows
+    (Channels' routers and middleware, origin validators); a layer of the
+    project's own ends the walk silently.
+    """
+    from django.conf import settings
+    from django.utils.module_loading import import_string
+
+    path = getattr(settings, "ASGI_APPLICATION", None)
+    if not path:
+        return []
+    try:
+        application = import_string(path)
+    except Exception:
+        return []
+    if False not in set(_websocket_paths(application)):
+        return []
+    return [
+        Warning(
+            f"The WebSocket route to wireview in {path} has no SessionMiddleware above it.",
+            hint=(
+                "The socket's handshake then carries no session and no user: components see an empty "
+                "self.session and an anonymous user, and a page rendered for a logged-in user cannot be "
+                "told from one that was not. Wrap the route in channels.auth.AuthMiddlewareStack "
+                "(or channels.sessions.SessionMiddlewareStack). If a middleware of your own provides the "
+                "session, add 'wireview.W020' to SILENCED_SYSTEM_CHECKS."
+            ),
+            id="wireview.W020",
+        )
+    ]
+
+
 def _invoked_subcommand() -> str | None:
     """The management command this process was started with, read the way Django reads it.
 
@@ -958,4 +1033,5 @@ def register_checks() -> None:
     register(check_shared_render, WIREVIEW_TAG)
     register(check_channel_layer_configured, WIREVIEW_TAG)
     register(check_runserver_is_asgi, WIREVIEW_TAG)
+    register(check_websocket_session, WIREVIEW_TAG)
     register(check_channel_layer, WIREVIEW_TAG, deploy=True)

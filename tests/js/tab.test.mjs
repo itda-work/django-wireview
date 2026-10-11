@@ -33,9 +33,3 @@ test("the socket URL carries the protocol version and the tab", () => {
     "ws://localhost/__wireview__?vsn=8&tab=a_b-c"
   );
 });
-
-test("the socket a renew asked for says so, and only that one (#209)", () => {
-  const at = { protocol: "http:", host: "localhost" };
-  assert.equal(socketUrl(at, "__wireview__", 11, "abc", true), "ws://localhost/__wireview__?vsn=11&tab=abc&renewed=1");
-  assert.equal(socketUrl(at, "__wireview__", 11, "abc", false), "ws://localhost/__wireview__?vsn=11&tab=abc");
-});

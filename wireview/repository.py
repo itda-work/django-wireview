@@ -136,6 +136,7 @@ class ComponentRepository:
         csrf_token: t.Any = None,
         csrf_cookies: t.Mapping[str, str] | None = None,
         request: t.Any = None,
+        session_known: bool = True,
     ):
         # The caller's dict itself, even an empty one: whoever handed it over may
         # update it in place and expect the repository to see the change.
@@ -170,7 +171,10 @@ class ComponentRepository:
         # The request an HTTP render answers: who its page is for is read from it
         # when a state is signed (``identity``, #209). None on a connection.
         self._request = request
-        self._identity: tuple[SessionView, str] | None = None
+        self._identity: tuple[SessionView, tuple[str, ...]] | None = None
+        # Whether the connection's handshake carried a session at all (#209):
+        # without one it cannot say who it renders for
+        self.session_known = session_known
         self.components: dict[str, Component] = {}
         # The restore maps: for each root, the signed states its join carried for
         # the components under it, taken by the instance built under each id. A
@@ -977,32 +981,73 @@ class ComponentRepository:
         """Who this repository renders for, as every ``data-state`` it signs says (#209).
 
         On a connection: the session and the CSRF secret its handshake carried,
-        which a join compares the page's against (``WireviewSession._identity_mismatch``).
-        Kept per session, as a boundary reads the session again.
+        which a join compares the page's against (``WireviewSession._identity_mismatch``,
+        through :meth:`identities`). ``None`` when the handshake carried no session
+        at all -- a WebSocket stack without Channels' ``SessionMiddleware``
+        (``wireview.W020``) -- where the connection cannot say who it is for.
 
         On an HTTP render: the request's session and the secret Django's middleware
         read or made for this response, read when asked -- a ``{% csrf_token %}``
         earlier on the page may have made it since the last state was signed.
+        A request with no session cookie whose session nothing has read is
+        anonymous without reading it: the store is left untouched, so the
+        response gets no ``Vary: Cookie`` it would not have had.
         ``None`` when there is no request, or when its session cannot be read
         here: an async view renders on the event loop, where a database session
         backend refuses to load. A state with no identity is not checked.
         """
+        if self.is_live:
+            identities = self.identities()
+            return identities[0] if identities else None
+        if self._request is None:
+            return None
         from django.core.exceptions import SynchronousOnlyOperation
 
         from .core.live_session import identity_fingerprint
 
-        if self.is_live:
-            if self._identity is None or self._identity[0] is not self.session:
-                secret = self._connection_csrf()[0] if self._csrf_cookies is not None else None
-                self._identity = (self.session, identity_fingerprint(self.session, secret))
-            return self._identity[1]
-        if self._request is None:
-            return None
         meta = getattr(self._request, "META", {})
         try:
-            return identity_fingerprint(self.session, meta.get("CSRF_COOKIE"))
+            return identity_fingerprint(self._http_session(), meta.get("CSRF_COOKIE"))
         except SynchronousOnlyOperation:
             return None
+
+    def identities(self) -> tuple[str, ...]:
+        """The connection's identity under the signing key and each fallback (#209).
+
+        A page signed before a key rotation is the same identity when it matches
+        any of them (``live_session.identity_difference``). Kept per session, as a
+        boundary reads the session again. Empty off a connection, and on one
+        whose handshake carried no session.
+        """
+        from .core.live_session import identity_fingerprints
+
+        if not self.is_live or not self.session_known:
+            return ()
+        if self._identity is None or self._identity[0] is not self.session:
+            secret = self._connection_csrf()[0] if self._csrf_cookies is not None else None
+            self._identity = (self.session, identity_fingerprints(self.session, secret))
+        return self._identity[1]
+
+    def _http_session(self) -> t.Any:
+        """The request's session for its identity, or ``None`` when it is plainly anonymous.
+
+        A request that carried no session cookie has an empty session unless
+        something this request ran wrote it (a ``login()`` in the view), and
+        then the store was read already. Reading a store nothing read marks it
+        accessed, and Django's ``SessionMiddleware`` then adds ``Vary: Cookie``
+        to the response -- on a page that never looked at the session (#209).
+        """
+        from django.conf import settings as django_settings
+
+        store = getattr(self._request, "session", None)
+        if (
+            store is not None
+            and not self.session.loaded
+            and getattr(store, "accessed", True) is False
+            and django_settings.SESSION_COOKIE_NAME not in getattr(self._request, "COOKIES", {})
+        ):
+            return None
+        return self.session
 
     def register_component(self, component: Component):
         # The id is this instance's now: a retired one under it answers no event any more

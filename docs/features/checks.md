@@ -46,6 +46,7 @@ WARNINGS:
 | `wireview.W017` | `AUTO_BROADCAST`의 `model`·`model_pk`·`related`·`m2m` 중 하나를 켜고 `senders`가 사용자 모델(`AbstractBaseUser`의 하위 클래스)을 비밀번호 해시가 실리게 알림(집합 형태·`"__all__"`·`password`를 적은 목록), 또는 세션 모델(`AbstractBaseSession`의 하위 클래스)을 어떤 형태로든 알림 | 저장할 때마다 비밀번호 해시나 세션 키가 채널 레이어(브로커)로 간다. 이름으로 짐작하지 않고 확실한 두 경우만, 페이로드가 실제로 싣는 필드로 본다 — 사용자 모델의 다중 테이블 상속 자식은 제 테이블만 보내므로 조용하다. 사용자 모델에는 `senders`를 매핑으로 바꿔 보낼 필드를 적으라고, 세션 모델에는 pk가 곧 세션 키라 필드를 적어도 줄지 않으니 `senders`에서 빼라고 알려 준다([설정](./settings.md#모델-알림)) |
 | `wireview.W018` | 사용자 컴포넌트의 공개 메서드가 프레임워크 클래스(wireview·Pydantic)의 멤버와 이름이 같음. 오버라이드하라고 둔 콜백(W002의 이름들, `get_subscriptions`, `new`, `update_many`)과 Pydantic이 예약한 `model_` 이름(`model_post_init`, `model_dump` …)은 빼고 본다 | 프레임워크가 가진 이름은 사용자가 다시 정의해도 클라이언트가 부를 수 없다. Phoenix를 옮긴 `async def validate`(Pydantic `BaseModel`의 메서드)가 대표다. `{% on %}` 바인딩은 렌더 때 멈추지만 `defer()`와 훅의 직접 push는 서버 로그 한 줄로 버려진다. 마이너 릴리스가 같은 이름의 멤버를 더해도 이렇게 된다([호환성](../COMPATIBILITY.md)) |
 | `wireview.W019` | `Meta.shared_render`를 선언했는데 공유할 수 없는 컴포넌트: LiveComponent, `Meta.temporary_assigns`·`Meta.slots`·`Meta.live_sessions`가 있음, 필드의 타입이 모델이나 QuerySet을 말함, 템플릿이 다른 컴포넌트·슬롯·업로드를 그림(`{% component %}`·`{% live_component %}`·`{% render_slot %}`·`{% upload_input %}` …), 템플릿이 `user`·`session`·`this.user`·`this.session`·`request`·`perms`·`csrf_token`·`messages`를 읽음(필터 인자와 `{% firstof %}` 같은 태그의 변수까지. 같은 이름의 필드·property는 빼고 본다) | 선언은 아무 일도 하지 않는다. 그 클래스의 렌더는 연결마다 그대로이고, 첫 렌더 때 서버 로그 한 줄이 남을 뿐이다. 성능을 기대하고 붙인 선언이 조용히 꺼져 있다. 템플릿이 `{% include %}`한 파일과 property 안은 보지 않는다 — 그것은 `VERIFY_SHARED_RENDER`가 렌더 때 잡는다([shared-render](./shared-render.md)) |
+| `wireview.W020` | `ASGI_APPLICATION`에서 wireview 컨슈머까지 가는 WebSocket 라우트 위에 Channels의 `SessionMiddleware`가 없음(`AuthMiddlewareStack`·`SessionMiddlewareStack`이 넣는다). Channels의 라우터·미들웨어·Origin 검사기만 지나 컨슈머에 닿을 때만 본다 — 프로젝트가 만든 층을 만나면 말하지 않는다 | 페이지는 그려지고 오류도 없다. 소켓의 핸드셰이크에 세션도 사용자도 없어 컴포넌트의 `self.session`은 비어 있고 `user`는 늘 익명이며, 다른 탭이 신분을 바꾼 뒤의 이동을 알아채지 못한다([live_session](./live-session.md#다른-탭이-신분을-바꾼-뒤의-이동), #209) |
 
 전부 `Warning`이다. `manage.py check`의 기본 `--fail-level`은 `ERROR`이므로 이 검사들이
 빌드를 깨지 않는다. **오탐 하나면 팀 전체가 검사를 무시하기 시작하므로** 확신이 설 때까지
@@ -241,7 +242,7 @@ Pydantic은 커스텀 serializer, `field_serializer`, wireview의 Django 모델 
 **`Broadcast`**([문서](./broadcast.md))도 검사하지 않는다. 어떤 클래스·토픽·템플릿으로 발행하는지는 코드가 돌 때에야
 알 수 있다. 대신 조용히 실패할 수 있는 곳은 발행하는 곳에서 오류로 막는다 — 대상 클래스의 `Meta.subscriptions`에 없는
 토픽(`get_subscriptions()`를 오버라이드하지 않았을 때), 패치 그룹 이름이 될 수 없는 토픽(84자 초과, 허용되지 않는 글자),
-JSON이 아닌 `push_event` 페이로드, 보는 사람을 읽는 항목 템플릿. 다음 번호는 `wireview.W020`부터다.
+JSON이 아닌 `push_event` 페이로드, 보는 사람을 읽는 항목 템플릿. 다음 번호는 `wireview.W021`부터다.
 
 ## 관련 문서
 
