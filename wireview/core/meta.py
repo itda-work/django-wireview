@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import itertools
 import logging
@@ -204,13 +203,9 @@ class WireviewMeta:
         # that instance leaves and a fresh one joins, so joined() stays once per
         # instance.
         self.has_joined: bool = False
-        # What it would have heard on its channels before joined(): handed to it
-        # once it joined, in order (notifications.deliver_unheard, #207)
-        self.unheard: list[tuple[str, str, dict[str, t.Any]]] = []
-        # When the first of them came (the repository's clock), and the timer
-        # that retires it if its join has not come by then (session._awaits_join)
-        self.unheard_since: float | None = None
-        self.join_deadline: asyncio.TimerHandle | None = None
+        # What it would have heard on its channels before joined(), with the order
+        # it arrived in: handed to it once it joined (notifications.deliver_unheard, #207)
+        self.unheard: list[tuple[int, str, str, dict[str, t.Any]]] = []
         # Set once the _on_mount hooks have run for this instance. The hooks are a
         # mount-time boundary (authentication, tracking), so they run once per
         # instance no matter how many render passes name the component.

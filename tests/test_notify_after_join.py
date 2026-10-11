@@ -17,6 +17,8 @@ import threading
 import typing as t
 
 import pytest
+from channels.exceptions import ChannelFull
+from channels.layers import get_channel_layer
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth.models import AnonymousUser
 from django.template import Template
@@ -539,74 +541,82 @@ async def test_a_component_the_page_never_joins_is_retired_once_too_much_waits_o
         await communicator.disconnect()
 
 
-async def test_a_component_the_page_never_joins_is_retired_once_what_waits_on_it_waited_too_long():
-    communicator = await _open()
-    try:
-        await _join(communicator, NajHost, "naj-host")
-        await _event(communicator, "naj-host", "show")
-        await _quiet(communicator)
-        session = SESSIONS[-1]
-        now = [0.0]
-        session.repo.clock = lambda: now[0]
-        await asyncio.to_thread(broadcast, ROOM, n=1)
-        await _heard_the_room(communicator, 1)
-        assert session.repo.get("naj-leaf") is not None
-
-        now[0] = notifications.JOIN_SECONDS
-        await asyncio.to_thread(broadcast, ROOM, n=2)
-        await _heard_the_room(communicator, 2)
-        assert session.repo.get("naj-leaf") is None
-        assert session.subscriptions == {ROOM}  # the host's
-    finally:
-        await communicator.disconnect()
-
-
-async def test_a_component_the_page_never_joins_is_retired_when_its_time_is_up_with_nothing_coming(monkeypatch):
-    monkeypatch.setattr(notifications, "JOIN_SECONDS", 0.5)
-    communicator = await _open()
-    try:
-        await _join(communicator, NajHost, "naj-host")
-        await _event(communicator, "naj-host", "show")
-        await _quiet(communicator)
-        session = SESSIONS[-1]
-        leaf = session.repo.get("naj-leaf")
-        assert leaf is not None
-        await asyncio.to_thread(broadcast, ROOM, n=1)
-        await _heard_the_room(communicator, 1)
-
-        await eventually(lambda: session.repo.get("naj-leaf") is None)
-        assert leaf.wire.unheard == []
-        assert _leaf() == []
-    finally:
-        await communicator.disconnect()
-
-
-async def test_a_component_that_joined_in_time_is_not_retired_when_the_time_comes(monkeypatch):
-    monkeypatch.setattr(notifications, "JOIN_SECONDS", 0.5)
+async def test_a_component_a_hidden_tab_joins_hours_later_hears_all_that_waited_on_it():
+    # A hidden tab applies no render, so it joins nothing until it is shown again:
+    # a page like any other, and no time it takes retires what it drew (#207)
     communicator = await _open()
     try:
         await _join(communicator, NajHost, "naj-host")
         await _event(communicator, "naj-host", "shout", n=1)
         await _heard_the_room(communicator, 1)
+        session = SESSIONS[-1]
+        leaf = session.repo.get("naj-leaf")
+        shown = session.repo.clock() + 5 * 3600
+        session.repo.clock = lambda: shown  # the tab is shown again hours on
+        await asyncio.to_thread(broadcast, ROOM, n=2)
+        await _heard_the_room(communicator, 2)
+        # The host's render drew it again: the same instance, still waiting
+        assert session.repo.get("naj-leaf") is leaf
+
         await _join(communicator, NajLeaf, "naj-leaf")
-        await _render_of(communicator, "naj-leaf", '"1"')
-        await asyncio.sleep(0.6)  # past the deadline: the timer is what this measures
+        await _render_of(communicator, "naj-leaf", '"2"')
+        assert _leaf() == [("joined", "naj-leaf"), ("notified", "naj-leaf", 1), ("notified", "naj-leaf", 2)]
+    finally:
+        await communicator.disconnect()
+
+
+async def test_a_component_whose_join_comes_right_behind_a_notification_hears_it():
+    communicator = await _open()
+    try:
+        await _join(communicator, NajHost, "naj-host")
+        await _event(communicator, "naj-host", "shout", n=1)
+        await _heard_the_room(communicator, 1)
+        session = SESSIONS[-1]
+        later = session.repo.clock() + 3600
+        session.repo.clock = lambda: later
+        # The join is in the channel right behind the notification, which comes long after the first
+        await asyncio.to_thread(broadcast, ROOM, n=2)
+        await _join(communicator, NajLeaf, "naj-leaf")
+        await _render_of(communicator, "naj-leaf", '"2"')
         await _quiet(communicator)
-        assert SESSIONS[-1].repo.get("naj-leaf") is not None
-        assert _leaf() == [("joined", "naj-leaf"), ("notified", "naj-leaf", 1)]
+        assert _leaf() == [("joined", "naj-leaf"), ("notified", "naj-leaf", 1), ("notified", "naj-leaf", 2)]
+    finally:
+        await communicator.disconnect()
+
+
+async def test_a_component_and_its_live_component_hear_what_waited_on_them_in_the_order_it_came():
+    communicator = await _open()
+    try:
+        await _join(communicator, NajHost, "naj-host", loud=True)
+        await _event(communicator, "naj-host", "shout", n=1)
+        await _heard_the_room(communicator, 1)
+        await asyncio.to_thread(broadcast, ROOM, n=2)
+        await _heard_the_room(communicator, 2)
+
+        await _join(communicator, NajLoudBud, "naj-bud")
+        await _quiet(communicator)
+        assert [call for call in CALLS if call[1] in ("naj-bud", "naj-bud-sprout")] == [
+            ("joined", "naj-bud-sprout"),
+            ("notified", "naj-bud", 1),
+            ("notified", "naj-bud-sprout", 1),
+            ("notified", "naj-bud", 2),
+            ("notified", "naj-bud-sprout", 2),
+        ]
     finally:
         await communicator.disconnect()
 
 
 async def test_what_waited_on_a_component_reaches_it_when_the_mail_that_hands_it_over_is_dropped(monkeypatch):
-    sent = WireviewMeta.send
+    layer = get_channel_layer()
+    assert layer is not None
+    sent = layer.send
 
-    async def send(self, _command, **kwargs):
-        if _command == "deliver_unheard":
-            return False  # a full channel: the broker drops it and says so
-        return await sent(self, _command, **kwargs)
+    async def send(channel, message):
+        if message.get("command") == "deliver_unheard":
+            raise ChannelFull()  # the session's channel is full: the broker drops the mail and says so
+        return await sent(channel, message)
 
-    monkeypatch.setattr(WireviewMeta, "send", send)
+    monkeypatch.setattr(layer, "send", send)
     communicator = await _open()
     try:
         await _join(communicator, NajHost, "naj-host")

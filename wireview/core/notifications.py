@@ -11,12 +11,14 @@ and ``wireview.testing`` for a mounted component, which hears what is
 published in its process (``listen``): one copy, so a test sees what a page sees.
 
 A component hears from its ``joined()`` on (#207). One its drawer's pass built
-(``{% component %}``) is on the connection a round trip before the page's join
-for it comes; what it would have heard meanwhile waits on the instance and is
-handed to it, in order, once it joined (``deliver_unheard``). Not dropped: the
-join restores the state the page holds, the one drawn before it. The wait has
-an end (``UNHEARD_LIMIT``, ``JOIN_SECONDS``): a page may never join it -- drawn
-under ``wire-update="ignore"``, say -- and then the connection retires it.
+(``{% component %}``) is on the connection before the page's join for it comes:
+a round trip later, or much later -- a hidden tab applies no render, and so
+joins nothing, until it is shown again. What it would have heard meanwhile
+waits on the instance and is handed to it, in arrival order, once it joined
+(``deliver_unheard``). Not dropped: the join restores the state the page holds,
+the one drawn before it. The wait is bounded by how much waits, not by how
+long (``UNHEARD_LIMIT``): a page may never join it -- drawn under
+``wire-update="ignore"``, say -- and then the connection retires it.
 """
 
 from __future__ import annotations
@@ -38,13 +40,13 @@ RECEIVERS = {"notification": "notification", "model_mutation": "mutation"}
 #: How many notifications may wait on a component the page has yet to join
 #: (``WireviewMeta.unheard``). Past this it is taken for one the page never
 #: joins, and retired with what it owns: no ``leaving()``, its tasks cancelled.
+#: A join that comes for it after all builds it anew from the state the page
+#: holds. No time limit: a hidden tab joins when it is shown again, hours on.
 UNHEARD_LIMIT = 1000
 
-#: How many seconds they may wait, from the first. The page joins a component a
-#: round trip after the render that drew it; one that has not joined by then is
-#: taken for one the page never joins, as past ``UNHEARD_LIMIT``. A join that
-#: comes later after all builds the component anew from the state the page holds.
-JOIN_SECONDS = 10.0
+#: The order notifications arrived in, across components: a join hands its
+#: root's and its LiveComponents' over as they came (``deliver_unheard``)
+_arrival = itertools.count()
 
 
 class Host(t.Protocol):
@@ -69,7 +71,7 @@ class Host(t.Protocol):
     async def after_mutation_chores(self) -> None: ...
 
     async def _awaits_join(self, component: Component) -> None:
-        """``component`` has yet to join and something waits on it (``wire.unheard``): the wait has an end."""
+        """``component`` has yet to join and something waits on it (``wire.unheard``): not without bound."""
         ...
 
 
@@ -105,7 +107,7 @@ async def deliver(host: Host, receiver: str, data: dict[str, t.Any]) -> None:
             if not component.wire.has_joined or component.wire.unheard:
                 # Not yet (#207): it hears this once it joined -- and once what
                 # came before it is handed over, which a join mails behind it
-                component.wire.unheard.append((receiver, channel, kwargs))
+                component.wire.unheard.append((next(_arrival), receiver, channel, kwargs))
                 if not component.wire.has_joined:
                     await host._awaits_join(component)
                 continue
@@ -116,28 +118,28 @@ async def deliver(host: Host, receiver: str, data: dict[str, t.Any]) -> None:
 
 
 async def deliver_unheard(host: Host, components: t.Iterable[Component]) -> None:
-    """Hand each of ``components``, which just joined, what it would have heard before, in order, as ``deliver`` would.
+    """Hand ``components``, which just joined, what they would have heard before, as ``deliver`` would.
 
-    A component's are handed before the next one's: a join's root, then the
-    LiveComponents its render ran ``joined()`` for. Each still has to be on a
-    channel it subscribes to -- ``joined()`` may have chosen others -- and one
-    that raises ends the rest of its own with the instance, and of those it
-    owns, which go with it.
+    A join's root and the LiveComponents its render ran ``joined()`` for, in
+    the order it arrived: the root's first and a LiveComponent's second of one
+    message, then the next message's. Each still has to be on a channel it
+    subscribes to -- ``joined()`` may have chosen others -- and one that raises
+    hears no more of its own, nor do those it owns, which go with it.
     """
+    waiting = []
     for component in components:
         unheard, component.wire.unheard = component.wire.unheard, []
-        for receiver, channel, kwargs in unheard:
-            if not host._holds(component):
-                break
-            if channel not in component.get_subscriptions():
-                continue
-            try:
-                # Not shared with another session's render (#176): that one is of
-                # the message as it came, this one of the component as it joined
-                await _hand(host, component, receiver, channel, kwargs, None)
-            except Exception:
-                await host._crashed(component)
-                break
+        waiting += [(arrival, component, rest) for arrival, *rest in unheard]
+    waiting.sort(key=lambda each: each[0])
+    for _, component, (receiver, channel, kwargs) in waiting:
+        if not host._holds(component) or channel not in component.get_subscriptions():
+            continue
+        try:
+            # Not shared with another session's render (#176): that one is of
+            # the message as it came, this one of the component as it joined
+            await _hand(host, component, receiver, channel, kwargs, None)
+        except Exception:
+            await host._crashed(component)
     await host.after_mutation_chores()
 
 
