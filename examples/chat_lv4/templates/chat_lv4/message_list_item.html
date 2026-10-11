@@ -1,0 +1,27 @@
+{% load wireview %}
+
+<li id="messages-{{ item.pk }}"
+    class="message"
+    data-author="{{ item.author_id }}"
+    style="margin-bottom: 12px;
+           padding: 8px;
+           background: white;
+           border-radius: 4px">
+  <div style="display: flex;
+              justify-content: space-between;
+              margin-bottom: 4px">
+    <strong style="color: #0066cc;">{{ item.author.username }}</strong>
+    <span style="font-size: 12px; color: #999;">
+      {% if item.edited_at %}<em class="edited">(edited)</em>{% endif %}
+      {{ item.created_at|date:"H:i" }}
+    </span>
+  </div>
+  <p style="margin: 0; word-wrap: break-word;">{{ item.content }}</p>
+  {# Shown only on the viewer's own messages, by the list's style #}
+  <div class="own-actions" style="gap: 8px; margin-top: 4px;">
+    <button class="link-button"
+            {% on 'click' 'edit_message' message_id=item.pk %}>Edit</button>
+    <button class="link-button"
+            {% on 'click' 'delete_message' message_id=item.pk %}>Delete</button>
+  </div>
+</li>

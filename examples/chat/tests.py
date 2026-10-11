@@ -4,7 +4,7 @@ import threading
 
 import pytest
 from playwright.sync_api import expect
-from testproj.e2e_browser import expect_text, open_live
+from testproj.e2e_browser import expect_count, expect_text, open_live, wait_live
 from testproj.e2e_server import serve
 
 from wireview import mount
@@ -66,10 +66,64 @@ class TestXChatRoom:
         assert XChatRoom._meta.template_name == "chat/room_component.html"
 
 
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_the_empty_rooms_note_is_outside_the_list_a_reset_empties():
+    """In the list, the first render showed it in a room with messages and the join's reset took it from an empty one.
+
+    base.html shows it while the list holds nothing (the browser half: the E2E).
+    """
+    from .models import Message
+
+    room = await Room.objects.acreate(name="lobby")
+    await Message.objects.acreate(room=room, username="ada", content="hello")
+    view = await mount(XMessageList, room=room)
+
+    html = view.render() or ""
+
+    start = html.index('wire-stream="messages"')
+    assert "No messages yet" not in html[start : html.index("</ul>", start)]
+    assert "No messages yet" in html[html.index("</ul>", start) :]
+    assert len(view.stream_items("messages")) == 1
+
+
+# In a browser
+
+
 @pytest.fixture
-def wireview_server():
+def server():
     with serve() as base_url:
         yield base_url
+
+
+def _in_room(page, url: str) -> None:
+    open_live(page, url, '[data-name=XChatRoom][data-is-live="true"]')
+    wait_live(page, '[data-name=XMessageList][data-is-live="true"]')
+
+
+@pytest.mark.e2e
+@pytest.mark.django_db(transaction=True)
+def test_an_empty_room_says_so_until_its_first_message_and_a_room_with_messages_never_does(browser, server):
+    """The note is outside the list: the join's reset no longer takes it from an empty room,
+    and a room with messages does not show it before the join."""
+    from .models import Message
+
+    empty = Room.objects.create(name="empty")
+    busy = Room.objects.create(name="busy")
+    Message.objects.create(room=busy, username="ada", content="hello")
+
+    page = browser.new_page()
+    _in_room(page, f"{server}/chat/room/{busy.id}/")
+    expect_count(page.locator("[wire-stream=messages] li"), 1)
+    expect(page.locator(".empty-message")).to_be_hidden()
+
+    _in_room(page, f"{server}/chat/room/{empty.id}/")
+    expect(page.locator(".empty-message")).to_be_visible()
+    page.locator("input[name=content]").fill("first")
+    page.locator("input[name=content]").press("Enter")
+    expect_count(page.locator("[wire-stream=messages] li"), 1)
+    expect(page.locator(".empty-message")).to_be_hidden()
 
 
 @pytest.mark.e2e
@@ -84,7 +138,7 @@ class TestOnlineUsers:
     def room(self, transactional_db):
         return Room.objects.create(name="lobby")
 
-    def test_closing_one_of_two_tabs_keeps_the_user_listed(self, page, wireview_server, room, monkeypatch):
+    def test_closing_one_of_two_tabs_keeps_the_user_listed(self, page, server, room, monkeypatch):
         # Closing a tab shows nothing on bob's page when the fix holds; the server
         # says when the tab's leave went out, so carol comes after it
         left = threading.Event()
@@ -100,7 +154,7 @@ class TestOnlineUsers:
             tab = page if username == "bob" else page.context.new_page()
             open_live(
                 tab,
-                f"{wireview_server}/chat/room/{room.id}/?username={username}",
+                f"{server}/chat/room/{room.id}/?username={username}",
                 "[data-name=XOnlineUsers][data-is-live=true]",
             )
             return tab

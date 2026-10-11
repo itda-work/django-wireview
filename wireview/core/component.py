@@ -28,6 +28,7 @@ from .session import SessionView
 if t.TYPE_CHECKING:
     import asyncio
 
+    from ..features.streams import StreamOp
     from ..features.uploads import (
         ConsumedUpload,
         ExternalUploadCallback,
@@ -103,6 +104,11 @@ def broadcast(channel: str, **kwargs: t.Any) -> None:
     This is the synchronous version. Use `abroadcast()` for async contexts
     like Component methods (joined, mutation, notification, etc.)
 
+    Inside a transaction the notification is published once it commits, and
+    not at all if it rolls back; outside one it is published at once. A
+    receiver that reads the database again sees what was written before the
+    call, so there is no need to wrap this in ``transaction.on_commit()``.
+
     Args:
         channel: The channel name to broadcast to.
         **kwargs: Additional keyword arguments to include in the notification.
@@ -115,6 +121,9 @@ async def abroadcast(channel: str, **kwargs: t.Any) -> None:
 
     This is the async version of `broadcast()`. Use this in async contexts
     like Component methods (joined, mutation, notification, etc.)
+
+    Unlike `broadcast()` it publishes at once, inside a transaction or not.
+    If the receivers read what the caller wrote, call it after the commit.
 
     Args:
         channel: The channel name to broadcast to.
@@ -1300,9 +1309,11 @@ class Component(BaseModel):
         template: str | None = None,
         dom_id: t.Callable[[t.Any], str] | None = None,
         limit: int = 0,
+        at: int = -1,
+        reset: bool = True,
     ) -> None:
         """
-        Initialize or reset a stream with items.
+        Initialize or reset a stream with items, or insert several at once.
 
         Streams provide memory-efficient handling of large lists by rendering
         items individually and sending them to the client via WebSocket.
@@ -1318,6 +1329,12 @@ class Component(BaseModel):
                    (default: {name}-{item.pk})
             limit: Maximum number of items to keep in DOM (0 = no limit).
                   When exceeded, oldest items are removed automatically.
+            at: With ``reset=False``, where the items go (-1 = append,
+                0 = prepend, n = at index), as a block in the order given.
+            reset: False keeps what the page shows and inserts the items at
+                ``at``, as one operation: one frame however many there are,
+                where ``stream_insert`` in a loop sends one each. An item
+                already on the page is replaced where it stands.
 
         Example:
             async def joined(self):
@@ -1326,6 +1343,10 @@ class Component(BaseModel):
             # With limit - keeps only 50 most recent items in DOM
             async def joined(self):
                 await self.stream("messages", messages, limit=50)
+
+            # The page before, under what the page shows, in one frame
+            async def load_more(self):
+                await self.stream("items", next_page, reset=False)
         """
         from ..features.streams import StreamItem, StreamOp
 
@@ -1335,29 +1356,60 @@ class Component(BaseModel):
         template_name = template or self._get_stream_item_template()
         dom_id_fn = dom_id or (lambda item: f"{name}-{item.pk}")
 
-        # The reset goes out through the connection's channel, behind any
-        # Broadcast patch written meanwhile, and would wipe it: this
-        # component's patches are held from before the list is read below until
-        # the reset is written (#178). The reset carries its hold's token.
-        gate = self.wire.patch_gate
-        token = None if gate is None else await gate.hold(self)
-        # Once the send is tried the reset may be in the channel, even if the send raised
-        tried = False
-        try:
+        async def read() -> "StreamOp | None":
+            nonlocal items
             # A QuerySet is both iterable and async iterable; iterating it
             # synchronously here would query the database on the event loop,
             # which Django refuses outside DJANGO_ALLOW_ASYNC_UNSAFE (#120).
             if isinstance(items, t.AsyncIterable):
                 items = [item async for item in items]
+            stream_items = [
+                StreamItem(dom_id=dom_id_fn(item), html=await self._render_stream_item(template_name, item))
+                for item in items
+            ]
+            if reset:
+                return StreamOp(op="reset", stream=name, items=stream_items, limit=limit)
+            if not stream_items:
+                return None
+            return StreamOp(op="insert", stream=name, items=stream_items, at=at, limit=limit)
 
-            stream_items = []
-            for item in items:
-                html = await self._render_stream_item(template_name, item)
-                stream_items.append(StreamItem(dom_id=dom_id_fn(item), html=html))
+        await self._send_stream_read(read)
 
-            op = StreamOp(op="reset", stream=name, items=stream_items, limit=limit)
-            tried = True
-            await self.wire.send_stream_op(op, self.id, hold=token)
+    async def _send_stream_read(self, read: t.Callable[[], t.Awaitable["StreamOp | None"]]) -> None:
+        """Send the stream operation ``read()`` builds, with this component's Broadcast patches held meanwhile.
+
+        The operation goes out through the connection's channel, behind any
+        Broadcast patch written meanwhile. A reset would wipe that patch, and an
+        insert would undo it: a delete written first finds nothing and the insert
+        brings the item back, an edit written first finds nothing and the insert
+        brings the item as it was. So the component's patches are held from
+        before ``read()`` reads its items until the operation is written (#178,
+        #199); the operation carries its hold's token.
+
+        The connection handles the operation's mail once the handler (or
+        ``joined()``, ``notification()``, the task) that called this returned:
+        the patches wait for all of it, and too many of them close the connection.
+        """
+        import asyncio
+
+        gate = self.wire.patch_gate
+        token = None if gate is None else await gate.hold(self)
+        # Once the send is tried the operation may be in the channel, even if the send raised
+        tried = False
+        try:
+            op = await read()
+            if op is not None:
+                tried = True
+                send = asyncio.ensure_future(self.wire.send_stream_op(op, self.id, hold=token))
+                try:
+                    await asyncio.shield(send)
+                except asyncio.CancelledError:
+                    # Cancelled on its way to a layer with a round trip (start_async
+                    # replacing the task): the mail still reaches the channel and
+                    # lets the token go there. Left half sent, the token would
+                    # stay and close the connection once the hold ran out
+                    await asyncio.wait({send})
+                    raise
         finally:
             if token is not None:
                 await gate.let_through(self, token, tried)  # type: ignore[union-attr]
@@ -1371,6 +1423,7 @@ class Component(BaseModel):
         template: str | None = None,
         dom_id: t.Callable[[t.Any], str] | None = None,
         limit: int = 0,
+        update_only: bool = False,
     ) -> None:
         """
         Insert an item into a stream.
@@ -1383,6 +1436,9 @@ class Component(BaseModel):
             dom_id: Function to generate DOM ID
             limit: Maximum items to keep in DOM (0 = no limit).
                   When exceeded, items are removed from the opposite end.
+            update_only: Only replace the item where the page shows it. A page
+                  without it inserts nothing: an edit of a message the page has
+                  not loaded must not turn up at ``at``, out of its place.
 
         Example:
             async def add_item(self, name: str):
@@ -1405,7 +1461,11 @@ class Component(BaseModel):
         html = await self._render_stream_item(template_name, item)
         stream_item = StreamItem(dom_id=dom_id_fn(item), html=html)
 
-        op = StreamOp(op="insert", stream=name, items=[stream_item], at=at, limit=limit)
+        # Not held, unlike stream(): a hold taken here would not cover what the
+        # handler read before the call, and would keep this component's Broadcast
+        # patches back until the handler returns. A page read and appended goes
+        # to stream(queryset, reset=False), which holds from before its read (#199)
+        op = StreamOp(op="insert", stream=name, items=[stream_item], at=at, limit=limit, update_only=update_only)
         await self.wire.send_stream_op(op, self.id)
 
     async def stream_delete(self, name: str, dom_id: str | int) -> None:

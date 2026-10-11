@@ -56,12 +56,45 @@ dependencies = ["django-wireview>=1.5,<2"]
 ```
 
 하한은 쓰는 기능이 처음 나온 버전이다. `AUTO_BROADCAST.senders`의 매핑은 1.1부터, 테스트의 `mount(path=...)`·
-`follow_push(Destination)`와 `wireview:navigation-failed`는 1.2부터, `Broadcast`·`Meta.shared_render`·`wireview:before-navigate`는 1.3부터, 테스트의 `MountedComponent.queries()`는 1.4부터, `Meta.lazy_properties`는 1.5부터다.
+`follow_push(Destination)`와 `wireview:navigation-failed`는 1.2부터, `Broadcast`·`Meta.shared_render`·`wireview:before-navigate`는 1.3부터, 테스트의 `MountedComponent.queries()`는 1.4부터, `Meta.lazy_properties`는 1.5부터, `stream(..., at=, reset=False)`와
+`stream_insert(..., update_only=True)`(컴포넌트와 `Broadcast` 둘 다), presence 트래커의 `presence_users_in(topic)`, pytest 플러그인 `wireview`는 1.6부터다.
 
 릴리스 후보를 쓰던 프로젝트는 rc 하한(`>=1.0.0rc4,<1.1`)과 `pip install --pre`를 지운다. 1.x 릴리스는 사전
 릴리스가 아니므로 평소처럼 설치된다.
 
 ## 1.5에서 1.6으로
+
+주제별로 묶었다. 괄호 안의 번호가 그 변경의 이슈다.
+
+### 중첩 컴포넌트
+
+- **조용히 달라짐: 그린 쪽이 더는 그리지 않는 중첩 컴포넌트는 그 렌더와 함께 은퇴한다.** `{% component %}`로 그린 컴포넌트를
+  그린 쪽의 렌더가 더는 그리지 않으면, 이제 그 렌더가 끝날 때 브로드캐스트·패치·작업의 결과가 닿지 않고 구독이 빠진다(#204).
+  전에는 페이지의 `leave`가 올 때까지 남아 있었다. id 없이 그린 것은 그린 쪽이 다시 그릴 때마다
+  새 인스턴스이므로, 옛 것이 그 사이 알림을 받던 것이 멈춘다. 페이지가 그 렌더를 보기 전에 보낸 이벤트(방금 브로드캐스트가
+  다시 그린 목록의 행을 누른 클릭)는 그대로 옛 인스턴스의 핸들러를 돌린다 — 그 render는 화면에 가지 않는다. `leaving()`과
+  작업 취소는 1.5와 같이 페이지의 `leave`가 올 때다. 그래서 Presence는 1.5처럼 `leave`까지 그 컴포넌트를 센다.
+  `leave`가 오지 않는 요소(`wire-update="ignore"` 안)는 은퇴하고 10초가 지난 뒤 끝나는 첫 렌더가 정리한다 — 그런 렌더가
+  없으면 연결의 끝까지 남는다. 1.5에서는 언제나 연결의 끝까지 남아 그동안 센 것이 이제 그 렌더에서 끝난다. `{% if %}`로 숨겼다 다시 보인 컴포넌트는
+  id가 있어도 언제나 새로 시작한다 — 전에는 페이지의 `leave`보다 다시 보이는 렌더가 먼저 오면 옛 상태(그 안의
+  LiveComponent 포함)로 돌아왔다. 숨겨도 상태를 지켜야 하면 `{% if %}` 대신 그대로 그리고 CSS(`hidden`)로 감춘다
+  ([설계 메모](./design/live-component-ownership.md#3-6-그린-쪽이-더는-그리지-않는-중첩-컴포넌트-204)).
+- **조용히 달라짐: 인스턴스 없는 id로 온 이벤트에 답하고, `wire-update="ignore"` 안에 id 없이 그린 컴포넌트는 다시
+  join한다.** 이 연결에 인스턴스가 없는 id로 온 이벤트(떠났거나 마운트가 거절된 것)는 전에 아무 답도 받지 않아 버튼의
+  로딩 표시가 남았다. 이제 `gone`(프로토콜 `vsn` 9)으로 답하고, 옛 번들에는 핸들러가 없는 이벤트처럼 `diff: null`인
+  render로 답한다. `wireview:error`는 나지 않는다
+  ([프로토콜](./implementation/wire-protocol.md#3-outbound-세션--브라우저)).
+  `wire-update="ignore"` 안에 id 없이 그린 컴포넌트가 이 길을 탄다: 페이지는 그 요소를 붙들지만, 그린 쪽의 렌더는
+  새 인스턴스를 그리고 페이지의 것을 은퇴시킨다(#204). 그 요소의 다음 이벤트는 옛 인스턴스가 아직 남아 있으면 그
+  핸들러를 돌리고(그 render는 화면에 가지 않는다), 남아 있지 않으면 핸들러 없이 `gone`으로 답받는다. 옛 인스턴스는
+  은퇴하고 10초가 지난 뒤 끝나는 첫 렌더가 정리한다 — 렌더가 없으면 연결의 끝까지 남는다. 어느 쪽이든 로딩 표시가
+  풀리고 페이지가 그 요소를 그 상태(`data-state`)로 다시 join해 다음 이벤트부터 새 인스턴스가 답한다. `joined()`도
+  다시 돈다. 전에는 옛 인스턴스가 그대로 답했다. 그 안의 컴포넌트에는 id를 준다 — 같은 id로 매번
+  그리면 같은 인스턴스가 이어진다([훅](./features/hooks.md#렌더가-건드리지-않게-wire-updateignore)).
+  핸들러가 있는 중첩 컴포넌트를 목록처럼 자주 다시 그리는 곳에 둘 때도 id를 주는 것이 낫다: id 없이 그린 행은
+  렌더마다 새 인스턴스라, 그 행에서 시작한 상태는 다음 렌더에 사라진다.
+
+### Presence
 
 - **조용히 달라짐: Presence는 탭마다 기록한다.** 같은 사용자가 탭을 여럿 열었으면 마지막 탭이 떠날 때에야
   다른 사람의 목록에서 빠진다(#202). 정확히는 프로듀서마다(탭 + 컴포넌트 id) 기록하므로, 프로듀서가 둘인 페이지가
@@ -88,6 +121,9 @@ dependencies = ["django-wireview>=1.5,<2"]
     (트래커 자기 항목은 탭 키). 트래커의 자기 항목은 같은 탭 프로듀서의 항목과 따로 있어, 프로듀서가 떠나도 자기 목록에서
     자기가 빠지지 않는다. 그것을 직접 읽던 코드(테스트 포함)는
     `presence_get_user()`·`presence_users`·`presence_users_in()`을 쓴다.
+  - id 없이 그린 프로듀서를 페이지가 숨겼다 곧 다시 보이면 다시 보인 것은 새 인스턴스이고, 숨긴 것과 같은 항목을 쓴다.
+    숨긴 것의 퇴장은 그 은퇴가 끝날 때(아래 [중첩 컴포넌트](#중첩-컴포넌트)) 오므로 다시 보인 것의 입장보다 늦을 수
+    있다. `presence_conn`이 인스턴스마다 다르므로 그 늦은 퇴장은 버려지고 사용자는 목록에 남는다. 할 일은 없다.
 - **조용히 달라짐: 다른 사람의 목록에 올리는 것은 프로듀서다.** 나중에 들어온 트래커의 sync 요청에 답하는 것이
   트래커가 아니라 입장해 있는 프로듀서(`PresenceMixin`)다(#202). 그래서 프로듀서와 트래커가 형제 루트로 따로 join되는
   페이지, 트래커가 예외 뒤에 다시 join된 페이지, sticky 프로듀서가 boost 이동으로 옮겨 간 페이지도 나중에 온 사람의
@@ -105,10 +141,40 @@ dependencies = ["django-wireview>=1.5,<2"]
   그대로 목록에 있다(#202). 전에는 방 하나의 퇴장이 그 사용자를 통째로 지웠다. `presence_users`와 그것을 세는
   속성은 모든 토픽을 합쳐 사용자마다 한 번이고, 토픽 하나만 보려면 새 메서드 `presence_users_in(topic)`을 쓴다
   ([여러 토픽 구독](./tutorials/07-presence-api.md#여러-토픽-구독)).
+
+### 스트림과 무한 스크롤
+
+- **조용히 달라짐: `wire-viewport-*`가 더 자주 불린다.** 자기 스크롤바가 있는 상자(`overflow-y: auto`) 안의 바인딩은
+  1.5에서 창 가운데를 지나야만 불렸다(#199). 이제 상자를 그쪽으로 스크롤하면 불리고, 창이 그쪽으로 움직여도 불린다.
+  "지나침"은 실제로 넘치는 가장 가까운 상자의, 창에 보이는 부분에서 잰다. `overflow-x: hidden`만 둔 래퍼처럼 넘치지
+  않는 조상은 상자가 아니라 창으로 친다. 상자 안의 무한 스크롤이 불리지 않아 이를 **우회하는 JS 훅**(상자의 `scroll`을
+  들어 `pushEvent`하던 것)을 두었다면 지운다 — 두면 같은 스크롤에 핸들러가 두 번 불린다
+  ([무한 스크롤](./tutorials/06-streams-api.md#무한-스크롤-wire-viewport-top--wire-viewport-bottom)).
+- **프로토콜 10과 롤링 배포.** `stream_insert(..., update_only=True)`와 항목 여럿인 `stream(..., reset=False)`는
+  프로토콜 10의 형태다(#199). 옛 번들(`vsn` 9 이하)로 열린 페이지에는 다르게 간다. 새로고침하면 새 번들로 바뀐다.
+  - `update_only` 삽입은 보내지 않는다. 그 항목을 보이던 옛 페이지는 다시 join할 때까지 고치기 전 내용을 보인다 — 자리는
+    맞고 낡았을 뿐이다.
+  - `stream(..., reset=False)`는 `at`이 -1이 아니면 서버가 항목을 거꾸로 보내 옛 클라이언트에서도 순서가 맞는다. 단
+    `at`이 길이를 넘으면 그 항목들이 거꾸로 선다.
+  - 배포가 섞인 동안 옛 프로세스에 붙은 페이지는 새 프로세스가 발행한 `update_only` 삽입을 보통 삽입으로 받아, 그 항목을
+    불러오지 않은 목록의 `at` 자리에 넣을 수 있다. 옛 프로세스는 프레임에 붙은 최소 버전을 읽지 않는다. 배포가 끝난 뒤
+    다시 join하면 바로잡힌다([wire-protocol §7](./implementation/wire-protocol.md#7-버전)).
+- **읽어 붙이는 목록은 QuerySet을 `stream(..., reset=False)`에 넘긴다.** 핸들러가 목록을 읽어 `stream_insert`를
+  반복하면, 읽는 동안 발행된 Broadcast delete나 `update_only` 수정이 먼저 쓰이고 뒤에 나가는 삽입이 그것을 되돌린다 —
+  지운 항목이 되살아난다(#199). 1.5와 같고, `stream_insert`는 1.6에서도 패치를 잡지 않는다. 1.6의
+  `stream(queryset, reset=False)`는 reset처럼 읽기 전부터 그 컴포넌트의 Broadcast 패치를 잡아 두고 삽입이 소켓에 쓰일 때
+  놓는다. 비용도 reset과 같다. 잡힌 패치는 `stream()`을 부른 핸들러(`joined()`·`notification()`·`handle_async` 포함)가
+  끝나고 그 연산이 쓰일 때 나가므로, 그 뒤에 오래 걸리는 일이 있으면 그만큼 늦는다. 그런 일은 `start_async`로 넘기거나
+  `stream()`을 핸들러 끝에 둔다. 그동안 잡힌 프레임이 1,000개(`QUEUE_LIMIT`)를 넘으면 연결이 닫히고(1013) 페이지가
+  다시 join한다([Broadcast — 순서와 유실](./features/broadcast.md#순서와-유실)).
+
+### 테스트
+
 - **조용히 달라짐: 테스트의 `mount()`가 같은 프로세스의 알림을 받는다.** 구독한 채널에 온 `abroadcast()`·`broadcast()`·
   `self.broadcast()`·`atoast()`·auto-broadcast의 모델 변경이 페이지처럼 `notification()`·`mutation()`을 돌리고
   렌더한다(#201). 알림을 보낸 뒤 `view.component.notification(...)`을 직접 부르던 테스트는 이제 받는 메서드가 두 번
-  돈다 — 직접 부르기를 지운다. 렌더도 함께 돌므로 템플릿이 없는 테스트용 컴포넌트는 `TemplateDoesNotExist`로
+  돈다 — 직접 부르기를 지운다. Presence 프로듀서와 트래커를 함께 마운트한 테스트는 서로의 입장·퇴장·sync를
+  페이지처럼 듣는다 — `presence_broadcasts`를 꺼내 트래커의 `notification()`에 넘기던 것도 지운다. 렌더도 함께 돌므로 템플릿이 없는 테스트용 컴포넌트는 `TemplateDoesNotExist`로
   실패하고, 그 렌더는 `render_diff()`와 같은 경로라 pytest-django에서는 `django_db` 표시가 없는 테스트가 DB 접근
   오류로 실패한다. `sent_messages`를 통째로 비교하던 테스트는 받은 쪽의 `render`와 메일이 더해질 수 있다
   ([알림 받기](./features/testing.md#알림-받기)).
@@ -146,31 +212,6 @@ dependencies = ["django-wireview>=1.5,<2"]
   끄려면 `-p no:wireview`. 플러그인을 읽으면 패키지 `wireview`가 import되고 pytest가 그 패키지의 `assert`를
   다시 쓴다(assertion rewriting) — 이것까지 피하려면 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`
   ([알림 받기](./features/testing.md#알림-받기)).
-- **조용히 달라짐: 그린 쪽이 더는 그리지 않는 중첩 컴포넌트는 그 렌더와 함께 은퇴한다.** `{% component %}`로 그린 컴포넌트를
-  그린 쪽의 렌더가 더는 그리지 않으면, 이제 그 렌더가 끝날 때 브로드캐스트·패치·작업의 결과가 닿지 않고 구독이 빠진다(#204).
-  전에는 페이지의 `leave`가 올 때까지 남아 있었다. id 없이 그린 것은 그린 쪽이 다시 그릴 때마다
-  새 인스턴스이므로, 옛 것이 그 사이 알림을 받던 것이 멈춘다. 페이지가 그 렌더를 보기 전에 보낸 이벤트(방금 브로드캐스트가
-  다시 그린 목록의 행을 누른 클릭)는 그대로 옛 인스턴스의 핸들러를 돌린다 — 그 render는 화면에 가지 않는다. `leaving()`과
-  작업 취소는 1.5와 같이 페이지의 `leave`가 올 때다. 그래서 Presence는 1.5처럼 `leave`까지 그 컴포넌트를 센다.
-  `leave`가 오지 않는 요소(`wire-update="ignore"` 안)는 은퇴하고 10초가 지난 뒤 끝나는 첫 렌더가 정리한다 — 그런 렌더가
-  없으면 연결의 끝까지 남는다. 1.5에서는 언제나 연결의 끝까지 남아 그동안 센 것이 이제 그 렌더에서 끝난다. `{% if %}`로 숨겼다 다시 보인 컴포넌트는
-  id가 있어도 언제나 새로 시작한다 — 전에는 페이지의 `leave`보다 다시 보이는 렌더가 먼저 오면 옛 상태(그 안의
-  LiveComponent 포함)로 돌아왔다. 숨겨도 상태를 지켜야 하면 `{% if %}` 대신 그대로 그리고 CSS(`hidden`)로 감춘다
-  ([설계 메모](./design/live-component-ownership.md#3-6-그린-쪽이-더는-그리지-않는-중첩-컴포넌트-204)).
-- **조용히 달라짐: 인스턴스 없는 id로 온 이벤트에 답하고, `wire-update="ignore"` 안에 id 없이 그린 컴포넌트는 다시
-  join한다.** 이 연결에 인스턴스가 없는 id로 온 이벤트(떠났거나 마운트가 거절된 것)는 전에 아무 답도 받지 않아 버튼의
-  로딩 표시가 남았다. 이제 `gone`(프로토콜 `vsn` 9)으로 답하고, 옛 번들에는 핸들러가 없는 이벤트처럼 `diff: null`인
-  render로 답한다. `wireview:error`는 나지 않는다
-  ([프로토콜](./implementation/wire-protocol.md#3-outbound-세션--브라우저)).
-  `wire-update="ignore"` 안에 id 없이 그린 컴포넌트가 이 길을 탄다: 페이지는 그 요소를 붙들지만, 그린 쪽의 렌더는
-  새 인스턴스를 그리고 페이지의 것을 은퇴시킨다(#204). 그 요소의 다음 이벤트는 옛 인스턴스가 아직 남아 있으면 그
-  핸들러를 돌리고(그 render는 화면에 가지 않는다), 남아 있지 않으면 핸들러 없이 `gone`으로 답받는다. 옛 인스턴스는
-  은퇴하고 10초가 지난 뒤 끝나는 첫 렌더가 정리한다 — 렌더가 없으면 연결의 끝까지 남는다. 어느 쪽이든 로딩 표시가
-  풀리고 페이지가 그 요소를 그 상태(`data-state`)로 다시 join해 다음 이벤트부터 새 인스턴스가 답한다. `joined()`도
-  다시 돈다. 전에는 옛 인스턴스가 그대로 답했다. 그 안의 컴포넌트에는 id를 준다 — 같은 id로 매번
-  그리면 같은 인스턴스가 이어진다([훅](./features/hooks.md#렌더가-건드리지-않게-wire-updateignore)).
-  핸들러가 있는 중첩 컴포넌트를 목록처럼 자주 다시 그리는 곳에 둘 때도 id를 주는 것이 낫다: id 없이 그린 행은
-  렌더마다 새 인스턴스라, 그 행에서 시작한 상태는 다음 렌더에 사라진다.
 
 ## 1.4에서 1.5로
 

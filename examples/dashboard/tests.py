@@ -3,12 +3,15 @@ loading its own slow data through AsyncResult instead of blocking the first
 render."""
 
 import asyncio
+from datetime import timedelta
 
 import pytest
+from asgiref.sync import sync_to_async
+from django.utils import timezone
 
 from wireview import mount
 
-from .live import XActivityFeed, XDashboard, XStatCard
+from .live import PAGE_SIZE, XActivityFeed, XDashboard, XStatCard
 from .models import Activity, Stat
 
 
@@ -83,3 +86,95 @@ async def test_the_activity_feed_subscribes_to_its_model():
     view = await mount(XActivityFeed)
 
     assert any(m.get("type") == "stream_op" for m in view.sent_messages)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_load_more_loads_the_next_page_and_stops_at_the_end():
+    """It counted the page's items from a field nothing filled, so every click loaded the first page again."""
+    for n in range(25):
+        await Activity.objects.acreate(type="login", user_name=f"u{n}", description=f"activity {n}")
+    view = await mount(XActivityFeed)
+    first = [item["id"] for item in view.stream_items("activities")]
+
+    pages = []
+    for _ in range(2):
+        view.clear_messages()
+        await view.call("load_more")
+        [op] = view.stream_ops("activities")
+        assert (op["op"], op["at"]) == ("insert", -1), "one insert, under what the page shows"
+        pages.append([item["id"] for item in op["items"]])
+
+    shown = first + pages[0] + pages[1]
+    assert [len(first), *map(len, pages)] == [10, 10, 5]
+    assert sorted(shown) == sorted([f"activities-{a.pk}" async for a in Activity.objects.all()])
+    assert view.component.has_more is False
+
+
+def _seed(count: int, *, same_time: bool) -> list[Activity]:
+    """``count`` activities, newest first, a second apart or all at one time."""
+    now = timezone.now()
+    activities = [
+        Activity.objects.create(type="login", user_name=f"u{n}", description=f"activity {n}") for n in range(count)
+    ]
+    for n, activity in enumerate(activities):
+        activity.created_at = now if same_time else now - timedelta(seconds=count - n)
+        activity.save(update_fields=["created_at"])
+    return sorted(activities, key=lambda a: (a.created_at, a.id), reverse=True)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("same_time", [False, True], ids=["a second apart", "all at one time"])
+async def test_the_next_page_follows_the_oldest_shown_whatever_was_added_or_deleted(same_time):
+    """An offset moved with each activity added on top or deleted: the next page repeated or skipped one.
+
+    The cursor is (created_at, id), the page's oldest. With the time alone, the
+    activities that share it are lost or shown again.
+    """
+    seeded = await sync_to_async(_seed)(25, same_time=same_time)
+    ids = [f"activities-{a.pk}" for a in seeded]
+    view = await mount(XActivityFeed)
+    first = [item["id"] for item in view.stream_items("activities")]
+    # Meanwhile: two new ones on top, and one of the first page deleted
+    for n in range(2):
+        await Activity.objects.acreate(type="login", user_name="new", description=f"new {n}")
+    await seeded[3].adelete()
+
+    pages = []
+    for _ in range(2):
+        view.clear_messages()
+        await view.call("load_more")
+        pages.append([item["id"] for item in view.stream_items("activities")])
+
+    assert [len(first), *map(len, pages)] == [10, 10, 5]
+    assert first + pages[0] + pages[1] == ids
+    assert view.component.has_more is False
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(("count", "has_more"), [(PAGE_SIZE, False), (PAGE_SIZE + 1, True)])
+async def test_load_more_shows_only_when_there_is_more_than_a_page(count, has_more):
+    """It asks for a page and one more: exactly a page is the whole feed, and no button leads to an empty page."""
+    await sync_to_async(_seed)(count, same_time=False)
+    view = await mount(XActivityFeed)
+
+    assert len(view.stream_items("activities")) == PAGE_SIZE
+    assert view.component.has_more is has_more
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.django_db
+async def test_the_empty_feeds_note_is_outside_the_list_a_reset_empties():
+    view = await mount(XActivityFeed)
+
+    html = view.render() or ""
+
+    start = html.index('wire-stream="activities"')
+    assert "No activity yet" not in html[start : html.index("</ul>", start)]
+    assert "No activity yet" in html

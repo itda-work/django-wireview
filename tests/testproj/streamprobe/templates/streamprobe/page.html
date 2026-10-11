@@ -5,7 +5,13 @@
   <head>
     <title>stream probe</title>
     {% wireview_header %}
-    <style>li.row { height: 80px; }</style>
+    <style>
+      li.row { height: 80px; }
+      .wrap-x { overflow-x: hidden; }
+      .wrap-y { overflow-y: auto; }
+      .spacer { height: 250px; }
+      .box { height: 300px; overflow-y: auto; }
+    </style>
   </head>
   <body>
     {% if away %}
@@ -13,7 +19,11 @@
     {% else %}
       <a href="?size={{ size }}&away=1" data-testid="away">away</a>
       <a href="?fill=1&seeded=1" data-testid="reseed">reseed</a>
-      {% component 'StreamProbe' id="probe" size=size delay=delay nest=nest seeded=seeded fill=fill %}
+      {% if boxed %}<div class="spacer"></div>{% endif %}
+      <main data-testid="wrapper"
+            class="{% if wrap %}wrap-{{ wrap }}{% endif %}{% if boxed %} box{% endif %}">
+        {% component 'StreamProbe' id="probe" size=size delay=delay nest=nest seeded=seeded fill=fill %}
+      </main>
       {% if pair %}
         <section data-testid="second">
           {% component 'StreamProbe' id="probe-2" size=1 %}

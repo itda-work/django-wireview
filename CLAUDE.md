@@ -161,6 +161,7 @@ wireview/
 └── static/wireview/       wireview.js (소스), rendered.mjs (diff 적용·HTML 복원 순수 함수),
                            streams.mjs (스트림 DOM 판단 순수 함수. pinContainerIds: morph 전에 렌더의 컨테이너에 화면 컨테이너의 id를 붙여 자리 짝짓기로 지워지지 않게 한다),
                            targets.mjs (TargetQueue: 요소가 아직 없는 stream_op·exec_js·push_event는 다음 프레임까지 기다린다. 순서는 컴포넌트별), reload.mjs (reload 쿨다운 판단),
+                           viewport.mjs (wire-viewport-top/bottom이 불리는가. 방향은 스크롤하는 조상들과 창 중 하나라도 그쪽으로 움직였는가, "지나침"은 실제로 넘치는 가장 가까운 상자(없으면 창)에서 잰다 — 자기 스크롤바가 있는 채팅 목록, 스크롤하지 않는 overflow-x: hidden 래퍼, #199),
                            live-session.mjs (경계 넘음 판단 순수 함수), ready.mjs (defer 스크립트가 다 돌았는가),
                            events.mjs (wire-on-* 바인딩의 수정자 해석 순수 함수. 렌더 적용 중의 포커스·change 이벤트는 사용자 것이 아니다: isRenderEcho),
                            values.mjs (morph가 사용자가 고친 입력값을 덮어써도 되는가. IME가 조합 중인 칸은 언제나 지킨다),
@@ -201,6 +202,8 @@ tests/
 │                          실제로 있는지, 개요의 숫자가 표를 센 값인지 본다(#110)
 │                          test_doc_links.py 는 추적되는 모든 .md 의 상대 링크가 파일에, 앵커가 그 파일의 제목에 닿는지 본다.
 │                          제목을 고치면 그 제목을 가리키던 링크가 이 테스트에서 실패한다
+│                          test_examples_index.py 는 examples/README.md 표가 예제 디렉터리 전부인지, 루트 README 표가 그 표와
+│                          같은 행인지, 세 문서(두 README·CLAUDE.md)의 "예제 앱 N개"가 디렉터리 수인지 본다
 │                          test_deployment_examples.py 는 docs/DEPLOYMENT.md 의 수신자·readiness 코드 블록을
 │                          꺼내 실제로 돌린다. 문서의 예시를 고치면 이 테스트가 본다
 │                          test_doc_examples.py 는 사용자 문서(README·features·tutorials·skills·examples)의 코드가
@@ -272,9 +275,9 @@ tests/
                            inheritprobe/ 는 다중 테이블 상속 모델들이다(3단, pk를 따로 둔 자식, 키 타입이 다른 부모). mutation()이 받은 자식 인스턴스가 부모 컬럼을 덮지 않고 제 부모 행에 붙어 있는지 본다(test_mutation_instance.py, 마이그레이션 없음),
                            streamprobe/ 는 스트림의 dom_id·limit·wire-viewport-*(재연결 뒤 포함)와 같은 이름의 스트림을 쓰는 두 컴포넌트(delete 포함), 스트림 연산이 지운 포커스 항목의 blur를 보는 E2E(test_streams_e2e.py)의 픽스처다(?away=1 은 떠났다 돌아오는 컴포넌트 없는 페이지, ?pair=1 은 둘째 probe, ?nest=1 은 probe 목록 앞의 LiveComponent. seed 버튼은 joined()에서 push_js와 스트림을 보내고 자기 wire-viewport-bottom을 가진 LiveComponent를 새로 그린다(?seeded=1 은 처음부터, ?fill=1 은 그 첫 페이지가 창을 채운다, reseed 링크는 boost 이동으로 probe를 같은 id로 다시 join한다, strip 은 부모와 그것을 한 패치로 바꾼다), reveal 은 목록들 앞에 빈 스트림 컨테이너를 드러낸다)
 
-examples/                  예제 앱 11개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.
+examples/                  예제 앱 14개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.
                            testproj 위에서 돌고 make test가 함께 실행한다(pytest tests examples).
-                           E2E는 todo/tests.py, livecomp/tests.py, hooks/tests.py, notifications/tests.py, search/tests.py, chat/tests.py. 인덱스는 examples/README.md
+                           E2E는 todo/tests.py, livecomp/tests.py, hooks/tests.py, notifications/tests.py, search/tests.py, chat/tests.py, chat_lv2/tests.py, chat_lv3/tests.py, chat_lv4/tests.py. 인덱스는 examples/README.md
                            hooks/ 는 wire-hook 을 쓰는 유일한 예제다. 훅 경로의 E2E 검증은 그것과
                            testproj의 hookprobe/·stickyprobe/·offlineprobe/ 가 나눠 진다
 

@@ -43,7 +43,7 @@ class Feed(Component):
 
 ```text
 Broadcast(target, topic)
-    .stream_insert(name, item, *, at=-1, limit=0, template=None, dom_id=None)
+    .stream_insert(name, item, *, at=-1, limit=0, template=None, dom_id=None, update_only=False)
     .stream_delete(name, dom_id)
     .push_event(event, payload=None, *, hook_id=None)
     .js(js)
@@ -54,7 +54,7 @@ broadcast.send()          동기 코드에서. 트랜잭션이 커밋된 뒤에 
 
 | 연산 | 같은 일을 하는 컴포넌트 메서드 |
 |---|---|
-| `stream_insert` | `stream_insert()`. 기본 템플릿(`<template_name>_item.html`)과 DOM id(`"<name>-<pk>"`)를 대상 클래스에서 얻는다 |
+| `stream_insert` | `stream_insert()`. 기본 템플릿(`<template_name>_item.html`)과 DOM id(`"<name>-<pk>"`)를 대상 클래스에서 얻는다. `update_only=True`면 그 항목을 보이는 페이지만 제자리에서 바꾸고, 없는 페이지에는 넣지 않는다 |
 | `stream_delete` | `stream_delete()`. 정수를 주면 `"<name>-<정수>"` |
 | `push_event` | `push_event()`. `payload`는 JSON이어야 하고, 아니면 연산을 더할 때 `TypeError` |
 | `js` | `push_js()` |
@@ -83,6 +83,29 @@ def post_deleted(sender, instance, **kwargs):
 ```
 
 같은 항목을 `mutation()`의 `stream_insert()`로도 넣으면 일을 두 번 한다(결과는 같다). 한쪽만 쓴다.
+
+### 고친 항목: `update_only=True`
+
+한 Broadcast는 구독한 모든 페이지에 같은 프레임으로 간다. 그런데 페이지마다 목록의 다른 부분을 들고 있을 수
+있다 — 위로 스크롤해 과거를 불러온 페이지와 최근 것만 본 페이지. 고친 항목을 보통의 `stream_insert`로 보내면
+그것을 보이는 페이지는 제자리에서 바꾸지만, 없는 페이지는 `at` 자리에 새로 넣는다. 오래된 항목이 목록 맨 끝에
+나타나고, 나중에 그 자리까지 불러오면 순서가 어긋난다.
+
+```python
+await (
+    Broadcast(Feed, "feed")
+    .stream_insert("items", post, update_only=True)  # 보이는 곳에서만 바꾼다
+    .asend()
+)
+```
+
+`update_only=True`는 그 id가 페이지에 없으면 아무것도 하지 않는다(Phoenix LiveView의 `update_only`). 그 페이지가
+나중에 그 자리를 불러오면 DB에서 고쳐진 판을 읽는다. 지우기는 원래 없는 id에 아무 일도 하지 않으므로
+`stream_delete`는 그대로 쓴다. 예제: [chat_lv3](../../examples/chat_lv3/).
+
+이 프레임은 `vsn` 10 이상의 클라이언트에만 쓴다. 옛 번들은 `update_only`를 몰라 없는 항목을 `at`에 넣으므로, 세션이
+그 연결에서는 프레임을 뺀다. 그 항목을 보이던 옛 페이지는 다시 join할 때까지 고치기 전 내용을 보인다
+([wire-protocol §7](../implementation/wire-protocol.md#7-버전)).
 
 ---
 
@@ -153,16 +176,29 @@ def post_deleted(sender, instance, **kwargs):
   `stream()`에 QuerySet(또는 다른 async iterable)을 그대로 넘기면 읽기가 잡은 뒤에 일어나 빈틈이 없다. **목록을 미리
   읽어 리스트로 넘기면** 읽기와 `stream()` 호출 사이에 쓰인 패치는 여전히 지워질 수 있다 — 그 틈은 템플릿을 그리는
   시간만큼이지만, 순서가 중요하면 QuerySet을 넘긴다.
-- **잡아 둔 패치를 놓는 것은 reset 자신이다.** reset이 연결의 채널을 돌아 소켓에 쓰이는 순간 그 reset이 잡은 패치가
-  풀린다(join은 `joined()`의 작업 뒤를 따르는 표식 메일로). 연결은 메시지를 하나씩 처리하므로, 핸들러가 길거나 그 앞에 다른
-  메시지가 쌓여 있으면 reset은 늦을 뿐이다 — 그동안은 기다린다.
+- **읽어 붙일 때는 `stream(..., reset=False)`에 QuerySet을 넘긴다(1.6).** 삽입도 연결의 채널을 돌아 나가므로, 그 앞에
+  쓰인 패치를 되돌린다 — 먼저 쓰인 delete는 지울 것이 없어 아무 일도 하지 않고 뒤에 온 삽입이 지운 항목을 되살린다.
+  먼저 쓰인 `update_only` 수정은 고칠 항목이 없어 건너뛰고 뒤에 온 삽입이 고치기 전 내용을 넣는다. `stream(..., reset=False)`는
+  reset처럼 시작할 때부터 패치를 잡고 그 삽입이 소켓에 쓰일 때 놓는다. QuerySet(또는 async iterable)을 넘기면 읽기까지
+  덮는다. **`stream_insert`는 잡지 않는다.** 넘긴 항목은 호출 전에 읽혔으므로 거기서 잡아도 읽기를 덮지 못하고, 비용(아래)만
+  든다. 그래서 읽은 목록을 `stream_insert` 반복으로 붙이면 읽는 동안 지우거나 고친 항목이 되살아난다. `stream_delete`도
+  잡지 않는다. 지우기는 읽은 것을 싣지 않으므로 먼저 쓰인 패치가 되돌려지지 않는다.
+- **잡는 비용은 핸들러의 나머지다.** 잡힌 패치는 `stream()`을 부른 핸들러(`joined()`·`notification()`·`handle_async`·
+  `start_async`의 작업 포함)가 끝나고 그 연산이 소켓에 쓰일 때 나간다. 연결은 메시지를 하나씩 처리하므로 그 연산의 메일은
+  핸들러가 돌아온 뒤에야 처리된다. `stream()` 뒤에 외부 API를 30초 기다리는 핸들러라면 그 30초 동안 그 컴포넌트에 오는
+  패치(스트림·`push_event`·JS)가 화면에 나타나지 않는다. 오래 걸리는 일은 `start_async`로 넘기거나 `stream()`을 핸들러
+  끝에 둔다. 그동안 잡힌 프레임이 1,000개(`QUEUE_LIMIT`)를 넘으면 연결이 닫히고(1013) 페이지가 다시 join해 목록을 다시
+  읽는다. 다른 연결과 다른 컴포넌트의 패치는 잡지 않는다. `stream_insert`·`stream_delete`만 부른 핸들러는 패치를 늦추지
+  않는다.
 - **reset이 끝내 오지 않으면 연결을 닫는다.** 메일이 채널로 나간 지 10초(`HOLD_SECONDS`)가 지났을 때 연결이 처리 중인
   메시지가 없는데도 reset이 쓰이지 않았으면, 채널 레이어가 꽉 차 버렸을 가능성이 크다. 늦은 것과 버려진 것은 가를 수
   없으므로 잡아 둔 패치를 쓰지 않고 연결을 닫는다(1013, 경고 로그). 그때 패치를 쓰면 늦게 온 reset이 지울 수 있고, reset이
   없는 화면은 이미 틀렸다. 페이지가 다시 연결해 join하며 목록을 다시 읽는다. 기한이 올 때마다 처리 중인 메시지가 있으면
   다시 기다리므로, 계속 바쁜 연결에서는 닫힘에 시간 상한이 없다(쌓인 프레임이 1,000개를 넘으면 그때 닫힌다).
   `joined()`와 `update()`의 작업은 렌더가 나갈 때까지 큐에 있으므로 기한은 채널로 나갈 때부터 잰다. reset을 보내다
-  예외가 나도(레이어가 메시지를 넣은 뒤 던질 수 있다) 같은 기한을 따른다.
+  예외가 나도(레이어가 메시지를 넣은 뒤 던질 수 있다) 같은 기한을 따른다. `stream(..., reset=False)`도 같다. 가득 찬
+  채널이 그 메일을 버리면 항목이 조용히 빠지는 대신 이렇게 연결이 닫혀 다시 join한다. 보내는 중에 작업이 취소돼도
+  (`start_async`가 같은 이름의 작업을 바꿀 때) 메일은 끝까지 채널에 들어가 패치를 놓는다.
 - **최대 한 번이다.** 끊긴 동안, 채널 레이어가 버렸을 때, 롤링 배포 중 옛 프로세스의 연결은 놓친다. 다시 join하면
   `joined()`가 목록을 다시 보내 바로잡는다. DB에 없는 항목(저장하지 않는 채팅)은 재연결 뒤 사라진다. `push_event`와
   JS 명령은 다시 보내지 않는다 — 훅은 `reconnected()`에서 필요한 것을 다시 읽는다.

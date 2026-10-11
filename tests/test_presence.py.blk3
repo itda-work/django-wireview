@@ -1,0 +1,701 @@
+<<<<<<< HEAD
+
+        # Tracker receives clear notification
+        await tracker.component.notification(
+            "presence.room.1",
+            **clear_broadcasts[-1]["kwargs"],
+        )
+
+        # Should no longer be typing
+        assert not tracker.component.presence_get_user("alice").is_typing()
+
+
+async def relay(producer, tracker) -> None:
+    """Deliver what ``producer`` broadcast since the last relay to ``tracker``, in order."""
+    layer = producer.wire._mock_channel_layer
+    for message in [m for m in layer.sent_messages if m.get("kwargs", {}).get("action", "").startswith("presence_")]:
+        await tracker.component.notification("presence.room.1", **message["kwargs"])
+    layer.clear()
+
+
+class TestPresencePerConnection:
+    """A user is listed while any of their connections is, and types while any of them types (#202)."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_user_leaves_with_their_last_connection(self):
+        view = await mount(XTrackerComponent, room_id=1, username="tracker")
+        await hear(view, "presence_join", "ann", ref="tab1")
+        await hear(view, "presence_join", "ann", ref="tab2")
+
+        await hear(view, "presence_leave", "ann", ref="tab1")
+        assert [u.user_id for u in view.component.presence_users] == ["ann"]
+        assert view.component.presence_online_count == 1
+
+        await hear(view, "presence_leave", "ann", ref="tab2")
+        assert view.component.presence_users == []
+        assert view.component.presence_get_user("ann") is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_user_types_while_any_connection_types(self):
+        view = await mount(XTrackerComponent, room_id=1, username="tracker")
+        await hear(view, "presence_join", "ann", ref="tab1")
+        await hear(view, "presence_join", "ann", ref="tab2")
+
+        await hear(view, "presence_typing", "ann", ref="tab1", state="typing")
+        assert view.component.presence_get_user("ann").is_typing()
+        await hear(view, "presence_typing", "ann", ref="tab2", state="typing")
+        await hear(view, "presence_typing", "ann", ref="tab2", state="online")
+        assert [u.user_id for u in view.component.presence_typing_users] == ["ann"]
+
+        await hear(view, "presence_typing", "ann", ref="tab1", state="online")
+        assert view.component.presence_typing_users == []
+        assert view.component.presence_get_user("ann").is_online()
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_the_merged_entry_takes_the_latest_name_and_metadata(self):
+        view = await mount(XTrackerComponent, room_id=1, username="tracker")
+        await hear(view, "presence_join", "ann", ref="tab1", username="Ann", metadata={"tab": 1})
+        await hear(view, "presence_join", "ann", ref="tab2", username="Ann B.", metadata={"tab": 2})
+
+        user = view.component.presence_get_user("ann")
+        assert (user.username, user.metadata) == ("Ann B.", {"tab": 2})
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_each_connection_times_out_its_own_typing(self, presence_clock):
+        """Two tabs of one user type; the first to time out does not clear the user."""
+        tab1 = await mount(XProducerComponent, id="tab1", room_id=1, username="ann")
+        tab2 = await mount(XProducerComponent, id="tab2", room_id=1, username="ann")
+        view = await mount(XTrackerComponent, room_id=1, username="tracker")
+        await relay(tab1, view)
+        await relay(tab2, view)
+
+        await tab1.component.presence_set_typing(True)  # times out at 0.10
+        await presence_clock.advance(0.06)
+        await tab2.component.presence_set_typing(True)  # times out at 0.16
+        await relay(tab1, view)
+        await relay(tab2, view)
+        assert view.component.presence_get_user("ann").is_typing()
+
+        await presence_clock.advance(0.06)  # 0.12: tab1 cleared, tab2 still types
+        await asyncio.wait({tab1.component._presence_typing_task}, timeout=5)
+        await relay(tab1, view)
+        assert view.component.presence_get_user("ann").is_typing()
+
+        await presence_clock.advance(0.04)  # 0.16
+        await asyncio.wait({tab2.component._presence_typing_task}, timeout=5)
+        await relay(tab2, view)
+        assert not view.component.presence_get_user("ann").is_typing()
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_the_components_of_one_connection_share_a_tab(self):
+        """A connection's tracker names the tab its producers are of; no key is the connection id.
+
+        Each producer speaks for a meta of its own (its tab and its id), and
+        does not answer the sync request of its own tab's tracker.
+        """
+        producer = await mount(XProducerComponent, room_id=1, username="ann")
+        tracker = await mount(XTrackerComponent, room_id=1, username="ann")
+        other = await mount(XProducerComponent, room_id=1, username="ann")
+        for view in (producer, tracker):
+            view.wire.connection_id = "conn-secret"
+        other.wire.connection_id = "conn-other"
+        producer.wire._mock_channel_layer.clear()
+        tracker.wire._mock_channel_layer.clear()
+
+        await producer.component.presence_join()
+        await tracker.component.presence_track_self(username="ann")
+        await other.component.presence_join()
+
+        join = producer.presence_broadcasts[0]["kwargs"]
+        request = tracker.presence_broadcasts[0]["kwargs"]
+        assert request["requester_ref"] == presence._presence_tab(producer.component)
+        assert join["presence_ref"] != request["requester_ref"]
+        assert join["presence_ref"] != other.presence_broadcasts[-1]["kwargs"]["presence_ref"]
+        assert "conn-secret" not in join["presence_ref"] + request["requester_ref"]
+        producer.wire._mock_channel_layer.clear()
+        await deliver(
+            producer, action="presence_sync_request", requester_id="ann", requester_ref=request["requester_ref"]
+        )
+        assert producer.presence_broadcasts == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_sync_answer_fills_only_a_connection_not_heard_from(self):
+        """An answer can be older than what the connection broadcast since: it does not overwrite it."""
+        view = await mount(XTrackerComponent, room_id=1, username="tracker")
+        await hear(view, "presence_typing", "ann", ref="tab1", state="typing")
+
+        await hear(view, "presence_sync_response", "ann", ref="tab1", state="online")
+        await hear(view, "presence_sync_response", "ann", ref="tab2", state="online")
+
+        assert view.component.presence_get_user("ann").is_typing()
+        assert set(view.component._presence_registry["presence.room.1"]["ann"]) == {"tab1", "tab2"}
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_producer_answers_a_sync_for_its_own_tab_only(self):
+        producer = await mount(XProducerComponent, room_id=1, username="ann")
+        tracker = await mount(XTrackerComponent, room_id=1, username="ann")
+        for view in (producer, tracker):
+            view.wire.tab_id = "ann-tab-one-page-load"
+        await tracker.component.presence_track_self(username="ann")
+        my_ref = tracker.presence_broadcasts[-1]["kwargs"]["requester_ref"]
+        producer.wire._mock_channel_layer.clear()
+
+        # Its own tab's request: no answer, that tab's tracker lists it itself
+        assert await ask(producer, requester_ref=my_ref) == []
+
+        # Another tab of the same user asks: answered, for this producer
+        [answer] = await ask(producer, requester_ref="ann-tab2")
+        assert (answer["action"], answer["user_id"], answer["presence_ref"]) == (
+            "presence_sync_response",
+            "ann",
+            presence._presence_ref(producer.component),
+        )
+
+        # And that tab's own answer is kept: it is another tab of the user
+        await hear(tracker, "presence_sync_response", "ann", ref="ann-tab2")
+        assert set(tracker.component._presence_registry["presence.room.1"]["ann"]) == {my_ref, "ann-tab2"}
+
+
+class TestPresenceTrackerAlone:
+    """A connection with a tracker and no producer never says it joined or left (#202)."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_it_does_not_answer_a_sync(self):
+        """Answering put it on the lists of those who came later, and nothing took it off.
+
+        Not even once a producer of its tab announced it: that producer answers.
+        """
+        view = await mount(XTrackerComponent, room_id=1, username="ann")
+        await view.component.presence_track_self(username="ann")
+        my_ref = view.presence_broadcasts[-1]["kwargs"]["requester_ref"]
+        view.wire._mock_channel_layer.clear()
+
+        await view.component.notification(
+            "presence.room.1", action="presence_sync_request", requester_id="bob", requester_ref="bobs-tab"
+        )
+        assert view.presence_broadcasts == []
+        # It still lists itself
+        assert [u.user_id for u in view.component.presence_users] == ["ann"]
+
+        await hear(view, "presence_join", "ann", ref=my_ref)
+        await view.component.notification(
+            "presence.room.1", action="presence_sync_request", requester_id="bob", requester_ref="bobs-tab"
+        )
+        assert view.presence_broadcasts == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_its_own_entry_merges_with_its_tabs_producer(self):
+        """The tracker's own entry is its tab's, beside the meta of the tab's producer.
+
+        The list shows the user once, typing while the producer types, and the
+        producer's leave (a hidden widget) does not take the tracker's user off
+        its own list.
+        """
+        view = await mount(XTrackerComponent, room_id=1, username="ann")
+        view.wire.connection_id = "conn"
+        producer = await mount(XProducerComponent, room_id=1, username="ann")
+        producer.wire.connection_id = "conn"
+        producer.wire._mock_channel_layer.clear()
+        await producer.component.presence_join()
+        await relay(producer, view)
+        await view.component.presence_track_self(username="ann")
+        assert len(view.component._presence_registry["presence.room.1"]["ann"]) == 2
+        assert [u.user_id for u in view.component.presence_users] == ["ann"]
+
+        await producer.component.presence_set_typing(True)
+        await relay(producer, view)
+        assert view.component.presence_get_user("ann").is_typing()
+
+        await producer.component.presence_leave()
+        await relay(producer, view)
+        user = view.component.presence_get_user("ann")
+        assert user is not None and not user.is_typing()
+
+
+class TestPresenceLegacyPayload:
+    """A message without presence_ref comes from a process older than #202 (a rolling deploy).
+
+    Such a process keeps one meta per user, so its messages land on one meta of
+    the user: the user's connections on newer processes are left alone.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_legacy_leave_keeps_the_users_other_connections(self):
+        view = await mount(XTrackerComponent, room_id=1, username="tracker")
+        await hear(view, "presence_join", "ann", ref=None)
+        await hear(view, "presence_join", "ann", ref="new-tab")
+
+        await hear(view, "presence_leave", "ann", ref=None)
+        assert [u.user_id for u in view.component.presence_users] == ["ann"]
+
+        await hear(view, "presence_leave", "ann", ref="new-tab")
+        assert view.component.presence_users == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_legacy_messages_of_one_user_share_one_meta(self):
+        view = await mount(XTrackerComponent, room_id=1, username="tracker")
+        await hear(view, "presence_join", "ann", ref=None)
+        await hear(view, "presence_typing", "ann", ref=None, state="typing")
+        assert view.component.presence_get_user("ann").is_typing()
+        assert list(view.component._presence_registry["presence.room.1"]["ann"]) == [""]
+
+        await hear(view, "presence_leave", "ann", ref=None)
+        assert view.component.presence_users == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_legacy_sync_request_is_answered(self):
+        producer = await mount(XProducerComponent, room_id=1, username="ann")
+        view = await mount(XTrackerComponent, room_id=1, username="ann")
+        producer.wire._mock_channel_layer.clear()
+
+        await deliver(producer, action="presence_sync_request", requester_id="bob")
+        [answer] = [b["kwargs"] for b in producer.presence_broadcasts]
+        assert answer["action"] == "presence_sync_response"
+        assert answer["user_id"] == "ann"
+
+        await hear(view, "presence_sync_response", "bob", ref=None)
+        assert view.component.presence_get_user("bob") is not None
+
+
+class XNarrowProducer(XProducerComponent):
+    """A producer naming its own topics without super(), as components usually do."""
+
+    def get_subscriptions(self) -> set[str]:
+        return {"chat.room.1"}
+
+
+class XProducerThenTracker(PresenceMixin, PresenceTrackerMixin, Component):
+    class Meta:
+        template_name = "test_presence.html"
+
+    username: str = "ann"
+
+    def _presence_topic(self) -> str:
+        return "room.1"
+
+    def _presence_user_id(self) -> str:
+        return self.username
+
+    def _presence_my_user_id(self) -> str:
+        return self.username
+
+    def _presence_username(self) -> str:
+        return self.username
+
+    def get_subscriptions(self) -> set[str]:
+        # A tracker hears its channel because it subscribes to it
+        return super().get_subscriptions() | {self._presence_channel()}
+
+
+class XSubclassedTab(XProducerThenTracker):
+    """Its own receiver over a class that produces and tracks, passing everything on."""
+
+    async def notification(self, channel: str, **kwargs):
+        await super().notification(channel, **kwargs)
+
+
+class XTrackerThenProducer(PresenceTrackerMixin, PresenceMixin, Component):
+    class Meta:
+        template_name = "test_presence.html"
+
+    username: str = "ann"
+
+    _presence_topic = XProducerThenTracker._presence_topic
+    _presence_user_id = XProducerThenTracker._presence_user_id
+    _presence_my_user_id = XProducerThenTracker._presence_my_user_id
+    _presence_username = XProducerThenTracker._presence_username
+
+    def get_subscriptions(self) -> set[str]:
+        return super().get_subscriptions() | {self._presence_channel()}
+
+
+async def ask(view, channel: str = "presence.room.1", requester_ref: str = "bobs-tab") -> list[dict]:
+    """A sync request from another tab reaches ``view``; what it broadcast in answer."""
+    view.wire._mock_channel_layer.clear()
+    await deliver(view, channel, action="presence_sync_request", requester_id="bob", requester_ref=requester_ref)
+    return [b["kwargs"] for b in view.presence_broadcasts]
+
+
+class TestPresenceProducerAnswers:
+    """The producer answers sync requests: it is what other people's lists show (#202).
+
+    A tracker answered once it heard its page's join, which it never did when the
+    page's producer was a root joined before it, or when the tracker was made
+    after the producer joined (joined again after an exception, a page a sticky
+    producer moved to).
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_it_answers_between_its_join_and_its_leave(self):
+        producer = await mount(XProducerComponent, room_id=1, username="ann")
+        [answer] = await ask(producer)
+        assert (answer["action"], answer["user_id"], answer["state"]) == ("presence_sync_response", "ann", "online")
+        assert answer["presence_ref"] == producer.presence_broadcasts[0]["kwargs"]["presence_ref"]
+
+        await producer.component.presence_set_typing(True)
+        [answer] = await ask(producer)
+        assert answer["state"] == "typing"
+
+        await producer.component.presence_leave()
+        assert await ask(producer) == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_it_does_not_answer_before_it_joins(self):
+        class XQuietProducer(XProducerComponent):
+            async def joined(self):
+                pass
+
+        producer = await mount(XQuietProducer, room_id=1, username="ann")
+        assert await ask(producer) == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_it_answers_on_its_own_channel_only(self):
+        producer = await mount(XProducerComponent, room_id=1, username="ann")
+        assert await ask(producer, channel="presence.room.2") == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_its_connection_hears_its_channel_whatever_its_subscriptions_say(self):
+        """The framework's channel is apart from the app's: get_subscriptions() is the app's own."""
+        producer = await mount(XNarrowProducer, room_id=1, username="ann")
+        assert producer.component.get_subscriptions() == {"chat.room.1"}
+        assert presence_channels(producer.component) == {"presence.room.1"}
+        assert presence_channels((await mount(XProducerComponent, room_id=2)).component) == {"presence.room.2"}
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_it_hears_its_channel_while_it_is_joined(self):
+        """Not before presence_join(): a topic joined() decides is not known yet, and there is nothing to answer."""
+
+        class XLateProducer(XProducerComponent):
+            async def joined(self):
+                pass
+
+        producer = await mount(XLateProducer, room_id=1, username="ann")
+        assert presence_channels(producer.component) == set()
+        await producer.component.presence_join()
+        assert presence_channels(producer.component) == {"presence.room.1"}
+        await producer.component.presence_leave()
+        assert presence_channels(producer.component) == set()
+        assert producer.component.get_subscriptions() == set()
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_it_hears_its_channel_whatever_an_app_mixin_returns(self):
+        class RoomMixin:
+            def get_subscriptions(self) -> set[str]:
+                return {"chat.room.1"}
+
+        class XMixedProducer(RoomMixin, XProducerComponent):
+            pass
+
+        producer = await mount(XMixedProducer, room_id=1, username="ann")
+        assert producer.component.get_subscriptions() == {"chat.room.1"}
+        assert presence_channels(producer.component) == {"presence.room.1"}
+
+    @pytest.mark.unit
+    def test_the_mixin_leaves_the_app_methods_alone(self):
+        """A producer base combined with an app base keeps the app base's methods (#202, R1).
+
+        Python's MRO puts the app base before Component. A mixin that replaced the
+        methods on the class it was mixed into hid them from every subclass.
+        """
+        from django.contrib.auth.models import AnonymousUser
+
+        from wireview.core.component import Component as Base
+        from wireview.core.meta import WireviewMeta
+
+        class XProducerBase(PresenceMixin, Component):
+            pass
+
+        class XRoomBase(Component):
+            def get_subscriptions(self) -> set[str]:
+                return super().get_subscriptions() | {"chat.room.1"}
+
+            async def notification(self, channel: str, **kwargs):
+                await super().notification(channel, **kwargs)
+
+        class XDiamond(XProducerBase, XRoomBase):
+            pass
+
+        assert XDiamond.get_subscriptions is XRoomBase.get_subscriptions
+        assert XDiamond.notification is XRoomBase.notification
+        assert XProducerComponent.get_subscriptions is Base.get_subscriptions
+        assert XProducerComponent.notification is Base.notification
+        component = XDiamond(user=AnonymousUser(), wire=WireviewMeta(params={}), id="d")
+        assert component.get_subscriptions() == {"chat.room.1"}
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_its_receiver_does_not_hear_what_only_the_framework_hears(self):
+        """Its notification() hears its own channels only, as before #202; the sync is still answered."""
+        heard: list[str] = []
+
+        class XListeningProducer(XNarrowProducer):
+            async def notification(self, channel: str, **kwargs):
+                heard.append(kwargs["message"])
+
+        producer = await mount(XListeningProducer, room_id=1, username="ann")
+        await deliver(producer, action="presence_join", user_id="bob", presence_ref="bobs-tab")
+        [answer] = await ask(producer)
+        assert answer["action"] == "presence_sync_response"
+        await deliver(producer, "chat.room.1", message="hi")
+        assert heard == ["hi"]
+
+    @pytest.mark.unit
+    def test_a_broadcast_to_a_topic_it_does_not_subscribe_to_is_refused(self):
+        from wireview import Broadcast
+
+        class XTopicProducer(XProducerComponent):
+            class Meta:
+                subscriptions = {"chat.room.1"}
+
+        Broadcast(XTopicProducer, "chat.room.1")
+        with pytest.raises(ValueError, match="does not subscribe"):
+            Broadcast(XTopicProducer, "chat.room.2")
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    @pytest.mark.parametrize("component", [XProducerThenTracker, XTrackerThenProducer, XSubclassedTab])
+    async def test_a_class_that_produces_and_tracks_answers_once(self, component):
+        view = await mount(component)
+        await view.component.presence_join()
+        [answer] = await ask(view)
+        assert answer["action"] == "presence_sync_response"
+        # And it tracks what it hears, rendering it
+        view.wire._skip_render = False
+        await hear(view, "presence_join", "bob", ref="bobs-tab")
+        assert [u.user_id for u in view.component.presence_users] == ["bob"]
+        assert not view.wire._skip_render
+
+
+class TestPresenceTabs:
+    """A meta is a browser tab's, across its reconnects (#202).
+
+    The page names its load in the socket URL (``wire.tab_id``). Keyed by the
+    connection, a reconnect made a new meta, and the old one stayed for good
+    when the process that held it died without its leave.
+    """
+
+    @staticmethod
+    def ref(
+        tab: str = "", connection: str = "conn", user=None, id: str = "producer", key=None, id_given: bool = True
+    ) -> str:
+        """A producer's ref (or, with ``key``, another key of it); ``id_given=False`` is an id the framework minted."""
+        from django.contrib.auth.models import AnonymousUser
+
+        from wireview.core.meta import WireviewMeta
+
+        wire = WireviewMeta(params={}, connection_id=connection, tab_id=tab)
+        wire.id_given = id_given
+        component = XProducerComponent(id=id, user=user or AnonymousUser(), wire=wire)
+        return (key or presence._presence_ref)(component)
+
+    @pytest.mark.unit
+    def test_a_tab_keeps_its_ref_across_connections(self):
+        tab = "abcdefghijklmnopqrstuv"
+        assert self.ref(tab, "conn-1") == self.ref(tab, "conn-2")
+        assert self.ref(tab, "conn-1") != self.ref("vutsrqponmlkjihgfedcba", "conn-1")
+        assert tab not in self.ref(tab)
+
+    @pytest.mark.unit
+    def test_each_producer_of_a_tab_has_a_ref_of_its_own(self):
+        """A meta per producer, as Phoenix keeps one per track: one leaving keeps the other's (E1)."""
+        tab = "abcdefghijklmnopqrstuv"
+        assert self.ref(tab, id="composer") != self.ref(tab, id="sidebar")
+        assert self.ref(tab, "conn-1", id="composer") == self.ref(tab, "conn-2", id="composer")
+        tab_key = presence._presence_tab
+        assert self.ref(tab, id="composer", key=tab_key) == self.ref(tab, id="sidebar", key=tab_key)
+        assert self.ref(tab, id="composer", key=tab_key) != self.ref(tab, id="composer")
+
+    @pytest.mark.unit
+    def test_a_producer_whose_id_was_minted_is_named_by_its_class(self):
+        """An id-less ``{% component %}`` gets a new ``rx-`` id on every pass that draws it, a reconnect's too."""
+        tab = "abcdefghijklmnopqrstuv"
+        assert self.ref(tab, "conn-1", id="rx-1", id_given=False) == self.ref(tab, "conn-2", id="rx-2", id_given=False)
+        assert self.ref(tab, id="rx-1", id_given=False) != self.ref(tab, id="rx-1")
+        assert self.ref(tab, id="rx-1", id_given=False) != self.ref("vutsrqponmlkjihgfedcba", id="rx-1", id_given=False)
+
+    @pytest.mark.unit
+    def test_without_a_tab_the_connection_is_the_key(self):
+        assert self.ref("", "conn-1") != self.ref("", "conn-2")
+        assert self.ref("", "conn-1") == self.ref("", "conn-1")
+        assert "conn-1" not in self.ref("", "conn-1")
+
+    @pytest.mark.unit
+    def test_another_users_page_naming_the_same_tab_gets_another_ref(self):
+        """The name comes from the client: it counts only under the user the server knows."""
+        from django.contrib.auth.models import User
+
+        tab = "abcdefghijklmnopqrstuv"
+        ann, mallory = User(pk=1, username="ann"), User(pk=2, username="mallory")
+        assert self.ref(tab, user=ann) != self.ref(tab, user=mallory)
+        assert self.ref(tab, user=ann) != self.ref(tab)
+        assert self.ref(tab, "conn-1", user=ann) == self.ref(tab, "conn-2", user=ann)
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_tab_joining_again_replaces_what_a_lost_leave_left(self):
+        view = await mount(XTrackerComponent, room_id=1, username="bob")
+        await hear(view, "presence_join", "ann", ref="ann-tab", presence_conn="c1")
+        # The process holding c1 died without the leave; the tab reconnects
+        await hear(view, "presence_join", "ann", ref="ann-tab", presence_conn="c2")
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c2")
+        assert view.component.presence_users == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_the_socket_a_tab_left_says_nothing_for_it(self):
+        """Its late typing and leave come after the tab joined on a new socket."""
+        view = await mount(XTrackerComponent, room_id=1, username="bob")
+        await hear(view, "presence_join", "ann", ref="ann-tab", presence_conn="c1")
+        await hear(view, "presence_join", "ann", ref="ann-tab", presence_conn="c2")
+
+        await hear(view, "presence_typing", "ann", ref="ann-tab", presence_conn="c1", state="typing")
+        assert view.component.presence_get_user("ann").state == PresenceState.ONLINE
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c1")
+        assert view.component.presence_get_user("ann") is not None
+
+        await hear(view, "presence_typing", "ann", ref="ann-tab", presence_conn="c2", state="typing")
+        assert view.component.presence_get_user("ann").is_typing()
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c2")
+        assert view.component.presence_get_user("ann") is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_tab_that_answers_on_two_sockets_stays_until_both_leave(self):
+        """Both sockets of a reconnected tab answer a new tracker's sync; the old one's leave keeps the tab."""
+        view = await mount(XTrackerComponent, room_id=1, username="bob")
+        await hear(view, "presence_sync_response", "ann", ref="ann-tab", presence_conn="c-old")
+        await hear(view, "presence_sync_response", "ann", ref="ann-tab", presence_conn="c-new")
+
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c-old")
+        assert view.component.presence_get_user("ann") is not None
+        await hear(view, "presence_typing", "ann", ref="ann-tab", presence_conn="c-new", state="typing")
+        assert view.component.presence_get_user("ann").is_typing()
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c-new")
+        assert view.component.presence_get_user("ann") is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_join_says_which_socket_the_tab_speaks_on_now(self):
+        """Joined again after two sockets answered: the one it left says nothing for it."""
+        view = await mount(XTrackerComponent, room_id=1, username="bob")
+        await hear(view, "presence_sync_response", "ann", ref="ann-tab", presence_conn="c1")
+        await hear(view, "presence_sync_response", "ann", ref="ann-tab", presence_conn="c2")
+        await hear(view, "presence_join", "ann", ref="ann-tab", presence_conn="c3")
+
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c2")
+        assert view.component.presence_get_user("ann") is not None
+        await hear(view, "presence_leave", "ann", ref="ann-tab", presence_conn="c3")
+        assert view.component.presence_get_user("ann") is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_message_that_names_no_connection_is_heard(self):
+        """From a process before presence_conn: as before, by the ref alone."""
+        view = await mount(XTrackerComponent, room_id=1, username="bob")
+        await hear(view, "presence_join", "ann", ref="ann-tab", presence_conn="c1")
+        await hear(view, "presence_leave", "ann", ref="ann-tab")
+        assert view.component.presence_get_user("ann") is None
+
+    @pytest.mark.unit
+    def test_the_socket_url_names_the_tab(self):
+        from wireview.core.rendered import socket_tab
+
+        assert socket_tab(b"vsn=8&tab=abcdefghijklmnopqrstuv") == "abcdefghijklmnopqrstuv"
+        assert socket_tab("tab=" + "a" * 64) == "a" * 64
+        for query in (
+            b"vsn=8",  # an older bundle
+            b"tab=short",
+            b"tab=" + b"a" * 65,
+            b"tab=abcdefghijklmnop%2Fqrstuv",
+            b"tab=abcdefghijklmnopqrstuv&tab=abcdefghijklmnopqrstuw",
+            b"tab=%C3%A9bcdefghijklmnopqrstuv",
+        ):
+            assert socket_tab(query) == "", query
+
+
+class TestPresenceTopics:
+    """A tracker on several topics keeps each one's metas apart (#202).
+
+    Keyed by user and tab alone, leaving one room removed the user from the
+    tracker though they were still in another.
+    """
+
+    @staticmethod
+    async def hear_in(view, room: int, action: str, user_id: str = "ann") -> None:
+        await view.component.notification(
+            f"presence.room.{room}",
+            action=action,
+            user_id=user_id,
+            presence_ref=f"{user_id}-tab",
+            username=user_id,
+            state="online",
+            metadata={},
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_leaving_one_room_keeps_the_user_of_another(self):
+        view = await mount(XTrackerComponent, room_id=1, username="bob")
+        await self.hear_in(view, 1, "presence_join")
+        await self.hear_in(view, 2, "presence_join")
+        await self.hear_in(view, 2, "presence_leave")
+        assert [u.user_id for u in view.component.presence_users] == ["ann"]
+        await self.hear_in(view, 1, "presence_leave")
+        assert view.component.presence_users == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_each_topic_lists_its_own_users(self):
+        view = await mount(XTrackerComponent, room_id=1, username="bob")
+        await view.component.presence_track_self(username="bob")
+        await self.hear_in(view, 1, "presence_join")
+        await self.hear_in(view, 2, "presence_join", "carol")
+        await self.hear_in(view, 2, "presence_join")
+
+        assert [u.user_id for u in view.component.presence_users_in("room.1")] == ["bob", "ann"]
+        assert [u.user_id for u in view.component.presence_users_in("room.2")] == ["carol", "ann"]
+        assert view.component.presence_users_in("room.3") == []
+        # Across them, once each
+        assert [u.user_id for u in view.component.presence_users] == ["bob", "ann", "carol"]
+        assert view.component.presence_online_count == 3
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_the_user_merges_across_topics(self):
+        view = await mount(XTrackerComponent, room_id=1, username="bob")
+        await self.hear_in(view, 1, "presence_join")
+        await view.component.notification(
+            "presence.room.2", action="presence_typing", user_id="ann", presence_ref="ann-tab", state="typing"
+        )
+        assert view.component.presence_get_user("ann").is_typing()
+        assert not view.component.presence_users_in("room.1")[0].is_typing()
+||||||| 6e7a55d
+
+        # Tracker receives clear notification
+        await tracker.component.notification(
+            "presence.room.1",
+            **clear_broadcasts[-1]["kwargs"],
+        )
+
+        # Should no longer be typing
+        assert not tracker.component._presence_registry["alice"].is_typing()
+=======
+>>>>>>> fix/testing-matches-browser

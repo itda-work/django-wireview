@@ -312,7 +312,7 @@ class XCounter(Component):
 
 ## 예제
 
-동작하는 예제 앱 11개가 [examples/](https://github.com/itda-work/django-wireview/tree/main/examples)에 있습니다. 각 디렉터리가 개념 하나이고,
+동작하는 예제 앱 14개가 [examples/](https://github.com/itda-work/django-wireview/tree/main/examples)에 있습니다. 각 디렉터리가 개념 하나이고,
 테스트와 README를 함께 가지고 있으며, `make test`가 함께 실행하고 릴리스 게이트(CI)가 태그마다 다시 실행합니다.
 
 | 예제 | 개념 |
@@ -320,17 +320,20 @@ class XCounter(Component):
 | [todo](https://github.com/itda-work/django-wireview/tree/main/examples/todo) | 모델 구독으로 여러 탭이 같은 목록을 함께 본다 |
 | [poll](https://github.com/itda-work/django-wireview/tree/main/examples/poll) | 쓰기는 핸들러가, 다시 그리기는 브로드캐스트가 |
 | [rating](https://github.com/itda-work/django-wireview/tree/main/examples/rating) | 잠깐 쓰는 상태와 남는 상태를 갈라 둔다 |
-| [search](https://github.com/itda-work/django-wireview/tree/main/examples/search) | 디바운스한 입력과 키보드로 고르는 결과 |
+| [search](https://github.com/itda-work/django-wireview/tree/main/examples/search) | 디바운스한 입력, 주소에 남는 검색어, 키보드로 고르는 결과 |
 | [quiz](https://github.com/itda-work/django-wireview/tree/main/examples/quiz) | 컴포넌트 상태로 굴리는 상태 머신 |
 | [chat](https://github.com/itda-work/django-wireview/tree/main/examples/chat) | Streams와 Presence |
+| [chat_lv2](https://github.com/itda-work/django-wireview/tree/main/examples/chat_lv2) | chat 2단계: 누가 말하는가를 서버가 정한다 (로그인 사용자, 방 멤버십, `live_session`) |
+| [chat_lv3](https://github.com/itda-work/django-wireview/tree/main/examples/chat_lv3) | chat 3단계: 스트림은 붙이기만 하는 목록이 아니다 (위로 스크롤해 과거 불러오기, 내 메시지 수정·삭제) |
+| [chat_lv4](https://github.com/itda-work/django-wireview/tree/main/examples/chat_lv4) | chat 4단계: 한 사람에게만 가는 소식 (방 목록의 안 읽은 메시지 배지) |
 | [dashboard](https://github.com/itda-work/django-wireview/tree/main/examples/dashboard) | AsyncResult로 느린 조회를 미룬다 |
-| [notifications](https://github.com/itda-work/django-wireview/tree/main/examples/notifications) | 이름 붙인 채널로 컴포넌트끼리 알린다 |
+| [notifications](https://github.com/itda-work/django-wireview/tree/main/examples/notifications) | 알림은 한 사용자에게 간다. 저장하는 알림과 저장하지 않는 토스트 |
 | [livecomp](https://github.com/itda-work/django-wireview/tree/main/examples/livecomp) | 연결을 공유하는 중첩 컴포넌트 |
 | [slots](https://github.com/itda-work/django-wireview/tree/main/examples/slots) | 내용을 호출자가 채우는 레이아웃 컴포넌트 |
 | [hooks](https://github.com/itda-work/django-wireview/tree/main/examples/hooks) | 브라우저만 할 수 있는 일을 컴포넌트에 붙인다 |
 
 저장소를 받은 뒤 처음이면 아래 순서대로 실행합니다. `wireview.min.js`는 빌드 산출물이라 저장소에 없고,
-예제의 모델 테이블은 `make migrate`가 만듭니다 — 빠뜨리면 chat·poll·rating·quiz 페이지가 500입니다.
+예제의 모델 테이블은 `make migrate`가 만듭니다 — 빠뜨리면 chat 시리즈·poll·rating·quiz 페이지가 500입니다.
 
 ```bash
 make install && npm ci   # Python·JS 의존성 (처음 한 번)
@@ -587,7 +590,9 @@ class MessageList(Component):
 | 메서드 | 설명 |
 |--------|------|
 | `stream(name, items)` | 스트림 초기화/리셋 |
+| `stream(name, items, at=-1, reset=False)` | 화면의 것을 두고 여러 아이템을 `at`에 주어진 순서대로 삽입 (연산·프레임 하나, 1.6) |
 | `stream_insert(name, item, at=-1)` | 아이템 삽입 (-1=끝, 0=처음, n=인덱스) |
+| `stream_insert(name, item, update_only=True)` | 화면에 있는 아이템만 제자리에서 교체, 없으면 넣지 않음 (1.6) |
 | `stream_delete(name, dom_id)` | DOM ID 또는 PK로 아이템 삭제 |
 
 ### DOM ID 규칙

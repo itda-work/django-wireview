@@ -113,6 +113,11 @@ class StreamProbe(Component):
         for n in range(start, start + self.size):
             await self.stream_insert("rows", {"n": n}, template="streamprobe/row.html", dom_id=row_id)
 
+    async def front(self, at: int = 0, **_rest):
+        # Three rows in one insert: they land as a block, in this order (#199)
+        rows = [{"n": n} for n in (-3, -2, -1)] if at == 0 else [{"n": n} for n in (100, 101, 102)]
+        await self.stream("rows", rows, at=at, reset=False, template="streamprobe/row.html", dom_id=row_id)
+
     async def load_newer(self, **_rest):
         self.newer += 1
 

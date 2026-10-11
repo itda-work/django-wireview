@@ -38,6 +38,29 @@ The django-reactor era changelog (2.x) is preserved in
   that fixture is torn down, so every test sharing it hears. Without it (`-p no:wireview`, or another
   runner) only the event loop keeps tests apart (#201). Loading it imports the package `wireview` and has
   pytest rewrite its asserts; `PYTEST_DISABLE_PLUGIN_AUTOLOAD` keeps it from loading.
+- `examples/chat_lv2`, the second step of the chat series: the author of a message is the signed-in user, a room is
+  read by its members only, and the room page sits inside a `live_session` whose hook checks the membership of each
+  component's own room on every join (#198).
+- `examples/chat_lv3`, the third step of the chat series: scrolling up loads older messages a page at a time from a
+  cursor in the signed state, and an author edits or deletes their own messages on every open page of the room (#199).
+- `examples/chat_lv4`, the last step of the chat series: the room list shows each room's unread messages, counted in
+  one query from a read cursor on the membership; a new message tells each other member on a topic of their own, and
+  an open page of the room reads it (#200). The root README's example table lists all fourteen examples, in the index's
+  words, and `tests/test_examples_index.py` keeps the tables and counts with `examples/`.
+- `stream_insert(..., update_only=True)`, on a component and on `Broadcast`: replace the item where a page shows it and
+  insert nothing where it does not, as Phoenix LiveView's `update_only` (#199). Pages that loaded different parts of a
+  list get the same Broadcast, and an edit of an item a page never loaded turned up at `at`, out of its place.
+  It raises the wire protocol to version 10 (`UPDATE_ONLY_SINCE`): a client below it ignores the field and would insert
+  the item, so it is not sent the operation, and a page that shows the item keeps it as it was until it joins again.
+- `stream(..., at=-1, reset=True)`: `reset=False` keeps what the page shows and inserts the items at `at` in one
+  operation -- one frame for a page of items where a loop of `stream_insert` sent one each -- as a block in the order
+  given, as Phoenix LiveView's `stream/4` without `reset` (#199). A client below protocol version 10 inserts each item
+  at `at` in turn, so it is sent them in reverse when `at` is not -1.
+- A page read and appended with `stream(queryset, reset=False)` keeps a Broadcast delete or `update_only` edit
+  published while it was read (#199): like a reset since #178, `stream()` holds the component's Broadcast patches from
+  before it reads until its operation is written. A loop of `stream_insert` over a list read first does not hold, as
+  in 1.5 -- a hold taken at the call would not cover the read -- and an item deleted meanwhile comes back. What is held
+  waits for the rest of the handler (or `joined()`, `notification()`, the task) that called `stream()`.
 
 ### Changed
 
@@ -50,6 +73,8 @@ The django-reactor era changelog (2.x) is preserved in
   retired. An older client gets the empty render an event with no handler gets. Before, nothing came
   back and the button stayed loading. An event for a component its drawer's render retired a moment
   before runs its handler and is answered the same way: nothing of the component is rendered.
+- Documented when `broadcast()` (after the commit) and `abroadcast()` (at once) publish, and when a session reads
+  `get_subscriptions()` again, with a test that a topic given up in `notification()` is heard no more (#203).
 
 ### Fixed
 
@@ -121,6 +146,21 @@ The django-reactor era changelog (2.x) is preserved in
 - A message naming a component by something that is not a string -- a list or a dict as a
   `user_event`'s `id` -- is logged and dropped, as a payload that does not fit its command is. It
   raised `TypeError` out of the session.
+- The chat examples (`chat`, `chat_lv2`, `chat_lv3`) drew "No messages yet" inside the stream container from a field
+  nothing filled: a room with messages showed it until the join, and the join's reset took it from an empty room
+  (#199). It sits after the list now, shown by CSS while the list is empty. `examples/dashboard` had the same note,
+  and its "Load More" counted the page's items from that empty field, so every click loaded the first page again. It
+  loads the page before the oldest activity shown now, from a `(created_at, id)` cursor: an activity added on top or
+  deleted meanwhile no longer makes the next page repeat or skip one.
+- `wire-viewport-top` and `wire-viewport-bottom` inside an element with its own scrollbar (`overflow-y: auto`) fired
+  only when the binding was past the middle of the window: the scroll direction was read from the window, which does
+  not move when a list scrolls in its own box (#199). A binding now fires when any scroller that can move it -- an
+  ancestor whose `overflow-y` scrolls, or the window -- moved toward it, and "overran" is measured in the nearest
+  ancestor that actually overflows, or the window. A wrapper with `overflow-x: hidden`, which computes
+  `overflow-y: auto` but never scrolls, still counts as the window.
+- A `stream()` in a `start_async` task replaced or cancelled while its operation waited on the channel layer
+  (channels_redis, channels-nats) left its Broadcast hold behind: the operation never reached the connection, which
+  closed with 1013 `HOLD_SECONDS` later (#199). The send now goes on to the channel before the cancellation does.
 
 
 ## [1.5.1] - 2026-10-10

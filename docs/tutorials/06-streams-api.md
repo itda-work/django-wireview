@@ -205,6 +205,29 @@ async def mutation(self, channel, action, instance):
         await self.stream_insert("items", instance, at=0)
 ```
 
+화면에 **없으면 넣지 않으려면** `update_only=True`를 줍니다. 목록의 일부만 불러온 페이지(무한 스크롤)에
+고친 항목을 보낼 때입니다. 보통의 `stream_insert`는 없는 id를 `at` 자리에 새로 넣으므로, 그 페이지가 불러온
+적 없는 오래된 항목이 목록 끝에 나타납니다.
+
+```python
+async def save(self, pk: int, text: str):
+    # pk는 브라우저가 보낸 값이다: 이 사용자가 고칠 수 있는 항목인지 조회에서 다시 묻는다
+    item = await Item.objects.filter(pk=pk, owner=self.user.pk).afirst()
+    if item is None:
+        return
+    item.text = text
+    await item.asave()
+    # 보이는 페이지는 제자리에서 바꾸고, 없는 페이지는 아무것도 하지 않는다
+    await self.stream_insert("items", item, update_only=True)
+```
+
+누가 무엇을 고칠 수 있는가는 서버가 핸들러마다 다시 묻는다. 버튼을 숨겨도 이벤트는 손으로 만들 수 있다 —
+[chat_lv3](../../examples/chat_lv3/)의 `_own_message`가 작성자·방·멤버십을 한 곳에서 묻는다.
+
+`update_only`는 `vsn` 10 이상의 클라이언트에만 간다. 그 전의 번들은 이 필드를 몰라 없는 항목을 `at`에 넣으므로,
+서버가 그 연결에는 보내지 않는다. 롤링 배포 중 옛 JS로 열린 페이지는 다시 join할 때까지 고치기 전 내용을 보인다
+([wire-protocol §7](../implementation/wire-protocol.md#7-버전)).
+
 **핸들러와 `mutation()` 양쪽에서 넣지 마세요.** 모델을 구독하고 있으면 저장 신호가 자기
 연결로도 돌아옵니다. 두 곳에서 넣으면 같은 항목이 두 번 들어갑니다 — 구독 중이라면
 삽입은 `mutation()` 한 곳에서만 하고 핸들러는 저장만 합니다.
@@ -236,13 +259,32 @@ morph는 id가 없는 요소를 자리로 짝짓기 때문에, 그대로 두면 
 여러 아이템을 한 번에 추가:
 
 ```python
-# 비효율적
+# 비효율적: 항목마다 연산 하나, 프레임 하나
 for item in items:
     await self.stream_insert("items", item)
 
-# 효율적 - stream()으로 리셋
+# 효율적 - 목록을 바꾸려면 stream()으로 리셋
 await self.stream("items", items)
+
+# 효율적 - 화면의 것을 두고 덧붙이려면 reset=False: 연산 하나, 프레임 하나
+await self.stream("items", items, reset=False)          # 끝에
+await self.stream("items", newer, at=0, reset=False)    # 맨 앞에
 ```
+
+`reset=False`면 항목들이 `at` 자리에 **주어진 순서대로 한 덩어리로** 들어간다. `at=0`에 `[a, b, c]`를 넣으면
+화면 맨 앞이 `a, b, c` 순서다(하나씩 `stream_insert(at=0)`하면 `c, b, a`가 된다). 이미 화면에 있는 id는 제자리에서
+바뀐다. `limit`은 다 넣은 뒤 한 번 자른다. `at=0`이면 끝에서, 그 밖(끝에 붙이거나 가운데에 넣을 때)에는 앞에서
+자른다. 빈 목록이면 아무것도 보내지 않는다.
+
+읽어 붙일 때 `stream_insert` 반복보다 나은 점이 하나 더 있다. `reset=False`에 QuerySet을 그대로 넘기면 읽기 전부터
+그 컴포넌트의 Broadcast 패치를 잡아 두고 삽입이 나간 뒤에 쓴다. 그래서 읽는 동안 다른 사람이 지우거나 고친 항목이
+삽입에 덮여 되살아나지 않는다. `stream_insert`는 패치를 잡지 않으므로, 읽은 목록을 하나씩 넣으면 그 사이의 삭제·수정이
+되돌려진다.
+
+잡아 둔 패치는 핸들러가 끝나고 삽입이 쓰일 때 나간다. `stream()` 뒤에 오래 걸리는 일(외부 API 호출 등)이 있으면 그동안
+이 컴포넌트에 오는 Broadcast가 화면에 나타나지 않고, 너무 많이 쌓이면 연결이 닫혀 다시 join한다. 그런 일은
+`start_async`로 넘기거나 `stream()`을 핸들러 끝에 둔다
+([Broadcast — 순서와 유실](../features/broadcast.md#순서와-유실)).
 
 ### 2. 초기 로딩 최적화
 
@@ -353,12 +395,21 @@ async def add_message(self, message):
 ```python
 async def load_more(self):
     self.page += 1
-    async for row in Row.objects.all()[self.page * 20:(self.page + 1) * 20]:
-        await self.stream_insert("rows", row)
+    # 한 페이지를 연산 하나로 붙인다
+    await self.stream("rows", Row.objects.all()[self.page * 20:(self.page + 1) * 20], reset=False)
 ```
 
 스크롤 방향과 맞을 때만 불린다. 페이지를 열었을 때 이미 보이는 요소는 부르지 않지만, 요소가 화면
-가운데를 이미 지나 있으면(목록이 짧을 때) 방향과 무관하게 부른다. 그 구분이 필요하면 핸들러가
+가운데를 이미 지나 있으면(목록이 짧을 때) 방향과 무관하게 부른다.
+
+방향은 그 요소를 움직일 수 있는 모든 스크롤에서 본다. `overflow-y`가 `auto`(또는 `scroll`)인 조상들과 창 중
+어느 하나라도 그 요소 쪽으로 움직였으면 그 방향이다. 채팅 목록처럼 자기 스크롤바가 있는 상자 안에 두면 창은
+움직이지 않고 상자만 움직이고, 창으로 스크롤하는 페이지에서는 `overflow-x: hidden`만 둔 래퍼(계산된
+`overflow-y`가 `auto`가 된다)가 움직이지 않고 창만 움직인다 — 둘 다 그대로 불린다. "가운데"는 그 요소의
+스크롤 상자에서 잰다. `overflow-y`가 스크롤 값이고 **실제로 넘치는**(내용이 보이는 높이보다 큰) 가장 가까운
+조상이 상자이고, 그런 조상이 없으면 창이다. 상자 중 창에 보이는 부분의 가운데다. `flex-direction: column-reverse`로 아래에서 위로 그리는
+목록은 `scrollTop`이 0에서 시작해 위로 갈수록 음수가 되지만 "위는 더 작다"는 그대로다. 그런 목록에서는 DOM의
+끝이 화면의 맨 위이므로, 위에 붙일 과거 항목은 `at=-1`로 넣는다([chat_lv3](../../examples/chat_lv3/)). 그 구분이 필요하면 핸들러가
 `_overran` 인자를 받는다. 받지 않는 핸들러에는 넘어가지 않는다.
 
 이 판단은 **join이 끝난 뒤에** 한다. `joined()`가 보낸 첫 페이지가 화면에 들어온 다음이다. 그 전에는

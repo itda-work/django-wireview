@@ -153,10 +153,30 @@ UPGRADE_NOTE = {
         "인스턴스 없는 id로 온 이벤트에 답하고",
         "`gone`(프로토콜 `vsn` 9)으로 답하고",
     ),
+    "`stream_insert(..., update_only=True)`, on a component and on `Broadcast`": (
+        "프로토콜 10과 롤링 배포",
+        "`update_only` 삽입은 보내지 않는다",
+    ),
+    "`stream(..., at=-1, reset=True)`": ("프로토콜 10과 롤링 배포", "`at`이 길이를 넘으면"),
+    "`wire-viewport-top` and `wire-viewport-bottom` inside an element with its own scrollbar": (
+        "`wire-viewport-*`가 더 자주 불린다",
+        "우회하는 JS 훅",
+    ),
+    "A page read and appended with `stream(queryset, reset=False)`": (
+        "읽어 붙이는 목록은 QuerySet을 `stream(..., reset=False)`에 넘긴다",
+        "`start_async`로 넘기거나",
+    ),
 }
 
-NO_UPGRADE_NOTE: dict[str, str] = {
+EXAMPLE = "저장소의 예제만 바뀌었다"
+NO_UPGRADE_NOTE = {
     "A message naming a component by something that is not a string": "no client of ours sends one",
+    "`examples/chat_lv2`, the second step": EXAMPLE,
+    "`examples/chat_lv3`, the third step": EXAMPLE,
+    "`examples/chat_lv4`, the last step": EXAMPLE,
+    'The chat examples (`chat`, `chat_lv2`, `chat_lv3`) drew "No messages yet"': EXAMPLE,
+    "Documented when `broadcast()` (after the commit) and `abroadcast()` (at once) publish": "문서와 테스트만 바뀌었다",
+    "A `stream()` in a `start_async` task replaced or cancelled": "닫히던 연결이 닫히지 않을 뿐 할 일이 없다",
 }
 
 PREVIOUS = "1.5.1"

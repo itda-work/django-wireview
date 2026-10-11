@@ -1,0 +1,8 @@
+{% extends "chat_lv4/base.html" %}
+
+{% load wireview %}
+
+{% block title %}{{ room.name }} - Chat{% endblock %}
+{% block body %}
+  {% component 'Lv4ChatRoom' room=room %}
+{% endblock %}

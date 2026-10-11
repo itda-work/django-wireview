@@ -128,7 +128,7 @@ GAP 번호로 추적한다.
 | DOM ignore | `phx-update="ignore"` | `wire-update="ignore"` | ✅ 첫 렌더 뒤로 렌더가 그 요소와 속성·자식을 건드리지 않는다 | `tests/test_js_commands_e2e.py::test_a_render_leaves_an_ignored_element_as_the_page_made_it` |
 | 같은 dom id 재삽입 | 제자리 갱신 | 제자리 갱신 | ✅ | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_toggle_and_delete_round_trip` |
 | stream :limit | ✅ | `stream(limit=N)` | ✅ | `tests/test_streams_e2e.py::test_limit_keeps_only_the_newest` |
-| stream :reset | ✅ | `stream()`이 곧 reset이다 | ✅ | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_filter_switch_resets_the_stream`<br>`tests/testproj/bookmarks/tests.py::test_filter_unread_excludes_read_items` |
+| stream :reset | ✅ | `stream()`이 곧 reset이다. `reset=False`면 화면의 것을 두고 `at`에 한 연산으로 넣는다 | ✅ | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_filter_switch_resets_the_stream`<br>`tests/testproj/bookmarks/tests.py::test_filter_unread_excludes_read_items`<br>`tests/test_streams.py::TestStreamWithoutReset::test_the_items_go_out_in_one_insert_in_the_order_given` |
 | phx-viewport-top/bottom | ✅ | `wire-viewport-*` ([튜토리얼](./tutorials/06-streams-api.md)) | ✅ | `tests/test_streams_e2e.py::test_scrolling_to_the_bottom_loads_more`<br>`tests/test_streams_e2e.py::test_scrolling_back_to_the_top_calls_the_top_binding` |
 
 ### 2.6 File Uploads ✅

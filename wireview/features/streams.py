@@ -28,6 +28,8 @@ class StreamOp:
         items: List of StreamItem objects
         at: Insert position (-1 = append, 0 = prepend, n = at index)
         limit: Maximum number of items to keep in DOM (0 = no limit)
+        update_only: Replace an item already on the page, and insert nothing
+            where it is not (an insert only)
     """
 
     op: t.Literal["reset", "insert", "delete"]
@@ -35,6 +37,7 @@ class StreamOp:
     items: list[StreamItem] = field(default_factory=list)
     at: int = -1
     limit: int = 0
+    update_only: bool = False
 
     def to_payload(self) -> dict[str, t.Any]:
         """Convert to payload dict for WebSocket transmission."""
@@ -46,4 +49,6 @@ class StreamOp:
         }
         if self.limit > 0:
             payload["limit"] = self.limit
+        if self.update_only:
+            payload["update_only"] = True
         return payload

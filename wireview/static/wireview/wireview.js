@@ -14,6 +14,7 @@ import { commitScope, isCommitAction } from "./values.mjs";
 import { LoadingLedger } from "./loading.mjs";
 import { BINDING_PREFIX, bindingsFor, isRenderEcho, parseBinding, runSteps } from "./events.mjs";
 import { planInsert, planTrim } from "./streams.mjs";
+import { fires, overran, scrollBox, scrolls, visibleFrame } from "./viewport.mjs";
 import { TargetQueue } from "./targets.mjs";
 import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
@@ -667,8 +668,8 @@ class ServerConnection {
         break;
 
       case "stream_op":
-        var { op, stream, items, at, limit, id } = payload;
-        this._handleStreamOp(op, stream, items, at, limit, id);
+        var { op, stream, items, at, limit, id, update_only } = payload;
+        this._handleStreamOp(op, stream, items, at, limit, id, update_only === true);
         break;
 
       case "upload_op":
@@ -821,16 +822,17 @@ class ServerConnection {
    * @param {number} at - Insert position (-1 = append, 0 = prepend)
    * @param {number} limit - Maximum items to keep (0 = no limit)
    * @param {string} [owner] - The component that sent it; a server before it said so leaves it out
+   * @param {boolean} [updateOnly] - Replace items already on the page, insert none
    * @private
    */
-  _handleStreamOp(op, stream, items, at, limit = 0, owner) {
+  _handleStreamOp(op, stream, items, at, limit = 0, owner, updateOnly = false) {
     // A new component's joined() streams arrive right behind the render that
     // brings its element, before the frame that patches it in: the queue holds
     // them for that frame rather than drop them
     this.targeted.push(owner, {
       find: () => this._streamContainer(stream, owner),
       apply: (container) => {
-        boost.applying(() => this._applyStreamOp(container, op, items, at, limit));
+        boost.applying(() => this._applyStreamOp(container, op, items, at, limit, updateOnly));
         boost.navEvent.sendNewContent();
       },
       drop: () => console.warn(`[wireview] Stream container not found: ${stream}`),
@@ -866,9 +868,10 @@ class ServerConnection {
    * @param {Array<{id: string, html: string}>} items
    * @param {number} at
    * @param {number} limit
+   * @param {boolean} [updateOnly]
    * @private
    */
-  _applyStreamOp(container, op, items, at, limit) {
+  _applyStreamOp(container, op, items, at, limit, updateOnly = false) {
 
     switch (op) {
       case "reset":
@@ -883,7 +886,9 @@ class ServerConnection {
         }
         break;
 
-      case "insert":
+      case "insert": {
+        // How many of this operation's items went in: the next goes after them
+        let placed = 0;
         for (const item of items) {
           const el = this._parseHtml(item.html);
           if (el) {
@@ -893,11 +898,17 @@ class ServerConnection {
               exists: existing !== null,
               at,
               childCount: container.children.length,
+              updateOnly,
+              placed,
             });
+            if (plan.mode !== "replace" && plan.mode !== "skip") placed++;
             switch (plan.mode) {
               case "replace":
                 // Same id: a newer version of an item already on screen.
                 existing.replaceWith(el);
+                break;
+              case "skip":
+                // An update of an item this page does not show
                 break;
               case "prepend":
                 container.prepend(el);
@@ -912,6 +923,7 @@ class ServerConnection {
           }
         }
         break;
+      }
 
       case "delete":
         // In this container: another component's list may hold an item of the same id
@@ -2027,8 +2039,15 @@ class ViewportObserver {
     this.observer = null;
     /** @type {Map<Element, {type: string, handler: string}>} */
     this.observed = new Map();
-    /** @type {number} */
-    this.lastScrollY = 0;
+    /**
+     * Each scrolling ancestor's position when last looked at: the direction a
+     * binding was scrolled toward (viewport.mjs). Weakly, so a box a morph
+     * removed is not kept.
+     * @type {WeakMap<Element, number>}
+     */
+    this.lastScroll = new WeakMap();
+    /** @type {number|null} the window's, likewise */
+    this.lastWindowScroll = null;
     /** @type {boolean} */
     this.pendingTop = false;
     /** @type {boolean} */
@@ -2048,7 +2067,33 @@ class ViewportObserver {
     this.started = true;
     this.setupObserver();
     this.scanAndObserve();
-    this.lastScrollY = window.scrollY;
+  }
+
+  /**
+   * A binding's ancestors, nearest first, up to the page itself: `body` and
+   * `html` scroll as the window.
+   * @param {Element} element
+   * @returns {Element[]}
+   */
+  ancestors(element) {
+    const found = [];
+    for (let el = element.parentElement; el; el = el.parentElement) {
+      if (el === document.body || el === document.documentElement) break;
+      found.push(el);
+    }
+    return found;
+  }
+
+  /**
+   * Remember where each scroller that can move `element` stands -- its
+   * scrolling ancestors and the window -- unless it is remembered already.
+   * @param {Element} element
+   */
+  rememberScroll(element) {
+    for (const el of this.ancestors(element)) {
+      if (scrolls(getComputedStyle(el).overflowY) && !this.lastScroll.has(el)) this.lastScroll.set(el, el.scrollTop);
+    }
+    if (this.lastWindowScroll === null) this.lastWindowScroll = window.scrollY;
   }
 
   /**
@@ -2093,6 +2138,7 @@ class ViewportObserver {
       const handler = el.getAttribute("wire-viewport-top");
       if (handler && !this.observed.has(el)) {
         this.observed.set(el, { type: "top", handler });
+        this.rememberScroll(el);
         this.observer?.observe(el);
         debugLog("viewport", `Observing top: ${handler}`, { el });
       }
@@ -2103,6 +2149,7 @@ class ViewportObserver {
       const handler = el.getAttribute("wire-viewport-bottom");
       if (handler && !this.observed.has(el)) {
         this.observed.set(el, { type: "bottom", handler });
+        this.rememberScroll(el);
         this.observer?.observe(el);
         debugLog("viewport", `Observing bottom: ${handler}`, { el });
       }
@@ -2116,44 +2163,39 @@ class ViewportObserver {
   handleIntersection(element) {
     const info = this.observed.get(element);
     if (!info) return;
+    const type = /** @type {"top" | "bottom"} */ (info.type);
 
-    const currentScrollY = window.scrollY;
-    const scrollingDown = currentScrollY > this.lastScrollY;
-    const scrollingUp = currentScrollY < this.lastScrollY;
+    // Toward it in any scroller that can move it: a list with its own
+    // scrollbar moves while the window stands still, and a window-scrolled
+    // page moves while a wrapper that computes overflow-y: auto does not
+    const ancestors = this.ancestors(element);
+    const boxes = ancestors.map((el) => ({
+      overflowY: getComputedStyle(el).overflowY,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    }));
+    /** @type {Array<[number, number]>} */
+    const moves = [];
+    ancestors.forEach((el, i) => {
+      if (!scrolls(boxes[i].overflowY)) return;
+      const now = el.scrollTop;
+      moves.push([this.lastScroll.get(el) ?? now, now]);
+      this.lastScroll.set(el, now);
+    });
+    const now = window.scrollY;
+    moves.push([this.lastWindowScroll ?? now, now]);
+    this.lastWindowScroll = now;
 
-    // Determine if overran (rapid scroll past boundary)
-    const overran = this.detectOverran(info.type, element);
+    // Past the middle of what the user sees of its scroll box: the nearest
+    // ancestor that actually scrolls, or the window
+    const box = scrollBox(boxes);
+    const frame = visibleFrame(box === -1 ? null : ancestors[box].getBoundingClientRect(), window.innerHeight);
+    const past = overran(type, element.getBoundingClientRect(), frame);
 
-    // For top viewport, trigger when scrolling up or overran
-    // For bottom viewport, trigger when scrolling down or overran
-    const shouldTrigger =
-      (info.type === "top" && (scrollingUp || overran)) ||
-      (info.type === "bottom" && (scrollingDown || overran));
-
-    if (shouldTrigger) {
-      this.sendViewportEvent(info.handler, overran);
-    }
-
-    this.lastScrollY = currentScrollY;
-  }
-
-  /**
-   * Detect if the viewport has overran the boundary.
-   * @param {string} type - "top" or "bottom"
-   * @param {Element} element
-   * @returns {boolean}
-   */
-  detectOverran(type, element) {
-    const rect = element.getBoundingClientRect();
-
-    if (type === "top") {
-      // Overran if the element is well below the top of viewport
-      // (user scrolled rapidly to top)
-      return rect.top > window.innerHeight * 0.5;
-    } else {
-      // Overran if the element is well above the bottom of viewport
-      // (user scrolled rapidly to bottom)
-      return rect.bottom < window.innerHeight * 0.5;
+    // The top binding fires scrolling up, the bottom one scrolling down, and
+    // either one the user is already past
+    if (fires(type, moves, past)) {
+      this.sendViewportEvent(info.handler, past);
     }
   }
 
@@ -2215,6 +2257,8 @@ class ViewportObserver {
       this.observer = null;
     }
     this.observed.clear();
+    this.lastScroll = new WeakMap();
+    this.lastWindowScroll = null;
   }
 }
 

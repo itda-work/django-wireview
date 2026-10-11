@@ -6,6 +6,7 @@ import pytest
 
 from wireview import Component
 from wireview.consumer import WireviewConsumer
+from wireview.core.rendered import INSERTS_IN_ORDER_SINCE, PROTOCOL_VERSION, UPDATE_ONLY_SINCE
 from wireview.features.streams import StreamItem, StreamOp
 from wireview.testing import mount
 
@@ -100,6 +101,10 @@ class StreamComponent(Component):
         items = [MockItem(pk=1, name="Item 1"), MockItem(pk=2, name="Item 2")]
         await self.stream("items", items)
 
+    async def add_many(self, at: int = -1, count: int = 3):
+        """Insert ``count`` items without a reset, in one operation."""
+        await self.stream("items", [MockItem(pk=n, name=f"Item {n}") for n in range(1, count + 1)], at=at, reset=False)
+
 
 class TestComponentStreamMethods:
     """Test Component stream methods."""
@@ -145,6 +150,48 @@ class TestComponentStreamMethods:
         assert template_name == "streams/stream_list_item.html"
 
 
+@pytest.mark.django_db  # an item renders through db(), which closes old connections
+class TestStreamWithoutReset:
+    """``stream(..., reset=False)``: several items at ``at``, one operation (#199)."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    @pytest.mark.parametrize("at", [-1, 0, 2])
+    async def test_the_items_go_out_in_one_insert_in_the_order_given(self, at):
+        view = await mount(StreamComponent, id="feed")
+        view.clear_messages()
+
+        await view.call("add_many", at=at)
+
+        [op] = view.stream_ops("items")
+        assert op["op"] == "insert"
+        assert op["at"] == at
+        assert [item["id"] for item in op["items"]] == ["items-1", "items-2", "items-3"]
+        assert op["id"] == "feed"
+        assert "update_only" not in op
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_no_items_send_nothing(self):
+        view = await mount(StreamComponent)
+        view.clear_messages()
+
+        await view.call("add_many", count=0)
+
+        assert view.stream_ops() == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_reset_is_still_the_default(self):
+        view = await mount(StreamComponent)
+        view.clear_messages()
+
+        await view.call("reset_items")
+
+        [op] = view.stream_ops("items")
+        assert op["op"] == "reset"
+
+
 class QuerySetStream(Component):
     class Meta:
         template_name = "streams/stream_list.html"
@@ -177,6 +224,14 @@ async def test_a_queryset_streams_without_running_the_orm_on_the_event_loop():
     assert [item["id"] for item in op["items"]] == [f"items-{u.pk}" for u in users]
 
 
+def _started(consumer: WireviewConsumer, vsn: int = PROTOCOL_VERSION) -> None:
+    """What the session's start leaves that these mails read: a repository, with the
+    protocol version the socket URL named. Started for real, it would need a channel layer."""
+    from wireview.repository import ComponentRepository
+
+    consumer.repo = ComponentRepository(is_live=True, vsn=vsn)
+
+
 class TestConsumerAcceptsEveryStreamPayload:
     """The consumer is a hop the component tests never cross.
 
@@ -195,9 +250,10 @@ class TestConsumerAcceptsEveryStreamPayload:
             StreamOp(op="reset", stream="items", items=[], limit=50),
             StreamOp(op="insert", stream="items", items=[StreamItem(dom_id="items-1", html="<li></li>")], at=0),
             StreamOp(op="insert", stream="items", items=[], at=0, limit=10),
+            StreamOp(op="insert", stream="items", items=[], update_only=True),
             StreamOp(op="delete", stream="items", items=[StreamItem(dom_id="items-1", html="")]),
         ],
-        ids=["reset", "reset-limit", "insert", "insert-limit", "delete"],
+        ids=["reset", "reset-limit", "insert", "insert-limit", "insert-update-only", "delete"],
     )
     def test_the_consumer_signature_accepts_what_the_component_sends(self, op: StreamOp):
         signature = inspect.signature(WireviewConsumer.component_stream_op)
@@ -209,6 +265,7 @@ class TestConsumerAcceptsEveryStreamPayload:
     @pytest.mark.asyncio
     async def test_limit_survives_the_consumer_hop(self):
         consumer = WireviewConsumer()
+        _started(consumer)
         sent: list[tuple[str, dict]] = []
 
         async def fake_send_command(command, payload):
@@ -223,6 +280,7 @@ class TestConsumerAcceptsEveryStreamPayload:
     @pytest.mark.asyncio
     async def test_the_owner_survives_the_consumer_hop(self):
         consumer = WireviewConsumer()
+        _started(consumer)
         sent: list[tuple[str, dict]] = []
 
         async def fake_send_command(command, payload):
@@ -232,3 +290,69 @@ class TestConsumerAcceptsEveryStreamPayload:
         await consumer.component_stream_op(**StreamOp(op="reset", stream="items", items=[]).to_payload(), id="feed-a")
 
         assert sent == [("stream_op", {"op": "reset", "stream": "items", "items": [], "at": -1, "id": "feed-a"})]
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_update_only_survives_the_consumer_hop(self):
+        """Dropped on the way, the page would insert an edit of an item it never loaded."""
+        consumer = WireviewConsumer()
+        _started(consumer)
+        sent: list[tuple[str, dict]] = []
+
+        async def fake_send_command(command, payload):
+            sent.append((command, payload))
+
+        consumer.send_command = fake_send_command  # type: ignore[method-assign]
+        op = StreamOp(op="insert", stream="items", items=[], at=0, update_only=True)
+        await consumer.component_stream_op(**op.to_payload(), id="feed-a")
+
+        payload = {"op": "insert", "stream": "items", "items": [], "at": 0, "update_only": True, "id": "feed-a"}
+        assert sent == [("stream_op", payload)]
+
+
+class TestWhatAnOlderClientIsSent:
+    """The session writes an older client only what it reads as meant (#199, wire-protocol.md §7)."""
+
+    @staticmethod
+    async def _sent(vsn: int, op: StreamOp) -> list[tuple[str, dict]]:
+        consumer = WireviewConsumer()
+        _started(consumer, vsn)
+        sent: list[tuple[str, dict]] = []
+
+        async def fake_send_command(command, payload):
+            sent.append((command, payload))
+
+        consumer.send_command = fake_send_command  # type: ignore[method-assign]
+        await consumer.component_stream_op(**op.to_payload(), id="feed-a")
+        return sent
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_an_update_only_insert_is_not_sent_to_a_client_that_would_insert_it(self):
+        op = StreamOp(op="insert", stream="items", items=[StreamItem("items-1", "<li></li>")], update_only=True)
+
+        assert await self._sent(UPDATE_ONLY_SINCE - 1, op) == []
+        [(command, payload)] = await self._sent(UPDATE_ONLY_SINCE, op)
+        assert payload["update_only"] is True
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("at", [0, 2])
+    async def test_an_older_client_is_sent_a_block_in_reverse_so_that_it_lands_in_order(self, at):
+        """It inserts each item at ``at`` in turn: given c, b, a it shows a, b, c."""
+        items = [StreamItem(f"items-{n}", "<li></li>") for n in (1, 2, 3)]
+        op = StreamOp(op="insert", stream="items", items=items, at=at)
+
+        [(_, old)] = await self._sent(INSERTS_IN_ORDER_SINCE - 1, op)
+        [(_, new)] = await self._sent(INSERTS_IN_ORDER_SINCE, op)
+
+        assert [item["id"] for item in old["items"]] == ["items-3", "items-2", "items-1"]
+        assert [item["id"] for item in new["items"]] == ["items-1", "items-2", "items-3"]
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_an_appended_block_is_the_same_for_every_client(self):
+        items = [StreamItem(f"items-{n}", "<li></li>") for n in (1, 2, 3)]
+        op = StreamOp(op="insert", stream="items", items=items, at=-1)
+
+        assert await self._sent(0, op) == await self._sent(PROTOCOL_VERSION, op)

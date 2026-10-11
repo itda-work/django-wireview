@@ -22,6 +22,9 @@ from wireview.consumer import WireviewConsumer
 urlpatterns = [
     path("", include("examples.todo.urls")),
     path("chat/", include("examples.chat.urls")),
+    path("chat-lv2/", include("examples.chat_lv2.urls")),
+    path("chat-lv3/", include("examples.chat_lv3.urls")),
+    path("chat-lv4/", include("examples.chat_lv4.urls")),
     path("dashboard/", include("examples.dashboard.urls")),
     path("poll/", include("examples.poll.urls")),
     path("rating/", include("examples.rating.urls")),
