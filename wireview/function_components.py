@@ -104,6 +104,7 @@ from django.template import TemplateSyntaxError, loader
 from django.utils.safestring import SafeString, mark_safe
 
 from .core import page_request
+from .core.watched import name_of
 
 if t.TYPE_CHECKING:
     from .slots import SlotContainer
@@ -131,7 +132,8 @@ PAGE = "wireview_page"
 def _page_of(context: t.Any) -> dict[str, t.Any]:
     """What a function component's template takes from the render that draws it: the page, never its names.
 
-    The one name it takes is ``csrf_token``, which Django's own templates get too.
+    The one name it takes is ``csrf_token``, which Django's own templates get too, and
+    ``request`` where a render many viewers share watches it.
 
     A ``{% component %}`` in it is the page's, as one in the enclosing template
     is: built in the page's repository, drawn by the component whose pass this
@@ -156,6 +158,9 @@ def _page_of(context: t.Any) -> dict[str, t.Any]:
         # The viewer's, as the drawing template has it: the page's, the connection's,
         # or one that raises in a render many viewers share (#206)
         page["csrf_token"] = token
+    if name_of(request := context.get("request")) == "request":
+        # A render many viewers share, being verified: the page's query raises there too (#210)
+        page["request"] = request
     return page
 
 

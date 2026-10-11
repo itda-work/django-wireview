@@ -15,11 +15,17 @@ place: ``handle_params`` gets the uri. Nothing else of a request is there, on
 either render, so a template behaves the same on both; anything else raises an
 ``AttributeError`` that says so. ``request`` is still no name in the context.
 
-A render made once for many viewers -- a shared render being verified, a
-``Broadcast`` item -- watches ``request`` (``core/watched.py``): there ``GET``
-raises the render's own error. A ``Meta.shared_render`` class whose template
-holds a ``{% querystring %}`` that reads the request is out of scope
-(``wireview.W019``).
+A render many connections may take -- a ``Meta.shared_render`` class's live
+render (``wire._state_slot``), and the function components it draws -- has no
+``context.request``, as in 1.5: the first connection's query would go to every
+viewer, and a tag reading ``getattr(context, "request", None)`` goes on without
+one. Being verified, and in a ``Broadcast`` item, ``request`` is watched
+(``core/watched.py``): there ``GET`` raises the render's own error. A
+``Meta.shared_render`` class whose template holds a ``{% querystring %}`` that
+reads the request is out of scope (``wireview.W019``).
+
+A template of another backend than Django's renders as its backend renders it:
+only Django's nodes read ``context.request``.
 """
 
 from __future__ import annotations
@@ -64,22 +70,31 @@ class PageRequest:
         return "<PageRequest GET>"
 
 
-def page_request(context: t.Mapping[str, t.Any]) -> PageRequest | None:
-    """What ``context.request`` is in a render of this component context, or None when it names no page."""
-    request: t.Any = context.get("request")
+def page_request(context: dict[str, t.Any]) -> PageRequest | None:
+    """What ``context.request`` is in a render of this component context, or None when it names no page.
+
+    The context's names are read as ``dict.get``: a ``Meta.lazy_properties``
+    context computes a pending property on ``get`` (#187), and a component's
+    own ``request`` property is the template's to read or not.
+    """
+    request: t.Any = dict.get(context, "request")
     if name_of(request) == "request":  # made once for many viewers: reading the query raises
         return PageRequest(lambda: request.GET)
-    query: t.Any = getattr(context.get("wireview_repository"), "page_query", None)
+    drawer: t.Any = dict.get(context, "this")
+    if drawer is None:
+        drawer = dict.get(context, _DRAWER)
+    wire = getattr(drawer, "wire", None)
+    if getattr(wire, "_state_slot", False):
+        # A render the connections handling one broadcast may share: whose query would it be
+        return None
+    query: t.Any = getattr(dict.get(context, "wireview_repository"), "page_query", None)
     if not callable(query):
         # A render with no context of the component's: a stream item, a function component's template
-        drawer = context.get("this")
-        if drawer is None:
-            drawer = context.get(_DRAWER)
-        query = getattr(getattr(drawer, "wire", None), "query", None)
+        query = getattr(wire, "query", None)
     if callable(query):
         return PageRequest(t.cast("t.Callable[[], QueryDict]", query))
     # A function component an HTTP page draws before any component made the repository
-    page_query: t.Any = getattr(getattr(context.get(_PAGE), "request", None), "GET", None)
+    page_query: t.Any = getattr(getattr(dict.get(context, _PAGE), "request", None), "GET", None)
     if page_query is not None:
         return PageRequest(lambda: page_query)
     return None
@@ -90,11 +105,14 @@ def render(template: t.Any, context: dict[str, t.Any], make: type[Context] = Con
 
     As the backend renders a dict without a request (``make_context``: the dict
     itself, not a copy), with ``context.request`` the page's (``page_request``).
-    ``make`` builds the ``Context``.
+    ``make`` builds the ``Context``. A template of another backend (no
+    ``engine``, as Jinja2's) is the backend's to render, ``make`` or not.
     """
     from django.template.backends.django import reraise
 
     backend = getattr(template, "backend", None)
+    if backend is not None and getattr(backend, "engine", None) is None:
+        return template.render(context)
     inner = t.cast("Template", getattr(template, "template", template))
     autoescape = backend.engine.autoescape if backend is not None else inner.engine.autoescape
     built = make(context, autoescape=autoescape)

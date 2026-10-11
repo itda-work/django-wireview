@@ -338,8 +338,13 @@ class _Reach:
             self.tags.setdefault(tag if simple else type(node).__name__, set()).add(where)
         if isinstance(node, CsrfTokenNode):
             self.names.setdefault("csrf_token", set()).add(where)
-        if simple and not node.args and func is getattr(defaulttags, "querystring", None):  # type: ignore[attr-defined]
-            # Django's {% querystring %} without a mapping of its own starts from the page's query (#210)
+        if (
+            simple
+            and func is getattr(defaulttags, "querystring", None)  # type: ignore[attr-defined]
+            and (not node.args or any(_is_none(arg) for arg in node.args))
+        ):
+            # Django's {% querystring %} without a mapping of its own starts from the page's query (#210),
+            # and so does Django 5.2's given None for one
             self.names.setdefault("request", set()).add(where)
         if isinstance(node, DebugNode):
             self.dumps.setdefault("{% debug %}", set()).add(where)
@@ -661,6 +666,19 @@ def _literal(expression: t.Any) -> str | None:
     if isinstance(expression, FilterExpression) and isinstance(expression.var, str) and not expression.filters:
         return str(expression.var)
     return None
+
+
+def _is_none(expression: t.Any) -> bool:
+    """Whether ``expression`` is the literal ``None``: a name every context resolves to None."""
+    from django.template.base import FilterExpression, Variable
+
+    var = getattr(expression, "var", None)
+    return (
+        isinstance(expression, FilterExpression)
+        and not expression.filters
+        and isinstance(var, Variable)
+        and var.lookups == ("None",)
+    )
 
 
 def _said(node: t.Any) -> str:

@@ -16,8 +16,12 @@ where a join that raises fails. These hold now:
 - the same in a LiveComponent, a function component and a stream item
 - a ``Meta.shared_render`` class whose template holds one that reads the query
   is out of scope (W019); one given its own mapping reads nothing of the page
-- verified, a shared render that reads it raises; a ``Broadcast`` item that
+- a render many connections may take has no ``context.request``, as in 1.5: a tag
+  that asks for one goes on without it, in the class's template and in a function
+  component it draws; verified, one that reads it raises; a ``Broadcast`` item that
   reads it raises always (tests/test_broadcast.py)
+- a ``Meta.lazy_properties`` component's own ``request`` property is not computed for it
+- a template of another backend than Django's renders as the backend renders it
 - on a real socket: the join, an event, and a ``push_to`` the page follows
 - ``mount()`` draws its ``params``, and a ``follow_push()``'s
 
@@ -76,6 +80,13 @@ TEMPLATES = {
     "qs/shared_own.html": (
         '{% load wireview %}<div {% tag_header %}>{{ n }}<a href="{% querystring mine %}">m</a></div>'
     ),
+    "qs/shared_none.html": (
+        '{% load wireview %}<div {% tag_header %}><a href="{% querystring None page=2 %}">2</a></div>'
+    ),
+    "qs/shared_tag.html": "{% load wireview qs_tags %}<div {% tag_header %}>{{ n }}[{% qs_get %}]</div>",
+    "qs/shared_fn.html": '{% load wireview %}<div {% tag_header %}>{{ n }}{% func "qs_fn_tag" %}</div>',
+    "qs/fn_tag.html": "{% load qs_tags %}[{% qs_get %}]",
+    "qs/lazy.html": "{% load wireview %}<div {% tag_header %}>{{ n }}</div>",
 }
 
 
@@ -166,6 +177,56 @@ class QsSharedOwn(Component):
         shared_render = True
 
     mine: dict[str, str] = {"sort": "name"}
+
+
+class QsSharedNone(Component):
+    """Declares a shared render and gives Django 5.2's tag None for a mapping: it reads the page's query."""
+
+    class Meta:
+        template_name = "qs/shared_none.html"
+        shared_render = True
+
+
+@function_component(template="qs/fn_tag.html")
+def qs_fn_tag():
+    return {}
+
+
+class QsSharedTag(Component):
+    """Declares a shared render; a tag of its template asks for the request, which no check sees: in scope."""
+
+    class Meta:
+        template_name = "qs/shared_tag.html"
+        shared_render = True
+        subscriptions = {"qs-shared"}
+
+    n: int = 0
+
+    async def notification(self, channel: str, **kwargs):
+        self.n += 1
+
+
+class QsSharedFn(QsSharedTag):
+    """The same tag, in the template of a function component it draws."""
+
+    class Meta:
+        template_name = "qs/shared_fn.html"
+
+
+class QsLazy(Component):
+    """Has a ``request`` property of its own, which its template does not read."""
+
+    class Meta:
+        template_name = "qs/lazy.html"
+        lazy_properties = True
+
+    n: int = 0
+    _requests: t.ClassVar[list[int]] = []
+
+    @property
+    def request(self) -> str:
+        self._requests.append(1)
+        raise RuntimeError("the template does not read it")
 
 
 @pytest.fixture(autouse=True)
@@ -322,6 +383,17 @@ async def test_a_query_a_component_set_is_drawn_and_told():
 
 
 @pytest.mark.asyncio
+async def test_a_query_set_back_is_drawn_as_the_address_bar_has_it():
+    """The server's ``set_query_string`` is what the page has now, back at the value the page told first."""
+    page = await Page.open(query="q=a&page=7&page=8")
+    await page.event("set_page", page="5")
+    await page.event("set_page", page="8")
+    assert ("set_query_string", {"qs": "q=a&page=8"}) in page.outbound.commands
+    assert page.session.repo.page_query().urlencode() == "q=a&page=8", "not the page=7&page=8 it told first"
+    assert links("q=a&page=8") in page.html()
+
+
+@pytest.mark.asyncio
 async def test_url_goes_on_without_the_requests_namespace():
     page = await Page.open(QsUrl, query="q=a", id="url")
     assert '<a href="/admin/">c</a>' in page.html()
@@ -365,6 +437,30 @@ async def test_a_stream_item_draws_it():
 def test_a_shared_render_that_reads_the_query_is_out_of_scope():
     assert any("request (through qs/shared_part.html)" in why for why in shared_render.out_of_scope(QsShared))
     assert shared_render.out_of_scope(QsSharedOwn) == [], "its own mapping reads nothing of the page"
+    assert any("request" in why for why in shared_render.out_of_scope(QsSharedNone)), "Django 5.2 reads it for None"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("component", [QsSharedTag, QsSharedFn])
+async def test_a_shared_render_gives_a_tag_no_request(monkeypatch, component):
+    """No check sees a tag's Python: the render many connections take has no page's query to give it."""
+    set_wireview(monkeypatch, VERIFY_SHARED_RENDER=False)
+    assert shared_render.out_of_scope(component) == []
+    pages = [await Page.open(component, query="secret=alice"), await Page.open(component, query="secret=bob")]
+    data = {"channel": "qs-shared", "kwargs": {}, "message_id": uuid4().hex}
+    for page in pages:
+        await page.session.notification(dict(data))
+    for page in pages:
+        assert page.html().endswith(">1[no-request]</div>"), page.html()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("component", [QsSharedTag, QsSharedFn])
+async def test_a_verified_shared_render_whose_tag_reads_the_query_raises(monkeypatch, component):
+    set_wireview(monkeypatch, VERIFY_SHARED_RENDER=True)
+    mounted = await wireview_testing.mount(component, id="qs", params={"secret": "alice"})
+    with pytest.raises(shared_render.SharedRenderError, match="its render read 'request'"):
+        await mounted.render_diff()
 
 
 @pytest.mark.asyncio
@@ -387,6 +483,69 @@ async def test_a_verified_shared_render_that_reads_the_query_raises(monkeypatch)
     mounted = await wireview_testing.mount(QsShared, id="qs", params={"q": "a"})
     with pytest.raises(shared_render.SharedRenderError, match="its render read 'request'"):
         await mounted.render_diff()
+
+
+# -- what the render leaves alone ----------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_lazy_property_named_request_is_not_computed():
+    """``Meta.lazy_properties`` computes what the template reads (#187); finding the page reads none of it."""
+    QsLazy._requests.clear()
+    mounted = await wireview_testing.mount(QsLazy, id="lazy", params={"q": "a"})
+    assert mounted.render().endswith(">0</div>")
+    await mounted.render_diff()
+    assert QsLazy._requests == []
+
+
+class OtCount(Component):
+    class Meta:
+        template_name = "other/count.html"
+
+    n: int = 0
+
+    async def bump(self):
+        self.n += 1
+
+
+class OtKept(Component):
+    """Its renders after the first are tracked for the temporary assign they do not set (#111)."""
+
+    class Meta:
+        template_name = "other/kept.html"
+        temporary_assigns = {"rows": []}
+
+    n: int = 0
+    rows: list[int] = []
+
+    async def bump(self):
+        self.n += 1
+
+
+@function_component(template="other/fn.html")
+def ot_fn(n: int):
+    return {"n": n}
+
+
+@pytest.fixture
+def _other_backend():
+    with override_settings(TEMPLATES=[{"BACKEND": "testproj.other_backend.OtherTemplates", "DIRS": [], "OPTIONS": {}}]):
+        yield
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("_other_backend")
+async def test_a_template_of_another_backend_renders_as_the_backend_renders_it():
+    """Only Django's nodes read ``context.request``: Jinja2's templates rendered with no ``engine`` to ask."""
+    assert ot_fn(n=2) == "<p>fn 2</p>"
+    counted = await wireview_testing.mount(OtCount, id="c")
+    await counted.call("bump")
+    assert counted.render() == '<div id="c">1</div>'
+    kept = await wireview_testing.mount(OtKept, id="k")
+    await kept.render_diff()
+    await kept.call("bump")
+    await kept.render_diff()  # the tracked render: rows reset and not set since
+    assert kept.render() == '<div id="k">1 []</div>'
 
 
 # -- a socket -------------------------------------------------------------------------------
