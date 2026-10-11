@@ -177,10 +177,12 @@ The django-reactor era changelog (2.x) is preserved in
 - Security: `Meta.shared_render`'s scope (and `wireview.W019`) read the component's own template file only, so a
   class whose `{% include %}`d template or `{% extends %}` parent read `user` shared its render, and with
   `VERIFY_SHARED_RENDER` off -- production -- the first connection's user went to every other viewer of the
-  broadcast (#208). The scope now follows every template a render reaches -- includes, extends parents (skipping
-  as Django does), function components' and inclusion tags' templates -- and a template only the render can name
+  broadcast (#208). The scope now follows every template a render reaches -- includes (each partial of a file,
+  `"parts.html#row"`, on its own), extends parents (skipping as Django does), function components' and inclusion
+  tags' templates (one made from a string as well) -- and every tag's body wherever the tag keeps it, the body of
+  `{% blocktranslate %}` included; `{% debug %}` is out of scope. A template only the render can name
   (`{% include part %}`, `{% extends base %}`, `{% func kind %}`, an unregistered function, one that fails to
-  load) keeps the render each connection's own. A class out of scope that way renders on every connection again.
+  load, the component's own included) or one the check fails to read keeps the render each connection's own. A class out of scope that way renders on every connection again.
   Under the dev server's autoreloader a template change has the scope read anew.
 
 ## [1.5.1] - 2026-10-10

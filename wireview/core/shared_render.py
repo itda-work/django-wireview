@@ -115,7 +115,6 @@ _COMPONENT_TAGS = frozenset(
         "upload_preview",
     }
 )
-_COMPONENT_NODES = frozenset({"ComponentBlockNode", "LiveComponentBlockNode", "FillNode"})
 
 
 class SharedRenderError(ImproperlyConfigured):
@@ -183,13 +182,13 @@ def out_of_scope(cls: type[Component]) -> list[str]:
 
 
 def _template_reasons(cls: type[Component]) -> list[str]:
-    from django.template import TemplateDoesNotExist, TemplateSyntaxError
     from django.template.loader import get_template
 
     try:
         template = get_template(t.cast(str, cls._meta.template_name))
-    except (TemplateDoesNotExist, TemplateSyntaxError):  # its render fails: not this check's to report
-        return []
+    except Exception as error:  # its render fails as well: nothing is lost, and nothing kept on a guess
+        log.debug("Loading the template of %s failed", cls.__qualname__, exc_info=True)
+        return [f"its template could not be loaded ({type(error).__name__}: {error})"]
     inner = getattr(template, "template", template)
     if getattr(inner, "nodelist", None) is None:
         return ["its template is not a Django template, which this check cannot read"]
@@ -207,6 +206,8 @@ def _template_reasons(cls: type[Component]) -> list[str]:
         )
     if reach.names:
         reasons.append(f"its template reads {reach.listed(reach.names)}, which differ from viewer to viewer")
+    if reach.dumps:
+        reasons.append(f"its template prints the whole context, the viewer's with it ({reach.listed(reach.dumps)})")
     if reach.unknown:
         reasons.append(
             f"its template loads a template only the render can name ({', '.join(sorted(reach.unknown))}), "
@@ -225,7 +226,9 @@ class _Reach:
     chain skipping the templates it came through -- and read as the
     component's own. A name only the render knows (a variable, a function not
     registered, a template that fails to load) cannot be followed, and counts
-    against sharing: what it would load may read anything.
+    against sharing: what it would load may read anything. A template is read
+    once per name -- each partial of a file (``"parts.html#row"``) apart --
+    and one made from a string, which has no name, once per object.
 
     A template another tag renders with a context of its own -- a function
     component's, an inclusion tag's -- holds no field of the component, so a
@@ -240,7 +243,10 @@ class _Reach:
         self.tags: dict[str, set[str]] = {}
         self.names: dict[str, set[str]] = {}
         self.unknown: set[str] = set()
-        self._seen: set[tuple[str, int, bool]] = set()
+        self.dumps: dict[str, set[str]] = {}
+        self._seen: set[tuple[t.Any, ...]] = set()
+        #: The templates read by identity, held so that no other takes the identity of one gone
+        self._held: list[t.Any] = []
 
     def listed(self, found: dict[str, set[str]]) -> str:
         """``user (through a.html), request``: the names, and where beyond the component's own template."""
@@ -251,37 +257,57 @@ class _Reach:
 
     def template(self, template: t.Any, owned: bool, history: tuple[t.Any, ...] = ()) -> None:
         """Read ``template`` (a ``django.template.base.Template``) and what it reaches, once each."""
+        from django.template.base import UNKNOWN_SOURCE
+
         origin = template.origin
-        seen = (origin.name, id(origin.loader), owned)  # an Origin compares so, and does not hash
+        # A partial (``"parts.html#name"``, Django 6) has its file's Origin and only its own nodes
+        fragment = template.name if _is_partial(template) else None
+        if origin.name == UNKNOWN_SOURCE:  # made from a string: every one is another template
+            seen: tuple[t.Any, ...] = (id(template), owned)
+            self._held.append(template)
+        else:  # by name, as an Origin compares, and does not hash: a loader without a cache gives a new object
+            seen = (origin.name, id(origin.loader), fragment, owned)
         if seen in self._seen:
             return
         self._seen.add(seen)
         name = origin.template_name or origin.name
+        if fragment is not None:
+            name = f"{name}#{fragment}"
         if self.root is None:
             self.root = name
         for node in _walk(template.nodelist):
             self.node(node, template, name, owned, history or (origin,))
 
     def node(self, node: Node, template: t.Any, where: str, owned: bool, history: tuple[t.Any, ...]) -> None:
-        kind = type(node).__name__
+        from django.template.defaulttags import CsrfTokenNode, DebugNode
+        from django.template.library import InclusionNode, SimpleNode
+        from django.template.loader_tags import ExtendsNode, IncludeNode
+
+        from ..templatetags.wireview import ComponentBlockNode, FillNode, FuncBlockNode, LiveComponentBlockNode
+
         func = getattr(node, "func", None)
         tag = getattr(func, "__name__", "")
-        if kind in _COMPONENT_NODES or (kind == "SimpleNode" and tag in _COMPONENT_TAGS):
-            self.tags.setdefault(tag or kind, set()).add(where)
-        if kind == "CsrfTokenNode":
+        simple = isinstance(node, SimpleNode)
+        if isinstance(node, (ComponentBlockNode, LiveComponentBlockNode, FillNode)) or (
+            simple and tag in _COMPONENT_TAGS
+        ):
+            self.tags.setdefault(tag if simple else type(node).__name__, set()).add(where)
+        if isinstance(node, CsrfTokenNode):
             self.names.setdefault("csrf_token", set()).add(where)
+        if isinstance(node, DebugNode):
+            self.dumps.setdefault("{% debug %}", set()).add(where)
         for name in _watched_names(node):
             if not (owned and _owns(self.cls, name)):
                 self.names.setdefault(name, set()).add(where)
-        if kind == "IncludeNode":
+        if isinstance(node, IncludeNode):
             self._include(node, template, owned)
-        elif kind == "ExtendsNode":
+        elif isinstance(node, ExtendsNode):
             self._extends(node, template, owned, history)
-        elif kind == "SimpleNode" and tag == "func" and _is_wireview(func):
+        elif simple and tag == "func" and _is_wireview(func):
             self._function(_literal(node.args[0]) if node.args else None, _said(node), owned=False)  # type: ignore[attr-defined]
-        elif kind == "FuncBlockNode":
-            self._function(node.component_name, f'{{% func_block "{node.component_name}" %}}', owned=False)  # type: ignore[attr-defined]
-        elif kind == "InclusionNode":
+        elif isinstance(node, FuncBlockNode):
+            self._function(node.component_name, f'{{% func_block "{node.component_name}" %}}', owned=False)
+        elif isinstance(node, InclusionNode):
             self._inclusion(node, template)
 
     def _include(self, node: t.Any, template: t.Any, owned: bool) -> None:
@@ -367,6 +393,13 @@ def _is_wireview(func: t.Any) -> bool:
     return getattr(func, "__module__", "") == "wireview.templatetags.wireview"
 
 
+def _is_partial(template: t.Any) -> bool:
+    from django.template import base
+
+    partial = getattr(base, "PartialTemplate", None)  # Django 6.0 and later
+    return partial is not None and isinstance(template, partial)
+
+
 def _row_fields(cls: type[Component]) -> list[str]:
     """The fields whose type names a model or a QuerySet anywhere: their render is never shared."""
     from .component import ALWAYS_EXCLUDED
@@ -389,14 +422,37 @@ def _owns(cls: type[Component], name: str) -> bool:
     return name in WATCHED_CONTEXT and (name in cls.model_fields or hasattr(cls, name))
 
 
-def _walk(nodelist: t.Iterable[Node]) -> t.Iterator[Node]:
+def _walk(nodelist: t.Iterable[Node], seen: set[int] | None = None) -> t.Iterator[Node]:
+    """Every node under ``nodelist``, each once.
+
+    A tag's body is found among its attributes, wherever the tag keeps it:
+    ``child_nodelists`` names what ``get_nodes_by_type`` searches, and a tag
+    need not declare it (``self.body``), nor ``{% if %}`` its branches.
+    """
+    seen = set() if seen is None else seen
     for node in nodelist:
+        if id(node) in seen:
+            continue
+        seen.add(id(node))
         yield node
         for attr in getattr(node, "child_nodelists", ()):
-            yield from _walk(getattr(node, attr, None) or ())
-        if type(node).__name__ == "IfNode":
-            for _condition, branch in node.conditions_nodelists:  # type: ignore[attr-defined]
-                yield from _walk(branch)
+            yield from _walk(getattr(node, attr, None) or (), seen)
+        for value in vars(node).values():
+            yield from _walk(_nodes_in(value), seen)
+
+
+def _nodes_in(value: t.Any, depth: int = 0) -> t.Iterator[Node]:
+    """The nodes ``value`` holds: a node, a node list, or a list, tuple or dict of them (``IfNode``'s branches)."""
+    from django.template.base import Node
+
+    if isinstance(value, Node):
+        yield value
+    elif isinstance(value, (list, tuple)) and depth < 3:  # a NodeList is a list
+        for each in value:
+            yield from _nodes_in(each, depth + 1)
+    elif isinstance(value, Mapping) and depth < 3:
+        for each in value.values():
+            yield from _nodes_in(each, depth + 1)
 
 
 def _watched_names(node: Node) -> t.Iterator[str]:
@@ -418,7 +474,9 @@ def _variables(node: Node) -> t.Iterator[t.Any]:
     them in a list or a dict of its own (``firstof``, ``cycle``, ``cache``'s
     ``vary_on``, ``blocktranslate``'s ``with``) is read as well as ``{{ }}``.
     """
-    from django.template.base import FilterExpression, Variable
+    from django.template.base import FilterExpression, TokenType, Variable
+    from django.template.defaulttags import IfNode
+    from django.templatetags.i18n import BlockTranslateNode
 
     def of(expression: t.Any) -> t.Iterator[t.Any]:
         if isinstance(expression, Variable):
@@ -429,11 +487,15 @@ def _variables(node: Node) -> t.Iterator[t.Any]:
             for _func, arguments in expression.filters:
                 yield from (argument for lookup, argument in arguments if lookup)
 
-    if type(node).__name__ == "IfNode":
-        for condition, _branch in node.conditions_nodelists:  # type: ignore[attr-defined]
+    if isinstance(node, IfNode):
+        for condition, _branch in node.conditions_nodelists:
             for expression in _condition_expressions(condition):
                 yield from of(expression)
         return
+    if isinstance(node, BlockTranslateNode):  # its body's {{ name }} is a token, read from the context by name
+        for token in [*node.singular, *(node.plural or ())]:
+            if token.token_type == TokenType.VAR:
+                yield Variable(token.contents)
     for value in vars(node).values():
         if isinstance(value, Mapping):
             value = list(value.values())

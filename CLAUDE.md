@@ -42,7 +42,7 @@ wireview/
 ├── core/shared_render.py  Meta.shared_render(#176 2단계). 같은 브로드캐스트 메시지(message_id)를 처리하는 연결들이 같은 클래스·id·필드·언어·시간대의
 │                          렌더를 한 번만 하고 Rendered를 함께 쓴다. data-state는 공유하지 않는다 — 렌더는 그 자리에 STATE_SLOT을 쓰고 연결마다 자기 토큰을 끼운다(Shared.with_state).
 │                          범위 밖(LiveComponent·temporary_assigns·slots·live_sessions·모델·QuerySet 타입 필드·다른 컴포넌트를 그리거나 보는 사람을 읽는 템플릿)은 공유하지 않고 W019가 알린다.
-│                          템플릿은 렌더가 닿는 것 전부를 걷는다(_Reach: include·extends 부모·함수 컴포넌트·inclusion 태그, #208). 이름을 렌더만 아는 템플릿
+│                          템플릿은 렌더가 닿는 것 전부를 걷는다(_Reach: include(조각 포함)·extends 부모·함수 컴포넌트·inclusion 태그, 태그의 본문은 어느 속성에 있든, #208). 이름을 렌더만 아는 템플릿
 │                          (변수 이름의 include·extends·func, 미등록 함수, 불러올 수 없는 것)은 공유하지 않는다. 범위는 클래스마다 한 번, 자동 리로더의 file_changed 뒤 다시(templates_changed)
 │                          필드에 모델 인스턴스·QuerySet이 들어 있으면 키가 없다(같은 pk의 다른 속성). 토큰은 루프 밖에서 서명한다(렌더 트립, 받은 쪽들은 _Signer가 모아 db 트립 하나).
 │                          VERIFY_SHARED_RENDER(DEBUG·wireview.testing)면 user·session·request 읽기가 오류이고, 받은 렌더를 다시 렌더해 비교한다
@@ -230,7 +230,7 @@ tests/
                            INBOX_SHIM 은 서버가 보낸 메시지를 페이지에 넘기는 순서를 테스트가 정하게 한다.
                            warning_guard.py 는 ASGI 핸들러가 동기 이터레이터를 서빙했다는 경고가 기록되면 실행을 실패시키는 플러그인이다.
                            page.wait_for_selector 를 다른 곳에 쓰면 test_e2e_harness.py 의 가드가 실패한다
-                           inclusion_tags.py 는 test_shared_render.py 가 엔진의 libraries로 싣는 inclusion 태그(sh_tags)다 — W019가 그 템플릿을 걷는지 본다(#208).
+                           inclusion_tags.py 는 test_shared_render.py 가 엔진의 libraries로 싣는 태그(sh_tags)다 — W019가 inclusion 태그(문자열 Template·하위 노드 포함)의 템플릿과 child_nodelists 없는 블록 태그의 본문을 걷는지 본다(#208).
                            waiting.py 의 eventually() 가 async 테스트에서 백그라운드 작업의 결과를 기다리는 정본이다 —
                            고정 sleep 으로 기다리지 않는다. 타이머(debounce·throttle·만료)를 재는 테스트만 sleep 을 둔다(#143).
                            기다리는 일을 하는 태스크가 있으면 task= 로 넘긴다 — 그 태스크가 던지면 그 예외가 바로 올라온다(#148).
