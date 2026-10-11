@@ -142,6 +142,7 @@ class WireviewMeta:
         broker: Broker | None = None,
         connection_id: str | None = None,
         live_session: "LiveSession | None" = None,
+        tab_id: str = "",
     ):
         self.params = params
         self.channel_name = channel_name
@@ -150,6 +151,15 @@ class WireviewMeta:
         # the consumer. Unlike ``channel_name`` it is safe to put in a URL, and it
         # is what scopes upload registries, tokens and progress groups (#77).
         self.connection_id = connection_id
+        # The page load (browser tab) that connection serves, which the page
+        # names in its socket URL and keeps across reconnects; empty when it
+        # named none. Client-chosen: presence keys it under the user (#202).
+        self.tab_id = tab_id
+        # Whether the template or the page named this component, rather than
+        # the framework minting an id for it (the ``rx-`` default, a sticky
+        # default). A minted id is new on every pass that draws the component,
+        # so presence keys such a producer by its class instead (#202).
+        self.id_given: bool = False
         # The page boundary this component was mounted inside, or None when the
         # page declared none (#58). It decides what ``sign_state`` writes into the
         # envelope and which hooks ``Component._mount`` runs before the component's
@@ -263,6 +273,7 @@ class WireviewMeta:
             broker=self.broker,
             connection_id=self.connection_id,
             live_session=self.live_session,
+            tab_id=self.tab_id,
         )
         # Don't copy render state - child components start fresh
         return cloned

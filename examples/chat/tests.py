@@ -1,6 +1,11 @@
 """Tests for Chat app components."""
 
+import threading
+
 import pytest
+from playwright.sync_api import expect
+from testproj.e2e_browser import expect_text, open_live
+from testproj.e2e_server import serve
 
 from wireview import mount
 
@@ -59,3 +64,71 @@ class TestXChatRoom:
     def test_template_name(self):
         """XChatRoom should use room_component.html template."""
         assert XChatRoom._meta.template_name == "chat/room_component.html"
+
+
+@pytest.fixture
+def wireview_server():
+    with serve() as base_url:
+        yield base_url
+
+
+@pytest.mark.e2e
+class TestOnlineUsers:
+    """A user with two tabs open stays on the others' lists until both are closed (#202).
+
+    The room page's XChatRoom announces the tab and its XOnlineUsers lists who is
+    here: two components of one connection, speaking for one tab.
+    """
+
+    @pytest.fixture
+    def room(self, transactional_db):
+        return Room.objects.create(name="lobby")
+
+    def test_closing_one_of_two_tabs_keeps_the_user_listed(self, page, wireview_server, room, monkeypatch):
+        # Closing a tab shows nothing on bob's page when the fix holds; the server
+        # says when the tab's leave went out, so carol comes after it
+        left = threading.Event()
+        leaving = XChatRoom.leaving
+
+        async def leaving_and_tell(self):
+            await leaving(self)
+            left.set()
+
+        monkeypatch.setattr(XChatRoom, "leaving", leaving_and_tell)
+
+        def open_tab(username):
+            tab = page if username == "bob" else page.context.new_page()
+            open_live(
+                tab,
+                f"{wireview_server}/chat/room/{room.id}/?username={username}",
+                "[data-name=XOnlineUsers][data-is-live=true]",
+            )
+            return tab
+
+        def listed(tab):
+            return tab.locator(".online-users li span:nth-child(2)")
+
+        bob = open_tab("bob")
+        ann_tabs = [open_tab("ann"), open_tab("ann")]
+        heading = bob.locator(".online-users h3")
+        expect_text(heading, "Online Users (2)")
+        expect(listed(bob)).to_have_text(["bob", "ann"])
+
+        ann_tabs[0].close()
+        assert left.wait(timeout=10), "the closed tab never left"
+        # bob's typing renders his list after that leave: his connection hears it first.
+        # Not another arrival: ann's remaining tab answers its sync, and every list
+        # on the topic hears that answer, so it would put back what the leave took.
+        bob.locator("input[name=content]").press_sequentially("hi")
+        expect(bob.locator(".online-users li", has_text="typing...")).to_have_count(1)
+        expect(listed(bob)).to_have_text(["bob", "ann"])
+
+        carol = open_tab("carol")
+        expect_text(heading, "Online Users (3)")
+        expect(listed(bob)).to_have_text(["bob", "ann", "carol"])
+        # A tab that came after hears ann from her remaining tab
+        expect(listed(carol)).to_contain_text(["ann"])
+
+        ann_tabs[1].close()
+        expect_text(heading, "Online Users (2)")
+        expect(listed(bob)).to_have_text(["bob", "carol"])

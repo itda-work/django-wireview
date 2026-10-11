@@ -80,3 +80,25 @@ def test_a_live_render_reuses_the_instance_the_connection_holds(caplog):
     assert repo.get(PLAYER_ID) is held
     assert held.count == 3
     assert not caplog.records
+
+
+def test_the_ids_the_framework_mints_are_marked_as_minted():
+    """Presence names a producer by an id the template or the page gave, by its class otherwise (#202).
+
+    Every place an id is made up says so: the ``rx-`` default and the sticky
+    default here. A page's join hands back the id its element has, which is the page's.
+    """
+    repo = ComponentRepository(is_live=False, user=None, params={})
+    render(
+        "{% component 'StickyPlayer' %}{% component 'StickyPlayer' %}{% component 'PlainCounter' %}"
+        "{% component 'PlainCounter' id='named' %}",
+        wireview_repository=repo,
+    )
+    given = {component.id: component.wire.id_given for component in repo.components.values()}
+    sticky, second_sticky, minted = (id for id in given if id != "named")
+
+    assert sticky == PLAYER_ID and second_sticky.startswith("rx-") and minted.startswith("rx-")
+    assert given == {sticky: False, second_sticky: False, minted: False, "named": True}
+
+    joining = ComponentRepository(is_live=True, user=None, params={})
+    assert joining.build("PlainCounter", state={"id": minted}).wire.id_given is True

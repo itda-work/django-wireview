@@ -17,6 +17,7 @@ from .core.component import Component, MessagePayload
 from .core.session import SessionView
 from .core.state import StateMismatch, state_of
 from .debug import render_queries
+from .features.presence import presence_channels
 from .live_component import LiveComponent
 from .utils import filter_parameters
 
@@ -71,6 +72,7 @@ class ComponentRepository:
         channel_layer: BaseChannelLayer | None = None,
         session: t.Any = None,
         connection_id: str | None = None,
+        tab_id: str = "",
         live_session: "LiveSession | None" = None,
         vsn: int = 0,
     ):
@@ -89,6 +91,9 @@ class ComponentRepository:
         # Handed to every component's WireviewMeta so upload artefacts can be
         # scoped to the connection that owns them (#77).
         self.connection_id = connection_id
+        # The page load the client named in its socket URL, kept across its
+        # reconnects; empty when it named none (#202)
+        self.tab_id = tab_id
         # The page boundary every component built here belongs to (#58). A page
         # has one: the view decorator sets it on the HTTP side, and on a socket
         # the first join's envelope names it and later joins have to agree.
@@ -175,12 +180,15 @@ class ComponentRepository:
         name: str,
         state: MessagePayload,
         drawer: Component | None = None,
+        id_given: bool | None = None,
     ) -> Component:
         """The instance under the state's id, built or reused.
 
         ``drawer`` is the component whose template pass draws it
         (``{% component %}``), and none for a join's root. A new instance takes
         up what the drawer's root carried for the id (``_take_restored``).
+        ``id_given`` is False when the caller minted the state's id
+        (``Component._build``).
         """
         if component_id := state.get("id"):
             if component := self.components.get(component_id):
@@ -216,8 +224,10 @@ class ComponentRepository:
             channel_name=self.channel_name,
             channel_layer=self.channel_layer,
             connection_id=self.connection_id,
+            tab_id=self.tab_id,
             session=self.session,
             live_session=self.live_session,
+            id_given=id_given,
         )
         return self.register_component(component)
 
@@ -311,6 +321,7 @@ class ComponentRepository:
                 channel_name=self.channel_name,
                 channel_layer=self.channel_layer,
                 connection_id=self.connection_id,
+                tab_id=self.tab_id,
                 session=self.session,
                 live_session=self.live_session,
             ),
@@ -807,14 +818,15 @@ class ComponentRepository:
         return handlers.is_user_defined_method(component, command)
 
     def components_subscribed_to(self, channel):
+        # A joined presence producer hears its channel too, for the framework (#202)
         for component in self.reachable_components():
-            if channel in component.get_subscriptions():
+            if channel in component.get_subscriptions() or channel in presence_channels(component):
                 yield component
 
     @property
     def subscriptions(self):
         return reduce(
             lambda a, b: a.union(b),
-            (component.get_subscriptions() for component in self.reachable_components()),
+            (component.get_subscriptions() | presence_channels(component) for component in self.reachable_components()),
             set(),
         )

@@ -20,6 +20,7 @@ import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
 import { readReconnectSettings, reconnectOptions } from "./reconnect.mjs";
 import { NAVIGATED_EVENT, NavigationLog, carriedAcross } from "./navigation.mjs";
 import { UploadManagers } from "./uploads.mjs";
+import { newTab, socketUrl } from "./tab.mjs";
 import boost from "./wireview-boost";
 
 /**
@@ -91,6 +92,11 @@ class ServerConnection {
   constructor() {
     /** @type {Object<string, WireviewComponent>} */
     this.components = {};
+    /**
+     * @type {string} this page load's name, on every socket it opens: the
+     * server tells one tab from another by it across reconnects (#202)
+     */
+    this.tab = newTab();
     /** @type {WireviewMessage[]} */
     this.messageQueue = [];
     /** @type {ReconnectingWebSocket|null} */
@@ -141,11 +147,11 @@ class ServerConnection {
    * @param {string} [path="__wireview__"] - WebSocket endpoint path
    */
   open(path = "__wireview__") {
-    let protocol = location.protocol.replace("http", "ws");
     this.socket = new ReconnectingWebSocket(
       // The diff forms this client applies. Without it the server assumes
       // the oldest, so an older bundle never receives a form it cannot read.
-      `${protocol}//${location.host}/${path}?vsn=${PROTOCOL_VERSION}`,
+      // The same URL, tab and all, for every reconnect.
+      socketUrl(location, path, PROTOCOL_VERSION, this.tab),
       [],
       {
         maxEnqueuedMessages: 0,

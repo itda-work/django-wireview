@@ -85,7 +85,7 @@ GAP 번호로 추적한다.
 | 기능 | Phoenix LiveView | django-wireview | 상태 | 근거 |
 |------|:----------------:|:---------------:|:----:|------|
 | PubSub broadcast | `Phoenix.PubSub` | `self.broadcast()` · `abroadcast()` · `broadcast()` | ✅ | `tests/test_connections.py::test_a_broadcast_from_one_connection_rerenders_another`<br>`tests/test_connections.py::test_the_module_broadcast_reaches_a_connection_from_sync_code` |
-| Presence tracking | `Phoenix.Presence` | `PresenceMixin` | ✅ | `tests/test_connections.py::test_presence_join_typing_and_leave_reach_the_tracker` |
+| Presence tracking | `Phoenix.Presence` | `PresenceMixin` | ✅ | `tests/test_connections.py::test_presence_join_typing_and_leave_reach_the_tracker`<br>`tests/test_connections.py::test_a_user_stays_listed_until_their_last_connection_leaves`<br>`tests/test_connections.py::test_a_page_whose_producer_and_tracker_are_apart_is_listed_by_a_later_observer`<br>`tests/test_connections.py::test_a_tab_that_reconnects_replaces_what_a_lost_leave_left` |
 | Presence list | `Presence.list/1` | `presence_users` | ✅ | `tests/test_connections.py::test_presence_join_typing_and_leave_reach_the_tracker` |
 | Typing indicators | 수동 구현 | `presence_set_typing()` | ✅ | `tests/test_connections.py::test_presence_join_typing_and_leave_reach_the_tracker`<br>`tests/test_presence.py::TestPresenceMixin::test_typing_auto_timeout` |
 | Auto-broadcast (ORM) | 수동 구현 | `AUTO_BROADCAST` | ✅ 추가 기능 | `tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_stream_insert_reaches_the_dom`<br>`tests/testproj/bookmarks/tests.py::TestBookmarksE2E::test_toggle_and_delete_round_trip` |

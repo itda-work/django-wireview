@@ -8,7 +8,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.core.exceptions import ImproperlyConfigured
 
 from .core.origin import origin_refusal
-from .core.rendered import protocol_version
+from .core.rendered import protocol_version, socket_tab
 from .core.session import load_session
 from .core.transport import NO_CHANNEL_LAYER, ChannelsOutbound, Outbound
 from .session import WireviewSession
@@ -62,6 +62,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
         await self.start(
             session=await load_session(self.scope.get("session")),
             vsn=protocol_version(self.scope.get("query_string", b"")),
+            tab=socket_tab(self.scope.get("query_string", b"")),
         )
 
     async def disconnect(self, code):

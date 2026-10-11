@@ -113,6 +113,28 @@ def protocol_version(query_string: bytes | str) -> int:
     return int(values[0])
 
 
+# What a client may name its page load with: random, URL-safe, and long enough
+# that another page cannot guess it (#202)
+_TAB = re.compile(r"[A-Za-z0-9_-]{16,64}")
+
+
+def socket_tab(query_string: bytes | str) -> str:
+    """The page load a client named in its WebSocket URL (``tab``), or ``""``.
+
+    The page keeps it across its reconnects, so it tells one browser tab from
+    another where ``connection_id`` changes with every socket. It comes from
+    the client: whatever uses it keys it under what the server knows (the user),
+    so a page cannot speak for another user's tab. Anything but exactly one
+    value of the expected form reads as none, as an older bundle sends.
+    """
+    if isinstance(query_string, bytes):
+        query_string = query_string.decode("latin-1")
+    values = parse_qs(query_string, keep_blank_values=True).get("tab", [])
+    if len(values) != 1 or not _TAB.fullmatch(values[0]):
+        return ""
+    return values[0]
+
+
 def _fingerprint(static: list[str]) -> str:
     """Hash the static parts, keeping their structure (``['a', 'b']`` != ``['ab']``)."""
     return hashlib.md5("\0".join(static).encode()).hexdigest()[:8]

@@ -121,7 +121,8 @@ wireview/
 │                          로더만). 프로세스마다 덧붙이기만 하는 세그먼트 파일이고, 끝까지 쓰지 못한 줄은 되돌리고 끈다. DEBUG가 아니거나
 │                          WIREVIEW_RENDER_QUERIES_DIR=off(루트 conftest.py가 둔다)이거나 wireview.testing을 import했으면 쓰지 않는다.
 │                          형식의 정본은 docs/features/render-queries.md "편집기로 보내기", 계약은 tests/test_render_queries_file.py
-├── features/              streams.py, presence.py (PresenceMixin), uploads.py (UploadRegistry·토큰 v2),
+├── features/              streams.py, presence.py (PresenceMixin. 채널 → 사용자 → 프로듀서(탭 + 준 id, id가 없으면 클래스 — wire.id_given)마다 meta, 트래커의 자기 항목은 탭 키, 목록은 사용자 단위로 합친다. sync에는 프로듀서가 답한다(#202).
+                           그 답을 위해 세션이 입장한 프로듀서의 presence 채널(presence_channels)을 따로 듣고 hear()에 넘긴다. 그 채널의 메시지는 앱의 notification()에 넘기지 않는다 — 앱이 직접 구독한 채널이면 평소대로), uploads.py (UploadRegistry·토큰 v2),
 │                          hooks.py (앱의 static/<app_label>/hooks/*.js 수집. 페이지가 아니라 프로젝트 단위. 템플릿 디렉터리는 TEMPLATES가 아니라 엔진의 로더에게 묻는다),
 │                          upload_store.py (청크 경로 계산·append·취소 마커·sweep. 워커들이 공유하는 유일한 상태),
 │                          toasts.py (toast()·atoast()와 그것을 받는 컴포넌트. {% wireview_toasts %}가 심는다, #116)
@@ -154,6 +155,7 @@ wireview/
                            wireview:before-navigate의 detail과 이동 종류(kind). 취소한 뒤로·앞으로 가기는 Navigation API가
                            알려 준 떠난 항목으로 traverseTo로 돌아가고, 그 사이의 popstate를 TraversalUndo가 가른다, #154),
                            reconnect.mjs (재연결 백오프를 헤더 메타에서 읽는다. WIREVIEW RECONNECT_*),
+                           tab.mjs (페이지 로드의 이름. 소켓 URL의 tab으로 재연결마다 같은 값을 보낸다 — presence가 탭을 가른다, #202),
                            uploads.mjs (업로드 manager의 수명. 인스턴스가 끝나면 폐기하고, 렌더의 instances가 알린 인스턴스 번호와
                            같은 config만 받는다. 끝난 인스턴스의 upload_op는 세션이 먼저 버린다.
                            join·join 실패·렌더가 알린 인스턴스에서 페이지가 할 일도 여기 있다: joining·joinFailed·named, #142),
@@ -252,7 +254,7 @@ tests/
 
 examples/                  예제 앱 11개. 각 디렉터리 = 개념 하나 + tests.py 하나 + README 하나.
                            testproj 위에서 돌고 make test가 함께 실행한다(pytest tests examples).
-                           E2E는 todo/tests.py, livecomp/tests.py, hooks/tests.py, notifications/tests.py, search/tests.py. 인덱스는 examples/README.md
+                           E2E는 todo/tests.py, livecomp/tests.py, hooks/tests.py, notifications/tests.py, search/tests.py, chat/tests.py. 인덱스는 examples/README.md
                            hooks/ 는 wire-hook 을 쓰는 유일한 예제다. 훅 경로의 E2E 검증은 그것과
                            testproj의 hookprobe/·stickyprobe/·offlineprobe/ 가 나눠 진다
 
