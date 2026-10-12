@@ -345,7 +345,7 @@ async def test_a_member_who_left_cannot_join_with_the_page_they_kept(room, alice
             assert answer["command"] == "remove", name
         heard = await _drain(communicator)
         # Nor later: a refused component subscribed to nothing, so alice's new message passes him by
-        speaker = await mount(Lv4ChatRoom, user=alice, room=room, live_session=BOUNDARY)
+        speaker = await mount(Lv4ChatRoom, id="room", user=alice, room=room, live_session=BOUNDARY)
         await speaker.call("send_message", content="after the refusal")
         heard += await _drain(communicator)
     finally:
@@ -457,7 +457,7 @@ def test_no_state_field_holds_a_name():
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_the_author_is_the_user_and_presence_is_keyed_by_pk(room, alice):
-    view = await mount(Lv4ChatRoom, user=alice, room=room, live_session=BOUNDARY)
+    view = await mount(Lv4ChatRoom, id="room", user=alice, room=room, live_session=BOUNDARY)
 
     await view.call("send_message", content="  hi  ")
 
@@ -471,7 +471,7 @@ async def test_the_author_is_the_user_and_presence_is_keyed_by_pk(room, alice):
 @pytest.mark.asyncio
 async def test_after_leaving_the_open_page_writes_nothing(room, alice):
     """Events of a mounted component are not authorized again by the boundary; the handler asks."""
-    view = await mount(Lv4ChatRoom, user=alice, room=room, live_session=BOUNDARY)
+    view = await mount(Lv4ChatRoom, id="room", user=alice, room=room, live_session=BOUNDARY)
     await Membership.objects.filter(room=room, user=alice).adelete()
 
     await view.call("send_message", content="still here?")
@@ -487,7 +487,7 @@ async def test_after_leaving_the_open_page_does_not_say_it_is_typing(room, alice
 
     The membership ends with no notice, as when it is deleted some other way.
     """
-    view = await mount(Lv4ChatRoom, user=alice, room=room, live_session=BOUNDARY)
+    view = await mount(Lv4ChatRoom, id="room", user=alice, room=room, live_session=BOUNDARY)
     if not still_member:
         await Membership.objects.filter(room=room, user=alice).adelete()
 
@@ -500,7 +500,7 @@ async def test_after_leaving_the_open_page_does_not_say_it_is_typing(room, alice
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_leaving_from_the_room_ends_the_membership_and_the_page_hears_nothing_more(room, alice):
-    view = await mount(Lv4ChatRoom, user=alice, room=room, live_session=BOUNDARY)
+    view = await mount(Lv4ChatRoom, id="room", user=alice, room=room, live_session=BOUNDARY)
 
     await view.call("leave_room")
 
@@ -515,7 +515,7 @@ async def test_leaving_from_the_room_ends_the_membership_and_the_page_hears_noth
 async def test_a_page_says_once_that_its_user_is_gone(room, alice, left):
     """A page that left the room said so then. When its socket closes later it does
     not say it again: by then the user may have joined again on another page."""
-    view = await mount(Lv4ChatRoom, user=alice, room=room, live_session=BOUNDARY)
+    view = await mount(Lv4ChatRoom, id="room", user=alice, room=room, live_session=BOUNDARY)
     if left:
         await view.call("leave_room")
 
@@ -533,7 +533,7 @@ async def test_told_of_the_end_a_component_asks_again_and_gives_up_the_room(room
 
     Published as the app publishes it; the mounted component hears it as a page does (#201).
     """
-    view = await mount(component, user=alice, room=room, live_session=BOUNDARY)
+    view = await mount(component, id="room", user=alice, room=room, live_session=BOUNDARY)
     topic = membership_topic(room.id, alice.pk)
     listening = view.component.get_subscriptions()
     assert topic in listening
@@ -574,7 +574,7 @@ async def test_a_message_reaches_the_lists_of_its_room_only(room, alice):
         await mount(Lv4MessageList, id="b", user=alice, room=room, live_session=BOUNDARY),
         await mount(Lv4MessageList, id="c", user=alice, room=elsewhere, live_session=BOUNDARY),
     ]
-    chat = await mount(Lv4ChatRoom, user=alice, room=room, live_session=BOUNDARY)
+    chat = await mount(Lv4ChatRoom, id="room", user=alice, room=room, live_session=BOUNDARY)
     for view in lists:
         view.clear_messages()
 
@@ -1109,7 +1109,7 @@ async def test_a_new_message_tells_each_other_member_on_their_own_topic(room, al
     dave = await get_user_model().objects.acreate(username="dave")
     await Membership.objects.acreate(room=room, user=dave)
     await sync_to_async(live.end_membership)(room, dave)
-    speaker = await mount(Lv4ChatRoom, user=alice, room=room, live_session=BOUNDARY)
+    speaker = await mount(Lv4ChatRoom, id="room", user=alice, room=room, live_session=BOUNDARY)
     published.clear()
 
     await speaker.call("send_message", content="hello")

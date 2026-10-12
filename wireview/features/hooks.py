@@ -117,21 +117,22 @@ def required_hook_names() -> dict[str, list[str]]:
     return wanted
 
 
-def _template_roots() -> t.Iterator[Path]:
+def _template_roots(backend: t.Any = None) -> t.Iterator[Path]:
     """Where a project's templates live, in the order its Django engines' loaders search.
 
     Asked of the loaders rather than read off ``TEMPLATES``: a project that lists
     its loaders in ``OPTIONS`` (the cached loader, above all) has ``APP_DIRS``
-    off, and reading the setting missed every app's templates.
+    off, and reading the setting missed every app's templates. With
+    ``backend``, that engine's alone.
     """
     from django.template import engines
     from django.template.backends.django import DjangoTemplates
 
     seen: set[Path] = set()
-    for backend in engines.all():
-        if not isinstance(backend, DjangoTemplates):
+    for each in [backend] if backend is not None else engines.all():
+        if not isinstance(each, DjangoTemplates):
             continue
-        for loader in backend.engine.template_loaders:
+        for loader in each.engine.template_loaders:
             # The file system loaders say where they read; the cached loader asks the ones it wraps
             get_dirs = getattr(loader, "get_dirs", None)
             for directory in get_dirs() if get_dirs is not None else ():

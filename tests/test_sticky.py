@@ -83,7 +83,7 @@ def test_a_live_render_reuses_the_instance_the_connection_holds(caplog):
 
 
 def test_the_ids_the_framework_mints_are_marked_as_minted():
-    """Presence names a producer by an id the template or the page gave, by its class otherwise (#202).
+    """Presence needs a producer's id given by the template or the page, and refuses a minted one (#212).
 
     Every place an id is made up says so: the ``rx-`` default and the sticky
     default here. A page's join hands back the id its element has, which is the page's.

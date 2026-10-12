@@ -1140,6 +1140,102 @@ def check_django_templates(app_configs, **kwargs) -> list[CheckMessage]:
     return messages
 
 
+def check_presence_producer_ids(app_configs, **kwargs) -> list[CheckMessage]:
+    """W023: a template draws a presence producer without an id (#212).
+
+    The tag refuses it when it draws it: the page's first render raises. This
+    says so before a request does, for the ``{% component %}`` and
+    ``{% component_block %}`` tags that name the class in quotes, in the
+    templates under the Django engines' template directories and the
+    components' own. A name a template picks at render time is the render's
+    to tell.
+    """
+    from django.template import engines, loader
+    from django.template.backends.django import DjangoTemplates
+
+    from .features.hooks import _template_roots
+
+    seen: set[str] = set()
+    compiled: list[tuple[str, t.Any]] = []
+
+    def compile_source(where: str, engine: t.Any, source: str) -> None:
+        if where in seen:
+            return
+        seen.add(where)
+        try:
+            compiled.append((where, engine.from_string(source)))
+        except Exception:  # noqa: BLE001 -- one that does not compile is the render's to tell
+            pass
+
+    for backend in engines.all():
+        if isinstance(backend, DjangoTemplates):
+            for root in _template_roots(backend):
+                for path in sorted(root.rglob("*.html")):
+                    try:
+                        source = path.read_text(encoding="utf-8")
+                    except (OSError, UnicodeDecodeError):  # pragma: no cover
+                        continue
+                    compile_source(str(path), backend.engine, source)
+    for cls in iter_component_classes():
+        if not (name := cls._meta.template_name):
+            continue
+        try:
+            template = loader.get_template(name)
+        except Exception:  # noqa: BLE001 -- missing, or another engine's: W022 and the render tell
+            continue
+        inner = getattr(template, "template", None)
+        if inner is not None and getattr(inner, "origin", None) is not None:
+            where = str(inner.origin.name)
+            if where not in seen:
+                seen.add(where)
+                compiled.append((where, inner))
+
+    messages: list[CheckMessage] = []
+    for where, template in compiled:
+        for line, producer in _unnamed_producers(template):
+            messages.append(
+                Warning(
+                    f"{where}:{line} draws {producer._fqn}, a presence producer, without an id.",
+                    hint=(
+                        f"Give it one: {{% component '{producer.__name__}' id='...' %}}. Presence keys a "
+                        "producer's entry on the tab by its id, so the render that draws it without one raises "
+                        "TemplateSyntaxError. See docs/tutorials/07-presence-api.md."
+                    ),
+                    id="wireview.W023",
+                )
+            )
+    return messages
+
+
+def _unnamed_producers(template: t.Any) -> t.Iterator[tuple[int, type]]:
+    """The line and class of each presence producer ``template`` draws by a quoted name without an id."""
+    from django.template.base import Node
+
+    from .core.component import Component
+    from .features.presence import PresenceMixin
+    from .templatetags.wireview import ComponentBlockNode
+    from .templatetags.wireview import component as component_tag
+
+    for node in template.nodelist.get_nodes_by_type(Node):
+        if isinstance(node, ComponentBlockNode):
+            name, given = node.component_name, node.kwargs
+        elif getattr(node, "func", None) is component_tag and getattr(node, "args", None):
+            first = node.args[0]
+            name = first.var if isinstance(first.var, str) and not first.filters else None
+            given = node.kwargs
+        else:
+            continue
+        if not name or "id" in given:
+            continue
+        try:
+            drawn = Component._resolve(name)
+        except Exception:  # noqa: BLE001 -- not a component this project has: the render says so
+            continue
+        if issubclass(drawn, PresenceMixin):
+            token = getattr(node, "token", None)
+            yield (getattr(token, "lineno", 0) or 0), drawn
+
+
 def _first_engine(backends: list[t.Any], name: str) -> t.Any:
     """The first of ``backends`` that finds ``name``, compiled or not, as Django's loader asks them."""
     from django.template import TemplateDoesNotExist
@@ -1173,6 +1269,7 @@ def register_checks() -> None:
     register(check_hook_files, WIREVIEW_TAG)
     register(check_shared_render, WIREVIEW_TAG)
     register(check_django_templates, WIREVIEW_TAG)
+    register(check_presence_producer_ids, WIREVIEW_TAG)
     register(check_channel_layer_configured, WIREVIEW_TAG)
     register(check_runserver_is_asgi, WIREVIEW_TAG)
     register(check_websocket_session, WIREVIEW_TAG)

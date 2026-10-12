@@ -60,6 +60,8 @@ import typing as t
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from django.core.exceptions import ImproperlyConfigured
+
 if t.TYPE_CHECKING:
     from wireview.core.component import Component
 
@@ -110,20 +112,33 @@ def _presence_tab(component: t.Any) -> str:
 
 
 def _presence_ref(component: t.Any) -> str:
-    """The key of a producer's meta: its tab and its name on the page (#202).
+    """The key of a producer's meta: its tab and its id on the page (#202).
 
     A meta per producer, as Phoenix keeps one per ``track``: a page with two
     producers that hides one (``presence_leave()``) still has the other's
-    meta, so its user stays listed. The tab and the name stay the same across a
-    reconnect, so the join after it replaces what the producer said before.
-
-    The name is the id the template or the page gave. A minted one is new on
-    every pass that draws the component (an id-less ``{% component %}`` in
-    another's template), so such a producer is named by its class: two of one
-    class without ids on one tab share a meta.
+    meta, so its user stays listed. The tab and the id stay the same across a
+    reconnect and a redraw, so the join after it replaces what the producer
+    said before. That is why a producer has to be given its id (#212,
+    ``unnamed_producer``).
     """
-    name = component.id if component.wire.id_given else f"class\0{type(component)._fqn}"
-    return _digest(f"producer\0{_presence_tab(component)}\0{name}")
+    return _digest(f"producer\0{_presence_tab(component)}\0{component.id}")
+
+
+def unnamed_producer(component_class: type, where: str) -> str:
+    """Why a presence producer cannot be drawn, or join, without the id a template or page gives (#212).
+
+    A minted id (``rx-``, a sticky default) is new on every pass that draws
+    the component, or one for its whole class: neither tells two producers of
+    one tab apart and finds the same entry again after a reconnect or a redraw.
+    """
+    name = getattr(component_class, "_fqn", component_class.__name__)
+    short = component_class.__name__
+    return (
+        f"{name} is a presence producer (PresenceMixin) {where} without an id. Presence producers need an id: "
+        f"{{% component '{short}' id='...' %}} in a template, mount({short}, id='...') in a test. The id tells two "
+        "producers of one tab apart and carries their entry across a reconnect and a redraw; an id the "
+        "framework makes up is new on every draw."
+    )
 
 
 def _presence_connection(component: t.Any) -> str:
@@ -149,11 +164,11 @@ def _presence_speaker(component: t.Any) -> str:
     A tab's meta remembers who said it, so a late leave from another speaker
     does not remove what a newer one said. That is a socket the tab
     reconnected away from, and also an instance its page stopped drawing: a
-    producer drawn without an id shares its meta with the one drawn in its
-    place (``_presence_ref``), and the hidden one's ``leaving()`` can come
-    after the new one joined -- when its tombstone is buried (#204), or when
-    the page's leave of it arrives after a quick hide and show. A random
-    name, kept on the instance; it says nothing about the connection.
+    producer hidden and shown again under its id shares its meta with the one
+    drawn in its place (``_presence_ref``), and the hidden one's ``leaving()``
+    can come after the new one joined -- when its tombstone is buried (#204),
+    or when the page's leave of it arrives after a quick hide and show. A
+    random name, kept on the instance; it says nothing about the connection.
     """
     speaker = component.__dict__.get("__presence_speaker")
     if speaker is None:
@@ -224,6 +239,10 @@ class PresenceMixin:
     returns. What the connection hears there only because of that is the
     framework's (``hear()``): the component's ``notification()`` does not get
     it, and nothing renders for it.
+
+    A producer is drawn with an id: ``{% component 'ChatInput' id='composer' %}``
+    (#212). The id names its entry on the tab; drawn without one, the tag
+    raises.
 
     Required methods to implement:
         _presence_topic(): Return the topic/room identifier
@@ -314,10 +333,15 @@ class PresenceMixin:
     async def presence_join(self) -> None:
         """Announce presence join. Call in joined() lifecycle hook.
 
-        Broadcasts "presence_join" action to presence channel.
+        Broadcasts "presence_join" action to presence channel. The producer
+        needs the id its template or page gave it (#212): one without raises
+        ``ImproperlyConfigured`` (``unnamed_producer``).
         """
         # Type assertion for Component methods
         component = t.cast("Component", self)
+        if not component.wire.id_given:
+            # Drawn by a template, the tag said so already; this is mount() and code that builds one
+            raise ImproperlyConfigured(unnamed_producer(type(self), "joining presence"))
 
         self._presence_joined = True
         await component.broadcast(

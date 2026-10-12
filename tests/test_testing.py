@@ -321,7 +321,7 @@ class TestTheRecordedLayerRefusesWhatARealLayerRefuses:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_a_presence_topic_with_it_fails(self):
-        view = await mount(self.Typist)
+        view = await mount(self.Typist, id="typist")
         with pytest.raises(TypeError, match="Group name"):
             await view.call("arrive")
 
@@ -396,7 +396,7 @@ class TestTheRecordedLayerRefusesWhatARealLayerRefuses:
         view = await mount(self.Speaker, room="room.42")
         await view.call("shout")
         assert [b["channel"] for b in view.broadcasts] == ["room.42"]
-        view = await mount(self.Typist, room="room.42")
+        view = await mount(self.Typist, id="typist", room="room.42")
         await view.call("arrive")
         assert [b["group"] for b in view.presence_broadcasts] == ["presence.room.42"]
 

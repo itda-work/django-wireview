@@ -36,6 +36,7 @@ from wireview.checks import (
     check_cookie_paths,
     check_django_templates,
     check_live_sessions,
+    check_presence_producer_ids,
     check_reconnect_settings,
     check_runserver_is_asgi,
     check_settings_keys,
@@ -1308,6 +1309,67 @@ class TestDjangoTemplatesCheck:
             assert check_django_templates(None) == []
 
 
+class TestPresenceProducerIdsCheck:
+    """W023: a template draws a presence producer without an id (#212)."""
+
+    @pytest.fixture
+    def producer(self, only):
+        from wireview import PresenceMixin
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            base = type("W23Base", (PresenceMixin, Component), {"__module__": __name__})
+        made = make_component("W23Typing", base=base)
+        only(made)
+        return made
+
+    @staticmethod
+    def engines(directory: Path, locmem: dict[str, str] | None = None) -> list[dict]:
+        engines: list[dict] = [{"BACKEND": "django.template.backends.django.DjangoTemplates", "DIRS": [directory]}]
+        if locmem is not None:
+            engines.append(
+                {
+                    "BACKEND": "django.template.backends.django.DjangoTemplates",
+                    "NAME": "locmem",
+                    "OPTIONS": {"loaders": [("django.template.loaders.locmem.Loader", locmem)]},
+                }
+            )
+        return engines
+
+    def test_a_template_that_draws_one_without_an_id_is_flagged(self, producer, tmp_path):
+        page = tmp_path / "rooms" / "room.html"
+        page.parent.mkdir()
+        page.write_text(
+            "{% load wireview %}\n<main>\n"
+            "{% if room %}{% component 'W23Typing' room=room %}{% endif %}\n"
+            '{% component_block "W23Typing" %}{% endcomponent %}\n'
+            "{% component 'W23Typing' id='composer' %}\n"
+            "{% component 'XNotAProducer' %}{% component name %}\n</main>\n"
+        )
+        with override_settings(TEMPLATES=self.engines(tmp_path)):
+            messages = check_presence_producer_ids(None)
+        assert [m.id for m in messages] == ["wireview.W023", "wireview.W023"]
+        assert messages[0].msg == f"{page}:3 draws {producer._fqn}, a presence producer, without an id."
+        assert messages[1].msg.startswith(f"{page}:4 ")
+        assert "{% component 'W23Typing' id='...' %}" in messages[0].hint
+
+    def test_a_components_own_template_is_read_wherever_its_loader_finds_it(self, only, producer, tmp_path):
+        """A loader that names no directory (locmem here) still hands the component's template over."""
+        drawer = make_component("W23Drawer", meta={"template_name": "w23/drawer.html"})
+        only(producer, drawer)
+        locmem = {"w23/drawer.html": "{% load wireview %}<div>{% component 'W23Typing' %}</div>"}
+        with override_settings(TEMPLATES=self.engines(tmp_path, locmem)):
+            [message] = check_presence_producer_ids(None)
+        assert message.msg.startswith("w23/drawer.html:1 draws ")
+
+    def test_ids_trackers_and_templates_that_do_not_compile_are_silent(self, producer, tmp_path):
+        (tmp_path / "ok.html").write_text("{% load wireview %}{% component 'W23Typing' id=\"room-\"|concat:1 %}")
+        (tmp_path / "broken.html").write_text("{% load wireview %}{% component 'W23Typing' %}{% nope %}")
+        (tmp_path / "plain.html").write_text("{% component 'W23Typing' %}")  # no {% load %}: not ours
+        with override_settings(TEMPLATES=self.engines(tmp_path)):
+            assert check_presence_producer_ids(None) == []
+
+
 class TestTestprojIsClean:
     """AC3: zero false positives on the project we actually ship tests for."""
 
@@ -1326,6 +1388,7 @@ class TestTestprojIsClean:
         assert check_signing_key(None) == []
         assert check_live_sessions(None) == []
         assert check_django_templates(None) == []
+        assert check_presence_producer_ids(None) == []
 
     def test_the_settings_checks_run_with_plain_check(self):
         """A check nobody registers is silent too: the calls above cannot tell."""

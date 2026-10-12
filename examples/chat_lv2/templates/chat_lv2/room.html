@@ -4,5 +4,5 @@
 
 {% block title %}{{ room.name }} - Chat{% endblock %}
 {% block body %}
-  {% component 'Lv2ChatRoom' room=room %}
+  {% component 'Lv2ChatRoom' id="room-"|concat:room.id room=room %}
 {% endblock %}
