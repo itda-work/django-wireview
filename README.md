@@ -670,7 +670,8 @@ class ChatInput(PresenceMixin, Component):
 ```
 
 프로듀서는 id를 주어 그린다 — 탭의 Presence 항목이 그 id로 이름 지어진다. id 없이 그리면 그 태그가
-`TemplateSyntaxError`로 실패하고, `manage.py check`가 `wireview.W023`으로 먼저 알린다:
+`TemplateSyntaxError`로 실패한다. 렌더가 불러올 템플릿에서 클래스 이름을 따옴표로 적은 태그는 `manage.py check`의
+`wireview.W023`이 미리 알린다([범위](https://github.com/itda-work/django-wireview/blob/main/docs/features/checks.md)):
 
 ```html
 {% component 'ChatInput' id="composer" room_id=room.id username=request.user.username %}

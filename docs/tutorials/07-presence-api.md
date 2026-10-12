@@ -67,8 +67,9 @@ Presence는 사용자가 아니라 **브라우저 탭**마다 기록한다. Phoe
 ```
 
 id 없이 그리면(`{% component "ChatInput" room_id=room.id %}`) 그 태그가 `TemplateSyntaxError`로 실패한다 — 페이지의
-첫 렌더에서, 어느 클래스인지와 고치는 법을 적은 문장으로. `manage.py check`가 같은 것을 `wireview.W023`으로 먼저
-알린다(따옴표로 클래스 이름을 적은 태그만 — 이름을 변수로 고르는 태그는 렌더가 알린다). 테스트의 `mount()`도
+첫 렌더에서, 어느 클래스인지와 고치는 법을 적은 문장으로. `manage.py check`의 `wireview.W023`이 그중 찾을 수 있는 것을
+먼저 알린다 — 렌더가 불러올 템플릿에서 클래스 이름을 따옴표로 적은 태그. 전부는 아니다: 이름을 변수로 고르는 태그와
+체크가 찾지 못하는 템플릿은 첫 렌더가 알린다([W023의 범위](../features/checks.md)). 테스트의 `mount()`도
 같다: id 없이 마운트한 프로듀서는 `presence_join()`에서 `ImproperlyConfigured`로 실패하므로 `mount(ChatInput, id="composer")`로
 쓴다. 트래커(`PresenceTrackerMixin`만 쓰는 컴포넌트)에는 id가 필요 없다.
 

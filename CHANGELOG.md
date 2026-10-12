@@ -85,8 +85,12 @@ The django-reactor era changelog (2.x) is preserved in
 - **Breaking:** A presence producer (`PresenceMixin`) is drawn with an id (#212):
   `{% component 'ChatInput' id='composer' %}`. Drawn without one, the `{% component %}` or
   `{% component_block %}` tag raises `TemplateSyntaxError` naming the class and the fix, on the page's first
-  render, and `manage.py check` warns of it first (`wireview.W023`, for a tag that names the class in quotes);
-  `mount()` without an id raises `ImproperlyConfigured` when the producer joins presence. The id names the
+  render. `manage.py check` warns of a tag that names the class in quotes ahead of the render
+  (`wireview.W023`), in the templates a render loads: the one each engine picks by a file's name, the components'
+  and function components' own, and what they include, extend or render. A name picked at render is the
+  render's to tell. `mount()` without an id raises `ImproperlyConfigured` when the producer joins presence. A page
+  open across the deploy keeps its producer until a render draws it again (a reload, or the component that drew it):
+  a producer's signed state does not say who gave its id, so one 1.5 drew without an id still joins. The id names the
   producer's entry on its tab: it tells two producers of one tab apart and carries the entry across a
   reconnect and a redraw. An id the framework makes up is new on every draw, and a sticky default is one for
   the whole class. In 1.5 one drawn without an id worked. A tracker needs no id.

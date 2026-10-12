@@ -118,7 +118,7 @@ class ChatInput(PresenceMixin, Component):
 ```
 
 프로듀서는 **반드시 id를 주어 그린다**: `{% component 'ChatInput' id="composer" %}`. id가 탭 안의 Presence 항목
-이름이라, id 없이 그리면 그 태그가 `TemplateSyntaxError`로 실패한다(`manage.py check`의 `wireview.W023`이 먼저 알린다).
+이름이라, id 없이 그리면 그 태그가 `TemplateSyntaxError`로 실패한다(클래스 이름을 따옴표로 적은 태그는 `manage.py check`의 `wireview.W023`이 미리 알린다 — 이름을 변수로 고르는 태그 등은 첫 렌더가).
 테스트도 `mount(ChatInput, id="composer")` — id 없는 프로듀서는 `presence_join()`에서 `ImproperlyConfigured`다.
 트래커에는 id가 필요 없다.
 

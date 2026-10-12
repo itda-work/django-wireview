@@ -87,8 +87,9 @@ dependencies = ["django-wireview>=1.5,<2"]
     본다. 페이지 템플릿은 그대로 둬도 된다([호환성](./COMPATIBILITY.md#지원-범위)).
 - **깨짐: Presence 프로듀서는 id를 주어 그린다(#212).** `PresenceMixin`을 쓰는 컴포넌트를 id 없이 그리면
   (`{% component 'ChatRoom' room=room %}`, `{% component_block %}`도) 그 태그가 어느 클래스인지와 고치는 법을 적은
-  `TemplateSyntaxError`로 실패한다 — 페이지의 첫 렌더에서. 1.5에서는 동작했다. `manage.py check`가 `wireview.W023`으로
-  먼저 알린다(클래스 이름을 따옴표로 적은 태그만). 테스트의 `mount()`도 id 없는 프로듀서는 `presence_join()`에서
+  `TemplateSyntaxError`로 실패한다 — 페이지의 첫 렌더에서. 1.5에서는 동작했다. `manage.py check`의 `wireview.W023`이
+  렌더가 불러올 템플릿에서 클래스 이름을 따옴표로 적은 태그를 미리 알린다 — 전부는 아니다(이름을 변수로 고르는 태그와
+  체크가 찾지 못하는 템플릿은 첫 렌더가 알린다, [범위](./features/checks.md)). 테스트의 `mount()`도 id 없는 프로듀서는 `presence_join()`에서
   `ImproperlyConfigured`로 실패한다. 트래커(`PresenceTrackerMixin`만)는 그대로다.
   - 왜: Presence는 탭마다, 그 안에서 프로듀서마다 기록하고(아래 [Presence](#presence)) 프로듀서의 항목을 그 id로
     가리킨다. id는 같은 탭의 프로듀서 둘을 가르고, 재연결·다시 그리기에서 같은 항목을 잇는다. 프레임워크가 지어 주는
@@ -96,6 +97,9 @@ dependencies = ["django-wireview>=1.5,<2"]
   - 옮기는 법: `manage.py check`의 W023이 가리키는 태그와 클래스 이름을 변수로 고르는 태그에 페이지 안에서 고유한 id를
     준다 — 방마다 하나면 `id="room-"|concat:room.id`, 한 페이지에 하나면 `id="composer"`. 테스트는
     `mount(ChatRoom, id="room", ...)`.
+  - 배포 전에 열린 페이지: 1.5가 id 없이 그려 서명한 프로듀서의 상태는 1.6의 join을 통과한다 — 서명 상태는 그 id를
+    템플릿이 주었는지 프레임워크가 지었는지 싣지 않는다. 그 태그를 다시 지나는 렌더(새로고침의 HTTP 렌더, 그 프로듀서를 그린
+    컴포넌트의 다시 그리기)는 막으므로, 그 페이지는 그때 오류를 만난다.
 
 ### 보안
 
@@ -219,7 +223,7 @@ dependencies = ["django-wireview>=1.5,<2"]
   하나를 숨겨(`presence_leave()`) 다른 하나가 입장해 있으면 그 사용자는 목록에 남는다. 그래서 프로듀서에는 id가
   있어야 한다(위 [깨짐](#깨짐), [프로듀서는 id로 그린다](./tutorials/07-presence-api.md#프로듀서는-id로-그린다)). 전에는 탭 하나가 떠나면 남은 탭이 있어도 빠졌고, 한 탭의 입력 상태가 다른 탭의
   것을 덮었다. `presence_users`는 그대로 사용자마다 한 항목이고, 탭 중 하나라도 입력 중이면 입력 중이다
-  ([합치는 규칙](./tutorials/07-presence-api.md#탭이-여럿인-사용자)). 템플릿은 고칠 것이 없다.
+  ([합치는 규칙](./tutorials/07-presence-api.md#탭이-여럿인-사용자)). 트래커 템플릿은 고칠 것이 없다.
   - 페이지는 불러올 때 만든 이름을 소켓 URL의 `tab`으로 보내고 재연결해도 같은 이름을 쓴다. 그래서 서버가
     `leaving()` 없이 끝나도(daphne·Granian의 종료, 크래시) 다른 프로세스로 재연결한 탭의 입장이 남은 항목을 덮고, 그
     탭이 닫힐 때 빠진다. **재연결하지 않은 탭의 항목은 남는다** — 1.5까지도 있던 한계다. 퇴장을 놓치지 않으려면
