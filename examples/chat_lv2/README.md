@@ -25,10 +25,11 @@
 - 컴포넌트 이름(`Lv2ChatRoom`, `Lv2MessageList`, `Lv2OnlineUsers`), 앱 label, 템플릿 디렉터리(`chat_lv2/`),
   URL(`/chat-lv2/`, namespace `chat_lv2`), 토픽 접두사(`chat_lv2.`)가 chat과 겹치지 않는다
 
-전체 차이는 저장소 루트에서 이렇게 본다.
+전체 차이는 저장소 루트에서 이렇게 본다. 커밋된 파일끼리 비교하므로 `__pycache__`나 생성된 `.pyi`가 섞이지 않고,
+어느 셸에서나 같은 한 줄이다.
 
-```bash
-diff -r -x __pycache__ -x '*.pyi' examples/chat examples/chat_lv2
+```shell
+git diff HEAD:examples/chat HEAD:examples/chat_lv2
 ```
 
 ## 무엇을 보여주나
