@@ -60,7 +60,7 @@ HERE = Path(__file__).resolve().parent
 TEMPLATES = HERE / "templates"
 ASSETS = HERE / "assets"
 DEFAULT_OUT = nav.ROOT / "build" / "docs-site"
-URL_LIST = Path("docs") / "site-urls.txt"
+URL_LIST = "docs/site-urls.txt"  # as messages print it, on every platform
 
 COMPRESSED = (".html", ".md", ".css", ".js", ".xml", ".txt")
 
@@ -467,14 +467,14 @@ def check_urls(root: Path, served: set[str], redirected: set[str], update: bool)
         listing.write_text("".join(f"{url}\n" for url in sorted(listed)), encoding="utf-8")
     problems = [
         Problem(
-            str(URL_LIST),
+            URL_LIST,
             f"{url} is no longer served: move it in docs/redirects.toml (a public URL never disappears)",
         )
         for url in sorted(listed - expected)
     ]
     problems += [
         Problem(
-            str(URL_LIST),
+            URL_LIST,
             f"{url} is new: add it to {URL_LIST} (python -m scripts.docs_site build --update-urls)",
         )
         for url in sorted(expected - listed)

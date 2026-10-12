@@ -36,9 +36,10 @@ class Example:
 
     @property
     def media(self) -> str | None:
-        path = f"demo/media/{self.slug}.webp"
-        # A prefixed STATICFILES_DIRS entry is matched with os.sep: on Windows "demo/media/…" finds nothing
-        return static(path) if finders.find(path.replace("/", os.sep)) else None
+        # A prefixed STATICFILES_DIRS entry matches its prefix as written followed by os.sep: on
+        # Windows neither "demo/media/<slug>.webp" nor "demo\\media\\<slug>.webp" finds the file
+        found = finders.find(f"demo/media{os.sep}{self.slug}.webp")
+        return static(f"demo/media/{self.slug}.webp") if found else None
 
 
 EXAMPLES = (
