@@ -16,6 +16,8 @@
 앞문은 셋 중 하나다 — 위의 Cloudflare Tunnel, [직접 공개 모드](#직접-공개-모드)(호스트의 Caddy가 80·443을 받아
 web의 `:8081`로), 또는 [NAS 리버스 프록시 뒤](#nas-리버스-프록시-뒤)(NAS가 TLS를 끝내고 호스트의 Caddy가 LAN의 8091에서 받아
 같은 `:8081`로). web은 두 포트를 함께 듣고 포트마다 자기 앞문의 헤더만 믿으므로, 터널과 다른 하나가 동시에 돌 수 있다.
+2026-10-12부터 운영하는 앞문은 NAS 리버스 프록시 뒤다 — 터널은 방문자를 SEA 엣지로 돌려 왕복마다 1초 가까이 걸렸고,
+한국의 방문자에게 이 회선에서 바로 응답하면 todo의 Enter부터 항목이 그려지기까지 수십 ms다.
 
 | 서비스 | 이미지 | 하는 일 |
 |------|------|------|
@@ -260,7 +262,7 @@ brew services start caddy             # 로그인 때 뜬다. 로그 /opt/homebr
 `Caddyfile.direct`의 기본값(`wireview-demo.itda.work`)이다. macOS 방화벽이 켜져 있으면 caddy의 수신을 허용한다
 (`/usr/libexec/ApplicationFirewall/socketfilterfw --add /opt/homebrew/opt/caddy/bin/caddy --unblockapp`, sudo).
 
-공유기: 2021 머신(`192.168.10.197`, DHCP 예약으로 고정)으로 TCP 80, TCP 443, UDP 443(HTTP/3)을 넘긴다. 80은 Let's Encrypt의
+공유기: 2021 머신(`192.168.10.203`, DHCP 예약으로 고정)으로 TCP 80, TCP 443, UDP 443(HTTP/3)을 넘긴다. 80은 Let's Encrypt의
 HTTP-01 검증과 https 리다이렉트에 쓰인다.
 
 ### 터널에서 옮기기
@@ -359,7 +361,7 @@ cd demo && docker compose -f compose.yaml -f compose.direct.yaml down
 
 ```
 인터넷 ─ 공유기(TCP 80·443) ─▶ NAS 192.168.10.102(DSM 리버스 프록시: TLS, X-Real-IP $remote_addr)
-                                └▶ 192.168.10.197:8091 ─ 2021 머신의 Caddy(Caddyfile.proxy)
+                                └▶ 192.168.10.203:8091 ─ 2021 머신의 Caddy(Caddyfile.proxy)
                                      └▶ 127.0.0.1:8081 ─(colima 포워더)─▶ web(Caddy :8081) ─▶ app …
 ```
 
@@ -405,7 +407,7 @@ cd demo && docker compose -f compose.yaml -f compose.direct.yaml down
 | 일반 | 리버스 프록시 이름 | `wireview-demo` |
 | 일반 | 소스: 프로토콜 / 호스트 이름 / 포트 | `HTTPS` / `wireview-demo.itda.work` / `443` |
 | 일반 | 소스: HSTS 활성화 | 끈다 — Django가 이미 보낸다(`max-age` 30일) |
-| 일반 | 대상: 프로토콜 / 호스트 이름 / 포트 | `HTTP` / `192.168.10.197` / `8091` |
+| 일반 | 대상: 프로토콜 / 호스트 이름 / 포트 | `HTTP` / `192.168.10.203` / `8091` |
 | 사용자 정의 헤더 | 만들기 → WebSocket | `Upgrade` `$http_upgrade`, `Connection` `$connection_upgrade`가 들어간다 |
 | 사용자 정의 헤더 | 만들기(직접) | `X-Real-IP` `$remote_addr` |
 | 사용자 정의 헤더 | 만들기(직접) | `X-Forwarded-Proto` `https` |
@@ -439,13 +441,17 @@ lsof -nP -iTCP:8091 -sTCP:LISTEN      # caddy, *:8091
 macOS 방화벽이 켜져 있으면 caddy의 수신을 허용한다(직접 공개 모드와 같은 명령). 포트는 `Caddyfile.proxy`의 기본값 8091을
 그대로 쓴다 — Homebrew의 서비스에는 `DEMO_PROXY_PORT`가 닿지 않는다. 바꾸려면 그 기본값과 DSM의 대상 포트를 함께 고친다.
 
-공유기는 손대지 않는다: 80·443은 NAS로 간다. 2021 머신(`192.168.10.197`)과 NAS(`192.168.10.102`)는 DHCP 예약으로 고정한다.
+공유기의 포트 포워딩은 손대지 않는다: 80·443은 NAS로 간다. 2021 머신(`192.168.10.203`)과 NAS(`192.168.10.102`)는 DHCP 예약으로
+고정한다. 예약은 MAC에 묶이므로 2021 머신의 Wi-Fi 설정에서 이 네트워크의 **개인 Wi-Fi 주소를 끈다**(하드웨어 MAC
+`F8:4D:89:86:EF:0D`). 켜 두면 macOS가 주소를 바꿀 때마다 새 IP를 받아 DSM의 대상이 빈 주소를 가리킨다(502) — #214에서 .161,
+.197, .203으로 바뀌며 같은 NAS의 다른 규칙들까지 함께 깨졌다. 공유기의 DHCP 설정을 적용하면 무선이 다시 시작되어 LAN의
+기기들이 잠시 끊긴다.
 
 LAN 안에서 먼저 확인한다(DNS를 바꾸기 전):
 
 ```bash
 # 2021 머신에서: NAS가 아니므로 403이어야 한다 (LAN 주소로 붙는다 — 127.0.0.1은 NAS가 아니다)
-python3 -c "import urllib.request as u; u.urlopen('http://192.168.10.197:8091/')"   # HTTPError 403
+python3 -c "import urllib.request as u; u.urlopen('http://192.168.10.203:8091/')"   # HTTPError 403
 ```
 
 NAS에서 8091로 닿는지는 DSM의 규칙을 만든 뒤 아래 5번에서 본다.
@@ -456,14 +462,18 @@ NAS에서 8091로 닿는지는 DSM의 규칙을 만든 뒤 아래 5번에서 본
 뒤에 터널을 정리한다. 다른 것은 인증서를 받는 곳(NAS)뿐이다.
 
 1. 위 "2021 머신에서 켜기 (NAS 뒤)"와 DSM의 리버스 프록시 규칙을 만든다(인증서는 아직 없다 — DSM의 기본 인증서로 응답한다).
-2. DNS 레코드를 바꾼다: 직접 공개 모드 3번 그대로 — `wireview-demo` CNAME을 **A** `121.159.177.248`, **DNS only**(회색 구름),
-   TTL 1분으로. (a) 대시보드의 Public Hostname은 **지우지 않는다**. AAAA는 두지 않는다.
+2. DNS 레코드를 바꾼다: `wireview-demo`(터널, Proxied)를 **CNAME** `itda-work.synology.me`, **DNS only**(회색 구름)로.
+   NAS의 Synology DDNS 이름이라 회선의 공인 주소가 바뀌어도 따라간다 — 같은 NAS 뒤의 `git`·`yul-mc`와 같고, 이 모드에는
+   `ddns` 서비스가 필요 없다. (a) 대시보드의 Public Hostname은 **지우지 않는다**. AAAA는 두지 않는다.
+   대시보드 페이지 안에서 `/api/v4`에 쓰는 요청은 Cloudflare의 보호 규칙에 403(HTML)으로 막힌다 — 편집 화면으로 바꾼다.
 3. 곧바로 DSM에서 Let's Encrypt 인증서를 받고(위 "DSM 설정"의 1번) 리버스 프록시 항목에 할당한다(2번). 2번부터 여기까지가
    새 응답(A)을 받은 방문자의 인증서 오류 구간이다 — 손으로 하는 만큼 걸린다(보통 1~2분).
 4. 밖(휴대폰 테더링 등)에서 `uv run python demo/smoke.py https://wireview-demo.itda.work --out /tmp/demo-smoke`. 응답에 `cf-ray`가
    없어야 한다. 2021 머신의 Caddy 로그(`/opt/homebrew/var/log/caddy.log`)에서 `remote_ip`는 모두 `192.168.10.102`(NAS)이고
    `client_ip`가 방문자들의 공인 주소여야 한다. `client_ip`도 모두 `192.168.10.102`이면 DSM이 `X-Real-IP`를 보내지 않는 것이다 —
    모든 방문자가 한 사람으로 한도에 걸린다. 사용자 정의 헤더를 고치거나 되돌린다.
+   LAN 안에서 공인 이름으로 들어온 요청은 공유기가 주소를 바꿔 넘기므로(NAT 루프백) `client_ip`가 `192.168.10.1`이다 —
+   집 안의 기기들은 한 방문자로 센다. 밖의 방문자는 각자의 공인 주소다.
 5. 직접 공개 모드 6·7번처럼 10분 기다린 뒤 `docker compose stop cloudflared`, (a)면 그다음 Public Hostname을 지운다.
 
 되돌리기: 터널을 띄우고(`--profile tunnel up -d`) A를 터널의 CNAME(Proxied)으로 바꾼 뒤(직접 공개 모드의 되돌리기 1·2번), 5분 뒤
