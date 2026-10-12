@@ -119,8 +119,10 @@ The django-reactor era changelog (2.x) is preserved in
   reason `error`, and from an event or a mail, `raised; joining it again` and a second write that raised out of the
   consumer (#216). A frame the server refuses for a socket that is gone (an `OSError`, or anything once the server
   handed over `websocket.disconnect`) is now `ConnectionGone`: the session stops handling that message, the
-  adapter logs one DEBUG line, and nothing more is written to the socket -- nor a close frame. A component that
-  raises while joining is still `Could not join` at ERROR.
+  adapter logs one DEBUG line, and nothing more is written to the socket -- nor a close frame. Only the send is the
+  socket's: an error raised while a frame is encoded is the session's. A close Uvicorn's websockets-sansio refuses
+  because the page's close frame came first is quiet too. A component that raises while joining is still
+  `Could not join` at ERROR.
 - The todo example left what was typed in its input after Enter added it (#213): `add()` leaves the redraw to `mutation()`,
   whose render does not answer the Enter, and a second Enter added the item again. It empties it with `push_js`.
 - The rating example's distribution bars never showed (#213): their width was `count|divisibleby:total`, a yes or

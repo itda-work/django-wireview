@@ -36,6 +36,21 @@ def _hearing_the_end(receive: t.Any, socket: ChannelsOutbound) -> t.Any:
     return hearing
 
 
+def _refused_a_close(error: RuntimeError) -> bool:
+    """Whether Uvicorn refused a ``websocket.close`` because the socket had already closed (#216).
+
+    This sends a close once (``WireviewConsumer.close``), so a server refusing
+    that one says the peer closed first, before the receive heard it. Uvicorn's
+    websockets-sansio, its transport closing on the page's close frame, says
+    "Expected ... 'websocket.send' or 'websocket.close', but got 'websocket.close'";
+    its other implementations, once they count the socket closed, "Unexpected
+    ASGI message 'websocket.close', after sending 'websocket.close' ...". Any
+    other ``RuntimeError`` is the server's to report.
+    """
+    said = str(error)
+    return "but got 'websocket.close'" in said or said.startswith("Unexpected ASGI message 'websocket.close'")
+
+
 class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
     """The Channels WebSocket adapter of a ``WireviewSession``.
 
@@ -79,6 +94,10 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
         try:
             await super().close(code=code, reason=reason)
         except OSError as error:
+            log.debug("Connection %s was gone before it closed: %r", self.connection_id, error)
+        except RuntimeError as error:
+            if not _refused_a_close(error):
+                raise
             log.debug("Connection %s was gone before it closed: %r", self.connection_id, error)
 
     @property

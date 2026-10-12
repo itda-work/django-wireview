@@ -492,14 +492,18 @@ class ChannelsOutbound:
         self.gone = False
 
     async def send_command(self, command: str, payload: Message) -> None:
-        await self._write(self._consumer.send_json({"command": command, "payload": payload}))
+        # Encoded before the write: an error of the payload's is not the socket's
+        text = await self._consumer.encode_json({"command": command, "payload": payload})
+        await self.send_text(text)
 
     async def send_text(self, text: str) -> None:
         await self._write(self._consumer.send(text_data=text))
 
     async def _write(self, sending: t.Coroutine[t.Any, t.Any, None]) -> None:
-        """Await ``sending``; ``ConnectionGone`` when the socket is gone (#216).
+        """Await ``sending``, the ASGI send of a frame; ``ConnectionGone`` when the socket is gone (#216).
 
+        Only the send: an ``OSError`` raised while encoding the frame is the
+        session's (``send_command`` encodes it first).
         A server refuses a frame for a socket the page has left: the ASGI spec
         has it raise an ``OSError`` (Uvicorn's ``ClientDisconnected``). Once its
         receive has seen the close, Uvicorn raises a ``RuntimeError`` instead,

@@ -315,13 +315,13 @@ class _Consumer:
         self.error = error
         self.sent: list[t.Any] = []
 
-    async def send_json(self, content):
-        if self.error is not None:
-            raise self.error
-        self.sent.append(content)
+    async def encode_json(self, content):
+        return json.dumps(content)
 
     async def send(self, text_data=None):
-        await self.send_json(text_data)
+        if self.error is not None:
+            raise self.error
+        self.sent.append(text_data)
 
 
 @pytest.mark.unit
@@ -353,6 +353,87 @@ async def test_any_other_refusal_is_the_sessions_to_report():
     with pytest.raises(RuntimeError, match="something else"):
         await outbound.send_command("render", {})
     assert not outbound.gone
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_an_oserror_while_encoding_is_not_a_gone_socket():
+    """Only the ASGI send is the socket's: a payload that raises an ``OSError`` as it is encoded is the session's."""
+
+    class FileBackedPayload(dict):
+        def items(self):
+            raise FileNotFoundError("the payload's source is missing")
+
+    consumer = WireviewConsumer()
+    sent: list[t.Any] = []
+
+    async def send(message):
+        sent.append(message)
+
+    consumer.base_send = send
+    with pytest.raises(FileNotFoundError):
+        await consumer.outbound.send_command("push_event", {"payload": FileBackedPayload(value=1)})
+    assert not consumer._socket.gone
+    assert sent == []
+
+    await consumer.outbound.send_command("push_event", {"payload": {"value": 1}})
+    assert [message["type"] for message in sent] == ["websocket.send"]
+
+
+def _sansio_closing() -> t.Any:
+    """Uvicorn's websockets-sansio protocol after ``handle_close``: the page's close frame closed its transport.
+
+    The disconnect it queued is not received yet -- the consumer is still on a
+    message -- so nothing has marked the socket gone.
+    """
+    from unittest.mock import Mock
+
+    from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
+
+    protocol = object.__new__(WebSocketsSansIOProtocol)
+    protocol.writable = asyncio.Event()
+    protocol.writable.set()
+    protocol.handshake_complete = True
+    protocol.initial_response = None
+    protocol.close_sent = False
+    protocol.transport = Mock()
+    protocol.transport.is_closing.return_value = True
+    return protocol
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_closing_a_socket_the_page_closed_before_it_was_heard_is_quiet(caplog):
+    caplog.set_level(logging.DEBUG, logger="wireview")
+    protocol = _sansio_closing()
+    consumer = WireviewConsumer()
+    consumer.base_send = protocol.send
+
+    await consumer.close(code=1013)
+
+    protocol.transport.write.assert_not_called()
+    assert consumer._socket.gone
+    assert [r.levelno for r in caplog.records if "before it closed" in r.getMessage()] == [logging.DEBUG]
+
+    # Closed from a task of its own (falling behind, a mailbox overflowing), it leaves no exception unretrieved
+    other = WireviewConsumer()
+    other.base_send = _sansio_closing().send
+    closing = asyncio.ensure_future(other.close(code=1013))
+    await closing
+    assert closing.exception() is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_a_close_refused_for_another_reason_is_raised():
+    consumer = WireviewConsumer()
+
+    async def send(message):
+        raise RuntimeError("something else")
+
+    consumer.base_send = send
+    with pytest.raises(RuntimeError, match="something else"):
+        await consumer.close(code=1013)
 
 
 # --- the real servers -------------------------------------------------------

@@ -4,6 +4,7 @@ import typing as t
 from unittest.mock import ANY, AsyncMock
 
 import pytest
+from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from wireview import Component
 from wireview.core import transport
@@ -74,13 +75,15 @@ async def test_channels_broker_maps_topics_to_groups_and_sessions_to_channels():
 async def test_channels_outbound_sends_json_frames_and_group_membership():
     consumer = AsyncMock()
     consumer.channel_name = "specific.abc"
+    consumer.encode_json = AsyncJsonWebsocketConsumer.encode_json
     outbound = ChannelsOutbound(consumer)
 
     await outbound.send_command("render", {"id": "x", "diff": {"0": "1"}})
     await outbound.subscribe("orders")
     await outbound.unsubscribe("orders")
 
-    consumer.send_json.assert_awaited_once_with({"command": "render", "payload": {"id": "x", "diff": {"0": "1"}}})
+    frame = '{"command": "render", "payload": {"id": "x", "diff": {"0": "1"}}}'
+    consumer.send.assert_awaited_once_with(text_data=frame)
     consumer.channel_layer.group_add.assert_awaited_once_with("orders", "specific.abc")
     consumer.channel_layer.group_discard.assert_awaited_once_with("orders", "specific.abc")
 

@@ -23,7 +23,9 @@
 수신 쪽이 먼저 끊김을 읽은 뒤에는 `RuntimeError`를 던지고, Daphne는 말없이 버린다. wireview는 이것을
 애플리케이션의 예외와 가른다 — 송신이 `OSError`로 거절됐거나 서버가 이미 `websocket.disconnect`를 넘겼으면
 `ConnectionGone`이다. 그것은 위 표의 복구(다시 join, `Could not join`)를 지나쳐 올라가고 어댑터가
-`Connection … left before … was answered`를 DEBUG로 남긴다. 컴포넌트가 던진 예외는 전과 같이 ERROR다.
+`Connection … left before … was answered`를 DEBUG로 남긴다. 가르는 것은 송신뿐이다 — 프레임을 JSON으로
+만드는 동안 난 `OSError`는 애플리케이션의 것이다. 페이지가 먼저 닫은 소켓에 보내는 close를 서버가 거절해도
+(Uvicorn websockets-sansio의 `RuntimeError`) DEBUG 한 줄이다. 컴포넌트가 던진 예외는 전과 같이 ERROR다.
 
 ### 다시 join하면 이벤트 전으로 돌아간다
 
