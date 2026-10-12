@@ -101,12 +101,15 @@ The django-reactor era changelog (2.x) is preserved in
   mail: InMemory refused it (`ChannelFull`, logged and reported as `publish_failed`), channels_redis pushed
   it out of a full receive buffer without a word. A stream stayed short, a hook never heard its event, a
   component stayed stale or frozen for good, and a join's held patches waited until the connection closed.
-  The connection now keeps a copy of each mail until the layer brings it back: one the layer refused is
-  handled in a turn of its own right after the message being handled, behind the mails sent before it; one a
-  later mail overtook is handled first; one that stayed away for 5 seconds (`MAIL_SECONDS`) while nothing was
-  being handled is handled from the copy. A copy the layer brings after that is dropped. Mail still goes
-  through the layer, so its order against the notifications is what it was, save on a channel that
-  overflowed.
+  The connection now keeps a copy of each mail until it is handled, and handles mail only in its own turns
+  and in the order it was sent: one the layer refused, or one that stayed away for 5 seconds
+  (`MAIL_SECONDS`) while nothing was being handled, is marked due for the next turn, which takes it from the
+  copy behind the mails sent before it; a later mail the channel brings first takes the ones before it
+  ahead of itself. Each mail a turn takes goes through the consumer's own handling of a message, Channels'
+  database connection cleanup included. A copy the layer brings after that is dropped. At most 1,000 mails
+  or 16 MiB of copies (`MAIL_LIMIT`, `MAIL_BYTES`) are kept; past that the connection closes with 1013 and
+  the page joins again. Mail still goes through the layer, so its order against the notifications is what
+  it was, save for a mail handled from its copy, which loses its place among them.
 - Django's `{% querystring %}` works in a component's template (#210). It reads `context.request.GET`, and a
   component's template renders with a context of its own, never the page's `RequestContext`: it raised
   `AttributeError` on the first HTTP render and on every live render, where the join failed. Both renders now

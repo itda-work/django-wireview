@@ -48,7 +48,7 @@ from .core.rendered import (
 )
 from .core.session import SessionView
 from .core.state import StateMismatch, StatePayload, unsign_envelope
-from .core.transport import PATCH_TOPIC_MAX, Mailbox, Outbound, get_broker, get_patch_hub, send_mail
+from .core.transport import MAIL_DUE, PATCH_TOPIC_MAX, Mailbox, Outbound, get_broker, get_patch_hub, send_mail
 from .debug import render_queries
 from .features import presence, upload_store
 from .features.uploads import upload_group_name
@@ -288,7 +288,8 @@ class WireviewSession:
         self._invalidating: asyncio.Future[None] | None = None
         # The copies of its own mail, set by an adapter whose channel layer may drop it (#211)
         self._mailbox: Mailbox | None = None
-        self._handing_over: set[asyncio.Future[None]] = set()
+        # The one task that takes the mail the mailbox found dropped, in the adapter's turns
+        self._handing_over: asyncio.Future[None] | None = None
         # Whether a render retired a component since the subscriptions were last
         # settled: a nested one its drawer's pass stopped drawing hears no more (#204)
         self._retired_in_render: bool = False
@@ -1508,34 +1509,69 @@ class WireviewSession:
     # Component commands
 
     async def message_from_component(self, data):
+        if data.get("here") and self._mailbox is not None and self._mailbox.closed:
+            # Taken in a turn with others, and the connection ended before this one's
+            return
+        await self._take_mail(data)
+
+    def in_turn(self, message: dict[str, t.Any]) -> list[dict[str, t.Any]]:
+        """What the adapter handles in the turn it took ``message`` for, in order, each as a message of its own.
+
+        ``message`` itself, but for mail when a ``transport.Mailbox`` keeps it
+        (#211): one from the channel brings the mails sent before it that are
+        still away -- or is nothing, handled already -- and ``MAIL_DUE`` is the
+        turn ``hand_over`` asked for, which takes the mails found dropped. Each
+        goes through the adapter's own handling of a message, the one Channels'
+        ``dispatch`` gives a message from the channel: ``aclose_old_connections``
+        before it, ``handling_message`` around it.
+        """
         mailbox = self._mailbox
         if mailbox is None:
-            await self._take_mail(data)
-            return
-        if data.get("here") and mailbox.closed:
-            # Handed over, and the connection ended while it waited, as its channel would have
-            return
-        # What the layer dropped before it, then it -- or nothing, handled already (#211)
-        for mail in mailbox.came(data):
-            await self._take_mail(mail)
+            return [] if message.get("type") == MAIL_DUE else [message]
+        if message.get("type") == MAIL_DUE:
+            return mailbox.due()
+        if message.get("type") == "message_from_component" and not message.get("here"):
+            return mailbox.came(message)
+        return [message]
 
-    def hand_over(self, mail: dict[str, t.Any]) -> None:
-        """``transport.Mailbox``: a mail of this session's the layer dropped, to handle in a turn of its own (#211).
+    def hand_over(self) -> None:
+        """``transport.Mailbox``: a mail of this session's was found dropped, to handle in a turn of its own (#211).
 
-        Through the adapter's ``dispatch``, as the channel's messages are: the
-        next turn once the message being handled is done.
+        One task per connection takes them, through the adapter's ``dispatch``
+        as the channel's messages are: a turn once the message being handled is
+        done. A mail the channel brings first may take them in its own turn.
         """
-        task = asyncio.ensure_future(self._take_handed_over(mail))
-        self._handing_over.add(task)
-        task.add_done_callback(self._handing_over.discard)
+        if self._handing_over is None or self._handing_over.done():
+            self._handing_over = asyncio.ensure_future(self._take_handed_over())
 
-    async def _take_handed_over(self, mail: dict[str, t.Any]) -> None:
-        try:
-            await self.dispatch(mail)  # type: ignore[attr-defined]
-        except Exception:
-            # Raised out of the adapter's loop it would have ended the connection
-            log.exception("Handling the mail %r on %s raised", mail.get("command"), self.connection_id)
-            await self.close(code=1011)
+    async def _take_handed_over(self) -> None:
+        mailbox = self._mailbox
+        while mailbox is not None and mailbox.has_due:
+            try:
+                await self.dispatch({"type": MAIL_DUE})  # type: ignore[attr-defined]
+            except Exception:
+                # Raised out of the adapter's loop it would have ended the connection
+                log.exception("Handling the mail of %s found dropped raised", self.connection_id)
+                await self.close(code=1011)
+                return
+
+    def mail_overflowed(self) -> None:
+        """``transport.Mailbox``: more of this session's mail was away than it keeps. Close rather than drop (#211).
+
+        Dropped, a list would stay short or a hold shut without a word. Closed,
+        the page reconnects and joins again, its lists read afresh -- as when
+        Broadcast patches pile up (``_fell_behind``).
+        """
+        self._close_patches()
+        self._patch_closing = asyncio.ensure_future(self.close(code=1013))
+
+    async def stop_handing_over(self) -> None:
+        """The connection ended: the task taking mail found dropped goes with it."""
+        task = self._handing_over
+        if task is None or task.done() or task is asyncio.current_task():
+            return
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
 
     async def _take_mail(self, data):
         handler = getattr(self, f"component_{data['command']}", None)

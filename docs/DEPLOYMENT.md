@@ -572,9 +572,11 @@ def rendered(sender, component_name, duration_ms, **kwargs):
 
 같은 채널에는 연결이 **자기에게 보내는 메일**(스트림 연산, `push_event`, JS, `defer()`, `joined`, 잡아 둔 패치의 해제 등)도
 선다. 그것은 버려도 잃지 않는다(#211): 연결이 사본을 지니고 있다가, 레이어가 거절하면 바로 다음 차례에, 말없이 버리면
-뒤 메일이 먼저 오거나 5초 동안 아무것도 처리하지 않을 때 그 사본을 처리한다. 그래서 `publish_failed`의
-`kind="send_to_session"`, `dropped=True`는 그 연결이 밀리고 있다는 신호이지 메일을 잃었다는 뜻이 아니다. 말없이 버린 것을
-되찾을 때는 `wireview` 로거에 WARNING(`... did not come ...`)이 남는다. 형식은 [wire protocol](./implementation/wire-protocol.md#4-session-mail-컴포넌트--세션).
+뒤 메일이 먼저 오거나 5초 동안 아무것도 처리하지 않을 때 그 사본을 처리한다. 메일끼리는 보낸 순서 그대로지만, 사본으로
+처리한 메일은 알림과의 자리를 잃는다. 그래서 `publish_failed`의 `kind="send_to_session"`, `dropped=True`는 그 연결이 밀리고
+있다는 신호이지 메일을 잃었다는 뜻이 아니다. 말없이 버린 것을 되찾을 때는 `wireview` 로거에 WARNING(`... did not come ...`)이
+남는다. 사본에는 상한이 있다 — 처리되지 않은 메일이 1000개(`MAIL_LIMIT`)나 16 MiB(`MAIL_BYTES`)를 넘으려 하면 연결을 닫고(1013,
+WARNING `... past MAIL_LIMIT ...`) 페이지가 다시 join한다. 핸들러 하나가 항목을 하나씩 수백 개 넣는다면 `stream()`에 목록으로 넘긴다. 형식은 [wire protocol](./implementation/wire-protocol.md#4-session-mail-컴포넌트--세션).
 
 버려진 브로드캐스트는 오류가 아니라 **낡은 화면**으로 남는다. 다음에 그 컴포넌트가 렌더될 때(다음 알림이나
 사용자 이벤트) 템플릿이 원천에서 다시 읽는 값은 맞아지지만, 들은 것을 상태에 더해 가는 컴포넌트(채팅 목록에

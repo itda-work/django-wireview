@@ -204,7 +204,9 @@ NO_UPGRADE_NOTE = {
     "A nested `{% component %}` a render drew that the page has yet to join goes": (
         "화면에 없는 인스턴스가 사라질 뿐 할 일이 없다"
     ),
-    "A session's mail to itself is no longer lost to a full channel": "잃던 메일을 잃지 않을 뿐 할 일이 없다",
+    "A session's mail to itself is no longer lost to a full channel": (
+        "잃던 메일을 잃지 않을 뿐 할 일이 없다. 상한을 넘는 메일은 전에도 잃던 것이고 이제는 페이지가 다시 join한다"
+    ),
     "A logout closes a busy connection on the login that ended": "닫혀야 할 연결이 닫힐 뿐 할 일이 없다",
 }
 

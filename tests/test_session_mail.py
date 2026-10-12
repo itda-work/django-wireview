@@ -38,7 +38,7 @@ from wireview.core import transport
 from wireview.core.meta import WireviewMeta
 from wireview.core.rendered import PROTOCOL_VERSION
 from wireview.core.state import sign_state
-from wireview.core.transport import ChannelsBroker
+from wireview.core.transport import ChannelsBroker, Mailbox
 from wireview.utils import _message
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio, pytest.mark.django_db]
@@ -437,6 +437,136 @@ async def test_a_session_not_served_here_is_mailed_through_the_broker_alone():
     channel = await layer.new_channel()
     assert await transport.send_mail(broker, channel, {"type": "message_from_component", "n": 1}) is True
     assert await transport.send_mail(broker, channel, {"type": "message_from_component", "n": 2}) is False
+
+
+# --- the turns mail is handled in, and what it may keep -------------------------------------
+
+
+class _Probe(WireviewConsumer):
+    """A consumer that records the mail it takes and how it closes; nothing else of a session runs."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.connection_id = "probe"
+        self.seen: list[t.Any] = []
+
+    async def _take_mail(self, data):
+        self.seen.append(data.get("kwargs", {}).get("op") or data["command"])
+
+    async def close(self, code=None):
+        self.seen.append(("close", code))
+
+
+def _box(probe: _Probe, channel: str) -> Mailbox:
+    probe._mailbox = Mailbox(channel, probe.hand_over, lambda: probe.handling > 0, probe.mail_overflowed)
+    return probe._mailbox
+
+
+def _stream_op(op: str, html: str = "") -> dict[str, t.Any]:
+    return {"type": "message_from_component", "command": "stream_op", "kwargs": {"op": op, "html": html}}
+
+
+@pytest.mark.unit
+async def test_a_mail_found_overdue_is_still_handled_before_a_later_one_the_channel_brings_first():
+    """The timer only marks a mail due: a turn the channel's next mail takes first handles it ahead of that one.
+
+    A reset handled after the insert sent behind it would wipe the inserted item.
+    """
+    probe = _Probe()
+    box = _box(probe, "probe")
+    layer = InMemoryChannelLayer(capacity=100)
+    broker = ChannelsBroker(layer)
+    loop = asyncio.get_running_loop()
+    try:
+        await box.send(broker, _stream_op("reset"))
+        late = await layer.receive("probe")  # very late: it comes after all of this
+        await box.send(broker, _stream_op("insert"))
+        insert = await layer.receive("probe")
+        # The reset has been away MAIL_SECONDS with nothing handled. Its timer
+        # fires, and in the same tick the channel brings the insert.
+        kept, _, size = box._away[1]
+        box._away[1] = (kept, loop.time() - transport.MAIL_SECONDS, size)
+        assert box._timer is not None
+        box._timer.cancel()
+        box._timer = None
+        loop.call_soon(box._overdue)
+        await asyncio.ensure_future(probe.dispatch(insert))
+        await eventually(lambda: probe._handing_over is not None and probe._handing_over.done())
+        await probe.dispatch(late)
+    finally:
+        box.close()
+
+    assert probe.seen == ["reset", "insert"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(("limit", "html"), [("MAIL_LIMIT", ""), ("MAIL_BYTES", "x" * 10_000)], ids=["count", "bytes"])
+async def test_mail_a_held_turn_cannot_take_is_kept_up_to_a_bound_and_then_the_connection_closes(
+    monkeypatch, limit, html
+):
+    """A handler that mails on and on into a channel it fills: the copies stop at the bound, then 1013.
+
+    One task waits for the turn, however many mails it will take.
+    """
+    monkeypatch.setattr(transport, "MAIL_LIMIT", 50)
+    monkeypatch.setattr(transport, "MAIL_BYTES", 16 * 1024 * 1024 if limit == "MAIL_LIMIT" else 200_000)
+    probe = _Probe()
+    box = _box(probe, "full")
+    layer = InMemoryChannelLayer(capacity=1)
+    broker = ChannelsBroker(layer)
+    await layer.send("full", {"type": "occupied"})
+    # A handler is running: the connection takes nothing from its channel
+    await probe._turn.acquire()
+    probe.handling = 1
+    kept: list[int] = []
+    try:
+        for _ in range(10_000):
+            await box.send(broker, _stream_op("insert", html))
+            kept.append(len(box._away))
+        waiting = [task for task in asyncio.all_tasks() if task.get_coro().__name__ == "_take_handed_over"]
+    finally:
+        probe.handling = 0
+        probe._turn.release()
+    await eventually(lambda: ("close", 1013) in probe.seen)
+    await eventually(lambda: probe._handing_over.done())
+
+    assert max(kept) <= 50 and box.closed and not box._away
+    assert len(waiting) == 1
+    # Closed, the page joins again: nothing is handled from the copies
+    assert probe.seen == [("close", 1013)]
+
+
+async def test_the_task_taking_dropped_mail_ends_with_the_connection(small_channels, settings):
+    """It waits for the turn of a handler that never ends; the connection ends instead, and the task with it."""
+    from wireview.core import template_reload
+
+    settings.WIREVIEW = {**getattr(settings, "WIREVIEW", {}), "REJOIN_ON_TEMPLATE_CHANGE": True}
+    communicator = await _connect()
+    HELD["until"] = asyncio.Event()
+    session = None
+    try:
+        await _join(communicator, SmBox, "box")
+        session = next(iter(template_reload._sessions))  # type: ignore[attr-defined]
+        await _event(communicator, "box", "hold")
+        await eventually(lambda: session.handling)
+        await _fill(session.channel_name)
+        await transport.send_mail(
+            ChannelsBroker(),
+            session.channel_name,
+            {"type": "message_from_component", "command": "template_changed", "kwargs": {}},
+        )
+        task = session._handing_over
+        assert task is not None and not task.done()
+    finally:
+        # The handler never ends: the app is cancelled, as a server cancels it on its way down
+        await communicator.disconnect(timeout=0.5)
+        HELD["until"].set()
+        # Cancelled, it never ran disconnect(): the tests after this find their own session
+        if session is not None:
+            template_reload.unregister(session)
+
+    assert task.cancelled()
+    assert session is not None and session._mailbox is not None and session._mailbox.closed
 
 
 # --- a logout, which no copy can stand in for -------------------------------------------------

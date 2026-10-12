@@ -46,6 +46,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
         finally:
             if self._mailbox is not None:
                 close_mailbox(self._mailbox)
+            await self.stop_handing_over()
 
     @property
     def user(self):
@@ -70,7 +71,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
     async def connect(self):
         if self._serving and self.channel_name:
             # The mail it sends itself is kept until the layer brings it back (#211)
-            self._mailbox = Mailbox(self.channel_name, self.hand_over, lambda: self.handling > 0)
+            self._mailbox = Mailbox(self.channel_name, self.hand_over, lambda: self.handling > 0, self.mail_overflowed)
             open_mailbox(self._mailbox)
         await super().connect()
         # Read once, off the event loop. A component's ``self.session`` is a dict
@@ -93,6 +94,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
         log.debug(f"<<< DISCONNECT {code}")
         if self._mailbox is not None:
             close_mailbox(self._mailbox)
+        await self.stop_handing_over()
         if hasattr(self, "repo"):
             # Refused before connect() ran (an Origin, #96) leaves nothing to stop
             await self.stop(code)
@@ -101,9 +103,11 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
     async def dispatch(self, message):
         # One at a time with the mail the session takes back from a layer that dropped it (#211)
         async with self._turn:
-            # Where one message ends is the adapter's to know (#178)
-            with self.handling_message():
-                await super().dispatch(message)
+            # A mail may bring the ones the layer dropped before it: each is a message of its own
+            for each in self.in_turn(message):
+                # Where one message ends is the adapter's to know (#178)
+                with self.handling_message():
+                    await super().dispatch(each)
 
     async def receive_json(self, content: dict, **kwargs) -> None:  # type: ignore[override]
         await self.handle_message(content)
