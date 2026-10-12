@@ -248,10 +248,16 @@ class _Reach:
     component's, an inclusion tag's -- holds no field of the component, so a
     watched name read there is the viewer's even when the component has a
     field of that name.
+
+    With ``visit``, each node of every template reached is handed to it, with
+    the parse it is in, in place of the reading above: another check that
+    follows the same templates (``wireview.W023``). Without ``cls`` no
+    template is read as a component's own.
     """
 
-    def __init__(self, cls: type[Component]) -> None:
+    def __init__(self, cls: type[Component] | None, visit: t.Callable[[Node, _Parse], None] | None = None) -> None:
         self.cls = cls
+        self.visit = visit
         self.root: str | None = None
         #: What was found, each with the templates beyond the component's own it was found in
         self.tags: dict[str, set[str]] = {}
@@ -307,9 +313,10 @@ class _Reach:
             self.root = where
         for node in part.nodes:
             self.node(node, parsed, where, owned, history)
-        self._names(part.expressions, where, owned)
-        for said in part.unread:
-            self.unreadable.setdefault(said, set()).add(where)
+        if self.visit is None:
+            self._names(part.expressions, where, owned)
+            for said in part.unread:
+                self.unreadable.setdefault(said, set()).add(where)
         for other in part.partials:  # {% partial name %}: another partial of the same file
             self._read(parsed, other, owned, history)
 
@@ -318,20 +325,45 @@ class _Reach:
             self._name(name, where, owned)
 
     def _name(self, name: str, where: str, owned: bool) -> None:
-        if not (owned and _owns(self.cls, name)):
+        if not (owned and self.cls is not None and _owns(self.cls, name)):
             self.names.setdefault(name, set()).add(where)
 
     def node(self, node: Node, parsed: _Parse, where: str, owned: bool, history: tuple[t.Any, ...]) -> None:
-        from django.template import defaulttags
-        from django.template.defaulttags import CsrfTokenNode, DebugNode
         from django.template.library import InclusionNode, SimpleNode
         from django.template.loader_tags import ExtendsNode, IncludeNode
 
-        from ..templatetags.wireview import ComponentBlockNode, FillNode, FuncBlockNode, LiveComponentBlockNode
+        from ..templatetags.wireview import FuncBlockNode
 
         func = getattr(node, "func", None)
         tag = getattr(func, "__name__", "")
         simple = isinstance(node, SimpleNode)
+        if self.visit is not None:  # another check that follows the same templates reads its own way
+            self.visit(node, parsed)
+        else:
+            self._record(node, where, owned)
+        if isinstance(node, IncludeNode):
+            self._include(node, parsed, owned)
+        elif isinstance(node, ExtendsNode):
+            self._extends(node, parsed, owned, history)
+        elif simple and tag == "func" and _is_wireview(func):
+            self._function(_literal(node.args[0]) if node.args else None, _said(node), owned=False)  # type: ignore[attr-defined]
+        elif isinstance(node, FuncBlockNode):
+            self._function(node.component_name, f'{{% func_block "{node.component_name}" %}}', owned=False)
+        elif isinstance(node, InclusionNode):
+            self._inclusion(node, parsed)
+
+    def _record(self, node: Node, where: str, owned: bool) -> None:
+        """What ``node`` draws and reads of the viewer."""
+        from django.template import defaulttags
+        from django.template.defaulttags import CsrfTokenNode, DebugNode
+        from django.template.library import SimpleNode
+
+        from ..templatetags.wireview import ComponentBlockNode, FillNode, LiveComponentBlockNode
+
+        func = getattr(node, "func", None)
+        tag = getattr(func, "__name__", "")
+        simple = isinstance(node, SimpleNode)
+
         if isinstance(node, (ComponentBlockNode, LiveComponentBlockNode, FillNode)) or (
             simple and tag in _COMPONENT_TAGS
         ):
@@ -359,16 +391,6 @@ class _Reach:
                 if name in WATCHED_FIELDS or name in WATCHED_CONTEXT:
                     self._name(name, where, owned)
         self._names(_made_by_tag(node), where, owned)
-        if isinstance(node, IncludeNode):
-            self._include(node, parsed, owned)
-        elif isinstance(node, ExtendsNode):
-            self._extends(node, parsed, owned, history)
-        elif simple and tag == "func" and _is_wireview(func):
-            self._function(_literal(node.args[0]) if node.args else None, _said(node), owned=False)  # type: ignore[attr-defined]
-        elif isinstance(node, FuncBlockNode):
-            self._function(node.component_name, f'{{% func_block "{node.component_name}" %}}', owned=False)
-        elif isinstance(node, InclusionNode):
-            self._inclusion(node, parsed)
 
     def _include(self, node: t.Any, parsed: _Parse, owned: bool) -> None:
         from django.template.loader_tags import construct_relative_path

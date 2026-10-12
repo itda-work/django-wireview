@@ -1369,6 +1369,61 @@ class TestPresenceProducerIdsCheck:
         with override_settings(TEMPLATES=self.engines(tmp_path)):
             assert check_presence_producer_ids(None) == []
 
+    def test_an_empty_id_is_flagged_as_the_tag_refuses_it(self, producer, tmp_path):
+        page = tmp_path / "empty.html"
+        page.write_text("{% load wireview %}\n{% component 'W23Typing' id='' %}\n{% component 'W23Typing' id=None %}")
+        with override_settings(TEMPLATES=self.engines(tmp_path)):
+            messages = check_presence_producer_ids(None)
+        assert [m.msg.split(" draws ")[0] for m in messages] == [f"{page}:2", f"{page}:3"]
+
+    @staticmethod
+    def overridden(tmp_path: Path, project: str) -> tuple[Path, Path]:
+        """A project directory ahead of a vendor one, both with ``room.html``; the vendor's draws without an id."""
+        ours, vendor = tmp_path / "project", tmp_path / "vendor"
+        ours.mkdir()
+        vendor.mkdir()
+        (ours / "room.html").write_text(project)
+        (vendor / "room.html").write_text(
+            "{% load wireview %}\n{% block body %}{% component 'W23Typing' %}{% endblock %}"
+        )
+        return ours, vendor
+
+    def test_a_file_another_directory_overrides_is_silent(self, producer, tmp_path):
+        """The loader picks the project's room.html: the vendor's is never rendered (#212 review)."""
+        ours, vendor = self.overridden(tmp_path, "safe override")
+        engines = [{"BACKEND": "django.template.backends.django.DjangoTemplates", "DIRS": [ours, vendor]}]
+        with override_settings(TEMPLATES=engines):
+            assert check_presence_producer_ids(None) == []
+
+    def test_the_parent_an_override_extends_by_its_own_name_is_read(self, producer, tmp_path):
+        """``{% extends 'room.html' %}`` in the override reaches the vendor's file, skipping itself."""
+        ours, vendor = self.overridden(tmp_path, "{% extends 'room.html' %}")
+        engines = [{"BACKEND": "django.template.backends.django.DjangoTemplates", "DIRS": [ours, vendor]}]
+        with override_settings(TEMPLATES=engines):
+            [message] = check_presence_producer_ids(None)
+        assert message.msg.startswith(f"{vendor / 'room.html'}:2 draws ")
+
+    def test_templates_reached_where_no_directory_lists_them_are_read(self, producer, tmp_path, monkeypatch):
+        """A function component's template and what it includes, in a loader that names no directory."""
+        from wireview import function_components
+
+        function = function_components.FunctionComponent(func=lambda: {}, name="w23_fn", template="w23/fn.html")
+        monkeypatch.setattr(function_components, "_registry", {"w23_fn": function})
+        locmem = {
+            "w23/fn.html": "{% load wireview %}{% include 'w23/inner.html' %}",
+            "w23/inner.html": "{% load wireview %}\n{% component 'W23Typing' %}",
+            "w23/unused.html": "{% load wireview %}{% component 'W23Typing' %}",
+        }
+        engines = [
+            {
+                "BACKEND": "django.template.backends.django.DjangoTemplates",
+                "OPTIONS": {"loaders": [("django.template.loaders.locmem.Loader", locmem)]},
+            }
+        ]
+        with override_settings(TEMPLATES=engines):
+            [message] = check_presence_producer_ids(None)
+        assert message.msg.startswith("w23/inner.html:2 draws ")
+
 
 class TestTestprojIsClean:
     """AC3: zero false positives on the project we actually ship tests for."""
