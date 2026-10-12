@@ -377,7 +377,7 @@ class TestPresenceMixin:
     @pytest.mark.asyncio
     @pytest.mark.unit
     async def test_a_leave_cut_short_while_it_published_is_published_after_any_last_leaving(self, monkeypatch):
-        """Not only a connection's end (#211): a page's leave or a parent's removal has no deadline, and is owed it too (#212)."""
+        """Not only at a connection's end (#211): a last leaving() without a deadline owes it too (#212)."""
         view = await mount(XProducerComponent, id="producer", room_id=1, username="ann")
         component = view.component
         broadcast = type(component).broadcast
