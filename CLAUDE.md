@@ -325,6 +325,8 @@ examples/                  예제 앱 14개. 각 디렉터리 = 개념 하나 + 
                            E2E는 todo/tests.py, livecomp/tests.py, hooks/tests.py, notifications/tests.py, search/tests.py, chat/tests.py, chat_lv2/tests.py, chat_lv3/tests.py, chat_lv4/tests.py. 인덱스는 examples/README.md
                            hooks/ 는 wire-hook 을 쓰는 유일한 예제다. 훅 경로의 E2E 검증은 그것과
                            testproj의 hookprobe/·stickyprobe/·offlineprobe/ 가 나눠 진다
+                           각 디렉터리의 media/ 는 마지막 화면 PNG와 동작 영상 WebP 둘뿐이고 make example-media 가 만든다(#213).
+                           손으로 고치지 않는다. 예제의 화면을 바꾸면 다시 만든다. slots/ 의 /slots/ 페이지는 그 녹화를 위해 있다
 
 docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEATURE-GAP.md, ARCHITECTURE.md,
                            ROADMAP.md, DEPLOYMENT.md, PERFORMANCE.md, design/ 설계 메모(README.md 인덱스), implementation/ 구현 노트
@@ -358,6 +360,11 @@ editors/vscode/            VS Code 확장(#156). wheel·sdist에 싣지 않고 �
                            CI의 vscode-extension-host 잡(VS Code 다운로드)만 릴리스 게이트 밖이다
                            게시는 태그 vscode-v<버전>의 .github/workflows/vscode-release.yml이 Marketplace·Open VSX(itda.django-wireview)에 한다(#163).
                            아이콘은 images/icon.png, 원본은 images/icon.svg
+scripts/example_media/     make example-media(#213). steps.py·scenes.py 가 예제마다의 장면(시드와 사람이 하는 일)을 데이터로 두고 —
+                           Django·Playwright를 import하지 않아 데모 사이트(#214)의 스모크 검사도 같은 장면을 돈다 —, player.py 가 Playwright로
+                           그 단계를 하고, record.py 가 빈 DB에 시드하고 장면마다 e2e_server.serve()를 띄워 녹화한 뒤 ffmpeg·img2webp·pngquant로
+                           examples/<이름>/media/ 에 쓴다. 공유 장면은 창 둘을 hstack. MP4·DB는 build/example-media/(커밋하지 않는다).
+                           크기 상한은 budget.py 하나 — 생성기와 tests/test_example_media.py 가 함께 읽는다
 scripts/act_ci.py          make ci-local. ci.yml을 act로 잡·매트릭스 칸 하나씩 돌린다. 러너 이미지는 .github/act/Dockerfile, act 옵션은 .actrc.
                            GitHub 러너와 다른 점(좀비를 거두지 않는 pid 1 → --init, 칸끼리 같은 데몬, colima의 소켓)은 그 머리 주석에.
                            tests/test_act_ci.py 가 잡·칸을 ci.yml에서 빠짐없이 읽는지, .actrc가 그 이미지를 쓰는지 본다
@@ -410,6 +417,7 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 | 문서 사이트 빌드 (관문 포함) | `make docs-site` — 산출물 `build/docs-site/`, `python -m http.server -d build/docs-site`로 `/wireview/`가 열린다 |
 | 문서 사이트 릴리스 묶음 | `make docs-site-bundle` — `build/site-dist/docs-site-v<버전>.tar.gz`(결정론적). dist/ 에 두지 않는다(PyPI가 통째로 받는다) |
 | 문서 사이트 개발 서버 | `make docs-serve` — 바뀌면 다시 빌드하고 브라우저를 새로고침한다(`ARGS="--port N"`) |
+| 예제 화면·동작 영상 | `make example-media` (`ARGS="--only chat_lv3"`) — ffmpeg·img2webp·pngquant 필요, 브라우저로 녹화하므로 `make test`에 없다 |
 
 전체 표(E2E 레이어, 벤치마크, Windows 실측, 타입 스텁)와 선행 조건은 `wireview-dev` 스킬에.
 정의는 `Makefile` (`make help`)이 정본이다.

@@ -2,6 +2,10 @@
 
 **컴포넌트 상태로 굴리는 상태 머신**
 
+![quiz: 소개 → 문제 → 결과로 넘어가는 상태 머신. 끝나면 순위표에 내 점수가 오른다](media/quiz.webp)
+
+<sub>소개 → 문제 → 결과로 넘어가는 상태 머신. 끝나면 순위표에 내 점수가 오른다. 마지막 화면은 [media/quiz.png](media/quiz.png), 다시 만들려면 `make example-media ARGS="--only quiz"`.</sub>
+
 ## 무엇을 보여주나
 
 - `QuizState` (intro → playing → results) 전이를 서버가 소유

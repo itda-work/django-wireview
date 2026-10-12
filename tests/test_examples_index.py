@@ -19,7 +19,9 @@ EXAMPLES = ROOT / "examples"
 
 INDEX_ROW = re.compile(r"^\| \[([a-z0-9_]+)\]\(\./\1/\) \| (.+?) \| .+ \|$", re.MULTILINE)
 ROOT_ROW = re.compile(
-    r"^\| \[([a-z0-9_]+)\]\(https://github\.com/itda-work/django-wireview/tree/main/examples/\1\) \| (.+?) \|$",
+    # The columns after the description (the screenshot, #213) are tests/test_example_media.py's
+    r"^\| \[([a-z0-9_]+)\]\(https://github\.com/itda-work/django-wireview/tree/main/examples/\1\) "
+    r"\| (.+?) \|(?: .+ \|)?$",
     re.MULTILINE,
 )
 # "예제 앱 14개" in the index and CLAUDE.md, "예제 앱 14개가" in the root README

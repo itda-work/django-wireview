@@ -2,6 +2,10 @@
 
 **새 메시지는 방의 모든 페이지에 같은 패치로 가지만, 안 읽은 수는 사람마다 다르다 — 그 소식은 한 사람의 토픽으로 간다**
 
+![chat_lv4: bob이 보지 않는 방에 alice가 말하면 bob의 방 목록에만 안 읽은 수가 오르고, 방을 열면 사라진다](media/chat_lv4.webp)
+
+<sub>bob이 보지 않는 방에 alice가 말하면 bob의 방 목록에만 안 읽은 수가 오르고, 방을 열면 사라진다. 마지막 화면은 [media/chat_lv4.png](media/chat_lv4.png), 다시 만들려면 `make example-media ARGS="--only chat_lv4"`.</sub>
+
 채팅 예제 시리즈의 넷째이자 마지막 단계다([#197](https://github.com/itda-work/django-wireview/issues/197)).
 [chat_lv3](../chat_lv3/)까지 방 목록은 이름과 Join·Leave뿐이었다. 다른 방에 새 메시지가 와도 들어가 보기 전에는
 알 길이 없었다. 여기서는 방 목록의 방마다 **안 읽은 메시지 수**를 띄운다. 새 메시지는 그 방을 보고 있지 않은

@@ -70,7 +70,10 @@ async def test_a_readonly_widget_does_not_save():
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 async def test_each_bar_of_the_distribution_is_its_share_of_the_ratings():
-    """It read ``count|divisibleby:total``, a yes or no: every bar was ``width: True%`` or ``False%``, so none showed."""
+    """It read ``count|divisibleby:total``, a yes or no.
+
+    Every bar was ``width: True%`` or ``False%``, so none showed.
+    """
     product = await Product.objects.acreate(name="헤드폰")
     for i, score in enumerate((5, 5, 5, 3)):
         await Rating.objects.acreate(product=product, score=score, session_key=f"d{i}")

@@ -5,8 +5,12 @@
   <p class="lead">카드·리스트·알럿·모달은 틀만 그린다. 안에 무엇이 들어갈지는 이 페이지가 채운다.</p>
   <div class="toolbar">
     <button type="button" data-testid="add-book" {% on "click" "add_book" %}>책 더하기</button>
-    <button type="button" data-testid="cycle-alert" {% on "click" "cycle_alert" %}>알럿 종류 바꾸기</button>
-    <button type="button" data-testid="toggle-modal" {% on "click" "toggle_modal" %}>
+    <button type="button"
+            data-testid="cycle-alert"
+            {% on "click" "cycle_alert" %}>알럿 종류 바꾸기</button>
+    <button type="button"
+            data-testid="toggle-modal"
+            {% on "click" "toggle_modal" %}>
       {% if modal_open %}
         모달 닫기
       {% else %}
@@ -15,48 +19,52 @@
     </button>
   </div>
   {% component_block "Alert" id="alert" variant=alert_variant message="알럿의 아이콘 자리는 호출자가 채운다" %}
-    {% fill icon %}
-      {% if alert_variant == "success" %}
-        ✓
-      {% elif alert_variant == "warning" %}
-        !
-      {% elif alert_variant == "error" %}
-        ✕
-      {% else %}
-        ℹ
-      {% endif %}
-    {% endfill %}
-  {% endcomponent %}
-  <div class="grid">
-    {% component_block "Card" id="books-card" variant="accent" %}
-      {% fill header %}
-        <h3>읽을 책 {{ books|length }}권</h3>
-      {% endfill %}
-      {% component_block "List" id="books" items=books %}
-        {% fill item let:item let:index %}
-          <span class="book-index">{{ index }}</span>
-          <span>{{ item.name }}</span>
-          <span class="book-note">{{ item.note }}</span>
-        {% endfill %}
-      {% endcomponent %}
-      {% fill footer %}
-        목록의 각 줄은 List가 넘긴 <code>item</code>·<code>index</code>로 그린다
-      {% endfill %}
-    {% endcomponent %}
-    {% component_block "Card" id="plain-card" title="채우지 않은 카드" %}
-      <p>header를 채우지 않으면 Card가 <code>title</code>로 제목을 그린다. 본문은 기본 슬롯이다.</p>
-      <p><span class="pill">header 없음</span> <span class="pill">footer 없음</span></p>
-    {% endcomponent %}
-  </div>
-  {% component_block "Modal" id="modal" is_open=modal_open %}
-    {% fill title %}
-      모달의 제목은 필수 슬롯이다
-    {% endfill %}
-    {% fill body %}
-      <p>채우지 않으면 페이지가 그려지지 않는다. 본문과 버튼 줄은 선택이다.</p>
-    {% endfill %}
-    {% fill actions %}
-      <span class="pill">actions 슬롯</span>
-    {% endfill %}
-  {% endcomponent %}
+  {% fill icon %}
+  {% if alert_variant == "success" %}
+    ✓
+  {% elif alert_variant == "warning" %}
+    !
+  {% elif alert_variant == "error" %}
+    ✕
+  {% else %}
+    ℹ
+  {% endif %}
+{% endfill %}
+{% endcomponent %}
+<div class="grid">
+  {% component_block "Card" id="books-card" variant="accent" %}
+  {% fill header %}
+  <h3>읽을 책 {{ books|length }}권</h3>
+{% endfill %}
+{% component_block "List" id="books" items=books %}
+{% fill item let:item let:index %}
+<span class="book-index">{{ index }}</span>
+<span>{{ item.name }}</span>
+<span class="book-note">{{ item.note }}</span>
+{% endfill %}
+{% endcomponent %}
+{% fill footer %}
+목록의 각 줄은 List가 넘긴 <code>item</code>·<code>index</code>로 그린다
+{% endfill %}
+{% endcomponent %}
+{% component_block "Card" id="plain-card" title="채우지 않은 카드" %}
+<p>
+  header를 채우지 않으면 Card가 <code>title</code>로 제목을 그린다. 본문은 기본 슬롯이다.
+</p>
+<p>
+  <span class="pill">header 없음</span> <span class="pill">footer 없음</span>
+</p>
+{% endcomponent %}
+</div>
+{% component_block "Modal" id="modal" is_open=modal_open %}
+{% fill title %}
+모달의 제목은 필수 슬롯이다
+{% endfill %}
+{% fill body %}
+<p>채우지 않으면 페이지가 그려지지 않는다. 본문과 버튼 줄은 선택이다.</p>
+{% endfill %}
+{% fill actions %}
+<span class="pill">actions 슬롯</span>
+{% endfill %}
+{% endcomponent %}
 </div>

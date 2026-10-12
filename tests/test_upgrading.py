@@ -211,6 +211,9 @@ NO_UPGRADE_NOTE = {
     "`examples/chat_lv3`, the third step": EXAMPLE,
     "`examples/chat_lv4`, the last step": EXAMPLE,
     'The chat examples (`chat`, `chat_lv2`, `chat_lv3`) drew "No messages yet"': EXAMPLE,
+    "Every example's README opens with a clip of it working": EXAMPLE,
+    "The todo example left what was typed in its input": EXAMPLE,
+    "The rating example's distribution bars never showed": EXAMPLE,
     "Documented when `broadcast()` (after the commit) and `abroadcast()` (at once) publish": "문서와 테스트만 바뀌었다",
     "A `stream()` in a `start_async` task replaced or cancelled": "닫히던 연결이 닫히지 않을 뿐 할 일이 없다",
     "A nested `{% component %}` a render drew that the page has yet to join goes": (

@@ -2,6 +2,10 @@
 
 **잠깐 쓰는 상태(hover)와 남는 상태(점수)를 갈라 둔다**
 
+![rating: 별 위를 지나가는 미리보기는 잠깐 쓰는 상태, 누른 별점은 저장되어 통계가 바뀐다](media/rating.webp)
+
+<sub>별 위를 지나가는 미리보기는 잠깐 쓰는 상태, 누른 별점은 저장되어 통계가 바뀐다. 마지막 화면은 [media/rating.png](media/rating.png), 다시 만들려면 `make example-media ARGS="--only rating"`.</sub>
+
 ## 무엇을 보여주나
 
 - hover는 컴포넌트 상태에만, 점수는 DB에 (`aupdate_or_create`)

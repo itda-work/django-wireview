@@ -2,6 +2,10 @@
 
 **디바운스한 입력, 주소에 남는 검색어, 키보드로 고르는 결과 목록**
 
+![search: 입력이 멈추면 검색하고, 방향키로 고른 결과를 Enter로 연다](media/search.webp)
+
+<sub>입력이 멈추면 검색하고, 방향키로 고른 결과를 Enter로 연다. 마지막 화면은 [media/search.png](media/search.png), 다시 만들려면 `make example-media ARGS="--only search"`.</sub>
+
 ## 무엇을 보여주나
 
 - `{% on 'input.debounce.300' %}` — 타이핑마다 질의하지 않는다

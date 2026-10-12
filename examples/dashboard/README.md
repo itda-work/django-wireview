@@ -2,6 +2,10 @@
 
 **AsyncResult — 느린 조회가 첫 렌더를 막지 않는다**
 
+![dashboard: 카드마다 느린 조회를 미뤄 두고 먼저 그린다. 다시 불러오면 그 카드만 로딩 상태로 돌아가고, 활동 탭은 더 불러온다](media/dashboard.webp)
+
+<sub>카드마다 느린 조회를 미뤄 두고 먼저 그린다. 다시 불러오면 그 카드만 로딩 상태로 돌아가고, 활동 탭은 더 불러온다. 마지막 화면은 [media/dashboard.png](media/dashboard.png), 다시 만들려면 `make example-media ARGS="--only dashboard"`.</sub>
+
 ## 무엇을 보여주나
 
 - `assign_async()`로 카드마다 자기 데이터를 따로 불러온다

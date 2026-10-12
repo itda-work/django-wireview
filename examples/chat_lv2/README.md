@@ -2,6 +2,10 @@
 
 **누가 말하는가를 서버가 정한다 — 로그인 사용자, 방 멤버십, `live_session` 경계**
 
+![chat_lv2: 로그인한 멤버만 방에 들어온다. 보낸 사람의 이름은 입력이 아니라 서버가 아는 사용자다](media/chat_lv2.webp)
+
+<sub>로그인한 멤버만 방에 들어온다. 보낸 사람의 이름은 입력이 아니라 서버가 아는 사용자다. 마지막 화면은 [media/chat_lv2.png](media/chat_lv2.png), 다시 만들려면 `make example-media ARGS="--only chat_lv2"`.</sub>
+
 채팅 예제 시리즈의 둘째 단계다([#197](https://github.com/itda-work/django-wireview/issues/197)).
 [chat](../chat/)은 이름을 `?username=`으로 받아서 누구나 남의 이름으로 말할 수 있었고, 방 주소만 알면 아무나
 들어왔다. 여기서는 그 둘을 막는다. 다만 Join은 로그인한 누구나 누를 수 있다 — 막는 것은 익명과 Join하지 않은

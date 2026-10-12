@@ -2,6 +2,10 @@
 
 **부모의 연결을 공유하면서 자기 상태를 갖는 중첩 컴포넌트**
 
+![livecomp: 카운터 셋은 각자 상태를 가진 LiveComponent. 하나를 누르면 부모의 합계가, 부모의 버튼은 셋을 함께 바꾼다](media/livecomp.webp)
+
+<sub>카운터 셋은 각자 상태를 가진 LiveComponent. 하나를 누르면 부모의 합계가, 부모의 버튼은 셋을 함께 바꾼다. 마지막 화면은 [media/livecomp.png](media/livecomp.png), 다시 만들려면 `make example-media ARGS="--only livecomp"`.</sub>
+
 ## 무엇을 보여주나
 
 - `{% live_component %}` + `{% live_tag_header %}`
