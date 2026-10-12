@@ -215,9 +215,16 @@ def test_a_retired_component_the_page_kept_answers_its_event_and_joins_again(pag
     poke = page.get_by_test_id("anon-poke")
     poke.click()
     expect(poke).not_to_have_class(re.compile("wireview-click-loading"))
-    # The join's answer: a render carrying the server's version
+    # The join's answer: a render carrying the server's version, after the gone. The first
+    # join's answer is one too, already received: waiting for any read the server's facts
+    # before the page had joined again, which a slow machine shows
     page.wait_for_function(
-        "id => window.__received.some((m) => m.command === 'render' && m.payload.id === id && m.payload.vsn)",
+        """id => {
+          const gone = window.__received.findIndex((m) => m.command === 'gone' && m.payload.id === id);
+          return gone >= 0 && window.__received
+            .slice(gone + 1)
+            .some((m) => m.command === 'render' && m.payload.id === id && m.payload.vsn);
+        }""",
         arg=kept,
     )
     assert heard.count(("poked", kept, 0)) == 1, heard

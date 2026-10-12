@@ -73,8 +73,14 @@ def _settled(page) -> None:
           requestAnimationFrame(frame);
         })"""
     )
+    # A tick the list did not hold: a second call finds the first one's still there,
+    # and a count of one passed only while the second had not landed yet (#217)
+    held = by(page, "ticks").locator("li").evaluate_all("items => items.map((li) => li.id)")
     by(page, "tick").click()
-    expect_count(by(page, "ticks").locator("li"), 1)
+    page.wait_for_function(
+        "held => [...document.querySelectorAll('[data-testid=ticks] > li')].some((li) => !held.includes(li.id))",
+        arg=held,
+    )
 
 
 def test_a_list_that_fills_the_viewport_loads_nothing_more(page, server):

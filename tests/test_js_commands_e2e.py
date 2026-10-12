@@ -109,10 +109,24 @@ def test_navigate_with_replace_goes_there_in_place_of_this_entry(probe):
 
 
 def test_a_chain_runs_every_command_in_order(probe):
+    # The push's render draws #box as its template has it, without the class and the
+    # attribute: a JS() change lasts until the next render of its element. Reading them
+    # after the click raced that render, and a slow machine lost (#217). So the page
+    # records each change as it lands, with the count the server had rendered by then
+    probe.evaluate(
+        """() => {
+          window.__steps = [];
+          const count = document.querySelector("[data-testid=count]");
+          new MutationObserver((records) => {
+            for (const r of records) {
+              window.__steps.push([r.attributeName, r.target.getAttribute(r.attributeName), count.textContent]);
+            }
+          }).observe(document.getElementById("box"), { attributes: true, attributeFilter: ["class", "data-step"] });
+        }"""
+    )
     by(probe, "chain").click()
-    expect(by(probe, "box")).to_have_class(re.compile(r"\bchained\b"))
-    expect(by(probe, "box")).to_have_attribute("data-step", "2")
     expect_text(by(probe, "count"), "1")
+    assert probe.evaluate("window.__steps")[:2] == [["class", "chained", "0"], ["data-step", "2", "0"]]
 
 
 def test_a_click_marks_its_element_loading_until_the_answer(probe):
