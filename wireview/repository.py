@@ -12,6 +12,7 @@ from urllib.parse import parse_qsl, urlencode
 from channels.db import database_sync_to_async as db
 from channels.layers import BaseChannelLayer
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
+from django.http import QueryDict
 
 from . import telemetry
 from .core import csrf, handlers
@@ -171,6 +172,9 @@ class ComponentRepository:
         # The request an HTTP render answers: who its page is for is read from it
         # when a state is signed (``identity``, #209). None on a connection.
         self._request = request
+        # The page's query as the request or the page last told it, with each
+        # value it gave a key: what {% querystring %} starts from (``page_query``, #210)
+        self._told_query: QueryDict | None = getattr(request, "GET", None)
         self._identity: tuple[SessionView, tuple[str, ...]] | None = None
         # Whether the connection's handshake carried a session at all (#209):
         # without one it cannot say who it renders for
@@ -254,6 +258,26 @@ class ComponentRepository:
                 self.params.pop(key)
 
         self.params.update(params)
+
+    def tell_query(self, query: str) -> None:
+        """The page is at this query now (``?`` left out): as its address bar has it, or as the server set it."""
+        self._told_query = QueryDict(query)
+
+    def page_query(self) -> QueryDict:
+        """The page's query, as ``request.GET`` would have it: what ``{% querystring %}`` starts from (#210).
+
+        What the page last told, every value of a repeated key in its order,
+        while it says what ``params`` says; ``params`` encoded otherwise -- a
+        component changed them, or nothing told any.
+        """
+        told = self._told_query
+        if told is not None:
+            try:
+                if self.decode_params(told.dict()) == self.params:
+                    return told
+            except ValueError:  # a ``.json`` key that does not decode: params never took it
+                pass
+        return QueryDict(self.get_query_string())
 
     def get_query_string(self) -> str:
         return urlencode(
@@ -1054,6 +1078,7 @@ class ComponentRepository:
         self._pending_leaving.extend(self.bury(component.id))
         component.wire.csrf = self._fresh_csrf_token
         component.wire.identity = self.identity
+        component.wire.query = self.page_query
         self.components[component.id] = component
         return component
 

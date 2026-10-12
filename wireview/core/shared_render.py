@@ -192,7 +192,7 @@ def _template_reasons(cls: type[Component]) -> list[str]:
         return [f"its template could not be loaded ({type(error).__name__}: {error})"]
     inner = getattr(template, "template", template)
     if getattr(inner, "nodelist", None) is None:
-        return ["its template is not a Django template, which this check cannot read"]
+        return ["its template is not a Django template, as a component's template must be (wireview.W022)"]
     reach = _Reach(cls)
     try:
         reach.template(inner, owned=True)
@@ -322,6 +322,7 @@ class _Reach:
             self.names.setdefault(name, set()).add(where)
 
     def node(self, node: Node, parsed: _Parse, where: str, owned: bool, history: tuple[t.Any, ...]) -> None:
+        from django.template import defaulttags
         from django.template.defaulttags import CsrfTokenNode, DebugNode
         from django.template.library import InclusionNode, SimpleNode
         from django.template.loader_tags import ExtendsNode, IncludeNode
@@ -337,6 +338,14 @@ class _Reach:
             self.tags.setdefault(tag if simple else type(node).__name__, set()).add(where)
         if isinstance(node, CsrfTokenNode):
             self.names.setdefault("csrf_token", set()).add(where)
+        if (
+            simple
+            and func is getattr(defaulttags, "querystring", None)  # type: ignore[attr-defined]
+            and (not node.args or any(_is_none(arg) for arg in node.args))
+        ):
+            # Django's {% querystring %} without a mapping of its own starts from the page's query (#210),
+            # and so does Django 5.2's given None for one
+            self.names.setdefault("request", set()).add(where)
         if isinstance(node, DebugNode):
             self.dumps.setdefault("{% debug %}", set()).add(where)
         reads = getattr(node, "context_names", None)
@@ -657,6 +666,19 @@ def _literal(expression: t.Any) -> str | None:
     if isinstance(expression, FilterExpression) and isinstance(expression.var, str) and not expression.filters:
         return str(expression.var)
     return None
+
+
+def _is_none(expression: t.Any) -> bool:
+    """Whether ``expression`` is the literal ``None``: a name every context resolves to None."""
+    from django.template.base import FilterExpression, Variable
+
+    var = getattr(expression, "var", None)
+    return (
+        isinstance(expression, FilterExpression)
+        and not expression.filters
+        and isinstance(var, Variable)
+        and var.lookups == ("None",)
+    )
 
 
 def _said(node: t.Any) -> str:

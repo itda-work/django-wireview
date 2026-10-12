@@ -41,6 +41,38 @@ patch는 컴포넌트에만 새 params를 알린다. **컴포넌트 밖의 템�
 `push_to` 대신 `redirect_to`를 쓴다. 같은 경로여도 페이지를 가져와 그 부분까지 다시 그린다. 쿼리를 읽는
 부분을 컴포넌트로 옮기면 patch로 충분하다.
 
+## 컴포넌트 템플릿의 querystring 태그
+
+Django의 `{% querystring %}`(5.1부터)은 컴포넌트 템플릿에서도 **지금 페이지의 쿼리**에서 시작한다(#210). 페이지네이션
+링크를 컴포넌트 안에 두면 patch 뒤에도 새 쿼리로 다시 그려진다.
+
+```django
+<a href="{% querystring page=page_obj.next_page_number %}">다음</a>
+<a href="{% querystring sort=None %}">정렬 풀기</a>
+```
+
+| 렌더 | 지금 페이지의 쿼리 |
+|------|---------------------|
+| 첫 HTTP 렌더 | 요청의 `request.GET` |
+| 라이브 렌더(join, 이벤트·알림 뒤, LiveComponent, 함수 컴포넌트, 스트림 항목) | 페이지가 마지막으로 알린 주소의 쿼리 — 소켓을 열 때, 같은 경로의 `push_to`·`replace_to`, 뒤로·앞으로 가기, boost 이동. `params_changed()`가 받는 그것이다 |
+| 컴포넌트가 `self.wire.params`를 바꾼 뒤 | 바뀐 `params` — 이벤트가 끝나면 주소창도 그렇게 바뀐다 |
+
+출력은 그 쿼리로 Django가 그리는 것과 같다. 반복된 키(`?tag=a&tag=b`)와 `.json` 키도 주소에 적힌 대로다. Phoenix
+LiveView가 `handle_params`의 uri로 같은 일을 한다.
+
+- **컴포넌트 템플릿의 `context.request`는 요청이 아니다.** 라이브 렌더에는 요청이 없고 소켓만 있다. 그래서 두 렌더
+  모두 `GET`(지금 페이지의 쿼리)만 가진 객체를 둔다. 다른 속성(`user`, `path`, `META` …)을 읽는 서드파티 태그는
+  이유를 적은 `AttributeError`로 실패한다 — 첫 HTTP 렌더에서 바로 보인다. 그런 값은 컴포넌트에서 읽어(`self.user`,
+  `self.wire.params`, 필드) 템플릿에 넘긴다. `{% url %}`은 지금처럼 `current_app` 없이 뒤집는다.
+- **템플릿 변수 `request`는 여전히 없다.** `{{ request.GET.q }}`는 빈 값이다 — 쿼리는 `params_changed()`에서 필드로
+  옮겨 그린다.
+- 자기 매핑을 넘긴 `{% querystring my_query page=2 %}`은 페이지의 쿼리를 읽지 않는다.
+- [`Meta.shared_render`](./shared-render.md#범위)를 선언한 클래스의 템플릿에 페이지의 쿼리를 읽는 `{% querystring %}`이
+  있으면 공유하지 않는다(`wireview.W019`). 쿼리는 연결마다 다르다. 공유되는 렌더에는 `context.request`가 없다(1.5와
+  같다). [`Broadcast`](./broadcast.md) 항목 템플릿에서는 `request`를 읽은 것으로 보고 오류다.
+- 컴포넌트 템플릿은 Django 템플릿이다([호환성](../COMPATIBILITY.md#지원-범위)). 다른 엔진이 찾은 것은 첫 렌더에서
+  오류다(`wireview.W022`).
+
 ## 첫 응답과 join
 
 쿼리가 있는 주소(`/search/?q=장고`)를 열면 `params_changed()`가 두 번 돈다. 첫 HTTP 응답에서 한 번,

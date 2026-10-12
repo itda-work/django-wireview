@@ -103,6 +103,9 @@ from dataclasses import dataclass, field
 from django.template import TemplateSyntaxError, loader
 from django.utils.safestring import SafeString, mark_safe
 
+from .core import page_request
+from .core.watched import name_of
+
 if t.TYPE_CHECKING:
     from .slots import SlotContainer
 
@@ -126,10 +129,25 @@ DRAWER = "wireview_drawer"
 PAGE = "wireview_page"
 
 
+def _get(context: t.Any, name: str) -> t.Any:
+    """``context.get(name)`` that computes nothing: each of its dicts is read as ``dict.get``.
+
+    ``Context.get`` asks ``name in d`` of each dict, and a ``Meta.lazy_properties``
+    context computes a pending property there (#187). What the page put in it is
+    no pending property, and a component's own property of that name is its
+    template's to read or not (#210).
+    """
+    for d in reversed(getattr(context, "dicts", None) or [context]):
+        if isinstance(d, dict) and dict.__contains__(d, name):
+            return dict.get(d, name)
+    return None
+
+
 def _page_of(context: t.Any) -> dict[str, t.Any]:
     """What a function component's template takes from the render that draws it: the page, never its names.
 
-    The one name it takes is ``csrf_token``, which Django's own templates get too.
+    The one name it takes is ``csrf_token``, which Django's own templates get too, and
+    ``request`` where a render many viewers share watches it.
 
     A ``{% component %}`` in it is the page's, as one in the enclosing template
     is: built in the page's repository, drawn by the component whose pass this
@@ -144,16 +162,19 @@ def _page_of(context: t.Any) -> dict[str, t.Any]:
     """
     if context is None:
         return {}
-    drawer = context.get("this")
-    page: dict[str, t.Any] = {DRAWER: drawer if drawer is not None else context.get(DRAWER)}
-    if (repo := context.get("wireview_repository")) is not None:
+    drawer = _get(context, "this")
+    page: dict[str, t.Any] = {DRAWER: drawer if drawer is not None else _get(context, DRAWER)}
+    if (repo := _get(context, "wireview_repository")) is not None:
         page["wireview_repository"] = repo
     else:
         page[PAGE] = context
-    if (token := context.get("csrf_token")) is not None:
+    if (token := _get(context, "csrf_token")) is not None:
         # The viewer's, as the drawing template has it: the page's, the connection's,
         # or one that raises in a render many viewers share (#206)
         page["csrf_token"] = token
+    if name_of(request := _get(context, "request")) == "request":
+        # A render many viewers share, being verified: the page's query raises there too (#210)
+        page["request"] = request
     return page
 
 
@@ -288,14 +309,17 @@ class FunctionComponent:
                 raise TypeError(
                     f"Function component '{self.name}' with template must return a dict, got {type(result).__name__}"
                 )
-            template = loader.get_template(self.template)
+            template = page_request.django_template(
+                loader.get_template(self.template), f"Function component {self.name!r}", self.template
+            )
             template_context = {**_page_of(context), **result}
 
             # Add slots to context if provided
             if slots is not None:
                 template_context["slots"] = slots
 
-            html = template.render(template_context)
+            # With the page's query at ``context.request`` (#210)
+            html = page_request.render(template, template_context)
             return mark_safe(html)
         else:
             # Inline: result should be a string

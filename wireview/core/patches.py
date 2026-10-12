@@ -39,6 +39,7 @@ from django.utils import timezone, translation
 from .. import telemetry
 from ..debug import render_queries
 from ..utils import db
+from . import page_request
 from .rendered import UPDATE_ONLY_SINCE
 from .transport import get_broker, require_patch_topic
 from .watched import Watched
@@ -333,7 +334,8 @@ class Broadcast:
         }
         context["item"] = item
         with translation.override(django_settings.LANGUAGE_CODE), timezone.override(timezone.get_default_timezone()):
-            html = template.render(context)
+            # ``context.request`` is watched as the name is (core/page_request.py, #210)
+            html = page_request.render(template, context)
         if reads:
             raise error(reads[0])
         return html

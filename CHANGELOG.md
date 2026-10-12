@@ -73,11 +73,34 @@ The django-reactor era changelog (2.x) is preserved in
   retired. An older client gets the empty render an event with no handler gets. Before, nothing came
   back and the button stayed loading. An event for a component its drawer's render retired a moment
   before runs its handler and is answered the same way: nothing of the component is rendered.
+- **Breaking:** A component's template renders with Django's template engine only (#210): a component's, a
+  function component's, a stream or `Broadcast` item's. One another engine finds -- Jinja2 ahead of
+  DjangoTemplates in `TEMPLATES` -- raises `ImproperlyConfigured` on its first render, naming the class, the
+  template and the engine, and `manage.py check` warns of it first (`wireview.W022`), also when that engine
+  found the name and could not compile it. A component's own template rendered before, but with none of
+  wireview's tags or a live render's markers its page never joined it. A function component's or a stream or
+  `Broadcast` item's template rendered with that engine, live renders too, and now raises: move it where a
+  DjangoTemplates engine finds it and write it in Django's syntax (docs/UPGRADING.md). A page's template may
+  use any engine.
 - Documented when `broadcast()` (after the commit) and `abroadcast()` (at once) publish, and when a session reads
   `get_subscriptions()` again, with a test that a topic given up in `notification()` is heard no more (#203).
 
 ### Fixed
 
+- Django's `{% querystring %}` works in a component's template (#210). It reads `context.request.GET`, and a
+  component's template renders with a context of its own, never the page's `RequestContext`: it raised
+  `AttributeError` on the first HTTP render and on every live render, where the join failed. Both renders now
+  have a `context.request` holding `GET` and nothing else -- the page's query: the request's on the HTTP
+  render; on a connection, the address the page last told (`params_changed` on open, a `push_to`/`replace_to`
+  patch, Back and Forward, a boosted visit), or the params a component set. The output is what Django draws
+  for that query, a repeated key and a `.json` key as the address has them. Any other attribute raises an
+  `AttributeError` that says why, so a tag reading `request.user` or `request.path` fails on the first render
+  rather than only live; `{% url %}` still reverses without `current_app`, and `request` is still no template
+  variable. LiveComponents, function components and stream items get it too. A `Meta.shared_render` class
+  whose templates hold a `{% querystring %}` without a mapping of its own (or, on Django 5.2, given `None`) is
+  out of scope (`wireview.W019`). A render many connections share has no `context.request`, as in 1.5, so a
+  tag that asks for one with `getattr` goes on without it rather than showing the first connection's query;
+  verified, a shared render that reads it raises, and so does a `Broadcast` item.
 - A boosted navigation after another tab logged in, logged out, logged in as someone else or rotated the CSRF
   secret no longer joins the new page's components under the socket's old identity (#209). Every `data-state`
   carries a fingerprint of who its page was rendered for (the login and the CSRF secret, hashed), and a join

@@ -127,6 +127,11 @@ Django 5.2 LTS·6.0·6.1, Python 3.12·3.13·3.14다.
   하한 조합이 깨지면 하한을 올리고 `CHANGELOG.md`에 적는다(#132). 반대쪽 끝, 새 설치가 받는 최신 해는 `make test-latest`다.
 - **설치되지 않거나 지원하는 기능(채널 레이어 포함)에서 동작하지 않던 하한을 올리는 것은 패치 릴리스다.** 그 하한에
   머문 사용자는 그 기능이 동작하는 조합을 갖고 있지 않았다. 지원하는 모든 기능에서 동작하던 하한을 올리는 것은 마이너 릴리스다.
+- **컴포넌트 템플릿은 Django 템플릿 엔진(`DjangoTemplates`)만이다.** 컴포넌트·LiveComponent·함수 컴포넌트·스트림
+  항목·`Broadcast` 항목의 템플릿이 그렇다. wireview의 태그(`{% tag_header %}`·`{% on %}`·`{% component %}` …)와 라이브
+  렌더의 마커가 Django 템플릿의 것이기 때문이다. 다른 엔진(Jinja2 등)이 찾은 컴포넌트 템플릿은 첫 렌더에서
+  `ImproperlyConfigured`이고 `manage.py check`가 `wireview.W022`로 먼저 알린다(#210). 페이지 템플릿은 어느 엔진이든
+  된다.
 - channels의 하한은 `tests/test_nats_layer.py`가 지킨다. 그 테스트는 nats-server 바이너리가 없으면 로컬에서는
   건너뛰지만 CI(`CI` 환경 변수)에서는 실패한다. CI의 단위 테스트 잡들은 E2E와 같은 nats 이미지에서 바이너리를 꺼내 쓴다.
 

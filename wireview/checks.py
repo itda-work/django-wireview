@@ -1085,6 +1085,76 @@ def check_shared_render(app_configs, **kwargs) -> list[CheckMessage]:
     return messages
 
 
+def check_django_templates(app_configs, **kwargs) -> list[CheckMessage]:
+    """W022: a component's or function component's template is found by another engine than Django's.
+
+    wireview renders a component's template with Django's engine only: its tags
+    and a live render's markers are Django's (#210). With a Jinja2 engine ahead
+    of the DjangoTemplates one in TEMPLATES, a name both can find goes to Jinja2,
+    and the first render raises. A template no engine finds is not this check's:
+    the render says so.
+
+    Another engine that finds the name and cannot compile it -- Jinja2 on
+    ``{% load %}`` -- raises its own syntax error, and Django's loader asks no
+    other engine: the error names neither engine. The check asks the engines in
+    order, as the loader does, which one that was.
+    """
+    from django.template import TemplateDoesNotExist, TemplateSyntaxError, engines, loader
+    from django.template.backends.django import DjangoTemplates
+
+    from .core.page_request import is_django, not_django
+    from .function_components import _registry
+
+    found: list[tuple[t.Any, str, str]] = [
+        (cls, cls._fqn, cls._meta.template_name) for cls in iter_component_classes() if cls._meta.template_name
+    ]
+    seen: set[int] = set()
+    for function in _registry.values():
+        if function.template and id(function) not in seen:
+            seen.add(id(function))
+            found.append((function.func, f"Function component {function.name!r}", function.template))
+
+    messages = []
+    for obj, owner, name in found:
+        backend = None
+        try:
+            template = loader.get_template(name)
+        except TemplateDoesNotExist:
+            continue
+        except TemplateSyntaxError:
+            template, backend = None, _first_engine(engines.all(), name)
+            if backend is None or isinstance(backend, DjangoTemplates):
+                continue  # Django's own syntax error: the render says so
+        if not is_django(template):
+            messages.append(
+                Warning(
+                    not_django(template, owner, name, backend=backend),
+                    hint=(
+                        "A component's template renders with Django's template engine only. Move it where a "
+                        "DjangoTemplates engine finds it first. See docs/COMPATIBILITY.md."
+                    ),
+                    obj=obj,
+                    id="wireview.W022",
+                )
+            )
+    return messages
+
+
+def _first_engine(backends: list[t.Any], name: str) -> t.Any:
+    """The first of ``backends`` that finds ``name``, compiled or not, as Django's loader asks them."""
+    from django.template import TemplateDoesNotExist
+
+    for backend in backends:
+        try:
+            backend.get_template(name)
+        except TemplateDoesNotExist:
+            continue
+        except Exception:  # noqa: BLE001 -- found, and failed to compile: this is the one
+            return backend
+        return backend
+    return None
+
+
 def register_checks() -> None:
     """Register every check. Called from ``WireviewConfig.ready()``."""
     register(check_async_handlers, WIREVIEW_TAG)
@@ -1102,6 +1172,7 @@ def register_checks() -> None:
     register(check_signing_key, WIREVIEW_TAG)
     register(check_hook_files, WIREVIEW_TAG)
     register(check_shared_render, WIREVIEW_TAG)
+    register(check_django_templates, WIREVIEW_TAG)
     register(check_channel_layer_configured, WIREVIEW_TAG)
     register(check_runserver_is_asgi, WIREVIEW_TAG)
     register(check_websocket_session, WIREVIEW_TAG)

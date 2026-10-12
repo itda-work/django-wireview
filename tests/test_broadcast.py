@@ -18,11 +18,22 @@ from django.contrib.auth.models import AnonymousUser
 from django.core.exceptions import ImproperlyConfigured
 from django.db import transaction
 from django.template import Template, engines
+from django.test import override_settings
 from django.utils import timezone, translation
 from testproj.waiting import eventually
 
 from examples.todo.models import Item as TodoItem
-from wireview import JS, Broadcast, Component, LiveComponent, ModelAction, abroadcast, mount, telemetry
+from wireview import (
+    JS,
+    Broadcast,
+    Component,
+    LiveComponent,
+    ModelAction,
+    abroadcast,
+    function_component,
+    mount,
+    telemetry,
+)
 from wireview.consumer import WireviewConsumer
 from wireview.core import patches
 from wireview.core.meta import WireviewMeta
@@ -44,6 +55,9 @@ TEMPLATES = {
     "bc/user.html": "<li>{% if user.is_staff %}staff{% endif %}</li>",
     "bc/request.html": "<li>{{ request.path }}</li>",
     "bc/csrf.html": "<li>{% csrf_token %}</li>",
+    "bc/querystring.html": '<li><a href="{% querystring page=2 %}">2</a></li>',
+    "bc/func.html": '{% load wireview %}<li>{% func "bc_fn" %}</li>',
+    "bc/func_querystring.html": '{% load wireview %}<li>{% func "bc_fn_querystring" %}</li>',
     "bc/perms.html": "<li>{% if perms.auth.add_user %}yes{% endif %}</li>",
     # {% if a and b %} takes an operand's exception for False: the read is caught after the render
     "bc/swallowed.html": "<li>{% if user.is_staff and item.text %}staff{% endif %}</li>",
@@ -73,6 +87,16 @@ def _template(cls: type, template_name: str | None) -> t.Any:
 class Post:
     pk: int
     text: str
+
+
+@function_component(template="bc/fn.html")
+def bc_fn():
+    return {"n": 1}
+
+
+@function_component(template="bc/fn_querystring.html")
+def bc_fn_querystring():
+    return {}
 
 
 class BcFeed(Component):
@@ -658,6 +682,8 @@ class TestTheItemReadsNothingOfTheViewer:
             ("bc/user.html", "user"),
             ("bc/request.html", "request"),
             ("bc/csrf.html", "csrf_token"),
+            # The page's query, which Django's tag reads at context.request (#210)
+            ("bc/querystring.html", "request"),
             ("bc/perms.html", "perms"),
             ("bc/bind_myself.html", "this"),
             ("bc/swallowed.html", "user"),
@@ -678,6 +704,23 @@ class TestTheItemReadsNothingOfTheViewer:
     def test_the_item_alone_renders(self):
         (frame,) = Broadcast(BcFeed, "bc-feed").stream_insert("items", Post(1, "x"))._frames()
         assert json.loads(patches.join(frame, "f"))["payload"]["items"][0]["html"] == '<li id="items-1">x</li>'
+
+    def test_a_function_component_in_it_renders_and_is_watched_the_same(self):
+        """Its template finds no page in the watched ``this``: it asks nothing of it, and the query raises (#210)."""
+        loaded = {"bc/fn.html": "<b>{{ n }}</b>", "bc/fn_querystring.html": '<a href="{% querystring page=2 %}">2</a>'}
+        engine = {
+            "BACKEND": "django.template.backends.django.DjangoTemplates",
+            "OPTIONS": {"loaders": [("django.template.loaders.locmem.Loader", loaded)]},
+        }
+        with override_settings(TEMPLATES=[engine]):
+            (frame,) = (
+                Broadcast(BcFeed, "bc-feed").stream_insert("items", Post(1, "x"), template="bc/func.html")._frames()
+            )
+            assert json.loads(patches.join(frame, "f"))["payload"]["items"][0]["html"] == "<li><b>1</b></li>"
+            with pytest.raises(ImproperlyConfigured, match="read 'request'"):
+                Broadcast(BcFeed, "bc-feed").stream_insert(
+                    "items", Post(1, "x"), template="bc/func_querystring.html"
+                )._frames()
 
     def test_a_binding_is_checked_against_the_target_class(self):
         (frame,) = Broadcast(BcFeed, "bc-feed").stream_insert("items", Post(1, "x"), template="bc/bind.html")._frames()

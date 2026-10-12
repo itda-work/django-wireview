@@ -178,6 +178,14 @@ UPGRADE_NOTE = {
         "다른 탭이 신분을 바꾼 뒤의 boost 이동이 새 소켓을 연다",
         "쿠키가 소켓에 닿게 고친다",
     ),
+    "A component's template renders with Django's template engine only": (
+        "컴포넌트 템플릿은 Django 템플릿 엔진만 그린다",
+        "`DjangoTemplates` 엔진의 `DIRS`나 앱 디렉터리로 옮긴다",
+    ),
+    "Django's `{% querystring %}` works in a component's template": (
+        "컴포넌트 템플릿의 `{% querystring %}`이 동작한다",
+        "이유를 적은 `AttributeError`로 실패한다",
+    ),
     "`Meta.shared_render`'s scope (and `wireview.W019`) read the component's own template file only": (
         "끼워 넣은 템플릿에서 보는 사람을 읽는 클래스를 공유하지 않는다",
         "`manage.py check`를 돌린다",

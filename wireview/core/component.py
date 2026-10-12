@@ -21,7 +21,7 @@ from ..async_result import AsyncResult
 from ..debug import render_queries
 from ..schemas import ModelAction
 from ..utils import db
-from . import handlers, model_state, render_reads
+from . import handlers, model_state, page_request, render_reads
 from .meta import HTTP_RENDER, Repo, WireviewMeta
 from .session import SessionView
 
@@ -500,7 +500,9 @@ class Component(BaseModel):
         # Django's cached loader already keeps compiled templates, and drops them
         # when TEMPLATES changes. A cache of our own did neither: it outlived an
         # override_settings(TEMPLATES=...), and switched on with DEBUG (#100).
-        return loader.get_template(template_name)  # type: ignore[return-value]
+        template = loader.get_template(template_name)
+        # Django's alone: another engine has none of wireview's tags or markers (#210, wireview.W022)
+        return page_request.django_template(template, cls.__qualname__, template_name)
 
     # State
     id: str = Field(default_factory=lambda: f"rx-{uuid4()}")
@@ -1521,7 +1523,7 @@ class Component(BaseModel):
         # Read off the loop like the component's own render, and kept apart from
         # its background work the same way (#138)
         with self.wire._render_gate.rendering(), render_queries.scope("render", self, "stream item"):
-            return await db(template.render)(context)
+            return await db(page_request.render)(template, context)
 
     # Upload operations
 
