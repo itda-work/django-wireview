@@ -186,6 +186,10 @@ UPGRADE_NOTE = {
         "컴포넌트 템플릿의 `{% querystring %}`이 동작한다",
         "이유를 적은 `AttributeError`로 실패한다",
     ),
+    "A presence producer whose last `leaving()` did not leave": (
+        "`leaving()`이 퇴장하지 못한 프로듀서는 프레임워크가 퇴장시킨다",
+        "`mount()`는 `leaving()`을 부르지 않으므로",
+    ),
     "`Meta.shared_render`'s scope (and `wireview.W019`) read the component's own template file only": (
         "끼워 넣은 템플릿에서 보는 사람을 읽는 클래스를 공유하지 않는다",
         "`manage.py check`를 돌린다",

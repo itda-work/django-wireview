@@ -82,6 +82,10 @@ The django-reactor era changelog (2.x) is preserved in
   `Broadcast` item's template rendered with that engine, live renders too, and now raises: move it where a
   DjangoTemplates engine finds it and write it in Django's syntax (docs/UPGRADING.md). A page's template may
   use any engine.
+- A presence producer whose last `leaving()` did not leave -- it raised before `presence_leave()`, or never
+  called it -- is left by the framework once that `leaving()` is over, and its typing timer stops (#212).
+  The user stayed on everyone's list after the tab closed. One its `leaving()` left says nothing again. A
+  tombstone's `leaving()` waits for its burial (#204), and so does this; `mount()` runs no `leaving()`.
 - Documented when `broadcast()` (after the commit) and `abroadcast()` (at once) publish, and when a session reads
   `get_subscriptions()` again, with a test that a topic given up in `notification()` is heard no more (#203).
 
@@ -127,7 +131,10 @@ The django-reactor era changelog (2.x) is preserved in
   component that drew it and its number among the components of its class that one shows, in the order it
   draws them. The id minted for it is new on every pass that draws it, a reconnect's too; its place is not.
   Two id-less producers of one class on a page are two metas, so hiding one keeps the user listed and either
-  one's typing shows (#212). The user was the key: closing one tab
+  one's typing shows (#212). The numbers are a function of what the drawer shows: one a part kept for a
+  reset temporary assign shows counts where the part is, and when one before it hides it leaves under its
+  old name and joins under the new one, typing or not. Held to its number, it left a gap the first pass
+  after a reconnect closed, and the meta under the number past it stayed after the tab closed. The user was the key: closing one tab
   removed them while the other was still open, and one tab's typing state overwrote the other's. The list
   `presence_users` still has one entry per user, merged from their tabs: typing if any tab types, otherwise
   online, with the name and metadata heard from last. A page names its load in the socket URL (`tab`) and
