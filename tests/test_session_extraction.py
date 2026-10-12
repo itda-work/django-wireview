@@ -135,8 +135,9 @@ def test_the_consumer_is_only_the_adapter():
     """Every handler lives on the session; the consumer adds the socket's own four and no more.
 
     And ``dispatch``: where one message ends is the adapter's to know, and it
-    only tells the session (``handling_message``, #178).
+    only tells the session (``handling_message``, #178). And ``close``: whether
+    the socket is gone, to take no close frame, is the socket's (#216).
     """
     own = {name for name, value in vars(WireviewConsumer).items() if callable(value) and not name.startswith("__")}
-    assert own <= {"websocket_connect", "connect", "disconnect", "receive_json", "dispatch"}
+    assert own <= {"websocket_connect", "connect", "disconnect", "receive_json", "dispatch", "close"}
     assert issubclass(WireviewConsumer, WireviewSession)

@@ -7,6 +7,7 @@ import inspect
 import itertools
 import logging
 import secrets
+import sys
 import time
 import typing as t
 from urllib.parse import urlsplit
@@ -51,6 +52,7 @@ from .core.state import StateMismatch, StatePayload, unsign_envelope
 from .core.transport import (
     MAIL_DUE,
     PATCH_TOPIC_MAX,
+    ConnectionGone,
     Mailbox,
     Outbound,
     close_mailbox,
@@ -538,7 +540,12 @@ class WireviewSession:
 
         A client older than ``error`` gets what every client used to get: the
         socket closes and it joins everything again.
+
+        Raised because the socket is gone -- writing the answer, not the
+        application's code -- it goes on up instead (``ConnectionGone``, #216).
         """
+        if isinstance(gone := sys.exc_info()[1], ConnectionGone):
+            raise gone
         log.exception("%s (%s) raised; joining it again from its last rendered state", component._name, component.id)
         await self._join_again(component, ref)
 
@@ -744,6 +751,9 @@ class WireviewSession:
             await self._let_patches_through(component)
             if self.repo.vsn >= JOINED_SINCE:
                 await component.wire.send("joined", **_with_ref({"id": component.id}, answer))
+        except ConnectionGone:
+            # The page left while its join was answered: it failed nothing (#216)
+            raise
         except Exception:
             # Everything up to the first render counts as the join: a failure
             # here is not retried, where a handler's is (#94).
@@ -1485,6 +1495,8 @@ class WireviewSession:
                                     },
                                 ).to_payload(),
                             )
+                        except ConnectionGone:
+                            raise
                         except Exception as e:
                             log.error(f"External upload callback error: {e}")
                             await self.send_command(
@@ -1685,6 +1697,8 @@ class WireviewSession:
                 await self.send_render(component)
         except InvalidEvent as e:
             log.warning("Ignoring event for %s: %s", id, e)
+        except ConnectionGone:
+            raise
         except Exception:
             if target is None:
                 log.exception("Event for %s raised with no component to recover", id)

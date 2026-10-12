@@ -1,5 +1,7 @@
 """The test project as a server process whose components record their ``leaving()`` (#211).
 
+``SlowJoin`` takes its time joining: ``test_join_disconnect.py`` leaves while it does (#216).
+
 ``test_server_shutdown.py`` runs it under daphne and uvicorn, joins a component
 per socket and sends the server SIGTERM: what each hook began and finished is
 in the file ``ENDPROBE_EVENTS`` names, a line per step, written as it happens.
@@ -36,6 +38,21 @@ class EndProbe(Component):
         _mark(f"start {self.id}")
         await asyncio.sleep(self.seconds)
         _mark(f"done {self.id}")
+
+
+class SlowJoin(Component):
+    """Its ``joined()`` takes ``seconds``: a page that leaves meanwhile is gone when its answer is written (#216)."""
+
+    seconds: float = 0
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template("{% load wireview %}<div {% tag_header %}></div>")
+
+    async def joined(self):
+        _mark(f"joining {self.id}")
+        await asyncio.sleep(self.seconds)
+        _mark(f"joined {self.id}")
 
 
 async def application(scope: dict[str, t.Any], receive: t.Any, send: t.Any) -> None:
