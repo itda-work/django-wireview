@@ -117,6 +117,11 @@ class ChatInput(PresenceMixin, Component):
         await self.presence_set_typing(True)      # 서버가 타임아웃으로 자동 해제한다
 ```
 
+프로듀서는 **반드시 id를 주어 그린다**: `{% component 'ChatInput' id="composer" %}`. id가 탭 안의 Presence 항목
+이름이라, id 없이 그리면 그 태그가 `TemplateSyntaxError`로 실패한다(클래스 이름을 따옴표로 적은 태그는 `manage.py check`의 `wireview.W023`이 미리 알린다 — 이름을 변수로 고르는 태그 등은 첫 렌더가).
+테스트도 `mount(ChatInput, id="composer")` — id 없는 프로듀서는 `presence_join()`에서 `ImproperlyConfigured`다.
+트래커에는 id가 필요 없다.
+
 Presence는 브라우저 탭마다 기록하고 목록은 사용자마다 하나로 합친다 — 마지막 탭이 떠날 때 빠지고, 한 탭이라도
 입력 중이면 입력 중이다. 다른 사람의 목록에 올리는 것은 프로듀서(`presence_join()`)다: 입장해 있는 동안 나중에 온
 트래커의 sync 요청에 답하므로, 트래커와 같은 페이지에 있기만 하면 순서와 상관없이 오른다. 트래커만 있는 페이지는

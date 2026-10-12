@@ -212,7 +212,7 @@ class TestPresenceMixin:
     @pytest.mark.unit
     async def test_presence_join_broadcasts(self):
         """presence_join() should broadcast join action."""
-        view = await mount(XProducerComponent, room_id=1, username="alice")
+        view = await mount(XProducerComponent, id="producer", room_id=1, username="alice")
 
         # Find the join broadcast
         join_broadcasts = [b for b in view.presence_broadcasts if b.get("kwargs", {}).get("action") == "presence_join"]
@@ -224,7 +224,7 @@ class TestPresenceMixin:
     @pytest.mark.unit
     async def test_presence_set_typing_broadcasts(self):
         """presence_set_typing() should broadcast typing state."""
-        view = await mount(XProducerComponent, room_id=1, username="bob")
+        view = await mount(XProducerComponent, id="producer", room_id=1, username="bob")
 
         # Clear initial broadcasts from joined()
         view.wire._mock_channel_layer.clear()
@@ -242,7 +242,7 @@ class TestPresenceMixin:
     @pytest.mark.unit
     async def test_typing_state_change_only_broadcasts_once(self):
         """Setting same typing state shouldn't broadcast again."""
-        view = await mount(XProducerComponent, room_id=1, username="charlie")
+        view = await mount(XProducerComponent, id="producer", room_id=1, username="charlie")
         view.wire._mock_channel_layer.clear()
 
         # Set typing twice
@@ -259,7 +259,7 @@ class TestPresenceMixin:
     @pytest.mark.unit
     async def test_typing_auto_timeout(self, broadcast_pace):
         """Typing should auto-clear after timeout."""
-        view = await mount(XProducerComponent, room_id=1, username="dave")
+        view = await mount(XProducerComponent, id="producer", room_id=1, username="dave")
         view.wire._mock_channel_layer.clear()
 
         # Set typing
@@ -284,7 +284,7 @@ class TestPresenceMixin:
     @pytest.mark.unit
     async def test_a_typing_timeout_that_fails_is_logged_at_once(self, caplog, monkeypatch):
         """The timer's broadcast is the only thing that clears typing for the others (#151)."""
-        view = await mount(XProducerComponent, room_id=1, username="erin")
+        view = await mount(XProducerComponent, id="producer", room_id=1, username="erin")
         await view.component.presence_set_typing(typing=True)
         task = view.component._presence_typing_task
 
@@ -310,7 +310,7 @@ class TestPresenceMixin:
         The timer runs on ``presence_clock``, so the test says exactly when the
         first timeout has passed and the second has not -- however slow the runner.
         """
-        view = await mount(XProducerComponent, room_id=1, username="eve")
+        view = await mount(XProducerComponent, id="producer", room_id=1, username="eve")
         view.wire._mock_channel_layer.clear()
 
         await view.component.presence_set_typing(typing=True)  # times out at 0.10
@@ -335,7 +335,7 @@ class TestPresenceMixin:
     @pytest.mark.unit
     async def test_presence_leave_clears_typing(self):
         """presence_leave() should cancel typing timeout."""
-        view = await mount(XProducerComponent, room_id=1, username="frank")
+        view = await mount(XProducerComponent, id="producer", room_id=1, username="frank")
 
         # Set typing
         await view.component.presence_set_typing(typing=True)
@@ -349,9 +349,76 @@ class TestPresenceMixin:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
+    async def test_what_leaving_left_joined_leaves_after_it(self):
+        """A producer whose leaving() did not leave leaves once that is over, typing timer and all (#212)."""
+        view = await mount(XProducerComponent, id="producer", room_id=1, username="ann")
+        await view.component.presence_set_typing(typing=True)
+        timer = view.component._presence_typing_task
+        view.wire._mock_channel_layer.clear()
+
+        await presence.left(view.component)
+
+        assert [b["kwargs"]["action"] for b in view.presence_broadcasts] == ["presence_leave"]
+        assert view.component._presence_joined is False
+        await asyncio.sleep(0)
+        assert timer is not None and timer.done()
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_producer_that_left_says_nothing_after_its_leaving(self):
+        view = await mount(XProducerComponent, id="producer", room_id=1, username="ann")
+        await view.component.presence_leave()
+        view.wire._mock_channel_layer.clear()
+
+        await presence.left(view.component)
+
+        assert view.presence_broadcasts == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_leave_cut_short_while_it_published_is_published_after_any_last_leaving(self, monkeypatch):
+        """Not only a connection's end (#211): a page's leave or a parent's removal has no deadline, and is owed it too (#212)."""
+        view = await mount(XProducerComponent, id="producer", room_id=1, username="ann")
+        component = view.component
+        broadcast = type(component).broadcast
+
+        async def cut_short(self, *args, **kwargs):
+            raise asyncio.CancelledError
+
+        monkeypatch.setattr(XProducerComponent, "broadcast", cut_short)
+        with pytest.raises(asyncio.CancelledError):
+            await component.presence_leave()
+        assert component._presence_joined is False and component._presence_leave_owed is True
+        monkeypatch.setattr(XProducerComponent, "broadcast", broadcast)
+        view.wire._mock_channel_layer.clear()
+
+        await presence.left(component)
+
+        assert [b["kwargs"]["action"] for b in view.presence_broadcasts] == ["presence_leave"]
+        assert component._presence_leave_owed is False
+        view.wire._mock_channel_layer.clear()
+        await presence.left(component)
+        assert view.presence_broadcasts == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_leave_that_fails_after_leaving_is_logged_not_raised(self, monkeypatch, caplog):
+        """The session's last step for the component goes on: the failure is logged."""
+        view = await mount(XProducerComponent, id="producer", room_id=1, username="ann")
+
+        async def broken(self):
+            raise RuntimeError("the layer is down")
+
+        monkeypatch.setattr(XProducerComponent, "presence_leave", broken)
+        with caplog.at_level("ERROR", logger="wireview"):
+            await presence.left(view.component)
+        assert any("could not leave its presence" in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
     async def test_presence_channel_format(self):
         """Channel should be formatted correctly."""
-        view = await mount(XProducerComponent, room_id=42, username="test")
+        view = await mount(XProducerComponent, id="producer", room_id=42, username="test")
         assert view.component._presence_channel() == "presence.room.42"
 
 
@@ -499,7 +566,7 @@ class TestPresenceIntegration:
     async def test_producer_to_tracker_flow(self):
         """Test presence flow from producer to tracker: the tracker hears it as a page would (#201)."""
         # Create producer
-        producer = await mount(XProducerComponent, room_id=1, username="alice")
+        producer = await mount(XProducerComponent, id="producer", room_id=1, username="alice")
 
         # Create tracker
         tracker = await mount(XTrackerComponent, room_id=1, username="bob")
@@ -520,7 +587,7 @@ class TestPresenceIntegration:
     async def test_typing_timeout_clears_on_tracker(self, broadcast_pace):
         """Test that typing auto-timeout is reflected on tracker."""
         # Create producer with very short timeout
-        producer = await mount(XProducerComponent, room_id=1, username="alice")
+        producer = await mount(XProducerComponent, id="producer", room_id=1, username="alice")
 
         # Create tracker
         tracker = await mount(XTrackerComponent, room_id=1, username="bob")
@@ -616,9 +683,9 @@ class TestPresencePerConnection:
         Each producer speaks for a meta of its own (its tab and its id), and
         does not answer the sync request of its own tab's tracker.
         """
-        producer = await mount(XProducerComponent, room_id=1, username="ann")
+        producer = await mount(XProducerComponent, id="producer", room_id=1, username="ann")
         tracker = await mount(XTrackerComponent, room_id=1, username="ann")
-        other = await mount(XProducerComponent, room_id=1, username="ann")
+        other = await mount(XProducerComponent, id="producer", room_id=1, username="ann")
         for view in (producer, tracker):
             view.wire.connection_id = "conn-secret"
         other.wire.connection_id = "conn-other"
@@ -657,7 +724,7 @@ class TestPresencePerConnection:
     @pytest.mark.asyncio
     @pytest.mark.unit
     async def test_a_producer_answers_a_sync_for_its_own_tab_only(self):
-        producer = await mount(XProducerComponent, room_id=1, username="ann")
+        producer = await mount(XProducerComponent, id="producer", room_id=1, username="ann")
         tracker = await mount(XTrackerComponent, room_id=1, username="ann")
         for view in (producer, tracker):
             view.wire.tab_id = "ann-tab-one-page-load"
@@ -727,7 +794,7 @@ class TestPresenceTrackerAlone:
         """
         # The producer first: what it said at its mount, before it is given the
         # tracker's connection, the tracker never hears (#201)
-        producer = await mount(XProducerComponent, room_id=1, username="ann")
+        producer = await mount(XProducerComponent, id="producer", room_id=1, username="ann")
         view = await mount(XTrackerComponent, room_id=1, username="ann")
         for each in (view, producer):
             each.wire.connection_id = "conn"
@@ -781,7 +848,7 @@ class TestPresenceLegacyPayload:
     @pytest.mark.asyncio
     @pytest.mark.unit
     async def test_a_legacy_sync_request_is_answered(self):
-        producer = await mount(XProducerComponent, room_id=1, username="ann")
+        producer = await mount(XProducerComponent, id="producer", room_id=1, username="ann")
         view = await mount(XTrackerComponent, room_id=1, username="ann")
         producer.wire._mock_channel_layer.clear()
 
@@ -871,7 +938,7 @@ class TestPresenceProducerAnswers:
     @pytest.mark.asyncio
     @pytest.mark.unit
     async def test_it_answers_between_its_join_and_its_leave(self):
-        producer = await mount(XProducerComponent, room_id=1, username="ann")
+        producer = await mount(XProducerComponent, id="producer", room_id=1, username="ann")
         [answer] = await ask(producer)
         assert (answer["action"], answer["user_id"], answer["state"]) == ("presence_sync_response", "ann", "online")
         assert answer["presence_ref"] == producer.presence_broadcasts[0]["kwargs"]["presence_ref"]
@@ -890,23 +957,24 @@ class TestPresenceProducerAnswers:
             async def joined(self):
                 pass
 
-        producer = await mount(XQuietProducer, room_id=1, username="ann")
+        producer = await mount(XQuietProducer, id="producer", room_id=1, username="ann")
         assert await ask(producer) == []
 
     @pytest.mark.asyncio
     @pytest.mark.unit
     async def test_it_answers_on_its_own_channel_only(self):
-        producer = await mount(XProducerComponent, room_id=1, username="ann")
+        producer = await mount(XProducerComponent, id="producer", room_id=1, username="ann")
         assert await ask(producer, channel="presence.room.2") == []
 
     @pytest.mark.asyncio
     @pytest.mark.unit
     async def test_its_connection_hears_its_channel_whatever_its_subscriptions_say(self):
         """The framework's channel is apart from the app's: get_subscriptions() is the app's own."""
-        producer = await mount(XNarrowProducer, room_id=1, username="ann")
+        producer = await mount(XNarrowProducer, id="producer", room_id=1, username="ann")
         assert producer.component.get_subscriptions() == {"chat.room.1"}
         assert presence_channels(producer.component) == {"presence.room.1"}
-        assert presence_channels((await mount(XProducerComponent, room_id=2)).component) == {"presence.room.2"}
+        elsewhere = await mount(XProducerComponent, id="producer", room_id=2)
+        assert presence_channels(elsewhere.component) == {"presence.room.2"}
 
     @pytest.mark.asyncio
     @pytest.mark.unit
@@ -917,7 +985,7 @@ class TestPresenceProducerAnswers:
             async def joined(self):
                 pass
 
-        producer = await mount(XLateProducer, room_id=1, username="ann")
+        producer = await mount(XLateProducer, id="producer", room_id=1, username="ann")
         assert presence_channels(producer.component) == set()
         await producer.component.presence_join()
         assert presence_channels(producer.component) == {"presence.room.1"}
@@ -935,7 +1003,7 @@ class TestPresenceProducerAnswers:
         class XMixedProducer(RoomMixin, XProducerComponent):
             pass
 
-        producer = await mount(XMixedProducer, room_id=1, username="ann")
+        producer = await mount(XMixedProducer, id="producer", room_id=1, username="ann")
         assert producer.component.get_subscriptions() == {"chat.room.1"}
         assert presence_channels(producer.component) == {"presence.room.1"}
 
@@ -1009,7 +1077,7 @@ class TestPresenceProducerAnswers:
             async def notification(self, channel: str, **kwargs):
                 heard.append(kwargs["message"])
 
-        producer = await mount(XListeningProducer, room_id=1, username="ann")
+        producer = await mount(XListeningProducer, id="producer", room_id=1, username="ann")
         await deliver(producer, action="presence_join", user_id="bob", presence_ref="bobs-tab")
         [answer] = await ask(producer)
         assert answer["action"] == "presence_sync_response"
@@ -1032,7 +1100,7 @@ class TestPresenceProducerAnswers:
     @pytest.mark.unit
     @pytest.mark.parametrize("component", [XProducerThenTracker, XTrackerThenProducer, XSubclassedTab])
     async def test_a_class_that_produces_and_tracks_answers_once(self, component):
-        view = await mount(component)
+        view = await mount(component, id="producer")
         await view.component.presence_join()
         [answer] = await ask(view)
         assert answer["action"] == "presence_sync_response"
@@ -1046,6 +1114,87 @@ class TestPresenceProducerAnswers:
 
 # A mounted component renders after each presence notification it hears, as a page does (#201)
 @pytest.mark.django_db
+class XStickyProducer(XProducerComponent):
+    class Meta:
+        sticky = True
+
+
+class XUnjoinedProducer(XProducerComponent):
+    """A producer that never joins presence."""
+
+    async def joined(self):
+        pass
+
+
+class TestPresenceProducerIds:
+    """A presence producer has the id its template or page gave it (#212).
+
+    The id names its entry on the tab: it tells two producers of one tab apart
+    and finds the same entry after a reconnect or a redraw. An id the framework
+    makes up (``rx-``, a sticky default) is new on every draw, or one for the
+    whole class.
+    """
+
+    @staticmethod
+    def render(source: str) -> str:
+        from django.template import Context, Template
+        from django.test import RequestFactory
+
+        request = RequestFactory().get("/")
+        return Template("{% load wireview %}" + source).render(Context({"request": request}))
+
+    @pytest.mark.unit
+    @pytest.mark.django_db
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "{% component 'XProducerComponent' username='ann' %}",
+            "{% component 'XProducerComponent' id='' username='ann' %}",
+            "{% component_block 'XProducerComponent' username='ann' %}{% endcomponent %}",
+            # A sticky default is one id for the whole class, and the second one drawn gets an ``rx-``
+            "{% component 'XStickyProducer' username='ann' %}",
+            # One that may never join is a producer all the same
+            "{% component 'XUnjoinedProducer' username='ann' %}",
+        ],
+        ids=["component", "empty-id", "component_block", "sticky", "unjoined"],
+    )
+    def test_one_drawn_without_an_id_fails_the_render_that_draws_it(self, source):
+        from django.template import TemplateSyntaxError
+
+        with pytest.raises(TemplateSyntaxError) as raised:
+            self.render(source)
+        message = str(raised.value)
+        assert "is a presence producer (PresenceMixin) drawn by {% component %} without an id" in message
+        assert "{% component 'X" in message and "id='...'" in message
+        assert "two producers of one tab" in message
+
+    @pytest.mark.unit
+    @pytest.mark.django_db
+    def test_one_drawn_with_an_id_and_a_tracker_without_one_render(self):
+        html = self.render(
+            "{% component 'XProducerComponent' id='composer' username='ann' %}"
+            "{% component 'XStickyProducer' id='dock' username='ann' %}"
+            "{% component 'XTrackerComponent' username='ann' %}"
+        )
+        assert 'id="composer"' in html and 'id="dock"' in html and 'data-name="XTrackerComponent"' in html
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_mount_without_an_id_fails_as_the_page_would(self):
+        from django.core.exceptions import ImproperlyConfigured
+
+        with pytest.raises(ImproperlyConfigured, match=r"XProducerComponent is a presence producer .* without an id"):
+            await mount(XProducerComponent, username="ann")
+        view = await mount(XProducerComponent, id="composer", username="ann")
+        assert [b["kwargs"]["action"] for b in view.presence_broadcasts] == ["presence_join"]
+        # Only joining asks for it: a tracker, or a producer that has not joined, mounts as before
+        await mount(XTrackerComponent)
+        unjoined = await mount(XUnjoinedProducer)
+        with pytest.raises(ImproperlyConfigured, match="without an id"):
+            await unjoined.component.presence_join()
+        assert unjoined.presence_broadcasts == []
+
+
 class TestPresenceTabs:
     """A meta is a browser tab's, across its reconnects (#202).
 
@@ -1055,16 +1204,14 @@ class TestPresenceTabs:
     """
 
     @staticmethod
-    def ref(
-        tab: str = "", connection: str = "conn", user=None, id: str = "producer", key=None, id_given: bool = True
-    ) -> str:
-        """A producer's ref (or, with ``key``, another key of it); ``id_given=False`` is an id the framework minted."""
+    def ref(tab: str = "", connection: str = "conn", user=None, id: str = "producer", key=None) -> str:
+        """A producer's ref (or, with ``key``, another key of it)."""
         from django.contrib.auth.models import AnonymousUser
 
         from wireview.core.meta import WireviewMeta
 
         wire = WireviewMeta(params={}, connection_id=connection, tab_id=tab)
-        wire.id_given = id_given
+        wire.id_given = True
         component = XProducerComponent(id=id, user=user or AnonymousUser(), wire=wire)
         return (key or presence._presence_ref)(component)
 
@@ -1084,14 +1231,6 @@ class TestPresenceTabs:
         tab_key = presence._presence_tab
         assert self.ref(tab, id="composer", key=tab_key) == self.ref(tab, id="sidebar", key=tab_key)
         assert self.ref(tab, id="composer", key=tab_key) != self.ref(tab, id="composer")
-
-    @pytest.mark.unit
-    def test_a_producer_whose_id_was_minted_is_named_by_its_class(self):
-        """An id-less ``{% component %}`` gets a new ``rx-`` id on every pass that draws it, a reconnect's too."""
-        tab = "abcdefghijklmnopqrstuv"
-        assert self.ref(tab, "conn-1", id="rx-1", id_given=False) == self.ref(tab, "conn-2", id="rx-2", id_given=False)
-        assert self.ref(tab, id="rx-1", id_given=False) != self.ref(tab, id="rx-1")
-        assert self.ref(tab, id="rx-1", id_given=False) != self.ref("vutsrqponmlkjihgfedcba", id="rx-1", id_given=False)
 
     @pytest.mark.unit
     def test_without_a_tab_the_connection_is_the_key(self):

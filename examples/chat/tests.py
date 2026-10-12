@@ -40,7 +40,7 @@ class TestXMessageList:
             await mount(XMessageList, id="b", room=room),
             await mount(XMessageList, id="c", room=elsewhere),
         ]
-        chat = await mount(XChatRoom, room=room, username="ada")
+        chat = await mount(XChatRoom, id="room", room=room, username="ada")
         for view in lists:
             view.clear_messages()
 

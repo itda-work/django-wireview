@@ -1158,8 +1158,13 @@ class WireviewSession:
 
         ``within`` bounds the hooks of a connection that ends (``stop``), all of
         them together: past it the one running is cancelled and the rest do not
-        run. Each component's tasks are cancelled and its presence left either
-        way (``presence.ended``).
+        run. Each component's tasks are cancelled either way.
+
+        These are final: a tombstone's comes when it is buried (#204). So a
+        presence the component joined and its ``leaving()`` did not leave --
+        it raised first, never called ``presence_leave()``, or ran out of
+        ``within`` (#211) -- leaves here, past the hooks' time by a second
+        (``presence.left``, #212).
         """
         loop = asyncio.get_running_loop()
         deadline = None if within is None else loop.time() + within
@@ -1194,8 +1199,7 @@ class WireviewSession:
             finally:
                 # After leaving(), which may still want them (#95)
                 component._cancel_async_tasks()
-                if deadline is not None:
-                    await presence.ended(component, deadline)
+                await presence.left(component, deadline)
 
     def _join_uri(self) -> str:
         """The ``uri`` a joining component hears its first ``params_changed`` with."""

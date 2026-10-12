@@ -393,6 +393,25 @@ class XOnlineUsers(PresenceTrackerMixin, Component):
         await self.presence_track_self(username=self.username)
 ```
 
+### room.html
+
+페이지가 채팅방 컴포넌트를 그린다. `XChatRoom`은 Presence 프로듀서라 id를 주어 그린다 — 탭의 Presence 항목이
+그 id로 이름 지어지고, id 없이 그리면 이 태그가 `TemplateSyntaxError`로 실패한다
+([프로듀서는 id로 그린다](./07-presence-api.md#프로듀서는-id로-그린다)).
+
+```html
+{% load wireview %}
+<!DOCTYPE html>
+<html>
+<head>
+  {% wireview_header %}
+</head>
+<body>
+  {% component 'XChatRoom' id="room-"|concat:room.id room_id=room.id room_name=room.name username=username %}
+</body>
+</html>
+```
+
 ### room_component.html
 
 ```html

@@ -307,16 +307,8 @@ class CnHideable(CnTyping):
         await self.presence_leave()
 
 
-class CnPage(InlineTemplate, Component):
-    """A page that draws its producer without an id, as the README's ``{% component %}`` does."""
-
-    source: t.ClassVar[str] = '<section {% tag_header %}>{% component "CnTyping" name=this.name %}</section>'
-
-    name: str = ""
-
-
 class CnNamedPage(InlineTemplate, Component):
-    """The same page naming its producer."""
+    """A page that draws its producer, under the id a producer needs (#212)."""
 
     source: t.ClassVar[str] = (
         '<section {% tag_header %}>{% component "CnTyping" id="a-named-typing" name=this.name %}</section>'
@@ -601,14 +593,13 @@ async def join_page(communicator: WebsocketCommunicator, page: type[Component], 
     return producer_id
 
 
-@pytest.mark.parametrize("page", [CnPage, CnNamedPage], ids=["minted-id", "given-id"])
-async def test_a_tab_that_reconnects_replaces_what_its_drawn_producer_left(monkeypatch, page):
+async def test_a_tab_that_reconnects_replaces_what_its_drawn_producer_left(monkeypatch):
     """The producer is drawn by the page's component; its process died without the leave (#202).
 
-    Without an id, the rejoin after the reconnect draws it under a new ``rx-``
-    id. Keyed by that id, the join made a second meta and the lost one stayed
-    on bob's list after the tab closed.
+    The rejoin after the reconnect draws it under the same id, so its join
+    replaces the meta the lost leave left, and the tab's close takes it off.
     """
+    page = CnNamedPage
     bob = await connect(CnOnline, "b-list", name="bob")
     try:
         lost = await open_socket(ANN_TAB)
@@ -624,7 +615,7 @@ async def test_a_tab_that_reconnects_replaces_what_its_drawn_producer_left(monke
 
         back = await open_socket(ANN_TAB)
         again = await join_page(back, page)
-        assert (again == first) == (page is CnNamedPage)
+        assert again == first
         await render_containing(bob, "ann-online")
         await back.disconnect()
         await render_containing(bob, '"online-1"')
@@ -633,16 +624,14 @@ async def test_a_tab_that_reconnects_replaces_what_its_drawn_producer_left(monke
 
 
 class CnToggle(InlineTemplate, Component):
-    """A page that hides and shows its producer, drawn without an id (or with one)."""
+    """A page that hides and shows its producer."""
 
     source: t.ClassVar[str] = (
         '<section {% tag_header %}><i>{{ "n-"|add:this.n }}</i>{% if this.show %}'
-        '{% if this.named %}{% component "CnTyping" id="a-toggled" name=this.name %}'
-        '{% else %}{% component "CnTyping" name=this.name %}{% endif %}{% endif %}</section>'
+        '{% component "CnTyping" id="a-toggled" name=this.name %}{% endif %}</section>'
     )
 
     name: str = ""
-    named: bool = False
     show: bool = True
     n: str = "0"
 
@@ -676,15 +665,14 @@ async def page_render(communicator: WebsocketCommunicator) -> dict:
             return message["payload"]
 
 
-@pytest.mark.parametrize("named", [False, True], ids=["minted-id", "given-id"])
-async def test_a_hidden_producers_late_leave_keeps_the_one_shown_in_its_place(monkeypatch, named):
+async def test_a_hidden_producers_late_leave_keeps_the_one_shown_in_its_place(monkeypatch):
     """Hidden, then shown again before the hidden one's leaving() ran (#202, #204).
 
     The hidden producer retires with the render that stops drawing it and
     leaves when its tombstone is buried: here the page held its element, so
-    when its time is up. Drawn without an id, it shares its meta with the one
-    shown in its place; its leave, said after that one's join, took the user
-    off bob's list while the page showed them joined.
+    when its time is up. Under its id, it shares its meta with the one shown
+    in its place; its leave, said after that one's join, took the user off
+    bob's list while the page showed them joined.
     """
     from wireview import repository
 
@@ -693,7 +681,7 @@ async def test_a_hidden_producers_late_leave_keeps_the_one_shown_in_its_place(mo
     ann = await open_socket(ANN_TAB)
     carol = None
     try:
-        page = CnToggle(user=AnonymousUser(), wire=WireviewMeta(params={}), id="a-page", name="ann", named=named)
+        page = CnToggle(user=AnonymousUser(), wire=WireviewMeta(params={}), id="a-page", name="ann")
         await ann.send_json_to(
             {"command": "join", "payload": {"name": "CnToggle", "state": sign_state(page), "children": {}}}
         )
@@ -926,6 +914,34 @@ async def test_two_producers_of_one_tab_one_leaves_the_user_stays():
     finally:
         for communicator in (c for c in (ann, bob, carol) if c):
             await communicator.disconnect()
+
+
+async def test_a_leaving_that_raises_still_takes_the_user_off(monkeypatch):
+    """The producer's leaving() raised before presence_leave(): the framework leaves for it (#212).
+
+    Phoenix's tracker drops a process's metas when the process ends, whatever
+    the process did; the end of a component is its last leaving().
+    """
+    bob = await connect(CnOnline, "b-list", name="bob")
+    ann = carol = None
+    try:
+        ann = await connect(CnTyping, "a-input", name="ann")
+        await render_containing(bob, "ann-online")
+
+        async def broken(self):
+            raise RuntimeError("leaving() failed")
+
+        monkeypatch.setattr(CnTyping, "leaving", broken)
+        await ann.disconnect()
+        ann = None
+        monkeypatch.undo()
+        carol = await connect(CnTyping, "c-input", name="carol")
+        final = await render_containing(bob, "carol-online")
+        assert "ann-" not in final and '"online-2"' in final, final
+    finally:
+        for communicator in (ann, carol, bob):
+            if communicator is not None:
+                await communicator.disconnect()
 
 
 async def test_closing_the_socket_calls_leaving():
