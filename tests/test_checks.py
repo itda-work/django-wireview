@@ -17,7 +17,8 @@ from fractions import Fraction
 from pathlib import Path
 
 import pytest
-from django.template import Context, Template
+from django.template import Context, Template, TemplateSyntaxError
+from django.template.loader import get_template
 from django.test import override_settings
 from testproj.wireview_setting import set_wireview
 
@@ -1423,6 +1424,42 @@ class TestPresenceProducerIdsCheck:
         with override_settings(TEMPLATES=engines):
             [message] = check_presence_producer_ids(None)
         assert message.msg.startswith("w23/inner.html:2 draws ")
+
+    @staticmethod
+    def choosing(monkeypatch, tag: str) -> list[dict]:
+        """A function component whose template uses ``tag``: an inclusion tag with a list of candidates."""
+        from wireview import function_components
+
+        function = function_components.FunctionComponent(func=lambda: {}, name="w23_fn", template="w23/root.html")
+        monkeypatch.setattr(function_components, "_registry", {"w23_fn": function})
+        locmem = {
+            "w23/root.html": f"{{% load sh_tags %}}{{% {tag} %}}",
+            "w23/safe.inc": "safe",
+            "w23/bad.inc": "{% load wireview %}{% component 'W23Typing' %}",
+        }
+        return [
+            {
+                "BACKEND": "django.template.backends.django.DjangoTemplates",
+                "OPTIONS": {
+                    "loaders": [("django.template.loaders.locmem.Loader", locmem)],
+                    "libraries": {"sh_tags": "testproj.inclusion_tags"},
+                },
+            }
+        ]
+
+    def test_a_candidate_after_the_one_an_inclusion_tag_takes_is_silent(self, producer, monkeypatch):
+        """``['safe.inc', 'bad.inc']``: the render takes safe.inc and never loads bad.inc (#212 review)."""
+        with override_settings(TEMPLATES=self.choosing(monkeypatch, "sh_first_choice")):
+            assert get_template("w23/root.html").render({}) == "safe"
+            assert check_presence_producer_ids(None) == []
+
+    def test_the_candidate_after_a_missing_one_is_read(self, producer, monkeypatch):
+        """``['missing.inc', 'bad.inc']``: the render takes bad.inc, and its tag raises (#212 review)."""
+        with override_settings(TEMPLATES=self.choosing(monkeypatch, "sh_fallback_choice")):
+            with pytest.raises(TemplateSyntaxError, match="without an id"):
+                get_template("w23/root.html").render({})
+            [message] = check_presence_producer_ids(None)
+        assert message.msg.startswith("w23/bad.inc:1 draws ")
 
 
 class TestTestprojIsClean:

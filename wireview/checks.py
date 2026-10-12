@@ -1151,8 +1151,9 @@ def check_presence_producer_ids(app_configs, **kwargs) -> list[CheckMessage]:
     directory overrides is not), the components' own, the function
     components', and what they reach -- ``{% include %}``, the parents of
     ``{% extends %}`` (a parent of the same name too), a function
-    component's template, an inclusion tag's -- as W019 follows them (#208).
-    A name a template picks at render time is the render's to tell.
+    component's template, an inclusion tag's (of a list, the first that
+    loads, as the render takes it) -- as W019 follows them (#208). A name a
+    template picks at render time is the render's to tell.
     """
     from django.template import engines, loader
     from django.template.backends.django import DjangoTemplates

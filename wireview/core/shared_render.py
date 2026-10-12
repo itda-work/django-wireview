@@ -251,7 +251,8 @@ class _Reach:
 
     With ``visit``, each node of every template reached is handed to it, with
     the parse it is in, in place of the reading above: another check that
-    follows the same templates (``wireview.W023``). Without ``cls`` no
+    follows the same templates (``wireview.W023``) -- of an inclusion tag's
+    list of candidates, only the one its render takes. Without ``cls`` no
     template is read as a component's own.
     """
 
@@ -446,7 +447,16 @@ class _Reach:
                 loaded = [filename]
             elif isinstance(filename, str):
                 loaded = [parsed.engine.get_template(filename)]
-            else:  # select_template takes the first that loads: any of them may be the one
+            elif self.visit is not None:
+                # W023 says what a render will raise, so it follows the one candidate the render
+                # takes: select_template's, the first that loads. One after it is never rendered;
+                # one after a missing candidate is. Reading them all warned of the first and
+                # missed the second (#212 review).
+                loaded = [parsed.engine.select_template(filename)]
+            else:
+                # Sharing reads every candidate, and one that fails to load counts against it:
+                # a wrong yes hands one viewer's screen to another, a wrong no costs one render
+                # per connection. Kept as it was (#208).
                 loaded = [parsed.engine.get_template(name) for name in filename]
         except Exception:
             self.unknown.add(f"{{% {getattr(node.func, '__name__', 'inclusion tag')} %}}")

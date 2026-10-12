@@ -2,7 +2,8 @@
 
 Loaded through the engine's ``libraries`` option (``{% load sh_tags %}``), so no
 app of the test project carries it. Each tag is a shape a library may take that
-the scope check must read through.
+the scope check must read through. tests/test_checks.py loads it too, for the
+templates W023 follows (#212).
 """
 
 from django import template
@@ -36,6 +37,18 @@ def sh_safe_card(context):
 def sh_viewer_card(context):
     """Another template made from a string, with the same Origin name as ``sh_safe_card``'s."""
     return {"user": context.get("user")}
+
+
+@register.inclusion_tag(["w23/safe.inc", "w23/bad.inc"])
+def sh_first_choice():
+    """A list of candidates: the render takes the first that loads, the second never."""
+    return {}
+
+
+@register.inclusion_tag(["w23/missing.inc", "w23/bad.inc"])
+def sh_fallback_choice():
+    """A list whose first candidate is missing: the render takes the second."""
+    return {}
 
 
 class _SubInclusionNode(InclusionNode):
