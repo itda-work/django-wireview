@@ -78,7 +78,8 @@ The django-reactor era changelog (2.x) is preserved in
   Windows on ARM included, and wireview.W004's hint gives the make-free build for a checkout of the repository.
   `tests/test_example_commands.py` keeps the commands so. The test suite names the encoding of every file and
   pipe it opens (`tests/test_text_encoding.py`) and puts back the event loop policy daphne sets on Windows, where
-  the tests of `tests/e2e.sh`, a bash script, are skipped.
+  the tests of `tests/e2e.sh`, a bash script, are skipped. The testing reference shows a Windows project with
+  daphne the `conftest.py` lines its Playwright tests need.
 - The README opens with who wireview is for, a structural comparison with Phoenix LiveView, Laravel Livewire,
   Rails Hotwire, htmx and the Java options (Vaadin Flow, Spring REST + SPA), and why it suits a coding agent;
   `docs/WHY.md` answers the questions that comparison leaves (#215).
