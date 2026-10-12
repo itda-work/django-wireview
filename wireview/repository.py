@@ -1,6 +1,5 @@
 import builtins
 import contextvars
-import itertools
 import json
 import logging
 import time
@@ -195,9 +194,13 @@ class ComponentRepository:
         # For each component, the ids in ``_built_by`` that name it: what the end
         # of its next pass looks at (``end_pass``), rather than all of them
         self._drew: dict[str, set[str]] = {}
-        # For each component, the ones its current pass built without an id, in
-        # the order it drew them: what the end of the pass numbers (``end_pass``)
+        # For each component, the ones its current pass drew without an id, in
+        # the order it drew them -- those it built, and those a part it kept
+        # shows (``keep_drawn``): what the end of the pass numbers (``end_pass``)
         self._unnamed: dict[str, list[str]] = {}
+        # Whether a pass since the last ``take_renumbered`` gave one already
+        # numbered another number: a presence producer's name moved (#212)
+        self._renumbered = False
         # For each component, the ones its pass drew within its own whose
         # LiveComponents its batch settles (``end_inline_pass``), in pass order;
         # and for each of those, what that pass named
@@ -537,35 +540,69 @@ class ComponentRepository:
             self._drew[drawer_id] = drew
         return rendered
 
+    def keep_drawn(self, drawer: Component, kept: t.Iterable[str]) -> None:
+        """A part the pass of ``drawer`` kept for a reset temporary assign shows ``kept`` here (#111, #212).
+
+        The ones of those it drew without an id take their place in the pass's
+        order (``_place_unnamed``), among themselves in the order of their numbers.
+        """
+        shown = [
+            component
+            for child_id in kept
+            if (component := self.components.get(child_id)) is not None
+            and (at := component.wire.drawn_at) is not None
+            and at[0].id == drawer.id
+        ]
+        shown.sort(key=lambda component: t.cast("tuple[t.Any, int]", component.wire.drawn_at)[1])
+        self._unnamed.setdefault(drawer.id, []).extend(component.id for component in shown)
+
     def _place_unnamed(self, drawer: Component, rendered: set[str]) -> None:
         """Number what the pass of ``drawer`` drew without an id (``WireviewMeta.drawn_at``, #212).
 
-        Each takes, in the order the pass drew them, the lowest number no other
-        component of its class the drawer shows holds; one a part kept for a
-        reset temporary assign shows keeps its own (#111). Every other one is
-        drawn anew on every pass, under a new id: the numbers of a class run
-        from 0 for as many as the drawer shows, the same after a reconnect,
-        whose first pass draws them in the same order. Presence names a
-        producer drawn without an id by its drawer and this number, so two of a
-        class on one page are two, and the one drawn when another is hidden
-        takes a number the hidden ones had.
+        The numbers of a class run from 0 for as many as the drawer shows, in
+        the order the pass drew them: a function of what is on the page alone.
+        So the first pass after a reconnect, which draws them all anew, names
+        them as the pass before it did. That holds for the ones a part kept for
+        a reset temporary assign shows too (#111): they take their place where
+        the part is (``keep_drawn``), and one whose number moves is renamed --
+        its producer leaves under the old name and joins under the new one
+        (``take_renumbered``). Held to their numbers, they left a gap the
+        reconnect's pass closed, and the meta under the number past it stayed.
+
+        Every other one is drawn anew on every pass, under a new id. Presence
+        names a producer drawn without an id by its drawer and this number, so
+        two of a class on one page are two, and the one drawn when another is
+        hidden takes a number the hidden ones had.
         """
-        built = self._unnamed.pop(drawer.id, ())
-        if not built:
-            return
-        held: dict[type[Component], set[int]] = {}
-        for child_id in rendered.difference(built):
-            child = self.components.get(child_id)
-            if child is not None and child.wire.drawn_at is not None:
-                held.setdefault(type(child), set()).add(child.wire.drawn_at[1])
-        for child_id in built:
+        drawn = list(dict.fromkeys(self._unnamed.pop(drawer.id, ())))
+        # Kept by a part no record saw (``keep_drawn``): after the rest, in the order of their numbers
+        listed = set(drawn)
+        stray = [
+            component
+            for child_id in rendered
+            if child_id not in listed
+            and (component := self.components.get(child_id)) is not None
+            and (at := component.wire.drawn_at) is not None
+            and at[0].id == drawer.id
+        ]
+        stray.sort(key=lambda component: t.cast("tuple[t.Any, int]", component.wire.drawn_at)[1])
+        drawn += [component.id for component in stray]
+        counts: dict[type[Component], int] = {}
+        for child_id in drawn:
             child = self.components.get(child_id)
             if child is None or child_id not in rendered:
                 continue
-            numbers = held.setdefault(type(child), set())
-            number = next(n for n in itertools.count() if n not in numbers)
-            numbers.add(number)
+            number = counts.get(type(child), 0)
+            counts[type(child)] = number + 1
+            at = child.wire.drawn_at
+            if at is not None and (at[0] is not drawer or at[1] != number):
+                self._renumbered = True
             child.wire.drawn_at = (drawer, number)
+
+    def take_renumbered(self) -> bool:
+        """Whether a pass since the last call gave a component it drew without an id another number (#212)."""
+        renumbered, self._renumbered = self._renumbered, False
+        return renumbered
 
     def _retire_undrawn(self) -> list[Component]:
         """Retire what the passes of the render just over stopped drawing and none drew again (``end_pass``).

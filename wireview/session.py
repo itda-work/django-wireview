@@ -2068,6 +2068,9 @@ class WireviewSession:
             self._retired_in_render = True
             await self._call_leaving(settled)
             self._release_uploads(settled)
+        if self.repo.take_renumbered():
+            # A part kept for a reset temporary assign moved what it shows to other numbers (#212)
+            await presence.rename(self.repo.reachable_components())
         return rendered
 
     async def _render_level(

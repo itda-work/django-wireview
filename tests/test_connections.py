@@ -24,6 +24,7 @@ from wireview import Component, PresenceConfig, PresenceMixin, PresenceTrackerMi
 from wireview.consumer import WireviewConsumer
 from wireview.core.meta import WireviewMeta
 from wireview.core.state import sign_state
+from wireview.session import WireviewSession
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio, pytest.mark.django_db(transaction=True)]
 
@@ -355,9 +356,9 @@ async def connect(component: type[Component], id: str, *, tab: str = "", **state
     return communicator
 
 
-async def render_containing(communicator: WebsocketCommunicator, text: str) -> str:
-    """The first render whose payload contains ``text``."""
-    for _ in range(10):
+async def render_containing(communicator: WebsocketCommunicator, text: str, limit: int = 10) -> str:
+    """The first render whose payload contains ``text``, among the next ``limit`` messages."""
+    for _ in range(limit):
         message = await communicator.receive_json_from(timeout=5)
         if message["command"] != "render":
             continue
@@ -556,6 +557,18 @@ async def test_a_sticky_producer_answers_for_the_page_it_moved_to():
 ANN_TAB = "ann-first-page-load"
 
 
+def process_dies(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The socket's process ends with it: no ``leaving()`` runs, nor what the framework does after one (#212).
+
+    ``monkeypatch.undo()`` brings the process back.
+    """
+
+    async def nothing(self, components):
+        pass
+
+    monkeypatch.setattr(WireviewSession, "_call_leaving", nothing)
+
+
 async def test_a_tab_that_reconnects_replaces_what_a_lost_leave_left(monkeypatch):
     """The socket's process died without the leave; the tab came back on a new socket, then closed (#202).
 
@@ -567,10 +580,7 @@ async def test_a_tab_that_reconnects_replaces_what_a_lost_leave_left(monkeypatch
         lost = await connect(CnTyping, "a-typing", tab=ANN_TAB, name="ann")
         await render_containing(bob, "ann-online")
 
-        async def dies(self):
-            pass  # the process ends: leaving() never runs
-
-        monkeypatch.setattr(CnTyping, "leaving", dies)
+        process_dies(monkeypatch)
         await lost.disconnect()
         monkeypatch.undo()
 
@@ -616,10 +626,7 @@ async def test_a_tab_that_reconnects_replaces_what_its_drawn_producer_left(monke
         first = await join_page(lost, page)
         await render_containing(bob, "ann-online")
 
-        async def dies(self):
-            pass  # the process ends: leaving() never runs
-
-        monkeypatch.setattr(CnTyping, "leaving", dies)
+        process_dies(monkeypatch)
         await lost.disconnect()
         monkeypatch.undo()
 
@@ -1123,10 +1130,7 @@ async def test_a_tab_that_reconnects_replaces_what_both_its_unnamed_producers_le
         first = await join_twins(lost)
         await render_containing(bob, "ann-online")
 
-        async def dies(self):
-            pass  # the process ends: leaving() never runs
-
-        monkeypatch.setattr(CnTyping, "leaving", dies)
+        process_dies(monkeypatch)
         await lost.disconnect()
         monkeypatch.undo()
 
@@ -1138,6 +1142,117 @@ async def test_a_tab_that_reconnects_replaces_what_both_its_unnamed_producers_le
         await render_containing(bob, '"online-1"')
     finally:
         await bob.disconnect()
+
+
+class CnKeptRows(InlineTemplate, Component):
+    """A page that draws a producer it can hide, then one per row of a temporary assign, none with an id (#212)."""
+
+    class Meta:
+        temporary_assigns = ["rows"]
+
+    source: t.ClassVar[str] = (
+        "<section {% tag_header %}>"
+        '{% if this.show %}{% component "CnTyping" name="ann" %}{% endif %}'
+        '{% for row in rows %}{% component "CnTyping" name="ann" %}{% endfor %}</section>'
+    )
+
+    show: bool = True
+    rows: list[str] = []
+
+    async def joined(self):
+        self.rows = ["a", "b"]
+
+    async def hide(self):
+        self.show = False
+
+
+def drawn_producer_states(node: t.Any) -> list[tuple[str, str]]:
+    """The id and signed state of each CnTyping a render drew, in a part or a loop's items."""
+    if isinstance(node, str):
+        return re.findall(r'id="([^"]+)" data-name="CnTyping" data-state="([^"]+)"', node)
+    values = node.values() if isinstance(node, dict) else node if isinstance(node, list) else ()
+    return [found for value in values for found in drawn_producer_states(value)]
+
+
+async def join_kept_rows(communicator: WebsocketCommunicator, show: bool) -> list[str]:
+    """Join the page and every producer its first render drew, as the page does; their ids."""
+    page = CnKeptRows(user=AnonymousUser(), wire=WireviewMeta(params={}), id="a-page", show=show)
+    await join_signed(communicator, "CnKeptRows", sign_state(page))
+    render = await render_of(communicator, "a-page")
+    ids = await join_drawn_producers(communicator, render)
+    for producer_id, state in drawn_producer_states(render):
+        await join_signed(communicator, "CnTyping", state)
+        await render_of(communicator, producer_id)
+        ids.append(producer_id)
+    return ids
+
+
+async def test_a_tab_that_reconnects_replaces_what_producers_a_kept_part_shows_left(monkeypatch):
+    """The page hid the producer before the rows a temporary assign keeps; the process died; the tab came back (#212).
+
+    The rows stay on the page as they were, with the same instances. Held to
+    their numbers, 1 and 2, they left the gap the hidden one left; the first
+    pass on the new socket drew them as 0 and 1, and the meta under 2 stayed
+    on bob's list after the tab closed. Now they move to 0 and 1 when the
+    hidden one goes, leaving under the old names and joining under the new.
+    """
+    bob = await connect(CnOnline, "b-list", name="bob")
+    lost = back = carol = None
+    try:
+        lost = await open_socket(ANN_TAB)
+        first = await join_kept_rows(lost, show=True)
+        assert len(first) == 3
+        await render_containing(bob, "ann-online")
+        await event(lost, "a-page", "hide")
+        await render_of(lost, "a-page")
+        await leave(lost, first[0])
+        # The answer to another event on the socket comes after the leave
+        await event(lost, "a-page", "hide")
+        await render_of(lost, "a-page")
+
+        process_dies(monkeypatch)
+        await lost.disconnect()
+        lost = None
+        monkeypatch.undo()
+
+        back = await open_socket(ANN_TAB)
+        assert len(await join_kept_rows(back, show=False)) == 2
+        await back.disconnect()
+        back = None
+        carol = await connect(CnTyping, "c-typing", name="carol")
+        final = await render_containing(bob, "carol-online", limit=40)
+        assert "ann-" not in final and '"online-2"' in final, final
+    finally:
+        for communicator in (lost, back, carol, bob):
+            if communicator is not None:
+                await communicator.disconnect()
+
+
+async def test_producers_a_kept_part_shows_keep_the_user_while_their_names_move():
+    """The rows a temporary assign keeps move to the hidden one's number and stay listed, typing still (#212)."""
+    bob = await connect(CnOnline, "b-list", name="bob")
+    ann = await open_socket(ANN_TAB)
+    carol = None
+    try:
+        producers = await join_kept_rows(ann, show=True)
+        await render_containing(bob, "ann-online")
+        await event(ann, producers[2], "typing")
+        await render_containing(bob, "ann-typing")
+        await event(ann, "a-page", "hide")
+        await render_of(ann, "a-page")
+        await leave(ann, producers[0])
+        carol = await connect(CnTyping, "c-typing", name="carol")
+        final = await render_containing(bob, "carol-online", limit=40)
+        assert "ann-typing" in final and '"online-3"' in final, final
+
+        # Each row leaves under the name it has now: with both gone, ann is too
+        await ann.disconnect()
+        ann = None
+        assert "ann-" not in await render_containing(bob, '"online-2"', limit=40)
+    finally:
+        for communicator in (bob, ann, carol):
+            if communicator is not None:
+                await communicator.disconnect()
 
 
 async def test_closing_the_socket_calls_leaving():

@@ -339,6 +339,24 @@ class RetirePlacedRoot(Component):
         )
 
 
+class RetireGapRoot(RetirePlacedRoot):
+    """Draws a leaf it can hide before the rows' leaves: hidden, it leaves a gap before what the loop keeps (#212)."""
+
+    show: bool = True
+
+    async def toggle(self):
+        self.show = not self.show
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% if this.show %}{% component 'RetireLeaf' note='shown' %}{% endif %}"
+            "{% for row in rows %}{% component 'RetireLeaf' note=row %}{% endfor %}"
+            "{% component 'RetireLeaf' note=this.note %}</p>"
+        )
+
+
 class _Outbound:
     async def send_command(self, command: str, payload: dict[str, t.Any]) -> None:
         SENT.append((command, payload))
@@ -541,7 +559,7 @@ def _places(consumer: WireviewConsumer) -> list[tuple[str, str, int, str]]:
 
 
 async def test_what_a_pass_draws_without_an_id_is_numbered_within_its_class_and_drawer():
-    """In the order the pass draws them; one a kept part shows keeps its number (#212)."""
+    """In the order the pass draws them, a kept part's where the part is (#212)."""
     consumer = await _page(RetirePlacedRoot)
     assert _places(consumer) == [
         ("RetireLeaf", "RetireMiddle", 0, ""),
@@ -560,8 +578,8 @@ async def test_what_a_pass_draws_without_an_id_is_numbered_within_its_class_and_
     ]
     rows = [leaf for leaf in _leaves(consumer) if leaf.note in ("a", "b")]
 
-    # The rows reset: the loop keeps its leaves and their numbers, and the
-    # leaf drawn anew after them does not take one of those
+    # The rows reset: the loop keeps its leaves in their places, and the leaf
+    # drawn anew after them comes after them
     await _event(consumer, "root", "write", note="x")
     assert [leaf for leaf in _leaves(consumer) if leaf.note in ("a", "b")] == rows
     assert _places(consumer) == [
@@ -575,6 +593,43 @@ async def test_what_a_pass_draws_without_an_id_is_numbered_within_its_class_and_
     [middle] = [c for c in consumer.repo.reachable_components() if isinstance(c, RetireMiddle)]
     [inner] = [leaf for leaf in _leaves(consumer) if leaf.wire.drawn_at[0] is not consumer.repo.get("root")]
     assert inner.wire.drawn_at[0] is middle
+
+
+async def test_what_a_kept_part_shows_closes_the_gap_a_hidden_one_leaves():
+    """The numbers are a function of what the drawer shows, kept or drawn anew (#212).
+
+    Held to their numbers, the rows a reset temporary assign keeps left the
+    hidden leaf's number free, and the first pass after a reconnect, which
+    draws them all anew, numbered them otherwise.
+    """
+    consumer = await _page(RetireGapRoot)
+    await _event(consumer, "root", "load")
+    assert _places(consumer) == [
+        ("RetireLeaf", "RetireGapRoot", 0, "shown"),
+        ("RetireLeaf", "RetireGapRoot", 1, "a"),
+        ("RetireLeaf", "RetireGapRoot", 2, "b"),
+        ("RetireLeaf", "RetireGapRoot", 3, ""),
+    ]
+    rows = [leaf for leaf in _leaves(consumer) if leaf.note in ("a", "b")]
+
+    # Hidden: the rows the loop keeps move up, the same instances
+    await _event(consumer, "root", "toggle")
+    assert [leaf for leaf in _leaves(consumer) if leaf.note in ("a", "b")] == rows
+    assert _places(consumer) == [
+        ("RetireLeaf", "RetireGapRoot", 0, "a"),
+        ("RetireLeaf", "RetireGapRoot", 1, "b"),
+        ("RetireLeaf", "RetireGapRoot", 2, ""),
+    ]
+
+    # Shown again: before them, where it is drawn
+    await _event(consumer, "root", "toggle")
+    assert [leaf for leaf in _leaves(consumer) if leaf.note in ("a", "b")] == rows
+    assert _places(consumer) == [
+        ("RetireLeaf", "RetireGapRoot", 0, "shown"),
+        ("RetireLeaf", "RetireGapRoot", 1, "a"),
+        ("RetireLeaf", "RetireGapRoot", 2, "b"),
+        ("RetireLeaf", "RetireGapRoot", 3, ""),
+    ]
 
 
 async def test_a_render_outside_an_event_drops_the_retired_leaf_s_topic():

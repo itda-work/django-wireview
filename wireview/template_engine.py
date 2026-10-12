@@ -242,7 +242,13 @@ class _PartNode(Node):
             owner = wire if wire is not None else _wire(context.get("this"))
             if owner is not None:
                 carried = owner.drawn.get(self.key, frozenset())
-                owner.kept_components.update(name for kind, name, _drawn in carried if kind == "c")
+                kept_components = [name for kind, name, _drawn in carried if kind == "c"]
+                owner.kept_components.update(kept_components)
+                # Where the part is in the pass: the ones it shows that were drawn
+                # without an id are numbered in their place (#212)
+                repo = context.get("wireview_repository")
+                if repo is not None and kept_components:
+                    repo.keep_drawn(context.get("this"), kept_components)
         if frame is None:
             return
         frames = self.marker_context.frames

@@ -349,6 +349,40 @@ class TestPresenceMixin:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
+    @pytest.mark.django_db
+    async def test_a_producer_whose_place_moves_leaves_its_old_name_and_joins_its_new_one(self):
+        """As it is, typing still; the leave names the meta it said, the join the one it has now (#212)."""
+        drawer = await mount(XTrackerComponent, id="a-page", room_id=1, username="ann")
+        view = await mount(XProducerComponent, room_id=1, username="ann")
+        view.component.wire.drawn_at = (drawer.component, 1)
+        await view.component.presence_leave()
+        await view.component.presence_join()
+        await view.component.presence_set_typing(typing=True)
+        said = presence._presence_ref(view.component)
+        view.wire._mock_channel_layer.clear()
+
+        view.component.wire.drawn_at = (drawer.component, 0)
+        await presence.rename([view.component, drawer.component])
+
+        leave, join = (b["kwargs"] for b in view.presence_broadcasts)
+        assert (leave["action"], leave["presence_ref"]) == ("presence_leave", said)
+        assert (join["action"], join["presence_ref"], join["state"]) == (
+            "presence_join",
+            presence._presence_ref(view.component),
+            "typing",
+        )
+        assert join["presence_ref"] != said
+        assert leave["presence_speaker"] == join["presence_speaker"]
+
+        # Said under the new name now, and only once
+        view.wire._mock_channel_layer.clear()
+        await presence.rename([view.component])
+        assert view.presence_broadcasts == []
+        await view.component.presence_leave()
+        assert view.presence_broadcasts[-1]["kwargs"]["presence_ref"] == join["presence_ref"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
     async def test_presence_channel_format(self):
         """Channel should be formatted correctly."""
         view = await mount(XProducerComponent, room_id=42, username="test")
