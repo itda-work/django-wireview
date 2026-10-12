@@ -186,6 +186,10 @@ UPGRADE_NOTE = {
         "컴포넌트 템플릿의 `{% querystring %}`이 동작한다",
         "이유를 적은 `AttributeError`로 실패한다",
     ),
+    "A presence producer (`PresenceMixin`) is drawn with an id": (
+        "Presence 프로듀서는 id를 주어 그린다",
+        "`manage.py check`의 W023이 가리키는",
+    ),
     "A presence producer whose last `leaving()` did not leave": (
         "`leaving()`이 퇴장하지 못한 프로듀서는 프레임워크가 퇴장시킨다",
         "`mount()`는 `leaving()`을 부르지 않으므로",

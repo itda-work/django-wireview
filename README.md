@@ -669,6 +669,13 @@ class ChatInput(PresenceMixin, Component):
         await self.presence_set_typing(True)  # 3초 후 자동 해제
 ```
 
+프로듀서는 id를 주어 그린다 — 탭의 Presence 항목이 그 id로 이름 지어진다. id 없이 그리면 그 태그가
+`TemplateSyntaxError`로 실패하고, `manage.py check`가 `wireview.W023`으로 먼저 알린다:
+
+```html
+{% component 'ChatInput' id="composer" room_id=room.id username=request.user.username %}
+```
+
 ### PresenceTrackerMixin (컨슈머)
 
 다른 사용자의 프레즌스를 표시하는 컴포넌트용:

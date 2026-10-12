@@ -131,7 +131,7 @@ wireview/
 ├── js.py                  JS() 명령 빌더
 ├── schemas.py, serializer.py  Pydantic 스키마, 모델 직렬화
 ├── settings.py            WIREVIEW 설정 기본값
-├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W022)
+├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W023)
 ├── telemetry.py           옵트인 계측 시그널 (event_handled, component_rendered, diff_computed, broadcast_published 구간과
 │                          connection_opened·connection_closed·join_rejected(닫힌 사유 집합)·publish_failed 이벤트, #124)
 ├── testing.py             mount(), MountedComponent, ComponentTestCase. mount한 컴포넌트는 같은 프로세스의 Broadcast를 받는다(core/patches.listen).
@@ -161,7 +161,7 @@ wireview/
 │                          로더만). 프로세스마다 덧붙이기만 하는 세그먼트 파일이고, 끝까지 쓰지 못한 줄은 되돌리고 끈다. DEBUG가 아니거나
 │                          WIREVIEW_RENDER_QUERIES_DIR=off(루트 conftest.py가 둔다)이거나 wireview.testing을 import했으면 쓰지 않는다.
 │                          형식의 정본은 docs/features/render-queries.md "편집기로 보내기", 계약은 tests/test_render_queries_file.py
-├── features/              streams.py, presence.py (PresenceMixin. 채널 → 사용자 → 프로듀서(탭 + 준 id, id가 없으면 클래스 — wire.id_given)마다 meta, 트래커의 자기 항목은 탭 키, 목록은 사용자 단위로 합친다. sync에는 프로듀서가 답한다(#202).
+├── features/              streams.py, presence.py (PresenceMixin. 채널 → 사용자 → 프로듀서(탭 + 준 id)마다 meta. 프로듀서는 id가 필수다(#212): id 없이 그리면 {% component %} 태그가 TemplateSyntaxError, mount는 presence_join()이 wire.id_given을 보고 ImproperlyConfigured(unnamed_producer), W023이 템플릿에서 미리. 트래커의 자기 항목은 탭 키, 목록은 사용자 단위로 합친다. sync에는 프로듀서가 답한다(#202).
                            그 답을 위해 세션과 mount가 입장한 프로듀서의 presence 채널(presence_channels)을 따로 듣고 hear()에 넘긴다(core/notifications.deliver). 그 채널의 메시지는 앱의 notification()에 넘기지 않는다 — 앱이 직접 구독한 채널이면 평소대로.
                            마지막 leaving()이 퇴장하지 못한 프로듀서는 그 뒤 presence.left가 퇴장시킨다 — 세션의 _call_leaving, #212), uploads.py (UploadRegistry·토큰 v2),
 │                          hooks.py (앱의 static/<app_label>/hooks/*.js 수집. 페이지가 아니라 프로젝트 단위. 템플릿 디렉터리는 TEMPLATES가 아니라 엔진의 로더에게 묻는다),
@@ -413,7 +413,7 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 
 ## 함정
 
-아래 중 여럿은 `manage.py check`가 잡는다 (`wireview.W001`~`W022`, `docs/features/checks.md`).
+아래 중 여럿은 `manage.py check`가 잡는다 (`wireview.W001`~`W023`, `docs/features/checks.md`).
 
 - **채널 레이어가 없으면 어떤 연결도 살아남지 못한다.** Channels에는 기본 레이어가 없다 — `CHANNEL_LAYERS`에 `default`가 없으면 `get_channel_layer()`가 `None`이고 컨슈머에 `channel_name`도 생기지 않는다. 컨슈머는 accept 전에 `ImproperlyConfigured`로 거절하고 `wireview.W012`가 같은 문장(`wireview/core/transport.py`의 `NO_CHANNEL_LAYER`)으로 미리 알린다(#87). 가드는 `connect()`가 아니라 `websocket_connect()`에 있다 — 단위 테스트는 레이어 없는 bare 컨슈머로 `connect()`를 직접 부르고, **그래서 그 테스트들은 이 실패를 한 번도 보지 못했다.**
 

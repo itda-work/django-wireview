@@ -82,6 +82,14 @@ The django-reactor era changelog (2.x) is preserved in
   `Broadcast` item's template rendered with that engine, live renders too, and now raises: move it where a
   DjangoTemplates engine finds it and write it in Django's syntax (docs/UPGRADING.md). A page's template may
   use any engine.
+- **Breaking:** A presence producer (`PresenceMixin`) is drawn with an id (#212):
+  `{% component 'ChatInput' id='composer' %}`. Drawn without one, the `{% component %}` or
+  `{% component_block %}` tag raises `TemplateSyntaxError` naming the class and the fix, on the page's first
+  render, and `manage.py check` warns of it first (`wireview.W023`, for a tag that names the class in quotes);
+  `mount()` without an id raises `ImproperlyConfigured` when the producer joins presence. The id names the
+  producer's entry on its tab: it tells two producers of one tab apart and carries the entry across a
+  reconnect and a redraw. An id the framework makes up is new on every draw, and a sticky default is one for
+  the whole class. In 1.5 one drawn without an id worked. A tracker needs no id.
 - A presence producer whose last `leaving()` did not leave -- it raised before `presence_leave()`, or never
   called it -- is left by the framework once that `leaving()` is over, and its typing timer stops (#212).
   The user stayed on everyone's list after the tab closed. One its `leaving()` left says nothing again. A
@@ -127,19 +135,17 @@ The django-reactor era changelog (2.x) is preserved in
 - Presence keeps a meta per producer under each user, as Phoenix Presence keeps one per `track`, so a user
   with two tabs open stays on the others' lists until the last tab leaves (#202). A producer's meta is keyed
   by its tab and its component id, so a page that hides one of its two producers (`presence_leave()`) stays
-  listed while the other is joined. A producer drawn without an id is keyed by its class instead: the id
-  minted for it is new on every pass that draws it, a reconnect's too. Two id-less producers of one class on a
-  page share a meta. The user was the key: closing one tab
+  listed while the other is joined; a producer needs that id (Changed, #212). The user was the key: closing one tab
   removed them while the other was still open, and one tab's typing state overwrote the other's. The list
   `presence_users` still has one entry per user, merged from their tabs: typing if any tab types, otherwise
   online, with the name and metadata heard from last. A page names its load in the socket URL (`tab`) and
   keeps that name across reconnects; join, leave, typing and the sync answer carry `presence_ref`, a digest
   of that name under the signed-in user (a page cannot speak for another user's tab) and of the producer's
-  id (its class when it was drawn without one), and `presence_speaker`,
+  id, and `presence_speaker`,
   a name of the producer instance that sent them, new with every instance. So when a process ends without its `leaving()` (daphne, Granian, a crash),
   the tab's join after it reconnects replaces what the dead process left, and its leave removes it; a late
-  leave from the socket a tab reconnected away from is dropped, as is the late leave of a producer drawn
-  without an id that the page hid and showed again: the hidden one's `leaving()` can come after the
+  leave from the socket a tab reconnected away from is dropped, as is the late leave of a producer
+  that the page hid and showed again under its id: the hidden one's `leaving()` can come after the
   new one joined under the same meta (#204). A tab whose old and new sockets both
   answered a newcomer's sync stays on that list until the last of them leaves. A page from an older bundle is keyed by its
   connection. A message without `presence_ref`, from a process before this release, stands for one tab per
