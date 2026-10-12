@@ -11,7 +11,6 @@ from . import guests, views
 demo_patterns = (
     [
         path("", views.index, name="index"),
-        path("slots/", views.slots, name="slots"),
     ],
     "demo",
 )
@@ -46,6 +45,7 @@ urlpatterns = [
     path("search/", include("examples.search.urls")),
     path("quiz/", include("examples.quiz.urls")),
     path("notifications/", include("examples.notifications.urls")),
+    path("slots/", include("examples.slots.urls")),
     path("livecomp/", include("examples.livecomp.urls")),
     path("hooks/", include("examples.hooks.urls")),
 ]

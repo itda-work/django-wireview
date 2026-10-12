@@ -1,5 +1,6 @@
 # The demo's front: /static/ from the files copied into this image, the rest to uvicorn.
 # cloudflared reaches it over plain HTTP inside the compose network; TLS ends at Cloudflare.
+# Port 8080: Caddy runs as an unprivileged user (demo/Dockerfile).
 {
 	admin off
 	servers {
@@ -11,7 +12,7 @@
 	}
 }
 
-:80 {
+:8080 {
 	log {
 		output stdout
 		format console

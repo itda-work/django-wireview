@@ -6,14 +6,23 @@
 Over plain http it sends ``X-Forwarded-Proto: https`` with every request, the header Cloudflare
 sends, so the stack runs with its production settings (HTTPS redirect, secure cookies; Chromium
 keeps a secure cookie on localhost). It checks the list, every example's first page, a page
-going live over the WebSocket, chat between two browsers (one anonymous level, one with guest
-accounts), and the socket limits. Screenshots go to ``--out``. Exits 1 on the first failure.
+going live over the WebSocket, #213's scenes that need neither a seed of their own nor a sign-in
+(played at full speed, ``paced=False``), chat between two browsers (one anonymous level, one
+with guest accounts), and the socket limits. Screenshots go to ``--out``. Exits 1 on the first
+failure.
+
+Over plain http it also names itself a visitor of its own with ``CF-Connecting-IP`` (Caddy takes
+it from a private address, as it takes Cloudflare's), so runs one after another do not spend each
+other's per-visitor limits. Through Cloudflare the header is Cloudflare's.
+
+demo/abuse.py checks that what a script would send is refused.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 import time
 from pathlib import Path
@@ -21,14 +30,32 @@ from urllib.parse import urlsplit
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
+# The repository root, for #213's scenes (scripts/example_media)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from scripts.example_media import scenes  # noqa: E402
+from scripts.example_media.player import perform  # noqa: E402
+
 LIVE = '[data-is-live="true"]'
 #: Marks this run's messages: the demo keeps earlier runs' until the next reset
 RUN = format(int(time.time() * 1000) % 10**8, "x")
 TIMEOUT = 15_000
+#: This run's visitor address over plain http: one of TEST-NET-2's
+VISITOR = f"198.51.100.{random.randrange(1, 255)}"
+
+#: #213's scenes the demo can play as they are: no seed of their own, no sign-in as alice or
+#: bob (the demo signs in guests), and steps that hold on the demo's seed (search's books)
+SCENES = (scenes.SEARCH, scenes.LIVECOMP, scenes.SLOTS, scenes.HOOKS)
+
+
+def local_headers(base: str) -> dict[str, str]:
+    if not base.startswith("http://"):
+        return {}
+    return {"X-Forwarded-Proto": "https", "CF-Connecting-IP": VISITOR}
 
 
 def context(browser: Browser, base: str):
-    headers = {"X-Forwarded-Proto": "https"} if base.startswith("http://") else {}
+    headers = local_headers(base)
     ctx = browser.new_context(base_url=base, extra_http_headers=headers, viewport={"width": 1280, "height": 800})
     ctx.set_default_timeout(TIMEOUT)
     return ctx
@@ -117,6 +144,20 @@ def check_chat(browser: Browser, base: str, out: Path, errors: list[str]) -> Non
     print(f"chat: B saw A's message; a 2000-character message arrived as {length}")
 
 
+def check_scenes(browser: Browser, base: str, out: Path, errors: list[str]) -> None:
+    """#213's scenes, step for step, at full speed: what the README's clips show works here too."""
+    for scene in SCENES:
+        pages = {}
+        for actor in scene.actors:
+            page = context(browser, base).new_page()
+            watch(page, errors)
+            pages[actor.name] = page
+        for step in (*scene.prepare, *scene.play):
+            perform(pages, scene, step, base, {}, paced=False)
+        pages[scene.actors[0].name].screenshot(path=out / f"30-scene-{scene.example}.png", full_page=True)
+        print(f"scene {scene.example}: {len(scene.prepare) + len(scene.play)} steps")
+
+
 def guest(page: Page, index: str) -> str:
     page.goto(index)
     page.get_by_role("button", name="Sign in as guest").click()
@@ -162,7 +203,8 @@ def check_socket_limits(base: str) -> None:
     origin = f"{parts.scheme}://{parts.netloc}"
 
     def closed_by(frames: list[str]) -> int | None:
-        with connect(url, origin=origin, open_timeout=10) as ws:  # type: ignore[arg-type]
+        headers = local_headers(base)
+        with connect(url, origin=origin, open_timeout=10, additional_headers=headers) as ws:  # type: ignore[arg-type]
             try:
                 for frame in frames:
                     ws.send(frame)
@@ -199,6 +241,7 @@ def main() -> int:
             hrefs = check_list(browser, base, args.out, errors)
             check_pages(browser, base, hrefs, args.out, errors)
             check_live_examples(browser, base, args.out, errors)
+            check_scenes(browser, base, args.out, errors)
             check_chat(browser, base, args.out, errors)
             check_guest_chat(browser, base, args.out, errors)
         finally:

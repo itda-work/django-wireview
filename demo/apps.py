@@ -15,6 +15,3 @@ class DemoConfig(AppConfig):
         # answers with a guest account of the visitor's own (demo/guests.py).
         for example in EXAMPLES:
             import_module(f"examples.{example}.views").DEMO_USERS = BUTTON
-        # The slots example is components without a page or a live module, so nothing would
-        # register them; the demo's slots page draws them
-        import_module("examples.slots.components")

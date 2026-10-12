@@ -7,7 +7,8 @@ sign-in forms a single "guest" button (``DemoConfig.ready``). A private window i
 browser, so it is another guest -- the way the examples ask to be tried.
 
 Guests are ordinary users named ``guest-<adjective>-<animal>-<number>``. The janitor deletes
-them after ``DEMO_GUEST_MAX_AGE_HOURS`` and at the daily reset (demo/management/commands).
+them after ``DEMO_GUEST_MAX_AGE_HOURS`` and at the daily reset (demo/management/commands). A
+visitor makes ``GUESTS_PER_HOUR`` of them at most, and the demo holds ``GUESTS_MAX``.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from django.shortcuts import redirect
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
-from .limits import over_limit, request_visitor
+from .limits import over_limit, plain, request_visitor
 
 PREFIX = "guest-"
 
@@ -70,9 +71,11 @@ def sign_in(request: HttpRequest, example: str, username: str = "") -> HttpRespo
     """
     index = EXAMPLES[example]
     if not is_guest(request.user):
-        hourly = settings.DEMO_LIMITS["GUESTS_PER_HOUR"]
-        if over_limit("guest", request_visitor(request), hourly, 3600):
-            return HttpResponse("Too many guest accounts from here. Try again in an hour.\n", status=429)
+        budget = settings.DEMO_LIMITS
+        if over_limit("guest", request_visitor(request), budget["GUESTS_PER_HOUR"], 3600):
+            return plain("Too many guest accounts from here. Try again in an hour.", 429)
+        if get_user_model().objects.filter(username__startswith=PREFIX).count() >= budget["GUESTS_MAX"]:
+            return plain("The demo has as many guests as it can hold. Try again later.", 503)
         login(request, new_guest(), backend="django.contrib.auth.backends.ModelBackend")
     target = request.POST.get("next", "")
     if url_has_allowed_host_and_scheme(target, allowed_hosts={request.get_host()}):

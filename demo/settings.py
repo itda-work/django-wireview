@@ -29,6 +29,14 @@ def _env_list(name: str, default: str) -> list[str]:
     return [item.strip() for item in _env(name, default).split(",") if item.strip()]
 
 
+def _int(name: str, default: int) -> int:
+    return int(_env(name, str(default)))
+
+
+def _float(name: str, default: float) -> float:
+    return float(_env(name, str(default)))
+
+
 SECRET_KEY = _env("DJANGO_SECRET_KEY")
 DEBUG = _env("DJANGO_DEBUG", "0") == "1"
 
@@ -105,14 +113,20 @@ CHANNEL_LAYERS = {
     },
 }
 
-# The rate limits count here. Redis, so every worker counts the same visitor once.
+# The rate limits count here: a Redis of its own (compose.yaml's "limits"), so every worker counts
+# the same visitor once and the channel layer's traffic never evicts a count. That Redis evicts
+# nothing; full, it refuses writes and the limits refuse visitors (demo/limits.py, LimiterDown).
+LIMITS_REDIS_URL = _env("LIMITS_REDIS_URL", f"{REDIS_URL}/1")
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": f"{REDIS_URL}/1",
+        "LOCATION": LIMITS_REDIS_URL,
         "KEY_PREFIX": "demo",
     },
 }
+# This start of the app (the image's command sets it): the open-socket counts are kept per start,
+# so counts a killed worker never gave back are not read after a restart
+DEMO_BOOT = _env("DEMO_BOOT", "")
 
 # SQLite on a volume, shared by the app's workers and the janitor: WAL and a busy timeout, as
 # docs/DEPLOYMENT.md's single-server recipe says. The demo's writes are a chat line or a vote
@@ -136,8 +150,9 @@ DATABASES = {
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 
 # Stored sessions, not signed cookies: a guest's logout has to end the session on the server
-# (docs/DEPLOYMENT.md, "세션 백엔드가 로그아웃의 의미를 정한다")
-SESSION_ENGINE = "django.contrib.sessions.backends.db"
+# (docs/DEPLOYMENT.md, "세션 백엔드가 로그아웃의 의미를 정한다"). The demo's store is the
+# database one with a budget for new rows (demo/sessions.py)
+SESSION_ENGINE = "demo.sessions"
 # A guest account lives a day at most (the janitor deletes it), so its session needs no more
 SESSION_COOKIE_AGE = 24 * 3600
 
@@ -167,22 +182,55 @@ WIREVIEW = {
 }
 
 # What a visitor may send. demo/limits.py enforces them over HTTP and over the WebSocket.
+# A visitor is an address (an IPv6 one by its /64). An address can be a whole meetup's Wi-Fi
+# or a carrier's NAT, so the per-visitor numbers stop a script, not a crowd. Every one of them
+# is the operator's to change in .env (demo/.env.example).
 DEMO_LIMITS = {
-    # The longest text a field may carry, in characters: a chat line, a room name, a todo
-    "TEXT_MAX": int(_env("DEMO_TEXT_MAX", "500")),
-    # The largest WebSocket frame a page may send, in bytes. A join carries signed state, so
-    # this is far above TEXT_MAX
-    "FRAME_MAX": int(_env("DEMO_FRAME_MAX", str(64 * 1024))),
-    # Events per socket: a bucket of BURST that refills EVENTS_PER_SECOND a second
-    "EVENT_BURST": int(_env("DEMO_EVENT_BURST", "30")),
-    "EVENTS_PER_SECOND": float(_env("DEMO_EVENTS_PER_SECOND", "5")),
-    # Per visitor (IP) per minute: form posts, and new sockets. An address can be a whole
-    # meetup's Wi-Fi or a carrier's NAT, so these stop a script, not a crowd
-    "POSTS_PER_MINUTE": int(_env("DEMO_POSTS_PER_MINUTE", "60")),
-    "SOCKETS_PER_MINUTE": int(_env("DEMO_SOCKETS_PER_MINUTE", "300")),
-    # Guest accounts per visitor (IP) per hour
-    "GUESTS_PER_HOUR": int(_env("DEMO_GUESTS_PER_HOUR", "60")),
+    # The longest text a field may carry, in characters: a chat line, a room name, a todo, a
+    # search. HTTP fields past it are refused; WebSocket texts are cut to it
+    "TEXT_MAX": _int("DEMO_TEXT_MAX", 500),
+    # The largest WebSocket frame a page may send, in UTF-8 bytes. A join carries signed state,
+    # so this is far above TEXT_MAX
+    "FRAME_MAX": _int("DEMO_FRAME_MAX", 64 * 1024),
+    # Per socket, buckets of BURST that refill so many a second: every frame; frames the server
+    # does not read (not JSON, an unknown command); events; first joins of a page's components
+    # (a state this socket has not joined); renders without a click (a join of a state it has
+    # joined, params_changed, navigated)
+    "FRAME_BURST": _int("DEMO_FRAME_BURST", 120),
+    "FRAMES_PER_SECOND": _float("DEMO_FRAMES_PER_SECOND", 20),
+    "JUNK_BURST": _int("DEMO_JUNK_BURST", 5),
+    "JUNK_PER_SECOND": _float("DEMO_JUNK_PER_SECOND", 0.2),
+    "EVENT_BURST": _int("DEMO_EVENT_BURST", 30),
+    "EVENTS_PER_SECOND": _float("DEMO_EVENTS_PER_SECOND", 5),
+    "JOIN_BURST": _int("DEMO_JOIN_BURST", 60),
+    "JOINS_PER_SECOND": _float("DEMO_JOINS_PER_SECOND", 5),
+    "RENDER_BURST": _int("DEMO_RENDER_BURST", 20),
+    "RENDERS_PER_SECOND": _float("DEMO_RENDERS_PER_SECOND", 2),
+    # Per visitor, over all their sockets, in a window of VISITOR_WINDOW seconds: frames,
+    # events, and joins and renders together
+    "VISITOR_WINDOW": _int("DEMO_VISITOR_WINDOW", 10),
+    "VISITOR_FRAMES": _int("DEMO_VISITOR_FRAMES", 600),
+    "VISITOR_EVENTS": _int("DEMO_VISITOR_EVENTS", 100),
+    "VISITOR_RENDERS": _int("DEMO_VISITOR_RENDERS", 300),
+    # Sockets: new ones per visitor per minute, open at once per visitor, open at once in all
+    "SOCKETS_PER_MINUTE": _int("DEMO_SOCKETS_PER_MINUTE", 300),
+    "OPEN_SOCKETS_PER_VISITOR": _int("DEMO_OPEN_SOCKETS_PER_VISITOR", 40),
+    "OPEN_SOCKETS_TOTAL": _int("DEMO_OPEN_SOCKETS_TOTAL", 2000),
+    # HTTP per visitor per minute: every request Django answers (Caddy answers /static/), and
+    # form posts among them
+    "REQUESTS_PER_MINUTE": _int("DEMO_REQUESTS_PER_MINUTE", 300),
+    "POSTS_PER_MINUTE": _int("DEMO_POSTS_PER_MINUTE", 60),
+    # Stored rows: new sessions per visitor per hour and in all; guest accounts per visitor per
+    # hour and in all (demo/sessions.py, demo/guests.py)
+    "SESSIONS_PER_HOUR": _int("DEMO_SESSIONS_PER_HOUR", 60),
+    "SESSIONS_MAX": _int("DEMO_SESSIONS_MAX", 20_000),
+    "GUESTS_PER_HOUR": _int("DEMO_GUESTS_PER_HOUR", 60),
+    "GUESTS_MAX": _int("DEMO_GUESTS_MAX", 5_000),
 }
+
+# The database file (with its WAL) past this many megabytes: the janitor resets the demo early
+# and compacts the file (demo_janitor)
+DEMO_DB_MAX_MB = _int("DEMO_DB_MAX_MB", 256)
 
 # The janitor (manage.py demo_janitor): when the demo's data goes back to its seed each day,
 # in the server's TIME_ZONE, and how long a guest account lives
@@ -199,6 +247,11 @@ USE_TZ = True
 STATIC_URL = "/static/"
 # Collected into the image at build time; Caddy (the web service) serves a copy of it
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# Each example's screenshot (#213, examples/<name>/media/<name>.webp) for the list's cards, as
+# static/demo/media/<name>.webp (demo/catalog.py). The image carries the webp files only
+STATICFILES_DIRS = [
+    ("demo/media", media) for media in sorted((BASE_DIR / "examples").glob("*/media")) if media.is_dir()
+]
 
 # Behind Cloudflare and Caddy. Caddy sets X-Forwarded-Proto from what reached it, and
 # cloudflared reaches it over plain HTTP, so Caddy is told to pass on Cloudflare's own
@@ -238,6 +291,9 @@ LOGGING = {
     "root": {"handlers": ["console"], "level": "WARNING"},
     "loggers": {
         "django": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        # Not a line per 4xx: a script the limits refuse would fill the log with them. The limits
+        # log what they refuse once per socket or request, at INFO (demo.limits)
+        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
         "wireview": {"handlers": ["console"], "level": "WARNING", "propagate": False},
         "demo": {"handlers": ["console"], "level": "INFO", "propagate": False},
     },

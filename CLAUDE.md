@@ -328,7 +328,7 @@ examples/                  예제 앱 14개. 각 디렉터리 = 개념 하나 + 
                            각 디렉터리의 media/ 는 마지막 화면 PNG와 동작 영상 WebP 둘뿐이고 make example-media 가 만든다(#213).
                            손으로 고치지 않는다. 예제의 화면을 바꾸면 다시 만든다. slots/ 의 /slots/ 페이지는 그 녹화를 위해 있다
 
-demo/                      공개 데모(wireview-demo.itda.work, #214). 예제 14개를 묶은 Django 프로젝트(demo.settings)와 Docker Compose(Caddy·uvicorn·redis·janitor·cloudflared 프로필). 테스트 픽스처를 싣지 않고 예제 코드도 고치지 않는다 — 게스트 로그인·입력 한도·매일 초기화는 이 디렉터리에. 운영 절차는 demo/README.md, 계약은 tests/test_demo_site.py, 띄운 스택은 demo/smoke.py
+demo/                      공개 데모(wireview-demo.itda.work, #214). 예제 14개를 묶은 Django 프로젝트(demo.settings)와 Docker Compose(Caddy·uvicorn·redis·한도 카운터 redis·janitor·cloudflared 프로필). 테스트 픽스처를 싣지 않고 예제 코드도 고치지 않는다 — 게스트 로그인·입력 한도·매일 초기화는 이 디렉터리에. 운영 절차는 demo/README.md, 계약은 tests/test_demo_site.py, 띄운 스택은 demo/smoke.py(정상 사용)·demo/abuse.py(남용이 거절되는가)
 docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEATURE-GAP.md, ARCHITECTURE.md,
                            ROADMAP.md, DEPLOYMENT.md, PERFORMANCE.md, design/ 설계 메모(README.md 인덱스), implementation/ 구현 노트
                            (implementation/wire-protocol.md 가 메시지 형태의 정본. 표의 이름은 tests/test_wire_protocol_doc.py 가 코드와 맞춘다)

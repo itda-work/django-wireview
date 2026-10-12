@@ -17,6 +17,7 @@ x-app: &app
   env_file: .env
   environment:
     REDIS_URL: redis://redis:6379
+    LIMITS_REDIS_URL: redis://limits:6379/0
     DEMO_DATA_DIR: /data
   volumes:
     - data:/data
@@ -29,7 +30,9 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    # Readiness: the channel layer carries a message (demo/views.py)
+      limits:
+        condition: service_healthy
+    # Readiness: the channel layer carries a message and the limits' Redis answers (demo/views.py)
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready/', timeout=3)"]
       interval: 15s
@@ -50,6 +53,14 @@ services:
     depends_on:
       app:
         condition: service_healthy
+    # Healthy while its rounds succeed: each one touches /data/janitor.ok (demo_janitor). Docker
+    # does not restart an unhealthy container; `docker compose ps` shows it (README "장애 때 볼 것")
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/data/janitor.ok') > 120)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     deploy:
       resources:
         limits:
@@ -65,11 +76,12 @@ services:
     depends_on:
       app:
         condition: service_healthy
-    # The host's own address only: the public way in is the tunnel
+    # The host's own address only: the public way in is the tunnel. Caddy runs as a user of its
+    # own and listens on 8080, a port that needs no privilege (demo/Dockerfile)
     ports:
-      - "127.0.0.1:${DEMO_PORT:-8080}:80"
+      - "127.0.0.1:${DEMO_PORT:-8080}:8080"
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health/"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health/"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -83,7 +95,8 @@ services:
 
   redis:
     image: redis:7.4-alpine
-    # The channel layer and rate-limit counters only: nothing worth keeping across a restart
+    # The channel layer only: nothing worth keeping across a restart. channels_redis gives every
+    # key an expiry, so under pressure the oldest undelivered messages go (volatile-lru)
     command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "volatile-lru"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -97,6 +110,27 @@ services:
         limits:
           cpus: "0.5"
           memory: 192m
+
+  # The rate-limit counters (demo/limits.py), apart from the channel layer: a flood of channel
+  # messages must not evict a count, or the limit it keeps would let go. This one evicts nothing
+  # (noeviction): full, it refuses writes, and the limits then refuse visitors (1013, 503) until
+  # windows expire. Every key has an expiry of an hour at most, a day for the open-socket counts;
+  # a key is ~100 bytes, so 32 MB holds some 200,000 visitors' windows.
+  limits:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "32mb", "--maxmemory-policy", "noeviction"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64m
 
   cloudflared:
     profiles: [tunnel]

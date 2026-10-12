@@ -1,7 +1,8 @@
 """The examples the demo shows, in examples/README.md's reading order.
 
-``url`` is the URL name of the example's first page. ``media`` is where #213's screenshot of
-the example will be (``demo/static/demo/media/<slug>.webp``); the list shows it when it exists.
+``url`` is the URL name of the example's first page. ``media`` is #213's screenshot of the
+example, ``examples/<slug>/media/<slug>.webp``, which the settings collect as a static file
+under ``demo/media/`` (``STATICFILES_DIRS``); the list shows it when it is there.
 """
 
 from __future__ import annotations
@@ -79,6 +80,6 @@ EXAMPLES = (
         two_windows=True,
     ),
     Example("livecomp", "LiveComponent", "연결을 공유하는 중첩 컴포넌트", "livecomp_dashboard"),
-    Example("slots", "Slots", "내용을 호출자가 채우는 레이아웃 컴포넌트", "demo:slots"),
+    Example("slots", "Slots", "내용을 호출자가 채우는 레이아웃 컴포넌트", "slots:gallery"),
     Example("hooks", "Hooks", "브라우저만 할 수 있는 일을 컴포넌트에 붙인다", "hooks_page"),
 )
