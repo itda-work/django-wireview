@@ -181,6 +181,8 @@ async def _measure(cls: type, warmup: int, rounds: int, per_round: int) -> float
     view = await mount(cls, id="b")
     for _ in range(warmup):
         await view.render_diff()
+    # process_time is GetProcessTimes on Windows, in 15.625 ms ticks: there a round's CPU is a count
+    # of ticks. Nothing divides by it; the wall clock (perf_counter) is fine everywhere
     wall, cpu = [], []
     for _ in range(rounds):
         start, start_cpu = time.perf_counter(), time.process_time()

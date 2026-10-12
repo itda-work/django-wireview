@@ -161,6 +161,16 @@ def test_the_fan_out_probes_see_the_shared_board(tmp_path):
         assert used >= 0 or label.startswith("loop: 그 밖"), label
 
 
+def test_the_report_stands_a_cpu_total_of_zero(result):
+    """Windows reads thread CPU time in 15.625 ms ticks: a short run's total can be 0 (#217)."""
+    still = json.loads(json.dumps(result))
+    for data in still["implementations"].values():
+        data["summary"]["loop_cpu_ns"] = data["summary"]["worker_cpu_ns"] = 0
+    report = fanout_profile.report(still)
+    assert "| — |" in report
+    assert "—" in fanout_profile.facts(still).values()
+
+
 @pytest.mark.integration
 def test_the_in_process_profile_takes_one_render_apart(tmp_path):
     # Eight renders at least: the thread comparison splits them over up to eight threads

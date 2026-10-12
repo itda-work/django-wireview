@@ -65,7 +65,12 @@ IMPLEMENTATIONS = ("wireview", "wireview-shared", "fastapi")
 #: ``Meta.shared_render`` (#176, stage 2; bench/compare_fastapi/serve.py)
 
 ns = time.perf_counter_ns
-cpu = time.thread_time_ns  # what this thread ran, without the time it waited for the GIL
+# What this thread ran, without the time it waited for the GIL. On Windows it is GetThreadTimes,
+# which moves in scheduler ticks of 15.625 ms whatever the Python: a short run (a test's three
+# connections) can read 0, and every CPU number there is a count of ticks. perf_counter has no
+# CPU-time counterpart there, so the reports stand a total of 0 (_share) and the results the
+# documents quote come from macOS
+cpu = time.thread_time_ns
 
 
 # -- server side: probes --------------------------------------------------------------------
@@ -741,6 +746,11 @@ def stages(summary: dict[str, t.Any], name: str) -> list[tuple[str, float, float
     return rows
 
 
+def _share(used: float, total: float) -> str:
+    """``used`` as a share of ``total``; a total the CPU clock did not see move has no shares."""
+    return f"{used / total:.1%}" if total else "—"
+
+
 def report(result: dict[str, t.Any]) -> str:
     lines = []
     connections = result["method"]["connections"]
@@ -776,7 +786,7 @@ def report(result: dict[str, t.Any]) -> str:
         # CPU only: a stage's wall time also holds the GIL waits the other thread caused
         lines.append("\n| 단계 | CPU ms | 연결당 CPU µs | CPU 비율 |\n|---|---:|---:|---:|")
         for stage, used, _wall in rows:
-            lines.append(f"| {stage} | {used:.1f} | {used / connections * 1000:.1f} | {used / total:.1%} |")
+            lines.append(f"| {stage} | {used:.1f} | {used / connections * 1000:.1f} | {_share(used, total)} |")
         per_connection = total / connections * 1000
         lines.append(f"| **합 (루프 CPU + 워커 CPU)** | **{total:.1f}** | **{per_connection:.1f}** | 100% |")
     return "\n".join(lines)
@@ -871,7 +881,7 @@ def facts(result: dict[str, t.Any]) -> dict[str, str]:
         total = (s["loop_cpu_ns"] + s["worker_cpu_ns"]) * ms
         for label, used, _wall in rows:
             out[f"{name}.stage.{label}"] = f"{used / connections * 1000:.1f}"
-            out[f"{name}.share.{label}"] = f"{used / total:.1%}"
+            out[f"{name}.share.{label}"] = _share(used, total)
         out[f"{name}.per_connection"] = f"{total / connections * 1000:.1f}"
     w = impls["wireview"]["summary"]
     out["wireview.client_span_armed"] = f"{w['client_span_ns'] * ms:.1f} ms"
@@ -894,7 +904,7 @@ def facts(result: dict[str, t.Any]) -> dict[str, str]:
     for group, prefixes in GROUPS.items():
         used = sum(c for label, c, _ in stages(w, "wireview") if label.startswith(prefixes))
         out[f"group.{group}"] = f"{used / connections * 1000:.1f}"
-        out[f"group_share.{group}"] = f"{used / total:.1%}"
+        out[f"group_share.{group}"] = _share(used, total)
 
     runs = [run["inproc"] for run in result.get("inproc_runs", [])]
     if runs:
