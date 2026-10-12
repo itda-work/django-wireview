@@ -241,9 +241,10 @@ chat_lv3를 만들며 라이브러리에 더한 것(`update_only`, `stream(..., 
 
 ## 돌려보기
 
-```bash
-make build-js          # 최초 1회
-make run-daphne        # WebSocket이 필요하므로 runserver가 아니다
+처음이면 [시작하기](../README.md#시작하기)를 먼저 따라 한다(uv 설치, 의존성, JS 빌드, migrate). 그 뒤로는 서버만 띄운다. WebSocket이 필요하므로 `runserver`가 아니라 daphne다.
+
+```shell
+uv run --directory tests daphne testproj.asgi:application
 ```
 
 브라우저에서 <http://localhost:8000/chat-lv4/>를 열고 alice로 로그인해 방을 만든다. 시크릿 창에서 같은 주소를
@@ -251,10 +252,12 @@ make run-daphne        # WebSocket이 필요하므로 runserver가 아니다
 오르고, bob이 방을 열었다 돌아오면 사라진다. bob의 시크릿 창에서 탭을 하나 더 열어 한쪽은 방, 한쪽은 목록에 두면
 alice의 메시지는 방 탭이 읽고 목록 탭의 배지는 0에 머문다.
 
-```bash
-uv run pytest examples/chat_lv4 -m "not e2e"                   # 단위·소켓
-WIREVIEW_TEST_LAYER=memory ./tests/e2e.sh examples/chat_lv4    # 브라우저 둘로 alice와 bob
+```shell
+uv run pytest examples/chat_lv4 -m "not e2e"
+uv run pytest examples/chat_lv4 -m e2e
 ```
+
+첫 줄은 브라우저 없이, 둘째 줄은 브라우저로 돈다. 브라우저 테스트는 [시작하기의 테스트](../README.md#테스트)에서 브라우저를 받은 뒤에 돈다.
 
 테스트는 `examples/chat_lv4/tests.py`. 안 읽은 수는 누구에게 알림이 가는가(보낸 사람·비멤버·나간 멤버는 아니다),
 커서의 비교와 앞으로만 움직임, 삭제, 나간 방, 방 수와 무관한 쿼리 수, 커서 뒤만 읽는 계획(SQLite)을 보고, 실제

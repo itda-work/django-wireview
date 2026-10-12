@@ -128,19 +128,22 @@ limit이 필요하다면 잘린 쪽의 커서도 함께 옮겨야 한다(잘린 
 
 ## 돌려보기
 
-```bash
-make build-js          # 최초 1회
-make run-daphne        # WebSocket이 필요하므로 runserver가 아니다
+처음이면 [시작하기](../README.md#시작하기)를 먼저 따라 한다(uv 설치, 의존성, JS 빌드, migrate). 그 뒤로는 서버만 띄운다. WebSocket이 필요하므로 `runserver`가 아니라 daphne다.
+
+```shell
+uv run --directory tests daphne testproj.asgi:application
 ```
 
 브라우저에서 <http://localhost:8000/chat-lv3/>를 열고 alice로 로그인해 방을 만든다. 시크릿 창에서 같은 주소를
 열고 bob으로 로그인해 Join한다. 메시지를 30개 넘게 보낸 뒤 새로고침하면 목록 위쪽에 "Loading older messages..."가
 있고, 위로 스크롤하면 이전 메시지가 붙는다. alice가 자기 메시지의 Edit·Delete를 누르면 bob의 창에도 반영된다.
 
-```bash
-uv run pytest examples/chat_lv3 -m "not e2e"                   # 단위·소켓
-WIREVIEW_TEST_LAYER=memory ./tests/e2e.sh examples/chat_lv3    # 브라우저 둘로 alice와 bob
+```shell
+uv run pytest examples/chat_lv3 -m "not e2e"
+uv run pytest examples/chat_lv3 -m e2e
 ```
+
+첫 줄은 브라우저 없이, 둘째 줄은 브라우저로 돈다. 브라우저 테스트는 [시작하기의 테스트](../README.md#테스트)에서 브라우저를 받은 뒤에 돈다.
 
 테스트는 `examples/chat_lv3/tests.py`. 과거 읽기는 페이지 경계, 같은 시각의 메시지, 끝, 다른 방을 가리키는
 커서, 읽는 동안 지우거나 고친 메시지를 보고, 수정·삭제는 작성자·비작성자·나간 사용자와, 나간 사용자가 열어 둔 실제 소켓에 패치가 오지

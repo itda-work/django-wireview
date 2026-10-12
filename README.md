@@ -365,15 +365,21 @@ class XCounter(Component):
 | [slots](https://github.com/itda-work/django-wireview/tree/main/examples/slots) | 내용을 호출자가 채우는 레이아웃 컴포넌트 | <img src="https://raw.githubusercontent.com/itda-work/django-wireview/main/examples/slots/media/slots.png" width="200" alt="slots"> |
 | [hooks](https://github.com/itda-work/django-wireview/tree/main/examples/hooks) | 브라우저만 할 수 있는 일을 컴포넌트에 붙인다 | <img src="https://raw.githubusercontent.com/itda-work/django-wireview/main/examples/hooks/media/hooks.png" width="200" alt="hooks"> |
 
-저장소를 받은 뒤 처음이면 아래 순서대로 실행합니다. `wireview.min.js`는 빌드 산출물이라 저장소에 없고,
-예제의 모델 테이블은 `make migrate`가 만듭니다 — 빠뜨리면 chat 시리즈·poll·rating·quiz 페이지가 500입니다.
+저장소를 받은 뒤 처음이면 아래 순서대로 한 줄씩 실행합니다. 미리 설치할 것은 [uv](https://docs.astral.sh/uv/) 하나이고
+(Node는 uv가 가상환경에 넣습니다), 명령은 Windows PowerShell·명령 프롬프트와 macOS·Linux 터미널에서 같습니다.
+차례로 의존성, JS 빌드 도구, `wireview.min.js`(빌드 산출물이라 저장소에 없습니다), 예제 모델의 테이블(빠뜨리면
+chat 시리즈·poll·rating·quiz 페이지가 500입니다), 그리고 <http://localhost:8000> 서버입니다. Windows에서 uv를 설치하는 법은
+[예제의 시작하기](https://github.com/itda-work/django-wireview/blob/main/examples/README.md#시작하기)에 있습니다.
 
-```bash
-make install && npm ci   # Python·JS 의존성 (처음 한 번)
-make build-js            # wireview.min.js
-make migrate             # 예제 모델의 테이블
-make run-daphne          # http://localhost:8000
+```shell
+uv sync --all-extras
+uv run npm ci
+uv run npm run build
+uv run --directory tests python manage.py migrate
+uv run --directory tests daphne testproj.asgi:application
 ```
+
+`make`가 있으면 `make install`(앞의 두 줄), `make build-js`, `make migrate`, `make run-daphne`로 줄여 쓸 수 있습니다.
 
 ## 컴포넌트 라이프사이클
 
@@ -1393,20 +1399,24 @@ class XCounter(Component):
 
 ## 개발 및 기여
 
-```bash
+```shell
 git clone git@github.com:itda-work/django-wireview.git
 cd django-wireview
-make install && npm ci
-make build-js     # wireview.min.js. clone 직후와 wireview.js를 고친 뒤
-make test
+uv sync --all-extras
+uv run npm ci
+uv run npm run build
+uv run pytest tests examples -m "not e2e and not slow"
 ```
 
-테스트 서버 실행([예제](#예제)와 같은 서버입니다):
+`uv run npm run build`는 clone 직후와 `wireview.js`를 고친 뒤에 다시 합니다. 테스트 서버는 [예제](#예제)와 같은 서버입니다:
 
-```bash
-make migrate
-make run-daphne   # http://localhost:8000
+```shell
+uv run --directory tests python manage.py migrate
+uv run --directory tests daphne testproj.asgi:application
 ```
+
+`make`가 있으면 같은 일을 `make install`, `make build-js`, `make test`, `make migrate`, `make run-daphne`로 줄여 씁니다.
+나머지 명령은 `make help`에 있습니다.
 
 ## 라이선스
 

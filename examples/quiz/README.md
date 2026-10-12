@@ -14,15 +14,16 @@
 
 ## 돌려보기
 
-```bash
-make build-js          # 최초 1회
-make run-daphne        # WebSocket이 필요하므로 runserver가 아니다
+처음이면 [시작하기](../README.md#시작하기)를 먼저 따라 한다(uv 설치, 의존성, JS 빌드, migrate). 그 뒤로는 서버만 띄운다. WebSocket이 필요하므로 `runserver`가 아니라 daphne다.
+
+```shell
+uv run --directory tests daphne testproj.asgi:application
 ```
 
 브라우저에서 <http://localhost:8000/quiz/>.
 
-```bash
-make test ARGS="-k quiz"
+```shell
+uv run pytest examples/quiz -m "not e2e"
 ```
 
 테스트는 `examples/quiz/tests.py`. `make test`가 함께 돌리고 릴리스 게이트(CI)가 태그마다 다시 돌리므로 이 예제는 조용히 낡지 않는다.

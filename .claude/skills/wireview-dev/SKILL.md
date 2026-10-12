@@ -124,8 +124,8 @@ VS Code 다운로드가 파이썬 패키지의 배포를 막지 않게 한다(#1
 
 | 할 일 | 명령 | 선행 조건 |
 |------|------|-----------|
-| 의존성 설치 | `make install` 과 `npm ci` | `uv sync --dev`는 dev 도구를 설치하지 않는다. extras를 써야 한다 |
-| JS 빌드 | `make build-js` | 개발 서버와 E2E 전에 필수. 산출물은 gitignore |
+| 의존성 설치 | `make install` (`uv sync --all-extras` 뒤 `uv run npm ci`) | `uv sync --dev`는 dev 도구를 설치하지 않는다. extras를 써야 한다. Node·npm은 dev 그룹의 `nodejs-wheel`이 `.venv`에 넣으므로 시스템 Node가 필요 없다 — npm 타깃(`build-js`·`watch-js`·`test-js`·`check-js`)은 `uv run npm`으로 부른다(#217). `ext-*`·`ci-build`·`bench-fastapi`의 npm은 시스템 Node다 |
+| JS 빌드 | `make build-js` (`uv run npm run build`) | 개발 서버와 E2E 전에 필수. 산출물은 gitignore |
 | 테스트 (e2e·slow 제외) | `make test` 또는 `make test ARGS="-k streams"` | collectstatic은 Makefile이 처리. `DJANGO_ALLOW_ASYNC_UNSAFE`를 켜면 스위트가 시작을 거절한다(#120). 테스트 하나가 60초를 넘기면 모든 스레드의 스택을 찍고 실행이 끝난다 — 디버거를 붙일 때는 `-o test_time_limit=0`(#148) |
 | 동시 실행 확인 | `make test-concurrent` | 같은 사본에서 테스트 스위트 둘을 동시에 돌린다. 테스트 DB는 프로세스마다 따로라 둘 다 통과해야 한다(#125). `--ff`는 `addopts`가 아니라 Makefile 타깃에 있다 |
 | 최신 의존성 테스트 | `make test-latest` | `uv.lock`을 무시하고 새로 설치하는 사람이 받는 최신 해로 돈다. lock이 옛 버전에 묶여 있으면 기본 레인은 새 설치의 결함을 못 본다(#127) |
@@ -142,8 +142,8 @@ VS Code 다운로드가 파이썬 패키지의 배포를 막지 않게 한다(#1
 | 예제 화면·동작 영상 | `make example-media` (`ARGS="--only NAME"`) | ffmpeg·img2webp·pngquant(`brew install ffmpeg webp pngquant`), JS 빌드, Playwright chromium. 장면은 `scripts/example_media/scenes.py`, 결과는 `examples/<이름>/media/`(PNG·WebP만 커밋), 크기 상한은 `scripts/example_media/budget.py`. 예제 화면을 바꾸면 그 예제를 다시 만든다. 설명은 `examples/README.md` "화면과 동작 영상" |
 | 포맷 | `make format` | |
 | 품질 일괄 | `make quality` | CI의 lint·typecheck 잡과 동일 범위 |
-| 개발 서버 | `make run-daphne` | JS 빌드, Redis |
-| 타입 스텁 확인 | `cd tests && uv run python manage.py wireview_stubs --check` | |
+| 개발 서버 | `make run-daphne` (`uv run --directory tests daphne testproj.asgi:application`) | JS 빌드. 채널 레이어는 기본 `memory`라 브로커가 필요 없다 |
+| 타입 스텁 확인 | `uv run --directory tests python manage.py wireview_stubs --check` | |
 | 성능 실측 | `make bench`, 비교는 `make bench-compare BASE=<ref>`, 서버 선택은 `ARGS="--server uvicorn"` | WebSocket 구간은 daphne 또는 uvicorn을 직접 띄우며 Redis 불필요 |
 | Windows 실측 | `bench/windows/run.sh` (stage → provision → run → collect) | macOS + Parallels 랩 클론 + `windows-parallels-lab` 스킬. 상세는 `bench/README.md` |
 | ASGI 서버 비교 | `make bench-servers ARGS="--label macos"`, Windows 실기는 `bench/windows/ssh.sh` (stage → provision → run → collect), 문서 갱신은 `make bench-servers-charts`와 `python -m bench.servers_chart --table` | SSH로 닿는 x64 Windows(전원 연결, 덮개 열림). 결과 파일을 바꾸면 `bench/servers_chart.py`의 `MACHINES`도 바꾼다 |

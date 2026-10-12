@@ -77,24 +77,87 @@ README는 GitHub, PyPI(루트 README), 문서 사이트(루트 README가 첫 페
 예제는 `tests/`의 Django 프로젝트(`testproj`) 위에서 돈다. 설정과 URLconf는 거기에 있고,
 여기에는 앱만 있다.
 
-## 돌려보기
+## 시작하기
 
-```bash
-make install          # 의존성
-make build-js         # wireview.min.js (gitignore 대상이라 clone 직후 필수)
-make run-daphne       # http://localhost:8000
+미리 설치할 것은 [uv](https://docs.astral.sh/uv/) 하나와 git이다. Python과 Node는 uv가 저장소의 가상환경(`.venv`)에
+넣는다 — Node는 dev 의존성 `nodejs-wheel`로 온다. 아래 명령은 Windows PowerShell·명령 프롬프트(cmd)와 macOS·Linux
+터미널에서 **같은 한 줄**로 돈다. 그래서 `&&`(Windows PowerShell 5.1에 없다)나 `VAR=값 명령` 같은 셸 문법을 쓰지 않고,
+`tests/`에서 돌아야 하는 명령은 `cd` 대신 `uv run --directory tests`로 부른다. 한 줄씩 붙여 넣는다.
+
+### Windows에서 uv 설치
+
+PowerShell에서 둘 중 하나:
+
+```powershell
+winget install --id=astral-sh.uv -e
 ```
 
-WebSocket이 필요하므로 `runserver`가 아니라 daphne로 띄운다.
-
-```bash
-make test                        # 예제 테스트까지 전부
-make test ARGS="-k quiz"         # 예제 하나
-make test-e2e LAYER=memory       # 브라우저 (todo, livecomp, hooks, notifications, search, chat, chat_lv2, chat_lv3, chat_lv4, bookmarks)
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
+
+git이 없으면 `winget install --id=Git.Git -e`. **설치한 뒤에는 터미널을 새로 연다.** 열려 있던 창은 PATH가 바뀐 것을
+모른다 — `uv`나 `git`을 찾지 못한다는 오류가 나면 이것이다. macOS·Linux의 설치는
+[uv 설치 문서](https://docs.astral.sh/uv/getting-started/installation/)에 있다.
+
+### 받고 준비하기 (처음 한 번)
+
+```shell
+git clone https://github.com/itda-work/django-wireview.git
+cd django-wireview
+uv sync --all-extras
+uv run npm ci
+uv run npm run build
+uv run --directory tests python manage.py migrate
+```
+
+- `uv sync --all-extras` — Python, Django와 개발 도구, 그리고 Node·npm.
+- `uv run npm ci` — JS 빌드 도구(esbuild). `npm warn allow-scripts … esbuild` 경고는 무시해도 된다. 빌드는 그 스크립트 없이 된다.
+- `uv run npm run build` — `wireview.min.js`. 빌드 산출물이라 저장소에 없고, 없으면 페이지는 그려지지만 아무것도 반응하지 않는다.
+  `wireview/static/wireview/wireview.js`를 고친 뒤에도 다시 한다.
+- `... manage.py migrate` — 예제 모델의 테이블(`tests/db.sqlite3`). 빠뜨리면 chat 시리즈·poll·rating·quiz 페이지가 500이다.
+
+Node를 이미 설치했어도 `npm`이 아니라 `uv run npm`으로 부른다. 그러면 `.venv`의 Node가 먼저 잡혀 누구나 같은 버전으로 빌드한다.
+
+### 서버 띄우기
+
+```shell
+uv run --directory tests daphne testproj.asgi:application
+```
+
+브라우저에서 <http://localhost:8000/>가 예제 목록이다. 끌 때는 Ctrl+C. WebSocket이 필요하므로 `runserver`가 아니라
+daphne로 띄운다.
+
+### 테스트
+
+```shell
+uv run pytest tests examples -m "not e2e and not slow"
+uv run pytest examples/quiz -m "not e2e"
+```
+
+첫 줄은 라이브러리와 예제 테스트 전부, 둘째 줄은 예제 하나다. 브라우저로 도는 테스트(todo, livecomp, hooks,
+notifications, search, chat, chat_lv2, chat_lv3, chat_lv4, bookmarks)는 브라우저를 한 번 받은 뒤 `-m e2e`로 고른다:
+
+```shell
+uv run playwright install chromium
+uv run pytest examples/todo -m e2e
+```
+
+### make가 있으면
+
+macOS·Linux처럼 `make`가 있으면 같은 일을 줄여 쓸 수 있다. 정의는 저장소 루트의 `Makefile`이다.
+
+| 위 명령 | make |
+|---------|------|
+| `uv sync --all-extras`, `uv run npm ci` | `make install` |
+| `uv run npm run build` | `make build-js` |
+| `uv run --directory tests python manage.py migrate` | `make migrate` |
+| `uv run --directory tests daphne testproj.asgi:application` | `make run-daphne` |
+| `uv run pytest tests examples -m "not e2e and not slow"` | `make test` (`ARGS="-k quiz"`로 좁힌다) |
+| 브라우저 테스트 | `make test-e2e LAYER=memory` (JS 빌드와 브라우저 설치까지 한다) |
 
 pytest를 직접 부를 때는 `-m "not e2e"`를 붙인다: `uv run pytest examples -m "not e2e"`.
-빼면 브라우저 테스트(`e2e` 마커)가 섞여 들어오고, 그것들은 라이브 서버·Playwright 브라우저·
-`collectstatic`을 미리 갖춰야 해서 그냥 실패한다. `make test`는 이 마커를 이미 뺀다.
+빼면 브라우저 테스트(`e2e` 마커)가 섞여 들어오고, 그것들은 Playwright 브라우저를 미리 받아 두지 않으면
+그냥 실패한다. `make test`는 이 마커를 이미 뺀다.
 기본값(`addopts`)에 넣지 않은 것은 `pytest tests/test_csp_e2e.py`처럼 파일을 짚어 돌릴 때
 전부 조용히 빠지기 때문이다.

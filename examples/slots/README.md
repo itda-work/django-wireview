@@ -18,9 +18,16 @@
 `/slots/` 페이지(`SlotsGallery`)에 있다. 그 페이지의 버튼은 모든 `{% fill %}` 밖에 둔다 —
 이벤트는 그 요소를 둘러싼 컴포넌트로 가고, fill 안이라면 그것은 슬롯의 주인(Card, List)이다.
 
-```bash
-make run-daphne                  # http://localhost:8000/slots/
-make test ARGS="-k slots"
+처음이면 [시작하기](../README.md#시작하기)를 먼저 따라 한다(uv 설치, 의존성, JS 빌드, migrate). 그 뒤로는 서버만 띄운다. WebSocket이 필요하므로 `runserver`가 아니라 daphne다.
+
+```shell
+uv run --directory tests daphne testproj.asgi:application
+```
+
+브라우저에서 <http://localhost:8000/slots/>.
+
+```shell
+uv run pytest examples/slots -m "not e2e"
 ```
 
 테스트는 `examples/slots/tests.py`. `make test`가 함께 돌리고 릴리스 게이트(CI)가 태그마다 다시 돌리므로 이 예제는 조용히 낡지 않는다.

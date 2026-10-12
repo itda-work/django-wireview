@@ -70,6 +70,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- The examples run on Windows as written, with uv the only thing to install first (#217). `nodejs-wheel` in the
+  dev group brings Node and npm into `.venv`, `make install` runs `npm ci` through it (a fresh clone following
+  the example READMEs had no esbuild to build with), and the developer npm targets run `uv run npm`. Every command
+  in the example READMEs is one line that PowerShell 5.1, cmd and bash run alike (`uv run --directory tests ...`,
+  no `&&`, `VAR=value` or trailing comments), with make as a shorthand beside it; `tests/test_example_commands.py`
+  keeps it so. `examples/README.md` gains a Getting started section, and wireview.W004's hint names the make-free build.
 - The README opens with who wireview is for, a structural comparison with Phoenix LiveView, Laravel Livewire,
   Rails Hotwire, htmx and the Java options (Vaadin Flow, Spring REST + SPA), and why it suits a coding agent;
   `docs/WHY.md` answers the questions that comparison leaves (#215).

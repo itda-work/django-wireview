@@ -19,19 +19,22 @@
 
 ## 돌려보기
 
-```bash
-make build-js          # 최초 1회
-make run-daphne        # WebSocket이 필요하므로 runserver가 아니다
+처음이면 [시작하기](../README.md#시작하기)를 먼저 따라 한다(uv 설치, 의존성, JS 빌드, migrate). 그 뒤로는 서버만 띄운다. WebSocket이 필요하므로 `runserver`가 아니라 daphne다.
+
+```shell
+uv run --directory tests daphne testproj.asgi:application
 ```
 
 브라우저에서 <http://localhost:8000/notifications/>를 열고 alice로 로그인한다. 시크릿 창에서 같은 주소를
 열고 bob으로 로그인한다 — 쿠키를 공유하는 창은 같은 사용자다. alice 창을 새로고침해 받는 사람 목록에
 bob이 보이면, bob에게 알림과 토스트를 보내 본다. `/notifications/sign-in/<이름>/`은 데모용이다.
 
-```bash
-make test ARGS="-k notifications"                   # 단위
-make test-e2e ARGS="-k notifications"               # 브라우저 둘로 alice와 bob
+```shell
+uv run pytest examples/notifications -m "not e2e"
+uv run pytest examples/notifications -m e2e
 ```
+
+첫 줄은 브라우저 없이, 둘째 줄은 브라우저로 돈다. 브라우저 테스트는 [시작하기의 테스트](../README.md#테스트)에서 브라우저를 받은 뒤에 돈다.
 
 테스트는 `examples/notifications/tests.py`. `make test`가 함께 돌리고 릴리스 게이트(CI)가 태그마다 다시 돌리므로 이 예제는 조용히 낡지 않는다.
 
