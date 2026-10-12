@@ -1255,6 +1255,34 @@ async def test_producers_a_kept_part_shows_keep_the_user_while_their_names_move(
                 await communicator.disconnect()
 
 
+async def test_a_leaving_that_raises_still_takes_the_user_off(monkeypatch):
+    """The producer's leaving() raised before presence_leave(): the framework leaves for it (#212).
+
+    Phoenix's tracker drops a process's metas when the process ends, whatever
+    the process did; the end of a component is its last leaving().
+    """
+    bob = await connect(CnOnline, "b-list", name="bob")
+    ann = carol = None
+    try:
+        ann = await connect(CnTyping, "a-input", name="ann")
+        await render_containing(bob, "ann-online")
+
+        async def broken(self):
+            raise RuntimeError("leaving() failed")
+
+        monkeypatch.setattr(CnTyping, "leaving", broken)
+        await ann.disconnect()
+        ann = None
+        monkeypatch.undo()
+        carol = await connect(CnTyping, "c-input", name="carol")
+        final = await render_containing(bob, "carol-online")
+        assert "ann-" not in final and '"online-2"' in final, final
+    finally:
+        for communicator in (ann, carol, bob):
+            if communicator is not None:
+                await communicator.disconnect()
+
+
 async def test_closing_the_socket_calls_leaving():
     communicator = await connect(CnBoard, "b1")
 

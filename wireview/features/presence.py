@@ -505,6 +505,28 @@ async def rename(components: t.Iterable[t.Any]) -> None:
                 log.exception("%s (%s) could not move its presence", component._name, component.id)  # type: ignore[attr-defined]
 
 
+async def left(component: t.Any) -> None:
+    """What a producer leaves behind once its last ``leaving()`` is over, run whether that returned or raised.
+
+    The framework's part of the producer's end: a presence it joined and did
+    not leave -- ``leaving()`` raised before ``presence_leave()``, or never
+    called it -- leaves now, and a typing timer stops. Phoenix's tracker does
+    the same for a process it monitors. One that left already says nothing
+    again. Not for a tombstone's first moments (#204): its ``leaving()`` waits,
+    and so does this.
+    """
+    if not isinstance(component, PresenceMixin):
+        return
+    try:
+        if component._presence_joined:
+            await component.presence_leave()
+        elif (task := component._presence_typing_task) is not None and not task.done():
+            task.cancel()
+            component._presence_typing_task = None
+    except Exception:
+        log.exception("%s (%s) could not leave its presence", component._name, component.id)  # type: ignore[attr-defined]
+
+
 def presence_channels(component: t.Any) -> set[str]:
     """The channel a joined producer listens on for sync requests, besides the app's (#202).
 

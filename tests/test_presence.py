@@ -349,6 +349,33 @@ class TestPresenceMixin:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
+    async def test_what_leaving_left_joined_leaves_after_it(self):
+        """A producer whose leaving() did not leave leaves once that is over, typing timer and all (#212)."""
+        view = await mount(XProducerComponent, room_id=1, username="ann")
+        await view.component.presence_set_typing(typing=True)
+        timer = view.component._presence_typing_task
+        view.wire._mock_channel_layer.clear()
+
+        await presence.left(view.component)
+
+        assert [b["kwargs"]["action"] for b in view.presence_broadcasts] == ["presence_leave"]
+        assert view.component._presence_joined is False
+        await asyncio.sleep(0)
+        assert timer is not None and timer.done()
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_a_producer_that_left_says_nothing_after_its_leaving(self):
+        view = await mount(XProducerComponent, room_id=1, username="ann")
+        await view.component.presence_leave()
+        view.wire._mock_channel_layer.clear()
+
+        await presence.left(view.component)
+
+        assert view.presence_broadcasts == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
     @pytest.mark.django_db
     async def test_a_producer_whose_place_moves_leaves_its_old_name_and_joins_its_new_one(self):
         """As it is, typing still; the leave names the meta it said, the join the one it has now (#212)."""

@@ -1078,6 +1078,11 @@ class WireviewSession:
         ``joined()`` -- does not get it. Code that registers in ``joined()`` and
         unregisters in ``leaving()`` (a presence track, a counter) would undo
         what it never did.
+
+        These are final: a tombstone's comes when it is buried (#204). So a
+        presence the component joined and its ``leaving()`` did not leave --
+        it raised first, or never called ``presence_leave()`` -- leaves here
+        (``presence.left``, #212).
         """
         for component in components:
             try:
@@ -1086,6 +1091,7 @@ class WireviewSession:
             except Exception as e:
                 log.exception(f"Error in {component._name}.leaving(): {e}")
             finally:
+                await presence.left(component)
                 # After leaving(), which may still want them (#95)
                 component._cancel_async_tasks()
 
