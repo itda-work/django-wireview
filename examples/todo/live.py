@@ -10,7 +10,7 @@ This module demonstrates wireview's core component patterns:
 
 from enum import StrEnum
 
-from wireview import Component, ModelAction
+from wireview import JS, Component, ModelAction
 
 from .models import Item
 
@@ -87,9 +87,12 @@ class XTodoList(Component):
         Add a new todo item.
 
         Note: skip_render() is called because mutation() will handle
-        the re-render when the new item is created.
+        the re-render when the new item is created. That render answers the
+        mutation, not the Enter, so it leaves what was typed in the input
+        (docs/features/html-diff.md): push_js() empties it, as examples/chat does.
         """
         await Item.objects.acreate(text=new_item)
+        await self.push_js(JS().set_value("input.new-todo", ""))
         self.skip_render()  # Let mutation() handle the render
 
     async def show(self, showing: Showing):

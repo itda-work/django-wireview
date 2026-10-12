@@ -2,6 +2,10 @@
 
 **알림은 한 사용자에게 간다. 저장하는 알림과 저장하지 않는 토스트**
 
+![notifications: alice가 bob에게 보낸 알림은 bob의 목록과 종에만 온다. 토스트는 저장되지 않고 지금 열린 화면에만 뜬다](media/notifications.webp)
+
+<sub>alice가 bob에게 보낸 알림은 bob의 목록과 종에만 온다. 토스트는 저장되지 않고 지금 열린 화면에만 뜬다. 마지막 화면은 [media/notifications.png](media/notifications.png), 다시 만들려면 `make example-media ARGS="--only notifications"`.</sub>
+
 ## 무엇을 보여주나
 
 - `get_subscriptions()`가 `self.user`의 채널만 부른다 — 다른 사람에게 보낸 것은 이 연결에 오지 않는다

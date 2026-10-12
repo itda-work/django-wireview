@@ -2,6 +2,10 @@
 
 **Streams와 Presence — 큰 목록을 상태에 담지 않고, 누가 있는지 보여준다**
 
+![chat: 보낸 메시지는 Streams로 모든 창의 목록에 붙고, 누가 접속해 있는지·입력 중인지는 Presence가 알린다](media/chat.webp)
+
+<sub>보낸 메시지는 Streams로 모든 창의 목록에 붙고, 누가 접속해 있는지·입력 중인지는 Presence가 알린다. 마지막 화면은 [media/chat.png](media/chat.png), 다시 만들려면 `make example-media ARGS="--only chat"`.</sub>
+
 ## 무엇을 보여주나
 
 - `stream()`으로 메시지를 개별 렌더하고, 새 메시지는 `Broadcast`로 그 방의 모든 페이지에 넣는다 — 보내는 곳에서 한 번

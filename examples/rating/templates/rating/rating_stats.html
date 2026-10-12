@@ -21,7 +21,7 @@
           <span class="distribution-label">{{ score }} star{{ score|pluralize }}</span>
           <div class="distribution-bar-container">
             <div class="distribution-bar"
-                 style="width: {% if total %}{{ count|divisibleby:total|default:0 }}{% else %}0{% endif %}%"></div>
+                 style="width: {% if total %}{% widthratio count total 100 %}{% else %}0{% endif %}%"></div>
           </div>
           <span class="distribution-count">{{ count }}</span>
         </div>

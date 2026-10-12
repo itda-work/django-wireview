@@ -131,15 +131,17 @@ def test_every_pages_header_names_the_release_and_links_its_changelog_section(si
 def test_assets_are_named_by_their_content(site):
     assets = sorted((site.out / "wireview" / "assets").iterdir())
     named = [path for path in assets if not path.name.endswith(".gz")]
-    # The documents' images: README's overview and the benchmark charts (docs/images, #174)
+    # The documents' images: README's overview, the benchmark charts (docs/images, #174) and the
+    # examples' screenshots in its example table (#213)
     charts = {path.name for path in (ROOT / "docs" / "images").glob("*.svg")}
-    assert charts
+    screens = {path.name for path in (ROOT / "examples").glob("*/media/*.png")}
+    assert charts and screens
     assert {re.sub(r"\.[0-9a-f]{10}\.", ".", path.name) for path in named} == {
         "site.css",
         "site.js",
         "boot.js",
         "overview.jpg",
-    } | charts
+    } | charts | screens
     for path in named:
         digest = path.name.split(".")[1]
         assert hashlib.sha256(path.read_bytes()).hexdigest().startswith(digest), path.name
@@ -1196,7 +1198,7 @@ def test_every_text_file_the_build_writes_has_a_charset(site):
     # A text file is one the build compresses; an image is served with its own type and no charset.
     suffixes = {path.suffix for path in files if path.with_name(path.name + ".gz").is_file()}
     assert suffixes == set(TEXT_TYPES), suffixes
-    assert {path.suffix for path in files} - suffixes == {".jpg", ".svg"}
+    assert {path.suffix for path in files} - suffixes == {".jpg", ".png", ".svg"}
     assert all(value.endswith("; charset=utf-8") for value in TEXT_TYPES.values())
 
 

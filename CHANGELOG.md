@@ -14,6 +14,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- Every example's README opens with a clip of it working (an animated WebP) and links its final screen (a PNG);
+  `examples/README.md` and the README's example table show the screenshots (#213). `make example-media` records
+  them from scenes written as data (`scripts/example_media/scenes.py`): it seeds a database, plays each scene in
+  Chromium against the E2E server, and puts two windows side by side where one's action reaching the other is the
+  point. A size budget (`scripts/example_media/budget.py`) fails the generator and `tests/test_example_media.py`.
+  The slots example gets a page, `/slots/`, to record.
 - `presence_users_in(topic)` lists the users of one topic, one entry each, for a presence tracker that
   subscribes to several (#202). `presence_users` lists them across all of its topics.
 - A component `mount()`ed in a test hears the notifications published in its process, as a page does (#201):
@@ -105,6 +111,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- The todo example left what was typed in its input after Enter added it (#213): `add()` leaves the redraw to `mutation()`,
+  whose render does not answer the Enter, and a second Enter added the item again. It empties it with `push_js`.
+- The rating example's distribution bars never showed (#213): their width was `count|divisibleby:total`, a yes or
+  no. It is the share of the ratings now.
 - A connection whose app ended without a disconnect is ended all the same, once (#211). Channels runs
   `disconnect()` only for a disconnect message; when the server cancels the app -- Daphne after its application
   close timeout, when a handler holds up the disconnect, and on shutdown; Uvicorn past its graceful shutdown

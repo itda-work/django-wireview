@@ -2,22 +2,22 @@
 
 예제 앱 14개. 각 디렉터리가 **개념 하나**를 가르치는 작은 Django 앱이다. 읽는 순서는 위에서 아래.
 
-| 예제 | 개념 | 튜토리얼 |
-|------|------|----------|
-| [todo](./todo/) | 모델 구독으로 여러 탭이 같은 목록을 함께 본다 | [Todo 앱](../docs/tutorials/03-todo-app.md) |
-| [poll](./poll/) | 쓰기는 핸들러가, 다시 그리기는 브로드캐스트가 | [Poll 앱](../docs/tutorials/10-poll-app.md) |
-| [rating](./rating/) | 잠깐 쓰는 상태와 남는 상태를 갈라 둔다 | [Rating 앱](../docs/tutorials/11-rating-app.md) |
-| [search](./search/) | 디바운스한 입력, 주소에 남는 검색어, 키보드로 고르는 결과 | [Live Search](../docs/tutorials/12-live-search.md) |
-| [quiz](./quiz/) | 컴포넌트 상태로 굴리는 상태 머신 | [Quiz 앱](../docs/tutorials/13-quiz-app.md) |
-| [chat](./chat/) | Streams와 Presence | [Chat 앱](../docs/tutorials/04-chat-app.md) |
-| [chat_lv2](./chat_lv2/) | chat 2단계: 누가 말하는가를 서버가 정한다 (로그인 사용자, 방 멤버십, `live_session`) | [기능 문서](../docs/features/live-session.md) |
-| [chat_lv3](./chat_lv3/) | chat 3단계: 스트림은 붙이기만 하는 목록이 아니다 (위로 스크롤해 과거 불러오기, 내 메시지 수정·삭제) | [Streams 심화](../docs/tutorials/06-streams-api.md) |
-| [chat_lv4](./chat_lv4/) | chat 4단계: 한 사람에게만 가는 소식 (방 목록의 안 읽은 메시지 배지) | [Broadcast](../docs/features/broadcast.md) |
-| [dashboard](./dashboard/) | AsyncResult로 느린 조회를 미룬다 | [Dashboard](../docs/tutorials/05-dashboard.md) |
-| [notifications](./notifications/) | 알림은 한 사용자에게 간다. 저장하는 알림과 저장하지 않는 토스트 | [Notifications](../docs/tutorials/14-notifications.md) |
-| [livecomp](./livecomp/) | 연결을 공유하는 중첩 컴포넌트 | [LiveComponent](../docs/tutorials/15-live-components.md) |
-| [slots](./slots/) | 내용을 호출자가 채우는 레이아웃 컴포넌트 | [기능 문서](../docs/features/slots.md) |
-| [hooks](./hooks/) | 브라우저만 할 수 있는 일을 컴포넌트에 붙인다 | [기능 문서](../docs/features/hooks.md) |
+| 예제 | 개념 | 튜토리얼 | 화면 |
+|------|------|----------|------|
+| [todo](./todo/) | 모델 구독으로 여러 탭이 같은 목록을 함께 본다 | [Todo 앱](../docs/tutorials/03-todo-app.md) | <img src="./todo/media/todo.png" width="200" alt="todo"> |
+| [poll](./poll/) | 쓰기는 핸들러가, 다시 그리기는 브로드캐스트가 | [Poll 앱](../docs/tutorials/10-poll-app.md) | <img src="./poll/media/poll.png" width="200" alt="poll"> |
+| [rating](./rating/) | 잠깐 쓰는 상태와 남는 상태를 갈라 둔다 | [Rating 앱](../docs/tutorials/11-rating-app.md) | <img src="./rating/media/rating.png" width="200" alt="rating"> |
+| [search](./search/) | 디바운스한 입력, 주소에 남는 검색어, 키보드로 고르는 결과 | [Live Search](../docs/tutorials/12-live-search.md) | <img src="./search/media/search.png" width="200" alt="search"> |
+| [quiz](./quiz/) | 컴포넌트 상태로 굴리는 상태 머신 | [Quiz 앱](../docs/tutorials/13-quiz-app.md) | <img src="./quiz/media/quiz.png" width="200" alt="quiz"> |
+| [chat](./chat/) | Streams와 Presence | [Chat 앱](../docs/tutorials/04-chat-app.md) | <img src="./chat/media/chat.png" width="200" alt="chat"> |
+| [chat_lv2](./chat_lv2/) | chat 2단계: 누가 말하는가를 서버가 정한다 (로그인 사용자, 방 멤버십, `live_session`) | [기능 문서](../docs/features/live-session.md) | <img src="./chat_lv2/media/chat_lv2.png" width="200" alt="chat_lv2"> |
+| [chat_lv3](./chat_lv3/) | chat 3단계: 스트림은 붙이기만 하는 목록이 아니다 (위로 스크롤해 과거 불러오기, 내 메시지 수정·삭제) | [Streams 심화](../docs/tutorials/06-streams-api.md) | <img src="./chat_lv3/media/chat_lv3.png" width="200" alt="chat_lv3"> |
+| [chat_lv4](./chat_lv4/) | chat 4단계: 한 사람에게만 가는 소식 (방 목록의 안 읽은 메시지 배지) | [Broadcast](../docs/features/broadcast.md) | <img src="./chat_lv4/media/chat_lv4.png" width="200" alt="chat_lv4"> |
+| [dashboard](./dashboard/) | AsyncResult로 느린 조회를 미룬다 | [Dashboard](../docs/tutorials/05-dashboard.md) | <img src="./dashboard/media/dashboard.png" width="200" alt="dashboard"> |
+| [notifications](./notifications/) | 알림은 한 사용자에게 간다. 저장하는 알림과 저장하지 않는 토스트 | [Notifications](../docs/tutorials/14-notifications.md) | <img src="./notifications/media/notifications.png" width="200" alt="notifications"> |
+| [livecomp](./livecomp/) | 연결을 공유하는 중첩 컴포넌트 | [LiveComponent](../docs/tutorials/15-live-components.md) | <img src="./livecomp/media/livecomp.png" width="200" alt="livecomp"> |
+| [slots](./slots/) | 내용을 호출자가 채우는 레이아웃 컴포넌트 | [기능 문서](../docs/features/slots.md) | <img src="./slots/media/slots.png" width="200" alt="slots"> |
+| [hooks](./hooks/) | 브라우저만 할 수 있는 일을 컴포넌트에 붙인다 | [기능 문서](../docs/features/hooks.md) | <img src="./hooks/media/hooks.png" width="200" alt="hooks"> |
 
 ## 채팅 시리즈
 
@@ -30,6 +30,43 @@
 | [chat_lv2](./chat_lv2/) | 누가 말하는가를 서버가 정한다 | 로그인 사용자, 방 멤버십, `live_session` 경계와 `on_mount` 훅, 나간 뒤 구독 놓기 |
 | [chat_lv3](./chat_lv3/) | 스트림은 붙이기만 하는 목록이 아니다 | 커서로 과거 불러오기(`wire-viewport-top`, `stream(reset=False)`), 수정·삭제(`update_only`, `stream_delete`) |
 | [chat_lv4](./chat_lv4/) | 한 사람에게만 가는 소식 | 읽은 자리 커서, 사용자마다의 토픽, 한 쿼리로 세는 안 읽은 수 |
+
+## 화면과 동작 영상
+
+예제마다 `media/` 에 마지막 화면(`<이름>.png`)과 장면을 녹화한 영상(`<이름>.webp`, 반복 재생되는 animated WebP)이
+있다. 손으로 찍지 않는다 — 장면(사람이 하는 입력·클릭·스크롤)은 `scripts/example_media/scenes.py`에 데이터로 적혀 있고,
+`make example-media`가 그것을 Chromium에서 돌려 녹화한다. 실시간 공유가 핵심인 예제(todo, poll, chat 시리즈, notifications)는
+브라우저 컨텍스트 둘을 나란히 붙이고, 창마다 아래쪽에 누구의 화면인지 이름표를 단다.
+
+### 다시 만드는 법
+
+```bash
+brew install ffmpeg webp pngquant              # ffmpeg, img2webp, pngquant (처음 한 번)
+make example-media                             # 14개 전부, 7분쯤 걸린다
+make example-media ARGS="--only chat_lv3"      # 일부만
+uv run python -m scripts.example_media --list  # 장면마다 무엇을 보이는지
+```
+
+생성기는 빈 데이터베이스(`build/example-media/db.sqlite3`)에 장면의 시드를 넣고, E2E 하네스의 서버
+(`tests/testproj/e2e_server.py`)를 장면마다 새로 띄운다. 뷰포트·로캘(ko-KR)·시간대·시드 데이터가 고정이라 다시 만들어도
+같은 화면이 나온다 — 다만 그 자리에서 보낸 메시지의 시각처럼 지금 시각을 그리는 곳은 다르다. 예제의 화면을 바꿨으면
+그 예제의 미디어를 다시 만들어 함께 커밋한다.
+
+### 형식과 크기 예산
+
+README는 GitHub, PyPI(루트 README), 문서 사이트(루트 README가 첫 페이지)에서 읽힌다. 셋 모두가 보여 주는 것은 이미지다 —
+저장소에 둔 `.mp4`는 GitHub README에서 재생되지 않는다. 그래서 커밋하는 것은 PNG와 animated WebP 둘이고,
+같은 장면의 MP4는 `build/example-media/`에만 만든다(데모 사이트가 같은 장면으로 다시 만든다).
+
+| 파일 | 상한 | 만들 때의 실제 크기 |
+|------|------|------|
+| 마지막 화면 PNG (256색 팔레트) | 100KB | 11–46KB |
+| 동작 영상 WebP (10fps, lossy) | 1MB | 134–711KB |
+| 14개 예제 전부 | 6MB | 약 4.3MB |
+
+상한은 `scripts/example_media/budget.py`에 있고, 넘으면 생성기가 실패하며 `tests/test_example_media.py`도 실패한다.
+그 테스트는 예제마다 장면·두 파일이 있는지, README와 두 표가 그것을 가리키는지도 본다.
+미디어 생성 자체는 브라우저가 필요해 `make test`에 들어가지 않는다.
 
 ## 예제는 테스트다
 

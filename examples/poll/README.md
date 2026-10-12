@@ -2,6 +2,10 @@
 
 **쓰기는 핸들러가, 다시 그리기는 브로드캐스트가**
 
+![poll: 한 창이 투표하면 두 창의 막대와 표 수가 함께 움직인다](media/poll.webp)
+
+<sub>한 창이 투표하면 두 창의 막대와 표 수가 함께 움직인다. 마지막 화면은 [media/poll.png](media/poll.png), 다시 만들려면 `make example-media ARGS="--only poll"`.</sub>
+
 ## 무엇을 보여주나
 
 - 투표는 DB에 쓰고 `skip_render()` — 재렌더는 `mutation()`이 받는다

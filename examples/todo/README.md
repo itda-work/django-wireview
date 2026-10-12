@@ -2,6 +2,10 @@
 
 **모델 구독으로 여러 탭이 같은 목록을 함께 본다**
 
+![todo: 한 창에서 할 일을 더하고 끝내면 다른 창의 목록도 그대로 바뀐다](media/todo.webp)
+
+<sub>한 창에서 할 일을 더하고 끝내면 다른 창의 목록도 그대로 바뀐다. 마지막 화면은 [media/todo.png](media/todo.png), 다시 만들려면 `make example-media ARGS="--only todo"`.</sub>
+
 ## 무엇을 보여주나
 
 - `_subscriptions = {"todo.item"}` + `mutation()` — ORM 변경이 곧 화면 갱신

@@ -139,6 +139,7 @@ VS Code 다운로드가 파이썬 패키지의 배포를 막지 않게 한다(#1
 | 문서 사이트 빌드 | `make docs-site` | 문서 가드 테스트 → 빌드 → 관문(내부 링크·앵커, `docs/site-urls.txt`와 비교한 사라진 URL). 산출물 `build/docs-site/`. 새 페이지 URL은 `python -m scripts.docs_site build --update-urls`로 목록에 더한다 |
 | 문서 사이트 묶음 | `make docs-site-bundle` | `make docs-site` 뒤 `build/site-dist/docs-site-v<버전>.tar.gz`로 묶는다. 릴리스 자산이고 같은 커밋은 같은 바이트다. dist/ 에는 만들지 않는다(PyPI가 dist/ 를 통째로 받는다) |
 | 문서 사이트 개발 서버 | `make docs-serve` (`ARGS="--port N"`) | 같은 빌드를 `http://127.0.0.1:8765/wireview/`에 띄우고 `docs/`·`README.md`·레이아웃이 바뀌면 다시 빌드한다. 재빌드마다 문서 가드는 건너뛴다 |
+| 예제 화면·동작 영상 | `make example-media` (`ARGS="--only NAME"`) | ffmpeg·img2webp·pngquant(`brew install ffmpeg webp pngquant`), JS 빌드, Playwright chromium. 장면은 `scripts/example_media/scenes.py`, 결과는 `examples/<이름>/media/`(PNG·WebP만 커밋), 크기 상한은 `scripts/example_media/budget.py`. 예제 화면을 바꾸면 그 예제를 다시 만든다. 설명은 `examples/README.md` "화면과 동작 영상" |
 | 포맷 | `make format` | |
 | 품질 일괄 | `make quality` | CI의 lint·typecheck 잡과 동일 범위 |
 | 개발 서버 | `make run-daphne` | JS 빌드, Redis |

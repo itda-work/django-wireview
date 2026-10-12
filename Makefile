@@ -1,4 +1,4 @@
-.PHONY: ext-install ext-check ext-test ext-build ext-package ext-test-host all install test test-unit test-e2e test-concurrent test-matrix test-latest test-lowest test-cov test-js bench bench-compare bench-fastapi bench-fastapi-charts bench-stream-fanout bench-servers bench-servers-charts lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js ci-smoke docs-site docs-site-bundle docs-serve
+.PHONY: ext-install ext-check ext-test ext-build ext-package ext-test-host all install test test-unit test-e2e test-concurrent test-matrix test-latest test-lowest test-cov test-js bench bench-compare bench-fastapi bench-fastapi-charts bench-stream-fanout bench-servers bench-servers-charts lint format check check-js quality build watch-js run shell clean collectstatic playwright-install build-js ci-smoke docs-site docs-site-bundle docs-serve example-media
 
 # Default target
 all: install build
@@ -406,6 +406,13 @@ docs-site-bundle: docs-site
 docs-serve:
 	uv run python -m scripts.docs_site serve $(ARGS)
 
+# Each example's final screen (PNG) and a clip of it working (animated WebP) into
+# examples/<name>/media/, played from the scenes in scripts/example_media/scenes.py (#213).
+# ARGS="--only chat_lv3" for some. Needs ffmpeg, img2webp and pngquant (brew install ffmpeg webp pngquant).
+# Not part of make test: it needs a browser, and the tests check only what it wrote.
+example-media: build-js collectstatic playwright-install
+	uv run python -m scripts.example_media $(ARGS)
+
 # =============================================================================
 # Help
 # =============================================================================
@@ -453,6 +460,7 @@ help:
 	@echo "  make docs-site        - Build the documentation site into build/docs-site, with its gates"
 	@echo "  make docs-site-bundle - docs-site, then pack it into build/site-dist/docs-site-v<version>.tar.gz"
 	@echo "  make docs-serve       - Serve the site and rebuild it on every change (ARGS=\"--port N\")"
+	@echo "  make example-media    - Record each example's screenshot and clip (ARGS=\"--only NAME\")"
 	@echo ""
 	@echo "Development:"
 	@echo "  make run              - Run dev server"
