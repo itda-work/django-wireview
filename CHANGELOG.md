@@ -70,12 +70,15 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
-- The examples run on Windows as written, with uv the only thing to install first (#217). `nodejs-wheel` in the
-  dev group brings Node and npm into `.venv`, `make install` runs `npm ci` through it (a fresh clone following
-  the example READMEs had no esbuild to build with), and the developer npm targets run `uv run npm`. Every command
-  in the example READMEs is one line that PowerShell 5.1, cmd and bash run alike (`uv run --directory tests ...`,
-  no `&&`, `VAR=value` or trailing comments), with make as a shorthand beside it; `tests/test_example_commands.py`
-  keeps it so. `examples/README.md` gains a Getting started section, and wireview.W004's hint names the make-free build.
+- The example READMEs start from uv alone and give each command as one line with no `&&`, `cd`, `VAR=value`
+  prefix, single quotes or trailing comment (#217): `uv run --directory tests ...` in place of `cd tests && ...`,
+  with make named as a shorthand beside it. `nodejs-wheel` in the dev group brings Node and npm into `.venv`,
+  `make install` runs `npm ci` through it (a fresh clone following the example READMEs had no esbuild to build
+  with), and the developer npm targets run `uv run npm`. `examples/README.md` gains a Getting started section,
+  Windows on ARM included, and wireview.W004's hint gives the make-free build for a checkout of the repository.
+  `tests/test_example_commands.py` keeps the commands so. The test suite names the encoding of every file and
+  pipe it opens (`tests/test_text_encoding.py`) and puts back the event loop policy daphne sets on Windows, where
+  the tests of `tests/e2e.sh`, a bash script, are skipped.
 - The README opens with who wireview is for, a structural comparison with Phoenix LiveView, Laravel Livewire,
   Rails Hotwire, htmx and the Java options (Vaadin Flow, Spring REST + SPA), and why it suits a coding agent;
   `docs/WHY.md` answers the questions that comparison leaves (#215).
@@ -120,6 +123,9 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- `manage.py wireview_check_templates` read the report of the template diagnostics in the locale's encoding (#217):
+  node writes UTF-8, and on a Windows machine whose code page is not, a report naming a non-ASCII path or text came
+  back garbled or failed to parse. It is read as UTF-8.
 - A page that left while the server answered it -- a quick navigation away while its join was answered -- logged
   `Could not join …` at ERROR with a traceback (Uvicorn's `ClientDisconnected`), counted a `join_rejected` with
   reason `error`, and from an event or a mail, `raised; joining it again` and a second write that raised out of the

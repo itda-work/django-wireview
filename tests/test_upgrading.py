@@ -214,7 +214,10 @@ NO_UPGRADE_NOTE = {
     "Every example's README opens with a clip of it working": EXAMPLE,
     "The todo example left what was typed in its input": EXAMPLE,
     "The rating example's distribution bars never showed": EXAMPLE,
-    "The examples run on Windows as written": "저장소의 개발 환경과 예제 문서만 바뀌었다",
+    "The example READMEs start from uv alone": "저장소의 개발 환경과 예제 문서만 바뀌었다",
+    "`manage.py wireview_check_templates` read the report of the template diagnostics": (
+        "읽히지 않던 보고가 읽힐 뿐 할 일이 없다"
+    ),
     "Documented when `broadcast()` (after the commit) and `abroadcast()` (at once) publish": "문서와 테스트만 바뀌었다",
     "A `stream()` in a `start_async` task replaced or cancelled": "닫히던 연결이 닫히지 않을 뿐 할 일이 없다",
     "A page that left while the server answered it": "정상 이탈이 ERROR 로그와 오류 지표에서 빠질 뿐 할 일이 없다",

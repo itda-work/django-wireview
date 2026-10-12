@@ -124,7 +124,7 @@ VS Code 다운로드가 파이썬 패키지의 배포를 막지 않게 한다(#1
 
 | 할 일 | 명령 | 선행 조건 |
 |------|------|-----------|
-| 의존성 설치 | `make install` (`uv sync --all-extras` 뒤 `uv run npm ci`) | `uv sync --dev`는 dev 도구를 설치하지 않는다. extras를 써야 한다. Node·npm은 dev 그룹의 `nodejs-wheel`이 `.venv`에 넣으므로 시스템 Node가 필요 없다 — npm 타깃(`build-js`·`watch-js`·`test-js`·`check-js`)은 `uv run npm`으로 부른다(#217). `ext-*`·`ci-build`·`bench-fastapi`의 npm은 시스템 Node다 |
+| 의존성 설치 | `make install` (`uv sync --all-extras` 뒤 `uv run npm ci`) | `uv sync --dev`는 dev 도구를 설치하지 않는다. extras를 써야 한다. Node·npm은 dev 그룹의 `nodejs-wheel`이 `.venv`에 넣으므로 시스템 Node가 필요 없다 — npm 타깃(`build-js`·`watch-js`·`test-js`·`check-js`)은 `uv run npm`으로 부른다(#217). `ext-*`·`ci-build`·`bench-fastapi`의 npm은 시스템 Node다. `nodejs-wheel-binaries`의 휠은 macOS 13 이상, glibc 2.28 이상·musl Linux, Windows x64·ARM64용뿐이다(40–63MB). 그보다 낮은 플랫폼에서는 8KB짜리 sdist를 빌드하려다 `uv sync`가 실패한다 |
 | JS 빌드 | `make build-js` (`uv run npm run build`) | 개발 서버와 E2E 전에 필수. 산출물은 gitignore |
 | 테스트 (e2e·slow 제외) | `make test` 또는 `make test ARGS="-k streams"` | collectstatic은 Makefile이 처리. `DJANGO_ALLOW_ASYNC_UNSAFE`를 켜면 스위트가 시작을 거절한다(#120). 테스트 하나가 60초를 넘기면 모든 스레드의 스택을 찍고 실행이 끝난다 — 디버거를 붙일 때는 `-o test_time_limit=0`(#148) |
 | 동시 실행 확인 | `make test-concurrent` | 같은 사본에서 테스트 스위트 둘을 동시에 돌린다. 테스트 DB는 프로세스마다 따로라 둘 다 통과해야 한다(#125). `--ff`는 `addopts`가 아니라 Makefile 타깃에 있다 |

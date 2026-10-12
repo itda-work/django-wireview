@@ -1400,7 +1400,7 @@ class XCounter(Component):
 ## 개발 및 기여
 
 ```shell
-git clone git@github.com:itda-work/django-wireview.git
+git clone https://github.com/itda-work/django-wireview.git
 cd django-wireview
 uv sync --all-extras
 uv run npm ci

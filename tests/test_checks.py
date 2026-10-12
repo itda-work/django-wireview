@@ -337,6 +337,8 @@ class TestClientBundleCheck:
         assert "make build-js" in messages[0].hint
         # The form that needs no make, which most Windows machines lack (#217)
         assert "uv run npm run build" in messages[0].hint
+        # An app's project has neither the package.json nor the Node those commands need
+        assert "checkout of the wireview repository" in messages[0].hint
 
 
 class TestSettingsKeysCheck:

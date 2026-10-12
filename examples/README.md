@@ -119,6 +119,18 @@ uv run --directory tests python manage.py migrate
 
 Node를 이미 설치했어도 `npm`이 아니라 `uv run npm`으로 부른다. 그러면 `.venv`의 Node가 먼저 잡혀 누구나 같은 버전으로 빌드한다.
 
+### Windows ARM(Surface Pro X, Copilot+ PC 등)
+
+ARM Windows에서 uv는 ARM용 Python을 받는다. 그런데 브라우저 테스트가 쓰는 `greenlet`(Playwright의 의존성)에는 그
+플랫폼용 휠이 없어서, `uv sync`가 C 컴파일러(MSVC)로 빌드하려다 실패한다. x64 Python을 쓰면 된다. Windows가
+에뮬레이션으로 돌린다. 처음의 `uv sync`만 이렇게 바꾼다.
+
+```shell
+uv sync --all-extras --python cpython-3.12-windows-x86_64-none
+```
+
+`.venv`가 x64 Python으로 만들어지고, 그 뒤의 `uv run …`은 모두 이것을 쓴다. 나머지 명령은 위와 같다.
+
 ### 서버 띄우기
 
 ```shell
@@ -135,8 +147,10 @@ uv run pytest tests examples -m "not e2e and not slow"
 uv run pytest examples/quiz -m "not e2e"
 ```
 
-첫 줄은 라이브러리와 예제 테스트 전부, 둘째 줄은 예제 하나다. 브라우저로 도는 테스트(todo, livecomp, hooks,
-notifications, search, chat, chat_lv2, chat_lv3, chat_lv4, bookmarks)는 브라우저를 한 번 받은 뒤 `-m e2e`로 고른다:
+첫 줄은 라이브러리와 예제 테스트 전부, 둘째 줄은 예제 하나다. Windows에서도 같은 명령이다. bash 스크립트인
+`tests/e2e.sh`를 검사하는 테스트처럼 POSIX에서만 뜻이 있는 몇 개는 이유를 달고 건너뛴다(`skipped`).
+브라우저로 도는 테스트가 있는 예제(todo, livecomp, hooks, notifications, search, chat, chat_lv2, chat_lv3, chat_lv4)는
+브라우저를 한 번 받은 뒤 `-m e2e`로 고른다:
 
 ```shell
 uv run playwright install chromium
