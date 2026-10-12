@@ -326,6 +326,7 @@ examples/                  예제 앱 14개. 각 디렉터리 = 개념 하나 + 
                            hooks/ 는 wire-hook 을 쓰는 유일한 예제다. 훅 경로의 E2E 검증은 그것과
                            testproj의 hookprobe/·stickyprobe/·offlineprobe/ 가 나눠 진다
 
+demo/                      공개 데모(wireview-demo.itda.work, #214). 예제 14개를 묶은 Django 프로젝트(demo.settings)와 Docker Compose(Caddy·uvicorn·redis·janitor·cloudflared 프로필). 테스트 픽스처를 싣지 않고 예제 코드도 고치지 않는다 — 게스트 로그인·입력 한도·매일 초기화는 이 디렉터리에. 운영 절차는 demo/README.md, 계약은 tests/test_demo_site.py, 띄운 스택은 demo/smoke.py
 docs/                      features/ 기능 레퍼런스, tutorials/ 15편, FEATURE-GAP.md, ARCHITECTURE.md,
                            ROADMAP.md, DEPLOYMENT.md, PERFORMANCE.md, design/ 설계 메모(README.md 인덱스), implementation/ 구현 노트
                            (implementation/wire-protocol.md 가 메시지 형태의 정본. 표의 이름은 tests/test_wire_protocol_doc.py 가 코드와 맞춘다)
