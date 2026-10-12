@@ -52,7 +52,10 @@ def _per_room() -> int:
 
 
 #: ``keep`` of None: the table is only capped. The rooms, memberships and ratings grow with
-#: the guests and sessions, which have budgets of their own (demo/guests.py, demo/sessions.py)
+#: the guests and sessions, which have budgets of their own (demo/guests.py, demo/sessions.py).
+#: A "-pk" after a time breaks a tie only by chance where the pk is a random UUID: two rows saved
+#: within one tick of the clock (15.6 ms on Windows before Python 3.13, a microsecond on Linux) keep
+#: in no particular order. The examples' models are not the demo's to change for a sequence column
 KEPT = (
     Kept("chat.Message", "room", -1, ("-created_at", "-pk")),
     Kept("chat_lv2.Message", "room", -1, ("-created_at", "-pk")),
