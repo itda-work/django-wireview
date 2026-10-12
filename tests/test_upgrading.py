@@ -22,11 +22,11 @@ CHANGELOG = UPGRADING.parent.parent / "CHANGELOG.md"
 
 def _migration_sections() -> list[str]:
     """The ``## <from>에서 <to>`` sections, newest first as the document orders them."""
-    return [slug(h) for h in re.findall(r"^## (.+에서 .+)$", UPGRADING.read_text(), re.MULTILINE)]
+    return [slug(h) for h in re.findall(r"^## (.+에서 .+)$", UPGRADING.read_text(encoding="utf-8"), re.MULTILINE)]
 
 
 def _rows() -> dict[str, str]:
-    table = UPGRADING.read_text().split("## 어디서 오나", 1)[1].split("\n## ", 1)[0]
+    table = UPGRADING.read_text(encoding="utf-8").split("## 어디서 오나", 1)[1].split("\n## ", 1)[0]
     return {
         cells[0]: cells[1]
         for line in table.splitlines()
@@ -74,7 +74,7 @@ SUBSECTIONS = {
 
 
 def _sections_with_nothing_to_change() -> set[str]:
-    text = UPGRADING.read_text()
+    text = UPGRADING.read_text(encoding="utf-8")
     return {
         slug(heading)
         for heading, body in re.findall(r"^## (.+에서 .+)\n\n(.*)$", text, re.MULTILINE)
@@ -237,13 +237,13 @@ SECTION = "1.5에서 1.6으로"
 
 def _entries_since_previous() -> list[str]:
     """Every entry of the release after PREVIOUS, whitespace folded."""
-    text = CHANGELOG.read_text()
+    text = CHANGELOG.read_text(encoding="utf-8")
     release = re.split(r"^## \[", text.split(f"\n## [{PREVIOUS}]", 1)[0], flags=re.MULTILINE)[-1]
     return [" ".join(entry.split()) for entry in re.split(r"^- ", release, flags=re.MULTILINE)[1:]]
 
 
 def _section_bullets() -> list[str]:
-    section = UPGRADING.read_text().split(f"\n## {SECTION}\n", 1)[1].split("\n## ", 1)[0]
+    section = UPGRADING.read_text(encoding="utf-8").split(f"\n## {SECTION}\n", 1)[1].split("\n## ", 1)[0]
     return [" ".join(bullet.split()) for bullet in re.split(r"^- ", section, flags=re.MULTILINE)[1:]]
 
 

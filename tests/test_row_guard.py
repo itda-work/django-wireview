@@ -72,7 +72,7 @@ async def test_the_last_one_leaks():
 
 
 def _pytest(directory: Path, source: str, *targets: str) -> str:
-    (directory / "test_probe.py").write_text(source)
+    (directory / "test_probe.py").write_text(source, encoding="utf-8")
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "-p", "testproj.row_guard", "-p", "no:cacheprovider"]
         + ["--ds", "testproj.settings", "--nomigrations", "-rA", *(targets or ["test_probe.py"])],
@@ -81,6 +81,7 @@ def _pytest(directory: Path, source: str, *targets: str) -> str:
         capture_output=True,
         text=True,
         timeout=50,
+        encoding="utf-8",
     )
     return result.stdout + result.stderr
 

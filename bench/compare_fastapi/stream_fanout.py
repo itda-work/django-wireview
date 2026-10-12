@@ -156,7 +156,9 @@ async def fanout(server: Server, name: str, connections: int, warmup: int, posts
 def environment() -> dict[str, t.Any]:
     def run(*cmd: str) -> str:
         try:
-            return subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+            return subprocess.run(
+                cmd, cwd=ROOT, capture_output=True, text=True, check=True, encoding="utf-8"
+            ).stdout.strip()
         except (OSError, subprocess.CalledProcessError):
             return ""
 
@@ -361,7 +363,7 @@ def stages_chart(d1: dict[str, t.Any], d2: dict[str, t.Any]) -> str:
 
 
 def load(path: Path = RESULT) -> dict[str, t.Any]:
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def main() -> None:
@@ -394,7 +396,7 @@ def main() -> None:
     output = args.output or ROOT / "bench" / "results" / (
         f"{env['commit']}{'-dirty' if env['dirty'] else ''}-stream-fanout.json"
     )
-    output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
+    output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"wrote {output.relative_to(ROOT) if output.is_relative_to(ROOT) else output}")
 
 

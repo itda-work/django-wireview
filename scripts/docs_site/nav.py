@@ -283,6 +283,7 @@ def tracked_documents() -> list[str]:
         capture_output=True,
         text=True,
         check=True,
+        encoding="utf-8",
     ).stdout.split()
     return [path for path in listed if (ROOT / path).is_file()]
 

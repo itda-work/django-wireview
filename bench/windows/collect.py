@@ -20,13 +20,13 @@ def main(src: Path, dst: Path, sha: str) -> None:
     for result in sorted(src.glob("*.json")):
         if result.name.startswith("machine-") or result.name == "smoke.json":
             continue
-        data = json.loads(result.read_text())
+        data = json.loads(result.read_text(encoding="utf-8"))
         data["meta"]["sha"] = sha
         data["meta"]["ref"] = "heads/main"
         arch = "arm64" if result.name.startswith("arm64-") else "x64"
         data["meta"]["guest"] = {"vm": "Parallels Desktop win11-parlab", "python_build": arch, **machine.get(arch, {})}
         target = dst / f"win11-parlab-{result.name}"
-        target.write_text(json.dumps(data, indent=1))
+        target.write_text(json.dumps(data, indent=1), encoding="utf-8")
         print("wrote", target)
     progress = (src / "progress.txt").read_text(encoding="utf-8-sig", errors="replace")
     failed = [line.split()[0] for line in progress.splitlines() if line.strip() and " rc=0 " not in line]

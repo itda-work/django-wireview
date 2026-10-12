@@ -31,7 +31,7 @@ CELL_NUMBER = re.compile(r"\d[\d,]*\.\d+%?")
 
 @pytest.fixture(scope="module")
 def result():
-    return json.loads(fanout_profile.RESULT.read_text())
+    return json.loads(fanout_profile.RESULT.read_text(encoding="utf-8"))
 
 
 def _section(text: str, heading: str) -> str:
@@ -93,9 +93,10 @@ def _run(args: list[str], tmp_path: Path) -> dict:
         capture_output=True,
         text=True,
         timeout=50,
+        encoding="utf-8",
     )
     assert done.returncode == 0, done.stderr[-4000:]
-    return json.loads(output.read_text())
+    return json.loads(output.read_text(encoding="utf-8"))
 
 
 @pytest.mark.integration
@@ -176,7 +177,7 @@ def test_the_in_process_profile_takes_one_render_apart(tmp_path):
 
 @pytest.fixture(scope="module")
 def stage_b():
-    return json.loads(fanout_profile.RESULT_B.read_text())
+    return json.loads(fanout_profile.RESULT_B.read_text(encoding="utf-8"))
 
 
 def _stage_b_section() -> str:
@@ -221,7 +222,7 @@ def test_the_click_profile_times_every_action(tmp_path):
 
 @pytest.fixture(scope="module")
 def stage_a():
-    return json.loads(fanout_profile.RESULT_A.read_text())
+    return json.loads(fanout_profile.RESULT_A.read_text(encoding="utf-8"))
 
 
 def _stage_a_section() -> str:

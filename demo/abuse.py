@@ -214,7 +214,7 @@ class Stack:
 
     def python(self, service: str, code: str) -> str:
         command = ["docker", "compose", "-f", self.compose, "exec", "-T", service, "python", "-c", code]
-        return subprocess.check_output(command, text=True).strip()
+        return subprocess.check_output(command, text=True, encoding="utf-8").strip()
 
     def open_keys(self, address: str) -> dict:
         """The limits' keys of ``address`` with their expiry, and the app's uvicorn workers."""

@@ -126,7 +126,9 @@ def test_a_directory_without_templates_cannot_run(tmp_path):
 def test_a_crash_in_the_diagnostics_is_not_a_finding(tmp_path):
     """node exits 1 on an uncaught error too; only a report means the templates were checked."""
     fake = tmp_path / "node"
-    fake.write_text('#!/bin/sh\n[ "$1" = --version ] && echo v24.0.0 && exit 0\necho boom >&2\nexit 1\n')
+    fake.write_text(
+        '#!/bin/sh\n[ "$1" = --version ] && echo v24.0.0 && exit 0\necho boom >&2\nexit 1\n', encoding="utf-8"
+    )
     fake.chmod(0o755)
     _page(tmp_path, "fine")
     with pytest.raises(CommandError, match="the diagnostics failed:\nboom") as raised:
@@ -195,6 +197,7 @@ def test_the_wheel_ships_diagnostics_that_run_where_a_package_is_installed(tmp_p
         text=True,
         timeout=120,
         check=False,
+        encoding="utf-8",
     )
     assert result.returncode == 1, result.stderr
     assert [p["code"] for p in json.loads(result.stdout)[str(page)]] == ["unclosed-block"]

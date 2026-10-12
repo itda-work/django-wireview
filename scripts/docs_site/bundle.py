@@ -60,7 +60,12 @@ def source_date_epoch(root: Path = nav.ROOT) -> int:
         return int(value)
     try:
         found = subprocess.run(
-            ["git", "log", "-1", "--format=%ct"], cwd=root, capture_output=True, text=True, check=False
+            ["git", "log", "-1", "--format=%ct"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+            encoding="utf-8",
         )
     except FileNotFoundError:
         found = None

@@ -192,7 +192,12 @@ class TestTheOnTag:
             "PYTHONPATH": os.pathsep.join([str(tests), str(tests.parent)]),
         }
         result = subprocess.run(
-            [sys.executable, "-O", "-c", script], capture_output=True, text=True, env=env, cwd=tests.parent
+            [sys.executable, "-O", "-c", script],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=tests.parent,
+            encoding="utf-8",
         )
         assert result.stdout.startswith("refused"), result.stdout + result.stderr
 
@@ -276,7 +281,7 @@ EVENTS_MJS = Path(__file__).resolve().parent.parent / "wireview" / "static" / "w
 
 
 def _client_modifiers() -> tuple[set[str], set[str]]:
-    source = EVENTS_MJS.read_text()
+    source = EVENTS_MJS.read_text(encoding="utf-8")
     arity = set(re.findall(r"(\w+): 1", re.search(r"const ARITY = \{([^}]*)\}", source).group(1)))
     keys = set(re.findall(r"^\s+(\w+):", re.search(r"const KEYS = \{(.*?)\};", source, re.S).group(1), re.M))
     run_steps = source[source.index("export function runSteps") :]

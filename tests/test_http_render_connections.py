@@ -278,6 +278,8 @@ def test_a_fresh_process_sets_django_up():
         "'django.db.backends.sqlite3', 'NAME': ':memory:'}});"
         "import django; django.setup()"
     )
-    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=60)
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=60, encoding="utf-8"
+    )
 
     assert result.returncode == 0, result.stderr

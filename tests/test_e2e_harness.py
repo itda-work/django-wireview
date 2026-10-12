@@ -263,7 +263,7 @@ def test_no_test_module_runs_a_server_thread_of_its_own():
     offenders = [
         str(path.relative_to(root))
         for path in list(root.glob("tests/**/*.py")) + list(root.glob("examples/**/*.py"))
-        if path.resolve() not in exempt and pattern.search(path.read_text())
+        if path.resolve() not in exempt and pattern.search(path.read_text(encoding="utf-8"))
     ]
 
     assert offenders == []
@@ -286,7 +286,7 @@ def test_no_browser_suite_waits_on_its_own_terms():
     offenders = [
         str(path.relative_to(root))
         for path in list(root.glob("tests/**/*.py")) + list(root.glob("examples/**/*.py"))
-        if path.resolve() not in exempt and "page.wait_for_selector(" in path.read_text()
+        if path.resolve() not in exempt and "page.wait_for_selector(" in path.read_text(encoding="utf-8")
     ]
 
     assert offenders == []
@@ -299,7 +299,7 @@ def test_the_browser_runs_the_bundle_built_from_the_source():
     tests of the features the pull brought failed with ``wireview.visit is not a
     function``, which reads as a regression in them. The target builds first.
     """
-    makefile = (pathlib.Path(__file__).resolve().parent.parent / "Makefile").read_text()
+    makefile = (pathlib.Path(__file__).resolve().parent.parent / "Makefile").read_text(encoding="utf-8")
     rule = re.search(r"^test-e2e:(.*)$", makefile, re.MULTILINE)
 
     assert rule is not None
@@ -469,8 +469,8 @@ def test_serves_a_sync_iterator():
 def test_a_sync_iterator_warning_fails_the_run(tmp_path, body, code):
     """The warning alone turns a green run red, and nothing else does."""
     tests = pathlib.Path(__file__).resolve().parent
-    (tmp_path / "pytest.ini").write_text("[pytest]\n")
-    (tmp_path / "test_guarded.py").write_text(body)
+    (tmp_path / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    (tmp_path / "test_guarded.py").write_text(body, encoding="utf-8")
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "-p", "testproj.warning_guard", "-q", str(tmp_path)],
         cwd=tmp_path,
@@ -478,6 +478,7 @@ def test_a_sync_iterator_warning_fails_the_run(tmp_path, body, code):
         capture_output=True,
         text=True,
         timeout=120,
+        encoding="utf-8",
     )
 
     assert result.returncode == code, result.stdout + result.stderr

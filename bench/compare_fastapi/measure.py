@@ -459,14 +459,14 @@ async def fanout(server: Server, connections: int) -> dict[str, float]:
 
 def _run(*cmd: str, cwd: Path = ROOT) -> str:
     try:
-        return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=True).stdout.strip()
+        return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=True, encoding="utf-8").stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         return ""
 
 
 def _npm_version(package: str) -> str:
     path = CLIENT / "node_modules" / package / "package.json"
-    return json.loads(path.read_text())["version"] if path.exists() else ""
+    return json.loads(path.read_text(encoding="utf-8"))["version"] if path.exists() else ""
 
 
 def environment(browser_version: str) -> dict[str, t.Any]:
@@ -595,7 +595,7 @@ def main() -> None:
     output = (
         args.output or ROOT / "bench" / "results" / f"{env['commit']}{'-dirty' if env['dirty'] else ''}-fastapi.json"
     )
-    output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
+    output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"wrote {output.relative_to(ROOT) if output.is_relative_to(ROOT) else output}")
 
 

@@ -85,7 +85,7 @@ async def probe(server: str, connections: int, seconds: float) -> dict[str, t.An
     exited = time.perf_counter() - t0
     close_codes = await codes
     ws._stop(proc)
-    lines = log.read_text().splitlines()
+    lines = log.read_text(encoding="utf-8").splitlines()
     log.unlink()
     return {
         "connections": connections,
@@ -127,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
         print(server, flush=True)
         result["servers"][server] = asyncio.run(probe(server, args.connections, args.seconds))
         print(" ", result["servers"][server], flush=True)
-    out.write_text(json.dumps(result, indent=1))
+    out.write_text(json.dumps(result, indent=1), encoding="utf-8")
     print(f"written: {out}")
     return 0
 

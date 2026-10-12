@@ -626,7 +626,7 @@ class TestUploadTempDir:
     def test_unusable_directory_raises(self, monkeypatch, tmp_path):
         """An unusable directory raises instead of quietly using local disk."""
         blocker = tmp_path / "blocker"
-        blocker.write_text("not a directory")
+        blocker.write_text("not a directory", encoding="utf-8")
         set_wireview(monkeypatch, UPLOAD_TEMP_DIR=str(blocker / "uploads"))
 
         with pytest.raises(ImproperlyConfigured):

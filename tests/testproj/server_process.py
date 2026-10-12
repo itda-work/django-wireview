@@ -56,7 +56,7 @@ def wait_until_serving(port: int, proc: subprocess.Popen, log: Path, timeout: fl
     token = uuid.uuid4().hex
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        output = log.read_text(errors="replace")
+        output = log.read_text(errors="replace", encoding="utf-8")
         if any(mark in output for mark in BIND_FAILURES) or proc.poll() is not None:
             raise AssertionError(f"the server on port {port} did not serve (exit code {proc.poll()}):\n{output}")
         if f"?ready={token} " in output:
@@ -66,7 +66,7 @@ def wait_until_serving(port: int, proc: subprocess.Popen, log: Path, timeout: fl
         except OSError:  # nothing listening yet, or an error status: the log decides
             pass
         time.sleep(0.2)
-    output = log.read_text(errors="replace")
+    output = log.read_text(errors="replace", encoding="utf-8")
     raise AssertionError(f"the server on port {port} did not answer within {timeout:g}s:\n{output}")
 
 

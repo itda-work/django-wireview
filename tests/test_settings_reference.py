@@ -18,7 +18,7 @@ REFERENCE = Path(__file__).resolve().parent.parent / "docs" / "features" / "sett
 
 
 def _documented() -> set[str]:
-    return set(re.findall(r"^\| `([A-Z_]+)` \|", REFERENCE.read_text(), re.M))
+    return set(re.findall(r"^\| `([A-Z_]+)` \|", REFERENCE.read_text(encoding="utf-8"), re.M))
 
 
 def test_every_setting_is_documented():

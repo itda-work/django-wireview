@@ -81,6 +81,7 @@ def test_the_settings_pass_the_deploy_checks(tmp_path):
         capture_output=True,
         text=True,
         timeout=120,
+        encoding="utf-8",
     )
     assert checked.returncode == 0, checked.stdout + checked.stderr
 
@@ -92,7 +93,13 @@ def test_the_settings_refuse_to_start_without_a_secret(tmp_path):
     }
     env["DEMO_DATA_DIR"] = str(tmp_path)
     checked = subprocess.run(
-        [sys.executable, "demo/manage.py", "check"], cwd=ROOT, env=env, capture_output=True, text=True, timeout=120
+        [sys.executable, "demo/manage.py", "check"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        encoding="utf-8",
     )
     assert checked.returncode != 0
     assert "DJANGO_SECRET_KEY" in checked.stderr
@@ -659,7 +666,13 @@ def collected(tmp_path_factory):
 
     def manage(*args: str) -> str:
         done = subprocess.run(
-            [sys.executable, "demo/manage.py", *args], cwd=ROOT, env=env, capture_output=True, text=True, timeout=120
+            [sys.executable, "demo/manage.py", *args],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            encoding="utf-8",
         )
         assert done.returncode == 0, done.stdout + done.stderr
         return done.stdout
@@ -708,14 +721,14 @@ def test_every_static_file_a_page_names_carries_its_content_s_hash(collected):
 
 
 def _caddy_hashed_pattern() -> re.Pattern[str]:
-    caddyfile = (ROOT / "demo" / "Caddyfile").read_text()
+    caddyfile = (ROOT / "demo" / "Caddyfile").read_text(encoding="utf-8")
     pattern = re.search(r"@hashed path_regexp (\S+)", caddyfile)
     assert pattern, "the Caddyfile names hashed files with @hashed"
     return re.compile(pattern.group(1))
 
 
 def test_caddy_keeps_hashed_files_a_year_and_revalidates_the_rest():
-    caddyfile = (ROOT / "demo" / "Caddyfile").read_text()
+    caddyfile = (ROOT / "demo" / "Caddyfile").read_text(encoding="utf-8")
     assert 'header @hashed Cache-Control "public, max-age=31536000, immutable"' in caddyfile
     assert 'header @unhashed Cache-Control "public, no-cache"' in caddyfile
     hashed = re.search(r"@hashed path_regexp (\S+)", caddyfile)
@@ -730,7 +743,7 @@ def _caddy_directives(caddyfile: str) -> list[str]:
 
 def test_the_direct_front_takes_the_visitor_from_the_connection_only():
     """Direct mode (demo/Caddyfile.direct): no header a client sends names the visitor."""
-    lines = _caddy_directives((ROOT / "demo" / "Caddyfile.direct").read_text())
+    lines = _caddy_directives((ROOT / "demo" / "Caddyfile.direct").read_text(encoding="utf-8"))
     # Nobody is trusted to name the client: {client_ip} and {remote_host} are the TCP peer, and
     # Caddy writes X-Forwarded-For and X-Forwarded-Proto afresh
     assert not [line for line in lines if line.startswith(("trusted_proxies", "client_ip_headers"))]
@@ -752,7 +765,7 @@ def test_each_front_door_of_the_stack_trusts_its_own_header_only():
     """web's :8080 takes Cloudflare's CF-Connecting-IP, :8081 the host Caddy's X-Real-IP, never both."""
     import yaml
 
-    caddyfile = (ROOT / "demo" / "Caddyfile").read_text()
+    caddyfile = (ROOT / "demo" / "Caddyfile").read_text(encoding="utf-8")
     servers = dict(re.findall(r"\tservers (:\d+) \{\n(.*?)\n\t\}", caddyfile, re.S))
     assert {port: _caddy_directives(block) for port, block in servers.items()} == {
         ":8080": ["trusted_proxies static private_ranges", "client_ip_headers CF-Connecting-IP"],
@@ -762,8 +775,8 @@ def test_each_front_door_of_the_stack_trusts_its_own_header_only():
     # Both sites are the same front, which passes on what the port's rule read
     assert lines[lines.index(":8080 {") :] == [":8080 {", "import front", "}", ":8081 {", "import front", "}"]
     assert "header_up X-Real-IP {client_ip}" in lines
-    base = yaml.safe_load((ROOT / "demo" / "compose.yaml").read_text())
-    direct = yaml.safe_load((ROOT / "demo" / "compose.direct.yaml").read_text())
+    base = yaml.safe_load((ROOT / "demo" / "compose.yaml").read_text(encoding="utf-8"))
+    direct = yaml.safe_load((ROOT / "demo" / "compose.direct.yaml").read_text(encoding="utf-8"))
     # Whoever reaches a port of web's names any visitor: the host's loopback only, in both modes
     assert base["services"]["web"]["ports"] == ["127.0.0.1:${DEMO_PORT:-8080}:8080"]
     assert direct["services"]["web"] == {"ports": ["127.0.0.1:${DEMO_DIRECT_PORT:-8081}:8081"]}
@@ -776,8 +789,8 @@ def test_the_dns_token_reaches_the_ddns_updater_only():
     """The token that edits the zone's DNS is in ddns.env, which no service but ddns reads."""
     import yaml
 
-    base = yaml.safe_load((ROOT / "demo" / "compose.yaml").read_text())
-    direct = yaml.safe_load((ROOT / "demo" / "compose.direct.yaml").read_text())
+    base = yaml.safe_load((ROOT / "demo" / "compose.yaml").read_text(encoding="utf-8"))
+    direct = yaml.safe_load((ROOT / "demo" / "compose.direct.yaml").read_text(encoding="utf-8"))
     ddns = direct["services"]["ddns"]
     assert ddns["env_file"] == [{"path": "ddns.env", "required": False}]
     assert not [name for name in ddns.get("environment", {}) if name.startswith("CLOUDFLARE_")]
@@ -786,13 +799,13 @@ def test_the_dns_token_reaches_the_ddns_updater_only():
     for name, service in {**base["services"], **direct["services"]}.items():
         if name != "ddns":
             assert "ddns.env" not in json.dumps(service), name
-    example = (ROOT / "demo" / ".env.example").read_text()
+    example = (ROOT / "demo" / ".env.example").read_text(encoding="utf-8")
     assert "CLOUDFLARE_DNS_TOKEN" not in example and "CLOUDFLARE_ZONE_ID" not in example
-    ddns_example = (ROOT / "demo" / "ddns.env.example").read_text()
+    ddns_example = (ROOT / "demo" / "ddns.env.example").read_text(encoding="utf-8")
     assert "CLOUDFLARE_DNS_TOKEN=\n" in ddns_example and "CLOUDFLARE_ZONE_ID=\n" in ddns_example
     # Kept off git and out of the image
-    assert "ddns.env" in (ROOT / "demo" / ".gitignore").read_text().splitlines()
-    assert "demo/ddns.env" in (ROOT / "demo" / "Dockerfile.dockerignore").read_text().splitlines()
+    assert "ddns.env" in (ROOT / "demo" / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "demo/ddns.env" in (ROOT / "demo" / "Dockerfile.dockerignore").read_text(encoding="utf-8").splitlines()
 
 
 @pytest.mark.skipif(not shutil.which("caddy"), reason="needs the caddy binary")
@@ -806,6 +819,7 @@ def test_the_direct_front_adapts_to_what_its_comments_say(tls, tmp_path):
         capture_output=True,
         text=True,
         check=True,
+        encoding="utf-8",
     )
     config = json.loads(adapted.stdout)
     (server,) = config["apps"]["http"]["servers"].values()
@@ -823,7 +837,7 @@ def test_the_direct_front_adapts_to_what_its_comments_say(tls, tmp_path):
 
 def test_the_proxy_front_believes_the_nas_and_no_one_else():
     """Proxy mode (demo/Caddyfile.proxy): one trusted peer names the visitor, every other peer gets 403."""
-    lines = _caddy_directives((ROOT / "demo" / "Caddyfile.proxy").read_text())
+    lines = _caddy_directives((ROOT / "demo" / "Caddyfile.proxy").read_text(encoding="utf-8"))
     # One address, the NAS, given as the import's argument (Homebrew's service passes no environment).
     # No default that would trust a range: imported without it, Caddy refuses to start
     nas = "{args[0]}"
@@ -842,7 +856,7 @@ def test_the_proxy_front_believes_the_nas_and_no_one_else():
         "reverse_proxy 127.0.0.1:{$DEMO_DIRECT_PORT:8081} {"
     ]
     # The README's service Caddyfile gives the NAS's address
-    readme = (ROOT / "demo" / "README.md").read_text()
+    readme = (ROOT / "demo" / "README.md").read_text(encoding="utf-8")
     assert 'echo "import $HOME/srv/django-wireview/demo/Caddyfile.proxy 192.168.10.102"' in readme
     # Plain HTTP from the NAS: no certificate here, and so no HTTP/3
     assert not [line for line in lines if line.startswith(("tls", "protocols", "import"))]
@@ -852,7 +866,7 @@ def test_the_proxy_front_believes_the_nas_and_no_one_else():
 def _proxy_config(tmp_path: Path, *nas: str) -> Path:
     """The one-line Caddyfile that Homebrew's service reads (demo/README.md "NAS 리버스 프록시 뒤")."""
     wrapper = tmp_path / f"Caddyfile-{len(list(tmp_path.glob('Caddyfile-*')))}"
-    wrapper.write_text(" ".join(["import", str(ROOT / "demo" / "Caddyfile.proxy"), *nas]) + "\n")
+    wrapper.write_text(" ".join(["import", str(ROOT / "demo" / "Caddyfile.proxy"), *nas]) + "\n", encoding="utf-8")
     return wrapper
 
 
@@ -863,6 +877,7 @@ def test_the_proxy_front_does_not_start_without_its_nas(tmp_path):
         env={**os.environ, "XDG_DATA_HOME": str(tmp_path)},
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     assert checked.returncode != 0
     assert "{args[0]}" in checked.stderr
@@ -876,6 +891,7 @@ def test_the_proxy_front_adapts_to_what_its_comments_say(tmp_path):
         capture_output=True,
         text=True,
         check=True,
+        encoding="utf-8",
     )
     config = json.loads(adapted.stdout)
     assert config["admin"] == {"disabled": True}
@@ -1086,7 +1102,7 @@ def test_ddns_writes_nothing_it_is_not_sure_of(line, records, refusal):
 @pytest.mark.integration
 def test_caddy_s_pattern_tells_the_collected_hashed_names_from_the_rest(collected):
     static_root, _ = collected
-    manifest = json.loads((static_root / "staticfiles.json").read_text())["paths"]
+    manifest = json.loads((static_root / "staticfiles.json").read_text(encoding="utf-8"))["paths"]
     pattern = _caddy_hashed_pattern()
     assert len(manifest) > 20
     for original, hashed in manifest.items():

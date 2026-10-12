@@ -641,7 +641,7 @@ def _documented_framework_names() -> list[str]:
 
     names = []
     for path, opening in _NAME_LISTS:
-        text = (Path(__file__).parents[1] / path).read_text()
+        text = (Path(__file__).parents[1] / path).read_text(encoding="utf-8")
         owned = text.split(opening, 1)[1].split(")은", 1)[0]
         names += [name for name in re.findall(r"`(\w+)`", owned) if name not in names]
     return names

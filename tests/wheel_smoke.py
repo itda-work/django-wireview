@@ -80,7 +80,7 @@ import tempfile  # noqa: E402
 with tempfile.TemporaryDirectory() as target:
     call_command("startproject", "smokesite", target, template=str(installed.parent / "project_template"))
     made = Path(target)
-    if "smokesite.settings" not in (made / "manage.py").read_text():
+    if "smokesite.settings" not in (made / "manage.py").read_text(encoding="utf-8"):
         sys.exit("the starter template did not render manage.py")
     expected = [
         made / "smokesite" / "asgi.py",

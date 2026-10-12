@@ -307,7 +307,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def _reasons_in_code() -> set[str]:
     reasons = set()
     for path in (ROOT / "wireview" / "session.py", ROOT / "wireview" / "consumer.py"):
-        for node in ast.walk(ast.parse(path.read_text())):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)

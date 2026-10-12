@@ -251,7 +251,7 @@ def test_the_package_page_links_to_its_own_release():
 
     import hatch_build
 
-    hatch = tomllib.loads((README.parent / "pyproject.toml").read_text())["tool"]["hatch"]
+    hatch = tomllib.loads((README.parent / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["hatch"]
     config = hatch["metadata"]["hooks"]["custom"]
     metadata = {"version": "1.2.3"}
     hatch_build.CustomMetadataHook(str(README.parent), config).update(metadata)

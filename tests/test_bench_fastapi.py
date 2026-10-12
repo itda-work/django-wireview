@@ -58,7 +58,7 @@ def test_the_charts_are_drawn_from_the_named_result(result):
 def test_the_named_result_is_the_newest_measurement():
     newest = max(
         (ROOT / "bench" / "results").glob("*-fastapi.json"),
-        key=lambda p: json.loads(p.read_text())["environment"]["date"],
+        key=lambda p: json.loads(p.read_text(encoding="utf-8"))["environment"]["date"],
     )
     assert chart.RESULT == newest, f"chart.RESULT names {chart.RESULT.name}, the newest measurement is {newest.name}"
 
@@ -133,14 +133,15 @@ def test_a_chart_reads_in_either_color_scheme_and_names_its_series(result):
 def test_lines_of_code_skip_blank_lines_comments_and_docstrings(tmp_path):
     python = tmp_path / "a.py"
     python.write_text(
-        '"""Module."""\n\n# comment\nimport os\n\n\ndef f():\n    """Doc\n    string."""\n    return os  # trailing\n'
+        '"""Module."""\n\n# comment\nimport os\n\n\ndef f():\n    """Doc\n    string."""\n    return os  # trailing\n',
+        encoding="utf-8",
     )
     assert loc.lines_of_code(python) == 3
     template = tmp_path / "a.html"
-    template.write_text("{# note #}\n<p>\n  <!-- a\n  b -->\n  {{ x }}\n</p>\n\n")
+    template.write_text("{# note #}\n<p>\n  <!-- a\n  b -->\n  {{ x }}\n</p>\n\n", encoding="utf-8")
     assert loc.lines_of_code(template) == 3
     script = tmp_path / "a.jsx"
-    script.write_text("// note\nconst a = 1;\n/* block\n */\n<p>{/* jsx */}</p>\n")
+    script.write_text("// note\nconst a = 1;\n/* block\n */\n<p>{/* jsx */}</p>\n", encoding="utf-8")
     assert loc.lines_of_code(script) == 2
 
 

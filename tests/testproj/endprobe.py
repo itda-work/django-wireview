@@ -21,7 +21,7 @@ from wireview import Component
 
 
 def _mark(text: str) -> None:
-    with Path(os.environ["ENDPROBE_EVENTS"]).open("a") as events:
+    with Path(os.environ["ENDPROBE_EVENTS"]).open("a", encoding="utf-8") as events:
         events.write(text + "\n")
 
 

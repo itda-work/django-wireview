@@ -55,7 +55,9 @@ def _node() -> str:
     # Not a skip: node already builds the client bundle, and a skipped check here
     # would leave the extension's rules unchecked against the templates
     assert node, "node is required: editors/vscode/scripts/diagnose.ts runs the extension's diagnostics"
-    version = subprocess.run([node, "--version"], capture_output=True, text=True, check=True).stdout.strip()
+    version = subprocess.run(
+        [node, "--version"], capture_output=True, text=True, check=True, encoding="utf-8"
+    ).stdout.strip()
     major, minor = (int(part) for part in version.lstrip("v").split(".")[:2])
     # Type stripping without a flag: node runs the .ts sources as they are
     assert (major, minor) >= (22, 18), f"node {version} cannot run TypeScript as it is; 22.18 or later can"
@@ -69,6 +71,7 @@ def _diagnose(metadata_path: Path, *targets: Path, strict: bool = False) -> dict
         text=True,
         timeout=120,
         check=False,
+        encoding="utf-8",
     )
     assert result.returncode in (0, 1), result.stderr
     report = json.loads(result.stdout)
@@ -127,7 +130,9 @@ def test_a_warning_fails_the_driver_only_when_strict(metadata_file, tmp_path):
 @pytest.mark.integration
 @pytest.mark.parametrize("args", [[], ["--strict"], ["--strict", "metadata.json"], ["--strict", "--strict", "x"]])
 def test_the_driver_exits_2_on_a_usage_error(args):
-    result = subprocess.run([_node(), str(DRIVER), *args], capture_output=True, text=True, timeout=60, check=False)
+    result = subprocess.run(
+        [_node(), str(DRIVER), *args], capture_output=True, text=True, timeout=60, check=False, encoding="utf-8"
+    )
     assert (result.returncode, result.stdout) == (2, "")
     assert result.stderr.startswith("usage:")
 
@@ -214,7 +219,7 @@ def test_the_filter_tag_is_checked_as_the_engine_has_the_filters(tmp_path):
 
     try:
         Library().filter("okay", safe)
-        assert engines["django"].from_string(page.read_text()).render({}) == "x"
+        assert engines["django"].from_string(page.read_text(encoding="utf-8")).render({}) == "x"
         metadata_path.write_text(json.dumps(extract_metadata()), encoding="utf-8")
         assert _diagnose(metadata_path, page)[str(page)] == []
     finally:
@@ -228,7 +233,14 @@ def test_the_starter_project_templates_have_nothing_to_report(tmp_path):
 
     def run(*args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            [sys.executable, *args], cwd=tmp_path, env=env, capture_output=True, text=True, timeout=120, check=False
+            [sys.executable, *args],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+            encoding="utf-8",
         )
 
     made = run("-m", "django", "startproject", "mysite", str(tmp_path), "--template", str(STARTER))
@@ -561,7 +573,12 @@ def _hints(directory: Path, *documents: tuple[Path, str]) -> dict[Path, dict[int
         encoding="utf-8",
     )
     result = subprocess.run(
-        [_node(), str(QUERIES_DRIVER), str(spec)], capture_output=True, text=True, timeout=60, check=False
+        [_node(), str(QUERIES_DRIVER), str(spec)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+        encoding="utf-8",
     )
     assert result.returncode == 0, result.stderr
     answer = json.loads(result.stdout)
@@ -587,7 +604,7 @@ async def test_the_extension_tells_the_line_the_server_ran_and_hides_a_compile_t
     assert _hints(records, (plain, "template")) == {plain: {2: "1 query"}}
 
     # Another line changes on disk; the cached compile is what runs, and its digest is the old file's
-    plain.write_text(plain.read_text().replace("<p ", "<p data-new ", 1), encoding="utf-8")
+    plain.write_text(plain.read_text(encoding="utf-8").replace("<p ", "<p data-new ", 1), encoding="utf-8")
     await sync_to_async(view.render)()
     assert _hints(records, (plain, "template")) == {plain: {}}
 
@@ -620,11 +637,13 @@ async def test_a_component_fixed_alone_clears_what_it_ran_inside_another_in_the_
 async def test_a_property_of_an_unchanged_module_is_told_at_its_def_line_by_its_exact_stat(records, quiz):
     view = await mount(VsxProps, id="props")
     await view.render_diff()
-    [record] = [json.loads(line) for path in records.glob("*.jsonl") for line in path.read_text().splitlines()]
+    [record] = [
+        json.loads(line) for path in records.glob("*.jsonl") for line in path.read_text(encoding="utf-8").splitlines()
+    ]
     [prop] = [row["property"] for row in record["rows"] if "property" in row]
     assert int(prop["stat"][0]) > 2**53, "past what a JSON number holds: read as a string, compared exactly"
     here = Path(__file__).resolve()
-    lines = here.read_text().splitlines()
+    lines = here.read_text(encoding="utf-8").splitlines()
     line = next(n for n, text in enumerate(lines, 1) if text.strip() == "def total(self) -> int:")
     assert prop["line"] == line
     assert _hints(records, (here, "python")) == {here: {line: "1 query per render"}}
@@ -649,7 +668,7 @@ async def test_a_new_process_whose_file_is_one_line_of_none_clears_the_number_of
     view = await mount(VsxBook, id="book", empty=True)
     await sync_to_async(view.render)()
     [fresh] = list(records.glob(f"{written.name.split('.', 1)[0]}.*.jsonl"))
-    assert len(fresh.read_text().splitlines()) == 1
+    assert len(fresh.read_text(encoding="utf-8").splitlines()) == 1
     assert _hints(records, (book, "template")) == {book: {}}
 
 
@@ -685,7 +704,9 @@ async def test_a_class_past_the_render_limit_behind_other_classes_loses_its_old_
                     cursor.execute("SELECT 1")
 
     await sync_to_async(crowded)()
-    last = [json.loads(line) for path in records.glob("*.jsonl") for line in path.read_text().splitlines()][-1]
+    last = [
+        json.loads(line) for path in records.glob("*.jsonl") for line in path.read_text(encoding="utf-8").splitlines()
+    ][-1]
     fqn = f"{__name__}.VsxBook"
     assert last["renders_more"] == 1 and fqn not in {render["component"] for render in last["renders"]}
     assert fqn in last["partial"]

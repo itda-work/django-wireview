@@ -140,7 +140,7 @@ def _log_tail(port: int, lines: int = 20) -> str:
     logs = sorted(LOG_DIR.glob(f"*-{port}.log"))
     if not logs:
         return "(no log)"
-    return "\n".join(logs[-1].read_text(errors="replace").splitlines()[-lines:])
+    return "\n".join(logs[-1].read_text(errors="replace", encoding="utf-8").splitlines()[-lines:])
 
 
 def _env() -> dict[str, str]:

@@ -472,7 +472,7 @@ def test_a_real_server_logs_no_error_for_a_page_that_left_while_its_join_was_ans
     port = free_port()
     log = tmp_path / f"{server}.log"
     events = tmp_path / "events"
-    events.write_text("")
+    events.write_text("", encoding="utf-8")
     proc = _serve(server, port, log, events)
     try:
         wait_until_serving(port, proc, log, 20)
@@ -480,13 +480,13 @@ def test_a_real_server_logs_no_error_for_a_page_that_left_while_its_join_was_ans
         state = sign_state(SlowJoin(user=AnonymousUser(), wire=WireviewMeta(params={}), id="slow", seconds=0.5))
         socket.send(json.dumps({"command": "join", "payload": {"name": "SlowJoin", "state": state, "children": {}}}))
         deadline = time.monotonic() + 5
-        while "joining slow" not in events.read_text() and time.monotonic() < deadline:
+        while "joining slow" not in events.read_text(encoding="utf-8") and time.monotonic() < deadline:
             time.sleep(0.02)
         socket.close()
         deadline = time.monotonic() + 5
-        while "<<< DISCONNECT" not in log.read_text() and time.monotonic() < deadline:
+        while "<<< DISCONNECT" not in log.read_text(encoding="utf-8") and time.monotonic() < deadline:
             time.sleep(0.05)
-        written = log.read_text()
+        written = log.read_text(encoding="utf-8")
     finally:
         proc.send_signal(signal.SIGTERM)
         try:
@@ -497,7 +497,7 @@ def test_a_real_server_logs_no_error_for_a_page_that_left_while_its_join_was_ans
                 proc.wait()
             disown(proc)
 
-    assert events.read_text().splitlines() == ["joining slow", "joined slow"]
+    assert events.read_text(encoding="utf-8").splitlines() == ["joining slow", "joined slow"]
     assert "<<< DISCONNECT" in written, written
     assert ">>> RENDER SlowJoin slow" in written, "the answer was written after the page left"
     assert "Could not join" not in written, written

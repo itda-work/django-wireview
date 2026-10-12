@@ -233,7 +233,9 @@ class TestShadowedFrameworkNameCheck:
     @staticmethod
     def _taught_overrides() -> list[str]:
         """The methods the API reference tells a component to override, from its table."""
-        text = (Path(__file__).resolve().parent.parent / "docs" / "features" / "component-api.md").read_text()
+        text = (Path(__file__).resolve().parent.parent / "docs" / "features" / "component-api.md").read_text(
+            encoding="utf-8"
+        )
         section = text.split("## 오버라이드하는 것", 1)[1].split("\n## ", 1)[0]
         return re.findall(r"^\| `(?:LiveComponent\.)?(\w+)\(", section, re.MULTILINE)
 
@@ -635,6 +637,7 @@ process.stdout.write(JSON.stringify(out));
         capture_output=True,
         text=True,
         check=True,
+        encoding="utf-8",
     )
     return json.loads(result.stdout)
 
@@ -952,8 +955,8 @@ class TestCookiePathsCheck:
         from wireview.urls import SOCKET_PATH, websocket_urlpatterns
 
         static = Path(__file__).resolve().parent.parent / "wireview" / "static" / "wireview"
-        assert f'open(path = "{SOCKET_PATH}")' in (static / "wireview.js").read_text()
-        assert "${location.host}/${path}?" in (static / "tab.mjs").read_text(), "at the host's root"
+        assert f'open(path = "{SOCKET_PATH}")' in (static / "wireview.js").read_text(encoding="utf-8")
+        assert "${location.host}/${path}?" in (static / "tab.mjs").read_text(encoding="utf-8"), "at the host's root"
         assert [str(pattern.pattern) for pattern in websocket_urlpatterns] == [SOCKET_PATH]
 
     def test_runs_without_deploy(self):
@@ -1049,7 +1052,7 @@ class TestUploadTempDirCheck:
 
     def test_file_flagged(self, temp_dir, tmp_path):
         target = tmp_path / "not-a-dir"
-        target.write_text("x")
+        target.write_text("x", encoding="utf-8")
         temp_dir(str(target))
 
         messages = check_upload_temp_dir(None)
@@ -1347,7 +1350,8 @@ class TestPresenceProducerIdsCheck:
             "{% if room %}{% component 'W23Typing' room=room %}{% endif %}\n"
             '{% component_block "W23Typing" %}{% endcomponent %}\n'
             "{% component 'W23Typing' id='composer' %}\n"
-            "{% component 'XNotAProducer' %}{% component name %}\n</main>\n"
+            "{% component 'XNotAProducer' %}{% component name %}\n</main>\n",
+            encoding="utf-8",
         )
         with override_settings(TEMPLATES=self.engines(tmp_path)):
             messages = check_presence_producer_ids(None)
@@ -1366,15 +1370,22 @@ class TestPresenceProducerIdsCheck:
         assert message.msg.startswith("w23/drawer.html:1 draws ")
 
     def test_ids_trackers_and_templates_that_do_not_compile_are_silent(self, producer, tmp_path):
-        (tmp_path / "ok.html").write_text("{% load wireview %}{% component 'W23Typing' id=\"room-\"|concat:1 %}")
-        (tmp_path / "broken.html").write_text("{% load wireview %}{% component 'W23Typing' %}{% nope %}")
-        (tmp_path / "plain.html").write_text("{% component 'W23Typing' %}")  # no {% load %}: not ours
+        (tmp_path / "ok.html").write_text(
+            "{% load wireview %}{% component 'W23Typing' id=\"room-\"|concat:1 %}", encoding="utf-8"
+        )
+        (tmp_path / "broken.html").write_text(
+            "{% load wireview %}{% component 'W23Typing' %}{% nope %}", encoding="utf-8"
+        )
+        (tmp_path / "plain.html").write_text("{% component 'W23Typing' %}", encoding="utf-8")  # no {% load %}: not ours
         with override_settings(TEMPLATES=self.engines(tmp_path)):
             assert check_presence_producer_ids(None) == []
 
     def test_an_empty_id_is_flagged_as_the_tag_refuses_it(self, producer, tmp_path):
         page = tmp_path / "empty.html"
-        page.write_text("{% load wireview %}\n{% component 'W23Typing' id='' %}\n{% component 'W23Typing' id=None %}")
+        page.write_text(
+            "{% load wireview %}\n{% component 'W23Typing' id='' %}\n{% component 'W23Typing' id=None %}",
+            encoding="utf-8",
+        )
         with override_settings(TEMPLATES=self.engines(tmp_path)):
             messages = check_presence_producer_ids(None)
         assert [m.msg.split(" draws ")[0] for m in messages] == [f"{page}:2", f"{page}:3"]
@@ -1385,9 +1396,9 @@ class TestPresenceProducerIdsCheck:
         ours, vendor = tmp_path / "project", tmp_path / "vendor"
         ours.mkdir()
         vendor.mkdir()
-        (ours / "room.html").write_text(project)
+        (ours / "room.html").write_text(project, encoding="utf-8")
         (vendor / "room.html").write_text(
-            "{% load wireview %}\n{% block body %}{% component 'W23Typing' %}{% endblock %}"
+            "{% load wireview %}\n{% block body %}{% component 'W23Typing' %}{% endblock %}", encoding="utf-8"
         )
         return ours, vendor
 

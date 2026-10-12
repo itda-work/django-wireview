@@ -42,7 +42,7 @@ _IMPORT = re.compile(r"^\s*from (wireview(?:\.[\w.]+)?) import (\([^)]*\)|[^\n#]
 
 def _imports(path: Path) -> list[tuple[str, list[str]]]:
     found = []
-    for module, names in _IMPORT.findall(path.read_text()):
+    for module, names in _IMPORT.findall(path.read_text(encoding="utf-8")):
         found.append((module, [n.split(" as ")[0].strip() for n in names.strip("()").split(",") if n.strip()]))
     return found
 
@@ -59,7 +59,7 @@ def test_every_public_name_resolves(name):
 
 
 def test_type_checkers_see_every_public_name():
-    tree = ast.parse((ROOT / "wireview" / "__init__.py").read_text())
+    tree = ast.parse((ROOT / "wireview" / "__init__.py").read_text(encoding="utf-8"))
     seen = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.If) and "TYPE_CHECKING" in ast.unparse(node.test):
@@ -118,7 +118,7 @@ _WIRE = re.compile(r"\b(?:self|component)\.wire\.(\w+)")
 
 
 def _code(path: Path) -> str:
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     return text if path.suffix == ".py" else "\n".join(_FENCE.findall(text))
 
 
@@ -163,7 +163,7 @@ def test_every_component_member_is_listed_as_public_or_internal():
     ``docs/features/component-api.md`` is the list. A new member has to be put in its
     public tables or its internal line before it ships.
     """
-    text = COMPONENT_API.read_text()
+    text = COMPONENT_API.read_text(encoding="utf-8")
     missing = []
     for owner, names in _component_members().items():
         for name in sorted(names):
@@ -176,7 +176,9 @@ def test_every_component_member_is_listed_as_public_or_internal():
 def test_the_component_api_lists_no_member_that_does_not_exist():
     members = set().union(*_component_members().values())
     fields = {"id", "user", "wire", "session"}
-    listed = set(re.findall(r"^\| `(?:await )?(?:LiveComponent\.)?(\w+)", COMPONENT_API.read_text(), re.M))
+    listed = set(
+        re.findall(r"^\| `(?:await )?(?:LiveComponent\.)?(\w+)", COMPONENT_API.read_text(encoding="utf-8"), re.M)
+    )
     assert listed - members - fields == set()
 
 
@@ -184,7 +186,7 @@ def test_the_library_does_not_import_its_deprecated_module():
     for path in (ROOT / "wireview").rglob("*.py"):
         if path.name == "component.py" and path.parent.name == "wireview":
             continue
-        source = path.read_text()
+        source = path.read_text(encoding="utf-8")
         assert "wireview.component import" not in source, path
         assert not re.search(r"^\s*from \.\.?component import", source, re.M) or path.parent.name == "core", path
 
@@ -199,7 +201,8 @@ def test_the_old_module_warns_at_the_line_that_imports_it(tmp_path):
         "    warnings.simplefilter('always')\n"
         "    from wireview.component import Component\n"
         "w = [c for c in caught if c.category.__name__ == 'WireviewDeprecationWarning']\n"
-        "print(len(w), w[0].filename.endswith('old_import.py'), w[0].lineno)\n"
+        "print(len(w), w[0].filename.endswith('old_import.py'), w[0].lineno)\n",
+        encoding="utf-8",
     )
     result = subprocess.run(
         [sys.executable, str(script)],
@@ -207,6 +210,7 @@ def test_the_old_module_warns_at_the_line_that_imports_it(tmp_path):
         text=True,
         check=True,
         env={"DJANGO_SETTINGS_MODULE": "testproj.settings", "PYTHONPATH": str(ROOT / "tests")},
+        encoding="utf-8",
     )
     assert result.stdout.split() == ["1", "True", "6"]
 
@@ -237,6 +241,7 @@ def test_importing_the_library_warns_nothing():
         text=True,
         check=False,
         env={"DJANGO_SETTINGS_MODULE": "testproj.settings", "PYTHONPATH": str(ROOT / "tests")},
+        encoding="utf-8",
     )
     assert result.returncode == 0, result.stderr
 
@@ -257,7 +262,8 @@ def test_the_old_module_says_what_has_no_replacement(tmp_path):
         "    import wireview.component as old\n"
         "w = [c for c in caught if c.category.__name__ == 'WireviewDeprecationWarning']\n"
         "print(' '.join(old.__all__))\n"
-        "print(str(w[0].message))\n"
+        "print(str(w[0].message))\n",
+        encoding="utf-8",
     )
     result = subprocess.run(
         [sys.executable, str(script)],
@@ -265,6 +271,7 @@ def test_the_old_module_says_what_has_no_replacement(tmp_path):
         text=True,
         check=True,
         env={"DJANGO_SETTINGS_MODULE": "testproj.settings", "PYTHONPATH": str(ROOT / "tests")},
+        encoding="utf-8",
     )
     exported, message = result.stdout.splitlines()
     for name in exported.split():
@@ -273,7 +280,7 @@ def test_the_old_module_says_what_has_no_replacement(tmp_path):
     internal = [name for name in exported.split() if name not in wireview.__all__]
     assert internal == ["ComponentNotFound", "MessagePayload"]
     assert "no replacement" in message
-    compatibility = (ROOT / "docs" / "COMPATIBILITY.md").read_text()
+    compatibility = (ROOT / "docs" / "COMPATIBILITY.md").read_text(encoding="utf-8")
     row = next(line for line in compatibility.splitlines() if line.startswith("| `wireview.component` 모듈"))
     for name in public + internal:
         assert f"`{name}`" in row, name

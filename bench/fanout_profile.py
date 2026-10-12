@@ -1043,7 +1043,9 @@ COMPARED = (
 def compare_facts() -> dict[str, str]:
     """The ``make bench-compare`` numbers §6 quotes, from the two results it wrote."""
     out = {}
-    before, after = (json.loads((ROOT / "bench" / "results" / f"{sha}.json").read_text()) for sha in BENCH_COMPARE)
+    before, after = (
+        json.loads((ROOT / "bench" / "results" / f"{sha}.json").read_text(encoding="utf-8")) for sha in BENCH_COMPARE
+    )
 
     def get(result: dict[str, t.Any], key: str) -> float:
         section, rest = key.split(".", 1)
@@ -1144,7 +1146,7 @@ def shared_facts(result: dict[str, t.Any]) -> dict[str, str]:
     out["a.inproc.render_diff"] = _range(r["render_diff_us_one_after_another"] for r in runs)
     out["a.inproc.load"] = _range(run["environment"]["load_average"][0] for run in result["inproc_runs"])
 
-    compare = json.loads((ROOT / result["bench_fastapi"]).read_text())
+    compare = json.loads((ROOT / result["bench_fastapi"]).read_text(encoding="utf-8"))
     for name, data in compare["implementations"].items():
         s = data["summary"]
         out[f"b.{name}.fanout"] = f"{s['fanout_ms']['median']:.1f} ms"
@@ -1273,7 +1275,7 @@ def _plain_board() -> t.Callable[[], str]:
 
     from django.template import Context, Engine
 
-    source = BOARD_TEMPLATE.read_text()
+    source = BOARD_TEMPLATE.read_text(encoding="utf-8")
     source = re.sub(r"{%\s*(load wireview|tag_header|on [^%]*?)\s*%}", "", source)
     template = Engine(autoescape=True).from_string(source)
     from bench.compare_fastapi.store import Store
@@ -1622,15 +1624,15 @@ def main() -> None:
             result = {"environment": environment(), "inproc": asyncio.run(inproc(args))}
         text = json.dumps(result, indent=2, ensure_ascii=False)
         if args.output:
-            args.output.write_text(text + "\n")
+            args.output.write_text(text + "\n", encoding="utf-8")
         print(text)
         return
 
     if args.report:
-        print(report(json.loads(args.report.read_text())))
+        print(report(json.loads(args.report.read_text(encoding="utf-8"))))
         return
     if args.chart:
-        print(chart(json.loads(args.chart.read_text())))
+        print(chart(json.loads(args.chart.read_text(encoding="utf-8"))))
         return
 
     from bench.ws import _raise_fd_limit
@@ -1655,7 +1657,7 @@ def main() -> None:
         ROOT / "bench" / ".data" / f"fanout-profile-{env['commit']}{'-dirty' if env['dirty'] else ''}{suffix}.json"
     )
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
+    output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(report(result))
     print(f"\nwrote {output.relative_to(ROOT) if output.is_relative_to(ROOT) else output}")
 

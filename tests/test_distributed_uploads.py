@@ -124,7 +124,7 @@ def upload_from_another_process(job: dict[str, t.Any], upload_dir: Path) -> list
     """Run the chunk endpoint in a fresh interpreter and return its answers."""
     script = upload_dir / "_child_upload.py"
     script.parent.mkdir(parents=True, exist_ok=True)
-    script.write_text(CHILD_SCRIPT)
+    script.write_text(CHILD_SCRIPT, encoding="utf-8")
 
     env = {
         **os.environ,
@@ -138,6 +138,7 @@ def upload_from_another_process(job: dict[str, t.Any], upload_dir: Path) -> list
         capture_output=True,
         text=True,
         timeout=120,
+        encoding="utf-8",
     )
     if completed.returncode != 0:
         raise AssertionError(f"child process failed:\n{completed.stdout}\n{completed.stderr}")

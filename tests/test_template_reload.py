@@ -183,7 +183,7 @@ async def test_a_file_that_is_not_a_template_asks_nothing(debug, shadow, tmp_pat
         path = shadow.root / "reloadprobe" / "helpers.py"
     else:
         path = tmp_path_factory.mktemp("elsewhere") / "box.html"
-    path.write_text("")
+    path.write_text("", encoding="utf-8")
     communicator = await _connect()
     try:
         await _changed(path)

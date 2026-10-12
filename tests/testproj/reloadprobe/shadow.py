@@ -30,11 +30,11 @@ class Shadow:
         self.box.parent.mkdir(parents=True, exist_ok=True)
 
     def write(self, version: str) -> Path:
-        self.box.write_text(BOX.format(version=version))
+        self.box.write_text(BOX.format(version=version), encoding="utf-8")
         return self.box
 
     def break_it(self) -> Path:
-        self.box.write_text(BROKEN)
+        self.box.write_text(BROKEN, encoding="utf-8")
         return self.box
 
 

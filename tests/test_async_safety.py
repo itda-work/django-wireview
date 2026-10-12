@@ -38,7 +38,7 @@ ENTRY_POINTS = [
 @pytest.mark.unit
 @pytest.mark.parametrize("path", ENTRY_POINTS)
 def test_no_entry_point_turns_the_check_off(path):
-    assert not re.search(r"DJANGO_ALLOW_ASYNC_UNSAFE", (ROOT / path).read_text()), path
+    assert not re.search(r"DJANGO_ALLOW_ASYNC_UNSAFE", (ROOT / path).read_text(encoding="utf-8")), path
 
 
 @pytest.mark.unit
@@ -50,6 +50,7 @@ def test_the_suite_refuses_to_start_with_the_flag_set():
         capture_output=True,
         text=True,
         timeout=120,
+        encoding="utf-8",
     )
 
     assert result.returncode == pytest.ExitCode.USAGE_ERROR, result.stdout + result.stderr

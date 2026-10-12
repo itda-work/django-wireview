@@ -100,7 +100,7 @@ def watch_limits() -> bool:
     if most and used >= LIMITS_ALARM * most:
         keys = client.dbsize()
         # Said first, then cleaned: the cleaning walks every key
-        alarm.write_text(f"{used} of {most} bytes, {keys} keys\n")
+        alarm.write_text(f"{used} of {most} bytes, {keys} keys\n", encoding="utf-8")
         log.error(
             "the limits' Redis is at %d%% of its memory (%d keys): past 100%% every visitor is refused"
             " until windows expire. Raise its maxmemory or the limits (README)",

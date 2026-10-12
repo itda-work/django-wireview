@@ -11,7 +11,7 @@ from scripts import act_ci
 
 
 def test_every_job_and_every_matrix_cell_is_run_once():
-    jobs = yaml.safe_load(act_ci.WORKFLOW.read_text())["jobs"]
+    jobs = yaml.safe_load(act_ci.WORKFLOW.read_text(encoding="utf-8"))["jobs"]
     expected = 0
     for spec in jobs.values():
         matrix = (spec.get("strategy") or {}).get("matrix") or {}
@@ -37,7 +37,9 @@ def test_a_job_that_does_not_exist_is_refused():
 
 
 def test_actrc_runs_ci_yml_on_the_image_the_script_builds():
-    options = [shlex.split(line) for line in (act_ci.ROOT / ".actrc").read_text().splitlines() if line.strip()]
+    options = [
+        shlex.split(line) for line in (act_ci.ROOT / ".actrc").read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
     assert ["-W", ".github/workflows/ci.yml"] in options
     assert ["-P", f"ubuntu-24.04={act_ci.IMAGE}"] in options
     assert ["--container-options=--init"] in options

@@ -106,7 +106,7 @@ def _shut_down(
     port = free_port()
     log = tmp_path / f"{server}.log"
     events = tmp_path / f"{server}.events"
-    events.write_text("")
+    events.write_text("", encoding="utf-8")
     proc = _launch(server, port, log, events, graceful)
     sockets: list[ClientConnection] = []
     try:
@@ -119,7 +119,7 @@ def _shut_down(
         proc.send_signal(signal.SIGTERM)
         proc.wait(20)
         codes = [_close_code(socket) for socket in sockets]
-        return events.read_text().splitlines(), codes
+        return events.read_text(encoding="utf-8").splitlines(), codes
     finally:
         if proc.poll() is None:
             proc.kill()

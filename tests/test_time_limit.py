@@ -77,8 +77,8 @@ def test_runs_under_a_debugger():
 
 
 def _command(tmp_path: Path, source: str, limit: float) -> list[str]:
-    (tmp_path / "test_probe.py").write_text(source)
-    (tmp_path / "pytest.ini").write_text(f"[pytest]\ntest_time_limit = {limit}\n")
+    (tmp_path / "test_probe.py").write_text(source, encoding="utf-8")
+    (tmp_path / "pytest.ini").write_text(f"[pytest]\ntest_time_limit = {limit}\n", encoding="utf-8")
     return [sys.executable, "-m", "pytest", "-p", "testproj.time_limit", "-p", "no:django", "-p", "no:cacheprovider"]
 
 
@@ -95,6 +95,7 @@ def _pytest(tmp_path: Path, source: str, limit: float, *args: str) -> subprocess
         text=True,
         # Well inside this run's own limit, so a stop that never comes fails this test.
         timeout=30,
+        encoding="utf-8",
     )
     return result
 
@@ -126,7 +127,7 @@ def test_a_stop_terminates_the_children_it_was_handed(tmp_path):
     result = _pytest(tmp_path, OWNS_A_CHILD, limit=1)
 
     assert result.returncode == 1, result.stdout + result.stderr
-    pid = int((tmp_path / "child.pid").read_text())
+    pid = int((tmp_path / "child.pid").read_text(encoding="utf-8"))
     # The signal is sent before the run ends; the child's own exit takes a moment.
     deadline = time.monotonic() + 10
     while _alive(pid):
@@ -152,6 +153,7 @@ def test_a_debugger_prompt_is_not_a_hang(tmp_path):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        encoding="utf-8",
     )
     # Sit at the prompt past the limit, as someone reading the stack would.
     time.sleep(2.5)
@@ -163,8 +165,10 @@ def test_a_debugger_prompt_is_not_a_hang(tmp_path):
 
 def test_a_test_under_a_trace_function_debugger_has_no_limit(tmp_path):
     """An older debugger shows as the trace function of the thread the test starts on."""
-    (tmp_path / "pydevd_probe.py").write_text("def trace(frame, event, arg):\n    return None\n")
-    (tmp_path / "conftest.py").write_text("import sys\n\nfrom pydevd_probe import trace\n\nsys.settrace(trace)\n")
+    (tmp_path / "pydevd_probe.py").write_text("def trace(frame, event, arg):\n    return None\n", encoding="utf-8")
+    (tmp_path / "conftest.py").write_text(
+        "import sys\n\nfrom pydevd_probe import trace\n\nsys.settrace(trace)\n", encoding="utf-8"
+    )
     result = subprocess.run(
         _command(tmp_path, UNDER_A_DEBUGGER, limit=1),
         cwd=tmp_path,
@@ -172,6 +176,7 @@ def test_a_test_under_a_trace_function_debugger_has_no_limit(tmp_path):
         capture_output=True,
         text=True,
         timeout=30,
+        encoding="utf-8",
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
@@ -181,7 +186,7 @@ def test_a_test_under_a_trace_function_debugger_has_no_limit(tmp_path):
 def test_a_test_under_a_monitoring_debugger_has_no_limit(tmp_path):
     """Python 3.12+ debuggers (an IDE's, 3.14's pdb) take sys.monitoring's debugger slot."""
     (tmp_path / "conftest.py").write_text(
-        "import sys\n\nsys.monitoring.use_tool_id(sys.monitoring.DEBUGGER_ID, 'pydevd')\n"
+        "import sys\n\nsys.monitoring.use_tool_id(sys.monitoring.DEBUGGER_ID, 'pydevd')\n", encoding="utf-8"
     )
     result = subprocess.run(
         _command(tmp_path, UNDER_A_DEBUGGER, limit=1),
@@ -190,6 +195,7 @@ def test_a_test_under_a_monitoring_debugger_has_no_limit(tmp_path):
         capture_output=True,
         text=True,
         timeout=30,
+        encoding="utf-8",
     )
 
     assert result.returncode == 0, result.stdout + result.stderr

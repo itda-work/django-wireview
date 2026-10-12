@@ -28,7 +28,7 @@ def test_the_canonical_skill_has_its_references():
 
 @pytest.mark.unit
 def test_every_reference_the_skill_links_to_exists():
-    text = (SKILL / "SKILL.md").read_text()
+    text = (SKILL / "SKILL.md").read_text(encoding="utf-8")
     linked = {name for name in ("component", "templates", "streams-uploads", "testing") if name in text}
     missing = sorted(name for name in linked if not (SKILL / "references" / f"{name}.md").is_file())
     assert missing == [], f"SKILL.md links at references that do not exist: {missing}"
@@ -52,7 +52,7 @@ def test_the_wheel_carries_the_skill():
     ``uv build`` builds the wheel from that sdist. A pattern in a list is not
     evidence that a file is in an archive; ``make ci-build`` checks the archive.
     """
-    build = tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"]["hatch"]["build"]
+    build = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["hatch"]["build"]
 
     # The wheel's copy is hatch_build.py's, which pins the skill's links to the release tag
     assert "custom" in build["targets"]["wheel"]["hooks"]
@@ -79,10 +79,10 @@ def test_the_wheel_hook_ships_every_file_of_the_skill_pinned(tmp_path: Path):
         shipped = sorted(p.relative_to(source).as_posix() for p in Path(source).rglob("*") if p.is_file())
         assert shipped == sorted(p.relative_to(SKILL).as_posix() for p in SKILL.rglob("*") if p.is_file())
         for name in shipped:
-            text = (Path(source) / name).read_text()
+            text = (Path(source) / name).read_text(encoding="utf-8")
             assert "/main/" not in text
-            assert text.replace("/v1.2.3/", "/main/") == (SKILL / name).read_text()
-        assert "/v1.2.3/" in (Path(source) / "SKILL.md").read_text()
+            assert text.replace("/v1.2.3/", "/main/") == (SKILL / name).read_text(encoding="utf-8")
+        assert "/v1.2.3/" in (Path(source) / "SKILL.md").read_text(encoding="utf-8")
     finally:
         hook.finalize("standard", build_data, "")
 
@@ -116,7 +116,7 @@ def test_the_setup_command_installs_into_a_project(tmp_path: Path):
     call_command("wireview_agent_setup", target=str(tmp_path), stdout=out)
 
     installed = tmp_path / ".claude" / "skills" / "wireview"
-    assert (installed / "SKILL.md").read_text() == (SKILL / "SKILL.md").read_text()
+    assert (installed / "SKILL.md").read_text(encoding="utf-8") == (SKILL / "SKILL.md").read_text(encoding="utf-8")
     assert (installed / "references" / "component.md").is_file()
     assert "SKILL.md" in out.getvalue()
 

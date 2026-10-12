@@ -53,7 +53,7 @@ def _env() -> dict[str, str]:
 
 def _manage(project: Path, *args: str) -> None:
     result = subprocess.run(
-        [sys.executable, *args], cwd=project, env=_env(), capture_output=True, text=True, timeout=120
+        [sys.executable, *args], cwd=project, env=_env(), capture_output=True, text=True, timeout=120, encoding="utf-8"
     )
     assert result.returncode == 0, result.stdout + result.stderr
 
@@ -66,7 +66,7 @@ class Starter:
         self.log = log
 
     def output(self) -> str:
-        return self.log.read_text(errors="replace")
+        return self.log.read_text(errors="replace", encoding="utf-8")
 
     def trouble(self) -> list[str]:
         return [line for line in self.output().splitlines() if any(mark in line for mark in TROUBLE)]

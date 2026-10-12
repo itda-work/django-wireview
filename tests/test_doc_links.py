@@ -28,7 +28,7 @@ HTML_ANCHOR = re.compile(r"<a\s+(?:id|name)=\"([^\"]+)\"")
 
 def _documents() -> list[Path]:
     tracked = subprocess.run(
-        ["git", "ls-files", "*.md"], cwd=ROOT, capture_output=True, text=True, check=True
+        ["git", "ls-files", "*.md"], cwd=ROOT, capture_output=True, text=True, check=True, encoding="utf-8"
     ).stdout.split()
     return [ROOT / path for path in tracked if (ROOT / path).is_file()]
 

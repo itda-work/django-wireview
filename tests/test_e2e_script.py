@@ -36,7 +36,7 @@ def run_script(tmp_path: Path, *args: str) -> list[str]:
     """The arguments tests/e2e.sh hands ``uv run pytest`` for ``args``."""
     record = tmp_path / "argv"
     stub = tmp_path / "uv"
-    stub.write_text(f'#!/usr/bin/env bash\nprintf "%s\\0" "$@" > {record}\n')
+    stub.write_text(f'#!/usr/bin/env bash\nprintf "%s\\0" "$@" > {record}\n', encoding="utf-8")
     os.chmod(stub, 0o755)
     subprocess.run(
         ["bash", str(ROOT / "tests" / "e2e.sh"), *args],
@@ -85,7 +85,7 @@ def test_an_option_value_taken_for_a_path_still_runs_every_e2e_suite():
     # `--cov wireview` drops the defaults (the script lists only some options
     # that take a value). That is safe while pytest collects from the rootdir:
     # with no `testpaths`, the rootdir holds the same suites as `tests examples`.
-    options = tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"]["pytest"]["ini_options"]
+    options = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["pytest"]["ini_options"]
     assert "testpaths" not in options, "tests/e2e.sh: an option value taken for a path now narrows the run"
 
 
@@ -190,7 +190,7 @@ def start_redis_script(tmp_path: Path, **env: str) -> tuple[subprocess.Popen, Pa
     record = tmp_path / "seen"
     stub = tmp_path / "bin" / "uv"
     stub.parent.mkdir()
-    stub.write_text(REDIS_STUB.format(record=record))
+    stub.write_text(REDIS_STUB.format(record=record), encoding="utf-8")
     os.chmod(stub, 0o755)
     (tmp_path / "tmp").mkdir()
     base = {k: v for k, v in os.environ.items() if k not in ("REDIS_URL", "REDIS_SERVER")}
@@ -210,6 +210,7 @@ def start_redis_script(tmp_path: Path, **env: str) -> tuple[subprocess.Popen, Pa
         stderr=subprocess.STDOUT,
         text=True,
         start_new_session=True,
+        encoding="utf-8",
     )
     return own(proc), record
 
@@ -230,7 +231,7 @@ def finish_redis_script(proc: subprocess.Popen, record: Path, timeout: float = 3
         pytest.fail(f"tests/e2e.sh was still running after {timeout}s:\n{output}", pytrace=False)
     seen = None
     if record.exists():
-        url, answered = record.read_text().split()
+        url, answered = record.read_text(encoding="utf-8").split()
         seen = (url, answered == "True")
     started = re.search(r"started \S+ \(pid (\d+)\)", output)
     return RedisRun(proc.returncode, output, seen, int(started[1]) if started else None)
@@ -318,7 +319,7 @@ def test_an_interrupted_suite_still_stops_the_server(tmp_path, redis_binary, dea
         **({"STUB_DEAF": "1"} if deaf else {}),
     )
     deadline = time.monotonic() + 20
-    while not record.exists() or not record.read_text():
+    while not record.exists() or not record.read_text(encoding="utf-8"):
         assert proc.poll() is None and time.monotonic() < deadline, "the suite never started"
         time.sleep(0.05)
     os.killpg(proc.pid, signal.SIGINT)  # what Ctrl-C sends: the whole foreground group

@@ -1226,7 +1226,9 @@ print("testing", render_queries.installed(), all(wrapped()))
 def _run(rest: str) -> list[str]:
     root = Path(__file__).resolve().parent.parent
     script = SCRIPT.format(root=str(root), tests=str(root / "tests"), rest=textwrap.dedent(rest))
-    done = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=60, cwd=root)
+    done = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=60, cwd=root, encoding="utf-8"
+    )
     assert done.returncode == 0, done.stderr
     return done.stdout.splitlines()
 

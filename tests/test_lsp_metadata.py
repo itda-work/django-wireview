@@ -238,8 +238,8 @@ class TestComponentsForAnEditor:
         root = tmp_path / "templates"
         elsewhere = tmp_path / "elsewhere"
         (elsewhere / "shared").mkdir(parents=True)
-        (elsewhere / "real.html").write_text("x")
-        (elsewhere / "shared" / "card.html").write_text("x")
+        (elsewhere / "real.html").write_text("x", encoding="utf-8")
+        (elsewhere / "shared" / "card.html").write_text("x", encoding="utf-8")
         root.mkdir()
         (root / "linked.html").symlink_to(elsewhere / "real.html")
         (root / "shared").symlink_to(elsewhere / "shared", target_is_directory=True)
@@ -258,7 +258,7 @@ class TestComponentsForAnEditor:
         assert own["file_path"] == chat["file_path"]
         mixed_in = metadata["framework_methods"]["wireview.features.presence.PresenceMixin"]["presence_join"]
         assert mixed_in["file_path"].endswith("presence.py")
-        line = Path(own["file_path"]).read_text().splitlines()[own["line_number"] - 1]
+        line = Path(own["file_path"]).read_text(encoding="utf-8").splitlines()[own["line_number"] - 1]
         assert "def send_message" in line
 
     def test_a_handler_is_listed_whatever_its_case(self):
@@ -379,7 +379,7 @@ class TestTheRestOfTheProject:
     def test_hooks_point_at_the_line_that_registers_them(self, metadata):
         timeago = metadata["hooks"]["Timeago"]
         assert timeago["static_path"] == "hooks/hooks/lifecycle.js"
-        line = Path(timeago["file_path"]).read_text().splitlines()[timeago["line_number"] - 1]
+        line = Path(timeago["file_path"]).read_text(encoding="utf-8").splitlines()[timeago["line_number"] - 1]
         assert "Timeago" in line and "hooks" in line
 
     def test_function_components_are_listed_once(self):
@@ -447,7 +447,7 @@ def test_the_metadata_is_the_same_on_every_run(tmp_path):
             check=True,
             capture_output=True,
         )
-        data = json.loads(output.read_text())
+        data = json.loads(output.read_text(encoding="utf-8"))
         del data["generated_at"]
         outputs.append(data)
     assert outputs[0] == outputs[1]
@@ -496,7 +496,12 @@ def test_a_lambda_a_nested_function_and_a_weakref_are_the_same_on_every_run():
     tests = Path(__file__).parent
     outputs = [
         subprocess.run(
-            [sys.executable, "-c", _ADDRESS_PROBE], cwd=tests, check=True, capture_output=True, text=True
+            [sys.executable, "-c", _ADDRESS_PROBE],
+            cwd=tests,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
         ).stdout
         for _ in range(2)
     ]
@@ -637,7 +642,7 @@ class TestTemplateTagsAndFilters:
         on = metadata["template_libraries"]["wireview"]["tags"]["on"]
         assert on["file_path"].endswith("templatetags/wireview.py")
         assert "Bind an event handler" in on["docstring"]
-        line = Path(on["file_path"]).read_text().splitlines()[on["line_number"] - 1]
+        line = Path(on["file_path"]).read_text(encoding="utf-8").splitlines()[on["line_number"] - 1]
         assert line.startswith("@register.simple_tag") or line.startswith("def on(")
 
     def test_a_filter_says_whether_it_takes_an_argument(self, metadata):

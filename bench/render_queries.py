@@ -101,7 +101,7 @@ def _setup(mode: str, tree: str | None, database: str, template_dir: str | None 
         for name, text in TEMPLATES.items():
             path = Path(template_dir) / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text)
+            path.write_text(text, encoding="utf-8")
         loader: t.Any = ("django.template.loaders.cached.Loader", ["django.template.loaders.filesystem.Loader"])
     else:
         loader = ("django.template.loaders.cached.Loader", [("django.template.loaders.locmem.Loader", TEMPLATES)])
@@ -303,6 +303,7 @@ def page_runs(times: int) -> dict[str, object]:
             text=True,
             cwd=ROOT,
             check=True,
+            encoding="utf-8",
         )
         runs.append(json.loads(done.stdout))
     summary = {
@@ -365,6 +366,7 @@ def paired(times: int, mode: str = "paired") -> dict[str, object]:
             text=True,
             cwd=ROOT,
             check=True,
+            encoding="utf-8",
         )
         runs.append(json.loads(done.stdout))
     summary = {
@@ -392,6 +394,7 @@ def compare(tree: str, times: int) -> dict[str, object]:
                 text=True,
                 cwd=ROOT,
                 check=True,
+                encoding="utf-8",
             )
             runs[mode].append(json.loads(done.stdout))
     summary: dict[str, dict[str, dict[str, object]]] = {}
@@ -436,7 +439,7 @@ def main() -> None:
             result = compare(args.compare, args.times) if args.compare else paired(args.times)
         text = json.dumps(result, indent=2, ensure_ascii=False)
         if args.out:
-            Path(args.out).write_text(text + "\n")
+            Path(args.out).write_text(text + "\n", encoding="utf-8")
         print(text)
     elif args.mode == "page":
         print(json.dumps(run_page()))

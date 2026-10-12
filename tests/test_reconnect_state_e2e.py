@@ -204,8 +204,8 @@ def workers(tmp_path):
         yield running
     finally:
         for log in tmp_path.glob("worker-*.log"):
-            if "Traceback" in log.read_text():
-                print(f"--- {log.name} ---\n{log.read_text()}")
+            if "Traceback" in log.read_text(encoding="utf-8"):
+                print(f"--- {log.name} ---\n{log.read_text(encoding='utf-8')}")
         for proc in running.values():
             stop_process(proc)
 

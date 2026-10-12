@@ -2025,7 +2025,7 @@ def test_what_the_other_templates_read_of_their_own_is_in_scope():
 def test_the_scope_is_the_same_under_every_loader(loader, tmp_path):
     for name, source in TEMPLATES.items():
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / name).write_text(source)
+        (tmp_path / name).write_text(source, encoding="utf-8")
     locmem = ("django.template.loaders.locmem.Loader", TEMPLATES)
     filesystem = ("django.template.loaders.filesystem.Loader", [str(tmp_path)])
     loaders = {

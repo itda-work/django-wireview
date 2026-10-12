@@ -121,7 +121,7 @@ async def test_the_session_closes_through_its_outbound():
 
 def test_the_session_module_knows_nothing_of_channels():
     """The seam is the point: a second adapter must not need Channels to host a session."""
-    tree = ast.parse((Path(__file__).resolve().parent.parent / "wireview" / "session.py").read_text())
+    tree = ast.parse((Path(__file__).resolve().parent.parent / "wireview" / "session.py").read_text(encoding="utf-8"))
     imported = {
         (node.module or "") if isinstance(node, ast.ImportFrom) else alias.name
         for node in ast.walk(tree)

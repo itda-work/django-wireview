@@ -637,6 +637,7 @@ def test_the_stubs_are_the_same_in_every_process():
             capture_output=True,
             text=True,
             check=True,
+            encoding="utf-8",
         )
         outputs.append(result.stdout)
     assert outputs[0], "no stubs were generated"

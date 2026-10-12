@@ -45,7 +45,7 @@ def test_each_named_result_is_the_newest_of_its_kind():
     named = [name for machine in chart.MACHINES for name in machine.files] + [chart.SHUTDOWN]
     for name in named:
         same = [p for p in chart.RESULTS.glob("*-servers-*.json") if _key(p.name) == _key(name)]
-        newest = max(same, key=lambda p: json.loads(p.read_text())["environment"]["date"])
+        newest = max(same, key=lambda p: json.loads(p.read_text(encoding="utf-8"))["environment"]["date"])
         assert newest.name == name, f"servers_chart names {name}, the newest such measurement is {newest.name}"
 
 

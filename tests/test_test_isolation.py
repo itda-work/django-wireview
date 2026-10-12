@@ -37,6 +37,7 @@ def _test_db_name_in_a_new_process() -> str:
         text=True,
         check=True,
         timeout=60,
+        encoding="utf-8",
     )
     return result.stdout.strip().splitlines()[-1]
 
@@ -68,6 +69,7 @@ def test_pytest_starts_without_the_cache_provider():
         capture_output=True,
         text=True,
         timeout=120,
+        encoding="utf-8",
     )
 
     assert result.returncode == 0, result.stdout + result.stderr

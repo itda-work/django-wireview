@@ -261,7 +261,7 @@ def test_the_protocol_version_is_read_conservatively(query, expected):
 
 @pytest.mark.unit
 def test_the_client_and_server_speak_the_same_version():
-    source = (Path(__file__).parent.parent / "wireview/static/wireview/rendered.mjs").read_text()
+    source = (Path(__file__).parent.parent / "wireview/static/wireview/rendered.mjs").read_text(encoding="utf-8")
     match = re.search(r"export const PROTOCOL_VERSION = (\d+);", source)
 
     assert match, "rendered.mjs must export PROTOCOL_VERSION"

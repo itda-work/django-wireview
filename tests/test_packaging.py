@@ -16,8 +16,8 @@ def test_package_json_is_private_and_says_the_same_version():
     """The npm manifest only builds the bundle. ``private`` keeps it off npm by accident,
     and a second version number that drifts from the real one (it sat at 0.2.1 through
     0.4.0) says nothing true."""
-    package = json.loads((ROOT / "package.json").read_text())
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
 
     assert package["private"] is True
     assert package["version"] == project["version"]
@@ -25,12 +25,12 @@ def test_package_json_is_private_and_says_the_same_version():
 
 def test_the_classifiers_name_the_supported_range():
     """docs/COMPATIBILITY.md: the Django releases Django supports, on Python 3.12 and up."""
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     djangos = {c.rsplit(" :: ", 1)[1] for c in project["classifiers"] if c.startswith("Framework :: Django :: ")}
     pythons = {
         c.rsplit(" :: ", 1)[1] for c in project["classifiers"] if c.startswith("Programming Language :: Python :: 3.")
     }
-    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert all(f'"{v}"' in ci for v in djangos | pythons), "the CI matrix and the classifiers disagree"
     assert f"django>={min(djangos, key=lambda v: tuple(map(int, v.split('.'))))}" in project["dependencies"]
@@ -43,7 +43,9 @@ def _workflow(name: str) -> dict:
     import yaml  # djlint and pre-commit bring it with the dev extras
 
     # YAML 1.1 reads the bare key `on` as True.
-    return {("on" if k is True else k): v for k, v in yaml.safe_load((WORKFLOWS / name).read_text()).items()}
+    return {
+        ("on" if k is True else k): v for k, v in yaml.safe_load((WORKFLOWS / name).read_text(encoding="utf-8")).items()
+    }
 
 
 #: What must pass before a tag reaches PyPI (#122): the tests, the tests on the
@@ -150,7 +152,7 @@ def test_the_release_packs_the_documentation_site_outside_dist():
     assert any("wireview/VERSION" in run and "GITHUB_REF_NAME" in run for run in _runs(docs)), (
         "nothing checks the bundle names the tag"
     )
-    makefile = (ROOT / "Makefile").read_text()
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     assert "\ndocs-site-bundle: docs-site\n" in makefile
 
 
@@ -195,7 +197,7 @@ def test_the_build_starts_from_an_empty_dist():
     """``ci-smoke`` installs every wheel in ``dist/`` and ``ci-build`` checks the last by
     name, so a wheel an older build left there was smoked in place of the new one (it
     failed on the starter template, which older wheels do not have)."""
-    makefile = (ROOT / "Makefile").read_text()
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     recipe = makefile.split("\nci-build:", 1)[1].split("\n\n", 1)[0]
 
     assert "uv build --clear" in recipe
@@ -207,7 +209,7 @@ def test_the_development_status_says_whether_the_version_is_a_prerelease():
     would have gone to PyPI as ``4 - Beta``."""
     from packaging.version import Version
 
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     statuses = [c for c in project["classifiers"] if c.startswith("Development Status :: ")]
     stable = not Version(project["version"]).is_prerelease
 
@@ -218,10 +220,10 @@ def test_the_development_status_says_whether_the_version_is_a_prerelease():
 def test_the_lock_files_say_the_same_version():
     """The release commit bumps the manifests; ``uv lock`` and ``npm install --package-lock-only``
     carry the version into the locks, and the release steps did not say so."""
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
-    lock = tomllib.loads((ROOT / "uv.lock").read_text())
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
     locked = [p["version"] for p in lock["package"] if p["name"] == project["name"]]
-    npm_lock = json.loads((ROOT / "package-lock.json").read_text())
+    npm_lock = json.loads((ROOT / "package-lock.json").read_text(encoding="utf-8"))
 
     assert locked == [project["version"]]
     assert npm_lock["version"] == npm_lock["packages"][""]["version"] == project["version"]

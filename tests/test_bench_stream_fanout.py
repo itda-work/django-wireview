@@ -109,7 +109,7 @@ def test_the_design_quotes_stage_2_as_its_own_result_says():
 
     from bench import fanout_profile
 
-    a = fanout_profile.shared_facts(json.loads(fanout_profile.RESULT_A.read_text()))
+    a = fanout_profile.shared_facts(json.loads(fanout_profile.RESULT_A.read_text(encoding="utf-8")))
     text = DESIGN.read_text(encoding="utf-8")
     shared, per_connection = a["a.wireview-shared.fanout"], a["a.wireview-shared.per_connection"]
     off = f"{a['a.wireview.fanout']}·{a['a.wireview.per_connection']}"

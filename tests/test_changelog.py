@@ -18,7 +18,7 @@ CHANGELOG = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
 def _releases() -> dict[str, list[str]]:
     releases: dict[str, list[str]] = {}
     current = None
-    for line in CHANGELOG.read_text().splitlines():
+    for line in CHANGELOG.read_text(encoding="utf-8").splitlines():
         if match := re.match(r"## \[([^\]]+)\]", line):
             current = match.group(1)
             releases[current] = []
@@ -40,11 +40,15 @@ REPO = "https://github.com/itda-work/django-wireview"
 
 
 def _headings() -> list[str]:
-    return [m.group(1) for line in CHANGELOG.read_text().splitlines() if (m := re.match(r"## \[([^\]]+)\]", line))]
+    return [
+        m.group(1)
+        for line in CHANGELOG.read_text(encoding="utf-8").splitlines()
+        if (m := re.match(r"## \[([^\]]+)\]", line))
+    ]
 
 
 def _links() -> dict[str, str]:
-    return dict(re.findall(r"^\[([^\]]+)\]: (\S+)$", CHANGELOG.read_text(), re.MULTILINE))
+    return dict(re.findall(r"^\[([^\]]+)\]: (\S+)$", CHANGELOG.read_text(encoding="utf-8"), re.MULTILINE))
 
 
 def test_unreleased_compares_from_the_newest_release():
@@ -71,7 +75,7 @@ def test_the_newest_release_is_the_package_version():
     """The release commit bumps ``pyproject.toml`` and adds the section together."""
     import tomllib
 
-    project = tomllib.loads((CHANGELOG.parent / "pyproject.toml").read_text())["project"]
+    project = tomllib.loads((CHANGELOG.parent / "pyproject.toml").read_text(encoding="utf-8"))["project"]
 
     assert _headings()[1] == project["version"]
 
@@ -87,7 +91,7 @@ def _broadcast_flags() -> list[str]:
 
 def _advisory_entry() -> str:
     """The ``### Security`` entry of the release that fixed the advisory."""
-    section = CHANGELOG.read_text().split("## [1.0.0rc4]", 1)[1].split("\n## [", 1)[0]
+    section = CHANGELOG.read_text(encoding="utf-8").split("## [1.0.0rc4]", 1)[1].split("\n## [", 1)[0]
     security = section.split("### Security", 1)[1]
     return next(entry for entry in security.split("\n- ") if ADVISORY in entry)
 
@@ -103,7 +107,7 @@ def test_the_advisory_names_every_flag_that_broadcast():
 
 
 def test_upgrading_names_every_flag_that_broadcast():
-    upgrading = (CHANGELOG.parent / "docs" / "UPGRADING.md").read_text()
+    upgrading = (CHANGELOG.parent / "docs" / "UPGRADING.md").read_text(encoding="utf-8")
     box = next(p for p in upgrading.split("\n\n") if p.startswith("> **보안.**"))
     section = upgrading.split("### 9. `AUTO_BROADCAST`", 1)[1].split("\n### ", 1)[0]
     closing = section.rstrip().rsplit("\n\n", 1)[1]
@@ -118,7 +122,7 @@ ADVISORY_ID = re.compile(r"GHSA(?:-[23456789cfghjmpqrvwx]{4}){3}")
 
 def _security_entries(release: str) -> list[str]:
     """The entries of a release's ``### Security`` section, whitespace folded."""
-    section = CHANGELOG.read_text().split(f"## [{release}]", 1)[1].split("\n## [", 1)[0]
+    section = CHANGELOG.read_text(encoding="utf-8").split(f"## [{release}]", 1)[1].split("\n## [", 1)[0]
     if "\n### Security\n" not in section:
         return []
     security = section.split("\n### Security\n", 1)[1].split("\n### ", 1)[0]
@@ -127,7 +131,7 @@ def _security_entries(release: str) -> list[str]:
 
 def _published_advisories() -> dict[str, str]:
     """``SECURITY.md``'s advisory table: id to the version that fixed it."""
-    table = SECURITY_MD.read_text().split("## 공개된 보안 권고", 1)[1].split("\n## ", 1)[0]
+    table = SECURITY_MD.read_text(encoding="utf-8").split("## 공개된 보안 권고", 1)[1].split("\n## ", 1)[0]
     return {
         ids[0]: cells[-1]
         for line in table.splitlines()
@@ -187,7 +191,7 @@ def test_upgrading_tells_every_reader_of_every_advisory():
     """The security box is what every row of UPGRADING's table reads first, and each advisory
     1.0 fixed has a **보안** bullet in the rc4 section. Dropping either for one advisory passed
     every other check: the reader went through the long rc4 bullets without knowing to act."""
-    upgrading = (CHANGELOG.parent / "docs" / "UPGRADING.md").read_text()
+    upgrading = (CHANGELOG.parent / "docs" / "UPGRADING.md").read_text(encoding="utf-8")
     box = next(p for p in upgrading.split("\n\n") if p.startswith("> **보안.**"))
     rc4 = upgrading.split("\n## 1.0.0rc4에서 1.0으로\n", 1)[1].split("\n## ", 1)[0]
     flagged = [b for b in re.split(r"^- ", rc4, flags=re.MULTILINE)[1:] if "(**보안**" in b.split("\n  -", 1)[0]]

@@ -26,7 +26,7 @@ DEPLOYMENT = ROOT / "docs" / "DEPLOYMENT.md"
 
 def block(first_line: str) -> str:
     """The ```python block of DEPLOYMENT.md whose first line is ``first_line``."""
-    for code in re.findall(r"```python\n(.*?)```", DEPLOYMENT.read_text(), re.S):
+    for code in re.findall(r"```python\n(.*?)```", DEPLOYMENT.read_text(encoding="utf-8"), re.S):
         if code.startswith(first_line):
             return code
     raise AssertionError(f"no python block in DEPLOYMENT.md starts with {first_line!r}")
@@ -200,7 +200,7 @@ async def test_readiness_fails_when_the_layer_does_not(monkeypatch, layer):
 
 def blocks(language: str) -> list[str]:
     """Every ```<language> block of DEPLOYMENT.md."""
-    return re.findall(rf"```{language}\n(.*?)```", DEPLOYMENT.read_text(), re.S)
+    return re.findall(rf"```{language}\n(.*?)```", DEPLOYMENT.read_text(encoding="utf-8"), re.S)
 
 
 # A proxy block that serves /static/ from disk: nginx's location with an alias or root,
@@ -234,7 +234,7 @@ def test_the_front_server_gets_the_files_out_of_the_app_image():
     # finds the directory its alias names empty unless something takes the files out of the image.
     (app,) = [code for code in blocks("dockerfile") if "uvicorn" in code]
     workdir = re.search(r"^WORKDIR (\S+)$", app, re.M)[1]
-    aliases = re.findall(r"location /static/ \{\s*alias (\S+?);", DEPLOYMENT.read_text())
+    aliases = re.findall(r"location /static/ \{\s*alias (\S+?);", DEPLOYMENT.read_text(encoding="utf-8"))
     (alias,) = {path.rstrip("/") for path in aliases}
     copies = [
         pair for code in blocks("dockerfile") for pair in re.findall(r"^COPY --from=\S+ (\S+) (\S+)$", code, re.M)

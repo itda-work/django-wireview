@@ -100,32 +100,32 @@ def test_the_harness_has_the_documents_it_claims():
 @pytest.mark.unit
 @pytest.mark.parametrize("doc", HARNESS_DOCS, ids=_doc_id)
 def test_every_referenced_path_exists(doc: Path):
-    missing = sorted(p for p in _referenced_paths(doc.read_text()) if not (ROOT / p).exists())
+    missing = sorted(p for p in _referenced_paths(doc.read_text(encoding="utf-8")) if not (ROOT / p).exists())
     assert missing == [], f"{_doc_id(doc)} points at paths that do not exist: {missing}"
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("doc", HARNESS_DOCS, ids=_doc_id)
 def test_every_make_target_exists(doc: Path):
-    makefile = (ROOT / "Makefile").read_text()
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     defined = set(re.findall(r"^([a-z][a-z0-9-]*):", makefile, re.MULTILINE))
     defined.update(re.findall(r"^\.PHONY:(.*)$", makefile, re.MULTILINE)[0].split())
-    used = set(MAKE_TARGET.findall(doc.read_text()))
+    used = set(MAKE_TARGET.findall(doc.read_text(encoding="utf-8")))
     assert used - defined == set(), f"{_doc_id(doc)} names make targets the Makefile does not define"
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("doc", HARNESS_DOCS, ids=_doc_id)
 def test_every_gap_number_is_tracked(doc: Path):
-    known = set(GAP_REF.findall((ROOT / "docs" / "FEATURE-GAP.md").read_text()))
-    used = set(GAP_REF.findall(doc.read_text()))
+    known = set(GAP_REF.findall((ROOT / "docs" / "FEATURE-GAP.md").read_text(encoding="utf-8")))
+    used = set(GAP_REF.findall(doc.read_text(encoding="utf-8")))
     assert used - known == set(), f"{_doc_id(doc)} cites GAP numbers absent from docs/FEATURE-GAP.md"
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("skill", SKILLS, ids=_doc_id)
 def test_skill_frontmatter_names_its_own_directory(skill: Path):
-    text = skill.read_text()
+    text = skill.read_text(encoding="utf-8")
     assert text.startswith("---\n"), f"{_doc_id(skill)} has no frontmatter"
     frontmatter = text.split("---\n", 2)[1]
 
@@ -161,7 +161,9 @@ CODE_FENCE = re.compile(r"```.*?```", re.S)
 def _tracked_markdown() -> list[str]:
     import subprocess
 
-    listed = subprocess.run(["git", "ls-files", "*.md"], cwd=ROOT, capture_output=True, text=True, check=True)
+    listed = subprocess.run(
+        ["git", "ls-files", "*.md"], cwd=ROOT, capture_output=True, text=True, check=True, encoding="utf-8"
+    )
     return [
         path
         for path in listed.stdout.split()

@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def _git(*args: str) -> str:
     try:
-        return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
+        return subprocess.check_output(["git", *args], cwd=ROOT, text=True, encoding="utf-8").strip()
     except Exception:
         return ""
 
@@ -137,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     _print(results)
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(results, indent=1))
+        args.out.write_text(json.dumps(results, indent=1), encoding="utf-8")
         print(f"\nwritten: {args.out}")
     return 0
 

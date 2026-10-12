@@ -29,7 +29,9 @@ TEMPLATE = Path(wireview.__file__).parent / "project_template"
 def run(project: Path, *args: str) -> subprocess.CompletedProcess[str]:
     """Run ``python *args`` in the generated project, as its own process."""
     env = {key: value for key, value in os.environ.items() if key != "DJANGO_SETTINGS_MODULE"}
-    return subprocess.run([sys.executable, *args], cwd=project, env=env, capture_output=True, text=True, timeout=120)
+    return subprocess.run(
+        [sys.executable, *args], cwd=project, env=env, capture_output=True, text=True, timeout=120, encoding="utf-8"
+    )
 
 
 @pytest.fixture(scope="module")
@@ -240,7 +242,9 @@ def test_what_the_project_makes_for_itself_is_ignored(project):
     subprocess.run(["git", "init", "-q"], cwd=project, check=True)
 
     made = ["hello/live.pyi", "db.sqlite3", "hello/__pycache__/live.cpython-312.pyc", ".wireview/metadata.json"]
-    ignored = subprocess.run(["git", "check-ignore", *made], cwd=project, capture_output=True, text=True)
+    ignored = subprocess.run(
+        ["git", "check-ignore", *made], cwd=project, capture_output=True, text=True, encoding="utf-8"
+    )
 
     assert ignored.stdout.split() == made, ignored.stdout + ignored.stderr
     kept = subprocess.run(["git", "check-ignore", "hello/live.py", "manage.py"], cwd=project, capture_output=True)

@@ -136,8 +136,8 @@ class BenchLeaving(Component):
         import time
 
         log = os.environ["BENCH_LEAVING_LOG"]
-        with open(log, "a") as f:
+        with open(log, "a", encoding="utf-8") as f:
             f.write(f"start {self.id} {time.time()}\n")
         await asyncio.sleep(float(os.environ.get("BENCH_LEAVING_SECONDS", "2")))
-        with open(log, "a") as f:
+        with open(log, "a", encoding="utf-8") as f:
             f.write(f"done {self.id} {time.time()}\n")

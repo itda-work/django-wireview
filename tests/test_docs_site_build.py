@@ -113,7 +113,7 @@ def test_the_sitemap_lists_every_page_absolutely(site):
 
 
 def test_the_version_file_is_the_tag(site):
-    assert (site.out / "wireview" / "VERSION").read_text() == f"{TAG}\n"
+    assert (site.out / "wireview" / "VERSION").read_text(encoding="utf-8") == f"{TAG}\n"
 
 
 def test_every_pages_header_names_the_release_and_links_its_changelog_section(site):
@@ -633,7 +633,7 @@ def test_a_prerelease_builds_a_preview(tmp_path, version, preview):
         assert ('class="preview-band"' in text) is preview, path
         if preview:
             assert f"django-wireview {version} 문서" in text
-    assert (tmp_path / "out" / "wireview" / "VERSION").read_text() == f"v{version}\n"
+    assert (tmp_path / "out" / "wireview" / "VERSION").read_text(encoding="utf-8") == f"v{version}\n"
 
 
 # --- a docs tree of its own, for the gates ------------------------------------------------------------
@@ -683,22 +683,30 @@ def tree(tmp_path):
     """A repository with three pages, a note the site does not publish, and the URL list."""
     root = tmp_path / "repo"
     (root / "docs").mkdir(parents=True)
-    (root / "pyproject.toml").write_text('[project]\nname = "x"\nversion = "1.0.0"\n')
-    (root / "CHANGELOG.md").write_text("# Changelog\n\n## [Unreleased]\n\n## [1.0.0] - 2026-01-02\n\n- First.\n")
-    (root / "README.md").write_text("# 소개\n\n[가이드](docs/guide.md#설치)를 보세요.\n")
-    (root / "docs" / "guide.md").write_text(
-        "# 가이드\n\n설치를 안내한다.\n\n## 설치\n\n[다음](next.md) · [메모](notes.md)\n"
+    (root / "pyproject.toml").write_text('[project]\nname = "x"\nversion = "1.0.0"\n', encoding="utf-8")
+    (root / "CHANGELOG.md").write_text(
+        "# Changelog\n\n## [Unreleased]\n\n## [1.0.0] - 2026-01-02\n\n- First.\n", encoding="utf-8"
     )
-    (root / "docs" / "next.md").write_text("# 다음\n\n다음 단계다.\n\n## 설치\n\n## 설치\n\n[둘째 설치](#설치-1)\n")
-    (root / "docs" / "notes.md").write_text("# 메모\n")
-    (root / "docs" / "tutorials.md").write_text("# 튜토리얼 목차\n\n튜토리얼의 차례다.\n\n[시작](start.md)\n")
-    (root / "docs" / "start.md").write_text("# 시작\n\n처음 만든다.\n\n## 3. 이미 있는 프로젝트에 붙이기\n")
-    (root / "docs" / "site.toml").write_text(SITE_TOML)
-    (root / "docs" / "redirects.toml").write_text("redirects = []\n")
+    (root / "README.md").write_text("# 소개\n\n[가이드](docs/guide.md#설치)를 보세요.\n", encoding="utf-8")
+    (root / "docs" / "guide.md").write_text(
+        "# 가이드\n\n설치를 안내한다.\n\n## 설치\n\n[다음](next.md) · [메모](notes.md)\n", encoding="utf-8"
+    )
+    (root / "docs" / "next.md").write_text(
+        "# 다음\n\n다음 단계다.\n\n## 설치\n\n## 설치\n\n[둘째 설치](#설치-1)\n", encoding="utf-8"
+    )
+    (root / "docs" / "notes.md").write_text("# 메모\n", encoding="utf-8")
+    (root / "docs" / "tutorials.md").write_text(
+        "# 튜토리얼 목차\n\n튜토리얼의 차례다.\n\n[시작](start.md)\n", encoding="utf-8"
+    )
+    (root / "docs" / "start.md").write_text(
+        "# 시작\n\n처음 만든다.\n\n## 3. 이미 있는 프로젝트에 붙이기\n", encoding="utf-8"
+    )
+    (root / "docs" / "site.toml").write_text(SITE_TOML, encoding="utf-8")
+    (root / "docs" / "redirects.toml").write_text("redirects = []\n", encoding="utf-8")
     (root / "skills" / "s" / "references").mkdir(parents=True)
-    (root / "skills" / "s" / "SKILL.md").write_text(SKILL_MD)
-    (root / "skills" / "s" / "references" / "a.md").write_text("# 참조\n\n[돌아가기](../SKILL.md)\n")
-    (root / "docs" / "site-urls.txt").write_text("".join(f"{url}\n" for url in TREE_URLS))
+    (root / "skills" / "s" / "SKILL.md").write_text(SKILL_MD, encoding="utf-8")
+    (root / "skills" / "s" / "references" / "a.md").write_text("# 참조\n\n[돌아가기](../SKILL.md)\n", encoding="utf-8")
+    (root / "docs" / "site-urls.txt").write_text("".join(f"{url}\n" for url in TREE_URLS), encoding="utf-8")
     return root
 
 
@@ -768,14 +776,14 @@ def test_a_small_tree_builds_clean(tree):
 
 def test_a_release_without_its_changelog_section_fails_the_build(tree):
     """The header's version links to the release's section of CHANGELOG.md (#196)."""
-    (tree / "CHANGELOG.md").write_text("# Changelog\n\n## [Unreleased]\n\n## [0.9.0] - 2025-12-01\n")
+    (tree / "CHANGELOG.md").write_text("# Changelog\n\n## [Unreleased]\n\n## [0.9.0] - 2025-12-01\n", encoding="utf-8")
     assert _problems(_build(tree)) == [
         'CHANGELOG.md: no "## [1.0.0]" section: the version in every page\'s header links there'
     ]
 
 
 def test_a_first_tutorial_without_the_existing_project_section_fails_the_build(tree):
-    (tree / "docs" / "start.md").write_text("# 시작\n\n처음 만든다.\n\n## 3. 붙이기\n")
+    (tree / "docs" / "start.md").write_text("# 시작\n\n처음 만든다.\n\n## 3. 붙이기\n", encoding="utf-8")
     assert _problems(_build(tree)) == [
         'docs/start.md: no "## … 이미 있는 프로젝트에 붙이기" section: llms.txt sends a project there'
     ]
@@ -786,19 +794,19 @@ def _llms_of(out: Path) -> str:
 
 
 def test_a_skill_link_that_leads_nowhere_fails_the_build_at_its_line(tree):
-    (tree / "skills" / "s" / "references" / "a.md").write_text("# 참조\n\n[없음](./gone.md)\n")
+    (tree / "skills" / "s" / "references" / "a.md").write_text("# 참조\n\n[없음](./gone.md)\n", encoding="utf-8")
     assert _problems(_build(tree)) == ["skills/s/references/a.md:3: ./gone.md (no such file)"]
 
 
 def test_a_skill_url_to_a_missing_anchor_fails_the_build_at_its_line(tree):
-    (tree / "skills" / "s" / "SKILL.md").write_text(SKILL_MD.replace("#설치", "#없는-절"))
+    (tree / "skills" / "s" / "SKILL.md").write_text(SKILL_MD.replace("#설치", "#없는-절"), encoding="utf-8")
     problems = _problems(_build(tree))
     assert len(problems) == 1 and problems[0].startswith("skills/s/SKILL.md:12: ")
     assert "no id '없는-절'" in problems[0]
 
 
 def test_a_skill_file_the_skill_does_not_route_to_fails_the_build(tree):
-    (tree / "skills" / "s" / "references" / "b.md").write_text("# 둘째\n")
+    (tree / "skills" / "s" / "references" / "b.md").write_text("# 둘째\n", encoding="utf-8")
     problems = _problems(_build(tree))
     assert "skills/s/SKILL.md: no route to references/b.md: llms.txt has nothing to say about it" in problems
     assert any("/wireview/agent/s/references/b.md is new" in problem for problem in problems)
@@ -809,21 +817,23 @@ def test_a_preview_says_so_in_llms_txt(tree):
 
 
 def test_a_broken_anchor_fails_the_build_at_its_line(tree):
-    (tree / "README.md").write_text("# 소개\n\n본문\n\n[가이드](docs/guide.md#없는-절)를 보세요.\n")
+    (tree / "README.md").write_text("# 소개\n\n본문\n\n[가이드](docs/guide.md#없는-절)를 보세요.\n", encoding="utf-8")
     assert _problems(_build(tree)) == [
         "README.md:5: /wireview/guide/#%EC%97%86%EB%8A%94-%EC%A0%88 has no target (no id '없는-절' on /wireview/guide/)"
     ]
 
 
 def test_a_broken_anchor_on_the_same_page_fails_the_build(tree):
-    (tree / "docs" / "next.md").write_text("# 다음\n\n다음 단계다.\n\n## 설치\n\n[셋째 설치](#설치-2)\n")
+    (tree / "docs" / "next.md").write_text(
+        "# 다음\n\n다음 단계다.\n\n## 설치\n\n[셋째 설치](#설치-2)\n", encoding="utf-8"
+    )
     problems = _problems(_build(tree))
     assert len(problems) == 1 and problems[0].startswith("docs/next.md:7: ") and "no id '설치-2'" in problems[0]
 
 
 def test_a_link_to_a_missing_file_fails_the_build(tree):
     (tree / "docs" / "guide.md").write_text(
-        "# 가이드\n\n설치를 안내한다.\n\n## 설치\n\n[다음](next.md) · [없음](gone.md)\n"
+        "# 가이드\n\n설치를 안내한다.\n\n## 설치\n\n[다음](next.md) · [없음](gone.md)\n", encoding="utf-8"
     )
     assert _problems(_build(tree)) == ["docs/guide.md:7: gone.md (no such file)"]
 
@@ -834,8 +844,10 @@ def test_the_documents_images_are_copied_into_the_build_once(tree):
     (tree / "docs" / "img").mkdir()
     (tree / "docs" / "img" / "flow.png").write_bytes(image)
     raw = "https://raw.githubusercontent.com/itda-work/django-wireview/main/docs/img/flow.png"
-    (tree / "README.md").write_text(f"# 소개\n\n[가이드](docs/guide.md#설치)를 보세요.\n\n![흐름]({raw})\n")
-    (tree / "docs" / "next.md").write_text("# 다음\n\n다음 단계다.\n\n![흐름](img/flow.png)\n")
+    (tree / "README.md").write_text(
+        f"# 소개\n\n[가이드](docs/guide.md#설치)를 보세요.\n\n![흐름]({raw})\n", encoding="utf-8"
+    )
+    (tree / "docs" / "next.md").write_text("# 다음\n\n다음 단계다.\n\n![흐름](img/flow.png)\n", encoding="utf-8")
     result = _build(tree)
     assert _problems(result) == []
     served = f"/wireview/assets/flow.{hashlib.sha256(image).hexdigest()[:10]}.png"
@@ -843,24 +855,26 @@ def test_the_documents_images_are_copied_into_the_build_once(tree):
     assert [name for name in result.files if name.startswith("wireview/assets/flow.")] == [served.lstrip("/")]
     assert f'<img src="{served}" alt="흐름" />' in _html(result.out, "/wireview/")
     assert f'<img src="{served}" alt="흐름" />' in _html(result.out, "/wireview/guide/next/")
-    assert f"![흐름]({served})" in (result.out / "wireview" / "guide" / "next" / "index.md").read_text()
+    assert f"![흐름]({served})" in (result.out / "wireview" / "guide" / "next" / "index.md").read_text(encoding="utf-8")
 
 
 def test_an_image_url_into_main_that_names_no_file_fails_the_build(tree):
     raw = "https://raw.githubusercontent.com/itda-work/django-wireview/main/docs/img/gone.png"
-    (tree / "README.md").write_text(f"# 소개\n\n[가이드](docs/guide.md#설치)를 보세요.\n\n![흐름]({raw})\n")
+    (tree / "README.md").write_text(
+        f"# 소개\n\n[가이드](docs/guide.md#설치)를 보세요.\n\n![흐름]({raw})\n", encoding="utf-8"
+    )
     assert _problems(_build(tree)) == [f"README.md:5: {raw} (no such file in the repository)"]
 
 
 def test_a_vanished_url_fails_until_it_redirects(tree):
     urls = tree / "docs" / "site-urls.txt"
-    urls.write_text(urls.read_text() + "/wireview/guide/old/\n")
+    urls.write_text(urls.read_text(encoding="utf-8") + "/wireview/guide/old/\n", encoding="utf-8")
     problems = _problems(_build(tree))
     assert len(problems) == 1 and "/wireview/guide/old/ is no longer served" in problems[0]
     assert "docs/redirects.toml" in problems[0]
 
     (tree / "docs" / "redirects.toml").write_text(
-        '[[redirects]]\nfrom = "/wireview/guide/old/"\nto = "/wireview/guide/next/"\n'
+        '[[redirects]]\nfrom = "/wireview/guide/old/"\nto = "/wireview/guide/next/"\n', encoding="utf-8"
     )
     result = _build(tree)
     assert _problems(result) == []
@@ -876,14 +890,17 @@ def test_a_renamed_skill_file_fails_until_it_redirects_and_leaves_a_note_at_its_
     file of its kind at the old path naming the new one (#164)."""
     references = tree / "skills" / "s" / "references"
     (references / "a.md").rename(references / "b.md")
-    (tree / "skills" / "s" / "SKILL.md").write_text(SKILL_MD.replace("references/a.md", "references/b.md"))
+    (tree / "skills" / "s" / "SKILL.md").write_text(
+        SKILL_MD.replace("references/a.md", "references/b.md"), encoding="utf-8"
+    )
     urls = tree / "docs" / "site-urls.txt"
-    urls.write_text(urls.read_text() + "/wireview/agent/s/references/b.md\n")
+    urls.write_text(urls.read_text(encoding="utf-8") + "/wireview/agent/s/references/b.md\n", encoding="utf-8")
     problems = _problems(_build(tree))
     assert len(problems) == 1 and "/wireview/agent/s/references/a.md is no longer served" in problems[0]
 
     (tree / "docs" / "redirects.toml").write_text(
-        '[[redirects]]\nfrom = "/wireview/agent/s/references/a.md"\nto = "/wireview/agent/s/references/b.md"\n'
+        '[[redirects]]\nfrom = "/wireview/agent/s/references/a.md"\nto = "/wireview/agent/s/references/b.md"\n',
+        encoding="utf-8",
     )
     result = _build(tree)
     assert _problems(result) == []
@@ -904,8 +921,10 @@ def test_a_renamed_skill_file_fails_until_it_redirects_and_leaves_a_note_at_its_
 )
 def test_a_redirect_the_rules_refuse_fails_the_build(tree, source, target, problem):
     urls = tree / "docs" / "site-urls.txt"
-    urls.write_text(urls.read_text() + f"{source}\n")
-    (tree / "docs" / "redirects.toml").write_text(f'[[redirects]]\nfrom = "{source}"\nto = "{target}"\n')
+    urls.write_text(urls.read_text(encoding="utf-8") + f"{source}\n", encoding="utf-8")
+    (tree / "docs" / "redirects.toml").write_text(
+        f'[[redirects]]\nfrom = "{source}"\nto = "{target}"\n', encoding="utf-8"
+    )
     problems = _problems(_build(tree))
     assert any(p.startswith("docs/redirects.toml: ") and problem in p for p in problems), problems
 
@@ -913,28 +932,29 @@ def test_a_redirect_the_rules_refuse_fails_the_build(tree, source, target, probl
 def test_a_link_shape_in_a_skill_code_block_or_code_span_is_code(tree):
     """``handlers["save"](payload)`` is a call, not a link; the rewrite leaves it, and so does the gate."""
     (tree / "skills" / "s" / "references" / "a.md").write_text(
-        '# 참조\n\n```python\nresult = handlers["save"](payload)\n```\n\n`handlers["x"](y)`를 부른다.\n'
+        '# 참조\n\n```python\nresult = handlers["save"](payload)\n```\n\n`handlers["x"](y)`를 부른다.\n',
+        encoding="utf-8",
     )
     assert _problems(_build(tree)) == []
 
 
 def test_a_site_url_in_a_skill_code_block_is_still_checked(tree):
     (tree / "skills" / "s" / "references" / "a.md").write_text(
-        "# 참조\n\n```bash\ncurl https://itda.work/wireview/nope/\n```\n"
+        "# 참조\n\n```bash\ncurl https://itda.work/wireview/nope/\n```\n", encoding="utf-8"
     )
     problems = _problems(_build(tree))
     assert len(problems) == 1 and problems[0].startswith("skills/s/references/a.md:4: /wireview/nope/ leads nowhere")
 
 
 def test_a_skill_file_without_a_title_fails_the_build_without_a_traceback(tree):
-    (tree / "skills" / "s" / "references" / "a.md").write_text("#### 참조\n\n```\n# 주석\n```\n")
+    (tree / "skills" / "s" / "references" / "a.md").write_text("#### 참조\n\n```\n# 주석\n```\n", encoding="utf-8")
     assert _problems(_build(tree)) == ["skills/s/references/a.md: no H1: llms.txt has no title for it"]
 
 
 def test_every_broken_link_on_a_line_is_reported_once(tree):
     """The rewrite reports the missing file; the gate still reports the other link on that line."""
     (tree / "skills" / "s" / "references" / "a.md").write_text(
-        "# 참조\n\n[없음](./gone.md) · https://itda.work/wireview/nope/\n"
+        "# 참조\n\n[없음](./gone.md) · https://itda.work/wireview/nope/\n", encoding="utf-8"
     )
     problems = _problems(_build(tree))
     assert len(problems) == 2, problems
@@ -956,7 +976,7 @@ def test_every_broken_link_on_a_line_is_reported_once(tree):
 )
 def test_a_first_paragraph_that_does_not_say_what_the_page_is_fails_the_build(tree, lead, problem):
     """llms.txt and the meta tag describe a page by its first paragraph (#165)."""
-    (tree / "docs" / "guide.md").write_text(f"# 가이드\n\n{lead}\n\n## 설치\n\n[다음](next.md)\n")
+    (tree / "docs" / "guide.md").write_text(f"# 가이드\n\n{lead}\n\n## 설치\n\n[다음](next.md)\n", encoding="utf-8")
     problems = _problems(_build(tree))
     assert problems == [f"docs/guide.md:3: the first paragraph {problem}: say what the page is first"]
 
@@ -972,26 +992,28 @@ def test_a_first_paragraph_that_does_not_say_what_the_page_is_fails_the_build(tr
     ],
 )
 def test_a_first_paragraph_that_says_what_the_page_is_passes(tree, lead):
-    (tree / "docs" / "guide.md").write_text(f"# 가이드\n\n{lead}\n\n## 설치\n\n[다음](next.md)\n")
+    (tree / "docs" / "guide.md").write_text(f"# 가이드\n\n{lead}\n\n## 설치\n\n[다음](next.md)\n", encoding="utf-8")
     assert _problems(_build(tree)) == []
 
 
 def test_a_page_with_a_summary_is_not_described_by_its_first_paragraph(tree):
     """A tutorial's summary in docs/site.toml is its description, so its first paragraph is free."""
-    (tree / "docs" / "start.md").write_text("# 시작\n\n> 예제: [메모](notes.md)\n\n## 이미 있는 프로젝트에 붙이기\n")
+    (tree / "docs" / "start.md").write_text(
+        "# 시작\n\n> 예제: [메모](notes.md)\n\n## 이미 있는 프로젝트에 붙이기\n", encoding="utf-8"
+    )
     assert _problems(_build(tree)) == []
 
 
 def test_a_new_url_fails_until_it_is_listed(tree):
     urls = tree / "docs" / "site-urls.txt"
-    urls.write_text("/wireview/\n/wireview/guide/\n/wireview/gone/\n")
+    urls.write_text("/wireview/\n/wireview/guide/\n/wireview/gone/\n", encoding="utf-8")
     problems = _problems(_build(tree))
     assert any("/wireview/guide/next/ is new: add it to docs/site-urls.txt" in p for p in problems)
     assert any("/wireview/llms.txt is new" in p for p in problems)
 
     # --update-urls adds what is new and never drops what vanished: that stays a failure.
     problems = _problems(_build(tree, update_urls=True))
-    assert urls.read_text().splitlines() == sorted([*TREE_URLS, "/wireview/gone/"])
+    assert urls.read_text(encoding="utf-8").splitlines() == sorted([*TREE_URLS, "/wireview/gone/"])
     assert len(problems) == 1 and "/wireview/gone/ is no longer served" in problems[0]
 
 
@@ -1050,7 +1072,11 @@ def test_the_contract_names_tests_that_exist():
 
 
 def _commit_time() -> int:
-    return int(subprocess.run(["git", "log", "-1", "--format=%ct"], cwd=ROOT, capture_output=True, text=True).stdout)
+    return int(
+        subprocess.run(
+            ["git", "log", "-1", "--format=%ct"], cwd=ROOT, capture_output=True, text=True, encoding="utf-8"
+        ).stdout
+    )
 
 
 def test_the_bundle_records_nothing_of_the_machine(site, tmp_path, monkeypatch):
@@ -1109,7 +1135,7 @@ def test_without_git_the_bundle_asks_for_source_date_epoch(site, tmp_path, monke
 
 def test_the_bundle_leaves_one_bundle_in_its_directory(site, tmp_path):
     (tmp_path / "docs-site-v0.0.1.tar.gz").write_bytes(b"old")
-    (tmp_path / "keep.txt").write_text("not a bundle")
+    (tmp_path / "keep.txt").write_text("not a bundle", encoding="utf-8")
     target = bundle(site=site.out, out_dir=tmp_path)
     assert sorted(path.name for path in tmp_path.iterdir()) == sorted([target.name, "keep.txt"])
 

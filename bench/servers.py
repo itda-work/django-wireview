@@ -29,7 +29,9 @@ DEFAULT_SERVERS = "daphne,uvicorn,uvicorn-nodeflate,granian"
 
 def _run(*cmd: str) -> str:
     try:
-        return subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+        return subprocess.run(
+            cmd, cwd=ROOT, capture_output=True, text=True, check=True, encoding="utf-8"
+        ).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         return ""
 
@@ -134,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"  items {items} failed: {exc!s:.300}", flush=True)
             result["servers"][server]["rounds"].append(measured)
             out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(json.dumps(result, indent=1))
+            out.write_text(json.dumps(result, indent=1), encoding="utf-8")
     print(f"written: {out}")
     return 0
 

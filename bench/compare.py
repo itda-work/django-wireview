@@ -30,7 +30,7 @@ def main(argv: list[str]) -> int:
     if len(argv) != 2:
         print(__doc__)
         return 2
-    base, current = (json.loads(Path(p).read_text()) for p in argv)
+    base, current = (json.loads(Path(p).read_text(encoding="utf-8")) for p in argv)
     a, b = _flatten(base), _flatten(current)
     label_a = base["meta"]["sha"] or "base"
     label_b = current["meta"]["sha"] or "current"

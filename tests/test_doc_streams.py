@@ -82,7 +82,7 @@ SYNC_CONSUMERS = {
 
 
 def _blocks(path: Path) -> list[str]:
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     return [text] if path.suffix == ".py" else [textwrap.dedent(b) for b in _FENCE.findall(text)]
 
 

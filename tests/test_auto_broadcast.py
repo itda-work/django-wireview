@@ -181,7 +181,7 @@ def test_a_sender_that_is_not_a_model_fails_at_startup(broadcasting):
 
 def fixture_file(tmp_path, rows: list[dict]) -> str:
     path = tmp_path / "rows.json"
-    path.write_text(json.dumps(rows))
+    path.write_text(json.dumps(rows), encoding="utf-8")
     return str(path)
 
 

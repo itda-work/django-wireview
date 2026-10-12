@@ -137,7 +137,7 @@ class TestSetUpClass(ComponentTestCase, SimpleTestCase):
 
 
 def _pytest(directory: Path, source: str, *options: str) -> str:
-    (directory / "test_probe.py").write_text(COMPONENTS + source)
+    (directory / "test_probe.py").write_text(COMPONENTS + source, encoding="utf-8")
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "--ds", "testproj.settings", "--nomigrations"]
         + ["-o", "asyncio_default_fixture_loop_scope=function", "-rA", *options, "test_probe.py"],
@@ -146,6 +146,7 @@ def _pytest(directory: Path, source: str, *options: str) -> str:
         capture_output=True,
         text=True,
         timeout=50,
+        encoding="utf-8",
     )
     return result.stdout + result.stderr
 

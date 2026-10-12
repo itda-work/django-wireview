@@ -108,7 +108,7 @@ def template_dir(tmp_path: Path, settings: t.Any) -> Path:
     for name, text in TEMPLATES.items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
     settings.TEMPLATES = [
         {
             "BACKEND": "django.template.backends.django.DjangoTemplates",
@@ -377,8 +377,8 @@ async def test_a_render_is_one_line_of_snapshots_with_the_running_source(sink, q
     for (name, line), template in placed.items():
         file = Path(template["file"])
         assert file == (template_dir / name).resolve()
-        assert template["source"] == digest_of(file.read_text())
-        assert template["text"] in file.read_text().splitlines()[line - 1]
+        assert template["source"] == digest_of(file.read_text(encoding="utf-8"))
+        assert template["text"] in file.read_text(encoding="utf-8").splitlines()[line - 1]
         assert template["rel"] == f"templates/{name}"  # under BASE_DIR, set to the test's directory below
     props = [row["property"] for row in rows_of(record, ".RqfPage") if "property" in row]
     assert {prop["name"] for prop in props} == {"total"}  # the querysets run where the template reads them
@@ -387,24 +387,24 @@ async def test_a_render_is_one_line_of_snapshots_with_the_running_source(sink, q
 @pytest.mark.asyncio
 async def test_a_template_the_cache_still_runs_is_told_with_its_old_source(sink, quiz, template_dir):
     file = template_dir / "rqf/plain.html"
-    old = file.read_text()
+    old = file.read_text(encoding="utf-8")
     view = await mount(RqfPlain, id="plain")
     await sync_to_async(view.render)()
     # Another line changes on disk; the cached compile is what runs
-    file.write_text(old.replace("<p ", "<p data-new ", 1))
+    file.write_text(old.replace("<p ", "<p data-new ", 1), encoding="utf-8")
     await sync_to_async(Choice.objects.create)(question=await Question.objects.afirst(), text="more")
     await sync_to_async(view.render)()
     stale = lines(sink)[-1]
     [row] = [row for row in stale["rows"] if "template" in row]
     assert row["template"]["source"] == digest_of(old)
-    assert row["template"]["source"] != digest_of(file.read_text())
+    assert row["template"]["source"] != digest_of(file.read_text(encoding="utf-8"))
 
     for loader in engines["django"].engine.template_loaders:
         loader.reset()  # what the autoreloader's template_changed does
     view = await mount(RqfPlain, id="plain")
     await sync_to_async(view.render)()
     [row] = [row for row in lines(sink)[-1]["rows"] if "template" in row]
-    assert row["template"]["source"] == digest_of(file.read_text())
+    assert row["template"]["source"] == digest_of(file.read_text(encoding="utf-8"))
 
 
 @pytest.mark.asyncio
@@ -423,7 +423,7 @@ async def test_a_let_slot_a_live_component_draws_later_is_told_with_a_source_onl
         assert row["template"]["name"] == "rqf/frame.html"
         # The filler's Template is on the stack (its own pass) or the digest is left out: never a guess
         if "source" in row["template"]:
-            assert row["template"]["source"] == digest_of((template_dir / "rqf/frame.html").read_text())
+            assert row["template"]["source"] == digest_of((template_dir / "rqf/frame.html").read_text(encoding="utf-8"))
     told = {"source" in row["template"] for row in rows}
     # HTTP draws the child inside the frame's pass; live, the child renders after it, on its own
     assert told == ({True} if path == "http" else {False})
@@ -438,7 +438,7 @@ def test_lookup_finds_the_running_template_not_another_of_the_same_origin(sink, 
     path = template_dir / "rqf/shared.html"
     old = "{% with value=old %}\n{{ value }}\n{% endwith %}"
     new = "{% with value=new %}\n{{ value }}\n{% endwith %}"
-    path.write_text(new)
+    path.write_text(new, encoding="utf-8")
     engine = engines["django"].engine
     origin = Origin(str(path), template_name="rqf/shared.html", loader=filesystem.Loader(engine))
     stale = Template(old, origin=origin, engine=engine)
@@ -480,7 +480,7 @@ def test_the_loader_gate_tells_the_source_only_for_the_loaders_that_make_an_orig
 ):
     path = template_dir / "rqf/gate.html"
     text = "-\n{{ value }}"
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8")
     engine = engines["django"].engine
     origin = Origin(str(path), template_name="rqf/gate.html", loader=loader(engine) if loader else None)
     template = Template(text, origin=origin, engine=engine)
@@ -544,7 +544,7 @@ async def test_a_property_is_told_at_its_def_line_with_its_stat(sink, quiz):
     assert set(props) >= {"total", "multi", "cached", "later", "aliased"}
     for name in ("total", "multi", "cached", "later"):
         prop = props[name]
-        text = Path(prop["file"]).read_text().splitlines()[prop["line"] - 1]
+        text = Path(prop["file"]).read_text(encoding="utf-8").splitlines()[prop["line"] - 1]
         assert text.strip().startswith(("def " + name, "async def " + name)), (name, text)
         stat = os.stat(prop["file"])
         assert prop["stat"] == [str(stat.st_mtime_ns), str(stat.st_size)]  # strings: exact past 2**53
@@ -659,7 +659,7 @@ async def test_an_unchanged_snapshot_waits_a_minute_and_a_new_source_does_not(si
 
     # The file changes elsewhere, the rows do not: the digest is part of the snapshot (2판 리뷰 7)
     file = template_dir / "rqf/plain.html"
-    file.write_text(file.read_text().replace("<p ", "<p data-new ", 1))
+    file.write_text(file.read_text(encoding="utf-8").replace("<p ", "<p data-new ", 1), encoding="utf-8")
     for loader in engines["django"].engine.template_loaders:
         loader.reset()
     view = await mount(RqfPlain, id="plain")
@@ -667,7 +667,7 @@ async def test_an_unchanged_snapshot_waits_a_minute_and_a_new_source_does_not(si
     records = lines(sink)
     assert len(records) == 3
     [row] = [row for row in records[-1]["rows"] if "template" in row]
-    assert row["template"]["source"] == digest_of(file.read_text())
+    assert row["template"]["source"] == digest_of(file.read_text(encoding="utf-8"))
 
 
 def test_work_with_no_render_is_not_written_and_its_rows_in_a_render_have_no_by(sink, db):
@@ -870,7 +870,7 @@ def test_other_processes_files_are_swept_only_when_idle(sink, db):
 
     def other(name: str, age: float) -> Path:
         path = sink / f"{name}.1.jsonl"
-        path.write_text("{}\n")
+        path.write_text("{}\n", encoding="utf-8")
         os.utime(path, (now - age, now - age))
         return path
 
@@ -892,7 +892,7 @@ def test_two_processes_sweeping_at_once_do_not_fail(tmp_path):
     out.mkdir()
     for n in range(300):
         path = out / f"20250101T000000-{n}.1.jsonl"
-        path.write_text("{}\n")
+        path.write_text("{}\n", encoding="utf-8")
         old = time.time() - render_queries_file.EXPIRE - 60
         os.utime(path, (old, old))
     code = (
@@ -914,7 +914,7 @@ def test_two_processes_sweeping_at_once_do_not_fail(tmp_path):
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions")
 def test_the_directory_is_private_and_ignored(sink, db):
     _render_plain()
-    assert (sink / ".gitignore").read_text() == "*\n"
+    assert (sink / ".gitignore").read_text(encoding="utf-8") == "*\n"
     assert sink.stat().st_mode & 0o777 == 0o700
     [path] = list(sink.glob("*.jsonl"))
     assert path.stat().st_mode & 0o777 == 0o600

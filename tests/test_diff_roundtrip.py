@@ -238,6 +238,7 @@ def _replay(sequences: list[list[dict[str, t.Any]]]) -> list[list[str]]:
         text=True,
         timeout=60,
         check=False,
+        encoding="utf-8",
     )
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)

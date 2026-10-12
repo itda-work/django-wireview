@@ -54,7 +54,9 @@ def diagnostics_driver() -> Path:
 
 def node_version(node: str) -> tuple[int, int]:
     try:
-        result = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=30, check=False)
+        result = subprocess.run(
+            [node, "--version"], capture_output=True, text=True, timeout=30, check=False, encoding="utf-8"
+        )
     except OSError as error:
         raise CommandError(f"cannot run {node}: {error}", returncode=2) from error
     try:
@@ -158,6 +160,7 @@ class Command(BaseCommand):
                 capture_output=True,
                 text=True,
                 check=False,
+                encoding="utf-8",
             )
         try:
             # node exits 1 on an uncaught error as well as on findings: only a report says which

@@ -56,7 +56,7 @@ class Cell:
 
 def cells(workflow: Path = WORKFLOW, jobs: list[str] | None = None) -> list[Cell]:
     """Every job of the workflow, a job with a matrix once per combination, in the file's order."""
-    defined = yaml.safe_load(workflow.read_text())["jobs"]
+    defined = yaml.safe_load(workflow.read_text(encoding="utf-8"))["jobs"]
     unknown = sorted(set(jobs or []) - set(defined))
     if unknown:
         raise SystemExit(f"no such job in {workflow.name}: {', '.join(unknown)}")
@@ -84,6 +84,7 @@ def docker_host() -> str:
         capture_output=True,
         text=True,
         check=True,
+        encoding="utf-8",
     )
     return context.stdout.strip()
 
@@ -111,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     for cell in runs:
         log = LOGS / f"{cell.name}.log"
         start = time.monotonic()
-        with log.open("w") as out:
+        with log.open("w", encoding="utf-8") as out:
             # .actrc (the workflow, the image, --init, the daemon socket) is read from the working directory.
             code = subprocess.run(
                 ["act", "workflow_dispatch", *cell.args()], cwd=ROOT, env=env, stdout=out, stderr=subprocess.STDOUT

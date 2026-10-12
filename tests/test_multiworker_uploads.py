@@ -61,8 +61,8 @@ def workers(tmp_path_factory):
         yield ports
     finally:
         for log in log_dir.glob("worker-*.log"):
-            if "Traceback" in log.read_text():
-                print(f"--- {log.name} ---\n{log.read_text()}")
+            if "Traceback" in log.read_text(encoding="utf-8"):
+                print(f"--- {log.name} ---\n{log.read_text(encoding='utf-8')}")
         for proc in procs:
             stop_process(proc)
 
