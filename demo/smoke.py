@@ -266,7 +266,13 @@ def check_forged_visitor(base: str, most: int) -> None:
     try:
         for n in range(most + 1):
             forged = f"203.0.113.{n + 1}"
-            headers = {"CF-Connecting-IP": forged, "X-Real-IP": forged, "X-Forwarded-For": forged}
+            headers = {
+                "CF-Connecting-IP": forged,
+                "X-Real-IP": forged,
+                "X-Forwarded-For": forged,
+                "Forwarded": f"for={forged}",
+                "True-Client-IP": forged,
+            }
             try:
                 ws = open_socket(base, headers)
             except InvalidStatus as error:
@@ -282,10 +288,11 @@ def check_forged_visitor(base: str, most: int) -> None:
     finally:
         for ws in held:
             ws.close()
-    assert refused and refused[0] == most, (
+    assert refused == (most, 403), (
         f"{most + 1} sockets with forged visitor headers: refused at {refused and refused[0] + 1}"
+        f" with {refused and refused[1]}, not the {most + 1}th with 403"
     )
-    print(f"forged visitor headers: {most + 1} sockets, each naming another visitor, were one ({refused[1]})")
+    print(f"forged visitor headers: {most + 1} sockets, each naming another visitor, were one (403)")
 
 
 def main() -> int:

@@ -1,3 +1,4 @@
 # Secrets and local data stay on the machine
 .env
+ddns.env
 .demo-data/

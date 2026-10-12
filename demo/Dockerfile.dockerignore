@@ -16,4 +16,5 @@
 # The examples' screenshots go in as webp; the png copies are for the READMEs
 examples/*/media/*.png
 demo/.env
+demo/ddns.env
 demo/.demo-data

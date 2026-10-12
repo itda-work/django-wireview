@@ -191,7 +191,7 @@ docker buildx build --platform linux/amd64 -f demo/Dockerfile --target web -t wi
 5. 확인: `uv run python demo/smoke.py https://wireview-demo.itda.work --out /tmp/demo-smoke`(저장소 체크아웃에서).
 
 DNS는 3번이 `wireview-demo.itda.work`의 CNAME을 만든다. 끊으려면 `docker compose stop cloudflared`,
-되돌리려면 대시보드에서 public hostname을 지운다.
+되돌리려면 대시보드에서 public hostname을 지운다. 직접 공개 모드로 옮길 때는 이렇게 지우지 않는다("터널에서 옮기기").
 
 Cloudflare 쪽에 둘 만한 것(선택): 이 호스트에 Rate Limiting 규칙(예: 분당 요청 600), Bot Fight Mode. 앱의 한도(HTTP 예산,
 세션·게스트 행, 소켓 수)가 Cloudflare 없이도 서므로 필수는 아니다. 다만 앱의 한도는 요청이 앱에 닿은 뒤에 세므로, 많은 주소에서
@@ -229,7 +229,7 @@ Homebrew의 서비스는 로그인한 사용자의 LaunchAgent로 돈다. 컨테
 ### 방문자 주소
 
 호스트의 Caddy(`Caddyfile.direct`)는 아무도 믿지 않는다(`trusted_proxies` 없음): 방문자는 TCP 상대 주소다. `X-Real-IP`를 그 주소로
-덮어쓰고, `CF-Connecting-IP`는 지우고, `X-Forwarded-For`·`X-Forwarded-Proto`는 Caddy가 새로 쓴다. web의 `:8081`은 `X-Real-IP`만
+덮어쓰고, `CF-Connecting-IP`·`Forwarded`·`True-Client-IP`는 지우고, `X-Forwarded-For`·`X-Forwarded-Proto`는 Caddy가 새로 쓴다. web의 `:8081`은 `X-Real-IP`만
 읽는다. 방문자가 보낸 `CF-Connecting-IP`·`X-Real-IP`·`X-Forwarded-For`·`True-Client-IP`는 한도를 바꾸지 못한다:
 
 - `tests/test_demo_site.py`가 두 Caddyfile의 규칙과 compose의 포트(둘 다 `127.0.0.1`)를, caddy가 있으면 caddy가 읽은 설정(`caddy adapt`)까지 본다.
@@ -264,32 +264,69 @@ HTTP-01 검증과 https 리다이렉트에 쓰인다.
 
 ### 터널에서 옮기기
 
-인증서는 이름이 이 머신을 가리킨 뒤에야 받을 수 있다(HTTP-01). 그래서 순서는 "직접 모드 기동 → DNS 전환 → 인증서 확인 → 터널 정지"이고,
-틈은 DNS가 바뀐 뒤 첫 발급까지(보통 수십 초)다. 그동안 옛 응답을 캐시한 방문자는 터널로 계속 들어온다 — web이 두 앞문을 함께 받으므로 둘 다 한도가 맞다.
+인증서는 이름이 이 머신을 가리킨 뒤에야 받을 수 있다(HTTP-01). 그래서 순서는 "직접 모드 기동 → DNS 레코드 교체 → 인증서 확인 →
+캐시 대기 → 터널 정리"다. **DNS 레코드 교체와 터널의 라우팅 정리는 따로 한다.** 라우팅(호스트 → `web:8080`)은 옛 DNS 응답을
+캐시한 방문자를 받을 수 있는 유일한 길이므로 캐시가 다 지난 뒤에 지운다.
+
+예상 중단 구간 — 보장하지 않는다:
+
+- 새 응답(A)을 받은 방문자: DNS를 바꾼 뒤 첫 인증서가 발급될 때까지 인증서 오류나 연결 실패. 보통 수십 초지만 Let's Encrypt가
+  늦거나 80이 밖에서 닿지 않으면 그만큼 길어진다.
+- 옛 응답(Cloudflare 주소)을 캐시한 방문자: 옛 TTL(프록시 레코드는 5분) 동안 Cloudflare 엣지로 간다. 레코드가 더는 프록시가 아닐 때
+  엣지가 그 이름을 여전히 터널로 보내는지는 확인하지 않았다 — 그 5분도 실패할 수 있다고 본다. 터널을 살려 두는 것은 보내 줄 때
+  받기 위해서다. web은 두 앞문을 함께 받으므로 어느 쪽으로 와도 한도가 맞다.
+
+방문자가 적은 시간(예: 매일 초기화 직후)에 한다.
 
 1. 위의 "2021 머신에서 켜기"를 한다. caddy는 이름이 아직 터널을 가리키므로 발급에 실패하고 재시도한다(로그의 `challenge failed`는 정상).
 2. 밖(휴대폰 테더링에 붙인 노트북 등)에서 `nc -vz 121.159.177.248 80`과 `443`이 열리는지 본다 — 공유기 포트포워딩 확인.
    같은 LAN 안에서는 공유기의 NAT 루프백 여부에 따라 결과가 다르므로 밖에서 본다.
-3. Cloudflare 대시보드: Zero Trust → Tunnels → `wireview-demo` → Public Hostname에서 `wireview-demo.itda.work`를 지운다(CNAME이 사라진다).
-   곧바로 DNS → Records에 **A** `wireview-demo` → `121.159.177.248`, Proxy status **DNS only**(회색 구름), TTL 1분을 만든다.
-   AAAA 레코드는 두지 않는다(이 회선의 IPv6는 열지 않았다).
+3. **DNS 레코드만** 바꾼다: Cloudflare 대시보드 → itda.work → DNS → Records의 `wireview-demo` CNAME(`<터널 UUID>.cfargotunnel.com`,
+   주황 구름)을 편집해 **A** `121.159.177.248`, Proxy status **DNS only**(회색 구름), TTL 1분으로 바꾼다. 편집 화면이 유형을 바꾸게
+   하지 않으면 **이 화면에서** CNAME만 지우고 곧바로 A를 만든다. AAAA 레코드는 두지 않는다(이 회선의 IPv6는 열지 않았다).
+   터널이 어떻게 만들어졌는지에 따라 손대지 않을 곳이 다르다:
+   - **(a) 대시보드의 Public Hostname으로 만든 터널**(위 "Cloudflare Tunnel 연결"): Zero Trust → Tunnels → Public Hostname에서
+     **지우지 않는다.** 거기서 지우면 DNS 레코드와 함께 터널의 호스트 규칙(`wireview-demo.itda.work` → `http://web:8080`)도 사라져,
+     cloudflared가 돌고 있어도 옛 주소로 온 요청이 catch-all(`http_status:404`)에 떨어진다.
+   - **(b) CLI로 만든 터널**(2021 머신의 지금 터널: `cloudflared tunnel create` + `cloudflared tunnel route dns`, 그 머신의 compose
+     override가 cloudflared를 `--url http://web:8080`으로 띄운다): 호스트 규칙이 없고 모든 호스트를 web으로 보낸다. CNAME을 A로
+     바꾸기만 하면 된다. `route dns`가 만든 것은 그 CNAME 하나다.
 4. `brew services restart caddy` — 백오프를 기다리지 않고 바로 발급한다. 로그에 `certificate obtained successfully`.
-5. 밖에서 `uv run python demo/smoke.py https://wireview-demo.itda.work --out /tmp/demo-smoke`. 응답 헤더에 `cf-ray`가 없어야 직접이다.
-   Caddy의 접근 로그(`/opt/homebrew/var/log/caddy.log`)의 `remote_ip`가 방문자들의 공인 주소여야 한다 — 모두 같은 사설 주소면 멈춘다.
-6. 옛 CNAME의 TTL(프록시 레코드는 5분)이 지나면 `docker compose stop cloudflared`. 이후의 `up`에는 `--profile tunnel`을 빼고 `-f compose.direct.yaml`을 붙인다.
+5. 직접 HTTPS를 확인한다. 밖에서 `uv run python demo/smoke.py https://wireview-demo.itda.work --out /tmp/demo-smoke`.
+   응답 헤더에 `cf-ray`가 없어야 직접이다(`dig +short wireview-demo.itda.work`가 `121.159.177.248`인 리졸버에서 본다).
+   Caddy의 접근 로그(`/opt/homebrew/var/log/caddy.log`)의 `remote_ip`가 방문자들의 공인 주소여야 한다 — 모두 같은 사설 주소면 멈추고
+   아래 "되돌리기"를 한다.
+6. 캐시를 기다린다: 3번부터 옛 TTL(5분)에 여유를 더해 10분. 그동안 `docker compose logs -f cloudflared`에 요청이 지나가는지 보면
+   옛 경로가 아직 쓰이는지 알 수 있다.
+7. 그 뒤에 터널을 정리한다.
+   - (a): `docker compose stop cloudflared`, 그다음 Public Hostname을 지운다(DNS는 이미 A이므로 지울 CNAME이 없다 — 대시보드가 A를 지우겠다고
+     하면 멈춘다).
+   - (b): `docker compose stop cloudflared`. 터널 자체(`cloudflared tunnel delete`)는 되돌릴 일이 없다고 확신할 때 지운다.
 
-되돌리기: Public Hostname을 다시 만들고(3번의 반대, A 레코드는 지운다) `docker compose --profile tunnel up -d`. 호스트 Caddy는
-`brew services stop caddy`. web의 8081은 남아 있어도 해가 없다(루프백).
+   이후의 `up`에는 `--profile tunnel`을 빼고 `-f compose.direct.yaml`을 붙인다.
+
+되돌리기도 같은 원칙이다 — 새 길을 먼저 열고, 레코드를 바꾸고, 캐시가 지난 뒤에 옛 길을 닫는다:
+
+1. 터널을 띄운다: `docker compose --profile tunnel up -d`, 로그의 "Registered tunnel connection". (a)에서 Public Hostname을 이미
+   지웠다면 다시 만들어야 하는데, 대시보드는 같은 이름의 레코드(A)가 있으면 만들기를 거절할 수 있다. 그때는 A를 지우고 곧바로
+   Public Hostname을 만든다 — 그것이 CNAME을 만들므로 2번이 함께 일어난다.
+2. DNS → Records에서 A를 CNAME `<터널 UUID>.cfargotunnel.com`, **Proxied**(주황 구름)로 바꾼다. (b)는
+   `cloudflared tunnel route dns --overwrite-dns <터널 이름> wireview-demo.itda.work`도 같다.
+3. A의 TTL(1분)에 여유를 더해 5분 동안 호스트 Caddy를 그대로 둔다 — 옛 A를 캐시한 방문자가 아직 직접 들어온다.
+   `cf-ray`가 붙는지 확인한 뒤 `brew services stop caddy`. web의 8081은 남아 있어도 해가 없다(루프백).
 
 ### 동적 IP
 
 가정용 회선의 공인 IP는 통신사가 바꿀 수 있다. 바뀌면 A 레코드가 남의 주소를 가리킨다. `compose.direct.yaml`의 `ddns`
 (프로필 `ddns`)가 5분마다 `https://1.1.1.1/cdn-cgi/trace`로 이 회선의 주소를 묻고, 다르면 레코드의 주소만 바꾼다(`demo/ddns.py`).
-레코드를 새로 만들지 않고, 프록시를 켜거나 끄지 않으며, CNAME(터널의 것)은 건드리지 않는다 — 3번에서 손으로 만든 A 레코드가 정확히
+레코드를 새로 만들지 않고, 프록시를 켜거나 끄지 않으며, CNAME(터널의 것)은 건드리지 않는다 — "터널에서 옮기기" 3번에서 손으로 바꾼 A 레코드가 정확히
 하나일 때만 움직인다.
 
+토큰은 `.env`가 아니라 `ddns.env`에 둔다 — `.env`는 app과 janitor에도 가므로, DNS를 고칠 수 있는 토큰이 웹에 닿는
+프로세스의 환경에 있지 않게 ddns 서비스만 `ddns.env`를 읽는다(gitignore).
+
 ```bash
-# .env: CLOUDFLARE_ZONE_ID(itda.work 개요 화면 오른쪽), CLOUDFLARE_DNS_TOKEN
+cp ddns.env.example ddns.env   # CLOUDFLARE_ZONE_ID(itda.work 개요 화면 오른쪽), CLOUDFLARE_DNS_TOKEN
 #   토큰: My Profile → API Tokens → Create Token → "Edit zone DNS" 템플릿,
 #   Zone Resources는 Include → Specific zone → itda.work 하나만
 docker compose -f compose.yaml -f compose.direct.yaml --profile ddns run --rm ddns python demo/ddns.py --once   # 토큰 시험
@@ -373,7 +410,7 @@ cd demo && docker compose down
 | `seed.py`, `management/commands/` | 시드·초기화(`demo_reset`), janitor(`demo_janitor`) |
 | `Dockerfile`, `Dockerfile.dockerignore`, `requirements.txt` | 이미지. 의존성 버전은 저장소의 `uv.lock`을 따른다 |
 | `compose.yaml`, `Caddyfile`, `.env.example` | 런타임 |
-| `compose.direct.yaml`, `Caddyfile.direct`, `ddns.py` | 직접 공개 모드: web의 8081, 호스트의 Caddy, A 레코드 갱신 |
+| `compose.direct.yaml`, `Caddyfile.direct`, `ddns.py`, `ddns.env.example` | 직접 공개 모드: web의 8081, 호스트의 Caddy, A 레코드 갱신 |
 | `smoke.py`, `abuse.py` | 띄운 데모의 브라우저 스모크(https면 위조 헤더 검사 포함), 남용 탐침 |
 
 목록의 썸네일은 #213의 `examples/<예제>/media/<예제>.webp`다 — `STATICFILES_DIRS`가 `demo/media/`로 모아 Caddy가

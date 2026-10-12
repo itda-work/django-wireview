@@ -17,10 +17,12 @@ services:
     profiles: [ddns]
     image: wireview-demo-app:${DEMO_TAG:-latest}
     command: ["python", "demo/ddns.py"]
+    # The DNS token goes to this service only: ddns.env, not the .env that app and janitor read
+    env_file:
+      - path: ddns.env
+        required: false
     environment:
       DEMO_HOST: ${DEMO_HOST:-wireview-demo.itda.work}
-      CLOUDFLARE_ZONE_ID: ${CLOUDFLARE_ZONE_ID:-}
-      CLOUDFLARE_DNS_TOKEN: ${CLOUDFLARE_DNS_TOKEN:-}
     restart: unless-stopped
     logging:
       driver: json-file

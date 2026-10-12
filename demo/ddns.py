@@ -10,7 +10,8 @@ only), so this never creates a name, never touches a CNAME (the tunnel's), and n
 Cloudflare's proxy on or off.
 
 The token needs Zone -> DNS -> Edit on the demo's zone only (CLOUDFLARE_DNS_TOKEN, with
-CLOUDFLARE_ZONE_ID). Standard library only: it runs in the app image.
+CLOUDFLARE_ZONE_ID, both from demo/ddns.env, which only this service reads). Standard library
+only: it runs in the app image.
 """
 
 from __future__ import annotations

@@ -8,8 +8,8 @@
 # visitor. This Caddy sees the visitor's TCP peer address and is the only one that does.
 #
 # The visitor is that address and nothing a client sent: no trusted_proxies here, so {client_ip}
-# is the peer, X-Forwarded-For and X-Forwarded-Proto are written afresh, and X-Real-IP and
-# CF-Connecting-IP are replaced or dropped before the stack sees them. The stack's Caddy takes
+# is the peer, X-Forwarded-For and X-Forwarded-Proto are written afresh, and X-Real-IP is
+# replaced and CF-Connecting-IP, Forwarded and True-Client-IP dropped before the stack sees them. The stack's Caddy takes
 # X-Real-IP on its port 8081 (demo/Caddyfile), which compose.direct.yaml opens on the host's
 # loopback only: this Caddy is the one that reaches it.
 #
@@ -55,5 +55,8 @@
 		# The visitor, for the demo's rate limits (demo/limits.py): the TCP peer only
 		header_up X-Real-IP {remote_host}
 		header_up -CF-Connecting-IP
+		# Nothing reads these, but whatever comes to read them must not believe the visitor
+		header_up -Forwarded
+		header_up -True-Client-IP
 	}
 }

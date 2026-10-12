@@ -735,7 +735,9 @@ def test_the_direct_front_takes_the_visitor_from_the_connection_only():
     # Caddy writes X-Forwarded-For and X-Forwarded-Proto afresh
     assert not [line for line in lines if line.startswith(("trusted_proxies", "client_ip_headers"))]
     assert "header_up X-Real-IP {remote_host}" in lines
-    assert "header_up -CF-Connecting-IP" in lines
+    # Every other header that names a client is dropped, for whatever comes to read it
+    for name in ("CF-Connecting-IP", "Forwarded", "True-Client-IP"):
+        assert f"header_up -{name}" in lines, name
     # Only to the stack's loopback port, the one compose.yaml opens
     assert [line for line in lines if line.startswith("reverse_proxy")] == [
         "reverse_proxy 127.0.0.1:{$DEMO_DIRECT_PORT:8081} {"
@@ -770,6 +772,29 @@ def test_each_front_door_of_the_stack_trusts_its_own_header_only():
         assert name in base["services"] or service.get("profiles") == ["ddns"], name
 
 
+def test_the_dns_token_reaches_the_ddns_updater_only():
+    """The token that edits the zone's DNS is in ddns.env, which no service but ddns reads."""
+    import yaml
+
+    base = yaml.safe_load((ROOT / "demo" / "compose.yaml").read_text())
+    direct = yaml.safe_load((ROOT / "demo" / "compose.direct.yaml").read_text())
+    ddns = direct["services"]["ddns"]
+    assert ddns["env_file"] == [{"path": "ddns.env", "required": False}]
+    assert not [name for name in ddns.get("environment", {}) if name.startswith("CLOUDFLARE_")]
+    # app and janitor read .env, and it no longer has the token's place
+    assert base["x-app"]["env_file"] == ".env"
+    for name, service in {**base["services"], **direct["services"]}.items():
+        if name != "ddns":
+            assert "ddns.env" not in json.dumps(service), name
+    example = (ROOT / "demo" / ".env.example").read_text()
+    assert "CLOUDFLARE_DNS_TOKEN" not in example and "CLOUDFLARE_ZONE_ID" not in example
+    ddns_example = (ROOT / "demo" / "ddns.env.example").read_text()
+    assert "CLOUDFLARE_DNS_TOKEN=\n" in ddns_example and "CLOUDFLARE_ZONE_ID=\n" in ddns_example
+    # Kept off git and out of the image
+    assert "ddns.env" in (ROOT / "demo" / ".gitignore").read_text().splitlines()
+    assert "demo/ddns.env" in (ROOT / "demo" / "Dockerfile.dockerignore").read_text().splitlines()
+
+
 @pytest.mark.skipif(not shutil.which("caddy"), reason="needs the caddy binary")
 @pytest.mark.parametrize("tls", ["acme", "internal"])
 def test_the_direct_front_adapts_to_what_its_comments_say(tls, tmp_path):
@@ -789,7 +814,7 @@ def test_the_direct_front_adapts_to_what_its_comments_say(tls, tmp_path):
     assert server["protocols"] == ["h1", "h2", "h3"]
     text = json.dumps(server)
     assert '"X-Real-Ip": ["{http.request.remote.host}"]' in text
-    assert '"delete": ["CF-Connecting-IP"]' in text
+    assert '"delete": ["CF-Connecting-IP", "Forwarded", "True-Client-IP"]' in text
     assert '"dial": "127.0.0.1:8081"' in text
     policies = config["apps"].get("tls", {}).get("automation", {}).get("policies", [])
     internal = [issuer["module"] for policy in policies for issuer in policy.get("issuers", [])] == ["internal"]
