@@ -12,6 +12,7 @@ is tests/test_docs_site_build.py.
 
 from __future__ import annotations
 
+import sys
 import threading
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -89,7 +90,10 @@ def _code_blocks(source: str) -> list[str]:
 
 
 def _clipboard(page, reader: str = "navigator.clipboard") -> str:
-    return page.evaluate(f"{reader}.readText()")
+    # The page writes the lines with \n; Chromium on Windows hands the system clipboard \r\n,
+    # as every Windows program pastes them
+    text = page.evaluate(f"{reader}.readText()")
+    return text.replace("\r\n", "\n") if sys.platform == "win32" else text
 
 
 def test_every_code_block_has_a_copy_button(docs, site):

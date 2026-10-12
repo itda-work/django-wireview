@@ -39,7 +39,13 @@ from wireview.core.meta import WireviewMeta
 from wireview.core.rendered import PROTOCOL_VERSION
 from wireview.core.state import sign_state
 
-pytestmark = [pytest.mark.e2e, pytest.mark.slow]
+pytestmark = [
+    pytest.mark.e2e,
+    pytest.mark.slow,
+    # send_signal(SIGTERM) is TerminateProcess there: the server ends at once and runs no shutdown
+    # at all, so there is no drain to observe. The guide's drain is the POSIX signal's
+    pytest.mark.skipif(sys.platform == "win32", reason="SIGTERM is TerminateProcess on Windows: no shutdown runs"),
+]
 
 #: How long the slow hook takes: well past the quick one's end, well inside the time limit
 SLOW = 1.5

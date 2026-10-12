@@ -53,6 +53,8 @@ __all__ = ["UvicornThread", "serve", "server_errors"]
 #: How long to wait for the server to come up, and to go away again.
 STARTUP_TIMEOUT = 15.0
 SHUTDOWN_TIMEOUT = 15.0
+#: How long Uvicorn's shutdown may wait for its listening sockets to close: well inside SHUTDOWN_TIMEOUT
+GRACEFUL_SHUTDOWN = 5
 #: Rounds of ``_cancel_what_is_left``: a task's end may start another, and that one must end too
 CANCEL_ROUNDS = 20
 
@@ -118,8 +120,19 @@ class UvicornThread(threading.Thread):
             # deployment that skipped docs/DEPLOYMENT.md would run. It is off in
             # production for BREACH (#206), which needs an observer a loopback
             # test server has none of.
+            #
+            # timeout_graceful_shutdown bounds the one wait force_exit leaves, the listening
+            # server's wait_closed(): it waits until every connection has detached. On
+            # Windows a connection the browser reset raises ConnectionResetError in the
+            # proactor's _call_connection_lost before it detaches, so without a bound the
+            # thread waited for good and the test failed "did not stop" (#217).
             config = UvicornConfig(
-                self.application, host=self.host, port=self.port, log_level="warning", log_config=None
+                self.application,
+                host=self.host,
+                port=self.port,
+                log_level="warning",
+                log_config=None,
+                timeout_graceful_shutdown=GRACEFUL_SHUTDOWN,
             )
             self.server = Uvicorn(config)
             self.server.install_signal_handlers = lambda *args, **kwargs: None
