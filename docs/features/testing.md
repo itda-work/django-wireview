@@ -284,6 +284,30 @@ view = await mount(XAdminPanel, user=staff, live_session="admin")
 페이지**에 마운트한 것이고, 그것은 `Meta.live_sessions`를 선언한 컴포넌트가 거절되는 상황이다.
 경계의 `on_mount` 훅도 이때 돈다. 자세한 것은 [live_session](./live-session.md).
 
+## Windows에서 브라우저 테스트
+
+`daphne`를 `INSTALLED_APPS`에 둔 프로젝트(스타터 프로젝트가 그렇다)에서 pytest-playwright로 브라우저 테스트를 쓰면,
+Windows에서는 모든 브라우저 테스트가 픽스처에서 `NotImplementedError`로 멈춘다. daphne는 import될 때 Twisted를 위해
+selector 루프 정책을 거는데, Windows의 selector 루프는 서브프로세스를 띄우지 못한다. 그런데 Playwright는 드라이버를
+서브프로세스로 띄운다. 프로젝트 루트의 `conftest.py`에서 daphne를 먼저 import하고 정책을 기본값으로 되돌린다.
+
+```python
+# conftest.py
+import asyncio
+import sys
+import warnings
+
+if sys.platform == "win32":
+    import daphne  # noqa: F401  -- its import sets the selector policy; Django's later import changes nothing
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)  # Python 3.14 deprecates the policy API
+        asyncio.set_event_loop_policy(None)  # the default: the proactor loop, which starts subprocesses
+```
+
+daphne 서버 자체는 따로 띄운 프로세스에서 돌고 그 프로세스는 정책을 스스로 걸므로, 테스트 프로세스의 정책을 되돌려도
+서버에는 영향이 없다. `mount()`만 쓰는 테스트에는 필요 없다. 이 저장소의 루트 `conftest.py`가 같은 일을 한다(#217).
+
 ## 주의사항
 
 - **async ORM으로 쓰는 테스트는 `@pytest.mark.django_db(transaction=True)`.** 그냥 `django_db`의 롤백은
