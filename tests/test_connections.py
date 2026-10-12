@@ -1166,6 +1166,19 @@ class CnKeptRows(InlineTemplate, Component):
         self.show = False
 
 
+class CnKeptPeople(CnKeptRows):
+    """The same page with a producer per person: one user before the rows, a row per user (#212)."""
+
+    source: t.ClassVar[str] = (
+        "<section {% tag_header %}>"
+        '{% if this.show %}{% component "CnTyping" name="other" %}{% endif %}'
+        '{% for row in rows %}{% component "CnTyping" name=row %}{% endfor %}</section>'
+    )
+
+    async def joined(self):
+        self.rows = ["ann", "dana"]
+
+
 def drawn_producer_states(node: t.Any) -> list[tuple[str, str]]:
     """The id and signed state of each CnTyping a render drew, in a part or a loop's items."""
     if isinstance(node, str):
@@ -1174,10 +1187,12 @@ def drawn_producer_states(node: t.Any) -> list[tuple[str, str]]:
     return [found for value in values for found in drawn_producer_states(value)]
 
 
-async def join_kept_rows(communicator: WebsocketCommunicator, show: bool) -> list[str]:
+async def join_kept_rows(
+    communicator: WebsocketCommunicator, show: bool, page_class: type[CnKeptRows] = CnKeptRows
+) -> list[str]:
     """Join the page and every producer its first render drew, as the page does; their ids."""
-    page = CnKeptRows(user=AnonymousUser(), wire=WireviewMeta(params={}), id="a-page", show=show)
-    await join_signed(communicator, "CnKeptRows", sign_state(page))
+    page = page_class(user=AnonymousUser(), wire=WireviewMeta(params={}), id="a-page", show=show)
+    await join_signed(communicator, page_class.__name__, sign_state(page))
     render = await render_of(communicator, "a-page")
     ids = await join_drawn_producers(communicator, render)
     for producer_id, state in drawn_producer_states(render):
@@ -1194,7 +1209,7 @@ async def test_a_tab_that_reconnects_replaces_what_producers_a_kept_part_shows_l
     their numbers, 1 and 2, they left the gap the hidden one left; the first
     pass on the new socket drew them as 0 and 1, and the meta under 2 stayed
     on bob's list after the tab closed. Now they move to 0 and 1 when the
-    hidden one goes, leaving under the old names and joining under the new.
+    hidden one goes, their metas moving from the old names to the new.
     """
     bob = await connect(CnOnline, "b-list", name="bob")
     lost = back = carol = None
@@ -1228,27 +1243,56 @@ async def test_a_tab_that_reconnects_replaces_what_producers_a_kept_part_shows_l
                 await communicator.disconnect()
 
 
-async def test_producers_a_kept_part_shows_keep_the_user_while_their_names_move():
-    """The rows a temporary assign keeps move to the hidden one's number and stay listed, typing still (#212)."""
+async def renders_until(communicator: WebsocketCommunicator, text: str, limit: int = 40) -> list[str]:
+    """Every render up to the first whose payload contains ``text``, that one last."""
+    renders = []
+    for _ in range(limit):
+        message = await communicator.receive_json_from(timeout=5)
+        if message["command"] == "render":
+            renders.append(json.dumps(message["payload"]))
+            if text in renders[-1]:
+                return renders
+    raise AssertionError(f"no render with {text!r} among {renders}")
+
+
+@pytest.mark.parametrize(
+    ("page", "typist", "stays", "listed"),
+    [(CnKeptRows, -1, "ann-typing", '"online-3"'), (CnKeptPeople, 1, "dana-online", '"online-4"')],
+    ids=["typing-pair", "single-user"],
+)
+async def test_producers_a_kept_part_shows_keep_the_user_while_their_names_move(page, typist, stays, listed):
+    """The rows a temporary assign keeps move to the hidden one's number and stay listed, typing still (#212).
+
+    In every render bob gets, not only the last: a tracker takes a move as one
+    change. When the moves were a leave and a join each, a list between them
+    went without the user (single-user: ann, then dana), or showed the typing
+    row's user online (typing-pair).
+    """
     bob = await connect(CnOnline, "b-list", name="bob")
     ann = await open_socket(ANN_TAB)
     carol = None
     try:
-        producers = await join_kept_rows(ann, show=True)
-        await render_containing(bob, "ann-online")
-        await event(ann, producers[2], "typing")
-        await render_containing(bob, "ann-typing")
+        producers = await join_kept_rows(ann, show=True, page_class=page)
+        await render_containing(bob, '"online-3"' if page is CnKeptPeople else "ann-online", limit=40)
+        await event(ann, producers[typist], "typing")
+        await render_containing(bob, "ann-typing", limit=40)
         await event(ann, "a-page", "hide")
         await render_of(ann, "a-page")
         await leave(ann, producers[0])
+        # The answer to another event on the socket comes after the leave
+        await event(ann, "a-page", "hide")
+        await render_of(ann, "a-page")
         carol = await connect(CnTyping, "c-typing", name="carol")
-        final = await render_containing(bob, "carol-online", limit=40)
-        assert "ann-typing" in final and '"online-3"' in final, final
+        renders = await renders_until(bob, "carol-online")
+        for rendered in renders:
+            assert "ann-typing" in rendered and stays in rendered and "ann-online" not in rendered, renders
+        assert listed in renders[-1] and "other-" not in renders[-1], renders
 
         # Each row leaves under the name it has now: with both gone, ann is too
         await ann.disconnect()
         ann = None
-        assert "ann-" not in await render_containing(bob, '"online-2"', limit=40)
+        final = await render_containing(bob, '"online-2"', limit=40)
+        assert "ann-" not in final and "dana-" not in final, final
     finally:
         for communicator in (bob, ann, carol):
             if communicator is not None:

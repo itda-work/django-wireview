@@ -565,7 +565,7 @@ class ComponentRepository:
         them as the pass before it did. That holds for the ones a part kept for
         a reset temporary assign shows too (#111): they take their place where
         the part is (``keep_drawn``), and one whose number moves is renamed --
-        its producer leaves under the old name and joins under the new one
+        its producer moves its meta from the old name to the new one
         (``take_renumbered``). Held to their numbers, they left a gap the
         reconnect's pass closed, and the meta under the number past it stayed.
 
