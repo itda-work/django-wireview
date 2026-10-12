@@ -261,7 +261,7 @@ def test_no_test_module_runs_a_server_thread_of_its_own():
     exempt = {pathlib.Path(e2e_server.__file__).resolve(), pathlib.Path(__file__).resolve()}
     pattern = re.compile(r"class UvicornThread\b|@override_settings\([^)]*\)\s*\n\s*def run\(")
     offenders = [
-        str(path.relative_to(root))
+        path.relative_to(root).as_posix()
         for path in list(root.glob("tests/**/*.py")) + list(root.glob("examples/**/*.py"))
         if path.resolve() not in exempt and pattern.search(path.read_text(encoding="utf-8"))
     ]
@@ -284,7 +284,7 @@ def test_no_browser_suite_waits_on_its_own_terms():
     root = pathlib.Path(__file__).resolve().parent.parent
     exempt = {root / "tests" / "testproj" / "e2e_browser.py", pathlib.Path(__file__).resolve()}
     offenders = [
-        str(path.relative_to(root))
+        path.relative_to(root).as_posix()
         for path in list(root.glob("tests/**/*.py")) + list(root.glob("examples/**/*.py"))
         if path.resolve() not in exempt and "page.wait_for_selector(" in path.read_text(encoding="utf-8")
     ]

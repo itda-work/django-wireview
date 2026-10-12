@@ -1,0 +1,4 @@
+# Text files are checked out with LF everywhere, Windows included (#217). Git for Windows turns LF
+# into CRLF by default (core.autocrlf), and then a file differs from the one the tests, the hashes
+# of the documentation site bundle and the template digests the editor compares were made from.
+* text=auto eol=lf

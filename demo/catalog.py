@@ -7,6 +7,7 @@ under ``demo/media/`` (``STATICFILES_DIRS``); the list shows it when it is there
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from django.contrib.staticfiles import finders
@@ -36,7 +37,8 @@ class Example:
     @property
     def media(self) -> str | None:
         path = f"demo/media/{self.slug}.webp"
-        return static(path) if finders.find(path) else None
+        # A prefixed STATICFILES_DIRS entry is matched with os.sep: on Windows "demo/media/…" finds nothing
+        return static(path) if finders.find(path.replace("/", os.sep)) else None
 
 
 EXAMPLES = (

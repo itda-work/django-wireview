@@ -405,7 +405,7 @@ def test_a_fragment_is_scanned_for_the_plain_form():
     assert _fragment_offenders(block) == ["list(Item.objects.all())"]
 
 
-@pytest.mark.parametrize("path", SOURCES, ids=lambda p: str(p.relative_to(ROOT)))
+@pytest.mark.parametrize("path", SOURCES, ids=lambda p: p.relative_to(ROOT).as_posix())
 def test_no_handler_runs_a_query_through_a_property(path):
     offenders = _property_offenders(_blocks(path))
     assert not offenders, (
@@ -415,7 +415,7 @@ def test_no_handler_runs_a_query_through_a_property(path):
     )
 
 
-@pytest.mark.parametrize("path", SOURCES, ids=lambda p: str(p.relative_to(ROOT)))
+@pytest.mark.parametrize("path", SOURCES, ids=lambda p: p.relative_to(ROOT).as_posix())
 def test_no_example_evaluates_a_queryset_on_the_event_loop(path):
     offenders = []
     for block in _blocks(path):

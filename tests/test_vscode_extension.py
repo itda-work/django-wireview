@@ -661,6 +661,7 @@ async def test_a_new_process_whose_file_is_one_line_of_none_clears_the_number_of
     await sync_to_async(view.render)()
     # What a process before this one wrote: the same lines under another process's name
     [written] = list(records.glob("*.jsonl"))
+    render_queries_file._reset()  # that process has ended; Windows renames no file a process holds open
     written.rename(records / "20200101T000000-1.1.jsonl")
     assert _hints(records, (book, "template")) == {book: {2: "⚠ 3× same query · 4 queries"}}
 

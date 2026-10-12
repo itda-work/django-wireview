@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 import types
 from io import StringIO
 from pathlib import Path
@@ -31,6 +32,33 @@ def _check(*args: str) -> tuple[int, str]:
     except CommandError as error:
         return error.returncode, out.getvalue()
     return 0, out.getvalue()
+
+
+def _fake_node(tmp_path: Path, version: str, failure: str | None = None) -> Path:
+    """A node that prints ``version``; asked for more than --version, it prints ``failure`` to stderr and exits 1.
+
+    Written in Python and started through a launcher each system runs: a ``#!/bin/sh`` file is no
+    program to Windows (WinError 193), and a ``.cmd`` file is none to the others.
+    """
+    script = tmp_path / "fake_node.py"
+    script.write_text(
+        "import sys\n"
+        f"version, failure = {version!r}, {failure!r}\n"
+        "if failure is None or sys.argv[1:] == ['--version']:\n"
+        "    print(version)\n"
+        "    sys.exit(0)\n"
+        "print(failure, file=sys.stderr)\n"
+        "sys.exit(1)\n",
+        encoding="utf-8",
+    )
+    if sys.platform == "win32":
+        launcher = tmp_path / "node.cmd"
+        launcher.write_text(f'@"{sys.executable}" "{script}" %*\r\n', encoding="utf-8")
+    else:
+        launcher = tmp_path / "node"
+        launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n', encoding="utf-8")
+        launcher.chmod(0o755)
+    return launcher
 
 
 def _page(tmp_path: Path, text: str, name: str = "page.html") -> Path:
@@ -125,11 +153,7 @@ def test_a_directory_without_templates_cannot_run(tmp_path):
 @pytest.mark.unit
 def test_a_crash_in_the_diagnostics_is_not_a_finding(tmp_path):
     """node exits 1 on an uncaught error too; only a report means the templates were checked."""
-    fake = tmp_path / "node"
-    fake.write_text(
-        '#!/bin/sh\n[ "$1" = --version ] && echo v24.0.0 && exit 0\necho boom >&2\nexit 1\n', encoding="utf-8"
-    )
-    fake.chmod(0o755)
+    fake = _fake_node(tmp_path, "v24.0.0", failure="boom")
     _page(tmp_path, "fine")
     with pytest.raises(CommandError, match="the diagnostics failed:\nboom") as raised:
         call_command("wireview_check_templates", str(tmp_path), "--node", str(fake))
@@ -143,9 +167,7 @@ def test_a_crash_in_the_diagnostics_is_not_a_finding(tmp_path):
 )
 def test_a_node_that_cannot_run_the_diagnostics_is_refused(tmp_path, said, message):
     """Exit 2, not 1: a CI must not read "node is too old" as "the templates are wrong"."""
-    fake = tmp_path / "node"
-    fake.write_text(f"#!/bin/sh\necho {said}\n", encoding="utf-8")
-    fake.chmod(0o755)
+    fake = _fake_node(tmp_path, said)
     with pytest.raises(CommandError, match=message) as raised:
         call_command("wireview_check_templates", str(tmp_path), "--node", str(fake))
     assert raised.value.returncode == 2
@@ -208,7 +230,9 @@ def test_the_sdist_carries_what_the_hook_ships():
     """The wheel is built from the sdist, so the diagnostics have to be in it."""
     hatchling_sdist = pytest.importorskip("hatchling.builders.sdist")
 
-    selected = {f.relative_path for f in hatchling_sdist.SdistBuilder(str(ROOT)).recurse_included_files()}
+    selected = {
+        Path(f.relative_path).as_posix() for f in hatchling_sdist.SdistBuilder(str(ROOT)).recurse_included_files()
+    }
 
     assert "editors/vscode/scripts/diagnose.ts" in selected
     assert "editors/vscode/src/core/diagnostics.ts" in selected

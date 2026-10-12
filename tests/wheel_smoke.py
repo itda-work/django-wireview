@@ -88,7 +88,7 @@ with tempfile.TemporaryDirectory() as target:
         made / ".gitignore",
     ]
     if not all(path.is_file() for path in expected):
-        sys.exit(f"the starter template made {sorted(str(p.relative_to(made)) for p in made.rglob('*'))}")
+        sys.exit(f"the starter template made {sorted(p.relative_to(made).as_posix() for p in made.rglob('*'))}")
 
 # The template check runs the diagnostics the wheel ships, not the checkout's
 # editors/vscode (#179): a clean template passes and a broken one fails with 1.

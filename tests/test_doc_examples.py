@@ -484,7 +484,8 @@ def _component_templates() -> list[tuple[str, str]]:
     """(where, template) for each tutorial block and example template that is a component's own."""
     found = [(where, code) for where, code in HTML if where.startswith("docs/tutorials/")]
     found += [
-        (str(path.relative_to(ROOT)), path.read_text(encoding="utf-8")) for path in (ROOT / "examples").rglob("*.html")
+        (path.relative_to(ROOT).as_posix(), path.read_text(encoding="utf-8"))
+        for path in (ROOT / "examples").rglob("*.html")
     ]
     return [(where, code) for where, code in found if "tag_header" in code]
 
@@ -622,7 +623,7 @@ def _refused_bindings() -> tuple[list[str], set[tuple[str, str]]]:
     owned = _framework_names()
     found, seen = [], set()
     for path in BINDING_FILES:
-        where = str(path.relative_to(ROOT))
+        where = path.relative_to(ROOT).as_posix()
         for number, line in enumerate(path.read_text(encoding="utf-8").split("\n"), 1):
             for match in BINDING.finditer(line):
                 name = match.group("on") or match.group("push")

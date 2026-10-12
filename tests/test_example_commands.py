@@ -82,7 +82,7 @@ def _example_readmes() -> list[Path]:
 def _command_blocks() -> list[tuple[str, list[str]]]:
     blocks = []
     for path in [GUIDE, *_example_readmes()]:
-        blocks += _blocks(path.read_text(encoding="utf-8"), str(path.relative_to(ROOT)))
+        blocks += _blocks(path.read_text(encoding="utf-8"), path.relative_to(ROOT).as_posix())
     return blocks + _blocks((ROOT / "README.md").read_text(encoding="utf-8"), "README.md", ROOT_SECTIONS)
 
 

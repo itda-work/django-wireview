@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 import threading
 import typing as t
+import warnings
 
 import pytest
 
@@ -27,6 +29,24 @@ import pytest
 pytest_plugins = ["testproj.warning_guard", "testproj.time_limit", "testproj.row_guard"]
 
 FLAG = "DJANGO_ALLOW_ASYNC_UNSAFE"
+
+if sys.platform == "win32":
+    # daphne sets the selector loop policy on import, for Twisted (testproj and the starter have it
+    # in INSTALLED_APPS). A selector loop on Windows starts no subprocess, and Playwright's sync API
+    # starts its driver as one: every browser test failed in its fixture with NotImplementedError,
+    # as did every test that runs asyncio.create_subprocess_exec. Twisted only runs in the daphne
+    # processes the suite starts, which import daphne -- and set the policy -- for themselves.
+    # Importing it here first means Django's later import finds it done and changes nothing.
+    import daphne  # noqa: F401
+
+    with warnings.catch_warnings():
+        # Python 3.14 deprecates the policy API; None is the default policy (proactor) until it goes
+        warnings.simplefilter("ignore", DeprecationWarning)
+        asyncio.set_event_loop_policy(None)
+
+    # Children print in the locale's encoding (cp949 on Korean Windows) unless told otherwise, and
+    # the suite reads their output as UTF-8. Every child inherits this environment.
+    os.environ.setdefault("PYTHONUTF8", "1")
 
 # Nothing the suite renders goes to the editor's file (#188), in this process or in
 # the servers it starts in others (the starter's runserver, the upload workers):

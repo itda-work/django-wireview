@@ -238,7 +238,9 @@ def test_the_sdist_holds_the_package_and_nothing_else_of_the_repository():
     """
     hatchling_sdist = pytest.importorskip("hatchling.builders.sdist")
 
-    selected = {f.relative_path for f in hatchling_sdist.SdistBuilder(str(ROOT)).recurse_included_files()}
+    selected = {
+        Path(f.relative_path).as_posix() for f in hatchling_sdist.SdistBuilder(str(ROOT)).recurse_included_files()
+    }
 
     tops = {path.split("/", 1)[0] for path in selected}
     assert tops <= {

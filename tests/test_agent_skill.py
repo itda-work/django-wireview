@@ -5,6 +5,8 @@ a symlink, the wheel carries it, and ``wireview_agent_setup`` installs it into a
 user's project. Each of those three links breaks silently, so they are tested.
 """
 
+import subprocess
+import sys
 import tomllib
 from io import StringIO
 from pathlib import Path
@@ -37,8 +39,24 @@ def test_every_reference_the_skill_links_to_exists():
 
 @pytest.mark.unit
 def test_the_repository_dogfoods_the_canonical_skill():
-    assert DOGFOOD.is_symlink(), ".claude/skills/wireview must be a symlink, not a copy"
-    assert DOGFOOD.resolve() == SKILL.resolve()
+    # Git is asked as well as the disk: a Windows checkout without the right to make symlinks
+    # writes the link as a file holding its target, and the link is still one in the repository.
+    staged = subprocess.run(
+        ["git", "ls-files", "-s", "--", ".claude/skills/wireview"],
+        cwd=ROOT,
+        capture_output=True,
+        check=True,
+        text=True,
+        encoding="utf-8",
+    ).stdout.split()
+    assert staged and staged[0] == "120000", ".claude/skills/wireview must be a symlink, not a copy"
+    target = subprocess.run(
+        ["git", "cat-file", "-p", staged[1]], cwd=ROOT, capture_output=True, check=True, text=True, encoding="utf-8"
+    ).stdout
+    assert (DOGFOOD.parent / target).resolve() == SKILL.resolve()
+    if sys.platform != "win32":
+        assert DOGFOOD.is_symlink(), ".claude/skills/wireview must be a symlink, not a copy"
+        assert DOGFOOD.resolve() == SKILL.resolve()
 
 
 @pytest.mark.unit
@@ -97,7 +115,9 @@ def test_the_sdist_actually_selects_the_skill():
     """
     hatchling_sdist = pytest.importorskip("hatchling.builders.sdist")
 
-    selected = {f.relative_path for f in hatchling_sdist.SdistBuilder(str(ROOT)).recurse_included_files()}
+    selected = {
+        Path(f.relative_path).as_posix() for f in hatchling_sdist.SdistBuilder(str(ROOT)).recurse_included_files()
+    }
 
     assert "skills/wireview/SKILL.md" in selected
     # The wheel is built from the sdist, and the hook that ships the skill into it is this file

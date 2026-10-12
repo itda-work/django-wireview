@@ -223,7 +223,7 @@ class TestComponentsForAnEditor:
         # template_name alone is relative to a directory the editor does not know
         todo = metadata["components"]["XTodoList"]
         assert Path(todo["template_path"]).is_file()
-        assert todo["template_path"].endswith(todo["template_name"])
+        assert Path(todo["template_path"]).as_posix().endswith(todo["template_name"])
 
     def test_every_listed_component_template_is_found(self, metadata):
         # The project's own components: a test module may register one whose template is a made-up name
@@ -640,7 +640,7 @@ class TestTemplateTagsAndFilters:
         # simple_tag registers a closure from django/template/library.py; the docstring and the
         # line an editor wants are the wrapped function's
         on = metadata["template_libraries"]["wireview"]["tags"]["on"]
-        assert on["file_path"].endswith("templatetags/wireview.py")
+        assert Path(on["file_path"]).as_posix().endswith("templatetags/wireview.py")
         assert "Bind an event handler" in on["docstring"]
         line = Path(on["file_path"]).read_text(encoding="utf-8").splitlines()[on["line_number"] - 1]
         assert line.startswith("@register.simple_tag") or line.startswith("def on(")

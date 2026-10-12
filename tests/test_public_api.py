@@ -8,6 +8,7 @@ path in a tutorial is a promise nobody meant to make.
 
 import ast
 import importlib
+import os
 import re
 import subprocess
 import sys
@@ -21,6 +22,14 @@ from wireview import WireviewDeprecationWarning
 pytestmark = pytest.mark.unit
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# A child with nothing of this process's environment: no -W or PYTHONWARNINGS of the run's.
+# Windows cannot start Python without SYSTEMROOT (asyncio's _overlapped fails, WinError 10106).
+CHILD_ENV = {
+    "DJANGO_SETTINGS_MODULE": "testproj.settings",
+    "PYTHONPATH": str(ROOT / "tests"),
+    **{name: os.environ[name] for name in ("SYSTEMROOT",) if name in os.environ},
+}
 
 #: What a reader copies from. docs/design, docs/implementation and docs/legacy
 #: are records of how the library was built and may name its insides.
@@ -103,7 +112,7 @@ def test_an_unknown_name_is_an_attribute_error():
         wireview.NoSuchThing  # noqa: B018
 
 
-@pytest.mark.parametrize("path", USER_FACING, ids=lambda p: str(p.relative_to(ROOT)))
+@pytest.mark.parametrize("path", USER_FACING, ids=lambda p: p.relative_to(ROOT).as_posix())
 def test_the_documentation_imports_only_public_names(path):
     for module, names in _imports(path):
         if module in INTEGRATION_MODULES:
@@ -122,7 +131,7 @@ def _code(path: Path) -> str:
     return text if path.suffix == ".py" else "\n".join(_FENCE.findall(text))
 
 
-@pytest.mark.parametrize("path", USER_FACING, ids=lambda p: str(p.relative_to(ROOT)))
+@pytest.mark.parametrize("path", USER_FACING, ids=lambda p: p.relative_to(ROOT).as_posix())
 def test_the_documentation_uses_only_the_public_part_of_wire(path):
     """``self.wire`` is mostly plumbing (#99).
 
@@ -209,7 +218,7 @@ def test_the_old_module_warns_at_the_line_that_imports_it(tmp_path):
         capture_output=True,
         text=True,
         check=True,
-        env={"DJANGO_SETTINGS_MODULE": "testproj.settings", "PYTHONPATH": str(ROOT / "tests")},
+        env=CHILD_ENV,
         encoding="utf-8",
     )
     assert result.stdout.split() == ["1", "True", "6"]
@@ -240,7 +249,7 @@ def test_importing_the_library_warns_nothing():
         capture_output=True,
         text=True,
         check=False,
-        env={"DJANGO_SETTINGS_MODULE": "testproj.settings", "PYTHONPATH": str(ROOT / "tests")},
+        env=CHILD_ENV,
         encoding="utf-8",
     )
     assert result.returncode == 0, result.stderr
@@ -270,7 +279,7 @@ def test_the_old_module_says_what_has_no_replacement(tmp_path):
         capture_output=True,
         text=True,
         check=True,
-        env={"DJANGO_SETTINGS_MODULE": "testproj.settings", "PYTHONPATH": str(ROOT / "tests")},
+        env=CHILD_ENV,
         encoding="utf-8",
     )
     exported, message = result.stdout.splitlines()

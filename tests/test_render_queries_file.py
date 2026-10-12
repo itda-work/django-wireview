@@ -851,6 +851,7 @@ def test_a_full_segment_gives_way_to_the_next_and_the_one_before_the_last_goes(s
     assert [r["segment"] for r in records] == sorted(r["segment"] for r in records)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows removes no file a process holds open")
 def test_a_removed_segment_is_not_written_again_under_its_name(sink, db):
     _render_plain()
     [first] = list(sink.glob("*.jsonl"))

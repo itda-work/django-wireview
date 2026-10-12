@@ -136,6 +136,18 @@ def test_a_stop_terminates_the_children_it_was_handed(tmp_path):
 
 
 def _alive(pid: int) -> bool:
+    if sys.platform == "win32":
+        # os.kill(pid, 0) is TerminateProcess there: it ends a live child and raises WinError 87 for a gone one
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        handle = kernel32.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+        if not handle:
+            return False
+        try:
+            return kernel32.WaitForSingleObject(handle, 0) == 0x102  # WAIT_TIMEOUT: still running
+        finally:
+            kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

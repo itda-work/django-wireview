@@ -159,7 +159,7 @@ async def test_channel_layer_is_only_touched_by_the_transport_module():
             continue
         text = path.read_text(encoding="utf-8")
         if re.search(r"get_channel_layer\(|\.group_add\(|\.group_discard\(|\.group_send\(", text):
-            offenders.append(str(path.relative_to(root)))
+            offenders.append(path.relative_to(root).as_posix())
     assert offenders == []
 
 

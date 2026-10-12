@@ -55,8 +55,9 @@ pytestmark = pytest.mark.unit
 
 #: A permission-based test proves nothing when the process bypasses permissions.
 needs_permissions = pytest.mark.skipif(
-    hasattr(os, "geteuid") and os.geteuid() == 0,
-    reason="root ignores directory permissions",
+    (hasattr(os, "geteuid") and os.geteuid() == 0) or sys.platform == "win32",
+    # Windows keeps no mode bits on a directory (mkdir(mode=0o500) is writable); denying it takes an ACL
+    reason="root ignores directory permissions, and Windows has none in mode bits",
 )
 
 

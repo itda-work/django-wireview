@@ -72,7 +72,7 @@ def _broken(path: Path) -> list[str]:
     return broken
 
 
-@pytest.mark.parametrize("doc", _documents(), ids=lambda p: str(p.relative_to(ROOT)))
+@pytest.mark.parametrize("doc", _documents(), ids=lambda p: p.relative_to(ROOT).as_posix())
 def test_every_relative_link_and_anchor_resolves(doc: Path):
     assert _broken(doc) == []
 

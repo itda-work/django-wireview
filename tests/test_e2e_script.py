@@ -31,6 +31,10 @@ pytestmark = pytest.mark.unit
 
 DEFAULTS = ["tests", "examples"]
 
+# The script is bash, as are the stubs that stand in for uv and redis-server, and the interrupt is SIGINT.
+# On Windows the E2E suites run as `uv run pytest -m e2e` (examples/README.md) and never through it.
+RUNS_THE_SCRIPT = pytest.mark.skipif(sys.platform == "win32", reason="tests/e2e.sh is a bash script")
+
 
 def run_script(tmp_path: Path, *args: str) -> list[str]:
     """The arguments tests/e2e.sh hands ``uv run pytest`` for ``args``."""
@@ -55,10 +59,12 @@ def paths_in(argv: list[str]) -> list[str]:
     return argv[: argv.index("-m")]
 
 
+@RUNS_THE_SCRIPT
 def test_without_a_path_the_defaults_run(tmp_path):
     assert paths_in(run_script(tmp_path)) == DEFAULTS
 
 
+@RUNS_THE_SCRIPT
 def test_options_and_their_values_are_not_paths(tmp_path):
     # `-k tests` names a directory that exists, as a keyword
     argv = run_script(tmp_path, "-k", "tests or streams", "-x", "-o", "test_time_limit=0", "-k", "tests")
@@ -75,6 +81,7 @@ def test_options_and_their_values_are_not_paths(tmp_path):
         "tests/test_streams_e2e.py::test_dom_id_names_each_item[chromium]",
     ],
 )
+@RUNS_THE_SCRIPT
 def test_a_path_replaces_the_defaults(tmp_path, path):
     argv = run_script(tmp_path, "-k", "dom_id", path)
     assert paths_in(argv) == []
@@ -249,6 +256,7 @@ def assert_gone(run: RedisRun, tmp_path: Path) -> None:
     assert list((tmp_path / "tmp").iterdir()) == []
 
 
+@RUNS_THE_SCRIPT
 def test_without_a_server_it_starts_one_on_a_free_port_and_stops_it(tmp_path, redis_binary):
     if listening(6379):
         pytest.skip("something is on 6379, so the script uses it instead")
@@ -262,6 +270,7 @@ def test_without_a_server_it_starts_one_on_a_free_port_and_stops_it(tmp_path, re
     assert not redis_answers(int(url.rsplit(":", 1)[1]))
 
 
+@RUNS_THE_SCRIPT
 def test_a_named_local_url_without_a_server_gets_one_there(tmp_path, redis_binary):
     port = free_port()
     url = f"redis://localhost:{port}/3"
@@ -272,6 +281,7 @@ def test_a_named_local_url_without_a_server_gets_one_there(tmp_path, redis_binar
     assert not redis_answers(port)
 
 
+@RUNS_THE_SCRIPT
 def test_a_server_already_running_is_used_and_left_running(tmp_path, redis_binary):
     port = free_port()
     server = own(
@@ -298,6 +308,7 @@ def test_a_server_already_running_is_used_and_left_running(tmp_path, redis_binar
         stop_process(server)
 
 
+@RUNS_THE_SCRIPT
 def test_a_failing_suite_still_stops_the_server(tmp_path, redis_binary):
     run = run_redis_script(
         tmp_path, REDIS_SERVER=redis_binary, REDIS_URL=f"redis://127.0.0.1:{free_port()}", STUB_EXIT="3"
@@ -307,6 +318,7 @@ def test_a_failing_suite_still_stops_the_server(tmp_path, redis_binary):
     assert_gone(run, tmp_path)
 
 
+@RUNS_THE_SCRIPT
 @pytest.mark.parametrize("deaf", [False, True], ids=["sleeping", "deaf"])
 def test_an_interrupted_suite_still_stops_the_server(tmp_path, redis_binary, deaf):
     """``deaf``: the suite's process does not die of the SIGINT, as a sleep forked a moment
@@ -330,6 +342,7 @@ def test_an_interrupted_suite_still_stops_the_server(tmp_path, redis_binary, dea
     assert_gone(run, tmp_path)
 
 
+@RUNS_THE_SCRIPT
 def test_without_the_binary_it_says_how_to_get_one(tmp_path):
     missing = tmp_path / "no-redis-server"
     run = run_redis_script(tmp_path, REDIS_SERVER=str(missing), REDIS_URL=f"redis://127.0.0.1:{free_port()}")
@@ -340,6 +353,7 @@ def test_without_the_binary_it_says_how_to_get_one(tmp_path):
     assert run.seen is None
 
 
+@RUNS_THE_SCRIPT
 def test_a_server_is_started_only_on_this_machine(tmp_path):
     # .invalid never resolves (RFC 6761), so nothing answers there, at once.
     run = run_redis_script(tmp_path, REDIS_URL="redis://broker.invalid:6379")
