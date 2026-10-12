@@ -365,11 +365,13 @@ class XCounter(Component):
 | [slots](https://github.com/itda-work/django-wireview/tree/main/examples/slots) | 내용을 호출자가 채우는 레이아웃 컴포넌트 | <img src="https://raw.githubusercontent.com/itda-work/django-wireview/main/examples/slots/media/slots.png" width="200" alt="slots"> |
 | [hooks](https://github.com/itda-work/django-wireview/tree/main/examples/hooks) | 브라우저만 할 수 있는 일을 컴포넌트에 붙인다 | <img src="https://raw.githubusercontent.com/itda-work/django-wireview/main/examples/hooks/media/hooks.png" width="200" alt="hooks"> |
 
-저장소를 받은 뒤 처음이면 아래 순서대로 한 줄씩 실행합니다. 미리 설치할 것은 [uv](https://docs.astral.sh/uv/) 하나이고
+저장소를 받은 뒤 처음이면 아래 순서대로 한 줄씩 실행합니다. 미리 설치할 것은 [uv](https://docs.astral.sh/uv/)와 git이고
 (Node는 uv가 가상환경에 넣습니다), 명령은 Windows PowerShell·명령 프롬프트와 macOS·Linux 터미널에서 같습니다.
 차례로 의존성, JS 빌드 도구, `wireview.min.js`(빌드 산출물이라 저장소에 없습니다), 예제 모델의 테이블(빠뜨리면
-chat 시리즈·poll·rating·quiz 페이지가 500입니다), 그리고 <http://localhost:8000> 서버입니다. Windows에서 uv를 설치하는 법은
-[예제의 시작하기](https://github.com/itda-work/django-wireview/blob/main/examples/README.md#시작하기)에 있습니다.
+chat 시리즈·poll·rating·quiz 페이지가 500입니다), 그리고 <http://localhost:8000> 서버입니다. Windows에서 uv·git을 설치하는 법은
+[예제의 시작하기](https://github.com/itda-work/django-wireview/blob/main/examples/README.md#시작하기)에, ARM Windows에서
+첫 `uv sync`만 x64 Python으로 바꾸는 법은
+[Windows ARM](https://github.com/itda-work/django-wireview/blob/main/examples/README.md#windows-armsurface-pro-x-copilot-pc-등)에 있습니다.
 
 ```shell
 uv sync --all-extras
