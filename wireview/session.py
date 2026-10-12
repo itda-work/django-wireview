@@ -432,10 +432,14 @@ class WireviewSession:
         ending is a task of its own that a caller's cancellation does not cut
         short: a server cancels the app when a handler holds up the disconnect
         past its close timeout, and that app's hub entries, groups, tasks and
-        presence would otherwise outlive it. ``code`` is None then.
+        presence would otherwise outlive it. ``code`` is None then. Called from
+        within the ending -- a ``leaving()`` hook -- it returns at once: waiting
+        there would wait on itself until the hooks' time ran out.
         """
         if self._stopping is None:
             self._stopping = asyncio.ensure_future(self._stop(code))
+        if asyncio.current_task() is self._stopping:
+            return
         await asyncio.shield(self._stopping)
 
     async def _stop(self, code: int | None) -> None:

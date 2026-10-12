@@ -99,7 +99,11 @@ The django-reactor era changelog (2.x) is preserved in
   of an ending connection have 5 seconds together (`LEAVING_SECONDS`): past it the one running is cancelled
   and the rest are not called. A hook that raised, ran out of time or never called `presence_leave()` no
   longer keeps the rest of the cleanup from running, and the framework leaves presence for a producer still
-  joined. `connection_closed` reports `code=None` for an app that ended without a disconnect.
+  joined, or whose `presence_leave()` the time ran out in while it published. The server still decides whether
+  the ending runs to its end: Daphne's shutdown waits only for the first app to end and Uvicorn's only up to
+  its graceful timeout, so no presence leave or last write in `leaving()` is guaranteed on shutdown
+  (docs/DEPLOYMENT.md, `tests/test_server_shutdown.py`). `connection_closed` reports `code=None` for an app
+  that ended without a disconnect.
 - A visitor who is not logged in no longer closes every anonymous connection by logging out (#211).
   `logout()` sends `user_logged_out` for them too, and `invalidate_authentication()` published to the topic of
   the generation with no user and no nonce, which every anonymous connection inside a live_session listens

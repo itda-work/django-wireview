@@ -35,6 +35,7 @@ from wireview.core import template_reload, transport
 from wireview.core.meta import WireviewMeta
 from wireview.core.rendered import PROTOCOL_VERSION
 from wireview.core.state import sign_state
+from wireview.features import presence as presence_module
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio, pytest.mark.django_db]
 
@@ -44,6 +45,8 @@ LEAVING: dict[str, str] = {"how": "leave"}
 CALLS: list[str] = []
 #: The handler that keeps the connection's turn, so its disconnect waits
 HELD: dict[str, asyncio.Event] = {}
+#: The session a "restop" hook stops again from within its ending
+ENDING: dict[str, WireviewConsumer] = {}
 
 
 class SeProducer(PresenceMixin, Component):
@@ -86,6 +89,10 @@ class SeProducer(PresenceMixin, Component):
             await asyncio.sleep(0.1)
             CALLS.append("left")
             await self.presence_leave()
+        if how == "restop":
+            await ENDING["session"].stop()
+            CALLS.append("restopped")
+            await self.presence_leave()
         if how == "leave":
             await self.presence_leave()
         # "forget": the application never calls presence_leave()
@@ -102,6 +109,7 @@ def ending(settings, monkeypatch):
     LEAVING.clear()
     LEAVING["how"] = "leave"
     CALLS.clear()
+    ENDING.clear()
     HELD["until"] = asyncio.Event()
     publish = transport.ChannelsBroker.publish
 
@@ -145,6 +153,17 @@ async def _connected() -> Connection:
     consumer._arm_expiry(component, token)
     timer = consumer._patch_held[id(component)].expiries[token]
     return Connection(communicator, consumer, component, [component._async_tasks["forever"], typing], timer)
+
+
+async def _join_another(connection: Connection, id: str) -> SeProducer:
+    """A second producer on the same connection, joined and typing."""
+    state = sign_state(SeProducer(user=AnonymousUser(), wire=WireviewMeta(params={}), id=id))
+    await connection.communicator.send_json_to(
+        {"command": "join", "payload": {"name": "SeProducer", "state": state, "children": {}}}
+    )
+    while (await connection.communicator.receive_json_from(timeout=3))["command"] != "joined":
+        pass
+    return t.cast(SeProducer, connection.consumer.repo.components[id])
 
 
 async def _holding(connection: Connection) -> None:
@@ -264,13 +283,7 @@ async def test_the_hooks_after_the_time_ran_out_are_not_called_and_their_produce
     LEAVING.clear()
     LEAVING.update(how="leave", p="hang")
     connection = await _connected()
-    state = sign_state(SeProducer(user=AnonymousUser(), wire=WireviewMeta(params={}), id="q"))
-    await connection.communicator.send_json_to(
-        {"command": "join", "payload": {"name": "SeProducer", "state": state, "children": {}}}
-    )
-    while (await connection.communicator.receive_json_from(timeout=3))["command"] != "joined":
-        pass
-    typing = connection.consumer.repo.components["q"]._presence_typing_task
+    typing = (await _join_another(connection, "q"))._presence_typing_task
     assert typing is not None
 
     await connection.communicator.disconnect()
@@ -279,6 +292,54 @@ async def test_the_hooks_after_the_time_ran_out_are_not_called_and_their_produce
     _ended(connection)
     assert typing.done()
     assert CALLS == ["leaving", "presence_leave presence.se", "presence_leave presence.se"]
+
+
+async def test_a_leave_the_time_ran_out_in_while_it_published_is_published_after_all(monkeypatch):
+    """The hooks' time ends inside presence_leave()'s publish: that leave is still owed, and each producer's arrives."""
+    monkeypatch.setattr(session_module, "LEAVING_SECONDS", 0.05)
+    connection = await _connected()
+    await _join_another(connection, "q")
+    publish = transport.ChannelsBroker.publish
+
+    async def slow(self, topic: str, message: dict[str, t.Any]) -> None:
+        kwargs = message.get("kwargs") or {}
+        if kwargs.get("action") == "presence_leave":
+            # Longer than the hooks' time: p's own leave is cut short in here
+            await asyncio.sleep(0.1)
+            CALLS.append(f"delivered {kwargs['presence_ref']}")
+        await publish(self, topic, message)
+
+    monkeypatch.setattr(transport.ChannelsBroker, "publish", slow)
+
+    await connection.communicator.disconnect()
+    await _app_ends(connection)
+
+    _ended(connection)
+    producers = list(connection.consumer.repo.components.values())
+    refs = {presence_module._presence_ref(producer) for producer in producers}
+    assert len(refs) == 2
+    assert {call.removeprefix("delivered ") for call in CALLS if call.startswith("delivered ")} == refs
+    assert CALLS.count("leaving") == 1  # q's hook had no time left
+    assert not any(producer._presence_joined or producer._presence_leave_owed for producer in producers)
+
+
+async def test_a_leaving_hook_that_stops_its_session_again_does_not_wait_on_itself(monkeypatch):
+    """stop() from within the ending returns at once: the hook goes on, and the next one runs in time."""
+    monkeypatch.setattr(session_module, "LEAVING_SECONDS", 2.0)
+    LEAVING.clear()
+    LEAVING.update(how="leave", p="restop")
+    connection = await _connected()
+    await _join_another(connection, "q")
+    ENDING["session"] = connection.consumer
+    loop = asyncio.get_running_loop()
+    began = loop.time()
+
+    await connection.communicator.disconnect()
+    await _app_ends(connection)
+
+    _ended(connection)
+    assert loop.time() - began < 1.0
+    assert CALLS == ["leaving", "restopped", "presence_leave presence.se", "leaving", "presence_leave presence.se"]
 
 
 async def test_a_session_whose_app_was_cancelled_while_it_ended_ends_all_the_same(monkeypatch):

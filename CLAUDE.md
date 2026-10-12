@@ -114,7 +114,8 @@ wireview/
 ├── session.py             WireviewSession: 세션 로직 전부(inbound command_*, 메일 component_*, 렌더). Outbound로만 내보낸다.
 │                          channels를 import하지 않는다(tests/test_session_extraction.py). send_render가 자식 LiveComponent의
 │                          joined/update(update_many)/leaving과 렌더를 함께 처리 (GAP-027, #60).
-│                          stop()은 한 번만 돈다: 처음 부른 쪽이 만든 태스크(_stopping)를 뒤의 부름이 shield로 기다린다 — 서버의 취소가 정리를 끊지 않는다.
+│                          stop()은 한 번만 돈다: 처음 부른 쪽이 만든 태스크(_stopping)를 뒤의 부름이 shield로 기다린다 — 서버의 취소가 정리를 끊지 않는다(삼키지는 않는다).
+│                          그 태스크 안(leaving())에서 부르면 바로 돌아온다. 프로세스 종료 때 정리가 끝나는지는 서버의 몫이다(tests/test_server_shutdown.py)
 │                          순서는 우편함 닫기·drain 회수 → leaving()(합쳐 LEAVING_SECONDS) → 작업 취소·presence.ended(퇴장 못 한 프로듀서) → finally의 _release_connection
 │                          (패치·허브·업로드·구독). 훅이 던지거나 걸려도 뒤의 정리는 돈다(#211, tests/test_session_end.py)
 ├── views.py               UploadView (청크 업로드 HTTP 엔드포인트). 무상태 — 서명 토큰만으로 판단하고
@@ -308,6 +309,7 @@ tests/
                            ?failing=1 은 join이 실패한 대상, 끊겼다 다시 붙은 페이지),
                            reloadprobe/ 는 개발 서버에서 템플릿을 저장하면(file_changed) 새로고침 없이 새 템플릿이 보이고, 깨진 템플릿으로 막힌 컴포넌트가 고친 뒤 상태 그대로 돌아오는지 보는 E2E(test_template_reload_e2e.py)의 픽스처(shadow.py 가 TEMPLATES DIRS 앞에 테스트의 디렉터리를 두고 그 사본을 고친다. slow_bump 은 저장하는 순간 처리 중인 핸들러, away/ 는 rejoin이 기다리는 동안의 boost 이동 대상),
                            identityprobe/ 는 다른 탭이 로그인·로그아웃·사용자 교체·CSRF 회전을 한 뒤 boost 이동한 페이지의 컴포넌트가 페이지와 같은 신분인지(새 소켓, 새로고침 없이), 바뀐 것이 없으면 소켓을 그대로 쓰는지, renew 뒤의 두 번째 변화·재연결·끝내 맞지 않는 페이지에서 소켓 수가 멈추는지 보는 E2E(test_socket_identity_e2e.py)의 픽스처(경계 밖 a/·b/, 경계 안 inside-a/·inside-b/, stale/ 은 컴포넌트가 늘 다른 로그인으로 서명되는 페이지),
+                           endprobe.py 는 leaving()의 시작·끝을 파일에 적는 컴포넌트를 실은 testproj ASGI 앱이다 — test_server_shutdown.py 가 daphne·uvicorn 프로세스로 띄워 연결 둘에 SIGTERM을 보낸다(#211),
                            asgi_variants.py 는 wireview.W020(WebSocket 라우트에 세션 미들웨어가 없음)이 보는 ASGI 스택들이다(소켓 단위 테스트도 BARE·SESSION_ONLY로 consumer의 session_known 배선을 본다),
                            csrfprobe/ 는 컴포넌트·LiveComponent·함수 컴포넌트가 그린 일반 POST 폼({% csrf_token %})을 JavaScript 없이, join·이벤트·알림 뒤,
                            CSRF_USE_SESSIONS, 로그인(시크릿 회전) 뒤, 다른 사용자로 토큰을 검사하는 뷰에 제출하는 E2E(test_csrf_token_e2e.py)의 픽스처,

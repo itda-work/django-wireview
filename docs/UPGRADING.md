@@ -258,10 +258,14 @@ dependencies = ["django-wireview>=1.5,<2"]
     부르지 않는다(경고 로그). 오래 걸리는 정리(외부 API 호출, 큰 쓰기)는 `leaving()`에서 기다리지 말고 작업 큐로 넘긴다.
     페이지 이동·부모가 뺀 컴포넌트의 `leaving()`에는 시한이 없다.
   - `joined()`에서 `presence_join()`한 프로듀서가 연결이 끝날 때까지 `presence_leave()`하지 않았으면(`leaving()`이
-    던졌거나 시한을 넘겼거나 부르지 않았으면) 프레임워크가 대신 떠난다. 그래서 다른 탭의 목록에 퇴장이 간다.
-  - daphne의 종료와 close timeout에서도 `leaving()`과 `connection_closed`가 돈다(1.5까지는 돌지 않았다).
+    던졌거나 시한을 넘겼거나 — 퇴장을 발행하던 도중이었어도 — 부르지 않았으면) 프레임워크가 대신 떠난다. 그래서
+    다른 탭의 목록에 퇴장이 간다.
+  - daphne의 close timeout에서도 `leaving()`과 `connection_closed`가 돈다(1.5까지는 돌지 않았다). daphne의 종료에서는
+    `leaving()`이 시작되지만 끝까지 돈다는 보장은 없다 — daphne는 먼저 끝난 연결 하나만 기다리고 내려간다. uvicorn도
+    `--timeout-graceful-shutdown`을 넘기면 기다리지 않는다. **종료할 때의 presence 퇴장과 `leaving()`의 마지막 쓰기에
+    의존하지 않는다** — 잃으면 안 되는 쓰기는 핸들러에서 한다.
     `disconnect` 없이 끝난 연결의 `connection_closed`는 `code`가 `None`이다 — 닫힘 코드로 지표를 나누면 그 값을 둔다.
-    언제 그런 끝이 오는지는 [배포](./DEPLOYMENT.md#sigterm-드레인-절차).
+    언제 그런 끝이 오는지와 드레인 순서는 [배포](./DEPLOYMENT.md#sigterm-드레인-절차).
 
 ### 스트림과 무한 스크롤
 
