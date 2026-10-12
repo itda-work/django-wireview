@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import secrets
 import time
 import typing as t
@@ -62,6 +63,7 @@ from enum import StrEnum
 if t.TYPE_CHECKING:
     from wireview.core.component import Component
 
+log = logging.getLogger("wireview")
 
 __all__ = (
     "PresenceState",
@@ -273,6 +275,15 @@ class PresenceMixin:
     def _presence_joined(self, value: bool) -> None:
         self.__dict__["__presence_joined"] = value
 
+    # From presence_leave() until its leave is published: one cancelled on the way is still owed (#211)
+    @property
+    def _presence_leave_owed(self) -> bool:
+        return self.__dict__.get("__presence_leave_owed", False)
+
+    @_presence_leave_owed.setter
+    def _presence_leave_owed(self, value: bool) -> None:
+        self.__dict__["__presence_leave_owed"] = value
+
     def _presence_topic(self) -> str:
         """Return the presence topic/room identifier.
 
@@ -338,6 +349,7 @@ class PresenceMixin:
             self._presence_typing_task = None
 
         self._presence_joined = False
+        self._presence_leave_owed = True
         component = t.cast("Component", self)
         await component.broadcast(
             self._presence_channel(),
@@ -347,6 +359,7 @@ class PresenceMixin:
             presence_speaker=_presence_speaker(self),
             username=self._presence_username(),
         )
+        self._presence_leave_owed = False
 
     async def presence_set_typing(self, typing: bool = True) -> None:
         """Set typing indicator with auto-timeout.
@@ -444,6 +457,32 @@ def presence_channels(component: t.Any) -> set[str]:
     if isinstance(component, PresenceMixin) and component._presence_joined:
         return {component._presence_channel()}
     return set()
+
+
+async def ended(component: t.Any, deadline: float) -> None:
+    """A producer's connection ended: its typing timeout goes, and it leaves if ``leaving()`` did not (#211).
+
+    The application calls ``presence_leave()`` in ``leaving()``; a hook that
+    raised, ran out of time or forgot leaves the producer on every tracker's
+    list, which no TTL clears. A ``presence_leave()`` cut short while it
+    published -- the hooks' time ran out in it -- has not left either. ``deadline``
+    is the loop time the session's hooks had (``WireviewSession.stop``); the
+    leave gets a second past it, so a hook that used it all up does not take
+    the leave down with it.
+    """
+    if not isinstance(component, PresenceMixin):
+        return
+    typing = component._presence_typing_task
+    if typing is not None and not typing.done():
+        typing.cancel()
+    if not component._presence_joined and not component._presence_leave_owed:
+        return
+    try:
+        async with asyncio.timeout_at(max(deadline, asyncio.get_running_loop().time() + 1.0)):
+            await component.presence_leave()
+    except Exception:
+        producer = t.cast("Component", component)
+        log.exception("%s (%s) could not leave presence as its connection ended", producer._name, producer.id)
 
 
 async def hear(component: t.Any, channel: str, kwargs: dict[str, t.Any]) -> None:

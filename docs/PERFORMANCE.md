@@ -485,6 +485,10 @@ Windows 1프로세스 2,000연결의 브로드캐스트(2,058 ms 대 2,845 ms) �
 | uvicorn 압축 끔 | `--timeout-graceful-shutdown 10` | 1012 | 2.12초 | 20 / 20 (연결 20개) |
 | Granian | `--workers-kill-timeout 10` | 없음 (TCP만 끊김) | 0.10초 | 4 / 0 (연결 20개) |
 
+daphne 행은 #211 전의 측정이다. 지금은 daphne의 종료에서도 연결마다 `leaving()`이 시작되지만, daphne가 먼저 끝난 앱
+하나만 기다리고 내려가므로 나머지가 끝까지 돈다는 보장은 없다([SIGTERM 드레인 절차](DEPLOYMENT.md#sigterm-드레인-절차),
+`tests/test_server_shutdown.py`).
+
 macOS (Apple M5 Pro):
 
 | 설정 | 서버 | 연결당 메모리 | join | 이벤트 | 브로드캐스트 | 회차 |

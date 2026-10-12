@@ -70,7 +70,8 @@ hypercorn myproject.asgi:application --bind 0.0.0.0:8000 --workers 4
 
 Rust로 만든 ASGI 서버라 빨라 보이지만, wireview 앱에서는 처리량이 압축 끈 uvicorn과 측정 편차 안에서 엎치락뒤치락하고
 연결당 메모리는 더 쓴다. 무엇보다 **SIGTERM에 `leaving()`을 끝까지 돌려 주지 않는다** — 닫힘 프레임 없이 0.1초 안에
-프로세스가 끝나서, `leaving()`에서 presence를 지우거나 DB에 쓰는 앱은 배포할 때마다 그 정리를 잃는다(daphne와 같은 문제다).
+프로세스가 끝나서, `leaving()`에서 presence를 지우거나 DB에 쓰는 앱은 배포할 때마다 그 정리를 잃는다(daphne도 종료할 때
+`leaving()`을 시작만 하고 끝까지 기다리지 않는다, [SIGTERM 드레인 절차](#sigterm-드레인-절차)).
 `--workers-kill-timeout`을 줘도 같다. 프록시 헤더도 CLI 옵션이 없어 `granian.utils.proxies.wrap_asgi_with_proxy_headers`로
 `application`을 감싸야 한다. 두 기계(macOS, Windows 10 실기)의 수치와 종료 동작 표는
 [성능 가이드](PERFORMANCE.md#asgi-서버-비교)에 있다.
@@ -570,6 +571,14 @@ def rendered(sender, component_name, duration_ms, **kwargs):
 그래서 로그로 센 수는 하한이다. `publish_failed`가 잡는 것은 채널 하나로 보내다 거부된 것(`ChannelFull`)과
 브로커 오류뿐이다.
 
+같은 채널에는 연결이 **자기에게 보내는 메일**(스트림 연산, `push_event`, JS, `defer()`, `joined`, 잡아 둔 패치의 해제 등)도
+선다. 그것은 버려도 잃지 않는다(#211): 연결이 사본을 지니고 있다가, 레이어가 거절하면 바로 다음 차례에, 말없이 버리면
+뒤 메일이 먼저 오거나 5초 동안 아무것도 처리하지 않을 때 그 사본을 처리한다. 메일끼리는 보낸 순서 그대로지만, 사본으로
+처리한 메일은 알림과의 자리를 잃는다. 그래서 `publish_failed`의 `kind="send_to_session"`, `dropped=True`는 그 연결이 밀리고
+있다는 신호이지 메일을 잃었다는 뜻이 아니다. 말없이 버린 것을 되찾을 때는 `wireview` 로거에 WARNING(`... did not come ...`)이
+남는다. 사본에는 상한이 있다 — 처리되지 않은 메일이 1000개(`MAIL_LIMIT`)나 16 MiB(`MAIL_BYTES`)를 넘으려 하면 연결을 닫고(1013,
+WARNING `... past MAIL_LIMIT ...`) 페이지가 다시 join한다. 핸들러 하나가 항목을 하나씩 수백 개 넣는다면 `stream()`에 목록으로 넘긴다. 형식은 [wire protocol](./implementation/wire-protocol.md#4-session-mail-컴포넌트--세션).
+
 버려진 브로드캐스트는 오류가 아니라 **낡은 화면**으로 남는다. 다음에 그 컴포넌트가 렌더될 때(다음 알림이나
 사용자 이벤트) 템플릿이 원천에서 다시 읽는 값은 맞아지지만, 들은 것을 상태에 더해 가는 컴포넌트(채팅 목록에
 메시지를 덧붙이는 식)는 버려진 것을 되찾지 못한다. 틀리면 곤란한 값은 렌더 때 다시 읽거나 사용자 액션에서
@@ -798,7 +807,9 @@ wireview가 소켓을 조금씩 닫아 주지는 않는다. ASGI 서버가 종�
 2. **SIGTERM.** uvicorn은 새 연결을 받지 않고, 열린 모든 WebSocket을 닫힘 코드 **1012**(service restart)로
    닫은 뒤, 앱 태스크가 끝나기를 `--timeout-graceful-shutdown`초까지 기다리고 남은 것을 취소한다. 소켓이 닫히면
    wireview가 연결마다 컴포넌트의 `leaving()`을 부르고 구독을 정리한다(`connection_closed`의 `code`가 1012).
-   `leaving()`에서 presence를 지우거나 DB에 쓰는 앱이면 이 시간이 그만큼 필요하다.
+   `leaving()`에서 presence를 지우거나 DB에 쓰는 앱이면 이 시간이 그만큼 필요하다. 한 연결의 `leaving()`들은
+   모두 합쳐 5초(`wireview.session.LEAVING_SECONDS`) 안에 끝나야 한다 — 넘으면 돌던 것을 취소하고 남은 것은 부르지
+   않는다(경고 로그). 그래도 구독·작업 정리와, `presence_leave()`를 하지 못한 프로듀서의 presence 퇴장은 한다.
 
    ```bash
    uvicorn myproject.asgi:application --workers 4 --timeout-graceful-shutdown 20 ...
@@ -809,9 +820,35 @@ wireview가 소켓을 조금씩 닫아 주지는 않는다. ASGI 서버가 종�
    돌아오고 `wireview_connections` 합이 배포 전 수준이 될 때까지 기다린다. 쿨다운 없이 연달아 내리면 방금
    재연결한 페이지들이 또 끊긴다. `maxSurge`로 새 인스턴스를 먼저 띄우면 남은 용량이 줄지 않는다.
 
-**daphne는 이 절차에서 `leaving()`을 부르지 않는다.** daphne는 종료할 때 앱 코루틴을 취소할 뿐 WebSocket에
-`disconnect`를 보내지 않으므로(`daphne/server.py`의 `kill_all_applications`), 컴포넌트의 `leaving()`과
-`connection_closed`가 돌지 않는다. 그 정리에 기대는 앱은 uvicorn을 쓴다.
+**앱이 `disconnect` 없이 끝나도 연결은 한 번 정리된다(#211).** 서버가 앱을 취소하거나 앱이 예외로 끝나면
+Channels는 `disconnect()`를 부르지 않는다. wireview는 앱의 끝(ASGI `__call__`의 `finally`)에서도 세션을 끝낸다 —
+`disconnect`가 먼저 왔으면 그 정리를 기다릴 뿐 두 번 하지 않는다. 그 정리는 자기 태스크에서 돌아 서버의 취소가
+중간에 끊지 않고, `leaving()`은 위의 5초 안에서 돈다. `connection_closed`의 `code`는 `None`이다. 서버의 취소를
+삼키지는 않는다 — 앱 태스크는 취소된 채 끝나고, 정리는 이벤트 루프가 살아 있는 동안 이어진다. 그런 끝은 셋이다.
+
+- **daphne의 close timeout.** 클라이언트가 끊겼는데 핸들러가 오래 걸려 `disconnect` 처리를 막으면, daphne는
+  `--application-close-timeout`(기본 10초) 뒤 앱을 취소한다. 그 핸들러는 취소되고, 프로세스는 계속 산다 — 그래서
+  정리가 끝까지 돈다. 전에는 PatchHub의 항목·채널 그룹·`start_async` 작업·presence가 연결마다 쌓이고 다른 탭의
+  목록에 떠난 사용자가 남았다.
+- **daphne의 종료.** daphne는 종료할 때 WebSocket에 `disconnect`를 보내지 않고 모든 앱을 취소한 뒤 `gather`로
+  기다린다(`daphne/server.py`의 `kill_all_applications`). 그 `gather`는 **가장 먼저 끝난 앱 하나**에서 끝나고
+  프로세스가 내려간다. 그래서 `leaving()`은 연결마다 시작되지만, 연결이 둘 이상이면 먼저 끝난 것 말고는 끝까지
+  돈다는 보장이 없다 — 1.5초짜리 `leaving()`도 끊긴다.
+- **uvicorn의 `--timeout-graceful-shutdown` 초과.** 남은 앱 태스크를 취소하고 기다리지 않고 프로세스를 내린다.
+  정리는 시작되지만 끝까지 돈다는 보장은 없다.
+
+**어느 서버도 종료할 때 정리가 끝나는 것을 보장하지 않는다.** uvicorn은 graceful 시한 안에서만, daphne는 먼저 끝난
+연결 하나까지만 기다리고, 오케스트레이터의 SIGKILL(`terminationGracePeriodSeconds`)은 어느 쪽이든 끊는다. 그래서:
+
+- **presence 퇴장과 `leaving()`의 마지막 쓰기에 정합성을 걸지 않는다.** 퇴장이 오지 않은 탭은 다른 사람의 목록에
+  남을 수 있다 — 재연결한 탭의 입장이 그 항목을 덮고, 오지 않은 탭의 항목은 그 목록을 그린 페이지를 새로고침하면
+  사라진다([재연결과 서버 종료](tutorials/07-presence-api.md#재연결과-서버-종료)). 잃으면 안 되는 상태는 이벤트
+  핸들러에서 그때그때 쓰고, `leaving()`은 그것을 정돈하는 데만 쓴다.
+- **정리를 최대한 돌리려면 위의 드레인 순서를 uvicorn으로 지킨다.** 로드밸런서에서 먼저 빼고, SIGTERM이 소켓을
+  1012로 닫아 `disconnect`로 정리가 돌게 하고, `--timeout-graceful-shutdown`을 `leaving()` 시한(5초)보다 넉넉히,
+  `terminationGracePeriodSeconds`를 그보다 길게 둔다. daphne의 종료는 소켓을 닫지 않으므로 이 순서를 탈 수 없다.
+
+실제 서버로 무엇이 끝나고 무엇이 끝나지 않는지는 `tests/test_server_shutdown.py`가 연결 둘(짧은 훅·긴 훅)로 본다.
 
 **배포가 서명 키를 바꾸면** 재연결한 모든 페이지가 `invalid`로 거절돼 전체 새로고침을 한다 — join이 아니라
 HTTP 페이지 렌더가 몰린다. 키를 바꿀 때는 옛 키를 `SIGNING_KEY_FALLBACKS`(또는 `SECRET_KEY_FALLBACKS`)에 두고

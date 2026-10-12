@@ -5,7 +5,8 @@ wireview moves three kinds of traffic:
 - **Outbound**: one session (a browser tab) receives commands such as
   ``render`` or ``exec_js``.
 - **Session mail**: a component sends a command to a session, usually its
-  own. Today this rides on the channel layer as ``message_from_component``.
+  own. It rides on the channel layer as ``message_from_component``; a
+  session's ``Mailbox`` hands over what the layer drops (#211).
 - **Fan-out**: a message is published to every session subscribed to a topic
   (model mutations, notifications, upload progress).
 - **Patches**: frames rendered and serialized once by a ``Broadcast`` (#178),
@@ -24,7 +25,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
+import itertools
 import logging
+import sys
 import typing as t
 import weakref
 
@@ -192,6 +196,259 @@ class ChannelsBroker:
                 "Dropped a %r message: the channel layer reports %s full (%s)", message.get("type"), target, kind
             )
         return dropped
+
+
+#: How long a session's mail to itself may stay away while the session handles
+#: nothing before it is taken for dropped and handled here (``Mailbox``, #211).
+#: Under ``patches.HOLD_SECONDS``, so a hold its mail releases is let go before
+#: that deadline closes the connection.
+MAIL_SECONDS = 5.0
+
+#: How many of a session's mails to itself may be away at once, and how many
+#: bytes of copies they may hold (``Mailbox``, #211). Past either the
+#: connection closes (1013) rather than keep more: its channel takes none of
+#: them, and the page joins again with everything read afresh.
+MAIL_LIMIT = 1000
+MAIL_BYTES = 16 * 1024 * 1024
+
+#: The message a session dispatches to itself for a turn that takes the mail
+#: its ``Mailbox`` found dropped (``Mailbox.due``). It reaches no handler.
+MAIL_DUE = "wireview.mail_due"
+
+
+class Mailbox:
+    """A session's mail to itself, kept until the channel layer brings it back (#211).
+
+    A session mails itself to have something done in its turn: after the
+    message being handled, in line with the notifications its topics fan out
+    to the same channel, in the order they were all sent -- the layer's channel
+    is that line. But the line has a capacity, and the layer drops what does not
+    fit: ``send`` raises ``ChannelFull`` (the broker drops it and says so), or
+    channels_redis drops the oldest message of a full receive buffer without a
+    word. A channel fills when its room is busy, the time a mail matters most,
+    and a dropped one could leave a Broadcast hold shut, a list short or a
+    component stale for good.
+
+    So the sender and the session, which share a process and a loop, keep a
+    copy of each mail until it is handled, numbered in the order sent. Mail is
+    handled in that order and only in the session's turn: what comes off the
+    channel there (``came``) brings every mail sent before it that is still
+    away, and the ones found dropped are only marked due (``wake``) for a turn
+    of the session's own to take (``due``):
+
+    - the layer refused it: due, behind the mails sent before it;
+    - it stayed away ``MAIL_SECONDS`` while the session handled nothing: it was
+      dropped, or is very late. Due.
+
+    Until a turn takes it a due mail stays where a later one finds it: a mail
+    the layer brings first handles it ahead of itself. A copy the layer brings
+    after it was handled here is dropped. So mail keeps the order it was sent
+    in; what a line that overflowed loses is the order against the notifications
+    -- a mail handled from its copy comes ahead of the ones queued in front of
+    it, or after the ones sent behind it.
+
+    The copies are bounded (``MAIL_LIMIT``, ``MAIL_BYTES``): past them the box
+    closes and tells the session (``overflow``), which closes the connection.
+    """
+
+    def __init__(
+        self,
+        session_id: str,
+        wake: t.Callable[[], None],
+        busy: t.Callable[[], bool],
+        overflow: t.Callable[[], None] = lambda: None,
+    ) -> None:
+        self.session_id = session_id
+        self._wake = wake
+        self._busy = busy
+        self._overflow = overflow
+        self._loop = asyncio.get_running_loop()
+        self._numbers = itertools.count(1)
+        # Sent and not handled yet, in the order sent: number -> (a copy, when it was sent, its size)
+        self._away: dict[int, tuple[Message, float, int]] = {}
+        self._size = 0
+        # The mails up to this number are due: the next turn handles them from their copies
+        self._due = 0
+        self._timer: asyncio.TimerHandle | None = None
+        self.closed = False
+
+    async def send(self, broker: Broker, message: Message) -> bool | None:
+        """Send ``message`` through ``broker``, keeping a copy to handle if the layer drops it."""
+        if self.closed:
+            return await broker.send_to_session(self.session_id, message)
+        number = next(self._numbers)
+        message = {**message, "mail": number}
+        # As the layers deliver one: the sender may change what it sent
+        kept, size = _kept(message)
+        if len(self._away) >= MAIL_LIMIT or self._size + size > MAIL_BYTES:
+            self._overflowed(size)
+            return await broker.send_to_session(self.session_id, message)
+        self._away[number] = (kept, self._loop.time(), size)
+        self._size += size
+        try:
+            taken = await broker.send_to_session(self.session_id, message)
+        except BaseException:
+            # Raised to the sender, as before: it handles that
+            self._drop(number)
+            raise
+        if taken is False:
+            self._mark(number)
+        else:
+            self._arm()
+        return True
+
+    def came(self, message: Message) -> list[Message]:
+        """The mail the channel brought, in the session's turn: what it handles now, in order.
+
+        The mails sent before it and still away come first, then it. Empty for
+        one handled already.
+        """
+        number = message.get("mail")
+        if not isinstance(number, int):
+            return [message]
+        if self.closed or number not in self._away:
+            log.debug("Dropping mail %d to %s: it was handled when it did not come", number, self.session_id)
+            return []
+        mails = self._take(number)
+        if len(mails) > 1:
+            log.warning(
+                "%d mail(s) to %s did not come before a later one; handling them first (#211)",
+                len(mails) - 1,
+                self.session_id,
+            )
+        return mails
+
+    def due(self) -> list[Message]:
+        """In the session's turn: the mails found dropped, in order, from their copies."""
+        if self.closed:
+            return []
+        return self._take(self._due)
+
+    @property
+    def has_due(self) -> bool:
+        """Whether a mail found dropped waits for a turn."""
+        return not self.closed and bool(self._away) and next(iter(self._away)) <= self._due
+
+    def _take(self, number: int) -> list[Message]:
+        """The mails up to ``number`` still away, in order: handled now."""
+        taken = []
+        while self._away and (each := next(iter(self._away))) <= number:
+            kept, _, size = self._away.pop(each)
+            self._size -= size
+            taken.append({**kept, "here": True})
+        return taken
+
+    def _drop(self, number: int) -> None:
+        if (away := self._away.pop(number, None)) is not None:
+            self._size -= away[2]
+
+    def _mark(self, number: int) -> None:
+        """The mails up to ``number`` are due: the session takes them in a turn of its own."""
+        self._due = max(self._due, number)
+        self._wake()
+        self._arm()
+
+    def _arm(self) -> None:
+        if self._timer is None and not self.closed and self._away and next(reversed(self._away)) > self._due:
+            self._timer = self._loop.call_later(MAIL_SECONDS, self._overdue)
+
+    def _overdue(self) -> None:
+        self._timer = None
+        if self.closed:
+            return
+        if not self._busy():
+            now = self._loop.time()
+            # Marked only: the turn that takes them may come after a later mail's, which then takes them first
+            due = [each for each, (_, sent, _) in self._away.items() if each > self._due and now - sent >= MAIL_SECONDS]
+            if due:
+                log.warning(
+                    "%d mail(s) to %s did not come in %ss with nothing being handled; handling them here (#211)",
+                    len(due),
+                    self.session_id,
+                    MAIL_SECONDS,
+                )
+                self._mark(due[-1])
+                return
+        self._arm()
+
+    def _overflowed(self, size: int) -> None:
+        log.warning(
+            "%d mail(s) to %s holding %d bytes are away, and one of %d bytes more is past MAIL_LIMIT (%d) "
+            "or MAIL_BYTES (%d): closing the connection (#211)",
+            len(self._away),
+            self.session_id,
+            self._size,
+            size,
+            MAIL_LIMIT,
+            MAIL_BYTES,
+        )
+        self.close()
+        self._overflow()
+
+    def close(self) -> None:
+        """The session ended: nothing more is kept or handled from a copy."""
+        self.closed = True
+        self._away.clear()
+        self._size = 0
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer = None
+
+
+def _kept(value: t.Any) -> tuple[t.Any, int]:
+    """A copy of mail as the layers deliver it, and roughly how many bytes it holds."""
+    kind = type(value)
+    if kind is dict:
+        copied = {}
+        size = 64
+        for key, item in value.items():
+            item, item_size = _kept(item)
+            copied[key] = item
+            size += item_size + (len(key) if type(key) is str else 8)
+        return copied, size
+    if kind is list or kind is tuple:
+        items = [_kept(item) for item in value]
+        return kind(item for item, _ in items), 56 + sum(item_size for _, item_size in items)
+    if kind is str or kind is bytes:
+        return value, 48 + len(value)
+    if value is None or kind is bool or kind is int or kind is float:
+        return value, 8
+    copied = copy.deepcopy(value)
+    return copied, sys.getsizeof(copied)
+
+
+# Session id (channel name) -> the mailbox of the session serving it in this process (#211)
+_mailboxes: dict[str, Mailbox] = {}
+
+
+def open_mailbox(mailbox: Mailbox) -> None:
+    """Keep the mail sent to ``mailbox.session_id`` from this process until it comes back."""
+    _mailboxes[mailbox.session_id] = mailbox
+
+
+def close_mailbox(mailbox: Mailbox) -> None:
+    """Its session ended: mail to it goes through the broker alone, as to any session not here."""
+    mailbox.close()
+    if _mailboxes.get(mailbox.session_id) is mailbox:
+        del _mailboxes[mailbox.session_id]
+
+
+async def send_mail(broker: Broker, session_id: str, message: Message) -> bool | None:
+    """Mail one session: through its ``Mailbox`` when it is served on this loop, through ``broker`` otherwise.
+
+    What ``Broker.send_to_session`` returns: ``False`` when it is known not to have gone.
+    """
+    mailbox = _mailboxes.get(session_id)
+    if mailbox is not None and not mailbox.closed and _running_loop() is mailbox._loop:
+        return await mailbox.send(broker, message)
+    return await broker.send_to_session(session_id, message)
+
+
+def _running_loop() -> asyncio.AbstractEventLoop | None:
+    try:
+        return asyncio.get_running_loop()
+    except RuntimeError:
+        return None
 
 
 class NullBroker:

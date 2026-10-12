@@ -25,16 +25,19 @@ import channels.consumer
 import pytest
 from asgiref.sync import sync_to_async
 from asgiref.testing import ApplicationCommunicator
+from channels.layers import InMemoryChannelLayer
 from django.contrib.auth.models import AnonymousUser, User
 from django.db import connection as db_connection
 from django.db.backends.signals import connection_created
 from django.template import Template
+from testproj.waiting import eventually
 
 from wireview import Component
 from wireview.consumer import WireviewConsumer
 from wireview.core.meta import WireviewMeta
 from wireview.core.rendered import PROTOCOL_VERSION
 from wireview.core.state import sign_state
+from wireview.core.transport import ChannelsBroker, Mailbox
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio, pytest.mark.django_db(transaction=True)]
 
@@ -130,3 +133,41 @@ async def test_without_channels_dispatch_trip_it_would_not(monkeypatch):
 
     opened, used = await _look_after_a_render()
     assert used == opened
+
+
+class _Mailed(WireviewConsumer):
+    """Takes each mail by querying, as a handler of the mail would; nothing else of a session runs."""
+
+    async def _take_mail(self, data):
+        await _query(data["command"])
+
+
+@pytest.mark.parametrize("dropped", ["overtaken", "refused"])
+async def test_each_mail_handled_from_its_copy_queries_on_a_connection_of_its_own(dropped):
+    """Mail the layer dropped is handled in one turn with others, each as a message of its own (#211).
+
+    ``overtaken``: the layer lost the first, and the second brings it. ``refused``:
+    a full channel refused both, and the turn that takes them is the session's.
+    """
+    consumer = _Mailed()
+    consumer.connection_id = "dc"
+    mailbox = consumer._mailbox = Mailbox("dc-mail", consumer.hand_over, lambda: consumer.handling > 0)
+    layer = InMemoryChannelLayer(capacity=1)
+    broker = ChannelsBroker(layer)
+    try:
+        if dropped == "refused":
+            await layer.send("dc-mail", {"type": "occupied"})
+        await mailbox.send(broker, {"type": "message_from_component", "command": "first"})
+        if dropped == "overtaken":
+            await layer.receive("dc-mail")
+        await mailbox.send(broker, {"type": "message_from_component", "command": "second"})
+        if dropped == "overtaken":
+            await consumer.dispatch(await layer.receive("dc-mail"))
+        else:
+            await eventually(lambda: consumer._handing_over is not None and consumer._handing_over.done())
+    finally:
+        mailbox.close()
+
+    (first, opened), (second, used) = SEEN
+    assert (first, second) == ("first", "second")
+    assert used != opened

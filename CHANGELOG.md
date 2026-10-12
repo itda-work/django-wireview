@@ -87,6 +87,50 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A connection whose app ended without a disconnect is ended all the same, once (#211). Channels runs
+  `disconnect()` only for a disconnect message; when the server cancels the app -- Daphne after its application
+  close timeout, when a handler holds up the disconnect, and on shutdown; Uvicorn past its graceful shutdown
+  timeout -- or the app raises, the session never stopped. The process's `PatchHub` kept it (the auth topic's
+  entry, a strong reference, held the whole session and its repository), and with it its channel groups,
+  `start_async` tasks, a presence producer's typing timeout and its place on every tracker's list, a Broadcast
+  hold's timer and the template reloader's entry. The consumer now ends the session at the end of the app too,
+  and a second ending waits on the first: `leaving()`, the presence leave and `connection_closed` happen once.
+  The ending runs in a task of its own that the server's cancellation does not cut short. The `leaving()` hooks
+  of an ending connection have 5 seconds together (`LEAVING_SECONDS`): past it the one running is cancelled
+  and the rest are not called. A hook that raised, ran out of time or never called `presence_leave()` no
+  longer keeps the rest of the cleanup from running, and the framework leaves presence for a producer still
+  joined, or whose `presence_leave()` the time ran out in while it published. The server still decides whether
+  the ending runs to its end: Daphne's shutdown waits only for the first app to end and Uvicorn's only up to
+  its graceful timeout, so no presence leave or last write in `leaving()` is guaranteed on shutdown
+  (docs/DEPLOYMENT.md, `tests/test_server_shutdown.py`). `connection_closed` reports `code=None` for an app
+  that ended without a disconnect.
+- A visitor who is not logged in no longer closes every anonymous connection by logging out (#211).
+  `logout()` sends `user_logged_out` for them too, and `invalidate_authentication()` published to the topic of
+  the generation with no user and no nonce, which every anonymous connection inside a live_session listens
+  on. That fingerprint is nobody's login: nothing is published for it now.
+- A logout closes a busy connection on the login that ended (#211). `invalidate_authentication()` published
+  `session_invalidated` to the connections' own channels, and a channel a busy room had filled dropped it
+  without a word: the socket stayed open, its components handling events as the user who had logged out.
+  It is now also published to the topic's patch group, which each process's `PatchHub` receives on a
+  channel nothing holds up, and handed to the connections listening there. A connection told twice closes
+  once.
+- A session's mail to itself is no longer lost to a full channel (#211). What a component sends through its
+  connection -- a stream operation, `push_event`, JS, a flash or title, a navigation, `defer()`, a LiveComponent
+  update, the `joined` that starts infinite scroll, the release of the `Broadcast` patches a join holds, a
+  crashed task's recovery, a template change's `rejoin` -- rides on the connection's channel, which it shares
+  with every notification its topics fan out. When a busy room filled that channel, the layer dropped the
+  mail: InMemory refused it (`ChannelFull`, logged and reported as `publish_failed`), channels_redis pushed
+  it out of a full receive buffer without a word. A stream stayed short, a hook never heard its event, a
+  component stayed stale or frozen for good, and a join's held patches waited until the connection closed.
+  The connection now keeps a copy of each mail until it is handled, and handles mail only in its own turns
+  and in the order it was sent: one the layer refused, or one that stayed away for 5 seconds
+  (`MAIL_SECONDS`) while nothing was being handled, is marked due for the next turn, which takes it from the
+  copy behind the mails sent before it; a later mail the channel brings first takes the ones before it
+  ahead of itself. Each mail a turn takes goes through the consumer's own handling of a message, Channels'
+  database connection cleanup included. A copy the layer brings after that is dropped. At most 1,000 mails
+  or 16 MiB of copies (`MAIL_LIMIT`, `MAIL_BYTES`) are kept; past that the connection closes with 1013 and
+  the page joins again. Mail still goes through the layer, so its order against the notifications is what
+  it was, save for a mail handled from its copy, which loses its place among them.
 - Django's `{% querystring %}` works in a component's template (#210). It reads `context.request.GET`, and a
   component's template renders with a context of its own, never the page's `RequestContext`: it raised
   `AttributeError` on the first HTTP render and on every live render, where the join failed. Both renders now

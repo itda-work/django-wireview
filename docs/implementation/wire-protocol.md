@@ -74,6 +74,39 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 
 `WireviewMeta.send(command, **kwargs)`가 `Broker.send_to_session(channel_name, ...)`로 보낸다. 컨슈머는 `component_<command>`로 받아 대부분 같은 이름의 outbound 명령으로 바꿔 보낸다. `command` 값은 3절의 outbound 명령 이름과 같고, 추가로 다음이 있다.
 
+**왜 채널 레이어를 지나는가.** 세션이 자기에게 메일을 보내는 것은 그 일을 **자기 차례에** 하려는 것이다. 컨슈머는
+메시지 — 소켓에서 온 것, 채널에서 온 것 — 를 하나씩 처리하므로(`WireviewSession.handling_message`) 핸들러가 보낸 메일은
+그 핸들러가 끝난 뒤 처리된다. 그리고 메일은 그 연결의 토픽들이 보내는 알림(5절)과 같은 채널에 보낸 순서대로 선다 —
+핸들러가 메일 A, 자기 토픽에 알림, 메일 B를 보내면 세 개가 그 순서로 처리된다(`tests/test_broadcast.py`, `mount()`도
+같다, #201·#205). 이 줄이 채널이라서 메일은 레이어를 지난다.
+
+**버려진 메일(#211).** 그 줄에는 용량(`capacity`, 기본 100)이 있고 레이어는 넘치는 것을 버린다. 방이 바빠 채널이 차면 —
+메일이 가장 중요한 때 — InMemory는 메일을 거절하고(`ChannelFull`, 브로커가 WARNING·`publish_failed`로 알린다)
+channels_redis는 가득 찬 수신 버퍼에서 가장 오래된 것으로 말없이 밀어낸다. 그러면 잡아 둔 패치가 풀리지 않거나
+(`release_patches`) 목록이 모자라거나(`stream_op`) 컴포넌트가 영영 낡는다. 그래서 컨슈머는 보낸 메일의 사본을 그것이
+처리될 때까지 지닌다(`transport.Mailbox`, 연결마다 하나, 컨슈머가 `connect()`에서 연다). 메일에는 연결 안에서
+보낸 차례의 번호 `mail`이 붙는다.
+
+메일은 **연결의 차례 안에서만, 보낸 순서대로** 처리된다. 차례는 컨슈머의 `dispatch`가 잠금(`_turn`)으로 하나씩 잡는다.
+버려졌다고 판단한 메일은 그 자리에서 처리하지 않고 *처리할 것*으로 표시만 한다 — 차례를 잡기 전까지는 사본이 그대로
+남아, 그사이 채널이 뒤 메일을 가져오면 그 차례가 앞의 것을 먼저 처리한다. 표시된 것을 가져갈 차례는 연결마다 하나인
+작업이 컨슈머의 `dispatch`로 잡는다(`wireview.mail_due`, 어느 핸들러에도 닿지 않는 메시지). 한 차례가 메일 여럿을
+처리하면 그 하나하나가 따로의 메시지다 — 저마다 Channels의 `dispatch`(`aclose_old_connections`)와 `handling_message`를 지난다.
+
+| 경우 | 처리 |
+|------|------|
+| 레이어가 거절했다(`send_to_session`이 `False`) | 처리할 것으로 표시한다 — 그보다 먼저 보내 아직 처리되지 않은 메일들과 함께. 지금 처리하는 메시지가 끝난 뒤의 차례가 그것들을 보낸 순서로 처리한다 |
+| 뒤에 보낸 메일이 먼저 돌아왔다 | 레이어가 앞의 것을 버렸거나 순서를 바꿨다(channels_redis는 같은 시각의 메시지를 임의 순서로 둔다). 그 차례가 앞의 것들의 사본을 먼저 처리한다 |
+| 아무것도 처리하지 않는 동안 `MAIL_SECONDS`(5초) 돌아오지 않았다 | 버려졌거나 아주 늦다. 처리할 것으로 표시한다. 처리하는 메시지가 있으면 판단을 미룬다(늦은 것일 수 있다). `patches.HOLD_SECONDS`보다 짧아 그 메일이 풀 잡기가 연결을 닫기 전에 풀린다 |
+| 사본을 처리한 뒤 레이어의 것이 왔다 | 버린다. 메일은 한 번만 처리된다 |
+| 처리되지 않은 메일이 `MAIL_LIMIT`(1000)개, 또는 사본이 `MAIL_BYTES`(16 MiB)를 넘으려 한다 | 사본을 버리고 연결을 닫는다(1013) — 페이지는 다시 연결해 join하고 목록을 새로 읽는다. 차례를 쥔 핸들러가 채널이 받지 않는 메일을 끝없이 보낼 때다(`patches.QUEUE_LIMIT`과 같은 성격). 핸들러가 그 차례를 기다리게 하지는 않는다 — 자기 차례를 기다리는 셈이라 멈춘다 |
+
+메일끼리는 언제나 보낸 순서다. 알림과의 순서는 메일이 채널을 지나 처리될 때만 지켜진다: 사본으로 처리한 메일은
+그 자리를 잃는다 — 거절된 메일은 채널에 먼저 선 알림보다 먼저, 말없이 버려졌거나 늦은 메일은 그 뒤에 보낸 알림보다
+나중에 처리될 수 있다. 연결이 끝나면 사본도 버리고, 표시된 것을 가져갈 작업도 취소한다 — 닫힌 채널의 메일처럼. 사본은
+보내는 순간의 복사다(레이어가 주는 것처럼). 다른 프로세스·다른 루프에서 보내는 메일, `Mailbox`를 열지 않는 다른 어댑터의
+세션은 전처럼 브로커로만 가고, 거절되면 `send`가 `False`를 돌려준다.
+
 | command | kwargs | 처리 |
 |---------|--------|------|
 | `dispatch_event` | `id`, `command`, `args`, `kwargs` | 세션 안에서 핸들러를 다시 호출하고 render |
@@ -82,7 +115,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | `update_live_component` | `parent_id`, `live_component_id`, `assigns` | LiveComponent `update()` 후 render |
 | `template_changed` | 없음 | 개발 서버에서 템플릿이 바뀌었다(#180). 리로더 스레드가 넘긴 알림을 세션이 자기 채널로 보낸 것이라 컴포넌트가 보내지 않는다. 처리 순서를 지키려고 메일로 간다 — 처리 중인 메시지의 답 뒤에 outbound `rejoin`을 쓴다. 그 사이 연결이 닫혔으면 아무것도 보내지 않는다 |
 | `release_patches` | `id`, `instance` | 이 인스턴스가 `joined()` 전부터 잡아 둔 `Broadcast` 패치를 쓴다(5절의 `wireview.patch`). `joined()`가 쌓아 둔 작업 뒤, `joined` 앞에 보낸다. 브라우저에는 아무것도 보내지 않는다 — 잡아 둔 프레임만 나간다 |
-| `deliver_unheard` | `id`, `instance` | 이 인스턴스가 `joined()` 전에 받았을 알림·모델 변경을 넘긴다(#207). 그린 쪽의 패스가 새로 만든 `{% component %}`는 페이지의 join을 기다리는 동안 알림을 받지 않고 모아 둔다 — 그 패스가 만든 LiveComponent도. join이 그것을 모아 둔 인스턴스면 join의 끝 — `joined` 뒤 — 에 보내고, 그 차례에 `notification()`·`mutation()`과 render를 온 순서대로 돈다 — 컴포넌트와 그 join의 렌더가 `joined()`를 부른 LiveComponent들의 것을 합쳐, 받은 차례 그대로(한 메시지의 것은 컴포넌트 먼저). 그 사이 다른 인스턴스가 그 id를 차지했으면 아무것도 하지 않는다. 채널이 메일을 버리면(가득 참) 보내지 않고 join 안에서 바로 넘긴다 — 그 render가 `joined`보다 먼저 나간다. 모인 것이 `UNHEARD_LIMIT`(1000)을 넘으면 페이지가 join하지 않을 것으로 보고 그 인스턴스와 그것이 소유한 것을 은퇴시킨다 — `leaving()` 없이, 작업은 취소하고 경고 로그를 한 번 남긴다. 시간으로는 은퇴시키지 않는다(숨은 탭은 보일 때까지 join하지 않는다). 브라우저에는 그 render만 나간다 |
+| `deliver_unheard` | `id`, `instance` | 이 인스턴스가 `joined()` 전에 받았을 알림·모델 변경을 넘긴다(#207). 그린 쪽의 패스가 새로 만든 `{% component %}`는 페이지의 join을 기다리는 동안 알림을 받지 않고 모아 둔다 — 그 패스가 만든 LiveComponent도. join이 그것을 모아 둔 인스턴스면 join의 끝 — `joined` 뒤 — 에 보내고, 그 차례에 `notification()`·`mutation()`과 render를 온 순서대로 돈다 — 컴포넌트와 그 join의 렌더가 `joined()`를 부른 LiveComponent들의 것을 합쳐, 받은 차례 그대로(한 메시지의 것은 컴포넌트 먼저). 그 사이 다른 인스턴스가 그 id를 차지했으면 아무것도 하지 않는다. 메일이 가지 못했다고 알려지면(`Mailbox`가 없는 어댑터의 가득 찬 채널) join 안에서 바로 넘긴다 — 그 render가 `joined`보다 먼저 나간다. 모인 것이 `UNHEARD_LIMIT`(1000)을 넘으면 페이지가 join하지 않을 것으로 보고 그 인스턴스와 그것이 소유한 것을 은퇴시킨다 — `leaving()` 없이, 작업은 취소하고 경고 로그를 한 번 남긴다. 시간으로는 은퇴시키지 않는다(숨은 탭은 보일 때까지 join하지 않는다). 브라우저에는 그 render만 나간다 |
 
 ## 5. Fan-out (세션들 사이)
 
@@ -93,7 +126,7 @@ Browser tab  ──(1) inbound command──▶  Session (WireviewSession, via W
 | `upload.progress` | `component`, `upload`, `ref`, `progress`, `bytes_received` | `UploadView` | 엔트리 갱신, 소유 컴포넌트 render, `upload_op progress` 전송 |
 | `upload.completed` | `component`, `upload`, `ref`, `bytes_received`, `path` | `UploadView` (마지막 청크) | 엔트리를 완료로 올린다. 브라우저에는 보내지 않는다 — 브라우저는 자기 `upload_complete`로 알고, `on_upload_complete`도 거기서 한 번만 돈다 |
 | `upload.error` | `component`, `upload`, `ref`, `errors` | `UploadView` | 엔트리를 오류로, 소유 컴포넌트 render, `upload_op error` 전송 |
-| `session_invalidated` | `reason` | `invalidate_authentication()` (로그아웃, 재로그인) | 소켓을 코드 4001로 닫는다 |
+| `session_invalidated` | `reason` (패치 그룹으로 가는 것은 `topic`도) | `invalidate_authentication()` (로그아웃, 재로그인) | 소켓을 코드 4001로 닫는다. 인증 토픽 그룹과 **그 토픽의 패치 그룹** 둘로 간다(#211): 연결의 채널이 가득 차면 레이어가 말없이 버리고, 그 연결은 끝난 로그인으로 열려 있었다. 패치 그룹의 것은 프로세스마다 `PatchHub`가 받아 그 토픽을 듣는 세션에 넘긴다 — 그 채널은 세션의 처리에 막히지 않는다. 두 번 받아도 한 번 닫는다 |
 | `wireview.patch` | `target` (클래스 FQN), `topic`, `frames: [[앞, 뒤], ...]` | `Broadcast.asend()`·`send()` (#178) | 컨슈머가 아니라 **프로세스가 한 번** 받는다(`transport.PatchHub`). 그 토픽을 듣는 세션마다, 정확히 그 클래스이고 `repo.reachable`인 인스턴스에 `앞 + json.dumps(id) + 뒤`를 연결별 큐에 넣고 그 연결의 태스크가 쓴다. 컴포넌트 코드는 돌지 않고, 다시 렌더하지도 직렬화하지도 않는다. 세션의 처리기는 `WireviewSession.wireview_patch`(`_take_patch` 뒤 쓰기를 기다린다) |
 
 `instance`는 Django JSON 직렬화기의 출력(`[{"model", "pk", "fields"}]`)이다. `AUTO_BROADCAST.senders`가 매핑이면

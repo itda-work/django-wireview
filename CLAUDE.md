@@ -100,13 +100,24 @@ wireview/
 │                          저장소가 등록하는 컴포넌트에 wire.identity를 달아 sign_state가 읽는다. join이 연결의 것과 다르면 renew(#209)
 ├── core/signing.py        서명 키 정본. get_signer(salt) 하나로 모든 서명 지점이 SIGNING_KEY와 fallback을 공유
 ├── core/model_state.py    상태 안의 모델 인스턴스를 pk로 서명하고(어디에 있든) 필드 타입 표기를 따라 다시 불러온다 (#113)
-├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳
+├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳.
+│                          Mailbox(#211): 세션이 자기에게 보낸 메일(레이어를 지나 알림과 한 줄에 선다)의 사본을 처리될 때까지 지닌다.
+│                          메일은 연결의 차례(컨슈머 dispatch의 잠금 _turn) 안에서만 보낸 순서로 처리한다: 거절됐거나 한가한 동안 MAIL_SECONDS
+│                          오지 않은 것은 처리할 것으로 표시만 하고(차례를 잡기 전까지 뒤 메일이 찾는다), 연결마다 한 작업(session.hand_over)이
+│                          차례를 잡아 가져간다. 한 차례의 메일 여럿은 저마다 Channels dispatch(aclose_old_connections)를 지난다(session.in_turn).
+│                          늦게 온 레이어의 것은 버린다. 사본은 MAIL_LIMIT·MAIL_BYTES까지, 넘으면 1013으로 닫는다
 ├── template_engine.py     템플릿 VariableNode에 diff 마커 자동 주입. 마커 변수는 값을 직접 resolve하고 평범한 int·str은
 │                          Django의 VariableNode와 같은 출력을 지름길로 찍는다(render_value, #176). 바꾸면 tests/test_template_values.py가 Django 출력과 맞춘다
-├── consumer.py            WireviewConsumer: Channels WebSocket 어댑터(/__wireview__). 소켓 수락·거절과 세션 시작·종료, JSON 전달만
+├── consumer.py            WireviewConsumer: Channels WebSocket 어댑터(/__wireview__). 소켓 수락·거절과 세션 시작·종료, JSON 전달만.
+│                          세션은 disconnect()와 ASGI __call__의 finally 둘 다에서 끝낸다 — 서버가 앱을 취소하거나(daphne의 close timeout·종료,
+│                          uvicorn의 graceful 시한) 앱이 던지면 Channels가 disconnect()를 부르지 않는다(#211)
 ├── session.py             WireviewSession: 세션 로직 전부(inbound command_*, 메일 component_*, 렌더). Outbound로만 내보낸다.
 │                          channels를 import하지 않는다(tests/test_session_extraction.py). send_render가 자식 LiveComponent의
-│                          joined/update(update_many)/leaving과 렌더를 함께 처리 (GAP-027, #60)
+│                          joined/update(update_many)/leaving과 렌더를 함께 처리 (GAP-027, #60).
+│                          stop()은 한 번만 돈다: 처음 부른 쪽이 만든 태스크(_stopping)를 뒤의 부름이 shield로 기다린다 — 서버의 취소가 정리를 끊지 않는다(삼키지는 않는다).
+│                          그 태스크 안(leaving())에서 부르면 바로 돌아온다. 프로세스 종료 때 정리가 끝나는지는 서버의 몫이다(tests/test_server_shutdown.py)
+│                          순서는 우편함 닫기·drain 회수 → leaving()(합쳐 LEAVING_SECONDS) → 작업 취소·presence.ended(퇴장 못 한 프로듀서) → finally의 _release_connection
+│                          (패치·허브·업로드·구독). 훅이 던지거나 걸려도 뒤의 정리는 돈다(#211, tests/test_session_end.py)
 ├── views.py               UploadView (청크 업로드 HTTP 엔드포인트). 무상태 — 서명 토큰만으로 판단하고
 │                          토큰에서 계산한 경로에 쓴다. 어느 워커에 닿아도 된다 (#83)
 ├── urls.py                websocket_urlpatterns, urlpatterns
@@ -298,6 +309,7 @@ tests/
                            ?failing=1 은 join이 실패한 대상, 끊겼다 다시 붙은 페이지),
                            reloadprobe/ 는 개발 서버에서 템플릿을 저장하면(file_changed) 새로고침 없이 새 템플릿이 보이고, 깨진 템플릿으로 막힌 컴포넌트가 고친 뒤 상태 그대로 돌아오는지 보는 E2E(test_template_reload_e2e.py)의 픽스처(shadow.py 가 TEMPLATES DIRS 앞에 테스트의 디렉터리를 두고 그 사본을 고친다. slow_bump 은 저장하는 순간 처리 중인 핸들러, away/ 는 rejoin이 기다리는 동안의 boost 이동 대상),
                            identityprobe/ 는 다른 탭이 로그인·로그아웃·사용자 교체·CSRF 회전을 한 뒤 boost 이동한 페이지의 컴포넌트가 페이지와 같은 신분인지(새 소켓, 새로고침 없이), 바뀐 것이 없으면 소켓을 그대로 쓰는지, renew 뒤의 두 번째 변화·재연결·끝내 맞지 않는 페이지에서 소켓 수가 멈추는지 보는 E2E(test_socket_identity_e2e.py)의 픽스처(경계 밖 a/·b/, 경계 안 inside-a/·inside-b/, stale/ 은 컴포넌트가 늘 다른 로그인으로 서명되는 페이지),
+                           endprobe.py 는 leaving()의 시작·끝을 파일에 적는 컴포넌트를 실은 testproj ASGI 앱이다 — test_server_shutdown.py 가 daphne·uvicorn 프로세스로 띄워 연결 둘에 SIGTERM을 보낸다(#211),
                            asgi_variants.py 는 wireview.W020(WebSocket 라우트에 세션 미들웨어가 없음)이 보는 ASGI 스택들이다(소켓 단위 테스트도 BARE·SESSION_ONLY로 consumer의 session_known 배선을 본다),
                            csrfprobe/ 는 컴포넌트·LiveComponent·함수 컴포넌트가 그린 일반 POST 폼({% csrf_token %})을 JavaScript 없이, join·이벤트·알림 뒤,
                            CSRF_USE_SESSIONS, 로그인(시크릿 회전) 뒤, 다른 사용자로 토큰을 검사하는 뷰에 제출하는 E2E(test_csrf_token_e2e.py)의 픽스처,

@@ -109,6 +109,10 @@ def test_every_row_reads_every_section_from_its_own_up():
 # both silent. An entry with neither fails here, so each new one is a decision. The next
 # release moves this table to its own entries and section.
 UPGRADE_NOTE = {
+    "A connection whose app ended without a disconnect is ended all the same": (
+        "연결이 끝날 때의 `leaving()`은 모두 합쳐 5초 안에 끝나야 한다",
+        "프레임워크가 대신 떠난다",
+    ),
     "Presence keeps a meta per producer under each user": (
         "Presence는 탭마다 기록한다",
         "프로듀서가 둘인 페이지가",
@@ -203,6 +207,13 @@ NO_UPGRADE_NOTE = {
     "A `stream()` in a `start_async` task replaced or cancelled": "닫히던 연결이 닫히지 않을 뿐 할 일이 없다",
     "A nested `{% component %}` a render drew that the page has yet to join goes": (
         "화면에 없는 인스턴스가 사라질 뿐 할 일이 없다"
+    ),
+    "A session's mail to itself is no longer lost to a full channel": (
+        "잃던 메일을 잃지 않을 뿐 할 일이 없다. 상한을 넘는 메일은 전에도 잃던 것이고 이제는 페이지가 다시 join한다"
+    ),
+    "A logout closes a busy connection on the login that ended": "닫혀야 할 연결이 닫힐 뿐 할 일이 없다",
+    "A visitor who is not logged in no longer closes every anonymous connection": (
+        "닫히지 말아야 할 연결이 남을 뿐 할 일이 없다"
     ),
 }
 

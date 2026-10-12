@@ -1,0 +1,8 @@
+{% load wireview %}
+
+<div {% tag_header %}>
+  <span data-testid="received">{{ this.received }}</span>
+  <span data-testid="marked">{{ this.marked }}</span>
+  <ul wire-stream="log">
+  </ul>
+</div>
