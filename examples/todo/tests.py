@@ -1,5 +1,6 @@
 import pytest
 from django.test import Client, TestCase
+from playwright.sync_api import expect
 from testproj.e2e_browser import expect_count, expect_text, wait_live
 from testproj.e2e_server import serve
 
@@ -53,6 +54,8 @@ class TestPlaywrightTodo:
 
         # Wait for item to appear
         expect_count(page.locator("[data-name=XTodoItem]"), 1)
+        # The input is empty again: mutation()'s render does not answer the Enter, push_js does
+        expect(new_item_input).to_have_value("")
 
         # Check counter
         counter = page.locator("[data-name=XTodoCounter]")
