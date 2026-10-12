@@ -561,12 +561,11 @@ async def test_the_task_taking_dropped_mail_ends_with_the_connection(small_chann
         # The handler never ends: the app is cancelled, as a server cancels it on its way down
         await communicator.disconnect(timeout=0.5)
         HELD["until"].set()
-        # Cancelled, it never ran disconnect(): the tests after this find their own session
-        if session is not None:
-            template_reload.unregister(session)
 
     assert task.cancelled()
     assert session is not None and session._mailbox is not None and session._mailbox.closed
+    # Cancelled, it never ran disconnect(): the app's end ended the session all the same
+    assert not template_reload.registered(session)
 
 
 # --- a logout, which no copy can stand in for -------------------------------------------------

@@ -249,6 +249,20 @@ dependencies = ["django-wireview>=1.5,<2"]
   속성은 모든 토픽을 합쳐 사용자마다 한 번이고, 토픽 하나만 보려면 새 메서드 `presence_users_in(topic)`을 쓴다
   ([여러 토픽 구독](./tutorials/07-presence-api.md#여러-토픽-구독)).
 
+### 연결의 끝
+
+- **조용히 달라짐: 연결이 끝날 때의 `leaving()`은 모두 합쳐 5초 안에 끝나야 한다(#211).** 서버가 앱을 취소했거나
+  앱이 예외로 끝나 `disconnect`가 오지 않은 연결도 이제 끝에 한 번 정리된다 — 1.5까지는 PatchHub의 항목·채널 그룹·
+  `start_async` 작업·presence가 프로세스에 남았다. 그 정리가 `leaving()`에 막히지 않도록:
+  - 한 연결의 `leaving()`들에 합쳐 5초(`wireview.session.LEAVING_SECONDS`)를 준다. 넘으면 돌던 것을 취소하고 남은 것은
+    부르지 않는다(경고 로그). 오래 걸리는 정리(외부 API 호출, 큰 쓰기)는 `leaving()`에서 기다리지 말고 작업 큐로 넘긴다.
+    페이지 이동·부모가 뺀 컴포넌트의 `leaving()`에는 시한이 없다.
+  - `joined()`에서 `presence_join()`한 프로듀서가 연결이 끝날 때까지 `presence_leave()`하지 않았으면(`leaving()`이
+    던졌거나 시한을 넘겼거나 부르지 않았으면) 프레임워크가 대신 떠난다. 그래서 다른 탭의 목록에 퇴장이 간다.
+  - daphne의 종료와 close timeout에서도 `leaving()`과 `connection_closed`가 돈다(1.5까지는 돌지 않았다).
+    `disconnect` 없이 끝난 연결의 `connection_closed`는 `code`가 `None`이다 — 닫힘 코드로 지표를 나누면 그 값을 둔다.
+    언제 그런 끝이 오는지는 [배포](./DEPLOYMENT.md#sigterm-드레인-절차).
+
 ### 스트림과 무한 스크롤
 
 - **조용히 달라짐: `wire-viewport-*`가 더 자주 불린다.** 자기 스크롤바가 있는 상자(`overflow-y: auto`) 안의 바인딩은

@@ -108,10 +108,15 @@ wireview/
 │                          늦게 온 레이어의 것은 버린다. 사본은 MAIL_LIMIT·MAIL_BYTES까지, 넘으면 1013으로 닫는다
 ├── template_engine.py     템플릿 VariableNode에 diff 마커 자동 주입. 마커 변수는 값을 직접 resolve하고 평범한 int·str은
 │                          Django의 VariableNode와 같은 출력을 지름길로 찍는다(render_value, #176). 바꾸면 tests/test_template_values.py가 Django 출력과 맞춘다
-├── consumer.py            WireviewConsumer: Channels WebSocket 어댑터(/__wireview__). 소켓 수락·거절과 세션 시작·종료, JSON 전달만
+├── consumer.py            WireviewConsumer: Channels WebSocket 어댑터(/__wireview__). 소켓 수락·거절과 세션 시작·종료, JSON 전달만.
+│                          세션은 disconnect()와 ASGI __call__의 finally 둘 다에서 끝낸다 — 서버가 앱을 취소하거나(daphne의 close timeout·종료,
+│                          uvicorn의 graceful 시한) 앱이 던지면 Channels가 disconnect()를 부르지 않는다(#211)
 ├── session.py             WireviewSession: 세션 로직 전부(inbound command_*, 메일 component_*, 렌더). Outbound로만 내보낸다.
 │                          channels를 import하지 않는다(tests/test_session_extraction.py). send_render가 자식 LiveComponent의
-│                          joined/update(update_many)/leaving과 렌더를 함께 처리 (GAP-027, #60)
+│                          joined/update(update_many)/leaving과 렌더를 함께 처리 (GAP-027, #60).
+│                          stop()은 한 번만 돈다: 처음 부른 쪽이 만든 태스크(_stopping)를 뒤의 부름이 shield로 기다린다 — 서버의 취소가 정리를 끊지 않는다.
+│                          순서는 우편함 닫기·drain 회수 → leaving()(합쳐 LEAVING_SECONDS) → 작업 취소·presence.ended(퇴장 못 한 프로듀서) → finally의 _release_connection
+│                          (패치·허브·업로드·구독). 훅이 던지거나 걸려도 뒤의 정리는 돈다(#211, tests/test_session_end.py)
 ├── views.py               UploadView (청크 업로드 HTTP 엔드포인트). 무상태 — 서명 토큰만으로 판단하고
 │                          토큰에서 계산한 경로에 쓴다. 어느 워커에 닿아도 된다 (#83)
 ├── urls.py                websocket_urlpatterns, urlpatterns

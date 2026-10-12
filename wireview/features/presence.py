@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import secrets
 import time
 import typing as t
@@ -62,6 +63,7 @@ from enum import StrEnum
 if t.TYPE_CHECKING:
     from wireview.core.component import Component
 
+log = logging.getLogger("wireview")
 
 __all__ = (
     "PresenceState",
@@ -444,6 +446,30 @@ def presence_channels(component: t.Any) -> set[str]:
     if isinstance(component, PresenceMixin) and component._presence_joined:
         return {component._presence_channel()}
     return set()
+
+
+async def ended(component: t.Any, deadline: float) -> None:
+    """A producer's connection ended: its typing timeout goes, and it leaves if ``leaving()`` did not (#211).
+
+    The application calls ``presence_leave()`` in ``leaving()``; a hook that
+    raised, ran out of time or forgot leaves the producer on every tracker's
+    list, which no TTL clears. ``deadline`` is the loop time the session's
+    hooks had (``WireviewSession.stop``); the leave gets a second past it,
+    so a hook that used it all up does not take the leave down with it.
+    """
+    if not isinstance(component, PresenceMixin):
+        return
+    typing = component._presence_typing_task
+    if typing is not None and not typing.done():
+        typing.cancel()
+    if not component._presence_joined:
+        return
+    try:
+        async with asyncio.timeout_at(max(deadline, asyncio.get_running_loop().time() + 1.0)):
+            await component.presence_leave()
+    except Exception:
+        producer = t.cast("Component", component)
+        log.exception("%s (%s) could not leave presence as its connection ended", producer._name, producer.id)
 
 
 async def hear(component: t.Any, channel: str, kwargs: dict[str, t.Any]) -> None:

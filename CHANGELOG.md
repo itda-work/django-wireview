@@ -87,6 +87,19 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A connection whose app ended without a disconnect is ended all the same, once (#211). Channels runs
+  `disconnect()` only for a disconnect message; when the server cancels the app -- Daphne after its application
+  close timeout, when a handler holds up the disconnect, and on shutdown; Uvicorn past its graceful shutdown
+  timeout -- or the app raises, the session never stopped. The process's `PatchHub` kept it (the auth topic's
+  entry, a strong reference, held the whole session and its repository), and with it its channel groups,
+  `start_async` tasks, a presence producer's typing timeout and its place on every tracker's list, a Broadcast
+  hold's timer and the template reloader's entry. The consumer now ends the session at the end of the app too,
+  and a second ending waits on the first: `leaving()`, the presence leave and `connection_closed` happen once.
+  The ending runs in a task of its own that the server's cancellation does not cut short. The `leaving()` hooks
+  of an ending connection have 5 seconds together (`LEAVING_SECONDS`): past it the one running is cancelled
+  and the rest are not called. A hook that raised, ran out of time or never called `presence_leave()` no
+  longer keeps the rest of the cleanup from running, and the framework leaves presence for a producer still
+  joined. `connection_closed` reports `code=None` for an app that ended without a disconnect.
 - A visitor who is not logged in no longer closes every anonymous connection by logging out (#211).
   `logout()` sends `user_logged_out` for them too, and `invalidate_authentication()` published to the topic of
   the generation with no user and no nonce, which every anonymous connection inside a live_session listens

@@ -109,6 +109,10 @@ def test_every_row_reads_every_section_from_its_own_up():
 # both silent. An entry with neither fails here, so each new one is a decision. The next
 # release moves this table to its own entries and section.
 UPGRADE_NOTE = {
+    "A connection whose app ended without a disconnect is ended all the same": (
+        "연결이 끝날 때의 `leaving()`은 모두 합쳐 5초 안에 끝나야 한다",
+        "프레임워크가 대신 떠난다",
+    ),
     "Presence keeps a meta per producer under each user": (
         "Presence는 탭마다 기록한다",
         "프로듀서가 둘인 페이지가",

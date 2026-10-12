@@ -806,7 +806,9 @@ wireview가 소켓을 조금씩 닫아 주지는 않는다. ASGI 서버가 종�
 2. **SIGTERM.** uvicorn은 새 연결을 받지 않고, 열린 모든 WebSocket을 닫힘 코드 **1012**(service restart)로
    닫은 뒤, 앱 태스크가 끝나기를 `--timeout-graceful-shutdown`초까지 기다리고 남은 것을 취소한다. 소켓이 닫히면
    wireview가 연결마다 컴포넌트의 `leaving()`을 부르고 구독을 정리한다(`connection_closed`의 `code`가 1012).
-   `leaving()`에서 presence를 지우거나 DB에 쓰는 앱이면 이 시간이 그만큼 필요하다.
+   `leaving()`에서 presence를 지우거나 DB에 쓰는 앱이면 이 시간이 그만큼 필요하다. 한 연결의 `leaving()`들은
+   모두 합쳐 5초(`wireview.session.LEAVING_SECONDS`) 안에 끝나야 한다 — 넘으면 돌던 것을 취소하고 남은 것은 부르지
+   않는다(경고 로그). 그래도 구독·작업 정리와, `presence_leave()`를 하지 못한 프로듀서의 presence 퇴장은 한다.
 
    ```bash
    uvicorn myproject.asgi:application --workers 4 --timeout-graceful-shutdown 20 ...
@@ -817,9 +819,19 @@ wireview가 소켓을 조금씩 닫아 주지는 않는다. ASGI 서버가 종�
    돌아오고 `wireview_connections` 합이 배포 전 수준이 될 때까지 기다린다. 쿨다운 없이 연달아 내리면 방금
    재연결한 페이지들이 또 끊긴다. `maxSurge`로 새 인스턴스를 먼저 띄우면 남은 용량이 줄지 않는다.
 
-**daphne는 이 절차에서 `leaving()`을 부르지 않는다.** daphne는 종료할 때 앱 코루틴을 취소할 뿐 WebSocket에
-`disconnect`를 보내지 않으므로(`daphne/server.py`의 `kill_all_applications`), 컴포넌트의 `leaving()`과
-`connection_closed`가 돌지 않는다. 그 정리에 기대는 앱은 uvicorn을 쓴다.
+**앱이 `disconnect` 없이 끝나도 연결은 한 번 정리된다(#211).** 서버가 앱을 취소하거나 앱이 예외로 끝나면
+Channels는 `disconnect()`를 부르지 않는다. wireview는 앱의 끝(ASGI `__call__`의 `finally`)에서도 세션을 끝낸다 —
+`disconnect`가 먼저 왔으면 그 정리를 기다릴 뿐 두 번 하지 않는다. 그 정리는 자기 태스크에서 돌아 서버의 취소가
+중간에 끊지 않고, `leaving()`은 위의 5초 안에서 돈다. `connection_closed`의 `code`는 `None`이다.
+그런 끝은 셋이다.
+
+- **daphne의 종료.** daphne는 종료할 때 WebSocket에 `disconnect`를 보내지 않고 앱 코루틴을 취소한 뒤 그것들이
+  끝나기를 기다린다(`daphne/server.py`의 `kill_all_applications`). 그래서 `leaving()`과 정리가 그 안에서 돈다.
+- **daphne의 close timeout.** 클라이언트가 끊겼는데 핸들러가 오래 걸려 `disconnect` 처리를 막으면, daphne는
+  `--application-close-timeout`(기본 10초) 뒤 앱을 취소한다. 그 핸들러는 취소되고, 프로세스는 계속 산다 — 정리가
+  없으면 PatchHub의 항목·채널 그룹·`start_async` 작업·presence가 연결마다 쌓이고 다른 탭의 목록에 떠난 사용자가 남았다.
+- **uvicorn의 `--timeout-graceful-shutdown` 초과.** 남은 앱 태스크를 취소하고 기다리지 않고 프로세스를 내린다.
+  정리는 시작되지만 끝까지 돈다는 보장은 없다 — 다른 워커의 presence 목록에 퇴장이 닿으려면 시한 안에 끝나게 둔다.
 
 **배포가 서명 키를 바꾸면** 재연결한 모든 페이지가 `invalid`로 거절돼 전체 새로고침을 한다 — join이 아니라
 HTTP 페이지 렌더가 몰린다. 키를 바꿀 때는 옛 키를 `SIGNING_KEY_FALLBACKS`(또는 `SECRET_KEY_FALLBACKS`)에 두고

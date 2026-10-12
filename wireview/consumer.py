@@ -12,7 +12,7 @@ from .core.csrf import cookies_of
 from .core.origin import origin_refusal
 from .core.rendered import protocol_version, socket_tab
 from .core.session import load_session
-from .core.transport import NO_CHANNEL_LAYER, ChannelsOutbound, Mailbox, Outbound, close_mailbox, open_mailbox
+from .core.transport import NO_CHANNEL_LAYER, ChannelsOutbound, Mailbox, Outbound, open_mailbox
 from .session import WireviewSession
 
 log = logging.getLogger("wireview")
@@ -44,9 +44,13 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
         try:
             await super().__call__(scope, receive, send)
         finally:
-            if self._mailbox is not None:
-                close_mailbox(self._mailbox)
-            await self.stop_handing_over()
+            # Cancelled by the server -- a disconnect a handler held up past its close
+            # timeout, a shutdown -- or raised, it never ran disconnect(): the session
+            # ends here, once (#211). After a disconnect this waits on that ending.
+            try:
+                await self.stop()
+            except Exception:
+                log.exception("Ending the session of connection %s raised", self.connection_id)
 
     @property
     def user(self):
@@ -92,12 +96,8 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
 
     async def disconnect(self, code):
         log.debug(f"<<< DISCONNECT {code}")
-        if self._mailbox is not None:
-            close_mailbox(self._mailbox)
-        await self.stop_handing_over()
-        if hasattr(self, "repo"):
-            # Refused before connect() ran (an Origin, #96) leaves nothing to stop
-            await self.stop(code)
+        # Refused before connect() ran (an Origin, #96), it has nothing but its mailbox to end
+        await self.stop(code)
         await super().disconnect(code)
 
     async def dispatch(self, message):
