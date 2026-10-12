@@ -29,7 +29,9 @@ class XHello(Component):
 
 ## 이럴 때 쓰세요
 
-화면이 서버의 데이터에서 나오고 그 데이터를 이미 Django로 다루는 앱에 맞습니다. 기존 프로젝트에는 뷰·템플릿을 그대로 두고 화면 하나씩 들입니다([이미 있는 프로젝트에 붙이기](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/01-getting-started.md#2-이미-있는-프로젝트에-붙이기)).
+Django로 백엔드를 만들고 있고 프런트엔드 전담이 없는 팀에 맞습니다. 사내 도구와 관리 화면을 만드는 Django 팀, Node와 번들러 없이 실시간 화면을 들이고 싶은 Python 조직, 코딩 에이전트와 혼자 제품을 만드는 개발자가 그렇습니다. 화면이 서버의 데이터에서 나오고 그 데이터를 이미 Django로 다루는 앱이면, 기존 프로젝트에는 뷰·템플릿을 그대로 두고 화면 하나씩 들입니다([이미 있는 프로젝트에 붙이기](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/01-getting-started.md#2-이미-있는-프로젝트에-붙이기)).
+
+그런 팀이 자주 만드는 화면은 이렇습니다.
 
 - **Django 팀이 만드는 사내 도구·관리 화면·대시보드.** 핸들러가 모델과 로그인 사용자를 바로 쓰고, 그 사이에 API 계층이 없습니다. 느린 집계는 [`assign_async`](https://github.com/itda-work/django-wireview/blob/main/docs/features/async-operations.md)로 미루고, 페이지의 인증 경계는 [live_session](https://github.com/itda-work/django-wireview/blob/main/docs/features/live-session.md)이 지킵니다. 보기: [Dashboard](https://github.com/itda-work/django-wireview/blob/main/docs/tutorials/05-dashboard.md).
 - **입력하는 동안 서버 검증이 보이는 업무 폼.** 핸들러에서 Django 폼의 `is_valid()`를 그대로 돌리고, [`wire-feedback-for`](https://github.com/itda-work/django-wireview/blob/main/docs/features/form-feedback.md)가 건드린 칸의 오류만 보여 줍니다. 보기: [Django 폼과 함께 쓰기](https://github.com/itda-work/django-wireview/blob/main/docs/features/form-feedback.md#django-폼과-함께-쓰기).
@@ -52,6 +54,30 @@ class XHello(Component):
 - **다른 사이트에 심는 위젯.** 소켓은 Origin이 `ALLOWED_HOSTS`에 있는 페이지에서만 열립니다. 대신 독립 JS 위젯.
 
 외부 공개 API가 필요하면 DRF나 Django Ninja를 같은 모델·인증 위에 함께 둡니다. SPA 자산이 이미 큰 조직이라면 기술이 아니라 도입 비용의 문제입니다. 흔한 반론에 대한 답은 [왜 wireview인가](https://github.com/itda-work/django-wireview/blob/main/docs/WHY.md)에 있습니다.
+
+## 다른 선택지와 비교
+
+같은 문제를 푸는 도구들과 구조를 비교합니다. 성능은 재지 않은 것을 적지 않습니다. wireview의 수치는 [숫자](#숫자)에 있고 비교군은 FastAPI입니다.
+
+| | 전송 | 서버가 먼저 보내기 | 상태가 있는 곳 | 재연결·배포 | 브라우저 없는 테스트 |
+|---|---|---|---|---|---|
+| **wireview** (Python, Django) | 상시 WebSocket | 내장. `broadcast()`, 모델 알림, Presence, Streams | 페이지의 서명된 `data-state` | 어느 워커에나 다시 join. sticky session 불필요 | `mount()`, `manage.py check` |
+| **Phoenix LiveView** (Elixir) | 상시 WebSocket | 내장. PubSub, Presence, Streams | 서버 프로세스의 메모리 | 재연결 때 `mount`가 다시 돈다 | `LiveViewTest` |
+| **Laravel Livewire** (PHP) | 상호작용마다 HTTP 요청 | 따로. Echo와 Reverb | 응답에 실린 체크섬 스냅샷 | 연결이 없어 문제가 없다 | `Livewire::test()` |
+| **Rails Hotwire** (Ruby) | HTTP(Turbo)와 WebSocket(Action Cable) | Turbo Streams 방송 | 컴포넌트 상태 없음. HTML 조각 | 페이지 단위 | 조각은 컨트롤러 테스트, 동작은 시스템 테스트 |
+| **htmx, django-unicorn** | 상호작용마다 HTTP 요청 | 확장이나 따로 | 없음, 또는 응답에 실린 상태 | 연결이 없어 문제가 없다 | Django 테스트 클라이언트 |
+| **Vaadin Flow** (Java) | HTTP, 푸시는 WebSocket | 내장. `@Push` | 서버 세션의 UI 객체 트리 | sticky session 필요 | UI unit 테스트 |
+| **Spring REST + SPA** (Java) | HTTP, 필요하면 WebSocket | 직접 만든다. STOMP 등 | 클라이언트 | 무상태 API | API와 프런트를 따로 |
+
+**가장 가까운 것은 Phoenix LiveView입니다.** wireview는 그 모델을 Django로 옮긴 것이라 기능표의 거의 모든 행이 같고, 설계상 제외한 둘(중첩 LiveView의 프로세스 격리, long polling 폴백)만 다릅니다([기능 갭](https://github.com/itda-work/django-wireview/blob/main/docs/FEATURE-GAP.md)). 고르는 기준은 언어와 팀입니다. 이미 Django의 모델·폼·admin·인증 위에 있으면 wireview, Elixir 팀이거나 BEAM의 프로세스 격리와 연결당 메모리가 필요하면 LiveView입니다.
+
+**Livewire, django-unicorn, htmx는 상호작용마다 HTTP 요청을 보냅니다.** WebSocket 인프라 없이 어느 호스팅에서나 돌고 scale-to-zero가 됩니다. 대신 서버가 먼저 보내는 것(알림, 진행률, 접속자, 다른 사람의 변경)은 Livewire가 Echo와 Reverb를, htmx가 SSE·WebSocket 확장을 따로 붙여야 합니다. 화면의 핵심이 그것이면 wireview, 폼과 목록이 전부면 그쪽이 가볍습니다.
+
+**Hotwire는 HTML 조각을 바꾸는 모델이지 컴포넌트 모델이 아닙니다.** 서버에 화면의 상태가 없고 동작은 Stimulus가 브라우저에서 맡습니다. wireview는 상태를 가진 컴포넌트가 이벤트를 핸들러 하나로 받습니다.
+
+**Spring에는 서버 주도 UI가 코어에 없습니다.** 보통 REST + SPA이고, 가장 가까운 것은 Vaadin Flow입니다. Vaadin은 화면을 Java 객체 트리로 짜고 상태를 서버 세션에 두며, wireview는 Django 템플릿(HTML)과 페이지의 서명 상태입니다. 어느 쪽이든 선택은 언어가 정합니다. Python·Django 조직이 아니면 wireview를 고를 이유가 없습니다.
+
+"우리 상황이면 어느 쪽인가"라는 물음의 답은 [다른 프레임워크와 견줄 때](https://github.com/itda-work/django-wireview/blob/main/docs/WHY.md#다른-프레임워크와-견줄-때)에 있습니다.
 
 ## 숫자
 
@@ -86,6 +112,13 @@ pip install django-wireview daphne
 ## AI 에이전트로 시작하기
 
 AI가 코드를 써 줘도 그 코드를 고치고 책임지는 건 사람입니다. wireview는 프런트와 백엔드 사이의 API 계약을 없애 사람이 지켜야 할 코드를 Django 한 벌로 줄이고, AI가 쓴 결과를 브라우저 없이 `mount()` 테스트와 `manage.py check`로 바로 확인하게 합니다.
+
+에이전트와 잘 맞는 이유는 네 가지이고 모두 구조에서 옵니다. 에이전트가 wireview를 다른 스택보다 잘 짠다는 실측은 아직 없습니다([생태계가 작다](https://github.com/itda-work/django-wireview/blob/main/docs/WHY.md#생태계가-작다)).
+
+- **한 언어, 한 저장소.** 화면 하나가 Django 템플릿 하나와 Python 클래스 하나입니다. 에이전트가 두 코드베이스의 API 계약을 맞출 일이 없고, 둘이 어긋나는 종류의 버그가 생길 자리가 없습니다.
+- **브라우저 없이 스스로 확인합니다.** `mount()`로 핸들러를 부르고 렌더된 HTML을 보고, `manage.py check`가 조용히 실패하는 실수를 경고로 알리고, `wireview_check_templates`가 템플릿을 진단합니다. 짜고 확인하고 고치는 고리가 Python 안에서 닫혀, 에이전트가 사람이 브라우저를 열어 주기를 기다리지 않습니다.
+- **함정이 스킬에 들어 있습니다.** 패키지에 실린 스킬이 async가 아닌 핸들러, 이름 충돌, 빠진 `{% tag_header %}`처럼 아무 신호 없이 실패하는 실수를 코드를 쓰기 전에 알립니다.
+- **잘못된 값이 조용히 지나가지 않습니다.** 상태 필드는 Pydantic 타입이고 핸들러 인자는 타입 표기대로 검증됩니다. 에이전트의 실수가 화면이 아니라 오류로 드러납니다.
 
 Claude Code 같은 코딩 에이전트에게 아래 프롬프트를 줍니다. 새 프로젝트에서도 이미 있는 Django 프로젝트에서도 같은 프롬프트를 쓰고, 끝부분만 만들고 싶은 것으로 바꿉니다.
 

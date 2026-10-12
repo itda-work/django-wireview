@@ -70,6 +70,9 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- The README opens with who wireview is for, a structural comparison with Phoenix LiveView, Laravel Livewire,
+  Rails Hotwire, htmx and the Java options (Vaadin Flow, Spring REST + SPA), and why it suits a coding agent;
+  `docs/WHY.md` answers the questions that comparison leaves (#215).
 - A nested `{% component %}` its drawer's render stops drawing leaves with that render, an id or not
   (#204): one an `{% if %}` hides and shows again starts anew, its old state gone, whatever order the
   page's leave and the next render come in. Keep it drawn and hide it with CSS to keep its state.

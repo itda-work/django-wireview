@@ -77,6 +77,28 @@ RTT가 큰 망(먼 리전, 모바일 망)의 사용자가 주 대상이고 클�
 
 AI 도구를 위해서는 문서 목록인 [llms.txt](https://itda.work/wireview/llms.txt)와, 프로젝트에 설치하는 앱 개발자용 [스킬](features/agent-skill.md)이 있습니다. 이것들이 AI가 wireview를 더 잘 짜게 만든다는 실측은 아직 없고, AI가 wireview를 React만큼 잘 짠다는 근거도 없습니다. 확실한 것은 AI가 쓴 코드를 `mount()` 테스트와 `manage.py check`로 브라우저 없이 확인할 수 있다는 점입니다.
 
+## 다른 프레임워크와 견줄 때
+
+구조 비교표는 README의 [다른 선택지와 비교](../README.md#다른-선택지와-비교)에 있습니다. 여기서는 그 표를 보고 나서 남는 물음에 답합니다.
+
+### 원형이 LiveView라면 LiveView를 쓰면 되지 않나
+
+언어와 팀이 정합니다. 이미 Django의 모델·폼·admin·인증과 서드파티 앱 위에 있다면 그것을 버리고 Elixir로 가는 비용이, wireview가 LiveView에 못 미치는 부분보다 큽니다. 반대로 Elixir 팀이거나 연결 수십만의 동시성과 BEAM의 프로세스 격리가 필요하면 LiveView입니다. wireview는 연결 2,000개까지만 쟀습니다([연결마다 메모리를 쓴다](#연결마다-메모리를-쓴다)).
+
+설계가 갈린 곳은 상태의 위치입니다. LiveView는 상태를 서버 프로세스에 두고, 연결이 끊기면 `mount`부터 다시 하므로 이벤트로만 바꾼 상태는 앱이 되살려야 합니다. wireview는 서명된 상태를 페이지에 실어, 재연결하면 마지막 렌더의 상태로 돌아오고 어느 워커에 붙어도 됩니다([연결이 끊기거나 배포하면](#연결이-끊기거나-배포하면)). 대가는 렌더마다 상태를 서명해 보내는 바이트입니다. 그리고 Elixir에는 없는 마찰이 하나 있습니다. 핸들러가 이벤트 루프 위의 async 함수라 동기 ORM을 그대로 부르면 Django가 막습니다([개발이 어렵다](#개발이-어렵다)).
+
+### Livewire처럼 HTTP로 하면 안 되나
+
+됩니다. Livewire, django-unicorn, htmx는 상호작용마다 HTTP 요청을 보내고, 그래서 WebSocket 인프라 없이 어느 호스팅에서나 돌고 scale-to-zero가 되며 WebSocket이 막힌 망에서도 됩니다. [이럴 땐 쓰지 마세요](../README.md#이럴-땐-쓰지-마세요)의 여러 항목에서 대안이 그쪽인 이유이고, wireview가 HTTP 폴백을 만들지 않기로 한 것도 같은 이유입니다([결정 기록](design/longpolling-fallback.md)).
+
+그 대신 서버가 먼저 보내는 것이 안에 없습니다. 알림, 진행률, 접속자, 다른 사람이 바꾼 목록은 Livewire가 Echo와 Reverb를, htmx가 SSE나 WebSocket 확장을 따로 붙여야 하고, 그 순간 "요청마다 HTTP"의 단순함은 사라집니다. 화면의 핵심이 그것이면 처음부터 wireview가, 폼과 목록이 전부면 그쪽이 가볍습니다.
+
+### Java 조직인데
+
+Spring에는 서버 주도 UI가 코어에 없습니다. 보통 REST + SPA이거나 Thymeleaf + htmx이고, 가장 가까운 것은 Vaadin Flow입니다. Vaadin은 화면을 Java 객체 트리로 짜고 UI 상태를 서버 세션에 두므로 인스턴스가 여럿이면 sticky session이 필요합니다. wireview의 화면은 Django 템플릿이고 상태는 페이지에 있습니다. 저쪽이 나은 것은 그리드·차트 같은 컴포넌트 세트와 Java 생태계입니다.
+
+어느 쪽이든 선택은 언어가 정합니다. Python·Django 조직이 아니면 wireview를 고를 이유가 없고, Django 조직이 공개 API를 함께 내야 하면 wireview 옆에 DRF나 Django Ninja를 같은 모델·인증 위에 둡니다.
+
 ## 권한 검사는 누가 하나
 
 상태와 권한 판단이 서버 한 곳에 있습니다.
