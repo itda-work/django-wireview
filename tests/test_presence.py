@@ -376,39 +376,17 @@ class TestPresenceMixin:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    @pytest.mark.django_db
-    async def test_a_producer_whose_place_moves_says_one_move_from_its_old_name_to_its_new_one(self):
-        """As it is, typing still; the move names the meta it said and the one it has now (#212)."""
-        drawer = await mount(XTrackerComponent, id="a-page", room_id=1, username="ann")
+    async def test_a_leave_that_fails_after_leaving_is_logged_not_raised(self, monkeypatch, caplog):
+        """The session's last step for the component goes on: the failure is logged."""
         view = await mount(XProducerComponent, room_id=1, username="ann")
-        view.component.wire.drawn_at = (drawer.component, 1)
-        await view.component.presence_leave()
-        await view.component.presence_join()
-        await view.component.presence_set_typing(typing=True)
-        said = presence._presence_ref(view.component)
-        view.wire._mock_channel_layer.clear()
 
-        view.component.wire.drawn_at = (drawer.component, 0)
-        await presence.rename([view.component, drawer.component])
+        async def broken(self):
+            raise RuntimeError("the layer is down")
 
-        [move] = (b["kwargs"] for b in view.presence_broadcasts)
-        assert move["action"] == "presence_move"
-        [entry] = move["moves"]
-        assert (entry["old_ref"], entry["presence_ref"], entry["state"], entry["user_id"]) == (
-            said,
-            presence._presence_ref(view.component),
-            "typing",
-            "ann",
-        )
-        assert entry["presence_ref"] != said
-        assert entry["presence_speaker"] == presence._presence_speaker(view.component)
-
-        # Said under the new name now, and only once
-        view.wire._mock_channel_layer.clear()
-        await presence.rename([view.component])
-        assert view.presence_broadcasts == []
-        await view.component.presence_leave()
-        assert view.presence_broadcasts[-1]["kwargs"]["presence_ref"] == entry["presence_ref"]
+        monkeypatch.setattr(XProducerComponent, "presence_leave", broken)
+        with caplog.at_level("ERROR", logger="wireview"):
+            await presence.left(view.component)
+        assert any("could not leave its presence" in r.getMessage() for r in caplog.records)
 
     @pytest.mark.asyncio
     @pytest.mark.unit
@@ -1119,31 +1097,17 @@ class TestPresenceTabs:
 
     @staticmethod
     def ref(
-        tab: str = "",
-        connection: str = "conn",
-        user=None,
-        id: str = "producer",
-        key=None,
-        id_given: bool = True,
-        drawn_at=None,
+        tab: str = "", connection: str = "conn", user=None, id: str = "producer", key=None, id_given: bool = True
     ) -> str:
-        """A producer's ref (or, with ``key``, another key of it); ``id_given=False`` is an id the framework minted.
-
-        ``drawn_at`` is where a pass drew it without an id: its drawer and its number.
-        """
-        component = TestPresenceTabs.producer(id, tab, connection, user, id_given)
-        component.wire.drawn_at = drawn_at
-        return (key or presence._presence_ref)(component)
-
-    @staticmethod
-    def producer(id: str, tab: str = "", connection: str = "conn", user=None, id_given: bool = True):
+        """A producer's ref (or, with ``key``, another key of it); ``id_given=False`` is an id the framework minted."""
         from django.contrib.auth.models import AnonymousUser
 
         from wireview.core.meta import WireviewMeta
 
         wire = WireviewMeta(params={}, connection_id=connection, tab_id=tab)
         wire.id_given = id_given
-        return XProducerComponent(id=id, user=user or AnonymousUser(), wire=wire)
+        component = XProducerComponent(id=id, user=user or AnonymousUser(), wire=wire)
+        return (key or presence._presence_ref)(component)
 
     @pytest.mark.unit
     def test_a_tab_keeps_its_ref_across_connections(self):
@@ -1163,36 +1127,12 @@ class TestPresenceTabs:
         assert self.ref(tab, id="composer", key=tab_key) != self.ref(tab, id="composer")
 
     @pytest.mark.unit
-    def test_a_producer_whose_id_was_minted_and_that_no_pass_drew_is_named_by_its_class(self):
-        """A sticky default id, ``mount()`` without an id: one of its class on the page (#212)."""
+    def test_a_producer_whose_id_was_minted_is_named_by_its_class(self):
+        """An id-less ``{% component %}`` gets a new ``rx-`` id on every pass that draws it, a reconnect's too."""
         tab = "abcdefghijklmnopqrstuv"
         assert self.ref(tab, "conn-1", id="rx-1", id_given=False) == self.ref(tab, "conn-2", id="rx-2", id_given=False)
         assert self.ref(tab, id="rx-1", id_given=False) != self.ref(tab, id="rx-1")
         assert self.ref(tab, id="rx-1", id_given=False) != self.ref("vutsrqponmlkjihgfedcba", id="rx-1", id_given=False)
-
-    @pytest.mark.unit
-    def test_producers_drawn_without_ids_are_named_by_where_they_are_drawn(self):
-        """Their drawer and their number in their class there: two on one page are two, the same anew (#212)."""
-        tab = "abcdefghijklmnopqrstuv"
-        page, other_page = self.producer("page"), self.producer("other-page")
-
-        def drawn(number, drawer=page, n=0, **kwargs):
-            """The ref of the ``n``-th instance drawn at ``number`` by ``drawer``."""
-            return self.ref(tab, id=f"rx-{number}-{n}", id_given=False, drawn_at=(drawer, number), **kwargs)
-
-        assert drawn(0) != drawn(1)
-        # The one drawn in its place, on a later pass or on the next socket
-        assert drawn(0) == drawn(0, n=1, connection="conn-2")
-        assert drawn(0) != drawn(0, drawer=other_page)
-        assert drawn(0) != self.ref(tab, id="rx-0-0", id_given=False)
-        # Drawn by components drawn without ids themselves: by theirs
-        middles = [self.producer(f"rx-m{n}", id_given=False) for n in range(2)]
-        for number, middle in enumerate(middles):
-            middle.wire.drawn_at = (page, number)
-        assert drawn(0, drawer=middles[0]) != drawn(0, drawer=middles[1])
-        again = self.producer("rx-m-again", id_given=False)
-        again.wire.drawn_at = (page, 0)
-        assert drawn(0, drawer=middles[0]) == drawn(0, drawer=again)
 
     @pytest.mark.unit
     def test_without_a_tab_the_connection_is_the_key(self):
@@ -1352,127 +1292,3 @@ class TestPresenceTopics:
         )
         assert view.component.presence_get_user("ann").is_typing()
         assert not view.component.presence_users_in("room.1")[0].is_typing()
-
-
-class TestPresenceMoves:
-    """A render moved the names of producers drawn without ids: one ``presence_move`` (#212).
-
-    A tracker applies it as one change. As a leave and a join each, a list
-    rendered between them went without the user, or without its typing.
-    """
-
-    @staticmethod
-    async def setup(monkeypatch, *places: int):
-        """Producers of ann's tab at ``places`` of one drawer, joined; what they publish reaches bob's tracker."""
-        tracker = (await mount(XTrackerComponent, id="bob", username="bob")).component
-        published = []
-
-        async def publish(self, channel, **kwargs):
-            published.append(kwargs)
-            await tracker.notification(channel, **kwargs)
-
-        monkeypatch.setattr(XProducerComponent, "broadcast", publish)
-        drawer = TestPresenceTabs.producer("page")
-        producers = []
-        for number, place in enumerate(places):
-            producer = TestPresenceTabs.producer(f"minted-{number}", tab="tab", id_given=False)
-            producer.username = "ann"
-            producer.wire.drawn_at = (drawer, place)
-            await producer.presence_join()
-            producers.append(producer)
-        return tracker, drawer, producers, published, publish
-
-    @pytest.mark.asyncio
-    @pytest.mark.unit
-    @pytest.mark.django_db
-    @pytest.mark.parametrize("reverse", [False, True])
-    async def test_two_that_swap_names_move_in_one_change(self, monkeypatch, reverse):
-        tracker, drawer, (first, second), published, _ = await self.setup(monkeypatch, 0, 1)
-        await second.presence_set_typing(True)
-        renders = []
-        monkeypatch.setattr(XTrackerComponent, "force_render", lambda self: renders.append(self.presence_users))
-        published.clear()
-
-        first.wire.drawn_at, second.wire.drawn_at = (drawer, 1), (drawer, 0)
-        await presence.rename([second, first] if reverse else [first, second])
-
-        assert [kwargs["action"] for kwargs in published] == ["presence_move"]
-        [users] = renders
-        assert [(user.user_id, user.state) for user in users] == [("ann", PresenceState.TYPING)]
-        metas = tracker._presence_registry["presence.room.1"]["ann"]
-        assert metas[presence._presence_ref(second)].is_typing()
-        assert not metas[presence._presence_ref(first)].is_typing()
-        # Each leaves the meta it says now
-        await second.presence_leave()
-        assert not tracker.presence_get_user("ann").is_typing()
-        await first.presence_leave()
-        assert tracker.presence_get_user("ann") is None
-
-    @pytest.mark.asyncio
-    @pytest.mark.unit
-    @pytest.mark.django_db
-    async def test_a_late_leave_of_the_name_given_up_leaves_the_one_that_took_it(self, monkeypatch):
-        """The hidden producer's leave comes after the move: the meta under its name is another speaker's now."""
-        tracker, drawer, (hidden, kept), published, _ = await self.setup(monkeypatch, 0, 1)
-        await kept.presence_set_typing(True)
-        kept.wire.drawn_at = (drawer, 0)
-        await presence.rename([kept])
-        await hidden.presence_leave()
-        assert tracker.presence_get_user("ann").is_typing()
-        assert list(tracker._presence_registry["presence.room.1"]["ann"]) == [presence._presence_ref(kept)]
-
-    @pytest.mark.asyncio
-    @pytest.mark.unit
-    @pytest.mark.django_db
-    async def test_a_leave_while_the_move_is_on_its_way_does_not_join_again(self, monkeypatch):
-        """The producer left (a task of its own) while its move was being published: it stays gone."""
-        tracker, drawer, (producer,), published, publish = await self.setup(monkeypatch, 1)
-        reached, release = asyncio.Event(), asyncio.Event()
-
-        async def held(self, channel, **kwargs):
-            await publish(self, channel, **kwargs)
-            if kwargs["action"] == "presence_move":
-                reached.set()
-                await release.wait()
-
-        monkeypatch.setattr(XProducerComponent, "broadcast", held)
-        producer.wire.drawn_at = (drawer, 0)
-        task = asyncio.create_task(presence.rename([producer]))
-        try:
-            await asyncio.wait_for(reached.wait(), 2)
-            await producer.presence_leave()
-        finally:
-            release.set()
-            await task
-        await presence.left(producer)
-
-        assert [kwargs["action"] for kwargs in published] == ["presence_join", "presence_move", "presence_leave"]
-        assert not producer._presence_joined
-        assert tracker.presence_get_user("ann") is None
-
-    @pytest.mark.asyncio
-    @pytest.mark.unit
-    @pytest.mark.django_db
-    async def test_a_sync_answer_while_the_move_is_on_its_way_says_the_new_name(self, monkeypatch):
-        tracker, drawer, (producer,), published, publish = await self.setup(monkeypatch, 1)
-        reached, release = asyncio.Event(), asyncio.Event()
-
-        async def held(self, channel, **kwargs):
-            await publish(self, channel, **kwargs)
-            if kwargs["action"] == "presence_move":
-                reached.set()
-                await release.wait()
-
-        monkeypatch.setattr(XProducerComponent, "broadcast", held)
-        producer.wire.drawn_at = (drawer, 0)
-        task = asyncio.create_task(presence.rename([producer]))
-        try:
-            await asyncio.wait_for(reached.wait(), 2)
-            await producer._presence_answer("presence.room.1", {"requester_ref": "new-tab"})
-            assert published[-1]["presence_ref"] == presence._presence_ref(producer)
-        finally:
-            release.set()
-            await task
-        assert len(tracker._presence_registry["presence.room.1"]["ann"]) == 1
-        await producer.presence_leave()
-        assert tracker.presence_get_user("ann") is None

@@ -11,7 +11,6 @@ so they run wherever the suite does.
 from __future__ import annotations
 
 import json
-import re
 import typing as t
 
 import pytest
@@ -24,7 +23,6 @@ from wireview import Component, PresenceConfig, PresenceMixin, PresenceTrackerMi
 from wireview.consumer import WireviewConsumer
 from wireview.core.meta import WireviewMeta
 from wireview.core.state import sign_state
-from wireview.session import WireviewSession
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio, pytest.mark.django_db(transaction=True)]
 
@@ -356,9 +354,9 @@ async def connect(component: type[Component], id: str, *, tab: str = "", **state
     return communicator
 
 
-async def render_containing(communicator: WebsocketCommunicator, text: str, limit: int = 10) -> str:
-    """The first render whose payload contains ``text``, among the next ``limit`` messages."""
-    for _ in range(limit):
+async def render_containing(communicator: WebsocketCommunicator, text: str) -> str:
+    """The first render whose payload contains ``text``."""
+    for _ in range(10):
         message = await communicator.receive_json_from(timeout=5)
         if message["command"] != "render":
             continue
@@ -557,18 +555,6 @@ async def test_a_sticky_producer_answers_for_the_page_it_moved_to():
 ANN_TAB = "ann-first-page-load"
 
 
-def process_dies(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The socket's process ends with it: no ``leaving()`` runs, nor what the framework does after one (#212).
-
-    ``monkeypatch.undo()`` brings the process back.
-    """
-
-    async def nothing(self, components):
-        pass
-
-    monkeypatch.setattr(WireviewSession, "_call_leaving", nothing)
-
-
 async def test_a_tab_that_reconnects_replaces_what_a_lost_leave_left(monkeypatch):
     """The socket's process died without the leave; the tab came back on a new socket, then closed (#202).
 
@@ -580,7 +566,10 @@ async def test_a_tab_that_reconnects_replaces_what_a_lost_leave_left(monkeypatch
         lost = await connect(CnTyping, "a-typing", tab=ANN_TAB, name="ann")
         await render_containing(bob, "ann-online")
 
-        process_dies(monkeypatch)
+        async def dies(self):
+            pass  # the process ends: leaving() never runs
+
+        monkeypatch.setattr(CnTyping, "leaving", dies)
         await lost.disconnect()
         monkeypatch.undo()
 
@@ -626,7 +615,10 @@ async def test_a_tab_that_reconnects_replaces_what_its_drawn_producer_left(monke
         first = await join_page(lost, page)
         await render_containing(bob, "ann-online")
 
-        process_dies(monkeypatch)
+        async def dies(self):
+            pass  # the process ends: leaving() never runs
+
+        monkeypatch.setattr(CnTyping, "leaving", dies)
         await lost.disconnect()
         monkeypatch.undo()
 
@@ -934,369 +926,6 @@ async def test_two_producers_of_one_tab_one_leaves_the_user_stays():
     finally:
         for communicator in (c for c in (ann, bob, carol) if c):
             await communicator.disconnect()
-
-
-class CnShelf(InlineTemplate, Component):
-    """A part of a page that draws a producer without an id, and can hide it (#212)."""
-
-    source: t.ClassVar[str] = (
-        '<div {% tag_header %}>{% if this.show %}{% component "CnTyping" name=this.name %}{% endif %}</div>'
-    )
-
-    name: str = ""
-    show: bool = True
-
-    async def toggle(self):
-        self.show = not self.show
-
-
-class CnShelves(InlineTemplate, Component):
-    """A page with two of those: two producers of one class on one tab, neither with an id (#212)."""
-
-    source: t.ClassVar[str] = (
-        '<section {% tag_header %}>{% component "CnShelf" id="a-left" name=this.name %}'
-        '{% component "CnShelf" id="a-right" name=this.name %}</section>'
-    )
-
-    name: str = ""
-
-
-class CnTwins(InlineTemplate, Component):
-    """A page that draws two producers of one class without ids itself, and can hide either (#212)."""
-
-    source: t.ClassVar[str] = (
-        "<section {% tag_header %}>"
-        '{% if this.first %}{% component "CnTyping" name=this.name %}{% endif %}'
-        '{% if this.second %}{% component "CnTyping" name=this.name %}{% endif %}</section>'
-    )
-
-    name: str = ""
-    first: bool = True
-    second: bool = True
-
-    async def hide(self, which: str):
-        setattr(self, which, False)
-
-
-def drawn_states(node: t.Any, name: str, found: list[tuple[str, str]] | None = None) -> list[tuple[str, str]]:
-    """The id and signed state of each ``name`` a diff draws, in the order it draws them."""
-    found = [] if found is None else found
-    if isinstance(node, dict):
-        statics = node.get("s") or node.get("r")
-        if isinstance(statics, list):
-            for i, part in enumerate(statics):
-                if isinstance(part, str) and part.endswith(f'data-name="{name}" data-state="'):
-                    found.append((re.findall(r'id="([^"]+)"', part)[-1], node["d"][i]))
-        node = list(node.values())
-    if isinstance(node, list):
-        for value in node:
-            drawn_states(value, name, found)
-    return found
-
-
-async def render_of(communicator: WebsocketCommunicator, id: str) -> dict:
-    """The next render of ``id``."""
-    while True:
-        message = await communicator.receive_json_from(timeout=5)
-        if message["command"] == "render" and message["payload"]["id"] == id:
-            return message["payload"]
-
-
-async def join_signed(communicator: WebsocketCommunicator, name: str, state: str) -> None:
-    await communicator.send_json_to({"command": "join", "payload": {"name": name, "state": state, "children": {}}})
-
-
-async def join_drawn_producers(communicator: WebsocketCommunicator, render: dict) -> list[str]:
-    """Join the producers ``render`` drew, as the page does; their ids."""
-    drawn = drawn_states(render["diff"], "CnTyping")
-    for producer_id, state in drawn:
-        await join_signed(communicator, "CnTyping", state)
-        await render_of(communicator, producer_id)
-    return [producer_id for producer_id, _ in drawn]
-
-
-async def leave(communicator: WebsocketCommunicator, id: str) -> None:
-    """The page saw the element go."""
-    await communicator.send_json_to({"command": "leave", "payload": {"id": id}})
-
-
-async def join_shelves(communicator: WebsocketCommunicator) -> dict[str, str]:
-    """Join the page, its two parts and their producers, as the page does; each part's producer."""
-    page = CnShelves(user=AnonymousUser(), wire=WireviewMeta(params={}), id="a-page", name="ann")
-    await join_signed(communicator, "CnShelves", sign_state(page))
-    producers = {}
-    for shelf_id, state in drawn_states((await render_of(communicator, "a-page"))["diff"], "CnShelf"):
-        await join_signed(communicator, "CnShelf", state)
-        # The part's join draws its producer again, under a new id
-        [producers[shelf_id]] = await join_drawn_producers(communicator, await render_of(communicator, shelf_id))
-    return producers
-
-
-async def join_twins(communicator: WebsocketCommunicator) -> list[str]:
-    page = CnTwins(user=AnonymousUser(), wire=WireviewMeta(params={}), id="a-page", name="ann")
-    await join_signed(communicator, "CnTwins", sign_state(page))
-    return await join_drawn_producers(communicator, await render_of(communicator, "a-page"))
-
-
-@pytest.mark.parametrize("hidden", ["a-left", "a-right"], ids=["joined-first", "joined-last"])
-async def test_two_producers_drawn_without_ids_one_hidden_the_user_stays(hidden):
-    """Two parts of a page each draw a producer of one class without an id, and one hides it (#212).
-
-    Named by their class, the two shared a meta, heard from the one joined
-    last: its leave took the user off bob's list while the other was still on
-    the page.
-    """
-    bob = await connect(CnOnline, "b-list", name="bob")
-    ann = await open_socket(ANN_TAB)
-    carol = None
-    try:
-        producers = await join_shelves(ann)
-        await render_containing(bob, "ann-online")
-
-        await event(ann, hidden, "toggle")
-        await render_of(ann, hidden)
-        await leave(ann, producers[hidden])
-        carol = await connect(CnTyping, "c-typing", name="carol")
-        # bob, ann and carol: had the hidden one's leave removed ann, two
-        assert '"online-3"' in await render_containing(bob, "carol-online")
-
-        # The other one hides too: ann goes
-        other = next(shelf for shelf in producers if shelf != hidden)
-        await event(ann, other, "toggle")
-        await render_of(ann, other)
-        await leave(ann, producers[other])
-        assert "ann-" not in await render_containing(bob, '"online-2"')
-    finally:
-        for communicator in (bob, ann, carol):
-            if communicator is not None:
-                await communicator.disconnect()
-
-
-async def test_two_producers_drawn_without_ids_each_types_for_the_user():
-    """The producer joined first types (#212): named by their class, the meta heard the one joined last alone."""
-    bob = await connect(CnOnline, "b-list", name="bob")
-    ann = await open_socket(ANN_TAB)
-    try:
-        producers = await join_shelves(ann)
-        await render_containing(bob, "ann-online")
-        await event(ann, producers["a-left"], "typing")
-        await render_containing(bob, "ann-typing")
-    finally:
-        await bob.disconnect()
-        await ann.disconnect()
-
-
-@pytest.mark.parametrize("hidden", ["first", "second"])
-async def test_a_page_that_draws_two_producers_without_ids_hides_one_and_the_user_stays(hidden):
-    """One drawer draws both, and draws the shown one anew when it hides the other (#212).
-
-    The one drawn then takes the first number of its class; the leaves of the
-    two before it come after its join and leave the user listed.
-    """
-    bob = await connect(CnOnline, "b-list", name="bob")
-    ann = await open_socket(ANN_TAB)
-    carol = None
-    try:
-        before = await join_twins(ann)
-        await render_containing(bob, "ann-online")
-
-        await event(ann, "a-page", "hide", which=hidden)
-        [shown] = await join_drawn_producers(ann, await render_of(ann, "a-page"))
-        for producer_id in before:
-            await leave(ann, producer_id)
-        carol = await connect(CnTyping, "c-typing", name="carol")
-        assert '"online-3"' in await render_containing(bob, "carol-online")
-
-        await event(ann, "a-page", "hide", which="second" if hidden == "first" else "first")
-        await render_of(ann, "a-page")
-        await leave(ann, shown)
-        assert "ann-" not in await render_containing(bob, '"online-2"')
-    finally:
-        for communicator in (bob, ann, carol):
-            if communicator is not None:
-                await communicator.disconnect()
-
-
-async def test_a_tab_that_reconnects_replaces_what_both_its_unnamed_producers_left(monkeypatch):
-    """Both producers the page drew without ids lost their leaves with the process; the tab came back (#212).
-
-    The first pass on the new socket numbers them as the lost one did, so
-    their joins replace the metas the lost leaves left, and the tab's close
-    takes the user off.
-    """
-    bob = await connect(CnOnline, "b-list", name="bob")
-    try:
-        lost = await open_socket(ANN_TAB)
-        first = await join_twins(lost)
-        await render_containing(bob, "ann-online")
-
-        process_dies(monkeypatch)
-        await lost.disconnect()
-        monkeypatch.undo()
-
-        back = await open_socket(ANN_TAB)
-        again = await join_twins(back)
-        assert len(again) == 2 and not set(again) & set(first)
-        await render_containing(bob, "ann-online")
-        await back.disconnect()
-        await render_containing(bob, '"online-1"')
-    finally:
-        await bob.disconnect()
-
-
-class CnKeptRows(InlineTemplate, Component):
-    """A page that draws a producer it can hide, then one per row of a temporary assign, none with an id (#212)."""
-
-    class Meta:
-        temporary_assigns = ["rows"]
-
-    source: t.ClassVar[str] = (
-        "<section {% tag_header %}>"
-        '{% if this.show %}{% component "CnTyping" name="ann" %}{% endif %}'
-        '{% for row in rows %}{% component "CnTyping" name="ann" %}{% endfor %}</section>'
-    )
-
-    show: bool = True
-    rows: list[str] = []
-
-    async def joined(self):
-        self.rows = ["a", "b"]
-
-    async def hide(self):
-        self.show = False
-
-
-class CnKeptPeople(CnKeptRows):
-    """The same page with a producer per person: one user before the rows, a row per user (#212)."""
-
-    source: t.ClassVar[str] = (
-        "<section {% tag_header %}>"
-        '{% if this.show %}{% component "CnTyping" name="other" %}{% endif %}'
-        '{% for row in rows %}{% component "CnTyping" name=row %}{% endfor %}</section>'
-    )
-
-    async def joined(self):
-        self.rows = ["ann", "dana"]
-
-
-def drawn_producer_states(node: t.Any) -> list[tuple[str, str]]:
-    """The id and signed state of each CnTyping a render drew, in a part or a loop's items."""
-    if isinstance(node, str):
-        return re.findall(r'id="([^"]+)" data-name="CnTyping" data-state="([^"]+)"', node)
-    values = node.values() if isinstance(node, dict) else node if isinstance(node, list) else ()
-    return [found for value in values for found in drawn_producer_states(value)]
-
-
-async def join_kept_rows(
-    communicator: WebsocketCommunicator, show: bool, page_class: type[CnKeptRows] = CnKeptRows
-) -> list[str]:
-    """Join the page and every producer its first render drew, as the page does; their ids."""
-    page = page_class(user=AnonymousUser(), wire=WireviewMeta(params={}), id="a-page", show=show)
-    await join_signed(communicator, page_class.__name__, sign_state(page))
-    render = await render_of(communicator, "a-page")
-    ids = await join_drawn_producers(communicator, render)
-    for producer_id, state in drawn_producer_states(render):
-        await join_signed(communicator, "CnTyping", state)
-        await render_of(communicator, producer_id)
-        ids.append(producer_id)
-    return ids
-
-
-async def test_a_tab_that_reconnects_replaces_what_producers_a_kept_part_shows_left(monkeypatch):
-    """The page hid the producer before the rows a temporary assign keeps; the process died; the tab came back (#212).
-
-    The rows stay on the page as they were, with the same instances. Held to
-    their numbers, 1 and 2, they left the gap the hidden one left; the first
-    pass on the new socket drew them as 0 and 1, and the meta under 2 stayed
-    on bob's list after the tab closed. Now they move to 0 and 1 when the
-    hidden one goes, their metas moving from the old names to the new.
-    """
-    bob = await connect(CnOnline, "b-list", name="bob")
-    lost = back = carol = None
-    try:
-        lost = await open_socket(ANN_TAB)
-        first = await join_kept_rows(lost, show=True)
-        assert len(first) == 3
-        await render_containing(bob, "ann-online")
-        await event(lost, "a-page", "hide")
-        await render_of(lost, "a-page")
-        await leave(lost, first[0])
-        # The answer to another event on the socket comes after the leave
-        await event(lost, "a-page", "hide")
-        await render_of(lost, "a-page")
-
-        process_dies(monkeypatch)
-        await lost.disconnect()
-        lost = None
-        monkeypatch.undo()
-
-        back = await open_socket(ANN_TAB)
-        assert len(await join_kept_rows(back, show=False)) == 2
-        await back.disconnect()
-        back = None
-        carol = await connect(CnTyping, "c-typing", name="carol")
-        final = await render_containing(bob, "carol-online", limit=40)
-        assert "ann-" not in final and '"online-2"' in final, final
-    finally:
-        for communicator in (lost, back, carol, bob):
-            if communicator is not None:
-                await communicator.disconnect()
-
-
-async def renders_until(communicator: WebsocketCommunicator, text: str, limit: int = 40) -> list[str]:
-    """Every render up to the first whose payload contains ``text``, that one last."""
-    renders = []
-    for _ in range(limit):
-        message = await communicator.receive_json_from(timeout=5)
-        if message["command"] == "render":
-            renders.append(json.dumps(message["payload"]))
-            if text in renders[-1]:
-                return renders
-    raise AssertionError(f"no render with {text!r} among {renders}")
-
-
-@pytest.mark.parametrize(
-    ("page", "typist", "stays", "listed"),
-    [(CnKeptRows, -1, "ann-typing", '"online-3"'), (CnKeptPeople, 1, "dana-online", '"online-4"')],
-    ids=["typing-pair", "single-user"],
-)
-async def test_producers_a_kept_part_shows_keep_the_user_while_their_names_move(page, typist, stays, listed):
-    """The rows a temporary assign keeps move to the hidden one's number and stay listed, typing still (#212).
-
-    In every render bob gets, not only the last: a tracker takes a move as one
-    change. When the moves were a leave and a join each, a list between them
-    went without the user (single-user: ann, then dana), or showed the typing
-    row's user online (typing-pair).
-    """
-    bob = await connect(CnOnline, "b-list", name="bob")
-    ann = await open_socket(ANN_TAB)
-    carol = None
-    try:
-        producers = await join_kept_rows(ann, show=True, page_class=page)
-        await render_containing(bob, '"online-3"' if page is CnKeptPeople else "ann-online", limit=40)
-        await event(ann, producers[typist], "typing")
-        await render_containing(bob, "ann-typing", limit=40)
-        await event(ann, "a-page", "hide")
-        await render_of(ann, "a-page")
-        await leave(ann, producers[0])
-        # The answer to another event on the socket comes after the leave
-        await event(ann, "a-page", "hide")
-        await render_of(ann, "a-page")
-        carol = await connect(CnTyping, "c-typing", name="carol")
-        renders = await renders_until(bob, "carol-online")
-        for rendered in renders:
-            assert "ann-typing" in rendered and stays in rendered and "ann-online" not in rendered, renders
-        assert listed in renders[-1] and "other-" not in renders[-1], renders
-
-        # Each row leaves under the name it has now: with both gone, ann is too
-        await ann.disconnect()
-        ann = None
-        final = await render_containing(bob, '"online-2"', limit=40)
-        assert "ann-" not in final and "dana-" not in final, final
-    finally:
-        for communicator in (bob, ann, carol):
-            if communicator is not None:
-                await communicator.disconnect()
 
 
 async def test_a_leaving_that_raises_still_takes_the_user_off(monkeypatch):

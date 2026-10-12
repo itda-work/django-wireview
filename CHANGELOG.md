@@ -127,21 +127,15 @@ The django-reactor era changelog (2.x) is preserved in
 - Presence keeps a meta per producer under each user, as Phoenix Presence keeps one per `track`, so a user
   with two tabs open stays on the others' lists until the last tab leaves (#202). A producer's meta is keyed
   by its tab and its component id, so a page that hides one of its two producers (`presence_leave()`) stays
-  listed while the other is joined. A producer drawn without an id is keyed by where it is drawn instead: the
-  component that drew it and its number among the components of its class that one shows, in the order it
-  draws them. The id minted for it is new on every pass that draws it, a reconnect's too; its place is not.
-  Two id-less producers of one class on a page are two metas, so hiding one keeps the user listed and either
-  one's typing shows (#212). The numbers are a function of what the drawer shows: one a part kept for a
-  reset temporary assign shows counts where the part is, and when one before it hides its meta moves from
-  its old name to the new one, typing or not: the producers a render moved go in one `presence_move`, which
-  a tracker applies as one change and renders once, so no list between shows the user gone or not typing. Held to its number, it left a gap the first pass
-  after a reconnect closed, and the meta under the number past it stayed after the tab closed. The user was the key: closing one tab
+  listed while the other is joined. A producer drawn without an id is keyed by its class instead: the id
+  minted for it is new on every pass that draws it, a reconnect's too. Two id-less producers of one class on a
+  page share a meta. The user was the key: closing one tab
   removed them while the other was still open, and one tab's typing state overwrote the other's. The list
   `presence_users` still has one entry per user, merged from their tabs: typing if any tab types, otherwise
   online, with the name and metadata heard from last. A page names its load in the socket URL (`tab`) and
   keeps that name across reconnects; join, leave, typing and the sync answer carry `presence_ref`, a digest
   of that name under the signed-in user (a page cannot speak for another user's tab) and of the producer's
-  id (where it was drawn when it had none), and `presence_speaker`,
+  id (its class when it was drawn without one), and `presence_speaker`,
   a name of the producer instance that sent them, new with every instance. So when a process ends without its `leaving()` (daphne, Granian, a crash),
   the tab's join after it reconnects replaces what the dead process left, and its leave removes it; a late
   leave from the socket a tab reconnected away from is dropped, as is the late leave of a producer drawn

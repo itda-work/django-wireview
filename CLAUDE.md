@@ -117,11 +117,6 @@ wireview/
 │                          같은 render의 다른 패스도 그리지 않았으면 은퇴한다(end_pass가 적고 take_lifecycle이 정한다, 예외로 끝난 render는 render_failed가, 그 render 트리의 은퇴는 tree_failed가 되돌린다).
 │                          페이지가 join한 것은 묘비(Tombstone)로 남아 그 전에 보낸 이벤트만 받고, leaving()은 페이지의 leave·같은 id의 새 인스턴스·연결 끝·은퇴 10초 뒤 끝나는 render에
 │                          temporary assign이 유지한 부분이 든 것은 남긴다 — 다른 컴포넌트의 패스 안에서도(kept_components, #204)
-│                          id 없이 그린 것은 패스 끝에 그린 자리를 받는다(wire.drawn_at: 그린 쪽, 그것이 보이는 같은 클래스 중 몇 번째인가.
-│                          그린 순서대로 0부터 — temporary assign이 남긴 부분의 것도 그 부분의 자리에서 센다(keep_drawn, template_engine._PartNode).
-│                          번호는 보이는 것만으로 정해진다). presence가 그것으로 프로듀서를 이름 짓는다(_place_unnamed, #212).
-│                          번호가 옮긴 입장 프로듀서는 그 render 트리 뒤 항목을 새 이름으로 옮긴다(take_renumbered → presence.rename:
-│                          채널마다 presence_move 하나, 트래커는 한 번에 적용하고 한 번 렌더한다)
 ├── live_component.py      LiveComponent (부모 연결을 공유하는 중첩 상태 컴포넌트)
 ├── function_components.py  @function_component (상태 없는 템플릿 함수). 공개 이름과 겹치지 않게 복수형이다(#98).
 │                          그 템플릿의 {% component %}는 페이지 저장소에, 함수를 그린 컴포넌트가 그린 것으로 그려진다(this는 넘기지 않는다).
@@ -166,7 +161,7 @@ wireview/
 │                          로더만). 프로세스마다 덧붙이기만 하는 세그먼트 파일이고, 끝까지 쓰지 못한 줄은 되돌리고 끈다. DEBUG가 아니거나
 │                          WIREVIEW_RENDER_QUERIES_DIR=off(루트 conftest.py가 둔다)이거나 wireview.testing을 import했으면 쓰지 않는다.
 │                          형식의 정본은 docs/features/render-queries.md "편집기로 보내기", 계약은 tests/test_render_queries_file.py
-├── features/              streams.py, presence.py (PresenceMixin. 채널 → 사용자 → 프로듀서(탭 + 준 id, id가 없으면 그린 자리 — wire.id_given·wire.drawn_at, #212)마다 meta, 트래커의 자기 항목은 탭 키, 목록은 사용자 단위로 합친다. sync에는 프로듀서가 답한다(#202).
+├── features/              streams.py, presence.py (PresenceMixin. 채널 → 사용자 → 프로듀서(탭 + 준 id, id가 없으면 클래스 — wire.id_given)마다 meta, 트래커의 자기 항목은 탭 키, 목록은 사용자 단위로 합친다. sync에는 프로듀서가 답한다(#202).
                            그 답을 위해 세션과 mount가 입장한 프로듀서의 presence 채널(presence_channels)을 따로 듣고 hear()에 넘긴다(core/notifications.deliver). 그 채널의 메시지는 앱의 notification()에 넘기지 않는다 — 앱이 직접 구독한 채널이면 평소대로.
                            마지막 leaving()이 퇴장하지 못한 프로듀서는 그 뒤 presence.left가 퇴장시킨다 — 세션의 _call_leaving, #212), uploads.py (UploadRegistry·토큰 v2),
 │                          hooks.py (앱의 static/<app_label>/hooks/*.js 수집. 페이지가 아니라 프로젝트 단위. 템플릿 디렉터리는 TEMPLATES가 아니라 엔진의 로더에게 묻는다),

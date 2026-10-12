@@ -63,8 +63,8 @@ from enum import StrEnum
 if t.TYPE_CHECKING:
     from wireview.core.component import Component
 
-
 log = logging.getLogger("wireview")
+
 
 __all__ = (
     "PresenceState",
@@ -109,40 +109,21 @@ def _presence_tab(component: t.Any) -> str:
     return _presence_connection(component)
 
 
-def _presence_ref(component: t.Any, name: str | None = None) -> str:
+def _presence_ref(component: t.Any) -> str:
     """The key of a producer's meta: its tab and its name on the page (#202).
 
     A meta per producer, as Phoenix keeps one per ``track``: a page with two
     producers that hides one (``presence_leave()``) still has the other's
     meta, so its user stays listed. The tab and the name stay the same across a
     reconnect, so the join after it replaces what the producer said before.
-    ``name`` is the one it said, where a render has given it another since
-    (``PresenceMixin._presence_move``, #212).
+
+    The name is the id the template or the page gave. A minted one is new on
+    every pass that draws the component (an id-less ``{% component %}`` in
+    another's template), so such a producer is named by its class: two of one
+    class without ids on one tab share a meta.
     """
-    if name is None:
-        name = _presence_name(component)
+    name = component.id if component.wire.id_given else f"class\0{type(component)._fqn}"
     return _digest(f"producer\0{_presence_tab(component)}\0{name}")
-
-
-def _presence_name(component: t.Any) -> str:
-    """A producer's name on its page, the same for the one drawn in its place (#202, #212).
-
-    The id the template or the page gave. A minted one is new on every pass
-    that draws the component (an id-less ``{% component %}`` in another's
-    template), so such a producer is named by where it is drawn: its drawer's
-    name, its class and its number among those of its class the drawer shows
-    (``WireviewMeta.drawn_at``). Two of a class without ids on one page are two
-    metas, and the one shown in a hidden one's place takes up its meta. One
-    with a minted id and no drawer -- a sticky default, ``mount()`` without an
-    id -- is the only one of its class there, and is named by the class.
-    """
-    wire = component.wire
-    if wire.id_given:
-        return component.id
-    if wire.drawn_at is not None:
-        drawer, number = wire.drawn_at
-        return f"drawn\0{_presence_name(drawer)}\0{type(component)._fqn}\0{number}"
-    return f"class\0{type(component)._fqn}"
 
 
 def _presence_connection(component: t.Any) -> str:
@@ -295,19 +276,6 @@ class PresenceMixin:
     def _presence_joined(self, value: bool) -> None:
         self.__dict__["__presence_joined"] = value
 
-    # The name its meta is under, from presence_join() to presence_leave(): what
-    # it said is there until it says otherwise (``_presence_move``, #212)
-    @property
-    def _presence_said_name(self) -> str | None:
-        return self.__dict__.get("__presence_said_name")
-
-    @_presence_said_name.setter
-    def _presence_said_name(self, value: str | None) -> None:
-        self.__dict__["__presence_said_name"] = value
-
-    def _presence_current_ref(self) -> str:
-        return _presence_ref(self, self._presence_said_name)
-
     def _presence_topic(self) -> str:
         """Return the presence topic/room identifier.
 
@@ -336,7 +304,7 @@ class PresenceMixin:
         """Build user data for broadcast."""
         return {
             "user_id": self._presence_user_id(),
-            "presence_ref": self._presence_current_ref(),
+            "presence_ref": _presence_ref(self),
             "presence_speaker": _presence_speaker(self),
             "username": self._presence_username(),
             "state": state.value,
@@ -352,7 +320,6 @@ class PresenceMixin:
         component = t.cast("Component", self)
 
         self._presence_joined = True
-        self._presence_said_name = _presence_name(self)
         await component.broadcast(
             self._presence_channel(),
             action="presence_join",
@@ -373,40 +340,16 @@ class PresenceMixin:
                 pass
             self._presence_typing_task = None
 
-        ref = self._presence_current_ref()
         self._presence_joined = False
-        self._presence_said_name = None
-        await self._presence_say_leave(ref)
-
-    async def _presence_say_leave(self, ref: str) -> None:
-        await t.cast("Component", self).broadcast(
+        component = t.cast("Component", self)
+        await component.broadcast(
             self._presence_channel(),
             action="presence_leave",
             user_id=self._presence_user_id(),
-            presence_ref=ref,
+            presence_ref=_presence_ref(self),
             presence_speaker=_presence_speaker(self),
             username=self._presence_username(),
         )
-
-    def _presence_move(self) -> dict[str, t.Any] | None:
-        """Take the name it has now, if a render gave it another, and say how its meta moves (#212).
-
-        A producer drawn without an id is named by its place among those its
-        drawer shows (``_presence_name``); one a part kept for a reset temporary
-        assign shows stays the same instance while its place moves. Its meta
-        moves as it is -- the user, typing or not -- from the ref of the name it
-        said to the ref of the one it has now: one entry of a ``presence_move``
-        (``rename()``), which a tracker applies as one change. From here on it
-        speaks under the new name: a sync answer, typing, its leave.
-        """
-        said = self._presence_said_name
-        if not self._presence_joined or said is None or said == (name := _presence_name(self)):
-            return None
-        self._presence_said_name = name
-        return {
-            "old_ref": _presence_ref(self, said),
-            **self._presence_user_data(PresenceState.TYPING if self._presence_is_typing else PresenceState.ONLINE),
-        }
 
     async def presence_set_typing(self, typing: bool = True) -> None:
         """Set typing indicator with auto-timeout.
@@ -492,33 +435,6 @@ class PresenceMixin:
         await t.cast("Component", self).broadcast(
             channel, action="presence_sync_response", **self._presence_user_data(state)
         )
-
-
-async def rename(components: t.Iterable[t.Any]) -> None:
-    """Move the metas of the joined producers of ``components`` whose names a render moved (#212).
-
-    One ``presence_move`` per presence channel carries every producer that
-    moved there, so a tracker applies them as one change: it never lists
-    the user without the meta, nor the meta without its typing, and two that
-    swap names (0 and 1) never stand on one. Each producer takes its new
-    name before the message goes (``_presence_move``), so a leave it says
-    while the message is on its way says that name, after the move -- it
-    does not join again under the new name once it has left.
-    """
-    moves: dict[str, tuple[t.Any, list[dict[str, t.Any]]]] = {}
-    for component in components:
-        if isinstance(component, PresenceMixin) and component._presence_joined:
-            try:
-                move = component._presence_move()
-                if move is not None:
-                    moves.setdefault(component._presence_channel(), (component, []))[1].append(move)
-            except Exception:
-                log.exception("%s (%s) could not move its presence", component._name, component.id)  # type: ignore[attr-defined]
-    for channel, (speaker, entries) in moves.items():
-        try:
-            await speaker.broadcast(channel, action="presence_move", moves=entries)
-        except Exception:
-            log.exception("%s (%s) could not move its presence", speaker._name, speaker.id)
 
 
 async def left(component: t.Any) -> None:
@@ -755,25 +671,6 @@ class PresenceTrackerMixin:
                 return
         self._presence_drop(channel, user_id, ref)
 
-    def _presence_moved(self, channel: str, moves: list[dict[str, t.Any]]) -> None:
-        """Producers whose names a render moved (``presence_move``, #212): one change, rendered once.
-
-        Every meta leaves its old ref first, then each is put under its new
-        one, so a name one of them gives up and another takes in the same
-        move ends with the one that took it. A meta its producer no longer
-        says -- another instance joined under that name since -- stays, as a
-        late leave leaves it.
-        """
-        for move in moves:
-            user_id, speaker = move.get("user_id"), move.get("presence_speaker") or ""
-            old = move.get("old_ref") or LEGACY_REF
-            if user_id and not self._presence_from_another_speaker(channel, user_id, old, speaker):
-                self._presence_left(channel, user_id, old, speaker)
-        for move in moves:
-            if user_id := move.get("user_id"):
-                ref = move.get("presence_ref") or LEGACY_REF
-                self._presence_put(channel, user_id, ref, move.get("presence_speaker") or "", move)
-
     async def presence_track_self(
         self,
         username: str,
@@ -809,7 +706,7 @@ class PresenceTrackerMixin:
     async def notification(self, channel: str, **kwargs: t.Any) -> None:
         """Handle presence notifications.
 
-        Processes: presence_join, presence_leave, presence_typing, presence_move,
+        Processes: presence_join, presence_leave, presence_typing,
         presence_sync_request, presence_sync_response
 
         Each is recorded under the channel it came on. Each names its producer
@@ -857,10 +754,6 @@ class PresenceTrackerMixin:
             if not self._presence_from_another_speaker(channel, user_id, ref, speaker):
                 self._presence_left(channel, user_id, ref, speaker)
                 component.force_render()
-
-        elif action == "presence_move":
-            self._presence_moved(channel, kwargs.get("moves") or [])
-            component.force_render()
 
         elif action == "presence_typing" and user_id:
             meta = self._presence_registry.get(channel, {}).get(user_id, {}).get(ref)
