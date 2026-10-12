@@ -87,6 +87,20 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A session's mail to itself is no longer lost to a full channel (#211). What a component sends through its
+  connection -- a stream operation, `push_event`, JS, a flash or title, a navigation, `defer()`, a LiveComponent
+  update, the `joined` that starts infinite scroll, the release of the `Broadcast` patches a join holds, a
+  crashed task's recovery, a template change's `rejoin` -- rides on the connection's channel, which it shares
+  with every notification its topics fan out. When a busy room filled that channel, the layer dropped the
+  mail: InMemory refused it (`ChannelFull`, logged and reported as `publish_failed`), channels_redis pushed
+  it out of a full receive buffer without a word. A stream stayed short, a hook never heard its event, a
+  component stayed stale or frozen for good, and a join's held patches waited until the connection closed.
+  The connection now keeps a copy of each mail until the layer brings it back: one the layer refused is
+  handled in a turn of its own right after the message being handled, behind the mails sent before it; one a
+  later mail overtook is handled first; one that stayed away for 5 seconds (`MAIL_SECONDS`) while nothing was
+  being handled is handled from the copy. A copy the layer brings after that is dropped. Mail still goes
+  through the layer, so its order against the notifications is what it was, save on a channel that
+  overflowed.
 - Django's `{% querystring %}` works in a component's template (#210). It reads `context.request.GET`, and a
   component's template renders with a context of its own, never the page's `RequestContext`: it raised
   `AttributeError` on the first HTTP render and on every live render, where the join failed. Both renders now

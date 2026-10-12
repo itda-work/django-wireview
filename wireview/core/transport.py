@@ -5,7 +5,8 @@ wireview moves three kinds of traffic:
 - **Outbound**: one session (a browser tab) receives commands such as
   ``render`` or ``exec_js``.
 - **Session mail**: a component sends a command to a session, usually its
-  own. Today this rides on the channel layer as ``message_from_component``.
+  own. It rides on the channel layer as ``message_from_component``; a
+  session's ``Mailbox`` hands over what the layer drops (#211).
 - **Fan-out**: a message is published to every session subscribed to a topic
   (model mutations, notifications, upload progress).
 - **Patches**: frames rendered and serialized once by a ``Broadcast`` (#178),
@@ -24,6 +25,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
+import itertools
 import logging
 import typing as t
 import weakref
@@ -192,6 +195,163 @@ class ChannelsBroker:
                 "Dropped a %r message: the channel layer reports %s full (%s)", message.get("type"), target, kind
             )
         return dropped
+
+
+#: How long a session's mail to itself may stay away while the session handles
+#: nothing before it is taken for dropped and handled here (``Mailbox``, #211).
+#: Under ``patches.HOLD_SECONDS``, so a hold its mail releases is let go before
+#: that deadline closes the connection.
+MAIL_SECONDS = 5.0
+
+
+class Mailbox:
+    """A session's mail to itself, kept until the channel layer brings it back (#211).
+
+    A session mails itself to have something done in its turn: after the
+    message being handled, in line with the notifications its topics fan out
+    to the same channel, in the order they were all sent -- the layer's channel
+    is that line. But the line has a capacity, and the layer drops what does not
+    fit: ``send`` raises ``ChannelFull`` (the broker drops it and says so), or
+    channels_redis drops the oldest message of a full receive buffer without a
+    word. A channel fills when its room is busy, the time a mail matters most,
+    and a dropped one could leave a Broadcast hold shut, a list short or a
+    component stale for good.
+
+    So the sender and the session, which share a process and a loop, keep a
+    copy of each mail until it comes back (``came``), numbered in the order sent:
+
+    - the layer refused it: it is handed to the session (``deliver``) to be
+      handled in a turn of its own, right after the message being handled --
+      behind the mails sent before it that are still away, handed over with it;
+    - a later mail came back first: the layer dropped this one, or reordered
+      the two (channels_redis orders equal timestamps at random). It is handled
+      now, ahead of the later one;
+    - it stayed away ``MAIL_SECONDS`` while the session handled nothing: it was
+      dropped, or is very late. It is handed to the session.
+
+    A copy that comes back after it was handled here is dropped. What is lost
+    is at worst the order against the notifications of a line that overflowed.
+    """
+
+    def __init__(self, session_id: str, deliver: t.Callable[[Message], None], busy: t.Callable[[], bool]) -> None:
+        self.session_id = session_id
+        self._deliver = deliver
+        self._busy = busy
+        self._loop = asyncio.get_running_loop()
+        self._numbers = itertools.count(1)
+        # Sent through the layer and not back yet: number -> (a copy, when it was sent)
+        self._away: dict[int, tuple[Message, float]] = {}
+        self._timer: asyncio.TimerHandle | None = None
+        self.closed = False
+
+    async def send(self, broker: Broker, message: Message) -> bool:
+        """Send ``message`` through ``broker``, keeping a copy to hand over if the layer drops it."""
+        number = next(self._numbers)
+        message = {**message, "mail": number}
+        # As the layers deliver one: the sender may change what it sent
+        kept = copy.deepcopy(message)
+        self._away[number] = (kept, self._loop.time())
+        try:
+            taken = await broker.send_to_session(self.session_id, message)
+        except BaseException:
+            # Raised to the sender, as before: it handles that
+            self._away.pop(number, None)
+            raise
+        if taken is False:
+            if self._away.pop(number, None) is not None:
+                # Behind the ones still away, which it must not overtake
+                self._hand_over([*self._take_before(number), kept])
+            return True
+        self._arm()
+        return True
+
+    def came(self, message: Message) -> list[Message]:
+        """The mail the channel brought: what the session handles now, in order. Empty for one handled already."""
+        number = message.get("mail")
+        if not isinstance(number, int) or message.get("here"):
+            return [message]
+        if self._away.pop(number, None) is None:
+            log.debug("Dropping mail %d to %s: it was handled when it did not come", number, self.session_id)
+            return []
+        missed = self._take_before(number)
+        if missed:
+            log.warning(
+                "%d mail(s) to %s did not come before a later one; handling them first (#211)",
+                len(missed),
+                self.session_id,
+            )
+        return [*missed, message]
+
+    def _take_before(self, number: int) -> list[Message]:
+        """The mails sent before ``number`` and still away, in order: they are not waited for any more."""
+        return [self._away.pop(each)[0] for each in sorted(self._away) if each < number]
+
+    def _hand_over(self, mails: list[Message]) -> None:
+        for mail in mails:
+            self._deliver({**mail, "here": True})
+
+    def _arm(self) -> None:
+        if self._timer is None and self._away and not self.closed:
+            self._timer = self._loop.call_later(MAIL_SECONDS, self._overdue)
+
+    def _overdue(self) -> None:
+        self._timer = None
+        if self.closed or not self._away:
+            return
+        if not self._busy():
+            now = self._loop.time()
+            due = [each for each, (_, sent) in sorted(self._away.items()) if now - sent >= MAIL_SECONDS]
+            if due:
+                log.warning(
+                    "%d mail(s) to %s did not come in %ss with nothing being handled; handling them here (#211)",
+                    len(due),
+                    self.session_id,
+                    MAIL_SECONDS,
+                )
+                self._hand_over([self._away.pop(each)[0] for each in due])
+        self._arm()
+
+    def close(self) -> None:
+        """The session ended: nothing more is handed over."""
+        self.closed = True
+        self._away.clear()
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer = None
+
+
+# Session id (channel name) -> the mailbox of the session serving it in this process (#211)
+_mailboxes: dict[str, Mailbox] = {}
+
+
+def open_mailbox(mailbox: Mailbox) -> None:
+    """Keep the mail sent to ``mailbox.session_id`` from this process until it comes back."""
+    _mailboxes[mailbox.session_id] = mailbox
+
+
+def close_mailbox(mailbox: Mailbox) -> None:
+    """Its session ended: mail to it goes through the broker alone, as to any session not here."""
+    mailbox.close()
+    if _mailboxes.get(mailbox.session_id) is mailbox:
+        del _mailboxes[mailbox.session_id]
+
+
+async def send_mail(broker: Broker, session_id: str, message: Message) -> bool | None:
+    """Mail one session: through its ``Mailbox`` when it is served on this loop, through ``broker`` otherwise.
+
+    What ``Broker.send_to_session`` returns: ``False`` when it is known not to have gone.
+    """
+    mailbox = _mailboxes.get(session_id)
+    if mailbox is not None and not mailbox.closed and _running_loop() is mailbox._loop:
+        return await mailbox.send(broker, message)
+    return await broker.send_to_session(session_id, message)
+
+
+def _running_loop() -> asyncio.AbstractEventLoop | None:
+    try:
+        return asyncio.get_running_loop()
+    except RuntimeError:
+        return None
 
 
 class NullBroker:

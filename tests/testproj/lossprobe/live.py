@@ -10,10 +10,18 @@ queue fills and the layer has to drop what does not fit.
 what it hears does. ``published`` is read from the source of truth at render
 time, as a component that reloads what it shows does. ``HEARD`` keeps the
 numbers that arrived, in order, for the test to see which ones the layer kept.
+
+``LossMailBox`` mails itself in its first notification, once the gate opens --
+its channel still full of the burst -- and goes on handling it until
+``MAIL_GATE`` opens, while the test sends a second burst behind the mail. The
+layers lose the mail one way or the other: InMemory refuses it, channels_redis
+pushes it out of the full receive buffer as the oldest message. The session
+hands it over from the copy it kept (#211). ``MAILED`` says it was sent.
 """
 
 import asyncio
 import threading
+from dataclasses import dataclass
 
 from wireview import Component
 
@@ -25,6 +33,10 @@ HEARD: list[int] = []
 
 #: Holds the receiver in its first notification until the test opens it.
 GATE = threading.Event()
+
+#: ``LossMailBox`` mailed itself, and waits in its first notification for ``MAIL_GATE``.
+MAILED = threading.Event()
+MAIL_GATE = threading.Event()
 
 
 class LossBox(Component):
@@ -61,3 +73,31 @@ class LossSender(Component):
             PUBLISHED["n"] += 1
             await self.broadcast("lossprobe", n=PUBLISHED["n"])
         self.sent += int(count)
+
+
+@dataclass
+class Line:
+    pk: int
+    text: str
+
+
+class LossMailBox(LossBox):
+    marked: bool = False
+
+    class Meta:
+        template_name = "lossprobe/mailbox.html"
+        subscriptions = {"lossprobe"}
+
+    async def notification(self, channel, n: int = 0, **kwargs):
+        first = not HEARD
+        await super().notification(channel, n=n, **kwargs)
+        if first:
+            # Its channel is full of the burst: neither fits in it
+            await self.stream_insert("log", Line(n, "mailed"))
+            await self.defer(self.mark)
+            MAILED.set()
+            while not MAIL_GATE.is_set():
+                await asyncio.sleep(0.01)
+
+    async def mark(self, **_rest):
+        self.marked = True

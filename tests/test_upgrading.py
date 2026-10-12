@@ -204,6 +204,7 @@ NO_UPGRADE_NOTE = {
     "A nested `{% component %}` a render drew that the page has yet to join goes": (
         "화면에 없는 인스턴스가 사라질 뿐 할 일이 없다"
     ),
+    "A session's mail to itself is no longer lost to a full channel": "잃던 메일을 잃지 않을 뿐 할 일이 없다",
 }
 
 PREVIOUS = "1.5.1"

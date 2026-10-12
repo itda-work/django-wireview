@@ -100,7 +100,10 @@ wireview/
 │                          저장소가 등록하는 컴포넌트에 wire.identity를 달아 sign_state가 읽는다. join이 연결의 것과 다르면 renew(#209)
 ├── core/signing.py        서명 키 정본. get_signer(salt) 하나로 모든 서명 지점이 SIGNING_KEY와 fallback을 공유
 ├── core/model_state.py    상태 안의 모델 인스턴스를 pk로 서명하고(어디에 있든) 필드 타입 표기를 따라 다시 불러온다 (#113)
-├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳
+├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳.
+│                          Mailbox(#211): 세션이 자기에게 보낸 메일(레이어를 지나 알림과 한 줄에 선다)의 사본을 돌아올 때까지 지닌다.
+│                          레이어가 거절하면 다음 차례에, 뒤 메일이 먼저 오면 그 앞에, 한가한 동안 MAIL_SECONDS 오지 않으면 사본을 처리하고
+│                          늦게 온 레이어의 것은 버린다. 컨슈머가 connect()에서 열고 dispatch의 차례 잠금(_turn)으로 넘긴 것을 처리한다(session.hand_over)
 ├── template_engine.py     템플릿 VariableNode에 diff 마커 자동 주입. 마커 변수는 값을 직접 resolve하고 평범한 int·str은
 │                          Django의 VariableNode와 같은 출력을 지름길로 찍는다(render_value, #176). 바꾸면 tests/test_template_values.py가 Django 출력과 맞춘다
 ├── consumer.py            WireviewConsumer: Channels WebSocket 어댑터(/__wireview__). 소켓 수락·거절과 세션 시작·종료, JSON 전달만

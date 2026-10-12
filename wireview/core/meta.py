@@ -28,7 +28,7 @@ from .lazy_context import LazyContext, PropertyFailed, is_lazy
 from .render_gate import RenderGate
 from .render_reads import RenderReads
 from .rendered import Rendered, keep_stale, page_drawing, strip_markers
-from .transport import Broker, ChannelsBroker, NullBroker
+from .transport import Broker, ChannelsBroker, NullBroker, send_mail
 
 log = logging.getLogger("wireview")
 
@@ -752,8 +752,9 @@ class WireviewMeta:
         and will be sent when flush_pending() is called after render.
 
         False when it is known not to have gone: no channel, or the layer
-        dropped it (a full channel, ``Broker.send_to_session``). A mail the
-        session waits on has to be done some other way then (#207).
+        dropped it (a full channel, ``Broker.send_to_session``) and no mailbox
+        took it back (``transport.Mailbox``, #211). A mail the session waits on
+        has to be done some other way then (#207).
         """
         if self._pending_mode:
             self._pending_operations.append((_command, kwargs))
@@ -767,8 +768,13 @@ class WireviewMeta:
         return False
 
     async def send_to(self, _channel: str, _command: str, **kwargs: t.Any) -> bool:
-        """Send a command to a specific session (channel name). False when the layer dropped it."""
-        taken = await self.broker.send_to_session(
+        """Send a command to a specific session (channel name). False when it was dropped.
+
+        To a session served on this loop through its ``Mailbox``, which hands
+        over what the layer drops (#211).
+        """
+        taken = await send_mail(
+            self.broker,
             _channel,
             {
                 "type": "message_from_component",

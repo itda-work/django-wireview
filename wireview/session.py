@@ -48,7 +48,7 @@ from .core.rendered import (
 )
 from .core.session import SessionView
 from .core.state import StateMismatch, StatePayload, unsign_envelope
-from .core.transport import PATCH_TOPIC_MAX, Outbound, get_broker, get_patch_hub
+from .core.transport import PATCH_TOPIC_MAX, Mailbox, Outbound, get_broker, get_patch_hub, send_mail
 from .debug import render_queries
 from .features import presence, upload_store
 from .features.uploads import upload_group_name
@@ -283,6 +283,9 @@ class WireviewSession:
         self._identity_warned: bool = False
         # Whether a template change was mailed to this session and not yet handled (#180)
         self._rejoin_mailed: bool = False
+        # The copies of its own mail, set by an adapter whose channel layer may drop it (#211)
+        self._mailbox: Mailbox | None = None
+        self._handing_over: set[asyncio.Future[None]] = set()
         # Whether a render retired a component since the subscriptions were last
         # settled: a nested one its drawer's pass stopped drawing hears no more (#204)
         self._retired_in_render: bool = False
@@ -693,8 +696,9 @@ class WireviewSession:
             # have heard since its drawer's pass built it, now that it joined
             # (#207): mailed, so it comes in its turn as each message the channel
             # brings from here on -- behind ``joined`` and whatever joined() sent.
-            # A mail that did not go (no channel, a full one) never comes: now
-            # then, rather than never -- what comes meanwhile waits behind it.
+            # A mail known not to have gone (no channel; a full one, on an
+            # adapter that keeps no mailbox, #211) never comes: now then, rather
+            # than never -- what comes meanwhile waits behind it.
             if not await component.wire.send("deliver_unheard", id=component.id, instance=component.wire.instance):
                 await notifications.deliver_unheard(self, waiting)
 
@@ -1003,8 +1007,10 @@ class WireviewSession:
             await self.component_template_changed()
             return
         try:
-            taken = await get_broker().send_to_session(
-                self.channel_name, {"type": "message_from_component", "command": "template_changed", "kwargs": {}}
+            taken = await send_mail(
+                get_broker(),
+                self.channel_name,
+                {"type": "message_from_component", "command": "template_changed", "kwargs": {}},
             )
         except Exception:
             taken = False
@@ -1484,6 +1490,36 @@ class WireviewSession:
     # Component commands
 
     async def message_from_component(self, data):
+        mailbox = self._mailbox
+        if mailbox is None:
+            await self._take_mail(data)
+            return
+        if data.get("here") and mailbox.closed:
+            # Handed over, and the connection ended while it waited, as its channel would have
+            return
+        # What the layer dropped before it, then it -- or nothing, handled already (#211)
+        for mail in mailbox.came(data):
+            await self._take_mail(mail)
+
+    def hand_over(self, mail: dict[str, t.Any]) -> None:
+        """``transport.Mailbox``: a mail of this session's the layer dropped, to handle in a turn of its own (#211).
+
+        Through the adapter's ``dispatch``, as the channel's messages are: the
+        next turn once the message being handled is done.
+        """
+        task = asyncio.ensure_future(self._take_handed_over(mail))
+        self._handing_over.add(task)
+        task.add_done_callback(self._handing_over.discard)
+
+    async def _take_handed_over(self, mail: dict[str, t.Any]) -> None:
+        try:
+            await self.dispatch(mail)  # type: ignore[attr-defined]
+        except Exception:
+            # Raised out of the adapter's loop it would have ended the connection
+            log.exception("Handling the mail %r on %s raised", mail.get("command"), self.connection_id)
+            await self.close(code=1011)
+
+    async def _take_mail(self, data):
         handler = getattr(self, f"component_{data['command']}", None)
         if handler is None:
             # A command with no handler used to raise here and take the socket down,
