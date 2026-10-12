@@ -1,0 +1,17 @@
+# The build context is the repository root; send only what the images use.
+*
+!package.json
+!package-lock.json
+!esbuild.conf.js
+!pyproject.toml
+!uv.lock
+!wireview
+!examples
+!demo
+**/__pycache__
+**/*.pyc
+**/*.min.js
+**/*.map
+**/*.pyi
+demo/.env
+demo/.demo-data

@@ -68,14 +68,14 @@ test-cov: collectstatic
 
 # Lint Python code and templates (same checks as CI's lint job)
 lint:
-	uv run ruff check wireview tests bench examples scripts conftest.py
-	uv run ruff format --check wireview tests bench examples scripts conftest.py
+	uv run ruff check wireview tests bench examples demo scripts conftest.py
+	uv run ruff format --check wireview tests bench examples demo scripts conftest.py
 	uv run djlint --check .
 
 # Format code with ruff
 format:
-	uv run ruff check --fix wireview tests bench examples scripts conftest.py
-	uv run ruff format wireview tests bench examples scripts conftest.py
+	uv run ruff check --fix wireview tests bench examples demo scripts conftest.py
+	uv run ruff format wireview tests bench examples demo scripts conftest.py
 	uv run djlint --reformat .
 
 # Type check with pyright

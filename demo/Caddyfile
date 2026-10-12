@@ -1,0 +1,46 @@
+# The demo's front: /static/ from the files copied into this image, the rest to uvicorn.
+# cloudflared reaches it over plain HTTP inside the compose network; TLS ends at Cloudflare.
+{
+	admin off
+	servers {
+		# cloudflared (and, locally, the host's port forward) are on private addresses. From
+		# them Caddy keeps X-Forwarded-Proto as sent -- Cloudflare's "https" -- and reads the
+		# visitor's address from CF-Connecting-IP.
+		trusted_proxies static private_ranges
+		client_ip_headers CF-Connecting-IP
+	}
+}
+
+:80 {
+	log {
+		output stdout
+		format console
+	}
+
+	# No example takes uploads, so nothing a visitor sends needs more than a form's worth
+	request_body {
+		max_size 1MB
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		-Server
+	}
+
+	handle_path /static/* {
+		root * /srv/static
+		# Revalidated on every load (ETag): the image runs a checkout, not a release, so
+		# {% wireview_header %}'s ?v= has no package version to change when the bundle does
+		header Cache-Control "public, no-cache"
+		file_server
+	}
+
+	handle {
+		# WebSocket upgrades pass through on their own
+		reverse_proxy app:8000 {
+			# The visitor, for the demo's rate limits (demo/limits.py)
+			header_up X-Real-IP {client_ip}
+		}
+	}
+}

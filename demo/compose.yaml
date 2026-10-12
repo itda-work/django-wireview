@@ -1,0 +1,119 @@
+# The public demo: docker compose up -d (demo/README.md).
+# The tunnel to wireview-demo.itda.work is a profile of its own: docker compose --profile tunnel up -d
+name: wireview-demo
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-app: &app
+  image: wireview-demo-app:${DEMO_TAG:-latest}
+  build:
+    context: ..
+    dockerfile: demo/Dockerfile
+    target: app
+  env_file: .env
+  environment:
+    REDIS_URL: redis://redis:6379
+    DEMO_DATA_DIR: /data
+  volumes:
+    - data:/data
+  restart: unless-stopped
+  logging: *logging
+
+services:
+  app:
+    <<: *app
+    depends_on:
+      redis:
+        condition: service_healthy
+    # Readiness: the channel layer carries a message (demo/views.py)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready/', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    # Long enough for uvicorn's graceful shutdown (20s) to run every leaving()
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1g
+
+  janitor:
+    <<: *app
+    command: ["python", "demo/manage.py", "demo_janitor"]
+    depends_on:
+      app:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+
+  web:
+    image: wireview-demo-web:${DEMO_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: demo/Dockerfile
+      target: web
+    depends_on:
+      app:
+        condition: service_healthy
+    # The host's own address only: the public way in is the tunnel
+    ports:
+      - "127.0.0.1:${DEMO_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128m
+
+  redis:
+    image: redis:7.4-alpine
+    # The channel layer and rate-limit counters only: nothing worth keeping across a restart
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "volatile-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 192m
+
+  cloudflared:
+    profiles: [tunnel]
+    image: cloudflare/cloudflared:2025.9.1
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128m
+
+volumes:
+  data:

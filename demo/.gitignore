@@ -1,0 +1,3 @@
+# Secrets and local data stay on the machine
+.env
+.demo-data/

@@ -1,0 +1,8 @@
+# The demo's runtime. Versions come from the repository's uv.lock (demo/Dockerfile's deps stage);
+# what the lock does not have (uvloop, httptools) resolves to the newest release.
+django
+channels
+pydantic
+channels-redis
+redis
+uvicorn[standard]

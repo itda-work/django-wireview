@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>django-wireview demo</title>
+    <style>
+      :root { color-scheme: light dark; --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #5d6675; --accent: #3355dd; --line: #e2e5ea; }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg: #14171c; --card: #1d2128; --text: #e7eaf0; --muted: #9aa3b2; --accent: #8aa2ff; --line: #2c323c; }
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", "Segoe UI", sans-serif; }
+      main { max-width: 1040px; margin: 0 auto; padding: 32px 16px 48px; }
+      h1 { margin: 0 0 4px; font-size: 28px; }
+      .lead { color: var(--muted); margin: 0 0 24px; }
+      .lead a, footer a { color: var(--accent); }
+      ul.examples { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+      .example { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+      .thumb { display: block; aspect-ratio: 16 / 9; background: var(--line); }
+      .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+      .example h2 { margin: 0; font-size: 18px; }
+      .example h2 a { color: inherit; text-decoration: none; }
+      .example h2 a:hover { color: var(--accent); }
+      .concept { margin: 0; color: var(--muted); font-size: 14px; flex: 1; }
+      .tags { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+      .tag { border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; color: var(--muted); }
+      .links { display: flex; justify-content: space-between; font-size: 14px; margin-top: 4px; }
+      .links a { color: var(--accent); }
+      footer { margin-top: 32px; color: var(--muted); font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>django-wireview demo</h1>
+      <p class="lead">
+        Phoenix LiveView 스타일의 Django 실시간 컴포넌트. 저장소의 예제 {{ examples|length }}개를 그대로 띄운 데모입니다.
+        <a href="https://itda.work/wireview/">문서</a> · <a href="https://github.com/itda-work/django-wireview">GitHub</a>
+      </p>
+      <ul class="examples">
+        {% for example in examples %}
+          <li class="example" data-example="{{ example.slug }}">
+            {% if example.media %}
+              <a class="thumb" href="{{ example.href }}">
+                <img src="{{ example.media }}" alt="{{ example.title }} 화면" loading="lazy">
+              </a>
+            {% endif %}
+            <div class="body">
+              <h2>
+                <a href="{{ example.href }}">{{ example.title }}</a>
+              </h2>
+              <p class="concept">{{ example.concept }}</p>
+              <div class="tags">
+                {% if example.two_windows %}<span class="tag">창 두 개로 열어 보세요</span>{% endif %}
+                {% if example.signs_in %}<span class="tag">게스트 로그인</span>{% endif %}
+              </div>
+              <div class="links">
+                <a href="{{ example.href }}">열기 &rarr;</a>
+                <a href="{{ example.source }}">소스</a>
+              </div>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+      <footer>
+        공개 데모입니다. 쓴 내용은 누구에게나 보이고 매일 {{ reset_at }} 처음 상태로 돌아갑니다. 게스트 계정은 브라우저마다 하나씩 만들어지고, 사생활 창은 다른 게스트입니다.
+      </footer>
+    </main>
+  </body>
+</html>
