@@ -25,6 +25,12 @@ here, in a browser, on whichever layer the run uses:
 The receiver is held in its first notification (``GATE``) until the burst is
 out, so the queue is full when the test looks, however fast the machine.
 
+A session's mail to itself shares that queue, and is not lost with it (#211).
+Mailed into the full queue, InMemory refuses it (``ChannelFull``); followed by
+another burst, channels_redis pushes it out of the full buffer as the oldest.
+The session hands over what was refused at once, and what was dropped without
+a word once nothing else is being handled (``transport.Mailbox``).
+
 Fixture: tests/testproj/lossprobe/.
 """
 
@@ -37,7 +43,7 @@ import os
 import pytest
 from testproj.e2e_browser import WAIT_TIMEOUT, expect_text, open_live
 from testproj.e2e_server import serve, server_errors
-from testproj.lossprobe.live import GATE, HEARD, PUBLISHED
+from testproj.lossprobe.live import GATE, HEARD, MAIL_GATE, MAILED, PUBLISHED
 
 pytestmark = pytest.mark.e2e
 
@@ -65,9 +71,12 @@ def _probe(transactional_db):
     PUBLISHED["n"] = 0
     HEARD.clear()
     GATE.clear()
+    MAILED.clear()
+    MAIL_GATE.clear()
     yield
     # A test that failed with the gate shut must not leave the next one's server waiting
     GATE.set()
+    MAIL_GATE.set()
 
 
 def by(page, testid: str):
@@ -130,3 +139,25 @@ def test_a_burst_past_the_capacity_is_dropped_quietly_and_the_next_render_shows_
     by(page, "refresh").click()
     expect_text(by(page, "published"), str(BURST + 2))
     expect_text(by(page, "received"), str(len(heard)))
+
+
+def test_what_the_receiver_mails_while_its_channel_is_full_reaches_the_page(page, browser, server):
+    open_live(page, f"{server}/lossprobe/mail/")
+    sender_context = browser.new_context()
+    try:
+        sender = sender_context.new_page()
+        open_live(sender, f"{server}/lossprobe/send/")
+        by(sender, "burst").click()
+        expect_text(by(sender, "sent"), str(BURST))
+        GATE.set()
+        # It mailed itself with the burst filling its channel; another burst goes behind the mail
+        assert MAILED.wait(WAIT_TIMEOUT)
+        by(sender, "burst").click()
+        expect_text(by(sender, "sent"), str(2 * BURST))
+    finally:
+        sender_context.close()
+
+    MAIL_GATE.set()
+    expect_text(by(page, "line"), "mailed")
+    expect_text(by(page, "marked"), "True")
+    assert not server_errors()

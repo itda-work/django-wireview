@@ -1,5 +1,6 @@
 """The Channels WebSocket adapter (``/__wireview__``). The session logic is ``wireview.session``."""
 
+import asyncio
 import logging
 import typing as t
 
@@ -11,7 +12,7 @@ from .core.csrf import cookies_of
 from .core.origin import origin_refusal
 from .core.rendered import protocol_version, socket_tab
 from .core.session import load_session
-from .core.transport import NO_CHANNEL_LAYER, ChannelsOutbound, Outbound
+from .core.transport import NO_CHANNEL_LAYER, ChannelsOutbound, Mailbox, Outbound, open_mailbox
 from .session import WireviewSession
 
 log = logging.getLogger("wireview")
@@ -31,7 +32,25 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
         super().__init__(*args, **kwargs)
         # The only object that knows this session is a Channels WebSocket.
         self.outbound = ChannelsOutbound(self)
+        # One message handled at a time: those Channels dispatches, and the mail
+        # the session takes back when the layer dropped it (#211)
+        self._turn = asyncio.Lock()
+        # Whether it runs as the ASGI app (__call__) whose dispatch loop takes its mail
+        self._serving = False
         self._init_session_state()
+
+    async def __call__(self, scope, receive, send):  # type: ignore[override]
+        self._serving = True
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            # Cancelled by the server -- a disconnect a handler held up past its close
+            # timeout, a shutdown -- or raised, it never ran disconnect(): the session
+            # ends here, once (#211). After a disconnect this waits on that ending.
+            try:
+                await self.stop()
+            except Exception:
+                log.exception("Ending the session of connection %s raised", self.connection_id)
 
     @property
     def user(self):
@@ -54,6 +73,10 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
         await super().websocket_connect(message)
 
     async def connect(self):
+        if self._serving and self.channel_name:
+            # The mail it sends itself is kept until the layer brings it back (#211)
+            self._mailbox = Mailbox(self.channel_name, self.hand_over, lambda: self.handling > 0, self.mail_overflowed)
+            open_mailbox(self._mailbox)
         await super().connect()
         # Read once, off the event loop. A component's ``self.session`` is a dict
         # lookup after this; reading the store lazily from an async handler would
@@ -73,15 +96,18 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
 
     async def disconnect(self, code):
         log.debug(f"<<< DISCONNECT {code}")
-        if hasattr(self, "repo"):
-            # Refused before connect() ran (an Origin, #96) leaves nothing to stop
-            await self.stop(code)
+        # Refused before connect() ran (an Origin, #96), it has nothing but its mailbox to end
+        await self.stop(code)
         await super().disconnect(code)
 
     async def dispatch(self, message):
-        # Where one message ends is the adapter's to know (#178)
-        with self.handling_message():
-            await super().dispatch(message)
+        # One at a time with the mail the session takes back from a layer that dropped it (#211)
+        async with self._turn:
+            # A mail may bring the ones the layer dropped before it: each is a message of its own
+            for each in self.in_turn(message):
+                # Where one message ends is the adapter's to know (#178)
+                with self.handling_message():
+                    await super().dispatch(each)
 
     async def receive_json(self, content: dict, **kwargs) -> None:  # type: ignore[override]
         await self.handle_message(content)

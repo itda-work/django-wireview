@@ -48,7 +48,16 @@ from .core.rendered import (
 )
 from .core.session import SessionView
 from .core.state import StateMismatch, StatePayload, unsign_envelope
-from .core.transport import PATCH_TOPIC_MAX, Outbound, get_broker, get_patch_hub
+from .core.transport import (
+    MAIL_DUE,
+    PATCH_TOPIC_MAX,
+    Mailbox,
+    Outbound,
+    close_mailbox,
+    get_broker,
+    get_patch_hub,
+    send_mail,
+)
 from .debug import render_queries
 from .features import presence, upload_store
 from .features.uploads import upload_group_name
@@ -105,6 +114,12 @@ def _identity_cookie(difference: str) -> str:
 
 #: What the page does about it, for the log
 _IDENTITY_ACTION = {"renew": "opens a new socket", "reload": "reloads"}
+
+
+#: How long the ``leaving()`` hooks of an ending connection may take, all together (``stop``, #211).
+#: The connection's hub entries, groups, tasks and presence are let go after them: a hook that
+#: never ends would keep them for as long as the process lives.
+LEAVING_SECONDS = 5.0
 
 
 def _event_ref(ref: t.Any) -> int | None:
@@ -283,6 +298,15 @@ class WireviewSession:
         self._identity_warned: bool = False
         # Whether a template change was mailed to this session and not yet handled (#180)
         self._rejoin_mailed: bool = False
+        # Whether the login this connection stands on was told over, and the task telling it (#211)
+        self._invalidated: bool = False
+        self._invalidating: asyncio.Future[None] | None = None
+        # The copies of its own mail, set by an adapter whose channel layer may drop it (#211)
+        self._mailbox: Mailbox | None = None
+        # The one task that takes the mail the mailbox found dropped, in the adapter's turns
+        self._handing_over: asyncio.Future[None] | None = None
+        # The one ending of this session, which every way it ends waits on (``stop``)
+        self._stopping: asyncio.Future[None] | None = None
         # Whether a render retired a component since the subscriptions were last
         # settled: a nested one its drawer's pass stopped drawing hears no more (#204)
         self._retired_in_render: bool = False
@@ -363,6 +387,7 @@ class WireviewSession:
         self.live_session_name = None
         self._auth_topic = ""
         self._auth_revalidated = False
+        self._invalidated = False
         self._renewing = False
         self._identity_warned = False
         # Which cookies the handshake carried, to tell a page older than them
@@ -399,7 +424,32 @@ class WireviewSession:
             telemetry.emit(telemetry.connection_opened, type(self), connection_id=self.connection_id)
 
     async def stop(self, code: int | None = None) -> None:
-        """End: every component leaves, and every subscription goes. ``code`` is the socket's close code."""
+        """End: every component leaves, and every subscription goes. ``code`` is the socket's close code.
+
+        Once, however the connection ends: a disconnect, and the ASGI app's own
+        end after it -- or alone, when the server cancelled the app or it raised
+        and no disconnect ran (#211). A later call waits on the first. The
+        ending is a task of its own that a caller's cancellation does not cut
+        short: a server cancels the app when a handler holds up the disconnect
+        past its close timeout, and that app's hub entries, groups, tasks and
+        presence would otherwise outlive it. ``code`` is None then. Called from
+        within the ending -- a ``leaving()`` hook -- it returns at once: waiting
+        there would wait on itself until the hooks' time ran out.
+        """
+        if self._stopping is None:
+            self._stopping = asyncio.ensure_future(self._stop(code))
+        if asyncio.current_task() is self._stopping:
+            return
+        await asyncio.shield(self._stopping)
+
+    async def _stop(self, code: int | None) -> None:
+        # Its own mail first: nothing found dropped is handled for a session ending (#211)
+        if self._mailbox is not None:
+            close_mailbox(self._mailbox)
+        await self.stop_handing_over()
+        if not hasattr(self, "repo"):
+            # Refused before start() -- an Origin (#96), no channel layer -- or start() never got this far
+            return
         template_reload.unregister(self)
         if telemetry.is_enabled():
             opened_at = self._opened_at
@@ -411,28 +461,39 @@ class WireviewSession:
                 duration_ms=None if opened_at is None else (time.monotonic() - opened_at) * 1000,
                 components=len(self.repo.components),
             )
-        # With those retired that no batch took yet, and the ones kept for the page's events (#204)
-        await self._call_leaving([*self.repo.components.values(), *self.repo.take_retired(), *self.repo.bury_all()])
-        await self._release_connection_uploads()
+        try:
+            # With those retired that no batch took yet, and the ones kept for the page's events (#204).
+            # The application's hooks are bounded: what they hold up is the cleanup below
+            leaving = [*self.repo.components.values(), *self.repo.take_retired(), *self.repo.bury_all()]
+            await self._call_leaving(leaving, within=LEAVING_SECONDS)
+        finally:
+            await self._release_connection()
 
-        # Cleanup subscriptions
+    async def _release_connection(self) -> None:
+        """What the connection holds in this process and in the channel layer, let go whatever its hooks did."""
+        # Not one more frame, and its holds' deadlines go with it
+        self._close_patches()
+        writer = self._patch_writer
+        if writer is not None and not writer.done():
+            # It may be stuck in a send to a socket that went away
+            writer.cancel()
+            await asyncio.gather(writer, return_exceptions=True)
+        hub = get_patch_hub()
+        for topic in self._patch_topics:
+            await hub.leave(topic, self)
+        if self._auth_topic:
+            await hub.leave(self._auth_topic, self)
+        await self._release_connection_uploads()
         for channel in self.subscriptions:
             log.debug(f"::: UNSUBSCRIBE {self.channel_name} from {channel}")
             await self.outbound.unsubscribe(channel)
         self.subscriptions.clear()
-        hub = get_patch_hub()
-        for topic in self._patch_topics:
-            await hub.leave(topic, self)
-        if self._patch_writer is not None:
-            self._patch_writer.cancel()
-        # Its holds' deadlines go with it
-        self._close_patches()
-        self._init_patches()
-        # Until start(): a kept reference to one of its components holds nothing
-        self._close_patches()
         if self._auth_topic:
             await self.outbound.unsubscribe(self._auth_topic)
             self._auth_topic = ""
+        self._init_patches()
+        # Until start(): a kept reference to one of its components holds nothing
+        self._close_patches()
 
     async def close(self, code: int | None = None) -> None:
         """Close the connection. The adapter's own ``close`` takes precedence over this."""
@@ -693,8 +754,9 @@ class WireviewSession:
             # have heard since its drawer's pass built it, now that it joined
             # (#207): mailed, so it comes in its turn as each message the channel
             # brings from here on -- behind ``joined`` and whatever joined() sent.
-            # A mail that did not go (no channel, a full one) never comes: now
-            # then, rather than never -- what comes meanwhile waits behind it.
+            # A mail known not to have gone (no channel; a full one, on an
+            # adapter that keeps no mailbox, #211) never comes: now then, rather
+            # than never -- what comes meanwhile waits behind it.
             if not await component.wire.send("deliver_unheard", id=component.id, instance=component.wire.instance):
                 await notifications.deliver_unheard(self, waiting)
 
@@ -967,6 +1029,15 @@ class WireviewSession:
             return
         self._auth_topic = auth_topic(self.auth_fingerprint)
         await self.outbound.subscribe(self._auth_topic)
+        # And through the process's patch channel, which nothing holds up: this
+        # connection's own channel drops the message when it is full (#211)
+        await get_patch_hub().join(self._auth_topic, self, self._hear_invalidation)
+
+    def _hear_invalidation(self, message: dict[str, t.Any]) -> None:
+        """``PatchHub`` receiver of the auth topic: ``session_invalidated``, in a task of its own."""
+        if message.get("type") != "session_invalidated" or self._invalidated:
+            return
+        self._invalidating = asyncio.ensure_future(self.session_invalidated(message))
 
     async def session_invalidated(self, event: dict[str, t.Any]) -> None:
         """The authentication this connection stands on ended somewhere else.
@@ -978,6 +1049,10 @@ class WireviewSession:
         fingerprint, and every one of them is refused into a reload that lands on
         the view decorator.
         """
+        # It comes twice: on the connection's channel and through the process's (#211)
+        if self._invalidated:
+            return
+        self._invalidated = True
         log.info("Closing connection %s: %s", self.connection_id, event.get("reason", "session invalidated"))
         # Not one more frame for the login that ended, nor for a socket that is closing
         self._close_patches()
@@ -1003,8 +1078,10 @@ class WireviewSession:
             await self.component_template_changed()
             return
         try:
-            taken = await get_broker().send_to_session(
-                self.channel_name, {"type": "message_from_component", "command": "template_changed", "kwargs": {}}
+            taken = await send_mail(
+                get_broker(),
+                self.channel_name,
+                {"type": "message_from_component", "command": "template_changed", "kwargs": {}},
             )
         except Exception:
             taken = False
@@ -1070,7 +1147,7 @@ class WireviewSession:
         self._release_uploads(removed)
         await self.after_mutation_chores()
 
-    async def _call_leaving(self, components: list[Component]) -> None:
+    async def _call_leaving(self, components: list[Component], *, within: float | None = None) -> None:
         """Run ``leaving()`` on each component and cancel its async tasks, logging instead of propagating errors.
 
         ``leaving()`` pairs with ``joined()``: an instance that never joined --
@@ -1078,16 +1155,51 @@ class WireviewSession:
         ``joined()`` -- does not get it. Code that registers in ``joined()`` and
         unregisters in ``leaving()`` (a presence track, a counter) would undo
         what it never did.
+
+        ``within`` bounds the hooks of a connection that ends (``stop``), all of
+        them together: past it the one running is cancelled and the rest do not
+        run. Each component's tasks are cancelled either way.
+
+        These are final: a tombstone's comes when it is buried (#204). So a
+        presence the component joined and its ``leaving()`` did not leave --
+        it raised first, never called ``presence_leave()``, or ran out of
+        ``within`` (#211) -- leaves here, past the hooks' time by a second
+        (``presence.left``, #212).
         """
+        loop = asyncio.get_running_loop()
+        deadline = None if within is None else loop.time() + within
         for component in components:
             try:
-                if component.wire.has_joined:
+                if not component.wire.has_joined:
+                    pass
+                elif deadline is None:
                     await component.leaving()
+                elif loop.time() >= deadline:
+                    log.warning(
+                        "%s (%s).leaving() not called: its connection's time ran out", component._name, component.id
+                    )
+                else:
+                    async with asyncio.timeout_at(deadline):
+                        await component.leaving()
+            except TimeoutError:
+                log.warning(
+                    "%s (%s).leaving() did not end within %ss of its connection's end; cancelled",
+                    component._name,
+                    component.id,
+                    within,
+                )
+            except asyncio.CancelledError:
+                current = asyncio.current_task()
+                if current is not None and current.cancelling():
+                    raise
+                # The hook's own: it awaited something cancelled. Not this ending's
+                log.warning("%s (%s).leaving() was cancelled", component._name, component.id)
             except Exception as e:
                 log.exception(f"Error in {component._name}.leaving(): {e}")
             finally:
                 # After leaving(), which may still want them (#95)
                 component._cancel_async_tasks()
+                await presence.left(component, deadline)
 
     def _join_uri(self) -> str:
         """The ``uri`` a joining component hears its first ``params_changed`` with."""
@@ -1484,6 +1596,71 @@ class WireviewSession:
     # Component commands
 
     async def message_from_component(self, data):
+        if data.get("here") and self._mailbox is not None and self._mailbox.closed:
+            # Taken in a turn with others, and the connection ended before this one's
+            return
+        await self._take_mail(data)
+
+    def in_turn(self, message: dict[str, t.Any]) -> list[dict[str, t.Any]]:
+        """What the adapter handles in the turn it took ``message`` for, in order, each as a message of its own.
+
+        ``message`` itself, but for mail when a ``transport.Mailbox`` keeps it
+        (#211): one from the channel brings the mails sent before it that are
+        still away -- or is nothing, handled already -- and ``MAIL_DUE`` is the
+        turn ``hand_over`` asked for, which takes the mails found dropped. Each
+        goes through the adapter's own handling of a message, the one Channels'
+        ``dispatch`` gives a message from the channel: ``aclose_old_connections``
+        before it, ``handling_message`` around it.
+        """
+        mailbox = self._mailbox
+        if mailbox is None:
+            return [] if message.get("type") == MAIL_DUE else [message]
+        if message.get("type") == MAIL_DUE:
+            return mailbox.due()
+        if message.get("type") == "message_from_component" and not message.get("here"):
+            return mailbox.came(message)
+        return [message]
+
+    def hand_over(self) -> None:
+        """``transport.Mailbox``: a mail of this session's was found dropped, to handle in a turn of its own (#211).
+
+        One task per connection takes them, through the adapter's ``dispatch``
+        as the channel's messages are: a turn once the message being handled is
+        done. A mail the channel brings first may take them in its own turn.
+        """
+        if self._handing_over is None or self._handing_over.done():
+            self._handing_over = asyncio.ensure_future(self._take_handed_over())
+
+    async def _take_handed_over(self) -> None:
+        mailbox = self._mailbox
+        while mailbox is not None and mailbox.has_due:
+            try:
+                await self.dispatch({"type": MAIL_DUE})  # type: ignore[attr-defined]
+            except Exception:
+                # Raised out of the adapter's loop it would have ended the connection
+                log.exception("Handling the mail of %s found dropped raised", self.connection_id)
+                await self.close(code=1011)
+                return
+
+    def mail_overflowed(self) -> None:
+        """``transport.Mailbox``: more of this session's mail was away than it keeps. Close rather than drop (#211).
+
+        Dropped, a list would stay short or a hold shut without a word. Closed,
+        the page reconnects and joins again, its lists read afresh -- as when
+        Broadcast patches pile up (``_fell_behind``).
+        """
+        self._close_patches()
+        self._patch_closing = asyncio.ensure_future(self.close(code=1013))
+
+    async def stop_handing_over(self) -> None:
+        """The connection ended: the task taking mail found dropped goes with it."""
+        task = self._handing_over
+        if task is None or task.done() or task is asyncio.current_task():
+            return
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    async def _take_mail(self, data):
         handler = getattr(self, f"component_{data['command']}", None)
         if handler is None:
             # A command with no handler used to raise here and take the socket down,

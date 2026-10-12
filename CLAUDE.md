@@ -100,13 +100,24 @@ wireview/
 │                          저장소가 등록하는 컴포넌트에 wire.identity를 달아 sign_state가 읽는다. join이 연결의 것과 다르면 renew(#209)
 ├── core/signing.py        서명 키 정본. get_signer(salt) 하나로 모든 서명 지점이 SIGNING_KEY와 fallback을 공유
 ├── core/model_state.py    상태 안의 모델 인스턴스를 pk로 서명하고(어디에 있든) 필드 타입 표기를 따라 다시 불러온다 (#113)
-├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳
+├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳.
+│                          Mailbox(#211): 세션이 자기에게 보낸 메일(레이어를 지나 알림과 한 줄에 선다)의 사본을 처리될 때까지 지닌다.
+│                          메일은 연결의 차례(컨슈머 dispatch의 잠금 _turn) 안에서만 보낸 순서로 처리한다: 거절됐거나 한가한 동안 MAIL_SECONDS
+│                          오지 않은 것은 처리할 것으로 표시만 하고(차례를 잡기 전까지 뒤 메일이 찾는다), 연결마다 한 작업(session.hand_over)이
+│                          차례를 잡아 가져간다. 한 차례의 메일 여럿은 저마다 Channels dispatch(aclose_old_connections)를 지난다(session.in_turn).
+│                          늦게 온 레이어의 것은 버린다. 사본은 MAIL_LIMIT·MAIL_BYTES까지, 넘으면 1013으로 닫는다
 ├── template_engine.py     템플릿 VariableNode에 diff 마커 자동 주입. 마커 변수는 값을 직접 resolve하고 평범한 int·str은
 │                          Django의 VariableNode와 같은 출력을 지름길로 찍는다(render_value, #176). 바꾸면 tests/test_template_values.py가 Django 출력과 맞춘다
-├── consumer.py            WireviewConsumer: Channels WebSocket 어댑터(/__wireview__). 소켓 수락·거절과 세션 시작·종료, JSON 전달만
+├── consumer.py            WireviewConsumer: Channels WebSocket 어댑터(/__wireview__). 소켓 수락·거절과 세션 시작·종료, JSON 전달만.
+│                          세션은 disconnect()와 ASGI __call__의 finally 둘 다에서 끝낸다 — 서버가 앱을 취소하거나(daphne의 close timeout·종료,
+│                          uvicorn의 graceful 시한) 앱이 던지면 Channels가 disconnect()를 부르지 않는다(#211)
 ├── session.py             WireviewSession: 세션 로직 전부(inbound command_*, 메일 component_*, 렌더). Outbound로만 내보낸다.
 │                          channels를 import하지 않는다(tests/test_session_extraction.py). send_render가 자식 LiveComponent의
-│                          joined/update(update_many)/leaving과 렌더를 함께 처리 (GAP-027, #60)
+│                          joined/update(update_many)/leaving과 렌더를 함께 처리 (GAP-027, #60).
+│                          stop()은 한 번만 돈다: 처음 부른 쪽이 만든 태스크(_stopping)를 뒤의 부름이 shield로 기다린다 — 서버의 취소가 정리를 끊지 않는다(삼키지는 않는다).
+│                          그 태스크 안(leaving())에서 부르면 바로 돌아온다. 프로세스 종료 때 정리가 끝나는지는 서버의 몫이다(tests/test_server_shutdown.py)
+│                          순서는 우편함 닫기·drain 회수 → leaving()(합쳐 LEAVING_SECONDS) → 작업 취소·presence.left(퇴장 못 한 프로듀서, 시한보다 1초 더, #211·#212) → finally의 _release_connection
+│                          (패치·허브·업로드·구독). 훅이 던지거나 걸려도 뒤의 정리는 돈다(#211, tests/test_session_end.py)
 ├── views.py               UploadView (청크 업로드 HTTP 엔드포인트). 무상태 — 서명 토큰만으로 판단하고
 │                          토큰에서 계산한 경로에 쓴다. 어느 워커에 닿아도 된다 (#83)
 ├── urls.py                websocket_urlpatterns, urlpatterns
@@ -131,7 +142,7 @@ wireview/
 ├── js.py                  JS() 명령 빌더
 ├── schemas.py, serializer.py  Pydantic 스키마, 모델 직렬화
 ├── settings.py            WIREVIEW 설정 기본값
-├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W022)
+├── checks.py              Django system checks (조용한 실패를 manage.py check로. wireview.W001~W023)
 ├── telemetry.py           옵트인 계측 시그널 (event_handled, component_rendered, diff_computed, broadcast_published 구간과
 │                          connection_opened·connection_closed·join_rejected(닫힌 사유 집합)·publish_failed 이벤트, #124)
 ├── testing.py             mount(), MountedComponent, ComponentTestCase. mount한 컴포넌트는 같은 프로세스의 Broadcast를 받는다(core/patches.listen).
@@ -161,8 +172,9 @@ wireview/
 │                          로더만). 프로세스마다 덧붙이기만 하는 세그먼트 파일이고, 끝까지 쓰지 못한 줄은 되돌리고 끈다. DEBUG가 아니거나
 │                          WIREVIEW_RENDER_QUERIES_DIR=off(루트 conftest.py가 둔다)이거나 wireview.testing을 import했으면 쓰지 않는다.
 │                          형식의 정본은 docs/features/render-queries.md "편집기로 보내기", 계약은 tests/test_render_queries_file.py
-├── features/              streams.py, presence.py (PresenceMixin. 채널 → 사용자 → 프로듀서(탭 + 준 id, id가 없으면 클래스 — wire.id_given)마다 meta, 트래커의 자기 항목은 탭 키, 목록은 사용자 단위로 합친다. sync에는 프로듀서가 답한다(#202).
-                           그 답을 위해 세션과 mount가 입장한 프로듀서의 presence 채널(presence_channels)을 따로 듣고 hear()에 넘긴다(core/notifications.deliver). 그 채널의 메시지는 앱의 notification()에 넘기지 않는다 — 앱이 직접 구독한 채널이면 평소대로), uploads.py (UploadRegistry·토큰 v2),
+├── features/              streams.py, presence.py (PresenceMixin. 채널 → 사용자 → 프로듀서(탭 + 준 id)마다 meta. 프로듀서는 id가 필수다(#212): id 없이 그리면 {% component %} 태그가 TemplateSyntaxError, mount는 presence_join()이 wire.id_given을 보고 ImproperlyConfigured(unnamed_producer), W023이 템플릿에서 미리. 트래커의 자기 항목은 탭 키, 목록은 사용자 단위로 합친다. sync에는 프로듀서가 답한다(#202).
+                           그 답을 위해 세션과 mount가 입장한 프로듀서의 presence 채널(presence_channels)을 따로 듣고 hear()에 넘긴다(core/notifications.deliver). 그 채널의 메시지는 앱의 notification()에 넘기지 않는다 — 앱이 직접 구독한 채널이면 평소대로.
+                           마지막 leaving()이 퇴장하지 못한 프로듀서는 그 뒤 presence.left가 퇴장시킨다 — 세션의 _call_leaving, #212), uploads.py (UploadRegistry·토큰 v2),
 │                          hooks.py (앱의 static/<app_label>/hooks/*.js 수집. 페이지가 아니라 프로젝트 단위. 템플릿 디렉터리는 TEMPLATES가 아니라 엔진의 로더에게 묻는다),
 │                          upload_store.py (청크 경로 계산·append·취소 마커·sweep. 워커들이 공유하는 유일한 상태),
 │                          toasts.py (toast()·atoast()와 그것을 받는 컴포넌트. {% wireview_toasts %}가 심는다, #116)
@@ -298,6 +310,7 @@ tests/
                            ?failing=1 은 join이 실패한 대상, 끊겼다 다시 붙은 페이지),
                            reloadprobe/ 는 개발 서버에서 템플릿을 저장하면(file_changed) 새로고침 없이 새 템플릿이 보이고, 깨진 템플릿으로 막힌 컴포넌트가 고친 뒤 상태 그대로 돌아오는지 보는 E2E(test_template_reload_e2e.py)의 픽스처(shadow.py 가 TEMPLATES DIRS 앞에 테스트의 디렉터리를 두고 그 사본을 고친다. slow_bump 은 저장하는 순간 처리 중인 핸들러, away/ 는 rejoin이 기다리는 동안의 boost 이동 대상),
                            identityprobe/ 는 다른 탭이 로그인·로그아웃·사용자 교체·CSRF 회전을 한 뒤 boost 이동한 페이지의 컴포넌트가 페이지와 같은 신분인지(새 소켓, 새로고침 없이), 바뀐 것이 없으면 소켓을 그대로 쓰는지, renew 뒤의 두 번째 변화·재연결·끝내 맞지 않는 페이지에서 소켓 수가 멈추는지 보는 E2E(test_socket_identity_e2e.py)의 픽스처(경계 밖 a/·b/, 경계 안 inside-a/·inside-b/, stale/ 은 컴포넌트가 늘 다른 로그인으로 서명되는 페이지),
+                           endprobe.py 는 leaving()의 시작·끝을 파일에 적는 컴포넌트를 실은 testproj ASGI 앱이다 — test_server_shutdown.py 가 daphne·uvicorn 프로세스로 띄워 연결 둘에 SIGTERM을 보낸다(#211),
                            asgi_variants.py 는 wireview.W020(WebSocket 라우트에 세션 미들웨어가 없음)이 보는 ASGI 스택들이다(소켓 단위 테스트도 BARE·SESSION_ONLY로 consumer의 session_known 배선을 본다),
                            csrfprobe/ 는 컴포넌트·LiveComponent·함수 컴포넌트가 그린 일반 POST 폼({% csrf_token %})을 JavaScript 없이, join·이벤트·알림 뒤,
                            CSRF_USE_SESSIONS, 로그인(시크릿 회전) 뒤, 다른 사용자로 토큰을 검사하는 뷰에 제출하는 E2E(test_csrf_token_e2e.py)의 픽스처,
@@ -412,7 +425,7 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
 
 ## 함정
 
-아래 중 여럿은 `manage.py check`가 잡는다 (`wireview.W001`~`W022`, `docs/features/checks.md`).
+아래 중 여럿은 `manage.py check`가 잡는다 (`wireview.W001`~`W023`, `docs/features/checks.md`).
 
 - **채널 레이어가 없으면 어떤 연결도 살아남지 못한다.** Channels에는 기본 레이어가 없다 — `CHANNEL_LAYERS`에 `default`가 없으면 `get_channel_layer()`가 `None`이고 컨슈머에 `channel_name`도 생기지 않는다. 컨슈머는 accept 전에 `ImproperlyConfigured`로 거절하고 `wireview.W012`가 같은 문장(`wireview/core/transport.py`의 `NO_CHANNEL_LAYER`)으로 미리 알린다(#87). 가드는 `connect()`가 아니라 `websocket_connect()`에 있다 — 단위 테스트는 레이어 없는 bare 컨슈머로 `connect()`를 직접 부르고, **그래서 그 테스트들은 이 실패를 한 번도 보지 못했다.**
 

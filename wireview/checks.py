@@ -1140,6 +1140,104 @@ def check_django_templates(app_configs, **kwargs) -> list[CheckMessage]:
     return messages
 
 
+def check_presence_producer_ids(app_configs, **kwargs) -> list[CheckMessage]:
+    """W023: a template draws a presence producer without an id (#212).
+
+    The tag refuses it when it draws it: the page's first render raises. This
+    says so before a request does, for the ``{% component %}`` and
+    ``{% component_block %}`` tags that name the class in quotes, in the
+    templates a render loads: the one each Django engine picks by the name of
+    an ``*.html`` file under its template directories (a file another
+    directory overrides is not), the components' own, the function
+    components', and what they reach -- ``{% include %}``, the parents of
+    ``{% extends %}`` (a parent of the same name too), a function
+    component's template, an inclusion tag's (of a list, the first that
+    loads, as the render takes it) -- as W019 follows them (#208). A name a
+    template picks at render time is the render's to tell.
+    """
+    from django.template import engines, loader
+    from django.template.backends.django import DjangoTemplates
+
+    from .core.shared_render import _Reach
+    from .features.hooks import _template_roots
+    from .function_components import _registry
+
+    found: dict[tuple[str, int, type], None] = {}
+    unnamed_producer = _unnamed_producers()
+
+    def visit(node: t.Any, parsed: t.Any) -> None:
+        if (producer := unnamed_producer(node)) is not None:
+            token = getattr(node, "token", None)
+            found.setdefault((str(parsed.origin.name), getattr(token, "lineno", 0) or 0, producer), None)
+
+    # One reach for every template: a file is parsed once however many templates reach it
+    reach = _Reach(None, visit)
+
+    def read(get: t.Callable[[str], t.Any], name: str) -> None:
+        try:
+            template = get(name)
+            template = getattr(template, "template", template)
+            if getattr(template, "nodelist", None) is not None:  # another engine's: W022 tells
+                reach.template(template, owned=False)
+        except Exception:  # noqa: BLE001 -- missing, or does not compile: the render tells
+            pass
+
+    for backend in engines.all():
+        if isinstance(backend, DjangoTemplates):
+            names: dict[str, None] = {}
+            for root in _template_roots(backend):
+                names.update((path.relative_to(root).as_posix(), None) for path in sorted(root.rglob("*.html")))
+            for name in names:  # the file the engine picks by that name, as a render would
+                read(backend.engine.get_template, name)
+    owned = [cls._meta.template_name for cls in iter_component_classes() if cls._meta.template_name]
+    owned += [function.template for function in _registry.values() if function.template]
+    for name in dict.fromkeys(owned):
+        read(loader.get_template, t.cast(str, name))
+
+    return [
+        Warning(
+            f"{where}:{line} draws {producer._fqn}, a presence producer, without an id.",
+            hint=(
+                f"Give it one: {{% component '{producer.__name__}' id='...' %}}. Presence keys a "
+                "producer's entry on the tab by its id, so the render that draws it without one raises "
+                "TemplateSyntaxError. See docs/tutorials/07-presence-api.md."
+            ),
+            id="wireview.W023",
+        )
+        for where, line, producer in found
+    ]
+
+
+def _unnamed_producers() -> t.Callable[[t.Any], type | None]:
+    """A function that gives the presence producer a node draws by a quoted name without an id, if it does.
+
+    An id written as ``''`` or ``None`` is none: the tag refuses an id that is empty when drawn.
+    """
+    from .core.component import Component
+    from .core.shared_render import _is_none, _literal
+    from .features.presence import PresenceMixin
+    from .templatetags.wireview import ComponentBlockNode
+    from .templatetags.wireview import component as component_tag
+
+    def producer(node: t.Any) -> type | None:
+        if isinstance(node, ComponentBlockNode):
+            name, given = node.component_name, node.kwargs
+        elif getattr(node, "func", None) is component_tag and node.args:
+            name, given = _literal(node.args[0]), node.kwargs
+        else:
+            return None
+        given_id = given.get("id")
+        if not name or (given_id is not None and _literal(given_id) != "" and not _is_none(given_id)):
+            return None
+        try:
+            drawn = Component._resolve(name)
+        except Exception:  # noqa: BLE001 -- not a component this project has: the render says so
+            return None
+        return drawn if issubclass(drawn, PresenceMixin) else None
+
+    return producer
+
+
 def _first_engine(backends: list[t.Any], name: str) -> t.Any:
     """The first of ``backends`` that finds ``name``, compiled or not, as Django's loader asks them."""
     from django.template import TemplateDoesNotExist
@@ -1173,6 +1271,7 @@ def register_checks() -> None:
     register(check_hook_files, WIREVIEW_TAG)
     register(check_shared_render, WIREVIEW_TAG)
     register(check_django_templates, WIREVIEW_TAG)
+    register(check_presence_producer_ids, WIREVIEW_TAG)
     register(check_channel_layer_configured, WIREVIEW_TAG)
     register(check_runserver_is_asgi, WIREVIEW_TAG)
     register(check_websocket_session, WIREVIEW_TAG)

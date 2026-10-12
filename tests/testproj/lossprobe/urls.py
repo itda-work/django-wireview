@@ -11,4 +11,5 @@ def page(name: str, id: str):
 urlpatterns = [
     path("", page("LossBox", "lbox"), name="index"),
     path("send/", page("LossSender", "lsend"), name="send"),
+    path("mail/", page("LossMailBox", "lmail"), name="mail"),
 ]

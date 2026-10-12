@@ -25,6 +25,7 @@ from ..core.state import sign_state, signable_json
 from ..debug import render_queries
 from ..event_transpiler import binding
 from ..features.hooks import hook_files
+from ..features.presence import PresenceMixin, unnamed_producer
 from ..function_components import DRAWER as FUNCTION_DRAWER
 from ..function_components import PAGE as FUNCTION_PAGE
 from ..function_components import get_function_component
@@ -435,6 +436,9 @@ def _build_and_render_component(
 
     # The template named it, or the framework mints its id: the sticky default here, ``rx-`` otherwise
     id_given = "id" in kwargs
+    if not kwargs.get("id") and issubclass(drawn_class := Component._resolve(component_name), PresenceMixin):
+        # Said where it is drawn, on the page's first render; presence_join() says it for mount() (#212)
+        raise template.TemplateSyntaxError(unnamed_producer(drawn_class, "drawn by {% component %}"))
     if not id_given and (sticky_id := _default_sticky_id(component_name, repo)):
         kwargs = {**kwargs, "id": sticky_id}
     # In a function component's template the drawer is the one that drew the function

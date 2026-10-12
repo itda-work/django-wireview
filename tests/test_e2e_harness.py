@@ -213,6 +213,41 @@ def test_a_task_the_server_leaves_behind_ends_before_the_loop_closes(started_thr
     assert ended.is_set()
 
 
+def test_a_task_a_cancelled_task_starts_ends_before_the_loop_closes(started_threads):
+    """What a cancelled task's end starts is cancelled too, and ends: a connection's ending is a task of its own (#211).
+
+    Cancelling the app starts the session's ending, which leaves the Broadcast
+    receiver's topics; a receive that had a message spawned channels_redis's
+    backup cleaner, the one that releases the lock every channel of the process
+    shares. Neither was there when the harness looked, once: the cleaner was
+    pending when the loop closed, and the next servers' pages heard nothing.
+    """
+    import asyncio
+
+    started, ended = threading.Event(), threading.Event()
+
+    async def cleans_forever():
+        try:
+            await asyncio.Event().wait()
+        finally:
+            ended.set()
+
+    async def ends_in_a_task_of_its_own():
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            asyncio.ensure_future(cleans_forever())
+
+    with serve():
+        loop = started_threads[0].loop
+        assert loop is not None
+        loop.call_soon_threadsafe(lambda: loop.create_task(ends_in_a_task_of_its_own()))
+        assert started.wait(timeout=5)
+
+    assert ended.is_set()
+
+
 def test_no_test_module_runs_a_server_thread_of_its_own():
     """Guard against a fifth copy.
 

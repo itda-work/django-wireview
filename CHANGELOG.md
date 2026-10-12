@@ -82,11 +82,73 @@ The django-reactor era changelog (2.x) is preserved in
   `Broadcast` item's template rendered with that engine, live renders too, and now raises: move it where a
   DjangoTemplates engine finds it and write it in Django's syntax (docs/UPGRADING.md). A page's template may
   use any engine.
+- **Breaking:** A presence producer (`PresenceMixin`) is drawn with an id (#212):
+  `{% component 'ChatInput' id='composer' %}`. Drawn without one, the `{% component %}` or
+  `{% component_block %}` tag raises `TemplateSyntaxError` naming the class and the fix, on the page's first
+  render. `manage.py check` warns of a tag that names the class in quotes ahead of the render
+  (`wireview.W023`), in the templates a render loads: the one each engine picks by a file's name, the components'
+  and function components' own, and what they include, extend or render. A name picked at render is the
+  render's to tell. `mount()` without an id raises `ImproperlyConfigured` when the producer joins presence. A page
+  open across the deploy keeps its producer until a render draws it again (a reload, or the component that drew it):
+  a producer's signed state does not say who gave its id, so one 1.5 drew without an id still joins. The id names the
+  producer's entry on its tab: it tells two producers of one tab apart and carries the entry across a
+  reconnect and a redraw. An id the framework makes up is new on every draw, and a sticky default is one for
+  the whole class. In 1.5 one drawn without an id worked. A tracker needs no id.
+- A presence producer whose last `leaving()` did not leave -- it raised before `presence_leave()`, or never
+  called it -- is left by the framework once that `leaving()` is over, and its typing timer stops (#212).
+  The user stayed on everyone's list after the tab closed. One its `leaving()` left says nothing again. A
+  tombstone's `leaving()` waits for its burial (#204), and so does this; `mount()` runs no `leaving()`. A
+  connection's end leaves the same way for a `leaving()` that ran out of its time, or a leave cut short while it
+  published (#211, under Fixed): one step after each last `leaving()` does both.
 - Documented when `broadcast()` (after the commit) and `abroadcast()` (at once) publish, and when a session reads
   `get_subscriptions()` again, with a test that a topic given up in `notification()` is heard no more (#203).
 
 ### Fixed
 
+- A connection whose app ended without a disconnect is ended all the same, once (#211). Channels runs
+  `disconnect()` only for a disconnect message; when the server cancels the app -- Daphne after its application
+  close timeout, when a handler holds up the disconnect, and on shutdown; Uvicorn past its graceful shutdown
+  timeout -- or the app raises, the session never stopped. The process's `PatchHub` kept it (the auth topic's
+  entry, a strong reference, held the whole session and its repository), and with it its channel groups,
+  `start_async` tasks, a presence producer's typing timeout and its place on every tracker's list, a Broadcast
+  hold's timer and the template reloader's entry. The consumer now ends the session at the end of the app too,
+  and a second ending waits on the first: `leaving()`, the presence leave and `connection_closed` happen once.
+  The ending runs in a task of its own that the server's cancellation does not cut short. The `leaving()` hooks
+  of an ending connection have 5 seconds together (`LEAVING_SECONDS`): past it the one running is cancelled
+  and the rest are not called. A hook that raised, ran out of time or never called `presence_leave()` no
+  longer keeps the rest of the cleanup from running, and the framework leaves presence for a producer still
+  joined, or whose `presence_leave()` the time ran out in while it published. The server still decides whether
+  the ending runs to its end: Daphne's shutdown waits only for the first app to end and Uvicorn's only up to
+  its graceful timeout, so no presence leave or last write in `leaving()` is guaranteed on shutdown
+  (docs/DEPLOYMENT.md, `tests/test_server_shutdown.py`). `connection_closed` reports `code=None` for an app
+  that ended without a disconnect.
+- A visitor who is not logged in no longer closes every anonymous connection by logging out (#211).
+  `logout()` sends `user_logged_out` for them too, and `invalidate_authentication()` published to the topic of
+  the generation with no user and no nonce, which every anonymous connection inside a live_session listens
+  on. That fingerprint is nobody's login: nothing is published for it now.
+- A logout closes a busy connection on the login that ended (#211). `invalidate_authentication()` published
+  `session_invalidated` to the connections' own channels, and a channel a busy room had filled dropped it
+  without a word: the socket stayed open, its components handling events as the user who had logged out.
+  It is now also published to the topic's patch group, which each process's `PatchHub` receives on a
+  channel nothing holds up, and handed to the connections listening there. A connection told twice closes
+  once.
+- A session's mail to itself is no longer lost to a full channel (#211). What a component sends through its
+  connection -- a stream operation, `push_event`, JS, a flash or title, a navigation, `defer()`, a LiveComponent
+  update, the `joined` that starts infinite scroll, the release of the `Broadcast` patches a join holds, a
+  crashed task's recovery, a template change's `rejoin` -- rides on the connection's channel, which it shares
+  with every notification its topics fan out. When a busy room filled that channel, the layer dropped the
+  mail: InMemory refused it (`ChannelFull`, logged and reported as `publish_failed`), channels_redis pushed
+  it out of a full receive buffer without a word. A stream stayed short, a hook never heard its event, a
+  component stayed stale or frozen for good, and a join's held patches waited until the connection closed.
+  The connection now keeps a copy of each mail until it is handled, and handles mail only in its own turns
+  and in the order it was sent: one the layer refused, or one that stayed away for 5 seconds
+  (`MAIL_SECONDS`) while nothing was being handled, is marked due for the next turn, which takes it from the
+  copy behind the mails sent before it; a later mail the channel brings first takes the ones before it
+  ahead of itself. Each mail a turn takes goes through the consumer's own handling of a message, Channels'
+  database connection cleanup included. A copy the layer brings after that is dropped. At most 1,000 mails
+  or 16 MiB of copies (`MAIL_LIMIT`, `MAIL_BYTES`) are kept; past that the connection closes with 1013 and
+  the page joins again. Mail still goes through the layer, so its order against the notifications is what
+  it was, save for a mail handled from its copy, which loses its place among them.
 - Django's `{% querystring %}` works in a component's template (#210). It reads `context.request.GET`, and a
   component's template renders with a context of its own, never the page's `RequestContext`: it raised
   `AttributeError` on the first HTTP render and on every live render, where the join failed. Both renders now
@@ -123,19 +185,17 @@ The django-reactor era changelog (2.x) is preserved in
 - Presence keeps a meta per producer under each user, as Phoenix Presence keeps one per `track`, so a user
   with two tabs open stays on the others' lists until the last tab leaves (#202). A producer's meta is keyed
   by its tab and its component id, so a page that hides one of its two producers (`presence_leave()`) stays
-  listed while the other is joined. A producer drawn without an id is keyed by its class instead: the id
-  minted for it is new on every pass that draws it, a reconnect's too. Two id-less producers of one class on a
-  page share a meta. The user was the key: closing one tab
+  listed while the other is joined; a producer needs that id (Changed, #212). The user was the key: closing one tab
   removed them while the other was still open, and one tab's typing state overwrote the other's. The list
   `presence_users` still has one entry per user, merged from their tabs: typing if any tab types, otherwise
   online, with the name and metadata heard from last. A page names its load in the socket URL (`tab`) and
   keeps that name across reconnects; join, leave, typing and the sync answer carry `presence_ref`, a digest
   of that name under the signed-in user (a page cannot speak for another user's tab) and of the producer's
-  id (its class when it was drawn without one), and `presence_speaker`,
+  id, and `presence_speaker`,
   a name of the producer instance that sent them, new with every instance. So when a process ends without its `leaving()` (daphne, Granian, a crash),
   the tab's join after it reconnects replaces what the dead process left, and its leave removes it; a late
-  leave from the socket a tab reconnected away from is dropped, as is the late leave of a producer drawn
-  without an id that the page hid and showed again: the hidden one's `leaving()` can come after the
+  leave from the socket a tab reconnected away from is dropped, as is the late leave of a producer
+  that the page hid and showed again under its id: the hidden one's `leaving()` can come after the
   new one joined under the same meta (#204). A tab whose old and new sockets both
   answered a newcomer's sync stays on that list until the last of them leaves. A page from an older bundle is keyed by its
   connection. A message without `presence_ref`, from a process before this release, stands for one tab per

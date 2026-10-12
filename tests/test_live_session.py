@@ -845,6 +845,41 @@ class TestLogoutInvalidation:
         assert outbound.kinds() == ["reload"]
         assert consumer.repo.get("l5") is None
 
+    @pytest.mark.parametrize("user", [AnonymousUser(), None], ids=["anonymous", "no-user"])
+    def test_a_visitor_not_logged_in_retires_no_one_by_logging_out(self, user):
+        """Every anonymous connection inside a live_session listens on one topic: there is no login to end.
+
+        ``logout()`` from a visitor who is not logged in -- a second click on a
+        logout button, a stale tab -- sends ``user_logged_out`` all the same.
+        Published, it closed every anonymous socket on the site.
+        """
+        from django.contrib.auth import logout
+
+        from wireview.core.transport import set_broker
+
+        published: list[str] = []
+
+        class RecordingBroker:
+            async def publish(self, topic, message):
+                published.append(topic)
+
+            async def send_to_session(self, session_id, message): ...
+
+            async def publish_patch(self, topic, message):
+                published.append(topic)
+
+        request = RequestFactory().post("/logout/")
+        if user is not None:
+            request.user = user
+        request.session = SessionStore()
+        set_broker(RecordingBroker())
+        try:
+            logout(request)
+        finally:
+            set_broker(None)
+
+        assert published == []
+
     def test_logging_in_again_retires_the_generation_it_replaces(self, staff):
         """A step-up or re-auth overwrites the nonce, and no logout will ever name the old one.
 

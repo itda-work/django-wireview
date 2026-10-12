@@ -17,7 +17,8 @@ from fractions import Fraction
 from pathlib import Path
 
 import pytest
-from django.template import Context, Template
+from django.template import Context, Template, TemplateSyntaxError
+from django.template.loader import get_template
 from django.test import override_settings
 from testproj.wireview_setting import set_wireview
 
@@ -36,6 +37,7 @@ from wireview.checks import (
     check_cookie_paths,
     check_django_templates,
     check_live_sessions,
+    check_presence_producer_ids,
     check_reconnect_settings,
     check_runserver_is_asgi,
     check_settings_keys,
@@ -1308,6 +1310,158 @@ class TestDjangoTemplatesCheck:
             assert check_django_templates(None) == []
 
 
+class TestPresenceProducerIdsCheck:
+    """W023: a template draws a presence producer without an id (#212)."""
+
+    @pytest.fixture
+    def producer(self, only):
+        from wireview import PresenceMixin
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            base = type("W23Base", (PresenceMixin, Component), {"__module__": __name__})
+        made = make_component("W23Typing", base=base)
+        only(made)
+        return made
+
+    @staticmethod
+    def engines(directory: Path, locmem: dict[str, str] | None = None) -> list[dict]:
+        engines: list[dict] = [{"BACKEND": "django.template.backends.django.DjangoTemplates", "DIRS": [directory]}]
+        if locmem is not None:
+            engines.append(
+                {
+                    "BACKEND": "django.template.backends.django.DjangoTemplates",
+                    "NAME": "locmem",
+                    "OPTIONS": {"loaders": [("django.template.loaders.locmem.Loader", locmem)]},
+                }
+            )
+        return engines
+
+    def test_a_template_that_draws_one_without_an_id_is_flagged(self, producer, tmp_path):
+        page = tmp_path / "rooms" / "room.html"
+        page.parent.mkdir()
+        page.write_text(
+            "{% load wireview %}\n<main>\n"
+            "{% if room %}{% component 'W23Typing' room=room %}{% endif %}\n"
+            '{% component_block "W23Typing" %}{% endcomponent %}\n'
+            "{% component 'W23Typing' id='composer' %}\n"
+            "{% component 'XNotAProducer' %}{% component name %}\n</main>\n"
+        )
+        with override_settings(TEMPLATES=self.engines(tmp_path)):
+            messages = check_presence_producer_ids(None)
+        assert [m.id for m in messages] == ["wireview.W023", "wireview.W023"]
+        assert messages[0].msg == f"{page}:3 draws {producer._fqn}, a presence producer, without an id."
+        assert messages[1].msg.startswith(f"{page}:4 ")
+        assert "{% component 'W23Typing' id='...' %}" in messages[0].hint
+
+    def test_a_components_own_template_is_read_wherever_its_loader_finds_it(self, only, producer, tmp_path):
+        """A loader that names no directory (locmem here) still hands the component's template over."""
+        drawer = make_component("W23Drawer", meta={"template_name": "w23/drawer.html"})
+        only(producer, drawer)
+        locmem = {"w23/drawer.html": "{% load wireview %}<div>{% component 'W23Typing' %}</div>"}
+        with override_settings(TEMPLATES=self.engines(tmp_path, locmem)):
+            [message] = check_presence_producer_ids(None)
+        assert message.msg.startswith("w23/drawer.html:1 draws ")
+
+    def test_ids_trackers_and_templates_that_do_not_compile_are_silent(self, producer, tmp_path):
+        (tmp_path / "ok.html").write_text("{% load wireview %}{% component 'W23Typing' id=\"room-\"|concat:1 %}")
+        (tmp_path / "broken.html").write_text("{% load wireview %}{% component 'W23Typing' %}{% nope %}")
+        (tmp_path / "plain.html").write_text("{% component 'W23Typing' %}")  # no {% load %}: not ours
+        with override_settings(TEMPLATES=self.engines(tmp_path)):
+            assert check_presence_producer_ids(None) == []
+
+    def test_an_empty_id_is_flagged_as_the_tag_refuses_it(self, producer, tmp_path):
+        page = tmp_path / "empty.html"
+        page.write_text("{% load wireview %}\n{% component 'W23Typing' id='' %}\n{% component 'W23Typing' id=None %}")
+        with override_settings(TEMPLATES=self.engines(tmp_path)):
+            messages = check_presence_producer_ids(None)
+        assert [m.msg.split(" draws ")[0] for m in messages] == [f"{page}:2", f"{page}:3"]
+
+    @staticmethod
+    def overridden(tmp_path: Path, project: str) -> tuple[Path, Path]:
+        """A project directory ahead of a vendor one, both with ``room.html``; the vendor's draws without an id."""
+        ours, vendor = tmp_path / "project", tmp_path / "vendor"
+        ours.mkdir()
+        vendor.mkdir()
+        (ours / "room.html").write_text(project)
+        (vendor / "room.html").write_text(
+            "{% load wireview %}\n{% block body %}{% component 'W23Typing' %}{% endblock %}"
+        )
+        return ours, vendor
+
+    def test_a_file_another_directory_overrides_is_silent(self, producer, tmp_path):
+        """The loader picks the project's room.html: the vendor's is never rendered (#212 review)."""
+        ours, vendor = self.overridden(tmp_path, "safe override")
+        engines = [{"BACKEND": "django.template.backends.django.DjangoTemplates", "DIRS": [ours, vendor]}]
+        with override_settings(TEMPLATES=engines):
+            assert check_presence_producer_ids(None) == []
+
+    def test_the_parent_an_override_extends_by_its_own_name_is_read(self, producer, tmp_path):
+        """``{% extends 'room.html' %}`` in the override reaches the vendor's file, skipping itself."""
+        ours, vendor = self.overridden(tmp_path, "{% extends 'room.html' %}")
+        engines = [{"BACKEND": "django.template.backends.django.DjangoTemplates", "DIRS": [ours, vendor]}]
+        with override_settings(TEMPLATES=engines):
+            [message] = check_presence_producer_ids(None)
+        assert message.msg.startswith(f"{vendor / 'room.html'}:2 draws ")
+
+    def test_templates_reached_where_no_directory_lists_them_are_read(self, producer, tmp_path, monkeypatch):
+        """A function component's template and what it includes, in a loader that names no directory."""
+        from wireview import function_components
+
+        function = function_components.FunctionComponent(func=lambda: {}, name="w23_fn", template="w23/fn.html")
+        monkeypatch.setattr(function_components, "_registry", {"w23_fn": function})
+        locmem = {
+            "w23/fn.html": "{% load wireview %}{% include 'w23/inner.html' %}",
+            "w23/inner.html": "{% load wireview %}\n{% component 'W23Typing' %}",
+            "w23/unused.html": "{% load wireview %}{% component 'W23Typing' %}",
+        }
+        engines = [
+            {
+                "BACKEND": "django.template.backends.django.DjangoTemplates",
+                "OPTIONS": {"loaders": [("django.template.loaders.locmem.Loader", locmem)]},
+            }
+        ]
+        with override_settings(TEMPLATES=engines):
+            [message] = check_presence_producer_ids(None)
+        assert message.msg.startswith("w23/inner.html:2 draws ")
+
+    @staticmethod
+    def choosing(monkeypatch, tag: str) -> list[dict]:
+        """A function component whose template uses ``tag``: an inclusion tag with a list of candidates."""
+        from wireview import function_components
+
+        function = function_components.FunctionComponent(func=lambda: {}, name="w23_fn", template="w23/root.html")
+        monkeypatch.setattr(function_components, "_registry", {"w23_fn": function})
+        locmem = {
+            "w23/root.html": f"{{% load sh_tags %}}{{% {tag} %}}",
+            "w23/safe.inc": "safe",
+            "w23/bad.inc": "{% load wireview %}{% component 'W23Typing' %}",
+        }
+        return [
+            {
+                "BACKEND": "django.template.backends.django.DjangoTemplates",
+                "OPTIONS": {
+                    "loaders": [("django.template.loaders.locmem.Loader", locmem)],
+                    "libraries": {"sh_tags": "testproj.inclusion_tags"},
+                },
+            }
+        ]
+
+    def test_a_candidate_after_the_one_an_inclusion_tag_takes_is_silent(self, producer, monkeypatch):
+        """``['safe.inc', 'bad.inc']``: the render takes safe.inc and never loads bad.inc (#212 review)."""
+        with override_settings(TEMPLATES=self.choosing(monkeypatch, "sh_first_choice")):
+            assert get_template("w23/root.html").render({}) == "safe"
+            assert check_presence_producer_ids(None) == []
+
+    def test_the_candidate_after_a_missing_one_is_read(self, producer, monkeypatch):
+        """``['missing.inc', 'bad.inc']``: the render takes bad.inc, and its tag raises (#212 review)."""
+        with override_settings(TEMPLATES=self.choosing(monkeypatch, "sh_fallback_choice")):
+            with pytest.raises(TemplateSyntaxError, match="without an id"):
+                get_template("w23/root.html").render({})
+            [message] = check_presence_producer_ids(None)
+        assert message.msg.startswith("w23/bad.inc:1 draws ")
+
+
 class TestTestprojIsClean:
     """AC3: zero false positives on the project we actually ship tests for."""
 
@@ -1326,6 +1480,7 @@ class TestTestprojIsClean:
         assert check_signing_key(None) == []
         assert check_live_sessions(None) == []
         assert check_django_templates(None) == []
+        assert check_presence_producer_ids(None) == []
 
     def test_the_settings_checks_run_with_plain_check(self):
         """A check nobody registers is silent too: the calls above cannot tell."""

@@ -209,7 +209,7 @@ async def test_computed_property():
 @pytest.mark.asyncio
 async def test_send_message():
     room = await Room.objects.acreate(name="general")
-    view = await mount(XChatRoom, room_id=room.id, room_name=room.name, username="alice")
+    view = await mount(XChatRoom, id="room", room_id=room.id, room_name=room.name, username="alice")
 
     await view.call("send_message", text="Hello!")
 
@@ -224,7 +224,7 @@ async def test_send_message():
 @pytest.mark.asyncio
 async def test_multiple_messages():
     room = await Room.objects.acreate(name="general")
-    view = await mount(XChatRoom, room_id=room.id, room_name=room.name, username="alice")
+    view = await mount(XChatRoom, id="room", room_id=room.id, room_name=room.name, username="alice")
 
     await view.call("send_message", text="First")
     view.clear_messages()
@@ -387,7 +387,7 @@ Presence 알림은 클라이언트가 아니라 채널로 가는 브로드캐스
 @pytest.mark.asyncio
 async def test_presence_join():
     room = await Room.objects.acreate(name="general")
-    view = await mount(XChatRoom, room_id=room.id, room_name=room.name, username="alice")
+    view = await mount(XChatRoom, id="room", room_id=room.id, room_name=room.name, username="alice")
 
     # joined()에서 presence_join() 호출됨
     joins = [
@@ -404,7 +404,7 @@ async def test_presence_join():
 @pytest.mark.asyncio
 async def test_typing_indicator():
     room = await Room.objects.acreate(name="general")
-    view = await mount(XChatRoom, room_id=room.id, room_name=room.name, username="alice")
+    view = await mount(XChatRoom, id="room", room_id=room.id, room_name=room.name, username="alice")
 
     await view.call("on_typing")
 
