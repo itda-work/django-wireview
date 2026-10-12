@@ -53,6 +53,8 @@ __all__ = ["UvicornThread", "serve", "server_errors"]
 #: How long to wait for the server to come up, and to go away again.
 STARTUP_TIMEOUT = 15.0
 SHUTDOWN_TIMEOUT = 15.0
+#: Rounds of ``_cancel_what_is_left``: a task's end may start another, and that one must end too
+CANCEL_ROUNDS = 20
 
 
 class _ErrorCollector(logging.Handler):
@@ -232,11 +234,21 @@ def _collecting_errors() -> t.Iterator[None]:
 
 
 async def _cancel_what_is_left() -> None:
-    """Cancel every other task of the running loop, and wait for each to end."""
-    tasks = asyncio.all_tasks() - {asyncio.current_task()}
-    for task in tasks:
-        task.cancel()
-    await asyncio.gather(*tasks, return_exceptions=True)
+    """Cancel every other task of the running loop, and wait for each to end -- and for the tasks their ends start.
+
+    A cancelled connection ends in a task of its own (#211), and that ending
+    cancels the Broadcast receiver without waiting for it: neither was in the
+    first round. Left pending, the receive held channels_redis's lock past the
+    loop's close, and the next server's pages heard nothing.
+    """
+    for _ in range(CANCEL_ROUNDS):
+        tasks = asyncio.all_tasks() - {asyncio.current_task()}
+        if not tasks:
+            return
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    raise AssertionError(f"the test server's loop still had tasks after {CANCEL_ROUNDS} rounds: {tasks!r}")
 
 
 async def _close_the_layer() -> None:
