@@ -46,15 +46,30 @@ log = logging.getLogger("wireview")
 Message = dict[str, t.Any]
 
 
+class ConnectionGone(Exception):
+    """The browser's socket is gone: a frame written to it went nowhere (#216).
+
+    ``Outbound.send_command`` and ``send_text`` raise it in place of whatever the
+    server raised for a socket the page has left -- a navigation away, a closed
+    tab -- or the session closed. It is how a connection ends, not a failure:
+    the session lets it through the recoveries that answer an application's
+    exception (``_crashed``, ``_join_failed``), stops handling the message it was
+    on, and the adapter logs it at DEBUG. Nothing more is written to the socket.
+    """
+
+
 class Outbound(t.Protocol):
     """Per-session channel back to one browser tab."""
 
     async def send_command(self, command: str, payload: Message) -> None:
-        """Deliver a server-to-client command to this session."""
+        """Deliver a server-to-client command to this session. ``ConnectionGone`` when the socket is gone."""
         ...
 
     async def send_text(self, text: str) -> None:
-        """Deliver a frame serialized already: what ``send_command`` would have written, byte for byte."""
+        """Deliver a frame serialized already: what ``send_command`` would have written, byte for byte.
+
+        ``ConnectionGone`` when the socket is gone, as ``send_command``.
+        """
         ...
 
     async def subscribe(self, topic: str) -> None:
@@ -472,12 +487,39 @@ class ChannelsOutbound:
 
     def __init__(self, consumer: t.Any) -> None:
         self._consumer = consumer
+        #: The socket is gone: the server said so (``websocket.disconnect``), refused a
+        #: frame for it, or the consumer closed it. Nothing is written from then on (#216).
+        self.gone = False
 
     async def send_command(self, command: str, payload: Message) -> None:
-        await self._consumer.send_json({"command": command, "payload": payload})
+        # Encoded before the write: an error of the payload's is not the socket's
+        text = await self._consumer.encode_json({"command": command, "payload": payload})
+        await self.send_text(text)
 
     async def send_text(self, text: str) -> None:
-        await self._consumer.send(text_data=text)
+        await self._write(self._consumer.send(text_data=text))
+
+    async def _write(self, sending: t.Coroutine[t.Any, t.Any, None]) -> None:
+        """Await ``sending``, the ASGI send of a frame; ``ConnectionGone`` when the socket is gone (#216).
+
+        Only the send: an ``OSError`` raised while encoding the frame is the
+        session's (``send_command`` encodes it first).
+        A server refuses a frame for a socket the page has left: the ASGI spec
+        has it raise an ``OSError`` (Uvicorn's ``ClientDisconnected``). Once its
+        receive has seen the close, Uvicorn raises a ``RuntimeError`` instead,
+        which the consumer told this apart by hearing that ``websocket.disconnect``.
+        Daphne drops the frame without a word. Any other error is the session's.
+        """
+        if self.gone:
+            sending.close()
+            raise ConnectionGone("the socket is gone")
+        try:
+            await sending
+        except Exception as error:
+            if not (isinstance(error, OSError) or self.gone):
+                raise
+            self.gone = True
+            raise ConnectionGone(f"the socket is gone: {error!r}") from error
 
     async def subscribe(self, topic: str) -> None:
         consumer = self._consumer

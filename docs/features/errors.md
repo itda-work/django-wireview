@@ -15,6 +15,17 @@
 | 아무도 기다리지 않는 태스크의 나머지: `start_async`·`assign_async`가 결과를 받은 뒤의 렌더 요청, `assign_async`의 `on_error`, `allow_upload()`의 config 전송 | 끝나는 즉시 `wireview` 로거에 ERROR와 트레이스백을 남긴다. 취소는 남기지 않는다. 컴포넌트는 그대로다(#151) | 없음. config가 가지 않으면 업로드 입력은 그려지지만 아무 동작도 하지 않는다 |
 | 클라이언트가 보내지 않는 메시지(모르는 command, 인자가 맞지 않는 payload) | WARNING 로그를 남기고 버린다 | 없음 |
 | 핸들러가 아닌 이름으로 온 이벤트(`_private`, 없는 이름, `joined` 같은 프레임워크 메서드) | WARNING 로그를 남긴다. 아무것도 호출하지 않는다 | 이벤트가 끝났다는 빈 응답을 받아 로딩 상태가 풀린다 |
+| 답을 쓰는 동안 페이지가 떠났다(빠른 이동, 탭 닫기): 서버가 끊긴 소켓에 쓴 프레임을 거절했다 | 오류가 아니다. 그 메시지 처리를 멈추고 DEBUG 한 줄만 남긴다(트레이스백 없음). 그 소켓에는 더 쓰지 않는다. join 중이었어도 join 실패가 아니다 — `join_rejected`를 내지 않고, 이미 `joined()`가 돈 컴포넌트는 연결이 끝날 때 `leaving()`을 받는다(#216) | 없음(이미 떠났다) |
+
+### 떠난 페이지에 쓰기는 오류가 아니다
+
+끊긴 소켓에 프레임을 쓰면 서버마다 다르게 답한다. Uvicorn은 `ClientDisconnected`(ASGI 사양대로 `OSError`)를,
+수신 쪽이 먼저 끊김을 읽은 뒤에는 `RuntimeError`를 던지고, Daphne는 말없이 버린다. wireview는 이것을
+애플리케이션의 예외와 가른다 — 송신이 `OSError`로 거절됐거나 서버가 이미 `websocket.disconnect`를 넘겼으면
+`ConnectionGone`이다. 그것은 위 표의 복구(다시 join, `Could not join`)를 지나쳐 올라가고 어댑터가
+`Connection … left before … was answered`를 DEBUG로 남긴다. 가르는 것은 송신뿐이다 — 프레임을 JSON으로
+만드는 동안 난 `OSError`는 애플리케이션의 것이다. 페이지가 먼저 닫은 소켓에 보내는 close를 서버가 거절해도
+(Uvicorn websockets-sansio의 `RuntimeError`) DEBUG 한 줄이다. 컴포넌트가 던진 예외는 전과 같이 ERROR다.
 
 ### 다시 join하면 이벤트 전으로 돌아간다
 

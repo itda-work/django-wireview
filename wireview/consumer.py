@@ -12,10 +12,43 @@ from .core.csrf import cookies_of
 from .core.origin import origin_refusal
 from .core.rendered import protocol_version, socket_tab
 from .core.session import load_session
-from .core.transport import NO_CHANNEL_LAYER, ChannelsOutbound, Mailbox, Outbound, open_mailbox
+from .core.transport import NO_CHANNEL_LAYER, ChannelsOutbound, ConnectionGone, Mailbox, Outbound, open_mailbox
 from .session import WireviewSession
 
 log = logging.getLogger("wireview")
+
+
+def _hearing_the_end(receive: t.Any, socket: ChannelsOutbound) -> t.Any:
+    """``receive``, marking ``socket`` gone as the server's ``websocket.disconnect`` comes (#216).
+
+    Channels dispatches it only after the message being handled, which may be
+    writing to the socket meanwhile -- a mail, while the next receive waits.
+    Uvicorn, having seen the close there, refuses the frame with a
+    ``RuntimeError`` that says nothing of a disconnect: this tells it apart.
+    """
+
+    async def hearing() -> dict:
+        message = await receive()
+        if message.get("type") == "websocket.disconnect":
+            socket.gone = True
+        return message
+
+    return hearing
+
+
+def _refused_a_close(error: RuntimeError) -> bool:
+    """Whether Uvicorn refused a ``websocket.close`` because the socket had already closed (#216).
+
+    This sends a close once (``WireviewConsumer.close``), so a server refusing
+    that one says the peer closed first, before the receive heard it. Uvicorn's
+    websockets-sansio, its transport closing on the page's close frame, says
+    "Expected ... 'websocket.send' or 'websocket.close', but got 'websocket.close'";
+    its other implementations, once they count the socket closed, "Unexpected
+    ASGI message 'websocket.close', after sending 'websocket.close' ...". Any
+    other ``RuntimeError`` is the server's to report.
+    """
+    said = str(error)
+    return "but got 'websocket.close'" in said or said.startswith("Unexpected ASGI message 'websocket.close'")
 
 
 class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
@@ -31,7 +64,8 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
     def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
         super().__init__(*args, **kwargs)
         # The only object that knows this session is a Channels WebSocket.
-        self.outbound = ChannelsOutbound(self)
+        self._socket = ChannelsOutbound(self)
+        self.outbound = self._socket
         # One message handled at a time: those Channels dispatches, and the mail
         # the session takes back when the layer dropped it (#211)
         self._turn = asyncio.Lock()
@@ -42,7 +76,7 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
     async def __call__(self, scope, receive, send):  # type: ignore[override]
         self._serving = True
         try:
-            await super().__call__(scope, receive, send)
+            await super().__call__(scope, _hearing_the_end(receive, self._socket), send)
         finally:
             # Cancelled by the server -- a disconnect a handler held up past its close
             # timeout, a shutdown -- or raised, it never ran disconnect(): the session
@@ -51,6 +85,20 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
                 await self.stop()
             except Exception:
                 log.exception("Ending the session of connection %s raised", self.connection_id)
+
+    async def close(self, code=None, reason=None):
+        # Once: a socket the page left or this closed takes no close frame either (#216)
+        if self._socket.gone:
+            return
+        self._socket.gone = True
+        try:
+            await super().close(code=code, reason=reason)
+        except OSError as error:
+            log.debug("Connection %s was gone before it closed: %r", self.connection_id, error)
+        except RuntimeError as error:
+            if not _refused_a_close(error):
+                raise
+            log.debug("Connection %s was gone before it closed: %r", self.connection_id, error)
 
     @property
     def user(self):
@@ -107,7 +155,13 @@ class WireviewConsumer(AsyncJsonWebsocketConsumer, WireviewSession):
             for each in self.in_turn(message):
                 # Where one message ends is the adapter's to know (#178)
                 with self.handling_message():
-                    await super().dispatch(each)
+                    try:
+                        await super().dispatch(each)
+                    except ConnectionGone as gone:
+                        # The page left while this was answered: how a connection ends, not an error (#216)
+                        log.debug(
+                            "Connection %s left before %s was answered: %s", self.connection_id, each.get("type"), gone
+                        )
 
     async def receive_json(self, content: dict, **kwargs) -> None:  # type: ignore[override]
         await self.handle_message(content)

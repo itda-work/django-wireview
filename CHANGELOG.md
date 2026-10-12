@@ -70,6 +70,9 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- The README opens with who wireview is for, a structural comparison with Phoenix LiveView, Laravel Livewire,
+  Rails Hotwire, htmx and the Java options (Vaadin Flow, Spring REST + SPA), and why it suits a coding agent;
+  `docs/WHY.md` answers the questions that comparison leaves (#215).
 - A nested `{% component %}` its drawer's render stops drawing leaves with that render, an id or not
   (#204): one an `{% if %}` hides and shows again starts anew, its old state gone, whatever order the
   page's leave and the next render come in. Keep it drawn and hide it with CSS to keep its state.
@@ -111,6 +114,15 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A page that left while the server answered it -- a quick navigation away while its join was answered -- logged
+  `Could not join …` at ERROR with a traceback (Uvicorn's `ClientDisconnected`), counted a `join_rejected` with
+  reason `error`, and from an event or a mail, `raised; joining it again` and a second write that raised out of the
+  consumer (#216). A frame the server refuses for a socket that is gone (an `OSError`, or anything once the server
+  handed over `websocket.disconnect`) is now `ConnectionGone`: the session stops handling that message, the
+  adapter logs one DEBUG line, and nothing more is written to the socket -- nor a close frame. Only the send is the
+  socket's: an error raised while a frame is encoded is the session's. A close Uvicorn's websockets-sansio refuses
+  because the page's close frame came first is quiet too. A component that raises while joining is still
+  `Could not join` at ERROR.
 - The todo example left what was typed in its input after Enter added it (#213): `add()` leaves the redraw to `mutation()`,
   whose render does not answer the Enter, and a second Enter added the item again. It empties it with `push_js`.
 - The rating example's distribution bars never showed (#213): their width was `count|divisibleby:total`, a yes or

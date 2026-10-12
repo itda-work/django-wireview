@@ -660,6 +660,9 @@ def test_a_live_component_hears_the_first_params_of_the_page(page, server, heard
     open_live(page, f"{server}/historyprobe/?tab=b")
     expect_text(by(page, "tab"), "b")
     expect_text(by(page, "leaf-heard"), "b")
+    # The HTTP render drew "b" already, and the sticky dock may be the component
+    # open_live saw join: a round trip with the box is after its join was handled
+    settled(page)
     built = rendered(page)
     assert [entry for entry in heard if entry[0] in ("hbox", "leaf")] == [
         ("hbox", built, "?tab=b"),

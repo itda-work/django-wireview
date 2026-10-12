@@ -101,6 +101,7 @@ wireview/
 ├── core/signing.py        서명 키 정본. get_signer(salt) 하나로 모든 서명 지점이 SIGNING_KEY와 fallback을 공유
 ├── core/model_state.py    상태 안의 모델 인스턴스를 pk로 서명하고(어디에 있든) 필드 타입 표기를 따라 다시 불러온다 (#113)
 ├── core/transport.py      Outbound·Broker 인터페이스와 Channels 구현. 채널 레이어를 건드리는 유일한 곳.
+│                          송신이 끊긴 소켓 때문에 거절되면(OSError, 또는 서버가 disconnect를 넘긴 뒤) ConnectionGone이다(#216).
 │                          Mailbox(#211): 세션이 자기에게 보낸 메일(레이어를 지나 알림과 한 줄에 선다)의 사본을 처리될 때까지 지닌다.
 │                          메일은 연결의 차례(컨슈머 dispatch의 잠금 _turn) 안에서만 보낸 순서로 처리한다: 거절됐거나 한가한 동안 MAIL_SECONDS
 │                          오지 않은 것은 처리할 것으로 표시만 하고(차례를 잡기 전까지 뒤 메일이 찾는다), 연결마다 한 작업(session.hand_over)이
@@ -481,6 +482,9 @@ hatch_build.py             빌드 훅. PyPI 페이지(README)·프로젝트 URL�
   소켓이 닫히고 페이지 전체가 다시 join한다. 세션의 `_crashed(component, ref)`가 그 컴포넌트만 버리고 클라이언트에
   `error`를 보내 이벤트 전 상태로 다시 join하게 한다. join 단계의 예외는 `_join_failed`(재시도 없음 — 재시도하면 루프다).
   클라이언트가 보내지 않는 메시지는 `receive_json`이 로그 후 버린다. 계약은 `docs/features/errors.md`, 테스트는 tests/test_errors.py(#94).
+  떠난 페이지의 소켓에 쓴 프레임의 거절은 예외가 아니다: `ChannelsOutbound`가 `ConnectionGone`으로 바꾸고, `_crashed`와 join은 그것을
+  다시 던져 어댑터의 `dispatch`가 DEBUG로 받는다(#216). 송신을 감싸는 새 `except Exception`은 `ConnectionGone`을 먼저 통과시킨다
+  — 아니면 정상 이탈이 `Could not join`·`joining it again` ERROR가 된다(tests/test_join_disconnect.py).
 - **join이 실패한 컴포넌트는 서버가 막는다.** 연결이 그 id를 기억하고(`repo.join_failed`), 부모의 패스가 그 id로
   다시 만든 인스턴스와 그것이 소유한 LiveComponent는 `repo.refused`가 참이다 — 이벤트는 빈 render로 답하고, 훅·업로드·
   브로드캐스트·`params_changed`·`wire.defer`·`update_live_component`는 버리며, 따로 렌더하지 않는다(그 렌더가 소유
