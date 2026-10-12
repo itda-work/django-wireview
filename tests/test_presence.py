@@ -1056,17 +1056,31 @@ class TestPresenceTabs:
 
     @staticmethod
     def ref(
-        tab: str = "", connection: str = "conn", user=None, id: str = "producer", key=None, id_given: bool = True
+        tab: str = "",
+        connection: str = "conn",
+        user=None,
+        id: str = "producer",
+        key=None,
+        id_given: bool = True,
+        drawn_at=None,
     ) -> str:
-        """A producer's ref (or, with ``key``, another key of it); ``id_given=False`` is an id the framework minted."""
+        """A producer's ref (or, with ``key``, another key of it); ``id_given=False`` is an id the framework minted.
+
+        ``drawn_at`` is where a pass drew it without an id: its drawer and its number.
+        """
+        component = TestPresenceTabs.producer(id, tab, connection, user, id_given)
+        component.wire.drawn_at = drawn_at
+        return (key or presence._presence_ref)(component)
+
+    @staticmethod
+    def producer(id: str, tab: str = "", connection: str = "conn", user=None, id_given: bool = True):
         from django.contrib.auth.models import AnonymousUser
 
         from wireview.core.meta import WireviewMeta
 
         wire = WireviewMeta(params={}, connection_id=connection, tab_id=tab)
         wire.id_given = id_given
-        component = XProducerComponent(id=id, user=user or AnonymousUser(), wire=wire)
-        return (key or presence._presence_ref)(component)
+        return XProducerComponent(id=id, user=user or AnonymousUser(), wire=wire)
 
     @pytest.mark.unit
     def test_a_tab_keeps_its_ref_across_connections(self):
@@ -1086,12 +1100,36 @@ class TestPresenceTabs:
         assert self.ref(tab, id="composer", key=tab_key) != self.ref(tab, id="composer")
 
     @pytest.mark.unit
-    def test_a_producer_whose_id_was_minted_is_named_by_its_class(self):
-        """An id-less ``{% component %}`` gets a new ``rx-`` id on every pass that draws it, a reconnect's too."""
+    def test_a_producer_whose_id_was_minted_and_that_no_pass_drew_is_named_by_its_class(self):
+        """A sticky default id, ``mount()`` without an id: one of its class on the page (#212)."""
         tab = "abcdefghijklmnopqrstuv"
         assert self.ref(tab, "conn-1", id="rx-1", id_given=False) == self.ref(tab, "conn-2", id="rx-2", id_given=False)
         assert self.ref(tab, id="rx-1", id_given=False) != self.ref(tab, id="rx-1")
         assert self.ref(tab, id="rx-1", id_given=False) != self.ref("vutsrqponmlkjihgfedcba", id="rx-1", id_given=False)
+
+    @pytest.mark.unit
+    def test_producers_drawn_without_ids_are_named_by_where_they_are_drawn(self):
+        """Their drawer and their number in their class there: two on one page are two, the same anew (#212)."""
+        tab = "abcdefghijklmnopqrstuv"
+        page, other_page = self.producer("page"), self.producer("other-page")
+
+        def drawn(number, drawer=page, n=0, **kwargs):
+            """The ref of the ``n``-th instance drawn at ``number`` by ``drawer``."""
+            return self.ref(tab, id=f"rx-{number}-{n}", id_given=False, drawn_at=(drawer, number), **kwargs)
+
+        assert drawn(0) != drawn(1)
+        # The one drawn in its place, on a later pass or on the next socket
+        assert drawn(0) == drawn(0, n=1, connection="conn-2")
+        assert drawn(0) != drawn(0, drawer=other_page)
+        assert drawn(0) != self.ref(tab, id="rx-0-0", id_given=False)
+        # Drawn by components drawn without ids themselves: by theirs
+        middles = [self.producer(f"rx-m{n}", id_given=False) for n in range(2)]
+        for number, middle in enumerate(middles):
+            middle.wire.drawn_at = (page, number)
+        assert drawn(0, drawer=middles[0]) != drawn(0, drawer=middles[1])
+        again = self.producer("rx-m-again", id_given=False)
+        again.wire.drawn_at = (page, 0)
+        assert drawn(0, drawer=middles[0]) == drawn(0, drawer=again)
 
     @pytest.mark.unit
     def test_without_a_tab_the_connection_is_the_key(self):

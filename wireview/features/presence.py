@@ -113,14 +113,29 @@ def _presence_ref(component: t.Any) -> str:
     producers that hides one (``presence_leave()``) still has the other's
     meta, so its user stays listed. The tab and the name stay the same across a
     reconnect, so the join after it replaces what the producer said before.
-
-    The name is the id the template or the page gave. A minted one is new on
-    every pass that draws the component (an id-less ``{% component %}`` in
-    another's template), so such a producer is named by its class: two of one
-    class without ids on one tab share a meta.
     """
-    name = component.id if component.wire.id_given else f"class\0{type(component)._fqn}"
-    return _digest(f"producer\0{_presence_tab(component)}\0{name}")
+    return _digest(f"producer\0{_presence_tab(component)}\0{_presence_name(component)}")
+
+
+def _presence_name(component: t.Any) -> str:
+    """A producer's name on its page, the same for the one drawn in its place (#202, #212).
+
+    The id the template or the page gave. A minted one is new on every pass
+    that draws the component (an id-less ``{% component %}`` in another's
+    template), so such a producer is named by where it is drawn: its drawer's
+    name, its class and its number among those of its class the drawer shows
+    (``WireviewMeta.drawn_at``). Two of a class without ids on one page are two
+    metas, and the one shown in a hidden one's place takes up its meta. One
+    with a minted id and no drawer -- a sticky default, ``mount()`` without an
+    id -- is the only one of its class there, and is named by the class.
+    """
+    wire = component.wire
+    if wire.id_given:
+        return component.id
+    if wire.drawn_at is not None:
+        drawer, number = wire.drawn_at
+        return f"drawn\0{_presence_name(drawer)}\0{type(component)._fqn}\0{number}"
+    return f"class\0{type(component)._fqn}"
 
 
 def _presence_connection(component: t.Any) -> str:

@@ -1,5 +1,6 @@
 import builtins
 import contextvars
+import itertools
 import json
 import logging
 import time
@@ -194,6 +195,9 @@ class ComponentRepository:
         # For each component, the ids in ``_built_by`` that name it: what the end
         # of its next pass looks at (``end_pass``), rather than all of them
         self._drew: dict[str, set[str]] = {}
+        # For each component, the ones its current pass built without an id, in
+        # the order it drew them: what the end of the pass numbers (``end_pass``)
+        self._unnamed: dict[str, list[str]] = {}
         # For each component, the ones its pass drew within its own whose
         # LiveComponents its batch settles (``end_inline_pass``), in pass order;
         # and for each of those, what that pass named
@@ -345,6 +349,7 @@ class ComponentRepository:
             # Drawn without an id, under the one it was just given: the drawer's
             # next pass draws another, and retires this one (``end_pass``, #204)
             self._drawn(component.id, drawer.id)
+            self._unnamed.setdefault(drawer.id, []).append(component.id)
         return self.register_component(component)
 
     def _drawn(self, component_id: str, drawer_id: str) -> None:
@@ -489,6 +494,7 @@ class ComponentRepository:
         """
         self._rendered_children[parent_id] = set()
         self._inline_rendered.pop(parent_id, None)
+        self._unnamed.pop(parent_id, None)
 
     def end_pass(self, drawer_id: str, shown: t.Iterable[str] = ()) -> set[str]:
         """The ids the template pass of ``drawer_id`` that just ran named.
@@ -514,10 +520,13 @@ class ComponentRepository:
         under a new ``rx-<uuid>`` (#204). The ones a part the pass kept for a
         reset temporary assign shows are still on the page and stay
         (``WireviewMeta.kept_components``, #111).
+
+        The ones it drew without an id get their places here (``_place_unnamed``).
         """
         rendered = self._rendered_children.pop(drawer_id, set()).union(shown)
         if (drawer := self.components.get(drawer_id)) is not None:
             rendered |= drawer.wire.kept_components
+            self._place_unnamed(drawer, rendered)
         drew = self._drew.pop(drawer_id, set())
         for child_id in drew - rendered:
             if self._built_by.get(child_id) == drawer_id:
@@ -527,6 +536,36 @@ class ComponentRepository:
         if drew := {child_id for child_id in drew & rendered if self._built_by.get(child_id) == drawer_id}:
             self._drew[drawer_id] = drew
         return rendered
+
+    def _place_unnamed(self, drawer: Component, rendered: set[str]) -> None:
+        """Number what the pass of ``drawer`` drew without an id (``WireviewMeta.drawn_at``, #212).
+
+        Each takes, in the order the pass drew them, the lowest number no other
+        component of its class the drawer shows holds; one a part kept for a
+        reset temporary assign shows keeps its own (#111). Every other one is
+        drawn anew on every pass, under a new id: the numbers of a class run
+        from 0 for as many as the drawer shows, the same after a reconnect,
+        whose first pass draws them in the same order. Presence names a
+        producer drawn without an id by its drawer and this number, so two of a
+        class on one page are two, and the one drawn when another is hidden
+        takes a number the hidden ones had.
+        """
+        built = self._unnamed.pop(drawer.id, ())
+        if not built:
+            return
+        held: dict[type[Component], set[int]] = {}
+        for child_id in rendered.difference(built):
+            child = self.components.get(child_id)
+            if child is not None and child.wire.drawn_at is not None:
+                held.setdefault(type(child), set()).add(child.wire.drawn_at[1])
+        for child_id in built:
+            child = self.components.get(child_id)
+            if child is None or child_id not in rendered:
+                continue
+            numbers = held.setdefault(type(child), set())
+            number = next(n for n in itertools.count() if n not in numbers)
+            numbers.add(number)
+            child.wire.drawn_at = (drawer, number)
 
     def _retire_undrawn(self) -> list[Component]:
         """Retire what the passes of the render just over stopped drawing and none drew again (``end_pass``).
@@ -1161,6 +1200,8 @@ class ComponentRepository:
                     del self._built_by[child_id]
                     drawn.append(child_id)
         self._slots_to_rejoin.pop(id, None)
+        # A pass of it that raised before its end numbered nothing (``_place_unnamed``)
+        self._unnamed.pop(id, None)
         # A pass of it that drew others within its own, with no batch to settle
         # them any more (a render that raised): the others settle in their own
         for inner_id in self._inline.pop(id, []):

@@ -159,8 +159,13 @@ class WireviewMeta:
         # Whether the template or the page named this component, rather than
         # the framework minting an id for it (the ``rx-`` default, a sticky
         # default). A minted id is new on every pass that draws the component,
-        # so presence keys such a producer by its class instead (#202).
+        # so presence keys such a producer by where it is drawn instead (#202).
         self.id_given: bool = False
+        # Where a component a pass drew without an id sits: the component whose
+        # pass drew it, and its number among those of its class that drawer
+        # shows (``ComponentRepository.end_pass``, #212). The one drawn in its
+        # place on a later pass, or after a reconnect, gets the same.
+        self.drawn_at: tuple[t.Any, int] | None = None
         # The page boundary this component was mounted inside, or None when the
         # page declared none (#58). It decides what ``sign_state`` writes into the
         # envelope and which hooks ``Component._mount`` runs before the component's

@@ -315,6 +315,30 @@ class RetireIgnoreRoot(RetireRoot):
         )
 
 
+class RetirePlacedRoot(Component):
+    """Draws leaves without ids: one per row of a temporary assign, then one more, and a middle with its own (#212)."""
+
+    class Meta:
+        temporary_assigns = ["rows"]
+
+    rows: list[str] = []
+    note: str = ""
+
+    async def load(self):
+        self.rows = ["a", "b"]
+
+    async def write(self, note: str):
+        self.note = note
+
+    @classmethod
+    def _get_template(cls, template_name=None):
+        return Template(
+            "{% load wireview %}<p {% tag_header %}>"
+            "{% for row in rows %}{% component 'RetireLeaf' note=row %}{% endfor %}"
+            "{% component 'RetireLeaf' note=this.note %}{% component 'RetireMiddle' note=this.note %}</p>"
+        )
+
+
 class _Outbound:
     async def send_command(self, command: str, payload: dict[str, t.Any]) -> None:
         SENT.append((command, payload))
@@ -505,6 +529,52 @@ async def test_a_leaf_in_a_part_kept_for_a_reset_temporary_assign_stays():
     await _event(consumer, "root", "load")
     assert [leaf.note for leaf in _leaves(consumer)] == ["a", "b"]
     assert sorted(_ids("leaving")) == sorted(leaf.id for leaf in leaves)
+
+
+def _places(consumer: WireviewConsumer) -> list[tuple[str, str, int, str]]:
+    """Each shown component drawn without an id: its class, its drawer's, its number, its note."""
+    return sorted(
+        (type(c).__name__, type(c.wire.drawn_at[0]).__name__, c.wire.drawn_at[1], getattr(c, "note", ""))
+        for c in consumer.repo.reachable_components()
+        if c.wire.drawn_at is not None
+    )
+
+
+async def test_what_a_pass_draws_without_an_id_is_numbered_within_its_class_and_drawer():
+    """In the order the pass draws them; one a kept part shows keeps its number (#212)."""
+    consumer = await _page(RetirePlacedRoot)
+    assert _places(consumer) == [
+        ("RetireLeaf", "RetireMiddle", 0, ""),
+        ("RetireLeaf", "RetirePlacedRoot", 0, ""),
+        ("RetireMiddle", "RetirePlacedRoot", 0, ""),
+    ]
+
+    await _event(consumer, "root", "load")
+    loaded = _places(consumer)
+    assert loaded == [
+        ("RetireLeaf", "RetireMiddle", 0, ""),
+        ("RetireLeaf", "RetirePlacedRoot", 0, "a"),
+        ("RetireLeaf", "RetirePlacedRoot", 1, "b"),
+        ("RetireLeaf", "RetirePlacedRoot", 2, ""),
+        ("RetireMiddle", "RetirePlacedRoot", 0, ""),
+    ]
+    rows = [leaf for leaf in _leaves(consumer) if leaf.note in ("a", "b")]
+
+    # The rows reset: the loop keeps its leaves and their numbers, and the
+    # leaf drawn anew after them does not take one of those
+    await _event(consumer, "root", "write", note="x")
+    assert [leaf for leaf in _leaves(consumer) if leaf.note in ("a", "b")] == rows
+    assert _places(consumer) == [
+        ("RetireLeaf", "RetireMiddle", 0, "x"),
+        ("RetireLeaf", "RetirePlacedRoot", 0, "a"),
+        ("RetireLeaf", "RetirePlacedRoot", 1, "b"),
+        ("RetireLeaf", "RetirePlacedRoot", 2, "x"),
+        ("RetireMiddle", "RetirePlacedRoot", 0, "x"),
+    ]
+    # The middle's leaf is the new middle's
+    [middle] = [c for c in consumer.repo.reachable_components() if isinstance(c, RetireMiddle)]
+    [inner] = [leaf for leaf in _leaves(consumer) if leaf.wire.drawn_at[0] is not consumer.repo.get("root")]
+    assert inner.wire.drawn_at[0] is middle
 
 
 async def test_a_render_outside_an_event_drops_the_retired_leaf_s_topic():
