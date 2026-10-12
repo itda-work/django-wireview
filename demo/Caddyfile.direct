@@ -1,0 +1,59 @@
+# Direct mode's front door (demo/README.md "직접 공개 모드"): the macOS host's own Caddy, not a
+# container. It takes ports 80 and 443 (TCP, and UDP for HTTP/3) from the router, ends TLS with a
+# Let's Encrypt certificate, and passes everything to the compose stack's web at 127.0.0.1:8081.
+#
+# Why on the host: colima hands a published port to its container through lima's port forwarder,
+# a userland proxy, and the container sees every visitor as the VM's gateway (172.17.0.1, measured
+# in #214). The limits count visitors by address, so behind it the whole internet would be one
+# visitor. This Caddy sees the visitor's TCP peer address and is the only one that does.
+#
+# The visitor is that address and nothing a client sent: no trusted_proxies here, so {client_ip}
+# is the peer, X-Forwarded-For and X-Forwarded-Proto are written afresh, and X-Real-IP and
+# CF-Connecting-IP are replaced or dropped before the stack sees them. The stack's Caddy takes
+# X-Real-IP on its port 8081 (demo/Caddyfile), which compose.direct.yaml opens on the host's
+# loopback only: this Caddy is the one that reaches it.
+#
+#   DEMO_HOST  the site's name (wireview-demo.itda.work)
+#   DEMO_TLS   acme (Let's Encrypt, the default) or internal (Caddy's own CA, to try it locally)
+#   DEMO_DIRECT_PORT  web's direct-mode port on 127.0.0.1 (8081)
+#
+# Certificates and the ACME account live in Caddy's data directory (Homebrew's service:
+# /opt/homebrew/var/lib/caddy), so a restart renews nothing it already has.
+{
+	admin off
+	# DEMO_TLS=internal locally: never ask for a password to trust Caddy's own CA
+	skip_install_trust
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+(tls_acme) {
+}
+
+(tls_internal) {
+	tls internal
+}
+
+{$DEMO_HOST:wireview-demo.itda.work} {
+	import tls_{$DEMO_TLS:acme}
+
+	log {
+		output stdout
+		format console
+	}
+
+	request_body {
+		max_size 1MB
+	}
+
+	header -Server
+
+	# WebSocket upgrades pass through on their own. The stack's Caddy adds the cache and
+	# security headers and serves /static/
+	reverse_proxy 127.0.0.1:{$DEMO_DIRECT_PORT:8081} {
+		# The visitor, for the demo's rate limits (demo/limits.py): the TCP peer only
+		header_up X-Real-IP {remote_host}
+		header_up -CF-Connecting-IP
+	}
+}

@@ -13,6 +13,7 @@ import datetime as dt
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -721,6 +722,152 @@ def test_caddy_keeps_hashed_files_a_year_and_revalidates_the_rest():
     assert hashed and f"@unhashed not path_regexp {hashed.group(1)}\n" in caddyfile
     # Pages are not a shared cache's to keep: they carry the session and the CSRF token
     assert 'header ?Cache-Control "private, no-cache"' in caddyfile
+
+
+def _caddy_directives(caddyfile: str) -> list[str]:
+    return [line.strip() for line in caddyfile.splitlines() if line.strip() and not line.strip().startswith("#")]
+
+
+def test_the_direct_front_takes_the_visitor_from_the_connection_only():
+    """Direct mode (demo/Caddyfile.direct): no header a client sends names the visitor."""
+    lines = _caddy_directives((ROOT / "demo" / "Caddyfile.direct").read_text())
+    # Nobody is trusted to name the client: {client_ip} and {remote_host} are the TCP peer, and
+    # Caddy writes X-Forwarded-For and X-Forwarded-Proto afresh
+    assert not [line for line in lines if line.startswith(("trusted_proxies", "client_ip_headers"))]
+    assert "header_up X-Real-IP {remote_host}" in lines
+    assert "header_up -CF-Connecting-IP" in lines
+    # Only to the stack's loopback port, the one compose.yaml opens
+    assert [line for line in lines if line.startswith("reverse_proxy")] == [
+        "reverse_proxy 127.0.0.1:{$DEMO_DIRECT_PORT:8081} {"
+    ]
+    assert "{$DEMO_HOST:wireview-demo.itda.work} {" in lines
+    assert "import tls_{$DEMO_TLS:acme}" in lines
+    assert "protocols h1 h2 h3" in lines
+    assert "admin off" in lines
+
+
+def test_each_front_door_of_the_stack_trusts_its_own_header_only():
+    """web's :8080 takes Cloudflare's CF-Connecting-IP, :8081 the host Caddy's X-Real-IP, never both."""
+    import yaml
+
+    caddyfile = (ROOT / "demo" / "Caddyfile").read_text()
+    servers = dict(re.findall(r"\tservers (:\d+) \{\n(.*?)\n\t\}", caddyfile, re.S))
+    assert {port: _caddy_directives(block) for port, block in servers.items()} == {
+        ":8080": ["trusted_proxies static private_ranges", "client_ip_headers CF-Connecting-IP"],
+        ":8081": ["trusted_proxies static private_ranges", "client_ip_headers X-Real-IP"],
+    }
+    lines = _caddy_directives(caddyfile)
+    # Both sites are the same front, which passes on what the port's rule read
+    assert lines[lines.index(":8080 {") :] == [":8080 {", "import front", "}", ":8081 {", "import front", "}"]
+    assert "header_up X-Real-IP {client_ip}" in lines
+    base = yaml.safe_load((ROOT / "demo" / "compose.yaml").read_text())
+    direct = yaml.safe_load((ROOT / "demo" / "compose.direct.yaml").read_text())
+    # Whoever reaches a port of web's names any visitor: the host's loopback only, in both modes
+    assert base["services"]["web"]["ports"] == ["127.0.0.1:${DEMO_PORT:-8080}:8080"]
+    assert direct["services"]["web"] == {"ports": ["127.0.0.1:${DEMO_DIRECT_PORT:-8081}:8081"]}
+    # The override starts nothing by default but what compose.yaml does
+    for name, service in direct["services"].items():
+        assert name in base["services"] or service.get("profiles") == ["ddns"], name
+
+
+@pytest.mark.skipif(not shutil.which("caddy"), reason="needs the caddy binary")
+@pytest.mark.parametrize("tls", ["acme", "internal"])
+def test_the_direct_front_adapts_to_what_its_comments_say(tls, tmp_path):
+    """Caddy's own reading of demo/Caddyfile.direct: what the rules above look for is what it runs."""
+    env = {**os.environ, "DEMO_HOST": "demo.example", "DEMO_TLS": tls, "XDG_DATA_HOME": str(tmp_path)}
+    adapted = subprocess.run(
+        ["caddy", "adapt", "--config", str(ROOT / "demo" / "Caddyfile.direct"), "--adapter", "caddyfile"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    config = json.loads(adapted.stdout)
+    (server,) = config["apps"]["http"]["servers"].values()
+    assert server["listen"] == [":443"]
+    assert "trusted_proxies" not in server and "client_ip_headers" not in server
+    assert server["protocols"] == ["h1", "h2", "h3"]
+    text = json.dumps(server)
+    assert '"X-Real-Ip": ["{http.request.remote.host}"]' in text
+    assert '"delete": ["CF-Connecting-IP"]' in text
+    assert '"dial": "127.0.0.1:8081"' in text
+    policies = config["apps"].get("tls", {}).get("automation", {}).get("policies", [])
+    internal = [issuer["module"] for policy in policies for issuer in policy.get("issuers", [])] == ["internal"]
+    assert internal == (tls == "internal")
+
+
+class _Answer:
+    def __init__(self, body: bytes):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        return self.body
+
+
+class _Cloudflare:
+    """The trace endpoint and the DNS records API, as demo/ddns.py calls them."""
+
+    def __init__(self, line: str, records: list[dict]):
+        self.line = line
+        self.records = records
+        self.calls: list[tuple[str, str, dict | None]] = []
+
+    def __call__(self, request, timeout):
+        from demo import ddns
+
+        if request == ddns.TRACE:
+            return _Answer(f"fl=1\nh=1.1.1.1\n{self.line}\nts=1\n".encode())
+        body = json.loads(request.data) if request.data else None
+        self.calls.append((request.get_method(), request.full_url, body))
+        assert request.headers["Authorization"] == "Bearer token"
+        if request.get_method() == "GET":
+            return _Answer(json.dumps({"success": True, "result": self.records}).encode())
+        return _Answer(json.dumps({"success": True, "result": {}}).encode())
+
+
+def test_ddns_changes_only_the_existing_a_record_s_address():
+    from demo import ddns
+
+    record = {"id": "r1", "type": "A", "content": "121.159.177.248", "proxied": False}
+    api = _Cloudflare("ip=121.159.177.9", [record])
+    said = ddns.sync("wireview-demo.itda.work", "zone", "token", opener=api)
+    assert said == "wireview-demo.itda.work moved from 121.159.177.248 to 121.159.177.9"
+    (get, patch) = api.calls
+    assert get[0] == "GET" and "type=A" in get[1] and "name=wireview-demo.itda.work" in get[1]
+    # The content and nothing else: never the proxy, the name or the TTL
+    assert patch == ("PATCH", ddns.API + "/zones/zone/dns_records/r1", {"content": "121.159.177.9"})
+
+    same = _Cloudflare("ip=121.159.177.248", [record])
+    assert ddns.sync("wireview-demo.itda.work", "zone", "token", opener=same) == (
+        "wireview-demo.itda.work is 121.159.177.248"
+    )
+    assert [method for method, _, _ in same.calls] == ["GET"]
+
+
+@pytest.mark.parametrize(
+    "line, records, refusal",
+    [
+        # No A record: the tunnel's CNAME is still there, or nobody made one. Nothing is created
+        ("ip=121.159.177.9", [], "has 0 A records"),
+        ("ip=121.159.177.9", [{"id": "a", "content": "1.1.1.1"}, {"id": "b", "content": "1.1.1.2"}], "2 A records"),
+        ("ip=2001:db8::1", [{"id": "a", "content": "1.1.1.1"}], "IPv6"),
+        ("ip=192.168.10.197", [{"id": "a", "content": "1.1.1.1"}], "non-public"),
+        ("warp=off", [{"id": "a", "content": "1.1.1.1"}], "no ip= line"),
+    ],
+)
+def test_ddns_writes_nothing_it_is_not_sure_of(line, records, refusal):
+    from demo import ddns
+
+    api = _Cloudflare(line, records)
+    with pytest.raises((RuntimeError, ValueError), match=refusal):
+        ddns.sync("wireview-demo.itda.work", "zone", "token", opener=api)
+    assert [method for method, _, _ in api.calls if method != "GET"] == []
 
 
 @pytest.mark.integration

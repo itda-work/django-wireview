@@ -57,10 +57,10 @@ CMD ["sh", "-c", "python demo/manage.py migrate --noinput -v0 && python demo/man
 FROM caddy:2.10-alpine AS web
 COPY --from=app /app/staticfiles /srv/static
 COPY demo/Caddyfile /etc/caddy/Caddyfile
-# Not root: a user of its own, on port 8080 (no privilege to bind it). Caddy writes only its
+# Not root: a user of its own, on ports 8080 and 8081 (no privilege to bind them; demo/Caddyfile). Caddy writes only its
 # state under XDG_DATA_HOME and XDG_CONFIG_HOME (/data and /config in this image)
 RUN addgroup -S -g 10002 caddy \
  && adduser -S -D -H -u 10002 -G caddy caddy \
  && chown -R caddy:caddy /data /config
 USER caddy
-EXPOSE 8080
+EXPOSE 8080 8081

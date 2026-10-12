@@ -2,8 +2,9 @@
 Settings of the public demo (wireview-demo.itda.work): the fourteen examples in one project.
 
 Everything a deployment differs in comes from the environment (demo/.env.example lists it).
-The demo runs behind Cloudflare Tunnel and a Caddy container (demo/compose.yaml): TLS ends at
-Cloudflare, Caddy serves /static/ and passes the rest to uvicorn, so Django sees plain HTTP and
+The demo runs behind a Caddy container (demo/compose.yaml) and, in front of it, either Cloudflare
+Tunnel or, in direct mode, the host's own Caddy (demo/Caddyfile.direct). TLS ends at the one in
+front, the container serves /static/ and passes the rest to uvicorn, so Django sees plain HTTP and
 learns the scheme from X-Forwarded-Proto.
 """
 
@@ -266,9 +267,9 @@ STATICFILES_DIRS = [
     ("demo/media", media) for media in sorted((BASE_DIR / "examples").glob("*/media")) if media.is_dir()
 ]
 
-# Behind Cloudflare and Caddy. Caddy sets X-Forwarded-Proto from what reached it, and
-# cloudflared reaches it over plain HTTP, so Caddy is told to pass on Cloudflare's own
-# header instead (demo/Caddyfile). Nothing reaches the app except through Caddy.
+# Behind Cloudflare (or the host's Caddy) and Caddy. The container's Caddy is reached over plain
+# HTTP from a private address, so it passes on the X-Forwarded-Proto the one in front wrote
+# (demo/Caddyfile). Nothing reaches the app except through Caddy.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = _env("DJANGO_SECURE_SSL_REDIRECT", "1") == "1"
 # The healthchecks ask over plain HTTP from inside the network

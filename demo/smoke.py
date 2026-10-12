@@ -2,6 +2,7 @@
 
     uv run python demo/smoke.py http://127.0.0.1:8080 --out /tmp/demo-smoke
     uv run python demo/smoke.py https://wireview-demo.itda.work --out /tmp/demo-smoke
+    uv run python demo/smoke.py https://localhost --insecure --out /tmp/demo-smoke   # direct mode, DEMO_TLS=internal
 
 Over plain http it sends ``X-Forwarded-Proto: https`` with every request, the header Cloudflare
 sends, so the stack runs with its production settings (HTTPS redirect, secure cookies; Chromium
@@ -15,6 +16,11 @@ Over plain http it also names itself a visitor of its own with ``CF-Connecting-I
 it from a private address, as it takes Cloudflare's), so runs one after another do not spend each
 other's per-visitor limits. Through Cloudflare the header is Cloudflare's.
 
+Over https it also checks that the visitor is the connection and not a header: sockets that each
+name another visitor with forged ``CF-Connecting-IP``, ``X-Real-IP`` and ``X-Forwarded-For`` still
+count as one, and the one past ``--open-sockets`` is refused. ``--insecure`` accepts a certificate
+no one vouches for (Caddy's own CA, direct mode tried locally).
+
 demo/abuse.py checks that what a script would send is refused.
 """
 
@@ -23,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import ssl
 import sys
 import time
 from pathlib import Path
@@ -45,6 +52,8 @@ TIMEOUT = 15_000
 REMOTE_TIMEOUT = 45_000
 #: This run's visitor address over plain http: one of TEST-NET-2's
 VISITOR = f"198.51.100.{random.randrange(1, 255)}"
+#: --insecure: a certificate no one vouches for is accepted (Caddy's internal CA)
+INSECURE = False
 
 #: #213's scenes the demo can play as they are: no seed of their own, no sign-in as alice or
 #: bob (the demo signs in guests), and steps that hold on the demo's seed (search's books)
@@ -59,7 +68,12 @@ def local_headers(base: str) -> dict[str, str]:
 
 def context(browser: Browser, base: str):
     headers = local_headers(base)
-    ctx = browser.new_context(base_url=base, extra_http_headers=headers, viewport={"width": 1280, "height": 800})
+    ctx = browser.new_context(
+        base_url=base,
+        extra_http_headers=headers,
+        viewport={"width": 1280, "height": 800},
+        ignore_https_errors=INSECURE,
+    )
     ctx.set_default_timeout(TIMEOUT if base.startswith("http://") else REMOTE_TIMEOUT)
     return ctx
 
@@ -196,18 +210,31 @@ def check_guest_chat(browser: Browser, base: str, out: Path, errors: list[str]) 
     print(f"notifications: {name} signed in, list live")
 
 
-def check_socket_limits(base: str) -> None:
-    """A frame past FRAME_MAX and events past the bucket close the socket."""
-    from websockets.exceptions import ConnectionClosed
+def open_socket(base: str, headers: dict[str, str]):
     from websockets.sync.client import connect
 
     parts = urlsplit(base)
-    url = f"{'wss' if parts.scheme == 'https' else 'ws'}://{parts.netloc}/__wireview__?vsn=10"
-    origin = f"{parts.scheme}://{parts.netloc}"
+    secure = parts.scheme == "https"
+    context = None
+    if secure and INSECURE:
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+    return connect(
+        f"{'wss' if secure else 'ws'}://{parts.netloc}/__wireview__?vsn=10",
+        origin=f"{parts.scheme}://{parts.netloc}",  # type: ignore[arg-type]
+        open_timeout=10,
+        additional_headers=headers,
+        ssl=context,
+    )
+
+
+def check_socket_limits(base: str) -> None:
+    """A frame past FRAME_MAX and events past the bucket close the socket."""
+    from websockets.exceptions import ConnectionClosed
 
     def closed_by(frames: list[str]) -> int | None:
-        headers = local_headers(base)
-        with connect(url, origin=origin, open_timeout=10, additional_headers=headers) as ws:  # type: ignore[arg-type]
+        with open_socket(base, local_headers(base)) as ws:
             try:
                 for frame in frames:
                     ws.send(frame)
@@ -230,11 +257,46 @@ def check_socket_limits(base: str) -> None:
     print("socket limits: an event burst closed with 4029, an oversized frame with 1009")
 
 
+def check_forged_visitor(base: str, most: int) -> None:
+    """Sockets that each name another visitor in the headers are still this connection's visitor."""
+    from websockets.exceptions import ConnectionClosed, InvalidStatus
+
+    held = []
+    refused = None
+    try:
+        for n in range(most + 1):
+            forged = f"203.0.113.{n + 1}"
+            headers = {"CF-Connecting-IP": forged, "X-Real-IP": forged, "X-Forwarded-For": forged}
+            try:
+                ws = open_socket(base, headers)
+            except InvalidStatus as error:
+                refused = (n, error.response.status_code)
+                break
+            held.append(ws)
+            ws.send(json.dumps({"command": "sync", "payload": {"ref": n}}))
+            try:
+                ws.recv(timeout=10)
+            except ConnectionClosed as closed:
+                refused = (n, closed.rcvd.code if closed.rcvd else None)
+                break
+    finally:
+        for ws in held:
+            ws.close()
+    assert refused and refused[0] == most, (
+        f"{most + 1} sockets with forged visitor headers: refused at {refused and refused[0] + 1}"
+    )
+    print(f"forged visitor headers: {most + 1} sockets, each naming another visitor, were one ({refused[1]})")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("base", help="the demo's address, e.g. http://127.0.0.1:8080")
     parser.add_argument("--out", type=Path, required=True, help="where screenshots go")
+    parser.add_argument("--insecure", action="store_true", help="accept a certificate no one vouches for")
+    parser.add_argument("--open-sockets", type=int, default=40, help="DEMO_OPEN_SOCKETS_PER_VISITOR")
     args = parser.parse_args()
+    global INSECURE
+    INSECURE = args.insecure
     base = args.base.rstrip("/")
     args.out.mkdir(parents=True, exist_ok=True)
     errors: list[str] = []
@@ -250,6 +312,8 @@ def main() -> int:
         finally:
             browser.close()
     check_socket_limits(base)
+    if base.startswith("https://"):
+        check_forged_visitor(base, args.open_sockets)
     if errors:
         print("browser errors:\n  " + "\n  ".join(errors))
         return 1

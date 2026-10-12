@@ -1,18 +1,29 @@
 # The demo's front: /static/ from the files copied into this image, the rest to uvicorn.
-# cloudflared reaches it over plain HTTP inside the compose network; TLS ends at Cloudflare.
-# Port 8080: Caddy runs as an unprivileged user (demo/Dockerfile).
+# Plain HTTP (Caddy runs as an unprivileged user, demo/Dockerfile), on a port for each front door:
+#
+#   :8080  cloudflared, inside the compose network (TLS ends at Cloudflare). Also what the local
+#          checks and compose's healthcheck use
+#   :8081  direct mode: the host's own Caddy (demo/Caddyfile.direct) through the host's loopback
+#          (compose.direct.yaml publishes it)
+#
+# Both reach it from private addresses (the compose network; colima's port forward). From them
+# Caddy keeps X-Forwarded-Proto as sent -- "https" -- and reads the visitor's address from the
+# header the one in front writes. Each port trusts its own front's header and no other: a
+# visitor's X-Real-IP through Cloudflare, or CF-Connecting-IP to the host's Caddy, names no one.
+# Both ports work at once, so a move from the tunnel to direct mode loses no visitor.
 {
 	admin off
-	servers {
-		# cloudflared (and, locally, the host's port forward) are on private addresses. From
-		# them Caddy keeps X-Forwarded-Proto as sent -- Cloudflare's "https" -- and reads the
-		# visitor's address from CF-Connecting-IP.
+	servers :8080 {
 		trusted_proxies static private_ranges
 		client_ip_headers CF-Connecting-IP
 	}
+	servers :8081 {
+		trusted_proxies static private_ranges
+		client_ip_headers X-Real-IP
+	}
 }
 
-:8080 {
+(front) {
 	log {
 		output stdout
 		format console
@@ -51,4 +62,12 @@
 			header_up X-Real-IP {client_ip}
 		}
 	}
+}
+
+:8080 {
+	import front
+}
+
+:8081 {
+	import front
 }

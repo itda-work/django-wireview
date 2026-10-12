@@ -13,10 +13,13 @@
                                                                           └ SQLite(/data 볼륨) ◀─ janitor
 ```
 
+앞문은 둘 중 하나다 — 위의 Cloudflare Tunnel, 또는 [직접 공개 모드](#직접-공개-모드)(호스트의 Caddy가 80·443을 받아
+web의 `:8081`로). web은 두 포트를 함께 듣고 포트마다 자기 앞문의 헤더만 믿으므로, 둘이 동시에 돌 수 있다.
+
 | 서비스 | 이미지 | 하는 일 |
 |------|------|------|
 | `app` | `demo/Dockerfile`의 `app` | uvicorn 워커 2개(`WEB_CONCURRENCY`). 시작할 때마다 `migrate`와 `demo_reset` 뒤 서빙한다 |
-| `web` | `demo/Dockerfile`의 `web` | Caddy. `/static/`을 이미지에 복사해 둔 파일로 서빙하고 나머지(WebSocket 포함)를 app으로 넘긴다. 루트가 아닌 사용자(UID 10002)로 컨테이너 포트 8080에서 듣고, 호스트의 `127.0.0.1:8080`에만 열린다 |
+| `web` | `demo/Dockerfile`의 `web` | Caddy. `/static/`을 이미지에 복사해 둔 파일로 서빙하고 나머지(WebSocket 포함)를 app으로 넘긴다. 루트가 아닌 사용자(UID 10002)로 컨테이너 포트 8080(터널)·8081(직접 모드)에서 듣고, 호스트의 `127.0.0.1`에만 열린다(8081은 `compose.direct.yaml`이 연다) |
 | `redis` | `redis:7.4-alpine` | 채널 레이어. 128MB, `volatile-lru`. 영속하지 않는다 |
 | `limits` | `redis:7.4-alpine` | 속도 제한 카운터만. 32MB, `noeviction`. 영속하지 않는다 |
 | `janitor` | `app`과 같은 이미지 | 대시보드 펄스와 카운터 Redis 감시(20초), 오래된 게스트·만료 세션 정리와 보관 예산 다듬기·WAL 체크포인트·디스크 안전장치(10분), 매일 초기화(`DEMO_RESET_AT`)와 그 뒤 `VACUUM`. 라운드가 성공할 때마다 `/data/janitor.ok`를 갱신하고, 카운터 Redis가 80%를 넘으면 `/data/limits.full`을 둔다. 헬스체크가 둘을 본다 |
@@ -64,13 +67,15 @@
 | 운영 설정 | `DEBUG=False`, 비밀 키는 환경 변수, HTTPS 리다이렉트·보안 쿠키·HSTS(이 호스트만), `manage.py check --deploy` 통과 | `settings.py`, `tests/test_demo_site.py` |
 | 오류 응답 | 한도의 답은 모두 `text/plain`이고 방문자가 보낸 것을 되풀이하지 않는다. `/ready/`는 밖에 `{"status": "unready"}`만 답하고 이유는 로그(`demo.ready`)에 남긴다. 4xx마다 `django.request` 줄을 남기지 않는다(한도가 거절한 것은 `demo.limits` INFO로 한 줄) | `limits.py`, `views.py`, `settings.py` |
 
-주소마다의 한도는 Cloudflare가 준 `CF-Connecting-IP`를 Caddy가 `X-Real-IP`로 넘긴 값으로 센다. IPv6 주소는 /64(가입자 하나가
+주소마다의 한도는 Cloudflare가 준 `CF-Connecting-IP`(직접 모드에서는 호스트 Caddy가 본 TCP 상대 주소)를 Caddy가 `X-Real-IP`로 넘긴 값으로 센다. IPv6 주소는 /64(가입자 하나가
 받는 블록)로 센다. 행사장 Wi-Fi나 통신사 NAT 뒤의 사람들은 한 주소이므로 한도는 스크립트를 막는 정도로 넉넉하게 두었다.
 모든 한도는 `.env`로 바꾼다(`.env.example`, 기본값은 `settings.py`의 `DEMO_LIMITS`).
 
-Caddy는 사설 주소에서 온 `CF-Connecting-IP`를 믿는다(cloudflared가 compose 네트워크 안에 있기 때문). 그래서 호스트의
-`127.0.0.1:8080`에 닿을 수 있는 사람은 그 헤더로 다른 방문자를 흉내 낼 수 있다 — `demo/abuse.py`가 그것으로 방문자를 나눈다.
-그 포트는 호스트 밖으로 열지 않는다. 공개 연결 전에 실제 터널 경로에서 `CF-Connecting-IP`·`X-Forwarded-Proto`가 기대한 값인지,
+web의 Caddy는 사설 주소에서 온 헤더를 믿는다 — `:8080`은 `CF-Connecting-IP`(cloudflared가 compose 네트워크 안에 있기 때문),
+`:8081`은 `X-Real-IP`(호스트의 Caddy가 colima 포워더를 거쳐 오기 때문). 포트마다 하나만 읽으므로 터널로 들어온 방문자의
+`X-Real-IP`나 호스트 Caddy로 들어온 방문자의 `CF-Connecting-IP`는 아무도 가리키지 않는다. 그래서 호스트의
+`127.0.0.1:8080`·`:8081`에 닿을 수 있는 사람은 그 헤더로 다른 방문자를 흉내 낼 수 있다 — `demo/abuse.py`가 그것으로 방문자를 나눈다.
+두 포트는 호스트 밖으로 열지 않는다. 공개 연결 전에 실제 터널 경로에서 `CF-Connecting-IP`·`X-Forwarded-Proto`가 기대한 값인지,
 다른 포트포워딩이나 프록시가 없는지 확인한다.
 
 침묵한 검사는 둘이다: `security.W005`(HSTS `includeSubDomains`), `security.W021`(preload). itda.work의 다른 이름에 HTTPS를
@@ -192,6 +197,122 @@ Cloudflare 쪽에 둘 만한 것(선택): 이 호스트에 Rate Limiting 규칙(
 세션·게스트 행, 소켓 수)가 Cloudflare 없이도 서므로 필수는 아니다. 다만 앱의 한도는 요청이 앱에 닿은 뒤에 세므로, 많은 주소에서
 오는 분산된 요청은 Cloudflare 쪽에서만 막힌다.
 
+## 직접 공개 모드
+
+Cloudflare를 거치지 않고 집 회선(2021 머신)이 80·443을 직접 받는다. 주 방문자가 한국인데 터널 경로에서는 한국 방문자가
+Cloudflare의 먼 엣지(시애틀)로 들어가 왕복이 0.8~1초를 넘었다. 직접이면 국내 왕복은 수십 ms다.
+
+```
+인터넷 ─ 공유기(TCP 80·443, UDP 443) ─▶ macOS 호스트의 Caddy(TLS·Let's Encrypt·HTTP/3, :80 :443)
+                                          └▶ 127.0.0.1:8081 ─(colima 포워더)─▶ web(Caddy :8081) ─▶ app …
+```
+
+### 왜 TLS를 맡는 Caddy가 컨테이너가 아니라 호스트에 있나
+
+colima는 publish한 포트를 lima의 포트 포워더(사용자 공간 프록시)로 컨테이너에 넘기고, 그 과정에서 **방문자의 주소가 지워진다.**
+#214에서 이 머신(colima 0.10.3, vz, grpc 포워더)으로 잰 값:
+
+| 들어온 곳 | 컨테이너가 본 주소 |
+|------|------|
+| `127.0.0.1:18899` → 컨테이너(포워더) | `172.17.0.1` |
+| LAN `192.168.10.37:18899` → 컨테이너(포워더) | `172.17.0.1` |
+| LAN `192.168.10.37:80`·`:443` → 컨테이너(포워더) | `172.17.0.1` — 포워더는 1024 아래 포트도 잡는다(`limactl`이 `*:80`·`*:443` LISTEN) |
+| LAN `192.168.10.37:443` → **호스트의 Caddy** → web | `192.168.10.37` |
+
+컨테이너 Caddy가 80·443을 받으면 인터넷 전체가 방문자 하나가 된다 — 방문자당 소켓 40개, 분당 요청 300이 데모 전체의 상한이
+된다. 호스트의 Caddy만 TCP 상대 주소를 본다. VM이 LAN 주소를 따로 갖는 colima bridged 모드(VM을 새로 만들어야 한다)나 pf `rdr`로
+VM 주소에 넘기는 길도 주소를 지키지만, 둘 다 root 설정이 들고 이 머신에서 검증하지 못했다.
+
+루트가 아니다: macOS(10.14 이후)는 일반 사용자에게 1024 아래 포트를 허용한다(이 머신에서 `0.0.0.0:80`·`:443` 바인드 확인).
+Homebrew의 서비스는 로그인한 사용자의 LaunchAgent로 돈다. 컨테이너의 Caddy는 그대로 UID 10002, 포트 8080·8081이다.
+
+### 방문자 주소
+
+호스트의 Caddy(`Caddyfile.direct`)는 아무도 믿지 않는다(`trusted_proxies` 없음): 방문자는 TCP 상대 주소다. `X-Real-IP`를 그 주소로
+덮어쓰고, `CF-Connecting-IP`는 지우고, `X-Forwarded-For`·`X-Forwarded-Proto`는 Caddy가 새로 쓴다. web의 `:8081`은 `X-Real-IP`만
+읽는다. 방문자가 보낸 `CF-Connecting-IP`·`X-Real-IP`·`X-Forwarded-For`·`True-Client-IP`는 한도를 바꾸지 못한다:
+
+- `tests/test_demo_site.py`가 두 Caddyfile의 규칙과 compose의 포트(둘 다 `127.0.0.1`)를, caddy가 있으면 caddy가 읽은 설정(`caddy adapt`)까지 본다.
+- `demo/smoke.py`는 https 주소에서 헤더마다 다른 방문자를 적은 소켓 41개를 연다 — 41번째가 403이어야 한다(한 방문자).
+  헤더를 믿는 `http://127.0.0.1:8080`에 같은 검사를 돌리면 41개가 다 들어간다(검사가 실패를 볼 수 있다는 대조).
+
+노출되는 것: 집의 공인 IP(DNS가 그대로 알려 준다), 호스트 Caddy의 80·443. Cloudflare의 DDoS 보호·Bot Fight·Rate Limiting은 없다 —
+막는 것은 앱의 한도뿐이고, 많은 주소에서 오는 분산된 요청이나 회선을 채우는 트래픽은 막지 못한다. 공유기에는 80·443(UDP 443) 말고
+아무것도 넘기지 않는다.
+
+### 2021 머신에서 켜기
+
+```bash
+# 1. 스택: web에 8081을 연다(터널이 돌고 있어도 된다 — 8080은 그대로)
+cd ~/srv/django-wireview/demo
+docker compose -f compose.yaml -f compose.direct.yaml up -d --build
+lsof -nP -iTCP:8081 -sTCP:LISTEN      # 127.0.0.1:8081 이어야 한다 (*:8081 이면 멈춘다)
+
+# 2. 호스트의 Caddy: Homebrew 서비스의 설정이 저장소의 파일을 가져온다
+brew install caddy
+echo "import $HOME/srv/django-wireview/demo/Caddyfile.direct" > /opt/homebrew/etc/Caddyfile
+caddy validate --config /opt/homebrew/etc/Caddyfile
+brew services start caddy             # 로그인 때 뜬다. 로그 /opt/homebrew/var/log/caddy.log
+```
+
+인증서와 ACME 계정은 `/opt/homebrew/var/lib/caddy`에 남아 재시작해도 다시 발급하지 않는다(Let's Encrypt 발급 한도). 이름은
+`Caddyfile.direct`의 기본값(`wireview-demo.itda.work`)이다. macOS 방화벽이 켜져 있으면 caddy의 수신을 허용한다
+(`/usr/libexec/ApplicationFirewall/socketfilterfw --add /opt/homebrew/opt/caddy/bin/caddy --unblockapp`, sudo).
+
+공유기: 2021 머신(`192.168.10.197`, DHCP 예약으로 고정)으로 TCP 80, TCP 443, UDP 443(HTTP/3)을 넘긴다. 80은 Let's Encrypt의
+HTTP-01 검증과 https 리다이렉트에 쓰인다.
+
+### 터널에서 옮기기
+
+인증서는 이름이 이 머신을 가리킨 뒤에야 받을 수 있다(HTTP-01). 그래서 순서는 "직접 모드 기동 → DNS 전환 → 인증서 확인 → 터널 정지"이고,
+틈은 DNS가 바뀐 뒤 첫 발급까지(보통 수십 초)다. 그동안 옛 응답을 캐시한 방문자는 터널로 계속 들어온다 — web이 두 앞문을 함께 받으므로 둘 다 한도가 맞다.
+
+1. 위의 "2021 머신에서 켜기"를 한다. caddy는 이름이 아직 터널을 가리키므로 발급에 실패하고 재시도한다(로그의 `challenge failed`는 정상).
+2. 밖(휴대폰 테더링에 붙인 노트북 등)에서 `nc -vz 121.159.177.248 80`과 `443`이 열리는지 본다 — 공유기 포트포워딩 확인.
+   같은 LAN 안에서는 공유기의 NAT 루프백 여부에 따라 결과가 다르므로 밖에서 본다.
+3. Cloudflare 대시보드: Zero Trust → Tunnels → `wireview-demo` → Public Hostname에서 `wireview-demo.itda.work`를 지운다(CNAME이 사라진다).
+   곧바로 DNS → Records에 **A** `wireview-demo` → `121.159.177.248`, Proxy status **DNS only**(회색 구름), TTL 1분을 만든다.
+   AAAA 레코드는 두지 않는다(이 회선의 IPv6는 열지 않았다).
+4. `brew services restart caddy` — 백오프를 기다리지 않고 바로 발급한다. 로그에 `certificate obtained successfully`.
+5. 밖에서 `uv run python demo/smoke.py https://wireview-demo.itda.work --out /tmp/demo-smoke`. 응답 헤더에 `cf-ray`가 없어야 직접이다.
+   Caddy의 접근 로그(`/opt/homebrew/var/log/caddy.log`)의 `remote_ip`가 방문자들의 공인 주소여야 한다 — 모두 같은 사설 주소면 멈춘다.
+6. 옛 CNAME의 TTL(프록시 레코드는 5분)이 지나면 `docker compose stop cloudflared`. 이후의 `up`에는 `--profile tunnel`을 빼고 `-f compose.direct.yaml`을 붙인다.
+
+되돌리기: Public Hostname을 다시 만들고(3번의 반대, A 레코드는 지운다) `docker compose --profile tunnel up -d`. 호스트 Caddy는
+`brew services stop caddy`. web의 8081은 남아 있어도 해가 없다(루프백).
+
+### 동적 IP
+
+가정용 회선의 공인 IP는 통신사가 바꿀 수 있다. 바뀌면 A 레코드가 남의 주소를 가리킨다. `compose.direct.yaml`의 `ddns`
+(프로필 `ddns`)가 5분마다 `https://1.1.1.1/cdn-cgi/trace`로 이 회선의 주소를 묻고, 다르면 레코드의 주소만 바꾼다(`demo/ddns.py`).
+레코드를 새로 만들지 않고, 프록시를 켜거나 끄지 않으며, CNAME(터널의 것)은 건드리지 않는다 — 3번에서 손으로 만든 A 레코드가 정확히
+하나일 때만 움직인다.
+
+```bash
+# .env: CLOUDFLARE_ZONE_ID(itda.work 개요 화면 오른쪽), CLOUDFLARE_DNS_TOKEN
+#   토큰: My Profile → API Tokens → Create Token → "Edit zone DNS" 템플릿,
+#   Zone Resources는 Include → Specific zone → itda.work 하나만
+docker compose -f compose.yaml -f compose.direct.yaml --profile ddns run --rm ddns python demo/ddns.py --once   # 토큰 시험
+docker compose -f compose.yaml -f compose.direct.yaml --profile ddns up -d
+docker compose -f compose.yaml -f compose.direct.yaml logs ddns    # 바뀔 때만 한 줄
+```
+
+IP가 바뀌면 그 순간부터 갱신(최대 5분)과 TTL(1분)만큼 끊긴다. 인증서는 이름에 묶이므로 다시 발급하지 않는다.
+
+### 로컬에서 직접 모드 확인
+
+Let's Encrypt는 공개 DNS가 필요하므로 로컬에서는 Caddy 자신의 CA(`DEMO_TLS=internal`)로 같은 경로를 돈다. `.env`는
+`DEMO_HOST=localhost`, `DJANGO_CSRF_TRUSTED_ORIGINS=https://localhost,http://127.0.0.1:8080`.
+
+```bash
+cd demo && docker compose -f compose.yaml -f compose.direct.yaml up -d --build --wait && cd ..
+DEMO_HOST=localhost DEMO_TLS=internal caddy run --config demo/Caddyfile.direct   # 다른 창에서, 끝나면 Ctrl-C
+uv run python demo/smoke.py https://localhost --insecure --out /tmp/demo-smoke-direct
+cd demo && docker compose -f compose.yaml -f compose.direct.yaml down
+```
+
+`--insecure`는 아무도 보증하지 않는 인증서를 받는다. 스모크는 wss로 라이브가 되는지와 위조 헤더 검사(41번째 소켓 403)까지 본다.
+
 ## 로컬에서 확인
 
 ```bash
@@ -225,6 +346,8 @@ cd demo && docker compose down
 | 증상 | 볼 것 |
 |------|------|
 | 페이지가 안 뜬다(Cloudflare 502/1033) | `docker compose ps` — web이 healthy인가, cloudflared가 Up인가. `docker compose logs cloudflared` |
+| 직접 모드: 접속이 안 되거나 인증서 오류 | `brew services list`의 caddy, `/opt/homebrew/var/log/caddy.log`(발급 실패면 80이 밖에서 닿는가 — 공유기, macOS 방화벽). `lsof -nP -iTCP:443 -sTCP:LISTEN`이 caddy인가. A 레코드가 지금 회선 주소인가(`ddns` 로그) |
+| 직접 모드: 모두가 같은 방문자로 한도에 걸린다 | caddy 로그의 `remote_ip`가 사설 주소뿐이면 앞에 다른 프록시가 있거나 공유기가 NAT 루프백으로 넘긴 것이다. web의 8081이 `127.0.0.1`에만 열렸는가 |
 | 페이지는 뜨는데 아무것도 반응하지 않는다 | 브라우저 콘솔에서 `wireview.min.js`가 404인가(web 이미지를 다시 빌드), `/__wireview__` 소켓이 열리는가. Cloudflare의 WebSockets 설정 |
 | 소켓이 바로 닫힌다 | `docker compose logs app \| grep demo.limits` — 한도에 걸렸는가(4029·1009, 새 소켓 403, 1013은 카운터 Redis에 닿지 못함). Origin이 `ALLOWED_HOSTS`에 있는가 |
 | 모든 요청이 503 "The demo cannot check its limits" | 한도 카운터(`limits`)에 닿지 못한다. `docker compose ps limits`, `docker compose logs limits` |
@@ -250,7 +373,8 @@ cd demo && docker compose down
 | `seed.py`, `management/commands/` | 시드·초기화(`demo_reset`), janitor(`demo_janitor`) |
 | `Dockerfile`, `Dockerfile.dockerignore`, `requirements.txt` | 이미지. 의존성 버전은 저장소의 `uv.lock`을 따른다 |
 | `compose.yaml`, `Caddyfile`, `.env.example` | 런타임 |
-| `smoke.py`, `abuse.py` | 띄운 데모의 브라우저 스모크, 남용 탐침 |
+| `compose.direct.yaml`, `Caddyfile.direct`, `ddns.py` | 직접 공개 모드: web의 8081, 호스트의 Caddy, A 레코드 갱신 |
+| `smoke.py`, `abuse.py` | 띄운 데모의 브라우저 스모크(https면 위조 헤더 검사 포함), 남용 탐침 |
 
 목록의 썸네일은 #213의 `examples/<예제>/media/<예제>.webp`다 — `STATICFILES_DIRS`가 `demo/media/`로 모아 Caddy가
 서빙한다(이미지에는 webp만 싣는다). 설정과 한도의 계약은

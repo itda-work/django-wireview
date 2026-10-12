@@ -32,7 +32,8 @@ place lapses ``LEASE_SECONDS`` after the last renewal. A worker that dies withou
 sockets (SIGKILL, the OOM killer) leaves leases that lapse on their own, and a set with no live
 lease left is gone from Redis. Every other key the limits write lives no longer than its window.
 
-The visitor is the address Caddy read from Cloudflare's ``CF-Connecting-IP`` and passed on as
+The visitor is the address Caddy read from Cloudflare's ``CF-Connecting-IP`` -- in direct mode
+from the host Caddy's ``X-Real-IP``, the TCP peer (demo/Caddyfile.direct) -- and passed on as
 ``X-Real-IP`` (demo/Caddyfile); an IPv6 address counts as its /64, the block one subscriber
 holds. Nothing reaches the app except through Caddy, so the header is not the browser's to
 choose. The counters are in a Redis of their own that never evicts (compose.yaml): when it is

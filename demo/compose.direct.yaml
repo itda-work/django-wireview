@@ -1,0 +1,34 @@
+# Direct mode (demo/README.md "직접 공개 모드"): visitors reach this machine's ports 80 and 443,
+# where the host's own Caddy (demo/Caddyfile.direct) ends TLS and passes them to web.
+#
+#   docker compose -f compose.yaml -f compose.direct.yaml up -d
+#   docker compose -f compose.yaml -f compose.direct.yaml --profile ddns up -d   # with the DDNS updater
+#
+# No cloudflared unless its profile is named -- it may run alongside while DNS moves over (README).
+services:
+  web:
+    # web's port for the host's Caddy, whose X-Real-IP it takes as the visitor (demo/Caddyfile).
+    # On 127.0.0.1 only: whoever reaches it names any visitor, and only the host's Caddy may
+    ports:
+      - "127.0.0.1:${DEMO_DIRECT_PORT:-8081}:8081"
+
+  # Keeps the A record on the line's address when the provider changes it (demo/ddns.py)
+  ddns:
+    profiles: [ddns]
+    image: wireview-demo-app:${DEMO_TAG:-latest}
+    command: ["python", "demo/ddns.py"]
+    environment:
+      DEMO_HOST: ${DEMO_HOST:-wireview-demo.itda.work}
+      CLOUDFLARE_ZONE_ID: ${CLOUDFLARE_ZONE_ID:-}
+      CLOUDFLARE_DNS_TOKEN: ${CLOUDFLARE_DNS_TOKEN:-}
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: 64m
