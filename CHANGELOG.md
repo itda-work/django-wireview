@@ -73,12 +73,15 @@ The django-reactor era changelog (2.x) is preserved in
   retired. An older client gets the empty render an event with no handler gets. Before, nothing came
   back and the button stayed loading. An event for a component its drawer's render retired a moment
   before runs its handler and is answered the same way: nothing of the component is rendered.
-- A component's template renders with Django's template engine only (#210): a component's, a function
-  component's, a stream or `Broadcast` item's. One another engine finds -- Jinja2 ahead of DjangoTemplates in
-  `TEMPLATES` -- raises `ImproperlyConfigured` on its first render, naming the class, the template and the
-  engine, and `manage.py check` warns of it first (`wireview.W022`). Such a template rendered before, but with
-  none of wireview's tags or a live render's markers its page never joined it. A page's template may use any
-  engine.
+- **Breaking:** A component's template renders with Django's template engine only (#210): a component's, a
+  function component's, a stream or `Broadcast` item's. One another engine finds -- Jinja2 ahead of
+  DjangoTemplates in `TEMPLATES` -- raises `ImproperlyConfigured` on its first render, naming the class, the
+  template and the engine, and `manage.py check` warns of it first (`wireview.W022`), also when that engine
+  found the name and could not compile it. A component's own template rendered before, but with none of
+  wireview's tags or a live render's markers its page never joined it. A function component's or a stream or
+  `Broadcast` item's template rendered with that engine, live renders too, and now raises: move it where a
+  DjangoTemplates engine finds it and write it in Django's syntax (docs/UPGRADING.md). A page's template may
+  use any engine.
 - Documented when `broadcast()` (after the commit) and `abroadcast()` (at once) publish, and when a session reads
   `get_subscriptions()` again, with a test that a topic given up in `notification()` is heard no more (#203).
 
