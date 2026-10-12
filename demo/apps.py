@@ -15,3 +15,9 @@ class DemoConfig(AppConfig):
         # answers with a guest account of the visitor's own (demo/guests.py).
         for example in EXAMPLES:
             import_module(f"examples.{example}.views").DEMO_USERS = BUTTON
+
+        # What visitors write is kept within a budget: the newest rows of each room, and no
+        # table past DEMO_ROWS_MAX (demo/retention.py)
+        from . import retention
+
+        retention.connect()

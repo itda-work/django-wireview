@@ -8,7 +8,12 @@ private address, so over the host's port each check names a fresh test address a
 other check's limits (nor demo/smoke.py's). That is also why it runs only against a local stack:
 through Cloudflare every check would be the one address of the machine running it.
 
-Each check prints what happened; the script exits 1 if anything got through.
+Some checks are the other way round: what a person does must not be refused (``typing``). With
+``--docker`` the script also looks inside the stack through ``docker compose exec``: a worker
+killed under its supervisor gives its sockets' places back (``worker_crash``), and a visitor whose
+sockets closed leaves no key in the limits' Redis (``zero_keys``).
+
+Each check prints what happened; the script exits 1 if anything got through or was cut off.
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ import argparse
 import itertools
 import json
 import random
+import subprocess
 import sys
 import time
 import urllib.error
@@ -150,6 +156,137 @@ def check_join_flood(base: str) -> str | None:
     return None if code == TOO_MANY and answers.get("render", 0) < 60 else "60 joins of one state went through"
 
 
+def search_states(visitor: Visitor, count: int) -> list[str]:
+    """``count`` valid states of the search page's one component, each signed in a second of its own."""
+    states = []
+    for _ in range(count):
+        _, _, body = visitor.get("/search/")
+        parser = Components()
+        parser.feed(body)
+        states.append(next(c["data-state"] for c in parser.found if c.get("data-name") == "XLiveSearch"))
+        time.sleep(1.05)  # the signature's timestamp has a second's resolution
+    return states
+
+
+def check_fresh_joins(base: str, render_burst: int) -> str | None:
+    """The second review's bypass: the same component, signed afresh, joined as if for the first time."""
+    visitor = Visitor(base)
+    states = search_states(visitor, render_burst + 5)
+    with visitor.socket() as ws:
+        joins = [json.dumps({"command": "join", "payload": {"name": "XLiveSearch", "state": s}}) for s in states]
+        send_all(ws, joins)
+        answers, code = drain(ws)
+    print(f"fresh_joins: {len(set(states))} states of one component -> {answers}, closed {code}")
+    return None if code == TOO_MANY else "fresh signatures of one component passed as first joins"
+
+
+def check_typing(base: str, seconds: float) -> str | None:
+    """Someone typing into search: the event every 350 ms (.debounce.300) and the address it patched."""
+    ws, _ = joined_search(Visitor(base))
+    start = time.monotonic()
+    inputs = 0
+    code = None
+    try:
+        with ws:
+            while time.monotonic() - start < seconds:
+                inputs += 1
+                q = "x" * (inputs % 60 + 1)
+                payload = {"id": "search", "command": "search", "implicit_args": {}, "explicit_args": {"q": q}}
+                ws.send(json.dumps({"command": "user_event", "payload": {**payload, "ref": inputs}}))
+                ws.send(
+                    json.dumps({"command": "params_changed", "payload": {"params": {"q": q}, "uri": f"/search/?q={q}"}})
+                )
+                ws.send(json.dumps({"command": "sync", "payload": {"ref": inputs}}))
+                while json.loads(ws.recv(timeout=10))["command"] != "synced":
+                    pass
+                time.sleep(0.35)
+    except ConnectionClosed as closed:
+        code = closed.rcvd.code if closed.rcvd else None
+    print(f"typing: {inputs} inputs in {time.monotonic() - start:.0f}s, 350 ms apart -> closed {code}")
+    return None if code is None else f"typing into search was cut off after {inputs} inputs ({code})"
+
+
+class Stack:
+    """``docker compose exec`` into the local stack."""
+
+    def __init__(self, compose: str):
+        self.compose = compose
+
+    def python(self, service: str, code: str) -> str:
+        command = ["docker", "compose", "-f", self.compose, "exec", "-T", service, "python", "-c", code]
+        return subprocess.check_output(command, text=True).strip()
+
+    def open_keys(self, address: str) -> dict:
+        """The limits' keys of ``address`` with their expiry, and the app's uvicorn workers."""
+        code = f"""import json, os
+from pathlib import Path
+from redis import Redis
+r = Redis.from_url(os.environ["LIMITS_REDIS_URL"], decode_responses=True)
+keys = {{k: [r.type(k), r.ttl(k), r.zcard(k) if r.type(k) == "zset" else r.get(k)] for k in r.keys("*{address}*")}}
+workers = []
+for p in Path("/proc").iterdir():
+    if p.name.isdigit():
+        try:
+            cmd = (p / "cmdline").read_bytes()
+        except OSError:
+            continue
+        if b"multiprocessing-fork" in cmd and b"python -c" not in cmd:
+            workers.append(int(p.name))
+print(json.dumps({{"keys": keys, "workers": workers}}))"""
+        return json.loads(self.python("app", code))
+
+
+def check_worker_crash(base: str, stack: Stack, most: int) -> str | None:
+    """The second review's worker crash: a visitor's 40 sockets, their workers killed, the supervisor kept."""
+    visitor = Visitor(base)
+    sockets = [visitor.socket() for _ in range(most)]
+    for n, ws in enumerate(sockets):
+        ws.send(json.dumps({"command": "sync", "payload": {"ref": n}}))
+        ws.recv(timeout=10)
+    before = stack.open_keys(visitor.address)
+    workers = before["workers"]
+    if not workers:
+        return "found no uvicorn worker to kill"
+    stack.python("app", f"import os, signal; [os.kill(p, signal.SIGKILL) for p in {workers!r}]")
+    for ws in sockets:
+        try:
+            ws.close()
+        except Exception:
+            pass
+    killed = time.monotonic()
+    waited = None
+    while time.monotonic() - killed < 150:
+        try:
+            visitor.socket().close()
+            waited = time.monotonic() - killed
+            break
+        except Exception:
+            time.sleep(5)
+    after = stack.open_keys(visitor.address)
+    print(
+        f"worker_crash: {most} sockets, workers {workers} killed -> {after['workers']};"
+        f" the visitor's next socket accepted after {waited and round(waited)}s; keys before {before['keys']}"
+    )
+    return None if waited is not None else "a killed worker's sockets kept their places"
+
+
+def check_zero_keys(base: str, stack: Stack) -> str | None:
+    """The second review's zero keys: a closed socket left its visitor a key for a day."""
+    visitor = Visitor(base)
+    with visitor.socket() as ws:
+        ws.send(json.dumps({"command": "sync", "payload": {"ref": 1}}))
+        ws.recv(timeout=10)
+        held = stack.open_keys(visitor.address)["keys"]
+    time.sleep(1)
+    keys = stack.open_keys(visitor.address)["keys"]
+    left = {key: value for key, value in keys.items() if ":open:" in key}
+    lasting = {key: value for key, value in keys.items() if value[1] < 0 or value[1] > 3600}
+    print(f"zero_keys: while open {held}; after close {keys}")
+    if left:
+        return "a closed socket left its visitor an open-socket key"
+    return "a key of the limits outlives its window" if lasting else None
+
+
 def check_reconnect_burst(base: str) -> str | None:
     visitor = Visitor(base)
     event = json.dumps(
@@ -245,6 +382,10 @@ def main() -> int:
     parser.add_argument("--open-sockets", type=int, default=40, help="DEMO_OPEN_SOCKETS_PER_VISITOR")
     parser.add_argument("--sessions", type=int, default=60, help="DEMO_SESSIONS_PER_HOUR")
     parser.add_argument("--requests", type=int, default=300, help="DEMO_REQUESTS_PER_MINUTE")
+    parser.add_argument("--render-burst", type=int, default=20, help="DEMO_RENDER_BURST")
+    parser.add_argument("--typing-seconds", type=float, default=60, help="how long the typing check types")
+    parser.add_argument("--docker", action="store_true", help="also the checks that look inside the stack")
+    parser.add_argument("--compose", default="demo/compose.yaml", help="the stack's compose file, for --docker")
     args = parser.parse_args()
     base = args.base.rstrip("/")
     if not base.startswith("http://"):
@@ -256,19 +397,29 @@ def main() -> int:
             check_reflected_xss(base),
             check_params_flood(base),
             check_join_flood(base),
+            check_fresh_joins(base, args.render_burst),
+            check_typing(base, args.typing_seconds),
             check_reconnect_burst(base),
             check_unicode_frame(base),
             check_junk_flood(base),
             check_open_sockets(base, args.open_sockets),
             check_session_gets(base, args.sessions),
             check_request_budget(base, args.requests),
+            *(
+                (
+                    check_zero_keys(base, Stack(args.compose)),
+                    check_worker_crash(base, Stack(args.compose), args.open_sockets),
+                )
+                if args.docker
+                else ()
+            ),
         )
         if failure
     ]
     if failures:
-        print("got through:\n  " + "\n  ".join(failures))
+        print("got through, or was cut off:\n  " + "\n  ".join(failures))
         return 1
-    print("abuse: every probe was refused")
+    print("abuse: every probe was refused, and typing was not")
     return 0
 
 

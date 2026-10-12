@@ -124,9 +124,6 @@ CACHES = {
         "KEY_PREFIX": "demo",
     },
 }
-# This start of the app (the image's command sets it): the open-socket counts are kept per start,
-# so counts a killed worker never gave back are not read after a restart
-DEMO_BOOT = _env("DEMO_BOOT", "")
 
 # SQLite on a volume, shared by the app's workers and the janitor: WAL and a busy timeout, as
 # docs/DEPLOYMENT.md's single-server recipe says. The demo's writes are a chat line or a vote
@@ -228,9 +225,17 @@ DEMO_LIMITS = {
     "GUESTS_MAX": _int("DEMO_GUESTS_MAX", 5_000),
 }
 
-# The database file (with its WAL) past this many megabytes: the janitor resets the demo early
-# and compacts the file (demo_janitor)
-DEMO_DB_MAX_MB = _int("DEMO_DB_MAX_MB", 256)
+# What the demo keeps of what visitors write (demo/retention.py): the newest messages of each
+# chat room (and submissions of each quiz), and the rows any one of those tables may hold -- a
+# new row past it is refused. Full to the brim -- 20,000 lines of 500 emoji in each of the four
+# chats, as many notifications -- that is some 200 MB; the demo's own use is a few
+DEMO_KEEP_PER_ROOM = _int("DEMO_KEEP_PER_ROOM", 200)
+DEMO_ROWS_MAX = _int("DEMO_ROWS_MAX", 20_000)
+
+# The disk's last guard: the database file (with its WAL) past this many megabytes, the janitor
+# resets the demo early -- every room, guest and session -- and compacts the file
+# (demo_janitor). The budgets above keep it far below; reaching it is an ERROR in the log
+DEMO_DB_MAX_MB = _int("DEMO_DB_MAX_MB", 1024)
 
 # The janitor (manage.py demo_janitor): when the demo's data goes back to its seed each day,
 # in the server's TIME_ZONE, and how long a guest account lives

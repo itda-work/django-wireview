@@ -19,7 +19,7 @@
 | `web` | `demo/Dockerfile`의 `web` | Caddy. `/static/`을 이미지에 복사해 둔 파일로 서빙하고 나머지(WebSocket 포함)를 app으로 넘긴다. 루트가 아닌 사용자(UID 10002)로 컨테이너 포트 8080에서 듣고, 호스트의 `127.0.0.1:8080`에만 열린다 |
 | `redis` | `redis:7.4-alpine` | 채널 레이어. 128MB, `volatile-lru`. 영속하지 않는다 |
 | `limits` | `redis:7.4-alpine` | 속도 제한 카운터만. 32MB, `noeviction`. 영속하지 않는다 |
-| `janitor` | `app`과 같은 이미지 | 대시보드 펄스(20초), 오래된 게스트·만료 세션 정리와 WAL 체크포인트·파일 크기 예산(10분), 매일 초기화(`DEMO_RESET_AT`)와 그 뒤 `VACUUM`. 라운드가 성공할 때마다 `/data/janitor.ok`를 갱신하고 헬스체크가 그것을 본다 |
+| `janitor` | `app`과 같은 이미지 | 대시보드 펄스와 카운터 Redis 감시(20초), 오래된 게스트·만료 세션 정리와 보관 예산 다듬기·WAL 체크포인트·디스크 안전장치(10분), 매일 초기화(`DEMO_RESET_AT`)와 그 뒤 `VACUUM`. 라운드가 성공할 때마다 `/data/janitor.ok`를 갱신하고, 카운터 Redis가 80%를 넘으면 `/data/limits.full`을 둔다. 헬스체크가 둘을 본다 |
 | `cloudflared` | `cloudflare/cloudflared` | 터널. `tunnel` 프로필이라 기본으로는 뜨지 않는다 |
 
 고른 이유:
@@ -32,8 +32,10 @@
   센다 — 워커마다 따로 세면 한도가 워커 수만큼 늘고, 재연결하면 처음부터 센다. 카운터는 채널 레이어와 다른 Redis(`limits`)에 둔다:
   한 인스턴스의 `maxmemory` 정책은 DB마다 다르게 둘 수 없고, 채널 레이어가 메모리를 채울 때 `volatile-lru`가 카운터를 지우면
   그 한도가 풀린다. `limits`는 아무것도 지우지 않고(`noeviction`), 차면 쓰기를 거절한다 — 그때 한도는 통과시키지 않고 거절한다
-  (HTTP 503, 소켓 1013). 키는 모두 만료가 있고(한도 창 10초~1시간, 열린 소켓 수는 하루), 키 하나가 약 100바이트라 32MB면
-  방문자 창 20만 개쯤이다. 찬 상태는 창이 만료되면 풀린다.
+  (HTTP 503, 소켓 1013). 어떤 키도 자기 창보다 오래 살지 않는다(한도 창 10초~1시간). 열린 소켓은 수가 아니라 임대로 센다 —
+  소켓마다 30초에 한 번 갱신하고, 마지막 갱신에서 90초가 지나면 자리가 풀린다. 그래서 워커가 SIGKILL·OOM으로 죽어 반납을
+  못 해도 90초 뒤 자리가 돌아오고, 소켓이 모두 닫힌 방문자의 키는 남지 않는다. 키 하나가 약 100바이트라 32MB면 키 25만 개쯤 —
+  지난 한 시간의 방문자가 남긴 것이다. janitor가 메모리의 80%를 넘으면 ERROR를 남기고 unhealthy가 된다. 찬 상태는 창이 만료되면 풀린다.
 - **SQLite(WAL).** 쓰기가 채팅 한 줄·투표 한 번 단위이고 호스트가 하나다. [배포 가이드의 단일 서버 구성](../docs/DEPLOYMENT.md#windows-단일-서버-uvicorn--n--caddy-nats-sqlite)처럼
   WAL·busy timeout·`IMMEDIATE`를 켠다. Postgres는 서비스 하나와 백업 절차 하나를 더할 뿐 이 부하에서 얻는 것이 없다.
   데이터는 매일 시드로 돌아가므로 잃어도 되는 데이터다.
@@ -48,12 +50,13 @@
 | 게스트 수명 | 만든 지 `DEMO_GUEST_MAX_AGE_HOURS`(12시간)가 지나면 janitor가 지운다. 같은 주소에서 시간당 60개까지 | `guests.py`, `demo_janitor` |
 | 데이터 초기화 | app 컨테이너가 시작할 때마다, 그리고 매일 `DEMO_RESET_AT`(04:00, `DEMO_TIME_ZONE`)에 예제 테이블을 비우고 게스트·세션을 지운 뒤 시드를 쓴다 | `seed.py`, `demo_reset`, `demo_janitor` |
 | 입력 길이 | 폼·쿼리의 필드가 500자를 넘으면 400(평문, 필드 이름을 되돌려 보내지 않는다). WebSocket이 싣는 문자열은 join의 서명 상태를 빼고 모두 500자로 자른다 — 이벤트 인자, 훅 페이로드, `params_changed`·`navigated`의 params와 `uri`의 쿼리 값 | `limits.py` |
-| WebSocket 예산 | 소켓마다 버킷: 모든 프레임(120, 초당 20), 서버가 읽지 않는 프레임(JSON 아님·모르는 명령, 5개 — 소비자에 넘기지 않는다), 이벤트(30, 초당 5), 처음 보는 상태의 join(60, 초당 5 — 페이지의 첫 join들), 클릭 없이 렌더하는 것(같은 상태의 다시 join, `params_changed`, `navigated`: 20, 초당 2). 방문자마다 10초 창을 Redis에서 모든 소켓을 합쳐 센다: 프레임 600, 이벤트 100, join·렌더 300 — 재연결해도 창은 이어진다. 넘으면 4029로 닫는다(페이지는 백오프 뒤 다시 붙는다) | `limits.py` |
-| 소켓 수 | 방문자마다 분당 새 소켓 300, 동시에 열린 소켓 40, 데모 전체 2000. 넘으면 핸드셰이크를 403으로 거절 | `limits.py` |
+| WebSocket 예산 | 소켓마다 버킷: 모든 프레임(120, 초당 20), 서버가 읽지 않는 프레임(JSON 아님·모르는 명령, 5개 — 소비자에 넘기지 않는다), 이벤트(30, 초당 5), 컴포넌트마다 첫 join(60, 초당 5 — 페이지의 첫 join들. 컴포넌트는 서명을 검증한 상태의 클래스와 id로 가른다), 클릭 없이 렌더하는 것(같은 컴포넌트의 다시 join — 새로 서명한 상태여도, 검증되지 않는 상태의 join, 이벤트가 낳지 않은 `params_changed`, `navigated`: 20, 초당 2). 이벤트 바로 뒤의 `params_changed`는 그 이벤트가 바꾼 주소이므로 이벤트의 값에 든다 — 검색창(`.debounce.300`)에 쉬지 않고 쳐도 끊기지 않는다. 방문자마다 10초 창을 Redis에서 모든 소켓을 합쳐 센다: 프레임 600, 이벤트 100, join·렌더 300 — 재연결해도 창은 이어진다. 넘으면 4029로 닫는다(페이지는 백오프 뒤 다시 붙는다) | `limits.py` |
+| 소켓 수 | 방문자마다 분당 새 소켓 300, 동시에 열린 소켓 40, 데모 전체 2000. 열린 소켓은 90초짜리 임대(30초마다 갱신)로 세므로 죽은 워커의 소켓은 90초 뒤 빠진다. 넘으면 핸드셰이크를 403으로 거절 | `limits.py` |
 | 프레임 크기 | 페이지가 보내는 프레임이 UTF-8로 64KB를 넘으면 1009로 닫는다. uvicorn의 상한은 1MB, Caddy의 요청 본문 상한도 1MB | `limits.py`, `Dockerfile`, `Caddyfile` |
 | HTTP 예산 | 방문자마다 분당 요청 300(정적 파일은 Caddy가 답하므로 빼고), 그중 POST 60. 넘으면 429(평문). compose의 헬스체크(`X-Real-IP` 없이 안에서 묻는 `/health/`·`/ready/`)는 세지 않는다 | `limits.py` |
 | 저장 행 | 새 세션(쿠키 없는 GET이 만드는 것 — chat 방·quiz·rating)은 방문자마다 시간당 60개, 전체 20,000행까지. 게스트는 방문자마다 시간당 60, 전체 5,000. 넘으면 429·503. 로그인의 세션 키 교체는 세지 않는다 | `sessions.py`, `guests.py` |
-| 디스크 | janitor가 10분마다 WAL을 체크포인트하고, 데이터베이스 파일이 `DEMO_DB_MAX_MB`(256MB)를 넘으면 그 자리에서 초기화하고 `VACUUM`한다. 매일 초기화 뒤에도 `VACUUM` | `demo_janitor` |
+| 보관 예산 | 방문자가 쓰는 테이블은 예산 안에서만 남는다: 채팅 방마다(네 단계 모두) 최근 메시지 `DEMO_KEEP_PER_ROOM`(200)개, 퀴즈마다 제출 200개, 사람마다 알림 50개, todo 100개 — 새 행이 저장될 때 더 오래된 것을 지운다. 그 테이블들과 방·멤버십·평점은 테이블마다 `DEMO_ROWS_MAX`(20,000)행까지이고, 넘는 새 행은 거절한다(HTTP는 503 평문, 소켓은 그 컴포넌트가 이벤트 전 상태로 다시 join해 입력이 남는다). janitor가 10분마다 한 번 더 다듬고, 지운 행이 남긴 빈 페이지가 64MB를 넘으면 `VACUUM`으로 디스크에 돌려준다 | `retention.py`, `apps.py`, `demo_janitor` |
+| 디스크 | janitor가 10분마다 WAL을 체크포인트한다. 데이터베이스 파일이 `DEMO_DB_MAX_MB`(1GB)를 넘으면 그 자리에서 초기화하고 `VACUUM`한다 — **마지막 수단**이다. 보관 예산이 꽉 차도 200MB 남짓이라 여기까지 오면 예산 밖의 무언가가 자란 것이고, ERROR로 남긴다. 매일 초기화 뒤에도 `VACUUM` | `demo_janitor` |
 | 업로드 | 업로드하는 예제가 없으므로 업로드 엔드포인트(`wireview.urls`)를 싣지 않는다 | `urls.py` |
 | 운영 설정 | `DEBUG=False`, 비밀 키는 환경 변수, HTTPS 리다이렉트·보안 쿠키·HSTS(이 호스트만), `manage.py check --deploy` 통과 | `settings.py`, `tests/test_demo_site.py` |
 | 오류 응답 | 한도의 답은 모두 `text/plain`이고 방문자가 보낸 것을 되풀이하지 않는다. `/ready/`는 밖에 `{"status": "unready"}`만 답하고 이유는 로그(`demo.ready`)에 남긴다. 4xx마다 `django.request` 줄을 남기지 않는다(한도가 거절한 것은 `demo.limits` INFO로 한 줄) | `limits.py`, `views.py`, `settings.py` |
@@ -76,11 +79,21 @@ Caddy는 사설 주소에서 온 `CF-Connecting-IP`를 믿는다(cloudflared가 
 
 | 무엇 | 지금 | 바꾸는 곳 |
 |------|------|------|
-| notifications 예제의 수신자 목록 | 예제 그대로 모든 사용자(지금 있는 게스트들)가 보이고, 그들에게 알림을 보낼 수 있다 | 예제 쪽 변경이 필요하다 |
+| notifications 예제의 수신자 목록 | 예제 그대로 모든 사용자(지금 있는 게스트들)가 보이고, 그들에게 알림을 보낼 수 있다. 게스트 이름은 무작위(`guest-swift-otter-042`)이고 시드는 계정을 만들지 않으므로 보이는 것은 게스트뿐이다 — 이대로 두기로 했다(#214) | 예제 쪽 변경이 필요하다 |
 | 익명 채팅(chat 1단계)의 이름 | 누구나 아무 이름(`?username=`, 500자 이하)으로 쓴다. 사칭·욕설을 거르는 모더레이션은 없다. 매일 초기화가 유일한 정리 | 예제 쪽 변경이 필요하다 |
 | 한도 값 | 위 표의 값 | `.env`의 `DEMO_*` |
 | 초기화 | 매일 04:00(Asia/Seoul)과 app이 시작할 때마다(배포 = 초기화) | `DEMO_RESET_AT`, `DEMO_TIME_ZONE`, `Dockerfile`의 `CMD` |
 | HSTS | 30일, 이 호스트만 | `DJANGO_HSTS_SECONDS` |
+
+화면에 보이는 사람 이름은 모두 지어낸 것이다: 목록 카드의 화면(#213 녹화)에 나오는 지은·민수·하늘, 대시보드 활동의 이름
+(`seed.py`의 `ACTIVITY_PEOPLE`, 게스트 이름과 같은 꼴), 게스트 이름. 목록 페이지 아래에도 한 줄로 적었다. 검색 예제의 책과
+저자는 실제 책이다.
+
+## 라이브러리 내부에 기대는 곳
+
+`limits.py`의 `join_identity`는 join의 서명 상태를 검증해 컴포넌트(클래스와 id)를 읽으려고 wireview의 내부
+`wireview.core.state.unsign_envelope`와 `Component._resolve`를 부른다. 공개 API에 그런 호출이 없기 때문이다. 라이브러리가 이
+둘을 바꾸면 `tests/test_demo_site.py`의 `test_a_join_names_its_component_by_class_and_id`가 실패한다 — 그때 이곳을 고친다.
 
 ## 2021 머신에 올리기
 
@@ -198,8 +211,11 @@ cd demo && docker compose down
 평문 http 주소에는 실행마다 다른 `CF-Connecting-IP`를 실어, 연달아 돌려도 앞 실행이 쓴 방문자 한도에 걸리지 않는다.
 
 `abuse.py`는 #214 검수의 탐침을 그대로 보내 모두 거절되는지 본다: 필드 이름의 반사(XSS), `params_changed` 100개, 같은 상태의 join
-60개, 재연결로 이벤트 창 새로 시작하기, 한글 프레임의 바이트 상한, 읽을 수 없는 프레임 폭주, 동시 소켓 41개, 쿠키 없는 GET 80개의 세션,
-분당 요청 예산. 검사마다 다른 `CF-Connecting-IP`를 쓰므로 로컬 스택에서만 돈다.
+60개, 같은 컴포넌트를 새로 서명한 상태 60개의 join, 재연결로 이벤트 창 새로 시작하기, 한글 프레임의 바이트 상한, 읽을 수 없는
+프레임 폭주, 동시 소켓 41개, 쿠키 없는 GET 80개의 세션, 분당 요청 예산. 정상 사용이 끊기지 않는지도 본다: 350ms마다 검색 입력
+(`--typing-seconds`, 기본 60초 — 검수 조건대로 5분은 `--typing-seconds 300`). `--docker`를 주면 compose로 컨테이너 안을 보는
+검사도 돈다: 감독 프로세스를 둔 채 워커만 SIGKILL한 뒤 90초 안에 같은 방문자가 다시 붙는지, 소켓을 닫은 방문자의 키가 Redis에
+남지 않는지. 검사마다 다른 `CF-Connecting-IP`를 쓰므로 로컬 스택에서만 돈다.
 
 ## 장애 때 볼 것
 
@@ -208,12 +224,15 @@ cd demo && docker compose down
 | 페이지가 안 뜬다(Cloudflare 502/1033) | `docker compose ps` — web이 healthy인가, cloudflared가 Up인가. `docker compose logs cloudflared` |
 | 페이지는 뜨는데 아무것도 반응하지 않는다 | 브라우저 콘솔에서 `wireview.min.js`가 404인가(web 이미지를 다시 빌드), `/__wireview__` 소켓이 열리는가. Cloudflare의 WebSockets 설정 |
 | 소켓이 바로 닫힌다 | `docker compose logs app \| grep demo.limits` — 한도에 걸렸는가(4029·1009, 새 소켓 403, 1013은 카운터 Redis에 닿지 못함). Origin이 `ALLOWED_HOSTS`에 있는가 |
-| 모든 요청이 503 "The demo is busy" | 한도 카운터(`limits`)에 닿지 못하거나 그것이 찼다. `docker compose ps limits`, `docker compose exec limits redis-cli info memory` |
+| 모든 요청이 503 "The demo cannot check its limits" | 한도 카운터(`limits`)에 닿지 못한다. `docker compose ps limits`, `docker compose logs limits` |
+| 모든 요청이 503 "more visitors than it can keep track of" | 카운터 Redis가 찼다(janitor가 먼저 unhealthy, 로그 "of its memory"). `docker compose exec limits redis-cli info memory`, `dbsize`. 창이 만료되면 몇 분 안에 풀린다. 되풀이되면 compose의 `--maxmemory`를 올리거나 한도를 줄인다 |
 | app이 unhealthy | `/ready/`는 채널 레이어 왕복과 카운터 쓰기다. 이유는 `docker compose logs app \| grep demo.ready`. `docker compose exec redis redis-cli ping` |
-| janitor가 unhealthy | 정리가 2분 넘게 성공하지 않았다. Docker는 unhealthy만으로 재시작하지 않는다. `docker compose logs janitor` — 실패마다 한 줄, 15번 연속이면 ERROR "no cleanup is happening". 고친 뒤 `docker compose restart janitor` |
+| janitor가 unhealthy | 정리가 2분 넘게 성공하지 않았거나 카운터 Redis가 80%를 넘었다(`/data/limits.full`, 로그 "of its memory"). Docker는 unhealthy만으로 재시작하지 않는다. `docker compose logs janitor` — 실패마다 한 줄, 15번 연속이면 ERROR "no cleanup is happening". 고친 뒤 `docker compose restart janitor`. 카운터 쪽은 80% 아래로 내려가면 다음 라운드에 저절로 healthy |
 | 다른 창의 채팅이 안 온다 | redis가 살아 있는가. 워커를 늘렸는데 InMemory로 바꾸지는 않았는가(`manage.py check --deploy`의 W006) |
 | `database is locked` | janitor와 app이 같은 파일을 쓴다. WAL과 20초 timeout으로 버티는 부하인데 넘으면 janitor를 잠시 멈추고(`docker compose stop janitor`) 원인을 본다 |
-| 디스크가 찬다 | `docker system df`. 로그는 돌아가지만 옛 이미지가 쌓인다 — `docker image prune`. 데이터베이스는 `DEMO_DB_MAX_MB`를 넘으면 janitor가 초기화한다(로그 "past DEMO_DB_MAX_MB") |
+| 디스크가 찬다 | `docker system df`. 로그는 돌아가지만 옛 이미지가 쌓인다 — `docker image prune`. 데이터베이스는 보관 예산으로 200MB 남짓에서 멈추고, 그래도 `DEMO_DB_MAX_MB`(1GB)를 넘으면 janitor가 마지막 수단으로 초기화한다(ERROR "past DEMO_DB_MAX_MB" — 무엇이 자랐는지 찾는다) |
+| 채팅의 옛 메시지가 사라졌다 | 방마다 최근 `DEMO_KEEP_PER_ROOM`(200)개만 남긴다. 정상이다 |
+| 메시지·방을 만들 수 없다(503, 또는 보낸 메시지가 사라지고 입력칸에 남는다) | 그 테이블이 `DEMO_ROWS_MAX`에 닿았다(로그 `demo.retention` "holds DEMO_ROWS_MAX rows"). 매일 초기화로 풀린다 |
 | 로그인했는데 로그인 화면으로 돌아간다 | 게스트가 12시간이 지나 지워졌거나 매일 초기화가 지나갔다. 다시 누르면 새 게스트다 |
 
 ## 파일
@@ -223,7 +242,8 @@ cd demo && docker compose down
 | `settings.py`, `urls.py`, `asgi.py`, `manage.py` | 프로젝트. 설정은 모두 환경 변수(`.env.example`) |
 | `catalog.py`, `views.py`, `templates/demo/` | 목록 페이지, 헬스체크(`/health/`, `/ready/`) |
 | `guests.py`, `apps.py` | 게스트 로그인 |
-| `limits.py`, `sessions.py` | HTTP 미들웨어와 WebSocket 한도, 새 세션의 예산 |
+| `limits.py`, `sessions.py` | HTTP 미들웨어와 WebSocket 한도, 소켓 임대, 새 세션의 예산 |
+| `retention.py` | 방문자가 쓰는 테이블의 보관 예산 |
 | `seed.py`, `management/commands/` | 시드·초기화(`demo_reset`), janitor(`demo_janitor`) |
 | `Dockerfile`, `Dockerfile.dockerignore`, `requirements.txt` | 이미지. 의존성 버전은 저장소의 `uv.lock`을 따른다 |
 | `compose.yaml`, `Caddyfile`, `.env.example` | 런타임 |

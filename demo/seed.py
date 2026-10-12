@@ -99,7 +99,8 @@ STATS = (
 #: The stats that count something, and so stay whole numbers
 COUNTS = ("users", "orders")
 
-ACTIVITY_PEOPLE = ("Ada", "Grace", "Linus", "Margaret", "Ken", "Barbara")
+#: Made-up names, in the guests' style (demo/guests.py): no one real shows up in the feed
+ACTIVITY_PEOPLE = ("amber-otter", "brave-heron", "calm-puffin", "eager-lynx", "jolly-tapir", "quiet-wren")
 ACTIVITY_LINES = {
     "login": "signed in",
     "purchase": "bought a standing desk",

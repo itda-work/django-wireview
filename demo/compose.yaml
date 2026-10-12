@@ -53,10 +53,11 @@ services:
     depends_on:
       app:
         condition: service_healthy
-    # Healthy while its rounds succeed: each one touches /data/janitor.ok (demo_janitor). Docker
-    # does not restart an unhealthy container; `docker compose ps` shows it (README "장애 때 볼 것")
+    # Healthy while its rounds succeed (each one touches /data/janitor.ok) and the limits' Redis
+    # is under 80% of its memory (past it, /data/limits.full is there; demo_janitor). Docker does
+    # not restart an unhealthy container; `docker compose ps` shows it (README "장애 때 볼 것")
     healthcheck:
-      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/data/janitor.ok') > 120)"]
+      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/data/janitor.ok') > 120 or os.path.exists('/data/limits.full'))"]
       interval: 60s
       timeout: 5s
       retries: 3
@@ -114,8 +115,10 @@ services:
   # The rate-limit counters (demo/limits.py), apart from the channel layer: a flood of channel
   # messages must not evict a count, or the limit it keeps would let go. This one evicts nothing
   # (noeviction): full, it refuses writes, and the limits then refuse visitors (1013, 503) until
-  # windows expire. Every key has an expiry of an hour at most, a day for the open-socket counts;
-  # a key is ~100 bytes, so 32 MB holds some 200,000 visitors' windows.
+  # windows expire. No key outlives its window -- ten seconds to an hour -- and an open socket's
+  # lease lapses 90 seconds after its last renewal, so what it holds is what the last hour's
+  # visitors left: a key is ~100 bytes, 32 MB some 250,000 of them. The janitor logs an ERROR
+  # and turns unhealthy past 80% (demo_janitor).
   limits:
     image: redis:7.4-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "32mb", "--maxmemory-policy", "noeviction"]

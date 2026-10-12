@@ -50,8 +50,7 @@ VOLUME /data
 EXPOSE 8000
 # Migrate and reset to the seed on every start (a restart is also a reset), then serve.
 # Caddy logs each request, so uvicorn does not. Workers share Redis (channel layer, rate limits) and the SQLite file in /data.
-# DEMO_BOOT names this start, for the open-socket counts (demo/limits.py).
-CMD ["sh", "-c", "python demo/manage.py migrate --noinput -v0 && python demo/manage.py demo_reset && DEMO_BOOT=$(date +%s) exec uvicorn demo.asgi:application --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-2} --loop uvloop --ws-per-message-deflate false --ws-max-size 1048576 --timeout-graceful-shutdown 20 --no-server-header --no-access-log"]
+CMD ["sh", "-c", "python demo/manage.py migrate --noinput -v0 && python demo/manage.py demo_reset && exec uvicorn demo.asgi:application --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-2} --loop uvloop --ws-per-message-deflate false --ws-max-size 1048576 --timeout-graceful-shutdown 20 --no-server-header --no-access-log"]
 
 # --- web -------------------------------------------------------------------------------------
 FROM caddy:2.10-alpine AS web

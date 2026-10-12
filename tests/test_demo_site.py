@@ -156,8 +156,20 @@ async def test_events_past_the_bucket_close_the_socket_and_the_consumer_hears_a_
     assert socket.sent[-1]["type"] == "websocket.close"
 
 
-def _join(state: str) -> str:
-    return json.dumps({"command": "join", "payload": {"name": "X", "state": state}})
+def _join(state: str, name: str = "X") -> str:
+    return json.dumps({"command": "join", "payload": {"name": name, "state": state}})
+
+
+def _signed(component_id: str, query: str = "") -> str:
+    """A join of search's component, signed as a page would carry it."""
+    from django.contrib.auth.models import AnonymousUser
+
+    from examples.search.live import XLiveSearch
+    from wireview.core.meta import WireviewMeta
+    from wireview.core.state import sign_state
+
+    state = sign_state(XLiveSearch(id=component_id, query=query, user=AnonymousUser(), wire=WireviewMeta(params={})))
+    return _join(state, "XLiveSearch")
 
 
 def _closed_with(socket: _Socket) -> int | None:
@@ -168,8 +180,8 @@ def _closed_with(socket: _Socket) -> int | None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_a_pages_first_joins_pass_and_do_not_spend_the_event_bucket():
-    """A page joins each of its components once: a burst of new states is the page loading."""
-    socket = _Socket(*[_join(f"state-{i}") for i in range(LIMITS["JOIN_BURST"])], _event())
+    """A page joins each of its components once: a burst of first joins is the page loading."""
+    socket = _Socket(*[_signed(f"search-{i}") for i in range(LIMITS["JOIN_BURST"])], _event())
     await socket.run()
     assert _closed_with(socket) is None
     assert len([m for m in socket.heard if m["type"] == "websocket.receive"]) == LIMITS["JOIN_BURST"] + 1
@@ -179,11 +191,39 @@ async def test_a_pages_first_joins_pass_and_do_not_spend_the_event_bucket():
 @pytest.mark.asyncio
 async def test_joining_the_same_state_again_and_again_spends_the_render_bucket():
     """The review's join flood: one valid state joined 60 times, each a restore and a render."""
-    socket = _Socket(*[_join("the-same")] * 60)
+    socket = _Socket(*[_signed("search")] * 60)
     await socket.run()
     assert _closed_with(socket) == limits.TOO_MANY
     # The first join, then RENDER_BURST rejoins
     assert len([m for m in socket.heard if m["type"] == "websocket.receive"]) == 1 + LIMITS["RENDER_BURST"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_the_same_component_signed_afresh_is_a_rejoin_not_a_first_join():
+    """The second review's fresh joins: 60 valid states of one component, each signed apart."""
+    socket = _Socket(*[_signed("search", query=f"q{i}") for i in range(60)])
+    await socket.run()
+    assert _closed_with(socket) == limits.TOO_MANY
+    assert len([m for m in socket.heard if m["type"] == "websocket.receive"]) == 1 + LIMITS["RENDER_BURST"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_a_state_that_does_not_verify_is_no_first_join():
+    socket = _Socket(*[_join(f"forged-{i}", "XLiveSearch") for i in range(10)])
+    await socket.run()
+    assert _closed_with(socket) == limits.TOO_MANY
+    assert len([m for m in socket.heard if m["type"] == "websocket.receive"]) == LIMITS["RENDER_BURST"]
+
+
+@pytest.mark.unit
+def test_a_join_names_its_component_by_class_and_id():
+    join = json.loads(_signed("search-a", query="x"))["payload"]
+    assert limits.join_identity(join) == ("examples.search.live.XLiveSearch", "search-a")
+    assert limits.join_identity({**join, "name": "examples.search.live.XLiveSearch"}) == limits.join_identity(join)
+    assert limits.join_identity({**join, "state": join["state"][:-2]}) is None
+    assert limits.join_identity({**join, "name": "XNotificationBell"}) is None
 
 
 def _params(q: str) -> str:
@@ -569,6 +609,7 @@ def test_the_janitor_resets_early_when_the_database_outgrows_its_budget(monkeypa
 
     done = []
     monkeypatch.setattr(demo_janitor, "checkpoint", lambda: done.append("checkpoint"))
+    monkeypatch.setattr(demo_janitor, "free_bytes", lambda: 0)
     monkeypatch.setattr(demo_janitor, "reset_and_compact", lambda: done.append("reset"))
     with override_settings(DEMO_DB_MAX_MB=1):
         monkeypatch.setattr(demo_janitor, "database_bytes", lambda: 2**20)
@@ -585,6 +626,24 @@ def test_the_janitor_s_checkpoint_and_compaction_run_on_sqlite():
     from demo.management.commands import demo_janitor
 
     demo_janitor.compact()
+    assert demo_janitor.free_bytes() == 0
+
+
+@pytest.mark.unit
+def test_the_janitor_compacts_what_a_trimmed_flood_left_free(monkeypatch):
+    from demo.management.commands import demo_janitor
+
+    done = []
+    monkeypatch.setattr(demo_janitor, "checkpoint", lambda: None)
+    monkeypatch.setattr(demo_janitor, "compact", lambda: done.append("compact"))
+    monkeypatch.setattr(demo_janitor, "database_bytes", lambda: 0)
+    with override_settings(DEMO_DB_MAX_MB=1):
+        monkeypatch.setattr(demo_janitor, "free_bytes", lambda: demo_janitor.FREE_BYTES_TO_COMPACT)
+        demo_janitor.keep_within_budget()
+        assert done == []
+        monkeypatch.setattr(demo_janitor, "free_bytes", lambda: demo_janitor.FREE_BYTES_TO_COMPACT + 1)
+        demo_janitor.keep_within_budget()
+        assert done == ["compact"]
 
 
 @pytest.mark.integration
@@ -646,3 +705,339 @@ def test_each_browser_gets_a_guest_of_its_own_and_keeps_it():
 def test_the_reset_is_the_next_occurrence_of_its_time(now, expected):
     seoul = ZoneInfo("Asia/Seoul")
     assert next_reset(now.replace(tzinfo=seoul), "04:00") == expected.replace(tzinfo=seoul)
+
+
+class _Clock:
+    """Time a test moves by hand: the limits' clocks and the cache's expiry read it."""
+
+    def __init__(self):
+        self.now = 1_000_000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+@pytest.fixture
+def moved_time(monkeypatch):
+    from types import SimpleNamespace
+
+    from django.core.cache.backends import base, locmem
+
+    clock = _Clock()
+    monkeypatch.setattr(limits, "clock", clock)
+    monkeypatch.setattr(limits, "wall", clock)
+    monkeypatch.setattr(locmem, "time", SimpleNamespace(time=clock))
+    monkeypatch.setattr(base, "time", SimpleNamespace(time=clock))
+    return clock
+
+
+def _production_limits(monkeypatch) -> dict:
+    """DEMO_LIMITS as demo/settings.py sets them, its defaults and nothing from .env."""
+    import importlib
+
+    for name in [name for name in os.environ if name.startswith("DEMO_")]:
+        monkeypatch.delenv(name)
+    monkeypatch.setenv("DJANGO_SECRET_KEY", "a" * 50 + "-not-a-real-key")
+    module = importlib.import_module("demo.settings")
+    return importlib.reload(module).DEMO_LIMITS
+
+
+class _Typing(_Socket):
+    """A page someone types into: search's event and the address it patched, every ``every`` seconds."""
+
+    def __init__(self, clock: _Clock, inputs: int, every: float, with_event: bool = True):
+        frames = []
+        for i in range(inputs):
+            q = "x" * (i % 60 + 1)
+            if with_event:
+                frames.append(_event(q=q))
+            frames.append(_params(q))
+        super().__init__(*frames)
+        self.clock = clock
+        self.every = every
+        self.per_input = 2 if with_event else 1
+        self.read = 0
+
+    async def receive(self):
+        message = await super().receive()
+        if message["type"] == "websocket.receive":
+            if self.read and self.read % self.per_input == 0:
+                self.clock.now += self.every
+            self.read += 1
+        return message
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_someone_typing_into_search_for_five_minutes_is_never_cut_off(monkeypatch, moved_time):
+    """The second review's typing: .debounce.300 sends the event, the patched address a params_changed.
+
+    At 350 ms a keystroke the old budget closed the socket after 27 seconds; with the demo's own
+    limits, five minutes and more pass.
+    """
+    inputs = int(6 * 60 / 0.35)
+    with override_settings(DEMO_LIMITS=_production_limits(monkeypatch)):
+        socket = _Typing(moved_time, inputs, every=0.35)
+        await socket.run()
+    assert _closed_with(socket) is None
+    assert len([m for m in socket.heard if m["type"] == "websocket.receive"]) == 2 * inputs
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_params_changed_no_event_asked_for_at_the_same_pace_still_closes(monkeypatch, moved_time):
+    with override_settings(DEMO_LIMITS=_production_limits(monkeypatch)):
+        socket = _Typing(moved_time, 200, every=0.35, with_event=False)
+        await socket.run()
+    assert _closed_with(socket) == limits.TOO_MANY
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_an_event_pays_for_the_address_it_patched_and_no_more():
+    """One event, then three params_changed: the first is the event's, the next RENDER_BURST spend renders."""
+    socket = _Socket(_event(), *[_params(str(i)) for i in range(1 + LIMITS["RENDER_BURST"] + 1)])
+    await socket.run()
+    assert _closed_with(socket) == limits.TOO_MANY
+    assert len([m for m in socket.heard if m["type"] == "websocket.receive"]) == 1 + 1 + LIMITS["RENDER_BURST"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_a_killed_workers_sockets_lapse_and_their_places_come_back(moved_time):
+    """The second review's worker crash: SIGKILL skips every release. The places lapse on their own."""
+    with override_settings(DEMO_LIMITS={**LIMITS, "SOCKETS_PER_MINUTE": 100}):
+        # What a killed worker leaves: leases taken, never given back
+        for member in ("killed-1", "killed-2"):
+            assert limits.Leases.take({"visitor:203.0.113.7": 2, "all": 3}, member) is None
+        refused = _Socket()
+        await refused.run()
+        assert refused.sent == [{"type": "websocket.close", "code": limits.TOO_MANY}]
+        moved_time.now += limits.LEASE_SECONDS - 1
+        still = _Socket()
+        await still.run()
+        assert still.sent == [{"type": "websocket.close", "code": limits.TOO_MANY}]
+        moved_time.now += 2
+        again = _Socket()
+        await again.run()
+        assert again.sent[0] == {"type": "websocket.accept"}
+        # And the set holds the live ones only: none, once that socket closed
+        assert limits.Leases.held("visitor:203.0.113.7") == 0 and limits.Leases.held("all") == 0
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_an_open_socket_renews_its_place_and_keeps_it(monkeypatch, moved_time):
+    monkeypatch.setattr(limits, "RENEW_SECONDS", 0.01)
+    with override_settings(DEMO_LIMITS={**LIMITS, "SOCKETS_PER_MINUTE": 100, "OPEN_SOCKETS_PER_VISITOR": 1}):
+        held = _Holding()
+        task = asyncio.create_task(held.run())
+        await eventually(lambda: held.sent)
+        # Time passes the lease's length while the socket is open, and it renews
+        moved_time.now += limits.LEASE_SECONDS * 3
+        await eventually(lambda: limits.Leases.held("visitor:203.0.113.7") == 1)
+        refused = _Socket()
+        await refused.run()
+        assert refused.sent == [{"type": "websocket.close", "code": limits.TOO_MANY}]
+        held.done.set()
+        await task
+        assert limits.Leases.held("visitor:203.0.113.7") == 0
+
+
+@pytest.fixture
+def limits_redis(tmp_path):
+    """A Redis of the test's own as the cache, configured as compose's ``limits`` is."""
+    import shutil
+    import socket as socket_
+    import time
+
+    from redis import Redis
+    from testproj.time_limit import disown, own
+
+    binary = shutil.which("redis-server") or next(
+        (path for path in ("/opt/homebrew/bin/redis-server", "/usr/local/bin/redis-server") if Path(path).exists()),
+        None,
+    )
+    if binary is None:
+        pytest.skip("redis-server is not installed")
+    with socket_.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    process = own(
+        subprocess.Popen(
+            [binary, "--port", str(port), "--save", "", "--appendonly", "no", "--dir", str(tmp_path),
+             "--maxmemory", "32mb", "--maxmemory-policy", "noeviction"],
+            stdout=subprocess.DEVNULL,
+        )
+    )  # fmt: skip
+    client = Redis(port=port)
+    try:
+        for _ in range(100):
+            try:
+                client.ping()
+                break
+            except Exception:
+                time.sleep(0.05)
+        location = f"redis://127.0.0.1:{port}/0"
+        with override_settings(
+            CACHES={
+                "default": {
+                    "BACKEND": "django.core.cache.backends.redis.RedisCache",
+                    "LOCATION": location,
+                    "KEY_PREFIX": "demo",
+                }
+            }
+        ):
+            yield client
+    finally:
+        process.terminate()
+        process.wait(timeout=10)
+        disown(process)
+
+
+@pytest.mark.integration
+def test_in_redis_no_window_outlives_itself(limits_redis):
+    assert [limits.count("t", "v", 5) for _ in range(3)] == [1, 2, 3]
+    keys = limits_redis.keys("demo:1:limit:*")
+    assert keys and all(0 < limits_redis.ttl(key) <= 5 for key in keys)
+
+
+@pytest.mark.integration
+def test_in_redis_leases_count_the_live_and_leave_no_key_behind(limits_redis, monkeypatch):
+    clock = _Clock()
+    monkeypatch.setattr(limits, "wall", clock)
+    places = {"visitor:v": 2, "all": 3}
+    assert limits.Leases.take(places, "a") is None
+    assert limits.Leases.take(places, "b") is None
+    assert limits.Leases.take(places, "c") == "visitor:v"
+    assert limits.Leases.take({"visitor:w": 2, "all": 3}, "d") is None
+    assert limits.Leases.take({"visitor:x": 2, "all": 3}, "e") == "all"
+    keys = limits_redis.keys("demo:1:limit:open:*")
+    assert len(keys) == 3 and all(0 < limits_redis.ttl(key) <= limits.LEASE_SECONDS for key in keys)
+    # The review's zero keys: a visitor whose sockets all closed holds no key at all
+    limits.Leases.release(["visitor:w", "all"], "d")
+    assert not limits_redis.exists("demo:1:limit:open:visitor:w")
+    # A killed worker's leases lapse; a live socket's renewal keeps its place
+    clock.now += limits.LEASE_SECONDS / 2
+    limits.Leases.renew(["visitor:v", "all"], "a")
+    clock.now += limits.LEASE_SECONDS / 2 + 1
+    assert limits.Leases.held("visitor:v") == 1
+    assert limits.Leases.take(places, "f") is None
+    assert limits.Leases.held("all") == 2
+
+
+@pytest.mark.integration
+def test_a_full_limits_redis_refuses_with_its_own_answer(limits_redis):
+    limits.count("t", "v", 60)
+    limits_redis.config_set("maxmemory", 1)
+    try:
+        response = _through_middleware(RequestFactory().get("/", HTTP_X_REAL_IP="203.0.113.9"))
+    finally:
+        limits_redis.config_set("maxmemory", 32 * 2**20)
+    assert response.status_code == 503
+    assert "more visitors than it can keep track of" in response.content.decode()
+
+
+@pytest.mark.integration
+def test_the_janitor_raises_the_alarm_when_the_limits_redis_fills(limits_redis, tmp_path, caplog):
+    from demo.management.commands import demo_janitor
+
+    with override_settings(DATA_DIR=tmp_path):
+        assert demo_janitor.watch_limits() is False
+        assert not demo_janitor.limits_alarm_file().exists()
+        # A key that lost its expiry, the way the review's counters could not before
+        limits_redis.set("demo:1:limit:stray:v", 1)
+        used = limits_redis.info("memory")["used_memory"]
+        limits_redis.config_set("maxmemory", int(used / 0.85))
+        with caplog.at_level("ERROR", logger="demo.janitor"):
+            assert demo_janitor.watch_limits() is True
+        assert "of its memory" in caplog.text
+        assert demo_janitor.limits_alarm_file().exists()
+        assert not limits_redis.exists("demo:1:limit:stray:v")
+        limits_redis.config_set("maxmemory", 32 * 2**20)
+        assert demo_janitor.watch_limits() is False
+        assert not demo_janitor.limits_alarm_file().exists()
+
+
+@pytest.mark.unit
+def test_a_full_counter_store_says_so(monkeypatch):
+    from redis.exceptions import OutOfMemoryError
+
+    def full(*args, **kwargs):
+        # What redis-py raises for Redis's "OOM command not allowed ...": the "OOM" is gone
+        raise OutOfMemoryError("command not allowed when used memory > 'maxmemory'.")
+
+    monkeypatch.setattr(limits.cache, "incr", full)
+    response = _through_middleware(RequestFactory().get("/", HTTP_X_REAL_IP="203.0.113.9"))
+    assert response.status_code == 503
+    assert "more visitors than it can keep track of" in response.content.decode()
+
+
+@pytest.fixture
+def retention():
+    from demo import retention
+
+    retention.connect()
+    try:
+        with override_settings(DEMO_KEEP_PER_ROOM=3, DEMO_ROWS_MAX=5):
+            yield retention
+    finally:
+        retention.disconnect()
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_a_room_keeps_its_newest_messages(retention):
+    from examples.chat.models import Message, Room
+
+    room, other = Room.objects.create(name="a"), Room.objects.create(name="b")
+    for i in range(5):
+        Message.objects.create(room=room, username="x", content=str(i))
+    Message.objects.create(room=other, username="x", content="other")
+    assert list(Message.objects.filter(room=room).values_list("content", flat=True)) == ["2", "3", "4"]
+    assert Message.objects.filter(room=other).count() == 1
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_a_table_past_its_rows_refuses_a_new_one_politely(retention):
+    from examples.chat.models import Room
+
+    for i in range(5):
+        Room.objects.create(name=str(i))
+    with pytest.raises(retention.StorageFull):
+        Room.objects.create(name="sixth")
+    # Changing a row that is there is not a new one
+    room = Room.objects.first()
+    room.name = "renamed"
+    room.save()
+    response = limits.RequestLimitMiddleware(lambda request: HttpResponse())
+    answer = response.process_exception(RequestFactory().post("/chat/"), retention.StorageFull("chat.Room"))
+    assert answer.status_code == 503 and answer["Content-Type"] == "text/plain; charset=utf-8"
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_the_janitor_trims_what_reached_the_database_without_a_signal(retention):
+    from examples.chat.models import Message, Room
+    from examples.todo.models import Item
+
+    room = Room.objects.create(name="a")
+    Message.objects.bulk_create(Message(room=room, username="x", content=str(i)) for i in range(6))
+    Item.objects.bulk_create(Item(text=str(i)) for i in range(4))
+    with override_settings(DEMO_KEEP_PER_ROOM=3):
+        assert retention.trim_all() == 3
+    assert Message.objects.count() == 3
+    assert Item.objects.count() == 4  # todo keeps its newest 100
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_the_seed_makes_no_accounts_and_names_no_one_real():
+    from django.contrib.auth import get_user_model
+
+    from demo import seed
+
+    seed.reset()
+    assert get_user_model().objects.count() == 0
+    assert all("-" in person for person in seed.ACTIVITY_PEOPLE)
