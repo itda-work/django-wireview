@@ -821,6 +821,194 @@ def test_the_direct_front_adapts_to_what_its_comments_say(tls, tmp_path):
     assert internal == (tls == "internal")
 
 
+def test_the_proxy_front_believes_the_nas_and_no_one_else():
+    """Proxy mode (demo/Caddyfile.proxy): one trusted peer names the visitor, every other peer gets 403."""
+    lines = _caddy_directives((ROOT / "demo" / "Caddyfile.proxy").read_text())
+    # One address, the NAS, given as the import's argument (Homebrew's service passes no environment).
+    # No default that would trust a range: imported without it, Caddy refuses to start
+    nas = "{args[0]}"
+    assert [line for line in lines if line.startswith("trusted_proxies")] == [f"trusted_proxies static {nas}"]
+    assert [line for line in lines if line.startswith("client_ip_headers")] == ["client_ip_headers X-Real-IP"]
+    # Whoever else reaches the port could write any X-Real-IP: refused on the TCP peer
+    assert f"@outsider not remote_ip {nas}" in lines
+    assert "respond @outsider 403 {" in lines
+    # The servers block is the site's own port
+    assert "servers :{$DEMO_PROXY_PORT:8091} {" in lines
+    assert ":{$DEMO_PROXY_PORT:8091} {" in lines
+    assert "header_up X-Real-IP {client_ip}" in lines
+    for name in ("CF-Connecting-IP", "Forwarded", "True-Client-IP"):
+        assert f"header_up -{name}" in lines, name
+    assert [line for line in lines if line.startswith("reverse_proxy")] == [
+        "reverse_proxy 127.0.0.1:{$DEMO_DIRECT_PORT:8081} {"
+    ]
+    # The README's service Caddyfile gives the NAS's address
+    readme = (ROOT / "demo" / "README.md").read_text()
+    assert 'echo "import $HOME/srv/django-wireview/demo/Caddyfile.proxy 192.168.10.102"' in readme
+    # Plain HTTP from the NAS: no certificate here, and so no HTTP/3
+    assert not [line for line in lines if line.startswith(("tls", "protocols", "import"))]
+    assert "admin off" in lines
+
+
+def _proxy_config(tmp_path: Path, *nas: str) -> Path:
+    """The one-line Caddyfile that Homebrew's service reads (demo/README.md "NAS 리버스 프록시 뒤")."""
+    wrapper = tmp_path / f"Caddyfile-{len(list(tmp_path.glob('Caddyfile-*')))}"
+    wrapper.write_text(" ".join(["import", str(ROOT / "demo" / "Caddyfile.proxy"), *nas]) + "\n")
+    return wrapper
+
+
+@pytest.mark.skipif(not shutil.which("caddy"), reason="needs the caddy binary")
+def test_the_proxy_front_does_not_start_without_its_nas(tmp_path):
+    checked = subprocess.run(
+        ["caddy", "validate", "--config", str(_proxy_config(tmp_path)), "--adapter", "caddyfile"],
+        env={**os.environ, "XDG_DATA_HOME": str(tmp_path)},
+        capture_output=True,
+        text=True,
+    )
+    assert checked.returncode != 0
+    assert "{args[0]}" in checked.stderr
+
+
+@pytest.mark.skipif(not shutil.which("caddy"), reason="needs the caddy binary")
+def test_the_proxy_front_adapts_to_what_its_comments_say(tmp_path):
+    adapted = subprocess.run(
+        ["caddy", "adapt", "--config", str(_proxy_config(tmp_path, "192.168.10.102")), "--adapter", "caddyfile"],
+        env={**os.environ, "XDG_DATA_HOME": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    config = json.loads(adapted.stdout)
+    assert config["admin"] == {"disabled": True}
+    (server,) = config["apps"]["http"]["servers"].values()
+    assert server["listen"] == [":8091"]
+    assert server["trusted_proxies"] == {"source": "static", "ranges": ["192.168.10.102"]}
+    assert server["client_ip_headers"] == ["X-Real-IP"]
+    assert "protocols" not in server and "tls" not in config["apps"]
+    refusal, proxy = server["routes"][1:]
+    assert refusal == {
+        "match": [{"not": [{"remote_ip": {"ranges": ["192.168.10.102"]}}]}],
+        "handle": [{"handler": "static_response", "status_code": 403, "close": True}],
+    }
+    text = json.dumps(proxy)
+    assert '"X-Real-Ip": ["{http.vars.client_ip}"]' in text
+    assert '"delete": ["CF-Connecting-IP", "Forwarded", "True-Client-IP"]' in text
+    assert '"dial": "127.0.0.1:8081"' in text
+
+
+def _free_port() -> int:
+    import socket
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+@pytest.fixture
+def proxy_front(tmp_path):
+    """demo/Caddyfile.proxy running, in front of a web that answers with the headers it got.
+
+    Yields a function that starts Caddy trusting the given NAS address and returns its port.
+    """
+    import threading
+    import time
+    import urllib.error
+    import urllib.request
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class Web(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = json.dumps({name.lower(): self.headers.get_all(name) for name in self.headers}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    web = ThreadingHTTPServer(("127.0.0.1", 0), Web)
+    threading.Thread(target=web.serve_forever, daemon=True).start()
+    caddies: list[subprocess.Popen] = []
+
+    def start(nas: str) -> int:
+        port = _free_port()
+        env = {
+            **os.environ,
+            "DEMO_PROXY_PORT": str(port),
+            "DEMO_DIRECT_PORT": str(web.server_address[1]),
+            "XDG_DATA_HOME": str(tmp_path),
+            "XDG_CONFIG_HOME": str(tmp_path),
+        }
+        caddy = subprocess.Popen(
+            ["caddy", "run", "--config", str(_proxy_config(tmp_path, nas)), "--adapter", "caddyfile"],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        caddies.append(caddy)
+        deadline = time.monotonic() + 15
+        while True:
+            assert caddy.poll() is None, "caddy exited"
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=1)
+                return port
+            except urllib.error.HTTPError:
+                return port
+            except OSError:
+                assert time.monotonic() < deadline, "caddy did not listen"
+                time.sleep(0.05)
+
+    yield start
+    for caddy in caddies:
+        caddy.terminate()
+        caddy.wait(timeout=10)
+    web.shutdown()
+    web.server_close()
+
+
+def _through(port: int, headers: dict[str, str]) -> tuple[int, dict]:
+    import urllib.error
+    import urllib.request
+
+    request = urllib.request.Request(f"http://127.0.0.1:{port}/", headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=5) as answer:
+            return answer.status, json.loads(answer.read())
+    except urllib.error.HTTPError as refused:
+        return refused.code, {}
+
+
+FORGED = {
+    "CF-Connecting-IP": "8.8.8.8",
+    "Forwarded": "for=7.7.7.7",
+    "True-Client-IP": "6.6.6.6",
+}
+
+
+@pytest.mark.skipif(not shutil.which("caddy"), reason="needs the caddy binary")
+def test_the_proxy_front_passes_on_the_visitor_the_nas_names(proxy_front):
+    # This test is the NAS: Caddy trusts its address, 127.0.0.1
+    port = proxy_front("127.0.0.1")
+    status, seen = _through(port, {"X-Real-IP": "203.0.113.7", "X-Forwarded-Proto": "https", **FORGED})
+    assert status == 200
+    assert seen["x-real-ip"] == ["203.0.113.7"]
+    # Django's SECURE_PROXY_SSL_HEADER reads what the NAS said
+    assert seen["x-forwarded-proto"] == ["https"]
+    for name in FORGED:
+        assert name.lower() not in seen, name
+    # A NAS that names no one names itself, never a header the visitor could have written
+    status, seen = _through(port, {})
+    assert (status, seen["x-real-ip"]) == (200, ["127.0.0.1"])
+
+
+@pytest.mark.skipif(not shutil.which("caddy"), reason="needs the caddy binary")
+def test_the_proxy_front_refuses_every_peer_but_the_nas(proxy_front):
+    # The NAS is elsewhere (TEST-NET-1); this test is another machine on the LAN, forging the header
+    port = proxy_front("192.0.2.1")
+    assert _through(port, {"X-Real-IP": "192.0.2.1", "X-Forwarded-Proto": "https"}) == (403, {})
+
+
 class _Answer:
     def __init__(self, body: bytes):
         self.body = body

@@ -13,8 +13,9 @@
                                                                           └ SQLite(/data 볼륨) ◀─ janitor
 ```
 
-앞문은 둘 중 하나다 — 위의 Cloudflare Tunnel, 또는 [직접 공개 모드](#직접-공개-모드)(호스트의 Caddy가 80·443을 받아
-web의 `:8081`로). web은 두 포트를 함께 듣고 포트마다 자기 앞문의 헤더만 믿으므로, 둘이 동시에 돌 수 있다.
+앞문은 셋 중 하나다 — 위의 Cloudflare Tunnel, [직접 공개 모드](#직접-공개-모드)(호스트의 Caddy가 80·443을 받아
+web의 `:8081`로), 또는 [NAS 리버스 프록시 뒤](#nas-리버스-프록시-뒤)(NAS가 TLS를 끝내고 호스트의 Caddy가 LAN의 8091에서 받아
+같은 `:8081`로). web은 두 포트를 함께 듣고 포트마다 자기 앞문의 헤더만 믿으므로, 터널과 다른 하나가 동시에 돌 수 있다.
 
 | 서비스 | 이미지 | 하는 일 |
 |------|------|------|
@@ -350,6 +351,126 @@ cd demo && docker compose -f compose.yaml -f compose.direct.yaml down
 
 `--insecure`는 아무도 보증하지 않는 인증서를 받는다. 스모크는 wss로 라이브가 되는지와 위조 헤더 검사(41번째 소켓 403)까지 본다.
 
+## NAS 리버스 프록시 뒤
+
+공유기의 80·443이 이미 Synology NAS(`192.168.10.102`, DSM)로 가서 다른 서비스가 쓰고 있을 때의 앞문이다. NAS의 리버스
+프록시(nginx)가 `wireview-demo.itda.work`의 TLS(DSM의 Let's Encrypt 인증서)를 끝내고, 2021 머신의 Caddy에 LAN의 평문 HTTP로
+넘긴다. 직접 공개 모드처럼 Cloudflare를 거치지 않는다. HTTP/3는 없다(DSM이 하지 않는다).
+
+```
+인터넷 ─ 공유기(TCP 80·443) ─▶ NAS 192.168.10.102(DSM 리버스 프록시: TLS, X-Real-IP $remote_addr)
+                                └▶ 192.168.10.197:8091 ─ 2021 머신의 Caddy(Caddyfile.proxy)
+                                     └▶ 127.0.0.1:8081 ─(colima 포워더)─▶ web(Caddy :8081) ─▶ app …
+```
+
+호스트의 Caddy를 두는 이유는 직접 공개 모드와 같다 — colima의 포워더를 지나면 방문자가 모두 VM의 게이트웨이 하나가 된다.
+스택은 `compose.direct.yaml` 그대로다(web의 8081을 호스트 루프백에).
+
+### 방문자 주소 (NAS 뒤)
+
+방문자의 주소를 아는 것은 NAS뿐이다. DSM이 자기 TCP 상대 주소(`$remote_addr`)를 `X-Real-IP`로 적고, 호스트의 Caddy
+(`Caddyfile.proxy`)는 그 헤더를 **NAS 주소 하나에서 온 것만** 믿는다(`trusted_proxies static <NAS>`, `client_ip_headers X-Real-IP`).
+
+- NAS가 아닌 주소에서 8091로 온 요청은 무엇을 읽기 전에 **403**이다(`remote_ip` — TCP 상대 주소로 가른다). LAN의 다른 기기가
+  직접 붙어 `X-Real-IP`를 적어 남이 되거나 한도를 피하지 못한다.
+- web으로는 `X-Real-IP`를 그 방문자로 덮어써 넘기고 `CF-Connecting-IP`·`Forwarded`·`True-Client-IP`는 지운다. web의 `:8081`은
+  `X-Real-IP`만 읽는다.
+- `X-Forwarded-Proto`는 NAS가 보낸 그대로 지나간다(`https` — DSM의 사용자 정의 헤더). Django의 `SECURE_PROXY_SSL_HEADER`가
+  그것을 보고 요청을 https로 다룬다. NAS 밖의 요청은 어차피 403이다.
+- NAS 주소에는 기본값이 없다. Homebrew 서비스는 셸의 환경 변수를 넘기지 않으므로 주소는 `import`의 인자로 준다. 인자 없이
+  가져오면 IP 자리에 `{args[0]}`이 남아 Caddy가 뜨지 않는다.
+
+믿는 범위는 NAS 전체다: NAS 위에서 도는 다른 프로그램(컨테이너 포함)도 8091에 `X-Real-IP`를 적을 수 있다. 같은 이유로 NAS의
+주소는 DHCP 예약이나 고정 주소여야 한다 — 바뀌면 모든 요청이 403이고, 다른 기기가 그 주소를 받으면 그 기기를 믿는다.
+
+`tests/test_demo_site.py`가 규칙(믿는 주소 하나, 그 밖 403, 헤더 덮어쓰기·삭제)과 caddy가 읽은 설정을 보고, caddy가 있으면
+실제 프로세스로 NAS 주소에서 온 `X-Real-IP`·`X-Forwarded-Proto`가 지나가고 위조 헤더가 지워지는지, 다른 주소는 403인지 본다.
+#214에서는 로컬에 DSM 흉내(TLS를 끝내고 `X-Real-IP {remote_host}`·`X-Forwarded-Proto https`를 적는 Caddy)를 앞에 두고
+`demo/smoke.py https://localhost --insecure`가 모두 통과했다 — 위조 헤더를 실은 소켓 41개 중 41번째 403(한 방문자). LAN 주소에서
+8091로 직접 보낸 요청은 위조 `X-Real-IP`와 함께 403이었다.
+
+### DSM 설정
+
+인증서(Let's Encrypt의 HTTP-01은 이름이 이 회선을 가리켜야 받을 수 있다 — 아래 "옮기기"의 순서를 따른다):
+
+1. 제어판 → 보안 → 인증서 → 추가 → 새 인증서 추가 → Let's Encrypt에서 인증서 받기.
+   도메인 이름 `wireview-demo.itda.work`, 이메일, 주체 대체 이름은 비운다. 80이 NAS로 넘어가 있어야 한다(이미 그렇다).
+2. 같은 화면의 설정 → 서비스 목록에서 리버스 프록시 항목 `wireview-demo.itda.work`(아래에서 만든 규칙)의 인증서를 1번의 것으로
+   고른다. 규칙을 먼저 만들어야 목록에 나온다.
+
+리버스 프록시: 제어판 → 로그인 포털 → 고급 → 리버스 프록시 → 만들기.
+
+| 탭 | 항목 | 값 |
+|------|------|------|
+| 일반 | 리버스 프록시 이름 | `wireview-demo` |
+| 일반 | 소스: 프로토콜 / 호스트 이름 / 포트 | `HTTPS` / `wireview-demo.itda.work` / `443` |
+| 일반 | 소스: HSTS 활성화 | 끈다 — Django가 이미 보낸다(`max-age` 30일) |
+| 일반 | 대상: 프로토콜 / 호스트 이름 / 포트 | `HTTP` / `192.168.10.197` / `8091` |
+| 사용자 정의 헤더 | 만들기 → WebSocket | `Upgrade` `$http_upgrade`, `Connection` `$connection_upgrade`가 들어간다 |
+| 사용자 정의 헤더 | 만들기(직접) | `X-Real-IP` `$remote_addr` |
+| 사용자 정의 헤더 | 만들기(직접) | `X-Forwarded-Proto` `https` |
+| 고급 설정 | 프록시 HTTP 버전 | `HTTP 1.1` (WebSocket에 필요하다) |
+| 고급 설정 | 프록시 연결 시간 제한 | `60` (그대로) |
+| 고급 설정 | 프록시 전송 시간 제한 / 프록시 읽기 시간 제한 | `3600` / `3600` |
+
+DSM의 기본 템플릿이 `X-Real-IP`·`X-Forwarded-Proto`를 이미 적는 버전이면 같은 값이 두 줄이 된다. 해가 없다 — Caddy는 첫
+값을 읽고 web에는 하나로 덮어써 넘기며, Django는 쉼표로 이은 `X-Forwarded-Proto`의 첫 값을 본다.
+
+시간 제한: DSM의 프록시 읽기·전송 시간 제한(기본 60초)은 그동안 오간 것이 없는 WebSocket을 끊는다. 앱의 uvicorn은 20초마다
+WebSocket ping을 보내고 브라우저가 pong으로 답하므로 기본값으로도 끊기지 않지만, 그 ping에 기대지 않게 3600초로 늘린다.
+끊겨도 페이지는 다시 붙고 상태를 되살린다. 고급 설정 탭이 없는 DSM이면 기본값으로 둔다(ping이 지킨다).
+
+### 2021 머신에서 켜기 (NAS 뒤)
+
+```bash
+# 1. 스택: 직접 공개 모드와 같다
+cd ~/srv/django-wireview/demo
+docker compose -f compose.yaml -f compose.direct.yaml up -d --build
+lsof -nP -iTCP:8081 -sTCP:LISTEN      # 127.0.0.1:8081 이어야 한다
+
+# 2. 호스트의 Caddy: 인자가 NAS의 주소다
+brew install caddy
+echo "import $HOME/srv/django-wireview/demo/Caddyfile.proxy 192.168.10.102" > /opt/homebrew/etc/Caddyfile
+caddy validate --config /opt/homebrew/etc/Caddyfile
+brew services start caddy             # 로그인 때 뜬다. 로그 /opt/homebrew/var/log/caddy.log
+lsof -nP -iTCP:8091 -sTCP:LISTEN      # caddy, *:8091
+```
+
+macOS 방화벽이 켜져 있으면 caddy의 수신을 허용한다(직접 공개 모드와 같은 명령). 포트는 `Caddyfile.proxy`의 기본값 8091을
+그대로 쓴다 — Homebrew의 서비스에는 `DEMO_PROXY_PORT`가 닿지 않는다. 바꾸려면 그 기본값과 DSM의 대상 포트를 함께 고친다.
+
+공유기는 손대지 않는다: 80·443은 NAS로 간다. 2021 머신(`192.168.10.197`)과 NAS(`192.168.10.102`)는 DHCP 예약으로 고정한다.
+
+LAN 안에서 먼저 확인한다(DNS를 바꾸기 전):
+
+```bash
+# 2021 머신에서: NAS가 아니므로 403이어야 한다 (LAN 주소로 붙는다 — 127.0.0.1은 NAS가 아니다)
+python3 -c "import urllib.request as u; u.urlopen('http://192.168.10.197:8091/')"   # HTTPError 403
+```
+
+NAS에서 8091로 닿는지는 DSM의 규칙을 만든 뒤 아래 5번에서 본다.
+
+### 터널에서 옮기기 (NAS 뒤)
+
+원칙은 [직접 공개 모드의 것](#터널에서-옮기기)과 같다 — 새 길을 열고, **DNS 레코드만** 바꾸고, 인증서를 확인하고, 캐시가 지난
+뒤에 터널을 정리한다. 다른 것은 인증서를 받는 곳(NAS)뿐이다.
+
+1. 위 "2021 머신에서 켜기 (NAS 뒤)"와 DSM의 리버스 프록시 규칙을 만든다(인증서는 아직 없다 — DSM의 기본 인증서로 응답한다).
+2. DNS 레코드를 바꾼다: 직접 공개 모드 3번 그대로 — `wireview-demo` CNAME을 **A** `121.159.177.248`, **DNS only**(회색 구름),
+   TTL 1분으로. (a) 대시보드의 Public Hostname은 **지우지 않는다**. AAAA는 두지 않는다.
+3. 곧바로 DSM에서 Let's Encrypt 인증서를 받고(위 "DSM 설정"의 1번) 리버스 프록시 항목에 할당한다(2번). 2번부터 여기까지가
+   새 응답(A)을 받은 방문자의 인증서 오류 구간이다 — 손으로 하는 만큼 걸린다(보통 1~2분).
+4. 밖(휴대폰 테더링 등)에서 `uv run python demo/smoke.py https://wireview-demo.itda.work --out /tmp/demo-smoke`. 응답에 `cf-ray`가
+   없어야 한다. 2021 머신의 Caddy 로그(`/opt/homebrew/var/log/caddy.log`)에서 `remote_ip`는 모두 `192.168.10.102`(NAS)이고
+   `client_ip`가 방문자들의 공인 주소여야 한다. `client_ip`도 모두 `192.168.10.102`이면 DSM이 `X-Real-IP`를 보내지 않는 것이다 —
+   모든 방문자가 한 사람으로 한도에 걸린다. 사용자 정의 헤더를 고치거나 되돌린다.
+5. 직접 공개 모드 6·7번처럼 10분 기다린 뒤 `docker compose stop cloudflared`, (a)면 그다음 Public Hostname을 지운다.
+
+되돌리기: 터널을 띄우고(`--profile tunnel up -d`) A를 터널의 CNAME(Proxied)으로 바꾼 뒤(직접 공개 모드의 되돌리기 1·2번), 5분 뒤
+DSM의 리버스 프록시 규칙을 지우고 `brew services stop caddy`. DSM의 인증서는 남겨도 해가 없다(만료되면 DSM이 알린다).
+
+동적 IP: `ddns`(직접 공개 모드의 "동적 IP")가 그대로 쓰인다 — A 레코드는 같은 회선 주소다.
+
 ## 로컬에서 확인
 
 ```bash
@@ -384,6 +505,9 @@ cd demo && docker compose down
 |------|------|
 | 페이지가 안 뜬다(Cloudflare 502/1033) | `docker compose ps` — web이 healthy인가, cloudflared가 Up인가. `docker compose logs cloudflared` |
 | 직접 모드: 접속이 안 되거나 인증서 오류 | `brew services list`의 caddy, `/opt/homebrew/var/log/caddy.log`(발급 실패면 80이 밖에서 닿는가 — 공유기, macOS 방화벽). `lsof -nP -iTCP:443 -sTCP:LISTEN`이 caddy인가. A 레코드가 지금 회선 주소인가(`ddns` 로그) |
+| NAS 뒤: DSM이 502 또는 시간 초과 | 2021 머신의 `brew services list`의 caddy, `lsof -nP -iTCP:8091 -sTCP:LISTEN`, macOS 방화벽. caddy 로그에 요청이 찍히는데 `403`이면 NAS 주소가 `Caddyfile`의 `import` 인자와 다르다(`remote_ip`를 본다) |
+| NAS 뒤: 모두가 같은 방문자로 한도에 걸린다 | caddy 로그의 `client_ip`가 `192.168.10.102`뿐이면 DSM이 `X-Real-IP $remote_addr`를 보내지 않는다(사용자 정의 헤더) |
+| NAS 뒤: 로그인·폼이 CSRF 403 | DSM이 `X-Forwarded-Proto https`를 보내지 않아 Django가 요청을 http로 본다(사용자 정의 헤더) |
 | 직접 모드: 모두가 같은 방문자로 한도에 걸린다 | caddy 로그의 `remote_ip`가 사설 주소뿐이면 앞에 다른 프록시가 있거나 공유기가 NAT 루프백으로 넘긴 것이다. web의 8081이 `127.0.0.1`에만 열렸는가 |
 | 페이지는 뜨는데 아무것도 반응하지 않는다 | 브라우저 콘솔에서 `wireview.min.js`가 404인가(web 이미지를 다시 빌드), `/__wireview__` 소켓이 열리는가. Cloudflare의 WebSockets 설정 |
 | 소켓이 바로 닫힌다 | `docker compose logs app \| grep demo.limits` — 한도에 걸렸는가(4029·1009, 새 소켓 403, 1013은 카운터 Redis에 닿지 못함). Origin이 `ALLOWED_HOSTS`에 있는가 |
@@ -411,6 +535,7 @@ cd demo && docker compose down
 | `Dockerfile`, `Dockerfile.dockerignore`, `requirements.txt` | 이미지. 의존성 버전은 저장소의 `uv.lock`을 따른다 |
 | `compose.yaml`, `Caddyfile`, `.env.example` | 런타임 |
 | `compose.direct.yaml`, `Caddyfile.direct`, `ddns.py`, `ddns.env.example` | 직접 공개 모드: web의 8081, 호스트의 Caddy, A 레코드 갱신 |
+| `Caddyfile.proxy` | NAS 리버스 프록시 뒤: NAS 하나만 믿고 LAN의 8091에서 받는 호스트의 Caddy. 스택은 `compose.direct.yaml` 그대로 |
 | `smoke.py`, `abuse.py` | 띄운 데모의 브라우저 스모크(https면 위조 헤더 검사 포함), 남용 탐침 |
 
 목록의 썸네일은 #213의 `examples/<예제>/media/<예제>.webp`다 — `STATICFILES_DIRS`가 `demo/media/`로 모아 Caddy가

@@ -3,8 +3,8 @@
 #
 #   :8080  cloudflared, inside the compose network (TLS ends at Cloudflare). Also what the local
 #          checks and compose's healthcheck use
-#   :8081  direct mode: the host's own Caddy (demo/Caddyfile.direct) through the host's loopback
-#          (compose.direct.yaml publishes it)
+#   :8081  the host's own Caddy through the host's loopback (compose.direct.yaml publishes it): in
+#          direct mode (demo/Caddyfile.direct) or behind the NAS's reverse proxy (demo/Caddyfile.proxy)
 #
 # Both reach it from private addresses (the compose network; colima's port forward). From them
 # Caddy keeps X-Forwarded-Proto as sent -- "https" -- and reads the visitor's address from the

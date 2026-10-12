@@ -1,0 +1,59 @@
+# Proxy mode's front door (demo/README.md "NAS 리버스 프록시 뒤"): the router's 80 and 443 go to a
+# NAS (Synology DSM) whose reverse proxy ends TLS for the site and passes it here, to the macOS
+# host's own Caddy, over plain HTTP on the LAN. This Caddy passes it on to the compose stack's web
+# at 127.0.0.1:8081, the same port direct mode (Caddyfile.direct) uses. It runs on the host for the
+# same reason: colima's port forwarder would turn every visitor into the VM's gateway.
+#
+# The NAS is the one peer that names the visitor. DSM writes X-Real-IP from its own TCP peer
+# ($remote_addr), so with that one address trusted, {client_ip} is the visitor. Anyone else on the
+# LAN who reaches this port gets 403 before anything is read -- they could write any X-Real-IP.
+# X-Forwarded-Proto (https, which DSM sends as a custom header) comes through as the NAS sent it,
+# so Django sees the request as secure.
+#
+# The NAS's address is the import's argument, not an environment variable: Homebrew's service runs
+# Caddy without the shell's environment. It has no default. The service's Caddyfile is one line,
+#
+#   import /Users/<user>/srv/django-wireview/demo/Caddyfile.proxy 192.168.10.102
+#
+# and an import without the address leaves "{args[0]}" where an IP must be: Caddy refuses to start.
+#
+#   DEMO_PROXY_PORT     the LAN port the NAS's reverse proxy points at (8091)
+#   DEMO_DIRECT_PORT    web's port on 127.0.0.1 (8081)
+{
+	admin off
+	servers :{$DEMO_PROXY_PORT:8091} {
+		trusted_proxies static {args[0]}
+		client_ip_headers X-Real-IP
+	}
+}
+
+:{$DEMO_PROXY_PORT:8091} {
+	log {
+		output stdout
+		format console
+	}
+
+	# Only the NAS: the TCP peer, whatever any header says
+	@outsider not remote_ip {args[0]}
+	respond @outsider 403 {
+		close
+	}
+
+	request_body {
+		max_size 1MB
+	}
+
+	header -Server
+
+	# WebSocket upgrades pass through on their own. The stack's Caddy adds the cache and
+	# security headers and serves /static/
+	reverse_proxy 127.0.0.1:{$DEMO_DIRECT_PORT:8081} {
+		# The visitor, for the demo's rate limits (demo/limits.py): what the NAS wrote, read
+		# by trusted_proxies above, and written afresh
+		header_up X-Real-IP {client_ip}
+		header_up -CF-Connecting-IP
+		# Nothing reads these, but whatever comes to read them must not believe the visitor
+		header_up -Forwarded
+		header_up -True-Client-IP
+	}
+}
