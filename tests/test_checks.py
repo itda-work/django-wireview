@@ -332,6 +332,8 @@ class TestClientBundleCheck:
 
         assert [m.id for m in messages] == ["wireview.W004"]
         assert "make build-js" in messages[0].hint
+        # The form that needs no make, which most Windows machines lack (#217)
+        assert "uv run npm run build" in messages[0].hint
 
 
 class TestSettingsKeysCheck:

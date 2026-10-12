@@ -7,9 +7,11 @@ all: install build
 # Installation
 # =============================================================================
 
-# Install dependencies using uv
+# Install dependencies using uv. Node and npm come with them (nodejs-wheel), so the
+# JS build tools install through that Node: nothing else needs installing first (#217).
 install:
 	uv sync --all-extras
+	uv run npm ci
 
 # Install Playwright browsers
 playwright-install:
@@ -84,11 +86,11 @@ check:
 
 # Type check JavaScript
 check-js:
-	npm run typecheck
+	uv run npm run typecheck
 
 # Unit-test the pure client modules (node --test)
 test-js:
-	npm test
+	uv run npm test
 
 # Run all quality checks
 quality: lint check check-js test-js
@@ -128,7 +130,7 @@ ext-test-host:
 
 # Build JavaScript bundle
 build-js:
-	npm run build
+	uv run npm run build
 
 # Build Python package
 build-py:
@@ -139,7 +141,7 @@ build: build-js build-py
 
 # Watch JavaScript for changes
 watch-js:
-	npm run watch
+	uv run npm run watch
 
 # =============================================================================
 # Development Server
@@ -421,7 +423,7 @@ help:
 	@echo "django-wireview Makefile"
 	@echo ""
 	@echo "Installation:"
-	@echo "  make install          - Install all dependencies"
+	@echo "  make install          - Install all dependencies (uv sync, then npm ci)"
 	@echo "  make playwright-install - Install Playwright browsers"
 	@echo ""
 	@echo "Testing:"

@@ -219,7 +219,8 @@ def check_client_bundle(app_configs, **kwargs) -> list[CheckMessage]:
             f"'{BUNDLE_STATIC_PATH}' was not found by the staticfiles finders.",
             hint=(
                 "{% wireview_header %} loads it, so without it no wireview JavaScript runs "
-                "and the page silently stays static. Run 'make build-js' (the bundle is a "
+                "and the page silently stays static. Run 'uv run npm ci' once, then "
+                "'uv run npm run build' ('make build-js' does the same; the bundle is a "
                 "build artifact and is gitignored)."
             ),
             id="wireview.W004",

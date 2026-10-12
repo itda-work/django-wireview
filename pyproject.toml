@@ -195,6 +195,9 @@ default-groups = ["dev", "docs"]
 [dependency-groups]
 dev = [
     "pytest-playwright>=0.4.0",
+    # Node and npm as a wheel, so `uv sync` is all a contributor installs to build
+    # wireview.min.js -- on Windows too, where few have Node (#217).
+    "nodejs-wheel>=22",
 ]
 # What scripts/docs_site renders the documentation site with (make docs-site, #159). Not a
 # runtime dependency. A default group, so `uv sync` and `uv run` install it and `make test`
