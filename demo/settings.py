@@ -251,7 +251,15 @@ USE_TZ = True
 
 STATIC_URL = "/static/"
 # Collected into the image at build time; Caddy (the web service) serves a copy of it
-STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_ROOT = Path(_env("DEMO_STATIC_ROOT", str(BASE_DIR / "staticfiles")))
+# Content-hashed names ({% static %} -> wireview/wireview.min.<hash>.js): Caddy marks them
+# immutable and Cloudflare keeps them at its edge (demo/Caddyfile). A visitor in Korea reaches
+# the tunnel through a far edge, so a file that has to come back to the origin costs seconds.
+# Without DEBUG the names come from staticfiles.json, which collectstatic writes into the image
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"},
+}
 # Each example's screenshot (#213, examples/<name>/media/<name>.webp) for the list's cards, as
 # static/demo/media/<name>.webp (demo/catalog.py). The image carries the webp files only
 STATICFILES_DIRS = [

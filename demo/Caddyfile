@@ -31,13 +31,20 @@
 
 	handle_path /static/* {
 		root * /srv/static
-		# Revalidated on every load (ETag): the image runs a checkout, not a release, so
-		# {% wireview_header %}'s ?v= has no package version to change when the bundle does
-		header Cache-Control "public, no-cache"
+		# What {% static %} names carries its content's hash (ManifestStaticFilesStorage,
+		# demo/settings.py): kept a year, at Cloudflare's edge too. A new deploy names new files
+		@hashed path_regexp \.[0-9a-f]{12}\.[A-Za-z0-9]+$
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		# The unhashed originals and the manifest: nothing names them, revalidated if asked for
+		@unhashed not path_regexp \.[0-9a-f]{12}\.[A-Za-z0-9]+$
+		header @unhashed Cache-Control "public, no-cache"
 		file_server
 	}
 
 	handle {
+		# Pages carry the visitor's session and CSRF token: no shared cache keeps them, even
+		# if a Cloudflare rule ever said "cache everything". Django's own header wins
+		header ?Cache-Control "private, no-cache"
 		# WebSocket upgrades pass through on their own
 		reverse_proxy app:8000 {
 			# The visitor, for the demo's rate limits (demo/limits.py)
