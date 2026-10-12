@@ -54,3 +54,38 @@ class Alert(Component):
 
     message: str = ""
     variant: str = "info"  # info, success, warning, error
+
+
+class SlotsGallery(Component):
+    """The page that calls the four: what a caller writes into each one's slots.
+
+    Its buttons sit outside every fill. An event goes to the component around
+    the element it fires on, and inside a fill that is the slot's owner (a Card,
+    a List), which has no handler of the caller's.
+    """
+
+    class Meta:
+        template_name = "slots/gallery.html"
+
+    books: list[dict] = [
+        {"name": "Two Scoops of Django", "note": "설정과 구조"},
+        {"name": "Fluent Python", "note": "언어 깊이 읽기"},
+    ]
+    alert_variant: str = "info"
+    modal_open: bool = False
+
+    async def add_book(self):
+        extra = [
+            {"name": "Architecture Patterns with Python", "note": "도메인 모델"},
+            {"name": "High Performance Django", "note": "운영"},
+            {"name": "Test-Driven Development with Python", "note": "테스트 먼저"},
+        ]
+        if len(self.books) < 2 + len(extra):
+            self.books = [*self.books, extra[len(self.books) - 2]]
+
+    async def cycle_alert(self):
+        order = ["info", "success", "warning", "error"]
+        self.alert_variant = order[(order.index(self.alert_variant) + 1) % len(order)]
+
+    async def toggle_modal(self):
+        self.modal_open = not self.modal_open
