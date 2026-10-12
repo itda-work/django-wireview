@@ -1093,8 +1093,14 @@ def check_django_templates(app_configs, **kwargs) -> list[CheckMessage]:
     of the DjangoTemplates one in TEMPLATES, a name both can find goes to Jinja2,
     and the first render raises. A template no engine finds is not this check's:
     the render says so.
+
+    Another engine that finds the name and cannot compile it -- Jinja2 on
+    ``{% load %}`` -- raises its own syntax error, and Django's loader asks no
+    other engine: the error names neither engine. The check asks the engines in
+    order, as the loader does, which one that was.
     """
-    from django.template import TemplateDoesNotExist, TemplateSyntaxError, loader
+    from django.template import TemplateDoesNotExist, TemplateSyntaxError, engines, loader
+    from django.template.backends.django import DjangoTemplates
 
     from .core.page_request import is_django, not_django
     from .function_components import _registry
@@ -1110,14 +1116,19 @@ def check_django_templates(app_configs, **kwargs) -> list[CheckMessage]:
 
     messages = []
     for obj, owner, name in found:
+        backend = None
         try:
             template = loader.get_template(name)
-        except (TemplateDoesNotExist, TemplateSyntaxError):
+        except TemplateDoesNotExist:
             continue
+        except TemplateSyntaxError:
+            template, backend = None, _first_engine(engines.all(), name)
+            if backend is None or isinstance(backend, DjangoTemplates):
+                continue  # Django's own syntax error: the render says so
         if not is_django(template):
             messages.append(
                 Warning(
-                    not_django(template, owner, name),
+                    not_django(template, owner, name, backend=backend),
                     hint=(
                         "A component's template renders with Django's template engine only. Move it where a "
                         "DjangoTemplates engine finds it first. See docs/COMPATIBILITY.md."
@@ -1127,6 +1138,21 @@ def check_django_templates(app_configs, **kwargs) -> list[CheckMessage]:
                 )
             )
     return messages
+
+
+def _first_engine(backends: list[t.Any], name: str) -> t.Any:
+    """The first of ``backends`` that finds ``name``, compiled or not, as Django's loader asks them."""
+    from django.template import TemplateDoesNotExist
+
+    for backend in backends:
+        try:
+            backend.get_template(name)
+        except TemplateDoesNotExist:
+            continue
+        except Exception:  # noqa: BLE001 -- found, and failed to compile: this is the one
+            return backend
+        return backend
+    return None
 
 
 def register_checks() -> None:

@@ -5,9 +5,12 @@ and the W022 rows of tests/test_checks.py put this engine ahead of a DjangoTempl
 the wrapper has ``template`` and ``backend`` as Django's own wrappers do, and the
 backend has ``env`` -- no ``engine``. jinja2 is not a dependency, so its templates
 are ``str.format`` strings over the context.
+
+``StrictTemplates`` finds Django's syntax and cannot compile it, as Jinja2 does
+with ``{% load %}``: Django's loader raises that error and asks no other engine.
 """
 
-from django.template import TemplateDoesNotExist
+from django.template import TemplateDoesNotExist, TemplateSyntaxError
 from django.template.backends.base import BaseEngine
 
 #: The templates it has, by name
@@ -52,3 +55,14 @@ class Template:
 
     def render(self, context: dict | None = None, request: object = None) -> str:
         return self.template.render(dict(context or {}))
+
+
+class StrictTemplates(OtherTemplates):
+    """Finds ``STRICT``'s names and fails to compile them, as Jinja2 does on Django's tags."""
+
+    STRICT = ("dj/count.html", "dj/fn.html")
+
+    def get_template(self, template_name: str) -> "Template":
+        if template_name in self.STRICT:
+            raise TemplateSyntaxError("Encountered unknown tag 'load'.")
+        return super().get_template(template_name)

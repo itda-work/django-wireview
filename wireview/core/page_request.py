@@ -25,8 +25,10 @@ one. Being verified, and in a ``Broadcast`` item, ``request`` is watched
 reads the request is out of scope (``wireview.W019``).
 
 A component's template is a Django template (``django_template``): wireview's
-tags and the render's markers are Django's, so another backend's template never
-rendered live. A page's template may be any backend's.
+tags and the render's markers are Django's, so a component's own template from
+another backend never joined. A function component's and a stream or
+``Broadcast`` item's template from another backend rendered, live too, before
+1.6; it raises now. A page's template may be any backend's.
 """
 
 from __future__ import annotations
@@ -134,13 +136,19 @@ def is_django(template: t.Any) -> bool:
     return isinstance(template, Template) or isinstance(getattr(template, "backend", None), DjangoTemplates)
 
 
-def not_django(template: t.Any, owner: str, name: str) -> str:
-    """Why ``template``, found for ``owner`` under ``name``, cannot render: it is another backend's."""
-    backend = getattr(template, "backend", None)
+def not_django(template: t.Any, owner: str, name: str, *, backend: t.Any = None) -> str:
+    """Why ``template``, found for ``owner`` under ``name``, cannot render: it is another backend's.
+
+    With ``backend`` and no template, that engine found the name first and could
+    not compile it -- Django's loader raises its error, and no other engine is asked.
+    """
+    if backend is None:
+        backend = getattr(template, "backend", None)
     engine = type(backend) if backend is not None else type(template)
     alias = getattr(backend, "name", None)
+    found = "found" if template is not None else "found, and could not compile,"
     return (
-        f"{owner}'s template {name!r} was found by the {alias!r} template engine "
+        f"{owner}'s template {name!r} was {found} by the {alias!r} template engine "
         f"({engine.__module__}.{engine.__qualname__}), not by a DjangoTemplates one: wireview renders a "
         f"component's template with Django's template engine only -- its tags ({{% tag_header %}}, {{% on %}}, "
         f"{{% component %}}) and the markers of a live render are Django's. Put the template in a "

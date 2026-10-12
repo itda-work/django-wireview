@@ -1264,6 +1264,33 @@ class TestDjangoTemplatesCheck:
         assert "Function component 'other_fn''s template 'other/fn.html'" in messages[1].msg
         assert "DjangoTemplates" in messages[0].hint
 
+    def test_a_template_another_engine_finds_first_and_cannot_compile_is_flagged(self, only, functions):
+        """Jinja2 raises its own syntax error on Django's tags, and Django's loader asks no other engine."""
+        only(make_component("StrictCount", meta={"template_name": "dj/count.html"}))
+        functions(strict_fn="dj/fn.html")
+        engines = [{**self.ENGINES[0], "BACKEND": "testproj.other_backend.StrictTemplates"}, self.ENGINES[1]]
+        with override_settings(TEMPLATES=engines):
+            messages = check_django_templates(None)
+        assert [m.id for m in messages] == ["wireview.W022", "wireview.W022"]
+        assert (
+            "probeapp.live.StrictCount's template 'dj/count.html' was found, and could not compile, by the "
+            "'other_backend' template engine (testproj.other_backend.StrictTemplates)" in messages[0].msg
+        )
+        assert "Function component 'strict_fn''s template 'dj/fn.html' was found, and could not" in messages[1].msg
+
+    def test_a_django_template_that_does_not_compile_is_the_renders_to_tell(self, only, functions):
+        only(make_component("BrokenCount", meta={"template_name": "dj/broken.html"}))
+        functions()
+        engines = [
+            self.ENGINES[0],
+            {
+                "BACKEND": "django.template.backends.django.DjangoTemplates",
+                "OPTIONS": {"loaders": [("django.template.loaders.locmem.Loader", {"dj/broken.html": "{% nope %}"})]},
+            },
+        ]
+        with override_settings(TEMPLATES=engines):
+            assert check_django_templates(None) == []
+
     def test_django_templates_and_missing_ones_are_silent(self, only, functions):
         """A template no engine finds is the render's to tell: not this check's."""
         only(
