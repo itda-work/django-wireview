@@ -289,7 +289,8 @@ view = await mount(XAdminPanel, user=staff, live_session="admin")
 `daphne`를 `INSTALLED_APPS`에 둔 프로젝트(스타터 프로젝트가 그렇다)에서 pytest-playwright로 브라우저 테스트를 쓰면,
 Windows에서는 모든 브라우저 테스트가 픽스처에서 `NotImplementedError`로 멈춘다. daphne는 import될 때 Twisted를 위해
 selector 루프 정책을 거는데, Windows의 selector 루프는 서브프로세스를 띄우지 못한다. 그런데 Playwright는 드라이버를
-서브프로세스로 띄운다. 프로젝트 루트의 `conftest.py`에서 daphne를 먼저 import하고 정책을 기본값으로 되돌린다.
+서브프로세스로 띄운다. 프로젝트 루트의 `conftest.py`에서 daphne를 import해 정책 걸기를 끝낸 뒤 정책을 기본값으로 되돌린다. pytest-django는 보통
+이 파일보다 먼저 Django를 설정해 daphne를 import하지만, 어느 쪽이 먼저든 마지막에 걸리는 정책은 이 파일의 것이다.
 
 ```python
 # conftest.py
@@ -298,7 +299,7 @@ import sys
 import warnings
 
 if sys.platform == "win32":
-    import daphne  # noqa: F401  -- its import sets the selector policy; Django's later import changes nothing
+    import daphne  # noqa: F401  -- imported before or after Django's, the policy set below is the last
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)  # Python 3.14 deprecates the policy API

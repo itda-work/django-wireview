@@ -36,7 +36,8 @@ if sys.platform == "win32":
     # starts its driver as one: every browser test failed in its fixture with NotImplementedError,
     # as did every test that runs asyncio.create_subprocess_exec. Twisted only runs in the daphne
     # processes the suite starts, which import daphne -- and set the policy -- for themselves.
-    # Importing it here first means Django's later import finds it done and changes nothing.
+    # pytest-django usually imports daphne (django.setup) before this file; importing it here covers a
+    # setup that runs later. Either way the policy set below is the last one.
     import daphne  # noqa: F401
 
     with warnings.catch_warnings():
