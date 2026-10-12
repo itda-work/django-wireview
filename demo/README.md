@@ -41,6 +41,9 @@
   데이터는 매일 시드로 돌아가므로 잃어도 되는 데이터다.
 - **Caddy가 정적 파일.** 운영(`DEBUG=False`)의 uvicorn은 `/static/`을 서빙하지 않는다. web 이미지는 app 이미지의 `collectstatic`
   결과를 복사해 만든다 — 명명 볼륨으로 나누면 다음 배포에도 첫 번들이 남는다([정적 파일](../docs/DEPLOYMENT.md#정적-파일)).
+  `{% static %}`은 내용 해시가 붙은 이름(`ManifestStaticFilesStorage`)을 내고, Caddy는 그 파일에 `max-age=31536000, immutable`을
+  단다 — Cloudflare가 엣지에 두므로 한국 방문자가 먼 엣지로 들어와도 정적 파일은 터널을 왕복하지 않는다. 해시 없는 원본과
+  매니페스트는 `no-cache`, 페이지(HTML)는 세션·CSRF를 실으므로 `private, no-cache`다.
 
 ## 공개 데모의 안전장치
 
@@ -126,7 +129,7 @@ cd ~/srv/django-wireview && git pull
 cd demo && docker compose up -d --build
 ```
 
-app이 새로 시작하므로 데이터는 시드로 돌아간다. 한도 카운터(`limits`)는 그대로 남는다. 열려 있던 페이지는 재연결해 다시 join한다(서명 키가 같으면 새로고침 없이).
+정적 파일은 바뀐 것만 새 해시 이름이 되므로 엣지 캐시를 비울 필요가 없다. app이 새로 시작하므로 데이터는 시드로 돌아간다. 한도 카운터(`limits`)는 그대로 남는다. 열려 있던 페이지는 재연결해 다시 join한다(서명 키가 같으면 새로고침 없이).
 `DJANGO_SECRET_KEY`를 바꾸면 열려 있던 페이지가 모두 새로고침된다.
 
 ### 로그

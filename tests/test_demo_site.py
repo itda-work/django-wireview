@@ -12,6 +12,7 @@ import asyncio
 import datetime as dt
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -646,24 +647,92 @@ def test_the_janitor_compacts_what_a_trimmed_flood_left_free(monkeypatch):
         assert done == ["compact"]
 
 
-@pytest.mark.integration
-def test_the_list_shows_every_example_s_screenshot(tmp_path):
-    """#213's webp of each example, collected from examples/<name>/media as a static file."""
+@pytest.fixture(scope="module")
+def collected(tmp_path_factory):
+    """The demo's settings in a process of their own, after the image's collectstatic (demo/Dockerfile)."""
+    tmp = tmp_path_factory.mktemp("demo-static")
     env = {key: value for key, value in os.environ.items() if key != "DJANGO_SETTINGS_MODULE"}
-    env.update(DJANGO_SECRET_KEY="a" * 50 + "-not-a-real-key", DEMO_DATA_DIR=str(tmp_path))
-    script = "from demo.catalog import EXAMPLES; print(*[f'{e.slug} {e.media}' for e in EXAMPLES], sep='\\n')"
-    shown = subprocess.run(
-        [sys.executable, "demo/manage.py", "shell", "--no-imports", "-c", script],
-        cwd=ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=120,
+    env.update(
+        DJANGO_SECRET_KEY="a" * 50 + "-not-a-real-key", DEMO_DATA_DIR=str(tmp), DEMO_STATIC_ROOT=str(tmp / "static")
     )
-    assert shown.returncode == 0, shown.stderr
-    lines = dict(line.split(" ", 1) for line in shown.stdout.splitlines() if line)
+
+    def manage(*args: str) -> str:
+        done = subprocess.run(
+            [sys.executable, "demo/manage.py", *args], cwd=ROOT, env=env, capture_output=True, text=True, timeout=120
+        )
+        assert done.returncode == 0, done.stdout + done.stderr
+        return done.stdout
+
+    manage("collectstatic", "--noinput", "-v0")
+    return tmp / "static", manage
+
+
+def _shell(manage, script: str) -> str:
+    return manage("shell", "--no-imports", "-c", script)
+
+
+HASHED = r"/[^/]+\.[0-9a-f]{12}\.[A-Za-z0-9]+(\?|$)"
+
+
+@pytest.mark.integration
+def test_the_list_shows_every_example_s_screenshot(collected):
+    """#213's webp of each example, collected from examples/<name>/media as a static file."""
+    _, manage = collected
+    script = "from demo.catalog import EXAMPLES; print(*[f'{e.slug} {e.media}' for e in EXAMPLES], sep='\\n')"
+    lines = dict(line.split(" ", 1) for line in _shell(manage, script).splitlines() if line)
     assert len(lines) == 14
-    assert lines == {slug: f"/static/demo/media/{slug}.webp" for slug in lines}
+    for slug, media in lines.items():
+        assert re.fullmatch(rf"/static/demo/media/{slug}\.[0-9a-f]{{12}}\.webp", media), media
+
+
+@pytest.mark.integration
+def test_every_static_file_a_page_names_carries_its_content_s_hash(collected):
+    """So Caddy can mark it immutable and Cloudflare keep it at its edge (#214)."""
+    _, manage = collected
+    script = (
+        "from django.template.loader import render_to_string; "
+        "from django.templatetags.static import static; "
+        "print(render_to_string('wireview_header.html', {'HOOK_FILES': ['hooks/hooks/lifecycle.js']})); "
+        "print(static('todo.css'))"
+    )
+    shown = _shell(manage, script)
+    named = re.findall(r'(?:src=")?(/static/[^"\s]+)', shown)
+    assert sorted(name.split("?")[0].rsplit("/", 1)[-1].split(".")[0] for name in named) == [
+        "lifecycle",
+        "todo",
+        "wireview",
+    ], shown
+    for name in named:
+        assert re.search(HASHED, name), name
+
+
+def _caddy_hashed_pattern() -> re.Pattern[str]:
+    caddyfile = (ROOT / "demo" / "Caddyfile").read_text()
+    pattern = re.search(r"@hashed path_regexp (\S+)", caddyfile)
+    assert pattern, "the Caddyfile names hashed files with @hashed"
+    return re.compile(pattern.group(1))
+
+
+def test_caddy_keeps_hashed_files_a_year_and_revalidates_the_rest():
+    caddyfile = (ROOT / "demo" / "Caddyfile").read_text()
+    assert 'header @hashed Cache-Control "public, max-age=31536000, immutable"' in caddyfile
+    assert 'header @unhashed Cache-Control "public, no-cache"' in caddyfile
+    hashed = re.search(r"@hashed path_regexp (\S+)", caddyfile)
+    assert hashed and f"@unhashed not path_regexp {hashed.group(1)}\n" in caddyfile
+    # Pages are not a shared cache's to keep: they carry the session and the CSRF token
+    assert 'header ?Cache-Control "private, no-cache"' in caddyfile
+
+
+@pytest.mark.integration
+def test_caddy_s_pattern_tells_the_collected_hashed_names_from_the_rest(collected):
+    static_root, _ = collected
+    manifest = json.loads((static_root / "staticfiles.json").read_text())["paths"]
+    pattern = _caddy_hashed_pattern()
+    assert len(manifest) > 20
+    for original, hashed in manifest.items():
+        assert pattern.search("/" + hashed), hashed
+        assert not pattern.search("/" + original), original
+    assert not pattern.search("/staticfiles.json")
 
 
 def _signed_in(request):

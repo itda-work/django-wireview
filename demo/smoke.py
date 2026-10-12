@@ -40,6 +40,9 @@ LIVE = '[data-is-live="true"]'
 #: Marks this run's messages: the demo keeps earlier runs' until the next reset
 RUN = format(int(time.time() * 1000) % 10**8, "x")
 TIMEOUT = 15_000
+#: Over the public address every request goes through Cloudflare and the tunnel (a visitor in
+#: Korea may enter at a far edge), and a fresh context's first page loads the bundle from there
+REMOTE_TIMEOUT = 45_000
 #: This run's visitor address over plain http: one of TEST-NET-2's
 VISITOR = f"198.51.100.{random.randrange(1, 255)}"
 
@@ -57,7 +60,7 @@ def local_headers(base: str) -> dict[str, str]:
 def context(browser: Browser, base: str):
     headers = local_headers(base)
     ctx = browser.new_context(base_url=base, extra_http_headers=headers, viewport={"width": 1280, "height": 800})
-    ctx.set_default_timeout(TIMEOUT)
+    ctx.set_default_timeout(TIMEOUT if base.startswith("http://") else REMOTE_TIMEOUT)
     return ctx
 
 

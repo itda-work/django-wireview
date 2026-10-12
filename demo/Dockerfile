@@ -38,7 +38,8 @@ COPY --from=deps /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.
 COPY --from=deps /usr/local/bin/uvicorn /usr/local/bin/uvicorn
 WORKDIR /app
 COPY wireview ./wireview
-COPY --from=js /src/wireview/static/wireview/wireview.min.js ./wireview/static/wireview/wireview.min.js
+# With its source map: the bundle names it, and collectstatic's hashing follows the name
+COPY --from=js /src/wireview/static/wireview/wireview.min.js /src/wireview/static/wireview/wireview.min.js.map ./wireview/static/wireview/
 COPY examples ./examples
 COPY demo ./demo
 # collectstatic imports the settings, which want a secret: a throwaway one for this line only
