@@ -120,7 +120,8 @@ wireview/
 │                          id 없이 그린 것은 패스 끝에 그린 자리를 받는다(wire.drawn_at: 그린 쪽, 그것이 보이는 같은 클래스 중 몇 번째인가.
 │                          그린 순서대로 0부터 — temporary assign이 남긴 부분의 것도 그 부분의 자리에서 센다(keep_drawn, template_engine._PartNode).
 │                          번호는 보이는 것만으로 정해진다). presence가 그것으로 프로듀서를 이름 짓는다(_place_unnamed, #212).
-│                          번호가 옮긴 입장 프로듀서는 그 render 트리 뒤 옛 이름으로 퇴장하고 새 이름으로 입장한다(take_renumbered → presence.rename)
+│                          번호가 옮긴 입장 프로듀서는 그 render 트리 뒤 항목을 새 이름으로 옮긴다(take_renumbered → presence.rename:
+│                          채널마다 presence_move 하나, 트래커는 한 번에 적용하고 한 번 렌더한다)
 ├── live_component.py      LiveComponent (부모 연결을 공유하는 중첩 상태 컴포넌트)
 ├── function_components.py  @function_component (상태 없는 템플릿 함수). 공개 이름과 겹치지 않게 복수형이다(#98).
 │                          그 템플릿의 {% component %}는 페이지 저장소에, 함수를 그린 컴포넌트가 그린 것으로 그려진다(this는 넘기지 않는다).

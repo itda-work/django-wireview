@@ -132,8 +132,9 @@ The django-reactor era changelog (2.x) is preserved in
   draws them. The id minted for it is new on every pass that draws it, a reconnect's too; its place is not.
   Two id-less producers of one class on a page are two metas, so hiding one keeps the user listed and either
   one's typing shows (#212). The numbers are a function of what the drawer shows: one a part kept for a
-  reset temporary assign shows counts where the part is, and when one before it hides it leaves under its
-  old name and joins under the new one, typing or not. Held to its number, it left a gap the first pass
+  reset temporary assign shows counts where the part is, and when one before it hides its meta moves from
+  its old name to the new one, typing or not: the producers a render moved go in one `presence_move`, which
+  a tracker applies as one change and renders once, so no list between shows the user gone or not typing. Held to its number, it left a gap the first pass
   after a reconnect closed, and the meta under the number past it stayed after the tab closed. The user was the key: closing one tab
   removed them while the other was still open, and one tab's typing state overwrote the other's. The list
   `presence_users` still has one entry per user, merged from their tabs: typing if any tab types, otherwise
