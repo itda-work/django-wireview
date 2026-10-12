@@ -86,6 +86,7 @@ TEMPLATES = {
     "qs/shared_fn.html": '{% load wireview %}<div {% tag_header %}>{{ n }}{% func "qs_fn_tag" %}</div>',
     "qs/fn_tag.html": "{% load qs_tags %}[{% qs_get %}]",
     "qs/lazy.html": "{% load wireview %}<div {% tag_header %}>{{ n }}</div>",
+    "qs/lazy_fn.html": '{% load wireview %}<div {% tag_header %}>{{ n }}{% func "qs_fn" %}</div>',
 }
 
 
@@ -213,19 +214,31 @@ class QsSharedFn(QsSharedTag):
 
 
 class QsLazy(Component):
-    """Has a ``request`` property of its own, which its template does not read."""
+    """Has ``request`` and ``csrf_token`` properties of its own, which its template does not read."""
 
     class Meta:
         template_name = "qs/lazy.html"
         lazy_properties = True
 
     n: int = 0
-    _requests: t.ClassVar[list[int]] = []
+    _computed: t.ClassVar[list[str]] = []
 
     @property
     def request(self) -> str:
-        self._requests.append(1)
+        self._computed.append("request")
         raise RuntimeError("the template does not read it")
+
+    @property
+    def csrf_token(self) -> str:
+        self._computed.append("csrf_token")
+        raise RuntimeError("the template does not read it")
+
+
+class QsLazyFn(QsLazy):
+    """The same, drawing a function component: finding what drew it reads none of them either."""
+
+    class Meta:
+        template_name = "qs/lazy_fn.html"
 
 
 @pytest.fixture(autouse=True)
@@ -487,14 +500,19 @@ async def test_a_verified_shared_render_that_reads_the_query_raises(monkeypatch)
 # -- what the render leaves alone ----------------------------------------------------------
 
 
+@pytest.mark.parametrize("component", [QsLazy, QsLazyFn], ids=["own", "function-component"])
 @pytest.mark.asyncio
-async def test_a_lazy_property_named_request_is_not_computed():
-    """``Meta.lazy_properties`` computes what the template reads (#187); finding the page reads none of it."""
-    QsLazy._requests.clear()
-    mounted = await wireview_testing.mount(QsLazy, id="lazy", params={"q": "a"})
-    assert mounted.render().endswith(">0</div>")
+async def test_a_lazy_property_named_request_is_not_computed(component):
+    """``Meta.lazy_properties`` computes what the template reads (#187); finding the page reads none of it.
+
+    Nor does a function component's template finding what drew it: ``Context.get``
+    asked each dict ``in``, which computed ``request`` and ``csrf_token`` there.
+    """
+    QsLazy._computed.clear()
+    mounted = await wireview_testing.mount(component, id="lazy", params={"q": "a"})
+    assert mounted.render().endswith("</div>")
     await mounted.render_diff()
-    assert QsLazy._requests == []
+    assert QsLazy._computed == []
 
 
 # -- a socket -------------------------------------------------------------------------------
