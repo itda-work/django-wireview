@@ -848,7 +848,11 @@ Channels는 `disconnect()`를 부르지 않는다. wireview는 앱의 끝(ASGI `
   1012로 닫아 `disconnect`로 정리가 돌게 하고, `--timeout-graceful-shutdown`을 `leaving()` 시한(5초)보다 넉넉히,
   `terminationGracePeriodSeconds`를 그보다 길게 둔다. daphne의 종료는 소켓을 닫지 않으므로 이 순서를 탈 수 없다.
 
-실제 서버로 무엇이 끝나고 무엇이 끝나지 않는지는 `tests/test_server_shutdown.py`가 연결 둘(짧은 훅·긴 훅)로 본다.
+**Windows에서 SIGTERM에 해당하는 것은 Ctrl+C·Ctrl+Break(서비스 관리자의 정지)다.** 이것이 정상 종료이고, 위의
+uvicorn·daphne 동작이 그대로 적용된다. 강제 종료(TerminateProcess, 작업 관리자의 "작업 끝내기")는 `leaving()`을 돌리지 않는다.
+
+실제 서버로 무엇이 끝나고 무엇이 끝나지 않는지는 `tests/test_server_shutdown.py`가 연결 둘(짧은 훅·긴 훅)로 본다
+(Windows에서는 Ctrl+Break로).
 
 **배포가 서명 키를 바꾸면** 재연결한 모든 페이지가 `invalid`로 거절돼 전체 새로고침을 한다 — join이 아니라
 HTTP 페이지 렌더가 몰린다. 키를 바꿀 때는 옛 키를 `SIGNING_KEY_FALLBACKS`(또는 `SECRET_KEY_FALLBACKS`)에 두고

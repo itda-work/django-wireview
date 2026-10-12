@@ -1,4 +1,4 @@
-"""What a server's SIGTERM leaves of the ``leaving()`` hooks of its open connections (#211).
+"""What a server's graceful stop leaves of the ``leaving()`` hooks of its open connections (#211).
 
 wireview ends a session however its app ends -- a disconnect, or the server
 cancelling the app -- and does not swallow that cancellation. Whether the
@@ -15,6 +15,10 @@ slow:
   Both hooks start, and the slow one does not end.
 
 A server that changes what it does fails here, and the deployment guide with it.
+
+On Windows ``send_signal(SIGTERM)`` is TerminateProcess, which runs no shutdown at all. Its
+graceful stop is Ctrl+Break: the server runs in its own process group and gets
+``CTRL_BREAK_EVENT``, which uvicorn handles as SIGBREAK and Twisted (daphne) shuts down on.
 """
 
 from __future__ import annotations
@@ -39,13 +43,9 @@ from wireview.core.meta import WireviewMeta
 from wireview.core.rendered import PROTOCOL_VERSION
 from wireview.core.state import sign_state
 
-pytestmark = [
-    pytest.mark.e2e,
-    pytest.mark.slow,
-    # send_signal(SIGTERM) is TerminateProcess there: the server ends at once and runs no shutdown
-    # at all, so there is no drain to observe. The guide's drain is the POSIX signal's
-    pytest.mark.skipif(sys.platform == "win32", reason="SIGTERM is TerminateProcess on Windows: no shutdown runs"),
-]
+pytestmark = [pytest.mark.e2e, pytest.mark.slow]
+
+WINDOWS = sys.platform == "win32"
 
 #: How long the slow hook takes: well past the quick one's end, well inside the time limit
 SLOW = 1.5
@@ -75,10 +75,24 @@ def _launch(server: str, port: int, log: Path, events: Path, graceful: int) -> s
         # One process: the layer changes nothing here
         "WIREVIEW_TEST_LAYER": "memory",
     }
+    # Its own process group, so that the Ctrl+Break reaches the server and not this run
+    flags = subprocess.CREATE_NEW_PROCESS_GROUP if WINDOWS else 0
     with log.open("ab") as out:
         return own(
-            subprocess.Popen([sys.executable, "-m", *command], cwd=TESTS, env=env, stdout=out, stderr=subprocess.STDOUT)
+            subprocess.Popen(
+                [sys.executable, "-m", *command],
+                cwd=TESTS,
+                env=env,
+                stdout=out,
+                stderr=subprocess.STDOUT,
+                creationflags=flags,
+            )
         )
+
+
+def _stop(proc: subprocess.Popen) -> None:
+    """The server's graceful stop: SIGTERM, or on Windows Ctrl+Break (SIGTERM there is TerminateProcess)."""
+    proc.send_signal(signal.CTRL_BREAK_EVENT if WINDOWS else signal.SIGTERM)
 
 
 def _join(port: int, id: str, seconds: float) -> ClientConnection:
@@ -105,7 +119,7 @@ def _close_code(socket: ClientConnection) -> int | None:
 def _shut_down(
     server: str, tmp_path: Path, *, graceful: int = 10, slow: float = SLOW
 ) -> tuple[list[str], list[int | None]]:
-    """Two joined sockets, then SIGTERM: what the hooks recorded, and the close code each socket got.
+    """Two joined sockets, then the graceful stop: what the hooks recorded, and the close code each socket got.
 
     Synchronous: the E2E run's Playwright holds an event loop on this thread.
     """
@@ -122,7 +136,7 @@ def _shut_down(
             # Its application checker (every second) retires the readiness requests' entries: one
             # it has not yet is an entry without an app, and kill_all_applications raises on it
             time.sleep(2.2)
-        proc.send_signal(signal.SIGTERM)
+        _stop(proc)
         proc.wait(20)
         codes = [_close_code(socket) for socket in sockets]
         return events.read_text(encoding="utf-8").splitlines(), codes
