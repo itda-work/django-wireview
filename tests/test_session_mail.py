@@ -122,6 +122,10 @@ class SmBox(Component):
         # Still handling: what the channel refused waits for this to end
         await asyncio.sleep(0.05)
 
+    async def hold(self, **_rest):
+        # Handling this, the connection takes nothing from its channel
+        await HELD["until"].wait()
+
     async def crash(self, **_rest):
         await self.start_async("boom", self._boom())
 
@@ -144,21 +148,33 @@ class SmJoining(SmBox):
         await self.stream("items", [Post(1, "one")], reset=True)
 
 
+#: What ``SmBox.hold`` waits for
+HELD: dict[str, asyncio.Event] = {}
+
 #: How many notifications the last ``_fill`` put in the channel
 FILLED = {"n": 0}
 
 
 async def _fill(channel: str) -> None:
-    """What a busy room's notifications do: wait in the connection's channel until it takes no more."""
+    """What a busy room's notifications do: wait in the connection's channel until it takes no more.
+
+    The connection may be waiting on the channel, and takes one off as soon as
+    it runs: filled again until a round fits nothing.
+    """
     layer = get_channel_layer()
     FILLED["n"] = 0
-    # The connection may be waiting on the channel already, and take the first at once
     for _ in range(CAPACITY + 2):
-        try:
-            await layer.send(channel, _message("sm-room", "notification", {"kwargs": {}}))
-        except ChannelFull:
+        added = 0
+        while True:
+            try:
+                await layer.send(channel, _message("sm-room", "notification", {"kwargs": {}}))
+            except ChannelFull:
+                break
+            added += 1
+        FILLED["n"] += added
+        if not added:
             return
-        FILLED["n"] += 1
+        await asyncio.sleep(0.01)
     raise AssertionError("the channel never filled")
 
 
@@ -301,8 +317,12 @@ async def test_a_template_change_mailed_into_a_full_channel_still_rejoins_the_pa
         await _event(communicator, "box", "push")
         await _until(communicator, _heard_all)
         session = next(iter(template_reload._sessions))  # type: ignore[attr-defined]
+        HELD["until"] = asyncio.Event()
+        await _event(communicator, "box", "hold")
+        await eventually(lambda: session.handling)
         await _fill(session.channel_name)
         await session.templates_changed()
+        HELD["until"].set()
         frames = await _until(communicator, lambda m: m["command"] == "rejoin")
     finally:
         await communicator.disconnect()
@@ -417,3 +437,38 @@ async def test_a_session_not_served_here_is_mailed_through_the_broker_alone():
     channel = await layer.new_channel()
     assert await transport.send_mail(broker, channel, {"type": "message_from_component", "n": 1}) is True
     assert await transport.send_mail(broker, channel, {"type": "message_from_component", "n": 2}) is False
+
+
+# --- a logout, which no copy can stand in for -------------------------------------------------
+
+
+async def test_a_logout_closes_a_connection_whose_channel_is_full(small_channels, settings):
+    """``session_invalidated`` is fan-out, not mail: the logout's process cannot know a full channel dropped it.
+
+    It reaches each process's ``PatchHub`` too, whose channel nothing holds up,
+    so a connection busy enough to fill its own is closed all the same.
+    """
+    from asgiref.sync import sync_to_async
+
+    from wireview.core import template_reload
+    from wireview.core.live_session import invalidate_authentication
+
+    settings.WIREVIEW = {**getattr(settings, "WIREVIEW", {}), "REJOIN_ON_TEMPLATE_CHANGE": True}
+    communicator = await _connect()
+    try:
+        await _join(communicator, SmBox, "box")
+        session = next(iter(template_reload._sessions))  # type: ignore[attr-defined]
+        await session._subscribe_auth_topic()
+        HELD["until"] = asyncio.Event()
+        await _event(communicator, "box", "hold")
+        await eventually(lambda: session.handling)
+        await _fill(session.channel_name)
+        await sync_to_async(invalidate_authentication)(session.user, session.repo.session)
+        HELD["until"].set()
+        output = await communicator.receive_output(timeout=3)
+        while output["type"] != "websocket.close":
+            output = await communicator.receive_output(timeout=3)
+    finally:
+        await communicator.disconnect()
+
+    assert output == {"type": "websocket.close", "code": 4001}

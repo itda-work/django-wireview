@@ -117,7 +117,7 @@ channels_redis는 가득 찬 수신 버퍼에서 가장 오래된 것으로 말�
 | `upload.progress` | `component`, `upload`, `ref`, `progress`, `bytes_received` | `UploadView` | 엔트리 갱신, 소유 컴포넌트 render, `upload_op progress` 전송 |
 | `upload.completed` | `component`, `upload`, `ref`, `bytes_received`, `path` | `UploadView` (마지막 청크) | 엔트리를 완료로 올린다. 브라우저에는 보내지 않는다 — 브라우저는 자기 `upload_complete`로 알고, `on_upload_complete`도 거기서 한 번만 돈다 |
 | `upload.error` | `component`, `upload`, `ref`, `errors` | `UploadView` | 엔트리를 오류로, 소유 컴포넌트 render, `upload_op error` 전송 |
-| `session_invalidated` | `reason` | `invalidate_authentication()` (로그아웃, 재로그인) | 소켓을 코드 4001로 닫는다 |
+| `session_invalidated` | `reason` (패치 그룹으로 가는 것은 `topic`도) | `invalidate_authentication()` (로그아웃, 재로그인) | 소켓을 코드 4001로 닫는다. 인증 토픽 그룹과 **그 토픽의 패치 그룹** 둘로 간다(#211): 연결의 채널이 가득 차면 레이어가 말없이 버리고, 그 연결은 끝난 로그인으로 열려 있었다. 패치 그룹의 것은 프로세스마다 `PatchHub`가 받아 그 토픽을 듣는 세션에 넘긴다 — 그 채널은 세션의 처리에 막히지 않는다. 두 번 받아도 한 번 닫는다 |
 | `wireview.patch` | `target` (클래스 FQN), `topic`, `frames: [[앞, 뒤], ...]` | `Broadcast.asend()`·`send()` (#178) | 컨슈머가 아니라 **프로세스가 한 번** 받는다(`transport.PatchHub`). 그 토픽을 듣는 세션마다, 정확히 그 클래스이고 `repo.reachable`인 인스턴스에 `앞 + json.dumps(id) + 뒤`를 연결별 큐에 넣고 그 연결의 태스크가 쓴다. 컴포넌트 코드는 돌지 않고, 다시 렌더하지도 직렬화하지도 않는다. 세션의 처리기는 `WireviewSession.wireview_patch`(`_take_patch` 뒤 쓰기를 기다린다) |
 
 `instance`는 Django JSON 직렬화기의 출력(`[{"model", "pk", "fields"}]`)이다. `AUTO_BROADCAST.senders`가 매핑이면

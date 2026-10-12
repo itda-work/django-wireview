@@ -545,10 +545,17 @@ def invalidate_authentication(user: AnyUser | None, session: t.Any, *, reason: s
     from .transport import get_broker
 
     topic = auth_topic(auth_fingerprint(user, session))
+    broker = get_broker()
     try:
-        async_to_sync(get_broker().publish)(topic, {"type": "session_invalidated", "reason": reason})
+        async_to_sync(broker.publish)(topic, {"type": "session_invalidated", "reason": reason})
     except Exception:  # pragma: no cover - transport failures must not break a logout
         log.exception("Could not publish the session invalidation for %s", topic)
+    # And to each process's patch channel: a connection's own channel drops what
+    # does not fit, and a busy one would stay open on the login that ended (#211)
+    try:
+        async_to_sync(broker.publish_patch)(topic, {"type": "session_invalidated", "topic": topic, "reason": reason})
+    except Exception:  # pragma: no cover - transport failures must not break a logout
+        log.exception("Could not publish the session invalidation for %s to the processes", topic)
 
 
 def _on_user_logged_in(sender: t.Any, request: t.Any = None, user: t.Any = None, **kwargs: t.Any) -> None:

@@ -87,6 +87,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A logout closes a busy connection on the login that ended (#211). `invalidate_authentication()` published
+  `session_invalidated` to the connections' own channels, and a channel a busy room had filled dropped it
+  without a word: the socket stayed open, its components handling events as the user who had logged out.
+  It is now also published to the topic's patch group, which each process's `PatchHub` receives on a
+  channel nothing holds up, and handed to the connections listening there. A connection told twice closes
+  once.
 - A session's mail to itself is no longer lost to a full channel (#211). What a component sends through its
   connection -- a stream operation, `push_event`, JS, a flash or title, a navigation, `defer()`, a LiveComponent
   update, the `joined` that starts infinite scroll, the release of the `Broadcast` patches a join holds, a

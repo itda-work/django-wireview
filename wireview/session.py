@@ -283,6 +283,9 @@ class WireviewSession:
         self._identity_warned: bool = False
         # Whether a template change was mailed to this session and not yet handled (#180)
         self._rejoin_mailed: bool = False
+        # Whether the login this connection stands on was told over, and the task telling it (#211)
+        self._invalidated: bool = False
+        self._invalidating: asyncio.Future[None] | None = None
         # The copies of its own mail, set by an adapter whose channel layer may drop it (#211)
         self._mailbox: Mailbox | None = None
         self._handing_over: set[asyncio.Future[None]] = set()
@@ -366,6 +369,7 @@ class WireviewSession:
         self.live_session_name = None
         self._auth_topic = ""
         self._auth_revalidated = False
+        self._invalidated = False
         self._renewing = False
         self._identity_warned = False
         # Which cookies the handshake carried, to tell a page older than them
@@ -435,6 +439,7 @@ class WireviewSession:
         self._close_patches()
         if self._auth_topic:
             await self.outbound.unsubscribe(self._auth_topic)
+            await hub.leave(self._auth_topic, self)
             self._auth_topic = ""
 
     async def close(self, code: int | None = None) -> None:
@@ -971,6 +976,15 @@ class WireviewSession:
             return
         self._auth_topic = auth_topic(self.auth_fingerprint)
         await self.outbound.subscribe(self._auth_topic)
+        # And through the process's patch channel, which nothing holds up: this
+        # connection's own channel drops the message when it is full (#211)
+        await get_patch_hub().join(self._auth_topic, self, self._hear_invalidation)
+
+    def _hear_invalidation(self, message: dict[str, t.Any]) -> None:
+        """``PatchHub`` receiver of the auth topic: ``session_invalidated``, in a task of its own."""
+        if message.get("type") != "session_invalidated" or self._invalidated:
+            return
+        self._invalidating = asyncio.ensure_future(self.session_invalidated(message))
 
     async def session_invalidated(self, event: dict[str, t.Any]) -> None:
         """The authentication this connection stands on ended somewhere else.
@@ -982,6 +996,10 @@ class WireviewSession:
         fingerprint, and every one of them is refused into a reload that lands on
         the view decorator.
         """
+        # It comes twice: on the connection's channel and through the process's (#211)
+        if self._invalidated:
+            return
+        self._invalidated = True
         log.info("Closing connection %s: %s", self.connection_id, event.get("reason", "session invalidated"))
         # Not one more frame for the login that ended, nor for a socket that is closing
         self._close_patches()

@@ -205,6 +205,7 @@ NO_UPGRADE_NOTE = {
         "화면에 없는 인스턴스가 사라질 뿐 할 일이 없다"
     ),
     "A session's mail to itself is no longer lost to a full channel": "잃던 메일을 잃지 않을 뿐 할 일이 없다",
+    "A logout closes a busy connection on the login that ended": "닫혀야 할 연결이 닫힐 뿐 할 일이 없다",
 }
 
 PREVIOUS = "1.5.1"
