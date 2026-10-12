@@ -539,12 +539,21 @@ def invalidate_authentication(user: AnyUser | None, session: t.Any, *, reason: s
     Failures are logged, never raised. Losing a socket teardown must not turn a
     logout into a 500 -- the honest client still lands on a fresh page, and the
     states the old generation issued are refused on their next join either way.
+
+    A generation with no user and no nonce is nobody's login: every anonymous
+    connection inside a live_session listens on that one topic. ``logout()``
+    from a visitor not logged in sends ``user_logged_out`` all the same, and
+    publishing it closed every anonymous socket on the site. Nothing is published.
     """
     from asgiref.sync import async_to_sync
 
     from .transport import get_broker
 
-    topic = auth_topic(auth_fingerprint(user, session))
+    fingerprint = auth_fingerprint(user, session)
+    if fingerprint == auth_fingerprint(None, {}):
+        log.debug("Not invalidating the anonymous authentication: it is no login, and every visitor's")
+        return
+    topic = auth_topic(fingerprint)
     broker = get_broker()
     try:
         async_to_sync(broker.publish)(topic, {"type": "session_invalidated", "reason": reason})

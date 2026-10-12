@@ -87,6 +87,10 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Fixed
 
+- A visitor who is not logged in no longer closes every anonymous connection by logging out (#211).
+  `logout()` sends `user_logged_out` for them too, and `invalidate_authentication()` published to the topic of
+  the generation with no user and no nonce, which every anonymous connection inside a live_session listens
+  on. That fingerprint is nobody's login: nothing is published for it now.
 - A logout closes a busy connection on the login that ended (#211). `invalidate_authentication()` published
   `session_invalidated` to the connections' own channels, and a channel a busy room had filled dropped it
   without a word: the socket stayed open, its components handling events as the user who had logged out.

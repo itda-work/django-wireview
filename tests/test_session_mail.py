@@ -28,7 +28,7 @@ import pytest
 from channels.exceptions import ChannelFull
 from channels.layers import InMemoryChannelLayer, get_channel_layer
 from channels.testing import WebsocketCommunicator
-from django.contrib.auth.models import AnonymousUser
+from django.contrib.auth.models import AnonymousUser, User
 from django.template import Template, engines
 from testproj.waiting import eventually
 
@@ -190,9 +190,9 @@ def small_channels(settings):
     }
 
 
-async def _connect() -> WebsocketCommunicator:
+async def _connect(user: t.Any = None) -> WebsocketCommunicator:
     communicator = WebsocketCommunicator(WireviewConsumer.as_asgi(), f"/__wireview__?vsn={PROTOCOL_VERSION}")
-    communicator.scope["user"] = AnonymousUser()
+    communicator.scope["user"] = user or AnonymousUser()
     connected, _ = await communicator.connect()
     assert connected
     return communicator
@@ -572,6 +572,7 @@ async def test_the_task_taking_dropped_mail_ends_with_the_connection(small_chann
 # --- a logout, which no copy can stand in for -------------------------------------------------
 
 
+@pytest.mark.django_db(transaction=True)
 async def test_a_logout_closes_a_connection_whose_channel_is_full(small_channels, settings):
     """``session_invalidated`` is fan-out, not mail: the logout's process cannot know a full channel dropped it.
 
@@ -584,7 +585,9 @@ async def test_a_logout_closes_a_connection_whose_channel_is_full(small_channels
     from wireview.core.live_session import invalidate_authentication
 
     settings.WIREVIEW = {**getattr(settings, "WIREVIEW", {}), "REJOIN_ON_TEMPLATE_CHANGE": True}
-    communicator = await _connect()
+    # Logged in: an anonymous connection stands on no login a logout could end
+    user = await User.objects.acreate(username="sm-logout")
+    communicator = await _connect(user)
     try:
         await _join(communicator, SmBox, "box")
         session = next(iter(template_reload._sessions))  # type: ignore[attr-defined]

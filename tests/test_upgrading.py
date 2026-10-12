@@ -208,6 +208,9 @@ NO_UPGRADE_NOTE = {
         "잃던 메일을 잃지 않을 뿐 할 일이 없다. 상한을 넘는 메일은 전에도 잃던 것이고 이제는 페이지가 다시 join한다"
     ),
     "A logout closes a busy connection on the login that ended": "닫혀야 할 연결이 닫힐 뿐 할 일이 없다",
+    "A visitor who is not logged in no longer closes every anonymous connection": (
+        "닫히지 말아야 할 연결이 남을 뿐 할 일이 없다"
+    ),
 }
 
 PREVIOUS = "1.5.1"
