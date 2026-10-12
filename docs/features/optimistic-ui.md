@@ -19,6 +19,7 @@
 | `wireview-click-loading` | click 이벤트 |
 | `wireview-submit-loading` | 폼 제출 |
 | `wireview-change-loading` | change 이벤트 |
+| `wireview-<이벤트>-loading` | 그 밖의 이벤트. 이름은 DOM 이벤트의 `type`이다 — `{% on "keypress.enter" … %}`이면 `wireview-keypress-loading` |
 
 폼 제출이면 폼과 함께, 폼 안에서 `wire-disabled-with`를 단 submit 버튼에도 붙는다. 서버 핸들러를 부르는
 바인딩뿐 아니라 끝에 `push`가 있는 `JS()` 체인도 같다.

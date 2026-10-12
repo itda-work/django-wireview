@@ -12,6 +12,19 @@
 - 중첩 컴포넌트: 목록·항목·카운터가 각자의 컴포넌트
 - `skip_render()` / `force_render()`로 렌더 횟수 제어
 - `{% on 'keypress.enter' %}`, `{% class %}`, `{% cond %}`
+- Enter에 즉시 반응: 로딩 클래스만으로 그리는 스피너와 "Adding…" 임시 행 (아래)
+
+## 먼 곳에서도 Enter가 바로 반응하게
+
+서버 처리는 몇 ms지만 멀리서 접속하면 왕복이 1초를 넘는다. 그동안 화면이 가만히 있으면 입력이 먹지 않은 것처럼 보인다.
+Enter를 누르면 입력칸에 `wireview-loading`과 `wireview-keypress-loading`이 붙고 **그 이벤트의 응답**이 오면 떨어진다
+([docs/features/optimistic-ui.md](../../docs/features/optimistic-ui.md#로딩-클래스)). `static/todo.css`는 이 클래스만 보고
+
+- 입력값을 흐리게 하고 헤더 오른쪽에 스피너를 돌린다(`<input>`은 `::after`를 그리지 않아 헤더에 단다)
+- `:has()`로 목록 끝에 "Adding…" 행을 보인다 — 새 항목이 들어올 자리다
+
+JavaScript도 서버 코드도 더하지 않았다. 입력값은 서버가 받은 뒤(`add()`의 `push_js`)에야 지운다 — 먼저 지우면 전송이
+실패했을 때 쓴 글이 사라진다. 목록이 비어 있으면 목록 자체가 숨어 있어 임시 행은 없고 스피너만 보인다.
 
 ## 돌려보기
 

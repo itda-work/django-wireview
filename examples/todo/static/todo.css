@@ -106,6 +106,53 @@ body {
   box-shadow: inset 0 -2px 1px rgba(0,0,0,0.03);
 }
 
+/*
+  Enter is answered after a round trip, which from far away takes a second or
+  more. Until its answer arrives the input carries wireview-loading and
+  wireview-keypress-loading (docs/features/optimistic-ui.md): dim what was
+  typed, spin at the right of the header and hold a placeholder row where the
+  new item will land. The input keeps its value until the server has it.
+  An <input> draws no ::after, so the spinner hangs off the header.
+*/
+.header {
+  position: relative;
+}
+
+.new-todo.wireview-loading {
+  color: #b3b3b3;
+  cursor: progress;
+}
+
+.header:has(.new-todo.wireview-loading)::after {
+  content: '';
+  position: absolute;
+  right: 18px;
+  bottom: 21px;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #d9d9d9;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: todo-spin 0.75s linear infinite;
+}
+
+.todoapp:has(.new-todo.wireview-keypress-loading) .todo-list::after {
+  content: 'Adding…';
+  display: block;
+  padding: 15px 15px 15px 60px;
+  font-size: 24px;
+  line-height: 1.2;
+  font-style: italic;
+  color: #c4c4c4;
+  border-top: 1px solid #ededed;
+}
+
+@keyframes todo-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .main {
   position: relative;
   z-index: 2;

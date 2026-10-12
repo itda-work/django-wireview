@@ -1,7 +1,7 @@
 import pytest
 from django.test import Client, TestCase
 from playwright.sync_api import expect
-from testproj.e2e_browser import expect_count, expect_text, wait_live
+from testproj.e2e_browser import INBOX_SHIM, expect_count, expect_text, wait_live
 from testproj.e2e_server import serve
 
 from .models import Item
@@ -130,3 +130,42 @@ class TestPlaywrightTodo:
 
         # Check no items left
         expect_count(page.locator("[data-name=XTodoItem]"), 0)
+
+    def test_enter_shows_loading_until_answered(self, page, wireview_server):
+        """Enter shows its loading state at once and keeps it until the answer arrives.
+
+        From far away the answer takes a second or more. INBOX_SHIM holds what the
+        server sends, so "before the answer" is a state the test sets, not a race.
+        """
+        page.add_init_script(INBOX_SHIM)
+        page.goto(f"{wireview_server}/todo")
+        wait_live(page, '[data-name=XTodoList][data-is-live="true"]')
+        new_item_input = page.locator("input.new-todo")
+        # A first item, so the list the placeholder row belongs to is on screen
+        new_item_input.fill("First task")
+        new_item_input.press("Enter")
+        expect_count(page.locator("[data-name=XTodoItem]"), 1)
+
+        pending_row = "getComputedStyle(document.querySelector('.todo-list'), '::after').content"
+        spinner = "getComputedStyle(document.querySelector('.header'), '::after').content"
+        assert page.evaluate(pending_row) == "none"
+
+        page.evaluate("window.__inbox.holding = true")
+        new_item_input.fill("Second task")
+        new_item_input.press("Enter")
+
+        # The server has answered, but the page has not heard it yet
+        page.wait_for_function("window.__inbox.held.some((m) => m.command === 'render' && 'ref' in m.payload)")
+        expect(new_item_input).to_have_class("new-todo wireview-loading wireview-keypress-loading")
+        expect(new_item_input).to_have_value("Second task")
+        assert page.evaluate(pending_row) == '"Adding…"'
+        assert page.evaluate(spinner) == '""'
+        expect_count(page.locator("[data-name=XTodoItem]"), 1)
+
+        page.evaluate("window.__inbox.release()")
+
+        expect_count(page.locator("[data-name=XTodoItem]"), 2)
+        expect(new_item_input).to_have_class("new-todo")
+        expect(new_item_input).to_have_value("")
+        assert page.evaluate(pending_row) == "none"
+        assert page.evaluate(spinner) == "none"
