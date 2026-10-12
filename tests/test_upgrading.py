@@ -217,6 +217,7 @@ NO_UPGRADE_NOTE = {
     "Documented when `broadcast()` (after the commit) and `abroadcast()` (at once) publish": "문서와 테스트만 바뀌었다",
     "A `stream()` in a `start_async` task replaced or cancelled": "닫히던 연결이 닫히지 않을 뿐 할 일이 없다",
     "A page that left while the server answered it": "정상 이탈이 ERROR 로그와 오류 지표에서 빠질 뿐 할 일이 없다",
+    "The README opens with who wireview is for": "문서만 바뀌었다",
     "A nested `{% component %}` a render drew that the page has yet to join goes": (
         "화면에 없는 인스턴스가 사라질 뿐 할 일이 없다"
     ),
