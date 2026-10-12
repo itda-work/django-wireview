@@ -1432,9 +1432,17 @@ def retention():
 
 @pytest.mark.integration
 @pytest.mark.django_db
-def test_a_room_keeps_its_newest_messages(retention):
+def test_a_room_keeps_its_newest_messages(retention, monkeypatch):
+    from django.utils import timezone
+
     from examples.chat.models import Message, Room
 
+    # Each message a moment after the last, as people write them. The clock alone does not
+    # say so: Python before 3.13 reads it on Windows in 15.6 ms steps, so five saves share a
+    # created_at, and the tie goes to the order of their random UUIDs
+    start = timezone.now()
+    ticks = iter(range(1_000))
+    monkeypatch.setattr(timezone, "now", lambda: start + dt.timedelta(milliseconds=next(ticks)))
     room, other = Room.objects.create(name="a"), Room.objects.create(name="b")
     for i in range(5):
         Message.objects.create(room=room, username="x", content=str(i))

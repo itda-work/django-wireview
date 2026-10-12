@@ -12,6 +12,7 @@ the line counter -- are run here too.
 import asyncio
 import json
 import re
+import time
 from pathlib import Path
 
 import pytest
@@ -147,10 +148,16 @@ def test_lines_of_code_skip_blank_lines_comments_and_docstrings(tmp_path):
 
 @pytest.mark.unit
 def test_the_timing_wrapper_times_a_message_from_receive_to_the_next_send():
+    waited = []
+
     async def app(scope, receive, send):
         await send({"type": "websocket.accept"})
         message = await receive()
+        # As long as it really took: on Windows before Python 3.13 the loop's clock moves in
+        # 15.6 ms steps, and asyncio.sleep(0.01) can end after 2 ms of perf_counter
+        started = time.perf_counter()
         await asyncio.sleep(0.01)
+        waited.append((time.perf_counter() - started) * 1000)
         await send({"type": "websocket.send", "text": message["text"]})
         await send({"type": "websocket.send", "text": "unasked"})  # no message waits for this one
 
@@ -167,7 +174,7 @@ def test_the_timing_wrapper_times_a_message_from_receive_to_the_next_send():
     asyncio.run(timed({"type": "websocket"}, receive, send))
     assert len(sent) == 3
     [(text, ms)] = timed.records
-    assert kind(text) == "insert" and ms >= 10
+    assert kind(text) == "insert" and ms >= waited[0] > 0
 
 
 @pytest.mark.unit

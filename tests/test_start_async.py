@@ -614,7 +614,8 @@ async def test_a_new_search_cancels_the_last_one_in_its_handle_async():
     await settle(enrich, "search")
 
     assert enrich._log == ["handle a", "handle b", "shown b"]
-    assert "shown=b" in shown(enrich)
+    # The render handle_async asks for comes by mail, after its task has ended
+    await eventually(lambda: "shown=b" in shown(enrich))
     assert first.cancelled()
 
 
@@ -632,7 +633,7 @@ async def test_cancel_async_cancels_an_operation_in_its_handle_async():
 
     assert enrich._cancelled is True
     assert enrich._log == ["handle a"]
-    assert "shown=cancelled" in shown(enrich)
+    await eventually(lambda: "shown=cancelled" in shown(enrich))
     assert task.cancelled()
 
 
