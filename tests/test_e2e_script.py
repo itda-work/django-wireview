@@ -119,6 +119,12 @@ def test_an_option_value_taken_for_a_path_still_runs_every_e2e_suite():
 #: anyway) and the stub waits for it with the ``wait`` builtin, which a SIGINT ends. Its
 #: EXIT trap stops the sleep. STUB_DEAF makes the sleep ignore SIGINT outright, which is
 #: what that window did, so the case is run on purpose rather than by luck.
+#:
+#: The stub dies of the SIGINT, as the suite's python does, whatever bash runs it (#218):
+#: macOS's /bin/bash 3.2 ends a ``wait`` a SIGINT interrupts with exit 129 rather than
+#: dying of the signal, and PATH decides which bash ``env`` finds. Its INT trap stops the
+#: sleep, puts SIGINT's default back and sends it to itself. A trap also makes ``wait``
+#: return as soon as the signal lands, which POSIX promises only for a trapped signal.
 REDIS_STUB = """#!/usr/bin/env bash
 seen="$(python3 - "$REDIS_URL" <<'PY'
 import socket, sys, urllib.parse
@@ -140,6 +146,7 @@ if [ -n "${{STUB_SLEEP:-}}" ]; then
   fi
   sleeper=$!
   trap 'kill "$sleeper" 2>/dev/null' EXIT
+  trap 'kill "$sleeper" 2>/dev/null; trap - INT EXIT; kill -INT $$' INT
 fi
 printf '%s\\n' "$seen" > {record}
 [ -z "${{STUB_SLEEP:-}}" ] || wait "$sleeper"
@@ -187,9 +194,12 @@ class RedisRun(t.NamedTuple):
     started: int | None
 
 
-# Runs argv[1:] with SIGINT's default disposition, whatever this process inherited
+# Runs argv[1:] with SIGINT's default disposition, unblocked, whatever this process inherited:
+# a parent that started with SIGINT blocked hands the mask on, and the script then outlived
+# every Ctrl-C with either bash (#218)
 SIGINT_DEFAULT = (
-    "import os, signal, sys; signal.signal(signal.SIGINT, signal.SIG_DFL); os.execvp(sys.argv[1], sys.argv[1:])"
+    "import os, signal, sys; signal.signal(signal.SIGINT, signal.SIG_DFL); "
+    "signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT}); os.execvp(sys.argv[1], sys.argv[1:])"
 )
 
 
@@ -337,7 +347,10 @@ def test_an_interrupted_suite_still_stops_the_server(tmp_path, redis_binary, dea
     os.killpg(proc.pid, signal.SIGINT)  # what Ctrl-C sends: the whole foreground group
     # Well inside the time limit and STUB_SLEEP: a script that outlives Ctrl-C fails here.
     run = finish_redis_script(proc, record, timeout=20)
-    assert run.returncode == -signal.SIGINT, run.output  # bash dies of the signal, after its EXIT trap
+    # bash dies of the signal after its EXIT trap, as the stub did. A suite that turns SIGINT
+    # into exit 130 (python's KeyboardInterrupt; what a real interrupted run ended with, #218)
+    # is passed on as that: either way an interrupt, not a failure the script made up
+    assert run.returncode in (-signal.SIGINT, 128 + signal.SIGINT), run.output
     assert run.seen[1], run.output
     assert_gone(run, tmp_path)
 
