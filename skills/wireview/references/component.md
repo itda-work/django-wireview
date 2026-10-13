@@ -105,13 +105,15 @@ class XTodoList(Component):
 | `await self.scroll_into_view(element_id, behavior="smooth")` | 스크롤 |
 | `await self.push_title(title)` | 문서 제목 |
 | `await self.put_flash(...)` / `await self.clear_flash()` | 플래시 메시지 |
-| `await self.push_js(JS().add_class("#row", "shake"))` | 클라이언트 DOM 명령 |
+| `await self.push_js(JS().transition("#row", "shake", time=400))` | 클라이언트 DOM 명령 |
 | `await self.push_event(name, payload)` | JavaScript Hook으로 이벤트 전달 |
 | `await self.wire.push_to(url)` / `replace_to` / `redirect_to` | 내비게이션. `push_to`·`replace_to`는 같은 경로(쿼리만 다름)면 patch — 가져오지 않고 같은 인스턴스가 `params_changed()`를 받는다 — 다른 경로면 그 페이지를 가져온다. `redirect_to`는 언제나 가져온다. 컴포넌트 밖 템플릿이 `request.GET`을 읽는 페이지는 `redirect_to`로 |
 
 `JS()` 빌더: `show`, `hide`, `toggle`, `add_class`, `remove_class`, `toggle_class`,
 `transition`, `set_attr`, `remove_attr`, `set_value`, `focus`, `focus_first`, `push`,
-`navigate`, `dispatch`. 체이닝된다. 첫 인자는 대상 선택자다(`add_class("#row", "shake")`).
+`navigate`, `dispatch`. 체이닝된다. 첫 인자는 대상 선택자다(`add_class("#row", "done")`) — 맞는 요소 전부에 적용된다.
+명령이 바꾼 클래스·속성·표시는 다음 렌더 뒤에도 남는다(LiveView의 sticky). 응답까지만의 로딩 표시는 명령이 아니라
+로딩 클래스(`wireview-click-loading`)와 `wire-disabled-with`로 한다.
 
 ## 브로드캐스트
 

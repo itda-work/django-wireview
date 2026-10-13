@@ -66,7 +66,7 @@ django-wireview의 주요 기능에 대한 상세 문서입니다.
 
 | 기능 | 설명 | 문서 |
 |------|------|------|
-| **JS Commands** | 클라이언트 측 DOM 조작 | [구현 문서](../implementation/js-commands.md) |
+| **JS Commands** | 클라이언트 측 DOM 조작. 선택자와 맞는 요소 전부에, 바꾼 것은 렌더 뒤에도 남는다(sticky) | [문서](./js-commands.md) |
 | **CSP** | 인라인 스크립트 없는 이벤트 바인딩, `'unsafe-inline'` 없는 정책과 함께 동작 | [문서](./csp.md) |
 | **JavaScript Hooks** | 서드파티 JS 라이브러리 통합 | [문서](./hooks.md) |
 

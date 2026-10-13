@@ -109,24 +109,94 @@ def test_navigate_with_replace_goes_there_in_place_of_this_entry(probe):
 
 
 def test_a_chain_runs_every_command_in_order(probe):
-    # The push's render draws #box as its template has it, without the class and the
-    # attribute: a JS() change lasts until the next render of its element. Reading them
-    # after the click raced that render, and a slow machine lost (#217). So the page
-    # records each change as it lands, with the count the server had rendered by then
-    probe.evaluate(
-        """() => {
-          window.__steps = [];
-          const count = document.querySelector("[data-testid=count]");
-          new MutationObserver((records) => {
-            for (const r of records) {
-              window.__steps.push([r.attributeName, r.target.getAttribute(r.attributeName), count.textContent]);
-            }
-          }).observe(document.getElementById("box"), { attributes: true, attributeFilter: ["class", "data-step"] });
-        }"""
-    )
     by(probe, "chain").click()
     expect_text(by(probe, "count"), "1")
-    assert probe.evaluate("window.__steps")[:2] == [["class", "chained", "0"], ["data-step", "2", "0"]]
+    # The push's render redrew #box from its template: the chain's changes are still there (#219)
+    expect(by(probe, "box")).to_have_class("chained")
+    expect(by(probe, "box")).to_have_attribute("data-step", "2")
+
+
+def test_what_commands_change_outlasts_the_next_render(probe):
+    """Phoenix LiveView keeps what a JS command did through the patches after it, and
+    so does wireview. Every render morphs #box and #lamp back into their template,
+    which has none of it: a command's change used to last until then (#219)."""
+    by(probe, "add-class").click()
+    by(probe, "set-attr").click()
+    by(probe, "dim").click()
+    by(probe, "hide").click()
+    expect(by(probe, "box")).to_be_hidden()
+
+    by(probe, "increment-server").click()
+    expect_text(by(probe, "count"), "1")
+    lamp = by(probe, "lamp")
+    expect(lamp).to_have_text("lamp 1")  # the render landed on the element
+    expect(lamp).to_have_attribute("data-count", "1")  # and the server's own changes to it with it
+
+    expect(by(probe, "box")).to_have_class("hot big")
+    expect(by(probe, "box")).to_have_attribute("data-mark", "on")
+    expect(by(probe, "box")).to_be_hidden()
+    expect(lamp).to_have_class("lamp")
+    expect(lamp).not_to_have_attribute("title", re.compile(".*"))
+    expect(lamp).to_have_attribute("aria-pressed", "true")
+
+    # A later command undoes it, and the render after that leaves it undone
+    by(probe, "show").click()
+    by(probe, "remove-class").click()
+    by(probe, "remove-attr").click()
+    by(probe, "increment-server").click()
+    expect_text(by(probe, "count"), "2")
+    expect(by(probe, "box")).to_be_visible()
+    expect(by(probe, "box")).not_to_have_class(re.compile(r"\b(hot|big)\b"))
+    expect(by(probe, "box")).not_to_have_attribute("data-mark", re.compile(".*"))
+
+
+def test_a_selector_acts_on_every_element_it_matches(probe):
+    by(probe, "mark-all").click()
+    for n in (1, 2, 3):
+        expect(by(probe, f"item-{n}")).to_have_class("item read")
+    by(probe, "increment-server").click()
+    for n in (1, 2, 3):
+        expect_text(by(probe, f"item-{n}"), f"{n} of 1")
+        expect(by(probe, f"item-{n}")).to_have_class("item read")
+
+
+def test_a_transitions_classes_outlast_a_render_and_go_when_it_ends(probe):
+    by(probe, "slow-pulse").click()
+    expect_text(by(probe, "count"), "1")
+    expect(by(probe, "box")).to_have_class(re.compile(r"\bpulsing\b"))
+    expect(by(probe, "box")).not_to_have_class(re.compile(r"\bpulsing\b"), timeout=10_000)
+
+
+def test_a_boosted_navigation_forgets_them(probe):
+    """The next page is new: its elements are the server's, even where the morph pairs
+    one with an element a command changed on this page."""
+    by(probe, "add-class").click()
+    expect(by(probe, "box")).to_have_class("hot big")
+    probe.evaluate("window.__samePage = true")
+    by(probe, "again").click()
+    expect(probe).to_have_url(re.compile(r"\?again=1$"))
+    assert probe.evaluate("window.__samePage") is True  # boosted, not a page load
+    expect(by(probe, "box")).not_to_have_class(re.compile(r"\b(hot|big)\b"))
+    by(probe, "increment-server").click()
+    expect_text(by(probe, "count"), "1")
+    expect(by(probe, "box")).not_to_have_class(re.compile(r"\b(hot|big)\b"))
+
+
+@pytest.mark.parametrize("button", ["slow-hide", "fade-then-hide"])
+def test_a_command_still_running_when_the_page_changes_leaves_the_next_page_alone(probe, button):
+    """A hide waits for its transition, in the command itself or as the chain's next one;
+    the navigation lands first. The box is the next page's then, and neither the hide
+    nor the rest of the chain touches it."""
+    by(probe, button).click()
+    expect(by(probe, "box")).to_have_class(re.compile(r"\bfading\b"))
+    by(probe, "again").click()
+    expect(probe).to_have_url(re.compile(r"\?again=1$"))
+    probe.wait_for_timeout(2000)  # past the transition's end
+    expect(by(probe, "box")).to_be_visible()
+    expect(by(probe, "box")).not_to_have_class(re.compile(r"\bfading\b"))
+    by(probe, "increment-server").click()
+    expect_text(by(probe, "count"), "1")
+    expect(by(probe, "box")).to_be_visible()
 
 
 def test_a_click_marks_its_element_loading_until_the_answer(probe):

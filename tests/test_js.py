@@ -419,6 +419,6 @@ def test_a_transition_dict_declares_only_what_the_client_reads():
     source = (Path(__file__).resolve().parent.parent / "wireview/static/wireview/wireview.js").read_text(
         encoding="utf-8"
     )
-    body = re.search(r"async function applyTransition\(element, config\) \{\n(.*?)\n\}", source, re.S)
-    assert body, "applyTransition moved: point this test at what reads a transition"
+    body = re.search(r"async function runTransition\(handle, config\) \{\n(.*?)\n\}", source, re.S)
+    assert body, "runTransition moved: point this test at what reads a transition"
     assert set(TransitionConfig.__annotations__) == set(re.findall(r"config\.(\w+)", body.group(1)))

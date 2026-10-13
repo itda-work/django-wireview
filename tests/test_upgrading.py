@@ -198,6 +198,14 @@ UPGRADE_NOTE = {
         "`leaving()`이 퇴장하지 못한 프로듀서는 프레임워크가 퇴장시킨다",
         "`mount()`는 `leaving()`을 부르지 않으므로",
     ),
+    "What a `JS()` command changes on an element": (
+        "`JS()` 명령이 바꾼 것이 렌더 뒤에도 남는다",
+        "로딩 클래스",
+    ),
+    "A `JS()` command's selector acts on every element it matches": (
+        "선택자가 맞는 요소 전부에 적용된다",
+        "선택자를 좁힌다",
+    ),
     "`Meta.shared_render`'s scope (and `wireview.W019`) read the component's own template file only": (
         "끼워 넣은 템플릿에서 보는 사람을 읽는 클래스를 공유하지 않는다",
         "`manage.py check`를 돌린다",

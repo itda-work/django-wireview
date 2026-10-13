@@ -118,6 +118,20 @@ class StreamProbe(Component):
         rows = [{"n": n} for n in (-3, -2, -1)] if at == 0 else [{"n": n} for n in (100, 101, 102)]
         await self.stream("rows", rows, at=at, reset=False, template="streamprobe/row.html", dom_id=row_id)
 
+    @property
+    def pick(self) -> JS:
+        return JS().add_class("#row-0", "picked")
+
+    @property
+    def slow_pick(self) -> JS:
+        # The class goes on once the transition ends, long enough for an update to land first
+        return JS().add_class("#row-0", "picked", transition=("fading", 1500))
+
+    async def retouch(self, **_rest):
+        # A newer version of row 0, which replaces the one on the page: what a JS()
+        # command changed on it stays (#219)
+        await self.stream_insert("rows", {"n": 0, "v": 2}, template="streamprobe/row.html", dom_id=row_id)
+
     async def load_newer(self, **_rest):
         self.newer += 1
 

@@ -200,6 +200,8 @@ wireview/
                            live-session.mjs (경계 넘음 판단 순수 함수), ready.mjs (defer 스크립트가 다 돌았는가),
                            events.mjs (wire-on-* 바인딩의 수정자 해석 순수 함수. 렌더 적용 중의 포커스·change 이벤트는 사용자 것이 아니다: isRenderEcho),
                            values.mjs (morph가 사용자가 고친 입력값을 덮어써도 되는가. IME가 조합 중인 칸은 언제나 지킨다),
+                           sticky.mjs (JS() 명령이 요소에 바꾼 클래스·속성·표시·진행 중인 트랜지션을 기록하고, 그 요소의 morph가 들어오는 HTML에 다시 얹는다 — LiveView의 sticky, #219.
+                           boost 이동의 morph는 지우고, 스트림 항목 교체는 옮긴다. 인스턴스는 wireview-boost.js의 하나),
                            loading.mjs (로딩 표시를 어느 응답이 끝내는가. ref로 짝짓는다),
                            navigation.mjs (boost 이동이 끝났음을 누구에게 알리는가: 훅의 navigated()와 wireview:navigated.
                            push_to·replace_to·popstate가 patch인가: 같은 경로, history.state의 페이지 표식(wireviewPage), #169.

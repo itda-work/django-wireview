@@ -23,6 +23,7 @@ import {
   TraversalUndo,
 } from "./navigation.mjs";
 import { STREAM_ATTRIBUTE, isStreamContainer, pinContainerIds } from "./streams.mjs";
+import { StickyOps } from "./sticky.mjs";
 import { ValueGuard } from "./values.mjs";
 
 /**
@@ -47,6 +48,26 @@ const beforeElUpdated = new Set();
  * bookkeeping are in values.mjs; this is the page's one instance.
  */
 const valueGuard = new ValueGuard();
+
+/**
+ * What JS() commands changed on the page's elements, which a render keeps
+ * (sticky.mjs, #219). The page's one instance: the commands write it, every
+ * morph reads it.
+ */
+const sticky = new StickyOps();
+
+/** How many times a navigation's morph has put another page in this document. */
+let pagesShown = 0;
+
+/**
+ * Which page the document shows, as a number that changes with each
+ * navigation's morph: a JS() chain started on one page does not go on with the
+ * next (#219).
+ * @returns {number}
+ */
+function pageGeneration() {
+  return pagesShown;
+}
 
 // The fields an IME is composing in, which no render may write (#169). Capture,
 // so a handler that stops the event cannot hide it. A composition lives in the
@@ -160,6 +181,14 @@ function morph(oldNode, newNode, { permission, navigation = false } = {}) {
           return false;
         }
 
+        // What JS() commands changed on the element outlasts its render, as in
+        // LiveView (#219). A navigation's element is the next page's, which no
+        // command touched, even where the morph pairs it with this page's.
+        if (fromEl.nodeType === Node.ELEMENT_NODE) {
+          if (navigation) sticky.forget(fromEl);
+          else sticky.apply(fromEl, /** @type {HTMLElement} */ (toEl));
+        }
+
         if (fromEl.nodeType === Node.ELEMENT_NODE && valueGuard.keep(fromEl, toEl, permission)) kept.add(fromEl);
 
         // Only call for elements, not text nodes
@@ -181,6 +210,7 @@ function morph(oldNode, newNode, { permission, navigation = false } = {}) {
 
   // A component's render; a navigation's new page has new lists anyway
   const content = navigation ? newNode : pinStreamContainers(oldNode, newNode);
+  if (navigation) pagesShown += 1;
   applying(() => Idiomorph.morph(oldNode, content, options));
   return stuck;
 }
@@ -984,6 +1014,8 @@ window.addEventListener("pageshow", (event) => {
  * @property {NavEvents} navEvent - Navigation event emitter
  * @property {typeof addBeforeElUpdated} addBeforeElUpdated - Add a morph callback
  * @property {typeof navigationToken} navigationToken - The navigation in flight
+ * @property {StickyOps} sticky - What JS() commands changed, which renders keep
+ * @property {typeof pageGeneration} pageGeneration - Which page the document shows
  */
 
 /** @type {BoostExports} */
@@ -996,4 +1028,6 @@ export default {
   navEvent: navEvent,
   addBeforeElUpdated: addBeforeElUpdated,
   navigationToken: navigationToken,
+  sticky: sticky,
+  pageGeneration: pageGeneration,
 };

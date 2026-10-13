@@ -7,6 +7,9 @@
   <button data-testid="strip" {% on "click" "strip" %}>strip</button>
   <button data-testid="front" {% on "click" "front" at=0 %}>front</button>
   <button data-testid="middle" {% on "click" "front" at=2 %}>middle</button>
+  <button data-testid="pick" {% on "click" this.pick %}>pick</button>
+  <button data-testid="slow-pick" {% on "click" this.slow_pick %}>slow pick</button>
+  <button data-testid="retouch" {% on "click" "retouch" %}>retouch</button>
   <span data-testid="bare">{{ this.bare }}</span>
   {% if this.seeded %}
     {% live_component "SeedChild" id="seed-child" bare=this.bare fill=this.fill %}

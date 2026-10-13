@@ -78,6 +78,32 @@ class JsProbe(Component):
         return JS().add_class("#box", "chained").set_attr("#box", "data-step", "2").push("increment")
 
     @property
+    def dim(self) -> JS:
+        return JS().remove_class("#lamp", "lit").remove_attr("#lamp", "title").set_attr("#lamp", "aria-pressed", "true")
+
+    items: list[int] = [1, 2, 3]
+
+    @property
+    def mark_all(self) -> JS:
+        # One selector, every element it matches
+        return JS().add_class("#items .item", "read")
+
+    @property
+    def slow_hide(self) -> JS:
+        return JS().hide("#box", transition=("fading", 1500))
+
+    @property
+    def fade_then_hide(self) -> JS:
+        # The hide is the chain's next command, after the transition's wait
+        return JS().transition("#box", "fading", time=1500).hide("#box")
+
+    @property
+    def slow_pulse(self) -> JS:
+        # The push goes first (a chain waits for a transition to end), and the
+        # transition lasts long enough for the push's render to land while it runs
+        return JS().push("increment").transition("#box", "pulsing", time=3000)
+
+    @property
     def slow_chain(self) -> JS:
         return JS().toggle_class("#box", "opened").push("slow_save")
 

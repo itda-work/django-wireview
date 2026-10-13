@@ -931,7 +931,9 @@ class ServerConnection {
             if (plan.mode !== "replace" && plan.mode !== "skip") placed++;
             switch (plan.mode) {
               case "replace":
-                // Same id: a newer version of an item already on screen.
+                // Same id: a newer version of an item already on screen. It is
+                // the same item to the user: what JS() commands changed stays (#219).
+                keepStickyOps(existing, el);
                 existing.replaceWith(el);
                 break;
               case "skip":
@@ -3556,36 +3558,104 @@ function debugLog(category, message, data) {
  */
 
 /**
- * Resolves target element(s) from a selector.
+ * The elements a command acts on: every element `selector` matches, as in
+ * LiveView's `to:`, or the command's own element when it names none.
  * @param {string|null|undefined} selector - CSS selector or null
  * @param {HTMLElement} currentElement - Fallback element
- * @returns {HTMLElement|null}
+ * @returns {HTMLElement[]}
  */
-function resolveTarget(selector, currentElement) {
-  if (!selector) return currentElement;
-  return document.querySelector(selector);
+function resolveTargets(selector, currentElement) {
+  if (!selector) return [currentElement];
+  return /** @type {HTMLElement[]} */ ([...document.querySelectorAll(selector)]);
 }
 
 /**
- * Applies a CSS transition to an element.
- * @param {HTMLElement} element - Target element
+ * Runs a CSS transition on an element: its classes stay on, through renders
+ * too, for `config.time` ms. Without a time they stay until a render that does
+ * not carry them.
+ * @param {HTMLElement} target - Target element
  * @param {TransitionConfig|null|undefined} config - Transition config
  * @returns {Promise<void>}
  */
-async function applyTransition(element, config) {
-  if (!config || !config.transition) return;
+async function applyTransition(target, config) {
+  await transitionThen(target, config, () => {});
+}
 
+/**
+ * Runs a transition on `target`, then `finish` on the element it is by then:
+ * a stream update may have replaced it, and a navigation made it the next
+ * page's, which the command leaves alone (StickyOps.handle, #219).
+ * @param {HTMLElement} target
+ * @param {TransitionConfig|null|undefined} config
+ * @param {(element: HTMLElement) => void} finish
+ * @returns {Promise<void>}
+ */
+async function transitionThen(target, config, finish) {
+  const handle = boost.sticky.handle(target);
+  await runTransition(handle, config);
+  const element = /** @type {HTMLElement|null} */ (handle.current());
+  if (element) finish(element);
+}
+
+/**
+ * @param {import("./sticky.mjs").StickyHandle} handle
+ * @param {TransitionConfig|null|undefined} config
+ * @returns {Promise<void>}
+ */
+async function runTransition(handle, config) {
+  const element = handle.current();
+  if (!config || !config.transition || !element) return;
   const classes = config.transition.split(" ").filter(Boolean);
-  element.classList.add(...classes);
+  if (!(config.time && config.time > 0)) {
+    element.classList.add(...classes);
+    return;
+  }
+  const release = boost.sticky.transient(element, classes);
+  await new Promise((resolve) => setTimeout(resolve, config.time));
+  release();
+}
 
-  if (config.time && config.time > 0) {
-    await new Promise((resolve) => setTimeout(resolve, config.time));
-    element.classList.remove(...classes);
+/**
+ * Splits a command's `classes` into class names.
+ * @param {string} classes
+ * @returns {string[]}
+ */
+function classNames(classes) {
+  return classes.split(" ").filter(Boolean);
+}
+
+/**
+ * Runs `change` on every target at once, so one target's transition does not
+ * hold up the next.
+ * @param {HTMLElement[]} targets
+ * @param {(target: HTMLElement) => Promise<void>|void} change
+ * @returns {Promise<void>}
+ */
+async function eachTarget(targets, change) {
+  await Promise.all(targets.map((target) => change(target)));
+}
+
+/**
+ * `next` replaces `item` on the page as a newer version of it (a stream
+ * update): it, and each element inside it with the id of one inside `item`,
+ * keeps what JS() commands changed (#219).
+ * @param {Element} item
+ * @param {Element} next
+ */
+function keepStickyOps(item, next) {
+  boost.sticky.move(item, next);
+  for (const old of item.querySelectorAll("[id]")) {
+    if (!boost.sticky.has(old)) continue;
+    const counterpart = next.querySelector(`#${CSS.escape(old.id)}`);
+    if (counterpart) boost.sticky.move(old, /** @type {HTMLElement} */ (counterpart));
   }
 }
 
 /**
  * Executes a single JS command.
+ *
+ * What a command changes on an element -- its classes, attributes, visibility --
+ * stays through the renders that morph it (boost.sticky, #219).
  * @param {JSCommand} cmd - Command to execute
  * @param {HTMLElement} element - Context element (event target)
  * @param {{commit?: boolean, eventType?: string}} [options] - a `push` commits the fields it comes
@@ -3593,107 +3663,105 @@ async function applyTransition(element, config) {
  * @returns {Promise<void>}
  */
 async function executeCommand(cmd, element, options = {}) {
-  const target = resolveTarget(cmd.to, element);
+  const targets = resolveTargets(cmd.to, element);
+  const sticky = boost.sticky;
 
   switch (cmd.cmd) {
     // Visibility commands
     case "show":
-      if (target) {
-        target.style.display = cmd.display || "";
-        target.hidden = false;
+      await eachTarget(targets, async (target) => {
+        sticky.show(target, cmd.display || "");
         await applyTransition(target, cmd.transition);
-      }
+      });
       break;
 
     case "hide":
-      if (target) {
-        await applyTransition(target, cmd.transition);
-        target.hidden = true;
-      }
+      await eachTarget(targets, (target) => transitionThen(target, cmd.transition, (now) => sticky.hide(now)));
       break;
 
     case "toggle":
-      if (target) {
+      await eachTarget(targets, async (target) => {
         if (target.hidden) {
-          target.style.display = cmd.display || "";
-          target.hidden = false;
+          sticky.show(target, cmd.display || "");
           await applyTransition(target, cmd.show);
         } else {
-          await applyTransition(target, cmd.hide);
-          target.hidden = true;
+          await transitionThen(target, cmd.hide, (now) => sticky.hide(now));
         }
-      }
+      });
       break;
 
     // CSS class commands
     case "add_class":
-      if (target && cmd.classes) {
-        const classes = cmd.classes.split(" ").filter(Boolean);
-        await applyTransition(target, cmd.transition);
-        target.classList.add(...classes);
+      if (cmd.classes) {
+        const classes = classNames(cmd.classes);
+        await eachTarget(targets, (target) =>
+          transitionThen(target, cmd.transition, (now) => sticky.addClasses(now, classes))
+        );
       }
       break;
 
     case "remove_class":
-      if (target && cmd.classes) {
-        const classes = cmd.classes.split(" ").filter(Boolean);
-        await applyTransition(target, cmd.transition);
-        target.classList.remove(...classes);
+      if (cmd.classes) {
+        const classes = classNames(cmd.classes);
+        await eachTarget(targets, (target) =>
+          transitionThen(target, cmd.transition, (now) => sticky.removeClasses(now, classes))
+        );
       }
       break;
 
     case "toggle_class":
-      if (target && cmd.classes) {
-        const classes = cmd.classes.split(" ").filter(Boolean);
-        await applyTransition(target, cmd.transition);
-        classes.forEach((cls) => target.classList.toggle(cls));
+      if (cmd.classes) {
+        const classes = classNames(cmd.classes);
+        await eachTarget(targets, (target) =>
+          transitionThen(target, cmd.transition, (now) => sticky.toggleClasses(now, classes))
+        );
       }
       break;
 
     // Transition command
     case "transition":
-      if (target && cmd.transition) {
+      if (cmd.transition) {
         // For transition command, cmd.transition is always a string (class names)
-        const transitionClasses = /** @type {string} */ (cmd.transition);
-        const classes = transitionClasses.split(" ").filter(Boolean);
-        target.classList.add(...classes);
-        const duration = /** @type {number|undefined} */ (cmd.time);
-        if (duration && duration > 0) {
-          await new Promise((resolve) => setTimeout(resolve, duration));
-          target.classList.remove(...classes);
-        }
+        const transition = /** @type {string} */ (cmd.transition);
+        const time = /** @type {number|undefined} */ (cmd.time);
+        await eachTarget(targets, (target) => applyTransition(target, { transition, time }));
       }
       break;
 
     // Attribute commands
     case "set_attr":
-      if (target && cmd.attr) {
-        target.setAttribute(cmd.attr, cmd.val || "");
+      if (cmd.attr) {
+        const attr = cmd.attr;
+        await eachTarget(targets, (target) => sticky.setAttribute(target, attr, cmd.val || ""));
       }
       break;
 
     case "remove_attr":
-      if (target && cmd.attr) {
-        target.removeAttribute(cmd.attr);
+      if (cmd.attr) {
+        const attr = cmd.attr;
+        await eachTarget(targets, (target) => sticky.setAttribute(target, attr, null));
       }
       break;
 
     case "set_value":
-      if (target && "value" in target) {
-        /** @type {HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement} */ (
-          target
-        ).value = cmd.value ?? "";
+      for (const target of targets) {
+        if ("value" in target) {
+          /** @type {HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement} */ (target).value = cmd.value ?? "";
+        }
       }
       break;
 
-    // Focus commands
-    case "focus":
+    // Focus commands: one element takes the focus, the first the selector matches
+    case "focus": {
+      const target = targets[0];
       if (target) {
         window.requestAnimationFrame(() => target.focus());
       }
       break;
+    }
 
-    case "focus_first":
+    case "focus_first": {
+      const target = targets[0];
       if (target) {
         const selector = cmd.input_only
           ? "input:not([disabled]):not([type=hidden]), textarea:not([disabled])"
@@ -3706,6 +3774,7 @@ async function executeCommand(cmd, element, options = {}) {
         }
       }
       break;
+    }
 
     // Server communication
     case "push":
@@ -3745,8 +3814,7 @@ async function executeCommand(cmd, element, options = {}) {
 
     case "dispatch":
       if (cmd.event) {
-        const dispatchTarget = resolveTarget(cmd.to, element);
-        if (dispatchTarget) {
+        for (const dispatchTarget of targets) {
           const customEvent = new CustomEvent(cmd.event, {
             detail: cmd.detail || {},
             bubbles: cmd.bubbles !== false,
@@ -3847,7 +3915,12 @@ window.wireview = {
    * @returns {Promise<void>}
    */
   async exec(element, commands, options = {}) {
+    const page = boost.pageGeneration();
     for (const cmd of commands) {
+      // A transition kept the chain waiting while a navigation put the next
+      // page in: the rest is not that page's. A sticky component's chain goes on,
+      // as the component does (#219).
+      if (boost.pageGeneration() !== page && !(element.isConnected && element.closest("[wire-sticky]"))) return;
       await executeCommand(cmd, element, options);
     }
   },

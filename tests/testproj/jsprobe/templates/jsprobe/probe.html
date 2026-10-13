@@ -2,6 +2,21 @@
 
 <div {% tag_header %}>
   <div id="box" data-testid="box">box</div>
+  {# The server draws the lamp lit and titled, and redraws its count: a command's change to it outlasts that (#219) #}
+  <div id="lamp"
+       class="lamp lit"
+       title="server"
+       data-testid="lamp"
+       data-count="{{ this.count }}">lamp {{ this.count }}</div>
+  <button data-testid="dim" {% on "click" this.dim %}>dim</button>
+  <ul id="items">
+    {% for n in this.items %}<li class="item" data-testid="item-{{ n }}">{{ n }} of {{ this.count }}</li>{% endfor %}
+  </ul>
+  <button data-testid="mark-all" {% on "click" this.mark_all %}>mark all</button>
+  <button data-testid="slow-pulse" {% on "click" this.slow_pulse %}>slow pulse</button>
+  <button data-testid="slow-hide" {% on "click" this.slow_hide %}>slow hide</button>
+  <button data-testid="fade-then-hide" {% on "click" this.fade_then_hide %}>fade then hide</button>
+  <a href="/jsprobe/?again=1" data-testid="again">again</a>
   <button data-testid="show" {% on "click" this.show_box %}>show</button>
   <button data-testid="hide" {% on "click" this.hide_box %}>hide</button>
   <button data-testid="add-class" {% on "click" this.add_hot %}>add</button>

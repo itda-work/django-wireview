@@ -70,6 +70,16 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- What a `JS()` command changes on an element -- classes, attributes, visibility, a running transition's classes --
+  stays through the renders that morph the element, as Phoenix LiveView's JS commands do (GAP-037, #219). The next
+  render redrew the element from its template and undid it, so `JS().add_class("#btn", "loading").push("save")`
+  looked like "loading until the answer" only because the answer's render happened to touch the button. A class a
+  command added stays now; a render's own changes to the element still land. Adding a class the element already had
+  records nothing, so the server can still take it away. A stream update that replaces an item keeps what commands
+  changed on it; a boosted navigation forgets what they changed on the page it leaves. `docs/features/js-commands.md`.
+- A `JS()` command's selector acts on every element it matches, as LiveView's `to:` does (#219). It acted on the
+  first only, so the notifications example's "mark all read" marked one item. `focus` and `focus_first` still take
+  the first.
 - The example READMEs start from uv alone and give each command as one line with no `&&`, `cd`, `VAR=value`
   prefix, single quotes or trailing comment (#217): `uv run --directory tests ...` in place of `cd tests && ...`,
   with make named as a shorthand beside it. `nodejs-wheel` in the dev group brings Node and npm into `.venv`,

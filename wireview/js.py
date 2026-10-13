@@ -48,6 +48,11 @@ class JS:
     in the browser. Commands can be chained and are serialized to JSON for
     transmission to the client.
 
+    What a command changes on an element -- its classes, attributes and
+    visibility -- stays through the renders that patch the element, as in
+    Phoenix LiveView (#219). The server's next render of the element does not
+    undo it; a later command, or a render that replaces the element, does.
+
     Example:
         >>> js = JS()
         >>> js.show("#modal").add_class("#btn", "active").push("save")
@@ -99,7 +104,7 @@ class JS:
         Show an element.
 
         Args:
-            selector: CSS selector for the target element.
+            selector: CSS selector; the command acts on every element it matches.
                      If None, targets the event's current element.
             transition: CSS transition class(es) to apply during show.
                        Can be a string, tuple of (class, duration_ms),
@@ -128,7 +133,7 @@ class JS:
         Hide an element.
 
         Args:
-            selector: CSS selector for the target element.
+            selector: CSS selector; the command acts on every element it matches.
                      If None, targets the event's current element.
             transition: CSS transition class(es) to apply during hide.
 
@@ -154,7 +159,7 @@ class JS:
         Toggle element visibility.
 
         Args:
-            selector: CSS selector for the target element.
+            selector: CSS selector; the command acts on every element it matches.
             show_transition: Transition for showing the element.
             hide_transition: Transition for hiding the element.
             display: CSS display value when shown.
@@ -185,7 +190,7 @@ class JS:
         Add CSS class(es) to an element.
 
         Args:
-            selector: CSS selector for the target element.
+            selector: CSS selector; the command acts on every element it matches.
             classes: Class name(s) to add. Can be a string or list.
             transition: Transition to apply while adding classes.
 
@@ -213,7 +218,7 @@ class JS:
         Remove CSS class(es) from an element.
 
         Args:
-            selector: CSS selector for the target element.
+            selector: CSS selector; the command acts on every element it matches.
             classes: Class name(s) to remove. Can be a string or list.
             transition: Transition to apply while removing classes.
 
@@ -240,7 +245,7 @@ class JS:
         Toggle CSS class(es) on an element.
 
         Args:
-            selector: CSS selector for the target element.
+            selector: CSS selector; the command acts on every element it matches.
             classes: Class name(s) to toggle. Can be a string or list.
             transition: Transition to apply.
 
@@ -271,7 +276,7 @@ class JS:
         The transition classes are applied, then removed after the duration.
 
         Args:
-            selector: CSS selector for the target element.
+            selector: CSS selector; the command acts on every element it matches.
             transition: CSS class(es) to apply during the transition.
                        Can be a string, tuple of (class, duration_ms),
                        or TransitionConfig dict.
@@ -304,7 +309,7 @@ class JS:
         Set an attribute on an element.
 
         Args:
-            selector: CSS selector for the target element.
+            selector: CSS selector; the command acts on every element it matches.
             attr: Attribute name.
             value: Attribute value.
 
@@ -322,7 +327,7 @@ class JS:
         Remove an attribute from an element.
 
         Args:
-            selector: CSS selector for the target element.
+            selector: CSS selector; the command acts on every element it matches.
             attr: Attribute name to remove.
 
         Example:
@@ -342,7 +347,7 @@ class JS:
         which is necessary for input, textarea, and select elements.
 
         Args:
-            selector: CSS selector for the target element.
+            selector: CSS selector; the command acts on every element it matches.
                      If None, targets the event's current element.
             value: Value to set (default: empty string to clear).
 
@@ -359,7 +364,7 @@ class JS:
         Focus an element.
 
         Args:
-            selector: CSS selector for the element to focus.
+            selector: CSS selector; the first element it matches takes the focus.
                      If None, focuses the event's current element.
 
         Example:
@@ -377,7 +382,7 @@ class JS:
         Focus the first focusable element within a container.
 
         Args:
-            selector: CSS selector for the container.
+            selector: CSS selector for the container (the first it matches).
             input_only: If True, only focus input elements.
 
         Example:
@@ -461,7 +466,7 @@ class JS:
 
         Args:
             event: Name of the custom event to dispatch.
-            to: CSS selector of the target element.
+            to: CSS selector; the event goes to every element it matches.
                 Defaults to the current element.
             detail: Custom data to include in the event.
             bubbles: Whether the event bubbles up through the DOM.

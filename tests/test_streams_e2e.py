@@ -6,6 +6,7 @@ test nor a page of documentation. Fixture: tests/testproj/streamprobe/.
 """
 
 import json
+import re
 
 import pytest
 from playwright.sync_api import expect
@@ -42,6 +43,30 @@ def test_dom_id_names_each_item(probe):
     expect_count(rows, 15)
     expect(rows.first).to_have_id("row-0")
     expect(rows.last).to_have_id("row-14")
+
+
+def test_an_updated_item_keeps_what_commands_changed_on_it(probe):
+    """A stream update replaces the item's element with a newer one; to the user it
+    is the same item, and a JS() command's change to it stays (#219)."""
+    row = probe.locator("#row-0")
+    expect(row).to_have_text("row 0")
+    by(probe, "pick").click()
+    expect(row).to_have_class("row picked")
+    by(probe, "retouch").click()
+    expect(row).to_have_text("row 0 v2")
+    expect(row).to_have_class("row picked")
+
+
+def test_a_command_that_waits_for_a_transition_finishes_on_the_updated_item(probe):
+    """The update replaced the item while the transition ran: the class goes on the
+    item on the page, not on the one the update took out."""
+    row = probe.locator("#row-0")
+    by(probe, "slow-pick").click()
+    expect(row).to_have_class(re.compile(r"\bfading\b"))
+    by(probe, "retouch").click()
+    expect(row).to_have_text("row 0 v2")
+    expect(row).to_have_class(re.compile(r"\bfading\b"))  # still running, on the new element
+    expect(row).to_have_class("row picked")
 
 
 def test_limit_keeps_only_the_newest(probe):

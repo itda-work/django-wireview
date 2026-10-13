@@ -2,18 +2,18 @@
 
 > django-wireview가 Phoenix LiveView 수준에 도달하기 위해 필요한 기능 목록
 >
-> **최종 업데이트**: 2026-10-08
+> **최종 업데이트**: 2026-10-13
 
 ---
 
 ## 개요
 
-아래 2절의 비교표 116행 기준이다. 어림수가 아니라 표를 센 값이고, `tests/test_feature_gap.py`가
+아래 2절의 비교표 117행 기준이다. 어림수가 아니라 표를 센 값이고, `tests/test_feature_gap.py`가
 표를 다시 세어 이 숫자와 비교한다.
 
 | 상태 | 행 |
 |------|---:|
-| ✅ 지원 | 114 |
+| ✅ 지원 | 115 |
 | 🟡 부분 지원 | 0 |
 | 🟠 미지원 (전부 GAP 번호와 이슈가 있다) | 0 |
 | ⚪ 설계상 제외 | 2 |
@@ -48,7 +48,7 @@ GAP 번호로 추적한다.
 |----------|---:|---:|
 | 2.1 Core Lifecycle | 7 | 0 |
 | 2.2 Real-time Features | 5 | 0 |
-| 2.3 LiveView.JS (Client Commands) | 11 | 0 |
+| 2.3 LiveView.JS (Client Commands) | 12 | 0 |
 | 2.4 Optimistic UI | 5 | 0 |
 | 2.5 Streams | 10 | 0 |
 | 2.6 File Uploads | 9 | 0 |
@@ -105,6 +105,7 @@ GAP 번호로 추적한다.
 | dispatch (DOM event) | ✅ | `JS().dispatch()` | ✅ | `tests/test_js_commands_e2e.py::test_dispatch_fires_a_dom_event_with_its_detail` |
 | navigate | ✅ | `JS().navigate()` | ✅ | `tests/test_js_commands_e2e.py::test_navigate_pushes_a_history_entry`<br>`tests/test_js_commands_e2e.py::test_navigate_with_replace_goes_there_in_place_of_this_entry` |
 | Command chaining | ✅ | ✅ 지원 | ✅ | `tests/test_js_commands_e2e.py::test_a_chain_runs_every_command_in_order` |
+| 패치 뒤에도 남는 명령 (sticky) | ✅ | ✅ 클래스·속성·표시·진행 중인 트랜지션 (GAP-037) | ✅ | `tests/test_js_commands_e2e.py::test_what_commands_change_outlasts_the_next_render`<br>`tests/test_js_commands_e2e.py::test_a_transitions_classes_outlast_a_render_and_go_when_it_ends`<br>`tests/test_streams_e2e.py::test_an_updated_item_keeps_what_commands_changed_on_it` |
 
 ### 2.4 Optimistic UI ✅
 
@@ -318,6 +319,7 @@ Nested LiveViews를 제외로 두는 이유: Phoenix의 중첩 LiveView는 BEAM 
 | ~~GAP-034~~ | ~~Dead view~~ | ~~JS 없이도 읽히는 첫 렌더. 무엇을 약속할지부터~~ | ~~중~~ | ✅ 완료 (첫 렌더·링크·폼. `docs/features/dead-view.md`) |
 | ~~GAP-035~~ | ~~LiveComponent 배치 업데이트~~ | ~~같은 컴포넌트 N개 갱신의 N+1 제거~~ | ~~중~~ | ✅ 완료 |
 | ~~GAP-036~~ | ~~LiveComponent 슬롯~~ | ~~`{% live_component_block %}`으로 fill·기본 슬롯·let 전달~~ | ~~중~~ | ✅ 완료 |
+| ~~GAP-037~~ | ~~Sticky JS 명령~~ | ~~JS 명령이 바꾼 클래스·속성·표시가 다음 렌더에서 사라졌다 (#219)~~ | ~~중~~ | ✅ 완료 (`docs/features/js-commands.md`) |
 | GAP-027 | Session extraction | ~~컨슈머 핸들러를 `WireviewSession`으로 분리~~(1단계, #60, v1.0.0rc3). ~~업로드 분산 접근~~(3단계, #83). 남은 것: 세션 상태 export/import(2단계), 프런트 어댑터(4단계) (docs/design/session-extraction.md §4·5) | 상 | 착수 기준(§5)의 워크로드가 생길 때 |
 
 ---

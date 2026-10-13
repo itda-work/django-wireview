@@ -294,6 +294,10 @@ source = "docs/features/form-feedback.md"
 slug = "form-feedback"
 
 [[sections.pages]]
+source = "docs/features/js-commands.md"
+slug = "js-commands"
+
+[[sections.pages]]
 source = "docs/features/csp.md"
 slug = "csp"
 

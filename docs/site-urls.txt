@@ -27,6 +27,7 @@
 /wireview/reference/function-components/
 /wireview/reference/hooks/
 /wireview/reference/html-diff/
+/wireview/reference/js-commands/
 /wireview/reference/lifecycle-hooks/
 /wireview/reference/live-component/
 /wireview/reference/live-session/

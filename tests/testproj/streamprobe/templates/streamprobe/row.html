@@ -1,1 +1,4 @@
-<li class="row">row {{ item.n }}</li>
+<li class="row">
+  row {{ item.n }}
+  {% if item.v %}v{{ item.v }}{% endif %}
+</li>
