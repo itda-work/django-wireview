@@ -64,7 +64,7 @@ Payload = t.Union[str, dict[str, t.Any]]
 # understands in the WebSocket URL (``?vsn=``); the server never sends a form
 # newer than that, and a client that names none gets version 0. Keep in step
 # with ``PROTOCOL_VERSION`` in static/wireview/rendered.mjs.
-PROTOCOL_VERSION = 11
+PROTOCOL_VERSION = 12
 # First version whose clients apply ``{"k": [...]}`` comprehension updates.
 MOVES_SINCE = 2
 # First version that pairs a user event with its render through ``ref`` (#92).
@@ -117,6 +117,12 @@ INSERTS_IN_ORDER_SINCE = 10
 # still differs is answered with ``reload`` (reason ``identity``). An older
 # client joins as it did before: on the socket it has, as the connection's identity.
 RENEW_SINCE = 11
+# First version whose clients read ``failed`` on ``hook_reply``: the server took
+# a hook event that asked for a reply for an id it holds no instance under -- a
+# join that failed, a component its drawer retired -- and no reply will come
+# (#222). A hook's pushEvent Promise is rejected then. An older client would
+# call the callback with no response, so it is answered with nothing, as before.
+HOOK_FAILURES_SINCE = 12
 
 
 def protocol_version(query_string: bytes | str) -> int:

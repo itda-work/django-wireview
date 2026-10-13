@@ -206,6 +206,10 @@ UPGRADE_NOTE = {
         "훅 `pushEvent`의 콜백은 그 이벤트의 렌더가 DOM에 반영된 뒤에 돈다",
         "beforeUpdate()",
     ),
+    "A hook's `pushEvent` without a callback returns a Promise": (
+        "콜백 없는 훅 `pushEvent`가 응답의 Promise를 돌려준다",
+        "return this.pushEvent",
+    ),
     "A `JS()` command's selector acts on every element it matches": (
         "선택자가 맞는 요소 전부에 적용된다",
         "선택자를 좁힌다",

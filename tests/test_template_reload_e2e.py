@@ -239,3 +239,32 @@ def test_a_navigation_while_the_rejoin_waits_joins_its_page_once(held, shadow):
     assert after[after.index("navigated") :].count("join") == 1, frames
     assert held.evaluate("window.__wireviewErrors") == []
     assert not server_errors()
+
+
+def test_an_event_held_while_the_rejoin_waits_reaches_the_instance_an_error_brings_back(held, shadow):
+    """An ``error`` arriving while the rejoin waits: its rollback join goes before what the page held (#222).
+
+    The server's ``rejoin`` comes before the error of an event the page sent
+    without having read it yet. The page asks ``sync``; a click then is held;
+    then the error comes. Its join was held behind the click, so the click
+    reached the discarded instance's id and nothing ran it.
+    """
+    page = held
+    page.evaluate("window.__inbox.holding = true")
+    saved(shadow.write("v2"))
+    page.wait_for_function("window.__inbox.held.some((m) => m.command === 'rejoin')")
+    # Sent before the page reads the rejoin, so not held: the server discards the box
+    box(page, "box-boom").click()
+    page.wait_for_function("window.__inbox.held.some((m) => m.command === 'error')")
+
+    page.evaluate("window.__inbox.release(1)")
+    page.wait_for_function("window.__frames.includes('sync')")
+    box(page, "box-bump").click()
+    page.evaluate("window.__inbox.release()")
+
+    expect_text(box(page, "box-version"), "v2")
+    expect_text(box(page, "box-count"), "1")
+    frames = page.evaluate("window.__frames")
+    after = frames[frames.index("sync") + 1 :]
+    assert after.index("join") < after.index("user_event"), frames
+    assert [e["id"] for e in page.evaluate("window.__wireviewErrors")] == ["box"]

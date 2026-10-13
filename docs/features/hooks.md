@@ -124,8 +124,8 @@ WIREVIEW = {"COLLECT_HOOKS": False}
 
 | 메서드 | 뜻 |
 |--------|-----|
-| `this.pushEvent(event, payload, callback)` | 서버로 이벤트를 보낸다 |
-| `this.handleEvent(event, callback)` | 서버가 보내는 이벤트를 받는다 |
+| `this.pushEvent(event, payload, callback)` | 서버로 이벤트를 보낸다. 콜백이 없으면 응답의 Promise를 돌려준다 |
+| `this.handleEvent(event, callback)` | 서버가 보내는 이벤트를 받는다. 핸들러를 떼는 함수를 돌려준다 |
 
 정의 객체에서는 **함수만** `this`로 복사된다. 위 이름(`pushEvent`, `handleEvent`)과 `__`로 시작하는 이름은
 wireview의 것이다 — 같은 이름으로 메서드를 쓰면 내장 동작을 덮는다. `this.__hookId` 같은 `__` 멤버는 내부이고
@@ -171,6 +171,41 @@ window.wireview.hooks.InfiniteScroll = {
 접히므로, 콜백이 보는 DOM은 **적어도** 자기 이벤트의 렌더까지이고 뒤의 이벤트 것이 함께 보일 수 있다.
 Phoenix LiveView도 diff를 적용한 뒤 reply 콜백을 부른다.
 
+#### Promise로 받기
+
+콜백을 넘기지 않으면 `pushEvent`는 응답의 Promise를 돌려준다(#222). 콜백과 같은 때 — 렌더가 DOM에 반영된 뒤 — 풀린다.
+
+```javascript
+window.wireview.hooks.SaveButton = {
+  mounted() {
+    this.el.addEventListener("click", async () => {
+      this.el.classList.add("saving");
+      try {
+        const { saved } = await this.pushEvent("save", { draft: this.el.dataset.draft });
+        // 렌더가 이미 화면에 있다
+      } catch (error) {
+        // error.reason: "disconnected" | "destroyed" | "error" | "gone"
+      } finally {
+        this.el.classList.remove("saving");
+      }
+    });
+  },
+};
+```
+
+응답이 오지 않을 것이 확실해지면 Promise는 `WireviewPushError`로 거절된다. `error.reason`이 이유다.
+
+| `reason` | 언제 |
+|----------|------|
+| `disconnected` | 보낼 때 연결이 끊겨 있었다, 또는 응답 전에 끊겼다. 끊긴 동안의 이벤트는 버려지고(#97) 재연결은 새 인스턴스에 join하므로 그 응답은 없다 |
+| `destroyed` | 훅이나 그 컴포넌트가 페이지를 떠났다 |
+| `error` | 서버 코드가 그 컴포넌트에서 예외를 던져 인스턴스를 버렸다. 페이지는 다시 join하고, 그 전에 보낸 이벤트는 처리되지 않는다 |
+| `gone` | 서버에 그 id의 인스턴스가 없다 — join이 실패했거나, 그린 쪽이 더는 그리지 않아 은퇴했다 |
+
+응답이 일단 도착하면 그 뒤의 일(다른 이벤트의 `error`, 연결 끊김)은 그것을 거절로 바꾸지 않는다 — 서버가 이미 처리했다.
+기다리지 않고 보내기만 해도 된다 — 아무도 받지 않은 거절은 "unhandled rejection"으로 보고되지 않는다.
+콜백 방식은 이전과 같다. 실패를 듣지 않고, 훅이 떠난 뒤 온 응답도 받는다(컴포넌트가 떠나면 받지 않는다).
+
 ### 서버에서 받기 (handleEvent)
 
 ```javascript
@@ -194,6 +229,16 @@ window.wireview.hooks.Notification = {
   }
 };
 ```
+
+`handleEvent`는 그 핸들러를 떼는 함수를 돌려준다(#222). 훅이 떠나면 핸들러는 모두 함께 지워지므로, 훅이 살아 있는 동안
+듣기를 멈출 때만 쓴다. 같은 함수를 두 번 등록했으면 그 반환값마다 하나씩 뗀다.
+
+```javascript
+const off = this.handleEvent("progress", ({ percent }) => this.render(percent));
+// ...
+off();
+```
+
 
 ### 서버 쪽 핸들러
 

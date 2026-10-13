@@ -16,6 +16,7 @@ import { BINDING_PREFIX, bindingsFor, isRenderEcho, parseBinding, runSteps } fro
 import { planInsert, planTrim } from "./streams.mjs";
 import { fires, overran, scrollBox, scrolls, visibleFrame } from "./viewport.mjs";
 import { TargetQueue, whenPatched } from "./targets.mjs";
+import { Replies } from "./replies.mjs";
 import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
 import { readReconnectSettings, reconnectOptions } from "./reconnect.mjs";
@@ -121,11 +122,11 @@ class ServerConnection {
     /** @type {RejoinBarrier} a rejoin waiting for the answers to what was sent before it (#180) */
     this.rejoins = new RejoinBarrier();
     /**
-     * @type {number} The last ref given to a hook's pushEvent. One counter for
-     * the page, not one per component: a reply finds its callback by the ref
-     * alone, and two components counting from 1 swapped answers (#108).
+     * @type {Replies} what hooks' pushEvent calls wait for, by ref. One ledger
+     * for the page, not one per component: a reply finds its callback by the
+     * ref alone, and two components counting from 1 swapped answers (#108).
      */
-    this.lastHookRef = 0;
+    this.replies = new Replies();
     /**
      * @type {LoadingLedger<HTMLElement>} which elements show a loading state
      * until which answer (#118)
@@ -211,6 +212,7 @@ class ServerConnection {
       boost.valueGuard.clear();
       this.loading.clear().forEach(unmarkLoading);
       debugLog("ws", "Disconnected from server");
+      this.replies.fail(() => true, "disconnected");
 
       // Notify hooks of disconnection before clearing components
       for (const component of Object.values(this.components)) {
@@ -564,10 +566,18 @@ class ServerConnection {
         const element = document.getElementById(id);
         // The instance is gone; nothing it was waiting for will be answered
         this.loading.abandon(id).forEach(unmarkLoading);
+        // Nor its hooks' events: the server discarded it with its LiveComponents,
+        // and what was written for them before this error finds no instance.
+        // One a rejoin holds back goes to the new instance (#222).
+        const retired = new Set([id, ...(element ? ownedLiveIds(element) : [])]);
+        this.replies.fail((waiting) => waiting.sent && retired.has(waiting.owner), "error");
         if (during === "event" && target && element) {
           // The instance that raised is gone. The element still carries the
           // state from before the event, so joining with it is the rollback.
-          target.rejoin();
+          // Past a rejoin's barrier (#180): what it holds for this id was sent
+          // after the error came, for the instance this join makes, and would
+          // otherwise go out ahead of it, to none (#222).
+          target.rejoin({ through: true });
         } else if (element) {
           // A join that failed is not retried: it would fail again. The page
           // keeps what the server rendered, and the next connection tries --
@@ -733,15 +743,19 @@ class ServerConnection {
         // render its event caused, which patches on the next frame: the
         // callback waits for the patches already scheduled, so it reads the
         // DOM the event produced (#223).
-        const { ref, response } = payload;
-        const owner = Object.values(this.components).find((component) => component.hookManager.callbacks.has(ref));
-        if (!owner) break;
+        const { ref, response, failed } = payload;
+        // No instance took the event: a join that failed, a retired one (#222)
+        if (failed) {
+          this.replies.giveUp(ref, "gone");
+          break;
+        }
+        if (!this.replies.receive(ref, response)) break;
         whenPatched(
           {
             pending: () => Object.values(this.components).some((component) => component.morphScheduled),
             schedule: (callback) => window.requestAnimationFrame(callback),
           },
-          () => owner.hookManager.handleReply(ref, response)
+          () => this.replies.deliver(ref, (e) => console.error("[wireview] Error in pushEvent callback:", e))
         );
         break;
       }
@@ -1196,6 +1210,7 @@ class ServerConnection {
     const doSend = () => {
       if (this.isOpen) {
         this.socket.send(JSON.stringify(message));
+        if (command === "hook_event" && payload.ref) this.replies.sent(payload.ref);
       } else if (!this.wasConnected) {
         // Before the first connection: sent once it opens.
         this.messageQueue.push(message);
@@ -1672,21 +1687,31 @@ class HookContext {
    * @param {string} event - Event name
    * @param {Object} [payload] - Event data
    * @param {function(any): void} [callback] - Response callback
+   * @returns {Promise<any> | undefined} without a callback, the response:
+   *   rejected with a WireviewPushError when none will come (#222)
    */
   pushEvent(event, payload = {}, callback = null) {
-    this.__manager.pushEvent(this.__hookId, event, payload, callback);
+    return this.__manager.pushEvent(this.__hookId, event, payload, callback);
   }
 
   /**
    * Register a handler for server-sent events.
    * @param {string} event - Event name to listen for
    * @param {function(Object): void} callback - Handler function
+   * @returns {() => void} removes the handler again (#222)
    */
   handleEvent(event, callback) {
     if (!this.__eventHandlers.has(event)) {
       this.__eventHandlers.set(event, []);
     }
-    this.__eventHandlers.get(event).push(callback);
+    // A wrapper of its own, so the same function registered twice is removed once
+    const handler = (/** @type {Object} */ payload) => callback(payload);
+    this.__eventHandlers.get(event).push(handler);
+    return () => {
+      const handlers = this.__eventHandlers.get(event);
+      const at = handlers ? handlers.indexOf(handler) : -1;
+      if (at !== -1) handlers.splice(at, 1);
+    };
   }
 
   /**
@@ -1696,8 +1721,12 @@ class HookContext {
    * @private
    */
   __dispatchEvent(event, payload) {
-    const handlers = this.__eventHandlers.get(event) || [];
-    handlers.forEach((cb) => {
+    // A copy: a handler that removes itself must not make the loop skip the
+    // one behind it. One removed meanwhile is not called, as with DOM
+    // listeners (#222).
+    const current = this.__eventHandlers.get(event) || [];
+    [...current].forEach((cb) => {
+      if (!current.includes(cb)) return;
       try {
         cb(payload);
       } catch (e) {
@@ -1727,8 +1756,6 @@ class HookManager {
     this.component = component;
     /** @type {Map<string, HookContext>} hookId -> HookContext */
     this.instances = new Map();
-    /** @type {Map<string, Function>} ref -> callback */
-    this.callbacks = new Map();
     /** @type {MutationObserver|null} */
     this.observer = null;
     /** @type {number|null} the connection epoch this manager was last initialized in */
@@ -1892,6 +1919,9 @@ class HookManager {
     debugLog("hook", `Destroyed: ${context.__hookName}`, { hookId });
     context.__destroy();
     this.instances.delete(hookId);
+    // Its Promises: whoever awaits them is told the hook left. A callback is
+    // still called, as before (replies.mjs)
+    connection.replies.fail((waiting) => waiting.hook === hookId && waiting.promised, "destroyed");
   }
 
   /**
@@ -1985,13 +2015,18 @@ class HookManager {
    * @param {string} event
    * @param {Object} payload
    * @param {Function|null} callback
+   * @returns {Promise<any> | undefined} without a callback, the response
    */
   pushEvent(hookId, event, payload, callback) {
-    const ref = callback ? `hook-${++connection.lastHookRef}` : null;
-
-    if (ref && callback) {
-      this.callbacks.set(ref, callback);
-    }
+    // Without a callback the event still asks for a reply: whoever holds the
+    // Promise may await it (#222)
+    const { ref, promise } = connection.replies.ask({
+      owner: this.component.id,
+      hook: hookId,
+      event,
+      by: this,
+      callback: /** @type {((response: any) => void) | null} */ (callback),
+    });
 
     connection._send("hook_event", {
       component_id: this.component.id,
@@ -2002,23 +2037,12 @@ class HookManager {
     });
 
     debugLog("hook", `pushEvent: ${event}`, { hookId, payload, ref });
-  }
-
-  /**
-   * Handle hook reply from server.
-   * @param {string} ref
-   * @param {any} response
-   */
-  handleReply(ref, response) {
-    const callback = this.callbacks.get(ref);
-    if (callback) {
-      this.callbacks.delete(ref);
-      try {
-        callback(response);
-      } catch (e) {
-        console.error("[wireview] Error in pushEvent callback:", e);
-      }
+    // Dropped: the socket that was live is gone (#97), and the reconnect joins
+    // a new instance that never heard of it
+    if (connection.wasConnected && !connection.isOpen) {
+      connection.replies.giveUp(ref, "disconnected");
     }
+    return promise;
   }
 
   /**
@@ -2053,7 +2077,8 @@ class HookManager {
     for (const hookId of [...this.instances.keys()]) {
       this.destroyHook(hookId);
     }
-    this.callbacks.clear();
+    // The component left: nothing its hooks were sent will be answered to them
+    connection.replies.fail((waiting) => waiting.by === this, "destroyed");
   }
 }
 

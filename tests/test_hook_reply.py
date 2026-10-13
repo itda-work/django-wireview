@@ -19,7 +19,7 @@ from testproj.outbound import RecordingOutbound
 
 from wireview import Component, LiveComponent
 from wireview.core.meta import WireviewMeta
-from wireview.core.rendered import PROTOCOL_VERSION
+from wireview.core.rendered import HOOK_FAILURES_SINCE, PROTOCOL_VERSION
 from wireview.core.session import SessionView
 from wireview.core.state import sign_state
 from wireview.session import WireviewSession
@@ -149,6 +149,26 @@ async def test_an_event_that_changes_nothing_is_answered_alone():
     await hook_event(session, "counter", "same", "hook-3")
 
     assert outbound.commands == [("hook_reply", {"ref": "hook-3", "response": {"count": 0}})]
+
+
+async def test_an_event_for_an_id_with_no_instance_is_answered_as_failed():
+    """The page's pushEvent Promise rejects instead of waiting forever (#222)."""
+    session, outbound = await joined()
+
+    await hook_event(session, "nobody", "bump", "hook-5")
+
+    assert outbound.commands == [("hook_reply", {"ref": "hook-5", "response": None, "failed": "gone"})]
+
+
+async def test_an_older_client_hears_nothing_for_an_id_with_no_instance():
+    """It would call the callback with no response."""
+    session, outbound = await joined()
+    session.repo.vsn = HOOK_FAILURES_SINCE - 1
+
+    await hook_event(session, "nobody", "bump", "hook-6")
+    await hook_event(session, "nobody", "bump", None)
+
+    assert outbound.commands == []
 
 
 async def test_an_event_without_a_callback_gets_no_reply():

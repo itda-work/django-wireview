@@ -14,6 +14,15 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Added
 
+- A hook's `pushEvent` without a callback returns a Promise of the reply, settled when the callback would run
+  (after the render the event caused is on the page), and rejected with a `WireviewPushError` when no reply will
+  come: the socket closed or was down (`disconnected`), the hook or its component left (`destroyed`), the
+  server's code raised for the component and discarded the instance (`error`), or the server holds no instance
+  under the id (`gone`: `hook_reply` carries `failed`, protocol version 12) (#222). A reply that came is not undone
+  by what follows it. A Promise nobody awaits is
+  not reported as an unhandled rejection. `handleEvent` returns what removes the handler. `types.d.ts` types a
+  hook's context (`WireviewHookContext`) and the error. Callbacks work as before; a `pushEvent` without one now
+  asks the server for a reply.
 - Every example's README opens with a clip of it working (an animated WebP) and links its final screen (a PNG);
   `examples/README.md` and the README's example table show the screenshots (#213). `make example-media` records
   them from scenes written as data (`scripts/example_media/scenes.py`): it seeds a database, plays each scene in

@@ -380,7 +380,12 @@ async def test_what_a_failed_join_left_gets_no_event_hook_or_upload(failing_nest
     answers = [(m["command"], m["payload"].get("id"), m["payload"].get("diff")) for m in after[:3]]
     assert answers[:2] == [("render", "e-own-nest", None), ("render", "e-own-leaf", None)]
     assert answers[2][:2] == ("render", "e-slot-leaf")
-    assert [m["command"] for m in after[3:]] == ["render"], "nothing for the hooks or the upload"
+    # The hooks hear that no reply will come (#222); nothing for the upload
+    assert after[3:5] == [
+        {"command": "hook_reply", "payload": {"ref": "r1", "response": None, "failed": "gone"}},
+        {"command": "hook_reply", "payload": {"ref": "r2", "response": None, "failed": "gone"}},
+    ]
+    assert [m["command"] for m in after[5:]] == ["render"], "nothing for the upload"
     assert CALLS == [("poke", "e-slot-leaf")]
 
 

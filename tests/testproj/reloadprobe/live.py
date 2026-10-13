@@ -29,3 +29,7 @@ class ReloadBox(Component):
         self.count += 1
         ENTERED.set()
         await asyncio.to_thread(RELEASE.wait, 10)
+
+    async def boom(self):
+        """Raises: the server discards the instance and the page joins it again (#222)."""
+        raise RuntimeError("reloadprobe boom")

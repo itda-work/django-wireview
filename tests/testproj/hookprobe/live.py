@@ -10,10 +10,11 @@ tests/test_hooks_e2e.py drives it.
 - Rows that a render moves keep a live hook: a move is a removal and an
   insertion to a MutationObserver, and the hook is destroyed on the way out.
 - Two components whose hooks wait on ``pushEvent`` replies at the same time.
-- A hook whose event changes only what its component's LiveComponent draws: the
-  render that answers it has no diff of its own, only the child's (#223).
   Each reply has to reach the callback that asked, whatever order the
   components sit in on the page.
+- ``pushEvent`` without a callback: the Promise it returns, and why it rejects (#222).
+- A hook whose event changes only what its component's LiveComponent draws: the
+  render that answers it has no diff of its own, only the child's (#223).
 - The shelf draws the rooted component again with ``{% component %}``. That
   instance has to be joined like the first one: its ``joined()`` runs and its
   own viewport binding is watched, and sent to it, not to the shelf. So is
@@ -30,6 +31,8 @@ tests/test_hooks_e2e.py drives it.
   work that draws one of its own, ``bud``: the graft's render registers the bud
   before the shelf's patch has put the graft's element in.
 """
+
+import asyncio
 
 from wireview import Component, LiveComponent
 
@@ -166,6 +169,17 @@ class HookProbeAsker(Component):
             # The reply names the count the render that answers it draws (#223)
             self.asked += 1
             return {"asked": self.asked}
+        if event == "echo":
+            # For a handler the hook removed again (#222)
+            await self.push_event("echoed", payload)
+            return {"echoed": True}
+        if event == "boom":
+            # The answer that will not come: the server discards this instance (#222)
+            raise RuntimeError("hookprobe boom")
+        if event == "slow":
+            # Still on its way when the page leaves (#222)
+            await asyncio.sleep(1)
+            return {"slow": True}
 
 
 # What the tally's hook event counts. Not a field: the tally's own render stays

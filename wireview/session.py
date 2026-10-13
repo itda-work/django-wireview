@@ -36,6 +36,7 @@ from .core.live_session import (
 from .core.rendered import (
     ERRORS_SINCE,
     GONE_SINCE,
+    HOOK_FAILURES_SINCE,
     INSERTS_IN_ORDER_SINCE,
     JOINED_SINCE,
     LEAVES_FIRST_SINCE,
@@ -1411,6 +1412,10 @@ class WireviewSession:
         # A component whose join failed hears no hook, as an unknown one does not
         component = self.repo.reachable(component_id)
         if not component:
+            # The hook waits for a reply that will not come: say so, to a client
+            # that reads it (its pushEvent Promise rejects, #222)
+            if ref is not None and self.repo.vsn >= HOOK_FAILURES_SINCE:
+                await self.send_command("hook_reply", {"ref": ref, "response": None, "failed": "gone"})
             return
 
         try:

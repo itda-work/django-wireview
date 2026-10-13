@@ -136,7 +136,7 @@ def test_a_component_whose_join_failed_gets_nothing_when_its_parent_draws_it_aga
     expect_text(by(probe, "holder-count"), "1")
     expect(held).to_have_attribute("wire-join-failed", "")
     by(probe, "held-poke").click()
-    probe.evaluate("window.__askers.held.pushEvent('poke', {})")
+    probe.evaluate("() => { window.__askers.held.pushEvent('poke', {}); }")
     # Answered after anything the poke or the push sent
     by(probe, "holder-bump").click()
     expect_text(by(probe, "holder-count"), "2")
@@ -150,6 +150,19 @@ def test_a_component_whose_join_failed_gets_nothing_when_its_parent_draws_it_aga
     # which it does not join again: no loop
     assert [m for m in sent if m["command"] == "join"] == []
     assert _failures(probe, "held") == 1, "not joined again"
+
+
+def test_a_push_to_a_component_whose_join_failed_is_rejected_as_gone(probe):
+    """No instance hears it, and the server says so: the Promise does not wait forever (#222)."""
+    expect(probe.locator("#held")).to_have_class(re.compile("wireview-error"))
+    reasons = probe.evaluate(
+        """() => Promise.all(
+          ["held", "held-child"].map((who) =>
+            window.__askers[who].pushEvent("poke", {}).then(() => "resolved", (error) => error.reason)
+          )
+        )"""
+    )
+    assert reasons == ["gone", "gone"]
 
 
 def test_a_component_whose_join_failed_joins_again_on_the_next_connection(page, server):
@@ -184,7 +197,7 @@ def test_the_live_components_a_failed_component_owns_get_nothing_either(probe, h
 
     for count in ("1", "2"):
         by(probe, "held-child-poke").click()
-        probe.evaluate("window.__askers['held-child'].pushEvent('poke', {})")
+        probe.evaluate("() => { window.__askers['held-child'].pushEvent('poke', {}); }")
         # Answered after anything the poke or the push sent; the second time,
         # the holder's pass has built instances of both
         by(probe, "holder-bump").click()
@@ -242,8 +255,8 @@ def test_a_boosted_navigation_tries_a_failed_join_again(probe, heard):
     expect_text(by(probe, "holder-count"), "1")
     by(probe, "held-poke").click()
     by(probe, "held-child-poke").click()
-    probe.evaluate("window.__askers.held.pushEvent('poke', {})")
-    probe.evaluate("window.__askers['held-child'].pushEvent('poke', {})")
+    probe.evaluate("() => { window.__askers.held.pushEvent('poke', {}); }")
+    probe.evaluate("() => { window.__askers['held-child'].pushEvent('poke', {}); }")
     by(probe, "holder-bump").click()
     expect_text(by(probe, "holder-count"), "2")
 

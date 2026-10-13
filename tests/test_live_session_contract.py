@@ -50,7 +50,7 @@ from wireview.core.live_session import (
     auth_topic,
 )
 from wireview.core.meta import WireviewMeta
-from wireview.core.rendered import GONE_SINCE
+from wireview.core.rendered import GONE_SINCE, HOOK_FAILURES_SINCE
 from wireview.core.session import SessionView
 from wireview.core.state import sign_state, unsign_envelope
 from wireview.function_components import function_component
@@ -1196,6 +1196,20 @@ async def test_an_event_for_a_refused_id_tells_a_page_that_knows_gone(boundary):
     await consumer.command_user_event("target", "bump", {}, {}, ref=4)
 
     assert outbound.commands == [("gone", {"id": "target", "ref": 4})]
+    assert consumer.repo.get("target") is None
+
+
+@pytest.mark.asyncio
+async def test_a_hook_event_for_a_refused_id_tells_a_page_that_reads_failures(boundary):
+    """The hook's pushEvent waits for a reply: it hears none will come (#222)."""
+    consumer, outbound = make_consumer(boundary=boundary)
+    consumer.repo.vsn = HOOK_FAILURES_SINCE
+    await consumer.command_join("CxHalts", signed(CxHalts, page=boundary, id="target"))
+    outbound.commands.clear()
+
+    await CLIENT_COMMANDS["hook_event"](consumer, "target")
+
+    assert outbound.commands == [("hook_reply", {"ref": "r1", "response": None, "failed": "gone"})]
     assert consumer.repo.get("target") is None
 
 

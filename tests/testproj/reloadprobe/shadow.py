@@ -15,7 +15,8 @@ BOX = (
     "{{% load wireview %}}<div {{% tag_header %}}>"
     '<span data-testid="box-version">{version}</span> <span data-testid="box-count">{{{{ count }}}}</span>'
     ' <button {{% on "click" "bump" %}} data-testid="box-bump">bump</button>'
-    ' <button {{% on "click" "slow_bump" %}} data-testid="box-slow">slow</button></div>'
+    ' <button {{% on "click" "slow_bump" %}} data-testid="box-slow">slow</button>'
+    ' <button {{% on "click" "boom" %}} data-testid="box-boom">boom</button></div>'
 )
 #: The same, with a tag Django cannot compile
 BROKEN = '{% load wireview %}<div {% tag_header %}>{% if %}<span data-testid="box-version">broken</span></div>'

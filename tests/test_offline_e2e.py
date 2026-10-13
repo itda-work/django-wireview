@@ -98,6 +98,30 @@ def test_what_was_sent_while_disconnected_does_not_arrive_after_the_reconnect(li
     expect_text(by(page, "pings"), "1")
 
 
+def test_a_push_the_socket_will_not_answer_is_rejected(link):
+    """Sent while down, or sent and then cut before the answer: rejected, not left hanging (#222)."""
+    page = link.page
+
+    cut_before = page.evaluate(
+        """() => {
+          const pending = window.__pinger.pushEvent("ping", {});
+          window.__link.offline = true;
+          window.__link.sockets.forEach((s) => s.close());
+          return pending.then(() => "resolved", (error) => error.reason);
+        }"""
+    )
+    assert cut_before == "disconnected"
+
+    expect(page.locator("#box")).to_have_class(re.compile("wireview-disconnected"))
+    while_down = page.evaluate(
+        "() => window.__pinger.pushEvent('ping', {}).then(() => 'resolved', (error) => error.reason)"
+    )
+    assert while_down == "disconnected"
+
+    link.restore()
+    assert page.evaluate("() => window.__pinger.pushEvent('ping', {}).then(() => 'resolved')") == "resolved"
+
+
 def test_the_page_works_again_after_the_reconnect(link):
     page = link.page
     link.cut()

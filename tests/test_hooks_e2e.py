@@ -16,6 +16,9 @@
 - A ``pushEvent`` reply reaches the callback that asked. Refs were counted per
   component from ``hook-1``, and a reply went to the first component holding
   that ref, so two components waiting at once could swap answers.
+- ``pushEvent`` without a callback returns a Promise of the reply, rejected when
+  none will come: the server discarded the instance (``error``), or the hook
+  left (``destroyed``). ``handleEvent`` returns what removes the handler (#222).
 - A ``pushEvent`` callback reads the DOM its event's render drew (#223). The
   reply came before the render, and the render patches on the next frame, so
   a callback that hid a spinner did it over the old number.
@@ -340,3 +343,73 @@ def test_a_callback_reads_what_its_event_drew_in_a_live_component(page_live):
     )
     n, drawn = page.evaluate("() => window.__tallied")
     assert drawn == n
+
+
+# --- #222: pushEvent's Promise, handleEvent's removal ------------------------------------
+
+
+def test_a_push_without_a_callback_resolves_once_its_render_is_on_the_page(page_live):
+    seen = page_live.evaluate(
+        """async () => {
+          const asker = window.__askers.second;
+          const reply = await asker.pushEvent("bump");
+          return [reply.asked, Number(asker.el.querySelector(".asked").textContent)];
+        }"""
+    )
+    assert seen[0] == seen[1] and seen[0] >= 1
+
+
+def test_a_handler_removed_again_hears_nothing(page_live):
+    page = page_live
+    page.evaluate(
+        """async () => {
+          const asker = window.__askers.first;
+          window.__echoes = { kept: 0, removed: 0 };
+          asker.handleEvent("echoed", () => window.__echoes.kept++);
+          const off = asker.handleEvent("echoed", () => window.__echoes.removed++);
+          off();
+          off();
+          // One that removes itself as it hears the event: the one behind it still hears it
+          const once = asker.handleEvent("echoed", () => {
+            window.__echoes.once++;
+            once();
+          });
+          window.__echoes.once = 0;
+          window.__echoes.behind = 0;
+          asker.handleEvent("echoed", () => window.__echoes.behind++);
+          await asker.pushEvent("echo", {});
+          await asker.pushEvent("echo", {});
+        }"""
+    )
+    page.wait_for_function("() => window.__echoes.kept === 2")
+    assert page.evaluate("() => window.__echoes") == {"kept": 2, "removed": 0, "once": 1, "behind": 2}
+
+
+def test_a_push_whose_handler_raises_is_rejected(page_live):
+    reason = page_live.evaluate(
+        """() => window.__askers.first.pushEvent("boom").then(
+          () => "resolved",
+          (error) => `${error.name}:${error.reason}`
+        )"""
+    )
+    assert reason == "WireviewPushError:error"
+    # The page joins it again, and it answers once more
+    wait_live(page_live, "#ask-first[data-is-live='true']:not(.wireview-error)")
+    assert page_live.evaluate("() => window.__askers.first.pushEvent('ask')") == {"answer": "first"}
+
+
+def test_a_push_still_waiting_when_the_page_leaves_is_rejected(page_live):
+    page = page_live
+    page.evaluate(
+        """() => {
+          window.__left = null;
+          window.__askers.first.pushEvent("slow").then(
+            () => (window.__left = "resolved"),
+            (error) => (window.__left = error.reason)
+          );
+        }"""
+    )
+    page.get_by_test_id("leave").click()
+    expect_text(page.get_by_test_id("elsewhere"), "elsewhere")
+    page.wait_for_function("() => window.__left !== null")
+    assert page.evaluate("() => window.__left") == "destroyed"

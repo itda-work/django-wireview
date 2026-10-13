@@ -19,6 +19,12 @@
  * go out (the caller sends them past the barrier); `release()` then hands
  * back everything held, in the order it was sent.
  *
+ * So does the join that rolls a component back after an `error` arriving
+ * meanwhile: the server discarded the instance, and what the page holds for
+ * it was sent after, for the instance that join makes. Held, the join went out
+ * behind it, and the events reached no instance (#222). The rejoin joins it
+ * again from the new file after `synced`.
+ *
  * A second `rejoin` while waiting is the same one: the joins read the states
  * when the answer comes. An answer that never comes does not hold the page
  * for good: after `SYNC_TIMEOUT_MS` it gives up the joins and lets go of what

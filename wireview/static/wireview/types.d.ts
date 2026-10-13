@@ -89,6 +89,35 @@ interface DocumentEventMap {
   "wireview:navigation-failed": CustomEvent<WireviewNavigationFailedDetail>;
 }
 
+/** Why a `pushEvent` Promise was rejected: no reply will come (#222). */
+interface WireviewPushError extends Error {
+  name: "WireviewPushError";
+  /**
+   * `disconnected`: the socket closed, or was down when the event was pushed.
+   * `destroyed`: the hook, or its component, left the page.
+   * `error`: the server's code raised for the component, and it discarded the instance.
+   * `gone`: the server holds no instance under the id -- its join failed, or its drawer retired it.
+   */
+  reason: "disconnected" | "destroyed" | "error" | "gone";
+  /** The event that was pushed. */
+  event: string;
+}
+
+/** A hook's `this` (docs/features/hooks.md): the definition's own members besides. */
+interface WireviewHookContext {
+  /** The element the hook sits on. */
+  readonly el: HTMLElement;
+  /**
+   * Send `event` to the component's `handle_hook_event()`. The callback, or else the
+   * returned Promise, hears what it returned once the render the event caused is on
+   * the page (#223). Only the Promise hears that no reply will come (#222).
+   */
+  pushEvent(event: string, payload: Record<string, unknown> | undefined, callback: (response: any) => void): void;
+  pushEvent(event: string, payload?: Record<string, unknown>): Promise<any>;
+  /** Hear the component's `push_event(event, ...)`. Returns what removes the handler again (#222). */
+  handleEvent(event: string, callback: (payload: any) => void): () => void;
+}
+
 /** What `window.wireview.hooks.<Name>` may define (docs/features/hooks.md). `this` is the hook's context. */
 interface WireviewHook {
   mounted?(): void;
