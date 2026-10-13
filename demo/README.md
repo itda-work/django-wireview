@@ -137,6 +137,13 @@ cd ~/srv/django-wireview && git pull
 cd demo && docker compose up -d --build
 ```
 
+이 명령은 `.env`의 `COMPOSE_FILE`이 지금 앞문의 compose 파일을 모두 적고 있을 때만 맞다. 직접 공개 모드와 NAS 뒤는
+`compose.direct.yaml`이 web의 8081을 연다 — 그 파일 없이 `up`하면 web이 8081 없이 다시 만들어지고, 호스트의 Caddy가
+닿을 곳을 잃어 공개 사이트가 502다(#214에서 업데이트 한 번이 그렇게 3분 멈췄다). 그래서 그 두 모드는 켤 때
+`COMPOSE_FILE`을 적는다(아래 "2021 머신에서 켜기"). 적은 뒤에는 `logs`·`ps`·`exec`도 같은 파일 묶음을 본다.
+`COMPOSE_FILE`을 두면 compose가 `compose.override.yaml`을 스스로 읽지 않으므로, 호스트에 그 파일(터널의 `--url`)이 있으면
+함께 적는다: `COMPOSE_FILE=compose.yaml:compose.direct.yaml:compose.override.yaml`.
+
 정적 파일은 바뀐 것만 새 해시 이름이 되므로 엣지 캐시를 비울 필요가 없다. app이 새로 시작하므로 데이터는 시드로 돌아간다. 한도 카운터(`limits`)는 그대로 남는다. 열려 있던 페이지는 재연결해 다시 join한다(서명 키가 같으면 새로고침 없이).
 `DJANGO_SECRET_KEY`를 바꾸면 열려 있던 페이지가 모두 새로고침된다.
 
@@ -246,9 +253,11 @@ Homebrew의 서비스는 로그인한 사용자의 LaunchAgent로 돈다. 컨테
 ### 2021 머신에서 켜기
 
 ```bash
-# 1. 스택: web에 8081을 연다(터널이 돌고 있어도 된다 — 8080은 그대로)
+# 1. 스택: web에 8081을 연다(터널이 돌고 있어도 된다 — 8080은 그대로).
+#    COMPOSE_FILE을 .env에 적어 두면 뒤의 업데이트·logs도 8081을 잃지 않는다(위 "업데이트")
 cd ~/srv/django-wireview/demo
-docker compose -f compose.yaml -f compose.direct.yaml up -d --build
+echo "COMPOSE_FILE=compose.yaml:compose.direct.yaml" >> .env
+docker compose up -d --build
 lsof -nP -iTCP:8081 -sTCP:LISTEN      # 127.0.0.1:8081 이어야 한다 (*:8081 이면 멈춘다)
 
 # 2. 호스트의 Caddy: Homebrew 서비스의 설정이 저장소의 파일을 가져온다
@@ -425,9 +434,10 @@ WebSocket ping을 보내고 브라우저가 pong으로 답하므로 기본값으
 ### 2021 머신에서 켜기 (NAS 뒤)
 
 ```bash
-# 1. 스택: 직접 공개 모드와 같다
+# 1. 스택: 직접 공개 모드와 같다(COMPOSE_FILE도)
 cd ~/srv/django-wireview/demo
-docker compose -f compose.yaml -f compose.direct.yaml up -d --build
+echo "COMPOSE_FILE=compose.yaml:compose.direct.yaml" >> .env
+docker compose up -d --build
 lsof -nP -iTCP:8081 -sTCP:LISTEN      # 127.0.0.1:8081 이어야 한다
 
 # 2. 호스트의 Caddy: 인자가 NAS의 주소다

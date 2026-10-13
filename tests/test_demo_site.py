@@ -785,6 +785,24 @@ def test_each_front_door_of_the_stack_trusts_its_own_header_only():
         assert name in base["services"] or service.get("profiles") == ["ddns"], name
 
 
+def test_the_fronts_on_8081_write_their_compose_files_where_an_update_reads_them():
+    """An update runs a plain ``docker compose up -d --build``. Without compose.direct.yaml that
+    recreated web without its 8081, and the NAS front answered 502 until it was run again (#214).
+    The fronts that need the file put it in COMPOSE_FILE when they start, so every later command
+    reads it too."""
+    readme = (ROOT / "demo" / "README.md").read_text(encoding="utf-8")
+    setting = 'echo "COMPOSE_FILE=compose.yaml:compose.direct.yaml" >> .env'
+    for heading in ("### 2021 머신에서 켜기\n", "### 2021 머신에서 켜기 (NAS 뒤)\n"):
+        section = readme.split(heading, 1)[1].split("\n```\n", 2)[0]
+        assert setting in section, heading
+        assert section.index(setting) < section.index("docker compose up -d --build"), heading
+    update = readme.split("### 업데이트\n", 1)[1].split("\n### ", 1)[0]
+    assert "COMPOSE_FILE" in update and "compose.override.yaml" in update
+    assert "# COMPOSE_FILE=compose.yaml:compose.direct.yaml" in (ROOT / "demo" / ".env.example").read_text(
+        encoding="utf-8"
+    )
+
+
 def test_the_dns_token_reaches_the_ddns_updater_only():
     """The token that edits the zone's DNS is in ddns.env, which no service but ddns reads."""
     import yaml
