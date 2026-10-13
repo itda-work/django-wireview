@@ -15,7 +15,7 @@ import { LoadingLedger } from "./loading.mjs";
 import { BINDING_PREFIX, bindingsFor, isRenderEcho, parseBinding, runSteps } from "./events.mjs";
 import { planInsert, planTrim } from "./streams.mjs";
 import { fires, overran, scrollBox, scrolls, visibleFrame } from "./viewport.mjs";
-import { TargetQueue } from "./targets.mjs";
+import { TargetQueue, whenPatched } from "./targets.mjs";
 import { createDocumentReady } from "./ready.mjs";
 import { RELOAD_STORAGE_KEY, shouldReload } from "./reload.mjs";
 import { readReconnectSettings, reconnectOptions } from "./reconnect.mjs";
@@ -728,17 +728,23 @@ class ServerConnection {
         break;
       }
 
-      case "hook_reply":
-        // Response to a hook's pushEvent call
-        var { ref, response } = payload;
-        // Find the component that owns this callback
-        for (const component of Object.values(this.components)) {
-          if (component.hookManager.callbacks.has(ref)) {
-            component.hookManager.handleReply(ref, response);
-            break;
-          }
-        }
+      case "hook_reply": {
+        // Response to a hook's pushEvent call. The server sends it behind the
+        // render its event caused, which patches on the next frame: the
+        // callback waits for the patches already scheduled, so it reads the
+        // DOM the event produced (#223).
+        const { ref, response } = payload;
+        const owner = Object.values(this.components).find((component) => component.hookManager.callbacks.has(ref));
+        if (!owner) break;
+        whenPatched(
+          {
+            pending: () => Object.values(this.components).some((component) => component.morphScheduled),
+            schedule: (callback) => window.requestAnimationFrame(callback),
+          },
+          () => owner.hookManager.handleReply(ref, response)
+        );
         break;
+      }
 
       case "push_event": {
         // Server pushing event to hooks. A new component's joined() pushes

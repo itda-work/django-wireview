@@ -70,6 +70,12 @@ The django-reactor era changelog (2.x) is preserved in
 
 ### Changed
 
+- A hook's `pushEvent` callback runs after the render its event caused is on the page (#223). The server
+  sent `hook_reply` before that render, and the page patches a render on the next frame, so a callback that
+  hid a spinner did it over the old value. The server now sends the render first, and the page runs the callback
+  once the patches already scheduled have run -- the component's, or only its LiveComponents' when its own HTML
+  did not change -- as Phoenix LiveView calls a reply's callback after applying the diff. The message forms are
+  unchanged.
 - What a `JS()` command changes on an element -- classes, attributes, visibility, a running transition's classes --
   stays through the renders that morph the element, as Phoenix LiveView's JS commands do (GAP-037, #219). The next
   render redrew the element from its template and undid it, so `JS().add_class("#btn", "loading").push("save")`

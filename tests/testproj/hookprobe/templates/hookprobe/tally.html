@@ -1,0 +1,5 @@
+{% load wireview %}
+
+<div {% tag_header %} wire-hook="ProbeAsker" data-who="tally">
+  {% live_component 'HookProbeTallyLeaf' id="tally-leaf" n=this.n %}
+</div>

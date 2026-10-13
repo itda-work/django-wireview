@@ -10,6 +10,8 @@ tests/test_hooks_e2e.py drives it.
 - Rows that a render moves keep a live hook: a move is a removal and an
   insertion to a MutationObserver, and the hook is destroyed on the way out.
 - Two components whose hooks wait on ``pushEvent`` replies at the same time.
+- A hook whose event changes only what its component's LiveComponent draws: the
+  render that answers it has no diff of its own, only the child's (#223).
   Each reply has to reach the callback that asked, whatever order the
   components sit in on the page.
 - The shelf draws the rooted component again with ``{% component %}``. That
@@ -155,7 +157,38 @@ class HookProbeAsker(Component):
         template_name = "hookprobe/asker.html"
 
     who: str = ""
+    asked: int = 0
 
     async def handle_hook_event(self, hook_id, event, payload):
         if event == "ask":
             return {"answer": self.who}
+        if event == "bump":
+            # The reply names the count the render that answers it draws (#223)
+            self.asked += 1
+            return {"asked": self.asked}
+
+
+# What the tally's hook event counts. Not a field: the tally's own render stays
+# the same, and only the LiveComponent it hands the count to draws it (#223).
+TALLY = {"n": 0}
+
+
+class HookProbeTally(Component):
+    class Meta:
+        template_name = "hookprobe/tally.html"
+
+    @property
+    def n(self) -> int:
+        return TALLY["n"]
+
+    async def handle_hook_event(self, hook_id, event, payload):
+        if event == "bump":
+            TALLY["n"] += 1
+            return {"n": TALLY["n"]}
+
+
+class HookProbeTallyLeaf(LiveComponent):
+    class Meta:
+        template_name = "hookprobe/tally_leaf.html"
+
+    n: int = 0

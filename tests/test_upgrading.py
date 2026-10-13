@@ -202,6 +202,10 @@ UPGRADE_NOTE = {
         "`JS()` 명령이 바꾼 것이 렌더 뒤에도 남는다",
         "로딩 클래스",
     ),
+    "A hook's `pushEvent` callback runs after the render its event caused": (
+        "훅 `pushEvent`의 콜백은 그 이벤트의 렌더가 DOM에 반영된 뒤에 돈다",
+        "beforeUpdate()",
+    ),
     "A `JS()` command's selector acts on every element it matches": (
         "선택자가 맞는 요소 전부에 적용된다",
         "선택자를 좁힌다",

@@ -165,6 +165,12 @@ window.wireview.hooks.InfiniteScroll = {
 };
 ```
 
+**콜백은 그 이벤트의 렌더가 DOM에 반영된 뒤에 돈다**(#223). 서버는 `handle_hook_event()`가 바꾼 상태의
+렌더를 먼저 보내고 응답을 그 뒤에 보내며, 페이지는 그 렌더가 예약한 패치가 끝날 때까지 응답을 붙잡는다
+(이벤트가 LiveComponent만 바꿨으면 그 LiveComponent의 패치). 그래서 콜백에서 로딩 표시를 끄면 새 값이 이미 화면에 있다. 한 프레임 안에 렌더가 여럿 오면 하나의 패치로
+접히므로, 콜백이 보는 DOM은 **적어도** 자기 이벤트의 렌더까지이고 뒤의 이벤트 것이 함께 보일 수 있다.
+Phoenix LiveView도 diff를 적용한 뒤 reply 콜백을 부른다.
+
 ### 서버에서 받기 (handleEvent)
 
 ```javascript

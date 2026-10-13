@@ -16,6 +16,9 @@
 - A ``pushEvent`` reply reaches the callback that asked. Refs were counted per
   component from ``hook-1``, and a reply went to the first component holding
   that ref, so two components waiting at once could swap answers.
+- A ``pushEvent`` callback reads the DOM its event's render drew (#223). The
+  reply came before the render, and the render patches on the next frame, so
+  a callback that hid a spinner did it over the old number.
 
 Fixture: tests/testproj/hookprobe/.
 """
@@ -277,3 +280,63 @@ def test_replies_reach_their_own_callbacks_when_two_components_wait_at_once(page
     html = page.locator("html")
     expect(html).to_have_attribute("data-reply-first", "first")
     expect(html).to_have_attribute("data-reply-second", "second")
+
+
+# --- #223: a callback reads the DOM its event drew ----------------------------------------
+
+
+def test_a_callback_runs_after_the_render_its_event_caused_is_on_the_page(page_live):
+    """Each callback sees at least its own count drawn.
+
+    Renders that arrive within one frame fold into one patch, so a callback may
+    see a later event's count too -- never an earlier one than its own.
+    """
+    page = page_live
+
+    page.evaluate(
+        """() => {
+          window.__seen = [];
+          const asker = window.__askers.first;
+          for (let i = 0; i < 3; i++) {
+            asker.pushEvent("bump", {}, (reply) => {
+              const drawn = Number(asker.el.querySelector(".asked").textContent);
+              window.__seen.push([reply.asked, drawn]);
+            });
+          }
+        }"""
+    )
+
+    page.wait_for_function("() => window.__seen.length === 3")
+    seen = page.evaluate("() => window.__seen")
+    assert [asked for asked, _ in seen] == [1, 2, 3]
+    assert all(drawn >= asked for asked, drawn in seen), seen
+
+    # One on its own is answered over exactly its render
+    page.evaluate(
+        """() => new Promise((resolve) => {
+          const asker = window.__askers.first;
+          asker.pushEvent("bump", {}, (reply) => {
+            window.__alone = [reply.asked, Number(asker.el.querySelector(".asked").textContent)];
+            resolve();
+          });
+        })"""
+    )
+    assert page.evaluate("() => window.__alone") == [4, 4]
+
+
+def test_a_callback_reads_what_its_event_drew_in_a_live_component(page_live):
+    """The answering render has no diff of the tally's own, only its LiveComponent's."""
+    page = page_live
+    wait_live(page, "#tally[data-is-live='true']")
+
+    page.evaluate(
+        """() => new Promise((resolve) => {
+          const tally = window.__askers.tally;
+          tally.pushEvent("bump", {}, (reply) => {
+            window.__tallied = [reply.n, Number(tally.el.querySelector(".tallied").textContent)];
+            resolve();
+          });
+        })"""
+    )
+    n, drawn = page.evaluate("() => window.__tallied")
+    assert drawn == n

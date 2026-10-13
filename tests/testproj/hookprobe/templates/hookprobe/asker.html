@@ -1,3 +1,5 @@
 {% load wireview %}
 
-<div {% tag_header %} wire-hook="ProbeLog ProbeAsker" data-who="{{ who }}">{{ who }}</div>
+<div {% tag_header %} wire-hook="ProbeLog ProbeAsker" data-who="{{ who }}">
+  {{ who }} <b class="asked">{{ asked }}</b>
+</div>

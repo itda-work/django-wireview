@@ -1418,13 +1418,14 @@ class WireviewSession:
             with render_queries.scope("handler", component, f"handle_hook_event({event!r})"):
                 response = await component.handle_hook_event(hook_id, event, payload)
 
-            # Send reply if ref was provided (callback expected)
-            if ref is not None:
-                await self.send_command("hook_reply", {"ref": ref, "response": response})
-
             # Re-render component if state may have changed
             with render_queries.reason(f"hook {event}"):
                 await self.send_render(component)
+
+            # The reply goes behind the render, so the page patches the DOM
+            # before the hook's callback reads it (Phoenix's order, #223)
+            if ref is not None:
+                await self.send_command("hook_reply", {"ref": ref, "response": response})
         except Exception:
             await self._crashed(component)
             return

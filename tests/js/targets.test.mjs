@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { TargetQueue } from "../../wireview/static/wireview/targets.mjs";
+import { TargetQueue, whenPatched } from "../../wireview/static/wireview/targets.mjs";
 
 /**
  * A queue over a page whose elements a test puts in place, with frames it runs
@@ -147,4 +147,64 @@ test("a held command applies on its frame though a later render scheduled anothe
   frame();
   assert.deepEqual(applied, ["A:focus"]);
   assert.deepEqual(dropped, []);
+});
+
+// --- whenPatched: a pushEvent reply runs after the render before it (#223) ---------------
+
+/**
+ * A page with frames run by hand and components whose patches a test
+ * schedules, as `scheduleMorph` does: the flag stays up until the frame runs.
+ */
+function framesOf() {
+  const frames = [];
+  const scheduled = new Set();
+  const log = [];
+  const schedule = (callback) => frames.push(callback);
+  const patch = (id) => {
+    scheduled.add(id);
+    schedule(() => {
+      scheduled.delete(id);
+      log.push(`patch:${id}`);
+    });
+  };
+  const reply = (name) =>
+    whenPatched({ pending: () => scheduled.size > 0, schedule }, () => log.push(`reply:${name}`));
+  const frame = () => frames.splice(0).forEach((callback) => callback());
+  return { schedule, patch, reply, frame, log };
+}
+
+test("a reply with no patch on its way runs at once", () => {
+  const page = framesOf();
+  page.reply("a");
+  assert.deepEqual(page.log, ["reply:a"]);
+});
+
+test("a reply runs after the patch its render scheduled", () => {
+  const page = framesOf();
+  page.patch("counter");
+  page.reply("a");
+  assert.deepEqual(page.log, []);
+  page.frame();
+  assert.deepEqual(page.log, ["patch:counter", "reply:a"]);
+});
+
+test("a reply to a render that patched only a LiveComponent waits for that patch", () => {
+  // The parent's diff was null: only its child's patch was scheduled
+  const page = framesOf();
+  page.patch("child");
+  page.reply("parent");
+  page.frame();
+  assert.deepEqual(page.log, ["patch:child", "reply:parent"]);
+});
+
+test("a reply is not flushed ahead of its render by a command held since before it", () => {
+  // A stream op whose container is not in yet holds its component's line for
+  // a frame asked for before the render's patch
+  const page = framesOf();
+  const queue = new TargetQueue({ schedule: page.schedule });
+  queue.push("counter", { find: () => null, apply: () => {}, drop: () => page.log.push("dropped:op") });
+  page.patch("counter");
+  page.reply("a");
+  page.frame();
+  assert.deepEqual(page.log, ["dropped:op", "patch:counter", "reply:a"]);
 });

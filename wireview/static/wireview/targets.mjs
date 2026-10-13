@@ -91,3 +91,28 @@ export class TargetQueue {
     }
   }
 }
+
+/**
+ * Runs `callback` once the patches already scheduled have run (#223): on the
+ * next frame when any is pending, now when none is.
+ *
+ * For a hook's `pushEvent` reply, which the server sends behind the render its
+ * event caused. That render scheduled its patches when it arrived -- its
+ * component's, or only its LiveComponents' when the component's own HTML did
+ * not change -- and frame callbacks run in the order they were asked for, so a
+ * frame asked for now runs after all of them, and after the commands a
+ * `TargetQueue` held for that frame. The reply does not join its component's
+ * line in that queue: a command held there since before the render is flushed
+ * by a frame asked for before the render's patch.
+ *
+ * Any component's pending patch counts, not only the reply's: what the event
+ * changed is not known here, and waiting one frame more is all it costs --
+ * in a background tab, where no frame runs, the reply waits for the tab as the
+ * patches do.
+ * @param {{ pending: () => boolean, schedule: (callback: () => void) => void }} frames
+ * @param {() => void} callback
+ */
+export function whenPatched({ pending, schedule }, callback) {
+  if (pending()) schedule(callback);
+  else callback();
+}
